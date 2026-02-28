@@ -6,7 +6,7 @@ let
   # ---------------------------------------------------------------------------
   # Handles license acceptance and AVD creation.
   # ---------------------------------------------------------------------------
-  provisionAndroidScript = pkgs.writeShellScript "provision-android" ''
+  provisionAndroidScript = pkgs.writeShellScriptBin "provision-android" ''
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -24,7 +24,7 @@ let
     export ANDROID_SDK_ROOT="${androidSDK.androidsdk}/libexec/android-sdk"
     export ANDROID_HOME="$ANDROID_SDK_ROOT"
     export JAVA_HOME="${pkgs.jdk17.home}"
-    export PATH="${pkgs.jdk17}/bin:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
+    export PATH="${pkgs.jdk17}/bin:$ANDROID_SDK_ROOT/cmdline-tools/8.0/bin:$ANDROID_SDK_ROOT/emulator:$ANDROID_SDK_ROOT/platform-tools:$PATH"
 
     # 2. AVD Creation
     AVD_NAME="WawonaEmulator_API36"

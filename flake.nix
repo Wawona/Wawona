@@ -509,7 +509,7 @@
 
         provision-android = {
           type = "app";
-          program = "${systemPackages.androidUtils.provisionAndroidScript}";
+          program = "${systemPackages.androidUtils.provisionAndroidScript}/bin/provision-android";
         };
 
         wawona-android = {

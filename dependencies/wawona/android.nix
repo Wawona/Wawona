@@ -269,7 +269,7 @@ let
         echo "[Wawona] AVD created at $AVD_DIR"
       elif command -v avdmanager >/dev/null 2>&1; then
         echo "[Wawona] Creating AVD '$AVD_NAME' with avdmanager..."
-        echo "no" | avdmanager create avd -n "$AVD_NAME" -k "$SYSTEM_IMAGE" --device "pixel_9" --force
+        echo "no" | avdmanager create avd -n "$AVD_NAME" -k "$SYSTEM_IMAGE" --force
       else
         echo "[Wawona] ERROR: Cannot create AVD."
         exit 1
