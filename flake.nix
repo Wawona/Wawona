@@ -279,6 +279,8 @@
           ndkVersions = ["27.0.12077973"];
         };
 
+        androidUtils = import ./dependencies/utils/android-wrapper.nix { inherit (pkgs) lib; inherit pkgs androidSDK; };
+
         # Android needs full src/ including platform C files; use cleanSource for that
         androidSrc = pkgs.lib.cleanSourceWith {
           src = ./.;
@@ -302,7 +304,7 @@
 
         wawona-android = pkgs.callPackage ./dependencies/wawona/android.nix {
           buildModule = toolchains;
-          inherit wawonaSrc wawonaVersion androidSDK;
+          inherit wawonaSrc wawonaVersion androidSDK androidUtils;
           targetPkgs = pkgsAndroid;
           weston = toolchains.buildForAndroid "weston" { };
           waypipe = toolchains.buildForAndroid "waypipe" { };
@@ -362,6 +364,9 @@
           
           # Mobile targets
           wawona-android = wawona-android;
+          
+          androidSDK = androidSDK;
+          androidUtils = androidUtils;
           
           # Tooling
           gradlegen = (pkgs.callPackage ./dependencies/generators/gradlegen.nix {
@@ -500,6 +505,11 @@
         gradlegen = {
           type = "app";
           program = "${systemPackages.gradlegen}/bin/gradlegen";
+        };
+
+        provision-android = {
+          type = "app";
+          program = "${systemPackages.androidUtils.provisionAndroidScript}";
         };
 
         wawona-android = {

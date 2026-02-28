@@ -5,6 +5,7 @@
   wawonaSrc,
   wawonaVersion ? null,
   androidSDK ? null,
+  androidUtils ? null,
   rustBackend ? null,
   glslang ? pkgs.glslang,
   targetPkgs,
@@ -13,6 +14,7 @@
 
 let
   common = import ./common.nix { inherit lib pkgs wawonaSrc; };
+  provisionScript = if androidUtils != null then "${androidUtils.provisionAndroidScript}/bin/provision-android" else "";
 
   androidToolchain = import ../toolchains/android.nix { inherit lib pkgs; };
   
@@ -121,6 +123,12 @@ let
 
     NIX_SDK_PATH="${nixSdkPath}"
     NDK_ROOT="${androidToolchain.androidndkRoot}"
+
+    # Automated Provisioning (Licenses, AVD)
+    if [ -n "${provisionScript}" ]; then
+       "${provisionScript}"
+    fi
+
     export PATH="$NIX_SDK_PATH:$PATH"
     export ANDROID_SDK_ROOT="${nixSdkRoot}"
     export ANDROID_HOME="$ANDROID_SDK_ROOT"
@@ -172,7 +180,7 @@ let
     echo "[Wawona] Using emulator: $(which emulator)"
     echo "[Wawona] Using adb: $(which adb)"
 
-    export ANDROID_USER_HOME="$(pwd)/.android_home"
+    export ANDROID_USER_HOME="$HOME/.android"
     export ANDROID_AVD_HOME="$ANDROID_USER_HOME/avd"
     mkdir -p "$ANDROID_AVD_HOME"
 
