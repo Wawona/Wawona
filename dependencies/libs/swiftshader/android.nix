@@ -24,32 +24,14 @@ let
   glslangSrc = pkgs.fetchFromGitHub {
     owner = "KhronosGroup";
     repo = "glslang";
-    rev = "12713f021ad5ac39c44569c733606ef664fd60a5"; # from SwiftShader/third_party/glslang
-    hash = "sha256-4+FvF7IEY3M4IqXb6A5oXUfV+vP6uN94P5P01A6QvJc=";
+    rev = "2b2523fb951f63f072cfba514c26f2feea5f4329"; # from SwiftShader/.gitmodules
+    hash = "sha256-47vN1gTxRa3MU9avmxVJ/E7MeR9cnjJiheCFBPdci1U=";
   };
   googletestSrc = pkgs.fetchFromGitHub {
     owner = "google";
     repo = "googletest";
-    rev = "b796f7d44681514f58a683a3a718a76043d81b83"; # from SwiftShader/third_party/googletest
-    hash = "sha256-J0/w7Vv1v0w/jHn7q/lM6pY1p4Q6Z5X049n/qN5Xy4A=";
-  };
-  marlSrc = pkgs.fetchFromGitHub {
-    owner = "google";
-    repo = "marl";
-    rev = "eb0d0354148e67823e25fed63ef5cc4f4eb04cca"; # from SwiftShader/third_party/marl
-    hash = "sha256-V/Ue8n/0D/K97D+s1WbB/yB93Q2Y7n60w27E2O3m7wI=";
-  };
-  spirvHeadersSrc = pkgs.fetchFromGitHub {
-    owner = "KhronosGroup";
-    repo = "SPIRV-Headers";
-    rev = "557d071b782b7fe23fcc5c1aa7eebbcad778ffec"; # from SwiftShader/third_party/SPIRV-Headers
-    hash = "sha256-23Vp+pYQ4c68Bf2pPqZ1M6+084xM75H4hA5uS2S1KMI=";
-  };
-  spirvToolsSrc = pkgs.fetchFromGitHub {
-    owner = "KhronosGroup";
-    repo = "SPIRV-Tools";
-    rev = "2205566f108f90dd0f13f17c2fbee59be1f6ce6a"; # from SwiftShader/third_party/SPIRV-Tools
-    hash = "sha256-gRz/wX0L5O5B9Q+b5l5gZp4T4OQx32x70Z6q6wV482I=";
+    rev = "e2239ee6043f73722e7aa812a459f54a28552929"; # from SwiftShader/.gitmodules
+    hash = "sha256-SjlJxushfry13RGA7BCjYC9oZqV4z6x8dOiHfl/wpF0=";
   };
 in
 pkgs.stdenv.mkDerivation {
@@ -98,13 +80,10 @@ pkgs.stdenv.mkDerivation {
     export ANDROID_TOOLCHAIN_FILE
 
     # Copy manually fetched submodules into place
-    rm -rf third_party/glslang third_party/googletest third_party/marl third_party/SPIRV-Headers third_party/SPIRV-Tools
+    rm -rf third_party/glslang third_party/googletest
     cp -r ${glslangSrc} third_party/glslang
     cp -r ${googletestSrc} third_party/googletest
-    cp -r ${marlSrc} third_party/marl
-    cp -r ${spirvHeadersSrc} third_party/SPIRV-Headers
-    cp -r ${spirvToolsSrc} third_party/SPIRV-Tools
-    chmod -R u+w third_party/glslang third_party/googletest third_party/marl third_party/SPIRV-Headers third_party/SPIRV-Tools
+    chmod -R u+w third_party/glslang third_party/googletest
   '';
   configurePhase = ''
     runHook preConfigure
