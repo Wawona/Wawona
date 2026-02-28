@@ -85,7 +85,7 @@ let
   else null;
 
   # ── crate2nix: generate per-crate derivations ─────────────────────
-  cargoNixDrv = crate2nix.tools.${pkgs.system}.generatedCargoNix {
+  cargoNixDrv = crate2nix.tools.${pkgs.stdenv.hostPlatform.system}.generatedCargoNix {
     name = "wawona-${platform}${lib.optionalString (isIOS && simulator) "-sim"}";
     src = workspaceSrc;
   };
