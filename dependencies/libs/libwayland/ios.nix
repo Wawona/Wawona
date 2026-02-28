@@ -118,9 +118,6 @@ pkgs.stdenv.mkDerivation {
     waylandScanner
   ];
 
-  # Allow access to Xcode SDKs and toolchain
-  __noChroot = true;
-
   buildInputs = depInputs ++ [ epollShim ];
 
   postPatch = ''
