@@ -18,6 +18,7 @@ let
     rev = "3d536c0fc62b1cdea0f78c3c38d79be559855b88"; # Latest commit from nixpkgs
     # We don't use fetchSubmodules or leaveDotGit because llvm-project and the full git
     # history cause "No space left on device" in the Nix sandbox.
+    hash = "sha256-mlKoTdZgqfMzKGB7dUaETCd6NIQm5dne59w09/0bnGE=";
   };
 
   # Manually fetch required submodules to avoid huge git clones
