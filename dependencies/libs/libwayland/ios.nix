@@ -114,6 +114,10 @@ pkgs.stdenv.mkDerivation {
     flex
     waylandScanner
   ];
+
+  # Allow access to Xcode SDKs and toolchain
+  __noChroot = true;
+
   buildInputs = depInputs ++ [ epollShim ];
 
   postPatch = ''
@@ -186,15 +190,34 @@ pkgs.stdenv.mkDerivation {
   '';
 
   preConfigure = ''
-        if [ -z "''${XCODE_APP:-}" ]; then
-          XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode || true)
-          if [ -n "$XCODE_APP" ]; then
-            export XCODE_APP
-            export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
-            export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
-            export SDKROOT="$DEVELOPER_DIR/Platforms/${if simulator then "iPhoneSimulator" else "iPhoneOS"}.platform/Developer/SDKs/${if simulator then "iPhoneSimulator" else "iPhoneOS"}.sdk"
-          fi
-        fi
+    # Strip Nix stdenv's DEVELOPER_DIR to bypass any store fallbacks
+    unset DEVELOPER_DIR
+
+    ${if simulator then ''
+      # Ensure the iOS Simulator SDK is downloaded if missing and get its path.
+      IOS_SDK=$(${xcodeUtils.ensureIosSimSDK}/bin/ensure-ios-sim-sdk) || {
+        echo "Error: Failed to ensure iOS Simulator SDK."
+        exit 1
+      }
+    '' else ''
+      # For device, find the latest iPhoneOS SDK path.
+      XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode) || {
+        echo "Error: Xcode not found."
+        exit 1
+      }
+      IOS_SDK="$XCODE_APP/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"
+    ''}
+
+    export SDKROOT="$IOS_SDK"
+    export IOS_SDK
+
+    # Find the Developer dir associated with this SDK
+    export DEVELOPER_DIR=$(echo "$IOS_SDK" | grep -oP '.*?\.app/Contents/Developer')
+    [ -z "$DEVELOPER_DIR" ] && DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
+    export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
+
+    echo "Using iOS SDK: $IOS_SDK"
+    echo "Using Developer Dir: $DEVELOPER_DIR"
         export NIX_CFLAGS_COMPILE=""
         export NIX_CXXFLAGS_COMPILE=""
         

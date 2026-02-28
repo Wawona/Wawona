@@ -16,6 +16,9 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
   version = common.version;
 
   src = common.src;
+  
+  # Allow access to Xcode SDKs and toolchain
+  __noChroot = true;
 
   prePatch = common.prePatch + ''
     # vksCacheBuilder.cpp uses system() which is unavailable on iOS
@@ -60,13 +63,25 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
   ];
 
   preConfigure = ''
+    # Strip Nix stdenv's DEVELOPER_DIR to bypass any store fallbacks
+    unset DEVELOPER_DIR
+
     if [ -z "''${XCODE_APP:-}" ]; then
       XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode || true)
       if [ -n "$XCODE_APP" ]; then
         export XCODE_APP
         export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
         export PATH="$PATH:$DEVELOPER_DIR/usr/bin"
+        
+        # Determine if we should use Simulator or Device SDK. 
+        # Default to Simulator for CTS unless specified otherwise.
         export SDKROOT="$DEVELOPER_DIR/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk"
+        
+        # Ensure it exists
+        if [ ! -d "$SDKROOT" ]; then
+           # Trigger the auto-provisioner
+           SDKROOT=$(${xcodeUtils.ensureIosSimSDK}/bin/ensure-ios-sim-sdk)
+        fi
       fi
     fi
     export NIX_CFLAGS_COMPILE=""

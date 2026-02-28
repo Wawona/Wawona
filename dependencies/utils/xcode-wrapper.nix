@@ -87,6 +87,19 @@ let
     #!/usr/bin/env bash
     set -euo pipefail
 
+    # ── Step 0: Ensure HOME is writable for xcodebuild ─────────────────────
+    # Nix sets HOME to /var/empty which causes Apple tools to fail with:
+    # "Unable to determine SimDeviceSet for subscriptions"
+    if [[ "''${HOME:-}" == "/var/empty" ]] || [[ "''${HOME:-}" == "/homeless-shelter" ]] || [ -z "''${HOME:-}" ]; then
+      export HOME=$(mktemp -d -t xcodebuild-home.XXXXXXXX)
+      echo "[ensure-ios-sim-sdk] Overriding HOME to $HOME" >&2
+      
+      # Satisfy IDESimulatorRuntimeVersionCoordinator and CoreSimulator
+      mkdir -p "$HOME/Library/Developer/Xcode"
+      mkdir -p "$HOME/Library/Developer/CoreSimulator/Devices"
+      mkdir -p "$HOME/Library/Caches/com.apple.dt.Xcode"
+    fi
+
     # Strip Nix stdenv's DEVELOPER_DIR so xcrun/xcode-select use real Xcode.
     unset DEVELOPER_DIR
 
@@ -129,7 +142,7 @@ let
       || true
 
     echo "[ensure-ios-sim-sdk] Downloading iOS Simulator platform (this may take a few minutes)..." >&2
-    HOME="$(mktemp -d)" "$XCODEBUILD" -downloadPlatform iOS || {
+    "$XCODEBUILD" -downloadPlatform iOS || {
       echo "[ensure-ios-sim-sdk] ERROR: xcodebuild -downloadPlatform iOS failed." >&2
       echo "  Try manually: sudo xcodebuild -downloadPlatform iOS" >&2
       echo "  Or: Xcode → Settings → Platforms → iOS → Download" >&2

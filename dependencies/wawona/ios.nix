@@ -216,6 +216,9 @@ in
     src = wawonaSrc;
 
     dontStrip = true;
+    
+    # Allow access to Xcode SDKs and toolchain
+    __noChroot = true;
 
     nativeBuildInputs = [ # Changed to list directly
       pkgs.pkg-config
