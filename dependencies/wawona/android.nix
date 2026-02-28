@@ -304,7 +304,12 @@ let
       echo "[Wawona] Reusing running emulator: $EMULATOR_SERIAL"
     else
       echo "[Wawona] Starting emulator '$AVD_NAME'..."
-      setsid nohup emulator -avd "$AVD_NAME" -no-snapshot-load -gpu auto < /dev/null >>/tmp/emulator.log 2>&1 &
+      # Use setsid on Linux only; it's not available on macOS and not needed with nohup
+      if [ "$(uname -s)" = "Linux" ]; then
+        setsid nohup emulator -avd "$AVD_NAME" -no-snapshot-load -gpu auto < /dev/null >>/tmp/emulator.log 2>&1 &
+      else
+        nohup emulator -avd "$AVD_NAME" -no-snapshot-load -gpu auto < /dev/null >>/tmp/emulator.log 2>&1 &
+      fi
 
       sleep 3
 
