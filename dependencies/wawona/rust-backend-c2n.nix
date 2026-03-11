@@ -215,6 +215,10 @@ let
         export SDKROOT="$XCODE_APP/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"
       fi
 
+      # Find the Developer dir associated with this SDK without using -oP
+      export DEVELOPER_DIR=$(echo "$SDKROOT" | sed -E 's|^(.*\.app/Contents/Developer)/.*$|\1|')
+      [ "$DEVELOPER_DIR" = "$SDKROOT" ] && export DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
+
       export CC_${cargoTargetUnderscore}="${rawClang} -target ${linkerTarget} -isysroot $SDKROOT"
       export CFLAGS_${cargoTargetUnderscore}="-target ${linkerTarget} -isysroot $SDKROOT -fPIC"
       export CRATE_CC_NO_DEFAULTS="1"
@@ -250,6 +254,8 @@ let
           crossBuild = innerCrossBRC (swapBuildDepsToHost (crateAttrs // {
             extraRustcOpts = (crateAttrs.extraRustcOpts or []) ++ nativeLibSearchPaths;
             preConfigure = (crateAttrs.preConfigure or "") + crossPreConfigure;
+            # Allow access to host SDKs for all cross-compiled crates
+            __noChroot = true;
           }));
         in
           if isProcMacro then

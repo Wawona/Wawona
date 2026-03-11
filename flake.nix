@@ -177,12 +177,60 @@
           buildPackages = pkgs.buildPackages;
         };
 
+        # ── Pre-patched waypipe source derivations ──
+        waypipe-patched-android = pkgs.callPackage ./dependencies/libs/waypipe/waypipe-patched-src.nix {
+          inherit waypipe-src;
+          patchScript = ./dependencies/libs/waypipe/patch-waypipe-source.sh;
+          platform = "android";
+        };
+
+        workspace-src-android = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
+          wawonaSrc = src;
+          waypipeSrc = waypipe-patched-android;
+          platform = "android";
+          inherit wawonaVersion;
+        };
+
+        backend-android = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
+          inherit crate2nix wawonaVersion toolchains nixpkgs;
+          workspaceSrc = workspace-src-android;
+          platform = "android";
+          nativeDeps = {
+            xkbcommon = toolchains.buildForAndroid "xkbcommon" {};
+            libwayland = toolchains.buildForAndroid "libwayland" {};
+            zstd = toolchains.buildForAndroid "zstd" {};
+            lz4 = toolchains.buildForAndroid "lz4" {};
+            pixman = toolchains.buildForAndroid "pixman" {};
+            openssl = toolchains.buildForAndroid "openssl" {};
+            libffi = toolchains.buildForAndroid "libffi" {};
+            expat = toolchains.buildForAndroid "expat" {};
+            libxml2 = toolchains.buildForAndroid "libxml2" {};
+          };
+        };
+
+        wawona-android = pkgs.callPackage ./dependencies/wawona/android.nix {
+          buildModule = toolchains;
+          inherit wawonaSrc wawonaVersion androidSDK androidUtils;
+          targetPkgs = pkgsAndroid;
+          weston = toolchains.buildForAndroid "weston" { };
+          waypipe = toolchains.buildForAndroid "waypipe" { };
+          rustBackend = backend-android;
+        };
+
         # Define the main package based on platform
         mainPackage = if pkgs.stdenv.isDarwin then null else pkgs.hello;
 
         packagesForSystem = {
           default = mainPackage;
           wawona = mainPackage;
+          wawona-android = wawona-android;
+          wawona-android-backend = backend-android;
+          gradlegen = (pkgs.callPackage ./dependencies/generators/gradlegen.nix {
+            wawonaSrc = src;
+            wawonaAndroidProject = wawona-android.project;
+          }).generateScript;
+          vulkan-cts-android = vulkan-cts-android;
+          gl-cts-android = gl-cts-android;
         } // (pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin (let
           # ── Pre-patched waypipe source derivations (cached separately) ──
           # Changing the patch script only invalidates these + their dependents,
@@ -199,11 +247,7 @@
             platform = "macos";
           };
 
-          waypipe-patched-android = pkgs.callPackage ./dependencies/libs/waypipe/waypipe-patched-src.nix {
-            inherit waypipe-src;
-            patchScript = ./dependencies/libs/waypipe/patch-waypipe-source.sh;
-            platform = "android";
-          };
+
 
           # ── Workspace source assembly (wawona src + waypipe) ──
           # iOS device and simulator share the same workspace source (same waypipe patches).
@@ -221,12 +265,7 @@
             inherit wawonaVersion;
           };
 
-          workspace-src-android = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
-            wawonaSrc = src;
-            waypipeSrc = waypipe-patched-android;
-            platform = "android";
-            inherit wawonaVersion;
-          };
+
 
           macosDeps = {
             libwayland = toolchains.buildForMacOS "libwayland" { };
@@ -296,22 +335,7 @@
             nativeDeps = iosSimDeps;
           };
 
-          backend-android = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
-            inherit crate2nix wawonaVersion toolchains nixpkgs;
-            workspaceSrc = workspace-src-android;
-            platform = "android";
-            nativeDeps = {
-              xkbcommon = toolchains.buildForAndroid "xkbcommon" {};
-              libwayland = toolchains.buildForAndroid "libwayland" {};
-              zstd = toolchains.buildForAndroid "zstd" {};
-              lz4 = toolchains.buildForAndroid "lz4" {};
-              pixman = toolchains.buildForAndroid "pixman" {};
-              openssl = toolchains.buildForAndroid "openssl" {};
-              libffi = toolchains.buildForAndroid "libffi" {};
-              expat = toolchains.buildForAndroid "expat" {};
-              libxml2 = toolchains.buildForAndroid "libxml2" {};
-            };
-          };
+
 
           libwayland-macos = toolchains.buildForMacOS "libwayland" { };
           libwayland-android = toolchains.buildForAndroid "libwayland" { };
@@ -337,14 +361,7 @@
             rustBackendSim = backend-ios-sim;
           };
 
-          wawona-android = pkgs.callPackage ./dependencies/wawona/android.nix {
-            buildModule = toolchains;
-            inherit wawonaSrc wawonaVersion androidSDK androidUtils;
-            targetPkgs = pkgsAndroid;
-            weston = toolchains.buildForAndroid "weston" { };
-            waypipe = toolchains.buildForAndroid "waypipe" { };
-            rustBackend = backend-android;
-          };
+
 
           wawona-macos = pkgs.callPackage ./dependencies/wawona/macos.nix {
             buildModule = toolchains;
@@ -416,14 +433,7 @@
             paths = [ backend-ios-sim ] ++ builtins.attrValues iosSimDeps;
           };
 
-          wawona-android = wawona-android;
-          wawona-android-backend = backend-android;
-          gradlegen = (pkgs.callPackage ./dependencies/generators/gradlegen.nix {
-            wawonaSrc = src;
-            wawonaAndroidProject = wawona-android.project;
-          }).generateScript;
-          vulkan-cts-android = vulkan-cts-android;
-          gl-cts-android = gl-cts-android;
+
 
           # Full Xcode project with both iOS + macOS targets
           xcodegen = (pkgs.callPackage ./dependencies/generators/xcodegen.nix {
@@ -517,6 +527,26 @@
     in {
       name = system;
       value = {
+      } // {
+        provision-android = {
+          type = "app";
+          program = "${androidUtils.provisionAndroidScript}/bin/provision-android";
+        };
+
+        wawona-android = {
+          type = "app";
+          program = "${systemPackages.wawona-android}/bin/wawona-android-run";
+        };
+
+        vulkan-cts-android = {
+          type = "app";
+          program = "${systemPackages.vulkan-cts-android}/bin/vulkan-cts-android-run";
+        };
+
+        gl-cts-android = {
+          type = "app";
+          program = "${systemPackages.gl-cts-android}/bin/gl-cts-android-run";
+        };
       } // (pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin {
         gradlegen = {
           type = "app";
@@ -563,25 +593,7 @@
           program = "${systemPackages.graphics-validate}/bin/graphics-validate";
         };
 
-        provision-android = {
-          type = "app";
-          program = "${androidUtils.provisionAndroidScript}/bin/provision-android";
-        };
 
-        wawona-android = {
-          type = "app";
-          program = "${systemPackages.wawona-android}/bin/wawona-android-run";
-        };
-
-        vulkan-cts-android = {
-          type = "app";
-          program = "${systemPackages.vulkan-cts-android}/bin/vulkan-cts-android-run";
-        };
-
-        gl-cts-android = {
-          type = "app";
-          program = "${systemPackages.gl-cts-android}/bin/gl-cts-android-run";
-        };
         
         provision-xcode = {
           type = "app";

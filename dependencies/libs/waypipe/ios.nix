@@ -139,9 +139,9 @@ myRustPlatform.buildRustPackage {
         export SDKROOT="$IOS_SDK"
         export IOS_SDK
 
-        # Find the Developer dir associated with this SDK
-        export DEVELOPER_DIR=$(echo "$IOS_SDK" | grep -oP '.*?\.app/Contents/Developer')
-        [ -z "$DEVELOPER_DIR" ] && DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
+        # Find the Developer dir associated with this SDK without using -oP
+        export DEVELOPER_DIR=$(echo "$IOS_SDK" | sed -E 's|^(.*\.app/Contents/Developer)/.*$|\1|')
+        [ "$DEVELOPER_DIR" = "$IOS_SDK" ] && export DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
 
         echo "Using iOS SDK: $IOS_SDK"
         echo "Using Developer Dir: $DEVELOPER_DIR"

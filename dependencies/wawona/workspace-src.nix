@@ -105,31 +105,54 @@ if lock.exists():
     lock.write_text("".join(out))
     print(f"Patched wawona version to {wawona_version} in Cargo.lock")
 
-# Android uses OpenSSH (fork/exec), not libssh2. The shared Cargo.lock
-# lists ssh2 as a waypipe dep (from iOS patches). Strip it so
-# `cargo metadata --locked` doesn't require ssh2 in waypipe's Cargo.toml.
+# Android uses OpenSSH (fork/exec), not libssh2. Strip ssh2 from root Cargo.toml,
+# waypipe/Cargo.toml, and Cargo.lock so `cargo metadata --locked` passes.
 if platform == "android":
+    # 1. Root Cargo.toml
+    p = Path("Cargo.toml")
+    if p.exists():
+        s = p.read_text()
+        s = re.sub(r'^ssh2\s*=.*$\n?', "", s, flags=re.MULTILINE)
+        s = re.sub(r'"ssh2",?\n?', "", s)
+        s = re.sub(r'"dep:ssh2",?\n?', "", s)
+        p.write_text(s)
+        print("✓ Stripped ssh2 from root Cargo.toml")
+
+    # 2. waypipe/Cargo.toml
+    wp_toml = Path("waypipe/Cargo.toml")
+    if wp_toml.exists():
+        s = wp_toml.read_text()
+        s = re.sub(r'^ssh2\s*=.*$\n?', "", s, flags=re.MULTILINE)
+        s = re.sub(r'"ssh2",?\n?', "", s)
+        s = re.sub(r'"dep:ssh2",?\n?', "", s)
+        wp_toml.write_text(s)
+        print("✓ Stripped ssh2 from waypipe/Cargo.toml")
+
+    # 3. Cargo.lock
     lock = Path("Cargo.lock")
     if lock.exists():
         content = lock.read_text()
         lines = content.splitlines(True)
         new_lines = []
         in_waypipe = False
+        in_wawona = False
         in_deps = False
         for line in lines:
             s = line.strip()
             if s == '[[package]]':
                 in_waypipe = False
+                in_wawona = False
                 in_deps = False
-            if s == 'name = "waypipe"':
-                in_waypipe = True
-            if in_waypipe and s == 'dependencies = [':
+            if s == 'name = "waypipe"': in_waypipe = True
+            if s == 'name = "wawona"': in_wawona = True
+            if (in_waypipe or in_wawona) and s == 'dependencies = [':
                 in_deps = True
-            if in_waypipe and in_deps and '"ssh2"' in s:
+            
+            if (in_waypipe or in_wawona) and in_deps and '"ssh2"' in s:
                 continue
             new_lines.append(line)
         lock.write_text("".join(new_lines))
-        print("Stripped ssh2 from waypipe deps in Cargo.lock (Android: OpenSSH only)")
+        print("✓ Stripped ssh2 from waypipe & wawona deps in Cargo.lock")
 EOF
   '';
 }
