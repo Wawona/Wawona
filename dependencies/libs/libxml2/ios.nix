@@ -39,6 +39,7 @@ pkgs.stdenv.mkDerivation {
         export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
         export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
         export SDKROOT="$DEVELOPER_DIR/Platforms/${if simulator then "iPhoneSimulator" else "iPhoneOS"}.platform/Developer/SDKs/${if simulator then "iPhoneSimulator" else "iPhoneOS"}.sdk"
+        export MACOS_SDK_PATH="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
       fi
     fi
     if [ ! -f ./configure ]; then
@@ -61,6 +62,8 @@ pkgs.stdenv.mkDerivation {
   '';
   configurePhase = ''
     runHook preConfigure
+    # Unset SDKROOT so it doesn't leak into host-side tool builds
+    unset SDKROOT
     ./configure --prefix=$out --host=arm-apple-darwin ${
       lib.concatMapStringsSep " " (flag: flag) buildFlags
     }

@@ -40,14 +40,18 @@ pkgs.stdenv.mkDerivation {
         exit 1
       }
       IOS_SDK="$XCODE_APP/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"
+      export MACOS_SDK_PATH="$XCODE_APP/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
     ''}
 
     export SDKROOT="$IOS_SDK"
     export IOS_SDK
 
     # Find the Developer dir associated with this SDK
-    export DEVELOPER_DIR=$(echo "$IOS_SDK" | grep -oP '.*?\.app/Contents/Developer')
-    [ -z "$DEVELOPER_DIR" ] && DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
+    export DEVELOPER_DIR=$(echo "$IOS_SDK" | sed -E 's|^(.*\.app/Contents/Developer)/.*$|\1|')
+    [ "$DEVELOPER_DIR" = "$IOS_SDK" ] && export DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
+    if [ -z "$MACOS_SDK_PATH" ]; then
+      export MACOS_SDK_PATH="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+    fi
     export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
 
     echo "Using iOS SDK: $IOS_SDK"
@@ -64,6 +68,8 @@ pkgs.stdenv.mkDerivation {
   '';
   configurePhase = ''
     runHook preConfigure
+    # Unset SDKROOT so it doesn't leak into host-side tool builds
+    unset SDKROOT
     # zlib uses configure script
     export CC="$IOS_CC"
     export CXX="$IOS_CXX"

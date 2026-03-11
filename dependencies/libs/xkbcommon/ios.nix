@@ -93,6 +93,8 @@ pkgs.stdenv.mkDerivation {
 [binaries]
 c = '$CC'
 cpp = '$CXX'
+c_for_build = '${buildPackages.clang}/bin/clang'
+cpp_for_build = '${buildPackages.clang}/bin/clang++'
 ar = 'ar'
 strip = 'strip'
 pkgconfig = 'pkg-config'
@@ -114,6 +116,8 @@ EOF
   
   buildPhase = ''
     runHook preBuild
+    # Unset SDKROOT so it doesn't leak into host-side tool builds
+    unset SDKROOT
     meson setup build --prefix=$out \
       --cross-file=ios-cross.txt \
       -Denable-docs=false \

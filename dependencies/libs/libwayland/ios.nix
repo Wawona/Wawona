@@ -243,6 +243,8 @@ pkgs.stdenv.mkDerivation {
     [binaries]
     c = '$IOS_CC'
     cpp = '$IOS_CXX'
+    c_for_build = '${buildPackages.clang}/bin/clang'
+    cpp_for_build = '${buildPackages.clang}/bin/clang++'
     ar = 'ar'
     strip = 'strip'
     pkgconfig = '${buildPackages.pkg-config}/bin/pkg-config'
@@ -263,6 +265,8 @@ pkgs.stdenv.mkDerivation {
 
   configurePhase = ''
     runHook preConfigure
+    # Unset SDKROOT so it doesn't leak into host-side tool builds
+    unset SDKROOT
     echo "Configured epoll-shim paths for iOS: $EPOL_SHIM_PATH"
     meson setup build \
       --prefix=$out \

@@ -201,10 +201,6 @@ rustflags = [
   "-C", "link-arg=$IOS_SDK",
   "-C", "link-arg=-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0",
 ]
-
-[env]
-CC = "$CC"
-CXX = "$CXX"
 CARGO_CONFIG
   '';
 
@@ -215,8 +211,9 @@ CARGO_CONFIG
     # Ensure correct crate-type in Cargo.toml if not already patched
     # (The python script in src derivation already does this, but being safe)
     
-    export PKG_CONFIG_ALLOW_CROSS=1
-    
+    # Unset SDKROOT so it doesn't leak into host-side build scripts/proc-macros via bindgen etc.
+    unset SDKROOT
+
     # with_libssh2 is CRITICAL for iOS - enables in-process SSH (no subprocess spawn)
     cargo build --lib --target ${cargoTarget} --release --no-default-features --features "lz4,zstd,with_libssh2,video"
     

@@ -51,9 +51,9 @@ pkgs.stdenv.mkDerivation {
     export SDKROOT="$IOS_SDK"
     export IOS_SDK
 
-    # Find the Developer dir associated with this SDK
-    export DEVELOPER_DIR=$(echo "$IOS_SDK" | grep -oP '.*?\.app/Contents/Developer')
-    [ -z "$DEVELOPER_DIR" ] && DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
+    # Find the Developer dir associated with this SDK without using -oP
+    export DEVELOPER_DIR=$(echo "$IOS_SDK" | sed -E 's|^(.*\.app/Contents/Developer)/.*$|\1|')
+    [ "$DEVELOPER_DIR" = "$IOS_SDK" ] && export DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
     export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
 
     echo "Using iOS SDK: $IOS_SDK"
@@ -79,6 +79,9 @@ pkgs.stdenv.mkDerivation {
     set(CMAKE_CXX_FLAGS "-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0")
     set(BUILD_SHARED_LIBS OFF)
     EOF
+
+    # Unset SDKROOT so it doesn't leak into host-side tool builds during cmake checks
+    unset SDKROOT
   '';
 
   # lz4 has CMakeLists.txt in build/cmake subdirectory

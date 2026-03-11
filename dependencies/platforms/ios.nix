@@ -214,6 +214,7 @@ in
                           fi
                           export NIX_CFLAGS_COMPILE=""
                           export NIX_CXXFLAGS_COMPILE=""
+                          export MACOS_SDK_PATH="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
                           if [ -n "''${SDKROOT:-}" ] && [ -d "$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin" ]; then
                             IOS_CC="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
                             IOS_CXX="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
@@ -234,9 +235,12 @@ in
             set(CMAKE_CXX_COMPILER "$IOS_CXX")
             set(CMAKE_SYSROOT "$SDKROOT")
             set(CMAKE_OSX_SYSROOT "$SDKROOT")
-            set(CMAKE_C_FLAGS "-mios-simulator-version-min=26.0")
-            set(CMAKE_CXX_FLAGS "-mios-simulator-version-min=26.0")
+            set(CMAKE_C_FLAGS "-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0")
+            set(CMAKE_CXX_FLAGS "-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0")
             EOF
+
+            # Unset SDKROOT so it doesn't leak into host-side tool builds during cmake checks
+            unset SDKROOT
           '';
           cmakeFlags = [
             "-DCMAKE_TOOLCHAIN_FILE=ios-toolchain.cmake"
@@ -309,8 +313,11 @@ in
             c_args = ['-arch', '$SIMULATOR_ARCH', '-isysroot', '$SDKROOT', '-mios-simulator-version-min=26.0', '-fPIC']
             cpp_args = ['-arch', '$SIMULATOR_ARCH', '-isysroot', '$SDKROOT', '-mios-simulator-version-min=26.0', '-fPIC']
             c_link_args = ['-arch', '$SIMULATOR_ARCH', '-isysroot', '$SDKROOT', '-mios-simulator-version-min=26.0']
-            cpp_link_args = ['-arch', '$SIMULATOR_ARCH', '-isysroot', '$SDKROOT', '-mios-simulator-version-min=26.0']
+            cpp_link_args = ['-arch', '$SIMULATOR_ARCH', '-isysroot', '$SDKROOT', '-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0']
             EOF
+
+            # Unset SDKROOT so it doesn't leak into host-side tool builds during meson checks
+            unset SDKROOT
           '';
           configurePhase = ''
             runHook preConfigure
@@ -371,6 +378,7 @@ in
             fi
             export NIX_CFLAGS_COMPILE=""
             export NIX_CXXFLAGS_COMPILE=""
+            export MACOS_SDK_PATH="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
             if [ -n "''${SDKROOT:-}" ] && [ -d "$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin" ]; then
               IOS_CC="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
               IOS_CXX="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
@@ -387,7 +395,10 @@ in
             export CXX="$IOS_CXX"
             export CFLAGS="-arch $SIMULATOR_ARCH -isysroot $SDKROOT -mios-simulator-version-min=26.0 -fPIC"
             export CXXFLAGS="-arch $SIMULATOR_ARCH -isysroot $SDKROOT -mios-simulator-version-min=26.0 -fPIC"
-            export LDFLAGS="-arch $SIMULATOR_ARCH -isysroot $SDKROOT -mios-simulator-version-min=26.0"
+            export LDFLAGS="-arch $SIMULATOR_ARCH -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0"
+
+            # Unset SDKROOT so it doesn't leak into host-side tool builds during configure
+            unset SDKROOT
           '';
           configurePhase = ''
             runHook preConfigure
