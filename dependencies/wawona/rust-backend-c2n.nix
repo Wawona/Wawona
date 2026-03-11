@@ -223,9 +223,11 @@ let
       export CFLAGS_${cargoTargetUnderscore}="-target ${linkerTarget} -isysroot $SDKROOT -fPIC"
       export CRATE_CC_NO_DEFAULTS="1"
 
-      # Reset SDKROOT to macOS SDK so host-side build scripts (build.rs) and proc-macros 
-      # can link successfully using the host clang wrapper.
-      export SDKROOT="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+      # Unset SDKROOT and DEVELOPER_DIR so the Nix clang wrapper uses its own
+      # built-in apple-sdk for host-side builds (build.rs, proc-macros).
+      # Target compilations use the iOS sysroot already baked into CC_<target>.
+      unset SDKROOT
+      unset DEVELOPER_DIR
     '' else if isAndroid then ''
       unset MACOSX_DEPLOYMENT_TARGET
       export CC_${cargoTargetUnderscore}="${androidToolchain.androidCC} --target=${androidToolchain.androidTarget}"
