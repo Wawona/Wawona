@@ -221,6 +221,11 @@ let
 
       export CC_${cargoTargetUnderscore}="${rawClang} -target ${linkerTarget} -isysroot $SDKROOT"
       export CFLAGS_${cargoTargetUnderscore}="-target ${linkerTarget} -isysroot $SDKROOT -fPIC"
+      
+      # Explicitly set AR and ARFLAGS for cc-rs when cross-compiling (fixes libz-sys/libssh2-sys)
+      export AR_${cargoTargetUnderscore}="/usr/bin/ar"
+      export ARFLAGS_${cargoTargetUnderscore}="crs"
+      
       export CRATE_CC_NO_DEFAULTS="1"
 
       # Unset SDKROOT to prevent leakage into host-side build scripts/proc-macros

@@ -380,7 +380,7 @@ in
       # Compile generated protocols
       $CC -c ios-dependencies/include/xdg-shell-protocol.c \
           -Iios-dependencies/include -Iios-dependencies/include/wayland \
-          -fPIC -arch $IOS_ARCH -isysroot "$SDKROOT" -mios-simulator-version-min=26.0 \
+          $CFLAGS \
           -o xdg-shell-protocol.o
       OBJ_FILES="xdg-shell-protocol.o"
 
@@ -398,10 +398,9 @@ in
                 -Isrc/logging -Isrc/launcher \
                 -Isrc/extensions \
                 -Iios-dependencies/include -Iios-dependencies/include/wayland \
-                -fobjc-arc -fPIC \
+                $CFLAGS \
                 ${lib.concatStringsSep " " commonObjCFlags} \
                 ${lib.concatStringsSep " " debugObjCFlags} \
-                -arch $IOS_ARCH -isysroot "$SDKROOT" -mios-simulator-version-min=26.0 \
                -DTARGET_OS_IPHONE=1 \
                -DUSE_RUST_CORE=1 \
                -o "$obj_file"
@@ -411,10 +410,9 @@ in
                -Isrc/platform/macos \
                -Isrc/logging -Isrc/launcher \
                -Iios-dependencies/include -Iios-dependencies/include/wayland \
-               -fPIC \
+               $CFLAGS \
                ${lib.concatStringsSep " " commonCFlags} \
                ${lib.concatStringsSep " " debugCFlags} \
-               -arch $IOS_ARCH -isysroot "$SDKROOT" -mios-simulator-version-min=26.0 \
                -DUSE_RUST_CORE=1 \
                -o "$obj_file"
           fi
@@ -428,10 +426,9 @@ in
             -Isrc -Isrc/util -Isrc/core -Isrc/rendering -Isrc/input -Isrc/ui -Isrc/ui/Helpers \
             -Isrc/platform/macos -Isrc/platform/ios -Isrc/logging -Isrc/launcher -Isrc/extensions \
             -Iios-dependencies/include -Iios-dependencies/include/wayland \
-            -fobjc-arc -fPIC \
+            $CFLAGS \
             ${lib.concatStringsSep " " commonObjCFlags} \
             ${lib.concatStringsSep " " debugObjCFlags} \
-            -arch $IOS_ARCH -isysroot "$SDKROOT" -mios-simulator-version-min=26.0 \
             -DTARGET_OS_IPHONE=1 -DUSE_RUST_CORE=1 \
             -o platform_macos_main.m.o
       fi
@@ -443,10 +440,9 @@ in
             -Isrc -Isrc/util -Isrc/core -Isrc/rendering -Isrc/input -Isrc/ui -Isrc/ui/Helpers \
             -Isrc/platform/macos -Isrc/platform/ios -Isrc/logging -Isrc/launcher -Isrc/extensions \
             -Iios-dependencies/include -Iios-dependencies/include/wayland \
-            -fobjc-arc -fPIC \
+            $CFLAGS \
             ${lib.concatStringsSep " " commonObjCFlags} \
             ${lib.concatStringsSep " " debugObjCFlags} \
-            -arch $IOS_ARCH -isysroot "$SDKROOT" -mios-simulator-version-min=26.0 \
             -DTARGET_OS_IPHONE=1 -DUSE_RUST_CORE=1 \
             -o platform_macos_WWNCompositorBridge.m.o
       fi
@@ -460,7 +456,7 @@ in
             -fPIC \
             ${lib.concatStringsSep " " commonCFlags} \
             ${lib.concatStringsSep " " debugCFlags} \
-            -arch $IOS_ARCH -isysroot "$SDKROOT" -mios-simulator-version-min=26.0 \
+            $CFLAGS \
             -DUSE_RUST_CORE=1 \
             -o platform_macos_WWNSettings.c.o
       fi
@@ -471,10 +467,10 @@ in
             -Isrc -Isrc/util -Isrc/core -Isrc/rendering -Isrc/input -Isrc/ui -Isrc/ui/Helpers \
             -Isrc/platform/macos -Isrc/platform/ios -Isrc/logging -Isrc/launcher -Isrc/extensions \
             -Iios-dependencies/include -Iios-dependencies/include/wayland \
-            -fobjc-arc -fPIC \
+              \
             ${lib.concatStringsSep " " commonObjCFlags} \
             ${lib.concatStringsSep " " debugObjCFlags} \
-            -arch $IOS_ARCH -isysroot "$SDKROOT" -mios-simulator-version-min=26.0 \
+            $CFLAGS \
             -DTARGET_OS_IPHONE=1 -DUSE_RUST_CORE=1 \
             -o platform_macos_WWNSettings.m.o
       fi
@@ -485,10 +481,10 @@ in
             -Isrc -Isrc/util -Isrc/core -Isrc/rendering -Isrc/input -Isrc/ui -Isrc/ui/Helpers \
             -Isrc/platform/macos -Isrc/platform/ios -Isrc/logging -Isrc/launcher -Isrc/extensions \
             -Iios-dependencies/include -Iios-dependencies/include/wayland \
-            -fobjc-arc -fPIC \
+              \
             ${lib.concatStringsSep " " commonObjCFlags} \
             ${lib.concatStringsSep " " debugObjCFlags} \
-            -arch $IOS_ARCH -isysroot "$SDKROOT" -mios-simulator-version-min=26.0 \
+            $CFLAGS \
             -DTARGET_OS_IPHONE=1 -DUSE_RUST_CORE=1 \
             -o platform_ios_WWNCompositorView_ios.m.o
       fi
@@ -501,10 +497,10 @@ in
             -Isrc -Isrc/util -Isrc/core -Isrc/rendering -Isrc/input -Isrc/ui -Isrc/ui/Helpers \
             -Isrc/platform/macos -Isrc/platform/ios -Isrc/logging -Isrc/launcher -Isrc/extensions \
             -Iios-dependencies/include -Iios-dependencies/include/wayland \
-            -fobjc-arc -fPIC \
+              \
             ${lib.concatStringsSep " " commonObjCFlags} \
             ${lib.concatStringsSep " " debugObjCFlags} \
-            -arch $IOS_ARCH -isysroot "$SDKROOT" -mios-simulator-version-min=26.0 \
+            $CFLAGS \
             -DTARGET_OS_IPHONE=1 -DUSE_RUST_CORE=1 \
             -o platform_ios_WWNSceneDelegate.m.o
       fi
@@ -517,10 +513,10 @@ in
             -Isrc -Isrc/util -Isrc/core -Isrc/rendering -Isrc/input -Isrc/ui -Isrc/ui/Helpers \
             -Isrc/platform/macos -Isrc/platform/ios -Isrc/logging -Isrc/launcher -Isrc/extensions \
             -Iios-dependencies/include -Iios-dependencies/include/wayland \
-            -fobjc-arc -fPIC \
+              \
             ${lib.concatStringsSep " " commonObjCFlags} \
             ${lib.concatStringsSep " " debugObjCFlags} \
-            -arch $IOS_ARCH -isysroot "$SDKROOT" -mios-simulator-version-min=26.0 \
+            $CFLAGS \
             -DTARGET_OS_IPHONE=1 -DUSE_RUST_CORE=1 \
             -o ui_Settings_WWNSettingsSplitViewController.m.o
       fi
@@ -533,10 +529,10 @@ in
             -Isrc -Isrc/util -Isrc/core -Isrc/rendering -Isrc/input -Isrc/ui -Isrc/ui/Helpers \
             -Isrc/platform/macos -Isrc/platform/ios -Isrc/logging -Isrc/launcher -Isrc/extensions \
             -Iios-dependencies/include -Iios-dependencies/include/wayland \
-            -fobjc-arc -fPIC \
+              \
             ${lib.concatStringsSep " " commonObjCFlags} \
             ${lib.concatStringsSep " " debugObjCFlags} \
-            -arch $IOS_ARCH -isysroot "$SDKROOT" -mios-simulator-version-min=26.0 \
+            $CFLAGS \
             -DTARGET_OS_IPHONE=1 -DUSE_RUST_CORE=1 \
             -o ui_Settings_WWNSettingsSidebarViewController.m.o
       fi
@@ -549,10 +545,10 @@ in
             -Isrc -Isrc/util -Isrc/core -Isrc/rendering -Isrc/input -Isrc/ui -Isrc/ui/Helpers \
             -Isrc/platform/macos -Isrc/platform/ios -Isrc/logging -Isrc/launcher -Isrc/extensions \
             -Iios-dependencies/include -Iios-dependencies/include/wayland \
-            -fobjc-arc -fPIC \
+              \
             ${lib.concatStringsSep " " commonObjCFlags} \
             ${lib.concatStringsSep " " debugObjCFlags} \
-            -arch $IOS_ARCH -isysroot "$SDKROOT" -mios-simulator-version-min=26.0 \
+            $CFLAGS \
             -DTARGET_OS_IPHONE=1 -DUSE_RUST_CORE=1 \
             -o ui_Settings_WWNSettingsModel.m.o
       fi
@@ -565,10 +561,10 @@ in
             -Isrc -Isrc/util -Isrc/core -Isrc/rendering -Isrc/input -Isrc/ui -Isrc/ui/Helpers \
             -Isrc/platform/macos -Isrc/platform/ios -Isrc/logging -Isrc/launcher -Isrc/extensions \
             -Iios-dependencies/include -Iios-dependencies/include/wayland \
-            -fobjc-arc -fPIC \
+              \
             ${lib.concatStringsSep " " commonObjCFlags} \
             ${lib.concatStringsSep " " debugObjCFlags} \
-            -arch $IOS_ARCH -isysroot "$SDKROOT" -mios-simulator-version-min=26.0 \
+            $CFLAGS \
             -DTARGET_OS_IPHONE=1 -DUSE_RUST_CORE=1 \
             -o ui_Settings_WWNPreferences.m.o
       fi
@@ -581,10 +577,10 @@ in
             -Isrc -Isrc/util -Isrc/core -Isrc/rendering -Isrc/input -Isrc/ui -Isrc/ui/Helpers \
             -Isrc/platform/macos -Isrc/platform/ios -Isrc/logging -Isrc/launcher -Isrc/extensions \
             -Iios-dependencies/include -Iios-dependencies/include/wayland \
-            -fobjc-arc -fPIC \
+              \
             ${lib.concatStringsSep " " commonObjCFlags} \
             ${lib.concatStringsSep " " debugObjCFlags} \
-            -arch $IOS_ARCH -isysroot "$SDKROOT" -mios-simulator-version-min=26.0 \
+            $CFLAGS \
             -DTARGET_OS_IPHONE=1 -DUSE_RUST_CORE=1 \
             -o ui_Helpers_WWNImageLoader.m.o
       fi
@@ -597,10 +593,10 @@ in
             -Isrc -Isrc/util -Isrc/core -Isrc/rendering -Isrc/input -Isrc/ui -Isrc/ui/Helpers \
             -Isrc/platform/macos -Isrc/platform/ios -Isrc/logging -Isrc/launcher -Isrc/extensions \
             -Iios-dependencies/include -Iios-dependencies/include/wayland \
-            -fobjc-arc -fPIC \
+              \
             ${lib.concatStringsSep " " commonObjCFlags} \
             ${lib.concatStringsSep " " debugObjCFlags} \
-            -arch $IOS_ARCH -isysroot "$SDKROOT" -mios-simulator-version-min=26.0 \
+            $CFLAGS \
             -DTARGET_OS_IPHONE=1 -DUSE_RUST_CORE=1 \
             -o ui_Settings_WWNPreferencesManager.m.o
       fi
@@ -613,10 +609,10 @@ in
             -Isrc -Isrc/util -Isrc/core -Isrc/rendering -Isrc/input -Isrc/ui -Isrc/ui/Helpers \
             -Isrc/platform/macos -Isrc/platform/ios -Isrc/logging -Isrc/launcher -Isrc/extensions \
             -Iios-dependencies/include -Iios-dependencies/include/wayland \
-            -fobjc-arc -fPIC \
+              \
             ${lib.concatStringsSep " " commonObjCFlags} \
             ${lib.concatStringsSep " " debugObjCFlags} \
-            -arch $IOS_ARCH -isysroot "$SDKROOT" -mios-simulator-version-min=26.0 \
+            $CFLAGS \
             -DTARGET_OS_IPHONE=1 -DUSE_RUST_CORE=1 \
             -o ui_Settings_WWNWaypipeRunner.m.o
       fi
@@ -632,25 +628,31 @@ in
            -Ideps/weston-simple-shm/shared \
            -Ideps/weston-simple-shm/include \
            -Iios-dependencies/include -Iios-dependencies/include/wayland \
-           -fPIC -arch $IOS_ARCH -isysroot "$SDKROOT" -mios-simulator-version-min=26.0 \
+           -fPIC $CFLAGS \
            -o "$obj_file"
         OBJ_FILES="$OBJ_FILES $obj_file"
       done
 
       # Link executable with Rust backend
       $CC $OBJ_FILES \
+          -o "wawona-ios" \
+          $LDFLAGS \
+          -framework Foundation \
+          -framework UIKit \
+          -framework IOSurface \
+          -framework Metal \
+          -framework QuartzCore \
+         -framework CoreVideo -framework CoreMedia -framework CoreGraphics \
+         -framework MetalKit \
+         -framework VideoToolbox -framework AVFoundation \
+         -framework Security -framework Network \
          -Lios-dependencies/lib \
          -lxkbcommon -lwayland-client -lepoll-shim -lffi -lpixman-1 -lzstd -llz4 -lz \
          -lssh2 -lmbedcrypto -lmbedx509 -lmbedtls \
          -lssl -lcrypto \
-         -framework Foundation -framework UIKit -framework QuartzCore \
-         -framework CoreVideo -framework CoreMedia -framework CoreGraphics \
-         -framework Metal -framework MetalKit -framework IOSurface \
-         -framework VideoToolbox -framework AVFoundation \
-         -framework Security -framework Network \
          -lweston-13 -lweston-desktop-13 -lweston-terminal \
          ${effectiveRustBackend}/lib/libwawona.a \
-         -fobjc-arc -g -O0 -arch $IOS_ARCH -isysroot "$SDKROOT" -mios-simulator-version-min=26.0 \
+         -fobjc-arc -g -O0 $CFLAGS \
          -Wl,-multiply_defined,suppress \
          -o Wawona
 
