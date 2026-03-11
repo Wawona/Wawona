@@ -55,7 +55,9 @@ jobs:
       matrix:
         target: [
           "wawona-macos",
+          "wawona-macos-backend",
           "wawona-ios",
+          "wawona-ios-backend",
           "xcodegen",
           "weston",
           "waypipe",
