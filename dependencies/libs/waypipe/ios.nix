@@ -171,10 +171,9 @@ myRustPlatform.buildRustPackage {
     # Use target-specific variables so host builds (build-dependencies) use the Nix SDK
     # .cargo/config.toml will handle the target build.
 
-    # Clean up environment for host tools: CC/LDFLAGS/SDKROOT are NOT desired for build.rs!
+    # Clean up environment for host tools: CC/LDFLAGS are NOT desired for build.rs!
     # Target-specific variables (above) and .cargo/config.toml will handle the target build.
-    unset SDKROOT
-    unset DEVELOPER_DIR
+    # We MUST keep SDKROOT and DEVELOPER_DIR so cc-rs can find the SDK via xcrun!
   
     # FFmpeg and Vulkan paths for wrap-ffmpeg build.rs
     export FFMPEG_DIR="${ffmpeg}"
@@ -234,8 +233,7 @@ CARGO_EOF
     # Ensure correct crate-type in Cargo.toml if not already patched
     # (The python script in src derivation already does this, but being safe)
     
-    # SDKROOT and DEVELOPER_DIR are already unset at the end of preConfigure.
-    # This ensures host-side builds (proc-macros, build scripts) use the Nix SDK.
+    # We ensure SDKROOT and DEVELOPER_DIR are set so host-side builds (proc-macros, build scripts) can find SDKs.
 
     # with_libssh2 is CRITICAL for iOS - enables in-process SSH (no subprocess spawn)
     cargo build --lib --target ${cargoTarget} --release --no-default-features --features "lz4,zstd,with_libssh2,video"
