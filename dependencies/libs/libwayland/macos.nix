@@ -162,13 +162,9 @@ pkgs.stdenv.mkDerivation {
     export NIX_CFLAGS_COMPILE=""
     export NIX_LDFLAGS=""
 
-    # Add epoll-shim include path so sys/epoll.h, sys/signalfd.h, etc. are found.
-    # epoll-shim puts headers in include/libepoll-shim/sys/*.h, so we add include/libepoll-shim
-    # to the search path so that <sys/epoll.h> resolves correctly.
-    export CFLAGS="-fPIC $CFLAGS -I${epollShim}/include/libepoll-shim"
-
-    # Link against epoll-shim
-    export LDFLAGS="$LDFLAGS -lepoll-shim"
+    # Add sysroot and version-min explicitly
+    export CFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 -fPIC $CFLAGS -I${epollShim}/include/libepoll-shim"
+    export LDFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 $LDFLAGS -lepoll-shim"
   '';
 
   configurePhase = ''

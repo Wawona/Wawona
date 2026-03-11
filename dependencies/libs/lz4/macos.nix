@@ -27,12 +27,17 @@ pkgs.stdenv.mkDerivation {
 
   MACOS_SDK = "/System/Library/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk";
   preConfigure = ''
-    # Fallback if preferred SDK path doesn't exist
+    MACOS_SDK="/System/Library/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
     if [ ! -d "$MACOS_SDK" ]; then
       MACOS_SDK=$(${xcodeUtils.findXcodeScript}/bin/find-xcode)/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
     fi
     export SDKROOT="$MACOS_SDK"
     export MACOSX_DEPLOYMENT_TARGET="26.0"
+
+    export NIX_CFLAGS_COMPILE=""
+    export NIX_LDFLAGS=""
+    export CFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 -fPIC $CFLAGS"
+    export LDFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 $LDFLAGS"
   '';
 
   # lz4 has CMakeLists.txt in build/cmake subdirectory
@@ -43,10 +48,7 @@ pkgs.stdenv.mkDerivation {
     "-DBUILD_STATIC_LIBS=ON"
     "-DCMAKE_OSX_ARCHITECTURES=arm64"
     "-DCMAKE_OSX_DEPLOYMENT_TARGET=26.0"
+    "-DCMAKE_OSX_SYSROOT=$SDKROOT"
   ];
 
-  NIX_CFLAGS_COMPILE = "-mmacosx-version-min=26.0";
-  NIX_CXXFLAGS_COMPILE = "-mmacosx-version-min=26.0";
-  # CMAKE_OSX_DEPLOYMENT_TARGET handles linker flags automatically
-  NIX_LDFLAGS = "";
 }

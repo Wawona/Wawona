@@ -25,9 +25,12 @@ in
 pkgs.stdenv.mkDerivation {
   name = "libffi-macos";
   inherit src patches;
+  # Allow access to Xcode SDKs and toolchain
+  __noChroot = true;
   nativeBuildInputs = with pkgs; [
     autoconf
     automake
+    autoreconfHook
     libtool
     pkg-config
     texinfo
@@ -40,14 +43,14 @@ pkgs.stdenv.mkDerivation {
     fi
     export SDKROOT="$MACOS_SDK"
     export MACOSX_DEPLOYMENT_TARGET="26.0"
-
+    
     export NIX_CFLAGS_COMPILE=""
     export NIX_LDFLAGS=""
     export CC="${pkgs.clang}/bin/clang"
     export CXX="${pkgs.clang}/bin/clang++"
-    export CFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 -fPIC"
-    export CXXFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 -fPIC"
-    export LDFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0"
+    export CFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 -fPIC $CFLAGS"
+    export CXXFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 -fPIC $CXXFLAGS"
+    export LDFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 $LDFLAGS"
   '';
   configurePhase = ''
     runHook preConfigure

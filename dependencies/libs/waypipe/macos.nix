@@ -2305,6 +2305,8 @@ RUST_EOF
     # Isolate environment from Nix wrapper flags to prevent linker conflicts
     export NIX_CFLAGS_COMPILE=""
     export NIX_LDFLAGS=""
+    export CFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 -fPIC $CFLAGS"
+    export LDFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 $LDFLAGS"
 
     export LIBRARY_PATH="${libwayland}/lib:${zstd}/lib:${lz4}/lib:$LIBRARY_PATH"
     export RUSTFLAGS="-A warnings $RUSTFLAGS"

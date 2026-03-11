@@ -79,6 +79,8 @@ stdenv.mkDerivation rec {
 
     export NIX_CFLAGS_COMPILE=""
     export NIX_LDFLAGS=""
+    export CFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 -fPIC $CFLAGS"
+    export LDFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 $LDFLAGS"
   '';
 
   postFixup = ''
