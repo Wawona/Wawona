@@ -82,6 +82,8 @@ set(CMAKE_OSX_SYSROOT "$SDKROOT")
 set(CMAKE_C_FLAGS "-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 -fPIC")
 set(CMAKE_CXX_FLAGS "-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 -fPIC")
 set(BUILD_SHARED_LIBS OFF)
+set(CMAKE_AR "$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar")
+set(CMAKE_RANLIB "$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib")
 EOF
   '';
   cmakeFlags = [

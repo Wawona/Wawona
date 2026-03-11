@@ -293,6 +293,8 @@ in
             [binaries]
             c = '$IOS_CC'
             cpp = '$IOS_CXX'
+            c_for_build = '${buildPackages.clang}/bin/clang'
+            cpp_for_build = '${buildPackages.clang}/bin/clang++'
             ar = 'ar'
             strip = 'strip'
             pkgconfig = '${buildPackages.pkg-config}/bin/pkg-config'

@@ -423,8 +423,6 @@
 
           wawona-android = wawona-android;
           wawona-android-backend = backend-android;
-          androidSDK = androidSDK;
-          androidUtils = androidUtils;
           gradlegen = (pkgs.callPackage ./dependencies/generators/gradlegen.nix {
             wawonaSrc = src;
             wawonaAndroidProject = wawona-android.project;
@@ -492,6 +490,31 @@
       };
       cleanPkgs = import nixpkgs { inherit system; config.allowUnfree = true; };
       
+      androidHostPkgs = import nixpkgs {
+        inherit system;
+        config = {
+          allowUnfree = true;
+          android_sdk.accept_license = true;
+        };
+      };
+
+      androidSDK = androidHostPkgs.androidenv.composeAndroidPackages {
+        cmdLineToolsVersion = "8.0";
+        buildToolsVersions = [ "36.0.0" ];
+        platformToolsVersion = "35.0.2";
+        platformVersions = [ "36" ];
+        abiVersions = [ "arm64-v8a" ];
+        systemImageTypes = [ "google_apis_playstore" ];
+        includeEmulator = true;
+        emulatorVersion = "35.1.4";
+        includeSystemImages = true;
+        useGoogleAPIs = false;
+        includeNDK = true;
+        ndkVersions = ["27.0.12077973"];
+      };
+
+      androidUtils = import ./dependencies/utils/android-wrapper.nix { inherit (pkgs) lib; inherit pkgs androidSDK; };
+      
       src = srcFor pkgs;
       wv = wawonaVersion; # Use centralization
       
@@ -504,46 +527,9 @@
           program = "${systemPackages.gradlegen}/bin/gradlegen";
         };
 
-        provision-android = {
-          type = "app";
-          program = "${systemPackages.androidUtils.provisionAndroidScript}/bin/provision-android";
-        };
-
-        wawona-android = {
-          type = "app";
-          program = "${systemPackages.wawona-android}/bin/wawona-android-run";
-        };
-
-        vulkan-cts-android = {
-          type = "app";
-          program = "${systemPackages.vulkan-cts-android}/bin/vulkan-cts-android-run";
-        };
-
-        gl-cts-android = {
-          type = "app";
-          program = "${systemPackages.gl-cts-android}/bin/gl-cts-android-run";
-        };
-        
-      } // (pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin {
-        provision-xcode = {
-          type = "app";
-          program = "${import ./dependencies/utils/xcode-wrapper.nix { inherit (pkgs) lib pkgs; }.provisionXcodeScript}/bin/provision-xcode";
-        };
-        # Run Nix-built iOS app in simulator (avoids recursion from automationScript -> xcodegen)
-        wawona-ios = {
-          type = "app";
-          program = appPrograms.wawonaIos;
-        };
-
         wawona-macos = {
           type = "app";
           program = "${systemPackages.default}/bin/wawona";
-        };
-
-        xcodegen = {
-
-          type = "app";
-          program = "${systemPackages.xcodegen}/bin/xcodegen";
         };
 
         foot = {
@@ -585,6 +571,49 @@
           type = "app";
           program = "${systemPackages.graphics-smoke}/bin/graphics-smoke";
         };
+
+        graphics-validate = {
+          type = "app";
+          program = "${systemPackages.graphics-validate}/bin/graphics-validate";
+        };
+      } // (pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin {
+        provision-android = {
+          type = "app";
+          program = "${androidUtils.provisionAndroidScript}/bin/provision-android";
+        };
+
+        wawona-android = {
+          type = "app";
+          program = "${systemPackages.wawona-android}/bin/wawona-android-run";
+        };
+
+        vulkan-cts-android = {
+          type = "app";
+          program = "${systemPackages.vulkan-cts-android}/bin/vulkan-cts-android-run";
+        };
+
+        gl-cts-android = {
+          type = "app";
+          program = "${systemPackages.gl-cts-android}/bin/gl-cts-android-run";
+        };
+        
+        provision-xcode = {
+          type = "app";
+          program = "${(import ./dependencies/utils/xcode-wrapper.nix { inherit (pkgs) lib pkgs; }).provisionXcodeScript}/bin/provision-xcode";
+        };
+        # Run Nix-built iOS app in simulator (avoids recursion from automationScript -> xcodegen)
+        wawona-ios = {
+          type = "app";
+          program = appPrograms.wawonaIos;
+        };
+
+        xcodegen = {
+
+          type = "app";
+          program = "${systemPackages.xcodegen}/bin/xcodegen";
+        };
+
+
 
         vulkan-cts-ios = {
           type = "app";
