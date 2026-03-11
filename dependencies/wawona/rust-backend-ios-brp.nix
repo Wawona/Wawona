@@ -113,7 +113,9 @@ rustPlatform.buildRustPackage rec {
 
     # Find the Developer dir associated with this SDK
     export DEVELOPER_DIR=$(echo "$IOS_SDK" | grep -oP '.*?\.app/Contents/Developer')
+    # Find Developer SDK
     [ -z "$DEVELOPER_DIR" ] && DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
+    export DEVELOPER_DIR
 
     echo "Using iOS SDK: $IOS_SDK"
     echo "Using Developer Dir: $DEVELOPER_DIR"

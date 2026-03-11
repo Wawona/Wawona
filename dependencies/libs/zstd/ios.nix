@@ -51,7 +51,7 @@ pkgs.stdenv.mkDerivation {
     export SDKROOT="$IOS_SDK"
     export IOS_SDK
 
-    # Find the Developer dir associated with this SDK without using -oP
+    # Find the Developer dir associated with this SDK
     export DEVELOPER_DIR=$(echo "$IOS_SDK" | sed -E 's|^(.*\.app/Contents/Developer)/.*$|\1|')
     [ "$DEVELOPER_DIR" = "$IOS_SDK" ] && export DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
     export PATH="$DEVELOPER_DIR/usr/bin:$PATH"

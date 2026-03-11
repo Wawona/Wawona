@@ -29,9 +29,12 @@ let
           exit 1
         }
         export SDKROOT="$IOS_SDK"
-        # Find the Developer dir associated with this SDK without using -oP
-        export DEVELOPER_DIR=$(echo "$SDKROOT" | sed -E 's|^(.*\.app/Contents/Developer)/.*$|\1|')
+        export DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
         [ "$DEVELOPER_DIR" = "$SDKROOT" ] && export DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
+        # Note: we don't set DEVELOPER_DIR unconditionally to the output of xcode-select,
+        # because the SDKROOT might point to a specific SDK within an Xcode.app,
+        # and xcode-select -p might point to a different Xcode.app.
+        # We only fall back to xcode-select -p if the SDKROOT itself is not within an Xcode.app.
         export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
       else
         # For device/mac, find Xcode and use standard platform paths
