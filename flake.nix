@@ -94,7 +94,7 @@
     waypipe-src = defaultPkgs.fetchFromGitLab {
       owner = "mstoeckl";
       repo = "waypipe";
-      rev = "v0.10.6";
+      rev = "v0.11.0";
       sha256 = "sha256-Tbd/yY90yb2+/ODYVL3SudHaJCGJKatZ9FuGM2uAX+8=";
     };
 

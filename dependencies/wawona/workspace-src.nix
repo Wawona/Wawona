@@ -128,31 +128,50 @@ if platform == "android":
         wp_toml.write_text(s)
         print("✓ Stripped ssh2 from waypipe/Cargo.toml")
 
-    # 3. Cargo.lock
+    # 3. Cargo.lock: Remove ssh2, libssh2-sys, and ssh2-sys blocks entirely
     lock = Path("Cargo.lock")
     if lock.exists():
         content = lock.read_text()
-        lines = content.splitlines(True)
-        new_lines = []
-        in_waypipe = False
-        in_wawona = False
-        in_deps = False
-        for line in lines:
-            s = line.strip()
-            if s == '[[package]]':
-                in_waypipe = False
-                in_wawona = False
-                in_deps = False
-            if s == 'name = "waypipe"': in_waypipe = True
-            if s == 'name = "wawona"': in_wawona = True
-            if (in_waypipe or in_wawona) and s == 'dependencies = [':
-                in_deps = True
+        blocks = content.split('\n\n')
+        new_blocks = []
+        
+        # Names to strip entirely
+        strip_names = {'"ssh2"', '"libssh2-sys"', '"ssh2-sys"'}
+        
+        for block in blocks:
+            lines = block.splitlines()
+            if not lines: continue
             
-            if (in_waypipe or in_wawona) and in_deps and '"ssh2"' in s:
+            is_package = lines[0].strip() == "[[package]]"
+            name = None
+            if is_package:
+                for line in lines:
+                    if line.strip().startswith("name = "):
+                        name = line.strip().split("name = ")[1]
+                        break
+            
+            if is_package and name in strip_names:
+                print(f"✓ Stripped package block: {name}")
                 continue
-            new_lines.append(line)
-        lock.write_text("".join(new_lines))
-        print("✓ Stripped ssh2 from waypipe & wawona deps in Cargo.lock")
+            
+            # Also strip from dependencies arrays in other blocks
+            new_lines = []
+            in_deps = False
+            for line in lines:
+                s = line.strip()
+                if s == "dependencies = [":
+                    in_deps = True
+                elif s == "]":
+                    in_deps = False
+                
+                if in_deps and any(n in s for n in strip_names):
+                    continue
+                new_lines.append(line)
+            
+            new_blocks.append('\n'.join(new_lines))
+        
+        lock.write_text('\n\n'.join(new_blocks) + '\n')
+        print("✓ Refined ssh2 stripping in Cargo.lock (blocks and references removed)")
 EOF
   '';
 }
