@@ -38,11 +38,18 @@ pkgs.stdenv.mkDerivation rec {
     libpng
   ];
 
-  mesonFlags = [
-    "-Dbrotli=disabled"
-    "-Dharfbuzz=disabled"
-    "-Dtests=disabled"
-  ];
+  MACOS_SDK = "/System/Library/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk";
+  preConfigure = ''
+    # Fallback if preferred SDK path doesn't exist
+    if [ ! -d "$MACOS_SDK" ]; then
+      MACOS_SDK=$(${pkgs.xcode-wrapper}/bin/xcode-select -p)/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+    fi
+    export SDKROOT="$MACOS_SDK"
+    export MACOSX_DEPLOYMENT_TARGET="26.0"
+
+    export NIX_CFLAGS_COMPILE=""
+    export NIX_LDFLAGS=""
+  '';
 
   meta = with lib; {
     description = "A font rendering library";

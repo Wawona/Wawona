@@ -29,11 +29,11 @@ let
           export XCODE_APP
           export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
           export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
-          export SDKROOT="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk"
-          echo "Checked SDK at $SDKROOT"
+          export SDKROOT="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+          echo "Using SDK: $SDKROOT"
           if [ ! -d "$SDKROOT" ]; then
-             echo "Warning: SDK 26.0 not found at $SDKROOT, trying default MacOSX.sdk"
-             export SDKROOT="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+             echo "Error: SDK not found at $SDKROOT"
+             exit 1
           fi
         fi
       fi
@@ -392,6 +392,16 @@ POPUP_H
       ${copyDeps "macos-dependencies"}
 
       export PKG_CONFIG_PATH="$PWD/macos-dependencies/libdata/pkgconfig:$PWD/macos-dependencies/lib/pkgconfig:$PKG_CONFIG_PATH"
+      export NIX_CFLAGS_COMPILE=""
+      export NIX_LDFLAGS=""
+
+      # Bindgen and other target tools need to know about the sysroot via flags,
+      # but we unset the env vars to avoid leaking them into host tools.
+      export TARGET_CFLAGS="-isysroot $SDKROOT ${lib.concatStringsSep " " common.appleCFlags}"
+      export TARGET_LDFLAGS="-isysroot $SDKROOT ${lib.concatStringsSep " " common.appleCFlags}"
+
+      unset SDKROOT
+      unset DEVELOPER_DIR
     '';
 
     buildPhase = ''
@@ -506,8 +516,8 @@ GEN_HEADER
                -Imacos-dependencies/uniffi \
                -I${rustBackend}/include \
                -fPIC \
+               $TARGET_CFLAGS \
                ${lib.concatStringsSep " " common.commonCFlags} \
-               ${lib.concatStringsSep " " common.appleCFlags} \
                ${lib.concatStringsSep " " common.releaseCFlags} \
                -DUSE_RUST_CORE=1 \
                -DWAWONA_VERSION=\"${projectVersion}\" \
@@ -555,7 +565,7 @@ GEN_HEADER
          $OPENSSL_LIBS \
          $ZLIB_LIBS \
          ${rustBackend}/lib/libwawona.a \
-         ${lib.concatStringsSep " " common.appleCFlags} \
+         $TARGET_LDFLAGS \
          -fobjc-arc -flto -O3 \
          -ObjC \
          -Wl,-rpath,\$PWD/macos-dependencies/lib \

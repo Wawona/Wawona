@@ -60,14 +60,16 @@ pkgs.stdenv.mkDerivation {
     export IOS_SDK
 
     # Find the Developer dir associated with this SDK
-    export DEVELOPER_DIR=$(echo "$IOS_SDK" | grep -oP '.*?\.app/Contents/Developer')
-    [ -z "$DEVELOPER_DIR" ] && DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
+    # Use sed instead of grep -oP for macOS compatibility
+    export DEVELOPER_DIR=$(echo "$IOS_SDK" | sed -E 's|^(.*\.app/Contents/Developer)/.*$|\1|')
+    [ "$DEVELOPER_DIR" = "$IOS_SDK" ] && DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
     export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
 
     echo "Using iOS SDK: $IOS_SDK"
     echo "Using Developer Dir: $DEVELOPER_DIR"
     export NIX_CFLAGS_COMPILE=""
     export NIX_CXXFLAGS_COMPILE=""
+    export NIX_LDFLAGS=""
     if [ -n "''${SDKROOT:-}" ] && [ -d "$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin" ]; then
       IOS_CC="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
       IOS_CXX="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"

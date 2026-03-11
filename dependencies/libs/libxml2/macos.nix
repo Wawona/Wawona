@@ -69,8 +69,16 @@ stdenv.mkDerivation rec {
     export DYLD_LIBRARY_PATH="$PWD/.libs:$DYLD_LIBRARY_PATH"
   '';
 
-  preConfigure = lib.optionalString (lib.versionAtLeast stdenv.hostPlatform.darwinMinVersion "11") ''
-    MACOSX_DEPLOYMENT_TARGET=10.16
+  preConfigure = ''
+    MACOS_SDK="/System/Library/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+    if [ ! -d "$MACOS_SDK" ]; then
+      MACOS_SDK=$(xcode-select -p)/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+    fi
+    export SDKROOT="$MACOS_SDK"
+    export MACOSX_DEPLOYMENT_TARGET="26.0"
+
+    export NIX_CFLAGS_COMPILE=""
+    export NIX_LDFLAGS=""
   '';
 
   postFixup = ''

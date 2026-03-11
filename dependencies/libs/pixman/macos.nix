@@ -39,14 +39,15 @@ pkgs.stdenv.mkDerivation {
     # Strip Nix stdenv's DEVELOPER_DIR to bypass any store fallbacks
     unset DEVELOPER_DIR
 
-    XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode || true)
-    if [ -n "$XCODE_APP" ]; then
-      export XCODE_APP
-      export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
-      export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
-      export SDKROOT="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+    MACOS_SDK="/System/Library/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+    if [ ! -d "$MACOS_SDK" ]; then
+      MACOS_SDK=$(${xcodeUtils.findXcodeScript}/bin/find-xcode)/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
     fi
+    export SDKROOT="$MACOS_SDK"
+    export MACOSX_DEPLOYMENT_TARGET="26.0"
     
+    export NIX_CFLAGS_COMPILE=""
+    export NIX_LDFLAGS=""
     export CFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 -fPIC $CFLAGS"
     export LDFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 $LDFLAGS"
   '';

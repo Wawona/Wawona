@@ -66,6 +66,10 @@ pkgs.stdenv.mkDerivation {
     echo "Using iOS SDK: $IOS_SDK_PATH"
     echo "Using Developer Dir: $DEVELOPER_DIR"
 
+    export NIX_CFLAGS_COMPILE=""
+    export NIX_CXXFLAGS_COMPILE=""
+    export NIX_LDFLAGS=""
+
     export MACOS_SDK_PATH="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
 
     if [ ! -d "$IOS_SDK_PATH" ]; then

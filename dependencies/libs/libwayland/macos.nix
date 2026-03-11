@@ -149,7 +149,19 @@ pkgs.stdenv.mkDerivation {
         fi
   '';
 
+  MACOS_SDK = "/System/Library/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk";
   preConfigure = ''
+    # Fallback if preferred SDK path doesn't exist
+    if [ ! -d "$MACOS_SDK" ]; then
+      MACOS_SDK=$(${xcodeUtils.findXcodeScript}/bin/find-xcode)/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+    fi
+    export SDKROOT="$MACOS_SDK"
+    export MACOSX_DEPLOYMENT_TARGET="26.0"
+
+    # Isolate environment from Nix wrapper flags to prevent linker conflicts
+    export NIX_CFLAGS_COMPILE=""
+    export NIX_LDFLAGS=""
+
     # Add epoll-shim include path so sys/epoll.h, sys/signalfd.h, etc. are found.
     # epoll-shim puts headers in include/libepoll-shim/sys/*.h, so we add include/libepoll-shim
     # to the search path so that <sys/epoll.h> resolves correctly.
