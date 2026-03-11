@@ -118,139 +118,119 @@ myRustPlatform.buildRustPackage {
   buildFeatures = [ "lz4" "zstd" "with_libssh2" "video" ];
 
   preConfigure = ''
-      # Strip Nix stdenv's DEVELOPER_DIR to bypass any store fallbacks
-      unset DEVELOPER_DIR
+    # Strip Nix stdenv's DEVELOPER_DIR to bypass any store fallbacks
+    unset DEVELOPER_DIR
 
-      ${if simulator then ''
-        # Ensure the iOS Simulator SDK is downloaded if missing and get its path.
-        IOS_SDK=$(${xcodeUtils.ensureIosSimSDK}/bin/ensure-ios-sim-sdk) || {
-          echo "Error: Failed to ensure iOS Simulator SDK."
-          exit 1
-        }
-      '' else ''
-        # For device, find the latest iPhoneOS SDK path.
-        XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode) || {
-          echo "Error: Xcode not found."
-          exit 1
-        }
-        IOS_SDK="$XCODE_APP/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"
-      ''}
-
-      export SDKROOT="$IOS_SDK"
-      export IOS_SDK
-
-      # Find the Developer dir associated with this SDK
-      # Use sed instead of grep -oP for macOS compatibility
-      export DEVELOPER_DIR=$(echo "$IOS_SDK" | sed -E 's|^(.*\.app/Contents/Developer)/.*$|\1|')
-      [ "$DEVELOPER_DIR" = "$IOS_SDK" ] && DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
-      export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
-
-      echo "Using iOS SDK: $IOS_SDK"
-      echo "Using Developer Dir: $DEVELOPER_DIR"
-      
-      export NIX_CFLAGS_COMPILE=""
-      export NIX_LDFLAGS=""
-      
-      if [ -n "${SDKROOT:-}" ] && [ -d "$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin" ]; then
-        XCODE_CLANG="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
-        XCODE_CLANGXX="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
-      else
-        echo "ERROR: Xcode toolchain not found at $DEVELOPER_DIR"
+    ${if simulator then ''
+      # Ensure the iOS Simulator SDK is downloaded if missing and get its path.
+      IOS_SDK=$(${xcodeUtils.ensureIosSimSDK}/bin/ensure-ios-sim-sdk) || {
+        echo "Error: Failed to ensure iOS Simulator SDK."
         exit 1
-      fi
-      
-      # App Store build target: arm64 iPhoneOS
-      IOS_ARCH="arm64"
-      IOS_TARGET="aarch64-apple-ios"
-      ${if simulator then ''
-        IOS_TARGET="aarch64-apple-ios-sim"
-      '' else ""}
+      }
+    '' else ''
+      # For device, find the latest iPhoneOS SDK path.
+      XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode) || {
+        echo "Error: Xcode not found."
+        exit 1
+      }
+      IOS_SDK="$XCODE_APP/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"
+    ''}
 
-      # Use target-specific variables so host builds (build-dependencies) use the Nix SDK
-      export "CC_$IOS_TARGET"="$XCODE_CLANG"
-      export "CXX_$IOS_TARGET"="$XCODE_CLANGXX"
-      export "CARGO_TARGET_${IOS_TARGET//-/_}_LINKER"="$XCODE_CLANG"
-      
-      # Target-specific RUSTFLAGS
-      export "RUSTFLAGS_$IOS_TARGET"="-C linker=$XCODE_CLANG -C link-arg=-arch -C link-arg=$IOS_ARCH -C link-arg=-isysroot -C link-arg=$SDKROOT -C link-arg=-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0"
-      
-      # Set up cargo config to ensure these variables are used
-      mkdir -p .cargo
-      cat > .cargo/config.toml <<CARGO_EOF
-      [target.$IOS_TARGET]
-      linker = "$XCODE_CLANG"
-      rustflags = [
-        "-C", "linker=$XCODE_CLANG",
-        "-C", "link-arg=-arch", "-C", "link-arg=$IOS_ARCH",
-        "-C", "link-arg=-isysroot", "-C", "link-arg=$SDKROOT",
-        "-C", "link-arg=-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0"
-      ]
- CARGO_EOF
+    export SDKROOT="$IOS_SDK"
+    export IOS_SDK
 
-      # Clean up environment for host tools: CC/LDFLAGS/SDKROOT are NOT desired for build.rs!
-      # Target-specific variables (above) and .cargo/config.toml will handle the target build.
-      unset SDKROOT
-      unset DEVELOPER_DIR
+    # Find the Developer dir associated with this SDK
+    # Use sed instead of grep -oP for macOS compatibility
+    export DEVELOPER_DIR=$(echo "$IOS_SDK" | sed -E 's|^(.*\.app/Contents/Developer)/.*$|\1|')
+    [ "$DEVELOPER_DIR" = "$IOS_SDK" ] && DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
+    export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
+
+    echo "Using iOS SDK: $IOS_SDK"
+    echo "Using Developer Dir: $DEVELOPER_DIR"
     
-        # FFmpeg and Vulkan paths for wrap-ffmpeg build.rs
-        export FFMPEG_DIR="${ffmpeg}"
-        export FFMPEG_PREFIX="${ffmpeg}"
-        export VULKAN_HEADERS_INCLUDE="${pkgs.vulkan-headers}/include"
+    # Isolate environment from Nix wrapper flags to prevent linker conflicts
+    export NIX_CFLAGS_COMPILE=""
+    export NIX_CXXFLAGS_COMPILE=""
+    export NIX_LDFLAGS=""
+    
+    if [ -n "''${SDKROOT:-}" ] && [ -d "$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin" ]; then
+      XCODE_CLANG="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
+      XCODE_CLANGXX="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
+    else
+      echo "ERROR: Xcode toolchain not found at $DEVELOPER_DIR"
+      exit 1
+    fi
+    
+    # App Store build target: arm64 iPhoneOS
+    IOS_ARCH="arm64"
+    IOS_TARGET="aarch64-apple-ios"
+    ${if simulator then ''
+      IOS_TARGET="aarch64-apple-ios-sim"
+    '' else ""}
 
-        # Set iOS deployment target for device
-        export IPHONEOS_DEPLOYMENT_TARGET="26.0"
-        # Prevent Nix cc-wrapper from adding macOS flags
-        export NIX_CFLAGS_COMPILE=""
-        export NIX_LDFLAGS=""
-        
-        # Define Xcode clang paths
-        XCODE_CLANG="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
-        XCODE_CLANGXX="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
+    # Use target-specific variables so host builds (build-dependencies) use the Nix SDK
+    export "CC_$IOS_TARGET"="$XCODE_CLANG"
+    export "CXX_$IOS_TARGET"="$XCODE_CLANGXX"
+    # Note: Use ''${VAR//pattern/replacement} to escape Nix interpolation
+    export "CARGO_TARGET_''${IOS_TARGET//-/_}_LINKER"="$XCODE_CLANG"
+    
+    # Target-specific RUSTFLAGS
+    export "RUSTFLAGS_$IOS_TARGET"="-C linker=$XCODE_CLANG -C link-arg=-arch -C link-arg=$IOS_ARCH -C link-arg=-isysroot -C link-arg=$SDKROOT -C link-arg=-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0"
+    
+    # Clean up environment for host tools: CC/LDFLAGS/SDKROOT are NOT desired for build.rs!
+    # Target-specific variables (above) and .cargo/config.toml will handle the target build.
+    unset SDKROOT
+    unset DEVELOPER_DIR
+  
+    # FFmpeg and Vulkan paths for wrap-ffmpeg build.rs
+    export FFMPEG_DIR="${ffmpeg}"
+    export FFMPEG_PREFIX="${ffmpeg}"
+    export VULKAN_HEADERS_INCLUDE="${pkgs.vulkan-headers}/include"
 
-        # Set up library search paths
-        export LIBRARY_PATH="${vulkan-loader}/lib:${libwayland}/lib:${zstd}/lib:${lz4}/lib:${libssh2}/lib:${mbedtls}/lib:${openssl-ios}/lib:${ffmpeg}/lib:$LIBRARY_PATH"
-        
-        # Use Rust's built-in target
-        export CARGO_BUILD_TARGET="${cargoTarget}"
-        
-        # Configure Rust flags for iOS target
-        export RUSTFLAGS="-A warnings -C linker=$XCODE_CLANG -C link-arg=-isysroot -C link-arg=$IOS_SDK -C link-arg=-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 -L native=${vulkan-loader}/lib -L native=${libssh2}/lib -L native=${mbedtls}/lib -L native=${openssl-ios}/lib -L native=${ffmpeg}/lib $RUSTFLAGS"
-        
-        # Configure C compiler for target specific variables
-        target_underscore=$(echo "${cargoTarget}" | tr '-' '_')
-        export "CC_''${target_underscore}"="$XCODE_CLANG"
-        export "CXX_''${target_underscore}"="$XCODE_CLANGXX"
-        export "CFLAGS_''${target_underscore}"="-target ${if simulator then "arm64-apple-ios26.0-simulator" else "arm64-apple-ios26.0"} -isysroot $IOS_SDK -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0"
-        export "AR_''${target_underscore}"="ar"
-        
-        # Set PKG_CONFIG_PATH
-        export PKG_CONFIG_PATH="${libwayland}/lib/pkgconfig:${zstd}/lib/pkgconfig:${lz4}/lib/pkgconfig:${libssh2}/lib/pkgconfig:${ffmpeg}/lib/pkgconfig:$PKG_CONFIG_PATH"
-        export PKG_CONFIG_ALLOW_CROSS=1
-        
-        # Set up include paths for bindgen (wrap-zstd, wrap-lz4, wrap-ffmpeg)
-        export C_INCLUDE_PATH="${zstd}/include:${lz4}/include:${libssh2}/include:${openssl-ios}/include:${ffmpeg}/include:${pkgs.vulkan-headers}/include:$C_INCLUDE_PATH"
-        export CPP_INCLUDE_PATH="${zstd}/include:${lz4}/include:${libssh2}/include:${openssl-ios}/include:${ffmpeg}/include:${pkgs.vulkan-headers}/include:$CPP_INCLUDE_PATH"
-        
-        # Configure bindgen for wrap-ffmpeg (FFmpeg headers)
-        export BINDGEN_EXTRA_CLANG_ARGS="-I${zstd}/include -I${lz4}/include -I${libssh2}/include -I${openssl-ios}/include -I${ffmpeg}/include -I${pkgs.vulkan-headers}/include -isysroot $IOS_SDK -miphoneos-version-min=26.0 -target arm64-apple-ios26.0"
-        export BINDGEN="${pkgs.rust-bindgen}/bin/bindgen"
-        export PATH="${pkgs.rust-bindgen}/bin:$PATH"
+    # Set iOS deployment target for device
+    export IPHONEOS_DEPLOYMENT_TARGET="26.0"
+    
+    # Set up library search paths
+    export LIBRARY_PATH="${vulkan-loader}/lib:${libwayland}/lib:${zstd}/lib:${lz4}/lib:${libssh2}/lib:${mbedtls}/lib:${openssl-ios}/lib:${ffmpeg}/lib:$LIBRARY_PATH"
+    
+    # Use Rust's built-in target
+    export CARGO_BUILD_TARGET="${cargoTarget}"
+    
+    # Configure Rust flags for iOS target
+    export RUSTFLAGS="-A warnings -C linker=$XCODE_CLANG -C link-arg=-isysroot -C link-arg=$IOS_SDK -C link-arg=-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 -L native=${vulkan-loader}/lib -L native=${libssh2}/lib -L native=${mbedtls}/lib -L native=${openssl-ios}/lib -L native=${ffmpeg}/lib $RUSTFLAGS"
+    
+    # Configure C compiler for target specific variables
+    target_underscore=$(echo "${cargoTarget}" | tr '-' '_')
+    export "CC_''${target_underscore}"="$XCODE_CLANG"
+    export "CXX_''${target_underscore}"="$XCODE_CLANGXX"
+    export "CFLAGS_''${target_underscore}"="-target ${if simulator then "arm64-apple-ios26.0-simulator" else "arm64-apple-ios26.0"} -isysroot $IOS_SDK -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0"
+    export "AR_''${target_underscore}"="ar"
+    
+    # Set PKG_CONFIG_PATH
+    export PKG_CONFIG_PATH="${libwayland}/lib/pkgconfig:${zstd}/lib/pkgconfig:${lz4}/lib/pkgconfig:${libssh2}/lib/pkgconfig:${ffmpeg}/lib/pkgconfig:$PKG_CONFIG_PATH"
+    export PKG_CONFIG_ALLOW_CROSS=1
+    
+    # Set up include paths for bindgen (wrap-zstd, wrap-lz4, wrap-ffmpeg)
+    export C_INCLUDE_PATH="${zstd}/include:${lz4}/include:${libssh2}/include:${openssl-ios}/include:${ffmpeg}/include:${pkgs.vulkan-headers}/include:$C_INCLUDE_PATH"
+    export CPP_INCLUDE_PATH="${zstd}/include:${lz4}/include:${libssh2}/include:${openssl-ios}/include:${ffmpeg}/include:${pkgs.vulkan-headers}/include:$CPP_INCLUDE_PATH"
+    
+    # Configure bindgen for wrap-ffmpeg (FFmpeg headers)
+    export BINDGEN_EXTRA_CLANG_ARGS="-I${zstd}/include -I${lz4}/include -I${libssh2}/include -I${openssl-ios}/include -I${ffmpeg}/include -I${pkgs.vulkan-headers}/include -isysroot $IOS_SDK -miphoneos-version-min=26.0 -target arm64-apple-ios26.0"
+    export BINDGEN="${pkgs.rust-bindgen}/bin/bindgen"
+    export PATH="${pkgs.rust-bindgen}/bin:$PATH"
 
-        # Unset SDKROOT and DEVELOPER_DIR so the Nix clang wrapper uses its own
-        # built-in apple-sdk for host-side builds (build.rs, proc-macros).
-        # Target compilations use the iOS sysroot already baked into CC_<target> or RUSTFLAGS.
-        unset SDKROOT
-        unset DEVELOPER_DIR
-  mkdir -p .cargo
-  cat > .cargo/config.toml <<CARGO_CONFIG
+    # Set up cargo config to ensure these variables are used
+    mkdir -p .cargo
+    cat > .cargo/config.toml <<CARGO_EOF
 [target.${cargoTarget}]
 linker = "$XCODE_CLANG"
 rustflags = [
-  "-C", "link-arg=-isysroot",
-  "-C", "link-arg=$IOS_SDK",
-  "-C", "link-arg=-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0",
+  "-C", "linker=$XCODE_CLANG",
+  "-C", "link-arg=-arch", "-C", "link-arg=$IOS_ARCH",
+  "-C", "link-arg=-isysroot", "-C", "link-arg=$IOS_SDK",
+  "-C", "link-arg=-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0"
 ]
-CARGO_CONFIG
+CARGO_EOF
   '';
 
   buildPhase = ''
