@@ -356,13 +356,14 @@ in
         echo "ERROR: Xcode toolchain not found at $DEVELOPER_DIR"
         exit 1
       fi
-      # App Store build target: arm64 iPhoneOS
-      IOS_ARCH="arm64"
-      export CC="$IOS_CC"
-      export CXX="$IOS_CXX"
-      export CFLAGS="-arch $IOS_ARCH -isysroot $SDKROOT -mios-simulator-version-min=26.0 -fPIC"
-      export CXXFLAGS="-arch $IOS_ARCH -isysroot $SDKROOT -mios-simulator-version-min=26.0 -fPIC"
-      export LDFLAGS="-arch $IOS_ARCH -isysroot $SDKROOT -mios-simulator-version-min=26.0 -lobjc"
+      export CFLAGS="-arch $IOS_ARCH -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 -fPIC"
+      export CXXFLAGS="-arch $IOS_ARCH -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 -fPIC"
+      export LDFLAGS="-arch $IOS_ARCH -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 -lobjc"
+      export MACOS_SDK_PATH="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+
+      # Unset SDKROOT and DEVELOPER_DIR to prevent leakage into host tools (wayland-scanner, etc.)
+      # Target tools like $CC already have sysroot baked into their flags.
+      unset SDKROOT
     '';
 
     buildPhase = ''

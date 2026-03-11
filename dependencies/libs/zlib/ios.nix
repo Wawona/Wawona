@@ -68,14 +68,14 @@ pkgs.stdenv.mkDerivation {
   '';
   configurePhase = ''
     runHook preConfigure
-    # Unset SDKROOT so it doesn't leak into host-side tool builds
-    unset SDKROOT
     # zlib uses configure script
     export CC="$IOS_CC"
     export CXX="$IOS_CXX"
     export CFLAGS="-arch arm64 -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 -fPIC"
     export CXXFLAGS="-arch arm64 -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 -fPIC"
     export LDFLAGS="-arch arm64 -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0"
+    # Unset SDKROOT so it doesn't leak into host-side tool builds
+    unset SDKROOT
     ./configure --prefix=$out --static
     runHook postConfigure
   '';

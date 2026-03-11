@@ -66,11 +66,11 @@ pkgs.stdenv.mkDerivation {
 
   configurePhase = ''
     runHook preConfigure
-    # Unset SDKROOT so it doesn't leak into host-side tool builds
-    unset SDKROOT
     export CC="$IOS_CC"
     export CFLAGS="-arch arm64 -target arm64-apple-ios26.0${if simulator then "-simulator" else ""} -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 -fPIC"
     export LDFLAGS="-arch arm64 -target arm64-apple-ios26.0${if simulator then "-simulator" else ""} -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0"
+    # Unset SDKROOT so it doesn't leak into host-side tool builds
+    unset SDKROOT
     ./Configure ${if simulator then "iossimulator-xcrun" else "ios64-cross"} no-shared no-dso --prefix=$out --openssldir=$out/etc/ssl
     runHook postConfigure
   '';

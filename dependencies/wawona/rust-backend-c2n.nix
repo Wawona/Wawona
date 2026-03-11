@@ -222,6 +222,9 @@ let
       export CC_${cargoTargetUnderscore}="${rawClang} -target ${linkerTarget} -isysroot $SDKROOT"
       export CFLAGS_${cargoTargetUnderscore}="-target ${linkerTarget} -isysroot $SDKROOT -fPIC"
       export CRATE_CC_NO_DEFAULTS="1"
+
+      # Unset SDKROOT to prevent leakage into host-side build scripts/proc-macros
+      unset SDKROOT
     '' else if isAndroid then ''
       unset MACOSX_DEPLOYMENT_TARGET
       export CC_${cargoTargetUnderscore}="${androidToolchain.androidCC} --target=${androidToolchain.androidTarget}"
