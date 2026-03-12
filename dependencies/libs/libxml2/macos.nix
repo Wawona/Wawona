@@ -1,5 +1,6 @@
 {
   lib,
+  pkgs,
   stdenv,
   fetchFromGitHub,
   pkg-config,
@@ -78,10 +79,13 @@ stdenv.mkDerivation rec {
     export SDKROOT="$MACOS_SDK"
     export MACOSX_DEPLOYMENT_TARGET="26.0"
 
-    export NIX_CFLAGS_COMPILE=""
-    export NIX_LDFLAGS=""
-    export CFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 -fPIC $CFLAGS"
-    export LDFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 $LDFLAGS"
+    export CC="${pkgs.clang}/bin/clang"
+    export CXX="${pkgs.clang}/bin/clang++"
+    # export NIX_CFLAGS_COMPILE=""
+    # export NIX_LDFLAGS=""
+    # Include libiconv and zlib paths since we clear NIX_* flags
+    export CFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 -fPIC $CFLAGS -I${libiconv}/include -I${zlib.dev}/include"
+    export LDFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 $LDFLAGS -L${libiconv}/lib -L${zlib}/lib"
   '';
 
   postFixup = ''

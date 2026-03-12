@@ -33,6 +33,14 @@ pkgs.stdenv.mkDerivation {
     "-DUTF8PROC_ENABLE_TESTING=OFF"
     "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
   ];
+  
+  __noChroot = true;
+
+  preConfigure = ''
+    export MACOSX_DEPLOYMENT_TARGET="26.0"
+    # export NIX_CFLAGS_COMPILE=""
+    # export NIX_LDFLAGS=""
+  '';
 
   meta = with lib; {
     description = "Clean C library for processing UTF-8 Unicode data";

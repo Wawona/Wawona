@@ -46,6 +46,7 @@ in
 pkgs.stdenv.mkDerivation {
   name = "libwayland-macos";
   inherit src patches;
+  __noChroot = true;
   nativeBuildInputs = with pkgs; [
     meson
     ninja
@@ -155,16 +156,21 @@ pkgs.stdenv.mkDerivation {
     if [ ! -d "$MACOS_SDK" ]; then
       MACOS_SDK=$(${xcodeUtils.findXcodeScript}/bin/find-xcode)/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
     fi
+    if [ ! -d "$MACOS_SDK" ]; then
+      MACOS_SDK=$(/usr/bin/xcode-select -p)/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+    fi
     export SDKROOT="$MACOS_SDK"
     export MACOSX_DEPLOYMENT_TARGET="26.0"
 
     # Isolate environment from Nix wrapper flags to prevent linker conflicts
-    export NIX_CFLAGS_COMPILE=""
-    export NIX_LDFLAGS=""
+    export CC="${pkgs.clang}/bin/clang"
+    export CXX="${pkgs.clang}/bin/clang++"
+    # export NIX_CFLAGS_COMPILE=""
+    # export NIX_LDFLAGS=""
 
     # Add sysroot and version-min explicitly
     export CFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 -fPIC $CFLAGS -I${epollShim}/include/libepoll-shim"
-    export LDFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 $LDFLAGS -lepoll-shim"
+    export LDFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 $LDFLAGS -L${epollShim}/lib -lepoll-shim"
   '';
 
   configurePhase = ''

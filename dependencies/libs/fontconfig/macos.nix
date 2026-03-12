@@ -37,7 +37,6 @@ pkgs.stdenv.mkDerivation rec {
   buildInputs = [
     freetype
     expat
-    pkgs.libuuid
   ];
 
   MACOS_SDK = "/System/Library/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk";
@@ -49,11 +48,18 @@ pkgs.stdenv.mkDerivation rec {
     export SDKROOT="$MACOS_SDK"
     export MACOSX_DEPLOYMENT_TARGET="26.0"
 
-    export NIX_CFLAGS_COMPILE=""
-    export NIX_LDFLAGS=""
+    # export NIX_CFLAGS_COMPILE=""
+    # export NIX_LDFLAGS=""
     export CFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 -fPIC $CFLAGS"
     export LDFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 $LDFLAGS"
   '';
+
+  mesonFlags = [
+    "-Ddoc=disabled"
+    "-Dtests=disabled"
+  ];
+
+  __noChroot = true;
 
   postInstall = ''
     # Create a minimal fonts.conf

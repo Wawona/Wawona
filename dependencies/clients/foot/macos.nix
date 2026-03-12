@@ -80,9 +80,12 @@ pkgs.stdenv.mkDerivation {
     utf8proc
     fontconfig
     freetype
+    pkgs.libiconv
     # epoll-shim is manually linked in preConfigure to ensure correct include order
     pkgs.wayland-protocols
   ];
+
+  __noChroot = true;
 
   preConfigure = ''
     if [ -z "''${XCODE_APP:-}" ]; then
@@ -94,6 +97,9 @@ pkgs.stdenv.mkDerivation {
         export SDKROOT="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
       fi
     fi
+    
+    # export NIX_CFLAGS_COMPILE=""
+    # export NIX_LDFLAGS=""
     
     # Add compat headers to include path and link against epoll-shim
     # Explicitly include epoll-shim include dir AFTER compat dir to ensure our overrides work

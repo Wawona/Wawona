@@ -17,7 +17,9 @@ jobs:
         target: [
           "wawona-android",
           "wawona-android-backend",
-          "gradlegen"
+          "gradlegen",
+          "vulkan-cts-android",
+          "gl-cts-android"
         ]
     permissions:
       contents: read
@@ -44,8 +46,20 @@ jobs:
         if: matrix.target == 'wawona-android'
         run: nix flake check
 
+      - name: Set up KVM permissions
+        if: matrix.target == 'wawona-android'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm || true
+
       - name: Build Target
         run: nix build .#${{ matrix.target }} --print-build-logs
+
+      - name: Run Android SDK Provisioning & Test
+        if: matrix.target == 'wawona-android'
+        run: nix run .#wawona-android -- --test
 
   build-macos:
     name: "macOS: ${{ matrix.target }}"
@@ -58,9 +72,16 @@ jobs:
           "wawona-macos-backend",
           "wawona-ios",
           "wawona-ios-backend",
+          "wawona-ios-sim-backend",
           "xcodegen",
           "weston",
           "waypipe",
+          "foot",
+          "keyboard-test-client",
+          "graphics-smoke",
+          "graphics-validate",
+          "vulkan-cts",
+          "gl-cts",
           "wawona-android",
           "wawona-android-backend"
         ]
@@ -93,3 +114,7 @@ jobs:
 
       - name: Build Target
         run: nix build .#${{ matrix.target }} --print-build-logs
+
+      - name: Run Android SDK Provisioning & Test
+        if: matrix.target == 'wawona-android'
+        run: nix run .#wawona-android -- --test

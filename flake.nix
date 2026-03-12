@@ -115,10 +115,30 @@
               linuxHeaders = super.linuxHeaders.overrideAttrs (old: {
                 makeFlags = (old.makeFlags or []) ++ [ "HOSTCC=cc" ];
               });
+
+              # Fix Android-specific bionic headers on macOS (also expects gcc)
+              # bionic-prebuilt dynamically calls makeLinuxHeaders, so we must intercept the function
+              makeLinuxHeaders = args: (super.makeLinuxHeaders args).overrideAttrs (old: {
+                preConfigure = (old.preConfigure or "") + ''
+                  mkdir -p $TMPDIR/gcc-shim
+                  ln -s $(command -v cc) $TMPDIR/gcc-shim/gcc
+                  ln -s $(command -v c++) $TMPDIR/gcc-shim/g++
+                  export PATH=$TMPDIR/gcc-shim:$PATH
+                '';
+              });
+
+              # Fix LLVM 21's compiler-rt not compiling on Android due to missing pthread.h
+              llvmPackages_21 = if super.stdenv.targetPlatform.isAndroid then super.llvmPackages_21 // {
+                compiler-rt = super.llvmPackages_21.compiler-rt.overrideAttrs (old: {
+                  postPatch = (old.postPatch or "") + ''
+                    sed -i 's|#include <pthread.h>|typedef int pthread_once_t; int pthread_once(pthread_once_t *, void (*)(void));|' lib/builtins/os_version_check.c || true
+                  '';
+                });
+              } else super.llvmPackages_21;
             })
           ];
         };
-        pkgsAndroid = cleanPkgs.pkgsCross.aarch64-android;
+        pkgsAndroid = androidHostPkgs;
         pkgsIos = cleanPkgs.pkgsCross.iphone64;
         src  = srcFor pkgs;
 
@@ -180,7 +200,7 @@
         # ── Pre-patched waypipe source derivations ──
         waypipe-patched-android = pkgs.callPackage ./dependencies/libs/waypipe/waypipe-patched-src.nix {
           inherit waypipe-src;
-          patchScript = ./dependencies/libs/waypipe/patch-waypipe-source.sh;
+          patchScript = ./dependencies/libs/waypipe/patch-waypipe-android.sh;
           platform = "android";
         };
 
@@ -212,7 +232,6 @@
           buildModule = toolchains;
           inherit wawonaSrc wawonaVersion androidSDK androidUtils;
           targetPkgs = pkgsAndroid;
-          weston = toolchains.buildForAndroid "weston" { };
           waypipe = toolchains.buildForAndroid "waypipe" { };
           rustBackend = backend-android;
         };

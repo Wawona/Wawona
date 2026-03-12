@@ -185,13 +185,15 @@ EOF
     export SDKROOT="$MACOS_SDK"
     export MACOSX_DEPLOYMENT_TARGET="26.0"
 
-    export NIX_CFLAGS_COMPILE=""
-    export NIX_LDFLAGS=""
+    # export NIX_CFLAGS_COMPILE=""
+    # export NIX_LDFLAGS=""
     
     # Add threads_compat to include path for C11 threads compatibility
     export CFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 -fPIC -I$(pwd)/threads_compat $CFLAGS"
     export LDFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 $LDFLAGS"
   '';
+
+  __noChroot = true;
 
   mesonFlags = [
     "-Ddocs=disabled"

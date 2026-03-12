@@ -28,6 +28,7 @@ pkgs.stdenv.mkDerivation {
   pname = "xkbcommon";
   version = "1.7.0";
   inherit src;
+  __noChroot = true;
   
   nativeBuildInputs = with pkgs; [
     meson
@@ -47,11 +48,14 @@ pkgs.stdenv.mkDerivation {
     if [ ! -d "$MACOS_SDK" ]; then
       MACOS_SDK=$(${xcodeUtils.findXcodeScript}/bin/find-xcode)/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
     fi
+    if [ ! -d "$MACOS_SDK" ]; then
+      MACOS_SDK=$(/usr/bin/xcode-select -p)/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+    fi
     export SDKROOT="$MACOS_SDK"
     export MACOSX_DEPLOYMENT_TARGET="26.0"
     
-    export NIX_CFLAGS_COMPILE=""
-    export NIX_LDFLAGS=""
+    # export NIX_CFLAGS_COMPILE=""
+    # export NIX_LDFLAGS=""
     export CFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 -fPIC $CFLAGS"
     export LDFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 $LDFLAGS"
   '';

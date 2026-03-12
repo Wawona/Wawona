@@ -304,6 +304,9 @@ let
 
     # ── wawona (root crate) ────────────────────────────────────────
     wawona = attrs: {
+      preConfigure = (attrs.preConfigure or "") + lib.optionalString pkgs.stdenv.isDarwin ''
+        export MACOSX_DEPLOYMENT_TARGET="26.0"
+      '';
       nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [
         pkgs.pkg-config
       ] ++ lib.optionals isIOS [
@@ -317,6 +320,7 @@ let
           pkgs.libffi
           pkgs.openssl
           pkgs.vulkan-loader
+          pkgs.libiconv
           (nativeDeps.libwayland or toolchains.macos.libwayland)
         ]
         else if isIOS then [
@@ -375,17 +379,18 @@ let
         ++ lib.optional (nativeDeps ? xkbcommon) "${nativeDeps.xkbcommon}/lib/pkgconfig"
         ++ lib.optional (nativeDeps ? ffmpeg) "${nativeDeps.ffmpeg}/lib/pkgconfig"
       );
-    } // lib.optionalAttrs isAndroid {
+    } // lib.optionalAttrs isAndroid ({
       CC_aarch64_linux_android = "${androidLinkerWrapper}";
       CXX_aarch64_linux_android = androidToolchain.androidCXX;
       AR_aarch64_linux_android = androidToolchain.androidAR;
       AR = androidToolchain.androidAR;
       CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER = "${androidLinkerWrapper}";
+      dontStrip = true;
+    } // lib.optionalAttrs (nativeDeps ? openssl) {
       OPENSSL_DIR = "${nativeDeps.openssl}";
       OPENSSL_STATIC = "1";
       OPENSSL_NO_VENDOR = "1";
-      dontStrip = true;
-    };
+    });
 
     # ── wayland-backend (needs iOS/macOS patches) ──────────────────
     wayland-backend = attrs: lib.optionalAttrs (isIOS) {
@@ -411,7 +416,8 @@ let
     ssh2 = attrs: {
       buildInputs = (attrs.buildInputs or []) ++
         lib.optional (nativeDeps ? libssh2) nativeDeps.libssh2 ++
-        lib.optional (nativeDeps ? openssl) nativeDeps.openssl;
+        lib.optional (nativeDeps ? openssl) nativeDeps.openssl ++
+        lib.optional pkgs.stdenv.isDarwin pkgs.libiconv;
       nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [ pkgs.pkg-config ];
     } // lib.optionalAttrs (nativeDeps ? libssh2) {
       PKG_CONFIG_PATH = lib.concatStringsSep ":" [
@@ -428,7 +434,8 @@ let
       in {
       buildInputs = (attrs.buildInputs or []) ++
         lib.optional (nativeDeps ? libssh2) nativeDeps.libssh2 ++
-        [ zlibDep opensslDep ];
+        [ zlibDep opensslDep ] ++
+        lib.optional pkgs.stdenv.isDarwin pkgs.libiconv;
       nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [ pkgs.pkg-config ];
       preConfigure = (attrs.preConfigure or "") + lib.optionalString isIOS ''
         export C_INCLUDE_PATH="${lib.optionalString (nativeDeps ? zlib) "${nativeDeps.zlib}/include"}:${lib.optionalString (nativeDeps ? openssl) "${nativeDeps.openssl}/include"}:$C_INCLUDE_PATH"
@@ -496,6 +503,15 @@ let
     } // lib.optionalAttrs (nativeDeps ? zstd) {
       PKG_CONFIG_ALLOW_CROSS = "1";
       PKG_CONFIG_PATH = "${nativeDeps.zstd}/lib/pkgconfig";
+    };
+
+    # ── waypipe (needs libiconv on macOS) ───────────────────────────
+    waypipe = attrs: {
+      buildInputs = (attrs.buildInputs or []) ++
+        lib.optionals pkgs.stdenv.isDarwin [ pkgs.libiconv ];
+      preConfigure = (attrs.preConfigure or "") + lib.optionalString pkgs.stdenv.isDarwin ''
+        export MACOSX_DEPLOYMENT_TARGET="26.0"
+      '';
     };
 
     # ── iana-time-zone (cross-compilation fix for Android) ─────────

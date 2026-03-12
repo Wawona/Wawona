@@ -39,19 +39,19 @@ let
       echo "[provision-android] Creating AVD '$AVD_NAME'..."
       # Create AVD. 'echo n' answers the "Do you wish to create a custom hardware profile" question.
       printf 'n\n' | avdmanager create avd -n "$AVD_NAME" -k "$SYSTEM_IMAGE" --force
-    else
-      echo "[provision-android] AVD '$AVD_NAME' already exists."
     fi
 
-    # Enhance the AVD config with modern specs (avdmanager defaults are too low)
+    # Enhance the AVD config with modern specs if not already set
     AVD_CONFIG="$ANDROID_USER_HOME/avd/$AVD_NAME.avd/config.ini"
     if [ -f "$AVD_CONFIG" ]; then
-      echo "[provision-android] Updating AVD RAM and heap size..."
-      # Ensure properties exist or update them
-      touch "$AVD_CONFIG.tmp"
-      grep -v -E "^(hw.ramSize|vm.heapSize|hw.gpu.enabled|hw.gpu.mode)=" "$AVD_CONFIG" > "$AVD_CONFIG.tmp" || true
-      printf 'hw.ramSize=2048\nvm.heapSize=512\nhw.gpu.enabled=yes\nhw.gpu.mode=auto\n' >> "$AVD_CONFIG.tmp"
-      mv "$AVD_CONFIG.tmp" "$AVD_CONFIG"
+      if ! grep -q "hw.ramSize=2048" "$AVD_CONFIG"; then
+        echo "[provision-android] Optimizing AVD parameters (RAM, heap, GPU)..."
+        # Ensure properties exist or update them
+        touch "$AVD_CONFIG.tmp"
+        grep -v -E "^(hw.ramSize|vm.heapSize|hw.gpu.enabled|hw.gpu.mode)=" "$AVD_CONFIG" > "$AVD_CONFIG.tmp" || true
+        printf 'hw.ramSize=2048\nvm.heapSize=512\nhw.gpu.enabled=yes\nhw.gpu.mode=auto\n' >> "$AVD_CONFIG.tmp"
+        mv "$AVD_CONFIG.tmp" "$AVD_CONFIG"
+      fi
     fi
 
     echo "[provision-android] SUCCESS: Android environment is provisioned."

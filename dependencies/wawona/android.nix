@@ -44,7 +44,10 @@ let
 
   opensshBin = buildModule.buildForAndroid "openssh" { };
   sshpassBin = buildModule.buildForAndroid "sshpass" { };
-  westonBin = buildModule.buildForAndroid "weston" { };
+  # Disable Weston on Android as building its GUI dependencies (cairo/pango) triggers 
+  # Nixpkgs pkgsCross.aarch64-android which currently fails on compiler-rt (missing pthread.h).
+  # Wawona is its own Wayland server and doesn't actually need Weston to run.
+  westonBin = "";
   rustBackendPath = if rustBackend != null then toString rustBackend else "";
 
   androidDeps = common.commonDeps ++ [
@@ -170,18 +173,16 @@ let
       export ANDROID_HOME="$ANDROID_SDK_ROOT"
     fi
 
-    # Automated Provisioning (Licenses, AVD)
-    if [ -n "${provisionScript}" ]; then
-       # Run the nix-based provision script. This handles AVDs and packages
-       # for both the Nix SDK and the System SDK depending on environment vars.
-       "${provisionScript}"
-    fi
 
     DEBUG_MODE=false
-    if [ "''${1:-}" = "--debug" ]; then
-      DEBUG_MODE=true
-      shift
-    fi
+    TEST_MODE=false
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --debug) DEBUG_MODE=true; shift ;;
+        --test) TEST_MODE=true; shift ;;
+        *) break ;;
+      esac
+    done
 
     APK_PATH="$1"
     if [ -z "$APK_PATH" ]; then
@@ -303,99 +304,66 @@ let
       fi
     fi
     
-    # Clean up stale locks that cause 'Running multiple emulators with the same AVD' FATAL errors
-    rm -f "$ANDROID_AVD_HOME/$AVD_NAME.avd/*.lock" 2>/dev/null || true
-
-    adb start-server 2>/dev/null
-
-    EMULATOR_PROCESS=$(pgrep -f "qemu.*$AVD_NAME" 2>/dev/null | head -n 1)
-
-    if [ -n "$EMULATOR_PROCESS" ]; then
-      sleep 2
-      RUNNING_EMULATORS=$(adb devices | grep -E "emulator-[0-9]+" | grep "device$" | wc -l | tr -d ' ')
-      if [ "$RUNNING_EMULATORS" -eq 0 ]; then
-        if kill -0 "$EMULATOR_PROCESS" 2>/dev/null; then
-          sleep 3
-          RUNNING_EMULATORS=$(adb devices | grep -E "emulator-[0-9]+" | grep "device$" | wc -l | tr -d ' ')
-        else
-          EMULATOR_PROCESS=""
-        fi
-      fi
-    else
-      RUNNING_EMULATORS=$(adb devices | grep -E "emulator-[0-9]+" | grep "device$" | wc -l | tr -d ' ')
-    fi
-
+    adb start-server 2>/dev/null || true
+    
+    # ── Surgical Device Detection ──
+    # If a device is already online and booted, we skip EVERYTHING except install/launch
+    RUNNING_EMULATORS=$(adb devices | grep -E "emulator-[0-9]+" | grep "device$" | wc -l | tr -d ' ')
+    DEVICE_READY=false
     if [ "$RUNNING_EMULATORS" -gt 0 ]; then
       EMULATOR_SERIAL=$(adb devices | grep -E "emulator-[0-9]+" | grep "device$" | head -n 1 | awk '{print $1}')
-      echo "[Wawona] Reusing running emulator: $EMULATOR_SERIAL"
-    else
-      echo "[Wawona] Starting emulator '$AVD_NAME'..."
-      # Use setsid on Linux only; it's not available on macOS and not needed with nohup
-      if [ "$(uname -s)" = "Linux" ]; then
-        setsid nohup emulator -avd "$AVD_NAME" -no-snapshot-load -wipe-data -gpu auto < /dev/null >>/tmp/emulator.log 2>&1 &
-      elif [ "$USE_SYSTEM_SDK" = "true" ] && [ "$(uname -m)" = "arm64" ]; then
-        nohup emulator -avd "$AVD_NAME" -no-snapshot-load -wipe-data -gpu swiftshader_indirect < /dev/null >>/tmp/emulator.log 2>&1 &
+      BOOT_COMPLETE=$(adb -s "$EMULATOR_SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || echo "0")
+      if [ "$BOOT_COMPLETE" = "1" ]; then
+        echo "[Wawona] Reusing running emulator: $EMULATOR_SERIAL"
+        DEVICE_READY=true
+      fi
+    fi
+
+    if [ "$DEVICE_READY" = "false" ]; then
+      echo "[Wawona] Checking for running emulator process '$AVD_NAME'..."
+      EMULATOR_PROCESS=$(pgrep -i -f "$AVD_NAME" 2>/dev/null | head -n 1)
+
+      if [ -n "$EMULATOR_PROCESS" ]; then
+        echo "[Wawona] Found potential emulator process: $EMULATOR_PROCESS (waiting for ADB connection...)"
       else
-        nohup emulator -avd "$AVD_NAME" -no-snapshot-load -wipe-data -gpu auto < /dev/null >>/tmp/emulator.log 2>&1 &
-      fi
-
-      sleep 3
-
-      EMULATOR_PID=""
-      for i in 1 2 3 4 5; do
-        EMULATOR_PID=$(pgrep -f "qemu.*$AVD_NAME" 2>/dev/null | head -n 1)
-        if [ -n "$EMULATOR_PID" ]; then
-          break
+        # Automated Provisioning (Licenses, AVD) only when starting fresh
+        if [ -n "${provisionScript}" ]; then
+           "${provisionScript}"
         fi
-        sleep 1
-      done
 
-      if [ -z "$EMULATOR_PID" ]; then
-        echo "[Wawona] Warning: Could not find emulator PID"
+        # Clean up stale locks IF no process is actually running
+        rm -f "$ANDROID_AVD_HOME/$AVD_NAME.avd/*.lock" 2>/dev/null || true
+
+        echo "[Wawona] Starting emulator '$AVD_NAME'..."
+        # Use "double-fork" + setsid + nohup to truly detach.
+        # This completely disconnects the emulator from the script's TTY and session.
+        echo "[Wawona] Detaching emulator process..."
+        if [ "$USE_SYSTEM_SDK" = "true" ] && [ "$(uname -m)" = "arm64" ]; then
+          ((setsid nohup emulator -avd "$AVD_NAME" -gpu swiftshader_indirect < /dev/null > /tmp/emulator.log 2>&1 &))
+        else
+          ((setsid nohup emulator -avd "$AVD_NAME" -gpu auto < /dev/null > /tmp/emulator.log 2>&1 &))
+        fi
       fi
 
-      cleanup() {
-        exit 0
-      }
-      trap cleanup SIGTERM SIGINT
-
+      # ── Wait for Boot ──
       TIMEOUT=300
       ELAPSED=0
-      BOOTED=false
-
       while [ $ELAPSED -lt $TIMEOUT ]; do
-        if [ -n "$EMULATOR_PID" ] && ! kill -0 $EMULATOR_PID 2>/dev/null; then
-           if ! adb devices | grep -E "emulator-[0-9]+" | grep -q "device$"; then
-             cat /tmp/emulator.log 2>/dev/null
-             exit 1
-           fi
-        fi
-
         if adb devices | grep -E "emulator-[0-9]+" | grep -q "device$"; then
-          sleep 2
           BOOT_COMPLETE=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || echo "0")
           if [ "$BOOT_COMPLETE" = "1" ]; then
-            BOOTED=true
+            DEVICE_READY=true
             break
           fi
         fi
-
         sleep 2
         ELAPSED=$((ELAPSED + 2))
       done
-
-      if [ "$BOOTED" = "true" ]; then
-        sleep 5
-      else
-        if adb devices | grep -E "emulator-[0-9]+" | grep -q "device$"; then
-          BOOTED=true
-        else
-          cat /tmp/emulator.log 2>/dev/null
-          exit 1
-        fi
+      
+      if [ "$DEVICE_READY" = "false" ]; then
+        echo "[Wawona] ERROR: Emulator failed to boot within $TIMEOUT seconds."
+        exit 1
       fi
-
-      trap - SIGTERM SIGINT
     fi
 
     graceful_exit() {
@@ -562,6 +530,19 @@ let
         echo "[Wawona] App PID: $PID"
       else
         echo "[Wawona] Warning: Could not resolve app PID (app may still be starting)"
+      fi
+
+      if [ "$TEST_MODE" = "true" ]; then
+        echo "[Wawona] Running in CI Test Mode. Waiting 10 seconds to verify stability..."
+        sleep 10
+        if adb shell pidof $PKG >/dev/null 2>&1; then
+          echo "[Wawona] SUCCESS: App is running stably."
+          exit 0
+        else
+          echo "[Wawona] ERROR: App crashed or exited prematurely!"
+          adb logcat -d -v time -s Wawona:D WawonaJNI:D WawonaNative:D AndroidRuntime:E DEBUG:I | tail -n 50
+          exit 1
+        fi
       fi
 
       echo "--- Wawona Android Logs ---"

@@ -2,7 +2,7 @@
   lib,
   pkgs,
   buildPackages,
-  buildTargets ? "deqp-vk",
+  buildTargets ? "deqp",
 }:
 
 let
@@ -14,6 +14,9 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
   version = common.version;
 
   src = common.src;
+
+  # Allow access to SDKs
+  __noChroot = true;
 
   prePatch = common.prePatch;
 
@@ -38,8 +41,8 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
     export AR="${androidToolchain.androidAR}"
     export STRIP="${androidToolchain.androidSTRIP}"
     export RANLIB="${androidToolchain.androidRANLIB}"
-    export CFLAGS="--target=${androidToolchain.androidTarget} -fPIC"
-    export CXXFLAGS="--target=${androidToolchain.androidTarget} -fPIC"
+    export CFLAGS="--target=${androidToolchain.androidTarget} -fPIC -Wno-deprecated-declarations"
+    export CXXFLAGS="--target=${androidToolchain.androidTarget} -fPIC -Wno-deprecated-declarations"
     export LDFLAGS="--target=${androidToolchain.androidTarget}"
   '';
 
@@ -60,6 +63,9 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
     "-DSELECTED_BUILD_TARGETS=${buildTargets}"
     (lib.cmakeFeature "FETCHCONTENT_SOURCE_DIR_SHADERC" "${common.sources.shaderc-src}")
   ];
+
+  # Only build the selected targets to avoid linking errors in unnecessary GL components
+  ninjaFlags = [ buildTargets ];
 
   postInstall = ''
     mkdir -p $out/bin $out/archive-dir

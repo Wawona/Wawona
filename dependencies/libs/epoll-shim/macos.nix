@@ -37,9 +37,13 @@ else
       "-DCMAKE_INSTALL_LIBDIR=lib"
       "-DBUILD_SHARED_LIBS=ON"
     ];
+    __noChroot = true;
+
     configurePhase = ''
       runHook preConfigure
       export MACOSX_DEPLOYMENT_TARGET="26.0"
+      # export NIX_CFLAGS_COMPILE=""
+      # export NIX_LDFLAGS=""
       cmake -B build -S . \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=$out \

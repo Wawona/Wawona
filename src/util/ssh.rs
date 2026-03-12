@@ -1,3 +1,5 @@
+#![cfg(feature = "waypipe-ssh")]
+
 use std::net::TcpStream;
 use ssh2::Session;
 use std::io::{Read, Write};

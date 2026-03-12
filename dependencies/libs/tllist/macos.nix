@@ -29,6 +29,14 @@ pkgs.stdenv.mkDerivation {
     pkg-config
   ];
 
+  __noChroot = true;
+
+  preConfigure = ''
+    export MACOSX_DEPLOYMENT_TARGET="26.0"
+    # export NIX_CFLAGS_COMPILE=""
+    # export NIX_LDFLAGS=""
+  '';
+
   # tllist is header-only, no special meson flags needed
   mesonFlags = [];
 

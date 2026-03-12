@@ -8,10 +8,10 @@ let
   androidNdkApiLevel = 35;
   androidTarget = "aarch64-linux-android${toString androidNdkApiLevel}";
   androidndkPkgsMacOS =
-    if pkgs.stdenv.isAarch64 && pkgs.stdenv.isDarwin then
+    if pkgs.stdenv.buildPlatform.isAarch64 && pkgs.stdenv.buildPlatform.isDarwin then
       let
         ndkVersion = "27.0.12077987";
-        hostTag = if pkgs.stdenv.isAarch64 then "darwin-x86_64" else "darwin-x86_64";
+        hostTag = if pkgs.stdenv.buildPlatform.isAarch64 then "darwin-x86_64" else "darwin-x86_64";
         ndkRoot = pkgs.stdenv.mkDerivation {
           name = "android-ndk-${ndkVersion}";
           src = pkgs.fetchzip {
@@ -35,13 +35,13 @@ let
     else
       null;
   androidndkPkgs =
-    if pkgs.stdenv.isAarch64 && pkgs.stdenv.isDarwin then
+    if pkgs.stdenv.buildPlatform.isAarch64 && pkgs.stdenv.buildPlatform.isDarwin then
       {
         clang = androidndkPkgsMacOS.toolchainBase;
         binutils = androidndkPkgsMacOS.toolchainBase;
       }
     else
-      pkgs.androidndkPkgs;
+      pkgs.buildPackages.androidndkPkgs;
 in
 {
   inherit androidApiLevel androidNdkApiLevel androidTarget;

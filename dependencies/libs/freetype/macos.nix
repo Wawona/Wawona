@@ -33,6 +33,11 @@ pkgs.stdenv.mkDerivation rec {
     ninja
   ];
 
+  mesonFlags = [
+    "-Dharfbuzz=disabled"
+    "-Dbrotli=disabled"
+  ];
+
   buildInputs = with pkgs; [
     zlib
     bzip2
@@ -48,11 +53,13 @@ pkgs.stdenv.mkDerivation rec {
     export SDKROOT="$MACOS_SDK"
     export MACOSX_DEPLOYMENT_TARGET="26.0"
 
-    export NIX_CFLAGS_COMPILE=""
-    export NIX_LDFLAGS=""
+    # export NIX_CFLAGS_COMPILE=""
+    # export NIX_LDFLAGS=""
     export CFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 -fPIC $CFLAGS"
     export LDFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 $LDFLAGS"
   '';
+
+  __noChroot = true;
 
   meta = with lib; {
     description = "A font rendering library";

@@ -256,6 +256,7 @@ in
       pkgs.libxkbcommon
       pkgs.openssl
       pkgs.zlib
+      pkgs.libiconv
       buildModule.macos.libwayland
       rustBackend
       waypipe
@@ -392,8 +393,8 @@ POPUP_H
       ${copyDeps "macos-dependencies"}
 
       export PKG_CONFIG_PATH="$PWD/macos-dependencies/libdata/pkgconfig:$PWD/macos-dependencies/lib/pkgconfig:$PKG_CONFIG_PATH"
-      export NIX_CFLAGS_COMPILE=""
-      export NIX_LDFLAGS=""
+      # export NIX_CFLAGS_COMPILE=""
+      # export NIX_LDFLAGS=""
 
       # Bindgen and other target tools need to know about the sysroot via flags,
       # but we unset the env vars to avoid leaking them into host tools.

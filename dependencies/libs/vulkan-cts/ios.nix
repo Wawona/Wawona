@@ -3,7 +3,7 @@
   pkgs,
   buildPackages,
   buildModule,
-  buildTargets ? "deqp-vk",
+  buildTargets ? "deqp",
 }:
 
 let
@@ -106,8 +106,8 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
     set(CMAKE_CXX_COMPILER "$IOS_CXX")
     set(CMAKE_SYSROOT "$SDKROOT")
     set(CMAKE_OSX_SYSROOT "$SDKROOT")
-    set(CMAKE_C_FLAGS "-mios-simulator-version-min=15.0 -DGLES_SILENCE_DEPRECATION")
-    set(CMAKE_CXX_FLAGS "-mios-simulator-version-min=15.0 -DGLES_SILENCE_DEPRECATION")
+    set(CMAKE_C_FLAGS "-mios-simulator-version-min=15.0 -DGLES_SILENCE_DEPRECATION -Wno-deprecated-declarations")
+    set(CMAKE_CXX_FLAGS "-mios-simulator-version-min=15.0 -DGLES_SILENCE_DEPRECATION -Wno-deprecated-declarations")
     set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
     set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
     set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
@@ -124,6 +124,9 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
     "-DSELECTED_BUILD_TARGETS=${buildTargets}"
     (lib.cmakeFeature "FETCHCONTENT_SOURCE_DIR_SHADERC" "${common.sources.shaderc-src}")
   ];
+
+  # Only build the selected targets to avoid linking errors in unnecessary GL components
+  ninjaFlags = [ buildTargets ];
 
   postInstall = ''
     mkdir -p $out/Applications $out/bin $out/archive-dir

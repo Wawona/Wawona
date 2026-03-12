@@ -2263,7 +2263,6 @@ RUST_EOF
 
   nativeBuildInputs = with pkgs; [
     pkg-config
-    apple-sdk_26
     python3
     rustPlatform.bindgenHook
     perl
@@ -2273,6 +2272,7 @@ RUST_EOF
     libwayland
     zstd
     lz4
+    pkgs.libiconv
     # ffmpeg - not needed without video feature
     # macOS frameworks are linked automatically via #[link(name = "...", kind = "framework")]
   ];
@@ -2303,8 +2303,8 @@ RUST_EOF
     export MACOSX_DEPLOYMENT_TARGET="26.0"
     
     # Isolate environment from Nix wrapper flags to prevent linker conflicts
-    export NIX_CFLAGS_COMPILE=""
-    export NIX_LDFLAGS=""
+    # export NIX_CFLAGS_COMPILE=""
+    # export NIX_LDFLAGS=""
     export CFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 -fPIC $CFLAGS"
     export LDFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 $LDFLAGS"
 
@@ -2313,7 +2313,7 @@ RUST_EOF
     export PKG_CONFIG_PATH="${libwayland}/lib/pkgconfig:${zstd}/lib/pkgconfig:${lz4}/lib/pkgconfig:$PKG_CONFIG_PATH"
     export C_INCLUDE_PATH="${zstd}/include:${lz4}/include:$C_INCLUDE_PATH"
     export CPP_INCLUDE_PATH="${zstd}/include:${lz4}/include:$CPP_INCLUDE_PATH"
-    export BINDGEN_EXTRA_CLANG_ARGS="-I${zstd}/include -I${lz4}/include -isysroot $SDKROOT -mmacosx-version-min=26.0"
+    export BINDGEN_EXTRA_CLANG_ARGS="-I${zstd}/include -I${lz4}/include -isysroot $SDKROOT -mmacosx-version-min=15.0"
   '';
 
   preBuild = ''

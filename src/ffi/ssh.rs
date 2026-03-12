@@ -1,3 +1,5 @@
+#![cfg(feature = "waypipe-ssh")]
+
 use crate::util::ssh::{SshConfig, SshTunnel, pump};
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};

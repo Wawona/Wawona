@@ -21,7 +21,7 @@ tracing-subscriber = { version = "0.3.22", features = ["chrono", "local-time"] }
 bitflags = "2.4"
 chrono = "0.4"
 libc = "0.2.180"
-ssh2 = { version = "0.9", default-features = false }
+ssh2 = { version = "0.9", default-features = false, optional = true }
 ash = "0.38"
 libloading = "0.8"
 getrandom = "0.2"
@@ -54,7 +54,7 @@ wayland-scanner = "0.31.8"
 tempfile = "3.25.0"
 
 # waypipe: integrated as optional dependency for unified static library
-waypipe = { path = "./waypipe", optional = true }
+waypipe = { path = "./waypipe", optional = true, default-features = false, features = ["lz4", "zstd", "video"] }
 
 [build-dependencies]
 uniffi = { version = "0.30.0", features = ["build"] }
@@ -74,4 +74,4 @@ verbose-logs = []
 # Enable in-process waypipe integration
 waypipe = ["dep:waypipe"]
 # Enable waypipe with static libssh2 transport (iOS/Android: no subprocess spawning)
-waypipe-ssh = ["waypipe", "waypipe/with_libssh2"]
+waypipe-ssh = ["waypipe", "dep:ssh2"]
