@@ -682,6 +682,7 @@ extern int weston_terminal_main(int argc, char **argv);
   env[@"XDG_RUNTIME_DIR"] = socketDirTask;
   env[@"WAYLAND_DISPLAY"] = displayNameTask;
   env[@"XDG_CURRENT_DESKTOP"] = @"Wawona";
+  env[@"WAWONA_DESKTOP"] = @"Wawona";
 
   // Sanitize PATH to ensure /usr/bin is available for ssh
   NSString *currentPath = env[@"PATH"] ?: @"/usr/bin:/bin:/usr/sbin:/sbin";

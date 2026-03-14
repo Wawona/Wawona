@@ -1,4 +1,4 @@
-{ lib, stdenv, fetchurl, meson, ninja, pkg-config, wayland, wayland-scanner, wayland-protocols, libxkbcommon, cairo, pango, libpng, libjpeg, mesa, pixman, python3, libinput, libevdev, seatd, pam, openssl, epoll-shim, ... }:
+{ lib, stdenv, fetchurl, meson, ninja, pkg-config, wayland, wayland-scanner, wayland-protocols, libxkbcommon, cairo, pango, libpng, libjpeg, mesa, pixman, python3, makeWrapper, libinput, libevdev, seatd, pam, openssl, epoll-shim, ... }:
 
 stdenv.mkDerivation rec {
   pname = "weston";
@@ -8,11 +8,11 @@ stdenv.mkDerivation rec {
     url = "https://gitlab.freedesktop.org/wayland/weston/-/releases/${version}/downloads/weston-${version}.tar.xz";
     sha256 = "sha256-Uv8dSqI5Si5BbIWjOLYnzpf6cdQ+t2L9Sq8UXTb8eVo=";
   };
-  
+
   # Fetch linux input headers for macOS shim
   linux_input_h = fetchurl {
     url = "https://raw.githubusercontent.com/torvalds/linux/master/include/uapi/linux/input.h";
-    sha256 = "sha256-ciO4IN6ANMgnw/yBe2dApcUcqDMkgLhtagwUJzD7I54="; 
+    sha256 = "sha256-ciO4IN6ANMgnw/yBe2dApcUcqDMkgLhtagwUJzD7I54=";
   };
   linux_input_event_codes_h = fetchurl {
     url = "https://raw.githubusercontent.com/torvalds/linux/master/include/uapi/linux/input-event-codes.h";
@@ -35,7 +35,7 @@ stdenv.mkDerivation rec {
     sha256 = "sha256-X62GrL3cw7amhWkNoMfeWUEtNU0TdWRHNGcvXGvfQgI=";
   };
 
-  nativeBuildInputs = [ meson ninja pkg-config wayland-scanner python3 ];
+  nativeBuildInputs = [ meson ninja pkg-config wayland-scanner python3 makeWrapper ];
 
   buildInputs = [
     wayland
@@ -126,17 +126,17 @@ EOF
       "-Ddemo-clients=false"
     )
   '';
-  
+
   NIX_CFLAGS_COMPILE = "-I${epoll-shim}/include/libepoll-shim -I$PWD/include";
   NIX_LDFLAGS = "-L${epoll-shim}/lib -lepoll-shim";
 
   postPatch = lib.optionalString stdenv.isDarwin ''
     # Skip building problematic subdirectories (keeping compositor and shells)
     sed -i "/subdir('tests')/d" meson.build
-    
+
     # Remove subsurfaces client which depends heavily on GLES2
     sed -i "/'subsurfaces.c'/d" clients/meson.build
-    
+
     # Create an empty C file to replace problematic sources while keeping Meson syntax intact
     touch include/empty.c
 
@@ -148,7 +148,7 @@ EOF
 
     # Patch backend default logic
     sed -i "s|message('The default backend is ' + backend_default)|message('Skipping backend validation for client-only build')|g" meson.build
-    
+
     # Make all Linux-specific dependencies optional
     sed -i "s/dependency('libinput'/dependency('libinput', required: false/g" meson.build
     sed -i "s/dependency('libevdev'/dependency('libevdev', required: false/g" meson.build
@@ -158,7 +158,7 @@ EOF
     sed -i "s/dependency('libudev'/dependency('libudev', required: false/g" libweston/meson.build
     sed -i "s/dependency('libudev'/dependency('libudev', required: false/g" clients/meson.build
     sed -i "s/dependency('libudev'/dependency('libudev', required: false/g" tests/meson.build
-    
+
     # Downgrade errors to warnings in clients
     sed -i "s/error(/warning(/g" clients/meson.build
 
@@ -225,10 +225,10 @@ print("Patched terminal.c: OSC 7 handler + PROMPT_COMMAND")
 PYEOF
     python3 _patch_terminal_title.py
     rm _patch_terminal_title.py
-    
+
     # Create inclusive directory for shims
     mkdir -p include/sys include/libudev include/libinput include/linux include/libevdev include/GLES2 include/EGL include/KHR
-    
+
     # Create GLES2/gl2.h shim
     cat > include/GLES2/gl2.h <<'EOF'
 #ifndef _GL2_H
@@ -446,7 +446,7 @@ EOF
 #include <stdlib.h>
 #endif
 EOF
-    
+
     # Inject linux/input.h shims
     cp ${linux_input_h} include/linux/input.h
     cp ${linux_input_event_codes_h} include/linux/input-event-codes.h
@@ -456,7 +456,7 @@ EOF
 #include <sys/ioctl.h>
 #endif
 EOF
-    
+
     # Create linux/types.h shim
     cat > include/linux/types.h <<'EOF'
 #ifndef _LINUX_TYPES_H
@@ -480,7 +480,7 @@ typedef uint64_t __be64;
 #define __BITS_PER_LONG 64
 #endif
 EOF
-    
+
     # Create linux/limits.h shim
     cat > include/linux/limits.h <<'EOF'
 #ifndef _LINUX_LIMITS_H
@@ -488,7 +488,7 @@ EOF
 #include <limits.h>
 #endif
 EOF
-    
+
     # Inject DRM and xf86drm shims
     cp ${libdrm_fourcc_h} include/drm_fourcc.h
     cp ${libdrm_h} include/drm.h
@@ -512,6 +512,11 @@ EOF
         ln -s "$(basename "$f")" "''${f%.dylib}.so"
       fi
     done
+
+    if [ -x "$out/bin/weston" ]; then
+      wrapProgram "$out/bin/weston" \
+        --set XDG_CURRENT_DESKTOP Weston
+    fi
   '';
 
   meta = with lib; {
