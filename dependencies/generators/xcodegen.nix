@@ -113,7 +113,7 @@ let
     options = {
       bundleIdPrefix = "com.aspauldingcode";
       deploymentTarget = {
-        iOS = "26.0";
+        iOS = "15.5";
         macOS = "26.0";
       };
       generateEmptyDirectories = true;
