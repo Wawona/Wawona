@@ -27,7 +27,7 @@ stdenv.mkDerivation {
 
   outputHashAlgo = "sha256";
   outputHashMode = "recursive";
-  outputHash = "sha256-uXbvE7HSB5zKyJExnkYSKqYH+Hvxuy1MsD2pRDqvbEc=";
+  outputHash = "sha256-xoVKrxmJ56ASKm1Z7a7UgY06RXJatYvlCc35HipCvM8=";
 
   buildPhase = ''
     export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
