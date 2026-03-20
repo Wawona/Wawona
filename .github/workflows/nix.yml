@@ -19,7 +19,11 @@ jobs:
           "wawona-android-backend",
           "gradlegen",
           "vulkan-cts-android",
-          "gl-cts-android"
+          "gl-cts-android",
+          "nom",
+          "wawona",
+          "wawona-android-project",
+          "wawona-android-provision"
         ]
     permissions:
       contents: read
@@ -70,20 +74,44 @@ jobs:
         target: [
           "wawona-macos",
           "wawona-macos-backend",
+          "wawona-macos-xcode-env",
+          "wawona-macos-project",
           "wawona-ios",
           "wawona-ios-backend",
           "wawona-ios-sim-backend",
+          "wawona-ios-xcode-env",
+          "wawona-ios-sim-xcode-env",
+          "wawona-ios-project",
+          "wawona-ios-provision",
           "xcodegen",
+          "xcodegenProject",
           "weston",
+          "weston-debug",
+          "weston-simple-shm",
+          "weston-terminal",
           "waypipe",
+          "waypipe-ios",
+          "waypipe-ios-sim",
           "foot",
           "keyboard-test-client",
           "graphics-smoke",
           "graphics-validate",
+          "graphics-validate-all",
+          "graphics-validate-android",
+          "graphics-validate-ios",
+          "graphics-validate-macos",
           "vulkan-cts",
+          "vulkan-cts-ios",
           "gl-cts",
           "wawona-android",
-          "wawona-android-backend"
+          "wawona-android-backend",
+          "wawona-android-project",
+          "wawona-android-provision",
+          "gradlegen",
+          "vulkan-cts-android",
+          "gl-cts-android",
+          "nom",
+          "wawona"
         ]
     permissions:
       contents: read
@@ -111,6 +139,10 @@ jobs:
 
       - name: Magic Nix Cache
         uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Nix Flake Check
+        if: matrix.target == 'wawona-macos'
+        run: nix flake check
 
       - name: Build Target
         run: nix build .#${{ matrix.target }} --print-build-logs

@@ -502,10 +502,12 @@ extern void WWNRenderSceneFree(CRenderScene *scene);
   if (_rustCore && _compositorQueue) {
     dispatch_sync(_compositorQueue, ^{
       WWNCoreStop(self->_rustCore);
+      self->_rustCore = NULL;
       WWNLog("BRIDGE", @"Compositor stopped on compositor queue");
     });
   } else if (_rustCore) {
     WWNCoreStop(_rustCore);
+    _rustCore = NULL;
     WWNLog("BRIDGE", @"Compositor stopped");
   }
 

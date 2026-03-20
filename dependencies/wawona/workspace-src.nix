@@ -42,7 +42,11 @@ pkgs.stdenvNoCC.mkDerivation {
       cp -r ${waypipeSrc}/* $out/waypipe/
       chmod -R u+w $out/waypipe
 
-      echo "✓ Waypipe source injected"
+      # Remove nested Cargo.lock and any stray .git to avoid workspace confusion
+      rm -f $out/waypipe/Cargo.lock
+      rm -rf $out/waypipe/.git
+
+      echo "✓ Waypipe source injected (nested lockfile removed)"
     fi
 
     # Patch root Cargo.toml version and Cargo.lock consistency

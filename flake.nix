@@ -481,7 +481,7 @@
           waypipe-ios = toolchains.buildForIOS "waypipe" { };
           waypipe-ios-sim = toolchains.buildForIOS "waypipe" { simulator = true; };
           foot = shellWrappers.footWrapper pkgs (toolchains.buildForMacOS "foot" { });
-          weston = weston;
+          weston = shellWrappers.westonAppWrapper pkgs weston "weston";
           weston-terminal = shellWrappers.westonAppWrapper pkgs weston "weston-terminal";
           weston-debug = shellWrappers.westonAppWrapper pkgs weston "weston-debug";
           weston-simple-shm = shellWrappers.westonAppWrapper pkgs weston "weston-simple-shm";
