@@ -110,6 +110,7 @@
             allowUnsupportedSystem = true;
           };
           overlays = [
+            (import rust-overlay)
             (self: super: {
               # Fix linuxHeaders build on macOS (expects gcc, but macOS has cc/clang)
               linuxHeaders = super.linuxHeaders.overrideAttrs (old: {
@@ -138,7 +139,11 @@
             })
           ];
         };
-        pkgsAndroid = androidHostPkgs;
+        isLinuxHost = (system == "x86_64-linux" || system == "aarch64-linux");
+        # Use isolated pkgs for Android on Linux to break recursion
+        targetAndroidPkgs = if isLinuxHost then cleanPkgs else pkgs;
+
+        pkgsAndroid = if isLinuxHost then cleanPkgs else androidHostPkgs;
         pkgsIos = cleanPkgs.pkgsCross.iphone64;
         src  = srcFor pkgs;
 
@@ -150,6 +155,15 @@
           inherit (pkgs) lib pkgs stdenv buildPackages;
           inherit wawonaSrc pkgsAndroid pkgsIos;
         };
+
+        toolchainsAndroid = if isLinuxHost
+          then import ./dependencies/toolchains {
+            inherit (cleanPkgs) lib pkgs stdenv buildPackages;
+            wawonaSrc = ./.;
+            pkgsAndroid = cleanPkgs;
+            inherit pkgsIos;
+          }
+          else toolchains;
         
         androidHostPkgs = import nixpkgs {
           inherit system;
@@ -174,7 +188,7 @@
           ndkVersions = ["27.0.12077973"];
         };
 
-        androidUtils = import ./dependencies/utils/android-wrapper.nix { inherit (pkgs) lib; inherit pkgs androidSDK; };
+        androidUtils = import ./dependencies/utils/android-wrapper.nix { inherit (targetAndroidPkgs) lib pkgs; inherit androidSDK; };
 
         # Android needs full src/ including platform C files; use cleanSource for that
         androidSrc = pkgs.lib.cleanSourceWith {
@@ -187,52 +201,53 @@
         };
 
         # Vulkan CTS (Conformance Test Suite)
-        vulkan-cts-android = pkgs.callPackage ./dependencies/libs/vulkan-cts/android.nix {
-          lib = pkgs.lib;
-          buildPackages = pkgs.buildPackages;
+        vulkan-cts-android = targetAndroidPkgs.callPackage ./dependencies/libs/vulkan-cts/android.nix {
+          lib = targetAndroidPkgs.lib;
+          buildPackages = targetAndroidPkgs.buildPackages;
         };
 
-        gl-cts-android = pkgs.callPackage ./dependencies/libs/vulkan-cts/gl-cts-android.nix {
-          lib = pkgs.lib;
-          buildPackages = pkgs.buildPackages;
+        gl-cts-android = targetAndroidPkgs.callPackage ./dependencies/libs/vulkan-cts/gl-cts-android.nix {
+          lib = targetAndroidPkgs.lib;
+          buildPackages = targetAndroidPkgs.buildPackages;
         };
 
         # ── Pre-patched waypipe source derivations ──
-        waypipe-patched-android = pkgs.callPackage ./dependencies/libs/waypipe/waypipe-patched-src.nix {
+        waypipe-patched-android = targetAndroidPkgs.callPackage ./dependencies/libs/waypipe/waypipe-patched-src.nix {
           inherit waypipe-src;
           patchScript = ./dependencies/libs/waypipe/patch-waypipe-android.sh;
           platform = "android";
         };
 
-        workspace-src-android = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
+        workspace-src-android = targetAndroidPkgs.callPackage ./dependencies/wawona/workspace-src.nix {
           wawonaSrc = src;
           waypipeSrc = waypipe-patched-android;
           platform = "android";
           inherit wawonaVersion;
         };
 
-        backend-android = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
-          inherit crate2nix wawonaVersion toolchains nixpkgs;
+        backend-android = targetAndroidPkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
+          inherit crate2nix wawonaVersion nixpkgs androidSDK;
+          toolchains = if isLinuxHost then toolchainsAndroid else toolchains;
           workspaceSrc = workspace-src-android;
           platform = "android";
           nativeDeps = {
-            xkbcommon = toolchains.buildForAndroid "xkbcommon" {};
-            libwayland = toolchains.buildForAndroid "libwayland" {};
-            zstd = toolchains.buildForAndroid "zstd" {};
-            lz4 = toolchains.buildForAndroid "lz4" {};
-            pixman = toolchains.buildForAndroid "pixman" {};
-            openssl = toolchains.buildForAndroid "openssl" {};
-            libffi = toolchains.buildForAndroid "libffi" {};
-            expat = toolchains.buildForAndroid "expat" {};
-            libxml2 = toolchains.buildForAndroid "libxml2" {};
+            xkbcommon = toolchainsAndroid.buildForAndroid "xkbcommon" {};
+            libwayland = toolchainsAndroid.buildForAndroid "libwayland" {};
+            zstd = toolchainsAndroid.buildForAndroid "zstd" {};
+            lz4 = toolchainsAndroid.buildForAndroid "lz4" {};
+            pixman = toolchainsAndroid.buildForAndroid "pixman" {};
+            openssl = toolchainsAndroid.buildForAndroid "openssl" {};
+            libffi = toolchainsAndroid.buildForAndroid "libffi" {};
+            expat = toolchainsAndroid.buildForAndroid "expat" {};
+            libxml2 = toolchainsAndroid.buildForAndroid "libxml2" {};
           };
         };
 
-        wawona-android = pkgs.callPackage ./dependencies/wawona/android.nix {
-          buildModule = toolchains;
+        wawona-android = targetAndroidPkgs.callPackage ./dependencies/wawona/android.nix {
+          buildModule = toolchainsAndroid;
           inherit wawonaSrc wawonaVersion androidSDK androidUtils;
           targetPkgs = pkgsAndroid;
-          waypipe = toolchains.buildForAndroid "waypipe" { };
+          waypipe = toolchainsAndroid.buildForAndroid "waypipe" { };
           rustBackend = backend-android;
         };
 
@@ -240,7 +255,6 @@
         mainPackage = if pkgs.stdenv.isDarwin then null else pkgs.hello;
 
       in let
-        cleanPkgs = import nixpkgs { inherit system; config.allowUnfree = true; };
         gradlegen_tool_script = (cleanPkgs.callPackage ./dependencies/generators/gradlegen.nix {
           wawonaSrc = src;
           wawonaAndroidProject = if (system == "aarch64-darwin" || system == "x86_64-darwin") then wawona-android.project else null;
@@ -532,41 +546,9 @@
         inherit pkgs systemPackages;
         xcodeUtils = import ./dependencies/utils/xcode-wrapper.nix { inherit (pkgs) lib pkgs; };
       };
-      cleanPkgs = import nixpkgs { inherit system; config.allowUnfree = true; };
-      
-      androidHostPkgs = import nixpkgs {
-        inherit system;
-        config = {
-          allowUnfree = true;
-          android_sdk.accept_license = true;
-        };
-      };
-
-      androidSDK = androidHostPkgs.androidenv.composeAndroidPackages {
-        cmdLineToolsVersion = "8.0";
-        buildToolsVersions = [ "36.0.0" ];
-        platformToolsVersion = "35.0.2";
-        platformVersions = [ "36" ];
-        abiVersions = [ "arm64-v8a" ];
-        systemImageTypes = [ "google_apis_playstore" ];
-        includeEmulator = true;
-        emulatorVersion = "35.1.4";
-        includeSystemImages = true;
-        useGoogleAPIs = false;
-        includeNDK = true;
-        ndkVersions = ["27.0.12077973"];
-      };
-
-      androidUtils = import ./dependencies/utils/android-wrapper.nix { inherit (pkgs) lib; inherit pkgs androidSDK; };
-      
-      src = srcFor pkgs;
-      wv = wawonaVersion; # Use centralization
-      
-
     in {
       name = system;
       value = {
-      } // {
         nom = {
           type = "app";
           program = "${systemPackages.nom}/bin/nom";
@@ -574,7 +556,7 @@
 
         wawona-android-provision = {
           type = "app";
-          program = "${androidUtils.provisionAndroidScript}/bin/provision-android";
+          program = "${systemPackages.wawona-android-provision}/bin/provision-android";
         };
 
         wawona-android-project = {
@@ -642,8 +624,6 @@
           program = "${systemPackages.graphics-validate}/bin/graphics-validate";
         };
 
-
-        
         wawona-ios-provision = {
           type = "app";
           program = "${systemPackages.wawona-ios-provision}/bin/provision-xcode";

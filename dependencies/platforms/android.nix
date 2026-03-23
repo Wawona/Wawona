@@ -4,6 +4,7 @@
   buildPackages,
   common,
   buildModule,
+  androidSDK ? null,
 }:
 
 let
@@ -166,7 +167,7 @@ in
       }
     else
       let
-        androidToolchain = import ../toolchains/android.nix { inherit lib pkgs; };
+        androidToolchain = import ../toolchains/android.nix { inherit lib pkgs androidSDK; };
         src = fetchSource entry;
         buildSystem = getBuildSystem entry;
         buildFlags = entry.buildFlags.android or [ ];

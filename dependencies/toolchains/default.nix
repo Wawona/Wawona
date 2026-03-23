@@ -6,6 +6,7 @@
   wawonaSrc ? ../..,
   pkgsAndroid ? null,
   pkgsIos ? null,
+  androidSDK ? null,
 }:
 
 let
@@ -143,7 +144,7 @@ let
       }
     else
       (import ../platforms/android.nix {
-        inherit lib pkgs buildPackages common;
+        inherit lib pkgs buildPackages common androidSDK;
         buildModule = androidModule;
       }).buildForAndroid name entry;
 

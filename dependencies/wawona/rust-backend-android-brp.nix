@@ -3,11 +3,11 @@
 # can't run on the host. buildRustPackage uses cargo which correctly builds
 # build-deps for host. Use this for Android until crate2nix gains host-dep support.
 #
-{ pkgs, lib, workspaceSrc, nativeDeps, wawonaVersion }:
+{ pkgs, lib, workspaceSrc, nativeDeps, wawonaVersion, androidSDK ? null }:
 
 let
-  androidToolchain = import ../toolchains/android.nix { inherit lib pkgs; };
-  NDK_SYSROOT = "${androidToolchain.androidndkRoot}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot";
+  androidToolchain = import ../toolchains/android.nix { inherit lib pkgs androidSDK; };
+  NDK_SYSROOT = "${androidToolchain.androidndkRoot}/sysroot";
   NDK_LIB_PATH = "${NDK_SYSROOT}/usr/lib/aarch64-linux-android/${toString androidToolchain.androidNdkApiLevel}";
   androidLinkerWrapper = pkgs.writeShellScript "android-linker-wrapper" ''
     exec ${androidToolchain.androidCC} \

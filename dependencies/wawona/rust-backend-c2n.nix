@@ -29,6 +29,7 @@
 , toolchains ? null # cross-compilation toolchains
 , nativeDeps ? {}   # platform-specific native library derivations
 , nixpkgs           # the nixpkgs source (used to build a clean cross pkgs)
+, androidSDK ? null
 }:
 
 let
@@ -53,11 +54,11 @@ let
 
   # ── Android toolchain ──────────────────────────────────────────────
   androidToolchain = if isAndroid then
-    import ../toolchains/android.nix { inherit lib pkgs; }
+    import ../toolchains/android.nix { inherit lib pkgs androidSDK; }
   else null;
 
   NDK_SYSROOT = if isAndroid then
-    "${androidToolchain.androidndkRoot}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot"
+    "${androidToolchain.androidndkRoot}/sysroot"
   else null;
 
   NDK_LIB_PATH = if isAndroid then

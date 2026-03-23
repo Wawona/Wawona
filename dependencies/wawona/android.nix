@@ -16,7 +16,7 @@ let
   common = import ./common.nix { inherit lib pkgs wawonaSrc; };
   provisionScript = if androidUtils != null then "${androidUtils.provisionAndroidScript}/bin/provision-android" else "";
 
-  androidToolchain = import ../toolchains/android.nix { inherit lib; pkgs = targetPkgs; };
+  androidToolchain = import ../toolchains/android.nix { inherit lib androidSDK; pkgs = targetPkgs; };
   
   projectVersion =
     if (wawonaVersion != null && wawonaVersion != "") then wawonaVersion
