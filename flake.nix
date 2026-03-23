@@ -442,6 +442,7 @@
           xcodegenProject = xcodegenOutputs.project;
 
         in {
+          wawona-ios-provision = (import ./dependencies/utils/xcode-wrapper.nix { inherit (pkgs) lib pkgs; }).provisionXcodeScript;
           wawona-macos = wawona-macos;
           wawona-macos-backend = backend-macos;
 
