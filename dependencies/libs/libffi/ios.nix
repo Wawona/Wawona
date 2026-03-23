@@ -101,6 +101,8 @@ pkgs.stdenv.mkDerivation {
   '';
   configurePhase = ''
     runHook preConfigure
+    # Unset SDKROOT so it doesn't leak into host-side tool builds
+    unset SDKROOT
     ./configure --prefix=$out --host=aarch64-apple-darwin ${
       lib.concatMapStringsSep " " (flag: flag) buildFlags
     }

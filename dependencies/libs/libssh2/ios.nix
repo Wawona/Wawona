@@ -103,6 +103,9 @@ set(CMAKE_C_FLAGS "-m${if simulator then "ios-simulator" else "iphoneos"}-versio
 set(CMAKE_CXX_FLAGS "-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 -fPIC")
 set(BUILD_SHARED_LIBS OFF)
 EOF
+
+    # Unset SDKROOT so it doesn't leak into host-side tool builds during cmake checks
+    unset SDKROOT
   '';
   cmakeFlags = [
     "-DCMAKE_TOOLCHAIN_FILE=ios-toolchain.cmake"

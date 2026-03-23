@@ -78,9 +78,9 @@ pkgs.stdenv.mkDerivation {
 
     # Architecture and SDK flags
     # FFmpeg requires C11 support - set for both host and target
-    export CFLAGS="-arch arm64 -isysroot ${pkgs.apple-sdk_26}/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -mmacosx-version-min=26.0 -std=c11"
-    export CXXFLAGS="-arch arm64 -isysroot ${pkgs.apple-sdk_26}/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -mmacosx-version-min=26.0"
-    export LDFLAGS="-arch arm64 -isysroot ${pkgs.apple-sdk_26}/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -mmacosx-version-min=26.0"
+    export CFLAGS="-arch arm64 -isysroot $SDKROOT -mmacosx-version-min=26.0 -std=c11"
+    export CXXFLAGS="-arch arm64 -isysroot $SDKROOT -mmacosx-version-min=26.0"
+    export LDFLAGS="-arch arm64 -isysroot $SDKROOT -mmacosx-version-min=26.0"
 
     # Host compiler flags for FFmpeg's configure tests
     export HOSTCC="${pkgs.clang}/bin/clang"

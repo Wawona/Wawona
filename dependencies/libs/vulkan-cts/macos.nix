@@ -33,7 +33,6 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
     vulkan-loader
     vulkan-utility-libraries
     zlib
-    apple-sdk_26
   ];
 
   depsBuildBuild = with pkgs; [

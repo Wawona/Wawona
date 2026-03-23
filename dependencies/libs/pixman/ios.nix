@@ -115,6 +115,8 @@ EOF
   '';
   configurePhase = ''
     runHook preConfigure
+    # Unset SDKROOT so it doesn't leak into host-side tool builds
+    unset SDKROOT
     meson setup build \
       --prefix=$out \
       --libdir=$out/lib \

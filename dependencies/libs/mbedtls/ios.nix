@@ -98,6 +98,9 @@ set(BUILD_SHARED_LIBS OFF)
 set(CMAKE_AR "$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar")
 set(CMAKE_RANLIB "$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib")
 EOF
+
+    # Unset SDKROOT so it doesn't leak into host-side tool builds during cmake checks
+    unset SDKROOT
   '';
   cmakeFlags = [
     "-DCMAKE_TOOLCHAIN_FILE=ios-toolchain.cmake"

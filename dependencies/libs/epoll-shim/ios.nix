@@ -153,10 +153,15 @@ pkgs.stdenv.mkDerivation {
   ];
   configurePhase = ''
     runHook preConfigure
+    # Capture SDKROOT before unsetting it for host builds
+    SDKROOT_VAL="$SDKROOT"
+    # Unset SDKROOT so it doesn't leak into host-side tool builds during cmake checks
+    unset SDKROOT
+
     # Add iOS-specific flags that depend on SDKROOT
     EXTRA_CMAKE_FLAGS=""
-    if [ -n "''${SDKROOT:-}" ]; then
-      EXTRA_CMAKE_FLAGS="-DCMAKE_OSX_SYSROOT=$SDKROOT -DCMAKE_OSX_DEPLOYMENT_TARGET=26.0"
+    if [ -n "$SDKROOT_VAL" ]; then
+      EXTRA_CMAKE_FLAGS="-DCMAKE_OSX_SYSROOT=$SDKROOT_VAL -DCMAKE_OSX_DEPLOYMENT_TARGET=26.0"
     fi
     cmake -B build -S . \
       -DCMAKE_TOOLCHAIN_FILE=ios-toolchain.cmake \

@@ -28,7 +28,6 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
     libffi
     libpng
     zlib
-    apple-sdk_26
   ];
 
   preConfigure = ''

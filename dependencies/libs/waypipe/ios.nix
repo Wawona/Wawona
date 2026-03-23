@@ -235,6 +235,19 @@ rustflags = [
   "-C", "link-arg=-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0"
 ]
 CARGO_EOF
+
+    # Set target linker environmental variable (highest precedence)
+    export "CARGO_TARGET_''${target_underscore^^}_LINKER"="$XCODE_CLANG"
+
+    # Set host variables to ensure build scripts use host SDK (prevents SDKROOT poisoning)
+    export MACOS_SDK=$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || echo "$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk")
+    export HOST_CC="/usr/bin/clang"
+    export HOST_CFLAGS="-isysroot $MACOS_SDK"
+    export HOST_LDFLAGS="-isysroot $MACOS_SDK"
+
+    # CRITICAL: Unset SDKROOT so it doesn't poison host-side tool builds (e.g. libc build script)
+    # Cargo/cc-rs will use the target-specific variables or xcrun instead.
+    unset SDKROOT
   '';
 
   buildPhase = ''
