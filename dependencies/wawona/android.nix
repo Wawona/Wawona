@@ -1662,8 +1662,8 @@ MODBAR
       cd ../..
 
       # Create Gradle build files (using gradlegen)
-      cp ${gradlegen.buildGradle} build.gradle.kts
-      cp ${gradlegen.settingsGradle} settings.gradle.kts
+      cp ${android_gradlegen_internal.buildGradle} build.gradle.kts
+      cp ${android_gradlegen_internal.settingsGradle} settings.gradle.kts
       chmod u+w build.gradle.kts settings.gradle.kts
 
       # Create gradle.properties with AndroidX support

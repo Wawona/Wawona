@@ -6,7 +6,7 @@ let
     else "v${wawonaVersion}";
   androidIconAssets =
     if wawonaSrc != null && builtins.pathExists ./android-icon-assets.nix then
-      pkgs.callPackage ./android-icon-assets.nix { inherit wawonaSrc; }
+      import ./android-icon-assets.nix { inherit pkgs lib wawonaSrc; }
     else
       null;
   buildGradle = pkgs.writeText "build.gradle.kts" ''

@@ -239,7 +239,9 @@
         # Define the main package based on platform
         mainPackage = if pkgs.stdenv.isDarwin then null else pkgs.hello;
 
-        gradlegen_tool_script = (pkgs.callPackage ./dependencies/generators/gradlegen.nix {
+      in let
+        cleanPkgs = import nixpkgs { inherit system; config.allowUnfree = true; };
+        gradlegen_tool_script = (cleanPkgs.callPackage ./dependencies/generators/gradlegen.nix {
           wawonaSrc = src;
           wawonaAndroidProject = if (system == "aarch64-darwin" || system == "x86_64-darwin") then wawona-android.project else null;
         }).generateScript;
