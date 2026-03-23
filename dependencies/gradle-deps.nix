@@ -27,7 +27,7 @@ stdenv.mkDerivation {
 
   outputHashAlgo = "sha256";
   outputHashMode = "recursive";
-  outputHash = "sha256-Nl3n6b2S9bGJkY2YU3cN5aNa2gg8a/ZIQkmSBkTNGO8=";
+  outputHash = "sha256-t/VNBe7/+sPnrjFLMY6sMN0+Jh7Rb0PDhcnaovCK234=";
 
   buildPhase = ''
     export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
@@ -116,12 +116,19 @@ stdenv.mkDerivation {
     rm -rf $out/caches/*/generated-gradle-jars/
     rm -rf $out/caches/modules-2/metadata-*/
 
-    # Remove files containing Nix store paths (references to init scripts etc)
+    # Remove files containing Nix store paths or build-time paths
     # We use a loop to avoid xargs issues and handle empty results
     # (grep returns 1 if no matches, so we use || true)
     grep -r -l "/nix/store" $out | while read -r file; do
       echo "Removing $file containing store path"
       rm -f "$file"
     done || true
+
+    if [ -n "''${NIX_BUILD_TOP:-}" ]; then
+      grep -r -l "$NIX_BUILD_TOP" $out | while read -r file; do
+        echo "Removing $file containing build top path"
+        rm -f "$file"
+      done || true
+    fi
   '';
 }
