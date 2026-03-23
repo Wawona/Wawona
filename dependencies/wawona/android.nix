@@ -27,10 +27,10 @@ let
   gradleDeps = pkgs.callPackage ../gradle-deps.nix {
     inherit wawonaSrc androidSDK;
     inherit (pkgs) gradle jdk17;
-    inherit gradlegen;
+    gradlegen = localGradlegen;
   };
 
-  gradlegen = pkgs.callPackage ../generators/gradlegen.nix { wawonaVersion = projectVersion; };
+  localGradlegen = pkgs.callPackage ../generators/gradlegen.nix { wawonaVersion = projectVersion; };
 
   androidIconAssets =
     if builtins.pathExists ../generators/android-icon-assets.nix then
