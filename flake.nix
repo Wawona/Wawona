@@ -239,9 +239,9 @@
         # Define the main package based on platform
         mainPackage = if pkgs.stdenv.isDarwin then null else pkgs.hello;
 
-        wawonaGradlegen = (pkgs.callPackage ./dependencies/generators/gradlegen.nix {
+        gradlegen_tool_script = (pkgs.callPackage ./dependencies/generators/gradlegen.nix {
           wawonaSrc = src;
-          wawonaAndroidProject = if pkgs.stdenv.isDarwin then wawona-android.project else null;
+          wawonaAndroidProject = if (system == "aarch64-darwin" || system == "x86_64-darwin") then wawona-android.project else null;
         }).generateScript;
 
         packagesForSystem = {
@@ -250,8 +250,8 @@
           wawona = mainPackage;
           wawona-android = wawona-android;
           wawona-android-backend = backend-android;
-          gradlegen = wawonaGradlegen;
-          wawona-android-project = wawonaGradlegen;
+          gradlegen = gradlegen_tool_script;
+          wawona-android-project = gradlegen_tool_script;
           vulkan-cts-android = vulkan-cts-android;
           gl-cts-android = gl-cts-android;
           wawona-android-provision = androidUtils.provisionAndroidScript;
