@@ -475,6 +475,7 @@
           # Full Xcode project with both iOS + macOS targets
           xcodegen = xcodegen;
           wawona-ios-project = xcodegen;
+          wawona-macos-project = xcodegen;
           xcodegenProject = xcodegenProject;
           # iOS-only Xcode project (disabled: pkgsCross.iphone64 triggers infinite recursion in nixpkgs)
           # xcodegen-ios = (pkgs.callPackage ./dependencies/generators/xcodegen.nix {
