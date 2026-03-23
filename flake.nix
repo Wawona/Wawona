@@ -239,16 +239,19 @@
         # Define the main package based on platform
         mainPackage = if pkgs.stdenv.isDarwin then null else pkgs.hello;
 
+        gradlegen = (pkgs.callPackage ./dependencies/generators/gradlegen.nix {
+          wawonaSrc = src;
+          wawonaAndroidProject = wawona-android.project;
+        }).generateScript;
+
         packagesForSystem = {
           nom = pkgs.nix-output-monitor;
           default = mainPackage;
           wawona = mainPackage;
           wawona-android = wawona-android;
           wawona-android-backend = backend-android;
-          gradlegen = (pkgs.callPackage ./dependencies/generators/gradlegen.nix {
-            wawonaSrc = src;
-            wawonaAndroidProject = wawona-android.project;
-          }).generateScript;
+          gradlegen = gradlegen;
+          wawona-android-project = gradlegen;
           vulkan-cts-android = vulkan-cts-android;
           gl-cts-android = gl-cts-android;
         } // (pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin (let

@@ -248,10 +248,12 @@ pkgs.stdenv.mkDerivation {
           echo "=== Testing library linkage ==="
           # Re-setup iOS toolchain for link test
           # Already set up in preConfigure, but ensure SDKROOT and IOS_CC are exported
-          if [ -n "''${SDKROOT:-}" ] && [ -d "$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin" ]; then
-             IOS_CC="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
+          # Capture back the SDKROOT we unset during configure
+          RE_SDKROOT=$(xcrun --sdk ${if simulator then "iphonesimulator" else "iphoneos"} --show-sdk-path 2>/dev/null || echo "$SDKROOT_VAL")
+          if [ -n "$RE_SDKROOT" ] && [ -d "$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin" ]; then
+             RE_IOS_CC="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
           else
-             IOS_CC="${buildPackages.clang}/bin/clang"
+             RE_IOS_CC="${buildPackages.clang}/bin/clang"
           fi
           
           cat > test_link.c <<'TESTCODE'
@@ -272,7 +274,7 @@ pkgs.stdenv.mkDerivation {
           
           # REQUIRED TEST: Compile and link a test program (this verifies the library works)
           # This test MUST pass for the build to succeed
-          if [ -n "''${SDKROOT:-}" ] && [ -n "$IOS_CC" ] && [ -x "$IOS_CC" ]; then
+          if [ -n "$RE_SDKROOT" ] && [ -n "$RE_IOS_CC" ] && [ -x "$RE_IOS_CC" ]; then
             echo "Running link test: Compiling test program with iOS toolchain..."
             
             # Set up pkg-config
@@ -285,13 +287,13 @@ pkgs.stdenv.mkDerivation {
             
             IOS_ARCH="arm64"
             
-            "$IOS_CC" -isysroot "$SDKROOT" \
+            TEST_OUTPUT=$("$RE_IOS_CC" -isysroot "$RE_SDKROOT" \
                -arch $IOS_ARCH \
                -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 \
                $PKG_CFLAGS \
                $PKG_LIBS \
                test_link.c \
-               -o test_link_ios
+               -o test_link_ios 2>&1)
             TEST_EXIT_CODE=$?
             
             if [ $TEST_EXIT_CODE -eq 0 ] && [ -f test_link_ios ]; then
