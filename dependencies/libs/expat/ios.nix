@@ -30,15 +30,35 @@ pkgs.stdenv.mkDerivation {
   ];
   buildInputs = [ ];
   preConfigure = ''
-        if [ -z "''${XCODE_APP:-}" ]; then
-          XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode || true)
-          if [ -n "$XCODE_APP" ]; then
-            export XCODE_APP
-            export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
-            export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
-            export SDKROOT="$DEVELOPER_DIR/Platforms/${if simulator then "iPhoneSimulator" else "iPhoneOS"}.platform/Developer/SDKs/${if simulator then "iPhoneSimulator" else "iPhoneOS"}.sdk"
+        # Robust SDK detection
+        if [ "$simulator" = "true" ]; then
+          IOS_SDK=$(xcrun --sdk iphonesimulator --show-sdk-path 2>/dev/null || true)
+          if [ ! -d "$IOS_SDK" ]; then
+            IOS_SDK=$(${xcodeUtils.ensureIosSimSDK}/bin/ensure-ios-sim-sdk) || true
+          fi
+          if [ ! -d "$IOS_SDK" ]; then
+            XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode || true)
+            IOS_SDK="$XCODE_APP/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk"
+          fi
+        else
+          IOS_SDK=$(xcrun --sdk iphoneos --show-sdk-path 2>/dev/null || true)
+          if [ ! -d "$IOS_SDK" ]; then
+            XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode || true)
+            IOS_SDK="$XCODE_APP/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"
           fi
         fi
+
+        if [ ! -d "$IOS_SDK" ]; then
+          echo "ERROR: iOS SDK not found. Build cannot proceed." >&2
+          exit 1
+        fi
+        export SDKROOT="$IOS_SDK"
+        export IOS_SDK
+
+        # Find the Developer dir associated with this SDK
+        export DEVELOPER_DIR=$(echo "$IOS_SDK" | sed -E 's|^(.*\.app/Contents/Developer)/.*$|\1|')
+        [ "$DEVELOPER_DIR" = "$IOS_SDK" ] && DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
+        export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
         if [ -d expat ]; then
           cd expat
         fi

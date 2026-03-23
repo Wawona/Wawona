@@ -64,24 +64,28 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
     # Strip Nix stdenv's DEVELOPER_DIR to bypass any store fallbacks
     unset DEVELOPER_DIR
 
-    if [ -z "''${XCODE_APP:-}" ]; then
+    # Robust SDK detection (defaulting to Simulator for CTS)
+    SDKROOT=$(xcrun --sdk iphonesimulator --show-sdk-path 2>/dev/null || true)
+    if [ ! -d "$SDKROOT" ]; then
+      # Fallback 1: via ensureIosSimSDK script
+      SDKROOT=$(${xcodeUtils.ensureIosSimSDK}/bin/ensure-ios-sim-sdk) || true
+    fi
+    if [ ! -d "$SDKROOT" ]; then
+      # Fallback 2: Default location
       XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode || true)
       if [ -n "$XCODE_APP" ]; then
         export XCODE_APP
         export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
-        export PATH="$PATH:$DEVELOPER_DIR/usr/bin"
-        
-        # Determine if we should use Simulator or Device SDK. 
-        # Default to Simulator for CTS unless specified otherwise.
         export SDKROOT="$DEVELOPER_DIR/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk"
-        
-        # Ensure it exists
-        if [ ! -d "$SDKROOT" ]; then
-           # Trigger the auto-provisioner
-           SDKROOT=$(${xcodeUtils.ensureIosSimSDK}/bin/ensure-ios-sim-sdk)
-        fi
       fi
     fi
+
+    if [ ! -d "$SDKROOT" ]; then
+      echo "ERROR: iOS SDK not found. Build cannot proceed." >&2
+      exit 1
+    fi
+    export SDKROOT
+    export PATH="$PATH:$DEVELOPER_DIR/usr/bin"
     export NIX_CFLAGS_COMPILE=""
     export NIX_CXXFLAGS_COMPILE=""
 

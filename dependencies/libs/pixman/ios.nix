@@ -48,21 +48,33 @@ pkgs.stdenv.mkDerivation {
     unset DEVELOPER_DIR
 
     ${if simulator then ''
-      # Ensure the iOS Simulator SDK is downloaded if missing and get its path.
-      IOS_SDK_PATH=$(${xcodeUtils.ensureIosSimSDK}/bin/ensure-ios-sim-sdk) || {
-        echo "Error: Failed to ensure iOS Simulator SDK."
-        exit 1
-      }
+      # Robust SDK detection for iOS Simulator
+      IOS_SDK_PATH=$(xcrun --sdk iphonesimulator --show-sdk-path 2>/dev/null || true)
+      if [ ! -d "$IOS_SDK_PATH" ]; then
+        # Fallback 1: via ensureIosSimSDK script
+        IOS_SDK_PATH=$(${xcodeUtils.ensureIosSimSDK}/bin/ensure-ios-sim-sdk) || true
+      fi
+      if [ ! -d "$IOS_SDK_PATH" ]; then
+        # Fallback 2: Default location
+        XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode)
+        IOS_SDK_PATH="$XCODE_APP/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk"
+      fi
     '' else ''
-      # For device, find the latest iPhoneOS SDK path.
-      XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode) || {
-        echo "Error: Xcode not found."
-        exit 1
-      }
-      IOS_SDK_PATH="$XCODE_APP/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"
+      # Robust SDK detection for iOS Device
+      IOS_SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path 2>/dev/null || true)
+      if [ ! -d "$IOS_SDK_PATH" ]; then
+        # Fallback 1: Default location
+        XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode)
+        IOS_SDK_PATH="$XCODE_APP/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"
+      fi
     ''}
 
+    if [ ! -d "$IOS_SDK_PATH" ]; then
+      echo "ERROR: iOS SDK not found. Build cannot proceed." >&2
+      exit 1
+    fi
     export SDKROOT="$IOS_SDK_PATH"
+    export IOS_SDK_PATH
 
     # Find the Developer dir associated with this SDK
     # Use sed instead of grep -oP for macOS compatibility

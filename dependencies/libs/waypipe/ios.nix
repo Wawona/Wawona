@@ -122,20 +122,31 @@ myRustPlatform.buildRustPackage {
     unset DEVELOPER_DIR
 
     ${if simulator then ''
-      # Ensure the iOS Simulator SDK is downloaded if missing and get its path.
-      IOS_SDK=$(${xcodeUtils.ensureIosSimSDK}/bin/ensure-ios-sim-sdk) || {
-        echo "Error: Failed to ensure iOS Simulator SDK."
-        exit 1
-      }
+      # Robust SDK detection for iOS Simulator
+      IOS_SDK=$(xcrun --sdk iphonesimulator --show-sdk-path 2>/dev/null || true)
+      if [ ! -d "$IOS_SDK" ]; then
+        # Fallback 1: via ensureIosSimSDK script
+        IOS_SDK=$(${xcodeUtils.ensureIosSimSDK}/bin/ensure-ios-sim-sdk) || true
+      fi
+      if [ ! -d "$IOS_SDK" ]; then
+        # Fallback 2: Default location
+        XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode)
+        IOS_SDK="$XCODE_APP/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk"
+      fi
     '' else ''
-      # For device, find the latest iPhoneOS SDK path.
-      XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode) || {
-        echo "Error: Xcode not found."
-        exit 1
-      }
-      IOS_SDK="$XCODE_APP/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"
+      # Robust SDK detection for iOS Device
+      IOS_SDK=$(xcrun --sdk iphoneos --show-sdk-path 2>/dev/null || true)
+      if [ ! -d "$IOS_SDK" ]; then
+        # Fallback 1: Default location
+        XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode)
+        IOS_SDK="$XCODE_APP/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"
+      fi
     ''}
 
+    if [ ! -d "$IOS_SDK" ]; then
+      echo "ERROR: iOS SDK not found. Build cannot proceed." >&2
+      exit 1
+    fi
     export SDKROOT="$IOS_SDK"
     export IOS_SDK
 
@@ -208,7 +219,7 @@ myRustPlatform.buildRustPackage {
     export CPP_INCLUDE_PATH="${zstd}/include:${lz4}/include:${libssh2}/include:${openssl-ios}/include:${ffmpeg}/include:${pkgs.vulkan-headers}/include:$CPP_INCLUDE_PATH"
     
     # Configure bindgen for wrap-ffmpeg (FFmpeg headers)
-    export BINDGEN_EXTRA_CLANG_ARGS="-I${zstd}/include -I${lz4}/include -I${libssh2}/include -I${openssl-ios}/include -I${ffmpeg}/include -I${pkgs.vulkan-headers}/include -isysroot $IOS_SDK -miphoneos-version-min=26.0 -target arm64-apple-ios26.0"
+    export BINDGEN_EXTRA_CLANG_ARGS="-I${zstd}/include -I${lz4}/include -I${libssh2}/include -I${openssl-ios}/include -I${ffmpeg}/include -I${pkgs.vulkan-headers}/include -isysroot $IOS_SDK -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 -target ${if simulator then "arm64-apple-ios26.0-simulator" else "arm64-apple-ios26.0"}"
     export BINDGEN="${pkgs.rust-bindgen}/bin/bindgen"
     export PATH="${pkgs.rust-bindgen}/bin:$PATH"
 
