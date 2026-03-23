@@ -8,6 +8,7 @@
 let
   # Try to use nixpkgs epoll-shim, otherwise build from source
   epollShimNixpkgs = pkgs.epoll-shim or null;
+  xcodeUtils = import ../../../utils/xcode-wrapper.nix { inherit lib pkgs; };
   fetchSource = common.fetchSource;
   epollShimSource = {
     source = "github";
