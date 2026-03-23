@@ -35,13 +35,20 @@ let
     else
       null;
   androidndkPkgs =
-    if pkgs.stdenv.buildPlatform.isAarch64 && pkgs.stdenv.buildPlatform.isDarwin then
-      {
-        clang = androidndkPkgsMacOS.toolchainBase;
-        binutils = androidndkPkgsMacOS.toolchainBase;
-      }
+    if pkgs.stdenv.buildPlatform.isDarwin then
+      if pkgs.stdenv.buildPlatform.isAarch64 then
+        {
+          clang = androidndkPkgsMacOS.toolchainBase;
+          binutils = androidndkPkgsMacOS.toolchainBase;
+        }
+      else
+        pkgs.buildPackages.androidndkPkgs
+    else if pkgs.stdenv.buildPlatform.isLinux then
+      # On Linux host, use the NDK from pkgsCross to avoid evaluation aborts
+      pkgs.pkgsCross.aarch64-android.buildPackages.androidndkPkgs
     else
       pkgs.buildPackages.androidndkPkgs;
+
 in
 {
   inherit androidApiLevel androidNdkApiLevel androidTarget;

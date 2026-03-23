@@ -250,8 +250,12 @@
           nom = pkgs.nix-output-monitor;
           default = mainPackage;
           wawona = mainPackage;
+          wawona-android = wawona-android;
+          wawona-android-backend = backend-android;
           gradlegen = gradlegen_tool_script;
           wawona-android-project = gradlegen_tool_script;
+          vulkan-cts-android = vulkan-cts-android;
+          gl-cts-android = gl-cts-android;
           wawona-android-provision = androidUtils.provisionAndroidScript;
         } // (pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin (let
           # ── Pre-patched waypipe source derivations (cached separately) ──
@@ -444,10 +448,6 @@
           xcodegenProject = xcodegenOutputs.project;
 
         in {
-          wawona-android = wawona-android;
-          wawona-android-backend = backend-android;
-          vulkan-cts-android = vulkan-cts-android;
-          gl-cts-android = gl-cts-android;
           wawona-ios-provision = (import ./dependencies/utils/xcode-wrapper.nix { inherit (pkgs) lib pkgs; }).provisionXcodeScript;
           wawona-macos = wawona-macos;
           wawona-macos-backend = backend-macos;
@@ -581,7 +581,7 @@
           type = "app";
           program = "${systemPackages.gradlegen}/bin/gradlegen";
         };
-      } // (pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin {
+
         wawona-android = {
           type = "app";
           program = "${systemPackages.wawona-android}/bin/wawona-android-run";
@@ -596,7 +596,7 @@
           type = "app";
           program = "${systemPackages.gl-cts-android}/bin/gl-cts-android-run";
         };
-
+      } // (pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin {
         wawona-macos = {
           type = "app";
           program = "${systemPackages.default}/bin/wawona";
