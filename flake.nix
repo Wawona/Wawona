@@ -638,7 +638,7 @@
         
         wawona-ios-provision = {
           type = "app";
-          program = "${(import ./dependencies/utils/xcode-wrapper.nix { inherit (pkgs) lib pkgs; }).provisionXcodeScript}/bin/provision-xcode";
+          program = "${systemPackages.wawona-ios-provision}/bin/provision-xcode";
         };
         
         # Run Nix-built iOS app in simulator (avoids recursion from automationScript -> xcodegen)
