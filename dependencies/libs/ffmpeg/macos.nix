@@ -5,7 +5,16 @@
   buildModule,
 }:
 
+let
   xcodeUtils = import ../../../utils/xcode-wrapper.nix { inherit lib pkgs; };
+  fetchSource = common.fetchSource;
+  ffmpegSource = {
+    source = "github";
+    owner = "FFmpeg";
+    repo = "FFmpeg";
+    tag = "n7.1";
+    sha256 = "sha256-erTkv156VskhYEJWjpWFvHjmcr2hr6qgUi28Ho8NFYk=";
+  };
   src = fetchSource ffmpegSource;
 in
 pkgs.stdenv.mkDerivation {
@@ -28,6 +37,7 @@ pkgs.stdenv.mkDerivation {
     zlib
   ];
 
+  preConfigure = ''
     # Robust SDK detection using xcrun (gold standard for modern macOS)
     MACOS_SDK=$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)
     if [ ! -d "$MACOS_SDK" ]; then
@@ -84,7 +94,7 @@ pkgs.stdenv.mkDerivation {
     "--arch=arm64"
     "--target-os=darwin"
     # "--enable-cross-compile"
-    "--sysroot=${pkgs.apple-sdk_26}/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+    "--sysroot=$SDKROOT"
     "--prefix=$out"
     "--libdir=$out/lib"
     "--shlibdir=$out/lib"

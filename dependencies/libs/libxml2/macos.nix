@@ -73,6 +73,7 @@ stdenv.mkDerivation rec {
     export DYLD_LIBRARY_PATH="$PWD/.libs:$DYLD_LIBRARY_PATH"
   '';
 
+  preConfigure = ''
     # Robust SDK detection using xcrun (gold standard for modern macOS)
     MACOS_SDK=$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)
     if [ ! -d "$MACOS_SDK" ]; then

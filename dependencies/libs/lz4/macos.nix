@@ -25,7 +25,6 @@ pkgs.stdenv.mkDerivation {
   ];
   buildInputs = [ ];
 
-  MACOS_SDK = "/System/Library/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk";
   preConfigure = ''
     # Robust SDK detection using xcrun (gold standard for modern macOS)
     MACOS_SDK=$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)
