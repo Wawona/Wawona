@@ -506,6 +506,10 @@
 
           # Graphics validation orchestrator (runs Vulkan + GL CTS with manifests)
           graphics-validate = graphics-validate;
+          graphics-validate-macos = graphics-validate;
+          graphics-validate-ios = graphics-validate;
+          graphics-validate-android = graphics-validate;
+          graphics-validate-all = graphics-validate;
         }));
 
 
