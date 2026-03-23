@@ -241,7 +241,7 @@
 
         gradlegen = (pkgs.callPackage ./dependencies/generators/gradlegen.nix {
           wawonaSrc = src;
-          wawonaAndroidProject = wawona-android.project;
+          wawonaAndroidProject = if pkgs.stdenv.isDarwin then wawona-android.project else null;
         }).generateScript;
 
         packagesForSystem = {
@@ -254,6 +254,7 @@
           wawona-android-project = gradlegen;
           vulkan-cts-android = vulkan-cts-android;
           gl-cts-android = gl-cts-android;
+          wawona-android-provision = androidUtils.provisionAndroidScript;
         } // (pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin (let
           # ── Pre-patched waypipe source derivations (cached separately) ──
           # Changing the patch script only invalidates these + their dependents,
