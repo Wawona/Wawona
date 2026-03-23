@@ -65,6 +65,7 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
     fi
     export SDKROOT="$MACOS_SDK"
     export MACOSX_DEPLOYMENT_TARGET="26.0"
+    cmakeFlagsArray+=("-DCMAKE_OSX_SYSROOT=$SDKROOT")
   '';
 
   cmakeFlags = [
@@ -73,7 +74,6 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
     "-DCMAKE_INSTALL_INCLUDEDIR=include"
     "-DDEQP_TARGET=osx"
     "-DSELECTED_BUILD_TARGETS=${buildTargets}"
-    "-DCMAKE_OSX_SYSROOT=\${SDKROOT}"
     "-DCMAKE_OSX_DEPLOYMENT_TARGET=26.0"
     (lib.cmakeFeature "DGLSLANG_INSTALL_DIR" "${pkgs.glslang}")
     (lib.cmakeFeature "DSPIRV_HEADERS_INSTALL_DIR" "${pkgs.spirv-headers}")
