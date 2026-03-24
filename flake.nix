@@ -85,35 +85,29 @@
             );
       };
 
-    wawonaVersion = let p = pkgsFor "x86_64-linux"; in p.lib.removeSuffix "\n" (p.lib.fileContents (srcFor p + "/VERSION"));
-    waypipe-src = let p = pkgsFor "x86_64-linux"; in p.fetchFromGitLab {
+    # Use a minimal pkgs for version lookup to avoid recursion
+    bootstrapPkgs = import nixpkgs { system = "x86_64-linux"; };
+    wawonaVersion = bootstrapPkgs.lib.removeSuffix "\n" (builtins.readFile (./. + "/VERSION"));
+    waypipe-src = bootstrapPkgs.fetchFromGitLab {
       owner = "mstoeckl"; repo = "waypipe"; rev = "v0.11.0";
       sha256 = "sha256-Tbd/yY90yb2+/ODYVL3SudHaJCGJKatZ9FuGM2uAX+8=";
     };
 
-    getPackagesForSystem = system:
+    getPackagesForSystem = system: pkgs:
       let
-        pkgs = pkgsFor system;
         isLinuxHost = (system == "x86_64-linux" || system == "aarch64-linux");
-        pkgsIos = pkgs.pkgsCross.iphone64;
+        pkgsIos = if !isLinuxHost then pkgs.pkgsCross.iphone64 else null;
         src = srcFor pkgs;
         wawonaSrc = ./.;
 
         toolchains = import ./dependencies/toolchains {
           inherit (pkgs) lib pkgs stdenv buildPackages;
-          inherit wawonaSrc;
-          pkgsAndroid = pkgs;
+          inherit wawonaSrc androidSDK;
+          pkgsAndroid = if isLinuxHost then pkgs.pkgsCross.aarch64-android else pkgs;
           inherit pkgsIos;
         };
 
-        toolchainsAndroid = if isLinuxHost
-          then import ./dependencies/toolchains {
-            inherit (pkgs) lib pkgs stdenv buildPackages;
-            inherit wawonaSrc;
-            pkgsAndroid = pkgs;
-            inherit pkgsIos;
-          }
-          else toolchains;
+        toolchainsAndroid = toolchains;
         
         androidHostPkgs = import nixpkgs {
           inherit system;
@@ -292,7 +286,7 @@
         graphics-validate-macos = { type = "app"; program = "${systemPackages.graphics-validate-macos}/bin/graphics-validate-ios"; };
       });
 
-    allSystemPackages = nixpkgs.lib.genAttrs systemsList (system: getPackagesForSystem system);
+    allSystemPackages = nixpkgs.lib.genAttrs systemsList (system: getPackagesForSystem system (pkgsFor system));
   in {
     packages = allSystemPackages;
     apps = nixpkgs.lib.genAttrs systemsList (system: getAppsForSystem system allSystemPackages.${system});

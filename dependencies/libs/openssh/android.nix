@@ -4,10 +4,11 @@
   buildPackages,
   common,
   buildModule,
+  androidToolchain,
+  ...
 }:
 
 let
-  androidToolchain = import ../../toolchains/android.nix { inherit lib pkgs; };
   NDK_SYSROOT = "${androidToolchain.androidndkRoot}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot";
   NDK_ZLIB_LIB = "${NDK_SYSROOT}/usr/lib/aarch64-linux-android";
 in

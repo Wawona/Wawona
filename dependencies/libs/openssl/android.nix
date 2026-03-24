@@ -4,10 +4,12 @@
   buildPackages,
   common,
   buildModule,
+  androidToolchain,
+  ...
 }:
 
 let
-  androidToolchain = import ../../toolchains/android.nix { inherit lib pkgs; };
+  fetchSource = common.fetchSource;
 in
 pkgs.stdenv.mkDerivation {
   name = "openssl-android";
@@ -27,7 +29,7 @@ pkgs.stdenv.mkDerivation {
     export CFLAGS="--target=${androidToolchain.androidTarget} -fPIC"
     export LDFLAGS="--target=${androidToolchain.androidTarget}"
     export ANDROID_NDK_ROOT="${androidToolchain.androidndkRoot}"
-    export PATH="${androidToolchain.androidndkRoot}/toolchains/llvm/prebuilt/darwin-x86_64/bin:$PATH"
+    # Note: hostTag is handled in toolchains/android.nix
     ./Configure android-arm64 no-shared no-dso no-tests \
       --prefix=$out --openssldir=$out/etc/ssl \
       -D__ANDROID_API__=${toString androidToolchain.androidNdkApiLevel}

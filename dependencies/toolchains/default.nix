@@ -44,6 +44,7 @@ let
   pkgsAndroidEffective = if pkgsAndroid != null then pkgsAndroid else pkgsAndroidRaw;
 
   common = import ./common/common.nix { inherit lib pkgs; };
+  androidToolchain = import ./android.nix { inherit lib pkgs androidSDK; };
 
   # --- Android Toolchain ---
   
@@ -55,74 +56,46 @@ let
       androidModule = {
         buildForAndroid = buildForAndroidInternal;
       };
+      androidArgs = {
+        inherit lib pkgs buildPackages common androidSDK androidToolchain;
+        buildModule = androidModule;
+      };
     in
     if name == "libwayland" then
-      (import ../libs/libwayland/android.nix) {
-        inherit lib pkgs buildPackages common;
-        buildModule = androidModule;
-      }
+      (import ../libs/libwayland/android.nix) androidArgs
     else if name == "expat" then
-      (import ../libs/expat/android.nix) {
-        inherit lib pkgs buildPackages common;
-        buildModule = androidModule;
-      }
+      (import ../libs/expat/android.nix) androidArgs
     else if name == "libffi" then
-      (import ../libs/libffi/android.nix) {
-        inherit lib pkgs buildPackages common;
-        buildModule = androidModule;
-      }
+      (import ../libs/libffi/android.nix) androidArgs
     else if name == "libxml2" then
-      (import ../libs/libxml2/android.nix) {
-        inherit lib pkgs buildPackages common;
-        buildModule = androidModule;
-      }
+      (import ../libs/libxml2/android.nix) androidArgs
     else if name == "waypipe" then
-      (import ../libs/waypipe/android.nix) {
-        inherit lib pkgs buildPackages common;
-        buildModule = androidModule;
-      }
+      (import ../libs/waypipe/android.nix) androidArgs
     else if name == "pixman" then
-      (import ../libs/pixman/android.nix) {
-        inherit lib pkgs buildPackages common;
-        buildModule = androidModule;
-      }
+      (import ../libs/pixman/android.nix) androidArgs
     else if name == "xkbcommon" then
-      (import ../libs/xkbcommon/android.nix) {
-        inherit lib pkgs buildPackages common;
-        buildModule = androidModule;
-      }
+      (import ../libs/xkbcommon/android.nix) androidArgs
     else if name == "openssl" then
-      (import ../libs/openssl/android.nix) {
-        inherit lib pkgs buildPackages common;
-        buildModule = androidModule;
-      }
+      (import ../libs/openssl/android.nix) androidArgs
     else if name == "libssh2" then
-      (import ../libs/libssh2/android.nix) {
-        inherit lib pkgs buildPackages common;
-        buildModule = androidModule;
-      }
+      (import ../libs/libssh2/android.nix) androidArgs
     else if name == "mbedtls" then
-      (import ../libs/mbedtls/android.nix) {
-        inherit lib pkgs buildPackages common;
-        buildModule = androidModule;
-      }
+      (import ../libs/mbedtls/android.nix) androidArgs
     else if name == "openssh" then
-      (import ../libs/openssh/android.nix) {
-        inherit lib pkgs buildPackages common;
-        buildModule = androidModule;
-      }
+      (import ../libs/openssh/android.nix) androidArgs
     else if name == "sshpass" then
-      (import ../libs/sshpass/android.nix) {
-        inherit lib pkgs buildPackages common;
-        buildModule = androidModule;
-      }
+      (import ../libs/sshpass/android.nix) androidArgs
     else if name == "vulkan-cts" then
       (import ../libs/vulkan-cts/android.nix) {
-        inherit lib pkgs buildPackages;
+        inherit lib pkgs buildPackages androidSDK;
+      }
+    else if name == "gl-cts" then
+      (import ../libs/vulkan-cts/gl-cts-android.nix) {
+        inherit lib pkgs buildPackages androidSDK;
       }
     else if name == "weston" then
       import ../clients/weston/android.nix {
-        inherit lib pkgs stdenv wawonaSrc;
+        inherit lib pkgs stdenv wawonaSrc androidSDK;
         fetchurl = pkgs.fetchurl;
         meson = pkgs.meson;
         ninja = pkgs.ninja;

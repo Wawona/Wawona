@@ -4,10 +4,12 @@
   buildPackages,
   common,
   buildModule,
+  androidToolchain, # androidToolchain passed from caller
+  ...
 }:
 
 let
-  androidToolchain = import ../../toolchains/android.nix { inherit lib pkgs; };
+  # androidToolchain = import ../../toolchains/android.nix { inherit lib pkgs; }; # Removed as androidToolchain is now a direct argument
   src = pkgs.fetchFromGitHub {
     owner = "Mbed-TLS";
     repo = "mbedtls";
