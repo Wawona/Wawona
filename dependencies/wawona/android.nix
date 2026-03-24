@@ -17,8 +17,8 @@ let
   common = import ./common.nix { inherit lib pkgs wawonaSrc; };
   provisionScript = if androidUtils != null then "${androidUtils.provisionAndroidScript}/bin/provision-android" else "";
 
-  androidToolchainEffective = if androidToolchain != null then androidToolchain else import ../toolchains/android.nix { inherit lib androidSDK; pkgs = targetPkgs; };
-  androidToolchain = androidToolchainEffective;
+  # androidToolchain is passed from flake.nix; fall back to local import if needed
+  androidToolchainResolved = if androidToolchain != null then androidToolchain else import ../toolchains/android.nix { inherit lib androidSDK; pkgs = targetPkgs; };
   
   projectVersion =
     if (wawonaVersion != null && wawonaVersion != "") then wawonaVersion
@@ -126,7 +126,7 @@ let
     set +e
 
     NIX_SDK_PATH="${nixSdkPath}"
-    NDK_ROOT="${androidToolchain.androidndkRoot}"
+    NDK_ROOT="${androidToolchainResolved.androidndkRoot}"
 
     USE_SYSTEM_SDK=false
     if [ "$(uname -m)" = "arm64" ] && [ "$(uname -s)" = "Darwin" ]; then
@@ -1434,14 +1434,14 @@ MODBAR
       chmod -R u+w deps/weston-simple-shm
 
       # Setup Android toolchain
-      export CC="${androidToolchain.androidCC}"
-      export CXX="${androidToolchain.androidCXX}"
-      export AR="${androidToolchain.androidAR}"
-      export STRIP="${androidToolchain.androidSTRIP}"
-      export RANLIB="${androidToolchain.androidRANLIB}"
-      export CFLAGS="--target=${androidToolchain.androidTarget} -fPIC"
-      export CXXFLAGS="--target=${androidToolchain.androidTarget} -fPIC"
-      export LDFLAGS="--target=${androidToolchain.androidTarget}"
+      export CC="${androidToolchainResolved.androidCC}"
+      export CXX="${androidToolchainResolved.androidCXX}"
+      export AR="${androidToolchainResolved.androidAR}"
+      export STRIP="${androidToolchainResolved.androidSTRIP}"
+      export RANLIB="${androidToolchainResolved.androidRANLIB}"
+      export CFLAGS="--target=${androidToolchainResolved.androidTarget} -fPIC"
+      export CXXFLAGS="--target=${androidToolchainResolved.androidTarget} -fPIC"
+      export LDFLAGS="--target=${androidToolchainResolved.androidTarget}"
 
       # Android dependencies setup
       mkdir -p android-dependencies/include
@@ -1478,7 +1478,7 @@ MODBAR
              -fPIC \
              ${lib.concatStringsSep " " common.commonCFlags} \
              ${lib.concatStringsSep " " common.debugCFlags} \
-             --target=${androidToolchain.androidTarget} \
+             --target=${androidToolchainResolved.androidTarget} \
              -o "$obj_file"; then
             OBJ_FILES="$OBJ_FILES $obj_file"
           else
@@ -1497,7 +1497,7 @@ MODBAR
            -Ideps/weston-simple-shm/include \
            -Iandroid-dependencies/include \
            -fPIC \
-           --target=${androidToolchain.androidTarget} \
+           --target=${androidToolchainResolved.androidTarget} \
            -o "$obj_file"; then
           OBJ_FILES="$OBJ_FILES $obj_file"
         else
@@ -1538,7 +1538,7 @@ MODBAR
          -lssl -lcrypto \
          -lzstd -llz4 \
          -llog -landroid -lvulkan -lm -ldl -lz \
-         -g --target=${androidToolchain.androidTarget} \
+         -g --target=${androidToolchainResolved.androidTarget} \
          -o libwawona.so
          
       # Setup Gradle and dependencies
@@ -1581,7 +1581,7 @@ MODBAR
       fi
 
       # Also copy libc++_shared.so
-      NDK_ROOT="${androidToolchain.androidndkRoot}"
+      NDK_ROOT="${androidToolchainResolved.androidndkRoot}"
       LIBCPP_SHARED=$(find "$NDK_ROOT" -name "libc++_shared.so" | grep "aarch64" | head -n 1)
       if [ -f "$LIBCPP_SHARED" ]; then
         cp "$LIBCPP_SHARED" jniLibs/arm64-v8a/

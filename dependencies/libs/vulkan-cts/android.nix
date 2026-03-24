@@ -3,14 +3,12 @@
   pkgs,
   buildPackages,
   androidSDK ? null,
-  androidToolchain ? null,
+  androidToolchain ? (import ../../toolchains/android.nix { inherit lib pkgs androidSDK; }),
   buildTargets ? "deqp",
 }:
 
 let
   common = import ./common.nix { inherit pkgs; };
-  androidToolchainEffective = if androidToolchain != null then androidToolchain else import ../../toolchains/android.nix { inherit lib pkgs androidSDK; };
-  androidToolchain = androidToolchainEffective;
 in
 pkgs.stdenv.mkDerivation (finalAttrs: {
   pname = "vulkan-cts-android";

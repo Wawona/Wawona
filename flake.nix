@@ -97,11 +97,14 @@
       let
         isLinuxHost = (system == "x86_64-linux" || system == "aarch64-linux");
         
-        # Clean package set for Android to avoid ANY host overlay recursion
+        # Clean package set for Android — only the rust-overlay is included
+        # to provide pkgs.rust-bin for waypipe/android.nix. The second and third
+        # host overlays are excluded to prevent cargo → libsecret → gjs → 
+        # spidermonkey → cbindgen recursive evaluation chains.
         androidPkgs = if isLinuxHost then (import nixpkgs {
           inherit system;
           config = { allowUnfree = true; android_sdk.accept_license = true; };
-          overlays = []; # No host overlays
+          overlays = [ (import rust-overlay) ];
         }) else pkgs;
 
         pkgsIos = if !isLinuxHost then pkgs.pkgsCross.iphone64 else null;
@@ -119,7 +122,16 @@
           inherit pkgsIos;
         };
 
-        toolchainsAndroid = toolchains;
+        # On Linux, create a separate toolchains instance using the overlay-free
+        # androidPkgs to prevent rust-overlay from triggering recursive evaluation
+        # chains through cargo → libsecret → gjs → spidermonkey → cbindgen.
+        toolchainsAndroid = if isLinuxHost then import ./dependencies/toolchains {
+          lib = androidPkgs.lib; pkgs = androidPkgs;
+          stdenv = androidPkgs.stdenv; buildPackages = androidPkgs.buildPackages;
+          inherit wawonaSrc androidSDK;
+          pkgsAndroid = pkgsAndroidCross;
+          pkgsIos = null;
+        } else toolchains;
         
         androidSDK = androidPkgs.androidenv.composeAndroidPackages {
           cmdLineToolsVersion = "8.0"; buildToolsVersions = [ "36.0.0" ];
@@ -135,26 +147,28 @@
 
         vulkan-cts-android = import ./dependencies/libs/vulkan-cts/android.nix {
           inherit (pkgs) lib buildPackages stdenv;
+          pkgs = androidPkgs;
           inherit androidSDK;
         };
         gl-cts-android = import ./dependencies/libs/vulkan-cts/gl-cts-android.nix {
           inherit (pkgs) lib buildPackages stdenv;
+          pkgs = androidPkgs;
           inherit androidSDK;
         };
 
         waypipe-patched-android = import ./dependencies/libs/waypipe/waypipe-patched-src.nix {
-          inherit (pkgs) lib fetchFromGitLab stdenv;
+          pkgs = androidPkgs;
           inherit waypipe-src; patchScript = ./dependencies/libs/waypipe/patch-waypipe-android.sh; platform = "android";
         };
 
-        workspace-src-android = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
+        workspace-src-android = androidPkgs.callPackage ./dependencies/wawona/workspace-src.nix {
           wawonaSrc = src; waypipeSrc = waypipe-patched-android; platform = "android"; inherit wawonaVersion;
         };
 
-        backend-android = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
+        backend-android = androidPkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
           inherit crate2nix wawonaVersion nixpkgs androidSDK;
           toolchains = if isLinuxHost then toolchainsAndroid else toolchains;
-          androidToolchain = if isLinuxHost then toolchainsAndroid else null;
+          androidToolchain = if isLinuxHost then toolchainsAndroid.androidToolchain else null;
           workspaceSrc = workspace-src-android; platform = "android";
           nativeDeps = {
             xkbcommon = toolchainsAndroid.buildForAndroid "xkbcommon" {};
@@ -170,11 +184,11 @@
         };
 
         wawonaAndroidPkg = import ./dependencies/wawona/android.nix {
-          inherit (pkgs) lib stdenv clang pkg-config jdk17 gradle unzip zip patchelf file util-linux glslang mesa;
-          pkgs = pkgs;
+          inherit (androidPkgs) lib stdenv clang pkg-config jdk17 gradle unzip zip patchelf file util-linux glslang mesa;
+          pkgs = androidPkgs;
           buildModule = toolchainsAndroid; inherit wawonaSrc wawonaVersion androidSDK androidUtils;
           androidToolchain = toolchainsAndroid.androidToolchain;
-          targetPkgs = pkgs; waypipe = toolchainsAndroid.buildForAndroid "waypipe" { };
+          targetPkgs = androidPkgs; waypipe = toolchainsAndroid.buildForAndroid "waypipe" { };
           rustBackend = backend-android;
         };
 
@@ -316,8 +330,8 @@
         shellHook = "alias nb='nom build'; alias nd='nom develop';";
       });
     });
-    # checks = nixpkgs.lib.genAttrs systemsList (system: let pkgs = pkgsFor system; in pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin {
-    #   graphics-validate-smoke = pkgs.runCommand "graphics-validate-smoke" { nativeBuildInputs = [ pkgs.coreutils ]; } "echo 'smoke check'; test -n '${allSystemPackages.${system}.wawona-android}'; touch $out";
-    # });
+    checks = nixpkgs.lib.genAttrs systemsList (system: let pkgs = pkgsFor system; in pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin {
+      graphics-validate-smoke = pkgs.runCommand "graphics-validate-smoke" { nativeBuildInputs = [ pkgs.coreutils ]; } "echo 'smoke check'; test -n '${allSystemPackages.${system}.wawona-android}'; touch $out";
+    });
   };
 }

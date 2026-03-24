@@ -4,12 +4,10 @@
   buildPackages,
   common,
   buildModule,
-  androidToolchain ? null,
+  androidToolchain ? (import ../../toolchains/android.nix { inherit lib pkgs; }),
 }:
 
 let
-  androidToolchainEffective = if androidToolchain != null then androidToolchain else import ../../toolchains/android.nix { inherit lib pkgs; };
-  androidToolchain = androidToolchainEffective;
   # zstd source - fetch from GitHub
   src = pkgs.fetchFromGitHub {
     owner = "facebook";
