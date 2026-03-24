@@ -1,14 +1,22 @@
-{ pkgs, stdenv, lib, wawonaAndroidProject ? null, wawonaSrc ? null, wawonaVersion ? "v1.0" }:
+{ pkgs, stdenv, lib, wawonaAndroidProject ? null, wawonaSrc ? null, wawonaVersion ? "v1.0", iconAssets ? "AUTO" }:
 
 let
   versionName = if wawonaVersion == null || wawonaVersion == "" then "v1.0"
     else if lib.hasPrefix "v" wawonaVersion then wawonaVersion
     else "v${wawonaVersion}";
-  androidIconAssets =
-    if wawonaSrc != null && builtins.pathExists ./android-icon-assets.nix then
+
+  # Resolve icon assets:
+  # 1. If explicitly null, use null (breaks recursion)
+  # 2. If explicitly provided (not "AUTO"), use that derivation
+  # 3. If "AUTO", try to resolve locally from wawonaSrc
+  androidIconAssets = 
+    if iconAssets == null then null
+    else if iconAssets != "AUTO" then iconAssets
+    else if wawonaSrc != null && builtins.pathExists ./android-icon-assets.nix then
       import ./android-icon-assets.nix { inherit pkgs lib wawonaSrc; }
     else
       null;
+
   buildGradle = pkgs.writeText "build.gradle.kts" ''
     buildscript {
         repositories {
@@ -154,17 +162,19 @@ let
       cp ${buildGradle} "$OUT/build.gradle.kts"
       cp ${settingsGradle} "$OUT/settings.gradle.kts"
       chmod u+w "$OUT/build.gradle.kts" "$OUT/settings.gradle.kts"
-      if [ -n "${toString wawonaSrc}" ] && [ -d "${wawonaSrc}/src/platform/android" ]; then
+      if [ -d "src/platform/android" ]; then
         mkdir -p "$OUT/java" "$OUT/res"
-        cp -r ${wawonaSrc}/src/platform/android/java/* "$OUT/java/" 2>/dev/null || true
-        cp -r ${wawonaSrc}/src/platform/android/res/* "$OUT/res/" 2>/dev/null || true
-        cp ${wawonaSrc}/src/platform/android/AndroidManifest.xml "$OUT/" 2>/dev/null || true
+        cp -r src/platform/android/java/* "$OUT/java/" 2>/dev/null || true
+        cp -r src/platform/android/res/* "$OUT/res/" 2>/dev/null || true
+        cp src/platform/android/AndroidManifest.xml "$OUT/" 2>/dev/null || true
         chmod -R u+w "$OUT/res" 2>/dev/null || true
-        if [ -n "${toString androidIconAssets}" ] && [ -d "${androidIconAssets}/res" ]; then
-          cp -r ${androidIconAssets}/res/* "$OUT/res/"
-          chmod -R u+w "$OUT/res" 2>/dev/null || true
-          echo "Merged Wawona launcher icon assets"
-        fi
+        ${if androidIconAssets != null then ''
+          if [ -d "${androidIconAssets}/res" ]; then
+            cp -r ${androidIconAssets}/res/* "$OUT/res/"
+            chmod -R u+w "$OUT/res" 2>/dev/null || true
+            echo "Merged Wawona launcher icon assets"
+          fi
+        '' else ""}
         echo "Generated gradle files + Android sources in $OUT/ (no jniLibs - run nix build .#wawona-android first for full project)"
       else
         echo "Generated build.gradle.kts and settings.gradle.kts in $OUT/"
