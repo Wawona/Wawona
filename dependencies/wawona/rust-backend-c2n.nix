@@ -30,6 +30,7 @@
 , nativeDeps ? {}   # platform-specific native library derivations
 , nixpkgs           # the nixpkgs source (used to build a clean cross pkgs)
 , androidSDK ? null
+, androidToolchain ? null
 }:
 
 let
@@ -53,9 +54,11 @@ let
   isCross = isIOS || isAndroid;
 
   # ── Android toolchain ──────────────────────────────────────────────
-  androidToolchain = if isAndroid then
-    import ../toolchains/android.nix { inherit lib pkgs androidSDK; }
-  else null;
+  androidToolchainEffective = if androidToolchain != null then androidToolchain 
+    else if isAndroid then import ../toolchains/android.nix { inherit lib pkgs androidSDK; }
+    else null;
+
+  androidToolchain = androidToolchainEffective;
 
   NDK_SYSROOT = if isAndroid then
     "${androidToolchain.androidndkRoot}/sysroot"

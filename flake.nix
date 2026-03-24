@@ -142,6 +142,7 @@
         backend-android = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
           inherit crate2nix wawonaVersion nixpkgs androidSDK;
           toolchains = if isLinuxHost then toolchainsAndroid else toolchains;
+          androidToolchain = if isLinuxHost then toolchainsAndroid else null;
           workspaceSrc = workspace-src-android; platform = "android";
           nativeDeps = {
             xkbcommon = toolchainsAndroid.buildForAndroid "xkbcommon" {};
