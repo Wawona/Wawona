@@ -157,7 +157,15 @@
           }
           else toolchains;
         
-        androidSDK = pkgs.androidenv.composeAndroidPackages {
+        androidHostPkgs = import nixpkgs {
+          inherit system;
+          config = {
+            allowUnfree = true;
+            android_sdk.accept_license = true;
+          };
+        };
+
+        androidSDK = androidHostPkgs.androidenv.composeAndroidPackages {
           cmdLineToolsVersion = "8.0";
           buildToolsVersions = [ "36.0.0" ];
           platformToolsVersion = "35.0.2";
