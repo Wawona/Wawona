@@ -42,11 +42,40 @@
               rustc = self.rustToolchain;
             };
           })
+          # macOS/iOS compatibility fixes (only applied on Darwin hosts)
+          (self: super: 
+            if (super.stdenv.hostPlatform.isDarwin) then {
+              # Fix linuxHeaders build on macOS (expects gcc, but macOS has cc/clang)
+              linuxHeaders = super.linuxHeaders.overrideAttrs (old: {
+                makeFlags = (old.makeFlags or []) ++ [ "HOSTCC=cc" ];
+              });
+
+              # Fix Android-specific bionic headers on macOS (also expects gcc)
+              makeLinuxHeaders = args: (super.makeLinuxHeaders args).overrideAttrs (old: {
+                preConfigure = (old.preConfigure or "") + ''
+                  mkdir -p $TMPDIR/gcc-shim
+                  ln -s $(command -v cc) $TMPDIR/gcc-shim/gcc
+                  ln -s $(command -v c++) $TMPDIR/gcc-shim/g++
+                  export PATH=$TMPDIR/gcc-shim:$PATH
+                '';
+              });
+
+              # Fix LLVM 21's compiler-rt not compiling on Android due to missing pthread.h
+              llvmPackages_21 = if super.stdenv.targetPlatform.isAndroid then super.llvmPackages_21 // {
+                compiler-rt = super.llvmPackages_21.compiler-rt.overrideAttrs (old: {
+                  postPatch = (old.postPatch or "") + ''
+                    sed -i 's|#include <pthread.h>|typedef int pthread_once_t; int pthread_once(pthread_once_t *, void (*)(void));|' lib/builtins/os_version_check.c || true
+                  '';
+                });
+              } else super.llvmPackages_21;
+            } else {}
+          )
         ];
 
         config = {
           allowUnfree = true;
           allowUnsupportedSystem = true;
+          android_sdk.accept_license = true;
         };
       };
 
@@ -103,48 +132,11 @@
     allPackages = builtins.listToAttrs (map (system:
       let
         pkgs = pkgsFor system;
-        cleanPkgs = import nixpkgs {
-          inherit system;
-          config = {
-            allowUnfree = true;
-            allowUnsupportedSystem = true;
-          };
-          overlays = [
-            (import rust-overlay)
-            (self: super: {
-              # Fix linuxHeaders build on macOS (expects gcc, but macOS has cc/clang)
-              linuxHeaders = super.linuxHeaders.overrideAttrs (old: {
-                makeFlags = (old.makeFlags or []) ++ [ "HOSTCC=cc" ];
-              });
-
-              # Fix Android-specific bionic headers on macOS (also expects gcc)
-              # bionic-prebuilt dynamically calls makeLinuxHeaders, so we must intercept the function
-              makeLinuxHeaders = args: (super.makeLinuxHeaders args).overrideAttrs (old: {
-                preConfigure = (old.preConfigure or "") + ''
-                  mkdir -p $TMPDIR/gcc-shim
-                  ln -s $(command -v cc) $TMPDIR/gcc-shim/gcc
-                  ln -s $(command -v c++) $TMPDIR/gcc-shim/g++
-                  export PATH=$TMPDIR/gcc-shim:$PATH
-                '';
-              });
-
-              # Fix LLVM 21's compiler-rt not compiling on Android due to missing pthread.h
-              llvmPackages_21 = if super.stdenv.targetPlatform.isAndroid then super.llvmPackages_21 // {
-                compiler-rt = super.llvmPackages_21.compiler-rt.overrideAttrs (old: {
-                  postPatch = (old.postPatch or "") + ''
-                    sed -i 's|#include <pthread.h>|typedef int pthread_once_t; int pthread_once(pthread_once_t *, void (*)(void));|' lib/builtins/os_version_check.c || true
-                  '';
-                });
-              } else super.llvmPackages_21;
-            })
-          ];
-        };
         isLinuxHost = (system == "x86_64-linux" || system == "aarch64-linux");
-        # Use isolated pkgs for Android on Linux to break recursion
-        targetAndroidPkgs = if isLinuxHost then cleanPkgs else pkgs;
-
-        pkgsAndroid = if isLinuxHost then cleanPkgs else androidHostPkgs;
-        pkgsIos = cleanPkgs.pkgsCross.iphone64;
+        
+        targetAndroidPkgs = pkgs;
+        pkgsAndroid = pkgs;
+        pkgsIos = pkgs.pkgsCross.iphone64;
         src  = srcFor pkgs;
 
         # Wawona system module (macOS/iOS/Android)
@@ -158,22 +150,14 @@
 
         toolchainsAndroid = if isLinuxHost
           then import ./dependencies/toolchains {
-            inherit (cleanPkgs) lib pkgs stdenv buildPackages;
+            inherit (pkgs) lib pkgs stdenv buildPackages;
             wawonaSrc = ./.;
-            pkgsAndroid = cleanPkgs;
+            pkgsAndroid = pkgs;
             inherit pkgsIos;
           }
           else toolchains;
         
-        androidHostPkgs = import nixpkgs {
-          inherit system;
-          config = {
-            allowUnfree = true;
-            android_sdk.accept_license = true;
-          };
-        };
-
-        androidSDK = androidHostPkgs.androidenv.composeAndroidPackages {
+        androidSDK = pkgs.androidenv.composeAndroidPackages {
           cmdLineToolsVersion = "8.0";
           buildToolsVersions = [ "36.0.0" ];
           platformToolsVersion = "35.0.2";
@@ -255,7 +239,7 @@
         mainPackage = if pkgs.stdenv.isDarwin then null else pkgs.hello;
 
       in let
-        gradlegen_tool_script = (cleanPkgs.callPackage ./dependencies/generators/gradlegen.nix {
+        gradlegen_tool_script = (pkgs.callPackage ./dependencies/generators/gradlegen.nix {
           wawonaSrc = src;
           wawonaAndroidProject = if (system == "aarch64-darwin" || system == "x86_64-darwin") then wawona-android.project else null;
         }).generateScript;
