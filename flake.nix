@@ -131,10 +131,10 @@
         androidUtils = import ./dependencies/utils/android-wrapper.nix { inherit (pkgs) lib pkgs; inherit androidSDK; };
 
         vulkan-cts-android = pkgs.callPackage ./dependencies/libs/vulkan-cts/android.nix {
-          lib = pkgs.lib; buildPackages = pkgs.buildPackages;
+          lib = pkgs.lib; buildPackages = pkgs.buildPackages; inherit androidSDK;
         };
         gl-cts-android = pkgs.callPackage ./dependencies/libs/vulkan-cts/gl-cts-android.nix {
-          lib = pkgs.lib; buildPackages = pkgs.buildPackages;
+          lib = pkgs.lib; buildPackages = pkgs.buildPackages; inherit androidSDK;
         };
 
         waypipe-patched-android = pkgs.callPackage ./dependencies/libs/waypipe/waypipe-patched-src.nix {

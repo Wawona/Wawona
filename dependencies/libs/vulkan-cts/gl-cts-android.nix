@@ -3,11 +3,12 @@
   lib,
   pkgs,
   buildPackages,
+  androidSDK ? null,
 }:
 
 let
   common = import ./common.nix { inherit pkgs; };
-  androidToolchain = import ../../toolchains/android.nix { inherit lib pkgs; };
+  androidToolchain = import ../../toolchains/android.nix { inherit lib pkgs androidSDK; };
 in
 pkgs.stdenv.mkDerivation (finalAttrs: {
   pname = "gl-cts-android";
