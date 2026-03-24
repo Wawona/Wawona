@@ -326,7 +326,5 @@ in
   buildForIOS = buildForIOSInternal;
   buildForMacOS = buildForMacOSInternal;
   buildForAndroid = buildForAndroidInternal;
-  inherit macos;
-  # ios = buildAllForPlatform "ios";
-  # android = buildAllForPlatform "android";
+  inherit androidToolchain macos;
 }

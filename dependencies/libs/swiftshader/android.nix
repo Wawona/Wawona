@@ -4,11 +4,13 @@
   buildPackages,
   common,
   buildModule,
+  androidToolchain ? null,
 }:
 
 let
   fetchSource = common.fetchSource;
-  androidToolchain = import ../../toolchains/android.nix { inherit lib pkgs; };
+  androidToolchainEffective = if androidToolchain != null then androidToolchain else import ../../toolchains/android.nix { inherit lib pkgs; };
+  androidToolchain = androidToolchainEffective;
   # SwiftShader source - fetch from GitHub
   # Using same source structure as nixpkgs
   # SwiftShader uses git tags for versions

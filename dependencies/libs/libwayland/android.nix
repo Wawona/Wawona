@@ -4,11 +4,13 @@
   buildPackages,
   common,
   buildModule,
-  androidToolchain ? (import ../../toolchains/android.nix { inherit lib pkgs; }),
+  androidToolchain ? null,
   ...
 }:
 
 let
+  androidToolchainEffective = if androidToolchain != null then androidToolchain else import ../../toolchains/android.nix { inherit lib pkgs; };
+  androidToolchain = androidToolchainEffective;
   fetchSource = common.fetchSource;
   # androidToolchain passed from caller
   waylandSource = {
@@ -308,6 +310,8 @@ pkgs.stdenv.mkDerivation {
         # Android socket compatibility: Some socket flags might not be available
         # Check if we need to define MSG_NOSIGNAL, MSG_DONTWAIT, etc.
         # Android Bionic should have these, but let's be safe
+  androidToolchainEffective = if androidToolchain != null then androidToolchain else import ../../toolchains/android.nix { inherit lib pkgs; };
+  androidToolchain = androidToolchainEffective;
         if [ -f src/connection.c ]; then
           echo "=== Checking connection.c for Android compatibility ==="
           # Android should have CMSG_LEN, but verify
@@ -323,6 +327,8 @@ pkgs.stdenv.mkDerivation {
           echo "=== Patching wayland-os.c for Android ==="
           # Replace the #error block or the whole function if it fails to compile
           # We provide a complete implementation using SO_PEERCRED (17)
+  androidToolchainEffective = if androidToolchain != null then androidToolchain else import ../../toolchains/android.nix { inherit lib pkgs; };
+  androidToolchain = androidToolchainEffective;
           if grep -q '#error "Don.t know how to read ucred' src/wayland-os.c; then
             echo "Found ucred error, replacing with Android SO_PEERCRED implementation"
             sed -i '/#error "Don.t know how to read ucred/c\
@@ -361,6 +367,8 @@ pkgs.stdenv.mkDerivation {
           
           # Check for SOCK_CLOEXEC and MSG_CMSG_CLOEXEC
           # Android should support these, but let's check and define if missing
+  androidToolchainEffective = if androidToolchain != null then androidToolchain else import ../../toolchains/android.nix { inherit lib pkgs; };
+  androidToolchain = androidToolchainEffective;
           sed -i '1i\
     #ifndef SOCK_CLOEXEC\
     #define SOCK_CLOEXEC 0\
@@ -385,6 +393,8 @@ pkgs.stdenv.mkDerivation {
         fi
         
         echo "=== Android compatibility patches complete ==="
+  androidToolchainEffective = if androidToolchain != null then androidToolchain else import ../../toolchains/android.nix { inherit lib pkgs; };
+  androidToolchain = androidToolchainEffective;
   '';
   preConfigure = ''
         export CC="${androidToolchain.androidCC}"

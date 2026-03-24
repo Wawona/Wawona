@@ -4,11 +4,13 @@
   buildPackages,
   common,
   buildModule,
-  androidToolchain ? (import ../../toolchains/android.nix { inherit lib pkgs; }),
+  androidToolchain ? null,
   ...
 }:
 
 let
+  androidToolchainEffective = if androidToolchain != null then androidToolchain else import ../../toolchains/android.nix { inherit lib pkgs; };
+  androidToolchain = androidToolchainEffective;
   fetchSource = common.fetchSource;
   # androidToolchain passed from caller
   libxml2Source = {

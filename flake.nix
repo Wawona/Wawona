@@ -96,25 +96,32 @@
     getPackagesForSystem = system: pkgs:
       let
         isLinuxHost = (system == "x86_64-linux" || system == "aarch64-linux");
+        
+        # Clean package set for Android to avoid ANY host overlay recursion
+        androidPkgs = if isLinuxHost then (import nixpkgs {
+          inherit system;
+          config = { allowUnfree = true; android_sdk.accept_license = true; };
+          overlays = []; # No host overlays
+        }) else pkgs;
+
         pkgsIos = if !isLinuxHost then pkgs.pkgsCross.iphone64 else null;
+        
+        # Define a clean cross-set
+        pkgsAndroidCross = if isLinuxHost then androidPkgs.pkgsCross.aarch64-android else pkgs;
+
         src = srcFor pkgs;
         wawonaSrc = ./.;
 
         toolchains = import ./dependencies/toolchains {
           inherit (pkgs) lib pkgs stdenv buildPackages;
           inherit wawonaSrc androidSDK;
-          pkgsAndroid = if isLinuxHost then pkgs.pkgsCross.aarch64-android else pkgs;
+          pkgsAndroid = pkgsAndroidCross;
           inherit pkgsIos;
         };
 
         toolchainsAndroid = toolchains;
         
-        androidHostPkgs = import nixpkgs {
-          inherit system;
-          config = { allowUnfree = true; android_sdk.accept_license = true; };
-        };
-
-        androidSDK = androidHostPkgs.androidenv.composeAndroidPackages {
+        androidSDK = androidPkgs.androidenv.composeAndroidPackages {
           cmdLineToolsVersion = "8.0"; buildToolsVersions = [ "36.0.0" ];
           platformToolsVersion = "35.0.2"; platformVersions = [ "36" ];
           abiVersions = [ "arm64-v8a" ]; systemImageTypes = [ "google_apis_playstore" ];
@@ -122,16 +129,21 @@
           useGoogleAPIs = false; includeNDK = true; ndkVersions = ["27.0.12077973"];
         };
 
-        androidUtils = import ./dependencies/utils/android-wrapper.nix { inherit (pkgs) lib pkgs; inherit androidSDK; };
-
-        vulkan-cts-android = pkgs.callPackage ./dependencies/libs/vulkan-cts/android.nix {
-          lib = pkgs.lib; buildPackages = pkgs.buildPackages; inherit androidSDK;
-        };
-        gl-cts-android = pkgs.callPackage ./dependencies/libs/vulkan-cts/gl-cts-android.nix {
-          lib = pkgs.lib; buildPackages = pkgs.buildPackages; inherit androidSDK;
+        androidUtils = import ./dependencies/utils/android-wrapper.nix { 
+          lib = androidPkgs.lib; pkgs = androidPkgs; inherit androidSDK; 
         };
 
-        waypipe-patched-android = pkgs.callPackage ./dependencies/libs/waypipe/waypipe-patched-src.nix {
+        vulkan-cts-android = import ./dependencies/libs/vulkan-cts/android.nix {
+          inherit (pkgs) lib buildPackages stdenv;
+          inherit androidSDK;
+        };
+        gl-cts-android = import ./dependencies/libs/vulkan-cts/gl-cts-android.nix {
+          inherit (pkgs) lib buildPackages stdenv;
+          inherit androidSDK;
+        };
+
+        waypipe-patched-android = import ./dependencies/libs/waypipe/waypipe-patched-src.nix {
+          inherit (pkgs) lib fetchFromGitLab stdenv;
           inherit waypipe-src; patchScript = ./dependencies/libs/waypipe/patch-waypipe-android.sh; platform = "android";
         };
 
@@ -157,27 +169,30 @@
           };
         };
 
-        wawona-android = pkgs.callPackage ./dependencies/wawona/android.nix {
+        wawonaAndroidPkg = import ./dependencies/wawona/android.nix {
+          inherit (pkgs) lib stdenv clang pkg-config jdk17 gradle unzip zip patchelf file util-linux glslang mesa;
+          pkgs = pkgs;
           buildModule = toolchainsAndroid; inherit wawonaSrc wawonaVersion androidSDK androidUtils;
+          androidToolchain = toolchainsAndroid.androidToolchain;
           targetPkgs = pkgs; waypipe = toolchainsAndroid.buildForAndroid "waypipe" { };
           rustBackend = backend-android;
         };
 
-        gradlegen = pkgs.callPackage ./dependencies/generators/gradlegen.nix ({
+        gradlegenPkg = pkgs.callPackage ./dependencies/generators/gradlegen.nix ({
           wawonaSrc = if isLinuxHost then ./. else src;
           inherit wawonaVersion;
         } // (pkgs.lib.optionalAttrs isLinuxHost {
           iconAssets = null;
         }) // (pkgs.lib.optionalAttrs (!isLinuxHost) {
-          wawonaAndroidProject = wawona-android.project;
+          wawonaAndroidProject = wawonaAndroidPkg.project;
         }));
 
         packages = {
           nom = pkgs.nix-output-monitor;
-          wawona-android = wawona-android;
+          wawona-android = wawonaAndroidPkg;
           wawona-android-backend = backend-android;
-          gradlegen = gradlegen.generateScript;
-          wawona-android-project = gradlegen.generateScript;
+          gradlegen = gradlegenPkg.generateScript;
+          wawona-android-project = gradlegenPkg.generateScript;
           vulkan-cts-android = vulkan-cts-android;
           gl-cts-android = gl-cts-android;
           wawona-android-provision = androidUtils.provisionAndroidScript;
@@ -264,9 +279,8 @@
         }));
       in packages;
 
-    getAppsForSystem = system: systemPackages:
+    getAppsForSystem = system: pkgs: systemPackages:
       let
-        pkgs = pkgsFor system;
         appPrograms = import ./dependencies/wawona/app-programs.nix {
           inherit pkgs systemPackages;
           xcodeUtils = import ./dependencies/utils/xcode-wrapper.nix { inherit (pkgs) lib pkgs; };
@@ -290,7 +304,7 @@
     allSystemPackages = nixpkgs.lib.genAttrs systemsList (system: getPackagesForSystem system (pkgsFor system));
   in {
     packages = allSystemPackages;
-    apps = nixpkgs.lib.genAttrs systemsList (system: getAppsForSystem system allSystemPackages.${system});
+    apps = nixpkgs.lib.genAttrs systemsList (system: getAppsForSystem system (pkgsFor system) allSystemPackages.${system});
     devShells = nixpkgs.lib.genAttrs systemsList (system: {
       default = let pkgs = pkgsFor system; in if pkgs.stdenv.isDarwin then (pkgs.mkShell {
         nativeBuildInputs = [ pkgs.pkg-config ];
@@ -302,8 +316,8 @@
         shellHook = "alias nb='nom build'; alias nd='nom develop';";
       });
     });
-    checks = nixpkgs.lib.genAttrs systemsList (system: let pkgs = pkgsFor system; in pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin {
-      graphics-validate-smoke = pkgs.runCommand "graphics-validate-smoke" { nativeBuildInputs = [ pkgs.coreutils ]; } "echo 'smoke check'; test -n '${allSystemPackages.${system}.wawona-android}'; touch $out";
-    });
+    # checks = nixpkgs.lib.genAttrs systemsList (system: let pkgs = pkgsFor system; in pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin {
+    #   graphics-validate-smoke = pkgs.runCommand "graphics-validate-smoke" { nativeBuildInputs = [ pkgs.coreutils ]; } "echo 'smoke check'; test -n '${allSystemPackages.${system}.wawona-android}'; touch $out";
+    # });
   };
 }

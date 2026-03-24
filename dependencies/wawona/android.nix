@@ -6,6 +6,7 @@
   wawonaVersion ? null,
   androidSDK ? null,
   androidUtils ? null,
+  androidToolchain ? null,
   rustBackend ? null,
   glslang ? pkgs.glslang,
   targetPkgs,
@@ -16,18 +17,18 @@ let
   common = import ./common.nix { inherit lib pkgs wawonaSrc; };
   provisionScript = if androidUtils != null then "${androidUtils.provisionAndroidScript}/bin/provision-android" else "";
 
-  androidToolchain = import ../toolchains/android.nix { inherit lib androidSDK; pkgs = targetPkgs; };
+  androidToolchainEffective = if androidToolchain != null then androidToolchain else import ../toolchains/android.nix { inherit lib androidSDK; pkgs = targetPkgs; };
+  androidToolchain = androidToolchainEffective;
   
   projectVersion =
     if (wawonaVersion != null && wawonaVersion != "") then wawonaVersion
     else
       let v = lib.removeSuffix "\n" (lib.fileContents (wawonaSrc + "/VERSION"));
       in if v == "" then "0.0.1" else v;
-
   gradleDeps = pkgs.callPackage ../gradle-deps.nix {
     inherit wawonaSrc androidSDK;
     inherit (pkgs) gradle jdk17;
-    gradlegen = android_gradlegen_internal;
+    gradlegen = android_gradlegen_internal.generateScript;
   };
 
   android_gradlegen_internal = pkgs.callPackage ../generators/gradlegen.nix { wawonaVersion = projectVersion; };
