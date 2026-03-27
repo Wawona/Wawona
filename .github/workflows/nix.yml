@@ -21,7 +21,6 @@ jobs:
           "vulkan-cts-android",
           "gl-cts-android",
           "nom",
-          "wawona",
           "wawona-android-project",
           "wawona-android-provision"
         ]

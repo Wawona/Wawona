@@ -1,6 +1,7 @@
 {
   lib,
   pkgs,
+  stdenv ? pkgs.stdenv,
   buildPackages,
   androidSDK ? null,
   androidToolchain ? (import ../../toolchains/android.nix { inherit lib pkgs androidSDK; }),

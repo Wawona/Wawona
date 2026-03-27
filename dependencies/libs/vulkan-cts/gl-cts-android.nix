@@ -2,6 +2,7 @@
 {
   lib,
   pkgs,
+  stdenv ? pkgs.stdenv,
   buildPackages,
   androidSDK ? null,
 }:

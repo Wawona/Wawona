@@ -58,20 +58,18 @@ let
     else if isAndroid then import ../toolchains/android.nix { inherit lib pkgs androidSDK; }
     else null;
 
-  androidToolchain = androidToolchainEffective;
-
   NDK_SYSROOT = if isAndroid then
-    "${androidToolchain.androidndkRoot}/sysroot"
+    "${androidToolchainEffective.androidndkRoot}/sysroot"
   else null;
 
   NDK_LIB_PATH = if isAndroid then
-    "${NDK_SYSROOT}/usr/lib/aarch64-linux-android/${toString androidToolchain.androidNdkApiLevel}"
+    "${NDK_SYSROOT}/usr/lib/aarch64-linux-android/${toString androidToolchainEffective.androidNdkApiLevel}"
   else null;
 
   androidLinkerWrapper = if isAndroid then
     pkgs.writeShellScript "android-linker-wrapper" ''
-      exec ${androidToolchain.androidCC} \
-        --target=${androidToolchain.androidTarget} \
+      exec ${androidToolchainEffective.androidCC} \
+        --target=${androidToolchainEffective.androidTarget} \
         --sysroot=${NDK_SYSROOT} \
         -L${NDK_LIB_PATH} \
         -L${NDK_SYSROOT}/usr/lib/aarch64-linux-android \
@@ -234,10 +232,12 @@ let
       unset DEVELOPER_DIR
     '' else if isAndroid then ''
       unset MACOSX_DEPLOYMENT_TARGET
-      export CC_${cargoTargetUnderscore}="${androidToolchain.androidCC} --target=${androidToolchain.androidTarget}"
-      export CFLAGS_${cargoTargetUnderscore}="--target=${androidToolchain.androidTarget} --sysroot=${NDK_SYSROOT} -fPIC"
+      export CC_${cargoTargetUnderscore}="${androidToolchainEffective.androidCC} --target=${androidToolchainEffective.androidTarget}"
+      export CXX_${cargoTargetUnderscore}="${androidToolchainEffective.androidCXX} --target=${androidToolchainEffective.androidTarget}"
+      export CFLAGS_${cargoTargetUnderscore}="--target=${androidToolchainEffective.androidTarget} --sysroot=${androidToolchainEffective.androidndkRoot}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot -I${androidToolchainEffective.androidndkRoot}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include -fPIC"
+      export BINDGEN_EXTRA_CLANG_ARGS="--target=${androidToolchainEffective.androidTarget} --sysroot=${androidToolchainEffective.androidndkRoot}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot -I${androidToolchainEffective.androidndkRoot}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include"
       export CRATE_CC_NO_DEFAULTS="1"
-      export AR="${androidToolchain.androidAR}"
+      export AR="${androidToolchainEffective.androidAR}"
     '' else "";
 
   swapBuildDepsToHost = attrs: attrs // {
@@ -385,9 +385,9 @@ let
       );
     } // lib.optionalAttrs isAndroid ({
       CC_aarch64_linux_android = "${androidLinkerWrapper}";
-      CXX_aarch64_linux_android = androidToolchain.androidCXX;
-      AR_aarch64_linux_android = androidToolchain.androidAR;
-      AR = androidToolchain.androidAR;
+      CXX_aarch64_linux_android = androidToolchainEffective.androidCXX;
+      AR_aarch64_linux_android = androidToolchainEffective.androidAR;
+      AR = androidToolchainEffective.androidAR;
       CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER = "${androidLinkerWrapper}";
       dontStrip = true;
     } // lib.optionalAttrs (nativeDeps ? openssl) {

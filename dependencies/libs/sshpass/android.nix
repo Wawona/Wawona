@@ -15,7 +15,7 @@ pkgs.stdenv.mkDerivation {
   name = "sshpass-android";
   src = pkgs.fetchurl {
     url = "https://sourceforge.net/projects/sshpass/files/sshpass/1.10/sshpass-1.10.tar.gz";
-    sha256 = "sha256-D7j2+3fGjHh/TirE7R7JAt0T7mP7J8K9n9/6tA3y+6k=";
+    sha256 = "sha256-rREGwgPLtWGFyjutjGzK/KO0BkaWGU2oefgcjXvf7to=";
   };
 
   nativeBuildInputs = with buildPackages; [ ];
@@ -32,7 +32,9 @@ pkgs.stdenv.mkDerivation {
 
   configurePhase = ''
     runHook preConfigure
-    ./configure --prefix=$out --host=aarch64-linux-android
+    ./configure --prefix=$out --host=aarch64-linux-android \
+      ac_cv_func_malloc_0_nonnull=yes \
+      ac_cv_func_realloc_0_nonnull=yes
     runHook postConfigure
   '';
 

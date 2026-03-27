@@ -28,7 +28,7 @@ let
   gradleDeps = pkgs.callPackage ../gradle-deps.nix {
     inherit wawonaSrc androidSDK;
     inherit (pkgs) gradle jdk17;
-    gradlegen = android_gradlegen_internal.generateScript;
+    gradlegen = android_gradlegen_internal;
   };
 
   android_gradlegen_internal = pkgs.callPackage ../generators/gradlegen.nix { wawonaVersion = projectVersion; };

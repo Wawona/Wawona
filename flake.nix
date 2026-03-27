@@ -11,7 +11,7 @@
 
   outputs = { self, nixpkgs, rust-overlay, hiahkernel, crate2nix }:
   let
-    systemsList = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
+    systemsList = [ "x86_64-darwin" "aarch64-darwin" ];
 
     pkgsFor = system:
       import nixpkgs {
@@ -212,10 +212,10 @@
           wawona-android-provision = androidUtils.provisionAndroidScript;
         } // (pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin (let
           waypipe-patched-macos = pkgs.callPackage ./dependencies/libs/waypipe/waypipe-patched-src.nix {
-            inherit waypipe-src; patchScript = ./dependencies/libs/waypipe/patch-waypipe-macos.sh; platform = "macos";
+            inherit waypipe-src; patchScript = ./dependencies/libs/waypipe/patch-waypipe-source.sh; platform = "macos";
           };
           waypipe-patched-ios = pkgs.callPackage ./dependencies/libs/waypipe/waypipe-patched-src.nix {
-            inherit waypipe-src; patchScript = ./dependencies/libs/waypipe/patch-waypipe-ios.sh; platform = "ios";
+            inherit waypipe-src; patchScript = ./dependencies/libs/waypipe/patch-waypipe-source.sh; platform = "ios";
           };
           workspace-src-macos = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
             wawonaSrc = src; waypipeSrc = waypipe-patched-macos; platform = "macos"; inherit wawonaVersion;
@@ -236,7 +236,7 @@
             libssh2 = toolchains.buildForIOS "libssh2" {}; mbedtls = toolchains.buildForIOS "mbedtls" {};
             openssl = toolchains.buildForIOS "openssl" {}; ffmpeg = toolchains.buildForIOS "ffmpeg" {};
             epoll-shim = toolchains.buildForIOS "epoll-shim" {}; waypipe = toolchains.buildForIOS "waypipe" {};
-            weston = toolchains.buildForIOS "weston" {}; pixman = toolchains.buildForIOS "pixman" {};
+            weston = toolchains.buildForIOS "weston" {}; weston-simple-shm = toolchains.buildForIOS "weston-simple-shm" {}; pixman = toolchains.buildForIOS "pixman" {};
             sshpass = toolchains.buildForIOS "sshpass" {};
           };
           iosSimDeps = {
@@ -253,6 +253,7 @@
             epoll-shim = toolchains.buildForIOS "epoll-shim" { simulator = true; };
             waypipe = toolchains.buildForIOS "waypipe" { simulator = true; };
             weston = toolchains.buildForIOS "weston" { simulator = true; };
+            weston-simple-shm = toolchains.buildForIOS "weston-simple-shm" { simulator = true; };
             pixman = toolchains.buildForIOS "pixman" { simulator = true; };
             sshpass = toolchains.buildForIOS "sshpass" { simulator = true; };
           };
@@ -287,7 +288,9 @@
           wawona-macos = wawona-macos; wawona-ios = wawona-ios; 
           wawona-macos-project = xcodegenOutputs.app; wawona-ios-project = xcodegenOutputs.app;
           wawona-ios-provision = (import ./dependencies/utils/xcode-wrapper.nix { inherit (pkgs) lib pkgs; }).provisionXcodeScript;
-          graphics-validate-macos = pkgs.callPackage ./dependencies/validation/ios.nix { inherit wawonaSrc wawonaVersion; wawonaIos = wawona-ios; };
+          graphics-validate-macos = pkgs.callPackage ./dependencies/tests/graphics-validate.nix { };
+          weston = toolchains.buildForMacOS "weston" {};
+          weston-simple-shm = toolchains.buildForMacOS "weston-simple-shm" {};
           default = (import ./dependencies/wawona/shell-wrappers.nix).macosWrapper pkgs wawona-macos;
           wawona = (import ./dependencies/wawona/shell-wrappers.nix).macosWrapper pkgs wawona-macos;
         }));
@@ -312,7 +315,7 @@
         wawona-ios = { type = "app"; program = appPrograms.wawonaIos; };
         wawona-ios-project = { type = "app"; program = "${systemPackages.wawona-ios-project}/bin/xcodegen"; };
         wawona-ios-provision = { type = "app"; program = "${systemPackages.wawona-ios-provision}/bin/provision-xcode"; };
-        graphics-validate-macos = { type = "app"; program = "${systemPackages.graphics-validate-macos}/bin/graphics-validate-ios"; };
+        graphics-validate-macos = { type = "app"; program = "${systemPackages.graphics-validate-macos}/bin/graphics-validate-macos"; };
       });
 
     allSystemPackages = nixpkgs.lib.genAttrs systemsList (system: getPackagesForSystem system (pkgsFor system));

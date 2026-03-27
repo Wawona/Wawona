@@ -23,16 +23,18 @@ pkgs.stdenv.mkDerivation {
 
   configurePhase = ''
     runHook preConfigure
+    export CROSS_COMPILE=""
     export CC="${androidToolchain.androidCC}"
     export AR="${androidToolchain.androidAR}"
     export RANLIB="${androidToolchain.androidRANLIB}"
+    export PATH="${buildPackages.stdenv.cc}/bin:$PATH"
     export CFLAGS="--target=${androidToolchain.androidTarget} -fPIC"
     export LDFLAGS="--target=${androidToolchain.androidTarget}"
     export ANDROID_NDK_ROOT="${androidToolchain.androidndkRoot}"
     # Note: hostTag is handled in toolchains/android.nix
-    ./Configure android-arm64 no-shared no-dso no-tests \
-      --prefix=$out --openssldir=$out/etc/ssl \
-      -D__ANDROID_API__=${toString androidToolchain.androidNdkApiLevel}
+    ./Configure linux-aarch64 -D__ANDROID_API__=${toString androidToolchain.androidNdkApiLevel} \
+      no-shared no-dso no-tests --prefix=$out --openssldir=$out/etc/ssl \
+      CC="$CC"
     runHook postConfigure
   '';
 

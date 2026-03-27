@@ -306,6 +306,36 @@ let
       (import ../libs/vulkan-cts/macos.nix) {
         inherit lib pkgs;
       }
+    else if name == "weston-simple-shm" then
+      (import ../libs/weston-simple-shm/macos.nix) {
+        inherit lib pkgs common;
+        buildModule = macosModule;
+      }
+    else if name == "weston" then
+      (import ../clients/weston/macos.nix) {
+        inherit lib stdenv;
+        fetchurl = pkgs.fetchurl;
+        meson = pkgs.meson;
+        ninja = pkgs.ninja;
+        pkg-config = pkgs.pkg-config;
+        wayland = buildForMacOSInternal "libwayland" { };
+        wayland-scanner = pkgs.wayland-scanner;
+        wayland-protocols = pkgs.wayland-protocols;
+        libxkbcommon = buildForMacOSInternal "xkbcommon" { };
+        cairo = pkgs.cairo;
+        pango = pkgs.pango;
+        libpng = pkgs.libpng;
+        libjpeg = pkgs.libjpeg;
+        mesa = pkgs.mesa;
+        pixman = buildForMacOSInternal "pixman" { };
+        python3 = pkgs.python3;
+        libinput = null;
+        libevdev = null;
+        seatd = null;
+        pam = pkgs.pam;
+        openssl = pkgs.openssl;
+        epoll-shim = buildForMacOSInternal "epoll-shim" { };
+      }
     else
       (import ../platforms/macos.nix {
         inherit lib pkgs common;
