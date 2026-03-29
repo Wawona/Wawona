@@ -11,7 +11,7 @@
 
   outputs = { self, nixpkgs, rust-overlay, hiahkernel, crate2nix }:
   let
-    systemsList = [ "x86_64-darwin" "aarch64-darwin" ];
+    systemsList = [ "x86_64-linux" "x86_64-darwin" "aarch64-darwin" ];
 
     pkgsFor = system:
       import nixpkgs {
@@ -203,6 +203,7 @@
 
         packages = {
           nom = pkgs.nix-output-monitor;
+          local-runner = pkgs.callPackage ./scripts/local-runner.nix { inherit src; };
           wawona-android = wawonaAndroidPkg;
           wawona-android-backend = backend-android;
           gradlegen = gradlegenPkg.generateScript;
@@ -285,12 +286,31 @@
             rustBackend = backend-ios; rustBackendSim = backend-ios-sim; xcodeProject = xcodegenOutputs.project;
           };
         in {
-          wawona-macos = wawona-macos; wawona-ios = wawona-ios; 
-          wawona-macos-project = xcodegenOutputs.app; wawona-ios-project = xcodegenOutputs.app;
+          wawona-macos = wawona-macos;
+          wawona-ios = wawona-ios;
+          wawona-macos-backend = backend-macos;
+          wawona-macos-xcode-env = backend-macos;
+          wawona-ios-backend = backend-ios;
+          wawona-ios-xcode-env = backend-ios;
+          wawona-ios-sim-backend = backend-ios-sim;
+          wawona-ios-sim-xcode-env = backend-ios-sim;
+          wawona-macos-project = xcodegenOutputs.app;
+          wawona-ios-project = xcodegenOutputs.app;
           wawona-ios-provision = (import ./dependencies/utils/xcode-wrapper.nix { inherit (pkgs) lib pkgs; }).provisionXcodeScript;
+          xcodegen = xcodegenOutputs.app;
+          xcodegenProject = xcodegenOutputs.project;
           graphics-validate-macos = pkgs.callPackage ./dependencies/tests/graphics-validate.nix { };
+          vulkan-cts = toolchains.buildForMacOS "vulkan-cts" { };
+          vulkan-cts-ios = toolchains.buildForIOS "vulkan-cts" { };
+          gl-cts = toolchains.buildForMacOS "gl-cts" { };
+          gl-cts-ios = toolchains.buildForIOS "gl-cts" { };
           weston = toolchains.buildForMacOS "weston" {};
+          weston-debug = toolchains.buildForMacOS "weston" { debug = true; };
           weston-simple-shm = toolchains.buildForMacOS "weston-simple-shm" {};
+          weston-terminal = toolchains.buildForMacOS "weston-terminal" {};
+          waypipe = toolchains.buildForMacOS "waypipe" { };
+          waypipe-ios = toolchains.buildForIOS "waypipe" { };
+          waypipe-ios-sim = toolchains.buildForIOS "waypipe" { simulator = true; };
           default = (import ./dependencies/wawona/shell-wrappers.nix).macosWrapper pkgs wawona-macos;
           wawona = (import ./dependencies/wawona/shell-wrappers.nix).macosWrapper pkgs wawona-macos;
         }));
@@ -304,6 +324,7 @@
         };
       in {
         nom = { type = "app"; program = "${pkgs.nix-output-monitor}/bin/nom"; };
+        local-runner = { type = "app"; program = "${systemPackages.local-runner}/bin/local-runner"; };
         wawona-android-provision = { type = "app"; program = "${systemPackages.wawona-android-provision}/bin/provision-android"; };
         wawona-android-project = { type = "app"; program = "${systemPackages.gradlegen}/bin/gradlegen"; };
         wawona-android = { type = "app"; program = "${systemPackages.wawona-android}/bin/wawona-android-run"; };

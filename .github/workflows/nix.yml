@@ -7,29 +7,20 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
-  build-linux:
-    name: "Linux: ${{ matrix.target }}"
+  prepare-linux:
+    name: Prepare Linux matrix
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        target: [
-          "wawona-android",
-          "wawona-android-backend",
-          "gradlegen",
-          "vulkan-cts-android",
-          "gl-cts-android",
-          "nom",
-          "wawona-android-project",
-          "wawona-android-provision"
-        ]
-    permissions:
-      contents: read
-      id-token: write
+    outputs:
+      system: ${{ steps.matrix.outputs.system }}
+      targets: ${{ steps.matrix.outputs.targets }}
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Reclaim Disk Space (Nothing but Nix)
         uses: wimpysworld/nothing-but-nix@main
         with:
@@ -45,82 +36,78 @@ jobs:
       - name: Magic Nix Cache
         uses: DeterminateSystems/magic-nix-cache-action@main
 
-      - name: Nix Flake Check
-        if: matrix.target == 'wawona-android'
-        run: nix flake check
-
-      - name: Set up KVM permissions
-        if: matrix.target == 'wawona-android'
+      - name: Derive package matrix from flake
+        id: matrix
         run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-          ls -l /dev/kvm || true
+          SYSTEM="$(nix eval --impure --raw --expr builtins.currentSystem)"
+          TARGETS="$(nix eval --json ".#packages.${SYSTEM}" --apply builtins.attrNames)"
+          printf 'system=%s\n' "$SYSTEM" >> "$GITHUB_OUTPUT"
+          printf 'targets=%s\n' "$TARGETS" >> "$GITHUB_OUTPUT"
 
-      - name: Build Target
-        run: nix build .#${{ matrix.target }} --print-build-logs
+  verify-linux:
+    name: "Linux: flake check"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Run Android SDK Provisioning & Test
-        if: matrix.target == 'wawona-android'
-        run: nix run .#wawona-android -- --test
+      - name: Reclaim Disk Space (Nothing but Nix)
+        uses: wimpysworld/nothing-but-nix@main
+        with:
+          hatchet-protocol: 'rampage'
+          witness-carnage: true
 
-  build-macos:
-    name: "macOS: ${{ matrix.target }}"
-    runs-on: macos-26
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+        with:
+          extra-conf: |
+            build-dir = /nix/build
+
+      - name: Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Run flake checks
+        run: nix flake check --print-build-logs
+
+  build-linux:
+    name: "Linux (${{ needs.prepare-linux.outputs.system }}): ${{ matrix.target }}"
+    runs-on: ubuntu-latest
+    needs: prepare-linux
     strategy:
       fail-fast: false
       matrix:
-        target: [
-          "wawona-macos",
-          "wawona-macos-backend",
-          "wawona-macos-xcode-env",
-          "wawona-macos-project",
-          "wawona-ios",
-          "wawona-ios-backend",
-          "wawona-ios-sim-backend",
-          "wawona-ios-xcode-env",
-          "wawona-ios-sim-xcode-env",
-          "wawona-ios-project",
-          "wawona-ios-provision",
-          "xcodegen",
-          "xcodegenProject",
-          "weston",
-          "weston-debug",
-          "weston-simple-shm",
-          "weston-terminal",
-          "waypipe",
-          "waypipe-ios",
-          "waypipe-ios-sim",
-          "foot",
-          "keyboard-test-client",
-          "graphics-smoke",
-          "graphics-validate",
-          "graphics-validate-all",
-          "graphics-validate-android",
-          "graphics-validate-ios",
-          "graphics-validate-macos",
-          "vulkan-cts",
-          "vulkan-cts-ios",
-          "gl-cts",
-          "wawona-android",
-          "wawona-android-backend",
-          "wawona-android-project",
-          "wawona-android-provision",
-          "gradlegen",
-          "vulkan-cts-android",
-          "gl-cts-android",
-          "nom",
-          "wawona"
-        ]
-    permissions:
-      contents: read
-      id-token: write
+        target: ${{ fromJSON(needs.prepare-linux.outputs.targets) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reclaim Disk Space (Nothing but Nix)
+        uses: wimpysworld/nothing-but-nix@main
+        with:
+          hatchet-protocol: 'rampage'
+          witness-carnage: true
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+        with:
+          extra-conf: |
+            build-dir = /nix/build
+
+      - name: Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Build Target
+        run: nix build ".#packages.${{ needs.prepare-linux.outputs.system }}.${{ matrix.target }}" --print-build-logs
+
+  prepare-macos-arm64:
+    name: Prepare macOS arm64 matrix
+    runs-on: macos-26
+    outputs:
+      system: ${{ steps.matrix.outputs.system }}
+      targets: ${{ steps.matrix.outputs.targets }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Select Xcode 26
         run: |
-          # Find the Xcode 26 installation
           XCODE_26=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
           if [ -z "$XCODE_26" ]; then
             echo "::error::Xcode 26 not found on this runner"
@@ -139,13 +126,143 @@ jobs:
       - name: Magic Nix Cache
         uses: DeterminateSystems/magic-nix-cache-action@main
 
-      - name: Nix Flake Check
-        if: matrix.target == 'wawona-macos'
-        run: nix flake check
+      - name: Derive package matrix from flake
+        id: matrix
+        run: |
+          SYSTEM="$(nix eval --impure --raw --expr builtins.currentSystem)"
+          TARGETS="$(nix eval --json ".#packages.${SYSTEM}" --apply builtins.attrNames)"
+          printf 'system=%s\n' "$SYSTEM" >> "$GITHUB_OUTPUT"
+          printf 'targets=%s\n' "$TARGETS" >> "$GITHUB_OUTPUT"
+
+  verify-macos-arm64:
+    name: "macOS (arm64): flake check"
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26
+        run: |
+          XCODE_26=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XCODE_26" ]; then
+            echo "::error::Xcode 26 not found on this runner"
+            ls /Applications/Xcode*.app || true
+            exit 1
+          fi
+          echo "Selecting $XCODE_26"
+          sudo xcode-select -s "$XCODE_26"
+          xcodebuild -version
+          xcrun --sdk iphonesimulator --show-sdk-version
+          xcrun --sdk macosx --show-sdk-version
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Run flake checks
+        run: nix flake check --print-build-logs
+
+  build-macos-arm64:
+    name: "macOS (${{ needs.prepare-macos-arm64.outputs.system }}): ${{ matrix.target }}"
+    runs-on: macos-26
+    needs: prepare-macos-arm64
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.prepare-macos-arm64.outputs.targets) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26
+        run: |
+          XCODE_26=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XCODE_26" ]; then
+            echo "::error::Xcode 26 not found on this runner"
+            ls /Applications/Xcode*.app || true
+            exit 1
+          fi
+          echo "Selecting $XCODE_26"
+          sudo xcode-select -s "$XCODE_26"
+          xcodebuild -version
+          xcrun --sdk iphonesimulator --show-sdk-version
+          xcrun --sdk macosx --show-sdk-version
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
 
       - name: Build Target
-        run: nix build .#${{ matrix.target }} --print-build-logs
+        run: nix build ".#packages.${{ needs.prepare-macos-arm64.outputs.system }}.${{ matrix.target }}" --print-build-logs
 
-      - name: Run Android SDK Provisioning & Test
-        if: matrix.target == 'wawona-android'
-        run: nix run .#wawona-android -- --test
+  prepare-macos-x86_64:
+    name: Prepare macOS x86_64 matrix
+    runs-on: macos-26
+    outputs:
+      system: ${{ steps.matrix.outputs.system }}
+      targets: ${{ steps.matrix.outputs.targets }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26
+        run: |
+          XCODE_26=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XCODE_26" ]; then
+            echo "::error::Xcode 26 not found on this runner"
+            ls /Applications/Xcode*.app || true
+            exit 1
+          fi
+          echo "Selecting $XCODE_26"
+          sudo xcode-select -s "$XCODE_26"
+          xcodebuild -version
+          xcrun --sdk iphonesimulator --show-sdk-version
+          xcrun --sdk macosx --show-sdk-version
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Derive package matrix from flake
+        id: matrix
+        run: |
+          TARGETS="$(nix eval --json .#packages.x86_64-darwin --apply builtins.attrNames)"
+          printf 'system=%s\n' "x86_64-darwin" >> "$GITHUB_OUTPUT"
+          printf 'targets=%s\n' "$TARGETS" >> "$GITHUB_OUTPUT"
+
+  build-macos-x86_64:
+    name: "macOS (x86_64-darwin): ${{ matrix.target }}"
+    runs-on: macos-26
+    needs: prepare-macos-x86_64
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.prepare-macos-x86_64.outputs.targets) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26
+        run: |
+          XCODE_26=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XCODE_26" ]; then
+            echo "::error::Xcode 26 not found on this runner"
+            ls /Applications/Xcode*.app || true
+            exit 1
+          fi
+          echo "Selecting $XCODE_26"
+          sudo xcode-select -s "$XCODE_26"
+          xcodebuild -version
+          xcrun --sdk iphonesimulator --show-sdk-version
+          xcrun --sdk macosx --show-sdk-version
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Build Target
+        run: nix build ".#packages.${{ needs.prepare-macos-x86_64.outputs.system }}.${{ matrix.target }}" --print-build-logs

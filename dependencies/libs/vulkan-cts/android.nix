@@ -43,8 +43,8 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
     export AR="${androidToolchain.androidAR}"
     export STRIP="${androidToolchain.androidSTRIP}"
     export RANLIB="${androidToolchain.androidRANLIB}"
-    export CFLAGS="--target=${androidToolchain.androidTarget} -fPIC -Wno-deprecated-declarations"
-    export CXXFLAGS="--target=${androidToolchain.androidTarget} -fPIC -Wno-deprecated-declarations"
+    export CFLAGS="--target=${androidToolchain.androidTarget} -fPIC -Wno-deprecated-declarations -D__ANDROID_API__=${toString androidToolchain.androidNdkApiLevel}"
+    export CXXFLAGS="--target=${androidToolchain.androidTarget} -fPIC -Wno-deprecated-declarations -D__ANDROID_API__=${toString androidToolchain.androidNdkApiLevel}"
     export LDFLAGS="--target=${androidToolchain.androidTarget}"
   '';
 

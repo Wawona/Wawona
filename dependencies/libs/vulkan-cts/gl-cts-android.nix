@@ -19,6 +19,8 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
 
   prePatch = common.prePatch;
 
+  # No postPatch needed for symlink, it causes errors with undefined $build
+
   nativeBuildInputs = with buildPackages; [
     cmake
     ninja
@@ -40,8 +42,8 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
     export AR="${androidToolchain.androidAR}"
     export STRIP="${androidToolchain.androidSTRIP}"
     export RANLIB="${androidToolchain.androidRANLIB}"
-    export CFLAGS="--target=${androidToolchain.androidTarget} -fPIC"
-    export CXXFLAGS="--target=${androidToolchain.androidTarget} -fPIC"
+    export CFLAGS="--target=${androidToolchain.androidTarget} -fPIC -D__ANDROID_API__=${toString androidToolchain.androidNdkApiLevel}"
+    export CXXFLAGS="--target=${androidToolchain.androidTarget} -fPIC -D__ANDROID_API__=${toString androidToolchain.androidNdkApiLevel}"
     export LDFLAGS="--target=${androidToolchain.androidTarget}"
   '';
 

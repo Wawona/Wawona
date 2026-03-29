@@ -192,6 +192,12 @@ let
         inherit lib pkgs buildPackages;
         buildModule = iosModule;
       }
+    else if name == "gl-cts" then
+      (import ../libs/vulkan-cts/ios.nix) {
+        inherit lib pkgs buildPackages;
+        buildModule = iosModule;
+        buildTargets = "glcts";
+      }
     else if name == "weston-simple-shm" then
       (import ../libs/weston-simple-shm/ios.nix) {
         inherit lib pkgs buildPackages common simulator;
@@ -304,6 +310,10 @@ let
       }
     else if name == "vulkan-cts" then
       (import ../libs/vulkan-cts/macos.nix) {
+        inherit lib pkgs;
+      }
+    else if name == "gl-cts" then
+      (import ../libs/vulkan-cts/gl-cts-macos.nix) {
         inherit lib pkgs;
       }
     else if name == "weston-simple-shm" then
