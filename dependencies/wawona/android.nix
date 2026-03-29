@@ -46,8 +46,9 @@ let
     mkdir -p $out/bin
   '';
 
-  opensshBin = if pkgs.stdenv.buildPlatform.isLinux then emptyAndroidHelper else buildModule.buildForAndroid "openssh" { };
-  sshpassBin = if pkgs.stdenv.buildPlatform.isLinux then emptyAndroidHelper else buildModule.buildForAndroid "sshpass" { };
+  isLinuxHost = pkgs.stdenv.isLinux || pkgs.stdenv.buildPlatform.isLinux || pkgs.stdenv.hostPlatform.isLinux;
+  opensshBin = if isLinuxHost then emptyAndroidHelper else buildModule.buildForAndroid "openssh" { };
+  sshpassBin = if isLinuxHost then emptyAndroidHelper else buildModule.buildForAndroid "sshpass" { };
   # Disable Weston on Android as building its GUI dependencies (cairo/pango) triggers 
   # Nixpkgs pkgsCross.aarch64-android which currently fails on compiler-rt (missing pthread.h).
   # Wawona is its own Wayland server and doesn't actually need Weston to run.

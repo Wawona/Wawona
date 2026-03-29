@@ -103,11 +103,19 @@ let
 
   rawClang = "${pkgs.stdenv.cc.cc}/bin/clang";
   cargoTargetUnderscore = builtins.replaceStrings ["-"] ["_"] (if cargoTarget != null then cargoTarget else "");
+  androidRustToolchain =
+    if isAndroid && pkgs ? rustToolchainAndroid then
+      pkgs.rustToolchainAndroid
+    else if isAndroid && pkgs ? rust-bin then
+      pkgs.rust-bin.stable.latest.default.override {
+        targets = [ cargoTarget ];
+      }
+    else null;
 
   toolchainOverrides = {
-    cargo = if platform == "android" && pkgs ? rustToolchainAndroid then pkgs.rustToolchainAndroid
+    cargo = if androidRustToolchain != null then androidRustToolchain
             else if pkgs ? rustToolchain then pkgs.rustToolchain else pkgs.cargo;
-    rustc = if platform == "android" && pkgs ? rustToolchainAndroid then pkgs.rustToolchainAndroid
+    rustc = if androidRustToolchain != null then androidRustToolchain
             else if pkgs ? rustToolchain then pkgs.rustToolchain else pkgs.rustc;
   };
 

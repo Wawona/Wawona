@@ -23,6 +23,7 @@ pkgs.stdenv.mkDerivation {
 
   configurePhase = ''
     runHook preConfigure
+    patchShebangs .
     export CROSS_COMPILE=""
     export CC="${androidToolchain.androidCC}"
     export AR="${androidToolchain.androidAR}"
