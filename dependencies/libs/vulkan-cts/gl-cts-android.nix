@@ -5,7 +5,7 @@
   stdenv ? pkgs.stdenv,
   buildPackages,
   androidSDK ? null,
-  buildTargets ? "cts-runner",
+  buildTargets ? "glcts-runner",
 }:
 
 let
