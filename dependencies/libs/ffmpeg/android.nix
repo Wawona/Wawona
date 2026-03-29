@@ -9,6 +9,8 @@
 let
   fetchSource = common.fetchSource;
   androidToolchain = import ../../toolchains/android.nix { inherit lib pkgs; };
+  hostTag = if pkgs.stdenv.buildPlatform.isLinux then "linux-x86_64" else "darwin-x86_64";
+  toolchainBase = "${androidToolchain.androidndkRoot}/toolchains/llvm/prebuilt/${hostTag}";
   ffmpegSource = {
     source = "github";
     owner = "FFmpeg";
@@ -62,8 +64,8 @@ pkgs.stdenv.mkDerivation {
       --enable-cross-compile \
       --target-os=android \
       --arch=aarch64 \
-      --cross-prefix=${androidToolchain.androidndkRoot}/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android${builtins.toString androidToolchain.androidNdkApiLevel}- \
-      --sysroot=${androidToolchain.androidndkRoot}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot \
+      --cross-prefix=${toolchainBase}/bin/aarch64-linux-android${builtins.toString androidToolchain.androidNdkApiLevel}- \
+      --sysroot=${toolchainBase}/sysroot \
       --cc="$CC" \
       --cxx="$CXX" \
       --ar="$AR" \

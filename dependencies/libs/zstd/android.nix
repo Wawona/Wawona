@@ -34,7 +34,8 @@ pkgs.stdenv.mkDerivation {
     export RANLIB="${androidToolchain.androidRANLIB}"
 
     # Set sysroot for API level
-    NDK_SYSROOT="${androidToolchain.androidndkRoot}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot"
+    HOST_TAG="${if pkgs.stdenv.buildPlatform.isLinux then "linux-x86_64" else "darwin-x86_64"}"
+    NDK_SYSROOT="${androidToolchain.androidndkRoot}/toolchains/llvm/prebuilt/$HOST_TAG/sysroot"
     export CFLAGS="--target=${androidToolchain.androidTarget} --sysroot=$NDK_SYSROOT -fPIC"
     export CXXFLAGS="--target=${androidToolchain.androidTarget} --sysroot=$NDK_SYSROOT -fPIC"
     export LDFLAGS="--target=${androidToolchain.androidTarget} --sysroot=$NDK_SYSROOT"
