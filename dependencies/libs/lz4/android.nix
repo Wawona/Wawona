@@ -15,14 +15,14 @@ let
     rev = "v1.10.0";
     sha256 = "sha256-/dG1n59SKBaEBg72pAWltAtVmJ2cXxlFFhP+klrkTos=";
   };
+  hostTag = if pkgs.stdenv.buildPlatform.isLinux then "linux-x86_64" else "darwin-x86_64";
+  ndkSysroot = "${androidToolchain.androidndkRoot}/toolchains/llvm/prebuilt/${hostTag}/sysroot";
 in
 pkgs.stdenv.mkDerivation {
   name = "lz4-android";
   inherit src;
   patches = [ ];
   nativeBuildInputs = with buildPackages; [
-    cmake
-    ninja
     pkg-config
   ];
   buildInputs = [ ];
@@ -33,24 +33,39 @@ pkgs.stdenv.mkDerivation {
     export AR="${androidToolchain.androidAR}"
     export STRIP="${androidToolchain.androidSTRIP}"
     export RANLIB="${androidToolchain.androidRANLIB}"
-    export CFLAGS="--target=${androidToolchain.androidTarget} -fPIC"
-    export CXXFLAGS="--target=${androidToolchain.androidTarget} -fPIC"
-    export LDFLAGS="--target=${androidToolchain.androidTarget}"
+    export CFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${ndkSysroot} -fPIC"
+    export CXXFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${ndkSysroot} -fPIC"
+    export LDFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${ndkSysroot}"
   '';
 
-  # lz4 has CMakeLists.txt in build/cmake subdirectory
-  sourceRoot = "source/build/cmake";
+  buildPhase = ''
+    runHook preBuild
+    make -C lib \
+      CC="$CC" \
+      AR="$AR" \
+      RANLIB="$RANLIB" \
+      CFLAGS="$CFLAGS" \
+      lib-release
+    runHook postBuild
+  '';
 
-  cmakeFlags = [
-    "-DCMAKE_SYSTEM_NAME=Android"
-    "-DCMAKE_ANDROID_ARCH_ABI=arm64-v8a"
-    "-DCMAKE_ANDROID_NDK=${androidToolchain.androidndkRoot}"
-    "-DCMAKE_MAKE_PROGRAM=${buildPackages.ninja}/bin/ninja"
-    "-DCMAKE_C_COMPILER=${androidToolchain.androidCC}"
-    "-DCMAKE_CXX_COMPILER=${androidToolchain.androidCXX}"
-    "-DCMAKE_ANDROID_PLATFORM=android-${toString androidToolchain.androidNdkApiLevel}"
-    "-DCMAKE_ANDROID_STL_TYPE=c++_static"
-    "-DBUILD_SHARED_LIBS=ON"
-    "-DBUILD_STATIC_LIBS=ON"
-  ];
+  installPhase = ''
+    runHook preInstall
+    mkdir -p "$out/lib" "$out/include" "$out/lib/pkgconfig"
+    cp lib/liblz4.a "$out/lib/"
+    cp lib/lz4*.h "$out/include/"
+    cat > "$out/lib/pkgconfig/liblz4.pc" <<EOF
+prefix=$out
+exec_prefix=\''${prefix}
+libdir=\''${exec_prefix}/lib
+includedir=\''${prefix}/include
+
+Name: liblz4
+Description: LZ4 compression library
+Version: 1.10.0
+Libs: -L\''${libdir} -llz4
+Cflags: -I\''${includedir}
+EOF
+    runHook postInstall
+  '';
 }
