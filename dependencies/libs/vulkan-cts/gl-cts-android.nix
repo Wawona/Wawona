@@ -5,6 +5,7 @@
   stdenv ? pkgs.stdenv,
   buildPackages,
   androidSDK ? null,
+  buildTargets ? "glcts-runner",
 }:
 
 let
@@ -62,9 +63,11 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
     "-DCMAKE_INSTALL_LIBDIR=lib"
     "-DCMAKE_INSTALL_INCLUDEDIR=include"
     "-DDEQP_ANDROID_EXE=ON"
-    "-DSELECTED_BUILD_TARGETS=${common.glTargets}"
+    "-DSELECTED_BUILD_TARGETS=${buildTargets}"
     (lib.cmakeFeature "FETCHCONTENT_SOURCE_DIR_SHADERC" "${common.sources.shaderc-src}")
   ];
+
+  ninjaFlags = [ buildTargets ];
 
   postInstall = ''
     mkdir -p $out/bin $out/archive-dir

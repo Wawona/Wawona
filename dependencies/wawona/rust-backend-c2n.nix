@@ -305,6 +305,16 @@ let
 
   # ── Per-crate build overrides ──────────────────────────────────────
   crateOverrides = pkgs.defaultCrateOverrides // {
+    linux-raw-sys = attrs: {
+      features = lib.unique ((attrs.features or []) ++ [ "errno" ]);
+    };
+
+    weedle2 = attrs: {
+      src = pkgs.fetchurl {
+        url = "https://crates.io/api/v1/crates/weedle2/5.0.0/download";
+        hash = "sha256-mY0sJOwJmofa+UZ4CIWfnYK2Hx2clwElGuoDf1FOrg4=";
+      };
+    };
 
     # ── wawona (root crate) ────────────────────────────────────────
     wawona = attrs: {

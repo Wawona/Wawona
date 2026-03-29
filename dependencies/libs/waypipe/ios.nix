@@ -245,9 +245,8 @@ CARGO_EOF
     export HOST_CFLAGS="-isysroot $MACOS_SDK"
     export HOST_LDFLAGS="-isysroot $MACOS_SDK"
 
-    # CRITICAL: Unset SDKROOT so it doesn't poison host-side tool builds (e.g. libc build script)
-    # Cargo/cc-rs will use the target-specific variables or xcrun instead.
-    unset SDKROOT
+    # Host-side build scripts still need a macOS SDK for Darwin binaries.
+    export SDKROOT="$MACOS_SDK"
   '';
 
   buildPhase = ''

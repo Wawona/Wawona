@@ -84,10 +84,18 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
       echo "ERROR: iOS SDK not found. Build cannot proceed." >&2
       exit 1
     fi
+
+    if [ -z "''${DEVELOPER_DIR:-}" ]; then
+      DEVELOPER_DIR=$(echo "$SDKROOT" | sed -E 's|^(.*\.app/Contents/Developer)/.*$|\1|')
+      [ "$DEVELOPER_DIR" = "$SDKROOT" ] && DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
+      export DEVELOPER_DIR
+    fi
+
     export SDKROOT
     export PATH="$PATH:$DEVELOPER_DIR/usr/bin"
     export NIX_CFLAGS_COMPILE=""
     export NIX_CXXFLAGS_COMPILE=""
+    export NIX_LDFLAGS=""
 
     SIMULATOR_ARCH="arm64"
     if [ "$(uname -m)" = "x86_64" ]; then

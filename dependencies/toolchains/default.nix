@@ -274,10 +274,7 @@ let
         buildModule = macosModule;
       }
     else if name == "pixman" then
-      (import ../libs/pixman/macos.nix) {
-        inherit lib pkgs common;
-        buildModule = macosModule;
-      }
+      pkgs.pixman
     else if name == "tllist" then
       (import ../libs/tllist/macos.nix) {
         inherit lib pkgs common;
@@ -316,6 +313,8 @@ let
       (import ../libs/vulkan-cts/gl-cts-macos.nix) {
         inherit lib pkgs;
       }
+    else if name == "weston-terminal" then
+      buildForMacOSInternal "weston" { }
     else if name == "weston-simple-shm" then
       (import ../libs/weston-simple-shm/macos.nix) {
         inherit lib pkgs common;

@@ -203,7 +203,7 @@
 
         packages = {
           nom = pkgs.nix-output-monitor;
-          local-runner = pkgs.callPackage ./scripts/local-runner.nix { inherit src; };
+          local-runner = pkgs.callPackage ./scripts/local-runner.nix { };
           wawona-android = wawonaAndroidPkg;
           wawona-android-backend = backend-android;
           gradlegen = gradlegenPkg.generateScript;
