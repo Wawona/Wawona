@@ -32,7 +32,7 @@ pkgs.stdenv.mkDerivation {
     export LDFLAGS="--target=${androidToolchain.androidTarget}"
     export ANDROID_NDK_ROOT="${androidToolchain.androidndkRoot}"
     # Note: hostTag is handled in toolchains/android.nix
-    ./Configure linux-aarch64 -D__ANDROID_API__=${toString androidToolchain.androidNdkApiLevel} \
+    ${buildPackages.perl}/bin/perl ./Configure linux-aarch64 -D__ANDROID_API__=${toString androidToolchain.androidNdkApiLevel} \
       no-shared no-dso no-tests --prefix=$out --openssldir=$out/etc/ssl \
       CC="$CC"
     runHook postConfigure

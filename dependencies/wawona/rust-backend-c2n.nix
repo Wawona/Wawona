@@ -264,7 +264,8 @@ let
           crossBuild = innerCrossBRC (swapBuildDepsToHost (crateAttrs // {
             extraRustcOpts = (crateAttrs.extraRustcOpts or []) ++ nativeLibSearchPaths;
             preConfigure = (crateAttrs.preConfigure or "") + crossPreConfigure;
-            # Allow access to host SDKs for all cross-compiled crates
+          } // lib.optionalAttrs isIOS {
+            # iOS builds need host Xcode SDK access inside the sandbox.
             __noChroot = true;
           }));
         in
