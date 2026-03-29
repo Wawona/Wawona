@@ -319,8 +319,9 @@ let
     };
 
     weedle2 = attrs: {
+      # Crates are gzipped tarballs; `.crate` is not always recognized by stdenv unpack on Linux CI.
       src = pkgs.fetchurl {
-        name = "weedle2-5.0.0.crate";
+        name = "weedle2-5.0.0.tar.gz";
         url = "https://crates.io/api/v1/crates/weedle2/5.0.0/download";
         hash = "sha256-mY0sJOwJmofa+UZ4CIWfnYK2Hx2clwElGuoDf1FOrg4=";
       };
