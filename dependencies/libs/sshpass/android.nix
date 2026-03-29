@@ -9,7 +9,8 @@
 }:
 
 let
-  NDK_SYSROOT = "${androidToolchain.androidndkRoot}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot";
+  hostTag = if pkgs.stdenv.buildPlatform.isLinux then "linux-x86_64" else "darwin-x86_64";
+  NDK_SYSROOT = "${androidToolchain.androidndkRoot}/toolchains/llvm/prebuilt/${hostTag}/sysroot";
 in
 pkgs.stdenv.mkDerivation {
   name = "sshpass-android";
@@ -45,6 +46,4 @@ pkgs.stdenv.mkDerivation {
     chmod +x $out/bin/sshpass
     runHook postInstall
   '';
-
-  __noChroot = true;
 }

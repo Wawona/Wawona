@@ -9,7 +9,8 @@
 }:
 
 let
-  NDK_SYSROOT = "${androidToolchain.androidndkRoot}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot";
+  hostTag = if pkgs.stdenv.buildPlatform.isLinux then "linux-x86_64" else "darwin-x86_64";
+  NDK_SYSROOT = "${androidToolchain.androidndkRoot}/toolchains/llvm/prebuilt/${hostTag}/sysroot";
   NDK_ZLIB_LIB = "${NDK_SYSROOT}/usr/lib/aarch64-linux-android";
 in
 pkgs.stdenv.mkDerivation {
@@ -133,5 +134,4 @@ EOF
   '';
 
   dontFixup = true;
-  __noChroot = true;
 }

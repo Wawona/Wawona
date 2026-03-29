@@ -5,7 +5,7 @@
   stdenv ? pkgs.stdenv,
   buildPackages,
   androidSDK ? null,
-  buildTargets ? "glcts-runner",
+  buildTargets ? "cts-runner",
 }:
 
 let
@@ -52,6 +52,8 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
     "-DCMAKE_SYSTEM_NAME=Android"
     "-DDEQP_TARGET=android"
     "-DDE_OS=DE_OS_ANDROID"
+    "-DDEQP_ANDROID_EXE=OFF"
+    "-DDE_ANDROID_API=${toString androidToolchain.androidNdkApiLevel}"
     "-DCMAKE_ANDROID_ARCH_ABI=arm64-v8a"
     "-DCMAKE_ANDROID_NDK=${androidToolchain.androidndkRoot}"
     "-DCMAKE_ANDROID_API=${toString androidToolchain.androidNdkApiLevel}"

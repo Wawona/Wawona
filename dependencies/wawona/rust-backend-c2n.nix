@@ -234,8 +234,8 @@ let
       unset MACOSX_DEPLOYMENT_TARGET
       export CC_${cargoTargetUnderscore}="${androidToolchainEffective.androidCC} --target=${androidToolchainEffective.androidTarget}"
       export CXX_${cargoTargetUnderscore}="${androidToolchainEffective.androidCXX} --target=${androidToolchainEffective.androidTarget}"
-      export CFLAGS_${cargoTargetUnderscore}="--target=${androidToolchainEffective.androidTarget} --sysroot=${androidToolchainEffective.androidndkRoot}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot -I${androidToolchainEffective.androidndkRoot}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include -fPIC"
-      export BINDGEN_EXTRA_CLANG_ARGS="--target=${androidToolchainEffective.androidTarget} --sysroot=${androidToolchainEffective.androidndkRoot}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot -I${androidToolchainEffective.androidndkRoot}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include"
+      export CFLAGS_${cargoTargetUnderscore}="--target=${androidToolchainEffective.androidTarget} --sysroot=${NDK_SYSROOT} -I${NDK_SYSROOT}/usr/include -fPIC"
+      export BINDGEN_EXTRA_CLANG_ARGS="--target=${androidToolchainEffective.androidTarget} --sysroot=${NDK_SYSROOT} -I${NDK_SYSROOT}/usr/include"
       export CRATE_CC_NO_DEFAULTS="1"
       export AR="${androidToolchainEffective.androidAR}"
     '' else "";
@@ -311,6 +311,7 @@ let
 
     weedle2 = attrs: {
       src = pkgs.fetchurl {
+        name = "weedle2-5.0.0.crate";
         url = "https://crates.io/api/v1/crates/weedle2/5.0.0/download";
         hash = "sha256-mY0sJOwJmofa+UZ4CIWfnYK2Hx2clwElGuoDf1FOrg4=";
       };
