@@ -10,6 +10,7 @@
 let
   getBuildSystem = common.getBuildSystem;
   fetchSource = common.fetchSource;
+  androidToolchain = import ../toolchains/android.nix { inherit lib pkgs androidSDK; };
 in
 
 {
@@ -23,6 +24,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "expat" then
@@ -33,6 +35,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "libffi" then
@@ -43,6 +46,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "libxml2" then
@@ -53,6 +57,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "waypipe" then
@@ -63,6 +68,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "swiftshader" then
@@ -73,6 +79,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "zstd" then
@@ -83,6 +90,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "lz4" then
@@ -93,6 +101,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "ffmpeg" then
@@ -103,6 +112,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "xkbcommon" then
@@ -113,6 +123,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "openssl" then
@@ -123,6 +134,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "libssh2" then
@@ -133,6 +145,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "mbedtls" then
@@ -143,6 +156,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "openssh" then
@@ -153,6 +167,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "sshpass" then
@@ -163,11 +178,11 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else
       let
-        androidToolchain = import ../toolchains/android.nix { inherit lib pkgs androidSDK; };
         src = fetchSource entry;
         buildSystem = getBuildSystem entry;
         buildFlags = entry.buildFlags.android or [ ];

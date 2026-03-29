@@ -4,11 +4,11 @@
   buildPackages,
   common,
   buildModule,
+  androidToolchain ? (import ../../toolchains/android.nix { inherit lib pkgs; }),
 }:
 
 let
   fetchSource = common.fetchSource;
-  androidToolchain = import ../../toolchains/android.nix { inherit lib pkgs; };
   hostTag = if pkgs.stdenv.buildPlatform.isLinux then "linux-x86_64" else "darwin-x86_64";
   toolchainBase = "${androidToolchain.androidndkRoot}/toolchains/llvm/prebuilt/${hostTag}";
   ffmpegSource = {

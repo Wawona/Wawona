@@ -22,6 +22,7 @@ pkgs.stdenv.mkDerivation {
   patches = [ ];
   nativeBuildInputs = with buildPackages; [
     cmake
+    ninja
     pkg-config
   ];
   buildInputs = [ ];
@@ -44,6 +45,7 @@ pkgs.stdenv.mkDerivation {
     "-DCMAKE_SYSTEM_NAME=Android"
     "-DCMAKE_ANDROID_ARCH_ABI=arm64-v8a"
     "-DCMAKE_ANDROID_NDK=${androidToolchain.androidndkRoot}"
+    "-DCMAKE_MAKE_PROGRAM=${buildPackages.ninja}/bin/ninja"
     "-DCMAKE_C_COMPILER=${androidToolchain.androidCC}"
     "-DCMAKE_CXX_COMPILER=${androidToolchain.androidCXX}"
     "-DCMAKE_ANDROID_PLATFORM=android-${toString androidToolchain.androidNdkApiLevel}"
