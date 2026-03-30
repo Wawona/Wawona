@@ -294,7 +294,7 @@ rustPlatform.buildRustPackage {
     # Configure Bindgen to find Android NDK headers and FFmpeg
     # We need to point to the sysroot include directories
     NDK_SYSROOT="${NDK_SYSROOT}"
-    export BINDGEN_EXTRA_CLANG_ARGS="-isystem ${zstd}/include -isystem ${lz4}/include -isystem ${ffmpeg}/include -isystem $NDK_SYSROOT/usr/include -isystem $NDK_SYSROOT/usr/include/aarch64-linux-android --target=aarch64-linux-android"
+    export BINDGEN_EXTRA_CLANG_ARGS="-isystem ${zstd}/include -isystem ${lz4}/include -isystem ${ffmpeg}/include -isystem $NDK_SYSROOT/usr/include -isystem $NDK_SYSROOT/usr/include/aarch64-linux-android --target=aarch64-linux-android ${androidToolchain.androidNdkCflags}"
     echo "BINDGEN_EXTRA_CLANG_ARGS: $BINDGEN_EXTRA_CLANG_ARGS"
 
     echo "Vulkan driver (SwiftShader) library path: ${swiftshader}/lib"

@@ -27,7 +27,7 @@ pkgs.stdenv.mkDerivation {
     export AR="${androidToolchain.androidAR}"
     export RANLIB="${androidToolchain.androidRANLIB}"
     export STRIP="${androidToolchain.androidSTRIP}"
-    export CFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${NDK_SYSROOT} -fPIC"
+    export CFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${NDK_SYSROOT} -fPIC ${androidToolchain.androidNdkCflags}"
     export LDFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${NDK_SYSROOT} -static"
   '';
 

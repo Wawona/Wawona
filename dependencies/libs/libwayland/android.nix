@@ -106,6 +106,7 @@ pkgs.stdenv.mkDerivation {
     libxml2
     expat
     gcc
+    which
     waylandScanner
   ];
   depsTargetTarget = depInputs;
@@ -387,6 +388,7 @@ pkgs.stdenv.mkDerivation {
         echo "=== Android compatibility patches complete ==="
   '';
   preConfigure = ''
+        unset NIX_CFLAGS_COMPILE NIX_CXXFLAGS_COMPILE
         export CC="${androidToolchain.androidCC}"
         export CXX="${androidToolchain.androidCXX}"
         export AR="${androidToolchain.androidAR}"
@@ -450,18 +452,18 @@ pkgs.stdenv.mkDerivation {
     [built-in options]
     EOF
         if [ -n "$LIBFFI_INCLUDE" ]; then
-          echo "c_args = ['--target=${androidToolchain.androidTarget}', '-fPIC', '-I$LIBFFI_INCLUDE', '-D_GNU_SOURCE']" >> android-cross-file.txt
-          echo "cpp_args = ['--target=${androidToolchain.androidTarget}', '-fPIC', '-I$LIBFFI_INCLUDE', '-D_GNU_SOURCE']" >> android-cross-file.txt
+          echo "c_args = ['--target=${androidToolchain.androidTarget}', '--sysroot', '${androidToolchain.androidndkRoot}/sysroot', '-isystem', '${androidToolchain.androidndkRoot}/sysroot/usr/include', '-isystem', '${androidToolchain.androidndkRoot}/sysroot/usr/include/aarch64-linux-android', '-fPIC', '-I$LIBFFI_INCLUDE', '${androidToolchain.androidNdkCflags}', '-D_GNU_SOURCE']" >> android-cross-file.txt
+          echo "cpp_args = ['--target=${androidToolchain.androidTarget}', '--sysroot', '${androidToolchain.androidndkRoot}/sysroot', '-isystem', '${androidToolchain.androidndkRoot}/sysroot/usr/include', '-isystem', '${androidToolchain.androidndkRoot}/sysroot/usr/include/aarch64-linux-android', '-fPIC', '-I$LIBFFI_INCLUDE', '${androidToolchain.androidNdkCflags}', '-D_GNU_SOURCE']" >> android-cross-file.txt
         else
-          echo "c_args = ['--target=${androidToolchain.androidTarget}', '-fPIC', '-D_GNU_SOURCE']" >> android-cross-file.txt
-          echo "cpp_args = ['--target=${androidToolchain.androidTarget}', '-fPIC', '-D_GNU_SOURCE']" >> android-cross-file.txt
+          echo "c_args = ['--target=${androidToolchain.androidTarget}', '--sysroot', '${androidToolchain.androidndkRoot}/sysroot', '-isystem', '${androidToolchain.androidndkRoot}/sysroot/usr/include', '-isystem', '${androidToolchain.androidndkRoot}/sysroot/usr/include/aarch64-linux-android', '-fPIC', '${androidToolchain.androidNdkCflags}', '-D_GNU_SOURCE']" >> android-cross-file.txt
+          echo "cpp_args = ['--target=${androidToolchain.androidTarget}', '--sysroot', '${androidToolchain.androidndkRoot}/sysroot', '-isystem', '${androidToolchain.androidndkRoot}/sysroot/usr/include', '-isystem', '${androidToolchain.androidndkRoot}/sysroot/usr/include/aarch64-linux-android', '-fPIC', '${androidToolchain.androidNdkCflags}', '-D_GNU_SOURCE']" >> android-cross-file.txt
         fi
         if [ -n "$LIBFFI_LIB" ]; then
-          echo "c_link_args = ['--target=${androidToolchain.androidTarget}', '-L$LIBFFI_LIB']" >> android-cross-file.txt
-          echo "cpp_link_args = ['--target=${androidToolchain.androidTarget}', '-L$LIBFFI_LIB']" >> android-cross-file.txt
+          echo "c_link_args = ['--target=${androidToolchain.androidTarget}', '--sysroot', '${androidToolchain.androidndkRoot}/sysroot', '-L$LIBFFI_LIB']" >> android-cross-file.txt
+          echo "cpp_link_args = ['--target=${androidToolchain.androidTarget}', '--sysroot', '${androidToolchain.androidndkRoot}/sysroot', '-L$LIBFFI_LIB']" >> android-cross-file.txt
         else
-          echo "c_link_args = ['--target=${androidToolchain.androidTarget}']" >> android-cross-file.txt
-          echo "cpp_link_args = ['--target=${androidToolchain.androidTarget}']" >> android-cross-file.txt
+          echo "c_link_args = ['--target=${androidToolchain.androidTarget}', '--sysroot', '${androidToolchain.androidndkRoot}/sysroot']" >> android-cross-file.txt
+          echo "cpp_link_args = ['--target=${androidToolchain.androidTarget}', '--sysroot', '${androidToolchain.androidndkRoot}/sysroot']" >> android-cross-file.txt
         fi
         LIBXML2_NATIVE_INCLUDE_VAL=""
         LIBXML2_NATIVE_LIB_VAL=""
@@ -572,9 +574,5 @@ pkgs.stdenv.mkDerivation {
     meson install -C build
     runHook postInstall
   '';
-  CC = androidToolchain.androidCC;
-  CXX = androidToolchain.androidCXX;
-  NIX_CFLAGS_COMPILE = "--target=${androidToolchain.androidTarget} -fPIC";
-  NIX_CXXFLAGS_COMPILE = "--target=${androidToolchain.androidTarget} -fPIC";
   __impureHostDeps = [ "/bin/sh" ];
 }

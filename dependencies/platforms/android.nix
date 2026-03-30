@@ -208,8 +208,8 @@ in
             export AR="${androidToolchain.androidAR}"
             export STRIP="${androidToolchain.androidSTRIP}"
             export RANLIB="${androidToolchain.androidRANLIB}"
-            export CFLAGS="--target=${androidToolchain.androidTarget} -fPIC"
-            export CXXFLAGS="--target=${androidToolchain.androidTarget} -fPIC"
+            export CFLAGS="--target=${androidToolchain.androidTarget} -fPIC ${androidToolchain.androidNdkCflags}"
+            export CXXFLAGS="--target=${androidToolchain.androidTarget} -fPIC ${androidToolchain.androidNdkCflags}"
             export LDFLAGS="--target=${androidToolchain.androidTarget}"
           '';
           cmakeFlags = [
@@ -218,8 +218,8 @@ in
             "-DCMAKE_ANDROID_NDK=${androidToolchain.androidndkRoot}"
             "-DCMAKE_C_COMPILER=${androidToolchain.androidCC}"
             "-DCMAKE_CXX_COMPILER=${androidToolchain.androidCXX}"
-            "-DCMAKE_C_FLAGS=--target=${androidToolchain.androidTarget}"
-            "-DCMAKE_CXX_FLAGS=--target=${androidToolchain.androidTarget}"
+            "-DCMAKE_C_FLAGS=--target=${androidToolchain.androidTarget} ${androidToolchain.androidNdkCflags}"
+            "-DCMAKE_CXX_FLAGS=--target=${androidToolchain.androidTarget} ${androidToolchain.androidNdkCflags}"
           ]
           ++ buildFlags;
         }
@@ -258,8 +258,8 @@ in
             export AR="${androidToolchain.androidAR}"
             export STRIP="${androidToolchain.androidSTRIP}"
             export RANLIB="${androidToolchain.androidRANLIB}"
-            export CFLAGS="-fPIC"
-            export CXXFLAGS="-fPIC"
+            export CFLAGS="-fPIC ${androidToolchain.androidNdkCflags}"
+            export CXXFLAGS="-fPIC ${androidToolchain.androidNdkCflags}"
           '';
           configurePhase = ''
             runHook preConfigure

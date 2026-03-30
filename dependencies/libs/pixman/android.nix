@@ -63,8 +63,8 @@ pkgs.stdenv.mkDerivation {
     endian = 'little'
 
     [built-in options]
-    c_args = ['--target=${androidToolchain.androidTarget}', '-fPIC']
-    cpp_args = ['--target=${androidToolchain.androidTarget}', '-fPIC']
+    c_args = ['--target=${androidToolchain.androidTarget}', '-fPIC', '${androidToolchain.androidNdkCflags}']
+    cpp_args = ['--target=${androidToolchain.androidTarget}', '-fPIC', '${androidToolchain.androidNdkCflags}']
     c_link_args = ['--target=${androidToolchain.androidTarget}']
     cpp_link_args = ['--target=${androidToolchain.androidTarget}']
     EOF

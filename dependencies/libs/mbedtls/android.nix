@@ -38,8 +38,8 @@ set(CMAKE_ANDROID_ARCH_ABI arm64-v8a)
 set(CMAKE_ANDROID_NDK "${androidToolchain.androidndkRoot}")
 set(CMAKE_C_COMPILER "${androidToolchain.androidCC}")
 set(CMAKE_CXX_COMPILER "${androidToolchain.androidCXX}")
-set(CMAKE_C_FLAGS "--target=${androidToolchain.androidTarget} -fPIC")
-set(CMAKE_CXX_FLAGS "--target=${androidToolchain.androidTarget} -fPIC")
+set(CMAKE_C_FLAGS "--target=${androidToolchain.androidTarget} -fPIC ${androidToolchain.androidNdkCflags}")
+set(CMAKE_CXX_FLAGS "--target=${androidToolchain.androidTarget} -fPIC ${androidToolchain.androidNdkCflags}")
 set(BUILD_SHARED_LIBS OFF)
 EOF
   '';

@@ -1443,8 +1443,8 @@ MODBAR
       export AR="${androidToolchainResolved.androidAR}"
       export STRIP="${androidToolchainResolved.androidSTRIP}"
       export RANLIB="${androidToolchainResolved.androidRANLIB}"
-      export CFLAGS="--target=${androidToolchainResolved.androidTarget} -fPIC"
-      export CXXFLAGS="--target=${androidToolchainResolved.androidTarget} -fPIC"
+      export CFLAGS="--target=${androidToolchainResolved.androidTarget} -fPIC ${androidToolchainResolved.androidNdkCflags}"
+      export CXXFLAGS="--target=${androidToolchainResolved.androidTarget} -fPIC ${androidToolchainResolved.androidNdkCflags}"
       export LDFLAGS="--target=${androidToolchainResolved.androidTarget}"
 
       # Android dependencies setup
@@ -1483,6 +1483,7 @@ MODBAR
              ${lib.concatStringsSep " " common.commonCFlags} \
              ${lib.concatStringsSep " " common.debugCFlags} \
              --target=${androidToolchainResolved.androidTarget} \
+             ${androidToolchainResolved.androidNdkCflags} \
              -o "$obj_file"; then
             OBJ_FILES="$OBJ_FILES $obj_file"
           else
@@ -1502,6 +1503,7 @@ MODBAR
            -Iandroid-dependencies/include \
            -fPIC \
            --target=${androidToolchainResolved.androidTarget} \
+           ${androidToolchainResolved.androidNdkCflags} \
            -o "$obj_file"; then
           OBJ_FILES="$OBJ_FILES $obj_file"
         else
@@ -1543,6 +1545,7 @@ MODBAR
          -lzstd -llz4 \
          -llog -landroid -lvulkan -lm -ldl -lz \
          -g --target=${androidToolchainResolved.androidTarget} \
+         ${androidToolchainResolved.androidNdkCflags} \
          -o libwawona.so
          
       # Setup Gradle and dependencies

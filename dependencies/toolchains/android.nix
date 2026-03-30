@@ -6,7 +6,10 @@ let
   # NDK API level - NDK r27c supports up to API 35
   # Native libraries can be built for API 35 while app targets API 36
   androidNdkApiLevel = 35;
-  androidTarget = "aarch64-linux-android${toString androidNdkApiLevel}";
+  # Clang triple without API suffix; always pass -D__ANDROID_API__ via androidNdkCflags.
+  # API-in-triple form (e.g. aarch64-linux-android35) breaks header resolution on Linux NDK CI.
+  androidTarget = "aarch64-linux-android";
+  androidNdkCflags = "-D__ANDROID_API__=${toString androidNdkApiLevel}";
   androidndkPkgsMacOS =
     if pkgs.stdenv.buildPlatform.isAarch64 && pkgs.stdenv.buildPlatform.isDarwin then
       let
@@ -61,7 +64,7 @@ let
 
 in
 {
-  inherit androidApiLevel androidNdkApiLevel androidTarget;
+  inherit androidApiLevel androidNdkApiLevel androidTarget androidNdkCflags;
   androidCC = "${androidndkPkgs.clang}/bin/clang";
   androidCXX = "${androidndkPkgs.clang}/bin/clang++";
   androidAR = "${androidndkPkgs.binutils}/bin/llvm-ar";

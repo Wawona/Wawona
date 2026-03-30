@@ -240,10 +240,12 @@ let
       unset DEVELOPER_DIR
     '' else if isAndroid then ''
       unset MACOSX_DEPLOYMENT_TARGET
-      export CC_${cargoTargetUnderscore}="${androidToolchainEffective.androidCC} --target=${androidToolchainEffective.androidTarget}"
-      export CXX_${cargoTargetUnderscore}="${androidToolchainEffective.androidCXX} --target=${androidToolchainEffective.androidTarget}"
-      export CFLAGS_${cargoTargetUnderscore}="--target=${androidToolchainEffective.androidTarget} --sysroot=${NDK_SYSROOT} -I${NDK_SYSROOT}/usr/include -fPIC"
-      export BINDGEN_EXTRA_CLANG_ARGS="--target=${androidToolchainEffective.androidTarget} --sysroot=${NDK_SYSROOT} -I${NDK_SYSROOT}/usr/include"
+      # Plain compiler path + flags only in CFLAGS: avoids cc-rs duplicating --target and fixes NDK headers on Linux.
+      export CC_${cargoTargetUnderscore}="${androidToolchainEffective.androidCC}"
+      export CXX_${cargoTargetUnderscore}="${androidToolchainEffective.androidCXX}"
+      export CFLAGS_${cargoTargetUnderscore}="--target=${androidToolchainEffective.androidTarget} --sysroot=${NDK_SYSROOT} -isystem ${NDK_SYSROOT}/usr/include -isystem ${NDK_SYSROOT}/usr/include/aarch64-linux-android -fPIC ${androidToolchainEffective.androidNdkCflags}"
+      export CXXFLAGS_${cargoTargetUnderscore}="--target=${androidToolchainEffective.androidTarget} --sysroot=${NDK_SYSROOT} -isystem ${NDK_SYSROOT}/usr/include -isystem ${NDK_SYSROOT}/usr/include/aarch64-linux-android -fPIC ${androidToolchainEffective.androidNdkCflags}"
+      export BINDGEN_EXTRA_CLANG_ARGS="--target=${androidToolchainEffective.androidTarget} --sysroot=${NDK_SYSROOT} -isystem ${NDK_SYSROOT}/usr/include -isystem ${NDK_SYSROOT}/usr/include/aarch64-linux-android ${androidToolchainEffective.androidNdkCflags}"
       export CRATE_CC_NO_DEFAULTS="1"
       export AR="${androidToolchainEffective.androidAR}"
     '' else "";
@@ -405,8 +407,9 @@ let
         ++ lib.optional (nativeDeps ? ffmpeg) "${nativeDeps.ffmpeg}/lib/pkgconfig"
       );
     } // lib.optionalAttrs isAndroid ({
-      CC_aarch64_linux_android = "${androidLinkerWrapper}";
-      CXX_aarch64_linux_android = androidToolchainEffective.androidCXX;
+      # Use plain clang + CFLAGS from crossPreConfigure for cc-rs; linker wrapper is rustc-only.
+      CC_aarch64_linux_android = "${androidToolchainEffective.androidCC}";
+      CXX_aarch64_linux_android = "${androidToolchainEffective.androidCXX}";
       AR_aarch64_linux_android = androidToolchainEffective.androidAR;
       AR = androidToolchainEffective.androidAR;
       CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER = "${androidLinkerWrapper}";

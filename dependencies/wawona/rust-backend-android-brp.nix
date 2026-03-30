@@ -90,7 +90,10 @@ rustPlatform.buildRustPackage rec {
       ++ lib.optional (nativeDeps ? lz4) "${nativeDeps.lz4}/include"
       ++ lib.optional (nativeDeps ? ffmpeg) "${nativeDeps.ffmpeg}/include"
     )}:$C_INCLUDE_PATH"
-    export BINDGEN_EXTRA_CLANG_ARGS="-isystem ${NDK_SYSROOT}/usr/include -isystem ${NDK_SYSROOT}/usr/include/aarch64-linux-android --target=aarch64-linux-android"
+    export CRATE_CC_NO_DEFAULTS=1
+    export CFLAGS_aarch64_linux_android="--target=${androidToolchain.androidTarget} --sysroot=${NDK_SYSROOT} -isystem ${NDK_SYSROOT}/usr/include -isystem ${NDK_SYSROOT}/usr/include/aarch64-linux-android -fPIC ${androidToolchain.androidNdkCflags}"
+    export CXXFLAGS_aarch64_linux_android="--target=${androidToolchain.androidTarget} --sysroot=${NDK_SYSROOT} -isystem ${NDK_SYSROOT}/usr/include -isystem ${NDK_SYSROOT}/usr/include/aarch64-linux-android -fPIC ${androidToolchain.androidNdkCflags}"
+    export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=${NDK_SYSROOT} -isystem ${NDK_SYSROOT}/usr/include -isystem ${NDK_SYSROOT}/usr/include/aarch64-linux-android --target=${androidToolchain.androidTarget} ${androidToolchain.androidNdkCflags}"
   '';
 
   installPhase = ''

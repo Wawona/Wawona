@@ -60,7 +60,7 @@ cpu = 'aarch64'
 endian = 'little'
 
 [properties]
-c_args = ['--target=${androidToolchain.androidTarget}', '-fPIC']
+c_args = ['--target=${androidToolchain.androidTarget}', '-fPIC', '${androidToolchain.androidNdkCflags}']
 c_link_args = ['--target=${androidToolchain.androidTarget}']
 needs_exe_wrapper = true
 EOF

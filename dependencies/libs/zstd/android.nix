@@ -37,8 +37,8 @@ pkgs.stdenv.mkDerivation {
     # Set sysroot for API level
     HOST_TAG="${if pkgs.stdenv.buildPlatform.isLinux then "linux-x86_64" else "darwin-x86_64"}"
     NDK_SYSROOT="${androidToolchain.androidndkRoot}/toolchains/llvm/prebuilt/$HOST_TAG/sysroot"
-    export CFLAGS="--target=${androidToolchain.androidTarget} --sysroot=$NDK_SYSROOT -fPIC"
-    export CXXFLAGS="--target=${androidToolchain.androidTarget} --sysroot=$NDK_SYSROOT -fPIC"
+    export CFLAGS="--target=${androidToolchain.androidTarget} --sysroot=$NDK_SYSROOT -fPIC ${androidToolchain.androidNdkCflags}"
+    export CXXFLAGS="--target=${androidToolchain.androidTarget} --sysroot=$NDK_SYSROOT -fPIC ${androidToolchain.androidNdkCflags}"
     export LDFLAGS="--target=${androidToolchain.androidTarget} --sysroot=$NDK_SYSROOT"
   '';
 
