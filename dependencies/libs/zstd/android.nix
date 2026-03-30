@@ -39,7 +39,7 @@ pkgs.stdenv.mkDerivation {
     NDK_SYSROOT="${androidToolchain.androidndkRoot}/toolchains/llvm/prebuilt/$HOST_TAG/sysroot"
     export CFLAGS="--target=${androidToolchain.androidTarget} --sysroot=$NDK_SYSROOT -fPIC ${androidToolchain.androidNdkCflags}"
     export CXXFLAGS="--target=${androidToolchain.androidTarget} --sysroot=$NDK_SYSROOT -fPIC ${androidToolchain.androidNdkCflags}"
-    export LDFLAGS="--target=${androidToolchain.androidTarget} --sysroot=$NDK_SYSROOT"
+    export LDFLAGS="--target=${androidToolchain.androidTarget} --sysroot=$NDK_SYSROOT -L${androidToolchain.androidNdkAbiLibDir}"
   '';
 
   # zstd has CMakeLists.txt in build/cmake subdirectory
@@ -58,6 +58,10 @@ pkgs.stdenv.mkDerivation {
     "-DZSTD_BUILD_PROGRAMS=OFF"
     "-DZSTD_BUILD_SHARED=ON"
     "-DZSTD_BUILD_STATIC=ON"
+    "-DCMAKE_C_FLAGS=--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC ${androidToolchain.androidNdkCflags}"
+    "-DCMAKE_CXX_FLAGS=--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC ${androidToolchain.androidNdkCflags}"
+    "-DCMAKE_SHARED_LINKER_FLAGS=--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -L${androidToolchain.androidNdkAbiLibDir}"
+    "-DCMAKE_MODULE_LINKER_FLAGS=--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -L${androidToolchain.androidNdkAbiLibDir}"
   ];
 
   # Patch CMakeLists.txt to fix CMake syntax issues

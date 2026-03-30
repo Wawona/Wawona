@@ -63,18 +63,21 @@ let
       pkgs.buildPackages.androidndkPkgs;
 
 in
-{
+rec {
   inherit androidApiLevel androidNdkApiLevel androidTarget androidNdkCflags;
   androidCC = "${androidndkPkgs.clang}/bin/clang";
   androidCXX = "${androidndkPkgs.clang}/bin/clang++";
   androidAR = "${androidndkPkgs.binutils}/bin/llvm-ar";
   androidSTRIP = "${androidndkPkgs.binutils}/bin/llvm-strip";
   androidRANLIB = "${androidndkPkgs.binutils}/bin/llvm-ranlib";
-  androidndkRoot = 
+  androidndkRoot =
     if androidndkPkgs ? ndkRoot then androidndkPkgs.ndkRoot
     else if pkgs.stdenv.isAarch64 && pkgs.stdenv.isDarwin then
       androidndkPkgsMacOS.ndkRoot
     else
       # Try to find the NDK root from the clang path (common for Nixpkgs)
       lib.removeSuffix "/bin/clang" (toString androidndkPkgs.clang) + "/..";
+  # Unified sysroot + per-API lib dir (crtbegin_*.o, libc) — required when clang triple has no API suffix.
+  androidNdkSysroot = "${androidndkRoot}/sysroot";
+  androidNdkAbiLibDir = "${androidNdkSysroot}/usr/lib/aarch64-linux-android/${toString androidNdkApiLevel}";
 }

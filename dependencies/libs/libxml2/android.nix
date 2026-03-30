@@ -45,8 +45,9 @@ pkgs.stdenv.mkDerivation {
     export AR="${androidToolchain.androidAR}"
     export STRIP="${androidToolchain.androidSTRIP}"
     export RANLIB="${androidToolchain.androidRANLIB}"
-    export CFLAGS="-fPIC"
-    export CXXFLAGS="-fPIC"
+    export CFLAGS="-fPIC --sysroot=${androidToolchain.androidNdkSysroot} ${androidToolchain.androidNdkCflags}"
+    export CXXFLAGS="-fPIC --sysroot=${androidToolchain.androidNdkSysroot} ${androidToolchain.androidNdkCflags}"
+    export LDFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -L${androidToolchain.androidNdkAbiLibDir}"
   '';
   configurePhase = ''
     runHook preConfigure

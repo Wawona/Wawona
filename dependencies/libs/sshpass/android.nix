@@ -28,7 +28,7 @@ pkgs.stdenv.mkDerivation {
     export RANLIB="${androidToolchain.androidRANLIB}"
     export STRIP="${androidToolchain.androidSTRIP}"
     export CFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${NDK_SYSROOT} -fPIC ${androidToolchain.androidNdkCflags}"
-    export LDFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${NDK_SYSROOT} -static"
+    export LDFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${NDK_SYSROOT} -L${androidToolchain.androidNdkAbiLibDir} -static"
   '';
 
   configurePhase = ''

@@ -60,8 +60,8 @@ cpu = 'aarch64'
 endian = 'little'
 
 [properties]
-c_args = ['--target=${androidToolchain.androidTarget}', '-fPIC', '${androidToolchain.androidNdkCflags}']
-c_link_args = ['--target=${androidToolchain.androidTarget}']
+c_args = ['--target=${androidToolchain.androidTarget}', '--sysroot=${androidToolchain.androidNdkSysroot}', '-fPIC', '${androidToolchain.androidNdkCflags}']
+c_link_args = ['--target=${androidToolchain.androidTarget}', '--sysroot=${androidToolchain.androidNdkSysroot}', '-L${androidToolchain.androidNdkAbiLibDir}']
 needs_exe_wrapper = true
 EOF
 

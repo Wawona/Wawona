@@ -45,8 +45,10 @@ set(CMAKE_C_COMPILER "${androidToolchain.androidCC}")
 set(CMAKE_CXX_COMPILER "${androidToolchain.androidCXX}")
 set(CMAKE_AR "${androidToolchain.androidAR}")
 set(CMAKE_RANLIB "${androidToolchain.androidRANLIB}")
-set(CMAKE_C_FLAGS "--target=${androidToolchain.androidTarget} -fPIC ${androidToolchain.androidNdkCflags}")
-set(CMAKE_CXX_FLAGS "--target=${androidToolchain.androidTarget} -fPIC ${androidToolchain.androidNdkCflags}")
+set(CMAKE_C_FLAGS "--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC ${androidToolchain.androidNdkCflags}")
+set(CMAKE_CXX_FLAGS "--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC ${androidToolchain.androidNdkCflags}")
+set(CMAKE_SHARED_LINKER_FLAGS "--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -L${androidToolchain.androidNdkAbiLibDir}")
+set(CMAKE_MODULE_LINKER_FLAGS "--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -L${androidToolchain.androidNdkAbiLibDir}")
 set(BUILD_SHARED_LIBS OFF)
 EOF
   '';

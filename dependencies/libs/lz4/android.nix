@@ -35,7 +35,7 @@ pkgs.stdenv.mkDerivation {
     export RANLIB="${androidToolchain.androidRANLIB}"
     export CFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${ndkSysroot} -fPIC ${androidToolchain.androidNdkCflags}"
     export CXXFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${ndkSysroot} -fPIC ${androidToolchain.androidNdkCflags}"
-    export LDFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${ndkSysroot}"
+    export LDFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${ndkSysroot} -L${androidToolchain.androidNdkAbiLibDir}"
   '';
 
   buildPhase = ''

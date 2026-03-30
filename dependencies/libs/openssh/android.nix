@@ -68,7 +68,7 @@ PY
     export RANLIB="${androidToolchain.androidRANLIB}"
     export STRIP="${androidToolchain.androidSTRIP}"
     export CFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${NDK_SYSROOT} -fPIC -DANDROID ${androidToolchain.androidNdkCflags}"
-    export LDFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${NDK_SYSROOT} -L${NDK_ZLIB_LIB} -static"
+    export LDFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${NDK_SYSROOT} -L${androidToolchain.androidNdkAbiLibDir} -L${NDK_ZLIB_LIB} -static"
   '';
 
   configurePhase = ''

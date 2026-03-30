@@ -40,9 +40,9 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
     export AR="${androidToolchain.androidAR}"
     export STRIP="${androidToolchain.androidSTRIP}"
     export RANLIB="${androidToolchain.androidRANLIB}"
-    export CFLAGS="--target=${androidToolchain.androidTarget} -fPIC -Wno-deprecated-declarations ${androidToolchain.androidNdkCflags}"
-    export CXXFLAGS="--target=${androidToolchain.androidTarget} -fPIC -Wno-deprecated-declarations ${androidToolchain.androidNdkCflags}"
-    export LDFLAGS="--target=${androidToolchain.androidTarget}"
+    export CFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC -Wno-deprecated-declarations ${androidToolchain.androidNdkCflags}"
+    export CXXFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC -Wno-deprecated-declarations ${androidToolchain.androidNdkCflags}"
+    export LDFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -L${androidToolchain.androidNdkAbiLibDir}"
   '';
 
   cmakeFlags = [
@@ -56,8 +56,10 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
     "-DCMAKE_ANDROID_API=${toString androidToolchain.androidNdkApiLevel}"
     "-DCMAKE_C_COMPILER=${androidToolchain.androidCC}"
     "-DCMAKE_CXX_COMPILER=${androidToolchain.androidCXX}"
-    "-DCMAKE_C_FLAGS=--target=${androidToolchain.androidTarget}"
-    "-DCMAKE_CXX_FLAGS=--target=${androidToolchain.androidTarget}"
+    "-DCMAKE_C_FLAGS=--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} ${androidToolchain.androidNdkCflags}"
+    "-DCMAKE_CXX_FLAGS=--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} ${androidToolchain.androidNdkCflags}"
+    "-DCMAKE_SHARED_LINKER_FLAGS=--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -L${androidToolchain.androidNdkAbiLibDir}"
+    "-DCMAKE_MODULE_LINKER_FLAGS=--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -L${androidToolchain.androidNdkAbiLibDir}"
     "-DCMAKE_INSTALL_BINDIR=bin"
     "-DCMAKE_INSTALL_LIBDIR=lib"
     "-DCMAKE_INSTALL_INCLUDEDIR=include"

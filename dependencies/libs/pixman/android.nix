@@ -63,10 +63,10 @@ pkgs.stdenv.mkDerivation {
     endian = 'little'
 
     [built-in options]
-    c_args = ['--target=${androidToolchain.androidTarget}', '-fPIC', '${androidToolchain.androidNdkCflags}']
-    cpp_args = ['--target=${androidToolchain.androidTarget}', '-fPIC', '${androidToolchain.androidNdkCflags}']
-    c_link_args = ['--target=${androidToolchain.androidTarget}']
-    cpp_link_args = ['--target=${androidToolchain.androidTarget}']
+    c_args = ['--target=${androidToolchain.androidTarget}', '--sysroot=${androidToolchain.androidNdkSysroot}', '-fPIC', '${androidToolchain.androidNdkCflags}']
+    cpp_args = ['--target=${androidToolchain.androidTarget}', '--sysroot=${androidToolchain.androidNdkSysroot}', '-fPIC', '${androidToolchain.androidNdkCflags}']
+    c_link_args = ['--target=${androidToolchain.androidTarget}', '--sysroot=${androidToolchain.androidNdkSysroot}', '-L${androidToolchain.androidNdkAbiLibDir}']
+    cpp_link_args = ['--target=${androidToolchain.androidTarget}', '--sysroot=${androidToolchain.androidNdkSysroot}', '-L${androidToolchain.androidNdkAbiLibDir}']
     EOF
   '';
   configurePhase = ''

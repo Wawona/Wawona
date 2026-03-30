@@ -1443,9 +1443,9 @@ MODBAR
       export AR="${androidToolchainResolved.androidAR}"
       export STRIP="${androidToolchainResolved.androidSTRIP}"
       export RANLIB="${androidToolchainResolved.androidRANLIB}"
-      export CFLAGS="--target=${androidToolchainResolved.androidTarget} -fPIC ${androidToolchainResolved.androidNdkCflags}"
-      export CXXFLAGS="--target=${androidToolchainResolved.androidTarget} -fPIC ${androidToolchainResolved.androidNdkCflags}"
-      export LDFLAGS="--target=${androidToolchainResolved.androidTarget}"
+      export CFLAGS="--target=${androidToolchainResolved.androidTarget} --sysroot=${androidToolchainResolved.androidNdkSysroot} -fPIC ${androidToolchainResolved.androidNdkCflags}"
+      export CXXFLAGS="--target=${androidToolchainResolved.androidTarget} --sysroot=${androidToolchainResolved.androidNdkSysroot} -fPIC ${androidToolchainResolved.androidNdkCflags}"
+      export LDFLAGS="--target=${androidToolchainResolved.androidTarget} --sysroot=${androidToolchainResolved.androidNdkSysroot} -L${androidToolchainResolved.androidNdkAbiLibDir}"
 
       # Android dependencies setup
       mkdir -p android-dependencies/include
@@ -1483,6 +1483,7 @@ MODBAR
              ${lib.concatStringsSep " " common.commonCFlags} \
              ${lib.concatStringsSep " " common.debugCFlags} \
              --target=${androidToolchainResolved.androidTarget} \
+             --sysroot=${androidToolchainResolved.androidNdkSysroot} \
              ${androidToolchainResolved.androidNdkCflags} \
              -o "$obj_file"; then
             OBJ_FILES="$OBJ_FILES $obj_file"
@@ -1503,6 +1504,7 @@ MODBAR
            -Iandroid-dependencies/include \
            -fPIC \
            --target=${androidToolchainResolved.androidTarget} \
+           --sysroot=${androidToolchainResolved.androidNdkSysroot} \
            ${androidToolchainResolved.androidNdkCflags} \
            -o "$obj_file"; then
           OBJ_FILES="$OBJ_FILES $obj_file"
@@ -1545,6 +1547,8 @@ MODBAR
          -lzstd -llz4 \
          -llog -landroid -lvulkan -lm -ldl -lz \
          -g --target=${androidToolchainResolved.androidTarget} \
+         --sysroot=${androidToolchainResolved.androidNdkSysroot} \
+         -L${androidToolchainResolved.androidNdkAbiLibDir} \
          ${androidToolchainResolved.androidNdkCflags} \
          -o libwawona.so
          
