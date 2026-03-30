@@ -58,10 +58,10 @@ pkgs.stdenv.mkDerivation {
     "-DZSTD_BUILD_PROGRAMS=OFF"
     "-DZSTD_BUILD_SHARED=ON"
     "-DZSTD_BUILD_STATIC=ON"
-    "-DCMAKE_C_FLAGS=--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC ${androidToolchain.androidNdkCflags}"
-    "-DCMAKE_CXX_FLAGS=--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC ${androidToolchain.androidNdkCflags}"
-    "-DCMAKE_SHARED_LINKER_FLAGS=--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -L${androidToolchain.androidNdkAbiLibDir}"
-    "-DCMAKE_MODULE_LINKER_FLAGS=--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -L${androidToolchain.androidNdkAbiLibDir}"
+    (lib.cmakeFeature "CMAKE_C_FLAGS" "--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC ${androidToolchain.androidNdkCflags}")
+    (lib.cmakeFeature "CMAKE_CXX_FLAGS" "--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC ${androidToolchain.androidNdkCflags}")
+    "-DCMAKE_SHARED_LINKER_FLAGS=-L${androidToolchain.androidNdkAbiLibDir}"
+    "-DCMAKE_MODULE_LINKER_FLAGS=-L${androidToolchain.androidNdkAbiLibDir}"
   ];
 
   # Patch CMakeLists.txt to fix CMake syntax issues

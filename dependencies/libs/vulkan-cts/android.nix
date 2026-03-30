@@ -56,10 +56,10 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
     "-DCMAKE_ANDROID_API=${toString androidToolchain.androidNdkApiLevel}"
     "-DCMAKE_C_COMPILER=${androidToolchain.androidCC}"
     "-DCMAKE_CXX_COMPILER=${androidToolchain.androidCXX}"
-    "-DCMAKE_C_FLAGS=--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} ${androidToolchain.androidNdkCflags}"
-    "-DCMAKE_CXX_FLAGS=--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} ${androidToolchain.androidNdkCflags}"
-    "-DCMAKE_SHARED_LINKER_FLAGS=--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -L${androidToolchain.androidNdkAbiLibDir}"
-    "-DCMAKE_MODULE_LINKER_FLAGS=--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -L${androidToolchain.androidNdkAbiLibDir}"
+    (lib.cmakeFeature "CMAKE_C_FLAGS" "--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC -Wno-deprecated-declarations ${androidToolchain.androidNdkCflags}")
+    (lib.cmakeFeature "CMAKE_CXX_FLAGS" "--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC -Wno-deprecated-declarations ${androidToolchain.androidNdkCflags}")
+    "-DCMAKE_SHARED_LINKER_FLAGS=-L${androidToolchain.androidNdkAbiLibDir}"
+    "-DCMAKE_MODULE_LINKER_FLAGS=-L${androidToolchain.androidNdkAbiLibDir}"
     "-DCMAKE_INSTALL_BINDIR=bin"
     "-DCMAKE_INSTALL_LIBDIR=lib"
     "-DCMAKE_INSTALL_INCLUDEDIR=include"
