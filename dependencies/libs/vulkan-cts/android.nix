@@ -43,6 +43,10 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
     export CFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC -Wno-deprecated-declarations ${androidToolchain.androidNdkCflags}"
     export CXXFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC -Wno-deprecated-declarations ${androidToolchain.androidNdkCflags}"
     export LDFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -L${androidToolchain.androidNdkAbiLibDir}"
+    cmakeFlagsArray+=(
+      "-DCMAKE_C_FLAGS:STRING=--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC -Wno-deprecated-declarations ${androidToolchain.androidNdkCflags}"
+      "-DCMAKE_CXX_FLAGS:STRING=--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC -Wno-deprecated-declarations ${androidToolchain.androidNdkCflags}"
+    )
   '';
 
   cmakeFlags = [
@@ -56,8 +60,6 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
     "-DCMAKE_ANDROID_API=${toString androidToolchain.androidNdkApiLevel}"
     "-DCMAKE_C_COMPILER=${androidToolchain.androidCC}"
     "-DCMAKE_CXX_COMPILER=${androidToolchain.androidCXX}"
-    (lib.cmakeFeature "CMAKE_C_FLAGS" "--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC -Wno-deprecated-declarations ${androidToolchain.androidNdkCflags}")
-    (lib.cmakeFeature "CMAKE_CXX_FLAGS" "--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC -Wno-deprecated-declarations ${androidToolchain.androidNdkCflags}")
     "-DCMAKE_SHARED_LINKER_FLAGS=-L${androidToolchain.androidNdkAbiLibDir}"
     "-DCMAKE_MODULE_LINKER_FLAGS=-L${androidToolchain.androidNdkAbiLibDir}"
     "-DCMAKE_INSTALL_BINDIR=bin"
