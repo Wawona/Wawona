@@ -211,9 +211,13 @@ in
             export CFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC ${androidToolchain.androidNdkCflags}"
             export CXXFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC ${androidToolchain.androidNdkCflags}"
             export LDFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -L${androidToolchain.androidNdkAbiLibDir}"
+            _ANDROID_LINK_FLAGS="--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -L${androidToolchain.androidNdkAbiLibDir}"
             cmakeFlagsArray+=(
               "-DCMAKE_C_FLAGS:STRING=--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC ${androidToolchain.androidNdkCflags}"
               "-DCMAKE_CXX_FLAGS:STRING=--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC ${androidToolchain.androidNdkCflags}"
+              "-DCMAKE_EXE_LINKER_FLAGS:STRING=$_ANDROID_LINK_FLAGS"
+              "-DCMAKE_SHARED_LINKER_FLAGS:STRING=$_ANDROID_LINK_FLAGS"
+              "-DCMAKE_MODULE_LINKER_FLAGS:STRING=$_ANDROID_LINK_FLAGS"
             )
           '';
           cmakeFlags = [
@@ -222,8 +226,6 @@ in
             "-DCMAKE_ANDROID_NDK=${androidToolchain.androidndkRoot}"
             "-DCMAKE_C_COMPILER=${androidToolchain.androidCC}"
             "-DCMAKE_CXX_COMPILER=${androidToolchain.androidCXX}"
-            "-DCMAKE_SHARED_LINKER_FLAGS=-L${androidToolchain.androidNdkAbiLibDir}"
-            "-DCMAKE_MODULE_LINKER_FLAGS=-L${androidToolchain.androidNdkAbiLibDir}"
           ]
           ++ buildFlags;
         }
