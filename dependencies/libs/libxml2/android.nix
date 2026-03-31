@@ -40,14 +40,14 @@ pkgs.stdenv.mkDerivation {
     if [ ! -f ./configure ]; then
       autoreconf -fi || autogen.sh || true
     fi
-    export CC="${androidToolchain.androidCC} --target=${androidToolchain.androidTarget}"
-    export CXX="${androidToolchain.androidCXX} --target=${androidToolchain.androidTarget}"
+    export CC="${androidToolchain.androidCC}"
+    export CXX="${androidToolchain.androidCXX}"
     export AR="${androidToolchain.androidAR}"
     export STRIP="${androidToolchain.androidSTRIP}"
     export RANLIB="${androidToolchain.androidRANLIB}"
-    export CFLAGS="-fPIC --sysroot=${androidToolchain.androidNdkSysroot} ${androidToolchain.androidNdkCflags}"
-    export CXXFLAGS="-fPIC --sysroot=${androidToolchain.androidNdkSysroot} ${androidToolchain.androidNdkCflags}"
-    export LDFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -L${androidToolchain.androidNdkAbiLibDir}"
+    export CFLAGS="-fPIC"
+    export CXXFLAGS="-fPIC"
+    export LDFLAGS="-L${androidToolchain.androidNdkAbiLibDir}"
   '';
   configurePhase = ''
     runHook preConfigure
@@ -96,8 +96,6 @@ pkgs.stdenv.mkDerivation {
     fi
     runHook postInstall
   '';
-  CC = "${androidToolchain.androidCC} --target=${androidToolchain.androidTarget}";
-  CXX = "${androidToolchain.androidCXX} --target=${androidToolchain.androidTarget}";
   NIX_CFLAGS_COMPILE = "-fPIC";
   NIX_CXXFLAGS_COMPILE = "-fPIC";
   __impureHostDeps = [ "/bin/sh" ];

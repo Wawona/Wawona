@@ -76,8 +76,6 @@ pkgs.stdenv.mkDerivation {
     fi
     runHook postInstall
   '';
-  CC = "${androidToolchain.androidCC} --target=${androidToolchain.androidTarget}";
-  CXX = "${androidToolchain.androidCXX} --target=${androidToolchain.androidTarget}";
   NIX_CFLAGS_COMPILE = "-fPIC";
   NIX_CXXFLAGS_COMPILE = "-fPIC";
   __impureHostDeps = [ "/bin/sh" ];
