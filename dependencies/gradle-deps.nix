@@ -29,7 +29,7 @@ stdenv.mkDerivation {
   __noChroot = true;
   outputHashAlgo = "sha256";
   outputHashMode = "recursive";
-  outputHash = "sha256-0Nk3UbLDKwtNz2uANua3VwGJRq9Y7IDLhSd2lFVTXOE=";
+  outputHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
   buildPhase = ''
     export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
@@ -45,12 +45,6 @@ stdenv.mkDerivation {
     # Accept licenses
     mkdir -p $ANDROID_USER_HOME/licenses
     echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > $ANDROID_USER_HOME/licenses/android-sdk-license
-
-    # Use JDK's cacerts directly
-    REAL_JAVA_HOME=$(find ${jdk17} -name cacerts | head -n 1 | sed 's|/lib/security/cacerts||')
-    echo "Using trustStore at: $REAL_JAVA_HOME/lib/security/cacerts"
-    ls -l "$REAL_JAVA_HOME/lib/security/cacerts"
-    # export GRADLE_OPTS="$GRADLE_OPTS -Djavax.net.ssl.trustStore=$REAL_JAVA_HOME/lib/security/cacerts -Djavax.net.ssl.trustStorePassword=changeit"
 
     echo "Checking network connectivity..."
     curl -f -I https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle/8.10.0/gradle-8.10.0.pom || echo "AGP 8.10.0 POM check failed"
@@ -75,7 +69,6 @@ stdenv.mkDerivation {
     gradle --version
 
     # Try with explicit --refresh-dependencies and ensuring online
-    # Also unset GRADLE_OPTS just in case
     unset GRADLE_OPTS
 
     gradle --no-daemon --refresh-dependencies dependencies --configuration implementation --info --stacktrace
@@ -83,43 +76,42 @@ stdenv.mkDerivation {
     gradle --no-daemon --refresh-dependencies dependencies --configuration androidTestImplementation --info --stacktrace
 
     # Also run assembleDebug to get build dependencies (plugins etc)
-    # This might fail due to read-only filesystem or other issues, so we allow failure
-    # but we hope it downloads what it needs first.
     gradle --no-daemon assembleDebug --dry-run --info --stacktrace || true
   '';
 
   installPhase = ''
-    # Clean up non-deterministic files
-    find $out -name "*.lock" -delete
-    find $out -name "gc.properties" -delete
+    # Create a temporary directory to store our deterministic artifacts
+    TEMP_STORE=$(mktemp -d)
 
-    # Remove volatile directories entirely
-    rm -rf $out/kotlin-profile
-    rm -rf $out/notifications
-    rm -rf $out/workerMain
-    rm -rf $out/file-changes
-    rm -rf $out/daemon
-    rm -rf $out/wrapper
+    # Preserve ONLY dependency artifacts (jars, poms, modules)
+    # These reside in caches/modules-2/files-2.1 and are inherently deterministic
+    if [ -d "$out/caches/modules-2/files-2.1" ]; then
+      echo "Preserving deterministic dependency artifacts..."
+      mv "$out/caches/modules-2/files-2.1" "$TEMP_STORE/"
+    fi
 
-    # Remove build-specific caches that might contain absolute paths or timestamps
-    rm -rf $out/caches/*/generated-gradle-jars/
-    rm -rf $out/caches/*/plugin-resolution/
-    rm -rf $out/caches/*/scripts/
-    rm -rf $out/caches/*/scripts-remapped/
-    rm -rf $out/caches/*/fileHashes/
-    rm -rf $out/caches/*/workerMain/
-    rm -rf $out/caches/*/file-changes/
-    rm -rf $out/caches/*/journal/
-    rm -rf $out/caches/transforms-*/
-    rm -rf $out/caches/build-cache-1/
-    rm -rf $out/caches/jars-*
-    rm -rf $out/caches/modules-2/metadata-*/
+    # Wipe out EVERYTHING else in the output directory (volatile metadata, binary logs, etc.)
+    echo "Purging non-deterministic caches and binary blobs..."
+    rm -rf "$out"/*
 
-    # Remove non-deterministic metadata binaries and volatile caches
-    find $out -name "artifact-at-repository.bin" -delete
-    find $out -name "module-versions.xml" -delete
-    find $out -name "resource-at-url.bin" -delete
-    find $out -name "module-artifacts.bin" -delete
-    find $out -name "module-metadata.bin" -delete
+    # Restore the whitelisted artifacts to a predictable structure
+    echo "Restoring whitelisted artifacts to output..."
+    mkdir -p "$out/caches/modules-2"
+    if [ -d "$TEMP_STORE/files-2.1" ]; then
+      mv "$TEMP_STORE/files-2.1" "$out/caches/modules-2/"
+    fi
+
+    # Clean up
+    rm -rf "$TEMP_STORE"
+
+    # Final determinism audit: sanitize any surviving absolute paths in text files (poms, xmls)
+    echo "Performing final determinism audit and path sanitization..."
+    grep -r -l "/nix/build" "$out" | while read -r file; do
+       if file "$file" | grep -q "text"; then
+          echo "Sanitizing build path in $file"
+          sed -i "s|/nix/build|/no-build|g" "$file"
+       fi
+    done || true
   '';
+}
 }
