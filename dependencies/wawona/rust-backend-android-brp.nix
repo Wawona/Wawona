@@ -7,8 +7,8 @@
 
 let
   androidToolchain = import ../toolchains/android.nix { inherit lib pkgs androidSDK; };
-  NDK_SYSROOT = "${androidToolchain.androidndkRoot}/sysroot";
-  NDK_LIB_PATH = "${NDK_SYSROOT}/usr/lib/aarch64-linux-android/${toString androidToolchain.androidNdkApiLevel}";
+  NDK_SYSROOT = androidToolchain.androidNdkSysroot;
+  NDK_LIB_PATH = androidToolchain.androidNdkAbiLibDir;
   androidLinkerWrapper = pkgs.writeShellScript "android-linker-wrapper" ''
     exec ${androidToolchain.androidCC} \
       --target=${androidToolchain.androidTarget} \

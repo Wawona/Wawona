@@ -59,11 +59,11 @@ let
     else null;
 
   NDK_SYSROOT = if isAndroid then
-    "${androidToolchainEffective.androidndkRoot}/sysroot"
+    androidToolchainEffective.androidNdkSysroot
   else null;
 
   NDK_LIB_PATH = if isAndroid then
-    "${NDK_SYSROOT}/usr/lib/aarch64-linux-android/${toString androidToolchainEffective.androidNdkApiLevel}"
+    androidToolchainEffective.androidNdkAbiLibDir
   else null;
 
   androidLinkerWrapper = if isAndroid then

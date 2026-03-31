@@ -69,6 +69,6 @@ rec {
       # Try to find the NDK root from the clang path (common for Nixpkgs)
       lib.removeSuffix "/bin/clang" (toString androidndkPkgs.clang) + "/..";
   # Unified sysroot + per-API lib dir (crtbegin_*.o, libc) — required when clang triple has no API suffix.
-  androidNdkSysroot = "${androidndkRoot}/sysroot";
+  androidNdkSysroot = "${androidndkPkgs.clang}/sysroot";
   androidNdkAbiLibDir = "${androidNdkSysroot}/usr/lib/aarch64-linux-android/${toString androidNdkApiLevel}";
 }
