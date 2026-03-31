@@ -201,9 +201,47 @@
           wawonaAndroidProject = wawonaAndroidPkg.project;
         }));
 
-        packages = {
+        # ── Cross-Platform Packages ───────────────────────────────────────
+        commonPackages = {
           nom = pkgs.nix-output-monitor;
           local-runner = pkgs.callPackage ./scripts/local-runner.nix { };
+          
+          # Weston and Waypipe (Native on Linux, Cross-wrapped on Darwin)
+          weston = if pkgs.stdenv.isDarwin then toolchains.buildForMacOS "weston" {} else pkgs.weston;
+          waypipe = if pkgs.stdenv.isDarwin then toolchains.buildForMacOS "waypipe" { } else pkgs.waypipe;
+          
+          # Wawona (Native on Linux, Cross-wrapped on Darwin)
+          wawona = if pkgs.stdenv.isDarwin 
+            then (import ./dependencies/wawona/shell-wrappers.nix).macosWrapper pkgs 
+              (pkgs.callPackage ./dependencies/wawona/macos.nix {
+                buildModule = toolchains; inherit wawonaSrc wawonaVersion;
+                waypipe = toolchains.buildForMacOS "waypipe" { }; weston = toolchains.buildForMacOS "weston" { };
+                rustBackend = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
+                  inherit crate2nix wawonaVersion toolchains nixpkgs;
+                  workspaceSrc = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
+                    wawonaSrc = src; 
+                    waypipeSrc = pkgs.callPackage ./dependencies/libs/waypipe/waypipe-patched-src.nix {
+                      inherit waypipe-src; patchScript = ./dependencies/libs/waypipe/patch-waypipe-source.sh; platform = "macos";
+                    };
+                    platform = "macos"; inherit wawonaVersion;
+                  };
+                  platform = "macos"; nativeDeps = {
+                    libwayland = toolchains.buildForMacOS "libwayland" { };
+                    xkbcommon = toolchains.buildForMacOS "xkbcommon" { };
+                    waypipe = toolchains.buildForMacOS "waypipe" { };
+                    sshpass = toolchains.buildForMacOS "sshpass" { };
+                  };
+                };
+                xcodeProject = (pkgs.callPackage ./dependencies/generators/xcodegen.nix {
+                   inherit wawonaVersion wawonaSrc; buildModule = toolchains; targetPkgs = pkgs; 
+                   rustPlatform = pkgs.rustPlatform; macosDeps = {}; iosDeps = {}; iosSimDeps = {};
+                   macosWeston = toolchains.buildForMacOS "weston" { };
+                }).project;
+              })
+            else pkgs.hello; # TODO: Add Linux wrapper
+        };
+
+        packages = commonPackages // (pkgs.lib.optionalAttrs (isLinuxHost || androidSDK != null) {
           wawona-android = wawonaAndroidPkg;
           wawona-android-backend = backend-android;
           gradlegen = gradlegenPkg.generateScript;
@@ -211,7 +249,7 @@
           vulkan-cts-android = vulkan-cts-android;
           gl-cts-android = gl-cts-android;
           wawona-android-provision = androidUtils.provisionAndroidScript;
-        } // (pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin (let
+        }) // (pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin (let
           waypipe-patched-macos = pkgs.callPackage ./dependencies/libs/waypipe/waypipe-patched-src.nix {
             inherit waypipe-src; patchScript = ./dependencies/libs/waypipe/patch-waypipe-source.sh; platform = "macos";
           };
@@ -304,15 +342,12 @@
           vulkan-cts-ios = toolchains.buildForIOS "vulkan-cts" { };
           gl-cts = toolchains.buildForMacOS "gl-cts" { };
           gl-cts-ios = toolchains.buildForIOS "gl-cts" { };
-          weston = toolchains.buildForMacOS "weston" {};
           weston-debug = toolchains.buildForMacOS "weston" { debug = true; };
           weston-simple-shm = toolchains.buildForMacOS "weston-simple-shm" {};
           weston-terminal = toolchains.buildForMacOS "weston-terminal" {};
-          waypipe = toolchains.buildForMacOS "waypipe" { };
           waypipe-ios = toolchains.buildForIOS "waypipe" { };
           waypipe-ios-sim = toolchains.buildForIOS "waypipe" { simulator = true; };
           default = (import ./dependencies/wawona/shell-wrappers.nix).macosWrapper pkgs wawona-macos;
-          wawona = (import ./dependencies/wawona/shell-wrappers.nix).macosWrapper pkgs wawona-macos;
         }));
       in packages;
 

@@ -65,20 +65,15 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
     unset DEVELOPER_DIR
 
     # Robust SDK detection (defaulting to Simulator for CTS)
-    SDKROOT=$(xcrun --sdk iphonesimulator --show-sdk-path 2>/dev/null || true)
-    if [ ! -d "$SDKROOT" ]; then
-      # Fallback 1: via ensureIosSimSDK script
-      SDKROOT=$(${xcodeUtils.ensureIosSimSDK}/bin/ensure-ios-sim-sdk) || true
-    fi
-    if [ ! -d "$SDKROOT" ]; then
-      # Fallback 2: Default location
+    SDKROOT=$(${xcodeUtils.ensureIosSimSDK}/bin/ensure-ios-sim-sdk) || {
+      # Fallback: Default location
       XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode || true)
       if [ -n "$XCODE_APP" ]; then
         export XCODE_APP
         export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
         export SDKROOT="$DEVELOPER_DIR/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk"
       fi
-    fi
+    }
 
     if [ ! -d "$SDKROOT" ]; then
       echo "ERROR: iOS SDK not found. Build cannot proceed." >&2
@@ -118,8 +113,9 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
     set(CMAKE_CXX_COMPILER "$IOS_CXX")
     set(CMAKE_SYSROOT "$SDKROOT")
     set(CMAKE_OSX_SYSROOT "$SDKROOT")
-    set(CMAKE_C_FLAGS "-mios-simulator-version-min=15.0 -DGLES_SILENCE_DEPRECATION -Wno-deprecated-declarations")
-    set(CMAKE_CXX_FLAGS "-mios-simulator-version-min=15.0 -DGLES_SILENCE_DEPRECATION -Wno-deprecated-declarations")
+    set(CMAKE_C_FLAGS "-target $SIMULATOR_ARCH-apple-ios15.0-simulator -isysroot $SDKROOT -mios-simulator-version-min=15.0 -DGLES_SILENCE_DEPRECATION -Wno-deprecated-declarations")
+    set(CMAKE_CXX_FLAGS "-target $SIMULATOR_ARCH-apple-ios15.0-simulator -isysroot $SDKROOT -mios-simulator-version-min=15.0 -DGLES_SILENCE_DEPRECATION -Wno-deprecated-declarations")
+    set(CMAKE_EXE_LINKER_FLAGS "-framework CoreFoundation -framework QuartzCore -framework Metal -framework Foundation")
     set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
     set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
     set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)

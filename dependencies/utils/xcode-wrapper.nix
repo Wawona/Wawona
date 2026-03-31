@@ -180,6 +180,30 @@ let
   '';
 
   # ---------------------------------------------------------------------------
+  # ensure-ios-sdk (iPhoneOS)
+  # ---------------------------------------------------------------------------
+  ensureIosSDK = pkgs.writeShellScriptBin "ensure-ios-sdk" ''
+    #!/usr/bin/env bash
+    set -euo pipefail
+    unset DEVELOPER_DIR
+    if [ -x /usr/bin/xcrun ]; then
+      IOS_SDK=$(/usr/bin/xcrun --sdk iphoneos --show-sdk-path 2>/dev/null || true)
+      if [ -n "$IOS_SDK" ] && [ -d "$IOS_SDK" ]; then
+        echo "$IOS_SDK"
+        exit 0
+      fi
+    fi
+    XCODE_APP=$(${findXcodeScript}/bin/find-xcode)
+    IOS_SDK="$XCODE_APP/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"
+    if [ -d "$IOS_SDK" ]; then
+      echo "$IOS_SDK"
+    else
+      echo "ERROR: iOS SDK not found at $IOS_SDK" >&2
+      exit 1
+    fi
+  '';
+
+  # ---------------------------------------------------------------------------
   # provision-xcode
   # ---------------------------------------------------------------------------
   # Handles license acceptance, first-launch, and platform downloading.
@@ -217,7 +241,7 @@ let
   '';
 in
 {
-  inherit findXcodeScript getXcodePath findSimulatorScript ensureIosSimSDK provisionXcodeScript;
+  inherit findXcodeScript getXcodePath findSimulatorScript ensureIosSimSDK ensureIosSDK provisionXcodeScript;
 
   # Wrapper that sets up Xcode environment for commands (e.g. xcodegen).
   xcodeWrapper = pkgs.writeShellScriptBin "xcode-wrapper" ''

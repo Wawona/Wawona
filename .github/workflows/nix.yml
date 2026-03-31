@@ -40,9 +40,13 @@ jobs:
         id: matrix
         run: |
           SYSTEM="$(nix eval --impure --raw --expr builtins.currentSystem)"
-          TARGETS="$(nix eval --json ".#packages.${SYSTEM}" --apply builtins.attrNames)"
+          # Filter packages for the current system using nix flake show --json
+          TARGETS=$(nix flake show --json . | jq -c ".packages.\"$SYSTEM\" | keys")
           printf 'system=%s\n' "$SYSTEM" >> "$GITHUB_OUTPUT"
           printf 'targets=%s\n' "$TARGETS" >> "$GITHUB_OUTPUT"
+      
+      - name: Pre-validate Flake
+        run: nix flake check --print-build-logs
 
   verify-linux:
     name: "Linux: flake check"
@@ -130,7 +134,8 @@ jobs:
         id: matrix
         run: |
           SYSTEM="$(nix eval --impure --raw --expr builtins.currentSystem)"
-          TARGETS="$(nix eval --json ".#packages.${SYSTEM}" --apply builtins.attrNames)"
+          # Filter packages for the current system using nix flake show --json
+          TARGETS=$(nix flake show --json . | jq -c ".packages.\"$SYSTEM\" | keys")
           printf 'system=%s\n' "$SYSTEM" >> "$GITHUB_OUTPUT"
           printf 'targets=%s\n' "$TARGETS" >> "$GITHUB_OUTPUT"
 
@@ -229,7 +234,8 @@ jobs:
       - name: Derive package matrix from flake
         id: matrix
         run: |
-          TARGETS="$(nix eval --json .#packages.x86_64-darwin --apply builtins.attrNames)"
+          # Filter packages for x86_64-darwin explicitly for this job
+          TARGETS=$(nix flake show --json . | jq -c ".packages.\"x86_64-darwin\" | keys")
           printf 'system=%s\n' "x86_64-darwin" >> "$GITHUB_OUTPUT"
           printf 'targets=%s\n' "$TARGETS" >> "$GITHUB_OUTPUT"
 

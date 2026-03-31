@@ -25,26 +25,21 @@ let
       
       if [ "${platform}" = "ios-sim" ]; then
         # Use dynamic discovery via xcrun for the simulator
-        IOS_SDK=$(${ensureIosSimSDK}/bin/ensure-ios-sim-sdk) || {
+        IOS_SDK=$(${xcodeUtils.ensureIosSimSDK}/bin/ensure-ios-sim-sdk) || {
           echo "Error: Failed to ensure iOS Simulator SDK."
           exit 1
         }
-        export SDKROOT="$IOS_SDK"
-        export DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
-        [ "$DEVELOPER_DIR" = "$SDKROOT" ] && export DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
-        # Note: we don't set DEVELOPER_DIR unconditionally to the output of xcode-select,
-        # because the SDKROOT might point to a specific SDK within an Xcode.app,
-        # and xcode-select -p might point to a different Xcode.app.
-        # We only fall back to xcode-select -p if the SDKROOT itself is not within an Xcode.app.
-        export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
       else
-        # For device/mac, find Xcode and use standard platform paths
-        XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode)
-        export XCODE_APP
-        export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
-        export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
-        export SDKROOT="$DEVELOPER_DIR/Platforms/${if platform == "ios" then "iPhoneOS" else "MacOSX"}.platform/Developer/SDKs/${if platform == "ios" then "iPhoneOS" else "MacOSX"}.sdk"
+        # Use dynamic discovery for the device
+        IOS_SDK=$(${xcodeUtils.ensureIosSDK}/bin/ensure-ios-sdk) || {
+          echo "Error: Failed to ensure iOS Device SDK."
+          exit 1
+        }
       fi
+      export SDKROOT="$IOS_SDK"
+      export DEVELOPER_DIR=$(echo "$SDKROOT" | sed -E 's|^(.*\.app/Contents/Developer)/.*$|\1|')
+      [ "$DEVELOPER_DIR" = "$SDKROOT" ] && export DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
+      export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
       echo "Using SDK: $SDKROOT"
       echo "Using Developer Dir: $DEVELOPER_DIR"
     '';
@@ -239,6 +234,9 @@ in
       ++ [
         weston
         effectiveRustBackend
+        pkgs.darwin.apple_sdk.frameworks.Metal
+        pkgs.darwin.apple_sdk.frameworks.QuartzCore
+        pkgs.darwin.apple_sdk.frameworks.CoreFoundation
       ];
 
     # Fix gbm-wrapper.c include path and egl_buffer_handler.h for iOS
@@ -649,19 +647,20 @@ in
           -framework IOSurface \
           -framework Metal \
           -framework QuartzCore \
-         -framework CoreVideo -framework CoreMedia -framework CoreGraphics \
-         -framework MetalKit \
-         -framework VideoToolbox -framework AVFoundation \
-         -framework Security -framework Network \
-         -Lios-dependencies/lib \
-         -lxkbcommon -lwayland-client -lepoll-shim -lffi -lpixman-1 -lzstd -llz4 -lz \
-         -lssh2 -lmbedcrypto -lmbedx509 -lmbedtls \
-         -lssl -lcrypto \
-         -lweston-13 -lweston-desktop-13 -lweston-terminal \
-         ${effectiveRustBackend}/lib/libwawona.a \
-         -fobjc-arc -g -O0 $CFLAGS \
-         -Wl,-multiply_defined,suppress \
-         -o Wawona
+          -framework CoreFoundation \
+          -framework CoreVideo -framework CoreMedia -framework CoreGraphics \
+          -framework MetalKit \
+          -framework VideoToolbox -framework AVFoundation \
+          -framework Security -framework Network \
+          -Lios-dependencies/lib \
+          -lxkbcommon -lwayland-client -lepoll-shim -lffi -lpixman-1 -lzstd -llz4 -lz \
+          -lssh2 -lmbedcrypto -lmbedx509 -lmbedtls \
+          -lssl -lcrypto \
+          -lweston-13 -lweston-desktop-13 -lweston-terminal \
+          ${effectiveRustBackend}/lib/libwawona.a \
+          -fobjc-arc -g -O0 $CFLAGS \
+          -Wl,-multiply_defined,suppress -Wl,-fatal_warnings \
+          -o Wawona
 
       # Generate dSYM bundle for lldb attach
       if command -v dsymutil >/dev/null 2>&1; then

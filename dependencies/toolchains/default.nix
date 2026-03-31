@@ -13,7 +13,7 @@ let
   pkgsMacOS = pkgs;
 
   pkgsIosRaw = import (pkgs.path) {
-    inherit (pkgs.stdenv.hostPlatform) system;
+    system = pkgs.stdenv.hostPlatform.system;
     crossSystem = (import "${pkgs.path}/lib/systems/examples.nix" { lib = pkgs.lib; }).iphone64;
     config = {
       allowUnsupportedSystem = true;
@@ -22,7 +22,7 @@ let
   };
 
   pkgsAndroidRaw = import (pkgs.path) {
-    inherit (pkgs.stdenv.hostPlatform) system;
+    system = pkgs.stdenv.hostPlatform.system;
     crossSystem = (import "${pkgs.path}/lib/systems/examples.nix" { lib = pkgs.lib; }).aarch64-android-11; # Match our API level
     config = {
       allowUnsupportedSystem = true;

@@ -10,11 +10,12 @@ let
   # API-in-triple form (e.g. aarch64-linux-android35) breaks header resolution on Linux NDK CI.
   androidTarget = "aarch64-linux-android";
   androidNdkCflags = "-D__ANDROID_API__=${toString androidNdkApiLevel}";
-  androidndkPkgsMacOS =
-    if pkgs.stdenv.buildPlatform.isAarch64 && pkgs.stdenv.buildPlatform.isDarwin then
+  androidndkPkgsDarwin =
+    if pkgs.stdenv.buildPlatform.isDarwin then
       let
         ndkVersion = "27.0.12077987";
-        hostTag = if pkgs.stdenv.buildPlatform.isAarch64 then "darwin-x86_64" else "darwin-x86_64";
+        # NDK r27c uses x86_64 tag for both Intel and Apple Silicon prebuilts on Darwin
+        hostTag = "darwin-x86_64"; 
         ndkRoot = pkgs.stdenv.mkDerivation {
           name = "android-ndk-${ndkVersion}";
           src = pkgs.fetchzip {
@@ -23,11 +24,7 @@ let
           };
           installPhase = ''
             mkdir -p $out
-            if [ -d android-ndk-r27c ]; then
-              cp -r android-ndk-r27c/* $out/
-            else
-              cp -r * $out/
-            fi
+            cp -r * $out/
           '';
         };
         toolchainBase = "${ndkRoot}/toolchains/llvm/prebuilt/${hostTag}";
@@ -39,13 +36,11 @@ let
       null;
   androidndkPkgs =
     if pkgs.stdenv.buildPlatform.isDarwin then
-      if pkgs.stdenv.buildPlatform.isAarch64 then
-        {
-          clang = androidndkPkgsMacOS.toolchainBase;
-          binutils = androidndkPkgsMacOS.toolchainBase;
-        }
-      else
-        pkgs.buildPackages.androidndkPkgs
+      {
+        clang = androidndkPkgsDarwin.toolchainBase;
+        binutils = androidndkPkgsDarwin.toolchainBase;
+        ndkRoot = androidndkPkgsDarwin.ndkRoot;
+      }
     else if pkgs.stdenv.buildPlatform.isLinux then
       # On Linux host, use the NDK from the SDK directly to avoid evaluation aborts/recursion
       if androidSDK != null then

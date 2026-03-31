@@ -78,13 +78,9 @@ let
   else null;
 
   # ── Xcode SDK detection (iOS/macOS) ────────────────────────────────
-  xcodeFinderScript = if (isIOS || isMacOS) then
-    (import ../utils/xcode-wrapper.nix { inherit (pkgs) lib; inherit pkgs; }).findXcodeScript
-  else null;
-
-  ensureIosSimSDKScript = if isIOS then
-    (import ../utils/xcode-wrapper.nix { inherit (pkgs) lib; inherit pkgs; }).ensureIosSimSDK
-  else null;
+  ensureIosSDKHelpers = if isIOS then
+    (import ../utils/xcode-wrapper.nix { inherit (pkgs) lib; inherit pkgs; })
+  else {};
 
   # ── crate2nix: generate per-crate derivations ─────────────────────
   cargoNixDrv = crate2nix.tools.${pkgs.stdenv.hostPlatform.system}.generatedCargoNix {
@@ -203,9 +199,7 @@ let
   # preConfigure for cross builds:
   #  - Clear MACOSX_DEPLOYMENT_TARGET to prevent cc-rs from injecting macOS flags
   #  - Set target-specific CC_<target> so cc-rs uses our clang with -target
-  #  - Set CRATE_CC_NO_DEFAULTS=1 to stop cc-rs from running xcrun for iOS SDK
-  #    (the SDK isn't available in the Nix sandbox; bundled C sources like zlib
-  #    ship their own headers and don't need system SDK headers)
+  #  - Set CRATE_CC_NO_DEFAULTS=1
   crossPreConfigure =
     if isIOS then ''
       unset MACOSX_DEPLOYMENT_TARGET
@@ -214,24 +208,31 @@ let
       
       # For simulator builds, use the dynamic discovery wrapper.
       if [ "${if simulator then "true" else "false"}" = "true" ]; then
-        IOS_SDK=$(${ensureIosSimSDKScript}/bin/ensure-ios-sim-sdk) || {
+        IOS_SDK=$(${ensureIosSDKHelpers.ensureIosSimSDK}/bin/ensure-ios-sim-sdk) || {
           echo "Error: Failed to ensure iOS Simulator SDK."
           exit 1
         }
         export SDKROOT="$IOS_SDK"
       else
-        # For device, we assume the platform path follows convention
-        XCODE_APP=$(${xcodeFinderScript}/bin/find-xcode)
-        export SDKROOT="$XCODE_APP/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"
+        IOS_SDK=$(${ensureIosSDKHelpers.ensureIosSDK}/bin/ensure-ios-sdk) || {
+          echo "Error: Failed to ensure iOS Device SDK."
+          exit 1
+        }
+        export SDKROOT="$IOS_SDK"
       fi
 
-      # Find the Developer dir associated with this SDK without using -oP
+      # Find the Developer dir associated with this SDK
       export DEVELOPER_DIR=$(echo "$SDKROOT" | sed -E 's|^(.*\.app/Contents/Developer)/.*$|\1|')
       [ "$DEVELOPER_DIR" = "$SDKROOT" ] && export DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
 
+      # Target-specific variables for cc-rs
       export CC_${cargoTargetUnderscore}="${rawClang} -target ${linkerTarget} -isysroot $SDKROOT"
       export CFLAGS_${cargoTargetUnderscore}="-target ${linkerTarget} -isysroot $SDKROOT -fPIC"
       export CRATE_CC_NO_DEFAULTS="1"
+
+      # Also set the linker for cargo/rustc
+      export CARGO_TARGET_${lib.toUpper cargoTargetUnderscore}_LINKER="${rawClang}"
+      export CARGO_TARGET_${lib.toUpper cargoTargetUnderscore}_RUSTFLAGS="-C linker=${rawClang} -C link-arg=-target -C link-arg=${linkerTarget} -C link-arg=-isysroot -C link-arg=$SDKROOT"
 
       # Unset SDKROOT and DEVELOPER_DIR so the Nix clang wrapper uses its own
       # built-in apple-sdk for host-side builds (build.rs, proc-macros).

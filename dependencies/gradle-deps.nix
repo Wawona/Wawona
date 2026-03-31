@@ -25,9 +25,11 @@ stdenv.mkDerivation {
     pkgs.openssl
   ];
 
+  # Allow network access for fixed-output derivation to fetch Gradle dependencies
+  __noChroot = true;
   outputHashAlgo = "sha256";
   outputHashMode = "recursive";
-  outputHash = "sha256-OMggAZAn8Ph47YrZy1fUpzBzE8LoW/qXAMre+WCx2S8=";
+  outputHash = "sha256-ADMnrcqeTZUkuRmeXYdruueKP5dLuSvUUfWIVA3WDK8=";
 
   buildPhase = ''
     export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"

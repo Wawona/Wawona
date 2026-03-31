@@ -480,19 +480,16 @@ pkgs.stdenv.mkDerivation {
         fi
         echo "LIBXML2_NATIVE_LIB_VAL: $LIBXML2_NATIVE_LIB_VAL"
         ls -la "$LIBXML2_NATIVE_LIB_VAL"/*.dylib "$LIBXML2_NATIVE_LIB_VAL"/*.a 2>/dev/null | head -5 || echo "No libxml2 libraries found"
-        NATIVE_CC="${buildPackages.gcc}/bin/gcc"
-        NATIVE_CXX="${buildPackages.gcc}/bin/g++"
+        NATIVE_CC="${buildPackages.stdenv.cc}/bin/cc"
+        NATIVE_CXX="${buildPackages.stdenv.cc}/bin/c++"
         if [ ! -x "$NATIVE_CC" ]; then
-          NATIVE_CC="${buildPackages.stdenv.cc}/bin/cc"
-          NATIVE_CXX="${buildPackages.stdenv.cc}/bin/c++"
-          if [ ! -x "$NATIVE_CC" ] || echo "$($NATIVE_CC --version 2>&1)" | grep -q "android"; then
-            NATIVE_CC="${buildPackages.clang}/bin/clang"
-            NATIVE_CXX="${buildPackages.clang}/bin/clang++"
-            if echo "$($NATIVE_CC --version 2>&1)" | grep -q "android"; then
-              NATIVE_CC="cc"
-              NATIVE_CXX="c++"
-            fi
-          fi
+          NATIVE_CC="${buildPackages.clang}/bin/clang"
+          NATIVE_CXX="${buildPackages.clang}/bin/clang++"
+        fi
+        # If still not found or specifically on Linux but we want GCC, check for it
+        if [[ "${pkgs.stdenv.buildPlatform.system}" == *"linux"* ]] && [ -x "${buildPackages.gcc}/bin/gcc" ]; then
+           NATIVE_CC="${buildPackages.gcc}/bin/gcc"
+           NATIVE_CXX="${buildPackages.gcc}/bin/g++"
         fi
         echo "Using native compiler: $NATIVE_CC"
         if [ -x "$NATIVE_CC" ]; then
@@ -531,7 +528,8 @@ pkgs.stdenv.mkDerivation {
           export C_INCLUDE_PATH="$LIBXML2_NATIVE_INCLUDE_VAL"
           export CPP_INCLUDE_PATH="$LIBXML2_NATIVE_INCLUDE_VAL"
         fi
-        export PATH="${buildPackages.gcc}/bin:$PATH"
+        # export PATH="${buildPackages.gcc}/bin:$PATH" / NO: This overrides Clang on Darwin
+        export PATH="${buildPackages.stdenv.cc}/bin:$PATH"
   '';
   configurePhase = ''
     runHook preConfigure
@@ -543,7 +541,8 @@ pkgs.stdenv.mkDerivation {
     done
     export PKG_CONFIG_PATH="$ANDROID_PKG_CONFIG_PATH"
     # PKG_CONFIG_PATH_FOR_BUILD is set in preConfigure for wayland-scanner
-    export PATH="${buildPackages.gcc}/bin:$PATH"
+    # export PATH="${buildPackages.gcc}/bin:$PATH"
+    export PATH="${buildPackages.stdenv.cc}/bin:$PATH"
     unset CC CXX AR STRIP RANLIB CFLAGS CXXFLAGS LDFLAGS NIX_CFLAGS_COMPILE NIX_CXXFLAGS_COMPILE
     NATIVE_FILE_PATH="$(pwd)/meson-native-file.txt"
     CROSS_FILE_PATH="$(pwd)/android-cross-file.txt"
