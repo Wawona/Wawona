@@ -59,12 +59,7 @@ let
 
   # Wrapper for the linker to ensure the correct target is passed to clang
   androidLinkerWrapper = pkgs.writeShellScript "android-linker-wrapper" ''
-    exec ${androidToolchain.androidCC} \
-      --target=${androidToolchain.androidTarget} \
-      --sysroot=${NDK_SYSROOT} \
-      -L${NDK_LIB_PATH} \
-      -L${NDK_USR_LIB_PATH} \
-      "$@"
+    exec ${androidToolchain.androidCC} "$@"
   '';
 
 in
@@ -293,23 +288,11 @@ rustPlatform.buildRustPackage {
 
     # Configure Bindgen to find Android NDK headers and FFmpeg
     # We need to point to the sysroot include directories
-    NDK_SYSROOT="${NDK_SYSROOT}"
-    export BINDGEN_EXTRA_CLANG_ARGS="-isystem ${zstd}/include -isystem ${lz4}/include -isystem ${ffmpeg}/include -isystem $NDK_SYSROOT/usr/include -isystem $NDK_SYSROOT/usr/include/aarch64-linux-android --target=aarch64-linux-android ${androidToolchain.androidNdkCflags}"
+    export BINDGEN_EXTRA_CLANG_ARGS="-isystem ${zstd}/include -isystem ${lz4}/include -isystem ${ffmpeg}/include -isystem ${androidToolchain.androidNdkSysroot}/usr/include -isystem ${androidToolchain.androidNdkSysroot}/usr/include/${androidToolchain.androidTarget}"
     echo "BINDGEN_EXTRA_CLANG_ARGS: $BINDGEN_EXTRA_CLANG_ARGS"
 
     echo "Vulkan driver (SwiftShader) library path: ${swiftshader}/lib"
     ls -la "${swiftshader}/lib/" || echo "Warning: SwiftShader lib directory not found"
-
-    echo "=== NDK Sysroot Debug ==="
-    echo "NDK_SYSROOT: ${NDK_SYSROOT}"
-    echo "Checking lib paths:"
-    ls -la "${NDK_SYSROOT}/usr/lib/aarch64-linux-android/" || echo "NDK lib path not found"
-    if [ -d "${NDK_SYSROOT}/usr/lib/aarch64-linux-android/30" ]; then
-      echo "Content of API 30 lib:"
-      ls -la "${NDK_SYSROOT}/usr/lib/aarch64-linux-android/30" | grep crt || echo "No crt files found in API 30"
-    else
-      echo "API 30 lib dir not found"
-    fi
   '';
 
   # Custom build and install phases to avoid host target confusion

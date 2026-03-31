@@ -33,21 +33,6 @@ pkgs.stdenv.mkDerivation {
     export AR="${androidToolchain.androidAR}"
     export STRIP="${androidToolchain.androidSTRIP}"
     export RANLIB="${androidToolchain.androidRANLIB}"
-
-    # Set sysroot for API level
-    HOST_TAG="${if pkgs.stdenv.buildPlatform.isLinux then "linux-x86_64" else "darwin-x86_64"}"
-    NDK_SYSROOT="${androidToolchain.androidndkRoot}/toolchains/llvm/prebuilt/$HOST_TAG/sysroot"
-    export CFLAGS="--target=${androidToolchain.androidTarget} --sysroot=$NDK_SYSROOT -fPIC ${androidToolchain.androidNdkCflags}"
-    export CXXFLAGS="--target=${androidToolchain.androidTarget} --sysroot=$NDK_SYSROOT -fPIC ${androidToolchain.androidNdkCflags}"
-    export LDFLAGS="--target=${androidToolchain.androidTarget} --sysroot=$NDK_SYSROOT -L${androidToolchain.androidNdkAbiLibDir}"
-    _ANDROID_LINK_FLAGS="--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -L${androidToolchain.androidNdkAbiLibDir}"
-    cmakeFlagsArray+=(
-      "-DCMAKE_C_FLAGS:STRING=--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC ${androidToolchain.androidNdkCflags}"
-      "-DCMAKE_CXX_FLAGS:STRING=--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC ${androidToolchain.androidNdkCflags}"
-      "-DCMAKE_EXE_LINKER_FLAGS:STRING=$_ANDROID_LINK_FLAGS"
-      "-DCMAKE_SHARED_LINKER_FLAGS:STRING=$_ANDROID_LINK_FLAGS"
-      "-DCMAKE_MODULE_LINKER_FLAGS:STRING=$_ANDROID_LINK_FLAGS"
-    )
   '';
 
   # zstd has CMakeLists.txt in build/cmake subdirectory

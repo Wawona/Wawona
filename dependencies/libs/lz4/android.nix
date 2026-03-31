@@ -15,8 +15,6 @@ let
     rev = "v1.10.0";
     sha256 = "sha256-/dG1n59SKBaEBg72pAWltAtVmJ2cXxlFFhP+klrkTos=";
   };
-  hostTag = if pkgs.stdenv.buildPlatform.isLinux then "linux-x86_64" else "darwin-x86_64";
-  ndkSysroot = "${androidToolchain.androidndkRoot}/toolchains/llvm/prebuilt/${hostTag}/sysroot";
 in
 pkgs.stdenv.mkDerivation {
   name = "lz4-android";
@@ -33,9 +31,6 @@ pkgs.stdenv.mkDerivation {
     export AR="${androidToolchain.androidAR}"
     export STRIP="${androidToolchain.androidSTRIP}"
     export RANLIB="${androidToolchain.androidRANLIB}"
-    export CFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${ndkSysroot} -fPIC ${androidToolchain.androidNdkCflags}"
-    export CXXFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${ndkSysroot} -fPIC ${androidToolchain.androidNdkCflags}"
-    export LDFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${ndkSysroot} -L${androidToolchain.androidNdkAbiLibDir}"
   '';
 
   buildPhase = ''
