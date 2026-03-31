@@ -29,7 +29,7 @@ stdenv.mkDerivation {
   __noChroot = true;
   outputHashAlgo = "sha256";
   outputHashMode = "recursive";
-  outputHash = "sha256-iuc/ildC5fNQJrBfMiamwE6+DVFgz1Fw+CMTpmg4xOs=";
+  outputHash = "sha256-0Nk3UbLDKwtNz2uANua3VwGJRq9Y7IDLhSd2lFVTXOE=";
 
   buildPhase = ''
     export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
@@ -93,7 +93,16 @@ stdenv.mkDerivation {
     find $out -name "*.lock" -delete
     find $out -name "gc.properties" -delete
 
+    # Remove volatile directories entirely
+    rm -rf $out/kotlin-profile
+    rm -rf $out/notifications
+    rm -rf $out/workerMain
+    rm -rf $out/file-changes
+    rm -rf $out/daemon
+    rm -rf $out/wrapper
+
     # Remove build-specific caches that might contain absolute paths or timestamps
+    rm -rf $out/caches/*/generated-gradle-jars/
     rm -rf $out/caches/*/plugin-resolution/
     rm -rf $out/caches/*/scripts/
     rm -rf $out/caches/*/scripts-remapped/
@@ -103,11 +112,8 @@ stdenv.mkDerivation {
     rm -rf $out/caches/*/journal/
     rm -rf $out/caches/transforms-*/
     rm -rf $out/caches/build-cache-1/
-    rm -rf $out/daemon
-    rm -rf $out/wrapper
-
-    # Remove compiled scripts which capture the init script path
     rm -rf $out/caches/jars-*
+    rm -rf $out/caches/modules-2/metadata-*/
 
     # Remove non-deterministic metadata binaries and volatile caches
     find $out -name "artifact-at-repository.bin" -delete
@@ -115,22 +121,5 @@ stdenv.mkDerivation {
     find $out -name "resource-at-url.bin" -delete
     find $out -name "module-artifacts.bin" -delete
     find $out -name "module-metadata.bin" -delete
-    rm -rf $out/caches/*/generated-gradle-jars/
-    rm -rf $out/caches/modules-2/metadata-*/
-
-    # Remove files containing Nix store paths or build-time paths
-    # We use a loop to avoid xargs issues and handle empty results
-    # (grep returns 1 if no matches, so we use || true)
-    grep -r -l "/nix/store" $out | while read -r file; do
-      echo "Removing $file containing store path"
-      rm -f "$file"
-    done || true
-
-    if [ -n "''${NIX_BUILD_TOP:-}" ]; then
-      grep -r -l "$NIX_BUILD_TOP" $out | while read -r file; do
-        echo "Removing $file containing build top path"
-        rm -f "$file"
-      done || true
-    fi
   '';
 }
