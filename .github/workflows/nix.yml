@@ -11,6 +11,11 @@ permissions:
   contents: read
   id-token: write
 
+env:
+  NIXPKGS_ALLOW_UNFREE: '1'
+  ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+  PUPPETEER_SKIP_DOWNLOAD: '1'
+
 jobs:
   prepare-linux:
     name: Prepare Linux matrix
@@ -32,6 +37,10 @@ jobs:
         with:
           extra-conf: |
             build-dir = /nix/build
+            sandbox = relaxed
+            allow-import-from-derivation = true
+            trusted-users = runner root
+            flake-registry = https://github.com/NixOS/flake-registry/archive/master.tar.gz
 
       - name: Magic Nix Cache
         uses: DeterminateSystems/magic-nix-cache-action@main
@@ -40,8 +49,11 @@ jobs:
         id: matrix
         run: |
           SYSTEM=$(nix eval --raw --impure --expr builtins.currentSystem)
-          # Use nix eval --json for faster and more resilient attribute discovery
-          TARGETS=$(nix eval --json --impure ".#packages.$SYSTEM" --apply builtins.attrNames)
+          TARGETS=$(nix eval --json --impure ".#packages.\"$SYSTEM\"" --apply builtins.attrNames || echo "[]")
+          if [ "$TARGETS" = "[]" ]; then
+            echo "::error::Failed to derive package matrix for $SYSTEM"
+            exit 1
+          fi
           printf 'system=%s\n' "$SYSTEM" >> "$GITHUB_OUTPUT"
           printf 'targets=%s\n' "$TARGETS" >> "$GITHUB_OUTPUT"
       
@@ -65,6 +77,8 @@ jobs:
         with:
           extra-conf: |
             build-dir = /nix/build
+            sandbox = relaxed
+            allow-import-from-derivation = true
 
       - name: Magic Nix Cache
         uses: DeterminateSystems/magic-nix-cache-action@main
@@ -94,6 +108,8 @@ jobs:
         with:
           extra-conf: |
             build-dir = /nix/build
+            sandbox = relaxed
+            allow-import-from-derivation = true
 
       - name: Magic Nix Cache
         uses: DeterminateSystems/magic-nix-cache-action@main
@@ -118,14 +134,16 @@ jobs:
             ls /Applications/Xcode*.app || true
             exit 1
           fi
-          echo "Selecting $XCODE_26"
           sudo xcode-select -s "$XCODE_26"
           xcodebuild -version
-          xcrun --sdk iphonesimulator --show-sdk-version
-          xcrun --sdk macosx --show-sdk-version
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@main
+        with:
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+            flake-registry = https://github.com/NixOS/flake-registry/archive/master.tar.gz
 
       - name: Magic Nix Cache
         uses: DeterminateSystems/magic-nix-cache-action@main
@@ -134,8 +152,11 @@ jobs:
         id: matrix
         run: |
           SYSTEM=$(nix eval --raw --impure --expr builtins.currentSystem)
-          # Use nix eval --json for faster and more resilient attribute discovery
-          TARGETS=$(nix eval --json --impure ".#packages.$SYSTEM" --apply builtins.attrNames)
+          TARGETS=$(nix eval --json --impure ".#packages.\"$SYSTEM\"" --apply builtins.attrNames || echo "[]")
+          if [ "$TARGETS" = "[]" ]; then
+            echo "::error::Failed to derive package matrix for $SYSTEM"
+            exit 1
+          fi
           printf 'system=%s\n' "$SYSTEM" >> "$GITHUB_OUTPUT"
           printf 'targets=%s\n' "$TARGETS" >> "$GITHUB_OUTPUT"
 
@@ -148,19 +169,15 @@ jobs:
       - name: Select Xcode 26
         run: |
           XCODE_26=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
-          if [ -z "$XCODE_26" ]; then
-            echo "::error::Xcode 26 not found on this runner"
-            ls /Applications/Xcode*.app || true
-            exit 1
-          fi
-          echo "Selecting $XCODE_26"
+          if [ -z "$XCODE_26" ]; then exit 1; fi
           sudo xcode-select -s "$XCODE_26"
-          xcodebuild -version
-          xcrun --sdk iphonesimulator --show-sdk-version
-          xcrun --sdk macosx --show-sdk-version
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@main
+        with:
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
 
       - name: Magic Nix Cache
         uses: DeterminateSystems/magic-nix-cache-action@main
@@ -182,19 +199,15 @@ jobs:
       - name: Select Xcode 26
         run: |
           XCODE_26=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
-          if [ -z "$XCODE_26" ]; then
-            echo "::error::Xcode 26 not found on this runner"
-            ls /Applications/Xcode*.app || true
-            exit 1
-          fi
-          echo "Selecting $XCODE_26"
+          if [ -z "$XCODE_26" ]; then exit 1; fi
           sudo xcode-select -s "$XCODE_26"
-          xcodebuild -version
-          xcrun --sdk iphonesimulator --show-sdk-version
-          xcrun --sdk macosx --show-sdk-version
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@main
+        with:
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
 
       - name: Magic Nix Cache
         uses: DeterminateSystems/magic-nix-cache-action@main
@@ -214,19 +227,16 @@ jobs:
       - name: Select Xcode 26
         run: |
           XCODE_26=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
-          if [ -z "$XCODE_26" ]; then
-            echo "::error::Xcode 26 not found on this runner"
-            ls /Applications/Xcode*.app || true
-            exit 1
-          fi
-          echo "Selecting $XCODE_26"
+          if [ -z "$XCODE_26" ]; then exit 1; fi
           sudo xcode-select -s "$XCODE_26"
-          xcodebuild -version
-          xcrun --sdk iphonesimulator --show-sdk-version
-          xcrun --sdk macosx --show-sdk-version
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@main
+        with:
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+            flake-registry = https://github.com/NixOS/flake-registry/archive/master.tar.gz
 
       - name: Magic Nix Cache
         uses: DeterminateSystems/magic-nix-cache-action@main
@@ -234,8 +244,11 @@ jobs:
       - name: Derive package matrix from flake
         id: matrix
         run: |
-          # Use nix eval --json for faster and more resilient attribute discovery
-          TARGETS=$(nix eval --json --impure ".#packages.x86_64-darwin" --apply builtins.attrNames)
+          TARGETS=$(nix eval --json --impure ".#packages.\"x86_64-darwin\"" --apply builtins.attrNames || echo "[]")
+          if [ "$TARGETS" = "[]" ]; then
+            echo "::error::Failed to derive package matrix for x86_64-darwin"
+            exit 1
+          fi
           printf 'system=%s\n' "x86_64-darwin" >> "$GITHUB_OUTPUT"
           printf 'targets=%s\n' "$TARGETS" >> "$GITHUB_OUTPUT"
 
@@ -253,19 +266,15 @@ jobs:
       - name: Select Xcode 26
         run: |
           XCODE_26=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
-          if [ -z "$XCODE_26" ]; then
-            echo "::error::Xcode 26 not found on this runner"
-            ls /Applications/Xcode*.app || true
-            exit 1
-          fi
-          echo "Selecting $XCODE_26"
+          if [ -z "$XCODE_26" ]; then exit 1; fi
           sudo xcode-select -s "$XCODE_26"
-          xcodebuild -version
-          xcrun --sdk iphonesimulator --show-sdk-version
-          xcrun --sdk macosx --show-sdk-version
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@main
+        with:
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
 
       - name: Magic Nix Cache
         uses: DeterminateSystems/magic-nix-cache-action@main
