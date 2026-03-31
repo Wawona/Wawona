@@ -36,7 +36,11 @@ let
           exit 1
         }
       fi
+      # Tahoe (26.0) SDK discovery
       export SDKROOT="$IOS_SDK"
+      if [[ "$SDKROOT" == *.sdk ]] && [ ! -f "$SDKROOT/SDKSettings.json" ]; then
+        SDKROOT=$(xcrun --sdk ${if platform == "ios-sim" then "iphonesimulator" else "iphoneos"} --show-sdk-path 2>/dev/null || echo "$IOS_SDK")
+      fi
       export DEVELOPER_DIR=$(echo "$SDKROOT" | sed -E 's|^(.*\.app/Contents/Developer)/.*$|\1|')
       [ "$DEVELOPER_DIR" = "$SDKROOT" ] && export DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
       export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
@@ -234,9 +238,6 @@ in
       ++ [
         weston
         effectiveRustBackend
-        pkgs.darwin.apple_sdk.frameworks.Metal
-        pkgs.darwin.apple_sdk.frameworks.QuartzCore
-        pkgs.darwin.apple_sdk.frameworks.CoreFoundation
       ];
 
     # Fix gbm-wrapper.c include path and egl_buffer_handler.h for iOS

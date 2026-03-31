@@ -41,6 +41,7 @@ let
 
     # 4. Check well-known locations.
     for candidate in \
+        /Applications/Xcode_26.app \
         /Applications/Xcode.app \
         /Applications/Xcode_16.app \
         /Applications/Xcode-beta.app; do

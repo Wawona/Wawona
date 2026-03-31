@@ -30,7 +30,11 @@ let
           export XCODE_APP
           export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
           export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
-          export SDKROOT="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+          # Tahoe (26.0) SDK discovery
+          export SDKROOT="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk"
+          if [ ! -d "$SDKROOT" ]; then
+             SDKROOT=$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)
+          fi
           echo "Using SDK: $SDKROOT"
           if [ ! -d "$SDKROOT" ]; then
              echo "Error: SDK not found at $SDKROOT"
@@ -264,10 +268,6 @@ in
       (buildModule.buildForMacOS "libwayland" { })
       rustBackend
       waypipe
-      pkgs.darwin.apple_sdk.frameworks.Metal
-      pkgs.darwin.apple_sdk.frameworks.MetalKit
-      pkgs.darwin.apple_sdk.frameworks.QuartzCore
-      pkgs.darwin.apple_sdk.frameworks.Cocoa
     ];
 
     prePatch = ''
