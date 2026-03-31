@@ -8,7 +8,6 @@
   ...
 }:
 
-in
 pkgs.stdenv.mkDerivation {
   name = "sshpass-android";
   src = pkgs.fetchurl {

@@ -133,8 +133,8 @@ let
         ];
         HEADER_SEARCH_PATHS = [
           "$(inherited)"
-          "${strip iosDeps.libwayland}/include"
-          "${strip iosDeps.xkbcommon}/include"
+          "${strip (iosDeps.libwayland or null)}/include"
+          "${strip (iosDeps.xkbcommon or null)}/include"
           "$(SRCROOT)/src"
           "$(SRCROOT)/src/rendering"
           "$(SRCROOT)/src/ui"
@@ -142,8 +142,8 @@ let
           "$(SRCROOT)/src/extensions"
           "$(SRCROOT)/src/platform/macos"
           "$(SRCROOT)/src/platform/ios"
-          "${strip iosDeps.pixman}/include"
-          "${strip iosDeps.openssl}/include"
+          "${strip (iosDeps.pixman or null)}/include"
+          "${strip (iosDeps.openssl or null)}/include"
         ];
       };
     };
@@ -206,19 +206,19 @@ let
             ];
             "OTHER_LDFLAGS[sdk=iphoneos*]" = [
               "$(inherited)"
-              "-L${strip iosDeps.libwayland}/lib"
-              "-L${strip iosDeps.xkbcommon}/lib"
-              "-L${strip iosDeps.libffi}/lib"
-              "-L${strip iosDeps.pixman}/lib"
-              "-L${strip iosDeps.zstd}/lib"
-              "-L${strip iosDeps.lz4}/lib"
-              "-L${strip iosDeps.libssh2}/lib"
-              "-L${strip iosDeps.mbedtls}/lib"
-              "-L${strip iosDeps.openssl}/lib"
-              "-L${strip iosDeps.epoll-shim}/lib"
-              "-L${strip iosDeps.waypipe}/lib"
-               "-L${strip iosDeps.weston-simple-shm}/lib"
-               "-L${strip iosDeps.weston}/lib"
+              "-L${strip (iosDeps.libwayland or null)}/lib"
+              "-L${strip (iosDeps.xkbcommon or null)}/lib"
+              "-L${strip (iosDeps.libffi or null)}/lib"
+              "-L${strip (iosDeps.pixman or null)}/lib"
+              "-L${strip (iosDeps.zstd or null)}/lib"
+              "-L${strip (iosDeps.lz4 or null)}/lib"
+              "-L${strip (iosDeps.libssh2 or null)}/lib"
+              "-L${strip (iosDeps.mbedtls or null)}/lib"
+              "-L${strip (iosDeps.openssl or null)}/lib"
+              "-L${strip (iosDeps.epoll-shim or null)}/lib"
+              "-L${strip (iosDeps.waypipe or null)}/lib"
+               "-L${strip (iosDeps.weston-simple-shm or null)}/lib"
+               "-L${strip (iosDeps.weston or null)}/lib"
                "-lxkbcommon"
                "-lwayland-client"
                "-lffi"
@@ -241,19 +241,19 @@ let
             ];
             "OTHER_LDFLAGS[sdk=iphonesimulator*]" = [
               "$(inherited)"
-              "-L${strip iosSimDeps.libwayland}/lib"
-              "-L${strip iosSimDeps.xkbcommon}/lib"
-              "-L${strip iosSimDeps.libffi}/lib"
-              "-L${strip iosSimDeps.pixman}/lib"
-              "-L${strip iosSimDeps.zstd}/lib"
-              "-L${strip iosSimDeps.lz4}/lib"
-              "-L${strip iosSimDeps.libssh2}/lib"
-              "-L${strip iosSimDeps.mbedtls}/lib"
-              "-L${strip iosSimDeps.openssl}/lib"
-              "-L${strip iosSimDeps.epoll-shim}/lib"
-              "-L${strip iosSimDeps.waypipe}/lib"
-               "-L${strip iosSimDeps.weston-simple-shm}/lib"
-               "-L${strip iosSimDeps.weston}/lib"
+              "-L${strip (iosSimDeps.libwayland or null)}/lib"
+              "-L${strip (iosSimDeps.xkbcommon or null)}/lib"
+              "-L${strip (iosSimDeps.libffi or null)}/lib"
+              "-L${strip (iosSimDeps.pixman or null)}/lib"
+              "-L${strip (iosSimDeps.zstd or null)}/lib"
+              "-L${strip (iosSimDeps.lz4 or null)}/lib"
+              "-L${strip (iosSimDeps.libssh2 or null)}/lib"
+              "-L${strip (iosSimDeps.mbedtls or null)}/lib"
+              "-L${strip (iosSimDeps.openssl or null)}/lib"
+              "-L${strip (iosSimDeps.epoll-shim or null)}/lib"
+              "-L${strip (iosSimDeps.waypipe or null)}/lib"
+               "-L${strip (iosSimDeps.weston-simple-shm or null)}/lib"
+               "-L${strip (iosSimDeps.weston or null)}/lib"
               "-lxkbcommon"
               "-lwayland-client"
               "-lffi"
@@ -281,17 +281,17 @@ let
             ] ++ versionDefs;
             "HEADER_SEARCH_PATHS[sdk=iphoneos*]" = [
               "$(inherited)"
-              "${strip iosDeps.libwayland}/include"
-              "${strip iosDeps.libwayland}/include/wayland"
-              "${strip iosDeps.xkbcommon}/include"
-              "${strip iosDeps.libssh2}/include"
+              "${strip (iosDeps.libwayland or null)}/include"
+              "${strip (iosDeps.libwayland or null)}/include/wayland"
+              "${strip (iosDeps.xkbcommon or null)}/include"
+              "${strip (iosDeps.libssh2 or null)}/include"
             ];
             "HEADER_SEARCH_PATHS[sdk=iphonesimulator*]" = [
               "$(inherited)"
-              "${strip iosSimDeps.libwayland}/include"
-              "${strip iosSimDeps.libwayland}/include/wayland"
-              "${strip iosSimDeps.xkbcommon}/include"
-              "${strip iosSimDeps.libssh2}/include"
+              "${strip (iosSimDeps.libwayland or null)}/include"
+              "${strip (iosSimDeps.libwayland or null)}/include/wayland"
+              "${strip (iosSimDeps.xkbcommon or null)}/include"
+              "${strip (iosSimDeps.libssh2 or null)}/include"
             ];
           };
         };
@@ -339,8 +339,8 @@ let
             name = "Bundle Executables";
             basedOnDependencyAnalysis = false;
             script = ''
-              WAYPIPE_SRC="${strip macosDeps.waypipe}/bin/waypipe"
-              SSHPASS_SRC="${strip macosDeps.sshpass}/bin/sshpass"
+              WAYPIPE_SRC="${strip (macosDeps.waypipe or null)}/bin/waypipe"
+              SSHPASS_SRC="${strip (macosDeps.sshpass or null)}/bin/sshpass"
               WESTON_SRC="${strip macosWeston}/bin"
               
               BIN_DEST="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources/bin"
@@ -381,9 +381,9 @@ let
             CODE_SIGN_STYLE = "Automatic";
             HEADER_SEARCH_PATHS = [
               "$(inherited)"
-              "${strip macosDeps.libwayland}/include"
-              "${strip macosDeps.libwayland}/include/wayland"
-              "${strip macosDeps.xkbcommon}/include"
+              "${strip (macosDeps.libwayland or null)}/include"
+              "${strip (macosDeps.libwayland or null)}/include/wayland"
+              "${strip (iosDeps.xkbcommon or null)}/include"
               "$(SRCROOT)/src"
               "$(SRCROOT)/src/rendering"
               "$(SRCROOT)/src/ui"
@@ -393,8 +393,8 @@ let
             ];
             OTHER_LDFLAGS = [
               "$(inherited)"
-              "-L${strip macosDeps.libwayland}/lib"
-              "-L${strip macosDeps.xkbcommon}/lib"
+              "-L${strip (macosDeps.libwayland or null)}/lib"
+              "-L${strip (macosDeps.xkbcommon or null)}/lib"
               "-L${pkgs.pixman}/lib"
               "-L${pkgs.openssl.out}/lib"
               "-lxkbcommon"
