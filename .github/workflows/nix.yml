@@ -39,9 +39,9 @@ jobs:
       - name: Derive package matrix from flake
         id: matrix
         run: |
-          SYSTEM="$(nix eval --impure --raw --expr builtins.currentSystem)"
-          # Filter packages for the current system using nix flake show --json
-          TARGETS=$(nix flake show --json . | jq -c ".packages.\"$SYSTEM\" | keys")
+          SYSTEM=$(nix eval --raw --impure --expr builtins.currentSystem)
+          # Use nix eval --json for faster and more resilient attribute discovery
+          TARGETS=$(nix eval --json --impure ".#packages.$SYSTEM" --apply builtins.attrNames)
           printf 'system=%s\n' "$SYSTEM" >> "$GITHUB_OUTPUT"
           printf 'targets=%s\n' "$TARGETS" >> "$GITHUB_OUTPUT"
       
@@ -133,9 +133,9 @@ jobs:
       - name: Derive package matrix from flake
         id: matrix
         run: |
-          SYSTEM="$(nix eval --impure --raw --expr builtins.currentSystem)"
-          # Filter packages for the current system using nix flake show --json
-          TARGETS=$(nix flake show --json . | jq -c ".packages.\"$SYSTEM\" | keys")
+          SYSTEM=$(nix eval --raw --impure --expr builtins.currentSystem)
+          # Use nix eval --json for faster and more resilient attribute discovery
+          TARGETS=$(nix eval --json --impure ".#packages.$SYSTEM" --apply builtins.attrNames)
           printf 'system=%s\n' "$SYSTEM" >> "$GITHUB_OUTPUT"
           printf 'targets=%s\n' "$TARGETS" >> "$GITHUB_OUTPUT"
 
@@ -234,8 +234,8 @@ jobs:
       - name: Derive package matrix from flake
         id: matrix
         run: |
-          # Filter packages for x86_64-darwin explicitly for this job
-          TARGETS=$(nix flake show --json . | jq -c ".packages.\"x86_64-darwin\" | keys")
+          # Use nix eval --json for faster and more resilient attribute discovery
+          TARGETS=$(nix eval --json --impure ".#packages.x86_64-darwin" --apply builtins.attrNames)
           printf 'system=%s\n' "x86_64-darwin" >> "$GITHUB_OUTPUT"
           printf 'targets=%s\n' "$TARGETS" >> "$GITHUB_OUTPUT"
 
