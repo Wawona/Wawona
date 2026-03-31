@@ -27,13 +27,13 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Reclaim Disk Space (Nothing but Nix)
-        uses: wimpysworld/nothing-but-nix@main
+        uses: wimpysworld/nothing-but-nix@v10
         with:
           hatchet-protocol: 'rampage'
           witness-carnage: true
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@main
+        uses: DeterminateSystems/nix-installer-action@v16
         with:
           extra-conf: |
             build-dir = /nix/build
@@ -43,7 +43,7 @@ jobs:
             flake-registry = https://github.com/NixOS/flake-registry/archive/master.tar.gz
 
       - name: Magic Nix Cache
-        uses: DeterminateSystems/magic-nix-cache-action@main
+        uses: DeterminateSystems/magic-nix-cache-action@v2
 
       - name: Derive package matrix from flake
         id: matrix
@@ -67,13 +67,13 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Reclaim Disk Space (Nothing but Nix)
-        uses: wimpysworld/nothing-but-nix@main
+        uses: wimpysworld/nothing-but-nix@v10
         with:
           hatchet-protocol: 'rampage'
           witness-carnage: true
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@main
+        uses: DeterminateSystems/nix-installer-action@v16
         with:
           extra-conf: |
             build-dir = /nix/build
@@ -81,7 +81,7 @@ jobs:
             allow-import-from-derivation = true
 
       - name: Magic Nix Cache
-        uses: DeterminateSystems/magic-nix-cache-action@main
+        uses: DeterminateSystems/magic-nix-cache-action@v2
 
       - name: Run flake checks
         run: nix flake check --print-build-logs
@@ -98,13 +98,13 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Reclaim Disk Space (Nothing but Nix)
-        uses: wimpysworld/nothing-but-nix@main
+        uses: wimpysworld/nothing-but-nix@v10
         with:
           hatchet-protocol: 'rampage'
           witness-carnage: true
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@main
+        uses: DeterminateSystems/nix-installer-action@v16
         with:
           extra-conf: |
             build-dir = /nix/build
@@ -112,7 +112,7 @@ jobs:
             allow-import-from-derivation = true
 
       - name: Magic Nix Cache
-        uses: DeterminateSystems/magic-nix-cache-action@main
+        uses: DeterminateSystems/magic-nix-cache-action@v2
 
       - name: Build Target
         run: nix build ".#packages.${{ needs.prepare-linux.outputs.system }}.${{ matrix.target }}" --print-build-logs
@@ -138,7 +138,7 @@ jobs:
           xcodebuild -version
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@main
+        uses: DeterminateSystems/nix-installer-action@v16
         with:
           extra-conf: |
             sandbox = relaxed
@@ -146,7 +146,7 @@ jobs:
             flake-registry = https://github.com/NixOS/flake-registry/archive/master.tar.gz
 
       - name: Magic Nix Cache
-        uses: DeterminateSystems/magic-nix-cache-action@main
+        uses: DeterminateSystems/magic-nix-cache-action@v2
 
       - name: Derive package matrix from flake
         id: matrix
@@ -173,14 +173,14 @@ jobs:
           sudo xcode-select -s "$XCODE_26"
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@main
+        uses: DeterminateSystems/nix-installer-action@v16
         with:
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
 
       - name: Magic Nix Cache
-        uses: DeterminateSystems/magic-nix-cache-action@main
+        uses: DeterminateSystems/magic-nix-cache-action@v2
 
       - name: Run flake checks
         run: nix flake check --print-build-logs
@@ -203,14 +203,14 @@ jobs:
           sudo xcode-select -s "$XCODE_26"
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@main
+        uses: DeterminateSystems/nix-installer-action@v16
         with:
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
 
       - name: Magic Nix Cache
-        uses: DeterminateSystems/magic-nix-cache-action@main
+        uses: DeterminateSystems/magic-nix-cache-action@v2
 
       - name: Build Target
         run: nix build ".#packages.${{ needs.prepare-macos-arm64.outputs.system }}.${{ matrix.target }}" --print-build-logs
@@ -231,7 +231,7 @@ jobs:
           sudo xcode-select -s "$XCODE_26"
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@main
+        uses: DeterminateSystems/nix-installer-action@v16
         with:
           extra-conf: |
             sandbox = relaxed
@@ -239,7 +239,7 @@ jobs:
             flake-registry = https://github.com/NixOS/flake-registry/archive/master.tar.gz
 
       - name: Magic Nix Cache
-        uses: DeterminateSystems/magic-nix-cache-action@main
+        uses: DeterminateSystems/magic-nix-cache-action@v2
 
       - name: Derive package matrix from flake
         id: matrix
@@ -270,14 +270,14 @@ jobs:
           sudo xcode-select -s "$XCODE_26"
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@main
+        uses: DeterminateSystems/nix-installer-action@v16
         with:
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
 
       - name: Magic Nix Cache
-        uses: DeterminateSystems/magic-nix-cache-action@main
+        uses: DeterminateSystems/magic-nix-cache-action@v2
 
       - name: Build Target
         run: nix build ".#packages.${{ needs.prepare-macos-x86_64.outputs.system }}.${{ matrix.target }}" --print-build-logs
