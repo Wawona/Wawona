@@ -67,8 +67,6 @@ rec {
   androidRANLIB = "${androidndkPkgs.binutils}/bin/llvm-ranlib";
   androidndkRoot =
     if androidndkPkgs ? ndkRoot then androidndkPkgs.ndkRoot
-    else if pkgs.stdenv.isAarch64 && pkgs.stdenv.isDarwin then
-      androidndkPkgsMacOS.ndkRoot
     else
       # Try to find the NDK root from the clang path (common for Nixpkgs)
       lib.removeSuffix "/bin/clang" (toString androidndkPkgs.clang) + "/..";
