@@ -115,7 +115,7 @@ pkgs.stdenv.mkDerivation {
           IOS_CC="${buildPackages.clang}/bin/clang"
           IOS_CXX="${buildPackages.clang}/bin/clang++"
         fi
-        IOS_ARCH="arm64"
+        IOS_ARCH="${if simulator then pkgs.stdenv.hostPlatform.darwinArch else "arm64"}"
         
         cat > ios-toolchain.cmake <<EOF
     set(CMAKE_SYSTEM_NAME iOS)
@@ -285,7 +285,7 @@ pkgs.stdenv.mkDerivation {
             
             echo "Using flags: $PKG_CFLAGS $PKG_LIBS"
             
-            IOS_ARCH="arm64"
+            IOS_ARCH="${if simulator then pkgs.stdenv.hostPlatform.darwinArch else "arm64"}"
             
             TEST_OUTPUT=$("$RE_IOS_CC" -isysroot "$RE_SDKROOT" \
                -arch $IOS_ARCH \

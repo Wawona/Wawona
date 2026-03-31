@@ -6,9 +6,7 @@ let
   # NDK API level - NDK r27c supports up to API 35
   # Native libraries can be built for API 35 while app targets API 36
   androidNdkApiLevel = 35;
-  # Clang triple without API suffix; always pass -D__ANDROID_API__ via androidNdkCflags.
-  # API-in-triple form (e.g. aarch64-linux-android35) breaks header resolution on Linux NDK CI.
-  androidTarget = "aarch64-linux-android";
+  androidTarget = "aarch64-linux-android${toString androidNdkApiLevel}";
   androidNdkCflags = "-D__ANDROID_API__=${toString androidNdkApiLevel}";
   androidndkPkgsDarwin =
     if pkgs.stdenv.buildPlatform.isDarwin then

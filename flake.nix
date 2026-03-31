@@ -14,9 +14,9 @@
     systemsList = [ "x86_64-linux" "x86_64-darwin" "aarch64-darwin" ];
 
     pkgsFor = system:
-      import nixpkgs {
-        inherit system;
-        overlays = [
+      let
+        isDarwin = (system == "x86_64-darwin" || system == "aarch64-darwin");
+        customOverlays = if isDarwin then [
           (import rust-overlay)
           (self: super: {
             rustToolchain = super.rust-bin.stable.latest.default.override {
@@ -34,29 +34,30 @@
               rustc = self.rustToolchain;
             };
           })
-          (self: super: 
-            if (super.stdenv.hostPlatform.isDarwin) then {
-              linuxHeaders = super.linuxHeaders.overrideAttrs (old: {
-                makeFlags = (old.makeFlags or []) ++ [ "HOSTCC=cc" ];
-              });
-              makeLinuxHeaders = args: (super.makeLinuxHeaders args).overrideAttrs (old: {
-                preConfigure = (old.preConfigure or "") + ''
-                  mkdir -p $TMPDIR/gcc-shim
-                  ln -s $(command -v cc) $TMPDIR/gcc-shim/gcc
-                  ln -s $(command -v c++) $TMPDIR/gcc-shim/g++
-                  export PATH=$TMPDIR/gcc-shim:$PATH
+          (self: super: {
+            linuxHeaders = super.linuxHeaders.overrideAttrs (old: {
+              makeFlags = (old.makeFlags or []) ++ [ "HOSTCC=cc" ];
+            });
+            makeLinuxHeaders = args: (super.makeLinuxHeaders args).overrideAttrs (old: {
+              preConfigure = (old.preConfigure or "") + ''
+                mkdir -p $TMPDIR/gcc-shim
+                ln -s $(command -v cc) $TMPDIR/gcc-shim/gcc
+                ln -s $(command -v c++) $TMPDIR/gcc-shim/g++
+                export PATH=$TMPDIR/gcc-shim:$PATH
+              '';
+            });
+            llvmPackages_21 = if super.stdenv.targetPlatform.isAndroid then super.llvmPackages_21 // {
+              compiler-rt = super.llvmPackages_21.compiler-rt.overrideAttrs (old: {
+                postPatch = (old.postPatch or "") + ''
+                  sed -i 's|#include <pthread.h>|typedef int pthread_once_t; int pthread_once(pthread_once_t *, void (*)(void));|' lib/builtins/os_version_check.c || true
                 '';
               });
-              llvmPackages_21 = if super.stdenv.targetPlatform.isAndroid then super.llvmPackages_21 // {
-                compiler-rt = super.llvmPackages_21.compiler-rt.overrideAttrs (old: {
-                  postPatch = (old.postPatch or "") + ''
-                    sed -i 's|#include <pthread.h>|typedef int pthread_once_t; int pthread_once(pthread_once_t *, void (*)(void));|' lib/builtins/os_version_check.c || true
-                  '';
-                });
-              } else super.llvmPackages_21;
-            } else {}
-          )
-        ];
+            } else super.llvmPackages_21;
+          })
+        ] else [];
+      in import nixpkgs {
+        inherit system;
+        overlays = customOverlays;
         config = {
           allowUnfree = true;
           allowUnsupportedSystem = true;
@@ -104,7 +105,18 @@
         androidPkgs = if isLinuxHost then (import nixpkgs {
           inherit system;
           config = { allowUnfree = true; android_sdk.accept_license = true; };
-          overlays = [ (import rust-overlay) ];
+          overlays = [
+            (import rust-overlay)
+            (self: super: {
+              rustToolchainAndroid = super.rust-bin.stable.latest.default.override {
+                targets = [ "aarch64-linux-android" ];
+              };
+              rustPlatformAndroid = super.makeRustPlatform {
+                cargo = self.rustToolchainAndroid;
+                rustc = self.rustToolchainAndroid;
+              };
+            })
+          ];
         }) else pkgs;
 
         pkgsIos = if !isLinuxHost then pkgs.pkgsCross.iphone64 else null;
