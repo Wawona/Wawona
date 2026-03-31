@@ -46,13 +46,10 @@ pkgs.stdenv.mkDerivation {
     export AR="${androidToolchain.androidAR}"
     export STRIP="${androidToolchain.androidSTRIP}"
     export RANLIB="${androidToolchain.androidRANLIB}"
-    export CFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC ${androidToolchain.androidNdkCflags}"
-    export CXXFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC ${androidToolchain.androidNdkCflags}"
-    export LDFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -L${androidToolchain.androidNdkAbiLibDir}"
   '';
   configurePhase = ''
     runHook preConfigure
-    ./configure --prefix=$out --host=aarch64-linux-android ${
+    ./configure --prefix=$out --host=${androidToolchain.androidTarget} ${
       lib.concatMapStringsSep " " (flag: flag) buildFlags
     }
     runHook postConfigure

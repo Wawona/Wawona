@@ -6,8 +6,8 @@ let
   # NDK API level - NDK r27c supports up to API 35
   # Native libraries can be built for API 35 while app targets API 36
   androidNdkApiLevel = 35;
-  androidTarget = "aarch64-linux-android${toString androidNdkApiLevel}";
-  androidNdkCflags = "-D__ANDROID_API__=${toString androidNdkApiLevel}";
+  androidTarget = "aarch64-linux-android";
+  androidNdkCflags = ""; # No longer needed as versioned clang handles it
   androidndkPkgsDarwin =
     if pkgs.stdenv.buildPlatform.isDarwin then
       let
@@ -58,8 +58,8 @@ let
 in
 rec {
   inherit androidApiLevel androidNdkApiLevel androidTarget androidNdkCflags;
-  androidCC = "${androidndkPkgs.clang}/bin/clang";
-  androidCXX = "${androidndkPkgs.clang}/bin/clang++";
+  androidCC = "${androidndkPkgs.clang}/bin/${androidTarget}${toString androidNdkApiLevel}-clang";
+  androidCXX = "${androidndkPkgs.clang}/bin/${androidTarget}${toString androidNdkApiLevel}-clang++";
   androidAR = "${androidndkPkgs.binutils}/bin/llvm-ar";
   androidSTRIP = "${androidndkPkgs.binutils}/bin/llvm-strip";
   androidRANLIB = "${androidndkPkgs.binutils}/bin/llvm-ranlib";

@@ -75,7 +75,7 @@ pkgs.stdenv.mkDerivation {
   '';
   configurePhase = ''
     runHook preConfigure
-    ./configure --prefix=$out --host=aarch64-apple-darwin ${
+    ./configure --prefix=$out --host=${pkgs.stdenv.hostPlatform.config} ${
       lib.concatMapStringsSep " " (flag: flag) buildFlags
     }
     runHook postConfigure

@@ -452,18 +452,18 @@ pkgs.stdenv.mkDerivation {
     [built-in options]
     EOF
         if [ -n "$LIBFFI_INCLUDE" ]; then
-          echo "c_args = ['--target=${androidToolchain.androidTarget}', '--sysroot', '${androidToolchain.androidndkRoot}/sysroot', '-isystem', '${androidToolchain.androidndkRoot}/sysroot/usr/include', '-isystem', '${androidToolchain.androidndkRoot}/sysroot/usr/include/aarch64-linux-android', '-fPIC', '-I$LIBFFI_INCLUDE', '${androidToolchain.androidNdkCflags}', '-D_GNU_SOURCE']" >> android-cross-file.txt
-          echo "cpp_args = ['--target=${androidToolchain.androidTarget}', '--sysroot', '${androidToolchain.androidndkRoot}/sysroot', '-isystem', '${androidToolchain.androidndkRoot}/sysroot/usr/include', '-isystem', '${androidToolchain.androidndkRoot}/sysroot/usr/include/aarch64-linux-android', '-fPIC', '-I$LIBFFI_INCLUDE', '${androidToolchain.androidNdkCflags}', '-D_GNU_SOURCE']" >> android-cross-file.txt
+          echo "c_args = ['-fPIC', '-I$LIBFFI_INCLUDE', '-D_GNU_SOURCE']" >> android-cross-file.txt
+          echo "cpp_args = ['-fPIC', '-I$LIBFFI_INCLUDE', '-D_GNU_SOURCE']" >> android-cross-file.txt
         else
-          echo "c_args = ['--target=${androidToolchain.androidTarget}', '--sysroot', '${androidToolchain.androidndkRoot}/sysroot', '-isystem', '${androidToolchain.androidndkRoot}/sysroot/usr/include', '-isystem', '${androidToolchain.androidndkRoot}/sysroot/usr/include/aarch64-linux-android', '-fPIC', '${androidToolchain.androidNdkCflags}', '-D_GNU_SOURCE']" >> android-cross-file.txt
-          echo "cpp_args = ['--target=${androidToolchain.androidTarget}', '--sysroot', '${androidToolchain.androidndkRoot}/sysroot', '-isystem', '${androidToolchain.androidndkRoot}/sysroot/usr/include', '-isystem', '${androidToolchain.androidndkRoot}/sysroot/usr/include/aarch64-linux-android', '-fPIC', '${androidToolchain.androidNdkCflags}', '-D_GNU_SOURCE']" >> android-cross-file.txt
+          echo "c_args = ['-fPIC', '-D_GNU_SOURCE']" >> android-cross-file.txt
+          echo "cpp_args = ['-fPIC', '-D_GNU_SOURCE']" >> android-cross-file.txt
         fi
         if [ -n "$LIBFFI_LIB" ]; then
-          echo "c_link_args = ['--target=${androidToolchain.androidTarget}', '--sysroot', '${androidToolchain.androidndkRoot}/sysroot', '-L${androidToolchain.androidNdkAbiLibDir}', '-L$LIBFFI_LIB']" >> android-cross-file.txt
-          echo "cpp_link_args = ['--target=${androidToolchain.androidTarget}', '--sysroot', '${androidToolchain.androidndkRoot}/sysroot', '-L${androidToolchain.androidNdkAbiLibDir}', '-L$LIBFFI_LIB']" >> android-cross-file.txt
+          echo "c_link_args = ['-L$LIBFFI_LIB']" >> android-cross-file.txt
+          echo "cpp_link_args = ['-L$LIBFFI_LIB']" >> android-cross-file.txt
         else
-          echo "c_link_args = ['--target=${androidToolchain.androidTarget}', '--sysroot', '${androidToolchain.androidndkRoot}/sysroot', '-L${androidToolchain.androidNdkAbiLibDir}']" >> android-cross-file.txt
-          echo "cpp_link_args = ['--target=${androidToolchain.androidTarget}', '--sysroot', '${androidToolchain.androidndkRoot}/sysroot', '-L${androidToolchain.androidNdkAbiLibDir}']" >> android-cross-file.txt
+          echo "c_link_args = []" >> android-cross-file.txt
+          echo "cpp_link_args = []" >> android-cross-file.txt
         fi
         LIBXML2_NATIVE_INCLUDE_VAL=""
         LIBXML2_NATIVE_LIB_VAL=""
