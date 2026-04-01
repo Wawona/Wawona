@@ -342,26 +342,43 @@ static UIImage *WWNAboutLogo(void) {
 }
 
 #if TARGET_OS_IPHONE
+
 - (void)viewDidLoad {
   [super viewDidLoad];
-  // FIX: Remove extra top padding by setting a zero-height header
-  // Using a small non-zero width/height avoids "Failed to create image slot"
-  // errors
+
+  // Remove extra top padding
   self.tableView.tableHeaderView =
       [[UIView alloc] initWithFrame:CGRectMake(0, 0, 1.0, 1.0)];
 
-  // Modern trait change observation (replaces deprecated
-  // traitCollectionDidChange:)
-  __weak typeof(self) weakSelf = self;
-  [self registerForTraitChanges:@[ [UITraitUserInterfaceStyle class] ]
-                    withHandler:^(
-                        id<UITraitEnvironment> _Nonnull traitEnvironment,
-                        UITraitCollection *_Nonnull previousCollection) {
-                      __strong typeof(weakSelf) strongSelf = weakSelf;
-                      if (!strongSelf)
-                        return;
-                      [strongSelf.tableView reloadData];
-                    }];
+  // Modern API (iOS 17+)
+  if (@available(iOS 17.0, *)) {
+    __weak typeof(self) weakSelf = self;
+
+    [self registerForTraitChanges:@[ UITraitUserInterfaceStyle.class ]
+                      withHandler:^(
+                          id<UITraitEnvironment> _Nonnull traitEnvironment,
+                          UITraitCollection *_Nonnull previousCollection) {
+
+                        __strong typeof(weakSelf) strongSelf = weakSelf;
+                        if (!strongSelf) return;
+
+                        [strongSelf.tableView reloadData];
+                      }];
+  }
+
+  // older iOS fallback handled in traitCollectionDidChange
+}
+
+#pragma mark - old iOS Compatibility
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+  [super traitCollectionDidChange:previousTraitCollection];
+
+  if (@available(iOS 13.0, *)) {
+    if (self.traitCollection.userInterfaceStyle != previousTraitCollection.userInterfaceStyle) {
+      [self.tableView reloadData];
+    }
+  }
 }
 
 #endif
