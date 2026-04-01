@@ -1482,8 +1482,6 @@ MODBAR
              -fPIC \
              ${lib.concatStringsSep " " common.commonCFlags} \
              ${lib.concatStringsSep " " common.debugCFlags} \
-             --target=${androidToolchainResolved.androidTarget} \
-             --sysroot=${androidToolchainResolved.androidNdkSysroot} \
              ${androidToolchainResolved.androidNdkCflags} \
              -o "$obj_file"; then
             OBJ_FILES="$OBJ_FILES $obj_file"
@@ -1503,8 +1501,6 @@ MODBAR
            -Ideps/weston-simple-shm/include \
            -Iandroid-dependencies/include \
            -fPIC \
-           --target=${androidToolchainResolved.androidTarget} \
-           --sysroot=${androidToolchainResolved.androidNdkSysroot} \
            ${androidToolchainResolved.androidNdkCflags} \
            -o "$obj_file"; then
           OBJ_FILES="$OBJ_FILES $obj_file"
@@ -1546,9 +1542,7 @@ MODBAR
          -lssl -lcrypto \
          -lzstd -llz4 \
          -llog -landroid -lvulkan -lm -ldl -lz \
-         -g --target=${androidToolchainResolved.androidTarget} \
-         --sysroot=${androidToolchainResolved.androidNdkSysroot} \
-         -L${androidToolchainResolved.androidNdkAbiLibDir} \
+         -g \
          ${androidToolchainResolved.androidNdkCflags} \
          -o libwawona.so
          
