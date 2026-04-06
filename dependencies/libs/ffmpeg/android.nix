@@ -31,49 +31,10 @@ pkgs.stdenv.mkDerivation {
   buildInputs = [ ];
 
   preConfigure = ''
-    cat > ffmpeg-android-cc <<'EOF'
-    #!/usr/bin/env bash
-    for arg in "$@"; do
-      case "$arg" in
-        -print-multi-os-directory|-print-multi-directory)
-          echo "."
-          exit 0
-          ;;
-      esac
-    done
-    exec "${pkgs.llvmPackages.clang-unwrapped}/bin/clang" \
-      --target=${androidToolchain.androidTarget}${builtins.toString androidToolchain.androidNdkApiLevel} \
-      --sysroot="${androidToolchain.androidNdkSysroot}" \
-      -B"${androidToolchain.androidNdkAbiLibDir}" \
-      -L"${androidToolchain.androidNdkAbiLibDir}" \
-      -Wl,-rpath-link,"${androidToolchain.androidNdkAbiLibDir}" \
-      -fuse-ld="${pkgs.llvmPackages.lld}/bin/ld.lld" \
-      -D__ANDROID_API__=${builtins.toString androidToolchain.androidNdkApiLevel} \
-      "$@"
-    EOF
-    cat > ffmpeg-android-cxx <<'EOF'
-    #!/usr/bin/env bash
-    for arg in "$@"; do
-      case "$arg" in
-        -print-multi-os-directory|-print-multi-directory)
-          echo "."
-          exit 0
-          ;;
-      esac
-    done
-    exec "${pkgs.llvmPackages.clang-unwrapped}/bin/clang++" \
-      --target=${androidToolchain.androidTarget}${builtins.toString androidToolchain.androidNdkApiLevel} \
-      --sysroot="${androidToolchain.androidNdkSysroot}" \
-      -B"${androidToolchain.androidNdkAbiLibDir}" \
-      -L"${androidToolchain.androidNdkAbiLibDir}" \
-      -Wl,-rpath-link,"${androidToolchain.androidNdkAbiLibDir}" \
-      -fuse-ld="${pkgs.llvmPackages.lld}/bin/ld.lld" \
-      -D__ANDROID_API__=${builtins.toString androidToolchain.androidNdkApiLevel} \
-      "$@"
-    EOF
-    chmod +x ffmpeg-android-cc ffmpeg-android-cxx
-    export CC="$PWD/ffmpeg-android-cc"
-    export CXX="$PWD/ffmpeg-android-cxx"
+    # Use shared Android toolchain wrappers so fallback/runtime handling
+    # stays consistent with other Android derivations.
+    export CC="${androidToolchain.androidCC}"
+    export CXX="${androidToolchain.androidCXX}"
     export AR="${androidToolchain.androidAR}"
     export STRIP="${androidToolchain.androidSTRIP}"
     export RANLIB="${androidToolchain.androidRANLIB}"
@@ -84,7 +45,7 @@ pkgs.stdenv.mkDerivation {
     # Set up HOST compiler (runs on macOS)
     export HOST_CC="${pkgs.clang}/bin/clang"
 
-    # Keep configure probe flags minimal; wrapper injects full target/sysroot.
+    # Keep configure probe flags minimal; shared wrapper injects target/sysroot.
     export CFLAGS="-fPIC"
     export CXXFLAGS="-fPIC"
     export LDFLAGS=""

@@ -50,12 +50,37 @@ let
   prebuiltAR = "${nativeToolchainBase}/bin/llvm-ar";
   prebuiltSTRIP = "${nativeToolchainBase}/bin/llvm-strip";
   prebuiltRANLIB = "${nativeToolchainBase}/bin/llvm-ranlib";
-  fallbackCC = "${pkgs.llvmPackages.clang-unwrapped}/bin/clang";
-  fallbackCXX = "${pkgs.llvmPackages.clang-unwrapped}/bin/clang++";
-  fallbackLld = "${pkgs.llvmPackages.lld}/bin/ld.lld";
-  fallbackAR = "${pkgs.llvmPackages.bintools}/bin/ar";
-  fallbackSTRIP = "${pkgs.llvmPackages.bintools}/bin/strip";
-  fallbackRANLIB = "${pkgs.llvmPackages.bintools}/bin/ranlib";
+  useCompatNdkDriver = hostTagRequested == "darwin-arm64" && useSourceFallback;
+  fallbackCC =
+    if useCompatNdkDriver then
+      "${toolchainBase}/bin/clang"
+    else
+      "${pkgs.llvmPackages.clang-unwrapped}/bin/clang";
+  fallbackCXX =
+    if useCompatNdkDriver then
+      "${toolchainBase}/bin/clang++"
+    else
+      "${pkgs.llvmPackages.clang-unwrapped}/bin/clang++";
+  fallbackLld =
+    if useCompatNdkDriver then
+      "${toolchainBase}/bin/ld.lld"
+    else
+      "${pkgs.llvmPackages.lld}/bin/ld.lld";
+  fallbackAR =
+    if useCompatNdkDriver then
+      "${toolchainBase}/bin/llvm-ar"
+    else
+      "${pkgs.llvmPackages.bintools}/bin/ar";
+  fallbackSTRIP =
+    if useCompatNdkDriver then
+      "${toolchainBase}/bin/llvm-strip"
+    else
+      "${pkgs.llvmPackages.bintools}/bin/strip";
+  fallbackRANLIB =
+    if useCompatNdkDriver then
+      "${toolchainBase}/bin/llvm-ranlib"
+    else
+      "${pkgs.llvmPackages.bintools}/bin/ranlib";
   ndkSysroot = "${toolchainBase}/sysroot";
   ndkAbiLibDir = "${ndkSysroot}/usr/lib/aarch64-linux-android/${toString androidNdkApiLevel}";
 
