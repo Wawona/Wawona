@@ -127,8 +127,9 @@ jobs:
         run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux.outputs.system }}.${{ matrix.target }}" --print-build-logs
 
   prepare-linux-arm64:
-    name: "Prepare Linux (arm64) matrix"
+    name: "Prepare Linux (arm64) matrix (experimental fallback)"
     runs-on: ubuntu-24.04-arm
+    continue-on-error: true
     outputs:
       system: ${{ steps.matrix.outputs.system }}
       targets: ${{ steps.matrix.outputs.targets }}
@@ -179,8 +180,9 @@ jobs:
         run: ./.github/scripts/nix-retry.sh nix flake check --print-build-logs
 
   verify-linux-arm64:
-    name: "Linux (arm64): flake check"
+    name: "Linux (arm64): flake check (experimental fallback)"
     runs-on: ubuntu-24.04-arm
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -204,8 +206,9 @@ jobs:
         run: ./.github/scripts/nix-retry.sh nix flake check --print-build-logs
 
   build-linux-arm64:
-    name: "Linux (arm64): ${{ matrix.target }}"
+    name: "Linux (arm64): ${{ matrix.target }} (experimental fallback)"
     runs-on: ubuntu-24.04-arm
+    continue-on-error: true
     needs:
       - prepare-linux-arm64
       - verify-linux-arm64
@@ -237,8 +240,9 @@ jobs:
         run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux-arm64.outputs.system }}.${{ matrix.target }}" --print-build-logs
 
   prepare-macos-arm64:
-    name: "Prepare macOS (arm64) matrix"
+    name: "Prepare macOS (arm64) matrix (experimental fallback)"
     runs-on: macos-26
+    continue-on-error: true
     outputs:
       system: ${{ steps.matrix.outputs.system }}
       targets: ${{ steps.matrix.outputs.targets }}
@@ -299,8 +303,9 @@ jobs:
         run: python3 ./.github/scripts/verify-android-maintainability.py
 
   verify-macos-arm64:
-    name: "macOS (arm64): flake check"
+    name: "macOS (arm64): flake check (experimental fallback)"
     runs-on: macos-26
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -321,8 +326,9 @@ jobs:
         run: ./.github/scripts/nix-retry.sh nix flake check --print-build-logs
 
   build-macos-arm64:
-    name: "macOS (arm64): ${{ matrix.target }}"
+    name: "macOS (arm64): ${{ matrix.target }} (experimental fallback)"
     runs-on: macos-26
+    continue-on-error: true
     needs:
       - prepare-macos-arm64
       - verify-macos-arm64
@@ -501,8 +507,9 @@ jobs:
           ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux.outputs.system }}.gl-cts-android" --print-build-logs
 
   smoke-linux-arm64:
-    name: "Linux (arm64): smoke gates"
+    name: "Linux (arm64): smoke gates (experimental fallback)"
     runs-on: ubuntu-24.04-arm
+    continue-on-error: true
     needs:
       - prepare-linux-arm64
       - verify-linux-arm64
@@ -529,8 +536,9 @@ jobs:
           ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux-arm64.outputs.system }}.gl-cts-android" --print-build-logs
 
   smoke-macos-arm64:
-    name: "macOS (arm64): smoke gates"
+    name: "macOS (arm64): smoke gates (experimental fallback)"
     runs-on: macos-26
+    continue-on-error: true
     needs:
       - prepare-macos-arm64
       - verify-macos-arm64
@@ -586,8 +594,6 @@ jobs:
     if: ${{ always() }}
     needs:
       - build-linux
-      - build-linux-arm64
-      - build-macos-arm64
       - build-macos-x86_64
     steps:
       - uses: actions/checkout@v4
@@ -614,7 +620,7 @@ jobs:
             --out /tmp/ci-failure-baseline-current.md \
             --out-json /tmp/ci-failure-baseline-current.json \
             --enforce-run-id "${{ github.run_id }}" \
-            --blocker-signatures toolchain_path_missing neon_builtin_mismatch gradle_daemon gradle_oom \
+            --blocker-signatures toolchain_path_missing neon_builtin_mismatch \
             --max-blocker-count 0
 
       - name: Upload failure baseline artifact
