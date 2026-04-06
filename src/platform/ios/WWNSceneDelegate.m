@@ -1,6 +1,6 @@
 #import "WWNSceneDelegate.h"
-#import "../../ui/Settings/WWNSettingsSplitViewController.h"
-#import "../../ui/Settings/WWNPreferencesManager.h"
+#import "../macos/ui/Settings/WWNPreferencesManager.h"
+#import "../macos/ui/Settings/WWNSettingsSplitViewController.h"
 #import "WWNCompositorBridge.h"
 #import <objc/message.h>
 #import "../../util/WWNLog.h"
@@ -223,17 +223,24 @@
 }
 
 - (void)openSettings:(id)sender {
-  WWNSettingsSplitViewController *splitVC =
-      [[WWNSettingsSplitViewController alloc] init];
-  splitVC.modalPresentationStyle = UIModalPresentationPageSheet;
-  if (@available(iOS 15.0, *)) {
-    if (splitVC.sheetPresentationController) {
-      splitVC.sheetPresentationController.prefersGrabberVisible = YES;
-    }
+  UIViewController *presenter = self.window.rootViewController;
+  if (presenter.presentedViewController != nil) {
+    presenter = presenter.presentedViewController;
   }
-  [self.window.rootViewController presentViewController:splitVC
-                                               animated:YES
-                                             completion:nil];
+
+  WWNSettingsSplitViewController *settingsController =
+      [[WWNSettingsSplitViewController alloc] init];
+  settingsController.modalPresentationStyle = UIModalPresentationAutomatic;
+  settingsController.modalInPresentation = NO;
+  if (@available(iOS 15.0, *)) {
+    UISheetPresentationController *sheet =
+        settingsController.sheetPresentationController;
+    sheet.prefersGrabberVisible = YES;
+    sheet.prefersScrollingExpandsWhenScrolledToEdge = YES;
+  }
+  [presenter presentViewController:settingsController
+                          animated:YES
+                        completion:nil];
 }
 
 #pragma mark - UIWindowSceneDelegate

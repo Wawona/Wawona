@@ -160,6 +160,40 @@ src/core/
 
 ---
 
+## **1A. Apple Build Architecture**
+
+Wawona's Apple build flow is intentionally split between Nix and Xcode:
+
+- **Nix builds cross-platform inputs**: Rust backend artifacts, iOS/macOS static libraries, and generated dependency trees.
+- **A vendored `xcodeenv` layer exposes host Xcode** into Nix as an impure wrapper, following the same pattern used by Nixpkgs for Apple SDK integration.
+- **Xcode project generation is deterministic**: the generated `Wawona.xcodeproj` links directly against store paths produced by Nix instead of running `nix build` recursively from Xcode build phases.
+- **App packaging is performed by `xcodebuild`** through `xcodeenv.buildApp`, while simulator launches use `xcodeenv.simulateApp`.
+
+```mermaid
+flowchart LR
+    flakeOutputs[FlakeOutputs] --> iosToolchain[dependencies/toolchains/ios-xcodeenv.nix]
+    flakeOutputs --> rustBackends[RustBackends]
+    rustBackends --> xcodeProject[XcodeProjectGeneration]
+    iosToolchain --> xcodeWrapper[XcodeWrapper]
+    xcodeWrapper --> buildApp[XcodeenvBuildApp]
+    xcodeWrapper --> simulateApp[XcodeenvSimulateApp]
+    xcodeProject --> buildApp
+    buildApp --> simApp[SimulatorAppBundle]
+    buildApp --> deviceApp[DeviceOrReleaseArtifacts]
+```
+
+### Apple-specific responsibilities
+
+- `dependencies/toolchains/ios-xcodeenv.nix`: canonical Apple/Xcode integration layer
+- `dependencies/generators/xcodegen.nix`: generates the Xcode project with Nix-built backend references
+- `dependencies/wawona/ios.nix`: packages the iOS app through `xcodeenv.buildApp`
+- `dependencies/wawona/app-programs.nix`: wraps simulator launch and debug workflows
+- `flake.nix`: exports user-facing outputs such as `wawona-ios-app-sim`, `wawona-ios-app-device`, `wawona-ios-ipa`, `wawona-ios-xcarchive`, `wawona-ios-project`, and `wawona-ios`
+
+This architecture is designed to work the same way on local Macs and on GitHub-hosted macOS runners: select an Xcode installation once, let the wrapper expose it, and keep the rest of the build logic in normal Nix derivations.
+
+---
+
 ## **2. Native Frontend → FFI → Rust Backend Flow**
 
 ```mermaid

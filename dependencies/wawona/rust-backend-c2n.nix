@@ -29,6 +29,8 @@
 , toolchains ? null # cross-compilation toolchains
 , nativeDeps ? {}   # platform-specific native library derivations
 , nixpkgs           # the nixpkgs source (used to build a clean cross pkgs)
+, androidSDK ? null
+, androidToolchain ? null
 }:
 
 let
@@ -52,22 +54,22 @@ let
   isCross = isIOS || isAndroid;
 
   # ── Android toolchain ──────────────────────────────────────────────
-  androidToolchain = if isAndroid then
-    import ../toolchains/android.nix { inherit lib pkgs; }
-  else null;
+  androidToolchainEffective = if androidToolchain != null then androidToolchain 
+    else if isAndroid then import ../toolchains/android.nix { inherit lib pkgs androidSDK; }
+    else null;
 
   NDK_SYSROOT = if isAndroid then
-    "${androidToolchain.androidndkRoot}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot"
+    androidToolchainEffective.androidNdkSysroot
   else null;
 
   NDK_LIB_PATH = if isAndroid then
-    "${NDK_SYSROOT}/usr/lib/aarch64-linux-android/${toString androidToolchain.androidNdkApiLevel}"
+    androidToolchainEffective.androidNdkAbiLibDir
   else null;
 
   androidLinkerWrapper = if isAndroid then
     pkgs.writeShellScript "android-linker-wrapper" ''
-      exec ${androidToolchain.androidCC} \
-        --target=${androidToolchain.androidTarget} \
+      exec ${androidToolchainEffective.androidCC} \
+        --target=${androidToolchainEffective.androidTarget} \
         --sysroot=${NDK_SYSROOT} \
         -L${NDK_LIB_PATH} \
         -L${NDK_SYSROOT}/usr/lib/aarch64-linux-android \
@@ -76,12 +78,12 @@ let
   else null;
 
   # ── Xcode SDK detection (iOS/macOS) ────────────────────────────────
-  xcodeFinderScript = if (isIOS || isMacOS) then
-    (import ../utils/xcode-wrapper.nix { inherit (pkgs) lib; inherit pkgs; }).findXcodeScript
-  else null;
+  ensureIosSDKHelpers = if isIOS then
+    (import ../toolchains/ios-xcodeenv.nix { inherit (pkgs) lib pkgs; })
+  else {};
 
   # ── crate2nix: generate per-crate derivations ─────────────────────
-  cargoNixDrv = crate2nix.tools.${pkgs.system}.generatedCargoNix {
+  cargoNixDrv = crate2nix.tools.${pkgs.stdenv.hostPlatform.system}.generatedCargoNix {
     name = "wawona-${platform}${lib.optionalString (isIOS && simulator) "-sim"}";
     src = workspaceSrc;
   };
@@ -97,10 +99,20 @@ let
 
   rawClang = "${pkgs.stdenv.cc.cc}/bin/clang";
   cargoTargetUnderscore = builtins.replaceStrings ["-"] ["_"] (if cargoTarget != null then cargoTarget else "");
+  androidRustToolchain =
+    if isAndroid && pkgs ? rustToolchainAndroid then
+      pkgs.rustToolchainAndroid
+    else if isAndroid && pkgs ? rust-bin then
+      pkgs.rust-bin.stable.latest.default.override {
+        targets = [ cargoTarget ];
+      }
+    else null;
 
   toolchainOverrides = {
-    cargo = if pkgs ? rustToolchain then pkgs.rustToolchain else pkgs.cargo;
-    rustc = if pkgs ? rustToolchain then pkgs.rustToolchain else pkgs.rustc;
+    cargo = if androidRustToolchain != null then androidRustToolchain
+            else if pkgs ? rustToolchain then pkgs.rustToolchain else pkgs.cargo;
+    rustc = if androidRustToolchain != null then androidRustToolchain
+            else if pkgs ? rustToolchain then pkgs.rustToolchain else pkgs.rustc;
   };
 
   # Host buildRustCrate: compiles for macOS (build scripts, proc-macros)
@@ -152,7 +164,13 @@ let
     else null;
 
   crossStdenv = if isCross then
-    pkgs.stdenv // { hostPlatform = crossHostPlatform; }
+    pkgs.stdenv // {
+      hostPlatform = crossHostPlatform;
+      # build-rust-crate appends `-C linker=${stdenv.cc}/bin/...cc` when hasCC=true.
+      # For Android cross builds this forces host gcc-wrapper and overrides our
+      # explicit android linker wrapper. Disable that implicit linker injection.
+      hasCC = if isAndroid then false else pkgs.stdenv.hasCC;
+    }
   else null;
 
   # Cross buildRustCrate: hostPlatform is iOS/Android, so configure-crate.nix
@@ -187,22 +205,37 @@ let
   # preConfigure for cross builds:
   #  - Clear MACOSX_DEPLOYMENT_TARGET to prevent cc-rs from injecting macOS flags
   #  - Set target-specific CC_<target> so cc-rs uses our clang with -target
-  #  - Set CRATE_CC_NO_DEFAULTS=1 to stop cc-rs from running xcrun for iOS SDK
-  #    (the SDK isn't available in the Nix sandbox; bundled C sources like zlib
-  #    ship their own headers and don't need system SDK headers)
+  #  - Set CRATE_CC_NO_DEFAULTS=1
   crossPreConfigure =
     if isIOS then ''
       unset MACOSX_DEPLOYMENT_TARGET
-      export IPHONEOS_DEPLOYMENT_TARGET="26.0"
-      export CC_${cargoTargetUnderscore}="${rawClang} -target ${linkerTarget}"
-      export CFLAGS_${cargoTargetUnderscore}="-target ${linkerTarget} -fPIC"
+      export IPHONEOS_DEPLOYMENT_TARGET="${ensureIosSDKHelpers.deploymentTarget}"
+      ${ensureIosSDKHelpers.mkIOSBuildEnv { inherit simulator; }}
+
+      # Target-specific variables for cc-rs
+      export CC_${cargoTargetUnderscore}="$XCODE_CLANG -target ${linkerTarget} -isysroot $SDKROOT"
+      export CFLAGS_${cargoTargetUnderscore}="-target ${linkerTarget} -isysroot $SDKROOT $APPLE_DEPLOYMENT_FLAG -fPIC"
       export CRATE_CC_NO_DEFAULTS="1"
+
+      # Also set the linker for cargo/rustc
+      export CARGO_TARGET_${lib.toUpper cargoTargetUnderscore}_LINKER="$XCODE_CLANG"
+      export CARGO_TARGET_${lib.toUpper cargoTargetUnderscore}_RUSTFLAGS="-C linker=$XCODE_CLANG -C link-arg=-target -C link-arg=${linkerTarget} -C link-arg=-isysroot -C link-arg=$SDKROOT -C link-arg=$APPLE_DEPLOYMENT_FLAG"
+
+      # Unset SDKROOT and DEVELOPER_DIR so the Nix clang wrapper uses its own
+      # built-in apple-sdk for host-side builds (build.rs, proc-macros).
+      # Target compilations use the iOS sysroot already baked into CC_<target>.
+      unset SDKROOT
+      unset DEVELOPER_DIR
     '' else if isAndroid then ''
       unset MACOSX_DEPLOYMENT_TARGET
-      export CC_${cargoTargetUnderscore}="${androidToolchain.androidCC} --target=${androidToolchain.androidTarget}"
-      export CFLAGS_${cargoTargetUnderscore}="--target=${androidToolchain.androidTarget} --sysroot=${NDK_SYSROOT} -fPIC"
+      # Plain compiler path + flags only in CFLAGS: avoids cc-rs duplicating --target and fixes NDK headers on Linux.
+      export CC_${cargoTargetUnderscore}="${androidToolchainEffective.androidCC}"
+      export CXX_${cargoTargetUnderscore}="${androidToolchainEffective.androidCXX}"
+      export CFLAGS_${cargoTargetUnderscore}="--target=${androidToolchainEffective.androidTarget} --sysroot=${NDK_SYSROOT} -isystem ${NDK_SYSROOT}/usr/include -isystem ${NDK_SYSROOT}/usr/include/aarch64-linux-android -fPIC ${androidToolchainEffective.androidNdkCflags}"
+      export CXXFLAGS_${cargoTargetUnderscore}="--target=${androidToolchainEffective.androidTarget} --sysroot=${NDK_SYSROOT} -isystem ${NDK_SYSROOT}/usr/include -isystem ${NDK_SYSROOT}/usr/include/aarch64-linux-android -fPIC ${androidToolchainEffective.androidNdkCflags}"
+      export BINDGEN_EXTRA_CLANG_ARGS="--target=${androidToolchainEffective.androidTarget} --sysroot=${NDK_SYSROOT} -isystem ${NDK_SYSROOT}/usr/include -isystem ${NDK_SYSROOT}/usr/include/aarch64-linux-android ${androidToolchainEffective.androidNdkCflags}"
       export CRATE_CC_NO_DEFAULTS="1"
-      export AR="${androidToolchain.androidAR}"
+      export AR="${androidToolchainEffective.androidAR}"
     '' else "";
 
   swapBuildDepsToHost = attrs: attrs // {
@@ -229,6 +262,9 @@ let
           crossBuild = innerCrossBRC (swapBuildDepsToHost (crateAttrs // {
             extraRustcOpts = (crateAttrs.extraRustcOpts or []) ++ nativeLibSearchPaths;
             preConfigure = (crateAttrs.preConfigure or "") + crossPreConfigure;
+          } // lib.optionalAttrs isIOS {
+            # iOS builds need host Xcode SDK access inside the sandbox.
+            __noChroot = true;
           }));
         in
           if isProcMacro then
@@ -268,9 +304,24 @@ let
 
   # ── Per-crate build overrides ──────────────────────────────────────
   crateOverrides = pkgs.defaultCrateOverrides // {
+    linux-raw-sys = attrs: {
+      features = lib.unique ((attrs.features or []) ++ [ "errno" ]);
+    };
+
+    weedle2 = attrs: {
+      # Crates are gzipped tarballs; `.crate` is not always recognized by stdenv unpack on Linux CI.
+      src = pkgs.fetchurl {
+        name = "weedle2-5.0.0.tar.gz";
+        url = "https://crates.io/api/v1/crates/weedle2/5.0.0/download";
+        hash = "sha256-mY0sJOwJmofa+UZ4CIWfnYK2Hx2clwElGuoDf1FOrg4=";
+      };
+    };
 
     # ── wawona (root crate) ────────────────────────────────────────
     wawona = attrs: {
+      preConfigure = (attrs.preConfigure or "") + lib.optionalString pkgs.stdenv.isDarwin ''
+        export MACOSX_DEPLOYMENT_TARGET="26.0"
+      '';
       nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [
         pkgs.pkg-config
       ] ++ lib.optionals isIOS [
@@ -284,6 +335,7 @@ let
           pkgs.libffi
           pkgs.openssl
           pkgs.vulkan-loader
+          pkgs.libiconv
           (nativeDeps.libwayland or toolchains.macos.libwayland)
         ]
         else if isIOS then [
@@ -342,17 +394,19 @@ let
         ++ lib.optional (nativeDeps ? xkbcommon) "${nativeDeps.xkbcommon}/lib/pkgconfig"
         ++ lib.optional (nativeDeps ? ffmpeg) "${nativeDeps.ffmpeg}/lib/pkgconfig"
       );
-    } // lib.optionalAttrs isAndroid {
-      CC_aarch64_linux_android = "${androidLinkerWrapper}";
-      CXX_aarch64_linux_android = androidToolchain.androidCXX;
-      AR_aarch64_linux_android = androidToolchain.androidAR;
-      AR = androidToolchain.androidAR;
+    } // lib.optionalAttrs isAndroid ({
+      # Use plain clang + CFLAGS from crossPreConfigure for cc-rs; linker wrapper is rustc-only.
+      CC_aarch64_linux_android = "${androidToolchainEffective.androidCC}";
+      CXX_aarch64_linux_android = "${androidToolchainEffective.androidCXX}";
+      AR_aarch64_linux_android = androidToolchainEffective.androidAR;
+      AR = androidToolchainEffective.androidAR;
       CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER = "${androidLinkerWrapper}";
+      dontStrip = true;
+    } // lib.optionalAttrs (nativeDeps ? openssl) {
       OPENSSL_DIR = "${nativeDeps.openssl}";
       OPENSSL_STATIC = "1";
       OPENSSL_NO_VENDOR = "1";
-      dontStrip = true;
-    };
+    });
 
     # ── wayland-backend (needs iOS/macOS patches) ──────────────────
     wayland-backend = attrs: lib.optionalAttrs (isIOS) {
@@ -378,7 +432,8 @@ let
     ssh2 = attrs: {
       buildInputs = (attrs.buildInputs or []) ++
         lib.optional (nativeDeps ? libssh2) nativeDeps.libssh2 ++
-        lib.optional (nativeDeps ? openssl) nativeDeps.openssl;
+        lib.optional (nativeDeps ? openssl) nativeDeps.openssl ++
+        lib.optional pkgs.stdenv.isDarwin pkgs.libiconv;
       nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [ pkgs.pkg-config ];
     } // lib.optionalAttrs (nativeDeps ? libssh2) {
       PKG_CONFIG_PATH = lib.concatStringsSep ":" [
@@ -395,7 +450,8 @@ let
       in {
       buildInputs = (attrs.buildInputs or []) ++
         lib.optional (nativeDeps ? libssh2) nativeDeps.libssh2 ++
-        [ zlibDep opensslDep ];
+        [ zlibDep opensslDep ] ++
+        lib.optional pkgs.stdenv.isDarwin pkgs.libiconv;
       nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [ pkgs.pkg-config ];
       preConfigure = (attrs.preConfigure or "") + lib.optionalString isIOS ''
         export C_INCLUDE_PATH="${lib.optionalString (nativeDeps ? zlib) "${nativeDeps.zlib}/include"}:${lib.optionalString (nativeDeps ? openssl) "${nativeDeps.openssl}/include"}:$C_INCLUDE_PATH"
@@ -445,6 +501,20 @@ let
       PKG_CONFIG_ALLOW_CROSS = "1";
       PKG_CONFIG_PATH = "${nativeDeps.ffmpeg}/lib/pkgconfig";
       BINDGEN_EXTRA_CLANG_ARGS = "-I${nativeDeps.ffmpeg}/include -I${pkgs.vulkan-headers}/include";
+    } // lib.optionalAttrs (isIOS && nativeDeps ? ffmpeg) {
+      preConfigure = (attrs.preConfigure or "") + ''
+        IOS_BINDGEN_SYSROOT="$(${
+          if simulator
+          then "${ensureIosSDKHelpers.ensureIosSimSDK}/bin/ensure-ios-sim-sdk"
+          else "${ensureIosSDKHelpers.ensureIosSDK}/bin/ensure-ios-sdk"
+        })"
+        IOS_BINDGEN_MIN_FLAG="${
+          if simulator
+          then "-mios-simulator-version-min=${ensureIosSDKHelpers.deploymentTarget}"
+          else "-miphoneos-version-min=${ensureIosSDKHelpers.deploymentTarget}"
+        }"
+        export BINDGEN_EXTRA_CLANG_ARGS="$BINDGEN_EXTRA_CLANG_ARGS --target=${linkerTarget} -isysroot $IOS_BINDGEN_SYSROOT $IOS_BINDGEN_MIN_FLAG"
+      '';
     };
 
     waypipe-lz4-wrapper = attrs: {
@@ -463,6 +533,15 @@ let
     } // lib.optionalAttrs (nativeDeps ? zstd) {
       PKG_CONFIG_ALLOW_CROSS = "1";
       PKG_CONFIG_PATH = "${nativeDeps.zstd}/lib/pkgconfig";
+    };
+
+    # ── waypipe (needs libiconv on macOS) ───────────────────────────
+    waypipe = attrs: {
+      buildInputs = (attrs.buildInputs or []) ++
+        lib.optionals pkgs.stdenv.isDarwin [ pkgs.libiconv ];
+      preConfigure = (attrs.preConfigure or "") + lib.optionalString pkgs.stdenv.isDarwin ''
+        export MACOSX_DEPLOYMENT_TARGET="26.0"
+      '';
     };
 
     # ── iana-time-zone (cross-compilation fix for Android) ─────────

@@ -4,10 +4,12 @@
   buildPackages,
   common,
   buildModule,
+  androidToolchain, # androidToolchain passed from caller
+  ...
 }:
 
 let
-  androidToolchain = import ../../toolchains/android.nix { inherit lib pkgs; };
+  # androidToolchain = import ../../toolchains/android.nix { inherit lib pkgs; }; # Removed as androidToolchain is now a direct argument
   src = pkgs.fetchFromGitHub {
     owner = "Mbed-TLS";
     repo = "mbedtls";
@@ -36,8 +38,6 @@ set(CMAKE_ANDROID_ARCH_ABI arm64-v8a)
 set(CMAKE_ANDROID_NDK "${androidToolchain.androidndkRoot}")
 set(CMAKE_C_COMPILER "${androidToolchain.androidCC}")
 set(CMAKE_CXX_COMPILER "${androidToolchain.androidCXX}")
-set(CMAKE_C_FLAGS "--target=${androidToolchain.androidTarget} -fPIC")
-set(CMAKE_CXX_FLAGS "--target=${androidToolchain.androidTarget} -fPIC")
 set(BUILD_SHARED_LIBS OFF)
 EOF
   '';

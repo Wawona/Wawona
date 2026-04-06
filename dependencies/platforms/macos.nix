@@ -14,69 +14,25 @@ in
   buildForMacOS =
     name: entry:
     if name == "libwayland" then
-      (import ../libs/libwayland/macos.nix) {
-        inherit
-          lib
-          pkgs
-          common
-          buildModule
-          ;
-      }
+      pkgs.callPackage ../libs/libwayland/macos.nix { inherit common buildModule; }
     else if name == "expat" then
-      (import ../libs/expat/macos.nix) { inherit lib pkgs common; }
+      pkgs.callPackage ../libs/expat/macos.nix { inherit common; }
     else if name == "libffi" then
-      (import ../libs/libffi/macos.nix) { inherit lib pkgs common; }
+      pkgs.callPackage ../libs/libffi/macos.nix { inherit common; }
     else if name == "libxml2" then
-      (import ../libs/libxml2/macos.nix) { inherit lib pkgs common; }
+      pkgs.callPackage ../libs/libxml2/macos.nix { }
     else if name == "waypipe" then
-      (import ../libs/waypipe/macos.nix) {
-        inherit
-          lib
-          pkgs
-          common
-          buildModule
-          ;
-      }
-    else if name == "kosmickrisp" then
-      (import ../libs/kosmickrisp/macos.nix) {
-        inherit
-          lib
-          pkgs
-          common
-          buildModule
-          ;
-      }
+      pkgs.callPackage ../libs/waypipe/macos.nix { inherit common buildModule; }
     else if name == "zstd" then
-      (import ../libs/zstd/macos.nix) {
-        inherit
-          lib
-          pkgs
-          common
-          buildModule
-          ;
-      }
+      pkgs.callPackage ../libs/zstd/macos.nix { inherit common buildModule; }
     else if name == "lz4" then
-      (import ../libs/lz4/macos.nix) {
-        inherit
-          lib
-          pkgs
-          common
-          buildModule
-          ;
-      }
+      pkgs.callPackage ../libs/lz4/macos.nix { inherit common buildModule; }
     else if name == "pixman" then
       pkgs.pixman
     else if name == "xkbcommon" then
       pkgs.libxkbcommon
     else if name == "ffmpeg" then
-      (import ../libs/ffmpeg/macos.nix) {
-        inherit
-          lib
-          pkgs
-          common
-          buildModule
-          ;
-      }
+      pkgs.callPackage ../libs/ffmpeg/macos.nix { inherit common buildModule; }
     else
       let
         src = fetchSource entry;

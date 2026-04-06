@@ -1,5 +1,5 @@
 #include "cairo_shim.h"
-#include <pixman.h>
+#include <pixman-1/pixman.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

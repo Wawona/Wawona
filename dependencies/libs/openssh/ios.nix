@@ -4,6 +4,7 @@
   buildPackages,
   common,
   buildModule,
+  iosToolchain ? null,
 }:
 
 let

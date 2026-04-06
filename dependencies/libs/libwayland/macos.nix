@@ -46,6 +46,7 @@ in
 pkgs.stdenv.mkDerivation {
   name = "libwayland-macos";
   inherit src patches;
+  __noChroot = true;
   nativeBuildInputs = with pkgs; [
     meson
     ninja
@@ -117,6 +118,12 @@ pkgs.stdenv.mkDerivation {
             echo "$COMMON_DEFINES" | cat - "$f" > "$f.tmp" && mv "$f.tmp" "$f"
           fi
         done
+
+        # Patch meson.build: librt does not exist on macOS (it's part of libSystem).
+        # Make it optional so the build doesn't fail.
+        if [ -f meson.build ]; then
+          substituteInPlace meson.build --replace "find_library('rt')" "find_library('rt', required: false)"
+        fi
         
         if [ -f src/wayland-os.c ]; then
           # Replace the #error directive with macOS implementation for get_credentials
@@ -144,23 +151,43 @@ pkgs.stdenv.mkDerivation {
   '';
 
   preConfigure = ''
-    if [ -z "''${XCODE_APP:-}" ]; then
-      XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode || true)
-      if [ -n "$XCODE_APP" ]; then
-        export XCODE_APP
-        export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
-        export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
-        export SDKROOT="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
-      fi
+    # Robust SDK detection using xcrun (gold standard for modern macOS)
+    MACOS_SDK=$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)
+    if [ ! -d "$MACOS_SDK" ]; then
+      # Fallback 1: Command Line Tools path
+      MACOS_SDK="/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk"
+    fi
+    if [ ! -d "$MACOS_SDK" ]; then
+      # Fallback 2: Legacy system path
+      MACOS_SDK="/System/Library/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+    fi
+    if [ ! -d "$MACOS_SDK" ]; then
+      # Fallback 3: Custom script
+      MACOS_SDK=$(${xcodeUtils.findXcodeScript}/bin/find-xcode)/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+    fi
+    if [ ! -d "$MACOS_SDK" ]; then
+      # Fallback 4: Global xcode-select
+      MACOS_SDK=$(/usr/bin/xcode-select -p)/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
     fi
 
-    # Add epoll-shim include path so sys/epoll.h, sys/signalfd.h, etc. are found.
-    # epoll-shim puts headers in include/libepoll-shim/sys/*.h, so we add include/libepoll-shim
-    # to the search path so that <sys/epoll.h> resolves correctly.
-    export CFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 -fPIC $CFLAGS -I${epollShim}/include/libepoll-shim"
+    if [ ! -d "$MACOS_SDK" ]; then
+      echo "ERROR: MacOSX SDK not found. Build cannot proceed." >&2
+      exit 1
+    fi
+    export SDKROOT="$MACOS_SDK"
+    export MACOSX_DEPLOYMENT_TARGET="26.0"
 
-    # Link against epoll-shim
-    export LDFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 $LDFLAGS -lepoll-shim"
+    # Isolate environment from Nix wrapper flags to prevent linker conflicts
+    unset DEVELOPER_DIR
+    export NIX_CFLAGS_COMPILE=""
+    export NIX_LDFLAGS=""
+
+    export CC="${pkgs.clang}/bin/clang"
+    export CXX="${pkgs.clang}/bin/clang++"
+
+    # Add sysroot and version-min explicitly
+    export CFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 -fPIC $CFLAGS -I${epollShim}/include/libepoll-shim"
+    export LDFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 $LDFLAGS -L${epollShim}/lib -lepoll-shim"
   '';
 
   configurePhase = ''

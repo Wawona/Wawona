@@ -4,11 +4,13 @@
   buildPackages,
   common,
   buildModule,
+  androidToolchain ? (import ../../toolchains/android.nix { inherit lib pkgs; }),
+  ...
 }:
 
 let
   fetchSource = common.fetchSource;
-  androidToolchain = import ../../toolchains/android.nix { inherit lib pkgs; };
+  # androidToolchain passed from caller
   waylandSource = {
     source = "gitlab";
     owner = "wayland";
@@ -104,6 +106,7 @@ pkgs.stdenv.mkDerivation {
     libxml2
     expat
     gcc
+    which
     waylandScanner
   ];
   depsTargetTarget = depInputs;
@@ -209,6 +212,9 @@ pkgs.stdenv.mkDerivation {
         # Remove the lines from the check array
         sed -i "/sys\/signalfd.h/d" meson.build
         sed -i "/sys\/timerfd.h/d" meson.build
+        # Android cross builds in Nix can mis-detect CLOCK_MONOTONIC at configure
+        # time; drop only this declaration check while keeping the remaining checks.
+        sed -i "/'header': 'time.h', 'symbol': 'CLOCK_MONOTONIC'/d" meson.build
         
         # Also try to comment out direct error calls if they exist
         sed -i "s/error.*SFD_CLOEXEC.*/message('Skipped SFD_CLOEXEC check for Android')/g" meson.build
@@ -385,6 +391,7 @@ pkgs.stdenv.mkDerivation {
         echo "=== Android compatibility patches complete ==="
   '';
   preConfigure = ''
+        unset NIX_CFLAGS_COMPILE NIX_CXXFLAGS_COMPILE
         export CC="${androidToolchain.androidCC}"
         export CXX="${androidToolchain.androidCXX}"
         export AR="${androidToolchain.androidAR}"
@@ -448,18 +455,18 @@ pkgs.stdenv.mkDerivation {
     [built-in options]
     EOF
         if [ -n "$LIBFFI_INCLUDE" ]; then
-          echo "c_args = ['--target=${androidToolchain.androidTarget}', '-fPIC', '-I$LIBFFI_INCLUDE', '-D_GNU_SOURCE']" >> android-cross-file.txt
-          echo "cpp_args = ['--target=${androidToolchain.androidTarget}', '-fPIC', '-I$LIBFFI_INCLUDE', '-D_GNU_SOURCE']" >> android-cross-file.txt
+          echo "c_args = ['-fPIC', '-I$LIBFFI_INCLUDE', '-D_GNU_SOURCE', '-D_POSIX_C_SOURCE=200809L', '-DCLOCK_MONOTONIC=1']" >> android-cross-file.txt
+          echo "cpp_args = ['-fPIC', '-I$LIBFFI_INCLUDE', '-D_GNU_SOURCE', '-D_POSIX_C_SOURCE=200809L', '-DCLOCK_MONOTONIC=1']" >> android-cross-file.txt
         else
-          echo "c_args = ['--target=${androidToolchain.androidTarget}', '-fPIC', '-D_GNU_SOURCE']" >> android-cross-file.txt
-          echo "cpp_args = ['--target=${androidToolchain.androidTarget}', '-fPIC', '-D_GNU_SOURCE']" >> android-cross-file.txt
+          echo "c_args = ['-fPIC', '-D_GNU_SOURCE', '-D_POSIX_C_SOURCE=200809L', '-DCLOCK_MONOTONIC=1']" >> android-cross-file.txt
+          echo "cpp_args = ['-fPIC', '-D_GNU_SOURCE', '-D_POSIX_C_SOURCE=200809L', '-DCLOCK_MONOTONIC=1']" >> android-cross-file.txt
         fi
         if [ -n "$LIBFFI_LIB" ]; then
-          echo "c_link_args = ['--target=${androidToolchain.androidTarget}', '-L$LIBFFI_LIB']" >> android-cross-file.txt
-          echo "cpp_link_args = ['--target=${androidToolchain.androidTarget}', '-L$LIBFFI_LIB']" >> android-cross-file.txt
+          echo "c_link_args = ['-L$LIBFFI_LIB']" >> android-cross-file.txt
+          echo "cpp_link_args = ['-L$LIBFFI_LIB']" >> android-cross-file.txt
         else
-          echo "c_link_args = ['--target=${androidToolchain.androidTarget}']" >> android-cross-file.txt
-          echo "cpp_link_args = ['--target=${androidToolchain.androidTarget}']" >> android-cross-file.txt
+          echo "c_link_args = []" >> android-cross-file.txt
+          echo "cpp_link_args = []" >> android-cross-file.txt
         fi
         LIBXML2_NATIVE_INCLUDE_VAL=""
         LIBXML2_NATIVE_LIB_VAL=""
@@ -476,23 +483,20 @@ pkgs.stdenv.mkDerivation {
         fi
         echo "LIBXML2_NATIVE_LIB_VAL: $LIBXML2_NATIVE_LIB_VAL"
         ls -la "$LIBXML2_NATIVE_LIB_VAL"/*.dylib "$LIBXML2_NATIVE_LIB_VAL"/*.a 2>/dev/null | head -5 || echo "No libxml2 libraries found"
-        NATIVE_CC="${buildPackages.gcc}/bin/gcc"
-        NATIVE_CXX="${buildPackages.gcc}/bin/g++"
+        NATIVE_CC="${buildPackages.stdenv.cc}/bin/cc"
+        NATIVE_CXX="${buildPackages.stdenv.cc}/bin/c++"
         if [ ! -x "$NATIVE_CC" ]; then
-          NATIVE_CC="${buildPackages.stdenv.cc}/bin/cc"
-          NATIVE_CXX="${buildPackages.stdenv.cc}/bin/c++"
-          if [ ! -x "$NATIVE_CC" ] || echo "$($NATIVE_CC --version 2>&1)" | grep -q "android"; then
-            NATIVE_CC="${buildPackages.clang}/bin/clang"
-            NATIVE_CXX="${buildPackages.clang}/bin/clang++"
-            if echo "$($NATIVE_CC --version 2>&1)" | grep -q "android"; then
-              NATIVE_CC="cc"
-              NATIVE_CXX="c++"
-            fi
-          fi
+          NATIVE_CC="${buildPackages.clang}/bin/clang"
+          NATIVE_CXX="${buildPackages.clang}/bin/clang++"
+        fi
+        # If still not found or specifically on Linux but we want GCC, check for it
+        if [[ "${pkgs.stdenv.buildPlatform.system}" == *"linux"* ]] && [ -x "${buildPackages.gcc}/bin/gcc" ]; then
+           NATIVE_CC="${buildPackages.gcc}/bin/gcc"
+           NATIVE_CXX="${buildPackages.gcc}/bin/g++"
         fi
         echo "Using native compiler: $NATIVE_CC"
         if [ -x "$NATIVE_CC" ]; then
-          "$NATIVE_CC" --version || true
+          "$NATIVE_CC" --version
         fi
         cat > meson-native-file.txt <<NATIVEFILE
     [binaries]
@@ -527,7 +531,8 @@ pkgs.stdenv.mkDerivation {
           export C_INCLUDE_PATH="$LIBXML2_NATIVE_INCLUDE_VAL"
           export CPP_INCLUDE_PATH="$LIBXML2_NATIVE_INCLUDE_VAL"
         fi
-        export PATH="${buildPackages.gcc}/bin:$PATH"
+        # export PATH="${buildPackages.gcc}/bin:$PATH" / NO: This overrides Clang on Darwin
+        export PATH="${buildPackages.stdenv.cc}/bin:$PATH"
   '';
   configurePhase = ''
     runHook preConfigure
@@ -539,7 +544,8 @@ pkgs.stdenv.mkDerivation {
     done
     export PKG_CONFIG_PATH="$ANDROID_PKG_CONFIG_PATH"
     # PKG_CONFIG_PATH_FOR_BUILD is set in preConfigure for wayland-scanner
-    export PATH="${buildPackages.gcc}/bin:$PATH"
+    # export PATH="${buildPackages.gcc}/bin:$PATH"
+    export PATH="${buildPackages.stdenv.cc}/bin:$PATH"
     unset CC CXX AR STRIP RANLIB CFLAGS CXXFLAGS LDFLAGS NIX_CFLAGS_COMPILE NIX_CXXFLAGS_COMPILE
     NATIVE_FILE_PATH="$(pwd)/meson-native-file.txt"
     CROSS_FILE_PATH="$(pwd)/android-cross-file.txt"
@@ -570,9 +576,5 @@ pkgs.stdenv.mkDerivation {
     meson install -C build
     runHook postInstall
   '';
-  CC = androidToolchain.androidCC;
-  CXX = androidToolchain.androidCXX;
-  NIX_CFLAGS_COMPILE = "--target=${androidToolchain.androidTarget} -fPIC";
-  NIX_CXXFLAGS_COMPILE = "--target=${androidToolchain.androidTarget} -fPIC";
   __impureHostDeps = [ "/bin/sh" ];
 }

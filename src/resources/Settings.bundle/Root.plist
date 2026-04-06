@@ -263,7 +263,7 @@
 			<key>Type</key>
 			<string>PSGroupSpecifier</string>
 			<key>Title</key>
-			<string>SSH (libssh2)</string>
+			<string>SSH</string>
 		</dict>
 		<!-- SSH Host -->
 		<dict>

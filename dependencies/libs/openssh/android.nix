@@ -4,11 +4,12 @@
   buildPackages,
   common,
   buildModule,
+  androidToolchain,
+  ...
 }:
 
 let
-  androidToolchain = import ../../toolchains/android.nix { inherit lib pkgs; };
-  NDK_SYSROOT = "${androidToolchain.androidndkRoot}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot";
+  NDK_SYSROOT = "${androidToolchain.androidNdkToolchainBase}/sysroot";
   NDK_ZLIB_LIB = "${NDK_SYSROOT}/usr/lib/aarch64-linux-android";
 in
 pkgs.stdenv.mkDerivation {
@@ -65,8 +66,8 @@ PY
     export AR="${androidToolchain.androidAR}"
     export RANLIB="${androidToolchain.androidRANLIB}"
     export STRIP="${androidToolchain.androidSTRIP}"
-    export CFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${NDK_SYSROOT} -fPIC -DANDROID"
-    export LDFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${NDK_SYSROOT} -L${NDK_ZLIB_LIB} -static"
+    export CFLAGS="-fPIC -DANDROID"
+    export LDFLAGS="-L${androidToolchain.androidNdkAbiLibDir} -L${NDK_ZLIB_LIB} -static"
   '';
 
   configurePhase = ''
@@ -132,5 +133,4 @@ EOF
   '';
 
   dontFixup = true;
-  __noChroot = true;
 }

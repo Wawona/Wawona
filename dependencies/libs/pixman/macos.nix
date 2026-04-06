@@ -17,6 +17,9 @@ pkgs.stdenv.mkDerivation {
   version = pkgs.pixman.version;
   inherit src;
   
+  # We need to access /Applications/Xcode.app for the SDK and toolchain
+  __noChroot = true;
+
   nativeBuildInputs = with pkgs; [
     meson
     ninja
@@ -33,16 +36,42 @@ pkgs.stdenv.mkDerivation {
   buildInputs = [ ];
   
   preConfigure = ''
-    if [ -z "''${XCODE_APP:-}" ]; then
-      XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode || true)
-      if [ -n "$XCODE_APP" ]; then
-        export XCODE_APP
-        export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
-        export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
-        export SDKROOT="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
-      fi
+    # Strip Nix stdenv's DEVELOPER_DIR to bypass any store fallbacks
+    unset DEVELOPER_DIR
+
+    # Robust SDK detection using xcrun (gold standard for modern macOS)
+    MACOS_SDK=$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)
+    if [ ! -d "$MACOS_SDK" ]; then
+      # Fallback 1: Command Line Tools path
+      MACOS_SDK="/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk"
     fi
+    if [ ! -d "$MACOS_SDK" ]; then
+      # Fallback 2: Legacy system path
+      MACOS_SDK="/System/Library/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+    fi
+    if [ ! -d "$MACOS_SDK" ]; then
+      # Fallback 3: Custom script
+      MACOS_SDK=$(${xcodeUtils.findXcodeScript}/bin/find-xcode)/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+    fi
+    if [ ! -d "$MACOS_SDK" ]; then
+      # Fallback 4: Global xcode-select
+      MACOS_SDK=$(/usr/bin/xcode-select -p)/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+    fi
+
+    if [ ! -d "$MACOS_SDK" ]; then
+      echo "ERROR: MacOSX SDK not found. Build cannot proceed." >&2
+      exit 1
+    fi
+    export SDKROOT="$MACOS_SDK"
+    export MACOSX_DEPLOYMENT_TARGET="26.0"
     
+    # Isolate environment from Nix wrapper flags to prevent linker conflicts
+    export NIX_CFLAGS_COMPILE=""
+    export NIX_LDFLAGS=""
+
+    export CC="${pkgs.clang}/bin/clang"
+    export CXX="${pkgs.clang}/bin/clang++"
+
     export CFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 -fPIC $CFLAGS"
     export LDFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 $LDFLAGS"
   '';
@@ -51,6 +80,7 @@ pkgs.stdenv.mkDerivation {
     # Disable auto features to prevent architecture-specific checks
     "-Dauto_features=disabled"
     # Disable optional features
+    "-Dopenmp=disabled"
     "-Dgtk=disabled"
     "-Dlibpng=disabled"
     "-Dtests=disabled"

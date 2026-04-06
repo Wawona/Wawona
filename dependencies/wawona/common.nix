@@ -23,41 +23,26 @@ rec {
     "src/platform/macos/WWNPlatformCallbacks.m"
     "src/platform/macos/WWNPlatformCallbacks.h"
     "src/platform/macos/WWNRustBridge.h"
-    "src/platform/macos/RenderingBackend.m"
-    "src/platform/macos/RenderingBackend.h"
-
-    # Rendering
-    "src/rendering/renderer_apple.m"
-    "src/rendering/renderer_apple.h"
-
-    # UI components
-    "src/ui/Helpers/WWNImageLoader.m"
-    "src/ui/Helpers/WWNImageLoader.h"
-    "src/ui/Settings/WWNPreferences.m"
-    "src/ui/Settings/WWNPreferences.h"
-    "src/ui/Settings/WWNPreferencesManager.m"
-    "src/ui/Settings/WWNPreferencesManager.h"
-    "src/ui/About/WWNAboutPanel.m"
-    "src/ui/About/WWNAboutPanel.h"
-    "src/ui/Settings/WWNSettingsDefines.h"
-    "src/ui/Settings/WWNSettingsModel.m"
-    "src/ui/Settings/WWNSettingsModel.h"
-    "src/ui/Settings/WWNWaypipeRunner.m"
-    "src/ui/Settings/WWNWaypipeRunner.h"
-    "src/ui/Settings/WWNSSHClient.m"
-    "src/ui/Settings/WWNSSHClient.h"
-    "src/ui/Settings/WWNSettingsSplitViewController.m"
-    "src/ui/Settings/WWNSettingsSplitViewController.h"
-    "src/ui/Settings/WWNSettingsSidebarViewController.m"
-    "src/ui/Settings/WWNSettingsSidebarViewController.h"
-
-    # Launcher (shared)
-    "src/launcher/WWNAppScanner.m"
-    "src/launcher/WWNAppScanner.h"
-
-    # Top-level headers
-    "src/apple_backend.h"
-    "src/config.h"
+    # Apple platform UI
+    "src/platform/macos/ui/Helpers/WWNImageLoader.m"
+    "src/platform/macos/ui/Helpers/WWNImageLoader.h"
+    "src/platform/macos/ui/Settings/WWNPreferences.m"
+    "src/platform/macos/ui/Settings/WWNPreferences.h"
+    "src/platform/macos/ui/Settings/WWNPreferencesManager.m"
+    "src/platform/macos/ui/Settings/WWNPreferencesManager.h"
+    "src/platform/macos/ui/About/WWNAboutPanel.m"
+    "src/platform/macos/ui/About/WWNAboutPanel.h"
+    "src/platform/macos/ui/Settings/WWNSettingsDefines.h"
+    "src/platform/macos/ui/Settings/WWNSettingsModel.m"
+    "src/platform/macos/ui/Settings/WWNSettingsModel.h"
+    "src/platform/macos/ui/Settings/WWNWaypipeRunner.m"
+    "src/platform/macos/ui/Settings/WWNWaypipeRunner.h"
+    "src/platform/macos/ui/Settings/WWNSSHClient.m"
+    "src/platform/macos/ui/Settings/WWNSSHClient.h"
+    "src/platform/macos/ui/Settings/WWNSettingsSplitViewController.m"
+    "src/platform/macos/ui/Settings/WWNSettingsSplitViewController.h"
+    "src/platform/macos/ui/Settings/WWNSettingsSidebarViewController.m"
+    "src/platform/macos/ui/Settings/WWNSettingsSidebarViewController.h"
   ];
 
 

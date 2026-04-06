@@ -4,11 +4,13 @@
   buildPackages,
   common,
   buildModule,
+  androidToolchain ? (import ../../toolchains/android.nix { inherit lib pkgs; }),
+  ...
 }:
 
 let
   fetchSource = common.fetchSource;
-  androidToolchain = import ../../toolchains/android.nix { inherit lib pkgs; };
+  # androidToolchain passed from caller
   expatSource = {
     source = "github";
     owner = "libexpat";
@@ -19,6 +21,9 @@ let
   src = fetchSource expatSource;
   buildFlags = [ ];
   patches = [ ];
+  androidCmake = import ../../toolchains/android-cmake.nix {
+    inherit lib pkgs androidToolchain;
+  };
 in
 pkgs.stdenv.mkDerivation {
   name = "expat-android";
@@ -37,19 +42,16 @@ pkgs.stdenv.mkDerivation {
     export AR="${androidToolchain.androidAR}"
     export STRIP="${androidToolchain.androidSTRIP}"
     export RANLIB="${androidToolchain.androidRANLIB}"
-    export CFLAGS="--target=${androidToolchain.androidTarget} -fPIC"
-    export CXXFLAGS="--target=${androidToolchain.androidTarget} -fPIC"
-    export LDFLAGS="--target=${androidToolchain.androidTarget}"
   '';
   cmakeFlags = [
-    "-DCMAKE_SYSTEM_NAME=Android"
-    "-DCMAKE_ANDROID_ARCH_ABI=arm64-v8a"
-    "-DCMAKE_ANDROID_NDK=${androidToolchain.androidndkRoot}"
     "-DCMAKE_C_COMPILER=${androidToolchain.androidCC}"
     "-DCMAKE_CXX_COMPILER=${androidToolchain.androidCXX}"
-    "-DCMAKE_ANDROID_PLATFORM=android-${toString androidToolchain.androidNdkApiLevel}"
-    "-DCMAKE_C_FLAGS=--target=${androidToolchain.androidTarget}"
-    "-DCMAKE_CXX_FLAGS=--target=${androidToolchain.androidTarget}"
+  ]
+  ++ androidCmake.mkCrossFlags {
+    abi = "arm64-v8a";
+    useAndroidToolchainFile = true;
+  }
+  ++ [
     "-DEXPAT_SHARED_LIBS=OFF"
     "-DEXPAT_BUILD_TOOLS=OFF"
     "-DEXPAT_BUILD_EXAMPLES=OFF"

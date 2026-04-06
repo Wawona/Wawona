@@ -3,112 +3,110 @@
   lib,
   gradle,
   jdk17,
-  git,
   androidSDK,
   wawonaSrc,
   pkgs,
-  gradlegen,
 }:
 
-stdenv.mkDerivation {
-  pname = "wawona-android-gradle-deps";
-  version = "1.0.0";
-
-  src = wawonaSrc;
-
-  nativeBuildInputs = [
-    gradle
-    jdk17
-    git
-    pkgs.cacert
-    pkgs.curl
-    pkgs.openssl
+let
+  androidConfig = import ./android/sdk-config.nix {
+    inherit lib androidSDK;
+    system = stdenv.hostPlatform.system;
+  };
+  androidIconAssets =
+    if builtins.pathExists ./generators/android-icon-assets.nix then
+      pkgs.callPackage ./generators/android-icon-assets.nix {
+        inherit wawonaSrc;
+      }
+    else
+      null;
+  sdkRoot = androidConfig.sdkRoot;
+  commonGradleFlags = [
+    "-Dorg.gradle.java.home=${jdk17}"
+    "-Dorg.gradle.project.android.aapt2FromMavenOverride=${sdkRoot}/build-tools/${androidConfig.buildToolsVersion}/aapt2"
+    "-Pandroid.suppressUnsupportedCompileSdk=${toString androidConfig.compileSdk}"
   ];
-
-  outputHashAlgo = "sha256";
-  outputHashMode = "recursive";
-  outputHash = "sha256-F/jZX5La27EWiaBTVhpBGb9gBEn1KD5hz1BfAn9Vz6o=";
-
-  buildPhase = ''
-    export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
-    export GRADLE_OPTS="-Djava.net.preferIPv4Stack=true -Djava.net.preferIPv6Addresses=false"
-    export GRADLE_USER_HOME=$out
+  prepareEnvironmentScript = ''
     export JAVA_HOME="${jdk17}"
-    export ANDROID_SDK_ROOT="${androidSDK.androidsdk}/libexec/android-sdk"
+    export ANDROID_SDK_ROOT="${sdkRoot}"
     export ANDROID_HOME="$ANDROID_SDK_ROOT"
-
-    # Create a writable Android User Home for license acceptance and other state
-    export ANDROID_USER_HOME=$(mktemp -d)
-
-    # Accept licenses
-    mkdir -p $ANDROID_USER_HOME/licenses
-    echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > $ANDROID_USER_HOME/licenses/android-sdk-license
-
-    # Use JDK's cacerts directly
-    REAL_JAVA_HOME=$(find ${jdk17} -name cacerts | head -n 1 | sed 's|/lib/security/cacerts||')
-    echo "Using trustStore at: $REAL_JAVA_HOME/lib/security/cacerts"
-    ls -l "$REAL_JAVA_HOME/lib/security/cacerts"
-    # export GRADLE_OPTS="$GRADLE_OPTS -Djavax.net.ssl.trustStore=$REAL_JAVA_HOME/lib/security/cacerts -Djavax.net.ssl.trustStorePassword=changeit"
-
-    echo "Checking network connectivity..."
-    curl -f -I https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle/8.10.0/gradle-8.10.0.pom || echo "AGP 8.10.0 POM check failed"
-
-    # Generate Gradle files
-    mkdir -p project-root
-    cd project-root
-    cp ${gradlegen.buildGradle} build.gradle.kts
-    cp ${gradlegen.settingsGradle} settings.gradle.kts
-    chmod u+w build.gradle.kts settings.gradle.kts
-
-    # Create a dummy AndroidManifest.xml and source structure since Gradle might need it
-    mkdir -p java
-    mkdir -p res
-    cat > AndroidManifest.xml <<EOF
-    <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.aspauldingcode.wawona">
-        <application />
-    </manifest>
-    EOF
-
-    # We use a custom init script to ensure we don't fail on missing signing config
-    gradle --version
-
-    # Try with explicit --refresh-dependencies and ensuring online
-    # Also unset GRADLE_OPTS just in case
-    unset GRADLE_OPTS
-
-    gradle --no-daemon --refresh-dependencies dependencies --configuration implementation --info --stacktrace
-    gradle --no-daemon --refresh-dependencies dependencies --configuration debugImplementation --info --stacktrace
-    gradle --no-daemon --refresh-dependencies dependencies --configuration androidTestImplementation --info --stacktrace
-
-    # Also run assembleDebug to get build dependencies (plugins etc)
-    # This might fail due to read-only filesystem or other issues, so we allow failure
-    # but we hope it downloads what it needs first.
-    gradle --no-daemon assembleDebug --dry-run --info --stacktrace || true
+    export ANDROID_USER_HOME="$(pwd)/.android-home"
+    mkdir -p "$ANDROID_USER_HOME"
   '';
+  prepareProjectScript = ''
+    chmod -R u+w .
+    cp -r android/* .
+    chmod -R u+w .
 
-  installPhase = ''
-    # Clean up non-deterministic files
-    find $out -name "*.lock" -delete
-    find $out -name "gc.properties" -delete
-
-    # Remove build-specific caches that might contain absolute paths or timestamps
-    rm -rf $out/caches/*/plugin-resolution/
-    rm -rf $out/caches/*/scripts/
-    rm -rf $out/caches/*/scripts-remapped/
-    rm -rf $out/caches/*/fileHashes/
-    rm -rf $out/caches/build-cache-1/
-    rm -rf $out/daemon
-    rm -rf $out/wrapper
-
-    # Remove compiled scripts which capture the init script path
-    rm -rf $out/caches/jars-*
-
-    # Remove files containing Nix store paths (references to init scripts etc)
-    # We use a loop to avoid xargs issues and handle empty results
-    # (grep returns 1 if no matches, so we use || true)
-    grep -r -l "/nix/store" $out | while read -r file; do
-      echo "Removing $file containing store path"
-      rm -f "$file"
-    done || true
+    if [ -n "${if androidIconAssets != null then toString androidIconAssets else ""}" ] && [ -d "${if androidIconAssets != null then toString androidIconAssets else ""}/res" ]; then
+      mkdir -p app/src/main/res
+      cp -r ${if androidIconAssets != null then "${androidIconAssets}/res/." else "/dev/null"} app/src/main/res/
+      chmod -R u+w app/src/main/res
+      echo "Merged Wawona launcher icon assets"
+    fi
   '';
+  depsPackage = stdenv.mkDerivation {
+    pname = "wawona-android-gradle-deps";
+    version = "1.0.0";
+    src = wawonaSrc;
+
+    nativeBuildInputs = [
+      gradle
+      jdk17
+    ];
+
+    dontUseGradleBuild = true;
+    dontUseGradleCheck = true;
+    __darwinAllowLocalNetworking = true;
+    gradleFlags = commonGradleFlags;
+
+    preBuild = ''
+      ${prepareProjectScript}
+      ${prepareEnvironmentScript}
+      ndk_root="$ANDROID_SDK_ROOT/ndk/${androidConfig.ndkVersion}"
+      export ANDROID_NDK_ROOT="$ndk_root"
+      export ANDROID_NDK_HOME="$ndk_root"
+
+      # Force daemonless behavior in sandboxed CI prefetch runs.
+      if [ -f gradle.properties ]; then
+        grep -v -E '^org\.gradle\.(jvmargs|daemon)=' gradle.properties > gradle.properties.nix
+        mv gradle.properties.nix gradle.properties
+      fi
+    '';
+
+    gradleUpdateScript = ''
+      runHook preBuild
+      runHook preGradleUpdate
+      gradle :app:dependencies :app:compileDebugKotlin :app:mergeDebugResources :app:desugarDebugFileDependencies \
+        --no-daemon --max-workers=1 \
+        -Dorg.gradle.daemon=false \
+        -Dorg.gradle.parallel=false \
+        -Dorg.gradle.workers.max=1 \
+        -Dkotlin.daemon.enabled=false \
+        -Dkotlin.compiler.execution.strategy=in-process \
+        -Dkotlin.incremental=false \
+        --stacktrace
+      runHook postGradleUpdate
+    '';
+
+    buildPhase = ''
+      mkdir -p "$out"
+      echo "gradle deps helper" > "$out/marker"
+    '';
+  };
+in
+{
+  depsFile = ./gradle-deps.json;
+
+  mitmCache = gradle.fetchDeps {
+    pkg = depsPackage;
+    data = ./gradle-deps.json;
+    silent = false;
+    useBwrap = false;
+  };
+
+  gradleFlags = commonGradleFlags;
+
+  prepareEnvironment = prepareEnvironmentScript;
+  prepareProject = prepareProjectScript;
 }

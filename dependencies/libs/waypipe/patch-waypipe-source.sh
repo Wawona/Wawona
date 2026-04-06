@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -e
 # Make source files writable for patching
 chmod -R u+w src/ || true
@@ -2539,7 +2539,7 @@ if "run_client_oneshot_libssh2" not in content:
         spawn_pattern = re.compile(
             r'(/\*.*?start ssh.*?\*/\s*)?'
             r'let\s+mut\s+cmd_child.*?std::process::Command::new\(command_seq\[0\]\).*?\.spawn\(\).*?;'
-            r'\s*\}\s*\}\s*'
+            r'\s*\}\s*'
             r'let\s+link_fd\s*=\s*loop\s*\{.*?socket::accept\(.*?\).*?\};'
             r'\s*set_cloexec.*?;'
             r'\s*set_blocking.*?;'

@@ -5,45 +5,52 @@
   wawonaSrc,
   wawonaVersion ? null,
   androidSDK ? null,
+  androidUtils ? null,
+  androidToolchain ? null,
   rustBackend ? null,
   glslang ? pkgs.glslang,
+  jdk17 ? pkgs.jdk17,
+  gradle ? pkgs.gradle,
   targetPkgs,
   ...
 }:
 
 let
   common = import ./common.nix { inherit lib pkgs wawonaSrc; };
+  androidConfig = import ../android/sdk-config.nix {
+    inherit lib androidSDK;
+    system = pkgs.stdenv.hostPlatform.system;
+  };
+  provisionScript = if androidUtils != null then "${androidUtils.provisionAndroidScript}/bin/provision-android" else "";
 
-  androidToolchain = import ../toolchains/android.nix { inherit lib pkgs; };
+  # androidToolchain is passed from flake.nix; fall back to local import if needed
+  androidToolchainResolved = if androidToolchain != null then androidToolchain else import ../toolchains/android.nix { inherit lib androidSDK; pkgs = targetPkgs; };
   
   projectVersion =
     if (wawonaVersion != null && wawonaVersion != "") then wawonaVersion
     else
       let v = lib.removeSuffix "\n" (lib.fileContents (wawonaSrc + "/VERSION"));
       in if v == "" then "0.0.1" else v;
-
-  gradleDeps = pkgs.callPackage ../gradle-deps.nix {
+  gradleSupport = pkgs.callPackage ../gradle-deps.nix {
     inherit wawonaSrc androidSDK;
     inherit (pkgs) gradle jdk17;
-    inherit gradlegen;
   };
 
-  gradlegen = pkgs.callPackage ../generators/gradlegen.nix { wawonaVersion = projectVersion; };
-
-  androidIconAssets =
-    if builtins.pathExists ../generators/android-icon-assets.nix then
-      pkgs.callPackage ../generators/android-icon-assets.nix {
-        inherit wawonaSrc;
-      }
-    else
-      null;
-
   westonSimpleShmSrc = pkgs.callPackage ../libs/weston-simple-shm/patched-src.nix {};
+  emptyAndroidHelper = pkgs.runCommandNoCC "empty-android-helper-bin" { } ''
+    mkdir -p $out/bin
+  '';
 
-  opensshBin = buildModule.buildForAndroid "openssh" { };
-  sshpassBin = buildModule.buildForAndroid "sshpass" { };
-  westonBin = buildModule.buildForAndroid "weston" { };
+  isLinuxHost = pkgs.stdenv.isLinux || pkgs.stdenv.buildPlatform.isLinux || pkgs.stdenv.hostPlatform.isLinux;
+  opensshBin = if isLinuxHost then emptyAndroidHelper else buildModule.buildForAndroid "openssh" { };
+  sshpassBin = if isLinuxHost then emptyAndroidHelper else buildModule.buildForAndroid "sshpass" { };
+  # Disable Weston on Android as building its GUI dependencies (cairo/pango) triggers 
+  # Nixpkgs pkgsCross.aarch64-android which currently fails on compiler-rt (missing pthread.h).
+  # Wawona is its own Wayland server and doesn't actually need Weston to run.
+  westonBin = "";
   rustBackendPath = if rustBackend != null then toString rustBackend else "";
+  androidQuadVert = ../../src/platform/android/rendering/shaders/android_quad.vert;
+  androidQuadFrag = ../../src/platform/android/rendering/shaders/android_quad.frag;
 
   androidDeps = common.commonDeps ++ [
     "swiftshader"
@@ -97,55 +104,76 @@ let
     "src/stubs/egl_buffer_handler.c"
     "src/platform/android/android_jni.c"
     "src/platform/android/input_android.c"
-    "src/rendering/renderer_android.c"
-    "src/rendering/renderer_android.h"
+    "src/platform/android/rendering/renderer_android.c"
+    "src/platform/android/rendering/renderer_android.h"
     "src/platform/macos/WWNSettings.c"
     "src/platform/macos/WWNSettings.h"
   ];
 
   androidSourcesFiltered = (common.filterSources androidCommonSources) ++ androidExtraSources;
 
-  nixSdkPath = lib.makeBinPath [
-    androidSDK.platform-tools
-    androidSDK.emulator
-    androidSDK.androidsdk
-    pkgs.util-linux
-    pkgs.jdk17
-    pkgs.lldb
-  ];
+  nixSdkPath = lib.makeBinPath (
+    [
+      androidSDK.platformTools
+      androidSDK.cmdlineTools
+      androidSDK.androidsdk
+      pkgs.util-linux
+      pkgs.jdk17
+      pkgs.lldb
+    ]
+    ++ lib.optionals androidConfig.emulatorSupported [ androidSDK.emulator ]
+  );
 
-  nixSdkRoot = "${androidSDK.androidsdk}/libexec/android-sdk";
+  nixSdkRoot = androidConfig.sdkRoot;
 
   runnerScript = pkgs.writeShellScript "wawona-android-run" ''
     set +e
 
     NIX_SDK_PATH="${nixSdkPath}"
-    NDK_ROOT="${androidToolchain.androidndkRoot}"
+    NDK_ROOT="${androidToolchainResolved.androidndkRoot}"
+    DEBUG_MODE=false
+    TEST_MODE=false
+    USE_SYSTEM_SDK=false
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --debug) DEBUG_MODE=true; shift ;;
+        --test) TEST_MODE=true; shift ;;
+        --impure-system-sdk) USE_SYSTEM_SDK=true; shift ;;
+        *) break ;;
+      esac
+    done
+
     export PATH="$NIX_SDK_PATH:$PATH"
     export ANDROID_SDK_ROOT="${nixSdkRoot}"
     export ANDROID_HOME="$ANDROID_SDK_ROOT"
 
-    USE_SYSTEM_SDK=false
-    if [ "$(uname -m)" = "arm64" ] && [ "$(uname -s)" = "Darwin" ]; then
-      echo "[Wawona] Detected Apple Silicon (arm64) macOS"
-      SYSTEM_SDK="$HOME/Library/Android/sdk"
-      if [ -d "$SYSTEM_SDK/emulator" ] && [ -f "$SYSTEM_SDK/emulator/emulator" ]; then
-        echo "[Wawona] Using system Android SDK emulator (arm64 native)"
-        export PATH="$SYSTEM_SDK/emulator:$SYSTEM_SDK/platform-tools:$SYSTEM_SDK/cmdline-tools/latest/bin:$NIX_SDK_PATH:$PATH"
-        export ANDROID_SDK_ROOT="$SYSTEM_SDK"
-        export ANDROID_HOME="$SYSTEM_SDK"
-        USE_SYSTEM_SDK=true
-      else
-        echo "[Wawona] WARNING: No arm64 Android emulator found."
-        echo "[Wawona] Install Android Studio or Android command-line tools for arm64."
-        echo "[Wawona] The Nix-provided emulator is x86_64 and requires Rosetta 2."
+    if [ "$USE_SYSTEM_SDK" = "true" ]; then
+      if [ "$(uname -m)" != "arm64" ] || [ "$(uname -s)" != "Darwin" ]; then
+        echo "[Wawona] ERROR: --impure-system-sdk is only supported on macOS arm64."
+        exit 1
       fi
-    fi
 
-    DEBUG_MODE=false
-    if [ "''${1:-}" = "--debug" ]; then
-      DEBUG_MODE=true
-      shift
+      REAL_USER=$(whoami)
+      REAL_HOME="/Users/$REAL_USER"
+      SYSTEM_SDK=""
+      if [ -d "$HOME/Library/Android/sdk/emulator" ] && [ -f "$HOME/Library/Android/sdk/emulator/emulator" ]; then
+        SYSTEM_SDK="$HOME/Library/Android/sdk"
+      elif [ -d "$REAL_HOME/Library/Android/sdk/emulator" ] && [ -f "$REAL_HOME/Library/Android/sdk/emulator/emulator" ]; then
+        SYSTEM_SDK="$REAL_HOME/Library/Android/sdk"
+      fi
+
+      if [ -z "$SYSTEM_SDK" ]; then
+        echo "[Wawona] ERROR: No system Android SDK found."
+        echo "[Wawona] Re-run without --impure-system-sdk to use the Nix-packaged SDK."
+        exit 1
+      fi
+
+      echo "[Wawona] Using impure system Android SDK at $SYSTEM_SDK"
+      export PATH="$SYSTEM_SDK/emulator:$SYSTEM_SDK/platform-tools:$SYSTEM_SDK/cmdline-tools/latest/bin:$NIX_SDK_PATH:$PATH"
+      export ANDROID_SDK_ROOT="$SYSTEM_SDK"
+      export ANDROID_HOME="$SYSTEM_SDK"
+    else
+      echo "[Wawona] Using Nix-packaged Android SDK at $ANDROID_SDK_ROOT"
     fi
 
     APK_PATH="$1"
@@ -172,7 +200,7 @@ let
     echo "[Wawona] Using emulator: $(which emulator)"
     echo "[Wawona] Using adb: $(which adb)"
 
-    export ANDROID_USER_HOME="$(pwd)/.android_home"
+    export ANDROID_USER_HOME="$HOME/.android"
     export ANDROID_AVD_HOME="$ANDROID_USER_HOME/avd"
     mkdir -p "$ANDROID_AVD_HOME"
 
@@ -200,7 +228,7 @@ let
         exit 1
       fi
     else
-      SYSTEM_IMAGE="system-images;android-36;google_apis_playstore;arm64-v8a"
+      SYSTEM_IMAGE="${androidConfig.systemImageId}"
       AVD_NAME="WawonaEmulator_API36"
     fi
 
@@ -233,7 +261,7 @@ let
           "hw.arc=false" \
           "hw.audioInput=yes" \
           "hw.battery=yes" \
-          "hw.camera.back=virtualscene" \
+          "hw.camera.back=emulated" \
           "hw.camera.front=emulated" \
           "hw.cpu.arch=arm64" \
           "hw.cpu.ncore=4" \
@@ -242,7 +270,7 @@ let
           "hw.device.name=pixel_9" \
           "hw.gps=yes" \
           "hw.gpu.enabled=yes" \
-          "hw.gpu.mode=auto" \
+          "hw.gpu.mode=swiftshader_indirect" \
           "hw.keyboard=yes" \
           "hw.lcd.density=420" \
           "hw.lcd.height=2424" \
@@ -261,100 +289,75 @@ let
         echo "[Wawona] AVD created at $AVD_DIR"
       elif command -v avdmanager >/dev/null 2>&1; then
         echo "[Wawona] Creating AVD '$AVD_NAME' with avdmanager..."
-        echo "no" | avdmanager create avd -n "$AVD_NAME" -k "$SYSTEM_IMAGE" --device "pixel_9" --force
+        echo "no" | avdmanager create avd -n "$AVD_NAME" -k "$SYSTEM_IMAGE" --force
       else
         echo "[Wawona] ERROR: Cannot create AVD."
         exit 1
       fi
     fi
-
-    for old_avd in "$ANDROID_AVD_HOME"/WawonaEmulator_API36.avd "$ANDROID_AVD_HOME"/WawonaEmulator_API36.ini; do
-      [ -e "$old_avd" ] && rm -rf "$old_avd"
-    done
-
-    adb start-server 2>/dev/null
-
-    EMULATOR_PROCESS=$(pgrep -f "qemu.*$AVD_NAME" 2>/dev/null | head -n 1)
-
-    if [ -n "$EMULATOR_PROCESS" ]; then
-      sleep 2
-      RUNNING_EMULATORS=$(adb devices | grep -E "emulator-[0-9]+" | grep "device$" | wc -l | tr -d ' ')
-      if [ "$RUNNING_EMULATORS" -eq 0 ]; then
-        if kill -0 "$EMULATOR_PROCESS" 2>/dev/null; then
-          sleep 3
-          RUNNING_EMULATORS=$(adb devices | grep -E "emulator-[0-9]+" | grep "device$" | wc -l | tr -d ' ')
-        else
-          EMULATOR_PROCESS=""
-        fi
-      fi
-    else
-      RUNNING_EMULATORS=$(adb devices | grep -E "emulator-[0-9]+" | grep "device$" | wc -l | tr -d ' ')
-    fi
-
+    
+    adb start-server 2>/dev/null || true
+    
+    # ── Surgical Device Detection ──
+    # If a device is already online and booted, we skip EVERYTHING except install/launch
+    RUNNING_EMULATORS=$(adb devices | grep -E "emulator-[0-9]+" | grep "device$" | wc -l | tr -d ' ')
+    DEVICE_READY=false
     if [ "$RUNNING_EMULATORS" -gt 0 ]; then
       EMULATOR_SERIAL=$(adb devices | grep -E "emulator-[0-9]+" | grep "device$" | head -n 1 | awk '{print $1}')
-      echo "[Wawona] Reusing running emulator: $EMULATOR_SERIAL"
-    else
-      echo "[Wawona] Starting emulator '$AVD_NAME'..."
-      setsid nohup emulator -avd "$AVD_NAME" -no-snapshot-load -gpu auto < /dev/null >>/tmp/emulator.log 2>&1 &
+      BOOT_COMPLETE=$(adb -s "$EMULATOR_SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || echo "0")
+      if [ "$BOOT_COMPLETE" = "1" ]; then
+        echo "[Wawona] Reusing running emulator: $EMULATOR_SERIAL"
+        DEVICE_READY=true
+      fi
+    fi
 
-      sleep 3
+    if [ "$DEVICE_READY" = "false" ]; then
+      echo "[Wawona] Checking for running emulator process '$AVD_NAME'..."
+      EMULATOR_PROCESS=$(pgrep -i -f "$AVD_NAME" 2>/dev/null | head -n 1)
 
-      EMULATOR_PID=""
-      for i in 1 2 3 4 5; do
-        EMULATOR_PID=$(pgrep -f "qemu.*$AVD_NAME" 2>/dev/null | head -n 1)
-        if [ -n "$EMULATOR_PID" ]; then
-          break
+      if [ -n "$EMULATOR_PROCESS" ]; then
+        echo "[Wawona] Found potential emulator process: $EMULATOR_PROCESS (waiting for ADB connection...)"
+      else
+        # Automated Provisioning (Licenses, AVD) only when starting fresh
+        if [ -n "${provisionScript}" ]; then
+           "${provisionScript}"
         fi
-        sleep 1
-      done
 
-      if [ -z "$EMULATOR_PID" ]; then
-        echo "[Wawona] Warning: Could not find emulator PID"
+        # Clean up stale locks IF no process is actually running
+        rm -f "$ANDROID_AVD_HOME/$AVD_NAME.avd/*.lock" 2>/dev/null || true
+
+        echo "[Wawona] Starting emulator '$AVD_NAME'..."
+        # We use setsid (from util-linux) to create a new session leader.
+        # On macOS, we wrap this in a subshell for a "double-fork" to ensure 
+        # it remains attached to the Aqua GUI session while being orphaned from the terminal.
+        echo "[Wawona] Detaching emulator process (setsid + double-fork)..."
+        if [ "$USE_SYSTEM_SDK" = "true" ] && [ "$(uname -m)" = "arm64" ]; then
+          # On Apple Silicon, host GPU is much faster and more reliable
+          (setsid nohup emulator -avd "$AVD_NAME" -gpu host < /dev/null > /tmp/emulator.log 2>&1 &)
+        else
+          (setsid nohup emulator -avd "$AVD_NAME" -gpu auto < /dev/null > /tmp/emulator.log 2>&1 &)
+        fi
       fi
 
-      cleanup() {
-        exit 0
-      }
-      trap cleanup SIGTERM SIGINT
-
+      # ── Wait for Boot ──
       TIMEOUT=300
       ELAPSED=0
-      BOOTED=false
-
       while [ $ELAPSED -lt $TIMEOUT ]; do
-        if [ -n "$EMULATOR_PID" ] && ! kill -0 $EMULATOR_PID 2>/dev/null; then
-           if ! adb devices | grep -E "emulator-[0-9]+" | grep -q "device$"; then
-             cat /tmp/emulator.log 2>/dev/null
-             exit 1
-           fi
-        fi
-
         if adb devices | grep -E "emulator-[0-9]+" | grep -q "device$"; then
-          sleep 2
           BOOT_COMPLETE=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || echo "0")
           if [ "$BOOT_COMPLETE" = "1" ]; then
-            BOOTED=true
+            DEVICE_READY=true
             break
           fi
         fi
-
         sleep 2
         ELAPSED=$((ELAPSED + 2))
       done
-
-      if [ "$BOOTED" = "true" ]; then
-        sleep 5
-      else
-        if adb devices | grep -E "emulator-[0-9]+" | grep -q "device$"; then
-          BOOTED=true
-        else
-          cat /tmp/emulator.log 2>/dev/null
-          exit 1
-        fi
+      
+      if [ "$DEVICE_READY" = "false" ]; then
+        echo "[Wawona] ERROR: Emulator failed to boot within $TIMEOUT seconds."
+        exit 1
       fi
-
-      trap - SIGTERM SIGINT
     fi
 
     graceful_exit() {
@@ -523,6 +526,19 @@ let
         echo "[Wawona] Warning: Could not resolve app PID (app may still be starting)"
       fi
 
+      if [ "$TEST_MODE" = "true" ]; then
+        echo "[Wawona] Running in CI Test Mode. Waiting 10 seconds to verify stability..."
+        sleep 10
+        if adb shell pidof $PKG >/dev/null 2>&1; then
+          echo "[Wawona] SUCCESS: App is running stably."
+          exit 0
+        else
+          echo "[Wawona] ERROR: App crashed or exited prematurely!"
+          adb logcat -d -v time -s Wawona:D WawonaJNI:D WawonaNative:D AndroidRuntime:E DEBUG:I | tail -n 50
+          exit 1
+        fi
+      fi
+
       echo "--- Wawona Android Logs ---"
       echo "[Wawona] Tip: use 'nix run .#wawona-android -- --debug' to attach LLDB"
       adb logcat -v time -s Wawona:D WawonaJNI:D WawonaNative:D AndroidRuntime:E DEBUG:I
@@ -530,7 +546,7 @@ let
   '';
 
 in
-  pkgs.stdenv.mkDerivation rec {
+  pkgs.stdenv.mkDerivation (finalAttrs: rec {
     name = "wawona-android";
     version = projectVersion;
     src = wawonaSrc;
@@ -539,851 +555,64 @@ in
 
     # Skip fixup phase - Android binaries can't execute on macOS
     dontFixup = true;
+    dontUseGradleBuild = true;
+    dontUseGradleCheck = true;
+    __darwinAllowLocalNetworking = true;
 
-    nativeBuildInputs = with pkgs; [
+    mitmCache = gradleSupport.mitmCache;
+    gradleFlags = gradleSupport.gradleFlags;
+    gradleUpdateTask = ":app:assembleDebug";
+    enableParallelUpdating = false;
+
+    nativeBuildInputs = (with pkgs; [
       clang
       pkg-config
       jdk17 # Full JDK needed for Gradle
       gradle
       unzip
       zip
-      patchelf
       file
       util-linux # Provides setsid for creating new process groups
       glslang # For compiling Vulkan shaders to SPIR-V
-    ];
+    ]) ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.patchelf ];
 
     buildInputs = (getDeps "android" androidDeps) ++ [
       pkgs.mesa
     ];
 
-    # Ensure input_android, shaders exist (untracked or filtered by flake)
+    # Files are now tracked directly in the repository, so we only need to
+    # verify they exist before the build begins.
     prePatch = ''
-      mkdir -p src/platform/android
-      mkdir -p src/rendering/shaders
-      if [ ! -f src/platform/android/input_android.h ]; then
-        cat > src/platform/android/input_android.h <<'INPUT_H'
-#pragma once
-
-#include <stdint.h>
-
-uint32_t android_keycode_to_linux(uint32_t android_keycode);
-INPUT_H
+      if [ ! -f src/platform/android/input_android.h ] || [ ! -f src/platform/android/input_android.c ]; then
+        echo "ERROR: Missing input_android files in src/platform/android/"
+        exit 1
       fi
-      if [ ! -f src/platform/android/input_android.c ]; then
-        cat > src/platform/android/input_android.c <<'INPUT_C'
-/**
- * Android input helpers - keycode mapping and modifier tracking
- *
- * Maps Android KeyEvent keycodes to Linux evdev/XKB keycodes.
- * Android keycodes are similar but not identical to Linux.
- */
-
-#include "input_android.h"
-#include <stdint.h>
-
-/* Linux evdev key codes (from input-event-codes.h) */
-#define KEY_RESERVED        0
-#define KEY_ESC             1
-#define KEY_1               2
-#define KEY_2               3
-#define KEY_3               4
-#define KEY_4               5
-#define KEY_5               6
-#define KEY_6               7
-#define KEY_7               8
-#define KEY_8               9
-#define KEY_9               10
-#define KEY_0               11
-#define KEY_MINUS           12
-#define KEY_EQUAL           13
-#define KEY_BACKSPACE       14
-#define KEY_TAB             15
-#define KEY_Q               16
-#define KEY_W               17
-#define KEY_E               18
-#define KEY_R               19
-#define KEY_T               20
-#define KEY_Y               21
-#define KEY_U               22
-#define KEY_I               23
-#define KEY_O               24
-#define KEY_P               25
-#define KEY_LEFTBRACE       26
-#define KEY_RIGHTBRACE      27
-#define KEY_ENTER           28
-#define KEY_LEFTCTRL        29
-#define KEY_A               30
-#define KEY_S               31
-#define KEY_D               32
-#define KEY_F               33
-#define KEY_G               34
-#define KEY_H               35
-#define KEY_J               36
-#define KEY_K               37
-#define KEY_L               38
-#define KEY_SEMICOLON       39
-#define KEY_APOSTROPHE      40
-#define KEY_GRAVE           41
-#define KEY_LEFTSHIFT       42
-#define KEY_BACKSLASH       43
-#define KEY_Z               44
-#define KEY_X               45
-#define KEY_C               46
-#define KEY_V               47
-#define KEY_B               48
-#define KEY_N               49
-#define KEY_M               50
-#define KEY_COMMA           51
-#define KEY_DOT             52
-#define KEY_SLASH           53
-#define KEY_RIGHTSHIFT      54
-#define KEY_LEFTALT         56
-#define KEY_SPACE           57
-#define KEY_RIGHTALT        100
-#define KEY_RIGHTCTRL       97
-#define KEY_LEFTMETA        125
-#define KEY_RIGHTMETA       126
-#define KEY_DELETE          111
-#define KEY_FORWARD_DEL     119
-#define KEY_HOME            102
-#define KEY_END             107
-#define KEY_INSERT          110
-#define KEY_PAGEUP          104
-#define KEY_PAGEDOWN        109
-#define KEY_UP              103
-#define KEY_DOWN            108
-#define KEY_LEFT            105
-#define KEY_RIGHT           106
-
-/* Android KeyEvent keycodes - same values as in android/view/KeyEvent.java */
-#define AKEYCODE_SOFT_LEFT       1
-#define AKEYCODE_SOFT_RIGHT     2
-#define AKEYCODE_HOME           3
-#define AKEYCODE_BACK           4
-#define AKEYCODE_CALL           5
-#define AKEYCODE_ENDCALL        6
-#define AKEYCODE_0              7
-#define AKEYCODE_1              8
-#define AKEYCODE_2              9
-#define AKEYCODE_3              10
-#define AKEYCODE_4              11
-#define AKEYCODE_5              12
-#define AKEYCODE_6              13
-#define AKEYCODE_7              14
-#define AKEYCODE_8              15
-#define AKEYCODE_9              16
-#define AKEYCODE_STAR           17
-#define AKEYCODE_POUND          18
-#define AKEYCODE_DPAD_UP        19
-#define AKEYCODE_DPAD_DOWN      20
-#define AKEYCODE_DPAD_LEFT      21
-#define AKEYCODE_DPAD_RIGHT     22
-#define AKEYCODE_DPAD_CENTER    23
-#define AKEYCODE_VOLUME_UP      24
-#define AKEYCODE_VOLUME_DOWN    25
-#define AKEYCODE_POWER          26
-#define AKEYCODE_CAMERA         27
-#define AKEYCODE_CLEAR          28
-#define AKEYCODE_A              29
-#define AKEYCODE_B              30
-#define AKEYCODE_C              31
-#define AKEYCODE_D              32
-#define AKEYCODE_E              33
-#define AKEYCODE_F              34
-#define AKEYCODE_G              35
-#define AKEYCODE_H              36
-#define AKEYCODE_I              37
-#define AKEYCODE_J              38
-#define AKEYCODE_K              39
-#define AKEYCODE_L              40
-#define AKEYCODE_M              41
-#define AKEYCODE_N              42
-#define AKEYCODE_O              43
-#define AKEYCODE_P              44
-#define AKEYCODE_Q              45
-#define AKEYCODE_R              46
-#define AKEYCODE_S              47
-#define AKEYCODE_T              48
-#define AKEYCODE_U              49
-#define AKEYCODE_V              50
-#define AKEYCODE_W              51
-#define AKEYCODE_X              52
-#define AKEYCODE_Y              53
-#define AKEYCODE_Z              54
-#define AKEYCODE_COMMA          55
-#define AKEYCODE_PERIOD         56
-#define AKEYCODE_ALT_LEFT       57
-#define AKEYCODE_ALT_RIGHT      58
-#define AKEYCODE_SHIFT_LEFT     59
-#define AKEYCODE_SHIFT_RIGHT    60
-#define AKEYCODE_TAB            61
-#define AKEYCODE_SPACE          62
-#define AKEYCODE_SYMBOL         63
-#define AKEYCODE_EXPLORER       64
-#define AKEYCODE_ENVELOPE       65
-#define AKEYCODE_ENTER          66
-#define AKEYCODE_DEL            67
-#define AKEYCODE_GRAVE          68
-#define AKEYCODE_MINUS          69
-#define AKEYCODE_EQUALS         70
-#define AKEYCODE_LEFT_BRACKET   71
-#define AKEYCODE_RIGHT_BRACKET  72
-#define AKEYCODE_BACKSLASH      73
-#define AKEYCODE_SEMICOLON      74
-#define AKEYCODE_APOSTROPHE     75
-#define AKEYCODE_SLASH          76
-#define AKEYCODE_AT             77
-#define AKEYCODE_NUM            78
-#define AKEYCODE_HEADPHONEHOOK  79
-#define AKEYCODE_FOCUS          80
-#define AKEYCODE_PLUS           81
-#define AKEYCODE_MENU           82
-#define AKEYCODE_NOTIFICATION   83
-#define AKEYCODE_SEARCH         84
-#define AKEYCODE_DPAD_UP_2      85
-#define AKEYCODE_DPAD_DOWN_2    86
-#define AKEYCODE_DPAD_LEFT_2    87
-#define AKEYCODE_DPAD_RIGHT_2   88
-#define AKEYCODE_DPAD_CENTER_2  89
-#define AKEYCODE_CTRL_LEFT      113
-#define AKEYCODE_CTRL_RIGHT     114
-#define AKEYCODE_ESCAPE         111
-#define AKEYCODE_FORWARD_DEL    112
-#define AKEYCODE_META_LEFT      117
-#define AKEYCODE_META_RIGHT     118
-
-uint32_t android_keycode_to_linux(uint32_t android_keycode) {
-    switch (android_keycode) {
-    case AKEYCODE_A: return KEY_A;
-    case AKEYCODE_B: return KEY_B;
-    case AKEYCODE_C: return KEY_C;
-    case AKEYCODE_D: return KEY_D;
-    case AKEYCODE_E: return KEY_E;
-    case AKEYCODE_F: return KEY_F;
-    case AKEYCODE_G: return KEY_G;
-    case AKEYCODE_H: return KEY_H;
-    case AKEYCODE_I: return KEY_I;
-    case AKEYCODE_J: return KEY_J;
-    case AKEYCODE_K: return KEY_K;
-    case AKEYCODE_L: return KEY_L;
-    case AKEYCODE_M: return KEY_M;
-    case AKEYCODE_N: return KEY_N;
-    case AKEYCODE_O: return KEY_O;
-    case AKEYCODE_P: return KEY_P;
-    case AKEYCODE_Q: return KEY_Q;
-    case AKEYCODE_R: return KEY_R;
-    case AKEYCODE_S: return KEY_S;
-    case AKEYCODE_T: return KEY_T;
-    case AKEYCODE_U: return KEY_U;
-    case AKEYCODE_V: return KEY_V;
-    case AKEYCODE_W: return KEY_W;
-    case AKEYCODE_X: return KEY_X;
-    case AKEYCODE_Y: return KEY_Y;
-    case AKEYCODE_Z: return KEY_Z;
-    case AKEYCODE_0: return KEY_0;
-    case AKEYCODE_1: return KEY_1;
-    case AKEYCODE_2: return KEY_2;
-    case AKEYCODE_3: return KEY_3;
-    case AKEYCODE_4: return KEY_4;
-    case AKEYCODE_5: return KEY_5;
-    case AKEYCODE_6: return KEY_6;
-    case AKEYCODE_7: return KEY_7;
-    case AKEYCODE_8: return KEY_8;
-    case AKEYCODE_9: return KEY_9;
-    case AKEYCODE_CTRL_LEFT:  return KEY_LEFTCTRL;
-    case AKEYCODE_CTRL_RIGHT: return KEY_RIGHTCTRL;
-    case AKEYCODE_SHIFT_LEFT: return KEY_LEFTSHIFT;
-    case AKEYCODE_SHIFT_RIGHT: return KEY_RIGHTSHIFT;
-    case AKEYCODE_ALT_LEFT:   return KEY_LEFTALT;
-    case AKEYCODE_ALT_RIGHT:  return KEY_RIGHTALT;
-    case AKEYCODE_META_LEFT:  return KEY_LEFTMETA;
-    case AKEYCODE_META_RIGHT: return KEY_RIGHTMETA;
-    case AKEYCODE_DPAD_UP:
-    case AKEYCODE_DPAD_UP_2:  return KEY_UP;
-    case AKEYCODE_DPAD_DOWN:
-    case AKEYCODE_DPAD_DOWN_2: return KEY_DOWN;
-    case AKEYCODE_DPAD_LEFT:
-    case AKEYCODE_DPAD_LEFT_2: return KEY_LEFT;
-    case AKEYCODE_DPAD_RIGHT:
-    case AKEYCODE_DPAD_RIGHT_2: return KEY_RIGHT;
-    case AKEYCODE_ENTER:
-    case AKEYCODE_DPAD_CENTER:
-    case AKEYCODE_DPAD_CENTER_2: return KEY_ENTER;
-    case AKEYCODE_TAB:  return KEY_TAB;
-    case AKEYCODE_SPACE: return KEY_SPACE;
-    case AKEYCODE_ESCAPE: return KEY_ESC;
-    case AKEYCODE_DEL: return KEY_BACKSPACE;
-    case AKEYCODE_FORWARD_DEL: return KEY_DELETE;
-    case AKEYCODE_HOME: return KEY_HOME;
-    case AKEYCODE_ENDCALL: return KEY_END;
-    case AKEYCODE_COMMA: return KEY_COMMA;
-    case AKEYCODE_PERIOD: return KEY_DOT;
-    case AKEYCODE_SLASH: return KEY_SLASH;
-    case AKEYCODE_MINUS: return KEY_MINUS;
-    case AKEYCODE_EQUALS: return KEY_EQUAL;
-    case AKEYCODE_LEFT_BRACKET: return KEY_LEFTBRACE;
-    case AKEYCODE_RIGHT_BRACKET: return KEY_RIGHTBRACE;
-    case AKEYCODE_BACKSLASH: return KEY_BACKSLASH;
-    case AKEYCODE_SEMICOLON: return KEY_SEMICOLON;
-    case AKEYCODE_APOSTROPHE: return KEY_APOSTROPHE;
-    case AKEYCODE_GRAVE: return KEY_GRAVE;
-    default:
-        return android_keycode;
-    }
-}
-INPUT_C
-      fi
-      if [ ! -f src/rendering/shaders/android_quad.vert ]; then
-        cat > src/rendering/shaders/android_quad.vert <<'SHADER_VERT'
-#version 450
-
-layout(location = 0) in vec2 inPosition;
-layout(location = 1) in vec2 inTexCoord;
-
-layout(location = 0) out vec2 fragTexCoord;
-
-layout(push_constant) uniform PushConstants {
-    float pos_x;
-    float pos_y;
-    float size_x;
-    float size_y;
-    float extent_x;
-    float extent_y;
-    float opacity;
-    float _pad;
-} pc;
-
-void main() {
-    float ndc_x = (pc.pos_x + inPosition.x * pc.size_x) / pc.extent_x * 2.0 - 1.0;
-    float ndc_y = 1.0 - (pc.pos_y + inPosition.y * pc.size_y) / pc.extent_y * 2.0;
-    gl_Position = vec4(ndc_x, ndc_y, 0.0, 1.0);
-    fragTexCoord = inTexCoord;
-}
-SHADER_VERT
-      fi
-      if [ ! -f src/rendering/shaders/android_quad.frag ]; then
-        cat > src/rendering/shaders/android_quad.frag <<'SHADER_FRAG'
-#version 450
-
-layout(location = 0) in vec2 fragTexCoord;
-
-layout(location = 0) out vec4 outColor;
-
-layout(binding = 0) uniform sampler2D texSampler;
-
-layout(push_constant) uniform PushConstants {
-    float pos_x;
-    float pos_y;
-    float size_x;
-    float size_y;
-    float extent_x;
-    float extent_y;
-    float opacity;
-    float _pad;
-} pc;
-
-void main() {
-    outColor = texture(texSampler, fragTexCoord) * pc.opacity;
-}
-SHADER_FRAG
-      fi
-      # ScreencopyHelper.kt may be untracked
       if [ ! -f src/platform/android/java/com/aspauldingcode/wawona/ScreencopyHelper.kt ]; then
-        mkdir -p src/platform/android/java/com/aspauldingcode/wawona
-        cat > src/platform/android/java/com/aspauldingcode/wawona/ScreencopyHelper.kt <<'SCREENCOPY'
-package com.aspauldingcode.wawona
-
-import android.graphics.Bitmap
-import android.os.Handler
-import android.os.Looper
-import android.view.PixelCopy
-import android.view.Window
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withContext
-import kotlin.coroutines.resume
-import java.nio.ByteBuffer
-
-object ScreencopyHelper {
-    suspend fun pollAndCapture(window: Window?) {
-        if (window == null) return
-        withContext(Dispatchers.Main) {
-            pollOne(window, true)
-            pollOne(window, false)
-        }
-    }
-    private suspend fun pollOne(window: Window, screencopy: Boolean) {
-        val whs = IntArray(3)
-        val captureId = if (screencopy) {
-            WawonaNative.nativeGetPendingScreencopy(whs)
-        } else {
-            WawonaNative.nativeGetPendingImageCopyCapture(whs)
-        }
-        if (captureId == 0L) return
-        val width = whs[0]
-        val height = whs[1]
-        val dstStride = if (whs.size >= 3 && whs[2] > 0) whs[2] else width * 4
-        if (width <= 0 || height <= 0) {
-            if (screencopy) WawonaNative.nativeScreencopyFailed(captureId)
-            else WawonaNative.nativeImageCopyCaptureFailed(captureId)
-            return
-        }
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        try {
-            val result = suspendCancellableCoroutine<Int> { cont ->
-                @Suppress("DEPRECATION")
-                PixelCopy.request(window, bitmap, { r -> cont.resume(r) }, Handler(Looper.getMainLooper()))
-            }
-            if (result == PixelCopy.SUCCESS) {
-                val srcStride = bitmap.rowBytes
-                val dstSize = dstStride * height
-                val buf = ByteBuffer.allocate(bitmap.rowBytes * height)
-                bitmap.copyPixelsToBuffer(buf)
-                buf.rewind()
-                val srcArr = ByteArray(buf.remaining())
-                buf.get(srcArr)
-                val dstArr = if (srcStride == dstStride) srcArr else {
-                    val copyW = minOf(srcStride, dstStride)
-                    ByteArray(dstSize).also { out ->
-                        for (row in 0 until height) {
-                            srcArr.copyInto(out, row * dstStride, row * srcStride, row * srcStride + copyW)
-                        }
-                    }
-                }
-                if (screencopy) WawonaNative.nativeScreencopyComplete(captureId, dstArr)
-                else WawonaNative.nativeImageCopyCaptureComplete(captureId, dstArr)
-            } else {
-                if (screencopy) WawonaNative.nativeScreencopyFailed(captureId)
-                else WawonaNative.nativeImageCopyCaptureFailed(captureId)
-            }
-        } catch (e: Exception) {
-            WLog.e("SCREENCOPY", "PixelCopy failed: ''${e.message}")
-            if (screencopy) WawonaNative.nativeScreencopyFailed(captureId)
-            else WawonaNative.nativeImageCopyCaptureFailed(captureId)
-        } finally {
-            bitmap.recycle()
-        }
-    }
-}
-SCREENCOPY
+        echo "ERROR: Missing ScreencopyHelper.kt"
+        exit 1
       fi
-      # ModifierAccessoryBar.kt may be untracked
       if [ ! -f src/platform/android/java/com/aspauldingcode/wawona/ModifierAccessoryBar.kt ]; then
-        mkdir -p src/platform/android/java/com/aspauldingcode/wawona
-        cat > src/platform/android/java/com/aspauldingcode/wawona/ModifierAccessoryBar.kt <<'MODBAR'
-package com.aspauldingcode.wawona
-
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-
-private object LinuxKey {
-    const val ESC = 1
-    const val GRAVE = 41
-    const val TAB = 15
-    const val SLASH = 53
-    const val MINUS = 12
-    const val HOME = 102
-    const val UP = 103
-    const val END = 107
-    const val PAGEUP = 104
-    const val LEFTSHIFT = 42
-    const val LEFTCTRL = 29
-    const val LEFTALT = 56
-    const val LEFTMETA = 125
-    const val LEFT = 105
-    const val DOWN = 108
-    const val RIGHT = 106
-    const val PAGEDOWN = 109
-}
-
-private object XkbMod {
-    const val SHIFT = 1 shl 0
-    const val CTRL = 1 shl 2
-    const val ALT = 1 shl 3
-    const val LOGO = 1 shl 6
-}
-
-private const val DOUBLE_TAP_THRESHOLD_MS = 400L
-
-@Composable
-fun ModifierAccessoryBar(
-    modifier: Modifier = Modifier,
-    onDismissKeyboard: () -> Unit
-) {
-    val ts = System.currentTimeMillis().toInt() and 0x7FFF_FFFF
-
-    var modShiftActive by remember { mutableStateOf(false) }
-    var modShiftLocked by remember { mutableStateOf(false) }
-    var modCtrlActive by remember { mutableStateOf(false) }
-    var modCtrlLocked by remember { mutableStateOf(false) }
-    var modAltActive by remember { mutableStateOf(false) }
-    var modAltLocked by remember { mutableStateOf(false) }
-    var modSuperActive by remember { mutableStateOf(false) }
-    var modSuperLocked by remember { mutableStateOf(false) }
-
-    var lastModShiftTap by remember { mutableLongStateOf(0L) }
-    var lastModCtrlTap by remember { mutableLongStateOf(0L) }
-    var lastModAltTap by remember { mutableLongStateOf(0L) }
-    var lastModSuperTap by remember { mutableLongStateOf(0L) }
-
-    fun clearStickyModifiers() {
-        if (modShiftActive && !modShiftLocked) modShiftActive = false
-        if (modCtrlActive && !modCtrlLocked) modCtrlActive = false
-        if (modAltActive && !modAltLocked) modAltActive = false
-        if (modSuperActive && !modSuperLocked) modSuperActive = false
-    }
-
-    fun handleModifierTap(
-        active: Boolean,
-        locked: Boolean,
-        lastTap: Long,
-        onActive: (Boolean) -> Unit,
-        onLocked: (Boolean) -> Unit,
-        onLastTap: (Long) -> Unit
-    ) {
-        val now = System.currentTimeMillis()
-        val elapsed = now - lastTap
-        onLastTap(now)
-
-        when {
-            locked -> {
-                onActive(false)
-                onLocked(false)
-            }
-            active && elapsed < DOUBLE_TAP_THRESHOLD_MS -> {
-                onLocked(true)
-            }
-            active -> {
-                onActive(false)
-                onLocked(false)
-            }
-            else -> {
-                onActive(true)
-                onLocked(false)
-            }
-        }
-    }
-
-    fun sendAccessoryKey(keycode: Int) {
-        var mods = 0
-        if (modShiftActive) {
-            mods = mods or XkbMod.SHIFT
-            WawonaNative.nativeInjectKey(LinuxKey.LEFTSHIFT, true, ts)
-        }
-        if (modCtrlActive) {
-            mods = mods or XkbMod.CTRL
-            WawonaNative.nativeInjectKey(LinuxKey.LEFTCTRL, true, ts)
-        }
-        if (modAltActive) {
-            mods = mods or XkbMod.ALT
-            WawonaNative.nativeInjectKey(LinuxKey.LEFTALT, true, ts)
-        }
-        if (modSuperActive) {
-            mods = mods or XkbMod.LOGO
-            WawonaNative.nativeInjectKey(LinuxKey.LEFTMETA, true, ts)
-        }
-        if (mods != 0) {
-            WawonaNative.nativeInjectModifiers(mods, 0, 0, 0)
-        }
-        WawonaNative.nativeInjectKey(keycode, true, ts)
-        WawonaNative.nativeInjectKey(keycode, false, ts)
-        if (modShiftActive) WawonaNative.nativeInjectKey(LinuxKey.LEFTSHIFT, false, ts)
-        if (modCtrlActive) WawonaNative.nativeInjectKey(LinuxKey.LEFTCTRL, false, ts)
-        if (modAltActive) WawonaNative.nativeInjectKey(LinuxKey.LEFTALT, false, ts)
-        if (modSuperActive) WawonaNative.nativeInjectKey(LinuxKey.LEFTMETA, false, ts)
-        if (mods != 0) WawonaNative.nativeInjectModifiers(0, 0, 0, 0)
-        clearStickyModifiers()
-    }
-
-    val barBg = Color(0xFF1C1C1E)
-    val keyInactive = Color(0xFF3A3A3C)
-    val keySticky = Color(0xFF0A84FF).copy(alpha = 0.6f)
-    val keyLocked = Color(0xFF0A84FF).copy(alpha = 0.85f)
-    val keyText = Color.White
-
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        color = barBg,
-        contentColor = keyText
-    ) {
-        val rowMod = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 4.dp, vertical = 2.dp)
-            .height(36.dp)
-
-        Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = rowMod,
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            listOf(
-                "ESC" to { sendAccessoryKey(LinuxKey.ESC) },
-                "`" to { sendAccessoryKey(LinuxKey.GRAVE) },
-                "TAB" to { sendAccessoryKey(LinuxKey.TAB) },
-                "/" to { sendAccessoryKey(LinuxKey.SLASH) },
-                "—" to { sendAccessoryKey(LinuxKey.MINUS) },
-                "HOME" to { sendAccessoryKey(LinuxKey.HOME) },
-                "↑" to { sendAccessoryKey(LinuxKey.UP) },
-                "END" to { sendAccessoryKey(LinuxKey.END) },
-                "PGUP" to { sendAccessoryKey(LinuxKey.PAGEUP) }
-            ).forEach { (label, action) ->
-                AccessoryKey(
-                    label, keyInactive, keyText,
-                    onClick = { action() },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        }
-
-        Row(
-            modifier = rowMod,
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            AccessoryModKey(
-                label = "⇧",
-                active = modShiftActive,
-                locked = modShiftLocked,
-                inactiveColor = keyInactive,
-                stickyColor = keySticky,
-                lockedColor = keyLocked
-            ) {
-                handleModifierTap(
-                    modShiftActive, modShiftLocked, lastModShiftTap,
-                    { modShiftActive = it },
-                    { modShiftLocked = it },
-                    { lastModShiftTap = it }
-                )
-            }
-            AccessoryModKey(
-                label = "CTRL",
-                active = modCtrlActive,
-                locked = modCtrlLocked,
-                inactiveColor = keyInactive,
-                stickyColor = keySticky,
-                lockedColor = keyLocked
-            ) {
-                handleModifierTap(
-                    modCtrlActive, modCtrlLocked, lastModCtrlTap,
-                    { modCtrlActive = it },
-                    { modCtrlLocked = it },
-                    { lastModCtrlTap = it }
-                )
-            }
-            AccessoryModKey(
-                label = "ALT",
-                active = modAltActive,
-                locked = modAltLocked,
-                inactiveColor = keyInactive,
-                stickyColor = keySticky,
-                lockedColor = keyLocked
-            ) {
-                handleModifierTap(
-                    modAltActive, modAltLocked, lastModAltTap,
-                    { modAltActive = it },
-                    { modAltLocked = it },
-                    { lastModAltTap = it }
-                )
-            }
-            AccessoryModKey(
-                label = "⌘",
-                active = modSuperActive,
-                locked = modSuperLocked,
-                inactiveColor = keyInactive,
-                stickyColor = keySticky,
-                lockedColor = keyLocked
-            ) {
-                handleModifierTap(
-                    modSuperActive, modSuperLocked, lastModSuperTap,
-                    { modSuperActive = it },
-                    { modSuperLocked = it },
-                    { lastModSuperTap = it }
-                )
-            }
-            listOf(
-                "←" to LinuxKey.LEFT,
-                "↓" to LinuxKey.DOWN,
-                "→" to LinuxKey.RIGHT,
-                "PGDN" to LinuxKey.PAGEDOWN
-            ).forEach { (label, keycode) ->
-                AccessoryKey(
-                    label, keyInactive, keyText,
-                    onClick = { sendAccessoryKey(keycode) },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            AccessoryKey(
-                "⌨↓", keyInactive, keyText,
-                onClick = onDismissKeyboard,
-                modifier = Modifier.weight(1f)
-            )
-        }
-        }
-    }
-}
-
-@Composable
-private fun AccessoryKey(
-    label: String,
-    bgColor: Color,
-    textColor: Color,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    TextButton(
-        onClick = onClick,
-        modifier = modifier.height(32.dp).padding(0.dp),
-        colors = ButtonDefaults.textButtonColors(
-            containerColor = bgColor,
-            contentColor = textColor
-        ),
-        contentPadding = PaddingValues(0.dp),
-        shape = RoundedCornerShape(6.dp)
-    ) {
-        Text(
-            text = label,
-            fontSize = 12.sp,
-            maxLines = 1
-        )
-    }
-}
-
-@Composable
-private fun RowScope.AccessoryModKey(
-    label: String,
-    active: Boolean,
-    locked: Boolean,
-    inactiveColor: Color,
-    stickyColor: Color,
-    lockedColor: Color,
-    onClick: () -> Unit
-) {
-    val bg = when {
-        locked -> lockedColor
-        active -> stickyColor
-        else -> inactiveColor
-    }
-    val borderMod = if (locked) {
-        Modifier.border(2.dp, Color(0xFF0A84FF), RoundedCornerShape(6.dp))
-    } else {
-        Modifier
-    }
-    Box(modifier = Modifier.weight(1f).then(borderMod)) {
-        AccessoryKey(
-            label, bg, Color.White,
-            onClick = onClick,
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
-}
-MODBAR
+        echo "ERROR: Missing ModifierAccessoryBar.kt"
+        exit 1
       fi
     '';
 
     # Fix egl_buffer_handler for Android (create Android-compatible stubs)
     postPatch = ''
-            mkdir -p src/stubs
-
-            # Create header
-            cat > src/stubs/egl_buffer_handler.h <<'EOF'
-      #pragma once
-      #include <stdbool.h>
-      #include <stdint.h>
-      struct egl_buffer_handler;
-      struct wl_display;
-      struct wl_resource;
-      int egl_buffer_handler_init(struct egl_buffer_handler *handler, struct wl_display *display);
-      void egl_buffer_handler_cleanup(struct egl_buffer_handler *handler);
-      int egl_buffer_handler_query_buffer(struct egl_buffer_handler *handler,
-                                           struct wl_resource *buffer_resource,
-                                           int32_t *width, int32_t *height,
-                                           int *texture_format);
-      void* egl_buffer_handler_create_image(struct egl_buffer_handler *handler,
-                                            struct wl_resource *buffer_resource);
-      bool egl_buffer_handler_is_egl_buffer(struct egl_buffer_handler *handler,
-                                             struct wl_resource *buffer_resource);
-      EOF
-
-            # Create stub implementation
-            cat > src/stubs/egl_buffer_handler.c <<'EOF'
-      #include "egl_buffer_handler.h"
-      #include <stdbool.h>
-      #include <stdio.h>
-      #include <stdlib.h>
-      #include <string.h>
-
-      // Android stub: EGL Wayland extensions are not available on Android
-      // This provides stub implementations to avoid compilation errors
-
-      static void egl_buffer_handler_translation_unit_silence(void) {}
-
-      int egl_buffer_handler_init(struct egl_buffer_handler *handler, struct wl_display *display) {
-          (void)handler; (void)display;
-          // EGL Wayland extensions not available on Android
-          return -1;
-      }
-
-      void egl_buffer_handler_cleanup(struct egl_buffer_handler *handler) {
-          (void)handler;
-      }
-
-      int egl_buffer_handler_query_buffer(struct egl_buffer_handler *handler,
-                                           struct wl_resource *buffer_resource,
-                                           int32_t *width, int32_t *height,
-                                           int *texture_format) {
-          (void)handler; (void)buffer_resource; (void)width; (void)height; (void)texture_format;
-          return -1;
-      }
-
-      void* egl_buffer_handler_create_image(struct egl_buffer_handler *handler,
-                                            struct wl_resource *buffer_resource) {
-          (void)handler; (void)buffer_resource;
-          return NULL;
-      }
-
-      bool egl_buffer_handler_is_egl_buffer(struct egl_buffer_handler *handler,
-                                             struct wl_resource *buffer_resource) {
-          (void)handler; (void)buffer_resource;
-          return false;
-      }
-      EOF
+      if [ ! -f src/stubs/egl_buffer_handler.h ] || [ ! -f src/stubs/egl_buffer_handler.c ]; then
+        echo "ERROR: Missing egl_buffer_handler stubs"
+        exit 1
+      fi
     '';
 
-    buildPhase = ''
-      runHook preBuild
+    preBuild = ''
+      ndk_root="${androidToolchainResolved.androidndkRoot}"
 
       # Embed Vulkan shaders as C byte arrays for textured quad pipeline
-      # (inlined - scripts/embed-android-shaders.sh may be untracked in flake)
       mkdir -p build/shaders
-      if [ -f src/rendering/shaders/android_quad.vert ] && [ -f src/rendering/shaders/android_quad.frag ]; then
-        ${glslang}/bin/glslangValidator -V src/rendering/shaders/android_quad.vert -o build/shaders/quad.vert.spv
-        ${glslang}/bin/glslangValidator -V src/rendering/shaders/android_quad.frag -o build/shaders/quad.frag.spv
+      if [ -f "${androidQuadVert}" ] && [ -f "${androidQuadFrag}" ]; then
+        ${glslang}/bin/glslangValidator -V "${androidQuadVert}" -o build/shaders/quad.vert.spv
+        ${glslang}/bin/glslangValidator -V "${androidQuadFrag}" -o build/shaders/quad.frag.spv
         echo '/* Auto-generated - do not edit */' > build/shaders/shader_spv.h
         echo '#pragma once' >> build/shaders/shader_spv.h
         echo '#include <stddef.h>' >> build/shaders/shader_spv.h
@@ -1397,303 +626,113 @@ MODBAR
         od -A n -t x1 -v build/shaders/quad.frag.spv | awk '{for(i=1;i<=NF;i++) printf " 0x%s,", $i}' | sed '$ s/,$//' >> build/shaders/shader_spv.h
         echo '};' >> build/shaders/shader_spv.h
         echo 'static const size_t g_quad_frag_spv_len = sizeof(g_quad_frag_spv);' >> build/shaders/shader_spv.h
-        cp build/shaders/shader_spv.h src/rendering/
+        cp build/shaders/shader_spv.h src/platform/android/rendering/
       else
-        echo "ERROR: Shader sources not found. Need src/rendering/shaders/android_quad.vert and .frag"
+        echo "ERROR: Shader sources not found at ${androidQuadVert} / ${androidQuadFrag}."
         exit 1
       fi
 
-      # Setup Weston Simple SHM
+      # Setup Weston Simple SHM (CMakeLists.txt expects this)
       mkdir -p deps/weston-simple-shm
       cp -r ${westonSimpleShmSrc}/* deps/weston-simple-shm/
       chmod -R u+w deps/weston-simple-shm
 
-      # Setup Android toolchain
-      export CC="${androidToolchain.androidCC}"
-      export CXX="${androidToolchain.androidCXX}"
-      export AR="${androidToolchain.androidAR}"
-      export STRIP="${androidToolchain.androidSTRIP}"
-      export RANLIB="${androidToolchain.androidRANLIB}"
-      export CFLAGS="--target=${androidToolchain.androidTarget} -fPIC"
-      export CXXFLAGS="--target=${androidToolchain.androidTarget} -fPIC"
-      export LDFLAGS="--target=${androidToolchain.androidTarget}"
+      # Flatten the Android project into the repo root so the CMake relative
+      # paths still point at the Nix-filtered source tree.
+      echo "=== Phase 25: Preparing Android Project ==="
+      ${gradleSupport.prepareProject}
+      ${gradleSupport.prepareEnvironment}
 
-      # Android dependencies setup
-      mkdir -p android-dependencies/include
-      mkdir -p android-dependencies/lib
-      mkdir -p android-dependencies/lib/pkgconfig
-
-      for dep in $buildInputs; do
-         if [ -d "$dep/include" ]; then
-           cp -rn "$dep/include/"* android-dependencies/include/ 2>/dev/null || true
-         fi
-         if [ -d "$dep/lib" ]; then
-           cp -rn "$dep/lib/"* android-dependencies/lib/ 2>/dev/null || true
-         fi
-         if [ -d "$dep/lib/pkgconfig" ]; then
-            cp -rn "$dep/lib/pkgconfig/"* android-dependencies/lib/pkgconfig/ 2>/dev/null || true
-         fi
-      done
-
-      export PKG_CONFIG_PATH="$PWD/android-dependencies/lib/pkgconfig:$PKG_CONFIG_PATH"
-
-      # Compile C/C++ code for Android (native library)
-      OBJ_FILES=""
-      for src_file in ${lib.concatStringsSep " " androidSourcesFiltered}; do
-        if [[ "$src_file" == *.c ]]; then
-          obj_file="''${src_file//\//_}.o"
-          obj_file="''${obj_file//src_/}"
-          
-          if $CC -c "$src_file" \
-             -Isrc -Isrc/core -Isrc/compositor_implementations \
-             -Isrc/rendering -Isrc/input -Isrc/ui \
-             -Isrc/logging -Isrc/stubs -Isrc/protocols \
-             -Isrc/platform/macos -Isrc/platform/android \
-             -Iandroid-dependencies/include \
-             -fPIC \
-             ${lib.concatStringsSep " " common.commonCFlags} \
-             ${lib.concatStringsSep " " common.debugCFlags} \
-             --target=${androidToolchain.androidTarget} \
-             -o "$obj_file"; then
-            OBJ_FILES="$OBJ_FILES $obj_file"
-          else
-            exit 1
-          fi
-        fi
-      done
-
-      # Compile weston-simple-shm
-      for src_file in deps/weston-simple-shm/clients/simple-shm.c deps/weston-simple-shm/shared/os-compatibility.c deps/weston-simple-shm/xdg-shell-protocol.c deps/weston-simple-shm/fullscreen-shell-unstable-v1-protocol.c; do
-        obj_file="''${src_file//\//_}.o"
-        if $CC -c "$src_file" \
-           -D_GNU_SOURCE \
-           -Ideps/weston-simple-shm \
-           -Ideps/weston-simple-shm/shared \
-           -Ideps/weston-simple-shm/include \
-           -Iandroid-dependencies/include \
-           -fPIC \
-           --target=${androidToolchain.androidTarget} \
-           -o "$obj_file"; then
-          OBJ_FILES="$OBJ_FILES $obj_file"
-        else
-          exit 1
-        fi
-      done
-
-      # Link shared library with Rust backend
-      RUST_LIB_FLAGS=""
-      if [ -n "${rustBackendPath}" ] && [ -f "${rustBackendPath}/lib/libwawona_core.so" ]; then
-        echo "Linking against Rust backend shared library: libwawona_core.so"
-        cp "${rustBackendPath}/lib/libwawona_core.so" .
-        RUST_LIB_FLAGS="-L. -lwawona_core"
-      elif [ -n "${rustBackendPath}" ] && [ -f "${rustBackendPath}/lib/libwawona.a" ]; then
-        echo "Linking against Rust static backend: libwawona.a"
-        cp "${rustBackendPath}/lib/libwawona.a" .
-        RUST_LIB_FLAGS="-L. -lwawona"
-      else
-        echo "WARNING: Rust backend not available, building without it"
+      # Ensure no daemon-only JVM profile leaks in from gradle.properties.
+      # With --no-daemon we still see single-use daemon forks if jvmargs is set.
+      if [ -f gradle.properties ]; then
+        grep -v -E '^org\.gradle\.(jvmargs|daemon)=' gradle.properties > gradle.properties.nix
+        mv gradle.properties.nix gradle.properties
       fi
 
-      echo "=== Checking android-dependencies/lib contents ==="
-      ls android-dependencies/lib/*.a 2>/dev/null || echo "No .a files found"
-      echo "=== Checking for missing libs ==="
-      for lib in xkbcommon ffi expat xml2 ssl crypto zstd lz4 wayland-server wayland-client pixman-1; do
-        if [ -f "android-dependencies/lib/lib''${lib}.a" ]; then
-          echo "  Found: lib''${lib}.a"
-        else
-          echo "  MISSING: lib''${lib}.a"
-        fi
-      done
-
-      $CC -shared $OBJ_FILES \
-         $RUST_LIB_FLAGS \
-         -Landroid-dependencies/lib \
-         $(pkg-config --libs wayland-server wayland-client pixman-1 2>/dev/null || echo "-lwayland-server -lwayland-client -lpixman-1") \
-         -lxkbcommon -lffi -lexpat \
-         -lssl -lcrypto \
-         -lzstd -llz4 \
-         -llog -landroid -lvulkan -lm -ldl -lz \
-         -g --target=${androidToolchain.androidTarget} \
-         -o libwawona.so
-         
-      # Setup Gradle and dependencies
-      export GRADLE_USER_HOME=$(pwd)/.gradle_home
-      export ANDROID_USER_HOME=$(pwd)/.android_home
-      mkdir -p $ANDROID_USER_HOME
-
-      # Copy gradleDeps to writable location
-      cp -r ${gradleDeps} $GRADLE_USER_HOME
-      chmod -R u+w $GRADLE_USER_HOME
-
-      export ANDROID_SDK_ROOT="${androidSDK.androidsdk}/libexec/android-sdk"
-      export ANDROID_HOME="$ANDROID_SDK_ROOT"
-      
-      # Prepare source directory for Gradle build (emulating project root)
-      mkdir -p project-root
-      cd project-root
-      
-      # Copy Android sources from patched build dir (includes prePatch additions)
-      cp -r ../src/platform/android/java .
-      cp -r ../src/platform/android/res .
-      cp ../src/platform/android/AndroidManifest.xml .
-
-      # Merge Wawona launcher icon assets (adaptive + monochrome for Android 16+)
-      if [ -n "${toString androidIconAssets}" ] && [ -d "${androidIconAssets}/res" ]; then
-        cp -r ${androidIconAssets}/res/* res/
-      fi
-      
-      # Place native libs where Gradle expects them (jniLibs)
-      mkdir -p jniLibs/arm64-v8a
-      cp ../libwawona.so jniLibs/arm64-v8a/
-      # Copy Rust core shared library if it exists
-      if [ -f ../libwawona_core.so ]; then
-        cp ../libwawona_core.so jniLibs/arm64-v8a/
-      fi
-
-      # Copy other shared libs (dependencies)
-      if [ -d ../android-dependencies/lib ]; then
-        find ../android-dependencies/lib -name "*.so*" -exec cp -L {} jniLibs/arm64-v8a/ \;
-      fi
-
-      # Also copy libc++_shared.so
-      NDK_ROOT="${androidToolchain.androidndkRoot}"
-      LIBCPP_SHARED=$(find "$NDK_ROOT" -name "libc++_shared.so" | grep "aarch64" | head -n 1)
-      if [ -f "$LIBCPP_SHARED" ]; then
-        cp "$LIBCPP_SHARED" jniLibs/arm64-v8a/
-      fi
-
-      # Bundle OpenSSH and sshpass executables (named as .so for Android extraction)
-      if [ -f "${opensshBin}/bin/ssh" ]; then
-        cp "${opensshBin}/bin/ssh" jniLibs/arm64-v8a/libssh_bin.so
-        chmod +x jniLibs/arm64-v8a/libssh_bin.so
-        echo "Bundled ssh executable as libssh_bin.so"
-      else
-        echo "WARNING: openssh binary not found at ${opensshBin}/bin/ssh"
-      fi
-      if [ -f "${sshpassBin}/bin/sshpass" ]; then
-        cp "${sshpassBin}/bin/sshpass" jniLibs/arm64-v8a/libsshpass_bin.so
-        chmod +x jniLibs/arm64-v8a/libsshpass_bin.so
-        echo "Bundled sshpass executable as libsshpass_bin.so"
-      else
-        echo "WARNING: sshpass binary not found at ${sshpassBin}/bin/sshpass"
-      fi
-
-      # Bundle weston executables
-      if [ -d "${westonBin}/lib/arm64-v8a" ]; then
-        for lib in ${westonBin}/lib/arm64-v8a/*.so; do
-           if [ -f "$lib" ]; then
-              base=$(basename "$lib" .so)
-              # Normalize libweston*.so -> weston* so runtime lookups match
-              # MainActivity ProcessBuilder("$libDir/libweston*_bin.so")
-              norm_base="''${base#lib}"
-              out_name="lib''${norm_base}_bin.so"
-              cp "$lib" "jniLibs/arm64-v8a/''${out_name}"
-              chmod +x "jniLibs/arm64-v8a/''${out_name}"
-              echo "Bundled weston executable as ''${out_name}"
-           fi
+      # Bundle Nix-built shared libraries into the APK so the Android loader
+      # can resolve libwawona.so runtime dependencies on-device.
+      JNI_LIB_DIR="app/src/main/jniLibs/arm64-v8a"
+      mkdir -p "$JNI_LIB_DIR"
+      rm -f "$JNI_LIB_DIR"/*.so "$JNI_LIB_DIR"/*.so.*
+      shopt -s nullglob
+      for libdir in ${lib.concatMapStringsSep " " (d: "${d}/lib") (getDeps "android" androidDeps)}; do
+        for so in "$libdir"/*.so "$libdir"/*.so.*; do
+          cp -L "$so" "$JNI_LIB_DIR/$(basename "$so")"
         done
-      else
-        echo "WARNING: weston lib directory not found"
-      fi
+      done
+      shopt -u nullglob
 
-      # Fix SONAMEs in copied libs
-      chmod +w -R jniLibs
-      cd jniLibs/arm64-v8a
+      # Inject Nix dependencies via Environment Variables for Gradle/CMake
+      export ANDROID_NDK_ROOT="$ndk_root"
+      export ANDROID_NDK_HOME="$ndk_root"
+      export DEP_INCLUDES="${lib.concatMapStringsSep " " (d: "-I${d}/include") (getDeps "android" androidDeps)} -I${buildModule.buildForAndroid "pixman" { }}/include/pixman-1"
+      export DEP_LIBS="${lib.concatMapStringsSep " " (d: "-L${d}/lib") (getDeps "android" androidDeps)}"
+      export RUST_BACKEND_LIB="${rustBackendPath}/lib/libwawona.a"
+    '';
 
-      # Remove non-ELF files (linker scripts, .a files, etc.) that may have been copied
-      for f in *.so*; do
-        [ -f "$f" ] || continue
-        if ! file "$f" | grep -q "ELF"; then
-          echo "Removing non-ELF file from jniLibs: $f"
-          rm -f "$f"
+    buildPhase = ''
+      runHook preBuild
+
+      # Build APK using Gradle
+      # Avoid forcing org.gradle.jvmargs here: that makes Gradle fork a
+      # single-use daemon process, which can fail to connect in sandboxed CI.
+      gradle :app:assembleDebug --no-build-cache --no-watch-fs --no-daemon --max-workers=1 \
+        -Dorg.gradle.parallel=false \
+        -Dorg.gradle.workers.max=1 \
+        -Dorg.gradle.daemon=false \
+        -Dkotlin.daemon.enabled=false \
+        -Dkotlin.compiler.execution.strategy=in-process \
+        -Dkotlin.incremental=false \
+        --info --stacktrace || {
+        echo "=== Gradle Build Failed! Accessing Diagnostic Reports ==="
+        REPORT_PATH="app/build/outputs/logs/manifest-merger-debug-report.txt"
+        if [ -f "$REPORT_PATH" ]; then
+          echo "=== Manifest Merger Debug Report ==="
+          cat "$REPORT_PATH"
         fi
-      done
-
-      for lib in *.so*; do
-          [ -f "$lib" ] || continue
-          if [[ "$lib" =~ \.so\.[0-9]+ ]]; then
-             newname=$(echo "$lib" | sed -E 's/\.so\.[0-9.]*$/.so/')
-             if [ "$lib" != "$newname" ]; then
-               mv "$lib" "$newname"
-               patchelf --set-soname "$newname" "$newname" || true
-             fi
-          fi
-      done
-
-      # Fix dependencies
-      for lib in *.so; do
-         [ -f "$lib" ] || continue
-         needed=$(patchelf --print-needed "$lib" 2>/dev/null) || continue
-         for n in $needed; do
-           if [[ "$n" =~ \.so\.[0-9]+ ]]; then
-             newn=$(echo "$n" | sed -E 's/\.so\.[0-9.]*$/.so/')
-             if [ -f "$newn" ]; then
-                patchelf --replace-needed "$n" "$newn" "$lib" || true
-             fi
-           fi
-         done
-      done
+        exit 1
+      }
       
-      # Return to project-root (from jniLibs/arm64-v8a)
-      cd ../..
-
-      # Create Gradle build files (using gradlegen)
-      cp ${gradlegen.buildGradle} build.gradle.kts
-      cp ${gradlegen.settingsGradle} settings.gradle.kts
-      chmod u+w build.gradle.kts settings.gradle.kts
-
-      # Create gradle.properties with AndroidX support
-      cat > gradle.properties <<'EOF'
-      android.useAndroidX=true
-      android.enableJetifier=true
-      org.gradle.jvmargs=-Xmx2048m
-      kotlin.code.style=official
-      EOF
-
-      # Build APK
-      gradle assembleDebug --offline --no-daemon
-
       runHook postBuild
     '';
 
     installPhase = ''
-            runHook preInstall
+      runHook preInstall
 
-            # installPhase cwd = project-root (where buildPhase ended)
-            mkdir -p $out/bin
-            mkdir -p $out/lib
-            
-            # Copy APK
-            APK_PATH=""
-            if [ -f "project-root/build/outputs/apk/debug/Wawona-debug.apk" ]; then
-              APK_PATH="project-root/build/outputs/apk/debug/Wawona-debug.apk"
-            else
-              echo "APK not found in expected locations, searching..."
-              APK_PATH=$(find . -name "*.apk" -type f | head -1)
-              if [ -z "$APK_PATH" ]; then
-                echo "Error: No APK found!"
-                exit 1
-              fi
-              echo "Found APK at: $APK_PATH"
-            fi
-            
-            cp "$APK_PATH" $out/bin/Wawona.apk
-            echo "Copied APK to $out/bin/Wawona.apk"
-            
-            # Copy runtime shared libraries
-            if [ -d android-dependencies/lib ]; then
-              find android-dependencies/lib -name "*.so*" -exec cp -L {} $out/lib/ \;
-            fi
-            
-            # Copy the runner script (created by writeShellScript, already executable)
-            cp ${runnerScript} $out/bin/wawona-android-run
-            chmod +x $out/bin/wawona-android-run
+      mkdir -p $out/bin
+      mkdir -p $out/lib
 
-            # Output project dir for gradlegen (Android Studio openable)
-            # cwd is project-root, so copy current dir contents into $project
-            mkdir -p $project
-            cp -r . "$project/"
-            
-            runHook postInstall
+      # Gradle builds from the flattened root project in Nix, but some callers
+      # still expect the nested `android/` layout. Probe both to find the APK.
+      APK_PATH=""
+      shopt -s nullglob globstar
+      for candidate in \
+        app/build/outputs/apk/**/*.apk \
+        android/app/build/outputs/apk/**/*.apk \
+        build/outputs/apk/**/*.apk
+      do
+        if [ -f "$candidate" ]; then
+          APK_PATH="$candidate"
+          break
+        fi
+      done
+      shopt -u nullglob globstar
+
+      if [ -z "$APK_PATH" ]; then
+        echo "Error: No APK found!"
+        exit 1
+      fi
+      cp "$APK_PATH" $out/bin/Wawona.apk
+      
+      # Copy the runner script
+      cp ${runnerScript} $out/bin/wawona-android-run
+      chmod +x $out/bin/wawona-android-run
+
+      # Expose full project for gradlegen (IDE support)
+      mkdir -p $project
+      cp -r . "$project/"
+      
+      runHook postInstall
     '';
-  }
+  })

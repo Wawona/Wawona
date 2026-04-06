@@ -1,5 +1,5 @@
 #import "WWNCompositorView_ios.h"
-#import "../../ui/Settings/WWNPreferencesManager.h"
+#import "../macos/ui/Settings/WWNPreferencesManager.h"
 #import "../../util/WWNLog.h"
 #import "WWNCompositorBridge.h"
 #import <QuartzCore/QuartzCore.h>
@@ -1359,7 +1359,8 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
     start = 0;
   if (end > (NSInteger)_textBuffer.length)
     end = _textBuffer.length;
-  NSRange replaceRange = NSMakeRange(start, MAX(0, end - start));
+  NSInteger rangeLen = (end - start > 0) ? (end - start) : 0;
+  NSRange replaceRange = NSMakeRange(start, (NSUInteger)rangeLen);
 
   WWNLog("IOS_VIEW", @"replaceRange: [%ld,%ld) with \"%@\"", (long)start,
          (long)end, text);
@@ -1372,8 +1373,8 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   uint32_t deleteBefore = 0;
   uint32_t deleteAfter = 0;
   if (replaceRange.location < (NSUInteger)_selectedRange.location) {
-    deleteBefore = (uint32_t)MIN(
-        _selectedRange.location - replaceRange.location, replaceRange.length);
+    NSUInteger diff = _selectedRange.location - replaceRange.location;
+    deleteBefore = (uint32_t)((diff < replaceRange.length) ? diff : replaceRange.length);
   }
   if (NSMaxRange(replaceRange) > NSMaxRange(_selectedRange)) {
     deleteAfter =
@@ -1397,8 +1398,6 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 
 // --- Selection ---
 
-@synthesize selectedTextRange;
-
 - (UITextRange *)selectedTextRange {
   return [WWNTextRange rangeWithStart:(NSInteger)_selectedRange.location
                                   end:(NSInteger)NSMaxRange(_selectedRange)];
@@ -1407,8 +1406,9 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 - (void)setSelectedTextRange:(UITextRange *)range {
   WWNTextRange *r = (WWNTextRange *)range;
   if (r) {
+    NSInteger len = r.end.index - r.start.index;
     _selectedRange =
-        NSMakeRange(r.start.index, MAX(0, r.end.index - r.start.index));
+        NSMakeRange(r.start.index, (NSUInteger)(len > 0 ? len : 0));
   }
 }
 
@@ -1571,7 +1571,8 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 
 - (CGRect)caretRectForPosition:(UITextPosition *)position {
   CGRect r = [self _cursorRectFromCompositor];
-  return CGRectMake(r.origin.x, r.origin.y, 2, MAX(r.size.height, 20));
+  CGFloat h = (r.size.height > 20) ? r.size.height : 20;
+  return CGRectMake(r.origin.x, r.origin.y, 2, h);
 }
 
 - (NSArray<UITextSelectionRect *> *)selectionRectsForRange:
@@ -1592,15 +1593,32 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   return nil;
 }
 
-// --- Writing direction ---
-
-- (UITextWritingDirection)
-    baseWritingDirectionForPosition:(nonnull UITextPosition *)position
-                        inDirection:(UITextStorageDirection)direction {
-  return UITextWritingDirectionLeftToRight;
+- (nullable UITextPosition *)positionWithinRange:(UITextRange *)range
+                           farthestInDirection:(UITextLayoutDirection)direction {
+  WWNTextRange *r = (WWNTextRange *)range;
+  if (!r) return nil;
+  // Simplistic stub: return start or end based on direction
+  if (direction == UITextLayoutDirectionLeft || direction == UITextLayoutDirectionUp) {
+    return r.start;
+  }
+  return r.end;
 }
 
-- (void)setBaseWritingDirection:(UITextWritingDirection)writingDirection
+- (nullable UITextRange *)characterRangeByExtendingPosition:(UITextPosition *)position
+                                                inDirection:(UITextLayoutDirection)direction {
+  // Stub
+  return nil;
+}
+
+// --- Writing direction ---
+
+- (NSWritingDirection)
+    baseWritingDirectionForPosition:(nonnull UITextPosition *)position
+                        inDirection:(UITextStorageDirection)direction {
+  return NSWritingDirectionLeftToRight;
+}
+
+- (void)setBaseWritingDirection:(NSWritingDirection)writingDirection
                        forRange:(UITextRange *)range {
   // No-op — Wayland clients manage their own writing direction.
 }
@@ -1810,8 +1828,15 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
     _touchTotalMovement += fabs(dx) + fabs(dy);
 
     // Update virtual pointer, clamped to view bounds
-    _pointerPos.x = MAX(0, MIN(self.bounds.size.width, _pointerPos.x + dx));
-    _pointerPos.y = MAX(0, MIN(self.bounds.size.height, _pointerPos.y + dy));
+    CGFloat clampedX = _pointerPos.x + dx;
+    if (clampedX < 0) clampedX = 0;
+    if (clampedX > self.bounds.size.width) clampedX = self.bounds.size.width;
+    _pointerPos.x = clampedX;
+
+    CGFloat clampedY = _pointerPos.y + dy;
+    if (clampedY < 0) clampedY = 0;
+    if (clampedY > self.bounds.size.height) clampedY = self.bounds.size.height;
+    _pointerPos.y = clampedY;
 
     [bridge injectPointerMotionForWindow:self.wwnWindowId
                                        x:_pointerPos.x

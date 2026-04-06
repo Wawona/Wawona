@@ -5,6 +5,7 @@
   common,
   buildModule,
   simulator ? false,
+  iosToolchain ? null,
 }:
 
 let
@@ -18,20 +19,57 @@ pkgs.stdenv.mkDerivation {
   name = "zlib-ios";
   inherit src;
   patches = [ ];
+
+  # Allow access to Xcode SDKs and toolchain
+  __noChroot = true;
   nativeBuildInputs = with buildPackages; [ ];
   buildInputs = [ ];
   preConfigure = ''
-    if [ -z "''${XCODE_APP:-}" ]; then
-      XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode || true)
-      if [ -n "$XCODE_APP" ]; then
-        export XCODE_APP
-        export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
-        export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
-        export SDKROOT="$DEVELOPER_DIR/Platforms/${if simulator then "iPhoneSimulator" else "iPhoneOS"}.platform/Developer/SDKs/${if simulator then "iPhoneSimulator" else "iPhoneOS"}.sdk"
+    # Strip Nix stdenv's DEVELOPER_DIR to bypass any store fallbacks
+    unset DEVELOPER_DIR
+
+    ${if simulator then ''
+      # Robust SDK detection for iOS Simulator
+      IOS_SDK=$(xcrun --sdk iphonesimulator --show-sdk-path 2>/dev/null || true)
+      if [ ! -d "$IOS_SDK" ]; then
+        # Fallback 1: via ensureIosSimSDK script
+        IOS_SDK=$(${xcodeUtils.ensureIosSimSDK}/bin/ensure-ios-sim-sdk) || true
       fi
+      if [ ! -d "$IOS_SDK" ]; then
+        # Fallback 2: Default location
+        XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode)
+        IOS_SDK="$XCODE_APP/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk"
+      fi
+    '' else ''
+      # Robust SDK detection for iOS Device
+      IOS_SDK=$(xcrun --sdk iphoneos --show-sdk-path 2>/dev/null || true)
+      if [ ! -d "$IOS_SDK" ]; then
+        # Fallback 1: Default location
+        XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode)
+        IOS_SDK="$XCODE_APP/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"
+      fi
+    ''}
+
+    if [ ! -d "$IOS_SDK" ]; then
+      echo "ERROR: iOS SDK not found. Build cannot proceed." >&2
+      exit 1
     fi
+    export SDKROOT="$IOS_SDK"
+    export IOS_SDK
+
+    # Find the Developer dir associated with this SDK
+    export DEVELOPER_DIR=$(echo "$IOS_SDK" | sed -E 's|^(.*\.app/Contents/Developer)/.*$|\1|')
+    [ "$DEVELOPER_DIR" = "$IOS_SDK" ] && export DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
+    if [ -z "$MACOS_SDK_PATH" ]; then
+      export MACOS_SDK_PATH="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+    fi
+    export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
+
+    echo "Using iOS SDK: $IOS_SDK"
+    echo "Using Developer Dir: $DEVELOPER_DIR"
     export NIX_CFLAGS_COMPILE=""
     export NIX_CXXFLAGS_COMPILE=""
+    export NIX_LDFLAGS=""
     if [ -n "''${SDKROOT:-}" ] && [ -d "$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin" ]; then
       IOS_CC="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
       IOS_CXX="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
@@ -48,6 +86,8 @@ pkgs.stdenv.mkDerivation {
     export CFLAGS="-arch arm64 -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 -fPIC"
     export CXXFLAGS="-arch arm64 -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 -fPIC"
     export LDFLAGS="-arch arm64 -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0"
+    # Unset SDKROOT so it doesn't leak into host-side tool builds
+    unset SDKROOT
     ./configure --prefix=$out --static
     runHook postConfigure
   '';

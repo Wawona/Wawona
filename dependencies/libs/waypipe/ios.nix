@@ -5,9 +5,11 @@
   common,
   buildModule,
   simulator ? false,
+  iosToolchain,
 }:
 
 let
+  xcodeUtils = iosToolchain;
   cargoTarget = if simulator then "aarch64-apple-ios-sim" else "aarch64-apple-ios";
   # Use aarch64-apple-ios target for iOS device/App Store builds
   rustToolchain = pkgs.rust-bin.stable.latest.default.override {
@@ -27,8 +29,6 @@ let
     sha256 = "sha256-Tbd/yY90yb2+/ODYVL3SudHaJCGJKatZ9FuGM2uAX+8=";
   };
   src = fetchSource waypipeSource;
-  # Vulkan driver for iOS: kosmickrisp (for dmabuf)
-  kosmickrisp = buildModule.buildForIOS "kosmickrisp" { inherit simulator; };
   libwayland = buildModule.buildForIOS "libwayland" { inherit simulator; };
   # Compression libraries
   zstd = buildModule.buildForIOS "zstd" { inherit simulator; };
@@ -105,7 +105,6 @@ myRustPlatform.buildRustPackage {
   __noChroot = true;
 
   buildInputs = [
-    kosmickrisp
     vulkan-loader
     libwayland
     zstd
@@ -116,91 +115,92 @@ myRustPlatform.buildRustPackage {
     openssl-ios # iOS cross-compiled OpenSSL for libssh2-sys openssl-sys backend
   ];
 
-  # dmabuf, compression, in-process ssh, and video (static-only FFmpeg path)
-  buildFeatures = [ "dmabuf" "lz4" "zstd" "with_libssh2" "video" ];
+  # compression, in-process ssh, and video (static-only FFmpeg path)
+  buildFeatures = [ "lz4" "zstd" "with_libssh2" "video" ];
 
   preConfigure = ''
-        # Find Xcode path dynamically
-        if [ -d "/Applications/Xcode.app" ]; then
-          export DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
-        elif [ -d "/Applications/Xcode-beta.app" ]; then
-          export DEVELOPER_DIR="/Applications/Xcode-beta.app/Contents/Developer"
-        else
-          export DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
-        fi
-        
-        export IOS_SDK="$DEVELOPER_DIR/Platforms/${if simulator then "iPhoneSimulator" else "iPhoneOS"}.platform/Developer/SDKs/${if simulator then "iPhoneSimulator" else "iPhoneOS"}.sdk"
-        export SDKROOT="$IOS_SDK"
-        
-        # Check if SDK exists
-        if [ ! -d "$IOS_SDK" ]; then
-          echo "Error: iOS SDK not found at $IOS_SDK"
-          exit 1
-        fi
-        echo "Using iOS SDK: $IOS_SDK"
-        
-        # FFmpeg and Vulkan paths for wrap-ffmpeg build.rs
-        export FFMPEG_DIR="${ffmpeg}"
-        export FFMPEG_PREFIX="${ffmpeg}"
-        export VULKAN_HEADERS_INCLUDE="${pkgs.vulkan-headers}/include"
+    ${xcodeUtils.mkIOSBuildEnv { inherit simulator; }}
+    export IOS_SDK="$SDKROOT"
+    
+    # Isolate environment from Nix wrapper flags to prevent linker conflicts
+    export NIX_CFLAGS_COMPILE=""
+    export NIX_CXXFLAGS_COMPILE=""
+    export NIX_LDFLAGS=""
+    
+    # App Store build target: arm64 iPhoneOS
+    IOS_TARGET="aarch64-apple-ios"
+    ${if simulator then ''
+      IOS_TARGET="aarch64-apple-ios-sim"
+    '' else ""}
 
-        # Set iOS deployment target for device
-        export IPHONEOS_DEPLOYMENT_TARGET="26.0"
-        # Prevent Nix cc-wrapper from adding macOS flags
-        export NIX_CFLAGS_COMPILE=""
-        export NIX_LDFLAGS=""
-        # Override CC/CXX to use Xcode clang directly to avoid cc-wrapper conflicts
-        export CC="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
-        export CXX="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
-        # Configure Rust to use Xcode linker directly
-        export RUSTC_LINKER="$CC"
+    # Use target-specific variables so host builds (build-dependencies) use the Nix SDK
+    # .cargo/config.toml will handle the target build.
 
-        # Set up library search paths
-        export LIBRARY_PATH="${kosmickrisp}/lib:${vulkan-loader}/lib:${libwayland}/lib:${zstd}/lib:${lz4}/lib:${libssh2}/lib:${mbedtls}/lib:${openssl-ios}/lib:${ffmpeg}/lib:$LIBRARY_PATH"
-        
-        # Use Rust's built-in target
-        export CARGO_BUILD_TARGET="${cargoTarget}"
-        
-        # Configure Rust flags for iOS target
-        export RUSTFLAGS="-A warnings -C linker=$CC -C link-arg=-isysroot -C link-arg=$IOS_SDK -C link-arg=-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 -L native=${vulkan-loader}/lib -L native=${libssh2}/lib -L native=${mbedtls}/lib -L native=${openssl-ios}/lib -L native=${ffmpeg}/lib $RUSTFLAGS"
-        
-        # Configure C compiler for target
-        target_underscore=$(echo "${cargoTarget}" | tr '-' '_')
-        export "CC_''${target_underscore}"="$CC"
-        export "CXX_''${target_underscore}"="$CXX"
-        export "CFLAGS_''${target_underscore}"="-target ${if simulator then "arm64-apple-ios26.0-simulator" else "arm64-apple-ios26.0"} -isysroot $IOS_SDK -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0"
-        export "AR_''${target_underscore}"="ar"
-        
-        # Set PKG_CONFIG_PATH
-        export PKG_CONFIG_PATH="${libwayland}/lib/pkgconfig:${zstd}/lib/pkgconfig:${lz4}/lib/pkgconfig:${libssh2}/lib/pkgconfig:${ffmpeg}/lib/pkgconfig:$PKG_CONFIG_PATH"
-        export PKG_CONFIG_ALLOW_CROSS=1
-        
-        # Set up include paths for bindgen (wrap-zstd, wrap-lz4, wrap-ffmpeg)
-        export C_INCLUDE_PATH="${zstd}/include:${lz4}/include:${libssh2}/include:${openssl-ios}/include:${ffmpeg}/include:${pkgs.vulkan-headers}/include:$C_INCLUDE_PATH"
-        export CPP_INCLUDE_PATH="${zstd}/include:${lz4}/include:${libssh2}/include:${openssl-ios}/include:${ffmpeg}/include:${pkgs.vulkan-headers}/include:$CPP_INCLUDE_PATH"
-        
-        # Configure bindgen for wrap-ffmpeg (FFmpeg headers)
-        export BINDGEN_EXTRA_CLANG_ARGS="-I${zstd}/include -I${lz4}/include -I${libssh2}/include -I${openssl-ios}/include -I${ffmpeg}/include -I${pkgs.vulkan-headers}/include -isysroot $IOS_SDK -miphoneos-version-min=26.0 -target arm64-apple-ios26.0"
-        export BINDGEN="${pkgs.rust-bindgen}/bin/bindgen"
-        export PATH="${pkgs.rust-bindgen}/bin:$PATH"
-        
-        echo "Vulkan driver (kosmickrisp) library path: ${kosmickrisp}/lib"
-        ls -la "${kosmickrisp}/lib/" || echo "Warning: kosmickrisp lib directory not found"
-        
-  mkdir -p .cargo
-  cat > .cargo/config.toml <<CARGO_CONFIG
+    # Clean up environment for host tools: CC/LDFLAGS are NOT desired for build.rs!
+    # Target-specific variables (above) and .cargo/config.toml will handle the target build.
+    # We MUST keep SDKROOT and DEVELOPER_DIR so cc-rs can find the SDK via xcrun!
+  
+    # FFmpeg and Vulkan paths for wrap-ffmpeg build.rs
+    export FFMPEG_DIR="${ffmpeg}"
+    export FFMPEG_PREFIX="${ffmpeg}"
+    export VULKAN_HEADERS_INCLUDE="${pkgs.vulkan-headers}/include"
+
+    # Set iOS deployment target for device
+    export IPHONEOS_DEPLOYMENT_TARGET="26.0"
+    
+    # Set up library search paths
+    export LIBRARY_PATH="${vulkan-loader}/lib:${libwayland}/lib:${zstd}/lib:${lz4}/lib:${libssh2}/lib:${mbedtls}/lib:${openssl-ios}/lib:${ffmpeg}/lib:$LIBRARY_PATH"
+    
+    # Use Rust's built-in target
+    export CARGO_BUILD_TARGET="${cargoTarget}"
+    
+    # Configure Rust flags for iOS target
+    export RUSTFLAGS="-A warnings -C linker=$XCODE_CLANG -C link-arg=-isysroot -C link-arg=$IOS_SDK -C link-arg=$APPLE_DEPLOYMENT_FLAG -L native=${vulkan-loader}/lib -L native=${libssh2}/lib -L native=${mbedtls}/lib -L native=${openssl-ios}/lib -L native=${ffmpeg}/lib $RUSTFLAGS"
+    
+    # Configure C compiler for target specific variables
+    target_underscore=$(echo "${cargoTarget}" | tr '-' '_')
+    export "CC_''${target_underscore}"="$XCODE_CLANG"
+    export "CXX_''${target_underscore}"="$XCODE_CLANGXX"
+    export "CFLAGS_''${target_underscore}"="-target $APPLE_LINKER_TARGET -isysroot $IOS_SDK $APPLE_DEPLOYMENT_FLAG"
+    export "AR_''${target_underscore}"="ar"
+    
+    # Set PKG_CONFIG_PATH
+    export PKG_CONFIG_PATH="${libwayland}/lib/pkgconfig:${zstd}/lib/pkgconfig:${lz4}/lib/pkgconfig:${libssh2}/lib/pkgconfig:${ffmpeg}/lib/pkgconfig:$PKG_CONFIG_PATH"
+    export PKG_CONFIG_ALLOW_CROSS=1
+    
+    # Set up include paths for bindgen (wrap-zstd, wrap-lz4, wrap-ffmpeg)
+    export C_INCLUDE_PATH="${zstd}/include:${lz4}/include:${libssh2}/include:${openssl-ios}/include:${ffmpeg}/include:${pkgs.vulkan-headers}/include:$C_INCLUDE_PATH"
+    export CPP_INCLUDE_PATH="${zstd}/include:${lz4}/include:${libssh2}/include:${openssl-ios}/include:${ffmpeg}/include:${pkgs.vulkan-headers}/include:$CPP_INCLUDE_PATH"
+    
+    # Configure bindgen for wrap-ffmpeg (FFmpeg headers)
+    export BINDGEN_EXTRA_CLANG_ARGS="-I${zstd}/include -I${lz4}/include -I${libssh2}/include -I${openssl-ios}/include -I${ffmpeg}/include -I${pkgs.vulkan-headers}/include -isysroot $IOS_SDK $APPLE_DEPLOYMENT_FLAG -target $APPLE_LINKER_TARGET"
+    export BINDGEN="${pkgs.rust-bindgen}/bin/bindgen"
+    export PATH="${pkgs.rust-bindgen}/bin:$PATH"
+
+    # Set up cargo config to ensure these variables are used
+    mkdir -p .cargo
+    cat > .cargo/config.toml <<CARGO_EOF
 [target.${cargoTarget}]
-linker = "$CC"
+linker = "$XCODE_CLANG"
 rustflags = [
-  "-C", "link-arg=-isysroot",
-  "-C", "link-arg=$IOS_SDK",
-  "-C", "link-arg=-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0",
+  "-C", "linker=$XCODE_CLANG",
+  "-C", "link-arg=-arch", "-C", "link-arg=$IOS_ARCH",
+  "-C", "link-arg=-isysroot", "-C", "link-arg=$IOS_SDK",
+  "-C", "link-arg=$APPLE_DEPLOYMENT_FLAG"
 ]
+CARGO_EOF
 
-[env]
-CC = "$CC"
-CXX = "$CXX"
-CARGO_CONFIG
+    # Set target linker environmental variable (highest precedence)
+    export "CARGO_TARGET_''${target_underscore^^}_LINKER"="$XCODE_CLANG"
+
+    # Set host variables to ensure build scripts use host SDK (prevents SDKROOT poisoning)
+    export MACOS_SDK=$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || echo "$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk")
+    export HOST_CC="/usr/bin/clang"
+    export HOST_CFLAGS="-isysroot $MACOS_SDK"
+    export HOST_LDFLAGS="-isysroot $MACOS_SDK"
+
+    # Host-side build scripts still need a macOS SDK for Darwin binaries.
+    export SDKROOT="$MACOS_SDK"
   '';
 
   buildPhase = ''
@@ -210,10 +210,10 @@ CARGO_CONFIG
     # Ensure correct crate-type in Cargo.toml if not already patched
     # (The python script in src derivation already does this, but being safe)
     
-    export PKG_CONFIG_ALLOW_CROSS=1
-    
+    # We ensure SDKROOT and DEVELOPER_DIR are set so host-side builds (proc-macros, build scripts) can find SDKs.
+
     # with_libssh2 is CRITICAL for iOS - enables in-process SSH (no subprocess spawn)
-    cargo build --lib --target ${cargoTarget} --release --no-default-features --features "dmabuf,lz4,zstd,with_libssh2,video"
+    cargo build --lib --target ${cargoTarget} --release --no-default-features --features "lz4,zstd,with_libssh2,video"
     
     runHook postBuild
   '';

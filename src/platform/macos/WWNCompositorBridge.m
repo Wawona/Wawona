@@ -146,89 +146,89 @@ extern void WWNRenderSceneFree(CRenderScene *scene);
 // MARK: - Cursor Shape Mapping
 
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
-static NSCursor *NSCursorFromWaylandShape(uint32_t shape) {
-  switch (shape) {
-  case 1:
-    return [NSCursor arrowCursor]; // default
-  case 2:
-    return [NSCursor arrowCursor]; // context-menu
-  case 3:
-    return [NSCursor arrowCursor]; // help
-  case 4:
-    return [NSCursor pointingHandCursor]; // pointer
-  case 5:
-    return [NSCursor arrowCursor]; // progress
-  case 6:
-    return [NSCursor arrowCursor]; // wait
-  case 7:
-    return [NSCursor crosshairCursor]; // cell
-  case 8:
-    return [NSCursor crosshairCursor]; // crosshair
-  case 9:
-    return [NSCursor IBeamCursor]; // text
-  case 10:
-    return [NSCursor IBeamCursor]; // vertical-text (fallback)
-  case 11:
-    return [NSCursor arrowCursor]; // alias
-  case 12:
-    return [NSCursor dragCopyCursor]; // copy
-  case 13:
-    return [NSCursor arrowCursor]; // move
-  case 14:
-    return [NSCursor operationNotAllowedCursor]; // no-drop
-  case 15:
-    return [NSCursor operationNotAllowedCursor]; // not-allowed
-  case 16:
-    return [NSCursor openHandCursor]; // grab
-  case 17:
-    return [NSCursor closedHandCursor]; // grabbing
-  case 18:
-    return [NSCursor resizeRightCursor]; // e-resize
-  case 19:
-    return [NSCursor resizeUpCursor]; // n-resize
-  case 20:
-    return [NSCursor arrowCursor]; // ne-resize
-  case 21:
-    return [NSCursor arrowCursor]; // nw-resize
-  case 22:
-    return [NSCursor resizeDownCursor]; // s-resize
-  case 23:
-    return [NSCursor arrowCursor]; // se-resize
-  case 24:
-    return [NSCursor arrowCursor]; // sw-resize
-  case 25:
-    return [NSCursor resizeLeftCursor]; // w-resize
-  case 26:
-    return [NSCursor resizeLeftRightCursor]; // ew-resize
-  case 27:
-    return [NSCursor resizeUpDownCursor]; // ns-resize
-  case 28:
-    return [NSCursor arrowCursor]; // nesw-resize
-  case 29:
-    return [NSCursor arrowCursor]; // nwse-resize
-  case 30:
-    return [NSCursor resizeLeftRightCursor]; // col-resize
-  case 31:
-    return [NSCursor resizeUpDownCursor]; // row-resize
-  case 32:
-    return [NSCursor arrowCursor]; // all-scroll
-  case 33:
-    return [NSCursor arrowCursor]; // zoom-in
-  case 34:
-    return [NSCursor arrowCursor]; // zoom-out
-  default:
-    return [NSCursor arrowCursor];
-  }
-}
+// static NSCursor *NSCursorFromWaylandShape(uint32_t shape) {
+//   switch (shape) {
+//   case 1:
+//     return [NSCursor arrowCursor]; // default
+//   case 2:
+//     return [NSCursor arrowCursor]; // context-menu
+//   case 3:
+//     return [NSCursor arrowCursor]; // help
+//   case 4:
+//     return [NSCursor pointingHandCursor]; // pointer
+//   case 5:
+//     return [NSCursor arrowCursor]; // progress
+//   case 6:
+//     return [NSCursor arrowCursor]; // wait
+//   case 7:
+//     return [NSCursor crosshairCursor]; // cell
+//   case 8:
+//     return [NSCursor crosshairCursor]; // crosshair
+//   case 9:
+//     return [NSCursor IBeamCursor]; // text
+//   case 10:
+//     return [NSCursor IBeamCursor]; // vertical-text (fallback)
+//   case 11:
+//     return [NSCursor arrowCursor]; // alias
+//   case 12:
+//     return [NSCursor dragCopyCursor]; // copy
+//   case 13:
+//     return [NSCursor arrowCursor]; // move
+//   case 14:
+//     return [NSCursor operationNotAllowedCursor]; // no-drop
+//   case 15:
+//     return [NSCursor operationNotAllowedCursor]; // not-allowed
+//   case 16:
+//     return [NSCursor crosshairCursor]; // grab (fallback)
+//   case 17:
+//     return [NSCursor closedHandCursor]; // grabbing
+//   case 18:
+//     return [NSCursor resizeRightCursor]; // e-resize
+//   case 19:
+//     return [NSCursor resizeUpCursor]; // n-resize
+//   case 20:
+//     return [NSCursor arrowCursor]; // ne-resize
+//   case 21:
+//     return [NSCursor arrowCursor]; // nw-resize
+//   case 22:
+//     return [NSCursor resizeDownCursor]; // s-resize
+//   case 23:
+//     return [NSCursor arrowCursor]; // se-resize
+//   case 24:
+//     return [NSCursor arrowCursor]; // sw-resize
+//   case 25:
+//     return [NSCursor resizeLeftCursor]; // w-resize
+//   case 26:
+//     return [NSCursor resizeLeftRightCursor]; // ew-resize
+//   case 27:
+//     return [NSCursor resizeUpDownCursor]; // ns-resize
+//   case 28:
+//     return [NSCursor arrowCursor]; // nesw-resize
+//   case 29:
+//     return [NSCursor arrowCursor]; // nwse-resize
+//   case 30:
+//     return [NSCursor resizeLeftRightCursor]; // col-resize
+//   case 31:
+//     return [NSCursor resizeUpDownCursor]; // row-resize
+//   case 32:
+//     return [NSCursor arrowCursor]; // all-scroll
+//   case 33:
+//     return [NSCursor arrowCursor]; // zoom-in
+//   case 34:
+//     return [NSCursor arrowCursor]; // zoom-out
+//   default:
+//     return [NSCursor arrowCursor];
+//   }
+// }
 #endif
 
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
-static void handle_cursor_shape_update(uint32_t shape) {
-  dispatch_async(dispatch_get_main_queue(), ^{
-    NSCursor *cursor = NSCursorFromWaylandShape(shape);
-    [cursor set];
-  });
-}
+// static void handle_cursor_shape_update(uint32_t shape) {
+//   dispatch_async(dispatch_get_main_queue(), ^{
+//     NSCursor *cursor = NSCursorFromWaylandShape(shape);
+//     [cursor set];
+//   });
+// }
 #endif
 
 @implementation WWNCompositorBridge {
@@ -502,10 +502,12 @@ static void handle_cursor_shape_update(uint32_t shape) {
   if (_rustCore && _compositorQueue) {
     dispatch_sync(_compositorQueue, ^{
       WWNCoreStop(self->_rustCore);
+      self->_rustCore = NULL;
       WWNLog("BRIDGE", @"Compositor stopped on compositor queue");
     });
   } else if (_rustCore) {
     WWNCoreStop(_rustCore);
+    _rustCore = NULL;
     WWNLog("BRIDGE", @"Compositor stopped");
   }
 
@@ -1589,10 +1591,11 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
 // Window Management
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
 - (NSMutableDictionary<NSNumber *, id> *)windows {
+  return _windows;
 #else
 - (NSMutableDictionary<NSNumber *, WWNWindow *> *)windows {
+  return (NSMutableDictionary<NSNumber *, WWNWindow *> *)_windows;
 #endif
-  return _windows;
 }
 
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
@@ -1870,7 +1873,10 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
       }
           completionHandler:^{
             window.processingResize = NO;
-            [window windowDidResize:nil];
+            NSNotification *note = [NSNotification
+                notificationWithName:NSWindowDidResizeNotification
+                              object:window];
+            [window windowDidResize:note];
           }];
     }
   }
@@ -1890,7 +1896,10 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
       }
           completionHandler:^{
             window.processingResize = NO;
-            [window windowDidResize:nil];
+            NSNotification *note = [NSNotification
+                notificationWithName:NSWindowDidResizeNotification
+                              object:window];
+            [window windowDidResize:note];
           }];
     }
   }

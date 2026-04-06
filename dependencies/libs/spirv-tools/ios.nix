@@ -5,6 +5,7 @@
   common,
   buildModule,
   simulator ? false,
+  iosToolchain ? null,
 }:
 
 let

@@ -5,10 +5,11 @@
   common,
   buildModule,
   simulator ? false,
+  iosToolchain,
 }:
 
 let
-  xcodeUtils = import ../../../utils/xcode-wrapper.nix { inherit lib pkgs; };
+  xcodeUtils = iosToolchain;
   # libssh2 source
   src = pkgs.fetchFromGitHub {
     owner = "libssh2";
@@ -25,6 +26,9 @@ pkgs.stdenv.mkDerivation {
   name = "libssh2-ios";
   inherit src;
   patches = [ ];
+  
+  # Allow access to Xcode SDKs and toolchain
+  __noChroot = true;
   nativeBuildInputs = with buildPackages; [
     cmake
     pkgs.python3
@@ -35,39 +39,32 @@ pkgs.stdenv.mkDerivation {
   '';
   buildInputs = [ openssl-ios ];
   preConfigure = ''
-    if [ -z "''${XCODE_APP:-}" ]; then
-      XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode || true)
-      if [ -n "$XCODE_APP" ]; then
-        export XCODE_APP
-        export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
-        export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
-        export SDKROOT="$DEVELOPER_DIR/Platforms/${if simulator then "iPhoneSimulator" else "iPhoneOS"}.platform/Developer/SDKs/${if simulator then "iPhoneSimulator" else "iPhoneOS"}.sdk"
-      fi
-    fi
+    ${xcodeUtils.mkIOSBuildEnv { inherit simulator; }}
     export NIX_CFLAGS_COMPILE=""
     export NIX_CXXFLAGS_COMPILE=""
-    if [ -n "''${SDKROOT:-}" ] && [ -d "$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin" ]; then
-      IOS_CC="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
-      IOS_CXX="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
-    else
-      IOS_CC="${buildPackages.clang}/bin/clang"
-      IOS_CXX="${buildPackages.clang}/bin/clang++"
-    fi
-    
-    IOS_ARCH="arm64"
+    export NIX_LDFLAGS=""
     
     cat > ios-toolchain.cmake <<EOF
 set(CMAKE_SYSTEM_NAME iOS)
 set(CMAKE_OSX_ARCHITECTURES $IOS_ARCH)
-set(CMAKE_OSX_DEPLOYMENT_TARGET 26.0)
-set(CMAKE_C_COMPILER "$IOS_CC")
-set(CMAKE_CXX_COMPILER "$IOS_CXX")
+set(CMAKE_OSX_DEPLOYMENT_TARGET ${xcodeUtils.deploymentTarget})
+set(CMAKE_C_COMPILER "$XCODE_CLANG")
+set(CMAKE_CXX_COMPILER "$XCODE_CLANGXX")
+set(CMAKE_C_COMPILER_TARGET "$APPLE_LINKER_TARGET")
+set(CMAKE_CXX_COMPILER_TARGET "$APPLE_LINKER_TARGET")
 set(CMAKE_SYSROOT "$SDKROOT")
 set(CMAKE_OSX_SYSROOT "$SDKROOT")
-set(CMAKE_C_FLAGS "-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 -fPIC")
-set(CMAKE_CXX_FLAGS "-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 -fPIC")
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+set(CMAKE_C_FLAGS "-arch $IOS_ARCH -target $APPLE_LINKER_TARGET -isysroot $SDKROOT $APPLE_DEPLOYMENT_FLAG -fPIC")
+set(CMAKE_CXX_FLAGS "-arch $IOS_ARCH -target $APPLE_LINKER_TARGET -isysroot $SDKROOT $APPLE_DEPLOYMENT_FLAG -fPIC")
+set(CMAKE_ASM_FLAGS "-arch $IOS_ARCH -target $APPLE_LINKER_TARGET -isysroot $SDKROOT $APPLE_DEPLOYMENT_FLAG")
+set(CMAKE_EXE_LINKER_FLAGS "-arch $IOS_ARCH -target $APPLE_LINKER_TARGET -isysroot $SDKROOT $APPLE_DEPLOYMENT_FLAG")
+set(CMAKE_SHARED_LINKER_FLAGS "-arch $IOS_ARCH -target $APPLE_LINKER_TARGET -isysroot $SDKROOT $APPLE_DEPLOYMENT_FLAG")
 set(BUILD_SHARED_LIBS OFF)
 EOF
+
+    # Unset SDKROOT so it doesn't leak into host-side tool builds during cmake checks
+    unset SDKROOT
   '';
   cmakeFlags = [
     "-DCMAKE_TOOLCHAIN_FILE=ios-toolchain.cmake"

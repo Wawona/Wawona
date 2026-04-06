@@ -1,0 +1,627 @@
+name: Nix CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+
+env:
+  NIXPKGS_ALLOW_UNFREE: '1'
+  ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+  PUPPETEER_SKIP_DOWNLOAD: '1'
+
+jobs:
+  prepare-linux:
+    name: "Prepare Linux (x86_64) matrix"
+    runs-on: ubuntu-latest
+    outputs:
+      system: ${{ steps.matrix.outputs.system }}
+      targets: ${{ steps.matrix.outputs.targets }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reclaim Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
+          docker image prune -af || true
+          df -h
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          extra-conf: |
+            build-dir = /nix/build
+            sandbox = relaxed
+            allow-import-from-derivation = true
+            trusted-users = runner root
+            flake-registry = https://github.com/NixOS/flake-registry/archive/master.tar.gz
+
+      - name: Derive package matrix from flake
+        id: matrix
+        run: |
+          SYSTEM=$(nix eval --raw --impure --expr builtins.currentSystem)
+          TARGETS=$(nix eval --json --impure ".#packages.\"$SYSTEM\"" --apply builtins.attrNames || echo "[]")
+          if [ "$TARGETS" = "[]" ]; then
+            echo "::error::Failed to derive package matrix for $SYSTEM"
+            exit 1
+          fi
+          printf 'system=%s\n' "$SYSTEM" >> "$GITHUB_OUTPUT"
+          printf 'targets=%s\n' "$TARGETS" >> "$GITHUB_OUTPUT"
+
+      - name: Verify Android config consistency
+        run: python3 ./.github/scripts/verify-android-config.py
+
+      - name: Verify Android upgrade guardrails
+        run: python3 ./.github/scripts/verify-android-upgrade-guardrails.py
+
+      - name: Verify Android __noChroot policy
+        run: python3 ./.github/scripts/verify-android-nochroot.py
+
+      - name: Verify Android maintainability checkpoint
+        run: python3 ./.github/scripts/verify-android-maintainability.py
+      
+      - name: Pre-validate Flake
+        run: ./.github/scripts/nix-retry.sh nix flake check --print-build-logs
+
+  verify-linux:
+    name: "Linux (x86_64): flake check"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reclaim Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
+          docker image prune -af || true
+          df -h
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          extra-conf: |
+            build-dir = /nix/build
+            sandbox = relaxed
+            allow-import-from-derivation = true
+            trusted-users = runner root
+            flake-registry = https://github.com/NixOS/flake-registry/archive/master.tar.gz
+
+      - name: Run flake checks
+        run: ./.github/scripts/nix-retry.sh nix flake check --print-build-logs
+
+  build-linux:
+    name: "Linux (x86_64): ${{ matrix.target }}"
+    runs-on: ubuntu-latest
+    needs:
+      - prepare-linux
+      - verify-linux
+      - smoke-linux
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.prepare-linux.outputs.targets) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reclaim Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
+          docker image prune -af || true
+          df -h
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          extra-conf: |
+            build-dir = /nix/build
+            sandbox = relaxed
+            allow-import-from-derivation = true
+
+      - name: Build Target
+        run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux.outputs.system }}.${{ matrix.target }}" --print-build-logs
+
+  prepare-linux-arm64:
+    name: "Prepare Linux (arm64) matrix"
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      system: ${{ steps.matrix.outputs.system }}
+      targets: ${{ steps.matrix.outputs.targets }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reclaim Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
+          docker image prune -af || true
+          df -h
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          extra-conf: |
+            build-dir = /nix/build
+            sandbox = relaxed
+            allow-import-from-derivation = true
+            trusted-users = runner root
+            flake-registry = https://github.com/NixOS/flake-registry/archive/master.tar.gz
+
+      - name: Derive package matrix from flake
+        id: matrix
+        run: |
+          SYSTEM=$(nix eval --raw --impure --expr builtins.currentSystem)
+          TARGETS=$(nix eval --json --impure ".#packages.\"$SYSTEM\"" --apply builtins.attrNames || echo "[]")
+          if [ "$TARGETS" = "[]" ]; then
+            echo "::error::Failed to derive package matrix for $SYSTEM"
+            exit 1
+          fi
+          printf 'system=%s\n' "$SYSTEM" >> "$GITHUB_OUTPUT"
+          printf 'targets=%s\n' "$TARGETS" >> "$GITHUB_OUTPUT"
+
+      - name: Verify Android config consistency
+        run: python3 ./.github/scripts/verify-android-config.py
+
+      - name: Verify Android upgrade guardrails
+        run: python3 ./.github/scripts/verify-android-upgrade-guardrails.py
+
+      - name: Verify Android __noChroot policy
+        run: python3 ./.github/scripts/verify-android-nochroot.py
+
+      - name: Verify Android maintainability checkpoint
+        run: python3 ./.github/scripts/verify-android-maintainability.py
+
+      - name: Pre-validate Flake
+        run: ./.github/scripts/nix-retry.sh nix flake check --print-build-logs
+
+  verify-linux-arm64:
+    name: "Linux (arm64): flake check"
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reclaim Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
+          docker image prune -af || true
+          df -h
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          extra-conf: |
+            build-dir = /nix/build
+            sandbox = relaxed
+            allow-import-from-derivation = true
+            trusted-users = runner root
+            flake-registry = https://github.com/NixOS/flake-registry/archive/master.tar.gz
+
+      - name: Run flake checks
+        run: ./.github/scripts/nix-retry.sh nix flake check --print-build-logs
+
+  build-linux-arm64:
+    name: "Linux (arm64): ${{ matrix.target }}"
+    runs-on: ubuntu-24.04-arm
+    needs:
+      - prepare-linux-arm64
+      - verify-linux-arm64
+      - smoke-linux-arm64
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.prepare-linux-arm64.outputs.targets) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reclaim Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
+          docker image prune -af || true
+          df -h
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          extra-conf: |
+            build-dir = /nix/build
+            sandbox = relaxed
+            allow-import-from-derivation = true
+            trusted-users = runner root
+            flake-registry = https://github.com/NixOS/flake-registry/archive/master.tar.gz
+
+      - name: Build Target
+        run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux-arm64.outputs.system }}.${{ matrix.target }}" --print-build-logs
+
+  prepare-macos-arm64:
+    name: "Prepare macOS (arm64) matrix"
+    runs-on: macos-26
+    outputs:
+      system: ${{ steps.matrix.outputs.system }}
+      targets: ${{ steps.matrix.outputs.targets }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Active Xcode
+        run: |
+          XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XCODE_APP" ]; then
+            echo "::error::No Xcode installation found on this runner"
+            ls /Applications/Xcode*.app || true
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE_APP"
+          xcodebuild -version
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+            flake-registry = https://github.com/NixOS/flake-registry/archive/master.tar.gz
+
+      - name: Derive package matrix from flake
+        id: matrix
+        run: |
+          SYSTEM=$(nix eval --raw --impure --expr builtins.currentSystem)
+          TARGETS=$(nix eval --json --impure ".#packages.\"$SYSTEM\"" --apply builtins.attrNames || echo "[]")
+          TARGETS=$(TARGETS_JSON="$TARGETS" python3 - <<'PY'
+          import json, os
+          excluded_targets = {
+              "wawona-ios-ipa",
+              "wawona-ios-xcarchive",
+          }
+          targets = json.loads(os.environ["TARGETS_JSON"])
+          print(json.dumps([t for t in targets if t not in excluded_targets]))
+          PY
+          )
+          if [ "$TARGETS" = "[]" ]; then
+            echo "::error::Failed to derive package matrix for $SYSTEM"
+            exit 1
+          fi
+          printf 'system=%s\n' "$SYSTEM" >> "$GITHUB_OUTPUT"
+          printf 'targets=%s\n' "$TARGETS" >> "$GITHUB_OUTPUT"
+
+      - name: Verify Android config consistency
+        run: python3 ./.github/scripts/verify-android-config.py
+
+      - name: Verify Android upgrade guardrails
+        run: python3 ./.github/scripts/verify-android-upgrade-guardrails.py
+
+      - name: Verify Android __noChroot policy
+        run: python3 ./.github/scripts/verify-android-nochroot.py
+
+      - name: Verify Android maintainability checkpoint
+        run: python3 ./.github/scripts/verify-android-maintainability.py
+
+  verify-macos-arm64:
+    name: "macOS (arm64): flake check"
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Active Xcode
+        run: |
+          XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XCODE_APP" ]; then exit 1; fi
+          sudo xcode-select -s "$XCODE_APP"
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+
+      - name: Run flake checks
+        run: ./.github/scripts/nix-retry.sh nix flake check --print-build-logs
+
+  build-macos-arm64:
+    name: "macOS (arm64): ${{ matrix.target }}"
+    runs-on: macos-26
+    needs:
+      - prepare-macos-arm64
+      - verify-macos-arm64
+      - smoke-macos-arm64
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.prepare-macos-arm64.outputs.targets) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Active Xcode
+        run: |
+          XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XCODE_APP" ]; then exit 1; fi
+          sudo xcode-select -s "$XCODE_APP"
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+
+      - name: Build Target
+        run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-arm64.outputs.system }}.${{ matrix.target }}" --print-build-logs
+
+  prepare-macos-x86_64:
+    name: "Prepare macOS (x86_64) matrix"
+    runs-on: macos-15-intel
+    outputs:
+      system: ${{ steps.matrix.outputs.system }}
+      targets: ${{ steps.matrix.outputs.targets }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assert Intel runner architecture
+        run: |
+          ARCH=$(uname -m)
+          if [ "$ARCH" != "x86_64" ]; then
+            echo "::error::Expected x86_64 runner but got $ARCH"
+            exit 1
+          fi
+
+      - name: Select Active Xcode
+        run: |
+          XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XCODE_APP" ]; then exit 1; fi
+          sudo xcode-select -s "$XCODE_APP"
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+            flake-registry = https://github.com/NixOS/flake-registry/archive/master.tar.gz
+
+      - name: Derive package matrix from flake
+        id: matrix
+        run: |
+          TARGETS=$(nix eval --json --impure ".#packages.\"x86_64-darwin\"" --apply builtins.attrNames || echo "[]")
+          TARGETS=$(TARGETS_JSON="$TARGETS" python3 - <<'PY'
+          import json, os
+          excluded_targets = {
+              "wawona-ios-ipa",
+              "wawona-ios-xcarchive",
+          }
+          targets = json.loads(os.environ["TARGETS_JSON"])
+          print(json.dumps([t for t in targets if t not in excluded_targets]))
+          PY
+          )
+          if [ "$TARGETS" = "[]" ]; then
+            echo "::error::Failed to derive package matrix for x86_64-darwin"
+            exit 1
+          fi
+          printf 'system=%s\n' "x86_64-darwin" >> "$GITHUB_OUTPUT"
+          printf 'targets=%s\n' "$TARGETS" >> "$GITHUB_OUTPUT"
+
+      - name: Verify Android config consistency
+        run: python3 ./.github/scripts/verify-android-config.py
+
+      - name: Verify Android upgrade guardrails
+        run: python3 ./.github/scripts/verify-android-upgrade-guardrails.py
+
+      - name: Verify Android __noChroot policy
+        run: python3 ./.github/scripts/verify-android-nochroot.py
+
+      - name: Verify Android maintainability checkpoint
+        run: python3 ./.github/scripts/verify-android-maintainability.py
+
+  verify-macos-x86_64:
+    name: "macOS (x86_64): flake check"
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assert Intel runner architecture
+        run: |
+          ARCH=$(uname -m)
+          if [ "$ARCH" != "x86_64" ]; then
+            echo "::error::Expected x86_64 runner but got $ARCH"
+            exit 1
+          fi
+
+      - name: Select Active Xcode
+        run: |
+          XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XCODE_APP" ]; then exit 1; fi
+          sudo xcode-select -s "$XCODE_APP"
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+
+      - name: Run flake checks
+        run: ./.github/scripts/nix-retry.sh nix flake check --print-build-logs
+
+  build-macos-x86_64:
+    name: "macOS (x86_64): ${{ matrix.target }}"
+    runs-on: macos-15-intel
+    needs:
+      - prepare-macos-x86_64
+      - verify-macos-x86_64
+      - smoke-macos-x86_64
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.prepare-macos-x86_64.outputs.targets) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Active Xcode
+        run: |
+          XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XCODE_APP" ]; then exit 1; fi
+          sudo xcode-select -s "$XCODE_APP"
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+
+      - name: Build Target
+        run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-x86_64.outputs.system }}.${{ matrix.target }}" --print-build-logs
+
+  smoke-linux:
+    name: "Linux (x86_64): smoke gates"
+    runs-on: ubuntu-latest
+    needs:
+      - prepare-linux
+      - verify-linux
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reclaim Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
+          docker image prune -af || true
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          extra-conf: |
+            build-dir = /nix/build
+            sandbox = relaxed
+            allow-import-from-derivation = true
+      - name: Smoke Android Rust backend
+        run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux.outputs.system }}.wawona-android-backend" --print-build-logs
+      - name: Smoke Android CTS configure/build
+        run: |
+          ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux.outputs.system }}.vulkan-cts-android" --print-build-logs
+          ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux.outputs.system }}.gl-cts-android" --print-build-logs
+
+  smoke-linux-arm64:
+    name: "Linux (arm64): smoke gates"
+    runs-on: ubuntu-24.04-arm
+    needs:
+      - prepare-linux-arm64
+      - verify-linux-arm64
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reclaim Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
+          docker image prune -af || true
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          extra-conf: |
+            build-dir = /nix/build
+            sandbox = relaxed
+            allow-import-from-derivation = true
+      - name: Android toolchain fallback canary
+        run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux-arm64.outputs.system }}.android-toolchain-sanity" --print-build-logs
+      - name: Smoke Android Rust backend
+        run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux-arm64.outputs.system }}.wawona-android-backend" --print-build-logs
+      - name: Smoke Android CTS configure/build
+        run: |
+          ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux-arm64.outputs.system }}.vulkan-cts-android" --print-build-logs
+          ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux-arm64.outputs.system }}.gl-cts-android" --print-build-logs
+
+  smoke-macos-arm64:
+    name: "macOS (arm64): smoke gates"
+    runs-on: macos-26
+    needs:
+      - prepare-macos-arm64
+      - verify-macos-arm64
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Active Xcode
+        run: |
+          XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XCODE_APP" ]; then exit 1; fi
+          sudo xcode-select -s "$XCODE_APP"
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+      - name: Smoke Apple Rust backend
+        run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-arm64.outputs.system }}.wawona-ios-backend" --print-build-logs
+      - name: Smoke iOS CTS targets
+        run: |
+          ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-arm64.outputs.system }}.vulkan-cts-ios" --print-build-logs
+          ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-arm64.outputs.system }}.gl-cts-ios" --print-build-logs
+
+  smoke-macos-x86_64:
+    name: "macOS (x86_64): smoke gates"
+    runs-on: macos-15-intel
+    needs:
+      - prepare-macos-x86_64
+      - verify-macos-x86_64
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Active Xcode
+        run: |
+          XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XCODE_APP" ]; then exit 1; fi
+          sudo xcode-select -s "$XCODE_APP"
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+      - name: Smoke Apple Rust backend
+        run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-x86_64.outputs.system }}.wawona-ios-backend" --print-build-logs
+      - name: Smoke iOS CTS targets
+        run: |
+          ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-x86_64.outputs.system }}.vulkan-cts-ios" --print-build-logs
+          ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-x86_64.outputs.system }}.gl-cts-ios" --print-build-logs
+
+  ci-failure-baseline:
+    name: "CI Failure Baseline + Blocker Thresholds"
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    needs:
+      - build-linux
+      - build-linux-arm64
+      - build-macos-arm64
+      - build-macos-x86_64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate failure baseline artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 ./.github/scripts/ci-failure-baseline.py \
+            --repo "${{ github.repository }}" \
+            --workflow "Nix CI" \
+            --limit 11 \
+            --out ci-failure-baseline.md \
+            --out-json ci-failure-baseline.json
+
+      - name: Enforce blocker thresholds on this run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 ./.github/scripts/ci-failure-baseline.py \
+            --repo "${{ github.repository }}" \
+            --workflow "Nix CI" \
+            --limit 11 \
+            --out /tmp/ci-failure-baseline-current.md \
+            --out-json /tmp/ci-failure-baseline-current.json \
+            --enforce-run-id "${{ github.run_id }}" \
+            --blocker-signatures toolchain_path_missing neon_builtin_mismatch gradle_daemon gradle_oom \
+            --max-blocker-count 0
+
+      - name: Upload failure baseline artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-failure-baseline
+          path: |
+            ci-failure-baseline.md
+            ci-failure-baseline.json

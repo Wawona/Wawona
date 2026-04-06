@@ -48,9 +48,9 @@
     NSRect contentRect = NSMakeRect(100, 100, width, height);
     NSWindow *window =
         [[WWNWindow alloc] initWithContentRect:contentRect
-                                        styleMask:styleMask
-                                          backing:NSBackingStoreBuffered
-                                            defer:NO];
+                                     styleMask:styleMask
+                                       backing:NSBackingStoreBuffered
+                                         defer:NO];
 
     // Create and set WWNView as content view to handle input
     WWNView *contentView =
@@ -75,7 +75,10 @@
             }
         }
         if (!window) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
             window = [[UIWindow alloc] init];
+#pragma clang diagnostic pop
         }
         window.backgroundColor = [UIColor blackColor];
         [self.windowRegistry setObject:window forKey:@(windowId)];

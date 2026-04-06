@@ -19,6 +19,7 @@
 }:
 
 let
+  xcodeUtils = import ../../../utils/xcode-wrapper.nix { inherit lib pkgs; };
   fetchSource = common.fetchSource;
   waypipeSource = {
     source = "gitlab";
@@ -28,6 +29,7 @@ let
     sha256 = "sha256-Tbd/yY90yb2+/ODYVL3SudHaJCGJKatZ9FuGM2uAX+8=";
   };
   src = fetchSource waypipeSource;
+  cargoTarget = pkgs.stdenv.hostPlatform.rust.rustcTarget;
 
   # Dependencies - NO Vulkan, NO GBM, NO FFmpeg (video feature disabled)
   libwayland = buildModule.buildForMacOS "libwayland" { };
@@ -2262,7 +2264,6 @@ RUST_EOF
 
   nativeBuildInputs = with pkgs; [
     pkg-config
-    apple-sdk_26
     python3
     rustPlatform.bindgenHook
     perl
@@ -2272,6 +2273,7 @@ RUST_EOF
     libwayland
     zstd
     lz4
+    pkgs.libiconv
     # ffmpeg - not needed without video feature
     # macOS frameworks are linked automatically via #[link(name = "...", kind = "framework")]
   ];
@@ -2291,22 +2293,49 @@ RUST_EOF
     # "dmabuf" - ENABLED (above): patched to not require ash/Vulkan
   ];
 
+  CARGO_BUILD_TARGET = cargoTarget;
+
   preConfigure = ''
-    MACOS_SDK="${pkgs.apple-sdk_26}/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+    # Robust SDK detection using xcrun (gold standard for modern macOS)
+    MACOS_SDK=$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)
+    if [ ! -d "$MACOS_SDK" ]; then
+      # Fallback 1: Command Line Tools path
+      MACOS_SDK="/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk"
+    fi
+    if [ ! -d "$MACOS_SDK" ]; then
+      # Fallback 2: Legacy system path
+      MACOS_SDK="/System/Library/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+    fi
+    if [ ! -d "$MACOS_SDK" ]; then
+      # Fallback 3: Custom script
+      MACOS_SDK=$(${xcodeUtils.findXcodeScript}/bin/find-xcode)/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+    fi
+    if [ ! -d "$MACOS_SDK" ]; then
+      # Fallback 4: Global xcode-select
+      MACOS_SDK=$(/usr/bin/xcode-select -p)/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+    fi
+
+    if [ ! -d "$MACOS_SDK" ]; then
+      echo "ERROR: MacOSX SDK not found. Build cannot proceed." >&2
+      exit 1
+    fi
     export SDKROOT="$MACOS_SDK"
     export MACOSX_DEPLOYMENT_TARGET="26.0"
-    export DEVELOPER_DIR="${pkgs.apple-sdk_26}"
+    
+    # Isolate environment from Nix wrapper flags to prevent linker conflicts
+    unset DEVELOPER_DIR
+    export NIX_CFLAGS_COMPILE=""
+    export NIX_LDFLAGS=""
+    export CFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 -fPIC $CFLAGS"
+    export LDFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 $LDFLAGS"
 
-    export LIBRARY_PATH="${libwayland}/lib:${zstd}/lib:${lz4}/lib:$LIBRARY_PATH"
+    export LIBRARY_PATH="${libwayland}/lib:${zstd}/lib:${lz4}/lib:${pkgs.libiconv}/lib:$LIBRARY_PATH"
     export RUSTFLAGS="-A warnings $RUSTFLAGS"
     export PKG_CONFIG_PATH="${libwayland}/lib/pkgconfig:${zstd}/lib/pkgconfig:${lz4}/lib/pkgconfig:$PKG_CONFIG_PATH"
     export C_INCLUDE_PATH="${zstd}/include:${lz4}/include:$C_INCLUDE_PATH"
     export CPP_INCLUDE_PATH="${zstd}/include:${lz4}/include:$CPP_INCLUDE_PATH"
-    export BINDGEN_EXTRA_CLANG_ARGS="-I${zstd}/include -I${lz4}/include -isysroot $MACOS_SDK -mmacosx-version-min=26.0"
-    # Force rebuild v4
+    export BINDGEN_EXTRA_CLANG_ARGS="-I${zstd}/include -I${lz4}/include -isysroot $SDKROOT -mmacosx-version-min=15.0"
   '';
-
-  CARGO_BUILD_TARGET = "aarch64-apple-darwin";
 
   preBuild = ''
     # Force cargo to recompile by removing any cached artifacts
@@ -2315,15 +2344,13 @@ RUST_EOF
     echo "Source files: $(ls src/*.rs | head -5)"
   '';
 
-
-
   postInstall = ''
     # Ensure binary was installed (cross-compilation puts it in target/<triple>/release/)
     if [ ! -f "$out/bin/waypipe" ]; then
       echo "Binary not found in standard location, checking cross-compile target..."
       mkdir -p $out/bin
-      if [ -f "target/aarch64-apple-darwin/release/waypipe" ]; then
-        cp target/aarch64-apple-darwin/release/waypipe $out/bin/
+      if [ -f "target/${cargoTarget}/release/waypipe" ]; then
+        cp "target/${cargoTarget}/release/waypipe" $out/bin/
         echo "Installed waypipe from cross-compile target directory"
       else
         echo "ERROR: waypipe binary not found!"

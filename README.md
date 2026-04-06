@@ -1,5 +1,8 @@
 # Wawona
 
+[![Nix CI (Linux/Android)](https://github.com/aspauldingcode/Wawona/actions/workflows/nix.yml/badge.svg?branch=main&event=push&job=build-linux)](https://github.com/aspauldingcode/Wawona/actions/workflows/nix.yml)
+[![Nix CI (macOS/iOS)](https://github.com/aspauldingcode/Wawona/actions/workflows/nix.yml/badge.svg?branch=main&event=push&job=build-macos)](https://github.com/aspauldingcode/Wawona/actions/workflows/nix.yml)
+
 **Wawona** is a native Wayland Compositor for macOS, iOS, and Android.
 <div align="center">
   <img src="gallery/wawona_nested_plasma.png" alt="Wawona - Wayland Compositor Preview 1" width="800"/>
@@ -20,6 +23,14 @@
 2. Install Nix.
 3. Configure your environment (see below).
 4. Build with the Nix flake.
+
+### Build Output Monitor (`nom`)
+
+Wawona's flake includes [`nix-output-monitor`](https://github.com/maralorn/nix-output-monitor) as `.#nom` and in all dev shells.
+
+- Direct use: `nom build .#wawona-macos`
+- Via flake app: `nix run .#nom -- build .#wawona-macos`
+- In `nix develop`: use shortcuts `nb` (`nom build`), `nd` (`nom develop`), and `ns` (`nom shell`)
 
 ### Environment Configuration
 
@@ -51,32 +62,46 @@ See [Usage Guide](docs/usage.md) and [Settings Reference](docs/settings.md).
 
 I use Nix to maintain a clean repository free of vendored dependency source code while ensuring hermetic, reproducible builds across all platforms. Nix allows us to define precise build environments for iOS, macOS, and Android without polluting your system.
 
+#### Reproducibility & Usability
+
+- **Hermetic Builds**: Every dependency, from the Rust toolchain to system libraries like `libwayland` or `ffmpeg`, is pinned to exact versions in `flake.lock`. This guarantees that if it builds on CI, it will build on your machine.
+- **Zero-Config Environments**: Running `nix develop` (or using `direnv`) automatically enters a shell with all required compilers, headers, and auxiliary tools (like `xcodegen` or `android-sdk`) ready to go.
+- **Composable Modules**: The `flake.nix` exports clean, reusable packages and development shells. You can easily integrate Wawona into other NixOS configurations or use its individual modules as building blocks for your own Wayland projects.
+
 > _B`*`tch, I worked hard to make nix your ONLY dependency, use it!_
 
-#### Xcode Wrapper for Reproducible Builds
+#### Xcode And iOS Builds
 
-Cross-compiling for iOS requires Apple's proprietary SDKs and toolchains, which cannot be redistributed in the Nix store. To bridge this gap while maintaining reproducibility, we utilize a custom **Xcode Wrapper**.
+Cross-compiling for iOS still depends on Apple's proprietary SDKs and toolchains, so Wawona now follows the same high-level pattern as Nixpkgs `xcodeenv`: expose the host Xcode installation as an impure Nix package, build the Rust and native dependencies with Nix, then let `xcodebuild` package the app.
 
-This tool (`dependencies/utils/xcode-wrapper.nix`):
-1.  **Dynamically Locates Xcode**: It finds your local Xcode installation (via `xcode-select` or standard paths).
-2.  **Injects the Toolchain**: It exposes the official Apple clang compiler, linker, and SDKs to the Nix build sandbox in a controlled manner.
-3.  **Ensures Consistency**: By wrapping the system toolchain, we ensure that builds use the correct iOS SDKs (e.g., matching our target versions) regardless of where the project is checked out, provided Xcode is installed.
+The Apple integration layer now does four distinct jobs:
+1.  **Expose host Xcode into Nix** through a thin `xcodeenv`-style wrapper.
+2.  **Build Rust/static dependencies** such as `libwawona.a` and the iOS support libraries with Nix.
+3.  **Generate the Xcode project** with store-path references to those prebuilt artifacts.
+4.  **Package or launch the app** through first-class flake outputs.
 
-This hybrid approach gives us the best of both worlds: the reliability of Nix dependency management and the necessity of Apple's official build tools.
+This keeps the wrapper minimal and lets the same flow work on local machines and on GitHub macOS runners.
 
-##### Usage
+##### Common iOS outputs
 
-The wrapper is integrated automatically into our Nix build expressions for iOS targets. You do not need to invoke it manually.
+- `nix build .#wawona-ios-app-sim`
+- `nix build .#wawona-ios-app-device`
+- `nix build .#wawona-ios-ipa --impure`
+- `nix build .#wawona-ios-xcarchive --impure`
+- `nix run .#wawona-ios`
+- `nix run .#wawona-ios-project`
+- `nix run .#wawona-ios-provision`
 
-**Requirements:**
-1.  **Install Xcode**: Ensure Xcode is installed (via App Store or Apple Developer).
-2.  **Select Xcode**: Run `sudo xcode-select -s /Applications/Xcode.app` (or your custom path).
+##### Requirements
 
-**Advanced:**
-If you have multiple Xcode versions or a non-standard installation, you can force a specific path by setting the `XCODE_APP` environment variable before running Nix:
+1.  **Install Xcode**.
+2.  **Select the Xcode you want to use** with `xcode-select`, unless the default selected Xcode is already correct.
+3.  **For local release signing**, export `TEAM_ID` and build with `--impure` so the automatic-signing path can see it.
+
+Example:
 ```bash
-export XCODE_APP=/Applications/Xcode-14.app
-nix build .#waypipe-ios
+export TEAM_ID="YOURTEAMID"
+nix build .#wawona-ios-ipa --impure
 ```
 
 ### Contributing & Supporting

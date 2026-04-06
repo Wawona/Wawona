@@ -14,8 +14,8 @@
   sshpassVersion ? "unknown",
   waypipeVersion ? "unknown",
   waypipe,
-  kosmickrisp ? buildModule.macos.kosmickrisp,
   moltenvk ? pkgs.moltenvk or null,
+  xcodeProject ? null,
 }:
 
 let
@@ -30,11 +30,15 @@ let
           export XCODE_APP
           export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
           export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
+          # Tahoe (26.0) SDK discovery
           export SDKROOT="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk"
-          echo "Checked SDK at $SDKROOT"
           if [ ! -d "$SDKROOT" ]; then
-             echo "Warning: SDK 26.0 not found at $SDKROOT, trying default MacOSX.sdk"
-             export SDKROOT="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+             SDKROOT=$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)
+          fi
+          echo "Using SDK: $SDKROOT"
+          if [ ! -d "$SDKROOT" ]; then
+             echo "Error: SDK not found at $SDKROOT"
+             exit 1
           fi
         fi
       fi
@@ -242,139 +246,33 @@ in
     version = projectVersion;
     src = wawonaSrc;
 
+    outputs = [ "out" "project" ];
+
     nativeBuildInputs = with pkgs; [
       clang
       pkg-config
+      swift
 
       xcodeUtils.findXcodeScript
       rustBackend
     ];
 
     buildInputs = [
-      pkgs.pixman
+      (buildModule.buildForMacOS "pixman" { })
       pkgs.vulkan-headers
       pkgs.vulkan-loader
-      pkgs.libxkbcommon
+      (buildModule.buildForMacOS "xkbcommon" { })
       pkgs.openssl
       pkgs.zlib
-      buildModule.macos.libwayland
+      pkgs.libiconv
+      (buildModule.buildForMacOS "libwayland" { })
       rustBackend
       waypipe
     ];
 
-    # Ensure platform files exist when untracked in flake
     prePatch = ''
-      mkdir -p src/platform/macos
-      if [ ! -f src/platform/macos/WWNPopupWindow.m ]; then
-        cat > src/platform/macos/WWNPopupWindow.m <<'POPUP_M'
-//
-//  WWNPopupWindow.m
-//  WWN
-//
-
-#import "WWNPopupWindow.h"
-#import "../../util/WWNLog.h"
-#import "WWNWindow.h"
-
-@implementation WWNPopupWindow {
-  WWNNativeView *_parentView;
-  __weak NSWindow *_parentWindow;
-  CGSize _contentSize;
-}
-
-@synthesize contentView = _contentView;
-@synthesize parentView = _parentView;
-@synthesize onDismiss = _onDismiss;
-@synthesize windowId = _windowId;
-
-- (instancetype)initWithParentView:(WWNNativeView *)parentView {
-  self = [super init];
-  if (self) {
-    _parentView = parentView;
-    _contentSize = CGSizeMake(100, 100);
-
-    _window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 100, 100)
-                                          styleMask:NSWindowStyleMaskBorderless
-                                            backing:NSBackingStoreBuffered
-                                              defer:NO];
-
-    _window.backgroundColor = [NSColor clearColor];
-    _window.hasShadow = YES;
-    _window.opaque = NO;
-    _window.level = NSFloatingWindowLevel;
-    _window.releasedWhenClosed = NO;
-
-    WWNView *v = [[WWNView alloc] initWithFrame:_window.contentView.bounds];
-    v.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-    _window.contentView = v;
-    _contentView = v;
-  }
-  return self;
-}
-
-- (void)setWindowId:(uint64_t)windowId {
-  _windowId = windowId;
-  if ([_contentView isKindOfClass:[WWNView class]]) {
-    [(WWNView *)_contentView setOverrideWindowId:windowId];
-  }
-}
-
-- (void)setContentSize:(CGSize)size {
-  _contentSize = size;
-  [_window setContentSize:size];
-}
-
-- (void)showAtScreenPoint:(CGPoint)point {
-  NSRect frame =
-      NSMakeRect(point.x, point.y, _contentSize.width, _contentSize.height);
-  [_window setFrame:frame display:YES];
-  [_window orderFront:nil];
-  if (_parentView.window) {
-    _parentWindow = _parentView.window;
-    [_parentView.window addChildWindow:_window ordered:NSWindowAbove];
-    WWNLog("POPUP-WIN", @"Added popup %llu as child to parent window %p",
-           _windowId, _parentView.window);
-  }
-}
-
-- (void)dismiss {
-  if (_parentWindow) {
-    [_parentWindow removeChildWindow:_window];
-    _parentWindow = nil;
-  }
-  [_window orderOut:nil];
-  if (self.onDismiss) {
-    self.onDismiss();
-  }
-}
-
-@end
-POPUP_M
-      fi
-      if [ ! -f src/platform/macos/WWNPopupWindow.h ]; then
-        cat > src/platform/macos/WWNPopupWindow.h <<'POPUP_H'
-//
-//  WWNPopupWindow.h
-//  WWN
-//
-//  Borderless NSWindow-based popup for Wayland xdg_popup.
-//  Replaces NSPopover for proper popup semantics (render outside parent bounds).
-//
-
-#import "WWNPopupHost.h"
-#import <Foundation/Foundation.h>
-
-NS_ASSUME_NONNULL_BEGIN
-
-@interface WWNPopupWindow : NSObject <WWNPopupHost>
-
-@property(nonatomic, strong) NSWindow *window;
-@property(nonatomic, assign) uint64_t windowId;
-
-@end
-
-NS_ASSUME_NONNULL_END
-POPUP_H
+      if [ -f "src/platform/macos/WWNWindow.h" ]; then
+        sed -i 's/UP_H//g' src/platform/macos/WWNWindow.h
       fi
     '';
 
@@ -393,6 +291,18 @@ POPUP_H
       ${copyDeps "macos-dependencies"}
 
       export PKG_CONFIG_PATH="$PWD/macos-dependencies/libdata/pkgconfig:$PWD/macos-dependencies/lib/pkgconfig:$PKG_CONFIG_PATH"
+      
+      # Isolate environment from Nix wrapper flags to prevent linker conflicts
+      unset DEVELOPER_DIR
+      export NIX_CFLAGS_COMPILE=""
+      export NIX_LDFLAGS=""
+
+      # Bindgen and other target tools need to know about the sysroot via flags,
+      # but we unset the env vars to avoid leaking them into host tools.
+      export TARGET_CFLAGS="-isysroot $SDKROOT ${lib.concatStringsSep " " common.appleCFlags}"
+      export TARGET_LDFLAGS="-isysroot $SDKROOT ${lib.concatStringsSep " " common.appleCFlags}"
+
+      unset SDKROOT
     '';
 
     buildPhase = ''
@@ -477,9 +387,9 @@ GEN_HEADER
           
           if [[ "$src_file" == *.m ]]; then
             $CC -c "$src_file" \
-               -Isrc -Isrc/util -Isrc/platform/macos -Isrc/rendering -Isrc/input -Isrc/ui \
-               -Isrc/ui/Helpers \
-               -Isrc/logging -Isrc/launcher -Isrc/platform/macos \
+               -Isrc -Isrc/util -Isrc/platform/macos \
+               -Isrc/platform/macos/ui -Isrc/platform/macos/ui/Helpers \
+               -Idependencies/clients/wawona-shell/src \
                -Imacos-dependencies/include \
                -Imacos-dependencies/uniffi \
                -I. \
@@ -500,15 +410,15 @@ GEN_HEADER
                 -o "$obj_file"
           else
             $CC -c "$src_file" \
-               -Isrc -Isrc/util -Isrc/platform/macos -Isrc/rendering -Isrc/input -Isrc/ui \
-               -Isrc/ui/Helpers \
-               -Isrc/logging -Isrc/launcher -Isrc/platform/macos \
+               -Isrc -Isrc/util -Isrc/platform/macos \
+               -Isrc/platform/macos/ui -Isrc/platform/macos/ui/Helpers \
+               -Idependencies/clients/wawona-shell/src \
                -Imacos-dependencies/include \
                -Imacos-dependencies/uniffi \
                -I${rustBackend}/include \
                -fPIC \
+               $TARGET_CFLAGS \
                ${lib.concatStringsSep " " common.commonCFlags} \
-               ${lib.concatStringsSep " " common.appleCFlags} \
                ${lib.concatStringsSep " " common.releaseCFlags} \
                -DUSE_RUST_CORE=1 \
                -DWAWONA_VERSION=\"${projectVersion}\" \
@@ -540,7 +450,7 @@ GEN_HEADER
       # PHASE 3: Link everything together
       echo "🔗 Phase 3: Linking final binary..."
 
-      XKBCOMMON_LIBS=$(pkg-config --libs libxkbcommon 2>/dev/null || echo "-Lmacos-dependencies/lib -lxkbcommon")
+      XKBCOMMON_LIBS=$(pkg-config --libs xkbcommon 2>/dev/null || echo "-Lmacos-dependencies/lib -lxkbcommon")
       WAYLAND_LIBS=$(pkg-config --libs wayland-client wayland-server 2>/dev/null || echo "-Lmacos-dependencies/lib -lwayland-client -lwayland-server")
       OPENSSL_LIBS=$(pkg-config --libs openssl 2>/dev/null || echo "-Lmacos-dependencies/lib -lssl -lcrypto")
       ZLIB_LIBS=$(pkg-config --libs zlib 2>/dev/null || echo "-Lmacos-dependencies/lib -lz")
@@ -556,7 +466,7 @@ GEN_HEADER
          $OPENSSL_LIBS \
          $ZLIB_LIBS \
          ${rustBackend}/lib/libwawona.a \
-         ${lib.concatStringsSep " " common.appleCFlags} \
+         $TARGET_LDFLAGS \
          -fobjc-arc -flto -O3 \
          -ObjC \
          -Wl,-rpath,\$PWD/macos-dependencies/lib \
@@ -572,6 +482,16 @@ GEN_HEADER
             mkdir -p $out/Applications/Wawona.app/Contents/Resources
             
             cp Wawona $out/Applications/Wawona.app/Contents/MacOS/
+
+            # Populate project output
+            mkdir -p $project
+            # Copy sources (current build dir)
+            cp -r . "$project/"
+            chmod -R u+w $project
+            if [ -n "${toString xcodeProject}" ]; then
+              cp -r ${xcodeProject}/* "$project/"
+              chmod -R u+w $project
+            fi
             
             if command -v codesign >/dev/null 2>&1; then
               echo "Signing Wawona main binary..."
@@ -648,46 +568,9 @@ GEN_HEADER
                 find "$out/Applications/Wawona.app/Contents/Resources/bin" -type f -perm +111 -exec codesign --force --sign - --timestamp=none {} \; 2>/dev/null || true
             fi
 
-            # Bundle KosmicKrisp Vulkan driver (.dylib + ICD manifest)
-            echo "DEBUG: Bundling KosmicKrisp Vulkan driver..."
+            # Prepare directories for Vulkan drivers
             mkdir -p $out/Applications/Wawona.app/Contents/Frameworks
             mkdir -p $out/Applications/Wawona.app/Contents/Resources/vulkan/icd.d
-            VK_DYLIB=""
-            for f in ${kosmickrisp}/lib/libvulkan_kosmickrisp*.dylib; do
-              if [ -f "$f" ]; then
-                VK_DYLIB="$f"
-                break
-              fi
-            done
-            if [ -z "$VK_DYLIB" ]; then
-              for f in ${kosmickrisp}/lib/*.dylib; do
-                if [ -f "$f" ]; then
-                  VK_DYLIB="$f"
-                  break
-                fi
-              done
-            fi
-            if [ -n "$VK_DYLIB" ] && [ -f "$VK_DYLIB" ]; then
-              VK_DYLIB_NAME=$(basename "$VK_DYLIB")
-              cp "$VK_DYLIB" "$out/Applications/Wawona.app/Contents/Frameworks/$VK_DYLIB_NAME"
-              cat > "$out/Applications/Wawona.app/Contents/Resources/vulkan/icd.d/kosmickrisp_icd.json" <<VK_ICD_EOF
-            {
-                "file_format_version": "1.0.1",
-                "ICD": {
-                    "library_path": "../../Frameworks/$VK_DYLIB_NAME",
-                    "api_version": "1.3.0",
-                    "is_portability_driver": true
-                }
-            }
-VK_ICD_EOF
-              echo "Bundled KosmicKrisp: $VK_DYLIB_NAME"
-              if command -v codesign >/dev/null 2>&1; then
-                codesign --force --sign - --timestamp=none "$out/Applications/Wawona.app/Contents/Frameworks/$VK_DYLIB_NAME" 2>/dev/null || echo "Warning: Failed to sign KosmicKrisp dylib"
-              fi
-            else
-              echo "Warning: KosmicKrisp .dylib not found in ${kosmickrisp}/lib/"
-              ls -la ${kosmickrisp}/lib/ 2>/dev/null || true
-            fi
 
             # Bundle MoltenVK Vulkan driver if available
             ${lib.optionalString (moltenvk != null) ''

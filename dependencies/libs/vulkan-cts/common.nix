@@ -2,7 +2,9 @@
 # Used by macos.nix, ios.nix, android.nix
 { pkgs, version ? "1.4.5.0" }:
 let
-  sources = import ./sources.nix { inherit (pkgs) fetchurl fetchFromGitHub; };
+  sources = import ./sources.nix {
+    inherit (pkgs) fetchurl fetchFromGitHub libpng zlib;
+  };
 in
 rec {
   inherit version sources;

@@ -27,11 +27,9 @@ pkgs.stdenvNoCC.mkDerivation {
     cp -r . $out
     chmod -R u+w $out
     
-    # Only remove binaries from the source tree for mobile platforms to prevent cross-compilation errors.
-    # macOS needs these for utility tools like keyboard-test-client.
+    # Mobile platforms do not ship the standalone root binary entrypoint.
     if [ "${platform}" != "macos" ]; then
-      echo "⚠️  Removing binaries for mobile platform: ${platform}"
-      rm -rf $out/src/bin
+      echo "⚠️  Removing root binary entrypoint for mobile platform: ${platform}"
       rm -f $out/src/main.rs
     fi
 
@@ -42,7 +40,11 @@ pkgs.stdenvNoCC.mkDerivation {
       cp -r ${waypipeSrc}/* $out/waypipe/
       chmod -R u+w $out/waypipe
 
-      echo "✓ Waypipe source injected"
+      # Remove nested Cargo.lock and any stray .git to avoid workspace confusion
+      rm -f $out/waypipe/Cargo.lock
+      rm -rf $out/waypipe/.git
+
+      echo "✓ Waypipe source injected (nested lockfile removed)"
     fi
 
     # Patch root Cargo.toml version and Cargo.lock consistency
@@ -57,9 +59,9 @@ p = Path("Cargo.toml")
 if p.exists():
     s = p.read_text()
     
-    # Only restrict binaries for mobile platforms
+    # Only restrict root binary auto-discovery for mobile platforms
     if platform != "macos":
-        print(f"⚠️  Disabling binaries/autobins for mobile platform: {platform}")
+        print(f"⚠️  Disabling root binaries/autobins for mobile platform: {platform}")
         # Inject autobins = false to prevent binary auto-discovery
         s = re.sub(r'(\[package\]\n)', r'\1autobins = false\n', s)
         
@@ -105,31 +107,6 @@ if lock.exists():
     lock.write_text("".join(out))
     print(f"Patched wawona version to {wawona_version} in Cargo.lock")
 
-# Android uses OpenSSH (fork/exec), not libssh2. The shared Cargo.lock
-# lists ssh2 as a waypipe dep (from iOS patches). Strip it so
-# `cargo metadata --locked` doesn't require ssh2 in waypipe's Cargo.toml.
-if platform == "android":
-    lock = Path("Cargo.lock")
-    if lock.exists():
-        content = lock.read_text()
-        lines = content.splitlines(True)
-        new_lines = []
-        in_waypipe = False
-        in_deps = False
-        for line in lines:
-            s = line.strip()
-            if s == '[[package]]':
-                in_waypipe = False
-                in_deps = False
-            if s == 'name = "waypipe"':
-                in_waypipe = True
-            if in_waypipe and s == 'dependencies = [':
-                in_deps = True
-            if in_waypipe and in_deps and '"ssh2"' in s:
-                continue
-            new_lines.append(line)
-        lock.write_text("".join(new_lines))
-        print("Stripped ssh2 from waypipe deps in Cargo.lock (Android: OpenSSH only)")
 EOF
   '';
 }

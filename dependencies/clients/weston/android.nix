@@ -34,8 +34,8 @@ pkgs.runCommand "weston-android-13.0.0" { } ''
   }
   EOF
 
-  "$CC" --target="$TARGET" -fPIE -pie weston_main_stub.c -llog -landroid -o weston
-  "$CC" --target="$TARGET" -fPIE -pie weston_terminal_stub.c -llog -landroid -o weston-terminal
+  "$CC" --target="$TARGET" ${androidToolchain.androidNdkCflags} -fPIE -pie weston_main_stub.c -llog -landroid -o weston
+  "$CC" --target="$TARGET" ${androidToolchain.androidNdkCflags} -fPIE -pie weston_terminal_stub.c -llog -landroid -o weston-terminal
 
   mkdir -p "$out/lib/arm64-v8a"
   cp weston "$out/lib/arm64-v8a/libweston.so"

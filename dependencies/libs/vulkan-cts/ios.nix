@@ -3,19 +3,22 @@
   pkgs,
   buildPackages,
   buildModule,
-  buildTargets ? "deqp-vk",
+  buildTargets ? "deqp",
+  iosToolchain ? null,
 }:
 
 let
   common = import ./common.nix { inherit pkgs; };
   xcodeUtils = import ../../utils/xcode-wrapper.nix { inherit lib pkgs; };
-  kosmickrisp = buildModule.buildForIOS "kosmickrisp" { };
 in
 pkgs.stdenv.mkDerivation (finalAttrs: {
   pname = "vulkan-cts-ios";
   version = common.version;
 
   src = common.src;
+  
+  # Allow access to Xcode SDKs and toolchain
+  __noChroot = true;
 
   prePatch = common.prePatch + ''
     # vksCacheBuilder.cpp uses system() which is unavailable on iOS
@@ -51,7 +54,6 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
   ];
 
   buildInputs = [
-    kosmickrisp
     pkgs.vulkan-headers
     pkgs.vulkan-utility-libraries
     pkgs.zlib
@@ -60,17 +62,36 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
   ];
 
   preConfigure = ''
-    if [ -z "''${XCODE_APP:-}" ]; then
+    # Strip Nix stdenv's DEVELOPER_DIR to bypass any store fallbacks
+    unset DEVELOPER_DIR
+
+    # Robust SDK detection (defaulting to Simulator for CTS)
+    SDKROOT=$(${xcodeUtils.ensureIosSimSDK}/bin/ensure-ios-sim-sdk) || {
+      # Fallback: Default location
       XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode || true)
       if [ -n "$XCODE_APP" ]; then
         export XCODE_APP
         export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
-        export PATH="$PATH:$DEVELOPER_DIR/usr/bin"
         export SDKROOT="$DEVELOPER_DIR/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk"
       fi
+    }
+
+    if [ ! -d "$SDKROOT" ]; then
+      echo "ERROR: iOS SDK not found. Build cannot proceed." >&2
+      exit 1
     fi
+
+    if [ -z "''${DEVELOPER_DIR:-}" ]; then
+      DEVELOPER_DIR=$(echo "$SDKROOT" | sed -E 's|^(.*\.app/Contents/Developer)/.*$|\1|')
+      [ "$DEVELOPER_DIR" = "$SDKROOT" ] && DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
+      export DEVELOPER_DIR
+    fi
+
+    export SDKROOT
+    export PATH="$PATH:$DEVELOPER_DIR/usr/bin"
     export NIX_CFLAGS_COMPILE=""
     export NIX_CXXFLAGS_COMPILE=""
+    export NIX_LDFLAGS=""
 
     SIMULATOR_ARCH="arm64"
     if [ "$(uname -m)" = "x86_64" ]; then
@@ -93,8 +114,9 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
     set(CMAKE_CXX_COMPILER "$IOS_CXX")
     set(CMAKE_SYSROOT "$SDKROOT")
     set(CMAKE_OSX_SYSROOT "$SDKROOT")
-    set(CMAKE_C_FLAGS "-mios-simulator-version-min=15.0 -DGLES_SILENCE_DEPRECATION")
-    set(CMAKE_CXX_FLAGS "-mios-simulator-version-min=15.0 -DGLES_SILENCE_DEPRECATION")
+    set(CMAKE_C_FLAGS "-target $SIMULATOR_ARCH-apple-ios15.0-simulator -isysroot $SDKROOT -mios-simulator-version-min=15.0 -DGLES_SILENCE_DEPRECATION -Wno-deprecated-declarations")
+    set(CMAKE_CXX_FLAGS "-target $SIMULATOR_ARCH-apple-ios15.0-simulator -isysroot $SDKROOT -mios-simulator-version-min=15.0 -DGLES_SILENCE_DEPRECATION -Wno-deprecated-declarations")
+    set(CMAKE_EXE_LINKER_FLAGS "-framework CoreFoundation -framework QuartzCore -framework Metal -framework Foundation")
     set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
     set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
     set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
@@ -112,15 +134,29 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
     (lib.cmakeFeature "FETCHCONTENT_SOURCE_DIR_SHADERC" "${common.sources.shaderc-src}")
   ];
 
-  postInstall = ''
+  # Only build the selected targets to avoid linking errors in unnecessary GL components
+  ninjaFlags = [ buildTargets ];
+  dontUseCmakeInstall = true;
+
+  installPhase = ''
+    runHook preInstall
     mkdir -p $out/Applications $out/bin $out/archive-dir
+    # Avoid `ninja install` rebuilding unrelated helper targets (like cts-runner),
+    # which can fail for simulator-only configurations.
     if [ -d deqp.app ]; then
       cp -a deqp.app $out/Applications/
     else
       [ -f external/vulkancts/modules/vulkan/deqp-vk ] && cp -a external/vulkancts/modules/vulkan/deqp-vk $out/bin/ || true
+      [ -f external/openglcts/modules/glcts ] && cp -a external/openglcts/modules/glcts $out/bin/ || true
+      [ -f external/openglcts/modules/cts-runner ] && cp -a external/openglcts/modules/cts-runner $out/bin/ || true
       [ -d external/vulkancts/modules/vulkan/vulkan ] && cp -a external/vulkancts/modules/vulkan/vulkan $out/archive-dir/ || true
       [ -d external/vulkancts/modules/vulkan/vk-default ] && cp -a external/vulkancts/modules/vulkan/vk-default $out/ || true
+      [ -d external/openglcts/modules/gl_cts ] && cp -a external/openglcts/modules/gl_cts $out/archive-dir/ || true
+      [ -d external/openglcts/modules/gles2 ] && cp -a external/openglcts/modules/gles2 $out/archive-dir/ || true
+      [ -d external/openglcts/modules/gles3 ] && cp -a external/openglcts/modules/gles3 $out/archive-dir/ || true
+      [ -d external/openglcts/modules/gles31 ] && cp -a external/openglcts/modules/gles31 $out/archive-dir/ || true
     fi
+    runHook postInstall
   '';
 
   postFixup = ''
@@ -151,7 +187,10 @@ if [ -z "$SIM_UDID" ]; then
 fi
 
 xcrun simctl boot "$SIM_UDID" 2>/dev/null || true
-open -a Simulator 2>/dev/null || true
+# Launch Simulator app 
+SIM_APP_PATH=$(${xcodeUtils.findSimulatorScript}/bin/find-simulator)
+echo "Opening $SIM_APP_PATH..."
+open "$SIM_APP_PATH" 2>/dev/null || true
 echo "Installing Vulkan CTS (deqp.app) to simulator..."
 xcrun simctl install "$SIM_UDID" "$APP_PATH"
 echo "Launching Vulkan CTS..."

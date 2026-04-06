@@ -5,6 +5,7 @@
   common,
   buildModule,
   simulator ? false,
+  iosToolchain ? null,
 }:
 
 let
@@ -24,21 +25,42 @@ in
 pkgs.stdenv.mkDerivation {
   name = "expat-ios";
   inherit src patches;
+  __noChroot = true;
   nativeBuildInputs = with buildPackages; [
     cmake
     pkg-config
   ];
   buildInputs = [ ];
   preConfigure = ''
-        if [ -z "''${XCODE_APP:-}" ]; then
-          XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode || true)
-          if [ -n "$XCODE_APP" ]; then
-            export XCODE_APP
-            export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
-            export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
-            export SDKROOT="$DEVELOPER_DIR/Platforms/${if simulator then "iPhoneSimulator" else "iPhoneOS"}.platform/Developer/SDKs/${if simulator then "iPhoneSimulator" else "iPhoneOS"}.sdk"
+        # Robust SDK detection
+        if ${if simulator then "true" else "false"}; then
+          IOS_SDK=$(xcrun --sdk iphonesimulator --show-sdk-path 2>/dev/null || true)
+          if [ ! -d "$IOS_SDK" ]; then
+            IOS_SDK=$(${xcodeUtils.ensureIosSimSDK}/bin/ensure-ios-sim-sdk) || true
+          fi
+          if [ ! -d "$IOS_SDK" ]; then
+            XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode || true)
+            IOS_SDK="$XCODE_APP/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk"
+          fi
+        else
+          IOS_SDK=$(xcrun --sdk iphoneos --show-sdk-path 2>/dev/null || true)
+          if [ ! -d "$IOS_SDK" ]; then
+            XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode || true)
+            IOS_SDK="$XCODE_APP/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"
           fi
         fi
+
+        if [ ! -d "$IOS_SDK" ]; then
+          echo "ERROR: iOS SDK not found. Build cannot proceed." >&2
+          exit 1
+        fi
+        export SDKROOT="$IOS_SDK"
+        export IOS_SDK
+
+        # Find the Developer dir associated with this SDK
+        export DEVELOPER_DIR=$(echo "$IOS_SDK" | sed -E 's|^(.*\.app/Contents/Developer)/.*$|\1|')
+        [ "$DEVELOPER_DIR" = "$IOS_SDK" ] && DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
+        export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
         if [ -d expat ]; then
           cd expat
         fi
@@ -51,15 +73,24 @@ pkgs.stdenv.mkDerivation {
           IOS_CC="${buildPackages.clang}/bin/clang"
           IOS_CXX="${buildPackages.clang}/bin/clang++"
         fi
+        IOS_ARCH="${if simulator then pkgs.stdenv.hostPlatform.darwinArch else "arm64"}"
+        IOS_TARGET="${if simulator then "${pkgs.stdenv.hostPlatform.darwinArch}-apple-ios26.0-simulator" else "arm64-apple-ios26.0"}"
         cat > ios-toolchain.cmake <<EOF
     set(CMAKE_SYSTEM_NAME iOS)
-    set(CMAKE_OSX_ARCHITECTURES arm64)
+    set(CMAKE_OSX_ARCHITECTURES $IOS_ARCH)
     set(CMAKE_OSX_DEPLOYMENT_TARGET 26.0)
     set(CMAKE_C_COMPILER "$IOS_CC")
     set(CMAKE_CXX_COMPILER "$IOS_CXX")
-    set(CMAKE_C_FLAGS "-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0")
-    set(CMAKE_CXX_FLAGS "-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0")
+    set(CMAKE_C_COMPILER_TARGET "$IOS_TARGET")
+    set(CMAKE_CXX_COMPILER_TARGET "$IOS_TARGET")
+    set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+    set(CMAKE_C_FLAGS "-arch $IOS_ARCH -target $IOS_TARGET -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0")
+    set(CMAKE_CXX_FLAGS "-arch $IOS_ARCH -target $IOS_TARGET -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0")
+    set(CMAKE_ASM_FLAGS "-arch $IOS_ARCH -target $IOS_TARGET -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0")
+    set(CMAKE_EXE_LINKER_FLAGS "-arch $IOS_ARCH -target $IOS_TARGET -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0")
+    set(CMAKE_SHARED_LINKER_FLAGS "-arch $IOS_ARCH -target $IOS_TARGET -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0")
     set(CMAKE_SYSROOT "$SDKROOT")
+    set(CMAKE_OSX_SYSROOT "$SDKROOT")
     EOF
   '';
   cmakeFlags = [

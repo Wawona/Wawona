@@ -5,186 +5,57 @@
   common,
   buildModule,
   simulator ? false,
+  iosToolchain,
 }:
 
 let
   getBuildSystem = common.getBuildSystem;
   fetchSource = common.fetchSource;
-  xcodeUtils = import ../utils/xcode-wrapper.nix { inherit lib pkgs; };
+  xcodeUtils = iosToolchain;
+  setupIOSBuildEnv = xcodeUtils.mkIOSBuildEnv { inherit simulator; };
+  deploymentFlag = if simulator then "-mios-simulator-version-min=${xcodeUtils.deploymentTarget}" else "-miphoneos-version-min=${xcodeUtils.deploymentTarget}";
 in
 
 {
   buildForIOS =
     name: entry:
     if name == "libwayland" then
-      (import ../libs/libwayland/ios.nix) {
-        inherit
-          lib
-          pkgs
-          buildPackages
-          common
-          buildModule
-          simulator
-          ;
-      }
+      pkgs.callPackage ../libs/libwayland/ios.nix { inherit buildPackages common buildModule simulator iosToolchain; }
     else if name == "expat" then
-      (import ../libs/expat/ios.nix) {
-        inherit
-          lib
-          pkgs
-          buildPackages
-          common
-          buildModule
-          simulator
-          ;
-      }
+      pkgs.callPackage ../libs/expat/ios.nix { inherit buildPackages common buildModule simulator iosToolchain; }
     else if name == "libffi" then
-      (import ../libs/libffi/ios.nix) {
-        inherit
-          lib
-          pkgs
-          buildPackages
-          common
-          buildModule
-          simulator
-          ;
-      }
+      pkgs.callPackage ../libs/libffi/ios.nix { inherit buildPackages common buildModule simulator iosToolchain; }
     else if name == "libxml2" then
-      (import ../libs/libxml2/ios.nix) {
-        inherit
-          lib
-          pkgs
-          buildPackages
-          common
-          buildModule
-          simulator
-          ;
-      }
+      pkgs.callPackage ../libs/libxml2/ios.nix { inherit buildPackages common buildModule simulator iosToolchain; }
     else if name == "waypipe" then
-      (import ../libs/waypipe/ios.nix) {
-        inherit
-          lib
-          pkgs
-          buildPackages
-          common
-          buildModule
-          simulator
-          ;
-      }
-    else if name == "kosmickrisp" then
-      (import ../libs/kosmickrisp/ios.nix) {
-        inherit
-          lib
-          pkgs
-          buildPackages
-          common
-          buildModule
-          simulator
-          ;
-      }
+      pkgs.callPackage ../libs/waypipe/ios.nix { inherit buildPackages common buildModule simulator iosToolchain; }
     else if name == "zlib" then
-      (import ../libs/zlib/ios.nix) {
-        inherit
-          lib
-          pkgs
-          buildPackages
-          common
-          buildModule
-          simulator
-          ;
-      }
+      pkgs.callPackage ../libs/zlib/ios.nix { inherit buildPackages common buildModule simulator iosToolchain; }
     else if name == "zstd" then
-      (import ../libs/zstd/ios.nix) {
-        inherit
-          lib
-          pkgs
-          buildPackages
-          common
-          buildModule
-          simulator
-          ;
-      }
+      pkgs.callPackage ../libs/zstd/ios.nix { inherit buildPackages common buildModule simulator iosToolchain; }
     else if name == "lz4" then
-      (import ../libs/lz4/ios.nix) {
-        inherit
-          lib
-          pkgs
-          buildPackages
-          common
-          buildModule
-          simulator
-          ;
-      }
+      pkgs.callPackage ../libs/lz4/ios.nix { inherit buildPackages common buildModule simulator iosToolchain; }
     else if name == "ffmpeg" then
-      (import ../libs/ffmpeg/ios.nix) {
-        inherit
-          lib
-          pkgs
-          buildPackages
-          common
-          buildModule
-          simulator
-          ;
-      }
+      pkgs.callPackage ../libs/ffmpeg/ios.nix { inherit buildPackages common buildModule simulator iosToolchain; }
     else if name == "spirv-llvm-translator" then
-      (import ../libs/spirv-llvm-translator/ios.nix) {
-        inherit
-          lib
-          pkgs
-          buildPackages
-          common
-          buildModule
-          simulator
-          ;
-      }
+      pkgs.callPackage ../libs/spirv-llvm-translator/ios.nix { inherit buildPackages common buildModule simulator iosToolchain; }
     else if name == "spirv-tools" then
-      (import ../libs/spirv-tools/ios.nix) {
-        inherit
-          lib
-          pkgs
-          buildPackages
-          common
-          buildModule
-          simulator
-          ;
-      }
+      pkgs.callPackage ../libs/spirv-tools/ios.nix { inherit buildPackages common buildModule simulator iosToolchain; }
     else if name == "libclc" then
-      (import ../libs/libclc/ios.nix) {
-        inherit
-          lib
-          pkgs
-          buildPackages
-          common
-          buildModule
-          simulator
-          ;
-      }
+      pkgs.callPackage ../libs/libclc/ios.nix { inherit buildPackages common buildModule simulator iosToolchain; }
     else if name == "xkbcommon" then
-      (import ../libs/xkbcommon/ios.nix) {
-        inherit
-          lib
-          pkgs
-          buildPackages
-          common
-          buildModule
-          simulator
-          ;
-      }
+      pkgs.callPackage ../libs/xkbcommon/ios.nix { inherit buildPackages common buildModule simulator iosToolchain; }
     # Note: libssh2 removed - using OpenSSH binary instead
     else if name == "mbedtls" then
-      (import ../libs/mbedtls/ios.nix) {
-        inherit
-          lib
-          pkgs
-          buildPackages
-          common
-          buildModule
-          simulator
-          ;
-      }
+      pkgs.callPackage ../libs/mbedtls/ios.nix { inherit buildPackages common buildModule simulator iosToolchain; }
+    else if name == "sshpass" then
+      pkgs.callPackage ../libs/sshpass/ios.nix { inherit buildPackages common buildModule simulator iosToolchain; }
     else
       let
-        src = if entry.source == "system" then null else fetchSource entry;
+        src =
+          if !(entry ? source) then null
+          else if entry.source == "system" then null
+          else fetchSource entry;
         buildSystem = getBuildSystem entry;
         buildFlags = entry.buildFlags.ios or [ ];
         patches = lib.filter (p: p != null && builtins.pathExists (toString p)) (entry.patches.ios or [ ]);
@@ -200,43 +71,27 @@ in
           buildInputs = [ ];
           preConfigure = ''
                           if [ -z "''${XCODE_APP:-}" ]; then
-                            XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode || true)
-                            if [ -n "$XCODE_APP" ]; then
-                              export XCODE_APP
-                              export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
-                              export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
-                              # Use iPhoneSimulator SDK for simulator builds
-                              export SDKROOT="$DEVELOPER_DIR/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk"
-                            fi
-                          fi
+                          ${setupIOSBuildEnv}
                           if [ -d expat ]; then
                             cd expat
                           fi
                           export NIX_CFLAGS_COMPILE=""
                           export NIX_CXXFLAGS_COMPILE=""
-                          if [ -n "''${SDKROOT:-}" ] && [ -d "$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin" ]; then
-                            IOS_CC="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
-                            IOS_CXX="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
-                          else
-                            IOS_CC="${buildPackages.clang}/bin/clang"
-                            IOS_CXX="${buildPackages.clang}/bin/clang++"
-                          fi
-                          # Determine architecture for simulator
-                          SIMULATOR_ARCH="arm64"
-                          if [ "$(uname -m)" = "x86_64" ]; then
-                            SIMULATOR_ARCH="x86_64"
-                          fi
+                          export MACOS_SDK_PATH="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
                           cat > ios-toolchain.cmake <<EOF
             set(CMAKE_SYSTEM_NAME iOS)
-            set(CMAKE_OSX_ARCHITECTURES $SIMULATOR_ARCH)
-            set(CMAKE_OSX_DEPLOYMENT_TARGET 26.0)
-            set(CMAKE_C_COMPILER "$IOS_CC")
-            set(CMAKE_CXX_COMPILER "$IOS_CXX")
+            set(CMAKE_OSX_ARCHITECTURES $IOS_ARCH)
+            set(CMAKE_OSX_DEPLOYMENT_TARGET ${xcodeUtils.deploymentTarget})
+            set(CMAKE_C_COMPILER "$XCODE_CLANG")
+            set(CMAKE_CXX_COMPILER "$XCODE_CLANGXX")
             set(CMAKE_SYSROOT "$SDKROOT")
             set(CMAKE_OSX_SYSROOT "$SDKROOT")
-            set(CMAKE_C_FLAGS "-mios-simulator-version-min=26.0")
-            set(CMAKE_CXX_FLAGS "-mios-simulator-version-min=26.0")
+            set(CMAKE_C_FLAGS "${deploymentFlag}")
+            set(CMAKE_CXX_FLAGS "${deploymentFlag}")
             EOF
+
+            # Unset SDKROOT so it doesn't leak into host-side tool builds during cmake checks
+            unset SDKROOT
           '';
           cmakeFlags = [
             "-DCMAKE_TOOLCHAIN_FILE=ios-toolchain.cmake"
@@ -265,34 +120,16 @@ in
           ];
           buildInputs = [ ];
           preConfigure = ''
-                          if [ -z "''${XCODE_APP:-}" ]; then
-                            XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode || true)
-                            if [ -n "$XCODE_APP" ]; then
-                              export XCODE_APP
-                              export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
-                              export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
-                              # Use iPhoneSimulator SDK for simulator builds
-                              export SDKROOT="$DEVELOPER_DIR/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk"
-                            fi
-                          fi
+                          ${setupIOSBuildEnv}
                           export NIX_CFLAGS_COMPILE=""
                           export NIX_CXXFLAGS_COMPILE=""
-                          if [ -n "''${SDKROOT:-}" ] && [ -d "$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin" ]; then
-                            IOS_CC="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
-                            IOS_CXX="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
-                          else
-                            IOS_CC="${buildPackages.clang}/bin/clang"
-                            IOS_CXX="${buildPackages.clang}/bin/clang++"
-                          fi
-                          # Determine architecture for simulator
-                          SIMULATOR_ARCH="arm64"
-                          if [ "$(uname -m)" = "x86_64" ]; then
-                            SIMULATOR_ARCH="x86_64"
-                          fi
+                          export MACOS_SDK_PATH="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
                           cat > ios-cross-file.txt <<EOF
             [binaries]
-            c = '$IOS_CC'
-            cpp = '$IOS_CXX'
+            c = '$XCODE_CLANG'
+            cpp = '$XCODE_CLANGXX'
+            c_for_build = '${buildPackages.clang}/bin/clang'
+            cpp_for_build = '${buildPackages.clang}/bin/clang++'
             ar = 'ar'
             strip = 'strip'
             pkgconfig = '${buildPackages.pkg-config}/bin/pkg-config'
@@ -304,11 +141,14 @@ in
             endian = 'little'
 
             [built-in options]
-            c_args = ['-arch', '$SIMULATOR_ARCH', '-isysroot', '$SDKROOT', '-mios-simulator-version-min=26.0', '-fPIC']
-            cpp_args = ['-arch', '$SIMULATOR_ARCH', '-isysroot', '$SDKROOT', '-mios-simulator-version-min=26.0', '-fPIC']
-            c_link_args = ['-arch', '$SIMULATOR_ARCH', '-isysroot', '$SDKROOT', '-mios-simulator-version-min=26.0']
-            cpp_link_args = ['-arch', '$SIMULATOR_ARCH', '-isysroot', '$SDKROOT', '-mios-simulator-version-min=26.0']
+            c_args = ['-arch', '$IOS_ARCH', '-isysroot', '$SDKROOT', '${deploymentFlag}', '-fPIC']
+            cpp_args = ['-arch', '$IOS_ARCH', '-isysroot', '$SDKROOT', '${deploymentFlag}', '-fPIC']
+            c_link_args = ['-arch', '$IOS_ARCH', '-isysroot', '$SDKROOT', '${deploymentFlag}']
+            cpp_link_args = ['-arch', '$IOS_ARCH', '-isysroot', '$SDKROOT', '${deploymentFlag}']
             EOF
+
+            # Unset SDKROOT so it doesn't leak into host-side tool builds during meson checks
+            unset SDKROOT
           '';
           configurePhase = ''
             runHook preConfigure
@@ -354,38 +194,21 @@ in
           ];
           buildInputs = [ ];
           preConfigure = ''
-            if [ -z "''${XCODE_APP:-}" ]; then
-              XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode || true)
-              if [ -n "$XCODE_APP" ]; then
-                export XCODE_APP
-                export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
-                export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
-                # Use iPhoneSimulator SDK for simulator builds
-                export SDKROOT="$DEVELOPER_DIR/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk"
-              fi
-            fi
+            ${setupIOSBuildEnv}
             if [ ! -f ./configure ]; then
               autoreconf -fi || autogen.sh || true
             fi
             export NIX_CFLAGS_COMPILE=""
             export NIX_CXXFLAGS_COMPILE=""
-            if [ -n "''${SDKROOT:-}" ] && [ -d "$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin" ]; then
-              IOS_CC="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
-              IOS_CXX="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
-            else
-              IOS_CC="${buildPackages.clang}/bin/clang"
-              IOS_CXX="${buildPackages.clang}/bin/clang++"
-            fi
-            # Determine architecture for simulator
-            SIMULATOR_ARCH="arm64"
-            if [ "$(uname -m)" = "x86_64" ]; then
-              SIMULATOR_ARCH="x86_64"
-            fi
-            export CC="$IOS_CC"
-            export CXX="$IOS_CXX"
-            export CFLAGS="-arch $SIMULATOR_ARCH -isysroot $SDKROOT -mios-simulator-version-min=26.0 -fPIC"
-            export CXXFLAGS="-arch $SIMULATOR_ARCH -isysroot $SDKROOT -mios-simulator-version-min=26.0 -fPIC"
-            export LDFLAGS="-arch $SIMULATOR_ARCH -isysroot $SDKROOT -mios-simulator-version-min=26.0"
+            export MACOS_SDK_PATH="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+            export CC="$XCODE_CLANG"
+            export CXX="$XCODE_CLANGXX"
+            export CFLAGS="-arch $IOS_ARCH -isysroot $SDKROOT ${deploymentFlag} -fPIC"
+            export CXXFLAGS="-arch $IOS_ARCH -isysroot $SDKROOT ${deploymentFlag} -fPIC"
+            export LDFLAGS="-arch $IOS_ARCH -isysroot $SDKROOT ${deploymentFlag}"
+
+            # Unset SDKROOT so it doesn't leak into host-side tool builds during configure
+            unset SDKROOT
           '';
           configurePhase = ''
             runHook preConfigure

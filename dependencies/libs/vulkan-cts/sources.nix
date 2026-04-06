@@ -1,7 +1,7 @@
 # Pinned external dependencies for VK-GL-CTS (Vulkan Conformance Test Suite)
 # Extracted from upstream fetch_sources.py for vulkan-cts-1.4.5.0
 # See: https://github.com/KhronosGroup/VK-GL-CTS/blob/main/external/fetch_sources.py
-{ fetchurl, fetchFromGitHub }:
+{ fetchurl, fetchFromGitHub, libpng ? null, zlib ? null }:
 rec {
   amber = fetchFromGitHub {
     owner = "google";
@@ -71,15 +71,17 @@ rec {
     hash = "sha256-57XwqlsbDq3GOhxiTAyn9a8TOqhX1qQnGw7z0L22ho4=";
   };
 
-  zlib-src = fetchurl {
-    url = "https://github.com/madler/zlib/releases/download/v1.2.13/zlib-1.2.13.tar.gz";
-    sha256 = "b3a24de97a8fdbc835b9833169501030b8977031bcb54b3b3ac13740f846ab30";
-  };
+  zlib-src =
+    if zlib != null && zlib ? src then zlib.src else fetchurl {
+      url = "https://github.com/madler/zlib/releases/download/v1.2.13/zlib-1.2.13.tar.gz";
+      sha256 = "b3a24de97a8fdbc835b9833169501030b8977031bcb54b3b3ac13740f846ab30";
+    };
 
-  libpng-src = fetchurl {
-    url = "https://github.com/pnggroup/libpng/archive/refs/tags/v1.6.50.tar.gz";
-    sha256 = "71158e53cfdf2877bc99bcab33641d78df3f48e6e0daad030afe9cb8c031aa46";
-  };
+  libpng-src =
+    if libpng != null && libpng ? src then libpng.src else fetchurl {
+      url = "https://github.com/pnggroup/libpng/archive/refs/tags/v1.6.50.tar.gz";
+      sha256 = "71158e53cfdf2877bc99bcab33641d78df3f48e6e0daad030afe9cb8c031aa46";
+    };
 
   shaderc-src = fetchFromGitHub {
     owner = "google";
@@ -89,6 +91,25 @@ rec {
   };
 
   prePatch = ''
+    copy_or_extract() {
+      local src="$1"
+      local dst="$2"
+      mkdir -p "$dst"
+      if [ -d "$src" ]; then
+        cp -r "$src"/. "$dst"/
+      elif [ -f "$src" ]; then
+        case "$src" in
+          *.tar.gz|*.tgz) tar -xzf "$src" -C "$dst" --strip-components=1 ;;
+          *.tar.xz|*.txz) tar -xJf "$src" -C "$dst" --strip-components=1 ;;
+          *.tar.bz2|*.tbz2) tar -xjf "$src" -C "$dst" --strip-components=1 ;;
+          *) tar -xf "$src" -C "$dst" --strip-components=1 ;;
+        esac
+      else
+        echo "ERROR: expected source path '$src' to be a file or directory" >&2
+        exit 1
+      fi
+    }
+
     mkdir -p external/renderdoc/src
     cp -r ${renderdoc} external/renderdoc/src/renderdoc_app.h
 
@@ -106,8 +127,8 @@ rec {
 
     # zlib and libpng (required for iOS/Android when FindPackage doesn't find system libs)
     mkdir -p external/zlib external/libpng/src
-    tar -xzf ${zlib-src} -C external/zlib --strip-components=1
-    tar -xzf ${libpng-src} -C external/libpng/src --strip-components=1
+    copy_or_extract ${zlib-src} external/zlib
+    copy_or_extract ${libpng-src} external/libpng/src
     # zlib 1.2.13 uses cmake_minimum_required(VERSION 2.4.4); modern CMake requires 3.5+
     sed 's/cmake_minimum_required(VERSION 2.4.4)/cmake_minimum_required(VERSION 3.5)/' external/zlib/CMakeLists.txt > external/zlib/CMakeLists.txt.tmp && mv external/zlib/CMakeLists.txt.tmp external/zlib/CMakeLists.txt
     if [ -f external/libpng/src/scripts/pnglibconf.h.prebuilt ]; then

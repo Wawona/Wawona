@@ -133,17 +133,6 @@ fn main() {
     println!("cargo:warning=FFmpeg not required on Android");
 }
 FFMPEG_EOF
-  # Remove bindgen from build-dependencies if present (not in vendor dir)
-  if [ -f "wrap-ffmpeg/Cargo.toml" ]; then
-    python3 <<'PY'
-from pathlib import Path
-p = Path("wrap-ffmpeg/Cargo.toml")
-s = p.read_text()
-import re
-s = re.sub(r'bindgen\s*=\s*"[^"]*"\n?', '', s)
-p.write_text(s)
-PY
-  fi
 fi
 
 # shaders stub

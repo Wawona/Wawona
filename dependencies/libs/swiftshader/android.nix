@@ -4,11 +4,11 @@
   buildPackages,
   common,
   buildModule,
+  androidToolchain ? (import ../../toolchains/android.nix { inherit lib pkgs; }),
 }:
 
 let
   fetchSource = common.fetchSource;
-  androidToolchain = import ../../toolchains/android.nix { inherit lib pkgs; };
   # SwiftShader source - fetch from GitHub
   # Using same source structure as nixpkgs
   # SwiftShader uses git tags for versions
@@ -16,8 +16,23 @@ let
     owner = "google";
     repo = "swiftshader";
     rev = "3d536c0fc62b1cdea0f78c3c38d79be559855b88"; # Latest commit from nixpkgs
-    hash = "sha256-8GcDyN+t6bUG0TfxdT++MBL3W5JShrn7CabROIqfXm4="; # With submodules (glslang, googletest)
-    fetchSubmodules = true; # SwiftShader requires glslang and googletest submodules
+    # We don't use fetchSubmodules or leaveDotGit because llvm-project and the full git
+    # history cause "No space left on device" in the Nix sandbox.
+    hash = "sha256-mlKoTdZgqfMzKGB7dUaETCd6NIQm5dne59w09/0bnGE=";
+  };
+
+  # Manually fetch required submodules to avoid huge git clones
+  glslangSrc = pkgs.fetchFromGitHub {
+    owner = "KhronosGroup";
+    repo = "glslang";
+    rev = "2b2523fb951f63f072cfba514c26f2feea5f4329"; # from SwiftShader/.gitmodules
+    hash = "sha256-47vN1gTxRa3MU9avmxVJ/E7MeR9cnjJiheCFBPdci1U=";
+  };
+  googletestSrc = pkgs.fetchFromGitHub {
+    owner = "google";
+    repo = "googletest";
+    rev = "e2239ee6043f73722e7aa812a459f54a28552929"; # from SwiftShader/.gitmodules
+    hash = "sha256-SjlJxushfry13RGA7BCjYC9oZqV4z6x8dOiHfl/wpF0=";
   };
 in
 pkgs.stdenv.mkDerivation {
@@ -28,11 +43,11 @@ pkgs.stdenv.mkDerivation {
     # Fix CMake version requirements in submodules
     # marl's CMakeLists.txt requires CMake 3.5, update to work with current CMake
     if [ -f third_party/marl/CMakeLists.txt ]; then
-      sed -i.bak 's/cmake_minimum_required(VERSION [0-9.]*)/cmake_minimum_required(VERSION 3.5)/' third_party/marl/CMakeLists.txt || true
+      sed -i.bak 's/cmake_minimum_required(VERSION [0-9.]*)/cmake_minimum_required(VERSION 3.5)/' third_party/marl/CMakeLists.txt
     fi
     # Fix googletest CMake version requirement
     if [ -f third_party/googletest/CMakeLists.txt ]; then
-      sed -i.bak 's/cmake_minimum_required(VERSION [0-9.]*)/cmake_minimum_required(VERSION 3.5)/' third_party/googletest/CMakeLists.txt || true
+      sed -i.bak 's/cmake_minimum_required(VERSION [0-9.]*)/cmake_minimum_required(VERSION 3.5)/' third_party/googletest/CMakeLists.txt
     fi
 
     # Disable tests and samples - we're building Vulkan ICD only
@@ -40,9 +55,9 @@ pkgs.stdenv.mkDerivation {
     if [ -f CMakeLists.txt ]; then
       # Comment out add_subdirectory calls for tests and samples
       # We keep googletest/glslang submodules but disable tests that use them
-      sed -i.bak '/^[[:space:]]*if.*SWIFTSHADER_BUILD_TESTS/,/^[[:space:]]*endif/s/^/# DISABLED: Tests disabled /' CMakeLists.txt || true
-      sed -i.bak '/add_subdirectory(tests/s/^/# DISABLED: Tests disabled /' CMakeLists.txt || true
-      sed -i.bak '/add_subdirectory(samples/s/^/# DISABLED: Samples disabled /' CMakeLists.txt || true
+      sed -i.bak '/^[[:space:]]*if.*SWIFTSHADER_BUILD_TESTS/,/^[[:space:]]*endif/s/^/# DISABLED: Tests disabled /' CMakeLists.txt
+      sed -i.bak '/add_subdirectory(tests/s/^/# DISABLED: Tests disabled /' CMakeLists.txt
+      sed -i.bak '/add_subdirectory(samples/s/^/# DISABLED: Samples disabled /' CMakeLists.txt
     fi
   '';
   nativeBuildInputs = with buildPackages; [
@@ -50,6 +65,8 @@ pkgs.stdenv.mkDerivation {
     pkg-config
     ninja
     python3
+    git
+    cacert
   ];
   buildInputs = [ ];
   preConfigure = ''
@@ -63,11 +80,11 @@ pkgs.stdenv.mkDerivation {
     fi
     export ANDROID_TOOLCHAIN_FILE
 
-    # Initialize git submodules (SwiftShader uses googletest submodule)
-    # Note: In Nix sandbox, git might not work, so we handle this gracefully
-    if [ -d .git ]; then
-      git submodule update --init --recursive || echo "Warning: Could not initialize submodules (may be OK in Nix sandbox)"
-    fi
+    # Copy manually fetched submodules into place
+    rm -rf third_party/glslang third_party/googletest
+    cp -r ${glslangSrc} third_party/glslang
+    cp -r ${googletestSrc} third_party/googletest
+    chmod -R u+w third_party/glslang third_party/googletest
   '';
   configurePhase = ''
     runHook preConfigure
@@ -142,9 +159,20 @@ pkgs.stdenv.mkDerivation {
       mkdir -p $out/lib
       cp src/Vulkan/libvk_swiftshader.so $out/lib/
       echo "✓ Copied libvk_swiftshader.so from src/Vulkan/"
+    elif [ -f libvk_swiftshader.dylib ]; then
+      mkdir -p $out/lib
+      cp libvk_swiftshader.dylib $out/lib/
+      echo "✓ Copied libvk_swiftshader.dylib to $out/lib/"
+    elif [ -f src/Vulkan/libvk_swiftshader.dylib ]; then
+      mkdir -p $out/lib
+      cp src/Vulkan/libvk_swiftshader.dylib $out/lib/
+      echo "✓ Copied libvk_swiftshader.dylib from src/Vulkan/"
     else
       echo "Warning: libvk_swiftshader.so not found in build directory"
       find . -name "libvk_swiftshader.so" -type f || echo "No libvk_swiftshader.so found"
+      set +e
+      find . -name "libvk_swiftshader.dylib" -type f
+      set -e
     fi
 
     # Copy ICD JSON manifest if it exists
@@ -164,30 +192,41 @@ pkgs.stdenv.mkDerivation {
   postInstall = ''
     echo "=== Installing SwiftShader Vulkan ICD for Android ==="
 
-    # SwiftShader installs libvk_swiftshader.so to lib/
-    # Verify the library exists
+    # SwiftShader installs libvk_swiftshader.so to lib/ on Linux builders.
+    # On Darwin hosts this may end up as libvk_swiftshader.dylib.
+    # Verify at least one Vulkan ICD library artifact exists.
     if [ -f "$out/lib/libvk_swiftshader.so" ]; then
       echo "✓ Found libvk_swiftshader.so"
       # Verify it's an Android arm64 library
-      file "$out/lib/libvk_swiftshader.so" || true
+      file "$out/lib/libvk_swiftshader.so"
+    elif [ -f "$out/lib/libvk_swiftshader.dylib" ]; then
+      echo "✓ Found libvk_swiftshader.dylib"
+      file "$out/lib/libvk_swiftshader.dylib"
     else
-      echo "Warning: libvk_swiftshader.so not found in $out/lib/"
-      ls -la "$out/lib/" || true
+      echo "missing libvk_swiftshader.so/libvk_swiftshader.dylib"
+      exit 1
     fi
 
     # Copy ICD JSON manifest if it exists (SwiftShader may generate this)
     if [ -f "$out/share/vulkan/icd.d/vk_swiftshader_icd.json" ]; then
       mkdir -p $out/lib/vulkan/icd.d
-      cp "$out/share/vulkan/icd.d/vk_swiftshader_icd.json" "$out/lib/vulkan/icd.d/" || true
+      cp "$out/share/vulkan/icd.d/vk_swiftshader_icd.json" "$out/lib/vulkan/icd.d/"
     fi
 
     # Copy any Vulkan layers if built
-    if [ -d "$out/lib/libVkLayer"* ]; then
+    shopt -s nullglob
+    vk_layers=("$out/lib"/libVkLayer*.so)
+    if [ "''${#vk_layers[@]}" -gt 0 ]; then
       mkdir -p $out/lib/vulkan
-      cp -r "$out/lib"/libVkLayer*.so "$out/lib/vulkan/" 2>/dev/null || true
+      cp -r "''${vk_layers[@]}" "$out/lib/vulkan/"
     fi
+    shopt -u nullglob
 
     echo "SwiftShader Vulkan ICD installation complete"
-    echo "Library location: $out/lib/libvk_swiftshader.so"
+    if [ -f "$out/lib/libvk_swiftshader.so" ]; then
+      echo "Library location: $out/lib/libvk_swiftshader.so"
+    else
+      echo "Library location: $out/lib/libvk_swiftshader.dylib"
+    fi
   '';
 }

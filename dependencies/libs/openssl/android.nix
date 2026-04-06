@@ -4,10 +4,12 @@
   buildPackages,
   common,
   buildModule,
+  androidToolchain,
+  ...
 }:
 
 let
-  androidToolchain = import ../../toolchains/android.nix { inherit lib pkgs; };
+  fetchSource = common.fetchSource;
 in
 pkgs.stdenv.mkDerivation {
   name = "openssl-android";
@@ -21,16 +23,18 @@ pkgs.stdenv.mkDerivation {
 
   configurePhase = ''
     runHook preConfigure
+    patchShebangs .
+    export CROSS_COMPILE=""
     export CC="${androidToolchain.androidCC}"
     export AR="${androidToolchain.androidAR}"
     export RANLIB="${androidToolchain.androidRANLIB}"
-    export CFLAGS="--target=${androidToolchain.androidTarget} -fPIC"
-    export LDFLAGS="--target=${androidToolchain.androidTarget}"
+    export PATH="${buildPackages.stdenv.cc}/bin:$PATH"
     export ANDROID_NDK_ROOT="${androidToolchain.androidndkRoot}"
-    export PATH="${androidToolchain.androidndkRoot}/toolchains/llvm/prebuilt/darwin-x86_64/bin:$PATH"
-    ./Configure android-arm64 no-shared no-dso no-tests \
+    # Note: hostTag is handled in toolchains/android.nix
+    ${buildPackages.perl}/bin/perl ./Configure linux-aarch64 \
+      no-shared no-dso no-tests no-apps no-docs \
       --prefix=$out --openssldir=$out/etc/ssl \
-      -D__ANDROID_API__=${toString androidToolchain.androidNdkApiLevel}
+      CC="$CC"
     runHook postConfigure
   '';
 
@@ -45,6 +49,4 @@ pkgs.stdenv.mkDerivation {
     make install_sw install_ssldirs
     runHook postInstall
   '';
-
-  __noChroot = true;
 }

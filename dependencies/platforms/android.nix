@@ -4,6 +4,8 @@
   buildPackages,
   common,
   buildModule,
+  androidSDK ? null,
+  androidToolchain ? (import ../toolchains/android.nix { inherit lib pkgs androidSDK; }),
 }:
 
 let
@@ -22,6 +24,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "expat" then
@@ -32,6 +35,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "libffi" then
@@ -42,6 +46,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "libxml2" then
@@ -52,6 +57,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "waypipe" then
@@ -62,6 +68,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "swiftshader" then
@@ -72,6 +79,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "zstd" then
@@ -82,6 +90,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "lz4" then
@@ -92,6 +101,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "ffmpeg" then
@@ -102,6 +112,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "xkbcommon" then
@@ -112,6 +123,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "openssl" then
@@ -122,6 +134,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "libssh2" then
@@ -132,6 +145,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "mbedtls" then
@@ -142,6 +156,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "openssh" then
@@ -152,6 +167,7 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else if name == "sshpass" then
@@ -162,11 +178,11 @@ in
           buildPackages
           common
           ;
+        inherit androidToolchain;
         buildModule = buildModule;
       }
     else
       let
-        androidToolchain = import ../toolchains/android.nix { inherit lib pkgs; };
         src = fetchSource entry;
         buildSystem = getBuildSystem entry;
         buildFlags = entry.buildFlags.android or [ ];
@@ -192,9 +208,17 @@ in
             export AR="${androidToolchain.androidAR}"
             export STRIP="${androidToolchain.androidSTRIP}"
             export RANLIB="${androidToolchain.androidRANLIB}"
-            export CFLAGS="--target=${androidToolchain.androidTarget} -fPIC"
-            export CXXFLAGS="--target=${androidToolchain.androidTarget} -fPIC"
-            export LDFLAGS="--target=${androidToolchain.androidTarget}"
+            export CFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC ${androidToolchain.androidNdkCflags}"
+            export CXXFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC ${androidToolchain.androidNdkCflags}"
+            export LDFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -L${androidToolchain.androidNdkAbiLibDir}"
+            _ANDROID_LINK_FLAGS="--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -L${androidToolchain.androidNdkAbiLibDir}"
+            cmakeFlagsArray+=(
+              "-DCMAKE_C_FLAGS:STRING=--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC ${androidToolchain.androidNdkCflags}"
+              "-DCMAKE_CXX_FLAGS:STRING=--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -fPIC ${androidToolchain.androidNdkCflags}"
+              "-DCMAKE_EXE_LINKER_FLAGS:STRING=$_ANDROID_LINK_FLAGS"
+              "-DCMAKE_SHARED_LINKER_FLAGS:STRING=$_ANDROID_LINK_FLAGS"
+              "-DCMAKE_MODULE_LINKER_FLAGS:STRING=$_ANDROID_LINK_FLAGS"
+            )
           '';
           cmakeFlags = [
             "-DCMAKE_SYSTEM_NAME=Android"
@@ -202,8 +226,6 @@ in
             "-DCMAKE_ANDROID_NDK=${androidToolchain.androidndkRoot}"
             "-DCMAKE_C_COMPILER=${androidToolchain.androidCC}"
             "-DCMAKE_CXX_COMPILER=${androidToolchain.androidCXX}"
-            "-DCMAKE_C_FLAGS=--target=${androidToolchain.androidTarget}"
-            "-DCMAKE_CXX_FLAGS=--target=${androidToolchain.androidTarget}"
           ]
           ++ buildFlags;
         }
@@ -235,15 +257,21 @@ in
           buildInputs = [ ];
           preConfigure = ''
             if [ ! -f ./configure ]; then
-              autoreconf -fi || autogen.sh || true
+              if [ -x ./autogen.sh ]; then
+                autoreconf -fi || ./autogen.sh
+              else
+                autoreconf -fi
+              fi
             fi
+            [ -f ./configure ] || { echo "configure script is missing for ${name}"; exit 1; }
             export CC="${androidToolchain.androidCC} --target=${androidToolchain.androidTarget}"
             export CXX="${androidToolchain.androidCXX} --target=${androidToolchain.androidTarget}"
             export AR="${androidToolchain.androidAR}"
             export STRIP="${androidToolchain.androidSTRIP}"
             export RANLIB="${androidToolchain.androidRANLIB}"
-            export CFLAGS="-fPIC"
-            export CXXFLAGS="-fPIC"
+            export CFLAGS="-fPIC --sysroot=${androidToolchain.androidNdkSysroot} ${androidToolchain.androidNdkCflags}"
+            export CXXFLAGS="-fPIC --sysroot=${androidToolchain.androidNdkSysroot} ${androidToolchain.androidNdkCflags}"
+            export LDFLAGS="--target=${androidToolchain.androidTarget} --sysroot=${androidToolchain.androidNdkSysroot} -L${androidToolchain.androidNdkAbiLibDir}"
           '';
           configurePhase = ''
             runHook preConfigure
@@ -259,19 +287,19 @@ in
           '';
           installPhase = ''
             runHook preInstall
-            make install DESTDIR=$out || make install-data-am install-exec-am DESTDIR=$out || true
+            make install DESTDIR=$out || make install-data-am install-exec-am DESTDIR=$out
             if [ -d "$out/usr" ]; then
               if [ -d "$out/usr/lib" ]; then
                 mkdir -p $out/lib
-                cp -r $out/usr/lib/* $out/lib/ 2>/dev/null || true
+                cp -r $out/usr/lib/. $out/lib/
               fi
               if [ -d "$out/usr/lib/pkgconfig" ]; then
                 mkdir -p $out/lib/pkgconfig
-                cp -r $out/usr/lib/pkgconfig/* $out/lib/pkgconfig/ || true
+                cp -r $out/usr/lib/pkgconfig/. $out/lib/pkgconfig/
               fi
               if [ -d "$out/usr/include" ]; then
                 mkdir -p $out/include
-                cp -r $out/usr/include/* $out/include/ || true
+                cp -r $out/usr/include/. $out/include/
               fi
             fi
             runHook postInstall

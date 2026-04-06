@@ -4,12 +4,10 @@
   buildPackages,
   common,
   buildModule,
+  androidToolchain ? (import ../../toolchains/android.nix { inherit lib pkgs; }),
 }:
 
 let
-  androidToolchain = import ../../toolchains/android.nix { inherit lib pkgs; };
-  NDK_SYSROOT = "${androidToolchain.androidndkRoot}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot";
-  NDK_LIB_PATH = "${NDK_SYSROOT}/usr/lib/aarch64-linux-android/${toString androidToolchain.androidNdkApiLevel}";
   src = pkgs.fetchFromGitHub {
     owner = "libssh2";
     repo = "libssh2";
@@ -44,8 +42,6 @@ set(CMAKE_C_COMPILER "${androidToolchain.androidCC}")
 set(CMAKE_CXX_COMPILER "${androidToolchain.androidCXX}")
 set(CMAKE_AR "${androidToolchain.androidAR}")
 set(CMAKE_RANLIB "${androidToolchain.androidRANLIB}")
-set(CMAKE_C_FLAGS "--target=${androidToolchain.androidTarget} -fPIC")
-set(CMAKE_CXX_FLAGS "--target=${androidToolchain.androidTarget} -fPIC")
 set(BUILD_SHARED_LIBS OFF)
 EOF
   '';
@@ -60,8 +56,8 @@ EOF
     "-DOPENSSL_CRYPTO_LIBRARY=${openssl-android}/lib/libcrypto.a"
     "-DOPENSSL_SSL_LIBRARY=${openssl-android}/lib/libssl.a"
     "-DOPENSSL_INCLUDE_DIR=${openssl-android}/include"
-    "-DZLIB_INCLUDE_DIR=${NDK_SYSROOT}/usr/include"
-    "-DZLIB_LIBRARY=${NDK_LIB_PATH}/libz.so"
+    "-DZLIB_INCLUDE_DIR=${androidToolchain.androidNdkSysroot}/usr/include"
+    "-DZLIB_LIBRARY=${androidToolchain.androidNdkAbiLibDir}/libz.so"
   ];
 
   installPhase = ''

@@ -4,15 +4,22 @@
   buildPackages,
   common,
   buildModule,
+  androidToolchain ? (import ../../toolchains/android.nix { inherit lib pkgs; }),
+  ...
 }:
 
 let
   fetchSource = common.fetchSource;
-  androidToolchain = import ../../toolchains/android.nix { inherit lib pkgs; };
+  # androidToolchain passed from caller
   # Use pixman from nixpkgs source
   pixmanSource = pkgs.pixman.src;
   src = pixmanSource;
-  buildFlags = [ ];
+  buildFlags = [
+    "-Dopenmp=disabled"
+    "-Dgtk=disabled"
+    "-Dtests=disabled"
+    "-Ddemos=disabled"
+  ];
   patches = [ ];
 in
 pkgs.stdenv.mkDerivation {
@@ -31,7 +38,7 @@ pkgs.stdenv.mkDerivation {
         pyyaml
       ]
     ))
-  ];
+  ] ++ lib.optionals buildPackages.stdenv.hostPlatform.isLinux [ patchelf ];
   buildInputs = [ ];
   preConfigure = ''
         export CC="${androidToolchain.androidCC}"
@@ -56,10 +63,10 @@ pkgs.stdenv.mkDerivation {
     endian = 'little'
 
     [built-in options]
-    c_args = ['--target=${androidToolchain.androidTarget}', '-fPIC']
-    cpp_args = ['--target=${androidToolchain.androidTarget}', '-fPIC']
-    c_link_args = ['--target=${androidToolchain.androidTarget}']
-    cpp_link_args = ['--target=${androidToolchain.androidTarget}']
+    c_args = ['-fPIC']
+    cpp_args = ['-fPIC']
+    c_link_args = []
+    cpp_link_args = []
     EOF
   '';
   configurePhase = ''
@@ -69,7 +76,7 @@ pkgs.stdenv.mkDerivation {
       --libdir=$out/lib \
       --cross-file=android-cross-file.txt \
       --buildtype=release \
-      --default-library=both \
+      --default-library=static \
       ${lib.concatMapStringsSep " " (flag: flag) buildFlags}
     runHook postConfigure
   '';
@@ -81,6 +88,10 @@ pkgs.stdenv.mkDerivation {
   installPhase = ''
     runHook preInstall
     meson install -C build
+    PIXMAN_SO_REAL="$(readlink -f "$out/lib/libpixman-1.so")"
+    if command -v patchelf >/dev/null 2>&1 && [ -n "$PIXMAN_SO_REAL" ] && [ -f "$PIXMAN_SO_REAL" ]; then
+      patchelf --set-soname libpixman-1.so "$PIXMAN_SO_REAL"
+    fi
     runHook postInstall
   '';
 }

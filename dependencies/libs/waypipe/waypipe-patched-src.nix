@@ -41,7 +41,7 @@ pkgs.stdenvNoCC.mkDerivation {
     # Run the platform-specific patch script
     cp ${patchScript} ./patch.sh
     chmod +x ./patch.sh
-    ./patch.sh
+    bash ./patch.sh
 
     # Verify libssh2 bridge was wired (iOS/macOS use patch-waypipe-source.sh)
     if [ "${platform}" = "ios" ] || [ "${platform}" = "macos" ]; then

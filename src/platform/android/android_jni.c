@@ -12,6 +12,14 @@
  * - Thread-safe initialization and cleanup
  */
 
+#if defined(__ANDROID__)
+typedef unsigned long sigset_t;
+typedef struct {
+  unsigned long __bits[128 / sizeof(long)];
+} sigset64_t;
+typedef struct __siginfo siginfo_t;
+#endif
+
 #include "WWNSettings.h"
 #include "input_android.h"
 #include "renderer_android.h"
@@ -51,6 +59,17 @@ static void wwn_log(int prio, const char *tag, const char *fmt, ...) {
 
 #define LOGI(...) wwn_log(ANDROID_LOG_INFO, "JNI", __VA_ARGS__)
 #define LOGE(...) wwn_log(ANDROID_LOG_ERROR, "JNI", __VA_ARGS__)
+
+static void choreographer_frame_cb(long frameTimeNanos, void *data);
+
+static void schedule_next_frame(void *ctx) {
+#if __ANDROID_API__ >= 24
+  AChoreographer_postFrameCallback(AChoreographer_getInstance(),
+                                   choreographer_frame_cb, ctx);
+#else
+  (void)ctx;
+#endif
+}
 
 // ============================================================================
 // Forward declarations for Rust backend FFI (from c_api.rs / libwawona.a)
@@ -993,7 +1012,7 @@ typedef struct {
 
 /** Frame callback invoked at display vsync by AChoreographer (NDK API:
  * frameTimeNanos first, then data) */
-static void choreographer_frame_cb(int64_t frameTimeNanos, void *data) {
+static void choreographer_frame_cb(long frameTimeNanos, void *data) {
   (void)frameTimeNanos;
   RenderFrameCtx *ctx = (RenderFrameCtx *)data;
   if (!ctx || !g_running)
@@ -1157,8 +1176,7 @@ static void choreographer_frame_cb(int64_t frameTimeNanos, void *data) {
 
 reschedule:
   if (g_running) {
-    AChoreographer_postFrameCallback(AChoreographer_getInstance(),
-                                     choreographer_frame_cb, ctx);
+    schedule_next_frame(ctx);
   }
 }
 
@@ -1301,14 +1319,20 @@ static void *render_thread(void *arg) {
                                .inFlightFence = inFlightFence};
 
   ALooper_prepare(0);
-  AChoreographer_postFrameCallback(AChoreographer_getInstance(),
-                                   choreographer_frame_cb, &frame_ctx);
+#if __ANDROID_API__ >= 24
+  schedule_next_frame(&frame_ctx);
 
   while (g_running) {
     int ret = ALooper_pollOnce(-1, NULL, NULL, NULL);
     if (ret == ALOOPER_POLL_ERROR)
       break;
   }
+#else
+  while (g_running) {
+    choreographer_frame_cb(0, &frame_ctx);
+    usleep(16666);
+  }
+#endif
 
   vkDeviceWaitIdle(g_device);
   vkDestroySemaphore(g_device, imageAvailable, NULL);
@@ -1969,11 +1993,11 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeCommitText(JNIEnv *env,
     if (kc == 0)
       continue;
     if (needs_shift)
-      WWNCoreInjectKey(g_core, KEY_LEFTSHIFT, 1, ts);
+      WWNCoreInjectKey(g_core, WWN_KEY_LEFTSHIFT, 1, ts);
     WWNCoreInjectKey(g_core, kc, 1, ts);
     WWNCoreInjectKey(g_core, kc, 0, ts);
     if (needs_shift)
-      WWNCoreInjectKey(g_core, KEY_LEFTSHIFT, 0, ts);
+      WWNCoreInjectKey(g_core, WWN_KEY_LEFTSHIFT, 0, ts);
   }
   (*env)->ReleaseStringUTFChars(env, text, utf8);
 }

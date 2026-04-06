@@ -17,7 +17,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -25,11 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/**
- * Linux evdev keycodes for accessory bar (matches input_android.h).
- * 1:1 with iOS charToLinuxKeycode / input-accessory key mapping.
- */
-internal object LinuxKey {
+private object LinuxKey {
     const val ESC = 1
     const val GRAVE = 41
     const val TAB = 15
@@ -47,199 +45,105 @@ internal object LinuxKey {
     const val DOWN = 108
     const val RIGHT = 106
     const val PAGEDOWN = 109
-    const val ENTER = 28
-    const val SPACE = 57
-    const val BACKSPACE = 14
 }
 
-/** XKB modifier bits (matches iOS / input_android.h). */
-internal object XkbMod {
+private object XkbMod {
     const val SHIFT = 1 shl 0
     const val CTRL = 1 shl 2
     const val ALT = 1 shl 3
     const val LOGO = 1 shl 6
 }
 
-/**
- * Shared modifier state — accessible from ModifierAccessoryBar, WawonaInputConnection,
- * and WawonaSurfaceView. Implements the iOS-matching three-state cycle:
- *   Inactive → (tap) → Sticky (one-shot, applies to next key then auto-clears)
- *   Sticky → (double-tap within 400ms) → Locked (persistent until tapped again)
- *   Locked → (tap) → Inactive
- *
- * Uses Compose mutableStateOf so the accessory bar UI recomposes automatically,
- * while remaining readable from non-Compose contexts (InputConnection, SurfaceView).
- */
-object ModifierState {
-    var shiftActive by mutableStateOf(false)
-    var shiftLocked by mutableStateOf(false)
-    var ctrlActive by mutableStateOf(false)
-    var ctrlLocked by mutableStateOf(false)
-    var altActive by mutableStateOf(false)
-    var altLocked by mutableStateOf(false)
-    var superActive by mutableStateOf(false)
-    var superLocked by mutableStateOf(false)
+private const val DOUBLE_TAP_THRESHOLD_MS = 400L
 
-    @Volatile var lastShiftTap = 0L
-    @Volatile var lastCtrlTap = 0L
-    @Volatile var lastAltTap = 0L
-    @Volatile var lastSuperTap = 0L
-
-    private const val DOUBLE_TAP_THRESHOLD_MS = 400L
-
-    fun tapShift() = doTap(
-        shiftActive, shiftLocked, lastShiftTap,
-        { shiftActive = it }, { shiftLocked = it }, { lastShiftTap = it }
-    )
-    fun tapCtrl() = doTap(
-        ctrlActive, ctrlLocked, lastCtrlTap,
-        { ctrlActive = it }, { ctrlLocked = it }, { lastCtrlTap = it }
-    )
-    fun tapAlt() = doTap(
-        altActive, altLocked, lastAltTap,
-        { altActive = it }, { altLocked = it }, { lastAltTap = it }
-    )
-    fun tapSuper() = doTap(
-        superActive, superLocked, lastSuperTap,
-        { superActive = it }, { superLocked = it }, { lastSuperTap = it }
-    )
-
-    private fun doTap(
-        active: Boolean, locked: Boolean, lastTap: Long,
-        setActive: (Boolean) -> Unit, setLocked: (Boolean) -> Unit, setLastTap: (Long) -> Unit
-    ) {
-        val now = System.currentTimeMillis()
-        val elapsed = now - lastTap
-        setLastTap(now)
-        when {
-            locked -> { setActive(false); setLocked(false) }
-            active && elapsed < DOUBLE_TAP_THRESHOLD_MS -> setLocked(true)
-            active -> { setActive(false); setLocked(false) }
-            else -> { setActive(true); setLocked(false) }
-        }
-    }
-
-    fun clearStickyModifiers() {
-        if (shiftActive && !shiftLocked) shiftActive = false
-        if (ctrlActive && !ctrlLocked) ctrlActive = false
-        if (altActive && !altLocked) altActive = false
-        if (superActive && !superLocked) superActive = false
-    }
-
-    fun hasActiveModifiers(): Boolean =
-        shiftActive || ctrlActive || altActive || superActive
-
-    fun getXkbModMask(): Int {
-        var mods = 0
-        if (shiftActive) mods = mods or XkbMod.SHIFT
-        if (ctrlActive) mods = mods or XkbMod.CTRL
-        if (altActive) mods = mods or XkbMod.ALT
-        if (superActive) mods = mods or XkbMod.LOGO
-        return mods
-    }
-}
-
-/**
- * Map a single character to a Linux evdev keycode + shift flag.
- * Mirrors iOS charToLinuxKeycode() and native char_to_linux_keycode().
- * Returns null for unmapped characters (emoji, CJK, etc.).
- */
-internal data class KeyMapping(val keycode: Int, val needsShift: Boolean)
-
-internal fun charToLinuxKeycode(ch: Char): KeyMapping? {
-    @Suppress("KotlinConstantConditions")
-    val letterKeycodes = intArrayOf(
-        30, 48, 46, 32, 18, 33, 34, 35, 23,   // A-I
-        36, 37, 38, 50, 49, 24, 25, 16, 19,   // J-R
-        31, 20, 22, 47, 17, 45, 21, 44        // S-Z
-    )
-
-    if (ch in 'a'..'z') return KeyMapping(letterKeycodes[ch - 'a'], false)
-    if (ch in 'A'..'Z') return KeyMapping(letterKeycodes[ch - 'A'], true)
-    if (ch in '1'..'9') return KeyMapping(2 + (ch - '1'), false)
-    if (ch == '0') return KeyMapping(11, false)
-
-    return when (ch) {
-        ' '       -> KeyMapping(LinuxKey.SPACE, false)
-        '\n', '\r'-> KeyMapping(LinuxKey.ENTER, false)
-        '\t'      -> KeyMapping(LinuxKey.TAB, false)
-        '-'       -> KeyMapping(LinuxKey.MINUS, false)
-        '='       -> KeyMapping(13, false)
-        '['       -> KeyMapping(26, false)
-        ']'       -> KeyMapping(27, false)
-        '\\'      -> KeyMapping(43, false)
-        ';'       -> KeyMapping(39, false)
-        '\''      -> KeyMapping(40, false)
-        '`'       -> KeyMapping(LinuxKey.GRAVE, false)
-        ','       -> KeyMapping(51, false)
-        '.'       -> KeyMapping(52, false)
-        '/'       -> KeyMapping(LinuxKey.SLASH, false)
-        '!'       -> KeyMapping(2, true)
-        '@'       -> KeyMapping(3, true)
-        '#'       -> KeyMapping(4, true)
-        '$'       -> KeyMapping(5, true)
-        '%'       -> KeyMapping(6, true)
-        '^'       -> KeyMapping(7, true)
-        '&'       -> KeyMapping(8, true)
-        '*'       -> KeyMapping(9, true)
-        '('       -> KeyMapping(10, true)
-        ')'       -> KeyMapping(11, true)
-        '_'       -> KeyMapping(LinuxKey.MINUS, true)
-        '+'       -> KeyMapping(13, true)
-        '{'       -> KeyMapping(26, true)
-        '}'       -> KeyMapping(27, true)
-        '|'       -> KeyMapping(43, true)
-        ':'       -> KeyMapping(39, true)
-        '"'       -> KeyMapping(40, true)
-        '~'       -> KeyMapping(LinuxKey.GRAVE, true)
-        '<'       -> KeyMapping(51, true)
-        '>'       -> KeyMapping(52, true)
-        '?'       -> KeyMapping(LinuxKey.SLASH, true)
-        else      -> null
-    }
-}
-
-/**
- * Modifier accessory bar — 1:1 functionality and button order with iOS.
- *
- * Row 1: ESC  `  TAB  /  —  HOME  ↑  END  PGUP
- * Row 2: ⇧  CTRL  ALT  ◇  ←  ↓  →  PGDN  ⌨↓
- *
- * Modifier behavior (delegated to [ModifierState]):
- * - Inactive → (tap) → Sticky (one-shot, applies to next key then auto-clears)
- * - Sticky → (tap within 0.4s) → Locked (persistent until tapped again)
- * - Sticky → (tap after 0.4s) → Inactive
- * - Locked → (tap) → Inactive
- */
 @Composable
 fun ModifierAccessoryBar(
     modifier: Modifier = Modifier,
     onDismissKeyboard: () -> Unit
 ) {
-    fun sendAccessoryKey(keycode: Int) {
-        val ts = (System.currentTimeMillis() % Int.MAX_VALUE).toInt()
-        if (ModifierState.shiftActive)
-            WawonaNative.nativeInjectKey(LinuxKey.LEFTSHIFT, true, ts)
-        if (ModifierState.ctrlActive)
-            WawonaNative.nativeInjectKey(LinuxKey.LEFTCTRL, true, ts)
-        if (ModifierState.altActive)
-            WawonaNative.nativeInjectKey(LinuxKey.LEFTALT, true, ts)
-        if (ModifierState.superActive)
-            WawonaNative.nativeInjectKey(LinuxKey.LEFTMETA, true, ts)
+    val ts = System.currentTimeMillis().toInt() and 0x7FFF_FFFF
 
+    var modShiftActive by remember { mutableStateOf(false) }
+    var modShiftLocked by remember { mutableStateOf(false) }
+    var modCtrlActive by remember { mutableStateOf(false) }
+    var modCtrlLocked by remember { mutableStateOf(false) }
+    var modAltActive by remember { mutableStateOf(false) }
+    var modAltLocked by remember { mutableStateOf(false) }
+    var modSuperActive by remember { mutableStateOf(false) }
+    var modSuperLocked by remember { mutableStateOf(false) }
+
+    var lastModShiftTap by remember { mutableLongStateOf(0L) }
+    var lastModCtrlTap by remember { mutableLongStateOf(0L) }
+    var lastModAltTap by remember { mutableLongStateOf(0L) }
+    var lastModSuperTap by remember { mutableLongStateOf(0L) }
+
+    fun clearStickyModifiers() {
+        if (modShiftActive && !modShiftLocked) modShiftActive = false
+        if (modCtrlActive && !modCtrlLocked) modCtrlActive = false
+        if (modAltActive && !modAltLocked) modAltActive = false
+        if (modSuperActive && !modSuperLocked) modSuperActive = false
+    }
+
+    fun handleModifierTap(
+        active: Boolean,
+        locked: Boolean,
+        lastTap: Long,
+        onActive: (Boolean) -> Unit,
+        onLocked: (Boolean) -> Unit,
+        onLastTap: (Long) -> Unit
+    ) {
+        val now = System.currentTimeMillis()
+        val elapsed = now - lastTap
+        onLastTap(now)
+
+        when {
+            locked -> {
+                onActive(false)
+                onLocked(false)
+            }
+            active && elapsed < DOUBLE_TAP_THRESHOLD_MS -> {
+                onLocked(true)
+            }
+            active -> {
+                onActive(false)
+                onLocked(false)
+            }
+            else -> {
+                onActive(true)
+                onLocked(false)
+            }
+        }
+    }
+
+    fun sendAccessoryKey(keycode: Int) {
+        var mods = 0
+        if (modShiftActive) {
+            mods = mods or XkbMod.SHIFT
+            WawonaNative.nativeInjectKey(LinuxKey.LEFTSHIFT, true, ts)
+        }
+        if (modCtrlActive) {
+            mods = mods or XkbMod.CTRL
+            WawonaNative.nativeInjectKey(LinuxKey.LEFTCTRL, true, ts)
+        }
+        if (modAltActive) {
+            mods = mods or XkbMod.ALT
+            WawonaNative.nativeInjectKey(LinuxKey.LEFTALT, true, ts)
+        }
+        if (modSuperActive) {
+            mods = mods or XkbMod.LOGO
+            WawonaNative.nativeInjectKey(LinuxKey.LEFTMETA, true, ts)
+        }
+        if (mods != 0) {
+            WawonaNative.nativeInjectModifiers(mods, 0, 0, 0)
+        }
         WawonaNative.nativeInjectKey(keycode, true, ts)
         WawonaNative.nativeInjectKey(keycode, false, ts)
-
-        if (ModifierState.shiftActive)
-            WawonaNative.nativeInjectKey(LinuxKey.LEFTSHIFT, false, ts)
-        if (ModifierState.ctrlActive)
-            WawonaNative.nativeInjectKey(LinuxKey.LEFTCTRL, false, ts)
-        if (ModifierState.altActive)
-            WawonaNative.nativeInjectKey(LinuxKey.LEFTALT, false, ts)
-        if (ModifierState.superActive)
-            WawonaNative.nativeInjectKey(LinuxKey.LEFTMETA, false, ts)
-
-        ModifierState.clearStickyModifiers()
+        if (modShiftActive) WawonaNative.nativeInjectKey(LinuxKey.LEFTSHIFT, false, ts)
+        if (modCtrlActive) WawonaNative.nativeInjectKey(LinuxKey.LEFTCTRL, false, ts)
+        if (modAltActive) WawonaNative.nativeInjectKey(LinuxKey.LEFTALT, false, ts)
+        if (modSuperActive) WawonaNative.nativeInjectKey(LinuxKey.LEFTMETA, false, ts)
+        if (mods != 0) WawonaNative.nativeInjectModifiers(0, 0, 0, 0)
+        clearStickyModifiers()
     }
 
     val barBg = Color(0xFF1C1C1E)
@@ -290,40 +194,64 @@ fun ModifierAccessoryBar(
         ) {
             AccessoryModKey(
                 label = "⇧",
-                active = ModifierState.shiftActive,
-                locked = ModifierState.shiftLocked,
+                active = modShiftActive,
+                locked = modShiftLocked,
                 inactiveColor = keyInactive,
                 stickyColor = keySticky,
                 lockedColor = keyLocked
-            ) { ModifierState.tapShift() }
-
+            ) {
+                handleModifierTap(
+                    modShiftActive, modShiftLocked, lastModShiftTap,
+                    { modShiftActive = it },
+                    { modShiftLocked = it },
+                    { lastModShiftTap = it }
+                )
+            }
             AccessoryModKey(
                 label = "CTRL",
-                active = ModifierState.ctrlActive,
-                locked = ModifierState.ctrlLocked,
+                active = modCtrlActive,
+                locked = modCtrlLocked,
                 inactiveColor = keyInactive,
                 stickyColor = keySticky,
                 lockedColor = keyLocked
-            ) { ModifierState.tapCtrl() }
-
+            ) {
+                handleModifierTap(
+                    modCtrlActive, modCtrlLocked, lastModCtrlTap,
+                    { modCtrlActive = it },
+                    { modCtrlLocked = it },
+                    { lastModCtrlTap = it }
+                )
+            }
             AccessoryModKey(
                 label = "ALT",
-                active = ModifierState.altActive,
-                locked = ModifierState.altLocked,
+                active = modAltActive,
+                locked = modAltLocked,
                 inactiveColor = keyInactive,
                 stickyColor = keySticky,
                 lockedColor = keyLocked
-            ) { ModifierState.tapAlt() }
-
+            ) {
+                handleModifierTap(
+                    modAltActive, modAltLocked, lastModAltTap,
+                    { modAltActive = it },
+                    { modAltLocked = it },
+                    { lastModAltTap = it }
+                )
+            }
             AccessoryModKey(
-                label = "◇",
-                active = ModifierState.superActive,
-                locked = ModifierState.superLocked,
+                label = "⌘",
+                active = modSuperActive,
+                locked = modSuperLocked,
                 inactiveColor = keyInactive,
                 stickyColor = keySticky,
                 lockedColor = keyLocked
-            ) { ModifierState.tapSuper() }
-
+            ) {
+                handleModifierTap(
+                    modSuperActive, modSuperLocked, lastModSuperTap,
+                    { modSuperActive = it },
+                    { modSuperLocked = it },
+                    { lastModSuperTap = it }
+                )
+            }
             listOf(
                 "←" to LinuxKey.LEFT,
                 "↓" to LinuxKey.DOWN,

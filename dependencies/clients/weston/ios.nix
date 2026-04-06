@@ -8,6 +8,7 @@ in
 stdenv.mkDerivation rec {
   pname = "weston-ios";
   version = "13.0.0";
+  __noChroot = true;
 
   src = fetchurl {
     url = "https://gitlab.freedesktop.org/wayland/weston/-/releases/${version}/downloads/weston-${version}.tar.xz";

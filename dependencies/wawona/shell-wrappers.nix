@@ -7,13 +7,16 @@ let
       chmod 700 "$XDG_RUNTIME_DIR"
     fi
   '';
-in {
+in rec {
   unixWrapper = pkgs: name: bin:
     pkgs.writeShellScriptBin name ''
       export XDG_RUNTIME_DIR="''${XDG_RUNTIME_DIR:-/tmp/$(id -u)-runtime}"
       export WAYLAND_DISPLAY="''${WAYLAND_DISPLAY:-wayland-0}"
       exec ${bin} "$@"
     '';
+
+  toolWrapper = pkgs: tools: binName:
+    (unixWrapper pkgs binName "${tools}/bin/${binName}");
 
   inherit macosEnv;
 

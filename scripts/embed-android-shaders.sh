@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Embed Android Vulkan shaders as C byte arrays for compilation into libwawona.so
 # Usage: ./embed-android-shaders.sh <srcdir> <outdir>
-# Compiles src/rendering/shaders/android_quad.vert and .frag to SPIR-V,
+# Compiles src/platform/android/rendering/shaders/android_quad.vert and .frag to SPIR-V,
 # then generates shader_spv.h with unsigned char arrays.
 
 set -e
@@ -31,11 +31,11 @@ VERT_SPV="$OUTDIR/quad.vert.spv"
 FRAG_SPV="$OUTDIR/quad.frag.spv"
 
 if [ "$GLSLC" = "glslangValidator" ] || [[ "$GLSLC" == *"glslangValidator" ]]; then
-  "$GLSLC" -V "$SRCDIR/src/rendering/shaders/android_quad.vert" -o "$VERT_SPV"
-  "$GLSLC" -V "$SRCDIR/src/rendering/shaders/android_quad.frag" -o "$FRAG_SPV"
+  "$GLSLC" -V "$SRCDIR/src/platform/android/rendering/shaders/android_quad.vert" -o "$VERT_SPV"
+  "$GLSLC" -V "$SRCDIR/src/platform/android/rendering/shaders/android_quad.frag" -o "$FRAG_SPV"
 else
-  "$GLSLC" "$SRCDIR/src/rendering/shaders/android_quad.vert" -o "$VERT_SPV"
-  "$GLSLC" "$SRCDIR/src/rendering/shaders/android_quad.frag" -o "$FRAG_SPV"
+  "$GLSLC" "$SRCDIR/src/platform/android/rendering/shaders/android_quad.vert" -o "$VERT_SPV"
+  "$GLSLC" "$SRCDIR/src/platform/android/rendering/shaders/android_quad.frag" -o "$FRAG_SPV"
 fi
 
 # Generate C header with byte arrays

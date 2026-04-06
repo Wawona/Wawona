@@ -1,13 +1,18 @@
 {
   lib,
   pkgs,
+  stdenv ? pkgs.stdenv,
   buildPackages,
-  buildTargets ? "deqp-vk",
+  androidSDK ? null,
+  androidToolchain ? (import ../../toolchains/android.nix { inherit lib pkgs androidSDK; }),
+  buildTargets ? "deqp",
 }:
 
 let
   common = import ./common.nix { inherit pkgs; };
-  androidToolchain = import ../../toolchains/android.nix { inherit lib pkgs; };
+  androidCmake = import ../../toolchains/android-cmake.nix {
+    inherit lib pkgs androidToolchain;
+  };
 in
 pkgs.stdenv.mkDerivation (finalAttrs: {
   pname = "vulkan-cts-android";
@@ -38,34 +43,76 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
     export AR="${androidToolchain.androidAR}"
     export STRIP="${androidToolchain.androidSTRIP}"
     export RANLIB="${androidToolchain.androidRANLIB}"
-    export CFLAGS="--target=${androidToolchain.androidTarget} -fPIC"
-    export CXXFLAGS="--target=${androidToolchain.androidTarget} -fPIC"
-    export LDFLAGS="--target=${androidToolchain.androidTarget}"
   '';
 
   cmakeFlags = [
-    "-DCMAKE_SYSTEM_NAME=Android"
     "-DDEQP_TARGET=android"
     "-DDE_OS=DE_OS_ANDROID"
-    "-DCMAKE_ANDROID_ARCH_ABI=arm64-v8a"
-    "-DCMAKE_ANDROID_NDK=${androidToolchain.androidndkRoot}"
-    "-DCMAKE_ANDROID_API=${toString androidToolchain.androidNdkApiLevel}"
+    "-DDEQP_ANDROID_EXE=OFF"
+    "-DDE_ANDROID_API=${toString androidToolchain.androidNdkApiLevel}"
     "-DCMAKE_C_COMPILER=${androidToolchain.androidCC}"
     "-DCMAKE_CXX_COMPILER=${androidToolchain.androidCXX}"
-    "-DCMAKE_C_FLAGS=--target=${androidToolchain.androidTarget}"
-    "-DCMAKE_CXX_FLAGS=--target=${androidToolchain.androidTarget}"
+    "-DCMAKE_POSITION_INDEPENDENT_CODE=ON"
+    "-DCMAKE_C_FLAGS=-fPIC"
+    "-DCMAKE_CXX_FLAGS=-fPIC"
     "-DCMAKE_INSTALL_BINDIR=bin"
     "-DCMAKE_INSTALL_LIBDIR=lib"
     "-DCMAKE_INSTALL_INCLUDEDIR=include"
     "-DSELECTED_BUILD_TARGETS=${buildTargets}"
     (lib.cmakeFeature "FETCHCONTENT_SOURCE_DIR_SHADERC" "${common.sources.shaderc-src}")
+  ]
+  ++ androidCmake.mkCrossFlags { abi = "arm64-v8a"; }
+  ++ lib.optionals androidCmake.useWrappedCrossCmake [
+    # CMake won't auto-discover Android system GL libs in Linux cross mode.
+    (androidCmake.cmakeLibFlag { variable = "ANDROID"; libName = "android"; })
+    (androidCmake.cmakeLibFlag { variable = "EGL"; libName = "EGL"; })
+    (androidCmake.cmakeLibFlag { variable = "GLES1"; libName = "GLESv1_CM"; })
+    (androidCmake.cmakeLibFlag { variable = "GLES2"; libName = "GLESv2"; })
+    (androidCmake.cmakeLibFlag { variable = "GLES3"; libName = "GLESv3"; })
+    (androidCmake.cmakeLibFlag { variable = "LOG"; libName = "log"; })
+    (androidCmake.cmakeLibFlag { variable = "ZLIB"; libName = "z"; })
+    (androidCmake.cmakeExactFlag { variable = "ZLIB_INCLUDE_DIR"; value = "${androidToolchain.androidNdkSysroot}/usr/include"; })
   ];
+
+  # Only build the selected targets to avoid linking errors in unnecessary GL components
+  ninjaFlags = [ buildTargets ];
 
   postInstall = ''
     mkdir -p $out/bin $out/archive-dir
-    [ -f external/vulkancts/modules/vulkan/deqp-vk ] && cp -a external/vulkancts/modules/vulkan/deqp-vk $out/bin/ || true
-    [ -d external/vulkancts/modules/vulkan/vulkan ] && cp -a external/vulkancts/modules/vulkan/vulkan $out/archive-dir/ || true
-    [ -d external/vulkancts/modules/vulkan/vk-default ] && cp -a external/vulkancts/modules/vulkan/vk-default $out/ || true
+    deqp_bin=""
+    for candidate in \
+      $out/bin/deqp-vk \
+      $out/bin/deqp \
+      $out/bin/deqp-vksc \
+      $out/bin/executor \
+      external/vulkancts/modules/vulkan/deqp-vk \
+      external/vulkancts/modules/vulkan/deqp \
+      external/vulkancts/modules/vulkan/deqp-vksc \
+      executor/executor \
+      build/external/vulkancts/modules/vulkan/deqp-vk \
+      build/external/vulkancts/modules/vulkan/deqp \
+      build/external/vulkancts/modules/vulkan/deqp-vksc \
+      build/executor/executor
+    do
+      if [ -f "$candidate" ]; then
+        deqp_bin="$candidate"
+        break
+      fi
+    done
+    if [ -z "$deqp_bin" ]; then
+      deqp_bin="$(find . -type f \( -path "*/modules/vulkan/deqp-vk" -o -path "*/modules/vulkan/deqp" -o -path "*/modules/vulkan/deqp-vksc" -o -path "*/executor/executor" \) | sort | head -n1)"
+    fi
+    if [ -z "$deqp_bin" ]; then
+      echo "warning: missing deqp-vk/deqp/deqp-vksc/executor; skipping binary install"
+    else
+      if [ "$deqp_bin" != "$out/bin/deqp-vk" ]; then
+        cp -a "$deqp_bin" "$out/bin/deqp-vk"
+      fi
+    fi
+    [ -d external/vulkancts/modules/vulkan/vulkan ] || { echo "missing vulkan archive-dir"; exit 1; }
+    cp -a external/vulkancts/modules/vulkan/vulkan $out/archive-dir/
+    [ -d external/vulkancts/modules/vulkan/vk-default ] || { echo "missing vk-default"; exit 1; }
+    cp -a external/vulkancts/modules/vulkan/vk-default $out/
   '';
 
   postFixup = ''

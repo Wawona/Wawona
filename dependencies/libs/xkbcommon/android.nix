@@ -4,11 +4,13 @@
   buildPackages,
   common,
   buildModule,
+  androidToolchain ? (import ../../toolchains/android.nix { inherit lib pkgs; }),
+  ...
 }:
 
 let
   fetchSource = common.fetchSource;
-  androidToolchain = import ../../toolchains/android.nix { inherit lib pkgs; };
+  # androidToolchain passed from caller
   xkbcommonSource = {
     source = "github";
     owner = "xkbcommon";
@@ -23,13 +25,18 @@ pkgs.stdenv.mkDerivation {
   name = "xkbcommon-android";
   inherit src;
 
+  postPatch = ''
+    substituteInPlace src/utils.h \
+      --replace-fail "#if !(defined(HAVE_STRNDUP) && HAVE_STRNDUP)" "#if !(defined(HAVE_STRNDUP) && HAVE_STRNDUP) && !defined(__BIONIC__)"
+  '';
+
   nativeBuildInputs = with buildPackages; [
     meson
     ninja
     pkg-config
     python3
     bison
-  ];
+  ] ++ lib.optionals buildPackages.stdenv.hostPlatform.isLinux [ patchelf ];
 
   buildInputs = [
     libxml2-android
@@ -52,14 +59,16 @@ ranlib = '${androidToolchain.androidRANLIB}'
 pkgconfig = 'pkg-config'
 
 [host_machine]
-system = 'linux'
+system = 'android'
 cpu_family = 'aarch64'
 cpu = 'aarch64'
 endian = 'little'
 
 [properties]
-c_args = ['--target=${androidToolchain.androidTarget}', '-fPIC']
-c_link_args = ['--target=${androidToolchain.androidTarget}']
+c_args = ['-fPIC']
+cpp_args = ['-fPIC']
+c_link_args = []
+cpp_link_args = []
 needs_exe_wrapper = true
 EOF
 
@@ -77,7 +86,7 @@ EOF
       -Denable-x11=false \
       -Denable-wayland=false \
       -Denable-xkbregistry=false \
-      -Ddefault_library=static \
+      -Ddefault_library=shared \
       --buildtype=plain
     meson compile -C build xkbcommon
     runHook postBuild
@@ -86,6 +95,10 @@ EOF
   installPhase = ''
     runHook preInstall
     meson install -C build
+    XKB_SO_REAL="$(readlink -f "$out/lib/libxkbcommon.so")"
+    if command -v patchelf >/dev/null 2>&1 && [ -n "$XKB_SO_REAL" ] && [ -f "$XKB_SO_REAL" ]; then
+      patchelf --set-soname libxkbcommon.so "$XKB_SO_REAL"
+    fi
     runHook postInstall
   '';
 }

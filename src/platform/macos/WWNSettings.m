@@ -1,7 +1,7 @@
 #include "WWNSettings.h"
 
 #ifdef __APPLE__
-#import "../../ui/Settings/WWNPreferencesManager.h"
+#import "./ui/Settings/WWNPreferencesManager.h"
 
 bool WWNSettings_GetUniversalClipboardEnabled(void) {
   return [[WWNPreferencesManager sharedManager] universalClipboardEnabled];

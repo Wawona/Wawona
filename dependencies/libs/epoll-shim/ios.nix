@@ -5,6 +5,7 @@
   common,
   buildModule,
   simulator ? false,
+  iosToolchain ? null,
 }:
 
 let
@@ -25,10 +26,14 @@ pkgs.stdenv.mkDerivation {
   name = "epoll-shim-ios";
   inherit src;
   patches = [ ];
+  
+  # Allow access to Xcode SDKs and toolchain
+  __noChroot = true;
   nativeBuildInputs = with buildPackages; [
     cmake
     pkg-config
     file
+    perl
   ];
   buildInputs = [ ];
   postPatch = ''
@@ -52,6 +57,23 @@ pkgs.stdenv.mkDerivation {
       # Disable CTest inclusion
       substituteInPlace CMakeLists.txt \
         --replace "include(CTest)" "# include(CTest) # Disabled for iOS cross-compilation" || true
+
+      # Upstream occasionally reformats these lines; regex-based edits keep
+      # tests disabled even when spacing/indentation changes.
+      perl -0pi -e 's/^\s*enable_testing\(\)\s*$/# enable_testing() # Disabled for iOS cross-compilation/mg' CMakeLists.txt
+      perl -0pi -e 's/^\s*include\(\s*CTest\s*\)\s*$/# include(CTest) # Disabled for iOS cross-compilation/mg' CMakeLists.txt
+      perl -0pi -e 's/^\s*add_subdirectory\(\s*test\s*\)\s*$/# add_subdirectory(test) # Disabled for iOS cross-compilation/mg' CMakeLists.txt
+      perl -0pi -e 's/^\s*if\s*\(\s*BUILD_TESTING\s*\)\s*$/if(FALSE AND BUILD_TESTING)/mg' CMakeLists.txt
+      if [ -f src/CMakeLists.txt ]; then
+        perl -0pi -e 's/^\s*add_subdirectory\(\s*external\/microatf\s*\)\s*$/# add_subdirectory(external\/microatf) # Disabled for iOS cross-compilation/mg' src/CMakeLists.txt
+      fi
+
+      # CMake 4 thread probing fails in iOS cross CI even though pthreads are
+      # available through the SDK. Provide a synthetic Threads::Threads target
+      # on iOS while retaining the normal find_package path elsewhere.
+      if [ -f src/CMakeLists.txt ]; then
+        perl -0pi -e 's/find_package\\(Threads REQUIRED\\)/if\\(IOS\\)\\n  if\\(NOT TARGET Threads::Threads\\)\\n    add_library\\(Threads::Threads INTERFACE IMPORTED\\)\\n  endif\\(\\)\\nelse\\(\\)\\n  find_package\\(Threads REQUIRED\\)\\nendif\\(\\)/g' src/CMakeLists.txt
+      fi
       
       # Fix sysctl warning on iOS (discard qualifiers)
       # Added (int *) cast to silence the warning
@@ -62,17 +84,49 @@ pkgs.stdenv.mkDerivation {
     fi
   '';
   preConfigure = ''
-        if [ -z "''${XCODE_APP:-}" ]; then
-          XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode || true)
-          if [ -n "$XCODE_APP" ]; then
-            export XCODE_APP
-            export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
-            export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
-            export SDKROOT="$DEVELOPER_DIR/Platforms/${if simulator then "iPhoneSimulator" else "iPhoneOS"}.platform/Developer/SDKs/${if simulator then "iPhoneSimulator" else "iPhoneOS"}.sdk"
-          fi
-        fi
-        export NIX_CFLAGS_COMPILE=""
-        export NIX_CXXFLAGS_COMPILE=""
+    # Strip Nix stdenv's DEVELOPER_DIR to bypass any store fallbacks
+    unset DEVELOPER_DIR
+
+    ${if simulator then ''
+      # Robust SDK detection for iOS Simulator
+      IOS_SDK=$(xcrun --sdk iphonesimulator --show-sdk-path 2>/dev/null || true)
+      if [ ! -d "$IOS_SDK" ]; then
+        # Fallback 1: via ensureIosSimSDK script
+        IOS_SDK=$(${xcodeUtils.ensureIosSimSDK}/bin/ensure-ios-sim-sdk) || true
+      fi
+      if [ ! -d "$IOS_SDK" ]; then
+        # Fallback 2: Default location
+        XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode)
+        IOS_SDK="$XCODE_APP/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk"
+      fi
+    '' else ''
+      # Robust SDK detection for iOS Device
+      IOS_SDK=$(xcrun --sdk iphoneos --show-sdk-path 2>/dev/null || true)
+      if [ ! -d "$IOS_SDK" ]; then
+        # Fallback 1: Default location
+        XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode)
+        IOS_SDK="$XCODE_APP/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"
+      fi
+    ''}
+
+    if [ ! -d "$IOS_SDK" ]; then
+      echo "ERROR: iOS SDK not found. Build cannot proceed." >&2
+      exit 1
+    fi
+    export SDKROOT="$IOS_SDK"
+    export IOS_SDK
+
+    # Find the Developer dir associated with this SDK
+    # Use sed instead of grep -oP for macOS compatibility
+    export DEVELOPER_DIR=$(echo "$IOS_SDK" | sed -E 's|^(.*\.app/Contents/Developer)/.*$|\1|')
+    [ "$DEVELOPER_DIR" = "$IOS_SDK" ] && DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
+    export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
+
+    echo "Using iOS SDK: $IOS_SDK"
+    echo "Using Developer Dir: $DEVELOPER_DIR"
+    export NIX_CFLAGS_COMPILE=""
+    export NIX_CXXFLAGS_COMPILE=""
+    export NIX_LDFLAGS=""
         if [ -n "''${SDKROOT:-}" ] && [ -d "$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin" ]; then
           IOS_CC="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
           IOS_CXX="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
@@ -80,15 +134,15 @@ pkgs.stdenv.mkDerivation {
           IOS_CC="${buildPackages.clang}/bin/clang"
           IOS_CXX="${buildPackages.clang}/bin/clang++"
         fi
-        IOS_ARCH="arm64"
+        IOS_ARCH="${if simulator then pkgs.stdenv.hostPlatform.darwinArch else "arm64"}"
         
         cat > ios-toolchain.cmake <<EOF
     set(CMAKE_SYSTEM_NAME iOS)
     set(CMAKE_OSX_ARCHITECTURES $IOS_ARCH)
     set(CMAKE_OSX_DEPLOYMENT_TARGET 26.0)
     set(CMAKE_OSX_SYSROOT "$SDKROOT")
-    set(CMAKE_C_FLAGS "-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0")
-    set(CMAKE_CXX_FLAGS "-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0")
+    set(CMAKE_C_FLAGS "-arch $IOS_ARCH -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0")
+    set(CMAKE_CXX_FLAGS "-arch $IOS_ARCH -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0")
     set(CMAKE_C_COMPILER "$IOS_CC")
     set(CMAKE_CXX_COMPILER "$IOS_CXX")
     set(CMAKE_SYSROOT "$SDKROOT")
@@ -97,6 +151,12 @@ pkgs.stdenv.mkDerivation {
     set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
     set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
     set(CMAKE_CROSSCOMPILING TRUE)
+    # CMake thread probing fails under iOS cross-compile in CI; force pthreads.
+    set(THREADS_PREFER_PTHREAD_FLAG FALSE CACHE BOOL "" FORCE)
+    set(CMAKE_HAVE_LIBC_PTHREAD TRUE CACHE BOOL "" FORCE)
+    set(CMAKE_USE_PTHREADS_INIT TRUE CACHE BOOL "" FORCE)
+    set(CMAKE_THREAD_LIBS_INIT "" CACHE STRING "" FORCE)
+    set(Threads_FOUND TRUE CACHE BOOL "" FORCE)
     # Disable code signing for try_run executables
     set(CMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO")
     # Tell CMake the compilers work (skip tests)
@@ -109,6 +169,7 @@ pkgs.stdenv.mkDerivation {
     "-DCMAKE_BUILD_TYPE=Release"
     "-DCMAKE_INSTALL_PREFIX=$out"
     "-DCMAKE_INSTALL_LIBDIR=lib"
+    "-DBUILD_TESTING=OFF"
     # Build static library for iOS (shared libraries require code signing)
     "-DBUILD_SHARED_LIBS=OFF"
     # Cross-compilation cache variables to avoid try_run() failures
@@ -118,10 +179,15 @@ pkgs.stdenv.mkDerivation {
   ];
   configurePhase = ''
     runHook preConfigure
+    # Capture SDKROOT before unsetting it for host builds
+    SDKROOT_VAL="$SDKROOT"
+    # Unset SDKROOT so it doesn't leak into host-side tool builds during cmake checks
+    unset SDKROOT
+
     # Add iOS-specific flags that depend on SDKROOT
     EXTRA_CMAKE_FLAGS=""
-    if [ -n "''${SDKROOT:-}" ]; then
-      EXTRA_CMAKE_FLAGS="-DCMAKE_OSX_SYSROOT=$SDKROOT -DCMAKE_OSX_DEPLOYMENT_TARGET=26.0"
+    if [ -n "$SDKROOT_VAL" ]; then
+      EXTRA_CMAKE_FLAGS="-DCMAKE_OSX_SYSROOT=$SDKROOT_VAL -DCMAKE_OSX_DEPLOYMENT_TARGET=26.0"
     fi
     cmake -B build -S . \
       -DCMAKE_TOOLCHAIN_FILE=ios-toolchain.cmake \
@@ -207,14 +273,13 @@ pkgs.stdenv.mkDerivation {
           # Test linking: Create a minimal test program to verify the library links correctly
           echo "=== Testing library linkage ==="
           # Re-setup iOS toolchain for link test
-          if [ -z "''${XCODE_APP:-}" ]; then
-            XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode || true)
-            if [ -n "$XCODE_APP" ]; then
-              export XCODE_APP
-              export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
-              export SDKROOT="$DEVELOPER_DIR/Platforms/${if simulator then "iPhoneSimulator" else "iPhoneOS"}.platform/Developer/SDKs/${if simulator then "iPhoneSimulator" else "iPhoneOS"}.sdk"
-              IOS_CC="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
-            fi
+          # Already set up in preConfigure, but ensure SDKROOT and IOS_CC are exported
+          # Capture back the SDKROOT we unset during configure
+          RE_SDKROOT=$(xcrun --sdk ${if simulator then "iphonesimulator" else "iphoneos"} --show-sdk-path 2>/dev/null || echo "$SDKROOT_VAL")
+          if [ -n "$RE_SDKROOT" ] && [ -d "$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin" ]; then
+             RE_IOS_CC="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
+          else
+             RE_IOS_CC="${buildPackages.clang}/bin/clang"
           fi
           
           cat > test_link.c <<'TESTCODE'
@@ -235,7 +300,7 @@ pkgs.stdenv.mkDerivation {
           
           # REQUIRED TEST: Compile and link a test program (this verifies the library works)
           # This test MUST pass for the build to succeed
-          if [ -n "''${SDKROOT:-}" ] && [ -n "$IOS_CC" ] && [ -x "$IOS_CC" ]; then
+          if [ -n "$RE_SDKROOT" ] && [ -n "$RE_IOS_CC" ] && [ -x "$RE_IOS_CC" ]; then
             echo "Running link test: Compiling test program with iOS toolchain..."
             
             # Set up pkg-config
@@ -246,15 +311,15 @@ pkgs.stdenv.mkDerivation {
             
             echo "Using flags: $PKG_CFLAGS $PKG_LIBS"
             
-            IOS_ARCH="arm64"
+            IOS_ARCH="${if simulator then pkgs.stdenv.hostPlatform.darwinArch else "arm64"}"
             
-            "$IOS_CC" -isysroot "$SDKROOT" \
+            TEST_OUTPUT=$("$RE_IOS_CC" -isysroot "$RE_SDKROOT" \
                -arch $IOS_ARCH \
                -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 \
                $PKG_CFLAGS \
                $PKG_LIBS \
                test_link.c \
-               -o test_link_ios
+               -o test_link_ios 2>&1)
             TEST_EXIT_CODE=$?
             
             if [ $TEST_EXIT_CODE -eq 0 ] && [ -f test_link_ios ]; then

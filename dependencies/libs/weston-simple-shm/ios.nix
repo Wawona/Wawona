@@ -5,6 +5,7 @@
   common,
   buildModule,
   simulator ? false,
+  iosToolchain ? null,
 }:
 
 let
@@ -16,6 +17,7 @@ in
 pkgs.stdenv.mkDerivation {
   name = "libweston-simple-shm-ios";
   src = westonSimpleShmSrc;
+  __noChroot = true;
 
   nativeBuildInputs = [ xcodeUtils.findXcodeScript ];
 

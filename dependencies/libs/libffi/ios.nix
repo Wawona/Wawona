@@ -5,11 +5,12 @@
   common,
   buildModule,
   simulator ? false,
+  iosToolchain,
 }:
 
 let
   fetchSource = common.fetchSource;
-  xcodeUtils = import ../../../utils/xcode-wrapper.nix { inherit lib pkgs; };
+  xcodeUtils = iosToolchain;
   libffiSource = {
     source = "github";
     owner = "libffi";
@@ -28,6 +29,9 @@ in
 pkgs.stdenv.mkDerivation {
   name = "libffi-ios";
   inherit src patches;
+
+  # Allow access to Xcode SDKs and toolchain
+  __noChroot = true;
   nativeBuildInputs = with buildPackages; [
     autoconf
     automake
@@ -37,35 +41,50 @@ pkgs.stdenv.mkDerivation {
   ];
   buildInputs = [ ];
   preConfigure = ''
-    if [ -z "''${XCODE_APP:-}" ]; then
-      XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode || true)
-      if [ -n "$XCODE_APP" ]; then
-        export XCODE_APP
-        export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
-        export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
-        export SDKROOT="$DEVELOPER_DIR/Platforms/${if simulator then "iPhoneSimulator" else "iPhoneOS"}.platform/Developer/SDKs/${if simulator then "iPhoneSimulator" else "iPhoneOS"}.sdk"
-      fi
-    fi
+    ${xcodeUtils.mkIOSBuildEnv { inherit simulator; }}
+    export IOS_SDK="$SDKROOT"
     if [ ! -f ./configure ]; then
       autoreconf -fi || autogen.sh || true
     fi
     export NIX_CFLAGS_COMPILE=""
     export NIX_CXXFLAGS_COMPILE=""
-    if [ -n "''${SDKROOT:-}" ] && [ -d "$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin" ]; then
-      IOS_CC="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
-      IOS_CXX="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
-    else
-      IOS_CC="${buildPackages.clang}/bin/clang"
-      IOS_CXX="${buildPackages.clang}/bin/clang++"
+    export NIX_LDFLAGS=""
+    cat > libffi-ios-cc <<'EOF'
+    #!/usr/bin/env bash
+    if [ "$#" -eq 1 ]; then
+      case "$1" in
+        -print-multi-os-directory|-print-multi-directory)
+          echo "."
+          exit 0
+          ;;
+      esac
     fi
-    export CC="$IOS_CC"
-    export CXX="$IOS_CXX"
-    export CFLAGS="-arch arm64 -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 -fPIC"
-    export CXXFLAGS="-arch arm64 -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 -fPIC"
-    export LDFLAGS="-arch arm64 -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0"
+    exec "$XCODE_CLANG" "$@"
+    EOF
+    cat > libffi-ios-cxx <<'EOF'
+    #!/usr/bin/env bash
+    if [ "$#" -eq 1 ]; then
+      case "$1" in
+        -print-multi-os-directory|-print-multi-directory)
+          echo "."
+          exit 0
+          ;;
+      esac
+    fi
+    exec "$XCODE_CLANGXX" "$@"
+    EOF
+    chmod +x libffi-ios-cc libffi-ios-cxx
+
+    export CC="$PWD/libffi-ios-cc"
+    export CXX="$PWD/libffi-ios-cxx"
+    export CFLAGS="-arch $IOS_ARCH -isysroot $SDKROOT $APPLE_DEPLOYMENT_FLAG -fPIC"
+    export CXXFLAGS="-arch $IOS_ARCH -isysroot $SDKROOT $APPLE_DEPLOYMENT_FLAG -fPIC"
+    export LDFLAGS="-arch $IOS_ARCH -isysroot $SDKROOT $APPLE_DEPLOYMENT_FLAG"
   '';
   configurePhase = ''
     runHook preConfigure
+    # Unset SDKROOT so it doesn't leak into host-side tool builds
+    unset SDKROOT
     ./configure --prefix=$out --host=aarch64-apple-darwin ${
       lib.concatMapStringsSep " " (flag: flag) buildFlags
     }

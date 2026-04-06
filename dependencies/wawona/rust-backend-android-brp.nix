@@ -3,12 +3,12 @@
 # can't run on the host. buildRustPackage uses cargo which correctly builds
 # build-deps for host. Use this for Android until crate2nix gains host-dep support.
 #
-{ pkgs, lib, workspaceSrc, nativeDeps, wawonaVersion }:
+{ pkgs, lib, workspaceSrc, nativeDeps, wawonaVersion, androidSDK ? null }:
 
 let
-  androidToolchain = import ../toolchains/android.nix { inherit lib pkgs; };
-  NDK_SYSROOT = "${androidToolchain.androidndkRoot}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot";
-  NDK_LIB_PATH = "${NDK_SYSROOT}/usr/lib/aarch64-linux-android/${toString androidToolchain.androidNdkApiLevel}";
+  androidToolchain = import ../toolchains/android.nix { inherit lib pkgs androidSDK; };
+  NDK_SYSROOT = androidToolchain.androidNdkSysroot;
+  NDK_LIB_PATH = androidToolchain.androidNdkAbiLibDir;
   androidLinkerWrapper = pkgs.writeShellScript "android-linker-wrapper" ''
     exec ${androidToolchain.androidCC} \
       --target=${androidToolchain.androidTarget} \
@@ -90,7 +90,10 @@ rustPlatform.buildRustPackage rec {
       ++ lib.optional (nativeDeps ? lz4) "${nativeDeps.lz4}/include"
       ++ lib.optional (nativeDeps ? ffmpeg) "${nativeDeps.ffmpeg}/include"
     )}:$C_INCLUDE_PATH"
-    export BINDGEN_EXTRA_CLANG_ARGS="-isystem ${NDK_SYSROOT}/usr/include -isystem ${NDK_SYSROOT}/usr/include/aarch64-linux-android --target=aarch64-linux-android"
+    export CRATE_CC_NO_DEFAULTS=1
+    export CFLAGS_aarch64_linux_android="--target=${androidToolchain.androidTarget} --sysroot=${NDK_SYSROOT} -isystem ${NDK_SYSROOT}/usr/include -isystem ${NDK_SYSROOT}/usr/include/aarch64-linux-android -fPIC ${androidToolchain.androidNdkCflags}"
+    export CXXFLAGS_aarch64_linux_android="--target=${androidToolchain.androidTarget} --sysroot=${NDK_SYSROOT} -isystem ${NDK_SYSROOT}/usr/include -isystem ${NDK_SYSROOT}/usr/include/aarch64-linux-android -fPIC ${androidToolchain.androidNdkCflags}"
+    export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=${NDK_SYSROOT} -isystem ${NDK_SYSROOT}/usr/include -isystem ${NDK_SYSROOT}/usr/include/aarch64-linux-android --target=${androidToolchain.androidTarget} ${androidToolchain.androidNdkCflags}"
   '';
 
   installPhase = ''

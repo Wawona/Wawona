@@ -15,6 +15,19 @@ nix run .#wawona-ios
 nix run .#wawona-android
 ```
 
+## Build Monitoring With `nom`
+
+`nix-output-monitor` is integrated into the flake:
+
+```bash
+# Run nom from the flake
+nix run .#nom -- build .#wawona-macos
+
+# If you are already in nix develop
+nom build .#wawona-macos
+nb .#wawona-macos   # alias for `nom build`
+```
+
 ## Build (without run)
 
 ```bash

@@ -5,11 +5,13 @@
   common,
   buildModule,
   simulator ? false,
+  iosToolchain ? null,
 }:
 
 let
   fetchSource = common.fetchSource;
   xcodeUtils = import ../../utils/xcode-wrapper.nix { inherit lib pkgs; };
+  ensureIosSimSDK = xcodeUtils.ensureIosSimSDK;
   ffmpegSource = {
     source = "github";
     owner = "FFmpeg";
@@ -30,29 +32,60 @@ pkgs.stdenv.mkDerivation {
     pkg-config
     nasm
     yasm
+    ensureIosSimSDK
   ];
 
   buildInputs = [ ];
 
   # Configure phase to set up the environment
   preConfigure = ''
-    # Find Xcode path dynamically
-    if [ -d "/Applications/Xcode.app" ]; then
-      export DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
-    elif [ -d "/Applications/Xcode-beta.app" ]; then
-      export DEVELOPER_DIR="/Applications/Xcode-beta.app/Contents/Developer"
-    else
-      # Fallback to xcode-select
-      export DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
-    fi
+    # Strip Nix stdenv's DEVELOPER_DIR to bypass the apple-sdk-14.4 fallback
+    unset DEVELOPER_DIR
 
+    ${if simulator then ''
+      # Robust SDK detection for iOS Simulator
+      IOS_SDK_PATH=$(xcrun --sdk iphonesimulator --show-sdk-path 2>/dev/null || true)
+      if [ ! -d "$IOS_SDK_PATH" ]; then
+        # Fallback 1: via ensureIosSimSDK script
+        IOS_SDK_PATH=$(${ensureIosSimSDK}/bin/ensure-ios-sim-sdk) || true
+      fi
+      if [ ! -d "$IOS_SDK_PATH" ]; then
+        # Fallback 2: Default location
+        XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode)
+        IOS_SDK_PATH="$XCODE_APP/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk"
+      fi
+    '' else ''
+      # Robust SDK detection for iOS Device
+      IOS_SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path 2>/dev/null || true)
+      if [ ! -d "$IOS_SDK_PATH" ]; then
+        # Fallback 1: Default location
+        XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode)
+        IOS_SDK_PATH="$XCODE_APP/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"
+      fi
+    ''}
+
+    if [ ! -d "$IOS_SDK_PATH" ]; then
+      echo "ERROR: iOS SDK not found. Build cannot proceed." >&2
+      exit 1
+    fi
+    export SDKROOT="$IOS_SDK_PATH"
+    export IOS_SDK_PATH
+
+    # Find the Developer dir associated with this SDK without using -oP
+    export DEVELOPER_DIR=$(echo "$IOS_SDK_PATH" | sed -E 's|^(.*\.app/Contents/Developer)/.*$|\1|')
+    [ "$DEVELOPER_DIR" = "$IOS_SDK_PATH" ] && export DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
+
+    echo "Using iOS SDK: $IOS_SDK_PATH"
     echo "Using Developer Dir: $DEVELOPER_DIR"
 
-    export IOS_SDK_PATH="$DEVELOPER_DIR/Platforms/${if simulator then "iPhoneSimulator" else "iPhoneOS"}.platform/Developer/SDKs/${if simulator then "iPhoneSimulator" else "iPhoneOS"}.sdk"
+    export NIX_CFLAGS_COMPILE=""
+    export NIX_CXXFLAGS_COMPILE=""
+    export NIX_LDFLAGS=""
+
     export MACOS_SDK_PATH="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
 
     if [ ! -d "$IOS_SDK_PATH" ]; then
-      echo "Error: iOS SDK not found at $IOS_SDK_PATH"
+      echo "Error: iOS SDK not found at $IOS_SDK_PATH (even after download attempt)"
       exit 1
     fi
 
@@ -69,6 +102,8 @@ pkgs.stdenv.mkDerivation {
 
     # HOST compiler (runs on macOS)
     export HOST_CC="/usr/bin/clang"
+    export HOST_CFLAGS="-isysroot $MACOS_SDK_PATH"
+    export HOST_LDFLAGS="-isysroot $MACOS_SDK_PATH"
 
     # Flags for TARGET (iOS)
     export CFLAGS="-arch arm64 -isysroot $IOS_SDK_PATH -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 -fembed-bitcode"
@@ -78,6 +113,9 @@ pkgs.stdenv.mkDerivation {
 
   configurePhase = ''
     runHook preConfigure
+
+    # Unset SDKROOT so FFmpeg's configure doesn't pass it to host checks
+    unset SDKROOT
 
     # Explicitly disable programs and runtime checks
     # Note: We set --host-cc to the macOS compiler to allow building helper tools
@@ -91,6 +129,8 @@ pkgs.stdenv.mkDerivation {
       --cc="$CC" \
       --cxx="$CXX" \
       --host-cc="$HOST_CC" \
+      --host-cflags="$HOST_CFLAGS" \
+      --host-ldflags="$HOST_LDFLAGS" \
       --ar="$AR" \
       --ranlib="$RANLIB" \
       --strip="$STRIP" \

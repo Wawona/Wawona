@@ -1,42 +1,20 @@
 {
   pkgs,
-  rustPlatform,
   wawonaVersion,
   wawonaSrc,
-  buildModule,
-  targetPkgs ? null,
+  macosBackend ? null,
+  iosBackend ? null,
+  iosSimBackend ? null,
   TEAM_ID ? null,
-  rustBackendIOS,
-  rustBackendIOSSim ? null,
-  rustBackendMacOS ? null,
-  includeMacOSTarget ? (rustBackendMacOS != null),
-  # Individual dependencies to avoid recursion
-  libwaylandIOS ? null,
-  xkbcommonIOS ? null,
-  pixmanIOS ? null,
-  libffiIOS ? null,
-  opensslIOS ? null,
-  libssh2IOS ? null,
-  mbedtlsIOS ? null,
-  zstdIOS ? null,
-  lz4IOS ? null,
-  epollShimIOS ? null,
-  waypipeIOS ? null,
-  westonSimpleShmIOS ? null,
-  westonIOS ? null,
-  cairoIOS ? null,
-  pangoIOS ? null,
-  glibIOS ? null,
-  harfbuzzIOS ? null,
-  fontconfigIOS ? null,
-  freetypeIOS ? null,
-  libpngIOS ? null,
+  iosDeps ? {},
+  iosSimDeps ? {},
+  macosDeps ? {},
+  macosWeston ? null,
 }:
 
 let
   lib = pkgs.lib;
-  buildPackages = pkgs.buildPackages;
-  common = import ../wawona/common.nix { inherit lib pkgs wawonaSrc; };
+  strip = d: if d == null then "" else toString d;
   xcodeUtils = import ../utils/xcode-wrapper.nix { inherit lib pkgs TEAM_ID; };
 
   # Dependency version strings (must match the tags/versions in dependencies/libs/*)
@@ -62,110 +40,10 @@ let
     "WAWONA_WAYPIPE_VERSION=\\\"${depVersions.waypipe}\\\""
   ];
 
-  # Pre-compute the openssl iOS path for use in iosSimLibs
-  opensslIOS = buildModule.buildForIOS "openssl" { };
-
-  # ── iOS Simulator libraries ──────────────────────────────────────────
-  # The iOS device static libraries contain arm64 code tagged with
-  # LC_BUILD_VERSION platform=IOS.  The simulator on Apple Silicon uses
-  # the same arm64 instruction set but requires platform=IOSSIMULATOR.
-  # Rather than rebuilding every library, we binary-patch the 4-byte
-  # platform field (IOS=2 → IOSSIMULATOR=7) inside each .a archive.
-  retagScript = pkgs.writeText "retag-ios-sim.py" ''
-    import struct, sys, os, shutil
-
-    FROM_PLATFORM = 2   # IOS
-    TO_PLATFORM   = 7   # IOSSIMULATOR
-
-    def retag(src, dst):
-        with open(src, "rb") as f:
-            data = bytearray(f.read())
-        n = 0
-        i = 0
-        while i < len(data) - 12:
-            if struct.unpack_from("<I", data, i)[0] == 0x32:  # LC_BUILD_VERSION
-                if struct.unpack_from("<I", data, i + 8)[0] == FROM_PLATFORM:
-                    struct.pack_into("<I", data, i + 8, TO_PLATFORM)
-                    n += 1
-            i += 4
-        with open(dst, "wb") as f:
-            f.write(data)
-        return n
-
-    src_dir = sys.argv[1]
-    dst_dir = sys.argv[2]
-    os.makedirs(dst_dir, exist_ok=True)
-    total = 0
-    for name in os.listdir(src_dir):
-        if name.endswith(".a"):
-            c = retag(os.path.join(src_dir, name), os.path.join(dst_dir, name))
-            total += c
-            print(f"  {name}: {c} objects re-tagged")
-    print(f"Total: {total} LC_BUILD_VERSION entries patched")
-  '';
-
-  iosSimLibs = pkgs.stdenv.mkDerivation {
-    name = "ios-sim-libs";
-    dontUnpack = true;
-    nativeBuildInputs = [ pkgs.python3 ];
-
-    buildPhase = ''
-      mkdir -p $out/lib
-
-      retag() {
-        local src_dir="$1"
-        if [ -d "$src_dir" ]; then
-          ${pkgs.python3}/bin/python3 ${retagScript} "$src_dir" "$out/lib"
-        fi
-      }
-
-      echo "Re-tagging iOS device C libraries for iOS Simulator..."
-      retag "${(buildModule.buildForIOS "libwayland" { })}/lib"
-      retag "${(buildModule.buildForIOS "xkbcommon" { })}/lib"
-      retag "${(buildModule.buildForIOS "libffi" { })}/lib"
-      retag "${(buildModule.buildForIOS "pixman" { })}/lib"
-      retag "${(buildModule.buildForIOS "zstd" { })}/lib"
-      retag "${(buildModule.buildForIOS "lz4" { })}/lib"
-      retag "${(buildModule.buildForIOS "libssh2" { })}/lib"
-      retag "${(buildModule.buildForIOS "mbedtls" { })}/lib"
-      retag "${opensslIOS}/lib"
-      retag "${(buildModule.buildForIOS "epoll-shim" { })}/lib"
-      retag "${(buildModule.buildForIOS "weston-simple-shm" { })}/lib"
-      retag "${(buildModule.buildForIOS "weston" { })}/lib"
-      retag "${targetPkgs.cairo}/lib"
-      retag "${targetPkgs.pango}/lib"
-      retag "${targetPkgs.glib}/lib"
-      retag "${targetPkgs.harfbuzz}/lib"
-      retag "${targetPkgs.fontconfig}/lib"
-      retag "${targetPkgs.freetype}/lib"
-      retag "${targetPkgs.libpng}/lib"
-      
-      # Use native simulator build for waypipe (no retagging needed)
-      cp "${buildModule.buildForIOS "waypipe" { simulator = true; }}/lib/libwaypipe.a" "$out/lib/"
-
-
-      ${if rustBackendIOSSim != null then ''
-        # Use the properly-built simulator backend (aarch64-apple-ios-sim target)
-        echo "Copying simulator-native libwawona.a..."
-        cp "${rustBackendIOSSim}/lib/libwawona.a" "$out/lib/libwawona.a"
-      '' else ''
-        # Fallback: re-tag the device backend for simulator use
-        echo "Re-tagging libwawona.a (no simulator backend provided)..."
-        ${pkgs.python3}/bin/python3 ${retagScript} "${rustBackendIOS}/lib" "$out/lib"
-      ''}
-
-      echo ""
-      echo "Simulator libraries:"
-      ls -lh $out/lib/
-    '';
-
-    installPhase = "true";
-  };
-
-  # Shared exclude patterns to keep only C/ObjC source files
+  # PreBuildScript helper
   # src/core is entirely Rust (0 C/ObjC files) — excluded entirely
-  # src/stubs, src/compat, src/input depend on system headers (wayland, vulkan)
-  #   only available in Nix — excluded from Xcode project
+  # src/stubs depend on system headers (wayland, vulkan) that are only
+  # available from the Nix build environment, so they stay out of Xcode.
   # The Xcode build compiles only the platform ObjC layer and links libwawona.a
   commonExcludes = ["**/*.rs" "**/*.toml" "**/*.md" "**/Cargo.lock" "**/.DS_Store" "**/renderer_android.*" "**/WWNSettings.c"];
 
@@ -194,18 +72,17 @@ let
         ];
         HEADER_SEARCH_PATHS = [
           "$(inherited)"
-          "${libwaylandIOS}/include"
-          "${xkbcommonIOS}/include"
-          "${rustBackendIOS}/include"
+          "${strip (iosDeps.libwayland or null)}/include"
+          "${strip (iosDeps.xkbcommon or null)}/include"
           "$(SRCROOT)/src"
-          "$(SRCROOT)/src/rendering"
-          "$(SRCROOT)/src/ui"
-          "$(SRCROOT)/src/launcher"
+          "$(SRCROOT)/src/platform/macos/ui"
+          "$(SRCROOT)/src/platform/macos/ui/Helpers"
+          "$(SRCROOT)/src/platform/macos/ui/Settings"
           "$(SRCROOT)/src/extensions"
           "$(SRCROOT)/src/platform/macos"
           "$(SRCROOT)/src/platform/ios"
-          "${pixmanIOS}/include"
-          "${opensslIOS}/include"
+          "${strip (iosDeps.pixman or null)}/include"
+          "${strip (iosDeps.openssl or null)}/include"
         ];
       };
     };
@@ -216,14 +93,18 @@ let
         sources = [
           {
             path = "src/platform/macos";
-            excludes = commonExcludes ++ ["*Window*" "*MacOS*" "*Popup*"];
+            excludes = commonExcludes ++ [
+              "*Window*"
+              "*MacOS*"
+              "*Popup*"
+              "main.m"
+              "ui/**"
+            ];
           }
+          { path = "src/platform/macos/main.m"; }
           { path = "src/platform/ios"; excludes = commonExcludes; }
-          { path = "src/ui"; excludes = commonExcludes; }
-          { path = "src/rendering"; excludes = commonExcludes; }
-          { path = "src/apple_backend.h"; type = "file"; }
-          { path = "src/config.h"; type = "file"; }
-          { path = "src/resources/Assets.xcassets"; }
+          { path = "src/platform/macos/ui/Settings"; excludes = commonExcludes; }
+          { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
@@ -233,13 +114,20 @@ let
             INFOPLIST_FILE = "src/resources/app-bundle/Info.plist";
             GENERATE_INFOPLIST_FILE = "NO";
             PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.Wawona";
+            ASSETCATALOG_COMPILER_APPICON_NAME = "";
             TARGETED_DEVICE_FAMILY = "1,2";
             CODE_SIGN_STYLE = "Automatic";
             ENABLE_DEBUG_DYLIB = "NO";
+            "CODE_SIGNING_ALLOWED[config=Debug]" = "NO";
+            "CODE_SIGNING_REQUIRED[config=Debug]" = "NO";
+            "CODE_SIGN_STYLE[config=Debug]" = "Manual";
             CODE_SIGNING_ALLOWED = "YES";
             CODE_SIGNING_REQUIRED = "YES";
             "CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]" = "NO";
             "CODE_SIGNING_REQUIRED[sdk=iphonesimulator*]" = "NO";
+            "VALID_ARCHS[sdk=iphonesimulator*]" = "arm64";
+            "ARCHS[sdk=iphonesimulator*]" = "arm64";
+            "ONLY_ACTIVE_ARCH" = "YES";
             OTHER_CODE_SIGN_FLAGS = [
               "$(inherited)"
               "--deep"
@@ -256,19 +144,18 @@ let
             ];
             "OTHER_LDFLAGS[sdk=iphoneos*]" = [
               "$(inherited)"
-              "-L${libwaylandIOS}/lib"
-              "-L${xkbcommonIOS}/lib"
-              "-L${libffiIOS}/lib"
-              "-L${pixmanIOS}/lib"
-              "-L${zstdIOS}/lib"
-              "-L${lz4IOS}/lib"
-              "-L${libssh2IOS}/lib"
-              "-L${mbedtlsIOS}/lib"
-              "-L${opensslIOS}/lib"
-              "-L${epollShimIOS}/lib"
-              "-L${waypipeIOS}/lib"
-               "-L${westonSimpleShmIOS}/lib"
-               "-L${westonIOS}/lib"
+              "-L${strip (iosDeps.libwayland or null)}/lib"
+              "-L${strip (iosDeps.xkbcommon or null)}/lib"
+              "-L${strip (iosDeps.libffi or null)}/lib"
+              "-L${strip (iosDeps.pixman or null)}/lib"
+              "-L${strip (iosDeps.zstd or null)}/lib"
+              "-L${strip (iosDeps.lz4 or null)}/lib"
+              "-L${strip (iosDeps.libssh2 or null)}/lib"
+              "-L${strip (iosDeps.mbedtls or null)}/lib"
+              "-L${strip (iosDeps.openssl or null)}/lib"
+              "-L${strip (iosDeps.epoll-shim or null)}/lib"
+               "-L${strip (iosDeps.weston-simple-shm or null)}/lib"
+               "-L${strip (iosDeps.weston or null)}/lib"
                "-lxkbcommon"
                "-lwayland-client"
                "-lffi"
@@ -283,16 +170,26 @@ let
                "-lssl"
                "-lcrypto"
                "-lepoll-shim"
-               "-lwaypipe"
                "-lweston_simple_shm"
                "-lweston-13"
                "-lweston-desktop-13"
                "-lweston-terminal"
-               "${rustBackendIOS}/lib/libwawona.a"
+               "${strip iosBackend}/lib/libwawona.a"
             ];
             "OTHER_LDFLAGS[sdk=iphonesimulator*]" = [
               "$(inherited)"
-              "-L${iosSimLibs}/lib"
+              "-L${strip (iosSimDeps.libwayland or null)}/lib"
+              "-L${strip (iosSimDeps.xkbcommon or null)}/lib"
+              "-L${strip (iosSimDeps.libffi or null)}/lib"
+              "-L${strip (iosSimDeps.pixman or null)}/lib"
+              "-L${strip (iosSimDeps.zstd or null)}/lib"
+              "-L${strip (iosSimDeps.lz4 or null)}/lib"
+              "-L${strip (iosSimDeps.libssh2 or null)}/lib"
+              "-L${strip (iosSimDeps.mbedtls or null)}/lib"
+              "-L${strip (iosSimDeps.openssl or null)}/lib"
+              "-L${strip (iosSimDeps.epoll-shim or null)}/lib"
+               "-L${strip (iosSimDeps.weston-simple-shm or null)}/lib"
+               "-L${strip (iosSimDeps.weston or null)}/lib"
               "-lxkbcommon"
               "-lwayland-client"
               "-lffi"
@@ -307,25 +204,30 @@ let
               "-lssl"
               "-lcrypto"
                "-lepoll-shim"
-               "-lwaypipe"
                "-lweston_simple_shm"
                "-lweston-13"
                "-lweston-desktop-13"
                "-lweston-terminal"
-               "${iosSimLibs}/lib/libwawona.a"
+               "${strip iosSimBackend}/lib/libwawona.a"
             ];
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"
               "PRODUCT_BUNDLE_IDENTIFIER=\\\"com.aspauldingcode.Wawona\\\""
             ] ++ versionDefs;
-            HEADER_SEARCH_PATHS = [
+            "HEADER_SEARCH_PATHS[sdk=iphoneos*]" = [
               "$(inherited)"
-              "${(buildModule.buildForIOS "libwayland" { })}/include"
-              "${(buildModule.buildForIOS "libwayland" { })}/include/wayland"
-              "${(buildModule.buildForIOS "xkbcommon" { })}/include"
-              "${(buildModule.buildForIOS "libssh2" { })}/include"
-              "${rustBackendIOS}/include"
+              "${strip (iosDeps.libwayland or null)}/include"
+              "${strip (iosDeps.libwayland or null)}/include/wayland"
+              "${strip (iosDeps.xkbcommon or null)}/include"
+              "${strip (iosDeps.libssh2 or null)}/include"
+            ];
+            "HEADER_SEARCH_PATHS[sdk=iphonesimulator*]" = [
+              "$(inherited)"
+              "${strip (iosSimDeps.libwayland or null)}/include"
+              "${strip (iosSimDeps.libwayland or null)}/include/wayland"
+              "${strip (iosSimDeps.xkbcommon or null)}/include"
+              "${strip (iosSimDeps.libssh2 or null)}/include"
             ];
           };
         };
@@ -344,17 +246,12 @@ let
           { sdk = "Network.framework"; }
         ];
       };
-    } // lib.optionalAttrs includeMacOSTarget {
       Wawona-macOS = {
         type = "application";
         platform = "macOS";
         sources = [
           { path = "src/platform/macos"; excludes = commonExcludes; }
-          { path = "src/ui"; excludes = commonExcludes; }
-          { path = "src/launcher"; excludes = commonExcludes ++ ["*LauncherClient*"]; }
-          { path = "src/rendering"; excludes = commonExcludes; }
-          { path = "src/apple_backend.h"; type = "file"; }
-          { path = "src/config.h"; type = "file"; }
+          { path = "src/platform/macos/ui"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/wayland.png"; type = "file"; }
@@ -363,24 +260,39 @@ let
         ];
         postBuildScripts = [
           {
-            name = "Bundle Waypipe & sshpass";
+            name = "Bundle Executables";
+            basedOnDependencyAnalysis = false;
             script = ''
-              WAYPIPE_SRC="${(buildModule.buildForMacOS "waypipe" { })}/bin/waypipe"
-              SSHPASS_SRC="${(buildModule.buildForMacOS "sshpass" { })}/bin/sshpass"
-              DEST="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/MacOS"
+              WAYPIPE_SRC="${strip (macosDeps.waypipe or null)}/bin/waypipe"
+              SSHPASS_SRC="${strip (macosDeps.sshpass or null)}/bin/sshpass"
+              WESTON_SRC="${strip macosWeston}/bin"
+              
+              BIN_DEST="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources/bin"
+              MACOS_DEST="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/MacOS"
+              mkdir -p "$BIN_DEST"
 
+              # Bundle Waypipe
               if [ -f "$WAYPIPE_SRC" ]; then
-                install -m 755 "$WAYPIPE_SRC" "$DEST/waypipe"
-                echo "Bundled waypipe into $DEST"
-              else
-                echo "warning: waypipe binary not found at $WAYPIPE_SRC"
+                install -m 755 "$WAYPIPE_SRC" "$BIN_DEST/waypipe"
+                install -m 755 "$WAYPIPE_SRC" "$MACOS_DEST/waypipe"
+                echo "Bundled waypipe"
               fi
 
+              # Bundle sshpass
               if [ -f "$SSHPASS_SRC" ]; then
-                install -m 755 "$SSHPASS_SRC" "$DEST/sshpass"
-                echo "Bundled sshpass into $DEST"
-              else
-                echo "warning: sshpass binary not found at $SSHPASS_SRC"
+                install -m 755 "$SSHPASS_SRC" "$BIN_DEST/sshpass"
+                install -m 755 "$SSHPASS_SRC" "$MACOS_DEST/sshpass"
+                echo "Bundled sshpass"
+              fi
+
+              # Bundle Weston Clients
+              if [ -d "$WESTON_SRC" ]; then
+                for client in weston weston-terminal weston-simple-egl weston-simple-shm weston-flower weston-smoke weston-resizor weston-scaler; do
+                  if [ -f "$WESTON_SRC/$client" ]; then
+                    install -m 755 "$WESTON_SRC/$client" "$BIN_DEST/$client"
+                    echo "Bundled $client"
+                  fi
+                done
               fi
             '';
           }
@@ -393,21 +305,19 @@ let
             CODE_SIGN_STYLE = "Automatic";
             HEADER_SEARCH_PATHS = [
               "$(inherited)"
-              "${(buildModule.buildForMacOS "libwayland" { })}/include"
-              "${(buildModule.buildForMacOS "libwayland" { })}/include/wayland"
-              "${(buildModule.buildForMacOS "xkbcommon" { })}/include"
-              "${rustBackendMacOS}/include"
+              "${strip (macosDeps.libwayland or null)}/include"
+              "${strip (macosDeps.libwayland or null)}/include/wayland"
+              "${strip (iosDeps.xkbcommon or null)}/include"
               "$(SRCROOT)/src"
-              "$(SRCROOT)/src/rendering"
-              "$(SRCROOT)/src/ui"
-              "$(SRCROOT)/src/ui/Helpers"
-              "$(SRCROOT)/src/launcher"
+              "$(SRCROOT)/src/platform/macos/ui"
+              "$(SRCROOT)/src/platform/macos/ui/Helpers"
+              "$(SRCROOT)/src/platform/macos/ui/Settings"
               "$(SRCROOT)/src/platform/macos"
             ];
             OTHER_LDFLAGS = [
               "$(inherited)"
-              "-L${(buildModule.buildForMacOS "libwayland" { })}/lib"
-              "-L${(buildModule.buildForMacOS "xkbcommon" { })}/lib"
+              "-L${strip (macosDeps.libwayland or null)}/lib"
+              "-L${strip (macosDeps.xkbcommon or null)}/lib"
               "-L${pkgs.pixman}/lib"
               "-L${pkgs.openssl.out}/lib"
               "-lxkbcommon"
@@ -417,7 +327,7 @@ let
               "-lssl"
               "-lcrypto"
               "-lz"
-              "${rustBackendMacOS}/lib/libwawona.a"
+              "${strip macosBackend}/lib/libwawona.a"
             ];
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
@@ -450,7 +360,7 @@ let
   projectDrv = pkgs.stdenv.mkDerivation {
     pname = "WawonaXcodeProject";
     version = wawonaVersion;
-    src = ../..;
+    src = wawonaSrc;
 
     nativeBuildInputs = [ pkgs.xcodegen ];
 
@@ -466,19 +376,23 @@ let
       export USER="nobody"
       ${pkgs.xcodegen}/bin/xcodegen generate --spec project.yml
       mkdir -p $out
-      if [ -d "Wawona.xcodeproj" ]; then
-        cp -r Wawona.xcodeproj $out/
-      else
-        find . -maxdepth 1 -name "*.xcodeproj" -exec cp -r {} $out/ \; || true
-      fi
+      cp -R . "$out/"
       runHook postInstall
     '';
   };
 
   # Script to generate project (headless)
   generateScript = pkgs.writeShellScriptBin "xcodegen" ''
-    set -e
+    set -euo pipefail
     SPEC_PATH=${projectYamlFile}
+
+    if command -v nix >/dev/null 2>&1; then
+      FLAKE_REF="."
+      if [ -f "crates/Wawona/flake.nix" ]; then
+        FLAKE_REF="./crates/Wawona"
+      fi
+      nix build --no-link "$FLAKE_REF#wawona-macos-backend" "$FLAKE_REF#wawona-ios-backend" "$FLAKE_REF#wawona-ios-sim-backend" >/dev/null
+    fi
 
     if [ -d "Wawona.xcodeproj" ]; then
       chmod -R u+w "Wawona.xcodeproj" 2>/dev/null || true
@@ -533,12 +447,12 @@ EOF
       <key>orderHint</key>
       <integer>0</integer>
     </dict>
-${lib.optionalString includeMacOSTarget ''    <key>Wawona-macOS.xcscheme_^#shared#^_</key>
+    <key>Wawona-macOS.xcscheme_^#shared#^_</key>
     <dict>
       <key>orderHint</key>
       <integer>1</integer>
     </dict>
-''}  </dict>
+  </dict>
   <key>SuppressBuildableAutocreation</key>
   <dict/>
 </dict>

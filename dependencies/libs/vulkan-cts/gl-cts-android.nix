@@ -2,12 +2,18 @@
 {
   lib,
   pkgs,
+  stdenv ? pkgs.stdenv,
   buildPackages,
+  androidSDK ? null,
+  androidToolchain ? (import ../../toolchains/android.nix { inherit lib pkgs androidSDK; }),
+  buildTargets ? "glcts-runner",
 }:
 
 let
   common = import ./common.nix { inherit pkgs; };
-  androidToolchain = import ../../toolchains/android.nix { inherit lib pkgs; };
+  androidCmake = import ../../toolchains/android-cmake.nix {
+    inherit lib pkgs androidToolchain;
+  };
 in
 pkgs.stdenv.mkDerivation (finalAttrs: {
   pname = "gl-cts-android";
@@ -16,6 +22,8 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
   src = common.src;
 
   prePatch = common.prePatch;
+
+  # No postPatch needed for symlink, it causes errors with undefined $build
 
   nativeBuildInputs = with buildPackages; [
     cmake
@@ -38,36 +46,48 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
     export AR="${androidToolchain.androidAR}"
     export STRIP="${androidToolchain.androidSTRIP}"
     export RANLIB="${androidToolchain.androidRANLIB}"
-    export CFLAGS="--target=${androidToolchain.androidTarget} -fPIC"
-    export CXXFLAGS="--target=${androidToolchain.androidTarget} -fPIC"
-    export LDFLAGS="--target=${androidToolchain.androidTarget}"
   '';
 
   cmakeFlags = [
-    "-DCMAKE_SYSTEM_NAME=Android"
     "-DDEQP_TARGET=android"
     "-DDE_OS=DE_OS_ANDROID"
-    "-DCMAKE_ANDROID_ARCH_ABI=arm64-v8a"
-    "-DCMAKE_ANDROID_NDK=${androidToolchain.androidndkRoot}"
-    "-DCMAKE_ANDROID_API=${toString androidToolchain.androidNdkApiLevel}"
+    "-DDEQP_ANDROID_EXE=OFF"
+    "-DDE_ANDROID_API=${toString androidToolchain.androidNdkApiLevel}"
     "-DCMAKE_C_COMPILER=${androidToolchain.androidCC}"
     "-DCMAKE_CXX_COMPILER=${androidToolchain.androidCXX}"
-    "-DCMAKE_C_FLAGS=--target=${androidToolchain.androidTarget}"
-    "-DCMAKE_CXX_FLAGS=--target=${androidToolchain.androidTarget}"
+    "-DCMAKE_POSITION_INDEPENDENT_CODE=ON"
+    "-DCMAKE_C_FLAGS=-fPIC"
+    "-DCMAKE_CXX_FLAGS=-fPIC"
     "-DCMAKE_INSTALL_BINDIR=bin"
     "-DCMAKE_INSTALL_LIBDIR=lib"
     "-DCMAKE_INSTALL_INCLUDEDIR=include"
     "-DDEQP_ANDROID_EXE=ON"
-    "-DSELECTED_BUILD_TARGETS=${common.glTargets}"
+    "-DSELECTED_BUILD_TARGETS=${buildTargets}"
     (lib.cmakeFeature "FETCHCONTENT_SOURCE_DIR_SHADERC" "${common.sources.shaderc-src}")
+  ]
+  ++ androidCmake.mkCrossFlags { abi = "arm64-v8a"; }
+  ++ lib.optionals androidCmake.useWrappedCrossCmake [
+    (androidCmake.cmakeLibFlag { variable = "ANDROID"; libName = "android"; })
+    (androidCmake.cmakeLibFlag { variable = "EGL"; libName = "EGL"; })
+    (androidCmake.cmakeLibFlag { variable = "GLES1"; libName = "GLESv1_CM"; })
+    (androidCmake.cmakeLibFlag { variable = "GLES2"; libName = "GLESv2"; })
+    (androidCmake.cmakeLibFlag { variable = "GLES3"; libName = "GLESv3"; })
+    (androidCmake.cmakeLibFlag { variable = "LOG"; libName = "log"; })
+    (androidCmake.cmakeLibFlag { variable = "ZLIB"; libName = "z"; })
+    (androidCmake.cmakeExactFlag { variable = "ZLIB_INCLUDE_DIR"; value = "${androidToolchain.androidNdkSysroot}/usr/include"; })
   ];
+
+  ninjaFlags = [ buildTargets ];
 
   postInstall = ''
     mkdir -p $out/bin $out/archive-dir
-    [ -f external/openglcts/modules/glcts ] && cp -a external/openglcts/modules/glcts $out/bin/ || true
-    [ -f external/openglcts/modules/cts-runner ] && cp -a external/openglcts/modules/cts-runner $out/bin/ || true
+    [ -f external/openglcts/modules/glcts ] || { echo "missing glcts"; exit 1; }
+    cp -a external/openglcts/modules/glcts $out/bin/
+    [ -f external/openglcts/modules/cts-runner ] || { echo "missing cts-runner"; exit 1; }
+    cp -a external/openglcts/modules/cts-runner $out/bin/
     for d in gl_cts gles2 gles3 gles31; do
-      [ -d external/openglcts/modules/$d ] && cp -a external/openglcts/modules/$d $out/archive-dir/ || true
+      [ -d external/openglcts/modules/$d ] || { echo "missing $d"; exit 1; }
+      cp -a external/openglcts/modules/$d $out/archive-dir/
     done
   '';
 
@@ -82,7 +102,7 @@ echo "=== GL CTS Android Runner ==="
 echo "Pushing GL CTS binaries to device..."
 [ -f "$DEQP_DIR/bin/glcts" ] && adb push "$DEQP_DIR/bin/glcts" /data/local/tmp/glcts && adb shell chmod +x /data/local/tmp/glcts
 [ -f "$DEQP_DIR/bin/cts-runner" ] && adb push "$DEQP_DIR/bin/cts-runner" /data/local/tmp/cts-runner && adb shell chmod +x /data/local/tmp/cts-runner
-adb push "$DEQP_DIR/archive-dir/" /data/local/tmp/archive-dir/ 2>/dev/null || true
+adb push "$DEQP_DIR/archive-dir/" /data/local/tmp/archive-dir/
 
 echo "Running GL CTS on device..."
 if [ -f "$DEQP_DIR/bin/glcts" ]; then
