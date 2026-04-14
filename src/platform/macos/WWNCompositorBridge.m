@@ -27,6 +27,16 @@
 #include <stdatomic.h>
 #include <string.h> // For strdup
 
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+static BOOL WWNEnablePerWindowHostingOnIPad(void) {
+  if (UIDevice.currentDevice.userInterfaceIdiom != UIUserInterfaceIdiomPad) {
+    return NO;
+  }
+  NSOperatingSystemVersion version = NSProcessInfo.processInfo.operatingSystemVersion;
+  return version.majorVersion >= 26;
+}
+#endif
+
 // Plain C FFI functions exported from Rust with #[no_mangle]
 extern void *WWNCoreNew(void);
 extern bool WWNCoreStart(void *core, const char *socket_name);
@@ -146,89 +156,45 @@ extern void WWNRenderSceneFree(CRenderScene *scene);
 // MARK: - Cursor Shape Mapping
 
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
-// static NSCursor *NSCursorFromWaylandShape(uint32_t shape) {
-//   switch (shape) {
-//   case 1:
-//     return [NSCursor arrowCursor]; // default
-//   case 2:
-//     return [NSCursor arrowCursor]; // context-menu
-//   case 3:
-//     return [NSCursor arrowCursor]; // help
-//   case 4:
-//     return [NSCursor pointingHandCursor]; // pointer
-//   case 5:
-//     return [NSCursor arrowCursor]; // progress
-//   case 6:
-//     return [NSCursor arrowCursor]; // wait
-//   case 7:
-//     return [NSCursor crosshairCursor]; // cell
-//   case 8:
-//     return [NSCursor crosshairCursor]; // crosshair
-//   case 9:
-//     return [NSCursor IBeamCursor]; // text
-//   case 10:
-//     return [NSCursor IBeamCursor]; // vertical-text (fallback)
-//   case 11:
-//     return [NSCursor arrowCursor]; // alias
-//   case 12:
-//     return [NSCursor dragCopyCursor]; // copy
-//   case 13:
-//     return [NSCursor arrowCursor]; // move
-//   case 14:
-//     return [NSCursor operationNotAllowedCursor]; // no-drop
-//   case 15:
-//     return [NSCursor operationNotAllowedCursor]; // not-allowed
-//   case 16:
-//     return [NSCursor crosshairCursor]; // grab (fallback)
-//   case 17:
-//     return [NSCursor closedHandCursor]; // grabbing
-//   case 18:
-//     return [NSCursor resizeRightCursor]; // e-resize
-//   case 19:
-//     return [NSCursor resizeUpCursor]; // n-resize
-//   case 20:
-//     return [NSCursor arrowCursor]; // ne-resize
-//   case 21:
-//     return [NSCursor arrowCursor]; // nw-resize
-//   case 22:
-//     return [NSCursor resizeDownCursor]; // s-resize
-//   case 23:
-//     return [NSCursor arrowCursor]; // se-resize
-//   case 24:
-//     return [NSCursor arrowCursor]; // sw-resize
-//   case 25:
-//     return [NSCursor resizeLeftCursor]; // w-resize
-//   case 26:
-//     return [NSCursor resizeLeftRightCursor]; // ew-resize
-//   case 27:
-//     return [NSCursor resizeUpDownCursor]; // ns-resize
-//   case 28:
-//     return [NSCursor arrowCursor]; // nesw-resize
-//   case 29:
-//     return [NSCursor arrowCursor]; // nwse-resize
-//   case 30:
-//     return [NSCursor resizeLeftRightCursor]; // col-resize
-//   case 31:
-//     return [NSCursor resizeUpDownCursor]; // row-resize
-//   case 32:
-//     return [NSCursor arrowCursor]; // all-scroll
-//   case 33:
-//     return [NSCursor arrowCursor]; // zoom-in
-//   case 34:
-//     return [NSCursor arrowCursor]; // zoom-out
-//   default:
-//     return [NSCursor arrowCursor];
-//   }
-// }
-#endif
-
-#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
-// static void handle_cursor_shape_update(uint32_t shape) {
-//   dispatch_async(dispatch_get_main_queue(), ^{
-//     NSCursor *cursor = NSCursorFromWaylandShape(shape);
-//     [cursor set];
-//   });
-// }
+static NSCursor *NSCursorFromWaylandShape(uint32_t shape) {
+  switch (shape) {
+  case 1:  return [NSCursor arrowCursor];
+  case 2:  return [NSCursor arrowCursor];           // context-menu
+  case 3:  return [NSCursor arrowCursor];           // help
+  case 4:  return [NSCursor pointingHandCursor];    // pointer
+  case 5:  return [NSCursor arrowCursor];           // progress
+  case 6:  return [NSCursor arrowCursor];           // wait
+  case 7:  return [NSCursor crosshairCursor];       // cell
+  case 8:  return [NSCursor crosshairCursor];       // crosshair
+  case 9:  return [NSCursor IBeamCursor];           // text
+  case 10: return [NSCursor IBeamCursor];           // vertical-text
+  case 11: return [NSCursor arrowCursor];           // alias
+  case 12: return [NSCursor dragCopyCursor];        // copy
+  case 13: return [NSCursor arrowCursor];           // move
+  case 14: return [NSCursor operationNotAllowedCursor]; // no-drop
+  case 15: return [NSCursor operationNotAllowedCursor]; // not-allowed
+  case 16: return [NSCursor openHandCursor];        // grab
+  case 17: return [NSCursor closedHandCursor];      // grabbing
+  case 18: return [NSCursor resizeRightCursor];     // e-resize
+  case 19: return [NSCursor resizeUpCursor];        // n-resize
+  case 20: return [NSCursor arrowCursor];           // ne-resize
+  case 21: return [NSCursor arrowCursor];           // nw-resize
+  case 22: return [NSCursor resizeDownCursor];      // s-resize
+  case 23: return [NSCursor arrowCursor];           // se-resize
+  case 24: return [NSCursor arrowCursor];           // sw-resize
+  case 25: return [NSCursor resizeLeftCursor];      // w-resize
+  case 26: return [NSCursor resizeLeftRightCursor]; // ew-resize
+  case 27: return [NSCursor resizeUpDownCursor];    // ns-resize
+  case 28: return [NSCursor arrowCursor];           // nesw-resize
+  case 29: return [NSCursor arrowCursor];           // nwse-resize
+  case 30: return [NSCursor resizeLeftRightCursor]; // col-resize
+  case 31: return [NSCursor resizeUpDownCursor];    // row-resize
+  case 32: return [NSCursor arrowCursor];           // all-scroll
+  case 33: return [NSCursor arrowCursor];           // zoom-in
+  case 34: return [NSCursor arrowCursor];           // zoom-out
+  default: return [NSCursor arrowCursor];
+  }
+}
 #endif
 
 @implementation WWNCompositorBridge {
@@ -251,6 +217,8 @@ extern void WWNRenderSceneFree(CRenderScene *scene);
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
   NSMutableDictionary<NSNumber *, id> *_windows;
   NSMutableDictionary<NSNumber *, id> *_popups;
+  NSMutableDictionary<NSNumber *, UIWindow *> *_iosHostWindows;
+  BOOL _iosPerWindowHostingEnabled;
 #else
   NSMutableDictionary<NSNumber *, id>
       *_windows; /* WWNWindow or NSWindow (popup) */
@@ -266,6 +234,10 @@ extern void WWNRenderSceneFree(CRenderScene *scene);
   NSMutableDictionary<NSNumber *, NSValue *> *_latestResizeDims;
   NSMutableDictionary<NSNumber *, NSValue *> *_sentResizeDims;
   NSMutableSet<NSNumber *> *_resizeInFlightWindows;
+
+  // Cursor policy: runtime detection from wp_cursor_shape or wl_pointer.set_cursor
+  BOOL _clientWantsCursorRendered;
+  uint64_t _lastCursorBufferId;
 
   // Output-size coalescing (same pattern)
   BOOL _outputResizeInFlight;
@@ -315,6 +287,11 @@ extern void WWNRenderSceneFree(CRenderScene *scene);
     WWNLog("BRIDGE", @"WWNCore created successfully via C API!");
     _windows = [NSMutableDictionary dictionary];
     _popups = [NSMutableDictionary dictionary];
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+    _iosHostWindows = [NSMutableDictionary dictionary];
+    _iosPerWindowHostingEnabled = WWNEnablePerWindowHostingOnIPad();
+    WWNLog("BRIDGE", @"iOS per-window hosting %@", _iosPerWindowHostingEnabled ? @"enabled" : @"disabled");
+#endif
     _bufferCache = [NSMutableDictionary dictionary];
     _surfaceLayers = [NSMutableDictionary dictionary];
     _latestResizeDims = [NSMutableDictionary dictionary];
@@ -523,6 +500,14 @@ extern void WWNRenderSceneFree(CRenderScene *scene);
     }
 #endif
     [_windows removeAllObjects];
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+    for (NSNumber *key in [_iosHostWindows allKeys]) {
+      UIWindow *window = _iosHostWindows[key];
+      window.hidden = YES;
+      window.rootViewController = nil;
+      [_iosHostWindows removeObjectForKey:key];
+    }
+#endif
   }
 
   [_bufferCache removeAllObjects];
@@ -712,6 +697,9 @@ extern void WWNRenderSceneFree(CRenderScene *scene);
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
           // Forward cursor rendering info to all iOS window views
           [self _updateCursorFromScene:scene];
+#else
+          // Convert Wayland bitmap cursor to NSCursor on macOS
+          [self _applyBitmapCursorFromScene:scene];
 #endif
         } @catch (NSException *exception) {
           WWNLog("TICK", @"Exception applying render scene: %@ (%@)",
@@ -1512,6 +1500,7 @@ typedef enum : uint32_t {
   CWindowEventTypeMinimizeRequested = 9,
   CWindowEventTypeMaximizeRequested = 10,
   CWindowEventTypeUnmaximizeRequested = 11,
+  CWindowEventTypeCursorShapeChanged = 12,
 } CWindowEventType;
 
 typedef struct CWindowEvent {
@@ -1596,6 +1585,11 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
   case CWindowEventTypeUnmaximizeRequested:
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
     [self handleWindowUnmaximizeRequested:event];
+#endif
+    break;
+  case CWindowEventTypeCursorShapeChanged:
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+    [self handleCursorShapeChanged:event];
 #endif
     break;
   }
@@ -1938,6 +1932,77 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
 #endif
 }
 
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+- (void)handleCursorShapeChanged:(CWindowEvent *)event {
+  if (_windows.count == 0)
+    return;
+  uint32_t shape = event->surface_id;
+  [self _ensureCursorRenderingEnabled];
+
+  NSCursor *cursor = NSCursorFromWaylandShape(shape);
+  [cursor set];
+}
+
+- (void)_ensureCursorRenderingEnabled {
+  if (_windows.count == 0)
+    return;
+  if (!_clientWantsCursorRendered) {
+    _clientWantsCursorRendered = YES;
+    WWNLog("BRIDGE",
+           @"Client requested cursor management — enabling host cursor rendering");
+    for (NSNumber *key in _windows) {
+      NSWindow *w = _windows[key];
+      if ([w isKindOfClass:[WWNWindow class]]) {
+        NSView *cv = ((WWNWindow *)w).contentView;
+        if (cv) {
+          [w invalidateCursorRectsForView:cv];
+        }
+      }
+    }
+  }
+}
+
+- (void)_applyBitmapCursorFromScene:(CRenderScene *)scene {
+  if (!scene || !scene->has_cursor)
+    return;
+
+  if (_windows.count == 0)
+    return;
+
+  if (scene->cursor_buffer_id == 0)
+    return;
+
+  if (scene->cursor_buffer_id == _lastCursorBufferId)
+    return;
+  _lastCursorBufferId = scene->cursor_buffer_id;
+
+  [self _ensureCursorRenderingEnabled];
+
+  id cached = _bufferCache[@(scene->cursor_buffer_id)];
+  if (!cached)
+    return;
+
+  CGImageRef cgImage = NULL;
+  CFTypeRef cfRef = (__bridge CFTypeRef)cached;
+  if (CFGetTypeID(cfRef) == CGImageGetTypeID()) {
+    cgImage = (CGImageRef)cfRef;
+  }
+  if (!cgImage)
+    return;
+
+  CGFloat scale = NSScreen.mainScreen.backingScaleFactor;
+  if (scale < 1.0)
+    scale = 1.0;
+  NSSize size =
+      NSMakeSize(scene->cursor_width / scale, scene->cursor_height / scale);
+  NSImage *image = [[NSImage alloc] initWithCGImage:cgImage size:size];
+  NSPoint hotSpot = NSMakePoint(scene->cursor_hotspot_x / scale,
+                                scene->cursor_hotspot_y / scale);
+  NSCursor *cursor = [[NSCursor alloc] initWithImage:image hotSpot:hotSpot];
+  [cursor set];
+}
+#endif
+
 - (void)handleWindowDestroyed:(CWindowEvent *)event {
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
   UIView *view = [_windows objectForKey:@(event->window_id)];
@@ -1986,6 +2051,18 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
       }
     }
     WWNLog("BRIDGE", @"Destroyed window %llu", event->window_id);
+  }
+
+  if (_windows.count == 0) {
+    if (_clientWantsCursorRendered) {
+      _clientWantsCursorRendered = NO;
+      _lastCursorBufferId = 0;
+      WWNLog("BRIDGE",
+             @"All windows destroyed — resetting cursor rendering flag");
+    }
+    [_surfaceLayers removeAllObjects];
+    [_bufferCache removeAllObjects];
+    [[NSCursor arrowCursor] set];
   }
 #endif
 
@@ -2189,16 +2266,48 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
   // iOS has no separate window chrome.
   // autoresizingMask keeps the surface view in sync when the container
   // resizes (e.g. on device rotation or safe-area toggle).
-  CGRect frame = self.containerView
-                     ? self.containerView.bounds
-                     : CGRectMake(0, 0, event->width, event->height);
+  CGRect frame = self.containerView ? self.containerView.bounds
+                                    : CGRectMake(0, 0, event->width, event->height);
   WWNCompositorView_ios *view =
       [[WWNCompositorView_ios alloc] initWithFrame:frame];
   view.wwnWindowId = event->window_id;
   view.autoresizingMask =
       UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
 
-  if (self.containerView) {
+  if (_iosPerWindowHostingEnabled) {
+    UIWindowScene *scene = self.containerView.window.windowScene;
+    if (!scene) {
+      for (UIScene *candidate in UIApplication.sharedApplication.connectedScenes) {
+        if ([candidate isKindOfClass:[UIWindowScene class]]) {
+          scene = (UIWindowScene *)candidate;
+          break;
+        }
+      }
+    }
+    if (scene) {
+      UIWindow *hostWindow = [[UIWindow alloc] initWithWindowScene:scene];
+      UIViewController *hostController = [[UIViewController alloc] init];
+      hostController.view.backgroundColor = UIColor.blackColor;
+      hostController.view.frame = hostWindow.bounds;
+      hostController.view.autoresizingMask =
+          UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+      hostWindow.rootViewController = hostController;
+      view.frame = hostController.view.bounds;
+      [hostController.view addSubview:view];
+      hostWindow.hidden = NO;
+      [hostWindow makeKeyAndVisible];
+      _iosHostWindows[@(event->window_id)] = hostWindow;
+      WWNLog("BRIDGE", @"Added window %llu in dedicated host UIWindow (%.0fx%.0f)",
+             event->window_id, hostWindow.bounds.size.width, hostWindow.bounds.size.height);
+    } else if (self.containerView) {
+      [self.containerView insertSubview:view atIndex:0];
+      WWNLog("BRIDGE", @"No UIWindowScene found; fell back to container for window %llu",
+             event->window_id);
+    } else {
+      WWNLog("BRIDGE", @"Warning: No containerView/windowScene set, window %llu not visible",
+             event->window_id);
+    }
+  } else if (self.containerView) {
     [self.containerView insertSubview:view atIndex:0];
     WWNLog("BRIDGE", @"Added window %llu to container (%.0fx%.0f)",
            event->window_id, frame.size.width, frame.size.height);
@@ -2234,8 +2343,8 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
   }];
 
   // 2. Resize sends ONE configure: correct size + Activated state.
-  CGRect viewFrame = self.containerView ? self.containerView.bounds
-                                        : CGRectMake(0, 0, 800, 600);
+  UIView *hostView = view.superview ?: self.containerView;
+  CGRect viewFrame = hostView ? hostView.bounds : CGRectMake(0, 0, 800, 600);
   [self injectWindowResize:windowId
                      width:(uint32_t)viewFrame.size.width
                     height:(uint32_t)viewFrame.size.height];
@@ -2267,6 +2376,12 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
     [window removeFromSuperview];
     [_windows removeObjectForKey:@(event->window_id)];
   }
+  UIWindow *hostWindow = _iosHostWindows[@(event->window_id)];
+  if (hostWindow) {
+    hostWindow.hidden = YES;
+    hostWindow.rootViewController = nil;
+    [_iosHostWindows removeObjectForKey:@(event->window_id)];
+  }
 
   // Also check if it's a popup
   UIView *popup = (UIView *)[_popups objectForKey:@(event->window_id)];
@@ -2286,11 +2401,14 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
 
   // Update the UIWindowScene title so it appears in the app switcher
   // and iPad Stage Manager.
-  UIWindowScene *scene = nil;
-  for (UIScene *s in [UIApplication sharedApplication].connectedScenes) {
-    if ([s isKindOfClass:[UIWindowScene class]]) {
-      scene = (UIWindowScene *)s;
-      break;
+  UIWindow *hostWindow = _iosHostWindows[@(event->window_id)];
+  UIWindowScene *scene = hostWindow.windowScene;
+  if (!scene) {
+    for (UIScene *s in [UIApplication sharedApplication].connectedScenes) {
+      if ([s isKindOfClass:[UIWindowScene class]]) {
+        scene = (UIWindowScene *)s;
+        break;
+      }
     }
   }
   if (scene) {
@@ -2301,6 +2419,11 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
 - (void)handleWindowSizeChanged:(CWindowEvent *)event {
   UIView *window = [_windows objectForKey:@(event->window_id)];
   if (window) {
+    UIWindow *hostWindow = _iosHostWindows[@(event->window_id)];
+    if (hostWindow && hostWindow.rootViewController) {
+      window.frame = hostWindow.rootViewController.view.bounds;
+      return;
+    }
     // Always fill the container — the Wayland client is told the output
     // dimensions via wl_output.mode so its buffer already matches.
     // Using the container's bounds ensures edge-to-edge drawing.

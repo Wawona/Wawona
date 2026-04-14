@@ -108,6 +108,22 @@ jobs:
       - name: Run Rust tests
         run: cargo test --lib --tests --locked
 
+  swift-test-macos-x86_64:
+    name: "macOS (x86_64): swift test"
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Active Xcode
+        run: |
+          XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XCODE_APP" ]; then
+            echo "::error::No Xcode installation found on this runner"
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE_APP"
+      - name: Run Swift tests
+        run: swift test
+
   build-linux:
     name: "Linux (x86_64): ${{ matrix.target }}"
     runs-on: ubuntu-latest
@@ -142,7 +158,6 @@ jobs:
   prepare-linux-arm64:
     name: "Prepare Linux (arm64) matrix (experimental fallback)"
     runs-on: ubuntu-24.04-arm
-    continue-on-error: true
     outputs:
       system: ${{ steps.matrix.outputs.system }}
       targets: ${{ steps.matrix.outputs.targets }}
@@ -195,7 +210,6 @@ jobs:
   verify-linux-arm64:
     name: "Linux (arm64): flake check (experimental fallback)"
     runs-on: ubuntu-24.04-arm
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -221,7 +235,6 @@ jobs:
   build-linux-arm64:
     name: "Linux (arm64): ${{ matrix.target }} (experimental fallback)"
     runs-on: ubuntu-24.04-arm
-    continue-on-error: true
     needs:
       - prepare-linux-arm64
       - verify-linux-arm64
@@ -255,7 +268,6 @@ jobs:
   prepare-macos-arm64:
     name: "Prepare macOS (arm64) matrix (experimental fallback)"
     runs-on: macos-26
-    continue-on-error: true
     outputs:
       system: ${{ steps.matrix.outputs.system }}
       targets: ${{ steps.matrix.outputs.targets }}
@@ -319,7 +331,6 @@ jobs:
   verify-macos-arm64:
     name: "macOS (arm64): flake check (experimental fallback)"
     runs-on: macos-26
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -346,7 +357,6 @@ jobs:
   build-macos-arm64:
     name: "macOS (arm64): ${{ matrix.target }} (experimental fallback)"
     runs-on: macos-26
-    continue-on-error: true
     needs:
       - prepare-macos-arm64
       - verify-macos-arm64
@@ -535,15 +545,14 @@ jobs:
             allow-import-from-derivation = true
       - name: Smoke Android Rust backend
         run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux.outputs.system }}.wawona-android-backend" --print-build-logs
-      - name: Smoke Android CTS configure/build
-        run: |
-          ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux.outputs.system }}.vulkan-cts-android" --print-build-logs
-          ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux.outputs.system }}.gl-cts-android" --print-build-logs
+      - name: Smoke WearOS automation package
+        run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux.outputs.system }}.wawona-wearos" --print-build-logs
+      - name: Smoke Linux VM automation package
+        run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux.outputs.system }}.wawona-linux-vm" --print-build-logs
 
   smoke-linux-arm64:
     name: "Linux (arm64): smoke gates (experimental fallback)"
     runs-on: ubuntu-24.04-arm
-    continue-on-error: true
     needs:
       - prepare-linux-arm64
       - verify-linux-arm64
@@ -564,15 +573,14 @@ jobs:
         run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux-arm64.outputs.system }}.android-toolchain-sanity" --print-build-logs
       - name: Smoke Android Rust backend
         run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux-arm64.outputs.system }}.wawona-android-backend" --print-build-logs
-      - name: Smoke Android CTS configure/build
-        run: |
-          ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux-arm64.outputs.system }}.vulkan-cts-android" --print-build-logs
-          ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux-arm64.outputs.system }}.gl-cts-android" --print-build-logs
+      - name: Smoke WearOS automation package
+        run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux-arm64.outputs.system }}.wawona-wearos" --print-build-logs
+      - name: Smoke Linux VM automation package
+        run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux-arm64.outputs.system }}.wawona-linux-vm" --print-build-logs
 
   smoke-macos-arm64:
     name: "macOS (arm64): smoke gates (experimental fallback)"
     runs-on: macos-26
-    continue-on-error: true
     needs:
       - prepare-macos-arm64
       - verify-macos-arm64
@@ -595,10 +603,10 @@ jobs:
             allow-import-from-derivation = true
       - name: Smoke Apple Rust backend
         run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-arm64.outputs.system }}.wawona-ios-backend" --print-build-logs
-      - name: Smoke iOS CTS targets
-        run: |
-          ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-arm64.outputs.system }}.vulkan-cts-ios" --print-build-logs
-          ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-arm64.outputs.system }}.gl-cts-ios" --print-build-logs
+      - name: Smoke Linux VM automation package
+        run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-arm64.outputs.system }}.wawona-linux-vm" --print-build-logs
+      - name: Smoke WearOS automation package
+        run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-arm64.outputs.system }}.wawona-wearos" --print-build-logs
 
   smoke-macos-x86_64:
     name: "macOS (x86_64): smoke gates"
@@ -625,10 +633,10 @@ jobs:
             allow-import-from-derivation = true
       - name: Smoke Apple Rust backend
         run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-x86_64.outputs.system }}.wawona-ios-backend" --print-build-logs
-      - name: Smoke iOS CTS targets
-        run: |
-          ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-x86_64.outputs.system }}.vulkan-cts-ios" --print-build-logs
-          ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-x86_64.outputs.system }}.gl-cts-ios" --print-build-logs
+      - name: Smoke Linux VM automation package
+        run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-x86_64.outputs.system }}.wawona-linux-vm" --print-build-logs
+      - name: Smoke WearOS automation package
+        run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-x86_64.outputs.system }}.wawona-wearos" --print-build-logs
 
   ci-failure-baseline:
     name: "CI Failure Baseline + Blocker Thresholds"

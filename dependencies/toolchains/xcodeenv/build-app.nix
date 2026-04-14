@@ -138,6 +138,23 @@ stdenv.mkDerivation (
       export CXX="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
       export LD="$CC"
 
+      ${lib.optionalString (lib.hasInfix "simulator" _sdk) ''
+        if [ "''${WAWONA_SKIP_IOS_SIMULATOR_PLATFORM_DOWNLOAD:-}" = "1" ]; then
+          echo "Skipping xcodebuild -downloadPlatform iOS (WAWONA_SKIP_IOS_SIMULATOR_PLATFORM_DOWNLOAD=1)"
+        else
+          # actool CompileAssetCatalogVariant thinned needs a Simulator *runtime* whose build
+          # matches the iphonesimulator SDK. Partial Xcode installs often error with:
+          # "No simulator runtime version from [...] available to use with iphonesimulator SDK version ..."
+          echo "Ensuring iOS Simulator platform is installed for SDK ${_sdk}..."
+          xcodebuild -downloadPlatform iOS || {
+            echo "ERROR: xcodebuild -downloadPlatform iOS failed (network or Xcode issue)." >&2
+            echo "Fix: Xcode → Settings → Components → install iOS Simulator for this Xcode, then retry." >&2
+            echo "Or export WAWONA_SKIP_IOS_SIMULATOR_PLATFORM_DOWNLOAD=1 if runtimes already match." >&2
+            exit 1
+          }
+        fi
+      ''}
+
       xcodebuild ${targetFlag} -configuration ${_configuration} ${
         lib.optionalString (scheme != null) "-scheme ${scheme}"
       } -sdk ${_sdk} TARGETED_DEVICE_FAMILY="1, 2" ONLY_ACTIVE_ARCH=NO CONFIGURATION_TEMP_DIR=$TMPDIR CONFIGURATION_BUILD_DIR=$out ${

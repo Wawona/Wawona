@@ -12,17 +12,9 @@
  * - Thread-safe initialization and cleanup
  */
 
-#if defined(__ANDROID__)
-typedef unsigned long sigset_t;
-typedef struct {
-  unsigned long __bits[128 / sizeof(long)];
-} sigset64_t;
-typedef struct __siginfo siginfo_t;
-#endif
-
-#include "WWNSettings.h"
+#include "../macos/WWNSettings.h"
 #include "input_android.h"
-#include "renderer_android.h"
+#include "rendering/renderer_android.h"
 #include <android/choreographer.h>
 #include <android/log.h>
 #include <android/looper.h>
@@ -192,9 +184,16 @@ extern void WWNCoreTextInputGetCursorRect(void *core, int32_t *out_x,
                                           int32_t *out_y, int32_t *out_width,
                                           int32_t *out_height);
 
-extern int waypipe_main(int argc, const char **argv);
-extern int weston_simple_shm_main(int argc, const char **argv);
-extern int g_simple_shm_running;
+extern int waypipe_main(int argc, const char **argv) __attribute__((weak));
+extern int weston_simple_shm_main(int argc, const char **argv)
+    __attribute__((weak));
+extern int weston_main(int argc, const char **argv);
+extern int weston_terminal_main(int argc, const char **argv);
+extern int foot_main(int argc, const char **argv);
+extern int wwn_weston_is_compat_shim(void) __attribute__((weak));
+extern int wwn_weston_terminal_is_compat_shim(void) __attribute__((weak));
+extern int wwn_foot_is_compat_shim(void) __attribute__((weak));
+extern int g_simple_shm_running __attribute__((weak));
 
 // JNI Function Prototypes
 JNIEXPORT void JNICALL Java_com_aspauldingcode_wawona_WawonaNative_nativeInit(
@@ -274,6 +273,33 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeStopWestonSimpleSHM(
     JNIEnv *env, jobject thiz);
 JNIEXPORT jboolean JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeIsWestonSimpleSHMRunning(
+    JNIEnv *env, jobject thiz);
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeRunWeston(
+    JNIEnv *env, jobject thiz);
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeStopWeston(
+    JNIEnv *env, jobject thiz);
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeIsWestonRunning(
+    JNIEnv *env, jobject thiz);
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeRunWestonTerminal(
+    JNIEnv *env, jobject thiz);
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeStopWestonTerminal(
+    JNIEnv *env, jobject thiz);
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeIsWestonTerminalRunning(
+    JNIEnv *env, jobject thiz);
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeRunFoot(
+    JNIEnv *env, jobject thiz);
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeStopFoot(
+    JNIEnv *env, jobject thiz);
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeIsFootRunning(
     JNIEnv *env, jobject thiz);
 JNIEXPORT void JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeTouchDown(
@@ -2609,7 +2635,12 @@ static void *waypipe_thread_func(void *arg) {
       setvbuf(stderr, NULL, _IONBF, 0); /* unbuffered so log viewer can refresh live */
     }
 
-    result = waypipe_main(argc, argv);
+    if (!waypipe_main) {
+      LOGE("waypipe_main is unavailable in this build");
+      result = -1;
+    } else {
+      result = waypipe_main(argc, argv);
+    }
 
     if (saved_stderr >= 0) {
       dup2(saved_stderr, STDERR_FILENO);
@@ -2660,7 +2691,12 @@ static void *waypipe_thread_func(void *arg) {
     for (int i = 0; i < argc; i++) {
       LOGI("  argv[%d] = %s", i, argv[i]);
     }
-    result = waypipe_main(argc, argv);
+    if (!waypipe_main) {
+      LOGE("waypipe_main is unavailable in this build");
+      result = -1;
+    } else {
+      result = waypipe_main(argc, argv);
+    }
     LOGI("waypipe_main returned %d", result);
     if (saved_cwd2[0])
       chdir(saved_cwd2);
@@ -2829,6 +2865,11 @@ static void *weston_simple_shm_thread_func(void *arg) {
   (void)arg;
   LOGI("Starting weston-simple-shm background thread (%ux%u)", g_output_width,
        g_output_height);
+  if (!weston_simple_shm_main) {
+    LOGE("weston-simple-shm symbol is unavailable in this build");
+    g_weston_shm_running = 0;
+    return NULL;
+  }
 
   char w_str[16];
   char h_str[16];
@@ -2895,7 +2936,9 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeStopWestonSimpleSHM(
   }
 
   LOGI("Stopping weston-simple-shm...");
-  g_simple_shm_running = 0;
+  if (&g_simple_shm_running) {
+    g_simple_shm_running = 0;
+  }
 
   if (g_weston_shm_thread) {
     pthread_join(g_weston_shm_thread, NULL);
@@ -2912,6 +2955,157 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeIsWestonSimpleSHMRunning(
   (void)env;
   (void)thiz;
   return g_weston_shm_running ? JNI_TRUE : JNI_FALSE;
+}
+
+// ============================================================================
+// Weston client
+// ============================================================================
+
+static int g_weston_running = 0;
+static pthread_t g_weston_thread = 0;
+
+static void *weston_thread_func(void *arg) {
+  (void)arg;
+  LOGI("Starting weston background thread");
+  char saved_cwd[512] = "";
+  const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
+  if (xdg_dir) { getcwd(saved_cwd, sizeof(saved_cwd)); chdir(xdg_dir); }
+  const char *argv[] = {"weston", NULL};
+  weston_main(1, argv);
+  if (saved_cwd[0]) chdir(saved_cwd);
+  g_weston_running = 0;
+  return NULL;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeRunWeston(
+    JNIEnv *env, jobject thiz) {
+  (void)env; (void)thiz;
+  if (wwn_weston_is_compat_shim && wwn_weston_is_compat_shim() != 0) {
+    LOGE("Refusing to launch weston: compatibility shim build detected");
+    return JNI_FALSE;
+  }
+  if (g_weston_running) return JNI_FALSE;
+  g_weston_running = 1;
+  if (pthread_create(&g_weston_thread, NULL, weston_thread_func, NULL) != 0) {
+    g_weston_running = 0; return JNI_FALSE;
+  }
+  return JNI_TRUE;
+}
+
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeStopWeston(
+    JNIEnv *env, jobject thiz) {
+  (void)env; (void)thiz;
+  g_weston_running = 0;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeIsWestonRunning(
+    JNIEnv *env, jobject thiz) {
+  (void)env; (void)thiz;
+  return g_weston_running ? JNI_TRUE : JNI_FALSE;
+}
+
+// ============================================================================
+// Weston-terminal client
+// ============================================================================
+
+static int g_weston_terminal_running = 0;
+static pthread_t g_weston_terminal_thread = 0;
+
+static void *weston_terminal_thread_func(void *arg) {
+  (void)arg;
+  LOGI("Starting weston-terminal background thread");
+  char saved_cwd[512] = "";
+  const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
+  if (xdg_dir) { getcwd(saved_cwd, sizeof(saved_cwd)); chdir(xdg_dir); }
+  const char *argv[] = {"weston-terminal", NULL};
+  weston_terminal_main(1, argv);
+  if (saved_cwd[0]) chdir(saved_cwd);
+  g_weston_terminal_running = 0;
+  return NULL;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeRunWestonTerminal(
+    JNIEnv *env, jobject thiz) {
+  (void)env; (void)thiz;
+  if (wwn_weston_terminal_is_compat_shim &&
+      wwn_weston_terminal_is_compat_shim() != 0) {
+    LOGE("Refusing to launch weston-terminal: compatibility shim build detected");
+    return JNI_FALSE;
+  }
+  if (g_weston_terminal_running) return JNI_FALSE;
+  g_weston_terminal_running = 1;
+  if (pthread_create(&g_weston_terminal_thread, NULL, weston_terminal_thread_func, NULL) != 0) {
+    g_weston_terminal_running = 0; return JNI_FALSE;
+  }
+  return JNI_TRUE;
+}
+
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeStopWestonTerminal(
+    JNIEnv *env, jobject thiz) {
+  (void)env; (void)thiz;
+  g_weston_terminal_running = 0;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeIsWestonTerminalRunning(
+    JNIEnv *env, jobject thiz) {
+  (void)env; (void)thiz;
+  return g_weston_terminal_running ? JNI_TRUE : JNI_FALSE;
+}
+
+// ============================================================================
+// Foot client
+// ============================================================================
+
+static int g_foot_running = 0;
+static pthread_t g_foot_thread = 0;
+
+static void *foot_thread_func(void *arg) {
+  (void)arg;
+  LOGI("Starting foot background thread");
+  char saved_cwd[512] = "";
+  const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
+  if (xdg_dir) { getcwd(saved_cwd, sizeof(saved_cwd)); chdir(xdg_dir); }
+  const char *argv[] = {"foot", NULL};
+  foot_main(1, argv);
+  if (saved_cwd[0]) chdir(saved_cwd);
+  g_foot_running = 0;
+  return NULL;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeRunFoot(
+    JNIEnv *env, jobject thiz) {
+  (void)env; (void)thiz;
+  if (wwn_foot_is_compat_shim && wwn_foot_is_compat_shim() != 0) {
+    LOGE("Refusing to launch foot: compatibility shim build detected");
+    return JNI_FALSE;
+  }
+  if (g_foot_running) return JNI_FALSE;
+  g_foot_running = 1;
+  if (pthread_create(&g_foot_thread, NULL, foot_thread_func, NULL) != 0) {
+    g_foot_running = 0; return JNI_FALSE;
+  }
+  return JNI_TRUE;
+}
+
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeStopFoot(
+    JNIEnv *env, jobject thiz) {
+  (void)env; (void)thiz;
+  g_foot_running = 0;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeIsFootRunning(
+    JNIEnv *env, jobject thiz) {
+  (void)env; (void)thiz;
+  return g_foot_running ? JNI_TRUE : JNI_FALSE;
 }
 
 // ---------------------------------------------------------------------------

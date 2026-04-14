@@ -43,13 +43,13 @@ struct MachineCardView: View {
         }
     }
 
-    private var subtitle: String {
+    var subtitle: String {
         switch profile.type {
-        case .native: return "Runs on this host"
-        case .sshWaypipe, .sshTerminal:
+        case MachineType.native: return "Runs on this host"
+        case MachineType.sshWaypipe, MachineType.sshTerminal:
             return profile.sshHost.isEmpty ? "SSH host not configured" : "\(profile.sshUser)@\(profile.sshHost)"
-        case .virtualMachine: return "Virtual machine profile"
-        case .container: return "Container profile"
+        case MachineType.virtualMachine: return "Virtual machine profile"
+        case MachineType.container: return "Container profile"
         }
     }
 }

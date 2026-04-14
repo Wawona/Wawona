@@ -24,8 +24,8 @@
 , crate2nix
 , wawonaVersion
 , workspaceSrc
-, platform          # "macos" | "ios" | "android"
-, simulator ? false # iOS only: build for simulator
+, platform          # "macos" | "ios" | "watchos" | "android"
+, simulator ? false # iOS/watchOS only: build for simulator
 , toolchains ? null # cross-compilation toolchains
 , nativeDeps ? {}   # platform-specific native library derivations
 , nixpkgs           # the nixpkgs source (used to build a clean cross pkgs)
@@ -38,20 +38,44 @@ let
   cargoTarget =
     if platform == "ios" then
       (if simulator then "aarch64-apple-ios-sim" else "aarch64-apple-ios")
+    else if platform == "watchos" then
+      (if simulator then "aarch64-apple-watchos-sim" else "aarch64-apple-watchos")
     else if platform == "android" then
       "aarch64-linux-android"
     else
       null; # macOS: native build, no cross-compilation target
 
-  sdkPlatform = if simulator then "iPhoneSimulator" else "iPhoneOS";
-  xcrunSdk = if simulator then "iphonesimulator" else "iphoneos";
-  linkerTarget = if simulator then "arm64-apple-ios26.0-simulator" else "arm64-apple-ios26.0";
-  cargoEnvPrefix = if simulator then "CARGO_TARGET_AARCH64_APPLE_IOS_SIM" else "CARGO_TARGET_AARCH64_APPLE_IOS";
+  sdkPlatform =
+    if platform == "ios" then (if simulator then "iPhoneSimulator" else "iPhoneOS")
+    else if platform == "watchos" then (if simulator then "WatchSimulator" else "WatchOS")
+    else (if simulator then "iPhoneSimulator" else "iPhoneOS");
+  xcrunSdk =
+    if platform == "ios" then (if simulator then "iphonesimulator" else "iphoneos")
+    else if platform == "watchos" then (if simulator then "watchsimulator" else "watchos")
+    else (if simulator then "iphonesimulator" else "iphoneos");
+  linkerTarget =
+    if platform == "ios" then (if simulator then "arm64-apple-ios26.0-simulator" else "arm64-apple-ios26.0")
+    else if platform == "watchos" then (if simulator then "arm64-apple-watchos10.0-simulator" else "arm64-apple-watchos10.0")
+    else "arm64-apple-ios26.0";
+  deploymentTarget =
+    if platform == "watchos" then "10.0" else "26.0";
+  deploymentFlag =
+    if platform == "watchos" then
+      (if simulator then "-mwatchos-simulator-version-min=10.0" else "-mwatchos-version-min=10.0")
+    else
+      (if simulator then "-mios-simulator-version-min=26.0" else "-miphoneos-version-min=26.0");
+  cargoEnvPrefix =
+    if platform == "watchos" then
+      (if simulator then "CARGO_TARGET_AARCH64_APPLE_WATCHOS_SIM" else "CARGO_TARGET_AARCH64_APPLE_WATCHOS")
+    else
+      (if simulator then "CARGO_TARGET_AARCH64_APPLE_IOS_SIM" else "CARGO_TARGET_AARCH64_APPLE_IOS");
 
   isIOS = platform == "ios";
+  isWatchOS = platform == "watchos";
   isAndroid = platform == "android";
   isMacOS = platform == "macos";
-  isCross = isIOS || isAndroid;
+  isCross = isIOS || isWatchOS || isAndroid;
+  isAppleCross = isIOS || isWatchOS;
 
   # ── Android toolchain ──────────────────────────────────────────────
   androidToolchainEffective = if androidToolchain != null then androidToolchain 
@@ -77,18 +101,18 @@ let
     ''
   else null;
 
-  # ── Xcode SDK detection (iOS/macOS) ────────────────────────────────
-  ensureIosSDKHelpers = if isIOS then
+  # ── Xcode SDK detection (iOS/watchOS/macOS) ─────────────────────────
+  ensureIosSDKHelpers = if isAppleCross then
     (import ../apple/default.nix { inherit (pkgs) lib pkgs; })
   else {};
 
-  ensureIosSimSDKScript = if isIOS then
+  ensureIosSimSDKScript = if isAppleCross then
     (import ../utils/xcode-wrapper.nix { inherit (pkgs) lib; inherit pkgs; }).ensureIosSimSDK
   else null;
 
   # ── crate2nix: generate per-crate derivations ─────────────────────
   cargoNixDrv = crate2nix.tools.${pkgs.stdenv.hostPlatform.system}.generatedCargoNix {
-    name = "wawona-${platform}${lib.optionalString (isIOS && simulator) "-sim"}";
+    name = "wawona-${platform}${lib.optionalString (isAppleCross && simulator) "-sim"}";
     src = workspaceSrc;
   };
 
@@ -133,12 +157,30 @@ let
         parsed = base.parsed // {
           kernel = base.parsed.kernel // { name = "ios"; };
         };
+        # Otherwise base.isDarwin stays true and build-rust-crate adds macOS libiconv
+        # to every crate's buildInputs (wrong for iOS simulator/device objects).
+        isDarwin = false;
         isIOS = true;
         isiOS = true;
         rust = (base.rust or {}) // {
           rustcTarget = cargoTarget;
           rustcTargetSpec = cargoTarget;
           platform = { arch = "aarch64"; os = "ios"; vendor = "apple"; target-family = ["unix"]; };
+        };
+      }
+    else if isWatchOS then
+      let base = pkgs.stdenv.hostPlatform; in
+      base // {
+        config = if simulator then "aarch64-apple-watchos-sim" else "aarch64-apple-watchos";
+        system = if simulator then "aarch64-apple-watchos-sim" else "aarch64-apple-watchos";
+        parsed = base.parsed // {
+          kernel = base.parsed.kernel // { name = "watchos"; };
+        };
+        isDarwin = false;
+        rust = (base.rust or {}) // {
+          rustcTarget = cargoTarget;
+          rustcTargetSpec = cargoTarget;
+          platform = { arch = "aarch64"; os = "watchos"; vendor = "apple"; target-family = ["unix"]; };
         };
       }
     else if isAndroid then
@@ -172,8 +214,10 @@ let
       hostPlatform = crossHostPlatform;
       # build-rust-crate appends `-C linker=${stdenv.cc}/bin/...cc` when hasCC=true.
       # For Android cross builds this forces host gcc-wrapper and overrides our
-      # explicit android linker wrapper. Disable that implicit linker injection.
-      hasCC = if isAndroid then false else pkgs.stdenv.hasCC;
+      # explicit android linker wrapper. For Apple cross builds the Nix clang
+      # wrapper targets macOS (MacOSX.sdk); iOS simulator/device need Xcode
+      # clang with -isysroot to the iPhone* SDK. Linker comes from crossPreConfigure.
+      hasCC = if isAndroid || isAppleCross then false else pkgs.stdenv.hasCC;
     }
   else null;
 
@@ -187,7 +231,7 @@ let
 
   # Native library search paths (still needed for cross builds)
   nativeLibSearchPaths =
-    if isIOS then
+    if isAppleCross then
       lib.optional (nativeDeps ? xkbcommon)  "-L native=${nativeDeps.xkbcommon}/lib"
       ++ lib.optional (nativeDeps ? libffi)     "-L native=${nativeDeps.libffi}/lib"
       ++ lib.optional (nativeDeps ? libwayland)  "-L native=${nativeDeps.libwayland}/lib"
@@ -211,23 +255,31 @@ let
   #  - Set target-specific CC_<target> so cc-rs uses our clang with -target
   #  - Set CRATE_CC_NO_DEFAULTS=1
   crossPreConfigure =
-    if isIOS then ''
+    if isAppleCross then ''
       unset MACOSX_DEPLOYMENT_TARGET
-      export IPHONEOS_DEPLOYMENT_TARGET="${ensureIosSDKHelpers.deploymentTarget}"
-      ${ensureIosSDKHelpers.mkIOSBuildEnv { inherit simulator; }}
+      ${if isWatchOS then ''
+        # Locate the watchOS SDK manually (xcrun may not have a watch-specific helper)
+        XCODE_APP=$(${(import ../utils/xcode-wrapper.nix { inherit (pkgs) lib; inherit pkgs; }).findXcodeScript}/bin/find-xcode || true)
+        XCODE_DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
+        WOS_SDK_NAME="${if simulator then "WatchSimulator" else "WatchOS"}"
+        export SDKROOT="$XCODE_DEVELOPER_DIR/Platforms/$WOS_SDK_NAME.platform/Developer/SDKs/$WOS_SDK_NAME.sdk"
+        export DEVELOPER_DIR="$XCODE_DEVELOPER_DIR"
+        export XCODE_CLANG="$XCODE_DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
+        export APPLE_DEPLOYMENT_FLAG="${deploymentFlag}"
+      '' else ''
+        export IPHONEOS_DEPLOYMENT_TARGET="${ensureIosSDKHelpers.deploymentTarget}"
+        ${ensureIosSDKHelpers.mkIOSBuildEnv { inherit simulator; }}
+      ''}
 
       # Target-specific variables for cc-rs
       export CC_${cargoTargetUnderscore}="$XCODE_CLANG -target ${linkerTarget} -isysroot $SDKROOT"
       export CFLAGS_${cargoTargetUnderscore}="-target ${linkerTarget} -isysroot $SDKROOT $APPLE_DEPLOYMENT_FLAG -fPIC"
       export CRATE_CC_NO_DEFAULTS="1"
 
-      # Also set the linker for cargo/rustc
+      # Linker for cargo/rustc
       export CARGO_TARGET_${lib.toUpper cargoTargetUnderscore}_LINKER="$XCODE_CLANG"
       export CARGO_TARGET_${lib.toUpper cargoTargetUnderscore}_RUSTFLAGS="-C linker=$XCODE_CLANG -C link-arg=-target -C link-arg=${linkerTarget} -C link-arg=-isysroot -C link-arg=$SDKROOT -C link-arg=$APPLE_DEPLOYMENT_FLAG"
 
-      # Unset SDKROOT and DEVELOPER_DIR so the Nix clang wrapper uses its own
-      # built-in apple-sdk for host-side builds (build.rs, proc-macros).
-      # Target compilations use the iOS sysroot already baked into CC_<target>.
       unset SDKROOT
       unset DEVELOPER_DIR
     '' else if isAndroid then ''
@@ -266,8 +318,8 @@ let
           crossBuild = innerCrossBRC (swapBuildDepsToHost (crateAttrs // {
             extraRustcOpts = (crateAttrs.extraRustcOpts or []) ++ nativeLibSearchPaths;
             preConfigure = (crateAttrs.preConfigure or "") + crossPreConfigure;
-          } // lib.optionalAttrs isIOS {
-            # iOS builds need host Xcode SDK access inside the sandbox.
+          } // lib.optionalAttrs isAppleCross {
+            # Apple cross builds need host Xcode SDK access inside the sandbox.
             __noChroot = true;
           }));
         in
@@ -303,6 +355,7 @@ let
   # ── Features to enable ─────────────────────────────────────────────
   features =
     if isIOS then [ "waypipe-ssh" ]
+    else if isWatchOS then [] # watchOS: minimal feature set (no SSH/Waypipe)
     else if isAndroid then [ "waypipe" ]
     else []; # macOS: no waypipe integration in backend
 
@@ -320,6 +373,19 @@ let
         hash = "sha256-mY0sJOwJmofa+UZ4CIWfnYK2Hx2clwElGuoDf1FOrg4=";
       };
     };
+
+    # nixpkgs defaultCrateOverrides use host pkgs.zlib in extraLinkFlags; for iOS/watchOS
+    # that injects macOS libz.dylib search paths into the final link.
+    libz-sys = attrs:
+      let
+        zlibDep =
+          if isAppleCross && nativeDeps ? zlib then nativeDeps.zlib else pkgs.zlib;
+      in
+      {
+        nativeBuildInputs = [ pkgs.pkg-config ];
+        buildInputs = [ zlibDep ];
+        extraLinkFlags = [ "-L${zlibDep}/lib" ];
+      };
 
     # ── wawona (root crate) ────────────────────────────────────────
     wawona = attrs: {
@@ -342,7 +408,7 @@ let
           pkgs.libiconv
           (nativeDeps.libwayland or toolchains.macos.libwayland)
         ]
-        else if isIOS then [
+        else if isAppleCross then [
           (nativeDeps.xkbcommon or null)
           (nativeDeps.libffi or null)
           (nativeDeps.libwayland or null)
@@ -370,7 +436,7 @@ let
         ]
         else []);
 
-      crateType = if isIOS then [ "lib" "staticlib" ]
+      crateType = if isAppleCross then [ "lib" "staticlib" ]
                   else if isAndroid then [ "lib" "staticlib" "cdylib" ]
                   else [ "lib" "staticlib" "cdylib" ];
 
@@ -386,7 +452,7 @@ let
       # For iOS and Android, wawona is purely a shared/static library
       buildBin = if isMacOS then true else false;
 
-    } // lib.optionalAttrs isIOS {
+    } // lib.optionalAttrs isAppleCross {
       __noChroot = true;
       PKG_CONFIG_ALLOW_CROSS = "1";
       PKG_CONFIG_SYSROOT_DIR = "/";
@@ -616,9 +682,9 @@ pkgs.stdenvNoCC.mkDerivation {
   '';
 
   meta = {
-    description = "Wawona Rust backend (${platform}${lib.optionalString (isIOS && simulator) " simulator"}) — built with crate2nix per-crate caching";
+    description = "Wawona Rust backend (${platform}${lib.optionalString (isAppleCross && simulator) " simulator"}) — built with crate2nix per-crate caching";
     platforms = if isMacOS then lib.platforms.darwin
-                else if isIOS then lib.platforms.darwin
+                else if isAppleCross then lib.platforms.darwin
                 else lib.platforms.all;
   };
 }

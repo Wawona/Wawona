@@ -1,7 +1,7 @@
 { lib, pkgs, buildModule, wawonaSrc, wawonaVersion, pkgsAndroid, pkgsIos, rustBackendMacOS ? null, rustBackendIOS ? null, rustBackendIOSSim ? null, rustBackendAndroid ? null, weston ? null, waypipe ? null, androidSDK ? null, androidSrc ? null, ... }:
 
 # Central entry point for Wawona applications.
-# Returns: { ios, macos, android, common, generators }
+# Returns: { ios, ipados, macos, watchos, android, linux, linux-vm, wearos, visionos, common, generators }
 
 let
   # Dependency version strings (must match the tags/versions in dependencies/libs/*)
@@ -34,6 +34,23 @@ let
       targetPkgs = pkgsAndroid;
       wawonaSrc = if androidSrc != null then androidSrc else wawonaSrc;
       rustBackend = rustBackendAndroid;
+    };
+
+    linux = pkgs.callPackage ./linux.nix {
+      inherit wawonaVersion;
+      rustBackend = rustBackendMacOS;
+    };
+
+    linux-vm = pkgs.callPackage ./linux-vm.nix {
+      inherit wawonaVersion;
+    };
+
+    wearos = pkgs.callPackage ./wearos.nix {
+      inherit wawonaVersion;
+    };
+
+    visionos = pkgs.callPackage ./visionos.nix {
+      inherit wawonaVersion;
     };
 
     common = import ./common.nix {

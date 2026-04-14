@@ -29,30 +29,10 @@ import androidx.compose.ui.unit.sp
 
 object LinuxKey {
     const val ESC = 1
-    const val KEY_1 = 2
-    const val KEY_2 = 3
-    const val KEY_3 = 4
-    const val KEY_4 = 5
-    const val KEY_5 = 6
-    const val KEY_6 = 7
-    const val KEY_7 = 8
-    const val KEY_8 = 9
-    const val KEY_9 = 10
-    const val KEY_0 = 11
     const val GRAVE = 41
     const val TAB = 15
     const val SLASH = 53
     const val MINUS = 12
-    const val EQUAL = 13
-    const val ENTER = 28
-    const val SPACE = 57
-    const val LEFTBRACE = 26
-    const val RIGHTBRACE = 27
-    const val BACKSLASH = 43
-    const val SEMICOLON = 39
-    const val APOSTROPHE = 40
-    const val COMMA = 51
-    const val DOT = 52
     const val HOME = 102
     const val UP = 103
     const val END = 107
@@ -67,7 +47,7 @@ object LinuxKey {
     const val PAGEDOWN = 109
 }
 
-data class LinuxKeyMapping(
+data class KeyMapping(
     val keycode: Int,
     val needsShift: Boolean = false
 )
@@ -88,6 +68,39 @@ object ModifierState {
     }
 }
 
+fun charToLinuxKeycode(ch: Char): KeyMapping? {
+    return when (ch) {
+        in 'a'..'z' -> KeyMapping(30 + (ch - 'a'))
+        in 'A'..'Z' -> KeyMapping(30 + (ch.lowercaseChar() - 'a'), needsShift = true)
+        in '1'..'9' -> KeyMapping(2 + (ch - '1'))
+        '0' -> KeyMapping(11)
+        ' ' -> KeyMapping(57)
+        '\n' -> KeyMapping(28)
+        '\t' -> KeyMapping(LinuxKey.TAB)
+        '-' -> KeyMapping(LinuxKey.MINUS)
+        '_' -> KeyMapping(LinuxKey.MINUS, needsShift = true)
+        '=' -> KeyMapping(13)
+        '+' -> KeyMapping(13, needsShift = true)
+        '[' -> KeyMapping(26)
+        '{' -> KeyMapping(26, needsShift = true)
+        ']' -> KeyMapping(27)
+        '}' -> KeyMapping(27, needsShift = true)
+        ';' -> KeyMapping(39)
+        ':' -> KeyMapping(39, needsShift = true)
+        '\'' -> KeyMapping(40)
+        '"' -> KeyMapping(40, needsShift = true)
+        ',' -> KeyMapping(51)
+        '<' -> KeyMapping(51, needsShift = true)
+        '.' -> KeyMapping(52)
+        '>' -> KeyMapping(52, needsShift = true)
+        '/' -> KeyMapping(LinuxKey.SLASH)
+        '?' -> KeyMapping(LinuxKey.SLASH, needsShift = true)
+        '`' -> KeyMapping(LinuxKey.GRAVE)
+        '~' -> KeyMapping(LinuxKey.GRAVE, needsShift = true)
+        else -> null
+    }
+}
+
 private object XkbMod {
     const val SHIFT = 1 shl 0
     const val CTRL = 1 shl 2
@@ -96,58 +109,6 @@ private object XkbMod {
 }
 
 private const val DOUBLE_TAP_THRESHOLD_MS = 400L
-
-private val letterKeycodes = intArrayOf(
-    30, 48, 46, 32, 18, 33, 34, 35, 23, 36, 37, 38, 50,
-    49, 24, 25, 16, 19, 31, 20, 22, 47, 17, 45, 21, 44
-)
-
-fun charToLinuxKeycode(ch: Char): LinuxKeyMapping? {
-    return when {
-        ch in 'a'..'z' -> LinuxKeyMapping(letterKeycodes[ch - 'a'])
-        ch in 'A'..'Z' -> LinuxKeyMapping(letterKeycodes[ch - 'A'], needsShift = true)
-        ch in '1'..'9' -> LinuxKeyMapping(LinuxKey.KEY_1 + (ch - '1'))
-        ch == '0' -> LinuxKeyMapping(LinuxKey.KEY_0)
-        else -> when (ch) {
-            ' ' -> LinuxKeyMapping(LinuxKey.SPACE)
-            '\n', '\r' -> LinuxKeyMapping(LinuxKey.ENTER)
-            '\t' -> LinuxKeyMapping(LinuxKey.TAB)
-            '-' -> LinuxKeyMapping(LinuxKey.MINUS)
-            '=' -> LinuxKeyMapping(LinuxKey.EQUAL)
-            '[' -> LinuxKeyMapping(LinuxKey.LEFTBRACE)
-            ']' -> LinuxKeyMapping(LinuxKey.RIGHTBRACE)
-            '\\' -> LinuxKeyMapping(LinuxKey.BACKSLASH)
-            ';' -> LinuxKeyMapping(LinuxKey.SEMICOLON)
-            '\'' -> LinuxKeyMapping(LinuxKey.APOSTROPHE)
-            '`' -> LinuxKeyMapping(LinuxKey.GRAVE)
-            ',' -> LinuxKeyMapping(LinuxKey.COMMA)
-            '.' -> LinuxKeyMapping(LinuxKey.DOT)
-            '/' -> LinuxKeyMapping(LinuxKey.SLASH)
-            '!' -> LinuxKeyMapping(LinuxKey.KEY_1, true)
-            '@' -> LinuxKeyMapping(LinuxKey.KEY_2, true)
-            '#' -> LinuxKeyMapping(LinuxKey.KEY_3, true)
-            '$' -> LinuxKeyMapping(LinuxKey.KEY_4, true)
-            '%' -> LinuxKeyMapping(LinuxKey.KEY_5, true)
-            '^' -> LinuxKeyMapping(LinuxKey.KEY_6, true)
-            '&' -> LinuxKeyMapping(LinuxKey.KEY_7, true)
-            '*' -> LinuxKeyMapping(LinuxKey.KEY_8, true)
-            '(' -> LinuxKeyMapping(LinuxKey.KEY_9, true)
-            ')' -> LinuxKeyMapping(LinuxKey.KEY_0, true)
-            '_' -> LinuxKeyMapping(LinuxKey.MINUS, true)
-            '+' -> LinuxKeyMapping(LinuxKey.EQUAL, true)
-            '{' -> LinuxKeyMapping(LinuxKey.LEFTBRACE, true)
-            '}' -> LinuxKeyMapping(LinuxKey.RIGHTBRACE, true)
-            '|' -> LinuxKeyMapping(LinuxKey.BACKSLASH, true)
-            ':' -> LinuxKeyMapping(LinuxKey.SEMICOLON, true)
-            '"' -> LinuxKeyMapping(LinuxKey.APOSTROPHE, true)
-            '~' -> LinuxKeyMapping(LinuxKey.GRAVE, true)
-            '<' -> LinuxKeyMapping(LinuxKey.COMMA, true)
-            '>' -> LinuxKeyMapping(LinuxKey.DOT, true)
-            '?' -> LinuxKeyMapping(LinuxKey.SLASH, true)
-            else -> null
-        }
-    }
-}
 
 @Composable
 fun ModifierAccessoryBar(
@@ -175,10 +136,6 @@ fun ModifierAccessoryBar(
         if (modCtrlActive && !modCtrlLocked) modCtrlActive = false
         if (modAltActive && !modAltLocked) modAltActive = false
         if (modSuperActive && !modSuperLocked) modSuperActive = false
-        ModifierState.shiftActive = modShiftActive
-        ModifierState.ctrlActive = modCtrlActive
-        ModifierState.altActive = modAltActive
-        ModifierState.superActive = modSuperActive
     }
 
     fun handleModifierTap(
@@ -210,11 +167,6 @@ fun ModifierAccessoryBar(
                 onLocked(false)
             }
         }
-
-        ModifierState.shiftActive = modShiftActive
-        ModifierState.ctrlActive = modCtrlActive
-        ModifierState.altActive = modAltActive
-        ModifierState.superActive = modSuperActive
     }
 
     fun sendAccessoryKey(keycode: Int) {

@@ -1,7 +1,18 @@
-{ lib, stdenv, pkgs, fetchurl, wawonaSrc ? null, simulator ? false, ... }:
+{
+  lib,
+  stdenv,
+  pkgs,
+  fetchurl,
+  buildModule,
+  wawonaSrc ? null,
+  simulator ? false,
+  ...
+}:
 
 let
   xcodeUtils = import ../../utils/xcode-wrapper.nix { inherit lib pkgs; };
+  westonClientSrc = pkgs.callPackage ../../libs/weston-simple-shm/patched-src.nix { };
+  libwayland = buildModule.buildForIOS "libwayland" { inherit simulator; };
   sdkPlatform = if simulator then "iPhoneSimulator" else "iPhoneOS";
   minVerFlag = if simulator then "-mios-simulator-version-min=26.0" else "-miphoneos-version-min=26.0";
 in
@@ -10,12 +21,7 @@ stdenv.mkDerivation rec {
   version = "13.0.0";
   __noChroot = true;
 
-  src = fetchurl {
-    url = "https://gitlab.freedesktop.org/wayland/weston/-/releases/${version}/downloads/weston-${version}.tar.xz";
-    sha256 = "sha256-Uv8dSqI5Si5BbIWjOLYnzpf6cdQ+t2L9Sq8UXTb8eVo=";
-  };
-
-  dontUnpack = true;
+  src = westonClientSrc;
   nativeBuildInputs = [ xcodeUtils.findXcodeScript ];
 
   buildPhase = ''
@@ -31,17 +37,8 @@ stdenv.mkDerivation rec {
 
     cat > weston_shim.c <<'EOF'
     extern int weston_simple_shm_main(int argc, char **argv);
+    int wwn_weston_is_compat_shim(void) { return 1; }
     int weston_main(int argc, char **argv) {
-      (void)argc;
-      (void)argv;
-      char *shim_argv[] = { "weston-simple-shm", 0 };
-      return weston_simple_shm_main(1, shim_argv);
-    }
-    EOF
-
-    cat > weston_terminal_shim.c <<'EOF'
-    extern int weston_simple_shm_main(int argc, char **argv);
-    int weston_terminal_main(int argc, char **argv) {
       (void)argc;
       (void)argv;
       char *shim_argv[] = { "weston-simple-shm", 0 };
@@ -55,12 +52,19 @@ stdenv.mkDerivation rec {
     }
     EOF
 
+    cp ${./mobile-weston-terminal.c} ./mobile-weston-terminal.c
+
     "$CLANG" -c weston_shim.c -arch arm64 -isysroot "$SDKROOT" ${minVerFlag} -fPIC -o weston_shim.o
-    "$CLANG" -c weston_terminal_shim.c -arch arm64 -isysroot "$SDKROOT" ${minVerFlag} -fPIC -o weston_terminal_shim.o
+    "$CLANG" -c mobile-weston-terminal.c -arch arm64 -isysroot "$SDKROOT" ${minVerFlag} -fPIC \
+      -I. -Iinclude -Ishared -I${libwayland}/include -I${libwayland}/include/wayland \
+      -o weston_terminal_mobile.o
+    "$CLANG" -c xdg-shell-protocol.c -arch arm64 -isysroot "$SDKROOT" ${minVerFlag} -fPIC \
+      -I. -Iinclude -I${libwayland}/include -I${libwayland}/include/wayland \
+      -o xdg-shell-protocol.o
     "$CLANG" -c weston_desktop_stub.c -arch arm64 -isysroot "$SDKROOT" ${minVerFlag} -fPIC -o weston_desktop_stub.o
 
     "$AR" rcs libweston-13.a weston_shim.o
-    "$AR" rcs libweston-terminal.a weston_terminal_shim.o
+    "$AR" rcs libweston-terminal.a weston_terminal_mobile.o xdg-shell-protocol.o
     "$AR" rcs libweston-desktop-13.a weston_desktop_stub.o
   '';
 
@@ -72,7 +76,7 @@ stdenv.mkDerivation rec {
   '';
 
   meta = with lib; {
-    description = "Weston compatibility shims for iOS Wawona";
+    description = "Weston mobile client libraries for iOS Wawona";
     homepage = "https://gitlab.freedesktop.org/wayland/weston";
     license = licenses.mit;
     platforms = platforms.darwin;

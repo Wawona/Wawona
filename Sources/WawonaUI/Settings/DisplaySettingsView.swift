@@ -2,7 +2,7 @@ import SwiftUI
 import WawonaModel
 
 struct DisplaySettingsView: View {
-    @Bindable var preferences: WawonaPreferences
+    @ObservedObject var preferences: WawonaPreferences
 
     var body: some View {
         Form {

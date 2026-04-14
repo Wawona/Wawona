@@ -13,6 +13,11 @@
 let
   pkgsMacOS = pkgs;
   iosToolchain = import ../apple/default.nix { inherit lib pkgs; };
+  firstNonNull = values:
+    let
+      filtered = builtins.filter (value: value != null) values;
+    in
+    if filtered == [ ] then null else builtins.head filtered;
   callPackageFiltered = path: overrides:
     let
       fn = import path;
@@ -91,10 +96,7 @@ let
   buildForIOSInternal =
     name: entry:
     let
-      normalizedEntry =
-        entry
-        // lib.optionalAttrs (name == "gl-cts" && !(entry ? buildTargets)) { buildTargets = "glcts-gl"; }
-        // lib.optionalAttrs (name == "vulkan-cts" && !(entry ? buildTargets)) { buildTargets = "deqp"; };
+      normalizedEntry = entry;
       simulator = entry.simulator or false;
       # Use passed pkgsIos instead of pkgs.pkgsCross
       iosModule = {
@@ -109,7 +111,14 @@ let
 
       # Use registry for standard libraries
       registryEntry = registry.${name} or null;
-      iosScript = if registryEntry != null then registryEntry.ios or null else null;
+      iosScript =
+        if registryEntry != null then
+          if simulator then
+            registryEntry.iosSim or registryEntry.iosDevice or registryEntry.ios or null
+          else
+            registryEntry.iosDevice or registryEntry.ios or null
+        else
+          null;
     in
     if iosScript != null then
       callPackageFiltered iosScript (iosArgs // normalizedEntry)
@@ -119,6 +128,38 @@ let
         inherit lib pkgs buildPackages common simulator iosToolchain;
         buildModule = iosModule;
       }).buildForIOS name normalizedEntry;
+
+  # --- iPadOS Toolchain ---
+  # iPadOS is a first-class platform and does not fall back to iOS recipes.
+  buildForIPadOSInternal =
+    name: entry:
+    let
+      normalizedEntry = entry // { simulator = entry.simulator or false; };
+      simulator = normalizedEntry.simulator;
+      ipadosModule = {
+        buildForIPadOS = buildForIPadOSInternal;
+        buildForIOS = buildForIOSInternal;
+      };
+      ipadosArgs = {
+        inherit lib pkgs buildPackages common simulator stdenv wawonaSrc;
+        inherit (pkgs) fetchurl meson ninja pkg-config;
+        buildModule = ipadosModule;
+        inherit iosToolchain;
+      };
+      registryEntry = registry.${name} or null;
+      ipadosScript =
+        if registryEntry != null then
+          if simulator then
+            registryEntry.ipadosSim or registryEntry.ipadosDevice or registryEntry.ipados or null
+          else
+            registryEntry.ipadosDevice or registryEntry.ipados or null
+        else
+          null;
+    in
+    if ipadosScript != null then
+      callPackageFiltered ipadosScript (ipadosArgs // normalizedEntry)
+    else
+      throw "Missing iPadOS module mapping for '${name}' in dependencies/toolchains/common/registry.nix";
 
   # --- macOS Toolchain ---
 
@@ -157,6 +198,193 @@ let
         buildModule = macosModule;
       }).buildForMacOS name entry;
 
+  # --- watchOS Toolchain ---
+
+  buildForWatchOSInternal =
+    name: entry:
+    let
+      simulator = entry.simulator or false;
+      watchosModule = {
+        buildForWatchOS = buildForWatchOSInternal;
+        # Allow watchos.nix files that call buildModule.buildForIOS to fall through
+        buildForIOS = buildForIOSInternal;
+      };
+      watchosArgs = {
+        inherit lib pkgs buildPackages common simulator stdenv wawonaSrc;
+        inherit (pkgs) fetchurl meson ninja pkg-config;
+        buildModule = watchosModule;
+        iosToolchain = iosToolchain;
+      };
+
+      registryEntry = registry.${name} or null;
+      watchosScript =
+        if registryEntry != null then
+          if simulator then
+            registryEntry.watchosSim or registryEntry.watchosDevice or registryEntry.watchos or null
+          else
+            registryEntry.watchosDevice or registryEntry.watchos or null
+        else
+          null;
+    in
+    if watchosScript != null then
+      callPackageFiltered watchosScript (watchosArgs // entry)
+    else
+      # Explicit watchOS policy: allow fallback to iOS when watchOS recipe is absent.
+      buildForIOSInternal name entry;
+
+  # --- visionOS Toolchain ---
+
+  buildForVisionOSInternal =
+    name: entry:
+    let
+      normalizedEntry = entry // { simulator = entry.simulator or false; };
+      simulator = normalizedEntry.simulator;
+      visionosModule = {
+        buildForVisionOS = buildForVisionOSInternal;
+        # Allow visionOS recipes to reuse iOS recipes intentionally.
+        buildForIOS = buildForIOSInternal;
+      };
+      visionosArgs = {
+        inherit lib pkgs buildPackages common simulator stdenv wawonaSrc;
+        inherit (pkgs) fetchurl meson ninja pkg-config;
+        buildModule = visionosModule;
+        inherit iosToolchain;
+      };
+      registryEntry = registry.${name} or null;
+      iosBaseScript =
+        if registryEntry != null then
+          if simulator then
+            registryEntry.iosSim or registryEntry.iosDevice or registryEntry.ios or null
+          else
+            registryEntry.iosDevice or registryEntry.ios or null
+        else
+          null;
+      derivedVisionosScript =
+        if iosBaseScript != null then
+          let
+            candidate = builtins.replaceStrings [ "/ios.nix" ] [ "/visionos.nix" ] (toString iosBaseScript);
+          in
+          if builtins.pathExists candidate then candidate else null
+        else
+          null;
+      visionosScript =
+        if registryEntry != null then
+          if simulator then
+            firstNonNull [
+              (registryEntry.visionosSim or null)
+              (registryEntry.visionosDevice or null)
+              (registryEntry.visionos or null)
+              derivedVisionosScript
+              (registryEntry.iosSim or null)
+              (registryEntry.iosDevice or null)
+              (registryEntry.ios or null)
+            ]
+          else
+            firstNonNull [
+              (registryEntry.visionosDevice or null)
+              (registryEntry.visionos or null)
+              derivedVisionosScript
+              (registryEntry.iosDevice or null)
+              (registryEntry.ios or null)
+            ]
+        else
+          derivedVisionosScript;
+    in
+    if visionosScript != null then
+      callPackageFiltered visionosScript (visionosArgs // normalizedEntry)
+    else
+      (import ../platforms/visionos.nix {
+        buildModule = visionosModule;
+      }).buildForVisionOS name normalizedEntry;
+
+  # --- WearOS Toolchain ---
+
+  buildForWearOSInternal =
+    name: entry:
+    let
+      emulator = entry.emulator or false;
+      stdenv = pkgsAndroidEffective.stdenv;
+      wearosModule = {
+        buildForWearOS = buildForWearOSInternal;
+        # Allow wearos.nix recipes to intentionally reuse Android modules.
+        buildForAndroid = buildForAndroidInternal;
+      };
+      wearosArgs = {
+        inherit lib pkgs buildPackages common androidSDK androidToolchain stdenv wawonaSrc;
+        inherit (pkgs) fetchurl meson ninja pkg-config;
+        buildModule = wearosModule;
+      };
+      registryEntry = registry.${name} or null;
+      wearosScript =
+        if registryEntry != null then
+          if emulator then
+            firstNonNull [
+              (registryEntry.wearosEmulator or null)
+              (registryEntry.wearosDevice or null)
+              (registryEntry.wearos or null)
+              (registryEntry.androidEmulator or null)
+              (registryEntry.androidDevice or null)
+              (registryEntry.android or null)
+            ]
+          else
+            firstNonNull [
+              (registryEntry.wearosDevice or null)
+              (registryEntry.wearos or null)
+              (registryEntry.androidDevice or null)
+              (registryEntry.android or null)
+            ]
+        else
+          null;
+    in
+    if wearosScript != null then
+      callPackageFiltered wearosScript (wearosArgs // entry)
+    else
+      (import ../platforms/wearos.nix {
+        inherit lib pkgs buildPackages common androidSDK androidToolchain;
+        buildModule = wearosModule;
+      }).buildForWearOS name entry;
+
+  # --- Linux Toolchain ---
+
+  buildForLinuxInternal =
+    name: entry:
+    let
+      linuxModule = {
+        buildForLinux = buildForLinuxInternal;
+      };
+      linuxArgs = {
+        inherit lib pkgs buildPackages common stdenv wawonaSrc;
+        inherit (pkgs) fetchurl meson ninja pkg-config;
+        buildModule = linuxModule;
+      };
+      registryEntry = registry.${name} or null;
+      macosBaseScript = if registryEntry != null then registryEntry.macos or null else null;
+      derivedLinuxScript =
+        if macosBaseScript != null then
+          let
+            candidate = builtins.replaceStrings [ "/macos.nix" ] [ "/linux.nix" ] (toString macosBaseScript);
+          in
+          if builtins.pathExists candidate then candidate else null
+        else
+          null;
+      linuxScript =
+        if registryEntry != null then
+          firstNonNull [
+            (registryEntry.linuxNative or null)
+            (registryEntry.linux or null)
+            derivedLinuxScript
+          ]
+        else
+          derivedLinuxScript;
+    in
+    if linuxScript != null then
+      callPackageFiltered linuxScript (linuxArgs // entry)
+    else
+      (import ../platforms/linux.nix {
+        inherit lib pkgs buildPackages common;
+        buildModule = linuxModule;
+      }).buildForLinux name entry;
+
   # --- Top-level interface ---
 
   registry = common.registry;
@@ -169,6 +397,11 @@ let
 in
 {
   buildForIOS = buildForIOSInternal;
+  buildForIPadOS = buildForIPadOSInternal;
+  buildForWatchOS = buildForWatchOSInternal;
+  buildForVisionOS = buildForVisionOSInternal;
+  buildForWearOS = buildForWearOSInternal;
+  buildForLinux = buildForLinuxInternal;
   buildForMacOS = buildForMacOSInternal;
   buildForAndroid = buildForAndroidInternal;
   inherit androidToolchain macos;

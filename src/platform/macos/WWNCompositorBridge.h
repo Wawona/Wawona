@@ -203,6 +203,10 @@ typedef struct {
 
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
 @property(nonatomic, weak) UIView *containerView;
+#else
+/// YES when any connected client has requested cursor management through
+/// either wp_cursor_shape (named shapes) or wl_pointer.set_cursor (bitmaps).
+@property(nonatomic, readonly) BOOL clientWantsCursorRendered;
 #endif
 
 @end

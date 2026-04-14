@@ -3,7 +3,7 @@ import WawonaModel
 
 struct MachinesGridView: View {
     let profiles: [MachineProfile]
-    @Bindable var sessions: SessionOrchestrator
+    @ObservedObject var sessions: SessionOrchestrator
     let onAdd: () -> Void
     let onConnect: (MachineProfile) -> Void
     let onDelete: (MachineProfile) -> Void
@@ -17,9 +17,21 @@ struct MachinesGridView: View {
             }
 
             if profiles.isEmpty {
+                #if SKIP
+                VStack(spacing: 8) {
+                    Image(systemName: "server.rack")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                    Text("No Machines")
+                        .font(.headline)
+                }
+                .frame(maxWidth: CGFloat.infinity)
+                .padding(Edge.Set.top, 40)
+                #else
                 ContentUnavailableView("No Machines", systemImage: "server.rack")
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 40)
+                    .frame(maxWidth: CGFloat.infinity)
+                    .padding(Edge.Set.top, 40)
+                #endif
             } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 300, maximum: 500), spacing: 14)], spacing: 14) {
                     ForEach(profiles) { profile in

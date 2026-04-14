@@ -16,6 +16,7 @@ extern NSString *const kWWNMachineTypeContainer;
 @property(nonatomic, assign) BOOL sshEnabled;
 @property(nonatomic, copy) NSString *sshHost;
 @property(nonatomic, copy) NSString *sshUser;
+@property(nonatomic, assign) NSInteger sshPort;
 @property(nonatomic, copy) NSString *sshPassword;
 @property(nonatomic, copy) NSString *sshBinary;
 @property(nonatomic, assign) NSInteger sshAuthMethod;
@@ -35,6 +36,7 @@ extern NSString *const kWWNMachineTypeContainer;
 @property(nonatomic, copy) NSString *waypipeTitlePrefix;
 @property(nonatomic, copy) NSString *waypipeSecCtx;
 @property(nonatomic, copy) NSDictionary<NSString *, id> *settingsOverrides;
+@property(nonatomic, copy) NSDictionary<NSString *, id> *runtimeOverrides;
 @property(nonatomic, assign) BOOL favorite;
 @property(nonatomic, assign) long long createdAtMs;
 @property(nonatomic, assign) long long updatedAtMs;
@@ -54,6 +56,7 @@ extern NSString *const kWWNMachineTypeContainer;
 + (void)setActiveMachineId:(nullable NSString *)machineId;
 + (void)applyMachineToRuntimePrefs:(WWNMachineProfile *)profile;
 + (void)persistActiveMachineSettings;
++ (NSDictionary<NSString *, id> *)resolvedRuntimeSettingsForProfile:(WWNMachineProfile *)profile;
 
 @end
 

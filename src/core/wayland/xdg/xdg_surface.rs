@@ -238,21 +238,13 @@ impl Dispatch<xdg_surface::XdgSurface, u32> for CompositorState {
             xdg_surface::Request::AckConfigure { serial } => {
                 crate::wlog!(crate::util::logging::COMPOSITOR, "Client acked configure serial {}", serial);
                 if let Some(data) = data {
-                    if let Some(surface_data) = state.xdg.surfaces.get(&(client_id.clone(), xdg_surface_id)) {
-                        if surface_data.pending_serial != 0 && serial != surface_data.pending_serial {
-                            resource.post_error(
-                                xdg_surface::Error::InvalidSerial,
-                                format!(
-                                    "ack_configure serial {} does not match pending serial {}",
-                                    serial, surface_data.pending_serial
-                                ),
-                            );
-                            return;
-                        }
-                    }
                     if let Some(surface_data) = state.xdg.surfaces.get_mut(&(client_id.clone(), xdg_surface_id)) {
                         surface_data.configured = true;
-                        surface_data.pending_serial = 0;
+                        // Clear pending only when the latest serial is acked;
+                        // older serials are valid per xdg-shell protocol.
+                        if serial == surface_data.pending_serial {
+                            surface_data.pending_serial = 0;
+                        }
                     }
 
                     // Mark the window as configured

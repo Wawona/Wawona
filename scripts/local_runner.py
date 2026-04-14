@@ -31,19 +31,13 @@ def parse_nix_yml(path):
     
     return targets
 
-def run_build(target, use_nom=False):
+def run_build(target):
     print(f"\n>>> Building target: {target}")
     
     # Check if target exists as a package or check
     # We'll just try to build it. Nix will tell us if it's missing.
     
     build_cmd = ["nix", "build", f".#{target}", "--print-build-logs"]
-    if use_nom:
-        # Check if nom is available
-        if subprocess.call(["which", "nom"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0:
-            build_cmd = ["nom", "build", f".#{target}"]
-        else:
-            print("Warning: 'nom' (nix-output-monitor) not found, falling back to 'nix build'")
     
     log_dir = os.path.abspath("logs")
     if not os.path.exists(log_dir):
@@ -90,9 +84,6 @@ def main():
     parser.add_argument("--target", type=str, help="Specific target to build")
     parser.add_argument("--job", type=str, help="Specific job to run (build-linux or build-macos)")
     parser.add_argument("--all", action="store_true", help="Build all targets for the current platform")
-    parser.add_argument("--nom", action="store_true", default=True, help="Use nix-output-monitor (nom) if available (default: True)")
-    parser.add_argument("--no-nom", action="store_false", dest="nom", help="Disable nix-output-monitor")
-    
     parser.add_argument("--workflow", type=str, help="Path to nix.yml workflow file")
     
     args = parser.parse_args()
@@ -159,7 +150,7 @@ def main():
 
     results = {}
     for target in targets_to_run:
-        success = run_build(target, use_nom=args.nom)
+        success = run_build(target)
         results[target] = "SUCCESS" if success else "FAILURE"
 
     print("\n" + "="*60)

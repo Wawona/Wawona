@@ -2,16 +2,48 @@ import SwiftUI
 import WawonaModel
 
 struct SSHWaypipeSettingsView: View {
-    @Bindable var preferences: WawonaPreferences
+    @ObservedObject var preferences: WawonaPreferences
+    @State var defaultBundledAppID = ""
+    @State var defaultWaypipeEnabled = true
+    @State var defaultUseBundledApp = false
+    private var sshPortText: Binding<String> {
+        Binding(
+            get: { String(preferences.sshPort) },
+            set: { preferences.sshPort = Int($0) ?? preferences.sshPort }
+        )
+    }
 
     var body: some View {
         Form {
             Section("SSH") {
                 TextField("Host", text: $preferences.sshHost)
                 TextField("User", text: $preferences.sshUser)
-                Stepper("Port \(preferences.sshPort)", value: $preferences.sshPort, in: 1...65535)
+                SecureField("Password", text: $preferences.sshPassword)
+                    .textContentType(.password)
+                TextField("Port", text: sshPortText)
+                    .autocorrectionDisabled()
+            }
+            Section("Waypipe") {
+                SecureField("Waypipe Password (optional override)", text: $preferences.waypipeSSHPassword)
+                    .textContentType(.password)
+                Toggle("Default Waypipe Enabled", isOn: $defaultWaypipeEnabled)
+            }
+            Section("Native Bundled App Default") {
+                Toggle("Use Bundled App by Default", isOn: $defaultUseBundledApp)
+                TextField("Bundled App ID", text: $defaultBundledAppID)
+                    .autocorrectionDisabled()
             }
         }
-        .onDisappear { preferences.save() }
+        .onAppear {
+            defaultBundledAppID = preferences.defaultBundledAppID
+            defaultWaypipeEnabled = preferences.defaultWaypipeEnabled
+            defaultUseBundledApp = preferences.defaultUseBundledApp
+        }
+        .onDisappear {
+            preferences.defaultBundledAppID = defaultBundledAppID.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+            preferences.defaultWaypipeEnabled = defaultWaypipeEnabled
+            preferences.defaultUseBundledApp = defaultUseBundledApp
+            preferences.save()
+        }
     }
 }

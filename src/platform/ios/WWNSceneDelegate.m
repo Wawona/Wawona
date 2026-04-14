@@ -6,6 +6,7 @@
 #import "../macos/ui/Machines/WWNMachinesCoordinator.h"
 #import "WWNCompositorBridge.h"
 #import <objc/message.h>
+#import <math.h>
 #import "../../util/WWNLog.h"
 
 @interface WWNWelcomeViewController : UIViewController
@@ -97,6 +98,8 @@
 @property(nonatomic, strong) NSArray<NSLayoutConstraint *> *fullScreenConstraints;
 /// Last reported output size — used to skip redundant updates.
 @property(nonatomic, assign) CGSize lastOutputSize;
+/// Last reported output scale — used with size to skip redundant updates.
+@property(nonatomic, assign) float lastOutputScale;
 /// Last applied Respect Safe Area value — used to skip redundant logs.
 @property(nonatomic, assign) BOOL lastRespectSafeArea;
 @property(nonatomic, assign) BOOL hasAppliedSafeArea;
@@ -248,14 +251,18 @@
     return;
 
   CGSize sz = bounds.size;
-  if (!forced && CGSizeEqualToSize(sz, self.lastOutputSize))
-    return;
-  self.lastOutputSize = sz;
 
   UIWindowScene *ws = self.window.windowScene;
   CGFloat screenScale = ws.screen.scale;
   BOOL autoScale = [[WWNPreferencesManager sharedManager] autoScale];
   float wlScale = autoScale ? (float)screenScale : 1.0f;
+
+  if (!forced && CGSizeEqualToSize(sz, self.lastOutputSize) &&
+      fabsf(self.lastOutputScale - wlScale) < 0.001f) {
+    return;
+  }
+  self.lastOutputSize = sz;
+  self.lastOutputScale = wlScale;
 
   WWNCompositorBridge *compositor = [WWNCompositorBridge sharedBridge];
   [compositor setOutputWidth:(uint32_t)sz.width
@@ -378,8 +385,12 @@
 
 - (void)sceneDidBecomeActive:(UIScene *)scene {
   WWNLog("SCENE", @"Scene became active");
-  if (!self.compositorContainer.hidden &&
-      ![WWNWaypipeRunner sharedRunner].isRunning) {
+  // Only re-show the machines UI if the compositor is visible but nothing is
+  // actually rendering into it (neither waypipe nor any native client).
+  BOOL compositorVisible = !self.compositorContainer.hidden;
+  BOOL somethingRunning = [WWNWaypipeRunner sharedRunner].isRunning
+                          || [self isAnyNativeClientRunning];
+  if (compositorVisible && !somethingRunning) {
     self.compositorContainer.hidden = YES;
     self.settingsButton.hidden = YES;
     [self presentMachinesConfigurationAfterWelcome];
@@ -443,6 +454,21 @@
   });
 }
 
+- (BOOL)isAnyNativeClientRunning {
+  WWNWaypipeRunner *runner = [WWNWaypipeRunner sharedRunner];
+  return runner.westonRunning
+      || runner.westonTerminalRunning
+      || runner.isWestonSimpleSHMRunning
+      || runner.footRunning;
+}
+
+- (void)revealCompositor {
+  self.compositorContainer.hidden = NO;
+  self.settingsButton.hidden = NO;
+  self.showingMachinesUI = NO;
+  [self updateOutputSizeFromContainerForced:YES];
+}
+
 - (void)presentMachinesConfigurationAfterWelcome {
   dispatch_async(dispatch_get_main_queue(), ^{
     if (self.showingMachinesUI) {
@@ -462,10 +488,21 @@
                                   if (!strongSelf) {
                                     return;
                                   }
-                                  strongSelf.compositorContainer.hidden = NO;
-                                  strongSelf.settingsButton.hidden = NO;
-                                  strongSelf.showingMachinesUI = NO;
-                                  [strongSelf updateOutputSizeFromContainerForced:YES];
+                                  // Dismiss the machines modal first, then reveal
+                                  // the compositor once the animation finishes.
+                                  UIViewController *root =
+                                      strongSelf.window.rootViewController;
+                                  UIViewController *presented =
+                                      root.presentedViewController;
+                                  if (presented) {
+                                    [presented
+                                        dismissViewControllerAnimated:YES
+                                        completion:^{
+                                          [strongSelf revealCompositor];
+                                        }];
+                                  } else {
+                                    [strongSelf revealCompositor];
+                                  }
                                 }];
   });
 }

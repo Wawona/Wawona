@@ -5,33 +5,58 @@ struct MachinesRootView: View {
     @ObservedObject var preferences: WawonaPreferences
     @ObservedObject var profileStore: MachineProfileStore
     @ObservedObject var sessions: SessionOrchestrator
+    var onPresentNativeCompositor: ((MachineSession) -> Void)?
     @State var search = ""
     @State var selectedMachineId: String?
     @State var showingEditor = false
+
+    init(
+        preferences: WawonaPreferences,
+        profileStore: MachineProfileStore,
+        sessions: SessionOrchestrator,
+        onPresentNativeCompositor: ((MachineSession) -> Void)? = nil
+    ) {
+        self.preferences = preferences
+        self.profileStore = profileStore
+        self.sessions = sessions
+        self.onPresentNativeCompositor = onPresentNativeCompositor
+    }
 
     var body: some View {
         machinesNavigation
     }
 
     private var machinesNavigation: some View {
-        AdaptiveNavigationView {
-            #if SKIP
-            List(filteredProfiles) { profile in
-                Button {
-                    selectedMachineId = profile.id
-                } label: {
-                    Text(profile.name)
-                }
+        #if SKIP
+        // Skip maps `NavigationSplitView` to stubs; `AdaptiveNavigationView` only renders `detail`,
+        // so the sidebar list never appeared. Use a single column with a bar title like iOS phone.
+        NavigationStack {
+            ScrollView {
+                MachinesGridView(
+                    profiles: filteredProfiles,
+                    sessions: sessions,
+                    onAdd: { showingEditor = true },
+                    onConnect: connect,
+                    onDelete: delete
+                )
+                .padding()
             }
             .navigationTitle("Machines")
-            #else
+            .searchable(text: $search)
+            .sheet(isPresented: $showingEditor) {
+                MachineEditorView { profile in
+                    profileStore.upsert(profile)
+                }
+            }
+        }
+        #else
+        AdaptiveNavigationView {
             List(selection: $selectedMachineId) {
                 ForEach(filteredProfiles) { profile in
                     Text(profile.name).tag(profile.id)
                 }
             }
             .navigationTitle("Machines")
-            #endif
         } detail: {
             ScrollView {
                 MachinesGridView(
@@ -50,6 +75,7 @@ struct MachinesRootView: View {
                 }
             }
         }
+        #endif
     }
 
     private var filteredProfiles: [MachineProfile] {
@@ -67,7 +93,7 @@ struct MachinesRootView: View {
         #if SKIP && os(Android)
         if profile.type == .native {
             NativeCompositorPrefs.apply(for: profile)
-            sessions.presentCompositorOverlay(session: session)
+            onPresentNativeCompositor?(session)
         }
         #endif
     }

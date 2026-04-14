@@ -1,122 +1,52 @@
-# foot - Fast, lightweight Wayland terminal emulator (iOS port)
-# https://codeberg.org/dnkl/foot
-# 
-# NOTE: This is a placeholder for the iOS port.
-# Foot requires significant patching for iOS due to:
-# - No fork() on iOS (need to use dlopen-based process model)
-# - PTY handling differences
-# - Font stack needs iOS adaptation (CoreText instead of fontconfig/freetype)
-#
-# For now, this builds the dependencies but the actual foot port
-# requires additional platform-specific work.
-
-{
-  lib,
-  pkgs,
-  buildPackages,
-  common,
-  buildModule ? null,
-}:
+{ lib, stdenv, pkgs, simulator ? false, ... }:
 
 let
-  fetchSource = common.fetchSource;
-  xcodeUtils = import ../../../utils/xcode-wrapper.nix { inherit lib pkgs; };
-  
-  footSource = {
-    source = "codeberg";
-    owner = "dnkl";
-    repo = "foot";
-    tag = "1.18.1";
-    sha256 = "sha256-7tTaXd/jTrFxXxYFt9mTx0dIaGa3vnJfZ5wXjX0HBDA=";
-  };
-  src = fetchSource footSource;
-  
-  # iOS dependencies - these would need to be built for iOS
-  # For now, reference existing iOS builds where available
-  libwayland = buildModule.buildForIOS "libwayland" {};
-  pixman = buildModule.buildForIOS "pixman" {};
-  # xkbcommon - already ported for iOS
-  # fcft, fontconfig, freetype, utf8proc - would need iOS ports
+  xcodeUtils = import ../../utils/xcode-wrapper.nix { inherit lib pkgs; };
+  sdkPlatform = if simulator then "iPhoneSimulator" else "iPhoneOS";
+  minVerFlag  = if simulator
+    then "-mios-simulator-version-min=26.0"
+    else "-miphoneos-version-min=26.0";
 in
-pkgs.stdenv.mkDerivation {
-  pname = "foot-ios";
-  version = "1.18.1";
-  inherit src;
-  
-  # Mark as broken until full port is complete
-  meta.broken = true;
-  
-  nativeBuildInputs = with buildPackages; [
-    meson
-    ninja
-    pkg-config
-    scdoc
-    wayland-scanner
-    python3
-  ];
-  
-  # For now, just set up the source and document what's needed
-  buildPhase = ''
-    echo "=========================================="
-    echo "FOOT TERMINAL iOS PORT - NOT YET COMPLETE"
-    echo "=========================================="
-    echo ""
-    echo "Foot terminal requires these adaptations for iOS:"
-    echo ""
-    echo "1. PROCESS MODEL"
-    echo "   - iOS doesn't support fork()"
-    echo "   - Need to compile foot as a dynamic library (.dylib)"
-    echo "   - Entry point should be a callable function, not main()"
-    echo "   - WawonaKernel will dlopen() and call the entry point"
-    echo ""
-    echo "2. PTY HANDLING"
-    echo "   - iOS has limited PTY support"
-    echo "   - May need custom PTY implementation or alternative"
-    echo "   - Consider using iOS pseudo-terminal APIs if available"
-    echo ""
-    echo "3. FONT RENDERING"
-    echo "   - Replace fontconfig with iOS font discovery"
-    echo "   - Use CoreText for glyph rendering instead of FreeType"
-    echo "   - fcft library needs iOS backend"
-    echo ""
-    echo "4. KEYBOARD INPUT"
-    echo "   - iOS keyboard handling through UIKit"
-    echo "   - Need to bridge iOS keyboard events to xkbcommon"
-    echo ""
-    echo "Dependencies that need iOS ports:"
-    echo "   - fcft (foot's font library)"
-    echo "   - fontconfig (or CoreText replacement)"
-    echo "   - freetype (or CoreText replacement)"
-    echo "   - utf8proc (Unicode handling)"
-    echo ""
-    echo "Available iOS dependencies:"
-    echo "   - libwayland: ${libwayland}"
-    echo "   - pixman: ${pixman}"
-    echo ""
-    runHook postBuild
-  '';
-  
-  installPhase = ''
-    runHook preInstall
-    
-    # Create placeholder output
-    mkdir -p $out/share/wawona
-    cat > $out/share/wawona/app.json << 'EOF'
-{
-  "id": "org.codeberg.dnkl.foot",
-  "name": "Foot Terminal",
-  "description": "Fast, lightweight Wayland terminal (iOS port in progress)",
-  "version": "1.18.1",
-  "status": "not_ported",
-  "platform": "ios"
-}
-EOF
-    
-    # Copy source for reference
-    mkdir -p $out/src
-    cp -r . $out/src/
-    
-    runHook postInstall
-  '';
-}
+stdenv.mkDerivation {
+  pname = "foot-ios-shim";
+  version = "1.0.0";
 
+  dontUnpack = true;
+  nativeBuildInputs = [ xcodeUtils.findXcodeScript ];
+
+  buildPhase = ''
+    if [ -z "''${XCODE_APP:-}" ]; then
+      XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode || true)
+      if [ -n "$XCODE_APP" ]; then
+        export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
+      fi
+    fi
+    export SDKROOT="$DEVELOPER_DIR/Platforms/${sdkPlatform}.platform/Developer/SDKs/${sdkPlatform}.sdk"
+    CLANG="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
+    AR="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar"
+
+    cat > foot_shim.c <<'EOF'
+    extern int weston_simple_shm_main(int argc, char **argv);
+    int wwn_foot_is_compat_shim(void) { return 1; }
+    int foot_main(int argc, char **argv) {
+      (void)argc;
+      (void)argv;
+      char *shim_argv[] = { "weston-simple-shm", 0 };
+      return weston_simple_shm_main(1, shim_argv);
+    }
+    EOF
+
+    "$CLANG" -c foot_shim.c -arch arm64 -isysroot "$SDKROOT" ${minVerFlag} -fPIC -o foot_shim.o
+    "$AR" rcs libfoot.a foot_shim.o
+  '';
+
+  installPhase = ''
+    mkdir -p $out/lib
+    cp libfoot.a $out/lib/
+  '';
+
+  meta = with lib; {
+    description = "Foot terminal in-process shim for iOS Wawona (routes to weston-simple-shm)";
+    platforms   = platforms.darwin;
+  };
+}

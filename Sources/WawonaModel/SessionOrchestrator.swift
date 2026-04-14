@@ -28,10 +28,6 @@ public struct MachineSession: Identifiable, Codable, Hashable, Sendable {
 public final class SessionOrchestrator: ObservableObject {
     @Published public private(set) var sessions: [MachineSession] = []
     @Published public private(set) var activeSessionId: UUID?
-    /// Android: full-window compositor + `WawonaSurfaceView` must live in a plain `ZStack` on the
-    /// activity root. Skip’s `fullScreenCover` uses `ModalBottomSheet`, which often fails to host
-    /// SurfaceView / native clients correctly.
-    @Published public private(set) var compositorOverlaySession: MachineSession?
     @Published public private(set) var framePresentedCount: Int = 0
     @Published public private(set) var connectedClientCount: Int = 0
 
@@ -53,13 +49,6 @@ public final class SessionOrchestrator: ObservableObject {
         if activeSessionId == sessionId {
             activeSessionId = sessions.first(where: { $0.status == .connected })?.id
         }
-        if compositorOverlaySession?.id == sessionId {
-            compositorOverlaySession = nil
-        }
-    }
-
-    public func presentCompositorOverlay(session: MachineSession) {
-        compositorOverlaySession = session
     }
 
     public func openExtraWindow(sessionId: UUID) {

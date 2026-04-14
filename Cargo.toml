@@ -2,13 +2,13 @@ members = ["."]
 
 [package]
 name = "wawona"
-version = "0.2.1"
+version = "0.2.3"
 edition = "2021"
 
 [lints.rust]
 
 [lib]
-crate-type = ["rlib", "staticlib"]
+crate-type = ["rlib", "staticlib", "cdylib"]
 
 
 
@@ -57,7 +57,9 @@ tempfile = "3.25.0"
 waypipe = { path = "./waypipe", optional = true, default-features = false, features = ["lz4", "zstd", "video"] }
 
 [build-dependencies]
-uniffi = { version = "0.30.0", features = ["build"] }
+# Use uniffi_build only here — not `uniffi` with `build` feature. Two uniffi feature
+# graphs (cli vs build) confuse crate2nix host rlib resolution → E0460 vs uniffi_bindgen.
+uniffi_build = { version = "0.30.0" }
 wayland-scanner = "0.31.8"
 
 

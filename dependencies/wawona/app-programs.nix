@@ -104,6 +104,174 @@
     exit $LLDB_EXIT
   ''}/bin/wawona-ios";
 
+  wawonaIpad = "${pkgs.writeShellScriptBin "wawona-ipados" ''
+    set -euo pipefail
+    export PATH="${xcodeUtils.xcodeWrapper}/bin:$PATH"
+    DEBUG_MODE=false
+    if [ "''${1:-}" = "--debug" ]; then
+      DEBUG_MODE=true
+      shift
+    fi
+
+    APP_PATH="${systemPackages.wawona-ipados-app-sim}/Wawona.app"
+    if [ ! -d "$APP_PATH" ]; then
+      echo "Error: Wawona.app not found at $APP_PATH"
+      exit 1
+    fi
+    SIM_NAME="Wawona iPadOS Simulator"
+    DEV_TYPE="com.apple.CoreSimulator.SimDeviceType.iPad-Air-13-inch-M2"
+    RUNTIME=$(xcrun simctl list runtimes 2>/dev/null | grep -i "iOS" | grep -v "unavailable" | awk '{print $NF}' | tail -1)
+    if [ -z "$RUNTIME" ]; then
+      echo "No iOS/iPadOS simulator runtime found. Attempting to provision Xcode automatically..."
+      ${xcodeUtils.provisionXcodeScript}/bin/provision-xcode || {
+        echo "Error: Failed to provision Xcode. Please open Xcode and install the iOS platform manually."
+        exit 1
+      }
+      RUNTIME=$(xcrun simctl list runtimes 2>/dev/null | grep -i "iOS" | grep -v "unavailable" | awk '{print $NF}' | tail -1)
+      if [ -z "$RUNTIME" ]; then
+        echo "Error: Provisioning finished but no iOS runtime was found."
+        exit 1
+      fi
+    fi
+    SIM_UDID=$(xcrun simctl list devices 2>/dev/null | grep "$SIM_NAME" | grep -v "unavailable" | grep -oE '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}' | head -1)
+    if [ -z "$SIM_UDID" ]; then
+      echo "Creating simulator '$SIM_NAME'..."
+      SIM_UDID=$(xcrun simctl create "$SIM_NAME" "$DEV_TYPE" "$RUNTIME")
+    fi
+    xcrun simctl boot "$SIM_UDID" 2>/dev/null || true
+    xcrun simctl bootstatus "$SIM_UDID" -b 2>/dev/null || true
+
+    echo "Opening Simulator.app..."
+    open -a "Simulator" 2>/dev/null || open -a "Simulator.app" 2>/dev/null || true
+
+    echo "Installing Wawona.app (iPadOS) to simulator..."
+    TMP_APP_ROOT="/tmp/wawona-ipados-install"
+    STAGED_APP="$TMP_APP_ROOT/Wawona.app"
+    rm -rf "$TMP_APP_ROOT"
+    mkdir -p "$TMP_APP_ROOT"
+    cp -R "$APP_PATH" "$STAGED_APP"
+    chmod -R u+rwX "$TMP_APP_ROOT" || true
+    if ! xcrun simctl install "$SIM_UDID" "$STAGED_APP"; then
+      xcrun simctl terminate "$SIM_UDID" com.aspauldingcode.Wawona.ipad 2>/dev/null || true
+      xcrun simctl uninstall "$SIM_UDID" com.aspauldingcode.Wawona.ipad 2>/dev/null || true
+      if ! xcrun simctl install "$SIM_UDID" "$STAGED_APP"; then
+        xcrun simctl shutdown "$SIM_UDID" 2>/dev/null || true
+        xcrun simctl erase "$SIM_UDID" 2>/dev/null || true
+        xcrun simctl boot "$SIM_UDID" 2>/dev/null || true
+        xcrun simctl bootstatus "$SIM_UDID" -b 2>/dev/null || true
+        xcrun simctl install "$SIM_UDID" "$STAGED_APP"
+      fi
+    fi
+
+    if [ "$DEBUG_MODE" != "true" ]; then
+      echo "Launching Wawona (iPadOS)..."
+      xcrun simctl launch "$SIM_UDID" com.aspauldingcode.Wawona.ipad "$@"
+      exit 0
+    fi
+
+    DSYM_PATH="${systemPackages.wawona-ipados-app-sim}/Wawona.app.dSYM"
+    echo "Launching Wawona iPadOS (paused at spawn for debugger)..."
+    LAUNCH_OUTPUT=$(xcrun simctl launch --wait-for-debugger "$SIM_UDID" com.aspauldingcode.Wawona.ipad "$@")
+    echo "$LAUNCH_OUTPUT"
+    PID=$(echo "$LAUNCH_OUTPUT" | awk '/com.aspauldingcode.Wawona.ipad:/ {print $NF}')
+    if [ -z "$PID" ]; then
+      echo "Error: Could not determine app PID for LLDB attach."
+      exit 1
+    fi
+    xcrun simctl spawn "$SIM_UDID" log stream --style compact --predicate 'process == "Wawona"' &
+    LOG_STREAM_PID=$!
+    trap "kill $LOG_STREAM_PID 2>/dev/null || true" EXIT INT TERM
+    if [ -d "$DSYM_PATH" ]; then
+      lldb -Q -o "process attach --pid $PID" -o "target symbols add $DSYM_PATH" -o "continue"
+    else
+      lldb -Q -o "process attach --pid $PID" -o "continue"
+    fi
+  ''}/bin/wawona-ipados";
+
+  wawonaWatchos = "${pkgs.writeShellScriptBin "wawona-watchos" ''
+    set -euo pipefail
+    export PATH="${xcodeUtils.xcodeWrapper}/bin:$PATH"
+    DEBUG_MODE=false
+    if [ "''${1:-}" = "--debug" ]; then
+      DEBUG_MODE=true
+      shift
+    fi
+
+    APP_PATH="${systemPackages.wawona-watchos-app-sim}/Wawona.app"
+    if [ ! -d "$APP_PATH" ]; then
+      echo "Error: Wawona.app not found at $APP_PATH"
+      exit 1
+    fi
+    SIM_NAME="Wawona watchOS Simulator"
+    DEV_TYPE="com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-10-46mm"
+    RUNTIME=$(xcrun simctl list runtimes 2>/dev/null | grep -i "watchOS" | grep -v "unavailable" | awk '{print $NF}' | tail -1)
+    if [ -z "$RUNTIME" ]; then
+      echo "No watchOS simulator runtime found. Attempting to provision Xcode automatically..."
+      ${xcodeUtils.provisionXcodeScript}/bin/provision-xcode || {
+        echo "Error: Failed to provision Xcode. Please open Xcode and install the watchOS platform manually."
+        exit 1
+      }
+      RUNTIME=$(xcrun simctl list runtimes 2>/dev/null | grep -i "watchOS" | grep -v "unavailable" | awk '{print $NF}' | tail -1)
+      if [ -z "$RUNTIME" ]; then
+        echo "Error: Provisioning finished but no watchOS runtime was found."
+        exit 1
+      fi
+    fi
+    SIM_UDID=$(xcrun simctl list devices 2>/dev/null | grep "$SIM_NAME" | grep -v "unavailable" | grep -oE '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}' | head -1)
+    if [ -z "$SIM_UDID" ]; then
+      echo "Creating simulator '$SIM_NAME'..."
+      SIM_UDID=$(xcrun simctl create "$SIM_NAME" "$DEV_TYPE" "$RUNTIME")
+    fi
+    xcrun simctl boot "$SIM_UDID" 2>/dev/null || true
+    xcrun simctl bootstatus "$SIM_UDID" -b 2>/dev/null || true
+
+    echo "Opening Simulator.app..."
+    open -a "Simulator" 2>/dev/null || open -a "Simulator.app" 2>/dev/null || true
+
+    echo "Installing Wawona.app (watchOS) to simulator..."
+    TMP_APP_ROOT="/tmp/wawona-watchos-install"
+    STAGED_APP="$TMP_APP_ROOT/Wawona.app"
+    rm -rf "$TMP_APP_ROOT"
+    mkdir -p "$TMP_APP_ROOT"
+    cp -R "$APP_PATH" "$STAGED_APP"
+    chmod -R u+rwX "$TMP_APP_ROOT" || true
+    if ! xcrun simctl install "$SIM_UDID" "$STAGED_APP"; then
+      xcrun simctl terminate "$SIM_UDID" com.aspauldingcode.Wawona.watch 2>/dev/null || true
+      xcrun simctl uninstall "$SIM_UDID" com.aspauldingcode.Wawona.watch 2>/dev/null || true
+      if ! xcrun simctl install "$SIM_UDID" "$STAGED_APP"; then
+        xcrun simctl shutdown "$SIM_UDID" 2>/dev/null || true
+        xcrun simctl erase "$SIM_UDID" 2>/dev/null || true
+        xcrun simctl boot "$SIM_UDID" 2>/dev/null || true
+        xcrun simctl bootstatus "$SIM_UDID" -b 2>/dev/null || true
+        xcrun simctl install "$SIM_UDID" "$STAGED_APP"
+      fi
+    fi
+
+    if [ "$DEBUG_MODE" != "true" ]; then
+      echo "Launching Wawona (watchOS)..."
+      xcrun simctl launch "$SIM_UDID" com.aspauldingcode.Wawona.watch "$@"
+      exit 0
+    fi
+
+    DSYM_PATH="${systemPackages.wawona-watchos-app-sim}/Wawona.app.dSYM"
+    echo "Launching Wawona watchOS (paused at spawn for debugger)..."
+    LAUNCH_OUTPUT=$(xcrun simctl launch --wait-for-debugger "$SIM_UDID" com.aspauldingcode.Wawona.watch "$@")
+    echo "$LAUNCH_OUTPUT"
+    PID=$(echo "$LAUNCH_OUTPUT" | awk '/com.aspauldingcode.Wawona.watch:/ {print $NF}')
+    if [ -z "$PID" ]; then
+      echo "Error: Could not determine app PID for LLDB attach."
+      exit 1
+    fi
+    xcrun simctl spawn "$SIM_UDID" log stream --style compact --predicate 'process == "Wawona"' &
+    LOG_STREAM_PID=$!
+    trap "kill $LOG_STREAM_PID 2>/dev/null || true" EXIT INT TERM
+    if [ -d "$DSYM_PATH" ]; then
+      lldb -Q -o "process attach --pid $PID" -o "target symbols add $DSYM_PATH" -o "continue"
+    else
+      lldb -Q -o "process attach --pid $PID" -o "continue"
+    fi
+  ''}/bin/wawona-watchos";
+
   weston = let
     pkg = systemPackages.weston;
     wrapper = pkgs.writeShellScriptBin "weston-run" ''

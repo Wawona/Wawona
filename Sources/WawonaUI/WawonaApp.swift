@@ -18,16 +18,7 @@ public struct WawonaRootView: View {
         Group {
             if preferences.hasCompletedWelcome || !profileStore.profiles.isEmpty {
                 #if SKIP && os(Android)
-                ZStack(alignment: .topLeading) {
-                    ContentView(
-                        preferences: preferences,
-                        profileStore: profileStore,
-                        sessions: sessions
-                    )
-                    if let overlay = sessions.compositorOverlaySession {
-                        AndroidMachineCompositorChrome(session: overlay, sessions: sessions)
-                    }
-                }
+                rootWithAndroidCompositorOverlay
                 #else
                 ContentView(
                     preferences: preferences,
@@ -40,6 +31,30 @@ public struct WawonaRootView: View {
             }
         }
     }
+
+    #if SKIP && os(Android)
+    @State private var androidCompositorSession: MachineSession?
+
+    private var rootWithAndroidCompositorOverlay: some View {
+        ZStack(alignment: .topLeading) {
+            ContentView(
+                preferences: preferences,
+                profileStore: profileStore,
+                sessions: sessions,
+                onPresentNativeCompositor: { session in
+                    androidCompositorSession = session
+                }
+            )
+            if let overlay = androidCompositorSession {
+                AndroidMachineCompositorChrome(
+                    session: overlay,
+                    sessions: sessions,
+                    onDismiss: { androidCompositorSession = nil }
+                )
+            }
+        }
+    }
+    #endif
 }
 
 // SKIP @bridge

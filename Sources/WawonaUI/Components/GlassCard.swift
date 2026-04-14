@@ -10,23 +10,24 @@ struct GlassCard<Content: View>: View {
     }
 
     var body: some View {
+#if SKIP
         content
             .padding(14)
-            .background(backgroundView)
+#else
+        ZStack {
+            if #available(macOS 26, iOS 26, *) {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
+            } else {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(.ultraThinMaterial)
+            }
+            content.padding(14)
+        }
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .stroke(Color.white.opacity(0.15), lineWidth: 1)
             )
-    }
-
-    @ViewBuilder
-    private var backgroundView: some View {
-        if #available(macOS 26, iOS 26, *) {
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
-        } else {
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(.ultraThinMaterial)
-        }
+#endif
     }
 }

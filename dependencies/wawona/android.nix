@@ -8,9 +8,11 @@
   androidUtils ? null,
   androidToolchain ? null,
   rustBackend ? null,
+  appTarget ? "android",
   glslang ? pkgs.glslang,
   jdk17 ? pkgs.jdk17,
   gradle ? pkgs.gradle,
+  skip ? pkgs.skip,
   targetPkgs,
   ...
 }:
@@ -61,6 +63,8 @@ let
     "libxml2"
     "xkbcommon"
     "openssl"
+    "weston"
+    "foot"
   ];
 
   getDeps =
@@ -308,18 +312,32 @@ let
     fi
     
     adb start-server 2>/dev/null || true
+
+    is_watch_device() {
+      local serial="$1"
+      local characteristics
+      characteristics="$(adb -s "$serial" shell getprop ro.build.characteristics 2>/dev/null | tr -d '\r' || true)"
+      echo "$characteristics" | grep -q "watch"
+    }
     
     # ── Surgical Device Detection ──
     # If a device is already online and booted, we skip EVERYTHING except install/launch
     RUNNING_EMULATORS=$(adb devices | grep -E "emulator-[0-9]+" | grep "device$" | wc -l | tr -d ' ')
     DEVICE_READY=false
     if [ "$RUNNING_EMULATORS" -gt 0 ]; then
-      EMULATOR_SERIAL=$(adb devices | grep -E "emulator-[0-9]+" | grep "device$" | head -n 1 | awk '{print $1}')
-      BOOT_COMPLETE=$(adb -s "$EMULATOR_SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || echo "0")
-      if [ "$BOOT_COMPLETE" = "1" ]; then
-        echo "[Wawona] Reusing running emulator: $EMULATOR_SERIAL"
-        DEVICE_READY=true
-      fi
+      while read -r serial _state; do
+        [ -z "$serial" ] && continue
+        if is_watch_device "$serial"; then
+          continue
+        fi
+        BOOT_COMPLETE=$(adb -s "$serial" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || echo "0")
+        if [ "$BOOT_COMPLETE" = "1" ]; then
+          EMULATOR_SERIAL="$serial"
+          echo "[Wawona] Reusing running Android emulator: $EMULATOR_SERIAL"
+          DEVICE_READY=true
+          break
+        fi
+      done < <(adb devices | grep -E "^emulator-[0-9]+\s+device$")
     fi
 
     if [ "$DEVICE_READY" = "false" ]; then
@@ -354,13 +372,19 @@ let
       TIMEOUT=300
       ELAPSED=0
       while [ $ELAPSED -lt $TIMEOUT ]; do
-        if adb devices | grep -E "emulator-[0-9]+" | grep -q "device$"; then
-          BOOT_COMPLETE=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || echo "0")
+        while read -r serial _state; do
+          [ -z "$serial" ] && continue
+          if is_watch_device "$serial"; then
+            continue
+          fi
+          BOOT_COMPLETE=$(adb -s "$serial" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || echo "0")
           if [ "$BOOT_COMPLETE" = "1" ]; then
+            EMULATOR_SERIAL="$serial"
             DEVICE_READY=true
             break
           fi
-        fi
+        done < <(adb devices | grep -E "^emulator-[0-9]+\s+device$")
+        [ "$DEVICE_READY" = "true" ] && break
         sleep 2
         ELAPSED=$((ELAPSED + 2))
       done
@@ -580,12 +604,16 @@ in
       pkg-config
       jdk17 # Full JDK needed for Gradle
       gradle
+      skip
       unzip
       zip
       file
       util-linux # Provides setsid for creating new process groups
       glslang # For compiling Vulkan shaders to SPIR-V
-    ]) ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.patchelf ];
+    ]) ++ lib.optionals (pkgs ? skip) [ pkgs.skip ]
+      ++ lib.optionals (pkgs ? swift) [ pkgs.swift ]
+      ++ lib.optionals (pkgs ? swiftpm) [ pkgs.swiftpm ]
+      ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.patchelf ];
 
     buildInputs = (getDeps "android" androidDeps) ++ [
       pkgs.mesa
@@ -654,10 +682,95 @@ in
       ${gradleSupport.prepareProject}
       ${gradleSupport.prepareEnvironment}
 
-      # Generate Skip Android artifacts when skip is available in PATH.
+      # Ensure native client launcher glue is present even when the flake source
+      # filter omits untracked Android project files.
+      if [ ! -f app/src/main/cpp/wawona_client_stubs.c ]; then
+        mkdir -p app/src/main/cpp
+cat > app/src/main/cpp/wawona_client_stubs.c <<'EOF_WAWONA_CLIENT_STUBS'
+/*
+ * Android launcher bridge for bundled native Wayland clients.
+ * No client is routed to weston-simple-shm.
+ */
+#include <android/log.h>
+#include <dlfcn.h>
+
+#define TAG "WawonaClients"
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
+
+typedef int (*client_main_fn)(int argc, const char **argv);
+
+static int run_client_main(const char *lib_name, const char *symbol_name,
+                           int argc, const char **argv) {
+    void *handle = dlopen(lib_name, RTLD_NOW | RTLD_LOCAL);
+    if (!handle) {
+        LOGE("Failed to dlopen(%s): %s", lib_name, dlerror());
+        return 1;
+    }
+
+    dlerror();
+    client_main_fn fn = (client_main_fn)dlsym(handle, symbol_name);
+    const char *sym_err = dlerror();
+    if (sym_err != NULL || fn == NULL) {
+        LOGE("Failed to resolve %s from %s: %s", symbol_name, lib_name,
+             sym_err ? sym_err : "unknown");
+        dlclose(handle);
+        return 1;
+    }
+
+    LOGI("Launching %s from %s", symbol_name, lib_name);
+    int rc = fn(argc, argv);
+    LOGI("%s exited with code %d", symbol_name, rc);
+    dlclose(handle);
+    return rc;
+}
+
+int weston_main(int argc, const char **argv) {
+    return run_client_main("libweston.so", "weston_main", argc, argv);
+}
+
+int weston_terminal_main(int argc, const char **argv) {
+    return run_client_main("libweston-terminal.so", "weston_terminal_main", argc, argv);
+}
+
+int foot_main(int argc, const char **argv) {
+    return run_client_main("libfoot.so", "foot_main", argc, argv);
+}
+EOF_WAWONA_CLIENT_STUBS
+      fi
+
+      # Generate Skip Android artifacts deterministically for Nix builds.
       mkdir -p android/Skip
-      if command -v skip >/dev/null 2>&1; then
-        skip export --project . -d android/Skip --debug || true
+      if ! command -v skip >/dev/null 2>&1; then
+        echo "ERROR: skip CLI not found in PATH during Nix Android build" >&2
+        exit 1
+      fi
+      if [ "$(uname -s)" = "Darwin" ] && [ -z "''${DEVELOPER_DIR:-}" ]; then
+        DEVELOPER_DIR="$(xcode-select -p 2>/dev/null || true)"
+        if [ -z "$DEVELOPER_DIR" ]; then
+          DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
+        fi
+        export DEVELOPER_DIR
+      fi
+      if [ "$(uname -s)" = "Darwin" ]; then
+        export PATH="/usr/bin:$PATH"
+      fi
+      skip_export_ok=0
+      if command -v swift >/dev/null 2>&1; then
+        if skip export --project . -d android/Skip --debug; then
+          skip_export_ok=1
+        else
+          echo "WARN: skip export failed in Nix build; using checked-in android/Skip artifacts" >&2
+        fi
+      else
+        echo "WARN: swift tool not found in Nix build; using checked-in android/Skip artifacts" >&2
+      fi
+      if [ "$skip_export_ok" -eq 0 ]; then
+        echo "Using prebuilt Skip artifacts from android/Skip"
+      fi
+      if ! find android/Skip -type f \( -name '*.aar' -o -name '*.kt' -o -name '*.java' \) | grep -q .; then
+        echo "ERROR: skip export did not produce Android AAR/source artifacts in android/Skip" >&2
+        exit 1
       fi
 
       # Ensure no daemon-only JVM profile leaks in from gradle.properties.
@@ -678,14 +791,24 @@ in
           cp -L "$so" "$JNI_LIB_DIR/$(basename "$so")"
         done
       done
+      if [ -f "${rustBackendPath}/lib/libwawona_core.so" ]; then
+        cp -L "${rustBackendPath}/lib/libwawona_core.so" "$JNI_LIB_DIR/libwawona_core.so"
+      fi
       shopt -u nullglob
 
       # Inject Nix dependencies via Environment Variables for Gradle/CMake
       export ANDROID_NDK_ROOT="$ndk_root"
       export ANDROID_NDK_HOME="$ndk_root"
+      export SKIP_ARTIFACTS_DIR="$PWD/android/Skip"
+      export SKIP_EXPORT_STRATEGY="nix-prebuilt"
+      export WAWONA_APP_TARGET="${appTarget}"
       export DEP_INCLUDES="${lib.concatMapStringsSep " " (d: "-I${d}/include") (getDeps "android" androidDeps)} -I${buildModule.buildForAndroid "pixman" { }}/include/pixman-1"
       export DEP_LIBS="${lib.concatMapStringsSep " " (d: "-L${d}/lib") (getDeps "android" androidDeps)}"
-      export RUST_BACKEND_LIB="${rustBackendPath}/lib/libwawona.a"
+      if [ -f "${rustBackendPath}/lib/libwawona_core.so" ]; then
+        export RUST_BACKEND_LIB="${rustBackendPath}/lib/libwawona_core.so"
+      else
+        export RUST_BACKEND_LIB="${rustBackendPath}/lib/libwawona.a"
+      fi
     '';
 
     buildPhase = ''
@@ -703,7 +826,7 @@ in
         -Dkotlin.daemon.enabled=false \
         -Dkotlin.compiler.execution.strategy=in-process \
         -Dkotlin.incremental=false \
-        --info --stacktrace || {
+        --stacktrace || {
         echo "=== Gradle Build Failed! Accessing Diagnostic Reports ==="
         REPORT_PATH="app/build/outputs/logs/manifest-merger-debug-report.txt"
         if [ -f "$REPORT_PATH" ]; then

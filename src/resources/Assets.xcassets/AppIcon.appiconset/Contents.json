@@ -31,6 +31,12 @@
       "size" : "1024x1024"
     },
     {
+      "filename" : "AppIcon-Light-1024.png",
+      "idiom" : "universal",
+      "platform" : "watchos",
+      "size" : "1024x1024"
+    },
+    {
       "filename" : "AppIcon-512.png",
       "idiom" : "mac",
       "scale" : "1x",

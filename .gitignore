@@ -38,7 +38,6 @@ logs/
 
 # Build/test artifacts
 check_output.json
-graphics-validate-results/
 
 # Test client
 test_client
@@ -133,3 +132,15 @@ src/core/wayland/protocol/wlroots/*.rs
 mesa/
 scripts/setup_inspiration.sh
 Inspiration/
+
+# SwiftPM (local)
+.build/
+
+# Android local CMake output / ad-hoc AAR drop (default Skip path is android/Skip)
+android/app/.cxx/
+android/app/libs/
+
+# Local tooling clones (not part of upstream tree)
+swiftly.pkg
+skip.dev/
+inspirational_projects/

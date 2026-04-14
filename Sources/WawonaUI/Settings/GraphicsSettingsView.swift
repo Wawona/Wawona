@@ -2,8 +2,8 @@ import SwiftUI
 import WawonaModel
 
 struct GraphicsSettingsView: View {
-    @Bindable var preferences: WawonaPreferences
-    @State private var rendererOptions = ["metal", "vulkan", "software"]
+    @ObservedObject var preferences: WawonaPreferences
+    @State var rendererOptions = ["metal", "vulkan", "software"]
 
     var body: some View {
         Form {

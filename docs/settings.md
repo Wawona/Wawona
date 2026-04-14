@@ -4,6 +4,17 @@
 
 ---
 
+## Canonical Settings Architecture
+
+- Canonical machine profile store key: `wawona.machineProfiles.v1` (JSON data payload).
+- Canonical active machine key: `wawona.activeMachineId.v1`.
+- Canonical global preferences namespace: `wawona.pref.*`.
+- Machine resolution precedence is **machine overrides > global defaults > hardcoded defaults**.
+- Effective runtime settings must be derived from `resolvedSettings(for:)` semantics.
+- Diagnostics are persisted as typed entries with category + mode (`configLint` or `runtimeProbe`).
+
+---
+
 ## Display
 
 | Setting | Key | Type | Default | Platforms | Description |

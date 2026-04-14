@@ -16,6 +16,12 @@ typedef void (^WaypipeOutputHandler)(NSString *output);
 @property(nonatomic, weak) id<WWNWaypipeRunnerDelegate> delegate;
 @property(nonatomic, readonly) BOOL isRunning;
 @property(nonatomic, readonly) BOOL isWestonSimpleSHMRunning;
+/// YES while the in-process weston compositor client is running.
+@property(nonatomic, readonly) BOOL westonRunning;
+/// YES while the in-process weston-terminal client is running.
+@property(nonatomic, readonly) BOOL westonTerminalRunning;
+/// YES while the in-process foot terminal client is running.
+@property(nonatomic, readonly) BOOL footRunning;
 
 + (instancetype)sharedRunner;
 
@@ -39,5 +45,8 @@ typedef void (^WaypipeOutputHandler)(NSString *output);
 
 - (void)launchWestonTerminal;
 - (void)stopWestonTerminal;
+
+- (void)launchFoot;
+- (void)stopFoot;
 
 @end

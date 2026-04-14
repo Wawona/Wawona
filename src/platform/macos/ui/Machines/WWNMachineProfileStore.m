@@ -11,7 +11,12 @@ static NSString *const kWWNMachineProfilesJSON = @"wawona.machineProfiles.v1";
 static NSString *const kWWNActiveMachineId = @"wawona.activeMachineId.v1";
 static NSString *const kWWNMachineProfilesMigrated = @"wawona.machineProfilesMigrated.v1";
 static NSString *const kWWNMachineSettingsOverrides = @"settingsOverrides";
-static BOOL sPersistingMachineSettings = NO;
+static NSString *const kWWNMachineRuntimeOverrides = @"runtimeOverrides";
+static NSString *const kWWNRuntimeRenderer = @"renderer";
+static NSString *const kWWNRuntimeInputProfile = @"inputProfile";
+static NSString *const kWWNRuntimeUseBundledApp = @"useBundledApp";
+static NSString *const kWWNRuntimeBundledAppID = @"bundledAppID";
+static NSString *const kWWNRuntimeWaypipeEnabled = @"waypipeEnabled";
 
 @implementation WWNMachineProfile
 
@@ -29,6 +34,7 @@ static BOOL sPersistingMachineSettings = NO;
     _sshEnabled = YES;
     _sshHost = @"";
     _sshUser = @"";
+    _sshPort = 22;
     _sshPassword = @"";
     _sshBinary = @"ssh";
     _sshAuthMethod = 0;
@@ -48,6 +54,7 @@ static BOOL sPersistingMachineSettings = NO;
     _waypipeTitlePrefix = @"";
     _waypipeSecCtx = @"";
     _settingsOverrides = @{};
+    _runtimeOverrides = @{};
     _favorite = NO;
     _createdAtMs = now;
     _updatedAtMs = now;
@@ -56,35 +63,34 @@ static BOOL sPersistingMachineSettings = NO;
 }
 
 - (NSDictionary *)serialize {
+  NSString *bundledClientID =
+      [self.settingsOverrides[@"NativeClientId"] isKindOfClass:[NSString class]]
+          ? self.settingsOverrides[@"NativeClientId"]
+          : @"";
+  BOOL useBundledApp = bundledClientID.length > 0;
+  NSMutableDictionary *runtimeOverrides = [NSMutableDictionary dictionary];
+  if ([self.runtimeOverrides isKindOfClass:[NSDictionary class]]) {
+    [runtimeOverrides addEntriesFromDictionary:self.runtimeOverrides];
+  }
+  runtimeOverrides[kWWNRuntimeBundledAppID] = bundledClientID;
+  runtimeOverrides[kWWNRuntimeUseBundledApp] = @(useBundledApp);
+  runtimeOverrides[kWWNRuntimeWaypipeEnabled] = @(self.sshEnabled);
+  runtimeOverrides[@"legacySettingsOverrides"] = self.settingsOverrides ?: @{};
+
   return @{
     @"id" : self.machineId ?: @"",
     @"name" : self.name ?: @"Unnamed Machine",
     @"type" : self.type ?: kWWNMachineTypeSSHWaypipe,
-    @"sshEnabled" : @(self.sshEnabled),
     @"sshHost" : self.sshHost ?: @"",
     @"sshUser" : self.sshUser ?: @"",
+    @"sshPort" : @(self.sshPort > 0 ? self.sshPort : 22),
     @"sshPassword" : self.sshPassword ?: @"",
-    @"sshBinary" : self.sshBinary ?: @"ssh",
-    @"sshAuthMethod" : @(self.sshAuthMethod),
-    @"sshKeyPath" : self.sshKeyPath ?: @"",
-    @"sshKeyPassphrase" : self.sshKeyPassphrase ?: @"",
     @"remoteCommand" : self.remoteCommand ?: @"",
-    @"customScript" : self.customScript ?: @"",
     @"vmSubtype" : self.vmSubtype ?: @"qemu",
     @"containerSubtype" : self.containerSubtype ?: @"docker",
-    @"waypipeCompress" : self.waypipeCompress ?: @"lz4",
-    @"waypipeThreads" : self.waypipeThreads ?: @"0",
-    @"waypipeVideo" : self.waypipeVideo ?: @"none",
-    @"waypipeDebug" : @(self.waypipeDebug),
-    @"waypipeOneshot" : @(self.waypipeOneshot),
-    @"waypipeDisableGpu" : @(self.waypipeDisableGpu),
-    @"waypipeLoginShell" : @(self.waypipeLoginShell),
-    @"waypipeTitlePrefix" : self.waypipeTitlePrefix ?: @"",
-    @"waypipeSecCtx" : self.waypipeSecCtx ?: @"",
-    kWWNMachineSettingsOverrides : self.settingsOverrides ?: @{},
+    @"launchers" : @[],
+    kWWNMachineRuntimeOverrides : runtimeOverrides,
     @"favorite" : @(self.favorite),
-    @"createdAtMs" : @(self.createdAtMs),
-    @"updatedAtMs" : @(self.updatedAtMs),
   };
 }
 
@@ -185,17 +191,7 @@ static BOOL sPersistingMachineSettings = NO;
 }
 
 + (void)ensureObserverRegistered {
-  static dispatch_once_t onceToken;
-  dispatch_once(&onceToken, ^{
-    [[NSNotificationCenter defaultCenter]
-        addObserverForName:NSUserDefaultsDidChangeNotification
-                    object:nil
-                     queue:[NSOperationQueue mainQueue]
-                usingBlock:^(NSNotification *note) {
-                  (void)note;
-                  [self persistActiveMachineSettings];
-                }];
-  });
+  // No-op: persisting machine snapshots from global prefs causes data divergence.
 }
 
 + (WWNMachineProfile *)profileFromDictionary:(NSDictionary *)obj {
@@ -209,6 +205,7 @@ static BOOL sPersistingMachineSettings = NO;
   profile.sshEnabled = [obj[@"sshEnabled"] respondsToSelector:@selector(boolValue)] ? [obj[@"sshEnabled"] boolValue] : YES;
   profile.sshHost = [obj[@"sshHost"] isKindOfClass:[NSString class]] ? obj[@"sshHost"] : @"";
   profile.sshUser = [obj[@"sshUser"] isKindOfClass:[NSString class]] ? obj[@"sshUser"] : @"";
+  profile.sshPort = [obj[@"sshPort"] respondsToSelector:@selector(integerValue)] ? [obj[@"sshPort"] integerValue] : 22;
   profile.sshPassword = [obj[@"sshPassword"] isKindOfClass:[NSString class]] ? obj[@"sshPassword"] : @"";
   profile.sshBinary = [obj[@"sshBinary"] isKindOfClass:[NSString class]] ? obj[@"sshBinary"] : @"ssh";
   profile.sshAuthMethod = [obj[@"sshAuthMethod"] respondsToSelector:@selector(integerValue)] ? [obj[@"sshAuthMethod"] integerValue] : 0;
@@ -227,21 +224,47 @@ static BOOL sPersistingMachineSettings = NO;
   profile.waypipeLoginShell = [obj[@"waypipeLoginShell"] respondsToSelector:@selector(boolValue)] ? [obj[@"waypipeLoginShell"] boolValue] : NO;
   profile.waypipeTitlePrefix = [obj[@"waypipeTitlePrefix"] isKindOfClass:[NSString class]] ? obj[@"waypipeTitlePrefix"] : @"";
   profile.waypipeSecCtx = [obj[@"waypipeSecCtx"] isKindOfClass:[NSString class]] ? obj[@"waypipeSecCtx"] : @"";
-  NSDictionary *settingsOverrides = [obj[kWWNMachineSettingsOverrides] isKindOfClass:[NSDictionary class]] ? obj[kWWNMachineSettingsOverrides] : @{};
-  profile.settingsOverrides = settingsOverrides;
+  NSDictionary *runtimeOverrides =
+      [obj[kWWNMachineRuntimeOverrides] isKindOfClass:[NSDictionary class]]
+          ? obj[kWWNMachineRuntimeOverrides]
+          : @{};
+  NSDictionary *legacySettingsOverrides =
+      [runtimeOverrides[@"legacySettingsOverrides"] isKindOfClass:[NSDictionary class]]
+          ? runtimeOverrides[@"legacySettingsOverrides"]
+          : @{};
+  if (legacySettingsOverrides.count == 0 &&
+      [obj[kWWNMachineSettingsOverrides] isKindOfClass:[NSDictionary class]]) {
+    legacySettingsOverrides = obj[kWWNMachineSettingsOverrides];
+  }
+  profile.runtimeOverrides = runtimeOverrides;
+  profile.settingsOverrides = legacySettingsOverrides;
+  if ([runtimeOverrides[kWWNRuntimeWaypipeEnabled]
+          respondsToSelector:@selector(boolValue)]) {
+    profile.sshEnabled = [runtimeOverrides[kWWNRuntimeWaypipeEnabled] boolValue];
+  }
+  NSString *bundledAppID =
+      [runtimeOverrides[kWWNRuntimeBundledAppID] isKindOfClass:[NSString class]]
+          ? runtimeOverrides[kWWNRuntimeBundledAppID]
+          : @"";
+  if (bundledAppID.length > 0) {
+    NSMutableDictionary *merged = [legacySettingsOverrides mutableCopy];
+    merged[@"NativeClientId"] = bundledAppID;
+    merged[@"WestonEnabled"] = @([bundledAppID isEqualToString:@"weston"]);
+    merged[@"WestonTerminalEnabled"] =
+        @([bundledAppID isEqualToString:@"weston-terminal"]);
+    merged[@"WestonSimpleSHMEnabled"] =
+        @([bundledAppID isEqualToString:@"weston-simple-shm"]);
+    merged[@"FootEnabled"] = @([bundledAppID isEqualToString:@"foot"]);
+    profile.settingsOverrides = merged;
+  }
   profile.favorite = [obj[@"favorite"] respondsToSelector:@selector(boolValue)] ? [obj[@"favorite"] boolValue] : NO;
   profile.createdAtMs = [obj[@"createdAtMs"] respondsToSelector:@selector(longLongValue)] ? [obj[@"createdAtMs"] longLongValue] : profile.createdAtMs;
   profile.updatedAtMs = [obj[@"updatedAtMs"] respondsToSelector:@selector(longLongValue)] ? [obj[@"updatedAtMs"] longLongValue] : profile.updatedAtMs;
   return profile;
 }
 
-+ (NSArray<WWNMachineProfile *> *)parseProfilesJSON:(NSString *)raw {
-  if (raw.length == 0) {
-    return @[];
-  }
-
-  NSData *data = [raw dataUsingEncoding:NSUTF8StringEncoding];
-  if (!data) {
++ (NSArray<WWNMachineProfile *> *)parseProfilesData:(NSData *)data {
+  if (!data || data.length == 0) {
     return @[];
   }
 
@@ -273,15 +296,24 @@ static BOOL sPersistingMachineSettings = NO;
     return;
   }
 
-  NSString *jsonString = [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding];
-  [[NSUserDefaults standardUserDefaults] setObject:jsonString forKey:kWWNMachineProfilesJSON];
+  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  [defaults setObject:json forKey:kWWNMachineProfilesJSON];
+  [defaults removeObjectForKey:[kWWNMachineProfilesJSON stringByAppendingString:@".legacyString"]];
 }
 
 + (void)migrateFromLegacyPrefsIfNeeded {
   NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
   BOOL migrated = [defaults boolForKey:kWWNMachineProfilesMigrated];
-  NSString *existing = [defaults stringForKey:kWWNMachineProfilesJSON];
-  if (migrated || existing.length > 0) {
+  NSData *existingData = [defaults dataForKey:kWWNMachineProfilesJSON];
+  NSString *existingLegacy = [defaults stringForKey:kWWNMachineProfilesJSON];
+  if (migrated || existingData.length > 0 || existingLegacy.length > 0) {
+    if (existingLegacy.length > 0 && existingData.length == 0) {
+      NSData *legacyData = [existingLegacy dataUsingEncoding:NSUTF8StringEncoding];
+      NSArray<WWNMachineProfile *> *parsed = [self parseProfilesData:legacyData];
+      if (parsed.count > 0) {
+        [self saveProfiles:parsed];
+      }
+    }
     return;
   }
 
@@ -308,7 +340,17 @@ static BOOL sPersistingMachineSettings = NO;
   profile.waypipeLoginShell = prefs.waypipeLoginShell;
   profile.waypipeTitlePrefix = prefs.waypipeTitlePrefix ?: @"";
   profile.waypipeSecCtx = prefs.waypipeSecCtx ?: @"";
-  profile.settingsOverrides = [self captureSettingsSnapshot];
+  NSDictionary<NSString *, id> *legacySnapshot = [self captureSettingsSnapshot];
+  profile.settingsOverrides = legacySnapshot;
+  profile.runtimeOverrides = @{
+    kWWNRuntimeUseBundledApp : @([legacySnapshot[@"EnableLauncher"] boolValue]),
+    kWWNRuntimeBundledAppID :
+        ([legacySnapshot[@"NativeClientId"] isKindOfClass:[NSString class]]
+             ? legacySnapshot[@"NativeClientId"]
+             : @""),
+    kWWNRuntimeWaypipeEnabled : @(prefs.waypipeSSHEnabled),
+    @"legacySettingsOverrides" : legacySnapshot,
+  };
 
   [self saveProfiles:@[ profile ]];
   [self setActiveMachineId:profile.machineId];
@@ -318,8 +360,21 @@ static BOOL sPersistingMachineSettings = NO;
 + (NSArray<WWNMachineProfile *> *)loadProfiles {
   [self ensureObserverRegistered];
   [self migrateFromLegacyPrefsIfNeeded];
-  NSString *raw = [[NSUserDefaults standardUserDefaults] stringForKey:kWWNMachineProfilesJSON];
-  return [self parseProfilesJSON:raw];
+  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  NSData *rawData = [defaults dataForKey:kWWNMachineProfilesJSON];
+  if (rawData.length > 0) {
+    return [self parseProfilesData:rawData];
+  }
+  NSString *legacy = [defaults stringForKey:kWWNMachineProfilesJSON];
+  if (legacy.length > 0) {
+    NSData *legacyData = [legacy dataUsingEncoding:NSUTF8StringEncoding];
+    NSArray<WWNMachineProfile *> *profiles = [self parseProfilesData:legacyData];
+    if (profiles.count > 0) {
+      [self saveProfiles:profiles];
+    }
+    return profiles;
+  }
+  return @[];
 }
 
 + (NSArray<WWNMachineProfile *> *)upsertProfile:(WWNMachineProfile *)profile {
@@ -376,56 +431,97 @@ static BOOL sPersistingMachineSettings = NO;
 
 + (void)applyMachineToRuntimePrefs:(WWNMachineProfile *)profile {
   [self ensureObserverRegistered];
-  [self applySettingsSnapshot:profile.settingsOverrides];
+  NSDictionary<NSString *, id> *resolved = [self resolvedRuntimeSettingsForProfile:profile];
   WWNPreferencesManager *prefs = [WWNPreferencesManager sharedManager];
-  [prefs setWaypipeSSHEnabled:profile.sshEnabled];
-  [prefs setWaypipeSSHHost:profile.sshHost ?: @""];
-  [prefs setWaypipeSSHUser:profile.sshUser ?: @""];
-  [prefs setWaypipeSSHPassword:profile.sshPassword ?: @""];
-  [prefs setWaypipeSSHBinary:profile.sshBinary ?: @"ssh"];
-  [prefs setWaypipeSSHAuthMethod:profile.sshAuthMethod];
-  [prefs setWaypipeSSHKeyPath:profile.sshKeyPath ?: @""];
-  [prefs setWaypipeSSHKeyPassphrase:profile.sshKeyPassphrase ?: @""];
-  [prefs setWaypipeRemoteCommand:profile.remoteCommand ?: @""];
-  [prefs setWaypipeCustomScript:profile.customScript ?: @""];
-  [prefs setWaypipeCompress:profile.waypipeCompress ?: @"lz4"];
-  [prefs setWaypipeThreads:profile.waypipeThreads ?: @"0"];
-  [prefs setWaypipeVideo:profile.waypipeVideo ?: @"none"];
-  [prefs setWaypipeDebug:profile.waypipeDebug];
-  [prefs setWaypipeOneshot:profile.waypipeOneshot];
-  [prefs setWaypipeNoGpu:profile.waypipeDisableGpu];
-  [prefs setWaypipeLoginShell:profile.waypipeLoginShell];
-  [prefs setWaypipeTitlePrefix:profile.waypipeTitlePrefix ?: @""];
-  [prefs setWaypipeSecCtx:profile.waypipeSecCtx ?: @""];
+  [prefs setWaypipeSSHEnabled:[resolved[@"waypipeEnabled"] boolValue]];
+  [prefs setWaypipeSSHHost:[resolved[@"sshHost"] isKindOfClass:[NSString class]] ? resolved[@"sshHost"] : @""];
+  [prefs setWaypipeSSHUser:[resolved[@"sshUser"] isKindOfClass:[NSString class]] ? resolved[@"sshUser"] : @""];
+  [prefs setWaypipeSSHPassword:[resolved[@"sshPassword"] isKindOfClass:[NSString class]] ? resolved[@"sshPassword"] : @""];
+  [prefs setWaypipeRemoteCommand:[resolved[@"remoteCommand"] isKindOfClass:[NSString class]] ? resolved[@"remoteCommand"] : @""];
+  [prefs setTouchInputType:[resolved[@"inputProfile"] isKindOfClass:[NSString class]] ? resolved[@"inputProfile"] : @"Multi-Touch"];
+
+  NSString *bundledClientID =
+      [resolved[kWWNRuntimeBundledAppID] isKindOfClass:[NSString class]]
+          ? resolved[kWWNRuntimeBundledAppID]
+          : @"";
+  BOOL useBundledApp = [resolved[kWWNRuntimeUseBundledApp] boolValue];
+  [prefs setEnableLauncher:useBundledApp];
+  [prefs setWestonEnabled:useBundledApp && [bundledClientID isEqualToString:@"weston"]];
+  [prefs setWestonTerminalEnabled:useBundledApp && [bundledClientID isEqualToString:@"weston-terminal"]];
+  [prefs setWestonSimpleSHMEnabled:useBundledApp && [bundledClientID isEqualToString:@"weston-simple-shm"]];
+  [prefs setFootEnabled:useBundledApp && [bundledClientID isEqualToString:@"foot"]];
 }
 
 + (void)persistActiveMachineSettings {
-  if (sPersistingMachineSettings) {
-    return;
+  // Intentionally disabled to avoid dual-write drift between machine profiles
+  // and global preferences.
+}
+
++ (NSDictionary<NSString *, id> *)resolvedRuntimeSettingsForProfile:
+    (WWNMachineProfile *)profile {
+  WWNPreferencesManager *prefs = [WWNPreferencesManager sharedManager];
+
+  NSDictionary<NSString *, id> *runtimeOverrides =
+      [profile.runtimeOverrides isKindOfClass:[NSDictionary class]]
+          ? profile.runtimeOverrides
+          : @{};
+  NSString *resolvedSSHHost = profile.sshHost.length > 0 ? profile.sshHost : [prefs waypipeSSHHost];
+  NSString *resolvedSSHUser = profile.sshUser.length > 0 ? profile.sshUser : [prefs waypipeSSHUser];
+  NSString *resolvedSSHPassword =
+      profile.sshPassword.length > 0 ? profile.sshPassword : [prefs waypipeSSHPassword];
+  NSString *resolvedCommand =
+      profile.remoteCommand.length > 0 ? profile.remoteCommand : @"weston-terminal";
+
+  NSString *bundledAppID =
+      [runtimeOverrides[kWWNRuntimeBundledAppID] isKindOfClass:[NSString class]]
+          ? runtimeOverrides[kWWNRuntimeBundledAppID]
+          : @"";
+  if (bundledAppID.length == 0 &&
+      [profile.settingsOverrides[@"NativeClientId"] isKindOfClass:[NSString class]]) {
+    bundledAppID = profile.settingsOverrides[@"NativeClientId"];
   }
-  NSString *activeId = [self activeMachineId];
-  if (activeId.length == 0) {
-    return;
+  BOOL useBundledApp = [runtimeOverrides[kWWNRuntimeUseBundledApp]
+      respondsToSelector:@selector(boolValue)]
+      ? [runtimeOverrides[kWWNRuntimeUseBundledApp] boolValue]
+      : (bundledAppID.length > 0);
+
+  NSString *inputProfile =
+      [runtimeOverrides[kWWNRuntimeInputProfile] isKindOfClass:[NSString class]]
+          ? runtimeOverrides[kWWNRuntimeInputProfile]
+          : @"";
+  if (inputProfile.length == 0) {
+    inputProfile = [prefs touchInputType];
   }
-  NSArray<WWNMachineProfile *> *profiles = [self loadProfiles];
-  WWNMachineProfile *active = nil;
-  for (WWNMachineProfile *profile in profiles) {
-    if ([profile.machineId isEqualToString:activeId]) {
-      active = profile;
-      break;
-    }
+
+  BOOL waypipeEnabled = [runtimeOverrides[kWWNRuntimeWaypipeEnabled]
+      respondsToSelector:@selector(boolValue)]
+      ? [runtimeOverrides[kWWNRuntimeWaypipeEnabled] boolValue]
+      : [prefs waypipeSSHEnabled];
+
+  NSString *renderer =
+      [runtimeOverrides[kWWNRuntimeRenderer] isKindOfClass:[NSString class]]
+          ? runtimeOverrides[kWWNRuntimeRenderer]
+          : @"";
+  if (renderer.length == 0) {
+    renderer = [prefs vulkanDriver];
   }
-  if (!active) {
-    return;
-  }
-  NSDictionary *snapshot = [self captureSettingsSnapshot];
-  if ([active.settingsOverrides isEqualToDictionary:snapshot]) {
-    return;
-  }
-  active.settingsOverrides = snapshot;
-  sPersistingMachineSettings = YES;
-  [self upsertProfile:active];
-  sPersistingMachineSettings = NO;
+
+  return @{
+    @"machineID" : profile.machineId ?: @"",
+    @"machineName" : profile.name ?: @"",
+    @"machineType" : profile.type ?: kWWNMachineTypeNative,
+    @"renderer" : renderer ?: @"",
+    @"waylandDisplay" : [prefs waypipeDisplay] ?: @"wayland-0",
+    @"sshHost" : resolvedSSHHost ?: @"",
+    @"sshUser" : resolvedSSHUser ?: @"",
+    @"sshPort" : @(profile.sshPort > 0 ? profile.sshPort : 22),
+    @"sshPassword" : resolvedSSHPassword ?: @"",
+    @"remoteCommand" : resolvedCommand,
+    @"waypipeEnabled" : @(waypipeEnabled),
+    kWWNRuntimeUseBundledApp : @(useBundledApp),
+    kWWNRuntimeBundledAppID : bundledAppID ?: @"",
+    @"inputProfile" : inputProfile ?: @"Multi-Touch",
+  };
 }
 
 @end

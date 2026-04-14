@@ -15,6 +15,12 @@ volatile pid_t g_active_waypipe_pgid = 0;
 // Internal waypipe entry point (statically linked from Rust)
 extern int waypipe_main(int argc, char **argv);
 extern int weston_simple_shm_main(int argc, char **argv);
+#if TARGET_OS_IPHONE
+extern int foot_main(int argc, char **argv);
+extern int wwn_weston_is_compat_shim(void) __attribute__((weak));
+extern int wwn_weston_terminal_is_compat_shim(void) __attribute__((weak));
+extern int wwn_foot_is_compat_shim(void) __attribute__((weak));
+#endif
 extern int weston_main(int argc, char **argv);
 extern int weston_terminal_main(int argc, char **argv);
 
@@ -30,10 +36,12 @@ extern int weston_terminal_main(int argc, char **argv);
 @property(nonatomic, assign) BOOL westonSimpleSHMRunning;
 @property(nonatomic, assign) BOOL westonRunning;
 @property(nonatomic, assign) BOOL westonTerminalRunning;
+@property(nonatomic, assign) BOOL footRunning;
 #if !TARGET_OS_IPHONE
 @property(nonatomic, strong) NSTask *westonSimpleSHMTask;
 @property(nonatomic, strong) NSTask *westonTask;
 @property(nonatomic, strong) NSTask *westonTerminalTask;
+@property(nonatomic, strong) NSTask *footTask;
 #endif
 #if TARGET_OS_IPHONE
 @property(nonatomic, assign)
@@ -1198,25 +1206,44 @@ extern int weston_terminal_main(int argc, char **argv);
   NSBundle *bundle = [NSBundle mainBundle];
   NSFileManager *fm = [NSFileManager defaultManager];
 
-  // 1) Contents/MacOS (Nix installs waypipe here; we can add weston/weston-terminal)
+  // 1) Resolve via real executable path (symlink-safe for nix run wrappers)
+  NSString *realExecPath = [[bundle.executablePath ?: @"" stringByResolvingSymlinksInPath] copy];
+  if (realExecPath.length > 0) {
+    NSString *execDir = [realExecPath stringByDeletingLastPathComponent];
+    NSString *execSibling = [execDir stringByAppendingPathComponent:name];
+    if ([fm isExecutableFileAtPath:execSibling]) {
+      return execSibling;
+    }
+  }
+
+  // 2) Contents/MacOS auxiliary executable lookup
   NSString *auxPath = [bundle pathForAuxiliaryExecutable:name];
   if (auxPath && [fm isExecutableFileAtPath:auxPath]) {
     return auxPath;
   }
 
-  // 2) Contents/Resources/bin (Nix macos.nix bundles weston, weston-terminal, etc.)
+  // 3) Contents/Resources/bin (Nix macos.nix bundles weston, weston-terminal, etc.)
   NSString *binPath = [bundle pathForResource:name ofType:nil inDirectory:@"bin"];
   if (binPath && [fm isExecutableFileAtPath:binPath]) {
     return binPath;
   }
 
-  // 3) Root resource (legacy)
+  // 4) Resolve Resources/bin from executable path (works even if bundle lookup fails)
+  if (realExecPath.length > 0) {
+    NSString *contentsDir = [[realExecPath stringByDeletingLastPathComponent] stringByDeletingLastPathComponent];
+    NSString *manualBinPath = [[contentsDir stringByAppendingPathComponent:@"Resources/bin"] stringByAppendingPathComponent:name];
+    if ([fm isExecutableFileAtPath:manualBinPath]) {
+      return manualBinPath;
+    }
+  }
+
+  // 5) Root resource (legacy)
   NSString *resourcePath = [bundle pathForResource:name ofType:nil];
   if (resourcePath && [fm isExecutableFileAtPath:resourcePath]) {
     return resourcePath;
   }
 
-  // 4) Android: executables bundled as .so
+  // 6) Android: executables bundled as .so
   NSString *androidSoPath = [[bundle bundlePath]
       stringByAppendingPathComponent:
           [NSString stringWithFormat:@"lib/arm64-v8a/lib%@.so", name]];
@@ -1264,11 +1291,14 @@ extern int weston_terminal_main(int argc, char **argv);
     return;
   self.westonRunning = YES;
 #if TARGET_OS_IPHONE
+  if (wwn_weston_is_compat_shim && wwn_weston_is_compat_shim() != 0) {
+    WWNLog("WESTON", @"Refusing to launch 'weston': compatibility shim routes to weston-simple-shm.");
+    self.westonRunning = NO;
+    return;
+  }
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-    // iOS currently links compatibility shims for weston/weston-terminal.
-    // Use the known-good weston-simple-shm in-process entrypoint so toggles
-    // reliably produce visible output while shim wiring evolves.
-    char *argv_weston[] = {"weston-simple-shm", NULL};
+    // Call weston_main directly for in-process mobile execution.
+    char *argv_weston[] = {"weston", NULL};
     int argc_weston = 1;
 
     char saved_cwd[512] = "";
@@ -1278,9 +1308,9 @@ extern int weston_terminal_main(int argc, char **argv);
       chdir(xdg_dir);
     }
 
-    WWNLog("WESTON", @"Launching iOS compatibility client (weston-simple-shm path)...");
-    int result = weston_simple_shm_main(argc_weston, argv_weston);
-    WWNLog("WESTON", @"compatibility weston path exit code: %d", result);
+    WWNLog("WESTON", @"Launching iOS weston_main...");
+    int result = weston_main(argc_weston, argv_weston);
+    WWNLog("WESTON", @"weston_main exit code: %d", result);
 
     if (saved_cwd[0])
       chdir(saved_cwd);
@@ -1316,10 +1346,15 @@ extern int weston_terminal_main(int argc, char **argv);
     return;
   self.westonTerminalRunning = YES;
 #if TARGET_OS_IPHONE
+  if (wwn_weston_terminal_is_compat_shim &&
+      wwn_weston_terminal_is_compat_shim() != 0) {
+    WWNLog("WESTON_TERM", @"Refusing to launch 'weston-terminal': compatibility shim routes to weston-simple-shm.");
+    self.westonTerminalRunning = NO;
+    return;
+  }
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-    // iOS compatibility fallback: route through weston-simple-shm so the
-    // setting is functional even when terminal shim is not yet fully wired.
-    char *argv_term[] = {"weston-simple-shm", NULL};
+    // Call weston_terminal_main directly for in-process mobile execution.
+    char *argv_term[] = {"weston-terminal", NULL};
     int argc_term = 1;
 
     char saved_cwd[512] = "";
@@ -1329,9 +1364,9 @@ extern int weston_terminal_main(int argc, char **argv);
       chdir(xdg_dir);
     }
 
-    WWNLog("WESTON_TERM", @"Launching iOS compatibility terminal path (weston-simple-shm)...");
-    int result = weston_simple_shm_main(argc_term, argv_term);
-    WWNLog("WESTON_TERM", @"compatibility weston-terminal path exit code: %d", result);
+    WWNLog("WESTON_TERM", @"Launching iOS weston_terminal_main...");
+    int result = weston_terminal_main(argc_term, argv_term);
+    WWNLog("WESTON_TERM", @"weston_terminal_main exit code: %d", result);
 
     if (saved_cwd[0])
       chdir(saved_cwd);
@@ -1427,6 +1462,62 @@ extern int weston_terminal_main(int argc, char **argv);
     self.westonTerminalTask = nil;
   }
   self.westonTerminalRunning = NO;
+#endif
+}
+
+// MARK: - Foot Terminal
+
+- (void)launchFoot {
+  if (self.footRunning)
+    return;
+  self.footRunning = YES;
+#if TARGET_OS_IPHONE
+  if (wwn_foot_is_compat_shim && wwn_foot_is_compat_shim() != 0) {
+    WWNLog("FOOT", @"Refusing to launch 'foot': compatibility shim routes to weston-simple-shm.");
+    self.footRunning = NO;
+    return;
+  }
+  dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+    // Call foot_main directly for in-process mobile execution.
+    char *argv_foot[] = {"foot", NULL};
+    int argc_foot = 1;
+
+    char saved_cwd[512] = "";
+    const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
+    if (xdg_dir) {
+      getcwd(saved_cwd, sizeof(saved_cwd));
+      chdir(xdg_dir);
+    }
+
+    WWNLog("FOOT", @"Launching in-process foot_main...");
+    int result = foot_main(argc_foot, argv_foot);
+    WWNLog("FOOT", @"foot_main exit code: %d", result);
+
+    if (saved_cwd[0])
+      chdir(saved_cwd);
+
+    self.footRunning = NO;
+  });
+#else
+  NSTask *task = nil;
+  BOOL running = YES;
+  [self launchGenericWestonClient:@"foot"
+                        taskInOut:&task
+                    runningFlagIn:&running];
+  self.footTask = task;
+  self.footRunning = running;
+#endif
+}
+
+- (void)stopFoot {
+#if TARGET_OS_IPHONE
+  self.footRunning = NO;
+#else
+  if (self.footTask) {
+    [self.footTask terminate];
+    self.footTask = nil;
+  }
+  self.footRunning = NO;
 #endif
 }
 

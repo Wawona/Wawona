@@ -9,42 +9,15 @@ struct WWNMachineCardView: View {
   let summary: String
   let launchSupported: Bool
   let isActive: Bool
+  let isRunning: Bool
   let onEdit: () -> Void
   let onDelete: () -> Void
   let onConnect: () -> Void
+  let onStop: () -> Void
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      ZStack {
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
-          .fill(
-            LinearGradient(
-              colors: [statusColor.opacity(0.32), Color.indigo.opacity(0.18)],
-              startPoint: .topLeading,
-              endPoint: .bottomTrailing
-            )
-          )
-          .frame(height: 90)
-
-        HStack {
-          VStack(alignment: .leading, spacing: 4) {
-            Text(profile.name.isEmpty ? "Unnamed Machine" : profile.name)
-              .font(.title3.weight(.bold))
-              .lineLimit(1)
-            Text(subtitle)
-              .font(.subheadline)
-              .foregroundStyle(.secondary)
-              .lineLimit(1)
-          }
-          Spacer()
-          Image(systemName: iconName)
-            .font(.title2.weight(.bold))
-            .foregroundStyle(statusColor)
-            .padding(8)
-            .background(Color.white.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        }
-        .padding(.horizontal, 12)
-      }
+      headerBanner
 
       HStack {
         statusBadge
@@ -61,28 +34,15 @@ struct WWNMachineCardView: View {
       Text(summary)
         .font(.footnote)
         .foregroundStyle(.secondary)
-        .lineLimit(2)
+        .lineLimit(3)
 
-      HStack(spacing: 8) {
-        Button {
-          onConnect()
-        } label: {
-          Label("Start", systemImage: "play.fill")
+      ViewThatFits(in: .horizontal) {
+        HStack(spacing: 8) {
+          actionButtons
         }
-          .buttonStyle(.borderedProminent)
-          .disabled(!launchSupported)
-        Button {
-          onEdit()
-        } label: {
-          Label("Edit", systemImage: "slider.horizontal.3")
+        VStack(spacing: 8) {
+          actionButtons
         }
-          .buttonStyle(.bordered)
-        Button(role: .destructive) {
-          onDelete()
-        } label: {
-          Label("Delete", systemImage: "trash")
-        }
-          .buttonStyle(.bordered)
       }
       .font(.subheadline.weight(.semibold))
     }
@@ -99,6 +59,82 @@ struct WWNMachineCardView: View {
     .shadow(color: .black.opacity(0.22), radius: 16, x: 0, y: 10)
     .animation(.spring(duration: 0.4, bounce: 0.24), value: status)
   }
+
+  // MARK: - Header Banner
+
+  private var headerBanner: some View {
+    ZStack {
+      RoundedRectangle(cornerRadius: 16, style: .continuous)
+        .fill(
+          LinearGradient(
+            colors: [statusColor.opacity(0.32), Color.indigo.opacity(0.18)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+          )
+        )
+        .frame(height: 90)
+
+      HStack {
+        VStack(alignment: .leading, spacing: 4) {
+          Text(profile.name.isEmpty ? "Unnamed Machine" : profile.name)
+            .font(.title3.weight(.bold))
+            .lineLimit(1)
+          Text(subtitle)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+        }
+        Spacer()
+        Image(systemName: iconName)
+          .font(.title2.weight(.bold))
+          .foregroundStyle(statusColor)
+          .padding(8)
+          .background(Color.white.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+      }
+      .padding(.horizontal, 12)
+    }
+  }
+
+  // MARK: - Action Buttons
+
+  private var actionButtons: some View {
+    Group {
+      if isRunning {
+        Button(role: .destructive) {
+          onStop()
+        } label: {
+          Label("Stop", systemImage: "stop.fill")
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(.red)
+      } else {
+        Button {
+          onConnect()
+        } label: {
+          Label("Start", systemImage: "play.fill")
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(!launchSupported)
+      }
+
+      Button {
+        onEdit()
+      } label: {
+        Label("Edit", systemImage: "slider.horizontal.3")
+      }
+      .buttonStyle(.bordered)
+
+      Button(role: .destructive) {
+        onDelete()
+      } label: {
+        Label("Delete", systemImage: "trash")
+      }
+      .buttonStyle(.bordered)
+      .disabled(isRunning)
+    }
+  }
+
+  // MARK: - Computed Properties
 
   private var iconName: String {
     switch profile.type {

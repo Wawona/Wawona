@@ -31,6 +31,21 @@ skip export --project . -d android/Skip --debug
 
 before Gradle assemble.
 
+## Android Skip artifact guard
+
+- `android/app/build.gradle.kts` defines `ensureSkipArtifacts`, which runs
+  before `preBuild`.
+- If Skip artifacts are missing, Gradle attempts:
+
+```bash
+skip export --project . -d android/Skip --debug
+```
+
+- If the `skip` CLI is unavailable in a non-Nix local build (or export fails),
+  the build fails with a clear error.
+- In Nix builder context, the guard logs a warning and continues with the
+  Nix-managed Android pipeline.
+
 ## Local setup
 
 ```bash

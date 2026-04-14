@@ -1,6 +1,10 @@
 import SwiftUI
+#if canImport(WawonaUI)
 import WawonaUI
+#endif
+#if canImport(WawonaModel)
 import WawonaModel
+#endif
 
 private typealias AppRootView = WawonaRootView
 private typealias SharedAppDelegate = WawonaAppDelegate

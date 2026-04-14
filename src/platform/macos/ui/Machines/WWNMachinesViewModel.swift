@@ -19,6 +19,52 @@ import Combine
   }
 }
 
+struct BundledClient: Identifiable, Hashable {
+  let id: String
+  let name: String
+  let prefsKey: String
+  let icon: String
+  let description: String
+  let isNestedCompositor: Bool
+}
+
+let kBundledClients: [BundledClient] = [
+  BundledClient(
+    id: "weston",
+    name: "Weston",
+    prefsKey: "WestonEnabled",
+    icon: "rectangle.on.rectangle",
+    description: "Wayland reference compositor (renders its own cursor)",
+    isNestedCompositor: true
+  ),
+  BundledClient(
+    id: "weston-terminal",
+    name: "Weston Terminal",
+    prefsKey: "WestonTerminalEnabled",
+    icon: "terminal",
+    description: "Terminal emulator — uses host cursor",
+    isNestedCompositor: false
+  ),
+  BundledClient(
+    id: "weston-simple-shm",
+    name: "Weston Simple SHM",
+    prefsKey: "WestonSimpleSHMEnabled",
+    icon: "square.on.square.dashed",
+    description: "Minimal shared-memory Wayland client",
+    isNestedCompositor: false
+  ),
+  BundledClient(
+    id: "foot",
+    name: "Foot Terminal",
+    prefsKey: "FootEnabled",
+    icon: "character.cursor.ibeam",
+    description: "Lightweight Wayland terminal emulator",
+    isNestedCompositor: false
+  ),
+]
+
+let kNativeClientCustomId = "custom"
+
 @MainActor
 final class WWNMachinesViewModel: ObservableObject {
   @Published private(set) var profiles: [WWNMachineProfile] = []
@@ -90,10 +136,34 @@ final class WWNMachinesViewModel: ObservableObject {
 
   func connect(_ profile: WWNMachineProfile, onConnected: (() -> Void)? = nil) {
     statusByMachineId[profile.machineId] = .connecting
+    WWNPreferencesManager.shared().syncFromCanonicalWawonaPreferences()
     WWNMachineProfileStore.applyMachine(toRuntimePrefs: profile)
     WWNMachineProfileStore.setActiveMachineId(profile.machineId)
 
     if profile.type == kWWNMachineTypeNative {
+      guard let runner = WWNWaypipeRunner.shared() else {
+        statusByMachineId[profile.machineId] = .error
+        return
+      }
+      // Stop any previously running native client before starting a new one.
+      runner.stopWeston()
+      runner.stopWestonTerminal()
+      runner.stopWestonSimpleSHM()
+      runner.stopFoot()
+
+      switch selectedClientId(for: profile) ?? "" {
+      case "weston":
+        runner.launchWeston()
+      case "weston-terminal":
+        runner.launchWestonTerminal()
+      case "weston-simple-shm":
+        runner.launchWestonSimpleSHM()
+      case "foot":
+        runner.launchFoot()
+      default:
+        break
+      }
+
       statusByMachineId[profile.machineId] = .connected
       onConnected?()
       return
@@ -108,6 +178,29 @@ final class WWNMachinesViewModel: ObservableObject {
     WWNWaypipeRunner.shared().launchWaypipe(WWNPreferencesManager.shared())
     statusByMachineId[profile.machineId] = .connected
     onConnected?()
+  }
+
+  func disconnect(_ profile: WWNMachineProfile) {
+    if profile.type == kWWNMachineTypeNative {
+      let prefs = WWNPreferencesManager.shared()
+      prefs.setWestonEnabled(false)
+      prefs.setWestonTerminalEnabled(false)
+      prefs.setWestonSimpleSHMEnabled(false)
+      prefs.setFootEnabled(false)
+      prefs.setEnableLauncher(false)
+    } else if profile.type == kWWNMachineTypeSSHWaypipe ||
+                profile.type == kWWNMachineTypeSSHTerminal {
+      WWNWaypipeRunner.shared().stopWaypipe()
+    }
+
+    statusByMachineId[profile.machineId] = .disconnected
+    if WWNMachineProfileStore.activeMachineId() == profile.machineId {
+      WWNMachineProfileStore.setActiveMachineId(nil)
+    }
+  }
+
+  var isAnyMachineRunning: Bool {
+    statusByMachineId.values.contains { $0 == .connected || $0 == .connecting }
   }
 
   func machineTypeLabel(for profile: WWNMachineProfile) -> String {
@@ -139,7 +232,10 @@ final class WWNMachinesViewModel: ObservableObject {
   func machineSubtitle(for profile: WWNMachineProfile) -> String {
     switch profile.type {
     case kWWNMachineTypeNative:
-      return "Runs directly on this host"
+      if let name = selectedClientName(for: profile) {
+        return name
+      }
+      return "No client configured"
     case kWWNMachineTypeVirtualMachine:
       let subtype = profile.vmSubtype.isEmpty ? "qemu" : profile.vmSubtype
       return "VM profile (\(subtype.uppercased()))"
@@ -155,8 +251,40 @@ final class WWNMachinesViewModel: ObservableObject {
     }
   }
 
+  func selectedClientId(for profile: WWNMachineProfile) -> String? {
+    guard profile.type == kWWNMachineTypeNative else { return nil }
+    let runtimeOverrides: [String: Any] = profile.runtimeOverrides
+    if let clientId = runtimeOverrides["bundledAppID"] as? String, !clientId.isEmpty {
+      return clientId
+    }
+    let overrides: [String: Any] = profile.settingsOverrides
+    if let clientId = overrides["NativeClientId"] as? String, !clientId.isEmpty {
+      return clientId
+    }
+    for client in kBundledClients {
+      if (overrides[client.prefsKey] as? Bool) == true {
+        return client.id
+      }
+    }
+    return nil
+  }
+
+  func selectedClientName(for profile: WWNMachineProfile) -> String? {
+    guard let clientId = selectedClientId(for: profile) else { return nil }
+    if clientId == kNativeClientCustomId {
+      let cmd = (profile.settingsOverrides as [String: Any])["NativeCustomCommand"] as? String ?? ""
+      return cmd.isEmpty ? "Custom command" : cmd
+    }
+    return kBundledClients.first { $0.id == clientId }?.name
+  }
+
   func machineConfigurationSummary(for profile: WWNMachineProfile) -> String {
     switch profile.type {
+    case kWWNMachineTypeNative:
+      if let clientName = selectedClientName(for: profile) {
+        return "Runs: \(clientName)"
+      }
+      return "No client configured — edit to select one"
     case kWWNMachineTypeSSHWaypipe:
       let command = profile.remoteCommand.isEmpty ? "weston-terminal" : profile.remoteCommand
       return "Waypipe command: \(command)"
@@ -173,16 +301,26 @@ final class WWNMachinesViewModel: ObservableObject {
   }
 
   func launchSupported(for profile: WWNMachineProfile) -> Bool {
-    profile.type == kWWNMachineTypeNative ||
-      profile.type == kWWNMachineTypeSSHWaypipe ||
+    if profile.type == kWWNMachineTypeNative {
+      return selectedClientId(for: profile) != nil
+    }
+    return profile.type == kWWNMachineTypeSSHWaypipe ||
       profile.type == kWWNMachineTypeSSHTerminal
   }
 }
 
-enum WWNMachineFilter: String, CaseIterable, Identifiable {
+enum WWNMachineFilter: String, CaseIterable, Identifiable, Hashable {
   case all = "All Machines"
   case local = "Local"
   case remote = "Remote"
 
   var id: String { rawValue }
+
+  /// The sensible machine type to default to when adding a new profile from this filter.
+  var defaultMachineType: String {
+    switch self {
+    case .remote: return kWWNMachineTypeSSHWaypipe
+    default:      return kWWNMachineTypeNative
+    }
+  }
 }

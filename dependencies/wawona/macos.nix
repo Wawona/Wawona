@@ -6,6 +6,7 @@
   wawonaVersion ? null,
   rustBackend,
   weston,
+  foot ? null,
   waylandVersion ? "unknown",
   xkbcommonVersion ? "unknown",
   lz4Version ? "unknown",
@@ -26,20 +27,20 @@ let
     platform: ''
       if [ -z "''${XCODE_APP:-}" ]; then
         XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode || true)
-        if [ -n "$XCODE_APP" ]; then
-          export XCODE_APP
-          export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
-          export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
-          # Tahoe (26.0) SDK discovery
-          export SDKROOT="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk"
-          if [ ! -d "$SDKROOT" ]; then
-             SDKROOT=$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)
-          fi
-          echo "Using SDK: $SDKROOT"
-          if [ ! -d "$SDKROOT" ]; then
-             echo "Error: SDK not found at $SDKROOT"
-             exit 1
-          fi
+      fi
+      if [ -n "$XCODE_APP" ]; then
+        export XCODE_APP
+        export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
+        export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
+        # Tahoe (26.0) SDK discovery
+        export SDKROOT="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk"
+        if [ ! -d "$SDKROOT" ]; then
+           SDKROOT=$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)
+        fi
+        echo "Using SDK: $SDKROOT"
+        if [ ! -d "$SDKROOT" ]; then
+           echo "Error: SDK not found at $SDKROOT"
+           exit 1
         fi
       fi
     '';
@@ -245,6 +246,7 @@ in
     name = "wawona-macos";
     version = projectVersion;
     src = wawonaSrc;
+    __noChroot = true;
 
     outputs = [ "out" "project" ];
 
@@ -306,9 +308,38 @@ in
     '';
 
     buildPhase = ''
-      
-
       runHook preBuild
+      # Prefer Xcode project build for SwiftPM module correctness (WawonaModel/WawonaUIContracts).
+      if [ -n "${toString xcodeProject}" ] && [ -d "${xcodeProject}/Wawona.xcodeproj" ]; then
+        echo "📦 Phase 0: Building via generated Xcode project..."
+        cp -R "${xcodeProject}" ./_xcode_project
+        chmod -R u+w ./_xcode_project || true
+        mkdir -p "$TMPDIR/wawona-home"
+        export HOME="$TMPDIR/wawona-home"
+        if xcodebuild \
+          -project "./_xcode_project/Wawona.xcodeproj" \
+          -scheme "Wawona-macOS" \
+          -configuration Release \
+          -derivedDataPath "./_xcode_project/DerivedData" \
+          -destination "platform=macOS" \
+          CODE_SIGNING_ALLOWED=NO \
+          CODE_SIGNING_REQUIRED=NO \
+          build; then
+          XCODE_APP="./_xcode_project/DerivedData/Build/Products/Release/Wawona.app"
+          if [ -d "$XCODE_APP" ]; then
+            mkdir -p xcodebuild-out
+            cp -R "$XCODE_APP" "xcodebuild-out/Wawona.app"
+            touch .use_xcodebuild_app
+            echo "✅ Xcode project build produced Wawona.app"
+            runHook postBuild
+            exit 0
+          fi
+          echo "⚠️  Xcode project build completed but Wawona.app was not found; continuing with manual fallback."
+        else
+          echo "⚠️  Xcode project build failed; continuing with manual fallback."
+        fi
+      fi
+
       # Build timestamp: 2026-01-17-09:00 - Added Swift compiler!
 
       # PHASE 1: Compile Swift bindings and SwiftUI machines views when present.
@@ -317,34 +348,10 @@ in
       echo "📦 Phase 1: Compiling Swift sources..."
       SWIFT_OBJ=""
       SWIFT_SOURCES=(
-        "macos-dependencies/uniffi/wawona.swift"
-        "Sources/WawonaModel/ClientLauncher.swift"
-        "Sources/WawonaModel/MachineProfile.swift"
-        "Sources/WawonaModel/SessionOrchestrator.swift"
-        "Sources/WawonaModel/WawonaPreferences.swift"
-        "Sources/WawonaUI/WawonaApp.swift"
-        "Sources/WawonaUI/CompositorBridge.swift"
-        "Sources/WawonaUI/WelcomeView.swift"
-        "Sources/WawonaUI/ContentView.swift"
-        "Sources/WawonaUI/Components/AdaptiveNavigationView.swift"
-        "Sources/WawonaUI/Components/GlassCard.swift"
-        "Sources/WawonaUI/Components/SectionHeader.swift"
-        "Sources/WawonaUI/Components/StatusBadge.swift"
-        "Sources/WawonaUI/Machines/MachinesRootView.swift"
-        "Sources/WawonaUI/Machines/MachinesGridView.swift"
-        "Sources/WawonaUI/Machines/MachineCardView.swift"
-        "Sources/WawonaUI/Machines/MachineEditorView.swift"
-        "Sources/WawonaUI/Machines/MachineDetailView.swift"
-        "Sources/WawonaUI/Settings/SettingsRootView.swift"
-        "Sources/WawonaUI/Settings/DisplaySettingsView.swift"
-        "Sources/WawonaUI/Settings/InputSettingsView.swift"
-        "Sources/WawonaUI/Settings/GraphicsSettingsView.swift"
-        "Sources/WawonaUI/Settings/ConnectionSettingsView.swift"
-        "Sources/WawonaUI/Settings/SSHWaypipeSettingsView.swift"
-        "Sources/WawonaUI/Settings/ClientsSettingsView.swift"
-        "Sources/WawonaUI/Settings/AdvancedSettingsView.swift"
-        "Sources/WawonaUI/Settings/AboutView.swift"
-        "Sources/WawonaUI/Settings/DependenciesView.swift"
+        "src/platform/macos/ui/Machines/WWNMachineCardView.swift"
+        "src/platform/macos/ui/Machines/WWNMachineEditorView.swift"
+        "src/platform/macos/ui/Machines/WWNMachinesViewModel.swift"
+        "src/platform/macos/ui/Machines/WWNMachinesGridView.swift"
       )
       EXISTING_SWIFT_SOURCES=()
       for swift_src in "''${SWIFT_SOURCES[@]}"; do
@@ -362,19 +369,29 @@ in
           SDKROOT=$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)
         fi
         if [ -z "''${SDKROOT:-}" ] || [ ! -d "''${SDKROOT:-}" ]; then
-          echo "⚠️  Could not resolve SDKROOT for Swift compile. Falling back to legacy UI."
-          SWIFT_OBJ=""
+          echo "❌ Could not resolve SDKROOT for Swift compile."
+          exit 1
         else
           SWIFTC_BIN="''${DEVELOPER_DIR:-}/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
           if [ ! -x "$SWIFTC_BIN" ]; then
             SWIFTC_BIN="$(command -v swiftc || true)"
           fi
           if [ -z "$SWIFTC_BIN" ]; then
-            echo "⚠️  swiftc not available. Falling back to legacy UI."
-            SWIFT_OBJ=""
+            echo "❌ swiftc not available."
+            exit 1
           else
             rm -f wawona_swift_all.o wawona-Swift.h wawona.swiftmodule
-            if "$SWIFTC_BIN" -parse-as-library -emit-object "''${EXISTING_SWIFT_SOURCES[@]}" \
+            rm -rf swift-build
+            mkdir -p swift-build
+            PROCESSED_SWIFT_SOURCES=()
+            idx=0
+            for swift_src in "''${EXISTING_SWIFT_SOURCES[@]}"; do
+              idx=$((idx + 1))
+              out_src="swift-build/''${idx}_$(basename "$swift_src")"
+              cp "$swift_src" "$out_src"
+              PROCESSED_SWIFT_SOURCES+=("$out_src")
+            done
+            if "$SWIFTC_BIN" -parse-as-library -whole-module-optimization -emit-object "''${PROCESSED_SWIFT_SOURCES[@]}" \
               -o wawona_swift_all.o \
               -import-objc-header "src/platform/macos/WWN-Bridging-Header.h" \
               -module-name wawona \
@@ -394,8 +411,8 @@ in
               -Xlinker -rpath -Xlinker "@executable_path"; then
               SWIFT_OBJ="wawona_swift_all.o"
             else
-              echo "⚠️  Swift compile failed. Falling back to legacy UI."
-              SWIFT_OBJ=""
+              echo "❌ Swift compile failed for SwiftUI sources."
+              exit 1
             fi
           fi
         fi
@@ -425,18 +442,15 @@ GEN_HEADER
           echo "   Swift objects: $SWIFT_OBJ"
           echo "   Swift header: $(ls -lh _GEN-wawona-Swift.h)"
         else
-          echo "⚠️  Swift compilation produced no usable objects/header. Falling back to legacy UI."
-          SWIFT_OBJ=""
+          echo "❌ Swift compilation did not produce required objects/header."
+          exit 1
         fi
       else
-        echo "⚠️  No Swift sources found in source snapshot. Falling back to legacy UI."
+        echo "❌ No Swift sources found in source snapshot."
+        exit 1
       fi
-      
-      if [ -n "$SWIFT_OBJ" ]; then
-        SWIFT_FRAMEWORKS="-framework SwiftUI"
-      else
-        SWIFT_FRAMEWORKS=""
-      fi
+
+      SWIFT_FRAMEWORKS="-framework SwiftUI"
       echo "   SWIFT_OBJ variable: ''${SWIFT_OBJ:-EMPTY}"
       echo "   SWIFT_FRAMEWORKS: ''${SWIFT_FRAMEWORKS:-NONE}"
 
@@ -464,6 +478,7 @@ GEN_HEADER
                ${lib.concatStringsSep " " common.commonObjCFlags} \
                ${lib.concatStringsSep " " common.appleCFlags} \
                ${lib.concatStringsSep " " common.releaseObjCFlags} \
+               -fno-lto \
                -DUSE_RUST_CORE=1 \
                 -DWAWONA_VERSION=\"${projectVersion}\" \
                 -DWAWONA_WAYLAND_VERSION=\"${waylandVersion}\" \
@@ -486,6 +501,7 @@ GEN_HEADER
                $TARGET_CFLAGS \
                ${lib.concatStringsSep " " common.commonCFlags} \
                ${lib.concatStringsSep " " common.releaseCFlags} \
+               -fno-lto \
                -DUSE_RUST_CORE=1 \
                -DWAWONA_VERSION=\"${projectVersion}\" \
                -DWAWONA_WAYLAND_VERSION=\"${waylandVersion}\" \
@@ -511,10 +527,9 @@ GEN_HEADER
         if [ -n "$first_swift_obj" ] && [ -f "$first_swift_obj" ]; then
           echo "   ✅ Swift object exists: $(ls -lh "$first_swift_obj")"
         else
-          echo "   ⚠️  Swift object variable set but first object missing"
+          echo "   ❌ Swift object variable set but first object missing"
+          exit 1
         fi
-      else
-        echo "   ℹ️  Swift objects not present; using legacy ObjC UI path"
       fi
       echo ""
 
@@ -525,7 +540,18 @@ GEN_HEADER
       WAYLAND_LIBS=$(pkg-config --libs wayland-client wayland-server 2>/dev/null || echo "-Lmacos-dependencies/lib -lwayland-client -lwayland-server")
       OPENSSL_LIBS=$(pkg-config --libs openssl 2>/dev/null || echo "-Lmacos-dependencies/lib -lssl -lcrypto")
       ZLIB_LIBS=$(pkg-config --libs zlib 2>/dev/null || echo "-Lmacos-dependencies/lib -lz")
-      $CC $OBJ_FILES \
+      LINKER_BIN="''${SWIFTC_BIN:-$CC}"
+      LINK_SYSROOT_ARGS="$TARGET_LDFLAGS"
+      LINK_OPT_FLAGS="-fobjc-arc -flto -O3"
+      LINK_OBJC_FLAG="-ObjC"
+      LINK_RPATH_FLAG="-Wl,-rpath,\$PWD/macos-dependencies/lib"
+      if [ -n "''${SWIFTC_BIN:-}" ] && [ "$LINKER_BIN" = "$SWIFTC_BIN" ]; then
+        LINK_SYSROOT_ARGS="-sdk ''${SDKROOT:-}"
+        LINK_OPT_FLAGS="-Xlinker -dead_strip"
+        LINK_OBJC_FLAG="-Xlinker -ObjC"
+        LINK_RPATH_FLAG="-Xlinker -rpath -Xlinker $PWD/macos-dependencies/lib"
+      fi
+      "$LINKER_BIN" $OBJ_FILES \
          -Lmacos-dependencies/lib \
          -framework Cocoa -framework QuartzCore -framework CoreVideo \
          -framework CoreMedia -framework CoreGraphics -framework ColorSync \
@@ -538,10 +564,10 @@ GEN_HEADER
          $OPENSSL_LIBS \
          $ZLIB_LIBS \
          ${rustBackend}/lib/libwawona.a \
-         $TARGET_LDFLAGS \
-         -fobjc-arc -flto -O3 \
-         -ObjC \
-         -Wl,-rpath,\$PWD/macos-dependencies/lib \
+         $LINK_SYSROOT_ARGS \
+         $LINK_OPT_FLAGS \
+         $LINK_OBJC_FLAG \
+         $LINK_RPATH_FLAG \
          -o Wawona
 
       runHook postBuild
@@ -549,6 +575,23 @@ GEN_HEADER
 
     installPhase = ''
             runHook preInstall
+
+            if [ -f .use_xcodebuild_app ] && [ -d "xcodebuild-out/Wawona.app" ]; then
+              mkdir -p $out/Applications
+              cp -R "xcodebuild-out/Wawona.app" "$out/Applications/Wawona.app"
+
+              mkdir -p $project
+              cp -r . "$project/"
+              chmod -R u+w $project
+              rm -rf "$project/_xcode_project/DerivedData" "$project/DerivedData"
+              if [ -n "${toString xcodeProject}" ]; then
+                cp -r ${xcodeProject}/* "$project/"
+                chmod -R u+w $project
+              fi
+
+              runHook postInstall
+              exit 0
+            fi
             
             mkdir -p $out/Applications/Wawona.app/Contents/MacOS
             mkdir -p $out/Applications/Wawona.app/Contents/Resources
@@ -560,6 +603,7 @@ GEN_HEADER
             # Copy sources (current build dir)
             cp -r . "$project/"
             chmod -R u+w $project
+            rm -rf "$project/_xcode_project/DerivedData" "$project/DerivedData"
             if [ -n "${toString xcodeProject}" ]; then
               cp -r ${xcodeProject}/* "$project/"
               chmod -R u+w $project
@@ -622,19 +666,36 @@ GEN_HEADER
               for client in weston weston-terminal; do
                 if [ -f "${weston}/bin/$client" ]; then
                   cp "${weston}/bin/$client" $out/Applications/Wawona.app/Contents/Resources/bin/
+                  cp "${weston}/bin/$client" $out/Applications/Wawona.app/Contents/MacOS/
                   chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/$client
+                  chmod +x $out/Applications/Wawona.app/Contents/MacOS/$client
                 fi
               done
               # Other useful clients
               for client in weston-simple-egl weston-simple-shm weston-flower weston-smoke weston-resizor weston-scaler; do
                  if [ -f "${weston}/bin/$client" ]; then
                    cp "${weston}/bin/$client" $out/Applications/Wawona.app/Contents/Resources/bin/
+                   cp "${weston}/bin/$client" $out/Applications/Wawona.app/Contents/MacOS/
                    chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/$client
+                   chmod +x $out/Applications/Wawona.app/Contents/MacOS/$client
                  fi
               done
             else
                echo "Warning: Weston bin directory not found at ${weston}/bin"
             fi
+
+            # Bundle foot terminal
+            ${if foot != null then ''
+            if [ -f "${foot}/bin/foot" ]; then
+              cp "${foot}/bin/foot" $out/Applications/Wawona.app/Contents/Resources/bin/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/foot
+              echo "DEBUG: Bundled foot terminal"
+            else
+              echo "Warning: foot binary not found at ${foot}/bin/foot"
+            fi
+            '' else ''
+            echo "Warning: foot not provided, skipping foot bundling"
+            ''}
             
             if command -v codesign >/dev/null 2>&1; then
                 find "$out/Applications/Wawona.app/Contents/Resources/bin" -type f -perm +111 -exec codesign --force --sign - --timestamp=none {} \; 2>/dev/null || true

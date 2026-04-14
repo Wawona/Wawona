@@ -24,9 +24,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Weston Android build (`dependencies/clients/weston/android.nix`)
 - **Graphics**
   - `graphics-smoke` binary — Vulkan driver probe with JSON output
-  - Graphics validation orchestrator (`graphics-validate.nix`) — Vulkan + GL CTS for macOS, iOS, Android
-  - Smoke manifests: `vulkan-mustpass-smoke.txt`, `gl-mustpass-smoke.txt`
-  - Vulkan CTS: `common.nix`, `gl-cts-android.nix`, `gl-cts-macos.nix`
 - **Nix / Build**
   - `app-programs.nix` — wawona-ios, weston-run wrappers
   - `devshells.nix` — nix develop with XDG_RUNTIME_DIR / WAYLAND_DISPLAY
@@ -42,7 +39,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `docs/compilation.md` — Quick build, project generators
   - `docs/debugging.md` — Attach LLDB with `nix run .#wawona-{macos,ios,android} -- --debug`
   - `docs/goals.md` — Project vision, technical objectives
-  - `docs/2026-graphics.md` — Driver validation, CTS, driver selection
   - `docs/2026-Wawona-Android-Audit.md` — Android parity audit (~85%)
 
 ### Changed
@@ -66,7 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - XDG_RUNTIME_DIR / WAYLAND_DISPLAY handling in remote exec
   - SSH bridge thread loop reworked to proactively drain `libssh2`'s internal buffer after writing to the local Wayland socket
 - **Nix**
-  - `flake.nix`: Refactor; Weston apps, graphics-validate outputs, shell wrappers
+  - `flake.nix`: Refactor; Weston apps and shell wrappers
   - `dependencies/toolchains/default.nix`: Major simplification
   - `dependencies/wawona/android.nix`: Weston bundling, Gradle, jniLibs
   - `dependencies/wawona/ios.nix`: iOS build pipeline expansion

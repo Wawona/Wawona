@@ -273,7 +273,6 @@ static void setup_signal_sources(void) {
 @implementation WWNMacAppDelegate
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
-  // WWN now launches into a standalone Machines app view.
   WWNPreferencesManager *prefs = [WWNPreferencesManager sharedManager];
   if (![prefs hasSeenWelcome]) {
     [NSApp activateIgnoringOtherApps:YES];
@@ -316,6 +315,21 @@ static void setup_signal_sources(void) {
 
 - (void)showMachines:(id)sender {
   [[WWNMachinesCoordinator sharedCoordinator] showMachinesWindowFromMenu:sender];
+}
+
+- (BOOL)applicationShouldSaveApplicationState:(NSApplication *)sender {
+  (void)sender;
+  return NO;
+}
+
+- (BOOL)applicationShouldRestoreApplicationState:(NSApplication *)sender {
+  (void)sender;
+  return NO;
+}
+
+- (BOOL)applicationSupportsSecureRestorableState:(NSApplication *)app {
+  (void)app;
+  return NO;
 }
 
 @end
@@ -455,6 +469,16 @@ int main(int argc, char *argv[]) {
                                                  NSFilePosixPermissions : @0700
                                                }
                                                     error:nil];
+
+    // Reset client-launch preferences so nothing auto-starts from a previous
+    // session.  Clients are now launched exclusively via machine profiles.
+    // This must happen BEFORE WWNPreferencesManager is first accessed, because
+    // its KVO observers use NSKeyValueObservingOptionInitial.
+    NSUserDefaults *launchDefs = [NSUserDefaults standardUserDefaults];
+    [launchDefs setBool:NO forKey:@"WestonEnabled"];
+    [launchDefs setBool:NO forKey:@"WestonTerminalEnabled"];
+    [launchDefs setBool:NO forKey:@"WestonSimpleSHMEnabled"];
+    [launchDefs setBool:NO forKey:@"EnableLauncher"];
 
     // Configure Vulkan ICD based on user-selected driver
     const char *vkDriver = WWNSettings_GetVulkanDriver();

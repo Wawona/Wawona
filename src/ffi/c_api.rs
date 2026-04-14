@@ -262,6 +262,7 @@ pub enum CWindowEventType {
     MinimizeRequested = 9,
     MaximizeRequested = 10,
     UnmaximizeRequested = 11,
+    CursorShapeChanged = 12,
 }
 
 /// C-compatible window event structure
@@ -404,6 +405,11 @@ pub extern "C" fn WWNCorePopWindowEvent(core: *mut WWNCore) -> *mut CWindowEvent
                         super::types::DecorationMode::ClientSide => 0,
                         super::types::DecorationMode::ServerSide => 1,
                     };
+                    true
+                },
+                super::types::WindowEvent::CursorShapeChanged { shape } => {
+                    c_event.event_type = CWindowEventType::CursorShapeChanged as u64;
+                    c_event.surface_id = shape;
                     true
                 },
                 _ => false

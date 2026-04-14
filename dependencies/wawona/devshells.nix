@@ -17,7 +17,13 @@ builtins.listToAttrs (map (system: let
       pkgs.libffi
       pkgs.wayland-protocols
       pkgs.openssl
-    ];
+    ] ++ (if pkgs ? skip then [ pkgs.skip ] else []);
+    shellHook = ''
+      export XDG_RUNTIME_DIR="/tmp/wawona-$(id -u)"
+      export WAYLAND_DISPLAY="wayland-0"
+      mkdir -p "$XDG_RUNTIME_DIR"
+      chmod 700 "$XDG_RUNTIME_DIR"
+    '';
   };
 
   darwinShell = pkgs.mkShell {

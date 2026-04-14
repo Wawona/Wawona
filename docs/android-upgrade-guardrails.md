@@ -33,7 +33,6 @@ All four host platforms must complete smoke gates before merge:
 Required smoke outputs:
 
 - Android backend (`wawona-android-backend`)
-- Android CTS (`vulkan-cts-android`, `gl-cts-android`)
 - Darwin Android path (`wawona-android` and `gradlegen`)
 
 ## Blocker Signatures

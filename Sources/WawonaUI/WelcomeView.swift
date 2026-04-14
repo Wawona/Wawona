@@ -2,8 +2,8 @@ import SwiftUI
 import WawonaModel
 
 struct WelcomeView: View {
-    @Bindable var preferences: WawonaPreferences
-    @State private var pulse = false
+    @ObservedObject var preferences: WawonaPreferences
+    @State var pulse = false
 
     var body: some View {
         ZStack {

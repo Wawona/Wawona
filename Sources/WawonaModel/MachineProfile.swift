@@ -1,5 +1,5 @@
+import Combine
 import Foundation
-import Observation
 
 public enum MachineType: String, Codable, CaseIterable, Sendable {
     case native
@@ -18,6 +18,29 @@ public enum MachineStatus: String, Codable, CaseIterable, Sendable {
 }
 
 // SKIP @bridgeMembers
+public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
+    public var renderer: String?
+    public var inputProfile: String?
+    public var useBundledApp: Bool?
+    public var bundledAppID: String?
+    public var waypipeEnabled: Bool?
+
+    public init(
+        renderer: String? = nil,
+        inputProfile: String? = nil,
+        useBundledApp: Bool? = nil,
+        bundledAppID: String? = nil,
+        waypipeEnabled: Bool? = nil
+    ) {
+        self.renderer = renderer
+        self.inputProfile = inputProfile
+        self.useBundledApp = useBundledApp
+        self.bundledAppID = bundledAppID
+        self.waypipeEnabled = waypipeEnabled
+    }
+}
+
+// SKIP @bridgeMembers
 public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
     public var id: String
     public var name: String
@@ -25,11 +48,29 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
     public var sshHost: String
     public var sshUser: String
     public var sshPort: Int
+    public var sshPassword: String
     public var remoteCommand: String
     public var vmSubtype: String
     public var containerSubtype: String
     public var launchers: [ClientLauncher]
     public var favorite: Bool
+    public var runtimeOverrides: MachineRuntimeOverrides
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case type
+        case sshHost
+        case sshUser
+        case sshPort
+        case sshPassword
+        case remoteCommand
+        case vmSubtype
+        case containerSubtype
+        case launchers
+        case favorite
+        case runtimeOverrides
+    }
 
     public init(
         id: String = UUID().uuidString,
@@ -38,11 +79,13 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
         sshHost: String = "",
         sshUser: String = "",
         sshPort: Int = 22,
+        sshPassword: String = "",
         remoteCommand: String = "weston-terminal",
         vmSubtype: String = "",
         containerSubtype: String = "",
         launchers: [ClientLauncher] = [],
-        favorite: Bool = false
+        favorite: Bool = false,
+        runtimeOverrides: MachineRuntimeOverrides = MachineRuntimeOverrides()
     ) {
         self.id = id
         self.name = name
@@ -50,21 +93,57 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
         self.sshHost = sshHost
         self.sshUser = sshUser
         self.sshPort = sshPort
+        self.sshPassword = sshPassword
         self.remoteCommand = remoteCommand
         self.vmSubtype = vmSubtype
         self.containerSubtype = containerSubtype
         self.launchers = launchers
         self.favorite = favorite
+        self.runtimeOverrides = runtimeOverrides
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Unnamed"
+        type = try container.decodeIfPresent(MachineType.self, forKey: .type) ?? MachineType.native
+        sshHost = try container.decodeIfPresent(String.self, forKey: .sshHost) ?? ""
+        sshUser = try container.decodeIfPresent(String.self, forKey: .sshUser) ?? ""
+        sshPort = try container.decodeIfPresent(Int.self, forKey: .sshPort) ?? 22
+        sshPassword = try container.decodeIfPresent(String.self, forKey: .sshPassword) ?? ""
+        remoteCommand = try container.decodeIfPresent(String.self, forKey: .remoteCommand) ?? "weston-terminal"
+        vmSubtype = try container.decodeIfPresent(String.self, forKey: .vmSubtype) ?? ""
+        containerSubtype = try container.decodeIfPresent(String.self, forKey: .containerSubtype) ?? ""
+        launchers = try container.decodeIfPresent([ClientLauncher].self, forKey: .launchers) ?? []
+        favorite = try container.decodeIfPresent(Bool.self, forKey: .favorite) ?? false
+        runtimeOverrides = try container.decodeIfPresent(MachineRuntimeOverrides.self, forKey: .runtimeOverrides) ?? MachineRuntimeOverrides()
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(type, forKey: .type)
+        try container.encode(sshHost, forKey: .sshHost)
+        try container.encode(sshUser, forKey: .sshUser)
+        try container.encode(sshPort, forKey: .sshPort)
+        try container.encode(sshPassword, forKey: .sshPassword)
+        try container.encode(remoteCommand, forKey: .remoteCommand)
+        try container.encode(vmSubtype, forKey: .vmSubtype)
+        try container.encode(containerSubtype, forKey: .containerSubtype)
+        try container.encode(launchers, forKey: .launchers)
+        try container.encode(favorite, forKey: .favorite)
+        try container.encode(runtimeOverrides, forKey: .runtimeOverrides)
     }
 }
 
-@Observable
-public final class MachineProfileStore {
+@MainActor
+public final class MachineProfileStore: ObservableObject {
     public static let profilesKey = "wawona.machineProfiles.v1"
     public static let activeMachineIdKey = "wawona.activeMachineId.v1"
 
-    public private(set) var profiles: [MachineProfile] = []
-    public var activeMachineId: String?
+    @Published public private(set) var profiles: [MachineProfile] = []
+    @Published public var activeMachineId: String?
 
     public init() {
         load()
@@ -73,12 +152,20 @@ public final class MachineProfileStore {
     public func load() {
         let defaults = UserDefaults.standard
         activeMachineId = defaults.string(forKey: Self.activeMachineIdKey)
-        guard let data = defaults.data(forKey: Self.profilesKey) else {
+        var payload: Data?
+        if let data = defaults.data(forKey: Self.profilesKey) {
+            payload = data
+        } else if let legacyString = defaults.string(forKey: Self.profilesKey) {
+            payload = legacyString.data(using: .utf8)
+        }
+        guard let data = payload else {
             profiles = []
             return
         }
         do {
             profiles = try JSONDecoder().decode([MachineProfile].self, from: data)
+            // Canonicalize persisted representation to data payload.
+            save()
         } catch {
             profiles = []
         }
@@ -94,18 +181,25 @@ public final class MachineProfileStore {
 
     public func upsert(_ profile: MachineProfile) {
         if let idx = profiles.firstIndex(where: { $0.id == profile.id }) {
-            profiles[idx] = profile
+            var next = profiles
+            next[idx] = profile
+            profiles = next
         } else {
-            profiles.append(profile)
+            profiles = profiles + [profile]
         }
         save()
     }
 
     public func delete(id: String) {
-        profiles.removeAll { $0.id == id }
+        profiles = profiles.filter { $0.id != id }
         if activeMachineId == id {
             activeMachineId = nil
         }
         save()
+    }
+
+    public func profile(for id: String?) -> MachineProfile? {
+        guard let id else { return nil }
+        return profiles.first { $0.id == id }
     }
 }

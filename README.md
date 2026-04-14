@@ -24,14 +24,6 @@
 3. Configure your environment (see below).
 4. Build with the Nix flake.
 
-### Build Output Monitor (`nom`)
-
-Wawona's flake includes [`nix-output-monitor`](https://github.com/maralorn/nix-output-monitor) as `.#nom` and in all dev shells.
-
-- Direct use: `nom build .#wawona-macos`
-- Via flake app: `nix run .#nom -- build .#wawona-macos`
-- In `nix develop`: use shortcuts `nb` (`nom build`), `nd` (`nom develop`), and `ns` (`nom shell`)
-
 ### Environment Configuration
 
 This project uses a simple `.envrc` file to manage your Apple Development Team ID.
@@ -53,6 +45,15 @@ This project uses a simple `.envrc` file to manage your Apple Development Team I
 - **Waypipe (remote apps):** Configure SSH in Settings > Waypipe, set Remote Command (e.g. `nix run ~/Wawona#weston-terminal`), tap Run Waypipe
 
 See [Usage Guide](docs/usage.md) and [Settings Reference](docs/settings.md).
+
+### WearOS + Linux VM automation
+
+- **WearOS build/test automation:** `nix run .#wawona-wearos`
+  - Builds Android artifacts with Nix and validates Wear shell wiring.
+  - If a WearOS emulator/device is connected over `adb`, it performs install/launch smoke checks.
+- **Linux KDE Plasma VM automation:** `nix run .#wawona-linux-vm`
+  - Launches a NixOS VM (Plasma 6 Wayland) in QEMU for Linux UI testing.
+  - Uses `kvm` on Linux when available; on macOS uses `hvf` and falls back to `tcg` if unavailable.
 
 ### "I don't have nix"
 

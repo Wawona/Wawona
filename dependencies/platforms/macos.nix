@@ -31,6 +31,18 @@ in
       pkgs.pixman
     else if name == "xkbcommon" then
       pkgs.libxkbcommon
+    else if name == "freetype" then
+      pkgs.freetype
+    else if name == "fontconfig" then
+      pkgs.fontconfig
+    else if name == "fcft" then
+      pkgs.callPackage ../libs/fcft/macos.nix { inherit common buildModule; }
+    else if name == "tllist" then
+      pkgs.callPackage ../libs/tllist/macos.nix { inherit common buildModule; }
+    else if name == "utf8proc" then
+      pkgs.utf8proc
+    else if name == "foot" then
+      pkgs.callPackage ../clients/foot/macos.nix { inherit common buildModule; }
     else if name == "ffmpeg" then
       pkgs.callPackage ../libs/ffmpeg/macos.nix { inherit common buildModule; }
     else

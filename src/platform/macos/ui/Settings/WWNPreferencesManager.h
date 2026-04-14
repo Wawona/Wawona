@@ -78,6 +78,7 @@ extern NSString *const kWWNForceSSDChangedNotification;
 extern NSString *const kWWNPrefsWestonSimpleSHMEnabled;
 extern NSString *const kWWNPrefsWestonEnabled;
 extern NSString *const kWWNPrefsWestonTerminalEnabled;
+extern NSString *const kWWNPrefsFootEnabled;
 @interface WWNPreferencesManager : NSObject
 
 + (instancetype)sharedManager;
@@ -144,6 +145,8 @@ extern NSString *const kWWNPrefsWestonTerminalEnabled;
 - (void)setWestonEnabled:(BOOL)enabled;
 - (BOOL)westonTerminalEnabled;
 - (void)setWestonTerminalEnabled:(BOOL)enabled;
+- (BOOL)footEnabled;
+- (void)setFootEnabled:(BOOL)enabled;
 
 // Network / Remote Access
 - (BOOL)enableTCPListener;
@@ -249,6 +252,7 @@ extern NSString *const kWWNPrefsWestonTerminalEnabled;
 
 // Reset to defaults
 - (void)resetToDefaults;
+- (void)syncFromCanonicalWawonaPreferences;
 
 @end
 

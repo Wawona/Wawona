@@ -1,8 +1,6 @@
 #import "WWNPreferencesManager.h"
-#import "../../../../util/WWNLog.h"
-#if !TARGET_OS_IPHONE
 #import "WWNWaypipeRunner.h"
-#endif
+#import "../../../../util/WWNLog.h"
 
 // Preferences keys
 NSString *const kWWNPrefsUniversalClipboard = @"UniversalClipboard";
@@ -86,6 +84,7 @@ NSString *const kWWNForceSSDChangedNotification =
 NSString *const kWWNPrefsWestonSimpleSHMEnabled = @"WestonSimpleSHMEnabled";
 NSString *const kWWNPrefsWestonEnabled = @"WestonEnabled";
 NSString *const kWWNPrefsWestonTerminalEnabled = @"WestonTerminalEnabled";
+NSString *const kWWNPrefsFootEnabled = @"FootEnabled";
 
 static NSString *WWNPreferredSharedRuntimeDir(void) {
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
@@ -143,28 +142,107 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
   if (self) {
     // Set defaults if not already set
     [self setDefaultsIfNeeded];
+    [self syncFromCanonicalWawonaPreferences];
 
-#if !TARGET_OS_IPHONE
-    // Auto-launch weston-simple-shm if enabled
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    [defaults addObserver:self
-               forKeyPath:kWWNPrefsWestonSimpleSHMEnabled
-                  options:NSKeyValueObservingOptionNew |
-                          NSKeyValueObservingOptionInitial
-                  context:NULL];
+#if !TARGET_OS_IPHONE
+    // Auto-launch weston compositor on macOS only.
     [defaults addObserver:self
                forKeyPath:kWWNPrefsWestonEnabled
                   options:NSKeyValueObservingOptionNew |
                           NSKeyValueObservingOptionInitial
                   context:NULL];
+#endif
+    // weston-simple-shm can run in-process on all platforms.
+    [defaults addObserver:self
+               forKeyPath:kWWNPrefsWestonSimpleSHMEnabled
+                  options:NSKeyValueObservingOptionNew |
+                          NSKeyValueObservingOptionInitial
+                  context:NULL];
+    // Weston Terminal and foot are supported on all platforms (iOS uses shim)
     [defaults addObserver:self
                forKeyPath:kWWNPrefsWestonTerminalEnabled
                   options:NSKeyValueObservingOptionNew |
                           NSKeyValueObservingOptionInitial
                   context:NULL];
-#endif
+    [defaults addObserver:self
+               forKeyPath:kWWNPrefsFootEnabled
+                  options:NSKeyValueObservingOptionNew |
+                          NSKeyValueObservingOptionInitial
+                  context:NULL];
   }
   return self;
+}
+
+- (void)syncFromCanonicalWawonaPreferences {
+  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  NSString *prefix = @"wawona.pref.";
+
+  id forceSSD = [defaults objectForKey:[prefix stringByAppendingString:@"forceSSD"]];
+  if ([forceSSD respondsToSelector:@selector(boolValue)]) {
+    [self setForceServerSideDecorations:[forceSSD boolValue]];
+  }
+
+  id autoScale = [defaults objectForKey:[prefix stringByAppendingString:@"autoScale"]];
+  if ([autoScale respondsToSelector:@selector(boolValue)]) {
+    [self setAutoScale:[autoScale boolValue]];
+  }
+
+  NSString *waylandDisplay =
+      [defaults stringForKey:[prefix stringByAppendingString:@"waylandDisplay"]];
+  if (waylandDisplay.length > 0) {
+    [self setWaypipeDisplay:waylandDisplay];
+  }
+
+  NSString *sshHost = [defaults stringForKey:[prefix stringByAppendingString:@"sshHost"]];
+  if (sshHost.length > 0) {
+    [self setWaypipeSSHHost:sshHost];
+  }
+  NSString *sshUser = [defaults stringForKey:[prefix stringByAppendingString:@"sshUser"]];
+  if (sshUser.length > 0) {
+    [self setWaypipeSSHUser:sshUser];
+  }
+  NSString *sshPassword =
+      [defaults stringForKey:[prefix stringByAppendingString:@"sshPassword"]];
+  if (sshPassword.length > 0) {
+    [self setWaypipeSSHPassword:sshPassword];
+  }
+
+  NSString *inputProfile =
+      [defaults stringForKey:[prefix stringByAppendingString:@"defaultInputProfile"]];
+  if (inputProfile.length > 0) {
+    [self setTouchInputType:inputProfile];
+  }
+
+  NSString *renderer = [defaults stringForKey:[prefix stringByAppendingString:@"renderer"]];
+  if (renderer.length > 0) {
+    // Canonical preferences use renderer labels, while native path selects
+    // Vulkan driver implementation.
+    [self setVulkanDriver:[renderer isEqualToString:@"metal"] ? @"moltenvk" : renderer];
+  }
+
+  BOOL hasWaypipeEnabled =
+      [defaults objectForKey:[prefix stringByAppendingString:@"defaultWaypipeEnabled"]] != nil;
+  if (hasWaypipeEnabled) {
+    [self setWaypipeSSHEnabled:[defaults
+                                   boolForKey:[prefix
+                                                  stringByAppendingString:
+                                                      @"defaultWaypipeEnabled"]]];
+  }
+
+  BOOL hasBundledApp =
+      [defaults objectForKey:[prefix stringByAppendingString:@"defaultUseBundledApp"]] != nil;
+  BOOL useBundled = hasBundledApp &&
+                    [defaults boolForKey:[prefix stringByAppendingString:@"defaultUseBundledApp"]];
+  [self setEnableLauncher:useBundled];
+  NSString *bundledId =
+      [defaults stringForKey:[prefix stringByAppendingString:@"defaultBundledAppID"]];
+  [self setWestonEnabled:useBundled && [bundledId isEqualToString:@"weston"]];
+  [self setWestonTerminalEnabled:useBundled &&
+                               [bundledId isEqualToString:@"weston-terminal"]];
+  [self setWestonSimpleSHMEnabled:useBundled &&
+                               [bundledId isEqualToString:@"weston-simple-shm"]];
+  [self setFootEnabled:useBundled && [bundledId isEqualToString:@"foot"]];
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath
@@ -202,6 +280,16 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
         [[WWNWaypipeRunner sharedRunner] stopWestonTerminal];
       }
     });
+  } else if ([keyPath isEqualToString:kWWNPrefsFootEnabled]) {
+    BOOL enabled = [change[NSKeyValueChangeNewKey] boolValue];
+    WWNLog("PREFS", @"Foot preference changed: %d", enabled);
+    dispatch_async(dispatch_get_main_queue(), ^{
+      if (enabled) {
+        [[WWNWaypipeRunner sharedRunner] launchFoot];
+      } else {
+        [[WWNWaypipeRunner sharedRunner] stopFoot];
+      }
+    });
   } else {
     [super observeValueForKeyPath:keyPath
                          ofObject:object
@@ -209,9 +297,41 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
                           context:context];
   }
 #else
-  if ([keyPath isEqualToString:kWWNPrefsWestonSimpleSHMEnabled] ||
-      [keyPath isEqualToString:kWWNPrefsWestonEnabled] ||
-      [keyPath isEqualToString:kWWNPrefsWestonTerminalEnabled]) {
+  if ([keyPath isEqualToString:kWWNPrefsWestonEnabled]) {
+    // Weston compositor auto-launch is macOS-only; ignore on iOS.
+    return;
+  } else if ([keyPath isEqualToString:kWWNPrefsWestonSimpleSHMEnabled]) {
+    BOOL enabled = [change[NSKeyValueChangeNewKey] boolValue];
+    WWNLog("PREFS", @"Weston Simple SHM preference changed (iOS): %d", enabled);
+    dispatch_async(dispatch_get_main_queue(), ^{
+      if (enabled) {
+        [[WWNWaypipeRunner sharedRunner] launchWestonSimpleSHM];
+      } else {
+        [[WWNWaypipeRunner sharedRunner] stopWestonSimpleSHM];
+      }
+    });
+    return;
+  } else if ([keyPath isEqualToString:kWWNPrefsWestonTerminalEnabled]) {
+    BOOL enabled = [change[NSKeyValueChangeNewKey] boolValue];
+    WWNLog("PREFS", @"Weston Terminal preference changed (iOS): %d", enabled);
+    dispatch_async(dispatch_get_main_queue(), ^{
+      if (enabled) {
+        [[WWNWaypipeRunner sharedRunner] launchWestonTerminal];
+      } else {
+        [[WWNWaypipeRunner sharedRunner] stopWestonTerminal];
+      }
+    });
+    return;
+  } else if ([keyPath isEqualToString:kWWNPrefsFootEnabled]) {
+    BOOL enabled = [change[NSKeyValueChangeNewKey] boolValue];
+    WWNLog("PREFS", @"Foot preference changed (iOS): %d", enabled);
+    dispatch_async(dispatch_get_main_queue(), ^{
+      if (enabled) {
+        [[WWNWaypipeRunner sharedRunner] launchFoot];
+      } else {
+        [[WWNWaypipeRunner sharedRunner] stopFoot];
+      }
+    });
     return;
   }
 
@@ -265,6 +385,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
     kWWNPrefsWestonSimpleSHMEnabled : @NO,
     kWWNPrefsWestonEnabled : @NO,
     kWWNPrefsWestonTerminalEnabled : @NO,
+    kWWNPrefsFootEnabled : @NO,
     // Waypipe
     kWWNPrefsWaypipeDisplay : @"wayland-0",
     kWWNPrefsWaypipeSocket : defaultSocket,
@@ -387,6 +508,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
   [defaults removeObjectForKey:kWWNPrefsWestonSimpleSHMEnabled];
   [defaults removeObjectForKey:kWWNPrefsWestonEnabled];
   [defaults removeObjectForKey:kWWNPrefsWestonTerminalEnabled];
+  [defaults removeObjectForKey:kWWNPrefsFootEnabled];
   // Waypipe
   [defaults removeObjectForKey:kWWNPrefsWaypipeDisplay];
   [defaults removeObjectForKey:kWWNPrefsWaypipeSocket];
@@ -587,6 +709,14 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
   [[NSUserDefaults standardUserDefaults]
       setBool:enabled
        forKey:kWWNPrefsWestonTerminalEnabled];
+}
+
+- (BOOL)footEnabled {
+  return [[NSUserDefaults standardUserDefaults] boolForKey:kWWNPrefsFootEnabled];
+}
+
+- (void)setFootEnabled:(BOOL)enabled {
+  [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:kWWNPrefsFootEnabled];
 }
 
 // Network / Remote Access

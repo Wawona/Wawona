@@ -21,7 +21,6 @@
 | Document | Description |
 |----------|-------------|
 | [2026-waypipe.md](2026-waypipe.md) | Waypipe integration (macOS, iOS, Android); SSH transport, streamlocal |
-| [2026-graphics.md](2026-graphics.md) | Graphics drivers, Vulkan/OpenGL CTS, driver settings |
 | [2026-Wawona-Android-Audit.md](2026-Wawona-Android-Audit.md) | Android implementation audit and parity checklist |
 | [macos-implementation.md](macos-implementation.md) | macOS native implementation, Metal, IOSurface |
 | [2026-Liquid-Glass.md](2026-Liquid-Glass.md) | Apple Liquid Glass design (macOS 15 / iOS 26) |

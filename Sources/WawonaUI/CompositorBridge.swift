@@ -54,7 +54,7 @@ private struct IOSCompositorView: UIViewRepresentable {
 #endif
 
 #if os(Android)
-private struct AndroidCompositorView: View {
+struct AndroidCompositorView: View {
     var body: some View {
         #if SKIP
         ComposeView {
@@ -67,10 +67,12 @@ private struct AndroidCompositorView: View {
 }
 
 #if SKIP
+import com.aspauldingcode.wawona.WawonaCompositorSurfaceKt
+
 struct AndroidCompositorComposer: ContentComposer {
     @Composable
     func Compose(context: ComposeContext) {
-        androidx.compose.foundation.layout.Box(modifier: context.modifier)
+        WawonaCompositorSurfaceKt.WawonaCompositorSurface(modifier: context.modifier)
     }
 }
 #endif

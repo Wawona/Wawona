@@ -3,6 +3,58 @@
 #import "../Settings/WWNPreferences.h"
 #endif
 #import <objc/message.h>
+#import <objc/runtime.h>
+
+static Class WWNFindMachinesHostingBridgeClass(void) {
+  NSMutableOrderedSet<NSString *> *candidateNames = [NSMutableOrderedSet orderedSetWithArray:@[
+    @"WWNMachinesHostingBridge",
+    @"Wawona.WWNMachinesHostingBridge",
+    @"Wawona_iOS.WWNMachinesHostingBridge",
+    @"Wawona_macOS.WWNMachinesHostingBridge",
+  ]];
+
+  NSBundle *mainBundle = [NSBundle mainBundle];
+  NSString *bundleName = [mainBundle objectForInfoDictionaryKey:@"CFBundleName"];
+  NSString *execName = [mainBundle objectForInfoDictionaryKey:@"CFBundleExecutable"];
+  if (bundleName.length > 0) {
+    [candidateNames addObject:[NSString stringWithFormat:@"%@.WWNMachinesHostingBridge", bundleName]];
+    [candidateNames addObject:[NSString stringWithFormat:@"%@.WWNMachinesHostingBridge",
+                                                         [bundleName stringByReplacingOccurrencesOfString:@"-" withString:@"_"]]];
+  }
+  if (execName.length > 0) {
+    [candidateNames addObject:[NSString stringWithFormat:@"%@.WWNMachinesHostingBridge", execName]];
+    [candidateNames addObject:[NSString stringWithFormat:@"%@.WWNMachinesHostingBridge",
+                                                         [execName stringByReplacingOccurrencesOfString:@"-" withString:@"_"]]];
+  }
+
+  for (NSString *name in candidateNames) {
+    Class bridgeClass = NSClassFromString(name);
+    if (bridgeClass) {
+      return bridgeClass;
+    }
+  }
+
+  int classCount = objc_getClassList(NULL, 0);
+  if (classCount <= 0) {
+    return Nil;
+  }
+  Class *classes = (__unsafe_unretained Class *)malloc((size_t)classCount * sizeof(Class));
+  if (classes == NULL) {
+    return Nil;
+  }
+  classCount = objc_getClassList(classes, classCount);
+  Class foundClass = Nil;
+  for (int i = 0; i < classCount; i++) {
+    NSString *className = NSStringFromClass(classes[i]);
+    if ([className isEqualToString:@"WWNMachinesHostingBridge"] ||
+        [className hasSuffix:@".WWNMachinesHostingBridge"]) {
+      foundClass = classes[i];
+      break;
+    }
+  }
+  free(classes);
+  return foundClass;
+}
 
 @interface WWNMachinesCoordinator ()
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
@@ -23,19 +75,7 @@
 
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
 - (UIViewController *)buildSwiftUIMachinesController:(dispatch_block_t)onConnect {
-  NSArray<NSString *> *candidateNames = @[
-    @"WWNMachinesHostingBridge",
-    @"Wawona.WWNMachinesHostingBridge",
-    @"Wawona_iOS.WWNMachinesHostingBridge",
-    @"Wawona_macOS.WWNMachinesHostingBridge",
-  ];
-  Class bridgeClass = Nil;
-  for (NSString *name in candidateNames) {
-    bridgeClass = NSClassFromString(name);
-    if (bridgeClass) {
-      break;
-    }
-  }
+  Class bridgeClass = WWNFindMachinesHostingBridgeClass();
   SEL selector = NSSelectorFromString(@"buildIOSMachinesControllerWithOnConnect:");
   if (!bridgeClass || ![bridgeClass respondsToSelector:selector]) {
     return nil;
@@ -46,19 +86,7 @@
 }
 #else
 - (NSWindowController *)buildSwiftUIMachinesWindowController:(dispatch_block_t)onConnect {
-  NSArray<NSString *> *candidateNames = @[
-    @"WWNMachinesHostingBridge",
-    @"Wawona.WWNMachinesHostingBridge",
-    @"Wawona_iOS.WWNMachinesHostingBridge",
-    @"Wawona_macOS.WWNMachinesHostingBridge",
-  ];
-  Class bridgeClass = Nil;
-  for (NSString *name in candidateNames) {
-    bridgeClass = NSClassFromString(name);
-    if (bridgeClass) {
-      break;
-    }
-  }
+  Class bridgeClass = WWNFindMachinesHostingBridgeClass();
   SEL selector = NSSelectorFromString(@"buildMacMachinesWindowControllerWithOnConnect:");
   if (!bridgeClass || ![bridgeClass respondsToSelector:selector]) {
     return nil;
@@ -92,10 +120,13 @@
 }
 #else
 - (void)showMachinesWindowAndActivate:(BOOL)activate {
-  NSWindowController *controller =
-      [self buildSwiftUIMachinesWindowController:nil];
-  if (controller) {
-    self.macMachinesController = controller;
+  if (!self.macMachinesController || !self.macMachinesController.window ||
+      !self.macMachinesController.window.isVisible) {
+    NSWindowController *controller =
+        [self buildSwiftUIMachinesWindowController:nil];
+    if (controller) {
+      self.macMachinesController = controller;
+    }
   }
   if (!self.macMachinesController) {
     NSAlert *alert = [[NSAlert alloc] init];

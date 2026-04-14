@@ -649,7 +649,15 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
 
 - (void)resetCursorRects {
   [super resetCursorRects];
-  if (!WWNSettings_GetRenderMacOSPointer()) {
+
+  BOOL showHostCursor = WWNSettings_GetRenderMacOSPointer();
+
+  if (!showHostCursor &&
+      [[WWNCompositorBridge sharedBridge] clientWantsCursorRendered]) {
+    showHostCursor = YES;
+  }
+
+  if (!showHostCursor) {
     NSImage *emptyImage = [[NSImage alloc] initWithSize:NSMakeSize(1, 1)];
     NSCursor *invisibleCursor =
         [[NSCursor alloc] initWithImage:emptyImage hotSpot:NSZeroPoint];

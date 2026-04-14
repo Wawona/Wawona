@@ -15,6 +15,15 @@
   codeSignIdentity ? null,
   signMethod ? null,
   automaticProvisioning ? false,
+  # Per-platform overrides
+  # target: Xcode scheme/target name
+  xcodeTarget ? "Wawona-iOS",
+  # nativeSdk: base SDK name without "simulator" suffix
+  # e.g. "iphoneos" for iOS/iPadOS, "watchos" for watchOS
+  nativeSdk ? "iphoneos",
+  # platformName: human-readable destination platform for xcodebuild -destination
+  # e.g. "iOS", "watchOS"
+  platformName ? "iOS",
   bundleId ? "com.aspauldingcode.Wawona",
   ...
 }:
@@ -29,12 +38,24 @@ let
   releaseBuild = release || generateIPA || generateXCArchive;
   developmentTeam = if TEAM_ID == null || TEAM_ID == "" then null else TEAM_ID;
   autoSigning = automaticProvisioning || developmentTeam != null;
+  # xcodebuild -sdk wants iphonesimulator / watchsimulator, not "iphoneos"+"simulator".
+  sdk =
+    if !simulator then
+      nativeSdk
+    else if nativeSdk == "iphoneos" then
+      "iphonesimulator"
+    else if nativeSdk == "watchos" then
+      "watchsimulator"
+    else
+      throw "ios.nix: simulator build needs sdk mapping for nativeSdk=${nativeSdk}";
+  destinationPlatform = if simulator then "${platformName} Simulator" else platformName;
 in
 xcodeUtils.buildApp {
   name = "Wawona";
   src = xcodeProject;
-  target = "Wawona-iOS";
-  sdk = if simulator then "iphonesimulator" else "iphoneos";
+  target = xcodeTarget;
+  inherit sdk;
+  __noChroot = true;
   configuration = if releaseBuild then "Release" else "Debug";
   release = releaseBuild;
   inherit
@@ -54,11 +75,14 @@ xcodeUtils.buildApp {
     [
       ''-project Wawona.xcodeproj''
       ''-jobs 1''
-      ''-destination "generic/platform=${if simulator then "iOS Simulator" else "iOS"}"''
+      ''-destination "generic/platform=${destinationPlatform}"''
     ]
     ++ lib.optionals (!releaseBuild) [
       ''CODE_SIGNING_ALLOWED=NO''
       ''CODE_SIGNING_REQUIRED=NO''
     ]
+    # build-app.nix forces ONLY_ACTIVE_ARCH=NO; that pulls x86_64 simulator slice on Apple Silicon.
+    # Swift macro plugin server often breaks for that slice (malformed response / sandbox_apply).
+    ++ lib.optionals simulator [ ''ONLY_ACTIVE_ARCH=YES'' ]
   );
 }
