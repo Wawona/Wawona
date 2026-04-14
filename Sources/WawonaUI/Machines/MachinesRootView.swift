@@ -2,21 +2,48 @@ import SwiftUI
 import WawonaModel
 
 struct MachinesRootView: View {
-    @Bindable var preferences: WawonaPreferences
-    @Bindable var profileStore: MachineProfileStore
-    @Bindable var sessions: SessionOrchestrator
-    @State private var search = ""
-    @State private var selectedMachineId: String?
-    @State private var showingEditor = false
+    @ObservedObject var preferences: WawonaPreferences
+    @ObservedObject var profileStore: MachineProfileStore
+    @ObservedObject var sessions: SessionOrchestrator
+    @State var search = ""
+    @State var selectedMachineId: String?
+    @State var showingEditor = false
+    #if SKIP && os(Android)
+    @State private var compositorSession: MachineSession?
+    #endif
 
     var body: some View {
-        NavigationSplitView {
+        #if SKIP && os(Android)
+        machinesNavigation
+            .fullScreenCover(item: $compositorSession) { session in
+                AndroidMachineCompositorChrome(session: session, sessions: sessions) {
+                    compositorSession = nil
+                }
+            }
+        #else
+        machinesNavigation
+        #endif
+    }
+
+    private var machinesNavigation: some View {
+        AdaptiveNavigationView {
+            #if SKIP
+            List(filteredProfiles) { profile in
+                Button {
+                    selectedMachineId = profile.id
+                } label: {
+                    Text(profile.name)
+                }
+            }
+            .navigationTitle("Machines")
+            #else
             List(selection: $selectedMachineId) {
                 ForEach(filteredProfiles) { profile in
                     Text(profile.name).tag(profile.id)
                 }
             }
             .navigationTitle("Machines")
+            #endif
         } detail: {
             ScrollView {
                 MachinesGridView(
@@ -46,9 +73,15 @@ struct MachinesRootView: View {
     }
 
     private func connect(_ profile: MachineProfile) {
-        _ = sessions.connect(machineId: profile.id)
+        let session = sessions.connect(machineId: profile.id)
         profileStore.activeMachineId = profile.id
         profileStore.save()
+        #if SKIP && os(Android)
+        if profile.type == .native {
+            NativeCompositorPrefs.apply(for: profile)
+            compositorSession = session
+        }
+        #endif
     }
 
     private func delete(_ profile: MachineProfile) {
