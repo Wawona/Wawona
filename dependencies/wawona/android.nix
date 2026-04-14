@@ -12,6 +12,8 @@
   jdk17 ? pkgs.jdk17,
   gradle ? pkgs.gradle,
   targetPkgs,
+  gradleTask ? ":app:assembleDebug",
+  release ? false,
   ...
 }:
 
@@ -561,7 +563,7 @@ in
 
     mitmCache = gradleSupport.mitmCache;
     gradleFlags = gradleSupport.gradleFlags;
-    gradleUpdateTask = ":app:assembleDebug";
+    gradleUpdateTask = gradleTask;
     enableParallelUpdating = false;
 
     nativeBuildInputs = (with pkgs; [
@@ -678,7 +680,7 @@ in
       # Dexing Compose artifacts can exceed the default 512m Gradle JVM heap in
       # sandboxed builds. Pin explicit JVM args so D8/R8 has enough memory.
       export GRADLE_OPTS="-Xmx6144m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
-      gradle :app:assembleDebug --no-build-cache --no-watch-fs --no-daemon --max-workers=1 \
+      gradle ${gradleTask} --no-build-cache --no-watch-fs --no-daemon --max-workers=1 \
         -Dorg.gradle.parallel=false \
         -Dorg.gradle.workers.max=1 \
         -Dorg.gradle.daemon=false \

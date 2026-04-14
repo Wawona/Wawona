@@ -252,6 +252,19 @@
           waypipe = toolchainsAndroid.buildForAndroid "waypipe" { };
         };
 
+        wawonaAndroidReleasePkg = import ./dependencies/wawona/android.nix {
+          pkgs = androidPkgs;
+          buildModule = toolchainsAndroid;
+          inherit (androidPkgs) lib stdenv clang pkg-config unzip zip patchelf file util-linux glslang mesa;
+          inherit gradle jdk17 wawonaSrc androidSDK androidUtils;
+          androidToolchain = toolchainsAndroid.androidToolchain;
+          rustBackend = backend-android;
+          targetPkgs = pkgsAndroidCross;
+          waypipe = toolchainsAndroid.buildForAndroid "waypipe" { };
+          gradleTask = ":app:assembleRelease";
+          release = true;
+        };
+
         androidToolchainSanity = import ./dependencies/toolchains/android-toolchain-sanity.nix {
           pkgs = androidPkgs;
           androidToolchain = toolchainsAndroid.androidToolchain;
@@ -316,6 +329,7 @@
 
         packages = commonPackages // (pkgs.lib.optionalAttrs (isLinuxHost || androidSDK != null) {
           wawona-android = wawonaAndroidPkg;
+          wawona-android-release = wawonaAndroidReleasePkg;
           wawona-android-backend = backend-android;
           android-toolchain-sanity = androidToolchainSanity;
           gradlegen = gradlegenPkg.generateScript;
