@@ -44,23 +44,41 @@ public enum MachineStatus: String, Codable, CaseIterable, Sendable {
 // SKIP @bridgeMembers
 public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
     public var renderer: String?
+    public var vulkanDriver: String?
+    public var openGLDriver: String?
+    public var dmabufEnabled: Bool?
     public var inputProfile: String?
-    public var useBundledApp: Bool?
     public var bundledAppID: String?
     public var waypipeEnabled: Bool?
+    public var forceSSD: Bool?
+    public var autoScale: Bool?
+    public var waylandDisplay: String?
+    public var colorOperations: Bool?
 
     public init(
         renderer: String? = nil,
+        vulkanDriver: String? = nil,
+        openGLDriver: String? = nil,
+        dmabufEnabled: Bool? = nil,
         inputProfile: String? = nil,
-        useBundledApp: Bool? = nil,
         bundledAppID: String? = nil,
-        waypipeEnabled: Bool? = nil
+        waypipeEnabled: Bool? = nil,
+        forceSSD: Bool? = nil,
+        autoScale: Bool? = nil,
+        waylandDisplay: String? = nil,
+        colorOperations: Bool? = nil
     ) {
         self.renderer = renderer
+        self.vulkanDriver = vulkanDriver
+        self.openGLDriver = openGLDriver
+        self.dmabufEnabled = dmabufEnabled
         self.inputProfile = inputProfile
-        self.useBundledApp = useBundledApp
         self.bundledAppID = bundledAppID
         self.waypipeEnabled = waypipeEnabled
+        self.forceSSD = forceSSD
+        self.autoScale = autoScale
+        self.waylandDisplay = waylandDisplay
+        self.colorOperations = colorOperations
     }
 }
 

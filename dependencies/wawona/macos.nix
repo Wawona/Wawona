@@ -597,6 +597,10 @@ GEN_HEADER
             mkdir -p $out/Applications/Wawona.app/Contents/Resources
             
             cp Wawona $out/Applications/Wawona.app/Contents/MacOS/
+            if [ -d src/resources/macos ]; then
+              mkdir -p $out/Applications/Wawona.app/Contents/Resources/macos
+              cp -R src/resources/macos/. $out/Applications/Wawona.app/Contents/Resources/macos/
+            fi
 
             # Populate project output
             mkdir -p $project

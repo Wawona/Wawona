@@ -66,10 +66,6 @@
 | **Color Operations** | `colorOperations` / `ColorOperations` | Switch | On (Android), Off (macOS/iOS) | All | Color profiles, HDR requests |
 | **Nested Compositors** | `nestedCompositorsSupport` / `NestedCompositorsSupport` | Switch | On | All | Support nested Wayland compositors |
 | **Multiple Clients** | `multipleClients` / `MultipleClients` | Switch | On (macOS), Off (iOS/Android) | All | Allow multiple Wayland clients simultaneously |
-| **Enable Launcher** | `enableLauncher` / `EnableLauncher` | Switch | Off | All | Start built-in Wayland Shell |
-| **Enable Weston Simple SHM** | `westonSimpleSHMEnabled` / `WestonSimpleSHMEnabled` | Switch | Off | All | Start weston-simple-shm on launch |
-| **Enable Native Weston** | `westonEnabled` / `WestonEnabled` | Switch | Off | All | Start full Weston compositor on launch |
-| **Enable Weston Terminal** | `westonTerminalEnabled` / `WestonTerminalEnabled` | Switch | Off | All | Start weston-terminal on launch |
 
 ---
 

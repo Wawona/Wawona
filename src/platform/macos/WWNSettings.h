@@ -32,9 +32,6 @@ bool WWNSettings_GetMultipleClientsEnabled(void);
 // Waypipe
 bool WWNSettings_GetWaypipeRSSupportEnabled(void);
 
-// Weston Simple SHM
-bool WWNSettings_GetWestonSimpleSHMEnabled(void);
-
 // Network / Remote Access
 bool WWNSettings_GetEnableTCPListener(void);
 int WWNSettings_GetTCPListenerPort(void);
@@ -71,7 +68,6 @@ typedef struct {
   bool swapCmdAsCtrl;
   bool multipleClients;
   bool waypipeRSSupport;
-  bool westonSimpleSHMEnabled;
   bool enableTCPListener;
   int tcpPort;
   // Rendering backend is handled separately or via separate flags

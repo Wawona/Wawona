@@ -57,7 +57,6 @@ struct MachineEditorView: View {
             containerSubtype: base.containerSubtype,
             inputProfile: base.inputProfile,
             bundledAppID: base.bundledAppID,
-            useBundledApp: base.useBundledApp,
             waypipeEnabled: base.waypipeEnabled
         )
     }

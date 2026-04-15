@@ -160,12 +160,16 @@ int main(int argc, char *argv[]) {
 #import "./ui/About/WWNAboutPanel.h"
 #import "./ui/Machines/WWNMachinesCoordinator.h"
 #import "./ui/Settings/WWNPreferences.h"
+#import "WWNLaunchAgentManager.h"
 
 // Global references for signal handler
 extern volatile pid_t g_active_waypipe_pgid;
 
 // Global cleanup for atexit
 static int g_instance_lock_fd = -1;
+static int g_host_lock_fd = -1;
+static int g_menubar_lock_fd = -1;
+static BOOL g_show_about_on_launch = NO;
 
 static void release_instance_lock(void) {
   if (g_instance_lock_fd >= 0) {
@@ -173,6 +177,105 @@ static void release_instance_lock(void) {
     close(g_instance_lock_fd);
     g_instance_lock_fd = -1;
   }
+}
+
+static void release_mode_lock(int *fdRef) {
+  if (!fdRef || *fdRef < 0) {
+    return;
+  }
+  flock(*fdRef, LOCK_UN);
+  close(*fdRef);
+  *fdRef = -1;
+}
+
+static BOOL acquire_mode_lock(NSString *name, int *fdRef) {
+  if (!name || !fdRef) {
+    return NO;
+  }
+  NSString *lockDir = [NSString stringWithFormat:@"/tmp/wawona-%d", getuid()];
+  [[NSFileManager defaultManager] createDirectoryAtPath:lockDir
+                            withIntermediateDirectories:YES
+                                             attributes:@{
+                                               NSFilePosixPermissions : @0700
+                                             }
+                                                  error:nil];
+  NSString *lockPath = [lockDir stringByAppendingPathComponent:name];
+  int fd = open([lockPath fileSystemRepresentation], O_CREAT | O_RDWR, 0600);
+  if (fd < 0) {
+    return NO;
+  }
+  if (flock(fd, LOCK_EX | LOCK_NB) != 0) {
+    close(fd);
+    return NO;
+  }
+  *fdRef = fd;
+  return YES;
+}
+
+static NSString *wwn_runtime_dir(void) {
+  const char *runtime_dir = getenv("XDG_RUNTIME_DIR");
+  if (runtime_dir && strlen(runtime_dir) > 0) {
+    return [NSString stringWithUTF8String:runtime_dir];
+  }
+  return [NSString stringWithFormat:@"/tmp/wawona-%d", getuid()];
+}
+
+static NSString *wwn_runtime_state_path(void) {
+  return [wwn_runtime_dir() stringByAppendingPathComponent:@"wawona-runtime-state.plist"];
+}
+
+static NSString *wwn_runtime_env_path(void) {
+  return [wwn_runtime_dir() stringByAppendingPathComponent:@"wawona-env.sh"];
+}
+
+static void wwn_write_runtime_state(BOOL healthy, NSString *socketName,
+                                    NSString *socketPath, NSString *mode,
+                                    NSString *error) {
+  NSString *runtimeDir = wwn_runtime_dir();
+  [[NSFileManager defaultManager] createDirectoryAtPath:runtimeDir
+                            withIntermediateDirectories:YES
+                                             attributes:@{
+                                               NSFilePosixPermissions : @0700
+                                             }
+                                                  error:nil];
+  NSMutableDictionary *state = [NSMutableDictionary dictionary];
+  state[@"healthy"] = @(healthy);
+  state[@"pid"] = @((NSInteger)getpid());
+  state[@"mode"] = mode ?: @"unknown";
+  state[@"xdgRuntimeDir"] = runtimeDir;
+  state[@"waylandDisplay"] = socketName ?: @"wayland-0";
+  state[@"socketPath"] = socketPath ?: [runtimeDir stringByAppendingPathComponent:(socketName ?: @"wayland-0")];
+  state[@"startedAt"] = @([[NSDate date] timeIntervalSince1970]);
+  if (error.length > 0) {
+    state[@"lastError"] = error;
+  }
+  [state writeToFile:wwn_runtime_state_path() atomically:YES];
+}
+
+static void wwn_write_runtime_exports(NSString *socketName) {
+  NSString *runtimeDir = wwn_runtime_dir();
+  NSString *display = socketName.length > 0 ? socketName : @"wayland-0";
+  NSString *contents = [NSString stringWithFormat:
+      @"#!/bin/sh\nexport XDG_RUNTIME_DIR=\"%@\"\nexport WAYLAND_DISPLAY=\"%@\"\n",
+      runtimeDir, display];
+  NSString *path = wwn_runtime_env_path();
+  [contents writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+  chmod([path fileSystemRepresentation], 0700);
+}
+
+static BOOL wwn_is_compositor_socket_ready(void) {
+  NSDictionary *state = [NSDictionary dictionaryWithContentsOfFile:wwn_runtime_state_path()];
+  if (![state isKindOfClass:[NSDictionary class]]) {
+    return NO;
+  }
+  if (![state[@"healthy"] boolValue]) {
+    return NO;
+  }
+  NSString *socketPath = [state[@"socketPath"] isKindOfClass:[NSString class]] ? state[@"socketPath"] : @"";
+  if (socketPath.length == 0) {
+    return NO;
+  }
+  return [[NSFileManager defaultManager] fileExistsAtPath:socketPath];
 }
 
 static void activate_existing_instance(void) {
@@ -229,7 +332,10 @@ static void cleanup_on_exit(void) {
 
   // Stop Rust compositor
   [[WWNCompositorBridge sharedBridge] stop];
+  wwn_write_runtime_state(NO, @"wayland-0", nil, @"shutdown", @"process exiting");
   release_instance_lock();
+  release_mode_lock(&g_host_lock_fd);
+  release_mode_lock(&g_menubar_lock_fd);
 }
 
 // Emergency crash handler - must be strictly async-signal-safe
@@ -273,6 +379,11 @@ static void setup_signal_sources(void) {
 @implementation WWNMacAppDelegate
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
+  NSError *agentError = nil;
+  (void)[[WWNLaunchAgentManager sharedManager]
+      ensureCompositorAndMenuAgents:&agentError];
+  (void)agentError;
+
   WWNPreferencesManager *prefs = [WWNPreferencesManager sharedManager];
   if (![prefs hasSeenWelcome]) {
     [NSApp activateIgnoringOtherApps:YES];
@@ -284,7 +395,11 @@ static void setup_signal_sources(void) {
     [alert runModal];
     [prefs setHasSeenWelcome:YES];
   }
-  [[WWNMachinesCoordinator sharedCoordinator] showMachinesWindowAndActivate:YES];
+  if (g_show_about_on_launch) {
+    [[WWNAboutPanel sharedAboutPanel] showAboutPanel:nil];
+  } else {
+    [[WWNMachinesCoordinator sharedCoordinator] showMachinesWindowAndActivate:YES];
+  }
 }
 
 - (void)applicationWillTerminate:(NSNotification *)notification {
@@ -334,6 +449,162 @@ static void setup_signal_sources(void) {
 
 @end
 
+@interface WWNMenuBarController : NSObject
+@property(nonatomic, strong) NSStatusItem *statusItem;
+@property(nonatomic, strong) NSMenuItem *statusLineItem;
+@property(nonatomic, strong) NSTimer *pollTimer;
+@end
+
+@implementation WWNMenuBarController
+
+- (instancetype)init {
+  self = [super init];
+  if (self) {
+    _statusItem = [[NSStatusBar systemStatusBar]
+        statusItemWithLength:NSVariableStatusItemLength];
+    _statusItem.button.title = @"Wawona";
+    _statusItem.button.toolTip = @"Wawona Compositor";
+
+    NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Wawona"];
+    _statusLineItem = [[NSMenuItem alloc] initWithTitle:@"Compositor: unknown"
+                                                  action:nil
+                                           keyEquivalent:@""];
+    [_statusLineItem setEnabled:NO];
+    [menu addItem:_statusLineItem];
+    [menu addItem:[NSMenuItem separatorItem]];
+
+    NSMenuItem *restartItem =
+        [[NSMenuItem alloc] initWithTitle:@"Restart Compositor"
+                                   action:@selector(restartCompositor:)
+                            keyEquivalent:@"r"];
+    restartItem.target = self;
+    [menu addItem:restartItem];
+
+    NSMenuItem *stopItem = [[NSMenuItem alloc] initWithTitle:@"Stop Compositor"
+                                                       action:@selector(stopCompositor:)
+                                                keyEquivalent:@"s"];
+    stopItem.target = self;
+    [menu addItem:stopItem];
+
+    NSMenuItem *startItem = [[NSMenuItem alloc] initWithTitle:@"Start Compositor"
+                                                        action:@selector(startCompositor:)
+                                                 keyEquivalent:@""];
+    startItem.target = self;
+    [menu addItem:startItem];
+    [menu addItem:[NSMenuItem separatorItem]];
+
+    NSMenuItem *toggleLogin =
+        [[NSMenuItem alloc] initWithTitle:@"Toggle Launch Wawona.app at Login"
+                                   action:@selector(toggleAppLaunchAtLogin:)
+                            keyEquivalent:@"l"];
+    toggleLogin.target = self;
+    [menu addItem:toggleLogin];
+    [menu addItem:[NSMenuItem separatorItem]];
+
+    NSMenuItem *openApp =
+        [[NSMenuItem alloc] initWithTitle:@"Open Wawona"
+                                   action:@selector(openWawonaApp:)
+                            keyEquivalent:@"o"];
+    openApp.target = self;
+    [menu addItem:openApp];
+
+    NSMenuItem *aboutItem =
+        [[NSMenuItem alloc] initWithTitle:@"About Wawona"
+                                   action:@selector(openWawonaAbout:)
+                            keyEquivalent:@""];
+    aboutItem.target = self;
+    [menu addItem:aboutItem];
+    [menu addItem:[NSMenuItem separatorItem]];
+
+    NSMenuItem *quitItem =
+        [[NSMenuItem alloc] initWithTitle:@"Quit Menu Bar"
+                                   action:@selector(quitMenuBar:)
+                            keyEquivalent:@"q"];
+    quitItem.target = self;
+    [menu addItem:quitItem];
+
+    _statusItem.menu = menu;
+    _pollTimer = [NSTimer scheduledTimerWithTimeInterval:2.0
+                                                   target:self
+                                                 selector:@selector(refreshStatus:)
+                                                 userInfo:nil
+                                                  repeats:YES];
+    [self refreshStatus:nil];
+  }
+  return self;
+}
+
+- (void)refreshStatus:(id)sender {
+  (void)sender;
+  BOOL running = wwn_is_compositor_socket_ready();
+  self.statusLineItem.title =
+      running ? @"Compositor: running" : @"Compositor: stopped";
+}
+
+- (void)restartCompositor:(id)sender {
+  (void)sender;
+  [[WWNLaunchAgentManager sharedManager] restartCompositorAgent];
+  [self refreshStatus:nil];
+}
+
+- (void)stopCompositor:(id)sender {
+  (void)sender;
+  [[WWNLaunchAgentManager sharedManager] stopCompositorAgent];
+  [self refreshStatus:nil];
+}
+
+- (void)startCompositor:(id)sender {
+  (void)sender;
+  [[WWNLaunchAgentManager sharedManager] startCompositorAgent];
+  [self refreshStatus:nil];
+}
+
+- (void)toggleAppLaunchAtLogin:(id)sender {
+  (void)sender;
+  WWNLaunchAgentManager *manager = [WWNLaunchAgentManager sharedManager];
+  if ([manager isAppLaunchAgentLoaded]) {
+    [manager disableAppLaunchAtLogin];
+  } else {
+    [manager enableAppLaunchAtLogin];
+  }
+}
+
+- (void)openWawonaApp:(id)sender {
+  (void)sender;
+  NSURL *bundleURL = [NSBundle mainBundle].bundleURL;
+  NSString *bundlePath = bundleURL.path;
+  if (![bundlePath hasSuffix:@".app"]) {
+    bundlePath =
+        [[bundlePath stringByDeletingLastPathComponent] stringByDeletingLastPathComponent];
+  }
+  NSWorkspaceOpenConfiguration *config = [NSWorkspaceOpenConfiguration configuration];
+  [NSWorkspace.sharedWorkspace openApplicationAtURL:[NSURL fileURLWithPath:bundlePath]
+                                      configuration:config
+                                  completionHandler:nil];
+}
+
+- (void)openWawonaAbout:(id)sender {
+  (void)sender;
+  NSURL *bundleURL = [NSBundle mainBundle].bundleURL;
+  NSString *bundlePath = bundleURL.path;
+  if (![bundlePath hasSuffix:@".app"]) {
+    bundlePath =
+        [[bundlePath stringByDeletingLastPathComponent] stringByDeletingLastPathComponent];
+  }
+  NSWorkspaceOpenConfiguration *config = [NSWorkspaceOpenConfiguration configuration];
+  config.arguments = @[ @"--show-about" ];
+  [NSWorkspace.sharedWorkspace openApplicationAtURL:[NSURL fileURLWithPath:bundlePath]
+                                      configuration:config
+                                  completionHandler:nil];
+}
+
+- (void)quitMenuBar:(id)sender {
+  (void)sender;
+  [NSApp terminate:nil];
+}
+
+@end
+
 int main(int argc, char *argv[]) {
   @autoreleasepool {
     // Overwrite argv[0] so macOS menu bar shows "Wawona" instead of the binary
@@ -347,6 +618,8 @@ int main(int argc, char *argv[]) {
     setbuf(stdout, NULL);
     setbuf(stderr, NULL);
 
+    BOOL compositorHostMode = NO;
+    BOOL menuBarMode = NO;
     for (int i = 1; i < argc; i++) {
       if (strcmp(argv[i], "--version") == 0 || strcmp(argv[i], "-v") == 0) {
 #ifdef WAWONA_VERSION
@@ -356,6 +629,76 @@ int main(int argc, char *argv[]) {
 #endif
         return 0;
       }
+      if (strcmp(argv[i], "--compositor-host") == 0) {
+        compositorHostMode = YES;
+      } else if (strcmp(argv[i], "--menubar") == 0) {
+        menuBarMode = YES;
+      } else if (strcmp(argv[i], "--show-about") == 0) {
+        g_show_about_on_launch = YES;
+      }
+    }
+
+    if (compositorHostMode && menuBarMode) {
+      WWNLog("MAIN", @"Invalid startup flags: --compositor-host and --menubar are mutually exclusive");
+      return 2;
+    }
+
+    if (compositorHostMode) {
+      if (!acquire_mode_lock(@"compositor-host.lock", &g_host_lock_fd)) {
+        WWNLog("MAIN", @"Compositor host already running; exiting host mode.");
+        return 0;
+      }
+      [[NSProcessInfo processInfo] setProcessName:@"WawonaCompositorHost"];
+      [NSApplication sharedApplication];
+      [NSApp setActivationPolicy:NSApplicationActivationPolicyProhibited];
+
+      NSString *runtimePath = [NSString stringWithFormat:@"/tmp/wawona-%d", getuid()];
+      setenv("XDG_RUNTIME_DIR", [runtimePath UTF8String], 1);
+      [[NSFileManager defaultManager] createDirectoryAtPath:runtimePath
+                                withIntermediateDirectories:YES
+                                                 attributes:@{
+                                                   NSFilePosixPermissions : @0700
+                                                 }
+                                                      error:nil];
+
+      WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+      [bridge setOutputWidth:1024 height:768 scale:1.0f];
+      [bridge setForceSSD:WWNSettings_GetForceServerSideDecorations()];
+      if (![bridge startWithSocketName:@"wayland-0"]) {
+        wwn_write_runtime_state(NO, @"wayland-0", nil, @"compositor-host",
+                                @"failed to start compositor");
+        return 1;
+      }
+      setenv("WAYLAND_DISPLAY", "wayland-0", 1);
+      wwn_write_runtime_exports(@"wayland-0");
+      wwn_write_runtime_state(YES, @"wayland-0", [bridge socketPath],
+                              @"compositor-host", nil);
+      setup_signal_sources();
+      signal(SIGPIPE, SIG_IGN);
+      signal(SIGSEGV, crash_handler);
+      signal(SIGABRT, crash_handler);
+      signal(SIGBUS, crash_handler);
+      signal(SIGILL, crash_handler);
+      [[NSRunLoop mainRunLoop] run];
+      [bridge stop];
+      release_mode_lock(&g_host_lock_fd);
+      return 0;
+    }
+
+    if (menuBarMode) {
+      if (!acquire_mode_lock(@"menubar.lock", &g_menubar_lock_fd)) {
+        return 0;
+      }
+      [[NSProcessInfo processInfo] setProcessName:@"WawonaMenuBar"];
+      [NSApplication sharedApplication];
+      [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+      NSError *agentError = nil;
+      (void)[[WWNLaunchAgentManager sharedManager]
+          ensureCompositorAndMenuAgents:&agentError];
+      __unused WWNMenuBarController *controller = [[WWNMenuBarController alloc] init];
+      [NSApp run];
+      release_mode_lock(&g_menubar_lock_fd);
+      return 0;
     }
 
     WWNLog("MAIN", @"WWN - Wayland Compositor for macOS");
@@ -499,16 +842,6 @@ int main(int argc, char *argv[]) {
                                                }
                                                     error:nil];
 
-    // Reset client-launch preferences so nothing auto-starts from a previous
-    // session.  Clients are now launched exclusively via machine profiles.
-    // This must happen BEFORE WWNPreferencesManager is first accessed, because
-    // its KVO observers use NSKeyValueObservingOptionInitial.
-    NSUserDefaults *launchDefs = [NSUserDefaults standardUserDefaults];
-    [launchDefs setBool:NO forKey:@"WestonEnabled"];
-    [launchDefs setBool:NO forKey:@"WestonTerminalEnabled"];
-    [launchDefs setBool:NO forKey:@"WestonSimpleSHMEnabled"];
-    [launchDefs setBool:NO forKey:@"EnableLauncher"];
-
     // Configure Vulkan ICD based on user-selected driver
     const char *vkDriver = WWNSettings_GetVulkanDriver();
     if (vkDriver && strcmp(vkDriver, "none") != 0) {
@@ -566,12 +899,21 @@ int main(int argc, char *argv[]) {
     [rustCompositor setForceSSD:forceSSD];
     WWNLog("MAIN", @"Initial Force SSD state: %d", forceSSD);
 
-    if (![rustCompositor startWithSocketName:@"wayland-0"]) {
-      WWNLog("MAIN", @"Failed to start Rust compositor");
-      return 1;
+    BOOL compositorStarted = [rustCompositor startWithSocketName:@"wayland-0"];
+    if (!compositorStarted) {
+      if (wwn_is_compositor_socket_ready()) {
+        WWNLog("MAIN", @"Compositor host already running; app will attach to shared runtime environment");
+        setenv("WAYLAND_DISPLAY", "wayland-0", 1);
+      } else {
+        WWNLog("MAIN", @"Failed to start Rust compositor");
+        return 1;
+      }
+    } else {
+      setenv("WAYLAND_DISPLAY", [[rustCompositor socketName] UTF8String], 1);
+      wwn_write_runtime_exports([rustCompositor socketName]);
+      wwn_write_runtime_state(YES, [rustCompositor socketName],
+                              [rustCompositor socketPath], @"app", nil);
     }
-
-    setenv("WAYLAND_DISPLAY", [[rustCompositor socketName] UTF8String], 1);
     setup_signal_sources();
     signal(SIGPIPE,
            SIG_IGN); // broken pipes from waypipe/SSH → EPIPE, not crash

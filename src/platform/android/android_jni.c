@@ -1227,7 +1227,7 @@ static void *render_thread(void *arg) {
        WWNSettings_GetRespectSafeArea() ? "enabled" : "disabled");
   LOGI("  Safe Area: left=%d, top=%d, right=%d, bottom=%d", g_safeAreaLeft,
        g_safeAreaTop, g_safeAreaRight, g_safeAreaBottom);
-  LOGI("  Render macOS Pointer: %s",
+  LOGI("  Host Cursor Rendering: %s",
        WWNSettings_GetRenderMacOSPointer() ? "enabled" : "disabled");
   LOGI("  Swap Cmd as Ctrl: %s",
        WWNSettings_GetSwapCmdAsCtrl() ? "enabled" : "disabled");

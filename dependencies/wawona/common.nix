@@ -57,6 +57,8 @@ rec {
     "src/platform/macos/main.m"
     "src/platform/macos/WWNCompositorBridge.m"
     "src/platform/macos/WWNCompositorBridge.h"
+    "src/platform/macos/WWNLaunchAgentManager.m"
+    "src/platform/macos/WWNLaunchAgentManager.h"
     "src/platform/macos/WWNSettings.h"
     "src/platform/macos/WWNSettings.m"
     "src/platform/macos/WWNSettings.c"

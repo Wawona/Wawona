@@ -14,6 +14,7 @@ struct GraphicsSettingsView: View {
                     }
                 }
                 Toggle("Force Server-Side Decorations", isOn: $preferences.forceSSD)
+                Toggle("HDR / Color Operations", isOn: $preferences.colorOperations)
             }
         }
         .onDisappear { preferences.save() }

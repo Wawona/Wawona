@@ -13,7 +13,6 @@ public enum MachineEditorIntent: Sendable {
     case updateContainerSubtype(String)
     case updateInputProfile(String)
     case updateBundledAppID(String)
-    case updateUseBundledApp(Bool)
     case updateWaypipeEnabled(Bool)
 }
 
@@ -30,7 +29,6 @@ public enum MachineEditorFieldID: String, Sendable, CaseIterable {
     case containerSubtype
     case inputProfile
     case bundledAppID
-    case useBundledApp
     case waypipeEnabled
 }
 
@@ -67,7 +65,6 @@ public struct MachineEditorState: Sendable, Hashable {
     public var containerSubtype: String
     public var inputProfile: String
     public var bundledAppID: String
-    public var useBundledApp: Bool
     public var waypipeEnabled: Bool
 
     public init(
@@ -84,7 +81,6 @@ public struct MachineEditorState: Sendable, Hashable {
         containerSubtype: String = "",
         inputProfile: String = "direct",
         bundledAppID: String = "",
-        useBundledApp: Bool = false,
         waypipeEnabled: Bool = true
     ) {
         self.id = id
@@ -100,7 +96,6 @@ public struct MachineEditorState: Sendable, Hashable {
         self.containerSubtype = containerSubtype
         self.inputProfile = inputProfile
         self.bundledAppID = bundledAppID
-        self.useBundledApp = useBundledApp
         self.waypipeEnabled = waypipeEnabled
     }
 
@@ -125,10 +120,7 @@ public struct MachineEditorValidation: Sendable {
         var fields: [MachineEditorFieldID] = [MachineEditorFieldID.name, MachineEditorFieldID.type]
         if state.isNative {
             fields.append(MachineEditorFieldID.launcher)
-            fields.append(MachineEditorFieldID.useBundledApp)
-            if state.useBundledApp {
-                fields.append(MachineEditorFieldID.bundledAppID)
-            }
+            fields.append(MachineEditorFieldID.bundledAppID)
         } else if state.isSSH {
             fields.append(contentsOf: [
                 MachineEditorFieldID.sshHost,
@@ -173,8 +165,6 @@ public struct MachineEditorValidation: Sendable {
             return MachineEditorFieldMetadata(id: .inputProfile, label: "Input Profile", helperText: "Input behavior profile.", required: true)
         case .bundledAppID:
             return MachineEditorFieldMetadata(id: .bundledAppID, label: "Bundled App", helperText: "Bundled native app identifier.")
-        case .useBundledApp:
-            return MachineEditorFieldMetadata(id: .useBundledApp, label: "Use Bundled App")
         case .waypipeEnabled:
             return MachineEditorFieldMetadata(id: .waypipeEnabled, label: "Waypipe Enabled")
         }

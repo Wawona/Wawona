@@ -23,9 +23,7 @@ struct WWNMachineEditorView: View {
 
   @State private var selectedClientId: String
   @State private var customCommand: String
-  @State private var enableLauncher: Bool
   @State private var customIsNestedCompositor: Bool
-  @State private var overrideGlobalThumbnailSetting: Bool
   @State private var machineThumbnailEnabled: Bool
   @State private var waypipeDisplayNumber: String
   @State private var waypipeCompress: String
@@ -45,6 +43,16 @@ struct WWNMachineEditorView: View {
   @State private var waypipeXwls: Bool
   @State private var waypipeTitlePrefix: String
   @State private var waypipeSecCtx: String
+  @State private var forceServerSideDecorations: Bool
+  @State private var autoScale: Bool
+  @State private var renderMacOSPointer: Bool
+  @State private var touchInputType: String
+  @State private var swapCmdWithAlt: Bool
+  @State private var universalClipboard: Bool
+  @State private var vulkanDriver: String
+  @State private var openGLDriver: String
+  @State private var dmabufEnabled: Bool
+  @State private var colorOperations: Bool
 
   init(
     title: String,
@@ -71,18 +79,12 @@ struct WWNMachineEditorView: View {
     let runtimeOverrides: [String: Any] = initial?.runtimeOverrides ?? [:]
     let overrides: [String: Any] = initial?.settingsOverrides ?? [:]
     let prefs = WWNPreferencesManager.shared()
-    _enableLauncher = State(initialValue: (runtimeOverrides["useBundledApp"] as? Bool) ?? ((overrides["EnableLauncher"] as? Bool) ?? false))
     _customCommand = State(initialValue: (overrides["NativeCustomCommand"] as? String) ?? "")
     _customIsNestedCompositor = State(initialValue: (overrides["RenderMacOSPointer"] as? Bool) == false)
-    if let thumbnailOverride = runtimeOverrides["machineThumbnailEnabledOverride"] as? Bool {
-      _overrideGlobalThumbnailSetting = State(initialValue: true)
-      _machineThumbnailEnabled = State(initialValue: thumbnailOverride)
-    } else {
-      _overrideGlobalThumbnailSetting = State(initialValue: false)
-      _machineThumbnailEnabled = State(
-        initialValue: WWNPreferencesManager.shared().machineSessionThumbnailsEnabled()
-      )
-    }
+    _machineThumbnailEnabled = State(
+      initialValue: (runtimeOverrides["machineThumbnailEnabledOverride"] as? Bool)
+        ?? WWNPreferencesManager.shared().machineSessionThumbnailsEnabled()
+    )
     _waypipeDisplayNumber = State(initialValue: (overrides["WaylandDisplayNumber"] as? NSNumber)?.stringValue ?? "\(prefs.waylandDisplayNumber())")
     _waypipeCompress = State(initialValue: overrides["WaypipeCompress"] as? String ?? prefs.waypipeCompress())
     _waypipeCompressLevel = State(initialValue: (overrides["WaypipeCompressLevel"] as? NSNumber)?.stringValue ?? (overrides["WaypipeCompressLevel"] as? String ?? prefs.waypipeCompressLevel()))
@@ -101,6 +103,16 @@ struct WWNMachineEditorView: View {
     _waypipeXwls = State(initialValue: (overrides["WaypipeXwls"] as? Bool) ?? prefs.waypipeXwls())
     _waypipeTitlePrefix = State(initialValue: overrides["WaypipeTitlePrefix"] as? String ?? prefs.waypipeTitlePrefix())
     _waypipeSecCtx = State(initialValue: overrides["WaypipeSecCtx"] as? String ?? prefs.waypipeSecCtx())
+    _forceServerSideDecorations = State(initialValue: (overrides["ForceServerSideDecorations"] as? Bool) ?? prefs.forceServerSideDecorations())
+    _autoScale = State(initialValue: (overrides["AutoScale"] as? Bool) ?? prefs.autoScale())
+    _renderMacOSPointer = State(initialValue: (overrides["RenderMacOSPointer"] as? Bool) ?? prefs.renderMacOSPointer())
+    _touchInputType = State(initialValue: overrides["TouchInputType"] as? String ?? prefs.touchInputType())
+    _swapCmdWithAlt = State(initialValue: (overrides["SwapCmdWithAlt"] as? Bool) ?? prefs.swapCmdWithAlt())
+    _universalClipboard = State(initialValue: (overrides["UniversalClipboard"] as? Bool) ?? prefs.universalClipboardEnabled())
+    _vulkanDriver = State(initialValue: overrides["VulkanDriver"] as? String ?? prefs.vulkanDriver())
+    _openGLDriver = State(initialValue: overrides["OpenGLDriver"] as? String ?? prefs.openglDriver())
+    _dmabufEnabled = State(initialValue: (overrides["DmabufEnabled"] as? Bool) ?? prefs.dmabufEnabled())
+    _colorOperations = State(initialValue: (overrides["ColorOperations"] as? Bool) ?? prefs.colorOperations())
 
     if let stored = runtimeOverrides["bundledAppID"] as? String, !stored.isEmpty {
       _selectedClientId = State(initialValue: stored)
@@ -136,13 +148,8 @@ struct WWNMachineEditorView: View {
               .labelsHidden()
             }
             Divider()
-            Toggle("Override Global Thumbnail Setting", isOn: $overrideGlobalThumbnailSetting)
+            Toggle("Show Session Thumbnail On Card", isOn: $machineThumbnailEnabled)
               .toggleStyle(.switch)
-            if overrideGlobalThumbnailSetting {
-              Toggle("Show Session Thumbnail On Card", isOn: $machineThumbnailEnabled)
-                .toggleStyle(.switch)
-                .padding(.leading, 18)
-            }
           }
 
           if type == kWWNMachineTypeNative {
@@ -153,6 +160,8 @@ struct WWNMachineEditorView: View {
             remoteConnectivitySection
             waypipeOverridesSection
           }
+
+          displayInputGraphicsSection
 
           if type == kWWNMachineTypeVirtualMachine {
             virtualMachineSection
@@ -181,6 +190,44 @@ struct WWNMachineEditorView: View {
     #endif
   }
 
+  private var displayInputGraphicsSection: some View {
+    sectionCard("Display / Input / Graphics", subtitle: "Per-machine overrides for global Display, Input, Graphics, and HDR settings.") {
+      Toggle("Force Server-Side Decorations", isOn: $forceServerSideDecorations)
+      Toggle("Auto Scale", isOn: $autoScale)
+      Toggle("Show macOS Cursor", isOn: $renderMacOSPointer)
+      labeledField("Touch Input Type") {
+        Picker("", selection: $touchInputType) {
+          Text("Multi-Touch").tag("Multi-Touch")
+          Text("Touchpad").tag("Touchpad")
+        }
+        .pickerStyle(.menu)
+        .labelsHidden()
+      }
+      Toggle("Swap CMD with ALT", isOn: $swapCmdWithAlt)
+      Toggle("Universal Clipboard", isOn: $universalClipboard)
+      labeledField("Vulkan Driver") {
+        Picker("", selection: $vulkanDriver) {
+          Text("None").tag("none")
+          Text("MoltenVK").tag("moltenvk")
+          Text("KosmicKrisp").tag("kosmickrisp")
+        }
+        .pickerStyle(.menu)
+        .labelsHidden()
+      }
+      labeledField("OpenGL Driver") {
+        Picker("", selection: $openGLDriver) {
+          Text("None").tag("none")
+          Text("ANGLE").tag("angle")
+          Text("MoltenGL").tag("moltengl")
+        }
+        .pickerStyle(.menu)
+        .labelsHidden()
+      }
+      Toggle("Enable DMABUF", isOn: $dmabufEnabled)
+      Toggle("HDR / Color Operations", isOn: $colorOperations)
+    }
+  }
+
   // MARK: - Machine Type Options
 
   @ViewBuilder
@@ -205,18 +252,6 @@ struct WWNMachineEditorView: View {
         }
         customClientOption
 
-        Divider()
-
-        Toggle(isOn: $enableLauncher) {
-          VStack(alignment: .leading, spacing: 2) {
-            Text("Enable Client Launcher")
-              .font(.subheadline.weight(.semibold))
-            Text("Allow launching additional Wayland clients from the compositor")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          }
-        }
-        .toggleStyle(.switch)
       }
     }
   }
@@ -570,19 +605,21 @@ struct WWNMachineEditorView: View {
     var runtimeOverrides: [String: Any] = profile.runtimeOverrides
     overrides["NativeClientId"] = selectedClientId
     overrides["NativeCustomCommand"] = customCommand.trimmingCharacters(in: .whitespacesAndNewlines)
-    overrides["EnableLauncher"] = enableLauncher
     overrides["WestonEnabled"] = selectedClientId == "weston"
     overrides["WestonTerminalEnabled"] = selectedClientId == "weston-terminal"
     overrides["WestonSimpleSHMEnabled"] = selectedClientId == "weston-simple-shm"
     overrides["FootEnabled"] = selectedClientId == "foot"
 
-    let isNested: Bool
-    if selectedClientId == kNativeClientCustomId {
-      isNested = customIsNestedCompositor
-    } else {
-      isNested = kBundledClients.first(where: { $0.id == selectedClientId })?.isNestedCompositor ?? false
-    }
-    overrides["RenderMacOSPointer"] = !isNested
+    overrides["RenderMacOSPointer"] = renderMacOSPointer
+    overrides["ForceServerSideDecorations"] = forceServerSideDecorations
+    overrides["AutoScale"] = autoScale
+    overrides["TouchInputType"] = touchInputType
+    overrides["SwapCmdWithAlt"] = swapCmdWithAlt
+    overrides["UniversalClipboard"] = universalClipboard
+    overrides["VulkanDriver"] = vulkanDriver
+    overrides["OpenGLDriver"] = openGLDriver
+    overrides["DmabufEnabled"] = dmabufEnabled
+    overrides["ColorOperations"] = colorOperations
     overrides["WaylandDisplayNumber"] = Int(waypipeDisplayNumber) ?? 0
     overrides["WaypipeCompress"] = waypipeCompress
     overrides["WaypipeCompressLevel"] = Int(waypipeCompressLevel) ?? 7
@@ -609,10 +646,10 @@ struct WWNMachineEditorView: View {
     overrides["SSHKeyPath"] = profile.sshKeyPath
     overrides["SSHKeyPassphrase"] = profile.sshKeyPassphrase
 
-    runtimeOverrides["useBundledApp"] = enableLauncher
+    runtimeOverrides["useBundledApp"] = (type == kWWNMachineTypeNative && !selectedClientId.isEmpty)
     runtimeOverrides["bundledAppID"] = selectedClientId
     runtimeOverrides["waypipeEnabled"] = (type == kWWNMachineTypeSSHWaypipe || type == kWWNMachineTypeSSHTerminal)
-    if overrideGlobalThumbnailSetting {
+    if machineThumbnailEnabled != WWNPreferencesManager.shared().machineSessionThumbnailsEnabled() {
       runtimeOverrides["machineThumbnailEnabledOverride"] = machineThumbnailEnabled
     } else {
       runtimeOverrides.removeValue(forKey: "machineThumbnailEnabledOverride")

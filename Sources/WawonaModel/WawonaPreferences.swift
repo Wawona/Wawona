@@ -85,6 +85,12 @@ public struct ResolvedMachineSettings: Hashable, Sendable {
     public var machineName: String
     public var machineType: MachineType
     public var renderer: String
+    public var vulkanDriver: String
+    public var openGLDriver: String
+    public var dmabufEnabled: Bool
+    public var forceSSD: Bool
+    public var autoScale: Bool
+    public var colorOperations: Bool
     public var waylandDisplay: String
     public var sshHost: String
     public var sshUser: String
@@ -92,7 +98,6 @@ public struct ResolvedMachineSettings: Hashable, Sendable {
     public var sshPassword: String
     public var remoteCommand: String
     public var waypipeEnabled: Bool
-    public var useBundledApp: Bool
     public var bundledAppID: String
     public var inputProfile: String
 }
@@ -104,6 +109,7 @@ public final class WawonaPreferences: ObservableObject {
     @Published public var renderer: String = "metal"
     @Published public var forceSSD: Bool = false
     @Published public var autoScale: Bool = true
+    @Published public var colorOperations: Bool = false
     @Published public var waylandDisplay: String = "wayland-0"
     @Published public var sshHost: String = ""
     @Published public var sshUser: String = ""
@@ -113,7 +119,6 @@ public final class WawonaPreferences: ObservableObject {
     @Published public var logLevel: String = "info"
     @Published public var defaultInputProfile: String = "direct"
     @Published public var defaultBundledAppID: String = ""
-    @Published public var defaultUseBundledApp: Bool = false
     @Published public var defaultWaypipeEnabled: Bool = true
     @Published public var hasCompletedWelcome: Bool = false
     @Published public var globalClientLaunchers: [ClientLauncher] = ClientLauncher.presets
@@ -130,6 +135,7 @@ public final class WawonaPreferences: ObservableObject {
         renderer = defaults.string(forKey: keyPrefix + "renderer") ?? "metal"
         forceSSD = defaults.bool(forKey: keyPrefix + "forceSSD")
         autoScale = defaults.object(forKey: keyPrefix + "autoScale") as? Bool ?? true
+        colorOperations = defaults.object(forKey: keyPrefix + "colorOperations") as? Bool ?? false
         waylandDisplay = defaults.string(forKey: keyPrefix + "waylandDisplay") ?? "wayland-0"
         sshHost = defaults.string(forKey: keyPrefix + "sshHost") ?? ""
         sshUser = defaults.string(forKey: keyPrefix + "sshUser") ?? ""
@@ -139,7 +145,6 @@ public final class WawonaPreferences: ObservableObject {
         logLevel = defaults.string(forKey: keyPrefix + "logLevel") ?? "info"
         defaultInputProfile = defaults.string(forKey: keyPrefix + "defaultInputProfile") ?? "direct"
         defaultBundledAppID = defaults.string(forKey: keyPrefix + "defaultBundledAppID") ?? ""
-        defaultUseBundledApp = defaults.object(forKey: keyPrefix + "defaultUseBundledApp") as? Bool ?? false
         defaultWaypipeEnabled = defaults.object(forKey: keyPrefix + "defaultWaypipeEnabled") as? Bool ?? true
         hasCompletedWelcome = defaults.bool(forKey: keyPrefix + "hasCompletedWelcome")
 
@@ -157,6 +162,7 @@ public final class WawonaPreferences: ObservableObject {
         defaults.set(renderer, forKey: keyPrefix + "renderer")
         defaults.set(forceSSD, forKey: keyPrefix + "forceSSD")
         defaults.set(autoScale, forKey: keyPrefix + "autoScale")
+        defaults.set(colorOperations, forKey: keyPrefix + "colorOperations")
         defaults.set(waylandDisplay, forKey: keyPrefix + "waylandDisplay")
         defaults.set(sshHost, forKey: keyPrefix + "sshHost")
         defaults.set(sshUser, forKey: keyPrefix + "sshUser")
@@ -166,7 +172,6 @@ public final class WawonaPreferences: ObservableObject {
         defaults.set(logLevel, forKey: keyPrefix + "logLevel")
         defaults.set(defaultInputProfile, forKey: keyPrefix + "defaultInputProfile")
         defaults.set(defaultBundledAppID, forKey: keyPrefix + "defaultBundledAppID")
-        defaults.set(defaultUseBundledApp, forKey: keyPrefix + "defaultUseBundledApp")
         defaults.set(defaultWaypipeEnabled, forKey: keyPrefix + "defaultWaypipeEnabled")
         defaults.set(hasCompletedWelcome, forKey: keyPrefix + "hasCompletedWelcome")
         if let data = try? JSONEncoder().encode(globalClientLaunchers) {
@@ -183,21 +188,29 @@ public final class WawonaPreferences: ObservableObject {
         let normalizedCommand = profile.remoteCommand.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
         let normalizedBundledApp = profile.runtimeOverrides.bundledAppID?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
         let normalizedRenderer = profile.runtimeOverrides.renderer?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
+        let normalizedVulkanDriver = profile.runtimeOverrides.vulkanDriver?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
+        let normalizedOpenGLDriver = profile.runtimeOverrides.openGLDriver?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
         let normalizedInputProfile = profile.runtimeOverrides.inputProfile?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
+        let normalizedWaylandDisplay = profile.runtimeOverrides.waylandDisplay?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
 
         return ResolvedMachineSettings(
             machineID: profile.id,
             machineName: profile.name,
             machineType: profile.type,
             renderer: normalizedRenderer.isEmpty ? renderer : normalizedRenderer,
-            waylandDisplay: waylandDisplay,
+            vulkanDriver: normalizedVulkanDriver.isEmpty ? "moltenvk" : normalizedVulkanDriver,
+            openGLDriver: normalizedOpenGLDriver.isEmpty ? "angle" : normalizedOpenGLDriver,
+            dmabufEnabled: profile.runtimeOverrides.dmabufEnabled ?? true,
+            forceSSD: profile.runtimeOverrides.forceSSD ?? forceSSD,
+            autoScale: profile.runtimeOverrides.autoScale ?? autoScale,
+            colorOperations: profile.runtimeOverrides.colorOperations ?? colorOperations,
+            waylandDisplay: normalizedWaylandDisplay.isEmpty ? waylandDisplay : normalizedWaylandDisplay,
             sshHost: normalizedSSHHost.isEmpty ? sshHost : normalizedSSHHost,
             sshUser: normalizedSSHUser.isEmpty ? sshUser : normalizedSSHUser,
             sshPort: profile.sshPort > 0 ? profile.sshPort : sshPort,
             sshPassword: profile.sshPassword.isEmpty ? sshPassword : profile.sshPassword,
             remoteCommand: normalizedCommand.isEmpty ? "weston-terminal" : normalizedCommand,
             waypipeEnabled: profile.runtimeOverrides.waypipeEnabled ?? defaultWaypipeEnabled,
-            useBundledApp: profile.runtimeOverrides.useBundledApp ?? defaultUseBundledApp,
             bundledAppID: normalizedBundledApp.isEmpty ? defaultBundledAppID : normalizedBundledApp,
             inputProfile: normalizedInputProfile.isEmpty ? defaultInputProfile : normalizedInputProfile
         )

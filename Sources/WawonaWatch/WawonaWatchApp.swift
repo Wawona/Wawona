@@ -1,11 +1,15 @@
 import SwiftUI
 import WawonaModel
-import WawonaUI
 
 public struct WawonaWatchRootView: View {
+    @StateObject private var profileStore = MachineProfileStore()
+    @StateObject private var sessions = SessionOrchestrator()
+
     public init() {}
 
     public var body: some View {
-        WawonaWearCompactRootView()
+        NavigationStack {
+            MachineStatusView(profileStore: profileStore, sessions: sessions)
+        }
     }
 }

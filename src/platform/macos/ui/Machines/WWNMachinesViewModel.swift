@@ -184,6 +184,7 @@ final class WWNMachinesViewModel: ObservableObject {
     WWNMachineProfileStore.setActiveMachineId(profile.machineId)
 
     if profile.type == kWWNMachineTypeNative {
+      launchNativeClientIfNeeded(for: profile)
       statusByMachineId[profile.machineId] = .connected
       onConnected?()
       return
@@ -205,30 +206,17 @@ final class WWNMachinesViewModel: ObservableObject {
 
     if profile.type == kWWNMachineTypeNative {
       let runner = WWNWaypipeRunner.shared()
-      let prefs = WWNPreferencesManager.shared()
       switch selectedClientId(for: profile) {
       case "weston":
         runner?.stopWeston()
-        prefs.setWestonEnabled(false)
       case "weston-terminal":
         runner?.stopWestonTerminal()
-        prefs.setWestonTerminalEnabled(false)
       case "weston-simple-shm":
         runner?.stopWestonSimpleSHM()
-        prefs.setWestonSimpleSHMEnabled(false)
       case "foot":
         runner?.stopFoot()
-        prefs.setFootEnabled(false)
       default:
         break
-      }
-
-      let anyNativeRunning = (runner?.westonRunning == true) ||
-        (runner?.westonTerminalRunning == true) ||
-        (runner?.isWestonSimpleSHMRunning == true) ||
-        (runner?.footRunning == true)
-      if !anyNativeRunning {
-        prefs.setEnableLauncher(false)
       }
     } else if profile.type == kWWNMachineTypeSSHWaypipe ||
                 profile.type == kWWNMachineTypeSSHTerminal {
@@ -472,6 +460,23 @@ final class WWNMachinesViewModel: ObservableObject {
     }
     return profile.type == kWWNMachineTypeSSHWaypipe ||
       profile.type == kWWNMachineTypeSSHTerminal
+  }
+
+  private func launchNativeClientIfNeeded(for profile: WWNMachineProfile) {
+    guard profile.type == kWWNMachineTypeNative else { return }
+    guard let runner = WWNWaypipeRunner.shared() else { return }
+    switch selectedClientId(for: profile) {
+    case "weston":
+      runner.launchWeston()
+    case "weston-terminal":
+      runner.launchWestonTerminal()
+    case "weston-simple-shm":
+      runner.launchWestonSimpleSHM()
+    case "foot":
+      runner.launchFoot()
+    default:
+      break
+    }
   }
 }
 

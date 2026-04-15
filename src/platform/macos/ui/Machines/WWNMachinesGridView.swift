@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 struct WWNMachinesGridView: View {
   let onConnect: (() -> Void)?
@@ -86,13 +89,21 @@ struct WWNMachinesGridView: View {
   }
 
   private var detailContent: some View {
+    #if os(macOS)
+    applyMacToolbarLayout(
+      to: detailPane
+        .navigationTitle(detailNavigationTitle)
+        .toolbar {
+          detailToolbarContent
+        }
+    )
+    #else
     detailPane
       .navigationTitle(detailNavigationTitle)
-      #if os(iOS)
       .toolbar {
         detailToolbarContent
       }
-      #endif
+    #endif
   }
 
   private var detailNavigationTitle: String {
@@ -109,13 +120,20 @@ struct WWNMachinesGridView: View {
     #if os(macOS)
     ToolbarItem(placement: .primaryAction) {
       Button {
+        toggleSidebar()
+      } label: {
+        Label("Toggle Sidebar", systemImage: "sidebar.left")
+      }
+    }
+    ToolbarItem(placement: .automatic) {
+      Button {
         isCreating = true
       } label: {
         Label("Add", systemImage: "plus")
       }
     }
     if let onOpenSettings {
-      ToolbarItem(placement: .secondaryAction) {
+      ToolbarItem(placement: .automatic) {
         Button("Settings", action: onOpenSettings)
       }
     }
@@ -134,6 +152,23 @@ struct WWNMachinesGridView: View {
     }
     #endif
   }
+
+  #if os(macOS)
+  private func toggleSidebar() {
+    NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)),
+                     to: nil,
+                     from: nil)
+  }
+
+  @ViewBuilder
+  private func applyMacToolbarLayout<V: View>(to view: V) -> some View {
+    if #available(macOS 13.0, *) {
+      view.toolbar(removing: .sidebarToggle)
+    } else {
+      view
+    }
+  }
+  #endif
 
   // MARK: - Sidebar
 
@@ -383,8 +418,6 @@ final class WWNMachinesHostingBridge: NSObject {
 // MARK: - macOS Hosting Bridge
 
 #if os(macOS)
-import AppKit
-
 @objc(WWNMachinesHostingBridge)
 @objcMembers
 final class WWNMachinesHostingBridge: NSObject {

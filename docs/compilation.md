@@ -48,8 +48,8 @@ nix build .#wawona-android-backend
 ```bash
 nix run .#xcodegen      # Generate Wawona.xcodeproj (iOS + macOS)
 nix run .#xcodegen-ios  # iOS only
-nix run .#gradlegen     # Generate Gradle project for Android
-nix run .#gradlegen -- --run-skip-export  # Also run skip export into _GEN-android/Skip
+nix run .#gradlegen     # Refresh canonical Android project at ./android
+nix run .#gradlegen -- --run-skip-export  # Refresh ./android/Skip via skip export
 ```
 
 ## Requirements

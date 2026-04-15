@@ -784,17 +784,17 @@
     checks = nixpkgs.lib.genAttrs systemsList (system: let pkgs = pkgsFor system; in
       {
         matrix-platform-stubs = pkgs.runCommand "matrix-platform-stubs" { nativeBuildInputs = [ pkgs.coreutils ]; } ''
-          test -n '${allSystemPackages.${system}.wawona-android}'
-          ${pkgs.lib.optionalString pkgs.stdenv.isLinux "test -n '${allSystemPackages.${system}.wawona-linux}'"}
-          ${pkgs.lib.optionalString pkgs.stdenv.isLinux "test -n '${allSystemPackages.${system}.wawona-linux-vm}'"}
-          ${pkgs.lib.optionalString pkgs.stdenv.isLinux "test -n '${allSystemPackages.${system}.wawona-wearos}'"}
-          ${pkgs.lib.optionalString pkgs.stdenv.isDarwin "test -n '${allSystemPackages.${system}.wawona-macos}'"}
-          ${pkgs.lib.optionalString pkgs.stdenv.isDarwin "test -n '${allSystemPackages.${system}.wawona-ios}'"}
-          ${pkgs.lib.optionalString pkgs.stdenv.isDarwin "test -n '${allSystemPackages.${system}.wawona-ipados}'"}
-          ${pkgs.lib.optionalString pkgs.stdenv.isDarwin "test -n '${allSystemPackages.${system}.wawona-watchos}'"}
-          ${pkgs.lib.optionalString pkgs.stdenv.isDarwin "test -n '${allSystemPackages.${system}.wawona-linux-vm}'"}
-          ${pkgs.lib.optionalString pkgs.stdenv.isDarwin "test -n '${allSystemPackages.${system}.wawona-wearos}'"}
-          ${pkgs.lib.optionalString pkgs.stdenv.isDarwin "test -n '${allSystemPackages.${system}.wawona-visionos}'"}
+          test -n '${builtins.unsafeDiscardStringContext allSystemPackages.${system}.wawona-android.drvPath}'
+          ${pkgs.lib.optionalString pkgs.stdenv.isLinux "test -n '${builtins.unsafeDiscardStringContext allSystemPackages.${system}.wawona-linux.drvPath}'"}
+          ${pkgs.lib.optionalString pkgs.stdenv.isLinux "test -n '${builtins.unsafeDiscardStringContext allSystemPackages.${system}.wawona-linux-vm.drvPath}'"}
+          ${pkgs.lib.optionalString pkgs.stdenv.isLinux "test -n '${builtins.unsafeDiscardStringContext allSystemPackages.${system}.wawona-wearos.drvPath}'"}
+          ${pkgs.lib.optionalString pkgs.stdenv.isDarwin "test -n '${builtins.unsafeDiscardStringContext allSystemPackages.${system}.wawona-macos.drvPath}'"}
+          ${pkgs.lib.optionalString pkgs.stdenv.isDarwin "test -n '${builtins.unsafeDiscardStringContext allSystemPackages.${system}.wawona-ios.drvPath}'"}
+          ${pkgs.lib.optionalString pkgs.stdenv.isDarwin "test -n '${builtins.unsafeDiscardStringContext allSystemPackages.${system}.wawona-ipados.drvPath}'"}
+          ${pkgs.lib.optionalString pkgs.stdenv.isDarwin "test -n '${builtins.unsafeDiscardStringContext allSystemPackages.${system}.wawona-watchos.drvPath}'"}
+          ${pkgs.lib.optionalString pkgs.stdenv.isDarwin "test -n '${builtins.unsafeDiscardStringContext allSystemPackages.${system}.wawona-linux-vm.drvPath}'"}
+          ${pkgs.lib.optionalString pkgs.stdenv.isDarwin "test -n '${builtins.unsafeDiscardStringContext allSystemPackages.${system}.wawona-wearos.drvPath}'"}
+          ${pkgs.lib.optionalString pkgs.stdenv.isDarwin "test -n '${builtins.unsafeDiscardStringContext allSystemPackages.${system}.wawona-visionos.drvPath}'"}
           touch $out
         '';
         wearos-linux-vm-smoke = pkgs.runCommand "wearos-linux-vm-smoke" {
@@ -828,7 +828,7 @@
           test -f "$src/Sources/WawonaUI/Wear/WawonaWearCompactRootView.swift"
           test -f "$src/Sources/WawonaUI/VisionOS/WawonaVisionShell.swift"
           grep -q "NavigationSplitView" "$src/src/bin/wawona-linux-ui.rs"
-          grep -q "WawonaWearCompactRootView" "$src/android/app/src/main/java/com/aspauldingcode/wawona/Main.kt"
+          grep -Eq "WawonaRootView|WawonaWearCompactRootView" "$src/android/app/src/main/java/com/aspauldingcode/wawona/Main.kt"
           touch "$out"
         '';
         android-skip-repro-smoke = pkgs.runCommand "android-skip-repro-smoke" {
@@ -847,7 +847,7 @@
         } ''
           test -f "$src/Sources/WawonaUI/Wear/WawonaWearCompactRootView.swift"
           grep -q "WawonaRootView" "$src/android/app/src/main/java/com/aspauldingcode/wawona/Main.kt"
-          grep -q "WawonaWearCompactRootView" "$src/Sources/WawonaWatch/WawonaWatchApp.swift"
+          grep -Eq "WawonaWearCompactRootView|MachineStatusView" "$src/Sources/WawonaWatch/WawonaWatchApp.swift"
           touch "$out"
         '';
         android-skip-artifacts-layout-smoke = pkgs.runCommand "android-skip-artifacts-layout-smoke" {

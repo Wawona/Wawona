@@ -14,7 +14,6 @@ extern NSString *const kWWNPrefsNestedCompositorsSupport;
 extern NSString *const kWWNPrefsUseMetal4ForNested; // Deprecated - removed
 extern NSString *const kWWNPrefsRenderMacOSPointer;
 extern NSString *const kWWNPrefsMultipleClients;
-extern NSString *const kWWNPrefsEnableLauncher;
 extern NSString *const kWWNPrefsSwapCmdAsCtrl;  // Legacy - use SwapCmdWithAlt
 extern NSString *const kWWNPrefsSwapCmdWithAlt; // New unified key
 extern NSString *const kWWNPrefsTouchInputType;
@@ -73,10 +72,6 @@ extern NSString *const kWWNPrefsSSHKeyPath;
 extern NSString *const kWWNPrefsSSHKeyPassphrase;
 extern NSString *const kWWNPrefsWaypipeUseSSHConfig;
 extern NSString *const kWWNForceSSDChangedNotification;
-extern NSString *const kWWNPrefsWestonSimpleSHMEnabled;
-extern NSString *const kWWNPrefsWestonEnabled;
-extern NSString *const kWWNPrefsWestonTerminalEnabled;
-extern NSString *const kWWNPrefsFootEnabled;
 extern NSString *const kWWNPrefsMachineSessionThumbnailsEnabled;
 @interface WWNPreferencesManager : NSObject
 
@@ -126,24 +121,12 @@ extern NSString *const kWWNPrefsMachineSessionThumbnailsEnabled;
 - (BOOL)multipleClientsEnabled;
 - (void)setMultipleClientsEnabled:(BOOL)enabled;
 
-- (BOOL)enableLauncher;
-- (void)setEnableLauncher:(BOOL)enabled;
 - (BOOL)machineSessionThumbnailsEnabled;
 - (void)setMachineSessionThumbnailsEnabled:(BOOL)enabled;
 
 // Waypipe
 - (BOOL)waypipeRSSupportEnabled;
 - (void)setWaypipeRSSupportEnabled:(BOOL)enabled;
-
-// Weston Simple SHM
-- (BOOL)westonSimpleSHMEnabled;
-- (void)setWestonSimpleSHMEnabled:(BOOL)enabled;
-- (BOOL)westonEnabled;
-- (void)setWestonEnabled:(BOOL)enabled;
-- (BOOL)westonTerminalEnabled;
-- (void)setWestonTerminalEnabled:(BOOL)enabled;
-- (BOOL)footEnabled;
-- (void)setFootEnabled:(BOOL)enabled;
 
 // Network / Remote Access
 - (BOOL)enableTCPListener;

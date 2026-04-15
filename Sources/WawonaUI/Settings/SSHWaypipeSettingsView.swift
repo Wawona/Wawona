@@ -5,7 +5,6 @@ struct SSHWaypipeSettingsView: View {
     @ObservedObject var preferences: WawonaPreferences
     @State var defaultBundledAppID = ""
     @State var defaultWaypipeEnabled = true
-    @State var defaultUseBundledApp = false
     private var sshPortText: Binding<String> {
         Binding(
             get: { String(preferences.sshPort) },
@@ -29,7 +28,6 @@ struct SSHWaypipeSettingsView: View {
                 Toggle("Default Waypipe Enabled", isOn: $defaultWaypipeEnabled)
             }
             Section("Native Bundled App Default") {
-                Toggle("Use Bundled App by Default", isOn: $defaultUseBundledApp)
                 TextField("Bundled App ID", text: $defaultBundledAppID)
                     .autocorrectionDisabled()
             }
@@ -37,12 +35,10 @@ struct SSHWaypipeSettingsView: View {
         .onAppear {
             defaultBundledAppID = preferences.defaultBundledAppID
             defaultWaypipeEnabled = preferences.defaultWaypipeEnabled
-            defaultUseBundledApp = preferences.defaultUseBundledApp
         }
         .onDisappear {
             preferences.defaultBundledAppID = defaultBundledAppID.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
             preferences.defaultWaypipeEnabled = defaultWaypipeEnabled
-            preferences.defaultUseBundledApp = defaultUseBundledApp
             preferences.save()
         }
     }

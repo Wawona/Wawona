@@ -29,12 +29,12 @@ EOF
 
     memory_mb="8192"
     cpus="6"
-    display_opt="-display cocoa"
+    display_mode="cocoa"
     while [ "$#" -gt 0 ]; do
       case "$1" in
         --memory-mb) memory_mb="$2"; shift 2 ;;
         --cpus) cpus="$2"; shift 2 ;;
-        --no-gui) display_opt="-nographic"; shift ;;
+        --no-gui) display_mode="headless"; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
       esac
@@ -70,7 +70,9 @@ EOF
     echo "[linux-vm] Building NixOS Plasma qcow image..."
     nixos-generators -f qcow -c "$workdir/nixos-plasma.nix" -o "$workdir/plasma"
 
-    image_path="$(ls "$workdir"/plasma*.qcow2 | head -n 1)"
+    image_path="$(printf '%s\n' "$workdir"/plasma*.qcow2 | while IFS= read -r p; do
+      [ -f "$p" ] && { printf '%s\n' "$p"; break; }
+    done)"
     if [ ! -f "$image_path" ]; then
       echo "[linux-vm] ERROR: Generated qcow image not found." >&2
       exit 1
@@ -92,7 +94,14 @@ EOF
       fi
     fi
 
-    echo "[linux-vm] Launching VM (accel=$accel, RAM=$memory_mb MB, CPUs=$cpus)..."
+    display_args=()
+    if [ "$display_mode" = "headless" ]; then
+      display_args=(-nographic)
+    else
+      display_args=(-display cocoa)
+    fi
+
+    echo "[linux-vm] Launching VM (accel=$accel, RAM=$memory_mb MB, CPUs=$cpus, display=$display_mode)..."
     exec qemu-system-x86_64 \
       -machine q35,accel="$accel" \
       -m "$memory_mb" \
@@ -101,7 +110,7 @@ EOF
       -drive "file=$image_path,if=virtio,format=qcow2" \
       -device virtio-net-pci,netdev=net0 \
       -netdev user,id=net0,hostfwd=tcp::2222-:22 \
-      $display_opt
+      "''${display_args[@]}"
   '';
   meta = with pkgs.lib; {
     description = "Run NixOS KDE Plasma 6 VM for Wawona Linux testing";

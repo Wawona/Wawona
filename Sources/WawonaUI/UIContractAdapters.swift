@@ -28,7 +28,6 @@ enum WawonaUIContractAdapters {
             containerSubtype: profile.containerSubtype,
             inputProfile: profile.runtimeOverrides.inputProfile ?? "direct",
             bundledAppID: profile.runtimeOverrides.bundledAppID ?? "",
-            useBundledApp: profile.runtimeOverrides.useBundledApp ?? false,
             waypipeEnabled: profile.runtimeOverrides.waypipeEnabled ?? true
         )
     }
@@ -43,7 +42,6 @@ enum WawonaUIContractAdapters {
             containerSubtype: state.containerSubtype.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines),
             runtimeOverrides: MachineRuntimeOverrides(
                 inputProfile: state.inputProfile.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines),
-                useBundledApp: state.useBundledApp,
                 bundledAppID: state.bundledAppID.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines),
                 waypipeEnabled: state.waypipeEnabled
             )

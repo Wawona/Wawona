@@ -34,10 +34,23 @@ struct MachineSettingsView: View {
             if let draft {
                 machineConfigurationSection(for: draft)
                 sshWaypipeSection()
+                displaySection()
                 inputSection()
+                graphicsSection()
                 resolvedPreviewSection(for: draft)
                 actionsSection(for: draft)
             }
+    @ViewBuilder
+    private func displaySection() -> some View {
+        Section("Display") {
+            Toggle("Force Server-Side Decorations", isOn: forceSSDBinding)
+            Toggle("Auto Scale", isOn: autoScaleBinding)
+            TextField("Wayland Display", text: waylandDisplayBinding)
+                .wawonaTextFieldNoAutocaps()
+                .autocorrectionDisabled()
+        }
+    }
+
         }
         .navigationTitle("Machine Settings")
         .onAppear {
@@ -57,7 +70,6 @@ struct MachineSettingsView: View {
             }
 
             if profile.type == .native {
-                Toggle("Use Bundled Native App", isOn: useBundledAppBinding)
                 TextField("Bundled App ID", text: bundledAppIDBinding)
             }
 
@@ -102,9 +114,28 @@ struct MachineSettingsView: View {
     private func inputSection() -> some View {
         Section("Input") {
             TextField("Input Profile", text: inputProfileBinding)
+                .wawonaTextFieldNoAutocaps()
+                .autocorrectionDisabled()
             Text("Global default: \(preferences.defaultInputProfile)")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func graphicsSection() -> some View {
+        Section("Graphics") {
+            TextField("Renderer", text: rendererBinding)
+                .wawonaTextFieldNoAutocaps()
+                .autocorrectionDisabled()
+            TextField("Vulkan Driver", text: vulkanDriverBinding)
+                .wawonaTextFieldNoAutocaps()
+                .autocorrectionDisabled()
+            TextField("OpenGL Driver", text: openGLDriverBinding)
+                .wawonaTextFieldNoAutocaps()
+                .autocorrectionDisabled()
+            Toggle("Enable DMABUF", isOn: dmabufEnabledBinding)
+            Toggle("HDR / Color Operations", isOn: colorOperationsBinding)
         }
     }
 
@@ -113,12 +144,19 @@ struct MachineSettingsView: View {
         let resolved = preferences.resolvedSettings(for: profile)
         Section("Resolved Runtime (Machine > Global)") {
             Text("Renderer: \(resolved.renderer)")
+            Text("Vulkan Driver: \(resolved.vulkanDriver)")
+            Text("OpenGL Driver: \(resolved.openGLDriver)")
+            Text("DMABUF: \(resolved.dmabufEnabled ? "Enabled" : "Disabled")")
+            Text("Force SSD: \(resolved.forceSSD ? "Enabled" : "Disabled")")
+            Text("Auto Scale: \(resolved.autoScale ? "Enabled" : "Disabled")")
+            Text("HDR: \(resolved.colorOperations ? "Enabled" : "Disabled")")
+            Text("Display: \(resolved.waylandDisplay)")
             Text("Input: \(resolved.inputProfile)")
             Text("Host: \(resolved.sshHost)")
             Text("User: \(resolved.sshUser)")
             Text("Port: \(resolved.sshPort)")
             Text("Waypipe: \(resolved.waypipeEnabled ? "Enabled" : "Disabled")")
-            Text("Bundled App: \(resolved.useBundledApp ? resolved.bundledAppID : "Off")")
+            Text("Bundled App: \(resolved.bundledAppID.isEmpty ? "Off" : resolved.bundledAppID)")
         }
     }
 
@@ -193,13 +231,6 @@ struct MachineSettingsView: View {
         )
     }
 
-    private var useBundledAppBinding: Binding<Bool> {
-        Binding(
-            get: { draft?.runtimeOverrides.useBundledApp ?? preferences.defaultUseBundledApp },
-            set: { value in updateDraft { $0.runtimeOverrides.useBundledApp = value } }
-        )
-    }
-
     private var bundledAppIDBinding: Binding<String> {
         Binding(
             get: { draft?.runtimeOverrides.bundledAppID ?? "" },
@@ -218,6 +249,62 @@ struct MachineSettingsView: View {
         Binding(
             get: { draft?.runtimeOverrides.inputProfile ?? preferences.defaultInputProfile },
             set: { value in updateDraft { $0.runtimeOverrides.inputProfile = value } }
+        )
+    }
+
+    private var rendererBinding: Binding<String> {
+        Binding(
+            get: { draft?.runtimeOverrides.renderer ?? preferences.renderer },
+            set: { value in updateDraft { $0.runtimeOverrides.renderer = value } }
+        )
+    }
+
+    private var vulkanDriverBinding: Binding<String> {
+        Binding(
+            get: { draft?.runtimeOverrides.vulkanDriver ?? "moltenvk" },
+            set: { value in updateDraft { $0.runtimeOverrides.vulkanDriver = value } }
+        )
+    }
+
+    private var openGLDriverBinding: Binding<String> {
+        Binding(
+            get: { draft?.runtimeOverrides.openGLDriver ?? "angle" },
+            set: { value in updateDraft { $0.runtimeOverrides.openGLDriver = value } }
+        )
+    }
+
+    private var dmabufEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { draft?.runtimeOverrides.dmabufEnabled ?? true },
+            set: { value in updateDraft { $0.runtimeOverrides.dmabufEnabled = value } }
+        )
+    }
+
+    private var forceSSDBinding: Binding<Bool> {
+        Binding(
+            get: { draft?.runtimeOverrides.forceSSD ?? preferences.forceSSD },
+            set: { value in updateDraft { $0.runtimeOverrides.forceSSD = value } }
+        )
+    }
+
+    private var autoScaleBinding: Binding<Bool> {
+        Binding(
+            get: { draft?.runtimeOverrides.autoScale ?? preferences.autoScale },
+            set: { value in updateDraft { $0.runtimeOverrides.autoScale = value } }
+        )
+    }
+
+    private var waylandDisplayBinding: Binding<String> {
+        Binding(
+            get: { draft?.runtimeOverrides.waylandDisplay ?? preferences.waylandDisplay },
+            set: { value in updateDraft { $0.runtimeOverrides.waylandDisplay = value } }
+        )
+    }
+
+    private var colorOperationsBinding: Binding<Bool> {
+        Binding(
+            get: { draft?.runtimeOverrides.colorOperations ?? preferences.colorOperations },
+            set: { value in updateDraft { $0.runtimeOverrides.colorOperations = value } }
         )
     }
 

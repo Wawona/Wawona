@@ -52,10 +52,6 @@ bool WWNSettings_GetWaypipeRSSupportEnabled(void) {
   return [[WWNPreferencesManager sharedManager] waypipeRSSupportEnabled];
 }
 
-bool WWNSettings_GetWestonSimpleSHMEnabled(void) {
-  return [[WWNPreferencesManager sharedManager] westonSimpleSHMEnabled];
-}
-
 bool WWNSettings_GetEnableTCPListener(void) {
   return [[WWNPreferencesManager sharedManager] enableTCPListener];
 }

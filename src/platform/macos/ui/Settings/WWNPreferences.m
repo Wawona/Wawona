@@ -464,13 +464,15 @@ static UIImage *WWNAboutLogo(void) {
 #endif
   WWNSettingItem *vulkanDriverItem =
       ITEM(@"Vulkan Driver", @"VulkanDriver", WSettingPopup, @"moltenvk",
-           @"Select Vulkan implementation. None disables Vulkan.");
+           @"Stub setting only. No functional behavior is currently implemented. "
+           @"Future Wawona versions will add full Vulkan driver support.");
   vulkanDriverItem.options = @[ @"None", @"MoltenVK", @"KosmicKrisp" ];
   vulkanDriverItem.optionValues = @[ @"none", @"moltenvk", @"kosmickrisp" ];
 
   WWNSettingItem *openGLDriverItem =
       ITEM(@"OpenGL Driver", @"OpenGLDriver", WSettingPopup, @"angle",
-           @"Select OpenGL/GLES implementation. None disables OpenGL.");
+           @"Stub setting only. No functional behavior is currently implemented. "
+           @"Future Wawona versions will add full OpenGL driver support.");
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
   openGLDriverItem.options = @[ @"None", @"ANGLE" ];
   openGLDriverItem.optionValues = @[ @"none", @"angle" ];
@@ -498,7 +500,11 @@ static UIImage *WWNAboutLogo(void) {
 
   // Build dynamic environment variable values
   NSString *socketDir = [self getSocketPath];
-  NSString *socketName = [[WWNCompositorBridge sharedBridge] socketName];
+  NSDictionary *runtimeState = [self runtimeStateSnapshot];
+  NSString *socketName = runtimeState[@"waylandDisplay"];
+  if (![socketName isKindOfClass:[NSString class]] || socketName.length == 0) {
+    socketName = [[WWNCompositorBridge sharedBridge] socketName];
+  }
   if (!socketName || socketName.length == 0)
     socketName = @"wayland-0";
   NSString *socketFullPath =
@@ -520,7 +526,7 @@ static UIImage *WWNAboutLogo(void) {
     ITEM(@"Shell Setup", @"WaylandShellSetup", WSettingInfo, envSnippet,
          @"Copy and paste into your terminal to connect "
          @"Wayland clients to Wawona."),
-    ITEM(@"TCP Port", @"TCPListenerPort", WSettingNumber, @6000,
+    ITEM(@"TCP Port", @"TCPListenerPort", WSettingInfo, @6000,
          @"Port for TCP listener.")
   ];
   [sects addObject:connection];
@@ -545,15 +551,7 @@ static UIImage *WWNAboutLogo(void) {
 #else
          @YES,
 #endif
-         @"Allow multiple Wayland clients to connect simultaneously."),
-    ITEM(@"Enable Wawona Shell", @"EnableLauncher", WSettingSwitch, @NO,
-         @"Start the built-in Wayland Shell."),
-    ITEM(@"Enable Weston Simple SHM", @"WestonSimpleSHMEnabled", WSettingSwitch,
-         @NO, @"Start weston-simple-shm on launch."),
-    ITEM(@"Enable Native Weston", @"WestonEnabled", WSettingSwitch, @NO,
-         @"Start Weston natively inside Wawona."),
-    ITEM(@"Enable Weston Terminal", @"WestonTerminalEnabled", WSettingSwitch,
-         @NO, @"Start Weston Terminal natively.")
+         @"Allow multiple Wayland clients to connect simultaneously.")
   ];
   [sects addObject:advanced];
 
@@ -597,9 +595,22 @@ static UIImage *WWNAboutLogo(void) {
 #endif
 
   __weak typeof(self) weakSelf = self;
+  NSString *previewCommand =
+      [[WWNWaypipeRunner sharedRunner]
+          generateWaypipePreviewString:[WWNPreferencesManager sharedManager]];
+  if (previewCommand.length == 0) {
+    previewCommand = @"Preview unavailable";
+  } else {
+    // Keep the row compact: show a single-line preview, truncated by the cell.
+    previewCommand =
+        [[previewCommand stringByReplacingOccurrencesOfString:@"\n"
+                                                   withString:@" "]
+            stringByTrimmingCharactersInSet:[NSCharacterSet
+                                                whitespaceAndNewlineCharacterSet]];
+  }
   WWNSettingItem *previewBtn =
-      ITEM(@"Preview Command", @"WaypipePreview", WSettingButton, nil,
-           @"View and copy the generated command.");
+      ITEM(@"Waypipe Command Preview", @"WaypipePreview", WSettingButton, nil,
+           previewCommand);
   previewBtn.actionBlock = ^{
     [weakSelf previewWaypipeCommand];
   };
@@ -918,13 +929,31 @@ static UIImage *WWNAboutLogo(void) {
 }
 
 - (NSString *)getSocketPath {
+  NSDictionary *runtimeState = [self runtimeStateSnapshot];
+  NSString *stateDir = runtimeState[@"xdgRuntimeDir"];
+  if ([stateDir isKindOfClass:[NSString class]] && stateDir.length > 0) {
+    return stateDir;
+  }
+
   const char *xdg_runtime_dir = getenv("XDG_RUNTIME_DIR");
   if (xdg_runtime_dir) {
     return [NSString stringWithUTF8String:xdg_runtime_dir];
   }
-  // Fallback to /tmp/uid-runtime logic matching core
+  // Fallback to /tmp/wawona-uid logic matching compositor host.
   uid_t uid = getuid();
-  return [NSString stringWithFormat:@"/tmp/%d-runtime", uid];
+  return [NSString stringWithFormat:@"/tmp/wawona-%d", uid];
+}
+
+- (NSDictionary *)runtimeStateSnapshot {
+  uid_t uid = getuid();
+  NSString *runtimeDir = [NSString stringWithFormat:@"/tmp/wawona-%d", uid];
+  NSString *statePath =
+      [runtimeDir stringByAppendingPathComponent:@"wawona-runtime-state.plist"];
+  NSDictionary *state = [NSDictionary dictionaryWithContentsOfFile:statePath];
+  if (![state isKindOfClass:[NSDictionary class]]) {
+    return @{};
+  }
+  return state;
 }
 
 - (NSString *)localIPAddress {
@@ -4240,6 +4269,18 @@ static UIImage *WWNAboutLogo(void) {
   self.headerImageView.image = nil;
   self.iconView.image = nil; // Reset to avoid reuse flickering
 
+  // Reset text wrapping/truncation state on reuse.
+  self.descLabel.maximumNumberOfLines = 1;
+  self.descLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+  self.descLabel.cell.wraps = NO;
+  self.descLabel.cell.truncatesLastVisibleLine = YES;
+
+  self.textControl.maximumNumberOfLines = 1;
+  self.textControl.cell.wraps = NO;
+  self.textControl.cell.usesSingleLineMode = YES;
+  self.textControl.lineBreakMode = NSLineBreakByTruncatingTail;
+  self.textControl.cell.truncatesLastVisibleLine = YES;
+
   NSControl *active = nil;
 
   // Base leading constraint
@@ -4334,6 +4375,8 @@ static UIImage *WWNAboutLogo(void) {
     active = self.buttonControl;
   } else if (item.type == WSettingButton) {
     self.buttonControl.hidden = NO;
+    self.buttonControl.title =
+        [item.key isEqualToString:@"WaypipePreview"] ? @"Preview" : @"Run";
     self.buttonControl.target = target;
     self.buttonControl.action = action;
     active = self.buttonControl;
@@ -4383,10 +4426,27 @@ static UIImage *WWNAboutLogo(void) {
     self.textControl.bordered = NO;
     self.textControl.backgroundColor = [NSColor clearColor];
     self.textControl.drawsBackground = NO;
+    BOOL isConnectionInfoField =
+        [item.key isEqualToString:@"XDGRuntimeDir"] ||
+        [item.key isEqualToString:@"WaylandDisplay"] ||
+        [item.key isEqualToString:@"WaylandSocketPath"] ||
+        [item.key isEqualToString:@"WaylandShellSetup"];
+    if (isConnectionInfoField) {
+      // Connection rows often contain long path/env snippets; render fully.
+      self.descLabel.maximumNumberOfLines = 0;
+      self.descLabel.lineBreakMode = NSLineBreakByWordWrapping;
+      self.descLabel.cell.wraps = YES;
+      self.descLabel.cell.truncatesLastVisibleLine = NO;
 
-    // Use middle truncation for path-like fields (Finder-style truncation)
-    if ([item.key isEqualToString:@"WaylandSocketDir"] ||
-        [item.key containsString:@"Dir"] || [item.key containsString:@"Path"]) {
+      self.textControl.maximumNumberOfLines = 0;
+      self.textControl.cell.wraps = YES;
+      self.textControl.cell.usesSingleLineMode = NO;
+      self.textControl.cell.truncatesLastVisibleLine = NO;
+      self.textControl.lineBreakMode = NSLineBreakByWordWrapping;
+    } else if ([item.key isEqualToString:@"WaylandSocketDir"] ||
+               [item.key containsString:@"Dir"] ||
+               [item.key containsString:@"Path"]) {
+      // Finder-style truncation for non-Connection path info rows.
       self.textControl.lineBreakMode = NSLineBreakByTruncatingMiddle;
     } else {
       self.textControl.lineBreakMode = NSLineBreakByTruncatingTail;
@@ -4776,6 +4836,32 @@ static UIImage *WWNAboutLogo(void) {
     WWNSettingItem *item = self.section.items[row];
     if (item.type == WSettingHeader) {
       return 68.0; // Taller row for header with icon
+    }
+    BOOL isConnectionSection = [self.section.title isEqualToString:@"Connection"];
+    BOOL isConnectionInfoRow =
+        isConnectionSection && item.type == WSettingInfo &&
+        ([item.key isEqualToString:@"XDGRuntimeDir"] ||
+         [item.key isEqualToString:@"WaylandDisplay"] ||
+         [item.key isEqualToString:@"WaylandSocketPath"] ||
+         [item.key isEqualToString:@"WaylandShellSetup"]);
+    if (isConnectionInfoRow) {
+      NSString *val =
+          [[NSUserDefaults standardUserDefaults] stringForKey:item.key];
+      if (!val) {
+        val = [item.defaultValue description] ?: @"";
+      }
+      NSUInteger valueLines =
+          1 + MIN((NSUInteger)3, (NSUInteger)(val.length / 46));
+      if ([val containsString:@"\n"]) {
+        valueLines += 1;
+      }
+      NSUInteger descLines =
+          item.desc.length > 0
+              ? (1 + MIN((NSUInteger)2, (NSUInteger)(item.desc.length / 70)))
+              : 0;
+      CGFloat dynamicHeight =
+          18.0 + (CGFloat)descLines * 14.0 + (CGFloat)valueLines * 15.0;
+      return MAX(62.0, MIN(132.0, dynamicHeight));
     }
   }
   return 50.0;

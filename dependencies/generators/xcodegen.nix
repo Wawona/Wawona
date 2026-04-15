@@ -136,6 +136,8 @@ let
               "*Window*"
               "*MacOS*"
               "*Popup*"
+              "WWNLaunchAgentManager.h"
+              "WWNLaunchAgentManager.m"
               "ui/**"
             ];
           }
@@ -440,7 +442,17 @@ let
         type = "application";
         platform = "iOS";
         sources = [
-          { path = "src/platform/macos"; excludes = commonExcludes ++ [ "ui/**" "*Window*" "*Popup*" "*MacOS*" ]; }
+          {
+            path = "src/platform/macos";
+            excludes = commonExcludes ++ [
+              "ui/**"
+              "*Window*"
+              "*Popup*"
+              "*MacOS*"
+              "WWNLaunchAgentManager.h"
+              "WWNLaunchAgentManager.m"
+            ];
+          }
           { path = "src/platform/ios"; excludes = commonExcludes; }
           { path = "src/platform/macos/ui/Machines"; excludes = commonExcludes; }
           { path = "src/platform/macos/ui/Settings"; excludes = commonExcludes; }
@@ -664,6 +676,7 @@ let
             WATCHOS_DEPLOYMENT_TARGET = "10.0";
             GENERATE_INFOPLIST_FILE = "YES";
             SWIFT_VERSION = "5.0";
+            SWIFT_OBJC_BRIDGING_HEADER = "";
             DEFINES_MODULE = "YES";
             SKIP_INSTALL = "YES";
             BUILD_LIBRARY_FOR_DISTRIBUTION = "NO";
@@ -685,6 +698,7 @@ let
             PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.WawonaUIContracts.macos";
             GENERATE_INFOPLIST_FILE = "YES";
             SWIFT_VERSION = "5.0";
+            SWIFT_OBJC_BRIDGING_HEADER = "";
             DEFINES_MODULE = "YES";
             SKIP_INSTALL = "YES";
             BUILD_LIBRARY_FOR_DISTRIBUTION = "NO";

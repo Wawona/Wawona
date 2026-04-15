@@ -1,6 +1,5 @@
 import SwiftUI
 import WawonaModel
-import WawonaUI
 
 struct WawonaSettingsView: View {
     @ObservedObject private var prefs: WawonaPreferences
@@ -22,7 +21,7 @@ struct WawonaSettingsView: View {
                 Section("Wayland") {
                     LabeledContent("Socket") {
                         TextField("wayland-0", text: $prefs.waylandDisplay)
-                            .wawonaTextFieldNoAutocaps()
+                            .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .multilineTextAlignment(.trailing)
                     }
@@ -31,13 +30,13 @@ struct WawonaSettingsView: View {
                 Section("SSH Defaults") {
                     LabeledContent("Host") {
                         TextField("host.example.com", text: $prefs.sshHost)
-                            .wawonaTextFieldNoAutocaps()
+                            .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .multilineTextAlignment(.trailing)
                     }
                     LabeledContent("User") {
                         TextField("username", text: $prefs.sshUser)
-                            .wawonaTextFieldNoAutocaps()
+                            .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .multilineTextAlignment(.trailing)
                     }

@@ -109,7 +109,6 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
     kWWNPrefsNestedCompositorsSupport,
     kWWNPrefsRenderMacOSPointer,
     kWWNPrefsMultipleClients,
-    kWWNPrefsEnableLauncher,
     kWWNPrefsSwapCmdWithAlt,
     kWWNPrefsTouchInputType,
     kWWNPrefsTCPListenerPort,
@@ -159,14 +158,21 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
     kWWNPrefsSSHKeyPath,
     kWWNPrefsSSHKeyPassphrase,
     kWWNPrefsWaypipeUseSSHConfig,
-    kWWNPrefsWestonSimpleSHMEnabled,
-    kWWNPrefsWestonEnabled,
-    kWWNPrefsWestonTerminalEnabled,
   ];
 }
 
 + (NSArray<NSString *> *)machineTransportOverrideKeys {
   return @[
+    kWWNPrefsForceServerSideDecorations,
+    kWWNPrefsAutoScale,
+    kWWNPrefsRenderMacOSPointer,
+    kWWNPrefsTouchInputType,
+    kWWNPrefsSwapCmdWithAlt,
+    kWWNPrefsUniversalClipboard,
+    kWWNPrefsVulkanDriver,
+    kWWNPrefsOpenGLDriver,
+    kWWNPrefsEnableDmabuf,
+    kWWNPrefsColorOperations,
     kWWNPrefsWaylandDisplayNumber,
     kWWNPrefsWaypipeCompress,
     kWWNPrefsWaypipeCompressLevel,
@@ -508,25 +514,6 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
   }
   [self applySettingsSnapshot:transportSnapshot];
 
-  NSString *bundledClientID =
-      [resolved[kWWNRuntimeBundledAppID] isKindOfClass:[NSString class]]
-          ? resolved[kWWNRuntimeBundledAppID]
-          : @"";
-  BOOL useBundledApp = [resolved[kWWNRuntimeUseBundledApp] boolValue];
-  [prefs setEnableLauncher:useBundledApp];
-  // Keep native clients additive: enabling one profile should not auto-disable
-  // already-running clients from other profiles.
-  if (useBundledApp) {
-    if ([bundledClientID isEqualToString:@"weston"]) {
-      [prefs setWestonEnabled:YES];
-    } else if ([bundledClientID isEqualToString:@"weston-terminal"]) {
-      [prefs setWestonTerminalEnabled:YES];
-    } else if ([bundledClientID isEqualToString:@"weston-simple-shm"]) {
-      [prefs setWestonSimpleSHMEnabled:YES];
-    } else if ([bundledClientID isEqualToString:@"foot"]) {
-      [prefs setFootEnabled:YES];
-    }
-  }
 }
 
 + (void)persistActiveMachineSettings {

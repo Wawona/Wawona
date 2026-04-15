@@ -240,29 +240,6 @@
 			<key>DefaultValue</key>
 			<false/>
 		</dict>
-		<!-- Enable Launcher -->
-		<dict>
-			<key>Type</key>
-			<string>PSToggleSwitchSpecifier</string>
-			<key>Title</key>
-			<string>Enable Wawona Shell</string>
-			<key>Key</key>
-			<string>EnableLauncher</string>
-			<key>DefaultValue</key>
-			<false/>
-		</dict>
-		<!-- Enable Weston Simple SHM -->
-		<dict>
-			<key>Type</key>
-			<string>PSToggleSwitchSpecifier</string>
-			<key>Title</key>
-			<string>Enable Weston Simple SHM</string>
-			<key>Key</key>
-			<string>WestonSimpleSHMEnabled</string>
-			<key>DefaultValue</key>
-			<false/>
-		</dict>
-		
 		<!-- OpenSSH Section -->
 		<dict>
 			<key>Type</key>

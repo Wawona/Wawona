@@ -3,12 +3,13 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.aspauldingcode.wawona.compositor</string>
+    <string>com.aspauldingcode.wawona.compositorhost</string>
     
     <key>ProgramArguments</key>
     <array>
-        <!-- UPDATE THIS PATH to your actual compositor binary -->
-        <string>/path/to/build/Wawona</string>
+        <!-- UPDATE THIS PATH to your Wawona binary -->
+        <string>/Applications/Wawona.app/Contents/MacOS/Wawona</string>
+        <string>--compositor-host</string>
     </array>
     
     <key>RunAtLoad</key>
@@ -27,6 +28,8 @@
     <dict>
         <key>WAYLAND_DISPLAY</key>
         <string>wayland-0</string>
+        <key>XDG_RUNTIME_DIR</key>
+        <string>/tmp/wawona-501</string>
         <key>PATH</key>
         <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
     </dict>
