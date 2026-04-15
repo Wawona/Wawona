@@ -5,7 +5,6 @@ import WawonaUIContracts
 struct MachineEditorView: View {
     @Environment(\.dismiss) var dismiss
 
-    // Skip: @State must be internal for Android bridge (see MachineSettingsView).
     @State var name: String
     @State var type: MachineType
     @State var selectedLauncherName: String

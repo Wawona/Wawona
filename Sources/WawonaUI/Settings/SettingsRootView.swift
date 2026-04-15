@@ -9,7 +9,6 @@ struct SettingsRootView: View {
 
     var body: some View {
         AdaptiveNavigationView {
-            #if SKIP
             List {
                 Section("Global Wawona Settings") {
                     Button("Display") { selection = "global-display" }
@@ -38,36 +37,6 @@ struct SettingsRootView: View {
                 }
             }
             .navigationTitle("Settings")
-            #else
-            List {
-                Section("Global Wawona Settings") {
-                    Button("Display") { selection = "global-display" }
-                    Button("Input") { selection = "global-input" }
-                    Button("Graphics") { selection = "global-graphics" }
-                    Button("Connection Defaults") { selection = "global-connection" }
-                    Button("SSH / Waypipe Defaults") { selection = "global-ssh" }
-                    Button("Clients") { selection = "global-clients" }
-                    Button("Advanced") { selection = "global-advanced" }
-                    Button("Connection Tests") { selection = "global-tests" }
-                    Button("Diagnostics") { selection = "global-diagnostics" }
-                    Button("About") { selection = "global-about" }
-                }
-                Section("Machine Settings") {
-                    if profileStore.profiles.isEmpty {
-                        Text("No machine profiles yet")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(profileStore.profiles) { profile in
-                            Button(profile.name) {
-                                machineSelection = profile.id
-                                selection = "machine-settings"
-                            }
-                        }
-                    }
-                }
-            }
-            .navigationTitle("Settings")
-            #endif
         } detail: {
             switch selection {
             case "global-display": DisplaySettingsView(preferences: preferences)

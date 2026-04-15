@@ -23,7 +23,6 @@ public struct MachineSession: Identifiable, Codable, Hashable, Sendable {
     }
 }
 
-// SKIP @bridgeMembers
 @MainActor
 public final class SessionOrchestrator: ObservableObject {
     @Published public private(set) var sessions: [MachineSession] = []
@@ -53,7 +52,7 @@ public final class SessionOrchestrator: ObservableObject {
 
     public func openExtraWindow(sessionId: UUID) {
         _ = sessionId
-        // Implemented on Android/iPad platform layers through SKIP bridging.
+        // Implemented on Android/iPad platform layers.
     }
 
     public func notifyFramePresented(sessionId: UUID) {

@@ -1,6 +1,5 @@
 import Foundation
 
-// SKIP @bridgeMembers
 public struct ClientLauncher: Codable, Identifiable, Hashable, Sendable {
     public var id: UUID
     public var name: String

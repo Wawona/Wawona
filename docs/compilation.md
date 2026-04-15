@@ -48,8 +48,8 @@ nix build .#wawona-android-backend
 ```bash
 nix run .#xcodegen      # Generate Wawona.xcodeproj (iOS + macOS)
 nix run .#xcodegen-ios  # iOS only
-nix run .#gradlegen     # Refresh canonical Android project at ./android
-nix run .#gradlegen -- --run-skip-export  # Refresh ./android/Skip via skip export
+nix run .#gradlegen     # Generate Android Studio project at ./Wawona-gradle-project
+nix run .#wawona-wearos # Build and run WearOS flow
 ```
 
 ## Requirements

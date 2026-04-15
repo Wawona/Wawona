@@ -15,8 +15,8 @@ import android.view.inputmethod.InputConnection
  * selections), setComposingText() for pre-edit / composition, and
  * deleteSurroundingText() for backspace-like operations.
  *
- * IMEs may send autocorrections via commitCorrection() and richer
- * composition sequences.
+ * When Text Assist is enabled, the IME also sends autocorrections via
+ * commitCorrection() and richer composition sequences.
  *
  * Modifier integration: when ModifierState has active modifiers from the
  * accessory bar, commitText() converts mappable characters to key events

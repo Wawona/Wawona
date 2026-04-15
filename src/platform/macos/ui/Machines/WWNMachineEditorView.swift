@@ -129,6 +129,14 @@ struct WWNMachineEditorView: View {
     } else {
       _selectedClientId = State(initialValue: "weston")
     }
+
+    #if os(iOS)
+    // iOS must not present or persist external custom command execution.
+    if _selectedClientId.wrappedValue == kNativeClientCustomId {
+      _selectedClientId = State(initialValue: "weston")
+      _customCommand = State(initialValue: "")
+    }
+    #endif
   }
 
   var body: some View {
@@ -250,8 +258,9 @@ struct WWNMachineEditorView: View {
         ForEach(kBundledClients) { client in
           clientOption(client)
         }
+        #if !os(iOS)
         customClientOption
-
+        #endif
       }
     }
   }

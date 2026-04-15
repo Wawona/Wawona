@@ -17,15 +17,7 @@ builtins.listToAttrs (map (system: let
       pkgs.libffi
       pkgs.wayland-protocols
       pkgs.openssl
-    ] ++ (if pkgs ? skip then [ pkgs.skip ] else [])
-      ++ (if pkgs ? swift then [ pkgs.swift ] else [])
-      ++ (if pkgs ? swiftpm then [ pkgs.swiftpm ] else []);
-    shellHook = ''
-      export XDG_RUNTIME_DIR="/tmp/wawona-$(id -u)"
-      export WAYLAND_DISPLAY="wayland-0"
-      mkdir -p "$XDG_RUNTIME_DIR"
-      chmod 700 "$XDG_RUNTIME_DIR"
-    '';
+    ];
   };
 
   darwinShell = pkgs.mkShell {
@@ -43,10 +35,7 @@ builtins.listToAttrs (map (system: let
       (toolchains.buildForMacOS "libwayland" { })
       xcodeUtils.ensureIosSimSDK
       xcodeUtils.findXcodeScript
-    ] else [])
-    ++ (if pkgs ? skip then [ pkgs.skip ] else [])
-    ++ (if pkgs ? swift then [ pkgs.swift ] else [])
-    ++ (if pkgs ? swiftpm then [ pkgs.swiftpm ] else []);
+    ] else []);
 
     # Read TEAM_ID from .envrc if it exists, otherwise use default
     shellHook = ''

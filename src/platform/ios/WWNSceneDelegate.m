@@ -13,6 +13,25 @@
 @property(nonatomic, copy) dispatch_block_t onContinue;
 @end
 
+@interface WWNShakeAwareWindow : UIWindow
+@property(nonatomic, copy) dispatch_block_t onShake;
+@end
+
+@implementation WWNShakeAwareWindow
+
+- (BOOL)canBecomeFirstResponder {
+  return YES;
+}
+
+- (void)motionEnded:(UIEventSubtype)motion withEvent:(UIEvent *)event {
+  [super motionEnded:motion withEvent:event];
+  if (motion == UIEventSubtypeMotionShake && self.onShake) {
+    self.onShake();
+  }
+}
+
+@end
+
 @implementation WWNWelcomeViewController
 
 - (void)viewDidLoad {
@@ -104,6 +123,8 @@
 @property(nonatomic, assign) BOOL lastRespectSafeArea;
 @property(nonatomic, assign) BOOL hasAppliedSafeArea;
 @property(nonatomic, assign) BOOL showingMachinesUI;
+@property(nonatomic, assign) CFTimeInterval lastShakePromptTime;
+@property(nonatomic, assign) BOOL shakePromptVisible;
 @end
 
 @implementation WWNSceneDelegate
@@ -115,7 +136,17 @@
     return;
 
   UIWindowScene *windowScene = (UIWindowScene *)scene;
-  self.window = [[UIWindow alloc] initWithWindowScene:windowScene];
+  WWNShakeAwareWindow *shakeWindow =
+      [[WWNShakeAwareWindow alloc] initWithWindowScene:windowScene];
+  __weak typeof(self) weakSelf = self;
+  shakeWindow.onShake = ^{
+    __strong typeof(weakSelf) strongSelf = weakSelf;
+    if (!strongSelf) {
+      return;
+    }
+    [strongSelf handleShakeGesture];
+  };
+  self.window = shakeWindow;
   self.window.backgroundColor = [UIColor blackColor];
 
   // Root view controller — fills the full screen
@@ -166,6 +197,7 @@
   [self applyRespectSafeAreaPreference];
 
   [self.window makeKeyAndVisible];
+  [self.window becomeFirstResponder];
 
   // Force layout so the compositor container gets its real frame
   [root layoutIfNeeded];
@@ -460,6 +492,102 @@
       || runner.westonTerminalRunning
       || runner.isWestonSimpleSHMRunning
       || runner.footRunning;
+}
+
+- (BOOL)isAnyClientSessionRunning {
+  WWNWaypipeRunner *runner = [WWNWaypipeRunner sharedRunner];
+  return runner.isRunning || [self isAnyNativeClientRunning];
+}
+
+- (BOOL)isShakeToCloseEnabled {
+  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  NSString *key = @"wawona.pref.shakeToCloseEnabled";
+  if ([defaults objectForKey:key] == nil) {
+    return YES;
+  }
+  return [defaults boolForKey:key];
+}
+
+- (void)handleShakeGesture {
+  if (![self isShakeToCloseEnabled]) {
+    return;
+  }
+  if (self.shakePromptVisible) {
+    return;
+  }
+
+  CFTimeInterval now = CACurrentMediaTime();
+  if (now - self.lastShakePromptTime < 1.5) {
+    return;
+  }
+  self.lastShakePromptTime = now;
+
+  if (![self isAnyClientSessionRunning]) {
+    return;
+  }
+
+  UIViewController *presenter = self.window.rootViewController;
+  if (!presenter) {
+    return;
+  }
+  while (presenter.presentedViewController) {
+    presenter = presenter.presentedViewController;
+  }
+
+  self.shakePromptVisible = YES;
+  UIAlertController *alert = [UIAlertController
+      alertControllerWithTitle:@"Close current Wayland app?"
+                       message:@"This will stop the current session and return to Machines."
+                preferredStyle:UIAlertControllerStyleAlert];
+
+  __weak typeof(self) weakSelf = self;
+  [alert addAction:[UIAlertAction
+                       actionWithTitle:@"Cancel"
+                                 style:UIAlertActionStyleCancel
+                               handler:^(__unused UIAlertAction *action) {
+                                 __strong typeof(weakSelf) strongSelf = weakSelf;
+                                 if (!strongSelf) {
+                                   return;
+                                 }
+                                 strongSelf.shakePromptVisible = NO;
+                               }]];
+
+  [alert addAction:[UIAlertAction
+                       actionWithTitle:@"Close"
+                                 style:UIAlertActionStyleDestructive
+                               handler:^(__unused UIAlertAction *action) {
+                                 __strong typeof(weakSelf) strongSelf = weakSelf;
+                                 if (!strongSelf) {
+                                   return;
+                                 }
+                                 [strongSelf closeActiveWaylandSession];
+                                 strongSelf.shakePromptVisible = NO;
+                               }]];
+
+  [presenter presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)closeActiveWaylandSession {
+  WWNWaypipeRunner *runner = [WWNWaypipeRunner sharedRunner];
+  if (runner.isRunning) {
+    [runner stopWaypipe];
+  }
+  if (runner.westonRunning) {
+    [runner stopWeston];
+  }
+  if (runner.westonTerminalRunning) {
+    [runner stopWestonTerminal];
+  }
+  if (runner.footRunning) {
+    [runner stopFoot];
+  }
+  if (runner.isWestonSimpleSHMRunning) {
+    [runner stopWestonSimpleSHM];
+  }
+
+  self.compositorContainer.hidden = YES;
+  self.settingsButton.hidden = YES;
+  [self presentMachinesConfigurationAfterWelcome];
 }
 
 - (void)revealCompositor {

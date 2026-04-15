@@ -31,7 +31,7 @@ pkgs.writeShellApplication {
       cat <<'EOF'
 Usage: wawona-wearos-run [--no-device-smoke]
 
-Builds Wawona Android artifacts via Nix and validates WearOS wiring.
+Builds Wawona WearOS APK via Nix and validates native WearOS wiring.
 If a connected WearOS device/emulator is detected through adb, performs install/launch smoke test.
 EOF
     }
@@ -290,7 +290,6 @@ EOF
     cd "$repo_root"
 
     echo "[wearos] Building Wawona WearOS package via Nix (.#${wearAndroidPackage})..." >&2
-    echo "[wearos] Note: Skip Swift export + Gradle can take 10–25+ minutes on first build; logs may pause after [Nix/Android] skip export SDKROOT=..." >&2
     nix build ".#${wearAndroidPackage}" --print-build-logs
     apk_path="$repo_root/result/bin/Wawona.apk"
     if [ ! -f "$apk_path" ]; then
@@ -298,13 +297,13 @@ EOF
       exit 1
     fi
 
-    main_entry_file="$repo_root/android/app/src/main/java/com/aspauldingcode/wawona/Main.kt"
+    main_entry_file="$repo_root/android/app/src/main/java/com/aspauldingcode/wawona/MainActivity.kt"
     if [ ! -f "$main_entry_file" ]; then
       echo "[wearos] ERROR: Missing Android entrypoint source: $main_entry_file" >&2
       exit 1
     fi
-    if ! rg -q "WawonaRootView\\(\\)\\.Compose" "$main_entry_file"; then
-      echo "[wearos] ERROR: Main entrypoint is not launching Skip-transpiled SwiftUI (WawonaRootView)." >&2
+    if ! rg -q "class MainActivity" "$main_entry_file"; then
+      echo "[wearos] ERROR: MainActivity entrypoint wiring is missing." >&2
       exit 1
     fi
 

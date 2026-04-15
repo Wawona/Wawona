@@ -1,20 +1,6 @@
 import SwiftUI
 import WawonaModel
 
-#if SKIP
-struct CompositorActiveView: View {
-    let profile: MachineProfile
-    let session: MachineSession
-    let sessions: SessionOrchestrator
-
-    var body: some View {
-        let _ = profile
-        let _ = session
-        let _ = sessions
-        return Text("Compositor preview unavailable in Android transpilation.")
-    }
-}
-#else
 /// Full-screen view shown while a native Wayland client session is running.
 /// Starts the in-process compositor + client and renders compositor frames
 /// via a SwiftUI Canvas backed by CGImage snapshots from WWNWatchCompositorBridge.
@@ -120,5 +106,4 @@ struct CompositorActiveView: View {
         dismiss()
     }
 }
-#endif
 

@@ -114,6 +114,7 @@ Wawona.xcodeproj/
 # direnv cache
 .direnv/
 _GEN-*
+Wawona-gradle-project/
 
 # Legacy generated files (remove after migration)
 # src/platform/macos/wawona-Swift.h
@@ -136,14 +137,10 @@ Inspiration/
 # SwiftPM (local)
 .build/
 
-# Android local CMake output / ad-hoc AAR drop (default Skip path is android/Skip)
+# Android local CMake output / ad-hoc AAR drop
 android/app/.cxx/
 android/app/libs/
 
 # Local tooling clones (not part of upstream tree)
 swiftly.pkg
-skip.dev/
 inspirational_projects/
-
-# Local Skip Fuse template clone (reference only; do not commit)
-skipapp-bookings-fuse/

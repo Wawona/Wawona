@@ -12,7 +12,6 @@ public enum SettingsDiagnosticMode: String, Codable, CaseIterable, Sendable {
     case runtimeProbe
 }
 
-// SKIP @bridgeMembers
 public struct SettingsDiagnosticEntry: Codable, Identifiable, Hashable, Sendable {
     public var id: String
     public var timestamp: Date
@@ -79,7 +78,6 @@ public struct SettingsDiagnosticEntry: Codable, Identifiable, Hashable, Sendable
     }
 }
 
-// SKIP @bridgeMembers
 public struct ResolvedMachineSettings: Hashable, Sendable {
     public var machineID: String
     public var machineName: String
@@ -120,6 +118,7 @@ public final class WawonaPreferences: ObservableObject {
     @Published public var defaultInputProfile: String = "direct"
     @Published public var defaultBundledAppID: String = ""
     @Published public var defaultWaypipeEnabled: Bool = true
+    @Published public var shakeToCloseEnabled: Bool = true
     @Published public var hasCompletedWelcome: Bool = false
     @Published public var globalClientLaunchers: [ClientLauncher] = ClientLauncher.presets
     @Published public var diagnostics: [SettingsDiagnosticEntry] = []
@@ -146,6 +145,7 @@ public final class WawonaPreferences: ObservableObject {
         defaultInputProfile = defaults.string(forKey: keyPrefix + "defaultInputProfile") ?? "direct"
         defaultBundledAppID = defaults.string(forKey: keyPrefix + "defaultBundledAppID") ?? ""
         defaultWaypipeEnabled = defaults.object(forKey: keyPrefix + "defaultWaypipeEnabled") as? Bool ?? true
+        shakeToCloseEnabled = defaults.object(forKey: keyPrefix + "shakeToCloseEnabled") as? Bool ?? true
         hasCompletedWelcome = defaults.bool(forKey: keyPrefix + "hasCompletedWelcome")
 
         if let launchersData = defaults.data(forKey: keyPrefix + "globalClientLaunchers"),
@@ -173,6 +173,7 @@ public final class WawonaPreferences: ObservableObject {
         defaults.set(defaultInputProfile, forKey: keyPrefix + "defaultInputProfile")
         defaults.set(defaultBundledAppID, forKey: keyPrefix + "defaultBundledAppID")
         defaults.set(defaultWaypipeEnabled, forKey: keyPrefix + "defaultWaypipeEnabled")
+        defaults.set(shakeToCloseEnabled, forKey: keyPrefix + "shakeToCloseEnabled")
         defaults.set(hasCompletedWelcome, forKey: keyPrefix + "hasCompletedWelcome")
         if let data = try? JSONEncoder().encode(globalClientLaunchers) {
             defaults.set(data, forKey: keyPrefix + "globalClientLaunchers")
@@ -257,16 +258,11 @@ public final class WawonaPreferences: ObservableObject {
         var runtimeOK = configOK
         var runtimeMessage = "SSH settings are valid for connection attempt."
         if runtimeProbe {
-            #if SKIP
-            runtimeOK = false
-            runtimeMessage = "Runtime SSH probe is unavailable in SKIP mode."
-            #else
             let hasSSH = Self.probeCommandAvailable("ssh")
             runtimeOK = configOK && hasSSH
             runtimeMessage = runtimeOK
                 ? "Runtime probe: ssh binary is available and settings are valid."
                 : "Runtime probe failed: ensure ssh exists and host/user/port are valid."
-            #endif
         }
         return recordDiagnostic(
             category: .ssh,
@@ -292,16 +288,11 @@ public final class WawonaPreferences: ObservableObject {
         var success = configOK
         var message = configOK ? "Waypipe command is configured." : "Waypipe command is empty."
         if runtimeProbe {
-            #if SKIP
-            success = false
-            message = "Runtime waypipe probe is unavailable in SKIP mode."
-            #else
             let hasBinary = !binary.isEmpty && Self.probeCommandAvailable(binary)
             success = configOK && hasBinary
             message = success
                 ? "Runtime probe: command binary is available."
                 : "Runtime probe failed: command is empty or binary was not found."
-            #endif
         }
         return recordDiagnostic(
             category: .waypipe,
@@ -321,10 +312,6 @@ public final class WawonaPreferences: ObservableObject {
         var status = true
         var details: [String: String] = [:]
         if runtimeProbe {
-            #if SKIP
-            status = false
-            details["runtime"] = "unsupported-in-skip"
-            #else
             for dep in deps {
                 let available = Self.probeCommandAvailable(dep)
                 details[dep] = available ? "present" : "missing"
@@ -332,7 +319,6 @@ public final class WawonaPreferences: ObservableObject {
                     status = false
                 }
             }
-            #endif
         }
         return recordDiagnostic(
             category: .dependency,
@@ -346,7 +332,6 @@ public final class WawonaPreferences: ObservableObject {
         )
     }
 
-    #if !SKIP
     private static func probeCommandAvailable(_ command: String) -> Bool {
         if command.contains("/") {
             return FileManager.default.isExecutableFile(atPath: command)
@@ -366,5 +351,4 @@ public final class WawonaPreferences: ObservableObject {
         }
         return false
     }
-    #endif
 }

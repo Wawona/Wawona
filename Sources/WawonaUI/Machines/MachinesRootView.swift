@@ -5,21 +5,19 @@ struct MachinesRootView: View {
     @ObservedObject var preferences: WawonaPreferences
     @ObservedObject var profileStore: MachineProfileStore
     @ObservedObject var sessions: SessionOrchestrator
-    var onPresentNativeCompositor: ((MachineSession) -> Void)?
     @State var search = ""
     @State var showingEditor = false
     @State var editingProfile: MachineProfile?
+    @State var showingSettings = false
 
     init(
         preferences: WawonaPreferences,
         profileStore: MachineProfileStore,
-        sessions: SessionOrchestrator,
-        onPresentNativeCompositor: ((MachineSession) -> Void)? = nil
+        sessions: SessionOrchestrator
     ) {
         self.preferences = preferences
         self.profileStore = profileStore
         self.sessions = sessions
-        self.onPresentNativeCompositor = onPresentNativeCompositor
     }
 
     var body: some View {
@@ -37,6 +35,15 @@ struct MachinesRootView: View {
             }
             .navigationTitle("Machines")
             .searchable(text: $search)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showingSettings = true
+                    } label: {
+                        Label("Open Settings", systemImage: "gearshape")
+                    }
+                }
+            }
             .sheet(isPresented: $showingEditor) {
                 MachineEditorView { profile in
                     profileStore.upsert(profile)
@@ -46,6 +53,12 @@ struct MachinesRootView: View {
                 MachineEditorView(profile: profile) { updated in
                     profileStore.upsert(updated)
                 }
+            }
+            .sheet(isPresented: $showingSettings) {
+                SettingsRootView(
+                    preferences: preferences,
+                    profileStore: profileStore
+                )
             }
         }
     }
@@ -59,15 +72,9 @@ struct MachinesRootView: View {
     }
 
     private func connect(_ profile: MachineProfile) {
-        let session = sessions.connect(machineId: profile.id)
+        _ = sessions.connect(machineId: profile.id)
         profileStore.activeMachineId = profile.id
         profileStore.save()
-        #if SKIP && os(Android)
-        if profile.type == .native {
-            NativeCompositorPrefs.apply(for: profile)
-            onPresentNativeCompositor?(session)
-        }
-        #endif
     }
 
     private func delete(_ profile: MachineProfile) {

@@ -56,24 +56,7 @@ private struct IOSCompositorView: UIViewRepresentable {
 #if os(Android)
 struct AndroidCompositorView: View {
     var body: some View {
-        #if SKIP
-        ComposeView {
-            AndroidCompositorComposer()
-        }
-        #else
         Color.black
-        #endif
     }
 }
-
-#if SKIP
-import com.aspauldingcode.wawona.WawonaCompositorSurfaceKt
-
-struct AndroidCompositorComposer: ContentComposer {
-    @Composable
-    func Compose(context: ComposeContext) {
-        WawonaCompositorSurfaceKt.WawonaCompositorSurface(modifier: context.modifier)
-    }
-}
-#endif
 #endif

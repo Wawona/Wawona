@@ -5,8 +5,8 @@ Wawona is organized around a strict ownership split:
 - `src/core` contains compositor logic, Wayland protocol handling, scene/state management, and other shared Rust compositor behavior.
 - `src/ffi` contains the public integration boundary that platform hosts call into.
 - `src/platform/*` contains platform glue only: native host code, platform UI, platform settings bridges, and native rendering helpers that present Rust-managed state.
-- `Sources/WawonaModel` contains shared Skip/Swift domain models and session orchestration (`bridging: true`).
-- `Sources/WawonaUI` contains shared SwiftUI views that run on Apple and are converted to Compose on Android via Skip Fuse.
+- `Sources/WawonaModel` contains shared Swift domain models and session orchestration (`bridging: true`).
+- `Sources/WawonaUI` contains canonical Apple SwiftUI views for machines/settings/welcome flows.
 - `Sources/WawonaWatch` contains watchOS companion UI (status + quick actions, no compositor rendering).
 - `Darwin/` contains Apple app entrypoint (`Darwin/Sources/Main.swift`) and Xcode-facing app metadata.
 - `dependencies/clients` contains bundled clients, first-party shell code, and first-party diagnostic tools that are packaged through Nix instead of living in the compositor source tree.

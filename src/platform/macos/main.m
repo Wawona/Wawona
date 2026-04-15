@@ -379,11 +379,6 @@ static void setup_signal_sources(void) {
 @implementation WWNMacAppDelegate
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
-  NSError *agentError = nil;
-  (void)[[WWNLaunchAgentManager sharedManager]
-      ensureCompositorAndMenuAgents:&agentError];
-  (void)agentError;
-
   WWNPreferencesManager *prefs = [WWNPreferencesManager sharedManager];
   if (![prefs hasSeenWelcome]) {
     [NSApp activateIgnoringOtherApps:YES];
@@ -455,6 +450,49 @@ static void setup_signal_sources(void) {
 @property(nonatomic, strong) NSTimer *pollTimer;
 @end
 
+static NSImage *WWNMenuBarTemplateIcon(void) {
+  NSImage *icon = [NSImage imageNamed:@"Wawona-iOS-Dark-1024x1024@1x.png"];
+  if (!icon) {
+    NSBundle *bundle = [NSBundle mainBundle];
+    NSString *path =
+        [bundle pathForResource:@"Wawona-iOS-Dark-1024x1024@1x" ofType:@"png"];
+    if (!path) {
+      path = [bundle pathForResource:@"Wawona-iOS-Dark-1024x1024" ofType:@"png"];
+    }
+    if (!path) {
+      NSString *resourcePath = bundle.resourcePath ?: @"";
+      NSString *candidate = [resourcePath
+          stringByAppendingPathComponent:@"Wawona-iOS-Dark-1024x1024@1x.png"];
+      if ([[NSFileManager defaultManager] fileExistsAtPath:candidate]) {
+        path = candidate;
+      }
+    }
+    if (!path) {
+      NSString *resourcePath = bundle.resourcePath ?: @"";
+      NSString *candidate =
+          [resourcePath stringByAppendingPathComponent:@"Wawona-iOS-Dark-1024x1024.png"];
+      if ([[NSFileManager defaultManager] fileExistsAtPath:candidate]) {
+        path = candidate;
+      }
+    }
+    if (path) {
+      icon = [[NSImage alloc] initWithContentsOfFile:path];
+    }
+  }
+
+  if (!icon) {
+    icon = [NSImage imageNamed:@"Wawona"];
+  }
+  if (!icon) {
+    return nil;
+  }
+
+  // Use template rendering so macOS draws a monochrome menu bar silhouette.
+  icon.template = YES;
+  icon.size = NSMakeSize(18, 18);
+  return icon;
+}
+
 @implementation WWNMenuBarController
 
 - (instancetype)init {
@@ -462,8 +500,16 @@ static void setup_signal_sources(void) {
   if (self) {
     _statusItem = [[NSStatusBar systemStatusBar]
         statusItemWithLength:NSVariableStatusItemLength];
-    _statusItem.button.title = @"Wawona";
     _statusItem.button.toolTip = @"Wawona Compositor";
+    NSImage *menuIcon = WWNMenuBarTemplateIcon();
+    if (menuIcon) {
+      _statusItem.button.image = menuIcon;
+      _statusItem.button.imagePosition = NSImageOnly;
+      _statusItem.button.title = @"";
+    } else {
+      // Fallback for missing assets.
+      _statusItem.button.title = @"Wawona";
+    }
 
     NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Wawona"];
     _statusLineItem = [[NSMenuItem alloc] initWithTitle:@"Compositor: unknown"
@@ -651,6 +697,8 @@ int main(int argc, char *argv[]) {
       [[NSProcessInfo processInfo] setProcessName:@"WawonaCompositorHost"];
       [NSApplication sharedApplication];
       [NSApp setActivationPolicy:NSApplicationActivationPolicyProhibited];
+      NSError *agentError = nil;
+      (void)[[WWNLaunchAgentManager sharedManager] ensureMenuBarAgent:&agentError];
 
       NSString *runtimePath = [NSString stringWithFormat:@"/tmp/wawona-%d", getuid()];
       setenv("XDG_RUNTIME_DIR", [runtimePath UTF8String], 1);
@@ -694,7 +742,7 @@ int main(int argc, char *argv[]) {
       [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
       NSError *agentError = nil;
       (void)[[WWNLaunchAgentManager sharedManager]
-          ensureCompositorAndMenuAgents:&agentError];
+          ensureCompositorAgent:&agentError];
       __unused WWNMenuBarController *controller = [[WWNMenuBarController alloc] init];
       [NSApp run];
       release_mode_lock(&g_menubar_lock_fd);

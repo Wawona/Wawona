@@ -10,9 +10,7 @@ struct AdaptiveNavigationView<Sidebar: View, Detail: View>: View {
     }
 
     var body: some View {
-        #if SKIP
-        NavigationStack { detail }
-        #elseif os(iOS)
+        #if os(iOS)
         NavigationStack { detail }
         #else
         NavigationSplitView {

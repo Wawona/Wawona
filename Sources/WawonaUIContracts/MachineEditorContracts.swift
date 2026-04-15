@@ -114,7 +114,7 @@ public enum MachineEditorValidationIssue: String, Sendable {
     case missingContainerSubtype
 }
 
-/// Declared as `struct` so Skip emits a normal Kotlin class (case-less Swift `enum` becomes an empty Kotlin `enum` and can fail to load on Android).
+/// Declared as `struct` to keep cross-platform generated bindings stable.
 public struct MachineEditorValidation: Sendable {
     public static func visibleFields(for state: MachineEditorState) -> [MachineEditorFieldID] {
         var fields: [MachineEditorFieldID] = [MachineEditorFieldID.name, MachineEditorFieldID.type]

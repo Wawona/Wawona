@@ -5,7 +5,7 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
 # The root of the Wawona repository (relative to android/app/src/main/cpp/)
-set(WAWONA_ROOT "../../../../..")
+set(WAWONA_ROOT "../../../..")
 
 # Set up include directories
 include_directories(
@@ -15,6 +15,9 @@ include_directories(
     ${WAWONA_ROOT}/src/platform/android/rendering
     ${WAWONA_ROOT}/src/platform/macos
     ${WAWONA_ROOT}/src/platform/android
+    ${WAWONA_ROOT}/deps/weston-simple-shm
+    ${WAWONA_ROOT}/deps/weston-simple-shm/shared
+    ${WAWONA_ROOT}/deps/weston-simple-shm/include
 )
 
 # Convert NIX_DEP_INCLUDES from string "-I/nix/.../include -I/nix/.../include" into proper CMake dirs
@@ -33,7 +36,6 @@ set(WAWONA_SOURCES
     ${WAWONA_ROOT}/src/platform/android/cairo_shim.c
     ${WAWONA_ROOT}/src/platform/android/rendering/renderer_android.c
     ${WAWONA_ROOT}/src/platform/macos/WWNSettings.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/wawona_client_stubs.c
 )
 
 # Core library (libwawona.so)
@@ -41,6 +43,10 @@ add_library(
     wawona
     SHARED
     ${WAWONA_SOURCES}
+    ${WAWONA_ROOT}/deps/weston-simple-shm/clients/simple-shm.c
+    ${WAWONA_ROOT}/deps/weston-simple-shm/shared/os-compatibility.c
+    ${WAWONA_ROOT}/deps/weston-simple-shm/xdg-shell-protocol.c
+    ${WAWONA_ROOT}/deps/weston-simple-shm/fullscreen-shell-unstable-v1-protocol.c
 )
 
 # Parse NIX_DEP_LIBS "-L/nix/.../lib -L/nix/.../lib"

@@ -9,7 +9,6 @@ struct AboutView: View {
                     .foregroundStyle(.secondary)
             }
             Section("Links") {
-                Link("Skip", destination: URL(string: "https://skip.dev")!)
                 Link("Wawona", destination: URL(string: "https://github.com/Wawona/Wawona")!)
             }
             Section("Dependencies") {

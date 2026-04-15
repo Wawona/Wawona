@@ -18,7 +18,6 @@ struct MachinesGridView: View {
             }
 
             if profiles.isEmpty {
-                #if SKIP
                 VStack(spacing: 8) {
                     Image(systemName: "server.rack")
                         .font(.title2)
@@ -28,11 +27,6 @@ struct MachinesGridView: View {
                 }
                 .frame(maxWidth: CGFloat.infinity)
                 .padding(Edge.Set.top, 40)
-                #else
-                ContentUnavailableView("No Machines", systemImage: "server.rack")
-                    .frame(maxWidth: CGFloat.infinity)
-                    .padding(Edge.Set.top, 40)
-                #endif
             } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 300, maximum: 500), spacing: 14)], spacing: 14) {
                     ForEach(profiles) { profile in
@@ -54,10 +48,6 @@ struct MachinesGridView: View {
     }
 
     private var gridBlurb: String {
-        #if SKIP
         "Add a profile, pick a Wayland client or SSH target, then connect."
-        #else
-        "Adaptive layout across iPhone, iPad, and Mac."
-        #endif
     }
 }

@@ -8,6 +8,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (BOOL)installCompositorAndMenuAgents:(NSError * _Nullable * _Nullable)error;
 - (BOOL)ensureCompositorAndMenuAgents:(NSError * _Nullable * _Nullable)error;
+- (BOOL)ensureCompositorAgent:(NSError * _Nullable * _Nullable)error;
+- (BOOL)ensureMenuBarAgent:(NSError * _Nullable * _Nullable)error;
 
 - (BOOL)restartCompositorAgent;
 - (BOOL)stopCompositorAgent;

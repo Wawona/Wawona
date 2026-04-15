@@ -13,11 +13,11 @@ This is a planning and analysis document only. No code changes are proposed here
 
 ## Original Architecture Intent (Baseline)
 
-From `docs/goals.md`, `docs/2026-ARCHITECTURE-STRUCTURE.md`, `docs/2026-SKIP-INTEGRATION.md`, and `docs/2026-SOURCE-LAYOUT-RULES.md`, the intended architecture is:
+From `docs/goals.md`, `docs/2026-ARCHITECTURE-STRUCTURE.md`, and `docs/2026-SOURCE-LAYOUT-RULES.md`, the intended architecture is:
 
 - Rust compositor core + FFI as the runtime foundation.
 - Native compositor surfaces stay native per host platform (ObjC/AppKit/UIKit/JNI).
-- Skip/Fuse is used to share UI and domain model across Apple + Android.
+- Apple and Android use native UI stacks that mirror machine/settings behavior.
 - `Sources/WawonaUI` and `Sources/WawonaModel` are intended as the canonical feature layer.
 - `src/platform/macos/ui` is transitional and should not continue growing for new feature ownership.
 
@@ -39,9 +39,9 @@ This architecture is sound. Drift occurred in execution and migration pacing.
    - `WWNPreferencesManager` still exposes `syncFromCanonicalWawonaPreferences`.
    - This is a migration seam that became semi-permanent and now adds cognitive and bug overhead.
 
-4. **Android build/artifact strategy is robust but over-complex.**
-   - `android/app/build.gradle.kts` resolves Skip artifacts from multiple roots (`Skip`, legacy `android/Skip`, env override).
-   - This supports mixed environments but creates ambiguity about authoritative source roots.
+4. **Android build/runtime strategy is robust but still over-complex.**
+   - Build and runtime orchestration still span multiple tooling layers (Nix, Gradle, native JNI/runtime wiring).
+   - This improves resilience but increases ambiguity around authoritative ownership boundaries.
 
 5. **Android metadata ownership drift exists.**
    - App Gradle config: `minSdk = 28` in `android/app/build.gradle.kts`.
@@ -59,7 +59,7 @@ This architecture is sound. Drift occurred in execution and migration pacing.
 
 ### 1) Migration completed functionally, not structurally
 
-Skip/Fuse adoption progressed enough to run shared UI, but legacy macOS-specific stacks were not fully retired. This left:
+The cross-platform migration progressed enough to run modern UI flows, but legacy macOS-specific stacks were not fully retired. This left:
 
 - New canonical model/UI in `Sources/*`.
 - Old model/UI still wired into compositor bridge/runtime.
@@ -74,7 +74,7 @@ Result: synchronization glue replaced hard ownership transfer.
 
 ### 3) Build reliability adaptations accumulated into configuration sprawl
 
-Nix + Gradle + Skip integration added compatibility paths and environment switches to keep multiple workflows alive.
+Nix + Gradle integration added compatibility paths and environment switches to keep multiple workflows alive.
 
 Result: resilient local/CI workflows, but unclear happy-path and higher onboarding tax.
 
@@ -103,9 +103,8 @@ Result: intent and implementation diverged in developer mental models.
 
 In `android/app/build.gradle.kts`:
 
-- `SKIP_ARTIFACTS_DIR` override support.
-- `Skip` root support.
-- legacy `android/Skip` fallback support.
+- historical Android artifact-path overrides.
+- multiple legacy fallback roots.
 
 This is technically useful, but too many active conventions at once.
 
@@ -119,7 +118,7 @@ This is technically useful, but too many active conventions at once.
 
 Short answer: **not irrecoverably**, but yes, we are materially off the intended ownership model.
 
-- The core architecture (Rust + native compositor + shared Skip UI) is still correct.
+- The core architecture (Rust + native compositor + platform-native UIs) is still correct.
 - The drift is mostly in **ownership convergence** and **migration cleanup debt**, not in fundamental direction.
 - If left unchecked, this drift will reduce velocity and increase platform-specific regressions.
 
@@ -164,7 +163,7 @@ Expected effect: better reviewability, lower merge conflict pressure, easier onb
 
 ### Checkpoint C: Build clarity complete
 
-- Android/Skip artifact flow documented as one default path + one fallback.
+- Android build flow documented as one default path + one fallback.
 - Stale Android manifest ownership removed from active build assumptions.
 
 ### Checkpoint D: Deletion pass complete

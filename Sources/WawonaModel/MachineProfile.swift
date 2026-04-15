@@ -21,7 +21,7 @@ extension MachineType {
         }
     }
 
-    /// SF Symbol name for this machine type (shared across iOS, watchOS, Skip/Android).
+    /// SF Symbol name for this machine type (shared across iOS and watchOS).
     public var symbolName: String {
         switch self {
         case .native: return "desktopcomputer"
@@ -41,7 +41,6 @@ public enum MachineStatus: String, Codable, CaseIterable, Sendable {
     case error
 }
 
-// SKIP @bridgeMembers
 public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
     public var renderer: String?
     public var vulkanDriver: String?
@@ -82,7 +81,6 @@ public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
     }
 }
 
-// SKIP @bridgeMembers
 public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
     public var id: String
     public var name: String

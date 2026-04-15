@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- AppCompatActivity (and Skip Fuse MainActivity) require an AppCompat theme, not platform Theme.Material. -->
-    <style name="Theme.Wawona" parent="Theme.AppCompat.DayNight.NoActionBar">
+    <style name="Theme.Wawona" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@android:color/black</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>

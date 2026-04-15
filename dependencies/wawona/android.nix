@@ -8,11 +8,9 @@
   androidUtils ? null,
   androidToolchain ? null,
   rustBackend ? null,
-  appTarget ? "android",
   glslang ? pkgs.glslang,
   jdk17 ? pkgs.jdk17,
   gradle ? pkgs.gradle,
-  skip ? pkgs.skip,
   targetPkgs,
   ...
 }:
@@ -63,8 +61,6 @@ let
     "libxml2"
     "xkbcommon"
     "openssl"
-    "weston"
-    "foot"
   ];
 
   getDeps =
@@ -179,17 +175,6 @@ let
     else
       echo "[Wawona] Using Nix-packaged Android SDK at $ANDROID_SDK_ROOT"
     fi
-
-
-    DEBUG_MODE=false
-    TEST_MODE=false
-    while [ "$#" -gt 0 ]; do
-      case "$1" in
-        --debug) DEBUG_MODE=true; shift ;;
-        --test) TEST_MODE=true; shift ;;
-        *) break ;;
-      esac
-    done
 
     APK_PATH="$1"
     if [ -z "$APK_PATH" ]; then
@@ -312,32 +297,18 @@ let
     fi
     
     adb start-server 2>/dev/null || true
-
-    is_watch_device() {
-      local serial="$1"
-      local characteristics
-      characteristics="$(adb -s "$serial" shell getprop ro.build.characteristics 2>/dev/null | tr -d '\r' || true)"
-      echo "$characteristics" | grep -q "watch"
-    }
     
     # ── Surgical Device Detection ──
     # If a device is already online and booted, we skip EVERYTHING except install/launch
     RUNNING_EMULATORS=$(adb devices | grep -E "emulator-[0-9]+" | grep "device$" | wc -l | tr -d ' ')
     DEVICE_READY=false
     if [ "$RUNNING_EMULATORS" -gt 0 ]; then
-      while read -r serial _state; do
-        [ -z "$serial" ] && continue
-        if is_watch_device "$serial"; then
-          continue
-        fi
-        BOOT_COMPLETE=$(adb -s "$serial" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || echo "0")
-        if [ "$BOOT_COMPLETE" = "1" ]; then
-          EMULATOR_SERIAL="$serial"
-          echo "[Wawona] Reusing running Android emulator: $EMULATOR_SERIAL"
-          DEVICE_READY=true
-          break
-        fi
-      done < <(adb devices | grep -E "^emulator-[0-9]+\s+device$")
+      EMULATOR_SERIAL=$(adb devices | grep -E "emulator-[0-9]+" | grep "device$" | head -n 1 | awk '{print $1}')
+      BOOT_COMPLETE=$(adb -s "$EMULATOR_SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || echo "0")
+      if [ "$BOOT_COMPLETE" = "1" ]; then
+        echo "[Wawona] Reusing running emulator: $EMULATOR_SERIAL"
+        DEVICE_READY=true
+      fi
     fi
 
     if [ "$DEVICE_READY" = "false" ]; then
@@ -372,19 +343,13 @@ let
       TIMEOUT=300
       ELAPSED=0
       while [ $ELAPSED -lt $TIMEOUT ]; do
-        while read -r serial _state; do
-          [ -z "$serial" ] && continue
-          if is_watch_device "$serial"; then
-            continue
-          fi
-          BOOT_COMPLETE=$(adb -s "$serial" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || echo "0")
+        if adb devices | grep -E "emulator-[0-9]+" | grep -q "device$"; then
+          BOOT_COMPLETE=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || echo "0")
           if [ "$BOOT_COMPLETE" = "1" ]; then
-            EMULATOR_SERIAL="$serial"
             DEVICE_READY=true
             break
           fi
-        done < <(adb devices | grep -E "^emulator-[0-9]+\s+device$")
-        [ "$DEVICE_READY" = "true" ] && break
+        fi
         sleep 2
         ELAPSED=$((ELAPSED + 2))
       done
@@ -582,9 +547,7 @@ let
 
 in
   pkgs.stdenv.mkDerivation (finalAttrs: rec {
-    # Log prefix matches flake attr (.#wawona-android vs .#wawona-wearos-android); same recipe, different appTarget.
-    name =
-      if appTarget == "android" then "wawona-android" else "wawona-${appTarget}-android";
+    name = "wawona-android";
     version = projectVersion;
     src = wawonaSrc;
 
@@ -606,19 +569,12 @@ in
       pkg-config
       jdk17 # Full JDK needed for Gradle
       gradle
-      skip
       unzip
       zip
       file
       util-linux # Provides setsid for creating new process groups
       glslang # For compiling Vulkan shaders to SPIR-V
-    ]) ++ lib.optionals (pkgs ? skip) [ pkgs.skip ]
-      # Swift/SwiftPM for `skip export` on Linux only. On Darwin, nixpkgs Swift 5.x in PATH /
-      # DYLD_FALLBACK_LIBRARY_PATH loads alongside Xcode Swift 6.x and breaks PackageDescription
-      # (duplicate libswift_* / invalid manifest). Darwin uses Xcode toolchain from preBuild.
-      ++ lib.optionals (pkgs.stdenv.hostPlatform.isLinux && pkgs ? swift) [ pkgs.swift ]
-      ++ lib.optionals (pkgs.stdenv.hostPlatform.isLinux && pkgs ? swiftpm) [ pkgs.swiftpm ]
-      ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.patchelf ];
+    ]) ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.patchelf ];
 
     buildInputs = (getDeps "android" androidDeps) ++ [
       pkgs.mesa
@@ -629,6 +585,14 @@ in
     prePatch = ''
       if [ ! -f src/platform/android/input_android.h ] || [ ! -f src/platform/android/input_android.c ]; then
         echo "ERROR: Missing input_android files in src/platform/android/"
+        exit 1
+      fi
+      if [ ! -f android/app/src/main/java/com/aspauldingcode/wawona/ScreencopyHelper.kt ]; then
+        echo "ERROR: Missing ScreencopyHelper.kt"
+        exit 1
+      fi
+      if [ ! -f android/app/src/main/java/com/aspauldingcode/wawona/ModifierAccessoryBar.kt ]; then
+        echo "ERROR: Missing ModifierAccessoryBar.kt"
         exit 1
       fi
     '';
@@ -679,355 +643,6 @@ in
       ${gradleSupport.prepareProject}
       ${gradleSupport.prepareEnvironment}
 
-      # Ensure native client launcher glue is present even when the flake source
-      # filter omits untracked Android project files.
-      if [ ! -f app/src/main/cpp/wawona_client_stubs.c ]; then
-        mkdir -p app/src/main/cpp
-cat > app/src/main/cpp/wawona_client_stubs.c <<'EOF_WAWONA_CLIENT_STUBS'
-/*
- * Android launcher bridge for bundled native Wayland clients.
- * No client is routed to weston-simple-shm.
- */
-#include <android/log.h>
-#include <dlfcn.h>
-
-#define TAG "WawonaClients"
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
-
-typedef int (*client_main_fn)(int argc, const char **argv);
-
-static int run_client_main(const char *lib_name, const char *symbol_name,
-                           int argc, const char **argv) {
-    void *handle = dlopen(lib_name, RTLD_NOW | RTLD_LOCAL);
-    if (!handle) {
-        LOGE("Failed to dlopen(%s): %s", lib_name, dlerror());
-        return 1;
-    }
-
-    dlerror();
-    client_main_fn fn = (client_main_fn)dlsym(handle, symbol_name);
-    const char *sym_err = dlerror();
-    if (sym_err != NULL || fn == NULL) {
-        LOGE("Failed to resolve %s from %s: %s", symbol_name, lib_name,
-             sym_err ? sym_err : "unknown");
-        dlclose(handle);
-        return 1;
-    }
-
-    LOGI("Launching %s from %s", symbol_name, lib_name);
-    int rc = fn(argc, argv);
-    LOGI("%s exited with code %d", symbol_name, rc);
-    dlclose(handle);
-    return rc;
-}
-
-int weston_main(int argc, const char **argv) {
-    return run_client_main("libweston.so", "weston_main", argc, argv);
-}
-
-int weston_terminal_main(int argc, const char **argv) {
-    return run_client_main("libweston-terminal.so", "weston_terminal_main", argc, argv);
-}
-
-int foot_main(int argc, const char **argv) {
-    return run_client_main("libfoot.so", "foot_main", argc, argv);
-}
-EOF_WAWONA_CLIENT_STUBS
-      fi
-
-      # Generate Skip Android artifacts for Nix builds — no fallback to checked-in android/Skip;
-      # refresh locally with scripts/skip-export-local.sh before building if needed.
-      rm -rf android/Skip
-      mkdir -p android/Skip
-      if ! command -v skip >/dev/null 2>&1; then
-        echo "ERROR: skip CLI not found in PATH during Nix Android build" >&2
-        exit 1
-      fi
-      # Darwin: do not embed DEVELOPER_DIR default-expansion in Nix (eval-time interpolates apple-sdk).
-      # Resolve Swift at shell runtime with printenv and test -x only.
-      _swift_from_xcode=""
-      _skip_export_sdkroot=""
-      if [ "$(uname -s)" = "Darwin" ]; then
-        _app_swift="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift"
-        if [ -x "$_app_swift" ]; then
-          export DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
-          _swift_from_xcode="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
-        else
-          _ddb="$(printenv DEVELOPER_DIR 2>/dev/null || true)"
-          case "$_ddb" in
-            /nix/store/*) _ddb="" ;;
-          esac
-          if [ -z "$_ddb" ]; then
-            _xs="$(xcode-select -p 2>/dev/null || true)"
-            case "$_xs" in /nix/store/*|"") ;; *) _ddb="$_xs" ;; esac
-          fi
-          if [ -n "$_ddb" ] && [ -x "$_ddb/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift" ]; then
-            export DEVELOPER_DIR="$_ddb"
-            _swift_from_xcode="$_ddb/Toolchains/XcodeDefault.xctoolchain/usr/bin"
-          else
-            echo "[Nix/Android] WARN: no Swift 6 toolchain (try Xcode 16+ in /Applications, or: nix run --option sandbox relaxed .#wawona-android)" >&2
-          fi
-        fi
-      fi
-      # Swift for skip export: Package.swift uses swift-tools 6.1 — needs Swift 6.x (Xcode 16+).
-      # Never prepend /usr/bin before real toolchains: /usr/bin/swift is often a 5.x stub and
-      # mixing Nix Swift dylibs with Xcode Swift causes duplicate-class crashes.
-      if [ -n "$_swift_from_xcode" ]; then
-        # Nix darwin stdenv leaves SDKROOT / PATH entries pointing at apple-sdk in /nix/store (Swift 5.x).
-        # Swift 6 from Xcode must use the matching Xcode MacOSX.sdk — unset Nix SDK and drop nix Swift bins.
-        unset SDKROOT
-        unset HOST_SDK
-        _path_new="$_swift_from_xcode"
-        _ifs="$IFS"
-        IFS=':'
-        for _dir in $PATH; do
-          [ -z "$_dir" ] && continue
-          case "$_dir" in
-            "$_swift_from_xcode") continue ;;
-            */nix/store/*-swift-*) continue ;;
-            */nix/store/*-swiftpm*) continue ;;
-            */nix/store/*apple-sdk*) continue ;;
-            *swift-wrapper*) continue ;;
-          esac
-          _path_new="$_path_new:$_dir"
-        done
-        IFS="$_ifs"
-        export PATH="$_path_new"
-        # Darwin stdenv / clang pull in nixpkgs Swift via DYLD_FALLBACK_LIBRARY_PATH — mixing with Xcode
-        # Swift loads duplicate libswift_* and breaks Package.swift manifest evaluation (objc duplicate class).
-        unset DYLD_FALLBACK_LIBRARY_PATH DYLD_LIBRARY_PATH DYLD_INSERT_LIBRARIES DYLD_FRAMEWORK_PATH 2>/dev/null || true
-        if [ -n "$DEVELOPER_DIR" ]; then
-          _sdk="$(PATH="$_swift_from_xcode:/usr/bin:/bin" DEVELOPER_DIR="$DEVELOPER_DIR" xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)"
-          if [ -n "$_sdk" ] && [ -d "$_sdk" ]; then
-            export SDKROOT="$_sdk"
-            _skip_export_sdkroot="$_sdk"
-            echo "[Nix/Android] SDKROOT=$SDKROOT" >&2
-          elif [ -d "$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk" ]; then
-            export SDKROOT="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
-            _skip_export_sdkroot="$SDKROOT"
-            echo "[Nix/Android] SDKROOT=$SDKROOT (from DEVELOPER_DIR)" >&2
-          else
-            _sdkdir="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs"
-            if [ -d "$_sdkdir" ]; then
-              _sdk="$(ls -d "$_sdkdir"/MacOSX*.sdk 2>/dev/null | head -1)"
-              if [ -n "$_sdk" ] && [ -d "$_sdk" ]; then
-                export SDKROOT="$_sdk"
-                _skip_export_sdkroot="$_sdk"
-                echo "[Nix/Android] SDKROOT=$SDKROOT (first MacOSX*.sdk in SDKs dir)" >&2
-              fi
-            fi
-          fi
-        fi
-      else
-        ${lib.optionalString (pkgs ? swift && pkgs ? swiftpm) ''
-        export PATH="${pkgs.swift}/bin:${pkgs.swiftpm}/bin''${PATH:+:$PATH}"
-        ''}
-        ${lib.optionalString (pkgs ? swift && !(pkgs ? swiftpm)) ''
-        export PATH="${pkgs.swift}/bin''${PATH:+:$PATH}"
-        ''}
-      fi
-      if ! command -v swift >/dev/null 2>&1; then
-        echo "ERROR: swift not on PATH during Nix Android build (skip export is required; no checked-in android/Skip fallback). On macOS+Nix try: nix build --option sandbox relaxed .#wawona-android" >&2
-        exit 1
-      fi
-      echo "[Nix/Android] skip export will use: $(command -v swift)" >&2
-      _swift_ver_line="$(swift --version 2>&1 | head -n 1 || true)"
-      echo "[Nix/Android] $_swift_ver_line" >&2
-      if echo "$_swift_ver_line" | grep -qE 'Swift version 5\.'; then
-        echo "ERROR: Package.swift requires Swift 6.x (swift-tools 6.1); this swift is 5.x. Use Xcode 16+ (swift on PATH from XcodeDefault.xctoolchain) or build with a Swift 6 toolchain. Nixpkgs swift is often 5.10 — it cannot load this manifest." >&2
-        exit 1
-      fi
-      _skip_ok=0
-      if [ "$(uname -s)" = "Darwin" ] && [ -n "$_swift_from_xcode" ]; then
-        if [ -z "$_skip_export_sdkroot" ] && [ -n "$DEVELOPER_DIR" ]; then
-          _sdkdir="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs"
-          if [ -d "$_sdkdir" ]; then
-            _sdk="$(ls -d "$_sdkdir"/MacOSX*.sdk 2>/dev/null | head -1)"
-            if [ -n "$_sdk" ] && [ -d "$_sdk" ]; then
-              export SDKROOT="$_sdk"
-              _skip_export_sdkroot="$_sdk"
-              echo "[Nix/Android] SDKROOT=$SDKROOT (late fallback for skip export)" >&2
-            fi
-          fi
-        fi
-        if [ -z "$_skip_export_sdkroot" ]; then
-          echo "ERROR: could not resolve MacOSX SDK for skip export (need DEVELOPER_DIR to Xcode, or run: xcode-select -s /Applications/Xcode.app/Contents/Developer)." >&2
-          exit 1
-        fi
-        echo "[Nix/Android] skip export: .skip-wrapped + PATH shims (SwiftPM --disable-sandbox; writable HOME; DYLD_* cleared)" >&2
-        _skip_wrapped="${skip}/bin/.skip-wrapped"
-        if [ ! -x "$_skip_wrapped" ]; then
-          echo "ERROR: SkipRunner not found at $_skip_wrapped" >&2
-          exit 1
-        fi
-        # SwiftPM nests sandbox-exec inside Nix's Darwin sandbox → sandbox_apply fails. Force
-        # `swift package …` to pass --disable-sandbox via a PATH shim (Skip invokes `swift` by name).
-        _swift_wrap_dir="$PWD/.nix-swift-pm-wrap"
-        mkdir -p "$_swift_wrap_dir"
-        cat > "$_swift_wrap_dir/swift.in" <<'SWIFTEOF'
-#!/usr/bin/env bash
-set -euo pipefail
-_real="SWIFT_BIN_DIR/swift"
-# Skip invokes `xcrun swift build …`; manifest loading still uses sandbox-exec unless
-# these subcommands get SwiftPM's --disable-sandbox (not only `swift package …`).
-case "''${1:-}" in
-  package)
-    shift
-    exec "$_real" package --disable-sandbox "$@"
-    ;;
-  build)
-    shift
-    exec "$_real" build --disable-sandbox -j 1 "$@"
-    ;;
-  test|run)
-    _swift_subcmd="$1"
-    shift
-    exec "$_real" "$_swift_subcmd" --disable-sandbox "$@"
-    ;;
-esac
-exec "$_real" "$@"
-SWIFTEOF
-        sed "s|SWIFT_BIN_DIR|$_swift_from_xcode|g" "$_swift_wrap_dir/swift.in" > "$_swift_wrap_dir/swift"
-        chmod +x "$_swift_wrap_dir/swift"
-        rm -f "$_swift_wrap_dir/swift.in"
-        cat > "$_swift_wrap_dir/xcrun.in" <<'XCRUNEOF'
-#!/usr/bin/env bash
-set -euo pipefail
-# SwiftPM resolves git via xcrun --find git → /usr/bin/git (Apple git + broken CA under env -i).
-if [ "''${1:-}" = "--find" ] && [ "''${2:-}" = "git" ]; then
-  echo "NIX_GIT_BIN"
-  exit 0
-fi
-# Skip calls xcrun swift build; real xcrun resolves swift by absolute path and bypasses PATH.
-_rest=()
-_after_swift=0
-for _a in "$@"; do
-  if [ "$_after_swift" = 1 ]; then
-    _rest+=("$_a")
-  elif [ "$_a" = "swift" ]; then
-    _after_swift=1
-  fi
-done
-if [ "$_after_swift" = 1 ]; then
-  _here="$(cd "$(dirname "$0")" && pwd)"
-  exec "$_here/swift" "''${_rest[@]}"
-fi
-exec /usr/bin/xcrun "$@"
-XCRUNEOF
-        sed "s|NIX_GIT_BIN|${pkgs.git}/bin/git|g" "$_swift_wrap_dir/xcrun.in" > "$_swift_wrap_dir/xcrun"
-        chmod +x "$_swift_wrap_dir/xcrun"
-        rm -f "$_swift_wrap_dir/xcrun.in"
-        cat > "$_swift_wrap_dir/git.in" <<'GITEOW'
-#!/usr/bin/env bash
-# SwiftPM clones many repos in parallel; GitHub intermittently returns 404 for unauthenticated smart-HTTP.
-_lockdir="$(dirname "$0")/git-serial.lock.d"
-while ! mkdir "$_lockdir" 2>/dev/null; do sleep 0.05; done
-trap 'rmdir "$_lockdir" 2>/dev/null || true' EXIT
-exec NIX_GIT_REAL "$@"
-GITEOW
-        sed "s|NIX_GIT_REAL|${pkgs.git}/bin/git|g" "$_swift_wrap_dir/git.in" > "$_swift_wrap_dir/git"
-        chmod +x "$_swift_wrap_dir/git"
-        rm -f "$_swift_wrap_dir/git.in"
-        cat > "$_swift_wrap_dir/swiftc.in" <<'SWIFTEOF'
-#!/usr/bin/env bash
-set -euo pipefail
-_real="SWIFT_BIN_DIR/swiftc"
-exec "$_real" -disable-sandbox "$@"
-SWIFTEOF
-        sed "s|SWIFT_BIN_DIR|$_swift_from_xcode|g" "$_swift_wrap_dir/swiftc.in" > "$_swift_wrap_dir/swiftc"
-        chmod +x "$_swift_wrap_dir/swiftc"
-        rm -f "$_swift_wrap_dir/swiftc.in"
-        # Same tool order as dependencies/tools/skip.nix wrapProgram (Darwin: /usr/bin + jdk + git + gradle).
-        _skip_min_path="$_swift_wrap_dir:${jdk17}/bin:${gradle}/bin:${pkgs.git}/bin:${pkgs.coreutils}/bin:$_swift_from_xcode:/usr/bin:/bin"
-        (
-          _tmpdir="$TMPDIR"
-          [ -z "$_tmpdir" ] && _tmpdir="/tmp"
-          # SwiftPM writes under HOME; Nix sets HOME=/homeless-shelter (often not writable).
-          _spm_home="$_tmpdir/nix-skip-export-home"
-          mkdir -p "$_spm_home"
-          # SwiftPM invokes git with a reduced environment; persist CA path in ~/.gitconfig.
-          _ssl="''${SSL_CERT_FILE:-}"
-          [ -z "$_ssl" ] && _ssl="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
-          HOME="$_spm_home" ${pkgs.git}/bin/git config --global http.sslCAInfo "$_ssl"
-          HOME="$_spm_home" ${pkgs.git}/bin/git config --global http.followRedirects true
-          _java_home="$JAVA_HOME"
-          [ -z "$_java_home" ] && _java_home="${jdk17}"
-          _user="$USER"
-          [ -z "$_user" ] && _user="$(id -un 2>/dev/null || echo nixbld)"
-          _logname="$LOGNAME"
-          [ -z "$_logname" ] && _logname="$_user"
-          _nix_ssl="''${NIX_SSL_CERT_FILE:-}"
-          [ -z "$_nix_ssl" ] && _nix_ssl="$_ssl"
-          echo "[Nix/Android] skip export SDKROOT=$_skip_export_sdkroot HOME=$_spm_home" >&2
-          echo "[Nix/Android] starting skip export — --verbose enabled; SwiftPM/Skip may run 10–30+ min; heartbeats every 60s" >&2
-          # Do not use env -i: SwiftPM needs the same SSL-related variables as the Nix builder
-          # (env -i broke HTTPS git fetch with OpenSSL verify(20) despite GIT_SSL_CAINFO).
-          export HOME="$_spm_home"
-          export TMPDIR="$_tmpdir"
-          export USER="$_user"
-          export LOGNAME="$_logname"
-          export LANG="''${LANG:-C.UTF-8}"
-          export SSL_CERT_FILE="$_ssl"
-          export NIX_SSL_CERT_FILE="$_nix_ssl"
-          export GIT_SSL_CAINFO="$_ssl"
-          export CURL_CA_BUNDLE="$_ssl"
-          export DEVELOPER_DIR="$DEVELOPER_DIR"
-          export SDKROOT="$_skip_export_sdkroot"
-          export JAVA_HOME="$_java_home"
-          export SWIFT_EXEC="$_swift_wrap_dir/swiftc"
-          export SWIFT_DRIVER_SWIFT_EXEC="$_swift_wrap_dir/swiftc"
-          export PATH="$_skip_min_path"
-          unset DYLD_LIBRARY_PATH DYLD_FALLBACK_LIBRARY_PATH DYLD_INSERT_LIBRARIES DYLD_FRAMEWORK_PATH || true
-          unset LD_LIBRARY_PATH LD_DYLD_PATH || true
-          _skip_export_ok=0
-          for _attempt in 1 2 3 4; do
-            echo "[Nix/Android] skip export attempt $_attempt/4…" >&2
-            "$_skip_wrapped" export --project . -d android/Skip --verbose --debug \
-              --swift "$_swift_wrap_dir/swift" \
-              --java-home "$_java_home" &
-            _skip_pid=$!
-            while kill -0 "$_skip_pid" 2>/dev/null; do
-              sleep 60
-              if kill -0 "$_skip_pid" 2>/dev/null; then
-                echo "[Nix/Android] skip export still running … $(date -u +%H:%M:%SZ) UTC (SwiftPM/Gradle)" >&2
-              fi
-            done
-            if wait "$_skip_pid"; then
-              _skip_export_ok=1
-              break
-            fi
-            echo "[Nix/Android] skip export failed (attempt $_attempt); clearing SwiftPM caches and retrying…" >&2
-            rm -rf .build/repositories .build/checkouts 2>/dev/null || true
-            sleep 5
-          done
-          [ "$_skip_export_ok" -eq 1 ]
-        ) && _skip_ok=1
-      else
-        if [ "$(uname -s)" = "Darwin" ]; then
-          echo "ERROR: skip export on macOS requires Xcode's Swift toolchain (_swift_from_xcode was empty). Install Xcode 16+ and select it with xcode-select." >&2
-          exit 1
-        fi
-        echo "[Nix/Android] starting skip export — heartbeats every 60s if this takes a while" >&2
-        skip export --project . -d android/Skip --verbose --debug &
-        _skip_pid=$!
-        while kill -0 "$_skip_pid" 2>/dev/null; do
-          sleep 60
-          if kill -0 "$_skip_pid" 2>/dev/null; then
-            echo "[Nix/Android] skip export still running … $(date -u +%H:%M:%SZ) UTC" >&2
-          fi
-        done
-        wait "$_skip_pid" && _skip_ok=1
-      fi
-      if [ "$_skip_ok" -ne 1 ]; then
-        echo "ERROR: skip export failed in Nix build (fix Swift/skip versions or run scripts/skip-export-local.sh, commit android/Skip is not used here)" >&2
-        exit 1
-      fi
-      if ! find android/Skip -type f \( -name '*.aar' -o -name '*.kt' -o -name '*.java' \) | grep -q .; then
-        echo "ERROR: skip export did not produce Android AAR/source artifacts in android/Skip" >&2
-        exit 1
-      fi
-
       # Ensure no daemon-only JVM profile leaks in from gradle.properties.
       # With --no-daemon we still see single-use daemon forks if jvmargs is set.
       if [ -f gradle.properties ]; then
@@ -1046,24 +661,14 @@ SWIFTEOF
           cp -L "$so" "$JNI_LIB_DIR/$(basename "$so")"
         done
       done
-      if [ -f "${rustBackendPath}/lib/libwawona_core.so" ]; then
-        cp -L "${rustBackendPath}/lib/libwawona_core.so" "$JNI_LIB_DIR/libwawona_core.so"
-      fi
       shopt -u nullglob
 
       # Inject Nix dependencies via Environment Variables for Gradle/CMake
       export ANDROID_NDK_ROOT="$ndk_root"
       export ANDROID_NDK_HOME="$ndk_root"
-      export SKIP_ARTIFACTS_DIR="$PWD/android/Skip"
-      export SKIP_EXPORT_STRATEGY="nix-prebuilt"
-      export WAWONA_APP_TARGET="${appTarget}"
       export DEP_INCLUDES="${lib.concatMapStringsSep " " (d: "-I${d}/include") (getDeps "android" androidDeps)} -I${buildModule.buildForAndroid "pixman" { }}/include/pixman-1"
       export DEP_LIBS="${lib.concatMapStringsSep " " (d: "-L${d}/lib") (getDeps "android" androidDeps)}"
-      if [ -f "${rustBackendPath}/lib/libwawona_core.so" ]; then
-        export RUST_BACKEND_LIB="${rustBackendPath}/lib/libwawona_core.so"
-      else
-        export RUST_BACKEND_LIB="${rustBackendPath}/lib/libwawona.a"
-      fi
+      export RUST_BACKEND_LIB="${rustBackendPath}/lib/libwawona.a"
     '';
 
     buildPhase = ''
@@ -1081,7 +686,7 @@ SWIFTEOF
         -Dkotlin.daemon.enabled=false \
         -Dkotlin.compiler.execution.strategy=in-process \
         -Dkotlin.incremental=false \
-        --stacktrace || {
+        --info --stacktrace || {
         echo "=== Gradle Build Failed! Accessing Diagnostic Reports ==="
         REPORT_PATH="app/build/outputs/logs/manifest-merger-debug-report.txt"
         if [ -f "$REPORT_PATH" ]; then

@@ -6,6 +6,11 @@ let
       mkdir -p "$XDG_RUNTIME_DIR"
       chmod 700 "$XDG_RUNTIME_DIR"
     fi
+    SOCKET_PATH="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+    if [ ! -S "$SOCKET_PATH" ]; then
+      echo "Warning: Wayland socket not ready at $SOCKET_PATH." >&2
+      echo "Hint: run 'nix run .#install' for persistent Wawona menubar/compositor launch agents." >&2
+    fi
   '';
 in rec {
   unixWrapper = pkgs: name: bin:
@@ -21,8 +26,9 @@ in rec {
   inherit macosEnv;
 
   macosWrapper = pkgs: wawona: pkgs.writeShellScriptBin "wawona" ''
-    ${macosEnv}
     APP="${wawona}/Applications/Wawona.app"
+    export WAWONA_APP_BIN="$APP/Contents/MacOS/Wawona"
+    ${macosEnv}
     if [ "''${1:-}" = "--debug" ] || [ "''${WAWONA_LLDB:-0}" = "1" ]; then
       [ "''${1:-}" = "--debug" ] && shift
       echo "[DEBUG] Starting Wawona under LLDB..."
@@ -32,7 +38,8 @@ in rec {
     fi
   '';
 
-  waypipeWrapper = pkgs: waypipe: pkgs.writeShellScriptBin "waypipe" ''
+  waypipeWrapper = pkgs: waypipe: wawona: pkgs.writeShellScriptBin "waypipe" ''
+    export WAWONA_APP_BIN="${wawona}/Applications/Wawona.app/Contents/MacOS/Wawona"
     ${macosEnv}
     # Point Vulkan loader at KosmicKrisp ICD if available and not overridden
     if [ -z "''${VK_DRIVER_FILES:-}" ]; then
@@ -45,7 +52,8 @@ in rec {
     exec "${waypipe}/bin/waypipe" "$@"
   '';
 
-  footWrapper = pkgs: foot: pkgs.writeShellScriptBin "foot" ''
+  footWrapper = pkgs: foot: wawona: pkgs.writeShellScriptBin "foot" ''
+    export WAWONA_APP_BIN="${wawona}/Applications/Wawona.app/Contents/MacOS/Wawona"
     ${macosEnv}
 
     # Check if user has a config
@@ -63,9 +71,22 @@ EOF
     fi
   '';
 
-  westonAppWrapper = pkgs: weston: binName: pkgs.writeShellScriptBin binName ''
+  westonAppWrapper = pkgs: weston: wawona: binName: pkgs.writeShellScriptBin binName ''
+    export WAWONA_APP_BIN="${wawona}/Applications/Wawona.app/Contents/MacOS/Wawona"
     ${macosEnv}
-    exec "${weston}/bin/${binName}" "$@"
+    child_pid=""
+    forward_sigterm() {
+      if [ -n "$child_pid" ] && kill -0 "$child_pid" 2>/dev/null; then
+        kill -TERM "$child_pid" 2>/dev/null || true
+      fi
+    }
+    trap forward_sigterm INT TERM HUP
+    "${weston}/bin/${binName}" "$@" &
+    child_pid=$!
+    wait "$child_pid"
+    exit_code=$?
+    trap - INT TERM HUP
+    exit "$exit_code"
   '';
 
   iosWrapper = pkgs: wawona: pkgs.writeShellScriptBin "wawona-ios" ''

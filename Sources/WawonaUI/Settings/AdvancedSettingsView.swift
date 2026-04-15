@@ -13,6 +13,9 @@ struct AdvancedSettingsView: View {
                     Text("Warn").tag("warn")
                     Text("Error").tag("error")
                 }
+                #if os(iOS)
+                Toggle("Shake to Close", isOn: $preferences.shakeToCloseEnabled)
+                #endif
             }
         }
         .onDisappear { preferences.save() }

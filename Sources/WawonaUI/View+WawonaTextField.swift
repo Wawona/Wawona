@@ -1,7 +1,7 @@
 import SwiftUI
 
 public extension View {
-    /// `textInputAutocapitalization` is not available on macOS `TextField`; Skip export runs SwiftPM on macOS.
+    /// `textInputAutocapitalization` is not available on macOS `TextField`.
     @ViewBuilder
     func wawonaTextFieldNoAutocaps() -> some View {
         #if !os(macOS)

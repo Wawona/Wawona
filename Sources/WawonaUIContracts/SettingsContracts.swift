@@ -72,7 +72,7 @@ public enum ConnectionSettingsValidationIssue: String, Sendable {
     case emptyWaypipeCommand
 }
 
-/// Declared as `struct` so Skip emits a normal Kotlin class (see `MachineEditorValidation` note).
+/// Declared as `struct` to keep cross-platform generated bindings stable.
 public struct ConnectionSettingsValidation: Sendable {
     public static func metadata(for field: ConnectionSettingsFieldID) -> ConnectionSettingsFieldMetadata {
         switch field {

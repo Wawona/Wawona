@@ -6,7 +6,6 @@ struct MachineSettingsView: View {
     @ObservedObject var profileStore: MachineProfileStore
     var machineID: String?
 
-    // internal: Skip Fuse native bridging requires non-private @State for Android.
     @State var selectedID: String?
     @State var draft: MachineProfile?
 

@@ -52,6 +52,10 @@ object WawonaSettings {
             1234 
         }
 
+        // Text Assist / Dictation
+        val enableTextAssist = prefs.getBoolean("enableTextAssist", false)
+        val enableDictation = prefs.getBoolean("enableDictation", false)
+
         // Graphics Driver selection (Settings > Graphics > Drivers)
         // UI stores display strings (e.g. "SwiftShader"); normalize to lowercase for native
         val vulkanDriver = (prefs.getString("vulkanDriver", "none") ?: "none").lowercase()

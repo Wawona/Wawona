@@ -195,18 +195,69 @@ static NSString *const kWWNAppLaunchAgentLabel =
   BOOL loadedCompositor = [self isLabelLoaded:kWWNCompositorAgentLabel];
   BOOL loadedMenu = [self isLabelLoaded:kWWNMenuBarAgentLabel];
   if (!loadedCompositor) {
-    (void)[self bootstrapPlistAtPath:compositorPath];
+    if ([self bootstrapPlistAtPath:compositorPath]) {
+      (void)[self kickstartLabel:kWWNCompositorAgentLabel];
+    }
   }
   if (!loadedMenu) {
-    (void)[self bootstrapPlistAtPath:menuPath];
+    if ([self bootstrapPlistAtPath:menuPath]) {
+      (void)[self kickstartLabel:kWWNMenuBarAgentLabel];
+    }
   }
-  (void)[self kickstartLabel:kWWNCompositorAgentLabel];
-  (void)[self kickstartLabel:kWWNMenuBarAgentLabel];
+  return YES;
+}
+
+- (BOOL)ensureCompositorAgent:(NSError **)error {
+  (void)error;
+  NSString *compositorPath = [self plistPathForLabel:kWWNCompositorAgentLabel];
+  if (![[NSFileManager defaultManager] fileExistsAtPath:compositorPath]) {
+    if (![self writePlist:[self compositorAgentPlist]
+                   toPath:compositorPath
+                    error:error]) {
+      return NO;
+    }
+  }
+  if (![self isLabelLoaded:kWWNCompositorAgentLabel]) {
+    if (![self bootstrapPlistAtPath:compositorPath]) {
+      return NO;
+    }
+    (void)[self kickstartLabel:kWWNCompositorAgentLabel];
+  }
+
+  // Keep the menubar applet tied to compositor service lifecycle.
+  NSError *menuError = nil;
+  if (![self ensureMenuBarAgent:&menuError]) {
+    if (error) {
+      *error = menuError;
+    }
+    return NO;
+  }
+  return YES;
+}
+
+- (BOOL)ensureMenuBarAgent:(NSError **)error {
+  (void)error;
+  NSString *menuPath = [self plistPathForLabel:kWWNMenuBarAgentLabel];
+  if (![[NSFileManager defaultManager] fileExistsAtPath:menuPath]) {
+    if (![self writePlist:[self menuBarAgentPlist] toPath:menuPath error:error]) {
+      return NO;
+    }
+  }
+  if (![self isLabelLoaded:kWWNMenuBarAgentLabel]) {
+    if (![self bootstrapPlistAtPath:menuPath]) {
+      return NO;
+    }
+    (void)[self kickstartLabel:kWWNMenuBarAgentLabel];
+  }
   return YES;
 }
 
 - (BOOL)restartCompositorAgent {
-  return [self kickstartLabel:kWWNCompositorAgentLabel];
+  NSError *menuError = nil;
+  (void)[self ensureMenuBarAgent:&menuError];
+  BOOL compositor = [self kickstartLabel:kWWNCompositorAgentLabel];
+  BOOL menu = [self kickstartLabel:kWWNMenuBarAgentLabel];
+  return compositor && menu;
 }
 
 - (BOOL)stopCompositorAgent {
@@ -220,7 +271,9 @@ static NSString *const kWWNAppLaunchAgentLabel =
   }
   BOOL ok = [self bootstrapPlistAtPath:compositorPath];
   BOOL kicked = [self kickstartLabel:kWWNCompositorAgentLabel];
-  return ok && kicked;
+  NSError *menuError = nil;
+  BOOL menuReady = [self ensureMenuBarAgent:&menuError];
+  return ok && kicked && menuReady;
 }
 
 - (BOOL)isCompositorAgentLoaded {
