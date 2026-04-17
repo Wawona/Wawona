@@ -127,13 +127,13 @@ struct WWNMachineEditorView: View {
     } else if (overrides["FootEnabled"] as? Bool) == true {
       _selectedClientId = State(initialValue: "foot")
     } else {
-      _selectedClientId = State(initialValue: "weston")
+      _selectedClientId = State(initialValue: "weston-simple-shm")
     }
 
     #if os(iOS)
     // iOS must not present or persist external custom command execution.
     if _selectedClientId.wrappedValue == kNativeClientCustomId {
-      _selectedClientId = State(initialValue: "weston")
+      _selectedClientId = State(initialValue: "weston-simple-shm")
       _customCommand = State(initialValue: "")
     }
     #endif
@@ -405,7 +405,7 @@ struct WWNMachineEditorView: View {
         }
       }
       labeledField(isWaypipe ? "Remote Command" : "SSH Command") {
-        TextField(isWaypipe ? "weston-terminal" : "bash -l", text: $remoteCommand)
+        TextField(isWaypipe ? "weston-simple-shm" : "bash -l", text: $remoteCommand)
           .textFieldStyle(.roundedBorder)
           .wwnDisableAutocapitalization()
           .autocorrectionDisabled()
@@ -525,7 +525,7 @@ struct WWNMachineEditorView: View {
           .wwnDisableAutocapitalization()
       }
       labeledField("Startup Command") {
-        TextField("weston-terminal", text: $remoteCommand)
+        TextField("weston-simple-shm", text: $remoteCommand)
           .textFieldStyle(.roundedBorder)
           .wwnDisableAutocapitalization()
           .autocorrectionDisabled()
@@ -683,3 +683,10 @@ private extension View {
     #endif
   }
 }
+
+#if os(tvOS)
+extension TextFieldStyle where Self == PlainTextFieldStyle {
+  /// tvOS does not ship RoundedBorderTextFieldStyle; map calls to plain style.
+  static var roundedBorder: PlainTextFieldStyle { .plain }
+}
+#endif

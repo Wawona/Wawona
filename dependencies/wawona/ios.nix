@@ -44,8 +44,12 @@ let
       nativeSdk
     else if nativeSdk == "iphoneos" then
       "iphonesimulator"
+    else if nativeSdk == "appletvos" then
+      "appletvsimulator"
     else if nativeSdk == "watchos" then
       "watchsimulator"
+    else if nativeSdk == "xros" then
+      "xrsimulator"
     else
       throw "ios.nix: simulator build needs sdk mapping for nativeSdk=${nativeSdk}";
   destinationPlatform = if simulator then "${platformName} Simulator" else platformName;

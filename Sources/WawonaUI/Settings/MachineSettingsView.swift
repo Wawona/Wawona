@@ -39,6 +39,15 @@ struct MachineSettingsView: View {
                 resolvedPreviewSection(for: draft)
                 actionsSection(for: draft)
             }
+        }
+
+        .navigationTitle("Machine Settings")
+        .onAppear {
+            selectedID = machineID ?? profileStore.activeMachineId ?? profileStore.profiles.first?.id
+            loadDraft()
+        }
+    }
+
     @ViewBuilder
     private func displaySection() -> some View {
         Section("Display") {
@@ -50,22 +59,20 @@ struct MachineSettingsView: View {
         }
     }
 
-        }
-        .navigationTitle("Machine Settings")
-        .onAppear {
-            selectedID = machineID ?? profileStore.activeMachineId ?? profileStore.profiles.first?.id
-            loadDraft()
-        }
-    }
-
     @ViewBuilder
     private func machineConfigurationSection(for profile: MachineProfile) -> some View {
         Section("Machine Configuration") {
             TextField("Name", text: nameBinding)
             Picker("Type", selection: typeBinding) {
+                #if os(iOS)
+                ForEach(MachineType.allCases.filter { $0 != .container }, id: \.self) { t in
+                    Text(t.userFacingName).tag(t)
+                }
+                #else
                 ForEach(MachineType.allCases, id: \.self) { t in
                     Text(t.userFacingName).tag(t)
                 }
+                #endif
             }
 
             if profile.type == .native {
@@ -76,9 +83,11 @@ struct MachineSettingsView: View {
                 TextField("VM Type", text: vmSubtypeBinding)
             }
 
+            #if !os(iOS)
             if profile.type == .container {
                 TextField("Container Type", text: containerSubtypeBinding)
             }
+            #endif
         }
     }
 
@@ -171,7 +180,16 @@ struct MachineSettingsView: View {
     }
 
     private func loadDraft() {
-        draft = profileStore.profiles.first { $0.id == selectedID }
+        guard var profile = profileStore.profiles.first(where: { $0.id == selectedID }) else {
+            draft = nil
+            return
+        }
+        #if os(iOS)
+        if profile.type == .container {
+            profile.type = .native
+        }
+        #endif
+        draft = profile
     }
 
     private var nameBinding: Binding<String> {
@@ -195,12 +213,14 @@ struct MachineSettingsView: View {
         )
     }
 
+    #if !os(iOS)
     private var containerSubtypeBinding: Binding<String> {
         Binding(
             get: { draft?.containerSubtype ?? "" },
             set: { value in updateDraft { $0.containerSubtype = value } }
         )
     }
+    #endif
 
     private var sshHostBinding: Binding<String> {
         Binding(

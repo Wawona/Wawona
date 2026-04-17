@@ -426,7 +426,7 @@ extern int weston_terminal_main(int argc, char **argv);
   if (remoteCommand.length > 0) {
     [args addObject:[NSString stringWithFormat:@"\"%@\"", remoteCommand]];
   } else if (prefs.waypipeSSHEnabled) {
-    [args addObject:@"\"weston-terminal\""]; // Default remote command
+    [args addObject:@"\"weston-simple-shm\""]; // Default remote command
   }
 
   return args;

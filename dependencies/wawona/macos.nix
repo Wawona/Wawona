@@ -124,15 +124,16 @@ let
     ACTOOL="''${DEVELOPER_DIR:-}/usr/bin/actool"
     ICONUTIL="''${DEVELOPER_DIR:-}/usr/bin/iconutil"
 
-    # --- Primary: Wawona.icon (icon.json) → actool → Assets.car + .icns (26+ pipeline) ---
-    if [ -d "''$ICON_BUNDLE" ] && [ -f "''$ICON_BUNDLE/icon.json" ]; then
+    # --- Fallback only: Wawona.icon (icon.json) → actool → Assets.car + .icns (26+ pipeline) ---
+    # Prefer AppIcon.appiconset first so nix-run matches Xcode's icon source.
+    if [ ! -d "''$APPICONSET" ] && [ -d "''$ICON_BUNDLE" ] && [ -f "''$ICON_BUNDLE/icon.json" ]; then
       if [ -n "''${DEVELOPER_DIR:-}" ] && [ -x "''$ACTOOL" ]; then
         ICON_TMP="''$TMPDIR/wawona-icon-compile"
         rm -rf "''$ICON_TMP"
         mkdir -p "''$ICON_TMP"
         cp -R "''$ICON_BUNDLE" "''$ICON_TMP/Wawona.icon"
-        if [ -f "''$ICON_ROOT/wayland.png" ] && [ ! -f "''$ICON_TMP/Wawona.icon/wayland.png" ]; then
-          cp "''$ICON_ROOT/wayland.png" "''$ICON_TMP/Wawona.icon/"
+        if [ -f "''$ICON_BUNDLE/Assets/wayland.png" ] && [ ! -f "''$ICON_TMP/Wawona.icon/wayland.png" ]; then
+          cp "''$ICON_BUNDLE/Assets/wayland.png" "''$ICON_TMP/Wawona.icon/wayland.png"
         fi
         OUT_CAR="''$ICON_TMP/icons"
         mkdir -p "''$OUT_CAR"
@@ -173,10 +174,10 @@ let
       if [ -f "''$APPICONSET/AppIcon-128.png" ]; then cp "''$APPICONSET/AppIcon-128.png" "''$ICON_TMP/AppIcon.iconset/icon_128x128.png"; fi
       if [ -f "''$APPICONSET/AppIcon-256.png" ]; then cp "''$APPICONSET/AppIcon-256.png" "''$ICON_TMP/AppIcon.iconset/icon_128x128@2x.png"; cp "''$APPICONSET/AppIcon-256.png" "''$ICON_TMP/AppIcon.iconset/icon_256x256.png"; fi
       if [ -f "''$APPICONSET/AppIcon-512.png" ]; then cp "''$APPICONSET/AppIcon-512.png" "''$ICON_TMP/AppIcon.iconset/icon_256x256@2x.png"; cp "''$APPICONSET/AppIcon-512.png" "''$ICON_TMP/AppIcon.iconset/icon_512x512.png"; fi
-      if [ -f "''$APPICONSET/AppIcon-Light-1024.png" ]; then
-        cp "''$APPICONSET/AppIcon-Light-1024.png" "''$ICON_TMP/AppIcon.iconset/icon_512x512@2x.png"
-      elif [ -f "''$APPICONSET/AppIcon-1024.png" ]; then
+      if [ -f "''$APPICONSET/AppIcon-1024.png" ]; then
         cp "''$APPICONSET/AppIcon-1024.png" "''$ICON_TMP/AppIcon.iconset/icon_512x512@2x.png"
+      elif [ -f "''$APPICONSET/AppIcon-Light-1024.png" ]; then
+        cp "''$APPICONSET/AppIcon-Light-1024.png" "''$ICON_TMP/AppIcon.iconset/icon_512x512@2x.png"
       fi
       "''$ICONUTIL" -c icns "''$ICON_TMP/AppIcon.iconset" -o "''$RESOURCES/AppIcon.icns"
       echo "Installed AppIcon.icns (fallback via iconutil)"
@@ -185,8 +186,8 @@ let
     # --- Last resort: .icns from single 1024 PNG using sips + iconutil ---
     if [ ! -f "''$RESOURCES/AppIcon.icns" ] && [ -n "''${DEVELOPER_DIR:-}" ] && [ -x "''$ICONUTIL" ]; then
       SRC1024=""
-      [ -f "''$APPICONSET/AppIcon-Light-1024.png" ] && SRC1024="''$APPICONSET/AppIcon-Light-1024.png"
-      [ -z "''$SRC1024" ] && [ -f "''$APPICONSET/AppIcon-1024.png" ] && SRC1024="''$APPICONSET/AppIcon-1024.png"
+      [ -f "''$APPICONSET/AppIcon-1024.png" ] && SRC1024="''$APPICONSET/AppIcon-1024.png"
+      [ -z "''$SRC1024" ] && [ -f "''$APPICONSET/AppIcon-Light-1024.png" ] && SRC1024="''$APPICONSET/AppIcon-Light-1024.png"
       if [ -n "''$SRC1024" ]; then
         ICON_TMP="''$TMPDIR/wawona-iconutil-minimal"
         rm -rf "''$ICON_TMP"
@@ -210,7 +211,9 @@ let
     fi
 
     # Legacy PNG copies
-    if [ -d "''$APPICONSET" ] && [ -f "''$APPICONSET/AppIcon-Light-1024.png" ]; then
+    if [ -d "''$APPICONSET" ] && [ -f "''$APPICONSET/AppIcon-1024.png" ]; then
+      cp "''$APPICONSET/AppIcon-1024.png" "''$RESOURCES/AppIcon.png"
+    elif [ -d "''$APPICONSET" ] && [ -f "''$APPICONSET/AppIcon-Light-1024.png" ]; then
       cp "''$APPICONSET/AppIcon-Light-1024.png" "''$RESOURCES/AppIcon.png"
     fi
     if [ -d "''$APPICONSET" ] && [ -f "''$APPICONSET/AppIcon-Dark-1024.png" ]; then
@@ -235,6 +238,24 @@ let
         break
       fi
     done
+
+    # Menubar icon must use the dedicated monochrome silhouette asset.
+    if [ -f "''$ICON_BUNDLE/Assets/wayland.png" ]; then
+      cp "''$ICON_BUNDLE/Assets/wayland.png" "''$RESOURCES/Wawona-menubar-silhouette.png"
+      echo "Installed Wawona-menubar-silhouette.png from Wawona.icon/Assets/wayland.png"
+    else
+      # Fallback only if the dedicated silhouette is missing.
+      for candidate in "Assets.xcassets/AppIcon.appiconset/AppIcon-Dark-1024.png" \
+                       "Wawona-iOS-Dark-1024x1024@1x.png" \
+                       "Assets.xcassets/AppIcon.appiconset/AppIcon-Light-1024.png" \
+                       "Wawona-iOS-Light-1024x1024@1x.png"; do
+        if [ -f "''$ICON_ROOT/''$candidate" ]; then
+          cp "''$ICON_ROOT/''$candidate" "''$RESOURCES/Wawona-menubar-silhouette.png"
+          echo "Installed Wawona-menubar-silhouette.png from fallback source"
+          break
+        fi
+      done
+    fi
   '';
 
   generateIcons = platform: ''
@@ -791,7 +812,7 @@ MVK_ICD_EOF
         <key>CFBundlePrimaryIcon</key>
         <dict>
             <key>CFBundleIconName</key>
-            <string>Wawona</string>
+            <string>AppIcon</string>
         </dict>
     </dict>
     <key>CFBundleIconName</key>

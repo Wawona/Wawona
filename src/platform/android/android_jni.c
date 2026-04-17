@@ -21,6 +21,9 @@
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
 #include <jni.h>
+#include <sys/types.h>
+#include <bits/signal_types.h>
+#include <signal.h>
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -1905,14 +1908,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeApplySettings(
   config.openglDriver[sizeof(config.openglDriver) - 1] = '\0';
   WWNSettings_UpdateConfig(&config);
 
-  /* Push to Rust backend */
-  if (g_core) {
-    WWNCoreSetForceSSD(g_core, forceServerSideDecorations ? 1 : 0);
-    WWNCoreSetSafeAreaInsets(g_core, g_safeAreaTop, g_safeAreaRight,
-                             g_safeAreaBottom, g_safeAreaLeft);
-  }
-
-  // Update safe area based on new setting
+  // Apply safe-area globals from preference *before* pushing to the core (avoid stale insets).
   if (respectSafeArea) {
     g_safeAreaLeft = g_rawSafeAreaLeft;
     g_safeAreaTop = g_rawSafeAreaTop;
@@ -1928,6 +1924,13 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeApplySettings(
   LOGI("Safe area updated based on settings: %s (L=%d, T=%d, R=%d, B=%d)",
        respectSafeArea ? "enabled" : "disabled", g_safeAreaLeft, g_safeAreaTop,
        g_safeAreaRight, g_safeAreaBottom);
+
+  /* Push to Rust backend */
+  if (g_core) {
+    WWNCoreSetForceSSD(g_core, forceServerSideDecorations ? 1 : 0);
+    WWNCoreSetSafeAreaInsets(g_core, g_safeAreaTop, g_safeAreaRight,
+                             g_safeAreaBottom, g_safeAreaLeft);
+  }
 
   // Reapply output scale (auto-scale toggle may have changed)
   apply_output_scale();
@@ -2384,8 +2387,8 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeKeyboardFocus(
 #include <errno.h>
 #include <fcntl.h>
 #include <netdb.h>
-#include <poll.h>
 #include <signal.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -2546,7 +2549,7 @@ static void *waypipe_thread_func(void *arg) {
     static char quoted_rcmd[520];
     const char *raw_rcmd = g_waypipe_config.remote_command[0]
                                ? g_waypipe_config.remote_command
-                               : "weston-terminal";
+                               : "weston-simple-shm";
     snprintf(quoted_rcmd, sizeof(quoted_rcmd), "\"%s\"", raw_rcmd);
     const char *rcmd = quoted_rcmd;
 

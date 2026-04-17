@@ -270,10 +270,10 @@ pkgs.stdenv.mkDerivation {
     endian = 'little'
 
     [built-in options]
-    c_args = ['-arch', '$IOS_ARCH', '-isysroot', '$SDKROOT', '-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0', '-fPIC', '-D_DARWIN_C_SOURCE', '-I$EPOL_SHIM_PATH/include/libepoll-shim', '-I$EPOL_SHIM_PATH/include']
-    cpp_args = ['-arch', '$IOS_ARCH', '-isysroot', '$SDKROOT', '-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0', '-fPIC', '-D_DARWIN_C_SOURCE', '-I$EPOL_SHIM_PATH/include/libepoll-shim', '-I$EPOL_SHIM_PATH/include']
-    c_link_args = ['-arch', '$IOS_ARCH', '-isysroot', '$SDKROOT', '-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0', '-L$EPOL_SHIM_PATH/lib', '-lepoll-shim']
-    cpp_link_args = ['-arch', '$IOS_ARCH', '-isysroot', '$SDKROOT', '-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0', '-L$EPOL_SHIM_PATH/lib', '-lepoll-shim']
+    c_args = ['-arch', '$IOS_ARCH', '-isysroot', '$SDKROOT', '-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=${iosToolchain.deploymentTarget}', '-fPIC', '-D_DARWIN_C_SOURCE', '-I$EPOL_SHIM_PATH/include/libepoll-shim', '-I$EPOL_SHIM_PATH/include']
+    cpp_args = ['-arch', '$IOS_ARCH', '-isysroot', '$SDKROOT', '-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=${iosToolchain.deploymentTarget}', '-fPIC', '-D_DARWIN_C_SOURCE', '-I$EPOL_SHIM_PATH/include/libepoll-shim', '-I$EPOL_SHIM_PATH/include']
+    c_link_args = ['-arch', '$IOS_ARCH', '-isysroot', '$SDKROOT', '-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=${iosToolchain.deploymentTarget}', '-L$EPOL_SHIM_PATH/lib', '-lepoll-shim']
+    cpp_link_args = ['-arch', '$IOS_ARCH', '-isysroot', '$SDKROOT', '-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=${iosToolchain.deploymentTarget}', '-L$EPOL_SHIM_PATH/lib', '-lepoll-shim']
     EOF
   '';
 

@@ -6,6 +6,7 @@
   buildModule,
   wawonaSrc ? null,
   simulator ? false,
+  iosToolchain,
   ...
 }:
 
@@ -14,7 +15,11 @@ let
   westonClientSrc = pkgs.callPackage ../../libs/weston-simple-shm/patched-src.nix { };
   libwayland = buildModule.buildForIPadOS "libwayland" { inherit simulator; };
   sdkPlatform = if simulator then "iPhoneSimulator" else "iPhoneOS";
-  minVerFlag = if simulator then "-mios-simulator-version-min=26.0" else "-miphoneos-version-min=26.0";
+  minVerFlag =
+    if simulator then
+      "-mios-simulator-version-min=${iosToolchain.deploymentTarget}"
+    else
+      "-miphoneos-version-min=${iosToolchain.deploymentTarget}";
 in
 stdenv.mkDerivation rec {
   pname = "weston-ipados";

@@ -30,6 +30,7 @@ endif()
 # Keep the Android native build aligned with the Nix source filter instead of
 # globbing in platform-specific desktop/iOS stubs.
 set(WAWONA_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/wawona_client_stubs.c
     ${WAWONA_ROOT}/src/stubs/egl_buffer_handler.c
     ${WAWONA_ROOT}/src/platform/android/android_jni.c
     ${WAWONA_ROOT}/src/platform/android/input_android.c
@@ -89,4 +90,7 @@ if (NIX_LIB_DIRS)
 endif()
 
 # Extra definitions
-target_compile_definitions(wawona PRIVATE _GNU_SOURCE)
+target_compile_definitions(wawona PRIVATE
+    _GNU_SOURCE
+    _POSIX_C_SOURCE=200809L
+)

@@ -41,13 +41,15 @@ pub fn register(_state: &mut CompositorState, dh: &DisplayHandle) {
     // New 0.32.10 protocols
     use wayland_protocols::xdg::activation::v1::server::xdg_activation_v1::XdgActivationV1;
     use wayland_protocols::xdg::dialog::v1::server::xdg_wm_dialog_v1::XdgWmDialogV1;
+    use wayland_protocols::xdg::system_bell::v1::server::xdg_system_bell_v1::XdgSystemBellV1;
     use wayland_protocols::xdg::toplevel_drag::v1::server::xdg_toplevel_drag_manager_v1::XdgToplevelDragManagerV1;
     use wayland_protocols::xdg::toplevel_icon::v1::server::xdg_toplevel_icon_manager_v1::XdgToplevelIconManagerV1;
 
     dh.create_global::<CompositorState, XdgActivationV1, _>(1, ());
     dh.create_global::<CompositorState, XdgWmDialogV1, _>(1, ());
+    dh.create_global::<CompositorState, XdgSystemBellV1, _>(1, ());
     dh.create_global::<CompositorState, XdgToplevelDragManagerV1, _>(1, ());
     dh.create_global::<CompositorState, XdgToplevelIconManagerV1, _>(1, ());
 
-    crate::wlog!(crate::util::logging::COMPOSITOR, "Registered additional XDG protocols (activation, dialog, icons)");
+    crate::wlog!(crate::util::logging::COMPOSITOR, "Registered additional XDG protocols (activation, dialog, system bell, icons)");
 }

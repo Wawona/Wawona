@@ -1,16 +1,20 @@
 #import "WWNSceneDelegate.h"
 #import "../macos/ui/Settings/WWNPreferencesManager.h"
 #import "../macos/ui/Settings/WWNPreferences.h"
-#import "../macos/ui/Settings/WWNSettingsSplitViewController.h"
 #import "../macos/ui/Settings/WWNWaypipeRunner.h"
 #import "../macos/ui/Machines/WWNMachinesCoordinator.h"
 #import "WWNCompositorBridge.h"
-#import <objc/message.h>
 #import <math.h>
+#import <TargetConditionals.h>
 #import "../../util/WWNLog.h"
 
 @interface WWNWelcomeViewController : UIViewController
 @property(nonatomic, copy) dispatch_block_t onContinue;
+@property(nonatomic, weak) UIButton *continueButton;
+@end
+
+@interface WWNCompositorHostViewController : UIViewController
+@property(nonatomic, assign) BOOL defersSystemGesturesForCompositor;
 @end
 
 @interface WWNShakeAwareWindow : UIWindow
@@ -32,6 +36,55 @@
 
 @end
 
+@implementation WWNCompositorHostViewController
+
+#if !TARGET_OS_TV
+- (UIRectEdge)preferredScreenEdgesDeferringSystemGestures {
+  return self.defersSystemGesturesForCompositor ? UIRectEdgeBottom : UIRectEdgeNone;
+}
+
+- (BOOL)prefersHomeIndicatorAutoHidden {
+  return self.defersSystemGesturesForCompositor;
+}
+
+// Deprecated on recent SDKs; still the supported way to drive status bar from this VC.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-implementations"
+- (BOOL)prefersStatusBarHidden {
+  return self.defersSystemGesturesForCompositor;
+}
+#pragma clang diagnostic pop
+
+/// While the Wayland session is immersive, use this controller’s deferral/hiding
+/// preferences. UIKit otherwise may walk children/presented VCs and ignore the host.
+- (UIViewController *)childViewControllerForScreenEdgesDeferringSystemGestures {
+  if (self.defersSystemGesturesForCompositor) {
+    return nil;
+  }
+  return [super childViewControllerForScreenEdgesDeferringSystemGestures];
+}
+#endif
+
+#if !TARGET_OS_TV
+- (UIViewController *)childViewControllerForHomeIndicatorAutoHidden {
+  if (self.defersSystemGesturesForCompositor) {
+    return nil;
+  }
+  return [super childViewControllerForHomeIndicatorAutoHidden];
+}
+#endif
+
+#if !TARGET_OS_VISION && !TARGET_OS_TV
+- (UIViewController *)childViewControllerForStatusBarHidden {
+  if (self.defersSystemGesturesForCompositor) {
+    return nil;
+  }
+  return [super childViewControllerForStatusBarHidden];
+}
+#endif
+
+@end
+
 @implementation WWNWelcomeViewController
 
 - (void)viewDidLoad {
@@ -41,7 +94,11 @@
 
   UIView *card = [[UIView alloc] init];
   card.translatesAutoresizingMaskIntoConstraints = NO;
+#if TARGET_OS_TV
+  card.backgroundColor = [UIColor colorWithWhite:0.18 alpha:1.0];
+#else
   card.backgroundColor = [UIColor secondarySystemBackgroundColor];
+#endif
   card.layer.cornerRadius = 16.0;
   card.layer.masksToBounds = YES;
   [self.view addSubview:card];
@@ -67,13 +124,22 @@
   [continueButton setTitle:@"Continue" forState:UIControlStateNormal];
   continueButton.titleLabel.font =
       [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
-  continueButton.backgroundColor = [UIColor systemBlueColor];
-  [continueButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-  continueButton.layer.cornerRadius = 10.0;
-  continueButton.contentEdgeInsets = UIEdgeInsetsMake(12, 20, 12, 20);
+  UIButtonConfiguration *continueConfig = [UIButtonConfiguration filledButtonConfiguration];
+  continueConfig.baseBackgroundColor = [UIColor systemBlueColor];
+  continueConfig.baseForegroundColor = [UIColor whiteColor];
+  continueConfig.cornerStyle = UIButtonConfigurationCornerStyleMedium;
+  continueConfig.contentInsets = NSDirectionalEdgeInsetsMake(12.0, 20.0, 12.0, 20.0);
+  continueButton.configuration = continueConfig;
   [continueButton addTarget:self
                      action:@selector(handleContinueTapped)
            forControlEvents:UIControlEventTouchUpInside];
+#if TARGET_OS_TV
+  // Siri Remote select triggers primary action on tvOS.
+  [continueButton addTarget:self
+                     action:@selector(handleContinueTapped)
+           forControlEvents:UIControlEventPrimaryActionTriggered];
+#endif
+  self.continueButton = continueButton;
 
   UIStackView *stack = [[UIStackView alloc]
       initWithArrangedSubviews:@[ titleLabel, bodyLabel, continueButton ]];
@@ -99,18 +165,33 @@
   ]];
 
   [continueButton.heightAnchor constraintEqualToConstant:48.0].active = YES;
+
+#if TARGET_OS_TV
+  // Ensure the primary CTA is focused when the welcome screen appears.
+  [self setNeedsFocusUpdate];
+  [self updateFocusIfNeeded];
+#endif
 }
 
 - (void)handleContinueTapped {
+  WWNLog("SCENE", @"Welcome continue tapped");
   if (self.onContinue) {
     self.onContinue();
   }
 }
 
+#if TARGET_OS_TV
+- (NSArray<id<UIFocusEnvironment>> *)preferredFocusEnvironments {
+  if (self.continueButton != nil) {
+    return @[ self.continueButton ];
+  }
+  return [super preferredFocusEnvironments];
+}
+#endif
+
 @end
 
 @interface WWNSceneDelegate ()
-@property(nonatomic, strong) UIButton *settingsButton;
 /// Constraints that pin compositorContainer to the safe area.
 @property(nonatomic, strong) NSArray<NSLayoutConstraint *> *safeAreaConstraints;
 /// Constraints that pin compositorContainer edge-to-edge (full screen).
@@ -125,6 +206,9 @@
 @property(nonatomic, assign) BOOL showingMachinesUI;
 @property(nonatomic, assign) CFTimeInterval lastShakePromptTime;
 @property(nonatomic, assign) BOOL shakePromptVisible;
+#if !TARGET_OS_VISION && !TARGET_OS_TV
+@property(nonatomic, strong) UIScreenEdgePanGestureRecognizer *backSwipeGesture;
+#endif
 @end
 
 @implementation WWNSceneDelegate
@@ -150,7 +234,9 @@
   self.window.backgroundColor = [UIColor blackColor];
 
   // Root view controller — fills the full screen
-  UIViewController *rootViewController = [[UIViewController alloc] init];
+  WWNCompositorHostViewController *rootViewController =
+      [[WWNCompositorHostViewController alloc] init];
+  rootViewController.defersSystemGesturesForCompositor = NO;
   rootViewController.view =
       [[UIView alloc] initWithFrame:self.window.bounds];
   rootViewController.view.backgroundColor = [UIColor blackColor];
@@ -205,10 +291,10 @@
   // Update compositor output to match the container's resolved size
   [self updateOutputSizeFromContainer];
 
-  // Settings button — always anchored to the safe area
-  [self setupSettingsButton];
+#if !TARGET_OS_VISION && !TARGET_OS_TV
+  [self setupBackSwipeGesture];
+#endif
   self.compositorContainer.hidden = YES;
-  self.settingsButton.hidden = YES;
 
   // Observe preference changes so the user can toggle at runtime
   [[NSNotificationCenter defaultCenter]
@@ -229,6 +315,29 @@
 #pragma mark - Safe Area
 
 - (void)applyRespectSafeAreaPreference {
+#if !TARGET_OS_VISION
+  // Active Wayland compositor view: always edge-to-edge (true “fullscreen” output)
+  // so the client can use the full display and home-indicator deferral matches
+  // immersive apps (e.g. games). Respect Safe Area applies only when the
+  // compositor container is hidden (machines / welcome).
+  if (!self.compositorContainer.hidden) {
+    if (self.fullScreenConstraints.firstObject.isActive) {
+      return;
+    }
+    WWNLog("SCENE", @"Compositor session: forcing edge-to-edge layout (immersive)");
+    [NSLayoutConstraint deactivateConstraints:self.safeAreaConstraints];
+    [NSLayoutConstraint activateConstraints:self.fullScreenConstraints];
+    UIView *root = self.window.rootViewController.view;
+    [root setNeedsLayout];
+    [root layoutIfNeeded];
+    [self updateOutputSizeFromContainerForced:YES];
+    for (UIView *child in self.compositorContainer.subviews) {
+      child.frame = self.compositorContainer.bounds;
+    }
+    return;
+  }
+#endif
+
   BOOL respectSafeArea =
       [[WWNPreferencesManager sharedManager] respectSafeArea];
 
@@ -284,8 +393,10 @@
 
   CGSize sz = bounds.size;
 
-  UIWindowScene *ws = self.window.windowScene;
-  CGFloat screenScale = ws.screen.scale;
+  CGFloat screenScale = self.window.traitCollection.displayScale;
+  if (screenScale <= 0.0) {
+    screenScale = 1.0;
+  }
   BOOL autoScale = [[WWNPreferencesManager sharedManager] autoScale];
   float wlScale = autoScale ? (float)screenScale : 1.0f;
 
@@ -305,71 +416,52 @@
         sz.width, sz.height, wlScale, autoScale ? @"ON" : @"OFF");
 }
 
-#pragma mark - Settings Button
+#pragma mark - Session Exit Gestures
 
-- (void)setupSettingsButton {
+- (void)setCompositorGestureDeferralEnabled:(BOOL)enabled {
+  if (![self.window.rootViewController
+          isKindOfClass:[WWNCompositorHostViewController class]]) {
+    return;
+  }
+  WWNCompositorHostViewController *host =
+      (WWNCompositorHostViewController *)self.window.rootViewController;
+  if (host.defersSystemGesturesForCompositor == enabled) {
+    return;
+  }
+  host.defersSystemGesturesForCompositor = enabled;
+#if !TARGET_OS_TV
+  [host setNeedsUpdateOfScreenEdgesDeferringSystemGestures];
+  [host setNeedsUpdateOfHomeIndicatorAutoHidden];
+#endif
+#if !TARGET_OS_VISION && !TARGET_OS_TV
+  [host setNeedsStatusBarAppearanceUpdate];
+#endif
+}
+
+#if !TARGET_OS_VISION && !TARGET_OS_TV
+- (void)setupBackSwipeGesture {
   UIView *root = self.window.rootViewController.view;
-  UIImage *gearImage = [UIImage systemImageNamed:@"gear"];
-
-  self.settingsButton = [UIButton buttonWithType:UIButtonTypeSystem];
-  self.settingsButton.translatesAutoresizingMaskIntoConstraints = NO;
-  self.settingsButton.clipsToBounds = NO;
-
-  UIButtonConfiguration *buttonConfig = nil;
-  SEL glassSelector = NSSelectorFromString(@"glassButtonConfiguration");
-  if ([UIButtonConfiguration respondsToSelector:glassSelector]) {
-    buttonConfig = ((id(*)(id, SEL))objc_msgSend)([UIButtonConfiguration class],
-                                                   glassSelector);
-  }
-  if (!buttonConfig) {
-    buttonConfig = [UIButtonConfiguration borderedButtonConfiguration];
-  }
-
-  buttonConfig.image = gearImage;
-  self.settingsButton.configuration = buttonConfig;
-
-  // Add the button to the root view (not the compositor container)
-  // so it's always visible above Wayland surfaces.
-  [root addSubview:self.settingsButton];
-
-  [self.settingsButton addTarget:self
-                          action:@selector(openSettings:)
-                forControlEvents:UIControlEventTouchUpInside];
-
-  // Always anchor to the safe area regardless of the toggle
-  [NSLayoutConstraint activateConstraints:@[
-    [self.settingsButton.topAnchor
-        constraintEqualToAnchor:root.safeAreaLayoutGuide.topAnchor
-                       constant:20],
-    [self.settingsButton.trailingAnchor
-        constraintEqualToAnchor:root.safeAreaLayoutGuide.trailingAnchor
-                       constant:-20],
-    [self.settingsButton.widthAnchor constraintEqualToConstant:44],
-    [self.settingsButton.heightAnchor constraintEqualToConstant:44],
-  ]];
-  [root bringSubviewToFront:self.settingsButton];
+  UIScreenEdgePanGestureRecognizer *gesture =
+      [[UIScreenEdgePanGestureRecognizer alloc] initWithTarget:self
+                                                        action:@selector(handleBackSwipeGesture:)];
+  gesture.edges = UIRectEdgeLeft;
+  [root addGestureRecognizer:gesture];
+  self.backSwipeGesture = gesture;
 }
 
-- (void)openSettings:(id)sender {
-  UIViewController *presenter = self.window.rootViewController;
-  if (presenter.presentedViewController != nil) {
-    presenter = presenter.presentedViewController;
+- (void)handleBackSwipeGesture:(UIScreenEdgePanGestureRecognizer *)gesture {
+  if (gesture.state != UIGestureRecognizerStateEnded) {
+    return;
   }
-
-  WWNSettingsSplitViewController *settingsController =
-      [[WWNSettingsSplitViewController alloc] init];
-  settingsController.modalPresentationStyle = UIModalPresentationAutomatic;
-  settingsController.modalInPresentation = NO;
-  if (@available(iOS 15.0, *)) {
-    UISheetPresentationController *sheet =
-        settingsController.sheetPresentationController;
-    sheet.prefersGrabberVisible = YES;
-    sheet.prefersScrollingExpandsWhenScrolledToEdge = YES;
+  if ([self isShakeToCloseEnabled]) {
+    return;
   }
-  [presenter presentViewController:settingsController
-                          animated:YES
-                        completion:nil];
+  if (![self isAnyClientSessionRunning]) {
+    return;
+  }
+  [self closeActiveWaylandSession];
 }
+#endif
 
 #pragma mark - UIWindowSceneDelegate
 
@@ -380,6 +472,22 @@
 //
 // Deprecated in iOS 26 — migrate to registerForTraitChanges: when the
 // minimum deployment target is raised to iOS 17+.
+- (void)wwn_handleWindowSceneGeometryChange {
+  WWNLog("SCENE", @"Scene geometry changed (container %.0fx%.0f)",
+        self.compositorContainer.bounds.size.width,
+        self.compositorContainer.bounds.size.height);
+
+  [self.window.rootViewController.view layoutIfNeeded];
+
+  CGRect containerBounds = self.compositorContainer.bounds;
+  for (UIView *child in self.compositorContainer.subviews) {
+    child.frame = containerBounds;
+  }
+
+  [self updateOutputSizeFromContainer];
+}
+
+#if TARGET_OS_VISION
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-implementations"
 - (void)windowScene:(UIWindowScene *)windowScene
@@ -388,26 +496,60 @@
         interfaceOrientation:
             (UIInterfaceOrientation)previousInterfaceOrientation
         traitCollection:(UITraitCollection *)previousTraitCollection {
-#pragma clang diagnostic pop
-
-  WWNLog("SCENE", @"Coordinate space changed (was %.0fx%.0f)",
-        previousCoordinateSpace.bounds.size.width,
-        previousCoordinateSpace.bounds.size.height);
-
-  // Force a layout pass so compositorContainer gets the new bounds
-  [self.window.rootViewController.view layoutIfNeeded];
-
-  // Resize all window views to fill the new container bounds
-  CGRect containerBounds = self.compositorContainer.bounds;
-  for (UIView *child in self.compositorContainer.subviews) {
-    child.frame = containerBounds;
-  }
-
-  // Update the Wayland output.  The bridge coalesces rapid resize events
-  // so at most one block is on the compositor queue; _compositorTick
-  // flushes the Wayland socket every frame.
-  [self updateOutputSizeFromContainer];
+  (void)windowScene;
+  (void)previousCoordinateSpace;
+  (void)previousInterfaceOrientation;
+  (void)previousTraitCollection;
+  [self wwn_handleWindowSceneGeometryChange];
 }
+#pragma clang diagnostic pop
+#elif !TARGET_OS_TV
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-implementations"
+- (void)windowScene:(UIWindowScene *)windowScene
+    didUpdateCoordinateSpace:
+        (id<UICoordinateSpace>)previousCoordinateSpace
+        interfaceOrientation:
+            (UIInterfaceOrientation)previousInterfaceOrientation
+        traitCollection:(UITraitCollection *)previousTraitCollection {
+  (void)windowScene;
+  (void)previousCoordinateSpace;
+  (void)previousInterfaceOrientation;
+  (void)previousTraitCollection;
+  [self wwn_handleWindowSceneGeometryChange];
+}
+#pragma clang diagnostic pop
+#endif
+
+#if TARGET_OS_TV
+- (void)windowScene:(UIWindowScene *)windowScene
+    didUpdateEffectiveGeometry:(UIWindowSceneGeometry *)previousEffectiveGeometry
+    API_AVAILABLE(tvos(26.0)) {
+  (void)windowScene;
+  (void)previousEffectiveGeometry;
+  [self wwn_handleWindowSceneGeometryChange];
+}
+#endif
+
+#if TARGET_OS_VISION
+- (void)windowScene:(UIWindowScene *)windowScene
+    didUpdateEffectiveGeometry:(UIWindowSceneGeometry *)previousEffectiveGeometry
+    API_AVAILABLE(visionos(26.0)) {
+  (void)windowScene;
+  (void)previousEffectiveGeometry;
+  [self wwn_handleWindowSceneGeometryChange];
+}
+#endif
+
+#if !TARGET_OS_TV && !TARGET_OS_VISION
+- (void)windowScene:(UIWindowScene *)windowScene
+    didUpdateEffectiveGeometry:(UIWindowSceneGeometry *)previousEffectiveGeometry
+    API_AVAILABLE(ios(26.0)) {
+  (void)windowScene;
+  (void)previousEffectiveGeometry;
+  [self wwn_handleWindowSceneGeometryChange];
+}
+#endif
 
 #pragma mark - Scene Lifecycle
 
@@ -424,7 +566,10 @@
                           || [self isAnyNativeClientRunning];
   if (compositorVisible && !somethingRunning) {
     self.compositorContainer.hidden = YES;
-    self.settingsButton.hidden = YES;
+    [self setCompositorGestureDeferralEnabled:NO];
+#if !TARGET_OS_VISION
+    [self applyRespectSafeAreaPreference];
+#endif
     [self presentMachinesConfigurationAfterWelcome];
   }
 }
@@ -586,19 +731,26 @@
   }
 
   self.compositorContainer.hidden = YES;
-  self.settingsButton.hidden = YES;
+  [self setCompositorGestureDeferralEnabled:NO];
+#if !TARGET_OS_VISION
+  [self applyRespectSafeAreaPreference];
+#endif
   [self presentMachinesConfigurationAfterWelcome];
 }
 
 - (void)revealCompositor {
   self.compositorContainer.hidden = NO;
-  self.settingsButton.hidden = NO;
+#if !TARGET_OS_VISION
+  [self applyRespectSafeAreaPreference];
+#endif
+  [self setCompositorGestureDeferralEnabled:YES];
   self.showingMachinesUI = NO;
   [self updateOutputSizeFromContainerForced:YES];
 }
 
 - (void)presentMachinesConfigurationAfterWelcome {
   dispatch_async(dispatch_get_main_queue(), ^{
+    [self setCompositorGestureDeferralEnabled:NO];
     if (self.showingMachinesUI) {
       return;
     }

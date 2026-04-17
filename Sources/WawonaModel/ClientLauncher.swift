@@ -35,8 +35,8 @@ public extension ClientLauncher {
     ]
 #else
     static let presets: [ClientLauncher] = [
-        ClientLauncher(name: "weston-terminal", executablePath: "weston-terminal", displayName: "Weston Terminal"),
         ClientLauncher(name: "weston-simple-shm", executablePath: "weston-simple-shm", displayName: "Weston Simple SHM"),
+        ClientLauncher(name: "weston-terminal", executablePath: "weston-terminal", displayName: "Weston Terminal"),
         ClientLauncher(name: "foot", executablePath: "foot", displayName: "Foot Terminal"),
         ClientLauncher(name: "weston", executablePath: "weston", displayName: "Weston")
     ]

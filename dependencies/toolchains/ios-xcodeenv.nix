@@ -1,4 +1,4 @@
-{ lib, pkgs, TEAM_ID ? null, deploymentTarget ? "26.0", xcodeBaseDir ? null, allowedXcodeVersions ? [ ] }:
+{ lib, pkgs, TEAM_ID ? null, deploymentTarget ? "17.0", xcodeBaseDir ? null, allowedXcodeVersions ? [ ] }:
 
 let
   xcodeenv = import ./xcodeenv {
@@ -70,20 +70,50 @@ let
     printf '%s\n' "$sim_path"
   '';
 
-  mkAppleEnv = { sdkName, minVersion ? deploymentTarget, simulator ? false }:
+  mkAppleEnv = { sdkName, minVersion ? deploymentTarget, simulator ? false, platform ? "ios" }:
     let
       linkerTarget =
-        if simulator then
+        if platform == "visionos" then
+          if simulator then
+            "arm64-apple-xros${minVersion}-simulator"
+          else
+            "arm64-apple-xros${minVersion}"
+        else if platform == "tvos" then
+          if simulator then
+            "arm64-apple-tvos${minVersion}-simulator"
+          else
+            "arm64-apple-tvos${minVersion}"
+        else if simulator then
           "arm64-apple-ios${minVersion}-simulator"
         else
           "arm64-apple-ios${minVersion}";
       deploymentFlag =
-        if simulator then
+        if platform == "visionos" then
+          if simulator then
+            "-mvisionos-simulator-version-min=${minVersion}"
+          else
+            "-mvisionos-version-min=${minVersion}"
+        else if platform == "tvos" then
+          if simulator then
+            "-mtvos-simulator-version-min=${minVersion}"
+          else
+            "-mtvos-version-min=${minVersion}"
+        else if simulator then
           "-mios-simulator-version-min=${minVersion}"
         else
           "-miphoneos-version-min=${minVersion}";
       cargoTarget =
-        if simulator then
+        if platform == "visionos" then
+          if simulator then
+            "aarch64-apple-visionos-sim"
+          else
+            "aarch64-apple-visionos"
+        else if platform == "tvos" then
+          if simulator then
+            "aarch64-apple-tvos-sim"
+          else
+            "aarch64-apple-tvos"
+        else if simulator then
           "aarch64-apple-ios-sim"
         else
           "aarch64-apple-ios";
@@ -107,8 +137,8 @@ let
       esac
 
       export XCODE_APP="$(echo "$DEVELOPER_DIR" | sed 's|/Contents/Developer$||')"
-      export XCODE_CLANG="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
-      export XCODE_CLANGXX="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
+      export XCODE_CLANG_REAL="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
+      export XCODE_CLANGXX_REAL="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
       export PATH="$DEVELOPER_DIR/usr/bin:$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin:$PATH"
       export APPLE_SDK_NAME="${sdkName}"
       export APPLE_MIN_VERSION="${minVersion}"
@@ -116,6 +146,13 @@ let
       export APPLE_DEPLOYMENT_FLAG="${deploymentFlag}"
       export APPLE_CARGO_TARGET="${cargoTarget}"
       export IOS_ARCH="arm64"
+
+      # Always use Xcode's real clang. A previous visionOS wrapper prepended
+      # `-target arm64-apple-xros…` ahead of `-arch`/`-isysroot` from Autoconf;
+      # that combination makes Apple's clang fail "compiler cannot create
+      # executables" for Nix-built deps (e.g. libxml2 for visionOS xkbcommon).
+      export XCODE_CLANG="$XCODE_CLANG_REAL"
+      export XCODE_CLANGXX="$XCODE_CLANGXX_REAL"
 
       if [ ! -x "$XCODE_CLANG" ] || [ ! -x "$XCODE_CLANGXX" ]; then
         echo "ERROR: Apple clang toolchain not found in $DEVELOPER_DIR." >&2

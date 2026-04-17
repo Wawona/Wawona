@@ -2,13 +2,13 @@ import Foundation
 import Combine
 #if os(macOS)
 import AppKit
-#elseif os(iOS)
+#elseif os(iOS) || os(tvOS) || os(visionOS)
 import UIKit
 #endif
 
 #if os(macOS)
 typealias WWNPlatformImage = NSImage
-#elseif os(iOS)
+#elseif os(iOS) || os(tvOS) || os(visionOS)
 typealias WWNPlatformImage = UIImage
 #endif
 
@@ -41,6 +41,14 @@ struct BundledClient: Identifiable, Hashable {
 
 let kBundledClients: [BundledClient] = [
   BundledClient(
+    id: "weston-simple-shm",
+    name: "Weston Simple SHM",
+    prefsKey: "WestonSimpleSHMEnabled",
+    icon: "square.on.square.dashed",
+    description: "Minimal shared-memory Wayland client",
+    isNestedCompositor: false
+  ),
+  BundledClient(
     id: "weston",
     name: "Weston",
     prefsKey: "WestonEnabled",
@@ -54,14 +62,6 @@ let kBundledClients: [BundledClient] = [
     prefsKey: "WestonTerminalEnabled",
     icon: "terminal",
     description: "Terminal emulator — uses host cursor",
-    isNestedCompositor: false
-  ),
-  BundledClient(
-    id: "weston-simple-shm",
-    name: "Weston Simple SHM",
-    prefsKey: "WestonSimpleSHMEnabled",
-    icon: "square.on.square.dashed",
-    description: "Minimal shared-memory Wayland client",
     isNestedCompositor: false
   ),
   BundledClient(
@@ -440,7 +440,7 @@ final class WWNMachinesViewModel: ObservableObject {
       }
       return "No client configured — edit to select one"
     case kWWNMachineTypeSSHWaypipe:
-      let command = profile.remoteCommand.isEmpty ? "weston-terminal" : profile.remoteCommand
+      let command = profile.remoteCommand.isEmpty ? "weston-simple-shm" : profile.remoteCommand
       return "Waypipe command: \(command)"
     case kWWNMachineTypeSSHTerminal:
       let command = profile.remoteCommand.isEmpty ? "terminal default" : profile.remoteCommand

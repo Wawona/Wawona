@@ -32,7 +32,7 @@ struct ConnectionSettingsView: View {
                 sshUser: preferences.sshUser,
                 sshPortText: String(preferences.sshPort),
                 sshPassword: preferences.sshPassword,
-                waypipeCommand: "weston-terminal",
+                waypipeCommand: "weston-simple-shm",
                 latestDiagnosticsSummary: diagnosticsSummary
             )
             WawonaUIContractAdapters.applyConnectionSettings(state, to: preferences)

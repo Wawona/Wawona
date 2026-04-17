@@ -11,6 +11,7 @@
 let
   fetchSource = common.fetchSource;
   xcodeUtils = iosToolchain;
+  isVisionOS = iosToolchain.isVisionOSToolchain or false;
   libffiSource = {
     source = "github";
     owner = "libffi";
@@ -77,14 +78,18 @@ pkgs.stdenv.mkDerivation {
 
     export CC="$PWD/libffi-ios-cc"
     export CXX="$PWD/libffi-ios-cxx"
-    export CFLAGS="-arch $IOS_ARCH -isysroot $SDKROOT $APPLE_DEPLOYMENT_FLAG -fPIC"
-    export CXXFLAGS="-arch $IOS_ARCH -isysroot $SDKROOT $APPLE_DEPLOYMENT_FLAG -fPIC"
-    export LDFLAGS="-arch $IOS_ARCH -isysroot $SDKROOT $APPLE_DEPLOYMENT_FLAG"
+    export CFLAGS="${if isVisionOS then "-target $APPLE_LINKER_TARGET -isysroot $SDKROOT -fPIC" else "-arch $IOS_ARCH -isysroot $SDKROOT $APPLE_DEPLOYMENT_FLAG -fPIC"}"
+    export CXXFLAGS="${if isVisionOS then "-target $APPLE_LINKER_TARGET -isysroot $SDKROOT -fPIC" else "-arch $IOS_ARCH -isysroot $SDKROOT $APPLE_DEPLOYMENT_FLAG -fPIC"}"
+    export LDFLAGS="${if isVisionOS then "-target $APPLE_LINKER_TARGET -isysroot $SDKROOT" else "-arch $IOS_ARCH -isysroot $SDKROOT $APPLE_DEPLOYMENT_FLAG"}"
   '';
   configurePhase = ''
     runHook preConfigure
     # Unset SDKROOT so it doesn't leak into host-side tool builds
     unset SDKROOT
+    ${lib.optionalString isVisionOS ''
+      export cross_compiling=yes
+      export ac_cv_c_compiler_works=yes
+    ''}
     ./configure --prefix=$out --host=aarch64-apple-darwin ${
       lib.concatMapStringsSep " " (flag: flag) buildFlags
     }

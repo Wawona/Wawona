@@ -170,6 +170,7 @@ static int g_instance_lock_fd = -1;
 static int g_host_lock_fd = -1;
 static int g_menubar_lock_fd = -1;
 static BOOL g_show_about_on_launch = NO;
+static BOOL g_service_host_mode = NO;
 
 static void release_instance_lock(void) {
   if (g_instance_lock_fd >= 0) {
@@ -379,6 +380,9 @@ static void setup_signal_sources(void) {
 @implementation WWNMacAppDelegate
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
+  if (g_service_host_mode) {
+    return;
+  }
   WWNPreferencesManager *prefs = [WWNPreferencesManager sharedManager];
   if (![prefs hasSeenWelcome]) {
     [NSApp activateIgnoringOtherApps:YES];
@@ -391,7 +395,7 @@ static void setup_signal_sources(void) {
     [prefs setHasSeenWelcome:YES];
   }
   if (g_show_about_on_launch) {
-    [[WWNAboutPanel sharedAboutPanel] showAboutPanel:nil];
+    [[WWNAboutPanel sharedAboutPanel] showAboutPanel:NSApp];
   } else {
     [[WWNMachinesCoordinator sharedCoordinator] showMachinesWindowAndActivate:YES];
   }
@@ -427,6 +431,21 @@ static void setup_signal_sources(void) {
   [[WWNMachinesCoordinator sharedCoordinator] showMachinesWindowFromMenu:sender];
 }
 
+- (void)restartCompositor:(id)sender {
+  (void)sender;
+  [[WWNLaunchAgentManager sharedManager] restartCompositorAgent];
+}
+
+- (void)stopCompositor:(id)sender {
+  (void)sender;
+  [[WWNLaunchAgentManager sharedManager] stopCompositorAgent];
+}
+
+- (void)startCompositor:(id)sender {
+  (void)sender;
+  [[WWNLaunchAgentManager sharedManager] startCompositorAgent];
+}
+
 - (BOOL)applicationShouldSaveApplicationState:(NSApplication *)sender {
   (void)sender;
   return NO;
@@ -444,6 +463,132 @@ static void setup_signal_sources(void) {
 
 @end
 
+static void wwn_install_host_main_menu(id target) {
+  NSMenu *menubar = [[NSMenu alloc] init];
+  NSString *appName = @"Wawona";
+
+  NSMenuItem *appMenuItem = [[NSMenuItem alloc] init];
+  NSMenu *appMenu = [[NSMenu alloc] init];
+  NSMenuItem *aboutItem = [[NSMenuItem alloc]
+      initWithTitle:[NSString stringWithFormat:@"About %@", appName]
+             action:@selector(showAboutPanel:)
+      keyEquivalent:@""];
+  aboutItem.target = target;
+  [appMenu addItem:aboutItem];
+  [appMenu addItem:[NSMenuItem separatorItem]];
+  NSMenuItem *prefsItem = [[NSMenuItem alloc] initWithTitle:@"Settings..."
+                                                     action:@selector(showPreferences:)
+                                              keyEquivalent:@","];
+  prefsItem.target = target;
+  [appMenu addItem:prefsItem];
+  NSMenuItem *machinesItem = [[NSMenuItem alloc] initWithTitle:@"Machines..."
+                                                         action:@selector(showMachines:)
+                                                  keyEquivalent:@"m"];
+  machinesItem.target = target;
+  [machinesItem setKeyEquivalentModifierMask:NSEventModifierFlagCommand |
+                                           NSEventModifierFlagShift];
+  [appMenu addItem:machinesItem];
+  [appMenu addItem:[NSMenuItem separatorItem]];
+  [appMenu addItem:[[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"Quit %@", appName]
+                                              action:@selector(terminate:)
+                                       keyEquivalent:@"q"]];
+  [appMenuItem setSubmenu:appMenu];
+  [menubar addItem:appMenuItem];
+
+  NSMenuItem *fileMenuItem = [[NSMenuItem alloc] init];
+  NSMenu *fileMenu = [[NSMenu alloc] initWithTitle:@"File"];
+  [fileMenu addItem:[[NSMenuItem alloc] initWithTitle:@"Close Window"
+                                                action:@selector(performClose:)
+                                         keyEquivalent:@"w"]];
+  [fileMenuItem setSubmenu:fileMenu];
+  [menubar addItem:fileMenuItem];
+
+  NSMenuItem *editMenuItem = [[NSMenuItem alloc] init];
+  NSMenu *editMenu = [[NSMenu alloc] initWithTitle:@"Edit"];
+  [editMenu addItem:[[NSMenuItem alloc] initWithTitle:@"Undo"
+                                                action:NSSelectorFromString(@"undo:")
+                                         keyEquivalent:@"z"]];
+  NSMenuItem *redoItem = [[NSMenuItem alloc] initWithTitle:@"Redo"
+                                                    action:NSSelectorFromString(@"redo:")
+                                             keyEquivalent:@"z"];
+  [redoItem setKeyEquivalentModifierMask:NSEventModifierFlagCommand |
+                                         NSEventModifierFlagShift];
+  [editMenu addItem:redoItem];
+  [editMenu addItem:[NSMenuItem separatorItem]];
+  [editMenu addItem:[[NSMenuItem alloc] initWithTitle:@"Cut"
+                                                action:@selector(cut:)
+                                         keyEquivalent:@"x"]];
+  [editMenu addItem:[[NSMenuItem alloc] initWithTitle:@"Copy"
+                                                action:@selector(copy:)
+                                         keyEquivalent:@"c"]];
+  [editMenu addItem:[[NSMenuItem alloc] initWithTitle:@"Paste"
+                                                action:@selector(paste:)
+                                         keyEquivalent:@"v"]];
+  [editMenu addItem:[[NSMenuItem alloc] initWithTitle:@"Select All"
+                                                action:@selector(selectAll:)
+                                         keyEquivalent:@"a"]];
+  [editMenuItem setSubmenu:editMenu];
+  [menubar addItem:editMenuItem];
+
+  NSMenuItem *selectionMenuItem = [[NSMenuItem alloc] init];
+  NSMenu *selectionMenu = [[NSMenu alloc] initWithTitle:@"Selection"];
+  [selectionMenu addItem:[[NSMenuItem alloc] initWithTitle:@"Select All"
+                                                     action:@selector(selectAll:)
+                                              keyEquivalent:@"a"]];
+  [selectionMenuItem setSubmenu:selectionMenu];
+  [menubar addItem:selectionMenuItem];
+
+  NSMenuItem *viewMenuItem = [[NSMenuItem alloc] init];
+  NSMenu *viewMenu = [[NSMenu alloc] initWithTitle:@"View"];
+  [viewMenu addItem:[[NSMenuItem alloc] initWithTitle:@"Enter Full Screen"
+                                                action:@selector(toggleFullScreen:)
+                                         keyEquivalent:@"f"]];
+  [viewMenuItem setSubmenu:viewMenu];
+  [menubar addItem:viewMenuItem];
+
+  NSMenuItem *goMenuItem = [[NSMenuItem alloc] init];
+  NSMenu *goMenu = [[NSMenu alloc] initWithTitle:@"Go"];
+  NSMenuItem *goMachinesItem = [[NSMenuItem alloc] initWithTitle:@"Machines"
+                                                           action:@selector(showMachines:)
+                                                    keyEquivalent:@"m"];
+  goMachinesItem.target = target;
+  [goMenu addItem:goMachinesItem];
+  [goMenuItem setSubmenu:goMenu];
+  [menubar addItem:goMenuItem];
+
+  NSMenuItem *runMenuItem = [[NSMenuItem alloc] init];
+  NSMenu *runMenu = [[NSMenu alloc] initWithTitle:@"Run"];
+  NSMenuItem *startItem = [[NSMenuItem alloc] initWithTitle:@"Start Compositor"
+                                                      action:@selector(startCompositor:)
+                                               keyEquivalent:@""];
+  startItem.target = target;
+  [runMenu addItem:startItem];
+  NSMenuItem *stopItem = [[NSMenuItem alloc] initWithTitle:@"Stop Compositor"
+                                                     action:@selector(stopCompositor:)
+                                              keyEquivalent:@""];
+  stopItem.target = target;
+  [runMenu addItem:stopItem];
+  NSMenuItem *restartItem = [[NSMenuItem alloc] initWithTitle:@"Restart Compositor"
+                                                        action:@selector(restartCompositor:)
+                                                 keyEquivalent:@"r"];
+  restartItem.target = target;
+  [runMenu addItem:restartItem];
+  [runMenuItem setSubmenu:runMenu];
+  [menubar addItem:runMenuItem];
+
+  NSMenuItem *helpMenuItem = [[NSMenuItem alloc] init];
+  NSMenu *helpMenu = [[NSMenu alloc] initWithTitle:@"Help"];
+  NSMenuItem *helpAboutItem = [[NSMenuItem alloc] initWithTitle:@"About Wawona"
+                                                          action:@selector(showAboutPanel:)
+                                                   keyEquivalent:@""];
+  helpAboutItem.target = target;
+  [helpMenu addItem:helpAboutItem];
+  [helpMenuItem setSubmenu:helpMenu];
+  [menubar addItem:helpMenuItem];
+
+  [NSApp setMainMenu:menubar];
+}
+
 @interface WWNMenuBarController : NSObject
 @property(nonatomic, strong) NSStatusItem *statusItem;
 @property(nonatomic, strong) NSMenuItem *statusLineItem;
@@ -451,38 +596,35 @@ static void setup_signal_sources(void) {
 @end
 
 static NSImage *WWNMenuBarTemplateIcon(void) {
-  NSImage *icon = [NSImage imageNamed:@"Wawona-iOS-Dark-1024x1024@1x.png"];
-  if (!icon) {
-    NSBundle *bundle = [NSBundle mainBundle];
-    NSString *path =
-        [bundle pathForResource:@"Wawona-iOS-Dark-1024x1024@1x" ofType:@"png"];
-    if (!path) {
-      path = [bundle pathForResource:@"Wawona-iOS-Dark-1024x1024" ofType:@"png"];
-    }
-    if (!path) {
-      NSString *resourcePath = bundle.resourcePath ?: @"";
-      NSString *candidate = [resourcePath
-          stringByAppendingPathComponent:@"Wawona-iOS-Dark-1024x1024@1x.png"];
-      if ([[NSFileManager defaultManager] fileExistsAtPath:candidate]) {
-        path = candidate;
-      }
-    }
+  NSBundle *bundle = [NSBundle mainBundle];
+  NSArray<NSString *> *candidates = @[
+    @"Wawona-menubar-silhouette",
+    @"Wawona-iOS-Dark-1024x1024@1x",
+    @"Wawona-iOS-Dark-1024x1024",
+    @"AppIcon-Dark-1024",
+    @"AppIcon-Light-1024",
+    @"Wawona"
+  ];
+
+  NSImage *icon = nil;
+  for (NSString *name in candidates) {
+    NSString *path = [bundle pathForResource:name ofType:@"png"];
     if (!path) {
       NSString *resourcePath = bundle.resourcePath ?: @"";
-      NSString *candidate =
-          [resourcePath stringByAppendingPathComponent:@"Wawona-iOS-Dark-1024x1024.png"];
+      NSString *candidate = [resourcePath stringByAppendingPathComponent:
+                                              [name stringByAppendingString:@".png"]];
       if ([[NSFileManager defaultManager] fileExistsAtPath:candidate]) {
         path = candidate;
       }
     }
     if (path) {
       icon = [[NSImage alloc] initWithContentsOfFile:path];
+      if (icon) {
+        break;
+      }
     }
   }
 
-  if (!icon) {
-    icon = [NSImage imageNamed:@"Wawona"];
-  }
   if (!icon) {
     return nil;
   }
@@ -694,9 +836,13 @@ int main(int argc, char *argv[]) {
         WWNLog("MAIN", @"Compositor host already running; exiting host mode.");
         return 0;
       }
-      [[NSProcessInfo processInfo] setProcessName:@"WawonaCompositorHost"];
+      [[NSProcessInfo processInfo] setProcessName:@"Wawona"];
       [NSApplication sharedApplication];
-      [NSApp setActivationPolicy:NSApplicationActivationPolicyProhibited];
+      [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+      g_service_host_mode = YES;
+      WWNMacAppDelegate *hostDelegate = [[WWNMacAppDelegate alloc] init];
+      [NSApp setDelegate:hostDelegate];
+      wwn_install_host_main_menu(hostDelegate);
       NSError *agentError = nil;
       (void)[[WWNLaunchAgentManager sharedManager] ensureMenuBarAgent:&agentError];
 
@@ -727,7 +873,8 @@ int main(int argc, char *argv[]) {
       signal(SIGABRT, crash_handler);
       signal(SIGBUS, crash_handler);
       signal(SIGILL, crash_handler);
-      [[NSRunLoop mainRunLoop] run];
+      [NSApp activateIgnoringOtherApps:YES];
+      [NSApp run];
       [bridge stop];
       release_mode_lock(&g_host_lock_fd);
       return 0;
@@ -827,11 +974,11 @@ int main(int argc, char *argv[]) {
     NSMenuItem *editMenuItem = [[NSMenuItem alloc] init];
     NSMenu *editMenu = [[NSMenu alloc] initWithTitle:@"Edit"];
     [editMenu addItem:[[NSMenuItem alloc] initWithTitle:@"Undo"
-                                                  action:@selector(undo:)
+                                                  action:NSSelectorFromString(@"undo:")
                                            keyEquivalent:@"z"]];
     NSMenuItem *redoItem =
         [[NSMenuItem alloc] initWithTitle:@"Redo"
-                                   action:@selector(redo:)
+                                   action:NSSelectorFromString(@"redo:")
                             keyEquivalent:@"z"];
     [redoItem setKeyEquivalentModifierMask:NSEventModifierFlagCommand |
                                              NSEventModifierFlagShift];

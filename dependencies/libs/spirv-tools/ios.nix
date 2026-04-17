@@ -51,7 +51,7 @@ pkgs.stdenv.mkDerivation {
         
         # Use -target which is more robust than -mios-simulator-version-min
         # Add -Wno-error to override -Werror added by CMake configuration
-        TARGET_FLAGS="-target arm64-apple-ios26.0${if simulator then "-simulator" else ""} -isysroot $SDKROOT -Wno-error"
+        TARGET_FLAGS="-target arm64-apple-ios${iosToolchain.deploymentTarget}${if simulator then "-simulator" else ""} -isysroot $SDKROOT -Wno-error"
         
         export NIX_CFLAGS_COMPILE="$TARGET_FLAGS"
         export NIX_CXXFLAGS_COMPILE="$TARGET_FLAGS"
@@ -81,7 +81,7 @@ pkgs.stdenv.mkDerivation {
         cat > ios-toolchain.cmake <<EOF
     set(CMAKE_SYSTEM_NAME iOS)
     set(CMAKE_OSX_ARCHITECTURES arm64)
-    set(CMAKE_OSX_DEPLOYMENT_TARGET 26.0)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET ${iosToolchain.deploymentTarget})
     set(CMAKE_C_COMPILER "$IOS_CC")
     set(CMAKE_CXX_COMPILER "$IOS_CXX")
     set(CMAKE_SYSROOT "$SDKROOT")

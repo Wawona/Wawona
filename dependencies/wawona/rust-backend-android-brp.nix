@@ -124,16 +124,6 @@ rustPlatform.buildRustPackage rec {
     mkdir -p $out/lib $out/include
     find target/aarch64-linux-android/release -name "libwawona*.a" -exec cp {} $out/lib/libwawona.a \;
     find target/aarch64-linux-android/release -name "libwawona*.so" -exec cp {} $out/lib/libwawona_core.so \;
-    if [ -f "$out/lib/libwawona.a" ]; then
-      # Repack with Android llvm-ar so lld accepts the archive members.
-      repack_dir="$(mktemp -d)"
-      cp "$out/lib/libwawona.a" "$repack_dir/original.a"
-      (cd "$repack_dir" && "${androidToolchainEffective.androidAR}" x original.a)
-      rm -f "$out/lib/libwawona.a"
-      (cd "$repack_dir" && "${androidToolchainEffective.androidAR}" qc libwawona.a ./*.o)
-      "${androidToolchainEffective.androidRANLIB}" "$repack_dir/libwawona.a"
-      cp "$repack_dir/libwawona.a" "$out/lib/libwawona.a"
-    fi
     if [ ! -f $out/lib/libwawona.a ] && [ ! -f $out/lib/libwawona_core.so ]; then
       echo "No library found - checking target dir:"
       find target -name "*.a" -o -name "*.so" | head -20

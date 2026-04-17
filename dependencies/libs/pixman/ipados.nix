@@ -108,10 +108,10 @@ cpu = 'aarch64'
 endian = 'little'
 
 [built-in options]
-c_args = ['-arch', 'arm64', '-isysroot', '$SDKROOT', '-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0', '-fPIC']
-cpp_args = ['-arch', 'arm64', '-isysroot', '$SDKROOT', '-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0', '-fPIC']
-c_link_args = ['-arch', 'arm64', '-isysroot', '$SDKROOT', '-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0']
-cpp_link_args = ['-arch', 'arm64', '-isysroot', '$SDKROOT', '-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0']
+c_args = ['-arch', 'arm64', '-isysroot', '$SDKROOT', '-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=${iosToolchain.deploymentTarget}', '-fPIC']
+cpp_args = ['-arch', 'arm64', '-isysroot', '$SDKROOT', '-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=${iosToolchain.deploymentTarget}', '-fPIC']
+c_link_args = ['-arch', 'arm64', '-isysroot', '$SDKROOT', '-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=${iosToolchain.deploymentTarget}']
+cpp_link_args = ['-arch', 'arm64', '-isysroot', '$SDKROOT', '-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=${iosToolchain.deploymentTarget}']
 EOF
   '';
   configurePhase = ''

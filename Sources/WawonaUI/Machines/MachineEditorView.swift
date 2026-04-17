@@ -25,7 +25,12 @@ struct MachineEditorView: View {
         self.onSave = onSave
         let state = WawonaUIContractAdapters.machineEditorState(from: profile)
         _name = State(initialValue: state.name)
+        #if os(iOS)
+        let parsed = MachineType(rawValue: state.typeRawValue) ?? .native
+        _type = State(initialValue: parsed == .container ? .native : parsed)
+        #else
         _type = State(initialValue: MachineType(rawValue: state.typeRawValue) ?? .native)
+        #endif
         _selectedLauncherName = State(initialValue: state.selectedLauncherName)
         _sshHost = State(initialValue: state.sshHost)
         _sshUser = State(initialValue: state.sshUser)
@@ -83,9 +88,15 @@ struct MachineEditorView: View {
                 Section("Profile") {
                     TextField("Name", text: $name)
                     Picker("Type", selection: $type) {
+                        #if os(iOS)
+                        ForEach(MachineType.allCases.filter { $0 != .container }, id: \.self) { t in
+                            Text(t.userFacingName).tag(t)
+                        }
+                        #else
                         ForEach(MachineType.allCases, id: \.self) { t in
                             Text(t.userFacingName).tag(t)
                         }
+                        #endif
                     }
                     .pickerStyle(.menu)
                 }
@@ -139,7 +150,7 @@ struct MachineEditorView: View {
 
                     Section {
                         TextField(
-                            type == .sshWaypipe ? "e.g. weston-terminal" : "e.g. bash -l",
+                            type == .sshWaypipe ? "e.g. weston-simple-shm" : "e.g. bash -l",
                             text: $remoteCommand
                         )
                         .wawonaTextFieldNoAutocaps()

@@ -1,6 +1,47 @@
 import SwiftUI
 import WawonaModel
 
+private final class WatchCompositorRuntime {
+    /// Must match `WWNWatchCompositorFrameReadyNotification` in WWNWatchCompositorBridge.m.
+    static let frameReadyNotification = Notification.Name("WWNWatchCompositorFrameReadyNotification")
+
+    private let bridge: WWNWatchCompositorBridge
+
+    init() {
+        self.bridge = WWNWatchCompositorBridge.shared()
+    }
+
+    func start() -> Bool {
+        bridge.start(withSocketName: nil)
+    }
+
+    func stop() {
+        bridge.stop()
+    }
+
+    func launchNativeClient(named launcherName: String) {
+        let normalized = launcherName.lowercased()
+        switch normalized {
+        case "weston":
+            bridge.launchWeston()
+        case "weston-terminal":
+            bridge.launchWestonTerminal()
+        case "foot":
+            bridge.launchFoot()
+        default:
+            bridge.launchWestonSimpleSHM()
+        }
+    }
+
+    var latestFrame: CGImage? {
+        bridge.latestFrame
+    }
+
+    var isRunning: Bool {
+        bridge.isRunning
+    }
+}
+
 /// Full-screen view shown while a native Wayland client session is running.
 /// Starts the in-process compositor + client and renders compositor frames
 /// via a SwiftUI Canvas backed by CGImage snapshots from WWNWatchCompositorBridge.
@@ -12,6 +53,8 @@ struct CompositorActiveView: View {
     @Environment(\.dismiss) var dismiss
     @State var compositorFrame: CGImage?
     @State var compositorStarted = false
+    @State private var frameObserver: NSObjectProtocol?
+    @State private var compositorRuntime: WatchCompositorRuntime?
 
     private var clientName: String {
         if profile.type == .sshWaypipe || profile.type == .sshTerminal {
@@ -23,52 +66,29 @@ struct CompositorActiveView: View {
     }
 
     var body: some View {
-        ZStack {
-            // Compositor output — fills the watch face when a frame is ready
-            if let frame = compositorFrame {
-                GeometryReader { _ in
-                    Canvas { ctx, size in
-                        let img = Image(frame, scale: 1.0, orientation: .up, label: Text("frame"))
-                        ctx.draw(img, in: CGRect(origin: .zero, size: size))
-                    }
-                    .ignoresSafeArea()
-                }
-            } else {
-                VStack(spacing: 12) {
-                    Image(systemName: "waveform.circle.fill")
-                        .font(.system(size: 36))
-                        .foregroundStyle(.green)
-                        .symbolEffect(.variableColor.iterative.dimInactiveLayers,
-                                      isActive: true)
-                    Text("Running")
-                        .font(.headline.weight(.semibold))
-                        .foregroundStyle(.green)
-                    Text(clientName)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
+        GeometryReader { geo in
+            let size = geo.size
+            Canvas { ctx, _ in
+                let rect = CGRect(origin: .zero, size: size)
+                ctx.fill(Path(rect), with: .color(.black))
+                if let frame = compositorFrame {
+                    let img = Image(decorative: frame, scale: 1.0, orientation: .up)
+                    ctx.draw(img, in: rect)
                 }
             }
-
-            // Stop button — always accessible at the bottom
-            VStack {
-                Spacer()
-                Button(role: .destructive) {
-                    stopAndDismiss()
-                } label: {
-                    Label("Stop", systemImage: "stop.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.red)
-                .padding(.horizontal, 8)
-                .padding(.bottom, 8)
-            }
+            .frame(width: size.width, height: size.height)
         }
+        .ignoresSafeArea()
         .navigationTitle(profile.name)
         #if !os(macOS)
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Stop") {
+                    stopAndDismiss()
+                }
+            }
+        }
         #endif
         .onAppear {
             NSLog("[Wawona·Nav] CompositorActiveView appeared — machine='%@' client='%@'",
@@ -77,6 +97,7 @@ struct CompositorActiveView: View {
         }
         .onDisappear {
             NSLog("[Wawona·Nav] CompositorActiveView disappeared — stopping compositor")
+            sessions.disconnect(sessionId: session.id)
             stopCompositor()
         }
     }
@@ -88,14 +109,53 @@ struct CompositorActiveView: View {
             NSLog("[Wawona·Compositor] startCompositor called but already started — skipping")
             return
         }
+        let runtime = WatchCompositorRuntime()
+
+        frameObserver = NotificationCenter.default.addObserver(
+            forName: WatchCompositorRuntime.frameReadyNotification,
+            object: WWNWatchCompositorBridge.shared(),
+            queue: .main
+        ) { _ in
+            compositorFrame = runtime.latestFrame
+            Task { @MainActor in
+                sessions.notifyFramePresented(sessionId: session.id)
+            }
+        }
+
+        guard runtime.start() else {
+            NSLog("[Wawona·Compositor] ERROR: Failed to start watch compositor backend.")
+            if let observer = frameObserver {
+                NotificationCenter.default.removeObserver(observer)
+                frameObserver = nil
+            }
+            return
+        }
+
+        compositorRuntime = runtime
         compositorStarted = true
 
-        NSLog("[Wawona·Compositor] Shared module compositor bridge unavailable in this build context")
+        switch profile.type {
+        case .native:
+            let launcherName = profile.launchers.first?.name ?? "weston-simple-shm"
+            NSLog("[Wawona·Compositor] Launching native client '%@'", launcherName)
+            runtime.launchNativeClient(named: launcherName)
+            sessions.notifyClientConnected(sessionId: session.id)
+        case .sshWaypipe, .sshTerminal:
+            NSLog("[Wawona·Compositor] SSH session opened in watch view (native compositor launch not applicable).")
+        case .virtualMachine, .container:
+            NSLog("[Wawona·Compositor] Unsupported machine type on watchOS: %@", profile.type.rawValue)
+        }
     }
 
     private func stopCompositor() {
         NSLog("[Wawona·Compositor] Stopping compositor")
-        // No-op when running from the shared Swift package context.
+        if let observer = frameObserver {
+            NotificationCenter.default.removeObserver(observer)
+            frameObserver = nil
+        }
+        compositorRuntime?.stop()
+        compositorRuntime = nil
+        compositorFrame = nil
         compositorStarted = false
     }
 

@@ -172,6 +172,22 @@ impl WawonaCore {
     }
 }
 
+impl WawonaCore {
+    #[cfg(not(any(target_os = "ios", target_os = "visionos", target_os = "watchos")))]
+    pub fn pop_pending_gamma_apply(&self) -> Option<crate::core::state::GammaRampApply> {
+        if !self.is_running() {
+            return None;
+        }
+        let mut state = self.state.write().unwrap();
+        crate::core::wayland::wlr::gamma_control::pop_pending_gamma_apply(&mut state)
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "visionos", target_os = "watchos"))]
+    pub fn pop_pending_gamma_apply(&self) -> Option<crate::core::state::GammaRampApply> {
+        None
+    }
+}
+
 #[uniffi::export]
 impl WawonaCore {
     // =========================================================================
@@ -1447,15 +1463,6 @@ impl WawonaCore {
         let mut pending = self.pending_buffers.write().unwrap();
         let key = *pending.keys().next()?;
         pending.remove(&key)
-    }
-
-    /// Pop pending gamma apply (platform applies via CGSetDisplayTransferByTable)
-    pub fn pop_pending_gamma_apply(&self) -> Option<crate::core::state::GammaRampApply> {
-        if !self.is_running() {
-            return None;
-        }
-        let mut state = self.state.write().unwrap();
-        crate::core::wayland::wlr::gamma_control::pop_pending_gamma_apply(&mut state)
     }
 
     /// Pop pending gamma restore (platform restores original tables)

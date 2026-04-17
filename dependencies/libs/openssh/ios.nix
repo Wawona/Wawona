@@ -4,11 +4,16 @@
   buildPackages,
   common,
   buildModule,
-  iosToolchain ? null,
+  simulator ? false,
+  iosToolchain,
 }:
 
 let
   xcodeUtils = import ../../../utils/xcode-wrapper.nix { inherit lib pkgs; };
+  dt = iosToolchain.deploymentTarget;
+  clangTarget = if simulator then "arm64-apple-ios${dt}-simulator" else "arm64-apple-ios${dt}";
+  verMin = if simulator then "-mios-simulator-version-min=${dt}" else "-miphoneos-version-min=${dt}";
+  sdkPlatform = if simulator then "iPhoneSimulator" else "iPhoneOS";
   # OpenSSH source - fetch latest stable release
   src = pkgs.fetchurl {
     url = "https://cloudflare.cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-9.8p1.tar.gz";
@@ -16,7 +21,7 @@ let
   };
   
   # Dependencies for OpenSSH
-  zlib = buildModule.buildForIOS "zlib" { };
+  zlib = buildModule.buildForIOS "zlib" { inherit simulator; };
   # OpenSSL - we need to build it for iOS
   openssl = let
     opensslSrc = pkgs.fetchurl {
@@ -35,7 +40,7 @@ let
           export XCODE_APP
           export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
           export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
-          export SDKROOT="$DEVELOPER_DIR/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk"
+          export SDKROOT="$DEVELOPER_DIR/Platforms/${sdkPlatform}.platform/Developer/SDKs/${sdkPlatform}.sdk"
         fi
       fi
       if [ -n "''${SDKROOT:-}" ] && [ -d "$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin" ]; then
@@ -47,8 +52,8 @@ let
     configurePhase = ''
       runHook preConfigure
       export CC="$IOS_CC"
-      export CFLAGS="-arch arm64 -target arm64-apple-ios26.0-simulator -isysroot $SDKROOT -mios-simulator-version-min=26.0 -fPIC"
-      export LDFLAGS="-arch arm64 -target arm64-apple-ios26.0-simulator -isysroot $SDKROOT -mios-simulator-version-min=26.0"
+      export CFLAGS="-arch arm64 -target ${clangTarget} -isysroot $SDKROOT ${verMin} -fPIC"
+      export LDFLAGS="-arch arm64 -target ${clangTarget} -isysroot $SDKROOT ${verMin}"
       ./Configure ios64-cross no-shared no-dso --prefix=$out --openssldir=$out/etc/ssl
       runHook postConfigure
     '';
@@ -693,7 +698,7 @@ SSH_MAIN_EOF
         export XCODE_APP
         export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
         export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
-        export SDKROOT="$DEVELOPER_DIR/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk"
+        export SDKROOT="$DEVELOPER_DIR/Platforms/${sdkPlatform}.platform/Developer/SDKs/${sdkPlatform}.sdk"
       fi
     fi
     
@@ -726,9 +731,9 @@ SSH_MAIN_EOF
     # CRITICAL: Use -fPIC for position-independent code
     # This is required for building a dylib that can be dlopened
     # ========================================
-    export CFLAGS="-arch arm64 -target arm64-apple-ios26.0-simulator -isysroot $SDKROOT -mios-simulator-version-min=26.0 -fPIC -I${zlib}/include -I${openssl}/include"
-    export CXXFLAGS="-arch arm64 -target arm64-apple-ios26.0-simulator -isysroot $SDKROOT -mios-simulator-version-min=26.0 -fPIC -I${zlib}/include -I${openssl}/include"
-    export LDFLAGS="-arch arm64 -target arm64-apple-ios26.0-simulator -isysroot $SDKROOT -mios-simulator-version-min=26.0 -L${zlib}/lib -L${openssl}/lib"
+    export CFLAGS="-arch arm64 -target ${clangTarget} -isysroot $SDKROOT ${verMin} -fPIC -I${zlib}/include -I${openssl}/include"
+    export CXXFLAGS="-arch arm64 -target ${clangTarget} -isysroot $SDKROOT ${verMin} -fPIC -I${zlib}/include -I${openssl}/include"
+    export LDFLAGS="-arch arm64 -target ${clangTarget} -isysroot $SDKROOT ${verMin} -L${zlib}/lib -L${openssl}/lib"
     export PKG_CONFIG_PATH="${zlib}/lib/pkgconfig:${openssl}/lib/pkgconfig:$PKG_CONFIG_PATH"
     
     ./configure \
@@ -836,9 +841,9 @@ SSH_MAIN_EOF
     # Create the dynamic library with all necessary symbols
     $CC -dynamiclib \
         -arch arm64 \
-        -target arm64-apple-ios26.0-simulator \
+        -target ${clangTarget} \
         -isysroot $SDKROOT \
-        -mios-simulator-version-min=26.0 \
+        ${verMin} \
         -o ssh.dylib \
         $SSH_OBJS \
         libssh.a openbsd-compat/libopenbsd-compat.a \
@@ -853,9 +858,9 @@ SSH_MAIN_EOF
           echo "Primary dylib creation failed, trying with -undefined dynamic_lookup..."
           $CC -dynamiclib \
               -arch arm64 \
-              -target arm64-apple-ios26.0-simulator \
+              -target ${clangTarget} \
               -isysroot $SDKROOT \
-              -mios-simulator-version-min=26.0 \
+              ${verMin} \
               -o ssh.dylib \
               $SSH_OBJS \
               libssh.a openbsd-compat/libopenbsd-compat.a \
@@ -887,9 +892,9 @@ SSH_MAIN_EOF
       # Link the ssh executable (without ssh_main wrapper - use regular main)
       $CC \
           -arch arm64 \
-          -target arm64-apple-ios26.0-simulator \
+          -target ${clangTarget} \
           -isysroot $SDKROOT \
-          -mios-simulator-version-min=26.0 \
+          ${verMin} \
           -o ssh \
           ssh.o readconf.o clientloop.o sshtty.o sshconnect.o sshconnect2.o mux.o \
           $([ -f ssh-sk-client.o ] && echo "ssh-sk-client.o") \

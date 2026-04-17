@@ -14,7 +14,10 @@ struct AdvancedSettingsView: View {
                     Text("Error").tag("error")
                 }
                 #if os(iOS)
-                Toggle("Shake to Close", isOn: $preferences.shakeToCloseEnabled)
+                Toggle("Shake to Exit Machine", isOn: $preferences.shakeToCloseEnabled)
+                Text("If disabled, use the iOS swipe-back gesture to close the active machine session.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                 #endif
             }
         }

@@ -106,9 +106,9 @@ pkgs.stdenv.mkDerivation {
     export HOST_LDFLAGS="-isysroot $MACOS_SDK_PATH"
 
     # Flags for TARGET (iOS)
-    export CFLAGS="-arch arm64 -isysroot $IOS_SDK_PATH -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 -fembed-bitcode"
+    export CFLAGS="-arch arm64 -isysroot $IOS_SDK_PATH -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=${iosToolchain.deploymentTarget} -fembed-bitcode"
     export CXXFLAGS="$CFLAGS"
-    export LDFLAGS="-arch arm64 -isysroot $IOS_SDK_PATH -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0"
+    export LDFLAGS="-arch arm64 -isysroot $IOS_SDK_PATH -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=${iosToolchain.deploymentTarget}"
   '';
 
   configurePhase = ''

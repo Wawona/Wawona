@@ -1,16 +1,14 @@
 {
-  lib,
   pkgs,
   buildPackages,
   common,
   buildModule,
   simulator ? false,
-  iosToolchain ? null,
+  iosToolchain,
 }:
 
 let
   fetchSource = common.fetchSource;
-  xcodeUtils = import ../../../utils/xcode-wrapper.nix { inherit lib pkgs; };
   xkbcommonSource = {
     source = "github";
     owner = "xkbcommon";
@@ -23,10 +21,10 @@ in
 pkgs.stdenv.mkDerivation {
   name = "xkbcommon-ios";
   inherit src;
-  
+
   # Allow access to Xcode SDKs and toolchain
   __noChroot = true;
-  
+
   nativeBuildInputs = with buildPackages; [
     meson
     ninja
@@ -34,79 +32,50 @@ pkgs.stdenv.mkDerivation {
     python3
     bison
   ];
-  
+
   buildInputs = [
-    (buildModule.buildForIOS "libxml2" { })
+    (
+      if (iosToolchain.isVisionOSToolchain or false) then
+        buildModule.buildForVisionOS "libxml2" { inherit simulator; }
+      else
+        buildModule.buildForIOS "libxml2" { }
+    )
   ];
-  
+
   preConfigure = ''
-    # Strip Nix stdenv's DEVELOPER_DIR to bypass any store fallbacks
     unset DEVELOPER_DIR
+    ${iosToolchain.mkIOSBuildEnv { inherit simulator; }}
 
-    ${if simulator then ''
-      # Robust SDK detection for iOS Simulator
-      IOS_SDK=$(xcrun --sdk iphonesimulator --show-sdk-path 2>/dev/null || true)
-      if [ ! -d "$IOS_SDK" ]; then
-        # Fallback 1: via ensureIosSimSDK script
-        IOS_SDK=$(${xcodeUtils.ensureIosSimSDK}/bin/ensure-ios-sim-sdk) || true
-      fi
-      if [ ! -d "$IOS_SDK" ]; then
-        # Fallback 2: Default location
-        XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode)
-        IOS_SDK="$XCODE_APP/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk"
-      fi
-    '' else ''
-      # Robust SDK detection for iOS Device
-      IOS_SDK=$(xcrun --sdk iphoneos --show-sdk-path 2>/dev/null || true)
-      if [ ! -d "$IOS_SDK" ]; then
-        # Fallback 1: Default location
-        XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode)
-        IOS_SDK="$XCODE_APP/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"
-      fi
-    ''}
+    # mkIOSBuildEnv prepends Xcode usr/bin; its byacc cannot parse libxkbcommon's
+    # parser.y (%define api.pure). Prefer Nix bison.
+    export PATH="${buildPackages.bison}/bin:$PATH"
 
-    if [ ! -d "$IOS_SDK" ]; then
-      echo "ERROR: iOS SDK not found. Build cannot proceed." >&2
-      exit 1
-    fi
-    export SDKROOT="$IOS_SDK"
-    export IOS_SDK
-
-    # Find the Developer dir associated with this SDK
-    # Use sed instead of grep -oP for macOS compatibility
-    export DEVELOPER_DIR=$(echo "$IOS_SDK" | sed -E 's|^(.*\.app/Contents/Developer)/.*$|\1|')
-    [ "$DEVELOPER_DIR" = "$IOS_SDK" ] && DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
-    export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
-
-    echo "Using iOS SDK: $IOS_SDK"
-    echo "Using Developer Dir: $DEVELOPER_DIR"
-    
     export NIX_CFLAGS_COMPILE=""
     export NIX_CXXFLAGS_COMPILE=""
     export NIX_LDFLAGS=""
-    
-    if [ -n "''${SDKROOT:-}" ] && [ -d "$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin" ]; then
-      IOS_CC="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
-      IOS_CXX="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
+
+    export CC="$XCODE_CLANG"
+    export CXX="$XCODE_CLANGXX"
+
+    _CC="$XCODE_CLANG"
+    _CXX="$XCODE_CLANGXX"
+    _SDK="$SDKROOT"
+    _ARCH="$IOS_ARCH"
+    _DEPLOY="$APPLE_DEPLOYMENT_FLAG"
+    if [[ "''${APPLE_SDK_NAME:-}" == xros ]] || [[ "''${APPLE_SDK_NAME:-}" == xrsimulator ]]; then
+      _TARGET="$APPLE_LINKER_TARGET"
+      _DEPLOY=""
     else
-      IOS_CC="${buildPackages.clang}/bin/clang"
-      IOS_CXX="${buildPackages.clang}/bin/clang++"
+      _TARGET=""
     fi
-    
-    # App Store build target: arm64 iPhoneOS
-    IOS_ARCH="arm64"
-    
-    export CC="$IOS_CC"
-    export CXX="$IOS_CXX"
-    export CFLAGS="-arch $IOS_ARCH -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 -fPIC"
-    export CXXFLAGS="-arch $IOS_ARCH -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 -fPIC"
-    export LDFLAGS="-arch $IOS_ARCH -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0"
-    
-    # Meson cross file for iOS
-    cat > ios-cross.txt <<EOF
+
+    echo "xkbcommon: SDK=$_SDK deployment=$_DEPLOY target=$_TARGET"
+
+    if [[ -n "$_TARGET" ]]; then
+      cat > ios-cross.txt <<EOF
 [binaries]
-c = '$CC'
-cpp = '$CXX'
+c = '$_CC'
+cpp = '$_CXX'
 c_for_build = '${buildPackages.clang}/bin/clang'
 cpp_for_build = '${buildPackages.clang}/bin/clang++'
 ar = 'ar'
@@ -115,19 +84,42 @@ pkgconfig = 'pkg-config'
 
 [host_machine]
 system = 'darwin'
-cpu_family = '$IOS_ARCH'
-cpu = '$IOS_ARCH'
+cpu_family = 'aarch64'
+cpu = 'aarch64'
 endian = 'little'
 
 [properties]
-c_args = ['-arch', '$IOS_ARCH', '-isysroot', '$SDKROOT', '-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0']
-c_link_args = ['-arch', '$IOS_ARCH', '-isysroot', '$SDKROOT', '-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0']
+c_args = ['-target', '$_TARGET', '-isysroot', '$_SDK', '-fPIC']
+c_link_args = ['-target', '$_TARGET', '-isysroot', '$_SDK']
 needs_exe_wrapper = true
 EOF
+    else
+      cat > ios-cross.txt <<EOF
+[binaries]
+c = '$_CC'
+cpp = '$_CXX'
+c_for_build = '${buildPackages.clang}/bin/clang'
+cpp_for_build = '${buildPackages.clang}/bin/clang++'
+ar = 'ar'
+strip = 'strip'
+pkgconfig = 'pkg-config'
+
+[host_machine]
+system = 'darwin'
+cpu_family = 'aarch64'
+cpu = 'aarch64'
+endian = 'little'
+
+[properties]
+c_args = ['-arch', '$_ARCH', '-isysroot', '$_SDK', '$_DEPLOY', '-fPIC']
+c_link_args = ['-arch', '$_ARCH', '-isysroot', '$_SDK', '$_DEPLOY']
+needs_exe_wrapper = true
+EOF
+    fi
   '';
-  
+
   dontUseMesonConfigure = true;
-  
+
   buildPhase = ''
     runHook preBuild
     # Unset SDKROOT so it doesn't leak into host-side tool builds
@@ -144,7 +136,7 @@ EOF
     meson compile -C build xkbcommon
     runHook postBuild
   '';
-  
+
   installPhase = ''
     runHook preInstall
     meson install -C build

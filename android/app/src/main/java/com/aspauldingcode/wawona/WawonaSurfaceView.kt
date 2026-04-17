@@ -29,6 +29,8 @@ private const val BTN_RIGHT = 0x111
 class WawonaSurfaceView(context: Context) : SurfaceView(context) {
 
     private val prefs = context.getSharedPreferences("wawona_prefs", Context.MODE_PRIVATE)
+    private var lastSyncedLayoutW = 0
+    private var lastSyncedLayoutH = 0
     private var touchpadFirstDownX = 0f
     private var touchpadFirstDownY = 0f
     private var touchpadFirstDownTime = 0L
@@ -44,6 +46,21 @@ class WawonaSurfaceView(context: Context) : SurfaceView(context) {
     init {
         isFocusable = true
         isFocusableInTouchMode = true
+    }
+
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        super.onLayout(changed, left, top, right, bottom)
+        val w = right - left
+        val h = bottom - top
+        if (w <= 0 || h <= 0) return
+        if (w == lastSyncedLayoutW && h == lastSyncedLayoutH) return
+        lastSyncedLayoutW = w
+        lastSyncedLayoutH = h
+        try {
+            WawonaNative.nativeSyncOutputSize(w, h)
+            WawonaSettings.apply(prefs)
+        } catch (_: Exception) {
+        }
     }
 
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection {

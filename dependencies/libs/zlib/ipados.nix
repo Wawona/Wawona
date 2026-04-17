@@ -83,9 +83,9 @@ pkgs.stdenv.mkDerivation {
     # zlib uses configure script
     export CC="$IOS_CC"
     export CXX="$IOS_CXX"
-    export CFLAGS="-arch arm64 -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 -fPIC"
-    export CXXFLAGS="-arch arm64 -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 -fPIC"
-    export LDFLAGS="-arch arm64 -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0"
+    export CFLAGS="-arch arm64 -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=${iosToolchain.deploymentTarget} -fPIC"
+    export CXXFLAGS="-arch arm64 -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=${iosToolchain.deploymentTarget} -fPIC"
+    export LDFLAGS="-arch arm64 -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=${iosToolchain.deploymentTarget}"
     # Unset SDKROOT so it doesn't leak into host-side tool builds
     unset SDKROOT
     ./configure --prefix=$out --static

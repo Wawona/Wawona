@@ -663,12 +663,20 @@ in
       done
       shopt -u nullglob
 
+      # Prefer the Rust shared library for Android linking; the static archive
+      # can be malformed on some host toolchain combinations.
+      RUST_BACKEND_LINK_LIB="${rustBackendPath}/lib/libwawona.a"
+      if [ -f "${rustBackendPath}/lib/libwawona_core.so" ]; then
+        cp -L "${rustBackendPath}/lib/libwawona_core.so" "$JNI_LIB_DIR/libwawona_core.so"
+        RUST_BACKEND_LINK_LIB="${rustBackendPath}/lib/libwawona_core.so"
+      fi
+
       # Inject Nix dependencies via Environment Variables for Gradle/CMake
       export ANDROID_NDK_ROOT="$ndk_root"
       export ANDROID_NDK_HOME="$ndk_root"
       export DEP_INCLUDES="${lib.concatMapStringsSep " " (d: "-I${d}/include") (getDeps "android" androidDeps)} -I${buildModule.buildForAndroid "pixman" { }}/include/pixman-1"
       export DEP_LIBS="${lib.concatMapStringsSep " " (d: "-L${d}/lib") (getDeps "android" androidDeps)}"
-      export RUST_BACKEND_LIB="${rustBackendPath}/lib/libwawona.a"
+      export RUST_BACKEND_LIB="$RUST_BACKEND_LINK_LIB"
     '';
 
     buildPhase = ''

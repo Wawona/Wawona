@@ -44,7 +44,7 @@ pkgs.stdenv.mkDerivation {
          -I${libwayland}/include/wayland \
          -I${libwayland}/include \
          -I${epollShim}/include/libepoll-shim \
-         -fPIC -arch $IOS_ARCH -isysroot "$SDKROOT" -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 \
+         -fPIC -arch $IOS_ARCH -isysroot "$SDKROOT" -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=${iosToolchain.deploymentTarget} \
          -o "$obj_file"
       OBJ_FILES="$OBJ_FILES $obj_file"
     done

@@ -24,7 +24,7 @@
   # platformName: human-readable destination platform for xcodebuild -destination
   # e.g. "iOS", "watchOS"
   platformName ? "iOS",
-  bundleId ? "com.aspauldingcode.Wawona.ipad",
+  bundleId ? "com.aspauldingcode.Wawona",
   ...
 }:
 

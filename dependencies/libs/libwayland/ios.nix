@@ -191,46 +191,14 @@ pkgs.stdenv.mkDerivation {
   '';
 
   preConfigure = ''
-    # Strip Nix stdenv's DEVELOPER_DIR to bypass any store fallbacks
-    unset DEVELOPER_DIR
+    # Setup Apple SDK/target environment via injected toolchain.
+    ${iosToolchain.mkIOSBuildEnv {
+      inherit simulator;
+    }}
 
-    ${if simulator then ''
-      # Robust SDK detection for iOS Simulator
-      IOS_SDK=$(xcrun --sdk iphonesimulator --show-sdk-path 2>/dev/null || true)
-      if [ ! -d "$IOS_SDK" ]; then
-        # Fallback 1: via ensureIosSimSDK script
-        IOS_SDK=$(${xcodeUtils.ensureIosSimSDK}/bin/ensure-ios-sim-sdk) || true
-      fi
-      if [ ! -d "$IOS_SDK" ]; then
-        # Fallback 2: Default location
-        XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode)
-        IOS_SDK="$XCODE_APP/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk"
-      fi
-    '' else ''
-      # Robust SDK detection for iOS Device
-      IOS_SDK=$(xcrun --sdk iphoneos --show-sdk-path 2>/dev/null || true)
-      if [ ! -d "$IOS_SDK" ]; then
-        # Fallback 1: Default location
-        XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode)
-        IOS_SDK="$XCODE_APP/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"
-      fi
-    ''}
-
-    if [ ! -d "$IOS_SDK" ]; then
-      echo "ERROR: iOS SDK not found. Build cannot proceed." >&2
-      exit 1
-    fi
-    export SDKROOT="$IOS_SDK"
-    export IOS_SDK
-
-    # Find the Developer dir associated with this SDK
-    # Use sed instead of grep -oP for macOS compatibility
-    export DEVELOPER_DIR=$(echo "$IOS_SDK" | sed -E 's|^(.*\.app/Contents/Developer)/.*$|\1|')
-    [ "$DEVELOPER_DIR" = "$IOS_SDK" ] && DEVELOPER_DIR=$(/usr/bin/xcode-select -p)
-    export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
-
-    echo "Using iOS SDK: $IOS_SDK"
-    echo "Using Developer Dir: $DEVELOPER_DIR"
+    export IOS_SDK="$SDKROOT"
+    echo "Using Apple SDK: $IOS_SDK"
+    echo "Using linker target: $APPLE_LINKER_TARGET"
     export NIX_CFLAGS_COMPILE=""
     export NIX_CXXFLAGS_COMPILE=""
     export NIX_LDFLAGS=""
@@ -250,8 +218,8 @@ pkgs.stdenv.mkDerivation {
         export PKG_CONFIG_PATH="$EPOL_SHIM_PATH/lib/pkgconfig:''${PKG_CONFIG_PATH:-}"
         export PKG_CONFIG_PATH_FOR_BUILD="${waylandScanner}/share/pkgconfig:''${PKG_CONFIG_PATH_FOR_BUILD:-}"
         
-        IOS_ARCH="${if simulator then pkgs.stdenv.hostPlatform.darwinArch else "arm64"}"
-        IOS_CPU_FAMILY="${if simulator && pkgs.stdenv.hostPlatform.darwinArch == "x86_64" then "x86_64" else "aarch64"}"
+        IOS_ARCH="arm64"
+        IOS_CPU_FAMILY="aarch64"
         
         cat > ios-cross-file.txt <<EOF
     [binaries]
@@ -270,10 +238,10 @@ pkgs.stdenv.mkDerivation {
     endian = 'little'
 
     [built-in options]
-    c_args = ['-arch', '$IOS_ARCH', '-isysroot', '$SDKROOT', '-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0', '-fPIC', '-D_DARWIN_C_SOURCE', '-I$EPOL_SHIM_PATH/include/libepoll-shim', '-I$EPOL_SHIM_PATH/include']
-    cpp_args = ['-arch', '$IOS_ARCH', '-isysroot', '$SDKROOT', '-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0', '-fPIC', '-D_DARWIN_C_SOURCE', '-I$EPOL_SHIM_PATH/include/libepoll-shim', '-I$EPOL_SHIM_PATH/include']
-    c_link_args = ['-arch', '$IOS_ARCH', '-isysroot', '$SDKROOT', '-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0', '-L$EPOL_SHIM_PATH/lib', '-lepoll-shim']
-    cpp_link_args = ['-arch', '$IOS_ARCH', '-isysroot', '$SDKROOT', '-m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0', '-L$EPOL_SHIM_PATH/lib', '-lepoll-shim']
+    c_args = ['-target', '$APPLE_LINKER_TARGET', '-isysroot', '$SDKROOT', '-fPIC', '-D_DARWIN_C_SOURCE', '-I$EPOL_SHIM_PATH/include/libepoll-shim', '-I$EPOL_SHIM_PATH/include']
+    cpp_args = ['-target', '$APPLE_LINKER_TARGET', '-isysroot', '$SDKROOT', '-fPIC', '-D_DARWIN_C_SOURCE', '-I$EPOL_SHIM_PATH/include/libepoll-shim', '-I$EPOL_SHIM_PATH/include']
+    c_link_args = ['-target', '$APPLE_LINKER_TARGET', '-isysroot', '$SDKROOT', '-L$EPOL_SHIM_PATH/lib', '-lepoll-shim']
+    cpp_link_args = ['-target', '$APPLE_LINKER_TARGET', '-isysroot', '$SDKROOT', '-L$EPOL_SHIM_PATH/lib', '-lepoll-shim']
     EOF
   '';
 

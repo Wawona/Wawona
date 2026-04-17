@@ -4,18 +4,13 @@ import WawonaModel
 struct MachinesGridView: View {
     let profiles: [MachineProfile]
     @ObservedObject var sessions: SessionOrchestrator
-    let onAdd: () -> Void
     let onEdit: (MachineProfile) -> Void
     let onConnect: (MachineProfile) -> Void
     let onDelete: (MachineProfile) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                SectionHeader("Machines", subtitle: gridBlurb)
-                Spacer()
-                Button("New Machine", action: onAdd)
-            }
+            SectionHeader("Machines", subtitle: gridBlurb)
 
             if profiles.isEmpty {
                 VStack(spacing: 8) {

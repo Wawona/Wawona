@@ -31,7 +31,11 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedAssistChip
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -55,6 +59,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+
+private data class NativeLauncherOption(
+    val value: String,
+    val label: String
+)
+
+private val nativeLauncherOptions = listOf(
+    NativeLauncherOption("weston-simple-shm", "Weston Simple SHM"),
+    NativeLauncherOption("weston-terminal", "Weston Terminal"),
+    NativeLauncherOption("foot", "Foot Terminal"),
+    NativeLauncherOption("weston", "Weston")
+)
+
+private fun nativeLauncherLabel(value: String): String =
+    nativeLauncherOptions.firstOrNull { it.value == value }?.label ?: value
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -255,7 +274,10 @@ private fun MachineGridCard(
                 style = MaterialTheme.typography.bodySmall
             )
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 OutlinedButton(onClick = onEdit) {
                     Icon(Icons.Filled.Edit, contentDescription = null)
                     Spacer(Modifier.size(4.dp))
@@ -266,12 +288,23 @@ private fun MachineGridCard(
                     Spacer(Modifier.size(4.dp))
                     Text("Delete")
                 }
-                Button(onClick = onConnect, enabled = capabilities.launchSupported) {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = null)
-                    Spacer(Modifier.size(4.dp))
-                    AnimatedContent(targetState = status, label = "connectStatus") { current ->
-                        Text(if (current == MachineStatus.CONNECTING) "Connecting" else "Connect")
-                    }
+            }
+
+            Button(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onConnect,
+                enabled = capabilities.launchSupported && status != MachineStatus.CONNECTING
+            ) {
+                Icon(Icons.Filled.PlayArrow, contentDescription = null)
+                Spacer(Modifier.size(6.dp))
+                AnimatedContent(targetState = status, label = "runStatus") { current ->
+                    Text(
+                        when (current) {
+                            MachineStatus.CONNECTING -> "Starting..."
+                            MachineStatus.CONNECTED -> "Running"
+                            else -> "Run Machine"
+                        }
+                    )
                 }
             }
         }
@@ -284,7 +317,7 @@ private fun machineScopeLabel(type: MachineType): String = when (type) {
 }
 
 private fun typeLabel(profile: MachineProfile): String = when (profile.type) {
-    MachineType.NATIVE -> "Native"
+    MachineType.NATIVE -> "Native (${nativeLauncherLabel(profile.nativeLauncher)})"
     MachineType.SSH_WAYPIPE -> "SSH Waypipe"
     MachineType.SSH_TERMINAL -> "SSH Terminal"
     MachineType.VM -> "VM ${profile.vmSubtype.uppercase()}"
@@ -350,7 +383,7 @@ private fun MachineEditorSheet(
     onSave: (MachineProfile) -> Unit
 ) {
     var name by remember { mutableStateOf(initial?.name ?: "") }
-    var type by remember { mutableStateOf(initial?.type ?: MachineType.SSH_WAYPIPE) }
+    var type by remember { mutableStateOf(initial?.type ?: MachineType.NATIVE) }
     var sshHost by remember { mutableStateOf(initial?.sshHost ?: "") }
     var sshUser by remember { mutableStateOf(initial?.sshUser ?: "") }
     var sshPassword by remember { mutableStateOf(initial?.sshPassword ?: "") }
@@ -358,6 +391,7 @@ private fun MachineEditorSheet(
     var sshAuthMethod by remember { mutableStateOf(initial?.sshAuthMethod ?: "password") }
     var sshKeyPath by remember { mutableStateOf(initial?.sshKeyPath ?: "") }
     var sshKeyPassphrase by remember { mutableStateOf(initial?.sshKeyPassphrase ?: "") }
+    var nativeLauncher by remember { mutableStateOf(initial?.nativeLauncher ?: "weston-simple-shm") }
     var remoteCommand by remember { mutableStateOf(initial?.remoteCommand ?: "") }
     var vmIdentifier by remember { mutableStateOf(initial?.vmSettings?.vmIdentifier ?: "") }
     var vmVsockPort by remember { mutableStateOf(initial?.vmSettings?.vsockPort ?: "") }
@@ -368,6 +402,8 @@ private fun MachineEditorSheet(
     var containerEntry by remember { mutableStateOf(initial?.containerSettings?.entryCommand ?: "") }
     var containerNotes by remember { mutableStateOf(initial?.containerSettings?.notes ?: "") }
     var containerSubtype by remember { mutableStateOf(initial?.containerSubtype ?: "docker") }
+    var machineTypePickerExpanded by remember { mutableStateOf(false) }
+    var nativeLauncherPickerExpanded by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss
@@ -388,12 +424,69 @@ private fun MachineEditorSheet(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                MachineType.entries.forEach { candidate ->
-                    ElevatedAssistChip(
-                        onClick = { type = candidate },
-                        label = { Text(candidate.value) }
+            ExposedDropdownMenuBox(
+                expanded = machineTypePickerExpanded,
+                onExpandedChange = { machineTypePickerExpanded = it }
+            ) {
+                OutlinedTextField(
+                    value = type.value,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Machine type") },
+                    trailingIcon = {
+                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = machineTypePickerExpanded)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor()
+                )
+                DropdownMenu(
+                    expanded = machineTypePickerExpanded,
+                    onDismissRequest = { machineTypePickerExpanded = false }
+                ) {
+                    MachineType.entries.forEach { candidate ->
+                        DropdownMenuItem(
+                            text = { Text(candidate.value) },
+                            onClick = {
+                                type = candidate
+                                machineTypePickerExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            if (type == MachineType.NATIVE) {
+                ExposedDropdownMenuBox(
+                    expanded = nativeLauncherPickerExpanded,
+                    onExpandedChange = { nativeLauncherPickerExpanded = it }
+                ) {
+                    OutlinedTextField(
+                        value = nativeLauncherLabel(nativeLauncher),
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Bundled native app") },
+                        trailingIcon = {
+                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = nativeLauncherPickerExpanded)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor()
                     )
+                    DropdownMenu(
+                        expanded = nativeLauncherPickerExpanded,
+                        onDismissRequest = { nativeLauncherPickerExpanded = false }
+                    ) {
+                        nativeLauncherOptions.forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(option.label) },
+                                onClick = {
+                                    nativeLauncher = option.value
+                                    nativeLauncherPickerExpanded = false
+                                }
+                            )
+                        }
+                    }
                 }
             }
 
@@ -443,6 +536,7 @@ private fun MachineEditorSheet(
                                 sshAuthMethod = sshAuthMethod.trim().ifEmpty { "password" },
                                 sshKeyPath = sshKeyPath.trim(),
                                 sshKeyPassphrase = sshKeyPassphrase,
+                                nativeLauncher = nativeLauncher,
                                 remoteCommand = remoteCommand.trim(),
                                 vmSubtype = vmSubtype.trim().ifEmpty { "qemu" },
                                 containerSubtype = containerSubtype.trim().ifEmpty { "docker" },

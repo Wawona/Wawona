@@ -1,12 +1,41 @@
 let
   macosEnv = ''
-    export XDG_RUNTIME_DIR="/tmp/wawona-$(id -u)"
+    uid="$(id -u)"
+    runtime_dir_default="/tmp/wawona-$uid"
+    runtime_env_file="$runtime_dir_default/wawona-env.sh"
+
+    # Prefer compositor-exported runtime values when available.
+    if [ -f "$runtime_env_file" ]; then
+      # shellcheck source=/dev/null
+      . "$runtime_env_file" || true
+    fi
+
+    export XDG_RUNTIME_DIR="''${XDG_RUNTIME_DIR:-$runtime_dir_default}"
     export WAYLAND_DISPLAY="''${WAYLAND_DISPLAY:-wayland-0}"
     if [ ! -d "$XDG_RUNTIME_DIR" ]; then
       mkdir -p "$XDG_RUNTIME_DIR"
       chmod 700 "$XDG_RUNTIME_DIR"
     fi
     SOCKET_PATH="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+
+    # If the service socket is missing, try to revive the compositor host agent.
+    if [ ! -S "$SOCKET_PATH" ] && command -v launchctl >/dev/null 2>&1; then
+      launchctl kickstart -k "gui/$uid/com.aspauldingcode.wawona.compositorhost" >/dev/null 2>&1 || true
+      # Refresh from exported env (compositor may rewrite display/socket choice).
+      if [ -f "$runtime_env_file" ]; then
+        # shellcheck source=/dev/null
+        . "$runtime_env_file" || true
+        export XDG_RUNTIME_DIR="''${XDG_RUNTIME_DIR:-$runtime_dir_default}"
+        export WAYLAND_DISPLAY="''${WAYLAND_DISPLAY:-wayland-0}"
+        SOCKET_PATH="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+      fi
+      i=0
+      while [ ! -S "$SOCKET_PATH" ] && [ "$i" -lt 50 ]; do
+        sleep 0.1
+        i=$((i + 1))
+      done
+    fi
+
     if [ ! -S "$SOCKET_PATH" ]; then
       echo "Warning: Wayland socket not ready at $SOCKET_PATH." >&2
       echo "Hint: run 'nix run .#install' for persistent Wawona menubar/compositor launch agents." >&2
@@ -62,12 +91,15 @@ in rec {
       DEFAULT_CONFIG="''${XDG_RUNTIME_DIR}/foot-default.ini"
       cat > "$DEFAULT_CONFIG" <<EOF
 [main]
-font=Menlo:size=12,Monaco:size=12,monospace:size=12
+font=monospace:size=12
 dpi-aware=yes
+
+[tweak]
+font-monospace-warn=no
 EOF
-      exec "${foot}/bin/foot" -c "$DEFAULT_CONFIG" "$@"
+      exec "${foot}/bin/foot" -o tweak.font-monospace-warn=no -c "$DEFAULT_CONFIG" "$@"
     else
-      exec "${foot}/bin/foot" "$@"
+      exec "${foot}/bin/foot" -o tweak.font-monospace-warn=no "$@"
     fi
   '';
 
@@ -75,12 +107,28 @@ EOF
     export WAWONA_APP_BIN="${wawona}/Applications/Wawona.app/Contents/MacOS/Wawona"
     ${macosEnv}
     child_pid=""
+    forward_sigint() {
+      if [ -n "$child_pid" ] && kill -0 "$child_pid" 2>/dev/null; then
+        kill -INT "$child_pid" 2>/dev/null || true
+      fi
+    }
     forward_sigterm() {
       if [ -n "$child_pid" ] && kill -0 "$child_pid" 2>/dev/null; then
         kill -TERM "$child_pid" 2>/dev/null || true
       fi
     }
-    trap forward_sigterm INT TERM HUP
+    trap forward_sigint INT
+    trap forward_sigterm TERM HUP
+
+    # Bringing the compositor app to foreground helps nested Weston windows
+    # become key/focused when launched from terminal.
+    if command -v osascript >/dev/null 2>&1; then
+      (
+        sleep 0.25
+        osascript -e 'tell application id "com.aspauldingcode.Wawona" to activate' >/dev/null 2>&1 || true
+      ) &
+    fi
+
     "${weston}/bin/${binName}" "$@" &
     child_pid=$!
     wait "$child_pid"

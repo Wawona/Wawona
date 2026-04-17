@@ -174,14 +174,14 @@ pkgs.stdenv.mkDerivation {
       MACOS_SDK=$(/usr/bin/xcode-select -p)/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
     fi
     export SDKROOT="$MACOS_SDK"
-    export MACOSX_DEPLOYMENT_TARGET="26.0"
+    export MACOSX_DEPLOYMENT_TARGET="14.0"
 
     if [ ! -d "$MACOS_SDK" ]; then
       echo "ERROR: MacOSX SDK not found. Build cannot proceed." >&2
       exit 1
     fi
     export SDKROOT="$MACOS_SDK"
-    export MACOSX_DEPLOYMENT_TARGET="26.0"
+    export MACOSX_DEPLOYMENT_TARGET="14.0"
 
     # Isolate environment from Nix wrapper flags to prevent linker conflicts
     unset DEVELOPER_DIR
@@ -192,8 +192,8 @@ pkgs.stdenv.mkDerivation {
     export CXX="${pkgs.clang}/bin/clang++"
 
     # Add sysroot and version-min explicitly
-    export CFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 -fPIC $CFLAGS -I${epollShim}/include/libepoll-shim"
-    export LDFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 $LDFLAGS -L${epollShim}/lib -lepoll-shim"
+    export CFLAGS="-isysroot $SDKROOT -mmacosx-version-min=14.0 -fPIC $CFLAGS -I${epollShim}/include/libepoll-shim"
+    export LDFLAGS="-isysroot $SDKROOT -mmacosx-version-min=14.0 $LDFLAGS -L${epollShim}/lib -lepoll-shim"
   '';
 
   configurePhase = ''

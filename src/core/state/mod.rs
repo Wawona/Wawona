@@ -1184,7 +1184,11 @@ impl Default for WlrState {
 pub type GammaRamp = Vec<u16>;
 
 /// Pending gamma apply — platform calls CGSetDisplayTransferByTable
-#[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(
+    not(any(target_os = "ios", target_os = "visionos", target_os = "watchos")),
+    derive(uniffi::Record)
+)]
+#[derive(Debug, Clone)]
 pub struct GammaRampApply {
     pub output_id: u32,
     pub size: u32,

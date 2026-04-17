@@ -139,10 +139,10 @@ pkgs.stdenv.mkDerivation {
         cat > ipados-toolchain.cmake <<EOF
     set(CMAKE_SYSTEM_NAME iOS)
     set(CMAKE_OSX_ARCHITECTURES $IOS_ARCH)
-    set(CMAKE_OSX_DEPLOYMENT_TARGET 26.0)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET ${iosToolchain.deploymentTarget})
     set(CMAKE_OSX_SYSROOT "$SDKROOT")
-    set(CMAKE_C_FLAGS "-arch $IOS_ARCH -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0")
-    set(CMAKE_CXX_FLAGS "-arch $IOS_ARCH -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0")
+    set(CMAKE_C_FLAGS "-arch $IOS_ARCH -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=${iosToolchain.deploymentTarget}")
+    set(CMAKE_CXX_FLAGS "-arch $IOS_ARCH -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=${iosToolchain.deploymentTarget}")
     set(CMAKE_C_COMPILER "$IOS_CC")
     set(CMAKE_CXX_COMPILER "$IOS_CXX")
     set(CMAKE_SYSROOT "$SDKROOT")
@@ -187,7 +187,7 @@ pkgs.stdenv.mkDerivation {
     # Add iPadOS-specific flags that depend on SDKROOT
     EXTRA_CMAKE_FLAGS=""
     if [ -n "$SDKROOT_VAL" ]; then
-      EXTRA_CMAKE_FLAGS="-DCMAKE_OSX_SYSROOT=$SDKROOT_VAL -DCMAKE_OSX_DEPLOYMENT_TARGET=26.0"
+      EXTRA_CMAKE_FLAGS="-DCMAKE_OSX_SYSROOT=$SDKROOT_VAL -DCMAKE_OSX_DEPLOYMENT_TARGET=${iosToolchain.deploymentTarget}"
     fi
     cmake -B build -S . \
       -DCMAKE_TOOLCHAIN_FILE=ipados-toolchain.cmake \
@@ -315,7 +315,7 @@ pkgs.stdenv.mkDerivation {
             
             TEST_OUTPUT=$("$RE_IOS_CC" -isysroot "$RE_SDKROOT" \
                -arch $IOS_ARCH \
-               -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0 \
+               -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=${iosToolchain.deploymentTarget} \
                $PKG_CFLAGS \
                $PKG_LIBS \
                test_link.c \

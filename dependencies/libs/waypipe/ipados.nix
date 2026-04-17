@@ -146,7 +146,7 @@ myRustPlatform.buildRustPackage {
     export VULKAN_HEADERS_INCLUDE="${pkgs.vulkan-headers}/include"
 
     # Set iPadOS deployment target for device
-    export IPHONEOS_DEPLOYMENT_TARGET="26.0"
+    export IPHONEOS_DEPLOYMENT_TARGET="${iosToolchain.deploymentTarget}"
     
     # Set up library search paths
     export LIBRARY_PATH="${vulkan-loader}/lib:${libwayland}/lib:${zstd}/lib:${lz4}/lib:${libssh2}/lib:${mbedtls}/lib:${openssl-ipados}/lib:${ffmpeg}/lib:$LIBRARY_PATH"

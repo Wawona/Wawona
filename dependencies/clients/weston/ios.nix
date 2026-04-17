@@ -6,6 +6,7 @@
   buildModule,
   wawonaSrc ? null,
   simulator ? false,
+  iosToolchain,
   ...
 }:
 
@@ -13,8 +14,21 @@ let
   xcodeUtils = import ../../utils/xcode-wrapper.nix { inherit lib pkgs; };
   westonClientSrc = pkgs.callPackage ../../libs/weston-simple-shm/patched-src.nix { };
   libwayland = buildModule.buildForIOS "libwayland" { inherit simulator; };
-  sdkPlatform = if simulator then "iPhoneSimulator" else "iPhoneOS";
-  minVerFlag = if simulator then "-mios-simulator-version-min=26.0" else "-miphoneos-version-min=26.0";
+  isTVOS = (iosToolchain ? isTVOSToolchain) && iosToolchain.isTVOSToolchain;
+  sdkPlatform =
+    if isTVOS then
+      (if simulator then "AppleTVSimulator" else "AppleTVOS")
+    else
+      (if simulator then "iPhoneSimulator" else "iPhoneOS");
+  minVerFlag =
+    if isTVOS && simulator then
+      "-mtvos-simulator-version-min=${iosToolchain.deploymentTarget}"
+    else if isTVOS then
+      "-mtvos-version-min=${iosToolchain.deploymentTarget}"
+    else if simulator then
+      "-mios-simulator-version-min=${iosToolchain.deploymentTarget}"
+    else
+      "-miphoneos-version-min=${iosToolchain.deploymentTarget}";
 in
 stdenv.mkDerivation rec {
   pname = "weston-ios";

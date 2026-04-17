@@ -3,6 +3,7 @@
 #import "../../util/WWNLog.h"
 #import "WWNCompositorBridge.h"
 #import <QuartzCore/QuartzCore.h>
+#import <TargetConditionals.h>
 
 // ===========================================================================
 // UITextPosition / UITextRange subclasses for UITextInput
@@ -553,7 +554,9 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   self = [super initWithFrame:frame];
   if (self) {
     self.userInteractionEnabled = YES;
+#if !TARGET_OS_TV
     self.multipleTouchEnabled = YES;
+#endif
     self.backgroundColor = [UIColor blackColor];
 
     _contentLayer = [CALayer layer];
@@ -644,6 +647,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 #pragma mark - Input Accessory View (Special Keys Toolbar)
 // ---------------------------------------------------------------------------
 
+#if !TARGET_OS_VISION
 - (UIView *)inputAccessoryView {
   if (!_accessoryBar) {
     _accessoryBar = [self _buildAccessoryBar];
@@ -667,6 +671,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   // The effect view is edge-to-edge (no corner radius) so it blends
   // seamlessly with the native iOS virtual keyboard beneath.
   if (@available(iOS 26, *)) {
+#if !TARGET_OS_TV
     UIGlassEffect *glass = [[UIGlassEffect alloc] init];
     UIVisualEffectView *glassView =
         [[UIVisualEffectView alloc] initWithEffect:glass];
@@ -674,9 +679,24 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     glassView.autoresizingMask =
         UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     [bar addSubview:glassView];
+#else
+    UIBlurEffect *blur =
+        [UIBlurEffect effectWithStyle:UIBlurEffectStyleDark];
+    UIVisualEffectView *blurView =
+        [[UIVisualEffectView alloc] initWithEffect:blur];
+    blurView.frame = bar.bounds;
+    blurView.autoresizingMask =
+        UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [bar addSubview:blurView];
+#endif
   } else {
+#if TARGET_OS_TV
+    UIBlurEffect *blur =
+        [UIBlurEffect effectWithStyle:UIBlurEffectStyleDark];
+#else
     UIBlurEffect *blur = [UIBlurEffect
         effectWithStyle:UIBlurEffectStyleSystemChromeMaterialDark];
+#endif
     UIVisualEffectView *blurView =
         [[UIVisualEffectView alloc] initWithEffect:blur];
     blurView.frame = bar.bounds;
@@ -754,6 +774,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 
   return bar;
 }
+#endif // !TARGET_OS_VISION
 
 - (UIStackView *)_makeRowStack {
   UIStackView *stack = [[UIStackView alloc] init];
@@ -775,11 +796,17 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
       forControlEvents:UIControlEventTouchUpInside];
 
   if (@available(iOS 26, *)) {
+#if !TARGET_OS_TV
     // Liquid Glass style: translucent key caps that sit on the glass
     // bar background, matching the native iOS 26 keyboard aesthetic.
     btn.backgroundColor = [UIColor tertiarySystemFillColor];
     [btn setTitleColor:[UIColor labelColor] forState:UIControlStateNormal];
     btn.layer.cornerRadius = 6;
+#else
+    btn.backgroundColor = [UIColor colorWithWhite:0.25 alpha:1.0];
+    [btn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    btn.layer.cornerRadius = 5;
+#endif
   } else {
     btn.backgroundColor = [UIColor colorWithWhite:0.25 alpha:1.0];
     [btn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
@@ -959,6 +986,7 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
                                  active:(BOOL)active
                                  locked:(BOOL)locked {
   if (@available(iOS 26, *)) {
+#if !TARGET_OS_TV
     // Liquid Glass modifier states — translucent tints on glass
     if (locked) {
       btn.backgroundColor =
@@ -975,6 +1003,21 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
       btn.layer.borderWidth = 0;
       btn.layer.borderColor = nil;
     }
+#else
+    if (locked) {
+      btn.backgroundColor = [UIColor systemBlueColor];
+      btn.layer.borderWidth = 2.0;
+      btn.layer.borderColor = [UIColor whiteColor].CGColor;
+    } else if (active) {
+      btn.backgroundColor = [UIColor systemBlueColor];
+      btn.layer.borderWidth = 0;
+      btn.layer.borderColor = nil;
+    } else {
+      btn.backgroundColor = [UIColor colorWithWhite:0.25 alpha:1.0];
+      btn.layer.borderWidth = 0;
+      btn.layer.borderColor = nil;
+    }
+#endif
   } else {
     if (locked) {
       btn.backgroundColor = [UIColor systemBlueColor];

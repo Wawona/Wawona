@@ -143,7 +143,7 @@ public final class WawonaPreferences: ObservableObject {
         waypipeSSHPassword = defaults.string(forKey: keyPrefix + "waypipeSSHPassword") ?? ""
         logLevel = defaults.string(forKey: keyPrefix + "logLevel") ?? "info"
         defaultInputProfile = defaults.string(forKey: keyPrefix + "defaultInputProfile") ?? "direct"
-        defaultBundledAppID = defaults.string(forKey: keyPrefix + "defaultBundledAppID") ?? ""
+        defaultBundledAppID = defaults.string(forKey: keyPrefix + "defaultBundledAppID") ?? "weston-simple-shm"
         defaultWaypipeEnabled = defaults.object(forKey: keyPrefix + "defaultWaypipeEnabled") as? Bool ?? true
         shakeToCloseEnabled = defaults.object(forKey: keyPrefix + "shakeToCloseEnabled") as? Bool ?? true
         hasCompletedWelcome = defaults.bool(forKey: keyPrefix + "hasCompletedWelcome")
@@ -210,7 +210,7 @@ public final class WawonaPreferences: ObservableObject {
             sshUser: normalizedSSHUser.isEmpty ? sshUser : normalizedSSHUser,
             sshPort: profile.sshPort > 0 ? profile.sshPort : sshPort,
             sshPassword: profile.sshPassword.isEmpty ? sshPassword : profile.sshPassword,
-            remoteCommand: normalizedCommand.isEmpty ? "weston-terminal" : normalizedCommand,
+            remoteCommand: normalizedCommand.isEmpty ? "weston-simple-shm" : normalizedCommand,
             waypipeEnabled: profile.runtimeOverrides.waypipeEnabled ?? defaultWaypipeEnabled,
             bundledAppID: normalizedBundledApp.isEmpty ? defaultBundledAppID : normalizedBundledApp,
             inputProfile: normalizedInputProfile.isEmpty ? defaultInputProfile : normalizedInputProfile

@@ -172,6 +172,29 @@ static inline void tss_delete(tss_t key) { pthread_key_delete(key); }
 
 #endif /* FCFT_THREADS_H_COMPAT */
 EOF
+
+    # Provide byteswap.h compatibility for Darwin (fcft expects glibc header)
+    cat > threads_compat/byteswap.h << 'EOF'
+#ifndef FCFT_BYTESWAP_H_COMPAT
+#define FCFT_BYTESWAP_H_COMPAT
+
+#include <stdint.h>
+#include <libkern/OSByteOrder.h>
+
+#ifndef bswap_16
+#define bswap_16(x) OSSwapInt16((uint16_t)(x))
+#endif
+
+#ifndef bswap_32
+#define bswap_32(x) OSSwapInt32((uint32_t)(x))
+#endif
+
+#ifndef bswap_64
+#define bswap_64(x) OSSwapInt64((uint64_t)(x))
+#endif
+
+#endif /* FCFT_BYTESWAP_H_COMPAT */
+EOF
     
     # Fix missing xlocale definitions on macOS
     sed -i '1i#include <xlocale.h>' fcft.c

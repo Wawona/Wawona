@@ -93,15 +93,32 @@ android {
 configurations.all {
     resolutionStrategy.eachDependency {
         if (requested.group == "androidx.lifecycle") {
-            useVersion("2.8.7")
+            useVersion("2.10.0")
             because("Pin lifecycle to versions available in the Nix offline cache.")
         }
         if (requested.group == "androidx.savedstate") {
-            useVersion("1.3.0")
-            because("Pin savedstate artifacts to cached versions.")
+            useVersion("1.4.0")
+            because("Pin savedstate artifacts to versions present in the Nix offline cache.")
         }
-        if (requested.group == "androidx.core" && requested.name == "core") {
-            useVersion("1.15.0")
+        if (requested.group == "androidx.annotation" && requested.name == "annotation-experimental") {
+            useVersion("1.5.1")
+            because("Pin annotation-experimental to a version present in the Nix offline cache.")
+        }
+        if (requested.group == "androidx.activity") {
+            useVersion("1.12.0")
+            because("Pin activity artifacts to versions present in the Nix offline cache.")
+        }
+        if (requested.group == "androidx.core" && requested.name == "core-viewtree") {
+            useVersion("1.0.0")
+            because("Pin core-viewtree to the mirrored version in the Nix offline cache.")
+        }
+        if (requested.group == "androidx.core" && requested.name != "core-viewtree") {
+            useVersion("1.16.0")
+            because("Pin core artifacts to versions present in the Nix offline cache.")
+        }
+        if (requested.group == "androidx.navigationevent") {
+            useVersion("1.0.2")
+            because("Pin navigationevent artifacts to versions present in the Nix offline cache.")
         }
     }
     resolutionStrategy.dependencySubstitution {
@@ -118,10 +135,10 @@ configurations.all {
 
 dependencies {
     val composeBom = "2026.03.00"
-    implementation("androidx.core:core-ktx:1.15.0")
-    implementation("androidx.core:core:1.15.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
-    implementation("androidx.activity:activity-compose:1.9.3")
+    implementation("androidx.core:core-ktx:1.16.0")
+    implementation("androidx.core:core:1.16.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
+    implementation("androidx.activity:activity-compose:1.12.0")
     implementation(platform("androidx.compose:compose-bom:$composeBom"))
     implementation("androidx.compose.runtime:runtime-android")
     implementation("androidx.compose.ui:ui-android")

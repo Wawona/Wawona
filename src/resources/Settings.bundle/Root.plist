@@ -482,7 +482,7 @@
 			<key>KeyboardType</key>
 			<string>Alphabet</string>
 			<key>Placeholder</key>
-			<string>e.g. weston-terminal</string>
+			<string>e.g. weston-simple-shm</string>
 		</dict>
 		<!-- Advanced Waypipe Options (Sub-page) -->
 		<dict>

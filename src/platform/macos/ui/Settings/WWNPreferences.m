@@ -154,6 +154,9 @@
 - (void)showSection:(NSInteger)idx;
 - (void)toggleMacOSPasswordVisibility:(NSButton *)sender;
 #endif
+#if TARGET_OS_TV
+- (void)tvSwitchButtonPressed:(UIButton *)button;
+#endif
 @end
 
 // MARK: - Main Implementation
@@ -277,7 +280,11 @@ static UIImage *WWNAboutLogo(void) {
 }
 #else
 - (instancetype)init {
+#if TARGET_OS_TV
+  self = [super initWithStyle:UITableViewStyleGrouped];
+#else
   self = [super initWithStyle:UITableViewStyleInsetGrouped];
+#endif
   if (self) {
     self.title = @"Settings";
     [WWNWaypipeRunner sharedRunner].delegate = self;
@@ -351,35 +358,17 @@ static UIImage *WWNAboutLogo(void) {
   self.tableView.tableHeaderView =
       [[UIView alloc] initWithFrame:CGRectMake(0, 0, 1.0, 1.0)];
 
-  // Modern API (iOS 17+)
-  if (@available(iOS 17.0, *)) {
-    __weak typeof(self) weakSelf = self;
+  __weak typeof(self) weakSelf = self;
+  [self registerForTraitChanges:@[ UITraitUserInterfaceStyle.class ]
+                    withHandler:^(
+                        id<UITraitEnvironment> _Nonnull traitEnvironment,
+                        UITraitCollection *_Nonnull previousCollection) {
 
-    [self registerForTraitChanges:@[ UITraitUserInterfaceStyle.class ]
-                      withHandler:^(
-                          id<UITraitEnvironment> _Nonnull traitEnvironment,
-                          UITraitCollection *_Nonnull previousCollection) {
+                      __strong typeof(weakSelf) strongSelf = weakSelf;
+                      if (!strongSelf) return;
 
-                        __strong typeof(weakSelf) strongSelf = weakSelf;
-                        if (!strongSelf) return;
-
-                        [strongSelf.tableView reloadData];
-                      }];
-  }
-
-  // older iOS fallback handled in traitCollectionDidChange
-}
-
-#pragma mark - old iOS Compatibility
-
-- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
-  [super traitCollectionDidChange:previousTraitCollection];
-
-  if (@available(iOS 13.0, *)) {
-    if (self.traitCollection.userInterfaceStyle != previousTraitCollection.userInterfaceStyle) {
-      [self.tableView reloadData];
-    }
-  }
+                      [strongSelf.tableView reloadData];
+                    }];
 }
 
 #endif
@@ -1332,6 +1321,7 @@ static UIImage *WWNAboutLogo(void) {
           alertControllerWithTitle:@"Waypipe"
                            message:@"Launching waypipe...\n"
                     preferredStyle:UIAlertControllerStyleAlert];
+#if !TARGET_OS_TV
       [statusAlert
           addAction:[UIAlertAction
                         actionWithTitle:@"Copy Log"
@@ -1344,6 +1334,7 @@ static UIImage *WWNAboutLogo(void) {
                                         weakSelf.waypipeStatusText ?: @"";
                                   }
                                 }]];
+#endif
       [statusAlert
           addAction:[UIAlertAction
                         actionWithTitle:@"Stop"
@@ -2918,6 +2909,7 @@ static UIImage *WWNAboutLogo(void) {
                          message:error
                   preferredStyle:UIAlertControllerStyleAlert];
 
+#if !TARGET_OS_TV
     [alert addAction:[UIAlertAction
                          actionWithTitle:@"Copy Error"
                                    style:UIAlertActionStyleDefault
@@ -2929,6 +2921,7 @@ static UIImage *WWNAboutLogo(void) {
                                          error;
                                    }
                                  }]];
+#endif
 
     [alert addAction:[UIAlertAction actionWithTitle:@"OK"
                                               style:UIAlertActionStyleCancel
@@ -3112,7 +3105,8 @@ static UIImage *WWNAboutLogo(void) {
   }
   [[WWNMachinesCoordinator sharedCoordinator]
       presentMachinesFromViewController:presenter
-                              onConnect:nil];
+                              onConnect:^{
+                              }];
 }
 
 - (void)dismissSelf {
@@ -3181,6 +3175,31 @@ static UIImage *WWNAboutLogo(void) {
   cell.selectionStyle = UITableViewCellSelectionStyleNone;
 
   if (item.type == WSettingSwitch) {
+#if TARGET_OS_TV
+    BOOL swOn = YES;
+    BOOL swEnabled = YES;
+    if ([item.key isEqualToString:@"WaypipeOneshot"]) {
+      swOn = YES;
+      swEnabled = NO;
+      cell.textLabel.textColor = [UIColor secondaryLabelColor];
+      cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+    } else if ([item.key isEqualToString:@"ForceServerSideDecorations"]) {
+      swOn = YES;
+      swEnabled = NO;
+      cell.textLabel.textColor = [UIColor secondaryLabelColor];
+      cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+    } else {
+      swOn = [[NSUserDefaults standardUserDefaults] boolForKey:item.key];
+    }
+    UIButton *toggleBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    [toggleBtn setTitle:(swOn ? @"On" : @"Off") forState:UIControlStateNormal];
+    toggleBtn.enabled = swEnabled;
+    toggleBtn.tag = (ip.section * 1000) + ip.row;
+    [toggleBtn addTarget:self
+                  action:@selector(tvSwitchButtonPressed:)
+        forControlEvents:UIControlEventPrimaryActionTriggered];
+    cell.accessoryView = toggleBtn;
+#else
     UISwitch *sw = [[UISwitch alloc] initWithFrame:CGRectZero];
 #if TARGET_OS_IPHONE
     // iOS: One-shot is always on (libssh2 in-process); show as on and disabled.
@@ -3209,6 +3228,7 @@ static UIImage *WWNAboutLogo(void) {
 
     // No info buttons for switches - removed per user request
     cell.accessoryView = sw;
+#endif
   } else if (item.type == WSettingText || item.type == WSettingNumber) {
     id val = [[NSUserDefaults standardUserDefaults] objectForKey:item.key];
     if (!val) {
@@ -3457,6 +3477,7 @@ static UIImage *WWNAboutLogo(void) {
   return cell;
 }
 
+#if !TARGET_OS_TV
 - (void)swChg:(UISwitch *)s {
   WWNSettingItem *item;
   if (self.activeSection) {
@@ -3466,6 +3487,25 @@ static UIImage *WWNAboutLogo(void) {
   }
   [[NSUserDefaults standardUserDefaults] setBool:s.on forKey:item.key];
 }
+#endif
+
+#if TARGET_OS_TV
+- (void)tvSwitchButtonPressed:(UIButton *)button {
+  if (!button.enabled) {
+    return;
+  }
+  WWNSettingItem *item;
+  if (self.activeSection) {
+    item = self.activeSection.items[button.tag % 1000];
+  } else {
+    item = self.sections[button.tag / 1000].items[button.tag % 1000];
+  }
+  BOOL cur = [[NSUserDefaults standardUserDefaults] boolForKey:item.key];
+  BOOL next = !cur;
+  [[NSUserDefaults standardUserDefaults] setBool:next forKey:item.key];
+  [button setTitle:(next ? @"On" : @"Off") forState:UIControlStateNormal];
+}
+#endif
 
 - (void)showHelpForSetting:(UIButton *)button {
   NSInteger section = button.tag / 1000;
@@ -3558,7 +3598,7 @@ static UIImage *WWNAboutLogo(void) {
       }
       // Set placeholder text - special case for Remote Command
       if ([item.key isEqualToString:@"WaypipeRemoteCommand"]) {
-        textField.placeholder = @"e.g. weston-terminal";
+        textField.placeholder = @"e.g. weston-simple-shm";
       } else {
         textField.placeholder = item.desc;
       }
@@ -3684,6 +3724,12 @@ static UIImage *WWNAboutLogo(void) {
                                                             valueString]
                   preferredStyle:UIAlertControllerStyleAlert];
 
+    UIAlertAction *okAction =
+        [UIAlertAction actionWithTitle:@"OK"
+                                 style:UIAlertActionStyleCancel
+                               handler:nil];
+
+#if !TARGET_OS_TV
     UIAlertAction *copyAction = [UIAlertAction
         actionWithTitle:@"Copy"
                   style:UIAlertActionStyleDefault
@@ -3694,13 +3740,8 @@ static UIImage *WWNAboutLogo(void) {
                     pasteboard.string = valueString;
                   }
                 }];
-
-    UIAlertAction *okAction =
-        [UIAlertAction actionWithTitle:@"OK"
-                                 style:UIAlertActionStyleCancel
-                               handler:nil];
-
     [alert addAction:copyAction];
+#endif
     [alert addAction:okAction];
 
     [self presentViewController:alert animated:YES completion:nil];
@@ -3968,6 +4009,7 @@ static UIImage *WWNAboutLogo(void) {
                                           message:cmdString
                                    preferredStyle:UIAlertControllerStyleAlert];
 
+#if !TARGET_OS_TV
   [alert addAction:[UIAlertAction
                        actionWithTitle:@"Copy"
                                  style:UIAlertActionStyleDefault
@@ -3979,6 +4021,7 @@ static UIImage *WWNAboutLogo(void) {
                                        cmdString;
                                  }
                                }]];
+#endif
 
   [alert addAction:[UIAlertAction actionWithTitle:@"OK"
                                             style:UIAlertActionStyleCancel
@@ -4330,7 +4373,7 @@ static UIImage *WWNAboutLogo(void) {
 
     // Set placeholder text for empty fields
     if ([item.key isEqualToString:@"WaypipeRemoteCommand"]) {
-      self.textControl.placeholderString = @"e.g. weston-terminal";
+      self.textControl.placeholderString = @"e.g. weston-simple-shm";
     } else if ([item.key containsString:@"Host"]) {
       self.textControl.placeholderString = @"Remote host address";
     } else if ([item.key containsString:@"User"]) {

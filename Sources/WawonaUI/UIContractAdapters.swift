@@ -68,7 +68,7 @@ enum WawonaUIContractAdapters {
             sshUser: preferences.sshUser,
             sshPortText: String(preferences.sshPort),
             sshPassword: preferences.sshPassword,
-            waypipeCommand: "weston-terminal",
+            waypipeCommand: "weston-simple-shm",
             latestDiagnosticsSummary: preferences.diagnostics.first?.message ?? "No diagnostics yet."
         )
     }

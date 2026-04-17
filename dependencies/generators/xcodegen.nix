@@ -5,13 +5,19 @@
   macosBackend ? null,
   iosBackend ? null,
   iosSimBackend ? null,
+  tvosBackend ? null,
+  tvosSimBackend ? null,
+  visionosBackend ? null,
+  visionosSimBackend ? null,
   watchosBackend ? null,
   watchosSimBackend ? null,
   TEAM_ID ? null,
   iosDeps ? {},
   iosSimDeps ? {},
-  ipadosDeps ? {},
-  ipadosSimDeps ? {},
+  tvosDeps ? {},
+  tvosSimDeps ? {},
+  visionosDeps ? {},
+  visionosSimDeps ? {},
   macosDeps ? {},
   watchosDeps ? {},
   watchosSimDeps ? {},
@@ -61,18 +67,20 @@ let
       FLAKE_REF="./crates/Wawona"
     fi
 
-    # Prebuild only the backend needed for the active Xcode platform.
-    # This avoids forcing iOS backend builds when launching macOS targets.
-    TARGETS=("$FLAKE_REF#wawona-macos-backend")
-    case "''${PLATFORM_NAME:-}" in
-      iphoneos)
-        TARGETS=("$FLAKE_REF#wawona-ios-backend")
-        ;;
-      iphonesimulator)
-        TARGETS=("$FLAKE_REF#wawona-ios-sim-backend")
-        ;;
-    esac
-    nix build --no-link "''${TARGETS[@]}" >/dev/null
+    # Keep all Nix store inputs referenced by the generated Xcode project alive.
+    # The project hardcodes /nix/store paths for platform backends/libs; if those
+    # paths are GC'd, Xcode reports "No such file or directory" across targets.
+    # First realize backend outputs, then create a stable GC root for xcodegen.
+    # This ensures the linked libwawona.a paths exist before the link phase.
+    nix build --no-link \
+      "$FLAKE_REF#wawona-macos-backend" \
+      "$FLAKE_REF#wawona-ios-backend" \
+      "$FLAKE_REF#wawona-ios-sim-backend" \
+      "$FLAKE_REF#wawona-tvos-backend" \
+      "$FLAKE_REF#wawona-tvos-sim-backend" >/dev/null
+
+    mkdir -p .nix-gcroots
+    nix build --out-link .nix-gcroots/xcodegen "$FLAKE_REF#xcodegen" >/dev/null
   '';
 
   # src/core is entirely Rust (0 C/ObjC files) — excluded entirely
@@ -101,6 +109,8 @@ let
         SWIFT_OBJC_BRIDGING_HEADER = "src/platform/macos/WWN-Bridging-Header.h";
         CLANG_ENABLE_MODULES = "YES";
         CLANG_ENABLE_OBJC_ARC = "YES";
+        DEAD_CODE_STRIPPING = "YES";
+        STRING_CATALOG_GENERATE_SYMBOLS = "YES";
         ENABLE_BITCODE = "NO";
         # Xcode 15+ default enables script sandbox; breaks swift-plugin-server / macros under some builds (sandbox_apply EPERM).
         ENABLE_USER_SCRIPT_SANDBOXING = "NO";
@@ -141,13 +151,13 @@ let
               "ui/**"
             ];
           }
-          { path = "src/platform/ios"; excludes = commonExcludes; }
+          { path = "src/platform/ios"; excludes = commonExcludes ++ [ "WWNWaypipeRunnerVisionStub.m" ]; }
           { path = "src/platform/macos/ui/Machines"; excludes = commonExcludes; }
           { path = "src/platform/macos/ui/Settings"; excludes = commonExcludes; }
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
           { path = "src/resources/Wawona.icon"; type = "folder"; }
-          { path = "src/resources/wayland.png"; type = "file"; }
+          { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
         ];
         preBuildScripts = [
@@ -167,24 +177,19 @@ let
             ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon";
             # Reduces actool work that ties thinned catalogs to installed Simulator runtimes.
             ENABLE_ON_DEMAND_RESOURCES = "NO";
-            TARGETED_DEVICE_FAMILY = "1,2";
+            SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+            TARGETED_DEVICE_FAMILY = "1";
+            SUPPORTS_MACCATALYST = "NO";
             SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = "NO";
             SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = "NO";
             CODE_SIGN_STYLE = "Automatic";
             ENABLE_DEBUG_DYLIB = "NO";
-            CODE_SIGNING_ALLOWED = "YES";
-            CODE_SIGNING_REQUIRED = "YES";
-            "CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]" = "NO";
-            "CODE_SIGNING_REQUIRED[sdk=iphonesimulator*]" = "NO";
+            # Allow compile/link without selecting a local Apple team.
+            CODE_SIGNING_ALLOWED = "NO";
+            CODE_SIGNING_REQUIRED = "NO";
             "VALID_ARCHS[sdk=iphonesimulator*]" = "arm64";
             "ARCHS[sdk=iphonesimulator*]" = "arm64";
             "ONLY_ACTIVE_ARCH" = "YES";
-            OTHER_CODE_SIGN_FLAGS = [
-              "$(inherited)"
-              "--deep"
-              "--identifier"
-              "$(PRODUCT_BUNDLE_IDENTIFIER)"
-            ];
             "FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]" = [
               "$(inherited)"
               "$(SDKROOT)/System/Library/SubFrameworks"
@@ -304,6 +309,346 @@ let
           { sdk = "Network.framework"; }
         ];
       };
+      Wawona-iPadOS = {
+        type = "application";
+        platform = "iOS";
+        sources = [
+          {
+            path = "src/platform/macos";
+            excludes = commonExcludes ++ [
+              "*Window*"
+              "*MacOS*"
+              "*Popup*"
+              "WWNLaunchAgentManager.h"
+              "WWNLaunchAgentManager.m"
+              "ui/**"
+            ];
+          }
+          { path = "src/platform/ios"; excludes = commonExcludes ++ [ "WWNWaypipeRunnerVisionStub.m" ]; }
+          { path = "src/platform/macos/ui/Machines"; excludes = commonExcludes; }
+          { path = "src/platform/macos/ui/Settings"; excludes = commonExcludes; }
+          { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
+          { path = "src/resources/Assets.xcassets"; }
+          { path = "src/resources/Wawona.icon"; type = "folder"; }
+          { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
+          { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
+        ];
+        preBuildScripts = [
+          {
+            path = preBuildScript;
+            name = "Build Rust Backend via Nix";
+            basedOnDependencyAnalysis = false;
+            outputFiles = [ "$(BUILT_PRODUCTS_DIR)/libwawona.a" ];
+          }
+        ];
+
+        settings = {
+          base = {
+            INFOPLIST_FILE = "src/resources/app-bundle/Info.plist";
+            GENERATE_INFOPLIST_FILE = "NO";
+            PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.Wawona";
+            # watchOS icon assets are currently generated outside Assets.xcassets.
+            # Leave blank so actool does not require a watch-specific AppIcon set.
+            ASSETCATALOG_COMPILER_APPICON_NAME = "";
+            ENABLE_ON_DEMAND_RESOURCES = "NO";
+            SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+            TARGETED_DEVICE_FAMILY = "2";
+            SUPPORTS_MACCATALYST = "NO";
+            SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = "NO";
+            SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = "NO";
+            CODE_SIGN_STYLE = "Automatic";
+            ENABLE_DEBUG_DYLIB = "NO";
+            # Allow compile/link without selecting a local Apple team.
+            CODE_SIGNING_ALLOWED = "NO";
+            CODE_SIGNING_REQUIRED = "NO";
+            "VALID_ARCHS[sdk=iphonesimulator*]" = "arm64";
+            "ARCHS[sdk=iphonesimulator*]" = "arm64";
+            "ONLY_ACTIVE_ARCH" = "YES";
+            "FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]" = [
+              "$(inherited)"
+              "$(SDKROOT)/System/Library/SubFrameworks"
+            ];
+            "FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*]" = [
+              "$(inherited)"
+              "$(SDKROOT)/System/Library/SubFrameworks"
+            ];
+            "OTHER_LDFLAGS[sdk=iphoneos*]" = [
+              "$(inherited)"
+              "-L${strip (iosDeps.libwayland or null)}/lib"
+              "-L${strip (iosDeps.xkbcommon or null)}/lib"
+              "-L${strip (iosDeps.libffi or null)}/lib"
+              "-L${strip (iosDeps.pixman or null)}/lib"
+              "-L${strip (iosDeps.zstd or null)}/lib"
+              "-L${strip (iosDeps.lz4 or null)}/lib"
+              "-L${strip (iosDeps.libssh2 or null)}/lib"
+              "-L${strip (iosDeps.mbedtls or null)}/lib"
+              "-L${strip (iosDeps.openssl or null)}/lib"
+              "-L${strip (iosDeps.epoll-shim or null)}/lib"
+              "-L${strip (iosDeps.weston-simple-shm or null)}/lib"
+              "-L${strip (iosDeps.weston or null)}/lib"
+              "-L${strip (iosDeps.foot or null)}/lib"
+              "-lxkbcommon"
+              "-lwayland-client"
+              "-lffi"
+              "-lpixman-1"
+              "-lzstd"
+              "-llz4"
+              "-lz"
+              "-lssh2"
+              "-lmbedcrypto"
+              "-lmbedx509"
+              "-lmbedtls"
+              "-lssl"
+              "-lcrypto"
+              "-lepoll-shim"
+              "-lweston_simple_shm"
+              "-lweston-13"
+              "-lweston-desktop-13"
+              "-lweston-terminal"
+              "-lfoot"
+              "${strip iosBackend}/lib/libwawona.a"
+            ];
+            "OTHER_LDFLAGS[sdk=iphonesimulator*]" = [
+              "$(inherited)"
+              "-L${strip (iosSimDeps.libwayland or null)}/lib"
+              "-L${strip (iosSimDeps.xkbcommon or null)}/lib"
+              "-L${strip (iosSimDeps.libffi or null)}/lib"
+              "-L${strip (iosSimDeps.pixman or null)}/lib"
+              "-L${strip (iosSimDeps.zstd or null)}/lib"
+              "-L${strip (iosSimDeps.lz4 or null)}/lib"
+              "-L${strip (iosSimDeps.libssh2 or null)}/lib"
+              "-L${strip (iosSimDeps.mbedtls or null)}/lib"
+              "-L${strip (iosSimDeps.openssl or null)}/lib"
+              "-L${strip (iosSimDeps.epoll-shim or null)}/lib"
+              "-L${strip (iosSimDeps.weston-simple-shm or null)}/lib"
+              "-L${strip (iosSimDeps.weston or null)}/lib"
+              "-L${strip (iosSimDeps.foot or null)}/lib"
+              "-lxkbcommon"
+              "-lwayland-client"
+              "-lffi"
+              "-lpixman-1"
+              "-lzstd"
+              "-llz4"
+              "-lz"
+              "-lssh2"
+              "-lmbedcrypto"
+              "-lmbedx509"
+              "-lmbedtls"
+              "-lssl"
+              "-lcrypto"
+              "-lepoll-shim"
+              "-lweston_simple_shm"
+              "-lweston-13"
+              "-lweston-desktop-13"
+              "-lweston-terminal"
+              "-lfoot"
+              "${strip iosSimBackend}/lib/libwawona.a"
+            ];
+            GCC_PREPROCESSOR_DEFINITIONS = [
+              "$(inherited)"
+              "TARGET_OS_IPHONE=1"
+              "PRODUCT_BUNDLE_IDENTIFIER=\\\"com.aspauldingcode.Wawona\\\""
+            ] ++ versionDefs;
+            "HEADER_SEARCH_PATHS[sdk=iphoneos*]" = [
+              "$(inherited)"
+              "${strip (iosDeps.libwayland or null)}/include"
+              "${strip (iosDeps.libwayland or null)}/include/wayland"
+              "${strip (iosDeps.xkbcommon or null)}/include"
+              "${strip (iosDeps.libssh2 or null)}/include"
+            ];
+            "HEADER_SEARCH_PATHS[sdk=iphonesimulator*]" = [
+              "$(inherited)"
+              "${strip (iosSimDeps.libwayland or null)}/include"
+              "${strip (iosSimDeps.libwayland or null)}/include/wayland"
+              "${strip (iosSimDeps.xkbcommon or null)}/include"
+              "${strip (iosSimDeps.libssh2 or null)}/include"
+            ];
+          };
+        };
+        dependencies = [
+          { target = "WawonaModel"; embed = true; codeSign = true; }
+          { target = "WawonaUIContracts"; embed = true; codeSign = true; }
+          { sdk = "UIKit.framework"; }
+          { sdk = "SwiftUI.framework"; }
+          { sdk = "Foundation.framework"; }
+          { sdk = "CoreGraphics.framework"; }
+          { sdk = "QuartzCore.framework"; }
+          { sdk = "CoreVideo.framework"; }
+          { sdk = "Metal.framework"; }
+          { sdk = "MetalKit.framework"; }
+          { sdk = "IOSurface.framework"; }
+          { sdk = "CoreMedia.framework"; }
+          { sdk = "AVFoundation.framework"; }
+          { sdk = "Security.framework"; }
+          { sdk = "Network.framework"; }
+        ];
+      };
+      Wawona-tvOS = {
+        type = "application";
+        platform = "tvOS";
+        sources = [
+          {
+            path = "src/platform/macos";
+            excludes = commonExcludes ++ [
+              "*Window*"
+              "*MacOS*"
+              "*Popup*"
+              "WWNLaunchAgentManager.h"
+              "WWNLaunchAgentManager.m"
+              "ui/**"
+            ];
+          }
+          { path = "src/platform/ios"; excludes = commonExcludes ++ [ "WWNWaypipeRunnerVisionStub.m" ]; }
+          { path = "src/platform/macos/ui/Machines"; excludes = commonExcludes; }
+          { path = "src/platform/macos/ui/Settings"; excludes = commonExcludes; }
+          { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
+          { path = "src/resources/Assets.xcassets"; }
+          { path = "src/resources/Wawona.icon"; type = "folder"; }
+          { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
+          { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
+        ];
+        preBuildScripts = [
+          {
+            path = preBuildScript;
+            name = "Build Rust Backend via Nix";
+            basedOnDependencyAnalysis = false;
+            outputFiles = [ "$(BUILT_PRODUCTS_DIR)/libwawona.a" ];
+          }
+        ];
+
+        settings = {
+          base = {
+            INFOPLIST_FILE = "src/resources/app-bundle/Info.plist";
+            GENERATE_INFOPLIST_FILE = "NO";
+            PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.Wawona";
+            ASSETCATALOG_COMPILER_APPICON_NAME = "Wawona";
+            ENABLE_ON_DEMAND_RESOURCES = "NO";
+            SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
+            TARGETED_DEVICE_FAMILY = "3";
+            CODE_SIGN_STYLE = "Automatic";
+            ENABLE_DEBUG_DYLIB = "NO";
+            CODE_SIGNING_ALLOWED = "YES";
+            CODE_SIGNING_REQUIRED = "YES";
+            "CODE_SIGNING_ALLOWED[sdk=appletvsimulator*]" = "NO";
+            "CODE_SIGNING_REQUIRED[sdk=appletvsimulator*]" = "NO";
+            "VALID_ARCHS[sdk=appletvsimulator*]" = "arm64";
+            "ARCHS[sdk=appletvsimulator*]" = "arm64";
+            "ONLY_ACTIVE_ARCH" = "YES";
+            # Do not add $(SDKROOT)/System/Library/SubFrameworks on tvOS: it makes
+            # the linker pick up UIUtilities / SwiftUICore as direct deps, which
+            # tvOS app targets are not allowed to link.
+            "OTHER_LDFLAGS[sdk=appletvos*]" = [
+              "$(inherited)"
+              "-L${strip (tvosDeps.libwayland or null)}/lib"
+              "-L${strip (tvosDeps.xkbcommon or null)}/lib"
+              "-L${strip (tvosDeps.libffi or null)}/lib"
+              "-L${strip (tvosDeps.pixman or null)}/lib"
+              "-L${strip (tvosDeps.zstd or null)}/lib"
+              "-L${strip (tvosDeps.lz4 or null)}/lib"
+              "-L${strip (tvosDeps.libssh2 or null)}/lib"
+              "-L${strip (tvosDeps.mbedtls or null)}/lib"
+              "-L${strip (tvosDeps.openssl or null)}/lib"
+              "-L${strip (tvosDeps.epoll-shim or null)}/lib"
+              "-L${strip (tvosDeps.weston-simple-shm or null)}/lib"
+              "-L${strip (tvosDeps.weston or null)}/lib"
+              "-L${strip (tvosDeps.foot or null)}/lib"
+              "-lxkbcommon"
+              "-lwayland-client"
+              "-lffi"
+              "-lpixman-1"
+              "-lzstd"
+              "-llz4"
+              "-lz"
+              "-lssh2"
+              "-lmbedcrypto"
+              "-lmbedx509"
+              "-lmbedtls"
+              "-lssl"
+              "-lcrypto"
+              "-lepoll-shim"
+              "-lweston_simple_shm"
+              "-lweston-13"
+              "-lweston-desktop-13"
+              "-lweston-terminal"
+              "-lfoot"
+              "${strip tvosBackend}/lib/libwawona.a"
+            ];
+            "OTHER_LDFLAGS[sdk=appletvsimulator*]" = [
+              "$(inherited)"
+              "-L${strip (tvosSimDeps.libwayland or null)}/lib"
+              "-L${strip (tvosSimDeps.xkbcommon or null)}/lib"
+              "-L${strip (tvosSimDeps.libffi or null)}/lib"
+              "-L${strip (tvosSimDeps.pixman or null)}/lib"
+              "-L${strip (tvosSimDeps.zstd or null)}/lib"
+              "-L${strip (tvosSimDeps.lz4 or null)}/lib"
+              "-L${strip (tvosSimDeps.libssh2 or null)}/lib"
+              "-L${strip (tvosSimDeps.mbedtls or null)}/lib"
+              "-L${strip (tvosSimDeps.openssl or null)}/lib"
+              "-L${strip (tvosSimDeps.epoll-shim or null)}/lib"
+              "-L${strip (tvosSimDeps.weston-simple-shm or null)}/lib"
+              "-L${strip (tvosSimDeps.weston or null)}/lib"
+              "-L${strip (tvosSimDeps.foot or null)}/lib"
+              "-lxkbcommon"
+              "-lwayland-client"
+              "-lffi"
+              "-lpixman-1"
+              "-lzstd"
+              "-llz4"
+              "-lz"
+              "-lssh2"
+              "-lmbedcrypto"
+              "-lmbedx509"
+              "-lmbedtls"
+              "-lssl"
+              "-lcrypto"
+              "-lepoll-shim"
+              "-lweston_simple_shm"
+              "-lweston-13"
+              "-lweston-desktop-13"
+              "-lweston-terminal"
+              "-lfoot"
+              "${strip tvosSimBackend}/lib/libwawona.a"
+            ];
+            GCC_PREPROCESSOR_DEFINITIONS = [
+              "$(inherited)"
+              "TARGET_OS_IPHONE=1"
+              "TARGET_OS_TV=1"
+              "PRODUCT_BUNDLE_IDENTIFIER=\\\"com.aspauldingcode.Wawona\\\""
+            ] ++ versionDefs;
+            "HEADER_SEARCH_PATHS[sdk=appletvos*]" = [
+              "$(inherited)"
+              "${strip (tvosDeps.libwayland or null)}/include"
+              "${strip (tvosDeps.libwayland or null)}/include/wayland"
+              "${strip (tvosDeps.xkbcommon or null)}/include"
+              "${strip (tvosDeps.libssh2 or null)}/include"
+            ];
+            "HEADER_SEARCH_PATHS[sdk=appletvsimulator*]" = [
+              "$(inherited)"
+              "${strip (tvosSimDeps.libwayland or null)}/include"
+              "${strip (tvosSimDeps.libwayland or null)}/include/wayland"
+              "${strip (tvosSimDeps.xkbcommon or null)}/include"
+              "${strip (tvosSimDeps.libssh2 or null)}/include"
+            ];
+          };
+        };
+        dependencies = [
+          { target = "WawonaModel"; embed = true; codeSign = true; }
+          { target = "WawonaUIContracts"; embed = true; codeSign = true; }
+          { sdk = "UIKit.framework"; }
+          { sdk = "SwiftUI.framework"; }
+          { sdk = "Foundation.framework"; }
+          { sdk = "CoreGraphics.framework"; }
+          { sdk = "QuartzCore.framework"; }
+          { sdk = "CoreVideo.framework"; }
+          { sdk = "Metal.framework"; }
+          { sdk = "MetalKit.framework"; }
+          { sdk = "IOSurface.framework"; }
+          { sdk = "CoreMedia.framework"; }
+          { sdk = "AVFoundation.framework"; }
+          { sdk = "Security.framework"; }
+          { sdk = "Network.framework"; }
+        ];
+      };
       Wawona-macOS = {
         type = "application";
         platform = "macOS";
@@ -313,7 +658,7 @@ let
           { path = "src/platform/macos/ui"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
           { path = "src/resources/Wawona.icon"; type = "folder"; }
-          { path = "src/resources/wayland.png"; type = "file"; }
+          { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
           { path = "src/resources/macos"; type = "folder"; }
         ];
@@ -383,7 +728,9 @@ let
             INFOPLIST_FILE = "src/resources/app-bundle/Info.plist";
             GENERATE_INFOPLIST_FILE = "NO";
             PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.Wawona";
+            SUPPORTED_PLATFORMS = "macosx";
             CODE_SIGN_STYLE = "Automatic";
+            DEAD_CODE_STRIPPING = "YES";
             HEADER_SEARCH_PATHS = [
               "$(inherited)"
               "${strip (macosDeps.libwayland or null)}/include"
@@ -419,8 +766,8 @@ let
           };
         };
         dependencies = [
-          { target = "WawonaModel-macOS"; embed = true; codeSign = true; }
-          { target = "WawonaUIContracts-macOS"; embed = true; codeSign = true; }
+          { target = "WawonaModel"; embed = true; codeSign = true; }
+          { target = "WawonaUIContracts"; embed = true; codeSign = true; }
           { sdk = "Cocoa.framework"; }
           { sdk = "SwiftUI.framework"; }
           { sdk = "Foundation.framework"; }
@@ -438,9 +785,9 @@ let
           { sdk = "ColorSync.framework"; }
         ];
       };
-      Wawona-iPadOS = {
+      Wawona-visionOS = {
         type = "application";
-        platform = "iOS";
+        platform = "visionOS";
         sources = [
           {
             path = "src/platform/macos";
@@ -454,10 +801,17 @@ let
             ];
           }
           { path = "src/platform/ios"; excludes = commonExcludes; }
+          { path = "src/platform/ios/WWNWaypipeRunnerVisionStub.m"; type = "file"; }
           { path = "src/platform/macos/ui/Machines"; excludes = commonExcludes; }
-          { path = "src/platform/macos/ui/Settings"; excludes = commonExcludes; }
+          {
+            path = "src/platform/macos/ui/Settings";
+            excludes = commonExcludes ++ [ "WWNWaypipeRunner.m" ];
+          }
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
+          { path = "src/resources/Wawona.icon"; type = "folder"; }
+          { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
+          { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
         ];
         preBuildScripts = [
           {
@@ -471,120 +825,85 @@ let
           base = {
             INFOPLIST_FILE = "src/resources/app-bundle/Info.plist";
             GENERATE_INFOPLIST_FILE = "NO";
-            PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.Wawona.ipad";
-            ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon";
-            TARGETED_DEVICE_FAMILY = "2";
-            SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = "NO";
-            SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = "NO";
-            UIRequiresFullScreen = "NO";
-            UIApplicationSupportsMultipleScenes = "YES";
+            PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.Wawona";
+            ASSETCATALOG_COMPILER_APPICON_NAME = "Wawona";
+            SUPPORTED_PLATFORMS = "xros xrsimulator";
             CODE_SIGN_STYLE = "Automatic";
             ENABLE_DEBUG_DYLIB = "NO";
             CODE_SIGNING_ALLOWED = "YES";
             CODE_SIGNING_REQUIRED = "YES";
-            "CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]" = "NO";
-            "CODE_SIGNING_REQUIRED[sdk=iphonesimulator*]" = "NO";
-            "VALID_ARCHS[sdk=iphonesimulator*]" = "arm64";
-            "ARCHS[sdk=iphonesimulator*]" = "arm64";
+            "CODE_SIGNING_ALLOWED[sdk=xrsimulator*]" = "NO";
+            "CODE_SIGNING_REQUIRED[sdk=xrsimulator*]" = "NO";
+            "VALID_ARCHS[sdk=xrsimulator*]" = "arm64";
+            "ARCHS[sdk=xrsimulator*]" = "arm64";
             "ONLY_ACTIVE_ARCH" = "YES";
-            "FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]" = [
+            "FRAMEWORK_SEARCH_PATHS[sdk=xros*]" = [
               "$(inherited)"
-              "$(SDKROOT)/System/Library/SubFrameworks"
             ];
-            "FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*]" = [
+            "FRAMEWORK_SEARCH_PATHS[sdk=xrsimulator*]" = [
               "$(inherited)"
-              "$(SDKROOT)/System/Library/SubFrameworks"
             ];
-            "OTHER_LDFLAGS[sdk=iphoneos*]" = [
+            "OTHER_LDFLAGS[sdk=xros*]" = [
               "$(inherited)"
-              "-L${strip (ipadosDeps.libwayland or null)}/lib"
-              "-L${strip (ipadosDeps.xkbcommon or null)}/lib"
-              "-L${strip (ipadosDeps.libffi or null)}/lib"
-              "-L${strip (ipadosDeps.pixman or null)}/lib"
-              "-L${strip (ipadosDeps.zstd or null)}/lib"
-              "-L${strip (ipadosDeps.lz4 or null)}/lib"
-              "-L${strip (ipadosDeps.libssh2 or null)}/lib"
-              "-L${strip (ipadosDeps.mbedtls or null)}/lib"
-              "-L${strip (ipadosDeps.openssl or null)}/lib"
-              "-L${strip (ipadosDeps.epoll-shim or null)}/lib"
-               "-L${strip (ipadosDeps.weston-simple-shm or null)}/lib"
-               "-L${strip (ipadosDeps.weston or null)}/lib"
-               "-L${strip (ipadosDeps.foot or null)}/lib"
-               "-lxkbcommon"
-               "-lwayland-client"
-               "-lffi"
-               "-lpixman-1"
-               "-lzstd"
-               "-llz4"
-               "-lz"
-               "-lssh2"
-               "-lmbedcrypto"
-               "-lmbedx509"
-               "-lmbedtls"
-               "-lssl"
-               "-lcrypto"
-               "-lepoll-shim"
-               "-lweston_simple_shm"
-               "-lweston-13"
-               "-lweston-desktop-13"
-               "-lweston-terminal"
-               "-lfoot"
-               "${strip iosBackend}/lib/libwawona.a"
-            ];
-            "OTHER_LDFLAGS[sdk=iphonesimulator*]" = [
-              "$(inherited)"
-              "-L${strip (ipadosSimDeps.libwayland or null)}/lib"
-              "-L${strip (ipadosSimDeps.xkbcommon or null)}/lib"
-              "-L${strip (ipadosSimDeps.libffi or null)}/lib"
-              "-L${strip (ipadosSimDeps.pixman or null)}/lib"
-              "-L${strip (ipadosSimDeps.zstd or null)}/lib"
-              "-L${strip (ipadosSimDeps.lz4 or null)}/lib"
-              "-L${strip (ipadosSimDeps.libssh2 or null)}/lib"
-              "-L${strip (ipadosSimDeps.mbedtls or null)}/lib"
-              "-L${strip (ipadosSimDeps.openssl or null)}/lib"
-              "-L${strip (ipadosSimDeps.epoll-shim or null)}/lib"
-               "-L${strip (ipadosSimDeps.weston-simple-shm or null)}/lib"
-               "-L${strip (ipadosSimDeps.weston or null)}/lib"
-               "-L${strip (ipadosSimDeps.foot or null)}/lib"
+              "-L${strip (visionosDeps.libwayland or null)}/lib"
+              "-L${strip (visionosDeps.xkbcommon or null)}/lib"
+              "-L${strip (visionosDeps.libffi or null)}/lib"
+              "-L${strip (visionosDeps.pixman or null)}/lib"
+              "-L${strip (visionosDeps.epoll-shim or null)}/lib"
+              "-L${strip (visionosDeps.libssh2 or null)}/lib"
+              "-L${strip (visionosDeps.openssl or null)}/lib"
+              "-L${strip (visionosDeps.weston-simple-shm or null)}/lib"
               "-lxkbcommon"
               "-lwayland-client"
               "-lffi"
               "-lpixman-1"
-              "-lzstd"
-              "-llz4"
-              "-lz"
+              "-lepoll-shim"
               "-lssh2"
-              "-lmbedcrypto"
-              "-lmbedx509"
-              "-lmbedtls"
               "-lssl"
               "-lcrypto"
-               "-lepoll-shim"
-               "-lweston_simple_shm"
-               "-lweston-13"
-               "-lweston-desktop-13"
-               "-lweston-terminal"
-               "-lfoot"
-               "${strip iosSimBackend}/lib/libwawona.a"
+              "-lweston_simple_shm"
+              "${strip visionosBackend}/lib/libwawona.a"
+            ];
+            "OTHER_LDFLAGS[sdk=xrsimulator*]" = [
+              "$(inherited)"
+              "-L${strip (visionosSimDeps.libwayland or null)}/lib"
+              "-L${strip (visionosSimDeps.xkbcommon or null)}/lib"
+              "-L${strip (visionosSimDeps.libffi or null)}/lib"
+              "-L${strip (visionosSimDeps.pixman or null)}/lib"
+              "-L${strip (visionosSimDeps.epoll-shim or null)}/lib"
+              "-L${strip (visionosSimDeps.libssh2 or null)}/lib"
+              "-L${strip (visionosSimDeps.openssl or null)}/lib"
+              "-L${strip (visionosSimDeps.weston-simple-shm or null)}/lib"
+              "-lxkbcommon"
+              "-lwayland-client"
+              "-lffi"
+              "-lpixman-1"
+              "-lepoll-shim"
+              "-lssh2"
+              "-lssl"
+              "-lcrypto"
+              "-lweston_simple_shm"
+              "${strip visionosSimBackend}/lib/libwawona.a"
             ];
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"
-              "PRODUCT_BUNDLE_IDENTIFIER=\\\"com.aspauldingcode.Wawona.ipad\\\""
+              "TARGET_OS_VISION=1"
+              "PRODUCT_BUNDLE_IDENTIFIER=\\\"com.aspauldingcode.Wawona\\\""
             ] ++ versionDefs;
-            "HEADER_SEARCH_PATHS[sdk=iphoneos*]" = [
+            "HEADER_SEARCH_PATHS[sdk=xros*]" = [
               "$(inherited)"
-              "${strip (ipadosDeps.libwayland or null)}/include"
-              "${strip (ipadosDeps.libwayland or null)}/include/wayland"
-              "${strip (ipadosDeps.xkbcommon or null)}/include"
-              "${strip (ipadosDeps.libssh2 or null)}/include"
+              "${strip (visionosDeps.libwayland or null)}/include"
+              "${strip (visionosDeps.libwayland or null)}/include/wayland"
+              "${strip (visionosDeps.xkbcommon or null)}/include"
+              "${strip (visionosDeps.libssh2 or null)}/include"
             ];
-            "HEADER_SEARCH_PATHS[sdk=iphonesimulator*]" = [
+            "HEADER_SEARCH_PATHS[sdk=xrsimulator*]" = [
               "$(inherited)"
-              "${strip (ipadosSimDeps.libwayland or null)}/include"
-              "${strip (ipadosSimDeps.libwayland or null)}/include/wayland"
-              "${strip (ipadosSimDeps.xkbcommon or null)}/include"
-              "${strip (ipadosSimDeps.libssh2 or null)}/include"
+              "${strip (visionosSimDeps.libwayland or null)}/include"
+              "${strip (visionosSimDeps.libwayland or null)}/include/wayland"
+              "${strip (visionosSimDeps.xkbcommon or null)}/include"
+              "${strip (visionosSimDeps.libssh2 or null)}/include"
             ];
           };
         };
@@ -618,41 +937,22 @@ let
             PRODUCT_NAME = "WawonaModel";
             PRODUCT_MODULE_NAME = "WawonaModel";
             PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.WawonaModel";
-            SUPPORTED_PLATFORMS = "macosx iphoneos iphonesimulator watchos watchsimulator";
+            SUPPORTED_PLATFORMS = "macosx iphoneos iphonesimulator appletvos appletvsimulator xros xrsimulator watchos watchsimulator";
+            TARGETED_DEVICE_FAMILY = "1,2,3,4,7";
             MACOSX_DEPLOYMENT_TARGET = "14.0";
-            "SDKROOT[sdk=watchos*]" = "watchos";
-            "SDKROOT[sdk=watchsimulator*]" = "watchsimulator";
+            TVOS_DEPLOYMENT_TARGET = "17.0";
+            SUPPORTS_MACCATALYST = "NO";
+            SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = "NO";
+            SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = "NO";
             WATCHOS_DEPLOYMENT_TARGET = "10.0";
             GENERATE_INFOPLIST_FILE = "YES";
             SWIFT_VERSION = "5.0";
             SWIFT_OBJC_BRIDGING_HEADER = "";
             SWIFT_INSTALL_OBJC_HEADER = "NO";
             DEFINES_MODULE = "YES";
-            MODULEMAP_FILE = "$(SRCROOT)/Sources/WawonaModel/module.modulemap";
+            ENABLE_MODULE_VERIFIER = "NO";
             SKIP_INSTALL = "YES";
             BUILD_LIBRARY_FOR_DISTRIBUTION = "NO";
-          };
-        };
-        dependencies = [ ];
-      };
-      WawonaModel-macOS = {
-        type = "framework";
-        platform = "macOS";
-        scheme = false;
-        sources = [
-          { path = "Sources/WawonaModel"; excludes = commonExcludes ++ [ "*.modulemap" ]; }
-        ];
-        settings = {
-          base = {
-            PRODUCT_NAME = "WawonaModel";
-            PRODUCT_MODULE_NAME = "WawonaModel";
-            PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.WawonaModel.macos";
-            GENERATE_INFOPLIST_FILE = "YES";
-            SWIFT_VERSION = "5.0";
-            DEFINES_MODULE = "YES";
-            SKIP_INSTALL = "YES";
-            BUILD_LIBRARY_FOR_DISTRIBUTION = "NO";
-            MACOSX_DEPLOYMENT_TARGET = "14.0";
           };
         };
         dependencies = [ ];
@@ -669,40 +969,21 @@ let
             PRODUCT_NAME = "WawonaUIContracts";
             PRODUCT_MODULE_NAME = "WawonaUIContracts";
             PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.WawonaUIContracts";
-            SUPPORTED_PLATFORMS = "macosx iphoneos iphonesimulator watchos watchsimulator";
+            SUPPORTED_PLATFORMS = "macosx iphoneos iphonesimulator appletvos appletvsimulator xros xrsimulator watchos watchsimulator";
+            TARGETED_DEVICE_FAMILY = "1,2,3,4,7";
             MACOSX_DEPLOYMENT_TARGET = "14.0";
-            "SDKROOT[sdk=watchos*]" = "watchos";
-            "SDKROOT[sdk=watchsimulator*]" = "watchsimulator";
+            TVOS_DEPLOYMENT_TARGET = "17.0";
+            SUPPORTS_MACCATALYST = "NO";
+            SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = "NO";
+            SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = "NO";
             WATCHOS_DEPLOYMENT_TARGET = "10.0";
             GENERATE_INFOPLIST_FILE = "YES";
             SWIFT_VERSION = "5.0";
             SWIFT_OBJC_BRIDGING_HEADER = "";
             DEFINES_MODULE = "YES";
+            ENABLE_MODULE_VERIFIER = "YES";
             SKIP_INSTALL = "YES";
             BUILD_LIBRARY_FOR_DISTRIBUTION = "NO";
-          };
-        };
-        dependencies = [ ];
-      };
-      WawonaUIContracts-macOS = {
-        type = "framework";
-        platform = "macOS";
-        scheme = false;
-        sources = [
-          { path = "Sources/WawonaUIContracts"; excludes = commonExcludes ++ [ "Skip/**" ]; }
-        ];
-        settings = {
-          base = {
-            PRODUCT_NAME = "WawonaUIContracts";
-            PRODUCT_MODULE_NAME = "WawonaUIContracts";
-            PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.WawonaUIContracts.macos";
-            GENERATE_INFOPLIST_FILE = "YES";
-            SWIFT_VERSION = "5.0";
-            SWIFT_OBJC_BRIDGING_HEADER = "";
-            DEFINES_MODULE = "YES";
-            SKIP_INSTALL = "YES";
-            BUILD_LIBRARY_FOR_DISTRIBUTION = "NO";
-            MACOSX_DEPLOYMENT_TARGET = "14.0";
           };
         };
         dependencies = [ ];
@@ -714,16 +995,22 @@ let
           { path = "Sources/WawonaWatch"; excludes = commonExcludes; }
           { path = "src/platform/watchos"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
+          { path = "src/resources/Wawona.icon"; type = "folder"; }
+          { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
         ];
         settings = {
           base = {
             PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.Wawona.watch";
+            SUPPORTED_PLATFORMS = "watchos watchsimulator";
             WATCHOS_DEPLOYMENT_TARGET = "10.0";
             GENERATE_INFOPLIST_FILE = "YES";
             ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon";
             INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "com.aspauldingcode.Wawona";
             SWIFT_OBJC_BRIDGING_HEADER = "src/platform/watchos/WWNWatch-Bridging-Header.h";
             SWIFT_INSTALL_OBJC_HEADER = "NO";
+            CODE_SIGNING_ALLOWED = "NO";
+            CODE_SIGNING_REQUIRED = "NO";
+            LD_RUNPATH_SEARCH_PATHS = [ "$(inherited)" "@executable_path/Frameworks" ];
             GCC_PREPROCESSOR_DEFINITIONS = [ "$(inherited)" "TARGET_OS_WATCH=1" ];
             "VALID_ARCHS[sdk=watchos*]" = "arm64";
             "ARCHS[sdk=watchos*]" = "arm64";
@@ -871,7 +1158,7 @@ let
       if [ -f "crates/Wawona/flake.nix" ]; then
         FLAKE_REF="./crates/Wawona"
       fi
-      nix build --no-link "$FLAKE_REF#wawona-macos-backend" "$FLAKE_REF#wawona-ios-backend" "$FLAKE_REF#wawona-ios-sim-backend" >/dev/null
+      nix build --no-link "$FLAKE_REF#wawona-macos-backend" "$FLAKE_REF#wawona-ios-backend" "$FLAKE_REF#wawona-ios-sim-backend" "$FLAKE_REF#wawona-tvos-backend" "$FLAKE_REF#wawona-tvos-sim-backend" >/dev/null
     fi
 
     if [ -d "Wawona.xcodeproj" ]; then
@@ -895,7 +1182,7 @@ let
       fi
     fi
     if [ -n "$EFFECTIVE_TEAM_ID" ]; then
-      # Only apply team to iOS target so user-selected macOS signing is untouched.
+      # Only apply team to iOS-family targets so macOS signing stays untouched.
       TMP_SPEC="$TMP_SPEC" EFFECTIVE_TEAM_ID="$EFFECTIVE_TEAM_ID" ${pkgs.python3}/bin/python3 <<'EOF'
 import json
 from pathlib import Path
@@ -905,12 +1192,14 @@ p = Path(os.environ["TMP_SPEC"])
 data = json.loads(p.read_text())
 team = os.environ.get("EFFECTIVE_TEAM_ID", "").strip()
 if team:
-    ios_target = data.setdefault("targets", {}).setdefault("Wawona-iOS", {})
-    base = ios_target.setdefault("settings", {}).setdefault("base", {})
-    base["DEVELOPMENT_TEAM"] = team
+    targets = data.setdefault("targets", {})
+    for target_name in ("Wawona-iOS", "Wawona-iPadOS", "Wawona-tvOS"):
+        target = targets.setdefault(target_name, {})
+        base = target.setdefault("settings", {}).setdefault("base", {})
+        base["DEVELOPMENT_TEAM"] = team
     p.write_text(json.dumps(data, indent=2))
 EOF
-      echo "Applied TEAM_ID=$EFFECTIVE_TEAM_ID to Wawona-iOS."
+      echo "Applied TEAM_ID=$EFFECTIVE_TEAM_ID to Wawona-iOS, Wawona-iPadOS, and Wawona-tvOS."
     fi
     ${xcodeUtils.xcodeWrapper}/bin/xcode-wrapper ${pkgs.xcodegen}/bin/xcodegen generate --spec "$TMP_SPEC"
 
@@ -927,20 +1216,30 @@ EOF
       <key>orderHint</key>
       <integer>0</integer>
     </dict>
-    <key>Wawona-macOS.xcscheme_^#shared#^_</key>
+    <key>Wawona-iPadOS.xcscheme_^#shared#^_</key>
     <dict>
       <key>orderHint</key>
       <integer>1</integer>
     </dict>
-    <key>Wawona-iPadOS.xcscheme_^#shared#^_</key>
+    <key>Wawona-tvOS.xcscheme_^#shared#^_</key>
     <dict>
       <key>orderHint</key>
       <integer>2</integer>
     </dict>
-    <key>Wawona-watchOS.xcscheme_^#shared#^_</key>
+    <key>Wawona-macOS.xcscheme_^#shared#^_</key>
     <dict>
       <key>orderHint</key>
       <integer>3</integer>
+    </dict>
+    <key>Wawona-watchOS.xcscheme_^#shared#^_</key>
+    <dict>
+      <key>orderHint</key>
+      <integer>4</integer>
+    </dict>
+    <key>Wawona-visionOS.xcscheme_^#shared#^_</key>
+    <dict>
+      <key>orderHint</key>
+      <integer>5</integer>
     </dict>
   </dict>
   <key>SuppressBuildableAutocreation</key>
@@ -1012,9 +1311,11 @@ for user_scheme_dir in user_scheme_dirs:
     # Keep only app schemes in the visible user scheme list.
     user_data["SchemeUserState"] = {
         "Wawona-iOS.xcscheme_^#shared#^_": {"orderHint": 0},
-        "Wawona-macOS.xcscheme_^#shared#^_": {"orderHint": 1},
-        "Wawona-iPadOS.xcscheme_^#shared#^_": {"orderHint": 2},
-        "Wawona-watchOS.xcscheme_^#shared#^_": {"orderHint": 3},
+        "Wawona-iPadOS.xcscheme_^#shared#^_": {"orderHint": 1},
+        "Wawona-tvOS.xcscheme_^#shared#^_": {"orderHint": 2},
+        "Wawona-macOS.xcscheme_^#shared#^_": {"orderHint": 3},
+        "Wawona-watchOS.xcscheme_^#shared#^_": {"orderHint": 4},
+        "Wawona-visionOS.xcscheme_^#shared#^_": {"orderHint": 5},
     }
 
     user_suppress = user_data.setdefault("SuppressBuildableAutocreation", {})

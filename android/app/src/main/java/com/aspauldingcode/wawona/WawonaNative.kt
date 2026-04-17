@@ -104,6 +104,15 @@ object WawonaNative {
     external fun nativeRunWestonSimpleSHM(): Boolean
     external fun nativeStopWestonSimpleSHM()
     external fun nativeIsWestonSimpleSHMRunning(): Boolean
+    external fun nativeRunWeston(): Boolean
+    external fun nativeStopWeston()
+    external fun nativeIsWestonRunning(): Boolean
+    external fun nativeRunWestonTerminal(): Boolean
+    external fun nativeStopWestonTerminal()
+    external fun nativeIsWestonTerminalRunning(): Boolean
+    external fun nativeRunFoot(): Boolean
+    external fun nativeStopFoot()
+    external fun nativeIsFootRunning(): Boolean
 
     external fun nativeTestPing(host: String, port: Int, timeoutMs: Int): String
     external fun nativeTestSSH(host: String, user: String, password: String, port: Int): String

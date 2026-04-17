@@ -90,7 +90,7 @@ mod app {
                     ssh_host: String::new(),
                     ssh_user: String::new(),
                     ssh_port: 22,
-                    remote_command: "weston-terminal".to_string(),
+                    remote_command: "weston-simple-shm".to_string(),
                 },
                 LinuxMachine {
                     name: "Remote Waypipe".to_string(),
@@ -98,7 +98,7 @@ mod app {
                     ssh_host: "192.168.1.25".to_string(),
                     ssh_user: "wawona".to_string(),
                     ssh_port: 22,
-                    remote_command: "weston-terminal".to_string(),
+                    remote_command: "weston-simple-shm".to_string(),
                 },
             ],
             selected_machine: Some(0),
@@ -335,7 +335,7 @@ mod app {
                 ssh_host: String::new(),
                 ssh_user: String::new(),
                 ssh_port: 22,
-                remote_command: "weston-terminal".to_string(),
+                remote_command: "weston-simple-shm".to_string(),
             });
             state_ref.selected_machine = Some(state_ref.machines.len() - 1);
         });

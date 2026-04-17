@@ -74,21 +74,21 @@ pkgs.stdenv.mkDerivation {
           IOS_CXX="${buildPackages.clang}/bin/clang++"
         fi
         IOS_ARCH="${if simulator then pkgs.stdenv.hostPlatform.darwinArch else "arm64"}"
-        IOS_TARGET="${if simulator then "${pkgs.stdenv.hostPlatform.darwinArch}-apple-ios26.0-simulator" else "arm64-apple-ios26.0"}"
+        IOS_TARGET="${if simulator then "${pkgs.stdenv.hostPlatform.darwinArch}-apple-ios${iosToolchain.deploymentTarget}-simulator" else "arm64-apple-ios${iosToolchain.deploymentTarget}"}"
         cat > ipados-toolchain.cmake <<EOF
     set(CMAKE_SYSTEM_NAME iOS)
     set(CMAKE_OSX_ARCHITECTURES $IOS_ARCH)
-    set(CMAKE_OSX_DEPLOYMENT_TARGET 26.0)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET ${iosToolchain.deploymentTarget})
     set(CMAKE_C_COMPILER "$IOS_CC")
     set(CMAKE_CXX_COMPILER "$IOS_CXX")
     set(CMAKE_C_COMPILER_TARGET "$IOS_TARGET")
     set(CMAKE_CXX_COMPILER_TARGET "$IOS_TARGET")
     set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
-    set(CMAKE_C_FLAGS "-arch $IOS_ARCH -target $IOS_TARGET -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0")
-    set(CMAKE_CXX_FLAGS "-arch $IOS_ARCH -target $IOS_TARGET -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0")
-    set(CMAKE_ASM_FLAGS "-arch $IOS_ARCH -target $IOS_TARGET -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0")
-    set(CMAKE_EXE_LINKER_FLAGS "-arch $IOS_ARCH -target $IOS_TARGET -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0")
-    set(CMAKE_SHARED_LINKER_FLAGS "-arch $IOS_ARCH -target $IOS_TARGET -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=26.0")
+    set(CMAKE_C_FLAGS "-arch $IOS_ARCH -target $IOS_TARGET -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=${iosToolchain.deploymentTarget}")
+    set(CMAKE_CXX_FLAGS "-arch $IOS_ARCH -target $IOS_TARGET -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=${iosToolchain.deploymentTarget}")
+    set(CMAKE_ASM_FLAGS "-arch $IOS_ARCH -target $IOS_TARGET -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=${iosToolchain.deploymentTarget}")
+    set(CMAKE_EXE_LINKER_FLAGS "-arch $IOS_ARCH -target $IOS_TARGET -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=${iosToolchain.deploymentTarget}")
+    set(CMAKE_SHARED_LINKER_FLAGS "-arch $IOS_ARCH -target $IOS_TARGET -isysroot $SDKROOT -m${if simulator then "ios-simulator" else "iphoneos"}-version-min=${iosToolchain.deploymentTarget}")
     set(CMAKE_SYSROOT "$SDKROOT")
     set(CMAKE_OSX_SYSROOT "$SDKROOT")
     EOF

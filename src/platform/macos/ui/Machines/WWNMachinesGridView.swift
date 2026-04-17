@@ -186,17 +186,25 @@ struct WWNMachinesGridView: View {
       .listStyle(.sidebar)
       .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 320)
       #else
-      List {
+      List(selection: compactSidebarSelection) {
         Section("Machine Scope") {
           ForEach(WWNMachineFilter.allCases) { filter in
-            sidebarFilterRow(filter)
+            Label(filter.rawValue, systemImage: filterIcon(filter))
+              .tag(filter)
           }
         }
       }
-      .listStyle(.insetGrouped)
+      #if os(tvOS)
+      .listStyle(.plain)
+      #else
+      .listStyle(.sidebar)
+      #endif
+      .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 320)
       #endif
     }
+    #if os(macOS)
     .navigationTitle("Control Panel")
+    #endif
   }
 
   #if os(macOS)
@@ -213,20 +221,23 @@ struct WWNMachinesGridView: View {
   }
   #endif
 
-  @ViewBuilder
-  private func sidebarFilterRow(_ filter: WWNMachineFilter) -> some View {
-    Button {
-      withAnimation(.easeInOut(duration: 0.2)) {
-        model.selectedFilter = filter
+  #if !os(macOS)
+  /// Selection-driven list rows (matches Settings-style sidebar highlight on iPad / compact split).
+  private var compactSidebarSelection: Binding<WWNMachineFilter?> {
+    Binding(
+      get: { model.selectedFilter },
+      set: { selected in
+        guard let selected, selected != model.selectedFilter else { return }
+        withAnimation(.easeInOut(duration: 0.2)) {
+          model.selectedFilter = selected
+        }
+        #if os(iOS)
+        preferredColumn = .detail
+        #endif
       }
-      #if os(iOS)
-      preferredColumn = .detail
-      #endif
-    } label: {
-      Label(filter.rawValue, systemImage: filterIcon(filter))
-        .contentShape(Rectangle())
-    }
+    )
   }
+  #endif
 
   // MARK: - Detail
 
@@ -331,12 +342,6 @@ struct WWNMachinesGridView: View {
         summaryPill("Profiles", "\(model.profiles.count)")
         summaryPill("Connected", "\(model.connectedCount)")
         summaryPill("Ready", "\(model.launchableCount)")
-        Button {
-          isCreating = true
-        } label: {
-          Label("New Machine", systemImage: "plus.circle.fill")
-        }
-        .buttonStyle(.borderedProminent)
         if let onOpenSettings {
           Button("Settings", action: onOpenSettings)
             .buttonStyle(.bordered)
@@ -352,7 +357,11 @@ struct WWNMachinesGridView: View {
 
   private var searchAndLayoutBar: some View {
     TextField("Search machines or hosts", text: $searchQuery)
+      #if os(tvOS)
+      .textFieldStyle(.automatic)
+      #else
       .textFieldStyle(.roundedBorder)
+      #endif
   }
 
   // MARK: - Helpers
@@ -398,7 +407,7 @@ extension WWNMachineProfile: Identifiable {
 
 // MARK: - iOS Hosting Bridge
 
-#if os(iOS)
+#if os(iOS) || os(tvOS) || os(visionOS)
 import UIKit
 
 @objc(WWNMachinesHostingBridge)

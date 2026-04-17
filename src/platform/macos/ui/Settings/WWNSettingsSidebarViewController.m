@@ -16,9 +16,15 @@
 @implementation WWNSettingsSidebarViewController
 
 - (instancetype)initWithPreferences:(WWNPreferences *)preferences {
+#if TARGET_OS_TV
+  UICollectionLayoutListConfiguration *config =
+      [[UICollectionLayoutListConfiguration alloc]
+          initWithAppearance:UICollectionLayoutListAppearancePlain];
+#else
   UICollectionLayoutListConfiguration *config =
       [[UICollectionLayoutListConfiguration alloc]
           initWithAppearance:UICollectionLayoutListAppearanceSidebar];
+#endif
   UICollectionViewCompositionalLayout *layout =
       [UICollectionViewCompositionalLayout layoutWithListConfiguration:config];
 
@@ -72,7 +78,9 @@
   [super viewDidLoad];
 
   self.title = @"Settings";
+#if !TARGET_OS_TV
   self.navigationController.navigationBar.prefersLargeTitles = YES;
+#endif
 
   // Add Done button to dismiss settings
 

@@ -29,9 +29,21 @@ impl XkbContext {
         // it cannot add the default include path, which causes a crash later.
         // Use NO_DEFAULT_INCLUDES so the context is always valid; keymap loading from
         // names will fail gracefully and we fall back to MINIMAL_KEYMAP.
-        #[cfg(any(target_os = "ios", target_os = "android"))]
+        #[cfg(any(
+            target_os = "ios",
+            target_os = "tvos",
+            target_os = "visionos",
+            target_os = "watchos",
+            target_os = "android"
+        ))]
         let flags = xkb::CONTEXT_NO_DEFAULT_INCLUDES;
-        #[cfg(not(any(target_os = "ios", target_os = "android")))]
+        #[cfg(not(any(
+            target_os = "ios",
+            target_os = "tvos",
+            target_os = "visionos",
+            target_os = "watchos",
+            target_os = "android"
+        )))]
         let flags = xkb::CONTEXT_NO_FLAGS;
 
         Self {

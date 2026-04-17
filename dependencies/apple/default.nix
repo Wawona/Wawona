@@ -2,7 +2,7 @@
   lib,
   pkgs,
   TEAM_ID ? null,
-  deploymentTarget ? "26.0",
+  deploymentTarget ? "17.0",
   xcodeBaseDir ? null,
   allowedXcodeVersions ? [ ],
   nixXcodeenvtests ? null,

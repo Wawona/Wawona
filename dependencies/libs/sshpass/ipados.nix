@@ -82,15 +82,15 @@ pkgs.stdenv.mkDerivation {
       fi
       export CC="$IOS_CC"
       export CXX="$IOS_CXX"
-      export CFLAGS="-arch $SIMULATOR_ARCH -isysroot $SDKROOT -mios-simulator-version-min=26.0 -fPIC"
-      export CXXFLAGS="-arch $SIMULATOR_ARCH -isysroot $SDKROOT -mios-simulator-version-min=26.0 -fPIC"
-      export LDFLAGS="-arch $SIMULATOR_ARCH -isysroot $SDKROOT -mios-simulator-version-min=26.0"
+      export CFLAGS="-arch $SIMULATOR_ARCH -isysroot $SDKROOT -mios-simulator-version-min=${iosToolchain.deploymentTarget} -fPIC"
+      export CXXFLAGS="-arch $SIMULATOR_ARCH -isysroot $SDKROOT -mios-simulator-version-min=${iosToolchain.deploymentTarget} -fPIC"
+      export LDFLAGS="-arch $SIMULATOR_ARCH -isysroot $SDKROOT -mios-simulator-version-min=${iosToolchain.deploymentTarget}"
     else
       export CC="$IOS_CC"
       export CXX="$IOS_CXX"
-      export CFLAGS="-arch arm64 -isysroot $SDKROOT -miphoneos-version-min=26.0 -fPIC"
-      export CXXFLAGS="-arch arm64 -isysroot $SDKROOT -miphoneos-version-min=26.0 -fPIC"
-      export LDFLAGS="-arch arm64 -isysroot $SDKROOT -miphoneos-version-min=26.0"
+      export CFLAGS="-arch arm64 -isysroot $SDKROOT -miphoneos-version-min=${iosToolchain.deploymentTarget} -fPIC"
+      export CXXFLAGS="-arch arm64 -isysroot $SDKROOT -miphoneos-version-min=${iosToolchain.deploymentTarget} -fPIC"
+      export LDFLAGS="-arch arm64 -isysroot $SDKROOT -miphoneos-version-min=${iosToolchain.deploymentTarget}"
     fi
   '';
 

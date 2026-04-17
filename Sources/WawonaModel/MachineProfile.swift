@@ -120,7 +120,7 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
         sshUser: String = "",
         sshPort: Int = 22,
         sshPassword: String = "",
-        remoteCommand: String = "weston-terminal",
+        remoteCommand: String = "weston-simple-shm",
         vmSubtype: String = "",
         containerSubtype: String = "",
         launchers: [ClientLauncher] = [],
@@ -151,7 +151,7 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
         sshUser = try container.decodeIfPresent(String.self, forKey: .sshUser) ?? ""
         sshPort = try container.decodeIfPresent(Int.self, forKey: .sshPort) ?? 22
         sshPassword = try container.decodeIfPresent(String.self, forKey: .sshPassword) ?? ""
-        remoteCommand = try container.decodeIfPresent(String.self, forKey: .remoteCommand) ?? "weston-terminal"
+        remoteCommand = try container.decodeIfPresent(String.self, forKey: .remoteCommand) ?? "weston-simple-shm"
         vmSubtype = try container.decodeIfPresent(String.self, forKey: .vmSubtype) ?? ""
         containerSubtype = try container.decodeIfPresent(String.self, forKey: .containerSubtype) ?? ""
         launchers = try container.decodeIfPresent([ClientLauncher].self, forKey: .launchers) ?? []

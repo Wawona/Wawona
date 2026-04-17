@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
@@ -43,7 +42,6 @@ import androidx.compose.ui.unit.dp
 fun ExpressiveFabMenu(
     modifier: Modifier = Modifier,
     isWaypipeRunning: Boolean,
-    onSettingsClick: () -> Unit,
     onStopWaypipeClick: () -> Unit,
     onMenuClosed: () -> Unit = {}
 ) {
@@ -95,15 +93,6 @@ fun ExpressiveFabMenu(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier.padding(bottom = 24.dp)
             ) {
-                FabMenuItem(
-                    text = "Settings",
-                    icon = Icons.Filled.Settings,
-                    onClick = {
-                        onSettingsClick()
-                        expanded = false
-                        onMenuClosed()
-                    }
-                )
                 if (isWaypipeRunning) {
                     FabMenuItem(
                         text = "Stop Waypipe",

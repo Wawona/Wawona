@@ -7,7 +7,7 @@ struct GlobalConnectionTestsView: View {
     @State var sshUser = ""
     @State var sshPassword = ""
     @State var sshPort = "22"
-    @State var waypipeCommand = "weston-terminal"
+    @State var waypipeCommand = "weston-simple-shm"
     @State var latestMessage = ""
     @State var runtimeProbeEnabled = true
 

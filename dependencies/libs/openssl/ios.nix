@@ -10,6 +10,8 @@
 
 let
   xcodeUtils = iosToolchain;
+  isVisionOS = iosToolchain.isVisionOSToolchain or false;
+  isTVOS = iosToolchain.isTVOSToolchain or false;
 in
 pkgs.stdenv.mkDerivation {
   name = "openssl-ios";
@@ -25,7 +27,13 @@ pkgs.stdenv.mkDerivation {
   __noChroot = true;
 
   preConfigure = ''
-    ${xcodeUtils.mkIOSBuildEnv { inherit simulator; }}
+    ${xcodeUtils.mkIOSBuildEnv {
+      inherit simulator;
+      minVersion =
+        if isVisionOS then "26.0"
+        else if isTVOS then "17.0"
+        else xcodeUtils.deploymentTarget;
+    }}
     export NIX_CFLAGS_COMPILE=""
     export NIX_CXXFLAGS_COMPILE=""
     export NIX_LDFLAGS=""
@@ -35,11 +43,16 @@ pkgs.stdenv.mkDerivation {
   configurePhase = ''
     runHook preConfigure
     export CC="$IOS_CC"
-    export CFLAGS="-arch $IOS_ARCH -target $APPLE_LINKER_TARGET -isysroot $SDKROOT $APPLE_DEPLOYMENT_FLAG -fPIC"
-    export LDFLAGS="-arch $IOS_ARCH -target $APPLE_LINKER_TARGET -isysroot $SDKROOT $APPLE_DEPLOYMENT_FLAG"
+    export CFLAGS="${if isVisionOS then "-arch $IOS_ARCH -target $APPLE_LINKER_TARGET -isysroot $SDKROOT -fPIC" else "-arch $IOS_ARCH -target $APPLE_LINKER_TARGET -isysroot $SDKROOT $APPLE_DEPLOYMENT_FLAG -fPIC"}"
+    export LDFLAGS="${if isVisionOS then "-arch $IOS_ARCH -target $APPLE_LINKER_TARGET -isysroot $SDKROOT" else "-arch $IOS_ARCH -target $APPLE_LINKER_TARGET -isysroot $SDKROOT $APPLE_DEPLOYMENT_FLAG"}"
     # Unset SDKROOT so it doesn't leak into host-side tool builds
     unset SDKROOT
-    ./Configure ${if simulator then "iossimulator-xcrun" else "ios64-cross"} no-shared no-dso --prefix=$out --openssldir=$out/etc/ssl
+    ./Configure ${
+      if simulator then
+        "iossimulator-xcrun"
+      else
+        "ios64-cross"
+    } no-shared no-dso ${if isTVOS then "no-apps" else ""} --prefix=$out --openssldir=$out/etc/ssl
     runHook postConfigure
   '';
 

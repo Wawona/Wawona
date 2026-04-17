@@ -4,7 +4,7 @@
 # derivations. Each Rust crate becomes its own Nix derivation, so changing
 # one crate (e.g., waypipe) only rebuilds that crate and its dependents.
 #
-# Supports: macOS, iOS (device + simulator), Android
+# Supports: macOS, iOS (device + simulator), visionOS (device + simulator), Android
 #
 # Cross-compilation strategy (iOS/Android):
 #   We override stdenv.hostPlatform in the cross buildRustCrate so that
@@ -24,7 +24,7 @@
 , crate2nix
 , wawonaVersion
 , workspaceSrc
-, platform          # "macos" | "ios" | "watchos" | "android"
+, platform          # "macos" | "ios" | "tvos" | "visionos" | "watchos" | "android"
 , simulator ? false # iOS/watchOS only: build for simulator
 , toolchains ? null # cross-compilation toolchains
 , nativeDeps ? {}   # platform-specific native library derivations
@@ -38,6 +38,10 @@ let
   cargoTarget =
     if platform == "ios" then
       (if simulator then "aarch64-apple-ios-sim" else "aarch64-apple-ios")
+    else if platform == "tvos" then
+      (if simulator then "aarch64-apple-tvos-sim" else "aarch64-apple-tvos")
+    else if platform == "visionos" then
+      (if simulator then "aarch64-apple-visionos-sim" else "aarch64-apple-visionos")
     else if platform == "watchos" then
       (if simulator then "aarch64-apple-watchos-sim" else "aarch64-apple-watchos")
     else if platform == "android" then
@@ -47,35 +51,63 @@ let
 
   sdkPlatform =
     if platform == "ios" then (if simulator then "iPhoneSimulator" else "iPhoneOS")
+    else if platform == "tvos" then (if simulator then "AppleTVSimulator" else "AppleTVOS")
+    else if platform == "visionos" then (if simulator then "XRSimulator" else "XROS")
     else if platform == "watchos" then (if simulator then "WatchSimulator" else "WatchOS")
     else (if simulator then "iPhoneSimulator" else "iPhoneOS");
   xcrunSdk =
     if platform == "ios" then (if simulator then "iphonesimulator" else "iphoneos")
+    else if platform == "tvos" then (if simulator then "appletvsimulator" else "appletvos")
+    else if platform == "visionos" then (if simulator then "xrsimulator" else "xros")
     else if platform == "watchos" then (if simulator then "watchsimulator" else "watchos")
     else (if simulator then "iphonesimulator" else "iphoneos");
   linkerTarget =
-    if platform == "ios" then (if simulator then "arm64-apple-ios26.0-simulator" else "arm64-apple-ios26.0")
+    if platform == "ios" then (if simulator then "arm64-apple-ios17.0-simulator" else "arm64-apple-ios17.0")
+    else if platform == "tvos" then (if simulator then "arm64-apple-tvos17.0-simulator" else "arm64-apple-tvos17.0")
+    else if platform == "visionos" then (if simulator then "arm64-apple-xros26.0-simulator" else "arm64-apple-xros26.0")
     else if platform == "watchos" then (if simulator then "arm64-apple-watchos10.0-simulator" else "arm64-apple-watchos10.0")
-    else "arm64-apple-ios26.0";
+    else "arm64-apple-ios17.0";
   deploymentTarget =
-    if platform == "watchos" then "10.0" else "26.0";
-  deploymentFlag =
     if platform == "watchos" then
+      "10.0"
+    else if platform == "visionos" then
+      "26.0"
+    else if platform == "tvos" then
+      "17.0"
+    else if platform == "ios" then
+      "17.0"
+    else
+      "26.0";
+  deploymentFlag =
+    if platform == "visionos" then
+      (if simulator then "-mvisionos-simulator-version-min=26.0" else "-mvisionos-version-min=26.0")
+    else if platform == "tvos" then
+      (if simulator then "-mtvos-simulator-version-min=17.0" else "-mtvos-version-min=17.0")
+    else if platform == "watchos" then
       (if simulator then "-mwatchos-simulator-version-min=10.0" else "-mwatchos-version-min=10.0")
+    else if platform == "ios" then
+      (if simulator then "-mios-simulator-version-min=17.0" else "-miphoneos-version-min=17.0")
     else
       (if simulator then "-mios-simulator-version-min=26.0" else "-miphoneos-version-min=26.0");
+  macosDeploymentTarget = "14.0";
   cargoEnvPrefix =
-    if platform == "watchos" then
+    if platform == "visionos" then
+      (if simulator then "CARGO_TARGET_AARCH64_APPLE_VISIONOS_SIM" else "CARGO_TARGET_AARCH64_APPLE_VISIONOS")
+    else if platform == "tvos" then
+      (if simulator then "CARGO_TARGET_AARCH64_APPLE_TVOS_SIM" else "CARGO_TARGET_AARCH64_APPLE_TVOS")
+    else if platform == "watchos" then
       (if simulator then "CARGO_TARGET_AARCH64_APPLE_WATCHOS_SIM" else "CARGO_TARGET_AARCH64_APPLE_WATCHOS")
     else
       (if simulator then "CARGO_TARGET_AARCH64_APPLE_IOS_SIM" else "CARGO_TARGET_AARCH64_APPLE_IOS");
 
   isIOS = platform == "ios";
+  isTVOS = platform == "tvos";
+  isVisionOS = platform == "visionos";
   isWatchOS = platform == "watchos";
   isAndroid = platform == "android";
   isMacOS = platform == "macos";
-  isCross = isIOS || isWatchOS || isAndroid;
-  isAppleCross = isIOS || isWatchOS;
+  isCross = isIOS || isTVOS || isVisionOS || isWatchOS || isAndroid;
+  isAppleCross = isIOS || isTVOS || isVisionOS || isWatchOS;
 
   # ── Android toolchain ──────────────────────────────────────────────
   androidToolchainEffective = if androidToolchain != null then androidToolchain 
@@ -168,6 +200,36 @@ let
           platform = { arch = "aarch64"; os = "ios"; vendor = "apple"; target-family = ["unix"]; };
         };
       }
+    else if isTVOS then
+      let base = pkgs.stdenv.hostPlatform; in
+      base // {
+        config = if simulator then "aarch64-apple-tvos-sim" else "aarch64-apple-tvos";
+        system = if simulator then "aarch64-apple-tvos-sim" else "aarch64-apple-tvos";
+        parsed = base.parsed // {
+          kernel = base.parsed.kernel // { name = "tvos"; };
+        };
+        isDarwin = false;
+        rust = (base.rust or {}) // {
+          rustcTarget = cargoTarget;
+          rustcTargetSpec = cargoTarget;
+          platform = { arch = "aarch64"; os = "tvos"; vendor = "apple"; target-family = ["unix"]; };
+        };
+      }
+    else if isVisionOS then
+      let base = pkgs.stdenv.hostPlatform; in
+      base // {
+        config = if simulator then "aarch64-apple-visionos-sim" else "aarch64-apple-visionos";
+        system = if simulator then "aarch64-apple-visionos-sim" else "aarch64-apple-visionos";
+        parsed = base.parsed // {
+          kernel = base.parsed.kernel // { name = "visionos"; };
+        };
+        isDarwin = false;
+        rust = (base.rust or {}) // {
+          rustcTarget = cargoTarget;
+          rustcTargetSpec = cargoTarget;
+          platform = { arch = "aarch64"; os = "visionos"; vendor = "apple"; target-family = ["unix"]; };
+        };
+      }
     else if isWatchOS then
       let base = pkgs.stdenv.hostPlatform; in
       base // {
@@ -250,6 +312,18 @@ let
     ]
     else [];
 
+  appleLinkerOverrides =
+    if isAppleCross then [
+      # buildRustCrate drives rustc directly (not cargo), so target-specific
+      # CARGO_TARGET_*_RUSTFLAGS are ignored. Force final linker target/min
+      # version here to avoid rustc defaulting to tvOS 10.0.
+      "-C" "link-arg=-target"
+      "-C" "link-arg=${linkerTarget}"
+    ] ++ lib.optionals (!isVisionOS) [
+      "-C" "link-arg=${deploymentFlag}"
+    ]
+    else [];
+
   # preConfigure for cross builds:
   #  - Clear MACOSX_DEPLOYMENT_TARGET to prevent cc-rs from injecting macOS flags
   #  - Set target-specific CC_<target> so cc-rs uses our clang with -target
@@ -266,6 +340,20 @@ let
         export DEVELOPER_DIR="$XCODE_DEVELOPER_DIR"
         export XCODE_CLANG="$XCODE_DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
         export APPLE_DEPLOYMENT_FLAG="${deploymentFlag}"
+      '' else if isVisionOS then ''
+        ${ensureIosSDKHelpers.mkAppleEnv {
+          sdkName = if simulator then "xrsimulator" else "xros";
+          minVersion = deploymentTarget;
+          simulator = simulator;
+          platform = "visionos";
+        }}
+      '' else if isTVOS then ''
+        ${ensureIosSDKHelpers.mkAppleEnv {
+          sdkName = if simulator then "appletvsimulator" else "appletvos";
+          minVersion = deploymentTarget;
+          simulator = simulator;
+          platform = "tvos";
+        }}
       '' else ''
         export IPHONEOS_DEPLOYMENT_TARGET="${ensureIosSDKHelpers.deploymentTarget}"
         ${ensureIosSDKHelpers.mkIOSBuildEnv { inherit simulator; }}
@@ -273,12 +361,12 @@ let
 
       # Target-specific variables for cc-rs
       export CC_${cargoTargetUnderscore}="$XCODE_CLANG -target ${linkerTarget} -isysroot $SDKROOT"
-      export CFLAGS_${cargoTargetUnderscore}="-target ${linkerTarget} -isysroot $SDKROOT $APPLE_DEPLOYMENT_FLAG -fPIC"
+      export CFLAGS_${cargoTargetUnderscore}="-target ${linkerTarget} -isysroot $SDKROOT${lib.optionalString (!isVisionOS) " $APPLE_DEPLOYMENT_FLAG"} -fPIC"
       export CRATE_CC_NO_DEFAULTS="1"
 
       # Linker for cargo/rustc
       export CARGO_TARGET_${lib.toUpper cargoTargetUnderscore}_LINKER="$XCODE_CLANG"
-      export CARGO_TARGET_${lib.toUpper cargoTargetUnderscore}_RUSTFLAGS="-C linker=$XCODE_CLANG -C link-arg=-target -C link-arg=${linkerTarget} -C link-arg=-isysroot -C link-arg=$SDKROOT -C link-arg=$APPLE_DEPLOYMENT_FLAG"
+      export CARGO_TARGET_${lib.toUpper cargoTargetUnderscore}_RUSTFLAGS="-C linker=$XCODE_CLANG -C link-arg=-target -C link-arg=${linkerTarget} -C link-arg=-isysroot -C link-arg=$SDKROOT${lib.optionalString (!isVisionOS) " -C link-arg=$APPLE_DEPLOYMENT_FLAG"}"
 
       unset SDKROOT
       unset DEVELOPER_DIR
@@ -316,7 +404,7 @@ let
           }));
 
           crossBuild = innerCrossBRC (swapBuildDepsToHost (crateAttrs // {
-            extraRustcOpts = (crateAttrs.extraRustcOpts or []) ++ nativeLibSearchPaths;
+            extraRustcOpts = (crateAttrs.extraRustcOpts or []) ++ nativeLibSearchPaths ++ appleLinkerOverrides;
             preConfigure = (crateAttrs.preConfigure or "") + crossPreConfigure;
           } // lib.optionalAttrs isAppleCross {
             # Apple cross builds need host Xcode SDK access inside the sandbox.
@@ -355,6 +443,8 @@ let
   # ── Features to enable ─────────────────────────────────────────────
   features =
     if isIOS then [ "waypipe-ssh" ]
+    else if isTVOS then [ "waypipe-ssh" ]
+    else if isVisionOS then []
     else if isWatchOS then [] # watchOS: minimal feature set (no SSH/Waypipe)
     else if isAndroid then [ "waypipe" ]
     else []; # macOS: no waypipe integration in backend
@@ -374,6 +464,13 @@ let
       };
     };
 
+    # Keep UniFFI runtime dependency minimal on cross-Apple targets.
+    # The CLI feature drags in host-oriented tooling and has been flaky in crate2nix
+    # cross builds; we only need derive/runtime support in target libs.
+    uniffi = attrs: lib.optionalAttrs isAppleCross {
+      features = [ "default" ];
+    };
+
     # nixpkgs defaultCrateOverrides use host pkgs.zlib in extraLinkFlags; for iOS/watchOS
     # that injects macOS libz.dylib search paths into the final link.
     libz-sys = attrs:
@@ -390,11 +487,11 @@ let
     # ── wawona (root crate) ────────────────────────────────────────
     wawona = attrs: {
       preConfigure = (attrs.preConfigure or "") + lib.optionalString pkgs.stdenv.isDarwin ''
-        export MACOSX_DEPLOYMENT_TARGET="26.0"
+        export MACOSX_DEPLOYMENT_TARGET="${macosDeploymentTarget}"
       '';
       nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [
         pkgs.pkg-config
-      ] ++ lib.optionals isIOS [
+      ] ++ lib.optionals (isIOS || isTVOS || isVisionOS) [
         pkgs.python3
         pkgs.rust-bindgen
       ];
@@ -479,12 +576,12 @@ let
     });
 
     # ── wayland-backend (needs iOS/macOS patches) ──────────────────
-    wayland-backend = attrs: lib.optionalAttrs (isIOS) {
+    wayland-backend = attrs: lib.optionalAttrs (isIOS || isTVOS || isVisionOS) {
       postPatch = ''
         find . -name "*.rs" -exec sed -i \
-          's/target_os[[:space:]]*=[[:space:]]*"macos"/any(target_os = "macos", target_os = "ios")/g' {} +
+          's/target_os[[:space:]]*=[[:space:]]*"macos"/any(target_os = "macos", target_os = "ios", target_os = "tvos", target_os = "visionos")/g' {} +
         find . -name "*.rs" -exec sed -i \
-          's/not(target_os[[:space:]]*=[[:space:]]*"macos")/not(any(target_os = "macos", target_os = "ios"))/g' {} +
+          's/not(target_os[[:space:]]*=[[:space:]]*"macos")/not(any(target_os = "macos", target_os = "ios", target_os = "tvos", target_os = "visionos"))/g' {} +
       '';
     };
 
@@ -523,7 +620,7 @@ let
         [ zlibDep opensslDep ] ++
         lib.optional pkgs.stdenv.isDarwin pkgs.libiconv;
       nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [ pkgs.pkg-config ];
-      preConfigure = (attrs.preConfigure or "") + lib.optionalString isIOS ''
+      preConfigure = (attrs.preConfigure or "") + lib.optionalString (isIOS || isTVOS || isVisionOS) ''
         export C_INCLUDE_PATH="${lib.optionalString (nativeDeps ? zlib) "${nativeDeps.zlib}/include"}:${lib.optionalString (nativeDeps ? openssl) "${nativeDeps.openssl}/include"}:$C_INCLUDE_PATH"
       '';
       DEP_Z_INCLUDE = if nativeDeps ? zlib then "${nativeDeps.zlib}/include" else "${pkgs.zlib.dev}/include";
@@ -537,7 +634,7 @@ let
       OPENSSL_LIB_DIR = "${pkgs.openssl.out}/lib";
       OPENSSL_INCLUDE_DIR = "${pkgs.openssl.dev}/include";
       DEP_OPENSSL_INCLUDE = "${pkgs.openssl.dev}/include";
-    }) // lib.optionalAttrs isIOS {
+    }) // lib.optionalAttrs (isIOS || isTVOS || isVisionOS) {
       __noChroot = true;
     };
 
@@ -571,18 +668,10 @@ let
       PKG_CONFIG_ALLOW_CROSS = "1";
       PKG_CONFIG_PATH = "${nativeDeps.ffmpeg}/lib/pkgconfig";
       BINDGEN_EXTRA_CLANG_ARGS = "-I${nativeDeps.ffmpeg}/include -I${pkgs.vulkan-headers}/include";
-    } // lib.optionalAttrs (isIOS && nativeDeps ? ffmpeg) {
+    } // lib.optionalAttrs ((isIOS || isTVOS || isVisionOS) && nativeDeps ? ffmpeg) {
       preConfigure = (attrs.preConfigure or "") + ''
-        IOS_BINDGEN_SYSROOT="$(${
-          if simulator
-          then "${ensureIosSDKHelpers.ensureIosSimSDK}/bin/ensure-ios-sim-sdk"
-          else "${ensureIosSDKHelpers.ensureIosSDK}/bin/ensure-ios-sdk"
-        })"
-        IOS_BINDGEN_MIN_FLAG="${
-          if simulator
-          then "-mios-simulator-version-min=${ensureIosSDKHelpers.deploymentTarget}"
-          else "-miphoneos-version-min=${ensureIosSDKHelpers.deploymentTarget}"
-        }"
+        IOS_BINDGEN_SYSROOT="$(xcrun --sdk ${xcrunSdk} --show-sdk-path)"
+        IOS_BINDGEN_MIN_FLAG="${deploymentFlag}"
         export BINDGEN_EXTRA_CLANG_ARGS="$BINDGEN_EXTRA_CLANG_ARGS --target=${linkerTarget} -isysroot $IOS_BINDGEN_SYSROOT $IOS_BINDGEN_MIN_FLAG"
       '';
     };
@@ -610,7 +699,22 @@ let
       buildInputs = (attrs.buildInputs or []) ++
         lib.optionals pkgs.stdenv.isDarwin [ pkgs.libiconv ];
       preConfigure = (attrs.preConfigure or "") + lib.optionalString pkgs.stdenv.isDarwin ''
-        export MACOSX_DEPLOYMENT_TARGET="26.0"
+        export MACOSX_DEPLOYMENT_TARGET="${macosDeploymentTarget}"
+      '';
+    } // lib.optionalAttrs isTVOS {
+      # waypipe gates pipe2/ppoll and other Unix helpers on iOS; tvOS uses the
+      # same APIs but rustc reports target_os = "tvos". Two-phase replace avoids
+      # re-expanding the `target_os = "ios"` inside the replacement text.
+      postPatch = (attrs.postPatch or "") + ''
+        if [ -d src ]; then
+          while IFS= read -r f; do
+            substituteInPlace "$f" --replace 'target_os = "ios"' '__WAWONA_TVOS_IOS__' || true
+          done < <(find src -name '*.rs')
+          while IFS= read -r f; do
+            substituteInPlace "$f" --replace '__WAWONA_TVOS_IOS__' \
+              'any(target_os = "ios", target_os = "tvos")' || true
+          done < <(find src -name '*.rs')
+        fi
       '';
     };
 
@@ -649,7 +753,7 @@ let
 
 in
 pkgs.stdenvNoCC.mkDerivation {
-  pname = "wawona-${platform}-backend${lib.optionalString (isIOS && simulator) "-sim"}";
+  pname = "wawona-${platform}-backend${lib.optionalString (isAppleCross && simulator) "-sim"}";
   version = wawonaVersion;
 
   dontUnpack = true;

@@ -10,6 +10,14 @@
 
 let
   xcodeUtils = iosToolchain;
+  isVisionOS = iosToolchain.isVisionOSToolchain or false;
+  isTVOS = iosToolchain.isTVOSToolchain or false;
+  mobileMinVersion =
+    if isVisionOS then "26.0"
+    else if isTVOS then "17.0"
+    else iosToolchain.deploymentTarget;
+  cmakeSystemName =
+    if isVisionOS || isTVOS then "Darwin" else "iOS";
   # lz4 source - fetch from GitHub
   src = pkgs.fetchFromGitHub {
     owner = "lz4";
@@ -31,14 +39,14 @@ pkgs.stdenv.mkDerivation {
   ];
   buildInputs = [ ];
   preConfigure = ''
-    ${xcodeUtils.mkIOSBuildEnv { inherit simulator; }}
+    ${xcodeUtils.mkIOSBuildEnv { inherit simulator; minVersion = mobileMinVersion; }}
     export NIX_CFLAGS_COMPILE=""
     export NIX_CXXFLAGS_COMPILE=""
     export NIX_LDFLAGS=""
     cat > ios-toolchain.cmake <<EOF
-    set(CMAKE_SYSTEM_NAME iOS)
+    set(CMAKE_SYSTEM_NAME ${cmakeSystemName})
     set(CMAKE_OSX_ARCHITECTURES $IOS_ARCH)
-    set(CMAKE_OSX_DEPLOYMENT_TARGET ${xcodeUtils.deploymentTarget})
+    set(CMAKE_OSX_DEPLOYMENT_TARGET ${mobileMinVersion})
     set(CMAKE_C_COMPILER "$XCODE_CLANG")
     set(CMAKE_CXX_COMPILER "$XCODE_CLANGXX")
     set(CMAKE_C_COMPILER_TARGET "$APPLE_LINKER_TARGET")

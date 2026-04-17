@@ -85,6 +85,7 @@ fun SettingsDialog(
         Column(
             Modifier
                 .fillMaxWidth()
+                .weight(1f)
                 .fillMaxHeight()
         ) {
             // Header
@@ -124,28 +125,38 @@ fun SettingsDialog(
             // Tab content
             AnimatedContent(
                 targetState = selectedTab,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .fillMaxHeight(),
                 transitionSpec = { fadeIn() togetherWith fadeOut() },
                 label = "settings_tab"
             ) { tab ->
-                Column(
+                Box(
                     Modifier
                         .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
-                        .padding(bottom = 32.dp)
+                        .background(MaterialTheme.colorScheme.surface)
                 ) {
-                    when (tab) {
-                        SettingsTab.DISPLAY -> DisplaySection(prefs)
-                        SettingsTab.INPUT -> InputSection(prefs)
-                        SettingsTab.GRAPHICS -> GraphicsSection(prefs)
-                        SettingsTab.CONNECTION -> ConnectionSection(prefs, localIpAddress, context)
-                        SettingsTab.ADVANCED -> AdvancedSection(prefs)
-                        SettingsTab.WAYPIPE -> WaypipeSection(prefs, context)
-                        SettingsTab.SSH -> SSHSection(prefs)
-                        SettingsTab.MACHINES -> MachineStubsSection(prefs)
-                        SettingsTab.ABOUT -> AboutSection(context)
-                        SettingsTab.DEPENDENCIES -> DependenciesSection()
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                            .navigationBarsPadding()
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                            .padding(bottom = 32.dp)
+                    ) {
+                        when (tab) {
+                            SettingsTab.DISPLAY -> DisplaySection(prefs)
+                            SettingsTab.INPUT -> InputSection(prefs)
+                            SettingsTab.GRAPHICS -> GraphicsSection(prefs)
+                            SettingsTab.CONNECTION -> ConnectionSection(prefs, localIpAddress, context)
+                            SettingsTab.ADVANCED -> AdvancedSection(prefs)
+                            SettingsTab.WAYPIPE -> WaypipeSection(prefs, context)
+                            SettingsTab.SSH -> SSHSection(prefs)
+                            SettingsTab.MACHINES -> MachineStubsSection(prefs)
+                            SettingsTab.ABOUT -> AboutSection(context)
+                            SettingsTab.DEPENDENCIES -> DependenciesSection()
+                        }
                     }
                 }
             }
@@ -238,6 +249,9 @@ private fun GraphicsSection(prefs: SharedPreferences) {
 
 @Composable
 private fun AdvancedSection(prefs: SharedPreferences) {
+    SettingsSwitchItem(prefs, "wawona.pref.shakeToCloseEnabled", "Shake to Exit Machine",
+        "When off, use Android back gesture or back arrow to close the active machine session.",
+        Icons.Filled.Vibration, default = true)
     SettingsSwitchItem(prefs, "colorOperations", "Color Operations",
         "Enable color profiles, HDR requests, etc.", Icons.Filled.Palette, default = true)
     SettingsSwitchItem(prefs, "nestedCompositorsSupport", "Nested Compositors",
@@ -353,7 +367,7 @@ private fun WaypipeSection(prefs: SharedPreferences, context: Context) {
     // Remote execution (belongs in Waypipe since it's what runs on the remote end)
     SettingsSectionHeader("Remote Execution", Icons.Filled.PlayArrow)
     SettingsTextInputItem(prefs, "waypipeRemoteCommand", "Remote Command",
-        "Application to run remotely (e.g., weston-terminal)", Icons.Filled.PlayArrow, "", KeyboardType.Text)
+        "Application to run remotely (e.g., weston-simple-shm)", Icons.Filled.PlayArrow, "", KeyboardType.Text)
     SettingsMultiLineTextInputItem(prefs, "waypipeCustomScript", "Custom Script",
         "Full command line script (overrides Remote Command)", Icons.Filled.Code, "")
 

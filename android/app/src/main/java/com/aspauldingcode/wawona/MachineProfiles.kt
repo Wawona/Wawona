@@ -14,7 +14,7 @@ enum class MachineType(val value: String) {
 
     companion object {
         fun fromValue(value: String): MachineType =
-            entries.firstOrNull { it.value == value } ?: SSH_WAYPIPE
+            entries.firstOrNull { it.value == value } ?: NATIVE
     }
 }
 
@@ -58,6 +58,7 @@ data class MachineProfile(
     val sshAuthMethod: String = "password",
     val sshKeyPath: String = "",
     val sshKeyPassphrase: String = "",
+    val nativeLauncher: String = "weston-simple-shm",
     val remoteCommand: String = "",
     val customScript: String = "",
     val vmSubtype: String = "qemu",
@@ -165,6 +166,7 @@ object MachineProfileStore {
         applySettingsOverridesToPrefs(prefs, profile.settingsOverrides)
         prefs.edit()
             .putBoolean("waypipeSSHEnabled", profile.sshEnabled)
+            .putString("nativeLauncher", profile.nativeLauncher)
             .putString("waypipeSSHHost", profile.sshHost)
             .putString("waypipeSSHUser", profile.sshUser)
             .putString("waypipeSSHPassword", profile.sshPassword)
@@ -213,10 +215,11 @@ object MachineProfileStore {
         val host = prefs.getString("waypipeSSHHost", "") ?: ""
         val user = prefs.getString("waypipeSSHUser", "") ?: ""
         val defaultName = if (host.isNotBlank()) "Migrated $host" else "Default Machine"
+        val hasSSHHost = host.isNotBlank()
         val profile = MachineProfile(
             name = defaultName,
-            type = MachineType.SSH_WAYPIPE,
-            sshEnabled = prefs.getBoolean("waypipeSSHEnabled", true),
+            type = if (hasSSHHost) MachineType.SSH_WAYPIPE else MachineType.NATIVE,
+            sshEnabled = if (hasSSHHost) prefs.getBoolean("waypipeSSHEnabled", true) else false,
             sshHost = host,
             sshUser = user,
             sshPassword = prefs.getString("waypipeSSHPassword", "") ?: "",
@@ -266,6 +269,7 @@ object MachineProfileStore {
         put("sshAuthMethod", profile.sshAuthMethod)
         put("sshKeyPath", profile.sshKeyPath)
         put("sshKeyPassphrase", profile.sshKeyPassphrase)
+        put("nativeLauncher", profile.nativeLauncher)
         put("remoteCommand", profile.remoteCommand)
         put("customScript", profile.customScript)
         put("vmSubtype", profile.vmSubtype)
@@ -303,7 +307,7 @@ object MachineProfileStore {
         return MachineProfile(
             id = obj.optString("id", UUID.randomUUID().toString()),
             name = obj.optString("name", "Unnamed Machine"),
-            type = MachineType.fromValue(obj.optString("type", MachineType.SSH_WAYPIPE.value)),
+            type = MachineType.fromValue(obj.optString("type", MachineType.NATIVE.value)),
             sshEnabled = obj.optBoolean("sshEnabled", true),
             sshHost = obj.optString("sshHost", ""),
             sshUser = obj.optString("sshUser", ""),
@@ -312,6 +316,7 @@ object MachineProfileStore {
             sshAuthMethod = obj.optString("sshAuthMethod", "password"),
             sshKeyPath = obj.optString("sshKeyPath", ""),
             sshKeyPassphrase = obj.optString("sshKeyPassphrase", ""),
+            nativeLauncher = obj.optString("nativeLauncher", "weston-simple-shm"),
             remoteCommand = obj.optString("remoteCommand", ""),
             customScript = obj.optString("customScript", ""),
             vmSubtype = obj.optString("vmSubtype", "qemu"),

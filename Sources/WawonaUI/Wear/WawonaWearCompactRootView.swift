@@ -5,12 +5,19 @@ public struct WawonaWearCompactRootView: View {
     @ObservedObject var profileStore: MachineProfileStore
     @ObservedObject var sessions: SessionOrchestrator
 
+    @MainActor
     public init(
-        profileStore: MachineProfileStore = MachineProfileStore(),
-        sessions: SessionOrchestrator = SessionOrchestrator()
+        profileStore: MachineProfileStore,
+        sessions: SessionOrchestrator
     ) {
         _profileStore = ObservedObject(wrappedValue: profileStore)
         _sessions = ObservedObject(wrappedValue: sessions)
+    }
+
+    @MainActor
+    public init() {
+        _profileStore = ObservedObject(wrappedValue: MachineProfileStore())
+        _sessions = ObservedObject(wrappedValue: SessionOrchestrator())
     }
 
     public var body: some View {

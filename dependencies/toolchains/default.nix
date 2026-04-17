@@ -21,8 +21,18 @@ let
   callPackageFiltered = path: overrides:
     let
       fn = import path;
+      fnArgs = builtins.functionArgs fn;
+      iosSiblingPath = (builtins.dirOf path) + "/ios.nix";
+      hasIosSibling = builtins.pathExists iosSiblingPath;
+      iosSiblingFnArgs = if hasIosSibling then builtins.functionArgs (import iosSiblingPath) else { };
     in
-    pkgs.callPackage path (builtins.intersectAttrs (builtins.functionArgs fn) overrides);
+    if fnArgs == { } then
+      if hasIosSibling && iosSiblingFnArgs != { } then
+        pkgs.callPackage path (builtins.intersectAttrs iosSiblingFnArgs overrides)
+      else
+        pkgs.callPackage path overrides
+    else
+      pkgs.callPackage path (builtins.intersectAttrs fnArgs overrides);
 
   pkgsIosRaw = import (pkgs.path) {
     system = pkgs.stdenv.hostPlatform.system;
@@ -128,6 +138,48 @@ let
         inherit lib pkgs buildPackages common simulator iosToolchain;
         buildModule = iosModule;
       }).buildForIOS name normalizedEntry;
+
+  # --- iPadOS Toolchain ---
+  # iPadOS is a first-class platform and does not fall back to iOS recipes.
+  buildForTVOSInternal =
+    name: entry:
+    let
+      normalizedEntry = entry // { simulator = entry.simulator or false; };
+      simulator = normalizedEntry.simulator;
+      tvosModule = {
+        buildForTVOS = buildForTVOSInternal;
+        # Shared Apple recipes should resolve nested deps through tvOS.
+        buildForIOS = buildForTVOSInternal;
+      };
+      tvosIosToolchain = iosToolchain // {
+        isTVOSToolchain = true;
+        mkIOSBuildEnv = { simulator ? false, minVersion ? "17.0" }:
+          iosToolchain.mkAppleEnv {
+            sdkName = if simulator then "appletvsimulator" else "appletvos";
+            platform = "tvos";
+            inherit simulator minVersion;
+          };
+      };
+      tvosArgs = {
+        inherit lib pkgs buildPackages common simulator stdenv wawonaSrc;
+        inherit (pkgs) fetchurl meson ninja pkg-config;
+        buildModule = tvosModule;
+        iosToolchain = tvosIosToolchain;
+      };
+      registryEntry = registry.${name} or null;
+      tvosScript =
+        if registryEntry != null then
+          if simulator then
+            registryEntry.tvosSim or registryEntry.tvosDevice or registryEntry.tvos or null
+          else
+            registryEntry.tvosDevice or registryEntry.tvos or null
+        else
+          null;
+    in
+    if tvosScript != null then
+      callPackageFiltered tvosScript (tvosArgs // normalizedEntry)
+    else
+      throw "Missing tvOS module mapping for '${name}' in dependencies/toolchains/common/registry.nix";
 
   # --- iPadOS Toolchain ---
   # iPadOS is a first-class platform and does not fall back to iOS recipes.
@@ -241,61 +293,40 @@ let
       simulator = normalizedEntry.simulator;
       visionosModule = {
         buildForVisionOS = buildForVisionOSInternal;
-        # Allow visionOS recipes to reuse iOS recipes intentionally.
-        buildForIOS = buildForIOSInternal;
+        # Strict visionOS policy: shared iOS recipes must resolve nested deps
+        # through visionOS, never through iOS outputs.
+        buildForIOS = buildForVisionOSInternal;
+      };
+      visionosIosToolchain = iosToolchain // {
+        # Consumed by shared iOS recipes (e.g. xkbcommon) to pick matching native deps.
+        isVisionOSToolchain = true;
+        mkIOSBuildEnv = { simulator ? false, minVersion ? "26.0" }:
+          iosToolchain.mkAppleEnv {
+            sdkName = if simulator then "xrsimulator" else "xros";
+            platform = "visionos";
+            inherit simulator minVersion;
+          };
       };
       visionosArgs = {
         inherit lib pkgs buildPackages common simulator stdenv wawonaSrc;
         inherit (pkgs) fetchurl meson ninja pkg-config;
         buildModule = visionosModule;
-        inherit iosToolchain;
+        iosToolchain = visionosIosToolchain;
       };
       registryEntry = registry.${name} or null;
-      iosBaseScript =
-        if registryEntry != null then
-          if simulator then
-            registryEntry.iosSim or registryEntry.iosDevice or registryEntry.ios or null
-          else
-            registryEntry.iosDevice or registryEntry.ios or null
-        else
-          null;
-      derivedVisionosScript =
-        if iosBaseScript != null then
-          let
-            candidate = builtins.replaceStrings [ "/ios.nix" ] [ "/visionos.nix" ] (toString iosBaseScript);
-          in
-          if builtins.pathExists candidate then candidate else null
-        else
-          null;
       visionosScript =
         if registryEntry != null then
           if simulator then
-            firstNonNull [
-              (registryEntry.visionosSim or null)
-              (registryEntry.visionosDevice or null)
-              (registryEntry.visionos or null)
-              derivedVisionosScript
-              (registryEntry.iosSim or null)
-              (registryEntry.iosDevice or null)
-              (registryEntry.ios or null)
-            ]
+            registryEntry.visionosSim or registryEntry.visionosDevice or registryEntry.visionos or null
           else
-            firstNonNull [
-              (registryEntry.visionosDevice or null)
-              (registryEntry.visionos or null)
-              derivedVisionosScript
-              (registryEntry.iosDevice or null)
-              (registryEntry.ios or null)
-            ]
+            registryEntry.visionosDevice or registryEntry.visionos or null
         else
-          derivedVisionosScript;
+          null;
     in
     if visionosScript != null then
       callPackageFiltered visionosScript (visionosArgs // normalizedEntry)
     else
-      (import ../platforms/visionos.nix {
-        buildModule = visionosModule;
-      }).buildForVisionOS name normalizedEntry;
+      throw "Missing visionOS module mapping for '${name}' in dependencies/toolchains/common/registry.nix";
 
   # --- WearOS Toolchain ---
 
@@ -397,6 +428,7 @@ let
 in
 {
   buildForIOS = buildForIOSInternal;
+  buildForTVOS = buildForTVOSInternal;
   buildForIPadOS = buildForIPadOSInternal;
   buildForWatchOS = buildForWatchOSInternal;
   buildForVisionOS = buildForVisionOSInternal;

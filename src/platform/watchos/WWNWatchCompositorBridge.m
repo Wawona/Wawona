@@ -522,7 +522,7 @@ static void *waypipeThreadFunc(void *ctx) {
     NSString *userAtHost = [NSString stringWithFormat:@"%@@%@", trimmedUser, trimmedHost];
     NSInteger effectivePort = port > 0 ? port : 22;
     NSString *portStr = [NSString stringWithFormat:@"%ld", (long)effectivePort];
-    NSString *cmd = (remoteCommand.length > 0) ? remoteCommand : @"weston-terminal";
+    NSString *cmd = (remoteCommand.length > 0) ? remoteCommand : @"weston-simple-shm";
 
     NSArray<NSString *> *argsList = @[
         @"waypipe",

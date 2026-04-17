@@ -2,15 +2,21 @@ package com.aspauldingcode.wawona
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.inputmethod.InputMethodManager
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.WindowInsetsController
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.view.ViewCompat
@@ -27,13 +33,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -49,6 +55,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.material3.MaterialTheme
 import kotlinx.coroutines.delay
+import kotlin.math.abs
+import kotlin.math.sqrt
 
 class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
 
@@ -85,13 +93,6 @@ class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
                 }
 
                 insets
-            }
-
-            val windowInsetsController = WindowCompat.getInsetsController(window, window.decorView)
-            windowInsetsController.let { controller ->
-                controller.hide(WindowInsetsCompat.Type.systemBars())
-                controller.systemBarsBehavior =
-                    WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             }
 
             prefs = getSharedPreferences("wawona_prefs", Context.MODE_PRIVATE)
@@ -182,11 +183,17 @@ fun WawonaApp(
     val sessionOrchestrator = remember { SessionOrchestrator() }
     var showMachinesHome by remember { mutableStateOf(true) }
     var showWelcome by remember { mutableStateOf(!prefs.getBoolean("hasSeenWelcome", false)) }
-    var showSettings by remember { mutableStateOf(false) }
     var isWaypipeRunning by remember { mutableStateOf(false) }
     var windowTitle by remember { mutableStateOf("") }
     var nativeRuntimeReady by remember { mutableStateOf(false) }
-    val respectSafeArea = prefs.getBoolean("respectSafeArea", true)
+    var shakeToCloseEnabled by remember {
+        mutableStateOf(prefs.getBoolean("wawona.pref.shakeToCloseEnabled", true))
+    }
+    var respectSafeArea by remember {
+        mutableStateOf(prefs.getBoolean("respectSafeArea", true))
+    }
+    val immersiveCompositorMode =
+        !showWelcome && !showMachinesHome && sessionOrchestrator.activeSessionId != null
 
     var westonSimpleShmEnabled by remember {
         mutableStateOf(prefs.getBoolean("westonSimpleSHMEnabled", false))
@@ -207,10 +214,103 @@ fun WawonaApp(
                     nativeWestonEnabled = sp.getBoolean("westonEnabled", false)
                 "westonTerminalEnabled" ->
                     nativeWestonTerminalEnabled = sp.getBoolean("westonTerminalEnabled", false)
+                "wawona.pref.shakeToCloseEnabled" ->
+                    shakeToCloseEnabled = sp.getBoolean("wawona.pref.shakeToCloseEnabled", true)
+                "respectSafeArea" -> {
+                    respectSafeArea = sp.getBoolean("respectSafeArea", true)
+                    try {
+                        WawonaSettings.apply(sp)
+                    } catch (_: Exception) {
+                    }
+                    activity?.window?.decorView?.let { ViewCompat.requestApplyInsets(it) }
+                }
             }
         }
         prefs.registerOnSharedPreferenceChangeListener(listener)
         onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
+    DisposableEffect(showMachinesHome, shakeToCloseEnabled, sessionOrchestrator.activeSessionId) {
+        if (showMachinesHome || !shakeToCloseEnabled || sessionOrchestrator.activeSessionId == null) {
+            onDispose {}
+        } else {
+            val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+            val accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+            if (sensorManager == null || accelerometer == null) {
+                onDispose {}
+            } else {
+                val shakeThreshold = 13.0f
+                val shakeDebounceMs = 1200L
+                var lastShakeAtMs = 0L
+                val shakeListener = object : SensorEventListener {
+                    override fun onSensorChanged(event: SensorEvent) {
+                        if (event.values.size < 3) return
+                        val x = event.values[0]
+                        val y = event.values[1]
+                        val z = event.values[2]
+                        val magnitude = sqrt((x * x + y * y + z * z).toDouble()).toFloat()
+                        val acceleration = abs(magnitude - SensorManager.GRAVITY_EARTH)
+                        if (acceleration < shakeThreshold) return
+                        val now = SystemClock.elapsedRealtime()
+                        if (now - lastShakeAtMs < shakeDebounceMs) return
+                        lastShakeAtMs = now
+                        val activeId = sessionOrchestrator.activeSessionId ?: return
+                        val activeSession = sessionOrchestrator.activeSession()
+                        val activeProfile = activeSession?.let { session ->
+                            profiles.firstOrNull { it.id == session.machineId }
+                        }
+                        when (activeProfile?.type) {
+                            MachineType.NATIVE -> {
+                                when (activeProfile.nativeLauncher.ifBlank { "weston-simple-shm" }) {
+                                    "weston" -> WawonaNative.nativeStopWeston()
+                                    "weston-terminal" -> WawonaNative.nativeStopWestonTerminal()
+                                    "foot" -> WawonaNative.nativeStopFoot()
+                                    else -> WawonaNative.nativeStopWestonSimpleSHM()
+                                }
+                            }
+                            MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> {
+                                WawonaNative.nativeStopWaypipe()
+                                isWaypipeRunning = false
+                            }
+                            else -> {
+                                WawonaNative.nativeStopWaypipe()
+                                isWaypipeRunning = false
+                            }
+                        }
+                        sessionOrchestrator.markDisconnected(activeId)
+                        sessionOrchestrator.setActiveSession(null)
+                        showMachinesHome = true
+                    }
+
+                    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+                    }
+                }
+                sensorManager.registerListener(
+                    shakeListener,
+                    accelerometer,
+                    SensorManager.SENSOR_DELAY_UI
+                )
+                onDispose {
+                    sensorManager.unregisterListener(shakeListener)
+                }
+            }
+        }
+    }
+
+    DisposableEffect(immersiveCompositorMode) {
+        val window = activity?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+        if (controller != null) {
+            if (immersiveCompositorMode) {
+                controller.hide(WindowInsetsCompat.Type.systemBars())
+                controller.systemBarsBehavior =
+                    WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            } else {
+                controller.show(WindowInsetsCompat.Type.systemBars())
+                controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_DEFAULT
+            }
+        }
+        onDispose {}
     }
 
     fun ensureNativeRuntimeReady(): Boolean {
@@ -256,23 +356,40 @@ fun WawonaApp(
 
     var surfaceViewRef by remember { mutableStateOf<WawonaSurfaceView?>(null) }
     var hadWindow by remember { mutableStateOf(false) }
+    var lastPolledOutputW by remember { mutableIntStateOf(0) }
+    var lastPolledOutputH by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) {
         while (true) {
             try {
-                isWaypipeRunning = WawonaNative.nativeIsWaypipeRunning()
+                val activeProfile = sessionOrchestrator.activeSession()?.let { active ->
+                    profiles.firstOrNull { it.id == active.machineId }
+                }
+                isWaypipeRunning = when (activeProfile?.type) {
+                    MachineType.NATIVE -> when (activeProfile.nativeLauncher.ifBlank { "weston-simple-shm" }) {
+                        "weston" -> WawonaNative.nativeIsWestonRunning()
+                        "weston-terminal" -> WawonaNative.nativeIsWestonTerminalRunning()
+                        "foot" -> WawonaNative.nativeIsFootRunning()
+                        else -> WawonaNative.nativeIsWestonSimpleSHMRunning()
+                    }
+                    MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> WawonaNative.nativeIsWaypipeRunning()
+                    else -> false
+                }
                 windowTitle = WawonaNative.nativeGetFocusedWindowTitle()
                 ScreencopyHelper.pollAndCapture(activity?.window)
                 val hasWindow = windowTitle.isNotEmpty()
                 if (hasWindow && !hadWindow) {
                     surfaceViewRef?.requestFocus()
-                    val w = surfaceViewRef?.width ?: 0
-                    val h = surfaceViewRef?.height ?: 0
-                    if (w > 0 && h > 0) {
-                        try {
-                            WawonaNative.nativeSyncOutputSize(w, h)
-                        } catch (_: Exception) {
-                        }
+                }
+                val w = surfaceViewRef?.width ?: 0
+                val h = surfaceViewRef?.height ?: 0
+                if (w > 0 && h > 0 && (w != lastPolledOutputW || h != lastPolledOutputH)) {
+                    lastPolledOutputW = w
+                    lastPolledOutputH = h
+                    try {
+                        WawonaNative.nativeSyncOutputSize(w, h)
+                        WawonaSettings.apply(prefs)
+                    } catch (_: Exception) {
                     }
                 }
                 hadWindow = hasWindow
@@ -294,7 +411,7 @@ fun WawonaApp(
         val wpSshUser = prefs.getString("waypipeSSHUser", "") ?: ""
         val wpRemoteCommand = prefs.getString("waypipeRemoteCommand", "") ?: ""
         val sshPassword = prefs.getString("waypipeSSHPassword", "") ?: ""
-        val remoteCmd = wpRemoteCommand.ifEmpty { "weston-terminal" }
+        val remoteCmd = wpRemoteCommand.ifEmpty { "weston-simple-shm" }
         val compress = prefs.getString("waypipeCompress", "lz4") ?: "lz4"
         val threads = (prefs.getString("waypipeThreads", "0") ?: "0").toIntOrNull() ?: 0
         val video = prefs.getString("waypipeVideo", "none") ?: "none"
@@ -338,6 +455,44 @@ fun WawonaApp(
         }
     }
 
+    fun runNativeLauncher(launcher: String): Boolean = when (launcher) {
+        "weston" -> WawonaNative.nativeRunWeston()
+        "weston-terminal" -> WawonaNative.nativeRunWestonTerminal()
+        "foot" -> WawonaNative.nativeRunFoot()
+        else -> WawonaNative.nativeRunWestonSimpleSHM()
+    }
+
+    fun stopNativeLauncher(launcher: String) {
+        when (launcher) {
+            "weston" -> WawonaNative.nativeStopWeston()
+            "weston-terminal" -> WawonaNative.nativeStopWestonTerminal()
+            "foot" -> WawonaNative.nativeStopFoot()
+            else -> WawonaNative.nativeStopWestonSimpleSHM()
+        }
+    }
+
+    fun isNativeLauncherRunning(launcher: String): Boolean = when (launcher) {
+        "weston" -> WawonaNative.nativeIsWestonRunning()
+        "weston-terminal" -> WawonaNative.nativeIsWestonTerminalRunning()
+        "foot" -> WawonaNative.nativeIsFootRunning()
+        else -> WawonaNative.nativeIsWestonSimpleSHMRunning()
+    }
+
+    fun launchNativeMachine(profile: MachineProfile): Boolean {
+        val launcher = profile.nativeLauncher.ifBlank { "weston-simple-shm" }
+        val launched = runNativeLauncher(launcher)
+        if (!launched) {
+            Toast.makeText(
+                context,
+                "Failed to launch native app '$launcher' (already running or unavailable).",
+                Toast.LENGTH_SHORT
+            ).show()
+            return false
+        }
+        WLog.i("NATIVE", "Launched native app '$launcher'")
+        return true
+    }
+
     fun connectMachine(profile: MachineProfile, sessionId: String? = null) {
         val targetSession = sessionId ?: sessionOrchestrator.startSession(profile).sessionId
         MachineProfileStore.applyMachineToPrefs(prefs, profile)
@@ -348,11 +503,11 @@ fun WawonaApp(
         }
 
         val launched = when (profile.type) {
-            MachineType.NATIVE -> true
+            MachineType.NATIVE -> launchNativeMachine(profile)
             MachineType.SSH_WAYPIPE -> launchWaypipe()
             MachineType.SSH_TERMINAL -> {
                 val withTerminalCommand = profile.copy(
-                    remoteCommand = profile.remoteCommand.ifBlank { "weston-terminal" }
+                    remoteCommand = profile.remoteCommand.ifBlank { "weston-simple-shm" }
                 )
                 MachineProfileStore.applyMachineToPrefs(prefs, withTerminalCommand)
                 launchWaypipe()
@@ -389,10 +544,26 @@ fun WawonaApp(
 
     fun disconnectActiveSession() {
         val activeId = sessionOrchestrator.activeSessionId ?: return
-        stopWaypipe()
+        val activeSession = sessionOrchestrator.activeSession()
+        val activeProfile = activeSession?.let { session ->
+            profiles.firstOrNull { it.id == session.machineId }
+        }
+        when (activeProfile?.type) {
+            MachineType.NATIVE -> stopNativeLauncher(activeProfile.nativeLauncher)
+            MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> stopWaypipe()
+            else -> stopWaypipe()
+        }
         sessionOrchestrator.markDisconnected(activeId)
         sessionOrchestrator.setActiveSession(null)
         showMachinesHome = true
+    }
+
+    BackHandler(
+        enabled = !showMachinesHome &&
+            !shakeToCloseEnabled &&
+            sessionOrchestrator.activeSessionId != null
+    ) {
+        disconnectActiveSession()
     }
 
     val density = LocalDensity.current
@@ -469,6 +640,9 @@ fun WawonaApp(
                 )
             }
 
+            // Full-bleed surface: safe area / cutouts are applied in native via
+            // nativeUpdateSafeArea + respectSafeArea (matches Wawona Settings).
+            // Do not also pad here — that double-applied insets and broke output size.
             AndroidView(
                 factory = { ctx: Context ->
                     WawonaSurfaceView(ctx).apply {
@@ -476,15 +650,7 @@ fun WawonaApp(
                     }
                 },
                 update = { view -> surfaceViewRef = view },
-                modifier = Modifier
-                    .fillMaxSize()
-                    .then(
-                        if (respectSafeArea) {
-                            Modifier.windowInsetsPadding(WindowInsets.safeDrawing)
-                        } else {
-                            Modifier
-                        }
-                    )
+                modifier = Modifier.fillMaxSize()
             )
 
             if (showAccessoryBar) {
@@ -506,7 +672,6 @@ fun WawonaApp(
             ExpressiveFabMenu(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .windowInsetsPadding(WindowInsets.safeDrawing)
                     .padding(
                         start = 24.dp,
                         top = 24.dp,
@@ -514,25 +679,9 @@ fun WawonaApp(
                         bottom = if (showAccessoryBar) 24.dp + 80.dp else 24.dp
                     ),
                 isWaypipeRunning = isWaypipeRunning,
-                onSettingsClick = { showSettings = true },
                 onStopWaypipeClick = { disconnectActiveSession() },
                 onMenuClosed = { surfaceViewRef?.requestFocus() }
             )
-
-            if (showSettings) {
-                SettingsDialog(
-                    prefs = prefs,
-                    onDismiss = {
-                        profiles = MachineProfileStore.persistActiveMachineSettings(prefs)
-                        showSettings = false
-                        surfaceViewRef?.requestFocus()
-                    },
-                    onApply = {
-                        profiles = MachineProfileStore.persistActiveMachineSettings(prefs)
-                        WawonaSettings.apply(prefs)
-                    }
-                )
-            }
         }
     }
 

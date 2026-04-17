@@ -32,8 +32,8 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
     long long now = (long long)([[NSDate date] timeIntervalSince1970] * 1000.0);
     _machineId = [NSUUID UUID].UUIDString;
     _name = @"Default Machine";
-    _type = kWWNMachineTypeSSHWaypipe;
-    _sshEnabled = YES;
+    _type = kWWNMachineTypeNative;
+    _sshEnabled = NO;
     _sshHost = @"";
     _sshUser = @"";
     _sshPort = 22;
@@ -55,11 +55,18 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
     _waypipeLoginShell = NO;
     _waypipeTitlePrefix = @"";
     _waypipeSecCtx = @"";
-    _settingsOverrides = @{};
     _runtimeOverrides = @{};
     _favorite = NO;
     _createdAtMs = now;
     _updatedAtMs = now;
+    _settingsOverrides = @{
+      @"NativeClientId" : @"weston-simple-shm",
+      @"EnableLauncher" : @YES,
+      @"WestonSimpleSHMEnabled" : @YES,
+      @"WestonEnabled" : @NO,
+      @"WestonTerminalEnabled" : @NO,
+      @"FootEnabled" : @NO,
+    };
   }
   return self;
 }
@@ -82,7 +89,7 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
   return @{
     @"id" : self.machineId ?: @"",
     @"name" : self.name ?: @"Unnamed Machine",
-    @"type" : self.type ?: kWWNMachineTypeSSHWaypipe,
+    @"type" : self.type ?: kWWNMachineTypeNative,
     @"sshHost" : self.sshHost ?: @"",
     @"sshUser" : self.sshUser ?: @"",
     @"sshPort" : @(self.sshPort > 0 ? self.sshPort : 22),
@@ -237,7 +244,7 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
   NSString *name = [obj[@"name"] isKindOfClass:[NSString class]] ? obj[@"name"] : @"";
   profile.name = name.length > 0 ? name : @"Unnamed Machine";
   NSString *type = [obj[@"type"] isKindOfClass:[NSString class]] ? obj[@"type"] : @"";
-  profile.type = type.length > 0 ? type : kWWNMachineTypeSSHWaypipe;
+  profile.type = type.length > 0 ? type : kWWNMachineTypeNative;
   profile.sshEnabled = [obj[@"sshEnabled"] respondsToSelector:@selector(boolValue)] ? [obj[@"sshEnabled"] boolValue] : YES;
   profile.sshHost = [obj[@"sshHost"] isKindOfClass:[NSString class]] ? obj[@"sshHost"] : @"";
   profile.sshUser = [obj[@"sshUser"] isKindOfClass:[NSString class]] ? obj[@"sshUser"] : @"";
@@ -355,9 +362,11 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
 
   WWNPreferencesManager *prefs = [WWNPreferencesManager sharedManager];
   WWNMachineProfile *profile = [[WWNMachineProfile alloc] initDefaultProfile];
-  profile.name = prefs.waypipeSSHHost.length > 0 ? [NSString stringWithFormat:@"Migrated %@", prefs.waypipeSSHHost] : @"Default Machine";
-  profile.type = kWWNMachineTypeSSHWaypipe;
-  profile.sshEnabled = prefs.waypipeSSHEnabled;
+  BOOL hasSSHHost = prefs.waypipeSSHHost.length > 0;
+  profile.name =
+      hasSSHHost ? [NSString stringWithFormat:@"Migrated %@", prefs.waypipeSSHHost] : @"Default Machine";
+  profile.type = hasSSHHost ? kWWNMachineTypeSSHWaypipe : kWWNMachineTypeNative;
+  profile.sshEnabled = hasSSHHost ? prefs.waypipeSSHEnabled : NO;
   profile.sshHost = prefs.waypipeSSHHost ?: @"";
   profile.sshUser = prefs.waypipeSSHUser ?: @"";
   profile.sshPassword = prefs.waypipeSSHPassword ?: @"";
@@ -377,15 +386,25 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
   profile.waypipeTitlePrefix = prefs.waypipeTitlePrefix ?: @"";
   profile.waypipeSecCtx = prefs.waypipeSecCtx ?: @"";
   NSDictionary<NSString *, id> *legacySnapshot = [self captureSettingsSnapshot];
-  profile.settingsOverrides = legacySnapshot;
+  NSMutableDictionary<NSString *, id> *mergedOverrides = [legacySnapshot mutableCopy];
+  if (!hasSSHHost) {
+    mergedOverrides[@"NativeClientId"] = @"weston-simple-shm";
+    mergedOverrides[@"EnableLauncher"] = @YES;
+    mergedOverrides[@"WestonSimpleSHMEnabled"] = @YES;
+    mergedOverrides[@"WestonEnabled"] = @NO;
+    mergedOverrides[@"WestonTerminalEnabled"] = @NO;
+    mergedOverrides[@"FootEnabled"] = @NO;
+  }
+  profile.settingsOverrides = mergedOverrides;
+  NSString *bundledId =
+      [mergedOverrides[@"NativeClientId"] isKindOfClass:[NSString class]]
+          ? mergedOverrides[@"NativeClientId"]
+          : @"";
   profile.runtimeOverrides = @{
-    kWWNRuntimeUseBundledApp : @([legacySnapshot[@"EnableLauncher"] boolValue]),
-    kWWNRuntimeBundledAppID :
-        ([legacySnapshot[@"NativeClientId"] isKindOfClass:[NSString class]]
-             ? legacySnapshot[@"NativeClientId"]
-             : @""),
-    kWWNRuntimeWaypipeEnabled : @(prefs.waypipeSSHEnabled),
-    @"legacySettingsOverrides" : legacySnapshot,
+    kWWNRuntimeUseBundledApp : @(bundledId.length > 0 || [mergedOverrides[@"EnableLauncher"] boolValue]),
+    kWWNRuntimeBundledAppID : bundledId.length > 0 ? bundledId : @"weston-simple-shm",
+    kWWNRuntimeWaypipeEnabled : @(hasSSHHost ? prefs.waypipeSSHEnabled : NO),
+    @"legacySettingsOverrides" : mergedOverrides,
   };
 
   [self saveProfiles:@[ profile ]];
@@ -534,7 +553,7 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
   NSString *resolvedSSHPassword =
       profile.sshPassword.length > 0 ? profile.sshPassword : [prefs waypipeSSHPassword];
   NSString *resolvedCommand =
-      profile.remoteCommand.length > 0 ? profile.remoteCommand : @"weston-terminal";
+      profile.remoteCommand.length > 0 ? profile.remoteCommand : @"weston-simple-shm";
 
   NSString *bundledAppID =
       [runtimeOverrides[kWWNRuntimeBundledAppID] isKindOfClass:[NSString class]]

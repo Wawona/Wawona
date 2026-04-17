@@ -17,6 +17,13 @@ let
   # When wawonaAndroidProject is available (pre-built Android project with jniLibs),
   # copies the full project. Otherwise falls back to gradle files + sources only.
   projectPath = if wawonaAndroidProject != null then toString wawonaAndroidProject else "";
+  projectIconStorePath =
+    if wawonaSrc != null && builtins.pathExists (wawonaSrc + "/src/resources/Wawona.icon/wayland.png") then
+      toString (wawonaSrc + "/src/resources/Wawona.icon/wayland.png")
+    else if wawonaSrc != null && builtins.pathExists (wawonaSrc + "/src/resources/Wawona.icon/Assets/wayland.png") then
+      toString (wawonaSrc + "/src/resources/Wawona.icon/Assets/wayland.png")
+    else
+      "";
   outDir = "Wawona-gradle-project";
   generateScript = pkgs.writeShellScriptBin "gradlegen" ''
     set -e
@@ -54,6 +61,27 @@ let
         echo "ERROR: Could not locate android project sources under wawonaSrc."
         exit 1
       fi
+    fi
+
+    # Set Android Studio project icon (.idea/icon*.png) from Wawona icon source.
+    # Prefer workspace path to preserve the direct link the user requested.
+    ICON_SRC=""
+    if [ -f "$PWD/src/resources/Wawona.icon/wayland.png" ]; then
+      ICON_SRC="$PWD/src/resources/Wawona.icon/wayland.png"
+    elif [ -f "$PWD/src/resources/Wawona.icon/Assets/wayland.png" ]; then
+      ICON_SRC="$PWD/src/resources/Wawona.icon/Assets/wayland.png"
+    elif [ -n "${projectIconStorePath}" ] && [ -f "${projectIconStorePath}" ]; then
+      ICON_SRC="${projectIconStorePath}"
+    fi
+
+    if [ -n "$ICON_SRC" ] && [ -f "$ICON_SRC" ]; then
+      mkdir -p "$OUT/.idea"
+      ln -snf "$ICON_SRC" "$OUT/.idea/icon.png"
+      ln -snf "$ICON_SRC" "$OUT/.idea/icon_dark.png"
+      chmod u+w "$OUT/.idea/icon.png" "$OUT/.idea/icon_dark.png" 2>/dev/null || true
+      echo "Configured Android Studio project icon from $ICON_SRC"
+    else
+      echo "Warning: Android Studio project icon source not found; skipped .idea icon setup."
     fi
   '';
 

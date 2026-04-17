@@ -68,7 +68,7 @@ pkgs.stdenv.mkDerivation {
       exit 1
     fi
     export SDKROOT="$MACOS_SDK"
-    export MACOSX_DEPLOYMENT_TARGET="26.0"
+    export MACOSX_DEPLOYMENT_TARGET="14.0"
     
     # Isolate environment from Nix wrapper flags to prevent linker conflicts
     unset DEVELOPER_DIR
@@ -78,8 +78,8 @@ pkgs.stdenv.mkDerivation {
     export CC="${pkgs.clang}/bin/clang"
     export CXX="${pkgs.clang}/bin/clang++"
 
-    export CFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 -fPIC $CFLAGS"
-    export LDFLAGS="-isysroot $SDKROOT -mmacosx-version-min=26.0 $LDFLAGS"
+    export CFLAGS="-isysroot $SDKROOT -mmacosx-version-min=14.0 -fPIC $CFLAGS"
+    export LDFLAGS="-isysroot $SDKROOT -mmacosx-version-min=14.0 $LDFLAGS"
   '';
   
   mesonFlags = [

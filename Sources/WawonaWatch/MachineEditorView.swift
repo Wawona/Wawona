@@ -15,22 +15,39 @@ struct MachineEditorView: View {
     @State var sshPassword: String
     @State var remoteCommand: String
     @State var selectedLauncherName: String
+    @State var inputProfile: String
+    @State var bundledAppID: String
+    @State var waypipeEnabled: Bool
 
     private var isEditing: Bool { existingProfile != nil }
     private var isSSH: Bool { type == .sshWaypipe || type == .sshTerminal }
     private var canSave: Bool { !name.trimmingCharacters(in: .whitespaces).isEmpty }
+    private var selectableTypes: [MachineType] {
+        MachineType.allCases.filter { $0 != .virtualMachine && $0 != .container }
+    }
+
+    private static func normalizedInitialType(from profile: MachineProfile?) -> MachineType {
+        let existing = profile?.type ?? .native
+        if existing == .virtualMachine || existing == .container {
+            return .native
+        }
+        return existing
+    }
 
     init(profileStore: MachineProfileStore, profile: MachineProfile? = nil) {
         self.profileStore = profileStore
         self.existingProfile = profile
         _name = State(initialValue: profile?.name ?? "")
-        _type = State(initialValue: profile?.type ?? .native)
+        _type = State(initialValue: Self.normalizedInitialType(from: profile))
         _sshHost = State(initialValue: profile?.sshHost ?? "")
         _sshUser = State(initialValue: profile?.sshUser ?? "")
         _sshPort = State(initialValue: profile.map { "\($0.sshPort)" } ?? "22")
         _sshPassword = State(initialValue: profile?.sshPassword ?? "")
-        _remoteCommand = State(initialValue: profile?.remoteCommand ?? "weston-terminal")
-        _selectedLauncherName = State(initialValue: profile?.launchers.first?.name ?? "weston-terminal")
+        _remoteCommand = State(initialValue: profile?.remoteCommand ?? "weston-simple-shm")
+        _selectedLauncherName = State(initialValue: profile?.launchers.first?.name ?? "weston-simple-shm")
+        _inputProfile = State(initialValue: profile?.runtimeOverrides.inputProfile ?? "direct")
+        _bundledAppID = State(initialValue: profile?.runtimeOverrides.bundledAppID ?? "")
+        _waypipeEnabled = State(initialValue: profile?.runtimeOverrides.waypipeEnabled ?? true)
     }
 
     var body: some View {
@@ -40,7 +57,7 @@ struct MachineEditorView: View {
                 Section("Profile") {
                     TextField("Name", text: $name)
                     Picker("Type", selection: $type) {
-                        ForEach(MachineType.allCases, id: \.self) { t in
+                        ForEach(selectableTypes, id: \.self) { t in
                             Label(t.userFacingName, systemImage: t.symbolName).tag(t)
                         }
                     }
@@ -81,6 +98,16 @@ struct MachineEditorView: View {
                         Text("Local socket — no network required.")
                             .font(.caption2)
                     }
+
+                    Section {
+                        TextField("Bundled App ID", text: $bundledAppID)
+                            .autocorrectionDisabled()
+                    } header: {
+                        Text("Native Session")
+                    } footer: {
+                        Text("Optional app identifier to launch with this machine profile.")
+                            .font(.caption2)
+                    }
                 }
 
                 // MARK: SSH — remote machine via network
@@ -109,6 +136,25 @@ struct MachineEditorView: View {
                         #endif
                         .autocorrectionDisabled()
                     }
+
+                    Section {
+                        Toggle("Waypipe Enabled", isOn: $waypipeEnabled)
+                    } header: {
+                        Text("Remote Session")
+                    } footer: {
+                        Text("Disable to keep an SSH terminal-only session.")
+                            .font(.caption2)
+                    }
+                }
+
+                Section {
+                    TextField("Input Profile", text: $inputProfile)
+                        .autocorrectionDisabled()
+                } header: {
+                    Text("Input")
+                } footer: {
+                    Text("Per-machine input behavior profile (same as iOS).")
+                        .font(.caption2)
                 }
             }
             .navigationTitle(isEditing ? "Edit Machine" : "Add Machine")
@@ -137,6 +183,9 @@ struct MachineEditorView: View {
         profile.sshPort = Int(sshPort.trimmingCharacters(in: .whitespaces)) ?? 22
         profile.sshPassword = sshPassword
         profile.remoteCommand = remoteCommand.trimmingCharacters(in: .whitespaces)
+        profile.runtimeOverrides.inputProfile = inputProfile.trimmingCharacters(in: .whitespaces)
+        profile.runtimeOverrides.bundledAppID = bundledAppID.trimmingCharacters(in: .whitespaces)
+        profile.runtimeOverrides.waypipeEnabled = waypipeEnabled
 
         if type == .native {
             profile.launchers = ClientLauncher.presets

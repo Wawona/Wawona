@@ -28,8 +28,18 @@
         customOverlays = if isDarwin then [
           (import rust-overlay)
           (self: super: {
-            rustToolchain = super.rust-bin.stable.latest.default.override {
-              targets = [ "aarch64-apple-ios" "aarch64-apple-ios-sim" ];
+            rustToolchain = super.rust-bin.nightly.latest.default.override {
+              extensions = [ "rust-src" ];
+              targets = [
+                "aarch64-apple-ios"
+                "aarch64-apple-ios-sim"
+                "aarch64-apple-tvos"
+                "aarch64-apple-tvos-sim"
+                "aarch64-apple-visionos"
+                "aarch64-apple-visionos-sim"
+                "aarch64-apple-watchos"
+                "aarch64-apple-watchos-sim"
+              ];
             };
             rustToolchainAndroid = super.rust-bin.stable.latest.default.override {
               targets = [ "aarch64-linux-android" ];
@@ -294,6 +304,7 @@
               (pkgs.callPackage ./dependencies/wawona/macos.nix {
                 buildModule = toolchains; inherit wawonaSrc wawonaVersion;
                 waypipe = toolchains.buildForMacOS "waypipe" { }; weston = toolchains.buildForMacOS "weston" { };
+                foot = toolchains.buildForMacOS "foot" { };
                 rustBackend = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
                   inherit crate2nix wawonaVersion toolchains nixpkgs;
                   workspaceSrc = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
@@ -379,6 +390,7 @@
             openssl = toolchains.buildForIOS "openssl" {}; ffmpeg = toolchains.buildForIOS "ffmpeg" {};
             epoll-shim = toolchains.buildForIOS "epoll-shim" {}; waypipe = toolchains.buildForIOS "waypipe" {};
             weston = toolchains.buildForIOS "weston" {}; weston-simple-shm = toolchains.buildForIOS "weston-simple-shm" {}; pixman = toolchains.buildForIOS "pixman" {};
+            foot = toolchains.buildForIOS "foot" {};
             sshpass = toolchains.buildForIOS "sshpass" {};
           };
           iosSimDeps = {
@@ -397,7 +409,102 @@
             weston = toolchains.buildForIOS "weston" { simulator = true; };
             weston-simple-shm = toolchains.buildForIOS "weston-simple-shm" { simulator = true; };
             pixman = toolchains.buildForIOS "pixman" { simulator = true; };
+            foot = toolchains.buildForIOS "foot" { simulator = true; };
             sshpass = toolchains.buildForIOS "sshpass" { simulator = true; };
+          };
+          tvosDeps = {
+            xkbcommon = toolchains.buildForTVOS "xkbcommon" {};
+            libffi = toolchains.buildForTVOS "libffi" {};
+            libwayland = toolchains.buildForTVOS "libwayland" {};
+            zstd = toolchains.buildForTVOS "zstd" {};
+            lz4 = toolchains.buildForTVOS "lz4" {};
+            zlib = toolchains.buildForTVOS "zlib" {};
+            libssh2 = toolchains.buildForTVOS "libssh2" {};
+            mbedtls = toolchains.buildForTVOS "mbedtls" {};
+            openssl = toolchains.buildForTVOS "openssl" {};
+            ffmpeg = toolchains.buildForTVOS "ffmpeg" {};
+            epoll-shim = toolchains.buildForTVOS "epoll-shim" {};
+            waypipe = toolchains.buildForTVOS "waypipe" {};
+            weston = toolchains.buildForTVOS "weston" {};
+            weston-simple-shm = toolchains.buildForTVOS "weston-simple-shm" {};
+            pixman = toolchains.buildForTVOS "pixman" {};
+            foot = toolchains.buildForTVOS "foot" {};
+            sshpass = toolchains.buildForTVOS "sshpass" {};
+          };
+          tvosSimDeps = {
+            xkbcommon = toolchains.buildForTVOS "xkbcommon" { simulator = true; };
+            libffi = toolchains.buildForTVOS "libffi" { simulator = true; };
+            libwayland = toolchains.buildForTVOS "libwayland" { simulator = true; };
+            zstd = toolchains.buildForTVOS "zstd" { simulator = true; };
+            lz4 = toolchains.buildForTVOS "lz4" { simulator = true; };
+            zlib = toolchains.buildForTVOS "zlib" { simulator = true; };
+            libssh2 = toolchains.buildForTVOS "libssh2" { simulator = true; };
+            mbedtls = toolchains.buildForTVOS "mbedtls" { simulator = true; };
+            openssl = toolchains.buildForTVOS "openssl" { simulator = true; };
+            ffmpeg = toolchains.buildForTVOS "ffmpeg" { simulator = true; };
+            epoll-shim = toolchains.buildForTVOS "epoll-shim" { simulator = true; };
+            waypipe = toolchains.buildForTVOS "waypipe" { simulator = true; };
+            weston = toolchains.buildForTVOS "weston" { simulator = true; };
+            weston-simple-shm = toolchains.buildForTVOS "weston-simple-shm" { simulator = true; };
+            pixman = toolchains.buildForTVOS "pixman" { simulator = true; };
+            foot = toolchains.buildForTVOS "foot" { simulator = true; };
+            sshpass = toolchains.buildForTVOS "sshpass" { simulator = true; };
+          };
+          visionosDeps = {
+            xkbcommon = toolchains.buildForVisionOS "xkbcommon" {};
+            libffi = toolchains.buildForVisionOS "libffi" {};
+            libwayland = toolchains.buildForVisionOS "libwayland" {};
+            libssh2 = toolchains.buildForVisionOS "libssh2" {};
+            openssl = toolchains.buildForVisionOS "openssl" {};
+            epoll-shim = toolchains.buildForVisionOS "epoll-shim" {};
+            pixman = toolchains.buildForVisionOS "pixman" {};
+            weston-simple-shm = toolchains.buildForVisionOS "weston-simple-shm" {};
+          };
+          visionosSimDeps = {
+            xkbcommon = toolchains.buildForVisionOS "xkbcommon" { simulator = true; };
+            libffi = toolchains.buildForVisionOS "libffi" { simulator = true; };
+            libwayland = toolchains.buildForVisionOS "libwayland" { simulator = true; };
+            libssh2 = toolchains.buildForVisionOS "libssh2" { simulator = true; };
+            openssl = toolchains.buildForVisionOS "openssl" { simulator = true; };
+            epoll-shim = toolchains.buildForVisionOS "epoll-shim" { simulator = true; };
+            pixman = toolchains.buildForVisionOS "pixman" { simulator = true; };
+            weston-simple-shm = toolchains.buildForVisionOS "weston-simple-shm" { simulator = true; };
+          };
+          watchosDeps = {
+            xkbcommon = toolchains.buildForWatchOS "xkbcommon" {};
+            libffi = toolchains.buildForWatchOS "libffi" {};
+            libwayland = toolchains.buildForWatchOS "libwayland" {};
+            zstd = toolchains.buildForWatchOS "zstd" {};
+            lz4 = toolchains.buildForWatchOS "lz4" {};
+            zlib = toolchains.buildForWatchOS "zlib" {};
+            libssh2 = toolchains.buildForWatchOS "libssh2" {};
+            mbedtls = toolchains.buildForWatchOS "mbedtls" {};
+            openssl = toolchains.buildForWatchOS "openssl" {};
+            ffmpeg = toolchains.buildForWatchOS "ffmpeg" {};
+            epoll-shim = toolchains.buildForWatchOS "epoll-shim" {};
+            weston = toolchains.buildForWatchOS "weston" {};
+            weston-simple-shm = toolchains.buildForWatchOS "weston-simple-shm" {};
+            pixman = toolchains.buildForWatchOS "pixman" {};
+            foot = toolchains.buildForWatchOS "foot" {};
+            sshpass = toolchains.buildForWatchOS "sshpass" {};
+          };
+          watchosSimDeps = {
+            xkbcommon = toolchains.buildForWatchOS "xkbcommon" { simulator = true; };
+            libffi = toolchains.buildForWatchOS "libffi" { simulator = true; };
+            libwayland = toolchains.buildForWatchOS "libwayland" { simulator = true; };
+            zstd = toolchains.buildForWatchOS "zstd" { simulator = true; };
+            lz4 = toolchains.buildForWatchOS "lz4" { simulator = true; };
+            zlib = toolchains.buildForWatchOS "zlib" { simulator = true; };
+            libssh2 = toolchains.buildForWatchOS "libssh2" { simulator = true; };
+            mbedtls = toolchains.buildForWatchOS "mbedtls" { simulator = true; };
+            openssl = toolchains.buildForWatchOS "openssl" { simulator = true; };
+            ffmpeg = toolchains.buildForWatchOS "ffmpeg" { simulator = true; };
+            epoll-shim = toolchains.buildForWatchOS "epoll-shim" { simulator = true; };
+            weston = toolchains.buildForWatchOS "weston" { simulator = true; };
+            weston-simple-shm = toolchains.buildForWatchOS "weston-simple-shm" { simulator = true; };
+            pixman = toolchains.buildForWatchOS "pixman" { simulator = true; };
+            foot = toolchains.buildForWatchOS "foot" { simulator = true; };
+            sshpass = toolchains.buildForWatchOS "sshpass" { simulator = true; };
           };
           backend-macos = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs;
@@ -411,19 +518,46 @@
             inherit crate2nix wawonaVersion toolchains nixpkgs;
             workspaceSrc = workspace-src-ios; platform = "ios"; simulator = true; nativeDeps = iosSimDeps;
           };
+          backend-tvos = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
+            inherit crate2nix wawonaVersion toolchains nixpkgs;
+            workspaceSrc = workspace-src-ios; platform = "tvos"; nativeDeps = tvosDeps;
+          };
+          backend-tvos-sim = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
+            inherit crate2nix wawonaVersion toolchains nixpkgs;
+            workspaceSrc = workspace-src-ios; platform = "tvos"; simulator = true; nativeDeps = tvosSimDeps;
+          };
+          backend-visionos = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
+            inherit crate2nix wawonaVersion toolchains nixpkgs;
+            workspaceSrc = workspace-src-ios; platform = "visionos"; nativeDeps = visionosDeps;
+          };
+          backend-visionos-sim = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
+            inherit crate2nix wawonaVersion toolchains nixpkgs;
+            workspaceSrc = workspace-src-ios; platform = "visionos"; simulator = true; nativeDeps = visionosSimDeps;
+          };
           xcodegenOutputs = pkgs.callPackage ./dependencies/generators/xcodegen.nix {
-             inherit wawonaVersion wawonaSrc iosDeps iosSimDeps macosDeps;
+             inherit wawonaVersion wawonaSrc iosDeps iosSimDeps tvosDeps tvosSimDeps visionosDeps visionosSimDeps watchosDeps watchosSimDeps macosDeps;
              macosBackend = backend-macos;
              iosBackend = backend-ios;
              iosSimBackend = backend-ios-sim;
+             tvosBackend = backend-tvos;
+             tvosSimBackend = backend-tvos-sim;
+             visionosBackend = backend-visionos;
+             visionosSimBackend = backend-visionos-sim;
              macosWeston = toolchains.buildForMacOS "weston" { };
           };
           wawona-macos = pkgs.callPackage ./dependencies/wawona/macos.nix {
             buildModule = toolchains; inherit wawonaSrc wawonaVersion;
             waypipe = toolchains.buildForMacOS "waypipe" { }; weston = toolchains.buildForMacOS "weston" { };
+            foot = toolchains.buildForMacOS "foot" { };
             rustBackend = backend-macos; xcodeProject = xcodegenOutputs.project;
           };
           wawona-ios-app-sim = pkgs.callPackage ./dependencies/wawona/ios.nix {
+            inherit wawonaSrc wawonaVersion teamId;
+            TEAM_ID = teamId;
+            xcodeProject = xcodegenOutputs.project;
+            simulator = true;
+          };
+          wawona-watchos-app-sim = pkgs.callPackage ./dependencies/wawona/watchos.nix {
             inherit wawonaSrc wawonaVersion teamId;
             TEAM_ID = teamId;
             xcodeProject = xcodegenOutputs.project;
@@ -434,6 +568,24 @@
             TEAM_ID = teamId;
             xcodeProject = xcodegenOutputs.project;
             simulator = false;
+          };
+          wawona-tvos-app-sim = pkgs.callPackage ./dependencies/wawona/tvos.nix {
+            inherit wawonaSrc wawonaVersion teamId;
+            TEAM_ID = teamId;
+            xcodeProject = xcodegenOutputs.project;
+            simulator = true;
+          };
+          wawona-tvos-app-device = pkgs.callPackage ./dependencies/wawona/tvos.nix {
+            inherit wawonaSrc wawonaVersion;
+            TEAM_ID = teamId;
+            xcodeProject = xcodegenOutputs.project;
+            simulator = false;
+          };
+          wawona-visionos-app-sim = pkgs.callPackage ./dependencies/wawona/visionos.nix {
+            inherit wawonaSrc wawonaVersion teamId;
+            TEAM_ID = teamId;
+            xcodeProject = xcodegenOutputs.project;
+            simulator = true;
           };
           wawona-ios-ipa = if teamId != null then pkgs.callPackage ./dependencies/wawona/ios.nix {
             inherit wawonaSrc wawonaVersion;
@@ -569,8 +721,15 @@ EOF
           '';
           wawona-macos = wawona-macos;
           wawona-ios = wawona-ios-app-sim;
+          wawona-tvos = wawona-tvos-app-sim;
+          wawona-watchos = wawona-watchos-app-sim;
+          wawona-visionos = wawona-visionos-app-sim;
           wawona-ios-app-sim = wawona-ios-app-sim;
+          wawona-tvos-app-sim = wawona-tvos-app-sim;
+          wawona-watchos-app-sim = wawona-watchos-app-sim;
+          wawona-visionos-app-sim = wawona-visionos-app-sim;
           wawona-ios-app-device = wawona-ios-app-device;
+          wawona-tvos-app-device = wawona-tvos-app-device;
           wawona-ios-ipa = wawona-ios-ipa;
           wawona-ios-xcarchive = wawona-ios-xcarchive;
           wawona-ios-simulator = wawona-ios-simulator;
@@ -580,6 +739,8 @@ EOF
           wawona-ios-xcode-env = backend-ios;
           wawona-ios-sim-backend = backend-ios-sim;
           wawona-ios-sim-xcode-env = backend-ios-sim;
+          wawona-tvos-backend = backend-tvos;
+          wawona-tvos-sim-backend = backend-tvos-sim;
           wawona-macos-project = xcodegenOutputs.app;
           wawona-ios-project = xcodegenOutputs.app;
           wawona-ios-provision = apple.provisionXcodeScript;
@@ -594,6 +755,7 @@ EOF
           weston-debug = toolchains.buildForMacOS "weston" { debug = true; };
           weston-simple-shm = toolchains.buildForMacOS "weston-simple-shm" {};
           weston-terminal = weston-terminal-pkg;
+          foot = (import ./dependencies/wawona/shell-wrappers.nix).footWrapper pkgs (toolchains.buildForMacOS "foot" {}) wawona-macos;
           waypipe-ios = toolchains.buildForIOS "waypipe" { };
           waypipe-ios-sim = toolchains.buildForIOS "waypipe" { simulator = true; };
           default = (import ./dependencies/wawona/shell-wrappers.nix).macosWrapper pkgs wawona-macos;
@@ -617,12 +779,32 @@ EOF
         wawona-wearos = { type = "app"; program = "${systemPackages.wawona-wearos}/bin/wawona-wearos-run"; };
         wearos = { type = "app"; program = "${systemPackages.wawona-wearos}/bin/wawona-wearos-run"; };
       } // (pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin {
+        weston = {
+          type = "app";
+          program = "${(import ./dependencies/wawona/shell-wrappers.nix).westonAppWrapper pkgs systemPackages.weston systemPackages.wawona-macos "weston"}/bin/weston";
+        };
+        weston-terminal = {
+          type = "app";
+          program = "${(import ./dependencies/wawona/shell-wrappers.nix).westonAppWrapper pkgs systemPackages.weston systemPackages.wawona-macos "weston-terminal"}/bin/weston-terminal";
+        };
+        weston-simple-shm = {
+          type = "app";
+          program = "${(import ./dependencies/wawona/shell-wrappers.nix).westonAppWrapper pkgs systemPackages.weston systemPackages.wawona-macos "weston-simple-shm"}/bin/weston-simple-shm";
+        };
+        waypipe = {
+          type = "app";
+          program = "${(import ./dependencies/wawona/shell-wrappers.nix).waypipeWrapper pkgs systemPackages.waypipe systemPackages.wawona-macos}/bin/waypipe";
+        };
+        foot = { type = "app"; program = "${systemPackages.foot}/bin/foot"; };
         install = { type = "app"; program = "${systemPackages.install}/bin/install"; };
         uninstall = { type = "app"; program = "${systemPackages.uninstall}/bin/uninstall"; };
         wawona-uninstall = { type = "app"; program = "${systemPackages.uninstall}/bin/uninstall"; };
         wawona-macos = { type = "app"; program = "${systemPackages.wawona-macos}/bin/wawona"; };
         wawona-macos-project = { type = "app"; program = "${systemPackages.wawona-macos-project}/bin/xcodegen"; };
         wawona-ios = { type = "app"; program = appPrograms.wawonaIos; };
+        wawona-tvos = { type = "app"; program = appPrograms.wawonaTvos; };
+        wawona-watchos = { type = "app"; program = appPrograms.wawonaWatchos; };
+        wawona-visionos = { type = "app"; program = appPrograms.wawonaVisionos; };
         wawona-ios-project = { type = "app"; program = "${systemPackages.wawona-ios-project}/bin/xcodegen"; };
         wawona-ios-provision = { type = "app"; program = "${systemPackages.wawona-ios-provision}/bin/provision-xcode"; };
         graphics-validate-macos = { type = "app"; program = "${systemPackages.graphics-validate-macos}/bin/graphics-validate-macos"; };

@@ -36,10 +36,7 @@ pub struct KeyboardState {
 impl Default for KeyboardState {
     fn default() -> Self {
         let xkb_context = Arc::new(XkbContext::new());
-        let xkb_state = XkbState::new(xkb_context.clone())
-            .or_else(|_| XkbState::new_from_string(xkb_context.clone(), MINIMAL_KEYMAP))
-            .ok()
-            .map(|s| Arc::new(std::sync::Mutex::new(s)));
+        let xkb_state = create_initial_xkb_state(xkb_context.clone());
 
         Self {
             focus: None,
@@ -62,16 +59,7 @@ impl Default for KeyboardState {
 
 impl KeyboardState {
     pub fn new(xkb_context: Arc<XkbContext>) -> Self {
-        // Try loading from system xkb data first (works on macOS/Linux).
-        // If that fails (e.g. on iOS where xkb data files are absent),
-        // fall back to the built-in MINIMAL_KEYMAP.
-        let xkb_state = XkbState::new(xkb_context.clone())
-            .or_else(|_| {
-                tracing::warn!("xkb_keymap_new_from_names failed; using built-in minimal keymap");
-                XkbState::new_from_string(xkb_context.clone(), MINIMAL_KEYMAP)
-            })
-            .ok()
-            .map(|s| Arc::new(std::sync::Mutex::new(s)));
+        let xkb_state = create_initial_xkb_state(xkb_context.clone());
 
         Self {
             xkb_context,
@@ -319,4 +307,17 @@ impl KeyboardState {
         // Note: keyboards are not aggressively cleaned — they are removed
         // when clients explicitly release them or disconnect.
     }
+}
+
+fn create_initial_xkb_state(xkb_context: Arc<XkbContext>) -> Option<Arc<std::sync::Mutex<XkbState>>> {
+    #[cfg(any(target_os = "ios", target_os = "visionos", target_os = "watchos", target_os = "android"))]
+    let state = XkbState::new_from_string(xkb_context.clone(), MINIMAL_KEYMAP);
+
+    #[cfg(not(any(target_os = "ios", target_os = "visionos", target_os = "watchos", target_os = "android")))]
+    let state = XkbState::new(xkb_context.clone()).or_else(|_| {
+        tracing::warn!("xkb_keymap_new_from_names failed; using built-in minimal keymap");
+        XkbState::new_from_string(xkb_context.clone(), MINIMAL_KEYMAP)
+    });
+
+    state.ok().map(|s| Arc::new(std::sync::Mutex::new(s)))
 }
