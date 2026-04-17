@@ -821,6 +821,7 @@ impl WawonaCore {
                     max_height: None,
                     decoration_mode: ffi_decoration_mode,
                     fullscreen_shell,
+                    owner_client_internal_id: internal_client_id as u64,
                     state: crate::ffi::types::WindowState::Normal,
                     parent: None,
                 };
@@ -832,7 +833,7 @@ impl WawonaCore {
                 );
             }
             CompositorEvent::PopupCreated { client_id, window_id, surface_id, parent_id, x, y, width, height } => {
-                let _internal_client_id = self.compositor.lock().unwrap().as_ref().unwrap().client_id_to_internal(client_id);
+                let internal_client_id = self.compositor.lock().unwrap().as_ref().unwrap().client_id_to_internal(client_id);
                 let _config = WindowConfig {
                     title: String::new(),
                     app_id: String::new(),
@@ -844,6 +845,7 @@ impl WawonaCore {
                     max_height: None,
                     decoration_mode: DecorationMode::ClientSide,
                     fullscreen_shell: false,
+                    owner_client_internal_id: internal_client_id as u64,
                     state: crate::ffi::types::WindowState::Normal,
                     parent: if parent_id > 0 { Some(WindowId::new(parent_id as u64)) } else { None },
                 };
@@ -973,6 +975,8 @@ impl WawonaCore {
                             .map(|cbs| cbs.len())
                             .unwrap_or(0);
                         if callback_count > 0 {
+                            // No buffer attached => no presentation callback will fire.
+                            // Flush now so clients that use state-only commits don't stall.
                             state.flush_frame_callbacks(
                                 surface_id,
                                 Some(crate::core::state::CompositorState::get_timestamp_ms()),
@@ -1199,18 +1203,8 @@ impl WawonaCore {
                         .get(&surface_id)
                         .map(|cbs| cbs.len())
                         .unwrap_or(0);
-                    if callback_count > 0 {
-                        // Safety-net for animation clients that block until frame_done.
-                        // Presentation path still flushes callbacks too, but this avoids
-                        // first-frame stalls when presentation ack is delayed/missed.
-                        state.flush_frame_callbacks(
-                            surface_id,
-                            Some(crate::core::state::CompositorState::get_timestamp_ms()),
-                        );
-                    }
-
                     crate::wlog!(crate::util::logging::FFI,
-                        "SurfaceCommitted: surf={} buf={} frame_cbs_flushed={}",
+                        "SurfaceCommitted: surf={} buf={} frame_cbs_pending={}",
                         surface_id, buffer_id, callback_count);
                 }
             }
@@ -1524,9 +1518,6 @@ impl WawonaCore {
             .unwrap_or(0);
         let pending_releases = state.pending_buffer_releases.len();
             
-        if should_flush_frame_callbacks(FrameCallbackFlushPoint::FramePresented) {
-            state.flush_frame_callbacks(surface_id.id, Some(timestamp));
-        }
         thread_local! {
             static SURFACE_PRESENTED_COUNTS: std::cell::RefCell<std::collections::HashMap<u32, u32>> = Default::default();
             static SURFACE_RELEASE_COUNTS: std::cell::RefCell<std::collections::HashMap<u32, u32>> = Default::default();
@@ -1546,9 +1537,9 @@ impl WawonaCore {
 
         // Flush queued buffer releases from handle_surface_commit. This is the
         // correct time: the frame has been rendered and the old buffer's texture
-        // is no longer needed.  Doing this in SurfaceCommitted (before
-        // rendering) caused the client to destroy buffers before the compositor
-        // cached them, leading to visual flashing.
+        // is no longer needed. Keep releases before frame callbacks so
+        // double-buffered clients (weston-simple-shm) always observe at least
+        // one free buffer when redraw callback fires.
         state.flush_buffer_releases();
 
         if let Some(buf_id) = buffer_id {
@@ -1580,6 +1571,10 @@ impl WawonaCore {
                 pending_releases
             );
         }
+
+        if should_flush_frame_callbacks(FrameCallbackFlushPoint::FramePresented) {
+            state.flush_frame_callbacks(surface_id.id, Some(timestamp));
+        }
     }
     
     /// Get windows that need redraw
@@ -1603,11 +1598,21 @@ impl WawonaCore {
 
     /// Resize a window.
     ///
-    /// Always updates the global wl_output mode so nested compositors
-    /// (e.g. Weston) see a consistent display size, then reconfigures
-    /// only the toplevels belonging to the owning client.
+    /// For xdg toplevels: sends **per-client** `wl_output` / `xdg_output` geometry (so nested
+    /// compositors see the drawable size), then `xdg_toplevel.configure` for that surface only.
+    /// Fullscreen-shell surfaces still use a global output mode update (see branch below).
     pub fn resize_window(&self, window_id: WindowId, width: u32, height: u32) {
         if !self.is_running() {
+            return;
+        }
+        if width == 0 || height == 0 {
+            crate::wlog!(
+                crate::util::logging::FFI,
+                "Window resize ignored: window={} invalid size={}x{}",
+                window_id.id,
+                width,
+                height
+            );
             return;
         }
 
@@ -1654,6 +1659,15 @@ impl WawonaCore {
         }
 
         if let Some(tid) = target_toplevel {
+            // Nested compositors (Weston, etc.) size their fake output from wl_output / xdg_output,
+            // not only xdg_toplevel.configure. macOS does this via SetOutputGeometryForWindow before
+            // injectWindowResize on first layout; Linux GTK resizes must do the same on every shrink/expand.
+            let scale = {
+                let cur = self.output_size.read().unwrap();
+                cur.2
+            };
+            self.set_output_geometry_for_window(window_id, width, height, scale);
+
             crate::wlog!(crate::util::logging::FFI,
                 "Window resize: window={} {}x{}, reconfiguring toplevel {:?}",
                 wid, width, height, tid.1);
@@ -1691,6 +1705,42 @@ impl WawonaCore {
             crate::wlog!(crate::util::logging::FFI,
                 "Window resize: window={} {}x{}, no toplevel/fullscreen_shell found to reconfigure",
                 wid, width, height);
+        }
+    }
+
+    /// Update compositor-side window dimensions without sending configure/output events.
+    ///
+    /// Used by Linux/GTK when a fullscreen-shell companion surface is embedded inside
+    /// another host window. We want scene geometry to track the host allocation, but
+    /// must avoid driving a second resize protocol path for the companion itself.
+    pub fn set_window_size_local(&self, window_id: WindowId, width: u32, height: u32) {
+        if !self.is_running() {
+            return;
+        }
+        if width == 0 || height == 0 {
+            crate::wlog!(
+                crate::util::logging::FFI,
+                "Local window size sync ignored: window={} invalid size={}x{}",
+                window_id.id,
+                width,
+                height
+            );
+            return;
+        }
+
+        let wid = window_id.id as u32;
+        let mut state = self.state.write().unwrap();
+        if let Some(window) = state.get_window(wid) {
+            let mut window = window.write().unwrap();
+            window.width = width as i32;
+            window.height = height as i32;
+            crate::wlog!(
+                crate::util::logging::FFI,
+                "Local window size sync: window={} {}x{}",
+                window_id.id,
+                width,
+                height
+            );
         }
     }
 
@@ -2087,22 +2137,128 @@ impl WawonaCore {
         }
         
         let serial = self.next_serial();
-        let mut state = self.state.write().unwrap();
-        
-        let surface_id = state.surface_to_window.iter()
-            .find(|(_, &wid)| wid as u64 == window_id.id)
-            .map(|(sid, _)| *sid);
+        let had_keyboard_focus = {
+            let mut state = self.state.write().unwrap();
             
-        if let Some(sid) = surface_id {
-            if let Some(surface) = state.surfaces.get(&sid).cloned() {
-                 let surface = surface.read().unwrap();
-                 if let Some(res) = &surface.resource {
-                     // Send text-input-v3 leave before keyboard leave
-                     state.ext.text_input.leave(res);
-                     state.seat.broadcast_keyboard_leave(serial, res);
-                 }
+            let surface_id = state.surface_to_window.iter()
+                .find(|(_, &wid)| wid as u64 == window_id.id)
+                .map(|(sid, _)| *sid);
+                
+            if let Some(sid) = surface_id {
+                let had = state.seat.keyboard.focus == Some(sid);
+                if had {
+                    if let Some(surface) = state.surfaces.get(&sid).cloned() {
+                        let surface = surface.read().unwrap();
+                        if let Some(res) = &surface.resource {
+                            state.ext.text_input.leave(res);
+                            state.seat.broadcast_keyboard_leave(serial, res);
+                        }
+                    }
+                    state.seat.keyboard.focus = None;
+                    state.focus.set_keyboard_focus(None);
+                }
+                had
+            } else {
+                false
+            }
+        };
+
+        if had_keyboard_focus {
+            let mut windows = self.ffi_windows.write().unwrap();
+            if let Some(info) = windows.get_mut(&window_id.id) {
+                if info.activated {
+                    info.activated = false;
+                    drop(windows);
+                    self.pending_window_events.write().unwrap().push(
+                        WindowEvent::Deactivated { window_id }
+                    );
+                }
             }
         }
+    }
+
+    /// Move keyboard focus to a host window's toplevel surface: `wl_keyboard.leave` on the
+    /// previous focus (if any), then `enter` with currently pressed keys. Updates activation
+    /// state to match (nested compositor / platform parity with macOS `becomeKeyWindow`).
+    pub fn apply_keyboard_focus_for_window(&self, window_id: WindowId) {
+        if !self.is_running() {
+            return;
+        }
+
+        let leave_serial = self.next_serial();
+        let enter_serial = self.next_serial();
+
+        let mut state = self.state.write().unwrap();
+        state.seat.cleanup_resources();
+
+        let new_sid = match state
+            .surface_to_window
+            .iter()
+            .find(|(_, &wid)| wid as u64 == window_id.id)
+            .map(|(sid, _)| *sid)
+        {
+            Some(s) => s,
+            None => {
+                crate::wlog!(
+                    crate::util::logging::FFI,
+                    "apply_keyboard_focus: no surface for window {}",
+                    window_id.id
+                );
+                return;
+            }
+        };
+
+        if state.seat.keyboard.focus == Some(new_sid) {
+            return;
+        }
+
+        if let Some(old_sid) = state.seat.keyboard.focus {
+            if let Some(surface) = state.surfaces.get(&old_sid).cloned() {
+                let surface = surface.read().unwrap();
+                if let Some(res) = &surface.resource {
+                    state.ext.text_input.leave(res);
+                    state.seat.broadcast_keyboard_leave(leave_serial, res);
+                }
+            }
+            state.seat.keyboard.focus = None;
+        }
+
+        if let Some(surface) = state.surfaces.get(&new_sid).cloned() {
+            let surface = surface.read().unwrap();
+            if let Some(res) = &surface.resource {
+                let keys: Vec<u32> = state.seat.keyboard.pressed_keys.clone();
+                state.seat.keyboard.focus = Some(new_sid);
+                state
+                    .focus
+                    .set_keyboard_focus(Some(window_id.id as u32));
+                crate::wlog!(
+                    crate::util::logging::FFI,
+                    "Keyboard enter (focus transition): window={} surface={} keys={}",
+                    window_id.id,
+                    new_sid,
+                    keys.len()
+                );
+                state.seat.broadcast_keyboard_enter(enter_serial, res, &keys);
+                state.ext.text_input.enter(res);
+            }
+        }
+
+        drop(state);
+
+        crate::wlog!(crate::util::logging::FFI, "Focus window (keyboard): {}", window_id.id);
+        {
+            let mut windows = self.ffi_windows.write().unwrap();
+            for (_, info) in windows.iter_mut() {
+                info.activated = false;
+            }
+            if let Some(info) = windows.get_mut(&window_id.id) {
+                info.activated = true;
+            }
+        }
+        self.pending_window_events
+            .write()
+            .unwrap()
+            .push(WindowEvent::Activated { window_id });
     }
     
     /// Inject touch down event

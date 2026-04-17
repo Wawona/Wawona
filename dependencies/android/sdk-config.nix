@@ -20,8 +20,9 @@ let
   cmdlineToolsPackageName = "cmdline-tools-latest";
   platformToolsPackageName = "platform-tools";
   emulatorPackageName = "emulator";
-  systemImagePackageName = "system-images-android-36-google-apis-playstore-arm64-v8a";
-  systemImageId = "system-images;android-36;google_apis_playstore;arm64-v8a";
+  hostEmulatorAbi = if lib.hasPrefix "x86_64-" system then "x86_64" else "arm64-v8a";
+  systemImagePackageName = "system-images-android-36-google-apis-playstore-${hostEmulatorAbi}";
+  systemImageId = "system-images;android-36;google_apis_playstore;${hostEmulatorAbi}";
   emulatorSupported = system != "aarch64-linux";
 
   sdkPackageNames = [
@@ -71,6 +72,7 @@ in
     emulatorSupported
     emulatorPackageName
     hostTag
+    hostEmulatorAbi
     kotlinVersion
     minSdk
     ndkPackageName

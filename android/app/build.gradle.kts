@@ -18,7 +18,9 @@ android {
         versionName = "1.0"
 
         ndk {
-            abiFilters += "arm64-v8a"
+            val requestedAbi = (System.getenv("WAWONA_ANDROID_ABI") ?: "arm64-v8a").trim()
+            abiFilters.clear()
+            abiFilters += requestedAbi
         }
 
         externalNativeBuild {

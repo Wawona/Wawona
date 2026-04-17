@@ -14,7 +14,7 @@ let
 in
 pkgs.runCommand "weston-android-13.0.0" { } ''
   CC="${androidToolchain.androidCC}"
-  TARGET="${androidToolchain.androidTarget}"
+  API="${toString androidToolchain.androidNdkApiLevel}"
 
   # Keep upstream-pinned source for reproducibility metadata.
   : ${fetchurl {
@@ -37,8 +37,24 @@ pkgs.runCommand "weston-android-13.0.0" { } ''
   cp ${westonClientSrc}/xdg-shell-protocol.c ./xdg-shell-protocol.c
   cp ${westonClientSrc}/xdg-shell-client-protocol.h ./xdg-shell-client-protocol.h
 
-  "$CC" --target="$TARGET" ${androidToolchain.androidNdkCflags} -fPIC -shared weston_main_stub.c -llog -landroid -o libweston.so
-  "$CC" --target="$TARGET" ${androidToolchain.androidNdkCflags} -fPIC -shared \
+  "$CC" \
+    --target="${androidToolchain.androidTarget}$API" \
+    --sysroot="${androidToolchain.androidNdkSysroot}" \
+    -B"${androidToolchain.androidNdkAbiLibDir}" \
+    -L"${androidToolchain.androidNdkAbiLibDir}" \
+    -Wl,-rpath-link,"${androidToolchain.androidNdkAbiLibDir}" \
+    ${androidToolchain.androidNdkCflags} \
+    -D__ANDROID_API__="$API" \
+    -fPIC -shared weston_main_stub.c -llog -landroid -o libweston.so
+  "$CC" \
+    --target="${androidToolchain.androidTarget}$API" \
+    --sysroot="${androidToolchain.androidNdkSysroot}" \
+    -B"${androidToolchain.androidNdkAbiLibDir}" \
+    -L"${androidToolchain.androidNdkAbiLibDir}" \
+    -Wl,-rpath-link,"${androidToolchain.androidNdkAbiLibDir}" \
+    ${androidToolchain.androidNdkCflags} \
+    -D__ANDROID_API__="$API" \
+    -fPIC -shared \
     weston_terminal_mobile.c xdg-shell-protocol.c \
     -I. -I${westonClientSrc}/include -I${libwayland}/include -I${libwayland}/include/wayland \
     -L${libwayland}/lib -lwayland-client -llog -landroid -o libweston-terminal.so

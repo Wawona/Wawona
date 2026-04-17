@@ -155,10 +155,18 @@ impl Dispatch<xdg_toplevel::XdgToplevel, u32> for CompositorState {
                         if let Some(window) = state.get_window(wid) {
                             if let Ok(mut win) = window.write() {
                                 win.maximized = false;
+                                let fallback_w = win.width.max(1) as u32;
+                                let fallback_h = win.height.max(1) as u32;
+                                (fallback_w, fallback_h)
+                            } else {
+                                (1, 1)
                             }
+                        } else {
+                            (1, 1)
                         }
+                    } else {
+                        (1, 1)
                     }
-                    (0, 0)
                 };
                 
                 state.send_toplevel_configure(client_id.clone(), toplevel_id, restore_w, restore_h);
@@ -258,10 +266,18 @@ impl Dispatch<xdg_toplevel::XdgToplevel, u32> for CompositorState {
                         if let Some(window) = state.get_window(wid) {
                             if let Ok(mut win) = window.write() {
                                 win.fullscreen = false;
+                                let fallback_w = win.width.max(1) as u32;
+                                let fallback_h = win.height.max(1) as u32;
+                                (fallback_w, fallback_h)
+                            } else {
+                                (1, 1)
                             }
+                        } else {
+                            (1, 1)
                         }
+                    } else {
+                        (1, 1)
                     }
-                    (0, 0)
                 };
                 
                 state.send_toplevel_configure(client_id, toplevel_id, restore_w, restore_h);

@@ -3,7 +3,7 @@ use crate::core::surface::role::SurfaceRole;
 
 #[test]
 fn test_surface_init() {
-    let surface = Surface::new(1, None);
+    let surface = Surface::new(1, None, None);
     assert_eq!(surface.id, 1);
     assert!(surface.role.is_none());
 }
@@ -12,7 +12,7 @@ fn test_surface_init() {
 fn test_surface_commit() {
     use crate::core::surface::buffer::{BufferType, ShmBufferData};
 
-    let mut surface = Surface::new(1, None);
+    let mut surface = Surface::new(1, None, None);
     
     // Initial state
     assert_eq!(surface.current.width, 0);
@@ -44,7 +44,7 @@ fn test_surface_commit() {
 
 #[test]
 fn test_surface_damage() {
-    let mut surface = Surface::new(2, None);
+    let mut surface = Surface::new(2, None, None);
     
     // Add damage to pending
     let region = DamageRegion::new(0, 0, 10, 10);
@@ -72,7 +72,7 @@ fn test_surface_damage() {
 
 #[test]
 fn test_surface_role() {
-    let mut surface = Surface::new(3, None);
+    let mut surface = Surface::new(3, None, None);
     assert!(surface.role.is_none());
     
     assert!(surface.set_role(SurfaceRole::Toplevel).is_ok());

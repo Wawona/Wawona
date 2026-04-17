@@ -168,9 +168,9 @@ fn test_window_maximized_transition() {
     surface.commit();
     env.wait_roundtrip(&mut event_queue, &mut client_state);
     
-    // After unset_maximized, the compositor restores the saved geometry (default 800x600)
-    assert_eq!(client_state.last_width, 800, "Unset maximized should restore saved geometry width");
-    assert_eq!(client_state.last_height, 600, "Unset maximized should restore saved geometry height");
+    // After unset_maximized, compositor sends floating configure (often 0x0 = client-chosen size).
+    assert_eq!(client_state.last_width, 0, "Unset maximized should yield floating configure width");
+    assert_eq!(client_state.last_height, 0, "Unset maximized should yield floating configure height");
     assert!(!client_state.maximized, "Client should have unset maximized state");
 }
 

@@ -494,11 +494,11 @@ fn test_shm_pool_resize() {
     
     // Verify pool exists in server
     let pool_id = Proxy::id(&pool).protocol_id();
-    let client_id = *env.state.clients.keys().next().expect("No server client");
+    let client_id = env.state.clients.keys().next().expect("No server client").clone();
     {
         let state = &env.state;
-        assert!(state.shm_pools.contains_key(&(client_id, pool_id)));
-        assert_eq!(state.shm_pools.get(&(client_id, pool_id)).unwrap().size, 4096);
+        assert!(state.shm_pools.contains_key(&(client_id.clone(), pool_id)));
+        assert_eq!(state.shm_pools.get(&(client_id.clone(), pool_id)).unwrap().size, 4096);
     }
     
     // Resize pool
@@ -508,7 +508,7 @@ fn test_shm_pool_resize() {
     // Verify resize in server
     {
         let state = &env.state;
-        assert_eq!(state.shm_pools.get(&(client_id, pool_id)).unwrap().size, 8192);
+        assert_eq!(state.shm_pools.get(&(client_id.clone(), pool_id)).unwrap().size, 8192);
     }
 }
 
@@ -543,17 +543,17 @@ fn test_subsurface_sync_commit() {
     
     let child_proto_id = Proxy::id(&child_surface).protocol_id();
     let parent_proto_id = Proxy::id(&parent_surface).protocol_id();
-    let client_id = *env.state.clients.keys().next().expect("No server client");
+    let client_id = env.state.clients.keys().next().expect("No server client").clone();
     
     let child_id = *env
         .state
         .protocol_to_internal_surface
-        .get(&(client_id, child_proto_id))
+        .get(&(client_id.clone(), child_proto_id))
         .expect("Child internal ID not found");
     let parent_id = *env
         .state
         .protocol_to_internal_surface
-        .get(&(client_id, parent_proto_id))
+        .get(&(client_id.clone(), parent_proto_id))
         .expect("Parent internal ID not found");
     
     // Verify subsurface relationship
@@ -662,12 +662,13 @@ fn test_pointer_lock() {
     env.wait_roundtrip(&mut event_queue, &mut client_state);
     
     let surface_id = surface.id().protocol_id();
+    let client_id = env.state.clients.keys().next().expect("No server client").clone();
     
     // Set focus manually in test env
     env.state.seat.pointer.focus = Some(surface_id);
     
     // Check if locked - should be false
-    assert!(!env.state.ext.pointer_constraints.is_pointer_locked(surface_id));
+    assert!(!env.state.ext.pointer_constraints.is_pointer_locked(client_id, surface_id));
     
     // In a real scenario, client would bind pointer_constraints and request lock
     // For this test, we'll verify the server-side logic of is_pointer_locked

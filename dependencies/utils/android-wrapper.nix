@@ -3,7 +3,7 @@
 let
   androidConfig = import ../android/sdk-config.nix {
     inherit lib androidSDK;
-    system = pkgs.stdenv.hostPlatform.system;
+    system = pkgs.stdenv.buildPlatform.system;
   };
 
   # ---------------------------------------------------------------------------
@@ -32,8 +32,9 @@ let
     export PATH="${pkgs.jdk17}/bin:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/emulator:$ANDROID_SDK_ROOT/platform-tools:$PATH"
 
     # 2. AVD Creation
-    AVD_NAME="WawonaEmulator_API36"
     SYSTEM_IMAGE="${androidConfig.systemImageId}"
+    SYSTEM_IMAGE_ABI="''${SYSTEM_IMAGE##*;}"
+    AVD_NAME="WawonaEmulator_''${SYSTEM_IMAGE_ABI}_API36"
 
     if [ "${if androidConfig.emulatorSupported then "true" else "false"}" != "true" ]; then
       echo "[provision-android] Emulator/system-image packages are not available on ${pkgs.stdenv.hostPlatform.system}."

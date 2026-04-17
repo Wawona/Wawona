@@ -153,7 +153,7 @@
               platformToolsVersion = "latest";
               buildToolsVersions = [ androidConfig.buildToolsVersion ];
               platformVersions = [ (toString androidConfig.compileSdk) ];
-              abiVersions = [ "arm64-v8a" ];
+              abiVersions = [ androidConfig.hostEmulatorAbi ];
               systemImageTypes = [ "google_apis_playstore" ];
               includeEmulator = androidConfig.emulatorSupported;
               includeSystemImages = androidConfig.emulatorSupported;
@@ -173,7 +173,7 @@
             cmake = "${sdkRoot}/cmake/${androidConfig.cmakeVersion}";
             ndk = "${sdkRoot}/ndk/${androidConfig.ndkVersion}";
             emulator = if androidConfig.emulatorSupported then androidComposition.emulator else androidComposition.androidsdk;
-            systemImage = "${sdkRoot}/system-images/android-${toString androidConfig.compileSdk}/google_apis_playstore/arm64-v8a";
+            systemImage = "${sdkRoot}/system-images/android-${toString androidConfig.compileSdk}/google_apis_playstore/${androidConfig.hostEmulatorAbi}";
             androidSdkPackages = { };
             inherit androidConfig;
           };
@@ -211,18 +211,21 @@
           lib = androidPkgs.lib; pkgs = androidPkgs; inherit androidSDK; 
         };
 
-        vulkan-cts-android = import ./dependencies/libs/vulkan-cts/android.nix {
+        hasGraphicsValidate = builtins.pathExists ./dependencies/tests/graphics-validate.nix;
+        hasAndroidCts = builtins.pathExists ./dependencies/libs/vulkan-cts/android.nix
+          && builtins.pathExists ./dependencies/libs/vulkan-cts/gl-cts-android.nix;
+        vulkan-cts-android = if hasAndroidCts then import ./dependencies/libs/vulkan-cts/android.nix {
           inherit (pkgs) lib buildPackages stdenv;
           pkgs = androidPkgs;
           inherit androidSDK;
           androidToolchain = toolchainsAndroid.androidToolchain;
-        };
-        gl-cts-android = import ./dependencies/libs/vulkan-cts/gl-cts-android.nix {
+        } else null;
+        gl-cts-android = if hasAndroidCts then import ./dependencies/libs/vulkan-cts/gl-cts-android.nix {
           inherit (pkgs) lib buildPackages stdenv;
           pkgs = androidPkgs;
           inherit androidSDK;
           androidToolchain = toolchainsAndroid.androidToolchain;
-        };
+        } else null;
 
         waypipe-patched-android = import ./dependencies/libs/waypipe/waypipe-patched-src.nix {
           pkgs = androidPkgs;
@@ -296,6 +299,11 @@
           
           # Weston and Waypipe (Native on Linux, Cross-wrapped on Darwin)
           weston = if pkgs.stdenv.isDarwin then toolchains.buildForMacOS "weston" {} else pkgs.weston;
+          weston-simple-shm =
+            if pkgs.stdenv.isDarwin
+            then toolchains.buildForMacOS "weston-simple-shm" {}
+            else pkgs.callPackage ./dependencies/libs/weston-simple-shm/linux.nix {};
+          foot = if pkgs.stdenv.isDarwin then toolchains.buildForMacOS "foot" {} else pkgs.foot;
           waypipe = if pkgs.stdenv.isDarwin then toolchains.buildForMacOS "waypipe" { } else pkgs.waypipe;
           
           # Wawona (Native on Linux, Cross-wrapped on Darwin)
@@ -332,7 +340,10 @@
                    macosWeston = toolchains.buildForMacOS "weston" { };
                 }).project;
               })
-            else pkgs.hello; # TODO: Add Linux wrapper
+            else pkgs.callPackage ./dependencies/wawona/linux.nix {
+              inherit wawonaVersion;
+              waypipeSrc = waypipe-src;
+            };
         };
 
         packages = commonPackages // (pkgs.lib.optionalAttrs (isLinuxHost || androidSDK != null) {
@@ -342,12 +353,33 @@
           android-toolchain-sanity = androidToolchainSanity;
           gradlegen = gradlegenPkg.generateScript;
           wawona-android-project = gradlegenPkg.generateScript;
-          vulkan-cts-android = vulkan-cts-android;
-          gl-cts-android = gl-cts-android;
           wawona-android-provision = androidUtils.provisionAndroidScript;
           wawona-wearos = pkgs.callPackage ./dependencies/wawona/wearos.nix {
             inherit wawonaVersion androidSDK;
             wearAndroidPackage = "wawona-wearos-android";
+          };
+        }) // (pkgs.lib.optionalAttrs hasAndroidCts {
+          vulkan-cts-android = vulkan-cts-android;
+          gl-cts-android = gl-cts-android;
+        }) // (pkgs.lib.optionalAttrs isLinuxHost {
+          wawona-linux = pkgs.callPackage ./dependencies/wawona/linux.nix {
+            inherit wawonaVersion;
+            waypipeSrc = waypipe-src;
+          };
+          wawona-linux-compositor-host = pkgs.callPackage ./dependencies/wawona/linux-host.nix {
+            inherit wawonaVersion;
+            waypipeSrc = waypipe-src;
+          };
+          wawona-linux-tray = pkgs.callPackage ./dependencies/wawona/linux-tray.nix {
+            inherit wawonaVersion;
+            waypipeSrc = waypipe-src;
+          };
+          wawona-linux-vm = pkgs.callPackage ./dependencies/wawona/linux-vm.nix {
+            inherit wawonaVersion;
+          };
+          default = pkgs.callPackage ./dependencies/wawona/linux.nix {
+            inherit wawonaVersion;
+            waypipeSrc = waypipe-src;
           };
         }) // (pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin (let
           teamId = let value = builtins.getEnv "TEAM_ID"; in if value == "" then null else value;
@@ -747,7 +779,7 @@ EOF
           wawona-ios-xcode-wrapper = apple.xcodeWrapperDrv;
           xcodegen = xcodegenOutputs.app;
           xcodegenProject = xcodegenOutputs.project;
-          graphics-validate-macos = pkgs.callPackage ./dependencies/tests/graphics-validate.nix { };
+          # optional local graphics test package (present in some trees only)
           vulkan-cts = toolchains.buildForMacOS "vulkan-cts" { };
           vulkan-cts-ios = toolchains.buildForIOS "vulkan-cts" { };
           gl-cts = toolchains.buildForMacOS "gl-cts" { };
@@ -759,7 +791,9 @@ EOF
           waypipe-ios = toolchains.buildForIOS "waypipe" { };
           waypipe-ios-sim = toolchains.buildForIOS "waypipe" { simulator = true; };
           default = (import ./dependencies/wawona/shell-wrappers.nix).macosWrapper pkgs wawona-macos;
-        }));
+        } // (pkgs.lib.optionalAttrs hasGraphicsValidate {
+          graphics-validate-macos = pkgs.callPackage ./dependencies/tests/graphics-validate.nix { };
+        })));
       in packages;
 
     getAppsForSystem = system: pkgs: systemPackages:
@@ -768,17 +802,28 @@ EOF
           inherit pkgs systemPackages;
           xcodeUtils = import ./dependencies/apple { inherit (pkgs) lib pkgs; nixXcodeenvtests = inputs."nix-xcodeenvtests"; };
         };
+        hasGraphicsValidate = builtins.pathExists ./dependencies/tests/graphics-validate.nix;
+        hasAndroidCts = builtins.pathExists ./dependencies/libs/vulkan-cts/android.nix
+          && builtins.pathExists ./dependencies/libs/vulkan-cts/gl-cts-android.nix;
       in {
         nom = { type = "app"; program = "${pkgs.nix-output-monitor}/bin/nom"; };
         local-runner = { type = "app"; program = "${systemPackages.local-runner}/bin/local-runner"; };
         wawona-android-provision = { type = "app"; program = "${systemPackages.wawona-android-provision}/bin/provision-android"; };
         wawona-android-project = { type = "app"; program = "${systemPackages.gradlegen}/bin/gradlegen"; };
         wawona-android = { type = "app"; program = "${systemPackages.wawona-android}/bin/wawona-android-run"; };
-        vulkan-cts-android = { type = "app"; program = "${systemPackages.vulkan-cts-android}/bin/vulkan-cts-android-run"; };
-        gl-cts-android = { type = "app"; program = "${systemPackages.gl-cts-android}/bin/gl-cts-android-run"; };
         wawona-wearos = { type = "app"; program = "${systemPackages.wawona-wearos}/bin/wawona-wearos-run"; };
         wearos = { type = "app"; program = "${systemPackages.wawona-wearos}/bin/wawona-wearos-run"; };
-      } // (pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin {
+      } // (pkgs.lib.optionalAttrs hasAndroidCts {
+        vulkan-cts-android = { type = "app"; program = "${systemPackages.vulkan-cts-android}/bin/vulkan-cts-android-run"; };
+        gl-cts-android = { type = "app"; program = "${systemPackages.gl-cts-android}/bin/gl-cts-android-run"; };
+      }) // (pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+        default = { type = "app"; program = "${systemPackages.wawona-linux}/bin/wawona-linux-run"; };
+        wawona-linux = { type = "app"; program = "${systemPackages.wawona-linux}/bin/wawona-linux-run"; };
+        wawona-linux-compositor-host = { type = "app"; program = "${systemPackages.wawona-linux-compositor-host}/bin/wawona-linux-compositor-host-run"; };
+        wawona-linux-tray = { type = "app"; program = "${systemPackages.wawona-linux-tray}/bin/wawona-linux-tray-run"; };
+        weston-simple-shm = { type = "app"; program = "${systemPackages.weston-simple-shm}/bin/weston-simple-shm"; };
+        wawona-linux-vm = { type = "app"; program = "${systemPackages.wawona-linux-vm}/bin/wawona-linux-vm-run"; };
+      }) // (pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin {
         weston = {
           type = "app";
           program = "${(import ./dependencies/wawona/shell-wrappers.nix).westonAppWrapper pkgs systemPackages.weston systemPackages.wawona-macos "weston"}/bin/weston";
@@ -807,8 +852,9 @@ EOF
         wawona-visionos = { type = "app"; program = appPrograms.wawonaVisionos; };
         wawona-ios-project = { type = "app"; program = "${systemPackages.wawona-ios-project}/bin/xcodegen"; };
         wawona-ios-provision = { type = "app"; program = "${systemPackages.wawona-ios-provision}/bin/provision-xcode"; };
+      } // (pkgs.lib.optionalAttrs hasGraphicsValidate {
         graphics-validate-macos = { type = "app"; program = "${systemPackages.graphics-validate-macos}/bin/graphics-validate-macos"; };
-      });
+      }));
 
     allSystemPackages = nixpkgs.lib.genAttrs systemsList (system: getPackagesForSystem system (pkgsFor system));
   in {

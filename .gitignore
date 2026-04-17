@@ -135,6 +135,9 @@ mesa/
 scripts/setup_inspiration.sh
 Inspiration/
 
+# waypipe Rust sources (populate with: ./scripts/ensure-waypipe.sh — same pin as flake.nix)
+/waypipe/
+
 # SwiftPM (local)
 .build/
 

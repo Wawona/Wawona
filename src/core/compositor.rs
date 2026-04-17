@@ -851,8 +851,21 @@ impl Default for Compositor {
 mod tests {
     use super::*;
     use std::os::unix::net::UnixStream;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::Arc;
     use wayland_server::Display;
+
+    static TEST_SOCKET_SEQ: AtomicU64 = AtomicU64::new(0);
+
+    /// Avoid parallel test collisions on `XDG_RUNTIME_DIR/wayland-0`.
+    fn test_compositor() -> Compositor {
+        let mut cfg = CompositorConfig::default();
+        cfg.socket_name = format!(
+            "wayland-test-{}",
+            TEST_SOCKET_SEQ.fetch_add(1, Ordering::Relaxed)
+        );
+        Compositor::new(cfg).unwrap()
+    }
 
     fn make_backend_client_id() -> ClientId {
         let display = Display::<CompositorState>::new().unwrap();
@@ -875,7 +888,7 @@ mod tests {
     
     #[test]
     fn test_serial_generation() {
-        let mut compositor = Compositor::new_default().unwrap();
+        let mut compositor = test_compositor();
         assert_eq!(compositor.next_serial(), 1);
         assert_eq!(compositor.next_serial(), 2);
         assert_eq!(compositor.next_serial(), 3);
@@ -883,7 +896,7 @@ mod tests {
 
     #[test]
     fn test_reconcile_disconnected_client_removes_client_and_emits_event() {
-        let mut compositor = Compositor::new_default().unwrap();
+        let mut compositor = test_compositor();
         let mut state = CompositorState::new(None);
         let backend_id = make_backend_client_id();
         let internal_id = 7u32;
@@ -915,7 +928,7 @@ mod tests {
 
     #[test]
     fn test_ping_clients_prunes_stale_pending_entries() {
-        let mut compositor = Compositor::new_default().unwrap();
+        let mut compositor = test_compositor();
         let mut state = CompositorState::new(None);
         let backend_id = make_backend_client_id();
 

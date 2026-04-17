@@ -74,7 +74,7 @@ impl CompositorState {
 
         self.ext.relative_pointers.broadcast_relative_motion(0, 0, time, dx, dy, dx, dy);
 
-        if let Some(surface_id) = self.focus.pointer_focus {
+        if let Some(surface_id) = self.seat.pointer.focus {
             let client_id = self.surfaces.get(&surface_id).and_then(|s| s.read().unwrap().client_id.clone());
             if let Some(cid) = client_id {
                 if self.ext.pointer_constraints.is_pointer_locked(cid, surface_id) {
@@ -210,6 +210,15 @@ impl CompositorState {
         if let Some((surface_id, lx, ly)) = picking_res {
             if Some(surface_id) != old_focus {
                 if let Some(old_id) = old_focus {
+                    let old_client_id = self
+                        .surfaces
+                        .get(&old_id)
+                        .and_then(|s| s.read().unwrap().client_id.clone());
+                    if let Some(cid) = old_client_id {
+                        self.ext.pointer_constraints.deactivate_constraints(cid, old_id);
+                    }
+                }
+                if let Some(old_id) = old_focus {
                     if let Some(surface) = self.get_surface(old_id) {
                         let surface = surface.read().unwrap();
                         if let Some(res) = &surface.resource {
@@ -232,6 +241,14 @@ impl CompositorState {
                     }
                 }
                 self.seat.pointer.focus = Some(surface_id);
+                self.focus.set_pointer_focus(self.surface_to_window.get(&surface_id).copied());
+                let new_client_id = self
+                    .surfaces
+                    .get(&surface_id)
+                    .and_then(|s| s.read().unwrap().client_id.clone());
+                if let Some(cid) = new_client_id {
+                    self.ext.pointer_constraints.activate_constraints(cid, surface_id);
+                }
             }
             
             for pointer in &self.seat.pointer.resources {
@@ -239,6 +256,13 @@ impl CompositorState {
             }
         } else {
              if let Some(old_id) = old_focus {
+                let old_client_id = self
+                    .surfaces
+                    .get(&old_id)
+                    .and_then(|s| s.read().unwrap().client_id.clone());
+                if let Some(cid) = old_client_id {
+                    self.ext.pointer_constraints.deactivate_constraints(cid, old_id);
+                }
                 if let Some(surface) = self.get_surface(old_id) {
                     let surface = surface.read().unwrap();
                     if let Some(res) = &surface.resource {
@@ -250,6 +274,7 @@ impl CompositorState {
                 }
             }
             self.seat.pointer.focus = None;
+            self.focus.set_pointer_focus(None);
         }
     }
 

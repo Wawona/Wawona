@@ -76,9 +76,17 @@ impl Dispatch<xdg_surface::XdgSurface, u32> for CompositorState {
                     let mut states: Vec<u8> = vec![];
                     states.extend_from_slice(&((wayland_protocols::xdg::shell::server::xdg_toplevel::State::Activated as u32).to_ne_bytes()));
                     
-                    let (configure_w, configure_h) = match state.decoration_policy {
-                        crate::core::state::DecorationPolicy::ForceServer => (0u32, 0u32),
-                        _ => (initial_width, initial_height),
+                    // Defer-to-client (0x0) for Force SSD only on macOS where the host
+                    // NSWindow content rect is corrected immediately after creation.
+                    // On Linux/Android this causes arbitrary initial client sizes.
+                    let defer_initial_size_for_ssd = matches!(
+                        state.decoration_policy,
+                        crate::core::state::DecorationPolicy::ForceServer
+                    ) && cfg!(target_os = "macos");
+                    let (configure_w, configure_h) = if defer_initial_size_for_ssd {
+                        (0u32, 0u32)
+                    } else {
+                        (initial_width, initial_height)
                     };
 
                     crate::wlog!(crate::util::logging::COMPOSITOR, 

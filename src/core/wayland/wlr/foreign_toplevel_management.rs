@@ -97,7 +97,11 @@ impl Dispatch<zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1, u32>
                     if let Some(tl) = state.xdg.toplevels.get_mut(&tl_id) {
                         tl.pending_maximized = false;
                     }
-                    state.send_toplevel_configure(tl_id.0.clone(), tl_id.1, 0, 0);
+                    let (rw, rh) = state
+                        .get_window(window_id)
+                        .and_then(|w| w.read().ok().map(|w| (w.width.max(1) as u32, w.height.max(1) as u32)))
+                        .unwrap_or((1, 1));
+                    state.send_toplevel_configure(tl_id.0.clone(), tl_id.1, rw, rh);
                 }
             }
             zwlr_foreign_toplevel_handle_v1::Request::SetMinimized => {
@@ -164,7 +168,12 @@ impl Dispatch<zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1, u32>
                     if let Some(tl) = state.xdg.toplevels.get_mut(&tl_id) {
                         tl.pending_fullscreen = true;
                     }
-                    state.send_toplevel_configure(tl_id.0.clone(), tl_id.1, 0, 0);
+                    let (fw, fh) = state
+                        .outputs
+                        .get(state.primary_output)
+                        .map(|o| (o.width.max(1), o.height.max(1)))
+                        .unwrap_or((1, 1));
+                    state.send_toplevel_configure(tl_id.0.clone(), tl_id.1, fw, fh);
                 }
             }
             zwlr_foreign_toplevel_handle_v1::Request::UnsetFullscreen => {
@@ -177,7 +186,11 @@ impl Dispatch<zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1, u32>
                     if let Some(tl) = state.xdg.toplevels.get_mut(&tl_id) {
                         tl.pending_fullscreen = false;
                     }
-                    state.send_toplevel_configure(tl_id.0.clone(), tl_id.1, 0, 0);
+                    let (rw, rh) = state
+                        .get_window(window_id)
+                        .and_then(|w| w.read().ok().map(|w| (w.width.max(1) as u32, w.height.max(1) as u32)))
+                        .unwrap_or((1, 1));
+                    state.send_toplevel_configure(tl_id.0.clone(), tl_id.1, rw, rh);
                 }
             }
             _ => {}

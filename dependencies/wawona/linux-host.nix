@@ -7,7 +7,7 @@
 }:
 
 pkgs.writeShellApplication {
-  name = "wawona-linux-run";
+  name = "wawona-linux-compositor-host-run";
   runtimeInputs = [
     pkgs.cargo
     pkgs.rustc
@@ -31,12 +31,9 @@ pkgs.writeShellApplication {
     pkgs.zstd
     pkgs.lz4
     pkgs.vulkan-loader
-    pkgs.openssh
-    pkgs.waypipe
     pkgs.weston
     (pkgs.callPackage ../libs/weston-simple-shm/linux.nix {})
     pkgs.foot
-    pkgs.systemd
     pkgs.coreutils
   ];
   text = ''
@@ -61,10 +58,10 @@ pkgs.writeShellApplication {
       exit 1
     fi
 
-    exec cargo run --manifest-path "$workdir/Cargo.toml" --bin wawona-linux-ui --features linux-ui -- "$@"
+    exec cargo run --manifest-path "$workdir/Cargo.toml" --bin wawona-linux-compositor-host --features linux-ui -- "$@"
   '';
   meta = {
-    description = "Wawona Linux GTK nested compositor client";
+    description = "Wawona Linux compositor host";
     platforms = pkgs.lib.platforms.linux;
   };
 }

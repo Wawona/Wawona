@@ -19,7 +19,7 @@ let
   common = import ./common.nix { inherit lib pkgs wawonaSrc; };
   androidConfig = import ../android/sdk-config.nix {
     inherit lib androidSDK;
-    system = pkgs.stdenv.hostPlatform.system;
+    system = pkgs.stdenv.buildPlatform.system;
   };
   provisionScript = if androidUtils != null then "${androidUtils.provisionAndroidScript}/bin/provision-android" else "";
 
@@ -207,17 +207,22 @@ let
     AVD_NAME="WawonaEmulator"
 
     SYSTEM_IMAGE=""
+    case "$(uname -m)" in
+      x86_64) PREFERRED_ABI="x86_64" ;;
+      aarch64|arm64) PREFERRED_ABI="arm64-v8a" ;;
+      *) PREFERRED_ABI="arm64-v8a" ;;
+    esac
     if [ "$USE_SYSTEM_SDK" = "true" ]; then
       SYS_IMG_DIR="$ANDROID_SDK_ROOT/system-images"
       for api_dir in android-36.1 android-36 android-35; do
-        if [ -d "$SYS_IMG_DIR/$api_dir/google_apis_playstore/arm64-v8a" ]; then
-          SYSTEM_IMAGE="system-images;$api_dir;google_apis_playstore;arm64-v8a"
-          AVD_NAME="WawonaEmulator_$(echo $api_dir | tr '.' '_' | tr '-' '_')"
+        if [ -d "$SYS_IMG_DIR/$api_dir/google_apis_playstore/$PREFERRED_ABI" ]; then
+          SYSTEM_IMAGE="system-images;$api_dir;google_apis_playstore;$PREFERRED_ABI"
+          AVD_NAME="WawonaEmulator_$PREFERRED_ABI_$(echo $api_dir | tr '.' '_' | tr '-' '_')"
           echo "[Wawona] Found system image: $SYSTEM_IMAGE"
           break
-        elif [ -d "$SYS_IMG_DIR/$api_dir/google_apis/arm64-v8a" ]; then
-          SYSTEM_IMAGE="system-images;$api_dir;google_apis;arm64-v8a"
-          AVD_NAME="WawonaEmulator_$(echo $api_dir | tr '.' '_' | tr '-' '_')"
+        elif [ -d "$SYS_IMG_DIR/$api_dir/google_apis/$PREFERRED_ABI" ]; then
+          SYSTEM_IMAGE="system-images;$api_dir;google_apis;$PREFERRED_ABI"
+          AVD_NAME="WawonaEmulator_$PREFERRED_ABI_$(echo $api_dir | tr '.' '_' | tr '-' '_')"
           echo "[Wawona] Found system image: $SYSTEM_IMAGE"
           break
         fi
@@ -229,7 +234,8 @@ let
       fi
     else
       SYSTEM_IMAGE="${androidConfig.systemImageId}"
-      AVD_NAME="WawonaEmulator_API36"
+      SYSTEM_IMAGE_ABI="''${SYSTEM_IMAGE##*;}"
+      AVD_NAME="WawonaEmulator_''${SYSTEM_IMAGE_ABI}_API36"
     fi
 
     echo "[Wawona] AVD: $AVD_NAME"
@@ -242,6 +248,11 @@ let
 
         IFS=';' read -r _ SYS_API SYS_TYPE SYS_ABI <<< "$SYSTEM_IMAGE"
         SYS_IMG_REL="system-images/$SYS_API/$SYS_TYPE/$SYS_ABI/"
+        if [ "$SYS_ABI" = "x86_64" ]; then
+          CPU_ARCH="x86_64"
+        else
+          CPU_ARCH="arm64"
+        fi
 
         printf '%s\n' \
           "avd.ini.encoding=UTF-8" \
@@ -263,7 +274,7 @@ let
           "hw.battery=yes" \
           "hw.camera.back=emulated" \
           "hw.camera.front=emulated" \
-          "hw.cpu.arch=arm64" \
+          "hw.cpu.arch=$CPU_ARCH" \
           "hw.cpu.ncore=4" \
           "hw.dPad=no" \
           "hw.device.manufacturer=Google" \
@@ -336,6 +347,13 @@ let
           (setsid nohup emulator -avd "$AVD_NAME" -gpu host < /dev/null > /tmp/emulator.log 2>&1 &)
         else
           (setsid nohup emulator -avd "$AVD_NAME" -gpu auto < /dev/null > /tmp/emulator.log 2>&1 &)
+        fi
+        sleep 3
+        if [ -f /tmp/emulator.log ] && grep -q "FATAL" /tmp/emulator.log; then
+          echo "[Wawona] ERROR: Emulator exited immediately."
+          echo "[Wawona] Last emulator log lines:"
+          tail -n 40 /tmp/emulator.log
+          exit 1
         fi
       fi
 

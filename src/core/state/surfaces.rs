@@ -266,19 +266,29 @@ impl CompositorState {
                 let mut window = window.write().unwrap();
                 let old_w = window.width;
                 let old_h = window.height;
-                let geom = self.xdg.surfaces.values()
-                    .find(|s| s.surface_id == id)
-                    .and_then(|s| s.geometry);
-                if let Some((gx, gy, gw, gh)) = geom {
-                    window.width = gw;
-                    window.height = gh;
-                    window.geometry_x = gx;
-                    window.geometry_y = gy;
-                } else {
-                    window.width = surface.current.width;
-                    window.height = surface.current.height;
+                let is_fullscreen_shell_window = self.ext.fullscreen_shell.presented_window_id == Some(wid);
+                if is_fullscreen_shell_window {
+                    if let Some(output) = self.outputs.get(self.primary_output) {
+                        window.width = output.width as i32;
+                        window.height = output.height as i32;
+                    }
                     window.geometry_x = 0;
                     window.geometry_y = 0;
+                } else {
+                    let geom = self.xdg.surfaces.values()
+                        .find(|s| s.surface_id == id)
+                        .and_then(|s| s.geometry);
+                    if let Some((gx, gy, gw, gh)) = geom {
+                        window.width = gw;
+                        window.height = gh;
+                        window.geometry_x = gx;
+                        window.geometry_y = gy;
+                    } else {
+                        window.width = surface.current.width;
+                        window.height = surface.current.height;
+                        window.geometry_x = 0;
+                        window.geometry_y = 0;
+                    }
                 }
                 if window.width != old_w || window.height != old_h {
                     size_changed = true;

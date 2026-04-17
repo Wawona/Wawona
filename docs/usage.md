@@ -125,6 +125,7 @@ nix run .#foot
 
 | Platform | Weston | Waypipe |
 |----------|--------|---------|
+| **Linux** | `nix run` (GTK shell + nested Wawona host service) | GUI-first Machine launcher (Native/SSH/Waypipe) |
 | **macOS** | `nix run .#weston`, `.#weston-terminal` | OpenSSH process spawn; Settings > Waypipe |
 | **iOS** | Via Settings > Advanced toggles | libssh2 in-process; Settings > Waypipe, SSH |
 | **Android** | Via Settings > Advanced toggles | Dropbear SSH; Settings > Waypipe, SSH |

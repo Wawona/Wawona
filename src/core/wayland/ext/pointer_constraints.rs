@@ -179,7 +179,7 @@ impl Dispatch<ZwpPointerConstraintsV1, ()> for CompositorState {
                 state.ext.pointer_constraints.locked_pointers.insert((client_id.clone(), locked_id), data);
                 
                 // If the surface already has focus, activate immediately
-                if state.focus.pointer_focus == Some(surface_id) {
+                if state.seat.pointer.focus == Some(surface_id) {
                      state.ext.pointer_constraints.activate_constraints(client_id, surface_id);
                 }
 
@@ -219,7 +219,7 @@ impl Dispatch<ZwpPointerConstraintsV1, ()> for CompositorState {
                 state.ext.pointer_constraints.confined_pointers.insert((client_id.clone(), confined_id), data);
                 
                 // If the surface already has focus, activate immediately
-                if state.focus.pointer_focus == Some(surface_id) {
+                if state.seat.pointer.focus == Some(surface_id) {
                      state.ext.pointer_constraints.activate_constraints(client_id, surface_id);
                 }
 

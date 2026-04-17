@@ -28,7 +28,12 @@ getrandom = "0.2"
 nix = "0.30"
 memoffset = "0.9"
 clap = { version = "4", features = ["color", "derive", "env"] }
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+glib = { version = "0.20", optional = true }
+gtk4 = { version = "0.9", optional = true }
+cairo-rs = { version = "0.20", optional = true }
+libadwaita = { version = "0.7", optional = true }
 
 uniffi = { version = "0.30.0", features = ["cli"] }
 
@@ -53,7 +58,7 @@ xkbcommon = { version = "0.8", features = ["wayland"] }
 wayland-scanner = "0.31.8"
 tempfile = "3.25.0"
 
-# waypipe: integrated as optional dependency for unified static library
+# waypipe: integrated as optional dependency for unified static library (run scripts/ensure-waypipe.sh if ./waypipe is missing)
 waypipe = { path = "./waypipe", optional = true, default-features = false, features = ["lz4", "zstd", "video"] }
 
 [build-dependencies]
@@ -72,8 +77,24 @@ desktop-protocols = []
 # Per-frame trace logging (SurfaceCommit, buffer, damage, frame callbacks).
 # Enable for debugging: `--features verbose-logs`
 verbose-logs = []
+linux-ui = ["dep:glib", "dep:gtk4", "dep:cairo-rs", "dep:libadwaita"]
 
 # Enable in-process waypipe integration
 waypipe = ["dep:waypipe"]
 # Enable waypipe with static libssh2 transport (iOS/Android: no subprocess spawning)
 waypipe-ssh = ["waypipe", "dep:ssh2"]
+
+[[bin]]
+name = "wawona-linux-ui"
+path = "src/bin/wawona-linux-ui.rs"
+required-features = ["linux-ui"]
+
+[[bin]]
+name = "wawona-linux-compositor-host"
+path = "src/bin/wawona-linux-compositor-host.rs"
+required-features = ["linux-ui"]
+
+[[bin]]
+name = "wawona-linux-tray"
+path = "src/bin/wawona-linux-tray.rs"
+required-features = ["linux-ui"]

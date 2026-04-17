@@ -21,12 +21,11 @@ let
       import ../toolchains/android.nix { inherit lib pkgs androidSDK; };
   NDK_SYSROOT = androidToolchainEffective.androidNdkSysroot;
   NDK_LIB_PATH = androidToolchainEffective.androidNdkAbiLibDir;
+  NDK_FALLBACK_LIB_PATH = androidToolchainEffective.androidNdkAbiLibDirFallback;
   androidLinkerWrapper = pkgs.writeShellScript "android-linker-wrapper" ''
     exec ${androidToolchainEffective.androidCC} \
-      --target=${androidToolchainEffective.androidTarget} \
-      --sysroot=${NDK_SYSROOT} \
       -L${NDK_LIB_PATH} \
-      -L${NDK_SYSROOT}/usr/lib/aarch64-linux-android \
+      -L${NDK_FALLBACK_LIB_PATH} \
       "$@"
   '';
   rustPlatform = pkgs.makeRustPlatform {
@@ -68,17 +67,8 @@ rustPlatform.buildRustPackage rec {
   WAWONA_ANDROID_XKBCOMMON_LIBDIR = "${nativeDeps.xkbcommon}/lib";
 
   buildInputs = lib.filter (x: x != null) [
+    pkgs.wayland
     pkgs.libxkbcommon
-    (nativeDeps.xkbcommon or null)
-    (nativeDeps.libwayland or null)
-    (nativeDeps.zstd or null)
-    (nativeDeps.lz4 or null)
-    (nativeDeps.pixman or null)
-    (nativeDeps.openssl or null)
-    (nativeDeps.libffi or null)
-    (nativeDeps.expat or null)
-    (nativeDeps.libxml2 or null)
-    (nativeDeps.ffmpeg or null)
   ];
 
   nativeBuildInputs = [ pkgs.pkg-config pkgs.rust-bindgen ];
@@ -86,38 +76,26 @@ rustPlatform.buildRustPackage rec {
   OPENSSL_DIR = nativeDeps.openssl;
   OPENSSL_STATIC = "1";
   OPENSSL_NO_VENDOR = "1";
-  PKG_CONFIG_PATH = lib.concatStringsSep ":" (
-    lib.optional (nativeDeps ? libwayland) "${nativeDeps.libwayland}/lib/pkgconfig"
-    ++ lib.optional (nativeDeps ? xkbcommon) "${nativeDeps.xkbcommon}/lib/pkgconfig"
-  );
+  PKG_CONFIG_PATH = lib.concatStringsSep ":" [
+    "${pkgs.wayland.dev}/lib/pkgconfig"
+    "${pkgs.libxkbcommon.dev}/lib/pkgconfig"
+  ];
 
   preConfigure = ''
     export PKG_CONFIG_ALLOW_CROSS=1
-    export PKG_CONFIG_PATH="${lib.concatStringsSep ":" (
+    export PKG_CONFIG_PATH_aarch64_linux_android="${lib.concatStringsSep ":" (
       lib.optional (nativeDeps ? libwayland) "${nativeDeps.libwayland}/lib/pkgconfig"
       ++ lib.optional (nativeDeps ? xkbcommon) "${nativeDeps.xkbcommon}/lib/pkgconfig"
       ++ lib.optional (nativeDeps ? openssl) "${nativeDeps.openssl}/lib/pkgconfig"
       ++ lib.optional (nativeDeps ? zstd) "${nativeDeps.zstd}/lib/pkgconfig"
       ++ lib.optional (nativeDeps ? lz4) "${nativeDeps.lz4}/lib/pkgconfig"
       ++ lib.optional (nativeDeps ? ffmpeg) "${nativeDeps.ffmpeg}/lib/pkgconfig"
-    )}:$PKG_CONFIG_PATH"
-    export LIBRARY_PATH="${lib.concatStringsSep ":" (
-      lib.optional (nativeDeps ? xkbcommon) "${nativeDeps.xkbcommon}/lib"
-      ++ lib.optional (nativeDeps ? zstd) "${nativeDeps.zstd}/lib"
-      ++ lib.optional (nativeDeps ? lz4) "${nativeDeps.lz4}/lib"
-      ++ lib.optional (nativeDeps ? ffmpeg) "${nativeDeps.ffmpeg}/lib"
-    )}:$LIBRARY_PATH"
-    export C_INCLUDE_PATH="${lib.concatStringsSep ":" (
-      lib.optional (nativeDeps ? zstd) "${nativeDeps.zstd}/include"
-      ++ lib.optional (nativeDeps ? lz4) "${nativeDeps.lz4}/include"
-      ++ lib.optional (nativeDeps ? ffmpeg) "${nativeDeps.ffmpeg}/include"
-    )}:$C_INCLUDE_PATH"
+    )}"
     export CRATE_CC_NO_DEFAULTS=1
     export CFLAGS_aarch64_linux_android="--target=${androidToolchainEffective.androidTarget} --sysroot=${NDK_SYSROOT} -isystem ${NDK_SYSROOT}/usr/include -isystem ${NDK_SYSROOT}/usr/include/aarch64-linux-android -fPIC ${androidToolchainEffective.androidNdkCflags}"
     export CXXFLAGS_aarch64_linux_android="--target=${androidToolchainEffective.androidTarget} --sysroot=${NDK_SYSROOT} -isystem ${NDK_SYSROOT}/usr/include -isystem ${NDK_SYSROOT}/usr/include/aarch64-linux-android -fPIC ${androidToolchainEffective.androidNdkCflags}"
     export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=${NDK_SYSROOT} -isystem ${NDK_SYSROOT}/usr/include -isystem ${NDK_SYSROOT}/usr/include/aarch64-linux-android --target=${androidToolchainEffective.androidTarget} ${androidToolchainEffective.androidNdkCflags}"
-    export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-L native=${nativeDeps.xkbcommon}/lib -l xkbcommon"
-    export NIX_LDFLAGS="$NIX_LDFLAGS -L${nativeDeps.xkbcommon}/lib -lxkbcommon"
+    export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-L native=${nativeDeps.xkbcommon}/lib -L native=${nativeDeps.libwayland}/lib -l xkbcommon -l wayland-client"
   '';
 
   installPhase = ''

@@ -12,6 +12,8 @@ pub mod config;
 pub mod util;
 pub mod prelude;
 pub mod version;
+#[cfg(feature = "linux-ui")]
+pub mod linux;
 
 // Re-export FFI types at crate root for UniFFI
 // UniFFI's generated code expects these types to be accessible from the crate root

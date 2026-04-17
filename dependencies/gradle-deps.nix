@@ -11,7 +11,7 @@
 let
   androidConfig = import ./android/sdk-config.nix {
     inherit lib androidSDK;
-    system = stdenv.hostPlatform.system;
+    system = stdenv.buildPlatform.system;
   };
   androidIconAssets =
     if builtins.pathExists ./generators/android-icon-assets.nix then

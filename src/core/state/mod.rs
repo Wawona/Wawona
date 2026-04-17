@@ -1532,21 +1532,100 @@ impl CompositorState {
     
     /// Set output size
     pub fn set_output_size(&mut self, width: u32, height: u32, scale: f32) {
-        let output = self.primary_output_mut();
-        
         let safe_scale = if scale < 1.0 { 1.0 } else { scale };
         let safe_width = if width == 0 { 1920 } else { width };
         let safe_height = if height == 0 { 1080 } else { height };
-        
-        output.width = safe_width;
-        output.height = safe_height;
-        output.scale = safe_scale;
-        
-        output.physical_width = ((safe_width as f32 / safe_scale) / 96.0 * 25.4) as u32;
-        output.physical_height = ((safe_height as f32 / safe_scale) / 96.0 * 25.4) as u32;
+
+        let idx = self.primary_output;
+        let (output_rect, usable_rect, phys_w, phys_h) = if let Some(output) = self.outputs.get_mut(idx) {
+            output.width = safe_width;
+            output.height = safe_height;
+            output.scale = safe_scale;
+            output.physical_width = ((safe_width as f32 / safe_scale) / 96.0 * 25.4) as u32;
+            output.physical_height = ((safe_height as f32 / safe_scale) / 96.0 * 25.4) as u32;
+            (
+                (output.x, output.y, output.width as i32, output.height as i32),
+                (
+                    output.usable_area.x,
+                    output.usable_area.y,
+                    output.usable_area.width as i32,
+                    output.usable_area.height as i32,
+                ),
+                output.physical_width,
+                output.physical_height,
+            )
+        } else {
+            (
+                (0, 0, safe_width as i32, safe_height as i32),
+                (0, 0, safe_width as i32, safe_height as i32),
+                ((safe_width as f32 / safe_scale) / 96.0 * 25.4) as u32,
+                ((safe_height as f32 / safe_scale) / 96.0 * 25.4) as u32,
+            )
+        };
+
+        // Keep fullscreen / maximized windows aligned with the new output geometry
+        // (e.g. device rotation). Without this, scene nodes can keep stale
+        // pre-rotation dimensions until the next client-driven commit.
+        let fullscreen_shell_wid = self.ext.fullscreen_shell.presented_window_id;
+        let force_android_output_resize = cfg!(target_os = "android");
+        let mut resized_window_sizes: std::collections::HashMap<u32, (u32, u32)> =
+            std::collections::HashMap::new();
+        for (&wid, window_ref) in &self.windows {
+            if let Ok(mut window) = window_ref.write() {
+                let old_w = window.width;
+                let old_h = window.height;
+                let old_x = window.x;
+                let old_y = window.y;
+
+                if force_android_output_resize
+                    || fullscreen_shell_wid == Some(wid)
+                    || window.fullscreen
+                {
+                    window.x = output_rect.0;
+                    window.y = output_rect.1;
+                    window.width = output_rect.2;
+                    window.height = output_rect.3;
+                } else if window.maximized {
+                    window.x = usable_rect.0;
+                    window.y = usable_rect.1;
+                    window.width = usable_rect.2.max(0);
+                    window.height = usable_rect.3.max(0);
+                } else {
+                    continue;
+                }
+
+                if window.width != old_w
+                    || window.height != old_h
+                    || window.x != old_x
+                    || window.y != old_y
+                {
+                    resized_window_sizes.insert(
+                        wid,
+                        (window.width.max(0) as u32, window.height.max(0) as u32),
+                    );
+                }
+            }
+        }
+
+        if !resized_window_sizes.is_empty() {
+            let mut pending_configures = Vec::new();
+            for ((client_id, toplevel_id), data) in &self.xdg.toplevels {
+                if let Some(&(w, h)) = resized_window_sizes.get(&data.window_id) {
+                    pending_configures.push((client_id.clone(), *toplevel_id, w, h, data.window_id));
+                }
+            }
+            for (client_id, toplevel_id, w, h, window_id) in pending_configures {
+                let _ = self.send_toplevel_configure(client_id, toplevel_id, w, h);
+                self.pending_compositor_events.push(crate::core::compositor::CompositorEvent::WindowSizeChanged {
+                    window_id,
+                    width: w,
+                    height: h,
+                });
+            }
+        }
         
         tracing::info!("Output size set to {}x{} @ {}x (phys: {}x{}mm)", 
-            safe_width, safe_height, safe_scale, output.physical_width, output.physical_height);
+            safe_width, safe_height, safe_scale, phys_w, phys_h);
     }
     
     /// Set platform safe area insets on the primary output.
@@ -1585,6 +1664,9 @@ impl CompositorState {
     }
     
 }
+
+#[cfg(test)]
+mod tests;
 
 impl Default for CompositorState {
     fn default() -> Self {

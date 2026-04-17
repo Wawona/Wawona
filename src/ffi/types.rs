@@ -553,6 +553,8 @@ pub struct WindowConfig {
     pub decoration_mode: DecorationMode,
     /// True when this window is from fullscreen shell (kiosk); host must not draw window chrome
     pub fullscreen_shell: bool,
+    /// Stable per-connection id (maps nested kiosk + xdg to one host window on Linux/GTK).
+    pub owner_client_internal_id: u64,
     pub state: WindowState,
     pub parent: Option<WindowId>,
 }
@@ -570,6 +572,7 @@ impl WindowConfig {
             max_height: None,
             decoration_mode: DecorationMode::ServerSide,
             fullscreen_shell: false,
+            owner_client_internal_id: 0,
             state: WindowState::Normal,
             parent: None,
         }

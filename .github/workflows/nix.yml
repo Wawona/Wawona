@@ -101,12 +101,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install Nix (for ensure-waypipe.sh; GitLab blocks anonymous cargo git fetch)
+        uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
+      - name: Ensure waypipe sources for Cargo
+        run: ./scripts/ensure-waypipe.sh
+
       - name: Run Rust tests
-        run: cargo test --lib --tests --locked
+        run: nix develop -c cargo test --lib --tests --locked
 
   swift-test-macos-x86_64:
     name: "macOS (x86_64): swift test"

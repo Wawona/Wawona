@@ -33,10 +33,17 @@ impl CompositorState {
         if let Some(toplevel_data) = self.xdg.toplevels.get_mut(&(client_id.clone(), toplevel_id)) {
             toplevel_data.pending_serial = serial;
             
-            let (final_w, final_h) = if toplevel_data.pending_fullscreen || (width == 0 && height == 0) {
-                (width, height)
+            let (final_w, final_h) = if toplevel_data.pending_fullscreen {
+                (width.max(1), height.max(1))
+            } else if width == 0 && height == 0 {
+                // Treat 0x0 as "unchanged" for non-fullscreen toplevels.
+                // Some clients (e.g. weston-simple-shm) abort on zero configure sizes.
+                let prev_w = toplevel_data.width.max(1);
+                let prev_h = toplevel_data.height.max(1);
+                (prev_w, prev_h)
             } else {
-                toplevel_data.clamp_size(width, height)
+                let (clamped_w, clamped_h) = toplevel_data.clamp_size(width.max(1), height.max(1));
+                (clamped_w.max(1), clamped_h.max(1))
             };
 
             toplevel_data.width = final_w;
@@ -200,15 +207,45 @@ impl CompositorState {
                 .filter_map(|s| s.geometry.map(|g| (s.surface_id, g)))
                 .collect();
 
-        for window_id in self.windows.keys().copied().collect::<Vec<_>>() {
+        let mut ordered_windows = self.window_tree.stacking_order.clone();
+        for window_id in self.windows.keys().copied() {
+            if !ordered_windows.contains(&window_id) {
+                ordered_windows.push(window_id);
+            }
+        }
+
+        for window_id in ordered_windows {
             if let Some(window) = self.get_window(window_id) {
                 let window = window.read().unwrap();
                 let node_id = self.next_node_id();
                 let mut node = SceneNode::new(node_id)
                     .with_surface(window.surface_id);
+                let is_fullscreen_shell_window =
+                    self.ext.fullscreen_shell.presented_window_id == Some(window.id);
                 
                 node.set_position(window.x, window.y);
-                node.set_size(window.width.max(0) as u32, window.height.max(0) as u32);
+                // Render to the client's last committed buffer size when available.
+                // During live resize the requested window size can change before the
+                // client submits a matching buffer; using the requested size here
+                // stretches the old frame instead of showing the real committed size.
+                let mut render_width = window.width.max(0) as u32;
+                let mut render_height = window.height.max(0) as u32;
+                if !is_fullscreen_shell_window {
+                    if let Some(surface_ref) = self.get_surface(window.surface_id) {
+                        let surface = surface_ref.read().unwrap();
+                        let committed_width = surface.current.width.max(0) as u32;
+                        let committed_height = surface.current.height.max(0) as u32;
+                        if committed_width > 0 && committed_height > 0 {
+                            render_width = committed_width;
+                            render_height = committed_height;
+                        }
+                        node.scale = (surface.current.scale.max(1)) as f32;
+                    }
+                } else if let Some(surface_ref) = self.get_surface(window.surface_id) {
+                    let surface = surface_ref.read().unwrap();
+                    node.scale = (surface.current.scale.max(1)) as f32;
+                }
+                node.set_size(render_width, render_height);
 
                 // When xdg_surface geometry is set, compute a normalized
                 // content_rect so the platform renderer crops the buffer
@@ -411,6 +448,10 @@ impl CompositorState {
             
             node.set_position(x, y);
             node.set_size(width, height);
+            if let Some(surface_ref) = self.get_surface(surface_id) {
+                let surface = surface_ref.read().unwrap();
+                node.scale = (surface.current.scale.max(1)) as f32;
+            }
             
             scene.add_node(node);
             scene.add_child(root_id, node_id);
@@ -448,6 +489,7 @@ impl CompositorState {
                     if let Some(surface_ref) = self.get_surface(child_surface_id) {
                         let surface = surface_ref.read().unwrap();
                         node.set_size(surface.current.width.max(0) as u32, surface.current.height.max(0) as u32);
+                        node.scale = (surface.current.scale.max(1)) as f32;
                     }
                     
                     scene.add_node(node);

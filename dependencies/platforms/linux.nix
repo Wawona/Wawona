@@ -29,7 +29,7 @@
     else if name == "ffmpeg" then pkgs.ffmpeg
     else if name == "spirv-tools" then pkgs.spirv-tools
     else if name == "epoll-shim" then pkgs.emptyDirectory
-    else if name == "weston-simple-shm" then pkgs.emptyDirectory
+    else if name == "weston-simple-shm" then pkgs.callPackage ../libs/weston-simple-shm/linux.nix {}
     else if name == "freetype" then pkgs.freetype
     else if name == "fontconfig" then pkgs.fontconfig
     else if name == "fcft" then (if pkgs ? fcft then pkgs.fcft else pkgs.emptyDirectory)
