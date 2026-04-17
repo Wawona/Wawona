@@ -75,6 +75,7 @@ android-dependencies/
 result
 result-*
 /nix/
+.nix-gcroots/
 
 # Android Emulator artifacts
 .android_home/
