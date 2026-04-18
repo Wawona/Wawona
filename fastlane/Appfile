@@ -1,0 +1,9 @@
+app_identifier(ENV["APP_IDENTIFIER"] || "com.aspauldingcode.Wawona")
+apple_id(ENV["APPLE_ID"] || "your-apple-id@domain.com")
+itc_team_id(ENV["ITC_TEAM_ID"])
+team_id(ENV["TEAM_ID"])
+
+for_platform :android do
+  package_name(ENV["ANDROID_PACKAGE_NAME"] || "com.aspauldingcode.wawona")
+  json_key_file(ENV["JSON_KEY_FILE"])
+end

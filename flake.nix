@@ -275,6 +275,19 @@
           appTarget = "wearos";
         };
 
+        wawonaAndroidReleasePkg = import ./dependencies/wawona/android.nix {
+          pkgs = androidPkgs;
+          buildModule = toolchainsAndroid;
+          inherit (androidPkgs) lib stdenv clang pkg-config unzip zip patchelf file util-linux glslang mesa;
+          inherit gradle jdk17 wawonaSrc androidSDK androidUtils;
+          androidToolchain = toolchainsAndroid.androidToolchain;
+          rustBackend = backend-android;
+          targetPkgs = pkgsAndroidCross;
+          waypipe = toolchainsAndroid.buildForAndroid "waypipe" { };
+          gradleTask = ":app:assembleRelease";
+          release = true;
+        };
+
         androidToolchainSanity = import ./dependencies/toolchains/android-toolchain-sanity.nix {
           pkgs = androidPkgs;
           androidToolchain = toolchainsAndroid.androidToolchain;
@@ -349,6 +362,7 @@
         packages = commonPackages // (pkgs.lib.optionalAttrs (isLinuxHost || androidSDK != null) {
           wawona-android = wawonaAndroidPkg;
           wawona-wearos-android = wawonaWearAndroidPkg;
+          wawona-android-release = wawonaAndroidReleasePkg;
           wawona-android-backend = backend-android;
           android-toolchain-sanity = androidToolchainSanity;
           gradlegen = gradlegenPkg.generateScript;
@@ -866,7 +880,7 @@ EOF
         apple = import ./dependencies/apple { inherit (pkgs) lib pkgs; nixXcodeenvtests = inputs."nix-xcodeenvtests"; };
       in if pkgs.stdenv.isDarwin then (pkgs.mkShell {
         nativeBuildInputs = [ pkgs.pkg-config ];
-        buildInputs = [ pkgs.nix-output-monitor pkgs.rustToolchain pkgs.libxkbcommon pkgs.libffi pkgs.wayland-protocols pkgs.openssl ]
+        buildInputs = [ pkgs.nix-output-monitor pkgs.rustToolchain pkgs.libxkbcommon pkgs.libffi pkgs.wayland-protocols pkgs.openssl pkgs.fastlane pkgs.ruby ]
           ++ [ apple.ensureIosSimSDK apple.findXcodeScript ];
         shellHook = "export XDG_RUNTIME_DIR=\"/tmp/wawona-$(id -u)\"; export WAYLAND_DISPLAY=\"wayland-0\"; alias nb='nom build'; alias nd='nom develop';";
       }) else (pkgs.mkShell {

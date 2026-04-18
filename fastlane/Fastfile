@@ -1,0 +1,138 @@
+# Wawona Fastlane Configuration
+# Supports iOS (TestFlight/App Store) and Android (Play Store)
+# Versioning synced from project root VERSION file
+
+default_platform(:ios)
+
+# --- Common Helper Functions ---
+
+# Read version from root VERSION file
+def get_wawona_version
+  version = File.read("../VERSION").strip
+  UI.message("Wawona version: #{version}")
+  version
+end
+
+# Check if environment variables are set
+def check_env(vars)
+  missing = vars.select { |v| ENV[v].nil? || ENV[v].empty? }
+  unless missing.empty?
+    UI.user_error!("Missing environment variables: #{missing.join(', ')}. See fastlane/.env.example")
+  end
+end
+
+# --- Global Lanes ---
+
+desc "Sync version from VERSION file to all platform manifests"
+lane :sync_version do |options|
+  version = get_wawona_version
+  
+  # 1. Update Cargo.toml
+  UI.message("Updating Cargo.toml version...")
+  cargo_toml = File.read("../Cargo.toml")
+  new_cargo = cargo_toml.gsub(/^version = ".*"$/, "version = \"#{version}\"")
+  File.write("../Cargo.toml", new_cargo)
+
+  # 2. Update Android build.gradle.kts
+  UI.message("Updating Android versionName...")
+  gradle_path = "../android/app/build.gradle.kts"
+  if File.exist?(gradle_path)
+    gradle_content = File.read(gradle_path)
+    new_gradle = gradle_content.gsub(/versionName = ".*"$/, "versionName = \"#{version}\"")
+    File.write(gradle_path, new_gradle)
+  end
+
+  UI.success("Versions synced to #{version}")
+end
+
+desc "Verify release environment"
+lane :validate_env do
+  check_env(["TEAM_ID", "ASC_KEY_ID", "ASC_ISSUER_ID", "ASC_KEY_CONTENT"])
+  UI.success("Environment validated")
+end
+
+# --- iOS Platform ---
+
+platform :ios do
+  before_all do
+    # Authenticate via API key (from ENV)
+    app_store_connect_api_key(
+      key_id:     ENV["ASC_KEY_ID"],
+      issuer_id:  ENV["ASC_ISSUER_ID"],
+      key_content: ENV["ASC_KEY_CONTENT"],
+      in_house:    false
+    )
+  end
+
+  desc "Push a new beta build to TestFlight"
+  lane :beta do
+    validate_env
+    sync_version
+
+    # Build IPA via Nix (requires TEAM_ID and --impure)
+    UI.message("Building iOS IPA via Nix...")
+    sh("nix build .#wawona-ios-ipa --impure")
+
+    # Find IPA in result/
+    ipa = sh("find result -name '*.ipa' | head -n1").strip
+    UI.user_error!("IPA not found in result/") if ipa.empty?
+    UI.success("Built IPA at #{ipa}")
+
+    upload_to_testflight(
+      ipa: ipa,
+      skip_waiting_for_build_processing: true
+    )
+  end
+
+  desc "Submit for App Store Review"
+  lane :release do
+    validate_env
+    sync_version
+
+    UI.message("Building iOS IPA for App Store...")
+    sh("nix build .#wawona-ios-ipa --impure")
+    ipa = sh("find result -name '*.ipa' | head -n1").strip
+
+    deliver(
+      ipa: ipa,
+      submit_for_review: true,
+      force: true, # Skip HTML report
+      skip_screenshots: true,
+      skip_metadata: true # Metadata managed in App Store Connect
+    )
+  end
+end
+
+# --- Android Platform ---
+
+platform :android do
+  desc "Submit a new Internal track build to Google Play"
+  lane :beta do
+    sync_version
+    check_env(["JSON_KEY_FILE"])
+
+    UI.message("Building Android APK via Nix...")
+    # wawona-android-release uses :app:assembleRelease
+    sh("nix build .#wawona-android-release --impure")
+
+    apk = "result/bin/Wawona.apk"
+    UI.user_error!("APK not found at #{apk}") unless File.exist?("../#{apk}")
+
+    supply(
+      apk: apk,
+      track: "internal",
+      package_name: ENV["ANDROID_PACKAGE_NAME"] || "com.aspauldingcode.wawona",
+      json_key_file: ENV["JSON_KEY_FILE"]
+    )
+  end
+
+  desc "Promote Internal to Production"
+  lane :promote_to_production do
+    supply(
+      track: "internal",
+      track_promote_to: "production",
+      package_name: ENV["ANDROID_PACKAGE_NAME"] || "com.aspauldingcode.wawona",
+      json_key_file: ENV["JSON_KEY_FILE"]
+    )
+  end
+end
