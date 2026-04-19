@@ -29,7 +29,11 @@ let
     export ANDROID_SDK_ROOT="${androidConfig.sdkRoot}"
     export ANDROID_HOME="$ANDROID_SDK_ROOT"
     export JAVA_HOME="${pkgs.jdk17.home}"
-    export PATH="${pkgs.jdk17}/bin:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/emulator:$ANDROID_SDK_ROOT/platform-tools:$PATH"
+    CMDLINE_TOOLS_BIN="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin"
+    if [ ! -x "$CMDLINE_TOOLS_BIN/avdmanager" ]; then
+      CMDLINE_TOOLS_BIN="$ANDROID_SDK_ROOT/cmdline-tools/19.0/bin"
+    fi
+    export PATH="${pkgs.jdk17}/bin:$CMDLINE_TOOLS_BIN:$ANDROID_SDK_ROOT/emulator:$ANDROID_SDK_ROOT/platform-tools:$PATH"
 
     # 2. AVD Creation
     SYSTEM_IMAGE="${androidConfig.systemImageId}"
@@ -53,17 +57,16 @@ let
       printf 'n\n' | avdmanager create avd -n "$AVD_NAME" -k "$SYSTEM_IMAGE" --force
     fi
 
-    # Enhance the AVD config with modern specs if not already set
+    # Enhance the AVD config with conservative, NixOS-friendly defaults.
+    # On Linux/NixOS, host GPU passthrough is frequently unstable for the
+    # Android emulator; prefer software SwiftShader by default.
     AVD_CONFIG="$ANDROID_USER_HOME/avd/$AVD_NAME.avd/config.ini"
     if [ -f "$AVD_CONFIG" ]; then
-      if ! grep -q "hw.ramSize=2048" "$AVD_CONFIG"; then
-        echo "[provision-android] Optimizing AVD parameters (RAM, heap, GPU)..."
-        # Ensure properties exist or update them
-        touch "$AVD_CONFIG.tmp"
-        grep -v -E "^(hw.ramSize|vm.heapSize|hw.gpu.enabled|hw.gpu.mode)=" "$AVD_CONFIG" > "$AVD_CONFIG.tmp" || true
-        printf 'hw.ramSize=2048\nvm.heapSize=512\nhw.gpu.enabled=yes\nhw.gpu.mode=auto\n' >> "$AVD_CONFIG.tmp"
-        mv "$AVD_CONFIG.tmp" "$AVD_CONFIG"
-      fi
+      echo "[provision-android] Optimizing AVD parameters (RAM, heap, GPU)..."
+      touch "$AVD_CONFIG.tmp"
+      grep -v -E "^(hw.ramSize|vm.heapSize|hw.gpu.enabled|hw.gpu.mode|fastboot.forceColdBoot|fastboot.forceFastBoot)=" "$AVD_CONFIG" > "$AVD_CONFIG.tmp" || true
+      printf 'hw.ramSize=2048\nvm.heapSize=512\nhw.gpu.enabled=yes\nhw.gpu.mode=swiftshader_indirect\nfastboot.forceColdBoot=yes\nfastboot.forceFastBoot=no\n' >> "$AVD_CONFIG.tmp"
+      mv "$AVD_CONFIG.tmp" "$AVD_CONFIG"
     fi
 
     echo "[provision-android] SUCCESS: Android environment is provisioned."

@@ -51,8 +51,19 @@ HEADER
 # Generate hex bytes for C array (works on Linux and macOS)
 embed_hex() {
   if command -v xxd >/dev/null 2>&1; then
-    # xxd -i: skip "unsigned char X[] = {" line and "};" line
-    xxd -i -c 12 "$1" | sed '1d;$d' | sed 's/^/  /'
+    # xxd -i output format:
+    #   unsigned char ...[] = {
+    #     0x.., ...
+    #   };
+    #   unsigned int ..._len = ...
+    # Keep only byte lines; drop declaration, closing brace, and len line.
+    xxd -i -c 12 "$1" \
+      | awk '
+          NR == 1 { next }
+          /^\};/ { next }
+          /^unsigned int .*_len =/ { next }
+          { print "  " $0 }
+        '
   else
     od -A n -t x1 -v "$1" | awk '{for(i=1;i<=NF;i++) printf " 0x%s,", $i} END {print ""}' | sed 's/,$//'
   fi

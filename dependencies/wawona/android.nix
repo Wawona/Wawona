@@ -338,15 +338,28 @@ let
         rm -f "$ANDROID_AVD_HOME/$AVD_NAME.avd/*.lock" 2>/dev/null || true
 
         echo "[Wawona] Starting emulator '$AVD_NAME'..."
+        EMU_GPU_MODE="auto"
+        if [ "$(uname -s)" = "Linux" ]; then
+          EMU_GPU_MODE="swiftshader_indirect"
+        fi
+        if [ -n "''${WAWONA_EMULATOR_GPU:-}" ]; then
+          EMU_GPU_MODE="''${WAWONA_EMULATOR_GPU}"
+        fi
+        EMU_ACCEL_FLAGS=""
+        if [ -n "''${WAWONA_EMULATOR_ACCEL:-}" ]; then
+          EMU_ACCEL_FLAGS="-accel ''${WAWONA_EMULATOR_ACCEL}"
+        fi
+        EMU_EXTRA_FLAGS="-no-snapshot-load -no-snapshot-save -no-boot-anim -netfast"
+        echo "[Wawona] Emulator GPU mode: $EMU_GPU_MODE"
         # We use setsid (from util-linux) to create a new session leader.
         # On macOS, we wrap this in a subshell for a "double-fork" to ensure 
         # it remains attached to the Aqua GUI session while being orphaned from the terminal.
         echo "[Wawona] Detaching emulator process (setsid + double-fork)..."
         if [ "$USE_SYSTEM_SDK" = "true" ] && [ "$(uname -m)" = "arm64" ]; then
           # On Apple Silicon, host GPU is much faster and more reliable
-          (setsid nohup emulator -avd "$AVD_NAME" -gpu host < /dev/null > /tmp/emulator.log 2>&1 &)
+          (setsid nohup emulator -avd "$AVD_NAME" -gpu host $EMU_EXTRA_FLAGS $EMU_ACCEL_FLAGS < /dev/null > /tmp/emulator.log 2>&1 &)
         else
-          (setsid nohup emulator -avd "$AVD_NAME" -gpu auto < /dev/null > /tmp/emulator.log 2>&1 &)
+          (setsid nohup emulator -avd "$AVD_NAME" -gpu "$EMU_GPU_MODE" $EMU_EXTRA_FLAGS $EMU_ACCEL_FLAGS < /dev/null > /tmp/emulator.log 2>&1 &)
         fi
         sleep 3
         if [ -f /tmp/emulator.log ] && grep -q "FATAL" /tmp/emulator.log; then
@@ -375,6 +388,48 @@ let
       if [ "$DEVICE_READY" = "false" ]; then
         echo "[Wawona] ERROR: Emulator failed to boot within $TIMEOUT seconds."
         exit 1
+      fi
+    fi
+
+    # Optional display cutout emulation (enabled by default) so safe-area /
+    # notch behavior can be tested on the emulator consistently.
+    # Set WAWONA_EMULATOR_CUTOUT=off to disable.
+    CUTOUT_MODE="''${WAWONA_EMULATOR_CUTOUT:-on}"
+    if [ "$CUTOUT_MODE" != "off" ]; then
+      EMULATOR_SERIAL=$(adb devices | awk '/emulator-[0-9]+[[:space:]]+device$/ {print $1; exit}')
+      if [ -n "$EMULATOR_SERIAL" ]; then
+        echo "[Wawona] Enabling display cutout emulation on $EMULATOR_SERIAL..."
+        # Try to locate available cutout overlays dynamically (API/skin dependent).
+        CUTOUT_PACKAGES=$(adb -s "$EMULATOR_SERIAL" shell cmd overlay list 2>/dev/null | tr -d '\r' | grep -oE 'com\.android\.internal\.display\.cutout\.emulation\.[A-Za-z0-9._-]+' | sort -u || true)
+        if [ -n "$CUTOUT_PACKAGES" ]; then
+          # First disable all cutout emulation overlays for a clean baseline.
+          while IFS= read -r pkg; do
+            [ -z "$pkg" ] && continue
+            adb -s "$EMULATOR_SERIAL" shell cmd overlay disable --user 0 "$pkg" >/dev/null 2>&1 || true
+          done <<< "$CUTOUT_PACKAGES"
+
+          # Prefer a top camera-hole style overlay if present.
+          TARGET_CUTOUT_PKG=""
+          for preferred in \
+            "com.android.internal.display.cutout.emulation.hole" \
+            "com.android.internal.display.cutout.emulation.tall" \
+            "com.android.internal.display.cutout.emulation.corner"
+          do
+            if echo "$CUTOUT_PACKAGES" | grep -q "^$preferred$"; then
+              TARGET_CUTOUT_PKG="$preferred"
+              break
+            fi
+          done
+          if [ -z "$TARGET_CUTOUT_PKG" ]; then
+            TARGET_CUTOUT_PKG=$(echo "$CUTOUT_PACKAGES" | head -n 1)
+          fi
+          if [ -n "$TARGET_CUTOUT_PKG" ]; then
+            adb -s "$EMULATOR_SERIAL" shell cmd overlay enable --user 0 "$TARGET_CUTOUT_PKG" >/dev/null 2>&1 || true
+            echo "[Wawona] Display cutout overlay active: $TARGET_CUTOUT_PKG"
+          fi
+        else
+          echo "[Wawona] No cutout emulation overlays exposed on this system image."
+        fi
       fi
     fi
 
@@ -579,7 +634,7 @@ in
 
     mitmCache = gradleSupport.mitmCache;
     gradleFlags = gradleSupport.gradleFlags;
-    gradleUpdateTask = ":app:assembleDebug";
+    gradleUpdateTask = ":Wawona:assembleDebug";
     enableParallelUpdating = false;
 
     nativeBuildInputs = (with pkgs; [
@@ -676,6 +731,14 @@ in
       shopt -s nullglob
       for libdir in ${lib.concatMapStringsSep " " (d: "${d}/lib") (getDeps "android" androidDeps)}; do
         for so in "$libdir"/*.so "$libdir"/*.so.*; do
+          base_so="$(basename "$so")"
+          case "$base_so" in
+            # These upstream prebuilts are not 16KB-page aligned.
+            # Do not bundle them; Android provides Vulkan/SwiftShader runtime paths.
+            libvk_swiftshader.so|libSPIRV-Tools-shared.so)
+              continue
+              ;;
+          esac
           cp -L "$so" "$JNI_LIB_DIR/$(basename "$so")"
         done
       done
@@ -704,7 +767,7 @@ in
       # Dexing Compose artifacts can exceed the default 512m Gradle JVM heap in
       # sandboxed builds. Pin explicit JVM args so D8/R8 has enough memory.
       export GRADLE_OPTS="-Xmx6144m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
-      gradle :app:assembleDebug --no-build-cache --no-watch-fs --no-daemon --max-workers=1 \
+      gradle :Wawona:assembleDebug --no-build-cache --no-watch-fs --no-daemon --max-workers=1 \
         -Dorg.gradle.parallel=false \
         -Dorg.gradle.workers.max=1 \
         -Dorg.gradle.daemon=false \

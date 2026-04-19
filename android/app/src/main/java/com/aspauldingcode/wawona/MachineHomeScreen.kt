@@ -1,12 +1,16 @@
 package com.aspauldingcode.wawona
 
+import android.os.Build
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
@@ -28,6 +32,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -38,6 +44,7 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LargeFloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -58,7 +65,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import org.json.JSONObject
 
 private data class NativeLauncherOption(
     val value: String,
@@ -75,6 +85,73 @@ private val nativeLauncherOptions = listOf(
 private fun nativeLauncherLabel(value: String): String =
     nativeLauncherOptions.firstOrNull { it.value == value }?.label ?: value
 
+private const val ANDROID_16_API = 36
+private const val INHERIT_GLOBAL_OPTION = "Inherit global"
+
+private enum class BooleanOverride(val label: String, val encodedValue: Boolean?) {
+    INHERIT("Inherit global", null),
+    ENABLED("Enabled", true),
+    DISABLED("Disabled", false)
+}
+
+private fun readBooleanOverride(settingsOverrides: JSONObject?, key: String): BooleanOverride {
+    if (settingsOverrides == null || !settingsOverrides.has(key)) return BooleanOverride.INHERIT
+    val raw = settingsOverrides.opt(key)
+    val encoded = when (raw) {
+        is JSONObject -> {
+            when (raw.optString("type", "")) {
+                "boolean" -> if (raw.optBoolean("value", false)) BooleanOverride.ENABLED else BooleanOverride.DISABLED
+                else -> null
+            }
+        }
+        is Boolean -> if (raw) BooleanOverride.ENABLED else BooleanOverride.DISABLED
+        else -> null
+    }
+    return encoded ?: BooleanOverride.INHERIT
+}
+
+private fun writeBooleanOverride(settingsOverrides: JSONObject, key: String, value: BooleanOverride) {
+    if (value.encodedValue == null) {
+        settingsOverrides.remove(key)
+        return
+    }
+    settingsOverrides.put(
+        key,
+        JSONObject().apply {
+            put("type", "boolean")
+            put("value", value.encodedValue)
+        }
+    )
+}
+
+private fun readStringOverride(settingsOverrides: JSONObject?, key: String): String? {
+    if (settingsOverrides == null || !settingsOverrides.has(key)) return null
+    return when (val raw = settingsOverrides.opt(key)) {
+        is JSONObject -> {
+            when (raw.optString("type", "")) {
+                "string" -> raw.optString("value", "")
+                else -> null
+            }
+        }
+        is String -> raw
+        else -> null
+    }?.ifBlank { null }
+}
+
+private fun writeStringOverride(settingsOverrides: JSONObject, key: String, value: String) {
+    if (value == INHERIT_GLOBAL_OPTION || value.isBlank()) {
+        settingsOverrides.remove(key)
+        return
+    }
+    settingsOverrides.put(
+        key,
+        JSONObject().apply {
+            put("type", "string")
+            put("value", value)
+        }
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MachineWelcomeScreen(
@@ -85,33 +162,116 @@ fun MachineWelcomeScreen(
     onUpdate: (MachineProfile) -> Unit,
     onDelete: (MachineProfile) -> Unit,
     onConnect: (MachineProfile) -> Unit,
-    onOpenSession: (MachineSession) -> Unit
+    onOpenSession: (MachineSession) -> Unit,
+    onOpenSettings: () -> Unit
 ) {
     var editorProfile by remember { mutableStateOf<MachineProfile?>(null) }
     var creating by remember { mutableStateOf(false) }
+    var quickActionsExpanded by remember { mutableStateOf(false) }
+    var legacyOverflowExpanded by remember { mutableStateOf(false) }
     val snackbars = remember { SnackbarHostState() }
+    val expressiveQuickActionsSupported = Build.VERSION.SDK_INT >= ANDROID_16_API
+    val listBottomPadding = if (expressiveQuickActionsSupported) 112.dp else 12.dp
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Wawona Machines") },
                 actions = {
-                    TextButton(onClick = { creating = true }) {
-                        Icon(Icons.Filled.Add, contentDescription = null)
-                        Spacer(Modifier.size(6.dp))
-                        Text("Add")
+                    if (!expressiveQuickActionsSupported) {
+                        TextButton(onClick = onOpenSettings) {
+                            Icon(Icons.Filled.Settings, contentDescription = null)
+                            Spacer(Modifier.size(6.dp))
+                            Text("Settings")
+                        }
+                        TextButton(onClick = { creating = true }) {
+                            Icon(Icons.Filled.Add, contentDescription = null)
+                            Spacer(Modifier.size(6.dp))
+                            Text("Add")
+                        }
+                        Box {
+                            TextButton(onClick = { legacyOverflowExpanded = true }) {
+                                Icon(Icons.Filled.MoreVert, contentDescription = "More actions")
+                            }
+                            DropdownMenu(
+                                expanded = legacyOverflowExpanded,
+                                onDismissRequest = { legacyOverflowExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Wawona Settings") },
+                                    leadingIcon = {
+                                        Icon(Icons.Filled.Settings, contentDescription = null)
+                                    },
+                                    onClick = {
+                                        legacyOverflowExpanded = false
+                                        onOpenSettings()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Create Machine") },
+                                    leadingIcon = {
+                                        Icon(Icons.Filled.Add, contentDescription = null)
+                                    },
+                                    onClick = {
+                                        legacyOverflowExpanded = false
+                                        creating = true
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             )
         },
-        snackbarHost = { SnackbarHost(snackbars) }
+        snackbarHost = { SnackbarHost(snackbars) },
+        floatingActionButton = {
+            if (expressiveQuickActionsSupported) {
+                Box {
+                    LargeFloatingActionButton(
+                        onClick = { quickActionsExpanded = !quickActionsExpanded }
+                    ) {
+                        Icon(Icons.Filled.Add, contentDescription = "Machine actions")
+                    }
+                    DropdownMenu(
+                        expanded = quickActionsExpanded,
+                        onDismissRequest = { quickActionsExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Wawona Settings") },
+                            leadingIcon = {
+                                Icon(Icons.Filled.Settings, contentDescription = null)
+                            },
+                            onClick = {
+                                quickActionsExpanded = false
+                                onOpenSettings()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Create Machine") },
+                            leadingIcon = {
+                                Icon(Icons.Filled.Add, contentDescription = null)
+                            },
+                            onClick = {
+                                quickActionsExpanded = false
+                                creating = true
+                            }
+                        )
+                    }
+                }
+            }
+        }
     ) { padding ->
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = 300.dp),
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                top = 12.dp,
+                end = 16.dp,
+                bottom = listBottomPadding
+            ),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -163,7 +323,18 @@ fun MachineWelcomeScreen(
                     )
                 }
                 items(sessions, key = { it.sessionId }) { session ->
-                    Card(modifier = Modifier.fillMaxWidth()) {
+                    val sessionActionLabel = when (session.state) {
+                        MachineSessionState.DISCONNECTED,
+                        MachineSessionState.DEGRADED,
+                        MachineSessionState.ERROR -> "Reopen"
+                        else -> "Open"
+                    }
+                    val actionEnabled = session.state != MachineSessionState.CONNECTING
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(enabled = actionEnabled) { onOpenSession(session) }
+                    ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -178,8 +349,11 @@ fun MachineWelcomeScreen(
                                     style = MaterialTheme.typography.bodySmall
                                 )
                             }
-                            OutlinedButton(onClick = { onOpenSession(session) }) {
-                                Text("Open")
+                            OutlinedButton(
+                                enabled = actionEnabled,
+                                onClick = { onOpenSession(session) }
+                            ) {
+                                Text(sessionActionLabel)
                             }
                         }
                     }
@@ -404,6 +578,39 @@ private fun MachineEditorSheet(
     var containerSubtype by remember { mutableStateOf(initial?.containerSubtype ?: "docker") }
     var machineTypePickerExpanded by remember { mutableStateOf(false) }
     var nativeLauncherPickerExpanded by remember { mutableStateOf(false) }
+    val existingOverrides = remember(initial) {
+        if (initial?.settingsOverrides != null) JSONObject(initial.settingsOverrides.toString()) else JSONObject()
+    }
+    var overrideAutoScale by remember {
+        mutableStateOf(readBooleanOverride(existingOverrides, "autoScale"))
+    }
+    var overrideRespectSafeArea by remember {
+        mutableStateOf(readBooleanOverride(existingOverrides, "respectSafeArea"))
+    }
+    var overrideTouchpadMode by remember {
+        mutableStateOf(readBooleanOverride(existingOverrides, "touchpadMode"))
+    }
+    var overrideTextAssist by remember {
+        mutableStateOf(readBooleanOverride(existingOverrides, "enableTextAssist"))
+    }
+    var overrideDictation by remember {
+        mutableStateOf(readBooleanOverride(existingOverrides, "enableDictation"))
+    }
+    var overrideDmabufEnabled by remember {
+        mutableStateOf(readBooleanOverride(existingOverrides, "dmabufEnabled"))
+    }
+    var overrideColorOperations by remember {
+        mutableStateOf(readBooleanOverride(existingOverrides, "colorOperations"))
+    }
+    var overrideShakeToClose by remember {
+        mutableStateOf(readBooleanOverride(existingOverrides, "wawona.pref.shakeToCloseEnabled"))
+    }
+    var overrideVulkanDriver by remember {
+        mutableStateOf(readStringOverride(existingOverrides, "vulkanDriver") ?: INHERIT_GLOBAL_OPTION)
+    }
+    var overrideOpenGLDriver by remember {
+        mutableStateOf(readStringOverride(existingOverrides, "openglDriver") ?: INHERIT_GLOBAL_OPTION)
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss
@@ -493,11 +700,27 @@ private fun MachineEditorSheet(
             if (type == MachineType.SSH_WAYPIPE || type == MachineType.SSH_TERMINAL) {
                 OutlinedTextField(value = sshHost, onValueChange = { sshHost = it }, label = { Text("SSH host") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = sshUser, onValueChange = { sshUser = it }, label = { Text("SSH user") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = sshPassword, onValueChange = { sshPassword = it }, label = { Text("SSH password") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    value = sshPassword,
+                    onValueChange = { sshPassword = it },
+                    label = { Text("SSH password") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    modifier = Modifier.fillMaxWidth()
+                )
                 OutlinedTextField(value = sshBinary, onValueChange = { sshBinary = it }, label = { Text("SSH binary") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = sshAuthMethod, onValueChange = { sshAuthMethod = it }, label = { Text("SSH auth method (password|key)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = sshKeyPath, onValueChange = { sshKeyPath = it }, label = { Text("SSH key path") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = sshKeyPassphrase, onValueChange = { sshKeyPassphrase = it }, label = { Text("SSH key passphrase") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    value = sshKeyPassphrase,
+                    onValueChange = { sshKeyPassphrase = it },
+                    label = { Text("SSH key passphrase") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    modifier = Modifier.fillMaxWidth()
+                )
                 OutlinedTextField(value = remoteCommand, onValueChange = { remoteCommand = it }, label = { Text("Remote command") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             }
 
@@ -516,6 +739,70 @@ private fun MachineEditorSheet(
                 OutlinedTextField(value = containerNotes, onValueChange = { containerNotes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth())
             }
 
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "Per-machine settings overrides",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                "These override global Wawona Settings only for this machine.",
+                style = MaterialTheme.typography.bodySmall
+            )
+
+            OverrideBooleanDropdown(
+                title = "Auto Scale",
+                state = overrideAutoScale,
+                onStateChange = { overrideAutoScale = it }
+            )
+            OverrideBooleanDropdown(
+                title = "Respect Safe Area",
+                state = overrideRespectSafeArea,
+                onStateChange = { overrideRespectSafeArea = it }
+            )
+            OverrideBooleanDropdown(
+                title = "Touchpad Mode",
+                state = overrideTouchpadMode,
+                onStateChange = { overrideTouchpadMode = it }
+            )
+            OverrideBooleanDropdown(
+                title = "Enable Text Assist",
+                state = overrideTextAssist,
+                onStateChange = { overrideTextAssist = it }
+            )
+            OverrideBooleanDropdown(
+                title = "Enable Dictation",
+                state = overrideDictation,
+                onStateChange = { overrideDictation = it }
+            )
+            OverrideStringDropdown(
+                title = "Vulkan Driver",
+                selected = overrideVulkanDriver,
+                options = listOf(INHERIT_GLOBAL_OPTION, "None", "SwiftShader", "Turnip", "System"),
+                onSelected = { overrideVulkanDriver = it }
+            )
+            OverrideStringDropdown(
+                title = "OpenGL Driver",
+                selected = overrideOpenGLDriver,
+                options = listOf(INHERIT_GLOBAL_OPTION, "None", "ANGLE", "System"),
+                onSelected = { overrideOpenGLDriver = it }
+            )
+            OverrideBooleanDropdown(
+                title = "Enable DMABUF",
+                state = overrideDmabufEnabled,
+                onStateChange = { overrideDmabufEnabled = it }
+            )
+            OverrideBooleanDropdown(
+                title = "Color Operations",
+                state = overrideColorOperations,
+                onStateChange = { overrideColorOperations = it }
+            )
+            OverrideBooleanDropdown(
+                title = "Shake to Exit Machine",
+                state = overrideShakeToClose,
+                onStateChange = { overrideShakeToClose = it }
+            )
+
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = onDismiss) { Text("Cancel") }
                 Button(
@@ -525,6 +812,17 @@ private fun MachineEditorSheet(
                             name = trimmedName,
                             type = type
                         )
+                        val settingsOverrides = JSONObject(base.settingsOverrides.toString())
+                        writeBooleanOverride(settingsOverrides, "autoScale", overrideAutoScale)
+                        writeBooleanOverride(settingsOverrides, "respectSafeArea", overrideRespectSafeArea)
+                        writeBooleanOverride(settingsOverrides, "touchpadMode", overrideTouchpadMode)
+                        writeBooleanOverride(settingsOverrides, "enableTextAssist", overrideTextAssist)
+                        writeBooleanOverride(settingsOverrides, "enableDictation", overrideDictation)
+                        writeStringOverride(settingsOverrides, "vulkanDriver", overrideVulkanDriver)
+                        writeStringOverride(settingsOverrides, "openglDriver", overrideOpenGLDriver)
+                        writeBooleanOverride(settingsOverrides, "dmabufEnabled", overrideDmabufEnabled)
+                        writeBooleanOverride(settingsOverrides, "colorOperations", overrideColorOperations)
+                        writeBooleanOverride(settingsOverrides, "wawona.pref.shakeToCloseEnabled", overrideShakeToClose)
                         onSave(
                             base.copy(
                                 name = trimmedName,
@@ -540,6 +838,7 @@ private fun MachineEditorSheet(
                                 remoteCommand = remoteCommand.trim(),
                                 vmSubtype = vmSubtype.trim().ifEmpty { "qemu" },
                                 containerSubtype = containerSubtype.trim().ifEmpty { "docker" },
+                                settingsOverrides = settingsOverrides,
                                 vmSettings = base.vmSettings.copy(
                                     vmIdentifier = vmIdentifier.trim(),
                                     vsockPort = vmVsockPort.trim(),
@@ -558,6 +857,85 @@ private fun MachineEditorSheet(
                 ) {
                     Text("Save")
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun OverrideBooleanDropdown(
+    title: String,
+    state: BooleanOverride,
+    onStateChange: (BooleanOverride) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it }
+    ) {
+        OutlinedTextField(
+            value = state.label,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(title) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor()
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            BooleanOverride.entries.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option.label) },
+                    onClick = {
+                        onStateChange(option)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun OverrideStringDropdown(
+    title: String,
+    selected: String,
+    options: List<String>,
+    onSelected: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it }
+    ) {
+        OutlinedTextField(
+            value = selected,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(title) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor()
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option) },
+                    onClick = {
+                        onSelected(option)
+                        expanded = false
+                    }
+                )
             }
         }
     }

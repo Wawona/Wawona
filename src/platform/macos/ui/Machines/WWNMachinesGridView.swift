@@ -103,6 +103,13 @@ struct WWNMachinesGridView: View {
       .toolbar {
         detailToolbarContent
       }
+      #if os(iOS)
+      .overlay(alignment: .bottomTrailing) {
+        iosQuickActions
+          .padding(.trailing, 20)
+          .padding(.bottom, 20)
+      }
+      #endif
     #endif
   }
 
@@ -138,13 +145,6 @@ struct WWNMachinesGridView: View {
       }
     }
     #else
-    ToolbarItem(placement: .primaryAction) {
-      Button {
-        isCreating = true
-      } label: {
-        Label("Add Profile", systemImage: "plus")
-      }
-    }
     if let onOpenSettings {
       ToolbarItem(placement: .automatic) {
         Button("Settings", action: onOpenSettings)
@@ -385,6 +385,30 @@ struct WWNMachinesGridView: View {
     }
   }
 
+  #if os(iOS)
+  private var iosQuickActions: some View {
+    Menu {
+      Button {
+        onOpenSettings?()
+      } label: {
+        Label("Wawona Settings", systemImage: "gearshape")
+      }
+      Button {
+        isCreating = true
+      } label: {
+        Label("Add Profile", systemImage: "plus")
+      }
+    } label: {
+      Image(systemName: "plus")
+        .font(.title2.weight(.semibold))
+        .foregroundStyle(Color.white)
+        .frame(width: 56, height: 56)
+        .background(Color.accentColor, in: Circle())
+        .shadow(color: .black.opacity(0.25), radius: 10, x: 0, y: 4)
+    }
+  }
+  #endif
+
   #if os(macOS)
   @ViewBuilder
   private func applyMacChromeFixes<V: View>(to view: V) -> some View {
@@ -415,7 +439,12 @@ import UIKit
 final class WWNMachinesHostingBridge: NSObject {
   @objc(buildIOSMachinesControllerWithOnConnect:)
   static func buildIOSMachinesController(onConnect: (() -> Void)?) -> UIViewController {
-    let root = WWNMachinesGridView(onConnect: onConnect, onOpenSettings: nil)
+    let root = WWNMachinesGridView(
+      onConnect: onConnect,
+      onOpenSettings: {
+        WWNPreferences.sharedPreferences().showPreferences(nil)
+      }
+    )
     let hosting = UIHostingController(rootView: root)
     let nav = UINavigationController(rootViewController: hosting)
     nav.modalPresentationStyle = .fullScreen

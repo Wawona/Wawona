@@ -61,11 +61,6 @@ struct MachinesRootView: View {
                 #if os(iOS)
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
-                        showingEditor = true
-                    } label: {
-                        Label("Add Machine", systemImage: "plus")
-                    }
-                    Button {
                         withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
                             isGlassSearchPresented = true
                         }
@@ -105,6 +100,29 @@ struct MachinesRootView: View {
                 }
             }
             .animation(.spring(response: 0.32, dampingFraction: 0.86), value: isGlassSearchPresented)
+            .overlay(alignment: .bottomTrailing) {
+                Menu {
+                    Button {
+                        showingSettings = true
+                    } label: {
+                        Label("Wawona Settings", systemImage: "gearshape")
+                    }
+                    Button {
+                        showingEditor = true
+                    } label: {
+                        Label("Add Machine", systemImage: "plus")
+                    }
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(Color.white)
+                        .frame(width: 56, height: 56)
+                        .background(Color.accentColor, in: Circle())
+                        .shadow(color: .black.opacity(0.22), radius: 10, x: 0, y: 4)
+                }
+                .padding(.trailing, 20)
+                .padding(.bottom, 20)
+            }
             #endif
             .sheet(isPresented: $showingEditor) {
                 MachineEditorView { profile in

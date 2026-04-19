@@ -194,9 +194,10 @@ extern void WWNCoreTextInputGetCursorRect(void *core, int32_t *out_x,
 extern int waypipe_main(int argc, const char **argv) __attribute__((weak));
 extern int weston_simple_shm_main(int argc, const char **argv)
     __attribute__((weak));
-extern int weston_main(int argc, const char **argv);
-extern int weston_terminal_main(int argc, const char **argv);
-extern int foot_main(int argc, const char **argv);
+extern int weston_main(int argc, const char **argv) __attribute__((weak));
+extern int weston_terminal_main(int argc, const char **argv)
+    __attribute__((weak));
+extern int foot_main(int argc, const char **argv) __attribute__((weak));
 extern int wwn_weston_is_compat_shim(void) __attribute__((weak));
 extern int wwn_weston_terminal_is_compat_shim(void) __attribute__((weak));
 extern int wwn_foot_is_compat_shim(void) __attribute__((weak));
@@ -2974,6 +2975,11 @@ static pthread_t g_weston_thread = 0;
 static void *weston_thread_func(void *arg) {
   (void)arg;
   LOGI("Starting weston background thread");
+  if (!weston_main) {
+    LOGE("weston symbol is unavailable in this build");
+    g_weston_running = 0;
+    return NULL;
+  }
   char saved_cwd[512] = "";
   const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
   if (xdg_dir) { getcwd(saved_cwd, sizeof(saved_cwd)); chdir(xdg_dir); }
@@ -2988,6 +2994,10 @@ JNIEXPORT jboolean JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeRunWeston(
     JNIEnv *env, jobject thiz) {
   (void)env; (void)thiz;
+  if (!weston_main) {
+    LOGE("Refusing to launch weston: symbol unavailable in this build");
+    return JNI_FALSE;
+  }
   if (wwn_weston_is_compat_shim && wwn_weston_is_compat_shim() != 0) {
     LOGE("Refusing to launch weston: compatibility shim build detected");
     return JNI_FALSE;
@@ -3024,6 +3034,11 @@ static pthread_t g_weston_terminal_thread = 0;
 static void *weston_terminal_thread_func(void *arg) {
   (void)arg;
   LOGI("Starting weston-terminal background thread");
+  if (!weston_terminal_main) {
+    LOGE("weston-terminal symbol is unavailable in this build");
+    g_weston_terminal_running = 0;
+    return NULL;
+  }
   char saved_cwd[512] = "";
   const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
   if (xdg_dir) { getcwd(saved_cwd, sizeof(saved_cwd)); chdir(xdg_dir); }
@@ -3038,6 +3053,10 @@ JNIEXPORT jboolean JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeRunWestonTerminal(
     JNIEnv *env, jobject thiz) {
   (void)env; (void)thiz;
+  if (!weston_terminal_main) {
+    LOGE("Refusing to launch weston-terminal: symbol unavailable in this build");
+    return JNI_FALSE;
+  }
   if (wwn_weston_terminal_is_compat_shim &&
       wwn_weston_terminal_is_compat_shim() != 0) {
     LOGE("Refusing to launch weston-terminal: compatibility shim build detected");
@@ -3075,6 +3094,11 @@ static pthread_t g_foot_thread = 0;
 static void *foot_thread_func(void *arg) {
   (void)arg;
   LOGI("Starting foot background thread");
+  if (!foot_main) {
+    LOGE("foot symbol is unavailable in this build");
+    g_foot_running = 0;
+    return NULL;
+  }
   char saved_cwd[512] = "";
   const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
   if (xdg_dir) { getcwd(saved_cwd, sizeof(saved_cwd)); chdir(xdg_dir); }
@@ -3089,6 +3113,10 @@ JNIEXPORT jboolean JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeRunFoot(
     JNIEnv *env, jobject thiz) {
   (void)env; (void)thiz;
+  if (!foot_main) {
+    LOGE("Refusing to launch foot: symbol unavailable in this build");
+    return JNI_FALSE;
+  }
   if (wwn_foot_is_compat_shim && wwn_foot_is_compat_shim() != 0) {
     LOGE("Refusing to launch foot: compatibility shim build detected");
     return JNI_FALSE;

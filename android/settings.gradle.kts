@@ -17,4 +17,5 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Wawona"
-include(":app")
+include(":Wawona")
+project(":Wawona").projectDir = file("app")

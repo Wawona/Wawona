@@ -83,10 +83,11 @@ let
          freetypeIOS = null;
          libpngIOS = null;
       };
-      gradlegen = pkgs.callPackage ../generators/gradlegen.nix {
+      gradlegen = pkgs.callPackage ../generators/gradlegen.nix ({
         wawonaAndroidProject = apps.android.project or null;
         inherit wawonaSrc wawonaVersion;
-      };
+        westonSimpleShmSrc = pkgs.callPackage ../libs/weston-simple-shm/patched-src.nix { };
+      } // lib.optionalAttrs (androidSDK != null) { androidSdkRoot = androidSDK.sdkRoot; });
     };
   };
 in

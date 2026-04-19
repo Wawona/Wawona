@@ -6,7 +6,6 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -27,7 +26,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.content.ClipData
@@ -569,10 +567,11 @@ private fun AboutSection(context: Context) {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Spacer(Modifier.height(24.dp))
-        Image(
-            painter = painterResource(com.aspauldingcode.wawona.R.drawable.ic_launcher_foreground),
+        Icon(
+            imageVector = Icons.Filled.DesktopWindows,
             contentDescription = null,
-            Modifier.size(100.dp)
+            modifier = Modifier.size(100.dp),
+            tint = MaterialTheme.colorScheme.primary
         )
         Spacer(Modifier.height(16.dp))
         Text("Wawona",

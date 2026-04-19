@@ -9,7 +9,7 @@ let
   buildToolsVersion = "36.1.0";
   ndkVersion = "29.0.14206865";
   cmakeVersion = "3.22.1";
-  agpVersion = "8.10.0";
+  agpVersion = "9.0.0";
   kotlinVersion = "2.0.21";
   androidTarget = "aarch64-linux-android";
 

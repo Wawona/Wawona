@@ -1,6 +1,5 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
@@ -26,22 +25,28 @@ android {
         externalNativeBuild {
             cmake {
                 cppFlags("-fPIC")
-                
+
+                fun prop(name: String): String =
+                    (project.findProperty(name) as? String)?.trim().orEmpty()
+
                 // When building under Nix, DEP_INCLUDES is populated in the environment.
                 // We pass it to CMake as a property so it can include external Nix paths.
-                val nixIncludes = System.getenv("DEP_INCLUDES") ?: ""
+                val nixIncludes =
+                    (System.getenv("DEP_INCLUDES") ?: prop("wawona.nixDepIncludes")).trim()
                 if (nixIncludes.isNotEmpty()) {
                     arguments("-DNIX_DEP_INCLUDES=${nixIncludes}")
                 }
-                
-                // Linker paths for Nix external dependencies 
-                val nixLibs = System.getenv("DEP_LIBS") ?: ""
+
+                // Linker paths for Nix external dependencies
+                val nixLibs =
+                    (System.getenv("DEP_LIBS") ?: prop("wawona.nixDepLibs")).trim()
                 if (nixLibs.isNotEmpty()) {
                     arguments("-DNIX_DEP_LIBS=${nixLibs}")
                 }
-                
+
                 // Rust Backend Object
-                val rustLib = System.getenv("RUST_BACKEND_LIB") ?: ""
+                val rustLib =
+                    (System.getenv("RUST_BACKEND_LIB") ?: prop("wawona.rustBackendLib")).trim()
                 if (rustLib.isNotEmpty()) {
                     arguments("-DRUST_BACKEND_LIB=${rustLib}")
                 }
@@ -73,22 +78,27 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildFeatures {
         compose = true
     }
 
+    packaging {
+        jniLibs {
+            // AGP upgrade path: replace manifest extractNativeLibs with DSL.
+            useLegacyPackaging = true
+        }
+    }
+
     sourceSets {
         getByName("main") {
-            manifest.srcFile("src/main/AndroidManifest.xml")
-            java.srcDirs("src/main/java", "src/main/kotlin")
-            res.srcDirs("src/main/res")
-            assets.srcDirs("src/main/assets")
-            jniLibs.srcDirs("src/main/jniLibs")
+            kotlin.directories += "src/main/kotlin"
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
 

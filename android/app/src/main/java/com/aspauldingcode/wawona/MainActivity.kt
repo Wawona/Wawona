@@ -16,6 +16,7 @@ import android.view.SurfaceView
 import android.view.WindowInsetsController
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -54,9 +55,21 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.math.sqrt
+
+private object WawonaBackPressBridge {
+    @Volatile
+    var interceptEnabled: Boolean = false
+    var token by mutableIntStateOf(0)
+
+    fun emitBackPress() {
+        token += 1
+    }
+}
 
 class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
 
@@ -96,6 +109,18 @@ class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
             }
 
             prefs = getSharedPreferences("wawona_prefs", Context.MODE_PRIVATE)
+
+            onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    if (WawonaBackPressBridge.interceptEnabled) {
+                        WawonaBackPressBridge.emitBackPress()
+                        return
+                    }
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                    isEnabled = true
+                }
+            })
 
             setContent {
                 WawonaTheme(darkTheme = true) {
@@ -186,9 +211,15 @@ fun WawonaApp(
     var isWaypipeRunning by remember { mutableStateOf(false) }
     var windowTitle by remember { mutableStateOf("") }
     var nativeRuntimeReady by remember { mutableStateOf(false) }
+    var showSettingsDialog by remember { mutableStateOf(false) }
     var shakeToCloseEnabled by remember {
         mutableStateOf(prefs.getBoolean("wawona.pref.shakeToCloseEnabled", true))
     }
+    var suppressShakeBackWarning by remember {
+        mutableStateOf(prefs.getBoolean("wawona.pref.suppressShakeBackWarning", false))
+    }
+    var shakeBackWarningShownForSession by remember { mutableStateOf(false) }
+    var showShakeBackWarningDialog by remember { mutableStateOf(false) }
     var respectSafeArea by remember {
         mutableStateOf(prefs.getBoolean("respectSafeArea", true))
     }
@@ -216,6 +247,8 @@ fun WawonaApp(
                     nativeWestonTerminalEnabled = sp.getBoolean("westonTerminalEnabled", false)
                 "wawona.pref.shakeToCloseEnabled" ->
                     shakeToCloseEnabled = sp.getBoolean("wawona.pref.shakeToCloseEnabled", true)
+                "wawona.pref.suppressShakeBackWarning" ->
+                    suppressShakeBackWarning = sp.getBoolean("wawona.pref.suppressShakeBackWarning", false)
                 "respectSafeArea" -> {
                     respectSafeArea = sp.getBoolean("respectSafeArea", true)
                     try {
@@ -228,6 +261,18 @@ fun WawonaApp(
         }
         prefs.registerOnSharedPreferenceChangeListener(listener)
         onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
+    LaunchedEffect(sessionOrchestrator.activeSessionId) {
+        shakeBackWarningShownForSession = false
+        showShakeBackWarningDialog = false
+    }
+
+    DisposableEffect(showWelcome, showMachinesHome) {
+        WawonaBackPressBridge.interceptEnabled = !showWelcome && !showMachinesHome
+        onDispose {
+            WawonaBackPressBridge.interceptEnabled = false
+        }
     }
 
     DisposableEffect(showMachinesHome, shakeToCloseEnabled, sessionOrchestrator.activeSessionId) {
@@ -558,12 +603,30 @@ fun WawonaApp(
         showMachinesHome = true
     }
 
-    BackHandler(
-        enabled = !showMachinesHome &&
-            !shakeToCloseEnabled &&
-            sessionOrchestrator.activeSessionId != null
-    ) {
-        disconnectActiveSession()
+    // Activity-level callback is the source of truth for compositor back handling.
+    BackHandler(enabled = false) {}
+
+    var lastHandledBackToken by remember { mutableIntStateOf(0) }
+    LaunchedEffect(WawonaBackPressBridge.token, showMachinesHome, shakeToCloseEnabled) {
+        val token = WawonaBackPressBridge.token
+        if (token == 0 || token == lastHandledBackToken) {
+            return@LaunchedEffect
+        }
+        lastHandledBackToken = token
+        if (showMachinesHome) {
+            return@LaunchedEffect
+        }
+        if (!shakeToCloseEnabled) {
+            disconnectActiveSession()
+            return@LaunchedEffect
+        }
+        if (!suppressShakeBackWarning &&
+            !shakeBackWarningShownForSession &&
+            !showShakeBackWarningDialog
+        ) {
+            shakeBackWarningShownForSession = true
+            showShakeBackWarningDialog = true
+        }
     }
 
     val density = LocalDensity.current
@@ -608,7 +671,8 @@ fun WawonaApp(
                 if (profile != null) {
                     connectMachine(profile, session.sessionId)
                 }
-            }
+            },
+            onOpenSettings = { showSettingsDialog = true }
         )
     } else {
         Box(
@@ -617,29 +681,6 @@ fun WawonaApp(
                 .background(MainActivity.CompositorBackground)
                 .windowInsetsPadding(WindowInsets.ime)
         ) {
-            Column(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth()
-                    .padding(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                MachineSessionStrip(
-                    sessions = sessionOrchestrator.sessions.filter {
-                        it.state == MachineSessionState.CONNECTED ||
-                            it.state == MachineSessionState.CONNECTING ||
-                            it.state == MachineSessionState.DEGRADED
-                    },
-                    activeSessionId = sessionOrchestrator.activeSessionId,
-                    onShowMachines = { showMachinesHome = true },
-                    onSelectSession = { session ->
-                        val profile = profiles.firstOrNull { it.id == session.machineId }
-                            ?: return@MachineSessionStrip
-                        connectMachine(profile, session.sessionId)
-                    }
-                )
-            }
-
             // Full-bleed surface: safe area / cutouts are applied in native via
             // nativeUpdateSafeArea + respectSafeArea (matches Wawona Settings).
             // Do not also pad here — that double-applied insets and broke output size.
@@ -669,20 +710,45 @@ fun WawonaApp(
                 )
             }
 
-            ExpressiveFabMenu(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(
-                        start = 24.dp,
-                        top = 24.dp,
-                        end = 24.dp,
-                        bottom = if (showAccessoryBar) 24.dp + 80.dp else 24.dp
-                    ),
-                isWaypipeRunning = isWaypipeRunning,
-                onStopWaypipeClick = { disconnectActiveSession() },
-                onMenuClosed = { surfaceViewRef?.requestFocus() }
-            )
         }
+    }
+
+    if (showSettingsDialog) {
+        SettingsDialog(
+            prefs = prefs,
+            onDismiss = { showSettingsDialog = false },
+            onApply = {
+                WawonaSettings.apply(prefs)
+            }
+        )
+    }
+
+    if (showShakeBackWarningDialog) {
+        AlertDialog(
+            onDismissRequest = { showShakeBackWarningDialog = false },
+            title = { Text("Shake to exit is enabled") },
+            text = {
+                Text(
+                    "You have Shake to exit enabled, shake device or disable this setting to use native back guesture to exit."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showShakeBackWarningDialog = false }) {
+                    Text("Okay")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        prefs.edit().putBoolean("wawona.pref.suppressShakeBackWarning", true).apply()
+                        suppressShakeBackWarning = true
+                        showShakeBackWarningDialog = false
+                    }
+                ) {
+                    Text("Don't show again")
+                }
+            }
+        )
     }
 
     LaunchedEffect(isWaypipeRunning) {

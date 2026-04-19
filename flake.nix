@@ -193,7 +193,7 @@
           nixXcodeenvtests = inputs."nix-xcodeenvtests";
         };
         jdk17 = androidPkgs.jdk17;
-        gradle = androidPkgs.gradle.override { java = jdk17; };
+        gradle = pkgs.gradle_9.override { java = jdk17; };
         
         # On Linux, create a separate toolchains instance using the overlay-free
         # androidPkgs to prevent rust-overlay from triggering recursive evaluation
@@ -280,13 +280,41 @@
           androidToolchain = toolchainsAndroid.androidToolchain;
         };
 
+        westonSimpleShmPatched = androidPkgs.callPackage ./dependencies/libs/weston-simple-shm/patched-src.nix { };
+        studioAndroidDeps = [
+          (toolchainsAndroid.buildForAndroid "swiftshader" { })
+          (toolchainsAndroid.buildForAndroid "pixman" { })
+          (toolchainsAndroid.buildForAndroid "libwayland" { })
+          (toolchainsAndroid.buildForAndroid "expat" { })
+          (toolchainsAndroid.buildForAndroid "libffi" { })
+          (toolchainsAndroid.buildForAndroid "libxml2" { })
+          (toolchainsAndroid.buildForAndroid "xkbcommon" { })
+          (toolchainsAndroid.buildForAndroid "openssl" { })
+          (toolchainsAndroid.buildForAndroid "zstd" { })
+          (toolchainsAndroid.buildForAndroid "lz4" { })
+        ];
+        studioNixDepIncludes =
+          (pkgs.lib.concatMapStringsSep " " (d: "-I${d}/include") studioAndroidDeps)
+          + " -I${toolchainsAndroid.buildForAndroid "pixman" { }}/include/pixman-1";
+        studioNixDepLibs =
+          pkgs.lib.concatMapStringsSep " " (d: "-L${d}/lib") studioAndroidDeps;
+        studioRuntimeLibDirs =
+          pkgs.lib.concatMapStringsSep ":" (d: "${d}/lib") studioAndroidDeps;
+        studioRustBackendLib = "${backend-android}/lib/libwawona.a";
+        studioRustBackendSharedLib = "${backend-android}/lib/libwawona_core.so";
+
         gradlegenPkg = pkgs.callPackage ./dependencies/generators/gradlegen.nix ({
           wawonaSrc = if isLinuxHost then ./. else src;
           inherit wawonaVersion;
-        } // (pkgs.lib.optionalAttrs isLinuxHost {
-          iconAssets = null;
-        }) // (pkgs.lib.optionalAttrs (!isLinuxHost) {
-          iconAssets = null;
+          androidSdkRoot = androidSDK.sdkRoot;
+          westonSimpleShmSrc = westonSimpleShmPatched;
+          iconAssets = "AUTO";
+          nixDepIncludes = studioNixDepIncludes;
+          nixDepLibs = studioNixDepLibs;
+          rustBackendLib = studioRustBackendLib;
+          rustBackendSharedLib = studioRustBackendSharedLib;
+          runtimeLibDirs = studioRuntimeLibDirs;
+        } // (pkgs.lib.optionalAttrs (!isLinuxHost) {
           wawonaAndroidProject = wawonaAndroidPkg.project;
         }));
 
@@ -351,6 +379,16 @@
           wawona-wearos-android = wawonaWearAndroidPkg;
           wawona-android-backend = backend-android;
           android-toolchain-sanity = androidToolchainSanity;
+          gradle-deps-update =
+            let
+              updateScript = (pkgs.callPackage ./dependencies/gradle-deps.nix {
+                wawonaSrc = if isLinuxHost then ./. else src;
+                inherit androidSDK;
+                inherit gradle;
+              }).mitmCache.passthru.updateScript;
+            in pkgs.writeShellScriptBin "gradle-deps-update" ''
+              exec ${updateScript} "$@"
+            '';
           gradlegen = gradlegenPkg.generateScript;
           wawona-android-project = gradlegenPkg.generateScript;
           wawona-android-provision = androidUtils.provisionAndroidScript;
