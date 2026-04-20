@@ -52,14 +52,17 @@ rustPlatform.buildRustPackage rec {
   };
 
   cargoBuildFlags = [
+    "--lib"
+    "--no-default-features"
+  ];
+  cargoTestFlags = [
     "--target" "aarch64-linux-android"
     "--lib"
     "--no-default-features"
   ];
-  cargoTestFlags = cargoBuildFlags;
   doCheck = false;
 
-  CARGO_BUILD_TARGET = "aarch64-linux-android";
+  cargoBuildTarget = "aarch64-linux-android";
   CC_aarch64_linux_android = "${androidToolchainEffective.androidCC}";
   CXX_aarch64_linux_android = androidToolchainEffective.androidCXX;
   AR_aarch64_linux_android = androidToolchainEffective.androidAR;
@@ -67,8 +70,8 @@ rustPlatform.buildRustPackage rec {
   WAWONA_ANDROID_XKBCOMMON_LIBDIR = "${nativeDeps.xkbcommon}/lib";
 
   buildInputs = lib.filter (x: x != null) [
-    pkgs.wayland
-    pkgs.libxkbcommon
+    (nativeDeps.libwayland or null)
+    (nativeDeps.xkbcommon or null)
   ];
 
   nativeBuildInputs = [ pkgs.pkg-config pkgs.rust-bindgen ];
@@ -76,10 +79,10 @@ rustPlatform.buildRustPackage rec {
   OPENSSL_DIR = nativeDeps.openssl;
   OPENSSL_STATIC = "1";
   OPENSSL_NO_VENDOR = "1";
-  PKG_CONFIG_PATH = lib.concatStringsSep ":" [
-    "${pkgs.wayland.dev}/lib/pkgconfig"
-    "${pkgs.libxkbcommon.dev}/lib/pkgconfig"
-  ];
+  PKG_CONFIG_PATH = lib.concatStringsSep ":" (
+    lib.optional (nativeDeps ? libwayland) "${nativeDeps.libwayland}/lib/pkgconfig"
+    ++ lib.optional (nativeDeps ? xkbcommon) "${nativeDeps.xkbcommon}/lib/pkgconfig"
+  );
 
   preConfigure = ''
     export PKG_CONFIG_ALLOW_CROSS=1
@@ -96,6 +99,18 @@ rustPlatform.buildRustPackage rec {
     export CXXFLAGS_aarch64_linux_android="--target=${androidToolchainEffective.androidTarget} --sysroot=${NDK_SYSROOT} -isystem ${NDK_SYSROOT}/usr/include -isystem ${NDK_SYSROOT}/usr/include/aarch64-linux-android -fPIC ${androidToolchainEffective.androidNdkCflags}"
     export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=${NDK_SYSROOT} -isystem ${NDK_SYSROOT}/usr/include -isystem ${NDK_SYSROOT}/usr/include/aarch64-linux-android --target=${androidToolchainEffective.androidTarget} ${androidToolchainEffective.androidNdkCflags}"
     export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-L native=${nativeDeps.xkbcommon}/lib -L native=${nativeDeps.libwayland}/lib -l xkbcommon -l wayland-client"
+  '';
+
+  buildPhase = ''
+    runHook preBuild
+    cargo build \
+      --jobs "''${NIX_BUILD_CORES:-1}" \
+      --offline \
+      --profile release \
+      --target aarch64-linux-android \
+      --lib \
+      --no-default-features
+    runHook postBuild
   '';
 
   installPhase = ''
