@@ -138,15 +138,29 @@ stdenv.mkDerivation (
       export CXX="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
       export LD="$CC"
 
-      ${lib.optionalString (lib.hasInfix "simulator" _sdk) ''
+      ${lib.optionalString (lib.hasPrefix "iphone" _sdk) ''
         if [ "''${WAWONA_SKIP_IOS_SIMULATOR_PLATFORM_DOWNLOAD:-}" = "1" ]; then
           echo "Skipping xcodebuild -downloadPlatform iOS (WAWONA_SKIP_IOS_SIMULATOR_PLATFORM_DOWNLOAD=1)"
         else
           # actool CompileAssetCatalogVariant thinned needs a Simulator *runtime* whose build
           # matches the iphonesimulator SDK. Partial Xcode installs often error with:
           # "No simulator runtime version from [...] available to use with iphonesimulator SDK version ..."
-          echo "Ensuring iOS Simulator platform is installed for SDK ${_sdk}..."
-          xcodebuild -downloadPlatform iOS || {
+          echo "Ensuring iOS Simulator platform/runtime is installed for SDK ${_sdk}..."
+          env \
+            -u NIX_CFLAGS_COMPILE \
+            -u NIX_CXXFLAGS_COMPILE \
+            -u NIX_LDFLAGS \
+            -u NIX_LDFLAGS_BEFORE \
+            -u NIX_CC_WRAPPER_FLAGS_SET \
+            -u NIX_DONT_SET_RPATH \
+            -u CFLAGS \
+            -u CXXFLAGS \
+            -u CPPFLAGS \
+            -u LDFLAGS \
+            -u CC \
+            -u CXX \
+            -u LD \
+            xcodebuild -downloadPlatform iOS || {
             echo "ERROR: xcodebuild -downloadPlatform iOS failed (network or Xcode issue)." >&2
             echo "Fix: Xcode → Settings → Components → install iOS Simulator for this Xcode, then retry." >&2
             echo "Or export WAWONA_SKIP_IOS_SIMULATOR_PLATFORM_DOWNLOAD=1 if runtimes already match." >&2
@@ -155,7 +169,21 @@ stdenv.mkDerivation (
         fi
       ''}
 
-      xcodebuild ${targetFlag} -configuration ${_configuration} ${
+      env \
+        -u NIX_CFLAGS_COMPILE \
+        -u NIX_CXXFLAGS_COMPILE \
+        -u NIX_LDFLAGS \
+        -u NIX_LDFLAGS_BEFORE \
+        -u NIX_CC_WRAPPER_FLAGS_SET \
+        -u NIX_DONT_SET_RPATH \
+        -u CFLAGS \
+        -u CXXFLAGS \
+        -u CPPFLAGS \
+        -u LDFLAGS \
+        -u CC \
+        -u CXX \
+        -u LD \
+        xcodebuild ${targetFlag} -configuration ${_configuration} ${
         lib.optionalString (scheme != null) "-scheme ${scheme}"
       } -sdk ${_sdk} TARGETED_DEVICE_FAMILY="1, 2" ONLY_ACTIVE_ARCH=NO CONFIGURATION_TEMP_DIR=$TMPDIR CONFIGURATION_BUILD_DIR=$out ${
         lib.optionalString (generateIPA || generateXCArchive) "-archivePath \"${name}.xcarchive\" archive"
@@ -195,7 +223,21 @@ stdenv.mkDerivation (
           </plist>
           EOF
 
-          xcodebuild -exportArchive -archivePath "${name}.xcarchive" -exportOptionsPlist "${name}.plist" -exportPath $out ${lib.optionalString automaticProvisioning "-allowProvisioningUpdates"}
+          env \
+            -u NIX_CFLAGS_COMPILE \
+            -u NIX_CXXFLAGS_COMPILE \
+            -u NIX_LDFLAGS \
+            -u NIX_LDFLAGS_BEFORE \
+            -u NIX_CC_WRAPPER_FLAGS_SET \
+            -u NIX_DONT_SET_RPATH \
+            -u CFLAGS \
+            -u CXXFLAGS \
+            -u CPPFLAGS \
+            -u LDFLAGS \
+            -u CC \
+            -u CXX \
+            -u LD \
+            xcodebuild -exportArchive -archivePath "${name}.xcarchive" -exportOptionsPlist "${name}.plist" -exportPath $out ${lib.optionalString automaticProvisioning "-allowProvisioningUpdates"}
 
           mkdir -p $out/nix-support
           echo "file binary-dist \"$(echo $out/*.ipa)\"" > $out/nix-support/hydra-build-products

@@ -241,6 +241,10 @@ extern int weston_terminal_main(int argc, char **argv);
   NSString *targetUser =
       prefs.waypipeSSHUser.length > 0 ? prefs.waypipeSSHUser : prefs.sshUser;
   BOOL usingSSHMode = (prefs.waypipeSSHEnabled && targetHost.length > 0);
+  NSString *remoteCommandHint = trimmed(prefs.waypipeRemoteCommand);
+  BOOL isRemoteSwayLaunch =
+      usingSSHMode &&
+      [[remoteCommandHint lowercaseString] containsString:@"sway"];
 
   // 1. Waypipe Global Options (MUST come before 'ssh')
   NSString *compress = [[trimmed(prefs.waypipeCompress) lowercaseString] copy];
@@ -268,8 +272,16 @@ extern int weston_terminal_main(int argc, char **argv);
   if (prefs.waypipeDebug) {
     [args addObject:@"--debug"];
   }
-  if (prefs.waypipeNoGpu) {
+  // wlroots/sway over waypipe can produce blank/broken windows on the
+  // GPU/IOSurface fast path. Default to CPU transport for remote sway unless
+  // the user already chose no-gpu explicitly.
+  if (prefs.waypipeNoGpu || isRemoteSwayLaunch) {
     [args addObject:@"--no-gpu"];
+    if (isRemoteSwayLaunch && !prefs.waypipeNoGpu) {
+      WWNLog("WAYPIPE",
+             @"Auto-enabling --no-gpu for remote sway launch to avoid empty "
+             @"IOSurface frames");
+    }
   }
 #if TARGET_OS_IPHONE
   // iOS App Store compliance: ALWAYS force --oneshot in SSH mode.
@@ -424,9 +436,31 @@ extern int weston_terminal_main(int argc, char **argv);
     return args;
   }
   if (remoteCommand.length > 0) {
-    [args addObject:[NSString stringWithFormat:@"\"%@\"", remoteCommand]];
+    if (isRemoteSwayLaunch) {
+      NSString *lower = [remoteCommand lowercaseString];
+      BOOL hasRenderer = [lower containsString:@"wlr_renderer="];
+      BOOL hasNoHwCursor = [lower containsString:@"wlr_no_hardware_cursors="];
+      if (!hasRenderer || !hasNoHwCursor) {
+        NSMutableArray<NSString *> *prefix = [NSMutableArray array];
+        if (!hasRenderer) {
+          [prefix addObject:@"WLR_RENDERER=pixman"];
+        }
+        if (!hasNoHwCursor) {
+          [prefix addObject:@"WLR_NO_HARDWARE_CURSORS=1"];
+        }
+        NSString *joined = [prefix componentsJoinedByString:@" "];
+        remoteCommand = [NSString stringWithFormat:@"%@ %@", joined, remoteCommand];
+        WWNLog("WAYPIPE",
+               @"Applied remote sway software-render fallback env: %@",
+               joined);
+      }
+    }
+    // Pass the remote command as a raw argv token.
+    // Quoting here adds literal quote characters and can break execution
+    // for commands like `sway` in SSH mode.
+    [args addObject:remoteCommand];
   } else if (prefs.waypipeSSHEnabled) {
-    [args addObject:@"\"weston-simple-shm\""]; // Default remote command
+    [args addObject:@"weston-simple-shm"]; // Default remote command
   }
 
   return args;
@@ -1206,26 +1240,29 @@ extern int weston_terminal_main(int argc, char **argv);
 - (NSString *)findBinaryNamed:(NSString *)name {
   NSBundle *bundle = [NSBundle mainBundle];
   NSFileManager *fm = [NSFileManager defaultManager];
+  BOOL (^isExecutable)(NSString *) = ^BOOL(NSString *candidate) {
+    return (candidate.length > 0 && [fm isExecutableFileAtPath:candidate]);
+  };
 
   // 1) Resolve via real executable path (symlink-safe for nix run wrappers)
   NSString *realExecPath = [[bundle.executablePath ?: @"" stringByResolvingSymlinksInPath] copy];
   if (realExecPath.length > 0) {
     NSString *execDir = [realExecPath stringByDeletingLastPathComponent];
     NSString *execSibling = [execDir stringByAppendingPathComponent:name];
-    if ([fm isExecutableFileAtPath:execSibling]) {
+    if (isExecutable(execSibling)) {
       return execSibling;
     }
   }
 
   // 2) Contents/MacOS auxiliary executable lookup
   NSString *auxPath = [bundle pathForAuxiliaryExecutable:name];
-  if (auxPath && [fm isExecutableFileAtPath:auxPath]) {
+  if (isExecutable(auxPath)) {
     return auxPath;
   }
 
   // 3) Contents/Resources/bin (Nix macos.nix bundles weston, weston-terminal, etc.)
   NSString *binPath = [bundle pathForResource:name ofType:nil inDirectory:@"bin"];
-  if (binPath && [fm isExecutableFileAtPath:binPath]) {
+  if (isExecutable(binPath)) {
     return binPath;
   }
 
@@ -1233,18 +1270,85 @@ extern int weston_terminal_main(int argc, char **argv);
   if (realExecPath.length > 0) {
     NSString *contentsDir = [[realExecPath stringByDeletingLastPathComponent] stringByDeletingLastPathComponent];
     NSString *manualBinPath = [[contentsDir stringByAppendingPathComponent:@"Resources/bin"] stringByAppendingPathComponent:name];
-    if ([fm isExecutableFileAtPath:manualBinPath]) {
+    if (isExecutable(manualBinPath)) {
       return manualBinPath;
     }
   }
 
-  // 5) Root resource (legacy)
+  // 5) Explicit bundle-path fallback for nested bin resources.
+  NSString *bundleBinPath = [[bundle.bundlePath
+      stringByAppendingPathComponent:@"Contents/Resources/bin"]
+      stringByAppendingPathComponent:name];
+  if (isExecutable(bundleBinPath)) {
+    return bundleBinPath;
+  }
+
+  // 6) Nix-wrapped helper fallback (e.g. .foot-wrapped).
+  NSString *wrappedName = [NSString stringWithFormat:@".%@-wrapped", name];
+  NSString *wrappedBinPath = [[bundle.bundlePath
+      stringByAppendingPathComponent:@"Contents/Resources/bin"]
+      stringByAppendingPathComponent:wrappedName];
+  if (isExecutable(wrappedBinPath)) {
+    return wrappedBinPath;
+  }
+
+  // 7) Root resource (legacy)
   NSString *resourcePath = [bundle pathForResource:name ofType:nil];
-  if (resourcePath && [fm isExecutableFileAtPath:resourcePath]) {
+  if (isExecutable(resourcePath)) {
     return resourcePath;
   }
 
-  // 6) Android: executables bundled as .so
+  // 8) PATH lookup (Xcode Debug / local dev fallback when bundle copy missing).
+  NSString *pathEnv = NSProcessInfo.processInfo.environment[@"PATH"] ?: @"";
+  if (pathEnv.length > 0) {
+    NSArray<NSString *> *pathEntries = [pathEnv componentsSeparatedByString:@":"];
+    for (NSString *entry in pathEntries) {
+      if (entry.length == 0) {
+        continue;
+      }
+      NSString *candidate = [entry stringByAppendingPathComponent:name];
+      if (isExecutable(candidate)) {
+        return candidate;
+      }
+      NSString *wrappedCandidate =
+          [entry stringByAppendingPathComponent:
+                     [NSString stringWithFormat:@".%@-wrapped", name]];
+      if (isExecutable(wrappedCandidate)) {
+        return wrappedCandidate;
+      }
+    }
+  }
+
+  // 9) Nix profile fallbacks (Xcode-launched app may have restricted PATH).
+  NSMutableArray<NSString *> *nixPrefixes = [NSMutableArray array];
+  NSString *homeDir = NSHomeDirectory();
+  NSString *userName = NSUserName();
+  if (homeDir.length > 0) {
+    [nixPrefixes addObject:[homeDir stringByAppendingPathComponent:@".nix-profile/bin"]];
+  }
+  if (userName.length > 0) {
+    [nixPrefixes addObject:[NSString stringWithFormat:@"/nix/var/nix/profiles/per-user/%@/profile/bin", userName]];
+  }
+  [nixPrefixes addObject:@"/nix/var/nix/profiles/default/bin"];
+  [nixPrefixes addObject:@"/run/current-system/sw/bin"];
+
+  for (NSString *prefix in nixPrefixes) {
+    if (prefix.length == 0) {
+      continue;
+    }
+    NSString *candidate = [prefix stringByAppendingPathComponent:name];
+    if (isExecutable(candidate)) {
+      return candidate;
+    }
+    NSString *wrappedCandidate =
+        [prefix stringByAppendingPathComponent:
+                    [NSString stringWithFormat:@".%@-wrapped", name]];
+    if (isExecutable(wrappedCandidate)) {
+      return wrappedCandidate;
+    }
+  }
+
+  // 10) Android: executables bundled as .so
   NSString *androidSoPath = [[bundle bundlePath]
       stringByAppendingPathComponent:
           [NSString stringWithFormat:@"lib/arm64-v8a/lib%@.so", name]];

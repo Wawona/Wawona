@@ -36,6 +36,7 @@ struct MachineSettingsView: View {
                 displaySection()
                 inputSection()
                 graphicsSection()
+                advancedSection()
                 resolvedPreviewSection(for: draft)
                 actionsSection(for: draft)
             }
@@ -110,6 +111,8 @@ struct MachineSettingsView: View {
             .autocorrectionDisabled()
             SecureField("Password", text: sshPasswordBinding)
                 .textContentType(.password)
+            SecureField("Waypipe Password (optional override)", text: waypipeSSHPasswordBinding)
+                .textContentType(.password)
             TextField("Remote Command", text: remoteCommandBinding)
                 .wawonaTextFieldNoAutocaps()
                 .autocorrectionDisabled()
@@ -148,6 +151,19 @@ struct MachineSettingsView: View {
     }
 
     @ViewBuilder
+    private func advancedSection() -> some View {
+        Section("Advanced") {
+            Picker("Log Level", selection: logLevelBinding) {
+                Text("Debug").tag("debug")
+                Text("Info").tag("info")
+                Text("Warn").tag("warn")
+                Text("Error").tag("error")
+            }
+            Toggle("Shake to Exit Machine", isOn: shakeToCloseBinding)
+        }
+    }
+
+    @ViewBuilder
     private func resolvedPreviewSection(for profile: MachineProfile) -> some View {
         let resolved = preferences.resolvedSettings(for: profile)
         Section("Resolved Runtime (Machine > Global)") {
@@ -163,8 +179,11 @@ struct MachineSettingsView: View {
             Text("Host: \(resolved.sshHost)")
             Text("User: \(resolved.sshUser)")
             Text("Port: \(resolved.sshPort)")
+            Text("Waypipe Password: \(resolved.waypipeSSHPassword.isEmpty ? "Inherit global" : "Per-machine override")")
             Text("Waypipe: \(resolved.waypipeEnabled ? "Enabled" : "Disabled")")
             Text("Bundled App: \(resolved.bundledAppID.isEmpty ? "Off" : resolved.bundledAppID)")
+            Text("Log Level: \(resolved.logLevel)")
+            Text("Shake to Exit: \(resolved.shakeToCloseEnabled ? "Enabled" : "Disabled")")
         }
     }
 
@@ -250,6 +269,13 @@ struct MachineSettingsView: View {
         )
     }
 
+    private var waypipeSSHPasswordBinding: Binding<String> {
+        Binding(
+            get: { draft?.runtimeOverrides.waypipeSSHPassword ?? preferences.waypipeSSHPassword },
+            set: { value in updateDraft { $0.runtimeOverrides.waypipeSSHPassword = value } }
+        )
+    }
+
     private var bundledAppIDBinding: Binding<String> {
         Binding(
             get: { draft?.runtimeOverrides.bundledAppID ?? "" },
@@ -324,6 +350,20 @@ struct MachineSettingsView: View {
         Binding(
             get: { draft?.runtimeOverrides.colorOperations ?? preferences.colorOperations },
             set: { value in updateDraft { $0.runtimeOverrides.colorOperations = value } }
+        )
+    }
+
+    private var logLevelBinding: Binding<String> {
+        Binding(
+            get: { draft?.runtimeOverrides.logLevel ?? preferences.logLevel },
+            set: { value in updateDraft { $0.runtimeOverrides.logLevel = value } }
+        )
+    }
+
+    private var shakeToCloseBinding: Binding<Bool> {
+        Binding(
+            get: { draft?.runtimeOverrides.shakeToCloseEnabled ?? preferences.shakeToCloseEnabled },
+            set: { value in updateDraft { $0.runtimeOverrides.shakeToCloseEnabled = value } }
         )
     }
 

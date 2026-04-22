@@ -3,9 +3,19 @@ pub mod kde_decoration;
 
 use wayland_server::DisplayHandle;
 use crate::core::state::CompositorState;
+use crate::core::wayland::policy;
 
 /// Register KDE/Plasma protocols
-pub fn register(_state: &mut CompositorState, dh: &DisplayHandle) {
+pub fn register(state: &mut CompositorState, dh: &DisplayHandle) {
+    if !policy::allow_plasma_extensions(state.protocol_profile) {
+        crate::wlog!(
+            crate::util::logging::COMPOSITOR,
+            "Skipping Plasma globals for profile {}",
+            state.protocol_profile.as_str()
+        );
+        return;
+    }
+
     use crate::core::wayland::plasma::kde_decoration::KdeDecorationManagerGlobal;
     use crate::core::wayland::plasma::plasma::{BlurManagerGlobal, ContrastManagerGlobal, ShadowManagerGlobal};
     use crate::core::wayland::protocol::server::org_kde_kwin_server_decoration::org_kde_kwin_server_decoration_manager::OrgKdeKwinServerDecorationManager;

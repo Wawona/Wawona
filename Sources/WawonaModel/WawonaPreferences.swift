@@ -94,10 +94,13 @@ public struct ResolvedMachineSettings: Hashable, Sendable {
     public var sshUser: String
     public var sshPort: Int
     public var sshPassword: String
+    public var waypipeSSHPassword: String
     public var remoteCommand: String
     public var waypipeEnabled: Bool
     public var bundledAppID: String
     public var inputProfile: String
+    public var logLevel: String
+    public var shakeToCloseEnabled: Bool
 }
 
 @MainActor
@@ -193,6 +196,8 @@ public final class WawonaPreferences: ObservableObject {
         let normalizedOpenGLDriver = profile.runtimeOverrides.openGLDriver?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
         let normalizedInputProfile = profile.runtimeOverrides.inputProfile?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
         let normalizedWaylandDisplay = profile.runtimeOverrides.waylandDisplay?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
+        let normalizedWaypipePassword = profile.runtimeOverrides.waypipeSSHPassword ?? ""
+        let normalizedLogLevel = profile.runtimeOverrides.logLevel?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
 
         return ResolvedMachineSettings(
             machineID: profile.id,
@@ -210,10 +215,13 @@ public final class WawonaPreferences: ObservableObject {
             sshUser: normalizedSSHUser.isEmpty ? sshUser : normalizedSSHUser,
             sshPort: profile.sshPort > 0 ? profile.sshPort : sshPort,
             sshPassword: profile.sshPassword.isEmpty ? sshPassword : profile.sshPassword,
+            waypipeSSHPassword: normalizedWaypipePassword.isEmpty ? waypipeSSHPassword : normalizedWaypipePassword,
             remoteCommand: normalizedCommand.isEmpty ? "weston-simple-shm" : normalizedCommand,
             waypipeEnabled: profile.runtimeOverrides.waypipeEnabled ?? defaultWaypipeEnabled,
             bundledAppID: normalizedBundledApp.isEmpty ? defaultBundledAppID : normalizedBundledApp,
-            inputProfile: normalizedInputProfile.isEmpty ? defaultInputProfile : normalizedInputProfile
+            inputProfile: normalizedInputProfile.isEmpty ? defaultInputProfile : normalizedInputProfile,
+            logLevel: normalizedLogLevel.isEmpty ? logLevel : normalizedLogLevel,
+            shakeToCloseEnabled: profile.runtimeOverrides.shakeToCloseEnabled ?? shakeToCloseEnabled
         )
     }
 
@@ -258,11 +266,20 @@ public final class WawonaPreferences: ObservableObject {
         var runtimeOK = configOK
         var runtimeMessage = "SSH settings are valid for connection attempt."
         if runtimeProbe {
-            let hasSSH = Self.probeCommandAvailable("ssh")
-            runtimeOK = configOK && hasSSH
-            runtimeMessage = runtimeOK
-                ? "Runtime probe: ssh binary is available and settings are valid."
-                : "Runtime probe failed: ensure ssh exists and host/user/port are valid."
+            let transport = Self.runtimeSSHTransport()
+            switch transport {
+            case .externalBinary:
+                let hasSSH = Self.probeCommandAvailable("ssh")
+                runtimeOK = configOK && hasSSH
+                runtimeMessage = runtimeOK
+                    ? "Runtime probe: ssh binary is available and settings are valid."
+                    : "Runtime probe failed: ssh binary is unavailable or host/user/port are invalid."
+            case .inProcessLibssh2:
+                runtimeOK = configOK
+                runtimeMessage = runtimeOK
+                    ? "Runtime probe: in-process libssh2 transport is active and settings are valid."
+                    : "Runtime probe failed: host/user/port are invalid for libssh2 transport."
+            }
         }
         return recordDiagnostic(
             category: .ssh,
@@ -308,12 +325,12 @@ public final class WawonaPreferences: ObservableObject {
     }
 
     public func runDependencyDiagnostics(runtimeProbe: Bool = false) -> SettingsDiagnosticEntry {
-        let deps = ["waypipe", "weston", "foot", "libssh2", "xkbcommon"]
+        let deps = Self.runtimeDependencyTargets()
         var status = true
         var details: [String: String] = [:]
         if runtimeProbe {
             for dep in deps {
-                let available = Self.probeCommandAvailable(dep)
+                let available = Self.probeDependencyAvailable(dep)
                 details[dep] = available ? "present" : "missing"
                 if !available {
                     status = false
@@ -330,6 +347,39 @@ public final class WawonaPreferences: ObservableObject {
                 : "Configured dependencies: \(deps.joined(separator: ", "))",
             details: details
         )
+    }
+
+    private enum RuntimeSSHTransport {
+        case externalBinary
+        case inProcessLibssh2
+    }
+
+    private static func runtimeSSHTransport() -> RuntimeSSHTransport {
+        #if os(macOS)
+        return .externalBinary
+        #else
+        // iOS/iPadOS/tvOS/watchOS/visionOS use in-process libssh2 transport.
+        return .inProcessLibssh2
+        #endif
+    }
+
+    private static func runtimeDependencyTargets() -> [String] {
+        switch runtimeSSHTransport() {
+        case .externalBinary:
+            return ["waypipe", "ssh", "weston", "foot", "xkbcommon"]
+        case .inProcessLibssh2:
+            return ["waypipe", "libssh2 (in-process)", "xkbcommon"]
+        }
+    }
+
+    private static func probeDependencyAvailable(_ dependency: String) -> Bool {
+        switch dependency {
+        case "libssh2 (in-process)":
+            // This transport is statically linked for Apple mobile targets.
+            return true
+        default:
+            return probeCommandAvailable(dependency)
+        }
     }
 
     private static func probeCommandAvailable(_ command: String) -> Bool {

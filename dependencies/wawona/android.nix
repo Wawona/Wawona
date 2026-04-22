@@ -37,13 +37,8 @@ let
   };
 
   westonSimpleShmSrc = pkgs.callPackage ../libs/weston-simple-shm/patched-src.nix {};
-  emptyAndroidHelper = pkgs.runCommandNoCC "empty-android-helper-bin" { } ''
-    mkdir -p $out/bin
-  '';
-
-  isLinuxHost = pkgs.stdenv.isLinux || pkgs.stdenv.buildPlatform.isLinux || pkgs.stdenv.hostPlatform.isLinux;
-  opensshBin = if isLinuxHost then emptyAndroidHelper else buildModule.buildForAndroid "openssh" { };
-  sshpassBin = if isLinuxHost then emptyAndroidHelper else buildModule.buildForAndroid "sshpass" { };
+  opensshBin = buildModule.buildForAndroid "openssh" { };
+  sshpassBin = buildModule.buildForAndroid "sshpass" { };
   # Disable Weston on Android as building its GUI dependencies (cairo/pango) triggers 
   # Nixpkgs pkgsCross.aarch64-android which currently fails on compiler-rt (missing pthread.h).
   # Wawona is its own Wayland server and doesn't actually need Weston to run.
@@ -699,7 +694,8 @@ in
         od -A n -t x1 -v build/shaders/quad.frag.spv | awk '{for(i=1;i<=NF;i++) printf " 0x%s,", $i}' | sed '$ s/,$//' >> build/shaders/shader_spv.h
         echo '};' >> build/shaders/shader_spv.h
         echo 'static const size_t g_quad_frag_spv_len = sizeof(g_quad_frag_spv);' >> build/shaders/shader_spv.h
-        cp build/shaders/shader_spv.h src/platform/android/rendering/
+        mkdir -p dependencies/generators/gradlegen/generated
+        cp build/shaders/shader_spv.h dependencies/generators/gradlegen/generated/shader_spv.h
       else
         echo "ERROR: Shader sources not found at ${androidQuadVert} / ${androidQuadFrag}."
         exit 1
@@ -743,6 +739,23 @@ in
         done
       done
       shopt -u nullglob
+
+      # Bundle SSH client helpers with stable names expected by android_jni.c.
+      # We ship Dropbear dbclient as libssh_bin.so and sshpass as libsshpass_bin.so
+      # in jniLibs so runtime path resolution can execute them directly.
+      if [ -f "${opensshBin}/bin/ssh" ]; then
+        cp -L "${opensshBin}/bin/ssh" "$JNI_LIB_DIR/libssh_bin.so"
+        chmod +x "$JNI_LIB_DIR/libssh_bin.so"
+      else
+        echo "WARNING: Missing Android ssh binary at ${opensshBin}/bin/ssh"
+      fi
+
+      if [ -f "${sshpassBin}/bin/sshpass" ]; then
+        cp -L "${sshpassBin}/bin/sshpass" "$JNI_LIB_DIR/libsshpass_bin.so"
+        chmod +x "$JNI_LIB_DIR/libsshpass_bin.so"
+      else
+        echo "WARNING: Missing Android sshpass binary at ${sshpassBin}/bin/sshpass"
+      fi
 
       # Prefer the Rust shared library for Android linking; the static archive
       # can be malformed on some host toolchain combinations.

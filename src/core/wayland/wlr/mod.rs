@@ -17,21 +17,28 @@ pub mod virtual_keyboard;
 
 use wayland_server::DisplayHandle;
 use crate::core::state::CompositorState;
+use crate::core::wayland::policy;
 
 /// Register wlroots-compatible protocols
-pub fn register(_state: &mut CompositorState, dh: &DisplayHandle) {
+pub fn register(state: &mut CompositorState, dh: &DisplayHandle) {
     layer_shell::register_layer_shell(dh);
     output_management::register_output_management(dh);
     output_power_management::register_output_power_management(dh);
-    foreign_toplevel_management::register_foreign_toplevel_management(dh);
-    screencopy::register_screencopy(dh);
     gamma_control::register_gamma_control(dh);
-    data_control::register_data_control(dh);
-    export_dmabuf::register_export_dmabuf(dh);
-    
-    // Virtual devices
-    virtual_pointer::register_virtual_pointer(dh);
-    virtual_keyboard::register_virtual_keyboard(dh);
+    if policy::allow_privileged_wlr(state.protocol_profile) {
+        foreign_toplevel_management::register_foreign_toplevel_management(dh);
+        screencopy::register_screencopy(dh);
+        data_control::register_data_control(dh);
+        export_dmabuf::register_export_dmabuf(dh);
+        virtual_pointer::register_virtual_pointer(dh);
+        virtual_keyboard::register_virtual_keyboard(dh);
+    } else {
+        crate::wlog!(
+            crate::util::logging::COMPOSITOR,
+            "Privileged wlroots globals disabled for profile {}",
+            state.protocol_profile.as_str()
+        );
+    }
 
     crate::wlog!(crate::util::logging::COMPOSITOR, "Registered all wlroots-compatible protocols");
 }

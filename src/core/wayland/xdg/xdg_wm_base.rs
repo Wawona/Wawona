@@ -41,31 +41,13 @@ impl Dispatch<xdg_wm_base::XdgWmBase, ()> for CompositorState {
     ) {
         match request {
             xdg_wm_base::Request::GetXdgSurface { id, surface } => {
-                // Get the compositor-generated surface ID from user data (globally unique)
-                let surface_id = match surface.data::<u32>() {
-                    Some(id) => *id,
-                    None => {
-                        // Diagnostic logging for the crash
-                        let protocol_id = surface.id().protocol_id();
-                        let client_id = _client.id();
-                        let internal_id = state.protocol_to_internal_surface.get(&(client_id.clone(), protocol_id)).copied();
-                        
-                        crate::wlog!(crate::util::logging::COMPOSITOR, 
-                            "WARNING: WlSurface {} missing u32 user data! Client={:?}. Fallback internal_id={:?}", 
-                            protocol_id, client_id, internal_id);
-                        
-                        internal_id.unwrap_or_else(|| {
-                            tracing::error!("CRITICAL: No mapping found for surface {} for client {:?}", protocol_id, client_id);
-                            protocol_id // Last resort fallback
-                        })
-                    }
-                };
+                let client_id = _client.id();
+                let surface_id = state.ensure_internal_surface_mapping(client_id.clone(), &surface);
                 let mut xdg_surface_data = XdgSurfaceData::new(surface_id);
                 // Store the surface ID (u32) as user data for the resource
                 let xdg_surface: crate::core::wayland::protocol::server::xdg::shell::server::xdg_surface::XdgSurface = data_init.init(id, surface_id);
                 xdg_surface_data.resource = Some(xdg_surface.clone());
                 
-                let client_id = _client.id();
                 state.xdg.surfaces.insert((client_id, xdg_surface.id().protocol_id()), xdg_surface_data);
                 
                 crate::wlog!(crate::util::logging::COMPOSITOR, "Created xdg_surface version {} for wl_surface {}", xdg_surface.version(), surface_id);

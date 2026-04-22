@@ -41,6 +41,7 @@ uniffi = { version = "0.30.0", features = ["cli"] }
 wayland-server = "0.31.11"
 wayland-client = "0.31.12"
 wayland-backend = "0.3.12"
+smithay = { version = "0.7", default-features = false, features = ["wayland_frontend"] }
 
 # Protocol bindings (pre-generated, no custom generator needed)
 wayland-protocols = { version = "0.32.10", features = ["server", "client", "staging", "unstable"] }
@@ -73,7 +74,15 @@ wayland-scanner = "0.31.8"
 default = ["desktop-protocols"]
 # Desktop-only Wayland protocols (DRM, XWayland, screen capture, session lock).
 # Disable for App Store builds: `--no-default-features`
-desktop-protocols = []
+desktop-protocols = ["smithay-desktop"]
+# Runtime policy baseline (choose at build time; env override available)
+profile-store-safe = []
+profile-store-safe-remote = []
+profile-desktop-host = []
+profile-full-dev = []
+# Enables Smithay protocol migration scaffolding / compile probes.
+smithay-protocols = []
+smithay-desktop = []
 # Per-frame trace logging (SurfaceCommit, buffer, damage, frame callbacks).
 # Enable for debugging: `--features verbose-logs`
 verbose-logs = []

@@ -22,9 +22,72 @@ impl CompositorState {
         self.ext.presentation.send_presented_events(ts_ns, refresh_ns, seq);
     }
 
+    /// If an `xdg_surface.configure` is still unacked, queue this size and return `None`.
+    /// Otherwise send configure and return `Some(serial)`.
+    pub fn flush_deferred_toplevel_configure(&mut self, client_id: ClientId, xdg_surface_id: u32) {
+        let key_size = self
+            .xdg
+            .toplevels
+            .iter()
+            .find(|(k, tl)| k.0 == client_id && tl.xdg_surface_id == xdg_surface_id)
+            .and_then(|(k, tl)| tl.deferred_configure_size.map(|sz| (k.clone(), sz)));
+        let Some((key, (dw, dh))) = key_size else {
+            crate::wlog!(
+                crate::util::logging::COMPOSITOR,
+                "flush_deferred_toplevel_configure: none pending for xdg_surface={}",
+                xdg_surface_id
+            );
+            return;
+        };
+        crate::wlog!(
+            crate::util::logging::COMPOSITOR,
+            "flush_deferred_toplevel_configure: xdg_surface={} -> tl_id={} size={}x{}",
+            xdg_surface_id,
+            key.1,
+            dw,
+            dh
+        );
+        let _ = self.send_toplevel_configure(key.0, key.1, dw, dh);
+    }
+
     /// Send a configure event to an xdg_toplevel and its associated xdg_surface.
     /// Size is clamped to the client's min/max constraints (unless fullscreen, which ignores constraints per spec).
-    pub fn send_toplevel_configure(&mut self, client_id: ClientId, toplevel_id: u32, width: u32, height: u32) -> u32 {
+    pub fn send_toplevel_configure(
+        &mut self,
+        client_id: ClientId,
+        toplevel_id: u32,
+        width: u32,
+        height: u32,
+    ) -> Option<u32> {
+        let xdg_surface_id = match self.xdg.toplevels.get(&(client_id.clone(), toplevel_id)) {
+            Some(tl) => tl.xdg_surface_id,
+            None => {
+                crate::wlog!(
+                    crate::util::logging::COMPOSITOR,
+                    "send_toplevel_configure: tl_id={} NOT FOUND",
+                    toplevel_id
+                );
+                return None;
+            }
+        };
+
+        let superseded_pending_serial = self
+            .xdg
+            .surfaces
+            .get(&(client_id.clone(), xdg_surface_id))
+            .map(|surf| surf.pending_serial)
+            .unwrap_or(0);
+        if superseded_pending_serial != 0 {
+            crate::wlog!(
+                crate::util::logging::COMPOSITOR,
+                "send_toplevel_configure: superseding unacked serial {} with new size={}x{} for xdg_surface={}",
+                superseded_pending_serial,
+                width,
+                height,
+                xdg_surface_id
+            );
+        }
+
         let serial = self.next_serial();
         crate::wlog!(crate::util::logging::COMPOSITOR, "send_toplevel_configure: client={:?} tl_id={} size={}x{} serial={}", 
             client_id, toplevel_id, width, height, serial);
@@ -32,6 +95,7 @@ impl CompositorState {
         let mut to_send = None;
         if let Some(toplevel_data) = self.xdg.toplevels.get_mut(&(client_id.clone(), toplevel_id)) {
             toplevel_data.pending_serial = serial;
+            toplevel_data.deferred_configure_size = None;
             
             let (final_w, final_h) = if toplevel_data.pending_fullscreen {
                 (width.max(1), height.max(1))
@@ -69,28 +133,41 @@ impl CompositorState {
             } else {
                 crate::wlog!(crate::util::logging::COMPOSITOR, "send_toplevel_configure: No resource for tl_id={}", toplevel_id);
             }
-        } else {
-            crate::wlog!(crate::util::logging::COMPOSITOR, "send_toplevel_configure: tl_id={} NOT FOUND", toplevel_id);
         }
         
         if let Some((toplevel, xdg_surface_id, states, final_w, final_h)) = to_send {
             toplevel.configure(final_w as i32, final_h as i32, states);
             
-            if let Some(surface_data) = self.xdg.surfaces.get_mut(&(client_id, xdg_surface_id)) {
+            if let Some(surface_data) = self
+                .xdg
+                .surfaces
+                .get_mut(&(client_id.clone(), xdg_surface_id))
+            {
                 surface_data.pending_serial = serial;
                 surface_data.configured = false;
                 if let Some(resource) = &surface_data.resource {
                     crate::wlog!(crate::util::logging::COMPOSITOR, "Actually sending xdg_surface.configure(serial={}) to xdg_surface_id={}", serial, xdg_surface_id);
                     resource.configure(serial);
+                    crate::wlog!(
+                        crate::util::logging::COMPOSITOR,
+                        "configure_sent: client={:?} tl_id={} xdg_surface={} serial={} size={}x{}",
+                        client_id,
+                        toplevel_id,
+                        xdg_surface_id,
+                        serial,
+                        final_w,
+                        final_h
+                    );
                 } else {
                     crate::wlog!(crate::util::logging::COMPOSITOR, "No resource for xdg_surface_id={} when sending configure", xdg_surface_id);
                 }
             } else {
                 crate::wlog!(crate::util::logging::COMPOSITOR, "xdg_surface_id={} NOT FOUND in xdg.surfaces", xdg_surface_id);
             }
+            return Some(serial);
         }
-        
-        serial
+
+        None
     }
 
     /// Send `xdg_toplevel.close` so the client can shut down cleanly before the host
@@ -231,13 +308,54 @@ impl CompositorState {
                 let mut render_width = window.width.max(0) as u32;
                 let mut render_height = window.height.max(0) as u32;
                 if !is_fullscreen_shell_window {
+                    let expected_toplevel_size = self
+                        .xdg
+                        .toplevels
+                        .values()
+                        .find(|tl| tl.surface_id == window.surface_id)
+                        .map(|tl| (tl.width, tl.height));
+                    let xdg_pending_serial = self
+                        .xdg
+                        .surfaces
+                        .values()
+                        .find(|s| s.surface_id == window.surface_id)
+                        .map(|s| s.pending_serial)
+                        .unwrap_or(0);
                     if let Some(surface_ref) = self.get_surface(window.surface_id) {
                         let surface = surface_ref.read().unwrap();
                         let committed_width = surface.current.width.max(0) as u32;
                         let committed_height = surface.current.height.max(0) as u32;
                         if committed_width > 0 && committed_height > 0 {
-                            render_width = committed_width;
-                            render_height = committed_height;
+                            let expected_known = expected_toplevel_size
+                                .map(|(expected_w, expected_h)| expected_w > 0 && expected_h > 0)
+                                .unwrap_or(false);
+                            let committed_matches_expected = expected_toplevel_size
+                                .map(|(expected_w, expected_h)| {
+                                    expected_w > 0
+                                        && expected_h > 0
+                                        && (committed_width as i32 - expected_w as i32).abs() <= 64
+                                        && (committed_height as i32 - expected_h as i32).abs() <= 64
+                                })
+                                .unwrap_or(true);
+                            let should_use_committed =
+                                if expected_known { committed_matches_expected } else { true };
+                            if should_use_committed {
+                                render_width = committed_width;
+                                render_height = committed_height;
+                            } else {
+                                crate::wlog!(
+                                    crate::util::logging::STATE,
+                                    "Scene size clamp: window={} surf={} committed={}x{} expected_toplevel={:?} pending_serial={} -> using window={}x{}",
+                                    window.id,
+                                    window.surface_id,
+                                    committed_width,
+                                    committed_height,
+                                    expected_toplevel_size,
+                                    xdg_pending_serial,
+                                    render_width,
+                                    render_height
+                                );
+                            }
                         }
                         node.scale = (surface.current.scale.max(1)) as f32;
                     }
@@ -256,12 +374,28 @@ impl CompositorState {
                         let buf_w = surf.current.width as f32;
                         let buf_h = surf.current.height as f32;
                         if buf_w > 0.0 && buf_h > 0.0 && gw > 0 && gh > 0 {
-                            node.content_rect = ContentRect {
-                                x: gx as f32 / buf_w,
-                                y: gy as f32 / buf_h,
-                                w: gw as f32 / buf_w,
-                                h: gh as f32 / buf_h,
-                            };
+                            // wlroots/sway-style behavior: crop to intersection of
+                            // set_window_geometry and actual surface buffer extents.
+                            let geom_x2 = gx.saturating_add(gw);
+                            let geom_y2 = gy.saturating_add(gh);
+                            let inter_x1 = gx.max(0);
+                            let inter_y1 = gy.max(0);
+                            let inter_x2 = geom_x2.min(surf.current.width.max(0));
+                            let inter_y2 = geom_y2.min(surf.current.height.max(0));
+                            let inter_w = (inter_x2 - inter_x1).max(0);
+                            let inter_h = (inter_y2 - inter_y1).max(0);
+                            if inter_w > 0 && inter_h > 0 {
+                                node.content_rect = ContentRect {
+                                    x: inter_x1 as f32 / buf_w,
+                                    y: inter_y1 as f32 / buf_h,
+                                    w: inter_w as f32 / buf_w,
+                                    h: inter_h as f32 / buf_h,
+                                };
+                                // Keep host/window edges aligned with visible client content.
+                                // If buffer includes SSD/CSD shadow/titlebar margins, the node
+                                // itself must still match content extents.
+                                node.set_size(inter_w as u32, inter_h as u32);
+                            }
                         }
                     }
                 }
@@ -272,9 +406,7 @@ impl CompositorState {
                 new_scene.add_node(node);
                 new_scene.add_child(root_id, node_id);
                 
-                let geom_offset = geom_by_surface.get(&window.surface_id)
-                    .map(|&(gx, gy, _, _)| (gx, gy))
-                    .unwrap_or((0, 0));
+                let geom_offset = (window.geometry_x, window.geometry_y);
                 self.add_subsurfaces_to_scene(&mut new_scene, node_id, window.surface_id, geom_offset);
             }
         }

@@ -47,7 +47,46 @@ impl Dispatch<xdg_toplevel::XdgToplevel, u32> for CompositorState {
             }
             xdg_toplevel::Request::SetAppId { app_id } => {
                 tracing::debug!("xdg_toplevel.set_app_id: \"{}\"", app_id);
-                // Store app_id - could be used for window grouping
+                let weston_family_client = !matches!(
+                    state.decoration_policy,
+                    crate::core::state::DecorationPolicy::ForceServer
+                ) && (app_id == "weston"
+                    || app_id.starts_with("weston-")
+                    || app_id.contains("weston"));
+                let window_id = if let Some(tl_data) = state
+                    .xdg
+                    .toplevels
+                    .get_mut(&(client_id.clone(), toplevel_id))
+                {
+                    tl_data.app_id = app_id.clone();
+                    Some(tl_data.window_id)
+                } else {
+                    None
+                };
+                if let Some(window_id) = window_id {
+                    if let Some(window) = state.get_window(window_id) {
+                        if let Ok(mut w) = window.write() {
+                            w.app_id = app_id.clone();
+                            if weston_family_client {
+                                w.decoration_mode = crate::core::window::DecorationMode::ClientSide;
+                            }
+                        }
+                    }
+                    if weston_family_client {
+                        state.pending_compositor_events.push(
+                            crate::core::compositor::CompositorEvent::DecorationModeChanged {
+                                window_id,
+                                mode: crate::core::window::DecorationMode::ClientSide,
+                            },
+                        );
+                        crate::wlog!(
+                            crate::util::logging::COMPOSITOR,
+                            "SetAppId forced client-side host decorations for weston-family app_id='{}' window={}",
+                            app_id,
+                            window_id
+                        );
+                    }
+                }
             }
             xdg_toplevel::Request::SetMaxSize { width, height } => {
                 tracing::trace!("xdg_toplevel.set_max_size: {}x{}", width, height);

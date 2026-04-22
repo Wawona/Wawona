@@ -12,6 +12,8 @@
 , rustBackendLib ? ""
 , rustBackendSharedLib ? ""
 , runtimeLibDirs ? ""
+, opensshBinaryPath ? ""
+, sshpassBinaryPath ? ""
 }:
 
 let
@@ -27,7 +29,7 @@ let
     else
       null;
 
-  # Script to generate Android Studio project in Wawona-gradle-project/ (gitignored).
+  # Script to generate Android Studio project in generator-owned output dir.
   # When wawonaAndroidProject is available (pre-built Android project with jniLibs),
   # copies the full project. Otherwise falls back to gradle files + sources only.
   projectPath = if wawonaAndroidProject != null then toString wawonaAndroidProject else "";
@@ -38,7 +40,7 @@ let
       toString (wawonaSrc + "/src/resources/Wawona.icon/Assets/wayland.png")
     else
       "";
-  outDir = "Wawona-gradle-project";
+  outDir = "dependencies/generators/gradlegen/output/Wawona-gradle-project";
   sdkDirInit =
     if androidSdkRoot != null then
       "SDK_DIR=${lib.escapeShellArg (toString androidSdkRoot)}"
@@ -49,6 +51,8 @@ let
   rustBackendLibEscaped = lib.escapeShellArg rustBackendLib;
   rustBackendSharedLibEscaped = lib.escapeShellArg rustBackendSharedLib;
   runtimeLibDirsEscaped = lib.escapeShellArg runtimeLibDirs;
+  opensshBinaryPathEscaped = lib.escapeShellArg opensshBinaryPath;
+  sshpassBinaryPathEscaped = lib.escapeShellArg sshpassBinaryPath;
   westonShmPath = if westonSimpleShmSrc != null then toString westonSimpleShmSrc else "";
   generateScript = pkgs.writeShellScriptBin "gradlegen" ''
     set -e
@@ -120,7 +124,7 @@ let
       fi
     fi
     # Ensure shader_spv.h is always freshly generated and syntactically valid.
-    # Prevent stale/partial headers causing CMake compile errors in Studio.
+    # Keep generated artifacts out of src/; emit under dependencies/generators.
     if [ -z "''${REPO_ROOT:-}" ]; then
       if [ -f "$PWD/src/stubs/egl_buffer_handler.c" ]; then
         REPO_ROOT="$(cd "$PWD" && pwd)"
@@ -132,9 +136,11 @@ let
       TMP_SHADER_DIR="$(mktemp -d)"
       NIX_GLSLANG_BIN="${pkgs.glslang}/bin" bash "$REPO_ROOT/scripts/embed-android-shaders.sh" "$REPO_ROOT" "$TMP_SHADER_DIR"
       if [ -f "$TMP_SHADER_DIR/shader_spv.h" ]; then
-        cp "$TMP_SHADER_DIR/shader_spv.h" "$REPO_ROOT/src/platform/android/rendering/shader_spv.h"
-        chmod u+w "$REPO_ROOT/src/platform/android/rendering/shader_spv.h" 2>/dev/null || true
-        echo "Regenerated $REPO_ROOT/src/platform/android/rendering/shader_spv.h"
+        GENERATED_SHADER_DIR="$OUT/dependencies/generators/gradlegen/generated"
+        mkdir -p "$GENERATED_SHADER_DIR"
+        cp "$TMP_SHADER_DIR/shader_spv.h" "$GENERATED_SHADER_DIR/shader_spv.h"
+        chmod u+w "$GENERATED_SHADER_DIR/shader_spv.h" 2>/dev/null || true
+        echo "Regenerated $GENERATED_SHADER_DIR/shader_spv.h"
       fi
       rm -rf "$TMP_SHADER_DIR"
     else
@@ -153,7 +159,9 @@ let
     # Mirror Nix runtime libs into jniLibs for Android Studio builds.
     RUNTIME_LIB_DIRS=${runtimeLibDirsEscaped}
     RUST_BACKEND_SO=${rustBackendSharedLibEscaped}
-    if [ -n "$RUNTIME_LIB_DIRS" ] || [ -n "$RUST_BACKEND_SO" ]; then
+    OPENSSH_BIN=${opensshBinaryPathEscaped}
+    SSHPASS_BIN=${sshpassBinaryPathEscaped}
+    if [ -n "$RUNTIME_LIB_DIRS" ] || [ -n "$RUST_BACKEND_SO" ] || [ -n "$OPENSSH_BIN" ] || [ -n "$SSHPASS_BIN" ]; then
       JNI_LIB_DIR="$OUT/app/src/main/jniLibs/arm64-v8a"
       mkdir -p "$JNI_LIB_DIR"
       if [ -n "$RUNTIME_LIB_DIRS" ]; then
@@ -180,6 +188,14 @@ let
       fi
       if [ -n "$RUST_BACKEND_SO" ] && [ -f "$RUST_BACKEND_SO" ]; then
         cp -L "$RUST_BACKEND_SO" "$JNI_LIB_DIR/libwawona_core.so"
+      fi
+      if [ -n "$OPENSSH_BIN" ] && [ -f "$OPENSSH_BIN" ]; then
+        cp -L "$OPENSSH_BIN" "$JNI_LIB_DIR/libssh_bin.so"
+        chmod +x "$JNI_LIB_DIR/libssh_bin.so"
+      fi
+      if [ -n "$SSHPASS_BIN" ] && [ -f "$SSHPASS_BIN" ]; then
+        cp -L "$SSHPASS_BIN" "$JNI_LIB_DIR/libsshpass_bin.so"
+        chmod +x "$JNI_LIB_DIR/libsshpass_bin.so"
       fi
       chmod -R u+w "$JNI_LIB_DIR" 2>/dev/null || true
       echo "Mirrored Nix runtime .so libs into $JNI_LIB_DIR"

@@ -111,6 +111,10 @@ typedef struct {
                      width:(uint32_t)width
                     height:(uint32_t)height;
 
+/// Force immediate authoritative resize sync for current host content size.
+/// Use at end of live-resize to avoid host/client edge desync.
+- (void)reconcileWindowResizeNow:(uint64_t)windowId;
+
 /// Ask the Wayland client to close (`xdg_toplevel.close`). Returns YES if a
 /// toplevel was found (caller should cancel the NSWindow close until teardown).
 - (BOOL)requestHostCloseForWindowId:(uint64_t)windowId;

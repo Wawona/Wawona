@@ -118,7 +118,8 @@ impl Default for DataDeviceState {
 // wl_data_device_manager implementation
 // ============================================================================
 
-impl GlobalDispatch<WlDataDeviceManager, ()> for CompositorState {
+#[cfg(feature = "legacy-custom-runtime")]
+impl/*legacy*/ GlobalDispatch<WlDataDeviceManager, ()> for CompositorState {
     fn bind(
         _state: &mut Self,
         _handle: &DisplayHandle,
@@ -131,7 +132,8 @@ impl GlobalDispatch<WlDataDeviceManager, ()> for CompositorState {
     }
 }
 
-impl Dispatch<WlDataDeviceManager, ()> for CompositorState {
+#[cfg(feature = "legacy-custom-runtime")]
+impl/*legacy*/ Dispatch<WlDataDeviceManager, ()> for CompositorState {
     fn request(
         state: &mut Self,
         _client: &Client,
@@ -169,7 +171,8 @@ impl Dispatch<WlDataDeviceManager, ()> for CompositorState {
 // wl_data_source implementation
 // ============================================================================
 
-impl Dispatch<WlDataSource, ()> for CompositorState {
+#[cfg(feature = "legacy-custom-runtime")]
+impl/*legacy*/ Dispatch<WlDataSource, ()> for CompositorState {
     fn request(
         state: &mut Self,
         _client: &Client,
@@ -207,7 +210,8 @@ impl Dispatch<WlDataSource, ()> for CompositorState {
 // wl_data_device implementation
 // ============================================================================
 
-impl Dispatch<WlDataDevice, ()> for CompositorState {
+#[cfg(feature = "legacy-custom-runtime")]
+impl/*legacy*/ Dispatch<WlDataDevice, ()> for CompositorState {
     fn request(
         state: &mut Self,
         _client: &Client,
@@ -344,7 +348,7 @@ fn negotiated_dnd_action(source_actions: DndAction, dest_actions: DndAction, pre
     DndAction::empty()
 }
 
-impl Dispatch<WlDataOffer, ()> for CompositorState {
+impl/*legacy*/ Dispatch<WlDataOffer, ()> for CompositorState {
     fn request(
         state: &mut Self,
         _client: &Client,

@@ -5,10 +5,13 @@ use wayland_server::{
 };
 
 use crate::core::state::CompositorState;
+use crate::core::surface::buffer::{Buffer, BufferType, ShmBufferData, wl_shm_format_to_legacy_u32};
 use crate::core::surface::Surface;
+use smithay::wayland::shm::with_buffer_contents;
 
 pub struct CompositorGlobal;
 
+#[cfg(any())]
 impl GlobalDispatch<wl_compositor::WlCompositor, ()> for CompositorState {
     #[allow(unreachable_code)]
     fn bind(
@@ -24,6 +27,7 @@ impl GlobalDispatch<wl_compositor::WlCompositor, ()> for CompositorState {
     }
 }
 
+#[cfg(any())]
 impl Dispatch<wl_compositor::WlCompositor, ()> for CompositorState {
     fn request(
         state: &mut Self,
@@ -57,6 +61,7 @@ impl Dispatch<wl_compositor::WlCompositor, ()> for CompositorState {
     }
 }
 
+#[cfg(any())]
 impl Dispatch<wl_surface::WlSurface, u32> for CompositorState {
     fn request(
         state: &mut Self,
@@ -83,6 +88,10 @@ impl Dispatch<wl_surface::WlSurface, u32> for CompositorState {
                             let mut b = b.write().unwrap();
                             // Reset released flag - client is reusing this buffer
                             b.released = false;
+                            // Keep the resource handle fresh. Some clients destroy and recreate
+                            // wl_buffer objects quickly during resize; stale handles later show up
+                            // as "resource DEAD" at release time.
+                            b.resource = Some(buffer_res.clone());
                             
                             let client_id = resource.client();
                             let client_outputs: Vec<_> = state.output_resources.values()
@@ -101,6 +110,67 @@ impl Dispatch<wl_surface::WlSurface, u32> for CompositorState {
                             surface.pending.buffer = b.buffer_type.clone();
                             surface.pending.buffer_id = Some(buffer_id);
                             tracing::debug!("Surface {} attached buffer {} at ({}, {})", id, buffer_id, x, y);
+                        } else if let Ok((width, height, stride, offset, fmt_u32)) =
+                            with_buffer_contents(&buffer_res, |_, _, data| {
+                                (
+                                    data.width,
+                                    data.height,
+                                    data.stride,
+                                    data.offset,
+                                    wl_shm_format_to_legacy_u32(data.format),
+                                )
+                            })
+                        {
+                            // Smithay-managed wl_shm buffer (e.g. Weston): register for FFI + rendering.
+                            let shm = ShmBufferData {
+                                width,
+                                height,
+                                stride,
+                                format: fmt_u32,
+                                offset,
+                                pool_id: 0,
+                            };
+                            state.add_buffer(
+                                _client.id(),
+                                Buffer::new(
+                                    buffer_id,
+                                    BufferType::Shm(shm.clone()),
+                                    Some(buffer_res.clone()),
+                                ),
+                            );
+
+                            let client_id_for_outputs = resource.client();
+                            let client_outputs: Vec<_> = state
+                                .output_resources
+                                .values()
+                                .filter(|o| o.client() == client_id_for_outputs)
+                                .cloned()
+                                .collect();
+                            if !client_outputs.is_empty() {
+                                let count = client_outputs.len();
+                                for output in client_outputs {
+                                    resource.enter(&output);
+                                }
+                                crate::wtrace!(
+                                    crate::util::logging::COMPOSITOR,
+                                    "Sent wl_surface.enter for surface {} to {} bound outputs for client {:?}",
+                                    id,
+                                    count,
+                                    client_id_for_outputs
+                                        .as_ref()
+                                        .map(|c| c.id())
+                                );
+                            }
+
+                            surface.pending.buffer = BufferType::Shm(shm);
+                            surface.pending.buffer_id = Some(buffer_id);
+                            tracing::debug!(
+                                "Surface {} attached Smithay SHM buffer {} at ({}, {})",
+                                id,
+                                buffer_id,
+                                x,
+                                y
+                            );
                         } else {
                             // If buffer not found (e.g. from another protocol), use a generic placeholder
                             surface.pending.buffer = crate::core::surface::BufferType::None;
@@ -208,6 +278,7 @@ impl Dispatch<wl_surface::WlSurface, u32> for CompositorState {
     }
 }
 
+#[cfg(any())]
 impl Dispatch<wl_region::WlRegion, ()> for CompositorState {
     fn request(
         state: &mut Self,
@@ -281,100 +352,6 @@ impl Dispatch<wl_region::WlRegion, ()> for CompositorState {
     }
 }
 
-// wl_shm implementation for shared memory buffers
-impl GlobalDispatch<wayland_server::protocol::wl_shm::WlShm, ()> for CompositorState {
-    fn bind(
-        _state: &mut Self,
-        _handle: &DisplayHandle,
-        _client: &wayland_server::Client,
-        resource: wayland_server::New<wayland_server::protocol::wl_shm::WlShm>,
-        _global_data: &(),
-        data_init: &mut wayland_server::DataInit<'_, Self>,
-    ) {
-        let shm = data_init.init(resource, ());
-        // Advertise supported formats
-        shm.format(wayland_server::protocol::wl_shm::Format::Argb8888);
-        shm.format(wayland_server::protocol::wl_shm::Format::Xrgb8888);
-    }
-}
-
-impl Dispatch<wayland_server::protocol::wl_shm::WlShm, ()> for CompositorState {
-    fn request(
-        state: &mut Self,
-        _client: &wayland_server::Client,
-        _resource: &wayland_server::protocol::wl_shm::WlShm,
-        request: wayland_server::protocol::wl_shm::Request,
-        _data: &(),
-        _dhandle: &DisplayHandle,
-        data_init: &mut wayland_server::DataInit<'_, Self>,
-    ) {
-        match request {
-            wayland_server::protocol::wl_shm::Request::CreatePool { id, fd, size } => {
-                let pool = data_init.init(id, ());
-                let pool_id = pool.id().protocol_id();
-                let client_id = _client.id();
-                
-                // Store the pool for later mmap access to pixel data
-                state.shm_pools.insert((client_id, pool_id), crate::core::state::ShmPool::new(fd, size));
-                tracing::debug!("wl_shm.create_pool: id={}, size={}", pool_id, size);
-            }
-            _ => {}
-        }
-    }
-}
-
-impl Dispatch<wayland_server::protocol::wl_shm_pool::WlShmPool, ()> for CompositorState {
-    fn request(
-        state: &mut Self,
-        _client: &wayland_server::Client,
-        resource: &wayland_server::protocol::wl_shm_pool::WlShmPool,
-        request: wayland_server::protocol::wl_shm_pool::Request,
-        _data: &(),
-        _dhandle: &DisplayHandle,
-        data_init: &mut wayland_server::DataInit<'_, Self>,
-    ) {
-        match request {
-            wayland_server::protocol::wl_shm_pool::Request::CreateBuffer { 
-                id, offset, width, height, stride, format 
-            } => {
-                let buffer_res = data_init.init(id, ());
-                let buffer_id = buffer_res.id().protocol_id();
-                
-                // Track SHM buffer metadata
-                let shm_data = crate::core::surface::ShmBufferData {
-                    width,
-                    height,
-                    stride,
-                    format: match format {
-                        WEnum::Value(f) => f as u32,
-                        WEnum::Unknown(f) => f,
-                    },
-                    offset,
-                    pool_id: resource.id().protocol_id(),
-                };
-                
-                let client_id = _client.id();
-                state.add_buffer(client_id.clone(), crate::core::surface::Buffer::new(
-                    buffer_id,
-                    crate::core::surface::BufferType::Shm(shm_data),
-                    Some(buffer_res.clone())
-                ));
-                
-                // Store buffer resource for release events
-                tracing::debug!("wl_shm_pool.create_buffer: {}x{} (id={})", width, height, buffer_id);
-            }
-            wayland_server::protocol::wl_shm_pool::Request::Resize { size } => {
-                let pool_id = resource.id().protocol_id();
-                let client_id = _client.id();
-                if let Some(pool) = state.shm_pools.get_mut(&(client_id, pool_id)) {
-                    pool.resize(size);
-                }
-            }
-            _ => {}
-        }
-    }
-}
-
 impl Dispatch<wayland_server::protocol::wl_buffer::WlBuffer, ()> for CompositorState {
     fn request(
         state: &mut Self,
@@ -397,6 +374,7 @@ impl Dispatch<wayland_server::protocol::wl_buffer::WlBuffer, ()> for CompositorS
     }
 }
 
+#[cfg(any())]
 impl Dispatch<wayland_server::protocol::wl_callback::WlCallback, ()> for CompositorState {
     fn request(
         _state: &mut Self,

@@ -55,6 +55,7 @@ pub mod xwayland_shell;
 
 use wayland_server::DisplayHandle;
 use crate::core::state::CompositorState;
+use crate::core::wayland::policy;
 
 /// Register Wayland extension protocols.
 ///
@@ -77,10 +78,7 @@ pub fn register(_state: &mut CompositorState, dh: &DisplayHandle) {
     keyboard_shortcuts_inhibit::register_keyboard_shortcuts_inhibit_manager(dh);
     linux_dmabuf::register_linux_dmabuf(dh);
     linux_explicit_sync::register_linux_explicit_sync(dh);
-    tablet::register_tablet(dh);
     input_timestamps::register_input_timestamps(dh);
-    pointer_warp::register_pointer_warp(dh);
-    primary_selection::register_primary_selection(dh);
 
     // ── Modern Staging & Ext Protocols ────────────────────────────
     alpha_modifier::register_alpha_modifier(dh);
@@ -99,22 +97,51 @@ pub fn register(_state: &mut CompositorState, dh: &DisplayHandle) {
     workspace::register_workspace(dh);
     background_effect::register_background_effect(dh);
 
-    if _state.advertise_fullscreen_shell {
+    if _state.advertise_fullscreen_shell && policy::allow_desktop_extensions(_state.protocol_profile) {
         fullscreen_shell::register_fullscreen_shell(dh);
         crate::wlog!(crate::util::logging::COMPOSITOR, "Fullscreen shell advertised (user setting enabled)");
     } else {
-        crate::wlog!(crate::util::logging::COMPOSITOR, "Fullscreen shell NOT advertised (user setting disabled)");
+        crate::wlog!(
+            crate::util::logging::COMPOSITOR,
+            "Fullscreen shell NOT advertised (disabled or disallowed by profile {})",
+            _state.protocol_profile.as_str()
+        );
+    }
+
+    if policy::allow_privileged_wlr(_state.protocol_profile) {
+        pointer_warp::register_pointer_warp(dh);
+        tablet::register_tablet(dh);
+        primary_selection::register_primary_selection(dh);
+    } else {
+        crate::wlog!(
+            crate::util::logging::COMPOSITOR,
+            "Skipping pointer warp for profile {}",
+            _state.protocol_profile.as_str()
+        );
+        crate::wlog!(
+            crate::util::logging::COMPOSITOR,
+            "Skipping tablet + primary selection for profile {}",
+            _state.protocol_profile.as_str()
+        );
     }
 
     // ── Desktop-only protocols (feature-gated) ────────────────────
     #[cfg(feature = "desktop-protocols")]
     {
-        session_lock::register_session_lock(dh);
-        image_capture_source::register_image_capture_source(dh);
-        image_copy_capture::register_image_copy_capture(dh);
-        xwayland_keyboard_grab::register_xwayland_keyboard_grab(dh);
-        xwayland_shell::register_xwayland_shell(dh);
-        input_method::register_input_method_manager(dh);
+        if policy::allow_desktop_extensions(_state.protocol_profile) {
+            session_lock::register_session_lock(dh);
+            image_capture_source::register_image_capture_source(dh);
+            image_copy_capture::register_image_copy_capture(dh);
+            xwayland_keyboard_grab::register_xwayland_keyboard_grab(dh);
+            xwayland_shell::register_xwayland_shell(dh);
+            input_method::register_input_method_manager(dh);
+        } else {
+            crate::wlog!(
+                crate::util::logging::COMPOSITOR,
+                "Skipping desktop-only ext globals for profile {}",
+                _state.protocol_profile.as_str()
+            );
+        }
     }
 
     crate::wlog!(crate::util::logging::COMPOSITOR, "Registered extension protocols");

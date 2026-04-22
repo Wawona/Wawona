@@ -4,13 +4,10 @@
 //! including logical position and size (accounting for scaling and transforms).
 
 
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use wayland_protocols::xdg::xdg_output::zv1::server::{
-    zxdg_output_manager_v1::{self, ZxdgOutputManagerV1},
-    zxdg_output_v1::{self, ZxdgOutputV1},
+    zxdg_output_v1::ZxdgOutputV1,
 };
+use wayland_server::Resource;
 
 
 use crate::core::state::{CompositorState, OutputState};
@@ -37,117 +34,6 @@ pub struct XdgOutputState {
 }
 
 
-// ============================================================================
-// zxdg_output_manager_v1
-// ============================================================================
-
-impl GlobalDispatch<ZxdgOutputManagerV1, ()> for CompositorState {
-    fn bind(
-        _state: &mut Self,
-        _handle: &DisplayHandle,
-        _client: &Client,
-        resource: New<ZxdgOutputManagerV1>,
-        _global_data: &(),
-        data_init: &mut DataInit<'_, Self>,
-    ) {
-        data_init.init(resource, ());
-        tracing::debug!("Bound zxdg_output_manager_v1");
-    }
-}
-
-impl Dispatch<ZxdgOutputManagerV1, ()> for CompositorState {
-    fn request(
-        state: &mut Self,
-        _client: &Client,
-        _resource: &ZxdgOutputManagerV1,
-        request: zxdg_output_manager_v1::Request,
-        _data: &(),
-        _dhandle: &DisplayHandle,
-        data_init: &mut DataInit<'_, Self>,
-    ) {
-        match request {
-            zxdg_output_manager_v1::Request::GetXdgOutput { id, output } => {
-                let output_id = state
-                    .output_id_by_resource
-                    .get(&output.id())
-                    .copied()
-                    .unwrap_or_else(|| output.id().protocol_id());
-                let xdg_output_data = XdgOutputData::new(output_id);
-                let xdg_output = data_init.init(id, ());
-
-                let xdg_output_id = xdg_output.id().protocol_id();
-                state.xdg.output.outputs.insert((_client.id().clone(), xdg_output_id), xdg_output_data);
-                state.xdg.output.resources.insert((_client.id().clone(), xdg_output_id), xdg_output.clone());
-
-                
-                // Send output information for the bound wl_output.
-                let output_state = state
-                    .outputs
-                    .iter()
-                    .find(|o| o.id == output_id)
-                    .unwrap_or_else(|| state.primary_output());
-                
-                xdg_output.logical_position(output_state.x, output_state.y);
-                
-                // OutputState.width/height are already logical (points/dp).
-                let lw = output_state.width as i32;
-                let lh = output_state.height as i32;
-                xdg_output.logical_size(lw, lh);
-                
-                if xdg_output.version() >= 2 {
-                    xdg_output.name(output_state.name.clone());
-                    xdg_output.description(format!(
-                        "{} ({}x{} @ {}Hz)",
-                        output_state.name,
-                        output_state.width,
-                        output_state.height,
-                        output_state.refresh / 1000
-                    ));
-                }
-                
-                if xdg_output.version() >= 3 {
-                    xdg_output.done();
-                }
-                
-                tracing::debug!(
-                    "Created xdg_output for output {}: logical {}x{} at ({}, {})",
-                    output_id, lw, lh, output_state.x, output_state.y
-                );
-            }
-            zxdg_output_manager_v1::Request::Destroy => {
-                tracing::debug!("zxdg_output_manager_v1 destroyed");
-            }
-            _ => {}
-        }
-    }
-}
-
-// ============================================================================
-// zxdg_output_v1
-// ============================================================================
-
-impl Dispatch<ZxdgOutputV1, ()> for CompositorState {
-    fn request(
-        state: &mut Self,
-        _client: &Client,
-        resource: &ZxdgOutputV1,
-        request: zxdg_output_v1::Request,
-        _data: &(),
-        _dhandle: &DisplayHandle,
-        _data_init: &mut DataInit<'_, Self>,
-    ) {
-        match request {
-            zxdg_output_v1::Request::Destroy => {
-                let id = resource.id().protocol_id();
-                state.xdg.output.outputs.remove(&(_client.id().clone(), id));
-                state.xdg.output.resources.remove(&(_client.id().clone(), id));
-                tracing::debug!("zxdg_output_v1 destroyed");
-            }
-
-            _ => {}
-        }
-    }
-}
 
 /// Notify all xdg_output resources about output configuration changes.
 /// Called when output geometry, mode, or scale changes.
@@ -266,7 +152,3 @@ pub fn notify_xdg_output_change_for_client_override(
     }
 }
 
-/// Register zxdg_output_manager_v1 global
-pub fn register_xdg_output_manager(display: &DisplayHandle) -> wayland_server::backend::GlobalId {
-    display.create_global::<CompositorState, ZxdgOutputManagerV1, ()>(3, ())
-}

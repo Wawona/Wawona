@@ -53,6 +53,9 @@ public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
     public var autoScale: Bool?
     public var waylandDisplay: String?
     public var colorOperations: Bool?
+    public var waypipeSSHPassword: String?
+    public var logLevel: String?
+    public var shakeToCloseEnabled: Bool?
 
     public init(
         renderer: String? = nil,
@@ -65,7 +68,10 @@ public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
         forceSSD: Bool? = nil,
         autoScale: Bool? = nil,
         waylandDisplay: String? = nil,
-        colorOperations: Bool? = nil
+        colorOperations: Bool? = nil,
+        waypipeSSHPassword: String? = nil,
+        logLevel: String? = nil,
+        shakeToCloseEnabled: Bool? = nil
     ) {
         self.renderer = renderer
         self.vulkanDriver = vulkanDriver
@@ -78,6 +84,9 @@ public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
         self.autoScale = autoScale
         self.waylandDisplay = waylandDisplay
         self.colorOperations = colorOperations
+        self.waypipeSSHPassword = waypipeSSHPassword
+        self.logLevel = logLevel
+        self.shakeToCloseEnabled = shakeToCloseEnabled
     }
 }
 

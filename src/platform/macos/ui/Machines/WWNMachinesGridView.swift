@@ -10,40 +10,19 @@ struct WWNMachinesGridView: View {
   @StateObject private var model = WWNMachinesViewModel()
   @State private var editingProfile: WWNMachineProfile?
   @State private var isCreating = false
+  @State private var showDeleteAllConfirmation = false
   @State private var searchQuery = ""
+  @State private var isToolbarSearchPresented = false
+  @FocusState private var isToolbarSearchFocused: Bool
+  #if os(macOS)
+  @State private var columnVisibility: NavigationSplitViewVisibility = .all
+  private let maxSidebarTopExtension: CGFloat = 28
+  #endif
   #if os(iOS)
   @State private var preferredColumn: NavigationSplitViewColumn = .sidebar
   #endif
 
   var body: some View {
-    #if os(macOS)
-    applyMacChromeFixes(
-      to: splitView
-        .sheet(isPresented: $isCreating) {
-          WWNMachineEditorView(
-            title: "Add Machine Profile",
-            initial: nil,
-            defaultType: model.selectedFilter.defaultMachineType
-          ) { profile in
-            model.upsert(profile)
-          }
-          #if os(iOS)
-          .presentationDetents([.medium, .large])
-          .presentationContentInteraction(.scrolls)
-          #endif
-        }
-        .sheet(item: $editingProfile) { profile in
-          WWNMachineEditorView(title: "Edit Machine Profile", initial: profile) { updated in
-            model.upsert(updated)
-          }
-          #if os(iOS)
-          .presentationDetents([.medium, .large])
-          .presentationContentInteraction(.scrolls)
-          #endif
-        }
-        .animation(.spring(duration: 0.42, bounce: 0.26), value: visibleProfiles.count)
-    )
-    #else
     splitView
       .sheet(isPresented: $isCreating) {
         WWNMachineEditorView(
@@ -67,13 +46,26 @@ struct WWNMachinesGridView: View {
         .presentationContentInteraction(.scrolls)
         #endif
       }
+      .alert("Delete all machine profiles?", isPresented: $showDeleteAllConfirmation) {
+        Button("Cancel", role: .cancel) {}
+        Button("Delete All", role: .destructive) {
+          model.deleteAllProfiles()
+        }
+      } message: {
+        Text("This permanently removes every machine profile. This action cannot be undone.")
+      }
       .animation(.spring(duration: 0.42, bounce: 0.26), value: visibleProfiles.count)
-    #endif
   }
 
   @ViewBuilder
   private var splitView: some View {
-    #if os(iOS)
+    #if os(macOS)
+    NavigationSplitView(columnVisibility: $columnVisibility) {
+      sidebar
+    } detail: {
+      detailContent
+    }
+    #elseif os(iOS)
     NavigationSplitView(preferredCompactColumn: $preferredColumn) {
       sidebar
     } detail: {
@@ -90,12 +82,13 @@ struct WWNMachinesGridView: View {
 
   private var detailContent: some View {
     #if os(macOS)
-    applyMacToolbarLayout(
-      to: detailPane
-        .navigationTitle(detailNavigationTitle)
-        .toolbar {
-          detailToolbarContent
-        }
+    removeSidebarToggleIfAvailable(
+      from: detailPane
+      .navigationTitle(detailNavigationTitle)
+      .toolbarTitleDisplayMode(.inline)
+      .toolbar {
+        detailToolbarContent
+      }
     )
     #else
     detailPane
@@ -125,49 +118,69 @@ struct WWNMachinesGridView: View {
   @ToolbarContentBuilder
   private var detailToolbarContent: some ToolbarContent {
     #if os(macOS)
-    ToolbarItem(placement: .primaryAction) {
+    ToolbarItem(placement: .navigation) {
       Button {
-        toggleSidebar()
+        withAnimation(.easeInOut(duration: 0.2)) {
+          columnVisibility = (columnVisibility == .detailOnly) ? .all : .detailOnly
+        }
       } label: {
-        Label("Toggle Sidebar", systemImage: "sidebar.left")
+        Image(systemName: "sidebar.left")
       }
+      .help("Toggle Sidebar")
     }
-    ToolbarItem(placement: .automatic) {
+    ToolbarItemGroup(placement: .primaryAction) {
       Button {
         isCreating = true
       } label: {
         Label("Add", systemImage: "plus")
       }
-    }
-    if let onOpenSettings {
-      ToolbarItem(placement: .automatic) {
-        Button("Settings", action: onOpenSettings)
+
+      Button(role: .destructive) {
+        showDeleteAllConfirmation = true
+      } label: {
+        Label("Delete All", systemImage: "trash")
+      }
+      .help("Delete all machines")
+      .disabled(model.profiles.isEmpty)
+
+      if isToolbarSearchPresented {
+        toolbarSearchField
+      } else {
+        Button {
+          openToolbarSearch()
+        } label: {
+          Image(systemName: "magnifyingglass")
+        }
+        .help("Search")
+      }
+
+      if let onOpenSettings {
+        Button(action: onOpenSettings) {
+          Image(systemName: "gearshape")
+        }
+        .help("Settings")
       }
     }
     #else
     if let onOpenSettings {
       ToolbarItem(placement: .automatic) {
-        Button("Settings", action: onOpenSettings)
+        Button(action: onOpenSettings) {
+          Image(systemName: "gearshape")
+        }
       }
+    }
+    ToolbarItem(placement: .automatic) {
+      Button(role: .destructive) {
+        showDeleteAllConfirmation = true
+      } label: {
+        Label("Delete All", systemImage: "trash")
+      }
+      .disabled(model.profiles.isEmpty)
     }
     #endif
   }
 
   #if os(macOS)
-  private func toggleSidebar() {
-    NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)),
-                     to: nil,
-                     from: nil)
-  }
-
-  @ViewBuilder
-  private func applyMacToolbarLayout<V: View>(to view: V) -> some View {
-    if #available(macOS 13.0, *) {
-      view.toolbar(removing: .sidebarToggle)
-    } else {
-      view
-    }
-  }
   #endif
 
   // MARK: - Sidebar
@@ -183,8 +196,10 @@ struct WWNMachinesGridView: View {
           }
         }
       }
+      .modifier(MacSidebarTopExtensionCap(maxExtension: maxSidebarTopExtension))
       .listStyle(.sidebar)
       .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 320)
+      .toolbar(removing: .sidebarToggle)
       #else
       List(selection: compactSidebarSelection) {
         Section("Machine Scope") {
@@ -202,18 +217,26 @@ struct WWNMachinesGridView: View {
       .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 320)
       #endif
     }
-    #if os(macOS)
-    .navigationTitle("Control Panel")
-    #endif
   }
 
   #if os(macOS)
+  @ViewBuilder
+  private func removeSidebarToggleIfAvailable<V: View>(from view: V) -> some View {
+    if #available(macOS 13.0, *) {
+      view.toolbar(removing: .sidebarToggle)
+    } else {
+      view
+    }
+  }
+
   private var macSidebarSelection: Binding<WWNMachineFilter?> {
     Binding(
       get: { model.selectedFilter },
       set: { selected in
         guard let selected, selected != model.selectedFilter else { return }
-        withAnimation(.easeInOut(duration: 0.2)) {
+        // Defer mutation to next runloop; direct publish during List selection
+        // update can trigger "Publishing changes from within view updates".
+        DispatchQueue.main.async {
           model.selectedFilter = selected
         }
       }
@@ -228,12 +251,12 @@ struct WWNMachinesGridView: View {
       get: { model.selectedFilter },
       set: { selected in
         guard let selected, selected != model.selectedFilter else { return }
-        withAnimation(.easeInOut(duration: 0.2)) {
+        DispatchQueue.main.async {
           model.selectedFilter = selected
+          #if os(iOS)
+          preferredColumn = .detail
+          #endif
         }
-        #if os(iOS)
-        preferredColumn = .detail
-        #endif
       }
     )
   }
@@ -247,7 +270,6 @@ struct WWNMachinesGridView: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 16) {
           summaryStrip
-          searchAndLayoutBar
 
           if visibleProfiles.isEmpty {
             ContentUnavailableView(
@@ -293,10 +315,6 @@ struct WWNMachinesGridView: View {
         .frame(maxWidth: 1320, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .topLeading)
       }
-      #if os(macOS)
-      // Keep content out of the titlebar zone even if AppKit briefly toggles unified chrome.
-      .safeAreaPadding(.top, 6)
-      #endif
     }
   }
 
@@ -324,12 +342,73 @@ struct WWNMachinesGridView: View {
     let base = model.filteredProfiles
     let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     if query.isEmpty { return base }
-    return base.filter { profile in
-      profile.name.lowercased().contains(query) ||
-        profile.sshHost.lowercased().contains(query) ||
-        profile.sshUser.lowercased().contains(query) ||
-        model.machineTypeLabel(for: profile).lowercased().contains(query)
+
+    // Non-empty query always uses fuzzy scoring across searchable corpus.
+    let terms = query.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+    let scored: [(profile: WWNMachineProfile, score: Int)] = base.compactMap { profile in
+      let haystack = model.searchableText(for: profile)
+      var total = 0
+      for term in terms {
+        guard let score = fzfScore(pattern: term, candidate: haystack) else {
+          return nil
+        }
+        total += score
+      }
+      return (profile, total)
     }
+    return scored
+      .sorted {
+        if $0.score == $1.score {
+          return $0.profile.name.localizedCaseInsensitiveCompare($1.profile.name) == .orderedAscending
+        }
+        return $0.score > $1.score
+      }
+      .map(\.profile)
+  }
+
+  /// Lightweight fzf-style subsequence matcher with adjacency and boundary bonuses.
+  private func fzfScore(pattern: String, candidate: String) -> Int? {
+    if pattern.isEmpty { return 0 }
+    let p = Array(pattern.lowercased())
+    let c = Array(candidate.lowercased())
+    if p.count > c.count { return nil }
+
+    let boundaryChars = CharacterSet(charactersIn: " _-/.:")
+    var score = 0
+    var pi = 0
+    var ci = 0
+    var lastMatch = -1
+    var firstMatch = -1
+
+    while pi < p.count, ci < c.count {
+      if p[pi] == c[ci] {
+        if firstMatch < 0 { firstMatch = ci }
+        score += 8
+        if lastMatch >= 0 {
+          let gap = ci - lastMatch - 1
+          if gap == 0 {
+            score += 14 // adjacency bonus
+          } else {
+            score -= min(gap, 10)
+          }
+        }
+        if ci == 0 {
+          score += 10
+        } else {
+          let prev = String(c[ci - 1]).unicodeScalars
+          if let scalar = prev.first, boundaryChars.contains(scalar) {
+            score += 9 // token boundary bonus
+          }
+        }
+        lastMatch = ci
+        pi += 1
+      }
+      ci += 1
+    }
+
+    if pi != p.count { return nil }
+    score += max(0, 24 - firstMatch) // prefer earlier matches
+    return score
   }
 
   // MARK: - Summary Strip
@@ -342,26 +421,11 @@ struct WWNMachinesGridView: View {
         summaryPill("Profiles", "\(model.profiles.count)")
         summaryPill("Connected", "\(model.connectedCount)")
         summaryPill("Ready", "\(model.launchableCount)")
-        if let onOpenSettings {
-          Button("Settings", action: onOpenSettings)
-            .buttonStyle(.bordered)
-        }
       }
       .padding(.horizontal, 6)
       .padding(.vertical, 4)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
-  }
-
-  // MARK: - Search / Filter Bar
-
-  private var searchAndLayoutBar: some View {
-    TextField("Search machines or hosts", text: $searchQuery)
-      #if os(tvOS)
-      .textFieldStyle(.automatic)
-      #else
-      .textFieldStyle(.roundedBorder)
-      #endif
   }
 
   // MARK: - Helpers
@@ -382,6 +446,69 @@ struct WWNMachinesGridView: View {
     case .all: return "circle.grid.2x2"
     case .local: return "desktopcomputer"
     case .remote: return "network"
+    }
+  }
+
+  @ViewBuilder
+  private var toolbarSearchField: some View {
+    HStack(spacing: 8) {
+      Image(systemName: "magnifyingglass")
+        .foregroundStyle(.secondary)
+      TextField("Search machines", text: $searchQuery)
+        .textFieldStyle(.plain)
+        .focused($isToolbarSearchFocused)
+        .frame(minWidth: 180, idealWidth: 240, maxWidth: 300)
+        .onAppear {
+          DispatchQueue.main.async {
+            isToolbarSearchFocused = true
+          }
+        }
+      if !searchQuery.isEmpty {
+        Button {
+          searchQuery = ""
+        } label: {
+          Image(systemName: "xmark.circle.fill")
+            .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+      }
+      Button {
+        closeToolbarSearch()
+      } label: {
+        Image(systemName: "xmark")
+      }
+      .buttonStyle(.plain)
+    }
+    .padding(.horizontal, 10)
+    .padding(.vertical, 7)
+    .background(searchBackground)
+    .overlay(
+      RoundedRectangle(cornerRadius: 14, style: .continuous)
+        .stroke(Color.white.opacity(0.34), lineWidth: 1)
+    )
+    #if os(macOS)
+    .onExitCommand {
+      closeToolbarSearch()
+    }
+    #endif
+  }
+
+  @ViewBuilder
+  private var searchBackground: some View {
+    if #available(macOS 26.0, iOS 26.0, tvOS 26.0, visionOS 26.0, *) {
+      RoundedRectangle(cornerRadius: 14, style: .continuous)
+        .fill(Color.white.opacity(0.22))
+        .background(
+          RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .glassEffect(.regular, in: .rect(cornerRadius: 14))
+        )
+    } else {
+      RoundedRectangle(cornerRadius: 14, style: .continuous)
+        .fill(Color.white.opacity(0.22))
+        .background(
+          RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .fill(.regularMaterial)
+        )
     }
   }
 
@@ -409,21 +536,33 @@ struct WWNMachinesGridView: View {
   }
   #endif
 
-  #if os(macOS)
-  @ViewBuilder
-  private func applyMacChromeFixes<V: View>(to view: V) -> some View {
-    if #available(macOS 13.0, *) {
-      view
-        .toolbarBackground(.visible, for: .windowToolbar)
-        .toolbarBackground(Color(nsColor: .windowBackgroundColor), for: .windowToolbar)
-        .background(WWNWindowChromeGuard())
-    } else {
-      view
-        .background(WWNWindowChromeGuard())
+  private func openToolbarSearch() {
+    isToolbarSearchPresented = true
+    DispatchQueue.main.async {
+      isToolbarSearchFocused = true
     }
   }
-  #endif
+
+  private func closeToolbarSearch() {
+    isToolbarSearchFocused = false
+    isToolbarSearchPresented = false
+  }
+
 }
+
+#if os(macOS)
+private struct MacSidebarTopExtensionCap: ViewModifier {
+  let maxExtension: CGFloat
+
+  func body(content: Content) -> some View {
+    if #available(macOS 26.0, *) {
+      content.safeAreaPadding(.top, maxExtension)
+    } else {
+      content
+    }
+  }
+}
+#endif
 
 extension WWNMachineProfile: Identifiable {
   public var id: String { machineId }
@@ -442,12 +581,13 @@ final class WWNMachinesHostingBridge: NSObject {
     let root = WWNMachinesGridView(
       onConnect: onConnect,
       onOpenSettings: {
-        WWNPreferences.sharedPreferences().showPreferences(nil)
+        let prefs = WWNPreferences.shared()
+        prefs.show(prefs)
       }
     )
     let hosting = UIHostingController(rootView: root)
     let nav = UINavigationController(rootViewController: hosting)
-    nav.modalPresentationStyle = .fullScreen
+    nav.modalPresentationStyle = UIModalPresentationStyle.fullScreen
     return nav
   }
 }
@@ -473,47 +613,19 @@ final class WWNMachinesHostingBridge: NSObject {
       defer: false
     )
     window.minSize = NSSize(width: 1024, height: 720)
-    window.styleMask.remove(.fullSizeContentView)
-    window.titlebarAppearsTransparent = false
-    window.titleVisibility = .visible
-    if #available(macOS 11.0, *) {
-      window.toolbarStyle = .automatic
+    if #available(macOS 26.0, *) {
+      // macOS 26: allow split-view/sidebar content to extend into titlebar region.
+      window.styleMask.insert(.fullSizeContentView)
+      window.titlebarAppearsTransparent = true
+      if #available(macOS 11.0, *) {
+        window.toolbarStyle = .unified
+      }
     }
     window.center()
     window.contentViewController = hosting
     window.title = "Wawona Machine Control Panel"
     window.isRestorable = false
     return NSWindowController(window: window)
-  }
-}
-
-private struct WWNWindowChromeGuard: NSViewRepresentable {
-  func makeNSView(context: Context) -> NSView {
-    let view = NSView(frame: .zero)
-    DispatchQueue.main.async {
-      configureWindow(for: view)
-    }
-    return view
-  }
-
-  func updateNSView(_ nsView: NSView, context: Context) {
-    DispatchQueue.main.async {
-      configureWindow(for: nsView)
-    }
-  }
-
-  private func configureWindow(for view: NSView) {
-    guard let window = view.window else { return }
-    window.styleMask.remove(.fullSizeContentView)
-    window.titlebarAppearsTransparent = false
-    window.titleVisibility = .visible
-    window.isOpaque = true
-    window.backgroundColor = .windowBackgroundColor
-    window.contentView?.wantsLayer = true
-    window.contentView?.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
-    if #available(macOS 11.0, *) {
-      window.toolbarStyle = .automatic
-    }
   }
 }
 #endif

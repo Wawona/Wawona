@@ -248,8 +248,11 @@ impl Dispatch<xdg_surface::XdgSurface, u32> for CompositorState {
             }
             xdg_surface::Request::AckConfigure { serial } => {
                 crate::wlog!(crate::util::logging::COMPOSITOR, "Client acked configure serial {}", serial);
+                let mut cleared_surface_pending = false;
                 if let Some(data) = data {
                     if let Some(surface_data) = state.xdg.surfaces.get_mut(&(client_id.clone(), xdg_surface_id)) {
+                        let pending_before = surface_data.pending_serial;
+                        let configured_before = surface_data.configured;
                         // Record progress for diagnostics; readiness is granted only on latest serial.
                         if serial > surface_data.last_acked_serial {
                             surface_data.last_acked_serial = serial;
@@ -257,15 +260,27 @@ impl Dispatch<xdg_surface::XdgSurface, u32> for CompositorState {
                         if serial == surface_data.pending_serial {
                             surface_data.configured = true;
                             surface_data.pending_serial = 0;
-                        } else if surface_data.pending_serial != 0 {
+                            cleared_surface_pending = true;
+                        } else if surface_data.pending_serial != 0 && serial > surface_data.pending_serial {
                             crate::wlog!(
                                 crate::util::logging::COMPOSITOR,
-                                "AckConfigure mismatch for xdg_surface {}: got serial={}, pending={}",
+                                "AckConfigure invalid for xdg_surface {}: got serial={}, pending={}",
                                 xdg_surface_id,
                                 serial,
                                 surface_data.pending_serial
                             );
                         }
+                        crate::wlog!(
+                            crate::util::logging::COMPOSITOR,
+                            "AckConfigure lifecycle: xdg_surface={} serial={} pending_before={} pending_after={} configured_before={} configured_after={} last_acked={}",
+                            xdg_surface_id,
+                            serial,
+                            pending_before,
+                            surface_data.pending_serial,
+                            configured_before,
+                            surface_data.configured,
+                            surface_data.last_acked_serial
+                        );
                     }
 
                     // Mark the window as configured
@@ -303,6 +318,14 @@ impl Dispatch<xdg_surface::XdgSurface, u32> for CompositorState {
                             }
                         }
                     }
+                }
+                if cleared_surface_pending {
+                    crate::wlog!(
+                        crate::util::logging::COMPOSITOR,
+                        "AckConfigure cleared pending serial; flushing deferred configure for xdg_surface={}",
+                        xdg_surface_id
+                    );
+                    state.flush_deferred_toplevel_configure(client_id.clone(), xdg_surface_id);
                 }
             }
             xdg_surface::Request::SetWindowGeometry { x, y, width, height } => {

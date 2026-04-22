@@ -15,41 +15,44 @@ pub mod xdg_system_bell;
 
 use wayland_server::DisplayHandle;
 use crate::core::state::CompositorState;
+use crate::core::wayland::policy;
 
-/// Register XDG desktop protocols
-pub fn register(_state: &mut CompositorState, dh: &DisplayHandle) {
-    use wayland_protocols::xdg::shell::server::xdg_wm_base::XdgWmBase;
-    use wayland_protocols::xdg::decoration::zv1::server::zxdg_decoration_manager_v1::ZxdgDecorationManagerV1;
+/// Register XDG desktop protocols.
+///
+/// Optional XDG protocol families are only exposed for desktop-oriented profiles.
+pub fn register(state: &mut CompositorState, dh: &DisplayHandle) {
     use wayland_protocols::xdg::xdg_output::zv1::server::zxdg_output_manager_v1::ZxdgOutputManagerV1;
-    use wayland_protocols::xdg::foreign::zv2::server::{zxdg_exporter_v2::ZxdgExporterV2, zxdg_importer_v2::ZxdgImporterV2};
-
-    dh.create_global::<CompositorState, XdgWmBase, _>(5, ());
-    crate::wlog!(crate::util::logging::COMPOSITOR, "Registered xdg_wm_base v5");
+    use wayland_protocols::xdg::foreign::zv2::server::zxdg_importer_v2::ZxdgImporterV2;
     
-    dh.create_global::<CompositorState, ZxdgDecorationManagerV1, _>(1, ());
-    crate::wlog!(crate::util::logging::COMPOSITOR, "Registered zxdg_decoration_manager_v1");
-    
-    dh.create_global::<CompositorState, ZxdgOutputManagerV1, _>(3, ());
-    crate::wlog!(crate::util::logging::COMPOSITOR, "Registered zxdg_output_manager_v1 v3");
-    
-    dh.create_global::<CompositorState, ZxdgExporterV2, _>(1, ());
-    crate::wlog!(crate::util::logging::COMPOSITOR, "Registered zxdg_exporter_v2");
-    
-    dh.create_global::<CompositorState, ZxdgImporterV2, _>(1, ());
-    crate::wlog!(crate::util::logging::COMPOSITOR, "Registered zxdg_importer_v2");
+    if policy::allow_desktop_extensions(state.protocol_profile) {
+        use wayland_protocols::xdg::decoration::zv1::server::zxdg_decoration_manager_v1::ZxdgDecorationManagerV1;
 
-    // New 0.32.10 protocols
-    use wayland_protocols::xdg::activation::v1::server::xdg_activation_v1::XdgActivationV1;
-    use wayland_protocols::xdg::dialog::v1::server::xdg_wm_dialog_v1::XdgWmDialogV1;
-    use wayland_protocols::xdg::system_bell::v1::server::xdg_system_bell_v1::XdgSystemBellV1;
-    use wayland_protocols::xdg::toplevel_drag::v1::server::xdg_toplevel_drag_manager_v1::XdgToplevelDragManagerV1;
-    use wayland_protocols::xdg::toplevel_icon::v1::server::xdg_toplevel_icon_manager_v1::XdgToplevelIconManagerV1;
+        dh.create_global::<CompositorState, ZxdgDecorationManagerV1, _>(1, ());
+        crate::wlog!(crate::util::logging::COMPOSITOR, "Registered zxdg_decoration_manager_v1");
 
-    dh.create_global::<CompositorState, XdgActivationV1, _>(1, ());
-    dh.create_global::<CompositorState, XdgWmDialogV1, _>(1, ());
-    dh.create_global::<CompositorState, XdgSystemBellV1, _>(1, ());
-    dh.create_global::<CompositorState, XdgToplevelDragManagerV1, _>(1, ());
-    dh.create_global::<CompositorState, XdgToplevelIconManagerV1, _>(1, ());
+        xdg_foreign::register_xdg_exporter(dh);
+        crate::wlog!(crate::util::logging::COMPOSITOR, "Registered zxdg_exporter_v2");
 
-    crate::wlog!(crate::util::logging::COMPOSITOR, "Registered additional XDG protocols (activation, dialog, system bell, icons)");
+        dh.create_global::<CompositorState, ZxdgImporterV2, _>(1, ());
+        crate::wlog!(crate::util::logging::COMPOSITOR, "Registered zxdg_importer_v2");
+
+        // Delegate registration to per-protocol modules for a single source of truth.
+        xdg_activation::register_xdg_activation(dh);
+        xdg_dialog::register_xdg_dialog(dh);
+        xdg_system_bell::register_xdg_system_bell(dh);
+        xdg_toplevel_drag::register_xdg_toplevel_drag(dh);
+        xdg_toplevel_icon::register_xdg_toplevel_icon(dh);
+        xdg_toplevel_tag::register_xdg_toplevel_tag(dh);
+
+        crate::wlog!(
+            crate::util::logging::COMPOSITOR,
+            "Registered desktop-only XDG protocols (decoration, foreign, activation, dialog, system bell, icons, tags)"
+        );
+    } else {
+        crate::wlog!(
+            crate::util::logging::COMPOSITOR,
+            "Skipping desktop-only XDG globals for profile {}",
+            state.protocol_profile.as_str()
+        );
+    }
 }

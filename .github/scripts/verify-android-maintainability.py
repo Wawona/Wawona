@@ -29,6 +29,10 @@ def main() -> int:
 
     for path in sorted(DEPENDENCIES.rglob("*android.nix")):
         rel = path.relative_to(ROOT).as_posix()
+        # Ignore generated gradle mirror trees; maintainability gates apply to
+        # canonical dependency definitions checked into the workspace root.
+        if rel.startswith("dependencies/generators/") and "/output/" in rel:
+            continue
         content = path.read_text(encoding="utf-8")
 
         max_lines = LINE_BUDGET_OVERRIDES.get(rel, DEFAULT_MAX_LINES)

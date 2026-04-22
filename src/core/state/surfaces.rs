@@ -221,7 +221,8 @@ impl CompositorState {
         let surface_ref = if let Some(s) = self.get_surface(id) { s } else { return };
         let surface = surface_ref.write().unwrap();
         
-        let mut window_id = self.surface_to_window.get(&id).copied();
+        let direct_window_id = self.surface_to_window.get(&id).copied();
+        let mut window_id = direct_window_id;
         
         let client_id = surface.client_id.clone();
         let layer_id = if let Some(cid) = &client_id {
@@ -255,6 +256,14 @@ impl CompositorState {
         };
         
         if let Some(wid) = window_id {
+            // Only the root/toplevel wl_surface that is directly mapped to a host window
+            // may drive platform window-size synchronization.
+            //
+            // Subsurfaces can resolve to the parent window_id above, but their commit
+            // buffer sizes/geometries are not the host toplevel size. Letting subsurface
+            // commits emit WindowSizeChanged can make host windows oscillate between
+            // unrelated dimensions (seen as flicker with nested clients).
+            let should_sync_host_window_size = direct_window_id.is_some();
             // Synchronize window dimensions with surface dimensions.
             //
             // When xdg_surface geometry is set, use the geometry width/height
@@ -262,36 +271,181 @@ impl CompositorState {
             // CSD shadow).  Store the geometry origin so pointer coordinates
             // can be offset to surface-local coords.
             let mut size_changed = false;
-            if let Some(window) = self.get_window(wid) {
-                let mut window = window.write().unwrap();
-                let old_w = window.width;
-                let old_h = window.height;
-                let is_fullscreen_shell_window = self.ext.fullscreen_shell.presented_window_id == Some(wid);
-                if is_fullscreen_shell_window {
-                    if let Some(output) = self.outputs.get(self.primary_output) {
-                        window.width = output.width as i32;
-                        window.height = output.height as i32;
-                    }
-                    window.geometry_x = 0;
-                    window.geometry_y = 0;
-                } else {
-                    let geom = self.xdg.surfaces.values()
-                        .find(|s| s.surface_id == id)
-                        .and_then(|s| s.geometry);
-                    if let Some((gx, gy, gw, gh)) = geom {
-                        window.width = gw;
-                        window.height = gh;
-                        window.geometry_x = gx;
-                        window.geometry_y = gy;
-                    } else {
-                        window.width = surface.current.width;
-                        window.height = surface.current.height;
+            let (xdg_geometry, xdg_pending_serial, xdg_last_acked_serial) = self
+                .xdg
+                .surfaces
+                .values()
+                .find(|s| s.surface_id == id)
+                .map(|s| (s.geometry, s.pending_serial, s.last_acked_serial))
+                .unwrap_or((None, 0, 0));
+            let (expected_toplevel_size, toplevel_pending_serial, toplevel_last_acked_serial) = self
+                .xdg
+                .toplevels
+                .values()
+                .find(|tl| tl.surface_id == id)
+                .map(|tl| {
+                    (
+                        Some((tl.width as i32, tl.height as i32)),
+                        tl.pending_serial,
+                        tl.last_acked_serial,
+                    )
+                })
+                .unwrap_or((None, 0, 0));
+            if should_sync_host_window_size {
+                if let Some(window) = self.get_window(wid) {
+                    let mut window = window.write().unwrap();
+                    let old_w = window.width;
+                    let old_h = window.height;
+                    let is_fullscreen_shell_window = self.ext.fullscreen_shell.presented_window_id == Some(wid);
+                    if is_fullscreen_shell_window {
+                        if let Some(output) = self.outputs.get(self.primary_output) {
+                            window.width = output.width as i32;
+                            window.height = output.height as i32;
+                        }
                         window.geometry_x = 0;
                         window.geometry_y = 0;
+                    } else {
+                        // Ignore client-driven size churn while a configure is still pending.
+                        // This prevents host/client resize ping-pong loops with nested clients.
+                        if xdg_pending_serial == 0 {
+                            let mut target_width = surface.current.width;
+                            let mut target_height = surface.current.height;
+                            let mut target_geometry_x = 0;
+                            let mut target_geometry_y = 0;
+
+                            if let Some((gx, gy, gw, gh)) = xdg_geometry {
+                                // wlroots/sway-style: intersect client-provided window geometry
+                                // with committed buffer extents. No arbitrary delta threshold.
+                                let committed_w = surface.current.width.max(1);
+                                let committed_h = surface.current.height.max(1);
+                                let geom_x2 = gx.saturating_add(gw);
+                                let geom_y2 = gy.saturating_add(gh);
+                                let inter_x1 = gx.max(0);
+                                let inter_y1 = gy.max(0);
+                                let inter_x2 = geom_x2.min(committed_w);
+                                let inter_y2 = geom_y2.min(committed_h);
+                                let inter_w = (inter_x2 - inter_x1).max(0);
+                                let inter_h = (inter_y2 - inter_y1).max(0);
+                                let geometry_intersects_buffer =
+                                    gw > 0 && gh > 0 && inter_w > 0 && inter_h > 0;
+
+                                if geometry_intersects_buffer {
+                                    target_width = inter_w;
+                                    target_height = inter_h;
+                                    target_geometry_x = inter_x1;
+                                    target_geometry_y = inter_y1;
+                                } else {
+                                    crate::wlog!(
+                                        crate::util::logging::STATE,
+                                        "Ignoring non-intersecting xdg geometry: window={} surf={} geom={:?} committed={}x{}",
+                                        wid,
+                                        id,
+                                        xdg_geometry,
+                                        committed_w,
+                                        committed_h
+                                    );
+                                }
+                            }
+
+                            let expected_configure_known = expected_toplevel_size
+                                .map(|(expected_w, expected_h)| expected_w > 0 && expected_h > 0)
+                                .unwrap_or(false);
+                            let should_accept_client_commit_size =
+                                expected_toplevel_size
+                                    .map(|(expected_w, expected_h)| {
+                                        expected_w > 0
+                                            && expected_h > 0
+                                            && (target_width - expected_w).abs() <= 64
+                                            && (target_height - expected_h).abs() <= 64
+                                    })
+                                    .unwrap_or(false);
+                            let expected_delta = expected_toplevel_size.map(|(expected_w, expected_h)| {
+                                (
+                                    (target_width - expected_w).abs(),
+                                    (target_height - expected_h).abs(),
+                                )
+                            });
+                            crate::wlog!(
+                                crate::util::logging::STATE,
+                                "Host sync decision: window={} surf={} pending_serial={} last_acked_serial={} tl_pending_serial={} tl_last_acked_serial={} committed={}x{} target={}x{} xdg_geom={:?} expected_toplevel={:?} expected_delta={:?} expected_known={} accept={}",
+                                wid,
+                                id,
+                                xdg_pending_serial,
+                                xdg_last_acked_serial,
+                                toplevel_pending_serial,
+                                toplevel_last_acked_serial,
+                                surface.current.width,
+                                surface.current.height,
+                                target_width,
+                                target_height,
+                                xdg_geometry,
+                                expected_toplevel_size,
+                                expected_delta,
+                                expected_configure_known,
+                                should_accept_client_commit_size
+                            );
+
+                            if should_accept_client_commit_size {
+                                window.width = target_width;
+                                window.height = target_height;
+                                window.geometry_x = target_geometry_x;
+                                window.geometry_y = target_geometry_y;
+                            } else {
+                                if expected_configure_known {
+                                    crate::wlog!(
+                                        crate::util::logging::STATE,
+                                        "Ignoring untracked client commit size for window {}: committed={}x{} expected_configure={}x{} delta={}x{} pending_serial={} last_acked_serial={} tl_pending_serial={} tl_last_acked_serial={}",
+                                        wid,
+                                        target_width,
+                                        target_height,
+                                        expected_toplevel_size.map(|(w, _)| w).unwrap_or(0),
+                                        expected_toplevel_size.map(|(_, h)| h).unwrap_or(0),
+                                        expected_toplevel_size
+                                            .map(|(w, _)| (target_width - w).abs())
+                                            .unwrap_or(0),
+                                        expected_toplevel_size
+                                            .map(|(_, h)| (target_height - h).abs())
+                                            .unwrap_or(0),
+                                        xdg_pending_serial,
+                                        xdg_last_acked_serial,
+                                        toplevel_pending_serial,
+                                        toplevel_last_acked_serial
+                                    );
+                                } else {
+                                    crate::wlog!(
+                                        crate::util::logging::STATE,
+                                        "Deferring host sync until non-zero toplevel configure: window={} surf={} committed={}x{} expected_toplevel={:?} pending_serial={} last_acked_serial={} tl_pending_serial={} tl_last_acked_serial={}",
+                                        wid,
+                                        id,
+                                        target_width,
+                                        target_height,
+                                        expected_toplevel_size,
+                                        xdg_pending_serial,
+                                        xdg_last_acked_serial,
+                                        toplevel_pending_serial,
+                                        toplevel_last_acked_serial
+                                    );
+                                }
+                            }
+                        } else {
+                            crate::wlog!(
+                                crate::util::logging::STATE,
+                                "Deferring host sync due to pending configure: window={} surf={} pending_serial={} last_acked_serial={} tl_pending_serial={} tl_last_acked_serial={} committed={}x{} expected_toplevel={:?}",
+                                wid,
+                                id,
+                                xdg_pending_serial,
+                                xdg_last_acked_serial,
+                                toplevel_pending_serial,
+                                toplevel_last_acked_serial,
+                                surface.current.width,
+                                surface.current.height,
+                                expected_toplevel_size
+                            );
+                        }
                     }
-                }
-                if window.width != old_w || window.height != old_h {
-                    size_changed = true;
+                    if window.width != old_w || window.height != old_h {
+                        size_changed = true;
+                    }
                 }
             }
 
@@ -299,7 +453,10 @@ impl CompositorState {
             // the window size the platform created.  Fullscreen-shell windows
             // are excluded: their size is dictated by the output, not the
             // client buffer.
-            if size_changed && self.ext.fullscreen_shell.presented_window_id != Some(wid) {
+            if should_sync_host_window_size
+                && size_changed
+                && self.ext.fullscreen_shell.presented_window_id != Some(wid)
+            {
                 if let Some(window) = self.get_window(wid) {
                     let window = window.read().unwrap();
                     if window.width > 0 && window.height > 0 {
@@ -424,10 +581,22 @@ impl CompositorState {
 
     /// Release a buffer (notify client we are done with it)
     pub fn release_buffer(&mut self, client_id: ClientId, buffer_id: u32) {
-        if let Some(buffer) = self.buffers.get(&(client_id, buffer_id)) {
+        let key = (client_id.clone(), buffer_id);
+        let mut retire_entry = false;
+        if let Some(buffer) = self.buffers.get(&key) {
             let mut buffer = buffer.write().unwrap();
             buffer.release();
+            retire_entry = buffer
+                .resource
+                .as_ref()
+                .map(|res| !res.is_alive())
+                .unwrap_or(true);
             tracing::debug!("Released buffer {}", buffer_id);
+        }
+        // Retire dead entries so repeated release attempts do not keep hitting
+        // stale wl_buffer resources.
+        if retire_entry {
+            self.buffers.remove(&key);
         }
     }
 

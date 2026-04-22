@@ -16,6 +16,18 @@ use crate::core::state::{CompositorState, DecorationPolicy};
 use crate::core::window::DecorationMode;
 use std::collections::HashMap;
 
+fn is_weston_family_app(state: &CompositorState, window_id: u32) -> bool {
+    state
+        .get_window(window_id)
+        .and_then(|w| w.read().ok().map(|w| w.app_id.clone()))
+        .map(|app_id| {
+            app_id == "weston"
+                || app_id.starts_with("weston-")
+                || app_id.contains("weston")
+        })
+        .unwrap_or(false)
+}
+
 /// Data stored with each toplevel decoration
 #[derive(Debug, Clone)]
 pub struct ToplevelDecorationData {
@@ -111,10 +123,17 @@ impl Dispatch<ZxdgDecorationManagerV1, ()> for CompositorState {
 
                 
                 // Send the preferred mode based on compositor policy
-                let preferred_mode = match state.decoration_policy {
+                let weston_family = matches!(state.decoration_policy, DecorationPolicy::ForceServer)
+                    .then_some(false)
+                    .unwrap_or_else(|| is_weston_family_app(state, window_id));
+                let preferred_mode = if weston_family {
+                    Mode::ClientSide
+                } else {
+                    match state.decoration_policy {
                     DecorationPolicy::PreferClient => Mode::ClientSide,
                     DecorationPolicy::PreferServer => Mode::ServerSide,
                     DecorationPolicy::ForceServer => Mode::ServerSide,
+                    }
                 };
                 
                 crate::wlog!(crate::util::logging::COMPOSITOR, "Sending zxdg_toplevel_decoration.configure for window {}: {:?}", window_id, preferred_mode);
@@ -132,11 +151,6 @@ impl Dispatch<ZxdgDecorationManagerV1, ()> for CompositorState {
                 
                 // Trigger reconfiguration
                 state.reconfigure_window_decorations(window_id);
-                
-                tracing::debug!(
-                    "Created toplevel decoration for window {}: {:?}",
-                    window_id, preferred_mode
-                );
                 
                 tracing::debug!(
                     "Created toplevel decoration for window {}: {:?}",
@@ -165,7 +179,6 @@ impl Dispatch<ZxdgToplevelDecorationV1, u32> for CompositorState {
         _dhandle: &DisplayHandle,
         _data_init: &mut wayland_server::DataInit<'_, Self>,
     ) {
-        let dec_id = resource.id().protocol_id();
         let window_id = *_data;
         
         match request {
@@ -179,9 +192,16 @@ impl Dispatch<ZxdgToplevelDecorationV1, u32> for CompositorState {
                 };
                 
                 // Determine the actual mode based on policy
-                let actual_mode = match state.decoration_policy {
-                    DecorationPolicy::ForceServer => Mode::ServerSide,
-                    _ => requested_mode,
+                let weston_family = matches!(state.decoration_policy, DecorationPolicy::ForceServer)
+                    .then_some(false)
+                    .unwrap_or_else(|| is_weston_family_app(state, window_id));
+                let actual_mode = if weston_family {
+                    Mode::ClientSide
+                } else {
+                    match state.decoration_policy {
+                        DecorationPolicy::ForceServer => Mode::ServerSide,
+                        _ => requested_mode,
+                    }
                 };
                 
                 let new_mode = match actual_mode {
@@ -218,10 +238,17 @@ impl Dispatch<ZxdgToplevelDecorationV1, u32> for CompositorState {
                 tracing::debug!("Client unsets decoration mode");
                 
                 // Revert to compositor preference
-                let preferred_mode = match state.decoration_policy {
-                    DecorationPolicy::PreferClient => Mode::ClientSide,
-                    DecorationPolicy::PreferServer => Mode::ServerSide,
-                    DecorationPolicy::ForceServer => Mode::ServerSide,
+                let weston_family = matches!(state.decoration_policy, DecorationPolicy::ForceServer)
+                    .then_some(false)
+                    .unwrap_or_else(|| is_weston_family_app(state, window_id));
+                let preferred_mode = if weston_family {
+                    Mode::ClientSide
+                } else {
+                    match state.decoration_policy {
+                        DecorationPolicy::PreferClient => Mode::ClientSide,
+                        DecorationPolicy::PreferServer => Mode::ServerSide,
+                        DecorationPolicy::ForceServer => Mode::ServerSide,
+                    }
                 };
                 
                 let new_mode = match preferred_mode {

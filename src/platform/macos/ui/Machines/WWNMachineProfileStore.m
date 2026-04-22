@@ -165,6 +165,7 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
     kWWNPrefsSSHKeyPath,
     kWWNPrefsSSHKeyPassphrase,
     kWWNPrefsWaypipeUseSSHConfig,
+    kWWNPrefsMachineSessionThumbnailsEnabled,
   ];
 }
 
@@ -231,6 +232,24 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
       [defaults setObject:value forKey:key];
     }
   }
+}
+
++ (NSDictionary<NSString *, id> *)normalizedSettingsOverridesForProfile:
+    (WWNMachineProfile *)profile {
+  NSDictionary<NSString *, id> *currentGlobalSnapshot = [self captureSettingsSnapshot];
+  NSMutableDictionary<NSString *, id> *merged = [NSMutableDictionary dictionary];
+  [merged addEntriesFromDictionary:currentGlobalSnapshot];
+
+  if ([profile.settingsOverrides isKindOfClass:[NSDictionary class]]) {
+    for (NSString *key in profile.settingsOverrides) {
+      id value = profile.settingsOverrides[key];
+      if (value != nil) {
+        merged[key] = value;
+      }
+    }
+  }
+
+  return merged;
 }
 
 + (void)ensureObserverRegistered {
@@ -441,6 +460,7 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
   if (profile.machineId.length == 0) {
     profile.machineId = [NSUUID UUID].UUIDString;
   }
+  profile.settingsOverrides = [self normalizedSettingsOverridesForProfile:profile];
 
   NSMutableArray<WWNMachineProfile *> *profiles = [[self loadProfiles] mutableCopy];
   NSUInteger idx = [profiles indexOfObjectPassingTest:^BOOL(WWNMachineProfile *obj, NSUInteger idx, BOOL *stop) {
@@ -469,6 +489,12 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
     [self setActiveMachineId:nil];
   }
   return filtered;
+}
+
++ (NSArray<WWNMachineProfile *> *)deleteAllProfiles {
+  [self saveProfiles:@[]];
+  [self setActiveMachineId:nil];
+  return @[];
 }
 
 + (NSString *)activeMachineId {
@@ -520,12 +546,10 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
   [prefs setTouchInputType:[resolved[@"inputProfile"] isKindOfClass:[NSString class]] ? resolved[@"inputProfile"] : @"Multi-Touch"];
 
   NSDictionary<NSString *, id> *overrides =
-      [profile.settingsOverrides isKindOfClass:[NSDictionary class]]
-          ? profile.settingsOverrides
-          : @{};
+      [self normalizedSettingsOverridesForProfile:profile];
   NSMutableDictionary<NSString *, id> *transportSnapshot =
       [NSMutableDictionary dictionary];
-  for (NSString *key in [self machineTransportOverrideKeys]) {
+  for (NSString *key in [self machineScopedSettingsKeys]) {
     id value = overrides[key];
     if (value != nil) {
       transportSnapshot[key] = value;

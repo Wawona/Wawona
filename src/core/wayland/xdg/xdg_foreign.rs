@@ -230,5 +230,5 @@ impl Dispatch<ZxdgImportedV2, ()> for CompositorState {
 
 /// Register zxdg_exporter_v2 global
 pub fn register_xdg_exporter(display: &DisplayHandle) -> wayland_server::backend::GlobalId {
-    display.create_global::<CompositorState, ZxdgExporterV2, ()>(2, ())
+    display.create_global::<CompositorState, ZxdgExporterV2, ()>(1, ())
 }

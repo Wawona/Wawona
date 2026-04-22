@@ -38,6 +38,7 @@ use crate::core::state::SubsurfaceState;
 // wl_subcompositor implementation
 // ============================================================================
 
+#[cfg(any())]
 impl GlobalDispatch<WlSubcompositor, ()> for CompositorState {
     fn bind(
         _state: &mut Self,
@@ -51,6 +52,7 @@ impl GlobalDispatch<WlSubcompositor, ()> for CompositorState {
     }
 }
 
+#[cfg(any())]
 impl Dispatch<WlSubcompositor, ()> for CompositorState {
     fn request(
         state: &mut Self,
@@ -158,6 +160,7 @@ impl Dispatch<WlSubcompositor, ()> for CompositorState {
 // wl_subsurface implementation
 // ============================================================================
 
+#[cfg(any())]
 impl Dispatch<WlSubsurface, u32> for CompositorState {
     fn request(
         state: &mut Self,

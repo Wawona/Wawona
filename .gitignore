@@ -108,6 +108,7 @@ local.properties
 
 # generated xcode proj
 Wawona.xcodeproj/
+dependencies/generators/xcodegen/output/
 
 # Environment variables
 .envrc
@@ -116,6 +117,8 @@ Wawona.xcodeproj/
 .direnv/
 _GEN-*
 Wawona-gradle-project/
+dependencies/generators/gradlegen/generated/
+dependencies/generators/gradlegen/output/
 
 # Legacy generated files (remove after migration)
 # src/platform/macos/wawona-Swift.h

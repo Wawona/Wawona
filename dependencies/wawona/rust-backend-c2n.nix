@@ -24,7 +24,7 @@
 , crate2nix
 , wawonaVersion
 , workspaceSrc
-, platform          # "macos" | "ios" | "tvos" | "visionos" | "watchos" | "android"
+, platform          # "macos" | "ios" | "ipados" | "tvos" | "visionos" | "watchos" | "android"
 , simulator ? false # iOS/watchOS only: build for simulator
 , toolchains ? null # cross-compilation toolchains
 , nativeDeps ? {}   # platform-specific native library derivations
@@ -36,7 +36,7 @@
 let
   # ── Target triple ──────────────────────────────────────────────────
   cargoTarget =
-    if platform == "ios" then
+    if platform == "ios" || platform == "ipados" then
       (if simulator then "aarch64-apple-ios-sim" else "aarch64-apple-ios")
     else if platform == "tvos" then
       (if simulator then "aarch64-apple-tvos-sim" else "aarch64-apple-tvos")
@@ -50,19 +50,19 @@ let
       null; # macOS: native build, no cross-compilation target
 
   sdkPlatform =
-    if platform == "ios" then (if simulator then "iPhoneSimulator" else "iPhoneOS")
+    if platform == "ios" || platform == "ipados" then (if simulator then "iPhoneSimulator" else "iPhoneOS")
     else if platform == "tvos" then (if simulator then "AppleTVSimulator" else "AppleTVOS")
     else if platform == "visionos" then (if simulator then "XRSimulator" else "XROS")
     else if platform == "watchos" then (if simulator then "WatchSimulator" else "WatchOS")
     else (if simulator then "iPhoneSimulator" else "iPhoneOS");
   xcrunSdk =
-    if platform == "ios" then (if simulator then "iphonesimulator" else "iphoneos")
+    if platform == "ios" || platform == "ipados" then (if simulator then "iphonesimulator" else "iphoneos")
     else if platform == "tvos" then (if simulator then "appletvsimulator" else "appletvos")
     else if platform == "visionos" then (if simulator then "xrsimulator" else "xros")
     else if platform == "watchos" then (if simulator then "watchsimulator" else "watchos")
     else (if simulator then "iphonesimulator" else "iphoneos");
   linkerTarget =
-    if platform == "ios" then (if simulator then "arm64-apple-ios17.0-simulator" else "arm64-apple-ios17.0")
+    if platform == "ios" || platform == "ipados" then (if simulator then "arm64-apple-ios17.0-simulator" else "arm64-apple-ios17.0")
     else if platform == "tvos" then (if simulator then "arm64-apple-tvos17.0-simulator" else "arm64-apple-tvos17.0")
     else if platform == "visionos" then (if simulator then "arm64-apple-xros26.0-simulator" else "arm64-apple-xros26.0")
     else if platform == "watchos" then (if simulator then "arm64-apple-watchos10.0-simulator" else "arm64-apple-watchos10.0")
@@ -74,7 +74,7 @@ let
       "26.0"
     else if platform == "tvos" then
       "17.0"
-    else if platform == "ios" then
+    else if platform == "ios" || platform == "ipados" then
       "17.0"
     else
       "26.0";
@@ -85,7 +85,7 @@ let
       (if simulator then "-mtvos-simulator-version-min=17.0" else "-mtvos-version-min=17.0")
     else if platform == "watchos" then
       (if simulator then "-mwatchos-simulator-version-min=10.0" else "-mwatchos-version-min=10.0")
-    else if platform == "ios" then
+    else if platform == "ios" || platform == "ipados" then
       (if simulator then "-mios-simulator-version-min=17.0" else "-miphoneos-version-min=17.0")
     else
       (if simulator then "-mios-simulator-version-min=26.0" else "-miphoneos-version-min=26.0");
@@ -100,7 +100,7 @@ let
     else
       (if simulator then "CARGO_TARGET_AARCH64_APPLE_IOS_SIM" else "CARGO_TARGET_AARCH64_APPLE_IOS");
 
-  isIOS = platform == "ios";
+  isIOS = platform == "ios" || platform == "ipados";
   isTVOS = platform == "tvos";
   isVisionOS = platform == "visionos";
   isWatchOS = platform == "watchos";
@@ -442,12 +442,12 @@ let
 
   # ── Features to enable ─────────────────────────────────────────────
   features =
-    if isIOS then [ "waypipe-ssh" ]
-    else if isTVOS then [ "waypipe-ssh" ]
-    else if isVisionOS then []
-    else if isWatchOS then [] # watchOS: minimal feature set (no SSH/Waypipe)
-    else if isAndroid then [ "waypipe" ]
-    else []; # macOS: no waypipe integration in backend
+    if isIOS then [ "waypipe-ssh" "smithay-protocols" ]
+    else if isTVOS then [ "waypipe-ssh" "smithay-protocols" ]
+    else if isVisionOS then [ "smithay-protocols" ]
+    else if isWatchOS then [ "smithay-protocols" ] # watchOS: minimal feature set (no SSH/Waypipe)
+    else if isAndroid then [ "waypipe" "smithay-protocols" ]
+    else [ "smithay-protocols" "smithay-desktop" ]; # macOS desktop: enable smithay xwayland/backend_drm paths
 
   # ── Per-crate build overrides ──────────────────────────────────────
   crateOverrides = pkgs.defaultCrateOverrides // {
@@ -576,12 +576,12 @@ let
     });
 
     # ── wayland-backend (needs iOS/macOS patches) ──────────────────
-    wayland-backend = attrs: lib.optionalAttrs (isIOS || isTVOS || isVisionOS) {
+    wayland-backend = attrs: lib.optionalAttrs isAppleCross {
       postPatch = ''
         find . -name "*.rs" -exec sed -i \
-          's/target_os[[:space:]]*=[[:space:]]*"macos"/any(target_os = "macos", target_os = "ios", target_os = "tvos", target_os = "visionos")/g' {} +
+          's/target_os[[:space:]]*=[[:space:]]*"macos"/any(target_os = "macos", target_os = "ios", target_os = "tvos", target_os = "visionos", target_os = "watchos")/g' {} +
         find . -name "*.rs" -exec sed -i \
-          's/not(target_os[[:space:]]*=[[:space:]]*"macos")/not(any(target_os = "macos", target_os = "ios", target_os = "tvos", target_os = "visionos"))/g' {} +
+          's/not(target_os[[:space:]]*=[[:space:]]*"macos")/not(any(target_os = "macos", target_os = "ios", target_os = "tvos", target_os = "visionos", target_os = "watchos"))/g' {} +
       '';
     };
 
@@ -731,6 +731,20 @@ let
                 .map_err(|_| crate::GetTimezoneError::FailedParsingString)
         }
         STUB
+      '';
+    };
+
+    # ── calloop (watchOS rustix pipe_with compatibility) ───────────
+    # calloop's ping source special-cases only macOS for `pipe()` + fcntl flags.
+    # On watchOS, rustix does not expose pipe_with/PipeFlags, so we extend the
+    # macOS branch to Apple mobile/watch targets as well.
+    calloop = attrs: lib.optionalAttrs isAppleCross {
+      postPatch = (attrs.postPatch or "") + ''
+        if [ -f src/sources/ping/pipe.rs ]; then
+          substituteInPlace src/sources/ping/pipe.rs \
+            --replace '#[cfg(target_os = "macos")]' '#[cfg(any(target_os = "macos", target_os = "ios", target_os = "tvos", target_os = "visionos", target_os = "watchos"))]' \
+            --replace '#[cfg(not(target_os = "macos"))]' '#[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "tvos", target_os = "visionos", target_os = "watchos")))]'
+        fi
       '';
     };
 

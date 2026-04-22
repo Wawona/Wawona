@@ -9,6 +9,7 @@
   workspaceSrc,
   nativeDeps,
   wawonaVersion,
+  backendName ? "wawona-android-backend",
   androidSDK ? null,
   androidToolchain ? null,
 }:
@@ -42,7 +43,7 @@ let
   };
 in
 rustPlatform.buildRustPackage rec {
-  pname = "wawona-android-backend";
+  pname = backendName;
   version = wawonaVersion;
 
   src = workspaceSrc;
@@ -54,11 +55,15 @@ rustPlatform.buildRustPackage rec {
   cargoBuildFlags = [
     "--lib"
     "--no-default-features"
+    "--features"
+    "smithay-protocols"
   ];
   cargoTestFlags = [
     "--target" "aarch64-linux-android"
     "--lib"
     "--no-default-features"
+    "--features"
+    "smithay-protocols"
   ];
   doCheck = false;
 
@@ -109,7 +114,8 @@ rustPlatform.buildRustPackage rec {
       --profile release \
       --target aarch64-linux-android \
       --lib \
-      --no-default-features
+      --no-default-features \
+      --features smithay-protocols
     runHook postBuild
   '';
 
@@ -123,6 +129,10 @@ rustPlatform.buildRustPackage rec {
       exit 1
     fi
   '';
+
+  # The default fixup can run host archive tooling on target static archives,
+  # which corrupts Android .a symbol table members for lld.
+  dontFixup = true;
 
   meta.platforms = lib.platforms.all;
 }

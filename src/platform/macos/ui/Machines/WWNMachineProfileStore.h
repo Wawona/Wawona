@@ -52,6 +52,7 @@ extern NSString *const kWWNMachineTypeContainer;
 + (NSArray<WWNMachineProfile *> *)loadProfiles;
 + (NSArray<WWNMachineProfile *> *)upsertProfile:(WWNMachineProfile *)profile;
 + (NSArray<WWNMachineProfile *> *)deleteProfileById:(NSString *)machineId;
++ (NSArray<WWNMachineProfile *> *)deleteAllProfiles;
 + (nullable NSString *)activeMachineId;
 + (void)setActiveMachineId:(nullable NSString *)machineId;
 + (nullable WWNMachineProfile *)profileById:(NSString *)machineId;

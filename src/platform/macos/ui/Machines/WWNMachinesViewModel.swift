@@ -166,6 +166,15 @@ final class WWNMachinesViewModel: ObservableObject {
     statusByMachineId.removeValue(forKey: profile.machineId)
   }
 
+  func deleteAllProfiles() {
+    // Stop any active native/remote sessions before profile storage is cleared.
+    for profile in profiles where status(for: profile.machineId) != .disconnected {
+      disconnect(profile)
+    }
+    profiles = WWNMachineProfileStore.deleteAllProfiles()
+    statusByMachineId.removeAll()
+  }
+
   func status(for machineId: String) -> WWNMachineTransientStatus {
     statusByMachineId[machineId] ?? .disconnected
   }
@@ -266,38 +275,45 @@ final class WWNMachinesViewModel: ObservableObject {
   }
 
   private func loadThumbnailImage(for machineId: String) -> NSImage? {
-    guard let storeClass = NSClassFromString("WWNMachineThumbnailStore") as? NSObject.Type else {
+    guard let storeClass = NSClassFromString("WWNMachineThumbnailStore") as AnyObject? else {
       return nil
     }
     let selector = NSSelectorFromString("thumbnailForMachineId:")
-    guard storeClass.responds(to: selector),
-          let result = storeClass.perform(selector, with: machineId)?.takeUnretainedValue() else {
+    guard storeClass.responds(to: selector) else {
       return nil
     }
-    return result as? NSImage
+    typealias Fn = @convention(c) (AnyObject, Selector, NSString) -> Unmanaged<AnyObject>?
+    let imp = storeClass.method(for: selector)
+    let fn = unsafeBitCast(imp, to: Fn.self)
+    return fn(storeClass, selector, machineId as NSString)?.takeUnretainedValue() as? NSImage
   }
 
   private func captureThumbnail(for machineId: String) -> Bool {
-    guard let storeClass = NSClassFromString("WWNMachineThumbnailStore") as? NSObject.Type else {
+    guard let storeClass = NSClassFromString("WWNMachineThumbnailStore") as AnyObject? else {
       return false
     }
     let selector = NSSelectorFromString("captureAndSaveThumbnailForMachineId:")
-    guard storeClass.responds(to: selector),
-          let result = storeClass.perform(selector, with: machineId)?.takeUnretainedValue() else {
+    guard storeClass.responds(to: selector) else {
       return false
     }
-    return (result as? NSNumber)?.boolValue ?? false
+    typealias Fn = @convention(c) (AnyObject, Selector, NSString) -> Bool
+    let imp = storeClass.method(for: selector)
+    let fn = unsafeBitCast(imp, to: Fn.self)
+    return fn(storeClass, selector, machineId as NSString)
   }
 
   private func deleteThumbnail(for machineId: String) {
-    guard let storeClass = NSClassFromString("WWNMachineThumbnailStore") as? NSObject.Type else {
+    guard let storeClass = NSClassFromString("WWNMachineThumbnailStore") as AnyObject? else {
       return
     }
     let selector = NSSelectorFromString("deleteThumbnailForMachineId:")
     guard storeClass.responds(to: selector) else {
       return
     }
-    _ = storeClass.perform(selector, with: machineId)
+    typealias Fn = @convention(c) (AnyObject, Selector, NSString) -> Void
+    let imp = storeClass.method(for: selector)
+    let fn = unsafeBitCast(imp, to: Fn.self)
+    fn(storeClass, selector, machineId as NSString)
   }
 
   private func captureThumbnailIfEnabled(for profile: WWNMachineProfile) {
@@ -452,6 +468,44 @@ final class WWNMachinesViewModel: ObservableObject {
     default:
       return "No remote transport required"
     }
+  }
+
+  func launchCommandString(for profile: WWNMachineProfile) -> String {
+    switch profile.type {
+    case kWWNMachineTypeNative:
+      if let clientId = selectedClientId(for: profile) {
+        if clientId == kNativeClientCustomId {
+          let cmd = (profile.settingsOverrides as [String: Any])["NativeCustomCommand"] as? String ?? ""
+          return cmd
+        }
+        return clientId
+      }
+      return ""
+    case kWWNMachineTypeSSHWaypipe, kWWNMachineTypeSSHTerminal:
+      if !profile.remoteCommand.isEmpty {
+        return profile.remoteCommand
+      }
+      let overrides: [String: Any] = profile.settingsOverrides
+      return overrides["WaypipeRemoteCommand"] as? String ?? ""
+    default:
+      return ""
+    }
+  }
+
+  func searchableText(for profile: WWNMachineProfile) -> String {
+    let command = launchCommandString(for: profile)
+    return [
+      profile.name,
+      profile.sshHost,
+      profile.sshUser,
+      machineTypeLabel(for: profile),
+      machineSubtitle(for: profile),
+      machineConfigurationSummary(for: profile),
+      command,
+    ]
+    .filter { !$0.isEmpty }
+    .joined(separator: " ")
+    .lowercased()
   }
 
   func launchSupported(for profile: WWNMachineProfile) -> Bool {

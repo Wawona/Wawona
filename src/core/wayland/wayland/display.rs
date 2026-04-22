@@ -38,24 +38,12 @@ impl WawonaDisplay {
     }
     
     /// Register all Wayland protocol globals
-    fn register_globals(display: &mut Display<CompositorState>) -> Result<()> {
-        use wayland_server::protocol::{wl_compositor, wl_shm};
-        use wayland_protocols::xdg::shell::server::xdg_wm_base;
-        
-        let dh = display.handle();
-        
-        // Register wl_compositor (required for creating surfaces)
-        dh.create_global::<CompositorState, wl_compositor::WlCompositor, _>(6, ());
-        crate::wlog!(crate::util::logging::DISPLAY, "Registered wl_compositor v6");
-        
-        // Register wl_shm (required for shared memory buffers)
-        dh.create_global::<CompositorState, wl_shm::WlShm, _>(1, ());
-        crate::wlog!(crate::util::logging::DISPLAY, "Registered wl_shm v1");
-        
-        // Register xdg_wm_base (required for xdg-shell windows)
-        dh.create_global::<CompositorState, xdg_wm_base::XdgWmBase, _>(5, ());
-        crate::wlog!(crate::util::logging::DISPLAY, "Registered xdg_wm_base v5");
-        
+    ///
+    /// NOTE: Global registration is centralized in `core::compositor::Compositor`
+    /// and initialized through `smithay_runtime`. This helper is intentionally a
+    /// no-op to avoid dual registration paths.
+    fn register_globals(_display: &mut Display<CompositorState>) -> Result<()> {
+        tracing::debug!("WawonaDisplay::register_globals is no-op (compositor path owns registration)");
         Ok(())
     }
 

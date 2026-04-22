@@ -22,6 +22,7 @@ use crate::core::window::DecorationMode;
 use crate::core::errors::CoreError;
 use crate::core::socket_manager::SocketManager;
 use crate::core::traits::ProtocolState;
+use crate::core::wayland::policy::ProtocolProfile;
 
 // Import protocol modules to ensure trait impls are linked
 #[allow(unused_imports)]
@@ -133,6 +134,8 @@ pub struct CompositorConfig {
     pub keyboard_repeat_delay: i32,
     /// Whether to advertise zwp_fullscreen_shell_v1
     pub advertise_fullscreen_shell: bool,
+    /// Wayland protocol exposure profile
+    pub protocol_profile: ProtocolProfile,
 }
 
 impl Default for CompositorConfig {
@@ -146,6 +149,7 @@ impl Default for CompositorConfig {
             keyboard_repeat_rate: 33,
             keyboard_repeat_delay: 500,
             advertise_fullscreen_shell: false,
+            protocol_profile: ProtocolProfile::default(),
         }
     }
 }
@@ -427,6 +431,8 @@ impl Compositor {
     /// Register all Wayland protocol globals
     fn register_globals(&mut self, state: &mut CompositorState) -> Result<()> {
         let dh = self.display.handle();
+        crate::core::wayland::smithay_runtime::register_core_shell(state, &dh);
+        crate::core::wayland::smithay_runtime::register_extensions_wlr(state);
 
         // Register protocols by category
         crate::core::wayland::wayland::register(state, &dh);

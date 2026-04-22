@@ -31,6 +31,7 @@ pkgs.stdenvNoCC.mkDerivation {
     if [ "${platform}" != "macos" ]; then
       echo "⚠️  Removing root binary entrypoint for mobile platform: ${platform}"
       rm -f $out/src/main.rs
+      rm -rf $out/src/bin
     fi
 
 
@@ -62,6 +63,8 @@ if p.exists():
     # Only restrict root binary auto-discovery for mobile platforms
     if platform != "macos":
         print(f"⚠️  Disabling root binaries/autobins for mobile platform: {platform}")
+        # Mobile backends link static libraries only.
+        s = re.sub(r'^crate-type = .*$', 'crate-type = ["rlib", "staticlib"]', s, flags=re.MULTILINE)
         # Inject autobins = false to prevent binary auto-discovery
         s = re.sub(r'(\[package\]\n)', r'\1autobins = false\n', s)
         

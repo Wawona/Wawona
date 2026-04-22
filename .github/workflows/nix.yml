@@ -67,6 +67,29 @@ jobs:
 
       - name: Verify Android maintainability checkpoint
         run: python3 ./.github/scripts/verify-android-maintainability.py
+      - name: Verify Wayland protocol manifest
+        run: python3 ./.github/scripts/verify-wayland-protocol-manifest.py
+      - name: Verify Smithay coverage contract
+        run: python3 ./.github/scripts/verify-smithay-coverage-contract.py
+      - name: Verify Wayland runtime ownership inventory
+        run: python3 ./.github/scripts/verify-wayland-runtime-ownership.py --strict --json-out ./docs/compliance/generated/wayland-runtime-ownership.json
+      - name: Verify no-equivalent closure inventory
+        run: python3 ./.github/scripts/verify-wayland-no-equivalent-closure.py --json-out ./docs/compliance/generated/wayland-no-equivalent-closure.json
+      - name: Verify Wayland profile smoke
+        run: python3 ./.github/scripts/verify-wayland-profile-smoke.py
+
+      - name: Upload Wayland ownership inventory artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: wayland-runtime-ownership-${{ github.job }}
+          path: docs/compliance/generated/wayland-runtime-ownership.json
+      - name: Upload no-equivalent closure artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: wayland-no-equivalent-closure-${{ github.job }}
+          path: docs/compliance/generated/wayland-no-equivalent-closure.json
       
       - name: Pre-validate Flake
         run: ./.github/scripts/nix-retry.sh nix flake check --print-build-logs
@@ -212,6 +235,29 @@ jobs:
 
       - name: Verify Android maintainability checkpoint
         run: python3 ./.github/scripts/verify-android-maintainability.py
+      - name: Verify Wayland protocol manifest
+        run: python3 ./.github/scripts/verify-wayland-protocol-manifest.py
+      - name: Verify Smithay coverage contract
+        run: python3 ./.github/scripts/verify-smithay-coverage-contract.py
+      - name: Verify Wayland runtime ownership inventory
+        run: python3 ./.github/scripts/verify-wayland-runtime-ownership.py --strict --json-out ./docs/compliance/generated/wayland-runtime-ownership.json
+      - name: Verify no-equivalent closure inventory
+        run: python3 ./.github/scripts/verify-wayland-no-equivalent-closure.py --json-out ./docs/compliance/generated/wayland-no-equivalent-closure.json
+      - name: Verify Wayland profile smoke
+        run: python3 ./.github/scripts/verify-wayland-profile-smoke.py
+
+      - name: Upload Wayland ownership inventory artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: wayland-runtime-ownership-${{ github.job }}
+          path: docs/compliance/generated/wayland-runtime-ownership.json
+      - name: Upload no-equivalent closure artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: wayland-no-equivalent-closure-${{ github.job }}
+          path: docs/compliance/generated/wayland-no-equivalent-closure.json
 
       - name: Pre-validate Flake
         run: ./.github/scripts/nix-retry.sh nix flake check --print-build-logs
@@ -336,6 +382,31 @@ jobs:
 
       - name: Verify Android maintainability checkpoint
         run: python3 ./.github/scripts/verify-android-maintainability.py
+      - name: Verify macOS target matrix
+        run: python3 ./.github/scripts/verify-macos-target-matrix.py
+      - name: Verify Wayland protocol manifest
+        run: python3 ./.github/scripts/verify-wayland-protocol-manifest.py
+      - name: Verify Smithay coverage contract
+        run: python3 ./.github/scripts/verify-smithay-coverage-contract.py
+      - name: Verify Wayland runtime ownership inventory
+        run: python3 ./.github/scripts/verify-wayland-runtime-ownership.py --strict --json-out ./docs/compliance/generated/wayland-runtime-ownership.json
+      - name: Verify no-equivalent closure inventory
+        run: python3 ./.github/scripts/verify-wayland-no-equivalent-closure.py --json-out ./docs/compliance/generated/wayland-no-equivalent-closure.json
+      - name: Verify Wayland profile smoke
+        run: python3 ./.github/scripts/verify-wayland-profile-smoke.py
+
+      - name: Upload Wayland ownership inventory artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: wayland-runtime-ownership-${{ github.job }}
+          path: docs/compliance/generated/wayland-runtime-ownership.json
+      - name: Upload no-equivalent closure artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: wayland-no-equivalent-closure-${{ github.job }}
+          path: docs/compliance/generated/wayland-no-equivalent-closure.json
 
   verify-macos-arm64:
     name: "macOS (arm64): flake check (experimental fallback)"
@@ -464,6 +535,31 @@ jobs:
 
       - name: Verify Android maintainability checkpoint
         run: python3 ./.github/scripts/verify-android-maintainability.py
+      - name: Verify macOS target matrix
+        run: python3 ./.github/scripts/verify-macos-target-matrix.py
+      - name: Verify Wayland protocol manifest
+        run: python3 ./.github/scripts/verify-wayland-protocol-manifest.py
+      - name: Verify Smithay coverage contract
+        run: python3 ./.github/scripts/verify-smithay-coverage-contract.py
+      - name: Verify Wayland runtime ownership inventory
+        run: python3 ./.github/scripts/verify-wayland-runtime-ownership.py --strict --json-out ./docs/compliance/generated/wayland-runtime-ownership.json
+      - name: Verify no-equivalent closure inventory
+        run: python3 ./.github/scripts/verify-wayland-no-equivalent-closure.py --json-out ./docs/compliance/generated/wayland-no-equivalent-closure.json
+      - name: Verify Wayland profile smoke
+        run: python3 ./.github/scripts/verify-wayland-profile-smoke.py
+
+      - name: Upload Wayland ownership inventory artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: wayland-runtime-ownership-${{ github.job }}
+          path: docs/compliance/generated/wayland-runtime-ownership.json
+      - name: Upload no-equivalent closure artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: wayland-no-equivalent-closure-${{ github.job }}
+          path: docs/compliance/generated/wayland-no-equivalent-closure.json
 
   verify-macos-x86_64:
     name: "macOS (x86_64): flake check"
@@ -616,6 +712,8 @@ jobs:
         run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-arm64.outputs.system }}.wawona-linux-vm" --print-build-logs
       - name: Smoke WearOS automation package
         run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-arm64.outputs.system }}.wawona-wearos" --print-build-logs
+      - name: Compile matrix (macOS host Apple targets)
+        run: ./.github/scripts/nix-retry.sh ./scripts/test-macos-build-matrix.sh
 
   smoke-macos-x86_64:
     name: "macOS (x86_64): smoke gates"
@@ -646,6 +744,8 @@ jobs:
         run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-x86_64.outputs.system }}.wawona-linux-vm" --print-build-logs
       - name: Smoke WearOS automation package
         run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-x86_64.outputs.system }}.wawona-wearos" --print-build-logs
+      - name: Compile matrix (macOS host Apple targets)
+        run: ./.github/scripts/nix-retry.sh ./scripts/test-macos-build-matrix.sh
 
   ci-failure-baseline:
     name: "CI Failure Baseline + Blocker Thresholds"

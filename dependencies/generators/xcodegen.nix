@@ -5,6 +5,8 @@
   macosBackend ? null,
   iosBackend ? null,
   iosSimBackend ? null,
+  ipadosBackend ? null,
+  ipadosSimBackend ? null,
   tvosBackend ? null,
   tvosSimBackend ? null,
   visionosBackend ? null,
@@ -14,6 +16,8 @@
   TEAM_ID ? null,
   iosDeps ? {},
   iosSimDeps ? {},
+  ipadosDeps ? {},
+  ipadosSimDeps ? {},
   tvosDeps ? {},
   tvosSimDeps ? {},
   visionosDeps ? {},
@@ -76,8 +80,14 @@ let
       "$FLAKE_REF#wawona-macos-backend" \
       "$FLAKE_REF#wawona-ios-backend" \
       "$FLAKE_REF#wawona-ios-sim-backend" \
+      "$FLAKE_REF#wawona-ipados-backend" \
+      "$FLAKE_REF#wawona-ipados-sim-backend" \
       "$FLAKE_REF#wawona-tvos-backend" \
-      "$FLAKE_REF#wawona-tvos-sim-backend" >/dev/null
+      "$FLAKE_REF#wawona-tvos-sim-backend" \
+      "$FLAKE_REF#wawona-visionos-backend" \
+      "$FLAKE_REF#wawona-visionos-sim-backend" \
+      "$FLAKE_REF#wawona-watchos-backend" \
+      "$FLAKE_REF#wawona-watchos-sim-backend" >/dev/null
 
     mkdir -p .nix-gcroots
     nix build --out-link .nix-gcroots/xcodegen "$FLAKE_REF#xcodegen" >/dev/null
@@ -120,8 +130,6 @@ let
         ];
         HEADER_SEARCH_PATHS = [
           "$(inherited)"
-          "${strip (iosDeps.libwayland or null)}/include"
-          "${strip (iosDeps.xkbcommon or null)}/include"
           "$(SRCROOT)/src"
           "$(SRCROOT)/src/platform/macos/ui"
           "$(SRCROOT)/src/platform/macos/ui/Machines"
@@ -130,8 +138,6 @@ let
           "$(SRCROOT)/src/extensions"
           "$(SRCROOT)/src/platform/macos"
           "$(SRCROOT)/src/platform/ios"
-          "${strip (iosDeps.pixman or null)}/include"
-          "${strip (iosDeps.openssl or null)}/include"
         ];
       };
     };
@@ -374,19 +380,19 @@ let
             ];
             "OTHER_LDFLAGS[sdk=iphoneos*]" = [
               "$(inherited)"
-              "-L${strip (iosDeps.libwayland or null)}/lib"
-              "-L${strip (iosDeps.xkbcommon or null)}/lib"
-              "-L${strip (iosDeps.libffi or null)}/lib"
-              "-L${strip (iosDeps.pixman or null)}/lib"
-              "-L${strip (iosDeps.zstd or null)}/lib"
-              "-L${strip (iosDeps.lz4 or null)}/lib"
-              "-L${strip (iosDeps.libssh2 or null)}/lib"
-              "-L${strip (iosDeps.mbedtls or null)}/lib"
-              "-L${strip (iosDeps.openssl or null)}/lib"
-              "-L${strip (iosDeps.epoll-shim or null)}/lib"
-              "-L${strip (iosDeps.weston-simple-shm or null)}/lib"
-              "-L${strip (iosDeps.weston or null)}/lib"
-              "-L${strip (iosDeps.foot or null)}/lib"
+              "-L${strip (ipadosDeps.libwayland or null)}/lib"
+              "-L${strip (ipadosDeps.xkbcommon or null)}/lib"
+              "-L${strip (ipadosDeps.libffi or null)}/lib"
+              "-L${strip (ipadosDeps.pixman or null)}/lib"
+              "-L${strip (ipadosDeps.zstd or null)}/lib"
+              "-L${strip (ipadosDeps.lz4 or null)}/lib"
+              "-L${strip (ipadosDeps.libssh2 or null)}/lib"
+              "-L${strip (ipadosDeps.mbedtls or null)}/lib"
+              "-L${strip (ipadosDeps.openssl or null)}/lib"
+              "-L${strip (ipadosDeps.epoll-shim or null)}/lib"
+              "-L${strip (ipadosDeps.weston-simple-shm or null)}/lib"
+              "-L${strip (ipadosDeps.weston or null)}/lib"
+              "-L${strip (ipadosDeps.foot or null)}/lib"
               "-lxkbcommon"
               "-lwayland-client"
               "-lffi"
@@ -406,23 +412,23 @@ let
               "-lweston-desktop-13"
               "-lweston-terminal"
               "-lfoot"
-              "${strip iosBackend}/lib/libwawona.a"
+              "${strip ipadosBackend}/lib/libwawona.a"
             ];
             "OTHER_LDFLAGS[sdk=iphonesimulator*]" = [
               "$(inherited)"
-              "-L${strip (iosSimDeps.libwayland or null)}/lib"
-              "-L${strip (iosSimDeps.xkbcommon or null)}/lib"
-              "-L${strip (iosSimDeps.libffi or null)}/lib"
-              "-L${strip (iosSimDeps.pixman or null)}/lib"
-              "-L${strip (iosSimDeps.zstd or null)}/lib"
-              "-L${strip (iosSimDeps.lz4 or null)}/lib"
-              "-L${strip (iosSimDeps.libssh2 or null)}/lib"
-              "-L${strip (iosSimDeps.mbedtls or null)}/lib"
-              "-L${strip (iosSimDeps.openssl or null)}/lib"
-              "-L${strip (iosSimDeps.epoll-shim or null)}/lib"
-              "-L${strip (iosSimDeps.weston-simple-shm or null)}/lib"
-              "-L${strip (iosSimDeps.weston or null)}/lib"
-              "-L${strip (iosSimDeps.foot or null)}/lib"
+              "-L${strip (ipadosSimDeps.libwayland or null)}/lib"
+              "-L${strip (ipadosSimDeps.xkbcommon or null)}/lib"
+              "-L${strip (ipadosSimDeps.libffi or null)}/lib"
+              "-L${strip (ipadosSimDeps.pixman or null)}/lib"
+              "-L${strip (ipadosSimDeps.zstd or null)}/lib"
+              "-L${strip (ipadosSimDeps.lz4 or null)}/lib"
+              "-L${strip (ipadosSimDeps.libssh2 or null)}/lib"
+              "-L${strip (ipadosSimDeps.mbedtls or null)}/lib"
+              "-L${strip (ipadosSimDeps.openssl or null)}/lib"
+              "-L${strip (ipadosSimDeps.epoll-shim or null)}/lib"
+              "-L${strip (ipadosSimDeps.weston-simple-shm or null)}/lib"
+              "-L${strip (ipadosSimDeps.weston or null)}/lib"
+              "-L${strip (ipadosSimDeps.foot or null)}/lib"
               "-lxkbcommon"
               "-lwayland-client"
               "-lffi"
@@ -442,7 +448,7 @@ let
               "-lweston-desktop-13"
               "-lweston-terminal"
               "-lfoot"
-              "${strip iosSimBackend}/lib/libwawona.a"
+              "${strip ipadosSimBackend}/lib/libwawona.a"
             ];
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
@@ -451,17 +457,17 @@ let
             ] ++ versionDefs;
             "HEADER_SEARCH_PATHS[sdk=iphoneos*]" = [
               "$(inherited)"
-              "${strip (iosDeps.libwayland or null)}/include"
-              "${strip (iosDeps.libwayland or null)}/include/wayland"
-              "${strip (iosDeps.xkbcommon or null)}/include"
-              "${strip (iosDeps.libssh2 or null)}/include"
+              "${strip (ipadosDeps.libwayland or null)}/include"
+              "${strip (ipadosDeps.libwayland or null)}/include/wayland"
+              "${strip (ipadosDeps.xkbcommon or null)}/include"
+              "${strip (ipadosDeps.libssh2 or null)}/include"
             ];
             "HEADER_SEARCH_PATHS[sdk=iphonesimulator*]" = [
               "$(inherited)"
-              "${strip (iosSimDeps.libwayland or null)}/include"
-              "${strip (iosSimDeps.libwayland or null)}/include/wayland"
-              "${strip (iosSimDeps.xkbcommon or null)}/include"
-              "${strip (iosSimDeps.libssh2 or null)}/include"
+              "${strip (ipadosSimDeps.libwayland or null)}/include"
+              "${strip (ipadosSimDeps.libwayland or null)}/include/wayland"
+              "${strip (ipadosSimDeps.xkbcommon or null)}/include"
+              "${strip (ipadosSimDeps.libssh2 or null)}/include"
             ];
           };
         };
@@ -1151,21 +1157,49 @@ let
   # Script to generate project (headless)
   generateScript = pkgs.writeShellScriptBin "xcodegen" ''
     set -euo pipefail
+    find_repo_root() {
+      local dir="$PWD"
+      while [ "$dir" != "/" ]; do
+        if [ -f "$dir/flake.nix" ]; then
+          printf '%s\n' "$dir"
+          return 0
+        fi
+        dir="$(dirname "$dir")"
+      done
+      return 1
+    }
+    REPO_ROOT="$(find_repo_root || true)"
+    if [ -z "$REPO_ROOT" ]; then
+      echo "Error: could not locate repo root (missing flake.nix in parent chain)." >&2
+      exit 1
+    fi
+    cd "$REPO_ROOT"
+    echo "Using repo root: $REPO_ROOT"
     SPEC_PATH=${projectYamlFile}
+    OUTPUT_ROOT="dependencies/generators/xcodegen/output"
+    PROJECT_DIR="$OUTPUT_ROOT/Wawona.xcodeproj"
 
     if command -v nix >/dev/null 2>&1; then
       FLAKE_REF="."
       if [ -f "crates/Wawona/flake.nix" ]; then
         FLAKE_REF="./crates/Wawona"
       fi
-      nix build --no-link "$FLAKE_REF#wawona-macos-backend" "$FLAKE_REF#wawona-ios-backend" "$FLAKE_REF#wawona-ios-sim-backend" "$FLAKE_REF#wawona-tvos-backend" "$FLAKE_REF#wawona-tvos-sim-backend" >/dev/null
+      nix build --no-link "$FLAKE_REF#wawona-macos-backend" "$FLAKE_REF#wawona-ios-backend" "$FLAKE_REF#wawona-ios-sim-backend" "$FLAKE_REF#wawona-ipados-backend" "$FLAKE_REF#wawona-ipados-sim-backend" "$FLAKE_REF#wawona-tvos-backend" "$FLAKE_REF#wawona-tvos-sim-backend" "$FLAKE_REF#wawona-visionos-backend" "$FLAKE_REF#wawona-visionos-sim-backend" "$FLAKE_REF#wawona-watchos-backend" "$FLAKE_REF#wawona-watchos-sim-backend" >/dev/null
     fi
 
+    if [ -d "$PROJECT_DIR" ]; then
+      chmod -R u+w "$PROJECT_DIR" 2>/dev/null || true
+      rm -rf "$PROJECT_DIR"
+    fi
     if [ -d "Wawona.xcodeproj" ]; then
       chmod -R u+w "Wawona.xcodeproj" 2>/dev/null || true
       rm -rf "Wawona.xcodeproj"
     fi
 
+    mkdir -p "$OUTPUT_ROOT"
+    # Keep the mutable spec in the current project root so relative source
+    # paths (e.g. src/... and Sources/...) resolve against the workspace,
+    # not against dependencies/generators/xcodegen/output/.
     TMP_SPEC="./.xcodegen-project.tmp.json"
     rm -f "$TMP_SPEC"
     cp "$SPEC_PATH" "$TMP_SPEC"
@@ -1330,20 +1364,43 @@ for user_scheme_dir in user_scheme_dirs:
     user_mgmt.write_bytes(plistlib.dumps(user_data))
 EOF_PY
 
-    echo "Wawona.xcodeproj generated in current directory."
+    if [ -d "Wawona.xcodeproj" ]; then
+      rm -rf "$PROJECT_DIR"
+      cp -R "Wawona.xcodeproj" "$PROJECT_DIR"
+    fi
+    echo "Wawona.xcodeproj generated at ./Wawona.xcodeproj (repo root)."
+    echo "Mirror copy written to $PROJECT_DIR."
   '';
 
   # Script to generate AND open project
   openScript = pkgs.writeShellScriptBin "xcodegen-open" ''
     set -e
+    find_repo_root() {
+      local dir="$PWD"
+      while [ "$dir" != "/" ]; do
+        if [ -f "$dir/flake.nix" ]; then
+          printf '%s\n' "$dir"
+          return 0
+        fi
+        dir="$(dirname "$dir")"
+      done
+      return 1
+    }
+    REPO_ROOT="$(find_repo_root || true)"
+    if [ -z "$REPO_ROOT" ]; then
+      echo "Error: could not locate repo root (missing flake.nix in parent chain)." >&2
+      exit 1
+    fi
+    cd "$REPO_ROOT"
     ${generateScript}/bin/xcodegen
     
-    echo "Opening Wawona.xcodeproj..."
-    if [ -d "Wawona.xcodeproj" ]; then
-      open Wawona.xcodeproj
+    PROJECT_DIR="dependencies/generators/xcodegen/output/Wawona.xcodeproj"
+    echo "Opening $PROJECT_DIR..."
+    if [ -d "$PROJECT_DIR" ]; then
+      open "$PROJECT_DIR"
       echo "Project opened in Xcode."
     else
-      echo "Error: Wawona.xcodeproj was not generated."
+      echo "Error: $PROJECT_DIR was not generated."
       exit 1
     fi
   '';

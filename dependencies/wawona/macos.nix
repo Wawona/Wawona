@@ -337,7 +337,23 @@ in
         chmod -R u+w ./_xcode_project || true
         mkdir -p "$TMPDIR/wawona-home"
         export HOME="$TMPDIR/wawona-home"
-        if xcodebuild \
+        # Keep Nix as the orchestrator, but isolate xcodebuild from cc-wrapper
+        # and NIX_* flags that can leak invalid linker options into Apple's ld.
+        if env \
+          -u NIX_CFLAGS_COMPILE \
+          -u NIX_CXXFLAGS_COMPILE \
+          -u NIX_LDFLAGS \
+          -u NIX_LDFLAGS_BEFORE \
+          -u NIX_CC_WRAPPER_FLAGS_SET \
+          -u NIX_DONT_SET_RPATH \
+          -u CFLAGS \
+          -u CXXFLAGS \
+          -u CPPFLAGS \
+          -u LDFLAGS \
+          -u CC \
+          -u CXX \
+          -u LD \
+          xcodebuild \
           -project "./_xcode_project/Wawona.xcodeproj" \
           -scheme "Wawona-macOS" \
           -configuration Release \
@@ -352,15 +368,18 @@ in
             cp -R "$XCODE_APP" "xcodebuild-out/Wawona.app"
             touch .use_xcodebuild_app
             echo "✅ Xcode project build produced Wawona.app"
-            runHook postBuild
-            exit 0
+          else
+            echo "⚠️  Xcode project build completed but Wawona.app was not found; continuing with manual fallback."
           fi
-          echo "⚠️  Xcode project build completed but Wawona.app was not found; continuing with manual fallback."
         else
           echo "⚠️  Xcode project build failed; continuing with manual fallback."
         fi
       fi
 
+      if [ -f .use_xcodebuild_app ]; then
+        echo "✅ Skipping manual fallback; using Xcode-built app."
+        runHook postBuild
+      else
       # Build timestamp: 2026-01-17-09:00 - Added Swift compiler!
 
       # PHASE 1: Compile Swift bindings and SwiftUI machines views when present.
@@ -592,6 +611,7 @@ GEN_HEADER
          -o Wawona
 
       runHook postBuild
+      fi
     '';
 
     installPhase = ''

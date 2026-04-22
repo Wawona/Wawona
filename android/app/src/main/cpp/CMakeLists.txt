@@ -27,6 +27,7 @@ include_directories(
     ${WAWONA_ROOT}/src/core
     ${WAWONA_ROOT}/src/stubs
     ${WAWONA_ROOT}/src/platform/android/rendering
+    ${WAWONA_ROOT}/dependencies/generators/gradlegen/generated
     ${WAWONA_ROOT}/src/platform/macos
     ${WAWONA_ROOT}/src/platform/android
 )
@@ -71,6 +72,11 @@ else()
       ${WAWONA_ROOT}/src/platform/android/cairo_shim.c
       ${WAWONA_ROOT}/src/platform/android/rendering/renderer_android.c
   )
+  if(NOT EXISTS "${WAWONA_ROOT}/dependencies/generators/gradlegen/generated/shader_spv.h")
+    message(FATAL_ERROR
+      "Missing generated Android shader header at dependencies/generators/gradlegen/generated/shader_spv.h. "
+      "Run `nix run .#gradlegen` to regenerate project artifacts.")
+  endif()
 endif()
 
 # Core library (libwawona.so)

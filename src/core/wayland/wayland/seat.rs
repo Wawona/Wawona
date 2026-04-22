@@ -29,7 +29,8 @@ impl Default for SeatGlobal {
 // wl_seat
 // ============================================================================
 
-impl GlobalDispatch<wl_seat::WlSeat, SeatGlobal> for CompositorState {
+#[cfg(feature = "legacy-custom-runtime")]
+impl/*legacy*/ GlobalDispatch<wl_seat::WlSeat, SeatGlobal> for CompositorState {
     fn bind(
         state: &mut Self,
         _handle: &DisplayHandle,
@@ -58,7 +59,8 @@ impl GlobalDispatch<wl_seat::WlSeat, SeatGlobal> for CompositorState {
     }
 }
 
-impl Dispatch<wl_seat::WlSeat, ()> for CompositorState {
+#[cfg(feature = "legacy-custom-runtime")]
+impl/*legacy*/ Dispatch<wl_seat::WlSeat, ()> for CompositorState {
     fn request(
         state: &mut Self,
         _client: &wayland_server::Client,
@@ -108,7 +110,8 @@ impl Dispatch<wl_seat::WlSeat, ()> for CompositorState {
 // wl_keyboard
 // ============================================================================
 
-impl Dispatch<wl_keyboard::WlKeyboard, ()> for CompositorState {
+#[cfg(feature = "legacy-custom-runtime")]
+impl/*legacy*/ Dispatch<wl_keyboard::WlKeyboard, ()> for CompositorState {
     fn request(
         state: &mut Self,
         _client: &wayland_server::Client,
@@ -131,7 +134,8 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for CompositorState {
 // wl_touch
 // ============================================================================
 
-impl Dispatch<wl_touch::WlTouch, ()> for CompositorState {
+#[cfg(feature = "legacy-custom-runtime")]
+impl/*legacy*/ Dispatch<wl_touch::WlTouch, ()> for CompositorState {
     fn request(
         state: &mut Self,
         _client: &wayland_server::Client,
@@ -154,7 +158,8 @@ impl Dispatch<wl_touch::WlTouch, ()> for CompositorState {
 // wl_pointer
 // ============================================================================
 
-impl Dispatch<wl_pointer::WlPointer, ()> for CompositorState {
+#[cfg(feature = "legacy-custom-runtime")]
+impl/*legacy*/ Dispatch<wl_pointer::WlPointer, ()> for CompositorState {
     fn request(
         state: &mut Self,
         _client: &wayland_server::Client,

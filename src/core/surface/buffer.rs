@@ -79,6 +79,16 @@ impl Buffer {
     }
 }
 
+/// Maps `wl_shm::Format` to the legacy `u32` tags used by the macOS FFI path (0 = ARGB8888, 1 = XRGB8888).
+pub fn wl_shm_format_to_legacy_u32(f: wayland_server::protocol::wl_shm::Format) -> u32 {
+    use wayland_server::protocol::wl_shm::Format;
+    match f {
+        Format::Argb8888 => 0,
+        Format::Xrgb8888 => 1,
+        _ => f as u32,
+    }
+}
+
 impl BufferType {
     pub fn dimensions(&self) -> Option<(i32, i32)> {
         match self {

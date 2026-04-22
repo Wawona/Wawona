@@ -64,6 +64,7 @@ use crate::core::wayland::wlr::screencopy::PendingScreencopy;
 
 use crate::core::wayland::wlr::virtual_pointer::VirtualPointerState;
 use crate::core::wayland::wlr::virtual_keyboard::VirtualKeyboardState;
+use crate::core::wayland::policy::{ProtocolProfile, resolve_profile};
 
 use crate::core::wayland::ext::data_device::DataDeviceState;
 #[cfg(feature = "desktop-protocols")]
@@ -72,6 +73,42 @@ use crate::core::wayland::ext::linux_drm_syncobj::SyncObjState;
 use crate::core::wayland::ext::drm_lease::DrmLeaseState;
 
 use crate::core::traits::ProtocolState;
+
+/// Runtime-owned Smithay protocol state wired into compositor lifecycle.
+///
+/// This is the runtime boundary used to ensure protocol globals are owned by
+/// Smithay state objects rather than compile-only probes.
+pub struct SmithayRuntimeState {
+    pub compositor: Option<smithay::wayland::compositor::CompositorState>,
+    pub xdg_shell: Option<smithay::wayland::shell::xdg::XdgShellState>,
+    pub shm: Option<smithay::wayland::shm::ShmState>,
+    pub output_manager: Option<smithay::wayland::output::OutputManagerState>,
+    pub smithay_outputs: Vec<smithay::output::Output>,
+    pub seat_state: Option<smithay::input::SeatState<crate::core::state::CompositorState>>,
+    pub seat: Option<smithay::input::Seat<crate::core::state::CompositorState>>,
+    pub data_device: Option<smithay::wayland::selection::data_device::DataDeviceState>,
+    pub client_compositor_state: smithay::wayland::compositor::CompositorClientState,
+    pub core_shell_initialized: bool,
+    pub extension_wlr_initialized: bool,
+}
+
+impl Default for SmithayRuntimeState {
+    fn default() -> Self {
+        Self {
+            compositor: None,
+            xdg_shell: None,
+            shm: None,
+            output_manager: None,
+            smithay_outputs: Vec::new(),
+            seat_state: None,
+            seat: None,
+            data_device: None,
+            client_compositor_state: smithay::wayland::compositor::CompositorClientState::default(),
+            core_shell_initialized: false,
+            extension_wlr_initialized: false,
+        }
+    }
+}
 
 // Sub-modules containing extracted CompositorState impl blocks
 mod scene;
@@ -335,6 +372,10 @@ pub struct XdgToplevelData {
     pub pending_fullscreen: bool,
     /// The actual protocol resource
     pub resource: Option<xdg_toplevel::XdgToplevel>,
+    /// Latest host-requested (width, height) while `xdg_surface` still has an unacked
+    /// configure. Coalesces macOS live-resize storms so clients are not flooded with
+    /// serials before they can ack (avoids SHM buffer exhaustion in nested compositors).
+    pub deferred_configure_size: Option<(u32, u32)>,
 }
 
 impl XdgToplevelData {
@@ -361,6 +402,7 @@ impl XdgToplevelData {
             pending_maximized: false,
             pending_fullscreen: false,
             resource: None,
+            deferred_configure_size: None,
         }
     }
 
@@ -1302,6 +1344,10 @@ pub struct CompositorState {
     
     /// Whether to advertise zwp_fullscreen_shell_v1
     pub advertise_fullscreen_shell: bool,
+    /// Runtime protocol exposure profile.
+    pub protocol_profile: ProtocolProfile,
+    /// Smithay runtime protocol ownership boundary.
+    pub smithay_runtime: SmithayRuntimeState,
     
     // =========================================================================
     // ID Generators
@@ -1367,15 +1413,23 @@ pub struct CompositorState {
 
 impl CompositorState {
     pub fn new(config: Option<crate::core::compositor::CompositorConfig>) -> Self {
-        let (decoration_policy, advertise_fullscreen_shell) = if let Some(cfg) = config {
+        let (decoration_policy, advertise_fullscreen_shell, protocol_profile) = if let Some(cfg) = config {
              let policy = if cfg.force_ssd {
                  DecorationPolicy::ForceServer
              } else {
                  DecorationPolicy::default()
              };
-             (policy, cfg.advertise_fullscreen_shell)
+             (
+                 policy,
+                 cfg.advertise_fullscreen_shell,
+                 resolve_profile(cfg.protocol_profile),
+             )
         } else {
-            (DecorationPolicy::default(), false)
+            (
+                DecorationPolicy::default(),
+                false,
+                resolve_profile(ProtocolProfile::default()),
+            )
         };
 
         Self {
@@ -1401,6 +1455,8 @@ impl CompositorState {
             keyboard_repeat_rate: 33,
             keyboard_repeat_delay: 500,
             advertise_fullscreen_shell,
+            protocol_profile,
+            smithay_runtime: SmithayRuntimeState::default(),
             next_surface_id: 1,
             next_window_id: 1,
             serial: 0,
@@ -1458,6 +1514,38 @@ impl CompositorState {
             }
         }
         None
+    }
+
+    /// Resolve or create an internal surface ID for a protocol wl_surface.
+    pub fn ensure_internal_surface_mapping(
+        &mut self,
+        client_id: ClientId,
+        surface: &wayland_server::protocol::wl_surface::WlSurface,
+    ) -> u32 {
+        let protocol_id = surface.id().protocol_id();
+        if let Some(id) = self
+            .protocol_to_internal_surface
+            .get(&(client_id.clone(), protocol_id))
+            .copied()
+        {
+            if let Some(surface_ref) = self.get_surface(id) {
+                let mut surface_state = surface_ref.write().unwrap();
+                if surface_state.resource.is_none() {
+                    surface_state.resource = Some(surface.clone());
+                }
+            }
+            return id;
+        }
+
+        let internal_id = self.next_surface_id();
+        self.protocol_to_internal_surface
+            .insert((client_id.clone(), protocol_id), internal_id);
+        self.add_surface(crate::core::surface::Surface::new(
+            internal_id,
+            Some(client_id),
+            Some(surface.clone()),
+        ));
+        internal_id
     }
 
     // =========================================================================
@@ -1930,12 +2018,71 @@ impl ProtocolState for SeatState {
 
 impl ProtocolState for CompositorState {
     fn client_disconnected(&mut self, client: wayland_server::backend::ClientId) {
-        self.ext.client_disconnected(client.clone());
-        self.wlr.client_disconnected(client.clone());
-        self.xdg.client_disconnected(client.clone());
-        self.data.client_disconnected(client.clone());
-        self.seat.client_disconnected(client.clone());
-        self.cleanup_disconnected_client(client);
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.ext.client_disconnected(client.clone());
+        }))
+        .map_err(|_| {
+            crate::wlog!(
+                crate::util::logging::STATE,
+                "client_disconnected: ext cleanup panicked for client {:?}",
+                client
+            );
+        });
+
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.wlr.client_disconnected(client.clone());
+        }))
+        .map_err(|_| {
+            crate::wlog!(
+                crate::util::logging::STATE,
+                "client_disconnected: wlr cleanup panicked for client {:?}",
+                client
+            );
+        });
+
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.xdg.client_disconnected(client.clone());
+        }))
+        .map_err(|_| {
+            crate::wlog!(
+                crate::util::logging::STATE,
+                "client_disconnected: xdg cleanup panicked for client {:?}",
+                client
+            );
+        });
+
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.data.client_disconnected(client.clone());
+        }))
+        .map_err(|_| {
+            crate::wlog!(
+                crate::util::logging::STATE,
+                "client_disconnected: data cleanup panicked for client {:?}",
+                client
+            );
+        });
+
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.seat.client_disconnected(client.clone());
+        }))
+        .map_err(|_| {
+            crate::wlog!(
+                crate::util::logging::STATE,
+                "client_disconnected: seat cleanup panicked for client {:?}",
+                client
+            );
+        });
+
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.cleanup_disconnected_client(client.clone());
+        }))
+        .map_err(|_| {
+            crate::wlog!(
+                crate::util::logging::STATE,
+                "client_disconnected: core cleanup panicked for client {:?}",
+                client
+            );
+        });
     }
 }
 

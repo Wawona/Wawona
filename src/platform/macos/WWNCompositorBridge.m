@@ -28,6 +28,11 @@
 #include <stdatomic.h>
 #include <string.h> // For strdup
 
+static BOOL WWNForceSSDEnabled(void) {
+  return [[NSUserDefaults standardUserDefaults]
+      boolForKey:@"ForceServerSideDecorations"];
+}
+
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
 static BOOL WWNEnablePerWindowHostingOnIPad(void) {
   if (UIDevice.currentDevice.userInterfaceIdiom != UIUserInterfaceIdiomPad) {
@@ -215,6 +220,10 @@ static inline NSString *WWNBufferCacheKey(uint32_t surface_id,
   return [NSString stringWithFormat:@"%u:%llu", surface_id, buffer_id];
 }
 
+// Coalesce AppKit live-resize bursts before emitting Wayland configure events.
+// Slightly slower cadence reduces nested-compositor configure thrash on macOS.
+static const NSTimeInterval kWWNResizeDebounceSeconds = 0.040;
+
 @implementation WWNCompositorBridge {
   void *_rustCore;
   NSTimer *_eventTimer;
@@ -247,6 +256,7 @@ static inline NSString *WWNBufferCacheKey(uint32_t surface_id,
   NSMutableDictionary<NSNumber *, CALayer *> *_surfaceLayers;
   NSMutableDictionary<NSNumber *, NSNumber *> *_latestBufferBySurface;
   NSMutableDictionary<NSNumber *, NSNumber *> *_lastPresentedBufferBySurface;
+  NSMutableDictionary<NSNumber *, NSNumber *> *_staleSceneSelectionsBySurface;
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
   NSMutableDictionary<NSNumber *, NSString *> *_windowOwnerMachineIdByWindowId;
 #endif
@@ -320,6 +330,7 @@ static inline NSString *WWNBufferCacheKey(uint32_t surface_id,
     _surfaceLayers = [NSMutableDictionary dictionary];
     _latestBufferBySurface = [NSMutableDictionary dictionary];
     _lastPresentedBufferBySurface = [NSMutableDictionary dictionary];
+    _staleSceneSelectionsBySurface = [NSMutableDictionary dictionary];
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
     _windowOwnerMachineIdByWindowId = [NSMutableDictionary dictionary];
 #endif
@@ -419,7 +430,16 @@ static inline NSString *WWNBufferCacheKey(uint32_t surface_id,
   const char *name = socketName ? [socketName UTF8String] : NULL;
   WWNLog("BRIDGE", @"Starting compositor...");
 
-  bool success = WWNCoreStart(_rustCore, name);
+  __block bool success = false;
+  if (_compositorQueue) {
+    // Ensure any pre-start configuration enqueued via _dispatchToRust
+    // (e.g. setOutputWidth/setForceSSD from main.m) is applied before start.
+    dispatch_sync(_compositorQueue, ^{
+      success = WWNCoreStart(self->_rustCore, name);
+    });
+  } else {
+    success = WWNCoreStart(_rustCore, name);
+  }
 
   if (success) {
     // Export WAYLAND_DISPLAY so child processes and logs can reference it
@@ -543,6 +563,7 @@ static inline NSString *WWNBufferCacheKey(uint32_t surface_id,
   [_surfaceLayers removeAllObjects];
   [_latestBufferBySurface removeAllObjects];
   [_lastPresentedBufferBySurface removeAllObjects];
+  [_staleSceneSelectionsBySurface removeAllObjects];
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
   [_windowOwnerMachineIdByWindowId removeAllObjects];
 #endif
@@ -837,6 +858,14 @@ static inline NSString *WWNBufferCacheKey(uint32_t surface_id,
         WWNRenderSceneFree(scene);
       }
 
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+      // WWNView uses NSViewLayerContentsRedrawNever; AppKit only picks up
+      // child CALayer.contents updates when the view is marked dirty.
+      if (presentedBuffers.count > 0) {
+        [self _invalidateMacSurfaceHostViews];
+      }
+#endif
+
       // Acknowledge wl_surface.frame/buffer release only after scene/layer
       // updates have consumed this tick's buffers.
       if (presentedBuffers.count > 0 && self->_rustCore) {
@@ -1066,9 +1095,9 @@ static inline NSString *WWNBufferCacheKey(uint32_t surface_id,
   }
   float localX = node->x - node->anchor_output_x;
   float localY = node->y - node->anchor_output_y;
-  layer.position =
-      CGPointMake(localX + node->width / 2, localY + node->height / 2);
-  layer.bounds = CGRectMake(0, 0, node->width, node->height);
+  // Use explicit frame assignment to avoid subpixel position/bounds drift that
+  // can leave thin gutters at content-view edges.
+  layer.frame = CGRectMake(localX, localY, node->width, node->height);
   layer.contentsScale = MAX(1.0, node->scale);
   layer.opacity = node->opacity;
   layer.cornerRadius = node->corner_radius;
@@ -1091,12 +1120,21 @@ static inline NSString *WWNBufferCacheKey(uint32_t surface_id,
   BOOL isStaleSceneBuffer =
       (node->buffer_id != 0 && latestForSurface &&
        latestForSurface.unsignedLongLongValue != node->buffer_id);
+  WWNLog("RENDER",
+         @"Node present surf=%@ win=%@ node=%.0fx%.0f buf_id=%llu buf=%ux%u contentRect=%.3f,%.3f %.3fx%.3f stale=%@",
+         surfId, winId, node->width, node->height, node->buffer_id,
+         node->buffer_width, node->buffer_height, node->content_rect_x,
+         node->content_rect_y, node->content_rect_w, node->content_rect_h,
+         isStaleSceneBuffer ? @"yes" : @"no");
   if (isStaleSceneBuffer) {
+    NSNumber *staleCountNum = _staleSceneSelectionsBySurface[surfId];
+    uint64_t staleCount = staleCountNum ? staleCountNum.unsignedLongLongValue + 1 : 1;
+    _staleSceneSelectionsBySurface[surfId] = @(staleCount);
     WWNLog("RENDER",
-           @"STALE: surf=%@ win=%@ scene_buf=%llu latest_buf=%llu; preferring "
-           @"latest cached buffer",
-           surfId, winId, node->buffer_id,
-           latestForSurface.unsignedLongLongValue);
+           @"STALE: surf=%@ win=%@ scene_buf=%llu latest_buf=%llu stale_count=%llu; "
+           @"preferring latest cached buffer",
+           surfId, winId, node->buffer_id, latestForSurface.unsignedLongLongValue,
+           staleCount);
   }
   uint64_t selectedBufferId = node->buffer_id;
   if (isStaleSceneBuffer) {
@@ -1104,6 +1142,17 @@ static inline NSString *WWNBufferCacheKey(uint32_t surface_id,
   }
   NSString *cacheKey = WWNBufferCacheKey(node->surface_id, selectedBufferId);
   id content = _bufferCache[cacheKey];
+  if (!content && isStaleSceneBuffer) {
+    NSString *sceneCacheKey = WWNBufferCacheKey(node->surface_id, node->buffer_id);
+    id sceneContent = _bufferCache[sceneCacheKey];
+    if (sceneContent) {
+      content = sceneContent;
+      selectedBufferId = node->buffer_id;
+      WWNLog("RENDER",
+             @"STALE fallback: surf=%@ win=%@ latest_buf=%llu missing; using scene_buf=%llu",
+             surfId, winId, latestForSurface.unsignedLongLongValue, node->buffer_id);
+    }
+  }
   if (node->buffer_id != 0 && !content) {
     WWNLog(
         "RENDER",
@@ -1115,11 +1164,41 @@ static inline NSString *WWNBufferCacheKey(uint32_t surface_id,
   if (node->buffer_id == 0) {
     layer.contents = nil;
   } else if (content) {
+    // Clear first so Core Animation cannot skip an update when the same
+    // buffer id is re-used with new SHM pixels (new CGImage, same key).
+    layer.contents = nil;
     layer.contents = content;
   }
 
   [CATransaction commit];
 }
+
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+/// WWNView sets `layerContentsRedrawPolicy` to Never; without this, Wayland
+/// surface sublayers can stop updating on screen after the first frame.
+- (void)_invalidateMacSurfaceHostViews {
+  NSArray<NSNumber *> *windowKeys = [_windows allKeys];
+  for (NSNumber *key in windowKeys) {
+    id w = _windows[key];
+    if (!w) {
+      continue;
+    }
+    NSView *host = nil;
+    if ([w isKindOfClass:[NSWindow class]]) {
+      host = [(NSWindow *)w contentView];
+    }
+    if ([host isKindOfClass:[WWNView class]]) {
+      @try {
+        [host setNeedsDisplay:YES];
+      } @catch (NSException *exception) {
+        WWNLog("BRIDGE",
+               @"Suppressed setNeedsDisplay exception for window %@: %@",
+               key, exception.reason);
+      }
+    }
+  }
+}
+#endif
 
 - (void)flushClients {
   if (!_rustCore)
@@ -1524,7 +1603,69 @@ extern void WWNCoreInject_touch_frame(void *core);
   NSNumber *key = @(windowId);
   CGSize dims = CGSizeMake(width, height);
   _latestResizeDims[key] = [NSValue value:&dims withObjCType:@encode(CGSize)];
+  NSTimeInterval debounce = kWWNResizeDebounceSeconds;
+  NSWindow *window = [self.windows objectForKey:key];
+  if ([window isKindOfClass:[WWNWindow class]] &&
+      ((WWNWindow *)window).inLiveResize) {
+    // During edge drag, dispatch immediately so Wayland configure cadence tracks
+    // AppKit's live size changes instead of waiting for debounce expiry.
+    debounce = 0.0;
+  }
+  WWNLog("BRIDGE",
+         @"Queue injectWindowResize window=%llu latest=%.0fx%.0f debounce=%.3fs live=%@",
+         windowId, dims.width, dims.height, debounce,
+         debounce == 0.0 ? @"yes" : @"no");
+  [NSObject cancelPreviousPerformRequestsWithTarget:self
+                                           selector:@selector(_drainPendingWindowResizeForId:)
+                                             object:key];
+  // Schedule on common + tracking modes so live edge-drag (NSEventTrackingRunLoopMode)
+  // continues delivering synchronized configure events while the mouse is down.
+  [self performSelector:@selector(_drainPendingWindowResizeForId:)
+             withObject:key
+             afterDelay:debounce
+                inModes:@[ NSRunLoopCommonModes, NSEventTrackingRunLoopMode ]];
+}
+
+- (void)reconcileWindowResizeNow:(uint64_t)windowId {
+  if (!_rustCore)
+    return;
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+  WWNWindow *window = _windows[@(windowId)];
+  if (!window)
+    return;
+  NSSize contentSize = WWNWaylandContentSizeForWindow(window);
+  uint32_t width = (uint32_t)MAX(1, lround(contentSize.width));
+  uint32_t height = (uint32_t)MAX(1, lround(contentSize.height));
+  NSNumber *key = @(windowId);
+  CGSize dims = CGSizeMake(width, height);
+  BOOL hasInFlightResize = [_resizeInFlightWindows containsObject:key];
+  BOOL alreadySent = NO;
+  NSValue *sentVal = _sentResizeDims[key];
+  if (sentVal) {
+    CGSize sentDims;
+    [sentVal getValue:&sentDims];
+    alreadySent = CGSizeEqualToSize(sentDims, dims);
+  }
+  if (alreadySent && !hasInFlightResize) {
+    WWNLog("BRIDGE",
+           @"Reconcile resize skipped window=%llu content=%ux%u (already sent, no in-flight)",
+           windowId, width, height);
+    return;
+  }
+  _latestResizeDims[key] = [NSValue value:&dims withObjCType:@encode(CGSize)];
+  // Force one authoritative post-resize dispatch when stale/in-flight state
+  // could leave host/client out of sync.
+  [_sentResizeDims removeObjectForKey:key];
+  [NSObject cancelPreviousPerformRequestsWithTarget:self
+                                           selector:@selector(_drainPendingWindowResizeForId:)
+                                             object:key];
+  WWNLog("BRIDGE",
+         @"Reconcile resize now window=%llu content=%ux%u inLive=%d",
+         windowId, width, height, window.inLiveResize);
   [self _drainPendingWindowResizeForId:key];
+#else
+  (void)windowId;
+#endif
 }
 
 - (BOOL)requestHostCloseForWindowId:(uint64_t)windowId {
@@ -1558,8 +1699,11 @@ extern void WWNCoreInject_touch_frame(void *core);
 /// When the block completes, it checks whether newer dimensions arrived
 /// for that window while it was running and re-dispatches if necessary.
 - (void)_drainPendingWindowResizeForId:(NSNumber *)key {
-  if ([_resizeInFlightWindows containsObject:key])
+  if ([_resizeInFlightWindows containsObject:key]) {
+    WWNLog("BRIDGE", @"Resize drain skipped (in-flight) window=%llu",
+           key.unsignedLongLongValue);
     return;
+  }
 
   NSValue *latestVal = _latestResizeDims[key];
   NSValue *sentVal = _sentResizeDims[key];
@@ -1569,16 +1713,23 @@ extern void WWNCoreInject_touch_frame(void *core);
   [latestVal getValue:&latestDims];
   if (sentVal) {
     [sentVal getValue:&sentDims];
-    if (CGSizeEqualToSize(latestDims, sentDims))
+    if (CGSizeEqualToSize(latestDims, sentDims)) {
+      WWNLog("BRIDGE",
+             @"Resize drain skipped (already sent) window=%llu dims=%.0fx%.0f",
+             key.unsignedLongLongValue, latestDims.width, latestDims.height);
       return;
+    }
   }
 
   [_resizeInFlightWindows addObject:key];
   _sentResizeDims[key] = latestVal;
   CGSize dims = latestDims;
-  uint32_t w = (uint32_t)dims.width;
-  uint32_t h = (uint32_t)dims.height;
+  uint32_t w = (uint32_t)MAX(1, lround(dims.width));
+  uint32_t h = (uint32_t)MAX(1, lround(dims.height));
   uint64_t wid = key.unsignedLongLongValue;
+  WWNLog("BRIDGE",
+         @"Dispatching injectWindowResize window=%llu raw=%.2fx%.2f rounded=%ux%u",
+         wid, dims.width, dims.height, w, h);
 
   [self _dispatchToRust:^{
     WWNCoreInjectWindowResize(self->_rustCore, wid, w, h);
@@ -1836,6 +1987,38 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
 }
 
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+static inline NSSize WWNWaylandContentSizeForWindow(NSWindow *window) {
+  // Keep Wayland<->AppKit resize math based on the actual frame->content
+  // conversion. contentLayoutRect may exclude layout-managed title/toolbar
+  // regions and can drift during edge-resize loops.
+  return [window contentRectForFrameRect:window.frame].size;
+}
+
+static inline NSString *WWNSizeCauseString(uint8_t cause) {
+  switch (cause) {
+  case 1:
+    return @"HostConfigure";
+  case 2:
+    return @"ClientCommit";
+  case 3:
+    return @"OutputModeChange";
+  default:
+    return @"Unknown";
+  }
+}
+
+static inline NSString *WWNSizeKindString(uint8_t kind) {
+  switch (kind) {
+  case 0:
+    return @"Frame";
+  case 1:
+    return @"Content";
+  case 2:
+    return @"Buffer";
+  default:
+    return @"Unknown";
+  }
+}
 
 - (void)handleWindowCreated:(CWindowEvent *)event {
   WWNLog("BRIDGE",
@@ -1844,10 +2027,11 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
          event->window_id, event->width, event->height, event->decoration_mode,
          event->fullscreen_shell);
 
-  CGFloat screenW = [NSScreen mainScreen].frame.size.width;
-  CGFloat screenH = [NSScreen mainScreen].frame.size.height;
   BOOL shouldInjectResize = NO;
   BOOL shouldUpdateOutput = NO; // Whether wl_output.mode must also change.
+
+  BOOL forceSSD = WWNForceSSDEnabled();
+  BOOL useServerDecorations = forceSSD || event->decoration_mode == 1;
 
   NSRect contentRect;
   if (event->fullscreen_shell) {
@@ -1865,40 +2049,23 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
     // Without this, Weston renders its desktop shell at the full output size
     // and the bottom strip is clipped/hidden behind the window chrome.
     contentRect = NSMakeRect(100, 100, event->width, event->height);
-    if (event->decoration_mode == 1) {
+    if (useServerDecorations) {
       // Force SSD: titlebar will eat into the content rect after window init.
       shouldInjectResize = YES;
       shouldUpdateOutput = YES;
     }
-  } else if (event->width >= (uint32_t)screenW &&
-             event->height >= (uint32_t)screenH) {
-    // xdg_toplevel requesting full-screen dimensions (e.g. a nested
-    // compositor like Weston).  Place it in a reasonable windowed size,
-    // then update BOTH wl_output.mode and xdg_toplevel configure to the
-    // new content-area size.
-    //
-    // Critical: nested compositors (Weston) size their *virtual display*
-    // to wl_output.mode, not to xdg_toplevel.configure.  If we only send
-    // a new configure without also updating the output mode, Weston renders
-    // at the old, full-screen output dimensions and the content is clipped
-    // or misaligned inside the smaller macOS host window.
-    CGFloat defaultW = fmin(1024, screenW * 0.75);
-    CGFloat defaultH = fmin(768, screenH * 0.75);
-    contentRect = NSMakeRect(100, 100, defaultW, defaultH);
-    shouldInjectResize = YES;
-    shouldUpdateOutput = YES;
   } else {
     contentRect = NSMakeRect(100, 100, event->width, event->height);
     // For SSD windows the actual content area must be communicated back
     // to the Rust compositor so wl_output stays in sync.  Nested
     // compositors like Weston rely on wl_output.mode matching the
     // content area.
-    if (event->decoration_mode == 1) {
+    if (useServerDecorations) {
       shouldInjectResize = YES;
     }
   }
   NSWindowStyleMask styleMask;
-  if (event->fullscreen_shell || event->decoration_mode == 1) {
+  if (useServerDecorations) {
     styleMask = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                 NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
   } else {
@@ -1919,11 +2086,16 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
                         : @"";
   [window setTitle:title];
 
-  // Create content view
-  WWNView *contentView = [[WWNView alloc] initWithFrame:contentRect];
+  // Create content view in window-local coordinates.
+  // `contentRect` includes screen-space origin; using it directly as an NSView
+  // frame can offset the compositor host view and leave visible borders.
+  NSRect contentViewRect =
+      NSMakeRect(0, 0, contentRect.size.width, contentRect.size.height);
+  WWNView *contentView = [[WWNView alloc] initWithFrame:contentViewRect];
   contentView.wantsLayer = YES;
   contentView.layer.backgroundColor = [[NSColor clearColor] CGColor];
   contentView.layer.contentsGravity = kCAGravityResize;
+  contentView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
 
   [window setContentView:contentView];
   [window makeFirstResponder:contentView];
@@ -1950,7 +2122,7 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
   // calls use the same serial compositor queue, so FIFO ordering is
   // guaranteed as long as we call setOutputWidth:… before injectWindowResize:.
   if (shouldInjectResize) {
-    NSSize contentSize = [window contentLayoutRect].size;
+    NSSize contentSize = WWNWaylandContentSizeForWindow(window);
     WWNLog("BRIDGE", @"Injecting initial resize for window %llu: %.0fx%.0f%@",
            event->window_id, contentSize.width, contentSize.height,
            shouldUpdateOutput ? @" (+ output mode update)" : @"");
@@ -1960,8 +2132,8 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
       // see the drawable size. Global setOutputWidth reconfigured every xdg_toplevel
       // and broadcast output mode to all clients, freezing unrelated sessions.
       uint64_t wid = event->window_id;
-      uint32_t ow = (uint32_t)contentSize.width;
-      uint32_t oh = (uint32_t)contentSize.height;
+      uint32_t ow = (uint32_t)MAX(1, lround(contentSize.width));
+      uint32_t oh = (uint32_t)MAX(1, lround(contentSize.height));
       float s = _latestOutputScale > 0 ? _latestOutputScale : 1.0f;
       [self _dispatchToRust:^{
         WWNCoreSetOutputGeometryForWindow(self->_rustCore, wid, ow, oh, s);
@@ -1969,8 +2141,8 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
     }
 
     [self injectWindowResize:event->window_id
-                       width:(uint32_t)contentSize.width
-                      height:(uint32_t)contentSize.height];
+                       width:(uint32_t)MAX(1, lround(contentSize.width))
+                      height:(uint32_t)MAX(1, lround(contentSize.height))];
   }
 }
 
@@ -1987,6 +2159,7 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
   }
 
   NSEvent *currentEvent = [NSApp currentEvent];
+  BOOL leftMouseDown = (([NSEvent pressedMouseButtons] & 0x1) != 0);
   BOOL validCurrentEvent =
       currentEvent && currentEvent.window == window &&
       (currentEvent.type == NSEventTypeLeftMouseDown ||
@@ -1997,10 +2170,15 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
              window.lastMouseDownEvent.window == window &&
              (window.lastMouseDownEvent.type == NSEventTypeLeftMouseDown ||
               window.lastMouseDownEvent.type == NSEventTypeLeftMouseDragged) &&
-             ([NSDate timeIntervalSinceReferenceDate] -
-                  window.lastMouseDownEvent.timestamp <
-              0.25)) {
+             leftMouseDown) {
     [window performWindowDragWithEvent:window.lastMouseDownEvent];
+  } else {
+    WWNLog("BRIDGE",
+           @"Ignoring move request: no valid drag event window=%llu current=%@ last=%@ leftDown=%d",
+           event->window_id,
+           currentEvent ? NSStringFromClass([currentEvent class]) : @"nil",
+           window.lastMouseDownEvent ? NSStringFromClass([window.lastMouseDownEvent class]) : @"nil",
+           leftMouseDown);
   }
 #endif
 }
@@ -2009,8 +2187,10 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
   WWNWindow *window = _windows[@(event->window_id)];
   if (!window || ![window isKindOfClass:[WWNWindow class]])
     return;
+  BOOL forceSSD = WWNForceSSDEnabled();
+  BOOL useServerDecorations = forceSSD || event->decoration_mode == 1;
   NSWindowStyleMask styleMask;
-  if (event->decoration_mode == 1) {
+  if (useServerDecorations) {
     styleMask = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                 NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
   } else {
@@ -2025,21 +2205,21 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
   // reconfigure_window_decorations sends an xdg_toplevel.configure to the
   // client.  Without this, nested compositors receive the pre-titlebar
   // dimensions and render at the wrong size.
-  NSSize contentSize = [window contentLayoutRect].size;
+  NSSize contentSize = WWNWaylandContentSizeForWindow(window);
   if (contentSize.width > 0 && contentSize.height > 0) {
     WWNLog("BRIDGE",
-           @"Decoration mode changed for window %llu: %s — injecting "
+           @"Decoration mode changed for window %llu: %s (force_ssd=%d) — injecting "
            @"content resize %.0fx%.0f",
            event->window_id,
-           event->decoration_mode == 1 ? "ServerSide" : "ClientSide",
+           useServerDecorations ? "ServerSide" : "ClientSide", forceSSD,
            contentSize.width, contentSize.height);
     [self injectWindowResize:event->window_id
                        width:(uint32_t)contentSize.width
                       height:(uint32_t)contentSize.height];
   } else {
-    WWNLog("BRIDGE", @"Decoration mode changed for window %llu: %s",
+    WWNLog("BRIDGE", @"Decoration mode changed for window %llu: %s (force_ssd=%d)",
            event->window_id,
-           event->decoration_mode == 1 ? "ServerSide" : "ClientSide");
+           useServerDecorations ? "ServerSide" : "ClientSide", forceSSD);
   }
 }
 
@@ -2290,19 +2470,30 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
 
       [_windows removeObjectForKey:@(event->window_id)];
       [_windowOwnerMachineIdByWindowId removeObjectForKey:@(event->window_id)];
+      [_latestResizeDims removeObjectForKey:@(event->window_id)];
+      [_sentResizeDims removeObjectForKey:@(event->window_id)];
+      [_resizeInFlightWindows removeObject:@(event->window_id)];
+      [NSObject cancelPreviousPerformRequestsWithTarget:self
+                                               selector:@selector(_drainPendingWindowResizeForId:)
+                                                 object:@(event->window_id)];
 
       // Avoid NSWindow close-time delegate/first-responder cascades when the
       // Wayland client has already been torn down. Hiding + detaching keeps
       // host alive without touching potentially invalid compositor state.
       [window setDelegate:nil];
       [window orderOut:nil];
-      [window setContentView:nil];
     } @catch (NSException *exception) {
       WWNLog("BRIDGE",
              @"Exception while destroying window %llu: %@ (%@)",
              event->window_id, exception.name, exception.reason);
       [_windows removeObjectForKey:@(event->window_id)];
       [_windowOwnerMachineIdByWindowId removeObjectForKey:@(event->window_id)];
+      [_latestResizeDims removeObjectForKey:@(event->window_id)];
+      [_sentResizeDims removeObjectForKey:@(event->window_id)];
+      [_resizeInFlightWindows removeObject:@(event->window_id)];
+      [NSObject cancelPreviousPerformRequestsWithTarget:self
+                                               selector:@selector(_drainPendingWindowResizeForId:)
+                                                 object:@(event->window_id)];
       @try {
         [window orderOut:nil];
       } @catch (NSException *inner) {
@@ -2323,6 +2514,7 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
     }
     [_surfaceLayers removeAllObjects];
     [_bufferCache removeAllObjects];
+    [_staleSceneSelectionsBySurface removeAllObjects];
     [[NSCursor arrowCursor] set];
   }
 #endif
@@ -2332,6 +2524,9 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
     [popup dismiss];
     [_popups removeObjectForKey:@(event->window_id)];
     [_windows removeObjectForKey:@(event->window_id)];
+    [_latestResizeDims removeObjectForKey:@(event->window_id)];
+    [_sentResizeDims removeObjectForKey:@(event->window_id)];
+    [_resizeInFlightWindows removeObject:@(event->window_id)];
     WWNLog("BRIDGE", @"Destroyed popup %llu", event->window_id);
   }
 }
@@ -2357,17 +2552,68 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
   WWNWindow *window = [self.windows objectForKey:@(event->window_id)];
   if (window) {
     // Check if size actually changed to avoid loop
-    NSSize contentSize = [window contentLayoutRect].size;
+    NSSize contentSize = WWNWaylandContentSizeForWindow(window);
+    // Host-originated configure/output updates are acknowledgements of a resize
+    // AppKit already performed. Re-applying them can create host resize loops.
+    if (event->size_cause == 1 || event->size_cause == 3) {
+      WWNLog("BRIDGE",
+             @"Ignoring non-authoritative SizeChanged window=%llu event=%ux%u "
+             @"current=%.0fx%.0f cause=%@ kind=%@ serial=%u txn=%llu",
+             event->window_id, event->width, event->height, contentSize.width,
+             contentSize.height, WWNSizeCauseString(event->size_cause),
+             WWNSizeKindString(event->size_kind), event->configure_serial,
+             event->transaction_id);
+      return;
+    }
+    // Guard against untracked client-driven resize oscillation.
+    // If size change is not tied to a known configure/transaction, treat it
+    // as non-authoritative and never drive AppKit sizing from it.
+    //
+    // Nested compositors (e.g. Weston + weston-simple-shm) can oscillate
+    // between transient client sizes (e.g. 250x250 vs 1024x768) without an
+    // active host resize transaction. Applying those updates on host reopens
+    // resize ping-pong loops and visible flashing.
+    if (event->size_cause == 2 && event->configure_serial == 0 &&
+        event->transaction_id == 0) {
+      CGFloat deltaW = fabs(contentSize.width - (CGFloat)event->width);
+      CGFloat deltaH = fabs(contentSize.height - (CGFloat)event->height);
+      WWNLog("BRIDGE",
+             @"Ignoring untracked ClientCommit SizeChanged window=%llu "
+             @"event=%ux%u current=%.0fx%.0f delta=%.0fx%.0f",
+             event->window_id, event->width, event->height, contentSize.width,
+             contentSize.height, deltaW, deltaH);
+      return;
+    }
     if (contentSize.width != event->width ||
         contentSize.height != event->height) {
+      CGFloat deltaW = fabs(contentSize.width - (CGFloat)event->width);
+      CGFloat deltaH = fabs(contentSize.height - (CGFloat)event->height);
+      WWNLog(
+          "BRIDGE",
+          @"Applying SizeChanged window=%llu event=%ux%u current=%.0fx%.0f "
+          @"delta=%.0fx%.0f cause=%@ kind=%@ serial=%u txn=%llu",
+          event->window_id, event->width, event->height, contentSize.width,
+          contentSize.height, deltaW, deltaH,
+          WWNSizeCauseString(event->size_cause),
+          WWNSizeKindString(event->size_kind), event->configure_serial,
+          event->transaction_id);
 
       window.processingResize = YES;
       NSRect frame =
           [window frameRectForContentRect:NSMakeRect(0, 0, event->width,
                                                      event->height)];
       frame.origin = window.frame.origin; // Keep origin
-      [window setFrame:frame display:YES];
+      // Avoid visible one-frame flash when applying final size correction.
+      [window setFrame:frame display:NO];
       window.processingResize = NO;
+    } else {
+      WWNLog("BRIDGE",
+             @"Ignoring SizeChanged window=%llu event=%ux%u (already applied) "
+             @"cause=%@ kind=%@ serial=%u txn=%llu",
+             event->window_id, event->width, event->height,
+             WWNSizeCauseString(event->size_cause),
+             WWNSizeKindString(event->size_kind), event->configure_serial,
+             event->transaction_id);
     }
   }
 }

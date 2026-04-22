@@ -15,6 +15,18 @@ use crate::core::state::{CompositorState, DecorationPolicy};
 use crate::core::wayland::xdg::decoration::ToplevelDecorationData;
 use crate::core::window::DecorationMode;
 
+fn is_weston_family_app(state: &CompositorState, window_id: u32) -> bool {
+    state
+        .get_window(window_id)
+        .and_then(|w| w.read().ok().map(|w| w.app_id.clone()))
+        .map(|app_id| {
+            app_id == "weston"
+                || app_id.starts_with("weston-")
+                || app_id.contains("weston")
+        })
+        .unwrap_or(false)
+}
+
 // ============================================================================
 // org_kde_kwin_server_decoration_manager
 // ============================================================================
@@ -53,10 +65,17 @@ impl Dispatch<OrgKdeKwinServerDecorationManager, ()> for CompositorState {
                 let decoration = data_init.init(id, surface_id);
                 
                 // Determine the default mode based on policy
-                let default_mode = match state.decoration_policy {
-                    DecorationPolicy::PreferClient => Mode::Client,
-                    DecorationPolicy::PreferServer => Mode::Server,
-                    DecorationPolicy::ForceServer => Mode::Server,
+                let weston_family = matches!(state.decoration_policy, DecorationPolicy::ForceServer)
+                    .then_some(false)
+                    .unwrap_or_else(|| state.surface_to_window.get(&surface_id).copied().map(|wid| is_weston_family_app(state, wid)).unwrap_or(false));
+                let default_mode = if weston_family {
+                    Mode::Client
+                } else {
+                    match state.decoration_policy {
+                        DecorationPolicy::PreferClient => Mode::Client,
+                        DecorationPolicy::PreferServer => Mode::Server,
+                        DecorationPolicy::ForceServer => Mode::Server,
+                    }
                 };
                 
                 // Track the decoration in state
@@ -106,9 +125,16 @@ impl Dispatch<OrgKdeKwinServerDecoration, u32> for CompositorState {
                 tracing::debug!("Client requests KDE decoration mode: {:?}", requested_mode);
                 
                 // Apply policy
-                let actual_mode = match state.decoration_policy {
-                    DecorationPolicy::ForceServer => Mode::Server,
-                    _ => requested_mode,
+                let weston_family = matches!(state.decoration_policy, DecorationPolicy::ForceServer)
+                    .then_some(false)
+                    .unwrap_or_else(|| state.surface_to_window.get(&surface_id).copied().map(|wid| is_weston_family_app(state, wid)).unwrap_or(false));
+                let actual_mode = if weston_family {
+                    Mode::Client
+                } else {
+                    match state.decoration_policy {
+                        DecorationPolicy::ForceServer => Mode::Server,
+                        _ => requested_mode,
+                    }
                 };
                 
                 // Update window state if we can find the window for this surface

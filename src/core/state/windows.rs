@@ -41,7 +41,9 @@ impl CompositorState {
             } else {
                 (0, 0)
             };
-            let serial = self.send_toplevel_configure(client_id, toplevel_id, width, height);
+            let serial = self
+                .send_toplevel_configure(client_id, toplevel_id, width, height)
+                .unwrap_or(0);
             crate::wlog!(
                 crate::util::logging::COMPOSITOR,
                 "Reconfigured decorations via unified configure gateway (window={} serial={} size={}x{})",
@@ -100,7 +102,16 @@ impl CompositorState {
     /// Destroy a window
     pub fn destroy_window(&mut self, window_id: u32) {
         if let Some(window) = self.windows.remove(&window_id) {
-            let surface_id = window.read().unwrap().surface_id;
+            let surface_id = match window.read() {
+                Ok(w) => w.surface_id,
+                Err(_) => {
+                    tracing::error!(
+                        "destroy_window: poisoned window lock for window {}, skipping teardown",
+                        window_id
+                    );
+                    return;
+                }
+            };
             self.surface_to_window.remove(&surface_id);
             self.window_tree.remove(window_id);
             
@@ -111,13 +122,27 @@ impl CompositorState {
             if let Some(old_focus_wid) = self.focus.pointer_focus {
                 if old_focus_wid == window_id {
                     let (sid, cid) = {
-                        let w = window.read().unwrap(); // window is already removed from map but we have Arc
-                        let sid = w.surface_id;
-                        let cid = self.get_surface(sid).and_then(|s| s.read().unwrap().client_id.clone());
+                        let sid = match window.read() {
+                            Ok(w) => w.surface_id, // window removed from map, Arc still valid
+                            Err(_) => {
+                                tracing::warn!(
+                                    "destroy_window: poisoned window lock while clearing pointer focus for {}",
+                                    window_id
+                                );
+                                0
+                            }
+                        };
+                        let cid = self.get_surface(sid).and_then(|s| {
+                            s.read()
+                                .ok()
+                                .and_then(|surf| surf.client_id.clone())
+                        });
                         (sid, cid)
                     };
-                    if let Some(cid) = cid {
+                    if sid != 0 {
+                        if let Some(cid) = cid {
                         self.ext.pointer_constraints.deactivate_constraints(cid, sid);
+                        }
                     }
                     self.focus.set_pointer_focus(None);
                 }

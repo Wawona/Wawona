@@ -28,6 +28,7 @@ pkgs.stdenv.mkDerivation {
   configurePhase = ''
     runHook preConfigure
     ./configure --prefix=$out \
+      --host=${androidToolchain.androidTarget} \
       ac_cv_func_malloc_0_nonnull=yes \
       ac_cv_func_realloc_0_nonnull=yes
     runHook postConfigure

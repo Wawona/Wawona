@@ -2,6 +2,7 @@
 #import "../../util/WWNLog.h"
 #import "WWNCompositorBridge.h"
 #import "WWNSettings.h"
+#import <ApplicationServices/ApplicationServices.h>
 
 @interface WWNWindow ()
 @property(nonatomic, assign) BOOL wwnCloseDeferred;
@@ -389,6 +390,42 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
     return 60; // F2 -> KEY_F2
   case 118:
     return 62; // F4 -> KEY_F4
+  case 65:
+    return 83; // Keypad . -> KEY_KPDOT
+  case 67:
+    return 55; // Keypad * -> KEY_KPASTERISK
+  case 69:
+    return 78; // Keypad + -> KEY_KPPLUS
+  case 71:
+    return 69; // Keypad Clear -> KEY_NUMLOCK
+  case 75:
+    return 98; // Keypad / -> KEY_KPSLASH
+  case 76:
+    return 96; // Keypad Enter -> KEY_KPENTER
+  case 78:
+    return 74; // Keypad - -> KEY_KPMINUS
+  case 81:
+    return 117; // Keypad = -> KEY_KPEQUAL
+  case 82:
+    return 82; // Keypad 0 -> KEY_KP0
+  case 83:
+    return 79; // Keypad 1 -> KEY_KP1
+  case 84:
+    return 80; // Keypad 2 -> KEY_KP2
+  case 85:
+    return 81; // Keypad 3 -> KEY_KP3
+  case 86:
+    return 75; // Keypad 4 -> KEY_KP4
+  case 87:
+    return 76; // Keypad 5 -> KEY_KP5
+  case 88:
+    return 77; // Keypad 6 -> KEY_KP6
+  case 89:
+    return 71; // Keypad 7 -> KEY_KP7
+  case 91:
+    return 72; // Keypad 8 -> KEY_KP8
+  case 92:
+    return 73; // Keypad 9 -> KEY_KP9
   default:
     return 0;
   }
@@ -432,24 +469,11 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
   WWNLog("INPUT", @"flagsChanged: keyCode=%hu flags=0x%lx", event.keyCode,
          (unsigned long)event.modifierFlags);
 
-  static NSMutableSet *pressedModifiers = nil;
-  if (!pressedModifiers) {
-    pressedModifiers = [NSMutableSet set];
-  }
-
   uint32_t keycode = MacosToXkbKeycode(event.keyCode);
   if (keycode > 0) {
-    // Track physical key state
-    BOOL isPressed = NO;
-    NSNumber *keyObj = @(keycode);
-
-    if ([pressedModifiers containsObject:keyObj]) {
-      [pressedModifiers removeObject:keyObj];
-      isPressed = NO;
-    } else {
-      [pressedModifiers addObject:keyObj];
-      isPressed = YES;
-    }
+    // Query physical key state directly to avoid sticky/toggled modifiers.
+    BOOL isPressed = CGEventSourceKeyState(kCGEventSourceStateCombinedSessionState,
+                                           event.keyCode);
 
     WWNLog("INPUT", @"Determined modifier key state: keycode=%u isPressed=%d",
            keycode, isPressed);
@@ -459,34 +483,9 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
                      pressed:isPressed
                    timestamp:(uint32_t)(event.timestamp * 1000)];
   }
-
-  NSUInteger flags = [event modifierFlags];
-  uint32_t depressed = 0;
-  uint32_t locked = 0;
-
-  if (flags & NSEventModifierFlagShift) {
-    depressed |= 1;
-  }
-  if (flags & NSEventModifierFlagControl) {
-    depressed |= 4;
-  }
-  if (flags & NSEventModifierFlagOption) {
-    depressed |= 8;
-  }
-  if (flags & NSEventModifierFlagCommand) {
-    depressed |= 64;
-  }
-  if (flags & NSEventModifierFlagCapsLock) {
-    locked |= 2;
-  }
-
-  WWNLog("INPUT", @"Injecting modifiers state: depressed=%u locked=%u",
-         depressed, locked);
-
-  [[WWNCompositorBridge sharedBridge] injectModifiersWithDepressed:depressed
-                                                           latched:0
-                                                            locked:locked
-                                                             group:0];
+  // IMPORTANT: Do not also push hard-coded modifier bitmasks here.
+  // Smithay's keyboard path updates modifiers from key transitions; sending
+  // both paths can desynchronize modifier state and scramble keybinds.
 }
 
 // ---------------------------------------------------------------------------
@@ -673,8 +672,6 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
 //
 // WWNWindow Implementation
 //
-static const NSTimeInterval kWWNDeferredCloseForceDelaySeconds = 1.25;
-
 @implementation WWNWindow
 
 - (void)wwnCancelCloseForceTimer {
@@ -707,10 +704,45 @@ static const NSTimeInterval kWWNDeferredCloseForceDelaySeconds = 1.25;
     return;
   }
 
-  NSSize size = [self contentLayoutRect].size;
+  // Match Rust/AppKit round-trip sizing to the actual frame<->content mapping.
+  NSSize size = [self contentRectForFrameRect:self.frame].size;
+  uint32_t width = (uint32_t)MAX(1, lround(size.width));
+  uint32_t height = (uint32_t)MAX(1, lround(size.height));
   [[WWNCompositorBridge sharedBridge] injectWindowResize:self.wwnWindowId
-                                                   width:(uint32_t)size.width
-                                                  height:(uint32_t)size.height];
+                                                   width:width
+                                                  height:height];
+}
+
+- (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)frameSize {
+  (void)sender;
+  if (self.processingResize || self.suppressCompositorCallbacks ||
+      !self.isVisible) {
+    return frameSize;
+  }
+
+  // During live edge-drag, forward each intermediate content size so Wayland
+  // clients track host window dimensions continuously, not only after mouse up.
+  NSRect nextFrame = NSMakeRect(self.frame.origin.x, self.frame.origin.y,
+                                frameSize.width, frameSize.height);
+  NSSize contentSize = [self contentRectForFrameRect:nextFrame].size;
+  uint32_t width = (uint32_t)MAX(1, lround(contentSize.width));
+  uint32_t height = (uint32_t)MAX(1, lround(contentSize.height));
+  [[WWNCompositorBridge sharedBridge] injectWindowResize:self.wwnWindowId
+                                                   width:width
+                                                  height:height];
+  return frameSize;
+}
+
+- (void)windowDidEndLiveResize:(NSNotification *)notification {
+  (void)notification;
+  if (self.processingResize || self.suppressCompositorCallbacks ||
+      !self.isVisible) {
+    return;
+  }
+  // Final authoritative sync after fast edge-drag to guarantee host/client
+  // dimensions converge (no lingering frame/content desync).
+  [[WWNCompositorBridge sharedBridge]
+      reconcileWindowResizeNow:self.wwnWindowId];
 }
 
 - (BOOL)canBecomeKeyWindow {
@@ -777,33 +809,17 @@ static const NSTimeInterval kWWNDeferredCloseForceDelaySeconds = 1.25;
   BOOL sent = [[WWNCompositorBridge sharedBridge]
       requestHostCloseForWindowId:self.wwnWindowId];
   if (sent) {
+    // Once close has been requested, stop feeding additional AppKit callbacks
+    // for this host window while the Wayland client unwinds.
+    self.suppressCompositorCallbacks = YES;
     WWNLog("INPUT", @"windowShouldClose: sent xdg_toplevel.close for window %llu — "
                      @"deferring NSWindow close",
            self.wwnWindowId);
     self.wwnCloseDeferred = YES;
-    __weak WWNWindow *weakSelf = self;
     [self.wwnCloseForceTimer invalidate];
-    self.wwnCloseForceTimer = [NSTimer
-        scheduledTimerWithTimeInterval:kWWNDeferredCloseForceDelaySeconds
-                               repeats:NO
-                                 block:^(NSTimer *_Nonnull timer) {
-                                   (void)timer;
-                                   WWNWindow *strong = weakSelf;
-                                   if (!strong || !strong.wwnCloseDeferred) {
-                                     return;
-                                   }
-                                   strong.wwnCloseDeferred = NO;
-                                   [strong wwnCancelCloseForceTimer];
-                                   BOOL ok = [[WWNCompositorBridge sharedBridge]
-                                       requestForceDestroyHostWindowForWindowId:
-                                           strong.wwnWindowId];
-                                   if (ok) {
-                                     WWNLog("INPUT",
-                                            @"Deferred force-destroy for window "
-                                            @"%llu (client did not tear down)",
-                                            strong.wwnWindowId);
-                                   }
-                                 }];
+    // Do not auto force-destroy while the client is unwinding toolkit state.
+    // wlroots/cairo clients can assert if the host tears down too early.
+    self.wwnCloseForceTimer = nil;
     return NO;
   }
   return YES;
