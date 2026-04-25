@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  NIXPKGS_ALLOW_UNFREE: '1'
+
+jobs:
+  release-macos:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XCODE_APP" ]; then
+            echo "::error::No Xcode installation found"
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE_APP"
+
+      - uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+
+      - name: Build macOS app
+        run: ./.github/scripts/nix-retry.sh nix build .#wawona-macos --print-build-logs
+
+      - name: Create DMG
+        run: |
+          VERSION=$(cat VERSION)
+          mkdir -p dmg-staging
+          cp -R result/Applications/Wawona.app dmg-staging/
+          ln -s /Applications dmg-staging/Applications
+          hdiutil create -volname "Wawona" -srcfolder dmg-staging \
+            -ov -format UDZO "Wawona-${VERSION}.dmg"
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: Wawona-*.dmg
+
+  release-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
+          docker image prune -af || true
+
+      - uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          extra-conf: |
+            build-dir = /nix/build
+            sandbox = relaxed
+            allow-import-from-derivation = true
+
+      - name: Build Android APK
+        run: ./.github/scripts/nix-retry.sh nix build .#wawona-android --print-build-logs
+
+      - name: Copy APK
+        run: |
+          VERSION=$(cat VERSION)
+          cp result/bin/Wawona.apk "Wawona-${VERSION}.apk"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: Wawona-*.apk
+
+  create-release:
+    needs: [release-macos, release-android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+
+          PRERELEASE=""
+          if echo "$VERSION" | grep -q '-'; then
+            PRERELEASE="--prerelease"
+          fi
+
+          gh release create "$TAG" \
+            --title "Wawona v${VERSION}" \
+            --generate-notes \
+            $PRERELEASE \
+            artifacts/*
