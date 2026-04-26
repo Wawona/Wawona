@@ -30,8 +30,8 @@ let
           export XCODE_APP
           export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
           export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
-          # Tahoe (26.0) SDK discovery
-          export SDKROOT="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk"
+          # SDK discovery
+          export SDKROOT="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
           if [ ! -d "$SDKROOT" ]; then
              SDKROOT=$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)
           fi
@@ -137,7 +137,7 @@ let
         mkdir -p "''$OUT_CAR"
         if "''$ACTOOL" "''$ICON_TMP/Wawona.icon" --compile "''$OUT_CAR" \
             --platform macosx --target-device mac \
-            --minimum-deployment-target 26.0 \
+            --minimum-deployment-target 14.0 \
             --app-icon Wawona --include-all-app-icons \
             --output-format human-readable-text --notices --warnings \
             --development-region en --enable-on-demand-resources NO \
@@ -691,7 +691,7 @@ MVK_ICD_EOF
     <key>NSHumanReadableCopyright</key>
     <string>Copyright © 2025-${currentYear} Alex Spaulding. All rights reserved.</string>
     <key>LSMinimumSystemVersion</key>
-    <string>26.0</string>
+    <string>14.0</string>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>CFBundleIcons</key>

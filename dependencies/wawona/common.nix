@@ -102,7 +102,7 @@ rec {
   ];
 
   # Apple-only deployment target flag (not valid for Android)
-  appleCFlags = [ "-mmacosx-version-min=26.0" ];
+  appleCFlags = [ "-mmacosx-version-min=14.0" ];
 
   commonObjCFlags = [
     "-Wall"

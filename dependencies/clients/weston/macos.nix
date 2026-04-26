@@ -11,28 +11,28 @@ stdenv.mkDerivation rec {
   
   # Fetch linux input headers for macOS shim
   linux_input_h = fetchurl {
-    url = "https://raw.githubusercontent.com/torvalds/linux/master/include/uapi/linux/input.h";
-    sha256 = "sha256-ciO4IN6ANMgnw/yBe2dApcUcqDMkgLhtagwUJzD7I54="; 
+    url = "https://raw.githubusercontent.com/torvalds/linux/v6.6/include/uapi/linux/input.h";
+    sha256 = "06rha7nmqpadi6q6xz64rs86xc5lgdkq1bdcbr9rw2lp33ziypqa";
   };
   linux_input_event_codes_h = fetchurl {
-    url = "https://raw.githubusercontent.com/torvalds/linux/master/include/uapi/linux/input-event-codes.h";
-    sha256 = "sha256-ORbz0jviAG+Hqy5+4vVqyGSWax9lDHaJwMpDUTSGHsk=";
+    url = "https://raw.githubusercontent.com/torvalds/linux/v6.6/include/uapi/linux/input-event-codes.h";
+    sha256 = "14sl96hc8j48ikjgg4jynm4gsvax5ywdypyahzi2816l4xlvxd93";
   };
   libdrm_fourcc_h = fetchurl {
-    url = "https://gitlab.freedesktop.org/mesa/drm/-/raw/main/include/drm/drm_fourcc.h";
-    sha256 = "sha256-qFbvL2tD6PeyaHFZThkYZMVAoDcg1xwT7opFDSarxi0=";
+    url = "https://gitlab.freedesktop.org/mesa/drm/-/raw/libdrm-2.4.124/include/drm/drm_fourcc.h";
+    sha256 = "1yv2y0mcb16jifn3shkcl7lgkx4vsq7glrvwa6m1z7c03kl47sxr";
   };
   libdrm_h = fetchurl {
-    url = "https://gitlab.freedesktop.org/mesa/drm/-/raw/main/include/drm/drm.h";
-    sha256 = "sha256-+erb+g+eGurMJ/XJMco717RpdNutgXzQL+YBzLXN8I0=";
+    url = "https://gitlab.freedesktop.org/mesa/drm/-/raw/libdrm-2.4.124/include/drm/drm.h";
+    sha256 = "1s6swhbxr1y4k9ld906hnknr40km5k7a6i2idq92xb72avqaz03b";
   };
   libdrm_mode_h = fetchurl {
-    url = "https://gitlab.freedesktop.org/mesa/drm/-/raw/main/include/drm/drm_mode.h";
-    sha256 = "sha256-7kBowCbftshcZoy05B/5y/MOmcEMXn7yrRx4cNP5o78=";
+    url = "https://gitlab.freedesktop.org/mesa/drm/-/raw/libdrm-2.4.124/include/drm/drm_mode.h";
+    sha256 = "1nk8sy1frp0wy73dd84lxrqxbbqhnj47ngi5xfh9c83rv8088i4z";
   };
   libdrm_xf86drm_h = fetchurl {
-    url = "https://gitlab.freedesktop.org/mesa/drm/-/raw/main/xf86drm.h";
-    sha256 = "sha256-X62GrL3cw7amhWkNoMfeWUEtNU0TdWRHNGcvXGvfQgI=";
+    url = "https://gitlab.freedesktop.org/mesa/drm/-/raw/libdrm-2.4.124/xf86drm.h";
+    sha256 = "0imd0r19rl8wajzaa9f0rf4j4z4jrmm6cnsia4whpbl5hrx9v36a";
   };
 
   nativeBuildInputs = [ meson ninja pkg-config wayland-scanner python3 ];

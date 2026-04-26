@@ -320,7 +320,7 @@ let
     # ── wawona (root crate) ────────────────────────────────────────
     wawona = attrs: {
       preConfigure = (attrs.preConfigure or "") + lib.optionalString pkgs.stdenv.isDarwin ''
-        export MACOSX_DEPLOYMENT_TARGET="26.0"
+        export MACOSX_DEPLOYMENT_TARGET="14.0"
       '';
       nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [
         pkgs.pkg-config
@@ -540,7 +540,7 @@ let
       buildInputs = (attrs.buildInputs or []) ++
         lib.optionals pkgs.stdenv.isDarwin [ pkgs.libiconv ];
       preConfigure = (attrs.preConfigure or "") + lib.optionalString pkgs.stdenv.isDarwin ''
-        export MACOSX_DEPLOYMENT_TARGET="26.0"
+        export MACOSX_DEPLOYMENT_TARGET="14.0"
       '';
     };
 
