@@ -725,7 +725,10 @@
             buildModule = toolchains; inherit wawonaSrc wawonaVersion;
             waypipe = toolchains.buildForMacOS "waypipe" { }; weston = toolchains.buildForMacOS "weston" { };
             foot = toolchains.buildForMacOS "foot" { };
-            rustBackend = backend-macos; xcodeProject = xcodegenOutputs.project;
+            # Keep runtime package host-only: do not force xcodegen/project outputs,
+            # which pull in non-macOS backend graphs.
+            rustBackend = backend-macos;
+            xcodeProject = "";
           };
           wawona-ios-app-sim = pkgs.callPackage ./dependencies/wawona/ios.nix {
             inherit wawonaSrc wawonaVersion teamId;
