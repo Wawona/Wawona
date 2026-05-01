@@ -3,6 +3,8 @@
 stdenv.mkDerivation rec {
   pname = "weston";
   version = "13.0.0";
+  linuxHeadersRef = "45dcf5e28813954da4150e7260ccb61e95856176";
+  drmHeadersRef = "8de45ef60d69472a0f8ba898f91250dac88bb81f";
 
   src = fetchurl {
     url = "https://gitlab.freedesktop.org/wayland/weston/-/releases/${version}/downloads/weston-${version}.tar.xz";
@@ -11,27 +13,27 @@ stdenv.mkDerivation rec {
   
   # Fetch linux input headers for macOS shim
   linux_input_h = fetchurl {
-    url = "https://raw.githubusercontent.com/torvalds/linux/master/include/uapi/linux/input.h";
+    url = "https://raw.githubusercontent.com/torvalds/linux/${linuxHeadersRef}/include/uapi/linux/input.h";
     sha256 = "sha256-ciO4IN6ANMgnw/yBe2dApcUcqDMkgLhtagwUJzD7I54="; 
   };
   linux_input_event_codes_h = fetchurl {
-    url = "https://raw.githubusercontent.com/torvalds/linux/master/include/uapi/linux/input-event-codes.h";
-    sha256 = "sha256-ORbz0jviAG+Hqy5+4vVqyGSWax9lDHaJwMpDUTSGHsk=";
+    url = "https://raw.githubusercontent.com/torvalds/linux/${linuxHeadersRef}/include/uapi/linux/input-event-codes.h";
+    sha256 = "sha256-CqF1r2sCoJbn3Bcr0x6B1JnrqQg3d1FejCCqkVq3new=";
   };
   libdrm_fourcc_h = fetchurl {
-    url = "https://gitlab.freedesktop.org/mesa/drm/-/raw/main/include/drm/drm_fourcc.h";
+    url = "https://gitlab.freedesktop.org/mesa/drm/-/raw/${drmHeadersRef}/include/drm/drm_fourcc.h";
     sha256 = "sha256-qFbvL2tD6PeyaHFZThkYZMVAoDcg1xwT7opFDSarxi0=";
   };
   libdrm_h = fetchurl {
-    url = "https://gitlab.freedesktop.org/mesa/drm/-/raw/main/include/drm/drm.h";
+    url = "https://gitlab.freedesktop.org/mesa/drm/-/raw/${drmHeadersRef}/include/drm/drm.h";
     sha256 = "sha256-+erb+g+eGurMJ/XJMco717RpdNutgXzQL+YBzLXN8I0=";
   };
   libdrm_mode_h = fetchurl {
-    url = "https://gitlab.freedesktop.org/mesa/drm/-/raw/main/include/drm/drm_mode.h";
+    url = "https://gitlab.freedesktop.org/mesa/drm/-/raw/${drmHeadersRef}/include/drm/drm_mode.h";
     sha256 = "sha256-7kBowCbftshcZoy05B/5y/MOmcEMXn7yrRx4cNP5o78=";
   };
   libdrm_xf86drm_h = fetchurl {
-    url = "https://gitlab.freedesktop.org/mesa/drm/-/raw/main/xf86drm.h";
+    url = "https://gitlab.freedesktop.org/mesa/drm/-/raw/${drmHeadersRef}/xf86drm.h";
     sha256 = "sha256-X62GrL3cw7amhWkNoMfeWUEtNU0TdWRHNGcvXGvfQgI=";
   };
 

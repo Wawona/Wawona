@@ -365,36 +365,38 @@ impl CompositorState {
                 }
                 node.set_size(render_width, render_height);
 
-                // When xdg_surface geometry is set, compute a normalized
-                // content_rect so the platform renderer crops the buffer
-                // to the content area (excluding CSD/SSD shadow).
-                if let Some(&(gx, gy, gw, gh)) = geom_by_surface.get(&window.surface_id) {
-                    if let Some(surf_ref) = self.get_surface(window.surface_id) {
-                        let surf = surf_ref.read().unwrap();
-                        let buf_w = surf.current.width as f32;
-                        let buf_h = surf.current.height as f32;
-                        if buf_w > 0.0 && buf_h > 0.0 && gw > 0 && gh > 0 {
-                            // wlroots/sway-style behavior: crop to intersection of
-                            // set_window_geometry and actual surface buffer extents.
-                            let geom_x2 = gx.saturating_add(gw);
-                            let geom_y2 = gy.saturating_add(gh);
-                            let inter_x1 = gx.max(0);
-                            let inter_y1 = gy.max(0);
-                            let inter_x2 = geom_x2.min(surf.current.width.max(0));
-                            let inter_y2 = geom_y2.min(surf.current.height.max(0));
-                            let inter_w = (inter_x2 - inter_x1).max(0);
-                            let inter_h = (inter_y2 - inter_y1).max(0);
-                            if inter_w > 0 && inter_h > 0 {
-                                node.content_rect = ContentRect {
-                                    x: inter_x1 as f32 / buf_w,
-                                    y: inter_y1 as f32 / buf_h,
-                                    w: inter_w as f32 / buf_w,
-                                    h: inter_h as f32 / buf_h,
-                                };
-                                // Keep host/window edges aligned with visible client content.
-                                // If buffer includes SSD/CSD shadow/titlebar margins, the node
-                                // itself must still match content extents.
-                                node.set_size(inter_w as u32, inter_h as u32);
+                // When xdg_surface geometry is set for CSD windows, compute a
+                // normalized content_rect so the platform renderer crops the
+                // buffer to the client-declared content area (excluding CSD shadow).
+                if matches!(window.decoration_mode, crate::core::window::DecorationMode::ClientSide) {
+                    if let Some(&(gx, gy, gw, gh)) = geom_by_surface.get(&window.surface_id) {
+                        if let Some(surf_ref) = self.get_surface(window.surface_id) {
+                            let surf = surf_ref.read().unwrap();
+                            let buf_w = surf.current.width as f32;
+                            let buf_h = surf.current.height as f32;
+                            if buf_w > 0.0 && buf_h > 0.0 && gw > 0 && gh > 0 {
+                                // wlroots/sway-style behavior: crop to intersection of
+                                // set_window_geometry and actual surface buffer extents.
+                                let geom_x2 = gx.saturating_add(gw);
+                                let geom_y2 = gy.saturating_add(gh);
+                                let inter_x1 = gx.max(0);
+                                let inter_y1 = gy.max(0);
+                                let inter_x2 = geom_x2.min(surf.current.width.max(0));
+                                let inter_y2 = geom_y2.min(surf.current.height.max(0));
+                                let inter_w = (inter_x2 - inter_x1).max(0);
+                                let inter_h = (inter_y2 - inter_y1).max(0);
+                                if inter_w > 0 && inter_h > 0 {
+                                    node.content_rect = ContentRect {
+                                        x: inter_x1 as f32 / buf_w,
+                                        y: inter_y1 as f32 / buf_h,
+                                        w: inter_w as f32 / buf_w,
+                                        h: inter_h as f32 / buf_h,
+                                    };
+                                    // Keep host/window edges aligned with visible client content.
+                                    // If buffer includes SSD/CSD shadow/titlebar margins, the node
+                                    // itself must still match content extents.
+                                    node.set_size(inter_w as u32, inter_h as u32);
+                                }
                             }
                         }
                     }

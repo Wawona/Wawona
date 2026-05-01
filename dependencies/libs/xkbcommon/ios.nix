@@ -13,14 +13,33 @@ let
     source = "github";
     owner = "xkbcommon";
     repo = "libxkbcommon";
-    tag = "xkbcommon-1.7.0";
-    sha256 = "sha256-m01ZpfEV2BTYPS5dsyYIt6h69VDd1a2j4AtJDXvn1I0=";
+    tag = "xkbcommon-1.13.1";
+    sha256 = "sha256-wUsxsM0xXTg7nbvFMXrrnHherOepj0YI77eferjRgJA=";
   };
   src = fetchSource xkbcommonSource;
 in
 pkgs.stdenv.mkDerivation {
   name = "xkbcommon-ios";
   inherit src;
+  postPatch = ''
+    # libxkbcommon >= 1.13 builds tests directly from top-level meson.build.
+    # Strip the whole test/fuzz/bench section for mobile SDKs (tvos/watchos).
+    python3 - <<'PY'
+from pathlib import Path
+
+path = Path("meson.build")
+text = path.read_text()
+start = text.find("\n# Tests\n")
+end = text.find("\n# Documentation.\n")
+if start == -1 or end == -1 or end <= start:
+    raise SystemExit("Unable to locate xkbcommon tests block in meson.build")
+path.write_text(
+    text[:start]
+    + "\n# Tests removed for Apple mobile targets.\nhas_merge_modes_tests = false\n"
+    + text[end:]
+)
+PY
+  '';
 
   # Allow access to Xcode SDKs and toolchain
   __noChroot = true;

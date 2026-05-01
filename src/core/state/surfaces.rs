@@ -297,6 +297,10 @@ impl CompositorState {
                     let old_w = window.width;
                     let old_h = window.height;
                     let is_fullscreen_shell_window = self.ext.fullscreen_shell.presented_window_id == Some(wid);
+                    let should_apply_window_geometry = matches!(
+                        window.decoration_mode,
+                        crate::core::window::DecorationMode::ClientSide
+                    );
                     if is_fullscreen_shell_window {
                         if let Some(output) = self.outputs.get(self.primary_output) {
                             window.width = output.width as i32;
@@ -313,7 +317,8 @@ impl CompositorState {
                             let mut target_geometry_x = 0;
                             let mut target_geometry_y = 0;
 
-                            if let Some((gx, gy, gw, gh)) = xdg_geometry {
+                            if should_apply_window_geometry {
+                                if let Some((gx, gy, gw, gh)) = xdg_geometry {
                                 // wlroots/sway-style: intersect client-provided window geometry
                                 // with committed buffer extents. No arbitrary delta threshold.
                                 let committed_w = surface.current.width.max(1);
@@ -344,6 +349,7 @@ impl CompositorState {
                                         committed_w,
                                         committed_h
                                     );
+                                }
                                 }
                             }
 

@@ -441,7 +441,17 @@
           wawona-linux-vm = pkgs.callPackage ./dependencies/wawona/linux-vm.nix {
             inherit wawonaVersion;
           };
+          install = pkgs.writeShellScriptBin "install" ''
+            set -euo pipefail
+            exec ${pkgs.nix}/bin/nix profile install "${self.outPath}#wawona" "$@"
+          '';
           default = pkgs.callPackage ./dependencies/wawona/linux.nix {
+            inherit wawonaVersion;
+            waypipeSrc = waypipe-src;
+          };
+          # Consumer-facing package name for use as a flake input or overlay,
+          # matching the nixpkgs convention of installing `pkgs.wawona`.
+          wawona = pkgs.callPackage ./dependencies/wawona/linux.nix {
             inherit wawonaVersion;
             waypipeSrc = waypipe-src;
           };
@@ -948,6 +958,9 @@ EOF
           waypipe-ios = toolchains.buildForIOS "waypipe" { };
           waypipe-ios-sim = toolchains.buildForIOS "waypipe" { simulator = true; };
           default = (import ./dependencies/wawona/shell-wrappers.nix).macosWrapper pkgs wawona-macos;
+          # Consumer-facing package name for use as a flake input or overlay,
+          # matching the nixpkgs convention of installing `pkgs.wawona`.
+          wawona = (import ./dependencies/wawona/shell-wrappers.nix).macosWrapper pkgs wawona-macos;
         } // (pkgs.lib.optionalAttrs (builtins.pathExists ./dependencies/libs/vulkan-cts) {
           # Optional local graphics test packages (present in some trees only).
           vulkan-cts = toolchains.buildForMacOS "vulkan-cts" { };
@@ -982,6 +995,8 @@ EOF
         gl-cts-android = { type = "app"; program = "${systemPackages.gl-cts-android}/bin/gl-cts-android-run"; };
       }) // (pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
         default = { type = "app"; program = "${systemPackages.wawona-linux}/bin/wawona-linux-run"; };
+        install = { type = "app"; program = "${systemPackages.install}/bin/install"; };
+        wawona = { type = "app"; program = "${systemPackages.wawona}/bin/wawona-linux-run"; };
         wawona-linux = { type = "app"; program = "${systemPackages.wawona-linux}/bin/wawona-linux-run"; };
         wawona-linux-compositor-host = { type = "app"; program = "${systemPackages.wawona-linux-compositor-host}/bin/wawona-linux-compositor-host-run"; };
         wawona-linux-tray = { type = "app"; program = "${systemPackages.wawona-linux-tray}/bin/wawona-linux-tray-run"; };
@@ -1006,6 +1021,7 @@ EOF
         };
         foot = { type = "app"; program = "${systemPackages.foot}/bin/foot"; };
         install = { type = "app"; program = "${systemPackages.install}/bin/install"; };
+        wawona = { type = "app"; program = "${systemPackages.wawona}/bin/wawona"; };
         uninstall = { type = "app"; program = "${systemPackages.uninstall}/bin/uninstall"; };
         wawona-uninstall = { type = "app"; program = "${systemPackages.uninstall}/bin/uninstall"; };
         wawona-macos = { type = "app"; program = "${systemPackages.wawona-macos}/bin/wawona"; };
@@ -1025,6 +1041,9 @@ EOF
   in {
     packages = allSystemPackages;
     apps = nixpkgs.lib.genAttrs systemsList (system: getAppsForSystem system (pkgsFor system) allSystemPackages.${system});
+    overlays.default = final: prev: {
+      wawona = self.packages.${prev.stdenv.hostPlatform.system}.wawona;
+    };
     devShells = nixpkgs.lib.genAttrs systemsList (system: {
       default = let
         pkgs = pkgsFor system;

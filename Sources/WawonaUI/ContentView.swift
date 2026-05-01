@@ -25,10 +25,7 @@ struct ContentView: View {
             )
             .tabItem { Label("Machines", systemImage: "square.grid.2x2") }
 
-            SettingsRootView(
-                preferences: preferences,
-                profileStore: profileStore
-            )
+            ObjCSettingsHostView()
                 .tabItem { Label("Settings", systemImage: "gearshape") }
         }
     }

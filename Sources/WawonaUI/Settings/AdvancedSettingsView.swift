@@ -13,6 +13,10 @@ struct AdvancedSettingsView: View {
                     Text("Warn").tag("warn")
                     Text("Error").tag("error")
                 }
+                Toggle("XWayland Support", isOn: $preferences.xwaylandSupport)
+                Text("When enabled, Waypipe is launched with --xwls for sessions that use Waypipe over SSH.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                 #if os(iOS)
                 Toggle("Shake to Exit Machine", isOn: $preferences.shakeToCloseEnabled)
                 Text("If disabled, use the iOS swipe-back gesture to close the active machine session.")

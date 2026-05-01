@@ -52,6 +52,7 @@ data class MachineProfile(
     val type: MachineType,
     val sshEnabled: Boolean = true,
     val sshHost: String = "",
+    val sshPort: Int = 22,
     val sshUser: String = "",
     val sshPassword: String = "",
     val sshBinary: String = "ssh",
@@ -163,11 +164,14 @@ object MachineProfileStore {
         prefs.getString(KEY_ACTIVE_MACHINE_ID, null)
 
     fun applyMachineToPrefs(prefs: SharedPreferences, profile: MachineProfile) {
+        val sanitizedHost = MachineInputSanitizer.sanitizeHost(profile.sshHost)
+        val normalizedPort = MachineInputSanitizer.normalizePort(profile.sshPort.toString())
         applySettingsOverridesToPrefs(prefs, profile.settingsOverrides)
         prefs.edit()
             .putBoolean("waypipeSSHEnabled", profile.sshEnabled)
             .putString("nativeLauncher", profile.nativeLauncher)
-            .putString("waypipeSSHHost", profile.sshHost)
+            .putString("waypipeSSHHost", sanitizedHost)
+            .putString("waypipeSSHPort", normalizedPort.toString())
             .putString("waypipeSSHUser", profile.sshUser)
             .putString("waypipeSSHPassword", profile.sshPassword)
             .putString("waypipeSSHBinary", profile.sshBinary)
@@ -212,15 +216,20 @@ object MachineProfileStore {
             return
         }
 
-        val host = prefs.getString("waypipeSSHHost", "") ?: ""
+        val hostAndPort = MachineInputSanitizer.splitHostAndPort(
+            prefs.getString("waypipeSSHHost", "") ?: "",
+            prefs.getString("waypipeSSHPort", null),
+            22
+        )
         val user = prefs.getString("waypipeSSHUser", "") ?: ""
-        val defaultName = if (host.isNotBlank()) "Migrated $host" else "Default Machine"
-        val hasSSHHost = host.isNotBlank()
+        val defaultName = if (hostAndPort.host.isNotBlank()) "Migrated ${hostAndPort.host}" else "Default Machine"
+        val hasSSHHost = hostAndPort.host.isNotBlank()
         val profile = MachineProfile(
             name = defaultName,
             type = if (hasSSHHost) MachineType.SSH_WAYPIPE else MachineType.NATIVE,
             sshEnabled = if (hasSSHHost) prefs.getBoolean("waypipeSSHEnabled", true) else false,
-            sshHost = host,
+            sshHost = hostAndPort.host,
+            sshPort = hostAndPort.port,
             sshUser = user,
             sshPassword = prefs.getString("waypipeSSHPassword", "") ?: "",
             sshBinary = prefs.getString("waypipeSSHBinary", "ssh") ?: "ssh",
@@ -263,6 +272,7 @@ object MachineProfileStore {
         put("type", profile.type.value)
         put("sshEnabled", profile.sshEnabled)
         put("sshHost", profile.sshHost)
+        put("sshPort", profile.sshPort)
         put("sshUser", profile.sshUser)
         put("sshPassword", profile.sshPassword)
         put("sshBinary", profile.sshBinary)
@@ -304,12 +314,23 @@ object MachineProfileStore {
     private fun parseProfile(obj: JSONObject): MachineProfile {
         val vmObj = obj.optJSONObject("vmSettings") ?: JSONObject()
         val containerObj = obj.optJSONObject("containerSettings") ?: JSONObject()
+        val rawSshPort = when (val port = obj.opt("sshPort")) {
+            is Number -> port.toInt().toString()
+            is String -> port
+            else -> "22"
+        }
+        val hostAndPort = MachineInputSanitizer.splitHostAndPort(
+            obj.optString("sshHost", ""),
+            rawSshPort,
+            22
+        )
         return MachineProfile(
             id = obj.optString("id", UUID.randomUUID().toString()),
             name = obj.optString("name", "Unnamed Machine"),
             type = MachineType.fromValue(obj.optString("type", MachineType.NATIVE.value)),
             sshEnabled = obj.optBoolean("sshEnabled", true),
-            sshHost = obj.optString("sshHost", ""),
+            sshHost = hostAndPort.host,
+            sshPort = hostAndPort.port,
             sshUser = obj.optString("sshUser", ""),
             sshPassword = obj.optString("sshPassword", ""),
             sshBinary = obj.optString("sshBinary", "ssh"),

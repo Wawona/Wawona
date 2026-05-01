@@ -12,8 +12,8 @@ let
     source = "gitlab";
     owner = "wayland";
     repo = "wayland";
-    tag = "1.23.0";
-    sha256 = "sha256-oK0Z8xO2ILuySGZS0m37ZF0MOyle2l8AXb0/6wai0/w=";
+    tag = "1.25.0";
+    sha256 = "sha256-aQTciXUsYIV5rWr2wNN+daH0KZfcrVSVZHoUdTutizM=";
   };
   src = fetchSource waylandSource;
   buildFlags = [
@@ -78,6 +78,8 @@ pkgs.stdenv.mkDerivation {
     #include <sys/types.h>
     #include <sys/socket.h>
     #include <sys/un.h>
+    #include <poll.h>
+    #include <signal.h>
     #include <time.h>
     #ifndef MSG_NOSIGNAL
     #define MSG_NOSIGNAL 0
@@ -108,6 +110,17 @@ pkgs.stdenv.mkDerivation {
         struct timespec it_interval;
         struct timespec it_value;
     };
+    #endif
+    #if !defined(HAVE_PPOLL)
+    static int wl_apple_ppoll_compat(struct pollfd *fds, nfds_t nfds, const struct timespec *timeout_ts, const sigset_t *sigmask) {
+        (void)sigmask;
+        int timeout_ms = -1;
+        if (timeout_ts) {
+            timeout_ms = (int)(timeout_ts->tv_sec * 1000 + timeout_ts->tv_nsec / 1000000);
+        }
+        return poll(fds, nfds, timeout_ms);
+    }
+    #define ppoll wl_apple_ppoll_compat
     #endif
     EOF
     )

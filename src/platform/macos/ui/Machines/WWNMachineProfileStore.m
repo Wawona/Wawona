@@ -160,6 +160,7 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
     kWWNPrefsMachineContainerNamespaceStub,
     kWWNPrefsSSHHost,
     kWWNPrefsSSHUser,
+    kWWNPrefsSSHPort,
     kWWNPrefsSSHAuthMethod,
     kWWNPrefsSSHPassword,
     kWWNPrefsSSHKeyPath,
@@ -202,6 +203,7 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
     kWWNPrefsWaypipeSecCtx,
     kWWNPrefsSSHHost,
     kWWNPrefsSSHUser,
+    kWWNPrefsSSHPort,
     kWWNPrefsSSHAuthMethod,
     kWWNPrefsSSHPassword,
     kWWNPrefsSSHKeyPath,
@@ -388,6 +390,7 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
   profile.sshEnabled = hasSSHHost ? prefs.waypipeSSHEnabled : NO;
   profile.sshHost = prefs.waypipeSSHHost ?: @"";
   profile.sshUser = prefs.waypipeSSHUser ?: @"";
+  profile.sshPort = [prefs sshPort];
   profile.sshPassword = prefs.waypipeSSHPassword ?: @"";
   profile.sshBinary = prefs.waypipeSSHBinary ?: @"ssh";
   profile.sshAuthMethod = prefs.waypipeSSHAuthMethod;
@@ -522,6 +525,82 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
   return nil;
 }
 
++ (BOOL)profileIndicatesNestedWithNativeClientId:(NSString *)clientId
+                                  customCommand:(NSString *)customCommand {
+  NSString *cid = [clientId isKindOfClass:[NSString class]] ? clientId : @"";
+  if ([cid isEqualToString:@"weston"]) {
+    return YES;
+  }
+  if (![cid isEqualToString:@"custom"]) {
+    return NO;
+  }
+  NSString *cmd =
+      [([customCommand isKindOfClass:[NSString class]] ? customCommand : @"")
+          stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  if (cmd.length == 0) {
+    return NO;
+  }
+  NSString *lower = cmd.lowercaseString;
+  if ([lower containsString:@"weston-simple-shm"] ||
+      [lower containsString:@"weston-terminal"]) {
+    return NO;
+  }
+  if ([lower containsString:@"/foot"] || [lower isEqualToString:@"foot"] ||
+      [lower hasSuffix:@" foot"]) {
+    return NO;
+  }
+  NSArray<NSString *> *nestedHints = @[
+    @"sway",
+    @"cage",
+    @"hyprland",
+    @"wayfire",
+    @"labwc",
+    @"cosmic-comp",
+    @"cosmic_comp",
+    @" gnome-shell",
+    @"gnome-shell ",
+    @"/gnome-shell",
+    @" mutter",
+    @"/mutter",
+    @" kwin",
+    @"/kwin",
+    @" niri",
+    @"/niri",
+    @" river",
+    @"/river",
+    @" sway",
+    @"/sway",
+    @" tinywl",
+    @" wf-panel",
+  ];
+  for (NSString *hint in nestedHints) {
+    if ([lower containsString:hint]) {
+      return YES;
+    }
+  }
+  if ([lower containsString:@"weston"]) {
+    return YES;
+  }
+  return NO;
+}
+
++ (BOOL)profileIndicatesNestedCompositor:(WWNMachineProfile *)profile {
+  if (![profile.type isEqualToString:kWWNMachineTypeNative]) {
+    return NO;
+  }
+  NSDictionary *so =
+      [profile.settingsOverrides isKindOfClass:[NSDictionary class]]
+          ? profile.settingsOverrides
+          : @{};
+  NSString *cid = [so[@"NativeClientId"] isKindOfClass:[NSString class]]
+                      ? so[@"NativeClientId"]
+                      : @"";
+  NSString *cmd = [so[@"NativeCustomCommand"] isKindOfClass:[NSString class]]
+                      ? so[@"NativeCustomCommand"]
+                      : @"";
+  return [self profileIndicatesNestedWithNativeClientId:cid customCommand:cmd];
+}
+
 + (void)applyMachineToRuntimePrefs:(WWNMachineProfile *)profile {
   [self ensureObserverRegistered];
   NSDictionary<NSString *, id> *resolved = [self resolvedRuntimeSettingsForProfile:profile];
@@ -529,6 +608,7 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
   [prefs setWaypipeSSHEnabled:[resolved[@"waypipeEnabled"] boolValue]];
   [prefs setWaypipeSSHHost:[resolved[@"sshHost"] isKindOfClass:[NSString class]] ? resolved[@"sshHost"] : @""];
   [prefs setWaypipeSSHUser:[resolved[@"sshUser"] isKindOfClass:[NSString class]] ? resolved[@"sshUser"] : @""];
+  [prefs setSshPort:[resolved[@"sshPort"] respondsToSelector:@selector(integerValue)] ? [resolved[@"sshPort"] integerValue] : 22];
   [prefs setWaypipeSSHPassword:[resolved[@"sshPassword"] isKindOfClass:[NSString class]] ? resolved[@"sshPassword"] : @""];
   [prefs setWaypipeRemoteCommand:[resolved[@"remoteCommand"] isKindOfClass:[NSString class]] ? resolved[@"remoteCommand"] : @""];
   [prefs setWaypipeSSHAuthMethod:profile.sshAuthMethod];
@@ -555,6 +635,15 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
       transportSnapshot[key] = value;
     }
   }
+  if ([profile.type isEqualToString:kWWNMachineTypeNative]) {
+    BOOL hasExplicitPointerOverride =
+        [profile.settingsOverrides[kWWNPrefsRenderMacOSPointer]
+            respondsToSelector:@selector(boolValue)];
+    if (!hasExplicitPointerOverride) {
+      BOOL nested = [self profileIndicatesNestedCompositor:profile];
+      transportSnapshot[kWWNPrefsRenderMacOSPointer] = @(!nested);
+    }
+  }
   [self applySettingsSnapshot:transportSnapshot];
 
 }
@@ -574,6 +663,7 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
           : @{};
   NSString *resolvedSSHHost = profile.sshHost.length > 0 ? profile.sshHost : [prefs waypipeSSHHost];
   NSString *resolvedSSHUser = profile.sshUser.length > 0 ? profile.sshUser : [prefs waypipeSSHUser];
+  NSInteger resolvedSSHPort = profile.sshPort > 0 ? profile.sshPort : [prefs sshPort];
   NSString *resolvedSSHPassword =
       profile.sshPassword.length > 0 ? profile.sshPassword : [prefs waypipeSSHPassword];
   NSString *resolvedCommand =
@@ -621,7 +711,7 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
     @"waylandDisplay" : [prefs waypipeDisplay] ?: @"wayland-0",
     @"sshHost" : resolvedSSHHost ?: @"",
     @"sshUser" : resolvedSSHUser ?: @"",
-    @"sshPort" : @(profile.sshPort > 0 ? profile.sshPort : 22),
+    @"sshPort" : @(resolvedSSHPort > 0 ? resolvedSSHPort : 22),
     @"sshPassword" : resolvedSSHPassword ?: @"",
     @"remoteCommand" : resolvedCommand,
     @"waypipeEnabled" : @(waypipeEnabled),

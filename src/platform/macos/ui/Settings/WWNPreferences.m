@@ -3078,7 +3078,47 @@ static UIImage *WWNAboutLogo(void) {
 #if TARGET_OS_IPHONE
 
 - (void)showPreferences:(id)sender {
+  (void)sender;
   [self loadViewIfNeeded];
+  UIViewController *presenter = nil;
+  for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+    if (![scene isKindOfClass:[UIWindowScene class]]) {
+      continue;
+    }
+    UIWindowScene *windowScene = (UIWindowScene *)scene;
+    if (windowScene.activationState != UISceneActivationStateForegroundActive) {
+      continue;
+    }
+    for (UIWindow *window in windowScene.windows) {
+      if (window.isKeyWindow && window.rootViewController) {
+        presenter = window.rootViewController;
+        break;
+      }
+    }
+    if (presenter) {
+      break;
+    }
+  }
+  if (!presenter) {
+    presenter = UIApplication.sharedApplication.delegate.window.rootViewController;
+  }
+  if (!presenter) {
+    return;
+  }
+  while (presenter.presentedViewController) {
+    if ([presenter.presentedViewController isKindOfClass:[UINavigationController class]]) {
+      UINavigationController *nav = (UINavigationController *)presenter.presentedViewController;
+      if (nav.viewControllers.count > 0 &&
+          [nav.viewControllers.firstObject isKindOfClass:[WWNPreferences class]]) {
+        return;
+      }
+    }
+    presenter = presenter.presentedViewController;
+  }
+  UINavigationController *nav =
+      [[UINavigationController alloc] initWithRootViewController:self];
+  nav.modalPresentationStyle = UIModalPresentationFormSheet;
+  [presenter presentViewController:nav animated:YES completion:nil];
 }
 
 - (void)selectSectionWithTitle:(NSString *)title {

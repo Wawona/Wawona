@@ -47,14 +47,16 @@ struct MachineEditorView: View {
 
     private func persistableEditorState() -> MachineEditorState {
         let base = WawonaUIContractAdapters.machineEditorState(from: editingBaseline)
+        let sanitizedHost = MachineEditorValidation.sanitizeSSHHost(sshHost)
+        let normalizedPort = MachineEditorValidation.normalizeSSHPort(String(sshPort))
         return MachineEditorState(
             id: existingProfileId ?? base.id,
             name: name,
             typeRawValue: type.rawValue,
             selectedLauncherName: selectedLauncherName,
-            sshHost: sshHost,
+            sshHost: sanitizedHost,
             sshUser: sshUser,
-            sshPortText: String(sshPort),
+            sshPortText: String(normalizedPort),
             sshPassword: sshPassword,
             remoteCommand: remoteCommand,
             vmSubtype: base.vmSubtype,
@@ -77,7 +79,7 @@ struct MachineEditorView: View {
     private var sshPortText: Binding<String> {
         Binding(
             get: { String(sshPort) },
-            set: { sshPort = Int($0) ?? sshPort }
+            set: { sshPort = MachineEditorValidation.normalizeSSHPort($0, fallback: sshPort) }
         )
     }
 

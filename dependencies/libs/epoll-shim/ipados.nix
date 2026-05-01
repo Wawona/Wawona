@@ -11,15 +11,7 @@
 let
   fetchSource = common.fetchSource;
   xcodeUtils = import ../../../utils/xcode-wrapper.nix { inherit lib pkgs; };
-  epollShimSource = {
-    source = "github";
-    owner = "jiixyj";
-    repo = "epoll-shim";
-    # Using latest commit from master branch
-    # Note: epoll-shim uses master as default branch
-    rev = "master";
-    sha256 = "sha256-9rlhRGFT8LD98fhHbcEhj3mAIyqeQGcxQdyP7u55lck=";
-  };
+  epollShimSource = import ./source-pins.nix;
   src = fetchSource epollShimSource;
 in
 pkgs.stdenv.mkDerivation {

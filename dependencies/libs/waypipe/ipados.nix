@@ -25,7 +25,7 @@ let
     source = "gitlab";
     owner = "mstoeckl";
     repo = "waypipe";
-    tag = "v0.10.6";
+    tag = "v0.11.0";
     sha256 = "sha256-Tbd/yY90yb2+/ODYVL3SudHaJCGJKatZ9FuGM2uAX+8=";
   };
   src = fetchSource waypipeSource;
@@ -52,7 +52,7 @@ let
 in
 myRustPlatform.buildRustPackage {
   pname = "waypipe";
-  version = "v0.10.6";
+  version = "v0.11.0";
   # Modify source to include bindgen in wrap-ffmpeg/Cargo.toml before vendoring
   # This ensures Cargo.lock includes bindgen when cargoSetupHook runs
   src =

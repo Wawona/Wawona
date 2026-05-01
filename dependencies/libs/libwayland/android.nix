@@ -15,8 +15,8 @@ let
     source = "gitlab";
     owner = "wayland";
     repo = "wayland";
-    tag = "1.23.0";
-    sha256 = "sha256-oK0Z8xO2ILuySGZS0m37ZF0MOyle2l8AXb0/6wai0/w=";
+    tag = "1.25.0";
+    sha256 = "sha256-aQTciXUsYIV5rWr2wNN+daH0KZfcrVSVZHoUdTutizM=";
   };
   src = fetchSource waylandSource;
   # Enable libraries for Android - we need libwayland-client and libwayland-server
@@ -86,7 +86,7 @@ let
 
       Name: Wayland Scanner
       Description: Wayland scanner
-      Version: 1.23.0
+      Version: 1.25.0
       variable=wayland_scanner
       wayland_scanner=$out/bin/wayland-scanner
       EOF

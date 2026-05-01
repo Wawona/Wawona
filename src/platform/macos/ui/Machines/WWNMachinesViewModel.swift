@@ -36,7 +36,6 @@ struct BundledClient: Identifiable, Hashable {
   let prefsKey: String
   let icon: String
   let description: String
-  let isNestedCompositor: Bool
 }
 
 let kBundledClients: [BundledClient] = [
@@ -45,32 +44,28 @@ let kBundledClients: [BundledClient] = [
     name: "Weston Simple SHM",
     prefsKey: "WestonSimpleSHMEnabled",
     icon: "square.on.square.dashed",
-    description: "Minimal shared-memory Wayland client",
-    isNestedCompositor: false
+    description: "Minimal shared-memory Wayland client"
   ),
   BundledClient(
     id: "weston",
     name: "Weston",
     prefsKey: "WestonEnabled",
     icon: "rectangle.on.rectangle",
-    description: "Wayland reference compositor (renders its own cursor)",
-    isNestedCompositor: true
+    description: "Wayland reference compositor (nested compositor)"
   ),
   BundledClient(
     id: "weston-terminal",
     name: "Weston Terminal",
     prefsKey: "WestonTerminalEnabled",
     icon: "terminal",
-    description: "Terminal emulator — uses host cursor",
-    isNestedCompositor: false
+    description: "Terminal emulator — uses host cursor"
   ),
   BundledClient(
     id: "foot",
     name: "Foot Terminal",
     prefsKey: "FootEnabled",
     icon: "character.cursor.ibeam",
-    description: "Lightweight Wayland terminal emulator",
-    isNestedCompositor: false
+    description: "Lightweight Wayland terminal emulator"
   ),
 ]
 

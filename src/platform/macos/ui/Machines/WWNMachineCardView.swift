@@ -65,7 +65,8 @@ struct WWNMachineCardView: View {
   // MARK: - Header Banner
 
   private var headerBanner: some View {
-    ZStack {
+    let bannerShape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+    return ZStack {
       if let thumbnailImage {
         #if os(macOS)
         Image(nsImage: thumbnailImage)
@@ -121,6 +122,8 @@ struct WWNMachineCardView: View {
       }
       .padding(.horizontal, 12)
     }
+    .frame(height: 90)
+    .clipShape(bannerShape)
   }
 
   // MARK: - Action Buttons

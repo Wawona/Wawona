@@ -13,8 +13,8 @@ let
     source = "github";
     owner = "FFmpeg";
     repo = "FFmpeg";
-    tag = "n7.1";
-    sha256 = "sha256-erTkv156VskhYEJWjpWFvHjmcr2hr6qgUi28Ho8NFYk=";
+    tag = "n8.1";
+    sha256 = "sha256-FdKhhCveEo5UodEoyUh3aBHABv3OT2VXmwBXE1ce3p0=";
   };
   src = fetchSource ffmpegSource;
 in

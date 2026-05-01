@@ -14,8 +14,8 @@ let
     source = "github";
     owner = "xkbcommon";
     repo = "libxkbcommon";
-    tag = "xkbcommon-1.7.0";
-    sha256 = "sha256-m01ZpfEV2BTYPS5dsyYIt6h69VDd1a2j4AtJDXvn1I0=";
+    tag = "xkbcommon-1.13.1";
+    sha256 = "sha256-wUsxsM0xXTg7nbvFMXrrnHherOepj0YI77eferjRgJA=";
   };
   src = fetchSource xkbcommonSource;
   
@@ -26,8 +26,12 @@ let
 in
 pkgs.stdenv.mkDerivation {
   pname = "xkbcommon";
-  version = "1.7.0";
+  version = "1.13.1";
   inherit src;
+  postPatch = ''
+    # Avoid building upstream test binaries during package builds.
+    sed -i "/subdir('test')/d" meson.build
+  '';
   __noChroot = true;
   
   nativeBuildInputs = with pkgs; [

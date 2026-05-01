@@ -662,7 +662,7 @@ static void shell_get_shell_surface(struct wl_client *client,
     wl_shell_surface_send_configure(res, 0, 0, 0);
 }
 
-static void shell_destroy(struct wl_client *c, struct wl_resource *r)
+static __attribute__((unused)) void shell_destroy(struct wl_client *c, struct wl_resource *r)
 { (void)c; wl_resource_destroy(r); }
 
 static const struct wl_shell_interface shell_impl = {

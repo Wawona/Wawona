@@ -10,13 +10,7 @@ let
   epollShimNixpkgs = pkgs.epoll-shim or null;
   xcodeUtils = import ../../../utils/xcode-wrapper.nix { inherit lib pkgs; };
   fetchSource = common.fetchSource;
-  epollShimSource = {
-    source = "github";
-    owner = "jiixyj";
-    repo = "epoll-shim";
-    rev = "master";
-    sha256 = "sha256-9rlhRGFT8LD98fhHbcEhj3mAIyqeQGcxQdyP7u55lck=";
-  };
+  epollShimSource = import ./source-pins.nix;
 in
 if epollShimNixpkgs != null then
   # Use nixpkgs version if available

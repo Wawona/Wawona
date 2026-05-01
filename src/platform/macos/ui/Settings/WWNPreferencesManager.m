@@ -69,6 +69,7 @@ NSString *const kWWNPrefsMachineContainerNamespaceStub =
 // SSH configuration keys (separate from Waypipe)
 NSString *const kWWNPrefsSSHHost = @"SSHHost";
 NSString *const kWWNPrefsSSHUser = @"SSHUser";
+NSString *const kWWNPrefsSSHPort = @"SSHPort";
 NSString *const kWWNPrefsSSHAuthMethod = @"SSHAuthMethod";
 NSString *const kWWNPrefsSSHPassword = @"SSHPassword";
 NSString *const kWWNPrefsSSHKeyPath = @"SSHKeyPath";
@@ -76,6 +77,9 @@ NSString *const kWWNPrefsSSHKeyPassphrase = @"SSHKeyPassphrase";
 NSString *const kWWNPrefsWaypipeUseSSHConfig = @"WaypipeUseSSHConfig";
 NSString *const kWWNForceSSDChangedNotification =
     @"WWNForceSSDChangedNotification";
+/// Posted by Swift `WawonaPreferences.save()` after writing canonical keys.
+static NSString *const kWWNWawonaPreferencesDidSaveNotification =
+    @"WawonaPreferencesDidSave";
 NSString *const kWWNPrefsMachineSessionThumbnailsEnabled =
     @"MachineSessionThumbnailsEnabled";
 
@@ -130,8 +134,18 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
     // Set defaults if not already set
     [self setDefaultsIfNeeded];
     [self syncFromCanonicalWawonaPreferences];
+    [[NSNotificationCenter defaultCenter]
+        addObserver:self
+           selector:@selector(handleWawonaPreferencesDidSave:)
+               name:kWWNWawonaPreferencesDidSaveNotification
+             object:nil];
   }
   return self;
+}
+
+- (void)handleWawonaPreferencesDidSave:(NSNotification *)notification {
+  (void)notification;
+  [self syncFromCanonicalWawonaPreferences];
 }
 
 - (void)syncFromCanonicalWawonaPreferences {
@@ -162,6 +176,10 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
   if (sshUser.length > 0) {
     [self setWaypipeSSHUser:sshUser];
   }
+  NSNumber *sshPort = [defaults objectForKey:[prefix stringByAppendingString:@"sshPort"]];
+  if ([sshPort respondsToSelector:@selector(integerValue)]) {
+    [self setSshPort:[sshPort integerValue]];
+  }
   NSString *sshPassword =
       [defaults stringForKey:[prefix stringByAppendingString:@"sshPassword"]];
   if (sshPassword.length > 0) {
@@ -188,6 +206,13 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
                                    boolForKey:[prefix
                                                   stringByAppendingString:
                                                       @"defaultWaypipeEnabled"]]];
+  }
+
+  id xwaylandSupport =
+      [defaults objectForKey:[prefix stringByAppendingString:@"xwaylandSupport"]];
+  if (xwaylandSupport != nil &&
+      [xwaylandSupport respondsToSelector:@selector(boolValue)]) {
+    [self setWaypipeXwls:[xwaylandSupport boolValue]];
   }
 
   // Do not rewrite live launcher flags from canonical defaults here.
@@ -280,6 +305,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
     // SSH
     kWWNPrefsSSHHost : @"",
     kWWNPrefsSSHUser : @"",
+    kWWNPrefsSSHPort : @22,
     kWWNPrefsSSHAuthMethod : @0,
     kWWNPrefsSSHKeyPath : @"",
     // Legacy / deprecated (kept for migration)
@@ -390,6 +416,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
   // SSH
   [defaults removeObjectForKey:kWWNPrefsSSHHost];
   [defaults removeObjectForKey:kWWNPrefsSSHUser];
+  [defaults removeObjectForKey:kWWNPrefsSSHPort];
   [defaults removeObjectForKey:kWWNPrefsSSHAuthMethod];
   [defaults removeObjectForKey:kWWNPrefsSSHKeyPath];
   // Deprecated / legacy
@@ -1192,6 +1219,23 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 - (void)setSshUser:(NSString *)user {
   [[NSUserDefaults standardUserDefaults] setObject:user
                                             forKey:kWWNPrefsSSHUser];
+}
+
+- (NSInteger)sshPort {
+  NSInteger port = [[NSUserDefaults standardUserDefaults] integerForKey:kWWNPrefsSSHPort];
+  if (port <= 0) {
+    return 22;
+  }
+  return port;
+}
+
+- (void)setSshPort:(NSInteger)port {
+  NSInteger clamped = port;
+  if (clamped < 1 || clamped > 65535) {
+    clamped = 22;
+  }
+  [[NSUserDefaults standardUserDefaults] setInteger:clamped
+                                             forKey:kWWNPrefsSSHPort];
 }
 
 - (NSInteger)sshAuthMethod {

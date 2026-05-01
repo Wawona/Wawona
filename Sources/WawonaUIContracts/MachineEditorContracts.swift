@@ -116,6 +116,66 @@ public enum MachineEditorValidationIssue: String, Sendable {
 
 /// Declared as `struct` to keep cross-platform generated bindings stable.
 public struct MachineEditorValidation: Sendable {
+    public static func sanitizeSSHHost(_ raw: String) -> String {
+        var value = raw.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+        if value.isEmpty { return "" }
+
+        // Drop accidental scheme prefixes.
+        if let schemeRange = value.range(of: "://") {
+            value = String(value[schemeRange.upperBound...])
+        }
+
+        // Keep only authority portion if path/query was pasted.
+        if let slash = value.firstIndex(of: "/") {
+            value = String(value[..<slash])
+        }
+        if let question = value.firstIndex(of: "?") {
+            value = String(value[..<question])
+        }
+        if let hash = value.firstIndex(of: "#") {
+            value = String(value[..<hash])
+        }
+
+        // Remove whitespace and obvious shell metacharacters.
+        let disallowed = CharacterSet.whitespacesAndNewlines
+            .union(CharacterSet(charactersIn: "\"'`$;&|<>\\"))
+        value = value.unicodeScalars
+            .filter { !disallowed.contains($0) }
+            .map(String.init)
+            .joined()
+
+        // Strip accidental host:port to keep host and port fields separated.
+        if value.hasPrefix("[") {
+            if let closing = value.firstIndex(of: "]"), value.index(after: closing) < value.endIndex,
+               value[value.index(after: closing)] == ":" {
+                let suffix = value[value.index(closing, offsetBy: 2)...]
+                if suffix.allSatisfy(\.isNumber) {
+                    value = String(value[..<closing]) + "]"
+                }
+            }
+        } else if let colon = value.lastIndex(of: ":") {
+            let hostPart = value[..<colon]
+            let portPart = value[value.index(after: colon)...]
+            if !hostPart.contains(":") && !portPart.isEmpty && portPart.allSatisfy(\.isNumber) {
+                value = String(hostPart)
+            }
+        }
+
+        return value
+    }
+
+    public static func normalizeSSHPort(_ raw: String, fallback: Int = 22) -> Int {
+        let trimmed = raw.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+        guard let parsed = Int(trimmed), (1...65535).contains(parsed) else {
+            return fallback
+        }
+        return parsed
+    }
+
+    public static func normalizeSSHPortText(_ raw: String, fallback: Int = 22) -> String {
+        String(normalizeSSHPort(raw, fallback: fallback))
+    }
+
     public static func visibleFields(for state: MachineEditorState) -> [MachineEditorFieldID] {
         var fields: [MachineEditorFieldID] = [MachineEditorFieldID.name, MachineEditorFieldID.type]
         if state.isNative {
@@ -176,13 +236,14 @@ public struct MachineEditorValidation: Sendable {
             issues.append(MachineEditorValidationIssue.missingName)
         }
         if state.isSSH {
-            if state.sshHost.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty {
+            if sanitizeSSHHost(state.sshHost).isEmpty {
                 issues.append(MachineEditorValidationIssue.missingSSHHost)
             }
             if state.sshUser.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty {
                 issues.append(MachineEditorValidationIssue.missingSSHUser)
             }
-            guard let port = Int(state.sshPortText), (1...65535).contains(port) else {
+            let port = normalizeSSHPort(state.sshPortText, fallback: -1)
+            guard (1...65535).contains(port) else {
                 issues.append(MachineEditorValidationIssue.invalidSSHPort)
                 return issues
             }
@@ -197,6 +258,6 @@ public struct MachineEditorValidation: Sendable {
     }
 
     public static func normalizedPort(from state: MachineEditorState) -> Int {
-        Int(state.sshPortText) ?? 22
+        normalizeSSHPort(state.sshPortText)
     }
 }

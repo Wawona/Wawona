@@ -13,6 +13,7 @@ struct WWNMachineEditorView: View {
   @State private var type: String
   @State private var sshHost: String
   @State private var sshUser: String
+  @State private var sshPort: String
   @State private var sshPassword: String
   @State private var sshKeyPath: String
   @State private var sshKeyPassphrase: String
@@ -23,7 +24,6 @@ struct WWNMachineEditorView: View {
 
   @State private var selectedClientId: String
   @State private var customCommand: String
-  @State private var customIsNestedCompositor: Bool
   @State private var machineThumbnailEnabled: Bool
   @State private var waypipeDisplayNumber: String
   @State private var waypipeCompress: String
@@ -68,6 +68,7 @@ struct WWNMachineEditorView: View {
     _type = State(initialValue: initial?.type ?? defaultType)
     _sshHost = State(initialValue: initial?.sshHost ?? "")
     _sshUser = State(initialValue: initial?.sshUser ?? "")
+    _sshPort = State(initialValue: "\(max(1, initial?.sshPort ?? 22))")
     _sshPassword = State(initialValue: initial?.sshPassword ?? "")
     _sshKeyPath = State(initialValue: initial?.sshKeyPath ?? "")
     _sshKeyPassphrase = State(initialValue: initial?.sshKeyPassphrase ?? "")
@@ -79,8 +80,8 @@ struct WWNMachineEditorView: View {
     let runtimeOverrides: [String: Any] = initial?.runtimeOverrides ?? [:]
     let overrides: [String: Any] = initial?.settingsOverrides ?? [:]
     let prefs = WWNPreferencesManager.shared()
-    _customCommand = State(initialValue: (overrides["NativeCustomCommand"] as? String) ?? "")
-    _customIsNestedCompositor = State(initialValue: (overrides["RenderMacOSPointer"] as? Bool) == false)
+    let initialCustomCommand = (overrides["NativeCustomCommand"] as? String) ?? ""
+    _customCommand = State(initialValue: initialCustomCommand)
     _machineThumbnailEnabled = State(
       initialValue: (runtimeOverrides["machineThumbnailEnabledOverride"] as? Bool)
         ?? WWNPreferencesManager.shared().machineSessionThumbnailsEnabled()
@@ -105,7 +106,6 @@ struct WWNMachineEditorView: View {
     _waypipeSecCtx = State(initialValue: overrides["WaypipeSecCtx"] as? String ?? prefs.waypipeSecCtx())
     _forceServerSideDecorations = State(initialValue: (overrides["ForceServerSideDecorations"] as? Bool) ?? prefs.forceServerSideDecorations())
     _autoScale = State(initialValue: (overrides["AutoScale"] as? Bool) ?? prefs.autoScale())
-    _renderMacOSPointer = State(initialValue: (overrides["RenderMacOSPointer"] as? Bool) ?? prefs.renderMacOSPointer())
     _touchInputType = State(initialValue: overrides["TouchInputType"] as? String ?? prefs.touchInputType())
     _swapCmdWithAlt = State(initialValue: (overrides["SwapCmdWithAlt"] as? Bool) ?? prefs.swapCmdWithAlt())
     _universalClipboard = State(initialValue: (overrides["UniversalClipboard"] as? Bool) ?? prefs.universalClipboardEnabled())
@@ -114,29 +114,49 @@ struct WWNMachineEditorView: View {
     _dmabufEnabled = State(initialValue: (overrides["DmabufEnabled"] as? Bool) ?? prefs.dmabufEnabled())
     _colorOperations = State(initialValue: (overrides["ColorOperations"] as? Bool) ?? prefs.colorOperations())
 
+    let initialNativeClientId: String
     if let stored = runtimeOverrides["bundledAppID"] as? String, !stored.isEmpty {
-      _selectedClientId = State(initialValue: stored)
+      initialNativeClientId = stored
     } else if let stored = overrides["NativeClientId"] as? String, !stored.isEmpty {
-      _selectedClientId = State(initialValue: stored)
+      initialNativeClientId = stored
     } else if (overrides["WestonEnabled"] as? Bool) == true {
-      _selectedClientId = State(initialValue: "weston")
+      initialNativeClientId = "weston"
     } else if (overrides["WestonTerminalEnabled"] as? Bool) == true {
-      _selectedClientId = State(initialValue: "weston-terminal")
+      initialNativeClientId = "weston-terminal"
     } else if (overrides["WestonSimpleSHMEnabled"] as? Bool) == true {
-      _selectedClientId = State(initialValue: "weston-simple-shm")
+      initialNativeClientId = "weston-simple-shm"
     } else if (overrides["FootEnabled"] as? Bool) == true {
-      _selectedClientId = State(initialValue: "foot")
+      initialNativeClientId = "foot"
     } else {
-      _selectedClientId = State(initialValue: "weston-simple-shm")
+      initialNativeClientId = "weston-simple-shm"
     }
 
     #if os(iOS)
     // iOS must not present or persist external custom command execution.
-    if _selectedClientId.wrappedValue == kNativeClientCustomId {
+    var pointerClientId = initialNativeClientId
+    var pointerCustom = initialCustomCommand
+    if pointerClientId == kNativeClientCustomId {
       _selectedClientId = State(initialValue: "weston-simple-shm")
       _customCommand = State(initialValue: "")
+      pointerClientId = "weston-simple-shm"
+      pointerCustom = ""
+    } else {
+      _selectedClientId = State(initialValue: pointerClientId)
     }
+    let autoShowMacPointerDefault = !WWNMachineProfileStore.profileIndicatesNested(
+      nativeClientId: pointerClientId,
+      customCommand: pointerCustom
+    )
+    #else
+    _selectedClientId = State(initialValue: initialNativeClientId)
+    let autoShowMacPointerDefault = !WWNMachineProfileStore.profileIndicatesNested(
+      nativeClientId: initialNativeClientId,
+      customCommand: initialCustomCommand
+    )
     #endif
+    _renderMacOSPointer = State(
+      initialValue: (overrides["RenderMacOSPointer"] as? Bool) ?? autoShowMacPointerDefault
+    )
   }
 
   var body: some View {
@@ -167,6 +187,7 @@ struct WWNMachineEditorView: View {
           if isRemote {
             remoteConnectivitySection
             waypipeOverridesSection
+            commandPreviewSection
           }
 
           displayInputGraphicsSection
@@ -343,18 +364,6 @@ struct WWNMachineEditorView: View {
           .wwnDisableAutocapitalization()
           .autocorrectionDisabled()
           .padding(.leading, 68)
-
-        Toggle(isOn: $customIsNestedCompositor) {
-          VStack(alignment: .leading, spacing: 2) {
-            Text("Nested Compositor")
-              .font(.caption.weight(.semibold))
-            Text("Enable if this client renders its own cursor (e.g. another Wayland compositor)")
-              .font(.caption2)
-              .foregroundStyle(.secondary)
-          }
-        }
-        .toggleStyle(.switch)
-        .padding(.leading, 68)
       }
     }
   }
@@ -378,6 +387,12 @@ struct WWNMachineEditorView: View {
         TextField("username", text: $sshUser)
           .textFieldStyle(.roundedBorder)
           .wwnDisableAutocapitalization()
+      }
+      labeledField("Port") {
+        TextField("22", text: $sshPort)
+          .textFieldStyle(.roundedBorder)
+          .wwnDisableAutocapitalization()
+          .autocorrectionDisabled()
       }
       labeledField("SSH Key Path") {
         TextField("~/.ssh/id_ed25519", text: $sshKeyPath)
@@ -500,6 +515,21 @@ struct WWNMachineEditorView: View {
     }
   }
 
+  private var commandPreviewSection: some View {
+    sectionCard("Command Preview", subtitle: "Effective launch command for this machine profile.") {
+      Text(previewCommand)
+        .font(.system(.caption, design: .monospaced))
+        .foregroundStyle(.secondary)
+        .textSelection(.enabled)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(
+          RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(Color.secondary.opacity(0.08))
+        )
+    }
+  }
+
   // MARK: - Virtual Machine Section
 
   private var virtualMachineSection: some View {
@@ -540,6 +570,138 @@ struct WWNMachineEditorView: View {
 
   private var isRemote: Bool {
     type == kWWNMachineTypeSSHWaypipe || type == kWWNMachineTypeSSHTerminal
+  }
+
+  private var previewCommand: String {
+    let host = sanitizeSSHHost(sshHost)
+    let user = sshUser.trimmingCharacters(in: .whitespacesAndNewlines)
+    let command = remoteCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+    let port = normalizeSSHPort(sshPort)
+
+    if host.isEmpty {
+      return "Preview unavailable: SSH host is empty"
+    }
+
+    let target = user.isEmpty ? host : "\(user)@\(host)"
+    let effectiveCommand = command.isEmpty
+      ? (type == kWWNMachineTypeSSHWaypipe ? "weston-simple-shm" : "bash -l")
+      : command
+
+    if type == kWWNMachineTypeSSHWaypipe {
+      var parts: [String] = ["waypipe"]
+
+      let compress = waypipeCompress.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+      let compressLevel = waypipeCompressLevel.trimmingCharacters(in: .whitespacesAndNewlines)
+      if !compress.isEmpty {
+        parts.append("--compress")
+        if compress != "none" && !compressLevel.isEmpty {
+          parts.append(shellQuote("\(compress)=\(compressLevel)"))
+        } else {
+          parts.append(shellQuote(compress))
+        }
+      }
+
+      if waypipeDebug { parts.append("--debug") }
+      if waypipeNoGpu { parts.append("--no-gpu") }
+      if waypipeOneshot { parts.append("--oneshot") }
+      if waypipeUnlinkSocket { parts.append("--unlink-socket") }
+      if waypipeLoginShell { parts.append("--login-shell") }
+      if waypipeVsock { parts.append("--vsock") }
+      if waypipeXwls { parts.append("--xwls") }
+
+      let threads = waypipeThreads.trimmingCharacters(in: .whitespacesAndNewlines)
+      if !threads.isEmpty {
+        parts.append("--threads")
+        parts.append(shellQuote(threads))
+      }
+
+      let titlePrefix = waypipeTitlePrefix.trimmingCharacters(in: .whitespacesAndNewlines)
+      if !titlePrefix.isEmpty {
+        parts.append("--title-prefix")
+        parts.append(shellQuote(titlePrefix))
+      }
+
+      let secCtx = waypipeSecCtx.trimmingCharacters(in: .whitespacesAndNewlines)
+      if !secCtx.isEmpty {
+        parts.append("--secctx")
+        parts.append(shellQuote(secCtx))
+      }
+
+      parts.append("ssh")
+      if !waypipeUseSSHConfig {
+        parts.append("-F")
+        parts.append("/dev/null")
+      }
+      parts.append("-p")
+      parts.append(String(port))
+      parts.append("-o")
+      parts.append("StrictHostKeyChecking=accept-new")
+      parts.append("-o")
+      parts.append("BatchMode=no")
+      if sshAuthMethod == 1 {
+        let keyPath = sshKeyPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !keyPath.isEmpty {
+          parts.append("-i")
+          parts.append(shellQuote(keyPath))
+        }
+      }
+      parts.append(shellQuote(target))
+      parts.append(shellQuote(effectiveCommand))
+      return parts.joined(separator: " ")
+    }
+
+    return "ssh -p \(port) \(shellQuote(target)) \(shellQuote(effectiveCommand))"
+  }
+
+  private func shellQuote(_ value: String) -> String {
+    let escaped = value.replacingOccurrences(of: "'", with: "'\"'\"'")
+    return "'\(escaped)'"
+  }
+
+  private func sanitizeSSHHost(_ raw: String) -> String {
+    var value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    if value.isEmpty { return "" }
+    if let schemeRange = value.range(of: "://") {
+      value = String(value[schemeRange.upperBound...])
+    }
+    if let slash = value.firstIndex(of: "/") {
+      value = String(value[..<slash])
+    }
+    if let query = value.firstIndex(of: "?") {
+      value = String(value[..<query])
+    }
+    if let fragment = value.firstIndex(of: "#") {
+      value = String(value[..<fragment])
+    }
+    let disallowed = CharacterSet.whitespacesAndNewlines
+      .union(CharacterSet(charactersIn: "\"'`$;&|<>\\"))
+    value = value.unicodeScalars
+      .filter { !disallowed.contains($0) }
+      .map(String.init)
+      .joined()
+    if value.hasPrefix("[") {
+      if let closing = value.firstIndex(of: "]"),
+         value.index(after: closing) < value.endIndex,
+         value[value.index(after: closing)] == ":" {
+        let suffix = value[value.index(closing, offsetBy: 2)...]
+        if suffix.allSatisfy(\.isNumber) {
+          value = String(value[...closing])
+        }
+      }
+    } else if let colon = value.lastIndex(of: ":") {
+      let hostPart = value[..<colon]
+      let portPart = value[value.index(after: colon)...]
+      if !hostPart.contains(":") && !portPart.isEmpty && portPart.allSatisfy(\.isNumber) {
+        value = String(hostPart)
+      }
+    }
+    return value
+  }
+
+  private func normalizeSSHPort(_ raw: String) -> Int {
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard let parsed = Int(trimmed), (1...65535).contains(parsed) else { return 22 }
+    return parsed
   }
 
   private var isCompact: Bool {
@@ -590,8 +752,9 @@ struct WWNMachineEditorView: View {
     let profile = initial ?? WWNMachineProfile.default()
     profile.name = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Unnamed Machine" : name
     profile.type = type
-    profile.sshHost = sshHost.trimmingCharacters(in: .whitespacesAndNewlines)
+    profile.sshHost = sanitizeSSHHost(sshHost)
     profile.sshUser = sshUser.trimmingCharacters(in: .whitespacesAndNewlines)
+    profile.sshPort = normalizeSSHPort(sshPort)
     profile.sshPassword = sshPassword
     profile.sshKeyPath = sshKeyPath.trimmingCharacters(in: .whitespacesAndNewlines)
     profile.sshKeyPassphrase = sshKeyPassphrase
@@ -619,7 +782,20 @@ struct WWNMachineEditorView: View {
     overrides["WestonSimpleSHMEnabled"] = selectedClientId == "weston-simple-shm"
     overrides["FootEnabled"] = selectedClientId == "foot"
 
-    overrides["RenderMacOSPointer"] = renderMacOSPointer
+    if type == kWWNMachineTypeNative {
+      let trimmedCustom = customCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+      let autoPointer = !WWNMachineProfileStore.profileIndicatesNested(
+        nativeClientId: selectedClientId,
+        customCommand: trimmedCustom
+      )
+      if renderMacOSPointer == autoPointer {
+        overrides.removeValue(forKey: "RenderMacOSPointer")
+      } else {
+        overrides["RenderMacOSPointer"] = renderMacOSPointer
+      }
+    } else {
+      overrides["RenderMacOSPointer"] = renderMacOSPointer
+    }
     overrides["ForceServerSideDecorations"] = forceServerSideDecorations
     overrides["AutoScale"] = autoScale
     overrides["TouchInputType"] = touchInputType
@@ -650,6 +826,7 @@ struct WWNMachineEditorView: View {
     overrides["WaypipeSecCtx"] = waypipeSecCtx
     overrides["SSHHost"] = profile.sshHost
     overrides["SSHUser"] = profile.sshUser
+    overrides["SSHPort"] = profile.sshPort
     overrides["SSHAuthMethod"] = profile.sshAuthMethod
     overrides["SSHPassword"] = profile.sshPassword
     overrides["SSHKeyPath"] = profile.sshKeyPath

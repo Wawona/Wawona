@@ -21,11 +21,7 @@
             sha256 = sha256;
           }
         else if lib.hasAttr "branch" entry then
-          pkgs.fetchgit {
-            url = "https://gitlab.gnome.org/${entry.owner}/${entry.repo}.git";
-            rev = "refs/heads/${entry.branch}";
-            sha256 = sha256;
-          }
+          throw "GitLab GNOME source branch is mutable, use immutable tag or commit rev: ${entry.branch}"
         else if lib.hasAttr "rev" entry then
           pkgs.fetchFromGitLab {
             domain = "gitlab.gnome.org";
@@ -46,11 +42,7 @@
             sha256 = sha256;
           }
         else if lib.hasAttr "branch" entry then
-          pkgs.fetchgit {
-            url = "https://gitlab.freedesktop.org/${entry.owner}/${entry.repo}.git";
-            rev = "refs/heads/${entry.branch}";
-            sha256 = sha256;
-          }
+          throw "GitLab source branch is mutable, use immutable tag or commit rev: ${entry.branch}"
         else if lib.hasAttr "rev" entry then
           pkgs.fetchFromGitLab {
             domain = "gitlab.freedesktop.org";
@@ -71,11 +63,7 @@
             sha256 = sha256;
           }
         else if lib.hasAttr "branch" entry then
-          pkgs.fetchgit {
-            url = "https://codeberg.org/${entry.owner}/${entry.repo}.git";
-            rev = "refs/heads/${entry.branch}";
-            sha256 = sha256;
-          }
+          throw "Codeberg source branch is mutable, use immutable tag or commit rev: ${entry.branch}"
         else if lib.hasAttr "rev" entry then
           pkgs.fetchgit {
             url = "https://codeberg.org/${entry.owner}/${entry.repo}.git";
@@ -95,13 +83,8 @@
             sha256 = sha256;
           }
         else if lib.hasAttr "rev" entry then
-          # Handle "master", "main", or "HEAD" as branch names
           if entry.rev == "master" || entry.rev == "main" || entry.rev == "HEAD" then
-            pkgs.fetchgit {
-              url = "https://github.com/${entry.owner}/${entry.repo}.git";
-              rev = "refs/heads/${if entry.rev == "HEAD" then "main" else entry.rev}";
-              sha256 = sha256;
-            }
+            throw "GitHub source rev must be immutable (tag or commit SHA), not branch name: ${entry.rev}"
           else
             pkgs.fetchFromGitHub {
               owner = entry.owner;

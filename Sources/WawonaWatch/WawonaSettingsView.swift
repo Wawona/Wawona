@@ -1,75 +1,108 @@
 import SwiftUI
 import WawonaModel
 
-struct WawonaSettingsView: View {
-    @ObservedObject private var prefs: WawonaPreferences
+struct WawonaWatchSettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var preferences = WawonaPreferences.shared
+    @ObservedObject var profileStore: MachineProfileStore
 
-    private let logLevels = ["debug", "info", "warn", "error"]
-
-    init() {
-        _prefs = ObservedObject(wrappedValue: WawonaPreferences.shared)
+    init(profileStore: MachineProfileStore) {
+        _profileStore = ObservedObject(wrappedValue: profileStore)
     }
 
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Text("Globals below; per-machine values in “Overrides” replace them for that machine only.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
                 Section("Display") {
-                    Toggle("Auto Scale", isOn: $prefs.autoScale)
-                    Toggle("Force Server Decorations", isOn: $prefs.forceSSD)
+                    Toggle("Auto Scale", isOn: boolBinding(\.autoScale))
+                    Toggle("Force SSD", isOn: boolBinding(\.forceSSD))
+                    Toggle("Color Operations (HDR)", isOn: boolBinding(\.colorOperations))
                 }
-
-                Section("Wayland") {
-                    LabeledContent("Socket") {
-                        TextField("wayland-0", text: $prefs.waylandDisplay)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .multilineTextAlignment(.trailing)
-                    }
-                }
-
-                Section("SSH Defaults") {
-                    LabeledContent("Host") {
-                        TextField("host.example.com", text: $prefs.sshHost)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .multilineTextAlignment(.trailing)
-                    }
-                    LabeledContent("User") {
-                        TextField("username", text: $prefs.sshUser)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .multilineTextAlignment(.trailing)
-                    }
-                }
-
-                Section("Logging") {
-                    Picker("Log Level", selection: $prefs.logLevel) {
-                        ForEach(logLevels, id: \.self) { level in
-                            Text(level.capitalized).tag(level)
-                        }
-                    }
-                    #if os(macOS)
-                    .pickerStyle(.menu)
-                    #else
-                    .pickerStyle(.navigationLink)
-                    #endif
-                }
-
-                Section("Renderer") {
-                    Picker("Renderer", selection: $prefs.renderer) {
+                Section("Graphics") {
+                    Picker("Renderer", selection: stringBinding(\.renderer)) {
                         Text("Metal").tag("metal")
                         Text("Software").tag("software")
                     }
-                    #if os(macOS)
-                    .pickerStyle(.menu)
-                    #else
                     .pickerStyle(.navigationLink)
-                    #endif
+                }
+                Section("Connection") {
+                    TextField("Wayland Display", text: stringBinding(\.waylandDisplay))
+                    TextField("Input Profile", text: stringBinding(\.defaultInputProfile))
+                    TextField("Bundled App ID", text: stringBinding(\.defaultBundledAppID))
+                    Toggle("Waypipe by Default", isOn: boolBinding(\.defaultWaypipeEnabled))
+                }
+                Section("SSH Defaults") {
+                    TextField("Host", text: stringBinding(\.sshHost))
+                        .textInputAutocapitalization(.never)
+                    TextField("User", text: stringBinding(\.sshUser))
+                    TextField("Port", value: intBinding(\.sshPort), format: .number)
+                }
+                Section("Advanced") {
+                    Picker("Log Level", selection: stringBinding(\.logLevel)) {
+                        Text("Debug").tag("debug")
+                        Text("Info").tag("info")
+                        Text("Warn").tag("warn")
+                    }
+                    .pickerStyle(.navigationLink)
+                    Toggle("XWayland Support", isOn: boolBinding(\.xwaylandSupport))
+                    Toggle("Shake to Close", isOn: boolBinding(\.shakeToCloseEnabled))
+                }
+                Section("Per-Machine Overrides") {
+                    if profileStore.profiles.isEmpty {
+                        Text("No machines yet. Add one from the list.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(profileStore.profiles) { profile in
+                            NavigationLink {
+                                MachineSettingsView(
+                                    preferences: WawonaPreferences.shared,
+                                    profileStore: profileStore,
+                                    machineID: profile.id
+                                )
+                            } label: {
+                                Text(profile.name)
+                            }
+                        }
+                    }
                 }
             }
-            .navigationTitle("Settings")
-            .onAppear { NSLog("[Wawona·Nav] WawonaSettingsView appeared") }
-            .onDisappear { prefs.save() }
+            .navigationTitle("Wawona")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        preferences.save()
+                        dismiss()
+                    }
+                }
+            }
         }
+    }
+
+    private func boolBinding(_ keyPath: ReferenceWritableKeyPath<WawonaPreferences, Bool>) -> Binding<Bool> {
+        Binding(
+            get: { preferences[keyPath: keyPath] },
+            set: { preferences[keyPath: keyPath] = $0; preferences.save() }
+        )
+    }
+
+    private func stringBinding(_ keyPath: ReferenceWritableKeyPath<WawonaPreferences, String>) -> Binding<String> {
+        Binding(
+            get: { preferences[keyPath: keyPath] },
+            set: { preferences[keyPath: keyPath] = $0; preferences.save() }
+        )
+    }
+
+    private func intBinding(_ keyPath: ReferenceWritableKeyPath<WawonaPreferences, Int>) -> Binding<Int> {
+        Binding(
+            get: { preferences[keyPath: keyPath] },
+            set: { preferences[keyPath: keyPath] = $0; preferences.save() }
+        )
     }
 }

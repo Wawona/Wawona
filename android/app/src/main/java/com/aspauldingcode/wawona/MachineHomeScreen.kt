@@ -7,6 +7,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
@@ -63,11 +64,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.platform.LocalContext
 import org.json.JSONObject
 
 private data class NativeLauncherOption(
@@ -157,6 +162,7 @@ private fun writeStringOverride(settingsOverrides: JSONObject, key: String, valu
 fun MachineWelcomeScreen(
     profiles: List<MachineProfile>,
     sessions: List<MachineSession>,
+    thumbnailRevision: Int,
     machineStatusFor: (String) -> MachineStatus,
     onCreate: (MachineProfile) -> Unit,
     onUpdate: (MachineProfile) -> Unit,
@@ -303,6 +309,7 @@ fun MachineWelcomeScreen(
                     ) {
                         MachineGridCard(
                             profile = profile,
+                            thumbnailRevision = thumbnailRevision,
                             status = machineStatusFor(profile.id),
                             onEdit = { editorProfile = profile },
                             onDelete = { onDelete(profile) },
@@ -392,11 +399,16 @@ fun MachineWelcomeScreen(
 @Composable
 private fun MachineGridCard(
     profile: MachineProfile,
+    thumbnailRevision: Int,
     status: MachineStatus,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onConnect: () -> Unit
 ) {
+    val context = LocalContext.current
+    val thumbnailBitmap = remember(profile.id, thumbnailRevision) {
+        MachineThumbnailStore.load(context, profile.id)
+    }
     val capabilities = profile.capabilities()
     val statusColor = when (status) {
         MachineStatus.CONNECTED -> Color(0xFF34D399)
@@ -413,6 +425,16 @@ private fun MachineGridCard(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            if (thumbnailBitmap != null) {
+                Image(
+                    bitmap = thumbnailBitmap.asImageBitmap(),
+                    contentDescription = "${profile.name} preview",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(96.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                )
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -504,7 +526,7 @@ private fun connectionLabel(profile: MachineProfile): String = when (profile.typ
     MachineType.CONTAINER -> "Container: ${profile.containerSettings.containerRef.ifBlank { "n/a" }}"
     MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> {
         if (profile.sshHost.isBlank()) "SSH target not configured"
-        else "${profile.sshUser.ifBlank { "user" }}@${profile.sshHost}"
+        else "${profile.sshUser.ifBlank { "user" }}@${profile.sshHost}:${profile.sshPort}"
     }
 }
 
@@ -559,6 +581,7 @@ private fun MachineEditorSheet(
     var name by remember { mutableStateOf(initial?.name ?: "") }
     var type by remember { mutableStateOf(initial?.type ?: MachineType.NATIVE) }
     var sshHost by remember { mutableStateOf(initial?.sshHost ?: "") }
+    var sshPort by remember { mutableStateOf((initial?.sshPort ?: 22).toString()) }
     var sshUser by remember { mutableStateOf(initial?.sshUser ?: "") }
     var sshPassword by remember { mutableStateOf(initial?.sshPassword ?: "") }
     var sshBinary by remember { mutableStateOf(initial?.sshBinary ?: "ssh") }
@@ -699,6 +722,16 @@ private fun MachineEditorSheet(
 
             if (type == MachineType.SSH_WAYPIPE || type == MachineType.SSH_TERMINAL) {
                 OutlinedTextField(value = sshHost, onValueChange = { sshHost = it }, label = { Text("SSH host") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    value = sshPort,
+                    onValueChange = { input ->
+                        sshPort = input.filter { it.isDigit() }.take(5)
+                    },
+                    label = { Text("SSH port") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth()
+                )
                 OutlinedTextField(value = sshUser, onValueChange = { sshUser = it }, label = { Text("SSH user") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(
                     value = sshPassword,
@@ -808,6 +841,11 @@ private fun MachineEditorSheet(
                 Button(
                     onClick = {
                         val trimmedName = name.trim().ifEmpty { "Unnamed Machine" }
+                        val sanitizedHostPort = MachineInputSanitizer.splitHostAndPort(
+                            sshHost,
+                            sshPort.ifBlank { null },
+                            initial?.sshPort ?: 22
+                        )
                         val base = initial ?: MachineProfile(
                             name = trimmedName,
                             type = type
@@ -827,7 +865,8 @@ private fun MachineEditorSheet(
                             base.copy(
                                 name = trimmedName,
                                 type = type,
-                                sshHost = sshHost.trim(),
+                                sshHost = sanitizedHostPort.host,
+                                sshPort = sanitizedHostPort.port,
                                 sshUser = sshUser.trim(),
                                 sshPassword = sshPassword,
                                 sshBinary = sshBinary.trim().ifEmpty { "ssh" },

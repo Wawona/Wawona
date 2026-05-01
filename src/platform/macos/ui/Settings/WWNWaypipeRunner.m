@@ -408,6 +408,12 @@ extern int weston_terminal_main(int argc, char **argv);
     }
 #endif
 
+    NSInteger sshPort = [prefs sshPort];
+    if (sshPort > 0 && sshPort <= 65535) {
+      [args addObject:@"-p"];
+      [args addObject:[NSString stringWithFormat:@"%ld", (long)sshPort]];
+    }
+
     // SSH Safety options
     [args addObject:@"-o"];
     [args addObject:@"StrictHostKeyChecking=accept-new"];

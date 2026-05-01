@@ -1,21 +1,50 @@
 import SwiftUI
 import WawonaModel
 
-struct MachineSettingsView: View {
-    @ObservedObject var preferences: WawonaPreferences
-    @ObservedObject var profileStore: MachineProfileStore
-    var machineID: String?
+/// Per-machine configuration: each field falls back to global `WawonaPreferences` when unset (`resolvedSettings(for:)`).
+public struct MachineSettingsView: View {
+    @ObservedObject public var preferences: WawonaPreferences
+    @ObservedObject public var profileStore: MachineProfileStore
+    public var machineID: String?
 
     @State var selectedID: String?
     @State var draft: MachineProfile?
 
-    var body: some View {
+    public init(
+        preferences: WawonaPreferences,
+        profileStore: MachineProfileStore,
+        machineID: String? = nil
+    ) {
+        self._preferences = ObservedObject(wrappedValue: preferences)
+        self._profileStore = ObservedObject(wrappedValue: profileStore)
+        self.machineID = machineID
+    }
+
+    public var body: some View {
         Form {
             Section("Machine") {
                 if profileStore.profiles.isEmpty {
                     Text("No machine profiles available.")
                         .foregroundStyle(.secondary)
                 } else {
+                    #if os(watchOS)
+                    if let mid = machineID, let pick = profileStore.profiles.first(where: { $0.id == mid }) {
+                        Text(pick.name)
+                            .font(.headline)
+                    } else {
+                        Picker("Profile", selection: Binding(
+                            get: { selectedID ?? profileStore.profiles.first?.id ?? "" },
+                            set: {
+                                selectedID = $0
+                                loadDraft()
+                            }
+                        )) {
+                            ForEach(profileStore.profiles) { profile in
+                                Text(profile.name).tag(profile.id)
+                            }
+                        }
+                    }
+                    #else
                     Picker("Profile", selection: Binding(
                         get: { selectedID ?? profileStore.profiles.first?.id ?? "" },
                         set: {
@@ -27,6 +56,7 @@ struct MachineSettingsView: View {
                             Text(profile.name).tag(profile.id)
                         }
                     }
+                    #endif
                 }
             }
 
@@ -65,7 +95,11 @@ struct MachineSettingsView: View {
         Section("Machine Configuration") {
             TextField("Name", text: nameBinding)
             Picker("Type", selection: typeBinding) {
-                #if os(iOS)
+                #if os(watchOS)
+                ForEach(MachineType.allCases.filter { $0 != .container && $0 != .virtualMachine }, id: \.self) { t in
+                    Text(t.userFacingName).tag(t)
+                }
+                #elseif os(iOS)
                 ForEach(MachineType.allCases.filter { $0 != .container }, id: \.self) { t in
                     Text(t.userFacingName).tag(t)
                 }
@@ -84,7 +118,7 @@ struct MachineSettingsView: View {
                 TextField("VM Type", text: vmSubtypeBinding)
             }
 
-            #if !os(iOS)
+            #if !os(iOS) && !os(watchOS)
             if profile.type == .container {
                 TextField("Container Type", text: containerSubtypeBinding)
             }
@@ -203,10 +237,15 @@ struct MachineSettingsView: View {
             draft = nil
             return
         }
-        #if os(iOS)
+        #if os(iOS) || os(watchOS)
         if profile.type == .container {
             profile.type = .native
         }
+        #if os(watchOS)
+        if profile.type == .virtualMachine {
+            profile.type = .native
+        }
+        #endif
         #endif
         draft = profile
     }

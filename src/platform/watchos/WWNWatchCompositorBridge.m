@@ -85,6 +85,72 @@ NSNotificationName const WWNWatchCompositorFrameReadyNotification =
 - (BOOL)_isCompatShimEnabledForClient:(const char *)name;
 @end
 
+static NSString *const kWWNWatchPrefPrefix = @"wawona.pref.";
+
+@implementation WWNWatchSettingsBridge
+
++ (instancetype)sharedBridge {
+    static WWNWatchSettingsBridge *sharedInstance = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        sharedInstance = [[WWNWatchSettingsBridge alloc] init];
+    });
+    return sharedInstance;
+}
+
+- (NSUserDefaults *)defaults { return [NSUserDefaults standardUserDefaults]; }
+- (NSString *)key:(NSString *)suffix { return [kWWNWatchPrefPrefix stringByAppendingString:suffix]; }
+- (NSString *)stringForSuffix:(NSString *)suffix fallback:(NSString *)fallback {
+    NSString *value = [[self defaults] stringForKey:[self key:suffix]];
+    return value.length > 0 ? value : fallback;
+}
+- (BOOL)boolForSuffix:(NSString *)suffix fallback:(BOOL)fallback {
+    id obj = [[self defaults] objectForKey:[self key:suffix]];
+    return [obj respondsToSelector:@selector(boolValue)] ? [obj boolValue] : fallback;
+}
+- (NSInteger)intForSuffix:(NSString *)suffix fallback:(NSInteger)fallback {
+    id obj = [[self defaults] objectForKey:[self key:suffix]];
+    return [obj respondsToSelector:@selector(integerValue)] ? [obj integerValue] : fallback;
+}
+
+- (NSString *)renderer { return [self stringForSuffix:@"renderer" fallback:@"metal"]; }
+- (void)setRenderer:(NSString *)v { [[self defaults] setObject:(v ?: @"metal") forKey:[self key:@"renderer"]]; }
+- (BOOL)forceSSD { return [self boolForSuffix:@"forceSSD" fallback:NO]; }
+- (void)setForceSSD:(BOOL)v { [[self defaults] setBool:v forKey:[self key:@"forceSSD"]]; }
+- (BOOL)autoScale { return [self boolForSuffix:@"autoScale" fallback:YES]; }
+- (void)setAutoScale:(BOOL)v { [[self defaults] setBool:v forKey:[self key:@"autoScale"]]; }
+- (BOOL)colorOperations { return [self boolForSuffix:@"colorOperations" fallback:NO]; }
+- (void)setColorOperations:(BOOL)v { [[self defaults] setBool:v forKey:[self key:@"colorOperations"]]; }
+- (NSString *)waylandDisplay { return [self stringForSuffix:@"waylandDisplay" fallback:@"wayland-0"]; }
+- (void)setWaylandDisplay:(NSString *)v { [[self defaults] setObject:(v ?: @"wayland-0") forKey:[self key:@"waylandDisplay"]]; }
+- (NSString *)sshHost { return [self stringForSuffix:@"sshHost" fallback:@""]; }
+- (void)setSshHost:(NSString *)v { [[self defaults] setObject:(v ?: @"") forKey:[self key:@"sshHost"]]; }
+- (NSString *)sshUser { return [self stringForSuffix:@"sshUser" fallback:@""]; }
+- (void)setSshUser:(NSString *)v { [[self defaults] setObject:(v ?: @"") forKey:[self key:@"sshUser"]]; }
+- (NSInteger)sshPort { return [self intForSuffix:@"sshPort" fallback:22]; }
+- (void)setSshPort:(NSInteger)v { [[self defaults] setInteger:(v > 0 ? v : 22) forKey:[self key:@"sshPort"]]; }
+- (NSString *)sshPassword { return [self stringForSuffix:@"sshPassword" fallback:@""]; }
+- (void)setSshPassword:(NSString *)v { [[self defaults] setObject:(v ?: @"") forKey:[self key:@"sshPassword"]]; }
+- (NSString *)waypipeSSHPassword { return [self stringForSuffix:@"waypipeSSHPassword" fallback:@""]; }
+- (void)setWaypipeSSHPassword:(NSString *)v { [[self defaults] setObject:(v ?: @"") forKey:[self key:@"waypipeSSHPassword"]]; }
+- (NSString *)logLevel { return [self stringForSuffix:@"logLevel" fallback:@"info"]; }
+- (void)setLogLevel:(NSString *)v { [[self defaults] setObject:(v ?: @"info") forKey:[self key:@"logLevel"]]; }
+- (NSString *)defaultInputProfile { return [self stringForSuffix:@"defaultInputProfile" fallback:@"direct"]; }
+- (void)setDefaultInputProfile:(NSString *)v { [[self defaults] setObject:(v ?: @"direct") forKey:[self key:@"defaultInputProfile"]]; }
+- (NSString *)defaultBundledAppID { return [self stringForSuffix:@"defaultBundledAppID" fallback:@"weston-simple-shm"]; }
+- (void)setDefaultBundledAppID:(NSString *)v { [[self defaults] setObject:(v ?: @"weston-simple-shm") forKey:[self key:@"defaultBundledAppID"]]; }
+- (BOOL)defaultWaypipeEnabled { return [self boolForSuffix:@"defaultWaypipeEnabled" fallback:YES]; }
+- (void)setDefaultWaypipeEnabled:(BOOL)v { [[self defaults] setBool:v forKey:[self key:@"defaultWaypipeEnabled"]]; }
+- (BOOL)xwaylandSupport { return [self boolForSuffix:@"xwaylandSupport" fallback:NO]; }
+- (void)setXwaylandSupport:(BOOL)v { [[self defaults] setBool:v forKey:[self key:@"xwaylandSupport"]]; }
+- (BOOL)shakeToCloseEnabled { return [self boolForSuffix:@"shakeToCloseEnabled" fallback:YES]; }
+- (void)setShakeToCloseEnabled:(BOOL)v { [[self defaults] setBool:v forKey:[self key:@"shakeToCloseEnabled"]]; }
+- (BOOL)hasCompletedWelcome { return [self boolForSuffix:@"hasCompletedWelcome" fallback:NO]; }
+- (void)setHasCompletedWelcome:(BOOL)v { [[self defaults] setBool:v forKey:[self key:@"hasCompletedWelcome"]]; }
+- (void)synchronize { [[self defaults] synchronize]; }
+
+@end
+
 // ── Server dispatch thread ────────────────────────────────────────────────────
 // Runs a blocking event loop for WWNMiniWaylandServer so client requests are
 // processed as soon as they arrive (not polled at a timer interval).

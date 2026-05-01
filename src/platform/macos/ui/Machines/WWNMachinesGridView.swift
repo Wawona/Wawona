@@ -10,13 +10,9 @@ struct WWNMachinesGridView: View {
   @StateObject private var model = WWNMachinesViewModel()
   @State private var editingProfile: WWNMachineProfile?
   @State private var isCreating = false
-  @State private var showDeleteAllConfirmation = false
   @State private var searchQuery = ""
-  @State private var isToolbarSearchPresented = false
-  @FocusState private var isToolbarSearchFocused: Bool
   #if os(macOS)
   @State private var columnVisibility: NavigationSplitViewVisibility = .all
-  private let maxSidebarTopExtension: CGFloat = 28
   #endif
   #if os(iOS)
   @State private var preferredColumn: NavigationSplitViewColumn = .sidebar
@@ -24,6 +20,9 @@ struct WWNMachinesGridView: View {
 
   var body: some View {
     splitView
+      #if os(macOS)
+      .background(WWNMachineKeyboardInputGate())
+      #endif
       .sheet(isPresented: $isCreating) {
         WWNMachineEditorView(
           title: "Add Machine Profile",
@@ -45,14 +44,6 @@ struct WWNMachinesGridView: View {
         .presentationDetents([.medium, .large])
         .presentationContentInteraction(.scrolls)
         #endif
-      }
-      .alert("Delete all machine profiles?", isPresented: $showDeleteAllConfirmation) {
-        Button("Cancel", role: .cancel) {}
-        Button("Delete All", role: .destructive) {
-          model.deleteAllProfiles()
-        }
-      } message: {
-        Text("This permanently removes every machine profile. This action cannot be undone.")
       }
       .animation(.spring(duration: 0.42, bounce: 0.26), value: visibleProfiles.count)
   }
@@ -84,8 +75,10 @@ struct WWNMachinesGridView: View {
     #if os(macOS)
     removeSidebarToggleIfAvailable(
       from: detailPane
+      .modifier(MacDetailTopInsetForTransparentTitlebar())
       .navigationTitle(detailNavigationTitle)
       .toolbarTitleDisplayMode(.inline)
+      .searchable(text: $searchQuery, placement: .toolbar, prompt: "Search machines")
       .toolbar {
         detailToolbarContent
       }
@@ -135,25 +128,6 @@ struct WWNMachinesGridView: View {
         Label("Add", systemImage: "plus")
       }
 
-      Button(role: .destructive) {
-        showDeleteAllConfirmation = true
-      } label: {
-        Label("Delete All", systemImage: "trash")
-      }
-      .help("Delete all machines")
-      .disabled(model.profiles.isEmpty)
-
-      if isToolbarSearchPresented {
-        toolbarSearchField
-      } else {
-        Button {
-          openToolbarSearch()
-        } label: {
-          Image(systemName: "magnifyingglass")
-        }
-        .help("Search")
-      }
-
       if let onOpenSettings {
         Button(action: onOpenSettings) {
           Image(systemName: "gearshape")
@@ -168,14 +142,6 @@ struct WWNMachinesGridView: View {
           Image(systemName: "gearshape")
         }
       }
-    }
-    ToolbarItem(placement: .automatic) {
-      Button(role: .destructive) {
-        showDeleteAllConfirmation = true
-      } label: {
-        Label("Delete All", systemImage: "trash")
-      }
-      .disabled(model.profiles.isEmpty)
     }
     #endif
   }
@@ -196,9 +162,8 @@ struct WWNMachinesGridView: View {
           }
         }
       }
-      .modifier(MacSidebarTopExtensionCap(maxExtension: maxSidebarTopExtension))
       .listStyle(.sidebar)
-      .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 320)
+      .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 280)
       .toolbar(removing: .sidebarToggle)
       #else
       List(selection: compactSidebarSelection) {
@@ -214,7 +179,7 @@ struct WWNMachinesGridView: View {
       #else
       .listStyle(.sidebar)
       #endif
-      .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 320)
+      .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 280)
       #endif
     }
   }
@@ -449,69 +414,6 @@ struct WWNMachinesGridView: View {
     }
   }
 
-  @ViewBuilder
-  private var toolbarSearchField: some View {
-    HStack(spacing: 8) {
-      Image(systemName: "magnifyingglass")
-        .foregroundStyle(.secondary)
-      TextField("Search machines", text: $searchQuery)
-        .textFieldStyle(.plain)
-        .focused($isToolbarSearchFocused)
-        .frame(minWidth: 180, idealWidth: 240, maxWidth: 300)
-        .onAppear {
-          DispatchQueue.main.async {
-            isToolbarSearchFocused = true
-          }
-        }
-      if !searchQuery.isEmpty {
-        Button {
-          searchQuery = ""
-        } label: {
-          Image(systemName: "xmark.circle.fill")
-            .foregroundStyle(.secondary)
-        }
-        .buttonStyle(.plain)
-      }
-      Button {
-        closeToolbarSearch()
-      } label: {
-        Image(systemName: "xmark")
-      }
-      .buttonStyle(.plain)
-    }
-    .padding(.horizontal, 10)
-    .padding(.vertical, 7)
-    .background(searchBackground)
-    .overlay(
-      RoundedRectangle(cornerRadius: 14, style: .continuous)
-        .stroke(Color.white.opacity(0.34), lineWidth: 1)
-    )
-    #if os(macOS)
-    .onExitCommand {
-      closeToolbarSearch()
-    }
-    #endif
-  }
-
-  @ViewBuilder
-  private var searchBackground: some View {
-    if #available(macOS 26.0, iOS 26.0, tvOS 26.0, visionOS 26.0, *) {
-      RoundedRectangle(cornerRadius: 14, style: .continuous)
-        .fill(Color.white.opacity(0.22))
-        .background(
-          RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .glassEffect(.regular, in: .rect(cornerRadius: 14))
-        )
-    } else {
-      RoundedRectangle(cornerRadius: 14, style: .continuous)
-        .fill(Color.white.opacity(0.22))
-        .background(
-          RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .fill(.regularMaterial)
-        )
-    }
-  }
-
   #if os(iOS)
   private var iosQuickActions: some View {
     Menu {
@@ -536,33 +438,7 @@ struct WWNMachinesGridView: View {
   }
   #endif
 
-  private func openToolbarSearch() {
-    isToolbarSearchPresented = true
-    DispatchQueue.main.async {
-      isToolbarSearchFocused = true
-    }
-  }
-
-  private func closeToolbarSearch() {
-    isToolbarSearchFocused = false
-    isToolbarSearchPresented = false
-  }
-
 }
-
-#if os(macOS)
-private struct MacSidebarTopExtensionCap: ViewModifier {
-  let maxExtension: CGFloat
-
-  func body(content: Content) -> some View {
-    if #available(macOS 26.0, *) {
-      content.safeAreaPadding(.top, maxExtension)
-    } else {
-      content
-    }
-  }
-}
-#endif
 
 extension WWNMachineProfile: Identifiable {
   public var id: String { machineId }
@@ -582,7 +458,7 @@ final class WWNMachinesHostingBridge: NSObject {
       onConnect: onConnect,
       onOpenSettings: {
         let prefs = WWNPreferences.shared()
-        prefs.show(prefs)
+        prefs.show(nil)
       }
     )
     let hosting = UIHostingController(rootView: root)
@@ -596,6 +472,85 @@ final class WWNMachinesHostingBridge: NSObject {
 // MARK: - macOS Hosting Bridge
 
 #if os(macOS)
+private struct MacDetailTopInsetForTransparentTitlebar: ViewModifier {
+  func body(content: Content) -> some View {
+    if #available(macOS 26.0, *) {
+      // Keep primary content below Tahoe-style transparent titlebar while
+      // allowing sidebar to visually extend to the top with traffic lights.
+      content.safeAreaPadding(.top, 28)
+    } else {
+      content
+    }
+  }
+}
+
+private struct WWNMachineKeyboardInputGate: NSViewRepresentable {
+  func makeCoordinator() -> Coordinator { Coordinator() }
+
+  func makeNSView(context: Context) -> NSView {
+    let view = NSView(frame: .zero)
+    context.coordinator.installMonitorIfNeeded()
+    return view
+  }
+
+  func updateNSView(_ nsView: NSView, context: Context) {
+    context.coordinator.installMonitorIfNeeded()
+  }
+
+  static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+    coordinator.removeMonitor()
+  }
+
+  final class Coordinator {
+    private var monitor: Any?
+
+    func installMonitorIfNeeded() {
+      guard monitor == nil else { return }
+      monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+        guard Self.shouldSuppress(event) else { return event }
+        return nil
+      }
+    }
+
+    func removeMonitor() {
+      if let monitor {
+        NSEvent.removeMonitor(monitor)
+      }
+      monitor = nil
+    }
+
+    private static func shouldSuppress(_ event: NSEvent) -> Bool {
+      guard event.type == .keyDown else { return false }
+      let blockedModifiers = event.modifierFlags.intersection([.command, .control, .option, .function])
+      guard blockedModifiers.isEmpty else { return false }
+      guard !isTextInputFocused() else { return false }
+      return isTypingKey(event)
+    }
+
+    private static func isTextInputFocused() -> Bool {
+      guard let responder = NSApp.keyWindow?.firstResponder else { return false }
+      if let textView = responder as? NSTextView {
+        return textView.isEditable
+      }
+      return responder is NSTextField || responder is NSSearchField
+    }
+
+    private static func isTypingKey(_ event: NSEvent) -> Bool {
+      guard let chars = event.charactersIgnoringModifiers, !chars.isEmpty else {
+        return false
+      }
+      // Swallow printable typing input only; keep navigation/command keys untouched.
+      let controls = CharacterSet.controlCharacters
+      for scalar in chars.unicodeScalars {
+        if controls.contains(scalar) {
+          return false
+        }
+      }
+      return true
+    }
+  }
+}
+
 @objc(WWNMachinesHostingBridge)
 @objcMembers
 final class WWNMachinesHostingBridge: NSObject {
@@ -614,12 +569,10 @@ final class WWNMachinesHostingBridge: NSObject {
     )
     window.minSize = NSSize(width: 1024, height: 720)
     if #available(macOS 26.0, *) {
-      // macOS 26: allow split-view/sidebar content to extend into titlebar region.
+      // Tahoe-style sidebar/titlebar integration: sidebar extends to top.
       window.styleMask.insert(.fullSizeContentView)
       window.titlebarAppearsTransparent = true
-      if #available(macOS 11.0, *) {
-        window.toolbarStyle = .unified
-      }
+      window.toolbarStyle = .unified
     }
     window.center()
     window.contentViewController = hosting

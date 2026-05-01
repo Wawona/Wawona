@@ -6,8 +6,8 @@ struct MachineStatusView: View {
     let sessions: SessionOrchestrator
 
     @State var showingAdd = false
-    @State var editingProfile: MachineProfile?
     @State var showingSettings = false
+    @State var editingProfile: MachineProfile?
 
     var body: some View {
         Group {
@@ -21,7 +21,7 @@ struct MachineStatusView: View {
                 List {
                     ForEach(profileStore.profiles) { profile in
                         NavigationLink {
-                            QuickConnectView(profile: profile, sessions: sessions)
+                            QuickConnectView(profile: profile, profileStore: profileStore, sessions: sessions)
                         } label: {
                             MachineRowLabel(profile: profile, sessions: sessions)
                         }
@@ -45,22 +45,7 @@ struct MachineStatusView: View {
             }
         }
         .navigationTitle("Machines")
-        .onAppear {
-            NSLog("[Wawona·Nav] MachineStatusView appeared — %d machine(s)", profileStore.profiles.count)
-        }
         .toolbar {
-            #if os(macOS)
-            ToolbarItem(placement: .navigation) {
-                Button { showingSettings = true } label: {
-                    Image(systemName: "gear")
-                }
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Button { showingAdd = true } label: {
-                    Image(systemName: "plus")
-                }
-            }
-            #else
             ToolbarItem(placement: .topBarLeading) {
                 Button { showingSettings = true } label: {
                     Image(systemName: "gear")
@@ -71,21 +56,18 @@ struct MachineStatusView: View {
                     Image(systemName: "plus")
                 }
             }
-            #endif
+        }
+        .sheet(isPresented: $showingSettings) {
+            WawonaWatchSettingsView(profileStore: profileStore)
         }
         .sheet(isPresented: $showingAdd) {
             MachineEditorView(profileStore: profileStore)
         }
         .sheet(item: $editingProfile) { profile in
-            MachineEditorView(profileStore: profileStore, profile: profile)
-        }
-        .sheet(isPresented: $showingSettings) {
-            WawonaSettingsView()
+            WatchMachineOverridesSheet(machineID: profile.id, profileStore: profileStore)
         }
     }
 }
-
-// MARK: - Row label
 
 struct MachineRowLabel: View {
     let profile: MachineProfile

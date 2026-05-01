@@ -66,6 +66,7 @@ extern NSString *const kWWNPrefsMachineContainerNamespaceStub;
 // SSH configuration keys (separate from Waypipe)
 extern NSString *const kWWNPrefsSSHHost;
 extern NSString *const kWWNPrefsSSHUser;
+extern NSString *const kWWNPrefsSSHPort;
 extern NSString *const kWWNPrefsSSHAuthMethod;
 extern NSString *const kWWNPrefsSSHPassword;
 extern NSString *const kWWNPrefsSSHKeyPath;
@@ -221,6 +222,8 @@ extern NSString *const kWWNPrefsMachineSessionThumbnailsEnabled;
 - (void)setSshHost:(NSString *)host;
 - (NSString *)sshUser;
 - (void)setSshUser:(NSString *)user;
+- (NSInteger)sshPort;
+- (void)setSshPort:(NSInteger)port;
 - (NSInteger)sshAuthMethod; // 0 = password, 1 = public key
 - (void)setSshAuthMethod:(NSInteger)method;
 - (NSString *)sshPassword;

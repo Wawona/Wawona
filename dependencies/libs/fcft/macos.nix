@@ -14,8 +14,8 @@ let
     source = "codeberg";
     owner = "dnkl";
     repo = "fcft";
-    tag = "3.3.1";
-    sha256 = "sha256-qgNNowWQhiu6pr9bmWbBo3mHgdkmNpDHDBeTidk32SE=";
+    tag = "3.3.3";
+    sha256 = "sha256-MkGlph9WpqH4daov5ZZPO2ua2mUbrsuo8Xk6GoKhoxg=";
   };
   src = fetchSource fcftSource;
   
@@ -38,7 +38,7 @@ let
 in
 pkgs.stdenv.mkDerivation {
   pname = "fcft";
-  version = "3.3.1";
+  version = "3.3.3";
   inherit src;
 
   nativeBuildInputs = with pkgs; [

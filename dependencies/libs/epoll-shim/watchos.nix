@@ -3,10 +3,7 @@
 let
   fetchSource = common.fetchSource;
   xcodeUtils = import ../../../utils/xcode-wrapper.nix { inherit lib pkgs; };
-  src = fetchSource {
-    source = "github"; owner = "jiixyj"; repo = "epoll-shim"; rev = "master";
-    sha256 = "sha256-9rlhRGFT8LD98fhHbcEhj3mAIyqeQGcxQdyP7u55lck=";
-  };
+  src = fetchSource (import ./source-pins.nix);
   sdkName  = if simulator then "WatchSimulator" else "WatchOS";
   xcrunSdk = if simulator then "watchsimulator" else "watchos";
   minVerFlag = if simulator then "-mwatchos-simulator-version-min=10.0" else "-mwatchos-version-min=10.0";

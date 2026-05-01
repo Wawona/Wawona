@@ -43,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,6 +59,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -212,6 +214,8 @@ fun WawonaApp(
     var windowTitle by remember { mutableStateOf("") }
     var nativeRuntimeReady by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
+    var thumbnailRevision by remember { mutableIntStateOf(0) }
+    val appScope = rememberCoroutineScope()
     var shakeToCloseEnabled by remember {
         mutableStateOf(prefs.getBoolean("wawona.pref.shakeToCloseEnabled", true))
     }
@@ -303,6 +307,13 @@ fun WawonaApp(
                         val activeSession = sessionOrchestrator.activeSession()
                         val activeProfile = activeSession?.let { session ->
                             profiles.firstOrNull { it.id == session.machineId }
+                        }
+                        if (activeProfile != null) {
+                            appScope.launch {
+                                if (MachineThumbnailStore.captureFromWindow(context, activity?.window, activeProfile.id)) {
+                                    thumbnailRevision += 1
+                                }
+                            }
                         }
                         when (activeProfile?.type) {
                             MachineType.NATIVE -> {
@@ -452,7 +463,12 @@ fun WawonaApp(
 
     fun launchWaypipe(): Boolean {
         val wpSshEnabled = prefs.getBoolean("waypipeSSHEnabled", true)
-        val wpSshHost = prefs.getString("waypipeSSHHost", "") ?: ""
+        val rawHost = prefs.getString("waypipeSSHHost", "") ?: ""
+        val host = MachineInputSanitizer.sanitizeHost(rawHost)
+        val port = MachineInputSanitizer.normalizePort(
+            prefs.getString("waypipeSSHPort", "22") ?: "22"
+        )
+        val wpSshHost = if (host.isBlank()) host else "$host:$port"
         val wpSshUser = prefs.getString("waypipeSSHUser", "") ?: ""
         val wpRemoteCommand = prefs.getString("waypipeRemoteCommand", "") ?: ""
         val sshPassword = prefs.getString("waypipeSSHPassword", "") ?: ""
@@ -593,6 +609,13 @@ fun WawonaApp(
         val activeProfile = activeSession?.let { session ->
             profiles.firstOrNull { it.id == session.machineId }
         }
+        if (activeProfile != null) {
+            appScope.launch {
+                if (MachineThumbnailStore.captureFromWindow(context, activity?.window, activeProfile.id)) {
+                    thumbnailRevision += 1
+                }
+            }
+        }
         when (activeProfile?.type) {
             MachineType.NATIVE -> stopNativeLauncher(activeProfile.nativeLauncher)
             MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> stopWaypipe()
@@ -649,6 +672,7 @@ fun WawonaApp(
         MachineWelcomeScreen(
             profiles = profiles,
             sessions = sessionOrchestrator.sessions,
+            thumbnailRevision = thumbnailRevision,
             machineStatusFor = { machineId -> sessionOrchestrator.statusForMachine(machineId) },
             onCreate = { profile ->
                 profiles = MachineProfileStore.upsertProfile(prefs, profile)
@@ -658,6 +682,8 @@ fun WawonaApp(
             },
             onDelete = { profile ->
                 profiles = MachineProfileStore.deleteProfile(prefs, profile.id)
+                MachineThumbnailStore.delete(context, profile.id)
+                thumbnailRevision += 1
                 sessionOrchestrator.sessions
                     .filter { it.machineId == profile.id }
                     .forEach { sessionOrchestrator.removeSession(it.sessionId) }

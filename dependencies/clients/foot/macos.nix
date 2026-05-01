@@ -17,14 +17,14 @@ let
     source = "codeberg";
     owner = "dnkl";
     repo = "foot";
-    tag = "1.25.0";
-    sha256 = "sha256-s7SwIdkWhBKcq9u4V0FLKW6CA36MBvDyB9ELB0V52O0=";
+    tag = "1.26.1";
+    sha256 = "sha256-N9/lxbz9nLIGC7VyuRbNbuX0K0XAxhytLzsU16BMCWY=";
   };
   src = fetchSource footSource;
   
   linuxInputHeaders = pkgs.fetchurl {
-    url = "https://raw.githubusercontent.com/torvalds/linux/v6.6/include/uapi/linux/input-event-codes.h";
-    sha256 = "14sl96hc8j48ikjgg4jynm4gsvax5ywdypyahzi2816l4xlvxd93";
+    url = "https://raw.githubusercontent.com/torvalds/linux/45dcf5e28813954da4150e7260ccb61e95856176/include/uapi/linux/input-event-codes.h";
+    sha256 = "sha256-CqF1r2sCoJbn3Bcr0x6B1JnrqQg3d1FejCCqkVq3new=";
   };
   
   # Dependencies from buildModule (Wawona's custom macOS ports)
@@ -58,7 +58,7 @@ let
 in
 pkgs.stdenv.mkDerivation {
   pname = "foot";
-  version = "1.25.0";
+  version = "1.26.1";
   inherit src;
 
   nativeBuildInputs = with pkgs; [
@@ -100,8 +100,14 @@ pkgs.stdenv.mkDerivation {
     export NIX_CFLAGS_COMPILE=""
     export NIX_LDFLAGS=""
 
-    export CC="${pkgs.clang}/bin/clang"
-    export CXX="${pkgs.clang}/bin/clang++"
+    # Use Xcode's clang for proper macOS SDK linking instead of nixpkgs clang
+    XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode)
+    if [ -n "$XCODE_APP" ]; then
+      export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
+    fi
+    CLANG="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
+    export CC="$CLANG"
+    export CXX="$CLANG++"
     
     # Add compat headers to include path and link against epoll-shim
     # Explicitly include epoll-shim include dir AFTER compat dir to ensure our overrides work

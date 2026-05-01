@@ -1,6 +1,11 @@
 import Combine
 import Foundation
 
+public extension Notification.Name {
+    /// Posted after `WawonaPreferences.save()` writes to `UserDefaults`.
+    static let wawonaPreferencesDidSave = Notification.Name("WawonaPreferencesDidSave")
+}
+
 public enum SettingsDiagnosticCategory: String, Codable, CaseIterable, Sendable {
     case ssh
     case waypipe
@@ -121,6 +126,8 @@ public final class WawonaPreferences: ObservableObject {
     @Published public var defaultInputProfile: String = "direct"
     @Published public var defaultBundledAppID: String = ""
     @Published public var defaultWaypipeEnabled: Bool = true
+    /// When true, Waypipe is launched with `--xwls` (XWayland integration) for supported sessions.
+    @Published public var xwaylandSupport: Bool = false
     @Published public var shakeToCloseEnabled: Bool = true
     @Published public var hasCompletedWelcome: Bool = false
     @Published public var globalClientLaunchers: [ClientLauncher] = ClientLauncher.presets
@@ -148,6 +155,7 @@ public final class WawonaPreferences: ObservableObject {
         defaultInputProfile = defaults.string(forKey: keyPrefix + "defaultInputProfile") ?? "direct"
         defaultBundledAppID = defaults.string(forKey: keyPrefix + "defaultBundledAppID") ?? "weston-simple-shm"
         defaultWaypipeEnabled = defaults.object(forKey: keyPrefix + "defaultWaypipeEnabled") as? Bool ?? true
+        xwaylandSupport = defaults.object(forKey: keyPrefix + "xwaylandSupport") as? Bool ?? false
         shakeToCloseEnabled = defaults.object(forKey: keyPrefix + "shakeToCloseEnabled") as? Bool ?? true
         hasCompletedWelcome = defaults.bool(forKey: keyPrefix + "hasCompletedWelcome")
 
@@ -176,6 +184,7 @@ public final class WawonaPreferences: ObservableObject {
         defaults.set(defaultInputProfile, forKey: keyPrefix + "defaultInputProfile")
         defaults.set(defaultBundledAppID, forKey: keyPrefix + "defaultBundledAppID")
         defaults.set(defaultWaypipeEnabled, forKey: keyPrefix + "defaultWaypipeEnabled")
+        defaults.set(xwaylandSupport, forKey: keyPrefix + "xwaylandSupport")
         defaults.set(shakeToCloseEnabled, forKey: keyPrefix + "shakeToCloseEnabled")
         defaults.set(hasCompletedWelcome, forKey: keyPrefix + "hasCompletedWelcome")
         if let data = try? JSONEncoder().encode(globalClientLaunchers) {
@@ -184,6 +193,7 @@ public final class WawonaPreferences: ObservableObject {
         if let diagnosticsData = try? JSONEncoder().encode(diagnostics) {
             defaults.set(diagnosticsData, forKey: keyPrefix + "diagnostics")
         }
+        NotificationCenter.default.post(name: .wawonaPreferencesDidSave, object: self)
     }
 
     public func resolvedSettings(for profile: MachineProfile) -> ResolvedMachineSettings {

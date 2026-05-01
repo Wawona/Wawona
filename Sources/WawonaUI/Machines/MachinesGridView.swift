@@ -10,8 +10,6 @@ struct MachinesGridView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SectionHeader("Machines", subtitle: gridBlurb)
-
             if profiles.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "server.rack")
@@ -42,7 +40,4 @@ struct MachinesGridView: View {
         sessions.sessions.first(where: { $0.machineId == machineId })?.status ?? .disconnected
     }
 
-    private var gridBlurb: String {
-        "Add a profile, pick a Wayland client or SSH target, then connect."
-    }
 }

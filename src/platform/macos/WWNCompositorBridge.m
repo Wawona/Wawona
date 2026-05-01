@@ -1604,6 +1604,7 @@ extern void WWNCoreInject_touch_frame(void *core);
   CGSize dims = CGSizeMake(width, height);
   _latestResizeDims[key] = [NSValue value:&dims withObjCType:@encode(CGSize)];
   NSTimeInterval debounce = kWWNResizeDebounceSeconds;
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
   NSWindow *window = [self.windows objectForKey:key];
   if ([window isKindOfClass:[WWNWindow class]] &&
       ((WWNWindow *)window).inLiveResize) {
@@ -1611,6 +1612,7 @@ extern void WWNCoreInject_touch_frame(void *core);
     // AppKit's live size changes instead of waiting for debounce expiry.
     debounce = 0.0;
   }
+#endif
   WWNLog("BRIDGE",
          @"Queue injectWindowResize window=%llu latest=%.0fx%.0f debounce=%.3fs live=%@",
          windowId, dims.width, dims.height, debounce,
@@ -1618,12 +1620,16 @@ extern void WWNCoreInject_touch_frame(void *core);
   [NSObject cancelPreviousPerformRequestsWithTarget:self
                                            selector:@selector(_drainPendingWindowResizeForId:)
                                              object:key];
-  // Schedule on common + tracking modes so live edge-drag (NSEventTrackingRunLoopMode)
+  // Schedule on common modes; on macOS also include tracking mode so live edge-drag
   // continues delivering synchronized configure events while the mouse is down.
+  NSArray<NSString *> *runLoopModes = @[ NSRunLoopCommonModes ];
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+  runLoopModes = @[ NSRunLoopCommonModes, NSEventTrackingRunLoopMode ];
+#endif
   [self performSelector:@selector(_drainPendingWindowResizeForId:)
              withObject:key
              afterDelay:debounce
-                inModes:@[ NSRunLoopCommonModes, NSEventTrackingRunLoopMode ]];
+                inModes:runLoopModes];
 }
 
 - (void)reconcileWindowResizeNow:(uint64_t)windowId {

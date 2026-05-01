@@ -14,14 +14,14 @@ let
     source = "github";
     owner = "JuliaStrings";
     repo = "utf8proc";
-    tag = "v2.9.0";
-    sha256 = "sha256-Sgh8vTbclUV+lFZdR29PtNUy8F+9L/OAXk647B+l2mg=";
+    tag = "v2.11.3";
+    sha256 = "sha256-DF2//R8Oc/+IEJuiG9+rTxQ7nltPcPqdCkzR4T7pUes=";
   };
   src = fetchSource utf8procSource;
 in
 pkgs.stdenv.mkDerivation {
   pname = "utf8proc";
-  version = "2.9.0";
+  version = "2.11.3";
   inherit src;
 
   nativeBuildInputs = with pkgs; [
