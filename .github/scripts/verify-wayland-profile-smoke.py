@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Profile-oriented Wayland manifest smoke checks."""
+"""Profile-oriented Wayland manifest smoke checks + flake build matrix."""
 
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
 import sys
 
 try:
@@ -19,6 +20,23 @@ ROOT = Path(__file__).resolve().parents[2]
 MANIFEST = ROOT / "docs" / "compliance" / "wayland-protocol-manifest.toml"
 
 PROFILES = {"store-safe", "store-safe-remote", "desktop-host", "full-dev"}
+
+# Flake outputs that must exist for the everywhere build matrix (Phase 5A).
+REQUIRED_FLAKE_OUTPUTS = [
+    "wawona-macos-backend",
+    "wawona-ios-backend",
+    "wawona-ios-sim-backend",
+    "wawona-ipados-sim-backend",
+    "wawona-tvos-sim-backend",
+    "wawona-visionos-sim-backend",
+    "wawona-watchos-sim-backend",
+    "wawona-android",
+    "weston-ios",
+    "weston-compositor-ios",
+    "angle-ios",
+    "iland-ios",
+    "iland-gl-clients-ios",
+]
 
 
 def load_manifest() -> dict:
@@ -49,6 +67,29 @@ def load_manifest() -> dict:
         if "interface" in entry:
             protocol_entries.append(entry)
     return {"protocol": protocol_entries}
+
+
+def verify_flake_outputs() -> list[str]:
+    """Return missing flake output names (empty if all present)."""
+    try:
+        proc = subprocess.run(
+            ["nix", "flake", "show", "--json", str(ROOT)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+        print(f"warning: could not inspect flake outputs: {exc}", file=sys.stderr)
+        return []
+
+    import json
+
+    data = json.loads(proc.stdout)
+    packages = data.get("packages", {})
+    # Use first system bucket (CI host may be aarch64-darwin or x86_64-linux).
+    system_pkgs = next(iter(packages.values()), {}) if packages else {}
+    missing = [name for name in REQUIRED_FLAKE_OUTPUTS if name not in system_pkgs]
+    return missing
 
 
 def main() -> int:
@@ -82,9 +123,18 @@ def main() -> int:
         print(f"manifest has no protocol rows for profiles: {missing}", file=sys.stderr)
         return 1
 
+    flake_missing = verify_flake_outputs()
+    if flake_missing:
+        print(
+            "flake build matrix: missing outputs: " + ", ".join(sorted(flake_missing)),
+            file=sys.stderr,
+        )
+        return 1
+
     print(
         "wayland profile smoke checks passed: "
         + ", ".join(f"{p}={profile_counts[p]}" for p in sorted(PROFILES))
+        + f"; flake_outputs={len(REQUIRED_FLAKE_OUTPUTS)}"
     )
     return 0
 

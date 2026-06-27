@@ -39,10 +39,29 @@ let
   westonSimpleShmSrc = pkgs.callPackage ../libs/weston-simple-shm/patched-src.nix {};
   opensshBin = buildModule.buildForAndroid "openssh" { };
   sshpassBin = buildModule.buildForAndroid "sshpass" { };
-  # Disable Weston on Android as building its GUI dependencies (cairo/pango) triggers 
-  # Nixpkgs pkgsCross.aarch64-android which currently fails on compiler-rt (missing pthread.h).
-  # Wawona is its own Wayland server and doesn't actually need Weston to run.
-  westonBin = "";
+  mobileToytoolkitDeps = import ./mobile-toytoolkit-deps.nix {
+    buildFn = buildModule.buildForAndroid;
+  };
+  westonAndroid = buildModule.buildForAndroid "weston" { };
+  westonCompositorAndroid = buildModule.buildForAndroid "weston-compositor" { };
+  libintlAndroid = buildModule.buildForAndroid "libintl" { };
+  westonToytoolkitLdflags = import ../generators/weston-toytoolkit-ldflags.nix {
+    inherit (pkgs) lib;
+    deps = mobileToytoolkitDeps // {
+      weston = westonAndroid;
+      libintl = libintlAndroid;
+    };
+    forceLoadWeston = true;
+    linkMode = "whole_archive";
+  };
+  westonCompositorLdflags = import ../generators/weston-compositor-ldflags.nix {
+    inherit (pkgs) lib;
+    deps = mobileToytoolkitDeps // {
+      weston-compositor = westonCompositorAndroid;
+    };
+    forceLoadCompositor = true;
+    linkMode = "whole_archive";
+  };
   rustBackendPath = if rustBackend != null then toString rustBackend else "";
   androidQuadVert = ../../src/platform/android/rendering/shaders/android_quad.vert;
   androidQuadFrag = ../../src/platform/android/rendering/shaders/android_quad.frag;
@@ -56,7 +75,7 @@ let
     "libxml2"
     "xkbcommon"
     "openssl"
-  ];
+  ] ++ (lib.attrNames mobileToytoolkitDeps) ++ [ "weston" "weston-compositor" "libintl" ];
 
   getDeps =
     platform: depNames:
@@ -768,8 +787,8 @@ in
       # Inject Nix dependencies via Environment Variables for Gradle/CMake
       export ANDROID_NDK_ROOT="$ndk_root"
       export ANDROID_NDK_HOME="$ndk_root"
-      export DEP_INCLUDES="${lib.concatMapStringsSep " " (d: "-I${d}/include") (getDeps "android" androidDeps)} -I${buildModule.buildForAndroid "pixman" { }}/include/pixman-1"
-      export DEP_LIBS="${lib.concatMapStringsSep " " (d: "-L${d}/lib") (getDeps "android" androidDeps)}"
+      export DEP_INCLUDES="${lib.concatMapStringsSep " " (d: "-I${d}/include") (getDeps "android" androidDeps)} -I${buildModule.buildForAndroid "pixman" { }}/include/pixman-1 -I${westonAndroid}/include/weston-gen"
+      export DEP_LIBS="${lib.concatMapStringsSep " " (d: "-L${d}/lib") (getDeps "android" androidDeps)} ${lib.concatStringsSep " " westonToytoolkitLdflags} ${lib.concatStringsSep " " westonCompositorLdflags}"
       export RUST_BACKEND_LIB="$RUST_BACKEND_LINK_LIB"
     '';
 

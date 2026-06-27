@@ -84,7 +84,20 @@ private val nativeLauncherOptions = listOf(
     NativeLauncherOption("weston-simple-shm", "Weston Simple SHM"),
     NativeLauncherOption("weston-terminal", "Weston Terminal"),
     NativeLauncherOption("foot", "Foot Terminal"),
-    NativeLauncherOption("weston", "Weston")
+    NativeLauncherOption("weston", "Weston"),
+    NativeLauncherOption("weston-flower", "Weston Flower"),
+    NativeLauncherOption("weston-smoke", "Weston Smoke"),
+    NativeLauncherOption("weston-clickdot", "Weston Clickdot"),
+    NativeLauncherOption("weston-eventdemo", "Weston Event Demo"),
+    NativeLauncherOption("weston-resizor", "Weston Resizor"),
+    NativeLauncherOption("weston-cliptest", "Weston Cliptest"),
+    NativeLauncherOption("weston-transformed", "Weston Transformed"),
+    NativeLauncherOption("weston-stacking", "Weston Stacking"),
+    NativeLauncherOption("weston-dnd", "Weston DnD"),
+    NativeLauncherOption("weston-image", "Weston Image"),
+    NativeLauncherOption("weston-scaler", "Weston Scaler"),
+    NativeLauncherOption("weston-editor", "Weston Editor"),
+    NativeLauncherOption("weston-constraints", "Weston Constraints"),
 )
 
 private fun nativeLauncherLabel(value: String): String =

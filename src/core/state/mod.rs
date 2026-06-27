@@ -50,7 +50,7 @@ use crate::core::wayland::ext::idle_inhibit::IdleInhibitState;
 use crate::core::wayland::ext::keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitState;
 
 use crate::core::wayland::xdg::xdg_activation::ActivationState;
-use crate::core::wayland::xdg::xdg_foreign::XdgForeignState;
+use crate::core::wayland::xdg::xdg_foreign::WawonaForeignTracking;
 
 use crate::core::render::scene::Scene;
 use crate::core::render::damage::SceneDamage;
@@ -87,6 +87,13 @@ pub struct SmithayRuntimeState {
     pub seat_state: Option<smithay::input::SeatState<crate::core::state::CompositorState>>,
     pub seat: Option<smithay::input::Seat<crate::core::state::CompositorState>>,
     pub data_device: Option<smithay::wayland::selection::data_device::DataDeviceState>,
+    pub xdg_decoration: Option<smithay::wayland::shell::xdg::decoration::XdgDecorationState>,
+    pub xdg_foreign: Option<smithay::wayland::xdg_foreign::XdgForeignState>,
+    pub xdg_activation: Option<smithay::wayland::xdg_activation::XdgActivationState>,
+    pub xdg_dialog: Option<smithay::wayland::shell::xdg::dialog::XdgDialogState>,
+    pub xdg_system_bell: Option<smithay::wayland::xdg_system_bell::XdgSystemBellState>,
+    pub xdg_toplevel_icon: Option<smithay::wayland::xdg_toplevel_icon::XdgToplevelIconManager>,
+    pub xdg_toplevel_tag: Option<smithay::wayland::xdg_toplevel_tag::XdgToplevelTagManager>,
     pub client_compositor_state: smithay::wayland::compositor::CompositorClientState,
     pub core_shell_initialized: bool,
     pub extension_wlr_initialized: bool,
@@ -103,6 +110,13 @@ impl Default for SmithayRuntimeState {
             seat_state: None,
             seat: None,
             data_device: None,
+            xdg_decoration: None,
+            xdg_foreign: None,
+            xdg_activation: None,
+            xdg_dialog: None,
+            xdg_system_bell: None,
+            xdg_toplevel_icon: None,
+            xdg_toplevel_tag: None,
             client_compositor_state: smithay::wayland::compositor::CompositorClientState::default(),
             core_shell_initialized: false,
             extension_wlr_initialized: false,
@@ -372,6 +386,9 @@ pub struct XdgToplevelData {
     pub pending_fullscreen: bool,
     /// The actual protocol resource
     pub resource: Option<xdg_toplevel::XdgToplevel>,
+    /// Smithay's `ToplevelSurface` wrapper (owns configure/serial machinery).
+    /// Populated when xdg-shell is driven by smithay's `delegate_xdg_shell!`.
+    pub toplevel_surface: Option<smithay::wayland::shell::xdg::ToplevelSurface>,
     /// Latest host-requested (width, height) while `xdg_surface` still has an unacked
     /// configure. Coalesces macOS live-resize storms so clients are not flooded with
     /// serials before they can ack (avoids SHM buffer exhaustion in nested compositors).
@@ -402,6 +419,7 @@ impl XdgToplevelData {
             pending_maximized: false,
             pending_fullscreen: false,
             resource: None,
+            toplevel_surface: None,
             deferred_configure_size: None,
         }
     }
@@ -444,6 +462,8 @@ pub struct XdgPopupData {
     pub repositioned_token: Option<u32>,
     /// The actual protocol resource
     pub resource: Option<xdg_popup::XdgPopup>,
+    /// Smithay's `PopupSurface` wrapper (owns configure/serial machinery).
+    pub popup_surface: Option<smithay::wayland::shell::xdg::PopupSurface>,
 }
 
 unsafe impl Send for XdgPopupData {}
@@ -997,8 +1017,10 @@ impl Default for DecorationPolicy {
 /// XDG shell protocol state — surfaces, toplevels, popups, positioners,
 /// activation tokens, foreign toplevel export/import, decorations, outputs.
 pub struct XdgState {
-    /// Active xdg_wm_base resources (for pinging)
+    /// Active xdg_wm_base resources (legacy ping bookkeeping; prefer `shell_clients`)
     pub shell_resources: HashMap<(ClientId, u32), xdg_wm_base::XdgWmBase>,
+    /// Smithay shell clients tracked for ping/pong via `XdgShellHandler`
+    pub shell_clients: Vec<smithay::wayland::shell::xdg::ShellClient>,
     /// Mapping of xdg_surface IDs to their data
     pub surfaces: HashMap<(ClientId, u32), XdgSurfaceData>,
     /// Mapping of xdg_toplevel IDs to their data
@@ -1010,13 +1032,13 @@ pub struct XdgState {
     /// Activation protocol state
     pub activation: ActivationState,
     /// Foreign toplevel (exporter/importer) state
-    pub foreign: XdgForeignState,
+    pub foreign: WawonaForeignTracking,
     /// XDG output state
     pub output: XdgOutputState,
     /// Decoration state
     pub decoration: DecorationState,
-    /// Ping tracking: maps serial → (client_id, shell_resource_id, timestamp)
-    pub pending_pings: HashMap<u32, (ClientId, u32, Instant)>,
+    /// Ping tracking: maps serial → (shell_clients index, timestamp)
+    pub pending_pings: HashMap<u32, (usize, Instant)>,
     /// Toplevel drag state (xdg_toplevel_drag_v1)
     pub toplevel_drag: crate::core::wayland::xdg::xdg_toplevel_drag::ToplevelDragState,
     /// Toplevel icon state (xdg_toplevel_icon_v1)
@@ -1028,12 +1050,13 @@ impl Default for XdgState {
     fn default() -> Self {
         Self {
             shell_resources: HashMap::new(),
+            shell_clients: Vec::new(),
             surfaces: HashMap::new(),
             toplevels: HashMap::new(),
             popups: HashMap::new(),
             positioners: HashMap::new(),
             activation: ActivationState::default(),
-            foreign: XdgForeignState::default(),
+            foreign: WawonaForeignTracking::default(),
             output: XdgOutputState::default(),
             decoration: DecorationState::default(),
             pending_pings: HashMap::new(),
@@ -1516,6 +1539,14 @@ impl CompositorState {
         None
     }
 
+    pub(crate) fn xdg_toplevel_key_for_window(&self, window_id: u32) -> Option<(ClientId, u32)> {
+        self.xdg
+            .toplevels
+            .iter()
+            .find(|(_, tl)| tl.window_id == window_id)
+            .map(|(key, _)| key.clone())
+    }
+
     /// Resolve or create an internal surface ID for a protocol wl_surface.
     pub fn ensure_internal_surface_mapping(
         &mut self,
@@ -1766,8 +1797,12 @@ impl Default for CompositorState {
 // Tests
 // ============================================================================
 
+// NOTE: the external `mod tests;` (src/core/state/tests.rs) already occupies the
+// `tests` name in this module, so these inline CompositorState unit tests live
+// under a distinct module name to avoid an E0428 duplicate-definition that
+// otherwise breaks `cargo test`.
 #[cfg(test)]
-mod tests {
+mod state_tests {
     use super::*;
     
     #[test]
@@ -1917,7 +1952,9 @@ impl CompositorState {
         self.xdg.toplevels.retain(|(cid, _), _| *cid != client);
         self.xdg.popups.retain(|(cid, _), _| *cid != client);
         self.xdg.positioners.retain(|(cid, _), _| *cid != client);
-        self.xdg.pending_pings.retain(|_, (cid, _, _)| *cid != client);
+        self.xdg.pending_pings.retain(|_, (idx, _)| {
+            self.xdg.shell_clients.get(*idx).is_some_and(|sc| sc.alive())
+        });
     }
 }
 

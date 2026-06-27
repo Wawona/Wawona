@@ -216,10 +216,8 @@ let
     elif [ -d "''$APPICONSET" ] && [ -f "''$APPICONSET/AppIcon-Light-1024.png" ]; then
       cp "''$APPICONSET/AppIcon-Light-1024.png" "''$RESOURCES/AppIcon.png"
     fi
-    if [ -d "''$APPICONSET" ] && [ -f "''$APPICONSET/AppIcon-Dark-1024.png" ]; then
-      cp "''$APPICONSET/AppIcon-Dark-1024.png" "''$RESOURCES/AppIcon-Dark.png"
-    fi
     if [ -f "''$ICON_ROOT/Wawona-iOS-Dark-1024x1024@1x.png" ]; then
+      cp "''$ICON_ROOT/Wawona-iOS-Dark-1024x1024@1x.png" "''$RESOURCES/AppIcon-Dark.png"
       cp "''$ICON_ROOT/Wawona-iOS-Dark-1024x1024@1x.png" "''$RESOURCES/"
     fi
     if [ -f "''$ICON_ROOT/Wawona-iOS-Light-1024x1024@1x.png" ]; then
@@ -228,7 +226,6 @@ let
 
     # Wawona.png for [NSImage imageNamed:@"Wawona"] fallback
     for candidate in "Assets.xcassets/AppIcon.appiconset/AppIcon-Light-1024.png" \
-                     "Assets.xcassets/AppIcon.appiconset/AppIcon-Dark-1024.png" \
                      "Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png" \
                      "Wawona-iOS-Light-1024x1024@1x.png" \
                      "Wawona-iOS-Dark-1024x1024@1x.png"; do
@@ -245,8 +242,7 @@ let
       echo "Installed Wawona-menubar-silhouette.png from Wawona.icon/Assets/wayland.png"
     else
       # Fallback only if the dedicated silhouette is missing.
-      for candidate in "Assets.xcassets/AppIcon.appiconset/AppIcon-Dark-1024.png" \
-                       "Wawona-iOS-Dark-1024x1024@1x.png" \
+      for candidate in "Wawona-iOS-Dark-1024x1024@1x.png" \
                        "Assets.xcassets/AppIcon.appiconset/AppIcon-Light-1024.png" \
                        "Wawona-iOS-Light-1024x1024@1x.png"; do
         if [ -f "''$ICON_ROOT/''$candidate" ]; then

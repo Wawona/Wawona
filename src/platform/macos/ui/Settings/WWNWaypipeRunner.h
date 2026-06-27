@@ -49,4 +49,7 @@ typedef void (^WaypipeOutputHandler)(NSString *output);
 - (void)launchFoot;
 - (void)stopFoot;
 
+/// Launch any bundled Wayland client by id (weston-flower, weston-smoke, …).
+- (void)launchBundledClientWithId:(NSString *)clientId;
+
 @end

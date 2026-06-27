@@ -46,13 +46,21 @@ impl smithay::wayland::compositor::CompositorHandler for crate::core::state::Com
 
     fn client_compositor_state<'a>(
         &self,
-        _client: &'a smithay::reexports::wayland_server::Client,
+        client: &'a smithay::reexports::wayland_server::Client,
     ) -> &'a smithay::wayland::compositor::CompositorClientState {
-        // Wawona currently shares one compositor client state across clients until
-        // per-client state cutover is completed.
+        // Preferred path: every client accepted by the compositor's socket loop
+        // carries a per-client CompositorClientState in its backend client data,
+        // so each client gets isolated surface/subsurface cached state and the
+        // borrow is naturally scoped to `client` (no unsafe lifetime extension).
+        if let Some(data) = client.get_data::<crate::core::compositor::WawonaBackendClientData>() {
+            return &data.compositor_state;
+        }
+        // Fallback for clients inserted without Wawona backend data (test
+        // harnesses / legacy paths): a single process-lifetime shared instance.
         unsafe {
-            // SAFETY: This extends the borrow to match Smithay's trait shape while
-            // pointing to stable compositor-owned storage for the process lifetime.
+            // SAFETY: storage is owned by `self.smithay_runtime` which lives for
+            // the compositor's lifetime; we only widen the borrow to match the
+            // trait's `'a` shape.
             &*(&self.smithay_runtime.client_compositor_state
                 as *const smithay::wayland::compositor::CompositorClientState)
         }
@@ -308,6 +316,15 @@ impl smithay::wayland::selection::data_device::DataDeviceHandler
 
 smithay::delegate_seat!(crate::core::state::CompositorState);
 smithay::delegate_data_device!(crate::core::state::CompositorState);
+smithay::delegate_xdg_shell!(crate::core::state::CompositorState);
+smithay::delegate_xdg_decoration!(crate::core::state::CompositorState);
+smithay::delegate_xdg_foreign!(crate::core::state::CompositorState);
+smithay::delegate_xdg_activation!(crate::core::state::CompositorState);
+smithay::delegate_xdg_dialog!(crate::core::state::CompositorState);
+smithay::delegate_xdg_system_bell!(crate::core::state::CompositorState);
+smithay::delegate_xdg_toplevel_icon!(crate::core::state::CompositorState);
+smithay::delegate_xdg_toplevel_tag!(crate::core::state::CompositorState);
+
 pub mod smithay_runtime {
     //! Runtime Smithay protocol ownership boundary.
     //!
@@ -424,17 +441,32 @@ pub mod smithay_runtime {
             let mut seat_state = smithay::input::SeatState::<CompositorState>::new();
             let mut seat = seat_state.new_wl_seat(dh, "seat0");
             let _ = seat.add_pointer();
-            #[cfg(not(any(
-                target_os = "ios",
-                target_os = "tvos",
-                target_os = "visionos",
-                target_os = "watchos"
-            )))]
-            let _ = seat.add_keyboard(
-                smithay::input::keyboard::XkbConfig::default(),
-                state.keyboard_repeat_delay,
-                state.keyboard_repeat_rate,
-            );
+            // Keyboard capability is added on EVERY platform (including
+            // iOS/iPadOS/tvOS/visionOS/watchOS). The Smithay seat is the single
+            // keyboard path; the previous mobile cfg-gate forced those platforms
+            // onto the now-retired legacy broadcast_key fallback. The keymap is
+            // resolved by wawona_xkb_config() which bundles a full evdev/us
+            // keymap and falls back to MINIMAL_KEYMAP only as a last resort.
+            let repeat_delay = state.keyboard_repeat_delay;
+            let repeat_rate = state.keyboard_repeat_rate;
+            let kbd = seat
+                .add_keyboard(
+                    crate::core::input::xkb::wawona_xkb_config(),
+                    repeat_delay,
+                    repeat_rate,
+                )
+                .or_else(|_| {
+                    // xkb data root unavailable: retry with bare defaults so
+                    // xkbcommon can still resolve via XKB_DEFAULT_* env vars.
+                    seat.add_keyboard(Default::default(), repeat_delay, repeat_rate)
+                });
+            if let Err(e) = kbd {
+                tracing::error!(
+                    "seat0: failed to add keyboard (no xkb data root?): {e:?}; \
+                     keyboard input unavailable until XKB_CONFIG_ROOT/bundled \
+                     xkeyboard-config is present"
+                );
+            }
             state.smithay_runtime.seat_state = Some(seat_state);
             state.smithay_runtime.seat = Some(seat);
         }
@@ -444,6 +476,56 @@ pub mod smithay_runtime {
             );
         }
         state.smithay_runtime.core_shell_initialized = true;
+    }
+
+    /// Register Smithay-owned XDG desktop extension globals (desktop profile only).
+    pub fn register_xdg_extensions(state: &mut CompositorState, dh: &DisplayHandle) {
+        use crate::core::wayland::policy;
+
+        if !policy::allow_desktop_extensions(state.protocol_profile) {
+            return;
+        }
+
+        if state.smithay_runtime.xdg_decoration.is_none() {
+            state.smithay_runtime.xdg_decoration =
+                Some(smithay::wayland::shell::xdg::decoration::XdgDecorationState::new::<
+                    CompositorState,
+                >(dh));
+        }
+        if state.smithay_runtime.xdg_foreign.is_none() {
+            state.smithay_runtime.xdg_foreign =
+                Some(smithay::wayland::xdg_foreign::XdgForeignState::new::<CompositorState>(dh));
+        }
+        if state.smithay_runtime.xdg_activation.is_none() {
+            state.smithay_runtime.xdg_activation =
+                Some(smithay::wayland::xdg_activation::XdgActivationState::new::<CompositorState>(
+                    dh,
+                ));
+        }
+        if state.smithay_runtime.xdg_dialog.is_none() {
+            state.smithay_runtime.xdg_dialog =
+                Some(smithay::wayland::shell::xdg::dialog::XdgDialogState::new::<CompositorState>(
+                    dh,
+                ));
+        }
+        if state.smithay_runtime.xdg_system_bell.is_none() {
+            state.smithay_runtime.xdg_system_bell =
+                Some(smithay::wayland::xdg_system_bell::XdgSystemBellState::new::<CompositorState>(
+                    dh,
+                ));
+        }
+        if state.smithay_runtime.xdg_toplevel_icon.is_none() {
+            state.smithay_runtime.xdg_toplevel_icon =
+                Some(smithay::wayland::xdg_toplevel_icon::XdgToplevelIconManager::new::<
+                    CompositorState,
+                >(dh));
+        }
+        if state.smithay_runtime.xdg_toplevel_tag.is_none() {
+            state.smithay_runtime.xdg_toplevel_tag =
+                Some(smithay::wayland::xdg_toplevel_tag::XdgToplevelTagManager::new::<
+                    CompositorState,
+                >(dh));
+        }
     }
 
     /// Mark extension/wlr registration boundary as runtime initialized.

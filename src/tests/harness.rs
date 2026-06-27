@@ -24,11 +24,13 @@ impl TestEnv {
         // Initialize state
         let mut state = CompositorState::new(None);
         
-        // Register protocols
+        // Register protocols (match production compositor registration order)
+        crate::core::wayland::smithay_runtime::register_core_shell(&mut state, &handle);
+        crate::core::wayland::smithay_runtime::register_extensions_wlr(&mut state);
         crate::core::wayland::wayland::register(&mut state, &handle);
         crate::core::wayland::xdg::register(&mut state, &handle);
-        crate::core::wayland::ext::register(&mut state, &handle);
         crate::core::wayland::wlr::register(&mut state, &handle);
+        crate::core::wayland::ext::register(&mut state, &handle);
         
         // Create client on server side
         let client_data = ClientState { id: Some(1) };

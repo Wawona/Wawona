@@ -153,6 +153,7 @@ let
       };
       tvosIosToolchain = iosToolchain // {
         isTVOSToolchain = true;
+        deploymentTarget = "17.0";
         mkIOSBuildEnv = { simulator ? false, minVersion ? "17.0" }:
           iosToolchain.mkAppleEnv {
             sdkName = if simulator then "appletvsimulator" else "appletvos";
@@ -190,7 +191,8 @@ let
       simulator = normalizedEntry.simulator;
       ipadosModule = {
         buildForIPadOS = buildForIPadOSInternal;
-        buildForIOS = buildForIOSInternal;
+        # Shared ios.nix recipes (cairo/pango/weston) resolve nested deps via iPadOS.
+        buildForIOS = buildForIPadOSInternal;
       };
       ipadosArgs = {
         inherit lib pkgs buildPackages common simulator stdenv wawonaSrc;
@@ -258,14 +260,24 @@ let
       simulator = entry.simulator or false;
       watchosModule = {
         buildForWatchOS = buildForWatchOSInternal;
-        # Allow watchos.nix files that call buildModule.buildForIOS to fall through
-        buildForIOS = buildForIOSInternal;
+        # Shared ios.nix recipes resolve nested deps through watchOS (not iPhoneOS).
+        buildForIOS = buildForWatchOSInternal;
+      };
+      watchosIosToolchain = iosToolchain // {
+        isWatchOSToolchain = true;
+        deploymentTarget = "10.0";
+        mkIOSBuildEnv = { simulator ? false, minVersion ? "10.0" }:
+          iosToolchain.mkAppleEnv {
+            sdkName = if simulator then "watchsimulator" else "watchos";
+            platform = "watchos";
+            inherit simulator minVersion;
+          };
       };
       watchosArgs = {
         inherit lib pkgs buildPackages common simulator stdenv wawonaSrc;
         inherit (pkgs) fetchurl meson ninja pkg-config;
         buildModule = watchosModule;
-        iosToolchain = iosToolchain;
+        iosToolchain = watchosIosToolchain;
       };
 
       registryEntry = registry.${name} or null;
@@ -300,6 +312,7 @@ let
       visionosIosToolchain = iosToolchain // {
         # Consumed by shared iOS recipes (e.g. xkbcommon) to pick matching native deps.
         isVisionOSToolchain = true;
+        deploymentTarget = "26.0";
         mkIOSBuildEnv = { simulator ? false, minVersion ? "26.0" }:
           iosToolchain.mkAppleEnv {
             sdkName = if simulator then "xrsimulator" else "xros";

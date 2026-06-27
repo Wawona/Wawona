@@ -458,7 +458,7 @@ final class WWNMachinesHostingBridge: NSObject {
       onConnect: onConnect,
       onOpenSettings: {
         let prefs = WWNPreferences.shared()
-        prefs.show(nil)
+        prefs.show(nil as Any)
       }
     )
     let hosting = UIHostingController(rootView: root)

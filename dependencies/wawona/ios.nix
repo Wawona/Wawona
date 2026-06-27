@@ -78,7 +78,7 @@ xcodeUtils.buildApp {
   xcodeFlags = lib.concatStringsSep " " (
     [
       ''-project Wawona.xcodeproj''
-      ''-jobs 1''
+      ''-jobs ''${WAWONA_XCODEBUILD_JOBS:-$(sysctl -n hw.ncpu 2>/dev/null || echo 4)}
       ''-destination "generic/platform=${destinationPlatform}"''
     ]
     ++ lib.optionals (!releaseBuild) [

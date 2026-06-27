@@ -86,6 +86,89 @@ impl CompositorState {
                 height,
                 xdg_surface_id
             );
+            if let Some(toplevel_data) = self.xdg.toplevels.get_mut(&(client_id.clone(), toplevel_id)) {
+                toplevel_data.deferred_configure_size = Some((width, height));
+            }
+            return None;
+        }
+
+        let smithay_surface = self
+            .xdg
+            .toplevels
+            .get(&(client_id.clone(), toplevel_id))
+            .and_then(|tl| tl.toplevel_surface.clone());
+
+        if let Some(toplevel_surface) = smithay_surface {
+            let (final_w, final_h, activated, pending_maximized, pending_fullscreen) = {
+                let Some(toplevel_data) =
+                    self.xdg.toplevels.get_mut(&(client_id.clone(), toplevel_id))
+                else {
+                    return None;
+                };
+                toplevel_data.deferred_configure_size = None;
+                let (final_w, final_h) = if toplevel_data.pending_fullscreen {
+                    (width.max(1), height.max(1))
+                } else if width == 0 && height == 0 {
+                    let prev_w = toplevel_data.width.max(1);
+                    let prev_h = toplevel_data.height.max(1);
+                    (prev_w, prev_h)
+                } else {
+                    let (clamped_w, clamped_h) =
+                        toplevel_data.clamp_size(width.max(1), height.max(1));
+                    (clamped_w.max(1), clamped_h.max(1))
+                };
+                toplevel_data.width = final_w;
+                toplevel_data.height = final_h;
+                (
+                    final_w,
+                    final_h,
+                    toplevel_data.activated,
+                    toplevel_data.pending_maximized,
+                    toplevel_data.pending_fullscreen,
+                )
+            };
+
+            toplevel_surface.with_pending_state(|state| {
+                use wayland_protocols::xdg::shell::server::xdg_toplevel::State;
+                state.size = Some((final_w as i32, final_h as i32).into());
+                if activated {
+                    state.states.set(State::Activated);
+                } else {
+                    state.states.unset(State::Activated);
+                }
+                if pending_maximized {
+                    state.states.set(State::Maximized);
+                } else {
+                    state.states.unset(State::Maximized);
+                }
+                if pending_fullscreen {
+                    state.states.set(State::Fullscreen);
+                } else {
+                    state.states.unset(State::Fullscreen);
+                }
+            });
+            let serial = u32::from(toplevel_surface.send_configure());
+            crate::wlog!(
+                crate::util::logging::COMPOSITOR,
+                "send_toplevel_configure: client={:?} tl_id={} size={}x{} serial={} (smithay)",
+                client_id,
+                toplevel_id,
+                final_w,
+                final_h,
+                serial
+            );
+            if let Some(toplevel_data) = self.xdg.toplevels.get_mut(&(client_id.clone(), toplevel_id)) {
+                toplevel_data.pending_serial = serial;
+            }
+            if let Some(surface_data) = self
+                .xdg
+                .surfaces
+                .get_mut(&(client_id.clone(), xdg_surface_id))
+            {
+                surface_data.pending_serial = serial;
+                surface_data.configured = false;
+            }
+            return Some(serial);
         }
 
         let serial = self.next_serial();

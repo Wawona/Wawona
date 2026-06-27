@@ -45,6 +45,10 @@ set(WAWONA_STUDIO_FALLBACK OFF)
 if(NOT DEFINED NIX_DEP_INCLUDES OR NIX_DEP_INCLUDES STREQUAL "")
   set(WAWONA_STUDIO_FALLBACK ON)
 endif()
+set(WAWONA_WESTON_TOYTOOLKIT OFF)
+if(DEFINED NIX_DEP_LIBS AND NIX_DEP_LIBS MATCHES "libweston-13\\.a")
+  set(WAWONA_WESTON_TOYTOOLKIT ON)
+endif()
 if(NOT WAWONA_STUDIO_FALLBACK)
   include_directories(
       ${WAWONA_ROOT}/deps/weston-simple-shm
@@ -69,9 +73,13 @@ if(WAWONA_STUDIO_FALLBACK)
   )
 else()
   list(APPEND WAWONA_SOURCES
-      ${WAWONA_ROOT}/src/platform/android/cairo_shim.c
       ${WAWONA_ROOT}/src/platform/android/rendering/renderer_android.c
   )
+  if(NOT WAWONA_WESTON_TOYTOOLKIT)
+    list(APPEND WAWONA_SOURCES
+        ${WAWONA_ROOT}/src/platform/android/cairo_shim.c
+    )
+  endif()
   if(NOT EXISTS "${WAWONA_ROOT}/dependencies/generators/gradlegen/generated/shader_spv.h")
     message(FATAL_ERROR
       "Missing generated Android shader header at dependencies/generators/gradlegen/generated/shader_spv.h. "
@@ -89,17 +97,31 @@ if(NOT WAWONA_STUDIO_FALLBACK)
   target_sources(
       wawona PRIVATE
       ${WAWONA_ROOT}/deps/weston-simple-shm/clients/simple-shm.c
-      ${WAWONA_ROOT}/deps/weston-simple-shm/shared/os-compatibility.c
-      ${WAWONA_ROOT}/deps/weston-simple-shm/xdg-shell-protocol.c
-      ${WAWONA_ROOT}/deps/weston-simple-shm/fullscreen-shell-unstable-v1-protocol.c
   )
+  if(NOT WAWONA_WESTON_TOYTOOLKIT)
+    target_sources(
+        wawona PRIVATE
+        ${WAWONA_ROOT}/deps/weston-simple-shm/shared/os-compatibility.c
+        ${WAWONA_ROOT}/deps/weston-simple-shm/xdg-shell-protocol.c
+        ${WAWONA_ROOT}/deps/weston-simple-shm/fullscreen-shell-unstable-v1-protocol.c
+    )
+  endif()
 endif()
 
-# Parse NIX_DEP_LIBS "-L/nix/.../lib -L/nix/.../lib"
+# Parse NIX_DEP_LIBS: "-L/nix/.../lib" directories plus extra link flags
+# (whole-archive weston static libs, cairo/pango -l flags, etc.)
 set(NIX_LIB_DIRS "")
+set(NIX_EXTRA_LINK_FLAGS "")
 if (DEFINED NIX_DEP_LIBS)
-    string(REPLACE "-L" "" NIX_LIB_DIRS_RAW "${NIX_DEP_LIBS}")
-    separate_arguments(NIX_LIB_DIRS NATIVE_COMMAND "${NIX_LIB_DIRS_RAW}")
+    separate_arguments(NIX_ALL_FLAGS NATIVE_COMMAND "${NIX_DEP_LIBS}")
+    foreach(flag ${NIX_ALL_FLAGS})
+        if(flag MATCHES "^-L")
+            string(REGEX REPLACE "^-L" "" dir "${flag}")
+            list(APPEND NIX_LIB_DIRS "${dir}")
+        else()
+            list(APPEND NIX_EXTRA_LINK_FLAGS "${flag}")
+        endif()
+    endforeach()
 endif()
 
 # Target Link Libraries (Rust backend first to match Nix/ld resolution)
@@ -141,8 +163,12 @@ else()
       dl
       z
   )
+  # NDK lld treats Darwin-indexed static archives (common when cross-compiling
+  # from macOS hosts) as warnings; --fatal-warnings from the toolchain promotes
+  # those to hard link failures for -lcairo/-lpango etc.
+  target_link_options(wawona PRIVATE "-Wl,--no-fatal-warnings")
 endif()
-target_link_libraries(wawona PRIVATE ${_WAWONA_LINK_LIBS})
+target_link_libraries(wawona PRIVATE ${_WAWONA_LINK_LIBS} ${NIX_EXTRA_LINK_FLAGS})
 
 if (NIX_LIB_DIRS)
     target_link_directories(wawona PRIVATE ${NIX_LIB_DIRS})

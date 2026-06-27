@@ -40,7 +40,7 @@ pkgs.stdenv.mkDerivation {
     IOS_ARCH="arm64"
 
     OBJ_FILES=""
-    for src_file in clients/simple-shm.c shared/os-compatibility.c xdg-shell-protocol.c fullscreen-shell-unstable-v1-protocol.c; do
+    for src_file in clients/simple-shm.c xdg-shell-protocol.c fullscreen-shell-unstable-v1-protocol.c; do
       obj_file="$(basename $src_file .c).o"
       $IOS_CC -c "$src_file" \
          -I. \

@@ -412,57 +412,75 @@ impl WawonaCore {
         } else {
             KdeMode::Client
         };
-        
-        // Collect existing decorations to trigger updates
-        let mut decorations_to_configure = Vec::new();
-        for decoration in state.xdg.decoration.decorations.values() {
-            decorations_to_configure.push(decoration.clone());
-        }
-        
-        crate::wlog!(crate::util::logging::FFI, "Updating {} active decorations", decorations_to_configure.len());
-        
-        for decoration in decorations_to_configure {
-            let window_id = decoration.window_id;
 
-            // Handle XDG Decoration
-            if let Some(res) = &decoration.resource {
-                res.configure(target_xdg_mode);
-            }
+        let new_mode = if enabled {
+            crate::core::window::DecorationMode::ServerSide
+        } else {
+            crate::core::window::DecorationMode::ClientSide
+        };
 
-            // Handle KDE Decoration
-            if let Some(res) = &decoration.kde_resource {
-                res.mode(target_kde_mode);
-            }
-            
-            let new_mode = if enabled {
-                crate::core::window::DecorationMode::ServerSide
+        let toplevel_updates: Vec<(u32, smithay::wayland::shell::xdg::ToplevelSurface)> = state
+            .xdg
+            .toplevels
+            .values()
+            .filter_map(|tl| tl.toplevel_surface.clone().map(|s| (tl.window_id, s)))
+            .collect();
+
+        let kde_decorations: Vec<_> = state
+            .xdg
+            .decoration
+            .decorations
+            .values()
+            .filter(|d| d.kde_resource.is_some())
+            .cloned()
+            .collect();
+
+        crate::wlog!(
+            crate::util::logging::FFI,
+            "Updating {} toplevel decorations ({} KDE)",
+            toplevel_updates.len(),
+            kde_decorations.len()
+        );
+
+        for (window_id, toplevel) in toplevel_updates {
+            let xdg_mode = if enabled {
+                target_xdg_mode
             } else {
-                crate::core::window::DecorationMode::ClientSide
+                crate::core::wayland::xdg::decoration::preferred_xdg_decoration_mode(&state, window_id)
             };
+            toplevel.with_pending_state(|pending| {
+                pending.decoration_mode = Some(xdg_mode);
+            });
+            let _ = toplevel.send_pending_configure();
 
-            // Update window decoration mode state
             if let Some(window) = state.get_window(window_id) {
                 let mut window = window.write().unwrap();
                 window.decoration_mode = new_mode;
             }
 
-            // Notify platform so it can update window style (e.g. titled vs borderless)
             state.pending_compositor_events.push(
                 crate::core::compositor::CompositorEvent::DecorationModeChanged {
                     window_id,
                     mode: new_mode,
                 },
             );
+        }
 
-            // Do NOT call reconfigure_window_decorations here.
-            //
-            // Calling it now would immediately send an xdg_toplevel.configure
-            // with window.width/height, which is still the PRE-decoration size.
-            // The platform will fire handleDecorationModeChanged:, which now
-            // injects a resize via injectWindowResize after setStyleMask: runs.
-            // That resize flows through resize_window → send_toplevel_configure
-            // with the correct post-titlebar content-area size.
-
+        for decoration in kde_decorations {
+            let window_id = decoration.window_id;
+            if let Some(res) = &decoration.kde_resource {
+                res.mode(target_kde_mode);
+            }
+            if let Some(window) = state.get_window(window_id) {
+                let mut window = window.write().unwrap();
+                window.decoration_mode = new_mode;
+            }
+            state.pending_compositor_events.push(
+                crate::core::compositor::CompositorEvent::DecorationModeChanged {
+                    window_id,
+                    mode: new_mode,
+                },
+            );
         }
     }
 
@@ -2131,14 +2149,18 @@ impl WawonaCore {
         }
 
         // Find the specific toplevel associated with this window.
-        // Each window maps to exactly one toplevel — we must NOT
-        // reconfigure other toplevels even if they belong to the
-        // same client.
         let target_toplevel: Option<(wayland_server::backend::ClientId, u32)> = {
             let state = self.state.read().unwrap();
-            state.xdg.toplevels.iter()
-                .find(|(_, data)| data.window_id == wid)
-                .map(|(key, _)| key.clone())
+            state
+                .xdg_toplevel_key_for_window(wid)
+                .or_else(|| {
+                    state
+                        .xdg
+                        .toplevels
+                        .iter()
+                        .find(|(_, data)| data.window_id == wid)
+                        .map(|(key, _)| key.clone())
+                })
         };
 
         // Do NOT change the global output size here *for xdg_toplevels*.  The output
@@ -2655,13 +2677,14 @@ impl WawonaCore {
             .as_ref()
             .and_then(|seat| seat.get_keyboard())
         {
-            // macOS bridge translates NSEvent keycodes to Linux evdev codes.
-            // Smithay keyboard path expects XKB keycode domain for input(),
-            // so apply +8 offset on macOS to keep hardware mapping aligned.
-            #[cfg(target_os = "macos")]
+            // Every native layer (macOS/iOS/tvOS/visionOS/watchOS/Android/X11)
+            // emits Linux evdev scancodes. Smithay's keyboard.input() expects
+            // the XKB keycode domain (evdev + 8): KeysymHandle::raw_code() is
+            // documented as "raw code in X keycode system (shifted by 8)" and
+            // Smithay sends raw_code()-8 to the client. So the +8 offset is
+            // unconditional on ALL platforms (previously macOS-only, which left
+            // every other platform off-by-8 and mapping the wrong symbols).
             let smithay_keycode = keycode.saturating_add(8);
-            #[cfg(not(target_os = "macos"))]
-            let smithay_keycode = keycode;
 
             let smithay_state = match key_state {
                 KeyState::Released => smithay::backend::input::KeyState::Released,

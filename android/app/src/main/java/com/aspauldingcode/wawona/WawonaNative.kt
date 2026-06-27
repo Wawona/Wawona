@@ -114,6 +114,11 @@ object WawonaNative {
     external fun nativeStopFoot()
     external fun nativeIsFootRunning(): Boolean
 
+    external fun nativeRunBundledClient(clientId: String): Boolean
+    external fun nativeStopBundledClient()
+    external fun nativeIsBundledClientRunning(): Boolean
+    external fun nativeGetRunningBundledClientId(): String?
+
     external fun nativeTestPing(host: String, port: Int, timeoutMs: Int): String
     external fun nativeTestSSH(host: String, user: String, password: String, port: Int): String
 }

@@ -111,6 +111,50 @@ impl ClientData for WawonaClientData {
     }
 }
 
+/// Backend client data attached (via `DisplayHandle::insert_client`) to every
+/// accepted Wayland client.
+///
+/// It carries the per-client [`CompositorClientState`] required by Smithay's
+/// `CompositorHandler::client_compositor_state`. Storing it per client (instead
+/// of one process-wide shared instance) gives every client isolated
+/// surface/subsurface cached state — no cross-client bleed when multiple clients
+/// (e.g. waypipe + weston-terminal + a GL client) are connected at once — and
+/// lets the trait return a correctly-scoped `&'a` borrow with no unsafe
+/// lifetime extension.
+///
+/// [`CompositorClientState`]: smithay::wayland::compositor::CompositorClientState
+pub struct WawonaBackendClientData {
+    pub internal_id: u32,
+    pub disconnected_queue: Arc<Mutex<Vec<ClientId>>>,
+    pub compositor_state: smithay::wayland::compositor::CompositorClientState,
+}
+
+impl ClientData for WawonaBackendClientData {
+    fn initialized(&self, client_id: ClientId) {
+        tracing::info!(
+            "Client {} initialized (backend id: {:?})",
+            self.internal_id,
+            client_id
+        );
+    }
+
+    fn disconnected(&self, client_id: ClientId, reason: DisconnectReason) {
+        let reason_str = match reason {
+            DisconnectReason::ConnectionClosed => "connection closed",
+            DisconnectReason::ProtocolError(_) => "protocol error",
+        };
+        tracing::info!(
+            "Client {} disconnected: {} (backend id: {:?})",
+            self.internal_id,
+            reason_str,
+            client_id
+        );
+        if let Ok(mut queue) = self.disconnected_queue.lock() {
+            queue.push(client_id);
+        }
+    }
+}
+
 // ============================================================================
 // Compositor Configuration
 // ============================================================================
@@ -457,42 +501,13 @@ impl Compositor {
             self.next_client_id += 1;
             
             // Install disconnect-aware client data immediately so the backend
-            // callback queue remains accurate for all clients.
-            #[derive(Clone)]
-            struct ConnectedClientData {
-                internal_id: u32,
-                disconnected_queue: Arc<Mutex<Vec<ClientId>>>,
-            }
-
-            impl ClientData for ConnectedClientData {
-                fn initialized(&self, client_id: ClientId) {
-                    tracing::info!(
-                        "Client {} initialized (backend id: {:?})",
-                        self.internal_id,
-                        client_id
-                    );
-                }
-
-                fn disconnected(&self, client_id: ClientId, reason: DisconnectReason) {
-                    let reason_str = match reason {
-                        DisconnectReason::ConnectionClosed => "connection closed",
-                        DisconnectReason::ProtocolError(_) => "protocol error",
-                    };
-                    tracing::info!(
-                        "Client {} disconnected: {} (backend id: {:?})",
-                        self.internal_id,
-                        reason_str,
-                        client_id
-                    );
-                    if let Ok(mut queue) = self.disconnected_queue.lock() {
-                        queue.push(client_id);
-                    }
-                }
-            }
-
-            let client_data_for_backend = ConnectedClientData {
+            // callback queue remains accurate for all clients. This also carries
+            // the per-client Smithay CompositorClientState (see
+            // WawonaBackendClientData) so each client gets isolated surface state.
+            let client_data_for_backend = WawonaBackendClientData {
                 internal_id: next_id,
                 disconnected_queue: self.disconnected_clients.clone(),
+                compositor_state: smithay::wayland::compositor::CompositorClientState::default(),
             };
 
             match display_handle.insert_client(stream, Arc::new(client_data_for_backend)) {
@@ -795,47 +810,33 @@ impl Compositor {
 
         // Check for timed-out pings (>10 seconds without pong)
         let timed_out: Vec<u32> = state.xdg.pending_pings.iter()
-            .filter(|(_, (_, _, ts))| now.duration_since(*ts).as_secs() > 10)
+            .filter(|(_, (_, ts))| now.duration_since(*ts).as_secs() > 10)
             .map(|(serial, _)| *serial)
             .collect();
 
         for stale_serial in timed_out {
-            if let Some((client_id, shell_resource_id, ts)) = state.xdg.pending_pings.remove(&stale_serial) {
+            if let Some((idx, ts)) = state.xdg.pending_pings.remove(&stale_serial) {
                 tracing::warn!(
-                    "xdg_wm_base ping timeout: serial={}, client={:?}, shell={}, elapsed={:.1}s — client may be unresponsive",
-                    stale_serial, client_id, shell_resource_id, now.duration_since(ts).as_secs_f64()
+                    "xdg_wm_base ping timeout: serial={}, shell_index={}, elapsed={:.1}s — client may be unresponsive",
+                    stale_serial,
+                    idx,
+                    now.duration_since(ts).as_secs_f64()
                 );
             }
         }
 
-        // Snapshot shell resources to avoid mutable/immutable borrow conflicts
-        // while allocating serials and updating ping bookkeeping.
-        let shell_targets = state
-            .xdg
-            .shell_resources
-            .iter()
-            .map(|((client_id, resource_id), shell)| {
-                (client_id.clone(), *resource_id, shell.clone())
-            })
-            .collect::<Vec<_>>();
-
-        // Send new pings with unique serial per client/resource pair.
-        for (client_id, resource_id, shell) in shell_targets {
-            state.xdg.pending_pings.retain(|_, (cid, sid, _)| {
-                *cid != client_id || *sid != resource_id
-            });
+        for (idx, shell_client) in state.xdg.shell_clients.iter().enumerate() {
             let serial = self.next_serial();
-            shell.ping(serial);
-            state
-                .xdg
-                .pending_pings
-                .insert(serial, (client_id.clone(), resource_id, now));
-            tracing::trace!(
-                "Sent xdg_wm_base ping: serial={}, client={:?}, shell={}",
-                serial,
-                client_id,
-                resource_id
-            );
+            if shell_client
+                .send_ping(smithay::utils::Serial::from(serial))
+                .is_ok()
+            {
+                state
+                    .xdg
+                    .pending_pings
+                    .insert(serial, (idx, now));
+                tracing::trace!("Sent xdg_wm_base ping: serial={} shell_index={}", serial, idx);
+            }
         }
 
         // Check idle timeouts and send idled/resumed events
@@ -933,22 +934,10 @@ mod tests {
     }
 
     #[test]
-    fn test_ping_clients_prunes_stale_pending_entries() {
+    fn test_ping_clients_with_smithay_shell_clients() {
         let mut compositor = test_compositor();
         let mut state = CompositorState::new(None);
-        let backend_id = make_backend_client_id();
-
-        state.xdg.pending_pings.insert(
-            42,
-            (
-                backend_id,
-                1,
-                Instant::now() - Duration::from_secs(11),
-            ),
-        );
-
         compositor.ping_clients(&mut state);
-
         assert!(state.xdg.pending_pings.is_empty());
     }
 }

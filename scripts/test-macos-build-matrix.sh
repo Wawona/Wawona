@@ -37,6 +37,17 @@ targets=(
   ".#wawona-visionos-backend"
   ".#wawona-visionos-sim-backend"
   ".#wawona-macos-backend"
+  ".#weston-ios"
+  ".#weston-compositor-ios"
+  ".#weston-ios-gl"
+  ".#weston-ios-gl-sim"
+  ".#angle-ios"
+  ".#angle-ios-sim"
+  ".#iland-ios"
+  ".#iland-ios-sim"
+  ".#iland-gl-clients-ios"
+  ".#iland-gl-clients-ios-device"
+  ".#iland-gl-clients"
 )
 
 echo "[wawona] Validating macOS-host target compilation matrix..."

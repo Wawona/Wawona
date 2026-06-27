@@ -1,0 +1,13 @@
+__cmake_systeminformation/
+build/
+.build/
+
+build-weston/
+.build-weston/
+
+AGENTS.md
+.DS_Store
+FrameBufferService/
+weston/
+multitouch_source/
+opencode.json

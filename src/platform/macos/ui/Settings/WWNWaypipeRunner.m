@@ -1,11 +1,18 @@
 #import "WWNWaypipeRunner.h"
+#import "WWNPreferencesManager.h"
 #import "../../../../util/WWNLog.h"
 #import "WWNSSHClient.h"
+#import "../../WWNCompositorBridge.h"
+#if TARGET_OS_IPHONE
+#import "../../../ios/WWNRootfsManager.h"
+#endif
 #import <errno.h>
 #import <spawn.h>
 #import <sys/stat.h>
 #import <sys/wait.h>
+#import <signal.h>
 #import <unistd.h>
+#import <math.h>
 
 extern char **environ;
 
@@ -16,13 +23,32 @@ volatile pid_t g_active_waypipe_pgid = 0;
 extern int waypipe_main(int argc, char **argv);
 extern int weston_simple_shm_main(int argc, char **argv);
 #if TARGET_OS_IPHONE
+extern void wwn_weston_client_log_init(void);
 extern int foot_main(int argc, char **argv);
+extern int simple_egl_main(int argc, char **argv) __attribute__((weak));
 extern int wwn_weston_is_compat_shim(void) __attribute__((weak));
 extern int wwn_weston_terminal_is_compat_shim(void) __attribute__((weak));
 extern int wwn_foot_is_compat_shim(void) __attribute__((weak));
 #endif
 extern int weston_main(int argc, char **argv);
+extern int weston_compositor_main(int argc, char **argv);
+extern volatile sig_atomic_t wwn_weston_compositor_shutdown_requested;
 extern int weston_terminal_main(int argc, char **argv);
+#if TARGET_OS_IPHONE
+extern int flower_main(int argc, char **argv);
+extern int clickdot_main(int argc, char **argv);
+extern int smoke_main(int argc, char **argv);
+extern int eventdemo_main(int argc, char **argv);
+extern int resizor_main(int argc, char **argv);
+extern int cliptest_main(int argc, char **argv);
+extern int transformed_main(int argc, char **argv);
+extern int stacking_main(int argc, char **argv);
+extern int dnd_main(int argc, char **argv);
+extern int image_main(int argc, char **argv);
+extern int scaler_main(int argc, char **argv);
+extern int editor_main(int argc, char **argv);
+extern int constraints_main(int argc, char **argv);
+#endif
 
 @interface WWNWaypipeRunner () <WWNSSHClientDelegate>
 @property(nonatomic, assign) pid_t currentPid;
@@ -37,6 +63,10 @@ extern int weston_terminal_main(int argc, char **argv);
 @property(nonatomic, assign) BOOL westonRunning;
 @property(nonatomic, assign) BOOL westonTerminalRunning;
 @property(nonatomic, assign) BOOL footRunning;
+#if TARGET_OS_IPHONE
+@property(nonatomic, assign) BOOL iosNativeClientInFlight;
+@property(nonatomic, copy) NSString *activeIOSBundledClientId;
+#endif
 #if !TARGET_OS_IPHONE
 @property(nonatomic, strong) NSTask *westonSimpleSHMTask;
 @property(nonatomic, strong) NSTask *westonTask;
@@ -1156,20 +1186,181 @@ extern int weston_terminal_main(int argc, char **argv);
   self.stopping = NO;
 }
 
+#if TARGET_OS_IPHONE
+typedef int (*WWNClientMainFn)(int, char **);
+
+static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
+  static NSDictionary<NSString *, NSValue *> *map;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    map = @{
+      @"weston-simple-shm" :
+          [NSValue valueWithPointer:(void *)weston_simple_shm_main],
+      @"weston" : [NSValue valueWithPointer:(void *)weston_compositor_main],
+      @"weston-terminal" :
+          [NSValue valueWithPointer:(void *)weston_terminal_main],
+      @"foot" : [NSValue valueWithPointer:(void *)foot_main],
+      @"weston-flower" : [NSValue valueWithPointer:(void *)flower_main],
+      @"weston-clickdot" : [NSValue valueWithPointer:(void *)clickdot_main],
+      @"weston-smoke" : [NSValue valueWithPointer:(void *)smoke_main],
+      @"weston-eventdemo" : [NSValue valueWithPointer:(void *)eventdemo_main],
+      @"weston-resizor" : [NSValue valueWithPointer:(void *)resizor_main],
+      @"weston-cliptest" : [NSValue valueWithPointer:(void *)cliptest_main],
+      @"weston-transformed" :
+          [NSValue valueWithPointer:(void *)transformed_main],
+      @"weston-stacking" : [NSValue valueWithPointer:(void *)stacking_main],
+      @"weston-dnd" : [NSValue valueWithPointer:(void *)dnd_main],
+      @"weston-image" : [NSValue valueWithPointer:(void *)image_main],
+      @"weston-scaler" : [NSValue valueWithPointer:(void *)scaler_main],
+      @"weston-editor" : [NSValue valueWithPointer:(void *)editor_main],
+      @"weston-constraints" :
+          [NSValue valueWithPointer:(void *)constraints_main],
+      @"weston-simple-egl" :
+          [NSValue valueWithPointer:(void *)simple_egl_main],
+    };
+  });
+  NSValue *entry = map[clientId];
+  return entry ? (WWNClientMainFn)[entry pointerValue] : NULL;
+}
+
+- (BOOL)wwnBeginIOSNativeClientLaunch:(NSString *)clientId {
+  if (clientId.length == 0) {
+    return NO;
+  }
+  if (self.iosNativeClientInFlight) {
+    WWNLog("WESTON",
+           @"Refusing duplicate in-process launch for '%@' (already running '%@')",
+           clientId, self.activeIOSBundledClientId ?: @"(unknown)");
+    return NO;
+  }
+  self.iosNativeClientInFlight = YES;
+  self.activeIOSBundledClientId = [clientId copy];
+#if TARGET_OS_IPHONE
+  wwn_weston_client_log_init();
+#endif
+  [[WWNCompositorBridge sharedBridge] prepareOutputSizeForNativeClientLaunch];
+  return YES;
+}
+
+- (void)wwnEndIOSNativeClientLaunch {
+  self.iosNativeClientInFlight = NO;
+  self.activeIOSBundledClientId = nil;
+}
+
+- (void)stopActiveIOSBundledClient {
+  wwn_weston_compositor_shutdown_requested = 1;
+  [[WWNCompositorBridge sharedBridge] tearDownActiveIOSCompositorViews];
+  self.westonRunning = NO;
+  self.westonTerminalRunning = NO;
+  self.westonSimpleSHMRunning = NO;
+  self.footRunning = NO;
+  self.iosNativeClientInFlight = NO;
+  self.activeIOSBundledClientId = nil;
+}
+#endif
+
+// MARK: - Generic bundled client launcher
+
+- (void)launchBundledClientWithId:(NSString *)clientId {
+  if (clientId.length == 0)
+    return;
+
+#if TARGET_OS_IPHONE
+  if ([clientId isEqualToString:@"weston"]) {
+    [self launchWeston];
+    return;
+  }
+  if ([clientId isEqualToString:@"weston-terminal"]) {
+    [self launchWestonTerminal];
+    return;
+  }
+  if ([clientId isEqualToString:@"weston-simple-shm"]) {
+    [self launchWestonSimpleSHM];
+    return;
+  }
+  if ([clientId isEqualToString:@"foot"]) {
+    [self launchFoot];
+    return;
+  }
+  if ([clientId isEqualToString:@"kmscube"]) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      BOOL ok = [[WWNCompositorBridge sharedBridge] launchNestedKmscubeOnPrimaryView];
+      if (!ok) {
+        WWNLog("WESTON", @"kmscube launch failed (no compositor view or kmscube_main unavailable)");
+      }
+    });
+    return;
+  }
+
+  WWNClientMainFn entry = WWNClientMainForId(clientId);
+  if (!entry) {
+    WWNLog("WESTON", @"Unknown bundled client id: %@", clientId);
+    return;
+  }
+
+  dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+    if (![self wwnBeginIOSNativeClientLaunch:clientId]) {
+      return;
+    }
+
+    char *argv[] = {(char *)clientId.UTF8String, NULL};
+    char saved_cwd[512] = "";
+    const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
+    if (xdg_dir) {
+      getcwd(saved_cwd, sizeof(saved_cwd));
+      chdir(xdg_dir);
+    }
+
+    WWNLog("WESTON", @"Launching in-process %@...", clientId);
+    int result = entry(1, argv);
+    WWNLog("WESTON", @"%@ exit code: %d", clientId, result);
+
+    if (saved_cwd[0])
+      chdir(saved_cwd);
+
+    [self wwnEndIOSNativeClientLaunch];
+  });
+#else
+  if ([clientId isEqualToString:@"weston-simple-shm"]) {
+    [self launchWestonSimpleSHM];
+    return;
+  }
+  if ([clientId isEqualToString:@"weston"]) {
+    [self launchWeston];
+    return;
+  }
+  if ([clientId isEqualToString:@"weston-terminal"]) {
+    [self launchWestonTerminal];
+    return;
+  }
+  if ([clientId isEqualToString:@"foot"]) {
+    [self launchFoot];
+    return;
+  }
+  BOOL running = YES;
+  NSTask *task = nil;
+  [self launchGenericWestonClient:clientId taskInOut:&task runningFlagIn:&running];
+#endif
+}
+
 // MARK: - Weston Simple SHM
 
 - (void)launchWestonSimpleSHM {
-  if (self.westonSimpleSHMRunning)
+#if TARGET_OS_IPHONE
+  if (self.westonSimpleSHMRunning || self.iosNativeClientInFlight)
     return;
 
-  self.westonSimpleSHMRunning = YES;
-
-#if TARGET_OS_IPHONE
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+    if (![self wwnBeginIOSNativeClientLaunch:@"weston-simple-shm"]) {
+      return;
+    }
+    self.westonSimpleSHMRunning = YES;
+
     void *fn_addr = (void *)weston_simple_shm_main;
     if (fn_addr == NULL) {
       WWNLog("WESTON_SHM", @"FATAL: weston_simple_shm_main symbol is NULL!");
       self.westonSimpleSHMRunning = NO;
+      [self wwnEndIOSNativeClientLaunch];
       return;
     }
 
@@ -1191,8 +1382,13 @@ extern int weston_terminal_main(int argc, char **argv);
       chdir(saved_cwd);
 
     self.westonSimpleSHMRunning = NO;
+    [self wwnEndIOSNativeClientLaunch];
   });
 #else
+  if (self.westonSimpleSHMRunning)
+    return;
+
+  self.westonSimpleSHMRunning = YES;
   NSString *path = [self findWestonSimpleSHMBinary];
   if (!path) {
     WWNLog("WESTON_SHM",
@@ -1229,9 +1425,10 @@ extern int weston_terminal_main(int argc, char **argv);
 
 - (void)stopWestonSimpleSHM {
 #if TARGET_OS_IPHONE
-  // There's no clean way to stop it natively right now since
-  // wl_display_dispatch runs forever.
+  [[WWNCompositorBridge sharedBridge] tearDownActiveIOSCompositorViews];
   self.westonSimpleSHMRunning = NO;
+  self.iosNativeClientInFlight = NO;
+  self.activeIOSBundledClientId = nil;
 #else
   if (self.westonSimpleSHMTask) {
     [self.westonSimpleSHMTask terminate];
@@ -1438,20 +1635,119 @@ extern int weston_terminal_main(int argc, char **argv);
 
 // MARK: - Native Weston Executable
 
-- (void)launchWeston {
-  if (self.westonRunning)
-    return;
-  self.westonRunning = YES;
+// MARK: - Native Weston Executable
+
 #if TARGET_OS_IPHONE
-  if (wwn_weston_is_compat_shim && wwn_weston_is_compat_shim() != 0) {
-    WWNLog("WESTON", @"Refusing to launch 'weston': compatibility shim routes to weston-simple-shm.");
-    self.westonRunning = NO;
+- (BOOL)wwnWriteWestonIniAtPath:(const char *)configPath usePixman:(BOOL)usePixman {
+  if (!configPath || !configPath[0]) {
+    return NO;
+  }
+  NSString *bundleRoot = [NSBundle mainBundle].bundlePath;
+  NSString *terminalIcon =
+      [bundleRoot stringByAppendingPathComponent:@"share/weston/terminal.png"];
+  NSString *backgroundImage =
+      [bundleRoot stringByAppendingPathComponent:@"share/weston/pattern.png"];
+  NSFileManager *fm = [NSFileManager defaultManager];
+  BOOL hasPattern = [fm fileExistsAtPath:backgroundImage];
+  BOOL hasTerminalIcon = [fm fileExistsAtPath:terminalIcon];
+  if (!hasPattern) {
+    WWNLog("WESTON", @"background-image missing in bundle: %@",
+           backgroundImage);
+  }
+  if (!hasTerminalIcon) {
+    WWNLog("WESTON", @"launcher icon missing in bundle: %@", terminalIcon);
+  }
+  NSString *backgroundImageLine =
+      hasPattern
+          ? [NSString stringWithFormat:@"background-image=%@\n", backgroundImage]
+          : @"";
+  NSString *ini = [NSString
+      stringWithFormat:@"[core]\n"
+                       @"use-pixman=%s\n"
+                       @"\n"
+                       @"[shell]\n"
+                       @"background-color=0xff1a1a2e\n"
+                       @"%@"
+                       @"background-type=tile\n"
+                       @"panel-color=0xff101010\n"
+                       @"panel-position=top\n"
+                       @"clock-format=seconds\n"
+                       @"\n"
+                       @"[launcher]\n"
+                       @"icon=%@\n"
+                       @"path=weston-terminal\n",
+                       usePixman ? "true" : "false", backgroundImageLine,
+                       hasTerminalIcon ? terminalIcon : @""];
+  NSError *iniErr = nil;
+  BOOL wrote = [ini writeToFile:@(configPath)
+                     atomically:YES
+                       encoding:NSUTF8StringEncoding
+                          error:&iniErr];
+  if (wrote) {
+    setenv("WESTON_CONFIG_FILE", configPath, 1);
+    WWNLog("WESTON", @"Wrote weston.ini + WESTON_CONFIG_FILE: %s", configPath);
+    WWNLog("WESTON", @"weston.ini background-image=%@", backgroundImage);
+  } else {
+    WWNLog("WESTON", @"Failed to write weston.ini (%s): %@", configPath,
+           iniErr.localizedDescription);
+  }
+  return wrote;
+}
+
+- (void)wwnLaunchWestonCompositorWithBackend:(const char *)backend
+                                  usePixman:(BOOL)usePixman
+                               prepareIland:(BOOL)prepareIland {
+  if (self.westonRunning || self.iosNativeClientInFlight) {
     return;
   }
+  self.westonRunning = YES;
+
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-    // Call weston_main directly for in-process mobile execution.
-    char *argv_weston[] = {"weston", NULL};
-    int argc_weston = 1;
+    CFAbsoluteTime launchStart = CFAbsoluteTimeGetCurrent();
+    WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+#if TARGET_OS_IPHONE
+    [WWNRootfsManager applyShellEnvironment];
+#endif
+    if (![self wwnBeginIOSNativeClientLaunch:@"weston"]) {
+      self.westonRunning = NO;
+      return;
+    }
+    WWNLog("WESTON", @"prepareOutputSize: %.0fms",
+           (CFAbsoluteTimeGetCurrent() - launchStart) * 1000.0);
+
+    if (prepareIland) {
+      if (![bridge prepareIlandMetalPresentationOnPrimaryView]) {
+        WWNLog("WESTON", @"Failed to prepare iland Metal presentation for Weston DRM");
+        self.westonRunning = NO;
+        [self wwnEndIOSNativeClientLaunch];
+        return;
+      }
+    }
+
+    if (!prepareIland) {
+      const char *parent_display = getenv("WAYLAND_DISPLAY");
+      if (!parent_display || parent_display[0] == '\0') {
+        parent_display = "wayland-0";
+      }
+      setenv("WAYLAND_DISPLAY", parent_display, 1);
+    }
+
+    uint32_t outW = 420;
+    uint32_t outH = 912;
+    float outScale = 1.0f;
+    [bridge latestOutputWidth:&outW height:&outH scale:&outScale];
+
+    char widthArg[32];
+    char heightArg[32];
+    char scaleArg[32];
+    snprintf(widthArg, sizeof(widthArg), "--width=%u", outW);
+    snprintf(heightArg, sizeof(heightArg), "--height=%u", outH);
+    // Wawona owns HiDPI via wl_output.scale + contentsScale on present.
+    // Nested Pixman/wayland Weston must not apply --scale again (would shrink
+    // desktop-shell logical space, e.g. 420x912 @ scale 3 → 140x304).
+    unsigned launchScale =
+        prepareIland ? (unsigned)lrintf(outScale) : 1u;
+    snprintf(scaleArg, sizeof(scaleArg), "--scale=%u", launchScale);
 
     char saved_cwd[512] = "";
     const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
@@ -1460,16 +1756,81 @@ extern int weston_terminal_main(int argc, char **argv);
       chdir(xdg_dir);
     }
 
-    WWNLog("WESTON", @"Launching iOS weston_main...");
-    int result = weston_main(argc_weston, argv_weston);
-    WWNLog("WESTON", @"weston_main exit code: %d", result);
+    char configPath[512] = "";
+    char configArg[600] = "";
+    if (xdg_dir && xdg_dir[0]) {
+      snprintf(configPath, sizeof(configPath), "%s/weston.ini", xdg_dir);
+      if ([self wwnWriteWestonIniAtPath:configPath usePixman:usePixman]) {
+        snprintf(configArg, sizeof(configArg), "--config=%s", configPath);
+      }
+    }
 
-    if (saved_cwd[0])
+    char *argv_weston[10];
+    int argc_weston = 0;
+    argv_weston[argc_weston++] = "weston";
+    argv_weston[argc_weston++] = (char *)backend;
+    argv_weston[argc_weston++] = "--shell=desktop-shell.so";
+    argv_weston[argc_weston++] = widthArg;
+    argv_weston[argc_weston++] = heightArg;
+    argv_weston[argc_weston++] = scaleArg;
+    if (configArg[0]) {
+      argv_weston[argc_weston++] = configArg;
+    }
+    if (usePixman) {
+      argv_weston[argc_weston++] = "--use-pixman";
+    }
+    argv_weston[argc_weston] = NULL;
+
+    wwn_weston_compositor_shutdown_requested = 0;
+    NSMutableString *argvLog = [NSMutableString string];
+    for (int i = 0; i < argc_weston; i++) {
+      if (i > 0) {
+        [argvLog appendString:@" "];
+      }
+      [argvLog appendFormat:@"%s", argv_weston[i]];
+    }
+    WWNLog("WESTON", @"Launch argv: %@", argvLog);
+    WWNLog("WESTON",
+           @"Launching nested weston_compositor_main (%s, output %ux%u "
+           @"host-scale %.1fx weston-scale %u, prep %.0fms)...",
+           backend, outW, outH, outScale, launchScale,
+           (CFAbsoluteTimeGetCurrent() - launchStart) * 1000.0);
+    int result = weston_compositor_main(argc_weston, argv_weston);
+    WWNLog("WESTON", @"weston_compositor_main exit code: %d (total %.0fms)", result,
+           (CFAbsoluteTimeGetCurrent() - launchStart) * 1000.0);
+
+    if (saved_cwd[0]) {
       chdir(saved_cwd);
+    }
 
     self.westonRunning = NO;
+    [self wwnEndIOSNativeClientLaunch];
   });
+}
+#endif
+
+- (void)launchWeston {
+#if TARGET_OS_IPHONE
+  if (self.westonRunning || self.iosNativeClientInFlight) {
+    return;
+  }
 #else
+  if (self.westonRunning) {
+    return;
+  }
+#endif
+#if TARGET_OS_IPHONE
+  NSString *backend =
+      [[WWNPreferencesManager sharedManager] nestedWestonBackend];
+  if ([backend isEqualToString:@"iland-drm-gl"]) {
+    [self launchWestonDrm];
+    return;
+  }
+  [self wwnLaunchWestonCompositorWithBackend:"--backend=wayland"
+                                   usePixman:YES
+                                prepareIland:NO];
+#else
+  self.westonRunning = YES;
   NSTask *task = nil;
   BOOL running = YES;
   [self launchGenericWestonClient:@"weston"
@@ -1483,9 +1844,21 @@ extern int weston_terminal_main(int argc, char **argv);
 #endif
 }
 
+- (void)launchWestonDrm {
+#if TARGET_OS_IPHONE
+  [self wwnLaunchWestonCompositorWithBackend:"--backend=drm"
+                                   usePixman:NO
+                                prepareIland:YES];
+#endif
+}
+
 - (void)stopWeston {
 #if TARGET_OS_IPHONE
+  wwn_weston_compositor_shutdown_requested = 1;
+  [[WWNCompositorBridge sharedBridge] tearDownActiveIOSCompositorViews];
   self.westonRunning = NO;
+  self.iosNativeClientInFlight = NO;
+  self.activeIOSBundledClientId = nil;
 #else
   if (self.westonTask) {
     [self.westonTask terminate];
@@ -1497,18 +1870,22 @@ extern int weston_terminal_main(int argc, char **argv);
 
 // MARK: - Weston Terminal
 - (void)launchWestonTerminal {
-  if (self.westonTerminalRunning)
-    return;
-  self.westonTerminalRunning = YES;
 #if TARGET_OS_IPHONE
+  if (self.westonTerminalRunning || self.iosNativeClientInFlight)
+    return;
   if (wwn_weston_terminal_is_compat_shim &&
       wwn_weston_terminal_is_compat_shim() != 0) {
     WWNLog("WESTON_TERM", @"Refusing to launch 'weston-terminal': compatibility shim routes to weston-simple-shm.");
-    self.westonTerminalRunning = NO;
     return;
   }
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-    // Call weston_terminal_main directly for in-process mobile execution.
+    if (![self wwnBeginIOSNativeClientLaunch:@"weston-terminal"]) {
+      return;
+    }
+    self.westonTerminalRunning = YES;
+
+    [WWNRootfsManager applyShellEnvironment];
+
     char *argv_term[] = {"weston-terminal", NULL};
     int argc_term = 1;
 
@@ -1527,8 +1904,12 @@ extern int weston_terminal_main(int argc, char **argv);
       chdir(saved_cwd);
 
     self.westonTerminalRunning = NO;
+    [self wwnEndIOSNativeClientLaunch];
   });
 #else
+  if (self.westonTerminalRunning)
+    return;
+  self.westonTerminalRunning = YES;
   NSString *path = [self findBinaryNamed:@"weston-terminal"];
   if (!path) {
     WWNLog("WESTON_TERM", @"Could not find weston-terminal in app bundle.");
@@ -1611,7 +1992,10 @@ extern int weston_terminal_main(int argc, char **argv);
 
 - (void)stopWestonTerminal {
 #if TARGET_OS_IPHONE
+  [[WWNCompositorBridge sharedBridge] tearDownActiveIOSCompositorViews];
   self.westonTerminalRunning = NO;
+  self.iosNativeClientInFlight = NO;
+  self.activeIOSBundledClientId = nil;
 #else
   if (self.westonTerminalTask) {
     [self.westonTerminalTask terminate];
@@ -1624,17 +2008,19 @@ extern int weston_terminal_main(int argc, char **argv);
 // MARK: - Foot Terminal
 
 - (void)launchFoot {
-  if (self.footRunning)
-    return;
-  self.footRunning = YES;
 #if TARGET_OS_IPHONE
+  if (self.footRunning || self.iosNativeClientInFlight)
+    return;
   if (wwn_foot_is_compat_shim && wwn_foot_is_compat_shim() != 0) {
     WWNLog("FOOT", @"Refusing to launch 'foot': compatibility shim routes to weston-simple-shm.");
-    self.footRunning = NO;
     return;
   }
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-    // Call foot_main directly for in-process mobile execution.
+    if (![self wwnBeginIOSNativeClientLaunch:@"foot"]) {
+      return;
+    }
+    self.footRunning = YES;
+
     char *argv_foot[] = {"foot", NULL};
     int argc_foot = 1;
 
@@ -1653,8 +2039,12 @@ extern int weston_terminal_main(int argc, char **argv);
       chdir(saved_cwd);
 
     self.footRunning = NO;
+    [self wwnEndIOSNativeClientLaunch];
   });
 #else
+  if (self.footRunning)
+    return;
+  self.footRunning = YES;
   NSTask *task = nil;
   BOOL running = YES;
   [self launchGenericWestonClient:@"foot"
@@ -1670,7 +2060,10 @@ extern int weston_terminal_main(int argc, char **argv);
 
 - (void)stopFoot {
 #if TARGET_OS_IPHONE
+  [[WWNCompositorBridge sharedBridge] tearDownActiveIOSCompositorViews];
   self.footRunning = NO;
+  self.iosNativeClientInFlight = NO;
+  self.activeIOSBundledClientId = nil;
 #else
   if (self.footTask) {
     [self.footTask terminate];

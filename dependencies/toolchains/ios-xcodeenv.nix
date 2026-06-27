@@ -83,6 +83,11 @@ let
             "arm64-apple-tvos${minVersion}-simulator"
           else
             "arm64-apple-tvos${minVersion}"
+        else if platform == "watchos" then
+          if simulator then
+            "arm64-apple-watchos${minVersion}-simulator"
+          else
+            "arm64-apple-watchos${minVersion}"
         else if simulator then
           "arm64-apple-ios${minVersion}-simulator"
         else
@@ -98,6 +103,11 @@ let
             "-mtvos-simulator-version-min=${minVersion}"
           else
             "-mtvos-version-min=${minVersion}"
+        else if platform == "watchos" then
+          if simulator then
+            "-mwatchos-simulator-version-min=${minVersion}"
+          else
+            "-mwatchos-version-min=${minVersion}"
         else if simulator then
           "-mios-simulator-version-min=${minVersion}"
         else
@@ -113,6 +123,11 @@ let
             "aarch64-apple-tvos-sim"
           else
             "aarch64-apple-tvos"
+        else if platform == "watchos" then
+          if simulator then
+            "aarch64-apple-watchos-sim"
+          else
+            "aarch64-apple-watchos"
         else if simulator then
           "aarch64-apple-ios-sim"
         else

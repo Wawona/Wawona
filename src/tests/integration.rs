@@ -25,6 +25,7 @@ struct ClientState {
     subcompositor: Option<wl_subcompositor::WlSubcompositor>,
     relative_pointer_manager: Option<zwp_relative_pointer_manager_v1::ZwpRelativePointerManagerV1>,
     relative_motion_events: Vec<(f64, f64)>,
+    last_keysym: Option<u32>,
 }
 
 impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
@@ -208,13 +209,19 @@ impl Dispatch<wl_pointer::WlPointer, ()> for ClientState {
 
 impl Dispatch<wl_keyboard::WlKeyboard, ()> for ClientState {
     fn event(
-        _state: &mut Self,
+        state: &mut Self,
         _proxy: &wl_keyboard::WlKeyboard,
-        _event: wl_keyboard::Event,
+        event: wl_keyboard::Event,
         _data: &(),
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
     ) {
+        if let wl_keyboard::Event::Key { key, state: key_state, .. } = event {
+            if key_state == wl_keyboard::KeyState::Pressed && key == 38 {
+                // Linux KEY_A (30) -> xkb keycode 38 on default keymap (+8).
+                state.last_keysym = Some(0x0061);
+            }
+        }
     }
 }
 
@@ -299,6 +306,7 @@ fn test_bind_globals() {
         subcompositor: None,
         relative_pointer_manager: None,
         relative_motion_events: Vec::new(),
+        last_keysym: None,
     };
     
     // Roundtrip
@@ -315,7 +323,7 @@ fn test_compositor_protocol() {
     let qh = event_queue.handle();
     
     let _registry = display.get_registry(&qh, ());
-    let mut client_state = ClientState { compositor: None, shm: None, seat: None, pointer: None, keyboard: None, xdg_wm_base: None, xdg_surface: None, xdg_toplevel: None, subcompositor: None, relative_pointer_manager: None, relative_motion_events: Vec::new() };
+    let mut client_state = ClientState { compositor: None, shm: None, seat: None, pointer: None, keyboard: None, xdg_wm_base: None, xdg_surface: None, xdg_toplevel: None, subcompositor: None, relative_pointer_manager: None, relative_motion_events: Vec::new(), last_keysym: None };
     
     // Bind globals
     env.wait_roundtrip(&mut event_queue, &mut client_state);
@@ -342,7 +350,7 @@ fn test_shm_protocol() {
     let qh = event_queue.handle();
     
     let _registry = display.get_registry(&qh, ());
-    let mut client_state = ClientState { compositor: None, shm: None, seat: None, pointer: None, keyboard: None, xdg_wm_base: None, xdg_surface: None, xdg_toplevel: None, subcompositor: None, relative_pointer_manager: None, relative_motion_events: Vec::new() };
+    let mut client_state = ClientState { compositor: None, shm: None, seat: None, pointer: None, keyboard: None, xdg_wm_base: None, xdg_surface: None, xdg_toplevel: None, subcompositor: None, relative_pointer_manager: None, relative_motion_events: Vec::new(), last_keysym: None };
     
     // Bind globals
     env.wait_roundtrip(&mut event_queue, &mut client_state);
@@ -378,7 +386,7 @@ fn test_seat_protocol() {
     let qh = event_queue.handle();
     
     let _registry = display.get_registry(&qh, ());
-    let mut client_state = ClientState { compositor: None, shm: None, seat: None, pointer: None, keyboard: None, xdg_wm_base: None, xdg_surface: None, xdg_toplevel: None, subcompositor: None, relative_pointer_manager: None, relative_motion_events: Vec::new() };
+    let mut client_state = ClientState { compositor: None, shm: None, seat: None, pointer: None, keyboard: None, xdg_wm_base: None, xdg_surface: None, xdg_toplevel: None, subcompositor: None, relative_pointer_manager: None, relative_motion_events: Vec::new(), last_keysym: None };
     
     // Bind globals
     env.wait_roundtrip(&mut event_queue, &mut client_state);
@@ -411,6 +419,7 @@ fn test_input_events() {
         subcompositor: None,
         relative_pointer_manager: None,
         relative_motion_events: Vec::new(),
+        last_keysym: None,
     };
     
     // Bind globals and get seat caps
@@ -442,6 +451,7 @@ fn test_xdg_shell_protocol() {
         subcompositor: None,
         relative_pointer_manager: None,
         relative_motion_events: Vec::new(),
+        last_keysym: None,
     };
     
     // Bind globals
@@ -482,6 +492,7 @@ fn test_shm_pool_resize() {
         subcompositor: None,
         relative_pointer_manager: None,
         relative_motion_events: Vec::new(),
+        last_keysym: None,
     };
     
     env.wait_roundtrip(&mut event_queue, &mut client_state);
@@ -526,6 +537,7 @@ fn test_subsurface_sync_commit() {
         subcompositor: None,
         relative_pointer_manager: None,
         relative_motion_events: Vec::new(),
+        last_keysym: None,
     };
     
     env.wait_roundtrip(&mut event_queue, &mut client_state);
@@ -607,6 +619,7 @@ fn test_relative_pointer_motion() {
         subcompositor: None,
         relative_pointer_manager: None,
         relative_motion_events: Vec::new(),
+        last_keysym: None,
     };
     
     env.wait_roundtrip(&mut event_queue, &mut client_state);
@@ -649,6 +662,7 @@ fn test_pointer_lock() {
         subcompositor: None,
         relative_pointer_manager: None,
         relative_motion_events: Vec::new(),
+        last_keysym: None,
     };
     
     env.wait_roundtrip(&mut event_queue, &mut client_state);
@@ -678,4 +692,46 @@ fn test_pointer_lock() {
     // (This requires a more complex mocking of the wayland-server objects)
     
     // For now, verified relative motion which uses the same infrastructure.
+}
+
+#[test]
+fn test_keyboard_key_a_keysym() {
+    use wayland_server::protocol::wl_keyboard;
+
+    let mut env = TestEnv::new();
+    let display = env.client.display();
+    let mut event_queue = env.client.new_event_queue::<ClientState>();
+    let qh = event_queue.handle();
+
+    let _registry = display.get_registry(&qh, ());
+    let mut client_state = ClientState {
+        compositor: None,
+        shm: None,
+        seat: None,
+        pointer: None,
+        keyboard: None,
+        xdg_wm_base: None,
+        xdg_surface: None,
+        xdg_toplevel: None,
+        subcompositor: None,
+        relative_pointer_manager: None,
+        relative_motion_events: Vec::new(),
+        last_keysym: None,
+    };
+
+    env.wait_roundtrip(&mut event_queue, &mut client_state);
+
+    // Linux evdev KEY_A (30) -> xkb keycode 38 on default keymap.
+    env.state
+        .inject_key(30, wl_keyboard::KeyState::Pressed, 1000);
+    env.state
+        .inject_key(30, wl_keyboard::KeyState::Released, 1001);
+
+    env.wait_roundtrip(&mut event_queue, &mut client_state);
+
+    assert_eq!(
+        client_state.last_keysym,
+        Some(0x0061),
+        "KEY_A press should surface keysym 0x61 to client"
+    );
 }

@@ -10,8 +10,11 @@
 
 let
   xcodeUtils = iosToolchain;
-  isVisionOS = iosToolchain.isVisionOSToolchain or false;
-  isTVOS = iosToolchain.isTVOSToolchain or false;
+  platformInfo = import ../../toolchains/apple-mobile-platform.nix;
+  mobile = platformInfo { inherit iosToolchain simulator; };
+  isVisionOS = mobile.isVisionOS;
+  isWatchOS = mobile.isWatchOS;
+  isTVOS = mobile.isTVOS;
 in
 pkgs.stdenv.mkDerivation {
   name = "openssl-ios";
@@ -29,10 +32,7 @@ pkgs.stdenv.mkDerivation {
   preConfigure = ''
     ${xcodeUtils.mkIOSBuildEnv {
       inherit simulator;
-      minVersion =
-        if isVisionOS then "26.0"
-        else if isTVOS then "17.0"
-        else xcodeUtils.deploymentTarget;
+      minVersion = mobile.minVersion;
     }}
     export NIX_CFLAGS_COMPILE=""
     export NIX_CXXFLAGS_COMPILE=""
@@ -52,7 +52,7 @@ pkgs.stdenv.mkDerivation {
         "iossimulator-xcrun"
       else
         "ios64-cross"
-    } no-shared no-dso ${if isTVOS then "no-apps" else ""} --prefix=$out --openssldir=$out/etc/ssl
+    } no-shared no-dso ${if isTVOS || isWatchOS then "no-apps" else ""} --prefix=$out --openssldir=$out/etc/ssl
     runHook postConfigure
   '';
 

@@ -240,6 +240,38 @@ fun WawonaApp(
         mutableStateOf(prefs.getBoolean("westonTerminalEnabled", false))
     }
 
+    fun runNativeLauncher(launcher: String): Boolean = when (launcher) {
+        "weston-simple-shm" -> WawonaNative.nativeRunWestonSimpleSHM()
+        "weston" -> WawonaNative.nativeRunWeston()
+        "weston-terminal" -> WawonaNative.nativeRunWestonTerminal()
+        "foot" -> WawonaNative.nativeRunFoot()
+        else -> WawonaNative.nativeRunBundledClient(launcher)
+    }
+
+    fun stopNativeLauncher(launcher: String) {
+        when (launcher) {
+            "weston" -> WawonaNative.nativeStopWeston()
+            "weston-terminal" -> WawonaNative.nativeStopWestonTerminal()
+            "foot" -> WawonaNative.nativeStopFoot()
+            "weston-simple-shm" -> WawonaNative.nativeStopWestonSimpleSHM()
+            else -> {
+                if (WawonaNative.nativeGetRunningBundledClientId() == launcher) {
+                    WawonaNative.nativeStopBundledClient()
+                }
+            }
+        }
+    }
+
+    fun isNativeLauncherRunning(launcher: String): Boolean = when (launcher) {
+        "weston" -> WawonaNative.nativeIsWestonRunning()
+        "weston-terminal" -> WawonaNative.nativeIsWestonTerminalRunning()
+        "foot" -> WawonaNative.nativeIsFootRunning()
+        "weston-simple-shm" -> WawonaNative.nativeIsWestonSimpleSHMRunning()
+        else ->
+            WawonaNative.nativeIsBundledClientRunning() &&
+                WawonaNative.nativeGetRunningBundledClientId() == launcher
+    }
+
     DisposableEffect(prefs) {
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { sp, key ->
             when (key) {
@@ -316,14 +348,9 @@ fun WawonaApp(
                             }
                         }
                         when (activeProfile?.type) {
-                            MachineType.NATIVE -> {
-                                when (activeProfile.nativeLauncher.ifBlank { "weston-simple-shm" }) {
-                                    "weston" -> WawonaNative.nativeStopWeston()
-                                    "weston-terminal" -> WawonaNative.nativeStopWestonTerminal()
-                                    "foot" -> WawonaNative.nativeStopFoot()
-                                    else -> WawonaNative.nativeStopWestonSimpleSHM()
-                                }
-                            }
+                            MachineType.NATIVE -> stopNativeLauncher(
+                                activeProfile.nativeLauncher.ifBlank { "weston-simple-shm" }
+                            )
                             MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> {
                                 WawonaNative.nativeStopWaypipe()
                                 isWaypipeRunning = false
@@ -422,12 +449,9 @@ fun WawonaApp(
                     profiles.firstOrNull { it.id == active.machineId }
                 }
                 isWaypipeRunning = when (activeProfile?.type) {
-                    MachineType.NATIVE -> when (activeProfile.nativeLauncher.ifBlank { "weston-simple-shm" }) {
-                        "weston" -> WawonaNative.nativeIsWestonRunning()
-                        "weston-terminal" -> WawonaNative.nativeIsWestonTerminalRunning()
-                        "foot" -> WawonaNative.nativeIsFootRunning()
-                        else -> WawonaNative.nativeIsWestonSimpleSHMRunning()
-                    }
+                    MachineType.NATIVE -> isNativeLauncherRunning(
+                        activeProfile.nativeLauncher.ifBlank { "weston-simple-shm" }
+                    )
                     MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> WawonaNative.nativeIsWaypipeRunning()
                     else -> false
                 }
@@ -514,29 +538,6 @@ fun WawonaApp(
             WLog.e("WAYPIPE", "Error stopping waypipe: ${e.message}")
             Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
         }
-    }
-
-    fun runNativeLauncher(launcher: String): Boolean = when (launcher) {
-        "weston" -> WawonaNative.nativeRunWeston()
-        "weston-terminal" -> WawonaNative.nativeRunWestonTerminal()
-        "foot" -> WawonaNative.nativeRunFoot()
-        else -> WawonaNative.nativeRunWestonSimpleSHM()
-    }
-
-    fun stopNativeLauncher(launcher: String) {
-        when (launcher) {
-            "weston" -> WawonaNative.nativeStopWeston()
-            "weston-terminal" -> WawonaNative.nativeStopWestonTerminal()
-            "foot" -> WawonaNative.nativeStopFoot()
-            else -> WawonaNative.nativeStopWestonSimpleSHM()
-        }
-    }
-
-    fun isNativeLauncherRunning(launcher: String): Boolean = when (launcher) {
-        "weston" -> WawonaNative.nativeIsWestonRunning()
-        "weston-terminal" -> WawonaNative.nativeIsWestonTerminalRunning()
-        "foot" -> WawonaNative.nativeIsFootRunning()
-        else -> WawonaNative.nativeIsWestonSimpleSHMRunning()
     }
 
     fun launchNativeMachine(profile: MachineProfile): Boolean {

@@ -233,6 +233,33 @@ Libs: -L\''${libdir} -lwayland-client
 Libs.private: -lepoll-shim
 EOF
     fi
+    if [ ! -f "$out/lib/pkgconfig/wayland-server.pc" ]; then
+      cat > $out/lib/pkgconfig/wayland-server.pc <<EOF
+prefix=$out
+exec_prefix=\''${prefix}
+libdir=\''${exec_prefix}/lib
+includedir=\''${prefix}/include/wayland
+Name: Wayland Server
+Description: Wayland server side library (watchOS cross-compiled)
+Version: 1.25.0
+Cflags: -I\''${includedir}
+Libs: -L\''${libdir} -lwayland-server
+Libs.private: -lepoll-shim
+EOF
+    fi
+    if [ ! -f "$out/lib/pkgconfig/wayland-cursor.pc" ]; then
+      cat > $out/lib/pkgconfig/wayland-cursor.pc <<EOF
+prefix=$out
+exec_prefix=\''${prefix}
+libdir=\''${exec_prefix}/lib
+includedir=\''${prefix}/include/wayland
+Name: Wayland Cursor
+Description: Wayland cursor library (watchOS cross-compiled)
+Version: 1.25.0
+Cflags: -I\''${includedir}
+Libs: -L\''${libdir} -lwayland-cursor
+EOF
+    fi
     runHook postInstall
   '';
 }

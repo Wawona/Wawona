@@ -1,4 +1,5 @@
 #import "WWNCompositorView_ios.h"
+#import "WWNIlandPresenter.h"
 #import "../macos/ui/Settings/WWNPreferencesManager.h"
 #import "../../util/WWNLog.h"
 #import "WWNCompositorBridge.h"
@@ -488,7 +489,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 // Implementation
 // ---------------------------------------------------------------------------
 @implementation WWNCompositorView_ios {
-  CALayer *_contentLayer;
+  CAMetalLayer *_contentLayer;
   BOOL _keyboardActive;
   BOOL _keyboardEnterSent;
   BOOL _longPressActive;
@@ -530,6 +531,8 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   float _cursorHotspotX;
   float _cursorHotspotY;
 
+  WWNIlandPresenter *_ilandPresenter;
+
   // Physical (hardware) keyboard state — suppresses insertText: when active
   NSInteger _pressedPhysicalKeyCount;
   uint32_t _physicalModifiers; // XKB depressed mask from physical keys
@@ -559,7 +562,10 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 #endif
     self.backgroundColor = [UIColor blackColor];
 
-    _contentLayer = [CALayer layer];
+    _contentLayer = [CAMetalLayer layer];
+    _contentLayer.device = MTLCreateSystemDefaultDevice();
+    _contentLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
+    _contentLayer.framebufferOnly = NO;
     _contentLayer.contentsGravity = kCAGravityResize;
     _contentLayer.masksToBounds = YES;
     [self.layer addSublayer:_contentLayer];
@@ -587,12 +593,32 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     _cursorLayer.hidden = YES;
     [self.layer addSublayer:_cursorLayer];
 
+    _ilandPresenter = [[WWNIlandPresenter alloc] initWithLayer:_contentLayer
+                                                      device:_contentLayer.device];
+
     WWNLog("IOS_VIEW", @"Created view for window %llu", self.wwnWindowId);
   }
   return self;
 }
 
-- (CALayer *)contentLayer {
+- (void)dealloc {
+  [_ilandPresenter invalidate];
+}
+
+- (BOOL)launchNestedKmscube {
+  if (!_ilandPresenter) {
+    return NO;
+  }
+  int w = (int)self.bounds.size.width;
+  int h = (int)self.bounds.size.height;
+  if (w <= 0 || h <= 0) {
+    w = 640;
+    h = 480;
+  }
+  return [_ilandPresenter launchNestedKmscubeWithWidth:w height:h];
+}
+
+- (CAMetalLayer *)contentLayer {
   return _contentLayer;
 }
 

@@ -67,6 +67,111 @@ let kBundledClients: [BundledClient] = [
     icon: "character.cursor.ibeam",
     description: "Lightweight Wayland terminal emulator"
   ),
+  BundledClient(
+    id: "weston-flower",
+    name: "Weston Flower",
+    prefsKey: "WestonFlowerEnabled",
+    icon: "leaf",
+    description: "Animated cairo demo (toytoolkit)"
+  ),
+  BundledClient(
+    id: "kmscube",
+    name: "KMS Cube",
+    prefsKey: "KmscubeEnabled",
+    icon: "cube",
+    description: "Spinning GL cube via iland + ANGLE"
+  ),
+  BundledClient(
+    id: "weston-simple-egl",
+    name: "Weston Simple EGL",
+    prefsKey: "WestonSimpleEglEnabled",
+    icon: "cube.transparent",
+    description: "Wayland EGL demo client (requires weston-ios-gl archive)"
+  ),
+  BundledClient(
+    id: "weston-smoke",
+    name: "Weston Smoke",
+    prefsKey: "WestonSmokeEnabled",
+    icon: "cloud",
+    description: "Smoke particle cairo demo"
+  ),
+  BundledClient(
+    id: "weston-clickdot",
+    name: "Weston Clickdot",
+    prefsKey: "WestonClickdotEnabled",
+    icon: "circle.grid.2x2",
+    description: "Pointer click visualization demo"
+  ),
+  BundledClient(
+    id: "weston-eventdemo",
+    name: "Weston Event Demo",
+    prefsKey: "WestonEventdemoEnabled",
+    icon: "hand.tap",
+    description: "Input event logging demo"
+  ),
+  BundledClient(
+    id: "weston-resizor",
+    name: "Weston Resizor",
+    prefsKey: "WestonResizorEnabled",
+    icon: "arrow.up.left.and.arrow.down.right",
+    description: "Interactive resize demo"
+  ),
+  BundledClient(
+    id: "weston-cliptest",
+    name: "Weston Cliptest",
+    prefsKey: "WestonCliptestEnabled",
+    icon: "scissors",
+    description: "Clipping region demo"
+  ),
+  BundledClient(
+    id: "weston-transformed",
+    name: "Weston Transformed",
+    prefsKey: "WestonTransformedEnabled",
+    icon: "rotate.3d",
+    description: "Buffer transform demo"
+  ),
+  BundledClient(
+    id: "weston-stacking",
+    name: "Weston Stacking",
+    prefsKey: "WestonStackingEnabled",
+    icon: "square.stack.3d.up",
+    description: "Subsurface stacking demo"
+  ),
+  BundledClient(
+    id: "weston-dnd",
+    name: "Weston DnD",
+    prefsKey: "WestonDndEnabled",
+    icon: "arrow.right.doc.on.clipboard",
+    description: "Drag-and-drop demo"
+  ),
+  BundledClient(
+    id: "weston-image",
+    name: "Weston Image",
+    prefsKey: "WestonImageEnabled",
+    icon: "photo",
+    description: "PNG image loader demo"
+  ),
+  BundledClient(
+    id: "weston-scaler",
+    name: "Weston Scaler",
+    prefsKey: "WestonScalerEnabled",
+    icon: "arrow.up.left.and.down.right.magnifyingglass",
+    description: "Viewport scaler demo"
+  ),
+  BundledClient(
+    id: "weston-editor",
+    name: "Weston Editor",
+    prefsKey: "WestonEditorEnabled",
+    icon: "pencil",
+    description: "Text editor demo"
+  ),
+  BundledClient(
+    id: "weston-constraints",
+    name: "Weston Constraints",
+    prefsKey: "WestonConstraintsEnabled",
+    icon: "lock.rectangle.stack",
+    description: "Pointer constraints demo"
+  ),
 ]
 
 let kNativeClientCustomId = "custom"
@@ -514,18 +619,8 @@ final class WWNMachinesViewModel: ObservableObject {
   private func launchNativeClientIfNeeded(for profile: WWNMachineProfile) {
     guard profile.type == kWWNMachineTypeNative else { return }
     guard let runner = WWNWaypipeRunner.shared() else { return }
-    switch selectedClientId(for: profile) {
-    case "weston":
-      runner.launchWeston()
-    case "weston-terminal":
-      runner.launchWestonTerminal()
-    case "weston-simple-shm":
-      runner.launchWestonSimpleSHM()
-    case "foot":
-      runner.launchFoot()
-    default:
-      break
-    }
+    guard let clientId = selectedClientId(for: profile) else { return }
+    runner.launchBundledClient(withId: clientId)
   }
 }
 

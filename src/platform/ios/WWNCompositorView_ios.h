@@ -1,4 +1,6 @@
 #import <UIKit/UIKit.h>
+#import <QuartzCore/QuartzCore.h>
+#import <Metal/Metal.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -6,7 +8,7 @@ NS_ASSUME_NONNULL_BEGIN
  * WWNCompositorView_ios
  *
  * An iOS view that represents a Wayland surface.
- * It uses a CALayer for content rendering (bridged from Rust/IOSurface)
+ * It uses a CAMetalLayer for content rendering (iland GL present + IOSurface)
  * and translates UIKit touches to Wayland pointer events.
  *
  * Conforms to UITextInput for full IME/autocorrect/dictation support and
@@ -17,8 +19,8 @@ NS_ASSUME_NONNULL_BEGIN
 /// The Wayland window ID associated with this view
 @property(nonatomic, assign) uint64_t wwnWindowId;
 
-/// Access to the content layer for rendering
-@property(nonatomic, strong, readonly) CALayer *contentLayer;
+/// Access to the Metal content layer for rendering (WWNIlandPresenter target)
+@property(nonatomic, strong, readonly) CAMetalLayer *contentLayer;
 
 /// Whether the keyboard is currently active for this view
 @property(nonatomic, assign, readonly) BOOL keyboardActive;
@@ -36,6 +38,9 @@ NS_ASSUME_NONNULL_BEGIN
                    height:(uint32_t)height
                  hotspotX:(float)hotspotX
                  hotspotY:(float)hotspotY;
+
+/// Launch in-process kmscube (iland + ANGLE) into this view's Metal layer.
+- (BOOL)launchNestedKmscube;
 
 @end
 

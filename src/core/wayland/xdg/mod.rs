@@ -1,4 +1,6 @@
 pub mod xdg_wm_base;
+pub mod shell_handler;
+pub mod extension_handlers;
 pub mod xdg_surface;
 pub mod xdg_toplevel;
 pub mod xdg_popup;
@@ -19,34 +21,17 @@ use crate::core::wayland::policy;
 
 /// Register XDG desktop protocols.
 ///
-/// Optional XDG protocol families are only exposed for desktop-oriented profiles.
+/// Core shell globals are registered via `smithay_runtime::register_core_shell`.
+/// Desktop extension globals use Smithay delegates (`register_xdg_extensions`).
 pub fn register(state: &mut CompositorState, dh: &DisplayHandle) {
-    use wayland_protocols::xdg::xdg_output::zv1::server::zxdg_output_manager_v1::ZxdgOutputManagerV1;
-    use wayland_protocols::xdg::foreign::zv2::server::zxdg_importer_v2::ZxdgImporterV2;
-    
     if policy::allow_desktop_extensions(state.protocol_profile) {
-        use wayland_protocols::xdg::decoration::zv1::server::zxdg_decoration_manager_v1::ZxdgDecorationManagerV1;
-
-        dh.create_global::<CompositorState, ZxdgDecorationManagerV1, _>(1, ());
-        crate::wlog!(crate::util::logging::COMPOSITOR, "Registered zxdg_decoration_manager_v1");
-
-        xdg_foreign::register_xdg_exporter(dh);
-        crate::wlog!(crate::util::logging::COMPOSITOR, "Registered zxdg_exporter_v2");
-
-        dh.create_global::<CompositorState, ZxdgImporterV2, _>(1, ());
-        crate::wlog!(crate::util::logging::COMPOSITOR, "Registered zxdg_importer_v2");
-
-        // Delegate registration to per-protocol modules for a single source of truth.
-        xdg_activation::register_xdg_activation(dh);
-        xdg_dialog::register_xdg_dialog(dh);
-        xdg_system_bell::register_xdg_system_bell(dh);
+        crate::core::wayland::smithay_runtime::register_xdg_extensions(state, dh);
+        // xdg_toplevel_drag_v1 has no Smithay delegate in 0.7 — custom dispatch remains.
         xdg_toplevel_drag::register_xdg_toplevel_drag(dh);
-        xdg_toplevel_icon::register_xdg_toplevel_icon(dh);
-        xdg_toplevel_tag::register_xdg_toplevel_tag(dh);
 
         crate::wlog!(
             crate::util::logging::COMPOSITOR,
-            "Registered desktop-only XDG protocols (decoration, foreign, activation, dialog, system bell, icons, tags)"
+            "Registered desktop-only XDG protocols via Smithay delegates (decoration, foreign, activation, dialog, system bell, icons, tags, toplevel drag)"
         );
     } else {
         crate::wlog!(

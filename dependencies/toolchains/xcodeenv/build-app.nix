@@ -138,7 +138,7 @@ stdenv.mkDerivation (
       export CXX="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
       export LD="$CC"
 
-      ${lib.optionalString (lib.hasPrefix "iphone" _sdk) ''
+      ${lib.optionalString (lib.hasSuffix "simulator" _sdk) ''
         if [ "''${WAWONA_SKIP_IOS_SIMULATOR_PLATFORM_DOWNLOAD:-}" = "1" ]; then
           echo "Skipping xcodebuild -downloadPlatform iOS (WAWONA_SKIP_IOS_SIMULATOR_PLATFORM_DOWNLOAD=1)"
         else

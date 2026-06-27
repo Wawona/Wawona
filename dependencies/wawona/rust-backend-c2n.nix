@@ -31,6 +31,8 @@
 , nixpkgs           # the nixpkgs source (used to build a clean cross pkgs)
 , androidSDK ? null
 , androidToolchain ? null
+, appleHostCrates ? null # shared host crate graph (dependencies/wawona/apple-host-crates.nix)
+, hostGraphOnly ? false   # build/export host-side crate graph only (apple-host-crates)
 }:
 
 let
@@ -399,9 +401,18 @@ let
         let
           isProcMacro = crateAttrs.procMacro or false;
 
-          hostBuild = innerHostBRC (swapBuildDepsToHost (crateAttrs // {
-            dependencies = map (d: d.hostLib or d) (crateAttrs.dependencies or []);
-          }));
+          hostFromShared =
+            if appleHostCrates != null then
+              appleHostCrates.findHostBuild appleHostCrates.cargoNix.rootCrate crateAttrs
+            else null;
+
+          hostBuild =
+            if hostFromShared != null then
+              hostFromShared
+            else
+              innerHostBRC (swapBuildDepsToHost (crateAttrs // {
+                dependencies = map (d: d.hostLib or d) (crateAttrs.dependencies or []);
+              }));
 
           crossBuild = innerCrossBRC (swapBuildDepsToHost (crateAttrs // {
             extraRustcOpts = (crateAttrs.extraRustcOpts or []) ++ nativeLibSearchPaths ++ appleLinkerOverrides;
@@ -421,7 +432,9 @@ let
     };
 
   buildRustCrateForTarget = p:
-    if !isCross then
+    if hostGraphOnly then
+      hostBRC
+    else if !isCross then
       hostBRC
     else
       mkCrossBRC {};
@@ -431,9 +444,15 @@ let
   # Cargo.nix evaluates target conditions (cfg(target_os = "linux"), etc.)
   # against the CROSS platform. Without this, Linux/Android-specific deps
   # like linux_raw_sys and android_system_properties are excluded.
-  cargoNixPkgs = if isCross then
-    pkgs // { stdenv = crossStdenv; }
-  else pkgs;
+  # Host-graph-only mode uses the same cross platform cfg as iOS backends but
+  # builds each crate for the macOS host (build scripts / proc-macros).
+  cargoNixPkgs =
+    if hostGraphOnly then
+      pkgs // { stdenv = crossStdenv; }
+    else if isCross then
+      pkgs // { stdenv = crossStdenv; }
+    else
+      pkgs;
 
   cargoNix = import cargoNixDrv {
     pkgs = cargoNixPkgs;
@@ -765,13 +784,50 @@ let
     inherit features;
   });
 
+  findHostBuild =
+    root:
+    crateAttrs:
+    let
+      matches =
+        crate:
+        (crate.packageId or null) != null
+        && crate.packageId == (crateAttrs.packageId or null);
+      search =
+        crate:
+        if matches crate then
+          crate.build
+        else
+          lib.foldl' (
+            acc: dep:
+            if acc != null then acc else search dep
+          ) null (crate.dependencies or [ ]);
+    in
+    search root;
+
 in
-pkgs.stdenvNoCC.mkDerivation {
+if hostGraphOnly then
+  pkgs.stdenvNoCC.mkDerivation {
+    pname = "wawona-apple-host-crates";
+    version = wawonaVersion;
+    dontUnpack = true;
+    dontBuild = true;
+
+    # Do not force rootBuild here — host crate derivations are built lazily
+    # when cross backends resolve findHostBuild during linking.
+    installPhase = "mkdir -p $out; touch $out/marker";
+
+    passthru = {
+      inherit cargoNix findHostBuild;
+    };
+  }
+else
+  pkgs.stdenvNoCC.mkDerivation {
   pname = "wawona-${platform}-backend${lib.optionalString (isAppleCross && simulator) "-sim"}";
   version = wawonaVersion;
 
   dontUnpack = true;
   dontBuild = true;
+  nativeBuildInputs = lib.optional (appleHostCrates != null && isAppleCross) appleHostCrates;
 
   installPhase = ''
     mkdir -p $out/lib $out/include

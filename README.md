@@ -149,6 +149,8 @@ nix build .#wawona-ios-ipa --impure
 
 ### Contributing & Supporting
 
+For fast Xcode iteration after a warm Nix store, see [Compilation Guide — Xcode Iteration](docs/compilation.md#xcode-iteration).
+
 Wawona is a massive undertaking to bring a native Wayland compositor to Apple platforms and Android, and **I cannot sustain this project alone**. Your support _whether through code, issues, ideas, or donations_ is essential to its progress and survival.
 
 You can help by:

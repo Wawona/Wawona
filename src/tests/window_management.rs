@@ -221,3 +221,66 @@ fn test_window_fullscreen_transition() {
     // Check state bit (state=2 is fullscreen in xdg-shell)
     // We didn't fully decode state bits in ClientState, but verify geometry is enough for now
 }
+
+#[test]
+fn test_configure_serial_backlog_without_ack() {
+    let mut env = TestEnv::new();
+    env.state.outputs.push(crate::core::state::OutputState::new(
+        1,
+        "test-output".into(),
+        800,
+        600,
+    ));
+    env.state.primary_output = 0;
+
+    let display = env.client.display();
+    let mut event_queue = env.client.new_event_queue::<ClientState>();
+    let qh = event_queue.handle();
+
+    let _registry = display.get_registry(&qh, ());
+    let mut client_state = ClientState {
+        compositor: None,
+        seat: None,
+        xdg_wm_base: None,
+        xdg_surface: None,
+        xdg_toplevel: None,
+        configured: false,
+        last_serial: 0,
+        last_width: 0,
+        last_height: 0,
+        maximized: false,
+    };
+
+    env.wait_roundtrip(&mut event_queue, &mut client_state);
+
+    let compositor = client_state.compositor.as_ref().unwrap();
+    let surface = compositor.create_surface(&qh, ());
+    client_state.xdg_surface =
+        Some(client_state.xdg_wm_base.as_ref().unwrap().get_xdg_surface(&surface, &qh, ()));
+    client_state.xdg_toplevel =
+        Some(client_state.xdg_surface.as_ref().unwrap().get_toplevel(&qh, ()));
+    surface.commit();
+
+    env.wait_roundtrip(&mut event_queue, &mut client_state);
+    let first_serial = client_state.last_serial;
+    assert!(first_serial > 0, "initial configure should produce a serial");
+
+    let client_id = env.state.clients.keys().next().cloned().unwrap();
+    let toplevel_id = env
+        .state
+        .xdg_toplevels
+        .keys()
+        .next()
+        .map(|(_, id)| *id)
+        .unwrap();
+    let _ = env
+        .state
+        .send_toplevel_configure(client_id, toplevel_id, 640, 480);
+    env.loop_dispatch();
+    env.wait_roundtrip(&mut event_queue, &mut client_state);
+
+    assert!(
+        client_state.last_serial > first_serial,
+        "superseding configure should bump serial without prior ack"
+    );
+}

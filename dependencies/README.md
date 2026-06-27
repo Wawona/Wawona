@@ -1,80 +1,63 @@
 # Wawona Nix Dependencies
 
-This directory contains the Nix infrastructure for building Wawona on various platforms.
+This directory contains the Nix infrastructure for building Wawona on Apple, Android, and Linux targets.
 
 ## Directory Structure
 
 ```
 dependencies/
 ├── README.md                     # This file
-│
-├── toolchains/                   # Cross-compilation infrastructure
-│   ├── default.nix               # Entry point for toolchains (C library builds)
-│   ├── android.nix               # Android NDK toolchain setup
-│   └── common/                   # Shared registry and helpers
-│
-├── wawona/                       # Final Wawona application builds
-│   ├── default.nix               # Entry point (returns { ios, macos, android, generators })
-│   ├── ios.nix                   # iOS app derivation
-│   ├── macos.nix                 # macOS app derivation
-│   ├── android.nix               # Android app derivation
-│   └── common.nix                # Shared sources, flags, and dependencies
-│
-├── libs/                         # C libraries for cross-compilation
-│   ├── libwayland/               # Wayland protocol library
-│   ├── pixman/                   # Pixel manipulation library
-│   ├── waypipe/                  # Wayland proxy for remote display
-│   └── ...                       # 25+ other C dependencies
-│
-├── clients/                      # Bundled terminal applications
-│   ├── foot/                     # Foot terminal emulator
-│   └── weston/                   # Weston compositor (for weston-terminal)
-│
-├── platforms/                    # Cross-compilation platform helpers
-│   ├── ios.nix                   # iOS SDK configuration
-│   ├── macos.nix                 # macOS SDK configuration
-│   └── android.nix               # Android SDK configuration
-│
-├── generators/                   # IDE project file generators
-│   ├── xcodegen.nix              # Generates Xcode project for iOS/macOS
-│   └── gradlegen.nix             # Generates Gradle build files for Android
-│
-└── utils/                        # Utility scripts
-    └── xcode-wrapper.nix         # Xcode environment helpers
+├── toolchains/                   # Cross-compilation (buildForIOS, buildForMacOS, …)
+├── wawona/                       # App derivations, backends, devshells
+│   ├── mobile-platform-deps.nix  # Shared native closure for Apple mobile
+│   ├── apple-host-crates.nix     # Shared host-side Rust crate graph
+│   ├── rust-backend-c2n.nix      # Per-platform libwawona.a (crate2nix)
+│   └── devshells.nix             # `nix develop` shell
+├── libs/                         # Cross-compiled C libraries
+├── clients/                      # Weston compositor, foot, …
+│   └── weston/                   # toytoolkit + compositor-apple-mobile.nix
+├── platforms/                    # Per-OS build dispatchers (ios, ipados, …)
+├── generators/                   # xcodegen.nix, gradlegen.nix, ldflags helpers
+└── utils/                        # Xcode wrapper helpers
 ```
 
-## How It Works
+## Apple Targets
 
-### In `flake.nix`:
+| OS | Rust backend | Notes |
+|----|--------------|-------|
+| iOS | `wawona-ios-backend`, `wawona-ios-sim-backend` | Full stack: Weston, compositor, iland, ANGLE |
+| iPadOS | `wawona-ipados-backend`, `wawona-ipados-sim-backend` | Same triple as iOS; ipados recipes re-export ios.nix |
+| tvOS | `wawona-tvos-backend`, `wawona-tvos-sim-backend` | No iland/ANGLE |
+| watchOS | `wawona-watchos-backend`, `wawona-watchos-sim-backend` | No waypipe |
+| visionOS | `wawona-visionos-backend`, `wawona-visionos-sim-backend` | Slimmer network stack |
+| macOS | `wawona-macos-backend` | Native host build |
 
-```nix
-# 1. Get cross-compilation toolchains
-toolchains = import ./dependencies/toolchains { ... };
+## Xcode Prebuild
 
-# 2. Get final Wawona builds and generators
-wawonaApps = pkgs.callPackage ./dependencies/wawona {
-  buildModule = toolchains;
-  inherit wawonaSrc wawonaVersion rustBackendMacOS rustBackendIOS;
-  ...
-};
+Xcode targets run `scripts/xcode-prebuild.sh` before linking. It realizes only the backend for the active target **and SDK** (device vs simulator). After warming the store:
 
-# 3. Use the apps
-wawona-macos = wawonaApps.macos;
-wawona-ios = wawonaApps.ios;
-wawona-android = wawonaApps.android;
+```bash
+export WAWONA_SKIP_NIX_PREBUILD=1   # Swift/UI iteration
+```
 
-# 4. Use the generators
-xcodegen-project = wawonaApps.generators.xcodegen.project;
+See [docs/compilation.md](../docs/compilation.md) for the full contributor workflow.
+
+## Project Generators
+
+```bash
+nix run .#xcodegen          # All Apple targets (CI)
+nix run .#xcodegen-ios      # iOS + iPadOS only (faster)
+nix run .#xcodegen-macos    # macOS only
+nix run .#gradlegen         # Android Studio project
 ```
 
 ## Key Concepts
 
 | Directory | Purpose |
 |-----------|---------|
-| `toolchains/` | Cross-compiles C libraries for each target platform |
-| `wawona/` | Builds the final Wawona application for each platform |
-| `libs/` | Low-level C libraries (libwayland, pixman, etc.) |
-| `clients/` | Bundled terminal apps (foot, weston-terminal) |
-| `platforms/` | Platform-specific SDK configurations |
-| `generators/` | Creates IDE project files (Xcode, Gradle) |
-| `utils/` | Helper scripts (Xcode wrapper, etc.) |
+| `toolchains/` | Cross-compiles C libraries per platform |
+| `wawona/` | Final apps, Rust backends, mobile dep factory |
+| `libs/` | Low-level C libraries |
+| `clients/weston/` | Weston toytoolkit + compositor archives |
+| `generators/` | Xcode/Gradle project generation |
+| `platforms/` | Routes dependency names to per-lib recipes |

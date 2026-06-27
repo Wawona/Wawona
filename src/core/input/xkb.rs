@@ -216,6 +216,70 @@ impl XkbState {
     }
 }
 
+/// Ensure xkbcommon can locate keymap data (rules/symbols/keycodes/types) on
+/// every platform. On desktop Linux and the Nix-built macOS app the default
+/// xkb include path resolves; on the sandboxed Apple/Android app it does not,
+/// so we point xkbcommon at the bundled `xkeyboard-config` via `XKB_CONFIG_ROOT`.
+///
+/// Idempotent and side-effect-light: respects an already-set `XKB_CONFIG_ROOT`,
+/// honors an explicit `WAWONA_XKB_CONFIG_ROOT` override, then probes the app
+/// bundle locations relative to the executable. This is what lets the unified
+/// Smithay seat keyboard compile a full `evdev/us` keymap on mobile (Smithay's
+/// internal `xkb::Context` is created with default includes, which read
+/// `XKB_CONFIG_ROOT`).
+pub fn ensure_xkb_data_root() {
+    use std::sync::Once;
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        if std::env::var_os("XKB_CONFIG_ROOT").is_some() {
+            return;
+        }
+        if let Some(root) = std::env::var_os("WAWONA_XKB_CONFIG_ROOT") {
+            std::env::set_var("XKB_CONFIG_ROOT", root);
+            return;
+        }
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(dir) = exe.parent() {
+                // macOS .app:  Contents/MacOS/<exe> -> Contents/Resources/{xkb,share/X11/xkb}
+                // iOS/tvOS:    <bundle>/<exe>       -> <bundle>/{xkb,share/X11/xkb}
+                let candidates = [
+                    dir.join("../Resources/xkb"),
+                    dir.join("../Resources/share/X11/xkb"),
+                    dir.join("xkb"),
+                    dir.join("share/X11/xkb"),
+                ];
+                for c in candidates {
+                    if c.join("rules").is_dir() {
+                        std::env::set_var("XKB_CONFIG_ROOT", c);
+                        return;
+                    }
+                }
+            }
+        }
+    });
+}
+
+/// The `XkbConfig` used for the seat keyboard on EVERY platform: a full
+/// `evdev/us` keymap (NOT the `MINIMAL_KEYMAP`). [`ensure_xkb_data_root`] is
+/// invoked first so xkbcommon can find the keymap data. If data is genuinely
+/// unavailable the Smithay `add_keyboard` call returns `Err`, and the caller
+/// falls back to `MINIMAL_KEYMAP` via `KeyboardHandle::set_keymap_from_string`.
+pub fn wawona_xkb_config() -> xkb_config_reexport::XkbConfig<'static> {
+    ensure_xkb_data_root();
+    xkb_config_reexport::XkbConfig {
+        rules: "evdev",
+        model: "pc105",
+        layout: "us",
+        variant: "",
+        options: None,
+    }
+}
+
+/// Re-export so callers don't need to depend on the smithay path directly.
+pub mod xkb_config_reexport {
+    pub use smithay::input::keyboard::XkbConfig;
+}
+
 /// Create a temporary file containing the keymap string
 pub fn create_keymap_file(content: &str) -> Result<std::fs::File, ()> {
     use std::io::Write;

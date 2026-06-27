@@ -28,10 +28,12 @@
 #include <stdatomic.h>
 #include <string.h> // For strdup
 
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
 static BOOL WWNForceSSDEnabled(void) {
   return [[NSUserDefaults standardUserDefaults]
       boolForKey:@"ForceServerSideDecorations"];
 }
+#endif
 
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
 static BOOL WWNEnablePerWindowHostingOnIPad(void) {
@@ -978,8 +980,8 @@ static const NSTimeInterval kWWNResizeDebounceSeconds = 0.040;
         CFDataCreate(NULL, buffer->pixels, (CFIndex)buffer->size);
     CGDataProviderRef provider = CGDataProviderCreateWithCFData(pixelData);
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
-    CGBitmapInfo bitmapInfo =
-        kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst;
+    CGBitmapInfo bitmapInfo = (CGBitmapInfo)(kCGBitmapByteOrder32Little |
+                                           (CGBitmapInfo)kCGImageAlphaPremultipliedFirst);
 
     CGImageRef image = CGImageCreate(
         buffer->width, buffer->height, 8, 32, buffer->stride, colorSpace,
@@ -2771,6 +2773,19 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
       }
     }
   }
+}
+
+- (BOOL)launchNestedKmscubeOnPrimaryView {
+  for (NSNumber *key in _windows) {
+    id view = _windows[key];
+    if ([view isKindOfClass:[WWNCompositorView_ios class]]) {
+      return [(WWNCompositorView_ios *)view launchNestedKmscube];
+    }
+  }
+  if ([self.containerView isKindOfClass:[WWNCompositorView_ios class]]) {
+    return [(WWNCompositorView_ios *)self.containerView launchNestedKmscube];
+  }
+  return NO;
 }
 
 - (void)handleWindowCreated:(CWindowEvent *)event {

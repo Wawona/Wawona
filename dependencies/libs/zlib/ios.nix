@@ -10,9 +10,12 @@
 
 let
   xcodeUtils = import ../../../utils/xcode-wrapper.nix { inherit lib pkgs; };
-  isVisionOS = iosToolchain.isVisionOSToolchain or false;
-  isTVOS = iosToolchain.isTVOSToolchain or false;
-  mobileMin = iosToolchain.deploymentTarget;
+  mobile = (import ../../toolchains/apple-mobile-platform.nix) {
+    inherit iosToolchain simulator;
+  };
+  isVisionOS = mobile.isVisionOS;
+  isTVOS = mobile.isTVOS;
+  mobileMin = mobile.minVersion;
   platform =
     if isVisionOS then "visionos"
     else if isTVOS then "tvos"

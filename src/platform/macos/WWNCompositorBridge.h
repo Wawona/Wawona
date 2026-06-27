@@ -215,6 +215,9 @@ typedef struct {
 
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
 @property(nonatomic, weak) UIView *containerView;
+
+/// Launch kmscube on the first toplevel compositor view (iland + ANGLE GL demo).
+- (BOOL)launchNestedKmscubeOnPrimaryView;
 #else
 /// YES when any connected client has requested cursor management through
 /// either wp_cursor_shape (named shapes) or wl_pointer.set_cursor (bitmaps).

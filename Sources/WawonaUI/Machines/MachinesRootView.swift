@@ -94,7 +94,7 @@ struct MachinesRootView: View {
     private func openPlatformSettings() {
         #if os(iOS) || os(tvOS) || os(visionOS)
         let prefs = WWNPreferences.shared()
-        prefs.show(nil)
+        prefs.show(nil as Any)
         #elseif os(macOS)
         WWNPreferences.shared().show(NSApp as Any)
         #else

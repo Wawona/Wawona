@@ -195,8 +195,24 @@ extern int waypipe_main(int argc, const char **argv) __attribute__((weak));
 extern int weston_simple_shm_main(int argc, const char **argv)
     __attribute__((weak));
 extern int weston_main(int argc, const char **argv) __attribute__((weak));
+extern int weston_compositor_main(int argc, char **argv) __attribute__((weak));
+extern volatile sig_atomic_t wwn_weston_compositor_shutdown_requested;
 extern int weston_terminal_main(int argc, const char **argv)
     __attribute__((weak));
+extern int foot_main(int argc, const char **argv) __attribute__((weak));
+extern int flower_main(int argc, const char **argv) __attribute__((weak));
+extern int clickdot_main(int argc, const char **argv) __attribute__((weak));
+extern int smoke_main(int argc, const char **argv) __attribute__((weak));
+extern int eventdemo_main(int argc, const char **argv) __attribute__((weak));
+extern int resizor_main(int argc, const char **argv) __attribute__((weak));
+extern int cliptest_main(int argc, const char **argv) __attribute__((weak));
+extern int transformed_main(int argc, const char **argv) __attribute__((weak));
+extern int stacking_main(int argc, const char **argv) __attribute__((weak));
+extern int dnd_main(int argc, const char **argv) __attribute__((weak));
+extern int image_main(int argc, const char **argv) __attribute__((weak));
+extern int scaler_main(int argc, const char **argv) __attribute__((weak));
+extern int editor_main(int argc, const char **argv) __attribute__((weak));
+extern int constraints_main(int argc, const char **argv) __attribute__((weak));
 extern int foot_main(int argc, const char **argv) __attribute__((weak));
 extern int wwn_weston_is_compat_shim(void) __attribute__((weak));
 extern int wwn_weston_terminal_is_compat_shim(void) __attribute__((weak));
@@ -308,6 +324,18 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeStopFoot(
     JNIEnv *env, jobject thiz);
 JNIEXPORT jboolean JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeIsFootRunning(
+    JNIEnv *env, jobject thiz);
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeRunBundledClient(
+    JNIEnv *env, jobject thiz, jstring clientId);
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeStopBundledClient(
+    JNIEnv *env, jobject thiz);
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeIsBundledClientRunning(
+    JNIEnv *env, jobject thiz);
+JNIEXPORT jstring JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeGetRunningBundledClientId(
     JNIEnv *env, jobject thiz);
 JNIEXPORT void JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeTouchDown(
@@ -2974,18 +3002,23 @@ static pthread_t g_weston_thread = 0;
 
 static void *weston_thread_func(void *arg) {
   (void)arg;
-  LOGI("Starting weston background thread");
-  if (!weston_main) {
-    LOGE("weston symbol is unavailable in this build");
+  LOGI("Starting nested weston_compositor_main background thread");
+  if (!weston_compositor_main) {
+    LOGE("weston_compositor_main symbol is unavailable in this build");
     g_weston_running = 0;
     return NULL;
   }
   char saved_cwd[512] = "";
   const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
-  if (xdg_dir) { getcwd(saved_cwd, sizeof(saved_cwd)); chdir(xdg_dir); }
-  const char *argv[] = {"weston", NULL};
-  weston_main(1, argv);
-  if (saved_cwd[0]) chdir(saved_cwd);
+  if (xdg_dir) {
+    getcwd(saved_cwd, sizeof(saved_cwd));
+    chdir(xdg_dir);
+  }
+  wwn_weston_compositor_shutdown_requested = 0;
+  char *argv[] = {"weston", "--backend=wayland", "--shell=desktop-shell.so", NULL};
+  weston_compositor_main(3, argv);
+  if (saved_cwd[0])
+    chdir(saved_cwd);
   g_weston_running = 0;
   return NULL;
 }
@@ -2993,19 +3026,22 @@ static void *weston_thread_func(void *arg) {
 JNIEXPORT jboolean JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeRunWeston(
     JNIEnv *env, jobject thiz) {
-  (void)env; (void)thiz;
-  if (!weston_main) {
-    LOGE("Refusing to launch weston: symbol unavailable in this build");
+  (void)env;
+  (void)thiz;
+  if (!weston_compositor_main) {
+    LOGE("Refusing to launch weston: compositor symbol unavailable in this build");
     return JNI_FALSE;
   }
   if (wwn_weston_is_compat_shim && wwn_weston_is_compat_shim() != 0) {
     LOGE("Refusing to launch weston: compatibility shim build detected");
     return JNI_FALSE;
   }
-  if (g_weston_running) return JNI_FALSE;
+  if (g_weston_running)
+    return JNI_FALSE;
   g_weston_running = 1;
   if (pthread_create(&g_weston_thread, NULL, weston_thread_func, NULL) != 0) {
-    g_weston_running = 0; return JNI_FALSE;
+    g_weston_running = 0;
+    return JNI_FALSE;
   }
   return JNI_TRUE;
 }
@@ -3013,7 +3049,15 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeRunWeston(
 JNIEXPORT void JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeStopWeston(
     JNIEnv *env, jobject thiz) {
-  (void)env; (void)thiz;
+  (void)env;
+  (void)thiz;
+  if (!g_weston_running)
+    return;
+  wwn_weston_compositor_shutdown_requested = 1;
+  if (g_weston_thread) {
+    pthread_join(g_weston_thread, NULL);
+    g_weston_thread = 0;
+  }
   g_weston_running = 0;
 }
 
@@ -3082,6 +3126,172 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeIsWestonTerminalRunning(
     JNIEnv *env, jobject thiz) {
   (void)env; (void)thiz;
   return g_weston_terminal_running ? JNI_TRUE : JNI_FALSE;
+}
+
+// ============================================================================
+// Generic bundled toytoolkit client launcher (weston-flower, weston-smoke, …)
+// ============================================================================
+
+typedef int (*wwn_client_main_fn)(int argc, const char **argv);
+
+typedef struct {
+  const char *id;
+  wwn_client_main_fn fn;
+} WwnClientEntry;
+
+static const WwnClientEntry kBundledClients[] = {
+    {"weston-simple-shm", weston_simple_shm_main},
+    {"weston-terminal", weston_terminal_main},
+    {"weston-flower", flower_main},
+    {"weston-clickdot", clickdot_main},
+    {"weston-smoke", smoke_main},
+    {"weston-eventdemo", eventdemo_main},
+    {"weston-resizor", resizor_main},
+    {"weston-cliptest", cliptest_main},
+    {"weston-transformed", transformed_main},
+    {"weston-stacking", stacking_main},
+    {"weston-dnd", dnd_main},
+    {"weston-image", image_main},
+    {"weston-scaler", scaler_main},
+    {"weston-editor", editor_main},
+    {"weston-constraints", constraints_main},
+};
+
+static wwn_client_main_fn wwn_client_main_for_id(const char *client_id) {
+  if (!client_id)
+    return NULL;
+  for (size_t i = 0; i < sizeof(kBundledClients) / sizeof(kBundledClients[0]);
+       i++) {
+    if (strcmp(client_id, kBundledClients[i].id) == 0)
+      return kBundledClients[i].fn;
+  }
+  return NULL;
+}
+
+static int g_bundled_client_running = 0;
+static pthread_t g_bundled_client_thread = 0;
+static char g_bundled_client_id[64] = "";
+
+typedef struct {
+  char id[64];
+} bundled_client_thread_arg_t;
+
+static void *bundled_client_thread_func(void *arg) {
+  bundled_client_thread_arg_t *params = (bundled_client_thread_arg_t *)arg;
+  const char *client_id = params ? params->id : "";
+  free(params);
+
+  wwn_client_main_fn fn = wwn_client_main_for_id(client_id);
+  if (!fn) {
+    LOGE("No bundled client entry for '%s'", client_id);
+    g_bundled_client_running = 0;
+    g_bundled_client_id[0] = '\0';
+    return NULL;
+  }
+
+  if (strcmp(client_id, "weston") == 0) {
+    LOGE("Use nativeRunWeston() for nested compositor (not bundled client table)");
+    g_bundled_client_running = 0;
+    g_bundled_client_id[0] = '\0';
+    return NULL;
+  }
+  if (strcmp(client_id, "weston-terminal") == 0 &&
+      wwn_weston_terminal_is_compat_shim &&
+      wwn_weston_terminal_is_compat_shim() != 0) {
+    LOGE("Refusing to launch weston-terminal: compatibility shim build detected");
+    g_bundled_client_running = 0;
+    g_bundled_client_id[0] = '\0';
+    return NULL;
+  }
+
+  LOGI("Starting bundled client '%s'", client_id);
+  char saved_cwd[512] = "";
+  const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
+  if (xdg_dir) {
+    getcwd(saved_cwd, sizeof(saved_cwd));
+    chdir(xdg_dir);
+  }
+
+  const char *argv[] = {client_id, NULL};
+  int result = fn(1, argv);
+  LOGI("Bundled client '%s' returned %d", client_id, result);
+
+  if (saved_cwd[0])
+    chdir(saved_cwd);
+  g_bundled_client_running = 0;
+  g_bundled_client_id[0] = '\0';
+  return NULL;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeRunBundledClient(
+    JNIEnv *env, jobject thiz, jstring clientId) {
+  (void)thiz;
+  if (!clientId)
+    return JNI_FALSE;
+
+  const char *id_utf = (*env)->GetStringUTFChars(env, clientId, NULL);
+  if (!id_utf)
+    return JNI_FALSE;
+
+  if (g_bundled_client_running) {
+    (*env)->ReleaseStringUTFChars(env, clientId, id_utf);
+    return JNI_FALSE;
+  }
+  if (!wwn_client_main_for_id(id_utf)) {
+    LOGE("Unknown bundled client id: %s", id_utf);
+    (*env)->ReleaseStringUTFChars(env, clientId, id_utf);
+    return JNI_FALSE;
+  }
+
+  bundled_client_thread_arg_t *params = calloc(1, sizeof(*params));
+  if (!params) {
+    (*env)->ReleaseStringUTFChars(env, clientId, id_utf);
+    return JNI_FALSE;
+  }
+  snprintf(params->id, sizeof(params->id), "%s", id_utf);
+  (*env)->ReleaseStringUTFChars(env, clientId, id_utf);
+
+  g_bundled_client_running = 1;
+  snprintf(g_bundled_client_id, sizeof(g_bundled_client_id), "%s", params->id);
+
+  if (pthread_create(&g_bundled_client_thread, NULL, bundled_client_thread_func,
+                     params) != 0) {
+    free(params);
+    g_bundled_client_running = 0;
+    g_bundled_client_id[0] = '\0';
+    return JNI_FALSE;
+  }
+  return JNI_TRUE;
+}
+
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeStopBundledClient(
+    JNIEnv *env, jobject thiz) {
+  (void)env;
+  (void)thiz;
+  g_bundled_client_running = 0;
+  if (strcmp(g_bundled_client_id, "weston-simple-shm") == 0 &&
+      &g_simple_shm_running) {
+    g_simple_shm_running = 0;
+  }
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeIsBundledClientRunning(
+    JNIEnv *env, jobject thiz) {
+  (void)env;
+  (void)thiz;
+  return g_bundled_client_running ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeGetRunningBundledClientId(
+    JNIEnv *env, jobject thiz) {
+  (void)thiz;
+  if (!g_bundled_client_running || g_bundled_client_id[0] == '\0')
+    return NULL;
+  return (*env)->NewStringUTF(env, g_bundled_client_id);
 }
 
 // ============================================================================

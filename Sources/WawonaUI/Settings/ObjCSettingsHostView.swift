@@ -27,7 +27,7 @@ struct ObjCSettingsHostView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
         .onAppear {
-            WWNPreferences.shared().showPreferences(NSApp as Any)
+            WWNPreferences.shared().show(NSApp as Any)
         }
     }
 }

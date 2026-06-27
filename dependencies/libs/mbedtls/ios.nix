@@ -10,14 +10,10 @@
 
 let
   xcodeUtils = iosToolchain;
-  isVisionOS = iosToolchain.isVisionOSToolchain or false;
-  isTVOS = iosToolchain.isTVOSToolchain or false;
-  mobileMinVersion =
-    if isVisionOS then "26.0"
-    else if isTVOS then "17.0"
-    else iosToolchain.deploymentTarget;
-  cmakeSystemName =
-    if isVisionOS || isTVOS then "Darwin" else "iOS";
+  platformInfo = import ../../toolchains/apple-mobile-platform.nix;
+  mobile = platformInfo { inherit iosToolchain simulator; };
+  mobileMinVersion = mobile.minVersion;
+  cmakeSystemName = mobile.cmakeSystemName;
   # mbedtls source - fetch from GitHub with submodules
   src = pkgs.fetchFromGitHub {
     owner = "Mbed-TLS";
@@ -41,6 +37,7 @@ pkgs.stdenv.mkDerivation {
   buildInputs = [ ];
   preConfigure = ''
     ${xcodeUtils.mkIOSBuildEnv { inherit simulator; minVersion = mobileMinVersion; }}
+    unset MACOSX_DEPLOYMENT_TARGET IPHONEOS_DEPLOYMENT_TARGET
     export NIX_CFLAGS_COMPILE=""
     export NIX_CXXFLAGS_COMPILE=""
     export NIX_LDFLAGS=""
@@ -48,7 +45,6 @@ pkgs.stdenv.mkDerivation {
     cat > ios-toolchain.cmake <<EOF
 set(CMAKE_SYSTEM_NAME ${cmakeSystemName})
 set(CMAKE_OSX_ARCHITECTURES $IOS_ARCH)
-set(CMAKE_OSX_DEPLOYMENT_TARGET ${mobileMinVersion})
 set(CMAKE_C_COMPILER "$XCODE_CLANG")
 set(CMAKE_CXX_COMPILER "$XCODE_CLANGXX")
 set(CMAKE_C_COMPILER_TARGET "$APPLE_LINKER_TARGET")

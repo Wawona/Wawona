@@ -40,6 +40,15 @@ DELEGATE_OWNERSHIP_MARKERS = {
     "zxdg_output_manager_v1": "delegate_output!",
     "wl_seat": "delegate_seat!",
     "wl_data_device_manager": "delegate_data_device!",
+    "xdg_wm_base": "delegate_xdg_shell!",
+    "zxdg_toplevel_decoration_v1": "delegate_xdg_decoration!",
+    "xdg_activation_v1": "delegate_xdg_activation!",
+    "zxdg_exporter_v2": "delegate_xdg_foreign!",
+    "zxdg_importer_v2": "delegate_xdg_foreign!",
+    "xdg_wm_dialog_v1": "delegate_xdg_dialog!",
+    "xdg_system_bell_v1": "delegate_xdg_system_bell!",
+    "xdg_toplevel_icon_v1": "delegate_xdg_toplevel_icon!",
+    "xdg_toplevel_tag_manager_v1": "delegate_xdg_toplevel_tag!",
 }
 
 
@@ -202,6 +211,10 @@ def main() -> int:
             and (
                 owner in {"custom_runtime", "unknown"}
                 or (owner == "smithay_runtime" and dual_registration)
+                or (
+                    owner == "smithay_runtime_core"
+                    and dual_registration
+                )
             )
         ):
             strict_failures.append(entry.interface)

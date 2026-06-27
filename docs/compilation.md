@@ -43,6 +43,31 @@ nix build .#wawona-android-backend
 | `-L` | Print full build logs |
 | `--show-trace` | Stack trace on Nix evaluation errors |
 
+## Xcode Iteration
+
+For day-to-day Swift/UI work in Xcode, warm the Nix store once, then skip the pre-build phase on subsequent builds.
+
+```bash
+# One-time warm (full iOS, both device and simulator backends)
+nix build .#wawona-ios-backend .#wawona-ios-sim-backend
+mkdir -p .nix-gcroots && nix build --out-link .nix-gcroots/xcodegen .#xcodegen
+
+# UI-only iteration (after warm store)
+export WAWONA_SKIP_NIX_PREBUILD=1
+
+# Skip redundant simulator runtime download during Nix iOS app builds
+export WAWONA_SKIP_IOS_SIMULATOR_PLATFORM_DOWNLOAD=1
+```
+
+After a `Cargo.lock` change, unset `WAWONA_SKIP_NIX_PREBUILD` or rebuild the relevant backend:
+
+```bash
+unset WAWONA_SKIP_NIX_PREBUILD
+# or: nix build .#wawona-ios-sim-backend
+```
+
+Use `nom` / `nb` for cold builds with build visibility. See [2026-nix-build-system.md](2026-nix-build-system.md) for the full pipeline.
+
 ## Project Generators
 
 ```bash

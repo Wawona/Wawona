@@ -10,6 +10,7 @@
 #import "WWNMiniWaylandServer.h"
 #import <CoreGraphics/CoreGraphics.h>
 #import <pthread.h>
+#import <signal.h>
 #import <stdlib.h>
 #import <string.h>
 
@@ -19,7 +20,8 @@
 // be reached at runtime after a proper `nix run .#xcodegen` build.
 
 extern int weston_simple_shm_main(int argc, char **argv);
-extern int weston_main(int argc, char **argv);
+extern int weston_compositor_main(int argc, char **argv);
+extern volatile sig_atomic_t wwn_weston_compositor_shutdown_requested;
 extern int weston_terminal_main(int argc, char **argv);
 extern int foot_main(int argc, char **argv);
 extern int wwn_weston_is_compat_shim(void) __attribute__((weak));
@@ -173,6 +175,20 @@ static void *dispatchThreadFunc(void *ctx) {
 
 // ── Client thread helper ──────────────────────────────────────────────────────
 // Runs the selected Wayland client entry point on a background thread.
+
+typedef struct {
+    int argc;
+    char **argv;
+} CompositorThreadArgs;
+
+static void *compositorThreadFunc(void *ctx) {
+    CompositorThreadArgs *args = (CompositorThreadArgs *)ctx;
+    NSLog(@"[WatchCompositor] weston_compositor_main starting");
+    int rc = weston_compositor_main(args->argc, args->argv);
+    NSLog(@"[WatchCompositor] weston_compositor_main exited with code %d", rc);
+    free(args);
+    return NULL;
+}
 
 typedef struct {
     int (*entry)(int argc, char **argv);
@@ -423,7 +439,7 @@ static void miniServerFrameCallback(const uint8_t *pixels,
 
     CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
     // wl_shm ARGB8888 is stored as B8G8R8A8 in little-endian memory
-    CGBitmapInfo bitmapInfo = kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst;
+    CGBitmapInfo bitmapInfo = (CGBitmapInfo)(kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst);
 
     CGDataProviderRef provider = CGDataProviderCreateWithData(
         NULL,
@@ -474,10 +490,33 @@ static void miniServerFrameCallback(const uint8_t *pixels,
 
 - (void)launchWestonSimpleSHM   { [self _launchClient:weston_simple_shm_main name:"weston-simple-shm"]; }
 - (void)launchWeston {
-    if ([self _isCompatShimEnabledForClient:"weston"]) {
-        return;
+    [self stopClient];
+
+    const char *parent_display = getenv("WAYLAND_DISPLAY");
+    if (!parent_display || parent_display[0] == '\0')
+        parent_display = "wayland-0";
+    setenv("WAYLAND_DISPLAY", parent_display, 1);
+
+    char arg0[] = "weston";
+    char arg1[] = "--backend=wayland";
+    char arg2[] = "--shell=desktop-shell.so";
+    char *argv[] = { arg0, arg1, arg2, NULL };
+
+    CompositorThreadArgs *args = malloc(sizeof(CompositorThreadArgs));
+    args->argc = 3;
+    args->argv = argv;
+
+    wwn_weston_compositor_shutdown_requested = 0;
+
+    int rc = pthread_create(&_clientThread, NULL, compositorThreadFunc, args);
+    if (rc == 0) {
+        _clientRunning = YES;
+        _clientThreadValid = YES;
+        NSLog(@"[WatchCompositor] Launched nested Weston compositor (WAYLAND_DISPLAY=%s)", parent_display);
+    } else {
+        free(args);
+        NSLog(@"[WatchCompositor] Failed to launch weston compositor (pthread_create=%d)", rc);
     }
-    [self _launchClient:weston_main name:"weston"];
 }
 
 - (void)launchWestonTerminal {
@@ -496,6 +535,7 @@ static void miniServerFrameCallback(const uint8_t *pixels,
 
 - (void)stopClient {
     if (!_clientRunning || !_clientThreadValid) return;
+    wwn_weston_compositor_shutdown_requested = 1;
     _clientRunning = NO;
     _clientThreadValid = NO;
     pthread_cancel(_clientThread);
