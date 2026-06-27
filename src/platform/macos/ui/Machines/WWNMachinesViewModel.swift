@@ -314,6 +314,9 @@ final class WWNMachinesViewModel: ObservableObject {
     captureThumbnailIfEnabled(for: profile)
 
     if profile.type == kWWNMachineTypeNative {
+      #if os(iOS)
+      WWNWaypipeRunner.shared().stopActiveIOSBundledClient()
+      #else
       let runner = WWNWaypipeRunner.shared()
       switch selectedClientId(for: profile) {
       case "weston":
@@ -327,6 +330,7 @@ final class WWNMachinesViewModel: ObservableObject {
       default:
         break
       }
+      #endif
     } else if profile.type == kWWNMachineTypeSSHWaypipe ||
                 profile.type == kWWNMachineTypeSSHTerminal {
       WWNWaypipeRunner.shared().stopWaypipe()

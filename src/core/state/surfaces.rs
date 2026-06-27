@@ -114,6 +114,43 @@ impl CompositorState {
         false
     }
 
+    /// Copy `xdg_surface.set_window_geometry` from Smithay into our xdg surface
+    /// bookkeeping so scene building and host window sizing can crop CSD chrome.
+    pub fn sync_xdg_window_geometry_from_surface(
+        &mut self,
+        wl_surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+        surface_id: u32,
+    ) {
+        use smithay::utils::Rectangle;
+        use smithay::wayland::compositor::with_states;
+        use smithay::wayland::shell::xdg::SurfaceCachedState;
+
+        let geometry: Option<Rectangle<i32, smithay::utils::Logical>> =
+            with_states(wl_surface, |states| {
+                states
+                    .cached_state
+                    .get::<SurfaceCachedState>()
+                    .current()
+                    .geometry
+            });
+
+        let Some(geometry) = geometry else {
+            return;
+        };
+
+        for data in self.xdg.surfaces.values_mut() {
+            if data.surface_id == surface_id {
+                data.geometry = Some((
+                    geometry.loc.x,
+                    geometry.loc.y,
+                    geometry.size.w,
+                    geometry.size.h,
+                ));
+                return;
+            }
+        }
+    }
+
     /// Handle a surface commit request
     pub fn handle_surface_commit(&mut self, surface_id: u32) {
         if let Some((_, xdg_surface_data)) = self
@@ -124,7 +161,7 @@ impl CompositorState {
         {
             if xdg_surface_data.pending_serial != 0 {
                 self.commit_before_ack_count = self.commit_before_ack_count.saturating_add(1);
-                crate::wlog!(
+                crate::wlog_hot!(
                     crate::util::logging::STATE,
                     "Commit arrived before latest ack: surface={} pending_serial={} count={}",
                     surface_id,
@@ -296,12 +333,13 @@ impl CompositorState {
                     let mut window = window.write().unwrap();
                     let old_w = window.width;
                     let old_h = window.height;
-                    let is_fullscreen_shell_window = self.ext.fullscreen_shell.presented_window_id == Some(wid);
-                    let should_apply_window_geometry = matches!(
-                        window.decoration_mode,
-                        crate::core::window::DecorationMode::ClientSide
-                    );
-                    if is_fullscreen_shell_window {
+                    let is_kiosk_window = self.is_host_locked_window(wid);
+                    let should_apply_window_geometry =
+                        crate::core::wayland::xdg::decoration::should_crop_buffer_to_window_geometry(
+                            self,
+                            window.decoration_mode,
+                        );
+                    if is_kiosk_window {
                         if let Some(output) = self.outputs.get(self.primary_output) {
                             window.width = output.width as i32;
                             window.height = output.height as i32;
@@ -371,7 +409,7 @@ impl CompositorState {
                                     (target_height - expected_h).abs(),
                                 )
                             });
-                            crate::wlog!(
+                            crate::wlog_hot!(
                                 crate::util::logging::STATE,
                                 "Host sync decision: window={} surf={} pending_serial={} last_acked_serial={} tl_pending_serial={} tl_last_acked_serial={} committed={}x{} target={}x{} xdg_geom={:?} expected_toplevel={:?} expected_delta={:?} expected_known={} accept={}",
                                 wid,
@@ -461,7 +499,7 @@ impl CompositorState {
             // client buffer.
             if should_sync_host_window_size
                 && size_changed
-                && self.ext.fullscreen_shell.presented_window_id != Some(wid)
+                && !self.is_host_locked_window(wid)
             {
                 if let Some(window) = self.get_window(wid) {
                     let window = window.read().unwrap();

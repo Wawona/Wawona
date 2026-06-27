@@ -71,6 +71,9 @@ android-dependencies/
 # IDE files
 .cursor/
 
+# Tooling cache (may be created root-owned by sandbox/CI; keep out of cargo/git scans)
+.cache/
+
 # Nix build artifacts
 result
 result-*
@@ -140,6 +143,9 @@ Inspiration/
 
 # waypipe Rust sources (populate with: ./scripts/ensure-waypipe.sh — same pin as flake.nix)
 /waypipe/
+
+# uutils coreutils sources (populate with: ./scripts/ensure-coreutils.sh — same pin as flake.nix)
+/coreutils/
 
 # SwiftPM (local)
 .build/

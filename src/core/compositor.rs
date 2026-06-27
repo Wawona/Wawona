@@ -222,6 +222,7 @@ pub enum CompositorEvent {
         height: u32,
         decoration_mode: DecorationMode,
         fullscreen_shell: bool,
+        host_locked: bool,
     },
     /// A new popup was created
     PopupCreated { client_id: ClientId, window_id: u32, surface_id: u32, parent_id: u32, x: i32, y: i32, width: u32, height: u32 },
@@ -243,6 +244,8 @@ pub enum CompositorEvent {
     WindowMinimized { window_id: u32, minimized: bool },
     /// Window was maximized or unmaximized
     WindowMaximized { window_id: u32, maximized: bool },
+    /// Host should pin this window edge-to-edge (weston-family kiosk semantics).
+    WindowHostLocked { window_id: u32, width: u32, height: u32 },
     /// Window requests interactive move
     WindowMoveRequested { window_id: u32, seat_id: u32, serial: u32 },
     /// Window requests interactive resize
@@ -710,13 +713,15 @@ impl Compositor {
         state.flush_buffer_releases();
     }
     
-    /// Get current timestamp in milliseconds (for Wayland events)
+    /// Get current timestamp in milliseconds (for Wayland events).
+    /// Uses monotonic time since first call so values stay within u32 range.
     pub fn timestamp_ms() -> u32 {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u32
+        use std::sync::OnceLock;
+        use std::time::Instant;
+
+        static COMPOSITOR_EPOCH: OnceLock<Instant> = OnceLock::new();
+        let start = COMPOSITOR_EPOCH.get_or_init(Instant::now);
+        start.elapsed().as_millis() as u32
     }
     
     // =========================================================================
@@ -731,6 +736,18 @@ impl Compositor {
     /// Get client IDs
     pub fn client_ids(&self) -> Vec<u32> {
         self.clients.keys().copied().collect()
+    }
+
+    /// Forcefully disconnect every tracked client (in-process mobile clients).
+    pub fn disconnect_all_clients(&mut self) -> usize {
+        let ids: Vec<u32> = self.clients.keys().copied().collect();
+        let mut disconnected = 0;
+        for id in ids {
+            if self.disconnect_client_by_internal(id) {
+                disconnected += 1;
+            }
+        }
+        disconnected
     }
 
     /// Forcefully disconnect a tracked client by internal ID.

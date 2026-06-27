@@ -51,7 +51,11 @@ impl XdgDecorationHandler for CompositorState {
         ) && crate::core::wayland::xdg::decoration::is_weston_family_app(self, window_id);
 
         let actual_mode = if weston_family {
-            Mode::ClientSide
+            if crate::core::wayland::xdg::decoration::weston_family_prefers_client_decorations(self) {
+                Mode::ClientSide
+            } else {
+                Mode::ServerSide
+            }
         } else {
             match self.decoration_policy {
                 crate::core::state::DecorationPolicy::ForceServer => Mode::ServerSide,

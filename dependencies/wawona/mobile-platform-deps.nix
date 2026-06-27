@@ -53,6 +53,7 @@ let
         "wawona-pty" = buildFn "wawona-pty" { inherit simulator; };
         "wawona-rootfs" = buildFn "wawona-rootfs" { inherit simulator; };
         zsh = buildFn "zsh" { inherit simulator; };
+        fastfetch = buildFn "fastfetch" { inherit simulator; };
       }
     // lib.optionalAttrs (variant == "vision") {
       libssh2 = buildFn "libssh2" { inherit simulator; };

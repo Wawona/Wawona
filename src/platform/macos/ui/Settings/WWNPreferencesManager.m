@@ -10,6 +10,7 @@ NSString *const kWWNPrefsColorSyncSupport = @"ColorSyncSupport"; // Legacy
 NSString *const kWWNPrefsColorOperations =
     @"ColorOperations"; // New unified key
 NSString *const kWWNPrefsNestedCompositorsSupport = @"NestedCompositorsSupport";
+NSString *const kWWNPrefsNestedWestonBackend = @"NestedWestonBackend";
 NSString *const kWWNPrefsUseMetal4ForNested =
     @"UseMetal4ForNested"; // Deprecated
 NSString *const kWWNPrefsRenderMacOSPointer = @"RenderMacOSPointer";
@@ -248,7 +249,12 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
     kWWNPrefsHasSeenWelcome : @NO,
     kWWNPrefsRenderMacOSPointer : @NO,
     // Input
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+    // Desktop-shell launcher expects wl_pointer; Touchpad is the default on iOS.
+    kWWNPrefsTouchInputType : @"Touchpad",
+#else
     kWWNPrefsTouchInputType : @"Multi-Touch",
+#endif
     kWWNPrefsSwapCmdWithAlt : @YES,
     kWWNPrefsUniversalClipboard : @YES,
     // Graphics
@@ -263,6 +269,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
     // Advanced
     kWWNPrefsColorOperations : @NO,
     kWWNPrefsNestedCompositorsSupport : @YES,
+    kWWNPrefsNestedWestonBackend : @"wayland-pixman",
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
     kWWNPrefsMultipleClients : @NO,
 #else
@@ -439,17 +446,14 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 
 // Window Decorations
 - (BOOL)forceServerSideDecorations {
-#if TARGET_OS_IPHONE
-  // iOS: CSD not supported; Force SSD is always on.
-  return YES;
-#else
   return [[NSUserDefaults standardUserDefaults]
       boolForKey:kWWNPrefsForceServerSideDecorations];
-#endif
 }
 
 - (void)setForceServerSideDecorations:(BOOL)enabled {
-#if !TARGET_OS_IPHONE
+  if ([self forceServerSideDecorations] == enabled) {
+    return;
+  }
   [[NSUserDefaults standardUserDefaults]
       setBool:enabled
        forKey:kWWNPrefsForceServerSideDecorations];
@@ -458,7 +462,6 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
   [[NSNotificationCenter defaultCenter]
       postNotificationName:kWWNForceSSDChangedNotification
                     object:self];
-#endif
 }
 
 // Display
@@ -493,6 +496,22 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
   [[NSUserDefaults standardUserDefaults]
       setBool:enabled
        forKey:kWWNPrefsNestedCompositorsSupport];
+}
+
+- (NSString *)nestedWestonBackend {
+  NSString *value = [[NSUserDefaults standardUserDefaults]
+      stringForKey:kWWNPrefsNestedWestonBackend];
+  if (value.length == 0) {
+    return @"wayland-pixman";
+  }
+  return value;
+}
+
+- (void)setNestedWestonBackend:(NSString *)backend {
+  NSString *value =
+      (backend.length > 0) ? backend : @"wayland-pixman";
+  [[NSUserDefaults standardUserDefaults] setObject:value
+                                            forKey:kWWNPrefsNestedWestonBackend];
 }
 
 - (BOOL)useMetal4ForNested {

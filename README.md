@@ -15,7 +15,12 @@
 
 > **Project Vision:** Read about long-term objectives in [Project Goals](docs/goals.md).
 
-## FAQ
+### App Store–compliant local zsh (iOS / iPadOS)
+
+Wawona is engineering **the world's first App Store–compliant bundled native Z shell on iOS and iPadOS** — real `zsh` + upstream Weston `terminal.c`, not a remote SSH passthrough or x86 Linux guest. Full architecture, compliance model, Nix plan, spawn policy, and TestFlight checklist:
+
+**→ [docs/ios-local-shell/README.md](docs/ios-local-shell/README.md)**
+
 
 ### How do I build this?
 
@@ -129,11 +134,22 @@ This keeps the wrapper minimal and lets the same flow work on local machines and
 
 - `nix build .#wawona-ios-app-sim`
 - `nix build .#wawona-ios-app-device`
+- `nix build .#weston-compositor-ios` — nested Weston (Wayland/Pixman)
+- `nix build .#weston-compositor-ios-drm` — nested Weston DRM+GL archive (CI)
 - `nix build .#wawona-ios-ipa --impure`
 - `nix build .#wawona-ios-xcarchive --impure`
 - `nix run .#wawona-ios`
 - `nix run .#wawona-ios-project`
 - `nix run .#wawona-ios-provision`
+
+**Nested Weston on iOS** presents in-process via Settings → Compositor clients. Two backends are available:
+
+| Setting | Backend | Presentation |
+|---------|---------|--------------|
+| Wayland (Pixman) — default | `--backend=wayland --use-pixman` | xdg_toplevel in Wawona window |
+| iland DRM (GL) | `--backend=drm` | Metal overlay (`WWNIlandPresenter`) |
+
+Production `weston.ini`, bundled `terminal.png`, and Adwaita cursors ship in the app bundle. Startup target: panel visible within ~2s on the Pixman path.
 
 ##### Requirements
 

@@ -44,3 +44,177 @@ static int run_client_main(const char *lib_name, const char *symbol_name,
 int foot_main(int argc, const char **argv) {
   return run_client_main("libfoot.so", "foot_main", argc, argv);
 }
+
+#ifdef WAWONA_WESTON_TOYTOOLKIT
+
+#include <errno.h>
+#include <fcntl.h>
+#include <pthread.h>
+#include <signal.h>
+#include <spawn.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+#ifndef NL_LANGINFO
+typedef int nl_item;
+#define CODESET 0
+#endif
+
+extern int smoke_main(int argc, const char **argv);
+
+int weston_simple_shm_main(int argc, const char **argv) {
+  return smoke_main(argc, argv);
+}
+
+int os_resize_anonymous_file(int fd, off_t size) {
+  if (ftruncate(fd, size) < 0)
+    return -1;
+  return 0;
+}
+
+char *nl_langinfo(nl_item item) {
+  (void)item;
+  return "UTF-8";
+}
+
+typedef void *iconv_t;
+
+iconv_t iconv_open(const char *tocode, const char *fromcode) {
+  (void)tocode;
+  (void)fromcode;
+  return (iconv_t)1;
+}
+
+size_t iconv(iconv_t cd, char **inbuf, size_t *inbytesleft, char **outbuf,
+             size_t *outbytesleft) {
+  size_t n;
+  (void)cd;
+  if (!inbuf || !*inbuf || !inbytesleft || !outbuf || !*outbuf ||
+      !outbytesleft)
+    return (size_t)-1;
+  n = (*inbytesleft < *outbytesleft) ? *inbytesleft : *outbytesleft;
+  memcpy(*outbuf, *inbuf, n);
+  *inbuf += n;
+  *outbytesleft -= n;
+  *outbuf += n;
+  *inbytesleft -= n;
+  return 0;
+}
+
+int iconv_close(iconv_t cd) {
+  (void)cd;
+  return 0;
+}
+
+#include <xlocale.h>
+
+double __wrap_strtod_l(const char *nptr, char **endptr, locale_t loc) {
+  (void)loc;
+  return strtod(nptr, endptr);
+}
+
+int close_range(unsigned int first, unsigned int last, int flags) {
+  unsigned int fd;
+  (void)flags;
+  for (fd = first; fd <= last; fd++)
+    close((int)fd);
+  return 0;
+}
+
+int pthread_getname_np(pthread_t thread, char *name, size_t len) {
+  (void)thread;
+  if (name && len > 0)
+    name[0] = '\0';
+  return 0;
+}
+
+int pthread_attr_setinheritsched(pthread_attr_t *attr, int inheritsched) {
+  (void)attr;
+  (void)inheritsched;
+  return 0;
+}
+
+static int spawn_exec_fallback(pid_t *pid, const char *path, char *const argv[],
+                               char *const envp[]) {
+  pid_t child = fork();
+  if (child < 0)
+    return -1;
+  if (child == 0) {
+    if (envp)
+      execve(path, argv, envp);
+    else
+      execv(path, argv);
+    _exit(127);
+  }
+  if (pid)
+    *pid = child;
+  return 0;
+}
+
+int posix_spawnattr_init(posix_spawnattr_t *attr) {
+  memset(attr, 0, sizeof(*attr));
+  return 0;
+}
+
+int posix_spawnattr_destroy(posix_spawnattr_t *attr) {
+  (void)attr;
+  return 0;
+}
+
+int posix_spawnattr_setflags(posix_spawnattr_t *attr, short flags) {
+  (void)attr;
+  (void)flags;
+  return 0;
+}
+
+int posix_spawnattr_setsigdefault(posix_spawnattr_t *attr,
+                                  const sigset_t *sigdefault) {
+  (void)attr;
+  (void)sigdefault;
+  return 0;
+}
+
+int posix_spawn_file_actions_init(posix_spawn_file_actions_t *actions) {
+  memset(actions, 0, sizeof(*actions));
+  return 0;
+}
+
+int posix_spawn_file_actions_destroy(posix_spawn_file_actions_t *actions) {
+  (void)actions;
+  return 0;
+}
+
+int posix_spawn_file_actions_adddup2(posix_spawn_file_actions_t *actions,
+                                     int fd, int newfd) {
+  (void)actions;
+  (void)fd;
+  (void)newfd;
+  return 0;
+}
+
+int posix_spawn_file_actions_addclose(posix_spawn_file_actions_t *actions,
+                                      int fd) {
+  (void)actions;
+  (void)fd;
+  return 0;
+}
+
+int posix_spawn(pid_t *pid, const char *path,
+                const posix_spawn_file_actions_t *file_actions,
+                const posix_spawnattr_t *attrp, char *const argv[],
+                char *const envp[]) {
+  (void)file_actions;
+  (void)attrp;
+  return spawn_exec_fallback(pid, path, argv, envp);
+}
+
+int posix_spawnp(pid_t *pid, const char *file,
+                 const posix_spawn_file_actions_t *file_actions,
+                 const posix_spawnattr_t *attrp, char *const argv[],
+                 char *const envp[]) {
+  return posix_spawn(pid, file, file_actions, attrp, argv, envp);
+}
+
+#endif /* WAWONA_WESTON_TOYTOOLKIT */

@@ -7,7 +7,7 @@
 //
 
 #import "WWNIlandPresenter.h"
-#import <IOSurface/IOSurface.h>
+#import <IOSurface/IOSurfaceRef.h>
 #import <pthread.h>
 
 typedef void (*iland_present_callback_t)(uint32_t crtc_id,
@@ -16,6 +16,7 @@ typedef void (*iland_present_callback_t)(uint32_t crtc_id,
                                          uint32_t flags,
                                          void *user);
 extern void iland_drm_set_present_callback(iland_present_callback_t cb, void *user);
+extern void iland_drm_set_preferred_mode(uint32_t w, uint32_t h, uint32_t refresh);
 
 extern int kmscube_main(int argc, char *argv[]) __attribute__((weak_import));
 
@@ -89,6 +90,21 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
     if (!_pipeline) {
         NSLog(@"[iland] pipeline creation failed: %@", err);
         return nil;
+    }
+
+    // Edge-to-edge nested sizing: feed the host layer's physical-pixel size to
+    // the iland DRM shim BEFORE Weston enumerates modes, so the nested output is
+    // created at the exact host surface size (no Metal stretch, no 1920x1080
+    // fallback). drawableSize is already in physical pixels.
+    CGSize px = _layer.drawableSize;
+    if (px.width < 1.0 || px.height < 1.0) {
+        CGFloat s = _layer.contentsScale > 0.0 ? _layer.contentsScale : 1.0;
+        px.width  = _layer.bounds.size.width  * s;
+        px.height = _layer.bounds.size.height * s;
+    }
+    if (px.width >= 1.0 && px.height >= 1.0) {
+        iland_drm_set_preferred_mode((uint32_t)(px.width + 0.5),
+                                     (uint32_t)(px.height + 0.5), 0);
     }
 
     gActivePresenter = self;

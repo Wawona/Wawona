@@ -12,16 +12,137 @@ use crate::core::window::DecorationMode;
 use smithay::wayland::shell::xdg::ToplevelSurface;
 use std::collections::HashMap;
 
+pub fn is_weston_family_app_id(app_id: &str) -> bool {
+    app_id == "weston" || app_id.starts_with("weston-") || app_id.contains("weston")
+}
+
+/// Weston demo clients that paint an in-buffer border even when SSD is negotiated.
+pub fn is_weston_terminal_app_id(app_id: &str) -> bool {
+    app_id.contains("wayland-terminal") || app_id.contains("weston-terminal")
+}
+
+/// Whether the compositor should crop presentation to `set_window_geometry`.
+///
+/// Under Force SSD we still crop when clients ignore server-side decoration and
+/// keep painting CSD into the buffer (common for weston-terminal over waypipe).
+pub fn should_crop_buffer_to_window_geometry(
+    state: &CompositorState,
+    decoration_mode: DecorationMode,
+) -> bool {
+    matches!(decoration_mode, DecorationMode::ClientSide)
+        || matches!(state.decoration_policy, DecorationPolicy::ForceServer)
+}
+
+fn geometry_intersects_buffer(
+    gx: i32,
+    gy: i32,
+    gw: i32,
+    gh: i32,
+    buf_w: i32,
+    buf_h: i32,
+) -> Option<(i32, i32, i32, i32)> {
+    if gw <= 0 || gh <= 0 || buf_w <= 0 || buf_h <= 0 {
+        return None;
+    }
+    let geom_x2 = gx.saturating_add(gw);
+    let geom_y2 = gy.saturating_add(gh);
+    let inter_x1 = gx.max(0);
+    let inter_y1 = gy.max(0);
+    let inter_x2 = geom_x2.min(buf_w);
+    let inter_y2 = geom_y2.min(buf_h);
+    let inter_w = (inter_x2 - inter_x1).max(0);
+    let inter_h = (inter_y2 - inter_y1).max(0);
+    if inter_w > 0 && inter_h > 0 {
+        Some((inter_x1, inter_y1, inter_w, inter_h))
+    } else {
+        None
+    }
+}
+
+fn geometry_covers_full_buffer(gx: i32, gy: i32, gw: i32, gh: i32, buf_w: i32, buf_h: i32) -> bool {
+    gx <= 0 && gy <= 0 && gw >= buf_w && gh >= buf_h
+}
+
+/// Clients that paint in-buffer titlebar chrome even when SSD is negotiated.
+fn force_ssd_csd_fallback_app(app_id: &str, decoration_mode: DecorationMode) -> bool {
+    if is_weston_terminal_app_id(app_id) {
+        return true;
+    }
+    // Nested compositor ("weston") is full-frame; do not guess a crop.
+    if app_id == "weston" {
+        return false;
+    }
+    // Other weston demos that rejected SSD and still draw CSD.
+    matches!(decoration_mode, DecorationMode::ClientSide)
+        && is_weston_family_app_id(app_id)
+}
+
+/// Fallback content rect when Force SSD is active but the client still reports
+/// (or paints) full-surface CSD chrome.
+pub fn force_ssd_fallback_geometry(
+    app_id: &str,
+    decoration_mode: DecorationMode,
+    buf_w: i32,
+    buf_h: i32,
+) -> Option<(i32, i32, i32, i32)> {
+    if !force_ssd_csd_fallback_app(app_id, decoration_mode) {
+        return None;
+    }
+    const INSET: i32 = 5;
+    if buf_w > INSET * 2 && buf_h > INSET * 2 {
+        Some((INSET, INSET, buf_w - INSET * 2, buf_h - INSET * 2))
+    } else {
+        None
+    }
+}
+
+/// Resolve the buffer region that should be visible to the user.
+pub fn resolve_window_content_geometry(
+    state: &CompositorState,
+    app_id: &str,
+    decoration_mode: DecorationMode,
+    surface_width: i32,
+    surface_height: i32,
+    xdg_geometry: Option<(i32, i32, i32, i32)>,
+) -> Option<(i32, i32, i32, i32)> {
+    if !should_crop_buffer_to_window_geometry(state, decoration_mode) {
+        return None;
+    }
+
+    let mut candidate = xdg_geometry.filter(|(_, _, gw, gh)| *gw > 0 && *gh > 0);
+
+    if matches!(state.decoration_policy, DecorationPolicy::ForceServer) {
+        let covers_full = candidate
+            .map(|(gx, gy, gw, gh)| geometry_covers_full_buffer(gx, gy, gw, gh, surface_width, surface_height))
+            .unwrap_or(true);
+        if covers_full {
+            candidate = force_ssd_fallback_geometry(
+                app_id,
+                decoration_mode,
+                surface_width,
+                surface_height,
+            );
+        }
+    }
+
+    candidate.and_then(|(gx, gy, gw, gh)| {
+        geometry_intersects_buffer(gx, gy, gw, gh, surface_width, surface_height)
+    })
+}
+
 pub fn is_weston_family_app(state: &CompositorState, window_id: u32) -> bool {
     state
         .get_window(window_id)
         .and_then(|w| w.read().ok().map(|w| w.app_id.clone()))
-        .map(|app_id| {
-            app_id == "weston"
-                || app_id.starts_with("weston-")
-                || app_id.contains("weston")
-        })
+        .map(|app_id| is_weston_family_app_id(&app_id))
         .unwrap_or(false)
+}
+
+/// Weston-family clients (weston-terminal, nested Weston, etc.) draw CSD in their
+/// own buffer when the host is not forcing server-side decorations. Same policy
+/// for in-process mobile clients and Linux clients forwarded over waypipe.
+pub(crate) fn weston_family_prefers_client_decorations(state: &CompositorState) -> bool {
+    !matches!(state.decoration_policy, DecorationPolicy::ForceServer)
 }
 
 pub fn preferred_xdg_decoration_mode(
@@ -32,7 +153,11 @@ pub fn preferred_xdg_decoration_mode(
         .then_some(false)
         .unwrap_or_else(|| is_weston_family_app(state, window_id));
     if weston_family {
-        Mode::ClientSide
+        if weston_family_prefers_client_decorations(state) {
+            Mode::ClientSide
+        } else {
+            Mode::ServerSide
+        }
     } else {
         match state.decoration_policy {
             DecorationPolicy::PreferClient => Mode::ClientSide,
@@ -122,5 +247,80 @@ impl CompositorState {
             window.decoration_mode = decoration_mode_from_xdg(preferred);
         }
         self.reconfigure_window_decorations(window_id);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::compositor::CompositorConfig;
+    use crate::core::window::DecorationMode;
+
+    #[test]
+    fn force_ssd_strips_weston_terminal_fallback_csd() {
+        let config = CompositorConfig {
+            force_ssd: true,
+            ..Default::default()
+        };
+        let state = CompositorState::new(Some(config));
+        let geom = resolve_window_content_geometry(
+            &state,
+            "org.freedesktop.weston.wayland-terminal",
+            DecorationMode::ServerSide,
+            800,
+            600,
+            None,
+        );
+        assert_eq!(geom, Some((5, 5, 790, 590)));
+    }
+
+    #[test]
+    fn force_ssd_skips_nested_weston_compositor_crop() {
+        let config = CompositorConfig {
+            force_ssd: true,
+            ..Default::default()
+        };
+        let state = CompositorState::new(Some(config));
+        let geom = resolve_window_content_geometry(
+            &state,
+            "weston",
+            DecorationMode::ServerSide,
+            800,
+            600,
+            None,
+        );
+        assert_eq!(geom, None);
+    }
+
+    #[test]
+    fn force_ssd_uses_client_geometry_when_inset() {
+        let config = CompositorConfig {
+            force_ssd: true,
+            ..Default::default()
+        };
+        let state = CompositorState::new(Some(config));
+        let geom = resolve_window_content_geometry(
+            &state,
+            "org.freedesktop.weston.wayland-terminal",
+            DecorationMode::ServerSide,
+            800,
+            600,
+            Some((10, 8, 780, 584)),
+        );
+        assert_eq!(geom, Some((10, 8, 780, 584)));
+    }
+
+    #[test]
+    fn csd_mode_without_geometry_keeps_full_buffer() {
+        let state = CompositorState::new(None);
+        let geom = resolve_window_content_geometry(
+            &state,
+            "org.freedesktop.weston.wayland-terminal",
+            DecorationMode::ClientSide,
+            800,
+            600,
+            None,
+        );
+        assert_eq!(geom, None);
     }
 }

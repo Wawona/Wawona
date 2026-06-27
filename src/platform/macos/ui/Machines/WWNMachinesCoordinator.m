@@ -74,6 +74,11 @@ static Class WWNFindMachinesHostingBridgeClass(void) {
 }
 
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+- (UIViewController *)buildMachinesViewControllerWithOnConnect:
+    (dispatch_block_t)onConnect {
+  return [self buildSwiftUIMachinesController:onConnect];
+}
+
 - (UIViewController *)buildSwiftUIMachinesController:(dispatch_block_t)onConnect {
   Class bridgeClass = WWNFindMachinesHostingBridgeClass();
   SEL selector = NSSelectorFromString(@"buildIOSMachinesControllerWithOnConnect:");
@@ -104,7 +109,7 @@ static Class WWNFindMachinesHostingBridgeClass(void) {
   while (top.presentedViewController != nil) {
     top = top.presentedViewController;
   }
-  UIViewController *machinesVC = [self buildSwiftUIMachinesController:onConnect];
+  UIViewController *machinesVC = [self buildMachinesViewControllerWithOnConnect:onConnect];
   if (!machinesVC) {
     UIAlertController *alert = [UIAlertController
         alertControllerWithTitle:@"Machines UI Unavailable"

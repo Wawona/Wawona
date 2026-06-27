@@ -51,7 +51,19 @@ struct MachineSettingsView: View {
 
                 Section("Runtime Overrides") {
                     TextField("Input Profile", text: inputProfileBinding)
-                    TextField("Bundled App ID", text: bundledAppIDBinding)
+                    if draft?.type == .native {
+                        NavigationLink {
+                            WatchBundledClientPickerView(selection: bundledAppIDSelectionBinding)
+                        } label: {
+                            HStack {
+                                Text("Wayland Client")
+                                Spacer()
+                                Text(ClientLauncher.displayName(for: resolvedBundledAppID))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
                     Toggle("Waypipe Enabled", isOn: waypipeEnabledBinding)
                 }
 
@@ -133,9 +145,15 @@ struct MachineSettingsView: View {
         )
     }
 
-    private var bundledAppIDBinding: Binding<String> {
+    private var resolvedBundledAppID: String {
+        let raw = draft?.runtimeOverrides.bundledAppID?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return raw.isEmpty ? preferences.defaultBundledAppID : raw
+    }
+
+    private var bundledAppIDSelectionBinding: Binding<String> {
         Binding(
-            get: { draft?.runtimeOverrides.bundledAppID ?? "" },
+            get: { resolvedBundledAppID },
             set: { value in updateDraft { $0.runtimeOverrides.bundledAppID = value } }
         )
     }
@@ -145,5 +163,29 @@ struct MachineSettingsView: View {
             get: { draft?.runtimeOverrides.waypipeEnabled ?? preferences.defaultWaypipeEnabled },
             set: { value in updateDraft { $0.runtimeOverrides.waypipeEnabled = value } }
         )
+    }
+}
+
+private struct WatchBundledClientPickerView: View {
+    @Binding var selection: String
+
+    var body: some View {
+        List(ClientLauncher.presets) { launcher in
+            Button {
+                selection = launcher.name
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: selection == launcher.name ? "checkmark.circle.fill" : "circle")
+                    VStack(alignment: .leading) {
+                        Text(launcher.displayName)
+                        Text(launcher.name)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+        }
+        .navigationTitle("Wayland Client")
     }
 }

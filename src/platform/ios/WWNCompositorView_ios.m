@@ -5,6 +5,11 @@
 #import "WWNCompositorBridge.h"
 #import <QuartzCore/QuartzCore.h>
 #import <TargetConditionals.h>
+#import <math.h>
+#import <string.h>
+
+extern int wwn_ios_terminal_is_active(void);
+extern ssize_t wwn_ios_terminal_inject(const void *buf, size_t len);
 
 // ===========================================================================
 // UITextPosition / UITextRange subclasses for UITextInput
@@ -470,12 +475,22 @@ static const NSInteger kTagModSuper = 1003;
 // ---------------------------------------------------------------------------
 // Movement less than this many points within the tap duration → tap (click)
 static const CGFloat kTapMovementThreshold = 12.0;
-// Duration less than this many seconds → tap (click)
+// Duration less than this many seconds → short tap (left click at cursor)
 static const NSTimeInterval kTapDurationThreshold = 0.35;
+// Tap+hold drag: a radial indicator appears at this delay and fills until the
+// engage delay, at which point a sustained LMB-down (drag) engages.
+static const NSTimeInterval kDragArmShowDelay = 0.5;
+static const NSTimeInterval kDragEngageDelay = 1.0;
 // Sensitivity multiplier for touchpad pointer movement
 static const CGFloat kTouchpadSensitivity = 1.5;
-// Scroll multiplier for two-finger drag
-static const CGFloat kScrollSensitivity = 3.0;
+// Scroll multiplier for two-finger drag (wl_fixed-ish units; weston-terminal
+// accumulates ~256 per line).
+static const CGFloat kScrollSensitivity = 12.0;
+// macOS arrow cursor (NSCursor arrowCursor / Tahoe theme) — hotspot at the tip.
+static const CGSize kTouchpadCursorSize = {28.0, 40.0};
+static const CGFloat kTouchpadCursorHotspotX = 5.0;
+static const CGFloat kTouchpadCursorHotspotY = 5.0;
+static const CGFloat kTouchpadRadialRadius = 26.0;
 
 // ---------------------------------------------------------------------------
 // Input mode enum
@@ -490,9 +505,10 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 // ---------------------------------------------------------------------------
 @implementation WWNCompositorView_ios {
   CAMetalLayer *_contentLayer;
+  CALayer *_waylandLayer;
+  UIView *_waylandFrameView;
   BOOL _keyboardActive;
   BOOL _keyboardEnterSent;
-  BOOL _longPressActive;
 
   // Sticky modifier state (active = one-shot, locked = persistent toggle)
   BOOL _modShiftActive;
@@ -515,16 +531,28 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 
   // Touchpad mode state
   CGPoint _pointerPos;     // Virtual cursor position (view coords)
-  BOOL _pointerEntered;    // Whether we've sent pointer enter
   CGPoint _prevTouchPoint; // Previous single-finger position
   NSTimeInterval _touchStartTime;
   CGFloat _touchTotalMovement;
   NSInteger _activeTouchCount; // Current simultaneous finger count
   CGPoint _prevScrollCenter;   // Previous two-finger centroid
   BOOL _scrollActive;          // Whether a two-finger scroll gesture is active
+  NSInteger _maxTouchCount;    // Peak finger count seen during this gesture
+
+  // Tap-and-hold drag state machine (touchpad mode)
+  BOOL _dragging;              // Sustained LMB-down (drag) is engaged
+  NSInteger _dragGeneration;   // Bumped to invalidate stale arm callbacks
+  CAShapeLayer *_radialLayer;  // Tap-hold progress indicator (sibling of cursor)
 
   // Cached input mode for the duration of a gesture
   WWNTouchInputMode _currentInputMode;
+
+  // Multi-Touch: mirror primary finger to wl_pointer for nested desktop-shell
+  int32_t _primaryTouchId;
+  BOOL _multitouchPointerEntered;
+  BOOL _touchpadPointerEntered;
+
+  BOOL _sessionActive;
 
   // Wayland cursor rendering (touchpad mode)
   CALayer *_cursorLayer;
@@ -532,6 +560,10 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   float _cursorHotspotY;
 
   WWNIlandPresenter *_ilandPresenter;
+  uint64_t _lastPresentToken;
+  CGImageRef _lastPresentedWaylandImage;
+  CGFloat _lastContentsScale;
+  CGSize _lastWaylandLayoutSize;
 
   // Physical (hardware) keyboard state — suppresses insertText: when active
   NSInteger _pressedPhysicalKeyCount;
@@ -562,13 +594,29 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 #endif
     self.backgroundColor = [UIColor blackColor];
 
-    _contentLayer = [CAMetalLayer layer];
-    _contentLayer.device = MTLCreateSystemDefaultDevice();
-    _contentLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
-    _contentLayer.framebufferOnly = NO;
-    _contentLayer.contentsGravity = kCAGravityResize;
-    _contentLayer.masksToBounds = YES;
-    [self.layer addSublayer:_contentLayer];
+    // CAMetalLayer is created lazily for iland/kmscube only. An idle Metal
+    // layer in the hierarchy composites above Wayland content on iOS and shows
+    // as a solid magenta/purple screen even when hidden=YES.
+    _contentLayer = nil;
+
+    // Legacy subsurface host; primary presentation uses _waylandFrameView.
+    _waylandLayer = [CALayer layer];
+    _waylandLayer.geometryFlipped = YES;
+    _waylandLayer.contentsGravity = kCAGravityTopLeft;
+    _waylandLayer.masksToBounds = YES;
+    _waylandLayer.hidden = YES;
+    [self.layer addSublayer:_waylandLayer];
+
+    _waylandFrameView = [[UIView alloc] initWithFrame:self.bounds];
+    _waylandFrameView.autoresizingMask =
+        UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    _waylandFrameView.userInteractionEnabled = NO;
+    _waylandFrameView.backgroundColor = UIColor.clearColor;
+    _waylandFrameView.opaque = YES;
+    _waylandFrameView.layer.contentsGravity = kCAGravityResize;
+    _waylandFrameView.layer.minificationFilter = kCAFilterNearest;
+    _waylandFrameView.layer.magnificationFilter = kCAFilterNearest;
+    [self insertSubview:_waylandFrameView atIndex:0];
 
     // Initialise virtual pointer at center
     _pointerPos = CGPointMake(frame.size.width / 2, frame.size.height / 2);
@@ -579,12 +627,13 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     _cursorIndex = 0;
     _markedRange = NSMakeRange(NSNotFound, 0);
     _selectedRange = NSMakeRange(0, 0);
-    _textAssistEnabled = YES;
+    _textAssistEnabled = [self _readTextAssistEnabled];
 
     // Cursor layer for touchpad mode — hidden by default.
     // It renders the Wayland client's cursor image.
     _cursorLayer = [CALayer layer];
-    _cursorLayer.bounds = CGRectMake(0, 0, 24, 24);
+    _cursorLayer.bounds =
+        CGRectMake(0, 0, kTouchpadCursorSize.width, kTouchpadCursorSize.height);
     _cursorLayer.contentsScale = self.traitCollection.displayScale > 0
                                      ? self.traitCollection.displayScale
                                      : 2.0;
@@ -593,8 +642,12 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     _cursorLayer.hidden = YES;
     [self.layer addSublayer:_cursorLayer];
 
-    _ilandPresenter = [[WWNIlandPresenter alloc] initWithLayer:_contentLayer
-                                                      device:_contentLayer.device];
+    _ilandPresenter = nil;
+    _lastPresentToken = 0;
+    _lastPresentedWaylandImage = NULL;
+    _lastContentsScale = 0;
+    _lastWaylandLayoutSize = CGSizeZero;
+    _sessionActive = YES;
 
     WWNLog("IOS_VIEW", @"Created view for window %llu", self.wwnWindowId);
   }
@@ -605,8 +658,150 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   [_ilandPresenter invalidate];
 }
 
+- (void)_ensureMetalPresentationLayer {
+  if (_contentLayer) {
+    return;
+  }
+  _contentLayer = [CAMetalLayer layer];
+  _contentLayer.device = MTLCreateSystemDefaultDevice();
+  _contentLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
+  _contentLayer.framebufferOnly = NO;
+  _contentLayer.contentsGravity = kCAGravityResize;
+  _contentLayer.masksToBounds = YES;
+  _contentLayer.frame = self.bounds;
+  [self.layer insertSublayer:_contentLayer atIndex:0];
+  _ilandPresenter = [[WWNIlandPresenter alloc] initWithLayer:_contentLayer
+                                                      device:_contentLayer.device];
+}
+
+- (void)_teardownMetalPresentationLayer {
+  [_ilandPresenter invalidate];
+  _ilandPresenter = nil;
+  [_contentLayer removeFromSuperlayer];
+  _contentLayer = nil;
+}
+
+- (void)prepareForSessionTeardown {
+  _sessionActive = NO;
+  _keyboardActive = NO;
+  _keyboardEnterSent = NO;
+  _activeTouchCount = 0;
+  [self resignFirstResponder];
+  [self presentWaylandFrame:NULL
+                      frame:CGRectZero
+                contentRect:CGRectMake(0, 0, 1, 1)
+               presentToken:0];
+  [self _teardownMetalPresentationLayer];
+  _waylandLayer.hidden = YES;
+  [_cursorLayer removeFromSuperlayer];
+  _cursorLayer.hidden = YES;
+  _cursorLayer.contents = nil;
+  [_ilandPresenter invalidate];
+  _ilandPresenter = nil;
+}
+
+- (void)setWaylandPresentationActive:(BOOL)active {
+  _waylandFrameView.hidden = !active;
+  if (active) {
+    [self _teardownMetalPresentationLayer];
+  }
+}
+
+- (void)prepareWaylandLayerSubpresentation {
+  [self _teardownMetalPresentationLayer];
+  _waylandFrameView.hidden = YES;
+  _waylandFrameView.layer.contents = nil;
+  _waylandLayer.hidden = NO;
+  _lastPresentToken = 0;
+  _lastPresentedWaylandImage = NULL;
+  _lastContentsScale = 0;
+  _lastWaylandLayoutSize = CGSizeZero;
+}
+
+- (void)presentWaylandFrame:(CGImageRef)image
+                      frame:(CGRect)frame
+                contentRect:(CGRect)normalizedContentRect
+               presentToken:(uint64_t)presentToken {
+  if (!_sessionActive) {
+    return;
+  }
+  [self _teardownMetalPresentationLayer];
+  _waylandLayer.hidden = YES;
+  if (!image) {
+    _waylandFrameView.layer.contents = nil;
+    _waylandFrameView.hidden = YES;
+    _lastPresentToken = 0;
+    _lastPresentedWaylandImage = NULL;
+    _lastContentsScale = 0;
+    return;
+  }
+
+  _waylandFrameView.hidden = NO;
+  if (!CGRectIsEmpty(frame)) {
+    CGSize bounds = self.bounds.size;
+    BOOL hasCsdCrop =
+        (normalizedContentRect.size.width > 0.0 &&
+         normalizedContentRect.size.height > 0.0 &&
+         (normalizedContentRect.origin.x > 0.001 ||
+          normalizedContentRect.origin.y > 0.001 ||
+          normalizedContentRect.size.width < 0.999 ||
+          normalizedContentRect.size.height < 0.999));
+    if (!hasCsdCrop && bounds.width > 0.0 && bounds.height > 0.0 &&
+        frame.size.width >= bounds.width * 0.94 &&
+        frame.size.height >= bounds.height * 0.94 &&
+        (frame.size.width < bounds.width || frame.size.height < bounds.height)) {
+      // Nested Weston fullscreen: minor configure/scale drift leaves gutters;
+      // snap the presentation view to the host compositor edges.
+      frame = CGRectMake(0, 0, bounds.width, bounds.height);
+    }
+    _waylandFrameView.frame = frame;
+    _waylandFrameView.autoresizingMask = UIViewAutoresizingNone;
+  } else {
+    _waylandFrameView.frame = self.bounds;
+    _waylandFrameView.autoresizingMask =
+        UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+  }
+
+  CGFloat viewW = _waylandFrameView.bounds.size.width;
+  CGFloat viewH = _waylandFrameView.bounds.size.height;
+  if (viewW <= 0.0 || viewH <= 0.0) {
+    viewW = self.bounds.size.width;
+    viewH = self.bounds.size.height;
+  }
+  size_t imgW = CGImageGetWidth(image);
+  size_t imgH = CGImageGetHeight(image);
+  CGFloat scaleX = viewW > 0.0 ? (CGFloat)imgW / viewW : 1.0;
+  CGFloat scaleY = viewH > 0.0 ? (CGFloat)imgH / viewH : 1.0;
+  CGFloat contentsScale = MAX(scaleX, scaleY);
+  if (contentsScale < 1.0) {
+    contentsScale = 1.0;
+  }
+
+  BOOL unchanged =
+      (presentToken != 0 && presentToken == _lastPresentToken &&
+       image == _lastPresentedWaylandImage &&
+       fabs(_lastContentsScale - contentsScale) < 0.001);
+  if (unchanged) {
+    return;
+  }
+
+  _lastPresentToken = presentToken;
+  _lastPresentedWaylandImage = image;
+  _lastContentsScale = contentsScale;
+
+  [CATransaction begin];
+  [CATransaction setDisableActions:YES];
+  _waylandFrameView.layer.opaque = YES;
+  _waylandFrameView.layer.contentsGravity = kCAGravityResize;
+  _waylandFrameView.layer.contentsScale = contentsScale;
+  _waylandFrameView.layer.contents = nil;
+  _waylandFrameView.layer.contents = (__bridge id)image;
+  _waylandFrameView.layer.contentsRect = normalizedContentRect;
+  [CATransaction commit];
+}
+
 - (BOOL)launchNestedKmscube {
-  if (!_ilandPresenter) {
+  if (![self prepareIlandMetalPresentation]) {
     return NO;
   }
   int w = (int)self.bounds.size.width;
@@ -618,8 +813,23 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   return [_ilandPresenter launchNestedKmscubeWithWidth:w height:h];
 }
 
+- (BOOL)prepareIlandMetalPresentation {
+  [self _ensureMetalPresentationLayer];
+  _waylandFrameView.hidden = YES;
+  _waylandFrameView.layer.contents = nil;
+  _waylandLayer.hidden = YES;
+  _contentLayer.hidden = NO;
+  _contentLayer.frame = self.bounds;
+  return _ilandPresenter != nil;
+}
+
 - (CAMetalLayer *)contentLayer {
+  [self _ensureMetalPresentationLayer];
   return _contentLayer;
+}
+
+- (CALayer *)waylandLayer {
+  return _waylandLayer;
 }
 
 - (void)safeAreaInsetsDidChange {
@@ -646,7 +856,17 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   // preventing new content from appearing until the animation completes.
   [CATransaction begin];
   [CATransaction setDisableActions:YES];
-  _contentLayer.frame = self.bounds;
+  if (_contentLayer) {
+    _contentLayer.frame = self.bounds;
+  }
+  _waylandLayer.frame = self.bounds;
+  if (_waylandFrameView.autoresizingMask != UIViewAutoresizingNone) {
+    _waylandFrameView.frame = self.bounds;
+  }
+  if (!CGSizeEqualToSize(_lastWaylandLayoutSize, self.bounds.size)) {
+    _lastWaylandLayoutSize = self.bounds.size;
+    _lastPresentToken = 0;
+  }
   [CATransaction commit];
 
   if (self.bounds.size.width > 0 && self.bounds.size.height > 0) {
@@ -890,9 +1110,97 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   [self resignFirstResponder];
 }
 
+/// Route accessory-bar keys to the iOS PTY when weston-terminal is active.
+/// Soft keyboard already uses wwn_ios_terminal_inject; wl_keyboard does not
+/// reach the fake PTY shell stdin path.
+- (BOOL)_injectTerminalAccessoryKeycode:(uint32_t)keycode {
+  if (_modCtrlActive || _modAltActive || _modSuperActive)
+    return NO;
+
+  const char *bytes = NULL;
+  char buf[8];
+  size_t len = 0;
+
+  switch (keycode) {
+  case KEY_MINUS:
+    buf[0] = _modShiftActive ? '_' : '-';
+    bytes = buf;
+    len = 1;
+    break;
+  case KEY_SLASH:
+    buf[0] = _modShiftActive ? '?' : '/';
+    bytes = buf;
+    len = 1;
+    break;
+  case KEY_GRAVE:
+    buf[0] = _modShiftActive ? '~' : '`';
+    bytes = buf;
+    len = 1;
+    break;
+  case KEY_TAB:
+    buf[0] = '\t';
+    bytes = buf;
+    len = 1;
+    break;
+  case KEY_ESC:
+    buf[0] = 0x1b;
+    bytes = buf;
+    len = 1;
+    break;
+  case KEY_UP:
+    bytes = "\033[A";
+    len = 3;
+    break;
+  case KEY_DOWN:
+    bytes = "\033[B";
+    len = 3;
+    break;
+  case KEY_LEFT:
+    bytes = "\033[D";
+    len = 3;
+    break;
+  case KEY_RIGHT:
+    bytes = "\033[C";
+    len = 3;
+    break;
+  case KEY_HOME:
+    bytes = "\033[H";
+    len = 3;
+    break;
+  case KEY_END:
+    bytes = "\033[F";
+    len = 3;
+    break;
+  case KEY_PAGEUP:
+    bytes = "\033[5~";
+    len = 4;
+    break;
+  case KEY_PAGEDOWN:
+    bytes = "\033[6~";
+    len = 4;
+    break;
+  default:
+    return NO;
+  }
+
+  ssize_t n = wwn_ios_terminal_inject(bytes, len);
+  if (n <= 0) {
+    WWNLog("IOS_VIEW", @"PTY accessory inject failed (%zd) keycode=%u", n,
+           keycode);
+  }
+  return YES;
+}
+
 /// Send a key press with any active sticky modifiers, then clear them.
 - (void)_sendAccessoryKey:(uint32_t)keycode {
   [self _sendKeyboardEnterIfNeeded];
+
+  if (wwn_ios_terminal_is_active() &&
+      [self _injectTerminalAccessoryKeycode:keycode]) {
+    [self _clearStickyModifiers];
+    return;
+  }
+
   uint32_t ts = [self _timestampMs];
   WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
 
@@ -1130,8 +1438,77 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   return YES;
 }
 
+- (BOOL)_readTextAssistEnabled {
+  // Match Android default (off): nested Weston and terminals expect wl_keyboard.
+  return [[NSUserDefaults standardUserDefaults] boolForKey:@"enableTextAssist"];
+}
+
+- (void)_applyDefaultTouchpadCursorAppearance {
+  UIImage *image = [UIImage imageNamed:@"TouchpadCursor"];
+  if (image) {
+    _cursorLayer.contents = (__bridge id)image.CGImage;
+    _cursorLayer.bounds =
+        CGRectMake(0, 0, image.size.width, image.size.height);
+  } else {
+    _cursorLayer.contents = (__bridge id)[self _defaultTouchpadCursorImage];
+    _cursorLayer.bounds =
+        CGRectMake(0, 0, kTouchpadCursorSize.width, kTouchpadCursorSize.height);
+  }
+  _cursorHotspotX = kTouchpadCursorHotspotX;
+  _cursorHotspotY = kTouchpadCursorHotspotY;
+}
+
+- (void)_ensureTouchpadCursorVisible {
+  if (_currentInputMode != WWNTouchInputModeTouchpad) {
+    return;
+  }
+  if (![[WWNPreferencesManager sharedManager] renderMacOSPointer]) {
+    _cursorLayer.hidden = YES;
+    return;
+  }
+  if (!_cursorLayer.contents) {
+    [self _applyDefaultTouchpadCursorAppearance];
+  }
+  _cursorLayer.hidden = NO;
+  [self _repositionCursorLayer];
+}
+
+- (CGImageRef)_defaultTouchpadCursorImage {
+  static CGImageRef sImage = NULL;
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
+    UIImage *image = [UIImage imageNamed:@"TouchpadCursor"];
+    if (image.CGImage) {
+      sImage = CGImageRetain(image.CGImage);
+      return;
+    }
+    // Fallback if the asset catalog entry is missing from the bundle.
+    CGSize size = kTouchpadCursorSize;
+    UIGraphicsBeginImageContextWithOptions(size, NO, 0);
+    CGContextRef ctx = UIGraphicsGetCurrentContext();
+    CGContextSetFillColorWithColor(ctx, [UIColor whiteColor].CGColor);
+    CGContextSetStrokeColorWithColor(ctx, [UIColor blackColor].CGColor);
+    CGContextSetLineWidth(ctx, 1.5);
+    CGContextMoveToPoint(ctx, 1.0, 1.0);
+    CGContextAddLineToPoint(ctx, 1.0, 22.0);
+    CGContextAddLineToPoint(ctx, 7.0, 17.0);
+    CGContextAddLineToPoint(ctx, 12.0, 28.0);
+    CGContextAddLineToPoint(ctx, 15.0, 27.0);
+    CGContextAddLineToPoint(ctx, 10.0, 16.0);
+    CGContextAddLineToPoint(ctx, 18.0, 16.0);
+    CGContextClosePath(ctx);
+    CGContextDrawPath(ctx, kCGPathFillStroke);
+    UIImage *fallback = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    if (fallback.CGImage) {
+      sImage = CGImageRetain(fallback.CGImage);
+    }
+  });
+  return sImage;
+}
+
 - (BOOL)becomeFirstResponder {
-  _textAssistEnabled = YES;
+  _textAssistEnabled = [self _readTextAssistEnabled];
 
   BOOL result = [super becomeFirstResponder];
   if (result) {
@@ -1192,6 +1569,51 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   // fail with "requires a valid sessionID".
   [self.inputDelegate textWillChange:self];
   [self.inputDelegate selectionWillChange:self];
+
+  /*
+   * weston-terminal only reads wl_keyboard / PTY — not text-input-v3.  Route
+   * soft keyboard here before Text Assist or wl_keyboard fallbacks.
+   *
+   * Modifier combos (Ctrl+C, etc.) must not take the plain-text fast path:
+   * synthesize the control byte locally or fall through to wl_keyboard.
+   */
+  if (wwn_ios_terminal_is_active()) {
+    BOOL hasCtrlOrAltOrSuper =
+        _modCtrlActive || _modAltActive || _modSuperActive;
+
+    if (_modCtrlActive && text.length == 1) {
+      unichar ch = [[text uppercaseString] characterAtIndex:0];
+      if (ch >= 'A' && ch <= 'Z') {
+        unsigned char ctrl = (unsigned char)(ch - 'A' + 1);
+        ssize_t n = wwn_ios_terminal_inject(&ctrl, 1);
+        if (n <= 0) {
+          WWNLog("IOS_VIEW", @"PTY ctrl inject failed (%zd) for window %llu", n,
+                 self.wwnWindowId);
+        }
+        [self.inputDelegate selectionDidChange:self];
+        [self.inputDelegate textDidChange:self];
+        [self _clearStickyModifiers];
+        return;
+      }
+    }
+
+    if (!hasCtrlOrAltOrSuper) {
+      const char *utf8 = text.UTF8String;
+      if (utf8 && utf8[0]) {
+        ssize_t n = wwn_ios_terminal_inject(utf8, strlen(utf8));
+        if (n <= 0) {
+          WWNLog("IOS_VIEW", @"PTY inject failed (%zd) for window %llu", n,
+                 self.wwnWindowId);
+        } else {
+          WWNLog("IOS_VIEW", @"PTY inject %zd bytes for window %llu", n,
+                 self.wwnWindowId);
+        }
+      }
+      [self.inputDelegate selectionDidChange:self];
+      [self.inputDelegate textDidChange:self];
+      return;
+    }
+  }
 
   // --- Text Assist mode: commit via text-input-v3 ---
   if (_textAssistEnabled) {
@@ -1328,6 +1750,14 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 
   [self.inputDelegate textWillChange:self];
   [self.inputDelegate selectionWillChange:self];
+
+  if (wwn_ios_terminal_is_active()) {
+    static const char del = 0x7f;
+    wwn_ios_terminal_inject(&del, 1);
+    [self.inputDelegate selectionDidChange:self];
+    [self.inputDelegate textDidChange:self];
+    return;
+  }
 
   if (_textAssistEnabled && _textBuffer.length > 0) {
     NSRange deleteRange;
@@ -1723,10 +2153,8 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   // Snapshot the input mode at gesture start (don't switch mid-gesture)
   if (_activeTouchCount == 0) {
     _currentInputMode = [self _readInputMode];
-    // Show/hide cursor layer based on input mode
-    if (_cursorLayer.contents) {
-      _cursorLayer.hidden = (_currentInputMode != WWNTouchInputModeTouchpad);
-    }
+    _maxTouchCount = 0;
+    [self _ensureTouchpadCursorVisible];
   }
   _activeTouchCount = (NSInteger)[[event touchesForView:self] count];
 
@@ -1763,6 +2191,9 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
       (NSInteger)[[event touchesForView:self] count] - (NSInteger)touches.count;
   if (_activeTouchCount < 0)
     _activeTouchCount = 0;
+  if (_activeTouchCount == 0 && _currentInputMode == WWNTouchInputModeTouchpad) {
+    _touchpadPointerEntered = NO;
+  }
 }
 
 - (void)touchesCancelled:(NSSet<UITouch *> *)touches
@@ -1781,16 +2212,58 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 //
 // Direct 1:1 touch-to-surface mapping via Wayland wl_touch events.
 // Each finger is a separate touch point identified by its hash.
+//
+// Nested Weston desktop-shell only tracks wl_pointer for its cursor and
+// launcher; the primary finger is also mirrored to pointer at touch location.
+
+- (void)_multitouch_mirrorPointerAt:(CGPoint)loc
+                          timestamp:(uint32_t)timestampMs
+                       enterIfNeeded:(BOOL)enterIfNeeded {
+  if (self.wwnWindowId == 0) {
+    return;
+  }
+  WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+  if (enterIfNeeded && !_multitouchPointerEntered) {
+    CGPoint surfaceLoc = [self _surfacePointForViewPoint:loc];
+    [bridge injectPointerEnterForWindow:self.wwnWindowId
+                                      x:surfaceLoc.x
+                                      y:surfaceLoc.y
+                              timestamp:timestampMs];
+    _multitouchPointerEntered = YES;
+  }
+  CGPoint surfaceLoc = [self _surfacePointForViewPoint:loc];
+  [bridge injectPointerMotionForWindow:self.wwnWindowId
+                                     x:surfaceLoc.x
+                                     y:surfaceLoc.y
+                             timestamp:timestampMs];
+}
 
 - (void)_multitouch_touchesBegan:(NSSet<UITouch *> *)touches
                        withEvent:(UIEvent *)event {
   uint32_t ts = (uint32_t)(event.timestamp * 1000);
   WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
 
+  if (_activeTouchCount == 1) {
+    UITouch *firstTouch = [touches anyObject];
+    _primaryTouchId = (int32_t)firstTouch.hash;
+    _prevTouchPoint = [firstTouch locationInView:self];
+    _touchStartTime = event.timestamp;
+    _touchTotalMovement = 0;
+    _multitouchPointerEntered = NO;
+  }
+
   for (UITouch *touch in touches) {
     CGPoint loc = [touch locationInView:self];
+    // Route wl_touch through the same letterbox-aware surface mapping the
+    // pointer path uses, so touch points and the rendered cursor coincide.
+    CGPoint sloc = [self _surfacePointForViewPoint:loc];
     int32_t touchId = (int32_t)touch.hash;
-    [bridge injectTouchDown:touchId x:loc.x y:loc.y timestamp:ts];
+    [bridge injectTouchDown:touchId x:sloc.x y:sloc.y timestamp:ts];
+    if (touchId == _primaryTouchId) {
+      [self _multitouch_mirrorPointerAt:loc
+                              timestamp:ts
+                           enterIfNeeded:YES];
+    }
   }
   [bridge injectTouchFrame];
 }
@@ -1802,8 +2275,17 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 
   for (UITouch *touch in touches) {
     CGPoint loc = [touch locationInView:self];
+    CGPoint sloc = [self _surfacePointForViewPoint:loc];
     int32_t touchId = (int32_t)touch.hash;
-    [bridge injectTouchMotion:touchId x:loc.x y:loc.y timestamp:ts];
+    [bridge injectTouchMotion:touchId x:sloc.x y:sloc.y timestamp:ts];
+    if (touchId == _primaryTouchId) {
+      // Movement tracking stays in view space (tap threshold is a screen-space
+      // distance); only the injected coordinates are surface-mapped.
+      _touchTotalMovement += fabs(loc.x - _prevTouchPoint.x) +
+                             fabs(loc.y - _prevTouchPoint.y);
+      _prevTouchPoint = loc;
+      [self _multitouch_mirrorPointerAt:loc timestamp:ts enterIfNeeded:NO];
+    }
   }
   [bridge injectTouchFrame];
 }
@@ -1812,9 +2294,26 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
                        withEvent:(UIEvent *)event {
   uint32_t ts = (uint32_t)(event.timestamp * 1000);
   WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+  NSTimeInterval duration = event.timestamp - _touchStartTime;
+  BOOL isShortTap = (_touchTotalMovement < kTapMovementThreshold &&
+                     duration < kTapDurationThreshold);
 
   for (UITouch *touch in touches) {
     int32_t touchId = (int32_t)touch.hash;
+    if (touchId == _primaryTouchId) {
+      CGPoint loc = [touch locationInView:self];
+      [self _multitouch_mirrorPointerAt:loc timestamp:ts enterIfNeeded:NO];
+      if (isShortTap && (NSInteger)touches.count <= 1 && _activeTouchCount <= 1) {
+        [bridge injectPointerButtonForWindow:self.wwnWindowId
+                                      button:BTN_LEFT
+                                     pressed:YES
+                                   timestamp:ts];
+        [bridge injectPointerButtonForWindow:self.wwnWindowId
+                                      button:BTN_LEFT
+                                     pressed:NO
+                                   timestamp:ts + 1];
+      }
+    }
     [bridge injectTouchUp:touchId timestamp:ts];
   }
   [bridge injectTouchFrame];
@@ -1825,12 +2324,86 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 // ===========================================================================
 //
 // Simulates a laptop trackpad:
-//   1 finger drag  → move pointer (relative)
-//   1 finger tap   → left click at pointer position
-//   2 finger tap   → right click at pointer position
-//   2 finger drag  → scroll (vertical + horizontal)
+//   1 finger drag       → move pointer (relative)
+//   1 finger tap        → left click at virtual cursor (touch location ignored)
+//   1 finger tap+hold   → at 0.5s a radial indicator appears and fills; at 1.0s
+//                         a sustained LMB-down engages so the finger drags, and
+//                         lifting releases LMB
+//   2 finger tap        → right click at virtual cursor
+//   2 finger drag       → scroll (vertical + horizontal)
 //
 // The virtual pointer position persists across gestures.
+
+// Show the radial indicator at the current cursor and animate it filling over
+// the (engage - show) window.
+- (void)_touchpad_showRadial {
+  if (!_radialLayer) {
+    const CGFloat r = kTouchpadRadialRadius;
+    _radialLayer = [CAShapeLayer layer];
+    UIBezierPath *path =
+        [UIBezierPath bezierPathWithArcCenter:CGPointMake(r, r)
+                                       radius:r - 4.0
+                                   startAngle:-M_PI_2
+                                     endAngle:(3.0 * M_PI_2)
+                                    clockwise:YES];
+    _radialLayer.path = path.CGPath;
+    _radialLayer.bounds = CGRectMake(0, 0, 2 * r, 2 * r);
+    _radialLayer.fillColor = [UIColor clearColor].CGColor;
+    _radialLayer.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.85].CGColor;
+    _radialLayer.lineWidth = 3.0;
+    _radialLayer.lineCap = kCALineCapRound;
+    _radialLayer.zPosition = 10001; // above the cursor layer
+  }
+  [self _repositionRadialLayer];
+  if (_radialLayer.superlayer != self.layer) {
+    [self.layer addSublayer:_radialLayer];
+  }
+  _radialLayer.hidden = NO;
+  _radialLayer.strokeEnd = 0.0;
+
+  CABasicAnimation *fill =
+      [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
+  fill.fromValue = @0.0;
+  fill.toValue = @1.0;
+  fill.duration = (kDragEngageDelay - kDragArmShowDelay);
+  fill.removedOnCompletion = NO;
+  fill.fillMode = kCAFillModeForwards;
+  [_radialLayer addAnimation:fill forKey:@"fill"];
+}
+
+- (void)_touchpad_hideRadial {
+  [_radialLayer removeAllAnimations];
+  _radialLayer.hidden = YES;
+}
+
+// Invalidate any pending arm callbacks and hide the radial. Does NOT release an
+// already-engaged drag.
+- (void)_touchpad_cancelDragArm {
+  _dragGeneration++;
+  [self _touchpad_hideRadial];
+}
+
+// Engage the sustained LMB-down drag at the virtual cursor.
+- (void)_touchpad_engageDrag {
+  if (_dragging) {
+    return;
+  }
+  _dragging = YES;
+  uint32_t ts = [self _timestampMs];
+  [self _touchpad_ensurePointerEntered];
+  [self _touchpad_syncPointerPosition:ts];
+  [[WWNCompositorBridge sharedBridge]
+      injectPointerButtonForWindow:self.wwnWindowId
+                            button:BTN_LEFT
+                           pressed:YES
+                         timestamp:ts];
+  if (@available(iOS 10.0, *)) {
+    UIImpactFeedbackGenerator *fb = [[UIImpactFeedbackGenerator alloc]
+        initWithStyle:UIImpactFeedbackStyleMedium];
+    [fb impactOccurred];
+  }
+  [self _touchpad_hideRadial];
+}
 
 - (void)_touchpad_touchesBegan:(NSSet<UITouch *> *)touches
                      withEvent:(UIEvent *)event {
@@ -1840,17 +2413,49 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   _touchStartTime = event.timestamp;
   _touchTotalMovement = 0;
   _scrollActive = NO;
-
-  if (_activeTouchCount == 1) {
-    _prevTouchPoint = loc;
+  if (_activeTouchCount > _maxTouchCount) {
+    _maxTouchCount = _activeTouchCount;
   }
 
   if (_activeTouchCount >= 2) {
+    // A second finger landed: cancel any pending single-finger drag arm.
+    [self _touchpad_cancelDragArm];
     _prevScrollCenter = [self _centroidOfTouches:event];
+  } else if (_activeTouchCount == 1) {
+    _prevTouchPoint = loc;
+    _dragging = NO;
+    // Arm the tap-and-hold drag: show the radial at 0.5s, engage at 1.0s.
+    NSInteger gen = ++_dragGeneration;
+    __weak typeof(self) weakSelf = self;
+    dispatch_after(
+        dispatch_time(DISPATCH_TIME_NOW,
+                      (int64_t)(kDragArmShowDelay * NSEC_PER_SEC)),
+        dispatch_get_main_queue(), ^{
+          typeof(self) s = weakSelf;
+          if (!s || s->_dragGeneration != gen || s->_activeTouchCount != 1 ||
+              s->_scrollActive || s->_dragging ||
+              s->_touchTotalMovement >= kTapMovementThreshold) {
+            return;
+          }
+          [s _touchpad_showRadial];
+        });
+    dispatch_after(
+        dispatch_time(DISPATCH_TIME_NOW,
+                      (int64_t)(kDragEngageDelay * NSEC_PER_SEC)),
+        dispatch_get_main_queue(), ^{
+          typeof(self) s = weakSelf;
+          if (!s || s->_dragGeneration != gen || s->_activeTouchCount != 1 ||
+              s->_scrollActive ||
+              s->_touchTotalMovement >= kTapMovementThreshold) {
+            return;
+          }
+          [s _touchpad_engageDrag];
+        });
   }
 
-  // Ensure the pointer has entered the window
+  // Ensure the pointer has entered the window and Weston knows cursor position
   [self _touchpad_ensurePointerEntered];
+  [self _touchpad_syncPointerPosition:(uint32_t)(event.timestamp * 1000)];
 }
 
 - (void)_touchpad_touchesMoved:(NSSet<UITouch *> *)touches
@@ -1861,6 +2466,9 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   if (_activeTouchCount >= 2) {
     // --- Two (or more) finger drag → scroll ---
     _scrollActive = YES;
+    [self _touchpad_ensurePointerEntered];
+    [self _touchpad_syncPointerPosition:ts];
+
     CGPoint center = [self _centroidOfTouches:event];
     CGFloat dx = (center.x - _prevScrollCenter.x) * kScrollSensitivity;
     CGFloat dy = (center.y - _prevScrollCenter.y) * kScrollSensitivity;
@@ -1883,7 +2491,7 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
                                timestamp:ts];
     }
   } else if (_activeTouchCount == 1) {
-    // --- Single finger drag → move pointer ---
+    // --- Single finger drag → move pointer (or drag if engaged) ---
     UITouch *touch = [touches anyObject];
     CGPoint loc = [touch locationInView:self];
     CGFloat dx = (loc.x - _prevTouchPoint.x) * kTouchpadSensitivity;
@@ -1891,6 +2499,12 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
     _prevTouchPoint = loc;
 
     _touchTotalMovement += fabs(dx) + fabs(dy);
+
+    // Movement before engage cancels the tap-and-hold arm so it becomes a plain
+    // pointer move rather than an accidental drag.
+    if (!_dragging && _touchTotalMovement >= kTapMovementThreshold) {
+      [self _touchpad_cancelDragArm];
+    }
 
     // Update virtual pointer, clamped to view bounds
     CGFloat clampedX = _pointerPos.x + dx;
@@ -1903,12 +2517,14 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
     if (clampedY > self.bounds.size.height) clampedY = self.bounds.size.height;
     _pointerPos.y = clampedY;
 
+    CGPoint surfacePos = [self _surfacePointerPosition];
+    // With a drag engaged the LMB stays down, so this motion drags.
     [bridge injectPointerMotionForWindow:self.wwnWindowId
-                                       x:_pointerPos.x
-                                       y:_pointerPos.y
+                                       x:surfacePos.x
+                                       y:surfacePos.y
                                timestamp:ts];
 
-    // Keep cursor layer in sync with virtual pointer
+    [self _ensureTouchpadCursorVisible];
     [self _repositionCursorLayer];
   }
 }
@@ -1917,58 +2533,153 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
                      withEvent:(UIEvent *)event {
   uint32_t ts = (uint32_t)(event.timestamp * 1000);
   NSTimeInterval duration = event.timestamp - _touchStartTime;
-  BOOL isTap = (_touchTotalMovement < kTapMovementThreshold &&
-                duration < kTapDurationThreshold);
+  BOOL lowMovement = _touchTotalMovement < kTapMovementThreshold;
+  BOOL isShortTap = lowMovement && duration < kTapDurationThreshold;
 
-  NSInteger endingCount = (NSInteger)touches.count;
   WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+  // The wrapper decrements _activeTouchCount after we return; compute whether
+  // this end-event finishes the whole gesture (all fingers up).
+  NSInteger remaining = _activeTouchCount - (NSInteger)touches.count;
+  BOOL gestureEnding = (remaining <= 0);
 
-  if (isTap && !_scrollActive) {
-    // Determine click type based on how many fingers were involved
-    // (at gesture peak, not just the touches ending now)
-    if (_activeTouchCount >= 2 || endingCount >= 2) {
-      // Two-finger tap → right click
-      [bridge injectPointerButtonForWindow:self.wwnWindowId
-                                    button:BTN_RIGHT
-                                   pressed:YES
-                                 timestamp:ts];
-      [bridge injectPointerButtonForWindow:self.wwnWindowId
-                                    button:BTN_RIGHT
-                                   pressed:NO
-                                 timestamp:ts + 1];
-    } else {
-      // Single-finger tap → left click
-      [bridge injectPointerButtonForWindow:self.wwnWindowId
-                                    button:BTN_LEFT
-                                   pressed:YES
-                                 timestamp:ts];
-      [bridge injectPointerButtonForWindow:self.wwnWindowId
-                                    button:BTN_LEFT
-                                   pressed:NO
-                                 timestamp:ts + 1];
-    }
+  if (_dragging) {
+    // Release the sustained LMB-down that the tap-and-hold drag engaged.
+    [self _touchpad_syncPointerPosition:ts];
+    [bridge injectPointerButtonForWindow:self.wwnWindowId
+                                  button:BTN_LEFT
+                                 pressed:NO
+                               timestamp:ts];
+    _dragging = NO;
+  } else if (gestureEnding && !_scrollActive && lowMovement &&
+             duration < kTapDurationThreshold && _maxTouchCount >= 2) {
+    // Two-finger tap → right click at virtual cursor.
+    [self _touchpad_ensurePointerEntered];
+    [self _touchpad_syncPointerPosition:ts];
+    [bridge injectPointerButtonForWindow:self.wwnWindowId
+                                  button:BTN_RIGHT
+                                 pressed:YES
+                               timestamp:ts];
+    [bridge injectPointerButtonForWindow:self.wwnWindowId
+                                  button:BTN_RIGHT
+                                 pressed:NO
+                               timestamp:ts + 1];
+  } else if (isShortTap && !_scrollActive && gestureEnding &&
+             _maxTouchCount <= 1) {
+    // Single-finger tap → left click at virtual cursor.
+    [self _touchpad_ensurePointerEntered];
+    [self _touchpad_syncPointerPosition:ts];
+    [bridge injectPointerButtonForWindow:self.wwnWindowId
+                                  button:BTN_LEFT
+                                 pressed:YES
+                               timestamp:ts];
+    [bridge injectPointerButtonForWindow:self.wwnWindowId
+                                  button:BTN_LEFT
+                                 pressed:NO
+                               timestamp:ts + 1];
   }
 
-  _scrollActive = NO;
+  [self _touchpad_cancelDragArm];
+  if (gestureEnding) {
+    _scrollActive = NO;
+  }
 }
 
 - (void)_touchpad_touchesCancelled {
+  if (_dragging) {
+    [[WWNCompositorBridge sharedBridge]
+        injectPointerButtonForWindow:self.wwnWindowId
+                              button:BTN_LEFT
+                             pressed:NO
+                           timestamp:[self _timestampMs]];
+    _dragging = NO;
+  }
+  [self _touchpad_cancelDragArm];
   _scrollActive = NO;
   _activeTouchCount = 0;
+  _maxTouchCount = 0;
+  _touchpadPointerEntered = NO;
 }
 
-/// Sends pointer enter if we haven't already, positioning at the virtual
-/// cursor.
+/// Map the virtual cursor position into Wayland surface coordinates when
+/// the presented frame is letterboxed inside the compositor view.
+- (CGPoint)_surfacePointerPosition {
+  CGPoint pos = _pointerPos;
+  if (_waylandFrameView.hidden || _waylandFrameView.layer.contents == nil) {
+    return pos;
+  }
+  CGRect frame = _waylandFrameView.frame;
+  if (frame.size.width <= 0.0 || frame.size.height <= 0.0 ||
+      CGRectEqualToRect(frame, self.bounds)) {
+    return pos;
+  }
+  pos.x -= frame.origin.x;
+  pos.y -= frame.origin.y;
+  if (pos.x < 0.0)
+    pos.x = 0.0;
+  if (pos.y < 0.0)
+    pos.y = 0.0;
+  if (pos.x > frame.size.width)
+    pos.x = frame.size.width;
+  if (pos.y > frame.size.height)
+    pos.y = frame.size.height;
+  return pos;
+}
+
+- (CGPoint)_surfacePointForViewPoint:(CGPoint)viewPoint {
+  if (_waylandFrameView.hidden || _waylandFrameView.layer.contents == nil) {
+    return viewPoint;
+  }
+  CGRect frame = _waylandFrameView.frame;
+  if (frame.size.width <= 0.0 || frame.size.height <= 0.0 ||
+      CGRectEqualToRect(frame, self.bounds)) {
+    return viewPoint;
+  }
+  CGPoint pos =
+      CGPointMake(viewPoint.x - frame.origin.x, viewPoint.y - frame.origin.y);
+  if (pos.x < 0.0)
+    pos.x = 0.0;
+  if (pos.y < 0.0)
+    pos.y = 0.0;
+  if (pos.x > frame.size.width)
+    pos.x = frame.size.width;
+  if (pos.y > frame.size.height)
+    pos.y = frame.size.height;
+  return pos;
+}
+
+/// Sends pointer enter once, then motion to sync the virtual cursor position.
 - (void)_touchpad_ensurePointerEntered {
-  if (_pointerEntered)
+  if (self.wwnWindowId == 0) {
     return;
+  }
+  if (_touchpadPointerEntered) {
+    return;
+  }
+  CGPoint pos = [self _surfacePointerPosition];
   uint32_t ts = [self _timestampMs];
   [[WWNCompositorBridge sharedBridge]
       injectPointerEnterForWindow:self.wwnWindowId
-                                x:_pointerPos.x
-                                y:_pointerPos.y
+                                x:pos.x
+                                y:pos.y
                         timestamp:ts];
-  _pointerEntered = YES;
+  [[WWNCompositorBridge sharedBridge]
+      injectPointerMotionForWindow:self.wwnWindowId
+                                 x:pos.x
+                                 y:pos.y
+                         timestamp:ts];
+  _touchpadPointerEntered = YES;
+}
+
+- (void)_touchpad_syncPointerPosition:(uint32_t)timestampMs {
+  if (self.wwnWindowId == 0) {
+    return;
+  }
+  CGPoint pos = [self _surfacePointerPosition];
+  [[WWNCompositorBridge sharedBridge]
+      injectPointerMotionForWindow:self.wwnWindowId
+                                 x:pos.x
+                                 y:pos.y
+                         timestamp:timestampMs];
 }
 
 /// Compute the centroid (average position) of all touches currently on
@@ -2026,6 +2737,13 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
       if (kc == KEY_RESERVED)
         continue;
 
+      if (wwn_ios_terminal_is_active() && kc == KEY_BACKSPACE) {
+        static const char del = 0x7f;
+        wwn_ios_terminal_inject(&del, 1);
+        handled = YES;
+        continue;
+      }
+
       handled = YES;
       _pressedPhysicalKeyCount++;
 
@@ -2065,6 +2783,11 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
       uint32_t kc = hidUsageToLinuxKeycode(key.keyCode);
       if (kc == KEY_RESERVED)
         continue;
+
+      if (wwn_ios_terminal_is_active() && kc == KEY_BACKSPACE) {
+        handled = YES;
+        continue;
+      }
 
       handled = YES;
       if (_pressedPhysicalKeyCount > 0)
@@ -2130,19 +2853,39 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
                    height:(uint32_t)height
                  hotspotX:(float)hotspotX
                  hotspotY:(float)hotspotY {
+  if (![[WWNPreferencesManager sharedManager] renderMacOSPointer]) {
+    _cursorLayer.contents = nil;
+    _cursorLayer.hidden = YES;
+    return;
+  }
+
   if (image) {
     _cursorLayer.contents = image;
     _cursorLayer.bounds = CGRectMake(0, 0, width, height);
     _cursorHotspotX = hotspotX;
     _cursorHotspotY = hotspotY;
-
-    // Show cursor only in touchpad mode
     _cursorLayer.hidden = (_currentInputMode != WWNTouchInputModeTouchpad);
     [self _repositionCursorLayer];
-  } else {
-    _cursorLayer.contents = nil;
-    _cursorLayer.hidden = YES;
+    return;
   }
+
+  if (_currentInputMode == WWNTouchInputModeTouchpad) {
+    [self _applyDefaultTouchpadCursorAppearance];
+    _cursorLayer.hidden = NO;
+    [self _repositionCursorLayer];
+    return;
+  }
+
+  _cursorLayer.contents = nil;
+  _cursorLayer.hidden = YES;
+}
+
+/// Position the radial drag indicator centered on the pointer hotspot (arrow tip).
+- (void)_repositionRadialLayer {
+  if (!_radialLayer) {
+    return;
+  }
+  _radialLayer.position = _pointerPos;
 }
 
 /// Position the cursor layer at the virtual pointer location, offset by the
@@ -2153,6 +2896,7 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   _cursorLayer.position = CGPointMake(
       _pointerPos.x - _cursorHotspotX + _cursorLayer.bounds.size.width / 2.0,
       _pointerPos.y - _cursorHotspotY + _cursorLayer.bounds.size.height / 2.0);
+  [self _repositionRadialLayer];
   [CATransaction commit];
 }
 

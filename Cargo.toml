@@ -62,6 +62,19 @@ tempfile = "3.25.0"
 # waypipe: integrated as optional dependency for unified static library (run scripts/ensure-waypipe.sh if ./waypipe is missing)
 waypipe = { path = "./waypipe", optional = true, default-features = false, features = ["lz4", "zstd", "video"] }
 
+# uutils coreutils umbrella: in-process ls/cat/cp/... dispatched from zsh on the
+# App-Store-compliant build (no fork/exec). Run scripts/ensure-coreutils.sh if
+# ./coreutils is missing. default-features = false + an explicit safe subset
+# keeps binary size bounded (see the in-process safe subset in the dispatch
+# shim). exit-prone / sandbox-meaningless utils are deliberately excluded.
+coreutils = { path = "./coreutils", optional = true, default-features = false, features = [
+  "ls", "cat", "cp", "mv", "rm", "mkdir", "rmdir", "ln", "touch", "echo",
+  "pwd", "head", "tail", "wc", "sort", "cut", "tr", "seq", "basename",
+  "dirname", "stat", "du", "df", "date", "env", "printenv", "uname",
+  "whoami", "yes", "tee", "nl", "tac", "fold", "expand", "unexpand",
+  "truncate",
+] }
+
 [build-dependencies]
 # Use uniffi_build only here — not `uniffi` with `build` feature. Two uniffi feature
 # graphs (cli vs build) confuse crate2nix host rlib resolution → E0460 vs uniffi_bindgen.
@@ -83,6 +96,13 @@ profile-full-dev = []
 # Enables Smithay protocol migration scaffolding / compile probes.
 smithay-protocols = []
 smithay-desktop = []
+# iland bare-metal WindowServer-replacement mode (Mode B): Dobby code injection,
+# AMFI bypass, framebufferd/SkyLight, inputd, symrez. macOS-ONLY, opt-in, and
+# NOT App-Store-safe (requires SIP off + root + private entitlements). Must be
+# combined with profile-desktop-host or profile-full-dev; never enabled for
+# mobile or store-safe builds. Default builds use iland Mode A (in-window,
+# IOSurface + ANGLE, App-Store-safe) only.
+iland-baremetal = []
 # Per-frame trace logging (SurfaceCommit, buffer, damage, frame callbacks).
 # Enable for debugging: `--features verbose-logs`
 verbose-logs = []
@@ -92,6 +112,9 @@ linux-ui = ["dep:glib", "dep:gtk4", "dep:cairo-rs", "dep:libadwaita"]
 waypipe = ["dep:waypipe"]
 # Enable waypipe with static libssh2 transport (iOS/Android: no subprocess spawning)
 waypipe-ssh = ["waypipe", "dep:ssh2"]
+
+# Enable in-process uutils coreutils (ls/cat/cp/...) linked into the staticlib.
+coreutils = ["dep:coreutils"]
 
 [[bin]]
 name = "wawona-linux-ui"

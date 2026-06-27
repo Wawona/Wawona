@@ -21,13 +21,13 @@ struct ObjCSettingsHostView: View {
             Text("Settings open in native Preferences window.")
                 .foregroundStyle(.secondary)
             Button("Open Settings") {
-                WWNPreferences.shared().show(NSApp as Any)
+                WWNPreferences.shared().show(NSApp)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
         .onAppear {
-            WWNPreferences.shared().show(NSApp as Any)
+            WWNPreferences.shared().show(NSApp)
         }
     }
 }

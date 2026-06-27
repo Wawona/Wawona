@@ -3,6 +3,7 @@ pub mod registry;
 pub mod compositor;
 pub mod seat;
 pub mod output;
+pub mod input;
 
 use wayland_server::DisplayHandle;
 use crate::core::state::CompositorState;

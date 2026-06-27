@@ -94,3 +94,72 @@ fn test_output_resize_updates_fullscreen_shell_window_geometry() {
     assert_eq!(window.width, 720);
     assert_eq!(window.height, 1280);
 }
+
+#[test]
+fn test_output_resize_updates_host_locked_window_geometry() {
+    let mut state = CompositorState::new(None);
+
+    let mut window = Window::new(31, 601);
+    window.host_locked = true;
+    state.windows.insert(31, Arc::new(RwLock::new(window)));
+    state.surface_to_window.insert(601, 31);
+
+    state.set_output_size(720, 1280, 1.0);
+
+    let window_ref = state.get_window(31).expect("window missing");
+    let window = window_ref.read().unwrap();
+    assert_eq!(window.x, 0);
+    assert_eq!(window.y, 0);
+    assert_eq!(window.width, 720);
+    assert_eq!(window.height, 1280);
+}
+
+#[test]
+fn test_find_surface_at_scales_weston_style_buffer_without_set_buffer_scale() {
+    let mut state = CompositorState::new(None);
+    state.set_output_size(390, 844, 2.0);
+
+    let mut surface = Surface::new(101, None, None);
+    surface.current.width = 780;
+    surface.current.height = 1688;
+    surface.current.scale = 1;
+    state.surfaces.insert(101, Arc::new(RwLock::new(surface)));
+
+    let mut window = Window::new(1, 101);
+    window.width = 390;
+    window.height = 844;
+    state.windows.insert(1, Arc::new(RwLock::new(window)));
+    state.surface_to_window.insert(101, 1);
+    state.window_tree.stacking_order = vec![1];
+
+    let (sid, lx, ly) = state
+        .find_surface_at(195.0, 422.0)
+        .expect("center hit");
+    assert_eq!(sid, 101);
+    assert!((lx - 390.0).abs() < 0.01, "lx={lx}");
+    assert!((ly - 844.0).abs() < 0.01, "ly={ly}");
+}
+
+#[test]
+fn test_find_surface_at_scales_with_wl_surface_buffer_scale() {
+    let mut state = CompositorState::new(None);
+
+    let mut surface = Surface::new(102, None, None);
+    surface.current.width = 800;
+    surface.current.height = 600;
+    surface.current.scale = 2;
+    state.surfaces.insert(102, Arc::new(RwLock::new(surface)));
+
+    let mut window = Window::new(2, 102);
+    window.width = 400;
+    window.height = 300;
+    state.windows.insert(2, Arc::new(RwLock::new(window)));
+    state.surface_to_window.insert(102, 2);
+    state.window_tree.stacking_order = vec![2];
+
+    let (_, lx, ly) = state
+        .find_surface_at(200.0, 150.0)
+        .expect("center hit");
+    assert!((lx - 400.0).abs() < 0.01, "lx={lx}");
+    assert!((ly - 300.0).abs() < 0.01, "ly={ly}");
+}

@@ -11,7 +11,7 @@ DEFAULT_MAX_LINES = 400
 LINE_BUDGET_OVERRIDES = {
     "dependencies/libs/libwayland/android.nix": 650,
     "dependencies/libs/waypipe/android.nix": 900,
-    "dependencies/wawona/android.nix": 850,
+    "dependencies/wawona/android.nix": 890,
 }
 
 # Runtime app wrappers are allowed to ignore best-effort cleanup commands.

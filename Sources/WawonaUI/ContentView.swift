@@ -28,5 +28,11 @@ struct ContentView: View {
             ObjCSettingsHostView()
                 .tabItem { Label("Settings", systemImage: "gearshape") }
         }
+        .onAppear {
+            MachineRuntimeSettingsApplicator.applyActiveMachine(
+                profileStore: profileStore,
+                preferences: preferences
+            )
+        }
     }
 }

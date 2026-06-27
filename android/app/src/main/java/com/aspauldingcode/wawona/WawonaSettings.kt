@@ -4,8 +4,9 @@ import android.content.SharedPreferences
 
 object WawonaSettings {
     fun apply(prefs: SharedPreferences) {
-        // Android: CSD not supported; Force SSD is always on.
-        val forceServerSideDecorations = true
+        // Default off: weston-family clients draw CSD unless Force SSD is enabled.
+        val forceServerSideDecorations =
+            prefs.getBoolean("forceServerSideDecorations", false)
         
         // Auto Scale (Android) maps to autoRetinaScaling for native compatibility.
         // Primary key is "autoScale" (from the UI toggle); fall back to legacy

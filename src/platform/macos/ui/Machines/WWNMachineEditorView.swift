@@ -45,6 +45,7 @@ struct WWNMachineEditorView: View {
   @State private var waypipeSecCtx: String
   @State private var forceServerSideDecorations: Bool
   @State private var autoScale: Bool
+  @State private var respectSafeArea: Bool
   @State private var renderMacOSPointer: Bool
   @State private var touchInputType: String
   @State private var swapCmdWithAlt: Bool
@@ -106,6 +107,7 @@ struct WWNMachineEditorView: View {
     _waypipeSecCtx = State(initialValue: overrides["WaypipeSecCtx"] as? String ?? prefs.waypipeSecCtx())
     _forceServerSideDecorations = State(initialValue: (overrides["ForceServerSideDecorations"] as? Bool) ?? prefs.forceServerSideDecorations())
     _autoScale = State(initialValue: (overrides["AutoScale"] as? Bool) ?? prefs.autoScale())
+    _respectSafeArea = State(initialValue: (overrides["RespectSafeArea"] as? Bool) ?? prefs.respectSafeArea())
     _touchInputType = State(initialValue: overrides["TouchInputType"] as? String ?? prefs.touchInputType())
     _swapCmdWithAlt = State(initialValue: (overrides["SwapCmdWithAlt"] as? Bool) ?? prefs.swapCmdWithAlt())
     _universalClipboard = State(initialValue: (overrides["UniversalClipboard"] as? Bool) ?? prefs.universalClipboardEnabled())
@@ -223,7 +225,14 @@ struct WWNMachineEditorView: View {
     sectionCard("Display / Input / Graphics", subtitle: "Per-machine overrides for global Display, Input, Graphics, and HDR settings.") {
       Toggle("Force Server-Side Decorations", isOn: $forceServerSideDecorations)
       Toggle("Auto Scale", isOn: $autoScale)
+      #if os(iOS) || os(tvOS)
+      Toggle("Respect Safe Area", isOn: $respectSafeArea)
+      #endif
+      #if os(macOS)
       Toggle("Show macOS Cursor", isOn: $renderMacOSPointer)
+      #else
+      Toggle("Show Virtual Pointer", isOn: $renderMacOSPointer)
+      #endif
       labeledField("Touch Input Type") {
         Picker("", selection: $touchInputType) {
           Text("Multi-Touch").tag("Multi-Touch")
@@ -270,100 +279,32 @@ struct WWNMachineEditorView: View {
 
   // MARK: - Native Client Section
 
+  private var nativeClientSummary: String {
+    if selectedClientId == kNativeClientCustomId {
+      return customCommand.isEmpty ? "Custom Command" : customCommand
+    }
+    return kBundledClients.first { $0.id == selectedClientId }?.name ?? selectedClientId
+  }
+
   private var nativeClientSection: some View {
     sectionCard(
       "Wayland Client",
       subtitle: "Choose a bundled client to connect directly to the compositor via Wayland socket. No SSH or network required."
     ) {
-      VStack(alignment: .leading, spacing: 14) {
-        ForEach(kBundledClients) { client in
-          clientOption(client)
-        }
-        #if !os(iOS)
-        customClientOption
-        #endif
-      }
-    }
-  }
-
-  @ViewBuilder
-  private func clientOption(_ client: BundledClient) -> some View {
-    let isSelected = selectedClientId == client.id
-    Button {
-      selectedClientId = client.id
-    } label: {
-      HStack(spacing: 12) {
-        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-          .font(.title3)
-          .foregroundStyle(isSelected ? Color.accentColor : .secondary)
-          .frame(width: 28, alignment: .center)
-        Image(systemName: client.icon)
-          .font(.title3)
-          .foregroundStyle(Color.accentColor)
-          .frame(width: 28, alignment: .center)
-        VStack(alignment: .leading, spacing: 2) {
-          Text(client.name)
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.primary)
-          Text(client.description)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-        Spacer()
-      }
-      .contentShape(Rectangle())
-      .padding(.vertical, 6)
-      .padding(.horizontal, 8)
-      .background(
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
-          .fill(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
-      )
-    }
-    .buttonStyle(.plain)
-  }
-
-  @ViewBuilder
-  private var customClientOption: some View {
-    let isSelected = selectedClientId == kNativeClientCustomId
-    VStack(alignment: .leading, spacing: 8) {
-      Button {
-        selectedClientId = kNativeClientCustomId
-      } label: {
-        HStack(spacing: 12) {
-          Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-            .font(.title3)
-            .foregroundStyle(isSelected ? Color.accentColor : .secondary)
-            .frame(width: 28, alignment: .center)
-          Image(systemName: "terminal.fill")
-            .font(.title3)
-            .foregroundStyle(Color.accentColor)
-            .frame(width: 28, alignment: .center)
-          VStack(alignment: .leading, spacing: 2) {
-            Text("Custom Command")
-              .font(.subheadline.weight(.semibold))
-              .foregroundStyle(.primary)
-            Text("Run any Wayland-compatible executable")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          }
-          Spacer()
-        }
-        .contentShape(Rectangle())
-        .padding(.vertical, 6)
-        .padding(.horizontal, 8)
-        .background(
-          RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .fill(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
+      NavigationLink {
+        WWNNativeClientPickerView(
+          selectedClientId: $selectedClientId,
+          customCommand: $customCommand
         )
-      }
-      .buttonStyle(.plain)
-
-      if isSelected {
-        TextField("e.g. /usr/bin/my-wayland-app", text: $customCommand)
-          .textFieldStyle(.roundedBorder)
-          .wwnDisableAutocapitalization()
-          .autocorrectionDisabled()
-          .padding(.leading, 68)
+      } label: {
+        HStack {
+          Text("Bundled Client")
+            .foregroundStyle(.primary)
+          Spacer()
+          Text(nativeClientSummary)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+        }
       }
     }
   }
@@ -798,6 +739,9 @@ struct WWNMachineEditorView: View {
     }
     overrides["ForceServerSideDecorations"] = forceServerSideDecorations
     overrides["AutoScale"] = autoScale
+    #if os(iOS) || os(tvOS)
+    overrides["RespectSafeArea"] = respectSafeArea
+    #endif
     overrides["TouchInputType"] = touchInputType
     overrides["SwapCmdWithAlt"] = swapCmdWithAlt
     overrides["UniversalClipboard"] = universalClipboard
@@ -847,6 +791,108 @@ struct WWNMachineEditorView: View {
 
     onSave(profile)
     dismiss()
+  }
+}
+
+private struct WWNNativeClientPickerView: View {
+  @Binding var selectedClientId: String
+  @Binding var customCommand: String
+
+  var body: some View {
+    ScrollView {
+      VStack(alignment: .leading, spacing: 14) {
+        ForEach(kBundledClients) { client in
+          clientOption(client)
+        }
+        #if !os(iOS)
+        customClientOption
+        #endif
+      }
+      .padding(16)
+    }
+    .navigationTitle("Wayland Client")
+  }
+
+  @ViewBuilder
+  private func clientOption(_ client: BundledClient) -> some View {
+    let isSelected = selectedClientId == client.id
+    Button {
+      selectedClientId = client.id
+    } label: {
+      HStack(spacing: 12) {
+        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+          .font(.title3)
+          .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+          .frame(width: 28, alignment: .center)
+        Image(systemName: client.icon)
+          .font(.title3)
+          .foregroundStyle(Color.accentColor)
+          .frame(width: 28, alignment: .center)
+        VStack(alignment: .leading, spacing: 2) {
+          Text(client.name)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.primary)
+          Text(client.description)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        Spacer()
+      }
+      .contentShape(Rectangle())
+      .padding(.vertical, 6)
+      .padding(.horizontal, 8)
+      .background(
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+          .fill(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
+      )
+    }
+    .buttonStyle(.plain)
+  }
+
+  @ViewBuilder
+  private var customClientOption: some View {
+    let isSelected = selectedClientId == kNativeClientCustomId
+    VStack(alignment: .leading, spacing: 8) {
+      Button {
+        selectedClientId = kNativeClientCustomId
+      } label: {
+        HStack(spacing: 12) {
+          Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+            .font(.title3)
+            .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+            .frame(width: 28, alignment: .center)
+          Image(systemName: "terminal.fill")
+            .font(.title3)
+            .foregroundStyle(Color.accentColor)
+            .frame(width: 28, alignment: .center)
+          VStack(alignment: .leading, spacing: 2) {
+            Text("Custom Command")
+              .font(.subheadline.weight(.semibold))
+              .foregroundStyle(.primary)
+            Text("Run any Wayland-compatible executable")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
+          Spacer()
+        }
+        .contentShape(Rectangle())
+        .padding(.vertical, 6)
+        .padding(.horizontal, 8)
+        .background(
+          RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
+        )
+      }
+      .buttonStyle(.plain)
+
+      if isSelected {
+        TextField("e.g. /usr/bin/my-wayland-app", text: $customCommand)
+          .textFieldStyle(.roundedBorder)
+          .wwnDisableAutocapitalization()
+          .autocorrectionDisabled()
+          .padding(.leading, 68)
+      }
+    }
   }
 }
 

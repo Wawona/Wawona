@@ -10,7 +10,7 @@
 # Since those paths only appear after injecting waypipe, we must regenerate
 # the lock file to satisfy `cargo metadata --locked` in crate2nix.
 #
-{ pkgs, wawonaSrc, waypipeSrc, wawonaVersion, platform ? "ios" }:
+{ pkgs, wawonaSrc, waypipeSrc, wawonaVersion, platform ? "ios", coreutilsSrc ? null }:
 
 pkgs.stdenvNoCC.mkDerivation {
   name = "wawona-workspace-src";
@@ -46,6 +46,20 @@ pkgs.stdenvNoCC.mkDerivation {
       rm -rf $out/waypipe/.git
 
       echo "✓ Waypipe source injected (nested lockfile removed)"
+    fi
+
+    # Inject pre-patched uutils coreutils source (in-process ls/cat/cp/...).
+    # Like waypipe it keeps its own [workspace] (so uu_* sub-crate field
+    # inheritance resolves); we only drop the nested lockfile + .git.
+    if [ -n "${toString coreutilsSrc}" ]; then
+      mkdir -p $out/coreutils
+      cp -r ${coreutilsSrc}/* $out/coreutils/
+      chmod -R u+w $out/coreutils
+
+      rm -f $out/coreutils/Cargo.lock
+      rm -rf $out/coreutils/.git
+
+      echo "✓ coreutils source injected (nested lockfile removed)"
     fi
 
     # Patch root Cargo.toml version and Cargo.lock consistency

@@ -92,6 +92,7 @@ public struct ResolvedMachineSettings: Hashable, Sendable {
     public var openGLDriver: String
     public var dmabufEnabled: Bool
     public var forceSSD: Bool
+    public var renderMacOSPointer: Bool
     public var autoScale: Bool
     public var colorOperations: Bool
     public var waylandDisplay: String
@@ -114,6 +115,7 @@ public final class WawonaPreferences: ObservableObject {
 
     @Published public var renderer: String = "metal"
     @Published public var forceSSD: Bool = false
+    @Published public var renderMacOSPointer: Bool = false
     @Published public var autoScale: Bool = true
     @Published public var colorOperations: Bool = false
     @Published public var waylandDisplay: String = "wayland-0"
@@ -142,7 +144,12 @@ public final class WawonaPreferences: ObservableObject {
 
     public func load() {
         renderer = defaults.string(forKey: keyPrefix + "renderer") ?? "metal"
-        forceSSD = defaults.bool(forKey: keyPrefix + "forceSSD")
+        if defaults.object(forKey: "ForceServerSideDecorations") != nil {
+            forceSSD = defaults.bool(forKey: "ForceServerSideDecorations")
+        } else {
+            forceSSD = defaults.bool(forKey: keyPrefix + "forceSSD")
+        }
+        renderMacOSPointer = defaults.bool(forKey: "RenderMacOSPointer")
         autoScale = defaults.object(forKey: keyPrefix + "autoScale") as? Bool ?? true
         colorOperations = defaults.object(forKey: keyPrefix + "colorOperations") as? Bool ?? false
         waylandDisplay = defaults.string(forKey: keyPrefix + "waylandDisplay") ?? "wayland-0"
@@ -171,7 +178,9 @@ public final class WawonaPreferences: ObservableObject {
 
     public func save() {
         defaults.set(renderer, forKey: keyPrefix + "renderer")
+        defaults.set(forceSSD, forKey: "ForceServerSideDecorations")
         defaults.set(forceSSD, forKey: keyPrefix + "forceSSD")
+        defaults.set(renderMacOSPointer, forKey: "RenderMacOSPointer")
         defaults.set(autoScale, forKey: keyPrefix + "autoScale")
         defaults.set(colorOperations, forKey: keyPrefix + "colorOperations")
         defaults.set(waylandDisplay, forKey: keyPrefix + "waylandDisplay")
@@ -218,6 +227,7 @@ public final class WawonaPreferences: ObservableObject {
             openGLDriver: normalizedOpenGLDriver.isEmpty ? "angle" : normalizedOpenGLDriver,
             dmabufEnabled: profile.runtimeOverrides.dmabufEnabled ?? true,
             forceSSD: profile.runtimeOverrides.forceSSD ?? forceSSD,
+            renderMacOSPointer: profile.runtimeOverrides.renderMacOSPointer ?? renderMacOSPointer,
             autoScale: profile.runtimeOverrides.autoScale ?? autoScale,
             colorOperations: profile.runtimeOverrides.colorOperations ?? colorOperations,
             waylandDisplay: normalizedWaylandDisplay.isEmpty ? waylandDisplay : normalizedWaylandDisplay,

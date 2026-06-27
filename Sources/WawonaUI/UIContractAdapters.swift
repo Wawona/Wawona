@@ -18,7 +18,7 @@ enum WawonaUIContractAdapters {
             id: profile.id,
             name: profile.name,
             typeRawValue: profile.type.rawValue,
-            selectedLauncherName: profile.launchers.first?.name ?? (ClientLauncher.presets.first?.name ?? "weston-simple-shm"),
+            selectedLauncherName: resolvedLauncherName(for: profile),
             sshHost: profile.sshHost,
             sshUser: profile.sshUser,
             sshPortText: String(profile.sshPort),
@@ -59,6 +59,19 @@ enum WawonaUIContractAdapters {
         }
 
         return profile
+    }
+
+    private static func resolvedLauncherName(for profile: MachineProfile) -> String {
+        if let launcher = profile.launchers.first?.name, !launcher.isEmpty {
+            return launcher
+        }
+        let bundled = profile.runtimeOverrides.bundledAppID?
+            .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
+        if !bundled.isEmpty,
+           ClientLauncher.presets.contains(where: { $0.name == bundled }) {
+            return bundled
+        }
+        return ClientLauncher.presets.first?.name ?? "weston-simple-shm"
     }
 
     static func connectionSettingsState(from preferences: WawonaPreferences) -> ConnectionSettingsState {

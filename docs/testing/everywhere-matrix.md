@@ -15,7 +15,11 @@ Structured build verification (CI) plus manual functional smoke per platform.
 | visionOS sim backend | `.#wawona-visionos-sim-backend` | |
 | watchOS sim backend | `.#wawona-watchos-sim-backend` | |
 | Weston toytoolkit iOS | `.#weston-ios` | cairo/pango demo clients |
-| Weston compositor iOS | `.#weston-compositor-ios` | nested compositor archive |
+| zsh iOS (planned) | `.#zsh-ios` | App Store–compliant bundled shell — [ios-local-shell](../ios-local-shell/README.md) |
+| wawona rootfs iOS (planned) | `.#wawona-rootfs-ios` | usr/bin/zsh + share for app bundle |
+| wawona-pty spike (planned) | `.#wawona-pty-spike-ios` | Phase 0 device PTY gate — [ios-local-shell-spike.md](../ios-local-shell-spike.md) |
+| Weston compositor iOS | `.#weston-compositor-ios` | nested compositor archive (Wayland/Pixman default) |
+| Weston compositor iOS DRM | `.#weston-compositor-ios-drm` / `-sim` | iland DRM + GL renderer (CI validation) |
 | Weston GL clients iOS | `.#weston-ios-gl` / `.#weston-ios-gl-sim` | `enableGlClients=true` |
 | Android APK | `.#wawona-android` | NDK toytoolkit + compositor + JNI |
 | Android compositor | `.#weston-compositor-android` | nested compositor archive |
@@ -37,6 +41,7 @@ nix run .#wawona-ios-project          # regenerate Xcode project
 nix build .#wawona-ios-sim-backend    # refresh libwawona.a paths
 nix build .#weston-ios                # refresh toytoolkit archives
 nix build .#weston-compositor-ios     # refresh nested compositor archive
+nix build .#weston-compositor-ios-drm # refresh DRM+GL compositor variant (CI)
 nix build .#iland-gl-clients-ios      # refresh kmscube archive
 
 # Android
@@ -52,6 +57,8 @@ nix build .#weston-compositor-android
 | Profile smoke (eval) | pass | `python3 .github/scripts/verify-wayland-profile-smoke.py` |
 | Runtime ownership strict | pass | `python3 .github/scripts/verify-wayland-runtime-ownership.py --strict` |
 | `weston-compositor-ios` build | pass | `nix build .#weston-compositor-ios --no-link` |
+| `weston-compositor-ios-drm` build | pass | `nix build .#weston-compositor-ios-drm --no-link` |
+| Weston iOS patch anchors | pass | `python3 .github/scripts/verify-weston-ios-patches.py` |
 | `wawona-android` build | pass | `nix build .#wawona-android --no-link` |
 | `iland-gl-clients-ios` build | pass | `nix build .#iland-gl-clients-ios --no-link` |
 | Rust integration (Smithay path) | pending CI | `cargo test --tests` (harness uses production registration) |
@@ -65,9 +72,12 @@ Run on each simulator/emulator or device. Mark pass/fail with date + build attr.
 - [ ] Boot Wawona app
 - [ ] Launch `weston-simple-shm` — SHM buffer visible
 - [ ] Launch `weston-flower` — cairo animation visible
-- [ ] Launch `weston-terminal` — mobile terminal client (not PTY)
+- [ ] Launch `weston-terminal` — **Phase 1:** real cairo `terminal.c`; **today:** SHM stub (`mobile-weston-terminal.c`); **Phase 2:** bundled zsh PTY — see [ios-local-shell](../ios-local-shell/README.md)
 - [ ] Keyboard: evdev `KEY_A` → client receives correct keysym (protocol test: `test_keyboard_key_a_keysym`)
 - [ ] Launch nested compositor (`weston` / Settings) — child `wayland-N` socket; demo client through nested Weston
+- [ ] Nested Weston (default): Settings → **Wayland (Pixman)** — panel + dark background visible within ~2s; no `terminal.png` / cursor errors in log
+- [ ] Nested Weston (optional): Settings → **iland DRM (GL)** — Metal overlay via `WWNIlandPresenter`; log shows GL renderer (not Pixman)
+- [ ] kmscube smoke (Settings) — IOSurface/Metal overlay updates before enabling DRM Weston
 - [ ] waypipe session (where SSH + libssh2 available)
 
 ### macOS
@@ -86,6 +96,18 @@ Run on each simulator/emulator or device. Mark pass/fail with date + build attr.
 - [ ] `weston-terminal` mobile client
 - [ ] Keyboard regression
 - [ ] Settings "Enable Native Weston" — nested compositor (not flower stub); demo client through child display
+
+### iOS / iPadOS — local shell (Phase 2+, device required)
+
+- [ ] Phase 0 spike report complete — [ios-local-shell-spike.md](../ios-local-shell-spike.md)
+- [ ] `echo hello` in bundled zsh via weston-terminal
+- [ ] `.zsh_history` in Application Support
+- [ ] Session stop reaps shell — no fd leak
+- [ ] Spawn rejects `/bin/sh` (compliance unit test or internal)
+
+### watchOS
+
+- [ ] Local zsh **not** offered — stub / redirect only — [WATCHOS-SCOPE.md](../ios-local-shell/WATCHOS-SCOPE.md)
 
 ### Linux (reference)
 

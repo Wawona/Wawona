@@ -33,6 +33,10 @@
 , androidToolchain ? null
 , appleHostCrates ? null # shared host crate graph (dependencies/wawona/apple-host-crates.nix)
 , hostGraphOnly ? false   # build/export host-side crate graph only (apple-host-crates)
+  # Extracted-repo toolchain handles (default to legacy in-tree copies; Wawona's
+  # flake injects wwn-toolchain store paths via the pkgs overlay).
+, applePath ? ../apple
+, androidToolchainNix ? ../toolchains/android.nix
 }:
 
 let
@@ -113,7 +117,7 @@ let
 
   # ── Android toolchain ──────────────────────────────────────────────
   androidToolchainEffective = if androidToolchain != null then androidToolchain 
-    else if isAndroid then import ../toolchains/android.nix { inherit lib pkgs androidSDK; }
+    else if isAndroid then import androidToolchainNix { inherit lib pkgs androidSDK; }
     else null;
 
   NDK_SYSROOT = if isAndroid then
@@ -137,11 +141,11 @@ let
 
   # ── Xcode SDK detection (iOS/watchOS/macOS) ─────────────────────────
   ensureIosSDKHelpers = if isAppleCross then
-    (import ../apple/default.nix { inherit (pkgs) lib pkgs; })
+    (import applePath { inherit (pkgs) lib pkgs; })
   else {};
 
   ensureIosSimSDKScript = if isAppleCross then
-    (import ../utils/xcode-wrapper.nix { inherit (pkgs) lib; inherit pkgs; }).ensureIosSimSDK
+    (import applePath { inherit (pkgs) lib; inherit pkgs; }).ensureIosSimSDK
   else null;
 
   # ── crate2nix: generate per-crate derivations ─────────────────────
@@ -335,7 +339,7 @@ let
       unset MACOSX_DEPLOYMENT_TARGET
       ${if isWatchOS then ''
         # Locate the watchOS SDK manually (xcrun may not have a watch-specific helper)
-        XCODE_APP=$(${(import ../utils/xcode-wrapper.nix { inherit (pkgs) lib; inherit pkgs; }).findXcodeScript}/bin/find-xcode || true)
+        XCODE_APP=$(${(import applePath { inherit (pkgs) lib; inherit pkgs; }).findXcodeScript}/bin/find-xcode || true)
         XCODE_DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
         WOS_SDK_NAME="${if simulator then "WatchSimulator" else "WatchOS"}"
         export SDKROOT="$XCODE_DEVELOPER_DIR/Platforms/$WOS_SDK_NAME.platform/Developer/SDKs/$WOS_SDK_NAME.sdk"
@@ -461,11 +465,11 @@ let
 
   # ── Features to enable ─────────────────────────────────────────────
   features =
-    if isIOS then [ "waypipe-ssh" "smithay-protocols" ]
-    else if isTVOS then [ "waypipe-ssh" "smithay-protocols" ]
-    else if isVisionOS then [ "smithay-protocols" ]
-    else if isWatchOS then [ "smithay-protocols" ] # watchOS: minimal feature set (no SSH/Waypipe)
-    else if isAndroid then [ "waypipe" "smithay-protocols" ]
+    if isIOS then [ "waypipe-ssh" "smithay-protocols" "coreutils" ]
+    else if isTVOS then [ "waypipe-ssh" "smithay-protocols" "coreutils" ]
+    else if isVisionOS then [ "smithay-protocols" "coreutils" ]
+    else if isWatchOS then [ "smithay-protocols" ] # watchOS: minimal feature set (no SSH/Waypipe; coreutils size-gated separately)
+    else if isAndroid then [ "waypipe" "smithay-protocols" "coreutils" ]
     else [ "smithay-protocols" "smithay-desktop" ]; # macOS desktop: enable smithay xwayland/backend_drm paths
 
   # ── Per-crate build overrides ──────────────────────────────────────

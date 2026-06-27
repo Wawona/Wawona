@@ -11,6 +11,7 @@
 #endif
 #import "../../util/WWNLog.h"
 #import "WWNPlatformCallbacks.h"
+#import "ui/Settings/WWNPreferencesManager.h"
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
 #import "WWNWindow.h"
 #import "ui/Machines/WWNMachineProfileStore.h"
@@ -26,16 +27,30 @@
 #import <ApplicationServices/ApplicationServices.h> // CGSetDisplayTransferByTable, etc.
 #endif
 #include <stdatomic.h>
+#include <math.h>
 #include <string.h> // For strdup
 
-#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
 static BOOL WWNForceSSDEnabled(void) {
-  return [[NSUserDefaults standardUserDefaults]
-      boolForKey:@"ForceServerSideDecorations"];
+  return [[WWNPreferencesManager sharedManager] forceServerSideDecorations];
 }
-#endif
 
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+static NSTimeInterval s_lastPointerMotionLog = 0;
+static NSTimeInterval s_lastTouchMotionLog = 0;
+static const NSTimeInterval kInputLogIntervalSec = 0.1;
+
+extern int wwn_mobile_pending_roundtrips(void);
+extern int wwn_mobile_active_clients(void);
+
+static BOOL WWNShouldLogThrottledMotion(NSTimeInterval *lastLog) {
+  NSTimeInterval now = CFAbsoluteTimeGetCurrent();
+  if (now - *lastLog >= kInputLogIntervalSec) {
+    *lastLog = now;
+    return YES;
+  }
+  return NO;
+}
+
 static BOOL WWNEnablePerWindowHostingOnIPad(void) {
   if (UIDevice.currentDevice.userInterfaceIdiom != UIUserInterfaceIdiomPad) {
     return NO;
@@ -59,6 +74,7 @@ extern void WWNCoreSetOutputGeometryForWindow(void *core, uint64_t window_id,
                                               uint32_t w, uint32_t h, float s);
 extern void WWNCoreNotifyFramePresented(void *core, uint32_t surface_id,
                                         uint64_t buffer_id, uint32_t timestamp);
+extern uint32_t WWNCoreGetTimestampMs(void *core);
 extern void WWNCoreFree(void *core);
 extern void WWNCoreInjectWindowResize(void *core, uint64_t window_id,
                                       uint32_t width, uint32_t height);
@@ -69,6 +85,7 @@ extern void WWNCoreSetWindowActivated(void *core, uint64_t window_id,
 extern void WWNCoreSetWindowActivatedSilent(void *core, uint64_t window_id,
                                             bool active);
 extern void WWNCoreFlushClients(void *core);
+extern uint32_t WWNCoreDisconnectAllClients(void *core);
 extern void WWNCoreSetForceSSD(void *core, bool enabled);
 extern void WWNCoreSetSafeAreaInsets(void *core, int32_t top, int32_t right,
                                      int32_t bottom, int32_t left);
@@ -222,9 +239,153 @@ static inline NSString *WWNBufferCacheKey(uint32_t surface_id,
   return [NSString stringWithFormat:@"%u:%llu", surface_id, buffer_id];
 }
 
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+static void WWNPruneBufferCacheForSurface(NSMutableDictionary *cache,
+                                          uint32_t surfaceId,
+                                          NSString *keepKey) {
+  NSString *prefix =
+      [NSString stringWithFormat:@"%u:", surfaceId];
+  for (id key in [cache.allKeys copy]) {
+    if (![key isKindOfClass:[NSString class]]) {
+      continue;
+    }
+    NSString *cacheKey = (NSString *)key;
+    if ([cacheKey hasPrefix:prefix] && ![cacheKey isEqualToString:keepKey]) {
+      [cache removeObjectForKey:cacheKey];
+    }
+  }
+}
+#endif
+
 // Coalesce AppKit live-resize bursts before emitting Wayland configure events.
 // Slightly slower cadence reduces nested-compositor configure thrash on macOS.
+#if TARGET_OS_IPHONE || TARGET_OS_TV || TARGET_OS_WATCH
+static const NSTimeInterval kWWNResizeDebounceSeconds = 0.010;
+#else
 static const NSTimeInterval kWWNResizeDebounceSeconds = 0.040;
+#endif
+
+#if TARGET_OS_IPHONE || TARGET_OS_TV || TARGET_OS_WATCH
+static void WWNConfigureBundledXkbIfNeeded(void) {
+  if (getenv("XKB_CONFIG_ROOT") != NULL)
+    return;
+
+  NSString *root =
+      [[NSBundle mainBundle].bundlePath stringByAppendingPathComponent:@"share/X11/xkb"];
+  NSString *rules = [root stringByAppendingPathComponent:@"rules/evdev"];
+  if ([[NSFileManager defaultManager] fileExistsAtPath:rules]) {
+    setenv("XKB_CONFIG_ROOT", root.UTF8String, 1);
+    WWNLog("BRIDGE", @"Configured XKB_CONFIG_ROOT: %s", root.UTF8String);
+  }
+}
+
+// Point fontconfig at the fonts bundled into the app (share/fonts) and a
+// writable cache dir. The in-process weston toytoolkit clients (notably
+// weston-desktop-shell, which builds a Pango/Cairo panel clock during init)
+// abort if fontconfig can't match any font — that manifests as the nested
+// compositor never drawing its shell and showing only a solid clear color.
+// We synthesize fonts.conf at runtime because the bundle path (and a writable
+// cache location) are only known on-device.
+static void WWNConfigureBundledFontsIfNeeded(void) {
+  if (getenv("FONTCONFIG_FILE") != NULL)
+    return;
+
+  NSString *fontDir = [[NSBundle mainBundle].bundlePath
+      stringByAppendingPathComponent:@"share/fonts"];
+  if (![[NSFileManager defaultManager] fileExistsAtPath:fontDir]) {
+    WWNLog("BRIDGE", @"No bundled fonts at %s; skipping fontconfig setup",
+           fontDir.UTF8String);
+    return;
+  }
+
+  // XDG_RUNTIME_DIR is established at app startup, before the bridge inits.
+  const char *xdg = getenv("XDG_RUNTIME_DIR");
+  NSString *base = (xdg && xdg[0]) ? @(xdg) : NSTemporaryDirectory();
+  NSString *cacheDir = [base stringByAppendingPathComponent:@"fontconfig-cache"];
+  [[NSFileManager defaultManager] createDirectoryAtPath:cacheDir
+                            withIntermediateDirectories:YES
+                                             attributes:nil
+                                                  error:NULL];
+
+  NSString *confPath = [base stringByAppendingPathComponent:@"fonts.conf"];
+  NSString *conf = [NSString
+      stringWithFormat:@"<?xml version=\"1.0\"?>\n"
+                       @"<!DOCTYPE fontconfig SYSTEM "
+                       @"\"urn:fontconfig:fonts.dtd\">\n"
+                       @"<fontconfig>\n"
+                       @"  <dir>%@</dir>\n"
+                       @"  <cachedir>%@</cachedir>\n"
+                       @"  <alias>\n"
+                       @"    <family>monospace</family>\n"
+                       @"    <prefer><family>DejaVu Sans Mono</family></prefer>\n"
+                       @"  </alias>\n"
+                       @"  <alias>\n"
+                       @"    <family>sans-serif</family>\n"
+                       @"    <prefer><family>DejaVu Sans</family></prefer>\n"
+                       @"  </alias>\n"
+                       @"  <config></config>\n"
+                       @"</fontconfig>\n",
+                       fontDir, cacheDir];
+  NSError *err = nil;
+  if (![conf writeToFile:confPath
+              atomically:YES
+                encoding:NSUTF8StringEncoding
+                   error:&err]) {
+    WWNLog("BRIDGE", @"Failed to write fonts.conf (%s): %@", confPath.UTF8String,
+           err.localizedDescription);
+    return;
+  }
+  setenv("FONTCONFIG_FILE", confPath.UTF8String, 1);
+  setenv("FONTCONFIG_PATH", base.UTF8String, 1);
+  WWNLog("BRIDGE", @"Configured FONTCONFIG_FILE: %s (fonts: %s)",
+         confPath.UTF8String, fontDir.UTF8String);
+
+  NSString *monoFont =
+      [fontDir stringByAppendingPathComponent:@"truetype/DejaVuSansMono.ttf"];
+  if ([[NSFileManager defaultManager] fileExistsAtPath:monoFont]) {
+    setenv("WAWONA_MONO_FONT", monoFont.UTF8String, 1);
+  }
+}
+
+static void WWNConfigureBundledWestonDataIfNeeded(void) {
+  NSString *bundleRoot = [NSBundle mainBundle].bundlePath;
+  NSString *westonData =
+      [bundleRoot stringByAppendingPathComponent:@"share/weston"];
+  if ([[NSFileManager defaultManager] fileExistsAtPath:westonData]) {
+    setenv("WESTON_DATA_DIR", westonData.UTF8String, 1);
+  }
+
+  NSString *cursorTheme =
+      [bundleRoot stringByAppendingPathComponent:@"share/icons/Adwaita/cursors"];
+  if ([[NSFileManager defaultManager] fileExistsAtPath:cursorTheme]) {
+    NSString *iconsRoot =
+        [bundleRoot stringByAppendingPathComponent:@"share/icons"];
+    setenv("XCURSOR_PATH", iconsRoot.UTF8String, 1);
+    setenv("XCURSOR_THEME", "Adwaita", 1);
+    WWNLog("BRIDGE", @"Configured XCURSOR_PATH: %s (theme=Adwaita)",
+           iconsRoot.UTF8String);
+  }
+}
+
+void wwn_ios_refresh_bundle_env(void) {
+  WWNConfigureBundledXkbIfNeeded();
+  WWNConfigureBundledFontsIfNeeded();
+  WWNConfigureBundledWestonDataIfNeeded();
+}
+#endif
+
+NSNotificationName const WWNNativeClientWillLaunchNotification =
+    @"WWNNativeClientWillLaunchNotification";
+
+static uint32_t WWNBridgeFrameTimestampMs(void *core) {
+  if (core) {
+    return WWNCoreGetTimestampMs(core);
+  }
+  return (uint32_t)(CACurrentMediaTime() * 1000.0);
+}
+
+// Marks blocks running on _compositorQueue (reentrancy + pump routing).
+static void *const kWWNCompositorQueueKey = (void *)&kWWNCompositorQueueKey;
 
 @implementation WWNCompositorBridge {
   void *_rustCore;
@@ -247,6 +408,7 @@ static const NSTimeInterval kWWNResizeDebounceSeconds = 0.040;
   NSMutableDictionary<NSNumber *, id> *_windows;
   NSMutableDictionary<NSNumber *, id> *_popups;
   NSMutableDictionary<NSNumber *, UIWindow *> *_iosHostWindows;
+  NSMutableSet<NSNumber *> *_hostLockedWindowIds;
   BOOL _iosPerWindowHostingEnabled;
 #else
   NSMutableDictionary<NSNumber *, id>
@@ -259,6 +421,10 @@ static const NSTimeInterval kWWNResizeDebounceSeconds = 0.040;
   NSMutableDictionary<NSNumber *, NSNumber *> *_latestBufferBySurface;
   NSMutableDictionary<NSNumber *, NSNumber *> *_lastPresentedBufferBySurface;
   NSMutableDictionary<NSNumber *, NSNumber *> *_staleSceneSelectionsBySurface;
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+  NSMutableDictionary<NSNumber *, NSNumber *> *_presentGenerationBySurface;
+  uint64_t _waylandPresentGeneration;
+#endif
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
   NSMutableDictionary<NSNumber *, NSString *> *_windowOwnerMachineIdByWindowId;
 #endif
@@ -305,6 +471,11 @@ static const NSTimeInterval kWWNResizeDebounceSeconds = 0.040;
 - (instancetype)init {
   self = [super init];
   if (self) {
+#if TARGET_OS_IPHONE || TARGET_OS_TV || TARGET_OS_WATCH
+    WWNConfigureBundledXkbIfNeeded();
+    WWNConfigureBundledFontsIfNeeded();
+    WWNConfigureBundledWestonDataIfNeeded();
+#endif
     WWNLog("BRIDGE", @"Creating WWNCore via direct C API");
     _rustCore = WWNCoreNew();
 
@@ -319,12 +490,15 @@ static const NSTimeInterval kWWNResizeDebounceSeconds = 0.040;
     dispatch_queue_attr_t attr = dispatch_queue_attr_make_with_qos_class(
         DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INTERACTIVE, 0);
     _compositorQueue = dispatch_queue_create("com.wawona.compositor", attr);
+    dispatch_queue_set_specific(_compositorQueue, kWWNCompositorQueueKey,
+                                kWWNCompositorQueueKey, NULL);
 
     WWNLog("BRIDGE", @"WWNCore created successfully via C API!");
     _windows = [NSMutableDictionary dictionary];
     _popups = [NSMutableDictionary dictionary];
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
     _iosHostWindows = [NSMutableDictionary dictionary];
+    _hostLockedWindowIds = [NSMutableSet set];
     _iosPerWindowHostingEnabled = WWNEnablePerWindowHostingOnIPad();
     WWNLog("BRIDGE", @"iOS per-window hosting %@", _iosPerWindowHostingEnabled ? @"enabled" : @"disabled");
 #endif
@@ -333,12 +507,17 @@ static const NSTimeInterval kWWNResizeDebounceSeconds = 0.040;
     _latestBufferBySurface = [NSMutableDictionary dictionary];
     _lastPresentedBufferBySurface = [NSMutableDictionary dictionary];
     _staleSceneSelectionsBySurface = [NSMutableDictionary dictionary];
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+    _presentGenerationBySurface = [NSMutableDictionary dictionary];
+    _waylandPresentGeneration = 0;
+#endif
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
     _windowOwnerMachineIdByWindowId = [NSMutableDictionary dictionary];
 #endif
     _latestResizeDims = [NSMutableDictionary dictionary];
     _sentResizeDims = [NSMutableDictionary dictionary];
     _resizeInFlightWindows = [NSMutableSet set];
+    [self setForceSSD:WWNForceSSDEnabled()];
   }
   return self;
 }
@@ -397,6 +576,17 @@ static const NSTimeInterval kWWNResizeDebounceSeconds = 0.040;
   // Important: overwrite=1 to ensure Rust sees the new path
   setenv("XDG_RUNTIME_DIR", [runtimeDir UTF8String], 1);
   WWNLog("BRIDGE", @"Configured XDG_RUNTIME_DIR: %@", runtimeDir);
+
+#if TARGET_OS_IPHONE || TARGET_OS_TV || TARGET_OS_WATCH
+  // iOS has no /etc/xdg or ~/.config. weston-desktop-shell parses weston.ini
+  // via open_config_file() which only searches XDG_CONFIG_HOME, HOME/.config,
+  // and XDG_CONFIG_DIRS — never cwd. Without HOME the client gets NULL config
+  // and crashes in weston_config_section_get_bool(NULL, ...).
+  if (!getenv("HOME")) {
+    setenv("HOME", [runtimeDir UTF8String], 1);
+    WWNLog("BRIDGE", @"Configured HOME: %s", runtimeDir.UTF8String);
+  }
+#endif
 
   // 2. Cleanup stale socket files
   // If the app crashed, the socket file might still exist, causing
@@ -747,6 +937,16 @@ static const NSTimeInterval kWWNResizeDebounceSeconds = 0.040;
       return;
     }
 
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+    if (wwn_mobile_pending_roundtrips() > 0 ||
+        wwn_mobile_active_clients() > 0) {
+      for (int pump = 0; pump < 4; pump++) {
+        WWNCoreProcessEvents(self->_rustCore);
+        WWNCoreFlushClients(self->_rustCore);
+      }
+    }
+#endif
+
     // 2. Collect window-lifecycle events from Rust (cheap pops from a Vec)
     NSMutableArray *windowEvents = [NSMutableArray array];
     CWindowEvent *evt;
@@ -767,12 +967,6 @@ static const NSTimeInterval kWWNResizeDebounceSeconds = 0.040;
     NSMutableArray<NSValue *> *presentedBuffers = [NSMutableArray array];
     while ((buffer = WWNCorePopPendingBuffer(self->_rustCore)) != NULL) {
       poppedBufferCount++;
-      WWNLog("TICK",
-             @"Popped buffer: win=%llu surf=%u buf=%llu %ux%u pixels=%p "
-             @"iosurface=%u",
-             buffer->window_id, buffer->surface_id, buffer->buffer_id,
-             buffer->width, buffer->height, buffer->pixels,
-             buffer->iosurface_id);
       [self cacheBuffer:buffer];
       WWNPresentedBuffer presented = {
           .surface_id = buffer->surface_id,
@@ -860,7 +1054,18 @@ static const NSTimeInterval kWWNResizeDebounceSeconds = 0.040;
         WWNRenderSceneFree(scene);
       }
 
-#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+          // Nudge UIKit to pick up layer.contents updates on the frame view.
+          if (presentedBuffers.count > 0) {
+            for (NSNumber *key in self->_windows) {
+              UIView *hostView = self->_windows[key];
+              if ([hostView isKindOfClass:[WWNCompositorView_ios class]]) {
+                WWNCompositorView_ios *iosView = (WWNCompositorView_ios *)hostView;
+                [iosView setNeedsDisplay];
+              }
+            }
+          }
+#else
       // WWNView uses NSViewLayerContentsRedrawNever; AppKit only picks up
       // child CALayer.contents updates when the view is marked dirty.
       if (presentedBuffers.count > 0) {
@@ -871,8 +1076,7 @@ static const NSTimeInterval kWWNResizeDebounceSeconds = 0.040;
       // Acknowledge wl_surface.frame/buffer release only after scene/layer
       // updates have consumed this tick's buffers.
       if (presentedBuffers.count > 0 && self->_rustCore) {
-        uint32_t ts =
-            (uint32_t)([[NSDate date] timeIntervalSince1970] * 1000.0);
+        uint32_t ts = WWNBridgeFrameTimestampMs(self->_rustCore);
         for (NSValue *val in presentedBuffers) {
           WWNPresentedBuffer presented = {0};
           [val getValue:&presented];
@@ -880,7 +1084,9 @@ static const NSTimeInterval kWWNResizeDebounceSeconds = 0.040;
                                         buffer:presented.buffer_id
                                      timestamp:ts];
         }
-        WWNCoreFlushClients(self->_rustCore);
+        [self _dispatchToRust:^{
+          WWNCoreFlushClients(self->_rustCore);
+        }];
       }
 
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
@@ -926,6 +1132,9 @@ static const NSTimeInterval kWWNResizeDebounceSeconds = 0.040;
 
 /// Runs on CADisplayLink (vsync-aligned frame callback) — iOS and macOS 14+
 - (void)onDisplayLink:(CADisplayLink *)link {
+  // Window lifecycle events, buffer decode, and scene application must stay
+  // in one _compositorTick pass. Draining events here races the tick and
+  // leaves host views without a matching buffer present in the same frame.
   [self _compositorTick];
 }
 
@@ -946,7 +1155,7 @@ static const NSTimeInterval kWWNResizeDebounceSeconds = 0.040;
     [self cacheBuffer:buffer];
 
     // Notify Rust immediately (legacy behavior, can be refined with FrameClock)
-    uint32_t ts = (uint32_t)([[NSDate date] timeIntervalSince1970] * 1000.0);
+    uint32_t ts = WWNBridgeFrameTimestampMs(_rustCore);
     [self notifyFramePresentedForSurface:buffer->surface_id
                                   buffer:buffer->buffer_id
                                timestamp:ts];
@@ -966,6 +1175,10 @@ static const NSTimeInterval kWWNResizeDebounceSeconds = 0.040;
     IOSurfaceRef surf = IOSurfaceLookup(buffer->iosurface_id);
     if (surf) {
       _bufferCache[cacheKey] = (__bridge_transfer id)surf;
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+      _waylandPresentGeneration++;
+      _presentGenerationBySurface[surfaceId] = @(_waylandPresentGeneration);
+#endif
       WWNLog("CACHE", @"Cached IOSurface buf=%llu", buffer->buffer_id);
     } else {
       WWNLog("CACHE", @"FAILED IOSurface lookup for buf=%llu iosurface=%u",
@@ -976,12 +1189,86 @@ static const NSTimeInterval kWWNResizeDebounceSeconds = 0.040;
 
   // 2. SHM (Software)
   if (buffer->pixels) {
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+    // One-time pixel sampler: determines whether Weston is committing real
+    // content or a solid color, and reports the byte layout (B,G,R,A order).
+    static int s_pixelDumpCount = 0;
+    if (s_pixelDumpCount < 6 && buffer->size >= 4 && buffer->stride > 0) {
+      s_pixelDumpCount++;
+      uint32_t w = buffer->width;
+      uint32_t h = buffer->height;
+      uint32_t stride = buffer->stride;
+      const uint8_t *px = buffer->pixels;
+      typedef struct {
+        const char *name;
+        uint32_t x, y;
+      } SamplePt;
+      SamplePt pts[] = {
+          {"TL", 1, 1},          {"panel", w / 2, 8},
+          {"center", w / 2, h / 2}, {"BL", 1, h - 2},
+          {"BR", w - 2, h - 2},
+      };
+      BOOL allSame = YES;
+      uint32_t first = 0;
+      for (int i = 0; i < (int)(sizeof(pts) / sizeof(pts[0])); i++) {
+        uint32_t x = pts[i].x, y = pts[i].y;
+        if (x >= w || y >= h)
+          continue;
+        size_t off = (size_t)y * stride + (size_t)x * 4;
+        if (off + 4 > buffer->size)
+          continue;
+        uint32_t b = px[off + 0], g = px[off + 1], r = px[off + 2],
+                 a = px[off + 3];
+        uint32_t packed = (a << 24) | (r << 16) | (g << 8) | b;
+        if (i == 0)
+          first = packed;
+        else if (packed != first)
+          allSame = NO;
+        WWNLog("PXDUMP",
+               @"buf=%llu fmt=%u %s(%u,%u) B=%02X G=%02X R=%02X A=%02X",
+               buffer->buffer_id, buffer->format, pts[i].name, x, y, b, g, r,
+               a);
+      }
+      WWNLog("PXDUMP", @"buf=%llu %ux%u stride=%u uniformSolid=%@",
+             buffer->buffer_id, w, h, stride, allSame ? @"YES" : @"NO");
+    }
+
+    // Weston/Pixman often commit ARGB8888 with alpha=0 and no opaque region.
+    for (size_t i = 3; i < buffer->size; i += 4) {
+      buffer->pixels[i] = 0xFF;
+    }
+#endif
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+    WWNPruneBufferCacheForSurface(_bufferCache, buffer->surface_id, cacheKey);
+#endif
     CFDataRef pixelData =
         CFDataCreate(NULL, buffer->pixels, (CFIndex)buffer->size);
     CGDataProviderRef provider = CGDataProviderCreateWithCFData(pixelData);
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
-    CGBitmapInfo bitmapInfo = (CGBitmapInfo)(kCGBitmapByteOrder32Little |
-                                           (CGBitmapInfo)kCGImageAlphaPremultipliedFirst);
+    // wl_shm XRGB8888 / ARGB8888 are B,G,R,X/A in little-endian memory.
+    CGBitmapInfo bitmapInfo;
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+    /*
+     * wl_shm XRGB8888 / ARGB8888 are B,G,R,X/A in little-endian memory.
+     * Alpha is forced to 0xFF above. Match macOS format selection: XRGB
+     * uses NoneSkipFirst; ARGB uses premultiplied BGRA (PremultipliedFirst).
+     */
+    if (buffer->format == 1) {
+      bitmapInfo = kCGBitmapByteOrder32Little |
+                   (CGBitmapInfo)kCGImageAlphaNoneSkipFirst;
+    } else {
+      bitmapInfo = kCGBitmapByteOrder32Little |
+                   (CGBitmapInfo)kCGImageAlphaPremultipliedFirst;
+    }
+#else
+    if (buffer->format == 1) {
+      bitmapInfo = kCGBitmapByteOrder32Little |
+                   (CGBitmapInfo)kCGImageAlphaNoneSkipFirst;
+    } else {
+      bitmapInfo = kCGBitmapByteOrder32Little |
+                   (CGBitmapInfo)kCGImageAlphaPremultipliedFirst;
+    }
+#endif
 
     CGImageRef image = CGImageCreate(
         buffer->width, buffer->height, 8, 32, buffer->stride, colorSpace,
@@ -989,8 +1276,10 @@ static const NSTimeInterval kWWNResizeDebounceSeconds = 0.040;
 
     if (image) {
       _bufferCache[cacheKey] = (__bridge_transfer id)image;
-      WWNLog("CACHE", @"Cached SHM CGImage buf=%llu %ux%u stride=%u",
-             buffer->buffer_id, buffer->width, buffer->height, buffer->stride);
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+      _waylandPresentGeneration++;
+      _presentGenerationBySurface[surfaceId] = @(_waylandPresentGeneration);
+#endif
     } else {
       WWNLog("CACHE", @"FAILED CGImageCreate for buf=%llu %ux%u",
              buffer->buffer_id, buffer->width, buffer->height);
@@ -1025,7 +1314,162 @@ static const NSTimeInterval kWWNResizeDebounceSeconds = 0.040;
   WWNRenderSceneFree(scene);
 }
 
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+- (void)_updateIOSPresentationForNode:(CRenderNode *)node {
+  NSNumber *winId = @(node->window_id);
+  NSNumber *surfId = @(node->surface_id);
+
+  UIView *hostView = _windows[winId];
+  if (!hostView) {
+    hostView = _popups[winId];
+  }
+  if (![hostView isKindOfClass:[WWNCompositorView_ios class]]) {
+    WWNLog("RENDER",
+           @"WARNING: No iOS host view for surf=%@ win=%@ (_windows=%lu _popups=%lu)",
+           surfId, winId, (unsigned long)_windows.count,
+           (unsigned long)_popups.count);
+    return;
+  }
+  WWNCompositorView_ios *iosView = (WWNCompositorView_ios *)hostView;
+  if (!iosView.window && !iosView.superview) {
+    return;
+  }
+
+  NSNumber *latestForSurface = _latestBufferBySurface[surfId];
+  BOOL isStaleSceneBuffer =
+      (node->buffer_id != 0 && latestForSurface &&
+       latestForSurface.unsignedLongLongValue != node->buffer_id);
+  uint64_t selectedBufferId = node->buffer_id;
+  if (isStaleSceneBuffer) {
+    selectedBufferId = latestForSurface.unsignedLongLongValue;
+  }
+  NSString *cacheKey = WWNBufferCacheKey(node->surface_id, selectedBufferId);
+  id content = _bufferCache[cacheKey];
+  if (!content && isStaleSceneBuffer) {
+    NSString *sceneCacheKey =
+        WWNBufferCacheKey(node->surface_id, node->buffer_id);
+    content = _bufferCache[sceneCacheKey];
+  }
+
+  static uint64_t s_lastRenderLogBuf = 0;
+  static float s_lastRenderLogW = 0;
+  static float s_lastRenderLogH = 0;
+  if (node->buffer_id != s_lastRenderLogBuf || node->width != s_lastRenderLogW ||
+      node->height != s_lastRenderLogH) {
+    s_lastRenderLogBuf = node->buffer_id;
+    s_lastRenderLogW = node->width;
+    s_lastRenderLogH = node->height;
+    WWNLog("RENDER",
+           @"Node present surf=%@ win=%@ node=%.0fx%.0f buf_id=%llu buf=%ux%u "
+           @"contentRect=%.3f,%.3f %.3fx%.3f stale=%@",
+           surfId, winId, node->width, node->height, node->buffer_id,
+           node->buffer_width, node->buffer_height, node->content_rect_x,
+           node->content_rect_y, node->content_rect_w, node->content_rect_h,
+           isStaleSceneBuffer ? @"yes" : @"no");
+  }
+
+  if (node->buffer_id == 0 || !content) {
+    return;
+  }
+
+  CGImageRef cgImage = NULL;
+  if (CFGetTypeID((__bridge CFTypeRef)content) == CGImageGetTypeID()) {
+    cgImage = (__bridge CGImageRef)content;
+  }
+
+  // During output resize, nested Weston may commit a portrait buffer while the
+  // host window is already landscape (or vice versa). Skip those frames so we
+  // keep showing the last good image instead of a stretched tear.
+  if (_outputResizeInFlight && cgImage && node->buffer_width > 0 &&
+      node->buffer_height > 0 && node->width > 0 && node->height > 0) {
+    float nodeAspect = (float)node->width / (float)node->height;
+    float bufAspect =
+        (float)node->buffer_width / (float)node->buffer_height;
+    if (fabsf(nodeAspect - bufAspect) > 0.05f) {
+      static uint64_t s_lastAspectSkipLogBuf = 0;
+      if (node->buffer_id != s_lastAspectSkipLogBuf) {
+        s_lastAspectSkipLogBuf = node->buffer_id;
+        WWNLog("RENDER",
+               @"IOS skip mismatched aspect: surf=%@ win=%@ node=%.0fx%.0f "
+               @"buf=%ux%u",
+               surfId, winId, node->width, node->height, node->buffer_width,
+               node->buffer_height);
+      }
+      return;
+    }
+  }
+
+  float localX = node->x - node->anchor_output_x;
+  float localY = node->y - node->anchor_output_y;
+  CGRect frame =
+      CGRectMake(localX, localY, node->width, node->height);
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+  if ([_hostLockedWindowIds containsObject:winId]) {
+    CGRect hostBounds = iosView.superview
+                            ? iosView.superview.bounds
+                            : (self.containerView ? self.containerView.bounds
+                                                  : iosView.bounds);
+    frame = CGRectMake(0, 0, hostBounds.size.width, hostBounds.size.height);
+  }
+#endif
+  CGRect contentRect = CGRectMake(0, 0, 1, 1);
+  if (node->content_rect_w > 0.0f && node->content_rect_h > 0.0f) {
+    contentRect = CGRectMake(node->content_rect_x, node->content_rect_y,
+                             node->content_rect_w, node->content_rect_h);
+  }
+
+  if (cgImage) {
+    [iosView setWaylandPresentationActive:YES];
+    uint64_t presentToken =
+        [_presentGenerationBySurface[surfId] unsignedLongLongValue];
+    static int s_presentLogCount = 0;
+    static uint64_t s_lastPresentLogBuf = 0;
+    if (s_presentLogCount < 8 || selectedBufferId != s_lastPresentLogBuf) {
+      if (selectedBufferId != s_lastPresentLogBuf) {
+        s_lastPresentLogBuf = selectedBufferId;
+      }
+      if (s_presentLogCount < 8) {
+        s_presentLogCount++;
+      }
+      WWNLog("RENDER",
+             @"IOS present via frameView: surf=%@ win=%@ frame=%.0f,%.0f "
+             @"%.0fx%.0f imgW=%zu imgH=%zu token=%llu",
+             surfId, winId, frame.origin.x, frame.origin.y, frame.size.width,
+             frame.size.height, CGImageGetWidth(cgImage),
+             CGImageGetHeight(cgImage), presentToken);
+    }
+    [iosView presentWaylandFrame:cgImage
+                           frame:frame
+                     contentRect:contentRect
+                    presentToken:presentToken];
+    return;
+  }
+
+  // IOSurface fallback: attach to legacy layer tree.
+  CALayer *layer = _surfaceLayers[surfId];
+  if (!layer) {
+    layer = [CALayer layer];
+    layer.geometryFlipped = YES;
+    layer.opaque = YES;
+    layer.contentsGravity = kCAGravityTopLeft;
+    _surfaceLayers[surfId] = layer;
+    [iosView prepareWaylandLayerSubpresentation];
+    [iosView.waylandLayer addSublayer:layer];
+  }
+  [CATransaction begin];
+  [CATransaction setDisableActions:YES];
+  layer.frame = frame;
+  layer.contentsRect = contentRect;
+  layer.opacity = node->opacity;
+  layer.contents = content;
+  [CATransaction commit];
+}
+#endif
+
 - (void)updateLayerForNode:(CRenderNode *)node {
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+  [self _updateIOSPresentationForNode:node];
+#else
   NSNumber *winId = @(node->window_id);
   NSNumber *surfId = @(node->surface_id);
 
@@ -1035,6 +1479,10 @@ static const NSTimeInterval kWWNResizeDebounceSeconds = 0.040;
     layer = [CALayer layer];
     layer.contentsScale = node->scale;
     layer.contentsGravity = kCAGravityResize;
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+    layer.geometryFlipped = YES;
+    layer.opaque = YES;
+#endif
     _surfaceLayers[surfId] = layer;
 
     // Attach to window hierarchy (toplevels and popups both in _windows)
@@ -1055,9 +1503,11 @@ static const NSTimeInterval kWWNResizeDebounceSeconds = 0.040;
     if (!hostView)
       hostView = _popups[winId];
     if ([hostView isKindOfClass:[WWNCompositorView_ios class]]) {
-      [((WWNCompositorView_ios *)hostView).contentLayer addSublayer:layer];
+      WWNCompositorView_ios *iosView = (WWNCompositorView_ios *)hostView;
+      [iosView setWaylandPresentationActive:YES];
+      [iosView.waylandLayer addSublayer:layer];
       WWNLog("RENDER",
-             @"Created layer for surf=%@ → attached to win=%@ contentLayer",
+             @"Created layer for surf=%@ → attached to win=%@ waylandLayer",
              surfId, winId);
     } else {
       WWNLog("RENDER",
@@ -1166,6 +1616,15 @@ static const NSTimeInterval kWWNResizeDebounceSeconds = 0.040;
   if (node->buffer_id == 0) {
     layer.contents = nil;
   } else if (content) {
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+    UIView *hostView = _windows[winId];
+    if (!hostView) {
+      hostView = _popups[winId];
+    }
+    if ([hostView isKindOfClass:[WWNCompositorView_ios class]]) {
+      [(WWNCompositorView_ios *)hostView setWaylandPresentationActive:YES];
+    }
+#endif
     // Clear first so Core Animation cannot skip an update when the same
     // buffer id is re-used with new SHM pixels (new CGImage, same key).
     layer.contents = nil;
@@ -1173,6 +1632,7 @@ static const NSTimeInterval kWWNResizeDebounceSeconds = 0.040;
   }
 
   [CATransaction commit];
+#endif
 }
 
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
@@ -1251,8 +1711,8 @@ static const NSTimeInterval kWWNResizeDebounceSeconds = 0.040;
   }
 
   CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
-  CGBitmapInfo bmpInfo =
-      kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst;
+  CGBitmapInfo bmpInfo = kCGBitmapByteOrder32Little |
+                         (CGBitmapInfo)kCGImageAlphaPremultipliedFirst;
   CGContextRef ctx = CGBitmapContextCreate(req->ptr, req->width, req->height, 8,
                                            req->stride, cs, bmpInfo);
   if (!ctx) {
@@ -1401,9 +1861,16 @@ extern void WWNCoreInject_touch_frame(void *core);
   if (!_rustCore) {
     return;
   }
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+  WWNLog("BRIDGE", @"injectTouchDown id=%ld x=%.1f y=%.1f ts=%u",
+         (long)touchId, x, y, timestampMs);
+#endif
   [self _dispatchToRust:^{
     WWNCoreInjectTouchDown(self->_rustCore, (int32_t)touchId, x, y,
                            timestampMs);
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+    WWNCoreFlushClients(self->_rustCore);
+#endif
   }];
 }
 
@@ -1411,8 +1878,14 @@ extern void WWNCoreInject_touch_frame(void *core);
   if (!_rustCore) {
     return;
   }
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+  WWNLog("BRIDGE", @"injectTouchUp id=%ld ts=%u", (long)touchId, timestampMs);
+#endif
   [self _dispatchToRust:^{
     WWNCoreInjectTouchUp(self->_rustCore, (int32_t)touchId, timestampMs);
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+    WWNCoreFlushClients(self->_rustCore);
+#endif
   }];
 }
 
@@ -1423,9 +1896,18 @@ extern void WWNCoreInject_touch_frame(void *core);
   if (!_rustCore) {
     return;
   }
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+  if (WWNShouldLogThrottledMotion(&s_lastTouchMotionLog)) {
+    WWNLog("BRIDGE", @"injectTouchMotion id=%ld x=%.1f y=%.1f ts=%u",
+           (long)touchId, x, y, timestampMs);
+  }
+#endif
   [self _dispatchToRust:^{
     WWNCoreInjectTouchMotion(self->_rustCore, (int32_t)touchId, x, y,
                              timestampMs);
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+    WWNCoreFlushClients(self->_rustCore);
+#endif
   }];
 }
 
@@ -1444,6 +1926,9 @@ extern void WWNCoreInject_touch_frame(void *core);
   }
   [self _dispatchToRust:^{
     WWNCoreInject_touch_frame(self->_rustCore);
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+    WWNCoreFlushClients(self->_rustCore);
+#endif
   }];
 }
 
@@ -1504,8 +1989,18 @@ extern void WWNCoreInject_touch_frame(void *core);
   if (!_rustCore) {
     return;
   }
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+  if (WWNShouldLogThrottledMotion(&s_lastPointerMotionLog)) {
+    WWNLog("BRIDGE",
+           @"injectPointerMotion win=%llu x=%.1f y=%.1f ts=%u",
+           windowId, x, y, timestampMs);
+  }
+#endif
   [self _dispatchToRust:^{
     WWNCoreInjectPointerMotion(self->_rustCore, windowId, x, y, timestampMs);
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+    WWNCoreFlushClients(self->_rustCore);
+#endif
   }];
 }
 
@@ -1516,8 +2011,15 @@ extern void WWNCoreInject_touch_frame(void *core);
   if (!_rustCore) {
     return;
   }
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+  WWNLog("BRIDGE", @"injectPointerEnter win=%llu x=%.1f y=%.1f ts=%u",
+         windowId, x, y, timestampMs);
+#endif
   [self _dispatchToRust:^{
     WWNCoreInjectPointerEnter(self->_rustCore, windowId, x, y, timestampMs);
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+    WWNCoreFlushClients(self->_rustCore);
+#endif
   }];
 }
 
@@ -1526,6 +2028,9 @@ extern void WWNCoreInject_touch_frame(void *core);
   if (!_rustCore) {
     return;
   }
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+  WWNLog("BRIDGE", @"injectPointerLeave win=%llu ts=%u", windowId, timestampMs);
+#endif
   [self _dispatchToRust:^{
     WWNCoreInjectPointerLeave(self->_rustCore, windowId, timestampMs);
   }];
@@ -1538,10 +2043,18 @@ extern void WWNCoreInject_touch_frame(void *core);
   if (!_rustCore) {
     return;
   }
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+  WWNLog("BRIDGE",
+         @"injectPointerButton win=%llu btn=%u pressed=%d ts=%u", windowId,
+         button, pressed, timestampMs);
+#endif
   uint32_t state = pressed ? 1 : 0;
   [self _dispatchToRust:^{
     WWNCoreInjectPointerButton(self->_rustCore, windowId, button, state,
                                timestampMs);
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+    WWNCoreFlushClients(self->_rustCore);
+#endif
   }];
 }
 - (void)injectPointerAxisForWindow:(uint64_t)windowId
@@ -1552,9 +2065,19 @@ extern void WWNCoreInject_touch_frame(void *core);
   if (!_rustCore) {
     return;
   }
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+  if (WWNShouldLogThrottledMotion(&s_lastPointerMotionLog)) {
+    WWNLog("BRIDGE",
+           @"injectPointerAxis win=%llu axis=%u value=%.2f ts=%u", windowId,
+           axis, value, timestampMs);
+  }
+#endif
   [self _dispatchToRust:^{
     WWNCoreInjectPointerAxis(self->_rustCore, windowId, axis, value,
                              timestampMs);
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+    WWNCoreFlushClients(self->_rustCore);
+#endif
   }];
 }
 - (void)injectKeyWithKeycode:(uint32_t)keycode
@@ -1784,6 +2307,90 @@ extern void WWNCoreInject_touch_frame(void *core);
   [self _drainPendingOutputResize];
 }
 
+- (void)currentOutputWidth:(uint32_t *)width
+                    height:(uint32_t *)height
+                     scale:(float *)scale {
+  uint32_t w = _sentOutputW ?: _latestOutputW;
+  uint32_t h = _sentOutputH ?: _latestOutputH;
+  float s = _sentOutputScale > 0 ? _sentOutputScale : _latestOutputScale;
+  if (w == 0)
+    w = 420;
+  if (h == 0)
+    h = 912;
+  if (s <= 0)
+    s = 1.0f;
+  if (width)
+    *width = w;
+  if (height)
+    *height = h;
+  if (scale)
+    *scale = s;
+}
+
+- (void)latestOutputWidth:(uint32_t *)width
+                   height:(uint32_t *)height
+                    scale:(float *)scale {
+  uint32_t w = _latestOutputW;
+  uint32_t h = _latestOutputH;
+  float s = _latestOutputScale;
+  if (w == 0)
+    w = 420;
+  if (h == 0)
+    h = 912;
+  if (s <= 0)
+    s = 1.0f;
+  if (width)
+    *width = w;
+  if (height)
+    *height = h;
+  if (scale)
+    *scale = s;
+}
+
+#if TARGET_OS_IPHONE
+- (void)prepareOutputSizeForNativeClientLaunch {
+  dispatch_sync(dispatch_get_main_queue(), ^{
+    [[NSNotificationCenter defaultCenter]
+        postNotificationName:WWNNativeClientWillLaunchNotification
+                      object:nil];
+  });
+
+  const NSTimeInterval step = 0.01;
+  NSTimeInterval waited = 0;
+  const NSTimeInterval timeout = 0.35;
+  uint32_t lastW = 0;
+  uint32_t lastH = 0;
+  int stableFrames = 0;
+
+  while (waited < timeout) {
+    uint32_t w = _latestOutputW;
+    uint32_t h = _latestOutputH;
+    BOOL synced = (w > 0 && h > 0 && w == _sentOutputW && h == _sentOutputH &&
+                   !_outputResizeInFlight);
+    if (synced && w == lastW && h == lastH) {
+      stableFrames++;
+      if (stableFrames >= 1) {
+        WWNLog("BRIDGE",
+               @"Native client launch output ready: %ux%u @ %.1fx", w, h,
+               _latestOutputScale > 0 ? _latestOutputScale : 1.0f);
+        return;
+      }
+    } else {
+      stableFrames = 0;
+    }
+    lastW = w;
+    lastH = h;
+    [NSThread sleepForTimeInterval:step];
+    waited += step;
+  }
+
+  WWNLog("BRIDGE",
+         @"Native client launch output wait timed out; using latest %ux%u @ %.1fx",
+         _latestOutputW, _latestOutputH,
+         _latestOutputScale > 0 ? _latestOutputScale : 1.0f);
+}
+#endif
+
 /// Same coalescing pattern as window resize — at most one output-resize
 /// block on the compositor queue at a time.
 - (void)_drainPendingOutputResize {
@@ -1867,6 +2474,7 @@ typedef enum : uint32_t {
   CWindowEventTypeMaximizeRequested = 10,
   CWindowEventTypeUnmaximizeRequested = 11,
   CWindowEventTypeCursorShapeChanged = 12,
+  CWindowEventTypeHostLocked = 13,
 } CWindowEventType;
 
 typedef struct CWindowEvent {
@@ -1881,8 +2489,8 @@ typedef struct CWindowEvent {
   int32_t y;
   uint8_t decoration_mode;  // 0 = ClientSide, 1 = ServerSide
   uint8_t fullscreen_shell; // 0 = no, 1 = yes (kiosk - no host chrome)
+  uint8_t host_locked;      // 0 = no, 1 = yes (embedded / non-floating)
   uint8_t edges;            // xdg_toplevel resize_edge
-  uint8_t padding;
   uint8_t size_kind;        // 0=Frame, 1=Content, 2=Buffer
   uint8_t size_cause;       // 0=Unknown, 1=HostConfigure, 2=ClientCommit, 3=OutputModeChange
   uint32_t configure_serial;
@@ -1962,6 +2570,9 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
     [self handleCursorShapeChanged:event];
 #endif
     break;
+  case CWindowEventTypeHostLocked:
+    [self handleWindowHostLocked:event];
+    break;
   }
 }
 
@@ -2031,35 +2642,26 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
 - (void)handleWindowCreated:(CWindowEvent *)event {
   WWNLog("BRIDGE",
          @"handleWindowCreated: id=%llu size=%ux%u decoration_mode=%u "
-         @"fullscreen_shell=%u",
+         @"fullscreen_shell=%u host_locked=%u",
          event->window_id, event->width, event->height, event->decoration_mode,
-         event->fullscreen_shell);
+         event->fullscreen_shell, event->host_locked);
 
   BOOL shouldInjectResize = NO;
   BOOL shouldUpdateOutput = NO; // Whether wl_output.mode must also change.
 
+  BOOL kiosk = event->host_locked || event->fullscreen_shell;
   BOOL forceSSD = WWNForceSSDEnabled();
-  BOOL useServerDecorations = forceSSD || event->decoration_mode == 1;
+  BOOL useServerDecorations = !kiosk && (forceSSD || event->decoration_mode == 1);
 
   NSRect contentRect;
-  if (event->fullscreen_shell) {
-    // Fullscreen-shell surfaces fill the output at whatever size the output
-    // reports.  When Force SSD is active the NSWindow gets a native macOS
-    // titlebar, which consumes height from the content area and shrinks the
-    // drawable region below the output dimensions Weston expects.
-    //
-    // We must inject a resize after window creation so that:
-    //   • wl_output.mode is updated to the actual content area (not the
-    //     full output including the titlebar region), and
-    //   • the fullscreen_shell surface receives a configure at the correct
-    //     drawable size.
-    //
-    // Without this, Weston renders its desktop shell at the full output size
-    // and the bottom strip is clipped/hidden behind the window chrome.
-    contentRect = NSMakeRect(100, 100, event->width, event->height);
-    if (useServerDecorations) {
-      // Force SSD: titlebar will eat into the content rect after window init.
-      shouldInjectResize = YES;
+  if (kiosk) {
+    uint32_t kw = _latestOutputW > 0 ? _latestOutputW : event->width;
+    uint32_t kh = _latestOutputH > 0 ? _latestOutputH : event->height;
+    NSRect screenFrame = [[NSScreen mainScreen] frame];
+    contentRect =
+        NSMakeRect(screenFrame.origin.x, screenFrame.origin.y, kw, kh);
+    shouldInjectResize = YES;
+    if (event->fullscreen_shell) {
       shouldUpdateOutput = YES;
     }
   } else {
@@ -2088,6 +2690,7 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
                                        defer:NO];
 
   window.wwnWindowId = event->window_id;
+  window.hostLocked = kiosk;
 
   NSString *title = (event->title && strlen(event->title) > 0)
                         ? [NSString stringWithUTF8String:event->title]
@@ -2108,7 +2711,13 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   [window setContentView:contentView];
   [window makeFirstResponder:contentView];
 
-  [window center];
+  if (kiosk) {
+    [window setFrame:contentRect display:NO];
+    [window setMovable:NO];
+    [window setMovableByWindowBackground:NO];
+  } else {
+    [window center];
+  }
   // Deferred: Window remains hidden until a buffer is attached (xdg-shell
   // semantics)
 
@@ -2154,11 +2763,37 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   }
 }
 
+- (void)handleWindowHostLocked:(CWindowEvent *)event {
+  WWNWindow *window = _windows[@(event->window_id)];
+  if (!window || ![window isKindOfClass:[WWNWindow class]])
+    return;
+
+  window.hostLocked = YES;
+  [window setStyleMask:NSWindowStyleMaskBorderless |
+                       NSWindowStyleMaskFullSizeContentView];
+  [window setMovable:NO];
+  [window setMovableByWindowBackground:NO];
+
+  uint32_t kw = event->width > 0 ? event->width
+                                 : (_latestOutputW > 0 ? _latestOutputW : 800);
+  uint32_t kh = event->height > 0 ? event->height
+                                  : (_latestOutputH > 0 ? _latestOutputH : 600);
+  NSRect screenFrame = [[NSScreen mainScreen] frame];
+  NSRect frame = NSMakeRect(screenFrame.origin.x, screenFrame.origin.y, kw, kh);
+  window.processingResize = YES;
+  [window setFrame:frame display:NO];
+  window.processingResize = NO;
+
+  [self injectWindowResize:event->window_id width:kw height:kh];
+  WWNLog("BRIDGE", @"Host-locked window %llu to %.0fx%.0f (kiosk)",
+         event->window_id, (CGFloat)kw, (CGFloat)kh);
+}
+
 - (void)handleWindowMoveRequested:(CWindowEvent *)event {
   WWNLog("BRIDGE", @"handleWindowMoveRequested: id=%llu", event->window_id);
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
   WWNWindow *window = _windows[@(event->window_id)];
-  if (!window)
+  if (!window || window.hostLocked)
     return;
   if (window.interactiveResizeInProgress) {
     WWNLog("BRIDGE", @"Ignoring move request during interactive resize: id=%llu",
@@ -2236,7 +2871,7 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
          event->window_id, event->edges);
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
   WWNWindow *window = _windows[@(event->window_id)];
-  if (!window)
+  if (!window || window.hostLocked)
     return;
 
   NSEvent *mouseEvent = [NSApp currentEvent];
@@ -2360,6 +2995,8 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
 - (void)handleCursorShapeChanged:(CWindowEvent *)event {
   if (_windows.count == 0)
     return;
+  if (![[WWNPreferencesManager sharedManager] renderMacOSPointer])
+    return;
   uint32_t shape = event->surface_id;
   [self _ensureCursorRenderingEnabled];
 
@@ -2391,6 +3028,9 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
     return;
 
   if (_windows.count == 0)
+    return;
+
+  if (![[WWNPreferencesManager sharedManager] renderMacOSPointer])
     return;
 
   if (scene->cursor_buffer_id == 0)
@@ -2432,14 +3072,7 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
 #endif
 
 - (void)handleWindowDestroyed:(CWindowEvent *)event {
-#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
-  UIView *view = [_windows objectForKey:@(event->window_id)];
-  if (view) {
-    [view removeFromSuperview];
-    [_windows removeObjectForKey:@(event->window_id)];
-    WWNLog("BRIDGE", @"Removed iOS view for window %llu", event->window_id);
-  }
-#else
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
   NSWindow *window = [_windows objectForKey:@(event->window_id)];
   if (window) {
     NSString *activeMachineId = [WWNMachineProfileStore activeMachineId];
@@ -2527,6 +3160,7 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   }
 #endif
 
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
   id<WWNPopupHost> popup = [_popups objectForKey:@(event->window_id)];
   if (popup) {
     [popup dismiss];
@@ -2537,6 +3171,7 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
     [_resizeInFlightWindows removeObject:@(event->window_id)];
     WWNLog("BRIDGE", @"Destroyed popup %llu", event->window_id);
   }
+#endif
 }
 
 - (void)handleWindowTitleChanged:(CWindowEvent *)event {
@@ -2559,6 +3194,19 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
 - (void)handleWindowSizeChanged:(CWindowEvent *)event {
   WWNWindow *window = [self.windows objectForKey:@(event->window_id)];
   if (window) {
+    if (window.hostLocked) {
+      uint32_t kw = event->width > 0 ? event->width
+                                     : (_latestOutputW > 0 ? _latestOutputW : 800);
+      uint32_t kh = event->height > 0 ? event->height
+                                      : (_latestOutputH > 0 ? _latestOutputH : 600);
+      NSRect screenFrame = [[NSScreen mainScreen] frame];
+      NSRect frame =
+          NSMakeRect(screenFrame.origin.x, screenFrame.origin.y, kw, kh);
+      window.processingResize = YES;
+      [window setFrame:frame display:NO];
+      window.processingResize = NO;
+      return;
+    }
     // Check if size actually changed to avoid loop
     NSSize contentSize = WWNWaylandContentSizeForWindow(window);
     // Host-originated configure/output updates are acknowledgements of a resize
@@ -2760,19 +3408,55 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
 
   for (NSNumber *key in _windows) {
     id view = _windows[key];
-    if ([view isKindOfClass:[WWNCompositorView_ios class]]) {
-      WWNCompositorView_ios *iosView = (WWNCompositorView_ios *)view;
-      if (scene->has_cursor) {
-        [iosView updateCursorImage:cursorImage
-                             width:scene->cursor_width
-                            height:scene->cursor_height
-                          hotspotX:scene->cursor_hotspot_x
-                          hotspotY:scene->cursor_hotspot_y];
-      } else {
-        [iosView updateCursorImage:nil width:0 height:0 hotspotX:0 hotspotY:0];
-      }
+    if (![view isKindOfClass:[WWNCompositorView_ios class]]) {
+      continue;
+    }
+    WWNCompositorView_ios *iosView = (WWNCompositorView_ios *)view;
+    if (!iosView.window && !iosView.superview) {
+      continue;
+    }
+    if (scene->has_cursor) {
+      [iosView updateCursorImage:cursorImage
+                           width:scene->cursor_width
+                          height:scene->cursor_height
+                        hotspotX:scene->cursor_hotspot_x
+                        hotspotY:scene->cursor_hotspot_y];
+    } else {
+      [iosView updateCursorImage:nil width:0 height:0 hotspotX:0 hotspotY:0];
     }
   }
+}
+
+/// Stop rendering into live compositor views before native clients exit.
+- (void)tearDownActiveIOSCompositorViews {
+  if (_rustCore && _compositorQueue) {
+    dispatch_sync(_compositorQueue, ^{
+      uint32_t disconnected = WWNCoreDisconnectAllClients(self->_rustCore);
+      if (disconnected > 0) {
+        WWNLog("BRIDGE", @"Disconnected %u in-process Wayland client(s)",
+               disconnected);
+      }
+      WWNCoreFlushClients(self->_rustCore);
+    });
+  }
+
+  for (NSNumber *key in [_windows copy]) {
+    UIView *view = _windows[key];
+    if ([view isKindOfClass:[WWNCompositorView_ios class]]) {
+      [(WWNCompositorView_ios *)view prepareForSessionTeardown];
+    }
+  }
+  for (NSNumber *key in [_popups copy]) {
+    UIView *popup = (UIView *)_popups[key];
+    if ([popup isKindOfClass:[WWNCompositorView_ios class]]) {
+      [(WWNCompositorView_ios *)popup prepareForSessionTeardown];
+    }
+  }
+  [_surfaceLayers removeAllObjects];
+  [_bufferCache removeAllObjects];
+  [_latestBufferBySurface removeAllObjects];
+  [_presentGenerationBySurface removeAllObjects];
+  _waylandPresentGeneration = 0;
 }
 
 - (BOOL)launchNestedKmscubeOnPrimaryView {
@@ -2788,10 +3472,94 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   return NO;
 }
 
+- (BOOL)prepareIlandMetalPresentationOnPrimaryView {
+  for (NSNumber *key in _windows) {
+    id view = _windows[key];
+    if ([view isKindOfClass:[WWNCompositorView_ios class]]) {
+      return [(WWNCompositorView_ios *)view prepareIlandMetalPresentation];
+    }
+  }
+  if ([self.containerView isKindOfClass:[WWNCompositorView_ios class]]) {
+    return [(WWNCompositorView_ios *)self.containerView prepareIlandMetalPresentation];
+  }
+  return NO;
+}
+
+#if TARGET_OS_IPHONE
+- (void)_runCompositorEventPumpWithIterations:(int)iterations {
+  if (!_rustCore || iterations <= 0) {
+    return;
+  }
+  void (^pump)(void) = ^{
+    for (int i = 0; i < iterations; i++) {
+      WWNCoreProcessEvents(self->_rustCore);
+      WWNCoreFlushClients(self->_rustCore);
+    }
+  };
+  if (dispatch_get_specific(kWWNCompositorQueueKey)) {
+    pump();
+    return;
+  }
+  if (_compositorQueue) {
+    dispatch_sync(_compositorQueue, pump);
+  } else {
+    pump();
+  }
+}
+
+- (void)_pumpHostCompositorFromQueue {
+  [self _runCompositorEventPumpWithIterations:8];
+}
+
+- (void)pumpHostCompositorEvents {
+  if (!_rustCore) {
+    return;
+  }
+  // Pump from the client thread on _compositorQueue only. Window events and
+  // buffer presentation stay in _compositorTick — never drain them here.
+  [self _pumpHostCompositorFromQueue];
+  // Nudge presentation when the display-link tick is idle (e.g. first frame
+  // after an in-process client connects).
+  dispatch_async(dispatch_get_main_queue(), ^{
+    if (self->_rustCore && ! atomic_load(&self->_compositorBusy)) {
+      [self _compositorTick];
+    }
+  });
+}
+#endif
+
+- (void)handleWindowHostLocked:(CWindowEvent *)event {
+  NSNumber *winKey = @(event->window_id);
+  [_hostLockedWindowIds addObject:winKey];
+  UIView *view = _windows[winKey];
+  if (view && self.containerView) {
+    view.frame = self.containerView.bounds;
+  }
+  CGRect bounds = self.containerView ? self.containerView.bounds
+                                     : CGRectMake(0, 0, event->width, event->height);
+  [self injectWindowResize:event->window_id
+                     width:(uint32_t)bounds.size.width
+                    height:(uint32_t)bounds.size.height];
+  WWNLog("BRIDGE", @"iOS host-locked window %llu to %.0fx%.0f",
+         event->window_id, bounds.size.width, bounds.size.height);
+}
+
 - (void)handleWindowCreated:(CWindowEvent *)event {
   WWNLog(
-      "BRIDGE", @"iOS handleWindowCreated: id=%llu %ux%u fullscreen_shell=%u",
-      event->window_id, event->width, event->height, event->fullscreen_shell);
+      "BRIDGE", @"iOS handleWindowCreated: id=%llu %ux%u fullscreen_shell=%u host_locked=%u",
+      event->window_id, event->width, event->height, event->fullscreen_shell,
+      event->host_locked);
+
+  if (!self.containerView) {
+    WWNLog("BRIDGE",
+           @"WARNING: handleWindowCreated id=%llu but containerView is nil — "
+           @"surface will not be visible",
+           event->window_id);
+  }
+
+  if (event->host_locked || event->fullscreen_shell) {
+    [_hostLockedWindowIds addObject:@(event->window_id)];
+  }
 
   // Use the container's current bounds so the surface fills it edge-to-edge.
   // fullscreen_shell (kiosk) and normal toplevels both fill the container;
@@ -2806,7 +3574,8 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   view.autoresizingMask =
       UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
 
-  if (_iosPerWindowHostingEnabled) {
+  if (_iosPerWindowHostingEnabled && !event->host_locked &&
+      !event->fullscreen_shell) {
     UIWindowScene *scene = self.containerView.window.windowScene;
     if (!scene) {
       for (UIScene *candidate in UIApplication.sharedApplication.connectedScenes) {
@@ -2860,6 +3629,38 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
     return;
   }
 
+  // First native toplevel (weston-terminal): configure immediately and skip
+  // activateKeyboard, which can block the main queue and stall configure delivery.
+  BOOL firstNativeToplevel = (_windows.count == 1);
+
+  if (event->host_locked || firstNativeToplevel) {
+    uint64_t windowId = event->window_id;
+    CGRect viewFrame = self.containerView ? self.containerView.bounds
+                                          : CGRectMake(0, 0, event->width, event->height);
+    uint32_t w = (uint32_t)MAX(1, viewFrame.size.width);
+    uint32_t h = (uint32_t)MAX(1, viewFrame.size.height);
+    WWNLog("BRIDGE",
+           @"%@ window %llu — immediate configure %ux%u (skip keyboard)",
+           event->host_locked ? @"Host-locked" : @"First native toplevel",
+           windowId, w, h);
+    if (_compositorQueue) {
+      dispatch_sync(_compositorQueue, ^{
+        WWNCoreSetWindowActivatedSilent(self->_rustCore, windowId, true);
+        WWNCoreInjectWindowResize(self->_rustCore, windowId, w, h);
+        WWNCoreFlushClients(self->_rustCore);
+      });
+    } else {
+      WWNCoreSetWindowActivatedSilent(_rustCore, windowId, true);
+      WWNCoreInjectWindowResize(_rustCore, windowId, w, h);
+      WWNCoreFlushClients(_rustCore);
+    }
+    [self injectPointerEnterForWindow:windowId
+                                     x:viewFrame.size.width / 2.0
+                                     y:viewFrame.size.height / 2.0
+                             timestamp:0];
+    return;
+  }
+
   // Activate synchronously BEFORE any layoutSubviews can fire.
   // We use the "silent" variant that sets the activation flag without
   // emitting a configure, then injectWindowResize sends a single
@@ -2903,24 +3704,51 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
 
 - (void)handleWindowDestroyed:(CWindowEvent *)event {
   WWNLog("BRIDGE", @"iOS handleWindowDestroyed: id=%llu", event->window_id);
-  UIView *window = [_windows objectForKey:@(event->window_id)];
+  NSNumber *winKey = @(event->window_id);
+  UIView *window = [_windows objectForKey:winKey];
+  if ([window isKindOfClass:[WWNCompositorView_ios class]]) {
+    [(WWNCompositorView_ios *)window prepareForSessionTeardown];
+  }
   if (window) {
     [window removeFromSuperview];
-    [_windows removeObjectForKey:@(event->window_id)];
+    [_windows removeObjectForKey:winKey];
   }
-  UIWindow *hostWindow = _iosHostWindows[@(event->window_id)];
+  UIWindow *hostWindow = _iosHostWindows[winKey];
   if (hostWindow) {
     hostWindow.hidden = YES;
     hostWindow.rootViewController = nil;
-    [_iosHostWindows removeObjectForKey:@(event->window_id)];
+    [_iosHostWindows removeObjectForKey:winKey];
   }
 
   // Also check if it's a popup
-  UIView *popup = (UIView *)[_popups objectForKey:@(event->window_id)];
+  UIView *popup = (UIView *)[_popups objectForKey:winKey];
   if (popup) {
+    if ([popup isKindOfClass:[WWNCompositorView_ios class]]) {
+      [(WWNCompositorView_ios *)popup prepareForSessionTeardown];
+    }
     [popup removeFromSuperview];
-    [_popups removeObjectForKey:@(event->window_id)];
+    [_popups removeObjectForKey:winKey];
     WWNLog("BRIDGE", @"iOS popup %llu destroyed", event->window_id);
+  }
+
+  [_latestResizeDims removeObjectForKey:winKey];
+  [_sentResizeDims removeObjectForKey:winKey];
+  [_resizeInFlightWindows removeObject:winKey];
+  [_hostLockedWindowIds removeObject:winKey];
+  [NSObject cancelPreviousPerformRequestsWithTarget:self
+                                           selector:@selector(_drainPendingWindowResizeForId:)
+                                             object:winKey];
+
+  if (_windows.count == 0 && _popups.count == 0) {
+    [_surfaceLayers removeAllObjects];
+    [_bufferCache removeAllObjects];
+    [_latestBufferBySurface removeAllObjects];
+    [_presentGenerationBySurface removeAllObjects];
+    _waylandPresentGeneration = 0;
+    _clientWantsCursorRendered = NO;
+    _lastCursorBufferId = 0;
+    _lastCursorSurfaceId = 0;
+    WWNLog("BRIDGE", @"All iOS windows destroyed — cleared presentation caches");
   }
 }
 
@@ -3086,3 +3914,9 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
 }
 
 @end
+
+#if TARGET_OS_IPHONE
+void wwn_ios_pump_host_compositor(void) {
+  [[WWNCompositorBridge sharedBridge] pumpHostCompositorEvents];
+}
+#endif

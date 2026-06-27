@@ -40,6 +40,8 @@ DELEGATE_OWNERSHIP_MARKERS = {
     "zxdg_output_manager_v1": "delegate_output!",
     "wl_seat": "delegate_seat!",
     "wl_data_device_manager": "delegate_data_device!",
+    "wl_compositor": "delegate_compositor!",
+    "wl_subcompositor": "delegate_compositor!",
     "xdg_wm_base": "delegate_xdg_shell!",
     "zxdg_toplevel_decoration_v1": "delegate_xdg_decoration!",
     "xdg_activation_v1": "delegate_xdg_activation!",

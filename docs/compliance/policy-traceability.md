@@ -25,6 +25,10 @@ This matrix links protocol/capability exposure policy to source policy documents
 | WLR data-control manager | `desktop-only` | Disabled in store-safe builds | Clipboard/privacy surface minimization |
 | XWayland shell / keyboard grab | `desktop-only` | Disabled in store-safe builds | Desktop-only interoperability path |
 | EXT data-control | `store-safe-conditional` | Allowed only with explicit product policy and disclosure | User data handling and permission minimization |
+| Local embedded shell (bundled zsh via PTY) | `store-safe-conditional` | Allowed when spawn path is locked to app rootfs; keyboard + file access disclosed | [ios-local-shell/APP-STORE-COMPLIANCE.md](../ios-local-shell/APP-STORE-COMPLIANCE.md), [SECURITY-SPAWN-POLICY.md](../ios-local-shell/SECURITY-SPAWN-POLICY.md) |
+| Remote SSH / waypipe shell | `store-safe-remote` | Allowed; executes on user-configured remote host | [2026-waypipe.md](../2026-waypipe.md) |
+| Post-review native binary download + exec | **forbidden** | Never allowed in store-safe profiles | `wwn_pty_is_allowed_shell_path`, waypipe guards |
+| x86 usermode guest / JIT shell | **forbidden** | Out of product scope (iSH-style) | [ios-local-shell/README.md](../ios-local-shell/README.md) |
 
 ## Enforcement Points
 
@@ -36,3 +40,8 @@ This matrix links protocol/capability exposure policy to source policy documents
 - Release profile selection:
   - Cargo features (`profile-store-safe`, `profile-store-safe-remote`, `profile-desktop-host`, `profile-full-dev`)
   - Optional env override: `WAWONA_PROTOCOL_PROFILE`.
+- Local shell spawn (Apple mobile, Phase 2+):
+  - `dependencies/libs/wawona-pty/` — path allowlist, `posix_spawn` only
+  - `WWNRootfsManager` — bundled rootfs install under Application Support
+  - `WWNWaypipeRunner.m` — sanitized env before `weston_terminal_main`
+  - Documentation: [docs/ios-local-shell/](../ios-local-shell/README.md)

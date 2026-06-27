@@ -91,6 +91,44 @@ impl CompositorState {
         }
     }
 
+    /// Scale factor from compositor-global logical coordinates to wl_surface
+    /// buffer-pixel coordinates for pointer/touch delivery.
+    ///
+    /// Platform input (iOS points, macOS view coords, Android after /density)
+    /// lives in output logical space.  wl_pointer surface-local coords must
+    /// match the committed buffer.  Nested compositors like Weston often
+    /// commit at output scale without calling wl_surface.set_buffer_scale.
+    fn pointer_buffer_coord_scale(
+        &self,
+        surface_id: u32,
+        node_w: f64,
+        node_h: f64,
+        flattened_scale: f32,
+    ) -> f64 {
+        if let Some(surf) = self.surfaces.get(&surface_id) {
+            if let Ok(guard) = surf.read() {
+                let surface_scale = guard.current.scale.max(1) as f64;
+                if surface_scale > 1.0 {
+                    return surface_scale;
+                }
+                let buf_w = guard.current.width.max(1) as f64;
+                let buf_h = guard.current.height.max(1) as f64;
+                if node_w > 0.0 && node_h > 0.0 {
+                    let sx = buf_w / node_w;
+                    let sy = buf_h / node_h;
+                    if sx > 1.01 && (sx - sy).abs() < 0.05 {
+                        return sx;
+                    }
+                }
+            }
+        }
+        let fs = flattened_scale as f64;
+        if fs > 1.0 {
+            return fs;
+        }
+        1.0
+    }
+
     /// Find the surface at the given absolute coordinates.
     /// Phase E: Respects subsurface input region clipping — a point is only accepted
     /// if it lies within the surface's input_region (None = whole surface).
@@ -105,8 +143,14 @@ impl CompositorState {
             let sh = surface.height as f64;
             
             if x >= sx && x < sx + sw && y >= sy && y < sy + sh {
-                let local_x = (x - sx) / surface.scale as f64;
-                let local_y = (y - sy) / surface.scale as f64;
+                let coord_scale = self.pointer_buffer_coord_scale(
+                    surface.surface_id,
+                    sw,
+                    sh,
+                    surface.scale,
+                );
+                let local_x = (x - sx) * coord_scale;
+                let local_y = (y - sy) * coord_scale;
                 let lx = local_x as i32;
                 let ly = local_y as i32;
                 
@@ -338,12 +382,21 @@ impl CompositorState {
     }
 
     /// Look up a surface's absolute position in the scene graph.
-    fn surface_position_in_scene(&mut self, surface_id: u32) -> Option<(i32, i32, f32)> {
+    fn surface_position_in_scene(
+        &mut self,
+        surface_id: u32,
+    ) -> Option<(i32, i32, f64, f64, f32)> {
         self.build_scene();
         let flattened = self.scene.flatten();
         for node in &flattened {
             if node.surface_id == surface_id {
-                return Some((node.x, node.y, node.scale));
+                return Some((
+                    node.x,
+                    node.y,
+                    node.width as f64,
+                    node.height as f64,
+                    node.scale,
+                ));
             }
         }
         None
@@ -403,9 +456,11 @@ impl CompositorState {
         let surface_id = self.seat.touch.get_touch_surface(id);
         if let Some(sid) = surface_id {
             let pos = self.surface_position_in_scene(sid);
-            if let Some((sx, sy, scale)) = pos {
-                let local_x = (x - sx as f64) / scale as f64;
-                let local_y = (y - sy as f64) / scale as f64;
+            if let Some((sx, sy, node_w, node_h, flat_scale)) = pos {
+                let coord_scale =
+                    self.pointer_buffer_coord_scale(sid, node_w, node_h, flat_scale);
+                let local_x = (x - sx as f64) * coord_scale;
+                let local_y = (y - sy as f64) * coord_scale;
 
                 self.seat.touch.touch_motion(id, local_x, local_y);
 
@@ -674,6 +729,7 @@ impl CompositorState {
                         time_ms,
                         wl_pointer::Axis::VerticalScroll,
                         vertical,
+                        wl_pointer::AxisSource::Wheel,
                         client.as_ref(),
                     );
                 }
@@ -682,6 +738,7 @@ impl CompositorState {
                         time_ms,
                         wl_pointer::Axis::HorizontalScroll,
                         horizontal,
+                        wl_pointer::AxisSource::Wheel,
                         client.as_ref(),
                     );
                 }

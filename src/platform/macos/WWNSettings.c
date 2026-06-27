@@ -4,7 +4,7 @@
 #ifndef __APPLE__
 
 static WWNSettingsConfig g_config = {
-    .forceServerSideDecorations = true,
+    .forceServerSideDecorations = false,
     .autoRetinaScaling = true,
     .respectSafeArea = true,
     .renderMacOSPointer = true,

@@ -7,7 +7,7 @@
 //
 
 #import "WWNIlandPresenter.h"
-#import <IOSurface/IOSurface.h>
+#import <IOSurface/IOSurfaceRef.h>
 #import <pthread.h>
 
 // iland present hook. Declared here (rather than including iland_present.h) so

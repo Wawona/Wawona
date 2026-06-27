@@ -83,6 +83,11 @@ public struct MachineSettingsView: View {
     private func displaySection() -> some View {
         Section("Display") {
             Toggle("Force Server-Side Decorations", isOn: forceSSDBinding)
+            #if os(macOS)
+            Toggle("Show macOS Cursor", isOn: renderMacOSPointerBinding)
+            #else
+            Toggle("Show Virtual Pointer", isOn: renderMacOSPointerBinding)
+            #endif
             Toggle("Auto Scale", isOn: autoScaleBinding)
             TextField("Wayland Display", text: waylandDisplayBinding)
                 .wawonaTextFieldNoAutocaps()
@@ -111,7 +116,17 @@ public struct MachineSettingsView: View {
             }
 
             if profile.type == .native {
-                TextField("Bundled App ID", text: bundledAppIDBinding)
+                NavigationLink {
+                    BundledClientPickerView(selection: bundledAppIDSelectionBinding)
+                } label: {
+                    HStack {
+                        Text("Wayland Client")
+                        Spacer()
+                        Text(ClientLauncher.displayName(for: resolvedBundledAppID))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
             }
 
             if profile.type == .virtualMachine {
@@ -206,6 +221,11 @@ public struct MachineSettingsView: View {
             Text("OpenGL Driver: \(resolved.openGLDriver)")
             Text("DMABUF: \(resolved.dmabufEnabled ? "Enabled" : "Disabled")")
             Text("Force SSD: \(resolved.forceSSD ? "Enabled" : "Disabled")")
+            #if os(macOS)
+            Text("Show macOS Cursor: \(resolved.renderMacOSPointer ? "Enabled" : "Disabled")")
+            #else
+            Text("Show Virtual Pointer: \(resolved.renderMacOSPointer ? "Enabled" : "Disabled")")
+            #endif
             Text("Auto Scale: \(resolved.autoScale ? "Enabled" : "Disabled")")
             Text("HDR: \(resolved.colorOperations ? "Enabled" : "Disabled")")
             Text("Display: \(resolved.waylandDisplay)")
@@ -228,6 +248,7 @@ public struct MachineSettingsView: View {
                 profileStore.upsert(profile)
                 profileStore.activeMachineId = profile.id
                 profileStore.save()
+                MachineRuntimeSettingsApplicator.apply(profile: profile, preferences: preferences)
             }
         }
     }
@@ -315,9 +336,15 @@ public struct MachineSettingsView: View {
         )
     }
 
-    private var bundledAppIDBinding: Binding<String> {
+    private var resolvedBundledAppID: String {
+        let raw = draft?.runtimeOverrides.bundledAppID?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return raw.isEmpty ? preferences.defaultBundledAppID : raw
+    }
+
+    private var bundledAppIDSelectionBinding: Binding<String> {
         Binding(
-            get: { draft?.runtimeOverrides.bundledAppID ?? "" },
+            get: { resolvedBundledAppID },
             set: { value in updateDraft { $0.runtimeOverrides.bundledAppID = value } }
         )
     }
@@ -368,6 +395,13 @@ public struct MachineSettingsView: View {
         Binding(
             get: { draft?.runtimeOverrides.forceSSD ?? preferences.forceSSD },
             set: { value in updateDraft { $0.runtimeOverrides.forceSSD = value } }
+        )
+    }
+
+    private var renderMacOSPointerBinding: Binding<Bool> {
+        Binding(
+            get: { draft?.runtimeOverrides.renderMacOSPointer ?? preferences.renderMacOSPointer },
+            set: { value in updateDraft { $0.runtimeOverrides.renderMacOSPointer = value } }
         )
     }
 

@@ -4,11 +4,17 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-/// Manages the bundled wawona-rootfs prefix (zsh + templates) for App Store–compliant local shell.
+/// Manages bundled shell data (wawona-rootfs templates + static-linked zsh) for App Store local shell.
 @interface WWNRootfsManager : NSObject
 
-/// Path to read-only rootfs inside the app bundle (`…/wawona-rootfs`).
+/// Path to read-only template tree inside the app bundle (`…/wawona-rootfs`).
 + (NSString *)bundleRootfsPath;
+
+/// Logical shell path passed to weston-terminal (`/usr/bin/zsh`; zsh is static-linked).
++ (NSString *)bundledShellPath;
+
+/// Bundled zsh function/share tree (`…/wawona-rootfs/usr/share/zsh`).
++ (NSString *)bundledZshSharePath;
 
 /// Writable rootfs under Application Support (`…/wawona-rootfs`).
 + (NSString *)activeRootfsPath;

@@ -27,6 +27,7 @@ let
     macos = pkgs.callPackage ./macos.nix ({
       inherit buildModule wawonaSrc wawonaVersion weston waypipe;
       foot = buildModule.buildForMacOS "foot" { };
+      fastfetch = buildModule.buildForMacOS "fastfetch" { };
       rustBackend = rustBackendMacOS;
     } // depVersions);
 

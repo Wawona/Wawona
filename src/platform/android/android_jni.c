@@ -128,7 +128,7 @@ typedef struct {
   int32_t x, y;
   uint8_t decoration_mode;
   uint8_t fullscreen_shell;
-  uint16_t padding;
+  uint8_t host_locked;
   uint8_t size_kind;   /* 0=Frame, 1=Content, 2=Buffer */
   uint8_t size_cause;  /* 0=Unknown, 1=HostConfigure, 2=ClientCommit, 3=OutputModeChange */
   uint32_t configure_serial;

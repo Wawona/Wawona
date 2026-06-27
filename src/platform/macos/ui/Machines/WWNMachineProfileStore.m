@@ -1,5 +1,6 @@
 #import "WWNMachineProfileStore.h"
 #import "../Settings/WWNPreferencesManager.h"
+#import "../../WWNCompositorBridge.h"
 
 NSString *const kWWNMachineTypeSSHWaypipe = @"ssh_waypipe";
 NSString *const kWWNMachineTypeSSHTerminal = @"ssh_terminal";
@@ -230,9 +231,14 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
   NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
   for (NSString *key in snapshot) {
     id value = snapshot[key];
-    if (value != nil) {
-      [defaults setObject:value forKey:key];
+    if (value == nil) {
+      continue;
     }
+    id current = [defaults objectForKey:key];
+    if (current == value || [current isEqual:value]) {
+      continue;
+    }
+    [defaults setObject:value forKey:key];
   }
 }
 
@@ -635,17 +641,54 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
       transportSnapshot[key] = value;
     }
   }
+
+  // Swift MachineProfileStore persists per-machine overrides under
+  // runtimeOverrides (e.g. forceSSD) rather than settingsOverrides.
+  NSDictionary *swiftRuntime =
+      [profile.runtimeOverrides isKindOfClass:[NSDictionary class]]
+          ? profile.runtimeOverrides
+          : @{};
+
   if ([profile.type isEqualToString:kWWNMachineTypeNative]) {
     BOOL hasExplicitPointerOverride =
         [profile.settingsOverrides[kWWNPrefsRenderMacOSPointer]
-            respondsToSelector:@selector(boolValue)];
+            respondsToSelector:@selector(boolValue)] ||
+        [swiftRuntime[@"renderMacOSPointer"] respondsToSelector:@selector(boolValue)];
     if (!hasExplicitPointerOverride) {
       BOOL nested = [self profileIndicatesNestedCompositor:profile];
       transportSnapshot[kWWNPrefsRenderMacOSPointer] = @(!nested);
     }
   }
+
+  id swiftForceSSD = swiftRuntime[@"forceSSD"];
+  if ([swiftForceSSD respondsToSelector:@selector(boolValue)]) {
+    transportSnapshot[kWWNPrefsForceServerSideDecorations] = swiftForceSSD;
+  }
+  id swiftAutoScale = swiftRuntime[@"autoScale"];
+  if ([swiftAutoScale respondsToSelector:@selector(boolValue)]) {
+    transportSnapshot[kWWNPrefsAutoScale] = swiftAutoScale;
+  }
+  id swiftRenderPointer = swiftRuntime[@"renderMacOSPointer"];
+  if ([swiftRenderPointer respondsToSelector:@selector(boolValue)]) {
+    transportSnapshot[kWWNPrefsRenderMacOSPointer] = swiftRenderPointer;
+  }
+
   [self applySettingsSnapshot:transportSnapshot];
 
+  // Push Force SSD into the compositor once; avoid re-entering via prefs observers.
+  [[WWNCompositorBridge sharedBridge]
+      setForceSSD:[[WWNPreferencesManager sharedManager] forceServerSideDecorations]];
+}
+
++ (void)applyActiveMachineToRuntimePrefs {
+  NSString *activeId = [self activeMachineId];
+  if (activeId.length == 0) {
+    return;
+  }
+  WWNMachineProfile *profile = [self profileById:activeId];
+  if (profile) {
+    [self applyMachineToRuntimePrefs:profile];
+  }
 }
 
 + (void)persistActiveMachineSettings {

@@ -688,6 +688,7 @@
         "nixpkgs": "nixpkgs_5",
         "rust-overlay": "rust-overlay",
         "wwn-coreutils": "wwn-coreutils",
+        "wwn-fastfetch": "wwn-fastfetch",
         "wwn-foot": "wwn-foot",
         "wwn-iland": "wwn-iland",
         "wwn-kmscube": "wwn-kmscube",
@@ -741,7 +742,7 @@
     "rust-overlay_3": {
       "inputs": {
         "nixpkgs": [
-          "wwn-foot",
+          "wwn-fastfetch",
           "nixpkgs"
         ]
       },
@@ -762,7 +763,7 @@
     "rust-overlay_4": {
       "inputs": {
         "nixpkgs": [
-          "wwn-iland",
+          "wwn-foot",
           "nixpkgs"
         ]
       },
@@ -783,7 +784,7 @@
     "rust-overlay_5": {
       "inputs": {
         "nixpkgs": [
-          "wwn-kmscube",
+          "wwn-iland",
           "nixpkgs"
         ]
       },
@@ -804,7 +805,7 @@
     "rust-overlay_6": {
       "inputs": {
         "nixpkgs": [
-          "wwn-waypipe",
+          "wwn-kmscube",
           "nixpkgs"
         ]
       },
@@ -825,7 +826,7 @@
     "rust-overlay_7": {
       "inputs": {
         "nixpkgs": [
-          "wwn-weston",
+          "wwn-waypipe",
           "nixpkgs"
         ]
       },
@@ -844,6 +845,27 @@
       }
     },
     "rust-overlay_8": {
+      "inputs": {
+        "nixpkgs": [
+          "wwn-weston",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1782530211,
+        "narHash": "sha256-Zn5H2VVMaP79C+bvaUQD+SBXSKoTnURMZGiUrG00zII=",
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "rev": "06ba695dfefc4afc513b49dfc41c4bf0dd2eaeb1",
+        "type": "github"
+      },
+      "original": {
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "type": "github"
+      }
+    },
+    "rust-overlay_9": {
       "inputs": {
         "nixpkgs": [
           "wwn-zsh",
@@ -918,12 +940,36 @@
         "type": "github"
       }
     },
-    "wwn-foot": {
+    "wwn-fastfetch": {
       "inputs": {
         "nixpkgs": [
           "nixpkgs"
         ],
         "rust-overlay": "rust-overlay_3",
+        "wwn-toolchain": [
+          "wwn-toolchain"
+        ]
+      },
+      "locked": {
+        "lastModified": 1782592857,
+        "narHash": "sha256-j6KaQafqQ/UDlGbKr5PZyQ+w2k9DSIrPnYHIZ21iZwc=",
+        "owner": "Wawona",
+        "repo": "wwn-fastfetch",
+        "rev": "7eb3df20bb43bbec5cdd669e299b9a365479a72c",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Wawona",
+        "repo": "wwn-fastfetch",
+        "type": "github"
+      }
+    },
+    "wwn-foot": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "rust-overlay": "rust-overlay_4",
         "wwn-toolchain": [
           "wwn-toolchain"
         ]
@@ -947,7 +993,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "rust-overlay": "rust-overlay_4",
+        "rust-overlay": "rust-overlay_5",
         "wwn-toolchain": [
           "wwn-toolchain"
         ]
@@ -971,7 +1017,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "rust-overlay": "rust-overlay_5",
+        "rust-overlay": "rust-overlay_6",
         "wwn-iland": [
           "wwn-iland"
         ],
@@ -1004,11 +1050,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1782592077,
-        "narHash": "sha256-BYckrHHzLxPN2DcuPD1/tRv8QFav+5H2QiEoPoxQ5Ms=",
+        "lastModified": 1782592868,
+        "narHash": "sha256-QIizBM3KNt751I2vKPoQ68JSCnFxh/PZg38OH5PaAic=",
         "owner": "Wawona",
         "repo": "wwn-toolchain",
-        "rev": "c923a6b59ced36a810e2a4d545db7dc1c418a724",
+        "rev": "ff3d132cb4a5b689ee360c262ddf4d9fb12f8896",
         "type": "github"
       },
       "original": {
@@ -1022,7 +1068,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "rust-overlay": "rust-overlay_6",
+        "rust-overlay": "rust-overlay_7",
         "wwn-toolchain": [
           "wwn-toolchain"
         ]
@@ -1046,7 +1092,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "rust-overlay": "rust-overlay_7",
+        "rust-overlay": "rust-overlay_8",
         "wwn-iland": [
           "wwn-iland"
         ],
@@ -1076,7 +1122,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "rust-overlay": "rust-overlay_8",
+        "rust-overlay": "rust-overlay_9",
         "wwn-toolchain": [
           "wwn-toolchain"
         ]

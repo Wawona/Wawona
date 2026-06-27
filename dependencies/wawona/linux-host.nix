@@ -3,6 +3,7 @@
   wawonaVersion,
   wawonaSrc ? ../..,
   waypipeSrc ? null,
+  westonSimpleShmLinuxNix ? ../libs/weston-simple-shm/linux.nix,
   ...
 }:
 
@@ -32,8 +33,9 @@ pkgs.writeShellApplication {
     pkgs.lz4
     pkgs.vulkan-loader
     pkgs.weston
-    (pkgs.callPackage ../libs/weston-simple-shm/linux.nix {})
+    (pkgs.callPackage westonSimpleShmLinuxNix {})
     pkgs.foot
+    pkgs.fastfetch
     pkgs.coreutils
   ];
   text = ''

@@ -14,6 +14,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
+/// Serializes Wayland server dispatch/flush across threads (main, compositor
+/// queue, in-process client workers). Concurrent ProcessEvents corrupts client
+/// connections on iOS.
+static WAYLAND_DISPATCH_MUTEX: Mutex<()> = Mutex::new(());
+
 use crate::ffi::types;
 
 use crate::core::{
@@ -126,6 +131,22 @@ fn apply_geometry_offset(
     (x, y)
 }
 
+/// Map compositor-global pointer coordinates to surface-local coordinates
+/// for wl_pointer enter/motion events.
+fn pointer_surface_local_coords(
+    state: &mut CompositorState,
+    global_x: f64,
+    global_y: f64,
+    focus_sid: Option<u32>,
+) -> (f64, f64) {
+    if let Some((sid, lx, ly)) = state.find_surface_at(global_x, global_y) {
+        if focus_sid.is_none_or(|f| f == sid) {
+            return (lx, ly);
+        }
+    }
+    (global_x, global_y)
+}
+
 fn pointer_focus_origin(state: &CompositorState, surface_id: u32) -> smithay::utils::Point<f64, smithay::utils::Logical> {
     let origin = state
         .surface_to_window
@@ -133,10 +154,29 @@ fn pointer_focus_origin(state: &CompositorState, surface_id: u32) -> smithay::ut
         .and_then(|wid| state.get_window(*wid))
         .and_then(|window| {
             let w = window.read().ok()?;
-            Some((w.x as f64, w.y as f64))
+            Some((
+                w.x as f64 + w.geometry_x as f64,
+                w.y as f64 + w.geometry_y as f64,
+            ))
         })
         .unwrap_or((0.0, 0.0));
     origin.into()
+}
+
+fn smithay_pointer_focus(
+    state: &CompositorState,
+    focus_sid: Option<u32>,
+) -> Option<(
+    wayland_server::protocol::wl_surface::WlSurface,
+    smithay::utils::Point<f64, smithay::utils::Logical>,
+)> {
+    focus_sid.and_then(|sid| {
+        state.surfaces.get(&sid).and_then(|surface| {
+            let surface = surface.read().ok()?;
+            let res = surface.resource.clone()?;
+            Some((res, pointer_focus_origin(state, sid)))
+        })
+    })
 }
 
 #[allow(dead_code)]
@@ -148,7 +188,46 @@ enum FrameCallbackFlushPoint {
 }
 
 const PRESTABLE_MISMATCH_TOLERANCE_PX: i32 = 1;
+const WESTON_FAMILY_PRESTABLE_TOLERANCE_PX: i32 = 80;
 const STABLE_MISMATCH_WARN_PX: i32 = 64;
+
+fn is_weston_family_app_id(app_id: &str) -> bool {
+    app_id == "weston"
+        || app_id.starts_with("weston-")
+        || app_id.contains("weston")
+}
+
+fn buffer_size_mismatch_px(
+    buf_w: u32,
+    buf_h: u32,
+    expected_w: u32,
+    expected_h: u32,
+    buffer_scale: u32,
+) -> (i32, i32) {
+    let bw = buf_w as i32;
+    let bh = buf_h as i32;
+    let ew = expected_w as i32;
+    let eh = expected_h as i32;
+    let tolerance = PRESTABLE_MISMATCH_TOLERANCE_PX;
+
+    let matches = |bw: i32, bh: i32, ew: i32, eh: i32| {
+        (bw - ew).abs() <= tolerance && (bh - eh).abs() <= tolerance
+    };
+
+    if matches(bw, bh, ew, eh) {
+        return (0, 0);
+    }
+
+    let s = buffer_scale.max(1) as i32;
+    if matches(bw, bh, ew * s, eh * s) {
+        return (0, 0);
+    }
+
+    (
+        (bw - ew).abs().min((bw - ew * s).abs()),
+        (bh - eh).abs().min((bh - eh * s).abs()),
+    )
+}
 
 fn should_flush_frame_callbacks(point: FrameCallbackFlushPoint) -> bool {
     matches!(
@@ -383,8 +462,12 @@ impl WawonaCore {
     
     /// Set whether server-side decorations (SSD) should be forced
     pub fn set_force_ssd(&self, enabled: bool) {
+        if *self.force_ssd.read().unwrap() == enabled {
+            return;
+        }
+
         let mut state = self.state.write().unwrap();
-        
+
         crate::wlog!(crate::util::logging::FFI, "FFI: set_force_ssd({})", enabled);
         
         // 1. Update policy
@@ -704,6 +787,10 @@ impl WawonaCore {
     /// Process pending Wayland events
     /// Returns true if events were processed
     pub fn process_events(&self) -> bool {
+        let _dispatch_guard = match WAYLAND_DISPATCH_MUTEX.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         if self.compositor_faulted.load(Ordering::SeqCst) {
             return false;
         }
@@ -767,10 +854,14 @@ impl WawonaCore {
             self.handle_compositor_event(event);
         }
 
-        self.flush_clients();
+        self.flush_clients_locked();
 
         if event_count > 0 {
-            crate::wlog!(crate::util::logging::FFI, "ProcessEvents: handled {} events", event_count);
+            crate::wlog_hot!(
+                crate::util::logging::FFI,
+                "ProcessEvents: handled {} compositor event(s)",
+                event_count
+            );
         }
 
         true
@@ -779,6 +870,10 @@ impl WawonaCore {
     /// Dispatch pending events with timeout (milliseconds)
     /// Returns true if events were processed
     pub fn dispatch_events(&self, timeout_ms: u32) -> bool {
+        let _dispatch_guard = match WAYLAND_DISPATCH_MUTEX.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         if self.compositor_faulted.load(Ordering::SeqCst) {
             return false;
         }
@@ -839,13 +934,14 @@ impl WawonaCore {
         }
 
         // Flush protocol events generated by event handlers (frame_done, etc.)
-        self.flush_clients();
+        self.flush_clients_locked();
 
         true
     }
     
-    /// Flush client event queues
-    pub fn flush_clients(&self) {
+    /// Flush client event queues (must not be called while holding WAYLAND_DISPATCH_MUTEX
+    /// unless via flush_clients_locked).
+    fn flush_clients_locked(&self) {
         let mut compositor_guard = match self.compositor.lock() {
             Ok(guard) => guard,
             Err(_) => {
@@ -856,6 +952,15 @@ impl WawonaCore {
         if let Some(compositor) = compositor_guard.as_mut() {
             let _ = compositor.flush();
         }
+    }
+
+    /// Flush client event queues
+    pub fn flush_clients(&self) {
+        let _dispatch_guard = match WAYLAND_DISPATCH_MUTEX.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        self.flush_clients_locked();
     }
 
     /// Report that a frame was presented
@@ -1012,6 +1117,15 @@ impl WawonaCore {
                     );
                 }
             }
+            CompositorEvent::WindowHostLocked { window_id, width, height } => {
+                self.pending_window_events.write().unwrap().push(
+                    WindowEvent::HostLocked {
+                        window_id: WindowId { id: window_id as u64 },
+                        width,
+                        height,
+                    }
+                );
+            }
             CompositorEvent::WindowCreated {
                 client_id,
                 window_id,
@@ -1021,10 +1135,18 @@ impl WawonaCore {
                 height,
                 decoration_mode,
                 fullscreen_shell,
+                host_locked,
             } => {
-                let Some(internal_client_id) = self.internal_client_id(&client_id) else {
-                    return;
-                };
+                let internal_client_id = self
+                    .internal_client_id(&client_id)
+                    .unwrap_or(0);
+                if internal_client_id == 0 {
+                    crate::wlog!(
+                        crate::util::logging::FFI,
+                        "WindowCreated: client not in map yet (window_id={}), using internal_id=0",
+                        window_id
+                    );
+                }
                 let ffi_decoration_mode = match decoration_mode {
                     crate::core::window::DecorationMode::ClientSide => DecorationMode::ClientSide,
                     crate::core::window::DecorationMode::ServerSide => DecorationMode::ServerSide,
@@ -1054,6 +1176,7 @@ impl WawonaCore {
                     max_height: None,
                     decoration_mode: ffi_decoration_mode,
                     fullscreen_shell,
+                    host_locked,
                     owner_client_internal_id: internal_client_id as u64,
                     state: crate::ffi::types::WindowState::Normal,
                     parent: None,
@@ -1063,6 +1186,14 @@ impl WawonaCore {
                         window_id: WindowId { id: window_id as u64 },
                         config,
                     }
+                );
+                crate::wlog!(
+                    crate::util::logging::FFI,
+                    "WindowCreated queued: window_id={} {}x{} host_locked={}",
+                    window_id,
+                    width,
+                    height,
+                    host_locked
                 );
             }
             CompositorEvent::PopupCreated { client_id, window_id, surface_id, parent_id, x, y, width, height } => {
@@ -1080,6 +1211,7 @@ impl WawonaCore {
                     max_height: None,
                     decoration_mode: DecorationMode::ClientSide,
                     fullscreen_shell: false,
+                    host_locked: false,
                     owner_client_internal_id: internal_client_id as u64,
                     state: crate::ffi::types::WindowState::Normal,
                     parent: if parent_id > 0 { Some(WindowId::new(parent_id as u64)) } else { None },
@@ -1262,7 +1394,7 @@ impl WawonaCore {
                         });
                         (callback_count, no_buffer_count)
                     };
-                    crate::wlog!(
+                    crate::wlog_hot!(
                         crate::util::logging::FFI,
                         "SurfaceCommitted: surf={} buf=<none> frame_cbs_flushed={} no_buffer_commits={}",
                         surface_id,
@@ -1298,6 +1430,7 @@ impl WawonaCore {
                     expected_toplevel_size_from_toplevel,
                     expected_window_size,
                     xdg_pending_serial,
+                    window_app_id,
                 ) = {
                     let mut state = self.state.write().unwrap();
                     
@@ -1379,7 +1512,7 @@ impl WawonaCore {
                                 }
                             },
                             crate::core::surface::BufferType::Native(native) => {
-                                crate::wlog!(crate::util::logging::FFI, "FFI: IOSurface buffer id={} {}x{}", 
+                                crate::wlog_hot!(crate::util::logging::FFI, "FFI: IOSurface buffer id={} {}x{}", 
                                     native.id, native.width, native.height);
                                 RawCopy::Iosurface {
                                     id: native.id as u32,
@@ -1389,12 +1522,12 @@ impl WawonaCore {
                                 }
                             },
                             _ => {
-                                crate::wlog!(crate::util::logging::FFI, "FFI: Non-SHM buffer type, skipping");
+                                crate::wlog_hot!(crate::util::logging::FFI, "FFI: Non-SHM buffer type, skipping");
                                 RawCopy::None
                             }
                         }
                     } else {
-                        crate::wlog!(crate::util::logging::FFI, "FFI: Buffer {} not found in state.buffers", buffer_id);
+                        crate::wlog_hot!(crate::util::logging::FFI, "FFI: Buffer {} not found in state.buffers", buffer_id);
                         RawCopy::None
                     };
                     
@@ -1406,7 +1539,7 @@ impl WawonaCore {
                             let mut path = format!("{}->{}", surface_id, parent_id);
                             for _ in 0..10 {
                                 if let Some(wid) = state.surface_to_window.get(&parent_id) {
-                                    crate::wlog!(crate::util::logging::FFI, "Resolved subsurface path: {} -> Window {}", path, wid);
+                                    crate::wlog_hot!(crate::util::logging::FFI, "Resolved subsurface path: {} -> Window {}", path, wid);
                                     target_window_id = Some(*wid);
                                     break;
                                 }
@@ -1414,7 +1547,7 @@ impl WawonaCore {
                                     parent_id = parent_sub.parent_id;
                                     path.push_str(&format!("->{}", parent_id));
                                 } else {
-                                    crate::wlog!(crate::util::logging::FFI, "Subsurface path dead end: {} (parent {} has no window)", path, parent_id);
+                                    crate::wlog_hot!(crate::util::logging::FFI, "Subsurface path dead end: {} (parent {} has no window)", path, parent_id);
                                     break;
                                 }
                             }
@@ -1440,6 +1573,10 @@ impl WawonaCore {
                             let w = w.read().unwrap();
                             (w.width as u32, w.height as u32)
                         });
+                    let window_app_id = target_window_id
+                        .and_then(|wid| state.windows.get(&wid))
+                        .and_then(|w| w.read().ok())
+                        .map(|w| w.app_id.clone());
 
                     (
                         raw,
@@ -1447,6 +1584,7 @@ impl WawonaCore {
                         expected_toplevel_size_from_toplevel,
                         expected_window_size,
                         xdg_pending_serial,
+                        window_app_id,
                     )
                 }; // state write-lock released
                 
@@ -1458,11 +1596,21 @@ impl WawonaCore {
                 // -------------------------------------------------------
                 let buffer_data = match raw_copy {
                     RawCopy::Shm { mut raw_pixels, width, height, stride, format, is_opaque } => {
-                        let (fmt, needs_alpha_fix) = match format {
+                        let (fmt, mut needs_alpha_fix) = match format {
                             0 => (types::BufferFormat::Argb8888, is_opaque),
                             1 => (types::BufferFormat::Xrgb8888, true),
                             _ => (types::BufferFormat::Argb8888, is_opaque),
                         };
+                        // Pixman/Weston often commit ARGB8888 with zero alpha and
+                        // no wl_surface opaque region, which makes CALayer treat
+                        // the buffer as fully transparent on iOS.
+                        if !needs_alpha_fix && format == 0 && raw_pixels.len() >= 4 {
+                            let sample = stride as usize * height as usize;
+                            let sample = sample.min(raw_pixels.len());
+                            needs_alpha_fix = raw_pixels[..sample]
+                                .chunks_exact(4)
+                                .all(|px| px[3] == 0);
+                        }
                         if needs_alpha_fix {
                             for chunk in raw_pixels.chunks_exact_mut(4) {
                                 chunk[3] = 0xFF;
@@ -1491,6 +1639,18 @@ impl WawonaCore {
                     let mut queued_for_presentation = false;
                     
                     if let Some(data) = buffer_data {
+                        let surface_buffer_scale = state
+                            .surfaces
+                            .get(&surface_id)
+                            .map(|s| s.read().unwrap().current.scale.max(1) as u32)
+                            .unwrap_or(1);
+                        let output_scale = {
+                            let (_, _, scale) = *self.output_size.read().unwrap();
+                            scale.round().max(1.0) as u32
+                        };
+                        // Nested compositors (e.g. Weston) often commit at output
+                        // scale while wl_surface.scale stays at 1.
+                        let effective_buffer_scale = surface_buffer_scale.max(output_scale);
                         let current_expected_size = expected_toplevel_size_from_toplevel
                             .filter(|(w, h)| *w > 0 && *h > 0)
                             .or(expected_window_size);
@@ -1508,33 +1668,41 @@ impl WawonaCore {
                             "none"
                         };
                         let pre_stable_gate_active = xdg_pending_serial != 0 || toplevel_size_is_zero;
+                        let prestable_tolerance_px = if pre_stable_gate_active
+                            && window_app_id
+                                .as_deref()
+                                .map(is_weston_family_app_id)
+                                .unwrap_or(false)
+                        {
+                            WESTON_FAMILY_PRESTABLE_TOLERANCE_PX
+                        } else {
+                            PRESTABLE_MISMATCH_TOLERANCE_PX
+                        };
 
-                        let should_drop_unconfigured_size_mismatch = current_expected_size
+                        // Drop only during the configure handshake (pending serial or
+                        // zero-sized toplevel). Post-stable mismatches are accepted
+                        // and scaled by the platform layer — required for fixed-size
+                        // demos like weston-smoke (always 200×200, ignores resize).
+                        let should_drop_size_mismatch = current_expected_size
                             .map(|(expected_w, expected_h)| {
-                                let dw = (data.width() as i32 - expected_w as i32).abs();
-                                let dh = (data.height() as i32 - expected_h as i32).abs();
+                                let (dw, dh) = buffer_size_mismatch_px(
+                                    data.width(),
+                                    data.height(),
+                                    expected_w,
+                                    expected_h,
+                                    effective_buffer_scale,
+                                );
                                 pre_stable_gate_active
-                                    && (dw > PRESTABLE_MISMATCH_TOLERANCE_PX
-                                        || dh > PRESTABLE_MISMATCH_TOLERANCE_PX)
+                                    && (dw > prestable_tolerance_px || dh > prestable_tolerance_px)
                             })
                             .unwrap_or(false);
-                        let should_drop_poststable_size_drift = current_expected_size
-                            .map(|(expected_w, expected_h)| {
-                                let dw = (data.width() as i32 - expected_w as i32).abs();
-                                let dh = (data.height() as i32 - expected_h as i32).abs();
-                                !pre_stable_gate_active
-                                    && expected_source == "xdg_toplevel"
-                                    && expected_w > 0
-                                    && expected_h > 0
-                                    && (dw > STABLE_MISMATCH_WARN_PX || dh > STABLE_MISMATCH_WARN_PX)
-                            })
-                            .unwrap_or(false);
-                        let should_drop_size_mismatch =
-                            should_drop_unconfigured_size_mismatch || should_drop_poststable_size_drift;
                         let mismatch_tuple = current_expected_size.map(|(expected_w, expected_h)| {
-                            (
-                                (data.width() as i32 - expected_w as i32).abs(),
-                                (data.height() as i32 - expected_h as i32).abs(),
+                            buffer_size_mismatch_px(
+                                data.width(),
+                                data.height(),
+                                expected_w,
+                                expected_h,
+                                effective_buffer_scale,
                             )
                         });
                         if pre_stable_gate_active
@@ -1543,7 +1711,7 @@ impl WawonaCore {
                                 .map(|(dw, dh)| dw > STABLE_MISMATCH_WARN_PX || dh > STABLE_MISMATCH_WARN_PX)
                                 .unwrap_or(false)
                         {
-                            crate::wlog!(
+                            crate::wlog_hot!(
                                 crate::util::logging::FFI,
                                 "SurfaceCommit decision: surf={} win={:?} buf={}x{} pending_serial={} toplevel={:?} window={:?} expected_src={} expected={:?} mismatch={:?} prestable={} drop={}",
                                 surface_id,
@@ -1565,7 +1733,7 @@ impl WawonaCore {
                             if let Some((expected_w, expected_h)) = current_expected_size {
                                 crate::wtrace!(
                                     crate::util::logging::FFI,
-                                    "Dropping mismatched commit: surf={} buf={} committed={}x{} expected={}x{} pending_serial={} toplevel_zero={} expected_src={} prestable_drop={} poststable_drop={} tolerance_px={} stable_warn_px={}",
+                                    "Dropping mismatched commit: surf={} buf={} committed={}x{} expected={}x{} pending_serial={} toplevel_zero={} expected_src={} tolerance_px={}",
                                     surface_id,
                                     buffer_id,
                                     data.width(),
@@ -1575,11 +1743,7 @@ impl WawonaCore {
                                     xdg_pending_serial,
                                     toplevel_size_is_zero,
                                     expected_source,
-                                    should_drop_unconfigured_size_mismatch,
-                                    should_drop_poststable_size_drift,
                                     PRESTABLE_MISMATCH_TOLERANCE_PX
-                                    ,
-                                    STABLE_MISMATCH_WARN_PX
                                 );
                             }
                             state.release_buffer(client_id.clone(), buffer_id);
@@ -1645,7 +1809,7 @@ impl WawonaCore {
                             // do not hold wl_surface.frame callbacks indefinitely.
                             // This keeps clients like weston-simple-shm animating once
                             // window mapping catches up.
-                            crate::wlog!(
+                            crate::wlog_hot!(
                                 crate::util::logging::FFI,
                                 "FFI: No window for surface {} in SurfaceCommitted; releasing buffer {} and flushing callbacks",
                                 surface_id,
@@ -1677,33 +1841,11 @@ impl WawonaCore {
                         .get(&surface_id)
                         .map(|cbs| cbs.len())
                         .unwrap_or(0);
-                    if queued_for_presentation
-                        && callback_count > 0
-                        && should_flush_frame_callbacks(FrameCallbackFlushPoint::SurfaceCommitted)
-                    {
-                        let pre_stable_gate_active =
-                            xdg_pending_serial != 0
-                                || expected_toplevel_size_from_toplevel
-                                    .map(|(w, h)| w == 0 || h == 0)
-                                    .unwrap_or(true);
-                        if pre_stable_gate_active {
-                            crate::wlog!(
-                                crate::util::logging::FFI,
-                                "Skipping commit-time frame callback flush during pre-stable phase: surf={} pending_serial={} toplevel={:?}",
-                                surface_id,
-                                xdg_pending_serial,
-                                expected_toplevel_size_from_toplevel
-                            );
-                        } else {
-                            // Keep wl_surface.frame moving in steady-state even if a platform
-                            // misses/delays frame-presented delivery.
-                            state.flush_frame_callbacks(
-                                surface_id,
-                                Some(crate::core::state::CompositorState::get_timestamp_ms()),
-                            );
-                        }
-                    }
-                    crate::wlog!(crate::util::logging::FFI,
+                    // Frame callbacks for queued buffers are flushed from
+                    // notify_frame_presented() after release. Flushing at
+                    // commit time races SHM double-buffering (nested Weston)
+                    // and stalls once both pool buffers are in flight.
+                    crate::wlog_hot!(crate::util::logging::FFI,
                         "SurfaceCommitted: surf={} buf={} frame_cbs_pending={} queued_for_presentation={}",
                         surface_id, buffer_id, callback_count, queued_for_presentation);
                 }
@@ -1712,7 +1854,7 @@ impl WawonaCore {
                 let internal_client_id = format!("{:?}", client_id);
                 // Layer surface commit - TODO: Implement full layer surface rendering
                 // For now, just flush frame callbacks so the client can continue rendering
-                crate::wlog!(crate::util::logging::FFI, "LayerSurfaceCommitted client={}, surface={}, buffer_id={:?}", 
+                crate::wlog_hot!(crate::util::logging::FFI, "LayerSurfaceCommitted client={}, surface={}, buffer_id={:?}", 
                     internal_client_id, surface_id, buffer_id);
                 
                 let mut state = self.state.write().unwrap();
@@ -1727,7 +1869,7 @@ impl WawonaCore {
             }
             CompositorEvent::CursorCommitted { client_id, surface_id, buffer_id, hotspot_x, hotspot_y } => {
                 let internal_client_id = format!("{:?}", client_id);
-                crate::wlog!(crate::util::logging::FFI, "CursorCommitted client={}, surface={}, buffer_id={:?}, hotspot=({}, {})", 
+                crate::wlog_hot!(crate::util::logging::FFI, "CursorCommitted client={}, surface={}, buffer_id={:?}, hotspot=({}, {})", 
                     internal_client_id, surface_id, buffer_id, hotspot_x, hotspot_y);
                 
                 // Process cursor buffer exactly like a window buffer so the
@@ -1880,6 +2022,220 @@ impl WawonaCore {
     }
 }
 
+fn smithay_pointer_handle(
+    state: &CompositorState,
+) -> Option<smithay::input::pointer::PointerHandle<CompositorState>> {
+    state
+        .smithay_runtime
+        .seat
+        .as_ref()
+        .and_then(|seat| seat.get_pointer())
+}
+
+/// Deliver pointer motion through Smithay's grab/focus pipeline (enter/leave/motion/frame).
+#[allow(dead_code)]
+fn smithay_dispatch_pointer_motion(
+    state: &mut CompositorState,
+    timestamp_ms: u32,
+    serial: u32,
+) -> bool {
+    let Some(pointer) = smithay_pointer_handle(state) else {
+        return false;
+    };
+    let focus = smithay_pointer_focus(state, state.seat.pointer.focus);
+    let event = smithay::input::pointer::MotionEvent {
+        location: smithay::utils::Point::<_, smithay::utils::Logical>::from((
+            state.seat.pointer.x,
+            state.seat.pointer.y,
+        )),
+        serial: serial.into(),
+        time: timestamp_ms,
+    };
+    pointer.motion(state, focus, &event);
+    pointer.frame(state);
+    true
+}
+
+/// Deliver pointer button through Smithay (uses last motion location for hit testing).
+fn smithay_dispatch_pointer_button(
+    state: &mut CompositorState,
+    serial: u32,
+    timestamp_ms: u32,
+    button: u32,
+    wl_state: wayland_server::protocol::wl_pointer::ButtonState,
+) -> bool {
+    let Some(pointer) = smithay_pointer_handle(state) else {
+        return false;
+    };
+    use smithay::backend::input::ButtonState as SmithayButtonState;
+    let smithay_state = match wl_state {
+        wayland_server::protocol::wl_pointer::ButtonState::Pressed => SmithayButtonState::Pressed,
+        wayland_server::protocol::wl_pointer::ButtonState::Released => SmithayButtonState::Released,
+        _ => return false,
+    };
+    let event = smithay::input::pointer::ButtonEvent {
+        serial: serial.into(),
+        time: timestamp_ms,
+        button,
+        state: smithay_state,
+    };
+    pointer.button(state, &event);
+    pointer.frame(state);
+    true
+}
+
+fn smithay_pointer_count(state: &CompositorState, client: &wayland_server::Client) -> usize {
+    smithay_pointer_handle(state)
+        .map(|pointer| pointer.client_pointers(client).count())
+        .unwrap_or(0)
+}
+
+fn smithay_send_pointer_enter(
+    state: &CompositorState,
+    client: &wayland_server::Client,
+    serial: u32,
+    surface: &wayland_server::protocol::wl_surface::WlSurface,
+    lx: f64,
+    ly: f64,
+) -> usize {
+    let Some(pointer) = smithay_pointer_handle(state) else {
+        return 0;
+    };
+    let mut sent = 0;
+    for ptr in pointer.client_pointers(client) {
+        ptr.enter(serial, surface, lx, ly);
+        sent += 1;
+    }
+    sent
+}
+
+fn smithay_send_pointer_leave(
+    state: &CompositorState,
+    client: &wayland_server::Client,
+    serial: u32,
+    surface: &wayland_server::protocol::wl_surface::WlSurface,
+) -> usize {
+    let Some(pointer) = smithay_pointer_handle(state) else {
+        return 0;
+    };
+    let mut sent = 0;
+    for ptr in pointer.client_pointers(client) {
+        ptr.leave(serial, surface);
+        sent += 1;
+    }
+    sent
+}
+
+fn smithay_send_pointer_motion(
+    state: &CompositorState,
+    client: &wayland_server::Client,
+    time: u32,
+    lx: f64,
+    ly: f64,
+) -> usize {
+    let Some(pointer) = smithay_pointer_handle(state) else {
+        return 0;
+    };
+    let mut sent = 0;
+    for ptr in pointer.client_pointers(client) {
+        ptr.motion(time, lx, ly);
+        sent += 1;
+    }
+    sent
+}
+
+fn smithay_send_pointer_button(
+    state: &CompositorState,
+    client: &wayland_server::Client,
+    serial: u32,
+    time: u32,
+    button: u32,
+    wl_state: wayland_server::protocol::wl_pointer::ButtonState,
+) -> usize {
+    let Some(pointer) = smithay_pointer_handle(state) else {
+        return 0;
+    };
+    let mut sent = 0;
+    for ptr in pointer.client_pointers(client) {
+        ptr.button(serial, time, button, wl_state);
+        sent += 1;
+    }
+    sent
+}
+
+fn smithay_send_pointer_frame(state: &CompositorState, client: &wayland_server::Client) -> usize {
+    let Some(pointer) = smithay_pointer_handle(state) else {
+        return 0;
+    };
+    let mut sent = 0;
+    for ptr in pointer.client_pointers(client) {
+        ptr.frame();
+        sent += 1;
+    }
+    sent
+}
+
+/// Deliver wl_pointer motion/frame to Wayland clients.
+///
+/// Prefer explicit `client_pointers()` delivery so clients that bind wl_pointer
+/// after an early injectPointerEnter still receive enter+motion. Smithay's
+/// internal grab can miss enter when motion is injected before bind.
+fn deliver_pointer_motion_to_clients(
+    state: &mut CompositorState,
+    timestamp_ms: u32,
+    lx: f64,
+    ly: f64,
+) {
+    let focused_client = state.focused_pointer_client();
+    if let Some(client) = focused_client.as_ref() {
+        let mut sent = smithay_send_pointer_motion(state, client, timestamp_ms, lx, ly);
+        if sent == 0 {
+            if let Some(sid) = state.seat.pointer.focus {
+                if let Some(surface) = state.surfaces.get(&sid).cloned() {
+                    let surface = surface.read().unwrap();
+                    if let Some(res) = &surface.resource {
+                        let enter_serial = state.next_serial();
+                        sent = smithay_send_pointer_enter(state, client, enter_serial, res, lx, ly);
+                        if sent > 0 {
+                            state.seat.pointer.last_enter_serial = enter_serial;
+                            sent = smithay_send_pointer_motion(state, client, timestamp_ms, lx, ly);
+                        }
+                    }
+                }
+            }
+        }
+        if sent > 0 {
+            smithay_send_pointer_frame(state, client);
+            return;
+        }
+    }
+    if state.seat.pointer.resources.is_empty() {
+        return;
+    }
+    state
+        .seat
+        .broadcast_pointer_motion(timestamp_ms, lx, ly, focused_client.as_ref());
+    state
+        .seat
+        .broadcast_pointer_frame(focused_client.as_ref());
+}
+
+/// Push a pointer motion at the seat's current global position so clients
+/// (e.g. nested Weston desktop-shell) see coordinates before button events.
+fn dispatch_pointer_motion_at_seat(
+    state: &mut CompositorState,
+    timestamp_ms: u32,
+    _serial: u32,
+) {
+    let focus_sid = state.seat.pointer.focus;
+    let sx = state.seat.pointer.x;
+    let sy = state.seat.pointer.y;
+    let (lx, ly) = pointer_surface_local_coords(state, sx, sy, focus_sid);
+    state.seat.pointer.focus_x = lx;
+    state.seat.pointer.focus_y = ly;
+    deliver_pointer_motion_to_clients(state, timestamp_ms, lx, ly);
+}
+
 /// Ensure pointer focus matches the window the platform says events are
 /// coming from.  If the current `seat.pointer.focus` points to a different
 /// surface, sends leave/enter events to update it.  This makes focus
@@ -1903,27 +2259,45 @@ fn ensure_pointer_focus(
         return;
     }
 
-    if let Some(old_sid) = state.seat.pointer.focus {
+    let old_sid = state.seat.pointer.focus;
+
+    state.seat.pointer.focus = Some(target_sid);
+    let x = state.seat.pointer.x;
+    let y = state.seat.pointer.y;
+    let (lx, ly) = pointer_surface_local_coords(state, x, y, Some(target_sid));
+    state.seat.pointer.focus_x = lx;
+    state.seat.pointer.focus_y = ly;
+
+    let serial = serial_fn();
+    state.seat.pointer.last_enter_serial = serial;
+
+    if let Some(old_sid) = old_sid {
         if let Some(surface) = state.surfaces.get(&old_sid).cloned() {
             let surface = surface.read().unwrap();
             if let Some(res) = &surface.resource {
-                let serial = serial_fn();
-                state.seat.broadcast_pointer_leave(serial, res);
+                if let Some(client) = res.client() {
+                    if smithay_send_pointer_leave(state, &client, serial, res) == 0 {
+                        state.seat.broadcast_pointer_leave(serial, res);
+                    }
+                }
             }
         }
     }
 
-    state.seat.pointer.focus = Some(target_sid);
     if let Some(surface) = state.surfaces.get(&target_sid).cloned() {
         let surface = surface.read().unwrap();
         if let Some(res) = &surface.resource {
-            let serial = serial_fn();
-            state.seat.pointer.last_enter_serial = serial;
-            let x = state.seat.pointer.x;
-            let y = state.seat.pointer.y;
-            state.seat.broadcast_pointer_enter(serial, res, x, y);
+            if let Some(client) = res.client() {
+                let sent = smithay_send_pointer_enter(state, &client, serial, res, lx, ly);
+                if sent > 0 {
+                    smithay_send_pointer_frame(state, &client);
+                } else {
+                    state.seat.broadcast_pointer_enter(serial, res, lx, ly);
+                }
+            }
         }
     }
+    deliver_pointer_motion_to_clients(state, 0, lx, ly);
 }
 
 #[uniffi::export]
@@ -2065,11 +2439,11 @@ impl WawonaCore {
                     *count += 1;
                     *count
                 });
-                crate::wlog!(crate::util::logging::FFI,
+                crate::wtrace!(crate::util::logging::FFI,
                     "FramePresented: surf={} buf={} released=true callbacks_flushed={} callback_count={} presented_total={} release_total={} pending_releases_before={}",
                     surface_id.id, buf_id.id, callback_count > 0, callback_count, presented_count, release_count, pending_releases);
             } else {
-                crate::wlog!(crate::util::logging::FFI,
+                crate::wtrace!(crate::util::logging::FFI,
                     "FramePresented: surf={} buf={} — no client_id, buffer NOT released",
                     surface_id.id, buf_id.id);
             }
@@ -2086,7 +2460,7 @@ impl WawonaCore {
         }
 
         if should_flush_frame_callbacks(FrameCallbackFlushPoint::FramePresented) {
-            crate::wlog!(
+            crate::wtrace!(
                 crate::util::logging::FFI,
                 "FramePresented callback flush: surf={} timestamp={} callbacks_before={}",
                 surface_id.id,
@@ -2366,41 +2740,16 @@ impl WawonaCore {
         
         state.seat.pointer.x = sx;
         state.seat.pointer.y = sy;
-        state.seat.pointer.cursor_hotspot_x = sx;
-        state.seat.pointer.cursor_hotspot_y = sy;
 
         // Auto-correct focus if the platform is routing events for a
         // different window than the one currently focused.
         ensure_pointer_focus(&mut state, window_id, &|| self.next_serial());
-        if let Some(pointer) = state
-            .smithay_runtime
-            .seat
-            .as_ref()
-            .and_then(|seat| seat.get_pointer())
-        {
-            let focus = state
-                .seat
-                .pointer
-                .focus
-                .and_then(|sid| state.surfaces.get(&sid))
-                .and_then(|surface| {
-                    let surface = surface.read().ok()?;
-                    let res = surface.resource.clone()?;
-                    Some((res, pointer_focus_origin(&state, surface.id)))
-                });
-            let motion = smithay::input::pointer::MotionEvent {
-                location: (sx, sy).into(),
-                serial: self.next_serial().into(),
-                time: timestamp_ms,
-            };
-            pointer.motion(&mut *state, focus, &motion);
-            pointer.frame(&mut *state);
-            return;
-        }
-        
-        let focused_client = state.focused_pointer_client();
-        state.seat.broadcast_pointer_motion(timestamp_ms, sx, sy, focused_client.as_ref());
-        state.seat.broadcast_pointer_frame(focused_client.as_ref());
+        let focus_sid = state.seat.pointer.focus;
+        let (lx, ly) = pointer_surface_local_coords(&mut state, sx, sy, focus_sid);
+        state.seat.pointer.focus_x = lx;
+        state.seat.pointer.focus_y = ly;
+
+        deliver_pointer_motion_to_clients(&mut *state, timestamp_ms, lx, ly);
     }
     
     /// Inject pointer button event
@@ -2436,6 +2785,12 @@ impl WawonaCore {
         // Auto-correct pointer focus to the window the platform says
         // this click targets.
         ensure_pointer_focus(&mut state, window_id, &|| self.next_serial());
+
+        // Weston desktop-shell tracks the launcher via wl_pointer motion +
+        // button in the same frame; sync position immediately before click.
+        let motion_serial = self.next_serial();
+        let motion_ts = timestamp_ms.saturating_sub(1);
+        dispatch_pointer_motion_at_seat(&mut state, motion_ts, motion_serial);
         
         match wl_state {
             wayland_server::protocol::wl_pointer::ButtonState::Pressed => {
@@ -2446,55 +2801,74 @@ impl WawonaCore {
             },
             _ => {}
         }
-        if let Some(pointer) = state
-            .smithay_runtime
-            .seat
-            .as_ref()
-            .and_then(|seat| seat.get_pointer())
-        {
-            let smithay_state = match wl_state {
-                wayland_server::protocol::wl_pointer::ButtonState::Pressed => {
-                    smithay::backend::input::ButtonState::Pressed
-                }
-                wayland_server::protocol::wl_pointer::ButtonState::Released => {
-                    smithay::backend::input::ButtonState::Released
-                }
-                _ => smithay::backend::input::ButtonState::Released,
-            };
-            let event = smithay::input::pointer::ButtonEvent {
-                serial: serial.into(),
-                time: timestamp_ms,
-                button: button_code,
-                state: smithay_state,
-            };
-            pointer.button(&mut *state, &event);
-            pointer.frame(&mut *state);
+
+        let focused_client = state.focused_pointer_client();
+        if let Some(client) = focused_client.as_ref() {
+            let sent = smithay_send_pointer_button(
+                &state,
+                client,
+                serial,
+                timestamp_ms,
+                button_code,
+                wl_state,
+            );
+            if sent > 0 {
+                smithay_send_pointer_frame(&state, client);
+                return;
+            }
+        }
+        if smithay_dispatch_pointer_button(
+            &mut *state,
+            serial,
+            timestamp_ms,
+            button_code,
+            wl_state,
+        ) {
             return;
         }
-        
-        let focused_client = state.focused_pointer_client();
-        state.seat.broadcast_pointer_button(serial, timestamp_ms, button_code, wl_state, focused_client.as_ref());
-        state.seat.broadcast_pointer_frame(focused_client.as_ref());
+        if !state.seat.pointer.resources.is_empty() {
+            state.seat.broadcast_pointer_button(
+                serial,
+                timestamp_ms,
+                button_code,
+                wl_state,
+                focused_client.as_ref(),
+            );
+            state.seat.broadcast_pointer_frame(focused_client.as_ref());
+        }
     }
     
     /// Inject pointer axis (scroll) event
     pub fn inject_pointer_axis(
         &self,
-        _window_id: WindowId,
+        window_id: WindowId,
         axis: PointerAxis,
         value: f64,
         _discrete: i32,
-        _source: AxisSource,
+        source: AxisSource,
         timestamp_ms: u32,
     ) {
         if !self.is_running() {
             return;
         }
         let mut state = self.state.write().unwrap();
+        state.seat.cleanup_resources();
+
+        // Scroll is delivered at the virtual cursor — ensure focus and sync
+        // motion first (same pattern as pointer buttons).
+        ensure_pointer_focus(&mut state, window_id, &|| self.next_serial());
+        dispatch_pointer_motion_at_seat(&mut state, timestamp_ms.saturating_sub(1), 0);
+
         let focused_client = state.focused_pointer_client();
         let wl_axis = match axis {
             PointerAxis::Vertical => wayland_server::protocol::wl_pointer::Axis::VerticalScroll,
             PointerAxis::Horizontal => wayland_server::protocol::wl_pointer::Axis::HorizontalScroll,
+        };
+        let wl_source = match source {
+            AxisSource::Wheel => wayland_server::protocol::wl_pointer::AxisSource::Wheel,
+            AxisSource::Finger => wayland_server::protocol::wl_pointer::AxisSource::Finger,
+            AxisSource::Continuous => wayland_server::protocol::wl_pointer::AxisSource::Continuous,
+            AxisSource::WheelTilt => wayland_server::protocol::wl_pointer::AxisSource::WheelTilt,
         };
         if let Some(pointer) = state
             .smithay_runtime
@@ -2506,7 +2880,7 @@ impl WawonaCore {
                 PointerAxis::Vertical => smithay::backend::input::Axis::Vertical,
                 PointerAxis::Horizontal => smithay::backend::input::Axis::Horizontal,
             };
-            let smithay_source = match _source {
+            let smithay_source = match source {
                 AxisSource::Wheel => smithay::backend::input::AxisSource::Wheel,
                 AxisSource::Finger => smithay::backend::input::AxisSource::Finger,
                 AxisSource::Continuous => smithay::backend::input::AxisSource::Continuous,
@@ -2522,7 +2896,13 @@ impl WawonaCore {
             pointer.frame(&mut *state);
             return;
         }
-        state.seat.broadcast_pointer_axis(timestamp_ms, wl_axis, value, focused_client.as_ref());
+        state.seat.broadcast_pointer_axis(
+            timestamp_ms,
+            wl_axis,
+            value,
+            wl_source,
+            focused_client.as_ref(),
+        );
         state.seat.broadcast_pointer_frame(focused_client.as_ref());
     }
     
@@ -2550,7 +2930,7 @@ impl WawonaCore {
         window_id: WindowId,
         x: f64,
         y: f64,
-        _timestamp_ms: u32,
+        timestamp_ms: u32,
     ) {
         if !self.is_running() {
             return;
@@ -2558,10 +2938,12 @@ impl WawonaCore {
         
         let serial = self.next_serial();
         let mut state = self.state.write().unwrap();
+        state.seat.cleanup_resources();
         
         let (sx, sy) = apply_geometry_offset(&state, window_id, x, y);
+        state.seat.pointer.x = sx;
+        state.seat.pointer.y = sy;
         
-        // Find surface for window
         let surface_id = state.surface_to_window.iter()
             .find(|(_, &wid)| wid as u64 == window_id.id)
             .map(|(sid, _)| *sid);
@@ -2572,29 +2954,32 @@ impl WawonaCore {
             }
 
             state.seat.pointer.focus = Some(sid);
+            let (lx, ly) = pointer_surface_local_coords(&mut state, sx, sy, Some(sid));
+            state.seat.pointer.focus_x = lx;
+            state.seat.pointer.focus_y = ly;
+            state.seat.pointer.last_enter_serial = serial;
 
             if let Some(surface) = state.surfaces.get(&sid).cloned() {
-                 let surface = surface.read().unwrap();
-                 if let Some(res) = &surface.resource {
-                    state.seat.pointer.last_enter_serial = serial;
-                    if let Some(pointer) = state
-                        .smithay_runtime
-                        .seat
-                        .as_ref()
-                        .and_then(|seat| seat.get_pointer())
-                    {
-                        let focus_origin = pointer_focus_origin(&state, sid);
-                        let event = smithay::input::pointer::MotionEvent {
-                            location: (sx, sy).into(),
-                            serial: serial.into(),
-                            time: _timestamp_ms,
-                        };
-                        pointer.motion(&mut *state, Some((res.clone(), focus_origin)), &event);
-                        pointer.frame(&mut *state);
-                    } else {
-                        state.seat.broadcast_pointer_enter(serial, res, sx, sy);
+                let surface = surface.read().unwrap();
+                if let Some(res) = &surface.resource {
+                    if let Some(client) = res.client() {
+                        let ptr_count = smithay_pointer_count(&state, &client);
+                        let sent =
+                            smithay_send_pointer_enter(&state, &client, serial, res, lx, ly);
+                        if sent > 0 {
+                            smithay_send_pointer_frame(&state, &client);
+                        } else {
+                            crate::wlog!(
+                                crate::util::logging::FFI,
+                                "pointer enter: no smithay wl_pointer for client (bound={}) surface={}",
+                                ptr_count,
+                                sid
+                            );
+                            state.seat.broadcast_pointer_enter(serial, res, lx, ly);
+                        }
                     }
-                 }
+                    deliver_pointer_motion_to_clients(&mut *state, timestamp_ms, lx, ly);
+                }
             }
         }
     }
@@ -2613,34 +2998,21 @@ impl WawonaCore {
             .map(|(sid, _)| *sid);
             
         if let Some(sid) = surface_id {
-            // Respect implicit grab: if buttons are pressed, don't leave surface (it keeps focus)
             if state.seat.pointer.button_count > 0 {
                 return;
             }
 
-            // Clear pointer focus
             state.seat.pointer.focus = None;
 
             if let Some(surface) = state.surfaces.get(&sid).cloned() {
-                 let surface = surface.read().unwrap();
-                 if let Some(res) = &surface.resource {
-                    if let Some(pointer) = state
-                        .smithay_runtime
-                        .seat
-                        .as_ref()
-                        .and_then(|seat| seat.get_pointer())
-                    {
-                        let event = smithay::input::pointer::MotionEvent {
-                            location: (state.seat.pointer.x, state.seat.pointer.y).into(),
-                            serial: serial.into(),
-                            time: _timestamp_ms,
-                        };
-                        pointer.motion(&mut *state, None, &event);
-                        pointer.frame(&mut *state);
-                    } else {
-                        state.seat.broadcast_pointer_leave(serial, res);
+                let surface = surface.read().unwrap();
+                if let Some(res) = &surface.resource {
+                    if let Some(client) = res.client() {
+                        if smithay_send_pointer_leave(&state, &client, serial, res) == 0 {
+                            state.seat.broadcast_pointer_leave(serial, res);
+                        }
                     }
-                 }
+                }
             }
         }
     }
@@ -2698,6 +3070,8 @@ impl WawonaCore {
                 timestamp_ms,
                 |_, _, _| smithay::input::keyboard::FilterResult::<()>::Forward,
             );
+            drop(state);
+            self.flush_clients();
             return;
         }
         state.seat.cleanup_resources();
@@ -3356,7 +3730,7 @@ impl WawonaCore {
             return;
         }
         
-        crate::wlog!(crate::util::logging::FFI, "Window frame complete: window={}", window_id.id);
+        crate::wlog_hot!(crate::util::logging::FFI, "Window frame complete: window={}", window_id.id);
         
         // Callbacks are now flushed from notify_frame_presented(surface, ...),
         // which is aligned to actual presentation timing.
@@ -3732,6 +4106,34 @@ impl WawonaCore {
             }
         }
     }
+
+    /// Disconnect all connected Wayland clients (ends in-process client threads).
+    pub fn disconnect_all_clients(&self) -> u32 {
+        if !self.is_running() {
+            return 0;
+        }
+        let mut compositor_guard = match self.compositor.lock() {
+            Ok(guard) => guard,
+            Err(_) => return 0,
+        };
+        let Some(compositor) = compositor_guard.as_mut() else {
+            return 0;
+        };
+        let count = compositor.disconnect_all_clients();
+        if count > 0 {
+            crate::wlog!(
+                crate::util::logging::FFI,
+                "Disconnected {} in-process Wayland client(s)",
+                count
+            );
+            let mut state = match self.state.write() {
+                Ok(guard) => guard,
+                Err(_) => return count as u32,
+            };
+            let _ = compositor.dispatch(&mut state);
+        }
+        count as u32
+    }
     
     // =========================================================================
     // Surface Management
@@ -4047,43 +4449,62 @@ impl WawonaCore {
         if buffer_id == 0 {
             return BufferRenderInfo { stride: 0, format: 0, iosurface_id: 0, width: 0, height: 0 };
         }
-        
-        // We need to look up the buffer in state
+
         let state = self.state.read().unwrap();
-        
-        // Cast u64 to u32 for lookup (core uses u32 for buffer IDs)
-        // Convert internal client ID back to backend ClientId
-        let client_id = self.compositor.lock().unwrap().as_ref().unwrap().internal_to_client_id(texture.client_id.id);
-        
-        if let Some(cid) = client_id {
-            if let Some(auth_buffer) = state.buffers.get(&(cid, buffer_id as u32)) {
-             let buffer = auth_buffer.read().unwrap();
-             match &buffer.buffer_type {
-                crate::core::surface::BufferType::Shm(shm) => {
-                    BufferRenderInfo {
-                        stride: shm.stride as u32,
-                        format: shm.format as u32,
-                        iosurface_id: 0,
-                        width: shm.width as u32,
-                        height: shm.height as u32
-                    }
+        let buffer_id_u32 = buffer_id as u32;
+
+        let auth_buffer = if let Some(client_id) = self
+            .compositor
+            .lock()
+            .unwrap()
+            .as_ref()
+            .and_then(|c| c.internal_to_client_id(texture.client_id.id))
+        {
+            state.buffers.get(&(client_id, buffer_id_u32)).cloned()
+        } else {
+            None
+        }
+        .or_else(|| {
+            state
+                .buffers
+                .iter()
+                .find(|(_, b)| b.read().unwrap().id == buffer_id_u32)
+                .map(|(_, b)| b.clone())
+        });
+
+        if let Some(auth_buffer) = auth_buffer {
+            let buffer = auth_buffer.read().unwrap();
+            match &buffer.buffer_type {
+                crate::core::surface::BufferType::Shm(shm) => BufferRenderInfo {
+                    stride: shm.stride as u32,
+                    format: shm.format as u32,
+                    iosurface_id: 0,
+                    width: shm.width as u32,
+                    height: shm.height as u32,
                 },
-                crate::core::surface::BufferType::Native(native) => {
-                    BufferRenderInfo {
-                        stride: 0,
-                        format: native.format,
-                        iosurface_id: native.id as u32,
-                        width: native.width as u32,
-                        height: native.height as u32
-                    }
+                crate::core::surface::BufferType::Native(native) => BufferRenderInfo {
+                    stride: 0,
+                    format: native.format,
+                    iosurface_id: native.id as u32,
+                    width: native.width as u32,
+                    height: native.height as u32,
                 },
-                _ => BufferRenderInfo { stride: 0, format: 0, iosurface_id: 0, width: 0, height: 0 }
-             }
-            } else {
-                BufferRenderInfo { stride: 0, format: 0, iosurface_id: 0, width: 0, height: 0 }
+                _ => BufferRenderInfo {
+                    stride: 0,
+                    format: 0,
+                    iosurface_id: 0,
+                    width: 0,
+                    height: 0,
+                },
             }
         } else {
-            BufferRenderInfo { stride: 0, format: 0, iosurface_id: 0, width: 0, height: 0 }
+            BufferRenderInfo {
+                stride: 0,
+                format: 0,
+                iosurface_id: 0,
+                width: 0,
+                height: 0,
+            }
         }
     }
 }
@@ -4126,6 +4547,13 @@ mod tests {
         assert!(!should_flush_frame_callbacks(
             FrameCallbackFlushPoint::FrameComplete
         ));
+    }
+
+    #[test]
+    fn buffer_size_mismatch_accepts_logical_and_physical() {
+        assert_eq!(buffer_size_mismatch_px(420, 912, 420, 912, 3), (0, 0));
+        assert_eq!(buffer_size_mismatch_px(1260, 2736, 420, 912, 3), (0, 0));
+        assert_eq!(buffer_size_mismatch_px(1260, 2430, 420, 912, 3), (0, 306));
     }
 }
 

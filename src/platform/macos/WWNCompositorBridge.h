@@ -11,6 +11,11 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+/// Posted on the main queue before an in-process native client (e.g. nested
+/// Weston) reads output geometry. Scene delegate should reveal the compositor
+/// and refresh output size so launch dimensions match on-screen layout.
+FOUNDATION_EXPORT NSNotificationName const WWNNativeClientWillLaunchNotification;
+
 /// Window event types from Rust compositor
 typedef NS_ENUM(NSInteger, WWNWindowEventType) {
   WWNWindowEventTypeCreated,
@@ -175,6 +180,23 @@ typedef struct {
                 height:(uint32_t)height
                  scale:(float)scale;
 
+/// Latest output geometry sent to (or queued for) the compositor.
+- (void)currentOutputWidth:(uint32_t *_Nullable)width
+                    height:(uint32_t *_Nullable)height
+                     scale:(float *_Nullable)scale;
+
+/// On-screen output geometry (always `_latestOutput*`, not last-sent).
+- (void)latestOutputWidth:(uint32_t *_Nullable)width
+                   height:(uint32_t *_Nullable)height
+                    scale:(float *_Nullable)scale;
+
+#if TARGET_OS_IPHONE
+/// Reveal compositor on main, wait for layout/output sync (background thread).
+- (void)prepareOutputSizeForNativeClientLaunch;
+/// Process host compositor events while in-process clients block in roundtrip.
+- (void)pumpHostCompositorEvents;
+#endif
+
 /// Set platform safe area insets (iOS notch, home indicator, rounded corners)
 - (void)setSafeAreaInsetsTop:(int32_t)top
                        right:(int32_t)right
@@ -218,6 +240,10 @@ typedef struct {
 
 /// Launch kmscube on the first toplevel compositor view (iland + ANGLE GL demo).
 - (BOOL)launchNestedKmscubeOnPrimaryView;
+/// Prepare iland Metal presentation on the primary compositor view (Weston DRM/GL).
+- (BOOL)prepareIlandMetalPresentationOnPrimaryView;
+/// Detach presentation from live compositor views before stopping native clients.
+- (void)tearDownActiveIOSCompositorViews;
 #else
 /// YES when any connected client has requested cursor management through
 /// either wp_cursor_shape (named shapes) or wl_pointer.set_cursor (bitmaps).

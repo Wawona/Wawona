@@ -219,12 +219,9 @@ private fun MachineStubsSection(prefs: SharedPreferences) {
 
 @Composable
 private fun DisplaySection(prefs: SharedPreferences) {
-    LockedSwitchItem("Force Server-Side Decorations",
-        "Compositor-drawn window borders (always enabled)", Icons.Filled.BorderOuter,
-        alertTitle = "Force Server-Side Decorations",
-        alertMessage = "Android does not support Client-Side Decoration (CSD). " +
-            "Window decorations must be drawn by the compositor, so Force " +
-            "Server-Side Decorations is always enabled.")
+    SettingsSwitchItem(prefs, "forceServerSideDecorations", "Force Server-Side Decorations",
+        "When off, Wayland clients (e.g. weston-terminal) draw their own window frames. When on, the compositor owns decorations.",
+        Icons.Filled.BorderOuter, default = false)
     SettingsSwitchItem(prefs, "autoScale", "Auto Scale",
         "Detect and match Android UI scaling", Icons.Filled.AspectRatio, default = true)
     SettingsSwitchItem(prefs, "respectSafeArea", "Respect Safe Area",

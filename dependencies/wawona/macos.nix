@@ -7,6 +7,7 @@
   rustBackend,
   weston,
   foot ? null,
+  fastfetch ? null,
   waylandVersion ? "unknown",
   xkbcommonVersion ? "unknown",
   lz4Version ? "unknown",
@@ -17,12 +18,13 @@
   waypipe,
   moltenvk ? pkgs.moltenvk or null,
   xcodeProject ? null,
+  applePath ? ../apple,
 }:
 
 let
   common = import ./common.nix { inherit lib pkgs wawonaSrc; };
   
-  xcodeUtils = import ../apple/default.nix { inherit lib pkgs; };
+  xcodeUtils = import applePath { inherit lib pkgs; };
   xcodeEnv =
     platform: ''
       if [ -z "''${XCODE_APP:-}" ]; then
@@ -740,6 +742,21 @@ GEN_HEADER
             fi
             '' else ''
             echo "Warning: foot not provided, skipping foot bundling"
+            ''}
+
+            # Bundle fastfetch
+            ${if fastfetch != null then ''
+            if [ -f "${fastfetch}/bin/fastfetch" ]; then
+              cp "${fastfetch}/bin/fastfetch" $out/Applications/Wawona.app/Contents/Resources/bin/
+              cp "${fastfetch}/bin/fastfetch" $out/Applications/Wawona.app/Contents/MacOS/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/fastfetch
+              chmod +x $out/Applications/Wawona.app/Contents/MacOS/fastfetch
+              echo "DEBUG: Bundled fastfetch"
+            else
+              echo "Warning: fastfetch binary not found at ${fastfetch}/bin/fastfetch"
+            fi
+            '' else ''
+            echo "Warning: fastfetch not provided, skipping fastfetch bundling"
             ''}
             
             if command -v codesign >/dev/null 2>&1; then

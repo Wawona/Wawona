@@ -117,6 +117,7 @@ impl Dispatch<ZwpFullscreenShellV1, ()> for CompositorState {
                     window.height = height as i32;
                     window.fullscreen = true;
                     window.activated = true;
+                    window.host_locked = true;
                     window.title = "Fullscreen Shell".to_string();
                     window.decoration_mode = DecorationMode::ServerSide;
 
@@ -134,6 +135,7 @@ impl Dispatch<ZwpFullscreenShellV1, ()> for CompositorState {
                             height,
                             decoration_mode: DecorationMode::ServerSide,
                             fullscreen_shell: true,
+                            host_locked: true,
                         }
                     );
 
@@ -204,6 +206,7 @@ impl Dispatch<ZwpFullscreenShellV1, ()> for CompositorState {
                             height,
                             decoration_mode: DecorationMode::ServerSide,
                             fullscreen_shell: true,
+                            host_locked: true,
                         }
                     );
                 }

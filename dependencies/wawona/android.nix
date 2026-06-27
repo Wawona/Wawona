@@ -12,6 +12,8 @@
   jdk17 ? pkgs.jdk17,
   gradle ? pkgs.gradle,
   targetPkgs,
+  androidToolchainNix ? ../toolchains/android.nix,
+  westonSimpleShmPatchedSrcNix ? ../libs/weston-simple-shm/patched-src.nix,
   ...
 }:
 
@@ -24,7 +26,7 @@ let
   provisionScript = if androidUtils != null then "${androidUtils.provisionAndroidScript}/bin/provision-android" else "";
 
   # androidToolchain is passed from flake.nix; fall back to local import if needed
-  androidToolchainResolved = if androidToolchain != null then androidToolchain else import ../toolchains/android.nix { inherit lib androidSDK; pkgs = targetPkgs; };
+  androidToolchainResolved = if androidToolchain != null then androidToolchain else import androidToolchainNix { inherit lib androidSDK; pkgs = targetPkgs; };
   
   projectVersion =
     if (wawonaVersion != null && wawonaVersion != "") then wawonaVersion
@@ -36,9 +38,12 @@ let
     inherit (pkgs) gradle jdk17;
   };
 
-  westonSimpleShmSrc = pkgs.callPackage ../libs/weston-simple-shm/patched-src.nix {};
+  westonSimpleShmSrc = pkgs.callPackage westonSimpleShmPatchedSrcNix {};
   opensshBin = buildModule.buildForAndroid "openssh" { };
   sshpassBin = buildModule.buildForAndroid "sshpass" { };
+  # Real local shell for Android (fork/exec allowed); spawned by the PTY shim.
+  zshAndroid = buildModule.buildForAndroid "zsh" { };
+  fastfetchAndroid = buildModule.buildForAndroid "fastfetch" { };
   mobileToytoolkitDeps = import ./mobile-toytoolkit-deps.nix {
     buildFn = buildModule.buildForAndroid;
   };
@@ -774,6 +779,25 @@ in
         chmod +x "$JNI_LIB_DIR/libsshpass_bin.so"
       else
         echo "WARNING: Missing Android sshpass binary at ${sshpassBin}/bin/sshpass"
+      fi
+
+      # Real zsh as libzsh_bin.so (jniLibs executables run from app data dir; the
+      # PTY shim posix_spawn()s this) + the share tree (Functions/Completion) as
+      # an APK asset so $fpath resolves on-device (laid out by android_jni.c).
+      if [ -f "${zshAndroid}/bin/zsh" ]; then
+        cp -L "${zshAndroid}/bin/zsh" "$JNI_LIB_DIR/libzsh_bin.so"
+        chmod +x "$JNI_LIB_DIR/libzsh_bin.so"
+        mkdir -p app/src/main/assets/zsh
+        [ -d "${zshAndroid}/share/zsh" ] && cp -RL "${zshAndroid}/share/zsh/." app/src/main/assets/zsh/ && chmod -R u+w app/src/main/assets/zsh
+      else
+        echo "WARNING: Missing Android zsh binary at ${zshAndroid}/bin/zsh"
+      fi
+
+      if [ -f "${fastfetchAndroid}/bin/fastfetch" ]; then
+        cp -L "${fastfetchAndroid}/bin/fastfetch" "$JNI_LIB_DIR/libfastfetch_bin.so"
+        chmod +x "$JNI_LIB_DIR/libfastfetch_bin.so"
+      else
+        echo "WARNING: Missing Android fastfetch binary at ${fastfetchAndroid}/bin/fastfetch"
       fi
 
       # Prefer the Rust shared library for Android linking; the static archive

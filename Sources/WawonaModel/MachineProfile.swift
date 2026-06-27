@@ -50,6 +50,7 @@ public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
     public var bundledAppID: String?
     public var waypipeEnabled: Bool?
     public var forceSSD: Bool?
+    public var renderMacOSPointer: Bool?
     public var autoScale: Bool?
     public var waylandDisplay: String?
     public var colorOperations: Bool?
@@ -66,6 +67,7 @@ public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
         bundledAppID: String? = nil,
         waypipeEnabled: Bool? = nil,
         forceSSD: Bool? = nil,
+        renderMacOSPointer: Bool? = nil,
         autoScale: Bool? = nil,
         waylandDisplay: String? = nil,
         colorOperations: Bool? = nil,
@@ -81,6 +83,7 @@ public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
         self.bundledAppID = bundledAppID
         self.waypipeEnabled = waypipeEnabled
         self.forceSSD = forceSSD
+        self.renderMacOSPointer = renderMacOSPointer
         self.autoScale = autoScale
         self.waylandDisplay = waylandDisplay
         self.colorOperations = colorOperations

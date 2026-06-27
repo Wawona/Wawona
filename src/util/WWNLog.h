@@ -3,6 +3,9 @@
  *
  * Format: YYYY-MM-DD HH:MM:SS [MODULE] message
  *
+ * Writes to a preserved stderr fd so in-process zsh (dup2 onto fds 0–2) does
+ * not route compositor logs into weston-terminal.
+ *
  * Usage (ObjC):  WWNLog("BRIDGE", @"Output: %ux%u", w, h);
  * Usage (C):     WWNLog("SEAT",   "Created fd=%d", fd);
  * Usage (fd):    WWNLogFd(fd, "WAYPIPE", "Exit code: %d", rc);
@@ -11,8 +14,27 @@
 #ifndef WWNLOG_H
 #define WWNLOG_H
 
+#include <pthread.h>
 #include <stdio.h>
 #include <time.h>
+#include <unistd.h>
+
+static int g_wwn_preserved_stderr_fd = -1;
+static pthread_once_t g_wwn_preserved_stderr_once = PTHREAD_ONCE_INIT;
+
+static void wwn_preserved_stderr_init(void)
+{
+  g_wwn_preserved_stderr_fd = dup(STDERR_FILENO);
+  if (g_wwn_preserved_stderr_fd < 0) {
+    g_wwn_preserved_stderr_fd = STDERR_FILENO;
+  }
+}
+
+static inline int WWNPreservedStderrFd(void)
+{
+  pthread_once(&g_wwn_preserved_stderr_once, wwn_preserved_stderr_init);
+  return g_wwn_preserved_stderr_fd;
+}
 
 #ifdef __OBJC__
 #import <Foundation/Foundation.h>
@@ -27,7 +49,8 @@
     struct tm _wtm;                                                            \
     localtime_r(&_wt, &_wtm);                                                  \
     NSString *_wmsg = [NSString stringWithFormat:fmt, ##__VA_ARGS__];          \
-    fprintf(stderr, "%04d-%02d-%02d %02d:%02d:%02d [%s] %s\n",                 \
+    dprintf(WWNPreservedStderrFd(),                                            \
+            "%04d-%02d-%02d %02d:%02d:%02d [%s] %s\n",                         \
             _wtm.tm_year + 1900, _wtm.tm_mon + 1, _wtm.tm_mday, _wtm.tm_hour,  \
             _wtm.tm_min, _wtm.tm_sec, module, [_wmsg UTF8String]);             \
   } while (0)
@@ -40,7 +63,8 @@
     time_t _wt = time(NULL);                                                   \
     struct tm _wtm;                                                            \
     localtime_r(&_wt, &_wtm);                                                  \
-    fprintf(stderr, "%04d-%02d-%02d %02d:%02d:%02d [%s] " fmt "\n",            \
+    dprintf(WWNPreservedStderrFd(),                                            \
+            "%04d-%02d-%02d %02d:%02d:%02d [%s] " fmt "\n",                    \
             _wtm.tm_year + 1900, _wtm.tm_mon + 1, _wtm.tm_mday, _wtm.tm_hour,  \
             _wtm.tm_min, _wtm.tm_sec, module, ##__VA_ARGS__);                  \
   } while (0)

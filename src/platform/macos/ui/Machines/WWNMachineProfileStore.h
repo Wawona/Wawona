@@ -57,6 +57,7 @@ extern NSString *const kWWNMachineTypeContainer;
 + (void)setActiveMachineId:(nullable NSString *)machineId;
 + (nullable WWNMachineProfile *)profileById:(NSString *)machineId;
 + (void)applyMachineToRuntimePrefs:(WWNMachineProfile *)profile;
++ (void)applyActiveMachineToRuntimePrefs;
 + (void)persistActiveMachineSettings;
 + (NSDictionary<NSString *, id> *)resolvedRuntimeSettingsForProfile:(WWNMachineProfile *)profile;
 + (BOOL)isMachineThumbnailEnabledForProfile:(WWNMachineProfile *)profile;

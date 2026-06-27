@@ -23,7 +23,7 @@ typedef void (^WaypipeOutputHandler)(NSString *output);
 /// YES while the in-process foot terminal client is running.
 @property(nonatomic, readonly) BOOL footRunning;
 
-+ (instancetype)sharedRunner;
++ (instancetype)sharedRunner NS_SWIFT_NAME(shared());
 
 // Logic Helpers
 - (NSString *)findWaypipeBinary;
@@ -41,6 +41,7 @@ typedef void (^WaypipeOutputHandler)(NSString *output);
 - (void)stopWestonSimpleSHM;
 
 - (void)launchWeston;
+- (void)launchWestonDrm;
 - (void)stopWeston;
 
 - (void)launchWestonTerminal;
@@ -51,5 +52,10 @@ typedef void (^WaypipeOutputHandler)(NSString *output);
 
 /// Launch any bundled Wayland client by id (weston-flower, weston-smoke, …).
 - (void)launchBundledClientWithId:(NSString *)clientId;
+
+#if TARGET_OS_IPHONE
+/// Disconnect in-process clients and reset iOS native launch state.
+- (void)stopActiveIOSBundledClient;
+#endif
 
 @end

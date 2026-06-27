@@ -15,17 +15,9 @@ use crate::core::state::{CompositorState, DecorationPolicy};
 use crate::core::wayland::xdg::decoration::ToplevelDecorationData;
 use crate::core::window::DecorationMode;
 
-fn is_weston_family_app(state: &CompositorState, window_id: u32) -> bool {
-    state
-        .get_window(window_id)
-        .and_then(|w| w.read().ok().map(|w| w.app_id.clone()))
-        .map(|app_id| {
-            app_id == "weston"
-                || app_id.starts_with("weston-")
-                || app_id.contains("weston")
-        })
-        .unwrap_or(false)
-}
+use crate::core::wayland::xdg::decoration::{
+    is_weston_family_app, weston_family_prefers_client_decorations,
+};
 
 // ============================================================================
 // org_kde_kwin_server_decoration_manager
@@ -69,7 +61,11 @@ impl Dispatch<OrgKdeKwinServerDecorationManager, ()> for CompositorState {
                     .then_some(false)
                     .unwrap_or_else(|| state.surface_to_window.get(&surface_id).copied().map(|wid| is_weston_family_app(state, wid)).unwrap_or(false));
                 let default_mode = if weston_family {
-                    Mode::Client
+                    if weston_family_prefers_client_decorations(state) {
+                        Mode::Client
+                    } else {
+                        Mode::Server
+                    }
                 } else {
                     match state.decoration_policy {
                         DecorationPolicy::PreferClient => Mode::Client,
@@ -129,7 +125,11 @@ impl Dispatch<OrgKdeKwinServerDecoration, u32> for CompositorState {
                     .then_some(false)
                     .unwrap_or_else(|| state.surface_to_window.get(&surface_id).copied().map(|wid| is_weston_family_app(state, wid)).unwrap_or(false));
                 let actual_mode = if weston_family {
-                    Mode::Client
+                    if weston_family_prefers_client_decorations(state) {
+                        Mode::Client
+                    } else {
+                        Mode::Server
+                    }
                 } else {
                     match state.decoration_policy {
                         DecorationPolicy::ForceServer => Mode::Server,

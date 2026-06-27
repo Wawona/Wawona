@@ -294,6 +294,11 @@ impl XdgShellHandler for CompositorState {
             fullscreen_shell: false,
             host_locked,
         });
+        crate::wlog!(
+            crate::util::logging::COMPOSITOR,
+            "new_toplevel: pushed WindowCreated pending (window_id={})",
+            window_id
+        );
     }
 
     fn new_popup(&mut self, surface: PopupSurface, positioner: PositionerState) {

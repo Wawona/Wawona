@@ -10,26 +10,18 @@ let
   compositor = deps."weston-compositor" or deps.weston-compositor or null;
   libPaths = lib.filter (s: s != "") [
     (libPath "libwayland")
-    (libPath "xkbcommon")
-    (libPath "pixman")
-    (libPath "cairo")
-    (libPath "libpng")
     (libPath "expat")
-    (libPath "epoll-shim")
     (libPath "weston-compositor")
   ];
   libs =
     lib.filter (s: s != "") [
       "-lwayland-server"
-      "-lwayland-client"
       "-lwayland-cursor"
-      "-lxkbcommon"
-      "-lpixman-1"
-      "-lcairo"
-      "-lpng16"
       "-lexpat"
       "-lm"
-      (if deps ? epoll-shim && deps.epoll-shim != null then "-lepoll-shim" else "")
+    ]
+    ++ lib.optionals (deps.iland or null != null) [
+      "-lwayland-egl"
     ];
   compositorArchive =
     if !forceLoadCompositor || compositor == null then

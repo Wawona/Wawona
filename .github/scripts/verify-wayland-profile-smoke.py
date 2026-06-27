@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import argparse
 import subprocess
 import sys
 
@@ -21,8 +22,8 @@ MANIFEST = ROOT / "docs" / "compliance" / "wayland-protocol-manifest.toml"
 
 PROFILES = {"store-safe", "store-safe-remote", "desktop-host", "full-dev"}
 
-# Flake outputs that must exist for the everywhere build matrix (Phase 5A).
-REQUIRED_FLAKE_OUTPUTS = [
+# Host-scoped flake outputs for Phase 5A (eval always; --build compiles on matching hosts).
+DARWIN_FLAKE_OUTPUTS = [
     "wawona-macos-backend",
     "wawona-ios-backend",
     "wawona-ios-sim-backend",
@@ -30,12 +31,26 @@ REQUIRED_FLAKE_OUTPUTS = [
     "wawona-tvos-sim-backend",
     "wawona-visionos-sim-backend",
     "wawona-watchos-sim-backend",
-    "wawona-android",
     "weston-ios",
     "weston-compositor-ios",
+    "weston-compositor-ios-drm",
+    "weston-compositor-ios-drm-sim",
+    "weston-ios-gl",
+    "weston-ios-gl-sim",
     "angle-ios",
+    "angle-ios-sim",
     "iland-ios",
+    "iland-ios-sim",
     "iland-gl-clients-ios",
+    "iland-gl-clients-ios-device",
+    "iland-gl-clients",
+]
+
+LINUX_FLAKE_OUTPUTS = [
+    "wawona-android",
+    "weston-android",
+    "weston-compositor-android",
+    "angle-android",
 ]
 
 
@@ -69,30 +84,53 @@ def load_manifest() -> dict:
     return {"protocol": protocol_entries}
 
 
-def verify_flake_outputs() -> list[str]:
-    """Return missing flake output names (empty if all present)."""
-    try:
-        proc = subprocess.run(
-            ["nix", "flake", "show", "--json", str(ROOT)],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
-        print(f"warning: could not inspect flake outputs: {exc}", file=sys.stderr)
-        return []
+def current_system() -> str:
+    proc = subprocess.run(
+        ["nix", "eval", "--raw", "--impure", "--expr", "builtins.currentSystem"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return proc.stdout.strip()
 
-    import json
 
-    data = json.loads(proc.stdout)
-    packages = data.get("packages", {})
-    # Use first system bucket (CI host may be aarch64-darwin or x86_64-linux).
-    system_pkgs = next(iter(packages.values()), {}) if packages else {}
-    missing = [name for name in REQUIRED_FLAKE_OUTPUTS if name not in system_pkgs]
+def required_outputs_for_system(system: str) -> list[str]:
+    if system.startswith("aarch64-darwin") or system.startswith("x86_64-darwin"):
+        return DARWIN_FLAKE_OUTPUTS
+    return LINUX_FLAKE_OUTPUTS
+
+
+def verify_flake_outputs(system: str, build: bool) -> list[str]:
+    """Return missing or failed flake output names."""
+    missing = []
+    for name in required_outputs_for_system(system):
+        attr = f"{ROOT}#packages.{system}.{name}"
+        if build:
+            proc = subprocess.run(
+                ["nix", "build", attr, "--no-link"],
+                capture_output=True,
+                text=True,
+            )
+        else:
+            proc = subprocess.run(
+                ["nix", "eval", attr, "--apply", "x: x.name or true"],
+                capture_output=True,
+                text=True,
+            )
+        if proc.returncode != 0:
+            missing.append(name)
     return missing
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--build",
+        action="store_true",
+        help="Run nix build --no-link for host-scoped Phase 5A outputs (slower, compile-verified)",
+    )
+    args = parser.parse_args()
+
     data = load_manifest()
     protocols = data.get("protocol", [])
 
@@ -118,23 +156,28 @@ def main() -> int:
             print(f"{iface}: no-equivalent protocol must not be in store-safe profiles", file=sys.stderr)
             return 1
 
-    missing = sorted([p for p, count in profile_counts.items() if count == 0])
-    if missing:
-        print(f"manifest has no protocol rows for profiles: {missing}", file=sys.stderr)
+    missing_profiles = sorted([p for p, count in profile_counts.items() if count == 0])
+    if missing_profiles:
+        print(f"manifest has no protocol rows for profiles: {missing_profiles}", file=sys.stderr)
         return 1
 
-    flake_missing = verify_flake_outputs()
+    system = current_system()
+    required = required_outputs_for_system(system)
+    flake_missing = verify_flake_outputs(system, build=args.build)
     if flake_missing:
+        mode = "build" if args.build else "eval"
         print(
-            "flake build matrix: missing outputs: " + ", ".join(sorted(flake_missing)),
+            f"flake build matrix ({mode}, {system}): missing/failed outputs: "
+            + ", ".join(sorted(flake_missing)),
             file=sys.stderr,
         )
         return 1
 
+    mode = "build" if args.build else "eval"
     print(
         "wayland profile smoke checks passed: "
         + ", ".join(f"{p}={profile_counts[p]}" for p in sorted(PROFILES))
-        + f"; flake_outputs={len(REQUIRED_FLAKE_OUTPUTS)}"
+        + f"; flake_outputs={len(required)} ({mode}, {system})"
     )
     return 0
 

@@ -3,6 +3,7 @@
   wawonaVersion,
   wawonaSrc ? ../..,
   waypipeSrc ? null,
+  westonSimpleShmLinuxNix ? ../libs/weston-simple-shm/linux.nix,
   ...
 }:
 
@@ -34,8 +35,9 @@ pkgs.writeShellApplication {
     pkgs.openssh
     pkgs.waypipe
     pkgs.weston
-    (pkgs.callPackage ../libs/weston-simple-shm/linux.nix {})
+    (pkgs.callPackage westonSimpleShmLinuxNix {})
     pkgs.foot
+    pkgs.fastfetch
     pkgs.systemd
     pkgs.coreutils
   ];

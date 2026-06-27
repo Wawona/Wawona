@@ -2,12 +2,12 @@
 
 builtins.listToAttrs (map (system: let
   pkgs = pkgsFor system;
-  toolchains = if pkgs.stdenv.isDarwin then import ../toolchains {
+  toolchains = if pkgs.stdenv.isDarwin then import pkgs.toolchainsDir {
     inherit (pkgs) lib pkgs stdenv buildPackages;
     pkgsAndroid = null;
     pkgsIos = null;
   } else null;
-  xcodeUtils = if pkgs.stdenv.isDarwin then import ../utils/xcode-wrapper.nix { inherit (pkgs) lib pkgs; } else null;
+  xcodeUtils = if pkgs.stdenv.isDarwin then import pkgs.applePath { inherit (pkgs) lib pkgs; } else null;
   
   linuxShell = pkgs.mkShell {
     nativeBuildInputs = [ pkgs.pkg-config ];

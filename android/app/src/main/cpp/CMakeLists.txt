@@ -46,10 +46,16 @@ if(NOT DEFINED NIX_DEP_INCLUDES OR NIX_DEP_INCLUDES STREQUAL "")
   set(WAWONA_STUDIO_FALLBACK ON)
 endif()
 set(WAWONA_WESTON_TOYTOOLKIT OFF)
-if(DEFINED NIX_DEP_LIBS AND NIX_DEP_LIBS MATCHES "libweston-13\\.a")
+set(WAWONA_WESTON_COMPOSITOR OFF)
+if(DEFINED NIX_DEP_INCLUDES AND NIX_DEP_INCLUDES MATCHES "weston-gen")
+  set(WAWONA_WESTON_TOYTOOLKIT ON)
+elseif(DEFINED NIX_DEP_LIBS AND NIX_DEP_LIBS MATCHES "libweston-13")
   set(WAWONA_WESTON_TOYTOOLKIT ON)
 endif()
-if(NOT WAWONA_STUDIO_FALLBACK)
+if(DEFINED NIX_DEP_LIBS AND NIX_DEP_LIBS MATCHES "libweston-compositor-13")
+  set(WAWONA_WESTON_COMPOSITOR ON)
+endif()
+if(NOT WAWONA_STUDIO_FALLBACK AND NOT WAWONA_WESTON_TOYTOOLKIT)
   include_directories(
       ${WAWONA_ROOT}/deps/weston-simple-shm
       ${WAWONA_ROOT}/deps/weston-simple-shm/shared
@@ -93,19 +99,14 @@ add_library(
     SHARED
     ${WAWONA_SOURCES}
 )
-if(NOT WAWONA_STUDIO_FALLBACK)
+if(NOT WAWONA_STUDIO_FALLBACK AND NOT WAWONA_WESTON_TOYTOOLKIT)
   target_sources(
       wawona PRIVATE
       ${WAWONA_ROOT}/deps/weston-simple-shm/clients/simple-shm.c
+      ${WAWONA_ROOT}/deps/weston-simple-shm/shared/os-compatibility.c
+      ${WAWONA_ROOT}/deps/weston-simple-shm/xdg-shell-protocol.c
+      ${WAWONA_ROOT}/deps/weston-simple-shm/fullscreen-shell-unstable-v1-protocol.c
   )
-  if(NOT WAWONA_WESTON_TOYTOOLKIT)
-    target_sources(
-        wawona PRIVATE
-        ${WAWONA_ROOT}/deps/weston-simple-shm/shared/os-compatibility.c
-        ${WAWONA_ROOT}/deps/weston-simple-shm/xdg-shell-protocol.c
-        ${WAWONA_ROOT}/deps/weston-simple-shm/fullscreen-shell-unstable-v1-protocol.c
-    )
-  endif()
 endif()
 
 # Parse NIX_DEP_LIBS: "-L/nix/.../lib" directories plus extra link flags
@@ -167,6 +168,9 @@ else()
   # from macOS hosts) as warnings; --fatal-warnings from the toolchain promotes
   # those to hard link failures for -lcairo/-lpango etc.
   target_link_options(wawona PRIVATE "-Wl,--no-fatal-warnings")
+  if(WAWONA_WESTON_TOYTOOLKIT)
+    target_link_options(wawona PRIVATE "-Wl,--wrap=strtod_l")
+  endif()
 endif()
 target_link_libraries(wawona PRIVATE ${_WAWONA_LINK_LIBS} ${NIX_EXTRA_LINK_FLAGS})
 
@@ -179,3 +183,6 @@ target_compile_definitions(wawona PRIVATE
     _GNU_SOURCE
     _POSIX_C_SOURCE=200809L
 )
+if(WAWONA_WESTON_TOYTOOLKIT)
+  target_compile_definitions(wawona PRIVATE WAWONA_WESTON_TOYTOOLKIT=1)
+endif()

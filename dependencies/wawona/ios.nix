@@ -25,6 +25,10 @@
   # e.g. "iOS", "watchOS"
   platformName ? "iOS",
   bundleId ? "com.aspauldingcode.Wawona",
+  # Path to the Apple cross-compile toolchain (xcode-wrapper). Defaults to the
+  # legacy in-tree copy; Wawona's flake overrides this with the wwn-toolchain
+  # input store path so the moved dir can be deleted.
+  applePath ? ../apple,
   ...
 }:
 
@@ -34,7 +38,7 @@ let
     else
       let v = lib.removeSuffix "\n" (lib.fileContents (wawonaSrc + "/VERSION"));
       in if v == "" then "0.0.1" else v;
-  xcodeUtils = import ../apple/default.nix { inherit lib pkgs TEAM_ID; };
+  xcodeUtils = import applePath { inherit lib pkgs TEAM_ID; };
   releaseBuild = release || generateIPA || generateXCArchive;
   developmentTeam = if TEAM_ID == null || TEAM_ID == "" then null else TEAM_ID;
   autoSigning = automaticProvisioning || developmentTeam != null;

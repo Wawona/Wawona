@@ -47,9 +47,12 @@
     wwn-foot.url = "github:Wawona/wwn-foot";
     wwn-foot.inputs.nixpkgs.follows = "nixpkgs";
     wwn-foot.inputs.wwn-toolchain.follows = "wwn-toolchain";
+    wwn-fastfetch.url = "github:Wawona/wwn-fastfetch";
+    wwn-fastfetch.inputs.nixpkgs.follows = "nixpkgs";
+    wwn-fastfetch.inputs.wwn-toolchain.follows = "wwn-toolchain";
   };
 
-  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-waypipe, wwn-coreutils, wwn-foot, ... }:
+  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-waypipe, wwn-coreutils, wwn-foot, wwn-fastfetch, ... }:
   let
     linuxSystems = [ "x86_64-linux" "aarch64-linux" ];
     darwinSystems = [ "x86_64-darwin" "aarch64-darwin" ];
@@ -121,7 +124,8 @@
         # watchos, rust-backend-c2n, linux) auto-resolve them through their
         # function signatures instead of via now-deleted in-tree relative paths.
         inherit applePath toolchainsDir androidToolchainNix
-          westonSimpleShmPatchedSrcNix westonSimpleShmLinuxNix kmscubeMacosNix kmscubeIosNix;
+          westonSimpleShmPatchedSrcNix westonSimpleShmLinuxNix kmscubeMacosNix kmscubeIosNix
+          fastfetchMacosNix fastfetchIosNix fastfetchLdflagsNix;
         # The Apple toolchain (xcode-wrapper) used to live in-tree; wwn-iland's
         # gl-clients recipes accept it as `xcodeUtils`/`iosToolchain`. Resolve it
         # from the wwn-toolchain input so callPackage can auto-fill those formals.
@@ -159,7 +163,8 @@
       // wwn-weston.registryFragment
       // wwn-zsh.registryFragment
       // wwn-waypipe.registryFragment
-      // wwn-foot.registryFragment;
+      // wwn-foot.registryFragment
+      // wwn-fastfetch.registryFragment;
     mkWawonaToolchains = { pkgs, pkgsAndroid ? null, pkgsIos ? null, androidSDK ? null, androidAllowExperimentalFallback ? false, wawonaSrc ? null }:
       wwn-toolchain.lib.mkToolchains {
         inherit pkgs pkgsAndroid pkgsIos androidSDK androidAllowExperimentalFallback wawonaSrc;
@@ -182,6 +187,9 @@
     kmscubeMacosNix = "${wwn-kmscube}/dependencies/clients/kmscube/macos.nix";
     kmscubeIosNix = "${wwn-kmscube}/dependencies/clients/kmscube/apple-mobile.nix";
     kmscubeLdflagsNix = "${wwn-kmscube}/dependencies/generators/kmscube-ldflags.nix";
+    fastfetchMacosNix = "${wwn-fastfetch}/dependencies/clients/fastfetch/macos.nix";
+    fastfetchIosNix = "${wwn-fastfetch}/dependencies/clients/fastfetch/apple-mobile.nix";
+    fastfetchLdflagsNix = "${wwn-fastfetch}/dependencies/generators/fastfetch-ldflags.nix";
     westonPtySpikeIosNix = "${wwn-weston}/dependencies/clients/weston/ios-pty-spike/ios.nix";
     westonToytoolkitLdflagsNix = "${wwn-weston}/dependencies/generators/weston-toytoolkit-ldflags.nix";
     # --------------------------------------------------------------------------
@@ -469,6 +477,7 @@
             then toolchains.buildForMacOS "weston-simple-shm" {}
             else pkgs.callPackage westonSimpleShmLinuxNix {};
           foot = if pkgs.stdenv.isDarwin then toolchains.buildForMacOS "foot" {} else pkgs.foot;
+          fastfetch = if pkgs.stdenv.isDarwin then toolchains.buildForMacOS "fastfetch" { } else pkgs.fastfetch;
           waypipe = if pkgs.stdenv.isDarwin then toolchains.buildForMacOS "waypipe" { } else pkgs.waypipe;
 
           # ANGLE (OpenGL ES over Metal) + iland userland graphics core
@@ -492,6 +501,7 @@
                 buildModule = toolchains; inherit wawonaSrc wawonaVersion;
                 waypipe = toolchains.buildForMacOS "waypipe" { }; weston = toolchains.buildForMacOS "weston" { };
                 foot = toolchains.buildForMacOS "foot" { };
+                fastfetch = toolchains.buildForMacOS "fastfetch" { };
                 rustBackend = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
                   inherit crate2nix wawonaVersion toolchains nixpkgs;
                   workspaceSrc = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
@@ -715,6 +725,8 @@
              watchosBackend = backend-watchos;
              watchosSimBackend = backend-watchos-sim;
              macosWeston = toolchains.buildForMacOS "weston" { };
+             macosFoot = toolchains.buildForMacOS "foot" { };
+             macosFastfetch = toolchains.buildForMacOS "fastfetch" { };
           };
           xcodegenOutputs = mkXcodegen null;
           xcodegenIosOutputs = mkXcodegen [ "ios" "ipados" ];
@@ -724,6 +736,7 @@
             buildModule = toolchains; inherit wawonaSrc wawonaVersion;
             waypipe = toolchains.buildForMacOS "waypipe" { }; weston = toolchains.buildForMacOS "weston" { };
             foot = toolchains.buildForMacOS "foot" { };
+            fastfetch = toolchains.buildForMacOS "fastfetch" { };
             # Keep runtime package host-only: do not force xcodegen/project outputs,
             # which pull in non-macOS backend graphs.
             rustBackend = backend-macos;
@@ -985,6 +998,9 @@ EOF
           iland-ios-sim = toolchains.buildForIOS "iland" { simulator = true; };
           kmscube-ios = toolchains.buildForIOS "kmscube" { simulator = true; };
           kmscube-ios-device = toolchains.buildForIOS "kmscube" { simulator = false; };
+          fastfetch-ios = toolchains.buildForIOS "fastfetch" { simulator = true; };
+          fastfetch-ios-device = toolchains.buildForIOS "fastfetch" { simulator = false; };
+          fastfetch-macos = toolchains.buildForMacOS "fastfetch" { };
           iland-gl-clients-ios = toolchains.buildForIOS "kmscube" { simulator = true; };
           iland-gl-clients-ios-device = toolchains.buildForIOS "kmscube" { simulator = false; };
           weston-ios-gl = toolchains.buildForIOS "weston" { enableGlClients = true; };

@@ -254,6 +254,7 @@ impl smithay::wayland::compositor::CompositorHandler for crate::core::state::Com
             self.queue_frame_callback(surface_id, callback);
         }
 
+        self.sync_xdg_window_geometry_from_surface(surface, surface_id);
         self.handle_surface_commit(surface_id);
     }
 
@@ -286,6 +287,10 @@ impl smithay::input::SeatHandler for crate::core::state::CompositorState {
             .seat_state
             .as_mut()
             .expect("smithay seat state must be initialized before dispatch")
+    }
+
+    fn cursor_image(&mut self, seat: &smithay::input::Seat<Self>, image: smithay::input::pointer::CursorImageStatus) {
+        crate::core::wayland::wayland::input::pointer::on_cursor_image(self, seat, image);
     }
 }
 

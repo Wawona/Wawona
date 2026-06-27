@@ -311,12 +311,7 @@ static UIImage *WWNAboutLogo(void) {
   static BOOL sHasCheckedForceSSD = NO;
 
   NSUserDefaults *defs = [NSUserDefaults standardUserDefaults];
-#if TARGET_OS_IPHONE
-  // iOS: CSD not supported; Force SSD is always on.
-  BOOL enabled = YES;
-#else
   BOOL enabled = [defs boolForKey:@"ForceServerSideDecorations"];
-#endif
   if ([defs objectForKey:@"ForceServerSideDecorations"] || enabled) {
     if (!sHasCheckedForceSSD || sLastForceSSD != enabled) {
       sLastForceSSD = enabled;
@@ -399,7 +394,8 @@ static UIImage *WWNAboutLogo(void) {
 #endif
   NSMutableArray *displayItems = [NSMutableArray arrayWithArray:@[
     ITEM(@"Force Server-Side Decorations", @"ForceServerSideDecorations",
-         WSettingSwitch, @NO, @"Forces macOS-style window decorations."),
+         WSettingSwitch, @NO,
+         @"When off, weston-family clients draw their own window frames."),
     ITEM(@"Auto Scale", @"AutoScale", WSettingSwitch, @YES,
          @"Matches macOS UI Scaling.")
   ]];
@@ -408,6 +404,9 @@ static UIImage *WWNAboutLogo(void) {
   // Respect Safe Area only makes sense on iOS (notch, Dynamic Island, etc.)
   [displayItems addObject:ITEM(@"Respect Safe Area", @"RespectSafeArea",
                                WSettingSwitch, @YES, @"Avoids notch areas.")];
+  [displayItems addObject:ITEM(@"Show Virtual Pointer", @"RenderMacOSPointer",
+                               WSettingSwitch, @NO,
+                               @"Draws a host overlay pointer in touchpad mode.")];
 #else
   // Show macOS Cursor option only on macOS
   [displayItems insertObject:ITEM(@"Show macOS Cursor", @"RenderMacOSPointer",
@@ -529,19 +528,34 @@ static UIImage *WWNAboutLogo(void) {
 #else
   advanced.iconColor = [NSColor systemGrayColor];
 #endif
-  advanced.items = @[
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+  WWNSettingItem *nestedWestonBackendItem =
+      ITEM(@"Nested Weston Backend", @"NestedWestonBackend", WSettingPopup,
+           @"wayland-pixman",
+           @"Wayland (Pixman) nests in a Wawona window. iland DRM (GL) presents "
+           @"via Metal overlay (WWNIlandPresenter).");
+  nestedWestonBackendItem.options =
+      @[ @"Wayland (Pixman)", @"iland DRM (GL)" ];
+  nestedWestonBackendItem.optionValues =
+      @[ @"wayland-pixman", @"iland-drm-gl" ];
+#endif
+  NSMutableArray *advancedItems = [NSMutableArray arrayWithArray:@[
     ITEM(@"Color Operations", @"ColorOperations", WSettingSwitch, @NO,
          @"Color profiles and HDR."),
     ITEM(@"Nested Compositors", @"NestedCompositorsSupport", WSettingSwitch,
          @YES, @"Support for nested compositors."),
-    ITEM(@"Multiple Clients", @"MultipleClients", WSettingSwitch,
+  ]];
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+  [advancedItems addObject:nestedWestonBackendItem];
+#endif
+  [advancedItems addObject:ITEM(@"Multiple Clients", @"MultipleClients", WSettingSwitch,
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
          @NO,
 #else
          @YES,
 #endif
-         @"Allow multiple Wayland clients to connect simultaneously.")
-  ];
+         @"Allow multiple Wayland clients to connect simultaneously.")];
+  advanced.items = advancedItems;
   [sects addObject:advanced];
 
   // MACHINES (stubs in v0.2.3)
@@ -3224,10 +3238,7 @@ static UIImage *WWNAboutLogo(void) {
       cell.textLabel.textColor = [UIColor secondaryLabelColor];
       cell.selectionStyle = UITableViewCellSelectionStyleDefault;
     } else if ([item.key isEqualToString:@"ForceServerSideDecorations"]) {
-      swOn = YES;
-      swEnabled = NO;
-      cell.textLabel.textColor = [UIColor secondaryLabelColor];
-      cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+      swOn = [[NSUserDefaults standardUserDefaults] boolForKey:item.key];
     } else {
       swOn = [[NSUserDefaults standardUserDefaults] boolForKey:item.key];
     }
@@ -3245,12 +3256,6 @@ static UIImage *WWNAboutLogo(void) {
     // iOS: One-shot is always on (libssh2 in-process); show as on and disabled.
     // Row remains tappable so we can show "iOS does not allow this feature."
     if ([item.key isEqualToString:@"WaypipeOneshot"]) {
-      sw.on = YES;
-      sw.enabled = NO;
-      cell.textLabel.textColor = [UIColor secondaryLabelColor];
-      cell.selectionStyle = UITableViewCellSelectionStyleDefault;
-      // iOS: Force SSD is always on; CSD is not supported on iOS.
-    } else if ([item.key isEqualToString:@"ForceServerSideDecorations"]) {
       sw.on = YES;
       sw.enabled = NO;
       cell.textLabel.textColor = [UIColor secondaryLabelColor];
@@ -3589,21 +3594,6 @@ static UIImage *WWNAboutLogo(void) {
     UIAlertController *alert = [UIAlertController
         alertControllerWithTitle:item.title
                          message:@"iOS does not allow disabling this feature."
-                  preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK"
-                                              style:UIAlertActionStyleDefault
-                                            handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
-    return;
-  }
-  // Force SSD is fixed on iOS; CSD not supported.
-  if ([item.key isEqualToString:@"ForceServerSideDecorations"]) {
-    UIAlertController *alert = [UIAlertController
-        alertControllerWithTitle:item.title
-                         message:@"iOS does not support Client-Side Decoration "
-                                  "(CSD). Window decorations must be drawn by "
-                                  "the compositor, so Force Server-Side "
-                                  "Decorations is always enabled."
                   preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"OK"
                                               style:UIAlertActionStyleDefault

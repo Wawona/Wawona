@@ -85,6 +85,7 @@ struct MachinesRootView: View {
         _ = sessions.connect(machineId: profile.id)
         profileStore.activeMachineId = profile.id
         profileStore.save()
+        MachineRuntimeSettingsApplicator.apply(profile: profile, preferences: preferences)
     }
 
     private func delete(_ profile: MachineProfile) {
@@ -93,10 +94,9 @@ struct MachinesRootView: View {
 
     private func openPlatformSettings() {
         #if os(iOS) || os(tvOS) || os(visionOS)
-        let prefs = WWNPreferences.shared()
-        prefs.show(nil as Any)
+        WWNPreferences.shared().show(nil)
         #elseif os(macOS)
-        WWNPreferences.shared().show(NSApp as Any)
+        WWNPreferences.shared().show(NSApp)
         #else
         // watchOS uses its own companion settings surface.
         #endif

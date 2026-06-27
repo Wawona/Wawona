@@ -19,8 +19,8 @@ NS_ASSUME_NONNULL_BEGIN
     NSArray<WWNPreferencesSection *> *sections;
 #endif
 
-+ (instancetype)sharedPreferences;
-- (void)showPreferences:(id)sender;
++ (instancetype)sharedPreferences NS_SWIFT_NAME(shared());
+- (void)showPreferences:(nullable id)sender NS_SWIFT_NAME(show(_:));
 - (void)selectSectionWithTitle:(NSString *)title;
 - (void)openMachinesConfiguration:(id)sender;
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR

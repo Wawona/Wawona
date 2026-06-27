@@ -67,11 +67,14 @@ impl Buffer {
         if let Some(resource) = &self.resource {
             if resource.is_alive() {
                 resource.release();
+                #[cfg(feature = "verbose-logs")]
                 eprintln!("[BUFFER] wl_buffer.release SENT buf={}", self.id);
             } else {
+                #[cfg(feature = "verbose-logs")]
                 eprintln!("[BUFFER] buf={} resource DEAD, release NOT sent", self.id);
             }
         } else {
+            #[cfg(feature = "verbose-logs")]
             eprintln!("[BUFFER] buf={} has NO resource, release NOT sent", self.id);
         }
         

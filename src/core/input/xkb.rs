@@ -250,10 +250,18 @@ pub fn ensure_xkb_data_root() {
                 ];
                 for c in candidates {
                     if c.join("rules").is_dir() {
-                        std::env::set_var("XKB_CONFIG_ROOT", c);
+                        std::env::set_var("XKB_CONFIG_ROOT", &c);
+                        tracing::info!(
+                            "xkb: using bundled keymap root {}",
+                            c.display()
+                        );
                         return;
                     }
                 }
+                tracing::warn!(
+                    "xkb: no bundled keymap root found next to executable; \
+                     xkbcommon will use its compile-time default path"
+                );
             }
         }
     });

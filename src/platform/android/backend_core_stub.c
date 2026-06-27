@@ -36,7 +36,7 @@ typedef struct {
   int32_t x, y;
   uint8_t decoration_mode;
   uint8_t fullscreen_shell;
-  uint16_t padding;
+  uint8_t host_locked;
   uint8_t size_kind;
   uint8_t size_cause;
   uint32_t configure_serial;

@@ -39,6 +39,8 @@ targets=(
   ".#wawona-macos-backend"
   ".#weston-ios"
   ".#weston-compositor-ios"
+  ".#weston-compositor-ios-drm"
+  ".#weston-compositor-ios-drm-sim"
   ".#weston-ios-gl"
   ".#weston-ios-gl-sim"
   ".#angle-ios"

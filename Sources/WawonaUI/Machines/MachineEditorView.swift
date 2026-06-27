@@ -62,7 +62,7 @@ struct MachineEditorView: View {
             vmSubtype: base.vmSubtype,
             containerSubtype: base.containerSubtype,
             inputProfile: base.inputProfile,
-            bundledAppID: base.bundledAppID,
+            bundledAppID: isNative ? selectedLauncherName : base.bundledAppID,
             waypipeEnabled: base.waypipeEnabled
         )
     }
@@ -106,29 +106,17 @@ struct MachineEditorView: View {
                 // MARK: Native — local Wayland socket, no network
                 if isNative {
                     Section {
-                        ForEach(ClientLauncher.presets, id: \.name) { launcher in
-                            Button {
-                                selectedLauncherName = launcher.name
-                            } label: {
-                                HStack(spacing: 10) {
-                                    Image(systemName: selectedLauncherName == launcher.name
-                                          ? "checkmark.circle.fill" : "circle")
-                                        .foregroundStyle(selectedLauncherName == launcher.name
-                                                         ? Color.accentColor : .secondary)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(launcher.displayName)
-                                            .foregroundStyle(.primary)
-                                        Text(launcher.name)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                }
+                        NavigationLink {
+                            BundledClientPickerView(selection: $selectedLauncherName)
+                        } label: {
+                            HStack {
+                                Text("Wayland Client")
+                                Spacer()
+                                Text(ClientLauncher.displayName(for: selectedLauncherName))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
                             }
-                            .buttonStyle(.plain)
                         }
-                    } header: {
-                        Text("Wayland Client")
                     } footer: {
                         Text("Connects to the compositor via local Wayland socket. No network or SSH required.")
                     }

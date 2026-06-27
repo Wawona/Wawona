@@ -4,6 +4,7 @@
 
 @interface WWNWindow : NSWindow <NSWindowDelegate>
 @property(nonatomic, assign) uint64_t wwnWindowId;
+@property(nonatomic, assign) BOOL hostLocked;
 @property(nonatomic, assign) BOOL processingResize;
 @property(nonatomic, assign) BOOL interactiveResizeInProgress;
 @property(nonatomic, assign) BOOL suppressCompositorCallbacks;

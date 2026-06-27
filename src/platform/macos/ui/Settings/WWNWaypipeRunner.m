@@ -3,6 +3,9 @@
 #import "../../../../util/WWNLog.h"
 #import "WWNSSHClient.h"
 #import "../../WWNCompositorBridge.h"
+#if __has_include("../Machines/WWNMachineProfileStore.h")
+#import "../Machines/WWNMachineProfileStore.h"
+#endif
 #if TARGET_OS_IPHONE
 #import "../../../ios/WWNRootfsManager.h"
 #endif
@@ -24,6 +27,10 @@ extern int waypipe_main(int argc, char **argv);
 extern int weston_simple_shm_main(int argc, char **argv);
 #if TARGET_OS_IPHONE
 extern void wwn_weston_client_log_init(void);
+extern void wwn_mobile_clear_wayland_socket_fd(void);
+extern void wwn_ios_refresh_bundle_env(void);
+extern void wwn_propagate_mobile_env(void);
+extern void wwn_launch_host_client(char *const *argp, char *const *envp);
 extern int foot_main(int argc, char **argv);
 extern int simple_egl_main(int argc, char **argv) __attribute__((weak));
 extern int wwn_weston_is_compat_shim(void) __attribute__((weak));
@@ -1237,7 +1244,12 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   self.activeIOSBundledClientId = [clientId copy];
 #if TARGET_OS_IPHONE
   wwn_weston_client_log_init();
+  wwn_ios_refresh_bundle_env();
+  wwn_propagate_mobile_env();
+  wwn_mobile_clear_wayland_socket_fd();
+  unsetenv("WAYLAND_SOCKET");
 #endif
+  [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
   [[WWNCompositorBridge sharedBridge] prepareOutputSizeForNativeClientLaunch];
   return YES;
 }
@@ -1737,16 +1749,23 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     float outScale = 1.0f;
     [bridge latestOutputWidth:&outW height:&outH scale:&outScale];
 
+    unsigned hostScale =
+        (unsigned)lrintf(outScale >= 1.0f ? outScale : 1.0f);
+    if (hostScale < 1u) {
+      hostScale = 1u;
+    }
+    char scaleEnv[32];
+    snprintf(scaleEnv, sizeof(scaleEnv), "%u", hostScale);
+    setenv("WAWONA_OUTPUT_SCALE", scaleEnv, 1);
+
     char widthArg[32];
     char heightArg[32];
     char scaleArg[32];
     snprintf(widthArg, sizeof(widthArg), "--width=%u", outW);
     snprintf(heightArg, sizeof(heightArg), "--height=%u", outH);
-    // Wawona owns HiDPI via wl_output.scale + contentsScale on present.
-    // Nested Pixman/wayland Weston must not apply --scale again (would shrink
-    // desktop-shell logical space, e.g. 420x912 @ scale 3 → 140x304).
-    unsigned launchScale =
-        prepareIland ? (unsigned)lrintf(outScale) : 1u;
+    // Weston --scale sets nested output HiDPI; WAWONA_OUTPUT_SCALE only tags the
+    // parent wl_surface.buffer_scale so the host compositor maps pixels → points.
+    unsigned launchScale = hostScale;
     snprintf(scaleArg, sizeof(scaleArg), "--scale=%u", launchScale);
 
     char saved_cwd[512] = "";
@@ -1765,7 +1784,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       }
     }
 
-    char *argv_weston[10];
+    char *argv_weston[12];
     int argc_weston = 0;
     argv_weston[argc_weston++] = "weston";
     argv_weston[argc_weston++] = (char *)backend;
@@ -1773,6 +1792,11 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     argv_weston[argc_weston++] = widthArg;
     argv_weston[argc_weston++] = heightArg;
     argv_weston[argc_weston++] = scaleArg;
+    if (!prepareIland) {
+      // Borderless on parent: weston's wayland backend draws its own frame in
+      // windowed mode (titlebar + resize margins), which misaligns on iOS.
+      argv_weston[argc_weston++] = "--fullscreen";
+    }
     if (configArg[0]) {
       argv_weston[argc_weston++] = configArg;
     }
@@ -1886,22 +1910,17 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 
     [WWNRootfsManager applyShellEnvironment];
 
-    char *argv_term[] = {"weston-terminal", NULL};
-    int argc_term = 1;
-
-    char saved_cwd[512] = "";
-    const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
-    if (xdg_dir) {
-      getcwd(saved_cwd, sizeof(saved_cwd));
-      chdir(xdg_dir);
-    }
-
-    WWNLog("WESTON_TERM", @"Launching iOS weston_terminal_main...");
-    int result = weston_terminal_main(argc_term, argv_term);
-    WWNLog("WESTON_TERM", @"weston_terminal_main exit code: %d", result);
-
-    if (saved_cwd[0])
-      chdir(saved_cwd);
+    const char *shell = getenv("WAWONA_SHELL");
+    char *argv_term[] = {
+        "weston-terminal",
+        "--shell",
+        (char *)(shell && shell[0] ? shell : "/usr/bin/zsh"),
+        NULL,
+    };
+    WWNLog("WESTON_TERM", @"Launching iOS weston-terminal (in-process zsh via libwawona-zsh.a, label=%s)...",
+           argv_term[2]);
+    wwn_launch_host_client(argv_term, environ);
+    WWNLog("WESTON_TERM", @"weston-terminal client thread finished");
 
     self.westonTerminalRunning = NO;
     [self wwnEndIOSNativeClientLaunch];

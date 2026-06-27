@@ -25,7 +25,7 @@ dependencies/
 
 | OS | Rust backend | Notes |
 |----|--------------|-------|
-| iOS | `wawona-ios-backend`, `wawona-ios-sim-backend` | Full stack: Weston, compositor, iland, ANGLE |
+| iOS | `wawona-ios-backend`, `wawona-ios-sim-backend` | Full stack: Weston toytoolkit + compositor (Wayland+DRM), iland, ANGLE |
 | iPadOS | `wawona-ipados-backend`, `wawona-ipados-sim-backend` | Same triple as iOS; ipados recipes re-export ios.nix |
 | tvOS | `wawona-tvos-backend`, `wawona-tvos-sim-backend` | No iland/ANGLE |
 | watchOS | `wawona-watchos-backend`, `wawona-watchos-sim-backend` | No waypipe |
@@ -58,6 +58,6 @@ nix run .#gradlegen         # Android Studio project
 | `toolchains/` | Cross-compiles C libraries per platform |
 | `wawona/` | Final apps, Rust backends, mobile dep factory |
 | `libs/` | Low-level C libraries |
-| `clients/weston/` | Weston toytoolkit + compositor archives |
+| `clients/weston/` | Weston toytoolkit + compositor archives (`compositor-apple-mobile.nix`, `compositor-ios-drm.nix`) |
 | `generators/` | Xcode/Gradle project generation |
 | `platforms/` | Routes dependency names to per-lib recipes |

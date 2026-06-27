@@ -13,6 +13,8 @@ NS_ASSUME_NONNULL_BEGIN
 + (instancetype)sharedCoordinator;
 
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+- (nullable UIViewController *)buildMachinesViewControllerWithOnConnect:
+    (dispatch_block_t)onConnect;
 - (void)presentMachinesFromViewController:(UIViewController *)presenter
                                 onConnect:(dispatch_block_t)onConnect;
 #else

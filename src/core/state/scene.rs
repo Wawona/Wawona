@@ -380,8 +380,7 @@ impl CompositorState {
                 let node_id = self.next_node_id();
                 let mut node = SceneNode::new(node_id)
                     .with_surface(window.surface_id);
-                let is_fullscreen_shell_window =
-                    self.ext.fullscreen_shell.presented_window_id == Some(window.id);
+                let is_kiosk_window = self.is_host_locked_window(window.id);
                 
                 node.set_position(window.x, window.y);
                 // Render to the client's last committed buffer size when available.
@@ -390,7 +389,7 @@ impl CompositorState {
                 // stretches the old frame instead of showing the real committed size.
                 let mut render_width = window.width.max(0) as u32;
                 let mut render_height = window.height.max(0) as u32;
-                if !is_fullscreen_shell_window {
+                if !is_kiosk_window {
                     let expected_toplevel_size = self
                         .xdg
                         .toplevels
@@ -448,38 +447,34 @@ impl CompositorState {
                 }
                 node.set_size(render_width, render_height);
 
-                // When xdg_surface geometry is set for CSD windows, compute a
-                // normalized content_rect so the platform renderer crops the
-                // buffer to the client-declared content area (excluding CSD shadow).
-                if matches!(window.decoration_mode, crate::core::window::DecorationMode::ClientSide) {
-                    if let Some(&(gx, gy, gw, gh)) = geom_by_surface.get(&window.surface_id) {
-                        if let Some(surf_ref) = self.get_surface(window.surface_id) {
-                            let surf = surf_ref.read().unwrap();
-                            let buf_w = surf.current.width as f32;
-                            let buf_h = surf.current.height as f32;
-                            if buf_w > 0.0 && buf_h > 0.0 && gw > 0 && gh > 0 {
-                                // wlroots/sway-style behavior: crop to intersection of
-                                // set_window_geometry and actual surface buffer extents.
-                                let geom_x2 = gx.saturating_add(gw);
-                                let geom_y2 = gy.saturating_add(gh);
-                                let inter_x1 = gx.max(0);
-                                let inter_y1 = gy.max(0);
-                                let inter_x2 = geom_x2.min(surf.current.width.max(0));
-                                let inter_y2 = geom_y2.min(surf.current.height.max(0));
-                                let inter_w = (inter_x2 - inter_x1).max(0);
-                                let inter_h = (inter_y2 - inter_y1).max(0);
-                                if inter_w > 0 && inter_h > 0 {
-                                    node.content_rect = ContentRect {
-                                        x: inter_x1 as f32 / buf_w,
-                                        y: inter_y1 as f32 / buf_h,
-                                        w: inter_w as f32 / buf_w,
-                                        h: inter_h as f32 / buf_h,
-                                    };
-                                    // Keep host/window edges aligned with visible client content.
-                                    // If buffer includes SSD/CSD shadow/titlebar margins, the node
-                                    // itself must still match content extents.
-                                    node.set_size(inter_w as u32, inter_h as u32);
-                                }
+                // Crop client-drawn CSD chrome from the buffer when appropriate.
+                // CSD mode uses client geometry; Force SSD still crops if the client
+                // keeps painting decorations (weston-terminal over waypipe, etc.).
+                if let Some(surf_ref) = self.get_surface(window.surface_id) {
+                    let surf = surf_ref.read().unwrap();
+                    let xdg_geometry = geom_by_surface.get(&window.surface_id).copied();
+                    if let Some((inter_x1, inter_y1, inter_w, inter_h)) =
+                        crate::core::wayland::xdg::decoration::resolve_window_content_geometry(
+                            self,
+                            &window.app_id,
+                            window.decoration_mode,
+                            surf.current.width,
+                            surf.current.height,
+                            xdg_geometry,
+                        )
+                    {
+                        let buf_w = surf.current.width as f32;
+                        let buf_h = surf.current.height as f32;
+                        if buf_w > 0.0 && buf_h > 0.0 {
+                            node.content_rect = ContentRect {
+                                x: inter_x1 as f32 / buf_w,
+                                y: inter_y1 as f32 / buf_h,
+                                w: inter_w as f32 / buf_w,
+                                h: inter_h as f32 / buf_h,
+                            };
+                            // Kiosk surfaces stay output-sized; only crop in presentation.
+                            if !is_kiosk_window {
+                                node.set_size(inter_w as u32, inter_h as u32);
                             }
                         }
                     }

@@ -204,6 +204,8 @@
 @property(nonatomic, assign) BOOL lastRespectSafeArea;
 @property(nonatomic, assign) BOOL hasAppliedSafeArea;
 @property(nonatomic, assign) BOOL showingMachinesUI;
+@property(nonatomic, strong) UIViewController *machinesViewController;
+@property(nonatomic, strong) NSArray<NSLayoutConstraint *> *machinesViewConstraints;
 @property(nonatomic, assign) CFTimeInterval lastShakePromptTime;
 @property(nonatomic, assign) BOOL shakePromptVisible;
 #if !TARGET_OS_VISION && !TARGET_OS_TV
@@ -279,6 +281,9 @@
   WWNCompositorBridge *compositor = [WWNCompositorBridge sharedBridge];
   compositor.containerView = self.compositorContainer;
 
+  // Machines UI is the initial surface; keep compositor hidden until a session starts.
+  self.compositorContainer.hidden = YES;
+
   // Activate the correct constraint set based on the preference
   [self applyRespectSafeAreaPreference];
 
@@ -294,13 +299,24 @@
 #if !TARGET_OS_VISION && !TARGET_OS_TV
   [self setupBackSwipeGesture];
 #endif
-  self.compositorContainer.hidden = YES;
 
   // Observe preference changes so the user can toggle at runtime
   [[NSNotificationCenter defaultCenter]
       addObserver:self
-         selector:@selector(preferencesDidChange:)
+         selector:@selector(userDefaultsDidChange:)
              name:NSUserDefaultsDidChangeNotification
+           object:nil];
+
+  [[NSNotificationCenter defaultCenter]
+      addObserver:self
+         selector:@selector(forceSSDPreferenceDidChange:)
+             name:kWWNForceSSDChangedNotification
+           object:nil];
+
+  [[NSNotificationCenter defaultCenter]
+      addObserver:self
+         selector:@selector(handleNativeClientWillLaunch:)
+             name:WWNNativeClientWillLaunchNotification
            object:nil];
 
   WWNLog("SCENE", @"Wawona Scene connected and window created.");
@@ -315,38 +331,25 @@
 #pragma mark - Safe Area
 
 - (void)applyRespectSafeAreaPreference {
-#if !TARGET_OS_VISION
-  // Active Wayland compositor view: always edge-to-edge (true “fullscreen” output)
-  // so the client can use the full display and home-indicator deferral matches
-  // immersive apps (e.g. games). Respect Safe Area applies only when the
-  // compositor container is hidden (machines / welcome).
-  if (!self.compositorContainer.hidden) {
-    if (self.fullScreenConstraints.firstObject.isActive) {
-      return;
-    }
-    WWNLog("SCENE", @"Compositor session: forcing edge-to-edge layout (immersive)");
-    [NSLayoutConstraint deactivateConstraints:self.safeAreaConstraints];
-    [NSLayoutConstraint activateConstraints:self.fullScreenConstraints];
-    UIView *root = self.window.rootViewController.view;
-    [root setNeedsLayout];
-    [root layoutIfNeeded];
-    [self updateOutputSizeFromContainerForced:YES];
-    for (UIView *child in self.compositorContainer.subviews) {
-      child.frame = self.compositorContainer.bounds;
-    }
-    return;
-  }
-#endif
-
   BOOL respectSafeArea =
       [[WWNPreferencesManager sharedManager] respectSafeArea];
 
-  if (self.hasAppliedSafeArea && self.lastRespectSafeArea == respectSafeArea)
+  BOOL compositorActive = !self.compositorContainer.hidden;
+  BOOL usingSafeArea = self.safeAreaConstraints.firstObject.isActive;
+  BOOL usingFullScreen = self.fullScreenConstraints.firstObject.isActive;
+  BOOL constraintsMatch =
+      (respectSafeArea && usingSafeArea) || (!respectSafeArea && usingFullScreen);
+
+  if (self.hasAppliedSafeArea && self.lastRespectSafeArea == respectSafeArea &&
+      constraintsMatch) {
     return;
+  }
 
   self.lastRespectSafeArea = respectSafeArea;
   self.hasAppliedSafeArea = YES;
-  WWNLog("SCENE", @"Respect Safe Area = %@", respectSafeArea ? @"YES" : @"NO");
+  WWNLog("SCENE", @"Respect Safe Area = %@%@",
+         respectSafeArea ? @"YES" : @"NO",
+         compositorActive ? @" (compositor session)" : @"");
 
   // Deactivate the old set, activate the new one
   if (respectSafeArea) {
@@ -373,10 +376,19 @@
       }];
 }
 
-- (void)preferencesDidChange:(NSNotification *)note {
+- (void)userDefaultsDidChange:(NSNotification *)note {
+  (void)note;
   dispatch_async(dispatch_get_main_queue(), ^{
     [self applyRespectSafeAreaPreference];
     [self updateOutputSizeFromContainerForced:YES];
+  });
+}
+
+- (void)forceSSDPreferenceDidChange:(NSNotification *)note {
+  (void)note;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [[WWNCompositorBridge sharedBridge]
+        setForceSSD:[[WWNPreferencesManager sharedManager] forceServerSideDecorations]];
   });
 }
 
@@ -404,6 +416,8 @@
       fabsf(self.lastOutputScale - wlScale) < 0.001f) {
     return;
   }
+  BOOL sizeChanged = !CGSizeEqualToSize(sz, self.lastOutputSize) ||
+      fabsf(self.lastOutputScale - wlScale) >= 0.001f;
   self.lastOutputSize = sz;
   self.lastOutputScale = wlScale;
 
@@ -412,8 +426,10 @@
                       height:(uint32_t)sz.height
                        scale:wlScale];
 
-  WWNLog("SCENE", @"Output size: %.0fx%.0f @ %.1fx (auto-scale %@)",
-        sz.width, sz.height, wlScale, autoScale ? @"ON" : @"OFF");
+  if (sizeChanged) {
+    WWNLog("SCENE", @"Output size: %.0fx%.0f @ %.1fx (auto-scale %@)",
+          sz.width, sz.height, wlScale, autoScale ? @"ON" : @"OFF");
+  }
 }
 
 #pragma mark - Session Exit Gestures
@@ -570,7 +586,7 @@
 #if !TARGET_OS_VISION
     [self applyRespectSafeAreaPreference];
 #endif
-    [self presentMachinesConfigurationAfterWelcome];
+    [self showMachinesUI];
   }
 }
 
@@ -713,21 +729,20 @@
 }
 
 - (void)closeActiveWaylandSession {
+  if (self.shakePromptVisible) {
+    UIViewController *presenter = self.window.rootViewController;
+    while (presenter.presentedViewController) {
+      presenter = presenter.presentedViewController;
+    }
+    [presenter dismissViewControllerAnimated:NO completion:nil];
+    self.shakePromptVisible = NO;
+  }
+
   WWNWaypipeRunner *runner = [WWNWaypipeRunner sharedRunner];
+  [runner stopActiveIOSBundledClient];
+
   if (runner.isRunning) {
     [runner stopWaypipe];
-  }
-  if (runner.westonRunning) {
-    [runner stopWeston];
-  }
-  if (runner.westonTerminalRunning) {
-    [runner stopWestonTerminal];
-  }
-  if (runner.footRunning) {
-    [runner stopFoot];
-  }
-  if (runner.isWestonSimpleSHMRunning) {
-    [runner stopWestonSimpleSHM];
   }
 
   self.compositorContainer.hidden = YES;
@@ -735,7 +750,12 @@
 #if !TARGET_OS_VISION
   [self applyRespectSafeAreaPreference];
 #endif
-  [self presentMachinesConfigurationAfterWelcome];
+  [self showMachinesUI];
+}
+
+- (void)handleNativeClientWillLaunch:(NSNotification *)notification {
+  (void)notification;
+  [self hideMachinesUIAndRevealCompositor];
 }
 
 - (void)revealCompositor {
@@ -748,42 +768,116 @@
   [self updateOutputSizeFromContainerForced:YES];
 }
 
+- (void)embedMachinesViewController:(UIViewController *)machinesVC
+                         inParent:(UIViewController *)parent {
+  if (self.machinesViewController == machinesVC) {
+    machinesVC.view.hidden = NO;
+    [parent.view bringSubviewToFront:machinesVC.view];
+    return;
+  }
+
+  if (self.machinesViewController != nil) {
+    [self removeEmbeddedMachinesViewController];
+  }
+
+  [parent addChildViewController:machinesVC];
+  machinesVC.view.translatesAutoresizingMaskIntoConstraints = NO;
+  [parent.view addSubview:machinesVC.view];
+  [parent.view bringSubviewToFront:machinesVC.view];
+
+  self.machinesViewConstraints = @[
+    [machinesVC.view.topAnchor constraintEqualToAnchor:parent.view.topAnchor],
+    [machinesVC.view.bottomAnchor constraintEqualToAnchor:parent.view.bottomAnchor],
+    [machinesVC.view.leadingAnchor constraintEqualToAnchor:parent.view.leadingAnchor],
+    [machinesVC.view.trailingAnchor constraintEqualToAnchor:parent.view.trailingAnchor],
+  ];
+  [NSLayoutConstraint activateConstraints:self.machinesViewConstraints];
+
+  [machinesVC didMoveToParentViewController:parent];
+  self.machinesViewController = machinesVC;
+}
+
+- (void)removeEmbeddedMachinesViewController {
+  if (!self.machinesViewController) {
+    return;
+  }
+
+  if (self.machinesViewConstraints.count > 0) {
+    [NSLayoutConstraint deactivateConstraints:self.machinesViewConstraints];
+    self.machinesViewConstraints = nil;
+  }
+
+  [self.machinesViewController willMoveToParentViewController:nil];
+  [self.machinesViewController.view removeFromSuperview];
+  [self.machinesViewController removeFromParentViewController];
+  self.machinesViewController = nil;
+}
+
+- (void)showMachinesUI {
+  [self setCompositorGestureDeferralEnabled:NO];
+  self.compositorContainer.hidden = YES;
+#if !TARGET_OS_VISION
+  [self applyRespectSafeAreaPreference];
+#endif
+
+  if (self.machinesViewController) {
+    self.machinesViewController.view.hidden = NO;
+    [self.window.rootViewController.view
+        bringSubviewToFront:self.machinesViewController.view];
+    self.showingMachinesUI = YES;
+    return;
+  }
+
+  [self presentMachinesConfigurationAfterWelcome];
+}
+
+- (void)hideMachinesUIAndRevealCompositor {
+  if (self.machinesViewController) {
+    self.machinesViewController.view.hidden = YES;
+  }
+  self.showingMachinesUI = NO;
+  [self revealCompositor];
+}
+
 - (void)presentMachinesConfigurationAfterWelcome {
   dispatch_async(dispatch_get_main_queue(), ^{
     [self setCompositorGestureDeferralEnabled:NO];
-    if (self.showingMachinesUI) {
+    if (self.machinesViewController) {
+      self.machinesViewController.view.hidden = NO;
+      self.showingMachinesUI = YES;
       return;
     }
-    self.showingMachinesUI = YES;
-    UIViewController *presenter = self.window.rootViewController;
-    if (!presenter) {
+
+    UIViewController *parent = self.window.rootViewController;
+    if (!parent) {
       self.showingMachinesUI = NO;
       return;
     }
+
     __weak typeof(self) weakSelf = self;
-    [[WWNMachinesCoordinator sharedCoordinator]
-        presentMachinesFromViewController:presenter
-                                onConnect:^{
-                                  __strong typeof(weakSelf) strongSelf = weakSelf;
-                                  if (!strongSelf) {
-                                    return;
-                                  }
-                                  // Dismiss the machines modal first, then reveal
-                                  // the compositor once the animation finishes.
-                                  UIViewController *root =
-                                      strongSelf.window.rootViewController;
-                                  UIViewController *presented =
-                                      root.presentedViewController;
-                                  if (presented) {
-                                    [presented
-                                        dismissViewControllerAnimated:YES
-                                        completion:^{
-                                          [strongSelf revealCompositor];
-                                        }];
-                                  } else {
-                                    [strongSelf revealCompositor];
-                                  }
-                                }];
+    UIViewController *machinesVC = [[WWNMachinesCoordinator sharedCoordinator]
+        buildMachinesViewControllerWithOnConnect:^{
+          __strong typeof(weakSelf) strongSelf = weakSelf;
+          if (!strongSelf) {
+            return;
+          }
+          [strongSelf hideMachinesUIAndRevealCompositor];
+        }];
+    if (!machinesVC) {
+      self.showingMachinesUI = NO;
+      UIAlertController *alert = [UIAlertController
+          alertControllerWithTitle:@"Machines UI Unavailable"
+                           message:@"SwiftUI machines view failed to load. Regenerate the Xcode project and rebuild."
+                    preferredStyle:UIAlertControllerStyleAlert];
+      [alert addAction:[UIAlertAction actionWithTitle:@"OK"
+                                                style:UIAlertActionStyleDefault
+                                              handler:nil]];
+      [parent presentViewController:alert animated:YES completion:nil];
+      return;
+    }
+
+    [self embedMachinesViewController:machinesVC inParent:parent];
+    self.showingMachinesUI = YES;
   });
 }
 

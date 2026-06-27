@@ -14,16 +14,19 @@ struct WWNMachinesGridView: View {
   #if os(macOS)
   @State private var columnVisibility: NavigationSplitViewVisibility = .all
   #endif
-  #if os(iOS)
-  @State private var preferredColumn: NavigationSplitViewColumn = .sidebar
-  #endif
 
   var body: some View {
-    splitView
-      #if os(macOS)
-      .background(WWNMachineKeyboardInputGate())
+    Group {
+      #if os(iOS)
+      iosRoot
+      #elseif os(macOS)
+      splitView
+        .background(WWNMachineKeyboardInputGate())
+      #else
+      splitView
       #endif
-      .sheet(isPresented: $isCreating) {
+    }
+    .sheet(isPresented: $isCreating) {
         WWNMachineEditorView(
           title: "Add Machine Profile",
           initial: nil,
@@ -56,12 +59,6 @@ struct WWNMachinesGridView: View {
     } detail: {
       detailContent
     }
-    #elseif os(iOS)
-    NavigationSplitView(preferredCompactColumn: $preferredColumn) {
-      sidebar
-    } detail: {
-      detailContent
-    }
     #else
     NavigationSplitView {
       sidebar
@@ -70,6 +67,24 @@ struct WWNMachinesGridView: View {
     }
     #endif
   }
+
+  #if os(iOS)
+  private var iosRoot: some View {
+    NavigationStack {
+      detailPane
+        .navigationTitle(detailNavigationTitle)
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+          detailToolbarContent
+        }
+        .overlay(alignment: .bottomTrailing) {
+          iosAddMachineButton
+            .padding(.trailing, 20)
+            .padding(.bottom, 20)
+        }
+    }
+  }
+  #endif
 
   private var detailContent: some View {
     #if os(macOS)
@@ -89,13 +104,6 @@ struct WWNMachinesGridView: View {
       .toolbar {
         detailToolbarContent
       }
-      #if os(iOS)
-      .overlay(alignment: .bottomTrailing) {
-        iosQuickActions
-          .padding(.trailing, 20)
-          .padding(.bottom, 20)
-      }
-      #endif
     #endif
   }
 
@@ -136,11 +144,12 @@ struct WWNMachinesGridView: View {
       }
     }
     #else
-    if let onOpenSettings {
-      ToolbarItem(placement: .automatic) {
+    ToolbarItemGroup(placement: .topBarTrailing) {
+      if let onOpenSettings {
         Button(action: onOpenSettings) {
           Image(systemName: "gearshape")
         }
+        .accessibilityLabel("Settings")
       }
     }
     #endif
@@ -218,9 +227,6 @@ struct WWNMachinesGridView: View {
         guard let selected, selected != model.selectedFilter else { return }
         DispatchQueue.main.async {
           model.selectedFilter = selected
-          #if os(iOS)
-          preferredColumn = .detail
-          #endif
         }
       }
     )
@@ -234,7 +240,11 @@ struct WWNMachinesGridView: View {
       let detailWidth = max(proxy.size.width, 320)
       ScrollView {
         VStack(alignment: .leading, spacing: 16) {
+          #if os(iOS)
+          iosScopeFilterPicker
+          #else
           summaryStrip
+          #endif
 
           if visibleProfiles.isEmpty {
             ContentUnavailableView(
@@ -415,25 +425,46 @@ struct WWNMachinesGridView: View {
   }
 
   #if os(iOS)
-  private var iosQuickActions: some View {
-    Menu {
-      Button {
-        onOpenSettings?()
-      } label: {
-        Label("Wawona Settings", systemImage: "gearshape")
+  private var iosScopeFilterPicker: some View {
+    Picker("Machine Scope", selection: iosScopeFilterSelection) {
+      ForEach(WWNMachineFilter.allCases) { filter in
+        Text(filter.rawValue).tag(filter)
       }
+    }
+    .pickerStyle(.segmented)
+  }
+
+  private var iosScopeFilterSelection: Binding<WWNMachineFilter> {
+    Binding(
+      get: { model.selectedFilter },
+      set: { model.selectedFilter = $0 }
+    )
+  }
+
+  @ViewBuilder
+  private var iosAddMachineButton: some View {
+    if #available(iOS 26, *) {
       Button {
         isCreating = true
       } label: {
-        Label("Add Profile", systemImage: "plus")
+        Image(systemName: "plus")
+          .font(.title2.weight(.semibold))
+          .frame(width: 56, height: 56)
       }
-    } label: {
-      Image(systemName: "plus")
-        .font(.title2.weight(.semibold))
-        .foregroundStyle(Color.white)
-        .frame(width: 56, height: 56)
-        .background(Color.accentColor, in: Circle())
-        .shadow(color: .black.opacity(0.25), radius: 10, x: 0, y: 4)
+      .buttonStyle(.glassProminent)
+      .buttonBorderShape(.circle)
+      .accessibilityLabel("Add Machine")
+    } else {
+      Button {
+        isCreating = true
+      } label: {
+        Image(systemName: "plus")
+          .font(.title2.weight(.semibold))
+          .frame(width: 56, height: 56)
+      }
+      .buttonStyle(.borderedProminent)
+      .buttonBorderShape(.circle)
+      .accessibilityLabel("Add Machine")
     }
   }
   #endif
@@ -457,14 +488,12 @@ final class WWNMachinesHostingBridge: NSObject {
     let root = WWNMachinesGridView(
       onConnect: onConnect,
       onOpenSettings: {
-        let prefs = WWNPreferences.shared()
-        prefs.show(nil as Any)
+        WWNPreferences.shared().show(nil)
       }
     )
     let hosting = UIHostingController(rootView: root)
-    let nav = UINavigationController(rootViewController: hosting)
-    nav.modalPresentationStyle = UIModalPresentationStyle.fullScreen
-    return nav
+    hosting.view.backgroundColor = .systemBackground
+    return hosting
   }
 }
 #endif
@@ -558,7 +587,7 @@ final class WWNMachinesHostingBridge: NSObject {
   static func buildMacMachinesWindowController(onConnect: (() -> Void)?) -> NSWindowController {
     let root = WWNMachinesGridView(
       onConnect: onConnect,
-      onOpenSettings: { WWNPreferences.shared().show(NSApp as Any) }
+      onOpenSettings: { WWNPreferences.shared().show(NSApp) }
     )
     let hosting = NSHostingController(rootView: root)
     let window = NSWindow(

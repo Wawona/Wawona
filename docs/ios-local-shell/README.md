@@ -4,6 +4,17 @@
 
 This directory is the **authoritative documentation** for that program. If you change spawn policy, rootfs layout, Nix packages, or App Review posture, update these docs in the same PR.
 
+> **Note (repo split):** the zsh Nix recipes, `patch-zsh-exec.py`, the Wawona
+> RootFS recipe, and the `verify-zsh-ios-patches.py` patch-anchor check now live
+> in the **[`wwn-zsh`](https://github.com/Wawona/wwn-zsh)** repo; the patched
+> Weston terminal/compositor recipes live in
+> **[`wwn-weston`](https://github.com/Wawona/wwn-weston)**. Wawona consumes both
+> as flake inputs. Edit the recipes/patches there, not under Wawona's
+> `dependencies/`. (Some text below references the older in-tree
+> `dependencies/libs/zsh` / `dependencies/clients/weston` paths and a
+> `posix_spawn` model — the current design is in-process, no fork/exec; trust the
+> `wwn-zsh` recipes and `.cursor/rules/wawona-context.mdc`.)
+
 ---
 
 ## Why this exists

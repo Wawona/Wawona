@@ -77,7 +77,6 @@ jobs:
         run: python3 ./.github/scripts/verify-wayland-no-equivalent-closure.py --json-out ./docs/compliance/generated/wayland-no-equivalent-closure.json
       - name: Verify Wayland profile smoke
         run: python3 ./.github/scripts/verify-wayland-profile-smoke.py
-
       - name: Upload Wayland ownership inventory artifact
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
@@ -245,7 +244,6 @@ jobs:
         run: python3 ./.github/scripts/verify-wayland-no-equivalent-closure.py --json-out ./docs/compliance/generated/wayland-no-equivalent-closure.json
       - name: Verify Wayland profile smoke
         run: python3 ./.github/scripts/verify-wayland-profile-smoke.py
-
       - name: Upload Wayland ownership inventory artifact
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
@@ -394,7 +392,6 @@ jobs:
         run: python3 ./.github/scripts/verify-wayland-no-equivalent-closure.py --json-out ./docs/compliance/generated/wayland-no-equivalent-closure.json
       - name: Verify Wayland profile smoke
         run: python3 ./.github/scripts/verify-wayland-profile-smoke.py
-
       - name: Upload Wayland ownership inventory artifact
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
@@ -547,7 +544,6 @@ jobs:
         run: python3 ./.github/scripts/verify-wayland-no-equivalent-closure.py --json-out ./docs/compliance/generated/wayland-no-equivalent-closure.json
       - name: Verify Wayland profile smoke
         run: python3 ./.github/scripts/verify-wayland-profile-smoke.py
-
       - name: Upload Wayland ownership inventory artifact
         if: ${{ always() }}
         uses: actions/upload-artifact@v4

@@ -41,4 +41,10 @@ public extension ClientLauncher {
         ClientLauncher(name: "weston", executablePath: "weston", displayName: "Weston")
     ]
 #endif
+
+    static func displayName(for clientID: String) -> String {
+        let trimmed = clientID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "Not set" }
+        return presets.first { $0.name == trimmed }?.displayName ?? trimmed
+    }
 }

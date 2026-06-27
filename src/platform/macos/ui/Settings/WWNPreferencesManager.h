@@ -11,6 +11,7 @@ extern NSString
     *const kWWNPrefsColorSyncSupport;            // Legacy - use ColorOperations
 extern NSString *const kWWNPrefsColorOperations; // New unified key
 extern NSString *const kWWNPrefsNestedCompositorsSupport;
+extern NSString *const kWWNPrefsNestedWestonBackend;
 extern NSString *const kWWNPrefsUseMetal4ForNested; // Deprecated - removed
 extern NSString *const kWWNPrefsRenderMacOSPointer;
 extern NSString *const kWWNPrefsMultipleClients;
@@ -105,6 +106,8 @@ extern NSString *const kWWNPrefsMachineSessionThumbnailsEnabled;
 // Nested Compositors
 - (BOOL)nestedCompositorsSupportEnabled;
 - (void)setNestedCompositorsSupportEnabled:(BOOL)enabled;
+- (NSString *)nestedWestonBackend;
+- (void)setNestedWestonBackend:(NSString *)backend;
 - (BOOL)useMetal4ForNested;
 - (void)setUseMetal4ForNested:(BOOL)enabled;
 

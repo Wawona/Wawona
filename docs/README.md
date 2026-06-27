@@ -16,6 +16,26 @@
 
 ---
 
+## Apple Mobile Local Shell (App Store ZSH)
+
+**Wawona is building the first App Store–compliant bundled native zsh on iOS/iPadOS**, paired with upstream Weston `terminal.c`. Start here:
+
+| Document | Description |
+|----------|-------------|
+| [ios-local-shell/README.md](ios-local-shell/README.md) | **Hub** — vision, doc map, flake outputs, status |
+| [ios-local-shell/ARCHITECTURE.md](ios-local-shell/ARCHITECTURE.md) | Process model, data flows, env vars, code anchors |
+| [ios-local-shell/APP-STORE-COMPLIANCE.md](ios-local-shell/APP-STORE-COMPLIANCE.md) | Guideline mapping, competitive landscape, enforcement |
+| [ios-local-shell/IMPLEMENTATION-ROADMAP.md](ios-local-shell/IMPLEMENTATION-ROADMAP.md) | Phases 0–4, PRs, risks, success criteria |
+| [ios-local-shell/WAWONA-PTY-SPEC.md](ios-local-shell/WAWONA-PTY-SPEC.md) | `wwn_pty_*` API specification |
+| [ios-local-shell/ROOTFS-AND-ZSH.md](ios-local-shell/ROOTFS-AND-ZSH.md) | Nix packaging, rootfs, `.zshrc`, xcodegen |
+| [ios-local-shell/SECURITY-SPAWN-POLICY.md](ios-local-shell/SECURITY-SPAWN-POLICY.md) | Path allowlist, forbidden operations |
+| [ios-local-shell/APP-REVIEW-NOTES.md](ios-local-shell/APP-REVIEW-NOTES.md) | Copy for App Store Connect reviewer notes |
+| [ios-local-shell/TESTFLIGHT-CHECKLIST.md](ios-local-shell/TESTFLIGHT-CHECKLIST.md) | Pre-release QA checklist |
+| [ios-local-shell/WATCHOS-SCOPE.md](ios-local-shell/WATCHOS-SCOPE.md) | watchOS explicitly excluded from local shell v1 |
+| [ios-local-shell-spike.md](ios-local-shell-spike.md) | Phase 0 PTY device spike report (fill on hardware) |
+
+---
+
 ## Platform & Features
 
 | Document | Description |

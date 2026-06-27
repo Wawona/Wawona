@@ -146,11 +146,15 @@ impl PointerState {
         time: u32,
         axis: wl_pointer::Axis,
         value: f64,
+        source: wl_pointer::AxisSource,
         focused_client: Option<&wayland_server::Client>,
     ) {
         if let Some(focused) = focused_client {
             for ptr in &self.resources {
                 if ptr.client().as_ref() == Some(focused) {
+                    if ptr.version() >= 5 {
+                        ptr.axis_source(source);
+                    }
                     ptr.axis(time, axis, value);
                 }
             }

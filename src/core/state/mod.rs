@@ -129,6 +129,7 @@ mod scene;
 mod input;
 mod surfaces;
 mod windows;
+mod host_lock;
 
 // ============================================================================
 // Subsurface State
@@ -922,8 +923,15 @@ impl SeatState {
         self.pointer.broadcast_frame(focused_client);
     }
 
-    pub fn broadcast_pointer_axis(&mut self, time: u32, axis: wl_pointer::Axis, value: f64, focused_client: Option<&wayland_server::Client>) {
-        self.pointer.broadcast_axis(time, axis, value, focused_client);
+    pub fn broadcast_pointer_axis(
+        &mut self,
+        time: u32,
+        axis: wl_pointer::Axis,
+        value: f64,
+        source: wl_pointer::AxisSource,
+        focused_client: Option<&wayland_server::Client>,
+    ) {
+        self.pointer.broadcast_axis(time, axis, value, source, focused_client);
     }
 
     pub fn broadcast_key(&mut self, serial: u32, time: u32, key: u32, state: wl_keyboard::KeyState, focused_client: Option<&wayland_server::Client>) {
@@ -1685,8 +1693,6 @@ impl CompositorState {
         // Keep fullscreen / maximized windows aligned with the new output geometry
         // (e.g. device rotation). Without this, scene nodes can keep stale
         // pre-rotation dimensions until the next client-driven commit.
-        let fullscreen_shell_wid = self.ext.fullscreen_shell.presented_window_id;
-        let force_android_output_resize = cfg!(target_os = "android");
         let mut resized_window_sizes: std::collections::HashMap<u32, (u32, u32)> =
             std::collections::HashMap::new();
         for (&wid, window_ref) in &self.windows {
@@ -1696,8 +1702,7 @@ impl CompositorState {
                 let old_x = window.x;
                 let old_y = window.y;
 
-                if force_android_output_resize
-                    || fullscreen_shell_wid == Some(wid)
+                if self.is_host_locked_window(wid)
                     || window.fullscreen
                 {
                     window.x = output_rect.0;
@@ -1766,11 +1771,7 @@ impl CompositorState {
     
     /// Get current timestamp in milliseconds.
     pub fn get_timestamp_ms() -> u32 {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u32
+        crate::core::Compositor::timestamp_ms()
     }
     
     /// Get decoration mode for new windows

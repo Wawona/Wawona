@@ -553,6 +553,8 @@ pub struct WindowConfig {
     pub decoration_mode: DecorationMode,
     /// True when this window is from fullscreen shell (kiosk); host must not draw window chrome
     pub fullscreen_shell: bool,
+    /// True when the host view owns placement/size (weston-family embedded semantics).
+    pub host_locked: bool,
     /// Stable per-connection id (maps nested kiosk + xdg to one host window on Linux/GTK).
     pub owner_client_internal_id: u64,
     pub state: WindowState,
@@ -572,6 +574,7 @@ impl WindowConfig {
             max_height: None,
             decoration_mode: DecorationMode::ServerSide,
             fullscreen_shell: false,
+            host_locked: false,
             owner_client_internal_id: 0,
             state: WindowState::Normal,
             parent: None,
@@ -637,6 +640,12 @@ pub enum WindowEvent {
         size_kind: GeometrySizeKind,
         configure_serial: u32,
         transaction_id: u64,
+    },
+    /// Host should pin this window edge-to-edge (weston-family / kiosk).
+    HostLocked {
+        window_id: WindowId,
+        width: u32,
+        height: u32,
     },
     
     // Focus changes

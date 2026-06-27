@@ -56,14 +56,14 @@ rustPlatform.buildRustPackage rec {
     "--lib"
     "--no-default-features"
     "--features"
-    "smithay-protocols"
+    "smithay-protocols coreutils"
   ];
   cargoTestFlags = [
     "--target" "aarch64-linux-android"
     "--lib"
     "--no-default-features"
     "--features"
-    "smithay-protocols"
+    "smithay-protocols coreutils"
   ];
   doCheck = false;
 
@@ -115,7 +115,7 @@ rustPlatform.buildRustPackage rec {
       --target aarch64-linux-android \
       --lib \
       --no-default-features \
-      --features smithay-protocols
+      --features "smithay-protocols coreutils"
     runHook postBuild
   '';
 

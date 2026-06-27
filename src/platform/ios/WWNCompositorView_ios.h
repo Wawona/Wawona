@@ -1,5 +1,6 @@
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
+#import <CoreGraphics/CoreGraphics.h>
 #import <Metal/Metal.h>
 
 NS_ASSUME_NONNULL_BEGIN
@@ -22,6 +23,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// Access to the Metal content layer for rendering (WWNIlandPresenter target)
 @property(nonatomic, strong, readonly) CAMetalLayer *contentLayer;
 
+/// Plain CALayer host for nested Wayland SHM/IOSurface clients (not Metal).
+@property(nonatomic, strong, readonly) CALayer *waylandLayer;
+
 /// Whether the keyboard is currently active for this view
 @property(nonatomic, assign, readonly) BOOL keyboardActive;
 
@@ -41,6 +45,26 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Launch in-process kmscube (iland + ANGLE) into this view's Metal layer.
 - (BOOL)launchNestedKmscube;
+
+/// Prepare Metal + iland present callback for nested Weston (DRM/GL overlay).
+- (BOOL)prepareIlandMetalPresentation;
+
+/// When YES, Wayland SHM/IOSurface clients are visible and the Metal layer is
+/// hidden so CAMetalLayer compositing cannot cover nested client surfaces.
+- (void)setWaylandPresentationActive:(BOOL)active;
+
+/// Present a Wayland SHM frame. Uses a plain UIView layer (not nested CALayers
+/// under CAMetalLayer) because iOS does not reliably composite the latter.
+- (void)presentWaylandFrame:(nullable CGImageRef)image
+                      frame:(CGRect)frame
+                contentRect:(CGRect)normalizedContentRect
+               presentToken:(uint64_t)presentToken;
+
+/// Tear down presentation state before the view is removed (session close).
+- (void)prepareForSessionTeardown;
+
+/// Switch from Metal to legacy CALayer subpresentation (IOSurface fallback).
+- (void)prepareWaylandLayerSubpresentation;
 
 @end
 

@@ -28,7 +28,9 @@ pub struct Window {
     pub resizing: bool,
     /// Whether this window is a modal dialog
     pub modal: bool,
-    
+    /// When true the host OS view owns placement/size (kiosk / embedded-app).
+    pub host_locked: bool,
+
     /// CSD geometry offset: the (x, y) origin of the content area within the
     /// surface buffer.  When the window is cropped to exclude the CSD shadow,
     /// pointer coordinates from the platform must be shifted by this offset to
@@ -58,6 +60,7 @@ impl Window {
             activated: false,
             resizing: false,
             modal: false,
+            host_locked: false,
             geometry_x: 0,
             geometry_y: 0,
             outputs: Vec::new(),

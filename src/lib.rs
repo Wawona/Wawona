@@ -51,6 +51,13 @@ pub use ffi::api::{WawonaCore, version, build_info};
 #[cfg(feature = "waypipe")]
 extern crate waypipe;
 
+// Same rationale as waypipe: when the coreutils feature is enabled (mobile +
+// macOS), force the linker to keep the uutils umbrella objects so the C entry
+// point wawona_coreutils_main survives dead-strip and is reachable from the
+// in-process dispatch shim in libwwn-pty.a.
+#[cfg(feature = "coreutils")]
+extern crate coreutils;
+
 // Generate UniFFI scaffolding
 // This must be in lib.rs for the generated code to work correctly
 uniffi::include_scaffolding!("wawona");

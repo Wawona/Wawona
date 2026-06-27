@@ -10,6 +10,11 @@ use super::types::{WindowId, PointerButton, PointerAxis, AxisSource, ButtonState
 /// Create a new WWNCore instance
 #[no_mangle]
 pub extern "C" fn WWNCoreNew() -> *mut WWNCore {
+    // Before in-process zsh dup2()s fds 0–2 onto the terminal PTY.
+    crate::util::logging::init_preserved_stderr();
+    // Must run before Smithay/xkbcommon init (compositor start). On iOS the
+    // bundled share/X11/xkb tree is the only valid keymap root.
+    crate::core::input::xkb::ensure_xkb_data_root();
     let core = WWNCore::new();
     Arc::into_raw(core) as *mut WWNCore
 }
@@ -274,6 +279,27 @@ pub extern "C" fn WWNCoreSetWindowActivatedSilent(
     }));
 }
 
+/// Force-disconnect every connected Wayland client (in-process mobile clients).
+#[no_mangle]
+pub extern "C" fn WWNCoreDisconnectAllClients(core: *mut WWNCore) -> u32 {
+    if core.is_null() {
+        return 0;
+    }
+    let core = unsafe { &*core };
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        core.disconnect_all_clients()
+    })) {
+        Ok(count) => count,
+        Err(_) => {
+            crate::wlog!(
+                crate::util::logging::C_API,
+                "WWNCoreDisconnectAllClients panicked; returning 0"
+            );
+            0
+        }
+    }
+}
+
 /// Flush all pending Wayland events to connected clients immediately.
 /// Call after generating events outside of the normal compositor tick
 /// to avoid them sitting in the buffer until the next tick fires.
@@ -313,6 +339,7 @@ pub enum CWindowEventType {
     MaximizeRequested = 10,
     UnmaximizeRequested = 11,
     CursorShapeChanged = 12,
+    HostLocked = 13,
 }
 
 /// C-compatible window event structure
@@ -331,9 +358,10 @@ pub struct CWindowEvent {
     pub decoration_mode: u8,
     /// 0 = false, 1 = true (fullscreen shell / kiosk - no host chrome)
     pub fullscreen_shell: u8,
+    /// 0 = false, 1 = true (host view owns placement/size)
+    pub host_locked: u8,
     /// Resize edge (xdg_toplevel resize_edge values)
     pub edges: u8,
-    pub padding: u8,
     /// GeometrySizeKind: 0=Frame, 1=Content, 2=Buffer
     pub size_kind: u8,
     /// WindowSizeCause: 0=Unknown, 1=HostConfigure, 2=ClientCommit, 3=OutputModeChange
@@ -365,8 +393,8 @@ pub extern "C" fn WWNCorePopWindowEvent(core: *mut WWNCore) -> *mut CWindowEvent
                 y: 0,
                 decoration_mode: 0,
                 fullscreen_shell: 0,
+                host_locked: 0,
                 edges: 0,
-                padding: 0,
                 size_kind: 1,
                 size_cause: 0,
                 configure_serial: 0,
@@ -384,6 +412,7 @@ pub extern "C" fn WWNCorePopWindowEvent(core: *mut WWNCore) -> *mut CWindowEvent
                         super::types::DecorationMode::ServerSide => 1,
                     };
                     c_event.fullscreen_shell = if config.fullscreen_shell { 1 } else { 0 };
+                    c_event.host_locked = if config.host_locked { 1 } else { 0 };
                     c_event.title = CString::new(config.title).ok()
                         .map(|s| s.into_raw())
                         .unwrap_or(std::ptr::null_mut());
@@ -493,6 +522,14 @@ pub extern "C" fn WWNCorePopWindowEvent(core: *mut WWNCore) -> *mut CWindowEvent
                     c_event.surface_id = shape;
                     true
                 },
+                super::types::WindowEvent::HostLocked { window_id, width, height } => {
+                    c_event.event_type = CWindowEventType::HostLocked as u64;
+                    c_event.window_id = window_id.id;
+                    c_event.width = width;
+                    c_event.height = height;
+                    c_event.host_locked = 1;
+                    true
+                },
                 _ => false
             };
             
@@ -598,7 +635,7 @@ pub extern "C" fn WWNCorePopPendingBuffer(core: *mut WWNCore) -> *mut CBufferDat
     if let Some(event) = core.pop_pending_buffer() {
         // Extract data based on buffer type
         match event.buffer.data {
-            super::types::BufferData::Shm { pixels, width, height, stride, format: _ } => {
+            super::types::BufferData::Shm { pixels, width, height, stride, format } => {
                 // Convert Vec<u8> to raw pointer by leaking it
                 // We must reconstruct and drop this Vec later in free()
                 let mut pixels = pixels;
@@ -606,6 +643,11 @@ pub extern "C" fn WWNCorePopPendingBuffer(core: *mut WWNCore) -> *mut CBufferDat
                 let capacity = pixels.capacity();
                 let ptr = pixels.as_mut_ptr();
                 std::mem::forget(pixels);
+
+                let format_tag = match format {
+                    super::types::BufferFormat::Xrgb8888 => 1,
+                    _ => 0, // ARGB8888 and other 32bpp RGBA variants
+                };
                 
                 let data = Box::new(CBufferData {
                     window_id: event.window_id.id,
@@ -614,7 +656,7 @@ pub extern "C" fn WWNCorePopPendingBuffer(core: *mut WWNCore) -> *mut CBufferDat
                     width,
                     height,
                     stride,
-                    format: 0, // 0 for ARGB8888 for now (BufferFormat is enum)
+                    format: format_tag,
                     pixels: ptr,
                     size,
                     capacity,
@@ -640,7 +682,7 @@ pub extern "C" fn WWNCorePopPendingBuffer(core: *mut WWNCore) -> *mut CBufferDat
                 return Box::into_raw(data);
             },
             super::types::BufferData::DmaBuf { fd: _, width, height, format, modifier: _ } => {
-                crate::wlog!(crate::util::logging::FFI,
+                crate::wlog_hot!(crate::util::logging::FFI,
                     "DMA-BUF buffer popped (buf={} surf={} win={} {}x{} fmt={}): \
                      rendering unsupported, passing metadata so frame_done/release still fire",
                     event.buffer.id.id, event.surface_id.id, event.window_id.id,
@@ -662,7 +704,7 @@ pub extern "C" fn WWNCorePopPendingBuffer(core: *mut WWNCore) -> *mut CBufferDat
                 return Box::into_raw(data);
             }
             _ => {
-                crate::wlog!(crate::util::logging::FFI,
+                crate::wlog_hot!(crate::util::logging::FFI,
                     "Unknown buffer type popped (buf={} surf={} win={}): skipping",
                     event.buffer.id.id, event.surface_id.id, event.window_id.id);
                 return std::ptr::null_mut();
@@ -695,6 +737,12 @@ pub extern "C" fn WWNBufferDataFree(data: *mut CBufferData) {
             }
         }
     }
+}
+
+/// Monotonic compositor timestamp in milliseconds (wl_callback / input events).
+#[no_mangle]
+pub extern "C" fn WWNCoreGetTimestampMs(_core: *mut WWNCore) -> u32 {
+    crate::core::Compositor::timestamp_ms()
 }
 
 /// Notify that a frame has been presented
