@@ -14,6 +14,7 @@
   targetPkgs,
   androidToolchainNix ? ../toolchains/android.nix,
   westonSimpleShmPatchedSrcNix ? ../libs/weston-simple-shm/patched-src.nix,
+  releaseArtifact ? "debug",
   ...
 }:
 
@@ -43,11 +44,14 @@ let
   sshpassBin = buildModule.buildForAndroid "sshpass" { };
   # Real local shell for Android (fork/exec allowed); spawned by the PTY shim.
   zshAndroid = buildModule.buildForAndroid "zsh" { };
+  footAndroid = buildModule.buildForAndroid "foot" { };
   fastfetchAndroid = buildModule.buildForAndroid "fastfetch" { };
+  neovimAndroid = buildModule.buildForAndroid "neovim" { };
   mobileToytoolkitDeps = import ./mobile-toytoolkit-deps.nix {
     buildFn = buildModule.buildForAndroid;
   };
   westonAndroid = buildModule.buildForAndroid "weston" { };
+  westonSimpleShmAndroid = buildModule.buildForAndroid "weston-simple-shm" { };
   westonCompositorAndroid = buildModule.buildForAndroid "weston-compositor" { };
   libintlAndroid = buildModule.buildForAndroid "libintl" { };
   westonToytoolkitLdflags = import ../generators/weston-toytoolkit-ldflags.nix {
@@ -59,14 +63,17 @@ let
     forceLoadWeston = true;
     linkMode = "whole_archive";
   };
-  westonCompositorLdflags = import ../generators/weston-compositor-ldflags.nix {
-    inherit (pkgs) lib;
-    deps = mobileToytoolkitDeps // {
-      weston-compositor = westonCompositorAndroid;
-    };
-    forceLoadCompositor = true;
-    linkMode = "whole_archive";
-  };
+  westonCompositorLdflags =
+    if westonCompositorAndroid != null then
+      import ../generators/weston-compositor-ldflags.nix {
+        inherit (pkgs) lib;
+        deps = mobileToytoolkitDeps // {
+          weston-compositor = westonCompositorAndroid;
+        };
+        forceLoadCompositor = true;
+        linkMode = "whole_archive";
+      }
+    else [ ];
   rustBackendPath = if rustBackend != null then toString rustBackend else "";
   androidQuadVert = ../../src/platform/android/rendering/shaders/android_quad.vert;
   androidQuadFrag = ../../src/platform/android/rendering/shaders/android_quad.frag;
@@ -80,7 +87,12 @@ let
     "libxml2"
     "xkbcommon"
     "openssl"
-  ] ++ (lib.attrNames mobileToytoolkitDeps) ++ [ "weston" "weston-compositor" "libintl" ];
+  ] ++ (lib.attrNames mobileToytoolkitDeps) ++ [ "weston" "libintl" ];
+  gradleTask =
+    if releaseArtifact == "release-aab" then ":Wawona:bundleRelease"
+    else if releaseArtifact == "release-apk" then ":Wawona:assembleRelease"
+    else ":Wawona:assembleDebug";
+  isReleaseBuild = releaseArtifact == "release-aab" || releaseArtifact == "release-apk";
 
   getDeps =
     platform: depNames:
@@ -211,14 +223,39 @@ let
       exit 1
     fi
 
-    if ! command -v emulator >/dev/null 2>&1; then
-      echo "[Wawona] ERROR: emulator not found in PATH"
+    adb start-server 2>/dev/null || true
+
+    # Prefer a USB-attached device (serial not matching emulator-*) when present.
+    pick_usb_serial() {
+      adb devices | awk '
+        /^[^#]/ && $2 == "device" && $1 !~ /^emulator-/ { print $1; exit }
+      '
+    }
+
+    DEVICE_SERIAL="$(pick_usb_serial || true)"
+    if [ -n "$DEVICE_SERIAL" ]; then
+      BOOT_COMPLETE=$(adb -s "$DEVICE_SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || echo "0")
+      if [ "$BOOT_COMPLETE" = "1" ]; then
+        echo "[Wawona] Using USB device: $DEVICE_SERIAL"
+        export ADB_SERIAL="$DEVICE_SERIAL"
+        adb() { command adb -s "$ADB_SERIAL" "$@"; }
+        DEVICE_READY=true
+      else
+        echo "[Wawona] USB device $DEVICE_SERIAL found but not booted yet (sys.boot_completed=$BOOT_COMPLETE)"
+      fi
+    fi
+
+    if [ "''${DEVICE_READY:-false}" != "true" ] && ! command -v emulator >/dev/null 2>&1; then
+      echo "[Wawona] ERROR: No booted USB device and emulator not found in PATH"
       exit 1
     fi
 
-    echo "[Wawona] Using emulator: $(which emulator)"
+    if [ "''${DEVICE_READY:-false}" != "true" ]; then
+      echo "[Wawona] Using emulator: $(which emulator)"
+    fi
     echo "[Wawona] Using adb: $(which adb)"
 
+    if [ "''${DEVICE_READY:-false}" != "true" ]; then
     export ANDROID_USER_HOME="$HOME/.android"
     export ANDROID_AVD_HOME="$ANDROID_USER_HOME/avd"
     mkdir -p "$ANDROID_AVD_HOME"
@@ -409,12 +446,13 @@ let
         exit 1
       fi
     fi
+    fi
 
     # Optional display cutout emulation (enabled by default) so safe-area /
     # notch behavior can be tested on the emulator consistently.
     # Set WAWONA_EMULATOR_CUTOUT=off to disable.
     CUTOUT_MODE="''${WAWONA_EMULATOR_CUTOUT:-on}"
-    if [ "$CUTOUT_MODE" != "off" ]; then
+    if [ "$CUTOUT_MODE" != "off" ] && [ -z "''${ADB_SERIAL:-}" ]; then
       EMULATOR_SERIAL=$(adb devices | awk '/emulator-[0-9]+[[:space:]]+device$/ {print $1; exit}')
       if [ -n "$EMULATOR_SERIAL" ]; then
         echo "[Wawona] Enabling display cutout emulation on $EMULATOR_SERIAL..."
@@ -781,6 +819,7 @@ in
         echo "WARNING: Missing Android sshpass binary at ${sshpassBin}/bin/sshpass"
       fi
 
+      ${lib.optionalString (zshAndroid != null) ''
       # Real zsh as libzsh_bin.so (jniLibs executables run from app data dir; the
       # PTY shim posix_spawn()s this) + the share tree (Functions/Completion) as
       # an APK asset so $fpath resolves on-device (laid out by android_jni.c).
@@ -792,13 +831,35 @@ in
       else
         echo "WARNING: Missing Android zsh binary at ${zshAndroid}/bin/zsh"
       fi
+      ''}
 
+      ${lib.optionalString (footAndroid != null) ''
+      # foot Wayland terminal client as libfoot.so (dlopen'd by wawona_client_stubs.c).
+      if [ -f "${footAndroid}/lib/arm64-v8a/libfoot.so" ]; then
+        cp -L "${footAndroid}/lib/arm64-v8a/libfoot.so" "$JNI_LIB_DIR/libfoot.so"
+        chmod +x "$JNI_LIB_DIR/libfoot.so"
+      else
+        echo "WARNING: Missing Android foot library at ${footAndroid}/lib/arm64-v8a/libfoot.so"
+      fi
+      ''}
+
+      ${lib.optionalString (fastfetchAndroid != null) ''
       if [ -f "${fastfetchAndroid}/bin/fastfetch" ]; then
         cp -L "${fastfetchAndroid}/bin/fastfetch" "$JNI_LIB_DIR/libfastfetch_bin.so"
         chmod +x "$JNI_LIB_DIR/libfastfetch_bin.so"
       else
         echo "WARNING: Missing Android fastfetch binary at ${fastfetchAndroid}/bin/fastfetch"
       fi
+      ''}
+
+      ${lib.optionalString (neovimAndroid != null) ''
+      if [ -f "${neovimAndroid}/bin/nvim" ]; then
+        cp -L "${neovimAndroid}/bin/nvim" "$JNI_LIB_DIR/libnvim_bin.so"
+        chmod +x "$JNI_LIB_DIR/libnvim_bin.so"
+      else
+        echo "WARNING: Missing Android neovim binary at ${neovimAndroid}/bin/nvim"
+      fi
+      ''}
 
       # Prefer the Rust shared library for Android linking; the static archive
       # can be malformed on some host toolchain combinations.
@@ -819,11 +880,25 @@ in
     buildPhase = ''
       runHook preBuild
 
-      # Build APK using Gradle
-      # Dexing Compose artifacts can exceed the default 512m Gradle JVM heap in
-      # sandboxed builds. Pin explicit JVM args so D8/R8 has enough memory.
+      if [ "${if isReleaseBuild then "1" else "0"}" = "1" ]; then
+        if [ -n "''${ANDROID_KEYSTORE_BASE64:-}" ]; then
+          KEYSTORE_PATH="''${ANDROID_KEYSTORE_PATH:-$TMPDIR/wawona-upload.jks}"
+          echo "''${ANDROID_KEYSTORE_BASE64}" | base64 -d > "$KEYSTORE_PATH"
+          export ANDROID_KEYSTORE_PATH="$KEYSTORE_PATH"
+        fi
+        : "''${ANDROID_KEYSTORE_PATH:?Set ANDROID_KEYSTORE_PATH or ANDROID_KEYSTORE_BASE64 for release builds}"
+        : "''${ANDROID_KEYSTORE_PASSWORD:?Missing ANDROID_KEYSTORE_PASSWORD}"
+        : "''${ANDROID_KEY_ALIAS:?Missing ANDROID_KEY_ALIAS}"
+        : "''${ANDROID_KEY_PASSWORD:?Missing ANDROID_KEY_PASSWORD}"
+      fi
+
+      # Build APK/AAB using Gradle
       export GRADLE_OPTS="-Xmx6144m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
-      gradle :Wawona:assembleDebug --no-build-cache --no-watch-fs --no-daemon --max-workers=1 \
+      GRADLE_CMD=gradle
+      if [ -x ./gradlew ]; then
+        GRADLE_CMD=./gradlew
+      fi
+      $GRADLE_CMD ${gradleTask} --no-build-cache --no-watch-fs --no-daemon --max-workers=1 \
         -Dorg.gradle.parallel=false \
         -Dorg.gradle.workers.max=1 \
         -Dorg.gradle.daemon=false \
@@ -850,6 +925,28 @@ in
       mkdir -p $out/bin
       mkdir -p $out/lib
 
+      ${if releaseArtifact == "release-aab" then ''
+      AAB_PATH=""
+      shopt -s nullglob globstar
+      for candidate in \
+        app/build/outputs/bundle/**/*.aab \
+        android/app/build/outputs/bundle/**/*.aab \
+        build/outputs/bundle/**/*.aab
+      do
+        if [ -f "$candidate" ]; then
+          AAB_PATH="$candidate"
+          break
+        fi
+      done
+      shopt -u nullglob globstar
+      if [ -z "$AAB_PATH" ]; then
+        echo "Error: No AAB found!"
+        exit 1
+      fi
+      mkdir -p $out/share/android
+      cp "$AAB_PATH" $out/share/android/Wawona.aab
+      ln -sf ../share/android/Wawona.aab $out/bin/Wawona.aab
+      '' else ''
       # Gradle builds from the flattened root project in Nix, but some callers
       # still expect the nested `android/` layout. Probe both to find the APK.
       APK_PATH=""
@@ -875,6 +972,7 @@ in
       # Copy the runner script
       cp ${runnerScript} $out/bin/wawona-android-run
       chmod +x $out/bin/wawona-android-run
+      ''}
 
       # Expose full project for gradlegen (IDE support)
       mkdir -p $project

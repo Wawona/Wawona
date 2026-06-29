@@ -29,9 +29,7 @@ let
     else
       null;
 
-  # Script to generate Android Studio project in generator-owned output dir.
-  # When wawonaAndroidProject is available (pre-built Android project with jniLibs),
-  # copies the full project. Otherwise falls back to gradle files + sources only.
+  # Single openable Gradle tree at ./Wawona-gradle-project (parallel to ./Wawona.xcodeproj).
   projectPath = if wawonaAndroidProject != null then toString wawonaAndroidProject else "";
   projectIconStorePath =
     if wawonaSrc != null && builtins.pathExists (wawonaSrc + "/src/resources/Wawona.icon/wayland.png") then
@@ -40,7 +38,8 @@ let
       toString (wawonaSrc + "/src/resources/Wawona.icon/Assets/wayland.png")
     else
       "";
-  outDir = "dependencies/generators/gradlegen/output/Wawona-gradle-project";
+  projectDir = "Wawona-gradle-project";
+  legacyOutDir = "dependencies/generators/gradlegen/output/Wawona-gradle-project";
   sdkDirInit =
     if androidSdkRoot != null then
       "SDK_DIR=${lib.escapeShellArg (toString androidSdkRoot)}"
@@ -55,25 +54,92 @@ let
   sshpassBinaryPathEscaped = lib.escapeShellArg sshpassBinaryPath;
   westonShmPath = if westonSimpleShmSrc != null then toString westonSimpleShmSrc else "";
   generateScript = pkgs.writeShellScriptBin "gradlegen" ''
-    set -e
-    OUT="${outDir}"
+    set -euo pipefail
+    find_repo_root() {
+      local dir="$PWD"
+      while [ "$dir" != "/" ]; do
+        if [ -f "$dir/flake.nix" ]; then
+          printf '%s\n' "$dir"
+          return 0
+        fi
+        dir="$(dirname "$dir")"
+      done
+      return 1
+    }
+    REPO_ROOT="$(find_repo_root || true)"
+    if [ -z "$REPO_ROOT" ]; then
+      echo "Error: could not locate repo root (missing flake.nix in parent chain)." >&2
+      exit 1
+    fi
+    cd "$REPO_ROOT"
+    echo "Using repo root: $REPO_ROOT"
+    OUT="$REPO_ROOT/${projectDir}"
+    LEGACY_OUT="$REPO_ROOT/${legacyOutDir}"
 
-    # Preserve only run configurations across regen.
-    # Do not preserve workspace/module model files; stale model can hide run target.
+    # Remove mistaken repo-root flatten from an older gradlegen layout.
+    cleanup_repo_root_flatten() {
+      if [ -d "$REPO_ROOT/android/app" ] && [ -d "$REPO_ROOT/app" ]; then
+        rm -rf "$REPO_ROOT/app"
+        echo "Removed stray repo-root app/ (use android/ sources + ${projectDir}/)"
+      fi
+      if [ -d "$REPO_ROOT/deps" ]; then
+        rm -rf "$REPO_ROOT/deps"
+        echo "Removed stray repo-root deps/"
+      fi
+      for stray in settings.gradle.kts build.gradle.kts gradle.properties local.properties; do
+        if [ -f "$REPO_ROOT/$stray" ] && [ -f "$REPO_ROOT/android/$stray" ]; then
+          rm -f "$REPO_ROOT/$stray"
+          echo "Removed stray repo-root $stray"
+        fi
+      done
+      if [ -d "$REPO_ROOT/.idea" ] && [ ! -d "$OUT/.idea" ]; then
+        rm -rf "$REPO_ROOT/.idea"
+        echo "Removed stray repo-root .idea/"
+      fi
+      for stray in gradlew gradlew.bat; do
+        if [ -f "$REPO_ROOT/$stray" ] && [ -f "$REPO_ROOT/android/$stray" ]; then
+          rm -f "$REPO_ROOT/$stray"
+          echo "Removed stray repo-root $stray (wrapper lives under android/)"
+        fi
+      done
+      if [ -d "$REPO_ROOT/gradle/wrapper" ] && [ -d "$REPO_ROOT/android/gradle/wrapper" ]; then
+        rm -rf "$REPO_ROOT/gradle"
+        echo "Removed stray repo-root gradle/ (wrapper lives under android/)"
+      elif [ -d "$REPO_ROOT/gradle" ] && [ ! -d "$REPO_ROOT/gradle/wrapper" ]; then
+        rm -rf "$REPO_ROOT/gradle"
+        echo "Removed stray repo-root gradle/ (not the Android wrapper)"
+      fi
+    }
+    cleanup_repo_root_flatten
+
+    # Preserve Android Studio linkage (modules, run configs) across regen.
+    # Do not preserve gradle.xml: stale gradleJvm (#GRADLE_LOCAL_JAVA_HOME, Nix
+    # JAVA_HOME, etc.) breaks sync with "Invalid Gradle JDK configuration".
     IDE_STATE_DIR=""
-    if [ -f "$OUT/.idea/runConfigurations.xml" ] || [ -d "$OUT/.idea/runConfigurations" ]; then
+    if [ -d "$OUT/.idea" ]; then
       IDE_STATE_DIR="$(mktemp -d)"
       mkdir -p "$IDE_STATE_DIR/.idea"
-      if [ -f "$OUT/.idea/runConfigurations.xml" ]; then
-        cp "$OUT/.idea/runConfigurations.xml" "$IDE_STATE_DIR/.idea/runConfigurations.xml"
-      fi
+      for idea_file in runConfigurations.xml modules.xml deploymentTargetSelector.xml; do
+        if [ -f "$OUT/.idea/$idea_file" ]; then
+          cp "$OUT/.idea/$idea_file" "$IDE_STATE_DIR/.idea/$idea_file"
+        fi
+      done
       if [ -d "$OUT/.idea/runConfigurations" ]; then
         mkdir -p "$IDE_STATE_DIR/.idea/runConfigurations"
         cp -r "$OUT/.idea/runConfigurations/"* "$IDE_STATE_DIR/.idea/runConfigurations/" 2>/dev/null || true
       fi
+      if [ -d "$OUT/.idea/modules" ]; then
+        mkdir -p "$IDE_STATE_DIR/.idea/modules"
+        cp -r "$OUT/.idea/modules/"* "$IDE_STATE_DIR/.idea/modules/" 2>/dev/null || true
+      fi
     fi
 
-    # Clean previous run (handles read-only Nix store copies).
+    if [ -d "$LEGACY_OUT" ]; then
+      chmod -R u+w "$LEGACY_OUT" 2>/dev/null || true
+      rm -rf "$LEGACY_OUT"
+      echo "Removed legacy nested output: ${legacyOutDir}"
+    fi
+
     if [ -d "$OUT" ]; then
       chmod -R u+w "$OUT" 2>/dev/null || true
       rm -rf "$OUT"
@@ -85,8 +151,8 @@ let
       cp -r ${projectPath}/* "$OUT/"
       chmod -R u+w "$OUT" 2>/dev/null || true
       echo ""
-      echo "Project ready at $OUT/"
-      echo "Open $OUT/ in Android Studio and select device/emulator."
+      echo "Project ready at $OUT"
+      echo "Open $OUT in Android Studio and select device/emulator."
     else
       if [ -n "${toString wawonaSrc}" ] && [ -d "${toString wawonaSrc}/android" ]; then
         echo "Copying repository Android project to $OUT/..."
@@ -100,41 +166,27 @@ let
             echo "Merged Wawona launcher icon assets"
           fi
         '' else ""}
-        echo "Generated Android Studio project in $OUT/ from repository sources."
+        echo "Generated Android Studio project at $OUT from repository sources."
       else
         echo "ERROR: Could not locate android project sources under wawonaSrc."
         exit 1
       fi
     fi
 
-    # CMakeLists.txt expects repo-root layout (see dependencies/gradle-deps.nix prepareProject):
-    # <root>/app, <root>/src, <root>/deps/weston-simple-shm — same as Nix after `cp -r android/* .`.
+    # CMakeLists.txt expects <project>/app, <project>/src, <project>/deps/weston-simple-shm.
+    WAWONA_SRC="$REPO_ROOT"
     if [ ! -f "$OUT/src/stubs/egl_buffer_handler.c" ]; then
-      REPO_ROOT=""
-      if [ -f "$PWD/src/stubs/egl_buffer_handler.c" ]; then
-        REPO_ROOT="$(cd "$PWD" && pwd)"
-      elif [ -n "${toString wawonaSrc}" ] && [ -f "${toString wawonaSrc}/src/stubs/egl_buffer_handler.c" ]; then
-        REPO_ROOT="${toString wawonaSrc}"
-      fi
-      if [ -n "$REPO_ROOT" ]; then
-        ln -sfn "$REPO_ROOT/src" "$OUT/src"
-        echo "Linked $OUT/src -> $REPO_ROOT/src (native CMake)"
+      if [ -f "$WAWONA_SRC/src/stubs/egl_buffer_handler.c" ]; then
+        ln -sfn "$WAWONA_SRC/src" "$OUT/src"
+        echo "Linked $OUT/src -> $WAWONA_SRC/src (native CMake)"
       else
-        echo "Warning: Wawona src/ not found; CMake will not resolve C sources. Run from the repository root."
+        echo "Warning: Wawona src/ not found; CMake will not resolve C sources."
       fi
     fi
     # Ensure shader_spv.h is always freshly generated and syntactically valid.
-    # Keep generated artifacts out of src/; emit under dependencies/generators.
-    if [ -z "''${REPO_ROOT:-}" ]; then
-      if [ -f "$PWD/src/stubs/egl_buffer_handler.c" ]; then
-        REPO_ROOT="$(cd "$PWD" && pwd)"
-      elif [ -n "${toString wawonaSrc}" ] && [ -f "${toString wawonaSrc}/src/stubs/egl_buffer_handler.c" ]; then
-        REPO_ROOT="${toString wawonaSrc}"
-      fi
-    fi
-    if [ -n "''${REPO_ROOT:-}" ] && [ -f "$REPO_ROOT/scripts/embed-android-shaders.sh" ]; then
+    if [ -f "$WAWONA_SRC/scripts/embed-android-shaders.sh" ]; then
       TMP_SHADER_DIR="$(mktemp -d)"
-      NIX_GLSLANG_BIN="${pkgs.glslang}/bin" bash "$REPO_ROOT/scripts/embed-android-shaders.sh" "$REPO_ROOT" "$TMP_SHADER_DIR"
+      NIX_GLSLANG_BIN="${pkgs.glslang}/bin" bash "$WAWONA_SRC/scripts/embed-android-shaders.sh" "$WAWONA_SRC" "$TMP_SHADER_DIR"
       if [ -f "$TMP_SHADER_DIR/shader_spv.h" ]; then
         GENERATED_SHADER_DIR="$OUT/dependencies/generators/gradlegen/generated"
         mkdir -p "$GENERATED_SHADER_DIR"
@@ -201,36 +253,48 @@ let
       echo "Mirrored Nix runtime .so libs into $JNI_LIB_DIR"
     fi
 
-    # Ensure generated project has up-to-date wrapper regardless of source layout.
-    # Android Studio reads wrapper from opened project directory.
-    if [ -f "$PWD/gradlew" ] && [ -d "$PWD/gradle/wrapper" ]; then
-      cp "$PWD/gradlew" "$OUT/gradlew"
+    if [ -f "$REPO_ROOT/android/gradlew" ] && [ -d "$REPO_ROOT/android/gradle/wrapper" ]; then
+      cp -f "$REPO_ROOT/android/gradlew" "$OUT/gradlew"
       chmod +x "$OUT/gradlew"
-      if [ -f "$PWD/gradlew.bat" ]; then
-        cp "$PWD/gradlew.bat" "$OUT/gradlew.bat"
+      if [ -f "$REPO_ROOT/android/gradlew.bat" ]; then
+        cp -f "$REPO_ROOT/android/gradlew.bat" "$OUT/gradlew.bat"
       fi
       rm -rf "$OUT/gradle"
       mkdir -p "$OUT/gradle"
-      cp -r "$PWD/gradle/wrapper" "$OUT/gradle/wrapper"
+      cp -r "$REPO_ROOT/android/gradle/wrapper" "$OUT/gradle/wrapper"
       chmod -R u+w "$OUT/gradle" 2>/dev/null || true
-      echo "Synced Gradle wrapper into $OUT/ (uses repo wrapper version)"
+      echo "Synced Gradle wrapper into $OUT/"
     fi
 
-    # Android Studio: Gradle defaults to #USE_PROJECT_JDK; without a project JDK the IDE
-    # warns and falls back. Pin to the bundled JetBrains Runtime (major 21) while keeping
-    # language level JDK_17 to match app/build.gradle.kts compileOptions.
+    # Android Studio JDK: pin Project + Gradle JVM to embedded JBR 21 ("21" in the IDE
+    # JDK table). Avoid #USE_PROJECT_JDK without project-jdk-name and avoid
+    # #GRADLE_LOCAL_JAVA_HOME (stale Nix JAVA_HOME breaks sync).
     mkdir -p "$OUT/.idea"
-    cat > "$OUT/.idea/misc.xml" <<'IDEAEOF'
+    if [ -f "$REPO_ROOT/android/studio/misc.xml" ]; then
+      cp "$REPO_ROOT/android/studio/misc.xml" "$OUT/.idea/misc.xml"
+    else
+      cat > "$OUT/.idea/misc.xml" <<'IDEAEOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="ProjectRootManager" version="2" languageLevel="JDK_17" default="true" project-jdk-name="jbr-21" project-jdk-type="JavaSDK" />
+  <component name="ExternalStorageConfigurationManager" enabled="true" />
+  <component name="ProjectRootManager" version="2" languageLevel="JDK_17" default="true" project-jdk-name="21" project-jdk-type="JavaSDK" />
 </project>
 IDEAEOF
-    # Do not pre-generate .idea/gradle.xml.
-    # Android Studio owns this file and may mark modules as non-Gradle when
-    # linkedExternalProjectsSettings is incomplete, leading to "Unable to find
-    # Gradle tasks to build: [:Wawona]".
-    rm -f "$OUT/.idea/gradle.xml"
+    fi
+    if [ -f "$REPO_ROOT/android/studio/gradle.xml" ]; then
+      cp "$REPO_ROOT/android/studio/gradle.xml" "$OUT/.idea/gradle.xml"
+    else
+      rm -f "$OUT/.idea/gradle.xml"
+    fi
+
+    # Seed default Android App run/debug config (module :Wawona -> Wawona.Wawona.main).
+    if [ ! -d "$OUT/.idea/runConfigurations" ] || [ -z "$(ls -A "$OUT/.idea/runConfigurations" 2>/dev/null)" ]; then
+      if [ -d "$REPO_ROOT/android/studio/runConfigurations" ]; then
+        mkdir -p "$OUT/.idea/runConfigurations"
+        cp -r "$REPO_ROOT/android/studio/runConfigurations/"* "$OUT/.idea/runConfigurations/"
+        echo "Installed default Android Studio run configuration (Wawona)"
+      fi
+    fi
 
     # Gradle needs sdk.dir in local.properties; Android Studio often runs without ANDROID_HOME.
     ${sdkDirInit}
@@ -303,6 +367,121 @@ IDEAEOF
     NIX_DEP_LIBS=${nixDepLibsEscaped}
     RUST_BACKEND_LIB=${rustBackendLibEscaped}
     RUST_BACKEND_SO=${rustBackendSharedLibEscaped}
+
+    # Copy Nix store headers/static libs into the project so Android Studio builds
+    # survive store GC after weston/toolchain rebuilds (absolute /nix/store paths go stale).
+    materialize_nix_native_deps() {
+      local deps_root="$OUT/.nix-deps"
+      local deps_lib="$deps_root/lib"
+      local deps_inc="$deps_root/include"
+      if [ -d "$deps_root" ]; then
+        chmod -R u+w "$deps_root" 2>/dev/null || true
+      fi
+      rm -rf "$deps_root"
+      mkdir -p "$deps_lib" "$deps_inc"
+
+      copy_include_path() {
+        local src="$1"
+        [ -d "$src" ] || return 0
+        local store_root="''${src#/nix/store/}"
+        store_root="/nix/store/$(printf '%s' "$store_root" | cut -d/ -f1)"
+        local rel="''${src#"$store_root"/}"
+        local dest="$deps_inc/$(basename "$store_root")/$rel"
+        if [ -d "$dest" ]; then
+          return 0
+        fi
+        mkdir -p "$dest"
+        cp -R "$src"/. "$dest/"
+        chmod -R u+w "$dest"
+      }
+
+      local new_includes=""
+      local inc path store_root rel
+      for inc in $NIX_DEP_INCLUDES; do
+        case "$inc" in
+          -I/nix/store/*)
+            path="''${inc#-I}"
+            store_root="/nix/store/$(printf '%s' "$path" | sed 's|^/nix/store/||' | cut -d/ -f1)"
+            rel="''${path#"$store_root"/}"
+            copy_include_path "$path"
+            new_includes="$new_includes -I$deps_inc/$(basename "$store_root")/$rel"
+            ;;
+          *)
+            new_includes="$new_includes $inc"
+            ;;
+        esac
+      done
+
+      local new_libs=""
+      local lib arg base
+      for lib in $NIX_DEP_LIBS; do
+        case "$lib" in
+          -L/nix/store/*)
+            path="''${lib#-L}"
+            if [ -d "$path" ]; then
+              for arg in "$path"/*.a "$path"/*.so; do
+                [ -f "$arg" ] || continue
+                base="$(basename "$arg")"
+                cp -f "$arg" "$deps_lib/$base"
+                chmod u+w "$deps_lib/$base"
+              done
+            fi
+            ;;
+          /nix/store/*.a)
+            if [ -f "$lib" ]; then
+              cp -f "$lib" "$deps_lib/$(basename "$lib")"
+              chmod u+w "$deps_lib/$(basename "$lib")"
+            fi
+            ;;
+          *)
+            case "$lib" in
+              /*/*.a)
+                if [ -f "$lib" ]; then
+                  cp -f "$lib" "$deps_lib/$(basename "$lib")"
+                  chmod u+w "$deps_lib/$(basename "$lib")"
+                fi
+                ;;
+            esac
+            ;;
+        esac
+      done
+
+      for lib in $NIX_DEP_LIBS; do
+        case "$lib" in
+          -L/nix/store/*) ;;
+          /nix/store/*.a)
+            new_libs="$new_libs $deps_lib/$(basename "$lib")"
+            ;;
+          /*/*.a)
+            if [ -f "$lib" ]; then
+              new_libs="$new_libs $deps_lib/$(basename "$lib")"
+            else
+              new_libs="$new_libs $lib"
+            fi
+            ;;
+          *)
+            new_libs="$new_libs $lib"
+            ;;
+        esac
+      done
+      if [ -n "$(ls -A "$deps_lib" 2>/dev/null)" ]; then
+        new_libs="-L$deps_lib $new_libs"
+      fi
+
+      if [ -n "$RUST_BACKEND_LIB" ] && [ -f "$RUST_BACKEND_LIB" ]; then
+        cp -f "$RUST_BACKEND_LIB" "$deps_lib/libwawona.a"
+        chmod u+w "$deps_lib/libwawona.a"
+        RUST_BACKEND_LIB="$deps_lib/libwawona.a"
+      fi
+
+      NIX_DEP_INCLUDES="$(printf '%s' "$new_includes" | sed 's/^ //')"
+      NIX_DEP_LIBS="$(printf '%s' "$new_libs" | sed 's/^ //')"
+      echo "Materialized Nix native deps under $deps_root"
+    }
+    if [ -n "$NIX_DEP_INCLUDES" ] || [ -n "$NIX_DEP_LIBS" ]; then
+      materialize_nix_native_deps
+    fi
+
     if [ -n "$RUST_BACKEND_SO" ] && [ -f "$RUST_BACKEND_SO" ]; then
       RUST_BACKEND_LINK="$RUST_BACKEND_SO"
     else
@@ -347,18 +526,29 @@ IDEAEOF
     # Restore user-local IDE state after fresh project generation.
     if [ -n "$IDE_STATE_DIR" ] && [ -d "$IDE_STATE_DIR/.idea" ]; then
       mkdir -p "$OUT/.idea"
-      if [ -f "$IDE_STATE_DIR/.idea/runConfigurations.xml" ]; then
-        cp "$IDE_STATE_DIR/.idea/runConfigurations.xml" "$OUT/.idea/runConfigurations.xml"
-        chmod u+w "$OUT/.idea/runConfigurations.xml" 2>/dev/null || true
-      fi
+      for idea_file in runConfigurations.xml modules.xml deploymentTargetSelector.xml; do
+        if [ -f "$IDE_STATE_DIR/.idea/$idea_file" ]; then
+          cp "$IDE_STATE_DIR/.idea/$idea_file" "$OUT/.idea/$idea_file"
+          chmod u+w "$OUT/.idea/$idea_file" 2>/dev/null || true
+        fi
+      done
       if [ -d "$IDE_STATE_DIR/.idea/runConfigurations" ]; then
         mkdir -p "$OUT/.idea/runConfigurations"
         cp -r "$IDE_STATE_DIR/.idea/runConfigurations/"* "$OUT/.idea/runConfigurations/" 2>/dev/null || true
         chmod -R u+w "$OUT/.idea/runConfigurations" 2>/dev/null || true
       fi
+      if [ -d "$IDE_STATE_DIR/.idea/modules" ]; then
+        mkdir -p "$OUT/.idea/modules"
+        cp -r "$IDE_STATE_DIR/.idea/modules/"* "$OUT/.idea/modules/" 2>/dev/null || true
+        chmod -R u+w "$OUT/.idea/modules" 2>/dev/null || true
+      fi
       rm -rf "$IDE_STATE_DIR"
       echo "Restored Android Studio local run/debug state"
     fi
+
+    echo ""
+    echo "Android Studio project ready at: $OUT"
+    echo "Open that folder in Android Studio (File → Open), like Wawona.xcodeproj for Xcode."
   '';
 
 in {

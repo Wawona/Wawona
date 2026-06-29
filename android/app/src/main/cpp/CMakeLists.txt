@@ -99,14 +99,24 @@ add_library(
     SHARED
     ${WAWONA_SOURCES}
 )
-if(NOT WAWONA_STUDIO_FALLBACK AND NOT WAWONA_WESTON_TOYTOOLKIT)
-  target_sources(
-      wawona PRIVATE
-      ${WAWONA_ROOT}/deps/weston-simple-shm/clients/simple-shm.c
-      ${WAWONA_ROOT}/deps/weston-simple-shm/shared/os-compatibility.c
-      ${WAWONA_ROOT}/deps/weston-simple-shm/xdg-shell-protocol.c
-      ${WAWONA_ROOT}/deps/weston-simple-shm/fullscreen-shell-unstable-v1-protocol.c
-  )
+if(NOT WAWONA_STUDIO_FALLBACK)
+  if(WAWONA_WESTON_TOYTOOLKIT)
+    # os-compatibility.c is already in libweston-13.a; compile the client only.
+    target_sources(
+        wawona PRIVATE
+        ${WAWONA_ROOT}/deps/weston-simple-shm/clients/simple-shm.c
+        ${WAWONA_ROOT}/deps/weston-simple-shm/xdg-shell-protocol.c
+        ${WAWONA_ROOT}/deps/weston-simple-shm/fullscreen-shell-unstable-v1-protocol.c
+    )
+  else()
+    target_sources(
+        wawona PRIVATE
+        ${WAWONA_ROOT}/deps/weston-simple-shm/clients/simple-shm.c
+        ${WAWONA_ROOT}/deps/weston-simple-shm/shared/os-compatibility.c
+        ${WAWONA_ROOT}/deps/weston-simple-shm/xdg-shell-protocol.c
+        ${WAWONA_ROOT}/deps/weston-simple-shm/fullscreen-shell-unstable-v1-protocol.c
+    )
+  endif()
 endif()
 
 # Parse NIX_DEP_LIBS: "-L/nix/.../lib" directories plus extra link flags
@@ -119,6 +129,13 @@ if (DEFINED NIX_DEP_LIBS)
         if(flag MATCHES "^-L")
             string(REGEX REPLACE "^-L" "" dir "${flag}")
             list(APPEND NIX_LIB_DIRS "${dir}")
+        elseif(flag MATCHES "\\.a$")
+            if(NOT EXISTS "${flag}")
+                message(FATAL_ERROR
+                    "Missing native archive '${flag}'. Nix store paths in gradle.properties go stale after rebuilds. "
+                    "Run `nix run .#gradlegen` from the repo root, then Build → Clean Project in Android Studio.")
+            endif()
+            list(APPEND NIX_EXTRA_LINK_FLAGS "${flag}")
         else()
             list(APPEND NIX_EXTRA_LINK_FLAGS "${flag}")
         endif()
@@ -168,6 +185,7 @@ else()
   # from macOS hosts) as warnings; --fatal-warnings from the toolchain promotes
   # those to hard link failures for -lcairo/-lpango etc.
   target_link_options(wawona PRIVATE "-Wl,--no-fatal-warnings")
+  target_link_options(wawona PRIVATE "-Wl,--wrap=memfd_create")
   if(WAWONA_WESTON_TOYTOOLKIT)
     target_link_options(wawona PRIVATE "-Wl,--wrap=strtod_l")
   endif()
@@ -185,4 +203,7 @@ target_compile_definitions(wawona PRIVATE
 )
 if(WAWONA_WESTON_TOYTOOLKIT)
   target_compile_definitions(wawona PRIVATE WAWONA_WESTON_TOYTOOLKIT=1)
+endif()
+if(WAWONA_WESTON_COMPOSITOR)
+  target_compile_definitions(wawona PRIVATE WAWONA_WESTON_COMPOSITOR=1)
 endif()

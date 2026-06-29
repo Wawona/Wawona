@@ -64,10 +64,6 @@ typedef int nl_item;
 
 extern int smoke_main(int argc, const char **argv);
 
-int weston_simple_shm_main(int argc, const char **argv) {
-  return smoke_main(argc, argv);
-}
-
 int os_resize_anonymous_file(int fd, off_t size) {
   if (ftruncate(fd, size) < 0)
     return -1;
@@ -218,3 +214,31 @@ int posix_spawnp(pid_t *pid, const char *file,
 }
 
 #endif /* WAWONA_WESTON_TOYTOOLKIT */
+
+#if defined(__ANDROID__)
+#include <errno.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+
+/* Bionic only exports memfd_create from API 30; libffi and the Rust backend
+ * still reference it when minSdk is lower. Route through the aarch64 syscall. */
+int __wrap_memfd_create(const char *name, unsigned int flags) {
+#if defined(__aarch64__)
+  return (int)syscall(279, name, flags);
+#elif defined(__NR_memfd_create)
+  return (int)syscall(__NR_memfd_create, name, flags);
+#else
+  (void)name;
+  (void)flags;
+  errno = ENOSYS;
+  return -1;
+#endif
+}
+#endif
+
+#ifndef WAWONA_WESTON_COMPOSITOR
+#include <signal.h>
+
+/* Provided by libweston-compositor when nested compositor is linked; stub otherwise. */
+volatile sig_atomic_t wwn_weston_compositor_shutdown_requested = 0;
+#endif

@@ -56,6 +56,8 @@ static void wwn_log(int prio, const char *tag, const char *fmt, ...) {
 #define LOGE(...) wwn_log(ANDROID_LOG_ERROR, "JNI", __VA_ARGS__)
 
 static void choreographer_frame_cb(long frameTimeNanos, void *data);
+static void resolve_ssh_binary_paths(void);
+static void wwn_android_prepare_shell_environment(const char *files_dir);
 
 static void schedule_next_frame(void *ctx) {
 #if __ANDROID_API__ >= 24
@@ -2442,8 +2444,6 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeKeyboardFocus(
 static char g_ssh_bin_path[512] = {0};
 static char g_sshpass_bin_path[512] = {0};
 static char g_zsh_bin_path[512] = {0};
-
-static void resolve_ssh_binary_paths(void);
 
 static int wwn_copy_file(const char *src, const char *dst) {
   FILE *in = fopen(src, "rb");
