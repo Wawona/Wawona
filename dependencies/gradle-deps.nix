@@ -77,7 +77,11 @@ let
     gradleUpdateScript = ''
       runHook preBuild
       runHook preGradleUpdate
-      gradle :Wawona:dependencies :Wawona:compileDebugKotlin :Wawona:mergeDebugResources :Wawona:desugarDebugFileDependencies \
+      GRADLE_CMD=gradle
+      if [ -x ./gradlew ]; then
+        GRADLE_CMD=./gradlew
+      fi
+      $GRADLE_CMD :Wawona:dependencies :Wawona:compileDebugKotlin :Wawona:mergeDebugResources :Wawona:desugarDebugFileDependencies \
         --no-daemon --max-workers=1 \
         -Dorg.gradle.daemon=false \
         -Dorg.gradle.parallel=false \

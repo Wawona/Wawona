@@ -81,7 +81,9 @@ class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
     private var pendingResize: Runnable? = null
 
     companion object {
-        val CompositorBackground = Color(0xFF0F1018)
+        /** @deprecated Use [WawonaCompositorBackground] from theme. */
+        @Deprecated("Use WawonaCompositorBackground")
+        val CompositorBackground = WawonaCompositorBackground
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -125,7 +127,7 @@ class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
             })
 
             setContent {
-                WawonaTheme(darkTheme = true) {
+                WawonaTheme {
                     WawonaApp(
                         prefs = prefs,
                         surfaceCallback = this@MainActivity,
@@ -401,6 +403,8 @@ fun WawonaApp(
             return true
         }
         return try {
+            WawonaShellRootfs.ensureInstalled(context)
+            WawonaNative.nativePrepareShellEnvironment(context.filesDir.absolutePath)
             WawonaNative.nativeInit(cacheDirPath)
             WawonaNative.nativeSetDisplayDensity(displayDensity)
             nativeRuntimeReady = true
@@ -417,23 +421,44 @@ fun WawonaApp(
         if (!nativeRuntimeReady) {
             return@LaunchedEffect
         }
-        val shouldRunCompatClient =
-            westonSimpleShmEnabled || nativeWestonEnabled || nativeWestonTerminalEnabled
-        val isRunning = WawonaNative.nativeIsWestonSimpleSHMRunning()
 
-        if (shouldRunCompatClient && !isRunning) {
-            val launched = WawonaNative.nativeRunWestonSimpleSHM()
-            if (launched) {
-                WLog.i(
-                    "WESTON",
-                    "Compatibility Weston client launched (simple-shm backend)"
-                )
-            } else {
-                WLog.e("WESTON", "Failed to launch compatibility Weston client")
+        if (westonSimpleShmEnabled) {
+            if (!WawonaNative.nativeIsWestonSimpleSHMRunning()) {
+                if (WawonaNative.nativeRunWestonSimpleSHM()) {
+                    WLog.i("WESTON", "weston-simple-shm launched")
+                } else {
+                    WLog.e("WESTON", "Failed to launch weston-simple-shm")
+                }
             }
-        } else if (!shouldRunCompatClient && isRunning) {
+        } else if (WawonaNative.nativeIsWestonSimpleSHMRunning()) {
             WawonaNative.nativeStopWestonSimpleSHM()
-            WLog.i("WESTON", "Compatibility Weston client stopped")
+            WLog.i("WESTON", "weston-simple-shm stopped")
+        }
+
+        if (nativeWestonEnabled) {
+            if (!WawonaNative.nativeIsWestonRunning()) {
+                if (WawonaNative.nativeRunWeston()) {
+                    WLog.i("WESTON", "nested Weston compositor launched")
+                } else {
+                    WLog.e("WESTON", "Failed to launch nested Weston compositor")
+                }
+            }
+        } else if (WawonaNative.nativeIsWestonRunning()) {
+            WawonaNative.nativeStopWeston()
+            WLog.i("WESTON", "nested Weston compositor stopped")
+        }
+
+        if (nativeWestonTerminalEnabled) {
+            if (!WawonaNative.nativeIsWestonTerminalRunning()) {
+                if (WawonaNative.nativeRunWestonTerminal()) {
+                    WLog.i("WESTON", "weston-terminal launched")
+                } else {
+                    WLog.e("WESTON", "Failed to launch weston-terminal")
+                }
+            }
+        } else if (WawonaNative.nativeIsWestonTerminalRunning()) {
+            WawonaNative.nativeStopWestonTerminal()
+            WLog.i("WESTON", "weston-terminal stopped")
         }
     }
 
@@ -705,7 +730,7 @@ fun WawonaApp(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MainActivity.CompositorBackground)
+                .background(LocalWawonaCompositorBackground.current)
                 .windowInsetsPadding(WindowInsets.ime)
         ) {
             // Full-bleed surface: safe area / cutouts are applied in native via
@@ -734,6 +759,23 @@ fun WawonaApp(
                             imm.hideSoftInputFromWindow(view.windowToken, 0)
                         }
                     }
+                )
+            }
+
+            if (isWaypipeRunning && android.os.Build.VERSION.SDK_INT >= 36) {
+                ExpressiveFabMenu(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 16.dp, bottom = if (showAccessoryBar) 88.dp else 16.dp),
+                    isWaypipeRunning = true,
+                    onStopWaypipeClick = {
+                        try {
+                            WawonaNative.nativeStopWaypipe()
+                            isWaypipeRunning = false
+                        } catch (e: Exception) {
+                            WLog.e("WAYPIPE", "Error stopping waypipe: ${e.message}")
+                        }
+                    },
                 )
             }
 
@@ -795,7 +837,7 @@ private fun AppWelcomeScreen(onContinue: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MainActivity.CompositorBackground)
+            .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
             .padding(horizontal = 28.dp, vertical = 24.dp)
     ) {
@@ -807,13 +849,13 @@ private fun AppWelcomeScreen(onContinue: () -> Unit) {
             Text(
                 text = "Welcome to Wawona",
                 style = MaterialTheme.typography.headlineSmall,
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onBackground,
                 fontWeight = FontWeight.SemiBold
             )
             Text(
                 text = "A clean Wayland compositor experience.",
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color.White.copy(alpha = 0.78f)
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.78f)
             )
             Spacer(modifier = Modifier.height(6.dp))
             Button(onClick = onContinue) {

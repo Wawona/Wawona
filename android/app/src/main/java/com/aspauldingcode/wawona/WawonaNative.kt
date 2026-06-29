@@ -17,6 +17,8 @@ object WawonaNative {
         }
     }
 
+    external fun nativePrepareShellEnvironment(filesDir: String)
+
     external fun nativeInit(cacheDir: String)
     external fun nativeSetSurface(surface: Surface)
     external fun nativeDestroySurface()

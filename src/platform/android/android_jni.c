@@ -1413,6 +1413,21 @@ static void *render_thread(void *arg) {
 // JNI Interface
 // ============================================================================
 
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativePrepareShellEnvironment(
+    JNIEnv *env, jobject thiz, jstring filesDir) {
+  (void)thiz;
+  const char *files_utf = NULL;
+  if (filesDir)
+    files_utf = (*env)->GetStringUTFChars(env, filesDir, NULL);
+  if (files_utf) {
+    setenv("WAWONA_FILES_DIR", files_utf, 1);
+    resolve_ssh_binary_paths();
+    wwn_android_prepare_shell_environment(files_utf);
+    (*env)->ReleaseStringUTFChars(env, filesDir, files_utf);
+  }
+}
+
 /**
  * Initialize the compositor - create Vulkan instance
  * Called from Android Activity.onCreate()
@@ -2426,6 +2441,74 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeKeyboardFocus(
 
 static char g_ssh_bin_path[512] = {0};
 static char g_sshpass_bin_path[512] = {0};
+static char g_zsh_bin_path[512] = {0};
+
+static void resolve_ssh_binary_paths(void);
+
+static int wwn_copy_file(const char *src, const char *dst) {
+  FILE *in = fopen(src, "rb");
+  if (!in)
+    return -1;
+  FILE *out = fopen(dst, "wb");
+  if (!out) {
+    fclose(in);
+    return -1;
+  }
+  char buf[4096];
+  size_t n;
+  while ((n = fread(buf, 1, sizeof buf, in)) > 0)
+    fwrite(buf, 1, n, out);
+  fclose(in);
+  fclose(out);
+  chmod(dst, 0755);
+  return 0;
+}
+
+static void wwn_android_prepare_shell_environment(const char *files_dir) {
+  if (!files_dir || !files_dir[0])
+    return;
+
+  char rootfs[512];
+  snprintf(rootfs, sizeof(rootfs), "%s/wawona-rootfs", files_dir);
+  char usr_bin[512];
+  snprintf(usr_bin, sizeof(usr_bin), "%s/usr/bin", rootfs);
+  mkdir(rootfs, 0755);
+  mkdir(usr_bin, 0755);
+
+  if (!g_zsh_bin_path[0])
+    resolve_ssh_binary_paths(); /* native lib dir probe lives there today */
+
+  if (g_zsh_bin_path[0]) {
+    char zsh_dest[512];
+    snprintf(zsh_dest, sizeof(zsh_dest), "%s/zsh", usr_bin);
+    struct stat st;
+    if (stat(zsh_dest, &st) != 0)
+      wwn_copy_file(g_zsh_bin_path, zsh_dest);
+    setenv("SHELL", zsh_dest, 1);
+    setenv("WAWONA_SHELL", zsh_dest, 1);
+  }
+
+  char home[512];
+  snprintf(home, sizeof(home), "%s/home", rootfs);
+  mkdir(home, 0755);
+
+  setenv("WAWONA_BUNDLE_ROOTFS", rootfs, 1);
+  setenv("WAWONA_ROOTFS", rootfs, 1);
+  setenv("HOME", home, 1);
+  setenv("ZDOTDIR", home, 1);
+  setenv("USER", "wawona", 1);
+  setenv("TERM", "xterm-256color", 1);
+
+  char share_zsh[512];
+  snprintf(share_zsh, sizeof(share_zsh), "%s/usr/share/zsh", rootfs);
+  setenv("fpath", share_zsh, 1);
+
+  char path_buf[768];
+  snprintf(path_buf, sizeof(path_buf), "%s:%s", usr_bin, "/system/bin");
+  setenv("PATH", path_buf, 1);
+
+  LOGI("Shell env: ROOTFS=%s SHELL=%s", rootfs, getenv("SHELL") ?: "(unset)");
+}
 
 static void resolve_ssh_binary_paths(void) {
   if (g_ssh_bin_path[0])
@@ -2458,6 +2541,13 @@ static void resolve_ssh_binary_paths(void) {
       LOGI("[SSH] Using ssh from native lib: %s", g_ssh_bin_path);
     } else {
       LOGE("[SSH] libssh_bin.so not found at %s: %s", sshPath, strerror(errno));
+    }
+
+    char zshPath[512];
+    snprintf(zshPath, sizeof(zshPath), "%s/libzsh_bin.so", nativeLibDir);
+    if (stat(zshPath, &st) == 0) {
+      strncpy(g_zsh_bin_path, zshPath, sizeof(g_zsh_bin_path) - 1);
+      LOGI("[SHELL] Using zsh from native lib: %s", g_zsh_bin_path);
     }
     if (stat(sshpassPath, &st) == 0) {
       strncpy(g_sshpass_bin_path, sshpassPath, sizeof(g_sshpass_bin_path) - 1);
@@ -3107,6 +3197,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeRunWestonTerminal(
     return JNI_FALSE;
   }
   if (g_weston_terminal_running) return JNI_FALSE;
+  wwn_android_prepare_shell_environment(getenv("WAWONA_FILES_DIR"));
   g_weston_terminal_running = 1;
   if (pthread_create(&g_weston_terminal_thread, NULL, weston_terminal_thread_func, NULL) != 0) {
     g_weston_terminal_running = 0; return JNI_FALSE;
