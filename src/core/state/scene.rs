@@ -166,6 +166,7 @@ impl CompositorState {
                 .get_mut(&(client_id.clone(), xdg_surface_id))
             {
                 surface_data.pending_serial = serial;
+                surface_data.pending_serials.push(serial);
                 surface_data.configured = false;
             }
             return Some(serial);
@@ -227,6 +228,7 @@ impl CompositorState {
                 .get_mut(&(client_id.clone(), xdg_surface_id))
             {
                 surface_data.pending_serial = serial;
+                surface_data.pending_serials.push(serial);
                 surface_data.configured = false;
                 if let Some(resource) = &surface_data.resource {
                     crate::wlog!(crate::util::logging::COMPOSITOR, "Actually sending xdg_surface.configure(serial={}) to xdg_surface_id={}", serial, xdg_surface_id);

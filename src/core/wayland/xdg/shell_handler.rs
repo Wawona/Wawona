@@ -124,7 +124,18 @@ impl CompositorState {
             if serial > surface_data.last_acked_serial {
                 surface_data.last_acked_serial = serial;
             }
-            if serial == surface_data.pending_serial {
+            if !surface_data.pending_serials.is_empty() {
+                if let Some(pos) = surface_data
+                    .pending_serials
+                    .iter()
+                    .position(|&pending| pending == serial)
+                {
+                    surface_data.pending_serials.drain(..=pos);
+                    surface_data.pending_serial = surface_data.pending_serials.last().copied().unwrap_or(0);
+                    surface_data.configured = surface_data.pending_serials.is_empty();
+                    cleared_surface_pending = surface_data.pending_serials.is_empty();
+                }
+            } else if serial == surface_data.pending_serial {
                 surface_data.configured = true;
                 surface_data.pending_serial = 0;
                 cleared_surface_pending = true;
@@ -254,6 +265,7 @@ impl XdgShellHandler for CompositorState {
             .get_mut(&(client_id.clone(), xdg_surface_id))
         {
             surface_data.pending_serial = serial;
+            surface_data.pending_serials.push(serial);
         }
         if let Some(toplevel_data) = self
             .xdg
@@ -383,6 +395,7 @@ impl XdgShellHandler for CompositorState {
                 .get_mut(&(client_id.clone(), xdg_surface_id))
             {
                 surface_data.pending_serial = u32::from(serial);
+                surface_data.pending_serials.push(u32::from(serial));
             }
         }
     }

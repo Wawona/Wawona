@@ -216,6 +216,37 @@ impl CompositorState {
         }
         self.focus.set_pointer_focus(Some(window_id));
         
+        if let Some(pending_wid) = self.pending_keyboard_focus_window.take() {
+            if pending_wid == window_id as u64 {
+                let serial = self.next_serial();
+                if let Some(surface) = self.surfaces.get(&surface_id).cloned() {
+                    let surface = surface.read().unwrap();
+                    if let Some(res) = &surface.resource {
+                        crate::wlog!(
+                            crate::util::logging::COMPOSITOR,
+                            "Delivering deferred keyboard enter to window {} surface {}",
+                            window_id,
+                            surface_id
+                        );
+                        self.seat.keyboard.focus = Some(surface_id);
+                        if let Some(keyboard) = self
+                            .smithay_runtime
+                            .seat
+                            .as_ref()
+                            .and_then(|seat| seat.get_keyboard())
+                        {
+                            keyboard.set_focus(self, Some(res.clone()), serial.into());
+                        } else {
+                            self.seat.broadcast_keyboard_enter(serial, res, &[]);
+                        }
+                        self.ext.text_input.enter(res);
+                    }
+                }
+            } else {
+                self.pending_keyboard_focus_window = Some(pending_wid);
+            }
+        }
+        
         let client_id = self.get_surface(surface_id).and_then(|s| s.read().unwrap().client_id.clone());
         if let Some(cid) = client_id {
             self.ext.pointer_constraints.activate_constraints(cid, surface_id);

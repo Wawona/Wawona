@@ -3285,8 +3285,12 @@ impl WawonaCore {
                     sid);
             }
         } else {
-            crate::wlog!(crate::util::logging::FFI, "WARNING: No surface found for window {} keyboard enter", 
-                window_id.id);
+            state.pending_keyboard_focus_window = Some(window_id.id);
+            crate::wlog!(
+                crate::util::logging::FFI,
+                "Deferring keyboard enter for window {} until surface is registered",
+                window_id.id
+            );
         }
     }
     
