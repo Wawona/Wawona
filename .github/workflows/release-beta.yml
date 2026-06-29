@@ -58,7 +58,7 @@ jobs:
         working-directory: .
         run: |
           LANE="${{ github.event.inputs.lane || 'ios beta' }}"
-          nix develop --command bash -lc "fastlane $LANE"
+          nix develop .#release --command bash -lc "fastlane $LANE"
 
   android-beta:
     name: "Play internal track (Android)"
@@ -105,4 +105,4 @@ jobs:
         working-directory: .
         run: |
           LANE="${{ github.event.inputs.lane || 'android beta' }}"
-          nix develop --command bash -lc "fastlane $LANE"
+          nix develop .#release --command bash -lc "fastlane $LANE"

@@ -170,6 +170,23 @@
   return YES;
 }
 
+// Route Ctrl+C, Ctrl+Z, etc. to keyDown: instead of the menu bar (terminal emulators).
+- (BOOL)performKeyEquivalent:(NSEvent *)event {
+  if ((event.modifierFlags & NSEventModifierFlagCommand) &&
+      !(event.modifierFlags & NSEventModifierFlagControl) &&
+      !(event.modifierFlags & NSEventModifierFlagOption)) {
+    NSString *chars = [event charactersIgnoringModifiers];
+    if ([chars isEqualToString:@"q"] || [chars isEqualToString:@"Q"] ||
+        [chars isEqualToString:@"h"] || [chars isEqualToString:@"H"] ||
+        [chars isEqualToString:@"m"] || [chars isEqualToString:@"M"]) {
+      return NO;
+    }
+  }
+
+  [self keyDown:event];
+  return YES;
+}
+
 - (BOOL)isFlipped {
   return YES;
 }
