@@ -1,3 +1,4 @@
+#if os(watchOS)
 import SwiftUI
 import WawonaModel
 
@@ -50,3 +51,4 @@ struct QuickConnectView: View {
         }
     }
 }
+#endif

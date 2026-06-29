@@ -1,0 +1,650 @@
+# Canonical Wayland protocol manifest for Wawona profile gating and Smithay coverage.
+# This file is consumed by compliance checks and release review.
+
+version = 2
+
+[[profile]]
+name = "store-safe"
+description = "Default App Store / Play Store profile"
+
+[[profile]]
+name = "store-safe-remote"
+description = "Store profile with remote-first workflows"
+
+[[profile]]
+name = "desktop-host"
+description = "Non-store desktop distribution profile"
+
+[[profile]]
+name = "full-dev"
+description = "Internal superset profile for validation"
+
+[[protocol]]
+interface = "wl_compositor"
+smithay_module = "wayland::compositor"
+exposure = "store-safe-core"
+profiles = ["store-safe", "store-safe-remote", "desktop-host", "full-dev"]
+source_module = "src/core/wayland/wayland/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "smithay"
+notes = "Includes wl_surface/wl_region lifecycle via compositor module"
+
+[[protocol]]
+interface = "wl_subcompositor"
+smithay_module = "wayland::compositor"
+exposure = "store-safe-core"
+profiles = ["store-safe", "store-safe-remote", "desktop-host", "full-dev"]
+source_module = "src/core/wayland/wayland/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "smithay"
+notes = "Subsurface helpers in compositor module"
+
+[[protocol]]
+interface = "wl_shm"
+smithay_module = "wayland::shm"
+exposure = "store-safe-core"
+profiles = ["store-safe", "store-safe-remote", "desktop-host", "full-dev"]
+source_module = "src/core/wayland/wayland/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "smithay"
+notes = "Covers wl_shm_pool and wl_buffer import/release behavior"
+
+[[protocol]]
+interface = "wl_output"
+smithay_module = "wayland::output"
+exposure = "store-safe-core"
+profiles = ["store-safe", "store-safe-remote", "desktop-host", "full-dev"]
+source_module = "src/core/wayland/wayland/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "smithay"
+notes = "Output globals and mode notifications"
+
+[[protocol]]
+interface = "zxdg_output_manager_v1"
+smithay_module = "wayland::output"
+exposure = "store-safe-conditional"
+profiles = ["store-safe", "store-safe-remote", "desktop-host", "full-dev"]
+source_module = "src/core/wayland/xdg/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "smithay"
+notes = "XDG output metadata path"
+
+[[protocol]]
+interface = "wl_seat"
+smithay_module = "wayland::seat"
+exposure = "store-safe-core"
+profiles = ["store-safe", "store-safe-remote", "desktop-host", "full-dev"]
+source_module = "src/core/wayland/wayland/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "smithay"
+notes = "Covers wl_pointer, wl_keyboard, wl_touch capability routing"
+
+[[protocol]]
+interface = "wl_data_device_manager"
+smithay_module = "wayland::selection::data_device"
+exposure = "store-safe-core"
+profiles = ["store-safe", "store-safe-remote", "desktop-host", "full-dev"]
+source_module = "src/core/wayland/wayland/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "smithay"
+notes = "Clipboard + DnD baseline path"
+
+[[protocol]]
+interface = "wl_fixes"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "No active smithay runtime wiring in this release; kept as custom compatibility path"
+
+[[protocol]]
+interface = "xdg_wm_base"
+smithay_module = "wayland::shell::xdg"
+exposure = "store-safe-core"
+profiles = ["store-safe", "store-safe-remote", "desktop-host", "full-dev"]
+source_module = "src/core/wayland/xdg/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "smithay"
+notes = "Includes xdg_surface, xdg_toplevel, xdg_popup, xdg_positioner"
+
+[[protocol]]
+interface = "zxdg_toplevel_decoration_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/xdg/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in xdg/mod.rs; kept desktop-only until smithay_runtime ownership migration lands"
+
+[[protocol]]
+interface = "xdg_wm_dialog_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/xdg/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in xdg/mod.rs; kept desktop-only until smithay_runtime ownership migration lands"
+
+[[protocol]]
+interface = "xdg_activation_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/xdg/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in xdg/mod.rs; kept desktop-only until smithay_runtime ownership migration lands"
+
+[[protocol]]
+interface = "zxdg_exporter_v2"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/xdg/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in xdg/mod.rs; kept desktop-only until smithay_runtime ownership migration lands"
+
+[[protocol]]
+interface = "zxdg_importer_v2"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/xdg/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in xdg/mod.rs; kept desktop-only until smithay_runtime ownership migration lands"
+
+[[protocol]]
+interface = "xdg_system_bell_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/xdg/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in xdg/mod.rs; kept desktop-only until smithay_runtime ownership migration lands"
+
+[[protocol]]
+interface = "xdg_toplevel_icon_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/xdg/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in xdg/mod.rs; kept desktop-only until smithay_runtime ownership migration lands"
+
+[[protocol]]
+interface = "xdg_toplevel_tag_manager_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/xdg/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in xdg/mod.rs; kept desktop-only until smithay_runtime ownership migration lands"
+
+[[protocol]]
+interface = "zwlr_layer_shell_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/wlr/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in wlr modules; retained behind desktop profile gating"
+
+[[protocol]]
+interface = "ext_foreign_toplevel_list_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+
+[[protocol]]
+interface = "zwlr_screencopy_manager_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/wlr/mod.rs"
+compile_expectation = "desktop-feature-gated"
+equivalent = "no-equivalent"
+notes = "No direct smithay 0.7 wlr_screencopy delegate path in current runtime"
+
+[[protocol]]
+interface = "zwlr_export_dmabuf_manager_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/wlr/mod.rs"
+compile_expectation = "desktop-feature-gated"
+equivalent = "no-equivalent"
+notes = "No direct smithay 0.7 zwlr_export_dmabuf delegate path in current runtime"
+
+[[protocol]]
+interface = "zwlr_virtual_pointer_manager_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/wlr/mod.rs"
+compile_expectation = "desktop-feature-gated"
+equivalent = "no-equivalent"
+notes = "No direct smithay 0.7 zwlr_virtual_pointer delegate path in current runtime"
+
+[[protocol]]
+interface = "zwp_virtual_keyboard_manager_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/wlr/mod.rs"
+compile_expectation = "desktop-feature-gated"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in wlr modules; retained behind desktop profile gating"
+
+[[protocol]]
+interface = "zwlr_data_control_manager_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/wlr/mod.rs"
+compile_expectation = "desktop-feature-gated"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in wlr modules; retained behind desktop profile gating"
+
+[[protocol]]
+interface = "ext_data_control_manager_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+
+[[protocol]]
+interface = "wp_cursor_shape_manager_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+
+[[protocol]]
+interface = "zwp_pointer_constraints_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+
+[[protocol]]
+interface = "zwp_pointer_gestures_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+
+[[protocol]]
+interface = "zwp_relative_pointer_manager_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+
+[[protocol]]
+interface = "wp_pointer_warp_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Pointer warp currently retained as Wawona-specific extension"
+
+[[protocol]]
+interface = "zwp_tablet_manager_v2"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+
+[[protocol]]
+interface = "zwp_text_input_manager_v3"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+
+[[protocol]]
+interface = "zwp_input_method_manager_v2"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "desktop-feature-gated"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+
+[[protocol]]
+interface = "zwp_primary_selection_device_manager_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+
+[[protocol]]
+interface = "zwp_linux_dmabuf_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+
+[[protocol]]
+interface = "wp_presentation"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+
+[[protocol]]
+interface = "wp_commit_timing_manager_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+
+[[protocol]]
+interface = "wp_fifo_manager_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+
+[[protocol]]
+interface = "wp_fractional_scale_manager_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+
+[[protocol]]
+interface = "wp_viewporter"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+
+[[protocol]]
+interface = "wp_single_pixel_buffer_manager_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+
+[[protocol]]
+interface = "wp_alpha_modifier_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+
+[[protocol]]
+interface = "wp_content_type_manager_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+
+[[protocol]]
+interface = "ext_background_effect_manager_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "No smithay 0.7 background_effect module/delegate in this release"
+
+[[protocol]]
+interface = "zwp_idle_inhibit_manager_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+
+[[protocol]]
+interface = "zwp_keyboard_shortcuts_inhibit_manager_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+
+[[protocol]]
+interface = "ext_idle_notifier_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+
+[[protocol]]
+interface = "wp_security_context_manager_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+
+[[protocol]]
+interface = "ext_session_lock_manager_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "desktop-feature-gated"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+
+[[protocol]]
+interface = "ext_output_image_capture_source_manager_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "desktop-feature-gated"
+equivalent = "no-equivalent"
+notes = "Image capture source currently retained as Wawona-specific extension"
+
+[[protocol]]
+interface = "ext_image_copy_capture_manager_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "desktop-feature-gated"
+equivalent = "no-equivalent"
+notes = "Image copy capture currently retained as Wawona-specific extension"
+
+[[protocol]]
+interface = "xwayland_shell_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "desktop-feature-gated"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+
+[[protocol]]
+interface = "zwp_xwayland_keyboard_grab_manager_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "desktop-feature-gated"
+equivalent = "no-equivalent"
+notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+
+[[protocol]]
+interface = "wp_drm_lease_device_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "linux-desktop-only"
+equivalent = "no-equivalent"
+notes = "No active smithay runtime wiring in this release; kept as custom Linux path"
+
+[[protocol]]
+interface = "wp_linux_drm_syncobj_manager_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "linux-desktop-only"
+equivalent = "no-equivalent"
+notes = "No active smithay runtime wiring in this release; kept as custom Linux path"
+
+[[protocol]]
+interface = "org_kde_kwin_server_decoration_manager"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/plasma/mod.rs"
+compile_expectation = "desktop-feature-gated"
+equivalent = "no-equivalent"
+notes = "KDE survivor protocol"
+
+[[protocol]]
+interface = "org_kde_kwin_blur_manager"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/plasma/mod.rs"
+compile_expectation = "desktop-feature-gated"
+equivalent = "no-equivalent"
+notes = "KDE survivor protocol"
+
+[[protocol]]
+interface = "org_kde_kwin_contrast_manager"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/plasma/mod.rs"
+compile_expectation = "desktop-feature-gated"
+equivalent = "no-equivalent"
+notes = "KDE survivor protocol"
+
+[[protocol]]
+interface = "org_kde_kwin_shadow_manager"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/plasma/mod.rs"
+compile_expectation = "desktop-feature-gated"
+equivalent = "no-equivalent"
+notes = "KDE survivor protocol"
+
+[[protocol]]
+interface = "org_kde_kwin_dpms_manager"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/plasma/mod.rs"
+compile_expectation = "desktop-feature-gated"
+equivalent = "no-equivalent"
+notes = "KDE survivor protocol"
+
+[[protocol]]
+interface = "org_kde_kwin_idle_timeout"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/plasma/mod.rs"
+compile_expectation = "desktop-feature-gated"
+equivalent = "no-equivalent"
+notes = "KDE survivor protocol"
+
+[[protocol]]
+interface = "org_kde_kwin_slide_manager"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/plasma/mod.rs"
+compile_expectation = "desktop-feature-gated"
+equivalent = "no-equivalent"
+notes = "KDE survivor protocol"
+
+[[protocol]]
+interface = "zwp_fullscreen_shell_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "desktop-feature-gated"
+equivalent = "no-equivalent"
+notes = "Legacy fullscreen shell retained behind explicit runtime opt-in"

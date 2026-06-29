@@ -1,3 +1,4 @@
+#if os(watchOS)
 import WatchKit
 
 /// Presents global Wawona Settings via WatchKit (not SwiftUI).
@@ -13,3 +14,4 @@ enum WatchKitGlobalSettings {
         WWNWatchPreferencesCoordinator.sharedCoordinator().showSettings()
     }
 }
+#endif

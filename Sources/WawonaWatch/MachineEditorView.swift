@@ -1,3 +1,4 @@
+#if os(watchOS)
 import SwiftUI
 import WawonaModel
 
@@ -121,3 +122,4 @@ struct MachineEditorView: View {
         dismiss()
     }
 }
+#endif

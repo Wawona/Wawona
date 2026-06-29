@@ -1,3 +1,4 @@
+#if os(watchOS)
 import SwiftUI
 import WawonaModel
 
@@ -23,3 +24,4 @@ struct CompositorActiveView: View {
         }
     }
 }
+#endif

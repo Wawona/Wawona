@@ -1,3 +1,4 @@
+#if os(watchOS)
 import SwiftUI
 import WawonaModel
 
@@ -22,3 +23,4 @@ struct SessionGlanceView: View {
         .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
     }
 }
+#endif

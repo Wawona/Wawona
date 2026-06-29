@@ -64,22 +64,26 @@
     pkgsFor = system:
       let
         isDarwin = (system == "x86_64-darwin" || system == "aarch64-darwin");
-        customOverlays = if isDarwin then [
+        customOverlays = [
           (import rust-overlay)
           (self: super: {
-            rustToolchain = super.rust-bin.nightly.latest.default.override {
-              extensions = [ "rust-src" ];
-              targets = [
-                "aarch64-apple-ios"
-                "aarch64-apple-ios-sim"
-                "aarch64-apple-tvos"
-                "aarch64-apple-tvos-sim"
-                "aarch64-apple-visionos"
-                "aarch64-apple-visionos-sim"
-                "aarch64-apple-watchos"
-                "aarch64-apple-watchos-sim"
-              ];
-            };
+            rustToolchain =
+              if isDarwin then
+                super.rust-bin.nightly.latest.default.override {
+                  extensions = [ "rust-src" ];
+                  targets = [
+                    "aarch64-apple-ios"
+                    "aarch64-apple-ios-sim"
+                    "aarch64-apple-tvos"
+                    "aarch64-apple-tvos-sim"
+                    "aarch64-apple-visionos"
+                    "aarch64-apple-visionos-sim"
+                    "aarch64-apple-watchos"
+                    "aarch64-apple-watchos-sim"
+                  ];
+                }
+              else
+                super.rust-bin.stable.latest.default;
             rustToolchainAndroid = super.rust-bin.stable.latest.default.override {
               targets = [ "aarch64-linux-android" ];
             };
@@ -112,7 +116,7 @@
               });
             } else super.llvmPackages_21;
           })
-        ] else [];
+        ];
       in (import nixpkgs {
         inherit system;
         overlays = customOverlays;
@@ -353,7 +357,7 @@
         };
 
         backend-android = androidPkgs.callPackage ./dependencies/wawona/rust-backend-android-brp.nix {
-          inherit wawonaVersion androidSDK;
+          inherit wawonaVersion androidSDK androidToolchainNix;
           backendName = "wawona-android-backend";
           androidToolchain = if isLinuxHost then toolchainsAndroid.androidToolchain else toolchains.androidToolchain;
           workspaceSrc = workspace-src-android;
@@ -370,7 +374,7 @@
           };
         };
         backend-wearos = androidPkgs.callPackage ./dependencies/wawona/rust-backend-android-brp.nix {
-          inherit wawonaVersion androidSDK;
+          inherit wawonaVersion androidSDK androidToolchainNix;
           backendName = "wawona-wearos-backend";
           androidToolchain = if isLinuxHost then toolchainsAndroid.androidToolchain else toolchains.androidToolchain;
           workspaceSrc = workspace-src-wearos;
@@ -501,16 +505,7 @@
           # (GBM/EGL/DRM over IOSurface) for nested GL clients (kmscube, es2gears,
           # weston-simple-egl). macOS-first; mobile cross builds are WIP.
           angle = if pkgs.stdenv.isDarwin then toolchains.buildForMacOS "angle" { } else pkgs.angle;
-          iland = if pkgs.stdenv.isDarwin then toolchains.buildForMacOS "iland" { } else null;
-          # GL smoke test (kmscube) over iland+ANGLE — nested inside Wawona
-          # via the Mode A present-redirect. macOS only.
-          kmscube = if pkgs.stdenv.isDarwin
-            then pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; }
-            else null;
-          "iland-gl-clients" = if pkgs.stdenv.isDarwin
-            then pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; }
-            else null;
-          
+
           # Wawona (Native on Linux, Cross-wrapped on Darwin)
           wawona = if pkgs.stdenv.isDarwin 
             then (import ./dependencies/wawona/shell-wrappers.nix).macosWrapper pkgs 
@@ -554,6 +549,13 @@
               inherit wawonaVersion;
               waypipeSrc = waypipe-src;
             };
+        } // pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin {
+          # ANGLE companion: iland userland graphics core (GBM/EGL/DRM over IOSurface).
+          iland = toolchains.buildForMacOS "iland" { };
+          # GL smoke test (kmscube) over iland+ANGLE — nested inside Wawona
+          # via the Mode A present-redirect. macOS only.
+          kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
+          "iland-gl-clients" = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
         };
 
         packages = commonPackages // (pkgs.lib.optionalAttrs (isLinuxHost || androidSDK != null) {

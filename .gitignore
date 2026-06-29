@@ -25,6 +25,7 @@ cmake_install.cmake
 
 # Wayland runtime
 wayland-*
+!docs/compliance/wayland-protocol-manifest.toml
 !tools/wayland-protocol-gen/**
 !**/*wayland*.pc
 

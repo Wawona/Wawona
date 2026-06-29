@@ -1,3 +1,4 @@
+#if os(watchOS)
 import SwiftUI
 
 @main
@@ -10,3 +11,4 @@ struct WawonaWatch: App {
         }
     }
 }
+#endif

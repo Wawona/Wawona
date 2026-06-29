@@ -1,3 +1,4 @@
+#if os(watchOS)
 import SwiftUI
 import WawonaModel
 
@@ -102,3 +103,4 @@ struct MachineRowLabel: View {
         }
     }
 }
+#endif

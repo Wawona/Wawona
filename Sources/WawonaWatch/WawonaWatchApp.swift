@@ -1,3 +1,4 @@
+#if os(watchOS)
 import SwiftUI
 import WawonaModel
 
@@ -13,3 +14,4 @@ public struct WawonaWatchRootView: View {
         }
     }
 }
+#endif

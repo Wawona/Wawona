@@ -1,3 +1,4 @@
+#if os(watchOS)
 import SwiftUI
 import WawonaModel
 
@@ -199,3 +200,4 @@ private struct WatchBundledClientPickerView: View {
         .navigationTitle("Wayland Client")
     }
 }
+#endif

@@ -1,3 +1,4 @@
+#if os(watchOS)
 import WawonaModel
 
 /// watchOS machine connect: native → local compositor + bundled client; remote → waypipe only.
@@ -67,3 +68,4 @@ enum WatchMachineSessionBridge {
         return "weston-simple-shm"
     }
 }
+#endif

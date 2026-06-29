@@ -156,7 +156,10 @@ jobs:
           fi
           sudo xcode-select -s "$XCODE_APP"
       - name: Run Swift tests
-        run: swift test
+        run: |
+          swift build --target WawonaUIContractsTests
+          swift build --target WawonaModelSettingsTests
+          swift test --skip-build
 
   build-linux:
     name: "Linux (x86_64): ${{ matrix.target }}"

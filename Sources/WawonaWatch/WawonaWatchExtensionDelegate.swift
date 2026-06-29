@@ -1,3 +1,4 @@
+#if os(watchOS)
 import WatchKit
 
 final class WawonaWatchExtensionDelegate: NSObject, WKExtensionDelegate {
@@ -5,3 +6,4 @@ final class WawonaWatchExtensionDelegate: NSObject, WKExtensionDelegate {
         WatchKitGlobalSettings.registerHost()
     }
 }
+#endif
