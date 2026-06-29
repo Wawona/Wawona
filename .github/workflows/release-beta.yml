@@ -35,8 +35,9 @@ jobs:
           fi
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v16
+        uses: DeterminateSystems/nix-installer-action@v22
         with:
+          determinate: true
           extra-conf: |
             allow-import-from-derivation = true
             trusted-users = runner root
@@ -80,8 +81,9 @@ jobs:
           df -h
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v16
+        uses: DeterminateSystems/nix-installer-action@v22
         with:
+          determinate: true
           extra-conf: |
             build-dir = /nix/build
             sandbox = relaxed

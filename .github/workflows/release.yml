@@ -26,8 +26,9 @@ jobs:
           fi
           sudo xcode-select -s "$XCODE_APP"
 
-      - uses: DeterminateSystems/nix-installer-action@v16
+      - uses: DeterminateSystems/nix-installer-action@v22
         with:
+          determinate: true
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
@@ -61,8 +62,9 @@ jobs:
             /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
           docker image prune -af || true
 
-      - uses: DeterminateSystems/nix-installer-action@v16
+      - uses: DeterminateSystems/nix-installer-action@v22
         with:
+          determinate: true
           extra-conf: |
             build-dir = /nix/build
             sandbox = relaxed

@@ -12,10 +12,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Nix
-        uses: cachix/install-nix-action@v22
+      - name: Install Determinate Nix
+        uses: DeterminateSystems/nix-installer-action@v22
         with:
-          nix_path: nixpkgs=channel:nixos-unstable
+          determinate: true
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+            trusted-users = runner root
 
       - name: Build and upload to TestFlight
         env:
@@ -23,4 +27,4 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
-        run: nix develop --command fastlane beta
+        run: nix develop .#release --command fastlane beta

@@ -22,7 +22,9 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
       - name: Build weston + compositor + zsh
         run: |
           cd Wawona

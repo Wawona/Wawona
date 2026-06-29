@@ -35,8 +35,9 @@ jobs:
           df -h
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v16
+        uses: DeterminateSystems/nix-installer-action@v22
         with:
+          determinate: true
           extra-conf: |
             build-dir = /nix/build
             sandbox = relaxed
@@ -106,8 +107,9 @@ jobs:
           df -h
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v16
+        uses: DeterminateSystems/nix-installer-action@v22
         with:
+          determinate: true
           extra-conf: |
             build-dir = /nix/build
             sandbox = relaxed
@@ -124,8 +126,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Nix (for ensure-waypipe.sh; GitLab blocks anonymous cargo git fetch)
-        uses: DeterminateSystems/nix-installer-action@v16
+        uses: DeterminateSystems/nix-installer-action@v22
         with:
+          determinate: true
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
@@ -176,8 +179,9 @@ jobs:
           df -h
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v16
+        uses: DeterminateSystems/nix-installer-action@v22
         with:
+          determinate: true
           extra-conf: |
             build-dir = /nix/build
             sandbox = relaxed
@@ -202,8 +206,9 @@ jobs:
           df -h
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v16
+        uses: DeterminateSystems/nix-installer-action@v22
         with:
+          determinate: true
           extra-conf: |
             build-dir = /nix/build
             sandbox = relaxed
@@ -273,8 +278,9 @@ jobs:
           df -h
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v16
+        uses: DeterminateSystems/nix-installer-action@v22
         with:
+          determinate: true
           extra-conf: |
             build-dir = /nix/build
             sandbox = relaxed
@@ -306,8 +312,9 @@ jobs:
           df -h
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v16
+        uses: DeterminateSystems/nix-installer-action@v22
         with:
+          determinate: true
           extra-conf: |
             build-dir = /nix/build
             sandbox = relaxed
@@ -340,8 +347,9 @@ jobs:
           xcodebuild -version
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v16
+        uses: DeterminateSystems/nix-installer-action@v22
         with:
+          determinate: true
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
@@ -422,8 +430,9 @@ jobs:
           sudo xcode-select -s "$XCODE_APP"
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v16
+        uses: DeterminateSystems/nix-installer-action@v22
         with:
+          determinate: true
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
@@ -456,8 +465,9 @@ jobs:
           sudo xcode-select -s "$XCODE_APP"
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v16
+        uses: DeterminateSystems/nix-installer-action@v22
         with:
+          determinate: true
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
@@ -493,8 +503,9 @@ jobs:
           sudo xcode-select -s "$XCODE_APP"
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v16
+        uses: DeterminateSystems/nix-installer-action@v22
         with:
+          determinate: true
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
@@ -582,8 +593,9 @@ jobs:
           sudo xcode-select -s "$XCODE_APP"
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v16
+        uses: DeterminateSystems/nix-installer-action@v22
         with:
+          determinate: true
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
@@ -616,8 +628,9 @@ jobs:
           sudo xcode-select -s "$XCODE_APP"
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v16
+        uses: DeterminateSystems/nix-installer-action@v22
         with:
+          determinate: true
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
@@ -638,8 +651,9 @@ jobs:
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
           docker image prune -af || true
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v16
+        uses: DeterminateSystems/nix-installer-action@v22
         with:
+          determinate: true
           extra-conf: |
             build-dir = /nix/build
             sandbox = relaxed
@@ -664,8 +678,9 @@ jobs:
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
           docker image prune -af || true
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v16
+        uses: DeterminateSystems/nix-installer-action@v22
         with:
+          determinate: true
           extra-conf: |
             build-dir = /nix/build
             sandbox = relaxed
@@ -697,8 +712,9 @@ jobs:
           echo "XCODE_APP=$XCODE_APP" >> "$GITHUB_ENV"
           sudo xcode-select -s "$XCODE_APP"
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v16
+        uses: DeterminateSystems/nix-installer-action@v22
         with:
+          determinate: true
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
@@ -729,8 +745,9 @@ jobs:
           echo "XCODE_APP=$XCODE_APP" >> "$GITHUB_ENV"
           sudo xcode-select -s "$XCODE_APP"
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v16
+        uses: DeterminateSystems/nix-installer-action@v22
         with:
+          determinate: true
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
