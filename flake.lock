@@ -704,13 +704,17 @@
         ]
       },
       "locked": {
-        "narHash": "sha256-NWWSLIZXG9L4rZygsqObqRqus/TaPUue4TSj8p0uMoE=",
-        "path": "/Users/8amps/Wawona/wwn-fastfetch",
-        "type": "path"
+        "lastModified": 1782767767,
+        "narHash": "sha256-NUv8kpeUB/IU+WbWh6/EXQUnFD3Z4ST3I1cKjau1xtI=",
+        "owner": "Wawona",
+        "repo": "wwn-fastfetch",
+        "rev": "700cd384ab6f2641c2656b88ba0edb711ec87ecc",
+        "type": "github"
       },
       "original": {
-        "path": "/Users/8amps/Wawona/wwn-fastfetch",
-        "type": "path"
+        "owner": "Wawona",
+        "repo": "wwn-fastfetch",
+        "type": "github"
       }
     },
     "wwn-foot": {
@@ -748,13 +752,17 @@
         ]
       },
       "locked": {
-        "narHash": "sha256-K12xOCk/nVCxG7PUJ5TaihGm1jz3tlsTy5YuDLE4vOI=",
-        "path": "/Users/8amps/Wawona/wwn-iland",
-        "type": "path"
+        "lastModified": 1782767765,
+        "narHash": "sha256-75kGZLMWC7XFnt23UVzzIFd2Ar83Yx6oMclJQzpJAag=",
+        "owner": "Wawona",
+        "repo": "wwn-iland",
+        "rev": "c594cde473adb800b6fef478774a6da6d2f771cc",
+        "type": "github"
       },
       "original": {
-        "path": "/Users/8amps/Wawona/wwn-iland",
-        "type": "path"
+        "owner": "Wawona",
+        "repo": "wwn-iland",
+        "type": "github"
       }
     },
     "wwn-kmscube": {
@@ -795,13 +803,17 @@
         ]
       },
       "locked": {
-        "narHash": "sha256-CJPoALfnUHS/YUR1bLF5GEprOJwuRZuXBgnSSUMfweE=",
-        "path": "/Users/8amps/Wawona/wwn-neovim",
-        "type": "path"
+        "lastModified": 1782768782,
+        "narHash": "sha256-w1tNvhdJzi+qJQ871ceRofK7rnlDORLIhjWj44DyiLs=",
+        "owner": "Wawona",
+        "repo": "wwn-neovim",
+        "rev": "feba7b9ae1312f14ee8c6064834c916fb9ac185f",
+        "type": "github"
       },
       "original": {
-        "path": "/Users/8amps/Wawona/wwn-neovim",
-        "type": "path"
+        "owner": "Wawona",
+        "repo": "wwn-neovim",
+        "type": "github"
       }
     },
     "wwn-toolchain": {
@@ -815,13 +827,17 @@
         ]
       },
       "locked": {
-        "narHash": "sha256-qS+k+YRq4te7zp+asfaiNKtDeTsdeh20qOXAH2UpdhU=",
-        "path": "/Users/8amps/Wawona/wwn-toolchain",
-        "type": "path"
+        "lastModified": 1782767773,
+        "narHash": "sha256-spje8nU0gYNKjXDKn0VF7rT6tDRncAG8r5SkAFT9WsE=",
+        "owner": "Wawona",
+        "repo": "wwn-toolchain",
+        "rev": "c3b2ae1f3757ebde7b5ec0af874c54c088403ec7",
+        "type": "github"
       },
       "original": {
-        "path": "/Users/8amps/Wawona/wwn-toolchain",
-        "type": "path"
+        "owner": "Wawona",
+        "repo": "wwn-toolchain",
+        "type": "github"
       }
     },
     "wwn-waypipe": {
@@ -865,13 +881,17 @@
         ]
       },
       "locked": {
-        "narHash": "sha256-/UMx4/adP1gkvICJtLWt6O6IxcjV9Av8nLMJ3z+pGeg=",
-        "path": "/Users/8amps/Wawona/wwn-weston",
-        "type": "path"
+        "lastModified": 1782767776,
+        "narHash": "sha256-xxZzlWCWa+A8tMabmoElaXqpfH7+IQYOcYRGIouNNV4=",
+        "owner": "Wawona",
+        "repo": "wwn-weston",
+        "rev": "6956dedc5ba3e9fafc1b3b06cb88925b5e0b9f6e",
+        "type": "github"
       },
       "original": {
-        "path": "/Users/8amps/Wawona/wwn-weston",
-        "type": "path"
+        "owner": "Wawona",
+        "repo": "wwn-weston",
+        "type": "github"
       }
     },
     "wwn-zsh": {
@@ -885,13 +905,17 @@
         ]
       },
       "locked": {
-        "narHash": "sha256-NhYP/TFCt9Pk3tpMhKKyKm4Kq6vEQSFbC0TFY10qEE8=",
-        "path": "/Users/8amps/Wawona/wwn-zsh",
-        "type": "path"
+        "lastModified": 1782767775,
+        "narHash": "sha256-O2/9APzVBs+N5p6+39zRwgGu7Pj+HJeRjaCmXIz8n4Y=",
+        "owner": "Wawona",
+        "repo": "wwn-zsh",
+        "rev": "a00cb4a49af5a9eeb3d9b04cef509089198e1074",
+        "type": "github"
       },
       "original": {
-        "path": "/Users/8amps/Wawona/wwn-zsh",
-        "type": "path"
+        "owner": "Wawona",
+        "repo": "wwn-zsh",
+        "type": "github"
       }
     }
   },

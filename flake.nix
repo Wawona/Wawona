@@ -20,22 +20,22 @@
     # and the patched application ports (wwn-*) as flake inputs. nixpkgs and
     # wwn-toolchain are pinned uniformly so zsh's pkgs.zsh.src and weston's
     # source hashes resolve against one nixpkgs.
-    wwn-toolchain.url = "path:/Users/8amps/Wawona/wwn-toolchain";
+    wwn-toolchain.url = "github:Wawona/wwn-toolchain";
     wwn-toolchain.inputs.nixpkgs.follows = "nixpkgs";
     wwn-toolchain.inputs.rust-overlay.follows = "rust-overlay";
-    wwn-iland.url = "path:/Users/8amps/Wawona/wwn-iland";
+    wwn-iland.url = "github:Wawona/wwn-iland";
     wwn-iland.inputs.nixpkgs.follows = "nixpkgs";
     wwn-iland.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-kmscube.url = "github:Wawona/wwn-kmscube";
     wwn-kmscube.inputs.nixpkgs.follows = "nixpkgs";
     wwn-kmscube.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-kmscube.inputs.wwn-iland.follows = "wwn-iland";
-    wwn-weston.url = "path:/Users/8amps/Wawona/wwn-weston";
+    wwn-weston.url = "github:Wawona/wwn-weston";
     wwn-weston.inputs.nixpkgs.follows = "nixpkgs";
     wwn-weston.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-weston.inputs.wwn-iland.follows = "wwn-iland";
     wwn-weston.inputs.wwn-kmscube.follows = "wwn-kmscube";
-    wwn-zsh.url = "path:/Users/8amps/Wawona/wwn-zsh";
+    wwn-zsh.url = "github:Wawona/wwn-zsh";
     wwn-zsh.inputs.nixpkgs.follows = "nixpkgs";
     wwn-zsh.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-waypipe.url = "github:Wawona/wwn-waypipe";
@@ -47,10 +47,10 @@
     wwn-foot.url = "github:Wawona/wwn-foot";
     wwn-foot.inputs.nixpkgs.follows = "nixpkgs";
     wwn-foot.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    wwn-fastfetch.url = "path:/Users/8amps/Wawona/wwn-fastfetch";
+    wwn-fastfetch.url = "github:Wawona/wwn-fastfetch";
     wwn-fastfetch.inputs.nixpkgs.follows = "nixpkgs";
     wwn-fastfetch.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    wwn-neovim.url = "path:/Users/8amps/Wawona/wwn-neovim";
+    wwn-neovim.url = "github:Wawona/wwn-neovim";
     wwn-neovim.inputs.nixpkgs.follows = "nixpkgs";
     wwn-neovim.inputs.wwn-toolchain.follows = "wwn-toolchain";
   };
