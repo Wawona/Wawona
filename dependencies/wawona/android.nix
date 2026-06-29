@@ -877,7 +877,7 @@ in
       export ANDROID_NDK_ROOT="$ndk_root"
       export ANDROID_NDK_HOME="$ndk_root"
       export DEP_INCLUDES="${lib.concatMapStringsSep " " (d: "-I${d}/include") (getDeps "android" androidDeps)} -I${buildModule.buildForAndroid "pixman" { }}/include/pixman-1 -I${westonAndroid}/include/weston-gen"
-      export DEP_LIBS="${lib.concatMapStringsSep " " (d: "-L${d}/lib") (getDeps "android" androidDeps)} ${lib.concatStringsSep " " westonToytoolkitLdflags} ${lib.concatStringsSep " " westonCompositorLdflags}"
+      export DEP_LIBS="${lib.concatMapStringsSep " " (d: "-L${d}/lib") (getDeps "android" androidDeps)} ${lib.concatStringsSep " " westonToytoolkitLdflags}"
       export RUST_BACKEND_LIB="$RUST_BACKEND_LINK_LIB"
     '';
 
