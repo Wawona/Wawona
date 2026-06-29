@@ -52,6 +52,13 @@ nix develop --command bash -lc 'export DEVELOPER_DIR=/Applications/Xcode.app/Con
 
 ## CI
 
-`.github/workflows/release-beta.yml` runs `fastlane ios beta` (Apple only) via workflow dispatch or tag `v0.2.*`.
+Two release workflows serve different channels:
 
-Use workflow input `ios beta` for Apple platforms only; `android beta` when Play secrets are ready.
+| Workflow | Trigger | Output |
+|----------|---------|--------|
+| [`release-beta.yml`](../.github/workflows/release-beta.yml) | Every push to `master`, tag `v0.2.*`, or manual dispatch | Signed TestFlight (Apple) / Play internal (Android, when secrets ready) |
+| [`release.yml`](../.github/workflows/release.yml) | Tag `v*` | Unsigned GitHub Release (macOS `.dmg` + Android `.apk`) |
+
+`release-beta.yml` runs `fastlane ios beta` (Apple only) on automatic triggers. Use workflow input `ios beta` for Apple platforms only; `android beta` when Play secrets are ready.
+
+Additional lanes: `fastlane sync_version`, `fastlane validate_env`, `fastlane ios release` (App Store submit).

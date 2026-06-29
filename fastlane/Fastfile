@@ -2,6 +2,42 @@
 
 default_platform(:ios)
 
+# --- Common helpers ---
+
+def check_env(vars)
+  missing = vars.select { |v| ENV[v].nil? || ENV[v].to_s.empty? }
+  UI.user_error!("Missing environment variables: #{missing.join(', ')}. See .release-secrets.env.template") unless missing.empty?
+end
+
+desc "Sync version from VERSION file to Cargo.toml and Android build.gradle.kts"
+lane :sync_version do
+  version = wawona_version
+  UI.message("Syncing version #{version} to platform manifests...")
+
+  cargo_toml = File.expand_path("../Cargo.toml", __dir__)
+  cargo_content = File.read(cargo_toml)
+  File.write(cargo_toml, cargo_content.gsub(/^version = ".*"$/, "version = \"#{version}\""))
+
+  gradle_path = File.expand_path("../android/app/build.gradle.kts", __dir__)
+  if File.exist?(gradle_path)
+    gradle_content = File.read(gradle_path)
+    File.write(gradle_path, gradle_content.gsub(/versionName = ".*"$/, "versionName = \"#{version}\""))
+  end
+
+  UI.success("Versions synced to #{version}")
+end
+
+desc "Verify release environment (Apple credentials)"
+lane :validate_env do
+  check_env(%w[
+    TEAM_ID
+    APP_STORE_CONNECT_KEY_ID
+    APP_STORE_CONNECT_ISSUER_ID
+    APP_STORE_CONNECT_API_KEY
+  ])
+  UI.success("Environment validated")
+end
+
 # TestFlight targets (macOS is intentionally excluded — not distributed via TestFlight).
 APPLE_BETA_TARGETS = [
   { ipa: "wawona-ios-ipa", name: "iPhone (iOS)", app_platform: "ios", bundle_id: "com.aspauldingcode.Wawona" },
@@ -134,6 +170,7 @@ end
 platform :ios do
   desc "Upload iPhone, iPad, Apple TV, Apple Vision Pro, and Apple Watch to TestFlight (excludes macOS)"
   lane :beta do
+    validate_env
     setup_ci if ENV["CI"]
     api_key = asc_api_key
     install_testflight_profiles!(api_key)
@@ -153,6 +190,31 @@ platform :ios do
       else
         UI.success("Uploaded #{target[:name]} #{wawona_version} (#{wawona_build_number}) to TestFlight")
       end
+    end
+  end
+
+  desc "Submit iOS builds for App Store review"
+  lane :release do
+    validate_env
+    setup_ci if ENV["CI"]
+    api_key = asc_api_key
+    install_testflight_profiles!(api_key)
+    ensure_all_asc_versions!(api_key)
+
+    APPLE_BETA_TARGETS.each do |target|
+      ipa = nix_ipa_path(target[:ipa])
+      deliver(
+        api_key: api_key,
+        app_identifier: target[:bundle_id],
+        platform: target[:app_platform],
+        ipa: ipa,
+        submit_for_review: true,
+        force: true,
+        skip_screenshots: true,
+        skip_metadata: true,
+        run_precheck_before_submit: false
+      )
+      UI.success("Submitted #{target[:name]} #{wawona_version} (#{wawona_build_number}) for App Store review")
     end
   end
 end
