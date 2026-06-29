@@ -34,6 +34,16 @@ jobs:
             echo "WAWONA_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
           fi
 
+      - name: Select Active Xcode
+        run: |
+          XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XCODE_APP" ]; then
+            echo "::error::No Xcode installation found on this runner"
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE_APP"
+          echo "DEVELOPER_DIR=$XCODE_APP/Contents/Developer" >> "$GITHUB_ENV"
+
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v22
         with:
@@ -53,7 +63,6 @@ jobs:
           TEAM_ID: ${{ secrets.TEAM_ID }}
           WAWONA_BUILD_NUMBER: ${{ github.run_number }}
           CI: "true"
-          DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
           LANG: en_US.UTF-8
           LC_ALL: en_US.UTF-8
         working-directory: .
