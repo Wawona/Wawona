@@ -437,7 +437,6 @@
           deps = mobileToytoolkitDepsAndroid // {
             weston = toolchainsAndroid.buildForAndroid "weston" { };
             libintl = toolchainsAndroid.buildForAndroid "libintl" { };
-            weston-simple-shm = toolchainsAndroid.buildForAndroid "weston-simple-shm" { };
           };
           forceLoadWeston = true;
           linkMode = "whole_archive";

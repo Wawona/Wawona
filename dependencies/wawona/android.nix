@@ -60,7 +60,6 @@ let
     deps = mobileToytoolkitDeps // {
       weston = westonAndroid;
       libintl = libintlAndroid;
-      weston-simple-shm = westonSimpleShmAndroid;
     };
     forceLoadWeston = true;
     linkMode = "whole_archive";
