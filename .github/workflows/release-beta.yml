@@ -6,8 +6,10 @@ on:
       lane:
         description: "Fastlane lane (beta, ios beta, android beta)"
         required: false
-        default: beta
+        default: ios beta
   push:
+    branches:
+      - master
     tags:
       - "v0.2.*"
 
@@ -20,10 +22,17 @@ env:
 jobs:
   apple-beta:
     name: "TestFlight (Apple platforms)"
+    if: github.event_name != 'workflow_dispatch' || !contains(github.event.inputs.lane, 'android')
     runs-on: macos-26
     environment: release-beta
     steps:
       - uses: actions/checkout@v4
+
+      - name: Resolve release version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "WAWONA_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          fi
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v16
@@ -41,7 +50,6 @@ jobs:
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           TEAM_ID: ${{ secrets.TEAM_ID }}
-          WAWONA_VERSION: ${{ github.ref_name == '' && '0.2.4' || github.ref_name }}
           WAWONA_BUILD_NUMBER: ${{ github.run_number }}
           CI: "true"
           DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
@@ -54,10 +62,17 @@ jobs:
 
   android-beta:
     name: "Play internal track (Android)"
+    if: github.event_name == 'workflow_dispatch' && (github.event.inputs.lane == 'beta' || contains(github.event.inputs.lane, 'android'))
     runs-on: ubuntu-latest
     environment: release-beta
     steps:
       - uses: actions/checkout@v4
+
+      - name: Resolve release version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "WAWONA_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          fi
 
       - name: Reclaim disk space
         run: |
@@ -86,7 +101,6 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           PLAY_STORE_JSON_KEY: ${{ secrets.PLAY_STORE_JSON_KEY }}
-          WAWONA_VERSION: ${{ github.ref_name == '' && '0.2.4' || github.ref_name }}
           CI: "true"
         working-directory: .
         run: |
