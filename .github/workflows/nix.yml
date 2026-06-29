@@ -158,8 +158,9 @@ jobs:
       - name: Run Swift tests
         run: |
           swift build --target WawonaUIContractsTests
+          swift test --skip-build --filter WawonaUIContractsTests
           swift build --target WawonaModelSettingsTests
-          swift test --skip-build
+          swift test --skip-build --filter WawonaModelSettingsTests
 
   build-linux:
     name: "Linux (x86_64): ${{ matrix.target }}"

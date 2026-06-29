@@ -64,59 +64,60 @@
     pkgsFor = system:
       let
         isDarwin = (system == "x86_64-darwin" || system == "aarch64-darwin");
-        customOverlays = [
-          (import rust-overlay)
-          (self: super: {
-            rustToolchain =
-              if isDarwin then
-                super.rust-bin.nightly.latest.default.override {
-                  extensions = [ "rust-src" ];
-                  targets = [
-                    "aarch64-apple-ios"
-                    "aarch64-apple-ios-sim"
-                    "aarch64-apple-tvos"
-                    "aarch64-apple-tvos-sim"
-                    "aarch64-apple-visionos"
-                    "aarch64-apple-visionos-sim"
-                    "aarch64-apple-watchos"
-                    "aarch64-apple-watchos-sim"
-                  ];
-                }
-              else
-                super.rust-bin.stable.latest.default;
-            rustToolchainAndroid = super.rust-bin.stable.latest.default.override {
-              targets = [ "aarch64-linux-android" ];
-            };
-            rustPlatformAndroid = super.makeRustPlatform {
-              cargo = self.rustToolchainAndroid;
-              rustc = self.rustToolchainAndroid;
-            };
-            rustPlatform = super.makeRustPlatform {
-              cargo = self.rustToolchain;
-              rustc = self.rustToolchain;
-            };
-          })
-          (self: super: {
-            linuxHeaders = super.linuxHeaders.overrideAttrs (old: {
-              makeFlags = (old.makeFlags or []) ++ [ "HOSTCC=cc" ];
-            });
-            makeLinuxHeaders = args: (super.makeLinuxHeaders args).overrideAttrs (old: {
-              preConfigure = (old.preConfigure or "") + ''
-                mkdir -p $TMPDIR/gcc-shim
-                ln -s $(command -v cc) $TMPDIR/gcc-shim/gcc
-                ln -s $(command -v c++) $TMPDIR/gcc-shim/g++
-                export PATH=$TMPDIR/gcc-shim:$PATH
-              '';
-            });
-            llvmPackages_21 = if super.stdenv.targetPlatform.isAndroid then super.llvmPackages_21 // {
-              compiler-rt = super.llvmPackages_21.compiler-rt.overrideAttrs (old: {
-                postPatch = (old.postPatch or "") + ''
-                  sed -i 's|#include <pthread.h>|typedef int pthread_once_t; int pthread_once(pthread_once_t *, void (*)(void));|' lib/builtins/os_version_check.c || true
+        customOverlays =
+          [ (import rust-overlay) ]
+          ++ (if isDarwin then [
+            (self: super: {
+              rustToolchain = super.rust-bin.nightly.latest.default.override {
+                extensions = [ "rust-src" ];
+                targets = [
+                  "aarch64-apple-ios"
+                  "aarch64-apple-ios-sim"
+                  "aarch64-apple-tvos"
+                  "aarch64-apple-tvos-sim"
+                  "aarch64-apple-visionos"
+                  "aarch64-apple-visionos-sim"
+                  "aarch64-apple-watchos"
+                  "aarch64-apple-watchos-sim"
+                ];
+              };
+              rustToolchainAndroid = super.rust-bin.stable.latest.default.override {
+                targets = [ "aarch64-linux-android" ];
+              };
+              rustPlatformAndroid = super.makeRustPlatform {
+                cargo = self.rustToolchainAndroid;
+                rustc = self.rustToolchainAndroid;
+              };
+              rustPlatform = super.makeRustPlatform {
+                cargo = self.rustToolchain;
+                rustc = self.rustToolchain;
+              };
+            })
+            (self: super: {
+              linuxHeaders = super.linuxHeaders.overrideAttrs (old: {
+                makeFlags = (old.makeFlags or []) ++ [ "HOSTCC=cc" ];
+              });
+              makeLinuxHeaders = args: (super.makeLinuxHeaders args).overrideAttrs (old: {
+                preConfigure = (old.preConfigure or "") + ''
+                  mkdir -p $TMPDIR/gcc-shim
+                  ln -s $(command -v cc) $TMPDIR/gcc-shim/gcc
+                  ln -s $(command -v c++) $TMPDIR/gcc-shim/g++
+                  export PATH=$TMPDIR/gcc-shim:$PATH
                 '';
               });
-            } else super.llvmPackages_21;
-          })
-        ];
+              llvmPackages_21 = if super.stdenv.targetPlatform.isAndroid then super.llvmPackages_21 // {
+                compiler-rt = super.llvmPackages_21.compiler-rt.overrideAttrs (old: {
+                  postPatch = (old.postPatch or "") + ''
+                    sed -i 's|#include <pthread.h>|typedef int pthread_once_t; int pthread_once(pthread_once_t *, void (*)(void));|' lib/builtins/os_version_check.c || true
+                  '';
+                });
+              } else super.llvmPackages_21;
+            })
+          ] else [
+            (self: super: {
+              rustToolchain = super.rust-bin.stable.latest.default;
+            })
+          ]);
       in (import nixpkgs {
         inherit system;
         overlays = customOverlays;
@@ -594,6 +595,9 @@
             androidConfigNix westonToytoolkitLdflagsNix westonCompositorLdflagsNix;
             releaseArtifact = "release-aab";
           };
+          angle-android = toolchainsAndroid.buildForAndroid "angle" { };
+          weston-android = toolchainsAndroid.buildForAndroid "weston" { };
+          weston-compositor-android = toolchainsAndroid.buildForAndroid "weston-compositor" { };
         }) // (pkgs.lib.optionalAttrs hasAndroidCts {
           vulkan-cts-android = vulkan-cts-android;
           gl-cts-android = gl-cts-android;
