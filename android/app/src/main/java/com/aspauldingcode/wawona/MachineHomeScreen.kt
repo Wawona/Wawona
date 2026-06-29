@@ -12,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -349,6 +350,7 @@ fun MachineWelcomeScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun MachineGridCard(
     profile: MachineProfile,
@@ -625,7 +627,7 @@ private fun configurationSummary(profile: MachineProfile): String = when (profil
     MachineType.CONTAINER -> "Subtype: ${profile.containerSubtype.ifBlank { "docker" }}"
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun MachineEditorSheet(
     title: String,
