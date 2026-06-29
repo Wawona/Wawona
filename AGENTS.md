@@ -32,15 +32,10 @@ simulators, devices, and log capture — use the **`xcodebuild`** MCP server
 locally and requires **macOS + Xcode 16+** (not the hosted endpoint). Wawona's
 Xcode projects are generated (xcodegen via Nix), so regenerate before building.
 
-For **CI / prebuilt distribution** (Wawona is pre-release; the goal is prebuilt
-TestFlight/Play downloads + PR builds on runners instead of hours-long local
-compiles), `wwn-mcp` indexes: **Fastlane** (`project=fastlane` — `pilot`
-TestFlight, `supply` Play, lanes/Fastfile), **GitHub Actions runners**
-(`project=github-actions` — hosted/self-hosted runners, matrix strategy,
-caching), **Determinate Nix** (`project=determinate-nix` — `nix-installer`,
-FlakeHub, Magic Nix Cache, the CI action), and **Nix dev environments**
-(`project=nix-dev-env` — `nix.dev`, `devenv`, `nix-direnv`). Query these instead
-of guessing CI/automation syntax.
+For **CI / prebuilt distribution** (Wawona v0.2.4+ Fastlane beta lanes), read
+`wwn-mcp/knowledge/wawona/fastlane.md` and use `scripts/sync-github-secrets.sh`
++ `scripts/bootstrap-apple-signing.sh`. Query **Fastlane** (`project=fastlane`)
+and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream syntax.
 
 ## Non-negotiable facts
 

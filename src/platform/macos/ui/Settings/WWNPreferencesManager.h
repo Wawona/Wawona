@@ -59,7 +59,7 @@ extern NSString *const kWWNPrefsWaypipeVsock;
 extern NSString *const kWWNPrefsWaypipeXwls;
 extern NSString *const kWWNPrefsWaypipeTitlePrefix;
 extern NSString *const kWWNPrefsWaypipeSecCtx;
-// Machine stub settings (v0.2.3)
+// Machine settings (v0.2.4 — UTM launcher on macOS; sim/emulator docs elsewhere)
 extern NSString *const kWWNPrefsMachineVMProviderStub;
 extern NSString *const kWWNPrefsMachineVMDefaultVsockStub;
 extern NSString *const kWWNPrefsMachineContainerRuntimeStub;

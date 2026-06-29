@@ -22,6 +22,17 @@ public struct MachineSettingsView: View {
 
     public var body: some View {
         Form {
+            if PlatformGlobalSettings.isAvailable {
+                Section {
+                    Button("Open Wawona Settings…") {
+                        PlatformGlobalSettings.open()
+                    }
+                    Text("Global defaults (Display, Input, Graphics, Waypipe, SSH). Values below override those settings for this machine only.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section("Machine") {
                 if profileStore.profiles.isEmpty {
                     Text("No machine profiles available.")
@@ -167,6 +178,7 @@ public struct MachineSettingsView: View {
                 .autocorrectionDisabled()
 
             Toggle("Enable Waypipe", isOn: waypipeEnabledBinding)
+                .disabled(draft?.type == .native)
         }
     }
 

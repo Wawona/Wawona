@@ -1,5 +1,15 @@
 { systems, pkgsFor }:
 
+let
+  releasePackages = pkgs: with pkgs; [
+    fastlane
+    ruby
+    bundler
+    cocoapods
+    jdk17
+    gh
+  ];
+in
 builtins.listToAttrs (map (system: let
   pkgs = pkgsFor system;
   toolchains = if pkgs.stdenv.isDarwin then import pkgs.toolchainsDir {
@@ -8,7 +18,16 @@ builtins.listToAttrs (map (system: let
     pkgsIos = null;
   } else null;
   xcodeUtils = if pkgs.stdenv.isDarwin then import pkgs.applePath { inherit (pkgs) lib pkgs; } else null;
-  
+
+  releaseShellHook = ''
+    if [ -f .release-secrets.env ]; then
+      echo "Release secrets: source .release-secrets.env before fastlane beta"
+    else
+      echo "Release: copy .release-secrets.env.template → .release-secrets.env"
+    fi
+    echo "Fastlane: nix develop .#release --command fastlane ios beta"
+  '';
+
   linuxShell = pkgs.mkShell {
     nativeBuildInputs = [ pkgs.pkg-config ];
     buildInputs = [
@@ -18,10 +37,11 @@ builtins.listToAttrs (map (system: let
       pkgs.wayland-protocols
       pkgs.openssl
       pkgs.nix-output-monitor
-    ];
+    ] ++ releasePackages pkgs;
     shellHook = ''
       alias nb='nom build'
       alias nd='nom develop'
+      ${releaseShellHook}
     '';
   };
 
@@ -37,7 +57,7 @@ builtins.listToAttrs (map (system: let
       pkgs.wayland-protocols
       pkgs.openssl
       pkgs.nix-output-monitor
-    ] ++ (if pkgs.stdenv.isDarwin then [
+    ] ++ releasePackages pkgs ++ (if pkgs.stdenv.isDarwin then [
       (toolchains.buildForMacOS "libwayland" { })
       xcodeUtils.ensureIosSimSDK
       xcodeUtils.findXcodeScript
@@ -64,11 +84,20 @@ builtins.listToAttrs (map (system: let
       fi
 
       echo "Contributors: nix run .#xcodegen-ios | export WAWONA_SKIP_NIX_PREBUILD=1 for UI iteration"
+      ${releaseShellHook}
     '';
+  };
+
+  releaseShell = pkgs.mkShell {
+    inputsFrom = [
+      (if pkgs.stdenv.isDarwin then darwinShell else linuxShell)
+    ];
+    shellHook = releaseShellHook;
   };
 in {
   name = system;
   value = {
     default = if pkgs.stdenv.isDarwin then darwinShell else linuxShell;
+    release = releaseShell;
   };
 }) systems)

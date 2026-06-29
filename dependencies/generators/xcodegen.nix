@@ -28,6 +28,9 @@
   macosWeston ? null,
   macosFoot ? null,
   macosFastfetch ? null,
+  macosNeovim ? null,
+  macosZsh ? null,
+  macosKmscube ? null,
   # When set (e.g. [ "ios" "ipados" ]), only emit matching app targets (+ shared libs).
   platformFilter ? null,
   # Apple toolchain path; Wawona's flake injects the wwn-toolchain store path.
@@ -37,6 +40,15 @@
 let
   lib = pkgs.lib;
   strip = d: if d == null then "" else toString d;
+  # Overridable via `nix build --impure` (Fastlane sets WAWONA_VERSION / WAWONA_BUILD_NUMBER).
+  effectiveVersion =
+    let
+      envV = builtins.getEnv "WAWONA_VERSION";
+      base = if wawonaVersion != null && wawonaVersion != "" then wawonaVersion else "0.0.1";
+    in if envV != "" then lib.removePrefix "v" envV else base;
+  wawonaBuildNumber =
+    let bn = builtins.getEnv "WAWONA_BUILD_NUMBER";
+    in if bn != "" then bn else "0";
   derivedRustLib = "$(DERIVED_FILE_DIR)/libwawona.a";
   derivedZshLib = "$(DERIVED_FILE_DIR)/libwawona-zsh.a";
   # Prebuild symlinks the active SDK's archives here (see scripts/xcode-prebuild.sh).
@@ -89,6 +101,10 @@ let
     inherit lib deps simulator;
     forceLoad = true;
   };
+  pixmanHeaderPaths = deps: lib.optionals (deps ? pixman && deps.pixman != null) [
+    "${strip deps.pixman}/include"
+    "${strip deps.pixman}/include/pixman-1"
+  ];
   ilandGlHeaderPaths = deps: [
     "${strip (deps.iland or null)}/include"
     "${strip (deps.iland or null)}/include/EGL"
@@ -105,6 +121,11 @@ let
     let libff = "${strip (deps.fastfetch or null)}/lib/libfastfetch.a";
     in if (deps.fastfetch or null) == null || !builtins.pathExists libff then [] else [
       "-force_load" libff
+    ];
+  neovimLdflags = deps:
+    let libnvim = "${strip (deps.neovim or null)}/lib/libwawona-neovim.a";
+    in if (deps.neovim or null) == null || !builtins.pathExists libnvim then [] else [
+      "-force_load" libnvim
     ];
   # weston_simple_shm_main lives here; os-compatibility.c is omitted from this
   # archive because libweston-13.a already provides those symbols on iOS-family targets.
@@ -179,12 +200,12 @@ let
     zstd      = "1.5.7";
     libffi    = "3.5.2";
     sshpass   = "1.10";
-    waypipe   = "0.10.6";
+    waypipe   = "0.11.0";
   };
 
   # Build escaped preprocessor definitions for Xcode (string macros need escaped quotes)
   versionDefs = [
-    "WAWONA_VERSION=\\\"${wawonaVersion}\\\""
+    "WAWONA_VERSION=\\\"${effectiveVersion}\\\""
     "WAWONA_WAYLAND_VERSION=\\\"${depVersions.wayland}\\\""
     "WAWONA_XKBCOMMON_VERSION=\\\"${depVersions.xkbcommon}\\\""
     "WAWONA_LZ4_VERSION=\\\"${depVersions.lz4}\\\""
@@ -295,7 +316,7 @@ let
             "-llz4"
             "-lepoll-shim"
           ] ++ (mobileBaseLdflags deps) ++ westonToytoolkitLdflags deps ++ westonCompositorLdflags deps
-          ++ (ilandGlLdflags { inherit deps; simulator = false; }) ++ footLdflags deps ++ fastfetchLdflags deps ++ extraDeviceLdflags
+          ++ (ilandGlLdflags { inherit deps; simulator = false; }) ++ footLdflags deps ++ fastfetchLdflags deps ++ neovimLdflags deps ++ extraDeviceLdflags
           ++ mobileZshLdflags ++ [
             derivedRustLib
             "-lc++"
@@ -318,7 +339,7 @@ let
             "-llz4"
             "-lepoll-shim"
           ] ++ (mobileBaseLdflags simDeps) ++ westonToytoolkitLdflags simDeps ++ westonCompositorLdflags simDeps
-          ++ (ilandGlLdflags { deps = simDeps; simulator = true; }) ++ footLdflags simDeps ++ fastfetchLdflags simDeps ++ extraSimLdflags
+          ++ (ilandGlLdflags { deps = simDeps; simulator = true; }) ++ footLdflags simDeps ++ fastfetchLdflags simDeps ++ neovimLdflags simDeps ++ extraSimLdflags
           ++ mobileZshLdflags ++ [
             derivedRustLib
             "-lc++"
@@ -483,6 +504,49 @@ let
     outputFiles = rootfsEmbedOutputs;
   };
 
+  neovimRootfsIosEmbedScript = deviceRootfs: simRootfs: pkgs.writeShellScript "embed-neovim-rootfs-ios.sh" ''
+    case "''${PLATFORM_NAME:-}" in
+      iphoneos)
+        rootfsSrc="${strip deviceRootfs}/rootfs"
+        ;;
+      iphonesimulator)
+        rootfsSrc="${strip simRootfs}/rootfs"
+        ;;
+      *)
+        exit 0
+        ;;
+    esac
+    if [ ! -d "$rootfsSrc" ]; then
+      echo "warning: neovim-rootfs not built for this platform" >&2
+      exit 0
+    fi
+    BUNDLE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
+    DEST="$BUNDLE/neovim-rootfs"
+    rm -rf "$DEST"
+    mkdir -p "$DEST"
+    cp -R "$rootfsSrc/." "$DEST/"
+    echo "Embedded neovim-rootfs into $DEST"
+  '';
+
+  neovimRootfsEmbedOutputs = [
+    "$(BUILT_PRODUCTS_DIR)/$(FULL_PRODUCT_NAME)/neovim-rootfs/etc/nvim/init.lua.template"
+    "$(BUILT_PRODUCTS_DIR)/$(FULL_PRODUCT_NAME)/neovim-rootfs/usr/share/nvim/runtime"
+  ];
+
+  iosNeovimRootfsEmbedPhase = {
+    path = neovimRootfsIosEmbedScript (iosDeps."neovim-rootfs" or null) (iosSimDeps."neovim-rootfs" or null);
+    name = "Embed neovim-rootfs (runtime templates)";
+    basedOnDependencyAnalysis = true;
+    outputFiles = neovimRootfsEmbedOutputs;
+  };
+
+  ipadosNeovimRootfsEmbedPhase = {
+    path = neovimRootfsIosEmbedScript (ipadosDeps."neovim-rootfs" or null) (ipadosSimDeps."neovim-rootfs" or null);
+    name = "Embed neovim-rootfs (runtime templates)";
+    basedOnDependencyAnalysis = true;
+    outputFiles = neovimRootfsEmbedOutputs;
+  };
+
   # src/core is entirely Rust (0 C/ObjC files) — excluded entirely
   # src/stubs depend on system headers (wayland, vulkan) that are only
   # available from the Nix build environment, so they stay out of Xcode.
@@ -514,9 +578,8 @@ let
     settings = {
       base = {
         PRODUCT_NAME = "Wawona";
-        MARKETING_VERSION = wawonaVersion;
-        # Bump when bundle layout changes (rootfs/weston embeds) to avoid delta-install manifest skew.
-        CURRENT_PROJECT_VERSION = "13";
+        MARKETING_VERSION = effectiveVersion;
+        CURRENT_PROJECT_VERSION = wawonaBuildNumber;
         CODE_SIGN_STYLE = "Automatic";
         SWIFT_VERSION = "5.0";
         SWIFT_OBJC_BRIDGING_HEADER = "src/platform/macos/WWN-Bridging-Header.h";
@@ -577,7 +640,7 @@ let
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
         ];
         preBuildScripts = [ iosPreBuild ];
-        postBuildScripts = [ iosAngleEmbedPhase xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase iosRootfsEmbedPhase ];
+        postBuildScripts = [ iosAngleEmbedPhase xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase iosRootfsEmbedPhase iosNeovimRootfsEmbedPhase ];
 
         settings = {
           base = {
@@ -637,7 +700,7 @@ let
                "-lcrypto"
                "-lepoll-shim"
              ] ++ westonToytoolkitLdflags iosDeps ++ westonCompositorLdflags iosDeps
-             ++ (ilandGlLdflags { deps = iosDeps; simulator = false; }) ++ footLdflags iosDeps ++ fastfetchLdflags iosDeps
+             ++ (ilandGlLdflags { deps = iosDeps; simulator = false; }) ++ footLdflags iosDeps ++ fastfetchLdflags iosDeps ++ neovimLdflags iosDeps
              ++ mobileZshLdflags ++ [
                derivedRustLib
                "-lc++"
@@ -671,7 +734,7 @@ let
               "-lcrypto"
                "-lepoll-shim"
              ] ++ westonToytoolkitLdflags iosSimDeps ++ westonCompositorLdflags iosSimDeps
-             ++ (ilandGlLdflags { deps = iosSimDeps; simulator = true; }) ++ footLdflags iosSimDeps ++ fastfetchLdflags iosSimDeps
+             ++ (ilandGlLdflags { deps = iosSimDeps; simulator = true; }) ++ footLdflags iosSimDeps ++ fastfetchLdflags iosSimDeps ++ neovimLdflags iosSimDeps
              ++ mobileZshLdflags ++ [
                derivedRustLib
                "-lc++"
@@ -688,14 +751,14 @@ let
               "${strip (iosDeps.libwayland or null)}/include/wayland"
               "${strip (iosDeps.xkbcommon or null)}/include"
               "${strip (iosDeps.libssh2 or null)}/include"
-            ] ++ (ilandGlHeaderPaths iosDeps);
+            ] ++ (pixmanHeaderPaths iosDeps) ++ (ilandGlHeaderPaths iosDeps);
             "HEADER_SEARCH_PATHS[sdk=iphonesimulator*]" = [
               "$(inherited)"
               "${strip (iosSimDeps.libwayland or null)}/include"
               "${strip (iosSimDeps.libwayland or null)}/include/wayland"
               "${strip (iosSimDeps.xkbcommon or null)}/include"
               "${strip (iosSimDeps.libssh2 or null)}/include"
-            ] ++ (ilandGlHeaderPaths iosSimDeps);
+            ] ++ (pixmanHeaderPaths iosSimDeps) ++ (ilandGlHeaderPaths iosSimDeps);
           };
         };
         dependencies = [
@@ -742,7 +805,7 @@ let
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
         ];
         preBuildScripts = [ ipadosPreBuild ];
-        postBuildScripts = [ ipadosAngleEmbedPhase xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase ipadosRootfsEmbedPhase ];
+        postBuildScripts = [ ipadosAngleEmbedPhase xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase ipadosRootfsEmbedPhase ipadosNeovimRootfsEmbedPhase ];
 
         settings = {
           base = {
@@ -803,7 +866,7 @@ let
               "-lcrypto"
               "-lepoll-shim"
             ] ++ westonToytoolkitLdflags ipadosDeps ++ westonCompositorLdflags ipadosDeps
-            ++ (ilandGlLdflags { deps = ipadosDeps; simulator = false; }) ++ footLdflags ipadosDeps ++ fastfetchLdflags ipadosDeps
+            ++ (ilandGlLdflags { deps = ipadosDeps; simulator = false; }) ++ footLdflags ipadosDeps ++ fastfetchLdflags ipadosDeps ++ neovimLdflags ipadosDeps
             ++ mobileZshLdflags ++ [
               derivedRustLib
               "-lc++"
@@ -837,7 +900,7 @@ let
               "-lcrypto"
               "-lepoll-shim"
             ] ++ westonToytoolkitLdflags ipadosSimDeps ++ westonCompositorLdflags ipadosSimDeps
-            ++ (ilandGlLdflags { deps = ipadosSimDeps; simulator = true; }) ++ footLdflags ipadosSimDeps ++ fastfetchLdflags ipadosSimDeps
+            ++ (ilandGlLdflags { deps = ipadosSimDeps; simulator = true; }) ++ footLdflags ipadosSimDeps ++ fastfetchLdflags ipadosSimDeps ++ neovimLdflags ipadosSimDeps
             ++ mobileZshLdflags ++ [
               derivedRustLib
               "-lc++"
@@ -854,14 +917,14 @@ let
               "${strip (ipadosDeps.libwayland or null)}/include/wayland"
               "${strip (ipadosDeps.xkbcommon or null)}/include"
               "${strip (ipadosDeps.libssh2 or null)}/include"
-            ] ++ (ilandGlHeaderPaths ipadosDeps);
+            ] ++ (pixmanHeaderPaths ipadosDeps) ++ (ilandGlHeaderPaths ipadosDeps);
             "HEADER_SEARCH_PATHS[sdk=iphonesimulator*]" = [
               "$(inherited)"
               "${strip (ipadosSimDeps.libwayland or null)}/include"
               "${strip (ipadosSimDeps.libwayland or null)}/include/wayland"
               "${strip (ipadosSimDeps.xkbcommon or null)}/include"
               "${strip (ipadosSimDeps.libssh2 or null)}/include"
-            ] ++ (ilandGlHeaderPaths ipadosSimDeps);
+            ] ++ (pixmanHeaderPaths ipadosSimDeps) ++ (ilandGlHeaderPaths ipadosSimDeps);
           };
         };
         dependencies = [
@@ -956,7 +1019,7 @@ let
               "-lssl"
               "-lcrypto"
               "-lepoll-shim"
-            ] ++ westonToytoolkitLdflags tvosDeps ++ westonCompositorLdflags tvosDeps ++ footLdflags tvosDeps ++ fastfetchLdflags tvosDeps ++ [
+            ] ++ westonToytoolkitLdflags tvosDeps ++ westonCompositorLdflags tvosDeps ++ footLdflags tvosDeps ++ fastfetchLdflags tvosDeps ++ neovimLdflags tvosDeps ++ [
               derivedRustLib
               "-lc++"
               "-lc++abi"
@@ -987,7 +1050,7 @@ let
               "-lssl"
               "-lcrypto"
               "-lepoll-shim"
-            ] ++ westonToytoolkitLdflags tvosSimDeps ++ westonCompositorLdflags tvosSimDeps ++ footLdflags tvosSimDeps ++ fastfetchLdflags tvosSimDeps ++ [
+            ] ++ westonToytoolkitLdflags tvosSimDeps ++ westonCompositorLdflags tvosSimDeps ++ footLdflags tvosSimDeps ++ fastfetchLdflags tvosSimDeps ++ neovimLdflags tvosSimDeps ++ [
               derivedRustLib
               "-lc++"
               "-lc++abi"
@@ -1004,14 +1067,14 @@ let
               "${strip (tvosDeps.libwayland or null)}/include/wayland"
               "${strip (tvosDeps.xkbcommon or null)}/include"
               "${strip (tvosDeps.libssh2 or null)}/include"
-            ];
+            ] ++ (pixmanHeaderPaths tvosDeps);
             "HEADER_SEARCH_PATHS[sdk=appletvsimulator*]" = [
               "$(inherited)"
               "${strip (tvosSimDeps.libwayland or null)}/include"
               "${strip (tvosSimDeps.libwayland or null)}/include/wayland"
               "${strip (tvosSimDeps.xkbcommon or null)}/include"
               "${strip (tvosSimDeps.libssh2 or null)}/include"
-            ];
+            ] ++ (pixmanHeaderPaths tvosSimDeps);
           };
         };
         dependencies = [
@@ -1039,6 +1102,7 @@ let
         sources = [
           { path = "Sources/WawonaUI"; excludes = [ "Skip/**" "VisionOS/**" ]; }
           { path = "src/platform/macos"; excludes = commonExcludes; }
+          { path = "src/platform/macos/WWNIlandPresenter.m"; type = "file"; }
           { path = "src/platform/macos/ui"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
           { path = "src/resources/Wawona.icon"; type = "folder"; }
@@ -1057,53 +1121,46 @@ let
               WESTON_SRC="${strip macosWeston}/bin"
               FOOT_BIN="${strip macosFoot}/bin"
               FASTFETCH_BIN="${strip macosFastfetch}/bin"
+              NEOVIM_BIN="${strip macosNeovim}/bin"
+              ZSH_BIN="${strip macosZsh}/bin"
+              KMSCUBE_BIN="${strip macosKmscube}/bin"
+
+              bundle_bin() {
+                src="$1"
+                name="$2"
+                if [ -f "$src" ]; then
+                  install -m 755 "$src" "$BIN_DEST/$name"
+                  install -m 755 "$src" "$MACOS_DEST/$name"
+                  echo "Bundled $name"
+                fi
+              }
 
               BIN_DEST="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources/bin"
               MACOS_DEST="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/MacOS"
               mkdir -p "$BIN_DEST"
               mkdir -p "$MACOS_DEST"
 
-              # Bundle Waypipe
-              if [ -f "$WAYPIPE_SRC" ]; then
-                install -m 755 "$WAYPIPE_SRC" "$BIN_DEST/waypipe"
-                install -m 755 "$WAYPIPE_SRC" "$MACOS_DEST/waypipe"
-                echo "Bundled waypipe"
-              fi
+              bundle_bin "$WAYPIPE_SRC" "waypipe"
+              bundle_bin "$SSHPASS_SRC" "sshpass"
 
-              # Bundle sshpass
-              if [ -f "$SSHPASS_SRC" ]; then
-                install -m 755 "$SSHPASS_SRC" "$BIN_DEST/sshpass"
-                install -m 755 "$SSHPASS_SRC" "$MACOS_DEST/sshpass"
-                echo "Bundled sshpass"
-              fi
-
-              # Bundle Weston Clients
               if [ -d "$WESTON_SRC" ]; then
-                for client in weston weston-terminal weston-simple-egl weston-simple-shm weston-flower weston-smoke weston-resizor weston-scaler; do
-                  if [ -f "$WESTON_SRC/$client" ]; then
-                    install -m 755 "$WESTON_SRC/$client" "$BIN_DEST/$client"
-                    install -m 755 "$WESTON_SRC/$client" "$MACOS_DEST/$client"
-                    echo "Bundled $client"
-                  fi
+                for client in "$WESTON_SRC"/weston*; do
+                  [ -f "$client" ] || continue
+                  case "$client" in *.so|*.dylib) continue ;; esac
+                  bundle_bin "$client" "$(basename "$client")"
                 done
               fi
 
-              # Bundle Foot terminal (wrapper script + real binary; see clients/foot/macos.nix postInstall)
-              if [ -f "$FOOT_BIN/foot" ]; then
-                install -m 755 "$FOOT_BIN/foot" "$BIN_DEST/foot"
-                install -m 755 "$FOOT_BIN/foot" "$MACOS_DEST/foot"
-                if [ -f "$FOOT_BIN/.foot-wrapped" ]; then
-                  install -m 755 "$FOOT_BIN/.foot-wrapped" "$BIN_DEST/.foot-wrapped"
-                  install -m 755 "$FOOT_BIN/.foot-wrapped" "$MACOS_DEST/.foot-wrapped"
-                fi
-                echo "Bundled foot"
+              bundle_bin "$FOOT_BIN/foot" "foot"
+              if [ -f "$FOOT_BIN/.foot-wrapped" ]; then
+                bundle_bin "$FOOT_BIN/.foot-wrapped" ".foot-wrapped"
               fi
-
-              if [ -f "$FASTFETCH_BIN/fastfetch" ]; then
-                install -m 755 "$FASTFETCH_BIN/fastfetch" "$BIN_DEST/fastfetch"
-                install -m 755 "$FASTFETCH_BIN/fastfetch" "$MACOS_DEST/fastfetch"
-                echo "Bundled fastfetch"
-              fi
+              bundle_bin "$FASTFETCH_BIN/fastfetch" "fastfetch"
+              bundle_bin "$NEOVIM_BIN/nvim" "nvim"
+              bundle_bin "$NEOVIM_BIN/nvim" "vi"
+              bundle_bin "$NEOVIM_BIN/nvim" "vim"
+              bundle_bin "$ZSH_BIN/zsh" "zsh"
+              bundle_bin "$KMSCUBE_BIN/kmscube" "kmscube"
             '';
           }
         ];
@@ -1126,12 +1183,12 @@ let
               "$(SRCROOT)/src/platform/macos/ui/Helpers"
               "$(SRCROOT)/src/platform/macos/ui/Settings"
               "$(SRCROOT)/src/platform/macos"
-            ];
+            ] ++ (pixmanHeaderPaths macosDeps) ++ (ilandGlHeaderPaths macosDeps);
             OTHER_LDFLAGS = [
               "$(inherited)"
               "-L${strip (macosDeps.libwayland or null)}/lib"
               "-L${strip (macosDeps.xkbcommon or null)}/lib"
-              "-L${pkgs.pixman}/lib"
+              "-L${strip (macosDeps.pixman or null)}/lib"
               "-L${pkgs.openssl.out}/lib"
               "-lxkbcommon"
               "-lwayland-client"
@@ -1141,7 +1198,9 @@ let
               "-lcrypto"
               "-lz"
               derivedRustLib
-            ];
+            ] ++ (ilandGlLdflags { deps = macosDeps; simulator = false; })
+              ++ (westonToytoolkitLdflags macosDeps)
+              ++ (westonCompositorLdflags macosDeps);
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "USE_RUST_CORE=1"
@@ -1238,7 +1297,7 @@ let
               "-lssh2"
               "-lssl"
               "-lcrypto"
-            ] ++ westonToytoolkitLdflags visionosDeps ++ westonCompositorLdflags visionosDeps ++ fastfetchLdflags visionosDeps ++ [
+            ] ++ westonToytoolkitLdflags visionosDeps ++ westonCompositorLdflags visionosDeps ++ fastfetchLdflags visionosDeps ++ neovimLdflags visionosDeps ++ [
               derivedRustLib
               "-lc++"
               "-lc++abi"
@@ -1260,7 +1319,7 @@ let
               "-lssh2"
               "-lssl"
               "-lcrypto"
-            ] ++ westonToytoolkitLdflags visionosSimDeps ++ westonCompositorLdflags visionosSimDeps ++ fastfetchLdflags visionosSimDeps ++ [
+            ] ++ westonToytoolkitLdflags visionosSimDeps ++ westonCompositorLdflags visionosSimDeps ++ fastfetchLdflags visionosSimDeps ++ neovimLdflags visionosSimDeps ++ [
               derivedRustLib
               "-lc++"
               "-lc++abi"
@@ -1277,14 +1336,14 @@ let
               "${strip (visionosDeps.libwayland or null)}/include/wayland"
               "${strip (visionosDeps.xkbcommon or null)}/include"
               "${strip (visionosDeps.libssh2 or null)}/include"
-            ];
+            ] ++ (pixmanHeaderPaths visionosDeps);
             "HEADER_SEARCH_PATHS[sdk=xrsimulator*]" = [
               "$(inherited)"
               "${strip (visionosSimDeps.libwayland or null)}/include"
               "${strip (visionosSimDeps.libwayland or null)}/include/wayland"
               "${strip (visionosSimDeps.xkbcommon or null)}/include"
               "${strip (visionosSimDeps.libssh2 or null)}/include"
-            ];
+            ] ++ (pixmanHeaderPaths visionosSimDeps);
           };
         };
         dependencies = [
@@ -1373,6 +1432,7 @@ let
         sources = [
           { path = "Sources/WawonaWatch"; excludes = commonExcludes; }
           { path = "src/platform/watchos"; excludes = commonExcludes; }
+          { path = "src/platform/watchos/ui/Settings/WWNWatchSettings.storyboard"; }
           { path = "src/resources/Assets.xcassets"; }
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
@@ -1404,7 +1464,7 @@ let
               "${strip (watchosDeps.libwayland or null)}/include/wayland"
               "${strip (watchosDeps.libssh2 or null)}/include"
               "$(SRCROOT)/src/platform/watchos"
-            ];
+            ] ++ (pixmanHeaderPaths watchosDeps);
             # -force_load is needed for the Wayland client libraries because
             # WWNWatchStubs.c provides __attribute__((weak)) definitions of
             # weston_main / weston_simple_shm_main / etc.  Without -force_load
@@ -1441,7 +1501,7 @@ let
               "-lcrypto"
               # Force-load client libs (must come BEFORE -lwayland-server)
               "-force_load" "${strip (watchosDeps.weston-simple-shm or null)}/lib/libweston_simple_shm.a"
-            ] ++ westonToytoolkitLdflags watchosDeps ++ westonCompositorLdflags watchosDeps ++ footLdflags watchosDeps ++ fastfetchLdflags watchosDeps ++ [
+            ] ++ westonToytoolkitLdflags watchosDeps ++ westonCompositorLdflags watchosDeps ++ footLdflags watchosDeps ++ fastfetchLdflags watchosDeps ++ neovimLdflags watchosDeps ++ [
               # Server lib after client force-loads (skips duplicate xdg-shell glue)
               "-lwayland-server"
             ] ++ lib.optionals (watchosDeps ? waypipe && watchosDeps.waypipe != null) [
@@ -1475,7 +1535,7 @@ let
               "-lcrypto"
               # Force-load client libs (must come BEFORE -lwayland-server)
               "-force_load" "${strip (watchosSimDeps.weston-simple-shm or null)}/lib/libweston_simple_shm.a"
-            ] ++ westonToytoolkitLdflags watchosSimDeps ++ westonCompositorLdflags watchosSimDeps ++ footLdflags watchosSimDeps ++ fastfetchLdflags watchosSimDeps ++ [
+            ] ++ westonToytoolkitLdflags watchosSimDeps ++ westonCompositorLdflags watchosSimDeps ++ footLdflags watchosSimDeps ++ fastfetchLdflags watchosSimDeps ++ neovimLdflags watchosSimDeps ++ [
               # Server lib after client force-loads (skips duplicate xdg-shell glue)
               "-lwayland-server"
             ] ++ lib.optionals (watchosSimDeps ? waypipe && watchosSimDeps.waypipe != null) [

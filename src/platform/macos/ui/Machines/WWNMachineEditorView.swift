@@ -223,6 +223,11 @@ struct WWNMachineEditorView: View {
 
   private var displayInputGraphicsSection: some View {
     sectionCard("Display / Input / Graphics", subtitle: "Per-machine overrides for global Display, Input, Graphics, and HDR settings.") {
+      #if os(macOS) || os(iOS) || os(tvOS) || os(visionOS)
+      Button("Open Wawona Settings…") {
+        PlatformGlobalSettings.open()
+      }
+      #endif
       Toggle("Force Server-Side Decorations", isOn: $forceServerSideDecorations)
       Toggle("Auto Scale", isOn: $autoScale)
       #if os(iOS) || os(tvOS)

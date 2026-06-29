@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Wawona" parent="android:Theme.Material.Light.NoActionBar">
+    <!-- Shell theme before Compose; WawonaTheme / MaterialExpressiveTheme owns in-app M3 Expressive. -->
+    <style name="Theme.Wawona" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:windowBackground">@android:color/black</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>

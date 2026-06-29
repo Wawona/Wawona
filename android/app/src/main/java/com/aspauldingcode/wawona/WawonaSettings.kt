@@ -37,8 +37,8 @@ object WawonaSettings {
         // Use Metal 4 - removed, always false
         val useMetal4ForNested = false
         
-        // Multiple Clients - disabled by default on Android
-        val multipleClients = prefs.getBoolean("multipleClients", false)
+        // Multiple Clients — match iOS/macOS default (shared Rust core supports it).
+        val multipleClients = prefs.getBoolean("multipleClients", true)
         
         // Waypipe RS Support - always enabled, always true
         val waypipeRSSupport = true

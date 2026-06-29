@@ -1,0 +1,10 @@
+git_url(ENV.fetch("MATCH_GIT_URL", "git@github.com:aspauldingcode/apple-signing.git"))
+storage_mode("git")
+type("appstore")
+
+app_identifier([
+  "com.aspauldingcode.Wawona",
+  "com.aspauldingcode.Wawona.watch"
+])
+
+# Auth via App Store Connect API key (bootstrap + CI). Do not set username when using api_key.

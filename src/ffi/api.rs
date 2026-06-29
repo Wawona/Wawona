@@ -113,22 +113,35 @@ pub struct WawonaCore {
     compositor_faulted: AtomicBool,
 }
 
-/// Translate platform view-local coordinates to surface-local coordinates
-/// by adding the CSD geometry offset stored on the window.
+/// Translate AppKit/GTK view-local coordinates to wl_surface-local coordinates.
+/// Only CSD windows carry a non-zero xdg geometry inset; SSD uses view coords as-is.
 fn apply_geometry_offset(
     state: &CompositorState,
     window_id: WindowId,
     x: f64,
     y: f64,
 ) -> (f64, f64) {
+    use crate::core::window::DecorationMode;
     let wid = window_id.id as u32;
     if let Some(window_ref) = state.get_window(wid) {
         let w = window_ref.read().unwrap();
-        if w.geometry_x != 0 || w.geometry_y != 0 {
+        if matches!(w.decoration_mode, DecorationMode::ClientSide)
+            && (w.geometry_x != 0 || w.geometry_y != 0)
+        {
             return (x + w.geometry_x as f64, y + w.geometry_y as f64);
         }
     }
     (x, y)
+}
+
+/// macOS/iOS inject pointer in the host content view — already window-local.
+fn platform_pointer_surface_local(
+    state: &CompositorState,
+    window_id: WindowId,
+    view_x: f64,
+    view_y: f64,
+) -> (f64, f64) {
+    apply_geometry_offset(state, window_id, view_x, view_y)
 }
 
 /// Map compositor-global pointer coordinates to surface-local coordinates
@@ -382,7 +395,11 @@ impl WawonaCore {
             next_resize_transaction_id: Mutex::new(1),
             pending_resize_transactions: RwLock::new(HashMap::new()),
             force_ssd: RwLock::new(false),
-            advertise_fullscreen_shell: RwLock::new(false),
+            // Nested wlroots compositors (Weston, Sway, …) bind zwp_fullscreen_shell_v1.
+            advertise_fullscreen_shell: RwLock::new(cfg!(any(
+                target_os = "macos",
+                target_os = "linux"
+            ))),
             protocol_profile: RwLock::new(ProtocolProfile::default()),
             ffi_windows: RwLock::new(HashMap::new()),
             ffi_surfaces: RwLock::new(HashMap::new()),
@@ -496,12 +513,6 @@ impl WawonaCore {
             KdeMode::Client
         };
 
-        let new_mode = if enabled {
-            crate::core::window::DecorationMode::ServerSide
-        } else {
-            crate::core::window::DecorationMode::ClientSide
-        };
-
         let toplevel_updates: Vec<(u32, smithay::wayland::shell::xdg::ToplevelSurface)> = state
             .xdg
             .toplevels
@@ -531,6 +542,8 @@ impl WawonaCore {
             } else {
                 crate::core::wayland::xdg::decoration::preferred_xdg_decoration_mode(&state, window_id)
             };
+            let new_mode =
+                crate::core::wayland::xdg::decoration::decoration_mode_from_xdg(xdg_mode);
             toplevel.with_pending_state(|pending| {
                 pending.decoration_mode = Some(xdg_mode);
             });
@@ -538,15 +551,16 @@ impl WawonaCore {
 
             if let Some(window) = state.get_window(window_id) {
                 let mut window = window.write().unwrap();
-                window.decoration_mode = new_mode;
+                if window.decoration_mode != new_mode {
+                    window.decoration_mode = new_mode;
+                    state.pending_compositor_events.push(
+                        crate::core::compositor::CompositorEvent::DecorationModeChanged {
+                            window_id,
+                            mode: new_mode,
+                        },
+                    );
+                }
             }
-
-            state.pending_compositor_events.push(
-                crate::core::compositor::CompositorEvent::DecorationModeChanged {
-                    window_id,
-                    mode: new_mode,
-                },
-            );
         }
 
         for decoration in kde_decorations {
@@ -554,16 +568,23 @@ impl WawonaCore {
             if let Some(res) = &decoration.kde_resource {
                 res.mode(target_kde_mode);
             }
+            let new_mode = if enabled {
+                crate::core::window::DecorationMode::ServerSide
+            } else {
+                crate::core::window::DecorationMode::ClientSide
+            };
             if let Some(window) = state.get_window(window_id) {
                 let mut window = window.write().unwrap();
-                window.decoration_mode = new_mode;
+                if window.decoration_mode != new_mode {
+                    window.decoration_mode = new_mode;
+                    state.pending_compositor_events.push(
+                        crate::core::compositor::CompositorEvent::DecorationModeChanged {
+                            window_id,
+                            mode: new_mode,
+                        },
+                    );
+                }
             }
-            state.pending_compositor_events.push(
-                crate::core::compositor::CompositorEvent::DecorationModeChanged {
-                    window_id,
-                    mode: new_mode,
-                },
-            );
         }
     }
 
@@ -1114,6 +1135,21 @@ impl WawonaCore {
                         WindowEvent::UnmaximizeRequested { 
                             window_id: WindowId { id: window_id as u64 } 
                         }
+                    );
+                }
+            }
+            CompositorEvent::WindowFullscreen { window_id, fullscreen } => {
+                if fullscreen {
+                    self.pending_window_events.write().unwrap().push(
+                        WindowEvent::FullscreenRequested {
+                            window_id: WindowId { id: window_id as u64 },
+                        },
+                    );
+                } else {
+                    self.pending_window_events.write().unwrap().push(
+                        WindowEvent::UnfullscreenRequested {
+                            window_id: WindowId { id: window_id as u64 },
+                        },
                     );
                 }
             }
@@ -2325,6 +2361,10 @@ impl WawonaCore {
             Some(events.remove(0))
         }
     }
+
+    pub fn pending_window_event_count(&self) -> u32 {
+        self.pending_window_events.read().unwrap().len() as u32
+    }
     
     /// Pop a single pending buffer (platform pulls these one by one)
     pub fn pop_pending_buffer(&self) -> Option<types::WindowBuffer> {
@@ -2616,6 +2656,38 @@ impl WawonaCore {
         }
     }
 
+    /// Native host entered or left fullscreen — update xdg toplevel state.
+    pub fn apply_host_window_fullscreen(
+        &self,
+        window_id: WindowId,
+        fullscreen: bool,
+        width: u32,
+        height: u32,
+    ) {
+        if !self.is_running() {
+            return;
+        }
+        let wid = window_id.id as u32;
+        let mut state = self.state.write().unwrap();
+        state.apply_host_window_fullscreen(wid, fullscreen, width, height);
+    }
+
+    /// Native host zoomed or unzoomed — update xdg toplevel maximized state.
+    pub fn apply_host_window_maximized(
+        &self,
+        window_id: WindowId,
+        maximized: bool,
+        width: u32,
+        height: u32,
+    ) {
+        if !self.is_running() {
+            return;
+        }
+        let wid = window_id.id as u32;
+        let mut state = self.state.write().unwrap();
+        state.apply_host_window_maximized(wid, maximized, width, height);
+    }
+
     /// Update compositor-side window dimensions without sending configure/output events.
     ///
     /// Used by Linux/GTK when a fullscreen-shell companion surface is embedded inside
@@ -2736,16 +2808,15 @@ impl WawonaCore {
         let mut state = self.state.write().unwrap();
         state.seat.cleanup_resources();
         
-        let (sx, sy) = apply_geometry_offset(&state, window_id, x, y);
-        
+        let (sx, sy) = platform_pointer_surface_local(&state, window_id, x, y);
+
         state.seat.pointer.x = sx;
         state.seat.pointer.y = sy;
 
         // Auto-correct focus if the platform is routing events for a
         // different window than the one currently focused.
         ensure_pointer_focus(&mut state, window_id, &|| self.next_serial());
-        let focus_sid = state.seat.pointer.focus;
-        let (lx, ly) = pointer_surface_local_coords(&mut state, sx, sy, focus_sid);
+        let (lx, ly) = (sx, sy);
         state.seat.pointer.focus_x = lx;
         state.seat.pointer.focus_y = ly;
 
@@ -2940,10 +3011,10 @@ impl WawonaCore {
         let mut state = self.state.write().unwrap();
         state.seat.cleanup_resources();
         
-        let (sx, sy) = apply_geometry_offset(&state, window_id, x, y);
+        let (sx, sy) = platform_pointer_surface_local(&state, window_id, x, y);
         state.seat.pointer.x = sx;
         state.seat.pointer.y = sy;
-        
+
         let surface_id = state.surface_to_window.iter()
             .find(|(_, &wid)| wid as u64 == window_id.id)
             .map(|(sid, _)| *sid);
@@ -2954,7 +3025,7 @@ impl WawonaCore {
             }
 
             state.seat.pointer.focus = Some(sid);
-            let (lx, ly) = pointer_surface_local_coords(&mut state, sx, sy, Some(sid));
+            let (lx, ly) = (sx, sy);
             state.seat.pointer.focus_x = lx;
             state.seat.pointer.focus_y = ly;
             state.seat.pointer.last_enter_serial = serial;

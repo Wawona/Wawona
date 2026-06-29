@@ -6,7 +6,7 @@ Wawona is organized around a strict ownership split:
 - `src/ffi` contains the public integration boundary that platform hosts call into.
 - `src/platform/*` contains platform glue only: native host code, platform UI, platform settings bridges, and native rendering helpers that present Rust-managed state.
 - `Sources/WawonaModel` contains shared Swift domain models and session orchestration (`bridging: true`).
-- `Sources/WawonaUI` contains canonical Apple SwiftUI views for machines/settings/welcome flows.
+- `Sources/WawonaUI` contains canonical Apple SwiftUI for machines (profiles + per-machine overrides), welcome, and settings **hosting** (`ObjCSettingsHostView` → native `WWNPreferences`).
 - `Sources/WawonaWatch` contains watchOS companion UI (status + quick actions, no compositor rendering).
 - `Darwin/` contains Apple app entrypoint (`Darwin/Sources/Main.swift`) and Xcode-facing app metadata.
 - `dependencies/clients` contains bundled clients, first-party shell code, and first-party diagnostic tools that are packaged through Nix instead of living in the compositor source tree.
@@ -24,7 +24,7 @@ Wawona is organized around a strict ownership split:
 
 - `src/platform/macos/ui` is now bridge/deprecated UI that is being replaced incrementally by `Sources/WawonaUI`.
 - `Sources/WawonaModel` is the source of truth for machine/session/preferences state.
-- `Sources/WawonaUI` is the source of truth for Settings, Machines, and Welcome UI.
+- `Sources/WawonaUI` is the source of truth for Machines and Welcome UI; global Wawona Settings UI lives in `src/platform/macos/ui/Settings` (ObjC + AppKit/UIKit).
 - `Sources/WawonaWatch` is the watchOS companion app source.
 - `src/platform/android/rendering` is the Android-native rendering helper path.
 - `dependencies/clients/wawona-shell` holds the first-party shell/launcher sources.

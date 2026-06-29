@@ -41,6 +41,7 @@ let
   };
 
   westonSimpleShmSrc = pkgs.callPackage westonSimpleShmPatchedSrcNix {};
+  libwaylandAndroid = buildModule.buildForAndroid "libwayland" { };
   opensshBin = buildModule.buildForAndroid "openssh" { };
   sshpassBin = buildModule.buildForAndroid "sshpass" { };
   # Real local shell for Android (fork/exec allowed); spawned by the PTY shim.
@@ -836,6 +837,31 @@ in
         echo "WARNING: Missing Android zsh binary at ${zshAndroid}/bin/zsh"
       fi
       ''}
+
+      # xkeyboard-config: extracted from assets into wawona-rootfs by WawonaShellRootfs.
+      mkdir -p app/src/main/assets/xkb
+      cp -RL ${pkgs.xkeyboard_config}/share/X11/xkb/. app/src/main/assets/xkb/
+      chmod -R u+w app/src/main/assets/xkb
+
+      # weston-simple-shm as libweston_simple_shm.so (dlopen'd from libwawona.so).
+      SHM_CC="${androidToolchainResolved.androidCC}"
+      SHM_CFLAGS="-fPIC -O2 -D_GNU_SOURCE -DWWN_ANDROID_SHM_POLYFILL \
+        -include deps/weston-simple-shm/wwn-android-signal-polyfill.h \
+        -Ideps/weston-simple-shm -Ideps/weston-simple-shm/shared -Ideps/weston-simple-shm/include \
+        -I${libwaylandAndroid}/include -I${westonAndroid}/include -I${westonAndroid}/include/weston-gen"
+      SHM_OBJ_DIR="$TMPDIR/wawona-shm-objs"
+      mkdir -p "$SHM_OBJ_DIR"
+      SHM_OBJS=""
+      for src in clients/simple-shm.c shared/os-compatibility.c xdg-shell-protocol.c fullscreen-shell-unstable-v1-protocol.c; do
+        obj="$SHM_OBJ_DIR/$(basename "''${src%.c}.o")"
+        "$SHM_CC" -c "deps/weston-simple-shm/$src" $SHM_CFLAGS -o "$obj"
+        SHM_OBJS="$SHM_OBJS $obj"
+      done
+      "$SHM_CC" -shared -o "$JNI_LIB_DIR/libweston_simple_shm.so" $SHM_OBJS \
+        -L${libwaylandAndroid}/lib -lwayland-client -lwayland-cursor \
+        -lm -ldl
+      chmod +x "$JNI_LIB_DIR/libweston_simple_shm.so"
+      echo "Built libweston_simple_shm.so for in-process client launch"
 
       ${lib.optionalString (footAndroid != null) ''
       # foot Wayland terminal client as libfoot.so (dlopen'd by wawona_client_stubs.c).

@@ -406,13 +406,18 @@ fun WawonaApp(
             WawonaShellRootfs.ensureInstalled(context)
             WawonaNative.nativePrepareShellEnvironment(context.filesDir.absolutePath)
             WawonaNative.nativeInit(cacheDirPath)
+            if (!WawonaNative.nativeIsCompositorReady()) {
+                throw IllegalStateException("Wayland compositor did not start")
+            }
             WawonaNative.nativeSetDisplayDensity(displayDensity)
             nativeRuntimeReady = true
             WLog.d("ACTIVITY", "native runtime initialized after machine connect")
             true
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             WLog.e("ACTIVITY", "native runtime init failed: ${e.message}")
-            Toast.makeText(context, "Failed to initialize compositor runtime", Toast.LENGTH_LONG).show()
+            val detail = e.message?.takeIf { it.isNotBlank() }
+            val toastText = detail ?: "Failed to initialize compositor runtime"
+            Toast.makeText(context, toastText, Toast.LENGTH_LONG).show()
             false
         }
     }
@@ -533,6 +538,10 @@ fun WawonaApp(
         val secCtx = prefs.getString("waypipeSecCtx", "") ?: ""
 
         return try {
+            if (WawonaNative.nativeIsWaypipeRunning()) {
+                isWaypipeRunning = true
+                return true
+            }
             val launched = WawonaNative.nativeRunWaypipe(
                 wpSshEnabled, wpSshHost, wpSshUser, sshPassword,
                 remoteCmd, compress, threads, video,
@@ -544,8 +553,9 @@ fun WawonaApp(
                 WLog.i("WAYPIPE", "Waypipe launched (ssh=$wpSshEnabled, host=$wpSshHost)")
                 true
             } else {
-                Toast.makeText(context, "Waypipe is already running", Toast.LENGTH_SHORT).show()
-                false
+                isWaypipeRunning = true
+                WLog.i("WAYPIPE", "Waypipe already running")
+                true
             }
         } catch (e: Exception) {
             WLog.e("WAYPIPE", "Error starting waypipe: ${e.message}")
@@ -567,11 +577,14 @@ fun WawonaApp(
 
     fun launchNativeMachine(profile: MachineProfile): Boolean {
         val launcher = profile.nativeLauncher.ifBlank { "weston-simple-shm" }
+        if (isNativeLauncherRunning(launcher)) {
+            return true
+        }
         val launched = runNativeLauncher(launcher)
         if (!launched) {
             Toast.makeText(
                 context,
-                "Failed to launch native app '$launcher' (already running or unavailable).",
+                "Failed to launch native app '$launcher'.",
                 Toast.LENGTH_SHORT
             ).show()
             return false
@@ -627,6 +640,37 @@ fun WawonaApp(
                 "Launch unsupported or failed for ${profile.type.value}"
             )
         }
+    }
+
+    fun disconnectMachine(profile: MachineProfile) {
+        val session = sessionOrchestrator.sessions.firstOrNull {
+            it.machineId == profile.id &&
+                (it.state == MachineSessionState.CONNECTED || it.state == MachineSessionState.CONNECTING)
+        } ?: return
+        appScope.launch {
+            if (MachineThumbnailStore.captureFromWindow(context, activity?.window, profile.id)) {
+                thumbnailRevision += 1
+            }
+        }
+        when (profile.type) {
+            MachineType.NATIVE -> stopNativeLauncher(profile.nativeLauncher)
+            MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> stopWaypipe()
+            else -> stopWaypipe()
+        }
+        sessionOrchestrator.markDisconnected(session.sessionId)
+        if (sessionOrchestrator.activeSessionId == session.sessionId) {
+            sessionOrchestrator.setActiveSession(null)
+            showMachinesHome = true
+        }
+    }
+
+    fun focusMachine(profile: MachineProfile) {
+        val session = sessionOrchestrator.sessions.firstOrNull {
+            it.machineId == profile.id && it.state == MachineSessionState.CONNECTED
+        } ?: return
+        MachineProfileStore.setActiveMachineId(prefs, profile.id)
+        sessionOrchestrator.setActiveSession(session.sessionId)
+        showMachinesHome = false
     }
 
     fun disconnectActiveSession() {
@@ -697,8 +741,8 @@ fun WawonaApp(
     } else if (showMachinesHome) {
         MachineWelcomeScreen(
             profiles = profiles,
-            sessions = sessionOrchestrator.sessions,
             thumbnailRevision = thumbnailRevision,
+            activeMachineId = MachineProfileStore.getActiveMachineId(prefs),
             machineStatusFor = { machineId -> sessionOrchestrator.statusForMachine(machineId) },
             onCreate = { profile ->
                 profiles = MachineProfileStore.upsertProfile(prefs, profile)
@@ -718,12 +762,8 @@ fun WawonaApp(
                 val session = sessionOrchestrator.startSession(profile)
                 connectMachine(profile, session.sessionId)
             },
-            onOpenSession = { session ->
-                val profile = profiles.firstOrNull { it.id == session.machineId }
-                if (profile != null) {
-                    connectMachine(profile, session.sessionId)
-                }
-            },
+            onFocus = { profile -> focusMachine(profile) },
+            onStop = { profile -> disconnectMachine(profile) },
             onOpenSettings = { showSettingsDialog = true }
         )
     } else {

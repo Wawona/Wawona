@@ -1,20 +1,25 @@
 #import "WWNWaypipeRunner.h"
 #import "WWNPreferencesManager.h"
 #import "../../../../util/WWNLog.h"
+#import "../../WWNPlatformCallbacks.h"
 #import "WWNSSHClient.h"
 #import "../../WWNCompositorBridge.h"
 #if __has_include("../Machines/WWNMachineProfileStore.h")
 #import "../Machines/WWNMachineProfileStore.h"
+#import "../Machines/WWNMachineSessionBridge.h"
 #endif
 #if TARGET_OS_IPHONE
 #import "../../../ios/WWNRootfsManager.h"
 #endif
 #import <errno.h>
+#import <stdlib.h>
+#import <dlfcn.h>
 #import <spawn.h>
 #import <sys/stat.h>
 #import <sys/wait.h>
 #import <signal.h>
 #import <unistd.h>
+#import <string.h>
 #import <math.h>
 
 extern char **environ;
@@ -28,7 +33,6 @@ extern int weston_simple_shm_main(int argc, char **argv);
 #if TARGET_OS_IPHONE
 extern void wwn_weston_client_log_init(void);
 extern void wwn_mobile_clear_wayland_socket_fd(void);
-extern void wwn_ios_refresh_bundle_env(void);
 extern void wwn_propagate_mobile_env(void);
 extern void wwn_launch_host_client(char *const *argp, char *const *envp);
 extern int foot_main(int argc, char **argv);
@@ -37,9 +41,7 @@ extern int wwn_weston_is_compat_shim(void) __attribute__((weak));
 extern int wwn_weston_terminal_is_compat_shim(void) __attribute__((weak));
 extern int wwn_foot_is_compat_shim(void) __attribute__((weak));
 #endif
-extern int weston_main(int argc, char **argv);
-extern int weston_compositor_main(int argc, char **argv);
-extern volatile sig_atomic_t wwn_weston_compositor_shutdown_requested;
+extern int weston_compositor_main(int argc, char **argv) __attribute__((weak_import));
 extern int weston_terminal_main(int argc, char **argv);
 #if TARGET_OS_IPHONE
 extern int flower_main(int argc, char **argv);
@@ -102,6 +104,14 @@ extern int constraints_main(int argc, char **argv);
   return shared;
 }
 
+- (void)stopAllNativeClients {
+  [self stopWaypipe];
+  [self stopWestonSimpleSHM];
+  [self stopWestonTerminal];
+  [self stopWeston];
+  [self stopFoot];
+}
+
 - (instancetype)init {
   self = [super init];
   if (self) {
@@ -120,6 +130,17 @@ extern int constraints_main(int argc, char **argv);
 
 - (BOOL)isRunning {
   return self.running;
+}
+
+- (BOOL)isAnyNativeClientRunning {
+#if TARGET_OS_IPHONE
+  return self.westonRunning || self.westonTerminalRunning ||
+         self.isWestonSimpleSHMRunning || self.footRunning ||
+         self.iosNativeClientInFlight;
+#else
+  return self.westonRunning || self.westonTerminalRunning ||
+         self.isWestonSimpleSHMRunning || self.footRunning;
+#endif
 }
 
 - (BOOL)isWestonSimpleSHMRunning {
@@ -159,93 +180,15 @@ extern int constraints_main(int argc, char **argv);
 // MARK: - Binary Discovery
 
 - (NSString *)findWaypipeBinary {
-  // Resolve symlinks because Nix often launches via a symlink in bin/
-  NSString *realExecPath =
-      [[NSBundle mainBundle].executablePath stringByResolvingSymlinksInPath];
-  NSString *execDir = [realExecPath stringByDeletingLastPathComponent];
-  NSString *path = [execDir stringByAppendingPathComponent:@"waypipe"];
-
-  if ([[NSFileManager defaultManager] isExecutableFileAtPath:path]) {
-    return path;
-  }
-
-  // Also check Resources/bin/waypipe as user requested resource-based bundling
-  NSString *resourcePath = [[NSBundle mainBundle] pathForResource:@"waypipe"
-                                                           ofType:nil
-                                                      inDirectory:@"bin"];
-  if (resourcePath &&
-      [[NSFileManager defaultManager] isExecutableFileAtPath:resourcePath]) {
-    return resourcePath;
-  }
-
-#if TARGET_OS_IPHONE
-  // On iOS check bundle root
-  NSString *bundlePath =
-      [[NSBundle mainBundle].bundlePath stringByResolvingSymlinksInPath];
-  path = [bundlePath stringByAppendingPathComponent:@"waypipe"];
-  if ([[NSFileManager defaultManager] isExecutableFileAtPath:path]) {
-    return path;
-  }
-#endif
-
-  return nil;
+  return WWNWawonaFindBundledExecutable(@"waypipe");
 }
 
 - (NSString *)findWestonSimpleSHMBinary {
-  // Resolve symlinks because Nix often launches via a symlink in bin/
-  NSString *realExecPath =
-      [[NSBundle mainBundle].executablePath stringByResolvingSymlinksInPath];
-  NSString *execDir = [realExecPath stringByDeletingLastPathComponent];
-  NSString *path =
-      [execDir stringByAppendingPathComponent:@"weston-simple-shm"];
-
-  if ([[NSFileManager defaultManager] isExecutableFileAtPath:path]) {
-    return path;
-  }
-
-  // Also check Resources/bin/weston-simple-shm as bundled by Nix macos.nix
-  NSString *resourcePath =
-      [[NSBundle mainBundle] pathForResource:@"weston-simple-shm"
-                                      ofType:nil
-                                 inDirectory:@"bin"];
-  if (resourcePath &&
-      [[NSFileManager defaultManager] isExecutableFileAtPath:resourcePath]) {
-    return resourcePath;
-  }
-
-#if TARGET_OS_IPHONE
-  // On iOS check bundle root
-  NSString *bundlePath =
-      [[NSBundle mainBundle].bundlePath stringByResolvingSymlinksInPath];
-  path = [bundlePath stringByAppendingPathComponent:@"weston-simple-shm"];
-  if ([[NSFileManager defaultManager] isExecutableFileAtPath:path]) {
-    return path;
-  }
-#endif
-
-  return nil;
+  return WWNWawonaFindBundledExecutable(@"weston-simple-shm");
 }
 
 - (NSString *)findSshpassBinary {
-  NSString *realExecPath =
-      [[NSBundle mainBundle].executablePath stringByResolvingSymlinksInPath];
-  NSString *execDir = [realExecPath stringByDeletingLastPathComponent];
-  NSString *path = [execDir stringByAppendingPathComponent:@"sshpass"];
-
-  if ([[NSFileManager defaultManager] isExecutableFileAtPath:path]) {
-    return path;
-  }
-
-#if TARGET_OS_IPHONE
-  NSString *bundlePath =
-      [[NSBundle mainBundle].bundlePath stringByResolvingSymlinksInPath];
-  path = [bundlePath stringByAppendingPathComponent:@"sshpass"];
-  if ([[NSFileManager defaultManager] isExecutableFileAtPath:path]) {
-    return path;
-  }
-#endif
-
-  return nil;
+  return WWNWawonaFindBundledExecutable(@"sshpass");
 }
 
 // MARK: - Argument Building
@@ -638,6 +581,25 @@ extern int constraints_main(int argc, char **argv);
 // MARK: - Launch
 
 - (void)launchWaypipe:(WWNPreferencesManager *)prefs {
+#if __has_include("../Machines/WWNMachineProfileStore.h")
+  WWNMachineProfile *activeProfile =
+      [WWNMachineProfileStore profileById:[WWNMachineProfileStore activeMachineId]];
+  if (activeProfile &&
+      [WWNMachineSessionBridge profileUsesNativeCompositorClient:activeProfile]) {
+    WWNLog("WAYPIPE",
+           @"Refusing waypipe launch: active machine '%@' is native and must use "
+           @"the local compositor with a bundled client.",
+           activeProfile.name ?: activeProfile.machineId);
+    if ([self.delegate
+            respondsToSelector:@selector(runnerDidReceiveSSHError:)]) {
+      [self.delegate
+          runnerDidReceiveSSHError:
+              @"Waypipe is for remote machines only. Connect a native machine "
+              @"profile to launch a bundled client on the local compositor."];
+    }
+    return;
+  }
+#endif
 #if !TARGET_OS_IPHONE
   NSString *waypipePath = [self findWaypipeBinary];
   if (!waypipePath) {
@@ -1401,6 +1363,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     return;
 
   self.westonSimpleSHMRunning = YES;
+  [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
   NSString *path = [self findWestonSimpleSHMBinary];
   if (!path) {
     WWNLog("WESTON_SHM",
@@ -1411,22 +1374,14 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 
   NSTask *task = [[NSTask alloc] init];
   task.executableURL = [NSURL fileURLWithPath:path];
-
-  NSMutableDictionary *env =
-      [[[NSProcessInfo processInfo] environment] mutableCopy];
-  const char *envRuntime = getenv("XDG_RUNTIME_DIR");
-  if (!envRuntime) {
-    NSString *runtimeFallback =
-        [NSString stringWithFormat:@"/tmp/wawona-%d", getuid()];
-    env[@"XDG_RUNTIME_DIR"] = runtimeFallback;
-  }
-  task.environment = env;
+  task.environment = [self wwnMutableHostWaylandEnvironment];
 
   NSError *err;
   if ([task launchAndReturnError:&err]) {
     self.westonSimpleSHMTask = task;
     WWNLog("WESTON_SHM", @"Launched weston-simple-shm with PID %d",
            task.processIdentifier);
+    [self wwnPumpHostCompositorAfterNativeClientLaunch];
     [self _installNativeClientTerminationHandler:task kind:@"westonSimpleSHM"];
   } else {
     WWNLog("WESTON_SHM", @"Failed to launch weston-simple-shm: %@", err);
@@ -1453,129 +1408,87 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 // MARK: - Generic Weston Launch Helpers
 #if !TARGET_OS_IPHONE
 - (NSString *)findBinaryNamed:(NSString *)name {
-  NSBundle *bundle = [NSBundle mainBundle];
-  NSFileManager *fm = [NSFileManager defaultManager];
-  BOOL (^isExecutable)(NSString *) = ^BOOL(NSString *candidate) {
-    return (candidate.length > 0 && [fm isExecutableFileAtPath:candidate]);
-  };
-
-  // 1) Resolve via real executable path (symlink-safe for nix run wrappers)
-  NSString *realExecPath = [[bundle.executablePath ?: @"" stringByResolvingSymlinksInPath] copy];
-  if (realExecPath.length > 0) {
-    NSString *execDir = [realExecPath stringByDeletingLastPathComponent];
-    NSString *execSibling = [execDir stringByAppendingPathComponent:name];
-    if (isExecutable(execSibling)) {
-      return execSibling;
-    }
-  }
-
-  // 2) Contents/MacOS auxiliary executable lookup
-  NSString *auxPath = [bundle pathForAuxiliaryExecutable:name];
-  if (isExecutable(auxPath)) {
-    return auxPath;
-  }
-
-  // 3) Contents/Resources/bin (Nix macos.nix bundles weston, weston-terminal, etc.)
-  NSString *binPath = [bundle pathForResource:name ofType:nil inDirectory:@"bin"];
-  if (isExecutable(binPath)) {
-    return binPath;
-  }
-
-  // 4) Resolve Resources/bin from executable path (works even if bundle lookup fails)
-  if (realExecPath.length > 0) {
-    NSString *contentsDir = [[realExecPath stringByDeletingLastPathComponent] stringByDeletingLastPathComponent];
-    NSString *manualBinPath = [[contentsDir stringByAppendingPathComponent:@"Resources/bin"] stringByAppendingPathComponent:name];
-    if (isExecutable(manualBinPath)) {
-      return manualBinPath;
-    }
-  }
-
-  // 5) Explicit bundle-path fallback for nested bin resources.
-  NSString *bundleBinPath = [[bundle.bundlePath
-      stringByAppendingPathComponent:@"Contents/Resources/bin"]
-      stringByAppendingPathComponent:name];
-  if (isExecutable(bundleBinPath)) {
-    return bundleBinPath;
-  }
-
-  // 6) Nix-wrapped helper fallback (e.g. .foot-wrapped).
-  NSString *wrappedName = [NSString stringWithFormat:@".%@-wrapped", name];
-  NSString *wrappedBinPath = [[bundle.bundlePath
-      stringByAppendingPathComponent:@"Contents/Resources/bin"]
-      stringByAppendingPathComponent:wrappedName];
-  if (isExecutable(wrappedBinPath)) {
-    return wrappedBinPath;
-  }
-
-  // 7) Root resource (legacy)
-  NSString *resourcePath = [bundle pathForResource:name ofType:nil];
-  if (isExecutable(resourcePath)) {
-    return resourcePath;
-  }
-
-  // 8) PATH lookup (Xcode Debug / local dev fallback when bundle copy missing).
-  NSString *pathEnv = NSProcessInfo.processInfo.environment[@"PATH"] ?: @"";
-  if (pathEnv.length > 0) {
-    NSArray<NSString *> *pathEntries = [pathEnv componentsSeparatedByString:@":"];
-    for (NSString *entry in pathEntries) {
-      if (entry.length == 0) {
-        continue;
-      }
-      NSString *candidate = [entry stringByAppendingPathComponent:name];
-      if (isExecutable(candidate)) {
-        return candidate;
-      }
-      NSString *wrappedCandidate =
-          [entry stringByAppendingPathComponent:
-                     [NSString stringWithFormat:@".%@-wrapped", name]];
-      if (isExecutable(wrappedCandidate)) {
-        return wrappedCandidate;
-      }
-    }
-  }
-
-  // 9) Nix profile fallbacks (Xcode-launched app may have restricted PATH).
-  NSMutableArray<NSString *> *nixPrefixes = [NSMutableArray array];
-  NSString *homeDir = NSHomeDirectory();
-  NSString *userName = NSUserName();
-  if (homeDir.length > 0) {
-    [nixPrefixes addObject:[homeDir stringByAppendingPathComponent:@".nix-profile/bin"]];
-  }
-  if (userName.length > 0) {
-    [nixPrefixes addObject:[NSString stringWithFormat:@"/nix/var/nix/profiles/per-user/%@/profile/bin", userName]];
-  }
-  [nixPrefixes addObject:@"/nix/var/nix/profiles/default/bin"];
-  [nixPrefixes addObject:@"/run/current-system/sw/bin"];
-
-  for (NSString *prefix in nixPrefixes) {
-    if (prefix.length == 0) {
-      continue;
-    }
-    NSString *candidate = [prefix stringByAppendingPathComponent:name];
-    if (isExecutable(candidate)) {
-      return candidate;
-    }
-    NSString *wrappedCandidate =
-        [prefix stringByAppendingPathComponent:
-                    [NSString stringWithFormat:@".%@-wrapped", name]];
-    if (isExecutable(wrappedCandidate)) {
-      return wrappedCandidate;
-    }
-  }
-
-  // 10) Android: executables bundled as .so
-  NSString *androidSoPath = [[bundle bundlePath]
-      stringByAppendingPathComponent:
-          [NSString stringWithFormat:@"lib/arm64-v8a/lib%@.so", name]];
-  if ([fm fileExistsAtPath:androidSoPath]) {
-    return androidSoPath;
-  }
-  return nil;
+  return WWNWawonaFindBundledExecutable(name);
 }
+
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+- (NSMutableDictionary<NSString *, NSString *> *)
+    wwnMutableHostWaylandEnvironment {
+  NSMutableDictionary *env =
+      [[[NSProcessInfo processInfo] environment] mutableCopy];
+  WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+  NSString *socketName = [bridge socketName];
+  if (socketName.length > 0) {
+    env[@"WAYLAND_DISPLAY"] = socketName;
+  } else if (!env[@"WAYLAND_DISPLAY"]) {
+    env[@"WAYLAND_DISPLAY"] = @"wayland-0";
+  }
+  NSString *socketPath = [bridge socketPath];
+  if (socketPath.length > 0) {
+    env[@"XDG_RUNTIME_DIR"] = [socketPath stringByDeletingLastPathComponent];
+  } else {
+    const char *envRuntime = getenv("XDG_RUNTIME_DIR");
+    if (!envRuntime) {
+      env[@"XDG_RUNTIME_DIR"] =
+          [NSString stringWithFormat:@"/tmp/wawona-%d", getuid()];
+    }
+  }
+  const char *westonData = getenv("WESTON_DATA_DIR");
+  if (westonData && westonData[0]) {
+    env[@"WESTON_DATA_DIR"] = @(westonData);
+  }
+  const char *westonModules = getenv("WESTON_MODULE_DIR");
+  if (westonModules && westonModules[0]) {
+    env[@"WESTON_MODULE_DIR"] = @(westonModules);
+  }
+  const char *westonBackends = getenv("WESTON_BACKEND_DIR");
+  if (westonBackends && westonBackends[0]) {
+    env[@"WESTON_BACKEND_DIR"] = @(westonBackends);
+  }
+  const char *fontConfig = getenv("FONTCONFIG_FILE");
+  if (fontConfig && fontConfig[0]) {
+    env[@"FONTCONFIG_FILE"] = @(fontConfig);
+  }
+  const char *fontConfigPath = getenv("FONTCONFIG_PATH");
+  if (fontConfigPath && fontConfigPath[0]) {
+    env[@"FONTCONFIG_PATH"] = @(fontConfigPath);
+  }
+  const char *xcursorPath = getenv("XCURSOR_PATH");
+  if (xcursorPath && xcursorPath[0]) {
+    env[@"XCURSOR_PATH"] = @(xcursorPath);
+  }
+  const char *xcursorTheme = getenv("XCURSOR_THEME");
+  if (xcursorTheme && xcursorTheme[0]) {
+    env[@"XCURSOR_THEME"] = @(xcursorTheme);
+  }
+  const char *bundleRoot = getenv("WAWONA_APP_BUNDLE_ROOT");
+  if (bundleRoot && bundleRoot[0]) {
+    env[@"WAWONA_APP_BUNDLE_ROOT"] = @(bundleRoot);
+  }
+  const char *shareRoot = getenv("WAWONA_SHARE_ROOT");
+  if (shareRoot && shareRoot[0]) {
+    env[@"WAWONA_SHARE_ROOT"] = @(shareRoot);
+  }
+  const char *libRoot = getenv("WAWONA_LIB_ROOT");
+  if (libRoot && libRoot[0]) {
+    env[@"WAWONA_LIB_ROOT"] = @(libRoot);
+  }
+  return env;
+}
+
+- (void)wwnPumpHostCompositorAfterNativeClientLaunch {
+  WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+  [bridge pumpHostCompositorEvents];
+  [bridge scheduleFollowUpHostCompositorPumps:4 interval:0.05];
+}
+#endif
 
 - (void)launchGenericWestonClient:(NSString *)name
                         taskInOut:(NSTask *__strong *)taskPtr
                     runningFlagIn:(BOOL *)runningFlag {
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+  [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
+#endif
   NSString *path = [self findBinaryNamed:name];
   if (!path) {
     WWNLog("WESTON", @"Could not find executable %@ in app bundle.", name);
@@ -1585,18 +1498,13 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   NSTask *task = [[NSTask alloc] init];
   task.executableURL = [NSURL fileURLWithPath:path];
 
-  NSMutableDictionary *env =
-      [[[NSProcessInfo processInfo] environment] mutableCopy];
-  const char *envRuntime = getenv("XDG_RUNTIME_DIR");
-  if (!envRuntime) {
-    env[@"XDG_RUNTIME_DIR"] =
-        [NSString stringWithFormat:@"/tmp/wawona-%d", getuid()];
-  }
+  NSMutableDictionary *env = [self wwnMutableHostWaylandEnvironment];
   task.environment = env;
   NSError *err;
   if ([task launchAndReturnError:&err]) {
     *taskPtr = task;
     WWNLog("WESTON", @"Launched %@ with PID %d", name, task.processIdentifier);
+    [self wwnPumpHostCompositorAfterNativeClientLaunch];
   } else {
     WWNLog("WESTON", @"Failed to launch %@: %@", name, err);
     *runningFlag = NO;
@@ -1647,18 +1555,13 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 
 // MARK: - Native Weston Executable
 
-// MARK: - Native Weston Executable
-
-#if TARGET_OS_IPHONE
+#if TARGET_OS_IPHONE || (!TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR)
 - (BOOL)wwnWriteWestonIniAtPath:(const char *)configPath usePixman:(BOOL)usePixman {
   if (!configPath || !configPath[0]) {
     return NO;
   }
-  NSString *bundleRoot = [NSBundle mainBundle].bundlePath;
-  NSString *terminalIcon =
-      [bundleRoot stringByAppendingPathComponent:@"share/weston/terminal.png"];
-  NSString *backgroundImage =
-      [bundleRoot stringByAppendingPathComponent:@"share/weston/pattern.png"];
+  NSString *terminalIcon = WWNWawonaBundledSharePath(@"weston/terminal.png");
+  NSString *backgroundImage = WWNWawonaBundledSharePath(@"weston/pattern.png");
   NSFileManager *fm = [NSFileManager defaultManager];
   BOOL hasPattern = [fm fileExistsAtPath:backgroundImage];
   BOOL hasTerminalIcon = [fm fileExistsAtPath:terminalIcon];
@@ -1705,7 +1608,9 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   }
   return wrote;
 }
+#endif
 
+#if TARGET_OS_IPHONE
 - (void)wwnLaunchWestonCompositorWithBackend:(const char *)backend
                                   usePixman:(BOOL)usePixman
                                prepareIland:(BOOL)prepareIland {
@@ -1717,9 +1622,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
     CFAbsoluteTime launchStart = CFAbsoluteTimeGetCurrent();
     WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
-#if TARGET_OS_IPHONE
     [WWNRootfsManager applyShellEnvironment];
-#endif
     if (![self wwnBeginIOSNativeClientLaunch:@"weston"]) {
       self.westonRunning = NO;
       return;
@@ -1763,8 +1666,6 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     char scaleArg[32];
     snprintf(widthArg, sizeof(widthArg), "--width=%u", outW);
     snprintf(heightArg, sizeof(heightArg), "--height=%u", outH);
-    // Weston --scale sets nested output HiDPI; WAWONA_OUTPUT_SCALE only tags the
-    // parent wl_surface.buffer_scale so the host compositor maps pixels → points.
     unsigned launchScale = hostScale;
     snprintf(scaleArg, sizeof(scaleArg), "--scale=%u", launchScale);
 
@@ -1793,8 +1694,6 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     argv_weston[argc_weston++] = heightArg;
     argv_weston[argc_weston++] = scaleArg;
     if (!prepareIland) {
-      // Borderless on parent: weston's wayland backend draws its own frame in
-      // windowed mode (titlebar + resize margins), which misaligns on iOS.
       argv_weston[argc_weston++] = "--fullscreen";
     }
     if (configArg[0]) {
@@ -1833,6 +1732,183 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 }
 #endif
 
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+- (void)launchWestonMacOSAsNestedClient {
+  if (self.westonRunning) {
+    return;
+  }
+  self.westonRunning = YES;
+
+  NSString *path = [self findBinaryNamed:@"weston"];
+  if (!path) {
+    WWNLog("WESTON", @"Could not find weston executable in app bundle.");
+    self.westonRunning = NO;
+    return;
+  }
+
+  [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
+  WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+
+  uint32_t outW = 1024;
+  uint32_t outH = 768;
+  float outScale = 1.0f;
+  [bridge latestOutputWidth:&outW height:&outH scale:&outScale];
+  unsigned hostScale = (unsigned)lrintf(outScale >= 1.0f ? outScale : 1.0f);
+  if (hostScale < 1u) {
+    hostScale = 1u;
+  }
+
+  NSString *backend =
+      [[WWNPreferencesManager sharedManager] nestedWestonBackend];
+  if ([backend isEqualToString:@"iland-drm-gl"]) {
+    [self launchWestonMacOSDrmInProcess];
+    return;
+  }
+
+  BOOL usePixman = YES;
+
+  const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
+  char configPath[512] = "";
+  if (xdg_dir && xdg_dir[0]) {
+    snprintf(configPath, sizeof(configPath), "%s/weston.ini", xdg_dir);
+    [self wwnWriteWestonIniAtPath:configPath usePixman:usePixman];
+  }
+
+  char scaleEnv[32];
+  snprintf(scaleEnv, sizeof(scaleEnv), "%u", hostScale);
+  setenv("WAWONA_OUTPUT_SCALE", scaleEnv, 1);
+
+  NSMutableArray<NSString *> *args = [NSMutableArray arrayWithObjects:
+      @"--backend=wayland",
+      @"--shell=desktop-shell.so",
+      [NSString stringWithFormat:@"--width=%u", outW],
+      [NSString stringWithFormat:@"--height=%u", outH],
+      [NSString stringWithFormat:@"--scale=%u", hostScale],
+      @"--fullscreen",
+      nil];
+  if (configPath[0]) {
+    [args addObject:[NSString stringWithFormat:@"--config=%s", configPath]];
+  }
+  if (usePixman) {
+    [args addObject:@"--use-pixman"];
+  }
+
+  NSTask *task = [[NSTask alloc] init];
+  task.executableURL = [NSURL fileURLWithPath:path];
+  task.arguments = args;
+
+  NSMutableDictionary *env = [self wwnMutableHostWaylandEnvironment];
+  task.environment = env;
+
+  WWNLog("WESTON", @"Launch argv: weston %@", [args componentsJoinedByString:@" "]);
+
+  NSError *err = nil;
+  if ([task launchAndReturnError:&err]) {
+    self.westonTask = task;
+    WWNLog("WESTON", @"Launched nested weston with PID %d",
+           task.processIdentifier);
+    [self wwnPumpHostCompositorAfterNativeClientLaunch];
+    [self _installNativeClientTerminationHandler:task kind:@"weston"];
+  } else {
+    WWNLog("WESTON", @"Failed to launch nested weston: %@", err);
+    self.westonRunning = NO;
+  }
+}
+
+- (void)launchWestonMacOSDrmInProcess {
+  if (self.westonRunning) {
+    return;
+  }
+  WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+  if (![bridge prepareIlandMetalPresentationOnPrimaryView]) {
+    WWNLog("WESTON",
+           @"Failed to prepare iland Metal presentation — falling back to pixman");
+    [self launchWestonMacOSAsNestedClient];
+    return;
+  }
+  typedef int (*WWNWestonMainFn)(int, char **);
+  WWNWestonMainFn westonFn =
+      (WWNWestonMainFn)(void *)dlsym(RTLD_DEFAULT, "weston_main");
+  if (westonFn == NULL) {
+    WWNLog("WESTON",
+           @"weston_main not linked — iland Metal ready (kmscube); "
+           @"using pixman nested Weston subprocess");
+    [self launchWestonMacOSAsNestedClient];
+    return;
+  }
+  self.westonRunning = YES;
+
+  [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
+  uint32_t outW = 1024;
+  uint32_t outH = 768;
+  float outScale = 1.0f;
+  [bridge latestOutputWidth:&outW height:&outH scale:&outScale];
+  unsigned hostScale = (unsigned)lrintf(outScale >= 1.0f ? outScale : 1.0f);
+  if (hostScale < 1u) {
+    hostScale = 1u;
+  }
+
+  char scaleEnv[32];
+  snprintf(scaleEnv, sizeof(scaleEnv), "%u", hostScale);
+  setenv("WAWONA_OUTPUT_SCALE", scaleEnv, 1);
+
+  const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
+  char configPath[512] = "";
+  char configArg[600] = "";
+  if (xdg_dir && xdg_dir[0]) {
+    snprintf(configPath, sizeof(configPath), "%s/weston.ini", xdg_dir);
+    if ([self wwnWriteWestonIniAtPath:configPath usePixman:NO]) {
+      snprintf(configArg, sizeof(configArg), "--config=%s", configPath);
+    }
+  }
+
+  typedef struct {
+    char width[32];
+    char height[32];
+    char scale[32];
+    char config[600];
+  } WWNWestonDrmLaunchArgs;
+
+  WWNWestonDrmLaunchArgs *launchArgs = calloc(1, sizeof(WWNWestonDrmLaunchArgs));
+  if (!launchArgs) {
+    self.westonRunning = NO;
+    return;
+  }
+  snprintf(launchArgs->width, sizeof(launchArgs->width), "--width=%u", outW);
+  snprintf(launchArgs->height, sizeof(launchArgs->height), "--height=%u", outH);
+  snprintf(launchArgs->scale, sizeof(launchArgs->scale), "--scale=%u", hostScale);
+  if (configArg[0]) {
+    strncpy(launchArgs->config, configArg, sizeof(launchArgs->config) - 1);
+  }
+
+  WWNWestonMainFn westonFnForBlock = westonFn;
+
+  dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+    WWNWestonDrmLaunchArgs *args = launchArgs;
+    char *argv_weston[] = {
+        (char *)"weston",
+        (char *)"--backend=drm",
+        (char *)"--shell=desktop-shell.so",
+        args->width,
+        args->height,
+        args->scale,
+        args->config[0] ? args->config : NULL,
+        NULL,
+    };
+    int argc_weston = args->config[0] ? 7 : 6;
+    WWNLog("WESTON", @"Starting in-process nested Weston (iland DRM) on macOS");
+    int rc = westonFnForBlock(argc_weston, argv_weston);
+    WWNLog("WESTON", @"In-process nested Weston (DRM) exited rc=%d", rc);
+    free(args);
+    dispatch_async(dispatch_get_main_queue(), ^{
+      self.westonRunning = NO;
+    });
+  });
+
+  [self wwnPumpHostCompositorAfterNativeClientLaunch];
+}
+#endif
+
 - (void)launchWeston {
 #if TARGET_OS_IPHONE
   if (self.westonRunning || self.iosNativeClientInFlight) {
@@ -1854,17 +1930,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
                                    usePixman:YES
                                 prepareIland:NO];
 #else
-  self.westonRunning = YES;
-  NSTask *task = nil;
-  BOOL running = YES;
-  [self launchGenericWestonClient:@"weston"
-                        taskInOut:&task
-                    runningFlagIn:&running];
-  self.westonTask = task;
-  self.westonRunning = running;
-  if (task) {
-    [self _installNativeClientTerminationHandler:task kind:@"weston"];
-  }
+  [self launchWestonMacOSAsNestedClient];
 #endif
 }
 
@@ -1929,6 +1995,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   if (self.westonTerminalRunning)
     return;
   self.westonTerminalRunning = YES;
+  [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
   NSString *path = [self findBinaryNamed:@"weston-terminal"];
   if (!path) {
     WWNLog("WESTON_TERM", @"Could not find weston-terminal in app bundle.");
@@ -1975,13 +2042,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   NSTask *task = [[NSTask alloc] init];
   task.executableURL = [NSURL fileURLWithPath:path];
 
-  NSMutableDictionary *env =
-      [[[NSProcessInfo processInfo] environment] mutableCopy];
-  const char *envRuntime = getenv("XDG_RUNTIME_DIR");
-  if (!envRuntime) {
-    env[@"XDG_RUNTIME_DIR"] =
-        [NSString stringWithFormat:@"/tmp/wawona-%d", getuid()];
-  }
+  NSMutableDictionary *env = [self wwnMutableHostWaylandEnvironment];
 
   // Preserve original ZDOTDIR for the .zshenv/.zshrc wrappers
   if (env[@"ZDOTDIR"])
@@ -2001,6 +2062,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     self.westonTerminalTask = task;
     WWNLog("WESTON_TERM", @"Launched weston-terminal with PID %d",
            task.processIdentifier);
+    [self wwnPumpHostCompositorAfterNativeClientLaunch];
     [self _installNativeClientTerminationHandler:task kind:@"westonTerminal"];
   } else {
     WWNLog("WESTON_TERM", @"Failed to launch weston-terminal: %@", err);

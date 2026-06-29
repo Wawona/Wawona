@@ -1702,8 +1702,11 @@ impl CompositorState {
                 let old_x = window.x;
                 let old_y = window.y;
 
-                if self.is_host_locked_window(wid)
-                    || window.fullscreen
+                if Self::is_host_locked_window_flags(
+                    wid,
+                    window.host_locked,
+                    self.ext.fullscreen_shell.presented_window_id,
+                ) || window.fullscreen
                 {
                     window.x = output_rect.0;
                     window.y = output_rect.1;

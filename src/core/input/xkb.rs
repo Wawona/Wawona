@@ -222,12 +222,10 @@ impl XkbState {
 /// so we point xkbcommon at the bundled `xkeyboard-config` via `XKB_CONFIG_ROOT`.
 ///
 /// Idempotent and side-effect-light: respects an already-set `XKB_CONFIG_ROOT`,
-/// honors an explicit `WAWONA_XKB_CONFIG_ROOT` override, then probes the app
-/// bundle locations relative to the executable. This is what lets the unified
-/// Smithay seat keyboard compile a full `evdev/us` keymap on mobile (Smithay's
-/// internal `xkb::Context` is created with default includes, which read
-/// `XKB_CONFIG_ROOT`).
+/// honors an explicit `WAWONA_XKB_CONFIG_ROOT` override, then probes bundled
+/// locations (including `WAWONA_SHARE_ROOT` from Apple bundle setup).
 pub fn ensure_xkb_data_root() {
+    use std::path::PathBuf;
     use std::sync::Once;
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
@@ -238,32 +236,59 @@ pub fn ensure_xkb_data_root() {
             std::env::set_var("XKB_CONFIG_ROOT", root);
             return;
         }
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(dir) = exe.parent() {
-                // macOS .app:  Contents/MacOS/<exe> -> Contents/Resources/{xkb,share/X11/xkb}
-                // iOS/tvOS:    <bundle>/<exe>       -> <bundle>/{xkb,share/X11/xkb}
-                let candidates = [
-                    dir.join("../Resources/xkb"),
-                    dir.join("../Resources/share/X11/xkb"),
-                    dir.join("xkb"),
-                    dir.join("share/X11/xkb"),
-                ];
-                for c in candidates {
-                    if c.join("rules").is_dir() {
-                        std::env::set_var("XKB_CONFIG_ROOT", &c);
-                        tracing::info!(
-                            "xkb: using bundled keymap root {}",
-                            c.display()
-                        );
-                        return;
-                    }
-                }
-                tracing::warn!(
-                    "xkb: no bundled keymap root found next to executable; \
-                     xkbcommon will use its compile-time default path"
-                );
+
+        let mut candidates: Vec<PathBuf> = Vec::new();
+        if let Ok(share) = std::env::var("WAWONA_SHARE_ROOT") {
+            if !share.is_empty() {
+                candidates.push(PathBuf::from(share).join("X11/xkb"));
             }
         }
+        if let Ok(app) = std::env::var("WAWONA_APP_BUNDLE_ROOT") {
+            if !app.is_empty() {
+                let root = PathBuf::from(app);
+                candidates.push(root.join("Contents/Resources/xkb"));
+                candidates.push(root.join("xkb"));
+                candidates.push(root.join("share/X11/xkb"));
+            }
+        }
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(dir) = exe.parent() {
+                let exe_str = exe.to_string_lossy();
+                if let Some(idx) = exe_str.find(".app/Contents/MacOS/") {
+                    let app = PathBuf::from(&exe_str[..idx + 4]);
+                    candidates.push(app.join("share/X11/xkb"));
+                    candidates.push(app.join("Contents/Resources/xkb"));
+                } else if let Some(idx) = exe_str.find(".app/") {
+                    let app = PathBuf::from(&exe_str[..idx + 4]);
+                    candidates.push(app.join("share/X11/xkb"));
+                    candidates.push(app.join("xkb"));
+                }
+                candidates.push(dir.join("../Resources/xkb"));
+                candidates.push(dir.join("../Resources/share/X11/xkb"));
+                candidates.push(dir.join("xkb"));
+                candidates.push(dir.join("share/X11/xkb"));
+                if let Ok(nix_app) = dir.join("../Applications/Wawona.app").canonicalize() {
+                    candidates.push(nix_app.join("share/X11/xkb"));
+                }
+            }
+        }
+
+        for c in candidates {
+            if c.join("rules").is_dir() {
+                if let Ok(canonical) = c.canonicalize() {
+                    std::env::set_var("XKB_CONFIG_ROOT", &canonical);
+                    tracing::info!(
+                        "xkb: using bundled keymap root {}",
+                        canonical.display()
+                    );
+                    return;
+                }
+            }
+        }
+
+        tracing::warn!(
+            "xkb: no bundled keymap root found; xkbcommon will use its default path"
+        );
     });
 }
 

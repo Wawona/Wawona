@@ -1,0 +1,178 @@
+# frozen_string_literal: true
+
+default_platform(:ios)
+
+# TestFlight targets (macOS is intentionally excluded — not distributed via TestFlight).
+APPLE_BETA_TARGETS = [
+  { ipa: "wawona-ios-ipa", name: "iPhone (iOS)", app_platform: "ios", bundle_id: "com.aspauldingcode.Wawona" },
+  { ipa: "wawona-ipados-ipa", name: "iPad (iPadOS)", app_platform: "ios", bundle_id: "com.aspauldingcode.Wawona" },
+  { ipa: "wawona-tvos-ipa", name: "Apple TV (tvOS)", app_platform: "appletvos", bundle_id: "com.aspauldingcode.Wawona" },
+  { ipa: "wawona-visionos-ipa", name: "Apple Vision Pro (visionOS)", app_platform: "xros", bundle_id: "com.aspauldingcode.Wawona" },
+  { ipa: "wawona-watchos-ipa", name: "Apple Watch (watchOS)", app_platform: "ios", bundle_id: "com.aspauldingcode.Wawona.watch" }
+].freeze
+
+MAIN_BUNDLE_ID = "com.aspauldingcode.Wawona"
+WATCH_BUNDLE_ID = "com.aspauldingcode.Wawona.watch"
+BETA_FEEDBACK_EMAIL = ENV.fetch("BETA_FEEDBACK_EMAIL", "aspauldingcode@gmail.com")
+
+def beta_testflight_groups
+  ENV.fetch("BETA_TESTFLIGHT_GROUPS", "")
+     .split(",")
+     .map(&:strip)
+     .reject(&:empty?)
+end
+
+def testflight_upload_options(api_key, target)
+  opts = {
+    api_key: api_key,
+    app_identifier: target[:bundle_id],
+    app_platform: target[:app_platform],
+    beta_app_feedback_email: BETA_FEEDBACK_EMAIL,
+    changelog: "Wawona #{wawona_version} (#{wawona_build_number}) beta",
+    skip_waiting_for_build_processing: true
+  }
+  groups = beta_testflight_groups
+  if groups.any?
+    opts[:groups] = groups
+    opts[:distribute_external] = true
+    opts[:notify_external_testers] = true
+    opts[:skip_waiting_for_build_processing] = false
+  end
+  opts
+end
+
+def wawona_version
+  @wawona_version ||= begin
+    raw = ENV["WAWONA_VERSION"]
+    raw = File.read(File.expand_path("../VERSION", __dir__)).strip if raw.to_s.empty?
+    raw.sub(/\A[vV]/, "")
+  end
+end
+
+def wawona_build_number
+  @wawona_build_number ||= ENV.fetch("WAWONA_BUILD_NUMBER") do
+    ENV.fetch("GITHUB_RUN_NUMBER", Time.now.to_i.to_s)
+  end
+end
+
+def nix_build_env
+  {
+    "WAWONA_VERSION" => wawona_version,
+    "WAWONA_BUILD_NUMBER" => wawona_build_number,
+    "TEAM_ID" => ENV.fetch("TEAM_ID")
+  }
+end
+
+def asc_api_key
+  app_store_connect_api_key(
+    key_id: ENV.fetch("APP_STORE_CONNECT_KEY_ID"),
+    issuer_id: ENV.fetch("APP_STORE_CONNECT_ISSUER_ID"),
+    key_content: ENV.fetch("APP_STORE_CONNECT_API_KEY"),
+    is_key_content_base64: true
+  )
+end
+
+def install_testflight_profiles!(api_key)
+  # match 2.232.x platforms: ios, tvos only. visionOS + watchOS use ios with their bundle IDs.
+  [
+    ["ios", MAIN_BUNDLE_ID],
+    ["tvos", MAIN_BUNDLE_ID],
+    ["ios", WATCH_BUNDLE_ID]
+  ].each do |platform, app_id|
+    match(
+      type: "appstore",
+      readonly: !!ENV["CI"],
+      platform: platform,
+      app_identifier: app_id,
+      api_key: api_key
+    )
+  end
+end
+
+def ensure_asc_platform_version!(api_key, platform, app_id = MAIN_BUNDLE_ID)
+  UI.message("Ensuring App Store Connect version #{wawona_version} (#{platform}) for #{app_id}")
+  deliver(
+    api_key: api_key,
+    app_identifier: app_id,
+    platform: platform,
+    app_version: wawona_version,
+    skip_binary_upload: true,
+    skip_metadata: true,
+    skip_screenshots: true,
+    force: true,
+    run_precheck_before_submit: false
+  )
+end
+
+def ensure_all_asc_versions!(api_key)
+  # iOS already at 0.2.4 in ASC; tvOS/visionOS default to 1.0 until we create the real version row.
+  [
+    ["ios", MAIN_BUNDLE_ID],
+    ["appletvos", MAIN_BUNDLE_ID],
+    ["xros", MAIN_BUNDLE_ID]
+  ].each do |platform, app_id|
+    ensure_asc_platform_version!(api_key, platform, app_id)
+  end
+end
+
+def nix_ipa_path(attr)
+  env = nix_build_env
+  UI.message("Building #{attr} (version #{env['WAWONA_VERSION']}, build #{env['WAWONA_BUILD_NUMBER']})")
+  out = sh("nix build .##{attr} --impure --print-out-paths", env: env, log: false).strip.split("\n").last
+  ipa = Dir.glob(File.join(out, "**", "*.ipa")).first
+  UI.user_error!("No IPA found in #{out} for #{attr}") unless ipa
+  ipa
+end
+
+def nix_aab_path
+  out = sh("nix build .#wawona-android-aab --impure --print-out-paths", log: false).strip.split("\n").last
+  aab = Dir.glob(File.join(out, "**", "*.aab")).first
+  UI.user_error!("No AAB found in #{out}") unless aab
+  aab
+end
+
+platform :ios do
+  desc "Upload iPhone, iPad, Apple TV, Apple Vision Pro, and Apple Watch to TestFlight (excludes macOS)"
+  lane :beta do
+    setup_ci if ENV["CI"]
+    api_key = asc_api_key
+    install_testflight_profiles!(api_key)
+    ensure_all_asc_versions!(api_key)
+
+    APPLE_BETA_TARGETS.each do |target|
+      ipa = nix_ipa_path(target[:ipa])
+      upload_to_testflight(
+        **testflight_upload_options(api_key, target),
+        ipa: ipa
+      )
+      if beta_testflight_groups.any?
+        UI.success(
+          "Uploaded and distributed #{target[:name]} #{wawona_version} (#{wawona_build_number}) " \
+          "to TestFlight groups: #{beta_testflight_groups.join(', ')}"
+        )
+      else
+        UI.success("Uploaded #{target[:name]} #{wawona_version} (#{wawona_build_number}) to TestFlight")
+      end
+    end
+  end
+end
+
+platform :android do
+  desc "Upload Android AAB to Play internal track"
+  lane :beta do
+    upload_to_play_store(
+      track: "internal",
+      aab: nix_aab_path,
+      json_key_data: ENV.fetch("PLAY_STORE_JSON_KEY"),
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true
+    )
+  end
+end
+
+desc "Upload Apple + Android beta builds"
+lane :beta do
+  ios_beta
+  android_beta
+end

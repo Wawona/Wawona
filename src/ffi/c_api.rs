@@ -219,6 +219,42 @@ pub extern "C" fn WWNCoreInjectWindowResize(
     }));
 }
 
+/// Host entered or left native fullscreen — sync xdg toplevel fullscreen state.
+#[no_mangle]
+pub extern "C" fn WWNCoreApplyHostWindowFullscreen(
+    core: *mut WWNCore,
+    window_id: u64,
+    fullscreen: bool,
+    width: u32,
+    height: u32,
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() {
+            return;
+        }
+        let core = unsafe { &*core };
+        core.apply_host_window_fullscreen(WindowId { id: window_id }, fullscreen, width, height);
+    }));
+}
+
+/// Host zoomed or unzoomed (macOS maximize) — sync xdg toplevel maximized state.
+#[no_mangle]
+pub extern "C" fn WWNCoreApplyHostWindowMaximized(
+    core: *mut WWNCore,
+    window_id: u64,
+    maximized: bool,
+    width: u32,
+    height: u32,
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() {
+            return;
+        }
+        let core = unsafe { &*core };
+        core.apply_host_window_maximized(WindowId { id: window_id }, maximized, width, height);
+    }));
+}
+
 /// Ask the Wayland client to close this toplevel (`xdg_toplevel.close`).
 /// Returns `true` if a matching xdg_toplevel was found.
 #[no_mangle]
@@ -340,6 +376,8 @@ pub enum CWindowEventType {
     UnmaximizeRequested = 11,
     CursorShapeChanged = 12,
     HostLocked = 13,
+    FullscreenRequested = 14,
+    UnfullscreenRequested = 15,
 }
 
 /// C-compatible window event structure
@@ -508,6 +546,16 @@ pub extern "C" fn WWNCorePopWindowEvent(core: *mut WWNCore) -> *mut CWindowEvent
                     c_event.window_id = window_id.id;
                     true
                 },
+                super::types::WindowEvent::FullscreenRequested { window_id } => {
+                    c_event.event_type = CWindowEventType::FullscreenRequested as u64;
+                    c_event.window_id = window_id.id;
+                    true
+                },
+                super::types::WindowEvent::UnfullscreenRequested { window_id } => {
+                    c_event.event_type = CWindowEventType::UnfullscreenRequested as u64;
+                    c_event.window_id = window_id.id;
+                    true
+                },
                 super::types::WindowEvent::DecorationModeChanged { window_id, mode } => {
                     c_event.event_type = CWindowEventType::DecorationModeChanged as u64;
                     c_event.window_id = window_id.id;
@@ -579,7 +627,8 @@ pub extern "C" fn WWNCorePendingWindowCount(core: *const WWNCore) -> u32 {
     if core.is_null() {
         return 0;
     }
-    0
+    let core = unsafe { &*core };
+    core.pending_window_event_count()
 }
 
 /// Pop and return the next pending window creation info

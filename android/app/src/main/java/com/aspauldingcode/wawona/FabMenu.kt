@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
@@ -38,12 +39,18 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 
+data class SpeedDialAction(
+    val label: String,
+    val icon: ImageVector,
+    val onClick: () -> Unit,
+)
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun ExpressiveFabMenu(
+fun ExpressiveSpeedDialFab(
     modifier: Modifier = Modifier,
-    isWaypipeRunning: Boolean,
-    onStopWaypipeClick: () -> Unit,
-    onMenuClosed: () -> Unit = {}
+    actions: List<SpeedDialAction>,
+    onMenuClosed: () -> Unit = {},
 ) {
     var expanded by remember { mutableStateOf(false) }
 
@@ -51,57 +58,57 @@ fun ExpressiveFabMenu(
         targetValue = if (expanded) 135f else 0f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium
+            stiffness = Spring.StiffnessMedium,
         ),
-        label = "fab_rotation"
+        label = "fab_rotation",
     )
 
     val fabScale by animateFloatAsState(
         targetValue = if (expanded) 1.05f else 1f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium
+            stiffness = Spring.StiffnessMedium,
         ),
-        label = "fab_scale"
+        label = "fab_scale",
     )
 
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.End,
-        verticalArrangement = Arrangement.Bottom
+        verticalArrangement = Arrangement.Bottom,
     ) {
         AnimatedVisibility(
             visible = expanded,
             enter = fadeIn(
-                animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+                animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
             ) + expandVertically(
                 expandFrom = Alignment.Bottom,
                 animationSpec = spring(
                     dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness = Spring.StiffnessMediumLow
-                )
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
             ),
             exit = fadeOut(
-                animationSpec = spring(stiffness = Spring.StiffnessMedium)
+                animationSpec = spring(stiffness = Spring.StiffnessMedium),
             ) + shrinkVertically(
                 shrinkTowards = Alignment.Bottom,
-                animationSpec = spring(stiffness = Spring.StiffnessMedium)
-            )
+                animationSpec = spring(stiffness = Spring.StiffnessMedium),
+            ),
         ) {
             Column(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.padding(bottom = 24.dp)
+                modifier = Modifier.padding(bottom = 24.dp),
             ) {
-                if (isWaypipeRunning) {
+                actions.forEach { action ->
                     FabMenuItem(
-                        text = "Stop Waypipe",
-                        icon = Icons.Filled.Stop,
+                        text = action.label,
+                        icon = action.icon,
                         onClick = {
-                            onStopWaypipeClick()
+                            action.onClick()
                             expanded = false
                             onMenuClosed()
-                        }
+                        },
                     )
                 }
             }
@@ -112,49 +119,78 @@ fun ExpressiveFabMenu(
                 if (expanded) onMenuClosed()
                 expanded = !expanded
             },
-            containerColor = if (expanded)
+            containerColor = if (expanded) {
                 MaterialTheme.colorScheme.primaryContainer
-            else
-                MaterialTheme.colorScheme.primary,
-            contentColor = if (expanded)
+            } else {
+                MaterialTheme.colorScheme.primary
+            },
+            contentColor = if (expanded) {
                 MaterialTheme.colorScheme.onPrimaryContainer
-            else
-                MaterialTheme.colorScheme.onPrimary,
+            } else {
+                MaterialTheme.colorScheme.onPrimary
+            },
             shape = FloatingActionButtonDefaults.largeShape,
-            modifier = Modifier.scale(fabScale)
+            modifier = Modifier.scale(fabScale),
         ) {
             Icon(
                 imageVector = Icons.Filled.Add,
                 contentDescription = if (expanded) "Close menu" else "Open menu",
                 modifier = Modifier
                     .size(36.dp)
-                    .rotate(rotation)
+                    .rotate(rotation),
             )
         }
     }
 }
 
 @Composable
+fun ExpressiveFabMenu(
+    modifier: Modifier = Modifier,
+    isWaypipeRunning: Boolean,
+    onStopWaypipeClick: () -> Unit,
+    onMenuClosed: () -> Unit = {},
+) {
+    val actions = buildList {
+        if (isWaypipeRunning) {
+            add(
+                SpeedDialAction(
+                    label = "Stop Waypipe",
+                    icon = Icons.Filled.Stop,
+                    onClick = onStopWaypipeClick,
+                ),
+            )
+        }
+    }
+    if (actions.isEmpty()) return
+
+    ExpressiveSpeedDialFab(
+        modifier = modifier,
+        actions = actions,
+        onMenuClosed = onMenuClosed,
+    )
+}
+
+@Composable
 fun FabMenuItem(
     text: String,
     icon: ImageVector,
-    onClick: () -> Unit
+    onClick: () -> Unit,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.End
+        horizontalArrangement = Arrangement.End,
     ) {
         Surface(
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surfaceVariant,
             shadowElevation = 3.dp,
             tonalElevation = 2.dp,
-            onClick = onClick
+            onClick = onClick,
         ) {
             Text(
                 text = text,
                 style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
             )
         }
         Spacer(modifier = Modifier.width(16.dp))
@@ -164,9 +200,9 @@ fun FabMenuItem(
             contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
             elevation = FloatingActionButtonDefaults.elevation(
                 defaultElevation = 3.dp,
-                pressedElevation = 6.dp
+                pressedElevation = 6.dp,
             ),
-            modifier = Modifier.size(56.dp)
+            modifier = Modifier.size(56.dp),
         ) {
             Icon(imageVector = icon, contentDescription = text)
         }

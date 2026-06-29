@@ -73,7 +73,7 @@ Use `nom` / `nb` for cold builds with build visibility. See [2026-nix-build-syst
 ```bash
 nix run .#xcodegen      # Generate Wawona.xcodeproj (iOS + macOS)
 nix run .#xcodegen-ios  # iOS only
-nix run .#gradlegen     # Generate Android Studio project at ./Wawona-gradle-project
+nix run .#gradlegen     # Generate ./Wawona-gradle-project for Android Studio
 nix run .#wawona-wearos # Build and run WearOS flow
 ```
 
@@ -85,3 +85,22 @@ nix run .#wawona-wearos # Build and run WearOS flow
 - `.envrc` with `TEAM_ID` for iOS signing
 
 See [README](../README.md) for environment setup.
+
+## Release beta (TestFlight + Play)
+
+Wawona v0.2.4 adds Fastlane automation. See [wwn-mcp/knowledge/wawona/fastlane.md](../../wwn-mcp/knowledge/wawona/fastlane.md).
+
+```bash
+cp .release-secrets.env.template .release-secrets.env   # fill locally, never commit
+./scripts/bootstrap-apple-signing.sh                    # one-time match → apple-signing repo
+./scripts/sync-github-secrets.sh                        # gh CLI → Environment release-beta
+
+nix develop .#release
+source .release-secrets.env
+fastlane ios beta       # requires TEAM_ID + signed IPAs
+fastlane android beta   # requires Play upload key + service account JSON
+```
+
+Signed IPAs: `TEAM_ID=… nix build .#wawona-ios-ipa --impure` (also ipados/tvos/watchos/visionos variants).
+
+Android AAB: `nix build .#wawona-android-aab` with `ANDROID_KEYSTORE_*` env vars set.

@@ -13,6 +13,15 @@ struct MachineSettingsView: View {
 
     var body: some View {
         Form {
+            Section {
+                Button("Open Wawona Settings…") {
+                    WatchKitGlobalSettings.open()
+                }
+                Text("Global defaults live in WatchKit settings. Values below override them for this machine only.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Machine") {
                 if profileStore.profiles.isEmpty {
                     Text("No machine profiles available.")
@@ -65,6 +74,7 @@ struct MachineSettingsView: View {
                         }
                     }
                     Toggle("Waypipe Enabled", isOn: waypipeEnabledBinding)
+                        .disabled(draft?.type == .native)
                 }
 
                 Section {

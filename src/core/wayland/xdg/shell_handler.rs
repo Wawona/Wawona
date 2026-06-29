@@ -655,6 +655,7 @@ impl XdgShellHandler for CompositorState {
             .unwrap_or((width, height));
         if let Some(tl) = self.xdg.toplevels.get_mut(&(client_id.clone(), toplevel_id)) {
             tl.pending_maximized = true;
+            tl.pending_fullscreen = false;
         }
         let _ = self.send_toplevel_configure(client_id.clone(), toplevel_id, clamped_w, clamped_h);
         if let Some(window_id) = window_id {
@@ -759,13 +760,23 @@ impl XdgShellHandler for CompositorState {
                 }
             }
             if let Some(window) = self.get_window(wid) {
-                window.write().unwrap().fullscreen = true;
+                let mut window = window.write().unwrap();
+                window.fullscreen = true;
+                window.maximized = false;
             }
         }
         if let Some(tl) = self.xdg.toplevels.get_mut(&(client_id.clone(), toplevel_id)) {
             tl.pending_fullscreen = true;
+            tl.pending_maximized = false;
         }
         let _ = self.send_toplevel_configure(client_id, toplevel_id, width, height);
+        if let Some(window_id) = window_id {
+            self.pending_compositor_events
+                .push(CompositorEvent::WindowFullscreen {
+                    window_id,
+                    fullscreen: true,
+                });
+        }
     }
 
     fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
@@ -801,7 +812,19 @@ impl XdgShellHandler for CompositorState {
                 })
                 .unwrap_or((1, 1))
         };
+        let window_id = self
+            .xdg
+            .toplevels
+            .get(&(client_id.clone(), toplevel_id))
+            .map(|tl| tl.window_id);
         self.send_toplevel_configure(client_id, toplevel_id, restore_w, restore_h);
+        if let Some(window_id) = window_id {
+            self.pending_compositor_events
+                .push(CompositorEvent::WindowFullscreen {
+                    window_id,
+                    fullscreen: false,
+                });
+        }
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {

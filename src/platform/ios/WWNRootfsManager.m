@@ -1,4 +1,5 @@
 #import "WWNRootfsManager.h"
+#import "../macos/WWNPlatformCallbacks.h"
 
 #if TARGET_OS_IPHONE
 
@@ -7,15 +8,13 @@
 @implementation WWNRootfsManager
 
 + (NSString *)bundleRootfsPath {
-  NSBundle *bundle = [NSBundle mainBundle];
   NSFileManager *fm = [NSFileManager defaultManager];
-  // xcodegen embeds at Wawona.app/wawona-rootfs (bundle root, not Resources/).
-  NSString *atBundleRoot =
-      [bundle.bundlePath stringByAppendingPathComponent:@"wawona-rootfs"];
+  NSString *appRoot = WWNWawonaAppBundleRoot();
+  NSString *atBundleRoot = [appRoot stringByAppendingPathComponent:@"wawona-rootfs"];
   if ([fm fileExistsAtPath:atBundleRoot]) {
     return atBundleRoot;
   }
-  NSString *resource = bundle.resourcePath;
+  NSString *resource = WWNWawonaResourcesRoot();
   if (resource.length == 0) {
     return @"";
   }
@@ -218,6 +217,41 @@
   return YES;
 }
 
++ (NSString *)bundleNeovimRootfsPath {
+  NSFileManager *fm = [NSFileManager defaultManager];
+  NSString *appRoot = WWNWawonaAppBundleRoot();
+  NSString *atBundleRoot = [appRoot stringByAppendingPathComponent:@"neovim-rootfs"];
+  if ([fm fileExistsAtPath:atBundleRoot]) {
+    return atBundleRoot;
+  }
+  NSString *resource = WWNWawonaResourcesRoot();
+  if (resource.length == 0) {
+    return @"";
+  }
+  return [resource stringByAppendingPathComponent:@"neovim-rootfs"];
+}
+
++ (NSString *)activeNeovimConfigPath {
+  NSURL *base = [[[NSFileManager defaultManager]
+      URLsForDirectory:NSApplicationSupportDirectory
+             inDomains:NSUserDomainMask] firstObject];
+  if (!base) {
+    return [[NSTemporaryDirectory() stringByAppendingPathComponent:@"neovim-rootfs"]
+        stringByAppendingPathComponent:@"home/.config"];
+  }
+  NSURL *configURL =
+      [[[[base URLByAppendingPathComponent:@"Wawona" isDirectory:YES]
+          URLByAppendingPathComponent:@"neovim-rootfs" isDirectory:YES]
+         URLByAppendingPathComponent:@"home" isDirectory:YES]
+        URLByAppendingPathComponent:@".config" isDirectory:YES];
+  return configURL.path;
+}
+
++ (NSString *)bundledNeovimRuntimePath {
+  return [[self bundleNeovimRootfsPath]
+      stringByAppendingPathComponent:@"usr/share/nvim/runtime"];
+}
+
 + (NSString *)bundledShellPath {
   return @"/usr/bin/zsh";
 }
@@ -252,6 +286,24 @@
   setenv("SHELL", shell.UTF8String, 1);
   setenv("TERM", "xterm-256color", 1);
   setenv("USER", "mobile", 1);
+
+  NSString *nvimRuntime = [self bundledNeovimRuntimePath];
+  if (nvimRuntime.length > 0 &&
+      [[NSFileManager defaultManager] fileExistsAtPath:nvimRuntime]) {
+    setenv("VIMRUNTIME", nvimRuntime.UTF8String, 1);
+    NSString *nvimConfig = [self activeNeovimConfigPath];
+    [[NSFileManager defaultManager] createDirectoryAtPath:nvimConfig
+        withIntermediateDirectories:YES
+                         attributes:nil
+                              error:nil];
+    setenv("XDG_CONFIG_HOME", nvimConfig.UTF8String, 1);
+    setenv("XDG_DATA_HOME", nvimConfig.UTF8String, 1);
+    setenv("XDG_STATE_HOME",
+           [[nvimConfig stringByAppendingPathComponent:@"state"] UTF8String], 1);
+    NSLog(@"WWNRootfs: in-process nvim; VIMRUNTIME=%@ XDG_CONFIG_HOME=%@",
+          nvimRuntime, nvimConfig);
+  }
+
   /* Do not set ZSH= — bundled share init breaks the fake-PTY bootstrap. */
   NSLog(@"WWNRootfs: in-process zsh (libwawona-zsh.a); WAWONA_SHELL=%@ is a virtual path, HOME=%@",
         shell, home);

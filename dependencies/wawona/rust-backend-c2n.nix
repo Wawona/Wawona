@@ -311,6 +311,7 @@ let
       ++ lib.optional (nativeDeps ? kosmickrisp)  "-L native=${nativeDeps.kosmickrisp}/lib"
       ++ lib.optional (nativeDeps ? ffmpeg)      "-L native=${nativeDeps.ffmpeg}/lib"
       ++ lib.optional (nativeDeps ? epoll-shim)  "-L native=${nativeDeps.epoll-shim}/lib"
+      ++ lib.optional (nativeDeps ? pixman)      "-L native=${nativeDeps.pixman}/lib"
       ++ lib.optional (nativeDeps ? zlib)        "-L native=${nativeDeps.zlib}/lib"
       ++ [ "-L native=${pkgs.vulkan-loader}/lib" ]
     else if isAndroid then [
@@ -527,11 +528,13 @@ let
           pkgs.vulkan-loader
           pkgs.libiconv
           (nativeDeps.libwayland or toolchains.macos.libwayland)
+          (nativeDeps.pixman or toolchains.macos.pixman or pkgs.pixman)
         ]
         else if isAppleCross then [
           (nativeDeps.xkbcommon or null)
           (nativeDeps.libffi or null)
           (nativeDeps.libwayland or null)
+          (nativeDeps.pixman or null)
           (nativeDeps.zstd or null)
           (nativeDeps.lz4 or null)
           (nativeDeps.libssh2 or null)
@@ -582,6 +585,7 @@ let
         ++ lib.optional (nativeDeps ? lz4) "${nativeDeps.lz4}/lib/pkgconfig"
         ++ lib.optional (nativeDeps ? libssh2) "${nativeDeps.libssh2}/lib/pkgconfig"
         ++ lib.optional (nativeDeps ? xkbcommon) "${nativeDeps.xkbcommon}/lib/pkgconfig"
+        ++ lib.optional (nativeDeps ? pixman) "${nativeDeps.pixman}/lib/pkgconfig"
         ++ lib.optional (nativeDeps ? ffmpeg) "${nativeDeps.ffmpeg}/lib/pkgconfig"
       );
     } // lib.optionalAttrs isAndroid ({

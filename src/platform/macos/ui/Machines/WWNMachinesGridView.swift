@@ -488,7 +488,7 @@ final class WWNMachinesHostingBridge: NSObject {
     let root = WWNMachinesGridView(
       onConnect: onConnect,
       onOpenSettings: {
-        WWNPreferences.shared().show(nil)
+        PlatformGlobalSettings.open()
       }
     )
     let hosting = UIHostingController(rootView: root)
@@ -550,6 +550,11 @@ private struct WWNMachineKeyboardInputGate: NSViewRepresentable {
 
     private static func shouldSuppress(_ event: NSEvent) -> Bool {
       guard event.type == .keyDown else { return false }
+      if let keyWindow = NSApp.keyWindow,
+         let wwnWindowClass = NSClassFromString("WWNWindow"),
+         keyWindow.isKind(of: wwnWindowClass) {
+        return false
+      }
       let blockedModifiers = event.modifierFlags.intersection([.command, .control, .option, .function])
       guard blockedModifiers.isEmpty else { return false }
       guard !isTextInputFocused() else { return false }
@@ -587,7 +592,7 @@ final class WWNMachinesHostingBridge: NSObject {
   static func buildMacMachinesWindowController(onConnect: (() -> Void)?) -> NSWindowController {
     let root = WWNMachinesGridView(
       onConnect: onConnect,
-      onOpenSettings: { WWNPreferences.shared().show(NSApp) }
+      onOpenSettings: { PlatformGlobalSettings.open() }
     )
     let hosting = NSHostingController(rootView: root)
     let window = NSWindow(

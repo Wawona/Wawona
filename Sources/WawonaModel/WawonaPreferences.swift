@@ -218,6 +218,16 @@ public final class WawonaPreferences: ObservableObject {
         let normalizedWaypipePassword = profile.runtimeOverrides.waypipeSSHPassword ?? ""
         let normalizedLogLevel = profile.runtimeOverrides.logLevel?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
 
+        let resolvedWaypipeEnabled: Bool = {
+            if profile.type == .native {
+                return false
+            }
+            if profile.type == .sshWaypipe || profile.type == .sshTerminal {
+                return profile.runtimeOverrides.waypipeEnabled ?? defaultWaypipeEnabled
+            }
+            return false
+        }()
+
         return ResolvedMachineSettings(
             machineID: profile.id,
             machineName: profile.name,
@@ -237,7 +247,7 @@ public final class WawonaPreferences: ObservableObject {
             sshPassword: profile.sshPassword.isEmpty ? sshPassword : profile.sshPassword,
             waypipeSSHPassword: normalizedWaypipePassword.isEmpty ? waypipeSSHPassword : normalizedWaypipePassword,
             remoteCommand: normalizedCommand.isEmpty ? "weston-simple-shm" : normalizedCommand,
-            waypipeEnabled: profile.runtimeOverrides.waypipeEnabled ?? defaultWaypipeEnabled,
+            waypipeEnabled: resolvedWaypipeEnabled,
             bundledAppID: normalizedBundledApp.isEmpty ? defaultBundledAppID : normalizedBundledApp,
             inputProfile: normalizedInputProfile.isEmpty ? defaultInputProfile : normalizedInputProfile,
             logLevel: normalizedLogLevel.isEmpty ? logLevel : normalizedLogLevel,

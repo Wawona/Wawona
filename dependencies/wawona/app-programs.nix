@@ -1,5 +1,9 @@
 { pkgs, systemPackages, xcodeUtils }:
 
+let
+  shellWrappers = import ./shell-wrappers.nix;
+  lldb = shellWrappers.mkLldbHelpers pkgs;
+in
 {
   wawonaIos = "${pkgs.writeShellScriptBin "wawona-ios" ''
     set -euo pipefail
@@ -90,18 +94,10 @@
     LOG_STREAM_PID=$!
     echo "Attaching LLDB to PID $PID..."
     if [ -d "$DSYM_PATH" ]; then
-      lldb -Q \
-        -o "process attach --pid $PID" \
-        -o "target symbols add $DSYM_PATH" \
-        -o "continue"
+      exec ${lldb.simAttachLldb}/bin/wawona-lldb-sim "$PID" "$DSYM_PATH"
     else
-      lldb -Q \
-        -o "process attach --pid $PID" \
-        -o "continue"
+      exec ${lldb.simAttachLldb}/bin/wawona-lldb-sim "$PID"
     fi
-    LLDB_EXIT=$?
-    cleanup_log_stream
-    exit $LLDB_EXIT
   ''}/bin/wawona-ios";
 
   wawonaIpad = "${pkgs.writeShellScriptBin "wawona-ipados" ''
@@ -182,9 +178,9 @@
     LOG_STREAM_PID=$!
     trap "kill $LOG_STREAM_PID 2>/dev/null || true" EXIT INT TERM
     if [ -d "$DSYM_PATH" ]; then
-      lldb -Q -o "process attach --pid $PID" -o "target symbols add $DSYM_PATH" -o "continue"
+      exec ${lldb.simAttachLldb}/bin/wawona-lldb-sim "$PID" "$DSYM_PATH"
     else
-      lldb -Q -o "process attach --pid $PID" -o "continue"
+      exec ${lldb.simAttachLldb}/bin/wawona-lldb-sim "$PID"
     fi
   ''}/bin/wawona-ipados";
 
@@ -243,9 +239,9 @@
     LOG_STREAM_PID=$!
     trap "kill $LOG_STREAM_PID 2>/dev/null || true" EXIT INT TERM
     if [ -d "$DSYM_PATH" ]; then
-      lldb -Q -o "process attach --pid $PID" -o "target symbols add $DSYM_PATH" -o "continue"
+      exec ${lldb.simAttachLldb}/bin/wawona-lldb-sim "$PID" "$DSYM_PATH"
     else
-      lldb -Q -o "process attach --pid $PID" -o "continue"
+      exec ${lldb.simAttachLldb}/bin/wawona-lldb-sim "$PID"
     fi
   ''}/bin/wawona-tvos";
 
@@ -327,9 +323,9 @@
     LOG_STREAM_PID=$!
     trap "kill $LOG_STREAM_PID 2>/dev/null || true" EXIT INT TERM
     if [ -d "$DSYM_PATH" ]; then
-      lldb -Q -o "process attach --pid $PID" -o "target symbols add $DSYM_PATH" -o "continue"
+      exec ${lldb.simAttachLldb}/bin/wawona-lldb-sim "$PID" "$DSYM_PATH"
     else
-      lldb -Q -o "process attach --pid $PID" -o "continue"
+      exec ${lldb.simAttachLldb}/bin/wawona-lldb-sim "$PID"
     fi
   ''}/bin/wawona-watchos";
 
@@ -409,9 +405,9 @@
     LOG_STREAM_PID=$!
     trap "kill $LOG_STREAM_PID 2>/dev/null || true" EXIT INT TERM
     if [ -d "$DSYM_PATH" ]; then
-      lldb -Q -o "process attach --pid $PID" -o "target symbols add $DSYM_PATH" -o "continue"
+      exec ${lldb.simAttachLldb}/bin/wawona-lldb-sim "$PID" "$DSYM_PATH"
     else
-      lldb -Q -o "process attach --pid $PID" -o "continue"
+      exec ${lldb.simAttachLldb}/bin/wawona-lldb-sim "$PID"
     fi
   ''}/bin/wawona-visionos";
 

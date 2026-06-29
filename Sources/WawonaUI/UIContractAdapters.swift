@@ -73,25 +73,4 @@ enum WawonaUIContractAdapters {
         }
         return ClientLauncher.presets.first?.name ?? "weston-simple-shm"
     }
-
-    static func connectionSettingsState(from preferences: WawonaPreferences) -> ConnectionSettingsState {
-        ConnectionSettingsState(
-            waylandDisplay: preferences.waylandDisplay,
-            sshHost: preferences.sshHost,
-            sshUser: preferences.sshUser,
-            sshPortText: String(preferences.sshPort),
-            sshPassword: preferences.sshPassword,
-            waypipeCommand: "weston-simple-shm",
-            latestDiagnosticsSummary: preferences.diagnostics.first?.message ?? "No diagnostics yet."
-        )
-    }
-
-    static func applyConnectionSettings(_ state: ConnectionSettingsState, to preferences: WawonaPreferences) {
-        preferences.waylandDisplay = ConnectionSettingsValidation.normalizedDisplay(state)
-        preferences.sshHost = state.sshHost.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
-        preferences.sshUser = state.sshUser.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
-        preferences.sshPort = ConnectionSettingsValidation.normalizedSSHPort(state)
-        preferences.sshPassword = state.sshPassword
-        preferences.save()
-    }
 }

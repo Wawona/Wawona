@@ -26,6 +26,7 @@ struct QuickConnectView: View {
             }
             if let activeSession, activeSession.status == .connected {
                 Button(role: .destructive) {
+                    WatchMachineSessionBridge.disconnect(profile: profile)
                     sessions.disconnect(sessionId: activeSession.id)
                 } label: {
                     Label("Disconnect", systemImage: "stop.circle.fill")
@@ -33,7 +34,11 @@ struct QuickConnectView: View {
                 .buttonStyle(.borderedProminent)
             } else {
                 Button {
-                    runningSession = sessions.connect(machineId: profile.id)
+                    profileStore.activeMachineId = profile.id
+                    profileStore.save()
+                    if WatchMachineSessionBridge.connect(profile: profile) {
+                        runningSession = sessions.connect(machineId: profile.id)
+                    }
                 } label: {
                     Label("Connect", systemImage: "play.fill")
                 }

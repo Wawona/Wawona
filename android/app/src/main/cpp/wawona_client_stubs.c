@@ -45,6 +45,11 @@ int foot_main(int argc, const char **argv) {
   return run_client_main("libfoot.so", "foot_main", argc, argv);
 }
 
+int weston_simple_shm_main(int argc, const char **argv) {
+  return run_client_main("libweston_simple_shm.so", "weston_simple_shm_main", argc,
+                         argv);
+}
+
 #ifdef WAWONA_WESTON_TOYTOOLKIT
 
 #include <errno.h>

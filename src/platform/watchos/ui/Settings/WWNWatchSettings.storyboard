@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder.WatchKit.Storyboard" version="3.0" toolsVersion="23504" targetRuntime="watchKit" propertyAccessControl="none" useAutolayout="YES" colorMatched="YES">
+    <device id="watch44"/>
+    <dependencies>
+        <deployment identifier="watchOS"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.WatchKit" version="1.0"/>
+    </dependencies>
+    <scenes>
+        <scene sceneID="settings-root-scene">
+            <objects>
+                <controller identifier="SettingsRoot" id="WWN-SettingsRoot" customClass="WWNWatchSettingsRootInterfaceController" customModuleProvider="target">
+                    <items>
+                        <table alignment="left" id="WWN-SectionsTable">
+                            <tableRow identifier="SectionRow" id="WWN-SectionRow" customClass="WWNWatchSettingsActionRowController" customModuleProvider="target">
+                                <group width="1" alignment="left" layout="vertical" id="WWN-SectionGroup">
+                                    <items>
+                                        <label alignment="left" verticalAlignment="center" text="Section" id="WWN-SectionTitle">
+                                            <fontDescription key="font" style="UICTFontTextStyleBody"/>
+                                        </label>
+                                        <label alignment="right" verticalAlignment="center" text="" id="WWN-SectionValue">
+                                            <fontDescription key="font" style="UICTFontTextStyleCaption2"/>
+                                        </label>
+                                    </items>
+                                </group>
+                                <connections>
+                                    <outlet property="titleLabel" destination="WWN-SectionTitle" id="WWN-SectionTitleOutlet"/>
+                                    <outlet property="valueLabel" destination="WWN-SectionValue" id="WWN-SectionValueOutlet"/>
+                                </connections>
+                            </tableRow>
+                        </table>
+                    </items>
+                    <connections>
+                        <outlet property="sectionsTable" destination="WWN-SectionsTable" id="WWN-SectionsTableOutlet"/>
+                    </connections>
+                </controller>
+            </objects>
+            <point key="canvasLocation" x="0" y="0"/>
+        </scene>
+        <scene sceneID="settings-detail-scene">
+            <objects>
+                <controller identifier="SettingsDetail" id="WWN-SettingsDetail" customClass="WWNWatchSettingsDetailInterfaceController" customModuleProvider="target">
+                    <items>
+                        <table alignment="left" id="WWN-SettingsTable">
+                            <tableRow identifier="ActionRow" id="WWN-ActionRow" customClass="WWNWatchSettingsActionRowController" customModuleProvider="target">
+                                <group width="1" alignment="left" layout="vertical" id="WWN-ActionGroup">
+                                    <items>
+                                        <label alignment="left" verticalAlignment="center" text="Setting" id="WWN-ActionTitle">
+                                            <fontDescription key="font" style="UICTFontTextStyleBody"/>
+                                        </label>
+                                        <label alignment="right" verticalAlignment="center" text="" id="WWN-ActionValue">
+                                            <fontDescription key="font" style="UICTFontTextStyleCaption2"/>
+                                        </label>
+                                    </items>
+                                </group>
+                                <connections>
+                                    <outlet property="titleLabel" destination="WWN-ActionTitle" id="WWN-ActionTitleOutlet"/>
+                                    <outlet property="valueLabel" destination="WWN-ActionValue" id="WWN-ActionValueOutlet"/>
+                                </connections>
+                            </tableRow>
+                        </table>
+                    </items>
+                    <connections>
+                        <outlet property="settingsTable" destination="WWN-SettingsTable" id="WWN-SettingsTableOutlet"/>
+                    </connections>
+                </controller>
+            </objects>
+            <point key="canvasLocation" x="220" y="0"/>
+        </scene>
+    </scenes>
+</document>

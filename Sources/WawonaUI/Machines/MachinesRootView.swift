@@ -93,12 +93,6 @@ struct MachinesRootView: View {
     }
 
     private func openPlatformSettings() {
-        #if os(iOS) || os(tvOS) || os(visionOS)
-        WWNPreferences.shared().show(nil)
-        #elseif os(macOS)
-        WWNPreferences.shared().show(NSApp)
-        #else
-        // watchOS uses its own companion settings surface.
-        #endif
+        PlatformGlobalSettings.open()
     }
 }

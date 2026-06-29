@@ -649,10 +649,7 @@
 
 - (BOOL)isAnyNativeClientRunning {
   WWNWaypipeRunner *runner = [WWNWaypipeRunner sharedRunner];
-  return runner.westonRunning
-      || runner.westonTerminalRunning
-      || runner.isWestonSimpleSHMRunning
-      || runner.footRunning;
+  return [runner isAnyNativeClientRunning];
 }
 
 - (BOOL)isAnyClientSessionRunning {

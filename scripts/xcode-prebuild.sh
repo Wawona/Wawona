@@ -111,9 +111,14 @@ build_args=()
 for backend in "${BACKENDS[@]}"; do
   build_args+=("$FLAKE_REF#$backend")
 done
-"$NIX" build --no-link "${build_args[@]}"
+_nix_flags=(--impure)
+if [ -n "${WAWONA_NIX_FLAGS:-}" ]; then
+  # shellcheck disable=SC2206
+  _nix_flags+=(${WAWONA_NIX_FLAGS})
+fi
+"$NIX" build --no-link "${_nix_flags[@]}" "${build_args[@]}"
 
-active_out="$("$NIX" build --no-link --print-out-paths "$FLAKE_REF#$_active_backend")"
+active_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_active_backend")"
 ln -sfn "$active_out/lib/libwawona.a" "$derived/libwawona.a"
 echo "Linked $derived/libwawona.a -> $active_out/lib/libwawona.a"
 
@@ -122,7 +127,23 @@ if [ "$_with_zsh" = "1" ]; then
   case "$_sdk" in
     *simulator*) _zsh_attr="zsh-ios-sim" ;;
   esac
-  zsh_out="$("$NIX" build --no-link --print-out-paths "$FLAKE_REF#$_zsh_attr")"
+  zsh_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_zsh_attr")"
   ln -sfn "$zsh_out/lib/libwawona-zsh.a" "$derived/libwawona-zsh.a"
   echo "Linked $derived/libwawona-zsh.a -> $zsh_out/lib/libwawona-zsh.a"
+
+  _nvim_attr="neovim-ios-device"
+  case "$_sdk" in
+    *simulator*) _nvim_attr="neovim-ios" ;;
+  esac
+  nvim_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_nvim_attr")"
+  ln -sfn "$nvim_out/lib/libwawona-neovim.a" "$derived/libwawona-neovim.a"
+  echo "Linked $derived/libwawona-neovim.a -> $nvim_out/lib/libwawona-neovim.a"
+
+  _ff_attr="fastfetch-ios-device"
+  case "$_sdk" in
+    *simulator*) _ff_attr="fastfetch-ios" ;;
+  esac
+  ff_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_ff_attr")"
+  ln -sfn "$ff_out/lib/libfastfetch.a" "$derived/libfastfetch.a"
+  echo "Linked $derived/libfastfetch.a -> $ff_out/lib/libfastfetch.a"
 fi

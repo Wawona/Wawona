@@ -333,7 +333,11 @@ impl CompositorState {
                     let mut window = window.write().unwrap();
                     let old_w = window.width;
                     let old_h = window.height;
-                    let is_kiosk_window = self.is_host_locked_window(wid);
+                    let is_kiosk_window = Self::is_host_locked_window_flags(
+                        wid,
+                        window.host_locked,
+                        self.ext.fullscreen_shell.presented_window_id,
+                    );
                     let should_apply_window_geometry =
                         crate::core::wayland::xdg::decoration::should_crop_buffer_to_window_geometry(
                             self,

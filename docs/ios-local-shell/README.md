@@ -24,8 +24,8 @@ This directory is the **authoritative documentation** for that program. If you c
 | Remote shells (Blink, Prompt, Termius) | **Local** interactive shell |
 | Command tables as signed dylibs (a-Shell) | **Full zsh** with scripts, completion, history |
 | x86 Linux usermode + Alpine (iSH) | **Native ARM64** static binary, no guest JIT |
-| Fake SHM terminal window (`mobile-weston-terminal.c`) | **Real** cairo/toytoolkit `terminal.c` |
-| "iOS can't fork" accepted as law | **Prove** `posix_openpt` + `posix_spawn` on device (Phase 0) |
+| Fake SHM terminal window (legacy stub) | **Real** cairo/toytoolkit `terminal.c` (`wwn-weston/ios.nix`) |
+| "iOS can't fork" accepted as law | **In-process** zsh + dispatch (no fork on shell path) |
 
 macOS is **out of scope** for this track — it already uses Meson `weston/macos.nix` with `forkpty`. watchOS is **stub-only** in v1.
 
@@ -36,6 +36,7 @@ macOS is **out of scope** for this track — it already uses Meson `weston/macos
 | Doc | Audience | Contents |
 |-----|----------|----------|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Engineers | End-to-end data flow, process model, separation of concerns |
+| [STATUS.md](STATUS.md) | Engineers, PM | Implementation matrix, sync points, smoke checklist |
 | [APP-STORE-COMPLIANCE.md](APP-STORE-COMPLIANCE.md) | Legal, PM, Review | Guideline mapping, competitive landscape, allowed vs forbidden |
 | [IMPLEMENTATION-ROADMAP.md](IMPLEMENTATION-ROADMAP.md) | Engineers, PM | Phases 0–4, PR sequence, exit criteria, risks |
 | [WAWONA-PTY-SPEC.md](WAWONA-PTY-SPEC.md) | C/Rust engineers | `wwn_pty_*` API contract, errno policy, spawn rules |
@@ -54,22 +55,16 @@ macOS is **out of scope** for this track — it already uses Meson `weston/macos
 |------|--------------|
 | [../compliance/policy-traceability.md](../compliance/policy-traceability.md) | Capability → store-safe class mapping (includes local shell row) |
 | [../testing/everywhere-matrix.md](../testing/everywhere-matrix.md) | CI targets + manual smoke for terminal/zsh |
-| [../../dependencies/clients/weston/ios.nix](../../dependencies/clients/weston/ios.nix) | Current mobile Weston client build (SHM stub today) |
+| `wwn-weston/dependencies/clients/weston/ios.nix` | Real `terminal.c` → `libweston-terminal.a` |
 | [../../dependencies/clients/weston/compositor-apple-mobile.nix](../../dependencies/clients/weston/compositor-apple-mobile.nix) | Compositor `fork()` stub — **not** used for shell spawn |
 | [../../src/platform/macos/ui/Settings/WWNWaypipeRunner.m](../../src/platform/macos/ui/Settings/WWNWaypipeRunner.m) | In-process client launch + env wiring |
 
 ---
 
-## Flake outputs (planned / in progress)
+## Flake outputs (shipping)
 
-| Output | Purpose |
-|--------|---------|
-| `.#zsh-ios` | Static `zsh` for `aarch64-apple-ios` |
-| `.#zsh-ios-sim` | Simulator slice |
-| `.#wawona-rootfs-ios` | Bundled `/usr/bin`, share files, `.zshrc` template |
-| `.#wawona-pty-ios` | `libwwn-pty.a` PTY + spawn layer |
-| `.#wawona-pty-spike-ios` | Phase 0 harness binary |
-| `.#weston-ios` | Includes real `weston-terminal` (after Phase 1) |
+See [STATUS.md](STATUS.md) for the full matrix. Key outputs: `.#zsh-ios`, `.#wawona-rootfs-ios`,
+`.#wawona-pty-ios`, `.#fastfetch-ios`, `.#neovim-ios`, `.#weston-ios`, `.#wawona-ios-app-sim`.
 
 ---
 
@@ -85,12 +80,11 @@ macOS is **out of scope** for this track — it already uses Meson `weston/macos
 
 ## Status (2026-06)
 
-| Phase | Status | Notes |
-|-------|--------|-------|
-| 0 — PTY + zsh spike | **Not started** | See spike template |
-| 1 — Real `terminal.c` UI | **Not started** | SHM stub still in `ios.nix` |
-| 2 — `wawona-pty` + rootfs | **Not started** | Spec written in this doc set |
-| 3 — Compliance + TestFlight | **In progress (docs)** | This directory |
-| 4 — Ecosystem polish | **Future** | foot, extra rootfs tools |
+**Code is ahead of older roadmap phases.** See [STATUS.md](STATUS.md) for the live matrix.
 
-Master plan (Cursor): `.cursor/plans/ios_weston_terminal_zsh_b55c5cd8.plan.md`
+| Layer | Status |
+|-------|--------|
+| Real `terminal.c` + in-process zsh | **Implemented** (Nix + Xcode link) |
+| uutils, fastfetch, neovim, waypipe from zsh | **Implemented** (dispatch shim) |
+| libssh2 SSH (no openssh binary) | **Implemented** (Settings + shell `waypipe`) |
+| Physical device validation | **Pending** (spike checklist) |

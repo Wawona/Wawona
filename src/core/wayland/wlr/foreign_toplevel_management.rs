@@ -162,11 +162,13 @@ impl Dispatch<zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1, u32>
                 if let Some(window_lock) = state.windows.get(&window_id) {
                     let mut window = window_lock.write().unwrap();
                     window.fullscreen = true;
+                    window.maximized = false;
                 }
                 if let Some((tl_id, _)) = state.xdg.toplevels.iter().find(|(_, t)| t.window_id == window_id) {
                     let tl_id = tl_id.clone();
                     if let Some(tl) = state.xdg.toplevels.get_mut(&tl_id) {
                         tl.pending_fullscreen = true;
+                        tl.pending_maximized = false;
                     }
                     let (fw, fh) = state
                         .outputs
@@ -174,6 +176,12 @@ impl Dispatch<zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1, u32>
                         .map(|o| (o.width.max(1), o.height.max(1)))
                         .unwrap_or((1, 1));
                     state.send_toplevel_configure(tl_id.0.clone(), tl_id.1, fw, fh);
+                    state.pending_compositor_events.push(
+                        crate::core::compositor::CompositorEvent::WindowFullscreen {
+                            window_id,
+                            fullscreen: true,
+                        },
+                    );
                 }
             }
             zwlr_foreign_toplevel_handle_v1::Request::UnsetFullscreen => {
@@ -191,6 +199,12 @@ impl Dispatch<zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1, u32>
                         .and_then(|w| w.read().ok().map(|w| (w.width.max(1) as u32, w.height.max(1) as u32)))
                         .unwrap_or((1, 1));
                     state.send_toplevel_configure(tl_id.0.clone(), tl_id.1, rw, rh);
+                    state.pending_compositor_events.push(
+                        crate::core::compositor::CompositorEvent::WindowFullscreen {
+                            window_id,
+                            fullscreen: false,
+                        },
+                    );
                 }
             }
             _ => {}

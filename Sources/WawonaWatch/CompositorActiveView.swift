@@ -13,6 +13,7 @@ struct CompositorActiveView: View {
             Text("Session Active").font(.caption)
             SessionGlanceView(session: session)
             Button(role: .destructive) {
+                WatchMachineSessionBridge.disconnect(profile: profile)
                 sessions.disconnect(sessionId: session.id)
                 dismiss()
             } label: {

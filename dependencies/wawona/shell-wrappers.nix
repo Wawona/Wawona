@@ -1,4 +1,93 @@
 let
+  mkLldbHelpers = pkgs:
+    let
+      lldb = pkgs.lldb;
+      # Stop-hook + signal handlers require an active target (after binary load or attach).
+      lldbPostTargetOpts = ''
+        -O "target stop-hook add -o 'thread backtrace all'" \
+        -O "process handle SIGINT -s true -n false -p true" \
+        -O "process handle SIGTRAP -s true -n false -p true" \
+        -O "process handle SIGSEGV -s true -n false -p true" \
+        -O "process handle SIGABRT -s true -n false -p true" \
+        -O "process handle SIGBUS -s true -n false -p true" \
+        -O "process handle SIGILL -s true -n false -p true" \
+      '';
+      hangHint = ''
+        echo "[LLDB] Xcode-style debugger: attached for the whole run."
+        echo "[LLDB] Crash/halt → LLDB stops and prints 'thread backtrace all' automatically."
+        echo "[LLDB] Hang?  process interrupt   (Xcode Pause — backtraces print on stop)"
+        echo "[LLDB] Resume: continue           Quit: quit"
+      '';
+    in {
+      runUnderLldb = pkgs.writeShellScriptBin "wawona-lldb-run" ''
+        set -euo pipefail
+        if [ "$#" -lt 1 ]; then
+          echo "usage: wawona-lldb-run <binary> [args...]" >&2
+          exit 2
+        fi
+        BINARY="$1"
+        shift
+        if [ ! -x "$BINARY" ]; then
+          echo "Error: binary not executable: $BINARY" >&2
+          exit 1
+        fi
+        if ! file "$BINARY" 2>/dev/null | grep -qE 'Mach-O.*executable'; then
+          echo "Error: not a Mach-O executable: $BINARY" >&2
+          exit 1
+        fi
+        ${hangHint}
+        # -O commands run before positional args create a target; create explicitly first.
+        exec ${lldb}/bin/lldb \
+          -O "target create \"''${BINARY}\"" \
+          -O "settings set target.process.follow-fork-mode child" \
+          ${lldbPostTargetOpts} \
+          -O "run" \
+          -- "$@"
+      '';
+      attachLldb = pkgs.writeShellScriptBin "wawona-lldb-attach" ''
+        set -euo pipefail
+        if [ "$#" -lt 1 ]; then
+          echo "usage: wawona-lldb-attach <pid> [dsym-path]" >&2
+          exit 2
+        fi
+        PID="$1"
+        DSYM="''${2:-}"
+        ${hangHint}
+        if [ -n "$DSYM" ] && [ -d "$DSYM" ]; then
+          exec ${lldb}/bin/lldb \
+            -O "process attach --continue --pid $PID" \
+            -O "target symbols add ''${DSYM}" \
+            ${lldbPostTargetOpts}
+        else
+          exec ${lldb}/bin/lldb \
+            -O "process attach --continue --pid $PID" \
+            ${lldbPostTargetOpts}
+        fi
+      '';
+      simAttachLldb = pkgs.writeShellScriptBin "wawona-lldb-sim" ''
+        set -euo pipefail
+        if [ "$#" -lt 1 ]; then
+          echo "usage: wawona-lldb-sim <pid> [dsym-path]" >&2
+          exit 2
+        fi
+        PID="$1"
+        DSYM="''${2:-}"
+        ${hangHint}
+        if [ -n "$DSYM" ] && [ -d "$DSYM" ]; then
+          exec ${lldb}/bin/lldb \
+            -O "process attach --pid $PID" \
+            -O "target symbols add ''${DSYM}" \
+            ${lldbPostTargetOpts} \
+            -O "continue"
+        else
+          exec ${lldb}/bin/lldb \
+            -O "process attach --pid $PID" \
+            ${lldbPostTargetOpts} \
+            -O "continue"
+        fi
+      '';
+    };
+
   macosEnv = ''
     uid="$(id -u)"
     runtime_dir_default="/tmp/wawona-$uid"
@@ -52,20 +141,61 @@ in rec {
   toolWrapper = pkgs: tools: binName:
     (unixWrapper pkgs binName "${tools}/bin/${binName}");
 
-  inherit macosEnv;
+  inherit macosEnv mkLldbHelpers;
 
-  macosWrapper = pkgs: wawona: pkgs.writeShellScriptBin "wawona" ''
-    APP="${wawona}/Applications/Wawona.app"
-    export WAWONA_APP_BIN="$APP/Contents/MacOS/Wawona"
-    ${macosEnv}
-    if [ "''${1:-}" = "--debug" ] || [ "''${WAWONA_LLDB:-0}" = "1" ]; then
-      [ "''${1:-}" = "--debug" ] && shift
-      echo "[DEBUG] Starting Wawona under LLDB..."
-      exec ${pkgs.lldb}/bin/lldb -o run -o "bt all" -- "$APP/Contents/MacOS/Wawona" "$@"
-    else
-      exec "$APP/Contents/MacOS/Wawona" "$@"
-    fi
-  '';
+  macosWrapper = pkgs: wawona:
+    let
+      lldb = mkLldbHelpers pkgs;
+      dsym = "${wawona}/Applications/Wawona.app.dSYM";
+      binaryReadyCheck = ''
+        wawona_binary_ready() {
+          if [ ! -d "$APP" ] || [ ! -x "$BIN" ]; then
+            echo "Error: Wawona.app or binary missing — build may have failed." >&2
+            return 1
+          fi
+          if ! file "$BIN" 2>/dev/null | grep -qE 'Mach-O.*executable'; then
+            echo "Error: $BIN is not a Mach-O executable — build may be broken." >&2
+            return 1
+          fi
+          return 0
+        }
+      '';
+    in
+    pkgs.writeShellScriptBin "wawona" ''
+      APP="${wawona}/Applications/Wawona.app"
+      BIN="$APP/Contents/MacOS/Wawona"
+      export WAWONA_APP_BIN="$BIN"
+      ${binaryReadyCheck}
+      ${macosEnv}
+      if [ "''${1:-}" = "--debug-attach" ]; then
+        shift
+        wawona_binary_ready || exit 1
+        PID=$(pgrep -x Wawona 2>/dev/null | head -1 || true)
+        if [ -z "$PID" ]; then
+          echo "Error: no running Wawona process found." >&2
+          echo "Launch first: nix run .#wawona-macos" >&2
+          exit 1
+        fi
+        if ! kill -0 "$PID" 2>/dev/null; then
+          echo "Error: Wawona PID $PID is not running." >&2
+          exit 1
+        fi
+        echo "[LLDB] Attaching to Wawona PID $PID..."
+        if [ -d "${dsym}" ]; then
+          exec ${lldb.attachLldb}/bin/wawona-lldb-attach "$PID" "${dsym}"
+        else
+          exec ${lldb.attachLldb}/bin/wawona-lldb-attach "$PID"
+        fi
+      elif [ "''${1:-}" = "--no-debug" ] || [ "''${1:-}" = "--release" ] || [ "''${WAWONA_NO_LLDB:-0}" = "1" ]; then
+        case "''${1:-}" in --no-debug|--release) shift ;; esac
+        wawona_binary_ready || exit 1
+        exec "$BIN" "$@"
+      else
+        [ "''${1:-}" = "--debug" ] && shift
+        wawona_binary_ready || exit 1
+        exec ${lldb.runUnderLldb}/bin/wawona-lldb-run "$BIN" "$@"
+      fi
+    '';
 
   waypipeWrapper = pkgs: waypipe: wawona: pkgs.writeShellScriptBin "waypipe" ''
     export WAWONA_APP_BIN="${wawona}/Applications/Wawona.app/Contents/MacOS/Wawona"

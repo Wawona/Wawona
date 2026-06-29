@@ -58,4 +58,10 @@ typedef void (^WaypipeOutputHandler)(NSString *output);
 - (void)stopActiveIOSBundledClient;
 #endif
 
+/// Terminate all bundled native Wayland clients (weston, foot, etc.).
+- (void)stopAllNativeClients;
+
+/// YES while any bundled native client or in-process iOS launch is active.
+- (BOOL)isAnyNativeClientRunning;
+
 @end

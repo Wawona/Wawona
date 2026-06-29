@@ -11,6 +11,19 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+/// Canonical bundle / resource path resolution (all Apple platforms).
+FOUNDATION_EXPORT NSString *WWNWawonaAppBundleRoot(void);
+FOUNDATION_EXPORT NSString *WWNWawonaAppBundleRootForUI(void);
+FOUNDATION_EXPORT NSString *WWNWawonaExecutableDirectory(void);
+FOUNDATION_EXPORT NSString *WWNWawonaResourcesRoot(void);
+FOUNDATION_EXPORT NSString *WWNWawonaShareRoot(void);
+FOUNDATION_EXPORT NSString *WWNWawonaLibRoot(void);
+FOUNDATION_EXPORT NSString *WWNWawonaBundledSharePath(NSString *relativePath);
+FOUNDATION_EXPORT NSString *_Nullable WWNWawonaBundledResourcePath(NSString *filename);
+FOUNDATION_EXPORT NSString *_Nullable WWNWawonaFindBundledExecutable(NSString *name);
+FOUNDATION_EXPORT void WWNConfigureBundledRuntimeEnvIfNeeded(void);
+FOUNDATION_EXPORT void wwn_ios_refresh_bundle_env(void);
+
 /// Platform callbacks interface for Rust → macOS/iOS communication
 @protocol WWNPlatformCallbacksProtocol <NSObject>
 

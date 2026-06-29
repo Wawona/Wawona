@@ -611,15 +611,22 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
   [self ensureObserverRegistered];
   NSDictionary<NSString *, id> *resolved = [self resolvedRuntimeSettingsForProfile:profile];
   WWNPreferencesManager *prefs = [WWNPreferencesManager sharedManager];
-  [prefs setWaypipeSSHEnabled:[resolved[@"waypipeEnabled"] boolValue]];
-  [prefs setWaypipeSSHHost:[resolved[@"sshHost"] isKindOfClass:[NSString class]] ? resolved[@"sshHost"] : @""];
-  [prefs setWaypipeSSHUser:[resolved[@"sshUser"] isKindOfClass:[NSString class]] ? resolved[@"sshUser"] : @""];
-  [prefs setSshPort:[resolved[@"sshPort"] respondsToSelector:@selector(integerValue)] ? [resolved[@"sshPort"] integerValue] : 22];
-  [prefs setWaypipeSSHPassword:[resolved[@"sshPassword"] isKindOfClass:[NSString class]] ? resolved[@"sshPassword"] : @""];
-  [prefs setWaypipeRemoteCommand:[resolved[@"remoteCommand"] isKindOfClass:[NSString class]] ? resolved[@"remoteCommand"] : @""];
-  [prefs setWaypipeSSHAuthMethod:profile.sshAuthMethod];
-  [prefs setWaypipeSSHKeyPath:profile.sshKeyPath ?: @""];
-  [prefs setWaypipeSSHKeyPassphrase:profile.sshKeyPassphrase ?: @""];
+
+  if ([profile.type isEqualToString:kWWNMachineTypeNative]) {
+    [prefs setWaypipeSSHEnabled:NO];
+  } else if ([profile.type isEqualToString:kWWNMachineTypeSSHWaypipe] ||
+             [profile.type isEqualToString:kWWNMachineTypeSSHTerminal]) {
+    [prefs setWaypipeSSHEnabled:YES];
+    [prefs setWaypipeSSHHost:[resolved[@"sshHost"] isKindOfClass:[NSString class]] ? resolved[@"sshHost"] : @""];
+    [prefs setWaypipeSSHUser:[resolved[@"sshUser"] isKindOfClass:[NSString class]] ? resolved[@"sshUser"] : @""];
+    [prefs setSshPort:[resolved[@"sshPort"] respondsToSelector:@selector(integerValue)] ? [resolved[@"sshPort"] integerValue] : 22];
+    [prefs setWaypipeSSHPassword:[resolved[@"sshPassword"] isKindOfClass:[NSString class]] ? resolved[@"sshPassword"] : @""];
+    [prefs setWaypipeRemoteCommand:[resolved[@"remoteCommand"] isKindOfClass:[NSString class]] ? resolved[@"remoteCommand"] : @""];
+    [prefs setWaypipeSSHAuthMethod:profile.sshAuthMethod];
+    [prefs setWaypipeSSHKeyPath:profile.sshKeyPath ?: @""];
+    [prefs setWaypipeSSHKeyPassphrase:profile.sshKeyPassphrase ?: @""];
+  }
+
   [prefs setWaypipeCompress:profile.waypipeCompress ?: @"lz4"];
   [prefs setWaypipeThreads:profile.waypipeThreads ?: @"0"];
   [prefs setWaypipeVideo:profile.waypipeVideo ?: @"none"];
@@ -733,10 +740,14 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
     inputProfile = [prefs touchInputType];
   }
 
-  BOOL waypipeEnabled = [runtimeOverrides[kWWNRuntimeWaypipeEnabled]
-      respondsToSelector:@selector(boolValue)]
-      ? [runtimeOverrides[kWWNRuntimeWaypipeEnabled] boolValue]
-      : [prefs waypipeSSHEnabled];
+  BOOL waypipeEnabled = NO;
+  if ([profile.type isEqualToString:kWWNMachineTypeSSHWaypipe] ||
+      [profile.type isEqualToString:kWWNMachineTypeSSHTerminal]) {
+    waypipeEnabled = [runtimeOverrides[kWWNRuntimeWaypipeEnabled]
+        respondsToSelector:@selector(boolValue)]
+        ? [runtimeOverrides[kWWNRuntimeWaypipeEnabled] boolValue]
+        : [prefs waypipeSSHEnabled];
+  }
 
   NSString *renderer =
       [runtimeOverrides[kWWNRuntimeRenderer] isKindOfClass:[NSString class]]

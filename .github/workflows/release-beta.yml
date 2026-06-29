@@ -1,0 +1,94 @@
+name: Release Beta
+
+on:
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: "Fastlane lane (beta, ios beta, android beta)"
+        required: false
+        default: beta
+  push:
+    tags:
+      - "v0.2.*"
+
+permissions:
+  contents: read
+
+env:
+  NIXPKGS_ALLOW_UNFREE: "1"
+
+jobs:
+  apple-beta:
+    name: "TestFlight (Apple platforms)"
+    runs-on: macos-26
+    environment: release-beta
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          extra-conf: |
+            allow-import-from-derivation = true
+            trusted-users = runner root
+
+      - name: Run Fastlane iOS beta
+        env:
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+          WAWONA_VERSION: ${{ github.ref_name == '' && '0.2.4' || github.ref_name }}
+          WAWONA_BUILD_NUMBER: ${{ github.run_number }}
+          CI: "true"
+          DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+          LANG: en_US.UTF-8
+          LC_ALL: en_US.UTF-8
+        working-directory: .
+        run: |
+          LANE="${{ github.event.inputs.lane || 'ios beta' }}"
+          nix develop --command bash -lc "fastlane $LANE"
+
+  android-beta:
+    name: "Play internal track (Android)"
+    runs-on: ubuntu-latest
+    environment: release-beta
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reclaim disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android "${AGENT_TOOLSDIRECTORY:-}" || true
+          df -h
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          extra-conf: |
+            build-dir = /nix/build
+            sandbox = relaxed
+            allow-import-from-derivation = true
+            trusted-users = runner root
+
+      - name: Prepare Android signing keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/wawona-upload.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/wawona-upload.jks" >> "$GITHUB_ENV"
+
+      - name: Run Fastlane Android beta
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          PLAY_STORE_JSON_KEY: ${{ secrets.PLAY_STORE_JSON_KEY }}
+          WAWONA_VERSION: ${{ github.ref_name == '' && '0.2.4' || github.ref_name }}
+          CI: "true"
+        working-directory: .
+        run: |
+          LANE="${{ github.event.inputs.lane || 'android beta' }}"
+          nix develop --command bash -lc "fastlane $LANE"

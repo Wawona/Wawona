@@ -59,6 +59,14 @@ static void choreographer_frame_cb(long frameTimeNanos, void *data);
 static void resolve_ssh_binary_paths(void);
 static void wwn_android_prepare_shell_environment(const char *files_dir);
 
+static void jni_throw_illegal_state(JNIEnv *env, const char *msg) {
+  if (!env || !msg)
+    return;
+  jclass cls = (*env)->FindClass(env, "java/lang/IllegalStateException");
+  if (cls)
+    (*env)->ThrowNew(env, cls, msg);
+}
+
 static void schedule_next_frame(void *ctx) {
 #if __ANDROID_API__ >= 24
   AChoreographer_postFrameCallback(AChoreographer_getInstance(),
@@ -224,6 +232,9 @@ extern int g_simple_shm_running __attribute__((weak));
 // JNI Function Prototypes
 JNIEXPORT void JNICALL Java_com_aspauldingcode_wawona_WawonaNative_nativeInit(
     JNIEnv *env, jobject thiz, jstring cacheDir);
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeIsCompositorReady(
+    JNIEnv *env, jobject thiz);
 JNIEXPORT void JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeSetSurface(JNIEnv *env,
                                                              jobject thiz,
@@ -1464,28 +1475,47 @@ JNIEXPORT void JNICALL Java_com_aspauldingcode_wawona_WawonaNative_nativeInit(
       (*env)->ReleaseStringUTFChars(env, cacheDir, cache_dir_utf);
 
     g_core = WWNCoreNew();
-    if (g_core) {
-      LOGI("WWNCoreNew() succeeded: %p", g_core);
-      if (WWNCoreStart(g_core, "wayland-0")) {
-        LOGI("Compositor started on wayland-0");
-        setenv("WAYLAND_DISPLAY", "wayland-0", 1);
-      } else {
-        LOGE("WWNCoreStart() failed");
-      }
-    } else {
+    if (!g_core) {
       LOGE("WWNCoreNew() returned NULL");
+      pthread_mutex_unlock(&g_lock);
+      jni_throw_illegal_state(
+          env,
+          "Compositor core unavailable (rebuild with nix run .#gradlegen or "
+          "nix build .#wawona-android)");
+      return;
     }
+    LOGI("WWNCoreNew() succeeded: %p", g_core);
+    if (!WWNCoreStart(g_core, "wayland-0")) {
+      LOGE("WWNCoreStart() failed");
+      WWNCoreFree(g_core);
+      g_core = NULL;
+      pthread_mutex_unlock(&g_lock);
+      jni_throw_illegal_state(
+          env,
+          "Compositor failed to start Wayland socket (check logcat tag Wawona)");
+      return;
+    }
+    LOGI("Compositor started on wayland-0");
+    setenv("WAYLAND_DISPLAY", "wayland-0", 1);
   }
 
   VkResult r = create_instance();
   if (r != VK_SUCCESS) {
-    pthread_mutex_unlock(&g_lock);
-    return;
+    LOGE("Vulkan instance creation failed (res=%d); rendering may be unavailable",
+         (int)r);
   }
   uint32_t count = 0;
   VkResult res = vkEnumeratePhysicalDevices(g_instance, &count, NULL);
   LOGI("vkEnumeratePhysicalDevices count=%u, res=%d", count, res);
   pthread_mutex_unlock(&g_lock);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeIsCompositorReady(
+    JNIEnv *env, jobject thiz) {
+  (void)env;
+  (void)thiz;
+  return (g_core && WWNCoreIsRunning(g_core)) ? JNI_TRUE : JNI_FALSE;
 }
 
 /**
@@ -2502,6 +2532,14 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
   char share_zsh[512];
   snprintf(share_zsh, sizeof(share_zsh), "%s/usr/share/zsh", rootfs);
   setenv("fpath", share_zsh, 1);
+
+  char xkb_root[512];
+  snprintf(xkb_root, sizeof(xkb_root), "%s/usr/share/X11/xkb", rootfs);
+  struct stat xkb_st;
+  if (stat(xkb_root, &xkb_st) == 0 && S_ISDIR(xkb_st.st_mode)) {
+    setenv("WAWONA_XKB_CONFIG_ROOT", xkb_root, 1);
+    LOGI("Shell env: XKB_CONFIG_ROOT=%s", xkb_root);
+  }
 
   char path_buf[768];
   snprintf(path_buf, sizeof(path_buf), "%s:%s", usr_bin, "/system/bin");

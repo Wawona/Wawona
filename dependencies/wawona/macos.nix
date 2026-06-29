@@ -8,6 +8,9 @@
   weston,
   foot ? null,
   fastfetch ? null,
+  neovim ? null,
+  zsh ? null,
+  kmscube ? null,
   waylandVersion ? "unknown",
   xkbcommonVersion ? "unknown",
   lz4Version ? "unknown",
@@ -19,10 +22,41 @@
   moltenvk ? pkgs.moltenvk or null,
   xcodeProject ? null,
   applePath ? ../apple,
+  nativeDeps ? null,
 }:
 
 let
   common = import ./common.nix { inherit lib pkgs wawonaSrc; };
+
+  ilandGlLdflags = { deps, simulator ? false }: import ../generators/iland-gl-ldflags.nix {
+    inherit lib deps simulator;
+    forceLoad = true;
+  };
+  westonToytoolkitLdflags = deps: import ../generators/weston-toytoolkit-ldflags.nix {
+    inherit lib deps;
+    forceLoadWeston = true;
+  };
+  westonCompositorLdflags = deps: import ../generators/weston-compositor-ldflags.nix {
+    inherit lib deps;
+  };
+
+  effectiveNativeDeps =
+    {
+      libwayland = buildModule.buildForMacOS "libwayland" { };
+      xkbcommon = buildModule.buildForMacOS "xkbcommon" { };
+      pixman = buildModule.buildForMacOS "pixman" { };
+      iland = buildModule.buildForMacOS "iland" { };
+      angle = buildModule.buildForMacOS "angle" { };
+      inherit weston kmscube;
+      "iland-gl-clients" = kmscube;
+    } // (if nativeDeps != null then nativeDeps else { });
+
+  appleGlWestonLinkFlags =
+    ilandGlLdflags { deps = effectiveNativeDeps; simulator = false; }
+    ++ lib.optionals (effectiveNativeDeps ? "weston-compositor" && effectiveNativeDeps."weston-compositor" != null) (
+      (westonToytoolkitLdflags effectiveNativeDeps)
+      ++ (westonCompositorLdflags effectiveNativeDeps)
+    );
   
   xcodeUtils = import applePath { inherit lib pkgs; };
   xcodeEnv =
@@ -98,6 +132,8 @@ let
     "src/platform/macos/WWNPopupHost.h"
     "src/platform/macos/WWNPopupWindow.m"
     "src/platform/macos/WWNPopupWindow.h"
+    "src/platform/macos/WWNIlandPresenter.m"
+    "src/platform/macos/WWNIlandPresenter.h"
   ];
 
   # Use full list: filterSources can empty the list when wawonaSrc is cleanSourceWith
@@ -260,6 +296,105 @@ let
     mkdir -p "$out/Applications/Wawona.app/Contents/Resources"
   '';
 
+  # Copy non-system dylibs into Contents/Frameworks and rewrite load paths so the
+  # app runs when copied out of the Nix store (Documents, DMG, launch agents).
+  bundleMacOSAppDylibs = ''
+    bundle_macos_app_dylibs() {
+      local app="$1"
+      [ -d "$app/Contents/MacOS" ] || return 0
+      local fw="$app/Contents/Frameworks"
+      mkdir -p "$fw"
+
+      if ! command -v otool >/dev/null 2>&1 || ! command -v install_name_tool >/dev/null 2>&1; then
+        echo "Warning: otool/install_name_tool unavailable; skipping dylib bundling"
+        return 0
+      fi
+
+      is_macho() {
+        file "$1" 2>/dev/null | grep -q 'Mach-O'
+      }
+
+      list_machos() {
+        if [ -f "$app/Contents/MacOS/Wawona" ]; then
+          echo "$app/Contents/MacOS/Wawona"
+        fi
+        for f in "$app/Contents/MacOS"/*; do
+          [ -f "$f" ] && is_macho "$f" && echo "$f"
+        done
+        if [ -d "$app/Contents/Resources/bin" ]; then
+          for f in "$app/Contents/Resources/bin"/*; do
+            [ -f "$f" ] && is_macho "$f" && echo "$f"
+          done
+        fi
+        for f in "$fw"/*.dylib; do
+          [ -f "$f" ] && echo "$f"
+        done
+      }
+
+      dep_is_bundlable() {
+        case "$1" in
+          /usr/lib/*|/System/*|/Library/*|@*) return 1 ;;
+        esac
+        return 0
+      }
+
+      copy_dep() {
+        local dep="$1"
+        dep_is_bundlable "$dep" || return 0
+        [ -f "$dep" ] || return 0
+        local base
+        base="$(basename "$dep")"
+        if [ ! -f "$fw/$base" ]; then
+          cp -L "$dep" "$fw/$base"
+          chmod 755 "$fw/$base"
+          install_name_tool -id "@rpath/$base" "$fw/$base" 2>/dev/null || true
+          echo "Bundled dylib: $base"
+          return 0
+        fi
+        return 1
+      }
+
+      local round added dep macho
+      round=0
+      while [ "$round" -lt 32 ]; do
+        round=$((round + 1))
+        added=0
+        while IFS= read -r macho; do
+          [ -n "$macho" ] || continue
+          while IFS= read -r dep; do
+            [ -n "$dep" ] || continue
+            if copy_dep "$dep"; then
+              added=1
+            fi
+          done < <(otool -L "$macho" 2>/dev/null | awk 'NR>1 {print $1}' | grep '\.dylib' || true)
+        done < <(list_machos)
+        [ "$added" -eq 1 ] || break
+      done
+
+      while IFS= read -r macho; do
+        [ -n "$macho" ] || continue
+        while IFS= read -r dep; do
+          [ -n "$dep" ] || continue
+          dep_is_bundlable "$dep" || continue
+          local base
+          base="$(basename "$dep")"
+          if [ -f "$fw/$base" ]; then
+            install_name_tool -change "$dep" "@rpath/$base" "$macho" 2>/dev/null || true
+          fi
+        done < <(otool -L "$macho" 2>/dev/null | awk 'NR>1 {print $1}' | grep '\.dylib' || true)
+
+        while IFS= read -r rpath; do
+          [ -n "$rpath" ] || continue
+          case "$rpath" in
+            @executable_path/../Frameworks) continue ;;
+          esac
+          install_name_tool -delete_rpath "$rpath" "$macho" 2>/dev/null || true
+        done < <(otool -l "$macho" 2>/dev/null | awk '/cmd LC_RPATH/{getline; getline; if ($1=="path") print $2}' || true)
+        install_name_tool -add_rpath "@executable_path/../Frameworks" "$macho" 2>/dev/null || true
+      done < <(list_machos | sort -u)
+    }
+  '';
+
 in
   pkgs.stdenv.mkDerivation rec {
     name = "wawona-macos";
@@ -287,6 +422,10 @@ in
       pkgs.zlib
       pkgs.libiconv
       (buildModule.buildForMacOS "libwayland" { })
+      effectiveNativeDeps.iland
+      effectiveNativeDeps.angle
+      weston
+      kmscube
       rustBackend
       waypipe
     ];
@@ -582,12 +721,35 @@ GEN_HEADER
       LINK_SYSROOT_ARGS="$TARGET_LDFLAGS"
       LINK_OPT_FLAGS="-fobjc-arc -flto -O3"
       LINK_OBJC_FLAG="-ObjC"
-      LINK_RPATH_FLAG="-Wl,-rpath,\$PWD/macos-dependencies/lib"
+      LINK_RPATH_FLAG="-Wl,-rpath,@executable_path/../Frameworks"
+      ILAND_WESTON_FLAGS=(${lib.concatStringsSep " " (map (f: "\"${f}\"") appleGlWestonLinkFlags)})
       if [ -n "''${SWIFTC_BIN:-}" ] && [ "$LINKER_BIN" = "$SWIFTC_BIN" ]; then
         LINK_SYSROOT_ARGS="-sdk ''${SDKROOT:-}"
         LINK_OPT_FLAGS="-Xlinker -dead_strip"
         LINK_OBJC_FLAG="-Xlinker -ObjC"
-        LINK_RPATH_FLAG="-Xlinker -rpath -Xlinker $PWD/macos-dependencies/lib"
+        LINK_RPATH_FLAG="-Xlinker -rpath -Xlinker @executable_path/../Frameworks"
+        EXPANDED_ILAND_WESTON_FLAGS=()
+        idx=0
+        while [ "$idx" -lt "''${#ILAND_WESTON_FLAGS[@]}" ]; do
+          flag="''${ILAND_WESTON_FLAGS[$idx]}"
+          idx=$((idx + 1))
+          case "$flag" in
+            -force_load)
+              archive="''${ILAND_WESTON_FLAGS[$idx]}"
+              idx=$((idx + 1))
+              EXPANDED_ILAND_WESTON_FLAGS+=(-Xlinker -force_load -Xlinker "$archive")
+              ;;
+            -framework)
+              name="''${ILAND_WESTON_FLAGS[$idx]}"
+              idx=$((idx + 1))
+              EXPANDED_ILAND_WESTON_FLAGS+=(-framework "$name")
+              ;;
+            *)
+              EXPANDED_ILAND_WESTON_FLAGS+=("$flag")
+              ;;
+          esac
+        done
+        ILAND_WESTON_FLAGS=("''${EXPANDED_ILAND_WESTON_FLAGS[@]}")
       fi
       "$LINKER_BIN" $OBJ_FILES \
          -Lmacos-dependencies/lib \
@@ -606,6 +768,7 @@ GEN_HEADER
          $LINK_OPT_FLAGS \
          $LINK_OBJC_FLAG \
          $LINK_RPATH_FLAG \
+         "''${ILAND_WESTON_FLAGS[@]}" \
          -o Wawona
 
       runHook postBuild
@@ -618,6 +781,10 @@ GEN_HEADER
             if [ -f .use_xcodebuild_app ] && [ -d "xcodebuild-out/Wawona.app" ]; then
               mkdir -p $out/Applications
               cp -R "xcodebuild-out/Wawona.app" "$out/Applications/Wawona.app"
+
+              ${bundleMacOSAppDylibs}
+              echo "Bundling portable dylibs for Xcode-built Wawona.app..."
+              bundle_macos_app_dylibs "$out/Applications/Wawona.app"
 
               mkdir -p $project
               cp -r . "$project/"
@@ -701,30 +868,54 @@ GEN_HEADER
               fi
             fi
             
-            # Bundle Weston clients
+            # Bundle Weston clients (weston package postInstall verifies bin/ completeness).
             echo "DEBUG: Bundling Weston clients..."
             mkdir -p $out/Applications/Wawona.app/Contents/Resources/bin
             if [ -d "${weston}/bin" ]; then
-              # Weston compositor and weston-terminal (used by Settings)
-              for client in weston weston-terminal; do
-                if [ -f "${weston}/bin/$client" ]; then
-                  cp "${weston}/bin/$client" $out/Applications/Wawona.app/Contents/Resources/bin/
-                  cp "${weston}/bin/$client" $out/Applications/Wawona.app/Contents/MacOS/
-                  chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/$client
-                  chmod +x $out/Applications/Wawona.app/Contents/MacOS/$client
+              for client in "${weston}/bin"/weston*; do
+                base="$(basename "$client")"
+                case "$base" in *.so|*.dylib) continue ;; esac
+                if [ -f "$client" ]; then
+                  cp "$client" $out/Applications/Wawona.app/Contents/Resources/bin/
+                  cp "$client" $out/Applications/Wawona.app/Contents/MacOS/
+                  chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/"$base"
+                  chmod +x $out/Applications/Wawona.app/Contents/MacOS/"$base"
                 fi
-              done
-              # Other useful clients
-              for client in weston-simple-egl weston-simple-shm weston-flower weston-smoke weston-resizor weston-scaler; do
-                 if [ -f "${weston}/bin/$client" ]; then
-                   cp "${weston}/bin/$client" $out/Applications/Wawona.app/Contents/Resources/bin/
-                   cp "${weston}/bin/$client" $out/Applications/Wawona.app/Contents/MacOS/
-                   chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/$client
-                   chmod +x $out/Applications/Wawona.app/Contents/MacOS/$client
-                 fi
               done
             else
                echo "Warning: Weston bin directory not found at ${weston}/bin"
+            fi
+
+            # Weston nested compositor: shell/backends, PNG assets, cursors.
+            APP="$out/Applications/Wawona.app"
+            if [ -d "${weston}/share/weston" ]; then
+              mkdir -p "$APP/share/weston"
+              cp -r "${weston}/share/weston/"* "$APP/share/weston/"
+              if [ ! -f "$APP/share/weston/terminal.png" ] && [ -f "$APP/share/weston/icon_terminal.png" ]; then
+                ln -sf icon_terminal.png "$APP/share/weston/terminal.png"
+              fi
+              echo "DEBUG: Bundled share/weston assets"
+            fi
+            if [ -d "${weston}/lib/weston" ]; then
+              mkdir -p "$APP/lib/weston"
+              cp -r "${weston}/lib/weston/"* "$APP/lib/weston/"
+              echo "DEBUG: Bundled lib/weston modules"
+            fi
+            if [ -d "${weston}/lib/libweston-13" ]; then
+              mkdir -p "$APP/lib/libweston-13"
+              cp -r "${weston}/lib/libweston-13/"* "$APP/lib/libweston-13/"
+              echo "DEBUG: Bundled lib/libweston-13 backends"
+            fi
+            CURSOR_SRC="${pkgs.adwaita-icon-theme}/share/icons/Adwaita/cursors"
+            if [ -d "$CURSOR_SRC" ]; then
+              mkdir -p "$APP/share/icons/Adwaita"
+              cp -r "$CURSOR_SRC" "$APP/share/icons/Adwaita/cursors"
+              echo "DEBUG: Bundled Adwaita cursors"
+            fi
+            if [ -d "${pkgs.dejavu_fonts}/share/fonts" ]; then
+              mkdir -p "$APP/share/fonts"
+              cp -RL "${pkgs.dejavu_fonts}/share/fonts/." "$APP/share/fonts/"
+              echo "DEBUG: Bundled DejaVu fonts"
             fi
 
             # Bundle foot terminal
@@ -757,6 +948,51 @@ GEN_HEADER
             fi
             '' else ''
             echo "Warning: fastfetch not provided, skipping fastfetch bundling"
+            ''}
+
+            # Bundle neovim
+            ${if neovim != null then ''
+            if [ -f "${neovim}/bin/nvim" ]; then
+              cp "${neovim}/bin/nvim" $out/Applications/Wawona.app/Contents/Resources/bin/
+              cp "${neovim}/bin/nvim" $out/Applications/Wawona.app/Contents/MacOS/
+              cp "${neovim}/bin/nvim" $out/Applications/Wawona.app/Contents/Resources/bin/vi
+              cp "${neovim}/bin/nvim" $out/Applications/Wawona.app/Contents/MacOS/vi
+              cp "${neovim}/bin/nvim" $out/Applications/Wawona.app/Contents/Resources/bin/vim
+              cp "${neovim}/bin/nvim" $out/Applications/Wawona.app/Contents/MacOS/vim
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/nvim \
+                $out/Applications/Wawona.app/Contents/MacOS/nvim \
+                $out/Applications/Wawona.app/Contents/Resources/bin/vi \
+                $out/Applications/Wawona.app/Contents/MacOS/vi \
+                $out/Applications/Wawona.app/Contents/Resources/bin/vim \
+                $out/Applications/Wawona.app/Contents/MacOS/vim
+              echo "DEBUG: Bundled neovim (nvim/vi/vim)"
+            else
+              echo "Warning: neovim binary not found at ${neovim}/bin/nvim"
+            fi
+            '' else ''
+            echo "Warning: neovim not provided, skipping neovim bundling"
+            ''}
+
+            ${if zsh != null then ''
+            if [ -f "${zsh}/bin/zsh" ]; then
+              cp "${zsh}/bin/zsh" $out/Applications/Wawona.app/Contents/Resources/bin/
+              cp "${zsh}/bin/zsh" $out/Applications/Wawona.app/Contents/MacOS/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/zsh
+              chmod +x $out/Applications/Wawona.app/Contents/MacOS/zsh
+              echo "DEBUG: Bundled zsh"
+            fi
+            '' else ''
+            ''}
+
+            ${if kmscube != null then ''
+            if [ -f "${kmscube}/bin/kmscube" ]; then
+              cp "${kmscube}/bin/kmscube" $out/Applications/Wawona.app/Contents/Resources/bin/
+              cp "${kmscube}/bin/kmscube" $out/Applications/Wawona.app/Contents/MacOS/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/kmscube
+              chmod +x $out/Applications/Wawona.app/Contents/MacOS/kmscube
+              echo "DEBUG: Bundled kmscube"
+            fi
+            '' else ''
             ''}
             
             if command -v codesign >/dev/null 2>&1; then
@@ -867,6 +1103,16 @@ PLIST_EOF
 
             ${installMacOSIcons}
 
+            ${bundleMacOSAppDylibs}
+            echo "Bundling portable dylibs into Wawona.app..."
+            bundle_macos_app_dylibs "$out/Applications/Wawona.app"
+            if command -v codesign >/dev/null 2>&1; then
+              find "$out/Applications/Wawona.app/Contents/Frameworks" -type f -name '*.dylib' \
+                -exec codesign --force --sign - --timestamp=none {} \; 2>/dev/null || true
+              codesign --force --sign - --timestamp=none \
+                "$out/Applications/Wawona.app/Contents/MacOS/Wawona" 2>/dev/null || true
+            fi
+
             runHook postInstall
     '';
 
@@ -874,5 +1120,19 @@ PLIST_EOF
       mkdir -p $out/bin
       ln -s $out/Applications/Wawona.app/Contents/MacOS/Wawona $out/bin/Wawona
       ln -s $out/Applications/Wawona.app/Contents/MacOS/Wawona $out/bin/wawona-macos
+      ln -snf $out/Applications/Wawona.app/share $out/share
+      ln -snf $out/Applications/Wawona.app/lib $out/lib
+
+      APP="$out/Applications/Wawona.app"
+      for req in \
+        "$APP/share/weston/pattern.png" \
+        "$APP/share/weston/terminal.png" \
+        "$APP/share/fonts/truetype/DejaVuSans.ttf"; do
+        if [ ! -e "$req" ]; then
+          echo "ERROR: required bundled asset missing: $req" >&2
+          exit 1
+        fi
+      done
+      echo "Verified macOS bundled weston/fonts/backend assets"
     '';
   }

@@ -14,7 +14,7 @@ android {
         minSdk = 24
         targetSdk = 36
         versionCode = 1
-        versionName = "1.0"
+        versionName = "0.2.4"
 
         ndk {
             val requestedAbi = (System.getenv("WAWONA_ANDROID_ABI") ?: "arm64-v8a").trim()
@@ -54,10 +54,26 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            val keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")?.trim().orEmpty()
+            if (keystorePath.isNotEmpty()) {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            val keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")?.trim().orEmpty()
+            if (keystorePath.isNotEmpty()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
         debug {
             isMinifyEnabled = false
@@ -146,22 +162,26 @@ configurations.all {
 }
 
 dependencies {
-    val composeBom = "2026.03.00"
+    // Expressive APIs (MaterialExpressiveTheme, expressive*ColorScheme, etc.) live on the
+    // 1.5 alpha line; stable compose-bom (2026.03.00) pins material3 1.4.x where they are internal.
+    val composeBom = "2026.06.00"
+    val material3Version = "1.5.0-alpha22"
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.core:core:1.16.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
     implementation("androidx.activity:activity-compose:1.12.0")
-    implementation(platform("androidx.compose:compose-bom:$composeBom"))
+    implementation(platform("androidx.compose:compose-bom-alpha:$composeBom"))
     implementation("androidx.compose.runtime:runtime-android")
     implementation("androidx.compose.ui:ui-android")
     implementation("androidx.compose.ui:ui-graphics-android")
     implementation("androidx.compose.ui:ui-tooling-preview-android")
     implementation("androidx.compose.foundation:foundation-android")
     implementation("androidx.compose.material:material-android")
-    implementation("androidx.compose.material3:material3-android")
+    implementation("androidx.compose.material3:material3-android:$material3Version")
     implementation("androidx.compose.material:material-icons-extended-android")
     implementation("androidx.compose.animation:animation-android")
     
+    implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("androidx.fragment:fragment-ktx:1.6.2")
 }

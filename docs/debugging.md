@@ -1,63 +1,52 @@
 # Attaching a Debugger
 
-Use `--debug` with `nix run` to launch Wawona under LLDB on macOS, iOS, or Android.
+`nix run .#wawona-macos` launches Wawona **under LLDB automatically** (Xcode Run). LLDB is skipped only if the build artifact fails sanity checks, or you opt out with `--no-debug`.
 
 ## Quick Reference
 
 ```bash
-# macOS — run under LLDB from start
-nix run .#wawona-macos -- --debug
+# macOS — default: under LLDB (Xcode Run)
+nix run .#wawona-macos
 
-# iOS Simulator — app pauses at spawn, LLDB attaches
-nix run .#wawona-ios -- --debug
+# macOS — skip LLDB
+nix run .#wawona-macos -- --no-debug
 
-# Android — app waits for debugger, LLDB attaches via lldb-server
-nix run .#wawona-android -- --debug
-```
+# macOS — attach to already-running Wawona
+nix run .#wawona-macos -- --debug-attach
 
----
-
-## macOS
-
-```bash
-nix run .#wawona-macos -- --debug
-```
-
-- Wawona is started **under LLDB** from the beginning
-- LLDB runs the app; you can set breakpoints before `run`
-- On exit, LLDB prints a full backtrace (`bt all`)
-- **Alternative:** `WAWONA_LLDB=1 nix run .#wawona-macos` (same behavior)
-
----
-
-## iOS Simulator
-
-```bash
+# iOS Simulator — opt-in via --debug
 nix run .#wawona-ios -- --debug
 ```
 
-1. Simulator boots and Wawona.app is installed
-2. App is launched with `--wait-for-debugger` (paused at spawn)
-3. LLDB attaches to the app PID
-4. dSYM is loaded if present for symbols
-5. Simulator logs stream in the background
+---
 
-After attach, type `continue` in LLDB to resume execution.
+## macOS (default)
+
+```bash
+nix run .#wawona-macos
+```
+
+1. Nix build must succeed
+2. Wrapper verifies `Wawona.app` + Mach-O binary exist
+3. **LLDB spawns the app** — backtraces on crash/halt, `process interrupt` on hang
+
+If the bundle or binary is missing/broken, the wrapper exits with an error and never starts LLDB.
+
+### Skip LLDB
+
+```bash
+nix run .#wawona-macos -- --no-debug
+WAWONA_NO_LLDB=1 nix run .#wawona-macos
+```
+
+### Attach to a running instance
+
+```bash
+nix run .#wawona-macos -- --debug-attach
+```
 
 ---
 
-## Android
+## iOS / Android
 
-```bash
-nix run .#wawona-android -- --debug
-```
-
-1. Emulator starts (or uses existing device)
-2. App is launched with `am start -D` (waits for debugger)
-3. `lldb-server` is pushed to the device and started
-4. LLDB connects via `gdb-remote` on port 5039
-5. Java VM resumes after ~4 seconds; native code runs under LLDB
-
-**Requirements:** `adb` and `emulator` in PATH; device/emulator with USB debugging.
-
-On crash, LLDB stops and gives an interactive prompt. Use `bt` for backtrace.
+Use `--debug` on `wawona-ios`, `wawona-android`, etc.

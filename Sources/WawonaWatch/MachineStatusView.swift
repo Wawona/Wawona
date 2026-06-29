@@ -6,7 +6,6 @@ struct MachineStatusView: View {
     let sessions: SessionOrchestrator
 
     @State var showingAdd = false
-    @State var showingSettings = false
     @State var editingProfile: MachineProfile?
 
     var body: some View {
@@ -45,20 +44,23 @@ struct MachineStatusView: View {
             }
         }
         .navigationTitle("Machines")
+        .onAppear {
+            WatchKitGlobalSettings.registerHost()
+        }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Button { showingSettings = true } label: {
+                Button {
+                    WatchKitGlobalSettings.open()
+                } label: {
                     Image(systemName: "gear")
                 }
+                .accessibilityLabel("Wawona Settings")
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { showingAdd = true } label: {
                     Image(systemName: "plus")
                 }
             }
-        }
-        .sheet(isPresented: $showingSettings) {
-            WawonaWatchSettingsView(profileStore: profileStore)
         }
         .sheet(isPresented: $showingAdd) {
             MachineEditorView(profileStore: profileStore)

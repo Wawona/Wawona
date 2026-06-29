@@ -78,6 +78,12 @@ extern uint32_t WWNCoreGetTimestampMs(void *core);
 extern void WWNCoreFree(void *core);
 extern void WWNCoreInjectWindowResize(void *core, uint64_t window_id,
                                       uint32_t width, uint32_t height);
+extern void WWNCoreApplyHostWindowFullscreen(void *core, uint64_t window_id,
+                                             bool fullscreen, uint32_t width,
+                                             uint32_t height);
+extern void WWNCoreApplyHostWindowMaximized(void *core, uint64_t window_id,
+                                            bool maximized, uint32_t width,
+                                            uint32_t height);
 extern bool WWNCoreRequestWindowClose(void *core, uint64_t window_id);
 extern bool WWNCoreForceDestroyHostWindow(void *core, uint64_t window_id);
 extern void WWNCoreSetWindowActivated(void *core, uint64_t window_id,
@@ -265,115 +271,6 @@ static const NSTimeInterval kWWNResizeDebounceSeconds = 0.010;
 static const NSTimeInterval kWWNResizeDebounceSeconds = 0.040;
 #endif
 
-#if TARGET_OS_IPHONE || TARGET_OS_TV || TARGET_OS_WATCH
-static void WWNConfigureBundledXkbIfNeeded(void) {
-  if (getenv("XKB_CONFIG_ROOT") != NULL)
-    return;
-
-  NSString *root =
-      [[NSBundle mainBundle].bundlePath stringByAppendingPathComponent:@"share/X11/xkb"];
-  NSString *rules = [root stringByAppendingPathComponent:@"rules/evdev"];
-  if ([[NSFileManager defaultManager] fileExistsAtPath:rules]) {
-    setenv("XKB_CONFIG_ROOT", root.UTF8String, 1);
-    WWNLog("BRIDGE", @"Configured XKB_CONFIG_ROOT: %s", root.UTF8String);
-  }
-}
-
-// Point fontconfig at the fonts bundled into the app (share/fonts) and a
-// writable cache dir. The in-process weston toytoolkit clients (notably
-// weston-desktop-shell, which builds a Pango/Cairo panel clock during init)
-// abort if fontconfig can't match any font — that manifests as the nested
-// compositor never drawing its shell and showing only a solid clear color.
-// We synthesize fonts.conf at runtime because the bundle path (and a writable
-// cache location) are only known on-device.
-static void WWNConfigureBundledFontsIfNeeded(void) {
-  if (getenv("FONTCONFIG_FILE") != NULL)
-    return;
-
-  NSString *fontDir = [[NSBundle mainBundle].bundlePath
-      stringByAppendingPathComponent:@"share/fonts"];
-  if (![[NSFileManager defaultManager] fileExistsAtPath:fontDir]) {
-    WWNLog("BRIDGE", @"No bundled fonts at %s; skipping fontconfig setup",
-           fontDir.UTF8String);
-    return;
-  }
-
-  // XDG_RUNTIME_DIR is established at app startup, before the bridge inits.
-  const char *xdg = getenv("XDG_RUNTIME_DIR");
-  NSString *base = (xdg && xdg[0]) ? @(xdg) : NSTemporaryDirectory();
-  NSString *cacheDir = [base stringByAppendingPathComponent:@"fontconfig-cache"];
-  [[NSFileManager defaultManager] createDirectoryAtPath:cacheDir
-                            withIntermediateDirectories:YES
-                                             attributes:nil
-                                                  error:NULL];
-
-  NSString *confPath = [base stringByAppendingPathComponent:@"fonts.conf"];
-  NSString *conf = [NSString
-      stringWithFormat:@"<?xml version=\"1.0\"?>\n"
-                       @"<!DOCTYPE fontconfig SYSTEM "
-                       @"\"urn:fontconfig:fonts.dtd\">\n"
-                       @"<fontconfig>\n"
-                       @"  <dir>%@</dir>\n"
-                       @"  <cachedir>%@</cachedir>\n"
-                       @"  <alias>\n"
-                       @"    <family>monospace</family>\n"
-                       @"    <prefer><family>DejaVu Sans Mono</family></prefer>\n"
-                       @"  </alias>\n"
-                       @"  <alias>\n"
-                       @"    <family>sans-serif</family>\n"
-                       @"    <prefer><family>DejaVu Sans</family></prefer>\n"
-                       @"  </alias>\n"
-                       @"  <config></config>\n"
-                       @"</fontconfig>\n",
-                       fontDir, cacheDir];
-  NSError *err = nil;
-  if (![conf writeToFile:confPath
-              atomically:YES
-                encoding:NSUTF8StringEncoding
-                   error:&err]) {
-    WWNLog("BRIDGE", @"Failed to write fonts.conf (%s): %@", confPath.UTF8String,
-           err.localizedDescription);
-    return;
-  }
-  setenv("FONTCONFIG_FILE", confPath.UTF8String, 1);
-  setenv("FONTCONFIG_PATH", base.UTF8String, 1);
-  WWNLog("BRIDGE", @"Configured FONTCONFIG_FILE: %s (fonts: %s)",
-         confPath.UTF8String, fontDir.UTF8String);
-
-  NSString *monoFont =
-      [fontDir stringByAppendingPathComponent:@"truetype/DejaVuSansMono.ttf"];
-  if ([[NSFileManager defaultManager] fileExistsAtPath:monoFont]) {
-    setenv("WAWONA_MONO_FONT", monoFont.UTF8String, 1);
-  }
-}
-
-static void WWNConfigureBundledWestonDataIfNeeded(void) {
-  NSString *bundleRoot = [NSBundle mainBundle].bundlePath;
-  NSString *westonData =
-      [bundleRoot stringByAppendingPathComponent:@"share/weston"];
-  if ([[NSFileManager defaultManager] fileExistsAtPath:westonData]) {
-    setenv("WESTON_DATA_DIR", westonData.UTF8String, 1);
-  }
-
-  NSString *cursorTheme =
-      [bundleRoot stringByAppendingPathComponent:@"share/icons/Adwaita/cursors"];
-  if ([[NSFileManager defaultManager] fileExistsAtPath:cursorTheme]) {
-    NSString *iconsRoot =
-        [bundleRoot stringByAppendingPathComponent:@"share/icons"];
-    setenv("XCURSOR_PATH", iconsRoot.UTF8String, 1);
-    setenv("XCURSOR_THEME", "Adwaita", 1);
-    WWNLog("BRIDGE", @"Configured XCURSOR_PATH: %s (theme=Adwaita)",
-           iconsRoot.UTF8String);
-  }
-}
-
-void wwn_ios_refresh_bundle_env(void) {
-  WWNConfigureBundledXkbIfNeeded();
-  WWNConfigureBundledFontsIfNeeded();
-  WWNConfigureBundledWestonDataIfNeeded();
-}
-#endif
-
 NSNotificationName const WWNNativeClientWillLaunchNotification =
     @"WWNNativeClientWillLaunchNotification";
 
@@ -471,11 +368,7 @@ static void *const kWWNCompositorQueueKey = (void *)&kWWNCompositorQueueKey;
 - (instancetype)init {
   self = [super init];
   if (self) {
-#if TARGET_OS_IPHONE || TARGET_OS_TV || TARGET_OS_WATCH
-    WWNConfigureBundledXkbIfNeeded();
-    WWNConfigureBundledFontsIfNeeded();
-    WWNConfigureBundledWestonDataIfNeeded();
-#endif
+    WWNConfigureBundledRuntimeEnvIfNeeded();
     WWNLog("BRIDGE", @"Creating WWNCore via direct C API");
     _rustCore = WWNCoreNew();
 
@@ -612,6 +505,7 @@ static void *const kWWNCompositorQueueKey = (void *)&kWWNCompositorQueueKey;
 }
 
 - (BOOL)startWithSocketName:(NSString *)socketName {
+  WWNConfigureBundledRuntimeEnvIfNeeded();
   [self _setupRuntimeEnvironmentWithSocketName:socketName];
 
   if (!_rustCore) {
@@ -718,11 +612,24 @@ static void *const kWWNCompositorQueueKey = (void *)&kWWNCompositorQueueKey;
   //    the in-flight tick only uses dispatch_async to bounce back to main
   //    (no deadlock — the async block will simply run after we return).
   if (_rustCore && _compositorQueue) {
-    dispatch_sync(_compositorQueue, ^{
-      WWNCoreStop(self->_rustCore);
-      self->_rustCore = NULL;
-      WWNLog("BRIDGE", @"Compositor stopped on compositor queue");
+    dispatch_semaphore_t stopSem = dispatch_semaphore_create(0);
+    __block bool stopped = false;
+    dispatch_async(_compositorQueue, ^{
+      if (self->_rustCore) {
+        WWNCoreStop(self->_rustCore);
+        self->_rustCore = NULL;
+        stopped = true;
+        WWNLog("BRIDGE", @"Compositor stopped on compositor queue");
+      }
+      dispatch_semaphore_signal(stopSem);
     });
+    dispatch_semaphore_wait(
+        stopSem, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)));
+    if (!stopped && _rustCore) {
+      WWNLog("BRIDGE", @"Compositor stop timed out — forcing teardown");
+      WWNCoreStop(_rustCore);
+      _rustCore = NULL;
+    }
   } else if (_rustCore) {
     WWNCoreStop(_rustCore);
     _rustCore = NULL;
@@ -1475,10 +1382,19 @@ static void *const kWWNCompositorQueueKey = (void *)&kWWNCompositorQueueKey;
 
   // 1. Find or Create Layer
   CALayer *layer = _surfaceLayers[surfId];
+  BOOL clientSideDecorated = NO;
+  id winObj = _windows[winId];
+  if ([winObj isKindOfClass:[WWNWindow class]]) {
+    clientSideDecorated = ((WWNWindow *)winObj).clientSideDecorated;
+  }
   if (!layer) {
     layer = [CALayer layer];
     layer.contentsScale = node->scale;
     layer.contentsGravity = kCAGravityResize;
+    layer.opaque = clientSideDecorated ? NO : YES;
+    if (clientSideDecorated) {
+      layer.backgroundColor = NULL;
+    }
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
     layer.geometryFlipped = YES;
     layer.opaque = YES;
@@ -1553,6 +1469,11 @@ static void *const kWWNCompositorQueueKey = (void *)&kWWNCompositorQueueKey;
   layer.contentsScale = MAX(1.0, node->scale);
   layer.opacity = node->opacity;
   layer.cornerRadius = node->corner_radius;
+  layer.opaque = clientSideDecorated ? NO : YES;
+  if (clientSideDecorated) {
+    layer.backgroundColor = NULL;
+    layer.masksToBounds = NO;
+  }
 
   // 2b. Crop buffer to content area when CSD geometry is set.
   // The client's buffer may include shadow/frame around the content;
@@ -2475,6 +2396,8 @@ typedef enum : uint32_t {
   CWindowEventTypeUnmaximizeRequested = 11,
   CWindowEventTypeCursorShapeChanged = 12,
   CWindowEventTypeHostLocked = 13,
+  CWindowEventTypeFullscreenRequested = 14,
+  CWindowEventTypeUnfullscreenRequested = 15,
 } CWindowEventType;
 
 typedef struct CWindowEvent {
@@ -2565,6 +2488,16 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
     [self handleWindowUnmaximizeRequested:event];
 #endif
     break;
+  case CWindowEventTypeFullscreenRequested:
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+    [self handleWindowFullscreenRequested:event];
+#endif
+    break;
+  case CWindowEventTypeUnfullscreenRequested:
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+    [self handleWindowUnfullscreenRequested:event];
+#endif
+    break;
   case CWindowEventTypeCursorShapeChanged:
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
     [self handleCursorShapeChanged:event];
@@ -2650,8 +2583,7 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   BOOL shouldUpdateOutput = NO; // Whether wl_output.mode must also change.
 
   BOOL kiosk = event->host_locked || event->fullscreen_shell;
-  BOOL forceSSD = WWNForceSSDEnabled();
-  BOOL useServerDecorations = !kiosk && (forceSSD || event->decoration_mode == 1);
+  BOOL useServerDecorations = !kiosk && (event->decoration_mode == 1);
 
   NSRect contentRect;
   if (kiosk) {
@@ -2666,13 +2598,9 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
     }
   } else {
     contentRect = NSMakeRect(100, 100, event->width, event->height);
-    // For SSD windows the actual content area must be communicated back
-    // to the Rust compositor so wl_output stays in sync.  Nested
-    // compositors like Weston rely on wl_output.mode matching the
-    // content area.
-    if (useServerDecorations) {
-      shouldInjectResize = YES;
-    }
+    // All floating windows (SSD and CSD): after AppKit applies chrome, push the
+    // drawable content size back so wl_output and xdg_toplevel.configure match.
+    shouldInjectResize = YES;
   }
   NSWindowStyleMask styleMask;
   if (useServerDecorations) {
@@ -2710,6 +2638,11 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
 
   [window setContentView:contentView];
   [window makeFirstResponder:contentView];
+  [window applyPresentationPolicyForServerSideDecorations:useServerDecorations];
+  if (!kiosk) {
+    [window setCollectionBehavior:(NSWindowCollectionBehaviorFullScreenPrimary |
+                                   NSWindowCollectionBehaviorManaged)];
+  }
 
   if (kiosk) {
     [window setFrame:contentRect display:NO];
@@ -2717,9 +2650,14 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
     [window setMovableByWindowBackground:NO];
   } else {
     [window center];
+    [window setMovable:YES];
+    [window setMovableByWindowBackground:useServerDecorations];
   }
-  // Deferred: Window remains hidden until a buffer is attached (xdg-shell
-  // semantics)
+  // Content stays transparent until the first buffer, but show the frame so
+  // macOS users can see/focus the client window immediately.
+  if (!kiosk) {
+    [window orderFrontRegardless];
+  }
 
   [_windows setObject:window forKey:@(event->window_id)];
   NSString *ownerMachineId = [WWNMachineProfileStore activeMachineId];
@@ -2728,6 +2666,16 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   }
   WWNLog("BRIDGE", @"Created window %llu: %@ (total windows: %lu)",
          event->window_id, title, (unsigned long)[_windows count]);
+
+  // Send activated configure immediately so subprocess clients (weston-terminal,
+  // demo clients) commit their first buffer without waiting for keyboard focus.
+  {
+    uint64_t windowId = event->window_id;
+    [self _dispatchToRust:^{
+      WWNCoreSetWindowActivatedSilent(self->_rustCore, windowId, true);
+      WWNCoreFlushClients(self->_rustCore);
+    }];
+  }
 
   // If the window was placed at a default size (smaller than what the
   // Wayland client requested), update wl_output.mode first, then inject
@@ -2828,10 +2776,9 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
 
 - (void)handleDecorationModeChanged:(CWindowEvent *)event {
   WWNWindow *window = _windows[@(event->window_id)];
-  if (!window || ![window isKindOfClass:[WWNWindow class]])
+  if (!window || ![window isKindOfClass:[WWNWindow class]] || window.hostLocked)
     return;
-  BOOL forceSSD = WWNForceSSDEnabled();
-  BOOL useServerDecorations = forceSSD || event->decoration_mode == 1;
+  BOOL useServerDecorations = (event->decoration_mode == 1);
   NSWindowStyleMask styleMask;
   if (useServerDecorations) {
     styleMask = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
@@ -2841,6 +2788,9 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
                 NSWindowStyleMaskMiniaturizable;
   }
   [window setStyleMask:styleMask];
+  [window setMovable:YES];
+  [window setMovableByWindowBackground:useServerDecorations];
+  [window applyPresentationPolicyForServerSideDecorations:useServerDecorations];
 
   // After changing the style mask the content area may have shrunk (e.g. a
   // titlebar was added for SSD mode).  Inject the new content-area size
@@ -2851,18 +2801,18 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   NSSize contentSize = WWNWaylandContentSizeForWindow(window);
   if (contentSize.width > 0 && contentSize.height > 0) {
     WWNLog("BRIDGE",
-           @"Decoration mode changed for window %llu: %s (force_ssd=%d) — injecting "
+           @"Decoration mode changed for window %llu: %s — injecting "
            @"content resize %.0fx%.0f",
            event->window_id,
-           useServerDecorations ? "ServerSide" : "ClientSide", forceSSD,
+           useServerDecorations ? "ServerSide" : "ClientSide",
            contentSize.width, contentSize.height);
     [self injectWindowResize:event->window_id
                        width:(uint32_t)contentSize.width
                       height:(uint32_t)contentSize.height];
   } else {
-    WWNLog("BRIDGE", @"Decoration mode changed for window %llu: %s (force_ssd=%d)",
+    WWNLog("BRIDGE", @"Decoration mode changed for window %llu: %s",
            event->window_id,
-           useServerDecorations ? "ServerSide" : "ClientSide", forceSSD);
+           useServerDecorations ? "ServerSide" : "ClientSide");
   }
 }
 
@@ -2989,6 +2939,65 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
     }
   }
 #endif
+}
+
+- (void)handleWindowFullscreenRequested:(CWindowEvent *)event {
+  WWNLog("BRIDGE", @"handleWindowFullscreenRequested: id=%llu", event->window_id);
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+  WWNWindow *window = _windows[@(event->window_id)];
+  if (!window || window.hostLocked)
+    return;
+  if ((window.styleMask & NSWindowStyleMaskFullScreen) != 0)
+    return;
+  window.processingResize = YES;
+  [window toggleFullScreen:nil];
+  window.processingResize = NO;
+#endif
+}
+
+- (void)handleWindowUnfullscreenRequested:(CWindowEvent *)event {
+  WWNLog("BRIDGE", @"handleWindowUnfullscreenRequested: id=%llu",
+         event->window_id);
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+  WWNWindow *window = _windows[@(event->window_id)];
+  if (!window || window.hostLocked)
+    return;
+  if ((window.styleMask & NSWindowStyleMaskFullScreen) == 0)
+    return;
+  window.processingResize = YES;
+  [window toggleFullScreen:nil];
+  window.processingResize = NO;
+#endif
+}
+
+- (void)syncHostFullscreen:(BOOL)fullscreen
+                forWindowId:(uint64_t)windowId
+                      width:(uint32_t)width
+                     height:(uint32_t)height {
+  if (!_rustCore)
+    return;
+  uint64_t wid = windowId;
+  uint32_t w = width;
+  uint32_t h = height;
+  bool fs = fullscreen ? true : false;
+  [self _dispatchToRust:^{
+    WWNCoreApplyHostWindowFullscreen(self->_rustCore, wid, fs, w, h);
+  }];
+}
+
+- (void)syncHostMaximized:(BOOL)maximized
+             forWindowId:(uint64_t)windowId
+                   width:(uint32_t)width
+                  height:(uint32_t)height {
+  if (!_rustCore)
+    return;
+  uint64_t wid = windowId;
+  uint32_t w = width;
+  uint32_t h = height;
+  bool mz = maximized ? true : false;
+  [self _dispatchToRust:^{
+    WWNCoreApplyHostWindowMaximized(self->_rustCore, wid, mz, w, h);
+  }];
 }
 
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
@@ -3122,7 +3131,11 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
       // Wayland client has already been torn down. Hiding + detaching keeps
       // host alive without touching potentially invalid compositor state.
       [window setDelegate:nil];
+      if ((window.styleMask & NSWindowStyleMaskFullScreen) != 0) {
+        [window toggleFullScreen:nil];
+      }
       [window orderOut:nil];
+      [window close];
     } @catch (NSException *exception) {
       WWNLog("BRIDGE",
              @"Exception while destroying window %llu: %@ (%@)",
@@ -3378,6 +3391,35 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
 
 #endif // !TARGET_OS_IPHONE
 
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+- (BOOL)launchNestedKmscubeOnPrimaryView {
+  for (NSNumber *key in _windows) {
+    id w = _windows[key];
+    if ([w isKindOfClass:[WWNWindow class]]) {
+      WWNView *view = (WWNView *)[(WWNWindow *)w contentView];
+      if ([view isKindOfClass:[WWNView class]]) {
+        return [view launchNestedKmscube];
+      }
+    }
+  }
+  return NO;
+}
+
+- (BOOL)prepareIlandMetalPresentationOnPrimaryView {
+  for (NSNumber *key in _windows) {
+    id w = _windows[key];
+    if ([w isKindOfClass:[WWNWindow class]]) {
+      WWNView *view = (WWNView *)[(WWNWindow *)w contentView];
+      if ([view isKindOfClass:[WWNView class]] &&
+          [view prepareIlandMetalPresentation]) {
+        return YES;
+      }
+    }
+  }
+  return NO;
+}
+#endif
+
 - (NSUInteger)pendingWindowCount {
   if (!_rustCore) {
     return 0;
@@ -3485,7 +3527,6 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   return NO;
 }
 
-#if TARGET_OS_IPHONE
 - (void)_runCompositorEventPumpWithIterations:(int)iterations {
   if (!_rustCore || iterations <= 0) {
     return;
@@ -3515,18 +3556,51 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   if (!_rustCore) {
     return;
   }
-  // Pump from the client thread on _compositorQueue only. Window events and
-  // buffer presentation stay in _compositorTick — never drain them here.
+  // Run Wayland dispatch off the main thread so nested clients can connect
+  // without blocking AppKit (weston.ini, NSTask launch, UI).
   [self _pumpHostCompositorFromQueue];
-  // Nudge presentation when the display-link tick is idle (e.g. first frame
-  // after an in-process client connects).
-  dispatch_async(dispatch_get_main_queue(), ^{
-    if (self->_rustCore && ! atomic_load(&self->_compositorBusy)) {
-      [self _compositorTick];
+  void (^drainOnMain)(void) = ^{
+    if (!self->_rustCore) {
+      return;
     }
-  });
+    // Pop/handle on main only. Never spin ProcessEvents in a while-loop here:
+    // configure churn can enqueue events faster than we drain and freeze the UI.
+    NSUInteger handled = 0;
+    for (; handled < 32; handled++) {
+      CWindowEvent *event = WWNCorePopWindowEvent(self->_rustCore);
+      if (!event) {
+        break;
+      }
+      [self _dispatchWindowEvent:event];
+      WWNWindowEventFree(event);
+    }
+    if (handled > 0) {
+      WWNLog("BRIDGE", @"Drained %lu window event(s) after host pump",
+             (unsigned long)handled);
+    }
+  };
+  if ([NSThread isMainThread]) {
+    drainOnMain();
+  } else {
+    dispatch_sync(dispatch_get_main_queue(), drainOnMain);
+  }
 }
-#endif
+
+- (void)scheduleFollowUpHostCompositorPumps:(NSUInteger)count
+                                 interval:(NSTimeInterval)intervalSeconds {
+  if (count == 0 || intervalSeconds <= 0) {
+    return;
+  }
+  for (NSUInteger i = 1; i <= count; i++) {
+    dispatch_after(
+        dispatch_time(DISPATCH_TIME_NOW,
+                      (int64_t)(intervalSeconds * (NSTimeInterval)i *
+                                NSEC_PER_SEC)),
+        dispatch_get_main_queue(), ^{
+          [[WWNCompositorBridge sharedBridge] pumpHostCompositorEvents];
+        });
+  }
+}
 
 - (void)handleWindowHostLocked:(CWindowEvent *)event {
   NSNumber *winKey = @(event->window_id);

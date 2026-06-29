@@ -53,7 +53,11 @@ let
         "wawona-pty" = buildFn "wawona-pty" { inherit simulator; };
         "wawona-rootfs" = buildFn "wawona-rootfs" { inherit simulator; };
         zsh = buildFn "zsh" { inherit simulator; };
+      }
+    // lib.optionalAttrs (variant == "mobile") {
         fastfetch = buildFn "fastfetch" { inherit simulator; };
+        neovim = buildFn "neovim" { inherit simulator; };
+        "neovim-rootfs" = buildFn "neovim-rootfs" { inherit simulator; };
       }
     // lib.optionalAttrs (variant == "vision") {
       libssh2 = buildFn "libssh2" { inherit simulator; };

@@ -9,6 +9,15 @@ impl super::CompositorState {
         !app_id.is_empty() && is_weston_family_app_id(app_id)
     }
 
+    /// Host-lock check from already-known window fields (safe while holding `window.write()`).
+    pub fn is_host_locked_window_flags(
+        window_id: u32,
+        host_locked: bool,
+        fullscreen_shell_presented: Option<u32>,
+    ) -> bool {
+        fullscreen_shell_presented == Some(window_id) || host_locked
+    }
+
     pub fn is_host_locked_window(&self, window_id: u32) -> bool {
         if self.ext.fullscreen_shell.presented_window_id == Some(window_id) {
             return true;

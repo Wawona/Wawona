@@ -11,8 +11,12 @@ let
   kmscube =
     deps.kmscube or deps."iland-gl-clients" or deps.iland-gl-clients or null;
   angleLinkKind =
-    if angle != null && builtins.pathExists "${strip angle}/nix-support/link-kind" then
+    if angle == null then
+      "none"
+    else if builtins.pathExists "${strip angle}/nix-support/link-kind" then
       lib.strings.trim (builtins.readFile "${strip angle}/nix-support/link-kind")
+    else if builtins.pathExists "${strip angle}/lib/libEGL.dylib" then
+      "dylib"
     else
       "static";
   libPaths = lib.filter (s: s != "") [
@@ -35,7 +39,7 @@ let
     if angle == null then
       [ ]
     else if angleLinkKind == "dylib" then
-      [ ]
+      [ "-lEGL" "-lGLESv2" ]
     else
       [
         "-force_load" "${strip angle}/lib/libEGL.a"

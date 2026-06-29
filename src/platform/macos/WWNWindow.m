@@ -2,7 +2,10 @@
 #import "../../util/WWNLog.h"
 #import "WWNCompositorBridge.h"
 #import "WWNSettings.h"
+#import "WWNIlandPresenter.h"
 #import <ApplicationServices/ApplicationServices.h>
+#import <QuartzCore/QuartzCore.h>
+#import <Metal/Metal.h>
 
 @interface WWNWindow ()
 @property(nonatomic, assign) BOOL wwnCloseDeferred;
@@ -14,6 +17,8 @@
 //
 @implementation WWNView {
   CALayer *contentLayer_;
+  CAMetalLayer *metalLayer_;
+  WWNIlandPresenter *ilandPresenter_;
   // NSTextInputClient state for IME / emoji composition
   NSString *markedText_;
   NSRange markedRange_;
@@ -100,6 +105,45 @@
 - (void)updateLayer {
   [super updateLayer];
   contentLayer_.frame = self.bounds;
+  if (metalLayer_) {
+    metalLayer_.frame = self.bounds;
+  }
+}
+
+- (BOOL)prepareIlandMetalPresentation {
+  self.wantsLayer = YES;
+  if (!metalLayer_) {
+    metalLayer_ = [CAMetalLayer layer];
+    metalLayer_.geometryFlipped = YES;
+    metalLayer_.frame = self.bounds;
+    metalLayer_.contentsScale = self.window.backingScaleFactor ?: 1.0;
+    metalLayer_.autoresizingMask =
+        kCALayerWidthSizable | kCALayerHeightSizable;
+    [self.layer addSublayer:metalLayer_];
+  }
+  metalLayer_.hidden = NO;
+  metalLayer_.frame = self.bounds;
+  if (ilandPresenter_) {
+    [ilandPresenter_ invalidate];
+    ilandPresenter_ = nil;
+  }
+  ilandPresenter_ =
+      [[WWNIlandPresenter alloc] initWithLayer:metalLayer_ device:nil];
+  contentLayer_.hidden = YES;
+  return ilandPresenter_ != nil;
+}
+
+- (BOOL)launchNestedKmscube {
+  if (![self prepareIlandMetalPresentation]) {
+    return NO;
+  }
+  int w = (int)self.bounds.size.width;
+  int h = (int)self.bounds.size.height;
+  if (w <= 0 || h <= 0) {
+    w = 1280;
+    h = 720;
+  }
+  return [ilandPresenter_ launchNestedKmscubeWithWidth:w height:h];
 }
 
 - (void)updateTrackingAreas {
@@ -693,6 +737,49 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
   return self;
 }
 
+- (void)applyPresentationPolicyForServerSideDecorations:
+    (BOOL)serverSideDecorations {
+  if (self.hostLocked) {
+    return;
+  }
+
+  BOOL csd = !serverSideDecorations;
+  self.clientSideDecorated = csd;
+
+  if (csd) {
+    self.opaque = NO;
+    self.backgroundColor = NSColor.clearColor;
+    self.hasShadow = NO;
+  } else {
+    self.opaque = YES;
+    self.backgroundColor = nil;
+    self.hasShadow = YES;
+  }
+
+  if (![self.contentView isKindOfClass:[WWNView class]]) {
+    return;
+  }
+  WWNView *view = (WWNView *)self.contentView;
+  view.wantsLayer = YES;
+  view.layer.backgroundColor = NSColor.clearColor.CGColor;
+
+  if (csd) {
+    // Transparent host: client buffer alpha (rounded corners, shadows) composites
+    // to the desktop instead of showing black from an opaque AppKit backing store.
+    view.layer.opaque = NO;
+    view.layer.masksToBounds = NO;
+    view.contentLayer.opaque = NO;
+    view.contentLayer.backgroundColor = NSColor.clearColor.CGColor;
+    view.contentLayer.masksToBounds = NO;
+  } else {
+    view.layer.opaque = YES;
+    view.layer.masksToBounds = YES;
+    view.contentLayer.opaque = YES;
+    view.contentLayer.backgroundColor = NSColor.clearColor.CGColor;
+    view.contentLayer.masksToBounds = NO;
+  }
+}
+
 - (void)windowDidResize:(NSNotification *)notification {
   if (self.processingResize || self.suppressCompositorCallbacks ||
       !self.isVisible) {
@@ -703,6 +790,57 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
   NSSize size = [self contentRectForFrameRect:self.frame].size;
   uint32_t width = (uint32_t)MAX(1, lround(size.width));
   uint32_t height = (uint32_t)MAX(1, lround(size.height));
+  [[WWNCompositorBridge sharedBridge] injectWindowResize:self.wwnWindowId
+                                                   width:width
+                                                  height:height];
+
+  if (self.hostLocked) {
+    return;
+  }
+  BOOL zoomed = [self isZoomed];
+  if (zoomed != self.wwnLastZoomed) {
+    self.wwnLastZoomed = zoomed;
+    [[WWNCompositorBridge sharedBridge]
+        syncHostMaximized:zoomed
+              forWindowId:self.wwnWindowId
+                    width:width
+                   height:height];
+  }
+}
+
+- (void)windowDidEnterFullScreen:(NSNotification *)notification {
+  (void)notification;
+  if (self.processingResize || self.suppressCompositorCallbacks ||
+      self.hostLocked) {
+    return;
+  }
+  NSSize size = [self contentRectForFrameRect:self.frame].size;
+  uint32_t width = (uint32_t)MAX(1, lround(size.width));
+  uint32_t height = (uint32_t)MAX(1, lround(size.height));
+  [[WWNCompositorBridge sharedBridge]
+      syncHostFullscreen:YES
+             forWindowId:self.wwnWindowId
+                   width:width
+                  height:height];
+  [[WWNCompositorBridge sharedBridge] injectWindowResize:self.wwnWindowId
+                                                   width:width
+                                                  height:height];
+}
+
+- (void)windowDidExitFullScreen:(NSNotification *)notification {
+  (void)notification;
+  if (self.processingResize || self.suppressCompositorCallbacks ||
+      self.hostLocked) {
+    return;
+  }
+  NSSize size = [self contentRectForFrameRect:self.frame].size;
+  uint32_t width = (uint32_t)MAX(1, lround(size.width));
+  uint32_t height = (uint32_t)MAX(1, lround(size.height));
+  [[WWNCompositorBridge sharedBridge]
+      syncHostFullscreen:NO
+             forWindowId:self.wwnWindowId
+                   width:width
+                  height:height];
   [[WWNCompositorBridge sharedBridge] injectWindowResize:self.wwnWindowId
                                                    width:width
                                                   height:height];

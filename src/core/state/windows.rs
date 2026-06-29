@@ -55,6 +55,144 @@ impl CompositorState {
         }
     }
 
+    /// Sync xdg toplevel state when the native host enters or leaves fullscreen
+    /// (macOS Mission Control space, not zoom/maximize).
+    pub fn apply_host_window_fullscreen(
+        &mut self,
+        window_id: u32,
+        fullscreen: bool,
+        width: u32,
+        height: u32,
+    ) {
+        let target_toplevel = self
+            .xdg
+            .toplevels
+            .iter()
+            .find(|(_, tl)| tl.window_id == window_id)
+            .map(|(key, _)| key.clone());
+
+        let Some((client_id, toplevel_id)) = target_toplevel else {
+            return;
+        };
+
+        if fullscreen {
+            if let Some(geo) = self.get_window(window_id).map(|window| {
+                let window = window.read().unwrap();
+                (window.x, window.y, window.width as u32, window.height as u32)
+            }) {
+                if let Some(tl) = self.xdg.toplevels.get_mut(&(client_id.clone(), toplevel_id)) {
+                    if tl.saved_geometry.is_none() {
+                        tl.saved_geometry = Some(geo);
+                    }
+                    tl.pending_fullscreen = true;
+                    tl.pending_maximized = false;
+                }
+            }
+            if let Some(window) = self.get_window(window_id) {
+                let mut window = window.write().unwrap();
+                window.fullscreen = true;
+                window.maximized = false;
+                window.width = width as i32;
+                window.height = height as i32;
+            }
+            let fw = width.max(1);
+            let fh = height.max(1);
+            let _ = self.send_toplevel_configure(client_id, toplevel_id, fw, fh);
+        } else {
+            let saved = self
+                .xdg
+                .toplevels
+                .get_mut(&(client_id.clone(), toplevel_id))
+                .and_then(|tl| {
+                    tl.pending_fullscreen = false;
+                    tl.saved_geometry.take()
+                });
+            let (restore_w, restore_h) = if let Some((_x, _y, w, h)) = saved {
+                (w, h)
+            } else {
+                (width.max(1), height.max(1))
+            };
+            if let Some(window) = self.get_window(window_id) {
+                let mut window = window.write().unwrap();
+                window.fullscreen = false;
+                window.width = restore_w as i32;
+                window.height = restore_h as i32;
+            }
+            let _ = self.send_toplevel_configure(client_id, toplevel_id, restore_w, restore_h);
+        }
+    }
+
+    /// Sync xdg toplevel maximize state when the native host zooms (macOS) or
+    /// unzooms. Fullscreen and maximize are mutually exclusive in xdg state.
+    pub fn apply_host_window_maximized(
+        &mut self,
+        window_id: u32,
+        maximized: bool,
+        width: u32,
+        height: u32,
+    ) {
+        let target_toplevel = self
+            .xdg
+            .toplevels
+            .iter()
+            .find(|(_, tl)| tl.window_id == window_id)
+            .map(|(key, _)| key.clone());
+
+        let Some((client_id, toplevel_id)) = target_toplevel else {
+            return;
+        };
+
+        if maximized {
+            if let Some(geo) = self.get_window(window_id).map(|window| {
+                let window = window.read().unwrap();
+                (window.x, window.y, window.width as u32, window.height as u32)
+            }) {
+                if let Some(tl) = self.xdg.toplevels.get_mut(&(client_id.clone(), toplevel_id)) {
+                    if tl.saved_geometry.is_none() {
+                        tl.saved_geometry = Some(geo);
+                    }
+                    tl.pending_maximized = true;
+                    tl.pending_fullscreen = false;
+                }
+            }
+            if let Some(window) = self.get_window(window_id) {
+                let mut window = window.write().unwrap();
+                window.maximized = true;
+                window.fullscreen = false;
+                window.width = width as i32;
+                window.height = height as i32;
+            }
+            let (cw, ch) = self
+                .xdg
+                .toplevels
+                .get(&(client_id.clone(), toplevel_id))
+                .map(|tl| tl.clamp_size(width.max(1), height.max(1)))
+                .unwrap_or((width.max(1), height.max(1)));
+            let _ = self.send_toplevel_configure(client_id, toplevel_id, cw, ch);
+        } else {
+            let saved = self
+                .xdg
+                .toplevels
+                .get_mut(&(client_id.clone(), toplevel_id))
+                .and_then(|tl| {
+                    tl.pending_maximized = false;
+                    tl.saved_geometry.take()
+                });
+            let (restore_w, restore_h) = if let Some((_x, _y, w, h)) = saved {
+                (w, h)
+            } else {
+                (width.max(1), height.max(1))
+            };
+            if let Some(window) = self.get_window(window_id) {
+                let mut window = window.write().unwrap();
+                window.maximized = false;
+                window.width = restore_w as i32;
+                window.height = restore_h as i32;
+            }
+            let _ = self.send_toplevel_configure(client_id, toplevel_id, restore_w, restore_h);
+        }
+    }
+
     /// Register a new window for a surface
     pub fn register_window(&mut self, surface_id: u32, window: Window) -> u32 {
         let window_id = window.id;
@@ -114,6 +252,11 @@ impl CompositorState {
             };
             self.surface_to_window.remove(&surface_id);
             self.window_tree.remove(window_id);
+
+            if self.ext.fullscreen_shell.presented_window_id == Some(window_id) {
+                self.ext.fullscreen_shell.presented_window_id = None;
+                self.ext.fullscreen_shell.presented_surface = None;
+            }
             
             if self.focus.has_keyboard_focus(window_id) {
                 let next = self.focus.focus_history.first().copied();

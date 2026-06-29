@@ -23,9 +23,11 @@
 
 // Logging
 #import "../../util/WWNLog.h"
+#import "WWNPlatformCallbacks.h"
 
 // Settings (for Vulkan driver configuration)
 #import "./ui/Settings/WWNPreferencesManager.h"
+#import "./ui/Settings/WWNWaypipeRunner.h"
 #import "WWNSettings.h"
 
 // C FFI for Rust Compositor window events
@@ -355,6 +357,8 @@ static void crash_handler(int sig) {
 }
 
 // Raw signal handler for graceful termination
+static volatile sig_atomic_t g_shutdown_requested = 0;
+
 static void raw_signal_handler(int sig) {
   const char *msg;
   if (sig == SIGINT) {
@@ -365,7 +369,14 @@ static void raw_signal_handler(int sig) {
     msg = "\n\nReceived signal, shutting down...\n";
   }
   write(STDERR_FILENO, msg, strlen(msg));
-  _exit(0);
+  if (g_shutdown_requested) {
+    _exit(128 + sig);
+  }
+  g_shutdown_requested = 1;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [[WWNWaypipeRunner sharedRunner] stopAllNativeClients];
+    [NSApp terminate:nil];
+  });
 }
 
 // Simple signal setup
@@ -759,12 +770,7 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
 
 - (void)openWawonaApp:(id)sender {
   (void)sender;
-  NSURL *bundleURL = [NSBundle mainBundle].bundleURL;
-  NSString *bundlePath = bundleURL.path;
-  if (![bundlePath hasSuffix:@".app"]) {
-    bundlePath =
-        [[bundlePath stringByDeletingLastPathComponent] stringByDeletingLastPathComponent];
-  }
+  NSString *bundlePath = WWNWawonaAppBundleRootForUI();
   NSWorkspaceOpenConfiguration *config = [NSWorkspaceOpenConfiguration configuration];
   [NSWorkspace.sharedWorkspace openApplicationAtURL:[NSURL fileURLWithPath:bundlePath]
                                       configuration:config
@@ -773,12 +779,7 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
 
 - (void)openWawonaAbout:(id)sender {
   (void)sender;
-  NSURL *bundleURL = [NSBundle mainBundle].bundleURL;
-  NSString *bundlePath = bundleURL.path;
-  if (![bundlePath hasSuffix:@".app"]) {
-    bundlePath =
-        [[bundlePath stringByDeletingLastPathComponent] stringByDeletingLastPathComponent];
-  }
+  NSString *bundlePath = WWNWawonaAppBundleRootForUI();
   NSWorkspaceOpenConfiguration *config = [NSWorkspaceOpenConfiguration configuration];
   config.arguments = @[ @"--show-about" ];
   [NSWorkspace.sharedWorkspace openApplicationAtURL:[NSURL fileURLWithPath:bundlePath]
@@ -805,6 +806,7 @@ int main(int argc, char *argv[]) {
     [[NSProcessInfo processInfo] setProcessName:@"Wawona"];
     setbuf(stdout, NULL);
     setbuf(stderr, NULL);
+    WWNConfigureBundledRuntimeEnvIfNeeded();
 
     BOOL compositorHostMode = NO;
     BOOL menuBarMode = NO;

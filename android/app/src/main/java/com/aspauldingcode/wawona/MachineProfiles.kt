@@ -12,6 +12,18 @@ enum class MachineType(val value: String) {
     VM("virtual_machine"),
     CONTAINER("container");
 
+    val displayLabel: String
+        get() = when (this) {
+            NATIVE -> "Native"
+            SSH_WAYPIPE -> "SSH + Waypipe"
+            SSH_TERMINAL -> "SSH Terminal"
+            VM -> "Virtual Machine"
+            CONTAINER -> "Container"
+        }
+
+    val isLocal: Boolean
+        get() = this == NATIVE || this == VM || this == CONTAINER
+
     companion object {
         fun fromValue(value: String): MachineType =
             entries.firstOrNull { it.value == value } ?: NATIVE
@@ -23,7 +35,28 @@ enum class MachineStatus {
     CONNECTING,
     CONNECTED,
     DEGRADED,
-    ERROR
+    ERROR;
+
+    val displayTitle: String
+        get() = when (this) {
+            DISCONNECTED -> "Disconnected"
+            CONNECTING -> "Connecting"
+            CONNECTED -> "Connected"
+            DEGRADED -> "Degraded"
+            ERROR -> "Error"
+        }
+}
+
+enum class MachineScopeFilter(val label: String) {
+    ALL("All Machines"),
+    LOCAL("Local"),
+    REMOTE("Remote");
+
+    fun matches(type: MachineType): Boolean = when (this) {
+        ALL -> true
+        LOCAL -> type.isLocal
+        REMOTE -> !type.isLocal
+    }
 }
 
 data class MachineCapabilities(

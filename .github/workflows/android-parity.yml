@@ -1,0 +1,35 @@
+name: Android parity builds
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'android/**'
+      - 'dependencies/**'
+      - 'src/platform/android/**'
+      - 'flake.nix'
+      - 'flake.lock'
+  pull_request:
+    paths:
+      - 'android/**'
+      - 'dependencies/**'
+      - 'src/platform/android/**'
+      - 'flake.nix'
+      - 'flake.lock'
+
+jobs:
+  nix-android-gate:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - name: Build weston + compositor + zsh
+        run: |
+          cd Wawona
+          nix build .#weston-android .#weston-compositor-android .#zsh-android .#weston-ios --no-link
+      - name: Gradle project assembleDebug
+        run: |
+          cd Wawona
+          nix run .#gradlegen
+          cd Wawona-gradle-project
+          ./gradlew :Wawona:assembleDebug --no-daemon

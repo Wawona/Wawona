@@ -81,6 +81,20 @@ On **macOS/Android** the identical utilities ship as an ordinary uutils **multic
 binary** on `PATH` (`coreutils` + per-util symlinks); there zsh exec()s it normally
 and neither the exec patch nor the dispatch shim is used.
 
+### In-process clients (static archives)
+
+These ship as separate `-force_load` archives (not uutils). Same dispatch path;
+listed in `WAWONA_INPROC_CLIENTS` in the `.zshrc` template:
+
+| Command | Archive | Entry point | Notes |
+|---------|---------|-------------|-------|
+| `fastfetch` | `libfastfetch.a` | `fastfetch_main` | No fork; patched for Apple mobile |
+| `nvim` / `vi` / `vim` | `libwawona-neovim.a` | `wawona_nvim_main` | PUC Lua only; `:terminal` stubbed |
+| `waypipe` | `libwawona.a` (`waypipe-ssh`) | `waypipe_main` | libssh2 SSH in-process; no openssh binary |
+
+SSH from a shell: `export WAYPIPE_SSH_PASSWORD=…` then `waypipe ssh user@host -- …`.
+The Settings UI uses the same entry point with captured stdout/stderr.
+
 ---
 
 ## Data flows

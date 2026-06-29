@@ -1,6 +1,37 @@
-//! XDG Decoration — Smithay `delegate_xdg_decoration!` owns dispatch.
+//! XDG toplevel decoration (`zxdg_decoration_manager_v1` / `zxdg_toplevel_decoration_v1`).
 //!
-//! Data types and policy helpers used by [`super::extension_handlers`].
+//! Smithay's `delegate_xdg_decoration!` dispatches client requests; this module
+//! holds policy helpers and per-window bookkeeping.
+//!
+//! ## Negotiation flow
+//!
+//! 1. Client creates `zxdg_toplevel_decoration_v1` → [`extension_handlers::XdgDecorationHandler::new_decoration`]
+//! 2. Compositor picks a mode via [`preferred_xdg_decoration_mode`] and writes it into the
+//!    pending xdg toplevel state, then sends `xdg_toplevel.configure`.
+//! 3. [`CompositorState::apply_decoration_mode_for_window`] updates the host `Window`
+//!    record, emits `DecorationModeChanged` to the platform **once per mode change**, and
+//!    re-sends configure so client and host agree on dimensions.
+//! 4. Client `set_mode` / `unset_mode` requests go through [`request_mode`] /
+//!    [`unset_mode`], which may override the client preference according to
+//!    [`DecorationPolicy`] and weston-family rules below.
+//!
+//! ## Platform mapping (per window, never global)
+//!
+//! | XDG mode    | macOS                         | Linux GTK              |
+//! |-------------|-------------------------------|------------------------|
+//! | ServerSide  | titled/resizable NSWindow     | `gtk_window.set_decorated(true)` |
+//! | ClientSide  | borderless NSWindow, transparent host chrome | `set_decorated(false)` |
+//!
+//! Host resize injection always uses **content** size (inside SSD chrome when present).
+//! Decoration changes must resize before configure so nested compositors see matching
+//! `wl_output.mode` and `xdg_toplevel` dimensions.
+//!
+//! ## Policy
+//!
+//! - `ForceServer` → always `Mode::ServerSide` (except weston-family uses dedicated rules).
+//! - `PreferServer` / `PreferClient` → honour client `set_mode` for normal apps.
+//! - Weston-family (`weston`, `weston-*`) → CSD when policy is not `ForceServer`, because
+//!   demo clients paint titlebars into the buffer (waypipe, nested Weston, weston-terminal).
 
 use wayland_protocols::xdg::decoration::zv1::server::{
     zxdg_toplevel_decoration_v1::{self, ZxdgToplevelDecorationV1, Mode},
@@ -13,7 +44,7 @@ use smithay::wayland::shell::xdg::ToplevelSurface;
 use std::collections::HashMap;
 
 pub fn is_weston_family_app_id(app_id: &str) -> bool {
-    app_id == "weston" || app_id.starts_with("weston-") || app_id.contains("weston")
+    app_id == "weston" || app_id.starts_with("weston-")
 }
 
 /// Weston demo clients that paint an in-buffer border even when SSD is negotiated.
@@ -242,9 +273,25 @@ impl CompositorState {
         window_id: u32,
         preferred: Mode,
     ) {
-        if let Some(window) = self.get_window(window_id) {
+        let new_mode = decoration_mode_from_xdg(preferred);
+        let changed = if let Some(window) = self.get_window(window_id) {
             let mut window = window.write().unwrap();
-            window.decoration_mode = decoration_mode_from_xdg(preferred);
+            let changed = window.decoration_mode != new_mode;
+            if changed {
+                window.decoration_mode = new_mode;
+            }
+            changed
+        } else {
+            false
+        };
+
+        if changed {
+            self.pending_compositor_events.push(
+                crate::core::compositor::CompositorEvent::DecorationModeChanged {
+                    window_id,
+                    mode: new_mode,
+                },
+            );
         }
         self.reconfigure_window_decorations(window_id);
     }

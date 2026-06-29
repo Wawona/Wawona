@@ -677,6 +677,8 @@ pub enum WindowEvent {
     MinimizeRequested { window_id: WindowId },
     MaximizeRequested { window_id: WindowId },
     UnmaximizeRequested { window_id: WindowId },
+    FullscreenRequested { window_id: WindowId },
+    UnfullscreenRequested { window_id: WindowId },
     CloseRequested { window_id: WindowId },
 
     // Cursor shape change (from wp_cursor_shape protocol)

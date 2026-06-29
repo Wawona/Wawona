@@ -4,6 +4,25 @@
 
 ---
 
+## Linux (GTK / X11)
+
+```bash
+nix run .#wawona-linux
+```
+
+Uses GTK4 with Wayland or X11 GDK fallback. Runtime includes weston, weston-terminal, foot, fastfetch, neovim, zsh, kmscube, and waypipe on PATH.
+
+## Virtual machines (v0.2.4)
+
+| Platform | How |
+|----------|-----|
+| macOS | Machines → Virtual Machine profile opens UTM/UTM SE |
+| iOS | `nix run .#wawona-ios` (Simulator) |
+| Android | `nix run .#wawona-android` (emulator) |
+| Linux | `nix run .#wawona-linux-vm` (QEMU NixOS) |
+
+---
+
 ## Native Weston on macOS (No Linux)
 
 Wawona includes a **native port of Weston** for macOS. No Linux, no VM — Weston runs as a nested compositor client inside Wawona.

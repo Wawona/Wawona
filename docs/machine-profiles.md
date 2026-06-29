@@ -34,6 +34,7 @@ Transient (non-persisted) UI/runtime status values used by machine grid cards:
 
 Notes:
 
+- **Transport routing:** `native` profiles launch bundled/in-process Wayland clients on the **local compositor** (iOS: `launchBundledClientWithId`, Android: `launchNativeMachine`, Linux: direct `sh -c`). **Waypipe is only used for `ssh_waypipe` and `ssh_terminal`** (remote/networked machines). Native profiles must never start waypipe; enforced in `WWNMachineSessionBridge` and `WWNWaypipeRunner`.
 - Apple and Android both migrate from legacy flat `waypipe*` preferences
   into one initial machine profile when no profile list exists.
 - Runtime launch remains backward-compatible by applying the selected machine

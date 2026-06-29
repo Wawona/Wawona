@@ -2,6 +2,7 @@
 #import "../Machines/WWNMachinesCoordinator.h"
 #import "../../platform/macos/WWNCompositorBridge.h"
 #import "../../../../util/WWNLog.h"
+#import "../../WWNPlatformCallbacks.h"
 #import "../Helpers/WWNImageLoader.h"
 #import "WWNPreferencesManager.h"
 #import "WWNSettingsModel.h"
@@ -572,7 +573,7 @@ static UIImage *WWNAboutLogo(void) {
          WSettingSwitch, @YES,
          @"Save the last frame from a machine session and show it on machine cards."),
     ITEM(@"Virtual Machine Provider", @"MachineVMProviderStub", WSettingText,
-         @"utm-se", @"Stub setting for future VM integration."),
+         @"utm-se", @"UTM or UTM SE on macOS; simulators/emulators on mobile."),
     ITEM(@"Virtual Machine VSock Port", @"MachineVMDefaultVsockStub",
          WSettingNumber, @"1024",
          @"Stub default VSock port for future VM launches."),
@@ -581,9 +582,9 @@ static UIImage *WWNAboutLogo(void) {
     ITEM(@"Container Namespace", @"MachineContainerNamespaceStub", WSettingText,
          @"default", @"Stub namespace for future container runtime hooks."),
     ITEM(
-        @"Status", nil, WSettingInfo, @"Coming Soon",
-        @"VM and container entries are persistent stubs in v0.2.3 and "
-        @"intentionally non-functional until runtime integration lands.")
+        @"Status", nil, WSettingInfo, @"Partial",
+        @"macOS opens UTM/UTM SE for VM profiles. Use nix run .#wawona-ios or "
+        @".#wawona-android for iOS Simulator / Android emulator.")
   ];
   [sects addObject:machines];
 
@@ -1157,25 +1158,7 @@ static UIImage *WWNAboutLogo(void) {
 
 #if !TARGET_OS_IPHONE
 - (NSString *)getSshpassVersion {
-  NSString *bundlePath = [[NSBundle mainBundle] bundlePath];
-  NSString *execPath = [[NSBundle mainBundle] executablePath];
-  NSString *execDir = [execPath stringByDeletingLastPathComponent];
-  NSFileManager *fm = [NSFileManager defaultManager];
-
-  NSArray *candidates = @[
-    [bundlePath stringByAppendingPathComponent:@"Contents/MacOS/sshpass"],
-    [bundlePath
-        stringByAppendingPathComponent:@"Contents/Resources/bin/sshpass"],
-    [execDir stringByAppendingPathComponent:@"sshpass"]
-  ];
-
-  NSString *sshpassPath = nil;
-  for (NSString *path in candidates) {
-    if ([fm isExecutableFileAtPath:path]) {
-      sshpassPath = path;
-      break;
-    }
-  }
+  NSString *sshpassPath = WWNWawonaFindBundledExecutable(@"sshpass");
 
   if (!sshpassPath) {
     NSString *ver = [NSString stringWithUTF8String:WAWONA_SSHPASS_VERSION];
@@ -1837,75 +1820,18 @@ static UIImage *WWNAboutLogo(void) {
         // Check if sshpass is available for password auth
         NSString *sshpassPath = nil;
         if (usePasswordAuth) {
-          NSFileManager *fm = [NSFileManager defaultManager];
-          NSString *bundlePath = [[NSBundle mainBundle] bundlePath];
-          NSString *execPath = [[NSBundle mainBundle] executablePath];
-          NSString *execDir = [execPath stringByDeletingLastPathComponent];
-
-          WWNLog("SSH", @"Bundle path: %@", bundlePath);
-          WWNLog("SSH", @"Executable path: %@", execPath);
-
-          // Check for bundled sshpass first (Nix-built), then fallback to
-          // system locations macOS bundle structure:
-          // Wawona.app/Contents/MacOS/sshpass or Contents/Resources/bin/sshpass
-          // iOS bundle structure: Wawona.app/bin/sshpass
-          // Nix store structure: The binary at /nix/store/.../bin/Wawona is a
-          // symlink,
-          //   actual app bundle is at /nix/store/.../Applications/Wawona.app/
-          NSString *nixStoreBase = [[execDir stringByDeletingLastPathComponent]
-              stringByDeletingLastPathComponent];
-          NSString *nixAppPath =
-              [[nixStoreBase stringByAppendingPathComponent:@"Applications"]
-                  stringByAppendingPathComponent:@"Wawona.app"];
-
-          NSArray *sshpassPaths = @[
-            // Nix: App bundle in same store path as binary symlink
-            [[nixAppPath stringByAppendingPathComponent:@"Contents/MacOS"]
-                stringByAppendingPathComponent:@"sshpass"],
-            [[nixAppPath
-                stringByAppendingPathComponent:@"Contents/Resources/bin"]
-                stringByAppendingPathComponent:@"sshpass"],
-            // Also check parent's parent (for
-            // /nix/store/xxx-wawona-macos/bin/Wawona ->
-            // ../Applications/Wawona.app)
-            [[[[execDir stringByDeletingLastPathComponent]
-                stringByAppendingPathComponent:
-                    @"Applications/Wawona.app/Contents/MacOS"]
-                stringByAppendingPathComponent:@"sshpass"]
-                stringByStandardizingPath],
-            // macOS: Same directory as executable (Contents/MacOS/)
-            [execDir stringByAppendingPathComponent:@"sshpass"],
-            // macOS: Resources bin directory
-            [[[NSBundle mainBundle] resourcePath]
-                stringByAppendingPathComponent:@"bin/sshpass"],
-            // macOS: Bundle resource lookup
-            [[NSBundle mainBundle] pathForResource:@"sshpass" ofType:nil]
-                ?: @"",
-            // iOS: Flat app bundle structure
-            [bundlePath stringByAppendingPathComponent:@"bin/sshpass"],
-            [bundlePath stringByAppendingPathComponent:@"sshpass"],
-            // Fallback: relative paths
-            [execDir stringByAppendingPathComponent:@"../bin/sshpass"],
-            [[execDir stringByDeletingLastPathComponent]
-                stringByAppendingPathComponent:@"bin/sshpass"],
-            // System locations (Homebrew, etc.)
-            @"/opt/homebrew/bin/sshpass", @"/usr/local/bin/sshpass",
-            @"/usr/bin/sshpass"
-          ];
-
-          WWNLog("SSH", @"Searching for sshpass in %lu paths...",
-                 (unsigned long)sshpassPaths.count);
-          for (NSString *path in sshpassPaths) {
-            if (path.length > 0) {
-              BOOL exists = [fm fileExistsAtPath:path];
-              BOOL executable = [fm isExecutableFileAtPath:path];
-              WWNLog(
-                  "SSH",
-                  @"[SSH Test macOS]   Checking: %@ (exists=%d, executable=%d)",
-                  path, exists, executable);
-              if (executable) {
+          sshpassPath = WWNWawonaFindBundledExecutable(@"sshpass");
+          WWNLog("SSH", @"App bundle root: %@", WWNWawonaAppBundleRoot());
+          WWNLog("SSH", @"Executable dir: %@", WWNWawonaExecutableDirectory());
+          if (!sshpassPath) {
+            NSArray *systemFallbacks = @[
+              @"/opt/homebrew/bin/sshpass", @"/usr/local/bin/sshpass",
+              @"/usr/bin/sshpass"
+            ];
+            NSFileManager *fm = [NSFileManager defaultManager];
+            for (NSString *path in systemFallbacks) {
+              if ([fm isExecutableFileAtPath:path]) {
                 sshpassPath = path;
-                WWNLog("SSH", @"Found sshpass at: %@", sshpassPath);
                 break;
               }
             }

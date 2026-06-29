@@ -104,6 +104,8 @@ mod app {
         companion_window_ids: Vec<u64>,
         /// Allow internal `WindowEvent::Destroyed` teardown to bypass the user close interceptor.
         allow_host_close: Rc<Cell<bool>>,
+        /// When true, skip opaque host fill so CSD rounded corners stay transparent.
+        client_side_decorated: bool,
     }
 
     struct CompositorState {
@@ -685,11 +687,18 @@ mod app {
                             let comp_for_draw = comp.clone();
                             let wid_for_draw = wid;
                             da.set_draw_func(move |_da, cr, width, height| {
-                                cr.set_source_rgb(0.12, 0.12, 0.14);
-                                cr.rectangle(0.0, 0.0, width as f64, height as f64);
-                                let _ = cr.fill();
-
                                 let cs = comp_for_draw.borrow();
+                                let host_csd = cs
+                                    .client_windows
+                                    .get(&wid_for_draw)
+                                    .map(|cw| cw.client_side_decorated)
+                                    .unwrap_or(false);
+                                if !host_csd {
+                                    cr.set_source_rgb(0.12, 0.12, 0.14);
+                                    cr.rectangle(0.0, 0.0, width as f64, height as f64);
+                                    let _ = cr.fill();
+                                }
+
                                 let scene = match cs.scene.as_ref() {
                                     Some(s) => s,
                                     None => return,
@@ -783,12 +792,25 @@ mod app {
                             });
 
                             client_win.present();
+                            {
+                                let comp_init = comp.clone();
+                                let da_init = da.clone();
+                                let wid_init = wid;
+                                gtk::glib::idle_add_local_once(move || {
+                                    let w = da_init.width().max(1) as u32;
+                                    let h = da_init.height().max(1) as u32;
+                                    let mut cs = comp_init.borrow_mut();
+                                    cs.pending_host_resizes.insert(wid_init, (w, h));
+                                    dispatch_pending_host_resize(&mut cs, wid_init);
+                                });
+                            }
                             cs.client_windows.insert(wid, ClientWindow {
                                 gtk_window: client_win,
                                 drawing_area: da,
                                 window_id: wid,
                                 companion_window_ids,
                                 allow_host_close,
+                                client_side_decorated: is_csd,
                             });
                         }
                         WindowEvent::Destroyed { window_id } => {
@@ -841,10 +863,16 @@ mod app {
                             }
                         }
                         WindowEvent::DecorationModeChanged { window_id, mode } => {
-                            if let Some(cw) = cs.client_windows.get(&window_id.id) {
+                            if let Some(cw) = cs.client_windows.get_mut(&window_id.id) {
                                 let is_csd = mode == DecorationMode::ClientSide;
                                 wawona::wlog!("COMPOSITOR", "Window {} decoration changed to {:?}", window_id.id, mode);
+                                cw.client_side_decorated = is_csd;
                                 cw.gtk_window.set_decorated(!is_csd);
+                                let w = cw.drawing_area.width().max(1) as u32;
+                                let h = cw.drawing_area.height().max(1) as u32;
+                                cs.pending_host_resizes.insert(window_id.id, (w, h));
+                                dispatch_pending_host_resize(&mut cs, window_id.id);
+                                cw.drawing_area.queue_draw();
                             }
                         }
                         _ => {}
@@ -1337,7 +1365,7 @@ mod app {
         dialog.present();
     }
 
-    // ── Settings dialog (1:1 with macOS SettingsRootView) ──────────────
+    // ── Settings dialog (mirrors native WWNPreferences sections) ─────
 
     fn show_settings_dialog(parent: &gtk::ApplicationWindow, state: &State) {
         wawona::wlog!("UI", "Settings dialog opened");

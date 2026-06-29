@@ -87,6 +87,13 @@ let
       nl tac fold expand unexpand truncate
     )
 
+    # Static archives force-loaded into the app (wawona-dispatch.c weak symbols).
+    # Not part of the uutils safe subset; listed separately for command_not_found.
+    typeset -gaU WAWONA_INPROC_CLIENTS
+    WAWONA_INPROC_CLIENTS=(
+      fastfetch nvim vi vim waypipe
+    )
+
     # iOS sandbox: there is no fork/exec. zsh builtins and the bundled
     # in-process tools above run directly; everything else cannot launch.
     # This handler is the clean fallback for commands the in-process dispatcher
@@ -96,6 +103,8 @@ let
       if (( ''${WAWONA_INPROC_TOOLS[(Ie)$cmd]} )); then
         # A bundled tool that the dispatcher could not run (e.g. a build
         # without the coreutils feature linked, such as watchOS).
+        print -- "wawona: '$cmd' is bundled but unavailable in this build."
+      elif (( ''${WAWONA_INPROC_CLIENTS[(Ie)$cmd]} )); then
         print -- "wawona: '$cmd' is bundled but unavailable in this build."
       else
         print -- "wawona: command not found: $cmd (no builtin or bundled in-process tool; external binaries can't run in the iOS sandbox)."
@@ -108,6 +117,7 @@ let
   zloginTemplate = pkgs.writeText "zlogin.template" ''
     # Wawona iOS .zlogin — runs once for login shells. Safe to edit.
     print -P "%F{green}Wawona%f zsh ''${ZSH_VERSION} — in-process, App Store compliant."
+    print -P "%F{blue}Bundled:%f uutils coreutils, fastfetch, neovim, waypipe (libssh2 SSH, no fork/exec)."
     # zsh runs interactively ("-zsh -i"); its main loop draws PROMPT before each
     # ZLE read, so do not emit a prompt here (it would double the first prompt).
   '';
@@ -134,5 +144,5 @@ Bundled Wawona userland templates — do not modify files inside the app bundle.
 zsh is linked into the app binary; this tree holds templates, share files, and
 writable HOME data under Application Support after first launch.
 EOF
-    echo "16" > $out/rootfs/etc/zsh/.template-version
+    echo "17" > $out/rootfs/etc/zsh/.template-version
   ''

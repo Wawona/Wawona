@@ -1,4 +1,5 @@
 #import "WWNLaunchAgentManager.h"
+#import "WWNPlatformCallbacks.h"
 
 #import <unistd.h>
 
@@ -87,7 +88,7 @@ static NSString *const kWWNAppLaunchAgentLabel =
 }
 
 - (NSDictionary *)appLaunchAgentPlist {
-  NSString *bundlePath = NSBundle.mainBundle.bundlePath;
+  NSString *bundlePath = WWNWawonaAppBundleRootForUI();
   if (bundlePath.length == 0) {
     bundlePath = @"/Applications/Wawona.app";
   }

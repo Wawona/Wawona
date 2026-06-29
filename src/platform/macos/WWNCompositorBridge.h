@@ -116,6 +116,16 @@ typedef struct {
                      width:(uint32_t)width
                     height:(uint32_t)height;
 
+/// Host green-button / Mission Control changed native fullscreen or zoom.
+- (void)syncHostFullscreen:(BOOL)fullscreen
+                forWindowId:(uint64_t)windowId
+                      width:(uint32_t)width
+                     height:(uint32_t)height;
+- (void)syncHostMaximized:(BOOL)maximized
+             forWindowId:(uint64_t)windowId
+                   width:(uint32_t)width
+                  height:(uint32_t)height;
+
 /// Force immediate authoritative resize sync for current host content size.
 /// Use at end of live-resize to avoid host/client edge desync.
 - (void)reconcileWindowResizeNow:(uint64_t)windowId;
@@ -193,9 +203,12 @@ typedef struct {
 #if TARGET_OS_IPHONE
 /// Reveal compositor on main, wait for layout/output sync (background thread).
 - (void)prepareOutputSizeForNativeClientLaunch;
-/// Process host compositor events while in-process clients block in roundtrip.
-- (void)pumpHostCompositorEvents;
 #endif
+/// Process host compositor events and nudge a presentation tick (subprocess
+/// clients on macOS, in-process roundtrips on iOS).
+- (void)pumpHostCompositorEvents;
+- (void)scheduleFollowUpHostCompositorPumps:(NSUInteger)count
+                                 interval:(NSTimeInterval)intervalSeconds;
 
 /// Set platform safe area insets (iOS notch, home indicator, rounded corners)
 - (void)setSafeAreaInsetsTop:(int32_t)top
@@ -235,13 +248,13 @@ typedef struct {
 /// @return Dictionary with windowId, width, height, title keys, or nil if none
 - (nullable NSDictionary *)popPendingWindow;
 
-#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
-@property(nonatomic, weak) UIView *containerView;
-
 /// Launch kmscube on the first toplevel compositor view (iland + ANGLE GL demo).
 - (BOOL)launchNestedKmscubeOnPrimaryView;
 /// Prepare iland Metal presentation on the primary compositor view (Weston DRM/GL).
 - (BOOL)prepareIlandMetalPresentationOnPrimaryView;
+
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+@property(nonatomic, weak) UIView *containerView;
 /// Detach presentation from live compositor views before stopping native clients.
 - (void)tearDownActiveIOSCompositorViews;
 #else

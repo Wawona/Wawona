@@ -5,6 +5,24 @@ All notable changes to Wawona are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2026-06-27
+
+### Added
+
+- **Full dependency parity** — zsh, fastfetch, neovim, weston clients, and kmscube across macOS (bundled), Linux GTK UI, Android, and Apple mobile targets.
+- **macOS bundled CLI from nixpkgs** — zsh, neovim, and fastfetch ship as nixpkgs binaries in `Wawona.app`; weston clients and kmscube remain wwn-toolchain cross-builds.
+- **Fastlane beta automation** — `fastlane/` lanes for TestFlight (iOS, iPadOS, tvOS, watchOS, visionOS; excludes macOS) and Play internal track (Android).
+- **Release infrastructure** — `scripts/bootstrap-apple-signing.sh`, `scripts/sync-github-secrets.sh`, `.release-secrets.env.template`, GitHub Environment `release-beta`, workflow `.github/workflows/release-beta.yml`.
+- **Nix release outputs** — `wawona-{ipados,tvos,watchos,visionos}-ipa`, `wawona-android-aab`.
+- **VM launcher (macOS)** — Machine profiles with type Virtual Machine open UTM/UTM SE when installed.
+
+### Changed
+
+- Version bumped to 0.2.4 across VERSION, Cargo.toml, and platform headers.
+- `wwn-neovim` flake input uses `path:../wwn-neovim` (local monorepo); switch to `github:Wawona/wwn-neovim` when published.
+- Waypipe version string aligned to 0.11.0 in xcodegen.
+- `nix develop` devShell includes fastlane, ruby, cocoapods, jdk17, and gh; `nix develop .#release` for release hints.
+
 ## [0.2.2] - 2026-02-25
 
 ### Added

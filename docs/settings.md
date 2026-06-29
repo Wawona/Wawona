@@ -13,9 +13,16 @@
 - Effective runtime settings must be derived from `resolvedSettings(for:)` semantics.
 - Diagnostics are persisted as typed entries with category + mode (`configLint` or `runtimeProbe`).
 
----
+## UI surfaces (Apple / Android)
 
-## Display
+| Layer | UI | Entry points |
+|-------|-----|--------------|
+| **Global Wawona Settings** | ObjC + AppKit (macOS) / UIKit (iOS, iPadOS, tvOS, visionOS) / **WatchKit** (watchOS); Kotlin on Android | App menu **Settings…**, Settings tab (`ObjCSettingsHostView`), Machines window gear icon, watch gear → `WWNWatchSettings` storyboard |
+| **Machine profiles + overrides** | SwiftUI (`WWNMachineEditorView`, `MachineSettingsView`, watch `WatchMachineOverridesSheet`) | Machines window editor; swipe **Edit** on watch opens SwiftUI override sheet only |
+
+SwiftUI does **not** implement global settings on macOS, iOS, or watchOS. On watchOS, global prefs use WatchKit interface controllers backed by `WWNWatchSettingsBridge` (`wawona.pref.*`). Per-machine overrides remain SwiftUI (`MachineSettingsView` / `WatchMachineOverridesSheet`).
+
+---
 
 | Setting | Key | Type | Default | Platforms | Description |
 |---------|-----|------|---------|------------|-------------|

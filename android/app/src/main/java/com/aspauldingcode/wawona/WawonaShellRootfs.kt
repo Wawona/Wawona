@@ -5,8 +5,8 @@ import java.io.File
 import java.io.FileOutputStream
 
 /**
- * Extracts the bundled zsh share tree from APK assets into the app files dir so
- * weston-terminal can resolve completion/functions via fpath.
+ * Extracts bundled share trees from APK assets into the app files dir:
+ * zsh (shell fpath) and xkeyboard-config (compositor keymaps).
  */
 object WawonaShellRootfs {
     private const val MARKER = ".installed"
@@ -18,34 +18,45 @@ object WawonaShellRootfs {
             return root
         }
 
-        val shareZsh = File(root, "usr/share/zsh")
-        shareZsh.mkdirs()
-        copyAssetDir(context, "zsh", shareZsh)
+        try {
+            val shareZsh = File(root, "usr/share/zsh")
+            shareZsh.mkdirs()
+            copyAssetDir(context, "zsh", shareZsh)
 
-        val home = File(root, "home")
-        home.mkdirs()
+            val shareXkb = File(root, "usr/share/X11/xkb")
+            shareXkb.mkdirs()
+            copyAssetDir(context, "xkb", shareXkb)
 
-        val binDir = File(root, "usr/bin")
-        binDir.mkdirs()
+            File(root, "home").mkdirs()
+            File(root, "usr/bin").mkdirs()
 
-        marker.writeText("ok")
-        WLog.d("SHELL", "Shell rootfs installed at ${root.absolutePath}")
+            marker.writeText("ok")
+            WLog.d("SHELL", "Shell rootfs installed at ${root.absolutePath}")
+        } catch (e: Exception) {
+            WLog.e("SHELL", "Shell rootfs install failed: ${e.message}")
+            throw e
+        }
         return root
     }
 
     private fun copyAssetDir(context: Context, assetPath: String, dest: File) {
         val assets = context.assets.list(assetPath) ?: return
         if (assets.isEmpty()) {
-            context.assets.open(assetPath).use { input ->
-                dest.parentFile?.mkdirs()
-                FileOutputStream(dest).use { output -> input.copyTo(output) }
-            }
             return
         }
         dest.mkdirs()
         for (name in assets) {
             val childAsset = if (assetPath.isEmpty()) name else "$assetPath/$name"
-            copyAssetDir(context, childAsset, File(dest, name))
+            val childDest = File(dest, name)
+            val childAssets = context.assets.list(childAsset)
+            if (childAssets != null && childAssets.isNotEmpty()) {
+                copyAssetDir(context, childAsset, childDest)
+            } else {
+                childDest.parentFile?.mkdirs()
+                context.assets.open(childAsset).use { input ->
+                    FileOutputStream(childDest).use { output -> input.copyTo(output) }
+                }
+            }
         }
     }
 }

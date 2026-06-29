@@ -3,14 +3,21 @@ package com.aspauldingcode.wawona
 import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MaterialExpressiveTheme
+import androidx.compose.material3.MotionScheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.material3.expressiveLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -18,10 +25,24 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 
-private val WawonaDark = darkColorScheme(
+/** Matches Vulkan compositor clear / Wawona brand surface on all platforms. */
+val WawonaCompositorBackground = Color(0xFF0F1018)
+
+val LocalWawonaCompositorBackground = staticCompositionLocalOf { WawonaCompositorBackground }
+
+private val WawonaExpressiveShapes = Shapes(
+    extraSmall = RoundedCornerShape(4.dp),
+    small = RoundedCornerShape(8.dp),
+    medium = RoundedCornerShape(12.dp),
+    large = RoundedCornerShape(16.dp),
+    extraLarge = RoundedCornerShape(28.dp),
+)
+
+private val WawonaStaticDark = darkColorScheme(
     primary = Color(0xFFB8C3FF),
     onPrimary = Color(0xFF002A78),
     primaryContainer = Color(0xFF003DA8),
@@ -38,9 +59,9 @@ private val WawonaDark = darkColorScheme(
     errorContainer = Color(0xFF93000A),
     onError = Color(0xFF690005),
     onErrorContainer = Color(0xFFFFDAD6),
-    background = Color(0xFF0F1018),
+    background = WawonaCompositorBackground,
     onBackground = Color(0xFFE3E1EC),
-    surface = Color(0xFF0F1018),
+    surface = WawonaCompositorBackground,
     onSurface = Color(0xFFE3E1EC),
     surfaceVariant = Color(0xFF44464F),
     onSurfaceVariant = Color(0xFFC5C6D0),
@@ -52,7 +73,7 @@ private val WawonaDark = darkColorScheme(
     surfaceTint = Color(0xFFB8C3FF),
 )
 
-private val WawonaLight = lightColorScheme(
+private val WawonaStaticLight = lightColorScheme(
     primary = Color(0xFF2855C5),
     onPrimary = Color(0xFFFFFFFF),
     primaryContainer = Color(0xFFDCE1FF),
@@ -83,7 +104,7 @@ private val WawonaLight = lightColorScheme(
     surfaceTint = Color(0xFF2855C5),
 )
 
-private val ExpressiveTypography = Typography(
+private val WawonaExpressiveTypography = Typography(
     displayLarge = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.W400,
@@ -191,20 +212,44 @@ private val ExpressiveTypography = Typography(
     ),
 )
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+private fun wawonaColorScheme(
+    darkTheme: Boolean,
+    dynamicColor: Boolean,
+    context: android.content.Context,
+): androidx.compose.material3.ColorScheme {
+    val expressiveBase =
+        if (darkTheme) darkColorScheme() else expressiveLightColorScheme()
+    val staticBase = if (darkTheme) WawonaStaticDark else WawonaStaticLight
+
+    val resolved = when {
+        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
+            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        Build.VERSION.SDK_INT >= 36 ->
+            expressiveBase
+        else ->
+            staticBase
+    }
+
+    return if (darkTheme) {
+        resolved.copy(
+            background = WawonaCompositorBackground,
+            surface = WawonaCompositorBackground,
+        )
+    } else {
+        resolved
+    }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun WawonaTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = true,
-    content: @Composable () -> Unit
+    content: @Composable () -> Unit,
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-        darkTheme -> WawonaDark
-        else -> WawonaLight
-    }
+    val context = LocalContext.current
+    val colorScheme = wawonaColorScheme(darkTheme, dynamicColor, context)
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -217,9 +262,13 @@ fun WawonaTheme(
         }
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = ExpressiveTypography,
-        content = content
-    )
+    CompositionLocalProvider(LocalWawonaCompositorBackground provides WawonaCompositorBackground) {
+        MaterialExpressiveTheme(
+            colorScheme = colorScheme,
+            motionScheme = MotionScheme.expressive(),
+            shapes = WawonaExpressiveShapes,
+            typography = WawonaExpressiveTypography,
+            content = content,
+        )
+    }
 }

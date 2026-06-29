@@ -6,7 +6,7 @@
 #define WWNIOSVersions_h
 
 #ifndef WAWONA_VERSION
-#define WAWONA_VERSION "0.2.1"
+#define WAWONA_VERSION "0.2.4"
 #endif
 
 #ifndef WAWONA_VERSION_STRING

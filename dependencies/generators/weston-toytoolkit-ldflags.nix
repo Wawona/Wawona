@@ -78,5 +78,16 @@ let
       [ "-force_load" "${ptyDir}/lib/libwwn-pty.a" ]
     else
       [ ];
+  westonSimpleShmArchive =
+    let
+      shmDir = strip (deps."weston-simple-shm" or null);
+    in
+    if shmDir != "" && builtins.pathExists "${shmDir}/lib/libweston_simple_shm.a" then
+      if linkMode == "whole_archive" then
+        [ "-Wl,--whole-archive" "${shmDir}/lib/libweston_simple_shm.a" "-Wl,--no-whole-archive" ]
+      else
+        [ "-force_load" "${shmDir}/lib/libweston_simple_shm.a" ]
+    else
+      [ ];
 in
-libPaths ++ westonArchives ++ wawonaPtyArchive ++ libs
+libPaths ++ westonArchives ++ wawonaPtyArchive ++ westonSimpleShmArchive ++ libs

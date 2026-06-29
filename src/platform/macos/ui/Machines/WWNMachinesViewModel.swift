@@ -282,64 +282,56 @@ final class WWNMachinesViewModel: ObservableObject {
   func connect(_ profile: WWNMachineProfile, onConnected: (() -> Void)? = nil) {
     statusByMachineId[profile.machineId] = .connecting
 
+    for other in profiles where other.machineId != profile.machineId &&
+      status(for: other.machineId) != .disconnected {
+      disconnect(other)
+    }
+
+    if profile.type == kWWNMachineTypeVirtualMachine ||
+      profile.type == kWWNMachineTypeContainer {
+      #if os(macOS)
+      if profile.type == kWWNMachineTypeVirtualMachine {
+        let provider = (UserDefaults.standard.string(forKey: kWWNPrefsMachineVMProviderStub as String) ?? "utm-se").lowercased()
+        if provider.hasPrefix("utm") {
+          let utmURLs = [
+            URL(fileURLWithPath: "/Applications/UTM.app"),
+            URL(fileURLWithPath: "/Applications/UTM SE.app"),
+          ]
+          if let url = utmURLs.first(where: { FileManager.default.fileExists(atPath: $0.path) }) {
+            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { _, _ in
+              self.statusByMachineId[profile.machineId] = .connected
+              onConnected?()
+            }
+            return
+          }
+        }
+      }
+      #endif
+      statusByMachineId[profile.machineId] = .degraded
+      return
+    }
+
     if profile.type == kWWNMachineTypeNative,
        WWNWaypipeRunner.shared() == nil {
       statusByMachineId[profile.machineId] = .error
       return
     }
 
-    WWNPreferencesManager.shared().syncFromCanonicalWawonaPreferences()
-    WWNMachineProfileStore.applyMachine(toRuntimePrefs: profile)
-    WWNMachineProfileStore.setActiveMachineId(profile.machineId)
-
-    if profile.type == kWWNMachineTypeNative {
-      launchNativeClientIfNeeded(for: profile)
-      statusByMachineId[profile.machineId] = .connected
-      onConnected?()
+    var connectError: NSError?
+    let ok = WWNMachineSessionBridge.connectProfile(profile, error: &connectError)
+    if !ok {
+      statusByMachineId[profile.machineId] = .error
       return
     }
 
-    if profile.type == kWWNMachineTypeVirtualMachine ||
-      profile.type == kWWNMachineTypeContainer {
-      statusByMachineId[profile.machineId] = .degraded
-      return
-    }
-
-    WWNWaypipeRunner.shared().launchWaypipe(WWNPreferencesManager.shared())
     statusByMachineId[profile.machineId] = .connected
     onConnected?()
   }
 
   func disconnect(_ profile: WWNMachineProfile) {
     captureThumbnailIfEnabled(for: profile)
-
-    if profile.type == kWWNMachineTypeNative {
-      #if os(iOS)
-      WWNWaypipeRunner.shared().stopActiveIOSBundledClient()
-      #else
-      let runner = WWNWaypipeRunner.shared()
-      switch selectedClientId(for: profile) {
-      case "weston":
-        runner?.stopWeston()
-      case "weston-terminal":
-        runner?.stopWestonTerminal()
-      case "weston-simple-shm":
-        runner?.stopWestonSimpleSHM()
-      case "foot":
-        runner?.stopFoot()
-      default:
-        break
-      }
-      #endif
-    } else if profile.type == kWWNMachineTypeSSHWaypipe ||
-                profile.type == kWWNMachineTypeSSHTerminal {
-      WWNWaypipeRunner.shared().stopWaypipe()
-    }
-
+    WWNMachineSessionBridge.disconnectProfile(profile)
     statusByMachineId[profile.machineId] = .disconnected
-    if WWNMachineProfileStore.activeMachineId() == profile.machineId {
-      WWNMachineProfileStore.setActiveMachineId(nil)
-    }
   }
 
   #if os(macOS)
@@ -620,13 +612,6 @@ final class WWNMachinesViewModel: ObservableObject {
       profile.type == kWWNMachineTypeSSHTerminal
   }
 
-  private func launchNativeClientIfNeeded(for profile: WWNMachineProfile) {
-    guard profile.type == kWWNMachineTypeNative else { return }
-    guard let runner = WWNWaypipeRunner.shared() else { return }
-    guard let clientId = selectedClientId(for: profile) else { return }
-    runner.launchBundledClient(withId: clientId)
-  }
-}
 
 enum WWNMachineFilter: String, CaseIterable, Identifiable, Hashable {
   case all = "All Machines"

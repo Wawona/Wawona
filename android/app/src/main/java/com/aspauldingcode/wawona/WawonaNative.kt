@@ -20,6 +20,7 @@ object WawonaNative {
     external fun nativePrepareShellEnvironment(filesDir: String)
 
     external fun nativeInit(cacheDir: String)
+    external fun nativeIsCompositorReady(): Boolean
     external fun nativeSetSurface(surface: Surface)
     external fun nativeDestroySurface()
     /** Fast resize: recreate swapchain only, no full teardown. */

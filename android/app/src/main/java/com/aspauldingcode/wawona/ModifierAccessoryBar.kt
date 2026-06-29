@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -248,11 +249,12 @@ fun ModifierAccessoryBar(
         clearStickyModifiers()
     }
 
-    val barBg = Color(0xFF1C1C1E)
-    val keyInactive = Color(0xFF3A3A3C)
-    val keySticky = Color(0xFF0A84FF).copy(alpha = 0.6f)
-    val keyLocked = Color(0xFF0A84FF).copy(alpha = 0.85f)
-    val keyText = Color.White
+    val scheme = MaterialTheme.colorScheme
+    val barBg = scheme.surfaceContainer
+    val keyInactive = scheme.surfaceVariant
+    val keySticky = scheme.primary.copy(alpha = 0.6f)
+    val keyLocked = scheme.primary.copy(alpha = 0.85f)
+    val keyText = scheme.onSurface
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -418,13 +420,13 @@ private fun RowScope.AccessoryModKey(
         else -> inactiveColor
     }
     val borderMod = if (locked) {
-        Modifier.border(2.dp, Color(0xFF0A84FF), RoundedCornerShape(6.dp))
+        Modifier.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(6.dp))
     } else {
         Modifier
     }
     Box(modifier = Modifier.weight(1f).then(borderMod)) {
         AccessoryKey(
-            label, bg, Color.White,
+            label, bg, MaterialTheme.colorScheme.onSurface,
             onClick = onClick,
             modifier = Modifier.fillMaxWidth()
         )

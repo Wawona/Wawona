@@ -244,6 +244,8 @@ pub enum CompositorEvent {
     WindowMinimized { window_id: u32, minimized: bool },
     /// Window was maximized or unmaximized
     WindowMaximized { window_id: u32, maximized: bool },
+    /// Window entered or left xdg fullscreen (distinct from maximize / macOS zoom).
+    WindowFullscreen { window_id: u32, fullscreen: bool },
     /// Host should pin this window edge-to-edge (weston-family kiosk semantics).
     WindowHostLocked { window_id: u32, width: u32, height: u32 },
     /// Window requests interactive move

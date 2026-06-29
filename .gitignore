@@ -91,14 +91,17 @@ src/android/.gradle/
 build/
 .gradle-build/
 gradle-app.setting
-!gradle/wrapper/gradle-wrapper.jar
-!gradle/wrapper/gradle-wrapper.properties
+!android/gradle/wrapper/gradle-wrapper.jar
+!android/gradle/wrapper/gradle-wrapper.properties
 
 # Gradle local configuration (contains local paths)
 local.properties
 .gradle-local.properties
 
-# Root-level Android Studio project files (legacy/opt-in isolated gradlegen output)
+# Root-level Android Studio project files (legacy mistaken repo-root flatten)
+/gradlew
+/gradlew.bat
+/gradle/
 /build.gradle.kts
 /settings.gradle.kts
 /gradle.properties
@@ -113,8 +116,25 @@ local.properties
 Wawona.xcodeproj/
 dependencies/generators/xcodegen/output/
 
-# Environment variables
+# Release secrets (local only — sync via scripts/sync-github-secrets.sh)
 .envrc
+.release-secrets.env
+.env
+.env.*
+!.env.example
+*.p8
+AuthKey_*.p8
+*.jks
+*.keystore
+play-store-*.json
+*service-account*.json
+google-play*.json
+# .secrets/ — folder + README tracked; drop key files here (all ignored)
+.secrets/*
+!.secrets/.gitkeep
+!.secrets/README.md
+secrets/
+
 
 # direnv cache
 .direnv/
@@ -157,3 +177,6 @@ android/app/libs/
 # Local tooling clones (not part of upstream tree)
 swiftly.pkg
 inspirational_projects/
+.angle-test3/
+.antigravity/
+scripts/__pycache__/
