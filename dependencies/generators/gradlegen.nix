@@ -203,6 +203,10 @@ let
       rm -rf "$OUT/deps/weston-simple-shm"
       cp -r "${westonShmPath}" "$OUT/deps/weston-simple-shm"
       chmod -R u+w "$OUT/deps/weston-simple-shm" 2>/dev/null || true
+      WWN_SHM_POLY="$REPO_ROOT/../wwn-weston/dependencies/toolchains/wwn-android-signal-polyfill.h"
+      if [ -f "$WWN_SHM_POLY" ]; then
+        cp -f "$WWN_SHM_POLY" "$OUT/deps/weston-simple-shm/wwn-android-signal-polyfill.h"
+      fi
       echo "Copied Weston simple-shm sources to $OUT/deps/weston-simple-shm"
     elif [ ! -f "$OUT/deps/weston-simple-shm/clients/simple-shm.c" ]; then
       echo "Warning: Weston simple-shm sources missing; native CMake will fail until deps are present."

@@ -50,6 +50,9 @@ int foot_main(int argc, const char **argv) {
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
+#if defined(__ANDROID__)
+#include <bits/signal_types.h>
+#endif
 #include <signal.h>
 #include <spawn.h>
 #include <stdlib.h>

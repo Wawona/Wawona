@@ -20,22 +20,22 @@
     # and the patched application ports (wwn-*) as flake inputs. nixpkgs and
     # wwn-toolchain are pinned uniformly so zsh's pkgs.zsh.src and weston's
     # source hashes resolve against one nixpkgs.
-    wwn-toolchain.url = "github:Wawona/wwn-toolchain";
+    wwn-toolchain.url = "path:/Users/8amps/Wawona/wwn-toolchain";
     wwn-toolchain.inputs.nixpkgs.follows = "nixpkgs";
     wwn-toolchain.inputs.rust-overlay.follows = "rust-overlay";
-    wwn-iland.url = "github:Wawona/wwn-iland";
+    wwn-iland.url = "path:/Users/8amps/Wawona/wwn-iland";
     wwn-iland.inputs.nixpkgs.follows = "nixpkgs";
     wwn-iland.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-kmscube.url = "github:Wawona/wwn-kmscube";
     wwn-kmscube.inputs.nixpkgs.follows = "nixpkgs";
     wwn-kmscube.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-kmscube.inputs.wwn-iland.follows = "wwn-iland";
-    wwn-weston.url = "github:Wawona/wwn-weston";
+    wwn-weston.url = "path:/Users/8amps/Wawona/wwn-weston";
     wwn-weston.inputs.nixpkgs.follows = "nixpkgs";
     wwn-weston.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-weston.inputs.wwn-iland.follows = "wwn-iland";
     wwn-weston.inputs.wwn-kmscube.follows = "wwn-kmscube";
-    wwn-zsh.url = "github:Wawona/wwn-zsh";
+    wwn-zsh.url = "path:/Users/8amps/Wawona/wwn-zsh";
     wwn-zsh.inputs.nixpkgs.follows = "nixpkgs";
     wwn-zsh.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-waypipe.url = "github:Wawona/wwn-waypipe";
@@ -47,12 +47,15 @@
     wwn-foot.url = "github:Wawona/wwn-foot";
     wwn-foot.inputs.nixpkgs.follows = "nixpkgs";
     wwn-foot.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    wwn-fastfetch.url = "github:Wawona/wwn-fastfetch";
+    wwn-fastfetch.url = "path:/Users/8amps/Wawona/wwn-fastfetch";
     wwn-fastfetch.inputs.nixpkgs.follows = "nixpkgs";
     wwn-fastfetch.inputs.wwn-toolchain.follows = "wwn-toolchain";
+    wwn-neovim.url = "path:/Users/8amps/Wawona/wwn-neovim";
+    wwn-neovim.inputs.nixpkgs.follows = "nixpkgs";
+    wwn-neovim.inputs.wwn-toolchain.follows = "wwn-toolchain";
   };
 
-  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-waypipe, wwn-coreutils, wwn-foot, wwn-fastfetch, ... }:
+  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-waypipe, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-neovim, ... }:
   let
     linuxSystems = [ "x86_64-linux" "aarch64-linux" ];
     darwinSystems = [ "x86_64-darwin" "aarch64-darwin" ];
@@ -125,7 +128,8 @@
         # function signatures instead of via now-deleted in-tree relative paths.
         inherit applePath toolchainsDir androidToolchainNix
           westonSimpleShmPatchedSrcNix westonSimpleShmLinuxNix kmscubeMacosNix kmscubeIosNix
-          fastfetchMacosNix fastfetchIosNix fastfetchLdflagsNix;
+          fastfetchMacosNix fastfetchIosNix fastfetchLdflagsNix
+          neovimMacosNix neovimIosNix neovimLdflagsNix;
         # The Apple toolchain (xcode-wrapper) used to live in-tree; wwn-iland's
         # gl-clients recipes accept it as `xcodeUtils`/`iosToolchain`. Resolve it
         # from the wwn-toolchain input so callPackage can auto-fill those formals.
@@ -164,7 +168,8 @@
       // wwn-zsh.registryFragment
       // wwn-waypipe.registryFragment
       // wwn-foot.registryFragment
-      // wwn-fastfetch.registryFragment;
+      // wwn-fastfetch.registryFragment
+      // wwn-neovim.registryFragment;
     mkWawonaToolchains = { pkgs, pkgsAndroid ? null, pkgsIos ? null, androidSDK ? null, androidAllowExperimentalFallback ? false, wawonaSrc ? null }:
       wwn-toolchain.lib.mkToolchains {
         inherit pkgs pkgsAndroid pkgsIos androidSDK androidAllowExperimentalFallback wawonaSrc;
@@ -183,6 +188,7 @@
     coreutilsPatchSourceSh = "${wwn-coreutils}/dependencies/libs/coreutils/patch-coreutils-source.sh";
     coreutilsMulticallNix = "${wwn-coreutils}/dependencies/libs/coreutils/multicall.nix";
     westonSimpleShmPatchedSrcNix = "${wwn-weston}/dependencies/libs/weston-simple-shm/patched-src.nix";
+    westonAndroidSignalPolyfill = "${wwn-weston}/dependencies/toolchains/wwn-android-signal-polyfill.h";
     westonSimpleShmLinuxNix = "${wwn-weston}/dependencies/libs/weston-simple-shm/linux.nix";
     kmscubeMacosNix = "${wwn-kmscube}/dependencies/clients/kmscube/macos.nix";
     kmscubeIosNix = "${wwn-kmscube}/dependencies/clients/kmscube/apple-mobile.nix";
@@ -190,6 +196,9 @@
     fastfetchMacosNix = "${wwn-fastfetch}/dependencies/clients/fastfetch/macos.nix";
     fastfetchIosNix = "${wwn-fastfetch}/dependencies/clients/fastfetch/apple-mobile.nix";
     fastfetchLdflagsNix = "${wwn-fastfetch}/dependencies/generators/fastfetch-ldflags.nix";
+    neovimMacosNix = "${wwn-neovim}/dependencies/libs/neovim/macos.nix";
+    neovimIosNix = "${wwn-neovim}/dependencies/libs/neovim/apple-mobile.nix";
+    neovimLdflagsNix = "${wwn-neovim}/dependencies/generators/neovim-ldflags.nix";
     westonPtySpikeIosNix = "${wwn-weston}/dependencies/clients/weston/ios-pty-spike/ios.nix";
     westonToytoolkitLdflagsNix = "${wwn-weston}/dependencies/generators/weston-toytoolkit-ldflags.nix";
     # --------------------------------------------------------------------------
@@ -380,7 +389,7 @@
           rustBackend = backend-android;
           targetPkgs = pkgsAndroidCross;
           waypipe = toolchainsAndroid.buildForAndroid "waypipe" { };
-          inherit androidToolchainNix westonSimpleShmPatchedSrcNix;
+          inherit androidToolchainNix westonSimpleShmPatchedSrcNix westonAndroidSignalPolyfill;
         };
         wawonaWearAndroidPkg = import ./dependencies/wawona/android.nix {
           pkgs = androidPkgs;
@@ -392,7 +401,7 @@
           targetPkgs = pkgsAndroidCross;
           waypipe = toolchainsAndroid.buildForAndroid "waypipe" { };
           appTarget = "wearos";
-          inherit androidToolchainNix westonSimpleShmPatchedSrcNix;
+          inherit androidToolchainNix westonSimpleShmPatchedSrcNix westonAndroidSignalPolyfill;
         };
 
         androidToolchainSanity = import androidToolchainSanityNix {
@@ -428,6 +437,7 @@
           deps = mobileToytoolkitDepsAndroid // {
             weston = toolchainsAndroid.buildForAndroid "weston" { };
             libintl = toolchainsAndroid.buildForAndroid "libintl" { };
+            weston-simple-shm = toolchainsAndroid.buildForAndroid "weston-simple-shm" { };
           };
           forceLoadWeston = true;
           linkMode = "whole_archive";
@@ -446,7 +456,7 @@
         studioOpenSSHBin = "${toolchainsAndroid.buildForAndroid "openssh" { }}/bin/ssh";
         studioSshpassBin = "${toolchainsAndroid.buildForAndroid "sshpass" { }}/bin/sshpass";
 
-        gradlegenPkg = pkgs.callPackage ./dependencies/generators/gradlegen.nix ({
+        gradlegenPkg = pkgs.callPackage ./dependencies/generators/gradlegen.nix {
           wawonaSrc = if isLinuxHost then ./. else src;
           inherit wawonaVersion;
           androidSdkRoot = androidSDK.sdkRoot;
@@ -459,9 +469,7 @@
           runtimeLibDirs = studioRuntimeLibDirs;
           opensshBinaryPath = studioOpenSSHBin;
           sshpassBinaryPath = studioSshpassBin;
-        } // (pkgs.lib.optionalAttrs (!isLinuxHost) {
-          wawonaAndroidProject = wawonaAndroidPkg.project;
-        }));
+        };
 
         # ── Cross-Platform Packages ───────────────────────────────────────
         commonPackages = rec {
@@ -478,6 +486,7 @@
             else pkgs.callPackage westonSimpleShmLinuxNix {};
           foot = if pkgs.stdenv.isDarwin then toolchains.buildForMacOS "foot" {} else pkgs.foot;
           fastfetch = if pkgs.stdenv.isDarwin then toolchains.buildForMacOS "fastfetch" { } else pkgs.fastfetch;
+          neovim = if pkgs.stdenv.isDarwin then toolchains.buildForMacOS "neovim" { } else pkgs.neovim;
           waypipe = if pkgs.stdenv.isDarwin then toolchains.buildForMacOS "waypipe" { } else pkgs.waypipe;
 
           # ANGLE (OpenGL ES over Metal) + iland userland graphics core
@@ -517,6 +526,7 @@
                   platform = "macos"; nativeDeps = {
                     libwayland = toolchains.buildForMacOS "libwayland" { };
                     xkbcommon = toolchains.buildForMacOS "xkbcommon" { };
+                    pixman = toolchains.buildForMacOS "pixman" { };
                     waypipe = toolchains.buildForMacOS "waypipe" { };
                     sshpass = toolchains.buildForMacOS "sshpass" { };
                   };
@@ -560,6 +570,18 @@
           wawona-wearos = pkgs.callPackage ./dependencies/wawona/wearos.nix {
             inherit wawonaVersion androidSDK;
             wearAndroidPackage = "wawona-wearos-android";
+          };
+          wawona-android-aab = import ./dependencies/wawona/android.nix {
+            pkgs = androidPkgs;
+            buildModule = toolchainsAndroid;
+            inherit (androidPkgs) lib stdenv clang pkg-config unzip zip patchelf file util-linux glslang mesa;
+            inherit gradle jdk17 wawonaSrc androidSDK androidUtils;
+            androidToolchain = toolchainsAndroid.androidToolchain;
+            rustBackend = backend-android;
+            targetPkgs = pkgsAndroidCross;
+            waypipe = toolchainsAndroid.buildForAndroid "waypipe" { };
+            inherit androidToolchainNix westonSimpleShmPatchedSrcNix westonAndroidSignalPolyfill;
+            releaseArtifact = "release-aab";
           };
         }) // (pkgs.lib.optionalAttrs hasAndroidCts {
           vulkan-cts-android = vulkan-cts-android;
@@ -649,8 +671,14 @@
           macosDeps = {
             libwayland = toolchains.buildForMacOS "libwayland" { };
             xkbcommon = toolchains.buildForMacOS "xkbcommon" { };
+            pixman = toolchains.buildForMacOS "pixman" { };
             waypipe = toolchains.buildForMacOS "waypipe" { };
             sshpass = toolchains.buildForMacOS "sshpass" { };
+            iland = toolchains.buildForMacOS "iland" { };
+            angle = toolchains.buildForMacOS "angle" { };
+            kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
+            "iland-gl-clients" = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
+            weston = toolchains.buildForMacOS "weston" { };
           };
           iosDeps = mobilePlatformDeps { buildFn = toolchains.buildForIOS; inherit toolchains; };
           iosSimDeps = mobilePlatformDeps { buildFn = toolchains.buildForIOS; inherit toolchains; simulator = true; };
@@ -726,7 +754,10 @@
              watchosSimBackend = backend-watchos-sim;
              macosWeston = toolchains.buildForMacOS "weston" { };
              macosFoot = toolchains.buildForMacOS "foot" { };
-             macosFastfetch = toolchains.buildForMacOS "fastfetch" { };
+             macosFastfetch = pkgs.fastfetch;
+             macosNeovim = null;
+             macosZsh = pkgs.zsh;
+             macosKmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
           };
           xcodegenOutputs = mkXcodegen null;
           xcodegenIosOutputs = mkXcodegen [ "ios" "ipados" ];
@@ -736,7 +767,10 @@
             buildModule = toolchains; inherit wawonaSrc wawonaVersion;
             waypipe = toolchains.buildForMacOS "waypipe" { }; weston = toolchains.buildForMacOS "weston" { };
             foot = toolchains.buildForMacOS "foot" { };
-            fastfetch = toolchains.buildForMacOS "fastfetch" { };
+            fastfetch = pkgs.fastfetch;
+            neovim = null;
+            zsh = pkgs.zsh;
+            kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
             # Keep runtime package host-only: do not force xcodegen/project outputs,
             # which pull in non-macOS backend graphs.
             rustBackend = backend-macos;
@@ -745,7 +779,7 @@
           wawona-ios-app-sim = pkgs.callPackage ./dependencies/wawona/ios.nix {
             inherit wawonaSrc wawonaVersion teamId;
             TEAM_ID = teamId;
-            xcodeProject = xcodegenOutputs.project;
+            xcodeProject = xcodegenAppleOutputs.project;
             simulator = true;
           };
           wawona-watchos-app-sim = pkgs.callPackage ./dependencies/wawona/watchos.nix {
@@ -810,6 +844,17 @@
             simulator = false;
             generateXCArchive = true;
           } else missingTeamRelease "wawona-ios-xcarchive";
+          mkPlatformIpa = name: file: args: if teamId != null then pkgs.callPackage file (args // {
+            inherit wawonaSrc wawonaVersion;
+            TEAM_ID = teamId;
+            xcodeProject = xcodegenOutputs.project;
+            simulator = false;
+            generateIPA = true;
+          }) else missingTeamRelease name;
+          wawona-ipados-ipa = mkPlatformIpa "wawona-ipados-ipa" ./dependencies/wawona/ipados.nix { };
+          wawona-tvos-ipa = mkPlatformIpa "wawona-tvos-ipa" ./dependencies/wawona/tvos.nix { };
+          wawona-visionos-ipa = mkPlatformIpa "wawona-visionos-ipa" ./dependencies/wawona/visionos.nix { };
+          wawona-watchos-ipa = mkPlatformIpa "wawona-watchos-ipa" ./dependencies/wawona/watchos.nix { };
           wawona-ios-simulator = apple.simulateApp {
             name = "wawona-ios-simulator";
             app = wawona-ios-app-sim;
@@ -945,6 +990,10 @@ EOF
           wawona-tvos-app-device = wawona-tvos-app-device;
           wawona-watchos-app-device = wawona-watchos-app-device;
           wawona-ios-ipa = wawona-ios-ipa;
+          wawona-ipados-ipa = wawona-ipados-ipa;
+          wawona-tvos-ipa = wawona-tvos-ipa;
+          wawona-visionos-ipa = wawona-visionos-ipa;
+          wawona-watchos-ipa = wawona-watchos-ipa;
           wawona-ios-xcarchive = wawona-ios-xcarchive;
           wawona-ios-simulator = wawona-ios-simulator;
           wawona-macos-backend = backend-macos;
@@ -1001,6 +1050,11 @@ EOF
           fastfetch-ios = toolchains.buildForIOS "fastfetch" { simulator = true; };
           fastfetch-ios-device = toolchains.buildForIOS "fastfetch" { simulator = false; };
           fastfetch-macos = toolchains.buildForMacOS "fastfetch" { };
+          neovim-ios = toolchains.buildForIOS "neovim" { simulator = true; };
+          neovim-ios-device = toolchains.buildForIOS "neovim" { simulator = false; };
+          neovim-macos = toolchains.buildForMacOS "neovim" { };
+          "neovim-rootfs-ios" = toolchains.buildForIOS "neovim-rootfs" { };
+          "neovim-rootfs-ios-sim" = toolchains.buildForIOS "neovim-rootfs" { simulator = true; };
           iland-gl-clients-ios = toolchains.buildForIOS "kmscube" { simulator = true; };
           iland-gl-clients-ios-device = toolchains.buildForIOS "kmscube" { simulator = false; };
           weston-ios-gl = toolchains.buildForIOS "weston" { enableGlClients = true; };
@@ -1036,6 +1090,12 @@ EOF
           libpng-android = toolchainsAndroid.buildForAndroid "libpng" { };
           weston-android = toolchainsAndroid.buildForAndroid "weston" { };
           weston-compositor-android = toolchainsAndroid.buildForAndroid "weston-compositor" { };
+          weston-compositor-android-drm = toolchainsAndroid.buildForAndroid "weston-compositor-drm" { };
+          iland-android = toolchainsAndroid.buildForAndroid "iland" { };
+          zsh-android = toolchainsAndroid.buildForAndroid "zsh" { };
+          foot-android = toolchainsAndroid.buildForAndroid "foot" { };
+          fastfetch-android = toolchainsAndroid.buildForAndroid "fastfetch" { };
+          neovim-android = toolchainsAndroid.buildForAndroid "neovim" { };
           default = (import ./dependencies/wawona/shell-wrappers.nix).macosWrapper pkgs wawona-macos;
           # Consumer-facing package name for use as a flake input or overlay,
           # matching the nixpkgs convention of installing `pkgs.wawona`.
@@ -1103,7 +1163,7 @@ EOF
         wawona = { type = "app"; program = "${systemPackages.wawona}/bin/wawona"; };
         uninstall = { type = "app"; program = "${systemPackages.uninstall}/bin/uninstall"; };
         wawona-uninstall = { type = "app"; program = "${systemPackages.uninstall}/bin/uninstall"; };
-        wawona-macos = { type = "app"; program = "${systemPackages.wawona-macos}/bin/wawona"; };
+        wawona-macos = { type = "app"; program = "${systemPackages.wawona}/bin/wawona"; };
         wawona-macos-project = { type = "app"; program = "${systemPackages.wawona-macos-project}/bin/xcodegen"; };
         wawona-ios = { type = "app"; program = appPrograms.wawonaIos; };
         wawona-ipados = { type = "app"; program = appPrograms.wawonaIpad; };
@@ -1126,16 +1186,19 @@ EOF
     overlays.default = final: prev: {
       wawona = self.packages.${prev.stdenv.hostPlatform.system}.wawona;
     };
-    devShells = import ./dependencies/wawona/devshells.nix {
-      systems = systemsList;
-      pkgsFor = pkgsFor;
-    } // nixpkgs.lib.genAttrs systemsList (system: {
-      # Legacy alias; prefer `nix develop` default from devshells.nix.
-      wawona = (import ./dependencies/wawona/devshells.nix {
+    devShells = nixpkgs.lib.genAttrs systemsList (system:
+      (import ./dependencies/wawona/devshells.nix {
         systems = [ system ];
         pkgsFor = pkgsFor;
-      }).${system}.default;
-    });
+      }).${system}
+      // {
+        # Legacy alias; prefer `nix develop` default from devshells.nix.
+        wawona = (import ./dependencies/wawona/devshells.nix {
+          systems = [ system ];
+          pkgsFor = pkgsFor;
+        }).${system}.default;
+      }
+    );
     checks = nixpkgs.lib.genAttrs systemsList (system: let pkgs = pkgsFor system; in pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin {
       graphics-validate-smoke = pkgs.runCommand "graphics-validate-smoke" { nativeBuildInputs = [ pkgs.coreutils ]; } "echo 'smoke check'; test -n '${allSystemPackages.${system}.wawona-android}'; touch $out";
     });

@@ -99,24 +99,14 @@ add_library(
     SHARED
     ${WAWONA_SOURCES}
 )
-if(NOT WAWONA_STUDIO_FALLBACK)
-  if(WAWONA_WESTON_TOYTOOLKIT)
-    # os-compatibility.c is already in libweston-13.a; compile the client only.
-    target_sources(
-        wawona PRIVATE
-        ${WAWONA_ROOT}/deps/weston-simple-shm/clients/simple-shm.c
-        ${WAWONA_ROOT}/deps/weston-simple-shm/xdg-shell-protocol.c
-        ${WAWONA_ROOT}/deps/weston-simple-shm/fullscreen-shell-unstable-v1-protocol.c
-    )
-  else()
-    target_sources(
-        wawona PRIVATE
-        ${WAWONA_ROOT}/deps/weston-simple-shm/clients/simple-shm.c
-        ${WAWONA_ROOT}/deps/weston-simple-shm/shared/os-compatibility.c
-        ${WAWONA_ROOT}/deps/weston-simple-shm/xdg-shell-protocol.c
-        ${WAWONA_ROOT}/deps/weston-simple-shm/fullscreen-shell-unstable-v1-protocol.c
-    )
-  endif()
+if(NOT WAWONA_STUDIO_FALLBACK AND NOT WAWONA_WESTON_TOYTOOLKIT)
+  target_sources(
+      wawona PRIVATE
+      ${WAWONA_ROOT}/deps/weston-simple-shm/clients/simple-shm.c
+      ${WAWONA_ROOT}/deps/weston-simple-shm/shared/os-compatibility.c
+      ${WAWONA_ROOT}/deps/weston-simple-shm/xdg-shell-protocol.c
+      ${WAWONA_ROOT}/deps/weston-simple-shm/fullscreen-shell-unstable-v1-protocol.c
+  )
 endif()
 
 # Parse NIX_DEP_LIBS: "-L/nix/.../lib" directories plus extra link flags

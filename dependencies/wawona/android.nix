@@ -14,6 +14,7 @@
   targetPkgs,
   androidToolchainNix ? ../toolchains/android.nix,
   westonSimpleShmPatchedSrcNix ? ../libs/weston-simple-shm/patched-src.nix,
+  westonAndroidSignalPolyfill ? null,
   releaseArtifact ? "debug",
   ...
 }:
@@ -59,6 +60,7 @@ let
     deps = mobileToytoolkitDeps // {
       weston = westonAndroid;
       libintl = libintlAndroid;
+      weston-simple-shm = westonSimpleShmAndroid;
     };
     forceLoadWeston = true;
     linkMode = "whole_archive";
@@ -767,6 +769,9 @@ in
       mkdir -p deps/weston-simple-shm
       cp -r ${westonSimpleShmSrc}/* deps/weston-simple-shm/
       chmod -R u+w deps/weston-simple-shm
+      ${lib.optionalString (westonAndroidSignalPolyfill != null) ''
+        cp ${westonAndroidSignalPolyfill} deps/weston-simple-shm/wwn-android-signal-polyfill.h
+      ''}
 
       # Flatten the Android project into the repo root so the CMake relative
       # paths still point at the Nix-filtered source tree.
