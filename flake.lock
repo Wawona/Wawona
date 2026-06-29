@@ -815,7 +815,7 @@
         ]
       },
       "locked": {
-        "narHash": "sha256-HSNpPco47RXGKcaAeAUW+ifeH+b9WBdbvhLL5ipg9dI=",
+        "narHash": "sha256-qS+k+YRq4te7zp+asfaiNKtDeTsdeh20qOXAH2UpdhU=",
         "path": "/Users/8amps/Wawona/wwn-toolchain",
         "type": "path"
       },
@@ -885,7 +885,7 @@
         ]
       },
       "locked": {
-        "narHash": "sha256-G+i56atoV3B/EE285Qwck4zrod2zRmZmkCB8MUyj1bs=",
+        "narHash": "sha256-UnF8N2hdpLBkVOt8V2XwJSUIve8NYCc8yzgN0SO6WWA=",
         "path": "/Users/8amps/Wawona/wwn-zsh",
         "type": "path"
       },
