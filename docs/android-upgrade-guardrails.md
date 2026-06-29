@@ -7,16 +7,16 @@ toolchain selection logic.
 
 Treat a PR as an Android upgrade PR when any of the following files change:
 
-- `dependencies/android/sdk-config.nix`
+- `wwn-toolchain` → `dependencies/android/sdk-config.nix` (via `nix eval .#wwnSdkConfigPath --raw`)
 - `android/app/build.gradle.kts`
-- `dependencies/toolchains/android.nix`
-- `dependencies/toolchains/android-cmake.nix`
+- `wwn-toolchain` → `dependencies/toolchains/android.nix`
+- `wwn-toolchain` → `dependencies/toolchains/android-cmake.nix`
 - `.github/scripts/verify-android-config.py`
 
 ## Pre-upgrade Checklist
 
 - [ ] Confirm target change set (SDK, NDK, build-tools, CMake/toolchain behavior).
-- [ ] Update `dependencies/android/sdk-config.nix`.
+- [ ] Update `wwn-toolchain` → `dependencies/android/sdk-config.nix` (canonical; Wawona reads it via flake).
 - [ ] Keep `android/app/build.gradle.kts` values aligned to sdk-config.
 - [ ] Run `python3 ./.github/scripts/verify-android-config.py`.
 - [ ] Run `python3 ./.github/scripts/ci-failure-baseline.py --limit 11`.

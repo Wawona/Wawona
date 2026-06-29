@@ -27,7 +27,7 @@ The build is split into three layers:
 │  Layer 1: Native C/C++ libraries                 │
 │  libwayland, xkbcommon, ffmpeg, zstd, lz4,       │
 │  openssl, libssh2, mbedtls, zlib, etc.           │
-│  Each built per-platform in dependencies/libs/   │
+│  Built per-platform in wwn-toolchain / wwn-*     │
 └──────────────────────────────────────────────────┘
 ```
 
@@ -44,7 +44,9 @@ The flake defines all inputs, overlays, and packages.
 | `nixpkgs`       | Base package set (unstable channel)                  |
 | `rust-overlay`  | Provides `rust-bin.stable.latest.default` with iOS/Android targets |
 | `crate2nix`     | Generates per-crate Nix derivations from `Cargo.lock` |
-| `nix-xcodeenvtests` | Reference Apple host-Xcode wrapper model used by `dependencies/apple/` |
+| `nix-xcodeenvtests` | Reference Apple host-Xcode wrapper model used by `wwn-toolchain` |
+| `wwn-toolchain` | Cross-compile toolchains, Apple SDK wiring, Android SDK config, library substrate |
+| `wwn-weston`, `wwn-iland`, … | Patched application ports + platform-specific ldflags generators |
 
 ### Rust toolchain overlay
 
@@ -76,48 +78,39 @@ excluded since those are injected separately as Nix derivations.
 
 ### Directory structure
 
+Wawona keeps only the **integration layer** under `dependencies/`. Library recipes and toolchains live in flake inputs (`wwn-toolchain`, `wwn-weston`, `wwn-iland`, …). `flake.nix` merges their registries and injects store paths into `pkgs`.
+
 ```
-dependencies/
-├── libs/               # Per-library build recipes
-│   ├── ffmpeg/         # android.nix, ios.nix, macos.nix
-│   ├── libssh2/        # android.nix, ios.nix
-│   ├── libwayland/     # android.nix, ios.nix, macos.nix
-│   ├── lz4/            # android.nix, ios.nix, macos.nix
-│   ├── openssl/        # android.nix, ios.nix
-│   ├── waypipe/        # ios.nix, macos.nix, android.nix, patches
-│   ├── xkbcommon/      # android.nix, ios.nix, macos.nix
-│   ├── zlib/           # ios.nix
-│   ├── zstd/           # android.nix, ios.nix, macos.nix
-│   └── ...             # mbedtls, epoll-shim, pixman, kosmickrisp, etc.
-├── toolchains/         # Platform dispatchers
-│   ├── default.nix     # Exports: buildForIOS, buildForMacOS, buildForAndroid
-│   ├── android.nix     # NDK sysroot, CC/CXX/AR, linker wrappers
-│   └── common/         # Shared helpers, dependency registry
-├── platforms/          # Generic fallback builders per platform
-│   ├── ios.nix         # cmake-based fallback with -miphoneos-version-min
-│   ├── android.nix
-│   └── macos.nix
-├── generators/         # Xcode/Gradle project generators
-│   ├── xcodegen.nix
-│   └── gradlegen.nix
-└── wawona/             # The Wawona-specific build modules
-    ├── default.nix     # Central entry: returns { ios, macos, android, generators }
-    ├── ios.nix         # iOS app (Obj-C compilation, .app bundle)
-    ├── macos.nix       # macOS app (.app bundle)
-    ├── android.nix     # Android project
-    ├── rust-backend-c2n.nix   # ** crate2nix Rust backend **
-    └── workspace-src.nix      # Workspace source assembly
+dependencies/                 # Wawona integration (this repo)
+├── wawona/                   # App derivations, Rust backends, devshells
+├── generators/               # xcodegen.nix, gradlegen.nix
+├── clients/                  # wawona-shell, wawona-tools
+└── gradle-deps.nix           # Gradle mirror for Android Studio
+
+wwn-toolchain/                # upstream flake input
+├── dependencies/libs/        # Per-library build recipes (ffmpeg, libwayland, …)
+├── dependencies/toolchains/  # buildForIOS, buildForMacOS, buildForAndroid
+├── dependencies/android/     # sdk-config.nix (canonical Android version pins)
+└── dependencies/apple/       # Xcode wrapper + signing helpers
+
+wwn-weston/, wwn-iland/, …    # upstream app ports + ldflags generators
+```
+
+For local development against sibling checkouts:
+
+```nix
+wwn-toolchain.url = "path:../wwn-toolchain";
 ```
 
 ### How native libraries are built
 
-Each library has per-platform `.nix` files (e.g. `libs/lz4/ios.nix`). These
+Each library has per-platform `.nix` files in the upstream `wwn-*` repos (e.g. `wwn-toolchain/dependencies/libs/lz4/ios.nix`). These
 are standard `pkgs.stdenv.mkDerivation` recipes that cross-compile the C/C++
 source for the target platform. For iOS, they use Xcode's clang with
 `-miphoneos-version-min=26.0` and the appropriate `-target` triple. For
 Android, they use the NDK toolchain.
 
-The `dependencies/toolchains/default.nix` module acts as a dispatcher. It
+`wwn-toolchain.lib.mkToolchains` acts as a dispatcher. It
 exports three main functions:
 
 - `buildForIOS name entry` — dispatches to `libs/<name>/ios.nix`
@@ -130,9 +123,7 @@ If no library-specific recipe exists, it falls back to the generic builder in
 In `flake.nix`, the toolchains are instantiated once:
 
 ```nix
-toolchains = import ./dependencies/toolchains {
-  inherit (pkgs) lib pkgs stdenv buildPackages;
-};
+toolchains = mkWawonaToolchains { inherit pkgs androidSDK wawonaSrc; };
 ```
 
 Then individual libraries are passed as `nativeDeps` to the Rust backend:

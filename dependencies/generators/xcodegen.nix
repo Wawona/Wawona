@@ -33,8 +33,11 @@
   macosKmscube ? null,
   # When set (e.g. [ "ios" "ipados" ]), only emit matching app targets (+ shared libs).
   platformFilter ? null,
-  # Apple toolchain path; Wawona's flake injects the wwn-toolchain store path.
-  applePath ? ../apple,
+  applePath,
+  westonToytoolkitLdflagsNix,
+  westonCompositorLdflagsNix,
+  mobileBaseLdflagsNix,
+  ilandGlLdflagsNix,
 }:
 
 let
@@ -88,16 +91,16 @@ let
     url = "https://gitlab.freedesktop.org/wayland/weston/-/raw/13.0.0/data/background.png";
     sha256 = "sha256-MFxdcpF2/PYgx56bVXexTcC/m/H/KKkVtrN0ZMfd1R8=";
   };
-  westonToytoolkitLdflags = deps: import ./weston-toytoolkit-ldflags.nix {
+  westonToytoolkitLdflags = deps: import westonToytoolkitLdflagsNix {
     inherit lib deps;
     forceLoadWeston = true;
   };
-  westonCompositorLdflags = deps: import ./weston-compositor-ldflags.nix {
+  westonCompositorLdflags = deps: import westonCompositorLdflagsNix {
     inherit lib deps;
     forceLoadCompositor = true;
   };
-  mobileBaseLdflags = deps: import ./mobile-base-ldflags.nix { inherit lib deps; };
-  ilandGlLdflags = { deps, simulator ? false }: import ./iland-gl-ldflags.nix {
+  mobileBaseLdflags = deps: import mobileBaseLdflagsNix { inherit lib deps; };
+  ilandGlLdflags = { deps, simulator ? false }: import ilandGlLdflagsNix {
     inherit lib deps simulator;
     forceLoad = true;
   };

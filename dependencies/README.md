@@ -1,25 +1,42 @@
 # Wawona Nix Dependencies
 
-This directory contains the Nix infrastructure for building Wawona on Apple, Android, and Linux targets.
+This directory is the **integration layer** for building Wawona on Apple, Android, and Linux targets. Cross-compiled libraries, toolchains, and ldflags generators live in upstream `wwn-*` flake inputs (`wwn-toolchain`, `wwn-weston`, `wwn-iland`, …); `flake.nix` injects their store paths into `pkgs` so recipes here never fall back to stale in-tree copies.
 
 ## Directory Structure
 
 ```
 dependencies/
 ├── README.md                     # This file
-├── toolchains/                   # Cross-compilation (buildForIOS, buildForMacOS, …)
 ├── wawona/                       # App derivations, backends, devshells
 │   ├── mobile-platform-deps.nix  # Shared native closure for Apple mobile
 │   ├── apple-host-crates.nix     # Shared host-side Rust crate graph
 │   ├── rust-backend-c2n.nix      # Per-platform libwawona.a (crate2nix)
 │   └── devshells.nix             # `nix develop` shell
-├── libs/                         # Cross-compiled C libraries
-├── clients/                      # Weston compositor, foot, …
-│   └── weston/                   # toytoolkit + compositor-apple-mobile.nix
-├── platforms/                    # Per-OS build dispatchers (ios, ipados, …)
-├── generators/                   # xcodegen.nix, gradlegen.nix, ldflags helpers
-└── utils/                        # Xcode wrapper helpers
+├── clients/                      # Wawona shell/tools (integration-only)
+├── generators/                   # xcodegen.nix, gradlegen.nix, android-icon helpers
+├── gradle-deps.nix               # Gradle dependency mirror for Android Studio
+└── smoke-test-lists.nix          # CI smoke targets
 ```
+
+Canonical upstream locations:
+
+| Concern | Repo / path |
+|---------|-------------|
+| Apple toolchain, Android SDK config, mobile-base ldflags | `wwn-toolchain` |
+| Weston toytoolkit/compositor ldflags, simple-shm | `wwn-weston` |
+| iland/ANGLE ldflags | `wwn-iland` |
+| Per-lib build recipes (`libs/*`, `toolchains/*`) | respective `wwn-*` inputs via `mergedRegistry` |
+
+## Local dev override
+
+Point flake inputs at sibling checkouts when iterating on toolchain changes:
+
+```nix
+wwn-toolchain.url = "path:../wwn-toolchain";
+wwn-weston.url = "path:../wwn-weston";
+```
+
+Then run `nix flake lock --update-input wwn-toolchain` (and peers) after upstream edits.
 
 ## Apple Targets
 
@@ -55,9 +72,6 @@ nix run .#gradlegen         # Android Studio project
 
 | Directory | Purpose |
 |-----------|---------|
-| `toolchains/` | Cross-compiles C libraries per platform |
 | `wawona/` | Final apps, Rust backends, mobile dep factory |
-| `libs/` | Low-level C libraries |
-| `clients/weston/` | Weston toytoolkit + compositor archives (`compositor-apple-mobile.nix`, `compositor-ios-drm.nix`) |
-| `generators/` | Xcode/Gradle project generation |
-| `platforms/` | Routes dependency names to per-lib recipes |
+| `clients/` | Wawona-specific shell/tools wrappers |
+| `generators/` | Xcode/Gradle project generation (imports ldflags from wwn-* via flake) |

@@ -28,7 +28,7 @@
   # Path to the Apple cross-compile toolchain (xcode-wrapper). Defaults to the
   # legacy in-tree copy; Wawona's flake overrides this with the wwn-toolchain
   # input store path so the moved dir can be deleted.
-  applePath ? ../apple,
+  applePath,
   ...
 }:
 

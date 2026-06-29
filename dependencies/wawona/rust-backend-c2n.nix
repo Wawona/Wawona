@@ -35,8 +35,8 @@
 , hostGraphOnly ? false   # build/export host-side crate graph only (apple-host-crates)
   # Extracted-repo toolchain handles (default to legacy in-tree copies; Wawona's
   # flake injects wwn-toolchain store paths via the pkgs overlay).
-, applePath ? ../apple
-, androidToolchainNix ? ../toolchains/android.nix
+, applePath
+, androidToolchainNix
 }:
 
 let

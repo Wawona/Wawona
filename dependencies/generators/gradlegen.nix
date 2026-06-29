@@ -7,6 +7,7 @@
 , iconAssets ? "AUTO"
 , androidSdkRoot ? null
 , westonSimpleShmSrc ? null
+, westonAndroidSignalPolyfill ? null
 , nixDepIncludes ? ""
 , nixDepLibs ? ""
 , rustBackendLib ? ""
@@ -53,6 +54,8 @@ let
   opensshBinaryPathEscaped = lib.escapeShellArg opensshBinaryPath;
   sshpassBinaryPathEscaped = lib.escapeShellArg sshpassBinaryPath;
   westonShmPath = if westonSimpleShmSrc != null then toString westonSimpleShmSrc else "";
+  westonPolyfillPath =
+    if westonAndroidSignalPolyfill != null then toString westonAndroidSignalPolyfill else "";
   generateScript = pkgs.writeShellScriptBin "gradlegen" ''
     set -euo pipefail
     find_repo_root() {
@@ -203,7 +206,7 @@ let
       rm -rf "$OUT/deps/weston-simple-shm"
       cp -r "${westonShmPath}" "$OUT/deps/weston-simple-shm"
       chmod -R u+w "$OUT/deps/weston-simple-shm" 2>/dev/null || true
-      WWN_SHM_POLY="$REPO_ROOT/../wwn-weston/dependencies/toolchains/wwn-android-signal-polyfill.h"
+      WWN_SHM_POLY="${westonPolyfillPath}"
       if [ -f "$WWN_SHM_POLY" ]; then
         cp -f "$WWN_SHM_POLY" "$OUT/deps/weston-simple-shm/wwn-android-signal-polyfill.h"
       fi

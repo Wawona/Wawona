@@ -25,7 +25,7 @@
   # e.g. "iOS", "watchOS"
   platformName ? "iOS",
   bundleId ? "com.aspauldingcode.Wawona",
-  applePath ? ../apple,
+  applePath,
   ...
 }:
 

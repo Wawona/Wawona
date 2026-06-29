@@ -3,7 +3,7 @@
   wawonaVersion,
   wawonaSrc ? ../..,
   waypipeSrc ? null,
-  westonSimpleShmLinuxNix ? ../libs/weston-simple-shm/linux.nix,
+  westonSimpleShmLinuxNix,
   ...
 }:
 

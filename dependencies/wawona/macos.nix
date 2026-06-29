@@ -21,22 +21,25 @@
   waypipe,
   moltenvk ? pkgs.moltenvk or null,
   xcodeProject ? null,
-  applePath ? ../apple,
+  applePath,
+  westonToytoolkitLdflagsNix,
+  westonCompositorLdflagsNix,
+  ilandGlLdflagsNix,
   nativeDeps ? null,
 }:
 
 let
   common = import ./common.nix { inherit lib pkgs wawonaSrc; };
 
-  ilandGlLdflags = { deps, simulator ? false }: import ../generators/iland-gl-ldflags.nix {
+  ilandGlLdflags = { deps, simulator ? false }: import ilandGlLdflagsNix {
     inherit lib deps simulator;
     forceLoad = true;
   };
-  westonToytoolkitLdflags = deps: import ../generators/weston-toytoolkit-ldflags.nix {
+  westonToytoolkitLdflags = deps: import westonToytoolkitLdflagsNix {
     inherit lib deps;
     forceLoadWeston = true;
   };
-  westonCompositorLdflags = deps: import ../generators/weston-compositor-ldflags.nix {
+  westonCompositorLdflags = deps: import westonCompositorLdflagsNix {
     inherit lib deps;
   };
 

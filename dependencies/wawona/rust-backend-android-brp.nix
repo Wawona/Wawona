@@ -12,6 +12,7 @@
   backendName ? "wawona-android-backend",
   androidSDK ? null,
   androidToolchain ? null,
+  androidToolchainNix,
 }:
 
 let
@@ -19,7 +20,7 @@ let
     if androidToolchain != null then
       androidToolchain
     else
-      import ../toolchains/android.nix { inherit lib pkgs androidSDK; };
+      import androidToolchainNix { inherit lib pkgs androidSDK; };
   NDK_SYSROOT = androidToolchainEffective.androidNdkSysroot;
   NDK_LIB_PATH = androidToolchainEffective.androidNdkAbiLibDir;
   NDK_FALLBACK_LIB_PATH = androidToolchainEffective.androidNdkAbiLibDirFallback;

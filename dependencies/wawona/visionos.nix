@@ -19,7 +19,7 @@
   nativeSdk ? "xros",
   platformName ? "visionOS",
   bundleId ? "com.aspauldingcode.Wawona",
-  applePath ? ../apple,
+  applePath,
   ...
 } @ args:
 

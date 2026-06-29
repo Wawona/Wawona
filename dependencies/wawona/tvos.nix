@@ -19,7 +19,7 @@
   nativeSdk ? "appletvos",
   platformName ? "tvOS",
   bundleId ? "com.aspauldingcode.Wawona",
-  applePath ? ../apple,
+  applePath,
   ...
 } @ args:
 

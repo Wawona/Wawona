@@ -6,10 +6,11 @@
   androidSDK,
   wawonaSrc,
   pkgs,
+  androidConfigNix,
 }:
 
 let
-  androidConfig = import ./android/sdk-config.nix {
+  androidConfig = import androidConfigNix {
     inherit lib androidSDK;
     system = stdenv.buildPlatform.system;
   };

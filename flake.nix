@@ -126,10 +126,12 @@
         # `pkgs.callPackage`-based Wawona integration recipes (ios/ipados/macos/
         # watchos, rust-backend-c2n, linux) auto-resolve them through their
         # function signatures instead of via now-deleted in-tree relative paths.
-        inherit applePath toolchainsDir androidToolchainNix
+        inherit applePath toolchainsDir androidToolchainNix androidConfigNix androidWrapperNix
           westonSimpleShmPatchedSrcNix westonSimpleShmLinuxNix kmscubeMacosNix kmscubeIosNix
           fastfetchMacosNix fastfetchIosNix fastfetchLdflagsNix
-          neovimMacosNix neovimIosNix neovimLdflagsNix;
+          neovimMacosNix neovimIosNix neovimLdflagsNix
+          westonToytoolkitLdflagsNix westonCompositorLdflagsNix mobileBaseLdflagsNix ilandGlLdflagsNix
+          westonAndroidSignalPolyfill;
         # The Apple toolchain (xcode-wrapper) used to live in-tree; wwn-iland's
         # gl-clients recipes accept it as `xcodeUtils`/`iosToolchain`. Resolve it
         # from the wwn-toolchain input so callPackage can auto-fill those formals.
@@ -201,6 +203,11 @@
     neovimLdflagsNix = "${wwn-neovim}/dependencies/generators/neovim-ldflags.nix";
     westonPtySpikeIosNix = "${wwn-weston}/dependencies/clients/weston/ios-pty-spike/ios.nix";
     westonToytoolkitLdflagsNix = "${wwn-weston}/dependencies/generators/weston-toytoolkit-ldflags.nix";
+    westonCompositorLdflagsNix = "${wwn-weston}/dependencies/generators/weston-compositor-ldflags.nix";
+    mobileBaseLdflagsNix = "${wwn-toolchain}/dependencies/generators/mobile-base-ldflags.nix";
+    ilandGlLdflagsNix = "${wwn-iland}/dependencies/generators/iland-gl-ldflags.nix";
+    androidConfigNix = "${wwn-toolchain}/dependencies/android/sdk-config.nix";
+    androidWrapperNix = "${wwn-toolchain}/dependencies/utils/android-wrapper.nix";
     # --------------------------------------------------------------------------
     waypipe-src = bootstrapPkgs.fetchFromGitLab {
       owner = "mstoeckl"; repo = "waypipe"; rev = "v0.11.0";
@@ -238,7 +245,7 @@
           ];
         }) else pkgs;
 
-        androidConfig = import ./dependencies/android/sdk-config.nix {
+        androidConfig = import androidConfigNix {
           inherit system;
           lib = androidPkgs.lib;
         };
@@ -309,7 +316,7 @@
           pkgsIos = null;
         } else toolchains;
 
-        androidUtils = import ./dependencies/utils/android-wrapper.nix { 
+        androidUtils = import androidWrapperNix {
           lib = androidPkgs.lib; pkgs = androidPkgs; inherit androidSDK; 
         };
 
@@ -389,7 +396,8 @@
           rustBackend = backend-android;
           targetPkgs = pkgsAndroidCross;
           waypipe = toolchainsAndroid.buildForAndroid "waypipe" { };
-          inherit androidToolchainNix westonSimpleShmPatchedSrcNix westonAndroidSignalPolyfill;
+          inherit androidToolchainNix westonSimpleShmPatchedSrcNix westonAndroidSignalPolyfill
+            androidConfigNix westonToytoolkitLdflagsNix westonCompositorLdflagsNix;
         };
         wawonaWearAndroidPkg = import ./dependencies/wawona/android.nix {
           pkgs = androidPkgs;
@@ -401,7 +409,8 @@
           targetPkgs = pkgsAndroidCross;
           waypipe = toolchainsAndroid.buildForAndroid "waypipe" { };
           appTarget = "wearos";
-          inherit androidToolchainNix westonSimpleShmPatchedSrcNix westonAndroidSignalPolyfill;
+          inherit androidToolchainNix westonSimpleShmPatchedSrcNix westonAndroidSignalPolyfill
+            androidConfigNix westonToytoolkitLdflagsNix westonCompositorLdflagsNix;
         };
 
         androidToolchainSanity = import androidToolchainSanityNix {
@@ -457,7 +466,7 @@
 
         gradlegenPkg = pkgs.callPackage ./dependencies/generators/gradlegen.nix {
           wawonaSrc = if isLinuxHost then ./. else src;
-          inherit wawonaVersion;
+          inherit wawonaVersion westonAndroidSignalPolyfill;
           androidSdkRoot = androidSDK.sdkRoot;
           westonSimpleShmSrc = westonSimpleShmPatched;
           iconAssets = "AUTO";
@@ -579,7 +588,8 @@
             rustBackend = backend-android;
             targetPkgs = pkgsAndroidCross;
             waypipe = toolchainsAndroid.buildForAndroid "waypipe" { };
-            inherit androidToolchainNix westonSimpleShmPatchedSrcNix westonAndroidSignalPolyfill;
+            inherit androidToolchainNix westonSimpleShmPatchedSrcNix westonAndroidSignalPolyfill
+            androidConfigNix westonToytoolkitLdflagsNix westonCompositorLdflagsNix;
             releaseArtifact = "release-aab";
           };
         }) // (pkgs.lib.optionalAttrs hasAndroidCts {
@@ -1180,6 +1190,7 @@ EOF
 
     allSystemPackages = nixpkgs.lib.genAttrs systemsList (system: getPackagesForSystem system (pkgsFor system));
   in {
+    wwnSdkConfigPath = androidConfigNix;
     packages = allSystemPackages;
     apps = nixpkgs.lib.genAttrs systemsList (system: getAppsForSystem system (pkgsFor system) allSystemPackages.${system});
     overlays.default = final: prev: {

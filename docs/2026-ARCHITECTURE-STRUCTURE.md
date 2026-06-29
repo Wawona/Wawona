@@ -206,7 +206,7 @@ Wawona's Apple build flow is intentionally split between Nix and Xcode:
 
 ```mermaid
 flowchart LR
-    flakeOutputs[FlakeOutputs] --> iosToolchain[dependencies/toolchains/ios-xcodeenv.nix]
+    flakeOutputs[FlakeOutputs] --> iosToolchain[wwn-toolchain Apple/Xcode layer]
     flakeOutputs --> rustBackends[RustBackends]
     rustBackends --> xcodeProject[XcodeProjectGeneration]
     iosToolchain --> xcodeWrapper[XcodeWrapper]
@@ -219,7 +219,7 @@ flowchart LR
 
 ### Apple-specific responsibilities
 
-- `dependencies/toolchains/ios-xcodeenv.nix`: canonical Apple/Xcode integration layer
+- `wwn-toolchain` → `dependencies/apple/` + `dependencies/toolchains/ios-xcodeenv.nix`: canonical Apple/Xcode integration layer
 - `dependencies/generators/xcodegen.nix`: generates the Xcode project with Nix-built backend references
 - `dependencies/wawona/ios.nix`: packages the iOS app through `xcodeenv.buildApp`
 - `dependencies/wawona/app-programs.nix`: wraps simulator launch and debug workflows
@@ -546,8 +546,8 @@ Android doesn't ship with SSH tools. Wawona bundles **Dropbear SSH** (lightweigh
 
 ### Nix Build Pipeline
 
-1. **Cross-compile native C deps** — `dependencies/platforms/android.nix` registers builders for xkbcommon, openssl, libwayland, pixman, expat, libxml2, zstd, lz4, etc.
-2. **Cross-compile SSH tools** — `dependencies/libs/openssh/android.nix` builds Dropbear SSH client; `dependencies/libs/sshpass/android.nix` builds sshpass
+1. **Cross-compile native C deps** — `wwn-toolchain` registry + `buildForAndroid` dispatches to per-lib `dependencies/libs/*/android.nix` (xkbcommon, openssl, libwayland, pixman, expat, libxml2, zstd, lz4, …).
+2. **Cross-compile SSH tools** — `wwn-toolchain/dependencies/libs/openssh/android.nix` builds Dropbear SSH client; `wwn-toolchain/dependencies/libs/sshpass/android.nix` builds sshpass
 3. **Rust backend** — `dependencies/wawona/rust-backend-c2n.nix` cross-compiles `libwawona.a` for `aarch64-linux-android` with vendored waypipe (patched for Android, exposes `waypipe_main` C entry point)
 4. **APK build** — `dependencies/wawona/android.nix`:
    - Compiles JNI C code (`android_jni.c`)
@@ -559,7 +559,7 @@ Android doesn't ship with SSH tools. Wawona bundles **Dropbear SSH** (lightweigh
 
 ### Android-Specific Dependencies
 
-| Library | Nix Module | Purpose |
+| Library | Nix Module (wwn-toolchain) | Purpose |
 |---------|-----------|---------|
 | xkbcommon | `dependencies/libs/xkbcommon/android.nix` | Keyboard keymaps (XKB) |
 | openssl | `dependencies/libs/openssl/android.nix` | TLS/crypto (Dropbear, waypipe) |

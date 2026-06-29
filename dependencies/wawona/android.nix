@@ -12,8 +12,11 @@
   jdk17 ? pkgs.jdk17,
   gradle ? pkgs.gradle,
   targetPkgs,
-  androidToolchainNix ? ../toolchains/android.nix,
-  westonSimpleShmPatchedSrcNix ? ../libs/weston-simple-shm/patched-src.nix,
+  androidToolchainNix,
+  westonSimpleShmPatchedSrcNix,
+  westonToytoolkitLdflagsNix,
+  westonCompositorLdflagsNix,
+  androidConfigNix,
   westonAndroidSignalPolyfill ? null,
   releaseArtifact ? "debug",
   ...
@@ -21,13 +24,12 @@
 
 let
   common = import ./common.nix { inherit lib pkgs wawonaSrc; };
-  androidConfig = import ../android/sdk-config.nix {
+  androidConfig = import androidConfigNix {
     inherit lib androidSDK;
     system = pkgs.stdenv.buildPlatform.system;
   };
   provisionScript = if androidUtils != null then "${androidUtils.provisionAndroidScript}/bin/provision-android" else "";
 
-  # androidToolchain is passed from flake.nix; fall back to local import if needed
   androidToolchainResolved = if androidToolchain != null then androidToolchain else import androidToolchainNix { inherit lib androidSDK; pkgs = targetPkgs; };
   
   projectVersion =
@@ -36,7 +38,7 @@ let
       let v = lib.removeSuffix "\n" (lib.fileContents (wawonaSrc + "/VERSION"));
       in if v == "" then "0.0.1" else v;
   gradleSupport = pkgs.callPackage ../gradle-deps.nix {
-    inherit wawonaSrc androidSDK;
+    inherit wawonaSrc androidSDK androidConfigNix;
     inherit (pkgs) gradle jdk17;
   };
 
@@ -56,7 +58,7 @@ let
   westonSimpleShmAndroid = buildModule.buildForAndroid "weston-simple-shm" { };
   westonCompositorAndroid = buildModule.buildForAndroid "weston-compositor" { };
   libintlAndroid = buildModule.buildForAndroid "libintl" { };
-  westonToytoolkitLdflags = import ../generators/weston-toytoolkit-ldflags.nix {
+  westonToytoolkitLdflags = import westonToytoolkitLdflagsNix {
     inherit (pkgs) lib;
     deps = mobileToytoolkitDeps // {
       weston = westonAndroid;
@@ -67,7 +69,7 @@ let
   };
   westonCompositorLdflags =
     if westonCompositorAndroid != null then
-      import ../generators/weston-compositor-ldflags.nix {
+      import westonCompositorLdflagsNix {
         inherit (pkgs) lib;
         deps = mobileToytoolkitDeps // {
           weston-compositor = westonCompositorAndroid;

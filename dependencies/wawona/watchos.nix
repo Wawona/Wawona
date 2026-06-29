@@ -19,7 +19,7 @@
   nativeSdk ? "watchos",
   platformName ? "watchOS",
   bundleId ? "com.aspauldingcode.Wawona.watch",
-  applePath ? ../apple,
+  applePath,
   ...
 }:
 

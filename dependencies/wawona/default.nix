@@ -4,15 +4,15 @@
 # Returns: { ios, ipados, macos, watchos, android, linux, linux-vm, wearos, visionos, common, generators }
 
 let
-  # Dependency version strings (must match the tags/versions in dependencies/libs/*)
+  # Dependency version strings (registry entries in wwn-toolchain / wwn-* repos)
   depVersions = {
-    waylandVersion   = "1.23.0";       # dependencies/libs/libwayland/macos.nix  tag
-    xkbcommonVersion = "1.7.0";        # dependencies/libs/xkbcommon/macos.nix   tag
-    lz4Version       = "1.10.0";       # dependencies/libs/lz4/macos.nix         rev
-    zstdVersion      = "1.5.7";        # dependencies/libs/zstd/macos.nix        rev
-    libffiVersion    = "3.5.2";        # dependencies/libs/libffi/macos.nix      tag
-    sshpassVersion   = "1.10";         # dependencies/libs/sshpass/macos.nix     version
-    waypipeVersion   = "0.10.6";       # dependencies/libs/waypipe/macos.nix     tag
+    waylandVersion   = "1.23.0";
+    xkbcommonVersion = "1.7.0";
+    lz4Version       = "1.10.0";
+    zstdVersion      = "1.5.7";
+    libffiVersion    = "3.5.2";
+    sshpassVersion   = "1.10";
+    waypipeVersion   = "0.10.6";
   };
 
   apps = {
@@ -88,7 +88,7 @@ let
       gradlegen = pkgs.callPackage ../generators/gradlegen.nix ({
         wawonaAndroidProject = apps.android.project or null;
         inherit wawonaSrc wawonaVersion;
-        westonSimpleShmSrc = pkgs.callPackage ../libs/weston-simple-shm/patched-src.nix { };
+        westonSimpleShmSrc = pkgs.callPackage pkgs.westonSimpleShmPatchedSrcNix { };
       } // lib.optionalAttrs (androidSDK != null) { androidSdkRoot = androidSDK.sdkRoot; });
     };
   };

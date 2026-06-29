@@ -42,7 +42,7 @@ This project uses a simple `.envrc` file to manage your Apple Development Team I
 
 2.  **The environment is automatically loaded** when you use `nix develop` - no additional tools required!
 
-> For build targets and Nix pipeline details, see [Compilation Guide](docs/compilation.md) and [Nix Build System](docs/2026-nix-build-system.md).
+> For build targets and Nix pipeline details, see [Compilation Guide](docs/compilation.md) and [Nix Build System](docs/2026-nix-build-system.md). Cross-compiled libraries and toolchains live in upstream [`wwn-toolchain`](https://github.com/Wawona/wwn-toolchain) and sibling `wwn-*` repos; Wawona's flake wires them in as inputs.
 
 ### How do I install Wawona from my macOS flake?
 
