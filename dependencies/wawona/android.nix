@@ -82,6 +82,14 @@ let
   androidQuadVert = ../../src/platform/android/rendering/shaders/android_quad.vert;
   androidQuadFrag = ../../src/platform/android/rendering/shaders/android_quad.frag;
 
+  shellTools = import ./android-shell-tools.nix {
+    inherit lib zshAndroid fastfetchAndroid neovimAndroid;
+  };
+  bundledClients = import ./android-bundled-clients.nix {
+    androidCC = androidToolchainResolved.androidCC;
+    inherit libwaylandAndroid westonAndroid footAndroid;
+  };
+
   androidDeps = common.commonDeps ++ [
     "swiftshader"
     "pixman"
@@ -826,79 +834,18 @@ in
         echo "WARNING: Missing Android sshpass binary at ${sshpassBin}/bin/sshpass"
       fi
 
-      ${lib.optionalString (zshAndroid != null) ''
-      # Real zsh as libzsh_bin.so (jniLibs executables run from app data dir; the
-      # PTY shim posix_spawn()s this) + the share tree (Functions/Completion) as
-      # an APK asset so $fpath resolves on-device (laid out by android_jni.c).
-      if [ -f "${zshAndroid}/bin/zsh" ]; then
-        cp -L "${zshAndroid}/bin/zsh" "$JNI_LIB_DIR/libzsh_bin.so"
-        chmod +x "$JNI_LIB_DIR/libzsh_bin.so"
-        mkdir -p app/src/main/assets/zsh
-        [ -d "${zshAndroid}/share/zsh" ] && cp -RL "${zshAndroid}/share/zsh/." app/src/main/assets/zsh/ && chmod -R u+w app/src/main/assets/zsh
-      else
-        echo "WARNING: Missing Android zsh binary at ${zshAndroid}/bin/zsh"
-      fi
-      ''}
+      # Bundled interactive shell tools (zsh, fastfetch, neovim); see
+      # android-shell-tools.nix.
+      ${shellTools.preBuildFragment}
 
       # xkeyboard-config: extracted from assets into wawona-rootfs by WawonaShellRootfs.
       mkdir -p app/src/main/assets/xkb
       cp -RL ${pkgs.xkeyboard_config}/share/X11/xkb/. app/src/main/assets/xkb/
       chmod -R u+w app/src/main/assets/xkb
 
-      # weston-simple-shm as libweston_simple_shm.so (dlopen'd from libwawona.so).
-      SHM_CC="${androidToolchainResolved.androidCC}"
-      SHM_CFLAGS="-fPIC -O2 -D_GNU_SOURCE -DWWN_ANDROID_SHM_POLYFILL \
-        -include deps/weston-simple-shm/wwn-android-signal-polyfill.h \
-        -Ideps/weston-simple-shm -Ideps/weston-simple-shm/shared -Ideps/weston-simple-shm/include \
-        -I${libwaylandAndroid}/include -I${westonAndroid}/include -I${westonAndroid}/include/weston-gen"
-      SHM_OBJ_DIR="$TMPDIR/wawona-shm-objs"
-      mkdir -p "$SHM_OBJ_DIR"
-      SHM_OBJS=""
-      for src in clients/simple-shm.c shared/os-compatibility.c xdg-shell-protocol.c fullscreen-shell-unstable-v1-protocol.c; do
-        obj="$SHM_OBJ_DIR/$(basename "''${src%.c}.o")"
-        "$SHM_CC" -c "deps/weston-simple-shm/$src" $SHM_CFLAGS -o "$obj"
-        SHM_OBJS="$SHM_OBJS $obj"
-      done
-      "$SHM_CC" -shared -o "$JNI_LIB_DIR/libweston_simple_shm.so" $SHM_OBJS \
-        -L${libwaylandAndroid}/lib -lwayland-client -lwayland-cursor \
-        -lm -ldl
-      chmod +x "$JNI_LIB_DIR/libweston_simple_shm.so"
-      echo "Built libweston_simple_shm.so for in-process client launch"
-
-      # foot Wayland terminal client as libfoot.so (dlopen'd by wawona_client_stubs.c).
-      FOOT_LIB="${footAndroid}/lib/arm64-v8a/libfoot.so"
-      if [ ! -f "$FOOT_LIB" ]; then
-        echo "ERROR: Missing required Android foot library at $FOOT_LIB"
-        exit 1
-      fi
-      cp -L "$FOOT_LIB" "$JNI_LIB_DIR/libfoot.so"
-      chmod +x "$JNI_LIB_DIR/libfoot.so"
-      echo "Bundled libfoot.so for in-process client launch"
-
-      for lib in libweston_simple_shm.so libfoot.so; do
-        if [ ! -f "$JNI_LIB_DIR/$lib" ]; then
-          echo "ERROR: Required bundled client library missing: $JNI_LIB_DIR/$lib"
-          exit 1
-        fi
-      done
-
-      ${lib.optionalString (fastfetchAndroid != null) ''
-      if [ -f "${fastfetchAndroid}/bin/fastfetch" ]; then
-        cp -L "${fastfetchAndroid}/bin/fastfetch" "$JNI_LIB_DIR/libfastfetch_bin.so"
-        chmod +x "$JNI_LIB_DIR/libfastfetch_bin.so"
-      else
-        echo "WARNING: Missing Android fastfetch binary at ${fastfetchAndroid}/bin/fastfetch"
-      fi
-      ''}
-
-      ${lib.optionalString (neovimAndroid != null) ''
-      if [ -f "${neovimAndroid}/bin/nvim" ]; then
-        cp -L "${neovimAndroid}/bin/nvim" "$JNI_LIB_DIR/libnvim_bin.so"
-        chmod +x "$JNI_LIB_DIR/libnvim_bin.so"
-      else
-        echo "WARNING: Missing Android neovim binary at ${neovimAndroid}/bin/nvim"
-      fi
-      ''}
+      # In-process Wayland clients (weston-simple-shm, foot); see
+      # android-bundled-clients.nix.
+      ${bundledClients.preBuildFragment}
 
       # Prefer the Rust shared library for Android linking; the static archive
       # can be malformed on some host toolchain combinations.
@@ -955,29 +902,8 @@ in
         exit 1
       }
       
-      # Verify bundled client shared libraries are packaged in the APK.
-      APK_VERIFY_PATH=""
-      shopt -s nullglob globstar
-      for candidate in \
-        app/build/outputs/apk/**/*.apk \
-        android/app/build/outputs/apk/**/*.apk \
-        build/outputs/apk/**/*.apk
-      do
-        if [ -f "$candidate" ]; then
-          APK_VERIFY_PATH="$candidate"
-          break
-        fi
-      done
-      shopt -u nullglob globstar
-      if [ -n "$APK_VERIFY_PATH" ]; then
-        for lib in libweston_simple_shm.so libfoot.so; do
-          if ! unzip -l "$APK_VERIFY_PATH" | grep -Fq "lib/arm64-v8a/$lib"; then
-            echo "ERROR: APK $APK_VERIFY_PATH missing lib/arm64-v8a/$lib"
-            exit 1
-          fi
-        done
-        echo "Verified bundled client libraries in APK"
-      fi
+      # Verify bundled client .so files are packaged; see android-bundled-clients.nix.
+      ${bundledClients.verifyApkFragment}
 
       runHook postBuild
     '';

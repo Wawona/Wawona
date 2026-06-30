@@ -140,8 +140,10 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
-      - name: Ensure waypipe sources for Cargo
-        run: ./scripts/ensure-waypipe.sh
+      - name: Ensure Cargo path dependencies
+        run: |
+          ./scripts/ensure-waypipe.sh
+          ./scripts/ensure-coreutils.sh
 
       - name: Run Rust tests
         run: nix develop -c cargo test --lib --tests --locked
@@ -160,10 +162,14 @@ jobs:
           fi
           sudo xcode-select -s "$XCODE_APP"
       - name: Run Swift tests
+        # Build the implicit test product (test targets + their deps) directly so
+        # the WawonaPackageTests.xctest bundle is linked without compiling the full
+        # package. WawonaUI bridges to app-only ObjC symbols and is not buildable
+        # standalone under SwiftPM, so a plain `swift test` (whole-package build)
+        # would fail; --product scopes the build to what the tests actually need.
         run: |
-          swift build --target WawonaUIContractsTests
+          swift build --product WawonaPackageTests
           swift test --skip-build --filter WawonaUIContractsTests
-          swift build --target WawonaModelSettingsTests
           swift test --skip-build --filter WawonaModelSettingsTests
 
   build-linux:

@@ -7,7 +7,12 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-ANDROID_NIX = ROOT / "dependencies/wawona/android.nix"
+# Shell-tool packaging was split out of android.nix into android-shell-tools.nix
+# to keep android.nix under its maintainability budget; scan both.
+ANDROID_NIX_FILES = (
+    ROOT / "dependencies/wawona/android.nix",
+    ROOT / "dependencies/wawona/android-shell-tools.nix",
+)
 FLAKE = ROOT / "flake.nix"
 ANDROID_JNI = ROOT / "src/platform/android/android_jni.c"
 
@@ -35,7 +40,7 @@ def main() -> int:
         if f'"{key}" =' not in flake and f"{key} =" not in flake:
             errors.append(f"flake.nix missing package output: {key}")
 
-    android_nix = read(ANDROID_NIX)
+    android_nix = "\n".join(read(path) for path in ANDROID_NIX_FILES)
     for needle in REQUIRED_ANDROID_NIX:
         if needle not in android_nix:
             errors.append(f"android.nix missing shell-tool wiring: {needle}")

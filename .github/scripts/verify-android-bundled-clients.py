@@ -8,7 +8,13 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-ANDROID_NIX = ROOT / "dependencies/wawona/android.nix"
+# Bundled-client packaging was split out of android.nix into
+# android-bundled-clients.nix to keep android.nix under its maintainability
+# budget; scan both as one logical source.
+ANDROID_NIX_FILES = (
+    ROOT / "dependencies/wawona/android.nix",
+    ROOT / "dependencies/wawona/android-bundled-clients.nix",
+)
 JNI_STUBS = ROOT / "android/app/src/main/cpp/wawona_client_stubs.c"
 ANDROID_JNI = ROOT / "src/platform/android/android_jni.c"
 JNI_LIBS = ROOT / "android/app/src/main/jniLibs/arm64-v8a"
@@ -84,7 +90,9 @@ def verify_apk(path: Path) -> list[str]:
 
 def main() -> int:
     errors = []
-    errors.extend(verify_android_nix(read(ANDROID_NIX)))
+    errors.extend(
+        verify_android_nix("\n".join(read(path) for path in ANDROID_NIX_FILES))
+    )
     errors.extend(verify_jni_stubs(read(JNI_STUBS)))
     errors.extend(verify_android_jni(read(ANDROID_JNI)))
 
