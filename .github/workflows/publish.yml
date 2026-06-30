@@ -1,9 +1,10 @@
 name: publish-ios
+
+# Legacy manual TestFlight upload. Primary automation:
+#   master push → release-beta.yml (TestFlight + Play internal + Linux AppImages)
+#   v* tag      → release.yml (GitHub Release assets)
+
 on:
-  push:
-    branches: [ main ]
-  release:
-    types: [ created ]
   workflow_dispatch:
 
 jobs:

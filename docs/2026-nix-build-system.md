@@ -383,9 +383,9 @@ The iOS app is built in two stages:
 
 The automation script is what `nix run .#wawona-ios` invokes.
 
-### Shared Apple wrapper layer (`dependencies/apple/default.nix`)
+### Shared Apple wrapper layer (`wwn-toolchain/dependencies/apple/default.nix`)
 
-Apple host assumptions are centralized in one module:
+Apple host assumptions are centralized in the `wwn-toolchain` flake input:
 
 - Host Xcode discovery (`XCODE_APP`, `xcode-select`, newest `/Applications/Xcode*.app`)
 - Xcode wrapper command for PATH/DEVELOPER_DIR normalization
@@ -420,7 +420,7 @@ The Darwin workflow (`.github/workflows/nix.yml`) now treats host Xcode as expli
 
 - Select highest installed `Xcode*.app` with `sort -V | tail -1`
 - Export `XCODE_APP` and run `xcode-select -s "$XCODE_APP"` before Nix builds
-- Keep path coupling in CI/bootstrap only; build modules read normalized Apple env from `dependencies/apple/`
+- Keep path coupling in CI/bootstrap only; build modules read normalized Apple env from `wwn-toolchain` (`dependencies/apple/`)
 
 ---
 
@@ -471,8 +471,9 @@ Because every crate is its own Nix derivation:
 | `dependencies/wawona/ios.nix`                 | iOS app bundle + simulator automation         |
 | `dependencies/wawona/macos.nix`               | macOS app bundle                              |
 | `dependencies/wawona/android.nix`             | Android project                               |
-| `dependencies/toolchains/default.nix`         | Platform dispatcher (buildForIOS/macOS/Android)|
-| `dependencies/libs/*/`                        | Per-library cross-compilation recipes         |
+| `wwn-toolchain/dependencies/toolchains/default.nix` | Platform dispatcher (buildForIOS/macOS/Android) |
+| `wwn-toolchain/dependencies/libs/*/`          | Per-library cross-compilation recipes (upstream) |
+| `wwn-weston`, `wwn-waypipe`, …                | Patched app ports + platform-specific ldflags   |
 | `dependencies/generators/xcodegen.nix`        | Xcode project generator                       |
 | `dependencies/generators/gradlegen.nix`       | Gradle project generator                      |
 | `Cargo.toml`                                  | Rust workspace manifest                       |

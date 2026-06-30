@@ -833,6 +833,7 @@ struct WWNMachineEditorView: View {
 }
 
 private struct WWNNativeClientPickerView: View {
+  @Environment(\.dismiss) private var dismiss
   @Binding var selectedClientId: String
   @Binding var customCommand: String
 
@@ -856,6 +857,8 @@ private struct WWNNativeClientPickerView: View {
     let isSelected = selectedClientId == client.id
     Button {
       selectedClientId = client.id
+      // Match Android/iOS: choosing a bundled client pops the picker immediately.
+      dismiss()
     } label: {
       HStack(spacing: 12) {
         Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")

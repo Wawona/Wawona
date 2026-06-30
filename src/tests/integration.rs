@@ -217,7 +217,8 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for ClientState {
         _qh: &QueueHandle<Self>,
     ) {
         if let wl_keyboard::Event::Key { key, state: key_state, .. } = event {
-            if key_state == wl_keyboard::KeyState::Pressed && key == 38 {
+            use wayland_client::WEnum;
+            if matches!(key_state, WEnum::Value(wl_keyboard::KeyState::Pressed)) && key == 38 {
                 // Linux KEY_A (30) -> xkb keycode 38 on default keymap (+8).
                 state.last_keysym = Some(0x0061);
             }

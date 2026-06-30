@@ -12,6 +12,10 @@ permissions:
   contents: read
   id-token: write
 
+concurrency:
+  group: nix-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   NIXPKGS_ALLOW_UNFREE: '1'
   ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
@@ -82,6 +86,12 @@ jobs:
         run: python3 ./.github/scripts/verify-wayland-no-equivalent-closure.py --json-out ./docs/compliance/generated/wayland-no-equivalent-closure.json
       - name: Verify Wayland profile smoke
         run: python3 ./.github/scripts/verify-wayland-profile-smoke.py
+      - name: Verify Linux machine-profile parity
+        run: python3 ./.github/scripts/verify-linux-machines-parity.py
+      - name: Verify Linux bundled client parity
+        run: python3 ./.github/scripts/verify-linux-bundled-clients.py
+      - name: Verify Linux shell-tool wiring
+        run: python3 ./.github/scripts/verify-linux-shell-tools.py
       - name: Upload Wayland ownership inventory artifact
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
@@ -148,9 +158,20 @@ jobs:
       - name: Run Rust tests
         run: nix develop -c cargo test --lib --tests --locked
 
+      # The GTK linux-ui binary is normally built via `cargo run` at app launch
+      # (dependencies/wawona/linux.nix), so it never compiles in CI. Compile it
+      # here against the GTK4/libadwaita devshell stack and run the linux-ui
+      # unit tests (canonical machine-profile model + migration) so UI/model
+      # parity work cannot silently break the Linux build.
+      - name: Build Linux GTK UI (linux-ui feature)
+        run: nix develop -c cargo build --bin wawona-linux-ui --features linux-ui --locked
+
+      - name: Run Linux UI unit tests
+        run: nix develop -c cargo test --features linux-ui --locked
+
   swift-test-macos-x86_64:
     name: "macOS (x86_64): swift test"
-    runs-on: macos-15-intel
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - name: Select Active Xcode
@@ -203,6 +224,18 @@ jobs:
 
       - name: Build Target
         run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux.outputs.system }}.${{ matrix.target }}" --print-build-logs
+
+      - name: AppImage smoke (type-2 magic + non-FUSE extract)
+        if: ${{ matrix.target == 'wawona-appimage' }}
+        run: ./.github/scripts/appimage-smoke.sh result "${{ needs.prepare-linux.outputs.system }}"
+
+      - name: Upload AppImage artifact
+        if: ${{ matrix.target == 'wawona-appimage' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: wawona-appimage-${{ needs.prepare-linux.outputs.system }}
+          path: dist/*.AppImage
+          if-no-files-found: error
 
   prepare-linux-arm64:
     name: "Prepare Linux (arm64) matrix (experimental fallback)"
@@ -267,6 +300,12 @@ jobs:
         run: python3 ./.github/scripts/verify-wayland-no-equivalent-closure.py --json-out ./docs/compliance/generated/wayland-no-equivalent-closure.json
       - name: Verify Wayland profile smoke
         run: python3 ./.github/scripts/verify-wayland-profile-smoke.py
+      - name: Verify Linux machine-profile parity
+        run: python3 ./.github/scripts/verify-linux-machines-parity.py
+      - name: Verify Linux bundled client parity
+        run: python3 ./.github/scripts/verify-linux-bundled-clients.py
+      - name: Verify Linux shell-tool wiring
+        run: python3 ./.github/scripts/verify-linux-shell-tools.py
       - name: Upload Wayland ownership inventory artifact
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
@@ -342,6 +381,18 @@ jobs:
 
       - name: Build Target
         run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux-arm64.outputs.system }}.${{ matrix.target }}" --print-build-logs
+
+      - name: AppImage smoke (type-2 magic + non-FUSE extract)
+        if: ${{ matrix.target == 'wawona-appimage' }}
+        run: ./.github/scripts/appimage-smoke.sh result "${{ needs.prepare-linux-arm64.outputs.system }}"
+
+      - name: Upload AppImage artifact
+        if: ${{ matrix.target == 'wawona-appimage' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: wawona-appimage-${{ needs.prepare-linux-arm64.outputs.system }}
+          path: dist/*.AppImage
+          if-no-files-found: error
 
   prepare-macos-arm64:
     name: "Prepare macOS (arm64) matrix (experimental fallback)"
@@ -422,6 +473,12 @@ jobs:
         run: python3 ./.github/scripts/verify-wayland-no-equivalent-closure.py --json-out ./docs/compliance/generated/wayland-no-equivalent-closure.json
       - name: Verify Wayland profile smoke
         run: python3 ./.github/scripts/verify-wayland-profile-smoke.py
+      - name: Verify Linux machine-profile parity
+        run: python3 ./.github/scripts/verify-linux-machines-parity.py
+      - name: Verify Linux bundled client parity
+        run: python3 ./.github/scripts/verify-linux-bundled-clients.py
+      - name: Verify Linux shell-tool wiring
+        run: python3 ./.github/scripts/verify-linux-shell-tools.py
       - name: Upload Wayland ownership inventory artifact
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
@@ -499,20 +556,12 @@ jobs:
 
   prepare-macos-x86_64:
     name: "Prepare macOS (x86_64) matrix"
-    runs-on: macos-15-intel
+    runs-on: macos-26
     outputs:
       system: ${{ steps.matrix.outputs.system }}
       targets: ${{ steps.matrix.outputs.targets }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Assert Intel runner architecture
-        run: |
-          ARCH=$(uname -m)
-          if [ "$ARCH" != "x86_64" ]; then
-            echo "::error::Expected x86_64 runner but got $ARCH"
-            exit 1
-          fi
 
       - name: Select Active Xcode
         run: |
@@ -581,6 +630,12 @@ jobs:
         run: python3 ./.github/scripts/verify-wayland-no-equivalent-closure.py --json-out ./docs/compliance/generated/wayland-no-equivalent-closure.json
       - name: Verify Wayland profile smoke
         run: python3 ./.github/scripts/verify-wayland-profile-smoke.py
+      - name: Verify Linux machine-profile parity
+        run: python3 ./.github/scripts/verify-linux-machines-parity.py
+      - name: Verify Linux bundled client parity
+        run: python3 ./.github/scripts/verify-linux-bundled-clients.py
+      - name: Verify Linux shell-tool wiring
+        run: python3 ./.github/scripts/verify-linux-shell-tools.py
       - name: Upload Wayland ownership inventory artifact
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
@@ -596,17 +651,9 @@ jobs:
 
   verify-macos-x86_64:
     name: "macOS (x86_64): flake check"
-    runs-on: macos-15-intel
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
-
-      - name: Assert Intel runner architecture
-        run: |
-          ARCH=$(uname -m)
-          if [ "$ARCH" != "x86_64" ]; then
-            echo "::error::Expected x86_64 runner but got $ARCH"
-            exit 1
-          fi
 
       - name: Select Active Xcode
         run: |
@@ -631,7 +678,7 @@ jobs:
 
   build-macos-x86_64:
     name: "macOS (x86_64): ${{ matrix.target }}"
-    runs-on: macos-15-intel
+    runs-on: macos-26
     needs:
       - prepare-macos-x86_64
       - verify-macos-x86_64
@@ -757,7 +804,7 @@ jobs:
 
   smoke-macos-x86_64:
     name: "macOS (x86_64): smoke gates"
-    runs-on: macos-15-intel
+    runs-on: macos-26
     needs:
       - prepare-macos-x86_64
       - verify-macos-x86_64

@@ -1,5 +1,10 @@
 name: Release Beta
 
+# Every push to master → TestFlight (Apple), Play internal (Android), and Linux
+# AppImage prebuilts (workflow artifacts, not GitHub Releases).
+# Manual dispatch can target ios beta, android beta, or both (lane: beta).
+# Tag push v0.2.* also triggers Apple TestFlight (legacy); prefer master for betas.
+
 on:
   workflow_dispatch:
     inputs:
@@ -11,7 +16,11 @@ on:
     branches:
       - master
     tags:
-      - "v0.2.*"
+      - "v*"
+
+concurrency:
+  group: release-beta-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -22,7 +31,10 @@ env:
 jobs:
   apple-beta:
     name: "TestFlight (Apple platforms)"
-    if: github.event_name != 'workflow_dispatch' || !contains(github.event.inputs.lane, 'android')
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' &&
+       !contains(github.event.inputs.lane, 'android'))
     runs-on: macos-26
     environment: release-beta
     steps:
@@ -49,6 +61,7 @@ jobs:
         env:
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
           MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+          MATCH_GIT_URL: https://github.com/aspauldingcode/apple-signing.git
           APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
@@ -65,7 +78,11 @@ jobs:
 
   android-beta:
     name: "Play internal track (Android)"
-    if: github.event_name == 'workflow_dispatch' && (github.event.inputs.lane == 'beta' || contains(github.event.inputs.lane, 'android'))
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/master') ||
+      (github.event_name == 'workflow_dispatch' &&
+       (github.event.inputs.lane == 'beta' ||
+        contains(github.event.inputs.lane, 'android')))
     runs-on: ubuntu-latest
     environment: release-beta
     steps:
@@ -110,3 +127,49 @@ jobs:
         run: |
           LANE="${{ github.event.inputs.lane || 'android beta' }}"
           nix develop .#release --command bash -lc "fastlane $LANE"
+
+  linux-beta:
+    name: "Linux AppImage beta (${{ matrix.system }})"
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            system: x86_64-linux
+          - runner: ubuntu-24.04-arm
+            system: aarch64-linux
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reclaim disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
+          docker image prune -af || true
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            build-dir = /nix/build
+            sandbox = relaxed
+            allow-import-from-derivation = true
+            trusted-users = runner root
+
+      - name: Build AppImage
+        run: |
+          ./.github/scripts/nix-retry.sh \
+            nix build ".#packages.${{ matrix.system }}.wawona-appimage" --print-build-logs
+
+      - name: Smoke-test and stage AppImage
+        run: ./.github/scripts/appimage-smoke.sh result "${{ matrix.system }}"
+
+      - name: Upload beta AppImage (workflow artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: wawona-beta-appimage-${{ matrix.system }}
+          path: dist/*.AppImage
+          retention-days: 30

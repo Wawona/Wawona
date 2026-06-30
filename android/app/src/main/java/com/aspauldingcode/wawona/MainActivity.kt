@@ -628,7 +628,7 @@ fun WawonaApp(
             MachineType.VM -> {
                 Toast.makeText(
                     context,
-                    "Virtual machine runtime is a v0.2.3 stub (UTM SE integration pending).",
+                    "Virtual machine runtime is a stub (UTM SE integration pending).",
                     Toast.LENGTH_LONG
                 ).show()
                 false
@@ -636,7 +636,7 @@ fun WawonaApp(
             MachineType.CONTAINER -> {
                 Toast.makeText(
                     context,
-                    "Container runtime is a v0.2.3 stub (integration pending).",
+                    "Container runtime is a stub (integration pending).",
                     Toast.LENGTH_LONG
                 ).show()
                 false

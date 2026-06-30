@@ -93,7 +93,7 @@ fun SettingsDialog(
                 }
             }
         },
-    ) {
+    ) { _ ->
         if (isWide) {
             Row(Modifier.fillMaxSize()) {
                 SettingsSidebarList(
@@ -199,11 +199,11 @@ private fun SettingsSectionContent(
             SettingsTab.DISPLAY -> DisplaySection(prefs)
             SettingsTab.INPUT -> InputSection(prefs)
             SettingsTab.GRAPHICS -> GraphicsSection(prefs)
-            SettingsTab.CONNECTION -> ConnectionSection(prefs, localIpAddress, context)
+            SettingsTab.CONNECTION -> ConnectionSection(prefs, localIpAddress, context, SettingsTab.CONNECTION.accentColor)
             SettingsTab.ADVANCED -> AdvancedSection(prefs)
-            SettingsTab.WAYPIPE -> WaypipeSection(prefs, context)
-            SettingsTab.SSH -> SSHSection(prefs)
-            SettingsTab.MACHINES -> MachineStubsSection(prefs)
+            SettingsTab.WAYPIPE -> WaypipeSection(prefs, context, SettingsTab.WAYPIPE.accentColor)
+            SettingsTab.SSH -> SSHSection(prefs, SettingsTab.SSH.accentColor)
+            SettingsTab.MACHINES -> MachineStubsSection(prefs, SettingsTab.MACHINES.accentColor)
             SettingsTab.ABOUT -> AboutSection(context)
             SettingsTab.DEPENDENCIES -> DependenciesSection()
         }
@@ -211,8 +211,8 @@ private fun SettingsSectionContent(
 }
 
 @Composable
-private fun MachineStubsSection(prefs: SharedPreferences) {
-    SettingsSectionHeader("Virtual Machines", Icons.Filled.Storage)
+private fun MachineStubsSection(prefs: SharedPreferences, accent: Color) {
+    SettingsSectionHeader("Virtual Machines", Icons.Filled.Storage, accent)
     SettingsTextInputItem(
         prefs, "machineVmProviderStub", "VM Provider",
         "Provider identifier for future VM integration", Icons.Filled.Storage,
@@ -229,7 +229,7 @@ private fun MachineStubsSection(prefs: SharedPreferences) {
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
     ) {
         Text(
-            "VM launch is a v0.2.3 stub. Future support will come from Wawona's UTM SE fork.",
+            "VM launch is a stub. Future support will come from Wawona's UTM SE fork.",
             Modifier.padding(12.dp),
             style = MaterialTheme.typography.bodySmall
         )
@@ -237,7 +237,7 @@ private fun MachineStubsSection(prefs: SharedPreferences) {
 
     Spacer(Modifier.height(12.dp))
 
-    SettingsSectionHeader("Containers", Icons.Filled.Inventory2)
+    SettingsSectionHeader("Containers", Icons.Filled.Inventory2, accent)
     SettingsTextInputItem(
         prefs, "machineContainerRuntimeStub", "Container Runtime",
         "Default runtime for future container integration", Icons.Filled.Inventory2,
@@ -254,7 +254,7 @@ private fun MachineStubsSection(prefs: SharedPreferences) {
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
     ) {
         Text(
-            "Container launch is a v0.2.3 stub and intentionally non-functional right now.",
+            "Container launch is a stub and intentionally non-functional right now.",
             Modifier.padding(12.dp),
             style = MaterialTheme.typography.bodySmall
         )
@@ -268,7 +268,7 @@ private fun MachineStubsSection(prefs: SharedPreferences) {
 @Composable
 private fun DisplaySection(prefs: SharedPreferences) {
     SettingsSectionHeader("Display", Icons.Filled.DesktopWindows, SettingsTab.DISPLAY.accentColor)
-    SettingsGroup {
+    SettingsGroup(SettingsTab.DISPLAY.accentColor) {
         SettingsSwitchItem(prefs, "forceServerSideDecorations", "Force Server-Side Decorations",
             "When off, Wayland clients (e.g. weston-terminal) draw their own window frames. When on, the compositor owns decorations.",
             Icons.Filled.BorderOuter, default = false, iconTint = SettingsTab.DISPLAY.accentColor)
@@ -282,7 +282,7 @@ private fun DisplaySection(prefs: SharedPreferences) {
 @Composable
 private fun GraphicsSection(prefs: SharedPreferences) {
     SettingsSectionHeader("Drivers", Icons.Filled.Speed, SettingsTab.GRAPHICS.accentColor)
-    SettingsGroup {
+    SettingsGroup(SettingsTab.GRAPHICS.accentColor) {
         SettingsDropdownItem(prefs, "vulkanDriver", "Vulkan Driver",
             "Select Vulkan implementation. None disables Vulkan.", Icons.Filled.Speed, "None",
             listOf("None", "SwiftShader", "Turnip", "System"), iconTint = SettingsTab.GRAPHICS.accentColor)
@@ -291,7 +291,7 @@ private fun GraphicsSection(prefs: SharedPreferences) {
             listOf("None", "ANGLE", "System"), iconTint = SettingsTab.GRAPHICS.accentColor)
     }
     SettingsSectionHeader("Features", Icons.Filled.Tune, SettingsTab.GRAPHICS.accentColor)
-    SettingsGroup {
+    SettingsGroup(SettingsTab.GRAPHICS.accentColor) {
         SettingsSwitchItem(prefs, "dmabufEnabled", "DmaBuf Support",
             "Enable DMA buffer sharing between clients", Icons.Filled.Share, default = true, iconTint = SettingsTab.GRAPHICS.accentColor)
     }
@@ -300,7 +300,7 @@ private fun GraphicsSection(prefs: SharedPreferences) {
 @Composable
 private fun AdvancedSection(prefs: SharedPreferences) {
     SettingsSectionHeader("Advanced", Icons.Filled.Tune, SettingsTab.ADVANCED.accentColor)
-    SettingsGroup {
+    SettingsGroup(SettingsTab.ADVANCED.accentColor) {
         SettingsSwitchItem(prefs, "wawona.pref.shakeToCloseEnabled", "Shake to Exit Machine",
             "When enabled, shaking the device asks before closing the active machine session.",
             Icons.Filled.Vibration, default = true, iconTint = SettingsTab.ADVANCED.accentColor)
@@ -334,7 +334,7 @@ private fun AdvancedSection(prefs: SharedPreferences) {
 @Composable
 private fun InputSection(prefs: SharedPreferences) {
     SettingsSectionHeader("Input", Icons.Filled.Keyboard, SettingsTab.INPUT.accentColor)
-    SettingsGroup {
+    SettingsGroup(SettingsTab.INPUT.accentColor) {
         SettingsSwitchItem(prefs, "touchpadMode", "Touchpad Mode",
             "1-finger = pointer, tap = click, 2-finger drag = scroll. When off, use direct touch (multi-touch)",
             Icons.Filled.TouchApp, default = false, iconTint = SettingsTab.INPUT.accentColor)
@@ -348,7 +348,8 @@ private fun InputSection(prefs: SharedPreferences) {
 }
 
 @Composable
-private fun ConnectionSection(prefs: SharedPreferences, localIp: String?, context: Context) {
+private fun ConnectionSection(prefs: SharedPreferences, localIp: String?, context: Context, accent: Color) {
+    SettingsSectionHeader("Network", Icons.Filled.Computer, accent)
     Surface(
         Modifier.fillMaxWidth().padding(vertical = 4.dp),
         shape = RoundedCornerShape(16.dp),
@@ -381,7 +382,8 @@ private fun ConnectionSection(prefs: SharedPreferences, localIp: String?, contex
 }
 
 @Composable
-private fun WaypipeSection(prefs: SharedPreferences, context: Context) {
+private fun WaypipeSection(prefs: SharedPreferences, context: Context, accent: Color) {
+    SettingsSectionHeader("Transport", Icons.Filled.Wifi, accent)
     SettingsInfoRow(
         title = "Waypipe",
         value = "v0.10.6",
@@ -431,7 +433,7 @@ private fun WaypipeSection(prefs: SharedPreferences, context: Context) {
     }
 
     // Remote execution (belongs in Waypipe since it's what runs on the remote end)
-    SettingsSectionHeader("Remote Execution", Icons.Filled.PlayArrow)
+    SettingsSectionHeader("Remote Execution", Icons.Filled.PlayArrow, accent)
     SettingsTextInputItem(prefs, "waypipeRemoteCommand", "Remote Command",
         "Application to run remotely (e.g., weston-simple-shm)", Icons.Filled.PlayArrow, "", KeyboardType.Text)
     SettingsMultiLineTextInputItem(prefs, "waypipeCustomScript", "Custom Script",
@@ -496,9 +498,10 @@ private fun WaypipeSection(prefs: SharedPreferences, context: Context) {
 }
 
 @Composable
-private fun SSHSection(prefs: SharedPreferences) {
+private fun SSHSection(prefs: SharedPreferences, accent: Color) {
+    SettingsSectionHeader("Secure Shell", Icons.Filled.Lock, accent)
     SettingsSwitchItem(prefs, "waypipeSSHEnabled", "Enable SSH",
-        "Use SSH transport for waypipe connections", Icons.Filled.Lock, default = true)
+        "Use SSH transport for waypipe connections", Icons.Filled.Lock, default = true, iconTint = accent)
 
     SettingsInfoRow(
         title = "SSH Library",
@@ -527,7 +530,7 @@ private fun SSHSection(prefs: SharedPreferences) {
     }
 
     // Connection settings
-    SettingsSectionHeader("Connection", Icons.Filled.Computer)
+    SettingsSectionHeader("Connection", Icons.Filled.Computer, accent)
     SettingsTextInputItem(prefs, "waypipeSSHHost", "SSH Host",
         "IP or hostname (use IP on Android; SSH config aliases like \"ssh\" don't resolve)",
         Icons.Filled.Computer, "", KeyboardType.Text)
@@ -535,7 +538,7 @@ private fun SSHSection(prefs: SharedPreferences) {
         "SSH username", Icons.Filled.Person, "", KeyboardType.Text)
 
     // Auth method
-    SettingsSectionHeader("Authentication", Icons.Filled.VpnKey)
+    SettingsSectionHeader("Authentication", Icons.Filled.VpnKey, accent)
     SettingsDropdownItem(prefs, "sshAuthMethod", "Auth Method",
         "How to authenticate with the remote host", Icons.Filled.VpnKey, "password",
         listOf("password", "publickey"))
@@ -560,7 +563,7 @@ private fun SSHSection(prefs: SharedPreferences) {
     Spacer(Modifier.height(12.dp))
 
     // Test buttons -- read prefs FRESH at click time (not cached at composition)
-    SettingsSectionHeader("Diagnostics", Icons.Filled.NetworkCheck)
+    SettingsSectionHeader("Diagnostics", Icons.Filled.NetworkCheck, accent)
     val scope = rememberCoroutineScope()
     var pingResult by remember { mutableStateOf<String?>(null) }
     var sshResult by remember { mutableStateOf<String?>(null) }
@@ -863,7 +866,10 @@ fun TestResultCard(result: String, context: Context) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 @Composable
-private fun SettingsGroup(content: @Composable ColumnScope.() -> Unit) {
+private fun SettingsGroup(
+    accent: Color = MaterialTheme.colorScheme.primary,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -871,7 +877,7 @@ private fun SettingsGroup(content: @Composable ColumnScope.() -> Unit) {
             .clip(RoundedCornerShape(16.dp))
             .border(
                 1.dp,
-                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f),
+                accent.copy(alpha = 0.35f),
                 RoundedCornerShape(16.dp),
             )
             .background(MaterialTheme.colorScheme.surfaceContainerLow)

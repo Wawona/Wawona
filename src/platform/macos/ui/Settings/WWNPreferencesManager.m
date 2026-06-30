@@ -304,7 +304,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
     kWWNPrefsWaypipeTitlePrefix : @"",
     kWWNPrefsWaypipeSecCtx : @"",
     kWWNPrefsWaypipeUseSSHConfig : @YES,
-    // Machine stubs (v0.2.3)
+    // Machine stubs
     kWWNPrefsMachineVMProviderStub : @"utm-se",
     kWWNPrefsMachineVMDefaultVsockStub : @"1024",
     kWWNPrefsMachineContainerRuntimeStub : @"docker",

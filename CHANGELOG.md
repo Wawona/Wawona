@@ -15,10 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Release infrastructure** — `scripts/bootstrap-apple-signing.sh`, `scripts/sync-github-secrets.sh`, `.release-secrets.env.template`, GitHub Environment `release-beta`, workflow `.github/workflows/release-beta.yml`.
 - **Nix release outputs** — `wawona-{ipados,tvos,watchos,visionos}-ipa`, `wawona-android-aab`.
 - **VM launcher (macOS)** — Machine profiles with type Virtual Machine open UTM/UTM SE when installed.
+- **Linux 1:1 parity foundation** — canonical `wawona.machineProfiles.v1` machine-profile model in Rust (`src/linux/machine_profile.rs`) with the same five machine types, runtime overrides, and JSON keys as the Apple/Android front-ends; canonical JSON persistence with one-time migration from the legacy `linux-config-v1.json` (`src/linux/profile_store.rs`); the shared 19-entry bundled-client catalog (`src/linux/bundled_clients.rs`); and GTK-free adaptive view-model helpers (`src/linux/ui_model.rs`).
+- **Linux GTK compile gate** — `wawona-linux-ui` (+ tray and compositor-host helpers) now compiles ahead-of-time and reproducibly via Nix (`dependencies/wawona/linux-ui-prebuilt.nix`, `packages.<linux>.wawona-linux-ui-bin`) and in the `cargo-test-linux` CI job, so UI/model parity work can no longer silently break the Linux build.
+- **Linux AppImage prebuilt** — self-contained, glibc-portable AppImage of the GTK UI (`packages.<linux>.wawona-appimage`) for x86_64 and aarch64, built reproducibly on the Determinate Linux builder. A single artifact serves both X11 and Wayland hosts (the binary auto-selects the GDK backend from `$WAYLAND_DISPLAY` at startup). CI builds, smoke-tests, and uploads it as a workflow artifact.
+- **Linux parity CI gates** — `verify-linux-machines-parity.py`, `verify-linux-bundled-clients.py`, and `verify-linux-shell-tools.py` enforce that the Linux canonical model, bundled-client catalog, and shell-tool/runtime wiring stay in lockstep with the other platforms.
 
 ### Changed
 
 - Version bumped to 0.2.4 across VERSION, Cargo.toml, and platform headers.
+- Linux UI/model stub copy is now version-agnostic (no hard-coded `v0.2.3` strings) across the GTK, Android, and macOS front-ends.
+- `nix.yml` and `android-parity.yml` use `concurrency` groups so superseded CI runs auto-cancel; `publish.yml` now also triggers on `master`.
+- Documentation: all paths that referenced removed in-tree `dependencies/toolchains`, `dependencies/libs`, and `dependencies/apple` now point at upstream `wwn-*` flake inputs (`wwn-toolchain`, `wwn-weston`, `wwn-zsh`, `wwn-waypipe`, …).
 - `wwn-neovim` flake input uses `path:../wwn-neovim` (local monorepo); switch to `github:Wawona/wwn-neovim` when published.
 - Waypipe version string aligned to 0.11.0 in xcodegen.
 - `nix develop` devShell includes fastlane, ruby, cocoapods, jdk17, and gh; `nix develop .#release` for release hints.
@@ -38,8 +45,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **macOS / iOS**
   - Force SSD (server-side decorations) setting — compositor sends `configure(server_side)`, host draws window chrome
   - Weston Terminal and Native Weston launch toggles in Settings
-  - Weston iOS build (`dependencies/clients/weston/ios.nix`)
-  - Weston Android build (`dependencies/clients/weston/android.nix`)
+  - Weston iOS build (`wwn-weston/dependencies/clients/weston/ios.nix`)
+  - Weston Android build (`wwn-weston/dependencies/clients/weston/android.nix`)
 - **Graphics**
   - `graphics-smoke` binary — Vulkan driver probe with JSON output
 - **Nix / Build**
@@ -81,7 +88,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - SSH bridge thread loop reworked to proactively drain `libssh2`'s internal buffer after writing to the local Wayland socket
 - **Nix**
   - `flake.nix`: Refactor; Weston apps and shell wrappers
-  - `dependencies/toolchains/default.nix`: Major simplification
+  - `wwn-toolchain/dependencies/toolchains/default.nix`: Major simplification (now upstream flake input)
   - `dependencies/wawona/android.nix`: Weston bundling, Gradle, jniLibs
   - `dependencies/wawona/ios.nix`: iOS build pipeline expansion
   - `dependencies/wawona/macos.nix`: Weston client bundling

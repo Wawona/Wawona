@@ -1,5 +1,6 @@
 package com.aspauldingcode.wawona
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -7,6 +8,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -26,7 +28,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 
 enum class WawonaSheetDetent {
@@ -51,13 +52,14 @@ fun WawonaModalSheet(
     scrollBehavior: WawonaSheetScrollBehavior = WawonaSheetScrollBehavior.ExpandWithContent,
     navigationIcon: @Composable () -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {},
-    content: @Composable ColumnScope.() -> Unit,
+    content: @Composable ColumnScope.(contentScrollState: ScrollState) -> Unit,
 ) {
     val skipPartiallyExpanded = defaultDetent == WawonaSheetDetent.Large
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = skipPartiallyExpanded,
         confirmValueChange = { true },
     )
+    val contentScrollState = rememberScrollState()
 
     LaunchedEffect(defaultDetent) {
         when (defaultDetent) {
@@ -72,21 +74,21 @@ fun WawonaModalSheet(
         }
     }
 
-    val scrollConnection = remember(sheetState, scrollBehavior) {
+    // ContentFirst mirrors iOS .presentationContentInteraction(.scrolls): at the
+    // medium detent the inner content scrolls instead of the sheet growing. We are
+    // the nearest nested-scroll ancestor of the content, so we run before the
+    // ModalBottomSheet's own connection and feed upward drags straight into the
+    // shared scroll state, swallowing them so the sheet only expands via the drag
+    // handle.
+    val scrollConnection = remember(sheetState, scrollBehavior, contentScrollState) {
         if (scrollBehavior == WawonaSheetScrollBehavior.ContentFirst) {
             object : NestedScrollConnection {
                 override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                    if (sheetState.currentValue == SheetValue.PartiallyExpanded && available.y < 0f) {
+                    if (sheetState.currentValue != SheetValue.Expanded && available.y < 0f) {
+                        contentScrollState.dispatchRawDelta(-available.y)
                         return Offset(0f, available.y)
                     }
                     return Offset.Zero
-                }
-
-                override suspend fun onPreFling(available: Velocity): Velocity {
-                    if (sheetState.currentValue == SheetValue.PartiallyExpanded) {
-                        return available
-                    }
-                    return Velocity.Zero
                 }
             }
         } else {
@@ -124,10 +126,9 @@ fun WawonaModalSheet(
                 navigationIcon = navigationIcon,
                 actions = actions,
             )
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                content = content,
-            )
+            Column(modifier = Modifier.fillMaxWidth()) {
+                content(contentScrollState)
+            }
         }
     }
 }

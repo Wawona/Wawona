@@ -10,6 +10,10 @@
     rust-overlay.url = "github:oxalica/rust-overlay";
     rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
     crate2nix.url = "github:nix-community/crate2nix";
+    # Reproducible, glibc-portable AppImage bundler (static appimage runtime +
+    # userns-chroot AppRun that maps the bundled /nix/store closure).
+    nix-appimage.url = "github:ralismark/nix-appimage";
+    nix-appimage.inputs.nixpkgs.follows = "nixpkgs";
     "nix-xcodeenvtests" = {
       url = "github:svanderburg/nix-xcodeenvtests";
       flake = false;
@@ -55,7 +59,7 @@
     wwn-neovim.inputs.wwn-toolchain.follows = "wwn-toolchain";
   };
 
-  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-waypipe, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-neovim, ... }:
+  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-waypipe, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-neovim, ... }:
   let
     linuxSystems = [ "x86_64-linux" "aarch64-linux" ];
     darwinSystems = [ "x86_64-darwin" "aarch64-darwin" ];
@@ -605,6 +609,20 @@
           wawona-linux = pkgs.callPackage ./dependencies/wawona/linux.nix {
             inherit wawonaVersion;
             waypipeSrc = waypipe-src;
+          };
+          wawona-linux-ui-bin = pkgs.callPackage ./dependencies/wawona/linux-ui-prebuilt.nix {
+            inherit wawonaVersion;
+            waypipeSrc = waypipe-src;
+            coreutilsSrc = coreutils-src;
+          };
+          # Self-contained, glibc-portable AppImage of the GTK UI. The bundled
+          # binary auto-selects the GDK x11/wayland backend at startup based on
+          # the host's $WAYLAND_DISPLAY socket, so a single artifact serves both
+          # X11 and Wayland hosts. Built reproducibly via the Determinate Linux
+          # builder for x86_64 and aarch64.
+          wawona-appimage = nix-appimage.lib.${system}.mkAppImage {
+            program = "${self.packages.${system}.wawona-linux-ui-bin}/bin/wawona-linux-ui";
+            name = "Wawona-${pkgs.lib.head (pkgs.lib.splitString "-" system)}.AppImage";
           };
           wawona-linux-compositor-host = pkgs.callPackage ./dependencies/wawona/linux-host.nix {
             inherit wawonaVersion;

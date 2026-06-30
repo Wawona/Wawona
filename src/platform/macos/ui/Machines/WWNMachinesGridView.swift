@@ -11,6 +11,9 @@ struct WWNMachinesGridView: View {
   @State private var editingProfile: WWNMachineProfile?
   @State private var isCreating = false
   @State private var searchQuery = ""
+  #if os(iOS)
+  @State private var isSearchPresented = false
+  #endif
   #if os(macOS)
   @State private var columnVisibility: NavigationSplitViewVisibility = .all
   #endif
@@ -74,7 +77,7 @@ struct WWNMachinesGridView: View {
       detailPane
         .navigationTitle(detailNavigationTitle)
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $searchQuery, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search machines")
+        .searchable(text: $searchQuery, isPresented: $isSearchPresented, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search machines")
         .toolbar {
           detailToolbarContent
         }
@@ -98,6 +101,7 @@ struct WWNMachinesGridView: View {
       .toolbar {
         detailToolbarContent
       }
+      .modifier(MacUnifiedToolbarMaterial())
     )
     #else
     detailPane
@@ -146,6 +150,14 @@ struct WWNMachinesGridView: View {
     }
     #else
     ToolbarItemGroup(placement: .topBarTrailing) {
+      #if os(iOS)
+      Button {
+        isSearchPresented = true
+      } label: {
+        Image(systemName: "magnifyingglass")
+      }
+      .accessibilityLabel("Search")
+      #endif
       if let onOpenSettings {
         Button(action: onOpenSettings) {
           Image(systemName: "gearshape")
@@ -508,6 +520,23 @@ private struct MacDetailTopInsetForTransparentTitlebar: ViewModifier {
       // Keep primary content below Tahoe-style transparent titlebar while
       // allowing sidebar to visually extend to the top with traffic lights.
       content.safeAreaPadding(.top, 28)
+    } else {
+      content
+    }
+  }
+}
+
+/// Restores the Tahoe-style unified toolbar blur. The window opts into a
+/// transparent titlebar + full-size content view for sidebar-to-top
+/// integration, which otherwise removes the toolbar's material; this puts the
+/// frosted material back so detail content blurs under the toolbar like modern
+/// macOS 26 apps.
+private struct MacUnifiedToolbarMaterial: ViewModifier {
+  func body(content: Content) -> some View {
+    if #available(macOS 26.0, *) {
+      content
+        .toolbarBackground(.ultraThinMaterial, for: .windowToolbar)
+        .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
     } else {
       content
     }

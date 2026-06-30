@@ -25,6 +25,10 @@ on:
       - '.github/scripts/nix-build-shell-tools.sh'
       - '.github/scripts/nix-build-android-meson-sandbox-gate.sh'
 
+concurrency:
+  group: android-parity-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   nix-android-gate:
     runs-on: macos-15

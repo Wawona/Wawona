@@ -12,7 +12,12 @@ pub mod config;
 pub mod util;
 pub mod prelude;
 pub mod version;
-#[cfg(feature = "linux-ui")]
+// The `linux` module holds the GTK app's support code plus the canonical
+// machine-profile model/store/catalog. It never references the optional GTK
+// crates, so it compiles on any host. It is built for the `linux-ui` GTK
+// binaries and under `test` (so the model + migration unit tests run on the
+// CI host and locally), but stays out of normal mobile/Apple release builds.
+#[cfg(any(feature = "linux-ui", test))]
 pub mod linux;
 
 // iland Mode B (bare-metal WindowServer replacement) gate. It is macOS-only,

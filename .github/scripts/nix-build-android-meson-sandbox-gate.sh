@@ -42,5 +42,9 @@ ATTRS=(
 )
 
 echo "Android meson sandbox gate: sandbox=$SANDBOX attrs=${#ATTRS[@]}"
-nix build "${ATTRS[@]}" "${NIX_ARGS[@]}" "${OVERRIDE[@]}"
+if ((${#OVERRIDE[@]})); then
+  nix build "${ATTRS[@]}" "${NIX_ARGS[@]}" "${OVERRIDE[@]}"
+else
+  nix build "${ATTRS[@]}" "${NIX_ARGS[@]}"
+fi
 echo "Android meson sandbox gate: OK"

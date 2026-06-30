@@ -268,7 +268,8 @@ fn test_configure_serial_backlog_without_ack() {
     let client_id = env.state.clients.keys().next().cloned().unwrap();
     let toplevel_id = env
         .state
-        .xdg_toplevels
+        .xdg
+        .toplevels
         .keys()
         .next()
         .map(|(_, id)| *id)

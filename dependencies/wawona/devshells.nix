@@ -55,10 +55,28 @@ builtins.listToAttrs (map (system: let
     nativeBuildInputs = [ pkgs.pkg-config ];
     buildInputs = [
       pkgs.rustToolchain
+      # Wayland client stack: `pkgs.wayland` ships wayland-client.pc required by
+      # the wayland-sys crate; wayland-protocols alone is insufficient.
+      pkgs.wayland
+      pkgs.wayland-protocols
       pkgs.libxkbcommon
       pkgs.libffi
-      pkgs.wayland-protocols
       pkgs.openssl
+      # GTK4/libadwaita stack so `cargo build --features linux-ui` (the
+      # wawona-linux-ui GTK binary) compiles inside `nix develop`. Mirrors the
+      # runtimeInputs of dependencies/wawona/linux.nix.
+      pkgs.gtk4
+      pkgs.libadwaita
+      pkgs.glib
+      pkgs.cairo
+      pkgs.pango
+      pkgs.gdk-pixbuf
+      pkgs.graphene
+      pkgs.harfbuzz
+      pkgs.fribidi
+      pkgs.freetype
+      pkgs.fontconfig
+      pkgs.vulkan-loader
       pkgs.nix-output-monitor
     ] ++ releasePackages pkgs;
     shellHook = ''
@@ -122,10 +140,37 @@ builtins.listToAttrs (map (system: let
       ${releaseShellHook}
     '';
   };
+
+  # Compile-only shell for the Linux GTK UI on any host. On Linux it inherits
+  # the full linuxShell (which already carries the GTK4 stack). On macOS it
+  # layers the GTK4/libadwaita dev libraries (cached for darwin) on top of the
+  # darwinShell so contributors and CI-equivalent local checks can run
+  # `nix develop .#linux-ui-check -c cargo build --bin wawona-linux-ui --features linux-ui`
+  # without a Linux machine.
+  linuxUiCheckShell = pkgs.mkShell {
+    inputsFrom = [
+      (if pkgs.stdenv.isDarwin then darwinShell else linuxShell)
+    ];
+    nativeBuildInputs = [ pkgs.pkg-config ];
+    buildInputs = pkgs.lib.optionals pkgs.stdenv.isDarwin [
+      pkgs.gtk4
+      pkgs.libadwaita
+      pkgs.glib
+      pkgs.cairo
+      pkgs.pango
+      pkgs.gdk-pixbuf
+      pkgs.graphene
+      pkgs.harfbuzz
+      pkgs.fribidi
+      pkgs.freetype
+      pkgs.fontconfig
+    ];
+  };
 in {
   name = system;
   value = {
     default = if pkgs.stdenv.isDarwin then darwinShell else linuxShell;
     release = releaseShell;
+    linux-ui-check = linuxUiCheckShell;
   };
 }) systems)

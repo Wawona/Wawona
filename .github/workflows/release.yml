@@ -1,9 +1,17 @@
 name: Release
 
+# Tag push (v*) → GitHub Release with macOS DMG, Android APK, iOS IPA, and Linux
+# AppImages (x86_64 + aarch64). Store submission (App Store / Play production)
+# is separate: use fastlane ios release / Play production lanes when ready.
+
 on:
   push:
     tags:
       - 'v*'
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -45,6 +53,43 @@ jobs:
           name: macos-dmg
           path: Wawona-*.dmg
 
+  release-ios:
+    name: "iOS IPA (GitHub Release asset)"
+    runs-on: macos-26
+    environment: release-beta
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "WAWONA_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "WAWONA_BUILD_NUMBER=${{ github.run_number }}" >> "$GITHUB_ENV"
+
+      - name: Select Xcode
+        run: ./.github/scripts/select-xcode.sh
+
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+            trusted-users = runner root
+
+      - name: Build signed iPhone IPA
+        env:
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+        run: |
+          chmod +x ./.github/scripts/stage-ios-ipa.sh
+          ./.github/scripts/stage-ios-ipa.sh "$WAWONA_VERSION"
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: dist/Wawona-*-iOS.ipa
+
   release-android:
     runs-on: ubuntu-latest
     steps:
@@ -78,8 +123,51 @@ jobs:
           name: android-apk
           path: Wawona-*.apk
 
+  release-linux:
+    name: "Linux AppImage (${{ matrix.system }})"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            system: x86_64-linux
+          - runner: ubuntu-24.04-arm
+            system: aarch64-linux
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
+          docker image prune -af || true
+
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            build-dir = /nix/build
+            sandbox = relaxed
+            allow-import-from-derivation = true
+            trusted-users = runner root
+
+      - name: Build AppImage
+        run: |
+          ./.github/scripts/nix-retry.sh \
+            nix build ".#packages.${{ matrix.system }}.wawona-appimage" --print-build-logs
+
+      - name: Smoke-test and stage AppImage
+        run: ./.github/scripts/appimage-smoke.sh result "${{ matrix.system }}"
+
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage-${{ matrix.system }}
+          path: dist/*.AppImage
+
   create-release:
-    needs: [release-macos, release-android]
+    needs: [release-macos, release-ios, release-android, release-linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -89,7 +177,14 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Create release
+      - name: Flatten release assets
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f \( -name '*.dmg' -o -name '*.apk' -o -name '*.ipa' -o -name '*.AppImage' \) \
+            -exec cp -v {} release-assets/ \;
+          ls -la release-assets/
+
+      - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -105,4 +200,4 @@ jobs:
             --title "Wawona v${VERSION}" \
             --generate-notes \
             $PRERELEASE \
-            artifacts/*
+            release-assets/*

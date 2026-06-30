@@ -4,7 +4,11 @@ import android.content.Context
 import android.os.Build
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -21,6 +25,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.PauseCircle
 import androidx.compose.material.icons.filled.Search
@@ -28,7 +33,6 @@ import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -44,7 +48,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -79,12 +83,16 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -92,8 +100,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -198,56 +209,84 @@ fun MachineWelcomeScreen(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            Column {
-                TopAppBar(
-                    title = { Text("Machine Configuration") },
-                    scrollBehavior = scrollBehavior,
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.82f),
-                        scrolledContainerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.96f),
-                    ),
-                    actions = {
+            TopAppBar(
+                title = {
+                    if (searchExpanded) {
+                        val searchFocus = remember { FocusRequester() }
+                        LaunchedEffect(Unit) { searchFocus.requestFocus() }
+                        TextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(searchFocus),
+                            placeholder = { Text("Search machines") },
+                            singleLine = true,
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent,
+                            ),
+                        )
+                    } else {
+                        Text("Machine Configuration")
+                    }
+                },
+                scrollBehavior = scrollBehavior,
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.82f),
+                    scrolledContainerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.96f),
+                ),
+                navigationIcon = {
+                    if (searchExpanded) {
                         IconButton(onClick = {
-                            searchExpanded = !searchExpanded
-                            if (!searchExpanded) searchQuery = ""
+                            searchExpanded = false
+                            searchQuery = ""
                         }) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Close search",
+                            )
+                        }
+                    }
+                },
+                actions = {
+                    if (searchExpanded) {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Filled.Close, contentDescription = "Clear search")
+                            }
+                        }
+                    } else {
+                        IconButton(onClick = { searchExpanded = true }) {
                             Icon(Icons.Filled.Search, contentDescription = "Search machines")
                         }
                         IconButton(onClick = onOpenSettings) {
                             Icon(Icons.Filled.Settings, contentDescription = "Settings")
                         }
-                    },
-                )
-                AnimatedVisibility(visible = searchExpanded) {
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 4.dp),
-                        placeholder = { Text("Search machines") },
-                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                        singleLine = true,
-                        shape = RoundedCornerShape(16.dp),
-                    )
-                }
-            }
+                    }
+                },
+            )
         },
         floatingActionButton = {
-            FloatingActionButton(
+            Surface(
                 onClick = { creating = true },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
                 shape = CircleShape,
+                color = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                shadowElevation = 6.dp,
                 modifier = Modifier
-                    .padding(end = 20.dp, bottom = 20.dp)
-                    .size(48.dp),
+                    .padding(end = 16.dp, bottom = 16.dp)
+                    .size(44.dp),
             ) {
-                Icon(
-                    Icons.Filled.Add,
-                    contentDescription = "Add Machine",
-                    modifier = Modifier.size(22.dp),
-                )
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Filled.Add,
+                        contentDescription = "Add Machine",
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
         },
     ) { padding ->
@@ -407,17 +446,23 @@ private fun MachineGridCard(
     val summary = configurationSummary(profile)
 
     val cardShape = RoundedCornerShape(20.dp)
-    val cardSurface = MaterialTheme.colorScheme.surfaceContainerLow
+    // Lift the card visibly off the near-black compositor background, matching the
+    // iOS glass card (white @ 0.05 over ultra-thin material).
+    val cardSurface = lerp(
+        MaterialTheme.colorScheme.surface,
+        MaterialTheme.colorScheme.onSurface,
+        0.07f,
+    )
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .shadow(
-                elevation = 16.dp,
+                elevation = 20.dp,
                 shape = cardShape,
                 clip = false,
-                ambientColor = Color.Black.copy(alpha = 0.22f),
-                spotColor = Color.Black.copy(alpha = 0.22f),
+                ambientColor = Color.Black.copy(alpha = 0.35f),
+                spotColor = Color.Black.copy(alpha = 0.45f),
             )
             .border(
                 width = 1.dp,
@@ -528,6 +573,8 @@ private fun MachineGridCard(
                     onClick = onDelete,
                     enabled = !isRunning,
                     modifier = Modifier.weight(1f),
+                    contentColor = MaterialTheme.colorScheme.error,
+                    borderColor = MaterialTheme.colorScheme.error.copy(alpha = 0.5f),
                 ) {
                     Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.size(4.dp))
@@ -547,6 +594,8 @@ private fun CompactOutlinedButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    contentColor: Color = MaterialTheme.colorScheme.onSurface,
+    borderColor: Color = MaterialTheme.colorScheme.outline,
     content: @Composable RowScope.() -> Unit,
 ) {
     OutlinedButton(
@@ -554,9 +603,9 @@ private fun CompactOutlinedButton(
         modifier = modifier.defaultMinSize(minWidth = 0.dp),
         enabled = enabled,
         contentPadding = compactButtonPadding,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        border = BorderStroke(1.dp, borderColor),
         colors = ButtonDefaults.outlinedButtonColors(
-            contentColor = MaterialTheme.colorScheme.onSurface,
+            contentColor = contentColor,
         ),
         content = content,
     )
@@ -680,7 +729,7 @@ private fun StatusChip(text: String) {
         fontWeight = FontWeight.Bold,
         modifier = Modifier
             .background(
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f),
                 RoundedCornerShape(50),
             )
             .padding(horizontal = 8.dp, vertical = 5.dp)
@@ -869,25 +918,30 @@ private fun MachineEditorSheet(
                 }
             }
         },
-    ) {
+    ) { contentScrollState ->
+        LaunchedEffect(showClientPicker) { contentScrollState.scrollTo(0) }
         AnimatedContent(
             targetState = showClientPicker,
             transitionSpec = {
-                if (targetState) {
-                    (slideInHorizontally { it } + fadeIn()).togetherWith(
-                        slideOutHorizontally { -it / 3 } + fadeOut(),
+                val slideSpec = tween<Int>(durationMillis = 320, easing = FastOutSlowInEasing)
+                val fadeSpec = tween<Float>(durationMillis = 220, easing = LinearOutSlowInEasing)
+                val transform = if (targetState) {
+                    (slideInHorizontally(slideSpec) { it } + fadeIn(fadeSpec)).togetherWith(
+                        slideOutHorizontally(slideSpec) { -it / 4 } + fadeOut(fadeSpec),
                     )
                 } else {
-                    (slideInHorizontally { -it } + fadeIn()).togetherWith(
-                        slideOutHorizontally { it / 3 } + fadeOut(),
+                    (slideInHorizontally(slideSpec) { -it } + fadeIn(fadeSpec)).togetherWith(
+                        slideOutHorizontally(slideSpec) { it / 4 } + fadeOut(fadeSpec),
                     )
                 }
+                transform.using(SizeTransform(clip = false))
             },
             label = "machineEditorClientPicker",
         ) { pickingClient ->
             if (pickingClient) {
                 BundledClientPicker(
                     selectedId = nativeLauncher,
+                    scrollState = contentScrollState,
                     onSelect = { id ->
                         nativeLauncher = id
                         showClientPicker = false
@@ -897,7 +951,7 @@ private fun MachineEditorSheet(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(contentScrollState)
                         .padding(horizontal = 16.dp)
                         .padding(bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -1102,12 +1156,13 @@ private fun MachineEditorSheet(
 @Composable
 private fun BundledClientPicker(
     selectedId: String,
+    scrollState: ScrollState,
     onSelect: (String) -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scrollState)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -1160,7 +1215,8 @@ private fun EditorSectionCard(
         modifier = Modifier
             .fillMaxWidth()
             .background(
-                MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.35f),
+                // Subtle lighter section fill matching iOS sectionCard (secondary @ 0.08).
+                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
                 RoundedCornerShape(14.dp),
             )
             .border(

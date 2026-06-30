@@ -568,7 +568,7 @@ static UIImage *WWNAboutLogo(void) {
   advanced.items = advancedItems;
   [sects addObject:advanced];
 
-  // MACHINES (stubs in v0.2.3)
+  // MACHINES (stubs)
   WWNPreferencesSection *machines = [[WWNPreferencesSection alloc] init];
   machines.title = @"Machines";
   machines.icon = @"server.rack";
