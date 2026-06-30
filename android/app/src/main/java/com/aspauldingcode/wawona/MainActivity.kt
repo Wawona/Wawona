@@ -217,15 +217,15 @@ fun WawonaApp(
     var nativeRuntimeReady by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
     var thumbnailRevision by remember { mutableIntStateOf(0) }
+    var surfaceViewRef by remember { mutableStateOf<WawonaSurfaceView?>(null) }
     val appScope = rememberCoroutineScope()
     var shakeToCloseEnabled by remember {
         mutableStateOf(prefs.getBoolean("wawona.pref.shakeToCloseEnabled", true))
     }
-    var suppressShakeBackWarning by remember {
-        mutableStateOf(prefs.getBoolean("wawona.pref.suppressShakeBackWarning", false))
+    var swipeBackToCloseEnabled by remember {
+        mutableStateOf(prefs.getBoolean("wawona.pref.swipeBackToCloseEnabled", true))
     }
-    var shakeBackWarningShownForSession by remember { mutableStateOf(false) }
-    var showShakeBackWarningDialog by remember { mutableStateOf(false) }
+    var showSessionCloseDialog by remember { mutableStateOf(false) }
     var respectSafeArea by remember {
         mutableStateOf(prefs.getBoolean("respectSafeArea", true))
     }
@@ -242,36 +242,61 @@ fun WawonaApp(
         mutableStateOf(prefs.getBoolean("westonTerminalEnabled", false))
     }
 
-    fun runNativeLauncher(launcher: String): Boolean = when (launcher) {
-        "weston-simple-shm" -> WawonaNative.nativeRunWestonSimpleSHM()
-        "weston" -> WawonaNative.nativeRunWeston()
-        "weston-terminal" -> WawonaNative.nativeRunWestonTerminal()
-        "foot" -> WawonaNative.nativeRunFoot()
-        else -> WawonaNative.nativeRunBundledClient(launcher)
+    fun isNativeClientRunning(clientId: String): Boolean = when (clientId) {
+        "weston" -> WawonaNative.nativeIsWestonRunning()
+        "weston-terminal" -> WawonaNative.nativeIsWestonTerminalRunning()
+        "weston-simple-shm" -> WawonaNative.nativeIsWestonSimpleSHMRunning()
+        "foot" -> WawonaNative.nativeIsFootRunning()
+        else ->
+            WawonaNative.nativeIsBundledClientRunning() &&
+                WawonaNative.nativeGetRunningBundledClientId() == clientId
     }
 
-    fun stopNativeLauncher(launcher: String) {
-        when (launcher) {
+    fun launchNativeClient(clientId: String): Boolean {
+        if (isNativeClientRunning(clientId)) {
+            return true
+        }
+        val launched = when (clientId) {
+            "weston-simple-shm" -> WawonaNative.nativeRunWestonSimpleSHM()
+            "weston" -> WawonaNative.nativeRunWeston()
+            "weston-terminal" -> WawonaNative.nativeRunWestonTerminal()
+            else -> WawonaNative.nativeRunBundledClient(clientId)
+        }
+        if (!launched) {
+            Toast.makeText(
+                context,
+                "Failed to launch native app '$clientId'.",
+                Toast.LENGTH_SHORT
+            ).show()
+            return false
+        }
+        WLog.i("NATIVE", "Launched native app '$clientId'")
+        return true
+    }
+
+    fun stopNativeClient(clientId: String) {
+        when (clientId) {
             "weston" -> WawonaNative.nativeStopWeston()
             "weston-terminal" -> WawonaNative.nativeStopWestonTerminal()
-            "foot" -> WawonaNative.nativeStopFoot()
             "weston-simple-shm" -> WawonaNative.nativeStopWestonSimpleSHM()
+            "foot" -> WawonaNative.nativeStopFoot()
             else -> {
-                if (WawonaNative.nativeGetRunningBundledClientId() == launcher) {
+                if (WawonaNative.nativeGetRunningBundledClientId() == clientId) {
                     WawonaNative.nativeStopBundledClient()
                 }
             }
         }
     }
 
-    fun isNativeLauncherRunning(launcher: String): Boolean = when (launcher) {
-        "weston" -> WawonaNative.nativeIsWestonRunning()
-        "weston-terminal" -> WawonaNative.nativeIsWestonTerminalRunning()
-        "foot" -> WawonaNative.nativeIsFootRunning()
-        "weston-simple-shm" -> WawonaNative.nativeIsWestonSimpleSHMRunning()
-        else ->
-            WawonaNative.nativeIsBundledClientRunning() &&
-                WawonaNative.nativeGetRunningBundledClientId() == launcher
+    fun stopWaypipe() {
+        try {
+            WawonaNative.nativeStopWaypipe()
+            isWaypipeRunning = false
+            WLog.i("WAYPIPE", "Waypipe stopped")
+        } catch (e: Exception) {
+            WLog.e("WAYPIPE", "Error stopping waypipe: ${e.message}")
+            Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
     }
 
     DisposableEffect(prefs) {
@@ -285,8 +310,8 @@ fun WawonaApp(
                     nativeWestonTerminalEnabled = sp.getBoolean("westonTerminalEnabled", false)
                 "wawona.pref.shakeToCloseEnabled" ->
                     shakeToCloseEnabled = sp.getBoolean("wawona.pref.shakeToCloseEnabled", true)
-                "wawona.pref.suppressShakeBackWarning" ->
-                    suppressShakeBackWarning = sp.getBoolean("wawona.pref.suppressShakeBackWarning", false)
+                "wawona.pref.swipeBackToCloseEnabled" ->
+                    swipeBackToCloseEnabled = sp.getBoolean("wawona.pref.swipeBackToCloseEnabled", true)
                 "respectSafeArea" -> {
                     respectSafeArea = sp.getBoolean("respectSafeArea", true)
                     try {
@@ -302,8 +327,46 @@ fun WawonaApp(
     }
 
     LaunchedEffect(sessionOrchestrator.activeSessionId) {
-        shakeBackWarningShownForSession = false
-        showShakeBackWarningDialog = false
+        showSessionCloseDialog = false
+    }
+
+    fun activeProfile(): MachineProfile? {
+        val activeSession = sessionOrchestrator.activeSession() ?: return null
+        return profiles.firstOrNull { it.id == activeSession.machineId }
+    }
+
+    suspend fun captureActiveThumbnail(profile: MachineProfile?) {
+        if (profile == null || !SessionExitSettings.isThumbnailEnabled(prefs, profile)) return
+        if (MachineThumbnailStore.captureFromSurface(surfaceViewRef, profile.id)) {
+            thumbnailRevision += 1
+        }
+    }
+
+    fun tearDownActiveSession(profile: MachineProfile?) {
+        when (profile?.type) {
+            MachineType.NATIVE -> stopNativeClient(profile.nativeLauncher.ifBlank { "weston-simple-shm" })
+            MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> stopWaypipe()
+            else -> stopWaypipe()
+        }
+        val activeId = sessionOrchestrator.activeSessionId
+        if (activeId != null) {
+            sessionOrchestrator.markDisconnected(activeId)
+        }
+        sessionOrchestrator.setActiveSession(null)
+        showMachinesHome = true
+    }
+
+    fun requestSessionCloseConfirm() {
+        showSessionCloseDialog = true
+    }
+
+    fun confirmSessionClose() {
+        showSessionCloseDialog = false
+        val profile = activeProfile()
+        appScope.launch {
+            captureActiveThumbnail(profile)
+            tearDownActiveSession(profile)
+        }
     }
 
     DisposableEffect(showWelcome, showMachinesHome) {
@@ -313,8 +376,8 @@ fun WawonaApp(
         }
     }
 
-    DisposableEffect(showMachinesHome, shakeToCloseEnabled, sessionOrchestrator.activeSessionId) {
-        if (showMachinesHome || !shakeToCloseEnabled || sessionOrchestrator.activeSessionId == null) {
+    DisposableEffect(showMachinesHome, sessionOrchestrator.activeSessionId) {
+        if (showMachinesHome || sessionOrchestrator.activeSessionId == null) {
             onDispose {}
         } else {
             val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
@@ -328,6 +391,8 @@ fun WawonaApp(
                 val shakeListener = object : SensorEventListener {
                     override fun onSensorChanged(event: SensorEvent) {
                         if (event.values.size < 3) return
+                        val profile = activeProfile()
+                        if (!SessionExitSettings.resolvedShakeEnabled(prefs, profile)) return
                         val x = event.values[0]
                         val y = event.values[1]
                         val z = event.values[2]
@@ -337,34 +402,7 @@ fun WawonaApp(
                         val now = SystemClock.elapsedRealtime()
                         if (now - lastShakeAtMs < shakeDebounceMs) return
                         lastShakeAtMs = now
-                        val activeId = sessionOrchestrator.activeSessionId ?: return
-                        val activeSession = sessionOrchestrator.activeSession()
-                        val activeProfile = activeSession?.let { session ->
-                            profiles.firstOrNull { it.id == session.machineId }
-                        }
-                        if (activeProfile != null) {
-                            appScope.launch {
-                                if (MachineThumbnailStore.captureFromWindow(context, activity?.window, activeProfile.id)) {
-                                    thumbnailRevision += 1
-                                }
-                            }
-                        }
-                        when (activeProfile?.type) {
-                            MachineType.NATIVE -> stopNativeLauncher(
-                                activeProfile.nativeLauncher.ifBlank { "weston-simple-shm" }
-                            )
-                            MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> {
-                                WawonaNative.nativeStopWaypipe()
-                                isWaypipeRunning = false
-                            }
-                            else -> {
-                                WawonaNative.nativeStopWaypipe()
-                                isWaypipeRunning = false
-                            }
-                        }
-                        sessionOrchestrator.markDisconnected(activeId)
-                        sessionOrchestrator.setActiveSession(null)
-                        showMachinesHome = true
+                        requestSessionCloseConfirm()
                     }
 
                     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
@@ -467,7 +505,6 @@ fun WawonaApp(
         }
     }
 
-    var surfaceViewRef by remember { mutableStateOf<WawonaSurfaceView?>(null) }
     var hadWindow by remember { mutableStateOf(false) }
     var lastPolledOutputW by remember { mutableIntStateOf(0) }
     var lastPolledOutputH by remember { mutableIntStateOf(0) }
@@ -479,7 +516,7 @@ fun WawonaApp(
                     profiles.firstOrNull { it.id == active.machineId }
                 }
                 isWaypipeRunning = when (activeProfile?.type) {
-                    MachineType.NATIVE -> isNativeLauncherRunning(
+                    MachineType.NATIVE -> isNativeClientRunning(
                         activeProfile.nativeLauncher.ifBlank { "weston-simple-shm" }
                     )
                     MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> WawonaNative.nativeIsWaypipeRunning()
@@ -564,33 +601,9 @@ fun WawonaApp(
         }
     }
 
-    fun stopWaypipe() {
-        try {
-            WawonaNative.nativeStopWaypipe()
-            isWaypipeRunning = false
-            WLog.i("WAYPIPE", "Waypipe stopped")
-        } catch (e: Exception) {
-            WLog.e("WAYPIPE", "Error stopping waypipe: ${e.message}")
-            Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
-        }
-    }
-
     fun launchNativeMachine(profile: MachineProfile): Boolean {
         val launcher = profile.nativeLauncher.ifBlank { "weston-simple-shm" }
-        if (isNativeLauncherRunning(launcher)) {
-            return true
-        }
-        val launched = runNativeLauncher(launcher)
-        if (!launched) {
-            Toast.makeText(
-                context,
-                "Failed to launch native app '$launcher'.",
-                Toast.LENGTH_SHORT
-            ).show()
-            return false
-        }
-        WLog.i("NATIVE", "Launched native app '$launcher'")
-        return true
+        return launchNativeClient(launcher)
     }
 
     fun connectMachine(profile: MachineProfile, sessionId: String? = null) {
@@ -648,19 +661,21 @@ fun WawonaApp(
                 (it.state == MachineSessionState.CONNECTED || it.state == MachineSessionState.CONNECTING)
         } ?: return
         appScope.launch {
-            if (MachineThumbnailStore.captureFromWindow(context, activity?.window, profile.id)) {
-                thumbnailRevision += 1
+            if (SessionExitSettings.isThumbnailEnabled(prefs, profile)) {
+                if (MachineThumbnailStore.captureFromSurface(surfaceViewRef, profile.id)) {
+                    thumbnailRevision += 1
+                }
             }
-        }
-        when (profile.type) {
-            MachineType.NATIVE -> stopNativeLauncher(profile.nativeLauncher)
-            MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> stopWaypipe()
-            else -> stopWaypipe()
-        }
-        sessionOrchestrator.markDisconnected(session.sessionId)
-        if (sessionOrchestrator.activeSessionId == session.sessionId) {
-            sessionOrchestrator.setActiveSession(null)
-            showMachinesHome = true
+            when (profile.type) {
+                MachineType.NATIVE -> stopNativeClient(profile.nativeLauncher)
+                MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> stopWaypipe()
+                else -> stopWaypipe()
+            }
+            sessionOrchestrator.markDisconnected(session.sessionId)
+            if (sessionOrchestrator.activeSessionId == session.sessionId) {
+                sessionOrchestrator.setActiveSession(null)
+                showMachinesHome = true
+            }
         }
     }
 
@@ -674,33 +689,14 @@ fun WawonaApp(
     }
 
     fun disconnectActiveSession() {
-        val activeId = sessionOrchestrator.activeSessionId ?: return
-        val activeSession = sessionOrchestrator.activeSession()
-        val activeProfile = activeSession?.let { session ->
-            profiles.firstOrNull { it.id == session.machineId }
-        }
-        if (activeProfile != null) {
-            appScope.launch {
-                if (MachineThumbnailStore.captureFromWindow(context, activity?.window, activeProfile.id)) {
-                    thumbnailRevision += 1
-                }
-            }
-        }
-        when (activeProfile?.type) {
-            MachineType.NATIVE -> stopNativeLauncher(activeProfile.nativeLauncher)
-            MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> stopWaypipe()
-            else -> stopWaypipe()
-        }
-        sessionOrchestrator.markDisconnected(activeId)
-        sessionOrchestrator.setActiveSession(null)
-        showMachinesHome = true
+        confirmSessionClose()
     }
 
     // Activity-level callback is the source of truth for compositor back handling.
     BackHandler(enabled = false) {}
 
     var lastHandledBackToken by remember { mutableIntStateOf(0) }
-    LaunchedEffect(WawonaBackPressBridge.token, showMachinesHome, shakeToCloseEnabled) {
+    LaunchedEffect(WawonaBackPressBridge.token, showMachinesHome) {
         val token = WawonaBackPressBridge.token
         if (token == 0 || token == lastHandledBackToken) {
             return@LaunchedEffect
@@ -709,17 +705,11 @@ fun WawonaApp(
         if (showMachinesHome) {
             return@LaunchedEffect
         }
-        if (!shakeToCloseEnabled) {
-            disconnectActiveSession()
+        val profile = activeProfile()
+        if (!SessionExitSettings.resolvedSwipeBackEnabled(prefs, profile)) {
             return@LaunchedEffect
         }
-        if (!suppressShakeBackWarning &&
-            !shakeBackWarningShownForSession &&
-            !showShakeBackWarningDialog
-        ) {
-            shakeBackWarningShownForSession = true
-            showShakeBackWarningDialog = true
-        }
+        requestSessionCloseConfirm()
     }
 
     val density = LocalDensity.current
@@ -832,31 +822,23 @@ fun WawonaApp(
         )
     }
 
-    if (showShakeBackWarningDialog) {
+    if (showSessionCloseDialog) {
         AlertDialog(
-            onDismissRequest = { showShakeBackWarningDialog = false },
-            title = { Text("Shake to exit is enabled") },
+            onDismissRequest = { showSessionCloseDialog = false },
+            title = { Text("Close current Wayland app?") },
             text = {
-                Text(
-                    "You have Shake to exit enabled, shake device or disable this setting to use native back guesture to exit."
-                )
+                Text("This will disconnect the active machine session and return to Machine Configuration.")
             },
             confirmButton = {
-                TextButton(onClick = { showShakeBackWarningDialog = false }) {
-                    Text("Okay")
+                TextButton(onClick = { confirmSessionClose() }) {
+                    Text("Close")
                 }
             },
             dismissButton = {
-                TextButton(
-                    onClick = {
-                        prefs.edit().putBoolean("wawona.pref.suppressShakeBackWarning", true).apply()
-                        suppressShakeBackWarning = true
-                        showShakeBackWarningDialog = false
-                    }
-                ) {
-                    Text("Don't show again")
+                TextButton(onClick = { showSessionCloseDialog = false }) {
+                    Text("Cancel")
                 }
-            }
+            },
         )
     }
 

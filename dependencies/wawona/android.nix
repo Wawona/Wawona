@@ -865,15 +865,22 @@ in
       chmod +x "$JNI_LIB_DIR/libweston_simple_shm.so"
       echo "Built libweston_simple_shm.so for in-process client launch"
 
-      ${lib.optionalString (footAndroid != null) ''
       # foot Wayland terminal client as libfoot.so (dlopen'd by wawona_client_stubs.c).
-      if [ -f "${footAndroid}/lib/arm64-v8a/libfoot.so" ]; then
-        cp -L "${footAndroid}/lib/arm64-v8a/libfoot.so" "$JNI_LIB_DIR/libfoot.so"
-        chmod +x "$JNI_LIB_DIR/libfoot.so"
-      else
-        echo "WARNING: Missing Android foot library at ${footAndroid}/lib/arm64-v8a/libfoot.so"
+      FOOT_LIB="${footAndroid}/lib/arm64-v8a/libfoot.so"
+      if [ ! -f "$FOOT_LIB" ]; then
+        echo "ERROR: Missing required Android foot library at $FOOT_LIB"
+        exit 1
       fi
-      ''}
+      cp -L "$FOOT_LIB" "$JNI_LIB_DIR/libfoot.so"
+      chmod +x "$JNI_LIB_DIR/libfoot.so"
+      echo "Bundled libfoot.so for in-process client launch"
+
+      for lib in libweston_simple_shm.so libfoot.so; do
+        if [ ! -f "$JNI_LIB_DIR/$lib" ]; then
+          echo "ERROR: Required bundled client library missing: $JNI_LIB_DIR/$lib"
+          exit 1
+        fi
+      done
 
       ${lib.optionalString (fastfetchAndroid != null) ''
       if [ -f "${fastfetchAndroid}/bin/fastfetch" ]; then
@@ -948,6 +955,30 @@ in
         exit 1
       }
       
+      # Verify bundled client shared libraries are packaged in the APK.
+      APK_VERIFY_PATH=""
+      shopt -s nullglob globstar
+      for candidate in \
+        app/build/outputs/apk/**/*.apk \
+        android/app/build/outputs/apk/**/*.apk \
+        build/outputs/apk/**/*.apk
+      do
+        if [ -f "$candidate" ]; then
+          APK_VERIFY_PATH="$candidate"
+          break
+        fi
+      done
+      shopt -u nullglob globstar
+      if [ -n "$APK_VERIFY_PATH" ]; then
+        for lib in libweston_simple_shm.so libfoot.so; do
+          if ! unzip -l "$APK_VERIFY_PATH" | grep -Fq "lib/arm64-v8a/$lib"; then
+            echo "ERROR: APK $APK_VERIFY_PATH missing lib/arm64-v8a/$lib"
+            exit 1
+          fi
+        done
+        echo "Verified bundled client libraries in APK"
+      fi
+
       runHook postBuild
     '';
 

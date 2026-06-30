@@ -2,11 +2,12 @@ package com.aspauldingcode.wawona
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -15,11 +16,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.IconButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
+import android.widget.ImageView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -46,7 +50,21 @@ private enum class SettingsTab(val label: String, val icon: ImageVector) {
     SSH("SSH", Icons.Filled.Lock),
     MACHINES("Machines", Icons.Filled.Storage),
     ABOUT("About", Icons.Filled.Info),
-    DEPENDENCIES("Dependencies", Icons.Filled.Inventory)
+    DEPENDENCIES("Dependencies", Icons.Filled.Inventory);
+
+    val accentColor: Color
+        get() = when (this) {
+            DISPLAY -> Color(0xFF4285F4)
+            INPUT -> Color(0xFF34A853)
+            GRAPHICS -> Color(0xFFEA4335)
+            CONNECTION -> Color(0xFFFBBC04)
+            ADVANCED -> Color(0xFF9AA0A6)
+            WAYPIPE -> Color(0xFF1A73E8)
+            SSH -> Color(0xFF5F6368)
+            MACHINES -> Color(0xFF9334E6)
+            ABOUT -> Color(0xFF188038)
+            DEPENDENCIES -> Color(0xFF1967D2)
+        }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -56,108 +74,138 @@ fun SettingsDialog(
     onDismiss: () -> Unit,
     onApply: () -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
     val localIpAddress = remember { getLocalIpAddress(context) }
+    val configuration = LocalConfiguration.current
+    val isWide = configuration.screenWidthDp >= 600
     var selectedTab by remember { mutableStateOf(SettingsTab.DISPLAY) }
+    var narrowDetailTab by remember { mutableStateOf<SettingsTab?>(null) }
 
-    ModalBottomSheet(
-        onDismissRequest = { onApply(); onDismiss() },
-        sheetState = sheetState,
-        modifier = Modifier.fillMaxHeight(0.92f),
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        containerColor = MaterialTheme.colorScheme.surface,
-        dragHandle = {
-            Box(
-                Modifier
-                    .padding(vertical = 12.dp)
-                    .width(40.dp)
-                    .height(4.dp)
-                    .background(
-                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                        RoundedCornerShape(2.dp)
-                    )
+    WawonaModalSheet(
+        onDismiss = { onApply(); onDismiss() },
+        title = "Wawona Settings",
+        defaultDetent = WawonaSheetDetent.Large,
+        scrollBehavior = WawonaSheetScrollBehavior.ExpandWithContent,
+        navigationIcon = {
+            if (!isWide && narrowDetailTab != null) {
+                IconButton(onClick = { narrowDetailTab = null }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                }
+            }
+        },
+    ) {
+        if (isWide) {
+            Row(Modifier.fillMaxSize()) {
+                SettingsSidebarList(
+                    selected = selectedTab,
+                    onSelect = { selectedTab = it },
+                    modifier = Modifier.width(220.dp),
+                )
+                VerticalDivider()
+                SettingsSectionContent(
+                    tab = selectedTab,
+                    prefs = prefs,
+                    context = context,
+                    localIpAddress = localIpAddress,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        } else if (narrowDetailTab == null) {
+            SettingsSidebarList(
+                selected = null,
+                onSelect = { narrowDetailTab = it },
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            SettingsSectionContent(
+                tab = narrowDetailTab!!,
+                prefs = prefs,
+                context = context,
+                localIpAddress = localIpAddress,
+                modifier = Modifier.fillMaxSize(),
             )
         }
+    }
+}
+
+@Composable
+private fun SettingsSidebarList(
+    selected: SettingsTab?,
+    onSelect: (SettingsTab) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier
+            .verticalScroll(rememberScrollState())
+            .padding(vertical = 8.dp),
     ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .fillMaxHeight()
-        ) {
-            // Header
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Filled.Settings, null, Modifier.size(28.dp),
-                    tint = MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.width(12.dp))
-                Text("Wawona Settings",
-                    style = MaterialTheme.typography.headlineSmall.copy(
-                        fontWeight = FontWeight.SemiBold, letterSpacing = (-0.01).sp),
-                    color = MaterialTheme.colorScheme.onSurface)
-            }
-
-            // Section tabs
-            ScrollableTabRow(
-                selectedTabIndex = selectedTab.ordinal,
-                modifier = Modifier.fillMaxWidth(),
-                edgePadding = 16.dp,
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.primary,
-                divider = {}
-            ) {
-                SettingsTab.entries.forEach { tab ->
-                    Tab(
-                        selected = selectedTab == tab,
-                        onClick = { selectedTab = tab },
-                        text = { Text(tab.label, maxLines = 1) },
-                        icon = { Icon(tab.icon, null, Modifier.size(18.dp)) }
-                    )
-                }
-            }
-            HorizontalDivider(Modifier.padding(top = 2.dp))
-
-            // Tab content
-            AnimatedContent(
-                targetState = selectedTab,
+        SettingsTab.entries.forEach { tab ->
+            val isSelected = selected == tab
+            Surface(
+                onClick = { onSelect(tab) },
+                color = if (isSelected) {
+                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainerLow
+                },
+                shape = RoundedCornerShape(12.dp),
                 modifier = Modifier
-                    .weight(1f)
                     .fillMaxWidth()
-                    .fillMaxHeight(),
-                transitionSpec = { fadeIn() togetherWith fadeOut() },
-                label = "settings_tab"
-            ) { tab ->
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.surface)
+                    .padding(horizontal = 12.dp, vertical = 2.dp)
+                    .border(
+                        width = 1.dp,
+                        color = if (isSelected) {
+                            tab.accentColor.copy(alpha = 0.45f)
+                        } else {
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                    ),
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .verticalScroll(rememberScrollState())
-                            .navigationBarsPadding()
-                            .padding(horizontal = 16.dp, vertical = 12.dp)
-                            .padding(bottom = 32.dp)
-                    ) {
-                        when (tab) {
-                            SettingsTab.DISPLAY -> DisplaySection(prefs)
-                            SettingsTab.INPUT -> InputSection(prefs)
-                            SettingsTab.GRAPHICS -> GraphicsSection(prefs)
-                            SettingsTab.CONNECTION -> ConnectionSection(prefs, localIpAddress, context)
-                            SettingsTab.ADVANCED -> AdvancedSection(prefs)
-                            SettingsTab.WAYPIPE -> WaypipeSection(prefs, context)
-                            SettingsTab.SSH -> SSHSection(prefs)
-                            SettingsTab.MACHINES -> MachineStubsSection(prefs)
-                            SettingsTab.ABOUT -> AboutSection(context)
-                            SettingsTab.DEPENDENCIES -> DependenciesSection()
-                        }
-                    }
+                    Icon(
+                        tab.icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = tab.accentColor,
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(tab.label, style = MaterialTheme.typography.bodyLarge)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SettingsSectionContent(
+    tab: SettingsTab,
+    prefs: SharedPreferences,
+    context: Context,
+    localIpAddress: String?,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .padding(bottom = 24.dp),
+    ) {
+        when (tab) {
+            SettingsTab.DISPLAY -> DisplaySection(prefs)
+            SettingsTab.INPUT -> InputSection(prefs)
+            SettingsTab.GRAPHICS -> GraphicsSection(prefs)
+            SettingsTab.CONNECTION -> ConnectionSection(prefs, localIpAddress, context)
+            SettingsTab.ADVANCED -> AdvancedSection(prefs)
+            SettingsTab.WAYPIPE -> WaypipeSection(prefs, context)
+            SettingsTab.SSH -> SSHSection(prefs)
+            SettingsTab.MACHINES -> MachineStubsSection(prefs)
+            SettingsTab.ABOUT -> AboutSection(context)
+            SettingsTab.DEPENDENCIES -> DependenciesSection()
         }
     }
 }
@@ -219,61 +267,84 @@ private fun MachineStubsSection(prefs: SharedPreferences) {
 
 @Composable
 private fun DisplaySection(prefs: SharedPreferences) {
-    SettingsSwitchItem(prefs, "forceServerSideDecorations", "Force Server-Side Decorations",
-        "When off, Wayland clients (e.g. weston-terminal) draw their own window frames. When on, the compositor owns decorations.",
-        Icons.Filled.BorderOuter, default = false)
-    SettingsSwitchItem(prefs, "autoScale", "Auto Scale",
-        "Detect and match Android UI scaling", Icons.Filled.AspectRatio, default = true)
-    SettingsSwitchItem(prefs, "respectSafeArea", "Respect Safe Area",
-        "Avoid system UI and notches", Icons.Filled.Security, default = true)
+    SettingsSectionHeader("Display", Icons.Filled.DesktopWindows, SettingsTab.DISPLAY.accentColor)
+    SettingsGroup {
+        SettingsSwitchItem(prefs, "forceServerSideDecorations", "Force Server-Side Decorations",
+            "When off, Wayland clients (e.g. weston-terminal) draw their own window frames. When on, the compositor owns decorations.",
+            Icons.Filled.BorderOuter, default = false, iconTint = SettingsTab.DISPLAY.accentColor)
+        SettingsSwitchItem(prefs, "autoScale", "Auto Scale",
+            "Detect and match Android UI scaling", Icons.Filled.AspectRatio, default = true, iconTint = SettingsTab.DISPLAY.accentColor)
+        SettingsSwitchItem(prefs, "respectSafeArea", "Respect Safe Area",
+            "Avoid system UI and notches", Icons.Filled.Security, default = true, iconTint = SettingsTab.DISPLAY.accentColor)
+    }
 }
 
 @Composable
 private fun GraphicsSection(prefs: SharedPreferences) {
-    SettingsSectionHeader("Drivers", Icons.Filled.Speed)
-    SettingsDropdownItem(prefs, "vulkanDriver", "Vulkan Driver",
-        "Select Vulkan implementation. None disables Vulkan.", Icons.Filled.Speed, "None",
-        listOf("None", "SwiftShader", "Turnip", "System"))
-    SettingsDropdownItem(prefs, "openglDriver", "OpenGL Driver",
-        "Select OpenGL/GLES implementation. None disables OpenGL.", Icons.Filled.GraphicEq, "None",
-        listOf("None", "ANGLE", "System"))
-    SettingsSectionHeader("Features", Icons.Filled.Tune)
-    SettingsSwitchItem(prefs, "dmabufEnabled", "DmaBuf Support",
-        "Enable DMA buffer sharing between clients", Icons.Filled.Share, default = true)
+    SettingsSectionHeader("Drivers", Icons.Filled.Speed, SettingsTab.GRAPHICS.accentColor)
+    SettingsGroup {
+        SettingsDropdownItem(prefs, "vulkanDriver", "Vulkan Driver",
+            "Select Vulkan implementation. None disables Vulkan.", Icons.Filled.Speed, "None",
+            listOf("None", "SwiftShader", "Turnip", "System"), iconTint = SettingsTab.GRAPHICS.accentColor)
+        SettingsDropdownItem(prefs, "openglDriver", "OpenGL Driver",
+            "Select OpenGL/GLES implementation. None disables OpenGL.", Icons.Filled.GraphicEq, "None",
+            listOf("None", "ANGLE", "System"), iconTint = SettingsTab.GRAPHICS.accentColor)
+    }
+    SettingsSectionHeader("Features", Icons.Filled.Tune, SettingsTab.GRAPHICS.accentColor)
+    SettingsGroup {
+        SettingsSwitchItem(prefs, "dmabufEnabled", "DmaBuf Support",
+            "Enable DMA buffer sharing between clients", Icons.Filled.Share, default = true, iconTint = SettingsTab.GRAPHICS.accentColor)
+    }
 }
 
 @Composable
 private fun AdvancedSection(prefs: SharedPreferences) {
-    SettingsSwitchItem(prefs, "wawona.pref.shakeToCloseEnabled", "Shake to Exit Machine",
-        "When off, use Android back gesture or back arrow to close the active machine session.",
-        Icons.Filled.Vibration, default = true)
-    SettingsSwitchItem(prefs, "colorOperations", "Color Operations",
-        "Enable color profiles, HDR requests, etc.", Icons.Filled.Palette, default = true)
-    SettingsSwitchItem(prefs, "nestedCompositorsSupport", "Nested Compositors",
-        "Support nested Wayland compositors", Icons.Filled.Layers, default = true)
-    SettingsSwitchItem(prefs, "multipleClients", "Multiple Clients",
-        "Allow multiple Wayland clients", Icons.Filled.Group, default = false)
-    SettingsSwitchItem(prefs, "enableLauncher", "Enable Launcher",
-        "Show built-in application launcher", Icons.Filled.Apps, default = false)
-    SettingsSwitchItem(prefs, "westonSimpleSHMEnabled", "Enable Weston Simple SHM",
-        "Start weston-simple-shm on launch", Icons.Filled.PlayArrow, default = false)
-    SettingsSwitchItem(prefs, "westonEnabled", "Enable Native Weston",
-        "Start native weston compositor", Icons.Filled.Monitor, default = false)
-    SettingsSwitchItem(prefs, "westonTerminalEnabled", "Enable Weston Terminal",
-        "Start native weston-terminal client", Icons.Filled.Terminal, default = false)
+    SettingsSectionHeader("Advanced", Icons.Filled.Tune, SettingsTab.ADVANCED.accentColor)
+    SettingsGroup {
+        SettingsSwitchItem(prefs, "wawona.pref.shakeToCloseEnabled", "Shake to Exit Machine",
+            "When enabled, shaking the device asks before closing the active machine session.",
+            Icons.Filled.Vibration, default = true, iconTint = SettingsTab.ADVANCED.accentColor)
+        SettingsSwitchItem(prefs, "wawona.pref.swipeBackToCloseEnabled", "Swipe Back to Exit Machine",
+            "When enabled, the system back gesture asks before closing the active machine session.",
+            Icons.Filled.ArrowBack, default = true, iconTint = SettingsTab.ADVANCED.accentColor)
+        SettingsSwitchItem(prefs, "colorOperations", "Color Operations",
+            "Enable color profiles, HDR requests, etc.", Icons.Filled.Palette, default = true,
+            iconTint = SettingsTab.ADVANCED.accentColor)
+        SettingsSwitchItem(prefs, "nestedCompositorsSupport", "Nested Compositors",
+            "Support nested Wayland compositors", Icons.Filled.Layers, default = true,
+            iconTint = SettingsTab.ADVANCED.accentColor)
+        SettingsSwitchItem(prefs, "multipleClients", "Multiple Clients",
+            "Allow multiple Wayland clients", Icons.Filled.Group, default = false,
+            iconTint = SettingsTab.ADVANCED.accentColor)
+        SettingsSwitchItem(prefs, "enableLauncher", "Enable Launcher",
+            "Show built-in application launcher", Icons.Filled.Apps, default = false,
+            iconTint = SettingsTab.ADVANCED.accentColor)
+        SettingsSwitchItem(prefs, "westonSimpleSHMEnabled", "Enable Weston Simple SHM",
+            "Start weston-simple-shm on launch", Icons.Filled.PlayArrow, default = false,
+            iconTint = SettingsTab.ADVANCED.accentColor)
+        SettingsSwitchItem(prefs, "westonEnabled", "Enable Native Weston",
+            "Start native weston compositor", Icons.Filled.Monitor, default = false,
+            iconTint = SettingsTab.ADVANCED.accentColor)
+        SettingsSwitchItem(prefs, "westonTerminalEnabled", "Enable Weston Terminal",
+            "Start native weston-terminal client", Icons.Filled.Terminal, default = false,
+            iconTint = SettingsTab.ADVANCED.accentColor)
+    }
 }
 
 @Composable
 private fun InputSection(prefs: SharedPreferences) {
-    SettingsSwitchItem(prefs, "touchpadMode", "Touchpad Mode",
-        "1-finger = pointer, tap = click, 2-finger drag = scroll. When off, use direct touch (multi-touch)",
-        Icons.Filled.TouchApp, default = false)
-    SettingsSwitchItem(prefs, "enableTextAssist", "Enable Text Assist",
-        "Autocorrect, text suggestions, smart punctuation, swipe-to-type, and text replacements via the native keyboard",
-        Icons.Filled.Spellcheck, default = false)
-    SettingsSwitchItem(prefs, "enableDictation", "Enable Dictation",
-        "Voice dictation input. Spoken text is transcribed and sent to the focused Wayland client",
-        Icons.Filled.Mic, default = false)
+    SettingsSectionHeader("Input", Icons.Filled.Keyboard, SettingsTab.INPUT.accentColor)
+    SettingsGroup {
+        SettingsSwitchItem(prefs, "touchpadMode", "Touchpad Mode",
+            "1-finger = pointer, tap = click, 2-finger drag = scroll. When off, use direct touch (multi-touch)",
+            Icons.Filled.TouchApp, default = false, iconTint = SettingsTab.INPUT.accentColor)
+        SettingsSwitchItem(prefs, "enableTextAssist", "Enable Text Assist",
+            "Autocorrect, text suggestions, smart punctuation, swipe-to-type, and text replacements via the native keyboard",
+            Icons.Filled.Spellcheck, default = false, iconTint = SettingsTab.INPUT.accentColor)
+        SettingsSwitchItem(prefs, "enableDictation", "Enable Dictation",
+            "Voice dictation input. Spoken text is transcribed and sent to the focused Wayland client",
+            Icons.Filled.Mic, default = false, iconTint = SettingsTab.INPUT.accentColor)
+    }
 }
 
 @Composable
@@ -564,11 +635,15 @@ private fun AboutSection(context: Context) {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Spacer(Modifier.height(24.dp))
-        Icon(
-            imageVector = Icons.Filled.DesktopWindows,
-            contentDescription = null,
+        AndroidView(
             modifier = Modifier.size(100.dp),
-            tint = MaterialTheme.colorScheme.primary
+            factory = { ctx ->
+                ImageView(ctx).apply {
+                    setImageDrawable(context.packageManager.getApplicationIcon(context.applicationInfo))
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    contentDescription = "Wawona"
+                }
+            },
         )
         Spacer(Modifier.height(16.dp))
         Text("Wawona",
@@ -578,11 +653,21 @@ private fun AboutSection(context: Context) {
         Text("Version $version",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(8.dp))
+        Text("A Wayland Compositor for macOS, iOS & Android",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(24.dp))
         Text("Alex Spaulding",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
             color = MaterialTheme.colorScheme.onSurface)
         Spacer(Modifier.height(16.dp))
+        OutlinedButton(
+            onClick = { uriHandler.openUri("https://github.com/wawona/wawona") },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
+        ) { Text("Source Code") }
+        Spacer(Modifier.height(12.dp))
         Row(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxWidth(),
@@ -778,17 +863,35 @@ fun TestResultCard(result: String, context: Context) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 @Composable
-fun SettingsSectionHeader(title: String, icon: ImageVector) {
+private fun SettingsGroup(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .border(
+                1.dp,
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f),
+                RoundedCornerShape(16.dp),
+            )
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .padding(6.dp),
+        content = content,
+    )
+}
+
+@Composable
+fun SettingsSectionHeader(title: String, icon: ImageVector, tint: Color = MaterialTheme.colorScheme.primary) {
     Row(
         Modifier.fillMaxWidth().padding(vertical = 12.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+        Icon(icon, null, Modifier.size(20.dp), tint = tint)
         Spacer(Modifier.width(8.dp))
         Text(title,
             style = MaterialTheme.typography.titleMedium.copy(
                 fontWeight = FontWeight.SemiBold, letterSpacing = (-0.01).sp),
-            color = MaterialTheme.colorScheme.primary)
+            color = tint)
     }
 }
 
@@ -844,7 +947,8 @@ fun LockedSwitchItem(
 @Composable
 fun SettingsSwitchItem(
     prefs: SharedPreferences, key: String, title: String, description: String,
-    icon: ImageVector, default: Boolean, enabled: Boolean = true
+    icon: ImageVector, default: Boolean, enabled: Boolean = true,
+    iconTint: Color = MaterialTheme.colorScheme.primary,
 ) {
     var checked by remember { mutableStateOf(prefs.getBoolean(key, default)) }
     LaunchedEffect(key) {
@@ -853,9 +957,16 @@ fun SettingsSwitchItem(
     }
     Surface(
         onClick = { if (enabled) { checked = !checked; prefs.edit().putBoolean(key, checked).apply() } },
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .border(
+                1.dp,
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (enabled) 0.28f else 0.16f),
+                RoundedCornerShape(16.dp),
+            ),
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (enabled) 0.4f else 0.2f)
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = if (enabled) 0.45f else 0.25f)
     ) {
         Row(
             Modifier.fillMaxWidth().padding(16.dp),
@@ -864,7 +975,7 @@ fun SettingsSwitchItem(
         ) {
             Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                 Icon(icon, null, Modifier.size(24.dp),
-                    tint = MaterialTheme.colorScheme.primary.copy(alpha = if (enabled) 0.8f else 0.4f))
+                    tint = iconTint.copy(alpha = if (enabled) 0.9f else 0.4f))
                 Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
@@ -1035,7 +1146,8 @@ fun SettingsMultiLineTextInputItem(
 @Composable
 fun SettingsDropdownItem(
     prefs: SharedPreferences, key: String, title: String, description: String,
-    icon: ImageVector, default: String, options: List<String>
+    icon: ImageVector, default: String, options: List<String>,
+    iconTint: Color = MaterialTheme.colorScheme.primary,
 ) {
     var expanded by remember { mutableStateOf(false) }
     var selectedOption by remember { mutableStateOf(prefs.getString(key, default) ?: default) }
@@ -1047,7 +1159,7 @@ fun SettingsDropdownItem(
     ) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Icon(icon, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f))
+                Icon(icon, null, Modifier.size(24.dp), tint = iconTint.copy(alpha = 0.9f))
                 Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),

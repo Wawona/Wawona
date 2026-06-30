@@ -147,6 +147,8 @@ static NSString *const kWWNWatchPrefPrefix = @"wawona.pref.";
 - (void)setXwaylandSupport:(BOOL)v { [[self defaults] setBool:v forKey:[self key:@"xwaylandSupport"]]; }
 - (BOOL)shakeToCloseEnabled { return [self boolForSuffix:@"shakeToCloseEnabled" fallback:YES]; }
 - (void)setShakeToCloseEnabled:(BOOL)v { [[self defaults] setBool:v forKey:[self key:@"shakeToCloseEnabled"]]; }
+- (BOOL)swipeBackToCloseEnabled { return [self boolForSuffix:@"swipeBackToCloseEnabled" fallback:YES]; }
+- (void)setSwipeBackToCloseEnabled:(BOOL)v { [[self defaults] setBool:v forKey:[self key:@"swipeBackToCloseEnabled"]]; }
 - (BOOL)hasCompletedWelcome { return [self boolForSuffix:@"hasCompletedWelcome" fallback:NO]; }
 - (void)setHasCompletedWelcome:(BOOL)v { [[self defaults] setBool:v forKey:[self key:@"hasCompletedWelcome"]]; }
 - (void)synchronize { [[self defaults] synchronize]; }

@@ -2,20 +2,41 @@ package com.aspauldingcode.wawona
 
 import android.content.Context
 import android.os.Build
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.PauseCircle
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,6 +45,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -34,7 +56,6 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Settings
@@ -62,7 +83,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -89,38 +110,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.IconButton
 import org.json.JSONObject
 
-private data class BundledClientOption(
-    val id: String,
-    val name: String,
-    val description: String
-)
-
-private val bundledClients = listOf(
-    BundledClientOption("weston-simple-shm", "Weston Simple SHM", "Minimal shared-memory Wayland client"),
-    BundledClientOption("weston", "Weston", "Wayland reference compositor (nested compositor)"),
-    BundledClientOption("weston-terminal", "Weston Terminal", "Terminal emulator — uses host cursor"),
-    BundledClientOption("foot", "Foot Terminal", "Lightweight Wayland terminal emulator"),
-    BundledClientOption("weston-flower", "Weston Flower", "Animated cairo demo (toytoolkit)"),
-    BundledClientOption("kmscube", "KMS Cube", "Spinning GL cube via iland + ANGLE"),
-    BundledClientOption("weston-simple-egl", "Weston Simple EGL", "Wayland EGL demo client"),
-    BundledClientOption("weston-smoke", "Weston Smoke", "Smoke particle cairo demo"),
-    BundledClientOption("weston-clickdot", "Weston Clickdot", "Pointer click visualization demo"),
-    BundledClientOption("weston-eventdemo", "Weston Event Demo", "Input event logging demo"),
-    BundledClientOption("weston-resizor", "Weston Resizor", "Interactive resize demo"),
-    BundledClientOption("weston-cliptest", "Weston Cliptest", "Clipping region demo"),
-    BundledClientOption("weston-transformed", "Weston Transformed", "Buffer transform demo"),
-    BundledClientOption("weston-stacking", "Weston Stacking", "Subsurface stacking demo"),
-    BundledClientOption("weston-dnd", "Weston DnD", "Drag-and-drop demo"),
-    BundledClientOption("weston-image", "Weston Image", "PNG image loader demo"),
-    BundledClientOption("weston-scaler", "Weston Scaler", "Viewport scaler demo"),
-    BundledClientOption("weston-editor", "Weston Editor", "Text editor demo"),
-    BundledClientOption("weston-constraints", "Weston Constraints", "Pointer constraints demo"),
-)
-
-private fun bundledClientLabel(id: String): String =
-    bundledClients.firstOrNull { it.id == id }?.name ?: id
-
-private const val ANDROID_16_API = 36
+private val compactButtonPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
 
 private fun readBoolOverride(overrides: JSONObject?, key: String, globalDefault: Boolean): Boolean {
     if (overrides == null || !overrides.has(key)) return globalDefault
@@ -191,144 +181,188 @@ fun MachineWelcomeScreen(
 ) {
     var editorProfile by remember { mutableStateOf<MachineProfile?>(null) }
     var creating by remember { mutableStateOf(false) }
-    var legacyOverflowExpanded by remember { mutableStateOf(false) }
     var scopeFilter by remember { mutableStateOf(MachineScopeFilter.ALL) }
-    val expressiveQuickActionsSupported = Build.VERSION.SDK_INT >= ANDROID_16_API
-    val listBottomPadding = if (expressiveQuickActionsSupported) 112.dp else 12.dp
+    var searchQuery by remember { mutableStateOf("") }
+    var searchExpanded by remember { mutableStateOf(false) }
+    val listBottomPadding = 72.dp
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
 
-    val visibleProfiles = remember(profiles, scopeFilter) {
+    val scopedProfiles = remember(profiles, scopeFilter) {
         profiles.filter { scopeFilter.matches(it.type) }
+    }
+    val visibleProfiles = remember(scopedProfiles, searchQuery) {
+        MachineSearch.fuzzyFilter(scopedProfiles, searchQuery, MachineSearch::searchableText)
     }
 
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
-                title = { Text("Machine Configuration") },
-                actions = {
-                    if (!expressiveQuickActionsSupported) {
-                        TextButton(onClick = onOpenSettings) {
-                            Icon(Icons.Filled.Settings, contentDescription = null)
+            Column {
+                TopAppBar(
+                    title = { Text("Machine Configuration") },
+                    scrollBehavior = scrollBehavior,
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.82f),
+                        scrolledContainerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.96f),
+                    ),
+                    actions = {
+                        IconButton(onClick = {
+                            searchExpanded = !searchExpanded
+                            if (!searchExpanded) searchQuery = ""
+                        }) {
+                            Icon(Icons.Filled.Search, contentDescription = "Search machines")
                         }
-                        TextButton(onClick = { creating = true }) {
-                            Icon(Icons.Filled.Add, contentDescription = null)
-                        }
-                        Box {
-                            TextButton(onClick = { legacyOverflowExpanded = true }) {
-                                Icon(Icons.Filled.MoreVert, contentDescription = "More actions")
-                            }
-                            DropdownMenu(
-                                expanded = legacyOverflowExpanded,
-                                onDismissRequest = { legacyOverflowExpanded = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text("Settings") },
-                                    leadingIcon = { Icon(Icons.Filled.Settings, contentDescription = null) },
-                                    onClick = {
-                                        legacyOverflowExpanded = false
-                                        onOpenSettings()
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Add Machine Profile") },
-                                    leadingIcon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                                    onClick = {
-                                        legacyOverflowExpanded = false
-                                        creating = true
-                                    }
-                                )
-                            }
-                        }
-                    } else {
-                        TextButton(onClick = onOpenSettings) {
+                        IconButton(onClick = onOpenSettings) {
                             Icon(Icons.Filled.Settings, contentDescription = "Settings")
                         }
-                    }
+                    },
+                )
+                AnimatedVisibility(visible = searchExpanded) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        placeholder = { Text("Search machines") },
+                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(16.dp),
+                    )
                 }
-            )
+            }
         },
         floatingActionButton = {
-            if (expressiveQuickActionsSupported) {
-                ExpressiveSpeedDialFab(
-                    actions = listOf(
-                        SpeedDialAction(
-                            label = "Add Machine Profile",
-                            icon = Icons.Filled.Add,
-                            onClick = { creating = true },
-                        ),
-                    ),
+            FloatingActionButton(
+                onClick = { creating = true },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                shape = CircleShape,
+                modifier = Modifier
+                    .padding(end = 20.dp, bottom = 20.dp)
+                    .size(48.dp),
+            ) {
+                Icon(
+                    Icons.Filled.Add,
+                    contentDescription = "Add Machine",
+                    modifier = Modifier.size(22.dp),
                 )
             }
-        }
+        },
     ) { padding ->
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 280.dp),
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
-            contentPadding = PaddingValues(
-                start = 16.dp,
-                top = 12.dp,
-                end = 16.dp,
-                bottom = listBottomPadding
-            ),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    MachineScopeFilter.entries.forEachIndexed { index, filter ->
-                        SegmentedButton(
-                            selected = scopeFilter == filter,
-                            onClick = { scopeFilter = filter },
-                            shape = SegmentedButtonDefaults.itemShape(
-                                index = index,
-                                count = MachineScopeFilter.entries.size
-                            )
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 280.dp),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    top = 12.dp,
+                    end = 16.dp,
+                    bottom = listBottomPadding,
+                ),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                        MachineScopeFilter.entries.forEachIndexed { index, filter ->
+                            SegmentedButton(
+                                selected = scopeFilter == filter,
+                                onClick = { scopeFilter = filter },
+                                shape = SegmentedButtonDefaults.itemShape(
+                                    index = index,
+                                    count = MachineScopeFilter.entries.size,
+                                ),
+                            ) {
+                                Text(filter.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+
+                if (visibleProfiles.isEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 30.dp, bottom = 24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            Text(filter.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Icon(
+                                Icons.Filled.Search,
+                                contentDescription = null,
+                                modifier = Modifier.size(48.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                "No Matching Machines",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "Adjust search/filter settings or add a new machine profile.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                } else {
+                    items(visibleProfiles, key = { it.id }) { profile ->
+                        AnimatedVisibility(
+                            visible = true,
+                            enter = fadeIn() + scaleIn(initialScale = 0.95f, animationSpec = spring()),
+                        ) {
+                            MachineGridCard(
+                                profile = profile,
+                                thumbnailRevision = thumbnailRevision,
+                                status = machineStatusFor(profile.id),
+                                isActive = profile.id == activeMachineId,
+                                onEdit = { editorProfile = profile },
+                                onDelete = { onDelete(profile) },
+                                onConnect = { onConnect(profile) },
+                                onFocus = { onFocus(profile) },
+                                onStop = { onStop(profile) },
+                            )
                         }
                     }
                 }
             }
 
-            if (visibleProfiles.isEmpty()) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(20.dp)) {
-                            Text(
-                                "No Matching Machines",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Spacer(Modifier.height(6.dp))
-                            Text(
-                                "Adjust the scope filter or add a new machine profile.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            } else {
-                items(visibleProfiles, key = { it.id }) { profile ->
-                    AnimatedVisibility(
-                        visible = true,
-                        enter = fadeIn() + scaleIn(initialScale = 0.95f, animationSpec = spring())
-                    ) {
-                        MachineGridCard(
-                            profile = profile,
-                            thumbnailRevision = thumbnailRevision,
-                            status = machineStatusFor(profile.id),
-                            isActive = profile.id == activeMachineId,
-                            onEdit = { editorProfile = profile },
-                            onDelete = { onDelete(profile) },
-                            onConnect = { onConnect(profile) },
-                            onFocus = { onFocus(profile) },
-                            onStop = { onStop(profile) }
-                        )
-                    }
-                }
-            }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .height(20.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.95f),
+                                Color.Transparent,
+                            ),
+                        ),
+                    ),
+            )
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(28.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.95f),
+                            ),
+                        ),
+                    ),
+            )
         }
     }
 
@@ -350,7 +384,6 @@ fun MachineWelcomeScreen(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun MachineGridCard(
     profile: MachineProfile,
@@ -373,12 +406,27 @@ private fun MachineGridCard(
     val subtitle = machineSubtitle(profile)
     val summary = configurationSummary(profile)
 
+    val cardShape = RoundedCornerShape(20.dp)
+    val cardSurface = MaterialTheme.colorScheme.surfaceContainerLow
+
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-        )
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(
+                elevation = 16.dp,
+                shape = cardShape,
+                clip = false,
+                ambientColor = Color.Black.copy(alpha = 0.22f),
+                spotColor = Color.Black.copy(alpha = 0.22f),
+            )
+            .border(
+                width = 1.dp,
+                color = Color.White.copy(alpha = 0.2f),
+                shape = cardShape,
+            ),
+        shape = cardShape,
+        colors = CardDefaults.cardColors(containerColor = cardSurface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
             modifier = Modifier
@@ -395,19 +443,24 @@ private fun MachineGridCard(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
             ) {
+                Icon(
+                    statusIconFor(status),
+                    contentDescription = null,
+                    tint = statusColor,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.size(6.dp))
                 Text(
                     status.displayTitle,
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
-                    color = statusColor
+                    color = statusColor,
+                    maxLines = 1,
                 )
                 Spacer(Modifier.weight(1f))
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     StatusChip(machineScopeLabel(profile.type))
                     StatusChip(typeChipLabel(profile))
                     if (isActive) StatusChip("ACTIVE")
@@ -422,63 +475,119 @@ private fun MachineGridCard(
                 overflow = TextOverflow.Ellipsis
             )
 
-            FlowRow(
+            Row(
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (isRunning) {
-                    OutlinedButton(onClick = onFocus) {
-                        Icon(Icons.Outlined.CenterFocusStrong, contentDescription = null)
+                    CompactOutlinedButton(onClick = onFocus, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Outlined.CenterFocusStrong, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.size(4.dp))
-                        Text("Focus")
+                        Text("Focus", maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    Button(
+                    CompactFilledButton(
                         onClick = onStop,
-                        colors = ButtonDefaultsButtonColors()
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError,
+                        ),
                     ) {
-                        Icon(Icons.Filled.Stop, contentDescription = null)
+                        Icon(Icons.Filled.Stop, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.size(4.dp))
-                        Text("Stop")
+                        Text("Stop", maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 } else {
-                    Button(
+                    CompactFilledButton(
                         onClick = onConnect,
-                        enabled = capabilities.launchSupported && status != MachineStatus.CONNECTING
+                        modifier = Modifier.weight(1f),
+                        enabled = capabilities.launchSupported && status != MachineStatus.CONNECTING,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                        ),
                     ) {
-                        Icon(Icons.Filled.PlayArrow, contentDescription = null)
+                        Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.size(4.dp))
                         Text(
                             when (status) {
                                 MachineStatus.CONNECTING -> "Starting…"
                                 else -> "Start"
-                            }
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
-                OutlinedButton(onClick = onEdit) {
-                    Icon(Icons.Filled.Edit, contentDescription = null)
+                CompactOutlinedButton(onClick = onEdit, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.size(4.dp))
-                    Text("Edit")
+                    Text("Edit", maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                OutlinedButton(
+                CompactOutlinedButton(
                     onClick = onDelete,
-                    enabled = !isRunning
+                    enabled = !isRunning,
+                    modifier = Modifier.weight(1f),
                 ) {
-                    Icon(Icons.Filled.Delete, contentDescription = null)
+                    Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.size(4.dp))
-                    Text("Delete")
+                    Text("Delete", maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
     }
 }
 
+private fun machineSubtitle(profile: MachineProfile): String = MachineSearch.subtitle(profile)
+
+private fun configurationSummary(profile: MachineProfile): String = MachineSearch.summary(profile)
+
 @Composable
-private fun ButtonDefaultsButtonColors() =
-    androidx.compose.material3.ButtonDefaults.buttonColors(
-        containerColor = MaterialTheme.colorScheme.error,
-        contentColor = MaterialTheme.colorScheme.onError
+private fun CompactOutlinedButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit,
+) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier.defaultMinSize(minWidth = 0.dp),
+        enabled = enabled,
+        contentPadding = compactButtonPadding,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        colors = ButtonDefaults.outlinedButtonColors(
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ),
+        content = content,
     )
+}
+
+@Composable
+private fun CompactFilledButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    colors: androidx.compose.material3.ButtonColors = ButtonDefaults.buttonColors(),
+    content: @Composable RowScope.() -> Unit,
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier.defaultMinSize(minWidth = 0.dp),
+        enabled = enabled,
+        contentPadding = compactButtonPadding,
+        colors = colors,
+        content = content,
+    )
+}
+
+@Composable
+private fun statusIconFor(status: MachineStatus) = when (status) {
+    MachineStatus.CONNECTED -> Icons.Filled.CheckCircle
+    MachineStatus.CONNECTING -> Icons.Filled.Sync
+    MachineStatus.DEGRADED -> Icons.Filled.Warning
+    MachineStatus.ERROR -> Icons.Filled.Error
+    MachineStatus.DISCONNECTED -> Icons.Filled.PauseCircle
+}
 
 @Composable
 private fun MachineCardBanner(
@@ -571,8 +680,8 @@ private fun StatusChip(text: String) {
         fontWeight = FontWeight.Bold,
         modifier = Modifier
             .background(
-                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
-                RoundedCornerShape(50)
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                RoundedCornerShape(50),
             )
             .padding(horizontal = 8.dp, vertical = 5.dp)
     )
@@ -599,35 +708,7 @@ private fun typeChipLabel(profile: MachineProfile): String = when (profile.type)
     MachineType.CONTAINER -> "CONTAINER"
 }
 
-private fun machineSubtitle(profile: MachineProfile): String = when (profile.type) {
-    MachineType.NATIVE -> bundledClientLabel(profile.nativeLauncher)
-    MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> {
-        if (profile.sshHost.isBlank()) "SSH endpoint not configured"
-        else "${profile.sshUser.ifBlank { "user" }}@${profile.sshHost}"
-    }
-    MachineType.VM -> "VM profile (${profile.vmSubtype.uppercase()})"
-    MachineType.CONTAINER -> "Container profile (${profile.containerSubtype.uppercase()})"
-}
-
-private fun configurationSummary(profile: MachineProfile): String = when (profile.type) {
-    MachineType.NATIVE -> {
-        val client = bundledClientLabel(profile.nativeLauncher)
-        if (client.isBlank()) "No client configured — edit to select one"
-        else "Runs: $client"
-    }
-    MachineType.SSH_WAYPIPE -> {
-        val cmd = profile.remoteCommand.ifBlank { "weston-simple-shm" }
-        "Waypipe command: $cmd"
-    }
-    MachineType.SSH_TERMINAL -> {
-        val cmd = profile.remoteCommand.ifBlank { "bash -l" }
-        "SSH terminal command: $cmd"
-    }
-    MachineType.VM -> "Subtype: ${profile.vmSubtype.ifBlank { "qemu" }}"
-    MachineType.CONTAINER -> "Subtype: ${profile.containerSubtype.ifBlank { "docker" }}"
-}
-
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MachineEditorSheet(
     title: String,
@@ -638,8 +719,6 @@ private fun MachineEditorSheet(
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("wawona_prefs", Context.MODE_PRIVATE) }
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
     var showClientPicker by remember { mutableStateOf(false) }
 
     var name by remember { mutableStateOf(initial?.name ?: "") }
@@ -707,6 +786,12 @@ private fun MachineEditorSheet(
     var colorOperations by remember {
         mutableStateOf(readBoolOverride(existingOverrides, "colorOperations", prefs.getBoolean("colorSyncSupport", false)))
     }
+    var shakeToCloseOverride by remember {
+        mutableStateOf(readBoolOverride(existingOverrides, "shakeToCloseEnabled", prefs.getBoolean("wawona.pref.shakeToCloseEnabled", true)))
+    }
+    var swipeBackOverride by remember {
+        mutableStateOf(readBoolOverride(existingOverrides, "swipeBackToCloseEnabled", prefs.getBoolean("wawona.pref.swipeBackToCloseEnabled", true)))
+    }
 
     fun performSave() {
         val trimmedName = name.trim().ifEmpty { "Unnamed Machine" }
@@ -729,6 +814,8 @@ private fun MachineEditorSheet(
         writeStringOverride(settingsOverrides, "openglDriver", openglDriver, prefs.getString("openglDriver", "none") ?: "none")
         writeBoolOverride(settingsOverrides, "dmabufEnabled", dmabufEnabled, prefs.getBoolean("nestedCompositorsSupport", true))
         writeBoolOverride(settingsOverrides, "colorOperations", colorOperations, prefs.getBoolean("colorSyncSupport", false))
+        writeBoolOverride(settingsOverrides, "shakeToCloseEnabled", shakeToCloseOverride, prefs.getBoolean("wawona.pref.shakeToCloseEnabled", true))
+        writeBoolOverride(settingsOverrides, "swipeBackToCloseEnabled", swipeBackOverride, prefs.getBoolean("wawona.pref.swipeBackToCloseEnabled", true))
         onSave(
             base.copy(
                 name = trimmedName,
@@ -761,57 +848,59 @@ private fun MachineEditorSheet(
         )
     }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = screenHeight * 0.75f, max = screenHeight * 0.92f)
-        ) {
-            TopAppBar(
-                title = {
-                    Text(
-                        if (showClientPicker) "Wayland Client" else title,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                },
-                navigationIcon = {
-                    if (showClientPicker) {
-                        IconButton(onClick = { showClientPicker = false }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                        }
-                    } else {
-                        TextButton(onClick = onDismiss) { Text("Cancel") }
-                    }
-                },
-                actions = {
-                    if (!showClientPicker) {
-                        TextButton(onClick = { performSave() }) {
-                            Text("Save", fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                }
-            )
-
+    WawonaModalSheet(
+        onDismiss = onDismiss,
+        title = if (showClientPicker) "Wayland Client" else title,
+        defaultDetent = WawonaSheetDetent.Medium,
+        scrollBehavior = WawonaSheetScrollBehavior.ContentFirst,
+        navigationIcon = {
             if (showClientPicker) {
+                IconButton(onClick = { showClientPicker = false }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                }
+            } else {
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        },
+        actions = {
+            if (!showClientPicker) {
+                TextButton(onClick = { performSave() }) {
+                    Text("Save", fontWeight = FontWeight.SemiBold)
+                }
+            }
+        },
+    ) {
+        AnimatedContent(
+            targetState = showClientPicker,
+            transitionSpec = {
+                if (targetState) {
+                    (slideInHorizontally { it } + fadeIn()).togetherWith(
+                        slideOutHorizontally { -it / 3 } + fadeOut(),
+                    )
+                } else {
+                    (slideInHorizontally { -it } + fadeIn()).togetherWith(
+                        slideOutHorizontally { it / 3 } + fadeOut(),
+                    )
+                }
+            },
+            label = "machineEditorClientPicker",
+        ) { pickingClient ->
+            if (pickingClient) {
                 BundledClientPicker(
                     selectedId = nativeLauncher,
                     onSelect = { id ->
                         nativeLauncher = id
                         showClientPicker = false
-                    }
+                    },
                 )
             } else {
                 Column(
                     modifier = Modifier
-                        .weight(1f)
+                        .fillMaxWidth()
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 16.dp)
                         .padding(bottom = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     EditorSectionCard(
                         title = "Connection Profile",
@@ -855,7 +944,7 @@ private fun MachineEditorSheet(
                             ) {
                                 Text("Bundled Client")
                                 Text(
-                                    bundledClientLabel(nativeLauncher),
+                                    BundledClients.labelFor(nativeLauncher),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
@@ -975,6 +1064,9 @@ private fun MachineEditorSheet(
                         )
                         ToggleRow("Enable DMABUF", dmabufEnabled) { dmabufEnabled = it }
                         ToggleRow("HDR / Color Operations", colorOperations) { colorOperations = it }
+                        HorizontalDivider()
+                        ToggleRow("Shake to Exit Machine", shakeToCloseOverride) { shakeToCloseOverride = it }
+                        ToggleRow("Swipe Back to Exit Machine", swipeBackOverride) { swipeBackOverride = it }
                     }
 
                     if (type == MachineType.VM) {
@@ -1019,7 +1111,7 @@ private fun BundledClientPicker(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        bundledClients.forEach { client ->
+        BundledClients.all.forEach { client ->
             val isSelected = client.id == selectedId
             Row(
                 modifier = Modifier
@@ -1037,7 +1129,13 @@ private fun BundledClientPicker(
                 Icon(
                     if (isSelected) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked,
                     contentDescription = null,
-                    tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Icon(
+                    client.icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                    modifier = Modifier.size(22.dp),
                 )
                 Column(Modifier.weight(1f)) {
                     Text(client.name, fontWeight = FontWeight.SemiBold)
@@ -1058,18 +1156,24 @@ private fun EditorSectionCard(
     subtitle: String,
     content: @Composable () -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.35f),
+                RoundedCornerShape(14.dp),
+            )
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f),
+                shape = RoundedCornerShape(14.dp),
+            )
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            content()
-        }
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        content()
     }
 }
 

@@ -113,6 +113,7 @@ extern NSNotificationName const WWNWatchCompositorFrameReadyNotification;
 @property(nonatomic, assign) BOOL defaultWaypipeEnabled;
 @property(nonatomic, assign) BOOL xwaylandSupport;
 @property(nonatomic, assign) BOOL shakeToCloseEnabled;
+@property(nonatomic, assign) BOOL swipeBackToCloseEnabled;
 @property(nonatomic, assign) BOOL hasCompletedWelcome;
 
 - (void)synchronize;

@@ -124,6 +124,10 @@ let
     let libff = "${strip (deps.fastfetch or null)}/lib/libfastfetch.a";
     in if (deps.fastfetch or null) == null || !builtins.pathExists libff then [] else [
       "-force_load" libff
+      "-framework" "CoreFoundation"
+      "-framework" "Foundation"
+      "-framework" "IOKit"
+      "-framework" "VideoToolbox"
     ];
   neovimLdflags = deps:
     let libnvim = "${strip (deps.neovim or null)}/lib/libwawona-neovim.a";

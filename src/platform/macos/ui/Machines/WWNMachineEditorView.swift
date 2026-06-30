@@ -54,6 +54,8 @@ struct WWNMachineEditorView: View {
   @State private var openGLDriver: String
   @State private var dmabufEnabled: Bool
   @State private var colorOperations: Bool
+  @State private var shakeToCloseEnabled: Bool
+  @State private var swipeBackToCloseEnabled: Bool
 
   init(
     title: String,
@@ -115,6 +117,14 @@ struct WWNMachineEditorView: View {
     _openGLDriver = State(initialValue: overrides["OpenGLDriver"] as? String ?? prefs.openglDriver())
     _dmabufEnabled = State(initialValue: (overrides["DmabufEnabled"] as? Bool) ?? prefs.dmabufEnabled())
     _colorOperations = State(initialValue: (overrides["ColorOperations"] as? Bool) ?? prefs.colorOperations())
+    _shakeToCloseEnabled = State(
+      initialValue: (runtimeOverrides["shakeToCloseEnabled"] as? Bool)
+        ?? (UserDefaults.standard.object(forKey: "wawona.pref.shakeToCloseEnabled") as? Bool ?? true)
+    )
+    _swipeBackToCloseEnabled = State(
+      initialValue: (runtimeOverrides["swipeBackToCloseEnabled"] as? Bool)
+        ?? (UserDefaults.standard.object(forKey: "wawona.pref.swipeBackToCloseEnabled") as? Bool ?? true)
+    )
 
     let initialNativeClientId: String
     if let stored = runtimeOverrides["bundledAppID"] as? String, !stored.isEmpty {
@@ -194,6 +204,11 @@ struct WWNMachineEditorView: View {
 
           displayInputGraphicsSection
 
+          sectionCard("Session Exit", subtitle: "Per-machine overrides for closing an active session.") {
+            Toggle("Shake to Exit Machine", isOn: $shakeToCloseEnabled)
+            Toggle("Swipe Back to Exit Machine", isOn: $swipeBackToCloseEnabled)
+          }
+
           if type == kWWNMachineTypeVirtualMachine {
             virtualMachineSection
           }
@@ -225,7 +240,11 @@ struct WWNMachineEditorView: View {
     sectionCard("Display / Input / Graphics", subtitle: "Per-machine overrides for global Display, Input, Graphics, and HDR settings.") {
       #if os(macOS) || os(iOS) || os(tvOS) || os(visionOS)
       Button("Open Wawona Settings…") {
-        PlatformGlobalSettings.open()
+        #if os(iOS) || os(tvOS) || os(visionOS)
+        WWNPreferences.shared().show(nil)
+        #elseif os(macOS)
+        WWNPreferences.shared().show(NSApp)
+        #endif
       }
       #endif
       Toggle("Force Server-Side Decorations", isOn: $forceServerSideDecorations)
@@ -788,6 +807,20 @@ struct WWNMachineEditorView: View {
       runtimeOverrides["machineThumbnailEnabledOverride"] = machineThumbnailEnabled
     } else {
       runtimeOverrides.removeValue(forKey: "machineThumbnailEnabledOverride")
+    }
+    let globalShake =
+      UserDefaults.standard.object(forKey: "wawona.pref.shakeToCloseEnabled") as? Bool ?? true
+    let globalSwipeBack =
+      UserDefaults.standard.object(forKey: "wawona.pref.swipeBackToCloseEnabled") as? Bool ?? true
+    if shakeToCloseEnabled != globalShake {
+      runtimeOverrides["shakeToCloseEnabled"] = shakeToCloseEnabled
+    } else {
+      runtimeOverrides.removeValue(forKey: "shakeToCloseEnabled")
+    }
+    if swipeBackToCloseEnabled != globalSwipeBack {
+      runtimeOverrides["swipeBackToCloseEnabled"] = swipeBackToCloseEnabled
+    } else {
+      runtimeOverrides.removeValue(forKey: "swipeBackToCloseEnabled")
     }
     runtimeOverrides["legacySettingsOverrides"] = overrides
 

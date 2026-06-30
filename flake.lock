@@ -803,11 +803,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1782768782,
-        "narHash": "sha256-w1tNvhdJzi+qJQ871ceRofK7rnlDORLIhjWj44DyiLs=",
+        "lastModified": 1782786047,
+        "narHash": "sha256-NOb733ltFEKHhPbGJhSBUK3lN8eftHEaqq5k6PiIsg8=",
         "owner": "Wawona",
         "repo": "wwn-neovim",
-        "rev": "feba7b9ae1312f14ee8c6064834c916fb9ac185f",
+        "rev": "198d27e84b9f2597feae50ba0ee761bc722951b4",
         "type": "github"
       },
       "original": {

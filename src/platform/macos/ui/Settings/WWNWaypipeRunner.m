@@ -22,6 +22,8 @@
 #import <string.h>
 #import <math.h>
 
+extern volatile sig_atomic_t wwn_weston_compositor_shutdown_requested;
+
 extern char **environ;
 
 // Global for signal handler safety

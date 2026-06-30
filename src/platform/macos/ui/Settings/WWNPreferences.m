@@ -556,6 +556,15 @@ static UIImage *WWNAboutLogo(void) {
          @YES,
 #endif
          @"Allow multiple Wayland clients to connect simultaneously.")];
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+  [advancedItems addObject:ITEM(@"Shake to Exit Machine", @"wawona.pref.shakeToCloseEnabled",
+                                WSettingSwitch, @YES,
+                                @"Shake the device to confirm closing the active machine session.")];
+  [advancedItems addObject:ITEM(@"Swipe Back to Exit Machine",
+                                @"wawona.pref.swipeBackToCloseEnabled", WSettingSwitch, @YES,
+                                @"When enabled, edge swipe back asks before closing the active "
+                                @"machine session. When off, swipe back closes immediately.")];
+#endif
   advanced.items = advancedItems;
   [sects addObject:advanced];
 
@@ -811,7 +820,7 @@ static UIImage *WWNAboutLogo(void) {
 
   WWNSettingItem *sourceItem =
       ITEM(@"Source Code", nil, WSettingLink, nil, @"View on GitHub");
-  sourceItem.urlString = @"https://github.com/aspauldingcode/Wawona";
+  sourceItem.urlString = @"https://github.com/wawona/wawona";
   sourceItem.iconURL = @"https://github.githubassets.com/images/modules/logos_"
                        @"page/GitHub-Mark.png";
 

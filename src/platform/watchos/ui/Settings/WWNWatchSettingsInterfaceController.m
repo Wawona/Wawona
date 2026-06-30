@@ -121,6 +121,7 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
             [self actionRow:@"Log Level" key:@"logLevel" value:bridge.logLevel],
             [self toggleRow:@"XWayland Support" key:@"xwaylandSupport" value:bridge.xwaylandSupport],
             [self toggleRow:@"Shake to Close" key:@"shakeToCloseEnabled" value:bridge.shakeToCloseEnabled],
+            [self toggleRow:@"Swipe Back to Close" key:@"swipeBackToCloseEnabled" value:bridge.swipeBackToCloseEnabled],
         ];
     }
     return @[];
@@ -246,6 +247,8 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
         bridge.xwaylandSupport = on;
     } else if ([key isEqualToString:@"shakeToCloseEnabled"]) {
         bridge.shakeToCloseEnabled = on;
+    } else if ([key isEqualToString:@"swipeBackToCloseEnabled"]) {
+        bridge.swipeBackToCloseEnabled = on;
     }
     [bridge synchronize];
 }

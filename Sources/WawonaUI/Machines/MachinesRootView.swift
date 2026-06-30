@@ -74,11 +74,20 @@ struct MachinesRootView: View {
     }
 
     private var filteredProfiles: [MachineProfile] {
-        let q = search.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !q.isEmpty else { return profileStore.profiles }
-        return profileStore.profiles.filter {
-            $0.name.lowercased().contains(q) || $0.sshHost.lowercased().contains(q)
-        }
+        MachineFuzzySearch.filter(
+            profiles: profileStore.profiles,
+            query: search,
+            searchableText: { profile in
+                [
+                    profile.name,
+                    profile.sshHost,
+                    profile.sshUser,
+                    profile.type.rawValue,
+                ]
+                .joined(separator: " ")
+                .lowercased()
+            }
+        )
     }
 
     private func connect(_ profile: MachineProfile) {

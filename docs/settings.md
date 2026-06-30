@@ -73,6 +73,10 @@ SwiftUI does **not** implement global settings on macOS, iOS, or watchOS. On wat
 | **Color Operations** | `colorOperations` / `ColorOperations` | Switch | On (Android), Off (macOS/iOS) | All | Color profiles, HDR requests |
 | **Nested Compositors** | `nestedCompositorsSupport` / `NestedCompositorsSupport` | Switch | On | All | Support nested Wayland compositors |
 | **Multiple Clients** | `multipleClients` / `MultipleClients` | Switch | On (macOS), Off (iOS/Android) | All | Allow multiple Wayland clients simultaneously |
+| **Shake to Exit Machine** | `wawona.pref.shakeToCloseEnabled` | Switch | On | iOS, Android, watchOS | When enabled, shake shows a confirmation before closing the active machine session |
+| **Swipe Back to Exit Machine** | `wawona.pref.swipeBackToCloseEnabled` | Switch | On | iOS, Android, watchOS | When enabled, back/swipe/menu shows a confirmation before closing the active session |
+| **Per-machine shake override** | `runtimeOverrides.shakeToCloseEnabled` | Optional bool | inherit global | All | Machine editor / override sheet |
+| **Per-machine swipe-back override** | `runtimeOverrides.swipeBackToCloseEnabled` | Optional bool | inherit global | All | Machine editor / override sheet |
 
 ---
 

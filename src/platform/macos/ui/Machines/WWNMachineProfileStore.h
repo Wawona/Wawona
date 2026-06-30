@@ -61,6 +61,8 @@ extern NSString *const kWWNMachineTypeContainer;
 + (void)persistActiveMachineSettings;
 + (NSDictionary<NSString *, id> *)resolvedRuntimeSettingsForProfile:(WWNMachineProfile *)profile;
 + (BOOL)isMachineThumbnailEnabledForProfile:(WWNMachineProfile *)profile;
++ (BOOL)resolvedShakeToCloseForProfile:(nullable WWNMachineProfile *)profile;
++ (BOOL)resolvedSwipeBackToCloseForProfile:(nullable WWNMachineProfile *)profile;
 + (BOOL)profileIndicatesNestedWithNativeClientId:(NSString *)clientId
                                    customCommand:(NSString *)customCommand
     NS_SWIFT_NAME(profileIndicatesNested(nativeClientId:customCommand:));

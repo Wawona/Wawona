@@ -73,7 +73,8 @@ struct WWNMachinesGridView: View {
     NavigationStack {
       detailPane
         .navigationTitle(detailNavigationTitle)
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $searchQuery, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search machines")
         .toolbar {
           detailToolbarContent
         }
@@ -488,11 +489,11 @@ final class WWNMachinesHostingBridge: NSObject {
     let root = WWNMachinesGridView(
       onConnect: onConnect,
       onOpenSettings: {
-        PlatformGlobalSettings.open()
+        WWNPreferences.shared().show(nil)
       }
     )
     let hosting = UIHostingController(rootView: root)
-    hosting.view.backgroundColor = .systemBackground
+    hosting.view.backgroundColor = UIColor.systemBackground
     return hosting
   }
 }
@@ -592,7 +593,7 @@ final class WWNMachinesHostingBridge: NSObject {
   static func buildMacMachinesWindowController(onConnect: (() -> Void)?) -> NSWindowController {
     let root = WWNMachinesGridView(
       onConnect: onConnect,
-      onOpenSettings: { PlatformGlobalSettings.open() }
+      onOpenSettings: { WWNPreferences.shared().show(NSApp) }
     )
     let hosting = NSHostingController(rootView: root)
     let window = NSWindow(

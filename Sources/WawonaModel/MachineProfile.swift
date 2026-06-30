@@ -57,6 +57,7 @@ public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
     public var waypipeSSHPassword: String?
     public var logLevel: String?
     public var shakeToCloseEnabled: Bool?
+    public var swipeBackToCloseEnabled: Bool?
 
     public init(
         renderer: String? = nil,
@@ -73,7 +74,8 @@ public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
         colorOperations: Bool? = nil,
         waypipeSSHPassword: String? = nil,
         logLevel: String? = nil,
-        shakeToCloseEnabled: Bool? = nil
+        shakeToCloseEnabled: Bool? = nil,
+        swipeBackToCloseEnabled: Bool? = nil
     ) {
         self.renderer = renderer
         self.vulkanDriver = vulkanDriver
@@ -90,6 +92,7 @@ public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
         self.waypipeSSHPassword = waypipeSSHPassword
         self.logLevel = logLevel
         self.shakeToCloseEnabled = shakeToCloseEnabled
+        self.swipeBackToCloseEnabled = swipeBackToCloseEnabled
     }
 }
 

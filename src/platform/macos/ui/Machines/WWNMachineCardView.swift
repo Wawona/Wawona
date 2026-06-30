@@ -38,15 +38,10 @@ struct WWNMachineCardView: View {
         .foregroundStyle(.secondary)
         .lineLimit(3)
 
-      ViewThatFits(in: .horizontal) {
-        HStack(spacing: 8) {
-          actionButtons
-        }
-        VStack(spacing: 8) {
-          actionButtons
-        }
+      HStack(spacing: 8) {
+        actionButtons
       }
-      .font(.subheadline.weight(.semibold))
+      .controlSize(.small)
     }
     .padding(16)
     .background(

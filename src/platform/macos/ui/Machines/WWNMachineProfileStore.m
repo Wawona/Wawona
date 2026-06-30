@@ -20,6 +20,10 @@ static NSString *const kWWNRuntimeBundledAppID = @"bundledAppID";
 static NSString *const kWWNRuntimeWaypipeEnabled = @"waypipeEnabled";
 static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
     @"machineThumbnailEnabledOverride";
+static NSString *const kWWNRuntimeShakeToCloseEnabled = @"shakeToCloseEnabled";
+static NSString *const kWWNRuntimeSwipeBackToCloseEnabled = @"swipeBackToCloseEnabled";
+static NSString *const kWWNPrefShakeToCloseEnabled = @"wawona.pref.shakeToCloseEnabled";
+static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBackToCloseEnabled";
 
 @implementation WWNMachineProfile
 
@@ -785,6 +789,47 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
     return [overrideValue boolValue];
   }
   return [[WWNPreferencesManager sharedManager] machineSessionThumbnailsEnabled];
+}
+
++ (BOOL)globalBoolPrefForKey:(NSString *)key defaultValue:(BOOL)defaultValue {
+  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  if ([defaults objectForKey:key] == nil) {
+    return defaultValue;
+  }
+  return [defaults boolForKey:key];
+}
+
++ (BOOL)resolvedRuntimeBoolForProfile:(nullable WWNMachineProfile *)profile
+                           overrideKey:(NSString *)overrideKey
+                             globalKey:(NSString *)globalKey
+                          defaultValue:(BOOL)defaultValue {
+  BOOL global = [self globalBoolPrefForKey:globalKey defaultValue:defaultValue];
+  if (!profile) {
+    return global;
+  }
+  NSDictionary *runtimeOverrides =
+      [profile.runtimeOverrides isKindOfClass:[NSDictionary class]]
+          ? profile.runtimeOverrides
+          : @{};
+  id overrideValue = runtimeOverrides[overrideKey];
+  if ([overrideValue respondsToSelector:@selector(boolValue)]) {
+    return [overrideValue boolValue];
+  }
+  return global;
+}
+
++ (BOOL)resolvedShakeToCloseForProfile:(WWNMachineProfile *)profile {
+  return [self resolvedRuntimeBoolForProfile:profile
+                                 overrideKey:kWWNRuntimeShakeToCloseEnabled
+                                   globalKey:kWWNPrefShakeToCloseEnabled
+                                defaultValue:YES];
+}
+
++ (BOOL)resolvedSwipeBackToCloseForProfile:(WWNMachineProfile *)profile {
+  return [self resolvedRuntimeBoolForProfile:profile
+                                 overrideKey:kWWNRuntimeSwipeBackToCloseEnabled
+                                   globalKey:kWWNPrefSwipeBackToCloseEnabled
+                                defaultValue:YES];
 }
 
 @end

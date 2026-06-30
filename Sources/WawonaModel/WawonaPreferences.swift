@@ -107,6 +107,7 @@ public struct ResolvedMachineSettings: Hashable, Sendable {
     public var inputProfile: String
     public var logLevel: String
     public var shakeToCloseEnabled: Bool
+    public var swipeBackToCloseEnabled: Bool
 }
 
 @MainActor
@@ -131,6 +132,7 @@ public final class WawonaPreferences: ObservableObject {
     /// When true, Waypipe is launched with `--xwls` (XWayland integration) for supported sessions.
     @Published public var xwaylandSupport: Bool = false
     @Published public var shakeToCloseEnabled: Bool = true
+    @Published public var swipeBackToCloseEnabled: Bool = true
     @Published public var hasCompletedWelcome: Bool = false
     @Published public var globalClientLaunchers: [ClientLauncher] = ClientLauncher.presets
     @Published public var diagnostics: [SettingsDiagnosticEntry] = []
@@ -164,6 +166,7 @@ public final class WawonaPreferences: ObservableObject {
         defaultWaypipeEnabled = defaults.object(forKey: keyPrefix + "defaultWaypipeEnabled") as? Bool ?? true
         xwaylandSupport = defaults.object(forKey: keyPrefix + "xwaylandSupport") as? Bool ?? false
         shakeToCloseEnabled = defaults.object(forKey: keyPrefix + "shakeToCloseEnabled") as? Bool ?? true
+        swipeBackToCloseEnabled = defaults.object(forKey: keyPrefix + "swipeBackToCloseEnabled") as? Bool ?? true
         hasCompletedWelcome = defaults.bool(forKey: keyPrefix + "hasCompletedWelcome")
 
         if let launchersData = defaults.data(forKey: keyPrefix + "globalClientLaunchers"),
@@ -195,6 +198,7 @@ public final class WawonaPreferences: ObservableObject {
         defaults.set(defaultWaypipeEnabled, forKey: keyPrefix + "defaultWaypipeEnabled")
         defaults.set(xwaylandSupport, forKey: keyPrefix + "xwaylandSupport")
         defaults.set(shakeToCloseEnabled, forKey: keyPrefix + "shakeToCloseEnabled")
+        defaults.set(swipeBackToCloseEnabled, forKey: keyPrefix + "swipeBackToCloseEnabled")
         defaults.set(hasCompletedWelcome, forKey: keyPrefix + "hasCompletedWelcome")
         if let data = try? JSONEncoder().encode(globalClientLaunchers) {
             defaults.set(data, forKey: keyPrefix + "globalClientLaunchers")
@@ -251,7 +255,8 @@ public final class WawonaPreferences: ObservableObject {
             bundledAppID: normalizedBundledApp.isEmpty ? defaultBundledAppID : normalizedBundledApp,
             inputProfile: normalizedInputProfile.isEmpty ? defaultInputProfile : normalizedInputProfile,
             logLevel: normalizedLogLevel.isEmpty ? logLevel : normalizedLogLevel,
-            shakeToCloseEnabled: profile.runtimeOverrides.shakeToCloseEnabled ?? shakeToCloseEnabled
+            shakeToCloseEnabled: profile.runtimeOverrides.shakeToCloseEnabled ?? shakeToCloseEnabled,
+            swipeBackToCloseEnabled: profile.runtimeOverrides.swipeBackToCloseEnabled ?? swipeBackToCloseEnabled
         )
     }
 

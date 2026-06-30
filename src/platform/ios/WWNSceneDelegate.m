@@ -3,10 +3,17 @@
 #import "../macos/ui/Settings/WWNPreferences.h"
 #import "../macos/ui/Settings/WWNWaypipeRunner.h"
 #import "../macos/ui/Machines/WWNMachinesCoordinator.h"
+#import "../macos/ui/Machines/WWNMachineProfileStore.h"
 #import "WWNCompositorBridge.h"
 #import <math.h>
 #import <TargetConditionals.h>
 #import "../../util/WWNLog.h"
+
+typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
+  WWNSessionExitTriggerShake = 0,
+  WWNSessionExitTriggerSwipeBack,
+  WWNSessionExitTriggerMenuOrEscape,
+};
 
 @interface WWNWelcomeViewController : UIViewController
 @property(nonatomic, copy) dispatch_block_t onContinue;
@@ -15,6 +22,7 @@
 
 @interface WWNCompositorHostViewController : UIViewController
 @property(nonatomic, assign) BOOL defersSystemGesturesForCompositor;
+@property(nonatomic, copy, nullable) dispatch_block_t onMenuOrEscapeDuringSession;
 @end
 
 @interface WWNShakeAwareWindow : UIWindow
@@ -80,6 +88,41 @@
     return nil;
   }
   return [super childViewControllerForStatusBarHidden];
+}
+#endif
+
+#if TARGET_OS_TV || TARGET_OS_VISION
+- (BOOL)canBecomeFirstResponder {
+  return YES;
+}
+
+- (NSArray<UIKeyCommand *> *)keyCommands {
+  NSMutableArray<UIKeyCommand *> *commands = [NSMutableArray array];
+#if TARGET_OS_VISION
+  [commands addObject:[UIKeyCommand keyCommandWithInput:UIKeyInputEscape
+                                            modifierFlags:0
+                                                   action:@selector(handleSessionExitKeyCommand:)]];
+#endif
+  return commands;
+}
+
+- (void)handleSessionExitKeyCommand:(UIKeyCommand *)command {
+  (void)command;
+  if (self.onMenuOrEscapeDuringSession) {
+    self.onMenuOrEscapeDuringSession();
+  }
+}
+
+- (void)pressesEnded:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+#if TARGET_OS_TV
+  for (UIPress *press in presses) {
+    if (press.type == UIPressTypeMenu && self.onMenuOrEscapeDuringSession) {
+      self.onMenuOrEscapeDuringSession();
+      return;
+    }
+  }
+#endif
+  [super pressesEnded:presses withEvent:event];
 }
 #endif
 
@@ -207,7 +250,7 @@
 @property(nonatomic, strong) UIViewController *machinesViewController;
 @property(nonatomic, strong) NSArray<NSLayoutConstraint *> *machinesViewConstraints;
 @property(nonatomic, assign) CFTimeInterval lastShakePromptTime;
-@property(nonatomic, assign) BOOL shakePromptVisible;
+@property(nonatomic, assign) BOOL sessionExitPromptVisible;
 #if !TARGET_OS_VISION && !TARGET_OS_TV
 @property(nonatomic, strong) UIScreenEdgePanGestureRecognizer *backSwipeGesture;
 #endif
@@ -239,6 +282,15 @@
   WWNCompositorHostViewController *rootViewController =
       [[WWNCompositorHostViewController alloc] init];
   rootViewController.defersSystemGesturesForCompositor = NO;
+#if TARGET_OS_TV || TARGET_OS_VISION
+  rootViewController.onMenuOrEscapeDuringSession = ^{
+    __strong typeof(weakSelf) strongSelf = weakSelf;
+    if (!strongSelf) {
+      return;
+    }
+    [strongSelf handleMenuOrEscapeDuringSession];
+  };
+#endif
   rootViewController.view =
       [[UIView alloc] initWithFrame:self.window.bounds];
   rootViewController.view.backgroundColor = [UIColor blackColor];
@@ -469,13 +521,14 @@
   if (gesture.state != UIGestureRecognizerStateEnded) {
     return;
   }
-  if ([self isShakeToCloseEnabled]) {
-    return;
-  }
   if (![self isAnyClientSessionRunning]) {
     return;
   }
-  [self closeActiveWaylandSession];
+  if ([self isSwipeBackToCloseEnabled]) {
+    [self presentSessionExitConfirmationForTrigger:WWNSessionExitTriggerSwipeBack];
+  } else {
+    [self closeActiveWaylandSession];
+  }
 }
 #endif
 
@@ -657,20 +710,39 @@
   return runner.isRunning || [self isAnyNativeClientRunning];
 }
 
-- (BOOL)isShakeToCloseEnabled {
-  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-  NSString *key = @"wawona.pref.shakeToCloseEnabled";
-  if ([defaults objectForKey:key] == nil) {
-    return YES;
+- (nullable WWNMachineProfile *)activeMachineProfile {
+  NSString *activeId = [WWNMachineProfileStore activeMachineId];
+  if (activeId.length == 0) {
+    return nil;
   }
-  return [defaults boolForKey:key];
+  return [WWNMachineProfileStore profileById:activeId];
+}
+
+- (BOOL)isShakeToCloseEnabled {
+  return [WWNMachineProfileStore resolvedShakeToCloseForProfile:[self activeMachineProfile]];
+}
+
+- (BOOL)isSwipeBackToCloseEnabled {
+  return [WWNMachineProfileStore resolvedSwipeBackToCloseForProfile:[self activeMachineProfile]];
 }
 
 - (void)handleShakeGesture {
   if (![self isShakeToCloseEnabled]) {
     return;
   }
-  if (self.shakePromptVisible) {
+  [self presentSessionExitConfirmationForTrigger:WWNSessionExitTriggerShake];
+}
+
+- (void)handleMenuOrEscapeDuringSession {
+  if (self.showingMachinesUI || ![self isAnyClientSessionRunning]) {
+    return;
+  }
+  [self presentSessionExitConfirmationForTrigger:WWNSessionExitTriggerMenuOrEscape];
+}
+
+- (void)presentSessionExitConfirmationForTrigger:(WWNSessionExitTrigger)trigger {
+  (void)trigger;
+  if (self.sessionExitPromptVisible) {
     return;
   }
 
@@ -692,7 +764,7 @@
     presenter = presenter.presentedViewController;
   }
 
-  self.shakePromptVisible = YES;
+  self.sessionExitPromptVisible = YES;
   UIAlertController *alert = [UIAlertController
       alertControllerWithTitle:@"Close current Wayland app?"
                        message:@"This will stop the current session and return to Machines."
@@ -707,7 +779,7 @@
                                  if (!strongSelf) {
                                    return;
                                  }
-                                 strongSelf.shakePromptVisible = NO;
+                                 strongSelf.sessionExitPromptVisible = NO;
                                }]];
 
   [alert addAction:[UIAlertAction
@@ -719,20 +791,20 @@
                                    return;
                                  }
                                  [strongSelf closeActiveWaylandSession];
-                                 strongSelf.shakePromptVisible = NO;
+                                 strongSelf.sessionExitPromptVisible = NO;
                                }]];
 
   [presenter presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)closeActiveWaylandSession {
-  if (self.shakePromptVisible) {
+  if (self.sessionExitPromptVisible) {
     UIViewController *presenter = self.window.rootViewController;
     while (presenter.presentedViewController) {
       presenter = presenter.presentedViewController;
     }
     [presenter dismissViewControllerAnimated:NO completion:nil];
-    self.shakePromptVisible = NO;
+    self.sessionExitPromptVisible = NO;
   }
 
   WWNWaypipeRunner *runner = [WWNWaypipeRunner sharedRunner];
@@ -762,6 +834,11 @@
 #endif
   [self setCompositorGestureDeferralEnabled:YES];
   self.showingMachinesUI = NO;
+#if TARGET_OS_TV || TARGET_OS_VISION
+  if ([self.window.rootViewController isKindOfClass:[WWNCompositorHostViewController class]]) {
+    [self.window.rootViewController becomeFirstResponder];
+  }
+#endif
   [self updateOutputSizeFromContainerForced:YES];
 }
 

@@ -223,7 +223,8 @@ extern int image_main(int argc, const char **argv) __attribute__((weak));
 extern int scaler_main(int argc, const char **argv) __attribute__((weak));
 extern int editor_main(int argc, const char **argv) __attribute__((weak));
 extern int constraints_main(int argc, const char **argv) __attribute__((weak));
-extern int foot_main(int argc, const char **argv) __attribute__((weak));
+extern int simple_egl_main(int argc, const char **argv) __attribute__((weak));
+extern int kmscube_main(int argc, char **argv) __attribute__((weak));
 extern int wwn_weston_is_compat_shim(void) __attribute__((weak));
 extern int wwn_weston_terminal_is_compat_shim(void) __attribute__((weak));
 extern int wwn_foot_is_compat_shim(void) __attribute__((weak));
@@ -3268,9 +3269,28 @@ typedef struct {
   wwn_client_main_fn fn;
 } WwnClientEntry;
 
+static int kmscube_stub_main(int argc, const char **argv) {
+  if (!kmscube_main) {
+    LOGE("kmscube unavailable on Android (iland + ANGLE GL client not linked "
+         "in this build)");
+    return 1;
+  }
+  return kmscube_main(argc, (char **)argv);
+}
+
+static int simple_egl_stub_main(int argc, const char **argv) {
+  if (!simple_egl_main) {
+    LOGE("weston-simple-egl unavailable in this build (simple_egl_main not "
+         "linked)");
+    return 1;
+  }
+  return simple_egl_main(argc, argv);
+}
+
 static const WwnClientEntry kBundledClients[] = {
     {"weston-simple-shm", weston_simple_shm_main},
     {"weston-terminal", weston_terminal_main},
+    {"foot", foot_main},
     {"weston-flower", flower_main},
     {"weston-clickdot", clickdot_main},
     {"weston-smoke", smoke_main},
@@ -3284,6 +3304,8 @@ static const WwnClientEntry kBundledClients[] = {
     {"weston-scaler", scaler_main},
     {"weston-editor", editor_main},
     {"weston-constraints", constraints_main},
+    {"weston-simple-egl", simple_egl_stub_main},
+    {"kmscube", kmscube_stub_main},
 };
 
 static wwn_client_main_fn wwn_client_main_for_id(const char *client_id) {
@@ -3295,6 +3317,39 @@ static wwn_client_main_fn wwn_client_main_for_id(const char *client_id) {
       return kBundledClients[i].fn;
   }
   return NULL;
+}
+
+static jboolean wwn_bundled_client_available(const char *client_id) {
+  if (!client_id || client_id[0] == '\0')
+    return JNI_FALSE;
+  if (strcmp(client_id, "foot") == 0) {
+    if (!foot_main) {
+      LOGE("foot symbol is unavailable in this build");
+      return JNI_FALSE;
+    }
+    if (wwn_foot_is_compat_shim && wwn_foot_is_compat_shim() != 0) {
+      LOGE("Refusing to launch foot: compatibility shim build detected");
+      return JNI_FALSE;
+    }
+    return JNI_TRUE;
+  }
+  if (strcmp(client_id, "kmscube") == 0) {
+    if (!kmscube_main) {
+      LOGE("kmscube unavailable on Android (iland + ANGLE GL client not linked "
+           "in this build)");
+      return JNI_FALSE;
+    }
+    return JNI_TRUE;
+  }
+  if (strcmp(client_id, "weston-simple-egl") == 0) {
+    if (!simple_egl_main) {
+      LOGE("weston-simple-egl unavailable in this build (simple_egl_main not "
+           "linked)");
+      return JNI_FALSE;
+    }
+    return JNI_TRUE;
+  }
+  return wwn_client_main_for_id(client_id) ? JNI_TRUE : JNI_FALSE;
 }
 
 static int g_bundled_client_running = 0;
@@ -3328,6 +3383,14 @@ static void *bundled_client_thread_func(void *arg) {
       wwn_weston_terminal_is_compat_shim &&
       wwn_weston_terminal_is_compat_shim() != 0) {
     LOGE("Refusing to launch weston-terminal: compatibility shim build detected");
+    g_bundled_client_running = 0;
+    g_bundled_client_id[0] = '\0';
+    return NULL;
+  }
+  if (strcmp(client_id, "foot") == 0 &&
+      wwn_foot_is_compat_shim &&
+      wwn_foot_is_compat_shim() != 0) {
+    LOGE("Refusing to launch foot: compatibility shim build detected");
     g_bundled_client_running = 0;
     g_bundled_client_id[0] = '\0';
     return NULL;
@@ -3367,8 +3430,8 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeRunBundledClient(
     (*env)->ReleaseStringUTFChars(env, clientId, id_utf);
     return JNI_FALSE;
   }
-  if (!wwn_client_main_for_id(id_utf)) {
-    LOGE("Unknown bundled client id: %s", id_utf);
+  if (!wwn_bundled_client_available(id_utf)) {
+    LOGE("Bundled client unavailable: %s", id_utf);
     (*env)->ReleaseStringUTFChars(env, clientId, id_utf);
     return JNI_FALSE;
   }

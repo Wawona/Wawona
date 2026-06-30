@@ -317,9 +317,9 @@ final class WWNMachinesViewModel: ObservableObject {
       return
     }
 
-    var connectError: NSError?
-    let ok = WWNMachineSessionBridge.connectProfile(profile, error: &connectError)
-    if !ok {
+    do {
+      try WWNMachineSessionBridge.connect(profile)
+    } catch {
       statusByMachineId[profile.machineId] = .error
       return
     }
@@ -611,7 +611,7 @@ final class WWNMachinesViewModel: ObservableObject {
     return profile.type == kWWNMachineTypeSSHWaypipe ||
       profile.type == kWWNMachineTypeSSHTerminal
   }
-
+}
 
 enum WWNMachineFilter: String, CaseIterable, Identifiable, Hashable {
   case all = "All Machines"

@@ -149,17 +149,34 @@ let
     fi
     mkdir -p "$OUT"
 
+    # Prefer the live checkout at runtime so uncommitted Kotlin/C++ edits sync into
+    # Wawona-gradle-project (Darwin gradlegen bakes a git-filtered wawonaSrc at build time).
+    ANDROID_SRC="$REPO_ROOT/android"
+    if [ ! -f "$ANDROID_SRC/settings.gradle.kts" ]; then
+      if [ -n "${toString wawonaSrc}" ] && [ -d "${toString wawonaSrc}/android" ]; then
+        ANDROID_SRC="${toString wawonaSrc}/android"
+      else
+        ANDROID_SRC=""
+      fi
+    fi
+
     if [ -n "${projectPath}" ] && [ -d "${projectPath}" ]; then
       echo "Copying full Android project (backend + native libs) to $OUT/..."
       cp -r ${projectPath}/* "$OUT/"
       chmod -R u+w "$OUT" 2>/dev/null || true
+      if [ -n "$ANDROID_SRC" ] && [ -d "$ANDROID_SRC/app/src/main/java" ]; then
+        echo "Overlaying live Kotlin sources from $ANDROID_SRC/..."
+        rm -rf "$OUT/app/src/main/java"
+        cp -r "$ANDROID_SRC/app/src/main/java" "$OUT/app/src/main/"
+        chmod -R u+w "$OUT/app/src/main/java" 2>/dev/null || true
+      fi
       echo ""
       echo "Project ready at $OUT"
       echo "Open $OUT in Android Studio and select device/emulator."
     else
-      if [ -n "${toString wawonaSrc}" ] && [ -d "${toString wawonaSrc}/android" ]; then
+      if [ -n "$ANDROID_SRC" ]; then
         echo "Copying repository Android project to $OUT/..."
-        cp -r ${toString wawonaSrc}/android/* "$OUT/"
+        cp -r "$ANDROID_SRC"/* "$OUT/"
         chmod -R u+w "$OUT" 2>/dev/null || true
         ${if androidIconAssets != null then ''
           if [ -d "${androidIconAssets}/res" ]; then

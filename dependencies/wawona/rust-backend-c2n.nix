@@ -184,6 +184,14 @@ let
   # Host buildRustCrate: compiles for macOS (build scripts, proc-macros)
   hostBRC = pkgs.buildRustCrate.override toolchainOverrides;
 
+  appleRustPlatform = os: {
+    arch = "aarch64";
+    inherit os;
+    vendor = "apple";
+    env = "";
+    target-family = [ "unix" ];
+  };
+
   # Cross hostPlatform: surgically override the fields that configure-crate.nix
   # and build-crate.nix read, keeping everything else from the macOS stdenv.
   crossHostPlatform =
@@ -203,7 +211,7 @@ let
         rust = (base.rust or {}) // {
           rustcTarget = cargoTarget;
           rustcTargetSpec = cargoTarget;
-          platform = { arch = "aarch64"; os = "ios"; vendor = "apple"; target-family = ["unix"]; };
+          platform = appleRustPlatform "ios";
         };
       }
     else if isTVOS then
@@ -218,7 +226,7 @@ let
         rust = (base.rust or {}) // {
           rustcTarget = cargoTarget;
           rustcTargetSpec = cargoTarget;
-          platform = { arch = "aarch64"; os = "tvos"; vendor = "apple"; target-family = ["unix"]; };
+          platform = appleRustPlatform "tvos";
         };
       }
     else if isVisionOS then
@@ -233,7 +241,7 @@ let
         rust = (base.rust or {}) // {
           rustcTarget = cargoTarget;
           rustcTargetSpec = cargoTarget;
-          platform = { arch = "aarch64"; os = "visionos"; vendor = "apple"; target-family = ["unix"]; };
+          platform = appleRustPlatform "visionos";
         };
       }
     else if isWatchOS then
@@ -248,7 +256,7 @@ let
         rust = (base.rust or {}) // {
           rustcTarget = cargoTarget;
           rustcTargetSpec = cargoTarget;
-          platform = { arch = "aarch64"; os = "watchos"; vendor = "apple"; target-family = ["unix"]; };
+          platform = appleRustPlatform "watchos";
         };
       }
     else if isAndroid then
@@ -271,7 +279,8 @@ let
             arch = "aarch64";
             os = "android";
             vendor = "unknown";
-            target-family = ["unix"];
+            env = "";
+            target-family = [ "unix" ];
           };
         };
       }
