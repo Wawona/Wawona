@@ -332,6 +332,16 @@ let
         for f in "$fw"/*.dylib; do
           [ -f "$f" ] && echo "$f"
         done
+        if [ -d "$app/lib/libweston-13" ]; then
+          for f in "$app/lib/libweston-13"/*; do
+            [ -f "$f" ] && is_macho "$f" && echo "$f"
+          done
+        fi
+        if [ -d "$app/lib/weston" ]; then
+          for f in "$app/lib/weston"/*; do
+            [ -f "$f" ] && is_macho "$f" && echo "$f"
+          done
+        fi
       }
 
       dep_is_bundlable() {
