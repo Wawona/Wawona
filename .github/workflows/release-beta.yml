@@ -35,14 +35,7 @@ jobs:
           fi
 
       - name: Select Active Xcode
-        run: |
-          XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
-          if [ -z "$XCODE_APP" ]; then
-            echo "::error::No Xcode installation found on this runner"
-            exit 1
-          fi
-          sudo xcode-select -s "$XCODE_APP"
-          echo "DEVELOPER_DIR=$XCODE_APP/Contents/Developer" >> "$GITHUB_ENV"
+        run: ./.github/scripts/select-xcode.sh
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v22
@@ -68,7 +61,7 @@ jobs:
         working-directory: .
         run: |
           LANE="${{ github.event.inputs.lane || 'ios beta' }}"
-          nix develop .#release --command bash -lc "fastlane $LANE"
+          nix develop .#release --command bash -c "fastlane $LANE"
 
   android-beta:
     name: "Play internal track (Android)"

@@ -18,13 +18,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Select Xcode
-        run: |
-          XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
-          if [ -z "$XCODE_APP" ]; then
-            echo "::error::No Xcode installation found"
-            exit 1
-          fi
-          sudo xcode-select -s "$XCODE_APP"
+        run: ./.github/scripts/select-xcode.sh
 
       - uses: DeterminateSystems/nix-installer-action@v22
         with:

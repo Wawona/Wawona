@@ -12,6 +12,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Select Active Xcode
+        run: ./.github/scripts/select-xcode.sh
+
       - name: Install Determinate Nix
         uses: DeterminateSystems/nix-installer-action@v22
         with:

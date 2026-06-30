@@ -28,6 +28,29 @@ builtins.listToAttrs (map (system: let
     echo "Fastlane: nix develop .#release --command fastlane ios beta"
   '';
 
+  # Fastlane match and xcodebuild need DEVELOPER_DIR and xcodebuild on PATH inside
+  # nix develop. CI exports these via select-xcode.sh; local dev uses find-xcode.
+  darwinXcodeShellHook = pkgs.lib.optionalString pkgs.stdenv.isDarwin ''
+    XCODE_APP=""
+    if [ -n "''${DEVELOPER_DIR:-}" ]; then
+      XCODE_APP="''${DEVELOPER_DIR%/Contents/Developer}"
+    fi
+    if [ -z "$XCODE_APP" ] || [ ! -d "$XCODE_APP/Contents/Developer" ]; then
+      if command -v find-xcode >/dev/null 2>&1; then
+        XCODE_APP="$(find-xcode 2>/dev/null || true)"
+      else
+        XCODE_APP="$(${xcodeUtils.findXcodeScript}/bin/find-xcode 2>/dev/null || true)"
+      fi
+    fi
+    if [ -n "$XCODE_APP" ] && [ -d "$XCODE_APP/Contents/Developer" ]; then
+      export XCODE_APP
+      export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
+      export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
+    else
+      echo "WARNING: Xcode not found — set DEVELOPER_DIR or install Xcode before fastlane/match" >&2
+    fi
+  '';
+
   linuxShell = pkgs.mkShell {
     nativeBuildInputs = [ pkgs.pkg-config ];
     buildInputs = [
@@ -83,6 +106,8 @@ builtins.listToAttrs (map (system: let
         fi
       fi
 
+      ${darwinXcodeShellHook}
+
       echo "Contributors: nix run .#xcodegen-ios | export WAWONA_SKIP_NIX_PREBUILD=1 for UI iteration"
       ${releaseShellHook}
     '';
@@ -92,7 +117,10 @@ builtins.listToAttrs (map (system: let
     inputsFrom = [
       (if pkgs.stdenv.isDarwin then darwinShell else linuxShell)
     ];
-    shellHook = releaseShellHook;
+    shellHook = ''
+      ${if pkgs.stdenv.isDarwin then darwinXcodeShellHook else ""}
+      ${releaseShellHook}
+    '';
   };
 in {
   name = system;
