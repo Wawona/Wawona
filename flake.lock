@@ -827,11 +827,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1782800503,
-        "narHash": "sha256-ZfhfeqViEaIoCVPVOtJTYpAWSOrCjUu3eyNXC+rtF/0=",
+        "lastModified": 1782801623,
+        "narHash": "sha256-NWMs5IJtqZaDqJCUzT0gX6zH1qhriVf1DDQZHghQkjM=",
         "owner": "Wawona",
         "repo": "wwn-toolchain",
-        "rev": "d38b967283cb4632d202c69c8c84e9e9e7bf74f7",
+        "rev": "1be38c1bb579c0ebbf7fefd229eaaff9bb88ce30",
         "type": "github"
       },
       "original": {
