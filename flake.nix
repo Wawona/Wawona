@@ -1116,6 +1116,7 @@ EOF
           fribidi-android = toolchainsAndroid.buildForAndroid "fribidi" { };
           pcre2-android = toolchainsAndroid.buildForAndroid "pcre2" { };
           fontconfig-android = toolchainsAndroid.buildForAndroid "fontconfig" { };
+          pixman-android = toolchainsAndroid.buildForAndroid "pixman" { };
           glib-android = toolchainsAndroid.buildForAndroid "glib" { };
           harfbuzz-android = toolchainsAndroid.buildForAndroid "harfbuzz" { };
           cairo-android = toolchainsAndroid.buildForAndroid "cairo" { };
