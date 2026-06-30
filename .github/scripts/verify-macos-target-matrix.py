@@ -35,6 +35,21 @@ REQUIRED_PACKAGE_KEYS = {
     "wawona-visionos-backend",
     "wawona-visionos-sim-backend",
     "wawona-macos-backend",
+    "zsh-ios",
+    "zsh-ios-sim",
+    "zsh-android",
+    "fastfetch-ios",
+    "fastfetch-ios-device",
+    "fastfetch-android",
+    "neovim-ios",
+    "neovim-ios-device",
+    "neovim-android",
+    "neovim-rootfs-ios",
+    "neovim-rootfs-ios-sim",
+    "wawona-pty-ios",
+    "wawona-pty-ios-sim",
+    "wawona-rootfs-ios",
+    "wawona-rootfs-ios-sim",
 }
 
 REQUIRED_APP_KEYS = {
@@ -49,8 +64,7 @@ REQUIRED_APP_KEYS = {
 def _missing_keys(text: str, keys: set[str]) -> list[str]:
     missing = []
     for key in sorted(keys):
-        needle = f"{key} ="
-        if needle not in text:
+        if f'"{key}" =' not in text and f"{key} =" not in text:
             missing.append(key)
     return missing
 

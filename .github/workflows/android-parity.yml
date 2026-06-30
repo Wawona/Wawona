@@ -9,6 +9,8 @@ on:
       - 'src/platform/android/**'
       - 'flake.nix'
       - 'flake.lock'
+      - '.github/scripts/verify-android-shell-tools.py'
+      - '.github/scripts/nix-build-shell-tools.sh'
   pull_request:
     paths:
       - 'android/**'
@@ -16,6 +18,8 @@ on:
       - 'src/platform/android/**'
       - 'flake.nix'
       - 'flake.lock'
+      - '.github/scripts/verify-android-shell-tools.py'
+      - '.github/scripts/nix-build-shell-tools.sh'
 
 jobs:
   nix-android-gate:
@@ -25,13 +29,18 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@v22
         with:
           determinate: true
-      - name: Build weston + compositor + zsh
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+      - name: Verify Android shell-tool wiring
+        run: python3 ./.github/scripts/verify-android-shell-tools.py
+      - name: Build weston + compositor + bundled shell tools
         run: |
-          cd Wawona
-          nix build .#weston-android .#weston-compositor-android .#zsh-android .#weston-ios --no-link
+          nix build .#weston-android .#weston-compositor-android \
+            .#zsh-android .#fastfetch-android .#neovim-android \
+            .#weston-ios --no-link
       - name: Gradle project assembleDebug
         run: |
-          cd Wawona
           nix run .#gradlegen
           cd Wawona-gradle-project
           ./gradlew :Wawona:assembleDebug --no-daemon

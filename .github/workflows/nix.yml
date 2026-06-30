@@ -68,6 +68,10 @@ jobs:
 
       - name: Verify Android maintainability checkpoint
         run: python3 ./.github/scripts/verify-android-maintainability.py
+      - name: Verify iOS shell-tool wiring
+        run: python3 ./.github/scripts/verify-ios-shell-tools.py
+      - name: Verify Android shell-tool wiring
+        run: python3 ./.github/scripts/verify-android-shell-tools.py
       - name: Verify Wayland protocol manifest
         run: python3 ./.github/scripts/verify-wayland-protocol-manifest.py
       - name: Verify Smithay coverage contract
@@ -243,6 +247,10 @@ jobs:
 
       - name: Verify Android maintainability checkpoint
         run: python3 ./.github/scripts/verify-android-maintainability.py
+      - name: Verify iOS shell-tool wiring
+        run: python3 ./.github/scripts/verify-ios-shell-tools.py
+      - name: Verify Android shell-tool wiring
+        run: python3 ./.github/scripts/verify-android-shell-tools.py
       - name: Verify Wayland protocol manifest
         run: python3 ./.github/scripts/verify-wayland-protocol-manifest.py
       - name: Verify Smithay coverage contract
@@ -392,6 +400,10 @@ jobs:
 
       - name: Verify Android maintainability checkpoint
         run: python3 ./.github/scripts/verify-android-maintainability.py
+      - name: Verify iOS shell-tool wiring
+        run: python3 ./.github/scripts/verify-ios-shell-tools.py
+      - name: Verify Android shell-tool wiring
+        run: python3 ./.github/scripts/verify-android-shell-tools.py
       - name: Verify macOS target matrix
         run: python3 ./.github/scripts/verify-macos-target-matrix.py
       - name: Verify Wayland protocol manifest
@@ -547,6 +559,10 @@ jobs:
 
       - name: Verify Android maintainability checkpoint
         run: python3 ./.github/scripts/verify-android-maintainability.py
+      - name: Verify iOS shell-tool wiring
+        run: python3 ./.github/scripts/verify-ios-shell-tools.py
+      - name: Verify Android shell-tool wiring
+        run: python3 ./.github/scripts/verify-android-shell-tools.py
       - name: Verify macOS target matrix
         run: python3 ./.github/scripts/verify-macos-target-matrix.py
       - name: Verify Wayland protocol manifest
@@ -724,6 +740,8 @@ jobs:
             allow-import-from-derivation = true
       - name: Smoke Apple Rust backend
         run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-arm64.outputs.system }}.wawona-ios-backend" --print-build-logs
+      - name: Build bundled shell tools (zsh, fastfetch, neovim)
+        run: ./.github/scripts/nix-retry.sh ./.github/scripts/nix-build-shell-tools.sh
       - name: Smoke Linux VM automation package
         run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-arm64.outputs.system }}.wawona-linux-vm" --print-build-logs
       - name: Smoke WearOS automation package
@@ -757,6 +775,8 @@ jobs:
             allow-import-from-derivation = true
       - name: Smoke Apple Rust backend
         run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-x86_64.outputs.system }}.wawona-ios-backend" --print-build-logs
+      - name: Build bundled shell tools (zsh, fastfetch, neovim)
+        run: ./.github/scripts/nix-retry.sh ./.github/scripts/nix-build-shell-tools.sh
       - name: Smoke Linux VM automation package
         run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-x86_64.outputs.system }}.wawona-linux-vm" --print-build-logs
       - name: Smoke WearOS automation package
