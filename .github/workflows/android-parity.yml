@@ -10,7 +10,9 @@ on:
       - 'flake.nix'
       - 'flake.lock'
       - '.github/scripts/verify-android-shell-tools.py'
+      - '.github/scripts/verify-android-meson-sandbox.py'
       - '.github/scripts/nix-build-shell-tools.sh'
+      - '.github/scripts/nix-build-android-meson-sandbox-gate.sh'
   pull_request:
     paths:
       - 'android/**'
@@ -19,7 +21,9 @@ on:
       - 'flake.nix'
       - 'flake.lock'
       - '.github/scripts/verify-android-shell-tools.py'
+      - '.github/scripts/verify-android-meson-sandbox.py'
       - '.github/scripts/nix-build-shell-tools.sh'
+      - '.github/scripts/nix-build-android-meson-sandbox-gate.sh'
 
 jobs:
   nix-android-gate:
@@ -34,10 +38,15 @@ jobs:
             allow-import-from-derivation = true
       - name: Verify Android shell-tool wiring
         run: python3 ./.github/scripts/verify-android-shell-tools.py
+      - name: Checkout flake inputs for meson verify
+        run: ./.github/scripts/checkout-flake-inputs.sh
+      - name: Verify Android meson sandbox hooks
+        run: python3 ./.github/scripts/verify-android-meson-sandbox.py
       - name: Build weston + compositor + bundled shell tools
+        run: ./.github/scripts/nix-build-android-meson-sandbox-gate.sh
+      - name: Build bundled shell tools + weston-ios
         run: |
-          nix build .#weston-android .#weston-compositor-android \
-            .#zsh-android .#fastfetch-android .#neovim-android \
+          nix build .#zsh-android .#fastfetch-android .#neovim-android \
             .#weston-ios --no-link
       - name: Gradle project assembleDebug
         run: |
