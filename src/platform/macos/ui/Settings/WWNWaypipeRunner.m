@@ -1736,6 +1736,13 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
 - (void)launchWestonMacOSAsNestedClient {
+  if (self.westonTask.isRunning) {
+    return;
+  }
+  if (self.westonTask && !self.westonTask.isRunning) {
+    self.westonTask = nil;
+    self.westonRunning = NO;
+  }
   if (self.westonRunning) {
     return;
   }
