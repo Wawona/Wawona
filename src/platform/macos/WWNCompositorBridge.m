@@ -3434,6 +3434,81 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   return nil;
 }
 
+- (void)_runCompositorEventPumpWithIterations:(int)iterations {
+  if (!_rustCore || iterations <= 0) {
+    return;
+  }
+  void (^pump)(void) = ^{
+    for (int i = 0; i < iterations; i++) {
+      WWNCoreProcessEvents(self->_rustCore);
+      WWNCoreFlushClients(self->_rustCore);
+    }
+  };
+  if (dispatch_get_specific(kWWNCompositorQueueKey)) {
+    pump();
+    return;
+  }
+  if (_compositorQueue) {
+    dispatch_sync(_compositorQueue, pump);
+  } else {
+    pump();
+  }
+}
+
+- (void)_pumpHostCompositorFromQueue {
+  [self _runCompositorEventPumpWithIterations:8];
+}
+
+- (void)pumpHostCompositorEvents {
+  if (!_rustCore) {
+    return;
+  }
+  // Run Wayland dispatch off the main thread so nested clients can connect
+  // without blocking AppKit (weston.ini, NSTask launch, UI).
+  [self _pumpHostCompositorFromQueue];
+  void (^drainOnMain)(void) = ^{
+    if (!self->_rustCore) {
+      return;
+    }
+    // Pop/handle on main only. Never spin ProcessEvents in a while-loop here:
+    // configure churn can enqueue events faster than we drain and freeze the UI.
+    NSUInteger handled = 0;
+    for (; handled < 32; handled++) {
+      CWindowEvent *event = WWNCorePopWindowEvent(self->_rustCore);
+      if (!event) {
+        break;
+      }
+      [self _dispatchWindowEvent:event];
+      WWNWindowEventFree(event);
+    }
+    if (handled > 0) {
+      WWNLog("BRIDGE", @"Drained %lu window event(s) after host pump",
+             (unsigned long)handled);
+    }
+  };
+  if ([NSThread isMainThread]) {
+    drainOnMain();
+  } else {
+    dispatch_sync(dispatch_get_main_queue(), drainOnMain);
+  }
+}
+
+- (void)scheduleFollowUpHostCompositorPumps:(NSUInteger)count
+                                 interval:(NSTimeInterval)intervalSeconds {
+  if (count == 0 || intervalSeconds <= 0) {
+    return;
+  }
+  for (NSUInteger i = 1; i <= count; i++) {
+    dispatch_after(
+        dispatch_time(DISPATCH_TIME_NOW,
+                      (int64_t)(intervalSeconds * (NSTimeInterval)i *
+                                NSEC_PER_SEC)),
+        dispatch_get_main_queue(), ^{
+          [[WWNCompositorBridge sharedBridge] pumpHostCompositorEvents];
+        });
+  }
+}
+
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
 
 /// Forward Wayland cursor surface info to all iOS compositor views so they
@@ -3528,81 +3603,6 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
     return [(WWNCompositorView_ios *)self.containerView prepareIlandMetalPresentation];
   }
   return NO;
-}
-
-- (void)_runCompositorEventPumpWithIterations:(int)iterations {
-  if (!_rustCore || iterations <= 0) {
-    return;
-  }
-  void (^pump)(void) = ^{
-    for (int i = 0; i < iterations; i++) {
-      WWNCoreProcessEvents(self->_rustCore);
-      WWNCoreFlushClients(self->_rustCore);
-    }
-  };
-  if (dispatch_get_specific(kWWNCompositorQueueKey)) {
-    pump();
-    return;
-  }
-  if (_compositorQueue) {
-    dispatch_sync(_compositorQueue, pump);
-  } else {
-    pump();
-  }
-}
-
-- (void)_pumpHostCompositorFromQueue {
-  [self _runCompositorEventPumpWithIterations:8];
-}
-
-- (void)pumpHostCompositorEvents {
-  if (!_rustCore) {
-    return;
-  }
-  // Run Wayland dispatch off the main thread so nested clients can connect
-  // without blocking AppKit (weston.ini, NSTask launch, UI).
-  [self _pumpHostCompositorFromQueue];
-  void (^drainOnMain)(void) = ^{
-    if (!self->_rustCore) {
-      return;
-    }
-    // Pop/handle on main only. Never spin ProcessEvents in a while-loop here:
-    // configure churn can enqueue events faster than we drain and freeze the UI.
-    NSUInteger handled = 0;
-    for (; handled < 32; handled++) {
-      CWindowEvent *event = WWNCorePopWindowEvent(self->_rustCore);
-      if (!event) {
-        break;
-      }
-      [self _dispatchWindowEvent:event];
-      WWNWindowEventFree(event);
-    }
-    if (handled > 0) {
-      WWNLog("BRIDGE", @"Drained %lu window event(s) after host pump",
-             (unsigned long)handled);
-    }
-  };
-  if ([NSThread isMainThread]) {
-    drainOnMain();
-  } else {
-    dispatch_sync(dispatch_get_main_queue(), drainOnMain);
-  }
-}
-
-- (void)scheduleFollowUpHostCompositorPumps:(NSUInteger)count
-                                 interval:(NSTimeInterval)intervalSeconds {
-  if (count == 0 || intervalSeconds <= 0) {
-    return;
-  }
-  for (NSUInteger i = 1; i <= count; i++) {
-    dispatch_after(
-        dispatch_time(DISPATCH_TIME_NOW,
-                      (int64_t)(intervalSeconds * (NSTimeInterval)i *
-                                NSEC_PER_SEC)),
-        dispatch_get_main_queue(), ^{
-          [[WWNCompositorBridge sharedBridge] pumpHostCompositorEvents];
-        });
-  }
 }
 
 - (void)handleWindowHostLocked:(CWindowEvent *)event {
