@@ -284,6 +284,61 @@ static uint32_t WWNBridgeFrameTimestampMs(void *core) {
 // Marks blocks running on _compositorQueue (reentrancy + pump routing).
 static void *const kWWNCompositorQueueKey = (void *)&kWWNCompositorQueueKey;
 
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+// Close host NSWindows without racing AppKit transform animations. Immediate
+// close after toggleFullScreen (or during an in-flight CA commit) can crash in
+// _NSWindowTransformAnimation dealloc when Stop tears down a live client.
+static void WWNFinishHostWindowTeardown(NSWindow *window) {
+  if (!window) {
+    return;
+  }
+  if ([window respondsToSelector:@selector(setAnimationBehavior:)]) {
+    window.animationBehavior = NSWindowAnimationBehaviorNone;
+  }
+  [window orderOut:nil];
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [window close];
+  });
+}
+
+static void WWNCloseHostWindowSafely(NSWindow *window) {
+  if (!window) {
+    return;
+  }
+  if ((window.styleMask & NSWindowStyleMaskFullScreen) == 0) {
+    WWNFinishHostWindowTeardown(window);
+    return;
+  }
+  __weak NSWindow *weakWindow = window;
+  __block id token = nil;
+  void (^finishOnce)(void) = ^{
+    if (!token) {
+      return;
+    }
+    [[NSNotificationCenter defaultCenter] removeObserver:token];
+    token = nil;
+    WWNFinishHostWindowTeardown(weakWindow);
+  };
+  token = [[NSNotificationCenter defaultCenter]
+      addObserverForName:NSWindowDidExitFullScreenNotification
+                    object:window
+                     queue:[NSOperationQueue mainQueue]
+                usingBlock:^(__unused NSNotification *note) {
+                  finishOnce();
+                }];
+  dispatch_after(
+      dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
+      dispatch_get_main_queue(), ^{
+        if (token) {
+          WWNLog("BRIDGE",
+                 @"Fullscreen exit timed out during teardown — forcing close");
+          finishOnce();
+        }
+      });
+  [window toggleFullScreen:nil];
+}
+#endif
+
 @implementation WWNCompositorBridge {
   void *_rustCore;
   NSTimer *_eventTimer;
@@ -643,8 +698,12 @@ static void *const kWWNCompositorQueueKey = (void *)&kWWNCompositorQueueKey;
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
     for (NSNumber *key in [_windows allKeys]) {
       WWNWindow *window = [_windows objectForKey:key];
-      [window orderOut:nil]; // Hide window
-      [window close];        // Close window
+      if ([window isKindOfClass:[WWNWindow class]]) {
+        window.suppressCompositorCallbacks = YES;
+        [window cancelPendingHostCloseEscalation];
+      }
+      [window setDelegate:nil];
+      WWNCloseHostWindowSafely(window);
     }
 #endif
     [_windows removeAllObjects];
@@ -2970,6 +3029,7 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
 #endif
 }
 
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
 - (void)syncHostFullscreen:(BOOL)fullscreen
                 forWindowId:(uint64_t)windowId
                       width:(uint32_t)width
@@ -2999,6 +3059,7 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
     WWNCoreApplyHostWindowMaximized(self->_rustCore, wid, mz, w, h);
   }];
 }
+#endif
 
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
 - (void)handleCursorShapeChanged:(CWindowEvent *)event {
@@ -3131,11 +3192,7 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
       // Wayland client has already been torn down. Hiding + detaching keeps
       // host alive without touching potentially invalid compositor state.
       [window setDelegate:nil];
-      if ((window.styleMask & NSWindowStyleMaskFullScreen) != 0) {
-        [window toggleFullScreen:nil];
-      }
-      [window orderOut:nil];
-      [window close];
+      WWNCloseHostWindowSafely(window);
     } @catch (NSException *exception) {
       WWNLog("BRIDGE",
              @"Exception while destroying window %llu: %@ (%@)",

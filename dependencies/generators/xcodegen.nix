@@ -672,14 +672,7 @@ let
             "ARCHS[sdk=iphonesimulator*]" = "arm64";
             "ONLY_ACTIVE_ARCH" = "YES";
             LD_RUNPATH_SEARCH_PATHS = [ "$(inherited)" "@executable_path/Frameworks" ];
-            "FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]" = [
-              "$(inherited)"
-              "$(SDKROOT)/System/Library/SubFrameworks"
-            ];
-            "FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*]" = [
-              "$(inherited)"
-              "$(SDKROOT)/System/Library/SubFrameworks"
-            ];
+            # Do not add SubFrameworks (UIUtilities / SwiftUICore) — same as tvOS.
             "OTHER_LDFLAGS[sdk=iphoneos*]" = [
               "$(inherited)"
               "-L${strip (iosDeps.libwayland or null)}/lib"
@@ -838,14 +831,7 @@ let
             "ARCHS[sdk=iphonesimulator*]" = "arm64";
             "ONLY_ACTIVE_ARCH" = "YES";
             LD_RUNPATH_SEARCH_PATHS = [ "$(inherited)" "@executable_path/Frameworks" ];
-            "FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]" = [
-              "$(inherited)"
-              "$(SDKROOT)/System/Library/SubFrameworks"
-            ];
-            "FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*]" = [
-              "$(inherited)"
-              "$(SDKROOT)/System/Library/SubFrameworks"
-            ];
+            # Do not add SubFrameworks (UIUtilities / SwiftUICore) — same as tvOS.
             "OTHER_LDFLAGS[sdk=iphoneos*]" = [
               "$(inherited)"
               "-L${strip (ipadosDeps.libwayland or null)}/lib"

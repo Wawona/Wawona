@@ -117,6 +117,7 @@ typedef struct {
                     height:(uint32_t)height;
 
 /// Host green-button / Mission Control changed native fullscreen or zoom.
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
 - (void)syncHostFullscreen:(BOOL)fullscreen
                 forWindowId:(uint64_t)windowId
                       width:(uint32_t)width
@@ -125,6 +126,7 @@ typedef struct {
              forWindowId:(uint64_t)windowId
                    width:(uint32_t)width
                   height:(uint32_t)height;
+#endif
 
 /// Force immediate authoritative resize sync for current host content size.
 /// Use at end of live-resize to avoid host/client edge desync.

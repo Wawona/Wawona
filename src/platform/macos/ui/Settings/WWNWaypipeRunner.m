@@ -38,7 +38,9 @@ extern void wwn_mobile_clear_wayland_socket_fd(void);
 extern void wwn_propagate_mobile_env(void);
 extern void wwn_launch_host_client(char *const *argp, char *const *envp);
 extern int foot_main(int argc, char **argv);
+#if !TARGET_OS_IPHONE
 extern int simple_egl_main(int argc, char **argv) __attribute__((weak));
+#endif
 extern int wwn_weston_is_compat_shim(void) __attribute__((weak));
 extern int wwn_weston_terminal_is_compat_shim(void) __attribute__((weak));
 extern int wwn_foot_is_compat_shim(void) __attribute__((weak));
@@ -1186,8 +1188,10 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       @"weston-editor" : [NSValue valueWithPointer:(void *)editor_main],
       @"weston-constraints" :
           [NSValue valueWithPointer:(void *)constraints_main],
+#if !TARGET_OS_IPHONE
       @"weston-simple-egl" :
           [NSValue valueWithPointer:(void *)simple_egl_main],
+#endif
     };
   });
   NSValue *entry = map[clientId];
