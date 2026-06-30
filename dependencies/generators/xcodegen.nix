@@ -141,6 +141,9 @@ let
     in if (deps.neovim or null) == null || !builtins.pathExists libnvim then [] else [
       "-force_load" libnvim
     ];
+  # Static archives with C++ (ANGLE, Rust backend, fastfetch, …) need libc++
+  # after every -force_load block; append once at the end of OTHER_LDFLAGS.
+  finalCxxLdflags = [ "-lc++" "-lc++abi" "-ldl" ];
   # weston_simple_shm_main lives here; os-compatibility.c is omitted from this
   # archive because libweston-13.a already provides those symbols on iOS-family targets.
   westonSimpleShmLdflags = deps:
@@ -148,28 +151,6 @@ let
     in if (deps.weston-simple-shm or null) == null || !builtins.pathExists archive then [] else [
       "-force_load" archive
     ];
-  angleIosEmbedScript = deviceAngle: simAngle: pkgs.writeShellScript "embed-angle-ios.sh" ''
-    case "''${PLATFORM_NAME:-}" in
-      iphoneos)
-        angleRoot="${strip deviceAngle}"
-        ;;
-      iphonesimulator)
-        angleRoot="${strip simAngle}"
-        ;;
-      *)
-        exit 0
-        ;;
-    esac
-    FRAMEWORKS_DIR="$BUILT_PRODUCTS_DIR/$FRAMEWORKS_FOLDER_PATH"
-    mkdir -p "$FRAMEWORKS_DIR"
-    for lib in libEGL.dylib libGLESv2.dylib; do
-      src="$angleRoot/lib/$lib"
-      if [ -f "$src" ]; then
-        install -m 755 "$src" "$FRAMEWORKS_DIR/$lib"
-        echo "Embedded ANGLE $lib"
-      fi
-    done
-  '';
   xkbIosEmbedScript = pkgs.writeShellScript "embed-xkb-ios.sh" ''
     case "''${PLATFORM_NAME:-}" in
       iphoneos|iphonesimulator|appletvos|appletvsimulator)
@@ -206,7 +187,7 @@ let
   '';
   xcodeUtils = import applePath { inherit lib pkgs TEAM_ID; };
 
-  # Dependency version strings (must match the tags/versions in dependencies/libs/*)
+  # Dependency version strings (must match tags/versions in wwn-toolchain / wwn-* libs)
   depVersions = {
     wayland   = "1.23.0";
     xkbcommon = "1.7.0";
@@ -331,11 +312,7 @@ let
             "-lepoll-shim"
           ] ++ (mobileBaseLdflags deps) ++ westonToytoolkitLdflagsAppleMobile deps ++ westonCompositorLdflags deps
           ++ (ilandGlLdflags { inherit deps; simulator = false; }) ++ footLdflags deps ++ fastfetchLdflags deps ++ neovimLdflags deps ++ extraDeviceLdflags
-          ++ mobileZshLdflags ++ [
-            derivedRustLib
-            "-lc++"
-            "-lc++abi"
-          ];
+          ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
           "OTHER_LDFLAGS[sdk=${simSdk}*]" = [
             "$(inherited)"
             "-L${strip (simDeps.libwayland or null)}/lib"
@@ -354,34 +331,11 @@ let
             "-lepoll-shim"
           ] ++ (mobileBaseLdflags simDeps) ++ westonToytoolkitLdflagsAppleMobile simDeps ++ westonCompositorLdflags simDeps
           ++ (ilandGlLdflags { deps = simDeps; simulator = true; }) ++ footLdflags simDeps ++ fastfetchLdflags simDeps ++ neovimLdflags simDeps ++ extraSimLdflags
-          ++ mobileZshLdflags ++ [
-            derivedRustLib
-            "-lc++"
-            "-lc++abi"
-          ];
+          ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
           GCC_PREPROCESSOR_DEFINITIONS = [ "$(inherited)" ] ++ extraDefines ++ versionDefs;
         };
       };
     };
-
-  angleEmbedOutputs = [
-    "$(BUILT_PRODUCTS_DIR)/$(FRAMEWORKS_FOLDER_PATH)/libEGL.dylib"
-    "$(BUILT_PRODUCTS_DIR)/$(FRAMEWORKS_FOLDER_PATH)/libGLESv2.dylib"
-  ];
-
-  iosAngleEmbedPhase = {
-    path = angleIosEmbedScript (iosDeps.angle or null) (iosSimDeps.angle or null);
-    name = "Embed ANGLE dylibs";
-    basedOnDependencyAnalysis = true;
-    outputFiles = angleEmbedOutputs;
-  };
-
-  ipadosAngleEmbedPhase = {
-    path = angleIosEmbedScript (ipadosDeps.angle or null) (ipadosSimDeps.angle or null);
-    name = "Embed ANGLE dylibs";
-    basedOnDependencyAnalysis = true;
-    outputFiles = angleEmbedOutputs;
-  };
 
   xkbEmbedOutputs = [
     "$(BUILT_PRODUCTS_DIR)/$(FULL_PRODUCT_NAME)/share/X11/xkb/rules/evdev"
@@ -404,6 +358,37 @@ let
     basedOnDependencyAnalysis = true;
     outputFiles = fontEmbedOutputs;
   };
+
+  angleSimDylib =
+    let a = iosSimDeps.angle or null;
+    in if a != null
+         && builtins.pathExists (toString a + "/nix-support/link-kind")
+         && lib.strings.trim (builtins.readFile (toString a + "/nix-support/link-kind")) == "dylib"
+       then a
+       else null;
+
+  angleSimEmbedScript = pkgs.writeShellScript "embed-angle-sim-dylibs.sh" ''
+    case "''${PLATFORM_NAME:-}" in
+      iphonesimulator) ;;
+      *)
+        exit 0
+        ;;
+    esac
+    DEST="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME/Frameworks"
+    mkdir -p "$DEST"
+    cp -f "${strip angleSimDylib}/lib/libEGL.dylib" "$DEST/"
+    cp -f "${strip angleSimDylib}/lib/libGLESv2.dylib" "$DEST/"
+    echo "Embedded ANGLE dylibs into $DEST"
+  '';
+
+  angleSimEmbedPhase = {
+    path = angleSimEmbedScript;
+    name = "Embed ANGLE (Simulator dylibs)";
+    basedOnDependencyAnalysis = false;
+  };
+
+  iosPostBuildPhases = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase iosRootfsEmbedPhase iosNeovimRootfsEmbedPhase ]
+    ++ lib.optionals (angleSimDylib != null) [ angleSimEmbedPhase ];
 
   westonDataIosEmbedScript = pkgs.writeShellScript "embed-weston-data-ios.sh" ''
     case "''${PLATFORM_NAME:-}" in
@@ -654,7 +639,7 @@ let
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
         ];
         preBuildScripts = [ iosPreBuild ];
-        postBuildScripts = [ iosAngleEmbedPhase xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase iosRootfsEmbedPhase iosNeovimRootfsEmbedPhase ];
+        postBuildScripts = iosPostBuildPhases;
 
         settings = {
           base = {
@@ -708,12 +693,7 @@ let
                "-lepoll-shim"
              ] ++ westonToytoolkitLdflagsAppleMobile iosDeps ++ westonCompositorLdflags iosDeps
              ++ (ilandGlLdflags { deps = iosDeps; simulator = false; }) ++ footLdflags iosDeps ++ fastfetchLdflags iosDeps ++ neovimLdflags iosDeps
-             ++ mobileZshLdflags ++ [
-               derivedRustLib
-               "-lc++"
-               "-lc++abi"
-               "-ldl"
-            ];
+             ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
             "OTHER_LDFLAGS[sdk=iphonesimulator*]" = [
               "$(inherited)"
               "-L${strip (iosSimDeps.libwayland or null)}/lib"
@@ -742,11 +722,7 @@ let
                "-lepoll-shim"
              ] ++ westonToytoolkitLdflagsAppleMobile iosSimDeps ++ westonCompositorLdflags iosSimDeps
              ++ (ilandGlLdflags { deps = iosSimDeps; simulator = true; }) ++ footLdflags iosSimDeps ++ fastfetchLdflags iosSimDeps ++ neovimLdflags iosSimDeps
-             ++ mobileZshLdflags ++ [
-               derivedRustLib
-               "-lc++"
-               "-lc++abi"
-            ];
+             ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"
@@ -812,7 +788,7 @@ let
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
         ];
         preBuildScripts = [ ipadosPreBuild ];
-        postBuildScripts = [ ipadosAngleEmbedPhase xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase ipadosRootfsEmbedPhase ipadosNeovimRootfsEmbedPhase ];
+        postBuildScripts = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase ipadosRootfsEmbedPhase ipadosNeovimRootfsEmbedPhase ];
 
         settings = {
           base = {
@@ -867,12 +843,7 @@ let
               "-lepoll-shim"
             ] ++ westonToytoolkitLdflagsAppleMobile ipadosDeps ++ westonCompositorLdflags ipadosDeps
             ++ (ilandGlLdflags { deps = ipadosDeps; simulator = false; }) ++ footLdflags ipadosDeps ++ fastfetchLdflags ipadosDeps ++ neovimLdflags ipadosDeps
-            ++ mobileZshLdflags ++ [
-              derivedRustLib
-              "-lc++"
-              "-lc++abi"
-              "-ldl"
-            ];
+            ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
             "OTHER_LDFLAGS[sdk=iphonesimulator*]" = [
               "$(inherited)"
               "-L${strip (ipadosSimDeps.libwayland or null)}/lib"
@@ -901,11 +872,7 @@ let
               "-lepoll-shim"
             ] ++ westonToytoolkitLdflagsAppleMobile ipadosSimDeps ++ westonCompositorLdflags ipadosSimDeps
             ++ (ilandGlLdflags { deps = ipadosSimDeps; simulator = true; }) ++ footLdflags ipadosSimDeps ++ fastfetchLdflags ipadosSimDeps ++ neovimLdflags ipadosSimDeps
-            ++ mobileZshLdflags ++ [
-              derivedRustLib
-              "-lc++"
-              "-lc++abi"
-            ];
+            ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"
@@ -1019,11 +986,7 @@ let
               "-lssl"
               "-lcrypto"
               "-lepoll-shim"
-            ] ++ westonToytoolkitLdflagsAppleMobile tvosDeps ++ westonCompositorLdflags tvosDeps ++ footLdflags tvosDeps ++ fastfetchLdflags tvosDeps ++ neovimLdflags tvosDeps ++ [
-              derivedRustLib
-              "-lc++"
-              "-lc++abi"
-            ];
+            ] ++ westonToytoolkitLdflagsAppleMobile tvosDeps ++ westonCompositorLdflags tvosDeps ++ footLdflags tvosDeps ++ fastfetchLdflags tvosDeps ++ neovimLdflags tvosDeps ++ [ derivedRustLib ] ++ finalCxxLdflags;
             "OTHER_LDFLAGS[sdk=appletvsimulator*]" = [
               "$(inherited)"
               "-L${strip (tvosSimDeps.libwayland or null)}/lib"
@@ -1050,11 +1013,7 @@ let
               "-lssl"
               "-lcrypto"
               "-lepoll-shim"
-            ] ++ westonToytoolkitLdflagsAppleMobile tvosSimDeps ++ westonCompositorLdflags tvosSimDeps ++ footLdflags tvosSimDeps ++ fastfetchLdflags tvosSimDeps ++ neovimLdflags tvosSimDeps ++ [
-              derivedRustLib
-              "-lc++"
-              "-lc++abi"
-            ];
+            ] ++ westonToytoolkitLdflagsAppleMobile tvosSimDeps ++ westonCompositorLdflags tvosSimDeps ++ footLdflags tvosSimDeps ++ fastfetchLdflags tvosSimDeps ++ neovimLdflags tvosSimDeps ++ [ derivedRustLib ] ++ finalCxxLdflags;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"
@@ -1200,7 +1159,8 @@ let
               derivedRustLib
             ] ++ (ilandGlLdflags { deps = macosDeps; simulator = false; })
               ++ (westonToytoolkitLdflags macosDeps)
-              ++ (westonCompositorLdflags macosDeps);
+              ++ (westonCompositorLdflags macosDeps)
+              ++ finalCxxLdflags;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "USE_RUST_CORE=1"
@@ -1297,11 +1257,7 @@ let
               "-lssh2"
               "-lssl"
               "-lcrypto"
-            ] ++ westonToytoolkitLdflagsAppleMobile visionosDeps ++ westonCompositorLdflags visionosDeps ++ fastfetchLdflags visionosDeps ++ neovimLdflags visionosDeps ++ [
-              derivedRustLib
-              "-lc++"
-              "-lc++abi"
-            ];
+            ] ++ westonToytoolkitLdflagsAppleMobile visionosDeps ++ westonCompositorLdflags visionosDeps ++ fastfetchLdflags visionosDeps ++ neovimLdflags visionosDeps ++ [ derivedRustLib ] ++ finalCxxLdflags;
             "OTHER_LDFLAGS[sdk=xrsimulator*]" = [
               "$(inherited)"
               "-L${strip (visionosSimDeps.libwayland or null)}/lib"
@@ -1319,11 +1275,7 @@ let
               "-lssh2"
               "-lssl"
               "-lcrypto"
-            ] ++ westonToytoolkitLdflagsAppleMobile visionosSimDeps ++ westonCompositorLdflags visionosSimDeps ++ fastfetchLdflags visionosSimDeps ++ neovimLdflags visionosSimDeps ++ [
-              derivedRustLib
-              "-lc++"
-              "-lc++abi"
-            ];
+            ] ++ westonToytoolkitLdflagsAppleMobile visionosSimDeps ++ westonCompositorLdflags visionosSimDeps ++ fastfetchLdflags visionosSimDeps ++ neovimLdflags visionosSimDeps ++ [ derivedRustLib ] ++ finalCxxLdflags;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"
@@ -1505,7 +1457,7 @@ let
               "-force_load" "${strip watchosDeps.waypipe}/lib/libwaypipe.a"
             ] ++ lib.optionals (watchosBackend != null) [
               derivedRustLib
-            ];
+            ] ++ finalCxxLdflags;
             "OTHER_LDFLAGS[sdk=watchsimulator*]" = [
               "$(inherited)"
               "-L${strip (watchosSimDeps.libffi or null)}/lib"
@@ -1536,7 +1488,7 @@ let
               "-force_load" "${strip watchosSimDeps.waypipe}/lib/libwaypipe.a"
             ] ++ lib.optionals (watchosSimBackend != null) [
               derivedRustLib
-            ];
+            ] ++ finalCxxLdflags;
           };
         };
         dependencies = [
