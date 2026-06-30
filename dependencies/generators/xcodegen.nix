@@ -95,6 +95,13 @@ let
     inherit lib deps;
     forceLoadWeston = true;
   };
+  # ios.nix already compiles weston-simple-shm into libweston-13.a; skip the
+  # standalone libweston_simple_shm.a or the linker sees duplicate symbols.
+  westonToytoolkitLdflagsAppleMobile = deps: import westonToytoolkitLdflagsNix {
+    inherit lib deps;
+    forceLoadWeston = true;
+    linkWestonSimpleShm = false;
+  };
   westonCompositorLdflags = deps: import westonCompositorLdflagsNix {
     inherit lib deps;
     forceLoadCompositor = true;
@@ -322,7 +329,7 @@ let
             "-lzstd"
             "-llz4"
             "-lepoll-shim"
-          ] ++ (mobileBaseLdflags deps) ++ westonToytoolkitLdflags deps ++ westonCompositorLdflags deps
+          ] ++ (mobileBaseLdflags deps) ++ westonToytoolkitLdflagsAppleMobile deps ++ westonCompositorLdflags deps
           ++ (ilandGlLdflags { inherit deps; simulator = false; }) ++ footLdflags deps ++ fastfetchLdflags deps ++ neovimLdflags deps ++ extraDeviceLdflags
           ++ mobileZshLdflags ++ [
             derivedRustLib
@@ -345,7 +352,7 @@ let
             "-lzstd"
             "-llz4"
             "-lepoll-shim"
-          ] ++ (mobileBaseLdflags simDeps) ++ westonToytoolkitLdflags simDeps ++ westonCompositorLdflags simDeps
+          ] ++ (mobileBaseLdflags simDeps) ++ westonToytoolkitLdflagsAppleMobile simDeps ++ westonCompositorLdflags simDeps
           ++ (ilandGlLdflags { deps = simDeps; simulator = true; }) ++ footLdflags simDeps ++ fastfetchLdflags simDeps ++ neovimLdflags simDeps ++ extraSimLdflags
           ++ mobileZshLdflags ++ [
             derivedRustLib
@@ -699,7 +706,7 @@ let
                "-lssl"
                "-lcrypto"
                "-lepoll-shim"
-             ] ++ westonToytoolkitLdflags iosDeps ++ westonCompositorLdflags iosDeps
+             ] ++ westonToytoolkitLdflagsAppleMobile iosDeps ++ westonCompositorLdflags iosDeps
              ++ (ilandGlLdflags { deps = iosDeps; simulator = false; }) ++ footLdflags iosDeps ++ fastfetchLdflags iosDeps ++ neovimLdflags iosDeps
              ++ mobileZshLdflags ++ [
                derivedRustLib
@@ -733,7 +740,7 @@ let
               "-lssl"
               "-lcrypto"
                "-lepoll-shim"
-             ] ++ westonToytoolkitLdflags iosSimDeps ++ westonCompositorLdflags iosSimDeps
+             ] ++ westonToytoolkitLdflagsAppleMobile iosSimDeps ++ westonCompositorLdflags iosSimDeps
              ++ (ilandGlLdflags { deps = iosSimDeps; simulator = true; }) ++ footLdflags iosSimDeps ++ fastfetchLdflags iosSimDeps ++ neovimLdflags iosSimDeps
              ++ mobileZshLdflags ++ [
                derivedRustLib
@@ -858,7 +865,7 @@ let
               "-lssl"
               "-lcrypto"
               "-lepoll-shim"
-            ] ++ westonToytoolkitLdflags ipadosDeps ++ westonCompositorLdflags ipadosDeps
+            ] ++ westonToytoolkitLdflagsAppleMobile ipadosDeps ++ westonCompositorLdflags ipadosDeps
             ++ (ilandGlLdflags { deps = ipadosDeps; simulator = false; }) ++ footLdflags ipadosDeps ++ fastfetchLdflags ipadosDeps ++ neovimLdflags ipadosDeps
             ++ mobileZshLdflags ++ [
               derivedRustLib
@@ -892,7 +899,7 @@ let
               "-lssl"
               "-lcrypto"
               "-lepoll-shim"
-            ] ++ westonToytoolkitLdflags ipadosSimDeps ++ westonCompositorLdflags ipadosSimDeps
+            ] ++ westonToytoolkitLdflagsAppleMobile ipadosSimDeps ++ westonCompositorLdflags ipadosSimDeps
             ++ (ilandGlLdflags { deps = ipadosSimDeps; simulator = true; }) ++ footLdflags ipadosSimDeps ++ fastfetchLdflags ipadosSimDeps ++ neovimLdflags ipadosSimDeps
             ++ mobileZshLdflags ++ [
               derivedRustLib
@@ -1012,7 +1019,7 @@ let
               "-lssl"
               "-lcrypto"
               "-lepoll-shim"
-            ] ++ westonToytoolkitLdflags tvosDeps ++ westonCompositorLdflags tvosDeps ++ footLdflags tvosDeps ++ fastfetchLdflags tvosDeps ++ neovimLdflags tvosDeps ++ [
+            ] ++ westonToytoolkitLdflagsAppleMobile tvosDeps ++ westonCompositorLdflags tvosDeps ++ footLdflags tvosDeps ++ fastfetchLdflags tvosDeps ++ neovimLdflags tvosDeps ++ [
               derivedRustLib
               "-lc++"
               "-lc++abi"
@@ -1043,7 +1050,7 @@ let
               "-lssl"
               "-lcrypto"
               "-lepoll-shim"
-            ] ++ westonToytoolkitLdflags tvosSimDeps ++ westonCompositorLdflags tvosSimDeps ++ footLdflags tvosSimDeps ++ fastfetchLdflags tvosSimDeps ++ neovimLdflags tvosSimDeps ++ [
+            ] ++ westonToytoolkitLdflagsAppleMobile tvosSimDeps ++ westonCompositorLdflags tvosSimDeps ++ footLdflags tvosSimDeps ++ fastfetchLdflags tvosSimDeps ++ neovimLdflags tvosSimDeps ++ [
               derivedRustLib
               "-lc++"
               "-lc++abi"
@@ -1290,7 +1297,7 @@ let
               "-lssh2"
               "-lssl"
               "-lcrypto"
-            ] ++ westonToytoolkitLdflags visionosDeps ++ westonCompositorLdflags visionosDeps ++ fastfetchLdflags visionosDeps ++ neovimLdflags visionosDeps ++ [
+            ] ++ westonToytoolkitLdflagsAppleMobile visionosDeps ++ westonCompositorLdflags visionosDeps ++ fastfetchLdflags visionosDeps ++ neovimLdflags visionosDeps ++ [
               derivedRustLib
               "-lc++"
               "-lc++abi"
@@ -1312,7 +1319,7 @@ let
               "-lssh2"
               "-lssl"
               "-lcrypto"
-            ] ++ westonToytoolkitLdflags visionosSimDeps ++ westonCompositorLdflags visionosSimDeps ++ fastfetchLdflags visionosSimDeps ++ neovimLdflags visionosSimDeps ++ [
+            ] ++ westonToytoolkitLdflagsAppleMobile visionosSimDeps ++ westonCompositorLdflags visionosSimDeps ++ fastfetchLdflags visionosSimDeps ++ neovimLdflags visionosSimDeps ++ [
               derivedRustLib
               "-lc++"
               "-lc++abi"
@@ -1492,10 +1499,7 @@ let
               "-lmbedtls"
               "-lssl"
               "-lcrypto"
-              # Force-load client libs (must come BEFORE -lwayland-server)
-              "-force_load" "${strip (watchosDeps.weston-simple-shm or null)}/lib/libweston_simple_shm.a"
-            ] ++ westonToytoolkitLdflags watchosDeps ++ westonCompositorLdflags watchosDeps ++ footLdflags watchosDeps ++ fastfetchLdflags watchosDeps ++ neovimLdflags watchosDeps ++ [
-              # Server lib after client force-loads (skips duplicate xdg-shell glue)
+            ] ++ westonToytoolkitLdflagsAppleMobile watchosDeps ++ westonCompositorLdflags watchosDeps ++ footLdflags watchosDeps ++ fastfetchLdflags watchosDeps ++ neovimLdflags watchosDeps ++ [
               "-lwayland-server"
             ] ++ lib.optionals (watchosDeps ? waypipe && watchosDeps.waypipe != null) [
               "-force_load" "${strip watchosDeps.waypipe}/lib/libwaypipe.a"
@@ -1526,10 +1530,7 @@ let
               "-lmbedtls"
               "-lssl"
               "-lcrypto"
-              # Force-load client libs (must come BEFORE -lwayland-server)
-              "-force_load" "${strip (watchosSimDeps.weston-simple-shm or null)}/lib/libweston_simple_shm.a"
-            ] ++ westonToytoolkitLdflags watchosSimDeps ++ westonCompositorLdflags watchosSimDeps ++ footLdflags watchosSimDeps ++ fastfetchLdflags watchosSimDeps ++ neovimLdflags watchosSimDeps ++ [
-              # Server lib after client force-loads (skips duplicate xdg-shell glue)
+            ] ++ westonToytoolkitLdflagsAppleMobile watchosSimDeps ++ westonCompositorLdflags watchosSimDeps ++ footLdflags watchosSimDeps ++ fastfetchLdflags watchosSimDeps ++ neovimLdflags watchosSimDeps ++ [
               "-lwayland-server"
             ] ++ lib.optionals (watchosSimDeps ? waypipe && watchosSimDeps.waypipe != null) [
               "-force_load" "${strip watchosSimDeps.waypipe}/lib/libwaypipe.a"
