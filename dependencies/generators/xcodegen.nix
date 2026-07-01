@@ -127,15 +127,22 @@ let
     in if (deps.foot or null) == null || !builtins.pathExists libfoot then [] else [
       "-force_load" libfoot
     ];
+  # fastfetch links its frameworks from the per-platform list emitted by
+  # wwn-fastfetch ($out/nix-support/fastfetch-frameworks). This keeps Wawona free
+  # of per-platform framework knowledge: watchOS (no Metal/VideoToolbox) linking
+  # is driven by the archive it was built against, not hardcoded here.
   fastfetchLdflags = deps:
-    let libff = "${strip (deps.fastfetch or null)}/lib/libfastfetch.a";
-    in if (deps.fastfetch or null) == null || !builtins.pathExists libff then [] else [
-      "-force_load" libff
-      "-framework" "CoreFoundation"
-      "-framework" "Foundation"
-      "-framework" "IOKit"
-      "-framework" "VideoToolbox"
-    ];
+    let
+      ff = deps.fastfetch or null;
+      libff = "${strip ff}/lib/libfastfetch.a";
+      fwFile = "${strip ff}/nix-support/fastfetch-frameworks";
+      frameworks =
+        if ff != null && builtins.pathExists fwFile
+        then lib.filter (s: s != "") (lib.splitString "\n" (builtins.readFile fwFile))
+        else [ "CoreFoundation" "Foundation" ];
+      frameworkFlags = lib.concatMap (f: [ "-framework" f ]) frameworks;
+    in if ff == null || !builtins.pathExists libff then [] else
+      [ "-force_load" libff ] ++ frameworkFlags;
   neovimLdflags = deps:
     let libnvim = "${strip (deps.neovim or null)}/lib/libwawona-neovim.a";
     in if (deps.neovim or null) == null || !builtins.pathExists libnvim then [] else [

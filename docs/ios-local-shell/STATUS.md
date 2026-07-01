@@ -24,7 +24,7 @@ Keyboard: `WWNCompositorView_ios` → `wwn_ios_terminal_inject` → zsh stdin.
 |-----------|--------------|-----------------|-------------------|-------------------|
 | zsh | `libwawona-zsh.a` | force_load | (shell itself) | in-process pthread, no fork |
 | uutils coreutils | `libwawona.a` (coreutils feature) | via Rust | yes (~39 utils) | catch_unwind, no exit() |
-| fastfetch | `libfastfetch.a` | force_load | yes | patched, no fork |
+| fastfetch | `libfastfetch.a` | force_load | yes | in-process (iOS/iPadOS/tvOS/watchOS/visionOS); IOKit/SMC stubbed; exit()/signal/atexit-safe; per-platform frameworks |
 | neovim | `libwawona-neovim.a` | force_load | yes (`nvim`/`vi`/`vim`) | PUC Lua, spawn stubs |
 | waypipe + SSH | `libwawona.a` (waypipe-ssh) | via Rust | yes | libssh2 in-process, no openssh |
 | weston-terminal | `libweston-terminal.a` | force_load | via UI launch | in-process client thread |

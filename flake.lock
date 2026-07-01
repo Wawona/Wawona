@@ -776,11 +776,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1782867490,
-        "narHash": "sha256-cWzkrsAgwW6v8l/rCWtJ6UcxU8mUJGNFSXA/46zeajc=",
+        "lastModified": 1782887611,
+        "narHash": "sha256-rfqSGYzB/QnhGTkK3bgKgepUS4SL6WF0e6V+ztAj2QE=",
         "owner": "Wawona",
         "repo": "wwn-fastfetch",
-        "rev": "104cf2284ad161ecb82b3d182123ff2e437e3a34",
+        "rev": "1b52284baf92bfa5b6b64f080f3bb304b266a4d0",
         "type": "github"
       },
       "original": {

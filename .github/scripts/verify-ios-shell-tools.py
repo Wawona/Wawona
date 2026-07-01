@@ -3,15 +3,25 @@
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 FLAKE = ROOT / "flake.nix"
+FLAKE_LOCK = ROOT / "flake.lock"
 XCODEGEN = ROOT / "dependencies/generators/xcodegen.nix"
 PREBUILD = ROOT / "scripts/xcode-prebuild.sh"
 IOS_ROOTFS = ROOT / "dependencies/wawona/ios-rootfs.nix"
+
+# Floor for the pinned wwn-fastfetch input. 104cf22 (lastModified 1782867490)
+# shipped the IOKit/SMC crash fix but NOT the in-process exit()/signal/atexit
+# safety wrapper or the per-platform framework tiering. Require a strictly newer
+# lock so Wawona cannot build against a fastfetch that would terminate the app
+# on --help/bad-flag or fail to link on watchOS.
+FASTFETCH_MIN_LASTMODIFIED = 1782867491
+FASTFETCH_KNOWN_BAD_REV = "104cf2284ad161ecb82b3d182123ff2e437e3a34"
 
 REQUIRED_FLAKE_OUTPUTS = (
     "zsh-ios",
@@ -78,6 +88,31 @@ def verify_prebuild(text: str) -> list[str]:
     return errors
 
 
+def verify_fastfetch_lock() -> list[str]:
+    if not FLAKE_LOCK.is_file():
+        return ["flake.lock missing"]
+    data = json.loads(FLAKE_LOCK.read_text(encoding="utf-8"))
+    node = data.get("nodes", {}).get("wwn-fastfetch")
+    if not node:
+        return ["flake.lock missing wwn-fastfetch input"]
+    locked = node.get("locked", {})
+    rev = locked.get("rev", "")
+    last_modified = int(locked.get("lastModified", 0))
+    if rev == FASTFETCH_KNOWN_BAD_REV:
+        return [
+            "flake.lock pins wwn-fastfetch@104cf22 which lacks the in-process "
+            "exit()/signal safety wrapper and watchOS framework tiering; "
+            "run `nix flake lock --update-input wwn-fastfetch`"
+        ]
+    if last_modified < FASTFETCH_MIN_LASTMODIFIED:
+        return [
+            f"wwn-fastfetch lock too old (lastModified {last_modified} < "
+            f"{FASTFETCH_MIN_LASTMODIFIED}); update the input to include the "
+            "in-process safety + framework-tiering fixes"
+        ]
+    return []
+
+
 def verify_inproc_clients(rootfs_text: str) -> list[str]:
     errors = []
     m = re.search(r"WAWONA_INPROC_CLIENTS=\((.*?)\)", rootfs_text, re.DOTALL)
@@ -97,6 +132,7 @@ def main() -> int:
     errors.extend(verify_flake_outputs(read(FLAKE)))
     errors.extend(verify_xcodegen(read(XCODEGEN)))
     errors.extend(verify_prebuild(read(PREBUILD)))
+    errors.extend(verify_fastfetch_lock())
     if IOS_ROOTFS.is_file():
         errors.extend(verify_inproc_clients(read(IOS_ROOTFS)))
     else:
