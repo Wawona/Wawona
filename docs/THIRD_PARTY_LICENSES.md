@@ -58,7 +58,7 @@ Many crates use dual **MIT OR Apache-2.0**; you can satisfy both by including th
 
 ## 2. Native / C libraries (Nix builds)
 
-These are built via `dependencies/toolchains` and `dependencies/libs` and linked into Wawona or bundled (e.g. waypipe, foot).
+These are built via upstream `wwn-toolchain` / `wwn-*` flake inputs (`dependencies/toolchains`, `dependencies/libs`) and linked into Wawona or bundled (e.g. waypipe, foot).
 
 | Component | License | Compatible with MIT? | What you must do |
 |-----------|---------|----------------------|-------------------|
@@ -167,6 +167,6 @@ You do **not** need to change Wawona’s project license from MIT; these obligat
 ## 7. Regenerating this list
 
 - **Rust:** Run `cargo license --tsv` or `cargo license --json` (after `cargo install cargo-license`) to get the current crate list and licenses.
-- **Nix libs:** The set of libs is defined in `dependencies/wawona/default.nix` and `dependencies/toolchains/default.nix`; when you add or remove a lib, update this doc and the NOTICE/attribution accordingly.
+- **Nix libs:** The set of libs is defined in `wwn-toolchain` (`dependencies/toolchains/default.nix`, `dependencies/libs/*`) and wired into Wawona via `dependencies/wawona/default.nix` + flake inputs; when you add or remove a lib upstream, update this doc and the NOTICE/attribution accordingly.
 
 If you add a new dependency (Rust or native), check its license and add it here with the same “Compatible?” and “What you must do” pattern.

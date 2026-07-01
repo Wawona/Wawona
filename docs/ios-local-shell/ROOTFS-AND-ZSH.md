@@ -7,7 +7,7 @@ How Wawona builds, bundles, and installs the **App Store–compliant zsh userlan
 ## Package graph (target)
 
 ```
-zsh-ios (dependencies/libs/zsh/ios.nix)
+zsh-ios (wwn-zsh/dependencies/libs/zsh/ios.nix)
     ↓
 ios-rootfs (dependencies/wawona/ios-rootfs.nix)
     ↓
@@ -20,7 +20,7 @@ wwn_pty_spawn_shell(WAWONA_ROOTFS/usr/bin/zsh)
 
 ---
 
-## `zsh-ios` (`dependencies/libs/zsh/ios.nix`)
+## `zsh-ios` (`wwn-zsh/dependencies/libs/zsh/ios.nix`)
 
 ### Requirements
 
@@ -159,12 +159,12 @@ setenv("TERM", "xterm-256color", 1);
 
 ## Registry
 
-Add to `dependencies/toolchains/common/registry.nix`:
+Add to `wwn-toolchain/dependencies/toolchains/common/registry.nix`:
 
 ```nix
-zsh = { ios = import ../../libs/zsh/ios.nix; };
+zsh = { ios = import ../../libs/zsh/ios.nix; };  # recipe lives in wwn-zsh; registry entry in wwn-toolchain
 wawona-pty = { ios = import ../../libs/wawona-pty/ios.nix; };
-wawona-rootfs = { ios = import ../../wawona/ios-rootfs.nix; };
+wawona-rootfs = { ios = import ../../wawona/ios-rootfs.nix; };  # Wawona integration layer
 ```
 
 ---

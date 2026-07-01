@@ -38,8 +38,8 @@ gantt
 
 | Task | Path / output |
 |------|----------------|
-| Nix: static `zsh` for `aarch64-apple-ios` | `dependencies/libs/zsh/ios.nix` |
-| Spike harness | `dependencies/clients/weston/ios-pty-spike/` or XCTest target |
+| Nix: static `zsh` for `aarch64-apple-ios` | `wwn-zsh/dependencies/libs/zsh/ios.nix` |
+| Spike harness | `wwn-weston/dependencies/clients/weston/ios-pty-spike/` or XCTest target |
 | Flake outputs | `.#zsh-ios`, `.#wawona-pty-spike-ios` |
 | Run on **physical iPhone** | Not simulator-only |
 
@@ -64,12 +64,12 @@ gantt
 
 ### Nix / build tasks
 
-1. Extract patches from `dependencies/clients/weston/macos.nix` → `dependencies/clients/weston/terminal-patches/`
+1. Extract patches from `wwn-weston/dependencies/clients/weston/macos.nix` → `wwn-weston/dependencies/clients/weston/terminal-patches/`
    - `WESTON_HOWMANY` / scrollback
    - OSC 7 cwd-as-title
    - iOS hook: `#ifdef __APPLE__` → `wwn_pty_spawn` stub returning friendly error until Phase 2
 
-2. Edit `dependencies/clients/weston/ios.nix` (~484–491):
+2. Edit `wwn-weston/dependencies/clients/weston/ios.nix`:
    - Compile patched `clients/terminal.c`
    - Link cairo/pango closure (existing `cairo/ios.nix`, `pango/ios.nix`)
    - `-Dmain=weston_terminal_main`
@@ -106,7 +106,7 @@ Update [../testing/everywhere-matrix.md](../testing/everywhere-matrix.md) line f
 
 ### 2a — `wawona-pty` library
 
-New package: `dependencies/libs/wawona-pty/`
+Package: `wwn-toolchain/dependencies/libs/wawona-pty/`
 
 - C API: [WAWONA-PTY-SPEC.md](WAWONA-PTY-SPEC.md)
 - Static archive `libwwn-pty.a` for iOS + sim
@@ -114,9 +114,9 @@ New package: `dependencies/libs/wawona-pty/`
 
 ### 2b — `zsh-ios` + rootfs
 
-- `dependencies/libs/zsh/ios.nix` — zsh 5.9+ static
-- `dependencies/wawona/ios-rootfs.nix` — aggregate rootfs
-- Register in `dependencies/toolchains/common/registry.nix`
+- `wwn-zsh/dependencies/libs/zsh/ios.nix` — zsh 5.9+ static
+- `dependencies/wawona/ios-rootfs.nix` — aggregate rootfs (Wawona integration)
+- Register in `wwn-toolchain/dependencies/toolchains/common/registry.nix`
 
 Details: [ROOTFS-AND-ZSH.md](ROOTFS-AND-ZSH.md)
 
@@ -210,9 +210,8 @@ Details: [ROOTFS-AND-ZSH.md](ROOTFS-AND-ZSH.md)
 
 | Item | State |
 |------|-------|
-| `mobile-weston-terminal.c` | **Active** in `ios.nix` — delete in Phase 1 |
-| `dependencies/libs/zsh/` | **Not created** |
-| `dependencies/libs/wawona-pty/` | **Not created** |
-| `WWNRootfsManager` | **Not created** |
+| `wwn-zsh/dependencies/libs/zsh/` | **Shipped** (flake input) |
+| `wwn-toolchain/dependencies/libs/wawona-pty/` | **Shipped** (flake input) |
+| `WWNRootfsManager` | **Implemented** (`src/platform/ios/`) |
 | In-process launch plumbing | **Done** |
-| This documentation set | **In progress**
+| This documentation set | **Maintained** |

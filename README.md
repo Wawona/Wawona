@@ -120,7 +120,7 @@ I use Nix to maintain a clean repository free of vendored dependency source code
 
 Cross-compiling for iOS still depends on Apple's proprietary SDKs and toolchains, so Wawona now follows the same high-level pattern as Nixpkgs `xcodeenv`: expose the host Xcode installation as an impure Nix package, build the Rust and native dependencies with Nix, then let `xcodebuild` package the app.
 
-The Apple integration is centralized in `dependencies/apple/` and is modeled after [`nix-xcodeenvtests`](https://github.com/svanderburg/nix-xcodeenvtests). This keeps iOS and macOS Xcode discovery, SDK checks, and simulator helpers in one place.
+The Apple integration is centralized in [`wwn-toolchain`](https://github.com/Wawona/wwn-toolchain) (`dependencies/apple/`, `dependencies/toolchains/ios-xcodeenv.nix`) and is modeled after [`nix-xcodeenvtests`](https://github.com/svanderburg/nix-xcodeenvtests). Wawona consumes it as a flake input; this keeps iOS and macOS Xcode discovery, SDK checks, and simulator helpers in one upstream place.
 
 The Apple integration layer now does four distinct jobs:
 1.  **Expose host Xcode into Nix** through a thin `xcodeenv`-style wrapper.

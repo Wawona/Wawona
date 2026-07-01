@@ -1,7 +1,7 @@
 # Wawona PTY Library Specification (`libwwn-pty`)
 
 **Status:** Draft — implementation starts Phase 0/2  
-**Package path (planned):** `dependencies/libs/wawona-pty/`  
+**Package path:** `wwn-toolchain/dependencies/libs/wawona-pty/`  
 **Headers:** `include/wwn_pty.h`
 
 This library is the **only supported path** for spawning a local shell on Apple mobile. Weston compositor `fork()` stubs must not be used for shell launch.
@@ -170,7 +170,7 @@ Log to Wawona log facility (`WWNLog` / `wlog!`) with tag `PTY` — never log ful
 ## Nix packaging (planned)
 
 ```nix
-# dependencies/libs/wawona-pty/ios.nix (sketch)
+# wwn-toolchain/dependencies/libs/wawona-pty/ios.nix (sketch)
 # outputs: $out/lib/libwwn-pty.a, $out/include/wwn_pty.h
 # propagatedBuildInputs: (minimal — libc only)
 ```

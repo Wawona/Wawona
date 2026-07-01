@@ -13,8 +13,8 @@ Date: 2026-04-04
 These remain because they depend on host Xcode/SDK tooling and are outside the
 Android output path:
 
-- iOS library/toolchain derivations under `dependencies/libs/*/ios.nix`
-- `dependencies/toolchains/xcodeenv/*`
+- iOS library/toolchain derivations under `wwn-toolchain/dependencies/libs/*/ios.nix`
+- `wwn-toolchain/dependencies/toolchains/xcodeenv/*`
 - iOS-only branches in `dependencies/wawona/rust-backend-c2n.nix`
 
 ## Enforcement

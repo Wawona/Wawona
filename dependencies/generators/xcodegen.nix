@@ -144,6 +144,16 @@ let
   # Static archives with C++ (ANGLE, Rust backend, fastfetch, …) need libc++
   # after every -force_load block; append once at the end of OTHER_LDFLAGS.
   finalCxxLdflags = [ "-lc++" "-lc++abi" "-ldl" ];
+  # iOS 26+ UIKit/SwiftUI modules embed LC_LINKER_OPTION auto-link entries for
+  # header-only UIUtilities and private SwiftUICore. Failed autolink breaks -lc++.
+  ios26ObjcAutolinkOff = [ "-fno-autolink" ];
+  ios26SwiftAutolinkOff = [
+    "-Xfrontend" "-disable-autolink-framework" "-Xfrontend" "UIUtilities"
+    "-Xfrontend" "-disable-autolink-framework" "-Xfrontend" "SwiftUICore"
+  ];
+  ios26SwiftLibSearchPaths = [ "$(inherited)" "$(SDKROOT)/usr/lib/swift" ];
+  # Link as SwiftUI client so SwiftUICore.tbd allowable_clients accepts autolink.
+  ios26SwiftUiClientLdflags = [ "-Wl,-client_name,SwiftUI" ];
   # weston_simple_shm_main lives here; os-compatibility.c is omitted from this
   # archive because libweston-13.a already provides those symbols on iOS-family targets.
   westonSimpleShmLdflags = deps:
@@ -294,8 +304,15 @@ let
           "ARCHS[sdk=${simSdk}*]" = "arm64";
           "ONLY_ACTIVE_ARCH" = "YES";
           LD_RUNPATH_SEARCH_PATHS = [ "$(inherited)" "@executable_path/Frameworks" ];
+          "OTHER_CFLAGS[sdk=${deviceSdk}*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
+          "OTHER_CFLAGS[sdk=${simSdk}*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
+          "OTHER_SWIFT_FLAGS[sdk=${deviceSdk}*]" = [ "$(inherited)" ] ++ ios26SwiftAutolinkOff;
+          "OTHER_SWIFT_FLAGS[sdk=${simSdk}*]" = [ "$(inherited)" ] ++ ios26SwiftAutolinkOff;
+          "LIBRARY_SEARCH_PATHS[sdk=${deviceSdk}*]" = ios26SwiftLibSearchPaths;
+          "LIBRARY_SEARCH_PATHS[sdk=${simSdk}*]" = ios26SwiftLibSearchPaths;
           "OTHER_LDFLAGS[sdk=${deviceSdk}*]" = [
             "$(inherited)"
+          ] ++ ios26SwiftUiClientLdflags ++ [
             "-L${strip (deps.libwayland or null)}/lib"
             "-L${strip (deps.xkbcommon or null)}/lib"
             "-L${strip (deps.libffi or null)}/lib"
@@ -315,6 +332,7 @@ let
           ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
           "OTHER_LDFLAGS[sdk=${simSdk}*]" = [
             "$(inherited)"
+          ] ++ ios26SwiftUiClientLdflags ++ [
             "-L${strip (simDeps.libwayland or null)}/lib"
             "-L${strip (simDeps.xkbcommon or null)}/lib"
             "-L${strip (simDeps.libffi or null)}/lib"
@@ -359,27 +377,63 @@ let
     outputFiles = fontEmbedOutputs;
   };
 
-  angleSimDylib =
-    let a = iosSimDeps.angle or null;
+  angleDylibDeps = deps:
+    let a = deps.angle or null;
     in if a != null
          && builtins.pathExists (toString a + "/nix-support/link-kind")
          && lib.strings.trim (builtins.readFile (toString a + "/nix-support/link-kind")) == "dylib"
        then a
        else null;
 
-  angleSimEmbedScript = pkgs.writeShellScript "embed-angle-sim-dylibs.sh" ''
-    case "''${PLATFORM_NAME:-}" in
-      iphonesimulator) ;;
-      *)
-        exit 0
-        ;;
-    esac
+  angleSimDylib = angleDylibDeps iosSimDeps;
+  angleDeviceDylib = angleDylibDeps iosDeps;
+
+  angleEmbedScript = anglePkg: pkgs.writeShellScript "embed-angle-dylibs.sh" ''
     DEST="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME/Frameworks"
-    mkdir -p "$DEST"
-    cp -f "${strip angleSimDylib}/lib/libEGL.dylib" "$DEST/"
-    cp -f "${strip angleSimDylib}/lib/libGLESv2.dylib" "$DEST/"
-    echo "Embedded ANGLE dylibs into $DEST"
+    EGL_SRC="${strip anglePkg}/lib/libEGL.dylib"
+    GLES_SRC="${strip anglePkg}/lib/libGLESv2.dylib"
+    # Prebuilt XCFramework slices use LC_ID_DYLIB @rpath/libEGL.framework/libEGL.
+    write_fw_plist() {
+      local fw="$1" exe="$2"
+      cat > "$DEST/$fw.framework/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleExecutable</key><string>$exe</string>
+  <key>CFBundleIdentifier</key><string>org.khronos.$exe</string>
+  <key>CFBundleName</key><string>$exe</string>
+  <key>CFBundlePackageType</key><string>FMWK</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleVersion</key><string>1</string>
+</dict></plist>
+PLIST
+    }
+    mkdir -p "$DEST/libEGL.framework" "$DEST/libGLESv2.framework"
+    cp -f "$EGL_SRC" "$DEST/libEGL.framework/libEGL"
+    cp -f "$GLES_SRC" "$DEST/libGLESv2.framework/libGLESv2"
+    write_fw_plist libEGL libEGL
+    write_fw_plist libGLESv2 libGLESv2
+    # iland dlopen also probes flat @executable_path/Frameworks/lib*.dylib.
+    cp -f "$EGL_SRC" "$DEST/libEGL.dylib"
+    cp -f "$GLES_SRC" "$DEST/libGLESv2.dylib"
+    if [ -n "''${EXPANDED_CODE_SIGN_IDENTITY:-}" ] && [ "''${EXPANDED_CODE_SIGN_IDENTITY}" != "-" ]; then
+      for lib in \
+        "$DEST/libEGL.framework/libEGL" \
+        "$DEST/libGLESv2.framework/libGLESv2" \
+        "$DEST/libEGL.dylib" \
+        "$DEST/libGLESv2.dylib"; do
+        /usr/bin/codesign --force --sign "''${EXPANDED_CODE_SIGN_IDENTITY}" --preserve-metadata=identifier,entitlements,flags "$lib"
+      done
+    fi
+    echo "Embedded ANGLE dylibs (framework + flat) into $DEST"
   '';
+
+  angleSimEmbedScript =
+    if angleSimDylib != null then angleEmbedScript angleSimDylib
+    else pkgs.writeShellScript "embed-angle-sim-dylibs-noop.sh" "exit 0";
+  angleDeviceEmbedScript =
+    if angleDeviceDylib != null then angleEmbedScript angleDeviceDylib
+    else pkgs.writeShellScript "embed-angle-device-dylibs-noop.sh" "exit 0";
 
   angleSimEmbedPhase = {
     path = angleSimEmbedScript;
@@ -387,8 +441,15 @@ let
     basedOnDependencyAnalysis = false;
   };
 
+  angleDeviceEmbedPhase = {
+    path = angleDeviceEmbedScript;
+    name = "Embed ANGLE (Device dylibs)";
+    basedOnDependencyAnalysis = false;
+  };
+
   iosPostBuildPhases = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase iosRootfsEmbedPhase iosNeovimRootfsEmbedPhase ]
-    ++ lib.optionals (angleSimDylib != null) [ angleSimEmbedPhase ];
+    ++ lib.optionals (angleSimDylib != null) [ angleSimEmbedPhase ]
+    ++ lib.optionals (angleDeviceDylib != null) [ angleDeviceEmbedPhase ];
 
   westonDataIosEmbedScript = pkgs.writeShellScript "embed-weston-data-ios.sh" ''
     case "''${PLATFORM_NAME:-}" in
@@ -591,6 +652,8 @@ let
         ENABLE_BITCODE = "NO";
         # Xcode 15+ default enables script sandbox; breaks swift-plugin-server / macros under some builds (sandbox_apply EPERM).
         ENABLE_USER_SCRIPT_SANDBOXING = "NO";
+        # Avoid Metal.xctoolchain shadowing Swift/stdlib search paths on Xcode 26+ CI.
+        TOOLCHAINS = "com.apple.dt.toolchain.XcodeDefault";
         GCC_PREPROCESSOR_DEFINITIONS = [
           "$(inherited)"
           "USE_RUST_CORE=1"
@@ -664,9 +727,16 @@ let
             "ARCHS[sdk=iphonesimulator*]" = "arm64";
             "ONLY_ACTIVE_ARCH" = "YES";
             LD_RUNPATH_SEARCH_PATHS = [ "$(inherited)" "@executable_path/Frameworks" ];
+            "OTHER_CFLAGS[sdk=iphoneos*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
+            "OTHER_CFLAGS[sdk=iphonesimulator*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
+            "OTHER_SWIFT_FLAGS[sdk=iphoneos*]" = [ "$(inherited)" ] ++ ios26SwiftAutolinkOff;
+            "OTHER_SWIFT_FLAGS[sdk=iphonesimulator*]" = [ "$(inherited)" ] ++ ios26SwiftAutolinkOff;
+            "LIBRARY_SEARCH_PATHS[sdk=iphoneos*]" = ios26SwiftLibSearchPaths;
+            "LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]" = ios26SwiftLibSearchPaths;
             # Do not add SubFrameworks (UIUtilities / SwiftUICore) — same as tvOS.
             "OTHER_LDFLAGS[sdk=iphoneos*]" = [
               "$(inherited)"
+            ] ++ ios26SwiftUiClientLdflags ++ [
               "-L${strip (iosDeps.libwayland or null)}/lib"
               "-L${strip (iosDeps.xkbcommon or null)}/lib"
               "-L${strip (iosDeps.libffi or null)}/lib"
@@ -696,6 +766,7 @@ let
              ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
             "OTHER_LDFLAGS[sdk=iphonesimulator*]" = [
               "$(inherited)"
+            ] ++ ios26SwiftUiClientLdflags ++ [
               "-L${strip (iosSimDeps.libwayland or null)}/lib"
               "-L${strip (iosSimDeps.xkbcommon or null)}/lib"
               "-L${strip (iosSimDeps.libffi or null)}/lib"
@@ -814,9 +885,16 @@ let
             "ARCHS[sdk=iphonesimulator*]" = "arm64";
             "ONLY_ACTIVE_ARCH" = "YES";
             LD_RUNPATH_SEARCH_PATHS = [ "$(inherited)" "@executable_path/Frameworks" ];
+            "OTHER_CFLAGS[sdk=iphoneos*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
+            "OTHER_CFLAGS[sdk=iphonesimulator*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
+            "OTHER_SWIFT_FLAGS[sdk=iphoneos*]" = [ "$(inherited)" ] ++ ios26SwiftAutolinkOff;
+            "OTHER_SWIFT_FLAGS[sdk=iphonesimulator*]" = [ "$(inherited)" ] ++ ios26SwiftAutolinkOff;
+            "LIBRARY_SEARCH_PATHS[sdk=iphoneos*]" = ios26SwiftLibSearchPaths;
+            "LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]" = ios26SwiftLibSearchPaths;
             # Do not add SubFrameworks (UIUtilities / SwiftUICore) — same as tvOS.
             "OTHER_LDFLAGS[sdk=iphoneos*]" = [
               "$(inherited)"
+            ] ++ ios26SwiftUiClientLdflags ++ [
               "-L${strip (ipadosDeps.libwayland or null)}/lib"
               "-L${strip (ipadosDeps.xkbcommon or null)}/lib"
               "-L${strip (ipadosDeps.libffi or null)}/lib"
@@ -846,6 +924,7 @@ let
             ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
             "OTHER_LDFLAGS[sdk=iphonesimulator*]" = [
               "$(inherited)"
+            ] ++ ios26SwiftUiClientLdflags ++ [
               "-L${strip (ipadosSimDeps.libwayland or null)}/lib"
               "-L${strip (ipadosSimDeps.xkbcommon or null)}/lib"
               "-L${strip (ipadosSimDeps.libffi or null)}/lib"
@@ -957,11 +1036,18 @@ let
             "VALID_ARCHS[sdk=appletvsimulator*]" = "arm64";
             "ARCHS[sdk=appletvsimulator*]" = "arm64";
             "ONLY_ACTIVE_ARCH" = "YES";
+            "OTHER_CFLAGS[sdk=appletvos*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
+            "OTHER_CFLAGS[sdk=appletvsimulator*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
+            "OTHER_SWIFT_FLAGS[sdk=appletvos*]" = [ "$(inherited)" ] ++ ios26SwiftAutolinkOff;
+            "OTHER_SWIFT_FLAGS[sdk=appletvsimulator*]" = [ "$(inherited)" ] ++ ios26SwiftAutolinkOff;
+            "LIBRARY_SEARCH_PATHS[sdk=appletvos*]" = ios26SwiftLibSearchPaths;
+            "LIBRARY_SEARCH_PATHS[sdk=appletvsimulator*]" = ios26SwiftLibSearchPaths;
             # Do not add $(SDKROOT)/System/Library/SubFrameworks on tvOS: it makes
             # the linker pick up UIUtilities / SwiftUICore as direct deps, which
             # tvOS app targets are not allowed to link.
             "OTHER_LDFLAGS[sdk=appletvos*]" = [
               "$(inherited)"
+            ] ++ ios26SwiftUiClientLdflags ++ [
               "-L${strip (tvosDeps.libwayland or null)}/lib"
               "-L${strip (tvosDeps.xkbcommon or null)}/lib"
               "-L${strip (tvosDeps.libffi or null)}/lib"
@@ -989,6 +1075,7 @@ let
             ] ++ westonToytoolkitLdflagsAppleMobile tvosDeps ++ westonCompositorLdflags tvosDeps ++ footLdflags tvosDeps ++ fastfetchLdflags tvosDeps ++ neovimLdflags tvosDeps ++ [ derivedRustLib ] ++ finalCxxLdflags;
             "OTHER_LDFLAGS[sdk=appletvsimulator*]" = [
               "$(inherited)"
+            ] ++ ios26SwiftUiClientLdflags ++ [
               "-L${strip (tvosSimDeps.libwayland or null)}/lib"
               "-L${strip (tvosSimDeps.xkbcommon or null)}/lib"
               "-L${strip (tvosSimDeps.libffi or null)}/lib"
@@ -1234,6 +1321,12 @@ let
             "VALID_ARCHS[sdk=xrsimulator*]" = "arm64";
             "ARCHS[sdk=xrsimulator*]" = "arm64";
             "ONLY_ACTIVE_ARCH" = "YES";
+            "OTHER_CFLAGS[sdk=xros*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
+            "OTHER_CFLAGS[sdk=xrsimulator*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
+            "OTHER_SWIFT_FLAGS[sdk=xros*]" = [ "$(inherited)" ] ++ ios26SwiftAutolinkOff;
+            "OTHER_SWIFT_FLAGS[sdk=xrsimulator*]" = [ "$(inherited)" ] ++ ios26SwiftAutolinkOff;
+            "LIBRARY_SEARCH_PATHS[sdk=xros*]" = ios26SwiftLibSearchPaths;
+            "LIBRARY_SEARCH_PATHS[sdk=xrsimulator*]" = ios26SwiftLibSearchPaths;
             "FRAMEWORK_SEARCH_PATHS[sdk=xros*]" = [
               "$(inherited)"
             ];
@@ -1242,6 +1335,7 @@ let
             ];
             "OTHER_LDFLAGS[sdk=xros*]" = [
               "$(inherited)"
+            ] ++ ios26SwiftUiClientLdflags ++ [
               "-L${strip (visionosDeps.libwayland or null)}/lib"
               "-L${strip (visionosDeps.xkbcommon or null)}/lib"
               "-L${strip (visionosDeps.libffi or null)}/lib"
@@ -1260,6 +1354,7 @@ let
             ] ++ westonToytoolkitLdflagsAppleMobile visionosDeps ++ westonCompositorLdflags visionosDeps ++ fastfetchLdflags visionosDeps ++ neovimLdflags visionosDeps ++ [ derivedRustLib ] ++ finalCxxLdflags;
             "OTHER_LDFLAGS[sdk=xrsimulator*]" = [
               "$(inherited)"
+            ] ++ ios26SwiftUiClientLdflags ++ [
               "-L${strip (visionosSimDeps.libwayland or null)}/lib"
               "-L${strip (visionosSimDeps.xkbcommon or null)}/lib"
               "-L${strip (visionosSimDeps.libffi or null)}/lib"

@@ -6,9 +6,9 @@ monoliths or reintroducing silent-failure patterns.
 ## Current Size Budget (line count)
 
 - Default max for `*android.nix`: **400** lines.
-- Temporary exceptions:
-  - `dependencies/libs/libwayland/android.nix` <= 650
-  - `dependencies/libs/waypipe/android.nix` <= 900
+- Temporary exceptions (in upstream `wwn-*` repos, not Wawona):
+  - `wwn-toolchain/dependencies/libs/libwayland/android.nix` <= 650
+  - `wwn-waypipe/dependencies/libs/waypipe/android.nix` <= 900
   - `dependencies/wawona/android.nix` <= 850
 
 Any new oversized Android module must either:

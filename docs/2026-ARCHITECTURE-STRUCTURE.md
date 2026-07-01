@@ -456,16 +456,17 @@ Wawona uses **Nix** as the single source of truth for all builds.
 | Linux | DRM/KMS fullscreen | `nix build .#wawona-linux` |
 
 ### Key Nix Modules
-- `flake.nix` — Defines all packages and apps
+- `flake.nix` — Defines all packages and apps; wires `wwn-*` flake inputs
 - `dependencies/wawona/ios.nix` — iOS build (XcodeGen + Xcode)
 - `dependencies/wawona/macos.nix` — macOS native frontend + Rust backend
 - `dependencies/wawona/android.nix` — Android build (APK + native libs + Rust backend)
 - `dependencies/wawona/common.nix` — Shared sources, dependencies, flags
-- `dependencies/wawona/rust-backend-ios.nix` — Rust core cross-compilation for iOS
-- `dependencies/wawona/rust-backend-macos.nix` — Rust core for macOS
-- `dependencies/wawona/rust-backend-android.nix` — Rust core + waypipe for Android (aarch64-linux-android)
+- `dependencies/wawona/rust-backend-c2n.nix` — crate2nix Rust backends (all platforms)
+- `dependencies/wawona/rust-backend-android-brp.nix` — Android BRP variant (when enabled)
 - `dependencies/generators/xcodegen.nix` — XcodeGen project generation
 - `dependencies/generators/gradlegen.nix` — Gradle build file generation
+- `wwn-toolchain` (flake input) — `dependencies/toolchains/`, `dependencies/libs/`, `dependencies/apple/`
+- `wwn-weston`, `wwn-waypipe`, … (flake inputs) — patched app ports and ldflags generators
 
 ---
 
@@ -546,7 +547,7 @@ Android doesn't ship with SSH tools. Wawona bundles **Dropbear SSH** (lightweigh
 
 ### Nix Build Pipeline
 
-1. **Cross-compile native C deps** — `wwn-toolchain` registry + `buildForAndroid` dispatches to per-lib `dependencies/libs/*/android.nix` (xkbcommon, openssl, libwayland, pixman, expat, libxml2, zstd, lz4, …).
+1. **Cross-compile native C deps** — `wwn-toolchain` registry + `buildForAndroid` dispatches to per-lib `wwn-toolchain/dependencies/libs/*/android.nix` (xkbcommon, openssl, libwayland, pixman, expat, libxml2, zstd, lz4, …).
 2. **Cross-compile SSH tools** — `wwn-toolchain/dependencies/libs/openssh/android.nix` builds Dropbear SSH client; `wwn-toolchain/dependencies/libs/sshpass/android.nix` builds sshpass
 3. **Rust backend** — `dependencies/wawona/rust-backend-c2n.nix` cross-compiles `libwawona.a` for `aarch64-linux-android` with vendored waypipe (patched for Android, exposes `waypipe_main` C entry point)
 4. **APK build** — `dependencies/wawona/android.nix`:
@@ -561,18 +562,18 @@ Android doesn't ship with SSH tools. Wawona bundles **Dropbear SSH** (lightweigh
 
 | Library | Nix Module (wwn-toolchain) | Purpose |
 |---------|-----------|---------|
-| xkbcommon | `dependencies/libs/xkbcommon/android.nix` | Keyboard keymaps (XKB) |
-| openssl | `dependencies/libs/openssl/android.nix` | TLS/crypto (Dropbear, waypipe) |
-| **openssh** | `dependencies/libs/openssh/android.nix` | **Dropbear SSH client** (fork/exec) |
-| **sshpass** | `dependencies/libs/sshpass/android.nix` | **Password automation** (optional) |
-| libwayland | `dependencies/libs/libwayland/android.nix` | Wayland protocol library |
-| pixman | `dependencies/libs/pixman/android.nix` | Pixel manipulation |
-| libffi | `dependencies/libs/libffi/android.nix` | Foreign function interface |
-| expat | `dependencies/libs/expat/android.nix` | XML parser (xkbcommon dep) |
-| libxml2 | `dependencies/libs/libxml2/android.nix` | XML parser |
-| zstd | `dependencies/libs/zstd/android.nix` | Compression (waypipe) |
-| lz4 | `dependencies/libs/lz4/android.nix` | Compression (waypipe) |
-| swiftshader | `dependencies/libs/swiftshader/android.nix` | Software Vulkan renderer (fallback) |
+| xkbcommon | `wwn-toolchain/dependencies/libs/xkbcommon/android.nix` | Keyboard keymaps (XKB) |
+| openssl | `wwn-toolchain/dependencies/libs/openssl/android.nix` | TLS/crypto (Dropbear, waypipe) |
+| **openssh** | `wwn-toolchain/dependencies/libs/openssh/android.nix` | **Dropbear SSH client** (fork/exec) |
+| **sshpass** | `wwn-toolchain/dependencies/libs/sshpass/android.nix` | **Password automation** (optional) |
+| libwayland | `wwn-toolchain/dependencies/libs/libwayland/android.nix` | Wayland protocol library |
+| pixman | `wwn-toolchain/dependencies/libs/pixman/android.nix` | Pixel manipulation |
+| libffi | `wwn-toolchain/dependencies/libs/libffi/android.nix` | Foreign function interface |
+| expat | `wwn-toolchain/dependencies/libs/expat/android.nix` | XML parser (xkbcommon dep) |
+| libxml2 | `wwn-toolchain/dependencies/libs/libxml2/android.nix` | XML parser |
+| zstd | `wwn-toolchain/dependencies/libs/zstd/android.nix` | Compression (waypipe) |
+| lz4 | `wwn-toolchain/dependencies/libs/lz4/android.nix` | Compression (waypipe) |
+| swiftshader | `wwn-toolchain/dependencies/libs/swiftshader/android.nix` | Software Vulkan renderer (fallback) |
 
 ### Waypipe Integration on Android
 

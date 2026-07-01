@@ -8,12 +8,10 @@ This directory is the **authoritative documentation** for that program. If you c
 > RootFS recipe, and the `verify-zsh-ios-patches.py` patch-anchor check now live
 > in the **[`wwn-zsh`](https://github.com/Wawona/wwn-zsh)** repo; the patched
 > Weston terminal/compositor recipes live in
-> **[`wwn-weston`](https://github.com/Wawona/wwn-weston)**. Wawona consumes both
-> as flake inputs. Edit the recipes/patches there, not under Wawona's
-> `dependencies/`. (Some text below references the older in-tree
-> `dependencies/libs/zsh` / `dependencies/clients/weston` paths and a
-> `posix_spawn` model — the current design is in-process, no fork/exec; trust the
-> `wwn-zsh` recipes and `.cursor/rules/wawona-context.mdc`.)
+> **[`wwn-weston`](https://github.com/Wawona/wwn-weston)**; PTY sources live in
+> **[`wwn-toolchain`](https://github.com/Wawona/wwn-toolchain)** (`dependencies/libs/wawona-pty/`).
+> Wawona consumes all three as flake inputs. Edit recipes and patches upstream,
+> not under Wawona's `dependencies/`.
 
 ---
 
@@ -56,7 +54,7 @@ macOS is **out of scope** for this track — it already uses Meson `weston/macos
 | [../compliance/policy-traceability.md](../compliance/policy-traceability.md) | Capability → store-safe class mapping (includes local shell row) |
 | [../testing/everywhere-matrix.md](../testing/everywhere-matrix.md) | CI targets + manual smoke for terminal/zsh |
 | `wwn-weston/dependencies/clients/weston/ios.nix` | Real `terminal.c` → `libweston-terminal.a` |
-| [../../dependencies/clients/weston/compositor-apple-mobile.nix](../../dependencies/clients/weston/compositor-apple-mobile.nix) | Compositor `fork()` stub — **not** used for shell spawn |
+| `wwn-weston/dependencies/clients/weston/compositor-apple-mobile.nix` | Compositor `fork()` stub — **not** used for shell spawn |
 | [../../src/platform/macos/ui/Settings/WWNWaypipeRunner.m](../../src/platform/macos/ui/Settings/WWNWaypipeRunner.m) | In-process client launch + env wiring |
 
 ---

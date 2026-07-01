@@ -61,16 +61,16 @@ Produces `libwaypipe.a` with libssh2, lz4, zstd, dmabuf. Waypipe symbols are lin
 
 ### Dependency Matrix
 
-| Library | Purpose | Nix Path | iOS Status |
-|---------|---------|----------|------------|
-| zstd | Compression | `dependencies/libs/zstd/` | Cross-compiled |
-| lz4 | Compression | `dependencies/libs/lz4/` | Cross-compiled |
-| libssh2 | SSH tunnels (replaces openssh) | `dependencies/libs/libssh2/` | Cross-compiled |
-| mbedtls | TLS for libssh2 | `dependencies/libs/mbedtls/` | Cross-compiled |
-| libwayland | Wayland client protocol | `dependencies/libs/libwayland/` | Cross-compiled |
-| libffi | Required by libwayland | `dependencies/libs/libffi/` | Cross-compiled |
-| xkbcommon | Keyboard handling | `dependencies/libs/xkbcommon/` | Cross-compiled |
-| pixman | Pixel manipulation | `dependencies/libs/pixman/` | Cross-compiled |
+| Library | Purpose | Nix path (upstream repo) | iOS Status |
+|---------|---------|--------------------------|------------|
+| zstd | Compression | `wwn-toolchain/dependencies/libs/zstd/` | Cross-compiled |
+| lz4 | Compression | `wwn-toolchain/dependencies/libs/lz4/` | Cross-compiled |
+| libssh2 | SSH tunnels (replaces openssh) | `wwn-toolchain/dependencies/libs/libssh2/` | Cross-compiled |
+| mbedtls | TLS for libssh2 | `wwn-toolchain/dependencies/libs/mbedtls/` | Cross-compiled |
+| libwayland | Wayland client protocol | `wwn-toolchain/dependencies/libs/libwayland/` | Cross-compiled |
+| libffi | Required by libwayland | `wwn-toolchain/dependencies/libs/libffi/` | Cross-compiled |
+| xkbcommon | Keyboard handling | `wwn-toolchain/dependencies/libs/xkbcommon/` | Cross-compiled |
+| pixman | Pixel manipulation | `wwn-toolchain/dependencies/libs/pixman/` | Cross-compiled |
 
 ### Feature Selection
 
@@ -85,7 +85,7 @@ Produces `libwaypipe.a` with libssh2, lz4, zstd, dmabuf. Waypipe symbols are lin
 
 ### iOS Source Patches
 
-Waypipe was written for Linux. Patches in `dependencies/libs/waypipe/`:
+Waypipe was written for Linux. Patches in `wwn-waypipe/dependencies/libs/waypipe/`:
 
 - **Socket flags**: Replace `SOCK_CLOEXEC`/`SOCK_NONBLOCK` with `fcntl()` (iOS lacks them)
 - **unlinkat → unlink**: iOS lacks `unlinkat()`
@@ -131,9 +131,9 @@ iOS App                        SSH                          Remote
 
 ### Key Files
 
-- `dependencies/libs/libssh2/patch-streamlocal.sh` — adds streamlocal support to libssh2
-- `dependencies/libs/waypipe/patch-waypipe-source.sh` — creates `transport_ssh2.rs`
-- `dependencies/libs/waypipe/ios.nix` — iOS waypipe build
+- `wwn-toolchain/dependencies/libs/libssh2/patch-streamlocal.sh` — adds streamlocal support to libssh2
+- `wwn-waypipe/dependencies/libs/waypipe/patch-waypipe-source.sh` — creates `transport_ssh2.rs`
+- `wwn-waypipe/dependencies/libs/waypipe/ios.nix` — iOS waypipe build
 
 ### libssh2 Streamlocal Patch
 

@@ -5,9 +5,9 @@ toolchain selection logic.
 
 ## Scope Triggers
 
-Treat a PR as an Android upgrade PR when any of the following files change:
+Treat a PR as an Android upgrade PR when any of the following change:
 
-- `wwn-toolchain` → `dependencies/android/sdk-config.nix` (via `nix eval .#wwnSdkConfigPath --raw`)
+- `wwn-toolchain` → `dependencies/android/sdk-config.nix` (canonical; edit in [wwn-toolchain](https://github.com/Wawona/wwn-toolchain); Wawona reads via `nix eval .#wwnSdkConfigPath --raw`)
 - `android/app/build.gradle.kts`
 - `wwn-toolchain` → `dependencies/toolchains/android.nix`
 - `wwn-toolchain` → `dependencies/toolchains/android-cmake.nix`

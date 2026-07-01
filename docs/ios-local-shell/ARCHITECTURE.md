@@ -41,8 +41,8 @@ Terminal **UI** (VT parsing, scrollback, cairo rendering, keyboard input) comes 
 | Wayland compositor | `src/core/*`, Smithay | Spawn shells; `fork()` is stubbed on mobile Weston |
 | Weston nested compositor | `compositor-apple-mobile.nix` | Launch shell children (`#define fork() -1`) |
 | Terminal UI | `clients/terminal.c` + toytoolkit | Download binaries; exec paths outside rootfs |
-| PTY + spawn | `dependencies/libs/wawona-pty/` | Compositor logic; network I/O |
-| Shell library | `dependencies/libs/zsh/ios.nix` | JIT; `dlopen`/dynamic module load (all modules static via `--disable-dynamic`) |
+| PTY + spawn | `wwn-toolchain/dependencies/libs/wawona-pty/` | Compositor logic; network I/O |
+| Shell library | `wwn-zsh/dependencies/libs/zsh/ios.nix` | JIT; `dlopen`/dynamic module load (all modules static via `--disable-dynamic`) |
 | Rootfs install | `WWNRootfsManager`, `xcodegen.nix` | Write outside app container |
 | Launch / env | `WWNWaypipeRunner.m` | Pass through user-supplied `PATH` to spawn |
 
@@ -232,10 +232,10 @@ Machine profiles using waypipe + SSH run **remote** zsh on Linux/macOS hosts. Th
 
 | Topic | Path |
 |-------|------|
-| SHM stub (to delete) | `dependencies/clients/weston/mobile-weston-terminal.c` |
-| iOS client build | `dependencies/clients/weston/ios.nix` ~484–491 |
-| macOS terminal patches | `dependencies/clients/weston/macos.nix` |
-| Compositor fork stub | `dependencies/clients/weston/compositor-apple-mobile.nix` |
-| Client lookup | `dependencies/clients/weston/mobile-weston-client-launch.c` |
+| iOS client build | `wwn-weston/dependencies/clients/weston/ios.nix` |
+| macOS terminal patches | `wwn-weston/dependencies/clients/weston/macos.nix` |
+| Compositor fork stub | `wwn-weston/dependencies/clients/weston/compositor-apple-mobile.nix` |
+| Client lookup | `wwn-weston/dependencies/clients/weston/mobile-weston-client-launch.c` |
+| PTY library | `wwn-toolchain/dependencies/libs/wawona-pty/` |
 | Launch / teardown | `src/platform/macos/ui/Settings/WWNWaypipeRunner.m` |
 | Store-safe profile | `src/core/wayland/mod.rs` |

@@ -45,11 +45,11 @@ build" message for safe-subset names so the UX stays honest.
 The whole Apple family reuses the platform-agnostic iOS recipes (they resolve the
 SDK/min-version from `iosToolchain` via `apple-mobile-platform.nix`):
 
-- `dependencies/toolchains/common/registry.nix` → `zsh`, `zsh-framework`,
+- `wwn-toolchain/dependencies/toolchains/common/registry.nix` → `zsh`, `zsh-framework`,
   `wawona-pty`, `wawona-rootfs` point at the iOS recipes for tv/watch/vision.
 - `dependencies/wawona/mobile-platform-deps.nix` → the `mobile`/`tv`/`watch`/
   `vision` variants all build the zsh stack.
-- `dependencies/clients/weston/ios.nix` → real `clients/terminal.c` for the whole
+- `wwn-weston/dependencies/clients/weston/ios.nix` → real `clients/terminal.c` for the whole
   family (no C stub).
 - `dependencies/wawona/rust-backend-c2n.nix` → `coreutils` feature on
   iOS/tvOS/visionOS; **off** on watchOS.

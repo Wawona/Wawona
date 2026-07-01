@@ -26,8 +26,10 @@ if [ -n "${GITHUB_ENV:-}" ]; then
     echo "DEVELOPER_DIR=$DEVELOPER_DIR"
     echo "XCODE_APP=$XCODE_APP"
     echo "PATH=$DEVELOPER_DIR/usr/bin:$PATH"
+    echo "TOOLCHAINS=com.apple.dt.toolchain.XcodeDefault"
   } >> "$GITHUB_ENV"
 else
   export DEVELOPER_DIR XCODE_APP
   export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
+  export TOOLCHAINS=com.apple.dt.toolchain.XcodeDefault
 fi
