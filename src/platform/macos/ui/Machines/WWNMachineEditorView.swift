@@ -140,7 +140,7 @@ struct WWNMachineEditorView: View {
     } else if (overrides["FootEnabled"] as? Bool) == true {
       initialNativeClientId = "foot"
     } else {
-      initialNativeClientId = "weston-simple-shm"
+      initialNativeClientId = "weston-terminal"
     }
 
     #if os(iOS)
@@ -148,9 +148,9 @@ struct WWNMachineEditorView: View {
     var pointerClientId = initialNativeClientId
     var pointerCustom = initialCustomCommand
     if pointerClientId == kNativeClientCustomId {
-      _selectedClientId = State(initialValue: "weston-simple-shm")
+      _selectedClientId = State(initialValue: "weston-terminal")
       _customCommand = State(initialValue: "")
-      pointerClientId = "weston-simple-shm"
+      pointerClientId = "weston-terminal"
       pointerCustom = ""
     } else {
       _selectedClientId = State(initialValue: pointerClientId)

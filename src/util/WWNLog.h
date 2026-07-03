@@ -19,6 +19,22 @@
 #include <time.h>
 #include <unistd.h>
 
+/*
+ * Optional startup log sink.
+ *
+ * When WWNStartupLogger is active (during client launch), this function
+ * pointer is set to a thin C shim that forwards each log entry into the
+ * native scrollable startup log view.  It is reset to NULL after the view
+ * dismisses itself (first frame presented or user tap).
+ *
+ * Call sites must not rely on the sink being called in any particular order
+ * relative to the dprintf write — it is an advisory, best-effort channel.
+ *
+ * The sink is called with the module tag and a pre-formatted UTF-8 string.
+ * It must be safe to call from any thread.
+ */
+extern void (*wwn_startup_log_sink)(const char *module, const char *msg);
+
 static int g_wwn_preserved_stderr_fd = -1;
 static pthread_once_t g_wwn_preserved_stderr_once = PTHREAD_ONCE_INIT;
 
@@ -53,7 +69,12 @@ static inline int WWNPreservedStderrFd(void)
             "%04d-%02d-%02d %02d:%02d:%02d [%s] %s\n",                         \
             _wtm.tm_year + 1900, _wtm.tm_mon + 1, _wtm.tm_mday, _wtm.tm_hour,  \
             _wtm.tm_min, _wtm.tm_sec, module, [_wmsg UTF8String]);             \
+    if (wwn_startup_log_sink) {                                                \
+      wwn_startup_log_sink(module, [_wmsg UTF8String]);                        \
+    }                                                                          \
   } while (0)
+
+#pragma clang diagnostic pop
 
 #else
 
@@ -67,6 +88,11 @@ static inline int WWNPreservedStderrFd(void)
             "%04d-%02d-%02d %02d:%02d:%02d [%s] " fmt "\n",                    \
             _wtm.tm_year + 1900, _wtm.tm_mon + 1, _wtm.tm_mday, _wtm.tm_hour,  \
             _wtm.tm_min, _wtm.tm_sec, module, ##__VA_ARGS__);                  \
+    if (wwn_startup_log_sink) {                                                \
+      char _wbuf[1024];                                                        \
+      snprintf(_wbuf, sizeof(_wbuf), fmt, ##__VA_ARGS__);                      \
+      wwn_startup_log_sink(module, _wbuf);                                     \
+    }                                                                          \
   } while (0)
 
 #endif /* __OBJC__ */
@@ -81,7 +107,5 @@ static inline int WWNPreservedStderrFd(void)
             _wtm.tm_year + 1900, _wtm.tm_mon + 1, _wtm.tm_mday, _wtm.tm_hour,  \
             _wtm.tm_min, _wtm.tm_sec, module, ##__VA_ARGS__);                  \
   } while (0)
-
-#pragma clang diagnostic pop
 
 #endif /* WWNLOG_H */

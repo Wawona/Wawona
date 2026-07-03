@@ -51,6 +51,7 @@ let
   footAndroid = buildModule.buildForAndroid "foot" { };
   fastfetchAndroid = buildModule.buildForAndroid "fastfetch" { };
   neovimAndroid = buildModule.buildForAndroid "neovim" { };
+  waypipeAndroid = buildModule.buildForAndroid "waypipe" { };
   mobileToytoolkitDeps = import ./mobile-toytoolkit-deps.nix {
     buildFn = buildModule.buildForAndroid;
   };
@@ -83,8 +84,9 @@ let
   androidQuadFrag = ../../src/platform/android/rendering/shaders/android_quad.frag;
 
   shellTools = import ./android-shell-tools.nix {
-    inherit lib zshAndroid fastfetchAndroid neovimAndroid;
+    inherit lib zshAndroid fastfetchAndroid neovimAndroid waypipeAndroid;
   };
+  westonData = import ./android-weston-data.nix { inherit lib pkgs; };
   bundledClients = import ./android-bundled-clients.nix {
     androidCC = androidToolchainResolved.androidCC;
     inherit libwaylandAndroid westonAndroid footAndroid;
@@ -842,6 +844,9 @@ in
       mkdir -p app/src/main/assets/xkb
       cp -RL ${pkgs.xkeyboard_config}/share/X11/xkb/. app/src/main/assets/xkb/
       chmod -R u+w app/src/main/assets/xkb
+
+      # Weston toytoolkit PNGs (sign_close.png, icon_window.png, …) for CSD clients.
+      ${westonData.preBuildFragment}
 
       # In-process Wayland clients (weston-simple-shm, foot); see
       # android-bundled-clients.nix.

@@ -162,7 +162,7 @@ public final class WawonaPreferences: ObservableObject {
         waypipeSSHPassword = defaults.string(forKey: keyPrefix + "waypipeSSHPassword") ?? ""
         logLevel = defaults.string(forKey: keyPrefix + "logLevel") ?? "info"
         defaultInputProfile = defaults.string(forKey: keyPrefix + "defaultInputProfile") ?? "direct"
-        defaultBundledAppID = defaults.string(forKey: keyPrefix + "defaultBundledAppID") ?? "weston-simple-shm"
+        defaultBundledAppID = defaults.string(forKey: keyPrefix + "defaultBundledAppID") ?? "weston-terminal"
         defaultWaypipeEnabled = defaults.object(forKey: keyPrefix + "defaultWaypipeEnabled") as? Bool ?? true
         xwaylandSupport = defaults.object(forKey: keyPrefix + "xwaylandSupport") as? Bool ?? false
         shakeToCloseEnabled = defaults.object(forKey: keyPrefix + "shakeToCloseEnabled") as? Bool ?? true

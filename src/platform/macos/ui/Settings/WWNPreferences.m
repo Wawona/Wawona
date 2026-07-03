@@ -550,15 +550,15 @@ static UIImage *WWNAboutLogo(void) {
     [WWNRootfsProvider prepareUserAccess];
     NSDictionary *rootfs = [WWNRootfsProvider snapshot];
     NSString *mode = rootfs[@"mode"] ?: @"host";
+    NSString *bundleVersion = rootfs[@"bundleTemplateVersion"];
+    NSString *appliedVersion = rootfs[@"appliedTemplateVersion"];
     NSString *templateStatus =
         [mode isEqualToString:@"host"]
             ? @"host shell"
             : [NSString
-                  stringWithFormat:@"bundle v%@ / installed v%@",
-                                   rootfs[@"bundleTemplateVersion"],
-                                   rootfs[@"appliedTemplateVersion"].length
-                                       ? rootfs[@"appliedTemplateVersion"]
-                                       : @"—"];
+                  stringWithFormat:@"bundle v%@ / installed v%@", bundleVersion,
+                                   appliedVersion.length ? appliedVersion
+                                                         : @"—"];
 
     WWNPreferencesSection *localShell = [[WWNPreferencesSection alloc] init];
     localShell.title = @"Local Shell";
@@ -620,7 +620,9 @@ static UIImage *WWNAboutLogo(void) {
           ITEM(@"Import File to Home", @"RootfsImportFile", WSettingButton, nil,
                @"Copy a file into shell HOME.");
       importBtn.actionBlock = ^{
+#if TARGET_OS_IPHONE
         [weakSelf importFileToShellHome];
+#endif
       };
       [localItems addObject:importBtn];
     }
@@ -631,7 +633,9 @@ static UIImage *WWNAboutLogo(void) {
                nil,
                @"Restore .zshenv, .zshrc, and .zlogin from bundled templates.");
       resetDotfilesBtn.actionBlock = ^{
+#if TARGET_OS_IPHONE
         [weakSelf confirmResetShellDotfiles];
+#endif
       };
       [localItems addObject:resetDotfilesBtn];
     }
@@ -642,7 +646,9 @@ static UIImage *WWNAboutLogo(void) {
                                            WSettingButton, nil,
                                            @"Re-copy etc/ and usr/ from the app bundle.");
       reinstallBtn.actionBlock = ^{
+#if TARGET_OS_IPHONE
         [weakSelf confirmReinstallSystemTree];
+#endif
       };
       [localItems addObject:reinstallBtn];
     }
@@ -738,7 +744,6 @@ static UIImage *WWNAboutLogo(void) {
   waypipe.iconColor = [NSColor systemGreenColor];
 #endif
 
-  __weak typeof(self) weakSelf = self;
   NSString *previewCommand =
       [[WWNWaypipeRunner sharedRunner]
           generateWaypipePreviewString:[WWNPreferencesManager sharedManager]];
@@ -4940,6 +4945,13 @@ static UIImage *WWNAboutLogo(void) {
 }
 @end
 
+/* Private interface for WWNPreferencesContent — macOS only (see #if !TARGET_OS_IPHONE guard). */
+@interface WWNPreferencesContent ()
+#if (TARGET_OS_IPHONE || TARGET_OS_OSX) && !TARGET_OS_TV
+- (void)handleLocalShellICloudSyncToggle:(BOOL)enabled;
+#endif
+@end
+
 @implementation WWNPreferencesContent
 - (void)loadView {
   NSView *v = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 400, 400)];
@@ -5255,6 +5267,19 @@ static UIImage *WWNAboutLogo(void) {
   }
   return 50.0;
 }
+
+#if (TARGET_OS_IPHONE || TARGET_OS_OSX) && !TARGET_OS_TV
+- (void)handleLocalShellICloudSyncToggle:(BOOL)enabled {
+  NSError *error = nil;
+  if (![WWNRootfsProvider setICloudSyncEnabled:enabled error:&error]) {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"iCloud Sync Failed";
+    alert.informativeText = error.localizedDescription ?: @"Unknown error.";
+    [alert runModal];
+  }
+  [self.tableView reloadData];
+}
+#endif
 
 @end
 

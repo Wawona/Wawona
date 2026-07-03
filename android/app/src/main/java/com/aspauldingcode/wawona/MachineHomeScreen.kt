@@ -779,7 +779,7 @@ private fun MachineEditorSheet(
     var sshKeyPath by remember { mutableStateOf(initial?.sshKeyPath ?: "") }
     var sshKeyPassphrase by remember { mutableStateOf(initial?.sshKeyPassphrase ?: "") }
     var sshAuthMethod by remember { mutableStateOf(initial?.sshAuthMethod ?: "password") }
-    var nativeLauncher by remember { mutableStateOf(initial?.nativeLauncher ?: "weston-simple-shm") }
+    var nativeLauncher by remember { mutableStateOf(initial?.nativeLauncher ?: "weston-terminal") }
     var remoteCommand by remember { mutableStateOf(initial?.remoteCommand ?: "") }
     var vmIdentifier by remember { mutableStateOf(initial?.vmSettings?.vmIdentifier ?: "") }
     var vmVsockPort by remember { mutableStateOf(initial?.vmSettings?.vsockPort ?: "") }

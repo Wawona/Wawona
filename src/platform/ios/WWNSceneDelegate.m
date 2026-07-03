@@ -9,9 +9,11 @@
 #import "../macos/ui/Machines/WWNMachinesCoordinator.h"
 #import "../macos/ui/Machines/WWNMachineProfileStore.h"
 #import "WWNCompositorBridge.h"
+#import "WWNStartupLogViewController.h"
+#import "../../util/WWNLog.h"
+#import "../../util/WWNStartupLogger.h"
 #import <math.h>
 #import <TargetConditionals.h>
-#import "../../util/WWNLog.h"
 
 typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
   WWNSessionExitTriggerShake = 0,
@@ -258,6 +260,8 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
 #if !TARGET_OS_VISION && !TARGET_OS_TV
 @property(nonatomic, strong) UIScreenEdgePanGestureRecognizer *backSwipeGesture;
 #endif
+/// Startup log overlay shown during the Machines → compositor transition.
+@property(nonatomic, strong, nullable) WWNStartupLogViewController *startupLogVC;
 @end
 
 @implementation WWNSceneDelegate
@@ -863,13 +867,84 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
 }
 
 - (void)handleNativeClientWillLaunch:(NSNotification *)notification {
-  (void)notification;
+  NSString *clientId = notification.userInfo[@"clientId"];
+  [self showStartupLogForClient:clientId];
   [self hideMachinesUIAndRevealCompositor];
+}
+
+// ---------------------------------------------------------------------------
+// Startup log overlay
+// ---------------------------------------------------------------------------
+
+- (void)showStartupLogForClient:(NSString *)clientId
+{
+  /* Begin capturing before launching so we don't miss early messages. */
+  [[WWNStartupLogger shared] beginCapture];
+
+  /* Inject a header line so the log is never empty on first render. */
+  NSString *label = clientId.length > 0 ? clientId : @"wayland client";
+  NSString *header = [NSString stringWithFormat:
+      @"[LAUNCH] Starting %@ …", label];
+  [[WWNStartupLogger shared] appendLine:header];
+
+  WWNStartupLogViewController *logVC = [[WWNStartupLogViewController alloc] init];
+  logVC.clientLabel = label;
+  self.startupLogVC = logVC;
+
+  /* Add as child view controller over the compositor container. */
+  UIViewController *host = self.window.rootViewController;
+  [host addChildViewController:logVC];
+  logVC.view.translatesAutoresizingMaskIntoConstraints = NO;
+  logVC.view.alpha = 0.0;
+  [host.view addSubview:logVC.view];
+  [NSLayoutConstraint activateConstraints:@[
+      [logVC.view.topAnchor constraintEqualToAnchor:host.view.topAnchor],
+      [logVC.view.bottomAnchor constraintEqualToAnchor:host.view.bottomAnchor],
+      [logVC.view.leadingAnchor constraintEqualToAnchor:host.view.leadingAnchor],
+      [logVC.view.trailingAnchor constraintEqualToAnchor:host.view.trailingAnchor],
+  ]];
+  [logVC didMoveToParentViewController:host];
+
+  [UIView animateWithDuration:0.25 animations:^{
+    logVC.view.alpha = 1.0;
+  }];
+
+  /* Observe the first Wayland frame to auto-dismiss. */
+  [[NSNotificationCenter defaultCenter]
+      addObserver:self
+         selector:@selector(handleFirstWaylandFrame:)
+             name:@"WWNFirstWaylandFrameNotification"
+           object:nil];
+}
+
+- (void)handleFirstWaylandFrame:(NSNotification *)notification
+{
+  (void)notification;
+  [[NSNotificationCenter defaultCenter] removeObserver:self
+      name:@"WWNFirstWaylandFrameNotification"
+    object:nil];
+
+  /* Brief delay so the user sees at least a few log lines before fade-out. */
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)),
+                 dispatch_get_main_queue(), ^{
+    [self dismissStartupLog];
+  });
+}
+
+- (void)dismissStartupLog
+{
+  WWNStartupLogViewController *logVC = self.startupLogVC;
+  if (!logVC) return;
+  self.startupLogVC = nil;
+  [logVC dismissWithCompletion:nil];
 }
 
 - (void)handleNativeClientDidTerminate:(NSNotification *)notification {
   (void)notification;
   dispatch_async(dispatch_get_main_queue(), ^{
+    /* If the client terminated before the first frame, dismiss the log. */
+    [self dismissStartupLog];
+
     if ([self isAnyClientSessionRunning]) {
       return;
     }
@@ -907,6 +982,12 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
     [self.window.rootViewController becomeFirstResponder];
   }
 #endif
+  // Force a layout pass so compositorContainer.bounds reflects the actual
+  // screen dimensions before we push the size to the Wayland compositor.
+  // Without this, a just-revealed container may still report CGSizeZero or
+  // stale bounds, causing the nested Weston compositor to launch with the
+  // wrong --width/--height and leave gutters on screen.
+  [self.window.rootViewController.view layoutIfNeeded];
   [self updateOutputSizeFromContainerForced:YES];
 }
 

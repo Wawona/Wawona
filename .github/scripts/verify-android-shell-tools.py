@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify Android packaging for bundled zsh, fastfetch, and neovim."""
+"""Verify Android packaging for bundled zsh, fastfetch, neovim, and waypipe."""
 
 from __future__ import annotations
 
@@ -16,15 +16,17 @@ ANDROID_NIX_FILES = (
 FLAKE = ROOT / "flake.nix"
 ANDROID_JNI = ROOT / "src/platform/android/android_jni.c"
 
-REQUIRED_FLAKE_OUTPUTS = ("zsh-android", "fastfetch-android", "neovim-android")
+REQUIRED_FLAKE_OUTPUTS = ("zsh-android", "fastfetch-android", "neovim-android", "waypipe-android")
 
 REQUIRED_ANDROID_NIX = (
     "zshAndroid",
     "fastfetchAndroid",
     "neovimAndroid",
+    "waypipeAndroid",
     "libzsh_bin.so",
     "libfastfetch_bin.so",
     "libnvim_bin.so",
+    "libwaypipe_bin.so",
     "assets/zsh",
 )
 
@@ -47,6 +49,8 @@ def main() -> int:
 
     if "libzsh_bin.so" not in read(ANDROID_JNI):
         errors.append("android_jni.c must resolve libzsh_bin.so from nativeLibDir")
+    if "libwaypipe_bin.so" not in read(ANDROID_JNI):
+        errors.append("android_jni.c must install libwaypipe_bin.so into usr/bin")
 
     if errors:
         print("Android shell-tools wiring check FAILED:")

@@ -65,11 +65,11 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
     _createdAtMs = now;
     _updatedAtMs = now;
     _settingsOverrides = @{
-      @"NativeClientId" : @"weston-simple-shm",
+      @"NativeClientId" : @"weston-terminal",
       @"EnableLauncher" : @YES,
-      @"WestonSimpleSHMEnabled" : @YES,
+      @"WestonSimpleSHMEnabled" : @NO,
       @"WestonEnabled" : @NO,
-      @"WestonTerminalEnabled" : @NO,
+      @"WestonTerminalEnabled" : @YES,
       @"FootEnabled" : @NO,
     };
   }
@@ -420,11 +420,11 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   NSDictionary<NSString *, id> *legacySnapshot = [self captureSettingsSnapshot];
   NSMutableDictionary<NSString *, id> *mergedOverrides = [legacySnapshot mutableCopy];
   if (!hasSSHHost) {
-    mergedOverrides[@"NativeClientId"] = @"weston-simple-shm";
+    mergedOverrides[@"NativeClientId"] = @"weston-terminal";
     mergedOverrides[@"EnableLauncher"] = @YES;
-    mergedOverrides[@"WestonSimpleSHMEnabled"] = @YES;
+    mergedOverrides[@"WestonSimpleSHMEnabled"] = @NO;
     mergedOverrides[@"WestonEnabled"] = @NO;
-    mergedOverrides[@"WestonTerminalEnabled"] = @NO;
+    mergedOverrides[@"WestonTerminalEnabled"] = @YES;
     mergedOverrides[@"FootEnabled"] = @NO;
   }
   profile.settingsOverrides = mergedOverrides;
@@ -434,7 +434,7 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
           : @"";
   profile.runtimeOverrides = @{
     kWWNRuntimeUseBundledApp : @(bundledId.length > 0 || [mergedOverrides[@"EnableLauncher"] boolValue]),
-    kWWNRuntimeBundledAppID : bundledId.length > 0 ? bundledId : @"weston-simple-shm",
+    kWWNRuntimeBundledAppID : bundledId.length > 0 ? bundledId : @"weston-terminal",
     kWWNRuntimeWaypipeEnabled : @(hasSSHHost ? prefs.waypipeSSHEnabled : NO),
     @"legacySettingsOverrides" : mergedOverrides,
   };

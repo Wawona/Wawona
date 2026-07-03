@@ -40,6 +40,13 @@ struct BundledClient: Identifiable, Hashable {
 
 let kBundledClients: [BundledClient] = [
   BundledClient(
+    id: "weston-terminal",
+    name: "Weston Terminal",
+    prefsKey: "WestonTerminalEnabled",
+    icon: "terminal",
+    description: "Terminal emulator — uses host cursor"
+  ),
+  BundledClient(
     id: "weston-simple-shm",
     name: "Weston Simple SHM",
     prefsKey: "WestonSimpleSHMEnabled",
@@ -52,13 +59,6 @@ let kBundledClients: [BundledClient] = [
     prefsKey: "WestonEnabled",
     icon: "rectangle.on.rectangle",
     description: "Wayland reference compositor (nested compositor)"
-  ),
-  BundledClient(
-    id: "weston-terminal",
-    name: "Weston Terminal",
-    prefsKey: "WestonTerminalEnabled",
-    icon: "terminal",
-    description: "Terminal emulator — uses host cursor"
   ),
   BundledClient(
     id: "foot",

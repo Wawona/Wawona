@@ -9,7 +9,7 @@ import java.io.FileOutputStream
  * zsh (shell fpath) and xkeyboard-config (compositor keymaps).
  */
 object WawonaShellRootfs {
-    private const val MARKER = ".installed"
+    private const val MARKER = ".installed-v2"
 
     fun ensureInstalled(context: Context): File {
         val root = File(context.filesDir, "wawona-rootfs")
@@ -26,6 +26,10 @@ object WawonaShellRootfs {
             val shareXkb = File(root, "usr/share/X11/xkb")
             shareXkb.mkdirs()
             copyAssetDir(context, "xkb", shareXkb)
+
+            val shareWeston = File(root, "usr/share/weston")
+            shareWeston.mkdirs()
+            copyAssetDir(context, "weston", shareWeston)
 
             File(root, "home").mkdirs()
             File(root, "usr/bin").mkdirs()

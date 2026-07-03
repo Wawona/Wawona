@@ -827,6 +827,8 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     return;
   }
 
+  BOOL wasEmpty = (_lastPresentedWaylandImage == NULL);
+
   _lastPresentToken = presentToken;
   _lastPresentedWaylandImage = image;
   _lastContentsScale = contentsScale;
@@ -840,6 +842,15 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   _waylandFrameView.layer.contents = (__bridge id)image;
   _waylandFrameView.layer.contentsRect = normalizedContentRect;
   [CATransaction commit];
+
+  /* Notify the startup log overlay that the first real frame has arrived. */
+  if (wasEmpty && image != NULL) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [[NSNotificationCenter defaultCenter]
+          postNotificationName:@"WWNFirstWaylandFrameNotification"
+                        object:self];
+    });
+  }
 }
 
 - (BOOL)launchNestedKmscube {

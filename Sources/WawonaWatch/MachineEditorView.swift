@@ -37,7 +37,7 @@ struct MachineEditorView: View {
         _sshPort = State(initialValue: profile.map { "\($0.sshPort)" } ?? "22")
         _sshPassword = State(initialValue: profile?.sshPassword ?? "")
         _remoteCommand = State(initialValue: profile?.remoteCommand ?? "weston-simple-shm")
-        _selectedLauncherName = State(initialValue: profile?.launchers.first?.name ?? "weston-simple-shm")
+        _selectedLauncherName = State(initialValue: profile?.launchers.first?.name ?? "weston-terminal")
         _inputProfile = State(initialValue: profile?.runtimeOverrides.inputProfile ?? "direct")
         _bundledAppID = State(initialValue: profile?.runtimeOverrides.bundledAppID ?? "")
         _waypipeEnabled = State(initialValue: profile?.runtimeOverrides.waypipeEnabled ?? true)

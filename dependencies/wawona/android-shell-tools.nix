@@ -1,4 +1,4 @@
-# Bundled interactive shell tools (zsh, fastfetch, neovim) for the Android APK.
+# Bundled interactive shell tools (zsh, fastfetch, neovim, waypipe) for the Android APK.
 #
 # Extracted from android.nix to keep that file under its maintainability budget.
 # `preBuildFragment` is spliced into the APK derivation's preBuild after
@@ -10,6 +10,7 @@
   zshAndroid ? null,
   fastfetchAndroid ? null,
   neovimAndroid ? null,
+  waypipeAndroid ? null,
 }:
 {
   preBuildFragment = ''
@@ -42,6 +43,19 @@
       chmod +x "$JNI_LIB_DIR/libnvim_bin.so"
     else
       echo "WARNING: Missing Android neovim binary at ${neovimAndroid}/bin/nvim"
+    fi
+    ''}
+
+    ${lib.optionalString (waypipeAndroid != null) ''
+    # Use the real ELF binary (not the Vulkan wrapper script in $out/bin/waypipe).
+    if [ -f "${waypipeAndroid}/bin/waypipe.real" ]; then
+      cp -L "${waypipeAndroid}/bin/waypipe.real" "$JNI_LIB_DIR/libwaypipe_bin.so"
+      chmod +x "$JNI_LIB_DIR/libwaypipe_bin.so"
+    elif [ -f "${waypipeAndroid}/bin/waypipe" ]; then
+      cp -L "${waypipeAndroid}/bin/waypipe" "$JNI_LIB_DIR/libwaypipe_bin.so"
+      chmod +x "$JNI_LIB_DIR/libwaypipe_bin.so"
+    else
+      echo "WARNING: Missing Android waypipe binary at ${waypipeAndroid}/bin/waypipe"
     fi
     ''}
   '';

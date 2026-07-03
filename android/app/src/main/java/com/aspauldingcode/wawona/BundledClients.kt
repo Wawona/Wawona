@@ -34,9 +34,9 @@ data class BundledClientOption(
 
 object BundledClients {
     val all: List<BundledClientOption> = listOf(
+        BundledClientOption("weston-terminal", "Weston Terminal", "Terminal emulator — uses host cursor", Icons.Filled.Terminal),
         BundledClientOption("weston-simple-shm", "Weston Simple SHM", "Minimal shared-memory Wayland client", Icons.Filled.Dashboard),
         BundledClientOption("weston", "Weston", "Wayland reference compositor (nested compositor)", Icons.Filled.ViewModule),
-        BundledClientOption("weston-terminal", "Weston Terminal", "Terminal emulator — uses host cursor", Icons.Filled.Terminal),
         BundledClientOption("foot", "Foot Terminal", "Lightweight Wayland terminal emulator", Icons.Filled.Create),
         BundledClientOption("weston-flower", "Weston Flower", "Animated cairo demo (toytoolkit)", Icons.Filled.Eco),
         BundledClientOption("kmscube", "KMS Cube", "Spinning GL cube via iland + ANGLE", Icons.Filled.ViewInAr),

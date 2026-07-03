@@ -1222,7 +1222,8 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   unsetenv("WAYLAND_SOCKET");
 #endif
   [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
-  [[WWNCompositorBridge sharedBridge] prepareOutputSizeForNativeClientLaunch];
+  [[WWNCompositorBridge sharedBridge]
+      prepareOutputSizeForNativeClientLaunchWithClientId:clientId];
   return YES;
 }
 

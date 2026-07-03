@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify Wawona flake + Xcode wiring for bundled shell tools (zsh, fastfetch, neovim)."""
+"""Verify Wawona flake + Xcode wiring for bundled shell tools (zsh, fastfetch, neovim, waypipe, openssh)."""
 
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ REQUIRED_FLAKE_OUTPUTS = (
     "wawona-rootfs-ios-sim",
 )
 
-REQUIRED_INPROC_CLIENTS = {"fastfetch", "nvim", "vi", "vim", "waypipe"}
+REQUIRED_INPROC_CLIENTS = {"fastfetch", "nvim", "vi", "vim", "waypipe", "waypipe-rs", "ssh", "ssh-keygen", "scp"}
 
 
 def read(path: Path) -> str:

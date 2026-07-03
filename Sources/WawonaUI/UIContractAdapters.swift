@@ -7,7 +7,7 @@ enum WawonaUIContractAdapters {
     static func machineEditorState(from profile: MachineProfile?) -> MachineEditorState {
         guard let profile else {
             return MachineEditorState(
-                selectedLauncherName: ClientLauncher.presets.first?.name ?? "weston-simple-shm",
+                selectedLauncherName: ClientLauncher.presets.first?.name ?? "weston-terminal",
                 sshPortText: "22",
                 inputProfile: "direct",
                 waypipeEnabled: true
@@ -71,6 +71,6 @@ enum WawonaUIContractAdapters {
            ClientLauncher.presets.contains(where: { $0.name == bundled }) {
             return bundled
         }
-        return ClientLauncher.presets.first?.name ?? "weston-simple-shm"
+        return ClientLauncher.presets.first?.name ?? "weston-terminal"
     }
 }

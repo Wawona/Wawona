@@ -137,6 +137,11 @@ let
     "src/platform/macos/WWNPopupWindow.h"
     "src/platform/macos/WWNIlandPresenter.m"
     "src/platform/macos/WWNIlandPresenter.h"
+    # Rootfs / iCloud sync — referenced by WWNPreferences.m on all Apple targets.
+    "src/platform/macos/WWNRootfsProvider.m"
+    "src/platform/macos/WWNRootfsProvider.h"
+    "src/platform/macos/WWNRootfsICloudSync.m"
+    "src/platform/macos/WWNRootfsICloudSync.h"
   ];
 
   # Use full list: filterSources can empty the list when wawonaSrc is cleanSourceWith
@@ -756,6 +761,15 @@ GEN_HEADER
               name="''${ILAND_WESTON_FLAGS[$idx]}"
               idx=$((idx + 1))
               EXPANDED_ILAND_WESTON_FLAGS+=(-framework "$name")
+              ;;
+            -Wl,*)
+              # swiftc does not understand GCC-style -Wl,<flag>,<arg>.
+              # Split on commas and re-emit each token as -Xlinker <token>.
+              inner="''${flag#-Wl,}"
+              IFS=',' read -ra _wl_parts <<< "$inner"
+              for _part in "''${_wl_parts[@]}"; do
+                EXPANDED_ILAND_WESTON_FLAGS+=(-Xlinker "$_part")
+              done
               ;;
             *)
               EXPANDED_ILAND_WESTON_FLAGS+=("$flag")

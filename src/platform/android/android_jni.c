@@ -1732,6 +1732,15 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeDestroySurface(JNIEnv *env,
   pthread_mutex_unlock(&g_lock);
 }
 
+/*
+ * Called from libweston-13.a while in-process Wayland clients block in
+ * wl_display_roundtrip / display_run (same symbol name as iOS).
+ */
+void wwn_ios_pump_host_compositor(void) {
+  if (g_core)
+    (void)WWNCoreProcessEvents(g_core);
+}
+
 /**
  * Resize surface — recreate swapchain only, keep Vulkan instance/device/surface.
  * Much faster than destroy+set; avoids blank screen during keyboard show/hide.
@@ -2522,6 +2531,44 @@ static int wwn_copy_file(const char *src, const char *dst) {
   return 0;
 }
 
+static int wwn_android_native_lib_dir(char *out, size_t out_len) {
+  Dl_info info;
+  if (!out || out_len == 0)
+    return -1;
+  out[0] = '\0';
+  if (!dladdr((void *)wwn_android_native_lib_dir, &info) || !info.dli_fname)
+    return -1;
+  strncpy(out, info.dli_fname, out_len - 1);
+  out[out_len - 1] = '\0';
+  char *lastSlash = strrchr(out, '/');
+  if (!lastSlash)
+    return -1;
+  *lastSlash = '\0';
+  return 0;
+}
+
+static void wwn_android_install_shell_tool(const char *native_lib_dir,
+                                           const char *usr_bin,
+                                           const char *jni_lib_name,
+                                           const char *bin_name) {
+  char src[512];
+  char dst[512];
+  struct stat st;
+
+  if (!native_lib_dir || !native_lib_dir[0] || !usr_bin || !bin_name ||
+      !jni_lib_name)
+    return;
+
+  snprintf(src, sizeof(src), "%s/%s", native_lib_dir, jni_lib_name);
+  snprintf(dst, sizeof(dst), "%s/%s", usr_bin, bin_name);
+  if (stat(src, &st) != 0)
+    return;
+  if (stat(dst, &st) == 0)
+    return;
+  if (wwn_copy_file(src, dst) == 0)
+    LOGI("Shell env: installed %s -> %s", bin_name, dst);
+}
+
 static void wwn_android_prepare_shell_environment(const char *files_dir) {
   if (!files_dir || !files_dir[0])
     return;
@@ -2569,9 +2616,34 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
     LOGI("Shell env: XKB_CONFIG_ROOT=%s", xkb_root);
   }
 
+  char weston_data[512];
+  snprintf(weston_data, sizeof(weston_data), "%s/usr/share/weston", rootfs);
+  struct stat weston_st;
+  if (stat(weston_data, &weston_st) == 0 && S_ISDIR(weston_st.st_mode)) {
+    setenv("WESTON_DATA_DIR", weston_data, 1);
+    LOGI("Shell env: WESTON_DATA_DIR=%s", weston_data);
+  } else {
+    LOGE("Shell env: missing Weston data at %s (toytoolkit CSD clients may fail)",
+         weston_data);
+  }
+
   char path_buf[768];
   snprintf(path_buf, sizeof(path_buf), "%s:%s", usr_bin, "/system/bin");
   setenv("PATH", path_buf, 1);
+
+  {
+    char native_lib_dir[512];
+    if (wwn_android_native_lib_dir(native_lib_dir, sizeof(native_lib_dir)) == 0) {
+      wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libfastfetch_bin.so",
+                                     "fastfetch");
+      wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libnvim_bin.so", "nvim");
+      wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libwaypipe_bin.so",
+                                     "waypipe");
+      wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libwaypipe_bin.so",
+                                     "waypipe-rs");
+      wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libssh_bin.so", "ssh");
+    }
+  }
 
   LOGI("Shell env: ROOTFS=%s SHELL=%s", rootfs, getenv("SHELL") ?: "(unset)");
 }

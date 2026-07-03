@@ -153,6 +153,14 @@ let
     in if (deps.neovim or null) == null || !builtins.pathExists libnvim then [] else [
       "-force_load" libnvim
     ];
+  # openssh in-process static lib — provides ssh_main, ssh_keygen_main, scp_main
+  # for in-process dispatch on iOS (App Store compliant, no fork/exec).
+  # Weak on builds without openssh linked; wawona-dispatch.c symbols are weak.
+  opensshInprocessLdflags = deps:
+    let libssh = "${strip (deps.openssh or null)}/lib/libssh-inprocess.a";
+    in if (deps.openssh or null) == null || !builtins.pathExists libssh then [] else [
+      "-force_load" libssh
+    ];
   # Static archives with C++ (ANGLE, Rust backend, fastfetch, …) need libc++
   # after every -force_load block; append once at the end of OTHER_LDFLAGS.
   finalCxxLdflags = [ "-lc++" "-lc++abi" "-ldl" "-framework" "IOKit" ];
@@ -676,6 +684,13 @@ PLIST
     "WWNIlandPresenter.h"
   ];
 
+  # Utility ObjC source files that live outside the usual platform directories.
+  # These must be listed explicitly because src/util also contains Rust sources
+  # that xcodegen cannot compile.
+  iosUtilSources = [
+    { path = "src/util/WWNStartupLogger.m"; type = "file"; }
+  ];
+
   # Xcode “Update to recommended settings” for framework targets with Swift/ObjC clients.
   moduleVerifierFrameworkSettings = {
     ENABLE_MODULE_VERIFIER = "YES";
@@ -761,7 +776,7 @@ PLIST
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
-        ];
+        ] ++ iosUtilSources;
         preBuildScripts = [ stampBuildNumberPhase iosPreBuild ];
         postBuildScripts = iosPostBuildPhases;
 
@@ -826,6 +841,7 @@ PLIST
                "-lepoll-shim"
              ] ++ westonToytoolkitLdflagsAppleMobile iosDeps ++ westonCompositorLdflags iosDeps
              ++ (ilandGlLdflags { deps = iosDeps; simulator = false; }) ++ footLdflags iosDeps ++ fastfetchLdflags iosDeps ++ neovimLdflags iosDeps
+             ++ opensshInprocessLdflags iosDeps
              ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
             "OTHER_LDFLAGS[sdk=iphonesimulator*]" = [
               "$(inherited)"
@@ -856,6 +872,7 @@ PLIST
                "-lepoll-shim"
              ] ++ westonToytoolkitLdflagsAppleMobile iosSimDeps ++ westonCompositorLdflags iosSimDeps
              ++ (ilandGlLdflags { deps = iosSimDeps; simulator = true; }) ++ footLdflags iosSimDeps ++ fastfetchLdflags iosSimDeps ++ neovimLdflags iosSimDeps
+             ++ opensshInprocessLdflags iosSimDeps
              ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
@@ -920,7 +937,7 @@ PLIST
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
-        ];
+        ] ++ iosUtilSources;
         preBuildScripts = [ stampBuildNumberPhase ipadosPreBuild ];
         postBuildScripts = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase ipadosRootfsEmbedPhase ipadosNeovimRootfsEmbedPhase ];
 
@@ -1079,7 +1096,7 @@ PLIST
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
-        ];
+        ] ++ iosUtilSources;
         preBuildScripts = [ stampBuildNumberPhase tvosPreBuild ];
 
         settings = {
@@ -1368,7 +1385,7 @@ PLIST
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
-        ];
+        ] ++ iosUtilSources;
         preBuildScripts = [ stampBuildNumberPhase visionosPreBuild ];
         settings = {
           base = {

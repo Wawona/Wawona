@@ -221,6 +221,7 @@ typedef struct {
 #if TARGET_OS_IPHONE
 /// Reveal compositor on main, wait for layout/output sync (background thread).
 - (void)prepareOutputSizeForNativeClientLaunch;
+- (void)prepareOutputSizeForNativeClientLaunchWithClientId:(nullable NSString *)clientId;
 #endif
 /// Process host compositor events and nudge a presentation tick (subprocess
 /// clients on macOS, in-process roundtrips on iOS).

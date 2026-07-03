@@ -27,6 +27,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -67,7 +68,19 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Surface
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -210,6 +223,10 @@ fun WawonaApp(
     var showMachinesHome by remember { mutableStateOf(true) }
     var showWelcome by remember { mutableStateOf(!prefs.getBoolean("hasSeenWelcome", false)) }
     var isWaypipeRunning by remember { mutableStateOf(false) }
+    /* Startup log overlay. */
+    var showStartupLog by remember { mutableStateOf(false) }
+    var startupLogClientLabel by remember { mutableStateOf("") }
+    val startupLogLines = remember { mutableStateOf(listOf<String>()) }
     var windowTitle by remember { mutableStateOf("") }
     var nativeRuntimeReady by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
@@ -330,6 +347,30 @@ fun WawonaApp(
         showSessionCloseDialog = false
     }
 
+    /* Collect WLog sink lines into the startup log list while overlay is shown. */
+    LaunchedEffect(showStartupLog) {
+        if (showStartupLog) {
+            startupLogLines.value = listOf()
+            WLog.enableSink()
+            WLog.sinkFlow.collectLatest { line ->
+                startupLogLines.value = startupLogLines.value + line
+            }
+        } else {
+            WLog.disableSink()
+        }
+    }
+
+    /* Auto-dismiss startup log after a grace period once logs stop flowing. */
+    LaunchedEffect(showStartupLog, startupLogLines.value.size) {
+        if (!showStartupLog) return@LaunchedEffect
+        /* Wait until there have been at least a few lines and then no new ones
+         * for 2 s, indicating the client has fully started. */
+        if (startupLogLines.value.size >= 3) {
+            delay(2_000)
+            if (showStartupLog) showStartupLog = false
+        }
+    }
+
     fun activeProfile(): MachineProfile? {
         val activeSession = sessionOrchestrator.activeSession() ?: return null
         return profiles.firstOrNull { it.id == activeSession.machineId }
@@ -344,7 +385,7 @@ fun WawonaApp(
 
     fun tearDownActiveSession(profile: MachineProfile?) {
         when (profile?.type) {
-            MachineType.NATIVE -> stopNativeClient(profile.nativeLauncher.ifBlank { "weston-simple-shm" })
+            MachineType.NATIVE -> stopNativeClient(profile.nativeLauncher.ifBlank { "weston-terminal" })
             MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> stopWaypipe()
             else -> stopWaypipe()
         }
@@ -353,6 +394,7 @@ fun WawonaApp(
             sessionOrchestrator.markDisconnected(activeId)
         }
         sessionOrchestrator.setActiveSession(null)
+        showStartupLog = false
         showMachinesHome = true
     }
 
@@ -529,7 +571,7 @@ fun WawonaApp(
                 }
                 isWaypipeRunning = when (activeProfile?.type) {
                     MachineType.NATIVE -> isNativeClientRunning(
-                        activeProfile.nativeLauncher.ifBlank { "weston-simple-shm" }
+                        activeProfile.nativeLauncher.ifBlank { "weston-terminal" }
                     )
                     MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> WawonaNative.nativeIsWaypipeRunning()
                     else -> false
@@ -614,7 +656,7 @@ fun WawonaApp(
     }
 
     fun launchNativeMachine(profile: MachineProfile): Boolean {
-        val launcher = profile.nativeLauncher.ifBlank { "weston-simple-shm" }
+        val launcher = profile.nativeLauncher.ifBlank { "weston-terminal" }
         return launchNativeClient(launcher)
     }
 
@@ -660,6 +702,13 @@ fun WawonaApp(
         if (launched) {
             sessionOrchestrator.markConnected(targetSession)
             sessionOrchestrator.setActiveSession(targetSession)
+            /* Show startup log overlay before switching to compositor view. */
+            val label = when (profile.type) {
+                MachineType.NATIVE -> profile.nativeLauncher.ifBlank { "weston-terminal" }
+                else -> profile.name.ifBlank { "Wayland client" }
+            }
+            startupLogClientLabel = label
+            showStartupLog = true
             showMachinesHome = false
         } else {
             sessionOrchestrator.markDegraded(
@@ -861,6 +910,15 @@ fun WawonaApp(
                 }
             }
 
+            if (showStartupLog) {
+                StartupLogOverlay(
+                    clientLabel = startupLogClientLabel,
+                    lines = startupLogLines.value,
+                    onDismiss = { showStartupLog = false },
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
+
             if (isWaypipeRunning && android.os.Build.VERSION.SDK_INT >= 36) {
                 ExpressiveFabMenu(
                     modifier = Modifier
@@ -922,6 +980,121 @@ fun WawonaApp(
                     sessionOrchestrator.markDisconnected(activeId)
                 }
             }
+        }
+    }
+}
+
+/**
+ * Startup log overlay — shown between "Run" and the first compositor frame.
+ *
+ * Displays a native scrollable text view (LazyColumn of log lines) with a
+ * frosted-glass card.  The user can long-press to select and copy text.
+ * Auto-dismissed by the caller when [showStartupLog] is set to false.
+ */
+@Composable
+private fun StartupLogOverlay(
+    clientLabel: String,
+    lines: List<String>,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val listState = rememberLazyListState()
+
+    /* Auto-scroll to the latest entry. */
+    LaunchedEffect(lines.size) {
+        if (lines.isNotEmpty()) {
+            listState.animateScrollToItem(lines.size - 1)
+        }
+    }
+
+    Surface(
+        modifier = modifier
+            .fillMaxWidth(0.92f)
+            .fillMaxSize(0.72f),
+        shape = RoundedCornerShape(16.dp),
+        color = Color(0xDD121212),
+        tonalElevation = 8.dp,
+        shadowElevation = 12.dp,
+    ) {
+        Column(modifier = Modifier.padding(0.dp)) {
+            /* Header */
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .padding(end = 10.dp)
+                            .height(18.dp)
+                            .fillMaxWidth(0.05f),
+                        strokeWidth = 2.dp,
+                        color = Color(0xFF4CAF50),
+                    )
+                    Text(
+                        text = "Starting $clientLabel",
+                        style = TextStyle(
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        ),
+                    )
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("Done", color = Color(0xFF90CAF9), fontSize = 13.sp)
+                }
+            }
+
+            HorizontalDivider(color = Color(0x33FFFFFF), thickness = 0.5.dp)
+
+            /* Log lines — selectable for copy */
+            SelectionContainer {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .background(Color(0xFF0A0A0A))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                ) {
+                    items(lines) { line ->
+                        Text(
+                            text = line,
+                            style = TextStyle(
+                                color = Color(0xFF69FF74),
+                                fontSize = 11.5.sp,
+                                fontFamily = FontFamily.Monospace,
+                                lineHeight = 18.sp,
+                            ),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    if (lines.isEmpty()) {
+                        item {
+                            Text(
+                                text = "Waiting for log output…",
+                                style = TextStyle(
+                                    color = Color(0xFF888888),
+                                    fontSize = 11.5.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                ),
+                            )
+                        }
+                    }
+                }
+            }
+
+            HorizontalDivider(color = Color(0x33FFFFFF), thickness = 0.5.dp)
+            Text(
+                text = "Long-press to select • auto-dismisses on first frame",
+                style = TextStyle(color = Color(0xFF666666), fontSize = 10.sp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            )
         }
     }
 }

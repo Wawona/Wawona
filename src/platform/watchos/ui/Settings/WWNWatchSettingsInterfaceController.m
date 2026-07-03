@@ -263,7 +263,7 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
     } else if ([key isEqualToString:@"defaultInputProfile"]) {
         bridge.defaultInputProfile = trimmed.length > 0 ? trimmed : @"direct";
     } else if ([key isEqualToString:@"defaultBundledAppID"]) {
-        bridge.defaultBundledAppID = trimmed.length > 0 ? trimmed : @"weston-simple-shm";
+        bridge.defaultBundledAppID = trimmed.length > 0 ? trimmed : @"weston-terminal";
     } else if ([key isEqualToString:@"sshHost"]) {
         bridge.sshHost = trimmed;
     } else if ([key isEqualToString:@"sshUser"]) {

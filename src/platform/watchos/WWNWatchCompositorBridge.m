@@ -139,8 +139,8 @@ static NSString *const kWWNWatchPrefPrefix = @"wawona.pref.";
 - (void)setLogLevel:(NSString *)v { [[self defaults] setObject:(v ?: @"info") forKey:[self key:@"logLevel"]]; }
 - (NSString *)defaultInputProfile { return [self stringForSuffix:@"defaultInputProfile" fallback:@"direct"]; }
 - (void)setDefaultInputProfile:(NSString *)v { [[self defaults] setObject:(v ?: @"direct") forKey:[self key:@"defaultInputProfile"]]; }
-- (NSString *)defaultBundledAppID { return [self stringForSuffix:@"defaultBundledAppID" fallback:@"weston-simple-shm"]; }
-- (void)setDefaultBundledAppID:(NSString *)v { [[self defaults] setObject:(v ?: @"weston-simple-shm") forKey:[self key:@"defaultBundledAppID"]]; }
+- (NSString *)defaultBundledAppID { return [self stringForSuffix:@"defaultBundledAppID" fallback:@"weston-terminal"]; }
+- (void)setDefaultBundledAppID:(NSString *)v { [[self defaults] setObject:(v ?: @"weston-terminal") forKey:[self key:@"defaultBundledAppID"]]; }
 - (BOOL)defaultWaypipeEnabled { return [self boolForSuffix:@"defaultWaypipeEnabled" fallback:YES]; }
 - (void)setDefaultWaypipeEnabled:(BOOL)v { [[self defaults] setBool:v forKey:[self key:@"defaultWaypipeEnabled"]]; }
 - (BOOL)xwaylandSupport { return [self boolForSuffix:@"xwaylandSupport" fallback:NO]; }

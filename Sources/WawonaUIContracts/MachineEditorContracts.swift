@@ -71,7 +71,7 @@ public struct MachineEditorState: Sendable, Hashable {
         id: String? = nil,
         name: String = "",
         typeRawValue: String = "native",
-        selectedLauncherName: String = "weston-simple-shm",
+        selectedLauncherName: String = "weston-terminal",
         sshHost: String = "",
         sshUser: String = "",
         sshPortText: String = "22",

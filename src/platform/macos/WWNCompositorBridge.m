@@ -2401,10 +2401,16 @@ extern void WWNCoreInject_touch_frame(void *core);
 
 #if TARGET_OS_IPHONE
 - (void)prepareOutputSizeForNativeClientLaunch {
+  [self prepareOutputSizeForNativeClientLaunchWithClientId:nil];
+}
+
+- (void)prepareOutputSizeForNativeClientLaunchWithClientId:(NSString *)clientId {
+  NSDictionary *userInfo = clientId ? @{@"clientId": clientId} : nil;
   dispatch_sync(dispatch_get_main_queue(), ^{
     [[NSNotificationCenter defaultCenter]
         postNotificationName:WWNNativeClientWillLaunchNotification
-                      object:nil];
+                      object:nil
+                    userInfo:userInfo];
   });
 
   const NSTimeInterval step = 0.01;
@@ -2666,6 +2672,29 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
 #else
 - (NSMutableDictionary<NSNumber *, WWNWindow *> *)windows {
   return (NSMutableDictionary<NSNumber *, WWNWindow *> *)_windows;
+#endif
+}
+
+// Defined for all platforms: on desktop macOS it miniaturizes the AppKit
+// window; on iOS/simulator (and other UIKit targets) it posts a notification
+// so the scene delegate can return to the Wawona UI while keeping the session
+// alive. Kept outside the desktop-only block so the unguarded dispatch call in
+// _dispatchWindowEvent: resolves on every target.
+- (void)handleWindowMinimizeRequested:(CWindowEvent *)event {
+  WWNLog("BRIDGE", @"handleWindowMinimizeRequested: id=%llu", event->window_id);
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+  WWNWindow *window = _windows[@(event->window_id)];
+  if (window) {
+    [window miniaturize:nil];
+  }
+#else
+  NSNumber *windowId = @(event->window_id);
+  [[NSNotificationCenter defaultCenter]
+      postNotificationName:WWNClientMinimizeRequestedNotification
+                    object:self
+                  userInfo:@{
+                    @"windowId" : windowId,
+                  }];
 #endif
 }
 
@@ -3014,24 +3043,6 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
                         [window setFrame:newFrame display:YES];
                       }];
   window.interactiveResizeInProgress = NO;
-#endif
-}
-
-- (void)handleWindowMinimizeRequested:(CWindowEvent *)event {
-  WWNLog("BRIDGE", @"handleWindowMinimizeRequested: id=%llu", event->window_id);
-#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
-  WWNWindow *window = _windows[@(event->window_id)];
-  if (window) {
-    [window miniaturize:nil];
-  }
-#else
-  NSNumber *windowId = @(event->window_id);
-  [[NSNotificationCenter defaultCenter]
-      postNotificationName:WWNClientMinimizeRequestedNotification
-                    object:self
-                  userInfo:@{
-                    @"windowId" : windowId,
-                  }];
 #endif
 }
 

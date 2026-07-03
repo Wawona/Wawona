@@ -28,6 +28,7 @@ static NSString *WWNRootfsPlatformLabel(void) {
 #endif
 }
 
+#if TARGET_OS_OSX
 static NSDictionary<NSString *, NSString *> *WWNRootfsHostSnapshot(void) {
   NSString *home = NSHomeDirectory() ?: @"";
   NSString *shell = NSProcessInfo.processInfo.environment[@"SHELL"] ?: @"/bin/zsh";
@@ -44,6 +45,7 @@ static NSDictionary<NSString *, NSString *> *WWNRootfsHostSnapshot(void) {
     @"shellPath" : shell,
   };
 }
+#endif
 
 @implementation WWNRootfsProvider
 

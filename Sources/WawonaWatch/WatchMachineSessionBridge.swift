@@ -65,7 +65,7 @@ enum WatchMachineSessionBridge {
         if let launcher = profile.launchers.first?.name, !launcher.isEmpty {
             return launcher
         }
-        return "weston-simple-shm"
+        return "weston-terminal"
     }
 }
 #endif

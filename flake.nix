@@ -376,6 +376,7 @@
             libffi = toolchainsAndroid.buildForAndroid "libffi" {};
             expat = toolchainsAndroid.buildForAndroid "expat" {};
             libxml2 = toolchainsAndroid.buildForAndroid "libxml2" {};
+            ffmpeg = toolchainsAndroid.buildForAndroid "ffmpeg" {};
           };
         };
         backend-wearos = androidPkgs.callPackage ./dependencies/wawona/rust-backend-android-brp.nix {
@@ -393,6 +394,7 @@
             libffi = toolchainsAndroid.buildForAndroid "libffi" {};
             expat = toolchainsAndroid.buildForAndroid "expat" {};
             libxml2 = toolchainsAndroid.buildForAndroid "libxml2" {};
+            ffmpeg = toolchainsAndroid.buildForAndroid "ffmpeg" {};
           };
         };
 
@@ -1130,6 +1132,7 @@ EOF
           foot-android = toolchainsAndroid.buildForAndroid "foot" { };
           fastfetch-android = toolchainsAndroid.buildForAndroid "fastfetch" { };
           neovim-android = toolchainsAndroid.buildForAndroid "neovim" { };
+          waypipe-android = toolchainsAndroid.buildForAndroid "waypipe" { };
           default = (import ./dependencies/wawona/shell-wrappers.nix).macosWrapper pkgs wawona-macos;
           # Consumer-facing package name for use as a flake input or overlay,
           # matching the nixpkgs convention of installing `pkgs.wawona`.
