@@ -17,17 +17,11 @@ struct ContentView: View {
     }
 
     var body: some View {
-        TabView {
-            MachinesRootView(
-                preferences: preferences,
-                profileStore: profileStore,
-                sessions: sessions
-            )
-            .tabItem { Label("Machines", systemImage: "square.grid.2x2") }
-
-            ObjCSettingsHostView()
-                .tabItem { Label("Settings", systemImage: "gearshape") }
-        }
+        MachinesRootView(
+            preferences: preferences,
+            profileStore: profileStore,
+            sessions: sessions
+        )
         .onAppear {
             MachineRuntimeSettingsApplicator.applyActiveMachine(
                 profileStore: profileStore,

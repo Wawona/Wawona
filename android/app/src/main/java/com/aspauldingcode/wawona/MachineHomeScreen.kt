@@ -812,10 +812,22 @@ private fun MachineEditorSheet(
         mutableStateOf(readBoolOverride(existingOverrides, "respectSafeArea", prefs.getBoolean("respectSafeArea", true)))
     }
     var showVirtualPointer by remember {
-        mutableStateOf(readBoolOverride(existingOverrides, "renderMacOSPointer", true))
+        mutableStateOf(
+            readBoolOverride(
+                existingOverrides,
+                "renderMacOSPointer",
+                prefs.getBoolean("renderMacOSPointer", false)
+            )
+        )
     }
     var touchInputType by remember {
-        mutableStateOf(readStringOverride(existingOverrides, "touchInputType", "Multi-Touch"))
+        mutableStateOf(
+            readStringOverride(
+                existingOverrides,
+                "touchInputType",
+                if (prefs.getBoolean("touchpadMode", false)) "Touchpad" else "Multi-Touch"
+            )
+        )
     }
     var swapCmdAlt by remember {
         mutableStateOf(readBoolOverride(existingOverrides, "swapCmdWithAlt", prefs.getBoolean("swapCmdAsCtrl", false)))
@@ -855,8 +867,18 @@ private fun MachineEditorSheet(
         writeBoolOverride(settingsOverrides, "forceServerSideDecorations", forceSsd, prefs.getBoolean("forceServerSideDecorations", false))
         writeBoolOverride(settingsOverrides, "autoScale", autoScale, prefs.getBoolean("autoRetinaScaling", true))
         writeBoolOverride(settingsOverrides, "respectSafeArea", respectSafeArea, prefs.getBoolean("respectSafeArea", true))
-        writeBoolOverride(settingsOverrides, "renderMacOSPointer", showVirtualPointer, true)
-        writeStringOverride(settingsOverrides, "touchInputType", touchInputType, "Multi-Touch")
+        writeBoolOverride(
+            settingsOverrides,
+            "renderMacOSPointer",
+            showVirtualPointer,
+            prefs.getBoolean("renderMacOSPointer", false)
+        )
+        writeStringOverride(
+            settingsOverrides,
+            "touchInputType",
+            touchInputType,
+            if (prefs.getBoolean("touchpadMode", false)) "Touchpad" else "Multi-Touch"
+        )
         writeBoolOverride(settingsOverrides, "swapCmdWithAlt", swapCmdAlt, prefs.getBoolean("swapCmdAsCtrl", false))
         writeBoolOverride(settingsOverrides, "universalClipboard", universalClipboard, prefs.getBoolean("universalClipboard", false))
         writeStringOverride(settingsOverrides, "vulkanDriver", vulkanDriver, prefs.getString("vulkanDriver", "none") ?: "none")
@@ -923,7 +945,7 @@ private fun MachineEditorSheet(
         AnimatedContent(
             targetState = showClientPicker,
             transitionSpec = {
-                val slideSpec = tween<Int>(durationMillis = 320, easing = FastOutSlowInEasing)
+                val slideSpec = tween<androidx.compose.ui.unit.IntOffset>(durationMillis = 320, easing = FastOutSlowInEasing)
                 val fadeSpec = tween<Float>(durationMillis = 220, easing = LinearOutSlowInEasing)
                 val transform = if (targetState) {
                     (slideInHorizontally(slideSpec) { it } + fadeIn(fadeSpec)).togetherWith(

@@ -821,6 +821,24 @@ pub extern "C" fn WWNCoreNotifyFramePresented(
 // Input Injection API
 // ----------------------------------------------------------------------------
 
+/// Resolve topmost window id at compositor-global coordinates.
+/// Returns 0 when no surface/window exists at that location.
+#[no_mangle]
+pub extern "C" fn WWNCoreWindowIdAtPoint(
+    core: *mut WWNCore,
+    x: f64,
+    y: f64
+) -> u64 {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() { return 0; }
+        let core = unsafe { &*core };
+        core.window_id_at_point(x, y).map(|wid| wid.id).unwrap_or(0)
+    })) {
+        Ok(window_id) => window_id,
+        Err(_) => 0,
+    }
+}
+
 /// Inject pointer motion event
 #[no_mangle]
 pub extern "C" fn WWNCoreInjectPointerMotion(
@@ -1153,6 +1171,23 @@ pub extern "C" fn WWNCoreInjectTouchDown(
     }));
 }
 
+/// Inject touch down event scoped to a window-local coordinate space.
+#[no_mangle]
+pub extern "C" fn WWNCoreInjectTouchDownForWindow(
+    core: *mut WWNCore,
+    window_id: u64,
+    id: i32,
+    x: f64,
+    y: f64,
+    timestamp_ms: u32
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() { return; }
+        let core = unsafe { &*core };
+        let _ = core.inject_touch_down(WindowId { id: window_id }, id, x, y, timestamp_ms);
+    }));
+}
+
 /// Inject touch up event
 #[no_mangle]
 pub extern "C" fn WWNCoreInjectTouchUp(
@@ -1170,6 +1205,21 @@ pub extern "C" fn WWNCoreInjectTouchUp(
         };
         
         core.inject_input_event(event);
+    }));
+}
+
+/// Inject touch up event for parity with window-scoped touch API.
+#[no_mangle]
+pub extern "C" fn WWNCoreInjectTouchUpForWindow(
+    core: *mut WWNCore,
+    _window_id: u64,
+    id: i32,
+    timestamp_ms: u32
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() { return; }
+        let core = unsafe { &*core };
+        let _ = core.inject_touch_up(id, timestamp_ms);
     }));
 }
 
@@ -1194,6 +1244,23 @@ pub extern "C" fn WWNCoreInjectTouchMotion(
         };
         
         core.inject_input_event(event);
+    }));
+}
+
+/// Inject touch motion event for parity with window-scoped touch API.
+#[no_mangle]
+pub extern "C" fn WWNCoreInjectTouchMotionForWindow(
+    core: *mut WWNCore,
+    _window_id: u64,
+    id: i32,
+    x: f64,
+    y: f64,
+    timestamp_ms: u32
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() { return; }
+        let core = unsafe { &*core };
+        let _ = core.inject_touch_motion(id, x, y, timestamp_ms);
     }));
 }
 

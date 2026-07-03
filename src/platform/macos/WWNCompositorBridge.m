@@ -273,6 +273,8 @@ static const NSTimeInterval kWWNResizeDebounceSeconds = 0.040;
 
 NSNotificationName const WWNNativeClientWillLaunchNotification =
     @"WWNNativeClientWillLaunchNotification";
+NSNotificationName const WWNClientMinimizeRequestedNotification =
+    @"WWNClientMinimizeRequestedNotification";
 
 static uint32_t WWNBridgeFrameTimestampMs(void *core) {
   if (core) {
@@ -1199,9 +1201,26 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
              buffer->buffer_id, w, h, stride, allSame ? @"YES" : @"NO");
     }
 
-    // Weston/Pixman often commit ARGB8888 with alpha=0 and no opaque region.
-    for (size_t i = 3; i < buffer->size; i += 4) {
-      buffer->pixels[i] = 0xFF;
+    // Keep popup shadows/transparency intact. Only force opaque alpha when
+    // the buffer format lacks alpha (XRGB8888) or ARGB appears entirely zero.
+    BOOL needsAlphaFix = (buffer->format == 1);
+    if (!needsAlphaFix && buffer->format == 0 && buffer->size >= 4 &&
+        buffer->stride > 0 && buffer->height > 0) {
+      size_t sample = (size_t)buffer->stride * (size_t)buffer->height;
+      if (sample > buffer->size)
+        sample = buffer->size;
+      needsAlphaFix = YES;
+      for (size_t off = 3; off < sample; off += 4) {
+        if (buffer->pixels[off] != 0) {
+          needsAlphaFix = NO;
+          break;
+        }
+      }
+    }
+    if (needsAlphaFix) {
+      for (size_t i = 3; i < buffer->size; i += 4) {
+        buffer->pixels[i] = 0xFF;
+      }
     }
 #endif
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
@@ -1214,11 +1233,7 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     // wl_shm XRGB8888 / ARGB8888 are B,G,R,X/A in little-endian memory.
     CGBitmapInfo bitmapInfo;
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
-    /*
-     * wl_shm XRGB8888 / ARGB8888 are B,G,R,X/A in little-endian memory.
-     * Alpha is forced to 0xFF above. Match macOS format selection: XRGB
-     * uses NoneSkipFirst; ARGB uses premultiplied BGRA (PremultipliedFirst).
-     */
+    /* wl_shm XRGB8888 / ARGB8888 are B,G,R,X/A in little-endian memory. */
     if (buffer->format == 1) {
       bitmapInfo = kCGBitmapByteOrder32Little |
                    (CGBitmapInfo)kCGImageAlphaNoneSkipFirst;
@@ -1815,9 +1830,17 @@ extern void WWNCoreInjectModifiers(void *core, uint32_t depressed,
 
 extern void WWNCoreInjectTouchDown(void *core, int32_t id, double x, double y,
                                    uint32_t timestamp);
+extern void WWNCoreInjectTouchDownForWindow(void *core, uint64_t window_id,
+                                            int32_t id, double x, double y,
+                                            uint32_t timestamp);
 extern void WWNCoreInjectTouchUp(void *core, int32_t id, uint32_t timestamp);
+extern void WWNCoreInjectTouchUpForWindow(void *core, uint64_t window_id,
+                                          int32_t id, uint32_t timestamp);
 extern void WWNCoreInjectTouchMotion(void *core, int32_t id, double x, double y,
                                      uint32_t timestamp);
+extern void WWNCoreInjectTouchMotionForWindow(void *core, uint64_t window_id,
+                                              int32_t id, double x, double y,
+                                              uint32_t timestamp);
 extern void WWNCoreInjectTouchCancel(void *core);
 extern void WWNCoreInject_touch_frame(void *core);
 
@@ -1854,6 +1877,23 @@ extern void WWNCoreInject_touch_frame(void *core);
   }];
 }
 
+- (void)injectTouchDownForWindow:(uint64_t)windowId
+                         touchId:(NSInteger)touchId
+                               x:(double)x
+                               y:(double)y
+                       timestamp:(uint32_t)timestampMs {
+  if (!_rustCore) {
+    return;
+  }
+  [self _dispatchToRust:^{
+    WWNCoreInjectTouchDownForWindow(self->_rustCore, windowId, (int32_t)touchId,
+                                    x, y, timestampMs);
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+    WWNCoreFlushClients(self->_rustCore);
+#endif
+  }];
+}
+
 - (void)injectTouchUp:(NSInteger)touchId timestamp:(uint32_t)timestampMs {
   if (!_rustCore) {
     return;
@@ -1863,6 +1903,21 @@ extern void WWNCoreInject_touch_frame(void *core);
 #endif
   [self _dispatchToRust:^{
     WWNCoreInjectTouchUp(self->_rustCore, (int32_t)touchId, timestampMs);
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+    WWNCoreFlushClients(self->_rustCore);
+#endif
+  }];
+}
+
+- (void)injectTouchUpForWindow:(uint64_t)windowId
+                       touchId:(NSInteger)touchId
+                     timestamp:(uint32_t)timestampMs {
+  if (!_rustCore) {
+    return;
+  }
+  [self _dispatchToRust:^{
+    WWNCoreInjectTouchUpForWindow(self->_rustCore, windowId, (int32_t)touchId,
+                                  timestampMs);
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
     WWNCoreFlushClients(self->_rustCore);
 #endif
@@ -1885,6 +1940,23 @@ extern void WWNCoreInject_touch_frame(void *core);
   [self _dispatchToRust:^{
     WWNCoreInjectTouchMotion(self->_rustCore, (int32_t)touchId, x, y,
                              timestampMs);
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+    WWNCoreFlushClients(self->_rustCore);
+#endif
+  }];
+}
+
+- (void)injectTouchMotionForWindow:(uint64_t)windowId
+                           touchId:(NSInteger)touchId
+                                 x:(double)x
+                                 y:(double)y
+                         timestamp:(uint32_t)timestampMs {
+  if (!_rustCore) {
+    return;
+  }
+  [self _dispatchToRust:^{
+    WWNCoreInjectTouchMotionForWindow(self->_rustCore, windowId,
+                                      (int32_t)touchId, x, y, timestampMs);
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
     WWNCoreFlushClients(self->_rustCore);
 #endif
@@ -2428,7 +2500,9 @@ extern void WWNCoreInject_touch_frame(void *core);
                                 buffer:(uint64_t)bufferId
                              timestamp:(uint32_t)timestamp {
   if (_rustCore) {
-    WWNCoreNotifyFramePresented(_rustCore, surfaceId, bufferId, timestamp);
+    [self _dispatchToRust:^{
+      WWNCoreNotifyFramePresented(self->_rustCore, surfaceId, bufferId, timestamp);
+    }];
   }
 }
 - (void)flushFrameCallbacks {
@@ -2533,9 +2607,7 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
 #endif
     break;
   case CWindowEventTypeMinimizeRequested:
-#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
     [self handleWindowMinimizeRequested:event];
-#endif
     break;
   case CWindowEventTypeMaximizeRequested:
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
@@ -2952,6 +3024,14 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   if (window) {
     [window miniaturize:nil];
   }
+#else
+  NSNumber *windowId = @(event->window_id);
+  [[NSNotificationCenter defaultCenter]
+      postNotificationName:WWNClientMinimizeRequestedNotification
+                    object:self
+                  userInfo:@{
+                    @"windowId" : windowId,
+                  }];
 #endif
 }
 
@@ -2962,15 +3042,18 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   if (window) {
     if (![window isZoomed]) {
       window.processingResize = YES;
+      window.suppressCompositorCallbacks = YES;
       [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
         [window zoom:nil];
       }
           completionHandler:^{
+            NSSize contentSize = WWNWaylandContentSizeForWindow(window);
+            uint32_t width = (uint32_t)MAX(1, lround(contentSize.width));
+            uint32_t height = (uint32_t)MAX(1, lround(contentSize.height));
+            window.wwnLastZoomed = [window isZoomed];
             window.processingResize = NO;
-            NSNotification *note = [NSNotification
-                notificationWithName:NSWindowDidResizeNotification
-                              object:window];
-            [window windowDidResize:note];
+            window.suppressCompositorCallbacks = NO;
+            [self injectWindowResize:event->window_id width:width height:height];
           }];
     }
   }
@@ -2985,15 +3068,18 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   if (window) {
     if ([window isZoomed]) {
       window.processingResize = YES;
+      window.suppressCompositorCallbacks = YES;
       [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
         [window zoom:nil];
       }
           completionHandler:^{
+            NSSize contentSize = WWNWaylandContentSizeForWindow(window);
+            uint32_t width = (uint32_t)MAX(1, lround(contentSize.width));
+            uint32_t height = (uint32_t)MAX(1, lround(contentSize.height));
+            window.wwnLastZoomed = [window isZoomed];
             window.processingResize = NO;
-            NSNotification *note = [NSNotification
-                notificationWithName:NSWindowDidResizeNotification
-                              object:window];
-            [window windowDidResize:note];
+            window.suppressCompositorCallbacks = NO;
+            [self injectWindowResize:event->window_id width:width height:height];
           }];
     }
   }
@@ -3977,7 +4063,12 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   WWNCompositorView_ios *popupView =
       [[WWNCompositorView_ios alloc] initWithFrame:popupFrame];
   popupView.wwnWindowId = event->window_id;
-  popupView.clipsToBounds = YES;
+  // Keep a single input owner (the root compositor view) so touchpad cursor
+  // state and virtual cursor rendering do not split across parent/popup views.
+  popupView.userInteractionEnabled = NO;
+  popupView.backgroundColor = UIColor.clearColor;
+  popupView.clipsToBounds = NO;
+  [popupView setWaylandFrameOpaque:NO];
 
   // Add popup above all other content
   // If parent is a WWNCompositorView_ios, add as subview of that parent

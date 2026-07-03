@@ -23,7 +23,6 @@
 
 // Logging
 #import "../../util/WWNLog.h"
-#import "WWNPlatformCallbacks.h"
 
 // Settings (for Vulkan driver configuration)
 #import "./ui/Settings/WWNPreferencesManager.h"
@@ -96,22 +95,26 @@ extern void wawona_window_info_free(CWindowInfo *info);
   // 3. Initialize Rust Compositor
   WWNCompositorBridge *compositor = [WWNCompositorBridge sharedBridge];
 
-  // Use a reasonable initial size; the scene delegate will set the
-  // actual output dimensions once the UIWindowScene is available.
-  CGSize screenSize = CGSizeMake(390, 844);
-  BOOL autoScale = [[WWNPreferencesManager sharedManager] autoScale];
-  CGFloat scale = autoScale ? 3.0 : 1.0;
+  BOOL compositorStarted = NO;
+  if (compositor) {
+    // Use a reasonable initial size; the scene delegate will set the
+    // actual output dimensions once the UIWindowScene is available.
+    CGSize screenSize = CGSizeMake(390, 844);
+    BOOL autoScale = [[WWNPreferencesManager sharedManager] autoScale];
+    CGFloat scale = autoScale ? 3.0 : 1.0;
 
-  [compositor setOutputWidth:(uint32_t)screenSize.width
-                      height:(uint32_t)screenSize.height
-                       scale:(float)scale];
+    [compositor setOutputWidth:(uint32_t)screenSize.width
+                        height:(uint32_t)screenSize.height
+                         scale:(float)scale];
 
-  if (![compositor startWithSocketName:@"wayland-0"]) {
-    WWNLog("MAIN", @"Error: Failed to start Rust compositor");
-    return NO;
+    compositorStarted = [compositor startWithSocketName:@"wayland-0"];
   }
-
-  setenv("WAYLAND_DISPLAY", [[compositor socketName] UTF8String], 1);
+  if (!compositorStarted) {
+    WWNLog("MAIN", @"Error: Failed to start Rust compositor — continuing so "
+                   @"Machines UI can still load");
+  } else {
+    setenv("WAYLAND_DISPLAY", [[compositor socketName] UTF8String], 1);
+  }
 
   // 3. Configure iOS UI -> MOVED TO SCENE DELEGATE
   WWNLog("MAIN", @"WWN iOS initialization complete (waiting for Scene "

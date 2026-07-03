@@ -34,17 +34,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.NetworkInterface
+import androidx.compose.animation.togetherWith
 
 private enum class SettingsTab(val label: String, val icon: ImageVector) {
     DISPLAY("Display", Icons.Filled.DesktopWindows),
     INPUT("Input", Icons.Filled.Keyboard),
     GRAPHICS("Graphics", Icons.Filled.GraphicEq),
     CONNECTION("Connection", Icons.Filled.Computer),
+    LOCAL_SHELL("Local Shell", Icons.Filled.Folder),
     ADVANCED("Advanced", Icons.Filled.Tune),
     WAYPIPE("Waypipe", Icons.Filled.Wifi),
     SSH("SSH", Icons.Filled.Lock),
@@ -58,6 +64,7 @@ private enum class SettingsTab(val label: String, val icon: ImageVector) {
             INPUT -> Color(0xFF34A853)
             GRAPHICS -> Color(0xFFEA4335)
             CONNECTION -> Color(0xFFFBBC04)
+            LOCAL_SHELL -> Color(0xFF188038)
             ADVANCED -> Color(0xFF9AA0A6)
             WAYPIPE -> Color(0xFF1A73E8)
             SSH -> Color(0xFF5F6368)
@@ -110,20 +117,36 @@ fun SettingsDialog(
                     modifier = Modifier.weight(1f),
                 )
             }
-        } else if (narrowDetailTab == null) {
-            SettingsSidebarList(
-                selected = null,
-                onSelect = { narrowDetailTab = it },
-                modifier = Modifier.fillMaxSize(),
-            )
         } else {
-            SettingsSectionContent(
-                tab = narrowDetailTab!!,
-                prefs = prefs,
-                context = context,
-                localIpAddress = localIpAddress,
-                modifier = Modifier.fillMaxSize(),
-            )
+            androidx.compose.animation.AnimatedContent(
+                targetState = narrowDetailTab,
+                transitionSpec = {
+                    if (targetState != null) {
+                        (androidx.compose.animation.slideInHorizontally { width -> width } + androidx.compose.animation.fadeIn()).togetherWith(
+                                androidx.compose.animation.slideOutHorizontally { width -> -width } + androidx.compose.animation.fadeOut())
+                    } else {
+                        (androidx.compose.animation.slideInHorizontally { width -> -width } + androidx.compose.animation.fadeIn()).togetherWith(
+                                androidx.compose.animation.slideOutHorizontally { width -> width } + androidx.compose.animation.fadeOut())
+                    }
+                },
+                label = "SettingsNavigation"
+            ) { currentTab ->
+                if (currentTab == null) {
+                    SettingsSidebarList(
+                        selected = null,
+                        onSelect = { narrowDetailTab = it },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    SettingsSectionContent(
+                        tab = currentTab,
+                        prefs = prefs,
+                        context = context,
+                        localIpAddress = localIpAddress,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
         }
     }
 }
@@ -200,6 +223,7 @@ private fun SettingsSectionContent(
             SettingsTab.INPUT -> InputSection(prefs)
             SettingsTab.GRAPHICS -> GraphicsSection(prefs)
             SettingsTab.CONNECTION -> ConnectionSection(prefs, localIpAddress, context, SettingsTab.CONNECTION.accentColor)
+            SettingsTab.LOCAL_SHELL -> LocalShellSection(context, SettingsTab.LOCAL_SHELL.accentColor)
             SettingsTab.ADVANCED -> AdvancedSection(prefs)
             SettingsTab.WAYPIPE -> WaypipeSection(prefs, context, SettingsTab.WAYPIPE.accentColor)
             SettingsTab.SSH -> SSHSection(prefs, SettingsTab.SSH.accentColor)
@@ -276,6 +300,15 @@ private fun DisplaySection(prefs: SharedPreferences) {
             "Detect and match Android UI scaling", Icons.Filled.AspectRatio, default = true, iconTint = SettingsTab.DISPLAY.accentColor)
         SettingsSwitchItem(prefs, "respectSafeArea", "Respect Safe Area",
             "Avoid system UI and notches", Icons.Filled.Security, default = true, iconTint = SettingsTab.DISPLAY.accentColor)
+        SettingsSwitchItem(
+            prefs,
+            "renderMacOSPointer",
+            "Show Virtual Pointer",
+            "Show/hide the virtual cursor used in touchpad mode.",
+            Icons.Filled.Mouse,
+            default = false,
+            iconTint = SettingsTab.DISPLAY.accentColor
+        )
     }
 }
 
@@ -379,6 +412,88 @@ private fun ConnectionSection(prefs: SharedPreferences, localIp: String?, contex
     SettingsTextInputItem(prefs, "waypipeSocket", "Socket Path",
         "Unix socket path (set by platform)", Icons.Filled.Folder,
         androidSocketPath, KeyboardType.Text, readOnly = true)
+}
+
+@Composable
+private fun LocalShellSection(context: Context, accent: Color) {
+    val snap = remember { LocalShellRootfs.snapshot(context) }
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    var statusMessage by remember { mutableStateOf<String?>(null) }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        LocalShellRootfs.importFile(context, uri, null)
+            .onSuccess { file ->
+                statusMessage = "Imported ${file.name} → home/"
+                Toast.makeText(context, statusMessage, Toast.LENGTH_LONG).show()
+            }
+            .onFailure { e ->
+                statusMessage = "Import failed: ${e.message}"
+                Toast.makeText(context, statusMessage, Toast.LENGTH_LONG).show()
+            }
+    }
+
+    SettingsSectionHeader("Local Shell", Icons.Filled.Folder, accent)
+    SettingsInfoRow("Platform", snap.platformLabel, "Android bundled rootfs", Icons.Filled.PhoneAndroid)
+    SettingsInfoRow("Browse", snap.filesHint, "Path in Files or file manager", Icons.Filled.FolderOpen)
+    SettingsInfoRow("Shell HOME", snap.home, "\$HOME for in-process / nested shell", Icons.Filled.Home)
+    SettingsInfoRow("System Root", snap.systemRoot, "WAWONA_ROOTFS", Icons.Filled.Storage)
+    SettingsInfoRow("Template", snap.templateStatus, "Bundled vs installed version", Icons.Filled.Info)
+
+    SettingsGroup(accent) {
+        OutlinedButton(
+            onClick = {
+                clipboard.setPrimaryClip(ClipData.newPlainText("HOME", snap.home))
+                Toast.makeText(context, "Copied HOME path", Toast.LENGTH_SHORT).show()
+            },
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+        ) { Text("Copy HOME Path") }
+
+        if (LocalShellCapability.ImportFile in LocalShellRootfs.capabilities()) {
+            OutlinedButton(
+                onClick = { importLauncher.launch(arrayOf("*/*")) },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+            ) { Text("Import File to Home") }
+        }
+
+        if (LocalShellCapability.ResetDotfiles in LocalShellRootfs.capabilities()) {
+            OutlinedButton(
+                onClick = {
+                    LocalShellRootfs.refreshShellDotfiles(context)
+                        .onSuccess {
+                            Toast.makeText(context, "Shell dotfiles refreshed", Toast.LENGTH_SHORT).show()
+                        }
+                        .onFailure { e ->
+                            Toast.makeText(context, "Failed: ${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+            ) { Text("Reset Shell Dotfiles") }
+        }
+
+        if (LocalShellCapability.ReinstallSystemTree in LocalShellRootfs.capabilities()) {
+            OutlinedButton(
+                onClick = {
+                    LocalShellRootfs.reinstallSystemTree(context)
+                        .onSuccess {
+                            Toast.makeText(context, "System tree reinstalled", Toast.LENGTH_SHORT).show()
+                        }
+                        .onFailure { e ->
+                            Toast.makeText(context, "Failed: ${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+            ) { Text("Reinstall System Tree") }
+        }
+    }
+
+    statusMessage?.let { msg ->
+        Text(msg, style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp))
+    }
 }
 
 @Composable

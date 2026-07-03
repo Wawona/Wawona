@@ -200,6 +200,12 @@ object MachineProfileStore {
         val sanitizedHost = MachineInputSanitizer.sanitizeHost(profile.sshHost)
         val normalizedPort = MachineInputSanitizer.normalizePort(profile.sshPort.toString())
         applySettingsOverridesToPrefs(prefs, profile.settingsOverrides)
+        val touchInputOverride =
+            decodeStringOverride(profile.settingsOverrides, "touchInputType")
+                ?: decodeStringOverride(profile.settingsOverrides, "TouchInputType")
+        val pointerOverride =
+            decodeBooleanOverride(profile.settingsOverrides, "renderMacOSPointer")
+                ?: decodeBooleanOverride(profile.settingsOverrides, "RenderMacOSPointer")
         prefs.edit()
             .putBoolean("waypipeSSHEnabled", profile.sshEnabled)
             .putString("nativeLauncher", profile.nativeLauncher)
@@ -222,6 +228,10 @@ object MachineProfileStore {
             .putBoolean("waypipeLoginShell", profile.waypipeLoginShell)
             .putString("waypipeTitlePrefix", profile.waypipeTitlePrefix)
             .putString("waypipeSecCtx", profile.waypipeSecCtx)
+            .apply {
+                touchInputOverride?.let { putBoolean("touchpadMode", it.equals("Touchpad", ignoreCase = true)) }
+                pointerOverride?.let { putBoolean("renderMacOSPointer", it) }
+            }
             .apply()
     }
 
@@ -452,5 +462,29 @@ object MachineProfileStore {
             }
         }
         editor.apply()
+    }
+
+    private fun decodeBooleanOverride(overrides: JSONObject, key: String): Boolean? {
+        if (!overrides.has(key)) return null
+        return when (val raw = overrides.opt(key)) {
+            is JSONObject -> when (raw.optString("type", "")) {
+                "boolean" -> raw.optBoolean("value")
+                else -> null
+            }
+            is Boolean -> raw
+            else -> null
+        }
+    }
+
+    private fun decodeStringOverride(overrides: JSONObject, key: String): String? {
+        if (!overrides.has(key)) return null
+        return when (val raw = overrides.opt(key)) {
+            is JSONObject -> when (raw.optString("type", "")) {
+                "string" -> raw.optString("value", "")
+                else -> null
+            }
+            is String -> raw
+            else -> null
+        }?.takeIf { it.isNotBlank() }
     }
 }

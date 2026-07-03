@@ -10,6 +10,9 @@
 // #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
 // #import <HIAHKernel/HIAHKernel.h>
 // #endif
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+#import "WWNSettingsSplitViewController.h"
+#endif
 //  #import "../../core/WWNKernel.h" // Removed
 #import <Network/Network.h>
 #import <objc/runtime.h>
@@ -32,7 +35,11 @@
 #import <unistd.h>
 #if TARGET_OS_IPHONE
 #import "../../platform/ios/WWNIOSVersions.h"
+#import "../../platform/macos/WWNRootfsProvider.h"
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <libssh2.h>
+#else
+#import "../../platform/macos/WWNRootfsProvider.h"
 #endif
 
 #ifndef WAWONA_VERSION
@@ -121,7 +128,7 @@
 @interface WWNPreferences () <WWNWaypipeRunnerDelegate
 #if TARGET_OS_IPHONE
                               ,
-                              UITextFieldDelegate
+                              UITextFieldDelegate, UIDocumentPickerDelegate
 #else
                               ,
                               NSTextFieldDelegate, NSToolbarDelegate
@@ -151,6 +158,17 @@
 - (void)pingSSHHost;
 - (void)testSSHConnection;
 - (void)debouncedReloadData;
+#if (TARGET_OS_IPHONE || TARGET_OS_OSX)
+- (void)showLocalShellHelp;
+#endif
+#if TARGET_OS_IPHONE
+- (void)confirmResetShellDotfiles;
+- (void)confirmReinstallSystemTree;
+- (void)importFileToShellHome;
+#endif
+#if TARGET_OS_OSX
+- (void)openLocalShellInFinder;
+#endif
 #if !TARGET_OS_IPHONE
 - (void)showSection:(NSInteger)idx;
 - (void)toggleMacOSPasswordVisibility:(NSButton *)sender;
@@ -383,6 +401,7 @@ static UIImage *WWNAboutLogo(void) {
 
 - (NSArray<WWNPreferencesSection *> *)buildSections {
   NSMutableArray *sects = [NSMutableArray array];
+  __weak typeof(self) weakSelf = self;
 
   // DISPLAY
   WWNPreferencesSection *display = [[WWNPreferencesSection alloc] init];
@@ -519,6 +538,100 @@ static UIImage *WWNAboutLogo(void) {
          @"Port for TCP listener.")
   ];
   [sects addObject:connection];
+
+  // LOCAL SHELL (WWN-ROOTFS — all platforms via WWNRootfsProvider)
+  if ([WWNRootfsProvider capabilities] & WWNRootfsCapabilitySettings) {
+    [WWNRootfsProvider prepareUserAccess];
+    NSDictionary *rootfs = [WWNRootfsProvider snapshot];
+    NSString *mode = rootfs[@"mode"] ?: @"host";
+    NSString *templateStatus =
+        [mode isEqualToString:@"host"]
+            ? @"host shell"
+            : [NSString
+                  stringWithFormat:@"bundle v%@ / installed v%@",
+                                   rootfs[@"bundleTemplateVersion"],
+                                   rootfs[@"appliedTemplateVersion"].length
+                                       ? rootfs[@"appliedTemplateVersion"]
+                                       : @"—"];
+
+    WWNPreferencesSection *localShell = [[WWNPreferencesSection alloc] init];
+    localShell.title = @"Local Shell";
+    localShell.icon = @"terminal";
+#if TARGET_OS_IPHONE
+    localShell.iconColor = [UIColor systemGreenColor];
+#else
+    localShell.iconColor = [NSColor systemGreenColor];
+#endif
+
+    WWNRootfsCapabilities caps = [WWNRootfsProvider capabilities];
+    NSMutableArray *localItems = [NSMutableArray arrayWithArray:@[
+      ITEM(@"Platform", nil, WSettingInfo, rootfs[@"platformLabel"],
+           @"Operating system for this Wawona build."),
+      ITEM(@"Browse Hint", nil, WSettingInfo, rootfs[@"filesHint"],
+           @"How to open shell files with the platform file manager."),
+      ITEM(@"Shell HOME", nil, WSettingInfo, rootfs[@"home"],
+           @"$HOME for the local / nested shell."),
+      ITEM(@"System Root", nil, WSettingInfo, rootfs[@"systemRoot"],
+           @"WAWONA_ROOTFS (bundled) or host runtime directory."),
+      ITEM(@"Template Version", nil, WSettingInfo, templateStatus,
+           @"Bundled vs installed rootfs template (mobile only)."),
+    ]];
+
+    if (caps & WWNRootfsCapabilityBrowseUserFiles) {
+#if TARGET_OS_OSX
+      WWNSettingItem *finderBtn =
+          ITEM(@"Open HOME in Finder", @"RootfsOpenFinder", WSettingButton, nil,
+               @"Reveal shell HOME in Finder.");
+      finderBtn.actionBlock = ^{
+        [weakSelf openLocalShellInFinder];
+      };
+      [localItems addObject:finderBtn];
+#else
+      WWNSettingItem *filesHelpBtn =
+          ITEM(@"Browse User Files", @"RootfsFilesHelp", WSettingButton, nil,
+               rootfs[@"filesHint"]);
+      filesHelpBtn.actionBlock = ^{
+        [weakSelf showLocalShellHelp];
+      };
+      [localItems addObject:filesHelpBtn];
+#endif
+    }
+
+    if (caps & WWNRootfsCapabilityImportFile) {
+      WWNSettingItem *importBtn =
+          ITEM(@"Import File to Home", @"RootfsImportFile", WSettingButton, nil,
+               @"Copy a file into shell HOME.");
+      importBtn.actionBlock = ^{
+        [weakSelf importFileToShellHome];
+      };
+      [localItems addObject:importBtn];
+    }
+
+    if (caps & WWNRootfsCapabilityResetDotfiles) {
+      WWNSettingItem *resetDotfilesBtn =
+          ITEM(@"Reset Shell Dotfiles", @"RootfsResetDotfiles", WSettingButton,
+               nil,
+               @"Restore .zshenv, .zshrc, and .zlogin from bundled templates.");
+      resetDotfilesBtn.actionBlock = ^{
+        [weakSelf confirmResetShellDotfiles];
+      };
+      [localItems addObject:resetDotfilesBtn];
+    }
+
+    if (caps & WWNRootfsCapabilityReinstallSystemTree) {
+      WWNSettingItem *reinstallBtn = ITEM(@"Reinstall System Tree",
+                                           @"RootfsReinstallSystem",
+                                           WSettingButton, nil,
+                                           @"Re-copy etc/ and usr/ from the app bundle.");
+      reinstallBtn.actionBlock = ^{
+        [weakSelf confirmReinstallSystemTree];
+      };
+      [localItems addObject:reinstallBtn];
+    }
+
+    localShell.items = localItems;
+    [sects addObject:localShell];
+  }
 
   // ADVANCED
   WWNPreferencesSection *advanced = [[WWNPreferencesSection alloc] init];
@@ -3064,10 +3177,10 @@ static UIImage *WWNAboutLogo(void) {
     }
     presenter = presenter.presentedViewController;
   }
-  UINavigationController *nav =
-      [[UINavigationController alloc] initWithRootViewController:self];
-  nav.modalPresentationStyle = UIModalPresentationFormSheet;
-  [presenter presentViewController:nav animated:YES completion:nil];
+  WWNSettingsSplitViewController *splitVC =
+      [[WWNSettingsSplitViewController alloc] init];
+  splitVC.modalPresentationStyle = UIModalPresentationFormSheet;
+  [presenter presentViewController:splitVC animated:YES completion:nil];
 }
 
 - (void)selectSectionWithTitle:(NSString *)title {
@@ -3942,6 +4055,215 @@ static UIImage *WWNAboutLogo(void) {
   if (textField) {
     textField.secureTextEntry = !textField.secureTextEntry;
     sender.selected = !textField.secureTextEntry;
+  }
+}
+
+- (void)showLocalShellHelp {
+  NSDictionary *rootfs = [WWNRootfsProvider snapshot];
+  NSString *message =
+      [NSString stringWithFormat:
+                    @"Shell HOME:\n%@\n\nBrowse: %@\n\n"
+                    @"System root:\n%@",
+                    rootfs[@"home"], rootfs[@"filesHint"],
+                    rootfs[@"systemRoot"]];
+  UIAlertController *alert = [UIAlertController
+      alertControllerWithTitle:@"Local Shell Files"
+                       message:message
+                preferredStyle:UIAlertControllerStyleAlert];
+  [alert
+      addAction:[UIAlertAction actionWithTitle:@"Copy HOME Path"
+                                         style:UIAlertActionStyleDefault
+                                       handler:^(UIAlertAction *action) {
+                                         UIPasteboard.generalPasteboard.string =
+                                             rootfs[@"home"];
+                                       }]];
+  [alert addAction:[UIAlertAction actionWithTitle:@"OK"
+                                            style:UIAlertActionStyleCancel
+                                          handler:nil]];
+  [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)confirmResetShellDotfiles {
+  UIAlertController *alert = [UIAlertController
+      alertControllerWithTitle:@"Reset Shell Dotfiles?"
+                       message:@"This overwrites .zshenv, .zshrc, and .zlogin "
+                               @"in your shell HOME with bundled templates. "
+                               @"Other files in home/ are kept."
+                preferredStyle:UIAlertControllerStyleAlert];
+  [alert
+      addAction:[UIAlertAction
+                    actionWithTitle:@"Reset"
+                              style:UIAlertActionStyleDestructive
+                            handler:^(UIAlertAction *action) {
+                              NSError *error = nil;
+                              if (![WWNRootfsProvider refreshShellDotfiles:
+                                                         &error]) {
+                                UIAlertController *err = [UIAlertController
+                                    alertControllerWithTitle:@"Reset Failed"
+                                                     message:error
+                                                               .localizedDescription
+                                              preferredStyle:
+                                                  UIAlertControllerStyleAlert];
+                                [err addAction:[UIAlertAction
+                                                   actionWithTitle:@"OK"
+                                                             style:
+                                                                 UIAlertActionStyleDefault
+                                                           handler:nil]];
+                                [self presentViewController:err
+                                                   animated:YES
+                                                 completion:nil];
+                                return;
+                              }
+                              self.sections = [self buildSections];
+                              [self.tableView reloadData];
+                              UIAlertController *ok = [UIAlertController
+                                  alertControllerWithTitle:@"Dotfiles Reset"
+                                                   message:@"Shell dotfiles "
+                                                           @"restored from "
+                                                           @"bundle templates."
+                                            preferredStyle:
+                                                UIAlertControllerStyleAlert];
+                              [ok addAction:[UIAlertAction
+                                                actionWithTitle:@"OK"
+                                                          style:
+                                                              UIAlertActionStyleDefault
+                                                        handler:nil]];
+                              [self presentViewController:ok
+                                                 animated:YES
+                                               completion:nil];
+                            }]];
+  [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
+                                            style:UIAlertActionStyleCancel
+                                          handler:nil]];
+  [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)confirmReinstallSystemTree {
+  UIAlertController *alert = [UIAlertController
+      alertControllerWithTitle:@"Reinstall System Tree?"
+                       message:@"Re-copies etc/ and usr/ from the app bundle "
+                               @"into Application Support. Your shell HOME "
+                               @"(Documents/Wawona/home) is not modified."
+                preferredStyle:UIAlertControllerStyleAlert];
+  [alert addAction:[UIAlertAction
+                       actionWithTitle:@"Reinstall"
+                                 style:UIAlertActionStyleDestructive
+                               handler:^(UIAlertAction *action) {
+                                 NSError *error = nil;
+                                 if (![WWNRootfsProvider reinstallSystemTree:
+                                                            &error]) {
+                                   UIAlertController *err = [UIAlertController
+                                       alertControllerWithTitle:@"Reinstall Failed"
+                                                        message:error.localizedDescription
+                                                 preferredStyle:
+                                                     UIAlertControllerStyleAlert];
+                                   [err addAction:[UIAlertAction
+                                                      actionWithTitle:@"OK"
+                                                                style:
+                                                                    UIAlertActionStyleDefault
+                                                              handler:nil]];
+                                   [self presentViewController:err
+                                                        animated:YES
+                                                      completion:nil];
+                                   return;
+                                 }
+                                 self.sections = [self buildSections];
+                                 [self.tableView reloadData];
+                               }]];
+  [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
+                                            style:UIAlertActionStyleCancel
+                                          handler:nil]];
+  [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)importFileToShellHome {
+  UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc]
+      initForOpeningContentTypes:@[ UTTypeItem ]
+                      asCopy:YES];
+  picker.delegate = self;
+  picker.allowsMultipleSelection = NO;
+  if (picker.popoverPresentationController) {
+    picker.popoverPresentationController.sourceView = self.view;
+    picker.popoverPresentationController.sourceRect = self.view.bounds;
+  }
+  [self presentViewController:picker animated:YES completion:nil];
+}
+
+- (void)documentPicker:(UIDocumentPickerViewController *)controller
+    didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
+  NSURL *src = urls.firstObject;
+  if (!src) {
+    return;
+  }
+  BOOL accessed = [src startAccessingSecurityScopedResource];
+  NSFileManager *fm = [NSFileManager defaultManager];
+  NSString *home = [WWNRootfsProvider snapshot][@"home"];
+  [WWNRootfsProvider prepareUserAccess];
+  NSString *baseName = src.lastPathComponent.length ? src.lastPathComponent
+                                                    : @"imported-file";
+  NSString *dest = [home stringByAppendingPathComponent:baseName];
+  if ([fm fileExistsAtPath:dest]) {
+    NSString *stem = [baseName stringByDeletingPathExtension];
+    NSString *ext = [baseName pathExtension];
+    NSString *suffix =
+        [[NSUUID UUID].UUIDString substringToIndex:8];
+    baseName = ext.length
+        ? [NSString stringWithFormat:@"%@-%@.%@", stem, suffix, ext]
+        : [NSString stringWithFormat:@"%@-%@", stem, suffix];
+    dest = [home stringByAppendingPathComponent:baseName];
+  }
+  NSError *error = nil;
+  if (![fm copyItemAtURL:src toURL:[NSURL fileURLWithPath:dest] error:&error]) {
+    UIAlertController *err = [UIAlertController
+        alertControllerWithTitle:@"Import Failed"
+                         message:error.localizedDescription
+                  preferredStyle:UIAlertControllerStyleAlert];
+    [err addAction:[UIAlertAction actionWithTitle:@"OK"
+                                           style:UIAlertActionStyleDefault
+                                         handler:nil]];
+    [self presentViewController:err animated:YES completion:nil];
+  } else {
+    UIAlertController *ok = [UIAlertController
+        alertControllerWithTitle:@"Imported"
+                         message:[NSString stringWithFormat:
+                                               @"Saved to ~/ %@", baseName]
+                  preferredStyle:UIAlertControllerStyleAlert];
+    [ok addAction:[UIAlertAction actionWithTitle:@"OK"
+                                           style:UIAlertActionStyleDefault
+                                         handler:nil]];
+    [self presentViewController:ok animated:YES completion:nil];
+  }
+  if (accessed) {
+    [src stopAccessingSecurityScopedResource];
+  }
+}
+#endif
+
+#if TARGET_OS_OSX
+- (void)showLocalShellHelp {
+  NSDictionary *rootfs = [WWNRootfsProvider snapshot];
+  NSAlert *alert = [[NSAlert alloc] init];
+  alert.messageText = @"Local Shell Files";
+  alert.informativeText =
+      [NSString stringWithFormat:@"Shell HOME:\n%@\n\n%@\n\nSystem root:\n%@",
+                                 rootfs[@"home"], rootfs[@"filesHint"],
+                                 rootfs[@"systemRoot"]];
+  [alert addButtonWithTitle:@"OK"];
+  [alert addButtonWithTitle:@"Copy HOME Path"];
+  NSModalResponse response = [alert runModal];
+  if (response == NSAlertSecondButtonReturn) {
+    NSPasteboard *pb = [NSPasteboard generalPasteboard];
+    [pb clearContents];
+    [pb setString:rootfs[@"home"] ?: @"" forType:NSPasteboardTypeString];
+  }
+}
+
+- (void)openLocalShellInFinder {
+  if (![WWNRootfsProvider openUserFilesLocation]) {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Could Not Open Finder";
+    alert.informativeText = [WWNRootfsProvider snapshot][@"home"];
+    [alert runModal];
   }
 }
 #endif

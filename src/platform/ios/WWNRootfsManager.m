@@ -5,6 +5,18 @@
 
 #import <unistd.h>
 
+static NSString *const kWWNRootfsReadmeText =
+    @"Wawona Local Shell — user files for the in-process zsh terminal.\n"
+    "\n"
+    "home/          Shell HOME ($HOME). Edit .zshrc, add scripts, configs.\n"
+    "               XDG dirs live under home/.config, home/.cache, etc.\n"
+    "\n"
+    "System files (etc/, usr/) stay in Application Support and are\n"
+    "refreshed from the app bundle on template updates. Reset them in\n"
+    "Wawona Settings → Local Shell.\n"
+    "\n"
+    "Tip: Import files with Settings → Local Shell → Import File to Home.\n";
+
 @implementation WWNRootfsManager
 
 + (NSString *)bundleRootfsPath {
@@ -19,6 +31,21 @@
     return @"";
   }
   return [resource stringByAppendingPathComponent:@"wawona-rootfs"];
+}
+
++ (NSString *)filesAppRootPath {
+  NSURL *docs = [[NSFileManager defaultManager]
+      URLsForDirectory:NSDocumentDirectory
+             inDomains:NSUserDomainMask]
+      .firstObject;
+  if (!docs) {
+    return [[NSTemporaryDirectory() stringByAppendingPathComponent:@"Wawona"] copy];
+  }
+  return [[docs URLByAppendingPathComponent:@"Wawona" isDirectory:YES] path];
+}
+
++ (NSString *)activeHomePath {
+  return [[self filesAppRootPath] stringByAppendingPathComponent:@"home"];
 }
 
 + (NSString *)activeRootfsPath {
@@ -36,8 +63,7 @@
 
 + (BOOL)copyTreeFrom:(NSString *)src to:(NSString *)dst error:(NSError **)error {
   NSFileManager *fm = [NSFileManager defaultManager];
-  NSDirectoryEnumerator *enumerator =
-      [fm enumeratorAtPath:src];
+  NSDirectoryEnumerator *enumerator = [fm enumeratorAtPath:src];
   NSString *rel;
   while ((rel = [enumerator nextObject])) {
     NSString *srcPath = [src stringByAppendingPathComponent:rel];
@@ -84,7 +110,18 @@
       [NSCharacterSet whitespaceAndNewlineCharacterSet]] : @"0";
 }
 
-+ (BOOL)refreshDotfilesFromBundle:(NSString *)bundleRoot home:(NSString *)home {
++ (NSString *)appliedTemplateVersion {
+  NSString *path = [[self activeRootfsPath]
+      stringByAppendingPathComponent:@".template-version-applied"];
+  NSString *ver =
+      [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
+  return ver.length ? [ver stringByTrimmingCharactersInSet:
+      [NSCharacterSet whitespaceAndNewlineCharacterSet]] : @"";
+}
+
++ (BOOL)ensureShellDotfilesPresent:(NSString *)bundleRoot
+                              home:(NSString *)home
+                             force:(BOOL)force {
   NSFileManager *fm = [NSFileManager defaultManager];
   NSArray<NSArray<NSString *> *> *dotfiles = @[
     @[ @"etc/zsh/zshenv.template", @".zshenv" ],
@@ -97,6 +134,9 @@
     if (![fm fileExistsAtPath:src]) {
       continue;
     }
+    if (!force && [fm fileExistsAtPath:dst]) {
+      continue;
+    }
     if ([fm fileExistsAtPath:dst]) {
       [fm removeItemAtPath:dst error:nil];
     }
@@ -107,7 +147,86 @@
   return YES;
 }
 
-+ (BOOL)ensureRootfsInstalled:(NSError **)error {
++ (BOOL)migrateLegacyHomeIfNeeded:(NSString *)newHome error:(NSError **)error {
+  NSFileManager *fm = [NSFileManager defaultManager];
+  NSString *legacyHome =
+      [[self activeRootfsPath] stringByAppendingPathComponent:@"home"];
+  if ([legacyHome isEqualToString:newHome]) {
+    return YES;
+  }
+  if (![fm fileExistsAtPath:legacyHome]) {
+    return YES;
+  }
+
+  BOOL newHasContent = NO;
+  NSArray *newEntries = [fm contentsOfDirectoryAtPath:newHome error:nil];
+  if (newEntries.count > 0) {
+    newHasContent = YES;
+  }
+
+  if (newHasContent) {
+    NSString *backup = [[self activeRootfsPath]
+        stringByAppendingPathComponent:@"home.legacy-backup"];
+    if (![fm fileExistsAtPath:backup]) {
+      [fm moveItemAtPath:legacyHome toPath:backup error:nil];
+      NSLog(@"WWNRootfs: legacy home moved to %@", backup);
+    }
+    return YES;
+  }
+
+  if (![fm moveItemAtPath:legacyHome toPath:newHome error:error]) {
+    if (![self copyTreeFrom:legacyHome to:newHome error:error]) {
+      return NO;
+    }
+    [fm removeItemAtPath:legacyHome error:nil];
+  }
+  NSLog(@"WWNRootfs: migrated shell HOME → %@", newHome);
+  return YES;
+}
+
++ (void)ensureXDGDirectoriesUnderHome:(NSString *)home {
+  NSFileManager *fm = [NSFileManager defaultManager];
+  for (NSString *rel in @[
+         @".config", @".cache", @".local/share", @".local/state"
+       ]) {
+    [fm createDirectoryAtPath:[home stringByAppendingPathComponent:rel]
+        withIntermediateDirectories:YES
+                     attributes:nil
+                          error:nil];
+  }
+}
+
++ (void)prepareFilesAppAccess {
+  NSFileManager *fm = [NSFileManager defaultManager];
+  NSString *root = [self filesAppRootPath];
+  NSString *home = [self activeHomePath];
+  [fm createDirectoryAtPath:root
+      withIntermediateDirectories:YES
+                   attributes:nil
+                        error:nil];
+  [fm createDirectoryAtPath:home
+      withIntermediateDirectories:YES
+                   attributes:nil
+                        error:nil];
+  [self ensureXDGDirectoriesUnderHome:home];
+
+  NSString *readme = [root stringByAppendingPathComponent:@"README.txt"];
+  if (![fm fileExistsAtPath:readme]) {
+    [kWWNRootfsReadmeText writeToFile:readme
+                           atomically:YES
+                             encoding:NSUTF8StringEncoding
+                                error:nil];
+  }
+
+  NSError *migrateError = nil;
+  [self migrateLegacyHomeIfNeeded:home error:&migrateError];
+  if (migrateError) {
+    NSLog(@"WWNRootfs: legacy home migration failed: %@",
+          migrateError.localizedDescription);
+  }
+}
+
++ (BOOL)reinstallSystemTree:(NSError **)error {
   NSString *bundleRoot = [self bundleRootfsPath];
   NSString *activeRoot = [self activeRootfsPath];
   NSFileManager *fm = [NSFileManager defaultManager];
@@ -132,55 +251,6 @@
     return NO;
   }
 
-  // v13: always refresh HOME dotfiles from bundle templates (small, safe to
-  // overwrite every launch). Older installs kept stale .zshrc/.zshenv with
-  // unconditional `compinit` because the marker short-circuited dotfile copy.
-  NSString *home = [activeRoot stringByAppendingPathComponent:@"home"];
-  [fm createDirectoryAtPath:home
-      withIntermediateDirectories:YES
-                       attributes:nil
-                            error:nil];
-  if (![self refreshDotfilesFromBundle:bundleRoot home:home]) {
-    if (error) {
-      *error = [NSError errorWithDomain:@"WWNRootfs"
-                                   code:2
-                               userInfo:@{
-                                 NSLocalizedDescriptionKey :
-                                     @"Failed to refresh zsh dotfiles from bundle templates."
-                               }];
-    }
-    return NO;
-  }
-  NSLog(@"WWNRootfs: refreshed zsh dotfiles from bundle templates → %@", home);
-
-  NSString *bundleTemplateVer = [self bundledTemplateVersion:bundleRoot];
-  NSString *appliedVerPath =
-      [activeRoot stringByAppendingPathComponent:@".template-version-applied"];
-  NSString *appliedVer =
-      [NSString stringWithContentsOfFile:appliedVerPath
-                                encoding:NSUTF8StringEncoding
-                                   error:nil];
-  appliedVer = appliedVer.length
-      ? [appliedVer stringByTrimmingCharactersInSet:
-            [NSCharacterSet whitespaceAndNewlineCharacterSet]]
-      : @"";
-
-  NSString *markerV13 = [activeRoot stringByAppendingPathComponent:@".installed-v13"];
-  BOOL needSystemTreeRefresh =
-      ![fm fileExistsAtPath:markerV13] ||
-      ![appliedVer isEqualToString:bundleTemplateVer];
-
-  if (!needSystemTreeRefresh) {
-    return YES;
-  }
-
-  if (appliedVer.length > 0 && ![appliedVer isEqualToString:bundleTemplateVer]) {
-    NSLog(@"WWNRootfs: bundle template v%@ → v%@; refreshing etc/usr tree",
-          appliedVer, bundleTemplateVer);
-  }
-
-  // Always refresh the read-only system tree (etc/usr) from the bundle so the
-  // device picks up new share/zsh functions and template versions.
   for (NSString *subdir in @[ @"etc", @"usr" ]) {
     NSString *src = [bundleRoot stringByAppendingPathComponent:subdir];
     NSString *dst = [activeRoot stringByAppendingPathComponent:subdir];
@@ -195,7 +265,124 @@
     }
   }
 
-  // Drop superseded markers from older installs.
+  NSString *bundleTemplateVer = [self bundledTemplateVersion:bundleRoot];
+  NSString *appliedVerPath =
+      [activeRoot stringByAppendingPathComponent:@".template-version-applied"];
+  [bundleTemplateVer writeToFile:appliedVerPath
+                      atomically:YES
+                        encoding:NSUTF8StringEncoding
+                           error:nil];
+  [@"installed" writeToFile:[activeRoot stringByAppendingPathComponent:@".installed-v13"]
+                 atomically:YES
+                   encoding:NSUTF8StringEncoding
+                      error:nil];
+  return YES;
+}
+
++ (BOOL)refreshShellDotfiles:(NSError **)error {
+  NSString *bundleRoot = [self bundleRootfsPath];
+  if (bundleRoot.length == 0) {
+    if (error) {
+      *error = [NSError errorWithDomain:@"WWNRootfs"
+                                   code:1
+                               userInfo:@{
+                                 NSLocalizedDescriptionKey :
+                                     @"Bundled wawona-rootfs not found."
+                               }];
+    }
+    return NO;
+  }
+  [self prepareFilesAppAccess];
+  if (![self ensureShellDotfilesPresent:bundleRoot
+                                 home:[self activeHomePath]
+                                force:YES]) {
+    if (error) {
+      *error = [NSError errorWithDomain:@"WWNRootfs"
+                                   code:2
+                               userInfo:@{
+                                 NSLocalizedDescriptionKey :
+                                     @"Failed to refresh zsh dotfiles from templates."
+                               }];
+    }
+    return NO;
+  }
+  return YES;
+}
+
++ (NSDictionary<NSString *, NSString *> *)rootfsStatusSnapshot {
+  NSString *bundleRoot = [self bundleRootfsPath];
+  return @{
+    @"filesRoot" : [self filesAppRootPath] ?: @"",
+    @"home" : [self activeHomePath] ?: @"",
+    @"systemRoot" : [self activeRootfsPath] ?: @"",
+    @"bundleTemplateVersion" : [self bundledTemplateVersion:bundleRoot],
+    @"appliedTemplateVersion" : [self appliedTemplateVersion],
+    @"filesHint" : @"Files → On My iPhone/iPad → Wawona",
+  };
+}
+
++ (BOOL)ensureRootfsInstalled:(NSError **)error {
+  NSString *bundleRoot = [self bundleRootfsPath];
+  NSString *activeRoot = [self activeRootfsPath];
+  NSFileManager *fm = [NSFileManager defaultManager];
+
+  if (bundleRoot.length == 0 || ![fm fileExistsAtPath:bundleRoot]) {
+    if (error) {
+      *error = [NSError errorWithDomain:@"WWNRootfs"
+                                   code:1
+                               userInfo:@{
+                                 NSLocalizedDescriptionKey :
+                                     @"Bundled wawona-rootfs not found in app resources."
+                               }];
+    }
+    return NO;
+  }
+
+  [self prepareFilesAppAccess];
+
+  [fm createDirectoryAtPath:activeRoot
+      withIntermediateDirectories:YES
+                       attributes:nil
+                            error:error];
+  if (error && *error) {
+    return NO;
+  }
+
+  NSString *home = [self activeHomePath];
+  if (![self ensureShellDotfilesPresent:bundleRoot home:home force:NO]) {
+    if (error) {
+      *error = [NSError errorWithDomain:@"WWNRootfs"
+                                   code:2
+                               userInfo:@{
+                                 NSLocalizedDescriptionKey :
+                                     @"Failed to install zsh dotfiles."
+                               }];
+    }
+    return NO;
+  }
+
+  NSString *bundleTemplateVer = [self bundledTemplateVersion:bundleRoot];
+  NSString *appliedVer = [self appliedTemplateVersion];
+
+  NSString *markerV13 = [activeRoot stringByAppendingPathComponent:@".installed-v13"];
+  BOOL needSystemTreeRefresh =
+      ![fm fileExistsAtPath:markerV13] ||
+      ![appliedVer isEqualToString:bundleTemplateVer];
+
+  if (!needSystemTreeRefresh) {
+    return YES;
+  }
+
+  if (appliedVer.length > 0 && ![appliedVer isEqualToString:bundleTemplateVer]) {
+    NSLog(@"WWNRootfs: bundle template v%@ → v%@; refreshing etc/usr tree",
+          appliedVer, bundleTemplateVer);
+    [self ensureShellDotfilesPresent:bundleRoot home:home force:YES];
+  }
+
+  if (![self reinstallSystemTree:error]) {
+    return NO;
+  }
+
   for (NSString *old in @[
          @".installed-v5", @".installed-v6", @".installed-v7", @".installed-v8",
          @".installed-v9", @".installed-v10", @".installed-v11", @".installed-v12"
@@ -206,14 +393,6 @@
     }
   }
 
-  [@"installed" writeToFile:markerV13
-                 atomically:YES
-                   encoding:NSUTF8StringEncoding
-                      error:nil];
-  [bundleTemplateVer writeToFile:appliedVerPath
-                      atomically:YES
-                        encoding:NSUTF8StringEncoding
-                           error:nil];
   return YES;
 }
 
@@ -261,6 +440,56 @@
       stringByAppendingPathComponent:@"usr/share/zsh"];
 }
 
++ (void)migrateFastfetchConfigFromBundle:(NSString *)bundleRoot
+                             configHome:(NSString *)configHome {
+  NSFileManager *fm = [NSFileManager defaultManager];
+  NSString *bundleVerPath =
+      [bundleRoot stringByAppendingPathComponent:@"etc/fastfetch/.template-version"];
+  if (![fm fileExistsAtPath:bundleVerPath]) {
+    return;
+  }
+  NSString *bundleVer =
+      [NSString stringWithContentsOfFile:bundleVerPath
+                                encoding:NSUTF8StringEncoding
+                                   error:nil];
+  bundleVer = bundleVer.length
+      ? [bundleVer stringByTrimmingCharactersInSet:
+            [NSCharacterSet whitespaceAndNewlineCharacterSet]]
+      : @"0";
+
+  NSString *destDir = [configHome stringByAppendingPathComponent:@"fastfetch"];
+  [fm createDirectoryAtPath:destDir
+      withIntermediateDirectories:YES
+                       attributes:nil
+                            error:nil];
+  NSString *appliedVerPath =
+      [destDir stringByAppendingPathComponent:@".template-version-applied"];
+  NSString *appliedVer =
+      [NSString stringWithContentsOfFile:appliedVerPath
+                                encoding:NSUTF8StringEncoding
+                                   error:nil];
+  appliedVer = appliedVer.length
+      ? [appliedVer stringByTrimmingCharactersInSet:
+            [NSCharacterSet whitespaceAndNewlineCharacterSet]]
+      : @"";
+
+  if ([appliedVer isEqualToString:bundleVer]) {
+    return;
+  }
+
+  NSString *configPath = [destDir stringByAppendingPathComponent:@"config.jsonc"];
+  if ([fm fileExistsAtPath:configPath]) {
+    [fm removeItemAtPath:configPath error:nil];
+    NSLog(@"WWNRootfs: removed fastfetch config.jsonc (template v%@ → v%@)",
+          appliedVer.length ? appliedVer : @"0", bundleVer);
+  }
+
+  [bundleVer writeToFile:appliedVerPath
+              atomically:YES
+                encoding:NSUTF8StringEncoding
+                   error:nil];
+}
+
 + (void)applyShellEnvironment {
   NSError *error = nil;
   if (![self ensureRootfsInstalled:&error]) {
@@ -270,14 +499,11 @@
 
   NSString *bundleRoot = [self bundleRootfsPath];
   NSString *activeRoot = [self activeRootfsPath];
-  NSString *home = [activeRoot stringByAppendingPathComponent:@"home"];
+  NSString *home = [self activeHomePath];
   NSString *shell = [self bundledShellPath];
 
   setenv("WAWONA_BUNDLE_ROOTFS", bundleRoot.UTF8String, 1);
   setenv("WAWONA_ROOTFS", activeRoot.UTF8String, 1);
-  // Signals "run zsh in-process (statically linked wawona_zsh_main)" to the
-  // wawona-pty layer: it allows the virtual /usr/bin/zsh path and keeps the
-  // in-process environ guard active.
   setenv("WAWONA_ZSH_IN_PROCESS", "1", 1);
   setenv("WAWONA_SHELL", shell.UTF8String, 1);
   setenv("HOME", home.UTF8String, 1);
@@ -287,26 +513,33 @@
   setenv("TERM", "xterm-256color", 1);
   setenv("USER", "mobile", 1);
 
-  NSString *nvimRuntime = [self bundledNeovimRuntimePath];
-  if (nvimRuntime.length > 0 &&
-      [[NSFileManager defaultManager] fileExistsAtPath:nvimRuntime]) {
-    setenv("VIMRUNTIME", nvimRuntime.UTF8String, 1);
-    NSString *nvimConfig = [self activeNeovimConfigPath];
-    [[NSFileManager defaultManager] createDirectoryAtPath:nvimConfig
+  NSFileManager *fm = [NSFileManager defaultManager];
+  NSString *xdgConfig = [home stringByAppendingPathComponent:@".config"];
+  NSString *xdgCache = [home stringByAppendingPathComponent:@".cache"];
+  NSString *xdgData = [home stringByAppendingPathComponent:@".local/share"];
+  NSString *xdgState = [home stringByAppendingPathComponent:@".local/state"];
+  for (NSString *dir in @[ xdgConfig, xdgCache, xdgData, xdgState ]) {
+    [fm createDirectoryAtPath:dir
         withIntermediateDirectories:YES
                          attributes:nil
                               error:nil];
-    setenv("XDG_CONFIG_HOME", nvimConfig.UTF8String, 1);
-    setenv("XDG_DATA_HOME", nvimConfig.UTF8String, 1);
-    setenv("XDG_STATE_HOME",
-           [[nvimConfig stringByAppendingPathComponent:@"state"] UTF8String], 1);
+  }
+  setenv("XDG_CONFIG_HOME", xdgConfig.UTF8String, 1);
+  setenv("XDG_CACHE_HOME", xdgCache.UTF8String, 1);
+  setenv("XDG_DATA_HOME", xdgData.UTF8String, 1);
+  setenv("XDG_STATE_HOME", xdgState.UTF8String, 1);
+
+  [self migrateFastfetchConfigFromBundle:bundleRoot configHome:xdgConfig];
+
+  NSString *nvimRuntime = [self bundledNeovimRuntimePath];
+  if (nvimRuntime.length > 0 && [fm fileExistsAtPath:nvimRuntime]) {
+    setenv("VIMRUNTIME", nvimRuntime.UTF8String, 1);
     NSLog(@"WWNRootfs: in-process nvim; VIMRUNTIME=%@ XDG_CONFIG_HOME=%@",
-          nvimRuntime, nvimConfig);
+          nvimRuntime, xdgConfig);
   }
 
-  /* Do not set ZSH= — bundled share init breaks the fake-PTY bootstrap. */
-  NSLog(@"WWNRootfs: in-process zsh (libwawona-zsh.a); WAWONA_SHELL=%@ is a virtual path, HOME=%@",
-        shell, home);
+  NSLog(@"WWNRootfs: in-process zsh; HOME=%@ (Files: %@) WAWONA_ROOTFS=%@",
+        home, [self filesAppRootPath], activeRoot);
 }
 
 @end

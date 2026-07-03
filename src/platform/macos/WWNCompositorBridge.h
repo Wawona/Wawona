@@ -15,6 +15,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// Weston) reads output geometry. Scene delegate should reveal the compositor
 /// and refresh output size so launch dimensions match on-screen layout.
 FOUNDATION_EXPORT NSNotificationName const WWNNativeClientWillLaunchNotification;
+/// Posted when a client requests minimize (xdg_toplevel.set_minimized). iOS
+/// uses this to return to Machines UI while keeping the session running.
+FOUNDATION_EXPORT NSNotificationName const WWNClientMinimizeRequestedNotification;
 
 /// Window event types from Rust compositor
 typedef NS_ENUM(NSInteger, WWNWindowEventType) {
@@ -154,13 +157,26 @@ typedef struct {
                       x:(double)x
                       y:(double)y
               timestamp:(uint32_t)timestampMs;
+- (void)injectTouchDownForWindow:(uint64_t)windowId
+                         touchId:(NSInteger)touchId
+                               x:(double)x
+                               y:(double)y
+                       timestamp:(uint32_t)timestampMs;
 
 - (void)injectTouchUp:(NSInteger)touchId timestamp:(uint32_t)timestampMs;
+- (void)injectTouchUpForWindow:(uint64_t)windowId
+                       touchId:(NSInteger)touchId
+                     timestamp:(uint32_t)timestampMs;
 
 - (void)injectTouchMotion:(NSInteger)touchId
                         x:(double)x
                         y:(double)y
                 timestamp:(uint32_t)timestampMs;
+- (void)injectTouchMotionForWindow:(uint64_t)windowId
+                            touchId:(NSInteger)touchId
+                                  x:(double)x
+                                  y:(double)y
+                          timestamp:(uint32_t)timestampMs;
 
 - (void)injectTouchCancel;
 

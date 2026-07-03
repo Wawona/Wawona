@@ -1890,7 +1890,7 @@ handle_special_char(struct terminal *terminal, char c)
 		terminal->column = 0;
 		break;
 	case '\n':
-		if (terminal->mode & MODE_LF_NEWLINE) {
+		if ((terminal->mode & MODE_LF_NEWLINE) || getenv("WAWONA_PTY_FAKE_TTY")) {
 			terminal->column = 0;
 		}
 		/* fallthrough */

@@ -832,4 +832,20 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
                                 defaultValue:YES];
 }
 
++ (BOOL)resolvedRenderMacOSPointerForProfile:(WWNMachineProfile *)profile {
+  return [self resolvedRuntimeBoolForProfile:profile
+                                 overrideKey:@"renderMacOSPointer"
+                                   globalKey:kWWNPrefsRenderMacOSPointer
+                                defaultValue:NO];
+}
+
++ (BOOL)resolvedRenderMacOSPointerActive {
+  NSString *activeId = [self activeMachineId];
+  WWNMachineProfile *profile = nil;
+  if (activeId.length > 0) {
+    profile = [self profileById:activeId];
+  }
+  return [self resolvedRenderMacOSPointerForProfile:profile];
+}
+
 @end

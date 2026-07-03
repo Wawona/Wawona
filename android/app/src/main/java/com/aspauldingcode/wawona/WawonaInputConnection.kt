@@ -27,6 +27,13 @@ class WawonaInputConnection(
     private val view: View,
     fullEditor: Boolean
 ) : BaseInputConnection(view, fullEditor) {
+    private fun syncShiftAppearanceFromCommittedText(text: CharSequence) {
+        if (text.length != 1 || ModifierState.shiftLocked) return
+        val ch = text[0]
+        if (!ch.isLetter()) return
+        val shifted = ch.isUpperCase()
+        ModifierState.syncShiftFromNative(active = shifted, locked = false)
+    }
 
     override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
         if (text == null || text.isEmpty()) return true
@@ -38,6 +45,7 @@ class WawonaInputConnection(
 
         WawonaNative.nativePreeditText("", 0, 0)
         WawonaNative.nativeCommitText(text.toString())
+        syncShiftAppearanceFromCommittedText(text)
         super.commitText(text, newCursorPosition)
         return true
     }
@@ -145,6 +153,13 @@ class WawonaInputConnection(
     override fun sendKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN) {
             when (event.keyCode) {
+                KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.KEYCODE_SHIFT_RIGHT -> {
+                    ModifierState.syncShiftFromNative(active = true, locked = ModifierState.shiftLocked)
+                }
+                KeyEvent.KEYCODE_CAPS_LOCK -> {
+                    val lockNow = !ModifierState.shiftLocked
+                    ModifierState.syncShiftFromNative(active = lockNow, locked = lockNow)
+                }
                 KeyEvent.KEYCODE_DEL -> {
                     WLog.d("INPUT", "sendKeyEvent: backspace")
                     WawonaNative.nativeDeleteSurroundingText(1, 0)
@@ -168,6 +183,11 @@ class WawonaInputConnection(
             }
         } else if (event.action == KeyEvent.ACTION_UP) {
             when (event.keyCode) {
+                KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.KEYCODE_SHIFT_RIGHT -> {
+                    if (!ModifierState.shiftLocked) {
+                        ModifierState.syncShiftFromNative(active = false, locked = false)
+                    }
+                }
                 KeyEvent.KEYCODE_DEL, KeyEvent.KEYCODE_FORWARD_DEL -> return true
             }
         }

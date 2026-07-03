@@ -11,9 +11,7 @@ struct WWNMachinesGridView: View {
   @State private var editingProfile: WWNMachineProfile?
   @State private var isCreating = false
   @State private var searchQuery = ""
-  #if os(iOS)
-  @State private var isSearchPresented = false
-  #endif
+
   #if os(macOS)
   @State private var columnVisibility: NavigationSplitViewVisibility = .all
   #endif
@@ -77,7 +75,7 @@ struct WWNMachinesGridView: View {
       detailPane
         .navigationTitle(detailNavigationTitle)
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $searchQuery, isPresented: $isSearchPresented, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search machines")
+        .searchable(text: $searchQuery, placement: .toolbar, prompt: "Search machines")
         .toolbar {
           detailToolbarContent
         }
@@ -150,14 +148,7 @@ struct WWNMachinesGridView: View {
     }
     #else
     ToolbarItemGroup(placement: .topBarTrailing) {
-      #if os(iOS)
-      Button {
-        isSearchPresented = true
-      } label: {
-        Image(systemName: "magnifyingglass")
-      }
-      .accessibilityLabel("Search")
-      #endif
+
       if let onOpenSettings {
         Button(action: onOpenSettings) {
           Image(systemName: "gearshape")

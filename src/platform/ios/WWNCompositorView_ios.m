@@ -1,6 +1,7 @@
 #import "WWNCompositorView_ios.h"
 #import "WWNIlandPresenter.h"
 #import "../macos/ui/Settings/WWNPreferencesManager.h"
+#import "../macos/ui/Machines/WWNMachineProfileStore.h"
 #import "../../util/WWNLog.h"
 #import "WWNCompositorBridge.h"
 #import <QuartzCore/QuartzCore.h>
@@ -469,6 +470,29 @@ static const NSInteger kTagModShift = 1000;
 static const NSInteger kTagModCtrl = 1001;
 static const NSInteger kTagModAlt = 1002;
 static const NSInteger kTagModSuper = 1003;
+static const NSInteger kTagKeyGrave = 1100;
+static const NSInteger kTagKeySlash = 1101;
+static const NSInteger kTagKeyMinus = 1102;
+static const NSInteger kTagKeyboardPipEffectView = 1199;
+static const CGFloat kKeyboardModeDragThreshold = 20.0;
+static const CGFloat kKeyboardPipEdgePeekWidth = 16.0;
+static const CGFloat kKeyboardPipFlingVelocityThreshold = 550.0;
+static const CGFloat kKeyboardPipExpandedWidth = 56.0;
+static const CGFloat kKeyboardPipExpandedHeight = 42.0;
+static const CGFloat kKeyboardPipChevronWidth = 28.0;
+static const CGFloat kKeyboardPipChevronHeight = 42.0;
+
+typedef NS_ENUM(NSInteger, WWNKeyboardUiMode) {
+  WWNKeyboardUiModePip = 0,
+  WWNKeyboardUiModeAccessoryOnly = 1,
+  WWNKeyboardUiModeExpanded = 2,
+};
+
+typedef NS_ENUM(NSInteger, WWNKeyboardPipDockSide) {
+  WWNKeyboardPipDockSideNone = 0,
+  WWNKeyboardPipDockSideLeft = 1,
+  WWNKeyboardPipDockSideRight = 2,
+};
 
 // ---------------------------------------------------------------------------
 // Touchpad mode constants
@@ -528,6 +552,15 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 
   // Accessory bar (lazily created)
   UIView *_accessoryBar;
+  UIView *_collapsedInputView;
+  NSLayoutConstraint *_accessoryBarHeightConstraint;
+  UIButton *_keyboardModeButton;
+  UIButton *_keyboardPipButton;
+  WWNKeyboardUiMode _keyboardUiMode;
+  WWNKeyboardPipDockSide _keyboardPipDockSide;
+  BOOL _draggedModeButton;
+  BOOL _physicalCapsLockActive;
+  BOOL _virtualShiftActive;
 
   // Touchpad mode state
   CGPoint _pointerPos;     // Virtual cursor position (view coords)
@@ -551,6 +584,8 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   int32_t _primaryTouchId;
   BOOL _multitouchPointerEntered;
   BOOL _touchpadPointerEntered;
+  uint64_t _touchpadPointerWindowId;
+  BOOL _waylandFrameOpaque;
 
   BOOL _sessionActive;
 
@@ -611,8 +646,10 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     _waylandFrameView.autoresizingMask =
         UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     _waylandFrameView.userInteractionEnabled = NO;
+    _waylandFrameOpaque = YES;
     _waylandFrameView.backgroundColor = UIColor.clearColor;
-    _waylandFrameView.opaque = YES;
+    _waylandFrameView.opaque = _waylandFrameOpaque;
+    _waylandFrameView.layer.opaque = _waylandFrameOpaque;
     _waylandFrameView.layer.contentsGravity = kCAGravityResize;
     _waylandFrameView.layer.minificationFilter = kCAFilterNearest;
     _waylandFrameView.layer.magnificationFilter = kCAFilterNearest;
@@ -648,6 +685,11 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     _lastContentsScale = 0;
     _lastWaylandLayoutSize = CGSizeZero;
     _sessionActive = YES;
+    _keyboardUiMode = WWNKeyboardUiModeExpanded;
+    _collapsedInputView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 1, 1)];
+    _collapsedInputView.backgroundColor = UIColor.clearColor;
+    _collapsedInputView.opaque = NO;
+    _collapsedInputView.userInteractionEnabled = NO;
 
     WWNLog("IOS_VIEW", @"Created view for window %llu", self.wwnWindowId);
   }
@@ -791,7 +833,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 
   [CATransaction begin];
   [CATransaction setDisableActions:YES];
-  _waylandFrameView.layer.opaque = YES;
+  _waylandFrameView.layer.opaque = _waylandFrameOpaque;
   _waylandFrameView.layer.contentsGravity = kCAGravityResize;
   _waylandFrameView.layer.contentsScale = contentsScale;
   _waylandFrameView.layer.contents = nil;
@@ -845,6 +887,11 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
                      right:(int32_t)insets.right
                     bottom:(int32_t)insets.bottom
                       left:(int32_t)insets.left];
+  [self _updateAccessoryBarHeightForMode];
+  [self _updateCollapsedInputViewHeight];
+  if (_keyboardUiMode != WWNKeyboardUiModePip) {
+    [self reloadInputViews];
+  }
 }
 
 - (void)layoutSubviews {
@@ -875,6 +922,21 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
                      width:(uint32_t)self.bounds.size.width
                     height:(uint32_t)self.bounds.size.height];
   }
+
+  if (_keyboardPipButton && !_keyboardPipButton.hidden) {
+    CGPoint center = _keyboardPipButton.center;
+    CGFloat halfW = CGRectGetWidth(_keyboardPipButton.bounds) * 0.5;
+    CGFloat halfH = CGRectGetHeight(_keyboardPipButton.bounds) * 0.5;
+    UIEdgeInsets insets = self.safeAreaInsets;
+    CGFloat minX = halfW + insets.left;
+    CGFloat maxX = CGRectGetWidth(self.bounds) - halfW - insets.right;
+    CGFloat minY = halfH + insets.top;
+    CGFloat maxY = CGRectGetHeight(self.bounds) - halfH - insets.bottom;
+    center.x = MAX(minX, MIN(maxX, center.x));
+    center.y = MAX(minY, MIN(maxY, center.y));
+    _keyboardPipButton.center = center;
+    [self _dockKeyboardPipButtonToNearestEdgeAnimated:NO velocityX:0];
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -895,22 +957,34 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 
 #if !TARGET_OS_VISION
 - (UIView *)inputAccessoryView {
+  if (_keyboardUiMode == WWNKeyboardUiModePip) {
+    return nil;
+  }
   if (!_accessoryBar) {
     _accessoryBar = [self _buildAccessoryBar];
   }
+  [self _updateKeyboardModeButtonTitle];
   return _accessoryBar;
+}
+
+- (UIView *)inputView {
+  if (_keyboardUiMode == WWNKeyboardUiModeAccessoryOnly) {
+    return _collapsedInputView;
+  }
+  return nil;
 }
 
 /// Build the two-row special key toolbar that sits above the iOS keyboard.
 ///
-/// Row 1: ESC  `  TAB  /  —  HOME  ↑  END  PGUP
-/// Row 2: ⇧  CTRL  ALT  ⌘  ←  ↓  →  PGDN  ⌨↓
+/// Row 1: ESC  `  TAB  /  —  ↑  HOME  END  PGUP
+/// Row 2: ⇧  CTRL  ALT  ⌘  ←  ↓  →  PGDN  ⌨↑/⌨↓
 - (UIView *)_buildAccessoryBar {
-  CGFloat barHeight = 80;
+  CGFloat contentHeight = 80;
   CGFloat rowHeight = 38;
   CGFloat vPad = 2;
 
-  UIView *bar = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 400, barHeight)];
+  UIView *bar =
+      [[UIView alloc] initWithFrame:CGRectMake(0, 0, 400, contentHeight)];
   bar.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 
   // Background: Liquid Glass on iOS 26+, dark chrome blur on older versions.
@@ -973,17 +1047,26 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
                                         constant:-4],
     [row2.heightAnchor constraintEqualToConstant:rowHeight],
   ]];
+  _accessoryBarHeightConstraint =
+      [bar.heightAnchor constraintEqualToConstant:contentHeight];
+  _accessoryBarHeightConstraint.active = YES;
 
   // Row 1
   [row1 addArrangedSubview:[self _keyButton:@"ESC" action:@selector(_tapESC)]];
-  [row1 addArrangedSubview:[self _keyButton:@"`" action:@selector(_tapGrave)]];
+  UIButton *graveBtn = [self _keyButton:@"`" action:@selector(_tapGrave)];
+  graveBtn.tag = kTagKeyGrave;
+  [row1 addArrangedSubview:graveBtn];
   [row1 addArrangedSubview:[self _keyButton:@"TAB" action:@selector(_tapTab)]];
-  [row1 addArrangedSubview:[self _keyButton:@"/" action:@selector(_tapSlash)]];
-  [row1 addArrangedSubview:[self _keyButton:@"—" action:@selector(_tapMinus)]];
-  [row1
-      addArrangedSubview:[self _keyButton:@"HOME" action:@selector(_tapHome)]];
+  UIButton *slashBtn = [self _keyButton:@"/" action:@selector(_tapSlash)];
+  slashBtn.tag = kTagKeySlash;
+  [row1 addArrangedSubview:slashBtn];
+  UIButton *minusBtn = [self _keyButton:@"—" action:@selector(_tapMinus)];
+  minusBtn.tag = kTagKeyMinus;
+  [row1 addArrangedSubview:minusBtn];
   [row1
       addArrangedSubview:[self _keyButton:@"↑" action:@selector(_tapArrowUp)]];
+  [row1
+      addArrangedSubview:[self _keyButton:@"HOME" action:@selector(_tapHome)]];
   [row1 addArrangedSubview:[self _keyButton:@"END" action:@selector(_tapEnd)]];
   [row1 addArrangedSubview:[self _keyButton:@"PGUP"
                                      action:@selector(_tapPageUp)]];
@@ -1014,13 +1097,37 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   [row2 addArrangedSubview:[self _keyButton:@"PGDN"
                                      action:@selector(_tapPageDown)]];
 
-  UIButton *dismissBtn =
+  _keyboardModeButton =
       [self _keyButton:@"⌨↓" action:@selector(_tapDismissKeyboard)];
-  [row2 addArrangedSubview:dismissBtn];
+  UIPanGestureRecognizer *modePan = [[UIPanGestureRecognizer alloc]
+      initWithTarget:self
+              action:@selector(_handleKeyboardModeButtonPan:)];
+  [_keyboardModeButton addGestureRecognizer:modePan];
+  [row2 addArrangedSubview:_keyboardModeButton];
+
+  [self _updateShiftSensitiveKeyLabels];
+  [self _updateKeyboardModeButtonTitle];
+  [self _updateAccessoryBarHeightForMode];
 
   return bar;
 }
 #endif // !TARGET_OS_VISION
+
+- (void)_updateAccessoryBarHeightForMode {
+  if (!_accessoryBarHeightConstraint) {
+    return;
+  }
+  CGFloat contentHeight = 80.0;
+  CGFloat bottomInset =
+      (_keyboardUiMode == WWNKeyboardUiModeAccessoryOnly)
+          ? MAX(self.safeAreaInsets.bottom, 0.0)
+          : 0.0;
+  CGFloat targetHeight = contentHeight + bottomInset;
+  if (fabs(_accessoryBarHeightConstraint.constant - targetHeight) <= 0.5) {
+    return;
+  }
+  _accessoryBarHeightConstraint.constant = targetHeight;
+}
 
 - (UIStackView *)_makeRowStack {
   UIStackView *stack = [[UIStackView alloc] init];
@@ -1107,7 +1214,294 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 }
 
 - (void)_tapDismissKeyboard {
-  [self resignFirstResponder];
+  if (_draggedModeButton) {
+    _draggedModeButton = NO;
+    return;
+  }
+  if (_keyboardUiMode == WWNKeyboardUiModeExpanded) {
+    [self _setKeyboardUiMode:WWNKeyboardUiModeAccessoryOnly];
+  } else {
+    [self _setKeyboardUiMode:WWNKeyboardUiModeExpanded];
+  }
+}
+
+- (void)_handleKeyboardModeButtonPan:(UIPanGestureRecognizer *)gesture {
+  if (_keyboardUiMode != WWNKeyboardUiModeAccessoryOnly) {
+    return;
+  }
+  CGPoint translation = [gesture translationInView:self];
+  if (gesture.state == UIGestureRecognizerStateBegan) {
+    _draggedModeButton = NO;
+  } else if (gesture.state == UIGestureRecognizerStateChanged) {
+    if (fabs(translation.x) > kKeyboardModeDragThreshold ||
+        fabs(translation.y) > kKeyboardModeDragThreshold) {
+      _draggedModeButton = YES;
+    }
+  } else if (gesture.state == UIGestureRecognizerStateEnded) {
+    if (_draggedModeButton) {
+      [self _setKeyboardUiMode:WWNKeyboardUiModePip];
+    }
+    _draggedModeButton = NO;
+  } else if (gesture.state == UIGestureRecognizerStateCancelled ||
+             gesture.state == UIGestureRecognizerStateFailed) {
+    _draggedModeButton = NO;
+  }
+}
+
+- (void)_updateKeyboardModeButtonTitle {
+  if (!_keyboardModeButton) {
+    return;
+  }
+  NSString *title = _keyboardUiMode == WWNKeyboardUiModeExpanded ? @"⌨↓" : @"⌨↑";
+  [_keyboardModeButton setTitle:title forState:UIControlStateNormal];
+}
+
+- (void)_updateShiftSensitiveKeyLabels {
+  if (!_accessoryBar) {
+    return;
+  }
+  BOOL shiftShown = [self _shiftAppearanceActive];
+  UIButton *graveBtn = [_accessoryBar viewWithTag:kTagKeyGrave];
+  UIButton *slashBtn = [_accessoryBar viewWithTag:kTagKeySlash];
+  UIButton *minusBtn = [_accessoryBar viewWithTag:kTagKeyMinus];
+  [graveBtn setTitle:(shiftShown ? @"~" : @"`") forState:UIControlStateNormal];
+  [slashBtn setTitle:(shiftShown ? @"?" : @"/") forState:UIControlStateNormal];
+  [minusBtn setTitle:(shiftShown ? @"_" : @"—") forState:UIControlStateNormal];
+}
+
+- (void)_ensureKeyboardPipButton {
+  if (_keyboardPipButton) {
+    return;
+  }
+  _keyboardPipButton = [UIButton buttonWithType:UIButtonTypeCustom];
+  _keyboardPipButton.frame =
+      CGRectMake(16, 160, kKeyboardPipExpandedWidth, kKeyboardPipExpandedHeight);
+  _keyboardPipButton.layer.cornerRadius = 20;
+  _keyboardPipButton.clipsToBounds = YES;
+  _keyboardPipButton.backgroundColor = UIColor.clearColor;
+  [_keyboardPipButton setTitle:nil forState:UIControlStateNormal];
+  [_keyboardPipButton setImage:[UIImage systemImageNamed:@"keyboard"]
+                      forState:UIControlStateNormal];
+  _keyboardPipButton.tintColor = [UIColor labelColor];
+  _keyboardPipButton.adjustsImageWhenHighlighted = NO;
+
+  UIVisualEffect *effect = nil;
+  if (@available(iOS 26, *)) {
+#if !TARGET_OS_TV
+    effect = [[UIGlassEffect alloc] init];
+#else
+    effect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemChromeMaterial];
+#endif
+  } else {
+    effect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemChromeMaterial];
+  }
+  UIVisualEffectView *fx = [[UIVisualEffectView alloc] initWithEffect:effect];
+  fx.tag = kTagKeyboardPipEffectView;
+  fx.userInteractionEnabled = NO;
+  fx.frame = _keyboardPipButton.bounds;
+  fx.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+  fx.layer.cornerRadius = 20;
+  fx.clipsToBounds = YES;
+  [_keyboardPipButton insertSubview:fx atIndex:0];
+
+  _keyboardPipButton.layer.borderWidth = 1.0;
+  _keyboardPipButton.layer.borderColor =
+      [UIColor colorWithWhite:1.0 alpha:0.2].CGColor;
+  [_keyboardPipButton addTarget:self
+                         action:@selector(_tapKeyboardPipButton:)
+               forControlEvents:UIControlEventTouchUpInside];
+  UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc]
+      initWithTarget:self
+              action:@selector(_handleKeyboardPipPan:)];
+  [_keyboardPipButton addGestureRecognizer:pan];
+  [self addSubview:_keyboardPipButton];
+}
+
+- (void)_updateCollapsedInputViewHeight {
+  if (!_collapsedInputView) {
+    return;
+  }
+  _collapsedInputView.frame = CGRectMake(0, 0, 1, 1);
+}
+
+- (void)_tapKeyboardPipButton:(UIButton *)sender {
+  (void)sender;
+  [self _setKeyboardUiMode:WWNKeyboardUiModeAccessoryOnly];
+}
+
+- (void)_applyKeyboardPipDockVisualForSide:(WWNKeyboardPipDockSide)side
+                                   animated:(BOOL)animated {
+  if (!_keyboardPipButton) {
+    return;
+  }
+  BOOL docked = side != WWNKeyboardPipDockSideNone;
+  CGFloat targetW = docked ? kKeyboardPipChevronWidth : kKeyboardPipExpandedWidth;
+  CGFloat targetH = docked ? kKeyboardPipChevronHeight : kKeyboardPipExpandedHeight;
+  CGFloat targetCorner = docked ? 14.0 : 20.0;
+  UIImage *targetImage = nil;
+  if (docked) {
+    targetImage = [UIImage systemImageNamed:(side == WWNKeyboardPipDockSideLeft
+                                                 ? @"chevron.right"
+                                                 : @"chevron.left")];
+  } else {
+    targetImage = [UIImage systemImageNamed:@"keyboard"];
+  }
+
+  void (^changes)(void) = ^{
+    CGPoint center = _keyboardPipButton.center;
+    CGRect frame = _keyboardPipButton.frame;
+    frame.size.width = targetW;
+    frame.size.height = targetH;
+    _keyboardPipButton.frame = frame;
+    _keyboardPipButton.center = center;
+    _keyboardPipButton.layer.cornerRadius = targetCorner;
+    [_keyboardPipButton setImage:targetImage forState:UIControlStateNormal];
+    _keyboardPipButton.layer.borderColor =
+        [UIColor colorWithWhite:1.0 alpha:(docked ? 0.26 : 0.2)].CGColor;
+  };
+
+  if (!animated) {
+    changes();
+    return;
+  }
+  [UIView animateWithDuration:0.22
+                        delay:0
+                      options:UIViewAnimationOptionBeginFromCurrentState |
+                              UIViewAnimationOptionAllowUserInteraction
+                   animations:changes
+                   completion:nil];
+}
+
+- (void)_handleKeyboardPipPan:(UIPanGestureRecognizer *)gesture {
+  if (!_keyboardPipButton) {
+    return;
+  }
+  if (gesture.state == UIGestureRecognizerStateBegan &&
+      _keyboardPipDockSide != WWNKeyboardPipDockSideNone) {
+    [self _applyKeyboardPipDockVisualForSide:WWNKeyboardPipDockSideNone animated:YES];
+    _keyboardPipDockSide = WWNKeyboardPipDockSideNone;
+  }
+  CGPoint translation = [gesture translationInView:self];
+  if (gesture.state == UIGestureRecognizerStateChanged ||
+      gesture.state == UIGestureRecognizerStateEnded) {
+    CGPoint center = _keyboardPipButton.center;
+    center.x += translation.x;
+    center.y += translation.y;
+    UIEdgeInsets insets = self.safeAreaInsets;
+    CGFloat halfW = CGRectGetWidth(_keyboardPipButton.bounds) * 0.5;
+    CGFloat halfH = CGRectGetHeight(_keyboardPipButton.bounds) * 0.5;
+    CGFloat minX = halfW + insets.left;
+    CGFloat maxX = CGRectGetWidth(self.bounds) - halfW - insets.right;
+    CGFloat minY = halfH + insets.top;
+    CGFloat maxY = CGRectGetHeight(self.bounds) - halfH - insets.bottom;
+    center.x = MAX(minX, MIN(maxX, center.x));
+    center.y = MAX(minY, MIN(maxY, center.y));
+    _keyboardPipButton.center = center;
+    [gesture setTranslation:CGPointZero inView:self];
+    if (gesture.state == UIGestureRecognizerStateEnded) {
+      CGPoint velocity = [gesture velocityInView:self];
+      [self _dockKeyboardPipButtonToNearestEdgeAnimated:YES
+                                              velocityX:velocity.x];
+    }
+  }
+}
+
+- (void)_dockKeyboardPipButtonToNearestEdgeAnimated:(BOOL)animated
+                                          velocityX:(CGFloat)velocityX {
+  if (!_keyboardPipButton || _keyboardPipButton.hidden) {
+    return;
+  }
+  UIEdgeInsets insets = self.safeAreaInsets;
+  CGFloat halfH = CGRectGetHeight(_keyboardPipButton.bounds) * 0.5;
+  CGFloat chevronHalfW = kKeyboardPipChevronWidth * 0.5;
+  CGFloat visibleMinX = chevronHalfW + insets.left;
+  CGFloat visibleMaxX = CGRectGetWidth(self.bounds) - chevronHalfW - insets.right;
+  CGFloat minY = halfH + insets.top;
+  CGFloat maxY = CGRectGetHeight(self.bounds) - halfH - insets.bottom;
+  if (visibleMaxX <= visibleMinX || maxY <= minY) {
+    return;
+  }
+
+  CGFloat hiddenMinX = insets.left + kKeyboardPipEdgePeekWidth - chevronHalfW;
+  CGFloat hiddenMaxX = CGRectGetWidth(self.bounds) - insets.right -
+                       kKeyboardPipEdgePeekWidth + chevronHalfW;
+
+  CGPoint current = _keyboardPipButton.center;
+  CGFloat targetX = 0;
+  WWNKeyboardPipDockSide dockSide = WWNKeyboardPipDockSideLeft;
+  if (fabs(velocityX) >= kKeyboardPipFlingVelocityThreshold) {
+    BOOL toLeft = velocityX < 0;
+    targetX = toLeft ? hiddenMinX : hiddenMaxX;
+    dockSide = toLeft ? WWNKeyboardPipDockSideLeft : WWNKeyboardPipDockSideRight;
+  } else {
+    CGFloat distLeft = fabs(current.x - visibleMinX);
+    CGFloat distRight = fabs(visibleMaxX - current.x);
+    BOOL toLeft = distLeft <= distRight;
+    targetX = toLeft ? hiddenMinX : hiddenMaxX;
+    dockSide = toLeft ? WWNKeyboardPipDockSideLeft : WWNKeyboardPipDockSideRight;
+  }
+  CGFloat targetY = MAX(minY, MIN(maxY, current.y));
+  CGPoint target = CGPointMake(targetX, targetY);
+
+  [self _applyKeyboardPipDockVisualForSide:dockSide animated:animated];
+  _keyboardPipDockSide = dockSide;
+
+  if (!animated) {
+    _keyboardPipButton.center = target;
+    return;
+  }
+  [UIView animateWithDuration:0.25
+                        delay:0
+       usingSpringWithDamping:0.85
+        initialSpringVelocity:0.6
+                      options:UIViewAnimationOptionBeginFromCurrentState |
+                              UIViewAnimationOptionAllowUserInteraction
+                   animations:^{
+                     _keyboardPipButton.center = target;
+                   }
+                   completion:nil];
+}
+
+- (void)_updateKeyboardPipButtonVisualState:(BOOL)active {
+  if (!_keyboardPipButton) {
+    return;
+  }
+  _keyboardPipButton.alpha = active ? 1.0 : 0.92;
+  _keyboardPipButton.transform = active ? CGAffineTransformIdentity
+                                        : CGAffineTransformMakeScale(0.98, 0.98);
+  UIVisualEffectView *fx =
+      (UIVisualEffectView *)[_keyboardPipButton viewWithTag:kTagKeyboardPipEffectView];
+  if (fx) {
+    fx.alpha = active ? 1.0 : 0.9;
+  }
+}
+
+- (void)_setKeyboardUiMode:(WWNKeyboardUiMode)mode {
+  _keyboardUiMode = mode;
+  [self _updateKeyboardModeButtonTitle];
+
+  if (mode == WWNKeyboardUiModePip) {
+    [self resignFirstResponder];
+    [self _ensureKeyboardPipButton];
+    _keyboardPipButton.hidden = NO;
+    _keyboardPipDockSide = WWNKeyboardPipDockSideNone;
+    [self _applyKeyboardPipDockVisualForSide:WWNKeyboardPipDockSideNone
+                                    animated:NO];
+    [self _updateKeyboardPipButtonVisualState:YES];
+    [self _dockKeyboardPipButtonToNearestEdgeAnimated:NO velocityX:0];
+    return;
+  }
+
+  if (_keyboardPipButton) {
+    [self _updateKeyboardPipButtonVisualState:NO];
+    _keyboardPipButton.hidden = YES;
+  }
+  _keyboardPipDockSide = WWNKeyboardPipDockSideNone;
+
+  [self _updateAccessoryBarHeightForMode];
+  [self _updateCollapsedInputViewHeight];
+  [self becomeFirstResponder];
+  [self reloadInputViews];
 }
 
 /// Route accessory-bar keys to the iOS PTY when weston-terminal is active.
@@ -1314,6 +1708,10 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   }
 
   [self _updateModifierButtonAppearance:btn active:*active locked:*locked];
+  if (btn.tag == kTagModShift) {
+    [self _setVirtualShiftAppearanceActive:NO];
+    [self _updateShiftSensitiveKeyLabels];
+  }
 }
 
 - (void)_updateModifierButtonAppearance:(UIButton *)btn
@@ -1369,48 +1767,64 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   }
 }
 
+- (void)_queueModifierButtonAppearanceUpdateForTag:(NSInteger)tag
+                                            active:(BOOL)active
+                                            locked:(BOOL)locked {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    if (!_accessoryBar) {
+      return;
+    }
+    UIButton *button = [_accessoryBar viewWithTag:tag];
+    if (!button) {
+      return;
+    }
+    [self _updateModifierButtonAppearance:button active:active locked:locked];
+  });
+}
+
 /// Clear one-shot (sticky) modifiers after a key press.
 /// Locked modifiers are preserved until the user explicitly taps them off.
 - (void)_clearStickyModifiers {
-  UIView *bar = _accessoryBar;
+  BOOL shiftChanged = NO;
 
   if (_modShiftActive && !_modShiftLocked) {
     _modShiftActive = NO;
-    if (bar) {
-      UIButton *b = [bar viewWithTag:kTagModShift];
-      if (b)
-        [self _updateModifierButtonAppearance:b active:NO locked:NO];
-    }
+    shiftChanged = YES;
+    [self _queueModifierButtonAppearanceUpdateForTag:kTagModShift
+                                              active:NO
+                                              locked:NO];
+  }
+  if (_virtualShiftActive) {
+    [self _setVirtualShiftAppearanceActive:NO];
+    shiftChanged = YES;
   }
   if (_modCtrlActive && !_modCtrlLocked) {
     _modCtrlActive = NO;
-    if (bar) {
-      UIButton *b = [bar viewWithTag:kTagModCtrl];
-      if (b)
-        [self _updateModifierButtonAppearance:b active:NO locked:NO];
-    }
+    [self _queueModifierButtonAppearanceUpdateForTag:kTagModCtrl
+                                              active:NO
+                                              locked:NO];
   }
   if (_modAltActive && !_modAltLocked) {
     _modAltActive = NO;
-    if (bar) {
-      UIButton *b = [bar viewWithTag:kTagModAlt];
-      if (b)
-        [self _updateModifierButtonAppearance:b active:NO locked:NO];
-    }
+    [self _queueModifierButtonAppearanceUpdateForTag:kTagModAlt
+                                              active:NO
+                                              locked:NO];
   }
   if (_modSuperActive && !_modSuperLocked) {
     _modSuperActive = NO;
-    if (bar) {
-      UIButton *b = [bar viewWithTag:kTagModSuper];
-      if (b)
-        [self _updateModifierButtonAppearance:b active:NO locked:NO];
-    }
+    [self _queueModifierButtonAppearanceUpdateForTag:kTagModSuper
+                                              active:NO
+                                              locked:NO];
+  }
+  if (shiftChanged) {
+    [self _updateShiftSensitiveKeyLabels];
   }
 }
 
 /// Force-clear all modifiers (both sticky and locked). Used when the
 /// keyboard is dismissed entirely.
 - (void)_clearAllModifiers {
+  BOOL shiftChanged = _modShiftActive || _modShiftLocked || _virtualShiftActive;
   _modShiftActive = NO;
   _modCtrlActive = NO;
   _modAltActive = NO;
@@ -1419,14 +1833,22 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   _modCtrlLocked = NO;
   _modAltLocked = NO;
   _modSuperLocked = NO;
+  _virtualShiftActive = NO;
 
-  UIView *bar = _accessoryBar;
-  if (!bar)
-    return;
-  for (NSInteger tag = kTagModShift; tag <= kTagModSuper; tag++) {
-    UIButton *b = [bar viewWithTag:tag];
-    if (b)
-      [self _updateModifierButtonAppearance:b active:NO locked:NO];
+  [self _queueModifierButtonAppearanceUpdateForTag:kTagModShift
+                                            active:NO
+                                            locked:NO];
+  [self _queueModifierButtonAppearanceUpdateForTag:kTagModCtrl
+                                            active:NO
+                                            locked:NO];
+  [self _queueModifierButtonAppearanceUpdateForTag:kTagModAlt
+                                            active:NO
+                                            locked:NO];
+  [self _queueModifierButtonAppearanceUpdateForTag:kTagModSuper
+                                            active:NO
+                                            locked:NO];
+  if (shiftChanged) {
+    [self _updateShiftSensitiveKeyLabels];
   }
 }
 
@@ -1462,7 +1884,7 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   if (_currentInputMode != WWNTouchInputModeTouchpad) {
     return;
   }
-  if (![[WWNPreferencesManager sharedManager] renderMacOSPointer]) {
+  if (![WWNMachineProfileStore resolvedRenderMacOSPointerActive]) {
     _cursorLayer.hidden = YES;
     return;
   }
@@ -1549,6 +1971,8 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 - (void)insertText:(NSString *)text {
   if (text.length == 0)
     return;
+
+  [self _syncShiftAppearanceFromVirtualInputText:text];
 
   // Physical keyboard events are handled in pressesBegan:/pressesEnded:
   // which send raw keycodes. Suppress the duplicate insertText: that iOS's
@@ -2193,6 +2617,7 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
     _activeTouchCount = 0;
   if (_activeTouchCount == 0 && _currentInputMode == WWNTouchInputModeTouchpad) {
     _touchpadPointerEntered = NO;
+    _touchpadPointerWindowId = 0;
   }
 }
 
@@ -2223,16 +2648,19 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
     return;
   }
   WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+  uint64_t targetWindowId = self.wwnWindowId;
+  CGPoint surfaceLoc = [self _surfacePointForViewPoint:loc];
+  [self _resolveTargetWindowId:&targetWindowId
+                  surfacePoint:&surfaceLoc
+                  forViewPoint:loc];
   if (enterIfNeeded && !_multitouchPointerEntered) {
-    CGPoint surfaceLoc = [self _surfacePointForViewPoint:loc];
-    [bridge injectPointerEnterForWindow:self.wwnWindowId
+    [bridge injectPointerEnterForWindow:targetWindowId
                                       x:surfaceLoc.x
                                       y:surfaceLoc.y
                               timestamp:timestampMs];
     _multitouchPointerEntered = YES;
   }
-  CGPoint surfaceLoc = [self _surfacePointForViewPoint:loc];
-  [bridge injectPointerMotionForWindow:self.wwnWindowId
+  [bridge injectPointerMotionForWindow:targetWindowId
                                      x:surfaceLoc.x
                                      y:surfaceLoc.y
                              timestamp:timestampMs];
@@ -2256,9 +2684,17 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
     CGPoint loc = [touch locationInView:self];
     // Route wl_touch through the same letterbox-aware surface mapping the
     // pointer path uses, so touch points and the rendered cursor coincide.
+    uint64_t targetWindowId = self.wwnWindowId;
     CGPoint sloc = [self _surfacePointForViewPoint:loc];
+    [self _resolveTargetWindowId:&targetWindowId
+                    surfacePoint:&sloc
+                    forViewPoint:loc];
     int32_t touchId = (int32_t)touch.hash;
-    [bridge injectTouchDown:touchId x:sloc.x y:sloc.y timestamp:ts];
+    [bridge injectTouchDownForWindow:targetWindowId
+                             touchId:touchId
+                                   x:sloc.x
+                                   y:sloc.y
+                           timestamp:ts];
     if (touchId == _primaryTouchId) {
       [self _multitouch_mirrorPointerAt:loc
                               timestamp:ts
@@ -2275,9 +2711,17 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 
   for (UITouch *touch in touches) {
     CGPoint loc = [touch locationInView:self];
+    uint64_t targetWindowId = self.wwnWindowId;
     CGPoint sloc = [self _surfacePointForViewPoint:loc];
+    [self _resolveTargetWindowId:&targetWindowId
+                    surfacePoint:&sloc
+                    forViewPoint:loc];
     int32_t touchId = (int32_t)touch.hash;
-    [bridge injectTouchMotion:touchId x:sloc.x y:sloc.y timestamp:ts];
+    [bridge injectTouchMotionForWindow:targetWindowId
+                               touchId:touchId
+                                     x:sloc.x
+                                     y:sloc.y
+                             timestamp:ts];
     if (touchId == _primaryTouchId) {
       // Movement tracking stays in view space (tap threshold is a screen-space
       // distance); only the injected coordinates are surface-mapped.
@@ -2304,17 +2748,24 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
       CGPoint loc = [touch locationInView:self];
       [self _multitouch_mirrorPointerAt:loc timestamp:ts enterIfNeeded:NO];
       if (isShortTap && (NSInteger)touches.count <= 1 && _activeTouchCount <= 1) {
-        [bridge injectPointerButtonForWindow:self.wwnWindowId
+        uint64_t targetWindowId = self.wwnWindowId;
+        CGPoint sloc = [self _surfacePointForViewPoint:loc];
+        [self _resolveTargetWindowId:&targetWindowId
+                        surfacePoint:&sloc
+                        forViewPoint:loc];
+        [bridge injectPointerButtonForWindow:targetWindowId
                                       button:BTN_LEFT
                                      pressed:YES
                                    timestamp:ts];
-        [bridge injectPointerButtonForWindow:self.wwnWindowId
+        [bridge injectPointerButtonForWindow:targetWindowId
                                       button:BTN_LEFT
                                      pressed:NO
                                    timestamp:ts + 1];
       }
     }
-    [bridge injectTouchUp:touchId timestamp:ts];
+    [bridge injectTouchUpForWindow:self.wwnWindowId
+                           touchId:touchId
+                         timestamp:ts];
   }
   [bridge injectTouchFrame];
 }
@@ -2392,8 +2843,10 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   uint32_t ts = [self _timestampMs];
   [self _touchpad_ensurePointerEntered];
   [self _touchpad_syncPointerPosition:ts];
+  uint64_t buttonWindowId =
+      _touchpadPointerWindowId != 0 ? _touchpadPointerWindowId : self.wwnWindowId;
   [[WWNCompositorBridge sharedBridge]
-      injectPointerButtonForWindow:self.wwnWindowId
+      injectPointerButtonForWindow:buttonWindowId
                             button:BTN_LEFT
                            pressed:YES
                          timestamp:ts];
@@ -2476,15 +2929,17 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 
     _touchTotalMovement += fabs(dx) + fabs(dy);
 
+    uint64_t axisWindowId =
+        _touchpadPointerWindowId != 0 ? _touchpadPointerWindowId : self.wwnWindowId;
     if (fabs(dy) > 0.5) {
-      [bridge injectPointerAxisForWindow:self.wwnWindowId
+      [bridge injectPointerAxisForWindow:axisWindowId
                                     axis:0 // vertical
                                    value:-dy
                                 discrete:0
                                timestamp:ts];
     }
     if (fabs(dx) > 0.5) {
-      [bridge injectPointerAxisForWindow:self.wwnWindowId
+      [bridge injectPointerAxisForWindow:axisWindowId
                                     axis:1 // horizontal
                                    value:-dx
                                 discrete:0
@@ -2517,12 +2972,17 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
     if (clampedY > self.bounds.size.height) clampedY = self.bounds.size.height;
     _pointerPos.y = clampedY;
 
-    CGPoint surfacePos = [self _surfacePointerPosition];
+    uint64_t targetWindowId = self.wwnWindowId;
+    CGPoint surfacePos = CGPointZero;
+    [self _resolveTargetWindowId:&targetWindowId
+                    surfacePoint:&surfacePos
+                    forViewPoint:_pointerPos];
     // With a drag engaged the LMB stays down, so this motion drags.
-    [bridge injectPointerMotionForWindow:self.wwnWindowId
+    [bridge injectPointerMotionForWindow:targetWindowId
                                        x:surfacePos.x
                                        y:surfacePos.y
                                timestamp:ts];
+    _touchpadPointerWindowId = targetWindowId;
 
     [self _ensureTouchpadCursorVisible];
     [self _repositionCursorLayer];
@@ -2543,9 +3003,11 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   BOOL gestureEnding = (remaining <= 0);
 
   if (_dragging) {
+    uint64_t buttonWindowId =
+        _touchpadPointerWindowId != 0 ? _touchpadPointerWindowId : self.wwnWindowId;
     // Release the sustained LMB-down that the tap-and-hold drag engaged.
     [self _touchpad_syncPointerPosition:ts];
-    [bridge injectPointerButtonForWindow:self.wwnWindowId
+    [bridge injectPointerButtonForWindow:buttonWindowId
                                   button:BTN_LEFT
                                  pressed:NO
                                timestamp:ts];
@@ -2555,11 +3017,11 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
     // Two-finger tap → right click at virtual cursor.
     [self _touchpad_ensurePointerEntered];
     [self _touchpad_syncPointerPosition:ts];
-    [bridge injectPointerButtonForWindow:self.wwnWindowId
+    [bridge injectPointerButtonForWindow:_touchpadPointerWindowId
                                   button:BTN_RIGHT
                                  pressed:YES
                                timestamp:ts];
-    [bridge injectPointerButtonForWindow:self.wwnWindowId
+    [bridge injectPointerButtonForWindow:_touchpadPointerWindowId
                                   button:BTN_RIGHT
                                  pressed:NO
                                timestamp:ts + 1];
@@ -2568,11 +3030,11 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
     // Single-finger tap → left click at virtual cursor.
     [self _touchpad_ensurePointerEntered];
     [self _touchpad_syncPointerPosition:ts];
-    [bridge injectPointerButtonForWindow:self.wwnWindowId
+    [bridge injectPointerButtonForWindow:_touchpadPointerWindowId
                                   button:BTN_LEFT
                                  pressed:YES
                                timestamp:ts];
-    [bridge injectPointerButtonForWindow:self.wwnWindowId
+    [bridge injectPointerButtonForWindow:_touchpadPointerWindowId
                                   button:BTN_LEFT
                                  pressed:NO
                                timestamp:ts + 1];
@@ -2586,8 +3048,10 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 
 - (void)_touchpad_touchesCancelled {
   if (_dragging) {
+    uint64_t buttonWindowId =
+        _touchpadPointerWindowId != 0 ? _touchpadPointerWindowId : self.wwnWindowId;
     [[WWNCompositorBridge sharedBridge]
-        injectPointerButtonForWindow:self.wwnWindowId
+        injectPointerButtonForWindow:buttonWindowId
                               button:BTN_LEFT
                              pressed:NO
                            timestamp:[self _timestampMs]];
@@ -2598,6 +3062,7 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   _activeTouchCount = 0;
   _maxTouchCount = 0;
   _touchpadPointerEntered = NO;
+  _touchpadPointerWindowId = 0;
 }
 
 /// Map the virtual cursor position into Wayland surface coordinates when
@@ -2652,34 +3117,110 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   if (self.wwnWindowId == 0) {
     return;
   }
-  if (_touchpadPointerEntered) {
+  uint64_t targetWindowId = self.wwnWindowId;
+  CGPoint pos = CGPointZero;
+  if (![self _resolveTargetWindowId:&targetWindowId
+                        surfacePoint:&pos
+                        forViewPoint:_pointerPos]) {
     return;
   }
-  CGPoint pos = [self _surfacePointerPosition];
+  if (_touchpadPointerEntered && _touchpadPointerWindowId == targetWindowId) {
+    return;
+  }
   uint32_t ts = [self _timestampMs];
   [[WWNCompositorBridge sharedBridge]
-      injectPointerEnterForWindow:self.wwnWindowId
+      injectPointerEnterForWindow:targetWindowId
                                 x:pos.x
                                 y:pos.y
                         timestamp:ts];
   [[WWNCompositorBridge sharedBridge]
-      injectPointerMotionForWindow:self.wwnWindowId
+      injectPointerMotionForWindow:targetWindowId
                                  x:pos.x
                                  y:pos.y
                          timestamp:ts];
   _touchpadPointerEntered = YES;
+  _touchpadPointerWindowId = targetWindowId;
 }
 
 - (void)_touchpad_syncPointerPosition:(uint32_t)timestampMs {
   if (self.wwnWindowId == 0) {
     return;
   }
-  CGPoint pos = [self _surfacePointerPosition];
+  uint64_t targetWindowId = self.wwnWindowId;
+  CGPoint pos = CGPointZero;
+  if (![self _resolveTargetWindowId:&targetWindowId
+                        surfacePoint:&pos
+                        forViewPoint:_pointerPos]) {
+    return;
+  }
+  if (!_touchpadPointerEntered || _touchpadPointerWindowId != targetWindowId) {
+    [[WWNCompositorBridge sharedBridge]
+        injectPointerEnterForWindow:targetWindowId
+                                  x:pos.x
+                                  y:pos.y
+                          timestamp:timestampMs];
+    _touchpadPointerEntered = YES;
+    _touchpadPointerWindowId = targetWindowId;
+  }
   [[WWNCompositorBridge sharedBridge]
-      injectPointerMotionForWindow:self.wwnWindowId
+      injectPointerMotionForWindow:targetWindowId
                                  x:pos.x
                                  y:pos.y
                          timestamp:timestampMs];
+}
+
+- (WWNCompositorView_ios *)_topmostCompositorViewForPoint:(CGPoint)point
+                                                    inView:(UIView *)view {
+  for (UIView *subview in [view.subviews reverseObjectEnumerator]) {
+    if (subview.hidden || subview.alpha <= 0.01) {
+      continue;
+    }
+    CGPoint subPoint = [view convertPoint:point toView:subview];
+    if (![subview pointInside:subPoint withEvent:nil]) {
+      continue;
+    }
+    WWNCompositorView_ios *nested =
+        [self _topmostCompositorViewForPoint:subPoint inView:subview];
+    if (nested) {
+      return nested;
+    }
+    if ([subview isKindOfClass:[WWNCompositorView_ios class]]) {
+      return (WWNCompositorView_ios *)subview;
+    }
+  }
+  if ([view isKindOfClass:[WWNCompositorView_ios class]] &&
+      [view pointInside:point withEvent:nil]) {
+    return (WWNCompositorView_ios *)view;
+  }
+  return nil;
+}
+
+- (BOOL)_resolveTargetWindowId:(uint64_t *)outWindowId
+                  surfacePoint:(CGPoint *)outSurfacePoint
+                  forViewPoint:(CGPoint)viewPoint {
+  if (![self pointInside:viewPoint withEvent:nil]) {
+    return NO;
+  }
+  WWNCompositorView_ios *target =
+      [self _topmostCompositorViewForPoint:viewPoint inView:self];
+  if (!target || target.wwnWindowId == 0) {
+    return NO;
+  }
+  CGPoint targetPoint = [self convertPoint:viewPoint toView:target];
+  CGPoint surfacePoint = [target _surfacePointForViewPoint:targetPoint];
+  if (outWindowId) {
+    *outWindowId = target.wwnWindowId;
+  }
+  if (outSurfacePoint) {
+    *outSurfacePoint = surfacePoint;
+  }
+  return YES;
+}
+
+- (void)setWaylandFrameOpaque:(BOOL)opaque {
+  _waylandFrameOpaque = opaque;
+  _waylandFrameView.opaque = opaque;
+  _waylandFrameView.layer.opaque = opaque;
 }
 
 /// Compute the centroid (average position) of all touches currently on
@@ -2699,6 +3240,64 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   if (count == 0)
     return CGPointZero;
   return CGPointMake(sumX / count, sumY / count);
+}
+
+- (BOOL)_shiftAppearanceActive {
+  return _modShiftActive || _virtualShiftActive;
+}
+
+- (void)_setVirtualShiftAppearanceActive:(BOOL)active {
+  if (_virtualShiftActive == active) {
+    return;
+  }
+  _virtualShiftActive = active;
+  [self _queueModifierButtonAppearanceUpdateForTag:kTagModShift
+                                            active:[self _shiftAppearanceActive]
+                                            locked:_modShiftLocked];
+  [self _updateShiftSensitiveKeyLabels];
+}
+
+- (BOOL)_textNeedsShiftAppearance:(NSString *)text {
+  for (NSUInteger i = 0; i < text.length; i++) {
+    unichar ch = [text characterAtIndex:i];
+    if (CFStringIsSurrogateHighCharacter(ch) ||
+        CFStringIsSurrogateLowCharacter(ch)) {
+      continue;
+    }
+    uint32_t keycode = 0;
+    BOOL needsShift = NO;
+    if (charToLinuxKeycode(ch, &keycode, &needsShift) && needsShift) {
+      return YES;
+    }
+  }
+  return NO;
+}
+
+- (void)_syncShiftAppearanceFromVirtualInputText:(NSString *)text {
+  BOOL needsShift = [self _textNeedsShiftAppearance:text];
+  if (needsShift) {
+    [self _setVirtualShiftAppearanceActive:YES];
+    return;
+  }
+  if (!_modShiftActive && !_modShiftLocked &&
+      (_physicalModifiers & XKB_MOD_SHIFT) == 0 && !_physicalCapsLockActive) {
+    [self _setVirtualShiftAppearanceActive:NO];
+  }
+}
+
+- (void)_syncAccessoryShiftFromNativeKeyboard {
+  BOOL nativeShiftDown = (_physicalModifiers & XKB_MOD_SHIFT) != 0;
+  BOOL activeNow = nativeShiftDown || _physicalCapsLockActive;
+  BOOL lockedNow = _physicalCapsLockActive;
+  if (_modShiftActive == activeNow && _modShiftLocked == lockedNow) {
+    return;
+  }
+  _modShiftActive = activeNow;
+  _modShiftLocked = lockedNow;
+  [self _queueModifierButtonAppearanceUpdateForTag:kTagModShift
+                                            active:[self _shiftAppearanceActive]
+                                            locked:_modShiftLocked];
+  [self _updateShiftSensitiveKeyLabels];
 }
 
 // ---------------------------------------------------------------------------
@@ -2751,12 +3350,18 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 
       [bridge injectKeyWithKeycode:kc pressed:YES timestamp:ts];
 
+      if (kc == KEY_CAPSLOCK) {
+        _physicalCapsLockActive = !_physicalCapsLockActive;
+      }
       if (isModifierKeycode(kc)) {
         _physicalModifiers |= modifierBitForKeycode(kc);
         [bridge injectModifiersWithDepressed:_physicalModifiers
                                      latched:0
                                       locked:0
                                        group:0];
+      }
+      if (kc == KEY_CAPSLOCK || kc == KEY_LEFTSHIFT || kc == KEY_RIGHTSHIFT) {
+        [self _syncAccessoryShiftFromNativeKeyboard];
       }
     }
 
@@ -2802,6 +3407,9 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
                                       locked:0
                                        group:0];
       }
+      if (kc == KEY_CAPSLOCK || kc == KEY_LEFTSHIFT || kc == KEY_RIGHTSHIFT) {
+        [self _syncAccessoryShiftFromNativeKeyboard];
+      }
     }
 
     if (!handled) {
@@ -2839,6 +3447,9 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
                                       locked:0
                                        group:0];
       }
+      if (kc == KEY_CAPSLOCK || kc == KEY_LEFTSHIFT || kc == KEY_RIGHTSHIFT) {
+        [self _syncAccessoryShiftFromNativeKeyboard];
+      }
     }
   }
   [super pressesCancelled:presses withEvent:event];
@@ -2853,7 +3464,7 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
                    height:(uint32_t)height
                  hotspotX:(float)hotspotX
                  hotspotY:(float)hotspotY {
-  if (![[WWNPreferencesManager sharedManager] renderMacOSPointer]) {
+  if (![WWNMachineProfileStore resolvedRenderMacOSPointerActive]) {
     _cursorLayer.contents = nil;
     _cursorLayer.hidden = YES;
     return;

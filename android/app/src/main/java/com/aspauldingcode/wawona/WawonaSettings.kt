@@ -20,8 +20,8 @@ object WawonaSettings {
         val renderingBackend = prefs.getInt("renderingBackend", 0)
         val respectSafeArea = prefs.getBoolean("respectSafeArea", true)
         
-        // Render macOS Pointer - not applicable on Android, always false
-        val renderMacOSPointer = false
+        // Android uses the same semantic toggle as iOS ("Show Virtual Pointer").
+        val renderMacOSPointer = prefs.getBoolean("renderMacOSPointer", false)
         
         // Swap CMD - not applicable on Android, always false
         val swapCmdAsCtrl = false

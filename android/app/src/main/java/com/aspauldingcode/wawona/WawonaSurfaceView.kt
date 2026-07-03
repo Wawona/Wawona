@@ -168,6 +168,9 @@ class WawonaSurfaceView(context: Context) : SurfaceView(context) {
                         val vscroll = event.getAxisValue(MotionEvent.AXIS_VSCROLL)
                         val hscroll = event.getAxisValue(MotionEvent.AXIS_HSCROLL)
                         if (vscroll != 0f || hscroll != 0f) {
+                            val cx = (event.getX(0) + event.getX(1)) / 2f
+                            val cy = (event.getY(0) + event.getY(1)) / 2f
+                            WawonaNative.nativePointerMotion(cx.toDouble(), cy.toDouble(), ts)
                             if (vscroll != 0f) WawonaNative.nativePointerAxis(0, vscroll, ts)
                             if (hscroll != 0f) WawonaNative.nativePointerAxis(1, hscroll, ts)
                         } else {
@@ -178,6 +181,7 @@ class WawonaSurfaceView(context: Context) : SurfaceView(context) {
                             touchpadLastX = cx
                             touchpadLastY = cy
                             if (dx != 0f || dy != 0f) {
+                                WawonaNative.nativePointerMotion(cx.toDouble(), cy.toDouble(), ts)
                                 WawonaNative.nativePointerAxis(0, -dy, ts)
                                 WawonaNative.nativePointerAxis(1, dx, ts)
                             }
@@ -223,14 +227,34 @@ class WawonaSurfaceView(context: Context) : SurfaceView(context) {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        when (keyCode) {
+            KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.KEYCODE_SHIFT_RIGHT -> {
+                ModifierState.syncShiftFromNative(active = true, locked = ModifierState.shiftLocked)
+            }
+            KeyEvent.KEYCODE_CAPS_LOCK -> {
+                val lockNow = !ModifierState.shiftLocked
+                ModifierState.syncShiftFromNative(active = lockNow, locked = lockNow)
+            }
+        }
         WawonaNative.nativeKeyEvent(keyCode, 1, (event.eventTime % Int.MAX_VALUE).toInt())
         if (!isModifierKeyCode(keyCode)) {
-            ModifierState.clearStickyModifiers()
+            val hardwareShiftHeld = event.isShiftPressed ||
+                (event.metaState and KeyEvent.META_SHIFT_ON) != 0
+            if (!hardwareShiftHeld || ModifierState.shiftLocked) {
+                ModifierState.clearStickyModifiers()
+            }
         }
         return true
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        when (keyCode) {
+            KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.KEYCODE_SHIFT_RIGHT -> {
+                if (!ModifierState.shiftLocked) {
+                    ModifierState.syncShiftFromNative(active = false, locked = false)
+                }
+            }
+        }
         WawonaNative.nativeKeyEvent(keyCode, 0, (event.eventTime % Int.MAX_VALUE).toInt())
         return true
     }

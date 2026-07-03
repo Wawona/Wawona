@@ -24,11 +24,11 @@ Keyboard: `WWNCompositorView_ios` → `wwn_ios_terminal_inject` → zsh stdin.
 |-----------|--------------|-----------------|-------------------|-------------------|
 | zsh | `libwawona-zsh.a` | force_load | (shell itself) | in-process pthread, no fork |
 | uutils coreutils | `libwawona.a` (coreutils feature) | via Rust | yes (~39 utils) | catch_unwind, no exit() |
-| fastfetch | `libfastfetch.a` | force_load | yes | in-process (iOS/iPadOS/tvOS/watchOS/visionOS); IOKit/SMC stubbed; exit()/signal/atexit-safe; per-platform frameworks |
+| fastfetch | `libfastfetch.a` | force_load | yes | in-process (iOS/iPadOS/tvOS/watchOS/visionOS); IOKit/SMC stubbed; exit()/signal/atexit-safe; per-platform frameworks; idempotent per-run lifecycle (re-entry safe after a prior crash); seeds `$HOME/.config/fastfetch/config.jsonc` |
 | neovim | `libwawona-neovim.a` | force_load | yes (`nvim`/`vi`/`vim`) | PUC Lua, spawn stubs |
 | waypipe + SSH | `libwawona.a` (waypipe-ssh) | via Rust | yes | libssh2 in-process, no openssh |
 | weston-terminal | `libweston-terminal.a` | force_load | via UI launch | in-process client thread |
-| rootfs templates | `wawona-rootfs-ios` | embed phase | dotfiles in Application Support | templates only, no Mach-O |
+| rootfs templates | `wawona-rootfs-ios` | embed phase | dotfiles + fastfetch config in Application Support | templates only, no Mach-O |
 | neovim runtime | `neovim-rootfs-ios` | embed phase | `VIMRUNTIME` env | share tree only |
 
 **Not on iOS (by design):** openssh binary, sshpass, fork/exec of bundled Mach-O,
@@ -56,6 +56,7 @@ downloaded dylibs, JIT.
 4. `WAWONA_INPROC_CLIENTS` (fastfetch, nvim, waypipe) in same template
 5. `rust-backend-c2n.nix` iOS features: `waypipe-ssh`, `coreutils`
 6. `xcodegen.nix` force_load flags for zsh, fastfetch, neovim, weston-terminal, pty
+7. fastfetch default config: `fastfetchConfigTemplate` in `ios-rootfs.nix` ↔ seeded by `WWNRootfsManager.installFastfetchConfigFromBundle` under the general `XDG_CONFIG_HOME` (`$HOME/.config`)
 
 ## Manual smoke (weston-terminal)
 
@@ -74,6 +75,7 @@ downloaded dylibs, JIT.
 | visionOS local terminal | N/A | Stub runner; no weston-terminal |
 | openssh CLI from shell | N/A | libssh2 only; App Store compliant |
 | Docs README “SHM stub” rows | Low | Historical; terminal.c is real — see STATUS |
+| weston-terminal launch latency | Low | Launch runs on a background queue (no UI stall); the visible delay is the paced zsh bootstrap on `ios_zsh_thread`. `wwn_launch_host_client` joins intentionally to keep session state coherent |
 
 ## Repo ownership
 

@@ -1,6 +1,7 @@
 package com.aspauldingcode.wawona
 
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -24,9 +25,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.consume
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.abs
 
 object LinuxKey {
     const val ESC = 1
@@ -74,18 +78,39 @@ data class LinuxKeyMapping(
 )
 
 object ModifierState {
-    var shiftActive: Boolean = false
-    var ctrlActive: Boolean = false
-    var altActive: Boolean = false
-    var superActive: Boolean = false
+    var shiftActive by mutableStateOf(false)
+    var ctrlActive by mutableStateOf(false)
+    var altActive by mutableStateOf(false)
+    var superActive by mutableStateOf(false)
+    var shiftLocked by mutableStateOf(false)
+    var ctrlLocked by mutableStateOf(false)
+    var altLocked by mutableStateOf(false)
+    var superLocked by mutableStateOf(false)
 
     fun hasActiveModifiers(): Boolean = shiftActive || ctrlActive || altActive || superActive
 
     fun clearStickyModifiers() {
+        if (shiftActive && !shiftLocked) shiftActive = false
+        if (ctrlActive && !ctrlLocked) ctrlActive = false
+        if (altActive && !altLocked) altActive = false
+        if (superActive && !superLocked) superActive = false
+    }
+
+    fun clearAllModifiers() {
         shiftActive = false
         ctrlActive = false
         altActive = false
         superActive = false
+        shiftLocked = false
+        ctrlLocked = false
+        altLocked = false
+        superLocked = false
+    }
+
+    // Best-effort sync from native keyboard modifier stream.
+    fun syncShiftFromNative(active: Boolean, locked: Boolean = false) {
+        shiftActive = active || locked
+        shiftLocked = locked
     }
 }
 
@@ -153,33 +178,25 @@ fun charToLinuxKeycode(ch: Char): LinuxKeyMapping? {
 @Composable
 fun ModifierAccessoryBar(
     modifier: Modifier = Modifier,
-    onDismissKeyboard: () -> Unit
+    keyboardExpanded: Boolean,
+    onToggleKeyboardExpanded: () -> Unit,
+    onCollapseToPipByDrag: () -> Unit
 ) {
-    val ts = System.currentTimeMillis().toInt() and 0x7FFF_FFFF
-
-    var modShiftActive by remember { mutableStateOf(false) }
-    var modShiftLocked by remember { mutableStateOf(false) }
-    var modCtrlActive by remember { mutableStateOf(false) }
-    var modCtrlLocked by remember { mutableStateOf(false) }
-    var modAltActive by remember { mutableStateOf(false) }
-    var modAltLocked by remember { mutableStateOf(false) }
-    var modSuperActive by remember { mutableStateOf(false) }
-    var modSuperLocked by remember { mutableStateOf(false) }
+    var pressTimestamp by remember { mutableStateOf(0) }
 
     var lastModShiftTap by remember { mutableLongStateOf(0L) }
     var lastModCtrlTap by remember { mutableLongStateOf(0L) }
     var lastModAltTap by remember { mutableLongStateOf(0L) }
     var lastModSuperTap by remember { mutableLongStateOf(0L) }
 
-    fun clearStickyModifiers() {
-        if (modShiftActive && !modShiftLocked) modShiftActive = false
-        if (modCtrlActive && !modCtrlLocked) modCtrlActive = false
-        if (modAltActive && !modAltLocked) modAltActive = false
-        if (modSuperActive && !modSuperLocked) modSuperActive = false
-        ModifierState.shiftActive = modShiftActive
-        ModifierState.ctrlActive = modCtrlActive
-        ModifierState.altActive = modAltActive
-        ModifierState.superActive = modSuperActive
+    fun nextTimestamp(): Int {
+        val now = (System.currentTimeMillis() % Int.MAX_VALUE).toInt()
+        if (now > pressTimestamp) {
+            pressTimestamp = now
+        } else {
+            pressTimestamp += 1
+        }
+        return pressTimestamp
     }
 
     fun handleModifierTap(
@@ -211,28 +228,24 @@ fun ModifierAccessoryBar(
                 onLocked(false)
             }
         }
-
-        ModifierState.shiftActive = modShiftActive
-        ModifierState.ctrlActive = modCtrlActive
-        ModifierState.altActive = modAltActive
-        ModifierState.superActive = modSuperActive
     }
 
     fun sendAccessoryKey(keycode: Int) {
+        val ts = nextTimestamp()
         var mods = 0
-        if (modShiftActive) {
+        if (ModifierState.shiftActive) {
             mods = mods or XkbMod.SHIFT
             WawonaNative.nativeInjectKey(LinuxKey.LEFTSHIFT, true, ts)
         }
-        if (modCtrlActive) {
+        if (ModifierState.ctrlActive) {
             mods = mods or XkbMod.CTRL
             WawonaNative.nativeInjectKey(LinuxKey.LEFTCTRL, true, ts)
         }
-        if (modAltActive) {
+        if (ModifierState.altActive) {
             mods = mods or XkbMod.ALT
             WawonaNative.nativeInjectKey(LinuxKey.LEFTALT, true, ts)
         }
-        if (modSuperActive) {
+        if (ModifierState.superActive) {
             mods = mods or XkbMod.LOGO
             WawonaNative.nativeInjectKey(LinuxKey.LEFTMETA, true, ts)
         }
@@ -241,12 +254,12 @@ fun ModifierAccessoryBar(
         }
         WawonaNative.nativeInjectKey(keycode, true, ts)
         WawonaNative.nativeInjectKey(keycode, false, ts)
-        if (modShiftActive) WawonaNative.nativeInjectKey(LinuxKey.LEFTSHIFT, false, ts)
-        if (modCtrlActive) WawonaNative.nativeInjectKey(LinuxKey.LEFTCTRL, false, ts)
-        if (modAltActive) WawonaNative.nativeInjectKey(LinuxKey.LEFTALT, false, ts)
-        if (modSuperActive) WawonaNative.nativeInjectKey(LinuxKey.LEFTMETA, false, ts)
+        if (ModifierState.shiftActive) WawonaNative.nativeInjectKey(LinuxKey.LEFTSHIFT, false, ts)
+        if (ModifierState.ctrlActive) WawonaNative.nativeInjectKey(LinuxKey.LEFTCTRL, false, ts)
+        if (ModifierState.altActive) WawonaNative.nativeInjectKey(LinuxKey.LEFTALT, false, ts)
+        if (ModifierState.superActive) WawonaNative.nativeInjectKey(LinuxKey.LEFTMETA, false, ts)
         if (mods != 0) WawonaNative.nativeInjectModifiers(0, 0, 0, 0)
-        clearStickyModifiers()
+        ModifierState.clearStickyModifiers()
     }
 
     val scheme = MaterialTheme.colorScheme
@@ -274,12 +287,12 @@ fun ModifierAccessoryBar(
         ) {
             listOf(
                 "ESC" to { sendAccessoryKey(LinuxKey.ESC) },
-                "`" to { sendAccessoryKey(LinuxKey.GRAVE) },
+                (if (ModifierState.shiftActive) "~" else "`") to { sendAccessoryKey(LinuxKey.GRAVE) },
                 "TAB" to { sendAccessoryKey(LinuxKey.TAB) },
-                "/" to { sendAccessoryKey(LinuxKey.SLASH) },
-                "—" to { sendAccessoryKey(LinuxKey.MINUS) },
-                "HOME" to { sendAccessoryKey(LinuxKey.HOME) },
+                (if (ModifierState.shiftActive) "?" else "/") to { sendAccessoryKey(LinuxKey.SLASH) },
+                (if (ModifierState.shiftActive) "_" else "—") to { sendAccessoryKey(LinuxKey.MINUS) },
                 "↑" to { sendAccessoryKey(LinuxKey.UP) },
+                "HOME" to { sendAccessoryKey(LinuxKey.HOME) },
                 "END" to { sendAccessoryKey(LinuxKey.END) },
                 "PGUP" to { sendAccessoryKey(LinuxKey.PAGEUP) }
             ).forEach { (label, action) ->
@@ -298,61 +311,61 @@ fun ModifierAccessoryBar(
         ) {
             AccessoryModKey(
                 label = "⇧",
-                active = modShiftActive,
-                locked = modShiftLocked,
+                active = ModifierState.shiftActive,
+                locked = ModifierState.shiftLocked,
                 inactiveColor = keyInactive,
                 stickyColor = keySticky,
                 lockedColor = keyLocked
             ) {
                 handleModifierTap(
-                    modShiftActive, modShiftLocked, lastModShiftTap,
-                    { modShiftActive = it },
-                    { modShiftLocked = it },
+                    ModifierState.shiftActive, ModifierState.shiftLocked, lastModShiftTap,
+                    { ModifierState.shiftActive = it },
+                    { ModifierState.shiftLocked = it },
                     { lastModShiftTap = it }
                 )
             }
             AccessoryModKey(
                 label = "CTRL",
-                active = modCtrlActive,
-                locked = modCtrlLocked,
+                active = ModifierState.ctrlActive,
+                locked = ModifierState.ctrlLocked,
                 inactiveColor = keyInactive,
                 stickyColor = keySticky,
                 lockedColor = keyLocked
             ) {
                 handleModifierTap(
-                    modCtrlActive, modCtrlLocked, lastModCtrlTap,
-                    { modCtrlActive = it },
-                    { modCtrlLocked = it },
+                    ModifierState.ctrlActive, ModifierState.ctrlLocked, lastModCtrlTap,
+                    { ModifierState.ctrlActive = it },
+                    { ModifierState.ctrlLocked = it },
                     { lastModCtrlTap = it }
                 )
             }
             AccessoryModKey(
                 label = "ALT",
-                active = modAltActive,
-                locked = modAltLocked,
+                active = ModifierState.altActive,
+                locked = ModifierState.altLocked,
                 inactiveColor = keyInactive,
                 stickyColor = keySticky,
                 lockedColor = keyLocked
             ) {
                 handleModifierTap(
-                    modAltActive, modAltLocked, lastModAltTap,
-                    { modAltActive = it },
-                    { modAltLocked = it },
+                    ModifierState.altActive, ModifierState.altLocked, lastModAltTap,
+                    { ModifierState.altActive = it },
+                    { ModifierState.altLocked = it },
                     { lastModAltTap = it }
                 )
             }
             AccessoryModKey(
                 label = "⌘",
-                active = modSuperActive,
-                locked = modSuperLocked,
+                active = ModifierState.superActive,
+                locked = ModifierState.superLocked,
                 inactiveColor = keyInactive,
                 stickyColor = keySticky,
                 lockedColor = keyLocked
             ) {
                 handleModifierTap(
-                    modSuperActive, modSuperLocked, lastModSuperTap,
-                    { modSuperActive = it },
-                    { modSuperLocked = it },
+                    ModifierState.superActive, ModifierState.superLocked, lastModSuperTap,
+                    { ModifierState.superActive = it },
+                    { ModifierState.superLocked = it },
                     { lastModSuperTap = it }
                 )
             }
@@ -369,9 +382,32 @@ fun ModifierAccessoryBar(
                 )
             }
             AccessoryKey(
-                "⌨↓", keyInactive, keyText,
-                onClick = onDismissKeyboard,
-                modifier = Modifier.weight(1f)
+                if (keyboardExpanded) "⌨↓" else "⌨↑",
+                keyInactive,
+                keyText,
+                onClick = onToggleKeyboardExpanded,
+                modifier = Modifier
+                    .weight(1f)
+                    .pointerInput(keyboardExpanded) {
+                        var dragDistanceY = 0f
+                        detectDragGestures(
+                            onDragStart = {
+                                dragDistanceY = 0f
+                            },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                dragDistanceY += dragAmount.y
+                            },
+                            onDragEnd = {
+                                if (!keyboardExpanded && abs(dragDistanceY) > 28f) {
+                                    onCollapseToPipByDrag()
+                                }
+                            },
+                            onDragCancel = {
+                                dragDistanceY = 0f
+                            }
+                        )
+                    }
             )
         }
         }

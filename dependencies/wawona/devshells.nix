@@ -118,10 +118,14 @@ builtins.listToAttrs (map (system: let
       fi
 
       if [ -f .envrc ]; then
-        TEAM_ID=$(grep '^export TEAM_ID=' .envrc | cut -d'=' -f2 | tr -d '"')
-        if [ -n "$TEAM_ID" ]; then
-          export TEAM_ID="$TEAM_ID"
+        _TEAM_FROM_ENVRC=$(grep '^export TEAM_ID=' .envrc | cut -d'=' -f2 | tr -d '"')
+        if [ -n "$_TEAM_FROM_ENVRC" ]; then
+          export TEAM_ID="$_TEAM_FROM_ENVRC"
+          echo "Loaded TEAM_ID from .envrc."
         fi
+      fi
+      if [ -n "''${TEAM_ID:-}" ]; then
+        export DEVELOPMENT_TEAM="$TEAM_ID"
       fi
 
       ${darwinXcodeShellHook}

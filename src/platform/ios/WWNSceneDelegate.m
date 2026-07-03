@@ -1,5 +1,9 @@
 #import "WWNSceneDelegate.h"
 #import "../macos/ui/Settings/WWNPreferencesManager.h"
+#if TARGET_OS_IPHONE && !TARGET_OS_TV
+#import "../../platform/macos/WWNRootfsProvider.h"
+#endif
+#import "../macos/WWNCompositorBridge.h"
 #import "../macos/ui/Settings/WWNPreferences.h"
 #import "../macos/ui/Settings/WWNWaypipeRunner.h"
 #import "../macos/ui/Machines/WWNMachinesCoordinator.h"
@@ -261,6 +265,9 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
 - (void)scene:(UIScene *)scene
     willConnectToSession:(UISceneSession *)session
                  options:(UISceneConnectionOptions *)connectionOptions {
+#if TARGET_OS_IPHONE && !TARGET_OS_TV
+  [WWNRootfsProvider prepareUserAccess];
+#endif
   if (![scene isKindOfClass:[UIWindowScene class]])
     return;
 
@@ -370,8 +377,34 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
          selector:@selector(handleNativeClientWillLaunch:)
              name:WWNNativeClientWillLaunchNotification
            object:nil];
+  [[NSNotificationCenter defaultCenter]
+      addObserver:self
+         selector:@selector(handleNativeClientDidTerminate:)
+             name:@"WWNNativeClientProcessDidTerminateNotification"
+           object:nil];
+  [[NSNotificationCenter defaultCenter]
+      addObserver:self
+         selector:@selector(handleClientMinimizeRequested:)
+             name:WWNClientMinimizeRequestedNotification
+           object:nil];
 
   WWNLog("SCENE", @"Wawona Scene connected and window created.");
+
+  if (![[WWNCompositorBridge sharedBridge] isRunning]) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      UIAlertController *alert = [UIAlertController
+          alertControllerWithTitle:@"Compositor Failed to Start"
+                           message:@"Wayland did not start, but Machines should "
+                                   @"still appear. Connect again after relaunch."
+                    preferredStyle:UIAlertControllerStyleAlert];
+      [alert addAction:[UIAlertAction actionWithTitle:@"OK"
+                                                style:UIAlertActionStyleDefault
+                                              handler:nil]];
+      [self.window.rootViewController presentViewController:alert
+                                                   animated:YES
+                                                 completion:nil];
+    });
+  }
 
   [self presentWelcomeIfNeeded];
 }
@@ -814,6 +847,13 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
     [runner stopWaypipe];
   }
 
+  // Session was force-closed outside the SwiftUI machine card actions; clear the
+  // active machine and nudge the Machines view-model to resync transient status.
+  [WWNMachineProfileStore setActiveMachineId:nil];
+  [[NSNotificationCenter defaultCenter]
+      postNotificationName:@"WWNNativeClientProcessDidTerminateNotification"
+                    object:runner];
+
   self.compositorContainer.hidden = YES;
   [self setCompositorGestureDeferralEnabled:NO];
 #if !TARGET_OS_VISION
@@ -825,6 +865,34 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
 - (void)handleNativeClientWillLaunch:(NSNotification *)notification {
   (void)notification;
   [self hideMachinesUIAndRevealCompositor];
+}
+
+- (void)handleNativeClientDidTerminate:(NSNotification *)notification {
+  (void)notification;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    if ([self isAnyClientSessionRunning]) {
+      return;
+    }
+    self.compositorContainer.hidden = YES;
+    [self setCompositorGestureDeferralEnabled:NO];
+#if !TARGET_OS_VISION
+    [self applyRespectSafeAreaPreference];
+#endif
+    [self showMachinesUI];
+  });
+}
+
+- (void)handleClientMinimizeRequested:(NSNotification *)notification {
+  (void)notification;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    if (self.sessionExitPromptVisible) {
+      return;
+    }
+    if (![self isAnyClientSessionRunning]) {
+      return;
+    }
+    [self showMachinesUI];
+  });
 }
 
 - (void)revealCompositor {
@@ -914,7 +982,7 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
 }
 
 - (void)presentMachinesConfigurationAfterWelcome {
-  dispatch_async(dispatch_get_main_queue(), ^{
+  void (^presentBlock)(void) = ^{
     [self setCompositorGestureDeferralEnabled:NO];
     if (self.machinesViewController) {
       self.machinesViewController.view.hidden = NO;
@@ -952,7 +1020,13 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
 
     [self embedMachinesViewController:machinesVC inParent:parent];
     self.showingMachinesUI = YES;
-  });
+  };
+
+  if ([NSThread isMainThread]) {
+    presentBlock();
+  } else {
+    dispatch_async(dispatch_get_main_queue(), presentBlock);
+  }
 }
 
 @end

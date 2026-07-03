@@ -34,6 +34,7 @@ pub fn show_settings(
         "Display",
         "Input",
         "Graphics",
+        "Local Shell",
         "SSH and Waypipe",
         "Dependencies",
         "VM and Container",
@@ -119,6 +120,37 @@ pub fn show_settings(
     add_row(&graphics_group, "HDR / Color Operations", &color_ops);
     graphics_page.add(&graphics_group);
     stack.add_named(&graphics_page, Some("Graphics"));
+
+    // Local Shell (host environment — mirrors WWNRootfsProvider host snapshot)
+    let shell_page = adw::PreferencesPage::new();
+    let shell_group = adw::PreferencesGroup::new();
+    shell_group.set_title("Local Shell");
+    shell_group.set_description(Some(
+        "Host shell paths for nested sessions and bundled CLI tools. Linux uses your login environment, not a sandbox rootfs.",
+    ));
+    let home = std::env::var("HOME").unwrap_or_else(|_| "(unset)".into());
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".into());
+    let xdg_runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "(unset)".into());
+    let xdg_config = std::env::var("XDG_CONFIG_HOME")
+        .unwrap_or_else(|_| format!("{home}/.config"));
+    for (title, subtitle) in [
+        ("Platform", "Linux (host shell)"),
+        ("Shell HOME", home.as_str()),
+        ("Login Shell", shell.as_str()),
+        ("XDG_RUNTIME_DIR", xdg_runtime.as_str()),
+        ("XDG_CONFIG_HOME", xdg_config.as_str()),
+        (
+            "Browse Hint",
+            "Use your file manager or terminal — Wawona does not sandbox HOME on Linux.",
+        ),
+    ] {
+        let row = adw::ActionRow::new();
+        row.set_title(title);
+        row.set_subtitle(subtitle);
+        shell_group.add(&row);
+    }
+    shell_page.add(&shell_group);
+    stack.add_named(&shell_page, Some("Local Shell"));
 
     // SSH and Waypipe
     let ssh_page = adw::PreferencesPage::new();

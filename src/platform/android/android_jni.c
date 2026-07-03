@@ -187,6 +187,7 @@ extern void WWNCoreInjectPointerLeave(void *core, uint64_t window_id,
 extern void WWNCoreInjectPointerAxis(void *core, uint64_t window_id,
                                      uint32_t axis, double value,
                                      uint32_t timestamp_ms);
+extern uint64_t WWNCoreWindowIdAtPoint(void *core, double x, double y);
 extern void WWNCoreInjectKeyboardEnter(void *core, uint64_t window_id,
                                        const uint32_t *keys, size_t count,
                                        uint32_t timestamp_ms);
@@ -478,10 +479,11 @@ static void *g_core = NULL;
 #define XKB_MOD_LOGO (1 << 6) /* Super/Meta = Mod4 */
 static uint32_t g_modifiers_depressed = 0;
 
-/* Single full-screen window id for pointer enter/leave/axis (Android has no
- * multi-window UI).  Starts at 0 so the render loop detects the first real
- * window and auto-sends keyboard enter. */
+/* Last pointer-targeted window id. This updates from hit-testing so pointer
+ * events stay scoped to popups/toplevels under the cursor. */
 static uint64_t g_pointer_window_id = 0;
+static double g_pointer_last_x = 0.0;
+static double g_pointer_last_y = 0.0;
 
 /* Active touch count - for pointer enter/leave (inject enter on 0->1, leave on
  * 1->0) */
@@ -505,6 +507,16 @@ static int compute_auto_scale_factor(void) {
   if (scale > 4)
     scale = 4;
   return scale;
+}
+
+static uint64_t resolve_pointer_window_id(double logical_x, double logical_y) {
+  if (!g_core)
+    return g_pointer_window_id;
+  uint64_t hit_window_id = WWNCoreWindowIdAtPoint(g_core, logical_x, logical_y);
+  if (hit_window_id != 0) {
+    g_pointer_window_id = hit_window_id;
+  }
+  return g_pointer_window_id;
 }
 
 static void apply_output_scale(void) {
@@ -1192,7 +1204,8 @@ static void choreographer_frame_cb(long frameTimeNanos, void *data) {
         renderer_android_draw_quads(ctx->cmdBuf, scene->nodes, scene->count,
                                     logical_w, logical_h);
       }
-      if (scene->has_cursor && scene->cursor_buffer_id > 0) {
+      if (WWNSettings_GetRenderMacOSPointer() && scene->has_cursor &&
+          scene->cursor_buffer_id > 0) {
         int sf = compute_auto_scale_factor();
         uint32_t logical_w = ctx->extent.width / (uint32_t)sf;
         uint32_t logical_h = ctx->extent.height / (uint32_t)sf;
@@ -2269,8 +2282,10 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativePointerAxis(
   (void)env;
   (void)thiz;
   if (g_core && value != 0.0f) {
+    uint64_t target_window_id =
+        resolve_pointer_window_id(g_pointer_last_x, g_pointer_last_y);
     /* axis: 0 = vertical, 1 = horizontal */
-    WWNCoreInjectPointerAxis(g_core, g_pointer_window_id, (uint32_t)axis,
+    WWNCoreInjectPointerAxis(g_core, target_window_id, (uint32_t)axis,
                              (double)value, (uint32_t)timestampMs);
   }
 }
@@ -2282,7 +2297,12 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativePointerMotion(
   (void)thiz;
   if (g_core) {
     int sf = compute_auto_scale_factor();
-    WWNCoreInjectPointerMotion(g_core, g_pointer_window_id, x / sf, y / sf,
+    double logical_x = x / sf;
+    double logical_y = y / sf;
+    g_pointer_last_x = logical_x;
+    g_pointer_last_y = logical_y;
+    uint64_t target_window_id = resolve_pointer_window_id(logical_x, logical_y);
+    WWNCoreInjectPointerMotion(g_core, target_window_id, logical_x, logical_y,
                                (uint32_t)timestampMs);
   }
 }
@@ -2293,8 +2313,10 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativePointerButton(
   (void)env;
   (void)thiz;
   if (g_core) {
+    uint64_t target_window_id =
+        resolve_pointer_window_id(g_pointer_last_x, g_pointer_last_y);
     /* buttonCode: 0x110 = BTN_LEFT, 0x111 = BTN_RIGHT */
-    WWNCoreInjectPointerButton(g_core, g_pointer_window_id,
+    WWNCoreInjectPointerButton(g_core, target_window_id,
                                (uint32_t)buttonCode, (uint32_t)state,
                                (uint32_t)timestampMs);
   }
@@ -2307,7 +2329,12 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativePointerEnter(
   (void)thiz;
   if (g_core) {
     int sf = compute_auto_scale_factor();
-    WWNCoreInjectPointerEnter(g_core, g_pointer_window_id, x / sf, y / sf,
+    double logical_x = x / sf;
+    double logical_y = y / sf;
+    g_pointer_last_x = logical_x;
+    g_pointer_last_y = logical_y;
+    uint64_t target_window_id = resolve_pointer_window_id(logical_x, logical_y);
+    WWNCoreInjectPointerEnter(g_core, target_window_id, logical_x, logical_y,
                               (uint32_t)timestampMs);
   }
 }

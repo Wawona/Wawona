@@ -24,8 +24,10 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -34,8 +36,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -47,11 +52,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.consume
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.toDp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
@@ -61,17 +70,9 @@ import androidx.compose.material3.TextButton
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
-private object WawonaBackPressBridge {
-    @Volatile
-    var interceptEnabled: Boolean = false
-    var token by mutableIntStateOf(0)
-
-    fun emitBackPress() {
-        token += 1
-    }
-}
 
 class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
 
@@ -114,17 +115,7 @@ class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
 
             prefs = getSharedPreferences("wawona_prefs", Context.MODE_PRIVATE)
 
-            onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-                override fun handleOnBackPressed() {
-                    if (WawonaBackPressBridge.interceptEnabled) {
-                        WawonaBackPressBridge.emitBackPress()
-                        return
-                    }
-                    isEnabled = false
-                    onBackPressedDispatcher.onBackPressed()
-                    isEnabled = true
-                }
-            })
+
 
             setContent {
                 WawonaTheme {
@@ -198,6 +189,12 @@ class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
     }
 }
 
+private enum class KeyboardUiMode {
+    PIP,
+    ACCESSORY_ONLY,
+    EXPANDED,
+}
+
 @Composable
 fun WawonaApp(
     prefs: SharedPreferences,
@@ -218,6 +215,9 @@ fun WawonaApp(
     var showSettingsDialog by remember { mutableStateOf(false) }
     var thumbnailRevision by remember { mutableIntStateOf(0) }
     var surfaceViewRef by remember { mutableStateOf<WawonaSurfaceView?>(null) }
+    var keyboardUiMode by remember { mutableStateOf(KeyboardUiMode.EXPANDED) }
+    var pipButtonOffsetX by remember { mutableStateOf(16f) }
+    var pipButtonOffsetY by remember { mutableStateOf(160f) }
     val appScope = rememberCoroutineScope()
     var shakeToCloseEnabled by remember {
         mutableStateOf(prefs.getBoolean("wawona.pref.shakeToCloseEnabled", true))
@@ -369,12 +369,24 @@ fun WawonaApp(
         }
     }
 
-    DisposableEffect(showWelcome, showMachinesHome) {
-        WawonaBackPressBridge.interceptEnabled = !showWelcome && !showMachinesHome
-        onDispose {
-            WawonaBackPressBridge.interceptEnabled = false
+    fun hideNativeKeyboard() {
+        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+        val targetView = surfaceViewRef ?: (activity?.window?.currentFocus ?: activity?.window?.decorView)
+        if (imm != null && targetView != null) {
+            imm.hideSoftInputFromWindow(targetView.windowToken, 0)
         }
     }
+
+    fun showNativeKeyboard() {
+        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+        val targetView = surfaceViewRef ?: activity?.window?.decorView
+        if (imm != null && targetView != null) {
+            targetView.requestFocus()
+            imm.showSoftInput(targetView, InputMethodManager.SHOW_IMPLICIT)
+        }
+    }
+
+
 
     DisposableEffect(showMachinesHome, sessionOrchestrator.activeSessionId) {
         if (showMachinesHome || sessionOrchestrator.activeSessionId == null) {
@@ -614,6 +626,7 @@ fun WawonaApp(
             sessionOrchestrator.markDegraded(targetSession, "Failed to initialize compositor runtime")
             return
         }
+        WawonaSettings.apply(prefs)
 
         val launched = when (profile.type) {
             MachineType.NATIVE -> launchNativeMachine(profile)
@@ -623,6 +636,7 @@ fun WawonaApp(
                     remoteCommand = profile.remoteCommand.ifBlank { "weston-simple-shm" }
                 )
                 MachineProfileStore.applyMachineToPrefs(prefs, withTerminalCommand)
+                WawonaSettings.apply(prefs)
                 launchWaypipe()
             }
             MachineType.VM -> {
@@ -683,7 +697,9 @@ fun WawonaApp(
         val session = sessionOrchestrator.sessions.firstOrNull {
             it.machineId == profile.id && it.state == MachineSessionState.CONNECTED
         } ?: return
+        MachineProfileStore.applyMachineToPrefs(prefs, profile)
         MachineProfileStore.setActiveMachineId(prefs, profile.id)
+        WawonaSettings.apply(prefs)
         sessionOrchestrator.setActiveSession(session.sessionId)
         showMachinesHome = false
     }
@@ -692,29 +708,30 @@ fun WawonaApp(
         confirmSessionClose()
     }
 
-    // Activity-level callback is the source of truth for compositor back handling.
-    BackHandler(enabled = false) {}
 
-    var lastHandledBackToken by remember { mutableIntStateOf(0) }
-    LaunchedEffect(WawonaBackPressBridge.token, showMachinesHome) {
-        val token = WawonaBackPressBridge.token
-        if (token == 0 || token == lastHandledBackToken) {
-            return@LaunchedEffect
-        }
-        lastHandledBackToken = token
-        if (showMachinesHome) {
-            return@LaunchedEffect
-        }
-        val profile = activeProfile()
-        if (!SessionExitSettings.resolvedSwipeBackEnabled(prefs, profile)) {
-            return@LaunchedEffect
-        }
-        requestSessionCloseConfirm()
-    }
 
     val density = LocalDensity.current
     val imeBottom = with(density) { WindowInsets.ime.getBottom(this) }
-    val showAccessoryBar = imeBottom > 0
+    val systemBarBottomPx = with(density) { WindowInsets.systemBars.getBottom(this) }
+    val systemBarBottomDp = with(density) { systemBarBottomPx.toDp() }
+    val inSessionUi = !showWelcome && !showMachinesHome
+    val showAccessoryBar = inSessionUi && keyboardUiMode != KeyboardUiMode.PIP
+    val showKeyboardPipButton = inSessionUi && keyboardUiMode == KeyboardUiMode.PIP
+
+    LaunchedEffect(keyboardUiMode, inSessionUi) {
+        if (!inSessionUi) return@LaunchedEffect
+        when (keyboardUiMode) {
+            KeyboardUiMode.EXPANDED -> showNativeKeyboard()
+            KeyboardUiMode.ACCESSORY_ONLY, KeyboardUiMode.PIP -> hideNativeKeyboard()
+        }
+    }
+
+    LaunchedEffect(imeBottom, keyboardUiMode, inSessionUi) {
+        if (!inSessionUi) return@LaunchedEffect
+        if (keyboardUiMode == KeyboardUiMode.EXPANDED && imeBottom <= 0) {
+            showNativeKeyboard()
+        }
+    }
 
     LaunchedEffect(Unit) {
         // Always start on Machines so startup is predictable.
@@ -757,6 +774,9 @@ fun WawonaApp(
             onOpenSettings = { showSettingsDialog = true }
         )
     } else {
+        BackHandler(enabled = SessionExitSettings.resolvedSwipeBackEnabled(prefs, activeProfile())) {
+            requestSessionCloseConfirm()
+        }
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -780,23 +800,75 @@ fun WawonaApp(
                 ModifierAccessoryBar(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
+                        .padding(
+                            bottom = if (keyboardUiMode == KeyboardUiMode.EXPANDED) 0.dp else systemBarBottomDp + 8.dp
+                        )
                         .fillMaxWidth(),
-                    onDismissKeyboard = {
-                        val imm = context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-                        val window = (context as? ComponentActivity)?.window
-                        val view = window?.currentFocus
-                        if (view != null && imm != null) {
-                            imm.hideSoftInputFromWindow(view.windowToken, 0)
-                        }
+                    keyboardExpanded = keyboardUiMode == KeyboardUiMode.EXPANDED,
+                    onToggleKeyboardExpanded = {
+                        keyboardUiMode =
+                            if (keyboardUiMode == KeyboardUiMode.EXPANDED) {
+                                KeyboardUiMode.ACCESSORY_ONLY
+                            } else {
+                                KeyboardUiMode.EXPANDED
+                            }
+                    },
+                    onCollapseToPipByDrag = {
+                        keyboardUiMode = KeyboardUiMode.PIP
                     }
                 )
+            }
+
+            if (showKeyboardPipButton) {
+                BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                    val pipSizePx = with(density) { 48.dp.toPx() }
+                    val maxX = (constraints.maxWidth - pipSizePx).coerceAtLeast(0f)
+                    val maxY = (constraints.maxHeight - pipSizePx).coerceAtLeast(0f)
+                    val bottomInsetPx = maxOf(
+                        with(density) { 16.dp.toPx() },
+                        systemBarBottomPx.toFloat() + with(density) { 8.dp.toPx() }
+                    )
+                    val clampedYMax = (maxY - bottomInsetPx).coerceAtLeast(0f)
+                    pipButtonOffsetX = pipButtonOffsetX.coerceIn(0f, maxX)
+                    pipButtonOffsetY = pipButtonOffsetY.coerceIn(0f, clampedYMax)
+
+                    TextButton(
+                        onClick = { keyboardUiMode = KeyboardUiMode.ACCESSORY_ONLY },
+                        modifier = Modifier
+                            .offset {
+                                IntOffset(
+                                    pipButtonOffsetX.roundToInt(),
+                                    pipButtonOffsetY.roundToInt()
+                                )
+                            }
+                            .pointerInput(maxX, clampedYMax) {
+                                detectDragGestures { change, dragAmount ->
+                                    change.consume()
+                                    pipButtonOffsetX =
+                                        (pipButtonOffsetX + dragAmount.x).coerceIn(0f, maxX)
+                                    pipButtonOffsetY =
+                                        (pipButtonOffsetY + dragAmount.y).coerceIn(0f, clampedYMax)
+                                }
+                            }
+                            .background(
+                                MaterialTheme.colorScheme.surfaceContainerHigh,
+                                RoundedCornerShape(24.dp)
+                            )
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Text("⌨")
+                    }
+                }
             }
 
             if (isWaypipeRunning && android.os.Build.VERSION.SDK_INT >= 36) {
                 ExpressiveFabMenu(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(end = 16.dp, bottom = if (showAccessoryBar) 88.dp else 16.dp),
+                        .padding(
+                            end = 16.dp,
+                            bottom = if (showAccessoryBar) 88.dp else if (showKeyboardPipButton) 72.dp else 16.dp
+                        ),
                     isWaypipeRunning = true,
                     onStopWaypipeClick = {
                         try {

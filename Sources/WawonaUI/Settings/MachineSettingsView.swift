@@ -79,7 +79,7 @@ public struct MachineSettingsView: View {
                 graphicsSection()
                 advancedSection()
                 resolvedPreviewSection(for: draft)
-                actionsSection(for: draft)
+                actionsSection()
             }
         }
 
@@ -254,13 +254,14 @@ public struct MachineSettingsView: View {
     }
 
     @ViewBuilder
-    private func actionsSection(for profile: MachineProfile) -> some View {
+    private func actionsSection() -> some View {
         Section {
             Button("Save Machine Settings") {
-                profileStore.upsert(profile)
-                profileStore.activeMachineId = profile.id
+                guard let latestDraft = draft else { return }
+                profileStore.upsert(latestDraft)
+                profileStore.activeMachineId = latestDraft.id
                 profileStore.save()
-                MachineRuntimeSettingsApplicator.apply(profile: profile, preferences: preferences)
+                MachineRuntimeSettingsApplicator.apply(profile: latestDraft, preferences: preferences)
             }
         }
     }

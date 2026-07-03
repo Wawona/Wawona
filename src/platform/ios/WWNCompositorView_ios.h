@@ -66,6 +66,10 @@ NS_ASSUME_NONNULL_BEGIN
 /// Switch from Metal to legacy CALayer subpresentation (IOSurface fallback).
 - (void)prepareWaylandLayerSubpresentation;
 
+/// Configure whether the SHM frame host should be treated as opaque.
+/// Popups with client-drawn shadows should disable opacity.
+- (void)setWaylandFrameOpaque:(BOOL)opaque;
+
 @end
 
 NS_ASSUME_NONNULL_END

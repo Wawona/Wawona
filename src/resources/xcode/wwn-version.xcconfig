@@ -1,0 +1,4 @@
+// Build number is stamped before compile (scheme pre-action + build phase).
+// Fallback applies only if the stamp script did not run (should not happen in Xcode).
+#include? "$(SRCROOT)/.build/wwn-build-number.xcconfig"
+CURRENT_PROJECT_VERSION = 1

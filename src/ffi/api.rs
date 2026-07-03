@@ -2793,6 +2793,19 @@ impl WawonaCore {
     // Input Injection
     // =========================================================================
 
+    /// Resolve the topmost window under compositor-global pointer coordinates.
+    pub fn window_id_at_point(&self, x: f64, y: f64) -> Option<WindowId> {
+        if !self.is_running() {
+            return None;
+        }
+
+        let mut state = self.state.write().unwrap();
+        state
+            .find_surface_at(x, y)
+            .and_then(|(surface_id, _, _)| state.surface_to_window.get(&surface_id).copied())
+            .map(|wid| WindowId { id: wid as u64 })
+    }
+
     /// Inject pointer motion event
     pub fn inject_pointer_motion(
         &self,

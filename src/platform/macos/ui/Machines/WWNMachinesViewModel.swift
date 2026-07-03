@@ -439,24 +439,34 @@ final class WWNMachinesViewModel: ObservableObject {
   /// Aligns UI "connected" with `WWNWaypipeRunner` (e.g. user quit Weston outside Stop).
   private func syncNativeConnectionStatusFromRunner() {
     guard let runner = WWNWaypipeRunner.shared() else { return }
-    for profile in profiles where profile.type == kWWNMachineTypeNative {
-      guard let clientId = selectedClientId(for: profile) else { continue }
-      let running: Bool = {
-        switch clientId {
-        case "weston":
-          return runner.westonRunning
-        case "weston-terminal":
-          return runner.westonTerminalRunning
-        case "weston-simple-shm":
-          return runner.isWestonSimpleSHMRunning
-        case "foot":
-          return runner.footRunning
-        default:
-          return false
-        }
-      }()
+    for profile in profiles {
       let st = status(for: profile.machineId)
-      if (st == .connected || st == .connecting), !running {
+      guard st == .connected || st == .connecting else { continue }
+
+      let running: Bool = {
+        if profile.type == kWWNMachineTypeNative {
+          guard let clientId = selectedClientId(for: profile) else { return false }
+          switch clientId {
+          case "weston":
+            return runner.westonRunning
+          case "weston-terminal":
+            return runner.westonTerminalRunning
+          case "weston-simple-shm":
+            return runner.isWestonSimpleSHMRunning
+          case "foot":
+            return runner.footRunning
+          default:
+            return false
+          }
+        }
+        if profile.type == kWWNMachineTypeSSHWaypipe ||
+            profile.type == kWWNMachineTypeSSHTerminal {
+          return runner.isRunning
+        }
+        return false
+      }()
+
+      if !running {
         statusByMachineId[profile.machineId] = .disconnected
         if WWNMachineProfileStore.activeMachineId() == profile.machineId {
           WWNMachineProfileStore.setActiveMachineId(nil)

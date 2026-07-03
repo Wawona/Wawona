@@ -9,7 +9,7 @@
 #import "../Machines/WWNMachineSessionBridge.h"
 #endif
 #if TARGET_OS_IPHONE
-#import "../../../ios/WWNRootfsManager.h"
+#import "../../platform/macos/WWNRootfsProvider.h"
 #endif
 #import <errno.h>
 #import <stdlib.h>
@@ -1212,6 +1212,10 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   self.activeIOSBundledClientId = [clientId copy];
 #if TARGET_OS_IPHONE
   wwn_weston_client_log_init();
+  // Reset global in-process shutdown latch on every client launch.  Some
+  // bundled clients consult this flag and will immediately exit if it remains
+  // set from a prior stop/close action.
+  wwn_weston_compositor_shutdown_requested = 0;
   wwn_ios_refresh_bundle_env();
   wwn_propagate_mobile_env();
   wwn_mobile_clear_wayland_socket_fd();
@@ -1225,6 +1229,11 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 - (void)wwnEndIOSNativeClientLaunch {
   self.iosNativeClientInFlight = NO;
   self.activeIOSBundledClientId = nil;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [[NSNotificationCenter defaultCenter]
+        postNotificationName:@"WWNNativeClientProcessDidTerminateNotification"
+                      object:self];
+  });
 }
 
 - (void)stopActiveIOSBundledClient {
@@ -1628,7 +1637,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
     CFAbsoluteTime launchStart = CFAbsoluteTimeGetCurrent();
     WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
-    [WWNRootfsManager applyShellEnvironment];
+    [WWNRootfsProvider applyShellEnvironment];
     if (![self wwnBeginIOSNativeClientLaunch:@"weston"]) {
       self.westonRunning = NO;
       return;
@@ -1987,7 +1996,16 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     }
     self.westonTerminalRunning = YES;
 
-    [WWNRootfsManager applyShellEnvironment];
+    [WWNRootfsProvider applyShellEnvironment];
+
+    // Ensure zsh starts in HOME so prompt shortening (%~) resolves to "~"
+    // instead of showing the full sandbox absolute path.
+    char saved_cwd[512] = "";
+    const char *home_dir = getenv("HOME");
+    if (home_dir && home_dir[0]) {
+      getcwd(saved_cwd, sizeof(saved_cwd));
+      chdir(home_dir);
+    }
 
     const char *shell = getenv("WAWONA_SHELL");
     char *argv_term[] = {
@@ -1998,8 +2016,18 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     };
     WWNLog("WESTON_TERM", @"Launching iOS weston-terminal (in-process zsh via libwawona-zsh.a, label=%s)...",
            argv_term[2]);
+    // Runs on a background utility queue, so the join below does not block the
+    // UI. The join is intentional: it holds westonTerminalRunning/native-client
+    // state for the whole session and resets it (below) only once zsh exits.
+    // Detaching would reset state early and allow a second launch to re-init the
+    // non-reentrant in-process zsh. Any perceived launch delay is the paced zsh
+    // bootstrap on ios_zsh_thread, not a main-thread stall.
     wwn_launch_host_client(argv_term, environ);
     WWNLog("WESTON_TERM", @"weston-terminal client thread finished");
+
+    if (saved_cwd[0]) {
+      chdir(saved_cwd);
+    }
 
     self.westonTerminalRunning = NO;
     [self wwnEndIOSNativeClientLaunch];

@@ -50,8 +50,13 @@ let
       base = if wawonaVersion != null && wawonaVersion != "" then wawonaVersion else "0.0.1";
     in if envV != "" then lib.removePrefix "v" envV else base;
   wawonaBuildNumber =
-    let bn = builtins.getEnv "WAWONA_BUILD_NUMBER";
-    in if bn != "" then bn else "0";
+    let
+      bn = builtins.getEnv "WAWONA_BUILD_NUMBER";
+      gh = builtins.getEnv "GITHUB_RUN_NUMBER";
+    in
+    if bn != "" then bn
+    else if gh != "" then gh
+    else "1";
   derivedRustLib = "$(DERIVED_FILE_DIR)/libwawona.a";
   derivedZshLib = "$(DERIVED_FILE_DIR)/libwawona-zsh.a";
   # Prebuild symlinks the active SDK's archives here (see scripts/xcode-prebuild.sh).
@@ -150,7 +155,7 @@ let
     ];
   # Static archives with C++ (ANGLE, Rust backend, fastfetch, …) need libc++
   # after every -force_load block; append once at the end of OTHER_LDFLAGS.
-  finalCxxLdflags = [ "-lc++" "-lc++abi" "-ldl" ];
+  finalCxxLdflags = [ "-lc++" "-lc++abi" "-ldl" "-framework" "IOKit" ];
   # iOS 26+ UIKit/SwiftUI modules embed LC_LINKER_OPTION auto-link entries for
   # header-only UIUtilities and private SwiftUICore. Failed autolink breaks -lc++.
   ios26ObjcAutolinkOff = [ "-fno-autolink" ];
@@ -160,7 +165,7 @@ let
   ];
   ios26SwiftLibSearchPaths = [ "$(inherited)" "$(SDKROOT)/usr/lib/swift" ];
   # Link as SwiftUI client so SwiftUICore.tbd allowable_clients accepts autolink.
-  ios26SwiftUiClientLdflags = [ "-Wl,-client_name,SwiftUI" ];
+  ios26SwiftUiClientLdflags = [ ];
   # weston_simple_shm_main lives here; os-compatibility.c is omitted from this
   # archive because libweston-13.a already provides those symbols on iOS-family targets.
   westonSimpleShmLdflags = deps:
@@ -262,6 +267,51 @@ let
 
   watchosPreBuild = mkPreBuildPhase { };
 
+  # Runs before Nix prebuild; writes $(SRCROOT)/.build/wwn-build-number.xcconfig so
+  # every Xcode build gets a fresh CURRENT_PROJECT_VERSION (timestamp locally, CI run id).
+  stampBuildNumberPhase = {
+    name = "Stamp Build Number";
+    basedOnDependencyAnalysis = false;
+    alwaysOutOfDate = true;
+    inputFiles = [ "$(SRCROOT)/scripts/xcode-stamp-build-number.sh" ];
+    outputFiles = [
+      "$(SRCROOT)/.build/wwn-build-number.xcconfig"
+      "$(DERIVED_FILE_DIR)/wwn-build-number.xcconfig"
+    ];
+    script = ''
+      exec "''${SRCROOT}/scripts/xcode-stamp-build-number.sh"
+    '';
+  };
+
+  # Scheme pre-actions run before build settings resolve; use ${SRCROOT} (shell
+  # var), not $(SRCROOT) (command substitution — breaks with "SRCROOT: not found").
+  stampPreActionScript = ''"''${SRCROOT}/scripts/xcode-stamp-build-number.sh"
+'';
+
+  mkAppScheme = targetName: {
+    build = {
+      targets = { "${targetName}" = "all"; };
+      preActions = [
+        {
+          name = "Stamp Build Number";
+          script = stampPreActionScript;
+          settingsTarget = targetName;
+        }
+      ];
+    };
+  };
+
+  appSchemeNames = [
+    "Wawona-iOS"
+    "Wawona-iPadOS"
+    "Wawona-tvOS"
+    "Wawona-macOS"
+    "Wawona-watchOS"
+    "Wawona-visionOS"
+  ];
+
+  schemesConfig = lib.genAttrs appSchemeNames mkAppScheme;
+
   # Shared helper for iOS-family application targets (iOS, iPadOS, tvOS).
   mkAppleMobileTarget =
     {
@@ -292,7 +342,7 @@ let
       type = "application";
       platform = xcodePlatform;
       inherit sources;
-      preBuildScripts = [ preBuild ];
+      preBuildScripts = [ stampBuildNumberPhase preBuild ];
       postBuildScripts = postBuild;
       settings = {
         base = {
@@ -311,6 +361,7 @@ let
           "ARCHS[sdk=${simSdk}*]" = "arm64";
           "ONLY_ACTIVE_ARCH" = "YES";
           LD_RUNPATH_SEARCH_PATHS = [ "$(inherited)" "@executable_path/Frameworks" ];
+          LD_CLIENT_NAME = "SwiftUI";
           "OTHER_CFLAGS[sdk=${deviceSdk}*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
           "OTHER_CFLAGS[sdk=${simSdk}*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
           "OTHER_SWIFT_FLAGS[sdk=${deviceSdk}*]" = [ "$(inherited)" ] ++ ios26SwiftAutolinkOff;
@@ -634,6 +685,10 @@ PLIST
 
   projectConfig = {
     name = "Wawona";
+    configFiles = {
+      Debug = "src/resources/xcode/wwn-version.xcconfig";
+      Release = "src/resources/xcode/wwn-version.xcconfig";
+    };
     options = {
       bundleIdPrefix = "com.aspauldingcode";
       deploymentTarget = {
@@ -646,7 +701,6 @@ PLIST
       base = {
         PRODUCT_NAME = "Wawona";
         MARKETING_VERSION = effectiveVersion;
-        CURRENT_PROJECT_VERSION = wawonaBuildNumber;
         CODE_SIGN_STYLE = "Automatic";
         SWIFT_VERSION = "5.0";
         SWIFT_OBJC_BRIDGING_HEADER = "src/platform/macos/WWN-Bridging-Header.h";
@@ -708,7 +762,7 @@ PLIST
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
         ];
-        preBuildScripts = [ iosPreBuild ];
+        preBuildScripts = [ stampBuildNumberPhase iosPreBuild ];
         postBuildScripts = iosPostBuildPhases;
 
         settings = {
@@ -734,6 +788,7 @@ PLIST
             "ARCHS[sdk=iphonesimulator*]" = "arm64";
             "ONLY_ACTIVE_ARCH" = "YES";
             LD_RUNPATH_SEARCH_PATHS = [ "$(inherited)" "@executable_path/Frameworks" ];
+            LD_CLIENT_NAME = "SwiftUI";
             "OTHER_CFLAGS[sdk=iphoneos*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
             "OTHER_CFLAGS[sdk=iphonesimulator*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
             "OTHER_SWIFT_FLAGS[sdk=iphoneos*]" = [ "$(inherited)" ] ++ ios26SwiftAutolinkOff;
@@ -865,7 +920,7 @@ PLIST
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
         ];
-        preBuildScripts = [ ipadosPreBuild ];
+        preBuildScripts = [ stampBuildNumberPhase ipadosPreBuild ];
         postBuildScripts = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase ipadosRootfsEmbedPhase ipadosNeovimRootfsEmbedPhase ];
 
         settings = {
@@ -1023,7 +1078,7 @@ PLIST
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
         ];
-        preBuildScripts = [ tvosPreBuild ];
+        preBuildScripts = [ stampBuildNumberPhase tvosPreBuild ];
 
         settings = {
           base = {
@@ -1163,7 +1218,7 @@ PLIST
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
           { path = "src/resources/macos"; type = "folder"; }
         ];
-        preBuildScripts = [ macosPreBuild ];
+        preBuildScripts = [ stampBuildNumberPhase macosPreBuild ];
         postBuildScripts = [
           {
             name = "Bundle Executables";
@@ -1311,7 +1366,7 @@ PLIST
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
         ];
-        preBuildScripts = [ visionosPreBuild ];
+        preBuildScripts = [ stampBuildNumberPhase visionosPreBuild ];
         settings = {
           base = {
             INFOPLIST_FILE = "src/resources/app-bundle/Info.plist";
@@ -1328,6 +1383,7 @@ PLIST
             "VALID_ARCHS[sdk=xrsimulator*]" = "arm64";
             "ARCHS[sdk=xrsimulator*]" = "arm64";
             "ONLY_ACTIVE_ARCH" = "YES";
+            LD_CLIENT_NAME = "SwiftUI";
             "OTHER_CFLAGS[sdk=xros*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
             "OTHER_CFLAGS[sdk=xrsimulator*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
             "OTHER_SWIFT_FLAGS[sdk=xros*]" = [ "$(inherited)" ] ++ ios26SwiftAutolinkOff;
@@ -1491,7 +1547,7 @@ PLIST
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
         ];
-        preBuildScripts = [ watchosPreBuild ];
+        preBuildScripts = [ stampBuildNumberPhase watchosPreBuild ];
         settings = {
           base = {
             PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.Wawona.watch";
@@ -1604,6 +1660,7 @@ PLIST
         ];
       };
     };
+    schemes = schemesConfig;
   };
 
   targetPlatformKeys = {
@@ -1618,17 +1675,22 @@ PLIST
   sharedXcodeTargets = [ "WawonaModel" "WawonaUIContracts" ];
 
   filteredProjectConfig =
-    if platformFilter == null then
-      projectConfig
-    else
-      projectConfig
-      // {
-        targets = lib.filterAttrs (
-          name: _target:
-          lib.elem name sharedXcodeTargets
-          || lib.elem (targetPlatformKeys.${name} or "") platformFilter
-        ) projectConfig.targets;
-      };
+    let
+      filteredTargets =
+        if platformFilter == null then
+          projectConfig.targets
+        else
+          lib.filterAttrs (
+            name: _target:
+            lib.elem name sharedXcodeTargets
+            || lib.elem (targetPlatformKeys.${name} or "") platformFilter
+          ) projectConfig.targets;
+    in
+    projectConfig
+    // {
+      targets = filteredTargets;
+      schemes = lib.filterAttrs (name: _scheme: filteredTargets ? ${name}) projectConfig.schemes;
+    };
 
   projectYamlFile = pkgs.writeText "project.yml" (builtins.toJSON filteredProjectConfig);
   projectDrv = pkgs.stdenv.mkDerivation {
@@ -1721,7 +1783,12 @@ team = os.environ.get("EFFECTIVE_TEAM_ID", "").strip()
 if team:
     targets = data.setdefault("targets", {})
     for target_name in ("Wawona-iOS", "Wawona-iPadOS", "Wawona-tvOS"):
-        target = targets.setdefault(target_name, {})
+        target = targets.get(target_name)
+        # Only stamp targets that survived platformFilter; setdefault would
+        # otherwise fabricate an empty (platform-less) target and xcodegen would
+        # abort with "Unknown Target platform:".
+        if target is None:
+            continue
         base = target.setdefault("settings", {}).setdefault("base", {})
         base["DEVELOPMENT_TEAM"] = team
     p.write_text(json.dumps(data, indent=2))

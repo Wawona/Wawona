@@ -25,11 +25,29 @@ NS_ASSUME_NONNULL_BEGIN
 /// Bundled Neovim runtime tree (`…/neovim-rootfs/usr/share/nvim/runtime`).
 + (NSString *)bundledNeovimRuntimePath;
 
-/// Writable rootfs under Application Support (`…/wawona-rootfs`).
+/// Writable system tree under Application Support (`…/wawona-rootfs`, etc/ + usr/).
 + (NSString *)activeRootfsPath;
+
+/// User-visible root exposed in Files.app (`Documents/Wawona`).
++ (NSString *)filesAppRootPath;
+
+/// Shell HOME (`Documents/Wawona/home`). Editable via Files.app.
++ (NSString *)activeHomePath;
+
+/// Ensure Documents/Wawona layout exists (README, home/, XDG dirs). Safe before shell launch.
++ (void)prepareFilesAppAccess;
 
 /// Copy bundle rootfs into Application Support on first launch; refresh bin/share if needed.
 + (BOOL)ensureRootfsInstalled:(NSError * _Nullable * _Nullable)error;
+
+/// Overwrite `.zshenv`/`.zshrc`/`.zlogin` from bundle templates.
++ (BOOL)refreshShellDotfiles:(NSError * _Nullable * _Nullable)error;
+
+/// Re-copy `etc/` and `usr/` from the bundle (ignores template-version short-circuit).
++ (BOOL)reinstallSystemTree:(NSError * _Nullable * _Nullable)error;
+
+/// Paths and template versions for the settings UI.
++ (NSDictionary<NSString *, NSString *> *)rootfsStatusSnapshot;
 
 /// Set HOME, PATH, ZDOTDIR, WAWONA_* env vars before launching weston-terminal.
 + (void)applyShellEnvironment;
