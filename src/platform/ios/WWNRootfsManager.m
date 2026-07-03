@@ -1,4 +1,5 @@
 #import "WWNRootfsManager.h"
+#import "../macos/WWNRootfsICloudSync.h"
 #import "../macos/WWNPlatformCallbacks.h"
 
 #if TARGET_OS_IPHONE
@@ -44,8 +45,18 @@ static NSString *const kWWNRootfsReadmeText =
   return [[docs URLByAppendingPathComponent:@"Wawona" isDirectory:YES] path];
 }
 
-+ (NSString *)activeHomePath {
++ (NSString *)localHomePath {
   return [[self filesAppRootPath] stringByAppendingPathComponent:@"home"];
+}
+
++ (NSString *)activeHomePath {
+  if ([WWNRootfsICloudSync isEnabled]) {
+    NSString *cloud = [WWNRootfsICloudSync icloudHomePath];
+    if (cloud.length > 0) {
+      return cloud;
+    }
+  }
+  return [self localHomePath];
 }
 
 + (NSString *)activeRootfsPath {
@@ -199,7 +210,7 @@ static NSString *const kWWNRootfsReadmeText =
 + (void)prepareFilesAppAccess {
   NSFileManager *fm = [NSFileManager defaultManager];
   NSString *root = [self filesAppRootPath];
-  NSString *home = [self activeHomePath];
+  NSString *home = [self localHomePath];
   [fm createDirectoryAtPath:root
       withIntermediateDirectories:YES
                    attributes:nil
@@ -216,6 +227,18 @@ static NSString *const kWWNRootfsReadmeText =
                            atomically:YES
                              encoding:NSUTF8StringEncoding
                                 error:nil];
+  }
+
+  [WWNRootfsICloudSync prepareICloudLayout];
+  if ([WWNRootfsICloudSync isEnabled]) {
+    NSString *cloudHome = [WWNRootfsICloudSync icloudHomePath];
+    if (cloudHome.length) {
+      [fm createDirectoryAtPath:cloudHome
+          withIntermediateDirectories:YES
+                           attributes:nil
+                                error:nil];
+      [self ensureXDGDirectoriesUnderHome:cloudHome];
+    }
   }
 
   NSError *migrateError = nil;
@@ -311,13 +334,20 @@ static NSString *const kWWNRootfsReadmeText =
 
 + (NSDictionary<NSString *, NSString *> *)rootfsStatusSnapshot {
   NSString *bundleRoot = [self bundleRootfsPath];
+  NSString *filesRoot = [self filesAppRootPath] ?: @"";
+  if ([WWNRootfsICloudSync isEnabled] && [WWNRootfsICloudSync icloudHomePath].length) {
+    filesRoot = [[WWNRootfsICloudSync icloudHomePath] stringByDeletingLastPathComponent];
+  }
   return @{
-    @"filesRoot" : [self filesAppRootPath] ?: @"",
+    @"filesRoot" : filesRoot,
     @"home" : [self activeHomePath] ?: @"",
+    @"localHome" : [self localHomePath] ?: @"",
     @"systemRoot" : [self activeRootfsPath] ?: @"",
     @"bundleTemplateVersion" : [self bundledTemplateVersion:bundleRoot],
     @"appliedTemplateVersion" : [self appliedTemplateVersion],
     @"filesHint" : @"Files → On My iPhone/iPad → Wawona",
+    @"iCloudSync" : [WWNRootfsICloudSync isEnabled] ? @"On" : @"Off",
+    @"iCloudStatus" : [WWNRootfsICloudSync statusSummary] ?: @"",
   };
 }
 

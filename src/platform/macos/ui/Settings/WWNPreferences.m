@@ -36,10 +36,16 @@
 #if TARGET_OS_IPHONE
 #import "../../platform/ios/WWNIOSVersions.h"
 #import "../../platform/macos/WWNRootfsProvider.h"
+#if !TARGET_OS_TV
+#import "../../platform/macos/WWNRootfsICloudSync.h"
+#endif
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <libssh2.h>
 #else
 #import "../../platform/macos/WWNRootfsProvider.h"
+#if !TARGET_OS_TV
+#import "../../platform/macos/WWNRootfsICloudSync.h"
+#endif
 #endif
 
 #ifndef WAWONA_VERSION
@@ -166,8 +172,8 @@
 - (void)confirmReinstallSystemTree;
 - (void)importFileToShellHome;
 #endif
-#if TARGET_OS_OSX
-- (void)openLocalShellInFinder;
+#if (TARGET_OS_IPHONE || TARGET_OS_OSX) && !TARGET_OS_TV
+- (void)handleLocalShellICloudSyncToggle:(BOOL)enabled;
 #endif
 #if !TARGET_OS_IPHONE
 - (void)showSection:(NSInteger)idx;
@@ -576,6 +582,18 @@ static UIImage *WWNAboutLogo(void) {
       ITEM(@"Template Version", nil, WSettingInfo, templateStatus,
            @"Bundled vs installed rootfs template (mobile only)."),
     ]];
+
+    if (caps & WWNRootfsCapabilityICloudSync) {
+      BOOL iCloudOn = [WWNRootfsProvider isICloudSyncEnabled];
+      [localItems addObject:
+          ITEM(@"Sync Shell HOME via iCloud",
+               WWNRootfsICloudSyncPreferenceKey, WSettingSwitch, @(iCloudOn),
+               @"Optional. Syncs shell dotfiles and scripts across your Apple "
+               @"devices via iCloud Drive. Requires iCloud sign-in.")];
+      [localItems
+          addObject:ITEM(@"iCloud Status", nil, WSettingInfo,
+                         rootfs[@"iCloudStatus"] ?: @"", @"Current iCloud sync state.")];
+    }
 
     if (caps & WWNRootfsCapabilityBrowseUserFiles) {
 #if TARGET_OS_OSX
@@ -3578,6 +3596,12 @@ static UIImage *WWNAboutLogo(void) {
   } else {
     item = self.sections[s.tag / 1000].items[s.tag % 1000];
   }
+#if (TARGET_OS_IPHONE || TARGET_OS_OSX) && !TARGET_OS_TV
+  if ([item.key isEqualToString:WWNRootfsICloudSyncPreferenceKey]) {
+    [self handleLocalShellICloudSyncToggle:s.on];
+    return;
+  }
+#endif
   [[NSUserDefaults standardUserDefaults] setBool:s.on forKey:item.key];
 }
 #endif
@@ -4047,6 +4071,35 @@ static UIImage *WWNAboutLogo(void) {
   [NSApp sendAction:@selector(toggleSidebar:) to:nil from:sender];
 }
 
+#endif
+
+#if (TARGET_OS_IPHONE || TARGET_OS_OSX) && !TARGET_OS_TV
+- (void)handleLocalShellICloudSyncToggle:(BOOL)enabled {
+  NSError *error = nil;
+  if (![WWNRootfsProvider setICloudSyncEnabled:enabled error:&error]) {
+#if TARGET_OS_IPHONE
+    UIAlertController *alert = [UIAlertController
+        alertControllerWithTitle:@"iCloud Sync Failed"
+                         message:error.localizedDescription
+                  preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK"
+                                              style:UIAlertActionStyleDefault
+                                            handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+#else
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"iCloud Sync Failed";
+    alert.informativeText = error.localizedDescription;
+    [alert runModal];
+#endif
+  }
+  self.sections = [self buildSections];
+#if TARGET_OS_IPHONE
+  [self.tableView reloadData];
+#else
+  [self.content.tableView reloadData];
+#endif
+}
 #endif
 
 #if TARGET_OS_IPHONE
@@ -5008,6 +5061,12 @@ static UIImage *WWNAboutLogo(void) {
   id val = nil;
   if ([sender isKindOfClass:[NSSwitch class]]) {
     val = @([(NSSwitch *)sender state] == NSControlStateValueOn);
+#if (TARGET_OS_IPHONE || TARGET_OS_OSX) && !TARGET_OS_TV
+    if ([item.key isEqualToString:WWNRootfsICloudSyncPreferenceKey]) {
+      [self handleLocalShellICloudSyncToggle:[(NSNumber *)val boolValue]];
+      return;
+    }
+#endif
   } else if ([sender isKindOfClass:[NSTextField class]]) {
     val = [(NSTextField *)sender stringValue];
     // For text fields, save immediately when value changes

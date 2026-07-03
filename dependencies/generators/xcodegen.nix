@@ -770,6 +770,7 @@ PLIST
             INFOPLIST_FILE = "src/resources/app-bundle/Info.plist";
             GENERATE_INFOPLIST_FILE = "NO";
             PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.Wawona";
+            CODE_SIGN_ENTITLEMENTS = "src/resources/app-bundle/Wawona-iCloud.entitlements";
             ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon";
             # Reduces actool work that ties thinned catalogs to installed Simulator runtimes.
             ENABLE_ON_DEMAND_RESOURCES = "NO";
@@ -928,6 +929,7 @@ PLIST
             INFOPLIST_FILE = "src/resources/app-bundle/Info.plist";
             GENERATE_INFOPLIST_FILE = "NO";
             PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.Wawona";
+            CODE_SIGN_ENTITLEMENTS = "src/resources/app-bundle/Wawona-iCloud.entitlements";
             # watchOS icon assets are currently generated outside Assets.xcassets.
             # Leave blank so actool does not require a watch-specific AppIcon set.
             ASSETCATALOG_COMPILER_APPICON_NAME = "";
@@ -1277,6 +1279,7 @@ PLIST
             INFOPLIST_FILE = "src/resources/app-bundle/Info.plist";
             GENERATE_INFOPLIST_FILE = "NO";
             PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.Wawona";
+            CODE_SIGN_ENTITLEMENTS = "src/resources/app-bundle/Wawona-iCloud.entitlements";
             SUPPORTED_PLATFORMS = "macosx";
             CODE_SIGN_STYLE = "Automatic";
             DEAD_CODE_STRIPPING = "YES";
@@ -1372,6 +1375,7 @@ PLIST
             INFOPLIST_FILE = "src/resources/app-bundle/Info.plist";
             GENERATE_INFOPLIST_FILE = "NO";
             PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.Wawona";
+            CODE_SIGN_ENTITLEMENTS = "src/resources/app-bundle/Wawona-iCloud.entitlements";
             ASSETCATALOG_COMPILER_APPICON_NAME = "Wawona";
             SUPPORTED_PLATFORMS = "xros xrsimulator";
             CODE_SIGN_STYLE = "Automatic";

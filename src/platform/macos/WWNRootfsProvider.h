@@ -15,6 +15,8 @@ typedef NS_OPTIONS(NSUInteger, WWNRootfsCapabilities) {
     WWNRootfsCapabilityResetDotfiles = 1 << 3,
     /// Re-copy etc/ + usr/ from the app bundle (bundled-rootfs platforms only).
     WWNRootfsCapabilityReinstallSystemTree = 1 << 4,
+    /// Optional iCloud Drive sync for shell HOME (Apple platforms, user opt-in).
+    WWNRootfsCapabilityICloudSync = 1 << 5,
 };
 
 /// Snapshot keys (NSString values unless noted):
@@ -26,6 +28,8 @@ typedef NS_OPTIONS(NSUInteger, WWNRootfsCapabilities) {
 ///   appliedTemplateVersion
 ///   filesHint         — one-line browse instruction for this platform
 ///   platformLabel     — short OS name for settings copy
+///   iCloudSync        — @"On" | @"Off"
+///   iCloudStatus      — human-readable sync state
 @interface WWNRootfsProvider : NSObject
 
 + (WWNRootfsCapabilities)capabilities;
@@ -44,6 +48,12 @@ typedef NS_OPTIONS(NSUInteger, WWNRootfsCapabilities) {
 
 /// Open the user files location in the platform file manager when supported.
 + (BOOL)openUserFilesLocation;
+
+#if (TARGET_OS_IPHONE || TARGET_OS_OSX) && !TARGET_OS_TV
++ (BOOL)isICloudSyncSupported;
++ (BOOL)isICloudSyncEnabled;
++ (BOOL)setICloudSyncEnabled:(BOOL)enabled error:(NSError * _Nullable * _Nullable)error;
+#endif
 
 @end
 

@@ -4,6 +4,10 @@
 #import "../ios/WWNRootfsManager.h"
 #endif
 
+#if (TARGET_OS_IPHONE || TARGET_OS_OSX) && !TARGET_OS_TV
+#import "WWNRootfsICloudSync.h"
+#endif
+
 #import <TargetConditionals.h>
 
 #if TARGET_OS_OSX
@@ -44,18 +48,23 @@ static NSDictionary<NSString *, NSString *> *WWNRootfsHostSnapshot(void) {
 @implementation WWNRootfsProvider
 
 + (WWNRootfsCapabilities)capabilities {
+  WWNRootfsCapabilities caps = WWNRootfsCapabilityNone;
 #if TARGET_OS_TV
-  return WWNRootfsCapabilitySettings | WWNRootfsCapabilityResetDotfiles |
+  caps = WWNRootfsCapabilitySettings | WWNRootfsCapabilityResetDotfiles |
          WWNRootfsCapabilityReinstallSystemTree;
 #elif TARGET_OS_IPHONE
-  return WWNRootfsCapabilitySettings | WWNRootfsCapabilityResetDotfiles |
+  caps = WWNRootfsCapabilitySettings | WWNRootfsCapabilityResetDotfiles |
          WWNRootfsCapabilityReinstallSystemTree |
          WWNRootfsCapabilityBrowseUserFiles | WWNRootfsCapabilityImportFile;
 #elif TARGET_OS_OSX
-  return WWNRootfsCapabilitySettings | WWNRootfsCapabilityBrowseUserFiles;
-#else
-  return WWNRootfsCapabilityNone;
+  caps = WWNRootfsCapabilitySettings | WWNRootfsCapabilityBrowseUserFiles;
 #endif
+#if (TARGET_OS_IPHONE || TARGET_OS_OSX) && !TARGET_OS_TV
+  if ([WWNRootfsICloudSync isSupported]) {
+    caps |= WWNRootfsCapabilityICloudSync;
+  }
+#endif
+  return caps;
 }
 
 + (NSDictionary<NSString *, NSString *> *)snapshot {
@@ -69,15 +78,32 @@ static NSDictionary<NSString *, NSString *> *WWNRootfsHostSnapshot(void) {
   snap[@"filesHint"] =
       @"tvOS has no Files app; use Reset/Reinstall below.";
 #elif defined(TARGET_OS_VISION) && TARGET_OS_VISION
-  snap[@"filesHint"] =
-      @"Files → On My Vision Pro → Wawona → Wawona → home/";
+  if ([WWNRootfsICloudSync isEnabled] && [WWNRootfsICloudSync isContainerAvailable]) {
+    snap[@"filesHint"] =
+        @"iCloud Drive → Wawona → home/ (also in Files on Vision Pro).";
+  } else {
+    snap[@"filesHint"] =
+        @"Files → On My Vision Pro → Wawona → Wawona → home/";
+  }
 #else
-  snap[@"filesHint"] =
-      @"Files → On My iPhone/iPad → Wawona → Wawona → home/";
+  if ([WWNRootfsICloudSync isEnabled] && [WWNRootfsICloudSync isContainerAvailable]) {
+    snap[@"filesHint"] =
+        @"iCloud Drive → Wawona → home/ (and On My iPhone → Wawona).";
+  } else {
+    snap[@"filesHint"] =
+        @"Files → On My iPhone/iPad → Wawona → Wawona → home/";
+  }
 #endif
   return snap;
 #elif TARGET_OS_OSX
-  return WWNRootfsHostSnapshot();
+  NSMutableDictionary *snap = [WWNRootfsHostSnapshot() mutableCopy];
+  snap[@"iCloudSync"] = [WWNRootfsICloudSync isEnabled] ? @"On" : @"Off";
+  snap[@"iCloudStatus"] = [WWNRootfsICloudSync statusSummary];
+  if ([WWNRootfsICloudSync isEnabled]) {
+    snap[@"filesHint"] =
+        @"iCloud Drive → Wawona → home/ syncs with iPhone, iPad, and Vision Pro.";
+  }
+  return snap;
 #else
   return @{};
 #endif
@@ -86,6 +112,8 @@ static NSDictionary<NSString *, NSString *> *WWNRootfsHostSnapshot(void) {
 + (void)prepareUserAccess {
 #if TARGET_OS_IPHONE
   [WWNRootfsManager prepareFilesAppAccess];
+#elif (TARGET_OS_OSX && !TARGET_OS_TV)
+  [WWNRootfsICloudSync prepareICloudLayout];
 #endif
 }
 
@@ -142,5 +170,22 @@ static NSDictionary<NSString *, NSString *> *WWNRootfsHostSnapshot(void) {
   return NO;
 #endif
 }
+
+#if (TARGET_OS_IPHONE || TARGET_OS_OSX) && !TARGET_OS_TV
+
++ (BOOL)isICloudSyncSupported {
+  return [WWNRootfsICloudSync isSupported];
+}
+
++ (BOOL)isICloudSyncEnabled {
+  return [WWNRootfsICloudSync isEnabled];
+}
+
++ (BOOL)setICloudSyncEnabled:(BOOL)enabled
+                       error:(NSError * _Nullable * _Nullable)error {
+  return [WWNRootfsICloudSync setEnabled:enabled error:error];
+}
+
+#endif
 
 @end

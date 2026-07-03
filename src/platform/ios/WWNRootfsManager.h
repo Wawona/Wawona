@@ -34,6 +34,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// Shell HOME (`Documents/Wawona/home`). Editable via Files.app.
 + (NSString *)activeHomePath;
 
+/// Local device HOME path (never the iCloud path). Used for migration.
++ (NSString *)localHomePath;
+
 /// Ensure Documents/Wawona layout exists (README, home/, XDG dirs). Safe before shell launch.
 + (void)prepareFilesAppAccess;
 
