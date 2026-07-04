@@ -403,6 +403,7 @@
           buildModule = toolchainsAndroid;
           inherit (androidPkgs) lib stdenv clang pkg-config unzip zip patchelf file util-linux glslang mesa;
           inherit gradle jdk17 wawonaSrc androidSDK androidUtils;
+          srcFiltered = src;
           androidToolchain = toolchainsAndroid.androidToolchain;
           rustBackend = backend-android;
           targetPkgs = pkgsAndroidCross;
@@ -415,6 +416,7 @@
           buildModule = toolchainsAndroid;
           inherit (androidPkgs) lib stdenv clang pkg-config unzip zip patchelf file util-linux glslang mesa;
           inherit gradle jdk17 wawonaSrc androidSDK androidUtils;
+          srcFiltered = src;
           androidToolchain = toolchainsAndroid.androidToolchain;
           rustBackend = backend-wearos;
           targetPkgs = pkgsAndroidCross;
@@ -565,11 +567,21 @@
           "iland-gl-clients" = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
         };
 
-        packages = commonPackages // (pkgs.lib.optionalAttrs (isLinuxHost || androidSDK != null) {
+        packages = commonPackages
+          # WLCS conformance runner (ci-l2-wlcs) — Linux-only, skeleton
+          # integration; runtime battery is a CI lane. Guarded so darwin eval is
+          # unaffected.
+          // (pkgs.lib.optionalAttrs (isLinuxHost && builtins.pathExists ./dependencies/tests/wlcs.nix) {
+            wawona-wlcs-run = pkgs.callPackage ./dependencies/tests/wlcs.nix { };
+          })
+          // (pkgs.lib.optionalAttrs (isLinuxHost || androidSDK != null) {
           wawona-android = wawonaAndroidPkg;
           wawona-wearos-android = wawonaWearAndroidPkg;
           wawona-android-backend = backend-android;
           wawona-wearos-backend = backend-wearos;
+          # Exposed so the CI reproducibility gate (repro-rebuild) can --rebuild
+          # the filtered-source assembly and byte-compare it across hosts.
+          wawona-workspace-src-android = workspace-src-android;
           android-toolchain-sanity = androidToolchainSanity;
           gradle-deps-update =
             let
@@ -593,6 +605,7 @@
             buildModule = toolchainsAndroid;
             inherit (androidPkgs) lib stdenv clang pkg-config unzip zip patchelf file util-linux glslang mesa;
             inherit gradle jdk17 wawonaSrc androidSDK androidUtils;
+          srcFiltered = src;
             androidToolchain = toolchainsAndroid.androidToolchain;
             rustBackend = backend-android;
             targetPkgs = pkgsAndroidCross;
@@ -1214,6 +1227,8 @@ EOF
         wawona-ios-provision = { type = "app"; program = "${systemPackages.wawona-ios-provision}/bin/provision-xcode"; };
       } // (pkgs.lib.optionalAttrs hasGraphicsValidate {
         graphics-validate-macos = { type = "app"; program = "${systemPackages.graphics-validate-macos}/bin/graphics-validate-macos"; };
+        # Fast graphics driver-sanity smoke, runnable as `nix run .#graphics-smoke`.
+        graphics-smoke = { type = "app"; program = "${systemPackages.graphics-validate-macos}/bin/graphics-validate-macos"; };
       }));
 
     allSystemPackages = nixpkgs.lib.genAttrs systemsList (system: getPackagesForSystem system (pkgsFor system));
@@ -1237,8 +1252,16 @@ EOF
         }).${system}.default;
       }
     );
-    checks = nixpkgs.lib.genAttrs systemsList (system: let pkgs = pkgsFor system; in pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin {
-      graphics-validate-smoke = pkgs.runCommand "graphics-validate-smoke" { nativeBuildInputs = [ pkgs.coreutils ]; } "echo 'smoke check'; test -n '${allSystemPackages.${system}.wawona-android}'; touch $out";
-    });
+    checks = nixpkgs.lib.genAttrs systemsList (system: let pkgs = pkgsFor system; in pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin (
+      (pkgs.lib.optionalAttrs (builtins.pathExists ./dependencies/tests/graphics-validate.nix) {
+        # Fast graphics driver-sanity gate (ci-graphics-cts). Runs the validator
+        # produced by graphics-validate.nix; passes in the sandbox even without a
+        # bundled ICD (software/SHM path) so it is a stable PR gate.
+        graphics-validate-smoke = pkgs.runCommand "graphics-validate-smoke" { } ''
+          ${allSystemPackages.${system}.graphics-validate-macos}/bin/graphics-validate-macos
+          touch $out
+        '';
+      })
+    ));
   };
 }

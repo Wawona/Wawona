@@ -29,6 +29,7 @@ extern NSString *const kWWNPrefsEnableDmabuf;
 extern NSString *const kWWNPrefsVulkanDriver;
 extern NSString *const kWWNPrefsOpenGLDriver;
 extern NSString *const kWWNPrefsRespectSafeArea;
+extern NSString *const kWWNPrefsExternalDisplayTouchpad;
 extern NSString *const kWWNPrefsHasSeenWelcome;
 // Waypipe configuration keys
 extern NSString *const kWWNPrefsWaypipeDisplay;
@@ -94,6 +95,8 @@ extern NSString *const kWWNPrefsMachineSessionThumbnailsEnabled;
 - (void)setAutoScale:(BOOL)enabled;
 - (BOOL)respectSafeArea;
 - (void)setRespectSafeArea:(BOOL)enabled;
+- (BOOL)externalDisplayTouchpad; // Device as trackpad on external displays
+- (void)setExternalDisplayTouchpad:(BOOL)enabled;
 - (BOOL)hasSeenWelcome;
 - (void)setHasSeenWelcome:(BOOL)seen;
 
@@ -157,6 +160,9 @@ extern NSString *const kWWNPrefsMachineSessionThumbnailsEnabled;
 // Graphics Driver Selection (Settings > Graphics > Drivers)
 - (NSString *)vulkanDriver;
 - (void)setVulkanDriver:(NSString *)driver;
+// Capability-tiered default ICD: KosmicKrisp on Apple Silicon + macOS 26+,
+// MoltenVK otherwise. Used when the user has not made an explicit choice.
++ (NSString *)defaultVulkanDriverForHardware;
 - (NSString *)openglDriver;
 - (void)setOpenGLDriver:(NSString *)driver;
 

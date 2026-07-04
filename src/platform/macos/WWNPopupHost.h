@@ -27,6 +27,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)showAtPoint:(CGPoint)point inView:(UIView *)parentView;
 #else
 - (void)showAtScreenPoint:(CGPoint)point;
+- (void)showAtScreenRect:(NSRect)screenFrame;
 #endif
 
 - (void)dismiss;

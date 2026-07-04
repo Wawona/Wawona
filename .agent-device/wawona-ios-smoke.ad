@@ -1,0 +1,16 @@
+context platform=ios
+context session=wawona-ios-smoke
+context device=iPhone 17 Pro
+
+open com.aspauldingcode.Wawona
+wait 2000
+snapshot -i
+screenshot ./.agent-device/test-artifacts/ios-machines.png
+press @e5
+wait 800
+snapshot -i
+screenshot ./.agent-device/test-artifacts/ios-settings-display.png
+press @e5
+wait 500
+snapshot -i
+close

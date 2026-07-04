@@ -342,6 +342,27 @@ mod app {
         let layout_binding = LayoutBinding::new(LayoutMode::Expanded);
 
         let compositor = start_embedded_compositor();
+        // Propagate the GTK/GDK monitor scale factor into wl_output so HiDPI
+        // clients render at native density instead of a hardcoded 1x.
+        if let Some(core) = compositor.as_ref() {
+            if let Some(display) = gtk::gdk::Display::default() {
+                let monitors = display.monitors();
+                let scale = (0..monitors.n_items())
+                    .filter_map(|i| {
+                        monitors
+                            .item(i)
+                            .and_then(|obj| obj.downcast::<gtk::gdk::Monitor>().ok())
+                            .map(|m| m.scale_factor())
+                    })
+                    .max()
+                    .unwrap_or(1)
+                    .max(1);
+                if scale > 1 {
+                    wawona::wlog!("COMPOSITOR", "GDK monitor scale factor: {}", scale);
+                    core.set_output_size(1280, 800, scale as f32);
+                }
+            }
+        }
         let machine_sessions: MachineSessions = Rc::new(RefCell::new(HashMap::new()));
         let comp = Rc::new(RefCell::new(CompositorState {
             core: compositor.clone().unwrap_or_else(|| {
@@ -661,6 +682,16 @@ mod app {
                                     }
                                 };
 
+                                // Host window origin in output coords: companion
+                                // nodes (popups) are positioned relative to it,
+                                // not to their own window anchor (which would
+                                // collapse every popup to (0,0)).
+                                let host_anchor = scene
+                                    .nodes
+                                    .iter()
+                                    .find(|n| n.window_id.id == wid_for_draw)
+                                    .map(|n| (n.anchor_output_x, n.anchor_output_y));
+
                                 let mut to_present = Vec::new();
                                 for node in &scene.nodes {
                                     if !draw_wids.contains(&node.window_id.id) {
@@ -682,8 +713,19 @@ mod app {
                                     let Ok(surf) = surf else { continue; };
 
                                     let _ = cr.save();
-                                    let anchor_x = node.anchor_output_x as f64;
-                                    let anchor_y = node.anchor_output_y as f64;
+                                    let (anchor_x, anchor_y) =
+                                        if node.window_id.id != wid_for_draw {
+                                            let (hx, hy) = host_anchor.unwrap_or((
+                                                node.anchor_output_x,
+                                                node.anchor_output_y,
+                                            ));
+                                            (hx as f64, hy as f64)
+                                        } else {
+                                            (
+                                                node.anchor_output_x as f64,
+                                                node.anchor_output_y as f64,
+                                            )
+                                        };
                                     let local_x = node.x as f64 - anchor_x;
                                     let local_y = node.y as f64 - anchor_y;
                                     cr.translate(local_x, local_y);
@@ -806,6 +848,42 @@ mod app {
                                     cs.pending_host_resizes.remove(&window_id.id);
                                 }
                                 dispatch_pending_host_resize(&mut cs, window_id.id);
+                            }
+                        }
+                        WindowEvent::PopupCreated { window_id, parent_id, x, y, width, height } => {
+                            // Composite the popup inside the host window that
+                            // renders its parent (toplevel or another popup's
+                            // host) — same mechanism as fullscreen-shell
+                            // companions.
+                            let pid = parent_id.id;
+                            let host_wid = if cs.client_windows.contains_key(&pid) {
+                                Some(pid)
+                            } else {
+                                cs.client_windows
+                                    .iter()
+                                    .find(|(_, cw)| cw.companion_window_ids.contains(&pid))
+                                    .map(|(hwid, _)| *hwid)
+                            };
+                            wawona::wlog!(
+                                "COMPOSITOR",
+                                "Popup wid={} parent={} at ({},{}) {}x{} → host {:?}",
+                                window_id.id, pid, x, y, width, height, host_wid
+                            );
+                            if let Some(hwid) = host_wid {
+                                if let Some(host) = cs.client_windows.get_mut(&hwid) {
+                                    if !host.companion_window_ids.contains(&window_id.id) {
+                                        host.companion_window_ids.push(window_id.id);
+                                    }
+                                    host.drawing_area.queue_draw();
+                                }
+                            }
+                        }
+                        WindowEvent::PopupRepositioned { window_id, .. } => {
+                            let wid = window_id.id;
+                            for cw in cs.client_windows.values() {
+                                if cw.companion_window_ids.contains(&wid) {
+                                    cw.drawing_area.queue_draw();
+                                }
                             }
                         }
                         WindowEvent::DecorationModeChanged { window_id, mode } => {

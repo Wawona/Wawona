@@ -102,18 +102,6 @@ impl CompositorState {
         }
     }
     
-    /// Check if a surface is effectively synchronized
-    pub fn is_effectively_sync(&self, surface_id: u32) -> bool {
-        let mut current_id = surface_id;
-        while let Some(sub) = self.subsurfaces.get(&current_id) {
-            if sub.sync {
-                return true;
-            }
-            current_id = sub.parent_id;
-        }
-        false
-    }
-
     /// Copy `xdg_surface.set_window_geometry` from Smithay into our xdg surface
     /// bookkeeping so scene building and host window sizing can crop CSD chrome.
     pub fn sync_xdg_window_geometry_from_surface(
@@ -171,15 +159,14 @@ impl CompositorState {
             }
         }
 
-        let is_sync = self.is_effectively_sync(surface_id);
-        
+        // Smithay owns sync-subsurface caching: this handler is only invoked
+        // once a surface's state has actually been applied (for sync
+        // subsurfaces that happens on the ancestor's commit, and smithay
+        // re-invokes CompositorHandler::commit for each surface in the
+        // transaction). So the shadow state always does a direct commit here.
         let release_id = if let Some(surface) = self.get_surface(surface_id) {
             let mut surface = surface.write().unwrap();
-            if is_sync {
-                surface.commit_sync()
-            } else {
-                surface.commit()
-            }
+            surface.commit()
         } else {
             None
         };
@@ -196,16 +183,12 @@ impl CompositorState {
             }
         }
 
-        if !is_sync {
-            self.apply_subsurface_cached_state_recursive(surface_id);
-            
-            if let Some(children) = self.subsurface_children.get(&surface_id).cloned() {
-                for child_id in children {
-                    self.commit_subsurface_position(child_id);
-                }
+        if let Some(children) = self.subsurface_children.get(&surface_id).cloned() {
+            for child_id in children {
+                self.commit_subsurface_position(child_id);
             }
         }
-        
+
         self.ext.presentation.mark_committed(surface_id);
         self.finalize_surface_commit(surface_id);
     }
@@ -225,31 +208,6 @@ impl CompositorState {
         }
         for (cid, bid) in releases {
             self.release_buffer(cid, bid);
-        }
-    }
-
-    /// Recursively apply cached state for synchronized subsurfaces
-    fn apply_subsurface_cached_state_recursive(&mut self, surface_id: u32) {
-        if let Some(children) = self.subsurface_children.get(&surface_id).cloned() {
-            for child_id in children {
-                let is_child_sync = self.subsurfaces.get(&child_id).map(|s| s.sync).unwrap_or(false);
-                if is_child_sync {
-                    let release_id = if let Some(surface) = self.get_surface(child_id) {
-                        let mut surface = surface.write().unwrap();
-                        surface.apply_cached()
-                    } else {
-                        None
-                    };
-                    
-                    if let Some(bid) = release_id {
-                        if let Some(cid) = self.get_surface(child_id).and_then(|s| s.read().unwrap().client_id.clone()) {
-                            self.queue_buffer_release(cid, bid);
-                        }
-                    }
-                    
-                    self.apply_subsurface_cached_state_recursive(child_id);
-                }
-            }
         }
     }
 
@@ -360,53 +318,44 @@ impl CompositorState {
                             let mut target_geometry_y = 0;
 
                             if should_apply_window_geometry {
-                                if let Some((gx, gy, gw, gh)) = xdg_geometry {
-                                // wlroots/sway-style: intersect client-provided window geometry
-                                // with committed buffer extents. No arbitrary delta threshold.
-                                let committed_w = surface.current.width.max(1);
-                                let committed_h = surface.current.height.max(1);
-                                let geom_x2 = gx.saturating_add(gw);
-                                let geom_y2 = gy.saturating_add(gh);
-                                let inter_x1 = gx.max(0);
-                                let inter_y1 = gy.max(0);
-                                let inter_x2 = geom_x2.min(committed_w);
-                                let inter_y2 = geom_y2.min(committed_h);
-                                let inter_w = (inter_x2 - inter_x1).max(0);
-                                let inter_h = (inter_y2 - inter_y1).max(0);
-                                let geometry_intersects_buffer =
-                                    gw > 0 && gh > 0 && inter_w > 0 && inter_h > 0;
-
-                                if geometry_intersects_buffer {
+                                let app_id = window.app_id.clone();
+                                let decoration_mode = window.decoration_mode;
+                                let buf_w = surface.current.width as i32;
+                                let buf_h = surface.current.height as i32;
+                                if let Some((inter_x1, inter_y1, inter_w, inter_h)) =
+                                    crate::core::wayland::xdg::decoration::resolve_window_content_geometry(
+                                        self,
+                                        &app_id,
+                                        decoration_mode,
+                                        buf_w,
+                                        buf_h,
+                                        xdg_geometry,
+                                    )
+                                {
                                     target_width = inter_w;
                                     target_height = inter_h;
                                     target_geometry_x = inter_x1;
                                     target_geometry_y = inter_y1;
-                                } else {
-                                    crate::wlog!(
-                                        crate::util::logging::STATE,
-                                        "Ignoring non-intersecting xdg geometry: window={} surf={} geom={:?} committed={}x{}",
-                                        wid,
-                                        id,
-                                        xdg_geometry,
-                                        committed_w,
-                                        committed_h
-                                    );
-                                }
                                 }
                             }
 
                             let expected_configure_known = expected_toplevel_size
                                 .map(|(expected_w, expected_h)| expected_w > 0 && expected_h > 0)
                                 .unwrap_or(false);
-                            let should_accept_client_commit_size =
-                                expected_toplevel_size
-                                    .map(|(expected_w, expected_h)| {
-                                        expected_w > 0
-                                            && expected_h > 0
-                                            && (target_width - expected_w).abs() <= 64
-                                            && (target_height - expected_h).abs() <= 64
-                                    })
-                                    .unwrap_or(false);
+                            // The client's first-ever commit is always its true preferred
+                            // size (the initial configure is deliberately deferred to
+                            // 0x0 — see shell_handler::new_toplevel). Trust it
+                            // unconditionally so every client, not just a known-app
+                            // allowlist, starts edge-to-edge with its own content.
+                            let is_first_commit = !window.has_committed_buffer
+                                && target_width > 0
+                                && target_height > 0;
+                            let should_accept_client_commit_size = is_first_commit
+                                || crate::core::wayland::xdg::decoration::committed_size_matches_expected(
+                                    target_width,
+                                    target_height,
+                                    expected_toplevel_size,
+                                );
                             let expected_delta = expected_toplevel_size.map(|(expected_w, expected_h)| {
                                 (
                                     (target_width - expected_w).abs(),
@@ -415,7 +364,7 @@ impl CompositorState {
                             });
                             crate::wlog_hot!(
                                 crate::util::logging::STATE,
-                                "Host sync decision: window={} surf={} pending_serial={} last_acked_serial={} tl_pending_serial={} tl_last_acked_serial={} committed={}x{} target={}x{} xdg_geom={:?} expected_toplevel={:?} expected_delta={:?} expected_known={} accept={}",
+                                "Host sync decision: window={} surf={} pending_serial={} last_acked_serial={} tl_pending_serial={} tl_last_acked_serial={} committed={}x{} target={}x{} xdg_geom={:?} expected_toplevel={:?} expected_delta={:?} expected_known={} first_commit={} accept={}",
                                 wid,
                                 id,
                                 xdg_pending_serial,
@@ -430,6 +379,7 @@ impl CompositorState {
                                 expected_toplevel_size,
                                 expected_delta,
                                 expected_configure_known,
+                                is_first_commit,
                                 should_accept_client_commit_size
                             );
 
@@ -438,6 +388,14 @@ impl CompositorState {
                                 window.height = target_height;
                                 window.geometry_x = target_geometry_x;
                                 window.geometry_y = target_geometry_y;
+                                window.has_committed_buffer = true;
+                                for tl in self.xdg.toplevels.values_mut() {
+                                    if tl.surface_id == id {
+                                        tl.width = target_width.max(0) as u32;
+                                        tl.height = target_height.max(0) as u32;
+                                        break;
+                                    }
+                                }
                             } else {
                                 if expected_configure_known {
                                     crate::wlog!(

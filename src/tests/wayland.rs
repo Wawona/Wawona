@@ -37,23 +37,22 @@ fn test_default_output_exists() {
 }
 
 #[test]
-fn test_fire_presentation_feedback_only_committed() {
+fn test_presentation_feedback_send_on_empty_is_noop() {
     use wayland_server::Display;
 
     let display = Display::<CompositorState>::new().unwrap();
     let _handle = display.handle();
     let mut state = CompositorState::new(None);
 
-    // Manually push two fake feedbacks — one committed, one not.
-    // Since we can't create a real WpPresentationFeedback without a
-    // client connection, we verify the filtering logic by checking that
-    // fire_presentation_feedback retains uncommitted entries.
-
-    // Before: empty
+    // Presentation feedback fires only at the present boundary
+    // (notify_frame_presented → send_presented_events). With no queued
+    // feedbacks, delivery must be a no-op.
     assert!(state.ext.presentation.feedbacks.is_empty());
-
-    // After fire with no feedbacks — should be a no-op
-    state.fire_presentation_feedback();
+    let seq = state.next_presentation_seq();
+    state
+        .ext
+        .presentation
+        .send_presented_events(0, 16_666_666, seq);
     assert!(state.ext.presentation.feedbacks.is_empty());
 }
 

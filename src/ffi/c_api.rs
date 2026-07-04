@@ -271,6 +271,21 @@ pub extern "C" fn WWNCoreRequestWindowClose(core: *mut WWNCore, window_id: u64) 
     }
 }
 
+/// Host dismissed a popup — send `xdg_popup.popup_done` to the client.
+#[no_mangle]
+pub extern "C" fn WWNCoreNotifyPopupDismissed(core: *mut WWNCore, window_id: u64) -> bool {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() {
+            return false;
+        }
+        let core = unsafe { &*core };
+        core.notify_popup_dismissed(WindowId { id: window_id })
+    })) {
+        Ok(v) => v,
+        Err(_) => false,
+    }
+}
+
 /// Remove compositor window state immediately. Returns `true` if window existed.
 #[no_mangle]
 pub extern "C" fn WWNCoreForceDestroyHostWindow(core: *mut WWNCore, window_id: u64) -> bool {
@@ -820,6 +835,24 @@ pub extern "C" fn WWNCoreNotifyFramePresented(
 // ----------------------------------------------------------------------------
 // Input Injection API
 // ----------------------------------------------------------------------------
+
+/// Whether the window should be draggable from anywhere in its content on macOS.
+#[no_mangle]
+pub extern "C" fn WWNCoreWindowPrefersMacOSSurfaceDrag(
+    core: *const WWNCore,
+    window_id: u64,
+) -> bool {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() {
+            return false;
+        }
+        let core = unsafe { &*core };
+        core.window_prefers_macos_surface_drag(super::types::WindowId { id: window_id })
+    })) {
+        Ok(prefers) => prefers,
+        Err(_) => false,
+    }
+}
 
 /// Resolve topmost window id at compositor-global coordinates.
 /// Returns 0 when no surface/window exists at that location.

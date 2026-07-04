@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  CarPlay entitlements template.
+
+  CarPlay entitlements are granted by Apple per-app after review:
+  https://developer.apple.com/contact/carplay/
+
+  Once granted, merge the appropriate key into the active entitlements file
+  (Wawona-iCloud.entitlements) and regenerate the Xcode project. The scene
+  manifest and WWNCarPlaySceneDelegate are already wired; they stay dormant
+  without the entitlement.
+
+  Wawona's status-dashboard template fits the "driving task" category.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.developer.carplay-driving-task</key>
+	<true/>
+</dict>
+</plist>

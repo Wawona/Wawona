@@ -10,7 +10,6 @@
 //! - Platform receives high-level events and provides rendering/windowing services
 
 use std::sync::{Arc, RwLock, Mutex};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
@@ -18,6 +17,57 @@ use std::hash::{Hash, Hasher};
 /// queue, in-process client workers). Concurrent ProcessEvents corrupts client
 /// connections on iOS.
 static WAYLAND_DISPATCH_MUTEX: Mutex<()> = Mutex::new(());
+
+/// Poison-recovering lock acquisition.
+///
+/// A panic inside an event handler (isolated by `catch_unwind`) poisons any
+/// lock held at the time. The data is still structurally valid — Wawona's
+/// state updates are individually small — so recovering the guard and moving
+/// on is strictly better than latching the whole compositor into a dead
+/// "faulted" state. Every lock site at this FFI boundary must go through
+/// these helpers instead of `.unwrap()`.
+trait LockRecoverExt<T: ?Sized> {
+    fn lock_recover(&self) -> std::sync::MutexGuard<'_, T>;
+}
+
+impl<T: ?Sized> LockRecoverExt<T> for Mutex<T> {
+    fn lock_recover(&self) -> std::sync::MutexGuard<'_, T> {
+        self.lock().unwrap_or_else(|poisoned| {
+            crate::wlog_hot!(
+                crate::util::logging::FFI,
+                "Recovered poisoned mutex at FFI boundary"
+            );
+            poisoned.into_inner()
+        })
+    }
+}
+
+trait RwRecoverExt<T: ?Sized> {
+    fn read_recover(&self) -> std::sync::RwLockReadGuard<'_, T>;
+    fn write_recover(&self) -> std::sync::RwLockWriteGuard<'_, T>;
+}
+
+impl<T: ?Sized> RwRecoverExt<T> for RwLock<T> {
+    fn read_recover(&self) -> std::sync::RwLockReadGuard<'_, T> {
+        self.read().unwrap_or_else(|poisoned| {
+            crate::wlog_hot!(
+                crate::util::logging::FFI,
+                "Recovered poisoned rwlock (read) at FFI boundary"
+            );
+            poisoned.into_inner()
+        })
+    }
+
+    fn write_recover(&self) -> std::sync::RwLockWriteGuard<'_, T> {
+        self.write().unwrap_or_else(|poisoned| {
+            crate::wlog_hot!(
+                crate::util::logging::FFI,
+                "Recovered poisoned rwlock (write) at FFI boundary"
+            );
+            poisoned.into_inner()
+        })
+    }
+}
 
 use crate::ffi::types;
 
@@ -109,29 +159,27 @@ pub struct WawonaCore {
     /// Scene fingerprint used for redraw gating.
     last_scene_fingerprint: RwLock<u64>,
 
-    /// Sticky fault flag used to avoid panic storms after a fatal core fault.
-    compositor_faulted: AtomicBool,
 }
 
 /// Translate AppKit/GTK view-local coordinates to wl_surface-local coordinates.
-/// Only CSD windows carry a non-zero xdg geometry inset; SSD uses view coords as-is.
+/// Delegates to the shared core transform (`view_to_surface_coords`) so host
+/// input injection and scene hit-testing can never disagree about insets or
+/// implicit HiDPI scaling.
 fn apply_geometry_offset(
     state: &CompositorState,
     window_id: WindowId,
     x: f64,
     y: f64,
 ) -> (f64, f64) {
-    use crate::core::window::DecorationMode;
     let wid = window_id.id as u32;
-    if let Some(window_ref) = state.get_window(wid) {
-        let w = window_ref.read().unwrap();
-        if matches!(w.decoration_mode, DecorationMode::ClientSide)
-            && (w.geometry_x != 0 || w.geometry_y != 0)
-        {
-            return (x + w.geometry_x as f64, y + w.geometry_y as f64);
-        }
-    }
-    (x, y)
+    let Some(window_ref) = state.get_window(wid) else {
+        return (x, y);
+    };
+    let (surface_id, view_w, view_h) = {
+        let w = window_ref.read_recover();
+        (w.surface_id, w.width.max(1) as f64, w.height.max(1) as f64)
+    };
+    state.view_to_surface_coords(surface_id, view_w, view_h, x, y)
 }
 
 /// macOS/iOS inject pointer in the host content view — already window-local.
@@ -250,20 +298,6 @@ fn should_flush_frame_callbacks(point: FrameCallbackFlushPoint) -> bool {
 }
 
 impl WawonaCore {
-    fn mark_compositor_fault(&self, context: &str) {
-        if !self.compositor_faulted.swap(true, Ordering::SeqCst) {
-            crate::wlog!(
-                crate::util::logging::FFI,
-                "Compositor fault latched: {}; skipping further event-loop work",
-                context
-            );
-        }
-    }
-
-    fn clear_compositor_fault(&self) {
-        self.compositor_faulted.store(false, Ordering::SeqCst);
-    }
-
     fn begin_resize_transaction(
         &self,
         window_id: WindowId,
@@ -272,7 +306,7 @@ impl WawonaCore {
         requested_size: Size,
         size_kind: GeometrySizeKind,
     ) -> ResizeTransaction {
-        let mut next = self.next_resize_transaction_id.lock().unwrap();
+        let mut next = self.next_resize_transaction_id.lock_recover();
         let txn = ResizeTransaction {
             id: *next,
             window_id,
@@ -284,8 +318,7 @@ impl WawonaCore {
         *next = next.wrapping_add(1);
         let replaced = self
             .pending_resize_transactions
-            .write()
-            .unwrap()
+            .write_recover()
             .insert(window_id.id, txn.clone());
         if let Some(prev) = replaced {
             crate::wtrace!(
@@ -325,7 +358,7 @@ impl WawonaCore {
         width: u32,
         height: u32,
     ) -> Option<ResizeTransaction> {
-        let mut pending = self.pending_resize_transactions.write().unwrap();
+        let mut pending = self.pending_resize_transactions.write_recover();
         let txn = pending.get(&window_id.id)?.clone();
         if txn.requested_size.width == width && txn.requested_size.height == height {
             let removed = pending.remove(&window_id.id);
@@ -365,7 +398,7 @@ impl WawonaCore {
         if !self.is_running() {
             return None;
         }
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         crate::core::wayland::wlr::gamma_control::pop_pending_gamma_apply(&mut state)
     }
 
@@ -412,7 +445,6 @@ impl WawonaCore {
             pending_redraws: RwLock::new(Vec::new()),
             ipc_server: Mutex::new(None),
             last_scene_fingerprint: RwLock::new(0),
-            compositor_faulted: AtomicBool::new(false),
         })
     }
     
@@ -421,7 +453,7 @@ impl WawonaCore {
     /// # Arguments
     /// * `socket_name` - Optional Wayland socket name (defaults to "wayland-0")
     pub fn start(&self, socket_name: Option<String>) -> Result<()> {
-        let mut compositor_guard = self.compositor.lock().unwrap();
+        let mut compositor_guard = self.compositor.lock_recover();
         
         if compositor_guard.is_some() {
             return Err(CompositorError::AlreadyStarted);
@@ -431,19 +463,19 @@ impl WawonaCore {
         crate::wlog!(crate::util::logging::FFI, "Starting compositor on socket: {}", socket);
         
         // Create compositor configuration
-        let (width, height, scale) = *self.output_size.read().unwrap();
-        let (repeat_rate, repeat_delay) = *self.keyboard_config.read().unwrap();
+        let (width, height, scale) = *self.output_size.read_recover();
+        let (repeat_rate, repeat_delay) = *self.keyboard_config.read_recover();
         
         let config = CompositorConfig {
             socket_name: socket.clone(),
-            force_ssd: *self.force_ssd.read().unwrap(),
+            force_ssd: *self.force_ssd.read_recover(),
             output_width: width,
             output_height: height,
             output_scale: scale,
             keyboard_repeat_rate: repeat_rate,
             keyboard_repeat_delay: repeat_delay,
-            advertise_fullscreen_shell: *self.advertise_fullscreen_shell.read().unwrap(),
-            protocol_profile: *self.protocol_profile.read().unwrap(),
+            advertise_fullscreen_shell: *self.advertise_fullscreen_shell.read_recover(),
+            protocol_profile: *self.protocol_profile.read_recover(),
         };
         
         // Create and start the compositor
@@ -451,7 +483,7 @@ impl WawonaCore {
             .map_err(|e| CompositorError::initialization_failed(e.to_string()))?;
         
         // Synchronize output configuration into state
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         state.update_primary_output(width, height, scale);
         state.advertise_fullscreen_shell = config.advertise_fullscreen_shell;
         state.protocol_profile = config.protocol_profile;
@@ -467,11 +499,10 @@ impl WawonaCore {
         drop(state);
         
         *compositor_guard = Some(compositor);
-        self.clear_compositor_fault();
         
         // Start IPC server
         let ipc = crate::core::ipc::IpcServer::new(self.state.clone());
-        *self.ipc_server.lock().unwrap() = Some(ipc);
+        *self.ipc_server.lock_recover() = Some(ipc);
         
         crate::wlog!(crate::util::logging::FFI, "Compositor started successfully");
         Ok(())
@@ -479,11 +510,11 @@ impl WawonaCore {
     
     /// Set whether server-side decorations (SSD) should be forced
     pub fn set_force_ssd(&self, enabled: bool) {
-        if *self.force_ssd.read().unwrap() == enabled {
+        if *self.force_ssd.read_recover() == enabled {
             return;
         }
 
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
 
         crate::wlog!(crate::util::logging::FFI, "FFI: set_force_ssd({})", enabled);
         
@@ -495,7 +526,7 @@ impl WawonaCore {
         };
         
         // 2. Update cached state
-        *self.force_ssd.write().unwrap() = enabled;
+        *self.force_ssd.write_recover() = enabled;
         
         // 3. Notify existing decorations if protocol is active
         use wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as XdgMode;
@@ -550,7 +581,7 @@ impl WawonaCore {
             let _ = toplevel.send_pending_configure();
 
             if let Some(window) = state.get_window(window_id) {
-                let mut window = window.write().unwrap();
+                let mut window = window.write_recover();
                 if window.decoration_mode != new_mode {
                     window.decoration_mode = new_mode;
                     state.pending_compositor_events.push(
@@ -574,7 +605,7 @@ impl WawonaCore {
                 crate::core::window::DecorationMode::ClientSide
             };
             if let Some(window) = state.get_window(window_id) {
-                let mut window = window.write().unwrap();
+                let mut window = window.write_recover();
                 if window.decoration_mode != new_mode {
                     window.decoration_mode = new_mode;
                     state.pending_compositor_events.push(
@@ -591,9 +622,9 @@ impl WawonaCore {
     /// Set whether to advertise zwp_fullscreen_shell_v1
     pub fn set_advertise_fullscreen_shell(&self, enabled: bool) {
         crate::wlog!(crate::util::logging::FFI, "FFI: set_advertise_fullscreen_shell({})", enabled);
-        *self.advertise_fullscreen_shell.write().unwrap() = enabled;
+        *self.advertise_fullscreen_shell.write_recover() = enabled;
         
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         state.advertise_fullscreen_shell = enabled;
     }
 
@@ -605,8 +636,8 @@ impl WawonaCore {
                 "FFI: set_protocol_profile({})",
                 parsed.as_str()
             );
-            *self.protocol_profile.write().unwrap() = parsed;
-            self.state.write().unwrap().protocol_profile = parsed;
+            *self.protocol_profile.write_recover() = parsed;
+            self.state.write_recover().protocol_profile = parsed;
         } else {
             crate::wlog!(
                 crate::util::logging::FFI,
@@ -618,15 +649,7 @@ impl WawonaCore {
     
     /// Stop the compositor
     pub fn stop(&self) -> Result<()> {
-        let mut compositor_guard = match self.compositor.lock() {
-            Ok(guard) => guard,
-            Err(_) => {
-                self.mark_compositor_fault("stop: compositor lock poisoned");
-                return Err(CompositorError::platform_error(
-                    "compositor lock poisoned during stop".to_string(),
-                ));
-            }
-        };
+        let mut compositor_guard = self.compositor.lock_recover();
         
         let compositor = compositor_guard.as_mut()
             .ok_or(CompositorError::NotStarted)?;
@@ -635,22 +658,20 @@ impl WawonaCore {
             .map_err(|e| CompositorError::platform_error(e.to_string()))?;
         
         *compositor_guard = None;
-        self.clear_compositor_fault();
         
         // Clear caches
-        self.ffi_windows.write().unwrap().clear();
-        self.ffi_surfaces.write().unwrap().clear();
-        self.ffi_clients.write().unwrap().clear();
-        self.textures.write().unwrap().clear();
-        self.pending_window_events.write().unwrap().clear();
-        self.pending_client_events.write().unwrap().clear();
-        self.pending_buffers.write().unwrap().clear();
-        self.pending_buffers.write().unwrap().clear();
-        self.pending_redraws.write().unwrap().clear();
-        *self.last_scene_fingerprint.write().unwrap() = 0;
+        self.ffi_windows.write_recover().clear();
+        self.ffi_surfaces.write_recover().clear();
+        self.ffi_clients.write_recover().clear();
+        self.textures.write_recover().clear();
+        self.pending_window_events.write_recover().clear();
+        self.pending_client_events.write_recover().clear();
+        self.pending_buffers.write_recover().clear();
+        self.pending_redraws.write_recover().clear();
+        *self.last_scene_fingerprint.write_recover() = 0;
         
         // Stop IPC server
-        *self.ipc_server.lock().unwrap() = None;
+        *self.ipc_server.lock_recover() = None;
         
         crate::wlog!(crate::util::logging::FFI, "Compositor stopped");
         Ok(())
@@ -658,41 +679,29 @@ impl WawonaCore {
     
     /// Check if compositor is running
     pub fn is_running(&self) -> bool {
-        match self.compositor.lock() {
-            Ok(guard) => guard.as_ref().map(|c| c.is_running()).unwrap_or(false),
-            Err(_) => {
-                self.mark_compositor_fault("is_running: compositor lock poisoned");
-                false
-            }
-        }
+        self.compositor
+            .lock_recover()
+            .as_ref()
+            .map(|c| c.is_running())
+            .unwrap_or(false)
     }
     
     /// Get the Wayland socket path
     pub fn get_socket_path(&self) -> String {
-        match self.compositor.lock() {
-            Ok(guard) => guard
-                .as_ref()
-                .map(|c| c.socket_path().to_string())
-                .unwrap_or_default(),
-            Err(_) => {
-                self.mark_compositor_fault("get_socket_path: compositor lock poisoned");
-                String::new()
-            }
-        }
+        self.compositor
+            .lock_recover()
+            .as_ref()
+            .map(|c| c.socket_path().to_string())
+            .unwrap_or_default()
     }
     
     /// Get the Wayland socket name
     pub fn get_socket_name(&self) -> String {
-        match self.compositor.lock() {
-            Ok(guard) => guard
-                .as_ref()
-                .map(|c| c.socket_name().to_string())
-                .unwrap_or_default(),
-            Err(_) => {
-                self.mark_compositor_fault("get_socket_name: compositor lock poisoned");
-                String::new()
-            }
-        }
+        self.compositor
+            .lock_recover()
+            .as_ref()
+            .map(|c| c.socket_name().to_string())
+            .unwrap_or_default()
     }
     
     // =========================================================================
@@ -701,7 +710,7 @@ impl WawonaCore {
     
     /// Add an additional Unix domain socket for connections
     pub fn add_unix_socket(&self, path: String) -> Result<()> {
-        let mut compositor_guard = self.compositor.lock().unwrap();
+        let mut compositor_guard = self.compositor.lock_recover();
         
         let compositor = compositor_guard.as_mut()
             .ok_or(CompositorError::NotStarted)?;
@@ -715,7 +724,7 @@ impl WawonaCore {
     
     /// Add a vsock listener on the specified port
     pub fn add_vsock_listener(&self, port: u32) -> Result<()> {
-        let mut compositor_guard = self.compositor.lock().unwrap();
+        let mut compositor_guard = self.compositor.lock_recover();
         
         let compositor = compositor_guard.as_mut()
             .ok_or(CompositorError::NotStarted)?;
@@ -729,7 +738,7 @@ impl WawonaCore {
     
     /// Remove a socket by its path or identifier
     pub fn remove_socket(&self, identifier: String) -> Result<()> {
-        let mut compositor_guard = self.compositor.lock().unwrap();
+        let mut compositor_guard = self.compositor.lock_recover();
         
         let compositor = compositor_guard.as_mut()
             .ok_or(CompositorError::NotStarted)?;
@@ -742,7 +751,7 @@ impl WawonaCore {
     }
     
     pub fn get_socket_paths(&self) -> Vec<String> {
-        self.compositor.lock().unwrap()
+        self.compositor.lock_recover()
             .as_ref()
             .map(|c| c.get_socket_paths())
             .unwrap_or_default()
@@ -797,7 +806,7 @@ impl WawonaCore {
             }
         };
 
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         state.process_input_event(core_event);
     }
     
@@ -808,44 +817,26 @@ impl WawonaCore {
     /// Process pending Wayland events
     /// Returns true if events were processed
     pub fn process_events(&self) -> bool {
-        let _dispatch_guard = match WAYLAND_DISPATCH_MUTEX.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        if self.compositor_faulted.load(Ordering::SeqCst) {
-            return false;
-        }
+        let _dispatch_guard = WAYLAND_DISPATCH_MUTEX.lock_recover();
 
-        let mut compositor_guard = match self.compositor.lock() {
-            Ok(guard) => guard,
-            Err(_) => {
-                self.mark_compositor_fault("process_events: compositor lock poisoned");
-                return false;
-            }
-        };
+        let mut compositor_guard = self.compositor.lock_recover();
         let compositor = match compositor_guard.as_mut() {
             Some(c) => c,
-            None => return false,
-        };
-        
-        let mut runtime = match self.runtime.lock() {
-            Ok(guard) => guard,
-            Err(_) => {
-                self.mark_compositor_fault("process_events: runtime lock poisoned");
+            None => {
+                crate::wlog_hot!(
+                    crate::util::logging::FFI,
+                    "ProcessEvents skipped: compositor not started"
+                );
                 return false;
             }
         };
-        
+
+        let mut runtime = self.runtime.lock_recover();
+
         // Collect events while holding the lock
         let events = {
-            let mut state = match self.state.write() {
-                Ok(guard) => guard,
-                Err(_) => {
-                    self.mark_compositor_fault("process_events: state lock poisoned");
-                    return false;
-                }
-            };
-            
+            let mut state = self.state.write_recover();
+
             // Process events
             match runtime.poll(compositor, &mut state) {
                 Ok(events) => {
@@ -854,12 +845,16 @@ impl WawonaCore {
                     events
                 }
                 Err(e) => {
-                    crate::wlog!(crate::util::logging::FFI, "Event processing error: {}", e);
+                    crate::wlog!(
+                        crate::util::logging::FFI,
+                        "ProcessEvents poll error: {}",
+                        e
+                    );
                     return false;
                 }
             }
         }; // state lock released here
-        
+
         // Flush client queues so deferred events (e.g. mode_successful from
         // fullscreen shell) reach the wire immediately rather than waiting for
         // the next poll cycle.  Without this, nested compositors like weston
@@ -869,10 +864,18 @@ impl WawonaCore {
         // Drop the other locks too before handling events
         drop(runtime);
         drop(compositor_guard);
-        
+
         let event_count = events.len();
         for event in events {
-            self.handle_compositor_event(event);
+            let handled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.handle_compositor_event(event);
+            }));
+            if handled.is_err() {
+                crate::wlog!(
+                    crate::util::logging::FFI,
+                    "ProcessEvents: compositor event handler panicked; skipping event"
+                );
+            }
         }
 
         self.flush_clients_locked();
@@ -891,44 +894,20 @@ impl WawonaCore {
     /// Dispatch pending events with timeout (milliseconds)
     /// Returns true if events were processed
     pub fn dispatch_events(&self, timeout_ms: u32) -> bool {
-        let _dispatch_guard = match WAYLAND_DISPATCH_MUTEX.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        if self.compositor_faulted.load(Ordering::SeqCst) {
-            return false;
-        }
+        let _dispatch_guard = WAYLAND_DISPATCH_MUTEX.lock_recover();
 
-        let mut compositor_guard = match self.compositor.lock() {
-            Ok(guard) => guard,
-            Err(_) => {
-                self.mark_compositor_fault("dispatch_events: compositor lock poisoned");
-                return false;
-            }
-        };
+        let mut compositor_guard = self.compositor.lock_recover();
         let compositor = match compositor_guard.as_mut() {
             Some(c) => c,
             None => return false,
         };
         
-        let mut runtime = match self.runtime.lock() {
-            Ok(guard) => guard,
-            Err(_) => {
-                self.mark_compositor_fault("dispatch_events: runtime lock poisoned");
-                return false;
-            }
-        };
+        let mut runtime = self.runtime.lock_recover();
         let timeout = std::time::Duration::from_millis(timeout_ms as u64);
         
         // Collect events while holding the lock
         let events = {
-            let mut state = match self.state.write() {
-                Ok(guard) => guard,
-                Err(_) => {
-                    self.mark_compositor_fault("dispatch_events: state lock poisoned");
-                    return false;
-                }
-            };
+            let mut state = self.state.write_recover();
             
             match runtime.dispatch(compositor, &mut state, timeout) {
                 Ok(events) => {
@@ -949,9 +928,18 @@ impl WawonaCore {
         drop(runtime);
         drop(compositor_guard);
         
-        // Handle events without holding any locks
+        // Handle events without holding any locks; a panicking handler must
+        // not take down the dispatch loop.
         for event in events {
-            self.handle_compositor_event(event);
+            let handled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.handle_compositor_event(event);
+            }));
+            if handled.is_err() {
+                crate::wlog!(
+                    crate::util::logging::FFI,
+                    "DispatchEvents: compositor event handler panicked; skipping event"
+                );
+            }
         }
 
         // Flush protocol events generated by event handlers (frame_done, etc.)
@@ -963,13 +951,7 @@ impl WawonaCore {
     /// Flush client event queues (must not be called while holding WAYLAND_DISPATCH_MUTEX
     /// unless via flush_clients_locked).
     fn flush_clients_locked(&self) {
-        let mut compositor_guard = match self.compositor.lock() {
-            Ok(guard) => guard,
-            Err(_) => {
-                self.mark_compositor_fault("flush_clients: compositor lock poisoned");
-                return;
-            }
-        };
+        let mut compositor_guard = self.compositor.lock_recover();
         if let Some(compositor) = compositor_guard.as_mut() {
             let _ = compositor.flush();
         }
@@ -977,10 +959,7 @@ impl WawonaCore {
 
     /// Flush client event queues
     pub fn flush_clients(&self) {
-        let _dispatch_guard = match WAYLAND_DISPATCH_MUTEX.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
+        let _dispatch_guard = WAYLAND_DISPATCH_MUTEX.lock_recover();
         self.flush_clients_locked();
     }
 
@@ -991,13 +970,13 @@ impl WawonaCore {
     pub fn frame_presented(&self, refresh_mhz: u32) {
         // 1. Update Frame Clock
         {
-            let mut runtime = self.runtime.lock().unwrap();
+            let mut runtime = self.runtime.lock_recover();
             runtime.report_presentation(std::time::Instant::now(), refresh_mhz);
         }
         
         // 2. Fire presentation feedback events
         {
-            let mut state = self.state.write().unwrap();
+            let mut state = self.state.write_recover();
             state.report_presentation_feedback(std::time::Instant::now(), refresh_mhz);
         }
     }
@@ -1008,7 +987,7 @@ impl WawonaCore {
     /// Remove FFI-side caches owned by a disconnected client.
     fn cleanup_client_ffi_state(&self, client_id: &wayland_server::backend::ClientId, internal_id: u32) {
         let disconnected_surface_ids: Vec<u32> = {
-            let state = self.state.read().unwrap();
+            let state = self.state.read_recover();
             state
                 .surfaces
                 .iter()
@@ -1025,7 +1004,7 @@ impl WawonaCore {
         }
 
         {
-            let mut ffi_surfaces = self.ffi_surfaces.write().unwrap();
+            let mut ffi_surfaces = self.ffi_surfaces.write_recover();
             for sid in &disconnected_surface_ids {
                 ffi_surfaces.remove(sid);
             }
@@ -1035,7 +1014,7 @@ impl WawonaCore {
             disconnected_surface_ids.iter().copied().collect();
         let mut disconnected_windows = std::collections::HashSet::new();
         {
-            let mut pending = self.pending_buffers.write().unwrap();
+            let mut pending = self.pending_buffers.write_recover();
             pending.retain(|window_id, wb| {
                 let keep = !disconnected_surfaces.contains(&wb.surface_id.id);
                 if !keep {
@@ -1045,7 +1024,7 @@ impl WawonaCore {
             });
         }
         if !disconnected_windows.is_empty() {
-            let mut redraws = self.pending_redraws.write().unwrap();
+            let mut redraws = self.pending_redraws.write_recover();
             redraws.retain(|wid| !disconnected_windows.contains(wid));
         }
 
@@ -1059,13 +1038,7 @@ impl WawonaCore {
 
     /// Get next serial number (for input event correlation)
     fn next_serial(&self) -> u32 {
-        let mut guard = match self.compositor.lock() {
-            Ok(guard) => guard,
-            Err(_) => {
-                self.mark_compositor_fault("next_serial: compositor lock poisoned");
-                return 0;
-            }
-        };
+        let mut guard = self.compositor.lock_recover();
         if let Some(compositor) = guard.as_mut() {
             return compositor.next_serial();
         }
@@ -1073,14 +1046,10 @@ impl WawonaCore {
     }
 
     fn internal_client_id(&self, client_id: &wayland_server::backend::ClientId) -> Option<u32> {
-        let guard = match self.compositor.lock() {
-            Ok(guard) => guard,
-            Err(_) => {
-                self.mark_compositor_fault("internal_client_id: compositor lock poisoned");
-                return None;
-            }
-        };
-        guard.as_ref().map(|c| c.client_id_to_internal(client_id.clone()))
+        self.compositor
+            .lock_recover()
+            .as_ref()
+            .map(|c| c.client_id_to_internal(client_id.clone()))
     }
     
     /// Handle a compositor event (convert to FFI event)
@@ -1097,8 +1066,8 @@ impl WawonaCore {
                     surface_count: 0,
                     window_count: 0,
                 };
-                self.ffi_clients.write().unwrap().insert(internal_id, client_info);
-                self.pending_client_events.write().unwrap().push(
+                self.ffi_clients.write_recover().insert(internal_id, client_info);
+                self.pending_client_events.write_recover().push(
                     ClientEvent::Connected { 
                         client_id: ClientId { id: internal_id }, 
                         pid: pid.unwrap_or(0) 
@@ -1107,8 +1076,8 @@ impl WawonaCore {
             }
             CompositorEvent::ClientDisconnected { client_id, internal_id } => {
                 self.cleanup_client_ffi_state(&client_id, internal_id);
-                self.ffi_clients.write().unwrap().remove(&internal_id);
-                self.pending_client_events.write().unwrap().push(
+                self.ffi_clients.write_recover().remove(&internal_id);
+                self.pending_client_events.write_recover().push(
                     ClientEvent::Disconnected { 
                         client_id: ClientId { id: internal_id } 
                     }
@@ -1116,7 +1085,7 @@ impl WawonaCore {
             }
             CompositorEvent::WindowMinimized { window_id, minimized } => {
                 if minimized {
-                    self.pending_window_events.write().unwrap().push(
+                    self.pending_window_events.write_recover().push(
                         WindowEvent::MinimizeRequested { 
                             window_id: WindowId { id: window_id as u64 } 
                         }
@@ -1125,13 +1094,13 @@ impl WawonaCore {
             }
             CompositorEvent::WindowMaximized { window_id, maximized } => {
                 if maximized {
-                    self.pending_window_events.write().unwrap().push(
+                    self.pending_window_events.write_recover().push(
                         WindowEvent::MaximizeRequested { 
                             window_id: WindowId { id: window_id as u64 } 
                         }
                     );
                 } else {
-                    self.pending_window_events.write().unwrap().push(
+                    self.pending_window_events.write_recover().push(
                         WindowEvent::UnmaximizeRequested { 
                             window_id: WindowId { id: window_id as u64 } 
                         }
@@ -1140,13 +1109,13 @@ impl WawonaCore {
             }
             CompositorEvent::WindowFullscreen { window_id, fullscreen } => {
                 if fullscreen {
-                    self.pending_window_events.write().unwrap().push(
+                    self.pending_window_events.write_recover().push(
                         WindowEvent::FullscreenRequested {
                             window_id: WindowId { id: window_id as u64 },
                         },
                     );
                 } else {
-                    self.pending_window_events.write().unwrap().push(
+                    self.pending_window_events.write_recover().push(
                         WindowEvent::UnfullscreenRequested {
                             window_id: WindowId { id: window_id as u64 },
                         },
@@ -1154,7 +1123,7 @@ impl WawonaCore {
                 }
             }
             CompositorEvent::WindowHostLocked { window_id, width, height } => {
-                self.pending_window_events.write().unwrap().push(
+                self.pending_window_events.write_recover().push(
                     WindowEvent::HostLocked {
                         window_id: WindowId { id: window_id as u64 },
                         width,
@@ -1199,7 +1168,7 @@ impl WawonaCore {
                     activated: false,
                     resizing: false,
                 };
-                self.ffi_windows.write().unwrap().insert(window_id as u64, window_info.clone());
+                self.ffi_windows.write_recover().insert(window_id as u64, window_info.clone());
 
                 let config = WindowConfig {
                     title,
@@ -1217,7 +1186,7 @@ impl WawonaCore {
                     state: crate::ffi::types::WindowState::Normal,
                     parent: None,
                 };
-                self.pending_window_events.write().unwrap().push(
+                self.pending_window_events.write_recover().push(
                     WindowEvent::Created {
                         window_id: WindowId { id: window_id as u64 },
                         config,
@@ -1253,7 +1222,7 @@ impl WawonaCore {
                     parent: if parent_id > 0 { Some(WindowId::new(parent_id as u64)) } else { None },
                 };
                 
-                self.pending_window_events.write().unwrap().push(
+                self.pending_window_events.write_recover().push(
                     WindowEvent::PopupCreated { 
                         window_id: WindowId { id: window_id as u64 }, 
                         parent_id: WindowId { id: parent_id as u64 },
@@ -1264,7 +1233,7 @@ impl WawonaCore {
                 );
             }
             CompositorEvent::PopupRepositioned { window_id, x, y, width, height } => {
-                self.pending_window_events.write().unwrap().push(
+                self.pending_window_events.write_recover().push(
                     WindowEvent::PopupRepositioned { 
                         window_id: WindowId { id: window_id as u64 }, 
                         x, y,
@@ -1276,8 +1245,7 @@ impl WawonaCore {
             CompositorEvent::WindowDestroyed { window_id } => {
                 if let Some(txn) = self
                     .pending_resize_transactions
-                    .write()
-                    .unwrap()
+                    .write_recover()
                     .remove(&(window_id as u64))
                 {
                     crate::wtrace!(
@@ -1291,18 +1259,18 @@ impl WawonaCore {
                         txn.cause
                     );
                 }
-                self.ffi_windows.write().unwrap().remove(&(window_id as u64));
-                self.pending_window_events.write().unwrap().push(
+                self.ffi_windows.write_recover().remove(&(window_id as u64));
+                self.pending_window_events.write_recover().push(
                     WindowEvent::Destroyed { 
                         window_id: WindowId { id: window_id as u64 } 
                     }
                 );
             }
             CompositorEvent::WindowTitleChanged { window_id, title } => {
-                if let Some(info) = self.ffi_windows.write().unwrap().get_mut(&(window_id as u64)) {
+                if let Some(info) = self.ffi_windows.write_recover().get_mut(&(window_id as u64)) {
                     info.title = title.clone();
                 }
-                self.pending_window_events.write().unwrap().push(
+                self.pending_window_events.write_recover().push(
                     WindowEvent::TitleChanged { 
                         window_id: WindowId { id: window_id as u64 }, 
                         title 
@@ -1310,12 +1278,25 @@ impl WawonaCore {
                 );
             }
             CompositorEvent::WindowSizeChanged { window_id, width, height } => {
-                if let Some(info) = self.ffi_windows.write().unwrap().get_mut(&(window_id as u64)) {
+                if let Some(info) = self.ffi_windows.write_recover().get_mut(&(window_id as u64)) {
                     info.width = width;
                     info.height = height;
                 }
                 let window_id_ffi = WindowId { id: window_id as u64 };
                 let txn = self.take_resize_transaction_for_size(window_id_ffi, width, height);
+                if let Some(ref txn) = txn {
+                    // Resize settled: bring this client's wl_output/xdg_output
+                    // geometry in line with the final window size so nested
+                    // compositors track their host window without per-drag
+                    // output churn.
+                    if matches!(txn.cause, WindowSizeCause::HostConfigure) {
+                        let scale = {
+                            let cur = self.output_size.read_recover();
+                            cur.2
+                        };
+                        self.set_output_geometry_for_window(window_id_ffi, width, height, scale);
+                    }
+                }
                 let (cause, size_kind, configure_serial, transaction_id) = if let Some(txn) = txn {
                     (txn.cause, txn.size_kind, txn.configure_serial, txn.id)
                 } else {
@@ -1339,7 +1320,7 @@ impl WawonaCore {
                     configure_serial,
                     transaction_id
                 );
-                self.pending_window_events.write().unwrap().push(
+                self.pending_window_events.write_recover().push(
                     WindowEvent::SizeChanged {
                         window_id: window_id_ffi,
                         width,
@@ -1356,10 +1337,10 @@ impl WawonaCore {
                     crate::core::window::DecorationMode::ClientSide => DecorationMode::ClientSide,
                     crate::core::window::DecorationMode::ServerSide => DecorationMode::ServerSide,
                 };
-                if let Some(info) = self.ffi_windows.write().unwrap().get_mut(&(window_id as u64)) {
+                if let Some(info) = self.ffi_windows.write_recover().get_mut(&(window_id as u64)) {
                     info.decoration_mode = ffi_mode;
                 }
-                self.pending_window_events.write().unwrap().push(
+                self.pending_window_events.write_recover().push(
                     WindowEvent::DecorationModeChanged {
                         window_id: WindowId { id: window_id as u64 },
                         mode: ffi_mode,
@@ -1367,21 +1348,21 @@ impl WawonaCore {
                 );
             }
             CompositorEvent::WindowActivationRequested { window_id } => {
-                self.pending_window_events.write().unwrap().push(
+                self.pending_window_events.write_recover().push(
                     WindowEvent::Activated { 
                         window_id: WindowId { id: window_id as u64 } 
                     }
                 );
             }
             CompositorEvent::WindowCloseRequested { window_id } => {
-                self.pending_window_events.write().unwrap().push(
+                self.pending_window_events.write_recover().push(
                     WindowEvent::CloseRequested { 
                         window_id: WindowId { id: window_id as u64 } 
                     }
                 );
             }
             CompositorEvent::RedrawNeeded { window_id } => {
-                self.pending_redraws.write().unwrap().push(
+                self.pending_redraws.write_recover().push(
                     WindowId { id: window_id as u64 }
                 );
             }
@@ -1408,7 +1389,7 @@ impl WawonaCore {
                     bid as u32
                 } else {
                     let (flushed_count, no_buffer_count) = {
-                        let mut state = self.state.write().unwrap();
+                        let mut state = self.state.write_recover();
                         let callback_count = state
                             .frame_callbacks
                             .get(&surface_id)
@@ -1468,21 +1449,21 @@ impl WawonaCore {
                     xdg_pending_serial,
                     window_app_id,
                 ) = {
-                    let mut state = self.state.write().unwrap();
+                    let mut state = self.state.write_recover();
                     
                     let buffer = state.buffers.get(&(client_id.clone(), buffer_id)).cloned();
                     crate::wtrace!(crate::util::logging::FFI, "Buffer {} for client {:?} found: {}", 
                         buffer_id, client_id, buffer.is_some());
                     
                     let is_opaque = if let Some(surface) = state.surfaces.get(&surface_id) {
-                        let surface = surface.read().unwrap();
+                        let surface = surface.read_recover();
                         surface.current.opaque_region.as_ref().map(|r| !r.is_empty()).unwrap_or(false)
                     } else {
                         false
                     };
                     
                     let raw = if let Some(buffer) = buffer {
-                        let buffer = buffer.read().unwrap();
+                        let buffer = buffer.read_recover();
                         match &buffer.buffer_type {
                             crate::core::surface::BufferType::Shm(shm) => {
                                 crate::wtrace!(crate::util::logging::FFI, "SHM buffer {}x{}, pool={}, offset={}, fmt={}",
@@ -1606,7 +1587,7 @@ impl WawonaCore {
                     let expected_window_size = target_window_id
                         .and_then(|wid| state.windows.get(&wid))
                         .map(|w| {
-                            let w = w.read().unwrap();
+                            let w = w.read_recover();
                             (w.width as u32, w.height as u32)
                         });
                     let window_app_id = target_window_id
@@ -1671,17 +1652,17 @@ impl WawonaCore {
                 // lock acquisition).
                 // -------------------------------------------------------
                 {
-                    let mut state = self.state.write().unwrap();
+                    let mut state = self.state.write_recover();
                     let mut queued_for_presentation = false;
                     
                     if let Some(data) = buffer_data {
                         let surface_buffer_scale = state
                             .surfaces
                             .get(&surface_id)
-                            .map(|s| s.read().unwrap().current.scale.max(1) as u32)
+                            .map(|s| s.read_recover().current.scale.max(1) as u32)
                             .unwrap_or(1);
                         let output_scale = {
-                            let (_, _, scale) = *self.output_size.read().unwrap();
+                            let (_, _, scale) = *self.output_size.read_recover();
                             scale.round().max(1.0) as u32
                         };
                         // Nested compositors (e.g. Weston) often commit at output
@@ -1805,7 +1786,7 @@ impl WawonaCore {
                                 }
                             }
                             
-                            let mut pending = self.pending_buffers.write().unwrap();
+                            let mut pending = self.pending_buffers.write_recover();
                             let new_buffer = types::WindowBuffer {
                                 window_id: win_id,
                                 surface_id: types::SurfaceId { id: surface_id },
@@ -1821,7 +1802,7 @@ impl WawonaCore {
                                 }
                             }
                             
-                            self.pending_redraws.write().unwrap().push(win_id);
+                            self.pending_redraws.write_recover().push(win_id);
                             queued_for_presentation = true;
 
                             // Update FFI surface state cache
@@ -1839,7 +1820,7 @@ impl WawonaCore {
                                 input_region: Vec::new(),
                                 role: types::SurfaceRole::Toplevel,
                             };
-                            self.ffi_surfaces.write().unwrap().insert(surface_id, surf_state);
+                            self.ffi_surfaces.write_recover().insert(surface_id, surf_state);
                         } else {
                             // If the surface has not been mapped to a host window yet,
                             // do not hold wl_surface.frame callbacks indefinitely.
@@ -1893,7 +1874,7 @@ impl WawonaCore {
                 crate::wlog_hot!(crate::util::logging::FFI, "LayerSurfaceCommitted client={}, surface={}, buffer_id={:?}", 
                     internal_client_id, surface_id, buffer_id);
                 
-                let mut state = self.state.write().unwrap();
+                let mut state = self.state.write_recover();
                 
                 // Release buffer immediately for now since we don't render layer surfaces yet
                 // This prevents buffer exhaustion for wlroots clients
@@ -1921,7 +1902,7 @@ impl WawonaCore {
                     }
 
                     let raw = {
-                        let mut state = self.state.write().unwrap();
+                        let mut state = self.state.write_recover();
 
                         // Extract buffer metadata first so we can drop the
                         // immutable borrow before mutably borrowing shm_pools.
@@ -1931,9 +1912,9 @@ impl WawonaCore {
                             None,
                         }
 
-                        let info = if let Some(buf_ref) = state.buffers.get(&(client_id.clone(), buffer_id_u32)) {
-                            let buf = buf_ref.read().unwrap();
-                            match &buf.buffer_type {
+                        let (info, wl_buffer) = if let Some(buf_ref) = state.buffers.get(&(client_id.clone(), buffer_id_u32)) {
+                            let buf = buf_ref.read_recover();
+                            let info = match &buf.buffer_type {
                                 crate::core::surface::BufferType::Shm(shm) => BufInfo::Shm {
                                     pool_id: shm.pool_id,
                                     offset: shm.offset as usize,
@@ -1950,12 +1931,43 @@ impl WawonaCore {
                                     format: native.format,
                                 },
                                 _ => BufInfo::None,
-                            }
-                        } else { BufInfo::None };
+                            };
+                            (info, buf.resource.clone())
+                        } else { (BufInfo::None, None) };
 
                         match info {
                             BufInfo::Shm { pool_id, offset, size, width, height, stride, format } => {
-                                if let Some(pool) = state.shm_pools.get_mut(&(client_id.clone(), pool_id)) {
+                                // Smithay owns wl_shm pool state; read pixels
+                                // through it first. The internal shm_pools map
+                                // only covers legacy paths.
+                                let from_smithay = wl_buffer.as_ref().and_then(|wlbuf| {
+                                    smithay::wayland::shm::with_buffer_contents(wlbuf, |ptr, pool_len, data| {
+                                        let off = data.offset as usize;
+                                        let need = (data.height as usize)
+                                            .saturating_mul(data.stride as usize);
+                                        if off.saturating_add(need) > pool_len {
+                                            return None;
+                                        }
+                                        let pixels = unsafe {
+                                            std::slice::from_raw_parts(ptr.add(off), need)
+                                        }
+                                        .to_vec();
+                                        Some(CursorRaw::Shm {
+                                            pixels,
+                                            width: data.width as u32,
+                                            height: data.height as u32,
+                                            stride: data.stride as u32,
+                                            format: crate::core::surface::buffer::wl_shm_format_to_legacy_u32(
+                                                data.format,
+                                            ),
+                                        })
+                                    })
+                                    .ok()
+                                    .flatten()
+                                });
+                                if let Some(raw) = from_smithay {
+                                    raw
+                                } else if let Some(pool) = state.shm_pools.get_mut(&(client_id.clone(), pool_id)) {
                                     if let Some(ptr) = pool.map() {
                                         if offset + size <= pool.size {
                                             let pixels = unsafe {
@@ -1998,7 +2010,7 @@ impl WawonaCore {
                     if let Some(data) = cursor_buffer {
                         // Use a sentinel window ID (u64::MAX) to tag cursor buffers
                         let cursor_win_id = types::WindowId { id: u64::MAX };
-                        let mut pending = self.pending_buffers.write().unwrap();
+                        let mut pending = self.pending_buffers.write_recover();
                         let new_buffer = types::WindowBuffer {
                             window_id: cursor_win_id,
                             surface_id: types::SurfaceId { id: surface_id },
@@ -2009,7 +2021,7 @@ impl WawonaCore {
                         };
                         if let Some(old) = pending.insert(cursor_win_id, new_buffer) {
                             if old.buffer.id.id != bid {
-                                let mut state = self.state.write().unwrap();
+                                let mut state = self.state.write_recover();
                                 state.release_buffer(client_id.clone(), old.buffer.id.id as u32);
                             }
                         }
@@ -2018,14 +2030,14 @@ impl WawonaCore {
 
                 // Always flush frame callbacks so the client can keep rendering
                 {
-                    let mut state = self.state.write().unwrap();
+                    let mut state = self.state.write_recover();
                     state.ext.fullscreen_shell.flush_pending_mode_feedbacks();
                     state.flush_frame_callbacks(surface_id, Some(crate::core::state::CompositorState::get_timestamp_ms()));
                 }
                 self.flush_clients();
             }
             CompositorEvent::WindowMoveRequested { window_id, seat_id: _, serial } => {
-                self.pending_window_events.write().unwrap().push(
+                self.pending_window_events.write_recover().push(
                     WindowEvent::MoveRequested { 
                         window_id: WindowId { id: window_id as u64 }, 
                         serial 
@@ -2033,7 +2045,7 @@ impl WawonaCore {
                 );
             }
             CompositorEvent::WindowResizeRequested { window_id, seat_id: _, serial, edges } => {
-                self.pending_window_events.write().unwrap().push(
+                self.pending_window_events.write_recover().push(
                     WindowEvent::ResizeRequested { 
                         window_id: WindowId { id: window_id as u64 }, 
                         serial,
@@ -2043,14 +2055,14 @@ impl WawonaCore {
             }
             CompositorEvent::CursorShapeChanged { shape } => {
                 crate::wlog!(crate::util::logging::FFI, "CursorShapeChanged shape={}", shape);
-                self.pending_window_events.write().unwrap().push(
+                self.pending_window_events.write_recover().push(
                     WindowEvent::CursorShapeChanged { shape }
                 );
             }
             CompositorEvent::SystemBell { client_id, surface_id } => {
                 let internal_client_id = format!("{:?}", client_id);
                 crate::wlog!(crate::util::logging::FFI, "SystemBell client={}, surface={}", internal_client_id, surface_id);
-                self.pending_window_events.write().unwrap().push(
+                self.pending_window_events.write_recover().push(
                     WindowEvent::SystemBell { surface_id }
                 );
             }
@@ -2228,7 +2240,7 @@ fn deliver_pointer_motion_to_clients(
         if sent == 0 {
             if let Some(sid) = state.seat.pointer.focus {
                 if let Some(surface) = state.surfaces.get(&sid).cloned() {
-                    let surface = surface.read().unwrap();
+                    let surface = surface.read_recover();
                     if let Some(res) = &surface.resource {
                         let enter_serial = state.next_serial();
                         sent = smithay_send_pointer_enter(state, client, enter_serial, res, lx, ly);
@@ -2309,7 +2321,7 @@ fn ensure_pointer_focus(
 
     if let Some(old_sid) = old_sid {
         if let Some(surface) = state.surfaces.get(&old_sid).cloned() {
-            let surface = surface.read().unwrap();
+            let surface = surface.read_recover();
             if let Some(res) = &surface.resource {
                 if let Some(client) = res.client() {
                     if smithay_send_pointer_leave(state, &client, serial, res) == 0 {
@@ -2321,7 +2333,7 @@ fn ensure_pointer_focus(
     }
 
     if let Some(surface) = state.surfaces.get(&target_sid).cloned() {
-        let surface = surface.read().unwrap();
+        let surface = surface.read_recover();
         if let Some(res) = &surface.resource {
             if let Some(client) = res.client() {
                 let sent = smithay_send_pointer_enter(state, &client, serial, res, lx, ly);
@@ -2344,17 +2356,17 @@ impl WawonaCore {
     
     /// Get pending window events (platform polls for these)
     pub fn poll_window_events(&self) -> Vec<WindowEvent> {
-        std::mem::take(&mut *self.pending_window_events.write().unwrap())
+        std::mem::take(&mut *self.pending_window_events.write_recover())
     }
     
     /// Get pending client events (platform polls for these)
     pub fn poll_client_events(&self) -> Vec<ClientEvent> {
-        std::mem::take(&mut *self.pending_client_events.write().unwrap())
+        std::mem::take(&mut *self.pending_client_events.write_recover())
     }
     
     /// Pop a single pending window event
     pub fn pop_window_event(&self) -> Option<WindowEvent> {
-        let mut events = self.pending_window_events.write().unwrap();
+        let mut events = self.pending_window_events.write_recover();
         if events.is_empty() {
             None
         } else {
@@ -2363,12 +2375,12 @@ impl WawonaCore {
     }
 
     pub fn pending_window_event_count(&self) -> u32 {
-        self.pending_window_events.read().unwrap().len() as u32
+        self.pending_window_events.read_recover().len() as u32
     }
     
     /// Pop a single pending buffer (platform pulls these one by one)
     pub fn pop_pending_buffer(&self) -> Option<types::WindowBuffer> {
-        let mut pending = self.pending_buffers.write().unwrap();
+        let mut pending = self.pending_buffers.write_recover();
         let key = *pending.keys().next()?;
         let popped = pending.remove(&key);
         if let Some(buf) = &popped {
@@ -2391,7 +2403,7 @@ impl WawonaCore {
         if !self.is_running() {
             return None;
         }
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         crate::core::wayland::wlr::gamma_control::pop_pending_gamma_restore(&mut state)
     }
 
@@ -2400,7 +2412,7 @@ impl WawonaCore {
         if !self.is_running() {
             return None;
         }
-        let state = self.state.read().unwrap();
+        let state = self.state.read_recover();
         crate::core::wayland::wlr::screencopy::get_pending_screencopy(&state).map(
             |(capture_id, ptr, width, height, stride, size)| types::ScreencopyRequest {
                 capture_id,
@@ -2418,7 +2430,7 @@ impl WawonaCore {
         if !self.is_running() {
             return;
         }
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         crate::core::wayland::wlr::screencopy::complete_screencopy(&mut state, capture_id);
     }
 
@@ -2427,16 +2439,16 @@ impl WawonaCore {
         if !self.is_running() {
             return;
         }
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         crate::core::wayland::wlr::screencopy::fail_screencopy(&mut state, capture_id);
     }
 
     /// Notify that a frame has been presented
     pub fn notify_frame_presented(&self, surface_id: SurfaceId, buffer_id: Option<BufferId>, timestamp: u32) {
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         
         let client_id = state.surfaces.get(&surface_id.id)
-            .and_then(|s| s.read().unwrap().client_id.clone());
+            .and_then(|s| s.read_recover().client_id.clone());
 
         let callback_count = state
             .frame_callbacks
@@ -2513,17 +2525,17 @@ impl WawonaCore {
     
     /// Get windows that need redraw
     pub fn poll_redraw_requests(&self) -> Vec<WindowId> {
-        std::mem::take(&mut *self.pending_redraws.write().unwrap())
+        std::mem::take(&mut *self.pending_redraws.write_recover())
     }
     
     /// Notify that a buffer has been uploaded, providing the texture handle
     pub fn notify_buffer_uploaded(&self, buffer_id: BufferId, texture: TextureHandle) {
-        self.textures.write().unwrap().insert(buffer_id.id, texture);
+        self.textures.write_recover().insert(buffer_id.id, texture);
     }
     
     /// Notify that a texture has been released
     pub fn notify_texture_released(&self, texture: TextureHandle) {
-        self.textures.write().unwrap().retain(|_, t| t.handle != texture.handle);
+        self.textures.write_recover().retain(|_, t| t.handle != texture.handle);
     }
     
     // =========================================================================
@@ -2554,9 +2566,9 @@ impl WawonaCore {
 
         // Update core window dimensions.
         {
-            let state = self.state.write().unwrap();
+            let state = self.state.write_recover();
             if let Some(window) = state.get_window(wid) {
-                let mut window = window.write().unwrap();
+                let mut window = window.write_recover();
                 window.width = width as i32;
                 window.height = height as i32;
             }
@@ -2564,7 +2576,7 @@ impl WawonaCore {
 
         // Find the specific toplevel associated with this window.
         let target_toplevel: Option<(wayland_server::backend::ClientId, u32)> = {
-            let state = self.state.read().unwrap();
+            let state = self.state.read_recover();
             state
                 .xdg_toplevel_key_for_window(wid)
                 .or_else(|| {
@@ -2592,25 +2604,22 @@ impl WawonaCore {
         // readjusts its virtual display bounds.
         let mut is_fullscreen_shell = false;
         if target_toplevel.is_none() {
-            let state = self.state.read().unwrap();
+            let state = self.state.read_recover();
             is_fullscreen_shell = state.ext.fullscreen_shell.presented_window_id == Some(wid);
         }
 
         if let Some(tid) = target_toplevel {
-            // Nested compositors (Weston, etc.) size their fake output from wl_output / xdg_output,
-            // not only xdg_toplevel.configure. macOS does this via SetOutputGeometryForWindow before
-            // injectWindowResize on first layout; Linux GTK resizes must do the same on every shrink/expand.
-            let scale = {
-                let cur = self.output_size.read().unwrap();
-                cur.2
-            };
-            self.set_output_geometry_for_window(window_id, width, height, scale);
-
+            // Per-window wl_output/xdg_output geometry is intentionally NOT
+            // updated here: this path runs on every live-drag tick and
+            // broadcasting output mode churn mid-drag reconfigures nested
+            // compositors continuously. The per-client output override is sent
+            // once the resize transaction settles (client committed a matching
+            // buffer) in the WindowSizeChanged handler instead.
             crate::wlog!(crate::util::logging::FFI,
                 "Window resize: window={} {}x{}, reconfiguring toplevel {:?}",
                 wid, width, height, tid.1);
 
-            let mut state = self.state.write().unwrap();
+            let mut state = self.state.write_recover();
             let sent_serial = state.send_toplevel_configure(tid.0.clone(), tid.1, width, height);
             if let Some(serial) = sent_serial {
                 let txn = self.begin_resize_transaction(
@@ -2645,7 +2654,7 @@ impl WawonaCore {
             
             // Get current scale to preserve it
             let scale = {
-                let cur = self.output_size.read().unwrap();
+                let cur = self.output_size.read_recover();
                 cur.2
             };
             self.set_output_size(width, height, scale);
@@ -2668,8 +2677,23 @@ impl WawonaCore {
             return;
         }
         let wid = window_id.id as u32;
-        let mut state = self.state.write().unwrap();
-        state.apply_host_window_fullscreen(wid, fullscreen, width, height);
+        let sent = {
+            let mut state = self.state.write_recover();
+            state.apply_host_window_fullscreen(wid, fullscreen, width, height)
+        };
+        // Host-initiated state changes are resize requests too: open a
+        // transaction so the resulting WindowSizeChanged carries the serial
+        // and transaction id instead of classifying as an untracked
+        // ClientCommit (which platform bridges ignore after first sync).
+        if let Some((serial, w, h)) = sent {
+            self.begin_resize_transaction(
+                window_id,
+                serial,
+                WindowSizeCause::HostConfigure,
+                Size { width: w, height: h },
+                GeometrySizeKind::Content,
+            );
+        }
     }
 
     /// Native host zoomed or unzoomed — update xdg toplevel maximized state.
@@ -2684,8 +2708,19 @@ impl WawonaCore {
             return;
         }
         let wid = window_id.id as u32;
-        let mut state = self.state.write().unwrap();
-        state.apply_host_window_maximized(wid, maximized, width, height);
+        let sent = {
+            let mut state = self.state.write_recover();
+            state.apply_host_window_maximized(wid, maximized, width, height)
+        };
+        if let Some((serial, w, h)) = sent {
+            self.begin_resize_transaction(
+                window_id,
+                serial,
+                WindowSizeCause::HostConfigure,
+                Size { width: w, height: h },
+                GeometrySizeKind::Content,
+            );
+        }
     }
 
     /// Update compositor-side window dimensions without sending configure/output events.
@@ -2709,9 +2744,9 @@ impl WawonaCore {
         }
 
         let wid = window_id.id as u32;
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         if let Some(window) = state.get_window(wid) {
-            let mut window = window.write().unwrap();
+            let mut window = window.write_recover();
             window.width = width as i32;
             window.height = height as i32;
             crate::wlog!(
@@ -2737,12 +2772,12 @@ impl WawonaCore {
 
         crate::wlog!(crate::util::logging::FFI, "Set window activation: window={} active={}", window_id.id, active);
 
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         let wid = window_id.id as u32;
 
         // Update core window state
         if let Some(window) = state.get_window(wid) {
-             let mut window = window.write().unwrap();
+             let mut window = window.write_recover();
              window.activated = active;
         }
 
@@ -2766,7 +2801,7 @@ impl WawonaCore {
 
                  if w == 0 && h == 0 {
                      if let Some(window) = state.get_window(wid) {
-                         let ww = window.read().unwrap();
+                         let ww = window.read_recover();
                          if ww.width > 0 && ww.height > 0 {
                              w = ww.width as u32;
                              h = ww.height as u32;
@@ -2799,11 +2834,28 @@ impl WawonaCore {
             return None;
         }
 
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         state
             .find_surface_at(x, y)
             .and_then(|(surface_id, _, _)| state.surface_to_window.get(&surface_id).copied())
             .map(|wid| WindowId { id: wid as u64 })
+    }
+
+    /// Whether macOS should treat the whole client surface as a window drag handle.
+    pub fn window_prefers_macos_surface_drag(&self, window_id: WindowId) -> bool {
+        if !self.is_running() {
+            return false;
+        }
+        let state = self.state.read_recover();
+        let Some(window_ref) = state.get_window(window_id.id as u32) else {
+            return false;
+        };
+        let Ok(window) = window_ref.read() else {
+            return false;
+        };
+        crate::core::wayland::xdg::decoration::prefers_macos_surface_window_drag(
+            &window.app_id,
+        )
     }
 
     /// Inject pointer motion event
@@ -2818,7 +2870,7 @@ impl WawonaCore {
             return;
         }
         
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         state.seat.cleanup_resources();
         
         let (sx, sy) = platform_pointer_surface_local(&state, window_id, x, y);
@@ -2863,7 +2915,7 @@ impl WawonaCore {
             PointerButton::Other(b) => b,
         };
 
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         state.seat.cleanup_resources();
 
         // Auto-correct pointer focus to the window the platform says
@@ -2935,7 +2987,7 @@ impl WawonaCore {
         if !self.is_running() {
             return;
         }
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         state.seat.cleanup_resources();
 
         // Scroll is delivered at the virtual cursor — ensure focus and sync
@@ -2995,7 +3047,7 @@ impl WawonaCore {
         if !self.is_running() {
             return;
         }
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         if let Some(pointer) = state
             .smithay_runtime
             .seat
@@ -3021,7 +3073,7 @@ impl WawonaCore {
         }
         
         let serial = self.next_serial();
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         state.seat.cleanup_resources();
         
         let (sx, sy) = platform_pointer_surface_local(&state, window_id, x, y);
@@ -3044,7 +3096,7 @@ impl WawonaCore {
             state.seat.pointer.last_enter_serial = serial;
 
             if let Some(surface) = state.surfaces.get(&sid).cloned() {
-                let surface = surface.read().unwrap();
+                let surface = surface.read_recover();
                 if let Some(res) = &surface.resource {
                     if let Some(client) = res.client() {
                         let ptr_count = smithay_pointer_count(&state, &client);
@@ -3075,7 +3127,7 @@ impl WawonaCore {
         }
         
         let serial = self.next_serial();
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         
         let surface_id = state.surface_to_window.iter()
             .find(|(_, &wid)| wid as u64 == window_id.id)
@@ -3089,7 +3141,7 @@ impl WawonaCore {
             state.seat.pointer.focus = None;
 
             if let Some(surface) = state.surfaces.get(&sid).cloned() {
-                let surface = surface.read().unwrap();
+                let surface = surface.read_recover();
                 if let Some(res) = &surface.resource {
                     if let Some(client) = res.client() {
                         if smithay_send_pointer_leave(&state, &client, serial, res) == 0 {
@@ -3126,7 +3178,7 @@ impl WawonaCore {
             KeyState::Pressed => wayland_server::protocol::wl_keyboard::KeyState::Pressed,
         };
         
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         if let Some(keyboard) = state
             .smithay_runtime
             .seat
@@ -3193,7 +3245,7 @@ impl WawonaCore {
         }
         
         let serial = self.next_serial();
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         if let Some(keyboard) = state
             .smithay_runtime
             .seat
@@ -3239,7 +3291,7 @@ impl WawonaCore {
         }
         
         let serial = self.next_serial();
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         
         let surface_id = state.surface_to_window.iter()
             .find(|(_, &wid)| wid as u64 == window_id.id)
@@ -3270,7 +3322,7 @@ impl WawonaCore {
             }
             
             if let Some(surface) = state.surfaces.get(&sid).cloned() {
-                 let surface = surface.read().unwrap();
+                 let surface = surface.read_recover();
                  if let Some(res) = &surface.resource {
                      crate::wlog!(crate::util::logging::FFI, "Broadcasting keyboard enter to surface {} ({} keyboards bound)", sid, state.seat.keyboard.resources.len());
                      state.seat.keyboard.pressed_keys = pressed_keys.clone();
@@ -3315,7 +3367,7 @@ impl WawonaCore {
         
         let serial = self.next_serial();
         let had_keyboard_focus = {
-            let mut state = self.state.write().unwrap();
+            let mut state = self.state.write_recover();
             
             let surface_id = state.surface_to_window.iter()
                 .find(|(_, &wid)| wid as u64 == window_id.id)
@@ -3325,7 +3377,7 @@ impl WawonaCore {
                 let had = state.seat.keyboard.focus == Some(sid);
                 if had {
                     if let Some(surface) = state.surfaces.get(&sid).cloned() {
-                        let surface = surface.read().unwrap();
+                        let surface = surface.read_recover();
                         if let Some(res) = &surface.resource {
                             state.ext.text_input.leave(res);
                             if let Some(keyboard) = state
@@ -3350,12 +3402,12 @@ impl WawonaCore {
         };
 
         if had_keyboard_focus {
-            let mut windows = self.ffi_windows.write().unwrap();
+            let mut windows = self.ffi_windows.write_recover();
             if let Some(info) = windows.get_mut(&window_id.id) {
                 if info.activated {
                     info.activated = false;
                     drop(windows);
-                    self.pending_window_events.write().unwrap().push(
+                    self.pending_window_events.write_recover().push(
                         WindowEvent::Deactivated { window_id }
                     );
                 }
@@ -3374,7 +3426,7 @@ impl WawonaCore {
         let leave_serial = self.next_serial();
         let enter_serial = self.next_serial();
 
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         state.seat.cleanup_resources();
 
         let new_sid = match state
@@ -3400,7 +3452,7 @@ impl WawonaCore {
 
         if let Some(old_sid) = state.seat.keyboard.focus {
             if let Some(surface) = state.surfaces.get(&old_sid).cloned() {
-                let surface = surface.read().unwrap();
+                let surface = surface.read_recover();
                 if let Some(res) = &surface.resource {
                     state.ext.text_input.leave(res);
                     state.seat.broadcast_keyboard_leave(leave_serial, res);
@@ -3410,7 +3462,7 @@ impl WawonaCore {
         }
 
         if let Some(surface) = state.surfaces.get(&new_sid).cloned() {
-            let surface = surface.read().unwrap();
+            let surface = surface.read_recover();
             if let Some(res) = &surface.resource {
                 let keys: Vec<u32> = state.seat.keyboard.pressed_keys.clone();
                 state.seat.keyboard.focus = Some(new_sid);
@@ -3442,7 +3494,7 @@ impl WawonaCore {
 
         crate::wlog!(crate::util::logging::FFI, "Focus window (keyboard): {}", window_id.id);
         {
-            let mut windows = self.ffi_windows.write().unwrap();
+            let mut windows = self.ffi_windows.write_recover();
             for (_, info) in windows.iter_mut() {
                 info.activated = false;
             }
@@ -3451,8 +3503,7 @@ impl WawonaCore {
             }
         }
         self.pending_window_events
-            .write()
-            .unwrap()
+            .write_recover()
             .push(WindowEvent::Activated { window_id });
     }
     
@@ -3469,12 +3520,12 @@ impl WawonaCore {
             return Err(CompositorError::NotStarted);
         }
 
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         let serial = state.next_serial();
 
         // Find the surface for this window
         if let Some(window) = state.get_window(window_id.id as u32) {
-            let window = window.read().unwrap();
+            let window = window.read_recover();
             let surface_id = window.surface_id;
 
             // Track the touch point
@@ -3482,7 +3533,7 @@ impl WawonaCore {
 
             // Broadcast to client
             if let Some(surface) = state.get_surface(surface_id) {
-                let surface = surface.read().unwrap();
+                let surface = surface.read_recover();
                 if let Some(res) = &surface.resource {
                     state.seat.touch.broadcast_down(serial, timestamp_ms, res, touch_id, x, y);
                 }
@@ -3499,13 +3550,13 @@ impl WawonaCore {
             return Err(CompositorError::NotStarted);
         }
 
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         let serial = state.next_serial();
 
         // Get the client before removing the touch point
         let client = state.seat.touch.get_touch_surface(touch_id).and_then(|sid| {
             state.get_surface(sid).and_then(|sf| {
-                let sf = sf.read().unwrap();
+                let sf = sf.read_recover();
                 sf.resource.as_ref().and_then(|r| r.client())
             })
         });
@@ -3528,11 +3579,11 @@ impl WawonaCore {
             return Err(CompositorError::NotStarted);
         }
 
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
 
         let client = state.seat.touch.get_touch_surface(touch_id).and_then(|sid| {
             state.get_surface(sid).and_then(|sf| {
-                let sf = sf.read().unwrap();
+                let sf = sf.read_recover();
                 sf.resource.as_ref().and_then(|r| r.client())
             })
         });
@@ -3548,14 +3599,14 @@ impl WawonaCore {
         if !self.is_running() {
             return;
         }
-        let state = self.state.read().unwrap();
+        let state = self.state.read_recover();
         // Send frame to all clients with active touch points
         let surface_ids: Vec<u32> = state.seat.touch.active_points.values()
             .map(|p| p.surface_id)
             .collect();
         for sid in surface_ids {
             let client = state.get_surface(sid).and_then(|sf| {
-                let sf = sf.read().unwrap();
+                let sf = sf.read_recover();
                 sf.resource.as_ref().and_then(|r| r.client())
             });
             state.seat.touch.broadcast_frame(client.as_ref());
@@ -3567,14 +3618,14 @@ impl WawonaCore {
         if !self.is_running() {
             return;
         }
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         // Send cancel to all clients with active touch points
         let surface_ids: Vec<u32> = state.seat.touch.active_points.values()
             .map(|p| p.surface_id)
             .collect();
         for sid in &surface_ids {
             let client = state.get_surface(*sid).and_then(|sf| {
-                let sf = sf.read().unwrap();
+                let sf = sf.read_recover();
                 sf.resource.as_ref().and_then(|r| r.client())
             });
             state.seat.touch.broadcast_cancel(client.as_ref());
@@ -3595,7 +3646,7 @@ impl WawonaCore {
             return;
         }
         crate::wlog!(crate::util::logging::INPUT, "text_input commit: {:?}", text);
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         state.ext.text_input.commit_string(text);
     }
 
@@ -3608,7 +3659,7 @@ impl WawonaCore {
             return;
         }
         crate::wlog!(crate::util::logging::INPUT, "text_input preedit: {:?}", text);
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         state.ext.text_input.preedit_string(text, cursor_begin, cursor_end);
     }
 
@@ -3617,7 +3668,7 @@ impl WawonaCore {
         if !self.is_running() {
             return;
         }
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         state.ext.text_input.delete_surrounding_text(before_length, after_length);
     }
 
@@ -3642,17 +3693,17 @@ impl WawonaCore {
             return RenderScene::empty();
         }
         
-        let (width, height, scale) = *self.output_size.read().unwrap();
+        let (width, height, scale) = *self.output_size.read_recover();
         
         // 1. Build the internal scene graph
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         state.build_scene();
         
         let flattened_scene = state.scene.flatten();
         state.scene_damage.clear();
         for surface in &flattened_scene {
             let consumed_damage = if let Some(surface_ref) = state.get_surface(surface.surface_id) {
-                let mut surf = surface_ref.write().unwrap();
+                let mut surf = surface_ref.write_recover();
                 if surf.current.damage.is_empty() {
                     None
                 } else {
@@ -3676,7 +3727,7 @@ impl WawonaCore {
         
         // 2. Map internal FlattenedSurface to FFI RenderNode
         let mut ffi_nodes = Vec::new();
-        let ffi_textures = self.textures.read().unwrap();
+        let ffi_textures = self.textures.read_recover();
         let mut current_anchor: (u32, i32, i32) = (0, 0, 0);
         let mut scene_hasher = std::collections::hash_map::DefaultHasher::new();
         flattened_scene.len().hash(&mut scene_hasher);
@@ -3692,7 +3743,7 @@ impl WawonaCore {
             
             // Texture cache is keyed by wl_buffer id (not surface id).
             let texture_handle = if let Some(surf_ref) = state.get_surface(surface.surface_id) {
-                let surf = surf_ref.read().unwrap();
+                let surf = surf_ref.read_recover();
                 let buffer_id = surf.current.buffer_id.unwrap_or(0) as u64;
                 if let Some(handle) = ffi_textures.get(&buffer_id) {
                     *handle
@@ -3742,7 +3793,7 @@ impl WawonaCore {
             ffi_nodes.push(node);
         }
         let scene_fingerprint = scene_hasher.finish();
-        let mut last_fingerprint = self.last_scene_fingerprint.write().unwrap();
+        let mut last_fingerprint = self.last_scene_fingerprint.write_recover();
         let scene_changed = scene_fingerprint != *last_fingerprint;
         *last_fingerprint = scene_fingerprint;
         let has_damage = !global_damage.is_empty();
@@ -3767,7 +3818,7 @@ impl WawonaCore {
             return;
         }
         
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         
         // 1. Send wp_presentation feedback events.
         // wl_surface.frame callbacks are emitted per-surface from
@@ -3780,7 +3831,7 @@ impl WawonaCore {
         state.flush_buffer_releases();
         
         // 3. Update runtime timing
-        let mut runtime = self.runtime.lock().unwrap();
+        let mut runtime = self.runtime.lock_recover();
         runtime.end_frame();
     }
 
@@ -3790,7 +3841,7 @@ impl WawonaCore {
             return RenderScene::empty();
         }
         
-        let windows = self.ffi_windows.read().unwrap();
+        let windows = self.ffi_windows.read_recover();
         if let Some(info) = windows.get(&window_id.id) {
             let mut scene = RenderScene::new(info.width, info.height, 1.0);
             scene.needs_redraw = true;
@@ -3807,7 +3858,7 @@ impl WawonaCore {
         }
         
         // Mark frame complete in runtime
-        self.runtime.lock().unwrap().end_frame();
+        self.runtime.lock_recover().end_frame();
         
         // Frame callbacks are flushed from notify_frame_presented(), not here.
     }
@@ -3829,7 +3880,7 @@ impl WawonaCore {
         if !self.is_running() {
             return;
         }
-        self.state.write().unwrap().flush_all_frame_callbacks();
+        self.state.write_recover().flush_all_frame_callbacks();
     }
     
     // =========================================================================
@@ -3851,7 +3902,7 @@ impl WawonaCore {
         let safe_scale = if scale < 1.0 { 1.0 } else { scale };
 
         let (prev_w, prev_h, prev_s) = {
-            let cur = self.output_size.read().unwrap();
+            let cur = self.output_size.read_recover();
             (cur.0, cur.1, cur.2)
         };
 
@@ -3860,18 +3911,18 @@ impl WawonaCore {
         }
 
         crate::wlog!(crate::util::logging::FFI, "Output size: {}x{} @ {}x", width, height, safe_scale);
-        *self.output_size.write().unwrap() = (width, height, safe_scale);
+        *self.output_size.write_recover() = (width, height, safe_scale);
 
         let output_id;
 
         {
-            let mut state = self.state.write().unwrap();
+            let mut state = self.state.write_recover();
             state.set_output_size(width, height, safe_scale);
             output_id = state.outputs.first().map(|o| o.id).unwrap_or(0);
         }
 
         if prev_w != width || prev_h != height || (prev_s - safe_scale).abs() > 0.001 {
-            let state = self.state.read().unwrap();
+            let state = self.state.read_recover();
 
             crate::core::wayland::wayland::output::notify_output_change(&state, output_id);
 
@@ -3894,7 +3945,7 @@ impl WawonaCore {
         let scale_key = (safe_scale * 1000.0).round() as u32;
 
         {
-            let cache = self.per_window_output_notify.read().unwrap();
+            let cache = self.per_window_output_notify.read_recover();
             if let Some(&(pw, ph, pk)) = cache.get(&wkey) {
                 if pw == width && ph == height && pk == scale_key {
                     return;
@@ -3910,16 +3961,12 @@ impl WawonaCore {
             height,
             safe_scale
         );
-        self.begin_resize_transaction(
-            window_id,
-            0,
-            WindowSizeCause::OutputModeChange,
-            Size { width, height },
-            GeometrySizeKind::Content,
-        );
+        // No resize transaction here: this is an output-geometry notification,
+        // not a size request. Beginning one would clobber any real pending
+        // HostConfigure transaction for the window (one txn slot per window).
 
         let (output_id, owner_client) = {
-            let state = self.state.read().unwrap();
+            let state = self.state.read_recover();
             let oid = state.outputs.first().map(|o| o.id).unwrap_or(0);
             let cid = state
                 .xdg
@@ -3931,7 +3978,7 @@ impl WawonaCore {
         };
 
         if let Some(ref cid) = owner_client {
-            let state = self.state.read().unwrap();
+            let state = self.state.read_recover();
             crate::core::wayland::wayland::output::notify_output_change_for_client_override(
                 &state,
                 output_id,
@@ -3966,8 +4013,7 @@ impl WawonaCore {
         }
 
         self.per_window_output_notify
-            .write()
-            .unwrap()
+            .write_recover()
             .insert(wkey, (width, height, scale_key));
     }
     
@@ -3975,7 +4021,7 @@ impl WawonaCore {
     /// On iOS these correspond to the notch, home indicator, and rounded corners.
     pub fn set_safe_area_insets(&self, top: i32, right: i32, bottom: i32, left: i32) {
         crate::wlog!(crate::util::logging::FFI, "Safe area insets: top={} right={} bottom={} left={}", top, right, bottom, left);
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         state.set_safe_area_insets(top, right, bottom, left);
     }
     
@@ -3989,11 +4035,11 @@ impl WawonaCore {
     /// Set keyboard repeat rate
     pub fn set_keyboard_repeat(&self, rate: i32, delay: i32) {
         crate::wlog!(crate::util::logging::FFI, "Keyboard repeat: rate={} Hz, delay={} ms", rate, delay);
-        *self.keyboard_config.write().unwrap() = (rate, delay);
+        *self.keyboard_config.write_recover() = (rate, delay);
         
         // Update state
         {
-            let mut state = self.state.write().unwrap();
+            let mut state = self.state.write_recover();
             state.keyboard_repeat_rate = rate;
             state.keyboard_repeat_delay = delay;
         }
@@ -4007,8 +4053,7 @@ impl WawonaCore {
     /// Get list of window IDs
     pub fn get_windows(&self) -> Vec<WindowId> {
         self.ffi_windows
-            .read()
-            .unwrap()
+            .read_recover()
             .keys()
             .map(|id| WindowId::new(*id))
             .collect()
@@ -4016,7 +4061,7 @@ impl WawonaCore {
     
     /// Get window info
     pub fn get_window_info(&self, window_id: WindowId) -> Option<WindowInfo> {
-        self.ffi_windows.read().unwrap().get(&window_id.id).cloned()
+        self.ffi_windows.read_recover().get(&window_id.id).cloned()
     }
     
     /// Set window focus
@@ -4028,11 +4073,11 @@ impl WawonaCore {
         crate::wlog!(crate::util::logging::FFI, "Focus window: {}", window_id.id);
         
         // Update state
-        self.state.write().unwrap().set_focused_window(Some(window_id.id as u32));
+        self.state.write_recover().set_focused_window(Some(window_id.id as u32));
         
         // Update FFI window info
         {
-            let mut windows = self.ffi_windows.write().unwrap();
+            let mut windows = self.ffi_windows.write_recover();
             // Deactivate all windows first
             for (_, info) in windows.iter_mut() {
                 info.activated = false;
@@ -4043,7 +4088,7 @@ impl WawonaCore {
             }
         }
         
-        self.pending_window_events.write().unwrap().push(
+        self.pending_window_events.write_recover().push(
             WindowEvent::Activated { window_id }
         );
     }
@@ -4057,14 +4102,14 @@ impl WawonaCore {
         crate::wlog!(crate::util::logging::FFI, "Unfocus all windows");
         
         // Update state
-        self.state.write().unwrap().set_focused_window(None);
+        self.state.write_recover().set_focused_window(None);
         
         // Deactivate all windows
-        let mut windows = self.ffi_windows.write().unwrap();
+        let mut windows = self.ffi_windows.write_recover();
         for (id, info) in windows.iter_mut() {
             if info.activated {
                 info.activated = false;
-                self.pending_window_events.write().unwrap().push(
+                self.pending_window_events.write_recover().push(
                     WindowEvent::Deactivated { window_id: WindowId::new(*id) }
                 );
             }
@@ -4082,19 +4127,29 @@ impl WawonaCore {
             "Request window close (xdg_toplevel.close): {}",
             window_id.id
         );
-        let sent = {
-            match self.state.write() {
-                Ok(mut state) => state.send_toplevel_close_for_window(window_id.id as u32),
-                Err(_) => {
-                    crate::wlog!(
-                        crate::util::logging::FFI,
-                        "request_window_close: state lock poisoned, refusing close for {}",
-                        window_id.id
-                    );
-                    return false;
-                }
-            }
-        };
+        let sent = self
+            .state
+            .write_recover()
+            .send_toplevel_close_for_window(window_id.id as u32);
+        self.flush_clients();
+        sent
+    }
+
+    /// Host dismissed a popup (click-away, Escape, parent teardown) — tell the
+    /// client via `xdg_popup.popup_done` so it can destroy the popup cleanly.
+    pub fn notify_popup_dismissed(&self, window_id: WindowId) -> bool {
+        if !self.is_running() {
+            return false;
+        }
+        crate::wlog!(
+            crate::util::logging::FFI,
+            "Popup dismissed by host (xdg_popup.popup_done): {}",
+            window_id.id
+        );
+        let sent = self
+            .state
+            .write_recover()
+            .send_popup_done_for_window(window_id.id as u32);
         self.flush_clients();
         sent
     }
@@ -4113,23 +4168,12 @@ impl WawonaCore {
             window_id.id
         );
         let pending = {
-            match self.state.write() {
-                Ok(mut state) => {
-                    if state.get_window(wid).is_none() {
-                        return false;
-                    }
-                    state.destroy_window(wid);
-                    std::mem::take(&mut state.pending_compositor_events)
-                }
-                Err(_) => {
-                    crate::wlog!(
-                        crate::util::logging::FFI,
-                        "force_destroy_host_window: state lock poisoned, cannot destroy {}",
-                        window_id.id
-                    );
-                    return false;
-                }
+            let mut state = self.state.write_recover();
+            if state.get_window(wid).is_none() {
+                return false;
             }
+            state.destroy_window(wid);
+            std::mem::take(&mut state.pending_compositor_events)
         };
         for event in pending {
             self.handle_compositor_event(event);
@@ -4145,7 +4189,7 @@ impl WawonaCore {
         }
         crate::wlog!(crate::util::logging::FFI, "Start window move: window={}, serial={}", window_id.id, serial);
         
-        self.pending_window_events.write().unwrap().push(
+        self.pending_window_events.write_recover().push(
             WindowEvent::MoveRequested { window_id, serial }
         );
     }
@@ -4158,7 +4202,7 @@ impl WawonaCore {
         crate::wlog!(crate::util::logging::FFI, "Start window resize: window={}, serial={}, edge={:?}", 
             window_id.id, serial, edge);
         
-        self.pending_window_events.write().unwrap().push(
+        self.pending_window_events.write_recover().push(
             WindowEvent::ResizeRequested { window_id, serial, edge }
         );
     }
@@ -4169,7 +4213,7 @@ impl WawonaCore {
     
     /// Get connected client count
     pub fn get_client_count(&self) -> u32 {
-        self.compositor.lock().unwrap()
+        self.compositor.lock_recover()
             .as_ref()
             .map(|c| c.client_count() as u32)
             .unwrap_or(0)
@@ -4177,7 +4221,7 @@ impl WawonaCore {
     
     /// Get list of connected clients
     pub fn get_clients(&self) -> Vec<ClientInfo> {
-        self.ffi_clients.read().unwrap().values().cloned().collect()
+        self.ffi_clients.read_recover().values().cloned().collect()
     }
     
     /// Disconnect a client
@@ -4186,10 +4230,10 @@ impl WawonaCore {
             return;
         }
         crate::wlog!(crate::util::logging::FFI, "Disconnect client: {}", client_id.id);
-        if let Some(compositor) = self.compositor.lock().unwrap().as_mut() {
+        if let Some(compositor) = self.compositor.lock_recover().as_mut() {
             if compositor.disconnect_client_by_internal(client_id.id as u32) {
                 // Drive cleanup promptly; natural callbacks will still reconcile.
-                let mut state = self.state.write().unwrap();
+                let mut state = self.state.write_recover();
                 let _ = compositor.dispatch(&mut state);
             }
         }
@@ -4200,10 +4244,7 @@ impl WawonaCore {
         if !self.is_running() {
             return 0;
         }
-        let mut compositor_guard = match self.compositor.lock() {
-            Ok(guard) => guard,
-            Err(_) => return 0,
-        };
+        let mut compositor_guard = self.compositor.lock_recover();
         let Some(compositor) = compositor_guard.as_mut() else {
             return 0;
         };
@@ -4214,10 +4255,7 @@ impl WawonaCore {
                 "Disconnected {} in-process Wayland client(s)",
                 count
             );
-            let mut state = match self.state.write() {
-                Ok(guard) => guard,
-                Err(_) => return count as u32,
-            };
+            let mut state = self.state.write_recover();
             let _ = compositor.dispatch(&mut state);
         }
         count as u32
@@ -4229,7 +4267,7 @@ impl WawonaCore {
     
     /// Get surface state
     pub fn get_surface_state(&self, surface_id: SurfaceId) -> Option<SurfaceState> {
-        self.ffi_surfaces.read().unwrap().get(&surface_id.id).cloned()
+        self.ffi_surfaces.read_recover().get(&surface_id.id).cloned()
     }
     
     // =========================================================================
@@ -4240,8 +4278,8 @@ impl WawonaCore {
     pub fn execute_debug_command(&self, command: DebugCommand) -> String {
         match command {
             DebugCommand::DumpState => {
-                let (width, height, scale) = *self.output_size.read().unwrap();
-                let state = self.state.read().unwrap();
+                let (width, height, scale) = *self.output_size.read_recover();
+                let state = self.state.read_recover();
                 format!(
                     "Compositor State:\n\
                      Running: {}\n\
@@ -4261,10 +4299,10 @@ impl WawonaCore {
                 )
             }
             DebugCommand::DumpSurfaces => {
-                let state = self.state.read().unwrap();
+                let state = self.state.read_recover();
                 let mut output = format!("Surfaces ({}):\n", state.surfaces.len());
                 for (id, surface) in state.surfaces.iter() {
-                    let s = surface.read().unwrap();
+                    let s = surface.read_recover();
                     output.push_str(&format!(
                         "  Surface {}: size={}x{}\n",
                         id, s.current.width, s.current.height
@@ -4273,10 +4311,10 @@ impl WawonaCore {
                 output
             }
             DebugCommand::DumpWindows => {
-                let state = self.state.read().unwrap();
+                let state = self.state.read_recover();
                 let mut output = format!("Windows ({}):\n", state.windows.len());
                 for (id, window) in state.windows.iter() {
-                    let w = window.read().unwrap();
+                    let w = window.read_recover();
                     output.push_str(&format!(
                         "  Window {}: title=\"{}\", size={}x{}\n",
                         id, w.title, w.width, w.height
@@ -4285,7 +4323,7 @@ impl WawonaCore {
                 output
             }
             DebugCommand::DumpClients => {
-                let clients = self.ffi_clients.read().unwrap();
+                let clients = self.ffi_clients.read_recover();
                 let mut output = format!("Clients ({}):\n", clients.len());
                 for (id, info) in clients.iter() {
                     output.push_str(&format!(
@@ -4300,11 +4338,11 @@ impl WawonaCore {
                 format!("Log level set to: {}", level)
             }
             DebugCommand::ForceRedraw => {
-                let windows = self.ffi_windows.read().unwrap();
+                let windows = self.ffi_windows.read_recover();
                 let window_ids: Vec<WindowId> = windows.keys().map(|id| WindowId::new(*id)).collect();
                 let count = window_ids.len();
-                self.pending_redraws.write().unwrap().extend(window_ids);
-                self.runtime.lock().unwrap().request_redraw();
+                self.pending_redraws.write_recover().extend(window_ids);
+                self.runtime.lock_recover().request_redraw();
                 format!("Forced redraw for {} windows", count)
             }
         }
@@ -4312,9 +4350,9 @@ impl WawonaCore {
     
     /// Get compositor statistics
     pub fn get_stats(&self) -> String {
-        let (width, height, scale) = *self.output_size.read().unwrap();
-        let (rate, delay) = *self.keyboard_config.read().unwrap();
-        let fps = self.runtime.lock().unwrap().fps();
+        let (width, height, scale) = *self.output_size.read_recover();
+        let (rate, delay) = *self.keyboard_config.read_recover();
+        let fps = self.runtime.lock_recover().fps();
         
         format!(
             "Wawona Compositor Statistics\n\
@@ -4343,10 +4381,10 @@ impl WawonaCore {
             width, height,
             scale,
             rate, delay,
-            self.ffi_windows.read().unwrap().len(),
-            self.ffi_surfaces.read().unwrap().len(),
+            self.ffi_windows.read_recover().len(),
+            self.ffi_surfaces.read_recover().len(),
             self.get_client_count(),
-            self.textures.read().unwrap().len(),
+            self.textures.read_recover().len(),
         )
     }
 
@@ -4364,7 +4402,7 @@ impl WawonaCore {
         if !self.is_running() {
             return None;
         }
-        let state = self.state.read().unwrap();
+        let state = self.state.read_recover();
         crate::core::wayland::ext::image_copy_capture::get_pending_image_copy_capture(&state).map(
             |(capture_id, ptr, width, height, stride, size)| types::ScreencopyRequest {
                 capture_id,
@@ -4382,7 +4420,7 @@ impl WawonaCore {
         if !self.is_running() {
             return;
         }
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         crate::core::wayland::ext::image_copy_capture::complete_image_copy_capture(&mut state, capture_id);
     }
 
@@ -4391,7 +4429,7 @@ impl WawonaCore {
         if !self.is_running() {
             return;
         }
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write_recover();
         crate::core::wayland::ext::image_copy_capture::fail_image_copy_capture(&mut state, capture_id);
     }
 }
@@ -4407,7 +4445,7 @@ impl WawonaCore {
         if !self.is_running() {
             return (String::new(), 0, 0);
         }
-        let state = self.state.read().unwrap();
+        let state = self.state.read_recover();
         for (_id, instance) in &state.ext.text_input.instances {
             if instance.enabled {
                 return (
@@ -4428,7 +4466,7 @@ impl WawonaCore {
         if !self.is_running() {
             return (0, 0, 0, 0);
         }
-        let state = self.state.read().unwrap();
+        let state = self.state.read_recover();
         for (_id, instance) in &state.ext.text_input.instances {
             if instance.enabled {
                 return instance.cursor_rect;
@@ -4444,7 +4482,7 @@ impl WawonaCore {
         if !self.is_running() {
             return (0, 0);
         }
-        let state = self.state.read().unwrap();
+        let state = self.state.read_recover();
         for (_id, instance) in &state.ext.text_input.instances {
             if instance.enabled {
                 return (
@@ -4461,7 +4499,7 @@ impl WawonaCore {
     /// Returns the pointer position, hotspot, and buffer metadata for the
     /// cursor surface set by the Wayland client via wl_pointer.set_cursor.
     pub fn get_cursor_render_info(&self) -> types::CursorRenderInfo {
-        let state = self.state.read().unwrap();
+        let state = self.state.read_recover();
         let pointer = &state.seat.pointer;
 
         let cursor_sid = match pointer.cursor_surface {
@@ -4471,7 +4509,7 @@ impl WawonaCore {
 
         // Look up the surface's current buffer
         let buffer_id = if let Some(surface_ref) = state.surfaces.get(&cursor_sid) {
-            let surface = surface_ref.read().unwrap();
+            let surface = surface_ref.read_recover();
             surface.current.buffer_id.unwrap_or(0) as u64
         } else {
             return types::CursorRenderInfo::default();
@@ -4484,12 +4522,12 @@ impl WawonaCore {
         // Look up buffer metadata
         let (width, height, stride, format, iosurface_id) =
             if let Some(surface_ref) = state.surfaces.get(&cursor_sid) {
-                let surface = surface_ref.read().unwrap();
+                let surface = surface_ref.read_recover();
                 let Some(client_id) = surface.client_id.clone() else {
                     return types::CursorRenderInfo::default();
                 };
                 if let Some(buf_ref) = state.buffers.get(&(client_id, buffer_id as u32)) {
-                    let buf = buf_ref.read().unwrap();
+                    let buf = buf_ref.read_recover();
                     match &buf.buffer_type {
                         crate::core::surface::BufferType::Shm(shm) => (
                             shm.width as u32,
@@ -4538,13 +4576,12 @@ impl WawonaCore {
             return BufferRenderInfo { stride: 0, format: 0, iosurface_id: 0, width: 0, height: 0 };
         }
 
-        let state = self.state.read().unwrap();
+        let state = self.state.read_recover();
         let buffer_id_u32 = buffer_id as u32;
 
         let auth_buffer = if let Some(client_id) = self
             .compositor
-            .lock()
-            .unwrap()
+            .lock_recover()
             .as_ref()
             .and_then(|c| c.internal_to_client_id(texture.client_id.id))
         {
@@ -4556,12 +4593,12 @@ impl WawonaCore {
             state
                 .buffers
                 .iter()
-                .find(|(_, b)| b.read().unwrap().id == buffer_id_u32)
+                .find(|(_, b)| b.read_recover().id == buffer_id_u32)
                 .map(|(_, b)| b.clone())
         });
 
         if let Some(auth_buffer) = auth_buffer {
-            let buffer = auth_buffer.read().unwrap();
+            let buffer = auth_buffer.read_recover();
             match &buffer.buffer_type {
                 crate::core::surface::BufferType::Shm(shm) => BufferRenderInfo {
                     stride: shm.stride as u32,
@@ -4635,6 +4672,25 @@ mod tests {
         assert!(!should_flush_frame_callbacks(
             FrameCallbackFlushPoint::FrameComplete
         ));
+    }
+
+    #[test]
+    fn apply_geometry_offset_respects_inset_for_server_side() {
+        use crate::core::window::DecorationMode;
+        let mut state = CompositorState::new(None);
+        let wid = 42u32;
+        let mut window = crate::core::window::Window::new(wid, 1);
+        window.decoration_mode = DecorationMode::ServerSide;
+        window.geometry_x = 10;
+        window.geometry_y = 32;
+        state.windows.insert(
+            wid,
+            std::sync::Arc::new(std::sync::RwLock::new(window)),
+        );
+        state.surface_to_window.insert(1, wid);
+        let (x, y) = apply_geometry_offset(&state, WindowId { id: wid as u64 }, 100.0, 50.0);
+        assert_eq!(x, 110.0);
+        assert_eq!(y, 82.0);
     }
 
     #[test]

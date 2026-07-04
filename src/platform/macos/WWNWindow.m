@@ -239,14 +239,20 @@
 }
 
 - (void)mouseDown:(NSEvent *)event {
+  WWNWindow *wwnWindow = nil;
   if ([self.window isKindOfClass:[WWNWindow class]]) {
-    ((WWNWindow *)self.window).lastMouseDownEvent = event;
+    wwnWindow = (WWNWindow *)self.window;
+    wwnWindow.lastMouseDownEvent = event;
   }
   [[WWNCompositorBridge sharedBridge]
       injectPointerButtonForWindow:[self wwnWindowId]
                             button:0x110 // BTN_LEFT
                            pressed:YES
                          timestamp:(uint32_t)(event.timestamp * 1000)];
+  if (wwnWindow && wwnWindow.wwnSurfaceWindowDraggable &&
+      event.type == NSEventTypeLeftMouseDown && event.buttonNumber == 0) {
+    [wwnWindow performWindowDragWithEvent:event];
+  }
 }
 
 - (void)mouseUp:(NSEvent *)event {
@@ -749,9 +755,40 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
                             backing:backingStoreType
                               defer:flag];
   if (self) {
+    // ARC owns this window (held in WWNCompositorBridge._windows and by the
+    // teardown block). NSWindow defaults releasedWhenClosed to YES, so -close
+    // would hand AppKit an extra -autorelease and over-release the object when
+    // the run loop's autorelease pool drains — crashing in objc_release after a
+    // client (e.g. weston-terminal) tears down. Match WWNPopupWindow/prefs.
+    self.releasedWhenClosed = NO;
     [self setDelegate:self];
+    [[NSNotificationCenter defaultCenter]
+        addObserver:self
+           selector:@selector(wwn_onWillMiniaturize:)
+               name:NSWindowWillMiniaturizeNotification
+             object:self];
   }
   return self;
+}
+
+- (void)dealloc {
+  [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)wwn_onWillMiniaturize:(NSNotification *)notification {
+  (void)notification;
+  self.wwnMiniaturizeInProgress = YES;
+}
+
+- (void)miniaturize:(id)sender {
+  self.wwnMiniaturizeInProgress = YES;
+  WWNLog("INPUT", @"Window %llu miniaturize: requested", self.wwnWindowId);
+  [super miniaturize:sender];
+}
+
+- (void)deminiaturize:(id)sender {
+  WWNLog("INPUT", @"Window %llu deminiaturize: requested", self.wwnWindowId);
+  [super deminiaturize:sender];
 }
 
 - (void)applyPresentationPolicyForServerSideDecorations:
@@ -799,7 +836,8 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
 
 - (void)windowDidResize:(NSNotification *)notification {
   if (self.processingResize || self.suppressCompositorCallbacks ||
-      !self.isVisible) {
+      !self.isVisible || self.isMiniaturized ||
+      self.wwnMiniaturizeInProgress || self.wwnFullscreenTransitionInProgress) {
     return;
   }
 
@@ -825,8 +863,19 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
   }
 }
 
+- (void)windowWillEnterFullScreen:(NSNotification *)notification {
+  (void)notification;
+  self.wwnFullscreenTransitionInProgress = YES;
+}
+
+- (void)windowWillExitFullScreen:(NSNotification *)notification {
+  (void)notification;
+  self.wwnFullscreenTransitionInProgress = YES;
+}
+
 - (void)windowDidEnterFullScreen:(NSNotification *)notification {
   (void)notification;
+  self.wwnFullscreenTransitionInProgress = NO;
   if (self.processingResize || self.suppressCompositorCallbacks ||
       self.hostLocked) {
     return;
@@ -834,18 +883,20 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
   NSSize size = [self contentRectForFrameRect:self.frame].size;
   uint32_t width = (uint32_t)MAX(1, lround(size.width));
   uint32_t height = (uint32_t)MAX(1, lround(size.height));
+  // syncHostFullscreen sends the fullscreen configure and opens a resize
+  // transaction itself; also injecting a plain resize here issued a second,
+  // racing configure for the same transition (feedback loop with the
+  // client's commits).
   [[WWNCompositorBridge sharedBridge]
       syncHostFullscreen:YES
              forWindowId:self.wwnWindowId
                    width:width
                   height:height];
-  [[WWNCompositorBridge sharedBridge] injectWindowResize:self.wwnWindowId
-                                                   width:width
-                                                  height:height];
 }
 
 - (void)windowDidExitFullScreen:(NSNotification *)notification {
   (void)notification;
+  self.wwnFullscreenTransitionInProgress = NO;
   if (self.processingResize || self.suppressCompositorCallbacks ||
       self.hostLocked) {
     return;
@@ -858,15 +909,13 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
              forWindowId:self.wwnWindowId
                    width:width
                   height:height];
-  [[WWNCompositorBridge sharedBridge] injectWindowResize:self.wwnWindowId
-                                                   width:width
-                                                  height:height];
 }
 
 - (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)frameSize {
   (void)sender;
   if (self.processingResize || self.suppressCompositorCallbacks ||
-      !self.isVisible) {
+      !self.isVisible || self.isMiniaturized ||
+      self.wwnMiniaturizeInProgress || self.wwnFullscreenTransitionInProgress) {
     return frameSize;
   }
 
@@ -874,7 +923,22 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
   // clients track host window dimensions continuously, not only after mouse up.
   NSRect nextFrame = NSMakeRect(self.frame.origin.x, self.frame.origin.y,
                                 frameSize.width, frameSize.height);
+  NSSize currentContent = [self contentRectForFrameRect:self.frame].size;
   NSSize contentSize = [self contentRectForFrameRect:nextFrame].size;
+
+  // AppKit's shrink-to-dock animation can emit resizes before -miniaturize: or
+  // windowWillMiniaturize: fire; forwarding those sizes kills weston-terminal.
+  if (!self.interactiveResizeInProgress &&
+      contentSize.width < currentContent.width * 0.75 &&
+      contentSize.height < currentContent.height * 0.75) {
+    self.wwnMiniaturizeInProgress = YES;
+    WWNLog("INPUT",
+           @"Window %llu detected minimize shrink %.0fx%.0f -> %.0fx%.0f",
+           self.wwnWindowId, currentContent.width, currentContent.height,
+           contentSize.width, contentSize.height);
+    return frameSize;
+  }
+
   uint32_t width = (uint32_t)MAX(1, lround(contentSize.width));
   uint32_t height = (uint32_t)MAX(1, lround(contentSize.height));
   [[WWNCompositorBridge sharedBridge] injectWindowResize:self.wwnWindowId
@@ -886,7 +950,8 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
 - (void)windowDidEndLiveResize:(NSNotification *)notification {
   (void)notification;
   if (self.processingResize || self.suppressCompositorCallbacks ||
-      !self.isVisible) {
+      !self.isVisible || self.isMiniaturized ||
+      self.wwnMiniaturizeInProgress) {
     return;
   }
   // Final authoritative sync after fast edge-drag to guarantee host/client
@@ -924,7 +989,8 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
 
 - (void)resignKeyWindow {
   [super resignKeyWindow];
-  if (self.suppressCompositorCallbacks) {
+  if (self.suppressCompositorCallbacks || self.isMiniaturized ||
+      self.wwnMiniaturizeInProgress) {
     return;
   }
 
@@ -936,6 +1002,35 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
 
   [[WWNCompositorBridge sharedBridge]
       injectKeyboardLeaveForWindow:self.wwnWindowId];
+}
+
+- (void)windowWillMiniaturize:(NSNotification *)notification {
+  (void)notification;
+  self.wwnMiniaturizeInProgress = YES;
+  WWNLog("INPUT", @"Window %llu will miniaturize", self.wwnWindowId);
+}
+
+- (void)windowDidMiniaturize:(NSNotification *)notification {
+  (void)notification;
+  self.wwnMiniaturizeInProgress = NO;
+  WWNLog("INPUT", @"Window %llu miniaturized to dock", self.wwnWindowId);
+}
+
+- (void)windowDidDeminiaturize:(NSNotification *)notification {
+  (void)notification;
+  self.wwnMiniaturizeInProgress = NO;
+  if (self.suppressCompositorCallbacks) {
+    return;
+  }
+  WWNLog("INPUT", @"Window %llu deminiaturized from dock", self.wwnWindowId);
+  NSSize size = [self contentRectForFrameRect:self.frame].size;
+  uint32_t width = (uint32_t)MAX(1, lround(size.width));
+  uint32_t height = (uint32_t)MAX(1, lround(size.height));
+  [[WWNCompositorBridge sharedBridge] injectWindowResize:self.wwnWindowId
+                                                   width:width
+                                                  height:height];
+  [[WWNCompositorBridge sharedBridge]
+      reconcileWindowResizeNow:self.wwnWindowId];
 }
 
 /// Defer AppKit teardown until the Wayland client handles `xdg_toplevel.close`.

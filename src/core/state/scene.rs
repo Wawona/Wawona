@@ -109,9 +109,9 @@ impl CompositorState {
                 let (final_w, final_h) = if toplevel_data.pending_fullscreen {
                     (width.max(1), height.max(1))
                 } else if width == 0 && height == 0 {
-                    let prev_w = toplevel_data.width.max(1);
-                    let prev_h = toplevel_data.height.max(1);
-                    (prev_w, prev_h)
+                    // Per xdg-shell, 0x0 means "the client decides its own
+                    // size" — pass it through (first-commit trust).
+                    (0, 0)
                 } else {
                     let (clamped_w, clamped_h) =
                         toplevel_data.clamp_size(width.max(1), height.max(1));
@@ -172,86 +172,16 @@ impl CompositorState {
             return Some(serial);
         }
 
-        let serial = self.next_serial();
-        crate::wlog!(crate::util::logging::COMPOSITOR, "send_toplevel_configure: client={:?} tl_id={} size={}x{} serial={}", 
-            client_id, toplevel_id, width, height, serial);
-
-        let mut to_send = None;
-        if let Some(toplevel_data) = self.xdg.toplevels.get_mut(&(client_id.clone(), toplevel_id)) {
-            toplevel_data.pending_serial = serial;
-            toplevel_data.deferred_configure_size = None;
-            
-            let (final_w, final_h) = if toplevel_data.pending_fullscreen {
-                (width.max(1), height.max(1))
-            } else if width == 0 && height == 0 {
-                // Treat 0x0 as "unchanged" for non-fullscreen toplevels.
-                // Some clients (e.g. weston-simple-shm) abort on zero configure sizes.
-                let prev_w = toplevel_data.width.max(1);
-                let prev_h = toplevel_data.height.max(1);
-                (prev_w, prev_h)
-            } else {
-                let (clamped_w, clamped_h) = toplevel_data.clamp_size(width.max(1), height.max(1));
-                (clamped_w.max(1), clamped_h.max(1))
-            };
-
-            toplevel_data.width = final_w;
-            toplevel_data.height = final_h;
-
-            if let Some(resource) = &toplevel_data.resource {
-                let mut states = Vec::new();
-                
-                if toplevel_data.activated {
-                    states.extend_from_slice(&(wayland_protocols::xdg::shell::server::xdg_toplevel::State::Activated as u32).to_ne_bytes());
-                }
-                
-                if toplevel_data.pending_maximized {
-                    states.extend_from_slice(&(wayland_protocols::xdg::shell::server::xdg_toplevel::State::Maximized as u32).to_ne_bytes());
-                } 
-
-                if toplevel_data.pending_fullscreen {
-                    states.extend_from_slice(&(wayland_protocols::xdg::shell::server::xdg_toplevel::State::Fullscreen as u32).to_ne_bytes());
-                }
-                
-                crate::wlog!(crate::util::logging::COMPOSITOR, "Configuring xdg_toplevel {} with states: {:?}, size={}x{}", toplevel_id, states, final_w, final_h);
-                to_send = Some((resource.clone(), toplevel_data.xdg_surface_id, states, final_w, final_h));
-            } else {
-                crate::wlog!(crate::util::logging::COMPOSITOR, "send_toplevel_configure: No resource for tl_id={}", toplevel_id);
-            }
-        }
-        
-        if let Some((toplevel, xdg_surface_id, states, final_w, final_h)) = to_send {
-            toplevel.configure(final_w as i32, final_h as i32, states);
-            
-            if let Some(surface_data) = self
-                .xdg
-                .surfaces
-                .get_mut(&(client_id.clone(), xdg_surface_id))
-            {
-                surface_data.pending_serial = serial;
-                surface_data.pending_serials.push(serial);
-                surface_data.configured = false;
-                if let Some(resource) = &surface_data.resource {
-                    crate::wlog!(crate::util::logging::COMPOSITOR, "Actually sending xdg_surface.configure(serial={}) to xdg_surface_id={}", serial, xdg_surface_id);
-                    resource.configure(serial);
-                    crate::wlog!(
-                        crate::util::logging::COMPOSITOR,
-                        "configure_sent: client={:?} tl_id={} xdg_surface={} serial={} size={}x{}",
-                        client_id,
-                        toplevel_id,
-                        xdg_surface_id,
-                        serial,
-                        final_w,
-                        final_h
-                    );
-                } else {
-                    crate::wlog!(crate::util::logging::COMPOSITOR, "No resource for xdg_surface_id={} when sending configure", xdg_surface_id);
-                }
-            } else {
-                crate::wlog!(crate::util::logging::COMPOSITOR, "xdg_surface_id={} NOT FOUND in xdg.surfaces", xdg_surface_id);
-            }
-            return Some(serial);
-        }
-
+        // Smithay is the only serial namespace: every real toplevel is created
+        // by smithay's XdgShellHandler::new_toplevel and always carries a
+        // ToplevelSurface. A missing one means teardown is racing — do not
+        // fall back to a hand-rolled configure with a self-invented serial
+        // (the old path double-tracked serials and desynced ack matching).
+        crate::wlog!(
+            crate::util::logging::COMPOSITOR,
+            "send_toplevel_configure: tl_id={} has no smithay ToplevelSurface (teardown?); skipping",
+            toplevel_id
+        );
         None
     }
 
@@ -277,6 +207,31 @@ impl CompositorState {
             "send_toplevel_close_for_window: no toplevel for window_id={}",
             window_id
         );
+        false
+    }
+
+    /// Send `xdg_popup.popup_done` for the popup hosted by `window_id` (host
+    /// dismissed it: click-away, Escape, parent teardown). Returns `true` if a
+    /// matching popup was found.
+    pub fn send_popup_done_for_window(&mut self, window_id: u32) -> bool {
+        for ((cid, pid), data) in self.xdg.popups.iter() {
+            if data.window_id == window_id {
+                if let Some(res) = &data.resource {
+                    crate::wlog!(
+                        crate::util::logging::COMPOSITOR,
+                        "Sending xdg_popup.popup_done for window_id={} popup={}",
+                        window_id,
+                        pid
+                    );
+                    res.popup_done();
+                }
+                let key = (cid.clone(), *pid);
+                self.seat
+                    .popup_grab_stack
+                    .retain(|(gcid, gpid)| !(gcid == &key.0 && *gpid == key.1));
+                return true;
+            }
+        }
         false
     }
 
@@ -392,56 +347,45 @@ impl CompositorState {
                 let mut render_width = window.width.max(0) as u32;
                 let mut render_height = window.height.max(0) as u32;
                 if !is_kiosk_window {
-                    let expected_toplevel_size = self
-                        .xdg
-                        .toplevels
-                        .values()
-                        .find(|tl| tl.surface_id == window.surface_id)
-                        .map(|tl| (tl.width, tl.height));
-                    let xdg_pending_serial = self
-                        .xdg
-                        .surfaces
-                        .values()
-                        .find(|s| s.surface_id == window.surface_id)
-                        .map(|s| s.pending_serial)
-                        .unwrap_or(0);
+                    let output_scale = self
+                        .outputs
+                        .get(self.primary_output)
+                        .map(|o| o.scale)
+                        .unwrap_or(1.0);
                     if let Some(surface_ref) = self.get_surface(window.surface_id) {
                         let surface = surface_ref.read().unwrap();
                         let committed_width = surface.current.width.max(0) as u32;
                         let committed_height = surface.current.height.max(0) as u32;
+                        // The scene node always presents the buffer at its
+                        // committed (logical) size — never stretched to the
+                        // requested window size. When a client lags behind a
+                        // host resize, the old frame stays at its own size
+                        // until the client commits a matching buffer.
                         if committed_width > 0 && committed_height > 0 {
-                            let expected_known = expected_toplevel_size
-                                .map(|(expected_w, expected_h)| expected_w > 0 && expected_h > 0)
-                                .unwrap_or(false);
-                            let committed_matches_expected = expected_toplevel_size
-                                .map(|(expected_w, expected_h)| {
-                                    expected_w > 0
-                                        && expected_h > 0
-                                        && (committed_width as i32 - expected_w as i32).abs() <= 64
-                                        && (committed_height as i32 - expected_h as i32).abs() <= 64
-                                })
-                                .unwrap_or(true);
-                            let should_use_committed =
-                                if expected_known { committed_matches_expected } else { true };
-                            if should_use_committed {
-                                render_width = committed_width;
-                                render_height = committed_height;
-                            } else {
-                                crate::wlog!(
-                                    crate::util::logging::STATE,
-                                    "Scene size clamp: window={} surf={} committed={}x{} expected_toplevel={:?} pending_serial={} -> using window={}x{}",
-                                    window.id,
-                                    window.surface_id,
-                                    committed_width,
-                                    committed_height,
-                                    expected_toplevel_size,
-                                    xdg_pending_serial,
-                                    render_width,
-                                    render_height
-                                );
-                            }
+                            render_width = committed_width;
+                            render_height = committed_height;
                         }
                         node.scale = (surface.current.scale.max(1)) as f32;
+                        // Weston-style HiDPI: the client committed a buffer at
+                        // output-scale x window-size without calling
+                        // wl_surface.set_buffer_scale. Present it at logical
+                        // (window) size with the inferred scale so it is not
+                        // drawn double-sized and pointer coords stay aligned.
+                        if surface.current.scale <= 1 && output_scale > 1.0 {
+                            let win_w = window.width.max(0) as u32;
+                            let win_h = window.height.max(0) as u32;
+                            let scaled_w = (win_w as f32 * output_scale).round() as u32;
+                            let scaled_h = (win_h as f32 * output_scale).round() as u32;
+                            if win_w > 0
+                                && win_h > 0
+                                && committed_width == scaled_w
+                                && committed_height == scaled_h
+                            {
+                                render_width = win_w;
+                                render_height = win_h;
+                                node.scale = output_scale;
+                            }
+                        }
                     }
                 } else if let Some(surface_ref) = self.get_surface(window.surface_id) {
                     let surface = surface_ref.read().unwrap();

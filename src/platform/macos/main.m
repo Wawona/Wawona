@@ -25,6 +25,7 @@
 #import "../../util/WWNLog.h"
 
 // Settings (for Vulkan driver configuration)
+#import "./ui/Modules/WWNModuleManager.h"
 #import "./ui/Settings/WWNPreferencesManager.h"
 #import "./ui/Settings/WWNWaypipeRunner.h"
 #import "WWNSettings.h"
@@ -48,6 +49,8 @@ extern void wawona_window_info_free(CWindowInfo *info);
 //
 
 #import "./ui/Settings/WWNPreferences.h"
+#import "../ios/WWNExternalDisplaySupport.h"
+#import "../ios/WWNGameControllerManager.h"
 #import "../ios/WWNSceneDelegate.h"
 
 @interface WWNAppDelegate : NSObject <UIApplicationDelegate>
@@ -101,7 +104,11 @@ extern void wawona_window_info_free(CWindowInfo *info);
     // actual output dimensions once the UIWindowScene is available.
     CGSize screenSize = CGSizeMake(390, 844);
     BOOL autoScale = [[WWNPreferencesManager sharedManager] autoScale];
-    CGFloat scale = autoScale ? 3.0 : 1.0;
+    CGFloat nativeScale = UIScreen.mainScreen.scale;
+    if (nativeScale <= 0.0) {
+      nativeScale = 2.0;
+    }
+    CGFloat scale = autoScale ? nativeScale : 1.0;
 
     [compositor setOutputWidth:(uint32_t)screenSize.width
                         height:(uint32_t)screenSize.height
@@ -117,6 +124,13 @@ extern void wawona_window_info_free(CWindowInfo *info);
   }
 
   // 3. Configure iOS UI -> MOVED TO SCENE DELEGATE
+
+  // 4. Hardware input: gamepads, GCMouse, GCKeyboard presence.
+  [[WWNGameControllerManager sharedManager] start];
+
+  // 5. wwn-apt module manager: catalog + installed.json + apt IPC socket.
+  [[WWNModuleManager sharedManager] start];
+
   WWNLog("MAIN", @"WWN iOS initialization complete (waiting for Scene "
                  @"connection)");
   return YES;
@@ -128,6 +142,19 @@ extern void wawona_window_info_free(CWindowInfo *info);
                                    options:(UISceneConnectionOptions *)options {
   (void)application;
   (void)options;
+#if !TARGET_OS_TV && !TARGET_OS_VISION
+  if (@available(iOS 16.0, *)) {
+    if ([connectingSceneSession.role
+            isEqualToString:
+                UIWindowSceneSessionRoleExternalDisplayNonInteractive]) {
+      UISceneConfiguration *external =
+          [[UISceneConfiguration alloc] initWithName:@"External Display"
+                                         sessionRole:connectingSceneSession.role];
+      external.delegateClass = [WWNExternalSceneDelegate class];
+      return external;
+    }
+  }
+#endif
   UISceneConfiguration *config =
       [[UISceneConfiguration alloc] initWithName:@"Default Configuration"
                                      sessionRole:connectingSceneSession.role];
@@ -397,6 +424,8 @@ static void setup_signal_sources(void) {
   if (g_service_host_mode) {
     return;
   }
+  // wwn-apt module manager: catalog + installed.json + apt IPC socket.
+  [[WWNModuleManager sharedManager] start];
   WWNPreferencesManager *prefs = [WWNPreferencesManager sharedManager];
   if (![prefs hasSeenWelcome]) {
     [NSApp activateIgnoringOtherApps:YES];
@@ -807,6 +836,9 @@ int main(int argc, char *argv[]) {
     strncpy(argv[0], desiredName, maxLen);
 
     [[NSProcessInfo processInfo] setProcessName:@"Wawona"];
+    // Do not restore prior AppKit window frames for Wayland client windows.
+    [[NSUserDefaults standardUserDefaults] setBool:NO
+                                              forKey:@"NSQuitAlwaysKeepsWindows"];
     setbuf(stdout, NULL);
     setbuf(stderr, NULL);
     WWNConfigureBundledRuntimeEnvIfNeeded();
@@ -861,7 +893,15 @@ int main(int argc, char *argv[]) {
                                                       error:nil];
 
       WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
-      [bridge setOutputWidth:1024 height:768 scale:1.0f];
+      // wl_output mirrors the real display; per-window geometry overrides
+      // handle nested-compositor host windows.
+      NSScreen *hostScreen = [NSScreen mainScreen];
+      NSSize hostScreenSize = hostScreen ? hostScreen.frame.size
+                                         : NSMakeSize(1024, 768);
+      CGFloat hostScale = hostScreen ? hostScreen.backingScaleFactor : 1.0;
+      [bridge setOutputWidth:(uint32_t)hostScreenSize.width
+                      height:(uint32_t)hostScreenSize.height
+                       scale:(float)hostScale];
       [bridge setForceSSD:WWNSettings_GetForceServerSideDecorations()];
       if (![bridge startWithSocketName:@"wayland-0"]) {
         wwn_write_runtime_state(NO, @"wayland-0", nil, @"compositor-host",
@@ -1058,6 +1098,18 @@ int main(int argc, char *argv[]) {
         NSString *bundleICD = [mainBundle pathForResource:icdName
                                                    ofType:@"json"
                                               inDirectory:@"vulkan/icd.d"];
+        // ICD tiering fallback (p9): KosmicKrisp only exists for Apple Silicon
+        // on macOS 26+. If it was selected/defaulted but isn't present in the
+        // bundle, fall back to MoltenVK so Vulkan still works.
+        if (!bundleICD && strcmp(vkDriver, "kosmickrisp") == 0) {
+          bundleICD = [mainBundle pathForResource:@"MoltenVK_icd"
+                                           ofType:@"json"
+                                      inDirectory:@"vulkan/icd.d"];
+          if (bundleICD) {
+            WWNLog("MAIN",
+                   @"Vulkan: kosmickrisp ICD absent, falling back to MoltenVK");
+          }
+        }
         if (bundleICD) {
           setenv("VK_DRIVER_FILES", [bundleICD UTF8String], 1);
           WWNLog("MAIN", @"Vulkan: %s ICD from bundle: %@", vkDriver,

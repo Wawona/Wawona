@@ -38,16 +38,16 @@ libadwaita = { version = "0.7", optional = true }
 uniffi = { version = "0.30.0", features = ["cli"] }
 
 # Core Wayland
-wayland-server = "0.31.11"
-wayland-client = "0.31.12"
-wayland-backend = "0.3.12"
+wayland-server = "0.31.13"
+wayland-client = "0.31.14"
+wayland-backend = "0.3.15"
 smithay = { version = "0.7", default-features = false, features = ["wayland_frontend"] }
 
 # Protocol bindings (pre-generated, no custom generator needed)
-wayland-protocols = { version = "0.32.10", features = ["server", "client", "staging", "unstable"] }
-wayland-protocols-wlr = { version = "0.3.10", features = ["server", "client"] }
-wayland-protocols-misc = { version = "0.3.10", features = ["server", "client"] }
-wayland-protocols-plasma = { version = "0.3.10", features = ["server", "client"] }
+wayland-protocols = { version = "0.32.13", features = ["server", "client", "staging", "unstable"] }
+wayland-protocols-wlr = { version = "0.3.12", features = ["server", "client"] }
+wayland-protocols-misc = { version = "0.3.12", features = ["server", "client"] }
+wayland-protocols-plasma = { version = "0.3.12", features = ["server", "client"] }
 wayland-protocols-hyprland = { version = "1.2.0", features = ["server", "client"] }
 wayland-wf-shell = "0.1.0"
 
@@ -130,3 +130,18 @@ required-features = ["linux-ui"]
 name = "wawona-linux-tray"
 path = "src/bin/wawona-linux-tray.rs"
 required-features = ["linux-ui"]
+
+# Build-perf profiles (p21). panic stays "unwind": the FFI boundary relies on
+# std::panic::catch_unwind for poison recovery, so panic=abort is unsafe here.
+[profile.release]
+lto = "thin"           # cross-crate inlining without full-LTO link blowup
+codegen-units = 1      # better optimization; release builds are cache-warm in CI
+strip = "debuginfo"    # smaller dylib/staticlib shipped into app bundles
+opt-level = 3
+
+[profile.dev]
+opt-level = 1          # smithay/wayland hot paths are painfully slow at opt-level 0
+split-debuginfo = "unpacked"  # faster incremental links on macOS (dSYM churn)
+
+[profile.dev.package."*"]
+opt-level = 2          # optimize deps once; keeps our crate fast to iterate

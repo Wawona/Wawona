@@ -292,6 +292,21 @@ impl smithay::input::SeatHandler for crate::core::state::CompositorState {
     fn cursor_image(&mut self, seat: &smithay::input::Seat<Self>, image: smithay::input::pointer::CursorImageStatus) {
         crate::core::wayland::wayland::input::pointer::on_cursor_image(self, seat, image);
     }
+
+    fn focus_changed(
+        &mut self,
+        seat: &smithay::input::Seat<Self>,
+        focused: Option<&smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
+    ) {
+        // Keep the clipboard (wl_data_device) focus in lockstep with keyboard
+        // focus so the focused client receives selection offers, per spec.
+        use smithay::reexports::wayland_server::Resource;
+        let Some(dh) = self.smithay_runtime.display_handle.clone() else {
+            return;
+        };
+        let client = focused.and_then(|surface| surface.client());
+        smithay::wayland::selection::data_device::set_data_device_focus(&dh, seat, client);
+    }
 }
 
 impl smithay::wayland::selection::SelectionHandler for crate::core::state::CompositorState {
@@ -406,6 +421,9 @@ pub mod smithay_runtime {
 
     /// Register Smithay-owned core + shell runtime globals.
     pub fn register_core_shell(state: &mut CompositorState, dh: &DisplayHandle) {
+        if state.smithay_runtime.display_handle.is_none() {
+            state.smithay_runtime.display_handle = Some(dh.clone());
+        }
         if state.smithay_runtime.compositor.is_none() {
             state.smithay_runtime.compositor =
                 Some(smithay::wayland::compositor::CompositorState::new_v6::<CompositorState>(dh));
@@ -472,6 +490,11 @@ pub mod smithay_runtime {
                      xkeyboard-config is present"
                 );
             }
+            // Eagerly create the seat's selection SeatData so wl_data_device
+            // requests (notably Release) can never observe a seat without it.
+            // Smithay 0.7 unwraps that user-data in the Release handler; a
+            // missing entry panics dispatch and poisons compositor locks.
+            smithay::wayland::selection::data_device::set_data_device_focus(dh, &seat, None);
             state.smithay_runtime.seat_state = Some(seat_state);
             state.smithay_runtime.seat = Some(seat);
         }

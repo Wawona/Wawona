@@ -122,3 +122,37 @@ Run on each simulator/emulator or device. Mark pass/fail with date + build attr.
 ### Deferred (explicit)
 
 - Android iland / kmscube / `weston-simple-egl` — requires AHardwareBuffer GBM rewrite
+
+## Automated test-ID mapping (ci-docs-matrix)
+
+Each manual checklist item above maps to an automated verifier. As coverage
+lands, the manual item is retired in favor of the ID. IDs are Rust test fns
+(`cargo test`), smoke scripts, or agent-device replays.
+
+| Manual item | Automated ID | Kind | Status |
+|-------------|--------------|------|--------|
+| Boot Wawona app / client connects | `test_client_connection`, `test_compositor_protocol` | rust | done |
+| Registry advertises core globals | `test_protocol_matrix_core_globals_advertised` | rust | done |
+| Advertisement honesty per profile | `test_protocol_matrix_profile_honesty` | rust | done |
+| Protocol manifest not drifted | `test_generate_protocol_status_manifest` (CI `cargo-test-linux`) | rust+ci | done |
+| `weston-simple-shm` SHM buffer visible | `scripts/ci-macos-compat-smoke.sh` (macOS), `test_shm_protocol` | script+rust | done (macOS) |
+| `weston-flower` / demo client | `scripts/ci-macos-compat-smoke.sh` | script | done (macOS) |
+| Keyboard `KEY_A` → keysym | `test_keyboard_key_a_keysym` | rust | done |
+| Live resize + configure ack, no SHM exhaustion | `test_configure_serial_backlog_without_ack` | rust | done |
+| Window maximize/fullscreen transitions | `test_window_maximized_transition`, `test_window_fullscreen_transition` | rust | done |
+| Subsurface sync commit | `test_subsurface_sync_commit` | rust | done |
+| Pointer lock / relative motion | `test_pointer_lock`, `test_relative_pointer_motion` | rust | done |
+| dmabuf feedback resolves, no raw formats | `test_protocol_matrix_dmabuf_feedback_resolves` | rust | done |
+| iOS boot + launch client (UI) | `.agent-device/wawona-ios-smoke.ad` | agent-device | done |
+| Android boot + launch client (UI) | `.agent-device/wawona-android-smoke.ad` | agent-device | done |
+| macOS present-frame per bundled client | `scripts/ci-macos-compat-smoke.sh` | script | done |
+| Nested Weston child socket + demo client | (capability lane) | script | pending (`ci-capability-lane`) |
+| waypipe session | (capability lane) | script | pending |
+| UI parity vs golden baselines | `ui_parity_diff.py` + agent-device batch | ci | pending (`ci-l3-parity-agentdevice`) |
+| Graphics conformance (GL/Vulkan) | `dependencies/tests/graphics-validate.nix` | nix | pending (`ci-graphics-cts`) |
+| Apple UI flows | XCUITest target | xcuitest | pending (`ci-l3-apple-xcuitest`) |
+| Android UI flows | Compose UI Test (`testTag`) | espresso | pending (`ci-l3-android-espresso`) |
+
+Run locally: `nix develop -c cargo test --lib --tests`;
+`./scripts/ci-macos-compat-smoke.sh`; `agent-device replay .agent-device/<name>.ad`.
+

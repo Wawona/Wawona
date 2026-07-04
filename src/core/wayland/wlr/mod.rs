@@ -21,7 +21,19 @@ use crate::core::wayland::policy;
 
 /// Register wlroots-compatible protocols
 pub fn register(state: &mut CompositorState, dh: &DisplayHandle) {
-    layer_shell::register_layer_shell(dh);
+    // Advertisement honesty: layer-shell surfaces are tracked (exclusive
+    // zones, scene placement) but their buffers are not yet presented, so
+    // only expose the global on desktop/dev profiles where partial support
+    // is useful. Store-safe clients must not bind a protocol we can't render.
+    if policy::allow_desktop_extensions(state.protocol_profile) {
+        layer_shell::register_layer_shell(dh);
+    } else {
+        crate::wlog!(
+            crate::util::logging::COMPOSITOR,
+            "zwlr_layer_shell_v1 NOT advertised (presentation incomplete; profile {})",
+            state.protocol_profile.as_str()
+        );
+    }
     output_management::register_output_management(dh);
     output_power_management::register_output_power_management(dh);
     gamma_control::register_gamma_control(dh);

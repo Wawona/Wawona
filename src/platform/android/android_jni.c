@@ -30,6 +30,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/resource.h>
+#include <errno.h>
 #include <unistd.h>
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_android.h>
@@ -1275,6 +1277,16 @@ reschedule:
  */
 static void *render_thread(void *arg) {
   (void)arg;
+  // p22 runtime perf: raise this thread to Android's urgent-display priority so
+  // vsync-aligned compositing isn't preempted by background work. On bionic,
+  // setpriority(PRIO_PROCESS, 0, nice) sets the *calling thread's* nice value.
+  // -8 == ANDROID_PRIORITY_URGENT_DISPLAY (matches SurfaceFlinger/render tier).
+  errno = 0;
+  if (setpriority(PRIO_PROCESS, 0, -8) != 0 && errno != 0) {
+    // Non-fatal: bg-limited processes may lack CAP_SYS_NICE for negative nice.
+    LOGE("render_thread: could not raise to urgent-display priority (errno=%d)",
+         errno);
+  }
   LOGI("Render thread started with settings:");
   LOGI("  Force Server-Side Decorations: %s",
        WWNSettings_GetForceServerSideDecorations() ? "enabled" : "disabled");
@@ -3448,6 +3460,27 @@ static jboolean wwn_bundled_client_available(const char *client_id) {
     }
     return JNI_TRUE;
   }
+  if (strcmp(client_id, "weston-smoke") == 0) {
+    if (!smoke_main) {
+      LOGE("weston-smoke unavailable in this build (smoke_main not linked)");
+      return JNI_FALSE;
+    }
+    return JNI_TRUE;
+  }
+  if (strcmp(client_id, "weston") == 0) {
+    // Nested weston runs through its dedicated launcher, but the UI lists it
+    // in the same bundled-client picker — report real availability here.
+    if (!weston_compositor_main) {
+      LOGE("weston unavailable in this build (weston_compositor_main not "
+           "linked)");
+      return JNI_FALSE;
+    }
+    if (wwn_weston_is_compat_shim && wwn_weston_is_compat_shim() != 0) {
+      LOGE("weston unavailable: compatibility shim build detected");
+      return JNI_FALSE;
+    }
+    return JNI_TRUE;
+  }
   return wwn_client_main_for_id(client_id) ? JNI_TRUE : JNI_FALSE;
 }
 
@@ -3524,6 +3557,14 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeRunBundledClient(
   const char *id_utf = (*env)->GetStringUTFChars(env, clientId, NULL);
   if (!id_utf)
     return JNI_FALSE;
+
+  // Nested weston is not in the client-main table (it has its own thread and
+  // shutdown flag) — route it to its dedicated launcher instead of failing.
+  if (strcmp(id_utf, "weston") == 0) {
+    (*env)->ReleaseStringUTFChars(env, clientId, id_utf);
+    return Java_com_aspauldingcode_wawona_WawonaNative_nativeRunWeston(env,
+                                                                       thiz);
+  }
 
   if (g_bundled_client_running) {
     (*env)->ReleaseStringUTFChars(env, clientId, id_utf);

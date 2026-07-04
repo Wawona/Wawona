@@ -218,11 +218,10 @@ typedef struct {
                    height:(uint32_t *_Nullable)height
                     scale:(float *_Nullable)scale;
 
-#if TARGET_OS_IPHONE
 /// Reveal compositor on main, wait for layout/output sync (background thread).
 - (void)prepareOutputSizeForNativeClientLaunch;
 - (void)prepareOutputSizeForNativeClientLaunchWithClientId:(nullable NSString *)clientId;
-#endif
+
 /// Process host compositor events and nudge a presentation tick (subprocess
 /// clients on macOS, in-process roundtrips on iOS).
 - (void)pumpHostCompositorEvents;
@@ -274,6 +273,10 @@ typedef struct {
 
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
 @property(nonatomic, weak) UIView *containerView;
+/// External display (AirPlay / wired) mirror target. Set by
+/// WWNExternalSceneDelegate while an external scene is connected; presented
+/// Wayland frames and the virtual cursor are mirrored onto it.
+@property(nonatomic, weak, nullable) UIView *externalMirrorView;
 /// Detach presentation from live compositor views before stopping native clients.
 - (void)tearDownActiveIOSCompositorViews;
 #else

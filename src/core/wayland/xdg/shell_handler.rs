@@ -245,13 +245,17 @@ impl XdgShellHandler for CompositorState {
             }
         }
 
-        let defer_initial_size_for_ssd = matches!(self.decoration_policy, DecorationPolicy::ForceServer)
-            && cfg!(target_os = "macos");
-        let (configure_w, configure_h) = if defer_initial_size_for_ssd {
-            (0i32, 0i32)
-        } else {
-            (initial_width as i32, initial_height as i32)
-        };
+        // Always defer the initial configure to (0, 0) — per xdg-shell §xdg_toplevel,
+        // a zero size means "the client should decide its own size." Sending a
+        // real size here (e.g. the primary output's) forces well-behaved clients
+        // to render at that size even when it doesn't match what they actually
+        // want, and forces fixed-size clients (weston-smoke, etc.) into a
+        // host/client size mismatch that misaligns content inside the window on
+        // every platform. The client's first commit is trusted unconditionally
+        // (see `Window::has_committed_buffer`), so deferring here is safe and
+        // lets every window — on every platform — start edge-to-edge with its
+        // own content.
+        let (configure_w, configure_h) = (0i32, 0i32);
 
         surface.with_pending_state(|state| {
             state.states.set(xdg_toplevel::State::Activated);
@@ -692,30 +696,40 @@ impl XdgShellHandler for CompositorState {
                 tl.pending_maximized = false;
                 tl.saved_geometry.take()
             });
-        let (restore_w, restore_h, window_id) = if let Some((x, y, w, h)) = saved {
-            if let Some(tl) = self.xdg.toplevels.get(&(client_id.clone(), toplevel_id)) {
-                if let Some(window) = self.get_window(tl.window_id) {
-                    let mut win = window.write().unwrap();
-                    win.maximized = false;
-                    win.x = x;
-                    win.y = y;
+        let window_id = self
+            .xdg
+            .toplevels
+            .get(&(client_id.clone(), toplevel_id))
+            .map(|tl| tl.window_id);
+        // Restore the saved pre-maximize geometry only when it reflects a size
+        // the client actually chose (i.e. it committed a buffer while floating).
+        // Otherwise send 0x0 per xdg-shell: the client decides its own size.
+        // Falling back to the current window size here is always wrong — the
+        // current size IS the maximized size.
+        let client_chose_size = window_id
+            .and_then(|wid| self.get_window(wid))
+            .map(|window| window.read().unwrap().has_committed_buffer)
+            .unwrap_or(false);
+        let (restore_w, restore_h) = match saved {
+            Some((x, y, w, h)) if client_chose_size && w > 0 && h > 0 => {
+                if let Some(wid) = window_id {
+                    if let Some(window) = self.get_window(wid) {
+                        let mut win = window.write().unwrap();
+                        win.maximized = false;
+                        win.x = x;
+                        win.y = y;
+                    }
                 }
+                (w, h)
             }
-            (w, h, self.xdg.toplevels.get(&(client_id.clone(), toplevel_id)).map(|tl| tl.window_id))
-        } else {
-            let window_id = self
-                .xdg
-                .toplevels
-                .get(&(client_id.clone(), toplevel_id))
-                .map(|tl| tl.window_id);
-            let (w, h) = window_id
-                .and_then(|wid| self.get_window(wid))
-                .map(|window| {
-                    let win = window.read().unwrap();
-                    (win.width.max(1) as u32, win.height.max(1) as u32)
-                })
-                .unwrap_or((1, 1));
-            (w, h, window_id)
+            _ => {
+                if let Some(wid) = window_id {
+                    if let Some(window) = self.get_window(wid) {
+                        window.write().unwrap().maximized = false;
+                    }
+                }
+                (0, 0)
+            }
         };
         self.send_toplevel_configure(client_id.clone(), toplevel_id, restore_w, restore_h);
         if let Some(window_id) = window_id {
@@ -804,32 +818,39 @@ impl XdgShellHandler for CompositorState {
                 tl.pending_fullscreen = false;
                 tl.saved_geometry.take()
             });
-        let (restore_w, restore_h) = if let Some((x, y, w, h)) = saved {
-            if let Some(tl) = self.xdg.toplevels.get(&(client_id.clone(), toplevel_id)) {
-                if let Some(window) = self.get_window(tl.window_id) {
-                    let mut win = window.write().unwrap();
-                    win.fullscreen = false;
-                    win.x = x;
-                    win.y = y;
-                }
-            }
-            (w, h)
-        } else {
-            self.xdg
-                .toplevels
-                .get(&(client_id.clone(), toplevel_id))
-                .and_then(|tl| self.get_window(tl.window_id))
-                .map(|window| {
-                    let win = window.read().unwrap();
-                    (win.width.max(1) as u32, win.height.max(1) as u32)
-                })
-                .unwrap_or((1, 1))
-        };
         let window_id = self
             .xdg
             .toplevels
             .get(&(client_id.clone(), toplevel_id))
             .map(|tl| tl.window_id);
+        // Same rule as unmaximize: only restore a saved size the client
+        // actually chose; otherwise 0x0 lets the client decide. The current
+        // window size is the fullscreen size and must not be echoed back.
+        let client_chose_size = window_id
+            .and_then(|wid| self.get_window(wid))
+            .map(|window| window.read().unwrap().has_committed_buffer)
+            .unwrap_or(false);
+        let (restore_w, restore_h) = match saved {
+            Some((x, y, w, h)) if client_chose_size && w > 0 && h > 0 => {
+                if let Some(wid) = window_id {
+                    if let Some(window) = self.get_window(wid) {
+                        let mut win = window.write().unwrap();
+                        win.fullscreen = false;
+                        win.x = x;
+                        win.y = y;
+                    }
+                }
+                (w, h)
+            }
+            _ => {
+                if let Some(wid) = window_id {
+                    if let Some(window) = self.get_window(wid) {
+                        window.write().unwrap().fullscreen = false;
+                    }
+                }
+                (0, 0)
+            }
+        };
         self.send_toplevel_configure(client_id, toplevel_id, restore_w, restore_h);
         if let Some(window_id) = window_id {
             self.pending_compositor_events

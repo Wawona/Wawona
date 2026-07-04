@@ -47,6 +47,88 @@ pub fn is_weston_family_app_id(app_id: &str) -> bool {
     app_id == "weston" || app_id.starts_with("weston-")
 }
 
+fn app_id_matches_bundled_client(app_id: &str, client_id: &str) -> bool {
+    if app_id == client_id || app_id.contains(client_id) {
+        return true;
+    }
+    // org.freedesktop.weston.wayland-simple-shm → weston-simple-shm
+    if let Some(suffix) = client_id.strip_prefix("weston-") {
+        return app_id.contains(suffix);
+    }
+    false
+}
+
+/// Weston toy/demo clients that initiate `xdg_toplevel.move` from the whole
+/// surface (no real titlebar). On macOS the host must start an AppKit window
+/// drag from content clicks — not only from SSD chrome or xdg move round-trips.
+pub fn prefers_macos_surface_window_drag(app_id: &str) -> bool {
+    if app_id.is_empty() {
+        return false;
+    }
+    if is_weston_terminal_app_id(app_id) || app_id == "weston" || app_id == "foot" {
+        return false;
+    }
+    const EXCLUDE: &[&str] = &[
+        "weston-dnd",
+        "weston-constraints",
+        "weston-resizor",
+        "weston-eventdemo",
+        "weston-clickdot",
+    ];
+    if EXCLUDE
+        .iter()
+        .any(|id| app_id_matches_bundled_client(app_id, id))
+    {
+        return false;
+    }
+    const INCLUDE: &[&str] = &[
+        "weston-simple-shm",
+        "weston-flower",
+        "weston-smoke",
+        "weston-simple-egl",
+        "weston-image",
+        "weston-transformed",
+        "weston-stacking",
+        "weston-scaler",
+        "weston-cliptest",
+        "weston-editor",
+    ];
+    INCLUDE
+        .iter()
+        .any(|id| app_id_matches_bundled_client(app_id, id))
+}
+
+/// Tolerance (in px per axis) for treating a committed buffer size as a match
+/// for the last configured toplevel size. Covers CSD chrome and geometry
+/// insets without an app-id allowlist.
+pub const COMMIT_SIZE_TOLERANCE: i32 = 64;
+
+/// Whether a client-committed buffer size satisfies the compositor's last
+/// configure expectation.
+///
+/// First-commit trust (see `shell_handler::new_toplevel`, which sends a 0x0
+/// initial configure) means a commit with no known expectation is always the
+/// client's own preferred size, and is accepted. After that, a commit is
+/// accepted when it is within [`COMMIT_SIZE_TOLERANCE`] of the configured
+/// size. There is deliberately no per-app allowlist here.
+pub fn committed_size_matches_expected(
+    committed_w: i32,
+    committed_h: i32,
+    expected_toplevel: Option<(i32, i32)>,
+) -> bool {
+    if committed_w <= 0 || committed_h <= 0 {
+        return false;
+    }
+    match expected_toplevel {
+        Some((expected_w, expected_h)) if expected_w > 0 && expected_h > 0 => {
+            (committed_w - expected_w).abs() <= COMMIT_SIZE_TOLERANCE
+                && (committed_h - expected_h).abs() <= COMMIT_SIZE_TOLERANCE
+        }
+        // No (or zero) configured size: the client is choosing freely.
+        _ => true,
+    }
+}
+
 /// Weston demo clients that paint an in-buffer border even when SSD is negotiated.
 pub fn is_weston_terminal_app_id(app_id: &str) -> bool {
     app_id.contains("wayland-terminal") || app_id.contains("weston-terminal")
@@ -94,43 +176,15 @@ fn geometry_covers_full_buffer(gx: i32, gy: i32, gw: i32, gh: i32, buf_w: i32, b
     gx <= 0 && gy <= 0 && gw >= buf_w && gh >= buf_h
 }
 
-/// Clients that paint in-buffer titlebar chrome even when SSD is negotiated.
-fn force_ssd_csd_fallback_app(app_id: &str, decoration_mode: DecorationMode) -> bool {
-    if is_weston_terminal_app_id(app_id) {
-        return true;
-    }
-    // Nested compositor ("weston") is full-frame; do not guess a crop.
-    if app_id == "weston" {
-        return false;
-    }
-    // Other weston demos that rejected SSD and still draw CSD.
-    matches!(decoration_mode, DecorationMode::ClientSide)
-        && is_weston_family_app_id(app_id)
-}
-
-/// Fallback content rect when Force SSD is active but the client still reports
-/// (or paints) full-surface CSD chrome.
-pub fn force_ssd_fallback_geometry(
-    app_id: &str,
-    decoration_mode: DecorationMode,
-    buf_w: i32,
-    buf_h: i32,
-) -> Option<(i32, i32, i32, i32)> {
-    if !force_ssd_csd_fallback_app(app_id, decoration_mode) {
-        return None;
-    }
-    const INSET: i32 = 5;
-    if buf_w > INSET * 2 && buf_h > INSET * 2 {
-        Some((INSET, INSET, buf_w - INSET * 2, buf_h - INSET * 2))
-    } else {
-        None
-    }
-}
-
 /// Resolve the buffer region that should be visible to the user.
+///
+/// Only the client's own `xdg_surface.set_window_geometry` is trusted; there
+/// is no guessed inset for clients that keep painting CSD chrome under Force
+/// SSD (the old 5px inset produced content/window misalignment and cursor
+/// offset for every client that did not match the guess).
 pub fn resolve_window_content_geometry(
     state: &CompositorState,
-    app_id: &str,
+    _app_id: &str,
     decoration_mode: DecorationMode,
     surface_width: i32,
     surface_height: i32,
@@ -140,21 +194,12 @@ pub fn resolve_window_content_geometry(
         return None;
     }
 
-    let mut candidate = xdg_geometry.filter(|(_, _, gw, gh)| *gw > 0 && *gh > 0);
-
-    if matches!(state.decoration_policy, DecorationPolicy::ForceServer) {
-        let covers_full = candidate
-            .map(|(gx, gy, gw, gh)| geometry_covers_full_buffer(gx, gy, gw, gh, surface_width, surface_height))
-            .unwrap_or(true);
-        if covers_full {
-            candidate = force_ssd_fallback_geometry(
-                app_id,
-                decoration_mode,
-                surface_width,
-                surface_height,
-            );
-        }
-    }
+    let candidate = xdg_geometry
+        .filter(|(_, _, gw, gh)| *gw > 0 && *gh > 0)
+        // A geometry covering the whole buffer needs no crop.
+        .filter(|(gx, gy, gw, gh)| {
+            !geometry_covers_full_buffer(*gx, *gy, *gw, *gh, surface_width, surface_height)
+        });
 
     candidate.and_then(|(gx, gy, gw, gh)| {
         geometry_intersects_buffer(gx, gy, gw, gh, surface_width, surface_height)
@@ -304,7 +349,9 @@ mod tests {
     use crate::core::window::DecorationMode;
 
     #[test]
-    fn force_ssd_strips_weston_terminal_fallback_csd() {
+    fn force_ssd_never_invents_inset_geometry() {
+        // Without client-provided window geometry there is no crop, even for
+        // clients historically known to paint CSD chrome under Force SSD.
         let config = CompositorConfig {
             force_ssd: true,
             ..Default::default()
@@ -318,7 +365,7 @@ mod tests {
             600,
             None,
         );
-        assert_eq!(geom, Some((5, 5, 790, 590)));
+        assert_eq!(geom, None);
     }
 
     #[test]
@@ -369,5 +416,51 @@ mod tests {
             None,
         );
         assert_eq!(geom, None);
+    }
+
+    #[test]
+    fn macos_surface_drag_policy_for_demo_clients() {
+        assert!(prefers_macos_surface_window_drag(
+            "org.freedesktop.weston.wayland-simple-shm"
+        ));
+        assert!(prefers_macos_surface_window_drag("weston-flower"));
+        assert!(prefers_macos_surface_window_drag("weston-simple-egl"));
+        assert!(!prefers_macos_surface_window_drag(
+            "org.freedesktop.weston.wayland-terminal"
+        ));
+        assert!(!prefers_macos_surface_window_drag("weston-dnd"));
+        assert!(!prefers_macos_surface_window_drag("weston-clickdot"));
+        assert!(!prefers_macos_surface_window_drag("weston"));
+    }
+
+    #[test]
+    fn committed_size_matching_is_app_id_agnostic() {
+        // No configured expectation: the client picks its own size.
+        assert!(committed_size_matches_expected(200, 200, None));
+        assert!(committed_size_matches_expected(200, 200, Some((0, 0))));
+        // Within tolerance of the configured size.
+        assert!(committed_size_matches_expected(800, 570, Some((800, 600))));
+        // Far from the configured size: not a match, regardless of app id.
+        assert!(!committed_size_matches_expected(200, 200, Some((1680, 1050))));
+        // Degenerate commits never match.
+        assert!(!committed_size_matches_expected(0, 200, None));
+    }
+
+    #[test]
+    fn no_guessed_inset_without_client_geometry() {
+        // Force SSD without client-provided window geometry must not invent
+        // a crop (the old 5px inset hack).
+        assert!(resolve_window_content_geometry(
+            &CompositorState::new(Some(CompositorConfig {
+                force_ssd: true,
+                ..Default::default()
+            })),
+            "org.freedesktop.weston.wayland-smoke",
+            DecorationMode::ClientSide,
+            200,
+            200,
+            None,
+        )
+        .is_none());
     }
 }

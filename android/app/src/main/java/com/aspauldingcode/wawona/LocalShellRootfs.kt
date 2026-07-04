@@ -62,7 +62,7 @@ object LocalShellRootfs {
                 """
                 Wawona Local Shell — Android
 
-                home/     Shell HOME (\$HOME). Edit dotfiles, add scripts.
+                home/     Shell HOME (${'$'}HOME). Edit dotfiles, add scripts.
                 Browse:  Android/data/<package>/files/wawona-rootfs/
                          or use Settings → Local Shell → Browse / Import.
 

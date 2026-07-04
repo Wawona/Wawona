@@ -46,6 +46,10 @@ class WawonaSurfaceView(context: Context) : SurfaceView(context) {
     init {
         isFocusable = true
         isFocusableInTouchMode = true
+        // TalkBack: describe the compositor surface so screen-reader users know
+        // touches interact directly with the hosted Wayland application.
+        contentDescription = "Wayland application surface. Touch interacts directly with the application."
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
     }
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {

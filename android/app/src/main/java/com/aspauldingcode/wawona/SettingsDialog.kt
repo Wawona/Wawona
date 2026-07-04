@@ -20,6 +20,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
@@ -102,7 +103,7 @@ fun SettingsDialog(
         },
     ) { _ ->
         if (isWide) {
-            Row(Modifier.fillMaxSize()) {
+            Row(Modifier.fillMaxSize().testTag(WawonaTestTags.SETTINGS_DIALOG)) {
                 SettingsSidebarList(
                     selected = selectedTab,
                     onSelect = { selectedTab = it },
@@ -129,7 +130,8 @@ fun SettingsDialog(
                                 androidx.compose.animation.slideOutHorizontally { width -> width } + androidx.compose.animation.fadeOut())
                     }
                 },
-                label = "SettingsNavigation"
+                label = "SettingsNavigation",
+                modifier = Modifier.testTag(WawonaTestTags.SETTINGS_DIALOG)
             ) { currentTab ->
                 if (currentTab == null) {
                     SettingsSidebarList(

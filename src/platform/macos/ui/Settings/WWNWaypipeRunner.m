@@ -21,6 +21,9 @@
 #import <unistd.h>
 #import <string.h>
 #import <math.h>
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+#import <pwd.h>
+#endif
 
 extern volatile sig_atomic_t wwn_weston_compositor_shutdown_requested;
 
@@ -63,6 +66,28 @@ extern int editor_main(int argc, char **argv);
 extern int constraints_main(int argc, char **argv);
 #endif
 
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+static NSString *WWNPreferredHostShellPath(void) {
+  const char *override = getenv("WAWONA_SHELL");
+  if (override && override[0] && access(override, X_OK) == 0) {
+    return @(override);
+  }
+  struct passwd *pw = getpwuid(getuid());
+  if (pw && pw->pw_shell && pw->pw_shell[0] &&
+      access(pw->pw_shell, X_OK) == 0) {
+    return @(pw->pw_shell);
+  }
+  const char *envShell = getenv("SHELL");
+  if (envShell && envShell[0] && access(envShell, X_OK) == 0) {
+    return @(envShell);
+  }
+  if (access("/bin/zsh", X_OK) == 0) {
+    return @"/bin/zsh";
+  }
+  return @"/bin/sh";
+}
+#endif
+
 @interface WWNWaypipeRunner () <WWNSSHClientDelegate>
 @property(nonatomic, assign) pid_t currentPid;
 #if !TARGET_OS_IPHONE
@@ -85,6 +110,11 @@ extern int constraints_main(int argc, char **argv);
 @property(nonatomic, strong) NSTask *westonTask;
 @property(nonatomic, strong) NSTask *westonTerminalTask;
 @property(nonatomic, strong) NSTask *footTask;
+// Generic bundled clients (everything without a dedicated flag above).
+// Keyed by client id so each client has a launch guard and its NSTask is
+// tracked for stop/termination handling instead of being leaked.
+@property(nonatomic, strong)
+    NSMutableDictionary<NSString *, NSTask *> *genericClientTasks;
 #endif
 #if TARGET_OS_IPHONE
 @property(nonatomic, assign)
@@ -114,6 +144,14 @@ extern int constraints_main(int argc, char **argv);
   [self stopWestonTerminal];
   [self stopWeston];
   [self stopFoot];
+#if !TARGET_OS_IPHONE
+  for (NSTask *task in self.genericClientTasks.allValues) {
+    if (task.isRunning) {
+      [task terminate];
+    }
+  }
+  [self.genericClientTasks removeAllObjects];
+#endif
 }
 
 - (instancetype)init {
@@ -127,6 +165,8 @@ extern int constraints_main(int argc, char **argv);
     _savedStderr = -1;
     _savedStdout = -1;
     _fdLock = [[NSLock alloc] init];
+#else
+    _genericClientTasks = [NSMutableDictionary dictionary];
 #endif
   }
   return self;
@@ -142,8 +182,16 @@ extern int constraints_main(int argc, char **argv);
          self.isWestonSimpleSHMRunning || self.footRunning ||
          self.iosNativeClientInFlight;
 #else
-  return self.westonRunning || self.westonTerminalRunning ||
-         self.isWestonSimpleSHMRunning || self.footRunning;
+  if (self.westonRunning || self.westonTerminalRunning ||
+      self.isWestonSimpleSHMRunning || self.footRunning) {
+    return YES;
+  }
+  for (NSTask *task in self.genericClientTasks.allValues) {
+    if (task.isRunning) {
+      return YES;
+    }
+  }
+  return NO;
 #endif
 }
 
@@ -259,12 +307,23 @@ extern int constraints_main(int argc, char **argv);
   // wlroots/sway over waypipe can produce blank/broken windows on the
   // GPU/IOSurface fast path. Default to CPU transport for remote sway unless
   // the user already chose no-gpu explicitly.
-  if (prefs.waypipeNoGpu || isRemoteSwayLaunch) {
+  // p15: waypipe's GPU (dmabuf/Vulkan) transport needs a working Vulkan ICD.
+  // main.m sets VK_DRIVER_FILES when a bundled ICD (MoltenVK/KosmicKrisp) was
+  // resolved; if it's absent there is no ICD, so force CPU/SHM transport
+  // (--no-gpu) to avoid empty-IOSurface / failed-import frames.
+  BOOL haveVulkanICD = (getenv("VK_DRIVER_FILES") != NULL);
+  BOOL forceNoGpu = prefs.waypipeNoGpu || isRemoteSwayLaunch || !haveVulkanICD;
+  if (forceNoGpu) {
     [args addObject:@"--no-gpu"];
     if (isRemoteSwayLaunch && !prefs.waypipeNoGpu) {
       WWNLog("WAYPIPE",
              @"Auto-enabling --no-gpu for remote sway launch to avoid empty "
              @"IOSurface frames");
+    }
+    if (!haveVulkanICD && !prefs.waypipeNoGpu && !isRemoteSwayLaunch) {
+      WWNLog("WAYPIPE",
+             @"No Vulkan ICD (VK_DRIVER_FILES unset); forcing --no-gpu SHM "
+             @"transport");
     }
   }
 #if TARGET_OS_IPHONE
@@ -1327,9 +1386,20 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     [self launchFoot];
     return;
   }
+  // Launch guard: one instance per generic client id at a time.
+  NSTask *existing = self.genericClientTasks[clientId];
+  if (existing && existing.isRunning) {
+    WWNLog("WESTON", @"%@ already running (PID %d) — ignoring relaunch",
+           clientId, existing.processIdentifier);
+    return;
+  }
   BOOL running = YES;
   NSTask *task = nil;
   [self launchGenericWestonClient:clientId taskInOut:&task runningFlagIn:&running];
+  if (task) {
+    self.genericClientTasks[clientId] = task;
+    [self _installNativeClientTerminationHandler:task kind:clientId];
+  }
 #endif
 }
 
@@ -1380,6 +1450,8 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 
   self.westonSimpleSHMRunning = YES;
   [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
+  [[WWNCompositorBridge sharedBridge]
+      prepareOutputSizeForNativeClientLaunchWithClientId:@"weston-simple-shm"];
   NSString *path = [self findWestonSimpleSHMBinary];
   if (!path) {
     WWNLog("WESTON_SHM",
@@ -1504,6 +1576,8 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
                     runningFlagIn:(BOOL *)runningFlag {
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
   [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
+  [[WWNCompositorBridge sharedBridge]
+      prepareOutputSizeForNativeClientLaunchWithClientId:name];
 #endif
   NSString *path = [self findBinaryNamed:name];
   if (!path) {
@@ -1559,7 +1633,12 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
         s.footTask = nil;
         s.footRunning = NO;
       } else {
-        return;
+        // Generic bundled client: kind is the client id.
+        if (s.genericClientTasks[kind] != finished)
+          return;
+        [s.genericClientTasks removeObjectForKey:kind];
+        WWNLog("WESTON", @"Generic client %@ terminated (status %d)", kind,
+               finished.terminationStatus);
       }
       [[NSNotificationCenter defaultCenter]
           postNotificationName:@"WWNNativeClientProcessDidTerminateNotification"
@@ -1749,6 +1828,28 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 #endif
 
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+/// Fail-fast check for the bundled runtime nested Weston needs. Returns nil
+/// when everything is present, otherwise a human-readable description of the
+/// missing pieces (weston exits cryptically without them).
+- (NSString *)wwnValidateNestedWestonEnv {
+  NSMutableArray<NSString *> *missing = [NSMutableArray array];
+  const char *required[] = {"WESTON_DATA_DIR", "WESTON_MODULE_DIR",
+                            "WESTON_BACKEND_DIR"};
+  for (size_t i = 0; i < sizeof(required) / sizeof(required[0]); i++) {
+    const char *value = getenv(required[i]);
+    if (!value || !value[0]) {
+      [missing addObject:[NSString stringWithFormat:@"%s is unset", required[i]]];
+    } else if (access(value, R_OK) != 0) {
+      [missing addObject:[NSString stringWithFormat:@"%s → %s (unreadable)",
+                                                    required[i], value]];
+    }
+  }
+  if (missing.count == 0) {
+    return nil;
+  }
+  return [missing componentsJoinedByString:@"; "];
+}
+
 - (void)launchWestonMacOSAsNestedClient {
   if (self.westonTask.isRunning) {
     return;
@@ -1758,6 +1859,25 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     self.westonRunning = NO;
   }
   if (self.westonRunning) {
+    return;
+  }
+
+  // Bundled env (WESTON_*, fontconfig, XKB, cursors) must be configured in
+  // every launch path — host-agent and menubar entry points don't run the
+  // GUI startup path that used to do this once.
+  WWNConfigureBundledRuntimeEnvIfNeeded();
+  NSString *envError = [self wwnValidateNestedWestonEnv];
+  if (envError) {
+    WWNLog("WESTON", @"Refusing to launch nested weston: %@", envError);
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [[NSNotificationCenter defaultCenter]
+          postNotificationName:@"WWNNativeClientLaunchFailedNotification"
+                        object:self
+                      userInfo:@{
+                        @"clientId" : @"weston",
+                        @"reason" : envError,
+                      }];
+    });
     return;
   }
   self.westonRunning = YES;
@@ -2085,6 +2205,9 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   task.executableURL = [NSURL fileURLWithPath:path];
 
   NSMutableDictionary *env = [self wwnMutableHostWaylandEnvironment];
+  NSString *shellPath = WWNPreferredHostShellPath();
+  env[@"SHELL"] = shellPath;
+  task.arguments = @[ @"--shell", shellPath ];
 
   // Preserve original ZDOTDIR for the .zshenv/.zshrc wrappers
   if (env[@"ZDOTDIR"])
@@ -2102,8 +2225,8 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   NSError *err;
   if ([task launchAndReturnError:&err]) {
     self.westonTerminalTask = task;
-    WWNLog("WESTON_TERM", @"Launched weston-terminal with PID %d",
-           task.processIdentifier);
+    WWNLog("WESTON_TERM", @"Launched weston-terminal with PID %d (shell=%@)",
+           task.processIdentifier, shellPath);
     [self wwnPumpHostCompositorAfterNativeClientLaunch];
     [self _installNativeClientTerminationHandler:task kind:@"westonTerminal"];
   } else {

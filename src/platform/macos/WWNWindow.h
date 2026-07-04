@@ -12,6 +12,14 @@
 @property(nonatomic, assign) BOOL clientSideDecorated;
 /// Tracks zoom state for host → Wayland maximize sync.
 @property(nonatomic, assign) BOOL wwnLastZoomed;
+/// YES while AppKit is miniaturizing (before isMiniaturized flips).
+@property(nonatomic, assign) BOOL wwnMiniaturizeInProgress;
+/// YES during the AppKit fullscreen enter/exit animation. Intermediate
+/// windowWillResize/windowDidResize callbacks are suppressed so only the
+/// settled fullscreen size reaches the Wayland client.
+@property(nonatomic, assign) BOOL wwnFullscreenTransitionInProgress;
+/// YES for demo clients (weston-simple-shm, weston-flower, …) that drag from the whole surface.
+@property(nonatomic, assign) BOOL wwnSurfaceWindowDraggable;
 @property(nonatomic, strong) NSEvent *lastMouseDownEvent;
 /// Toggle AppKit chrome vs transparent host for SSD/CSD presentation.
 - (void)applyPresentationPolicyForServerSideDecorations:(BOOL)serverSideDecorations;

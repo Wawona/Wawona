@@ -143,8 +143,6 @@ static NSString *const kWWNWatchPrefPrefix = @"wawona.pref.";
 - (void)setDefaultBundledAppID:(NSString *)v { [[self defaults] setObject:(v ?: @"weston-terminal") forKey:[self key:@"defaultBundledAppID"]]; }
 - (BOOL)defaultWaypipeEnabled { return [self boolForSuffix:@"defaultWaypipeEnabled" fallback:YES]; }
 - (void)setDefaultWaypipeEnabled:(BOOL)v { [[self defaults] setBool:v forKey:[self key:@"defaultWaypipeEnabled"]]; }
-- (BOOL)xwaylandSupport { return [self boolForSuffix:@"xwaylandSupport" fallback:NO]; }
-- (void)setXwaylandSupport:(BOOL)v { [[self defaults] setBool:v forKey:[self key:@"xwaylandSupport"]]; }
 - (BOOL)shakeToCloseEnabled { return [self boolForSuffix:@"shakeToCloseEnabled" fallback:YES]; }
 - (void)setShakeToCloseEnabled:(BOOL)v { [[self defaults] setBool:v forKey:[self key:@"shakeToCloseEnabled"]]; }
 - (BOOL)swipeBackToCloseEnabled { return [self boolForSuffix:@"swipeBackToCloseEnabled" fallback:YES]; }

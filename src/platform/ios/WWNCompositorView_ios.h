@@ -70,6 +70,13 @@ NS_ASSUME_NONNULL_BEGIN
 /// Popups with client-drawn shadows should disable opacity.
 - (void)setWaylandFrameOpaque:(BOOL)opaque;
 
+// Virtual pointer control (game controllers, GCMouse, external drivers).
+// Moves/clicks the same virtual cursor used by touchpad mode.
+- (void)moveVirtualPointerByDx:(CGFloat)dx dy:(CGFloat)dy;
+- (void)clickVirtualPointerButton:(uint32_t)linuxButtonCode
+                          pressed:(BOOL)pressed;
+- (void)scrollVirtualPointerByDx:(CGFloat)dx dy:(CGFloat)dy;
+
 @end
 
 NS_ASSUME_NONNULL_END

@@ -119,7 +119,6 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
     if ([section isEqualToString:@"Advanced"]) {
         return @[
             [self actionRow:@"Log Level" key:@"logLevel" value:bridge.logLevel],
-            [self toggleRow:@"XWayland Support" key:@"xwaylandSupport" value:bridge.xwaylandSupport],
             [self toggleRow:@"Shake to Close" key:@"shakeToCloseEnabled" value:bridge.shakeToCloseEnabled],
             [self toggleRow:@"Swipe Back to Close" key:@"swipeBackToCloseEnabled" value:bridge.swipeBackToCloseEnabled],
         ];
@@ -243,8 +242,6 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
         bridge.colorOperations = on;
     } else if ([key isEqualToString:@"defaultWaypipeEnabled"]) {
         bridge.defaultWaypipeEnabled = on;
-    } else if ([key isEqualToString:@"xwaylandSupport"]) {
-        bridge.xwaylandSupport = on;
     } else if ([key isEqualToString:@"shakeToCloseEnabled"]) {
         bridge.shakeToCloseEnabled = on;
     } else if ([key isEqualToString:@"swipeBackToCloseEnabled"]) {

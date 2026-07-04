@@ -1,6 +1,5 @@
 // --- Core protocols (always enabled) ---
 pub mod subcompositor;
-pub mod data_device;
 pub mod viewporter;
 pub mod linux_dmabuf;
 pub mod linux_explicit_sync;
@@ -82,6 +81,8 @@ pub fn register(_state: &mut CompositorState, dh: &DisplayHandle) {
 
     // ── Modern Staging & Ext Protocols ────────────────────────────
     alpha_modifier::register_alpha_modifier(dh);
+    let _ = commit_timing::register_commit_timing(dh);
+    let _ = color_management::register_color_management(dh);
     content_type::register_content_type(dh);
     cursor_shape::register_cursor_shape(dh);
     fifo::register_fifo(dh);

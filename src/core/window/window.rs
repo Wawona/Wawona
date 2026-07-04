@@ -31,6 +31,19 @@ pub struct Window {
     /// When true the host OS view owns placement/size (kiosk / embedded-app).
     pub host_locked: bool,
 
+    /// Whether the client has committed at least one buffer for this toplevel.
+    ///
+    /// The compositor always defers the initial `xdg_toplevel` configure to
+    /// size (0, 0) — per the xdg-shell spec this tells the client "pick your
+    /// own size." The client's *first* commit is therefore always its true
+    /// preferred size and must be trusted unconditionally, regardless of
+    /// what output/window size hint the host used before that commit
+    /// arrived. Without this, host chrome (an AppKit `NSWindow`, for
+    /// example) can end up a different size than the buffer it displays,
+    /// leaving the content mis-aligned/cropped inside the window. This
+    /// applies to every Wayland client, not just known demo apps.
+    pub has_committed_buffer: bool,
+
     /// CSD geometry offset: the (x, y) origin of the content area within the
     /// surface buffer.  When the window is cropped to exclude the CSD shadow,
     /// pointer coordinates from the platform must be shifted by this offset to
@@ -61,6 +74,7 @@ impl Window {
             resizing: false,
             modal: false,
             host_locked: false,
+            has_committed_buffer: false,
             geometry_x: 0,
             geometry_y: 0,
             outputs: Vec::new(),

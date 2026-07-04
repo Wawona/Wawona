@@ -16,10 +16,16 @@ in
 {
   preBuildFragment = ''
     mkdir -p app/src/main/assets/weston
+    # Extract the whole weston data/ directory rather than a *.png glob: macOS
+    # ships bsdtar (libarchive), which does not support GNU tar's --wildcards
+    # flag, so a glob-in-extract silently matches nothing and the APK ends up
+    # without the CSD frame assets. Extracting the directory member is portable
+    # across both GNU tar and bsdtar; we then drop the few non-PNG data files.
     tar xf ${westonSrc} \
-      --wildcards 'weston-13.0.0/data/*.png' \
       --strip-components=2 \
-      -C app/src/main/assets/weston
+      -C app/src/main/assets/weston \
+      weston-13.0.0/data
+    find app/src/main/assets/weston -type f ! -name '*.png' -delete 2>/dev/null || true
     chmod -R u+w app/src/main/assets/weston
     if [ ! -f app/src/main/assets/weston/icon_window.png ]; then
       echo "ERROR: Weston frame assets missing from APK assets/weston"

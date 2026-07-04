@@ -15,6 +15,8 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.2.4"
+        // Layer-3 Compose UI tests (ci-l3-android-espresso).
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
             val requestedAbi = (System.getenv("WAWONA_ANDROID_ABI") ?: "arm64-v8a").trim()
@@ -184,6 +186,18 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("androidx.fragment:fragment-ktx:1.6.2")
+
+    // Android Auto (Car App Library) — status dashboard templates only;
+    // full compositor surfaces are not permitted on car screens.
+    implementation("androidx.car.app:app:1.4.0")
+
+    // Layer-3 Compose UI tests (ci-l3-android-espresso). Compose test artifacts
+    // are versioned by the same BOM as the app's compose deps.
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+    androidTestImplementation(platform("androidx.compose:compose-bom-alpha:$composeBom"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4-android")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
 configurations.configureEach {

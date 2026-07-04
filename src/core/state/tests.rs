@@ -141,25 +141,121 @@ fn test_find_surface_at_scales_weston_style_buffer_without_set_buffer_scale() {
 }
 
 #[test]
-fn test_find_surface_at_scales_with_wl_surface_buffer_scale() {
+fn test_find_surface_at_declared_buffer_scale_is_identity() {
+    // Retina 2x with a properly declared wl_surface.set_buffer_scale: the
+    // surface's logical size equals the presented view size, and wl_pointer
+    // coordinates are surface-local *logical* — never buffer pixels — so the
+    // view -> surface mapping must be identity.
     let mut state = CompositorState::new(None);
 
     let mut surface = Surface::new(102, None, None);
+    // current.{width,height} are logical (buffer 1600x1200 / scale 2).
     surface.current.width = 800;
     surface.current.height = 600;
     surface.current.scale = 2;
     state.surfaces.insert(102, Arc::new(RwLock::new(surface)));
 
     let mut window = Window::new(2, 102);
-    window.width = 400;
-    window.height = 300;
+    window.width = 800;
+    window.height = 600;
     state.windows.insert(2, Arc::new(RwLock::new(window)));
     state.surface_to_window.insert(102, 2);
     state.window_tree.stacking_order = vec![2];
 
     let (_, lx, ly) = state
-        .find_surface_at(200.0, 150.0)
+        .find_surface_at(400.0, 300.0)
         .expect("center hit");
     assert!((lx - 400.0).abs() < 0.01, "lx={lx}");
     assert!((ly - 300.0).abs() < 0.01, "ly={ly}");
+}
+
+#[test]
+fn test_view_to_surface_coords_identity() {
+    // No crop, no scale mismatch: coordinates pass through untouched.
+    let mut state = CompositorState::new(None);
+
+    let mut surface = Surface::new(103, None, None);
+    surface.current.width = 640;
+    surface.current.height = 480;
+    surface.current.scale = 1;
+    state.surfaces.insert(103, Arc::new(RwLock::new(surface)));
+
+    let mut window = Window::new(3, 103);
+    window.width = 640;
+    window.height = 480;
+    state.windows.insert(3, Arc::new(RwLock::new(window)));
+    state.surface_to_window.insert(103, 3);
+
+    let (x, y) = state.view_to_surface_coords(103, 640.0, 480.0, 123.0, 45.0);
+    assert_eq!((x, y), (123.0, 45.0));
+}
+
+#[test]
+fn test_view_to_surface_coords_csd_inset() {
+    // Cropped CSD presentation: view (0,0) is the visible content origin, so
+    // the xdg window geometry inset is added back 1:1 with no scaling.
+    let mut state = CompositorState::new(None);
+
+    let mut surface = Surface::new(104, None, None);
+    surface.current.width = 800;
+    surface.current.height = 600;
+    surface.current.scale = 1;
+    state.surfaces.insert(104, Arc::new(RwLock::new(surface)));
+
+    let mut window = Window::new(4, 104);
+    window.width = 780;
+    window.height = 560;
+    window.geometry_x = 10;
+    window.geometry_y = 32;
+    state.windows.insert(4, Arc::new(RwLock::new(window)));
+    state.surface_to_window.insert(104, 4);
+
+    let (x, y) = state.view_to_surface_coords(104, 780.0, 560.0, 100.0, 50.0);
+    assert_eq!((x, y), (110.0, 82.0));
+}
+
+#[test]
+fn test_view_to_surface_coords_implicit_hidpi_commit() {
+    // Nested-weston output-scale commit: buffer at 2x the view size without
+    // set_buffer_scale means the surface's logical size really is 2x, so
+    // pointer coordinates scale up by the same ratio.
+    let mut state = CompositorState::new(None);
+
+    let mut surface = Surface::new(105, None, None);
+    surface.current.width = 780;
+    surface.current.height = 1688;
+    surface.current.scale = 1;
+    state.surfaces.insert(105, Arc::new(RwLock::new(surface)));
+
+    let mut window = Window::new(5, 105);
+    window.width = 390;
+    window.height = 844;
+    state.windows.insert(5, Arc::new(RwLock::new(window)));
+    state.surface_to_window.insert(105, 5);
+
+    let (x, y) = state.view_to_surface_coords(105, 390.0, 844.0, 195.0, 422.0);
+    assert!((x - 390.0).abs() < 0.01, "x={x}");
+    assert!((y - 844.0).abs() < 0.01, "y={y}");
+}
+
+#[test]
+fn test_view_to_surface_coords_right_bottom_crop_not_hidpi() {
+    // A small right/bottom-only geometry crop (ratio ~1.01) must not be
+    // misclassified as an implicit HiDPI commit.
+    let mut state = CompositorState::new(None);
+
+    let mut surface = Surface::new(106, None, None);
+    surface.current.width = 800;
+    surface.current.height = 600;
+    surface.current.scale = 1;
+    state.surfaces.insert(106, Arc::new(RwLock::new(surface)));
+
+    let mut window = Window::new(6, 106);
+    window.width = 790;
+    window.height = 592;
+    state.windows.insert(6, Arc::new(RwLock::new(window)));
+    state.surface_to_window.insert(106, 6);
+
+    let (x, y) = state.view_to_surface_coords(106, 790.0, 592.0, 100.0, 100.0);
+    assert_eq!((x, y), (100.0, 100.0));
 }

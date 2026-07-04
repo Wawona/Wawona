@@ -66,7 +66,6 @@ use crate::core::wayland::wlr::virtual_pointer::VirtualPointerState;
 use crate::core::wayland::wlr::virtual_keyboard::VirtualKeyboardState;
 use crate::core::wayland::policy::{ProtocolProfile, resolve_profile};
 
-use crate::core::wayland::ext::data_device::DataDeviceState;
 #[cfg(feature = "desktop-protocols")]
 use crate::core::wayland::ext::linux_drm_syncobj::SyncObjState;
 #[cfg(feature = "desktop-protocols")]
@@ -79,6 +78,9 @@ use crate::core::traits::ProtocolState;
 /// This is the runtime boundary used to ensure protocol globals are owned by
 /// Smithay state objects rather than compile-only probes.
 pub struct SmithayRuntimeState {
+    /// Display handle captured at global registration; needed by seat focus
+    /// callbacks (data-device/selection focus) that fire outside dispatch.
+    pub display_handle: Option<wayland_server::DisplayHandle>,
     pub compositor: Option<smithay::wayland::compositor::CompositorState>,
     pub xdg_shell: Option<smithay::wayland::shell::xdg::XdgShellState>,
     pub shm: Option<smithay::wayland::shm::ShmState>,
@@ -102,6 +104,7 @@ pub struct SmithayRuntimeState {
 impl Default for SmithayRuntimeState {
     fn default() -> Self {
         Self {
+            display_handle: None,
             compositor: None,
             xdg_shell: None,
             shm: None,
@@ -1416,9 +1419,6 @@ pub struct CompositorState {
     /// wlroots protocol state (layer shell, virtual devices, data control)
     pub wlr: WlrState,
     
-    /// Data device protocol state (clipboard, DnD)
-    pub data: DataDeviceState,
-    
     // =========================================================================
     // Core Protocol Resources
     // =========================================================================
@@ -1505,7 +1505,6 @@ impl CompositorState {
             xdg: XdgState::default(),
             ext: ExtProtocolState::default(),
             wlr: WlrState::default(),
-            data: DataDeviceState::default(),
             seat_resources: HashMap::new(),
             
             pending_compositor_events: Vec::new(),
@@ -1902,15 +1901,6 @@ mod state_tests {
 }
 
 impl CompositorState {
-    /// Fire presentation feedback for committed surfaces.
-    /// Uses the same delivery path as `report_presentation_feedback`.
-    pub fn fire_presentation_feedback(&mut self) {
-        let timestamp_ns = crate::core::Compositor::timestamp_ms() as u64 * 1_000_000;
-        let refresh_ns = 16_666_666; // 60 Hz default
-        let seq = self.next_presentation_seq();
-        self.ext.presentation.send_presented_events(timestamp_ns, refresh_ns, seq);
-    }
-
     /// Remove state owned by a disconnected client.
     ///
     /// Nested compositors can be killed abruptly from the host UI. This keeps
@@ -2015,20 +2005,6 @@ impl ProtocolState for XdgState {
     }
 }
 
-impl ProtocolState for DataDeviceState {
-    fn client_disconnected(&mut self, client: wayland_server::backend::ClientId) {
-        use wayland_server::Resource;
-        // Clean up data devices owned by this client
-        self.devices.retain(|_id, device_data| {
-            device_data.resource.client().map_or(true, |c| c.id() != client)
-        });
-        // Clear drag if it belongs to disconnecting client
-        if self.drag.is_some() {
-            self.drag = None;
-        }
-    }
-}
-
 impl ProtocolState for SeatState {
     fn client_disconnected(&mut self, client: wayland_server::backend::ClientId) {
         use wayland_server::Resource;
@@ -2101,17 +2077,6 @@ impl ProtocolState for CompositorState {
         });
 
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            self.data.client_disconnected(client.clone());
-        }))
-        .map_err(|_| {
-            crate::wlog!(
-                crate::util::logging::STATE,
-                "client_disconnected: data cleanup panicked for client {:?}",
-                client
-            );
-        });
-
-        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             self.seat.client_disconnected(client.clone());
         }))
         .map_err(|_| {
@@ -2129,6 +2094,36 @@ impl ProtocolState for CompositorState {
             crate::wlog!(
                 crate::util::logging::STATE,
                 "client_disconnected: core cleanup panicked for client {:?}",
+                client
+            );
+        });
+
+        // If the disconnected client held keyboard focus, drop the Smithay
+        // keyboard focus (which also clears wl_data_device selection focus via
+        // SeatHandler::focus_changed). Leaving a dead focus target around lets
+        // later selection/data-device dispatch touch dead resources.
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            use wayland_server::Resource;
+            let Some(seat) = self.smithay_runtime.seat.clone() else {
+                return;
+            };
+            let Some(keyboard) = seat.get_keyboard() else {
+                return;
+            };
+            let focus_was_disconnected_client = keyboard
+                .current_focus()
+                .and_then(|surface| surface.client())
+                .map(|c| c.id() == client)
+                .unwrap_or(false);
+            if focus_was_disconnected_client {
+                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                keyboard.set_focus(self, None, serial);
+            }
+        }))
+        .map_err(|_| {
+            crate::wlog!(
+                crate::util::logging::STATE,
+                "client_disconnected: seat focus cleanup panicked for client {:?}",
                 client
             );
         });

@@ -143,7 +143,7 @@ impl Dispatch<zwlr_data_control_device_v1::ZwlrDataControlDeviceV1, ()> for Comp
             zwlr_data_control_device_v1::Request::SetSelection { source } => {
                 tracing::debug!("Global selection source updated by data_control client");
                 let selection_source = source.as_ref().map(|s| crate::core::state::SelectionSource::Wlr(s.clone()));
-                state.set_clipboard_source(_dhandle, selection_source);
+                state.set_clipboard_source(selection_source);
             }
             zwlr_data_control_device_v1::Request::SetPrimarySelection { source: _ } => {
                 tracing::debug!("Global primary selection source updated by data_control client");

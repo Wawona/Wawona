@@ -32,8 +32,10 @@
     _window.backgroundColor = [NSColor clearColor];
     _window.hasShadow = YES;
     _window.opaque = NO;
-    _window.level = NSFloatingWindowLevel;
+    // Menu-like stacking so popups can extend beyond the parent window frame.
+    _window.level = NSPopUpMenuWindowLevel;
     _window.releasedWhenClosed = NO;
+    _window.ignoresMouseEvents = NO;
 
     WWNView *v = [[WWNView alloc] initWithFrame:_window.contentView.bounds];
     v.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
@@ -55,17 +57,26 @@
   [_window setContentSize:size];
 }
 
-- (void)showAtScreenPoint:(CGPoint)point {
-  NSRect frame =
-      NSMakeRect(point.x, point.y, _contentSize.width, _contentSize.height);
-  [_window setFrame:frame display:YES];
-  [_window orderFront:nil];
-  if (_parentView.window) {
-    _parentWindow = _parentView.window;
-    [_parentView.window addChildWindow:_window ordered:NSWindowAbove];
-    WWNLog("POPUP-WIN", @"Added popup %llu as child to parent window %p",
-           _windowId, _parentView.window);
+- (void)showAtScreenRect:(NSRect)screenFrame {
+  [_window setFrame:screenFrame display:YES];
+  NSWindow *parentWin = _parentView.window;
+  if (parentWin) {
+    if (!_parentWindow) {
+      _parentWindow = parentWin;
+      [parentWin addChildWindow:_window ordered:NSWindowAbove];
+      WWNLog("POPUP-WIN",
+             @"Added popup %llu as child window of parent %p (screen frame "
+             @"%.0f,%.0f %.0fx%.0f)",
+             _windowId, parentWin, screenFrame.origin.x, screenFrame.origin.y,
+             screenFrame.size.width, screenFrame.size.height);
+    }
   }
+  [_window orderFront:nil];
+}
+
+- (void)showAtScreenPoint:(CGPoint)point {
+  [self showAtScreenRect:NSMakeRect(point.x, point.y, _contentSize.width,
+                                    _contentSize.height)];
 }
 
 - (void)dismiss {

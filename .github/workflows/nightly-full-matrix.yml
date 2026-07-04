@@ -1,0 +1,98 @@
+name: Nightly full matrix
+
+# Deep gates that are too slow/flaky for the PR path (Layer 3 functional +
+# graphics CTS + cross-platform UI parity + capability lanes). PRs get the fast
+# gate in nix.yml; `main` gets this nightly. See docs/2026-greenlight-gates.md.
+
+on:
+  schedule:
+    - cron: "0 8 * * *" # 08:00 UTC daily
+  workflow_dispatch: {}
+
+concurrency:
+  group: nightly-full-matrix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  graphics-smoke:
+    name: "macOS (arm64): graphics driver-sanity"
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+      - name: Graphics validate smoke (check)
+        run: nix build ".#checks.aarch64-darwin.graphics-validate-smoke" --print-build-logs
+
+  protocol-status-drift:
+    name: "Linux: protocol manifest drift"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+      - name: Ensure Cargo path dependencies
+        run: |
+          ./scripts/ensure-waypipe.sh
+          ./scripts/ensure-coreutils.sh
+      - name: Regenerate + assert protocol-status.md is current
+        run: |
+          WWN_WRITE_PROTOCOL_STATUS=1 nix develop -c cargo test --lib \
+            tests::protocol_matrix::test_generate_protocol_status_manifest -- --exact --nocapture
+          git diff --exit-code -- docs/protocol-status.md \
+            || { echo "::error::docs/protocol-status.md stale; run scripts/gen-protocol-status.sh"; exit 1; }
+
+  ui-parity:
+    name: "Layer 3: cross-platform UI parity"
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+      - name: Install Pillow (parity diff dep)
+        run: python3 -m pip install --user pillow
+      # Capture iOS + Android UI snapshots via agent-device batch flows. The
+      # batch specs enumerate the same screens on both platforms into a shared
+      # screenshots dir consumed by ui_parity_diff.py. Requires the agent-device
+      # CLI + simulators/emulators on the runner.
+      - name: agent-device sanity
+        run: agent-device --version
+      - name: Capture iOS snapshots
+        run: agent-device replay .agent-device/wawona-ios-smoke.ad --batch .agent-device/wawona-ios-smoke-batch.json --artifacts artifacts/ui-parity
+      - name: Capture Android snapshots
+        run: agent-device replay .agent-device/wawona-android-smoke.ad --batch .agent-device/wawona-android-smoke-batch.json --artifacts artifacts/ui-parity
+      - name: UI parity diff gate
+        run: python3 scripts/ui_parity_diff.py --screenshots-dir artifacts/ui-parity --threshold 0.12
+      - name: Upload parity artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-parity-snapshots
+          path: artifacts/ui-parity
+          if-no-files-found: warn
+
+  capability-lane:
+    name: "Layer 2: nested Weston + XWayland capability"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+      - name: Nested Weston + XWayland capability smoke
+        run: ./scripts/ci-capability-lane.sh

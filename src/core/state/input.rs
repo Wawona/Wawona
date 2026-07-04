@@ -15,8 +15,34 @@ impl CompositorState {
     /// Inject a key event and broadcast to all bound keyboards
     pub fn inject_key(&mut self, key: u32, key_state: wl_keyboard::KeyState, time: u32) {
         self.ext.idle_notify.record_activity();
+
+        // Keyboard delivery is owned by smithay's seat: keys reach the
+        // focused surface's wl_keyboard with correct XKB modifier tracking.
+        // `key` is a Linux evdev scancode; smithay expects XKB codes (+8).
+        let serial = self.next_serial();
+        if let Some(keyboard) = self
+            .smithay_runtime
+            .seat
+            .as_ref()
+            .and_then(|seat| seat.get_keyboard())
+        {
+            let smithay_state = match key_state {
+                wl_keyboard::KeyState::Pressed => smithay::backend::input::KeyState::Pressed,
+                _ => smithay::backend::input::KeyState::Released,
+            };
+            keyboard.input(
+                self,
+                key.saturating_add(8).into(),
+                smithay_state,
+                serial.into(),
+                time,
+                |_, _, _| smithay::input::keyboard::FilterResult::<()>::Forward,
+            );
+            return;
+        }
+
+        // Legacy fallback (no smithay seat): broadcast to bound keyboards.
         let mut new_mods = None;
-        
         if let Some(state) = &self.seat.keyboard.xkb_state {
              if let Ok(mut state) = state.lock() {
                  let direction = match key_state {
@@ -37,7 +63,6 @@ impl CompositorState {
             self.seat.keyboard.mods_group = group;
         }
 
-        let serial = self.next_serial();
         self.seat.cleanup_resources();
         for keyboard in &self.seat.keyboard.resources {
             keyboard.key(serial, time, key, key_state);
@@ -98,35 +123,74 @@ impl CompositorState {
     /// lives in output logical space.  wl_pointer surface-local coords must
     /// match the committed buffer.  Nested compositors like Weston often
     /// commit at output scale without calling wl_surface.set_buffer_scale.
-    fn pointer_buffer_coord_scale(
+    ///
+    /// Single source of truth for the view -> surface coordinate transform,
+    /// used by both scene hit-testing and host input injection (macOS, iOS,
+    /// Android, Linux). Platform layers pass *logical view-local* coordinates
+    /// (Android JNI already divides raw pixels by density; macOS/GTK views are
+    /// natively logical), so this transform must never apply a platform
+    /// density factor — it is idempotent w.r.t. platform pre-scaling.
+    ///
+    /// wl_pointer coordinates are surface-local *logical* coordinates per the
+    /// core protocol: an explicit wl_surface.set_buffer_scale changes the
+    /// buffer size, not the logical size, so it never affects this mapping.
+    /// Exactly two corrections apply:
+    ///  - crop inset: when presentation crops the buffer to xdg window
+    ///    geometry (CSD chrome), view (0,0) is the visible content origin and
+    ///    the geometry offset must be added back;
+    ///  - implicit HiDPI: the client committed a buffer N x the presented view
+    ///    size without declaring a buffer scale (weston-style output-scale
+    ///    commits), so its logical size really is N x the view size.
+    pub fn view_to_surface_coords(
         &self,
         surface_id: u32,
-        node_w: f64,
-        node_h: f64,
-        flattened_scale: f32,
-    ) -> f64 {
-        if let Some(surf) = self.surfaces.get(&surface_id) {
-            if let Ok(guard) = surf.read() {
-                let surface_scale = guard.current.scale.max(1) as f64;
-                if surface_scale > 1.0 {
-                    return surface_scale;
-                }
-                let buf_w = guard.current.width.max(1) as f64;
-                let buf_h = guard.current.height.max(1) as f64;
-                if node_w > 0.0 && node_h > 0.0 {
-                    let sx = buf_w / node_w;
-                    let sy = buf_h / node_h;
-                    if sx > 1.01 && (sx - sy).abs() < 0.05 {
-                        return sx;
-                    }
-                }
-            }
+        view_w: f64,
+        view_h: f64,
+        view_x: f64,
+        view_y: f64,
+    ) -> (f64, f64) {
+        let (inset_x, inset_y) = self
+            .surface_to_window
+            .get(&surface_id)
+            .and_then(|wid| self.get_window(*wid))
+            .and_then(|w| {
+                let w = w.read().ok()?;
+                Some((w.geometry_x as f64, w.geometry_y as f64))
+            })
+            .unwrap_or((0.0, 0.0));
+        if inset_x != 0.0 || inset_y != 0.0 {
+            // Cropped presentation maps 1:1 into the visible region.
+            return (view_x + inset_x, view_y + inset_y);
         }
-        let fs = flattened_scale as f64;
-        if fs > 1.0 {
-            return fs;
+        let scale = self.view_to_surface_scale(surface_id, view_w, view_h);
+        (view_x * scale, view_y * scale)
+    }
+
+    /// Ratio converting presented (view) coordinates into surface-local
+    /// logical coordinates. 1.0 unless the client committed an implicitly
+    /// HiDPI buffer (see [`Self::view_to_surface_coords`]).
+    fn view_to_surface_scale(&self, surface_id: u32, view_w: f64, view_h: f64) -> f64 {
+        let Some(surf) = self.surfaces.get(&surface_id) else {
+            return 1.0;
+        };
+        let Ok(guard) = surf.read() else {
+            return 1.0;
+        };
+        // current.width/height are logical (buffer / declared scale).
+        let logical_w = guard.current.width.max(0) as f64;
+        let logical_h = guard.current.height.max(0) as f64;
+        if view_w <= 0.0 || view_h <= 0.0 || logical_w <= 0.0 || logical_h <= 0.0 {
+            return 1.0;
         }
-        1.0
+        let sx = logical_w / view_w;
+        let sy = logical_h / view_h;
+        // >= 1.45 so right/bottom-only geometry crops (small ratios) never
+        // misclassify as HiDPI; real implicit scales are 1.5x, 2x, 3x.
+        if sx >= 1.45 && (sx - sy).abs() < 0.05 {
+            sx
+        } else {
+            1.0
+        }
     }
 
     /// Find the surface at the given absolute coordinates.
@@ -143,14 +207,9 @@ impl CompositorState {
             let sh = surface.height as f64;
             
             if x >= sx && x < sx + sw && y >= sy && y < sy + sh {
-                let coord_scale = self.pointer_buffer_coord_scale(
-                    surface.surface_id,
-                    sw,
-                    sh,
-                    surface.scale,
-                );
-                let local_x = (x - sx) * coord_scale;
-                let local_y = (y - sy) * coord_scale;
+                let scale = self.view_to_surface_scale(surface.surface_id, sw, sh);
+                let local_x = (x - sx) * scale;
+                let local_y = (y - sy) * scale;
                 let lx = local_x as i32;
                 let ly = local_y as i32;
                 
@@ -181,74 +240,19 @@ impl CompositorState {
         let picking_res = self.find_surface_at(x, y);
         let old_focus = self.seat.pointer.focus;
 
-        if self.data.drag.is_some() {
-            let new_surface_id = picking_res.as_ref().map(|(sid, _, _)| *sid);
-            let drag_focus = self.data.drag.as_ref().unwrap().focus_surface_id;
-
-            if drag_focus != new_surface_id {
-                if drag_focus.is_some() {
-                    for device_data in self.data.devices.values() {
-                        if device_data.resource.is_alive() {
-                            device_data.resource.leave();
-                        }
-                    }
-                }
-
-                if let Some((sid, lx, ly)) = &picking_res {
-                    if let Some(surface) = self.get_surface(*sid) {
-                        let surface = surface.read().unwrap();
-                        if let Some(res) = &surface.resource {
-                            let serial = self.next_serial();
-                            self.seat.pointer.last_enter_serial = serial;
-                            let mut active_offer = None;
-                            for device_data in self.data.devices.values() {
-                                if device_data.resource.is_alive()
-                                    && device_data.resource.client() == res.client()
-                                {
-                                    let offer = self
-                                        .data
-                                        .drag
-                                        .as_ref()
-                                        .and_then(|drag| drag.offer_by_device.get(&device_data.resource.id().protocol_id()))
-                                        .and_then(|offer_id| self.data.offers.get(offer_id))
-                                        .and_then(|offer_data| offer_data.resource.as_ref());
-                                    if let Some(offer) = offer {
-                                        active_offer = Some(offer.id().protocol_id());
-                                    }
-                                    device_data.resource.enter(serial, res, *lx, *ly, offer);
-                                }
-                            }
-                            if let Some(drag) = &mut self.data.drag {
-                                drag.current_offer_id = active_offer;
-                            }
-                        }
-                    }
-                }
-
-                if let Some(drag) = &mut self.data.drag {
-                    drag.focus_surface_id = new_surface_id;
-                }
-            } else if let Some((_sid, lx, ly)) = &picking_res {
-                for device_data in self.data.devices.values() {
-                    if device_data.resource.is_alive() {
-                        device_data.resource.motion(time, *lx, *ly);
-                    }
+        // Drag-and-drop enter/leave/motion during an active drag is owned by
+        // Smithay's DnD pointer grab (wl_data_device.start_drag dispatch);
+        // xdg_toplevel_drag window positioning follows the same grab.
+        if let Some(attachment) = &self.xdg.toplevel_drag.active {
+            if let Some(wid) = attachment.window_id {
+                let new_x = x as i32 + attachment.x_offset;
+                let new_y = y as i32 + attachment.y_offset;
+                if let Some(window) = self.get_window(wid) {
+                    let mut window = window.write().unwrap();
+                    window.x = new_x;
+                    window.y = new_y;
                 }
             }
-
-            if let Some(attachment) = &self.xdg.toplevel_drag.active {
-                if let Some(wid) = attachment.window_id {
-                    let new_x = x as i32 + attachment.x_offset;
-                    let new_y = y as i32 + attachment.y_offset;
-                    if let Some(window) = self.get_window(wid) {
-                        let mut window = window.write().unwrap();
-                        window.x = new_x;
-                        window.y = new_y;
-                    }
-                }
-            }
-
-            return;
         }
 
         if let Some((surface_id, lx, ly)) = picking_res {
@@ -357,16 +361,6 @@ impl CompositorState {
             }
         } else {
             self.seat.pointer.button_count = self.seat.pointer.button_count.saturating_sub(1);
-
-            if self.seat.pointer.button_count == 0 && self.data.drag.is_some() {
-                let has_focus = self.data.drag.as_ref().unwrap().focus_surface_id.is_some();
-                self.end_drag(has_focus);
-                return;
-            }
-        }
-
-        if self.data.drag.is_some() {
-            return;
         }
 
         for pointer in &self.seat.pointer.resources {
@@ -456,11 +450,9 @@ impl CompositorState {
         let surface_id = self.seat.touch.get_touch_surface(id);
         if let Some(sid) = surface_id {
             let pos = self.surface_position_in_scene(sid);
-            if let Some((sx, sy, node_w, node_h, flat_scale)) = pos {
-                let coord_scale =
-                    self.pointer_buffer_coord_scale(sid, node_w, node_h, flat_scale);
-                let local_x = (x - sx as f64) * coord_scale;
-                let local_y = (y - sy as f64) * coord_scale;
+            if let Some((sx, sy, node_w, node_h, _flat_scale)) = pos {
+                let (local_x, local_y) =
+                    self.view_to_surface_coords(sid, node_w, node_h, x - sx as f64, y - sy as f64);
 
                 self.seat.touch.touch_motion(id, local_x, local_y);
 

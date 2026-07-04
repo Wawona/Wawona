@@ -86,6 +86,7 @@ extern void WWNCoreApplyHostWindowMaximized(void *core, uint64_t window_id,
                                             uint32_t height);
 extern bool WWNCoreRequestWindowClose(void *core, uint64_t window_id);
 extern bool WWNCoreForceDestroyHostWindow(void *core, uint64_t window_id);
+extern bool WWNCoreNotifyPopupDismissed(void *core, uint64_t window_id);
 extern void WWNCoreSetWindowActivated(void *core, uint64_t window_id,
                                       bool active);
 extern void WWNCoreSetWindowActivatedSilent(void *core, uint64_t window_id,
@@ -93,6 +94,8 @@ extern void WWNCoreSetWindowActivatedSilent(void *core, uint64_t window_id,
 extern void WWNCoreFlushClients(void *core);
 extern uint32_t WWNCoreDisconnectAllClients(void *core);
 extern void WWNCoreSetForceSSD(void *core, bool enabled);
+extern bool WWNCoreWindowPrefersMacOSSurfaceDrag(const void *core,
+                                                 uint64_t window_id);
 extern void WWNCoreSetSafeAreaInsets(void *core, int32_t top, int32_t right,
                                      int32_t bottom, int32_t left);
 extern void WWNCoreInjectPointerAxis(void *core, uint64_t window_id,
@@ -366,8 +369,8 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   BOOL _iosPerWindowHostingEnabled;
 #else
   NSMutableDictionary<NSNumber *, id>
-      *_windows; /* WWNWindow or NSWindow (popup) */
-  NSMutableDictionary<NSNumber *, id<WWNPopupHost>> *_popups;
+      *_windows; /* WWNWindow toplevel or WWNView popup */
+  NSMutableDictionary<NSNumber *, id> *_popups;
 #endif
   // Scene Graph caches
   NSMutableDictionary<id<NSCopying>, id> *_bufferCache;
@@ -389,6 +392,19 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   NSMutableDictionary<NSNumber *, NSValue *> *_latestResizeDims;
   NSMutableDictionary<NSNumber *, NSValue *> *_sentResizeDims;
   NSMutableSet<NSNumber *> *_resizeInFlightWindows;
+
+  // Windows whose AppKit frame has been authoritatively sized at least once
+  // (either via an initial injected resize, or the client's first committed
+  // buffer). Until a window is in this set, its first ClientCommit size is
+  // always trusted — the host defers the initial xdg_toplevel configure to
+  // (0, 0), so the client's first commit is its real preferred size for
+  // every Wayland client, not just a known allowlist.
+  NSMutableSet<NSNumber *> *_windowsWithInitialSizeSynced;
+
+  // Windows already auto-shown after their first presented buffer. The render
+  // loop must never re-order-front (or steal key status from) a window on
+  // subsequent frames — focus changes come only from explicit activation.
+  NSMutableSet<NSNumber *> *_windowsAutoShownAfterFirstBuffer;
 
   // Cursor policy: runtime detection from wp_cursor_shape or wl_pointer.set_cursor
   BOOL _clientWantsCursorRendered;
@@ -467,6 +483,8 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     _latestResizeDims = [NSMutableDictionary dictionary];
     _sentResizeDims = [NSMutableDictionary dictionary];
     _resizeInFlightWindows = [NSMutableSet set];
+    _windowsWithInitialSizeSynced = [NSMutableSet set];
+    _windowsAutoShownAfterFirstBuffer = [NSMutableSet set];
     [self setForceSSD:WWNForceSSDEnabled()];
   }
   return self;
@@ -895,10 +913,26 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     // 1. Dispatch Wayland protocol events (accept connections, process
     //    client requests, build scene graph updates). This is the most
     //    expensive call and the primary reason we moved off main thread.
+    if (!WWNCoreIsRunning(self->_rustCore)) {
+      dispatch_async(dispatch_get_main_queue(), ^{
+        atomic_store(&self->_compositorBusy, false);
+      });
+      return;
+    }
     bool processed = WWNCoreProcessEvents(self->_rustCore);
     if (!processed) {
-      WWNLog("TICK",
-             @"Skipping compositor tick after non-fatal event-loop failure");
+      static CFAbsoluteTime s_lastTickSkipLog = 0;
+      static NSUInteger s_tickSkipCount = 0;
+      s_tickSkipCount++;
+      CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+      if (now - s_lastTickSkipLog >= 2.0) {
+        WWNLog("TICK",
+               @"Compositor tick skipped (%lu times) — event loop not ready "
+               @"(see [FFI] ProcessEvents logs)",
+               (unsigned long)s_tickSkipCount);
+        s_lastTickSkipLog = now;
+        s_tickSkipCount = 0;
+      }
       dispatch_async(dispatch_get_main_queue(), ^{
         atomic_store(&self->_compositorBusy, false);
       });
@@ -1479,8 +1513,10 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
     id host = _windows[winId];
     if (!host) {
-      id<WWNPopupHost> popup = _popups[winId];
-      host = popup.contentView;
+      host = _popups[winId];
+      if ([host conformsToProtocol:@protocol(WWNPopupHost)]) {
+        host = ((id<WWNPopupHost>)host).contentView;
+      }
     } else if ([host isKindOfClass:[NSWindow class]]) {
       host = [(NSWindow *)host contentView];
     }
@@ -1510,12 +1546,19 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   }
 
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
-  if (node->buffer_id != 0) {
-    id w = _windows[winId];
-    if (w && [w isKindOfClass:[NSWindow class]]) {
-      NSWindow *window = (NSWindow *)w;
-      if (![window isVisible] && ![window isMiniaturized]) {
-        [window makeKeyAndOrderFront:nil];
+  if (node->buffer_id != 0 &&
+      ![_windowsAutoShownAfterFirstBuffer containsObject:winId]) {
+    WWNWindow *window = _windows[winId];
+    if ([window isKindOfClass:[WWNWindow class]]) {
+      // Reveal the window once, on its first presented buffer. Never steal
+      // key status here and never re-show on later frames: doing so fought
+      // user minimize (dock bounce-back) and yanked focus between clients on
+      // every commit. Key status comes only from explicit activation intent
+      // (window creation / WindowActivationRequested).
+      [_windowsAutoShownAfterFirstBuffer addObject:winId];
+      if (![window isVisible] && !window.isMiniaturized &&
+          !window.wwnMiniaturizeInProgress) {
+        [window orderFront:nil];
       }
     }
   }
@@ -1528,19 +1571,48 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   [CATransaction setDisableActions:YES];
 
   // 2. Update Geometry — use anchor for window-local coords (subsurfaces)
-  float scaleDiff = layer.contentsScale - node->scale;
-  if (scaleDiff < 0.0f) {
-    scaleDiff = -scaleDiff;
-  }
-  if (scaleDiff > 0.001f) {
-    layer.contentsScale = node->scale;
-  }
   float localX = node->x - node->anchor_output_x;
   float localY = node->y - node->anchor_output_y;
   // Use explicit frame assignment to avoid subpixel position/bounds drift that
   // can leave thin gutters at content-view edges.
   layer.frame = CGRectMake(localX, localY, node->width, node->height);
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+  // Anti-stretch: while a resize transaction is settling the client's buffer
+  // lags the host frame. Stretching the stale buffer to the new bounds blurs
+  // text; anchor it top-left at its natural density instead and let the next
+  // commit fill the frame.
+  float bufLogicalW =
+      node->scale > 0 ? (float)node->buffer_width / node->scale : node->width;
+  float bufLogicalH =
+      node->scale > 0 ? (float)node->buffer_height / node->scale : node->height;
+  BOOL bufferMatchesNode = node->buffer_width == 0 ||
+                           (fabsf(bufLogicalW - node->width) <= 1.0f &&
+                            fabsf(bufLogicalH - node->height) <= 1.0f);
+  if (bufferMatchesNode) {
+    // Exact 1:1 fill. contentsScale from the host window's backing scale so
+    // CoreAnimation composites the bitmap at device resolution (matters when
+    // node->scale carries an inferred value, e.g. implicit HiDPI commits).
+    CGFloat backingScale = 0.0;
+    id hostWin = _windows[winId] ?: _popups[winId];
+    if ([hostWin isKindOfClass:[NSWindow class]]) {
+      backingScale = ((NSWindow *)hostWin).backingScaleFactor;
+    } else if ([hostWin conformsToProtocol:@protocol(WWNPopupHost)] &&
+               [hostWin respondsToSelector:@selector(contentView)]) {
+      backingScale = ((NSView *)((id<WWNPopupHost>)hostWin).contentView)
+                         .window.backingScaleFactor;
+    }
+    if (backingScale < 1.0) {
+      backingScale = MAX(1.0, node->scale);
+    }
+    layer.contentsGravity = kCAGravityResize;
+    layer.contentsScale = backingScale;
+  } else {
+    layer.contentsGravity = kCAGravityTopLeft;
+    layer.contentsScale = MAX(1.0, node->scale);
+  }
+#else
   layer.contentsScale = MAX(1.0, node->scale);
+#endif
   layer.opacity = node->opacity;
   layer.cornerRadius = node->corner_radius;
   layer.opaque = clientSideDecorated ? NO : YES;
@@ -2178,6 +2250,16 @@ extern void WWNCoreInject_touch_frame(void *core);
     return;
 
   NSNumber *key = @(windowId);
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+  WWNWindow *hostWindow = _windows[key];
+  if (hostWindow &&
+      (hostWindow.isMiniaturized || hostWindow.wwnMiniaturizeInProgress)) {
+    WWNLog("BRIDGE",
+           @"Skipping injectWindowResize window=%llu (miniaturized/in-progress)",
+           windowId);
+    return;
+  }
+#endif
   CGSize dims = CGSizeMake(width, height);
   _latestResizeDims[key] = [NSValue value:&dims withObjCType:@encode(CGSize)];
   NSTimeInterval debounce = kWWNResizeDebounceSeconds;
@@ -2405,6 +2487,20 @@ extern void WWNCoreInject_touch_frame(void *core);
 }
 
 - (void)prepareOutputSizeForNativeClientLaunchWithClientId:(NSString *)clientId {
+#else
+- (void)prepareOutputSizeForNativeClientLaunch {
+  [self prepareOutputSizeForNativeClientLaunchWithClientId:nil];
+}
+
+- (void)prepareOutputSizeForNativeClientLaunchWithClientId:(NSString *)clientId {
+#endif
+  // Per-window hosting: the global wl_output stays at the real display size.
+  // A client's window size comes from first-commit trust (0x0 initial
+  // configure) and per-window output geometry (SetOutputGeometryForWindow),
+  // never from pre-sizing the global output to a demo launch size, which
+  // reconfigured every other connected client.
+
+#if TARGET_OS_IPHONE
   NSDictionary *userInfo = clientId ? @{@"clientId": clientId} : nil;
   dispatch_sync(dispatch_get_main_queue(), ^{
     [[NSNotificationCenter defaultCenter]
@@ -2412,6 +2508,7 @@ extern void WWNCoreInject_touch_frame(void *core);
                       object:nil
                     userInfo:userInfo];
   });
+#endif
 
   const NSTimeInterval step = 0.01;
   NSTimeInterval waited = 0;
@@ -2447,9 +2544,6 @@ extern void WWNCoreInject_touch_frame(void *core);
          _latestOutputW, _latestOutputH,
          _latestOutputScale > 0 ? _latestOutputScale : 1.0f);
 }
-#endif
-
-/// Same coalescing pattern as window resize — at most one output-resize
 /// block on the compositor queue at a time.
 - (void)_drainPendingOutputResize {
   if (_outputResizeInFlight)
@@ -2684,7 +2778,7 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
   WWNLog("BRIDGE", @"handleWindowMinimizeRequested: id=%llu", event->window_id);
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
   WWNWindow *window = _windows[@(event->window_id)];
-  if (window) {
+  if (window && !window.isMiniaturized && !window.wwnMiniaturizeInProgress) {
     [window miniaturize:nil];
   }
 #else
@@ -2757,10 +2851,19 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
       shouldUpdateOutput = YES;
     }
   } else {
-    contentRect = NSMakeRect(100, 100, event->width, event->height);
-    // All floating windows (SSD and CSD): after AppKit applies chrome, push the
-    // drawable content size back so wl_output and xdg_toplevel.configure match.
-    shouldInjectResize = YES;
+    uint32_t placeholderW = event->width;
+    uint32_t placeholderH = event->height;
+    // shell_handler seeds new toplevels at wl_output size; fixed-size demo clients
+    // (weston-smoke, weston-simple-shm, …) commit their own buffer dimensions.
+    if (_latestOutputW > 0 && _latestOutputH > 0 &&
+        event->width == _latestOutputW && event->height == _latestOutputH) {
+      placeholderW = 256;
+      placeholderH = 256;
+    }
+    contentRect = NSMakeRect(100, 100, placeholderW, placeholderH);
+    // Wait for the client's first commit instead of injecting output-sized configure.
+    shouldInjectResize =
+        (placeholderW == event->width && placeholderH == event->height);
   }
   NSWindowStyleMask styleMask;
   if (useServerDecorations) {
@@ -2810,8 +2913,7 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
     [window setMovableByWindowBackground:NO];
   } else {
     [window center];
-    [window setMovable:YES];
-    [window setMovableByWindowBackground:useServerDecorations];
+    [self wwnApplySurfaceDragPolicyForWindow:window];
   }
   // Content stays transparent until the first buffer, but show the frame so
   // macOS users can see/focus the client window immediately.
@@ -2859,7 +2961,13 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
       uint64_t wid = event->window_id;
       uint32_t ow = (uint32_t)MAX(1, lround(contentSize.width));
       uint32_t oh = (uint32_t)MAX(1, lround(contentSize.height));
-      float s = _latestOutputScale > 0 ? _latestOutputScale : 1.0f;
+      // Per-window wl_output must carry the real backing scale so clients
+      // render HiDPI buffers (crisp fonts) instead of 1x CALayer upscales.
+      float s = _latestOutputScale > 0 ? _latestOutputScale
+                                       : (float)window.backingScaleFactor;
+      if (s < 1.0f) {
+        s = 1.0f;
+      }
       [self _dispatchToRust:^{
         WWNCoreSetOutputGeometryForWindow(self->_rustCore, wid, ow, oh, s);
       }];
@@ -2897,12 +3005,28 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
          event->window_id, (CGFloat)kw, (CGFloat)kh);
 }
 
+- (void)wwnApplySurfaceDragPolicyForWindow:(WWNWindow *)window {
+  if (!window || window.hostLocked || !_rustCore) {
+    return;
+  }
+  BOOL draggable =
+      WWNCoreWindowPrefersMacOSSurfaceDrag(_rustCore, window.wwnWindowId);
+  window.wwnSurfaceWindowDraggable = draggable;
+  [window setMovable:YES];
+  if (draggable) {
+    [window setMovableByWindowBackground:YES];
+  } else {
+    [window setMovableByWindowBackground:!window.clientSideDecorated];
+  }
+}
+
 - (void)handleWindowMoveRequested:(CWindowEvent *)event {
   WWNLog("BRIDGE", @"handleWindowMoveRequested: id=%llu", event->window_id);
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
   WWNWindow *window = _windows[@(event->window_id)];
   if (!window || window.hostLocked)
     return;
+  [self wwnApplySurfaceDragPolicyForWindow:window];
   if (window.interactiveResizeInProgress) {
     WWNLog("BRIDGE", @"Ignoring move request during interactive resize: id=%llu",
            event->window_id);
@@ -2948,9 +3072,8 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
                 NSWindowStyleMaskMiniaturizable;
   }
   [window setStyleMask:styleMask];
-  [window setMovable:YES];
-  [window setMovableByWindowBackground:useServerDecorations];
   [window applyPresentationPolicyForServerSideDecorations:useServerDecorations];
+  [self wwnApplySurfaceDragPolicyForWindow:window];
 
   // After changing the style mask the content area may have shrunk (e.g. a
   // titlebar was added for SSD mode).  Inject the new content-area size
@@ -3263,6 +3386,38 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
         WWNWindow *wwn = (WWNWindow *)window;
         wwn.suppressCompositorCallbacks = YES;
         [wwn cancelPendingHostCloseEscalation];
+        if (wwn.isMiniaturized || wwn.wwnMiniaturizeInProgress) {
+          wwn.wwnMiniaturizeInProgress = NO;
+          id contentView = [window contentView];
+          if ([contentView isKindOfClass:[WWNView class]]) {
+            CALayer *hostLayer = ((WWNView *)contentView).contentLayer;
+            NSArray<CALayer *> *children = [hostLayer.sublayers copy];
+            for (CALayer *layer in children) {
+              [layer removeFromSuperlayer];
+            }
+          }
+          [_windows removeObjectForKey:@(event->window_id)];
+          [_windowOwnerMachineIdByWindowId
+              removeObjectForKey:@(event->window_id)];
+          [_latestResizeDims removeObjectForKey:@(event->window_id)];
+          [_sentResizeDims removeObjectForKey:@(event->window_id)];
+          [_resizeInFlightWindows removeObject:@(event->window_id)];
+          [_windowsWithInitialSizeSynced removeObject:@(event->window_id)];
+          [_windowsAutoShownAfterFirstBuffer removeObject:@(event->window_id)];
+          [NSObject cancelPreviousPerformRequestsWithTarget:self
+                                                   selector:@selector(
+                                                       _drainPendingWindowResizeForId:)
+                                                     object:@(event->window_id)];
+          // The client is gone: a miniaturized host window would linger as a
+          // dead dock tile that restores to an empty frame. Close it so the
+          // dock tile disappears with the client.
+          WWNLog("BRIDGE",
+                 @"Client disconnected during minimize — closing host window "
+                 @"%llu (removing dock tile)",
+                 event->window_id);
+          [window close];
+          return;
+        }
       }
 
       // Detach known surface layers from this host view before teardown.
@@ -3281,6 +3436,8 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
       [_latestResizeDims removeObjectForKey:@(event->window_id)];
       [_sentResizeDims removeObjectForKey:@(event->window_id)];
       [_resizeInFlightWindows removeObject:@(event->window_id)];
+      [_windowsWithInitialSizeSynced removeObject:@(event->window_id)];
+      [_windowsAutoShownAfterFirstBuffer removeObject:@(event->window_id)];
       [NSObject cancelPreviousPerformRequestsWithTarget:self
                                                selector:@selector(_drainPendingWindowResizeForId:)
                                                  object:@(event->window_id)];
@@ -3328,14 +3485,9 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
 #endif
 
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
-  id<WWNPopupHost> popup = [_popups objectForKey:@(event->window_id)];
+  id popup = [_popups objectForKey:@(event->window_id)];
   if (popup) {
-    [popup dismiss];
-    [_popups removeObjectForKey:@(event->window_id)];
-    [_windows removeObjectForKey:@(event->window_id)];
-    [_latestResizeDims removeObjectForKey:@(event->window_id)];
-    [_sentResizeDims removeObjectForKey:@(event->window_id)];
-    [_resizeInFlightWindows removeObject:@(event->window_id)];
+    [self wwnRemovePopupHost:popup windowId:event->window_id];
     WWNLog("BRIDGE", @"Destroyed popup %llu", event->window_id);
   }
 #endif
@@ -3401,15 +3553,26 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
     // resize ping-pong loops and visible flashing.
     if (event->size_cause == 2 && event->configure_serial == 0 &&
         event->transaction_id == 0) {
-      CGFloat deltaW = fabs(contentSize.width - (CGFloat)event->width);
-      CGFloat deltaH = fabs(contentSize.height - (CGFloat)event->height);
+      NSNumber *windowKey = @(event->window_id);
+      BOOL isFirstSizeSync =
+          ![_windowsWithInitialSizeSynced containsObject:windowKey];
+      if (!isFirstSizeSync) {
+        CGFloat deltaW = fabs(contentSize.width - (CGFloat)event->width);
+        CGFloat deltaH = fabs(contentSize.height - (CGFloat)event->height);
+        WWNLog("BRIDGE",
+               @"Ignoring untracked ClientCommit SizeChanged window=%llu "
+               @"event=%ux%u current=%.0fx%.0f delta=%.0fx%.0f",
+               event->window_id, event->width, event->height,
+               contentSize.width, contentSize.height, deltaW, deltaH);
+        return;
+      }
       WWNLog("BRIDGE",
-             @"Ignoring untracked ClientCommit SizeChanged window=%llu "
-             @"event=%ux%u current=%.0fx%.0f delta=%.0fx%.0f",
+             @"Applying first-commit ClientCommit SizeChanged window=%llu "
+             @"event=%ux%u current=%.0fx%.0f",
              event->window_id, event->width, event->height, contentSize.width,
-             contentSize.height, deltaW, deltaH);
-      return;
+             contentSize.height);
     }
+    [_windowsWithInitialSizeSynced addObject:@(event->window_id)];
     if (contentSize.width != event->width ||
         contentSize.height != event->height) {
       CGFloat deltaW = fabs(contentSize.width - (CGFloat)event->width);
@@ -3444,106 +3607,153 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   }
 }
 
-- (void)handlePopupCreated:(CWindowEvent *)event {
-  NSView *parentView = nil;
-  NSWindow *parentWindow = [self.windows objectForKey:@(event->parent_id)];
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+- (WWNView *)wwnParentViewForPopupId:(uint64_t)parentId {
+  id parent = _windows[@(parentId)];
+  if ([parent isKindOfClass:[WWNWindow class]]) {
+    NSView *content = [(WWNWindow *)parent contentView];
+    return [content isKindOfClass:[WWNView class]] ? (WWNView *)content : nil;
+  }
+  if ([parent isKindOfClass:[WWNView class]]) {
+    return (WWNView *)parent;
+  }
+  id parentPopup = _popups[@(parentId)];
+  if ([parentPopup isKindOfClass:[WWNView class]]) {
+    return (WWNView *)parentPopup;
+  }
+  if ([parentPopup conformsToProtocol:@protocol(WWNPopupHost)]) {
+    NSView *content = ((id<WWNPopupHost>)parentPopup).contentView;
+    return [content isKindOfClass:[WWNView class]] ? (WWNView *)content : nil;
+  }
+  return nil;
+}
 
+static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
+                                                 CGFloat y, CGFloat w,
+                                                 CGFloat h) {
+  if (!parentView || !parentView.window) {
+    return NSMakeRect(x, y, w, h);
+  }
+  NSRect localRect = NSMakeRect(x, y, w, h);
+  NSRect inWindow = [parentView convertRect:localRect toView:nil];
+  return [parentView.window convertRectToScreen:inWindow];
+}
+
+- (void)wwnRemovePopupHost:(id)popup windowId:(uint64_t)windowId {
+  if (!popup) {
+    return;
+  }
+  if ([popup conformsToProtocol:@protocol(WWNPopupHost)]) {
+    [(id<WWNPopupHost>)popup dismiss];
+  } else if ([popup isKindOfClass:[WWNView class]]) {
+    [(WWNView *)popup removeFromSuperview];
+  }
+  [_popups removeObjectForKey:@(windowId)];
+  [_windows removeObjectForKey:@(windowId)];
+  [_latestResizeDims removeObjectForKey:@(windowId)];
+  [_sentResizeDims removeObjectForKey:@(windowId)];
+  [_resizeInFlightWindows removeObject:@(windowId)];
+  [NSObject cancelPreviousPerformRequestsWithTarget:self
+                                           selector:@selector(_drainPendingWindowResizeForId:)
+                                             object:@(windowId)];
+}
+
+- (void)handlePopupCreated:(CWindowEvent *)event {
   WWNLog("BRIDGE",
          @"Popup create request: surface %u, window %llu, parent %llu",
          event->surface_id, event->window_id, event->parent_id);
 
-  if (parentWindow) {
-    WWNLog("BRIDGE", @"Found parent as Window: %p", parentWindow);
-    parentView = parentWindow.contentView;
-  } else {
-    id<WWNPopupHost> parentPopup = [_popups objectForKey:@(event->parent_id)];
-    if (parentPopup) {
-      WWNLog("BRIDGE", @"Found parent as Popup: %p", parentPopup);
-      parentView = parentPopup.contentView;
-    } else {
-      WWNLog("BRIDGE", @"Parent %llu NOT found in windows or popups",
-             event->parent_id);
-    }
-  }
-
+  WWNView *parentView = [self wwnParentViewForPopupId:event->parent_id];
   if (!parentView) {
     WWNLog("BRIDGE",
-           @"Warning: Popup created for unknown parent %llu, falling "
-           @"back to key "
-           @"window",
+           @"Warning: Popup parent %llu not found, falling back to key window",
            event->parent_id);
-    parentWindow = [NSApp keyWindow];
-    parentView = parentWindow.contentView;
+    NSWindow *keyWindow = [NSApp keyWindow];
+    if ([keyWindow.contentView isKindOfClass:[WWNView class]]) {
+      parentView = (WWNView *)keyWindow.contentView;
+    }
+  }
+  if (!parentView) {
+    WWNLog("BRIDGE", @"Error: No parent view available for popup %llu",
+           event->window_id);
+    return;
   }
 
-  if (parentView) {
-    WWNLog("BRIDGE",
-           @"Creating popup (NSWindow) for surface %u (window %llu) "
-           @"anchored to parent %llu at %d,%d (%ux%u)",
-           event->surface_id, event->window_id, event->parent_id, event->x,
-           event->y, event->width, event->height);
+  CGFloat x = (CGFloat)event->x;
+  CGFloat y = (CGFloat)event->y;
+  CGFloat w = MAX((CGFloat)event->width, 1.0);
+  CGFloat h = MAX((CGFloat)event->height, 1.0);
 
-    id<WWNPopupHost> popup =
-        [[WWNPopupWindow alloc] initWithParentView:parentView];
+  WWNPopupWindow *popup =
+      [[WWNPopupWindow alloc] initWithParentView:parentView];
+  popup.windowId = event->window_id;
+  [popup setContentSize:CGSizeMake(w, h)];
 
-    [popup setContentSize:CGSizeMake(event->width, event->height)];
-    [popup setWindowId:event->window_id];
+  NSRect screenFrame =
+      WWNScreenFrameForPopupInParentView(parentView, x, y, w, h);
+  [popup showAtScreenRect:screenFrame];
 
-    [_popups setObject:popup forKey:@(event->window_id)];
-    _windows[@(event->window_id)] = ((WWNPopupWindow *)popup).window;
+  __weak typeof(self) weakSelf = self;
+  popup.onDismiss = ^{
+    [weakSelf handlePopupDismissed:event->window_id];
+  };
 
-    // Handle dismissal
-    __unsafe_unretained typeof(self) weakSelf = self;
-    popup.onDismiss = ^{
-      [weakSelf handlePopupDismissed:event->window_id];
-    };
+  [_popups setObject:popup forKey:@(event->window_id)];
+  [_windows setObject:popup.window forKey:@(event->window_id)];
 
-    // Compute screen point for popup top-left (Wayland x,y is parent-relative)
-    NSRect windowRect =
-        [parentView convertRect:CGRectMake(event->x, event->y, 1, 1)
-                         toView:nil];
-    NSRect screenRect = [parentView.window convertRectToScreen:windowRect];
-    CGPoint topLeft =
-        CGPointMake(screenRect.origin.x, screenRect.origin.y - event->height);
+  WWNLog("BRIDGE",
+         @"macOS popup %llu shown as child window (parent %llu local "
+         @"%.0f,%.0f screen %.0f,%.0f %.0fx%.0f)",
+         event->window_id, event->parent_id, x, y, screenFrame.origin.x,
+         screenFrame.origin.y, w, h);
 
-    [popup showAtScreenPoint:topLeft];
-  }
+  [self injectKeyboardEnterForWindow:event->window_id keys:@[]];
 }
 
 - (void)handlePopupDismissed:(uint64_t)windowId {
   WWNLog("BRIDGE", @"Popup dismissed locally: %llu", windowId);
-  [_popups removeObjectForKey:@(windowId)];
-  [_windows removeObjectForKey:@(windowId)];
-  // TODO: Notify Rust core of dismissal if needed (xdg_popup.popup_done)
+  id popup = [_popups objectForKey:@(windowId)];
+  [self wwnRemovePopupHost:popup windowId:windowId];
+  // Tell the client via xdg_popup.popup_done so it destroys the popup
+  // instead of leaving a ghost grab.
+  if (_rustCore) {
+    [self _dispatchToRust:^{
+      WWNCoreNotifyPopupDismissed(self->_rustCore, windowId);
+    }];
+  }
 }
 
 - (void)handlePopupRepositioned:(CWindowEvent *)event {
-  id<WWNPopupHost> popup = [_popups objectForKey:@(event->window_id)];
-  if (!popup) {
+  id popupObj = [_popups objectForKey:@(event->window_id)];
+  if (![popupObj conformsToProtocol:@protocol(WWNPopupHost)]) {
     WWNLog("BRIDGE", @"Warning: PopupRepositioned for unknown window %llu",
            event->window_id);
     return;
   }
 
-  WWNLog("BRIDGE", @"Repositioning popup %llu to %d,%d (%ux%u)",
-         event->window_id, event->x, event->y, event->width, event->height);
-
-  [popup setContentSize:CGSizeMake(event->width, event->height)];
-
-  NSView *parentView = popup.parentView;
-  if (!parentView || !parentView.window) {
-    WWNLog("BRIDGE", @"Error: Popup %llu has no parent view/window",
+  id<WWNPopupHost> popup = (id<WWNPopupHost>)popupObj;
+  WWNView *parentView = (WWNView *)popup.parentView;
+  if (![parentView isKindOfClass:[WWNView class]]) {
+    WWNLog("BRIDGE", @"Error: Popup %llu has no WWNView parent",
            event->window_id);
     return;
   }
 
-  NSRect windowRect =
-      [parentView convertRect:CGRectMake(event->x, event->y, 1, 1) toView:nil];
-  NSRect screenRect = [parentView.window convertRectToScreen:windowRect];
-  CGPoint topLeft =
-      CGPointMake(screenRect.origin.x, screenRect.origin.y - event->height);
+  CGFloat x = (CGFloat)event->x;
+  CGFloat y = (CGFloat)event->y;
+  CGFloat w = MAX((CGFloat)event->width, 1.0);
+  CGFloat h = MAX((CGFloat)event->height, 1.0);
 
-  [popup showAtScreenPoint:topLeft];
+  [popup setContentSize:CGSizeMake(w, h)];
+  NSRect screenFrame =
+      WWNScreenFrameForPopupInParentView(parentView, x, y, w, h);
+  [popup showAtScreenRect:screenFrame];
+
+  WWNLog("BRIDGE",
+         @"macOS popup %llu repositioned (local %.0f,%.0f screen "
+         @"%.0f,%.0f %.0fx%.0f)",
+         event->window_id, x, y, screenFrame.origin.x, screenFrame.origin.y, w,
+         h);
 }
 
 #endif // !TARGET_OS_IPHONE
@@ -3576,6 +3786,8 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   return NO;
 }
 #endif
+
+#endif // desktop macOS block opened at WWNWaylandContentSizeForWindow
 
 - (NSUInteger)pendingWindowCount {
   if (!_rustCore) {
@@ -3990,6 +4202,13 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   WWNLog("BRIDGE", @"iOS handleWindowTitleChanged: window %llu → '%@'",
          event->window_id, newTitle);
 
+  // VoiceOver: keep the compositor surface's accessibility label in sync with
+  // the client's window title.
+  UIView *clientView = [_windows objectForKey:@(event->window_id)];
+  if (clientView && newTitle.length > 0) {
+    clientView.accessibilityLabel = newTitle;
+  }
+
   // Update the UIWindowScene title so it appears in the app switcher
   // and iPad Stage Manager.
   UIWindow *hostWindow = _iosHostWindows[@(event->window_id)];
@@ -4013,6 +4232,18 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
     UIWindow *hostWindow = _iosHostWindows[@(event->window_id)];
     if (hostWindow && hostWindow.rootViewController) {
       window.frame = hostWindow.rootViewController.view.bounds;
+      // Per-window hosting (iPad Stage Manager): honor a client-chosen size
+      // by steering the scene's minimum size toward it. iPadOS has no API to
+      // set an absolute scene size; the minimum keeps Stage Manager from
+      // clipping the client's buffer while the user can still grow the
+      // window (host resizes flow back as configures).
+      UIWindowScene *scene = hostWindow.windowScene;
+      BOOL clientChosen = event->size_cause == 2 /* ClientCommit */;
+      if (scene && !event->host_locked && clientChosen && event->width > 0 &&
+          event->height > 0) {
+        scene.sizeRestrictions.minimumSize =
+            CGSizeMake(event->width, event->height);
+      }
       return;
     }
     // Always fill the container — the Wayland client is told the output
@@ -4132,6 +4363,11 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
     [popupView removeFromSuperview];
     [_popups removeObjectForKey:@(windowId)];
     [_windows removeObjectForKey:@(windowId)];
+  }
+  if (_rustCore) {
+    [self _dispatchToRust:^{
+      WWNCoreNotifyPopupDismissed(self->_rustCore, windowId);
+    }];
   }
 }
 #endif

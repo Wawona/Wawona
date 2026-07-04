@@ -34,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -130,7 +131,9 @@ fun ExpressiveSpeedDialFab(
                 MaterialTheme.colorScheme.onPrimary
             },
             shape = FloatingActionButtonDefaults.largeShape,
-            modifier = Modifier.scale(fabScale),
+            modifier = Modifier
+                .scale(fabScale)
+                .testTag(WawonaTestTags.LAUNCH_FAB),
         ) {
             Icon(
                 imageVector = Icons.Filled.Add,
@@ -186,6 +189,7 @@ fun FabMenuItem(
             shadowElevation = 3.dp,
             tonalElevation = 2.dp,
             onClick = onClick,
+            modifier = Modifier.testTag(WawonaTestTags.menuItem(text)),
         ) {
             Text(
                 text = text,

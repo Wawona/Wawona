@@ -3,6 +3,11 @@
   pkgs,
   buildModule,
   wawonaSrc,
+  # Filtered source for the APK derivation `src` (cleanSourceWith). Defaults to
+  # wawonaSrc for callers that don't pass it, but the flake passes the filtered
+  # `srcFor pkgs` so working-tree churn (target/, .git/, editor dirs) does not
+  # force a full APK rebuild. Path lookups (VERSION, subdirs) stay on wawonaSrc.
+  srcFiltered ? wawonaSrc,
   wawonaVersion ? null,
   androidSDK ? null,
   androidUtils ? null,
@@ -693,7 +698,7 @@ in
   pkgs.stdenv.mkDerivation (finalAttrs: rec {
     name = "wawona-android";
     version = projectVersion;
-    src = wawonaSrc;
+    src = srcFiltered;
 
     outputs = [ "out" "project" ];
 

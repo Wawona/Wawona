@@ -1,4 +1,5 @@
 #import "WWNPreferencesManager.h"
+#import <sys/sysctl.h>
 
 // Preferences keys
 NSString *const kWWNPrefsUniversalClipboard = @"UniversalClipboard";
@@ -30,6 +31,7 @@ NSString *const kWWNPrefsEnableDmabuf = @"DmabufEnabled";
 NSString *const kWWNPrefsVulkanDriver = @"VulkanDriver";
 NSString *const kWWNPrefsOpenGLDriver = @"OpenGLDriver";
 NSString *const kWWNPrefsRespectSafeArea = @"RespectSafeArea";
+NSString *const kWWNPrefsExternalDisplayTouchpad = @"ExternalDisplayTouchpad";
 NSString *const kWWNPrefsHasSeenWelcome = @"HasSeenWelcome";
 // Waypipe configuration keys
 NSString *const kWWNPrefsWaypipeDisplay = @"WaypipeDisplay";
@@ -246,6 +248,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
     kWWNPrefsForceServerSideDecorations : @NO,
     kWWNPrefsAutoScale : @YES,
     kWWNPrefsRespectSafeArea : @YES,
+    kWWNPrefsExternalDisplayTouchpad : @YES,
     kWWNPrefsHasSeenWelcome : @NO,
     kWWNPrefsRenderMacOSPointer : @NO,
     // Input
@@ -260,7 +263,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
     // Graphics
     kWWNPrefsEnableVulkanDrivers : @YES,
     kWWNPrefsEnableDmabuf : @YES,
-    kWWNPrefsVulkanDriver : @"moltenvk",
+    kWWNPrefsVulkanDriver : [WWNPreferencesManager defaultVulkanDriverForHardware],
     kWWNPrefsOpenGLDriver : @"angle",
     // Connection
     kWWNPrefsTCPListenerPort : @6000,
@@ -674,10 +677,34 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 }
 
 // Graphics Driver Selection
+//
+// ICD tiering (p9): KosmicKrisp is a native-Metal Vulkan driver that only
+// exists for Apple Silicon on macOS 26+ (Tahoe). Everywhere else — Intel Macs,
+// older macOS — MoltenVK is the only viable ICD. Pick KosmicKrisp as the
+// default when the hardware supports it so users get the faster path, and fall
+// back to MoltenVK otherwise. An explicit user choice always wins.
++ (NSString *)defaultVulkanDriverForHardware {
+#if TARGET_OS_OSX
+  int isARM64 = 0;
+  size_t sz = sizeof(isARM64);
+  if (sysctlbyname("hw.optional.arm64", &isARM64, &sz, NULL, 0) != 0) {
+    isARM64 = 0;
+  }
+  BOOL macos26 = NO;
+  if (@available(macOS 26.0, *)) {
+    macos26 = YES;
+  }
+  if (isARM64 && macos26) {
+    return @"kosmickrisp";
+  }
+#endif
+  return @"moltenvk";
+}
+
 - (NSString *)vulkanDriver {
   return
       [[NSUserDefaults standardUserDefaults] stringForKey:kWWNPrefsVulkanDriver]
-          ?: @"moltenvk";
+          ?: [WWNPreferencesManager defaultVulkanDriverForHardware];
 }
 
 - (void)setVulkanDriver:(NSString *)driver {
@@ -715,6 +742,20 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 - (void)setAutoScale:(BOOL)enabled {
   [[NSUserDefaults standardUserDefaults] setBool:enabled
                                           forKey:kWWNPrefsAutoScale];
+}
+
+- (BOOL)externalDisplayTouchpad {
+  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  if ([defaults objectForKey:kWWNPrefsExternalDisplayTouchpad]) {
+    return [defaults boolForKey:kWWNPrefsExternalDisplayTouchpad];
+  }
+  return YES; // Default: device becomes a trackpad on external displays
+}
+
+- (void)setExternalDisplayTouchpad:(BOOL)enabled {
+  [[NSUserDefaults standardUserDefaults]
+      setBool:enabled
+       forKey:kWWNPrefsExternalDisplayTouchpad];
 }
 
 - (BOOL)respectSafeArea {

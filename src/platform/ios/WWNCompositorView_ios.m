@@ -1,5 +1,7 @@
 #import "WWNCompositorView_ios.h"
+#import "WWNExternalDisplaySupport.h"
 #import "WWNIlandPresenter.h"
+#import "../macos/WWNEDRSupport.h"
 #import "../macos/ui/Settings/WWNPreferencesManager.h"
 #import "../macos/ui/Machines/WWNMachineProfileStore.h"
 #import "../../util/WWNLog.h"
@@ -524,6 +526,11 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   WWNTouchInputModeTouchpad = 1,
 };
 
+#if !TARGET_OS_TV
+@interface WWNCompositorView_ios () <UIPointerInteractionDelegate>
+@end
+#endif
+
 // ---------------------------------------------------------------------------
 // Implementation
 // ---------------------------------------------------------------------------
@@ -691,6 +698,30 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     _collapsedInputView.opaque = NO;
     _collapsedInputView.userInteractionEnabled = NO;
 
+    // VoiceOver: expose the compositor surface as a direct-interaction
+    // element so assistive-tech users can pass touches straight through to
+    // the Wayland client instead of fighting the screen reader's gestures.
+    self.isAccessibilityElement = YES;
+    self.accessibilityTraits = UIAccessibilityTraitAllowsDirectInteraction;
+    self.accessibilityLabel = @"Wayland application";
+    // Stable automation id for Layer-3 XCUITest (ci-l3-apple-xcuitest); must
+    // match WawonaUITests / the Android COMPOSITOR_SURFACE tag.
+    self.accessibilityIdentifier = @"wwn.compositor.surface";
+    self.accessibilityHint =
+        @"Compositor surface. Touch interacts directly with the application.";
+
+#if !TARGET_OS_TV
+    // iPad trackpad/mouse: hide the system pointer over compositor content
+    // (the Wayland client's cursor is authoritative) and forward hover motion.
+    if (@available(iOS 13.4, *)) {
+      [self addInteraction:[[UIPointerInteraction alloc] initWithDelegate:self]];
+      UIHoverGestureRecognizer *hover = [[UIHoverGestureRecognizer alloc]
+          initWithTarget:self
+                  action:@selector(_indirectHoverChanged:)];
+      [self addGestureRecognizer:hover];
+    }
+#endif
+
     WWNLog("IOS_VIEW", @"Created view for window %llu", self.wwnWindowId);
   }
   return self;
@@ -708,6 +739,8 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   _contentLayer.device = MTLCreateSystemDefaultDevice();
   _contentLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
   _contentLayer.framebufferOnly = NO;
+  WWNEDRConfigureMetalLayer(
+      _contentLayer, [[WWNPreferencesManager sharedManager] colorOperations]);
   _contentLayer.contentsGravity = kCAGravityResize;
   _contentLayer.masksToBounds = YES;
   _contentLayer.frame = self.bounds;
@@ -725,6 +758,9 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 
 - (void)prepareForSessionTeardown {
   _sessionActive = NO;
+  // presentWaylandFrame: early-returns once _sessionActive is NO, so drop the
+  // external-display mirror layer explicitly.
+  [self _mirrorFrameToExternalDisplay:NULL contentRect:CGRectZero];
   _keyboardActive = NO;
   _keyboardEnterSent = NO;
   _activeTouchCount = 0;
@@ -775,6 +811,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     _lastPresentToken = 0;
     _lastPresentedWaylandImage = NULL;
     _lastContentsScale = 0;
+    [self _mirrorFrameToExternalDisplay:NULL contentRect:CGRectZero];
     return;
   }
 
@@ -819,6 +856,25 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     contentsScale = 1.0;
   }
 
+  // HiDPI parity with macOS (WWNCompositorBridge draw_quads): a buffer whose
+  // aspect matches the view fills it 1:1 (Retina-crisp for @2x/@3x commits);
+  // a mismatched buffer is anchored top-left at its intended scale instead of
+  // being stretched into a blurry fit.
+  CGFloat displayScale = self.traitCollection.displayScale;
+  if (displayScale <= 0.0) {
+    displayScale = 1.0;
+  }
+  BOOL aspectMatches =
+      fabs(scaleX - scaleY) <= 0.02 * MAX(MAX(scaleX, scaleY), (CGFloat)1.0);
+  NSString *gravity = kCAGravityResize;
+  if (!aspectMatches) {
+    gravity = kCAGravityTopLeft;
+    // Infer the buffer's intended scale: HiDPI commit (>= ~displayScale in
+    // both axes) maps buffer pixels to points at displayScale, otherwise 1:1.
+    BOOL hiDpiBuffer = (scaleX >= displayScale * 0.9 && scaleY >= displayScale * 0.9);
+    contentsScale = hiDpiBuffer ? displayScale : 1.0;
+  }
+
   BOOL unchanged =
       (presentToken != 0 && presentToken == _lastPresentToken &&
        image == _lastPresentedWaylandImage &&
@@ -836,12 +892,14 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   [CATransaction begin];
   [CATransaction setDisableActions:YES];
   _waylandFrameView.layer.opaque = _waylandFrameOpaque;
-  _waylandFrameView.layer.contentsGravity = kCAGravityResize;
+  _waylandFrameView.layer.contentsGravity = gravity;
   _waylandFrameView.layer.contentsScale = contentsScale;
   _waylandFrameView.layer.contents = nil;
   _waylandFrameView.layer.contents = (__bridge id)image;
   _waylandFrameView.layer.contentsRect = normalizedContentRect;
   [CATransaction commit];
+
+  [self _mirrorFrameToExternalDisplay:image contentRect:normalizedContentRect];
 
   /* Notify the startup log overlay that the first real frame has arrived. */
   if (wasEmpty && image != NULL) {
@@ -851,6 +909,32 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
                         object:self];
     });
   }
+}
+
+/// Forward the presented frame to the external display mirror (AirPlay /
+/// wired). Coordinates are converted to compositor-container space so the
+/// mirror can aspect-fit the whole desktop.
+- (void)_mirrorFrameToExternalDisplay:(nullable CGImageRef)image
+                          contentRect:(CGRect)contentRect {
+  UIView *mirrorView = [WWNCompositorBridge sharedBridge].externalMirrorView;
+  if (![mirrorView isKindOfClass:[WWNExternalMirrorView class]]) {
+    return;
+  }
+  WWNExternalMirrorView *mirror = (WWNExternalMirrorView *)mirrorView;
+  if (!image) {
+    [mirror removeWindow:self.wwnWindowId];
+    return;
+  }
+  UIView *container = self.superview ?: self;
+  CGRect containerFrame = [self convertRect:_waylandFrameView.frame
+                                     toView:container];
+  [mirror mirrorWindow:self.wwnWindowId
+                 image:image
+                 frame:containerFrame
+           contentRect:contentRect
+         containerSize:container.bounds.size
+         contentsScale:_waylandFrameView.layer.contentsScale
+       contentsGravity:_waylandFrameView.layer.contentsGravity];
 }
 
 - (BOOL)launchNestedKmscube {
@@ -955,6 +1039,12 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 // ---------------------------------------------------------------------------
 
 - (WWNTouchInputMode)_readInputMode {
+  // With an external display mirrored, the device becomes a trackpad driving
+  // the cursor shown on the big screen (pref-gated, default ON).
+  if (WWNExternalDisplayIsConnected() &&
+      [[WWNPreferencesManager sharedManager] externalDisplayTouchpad]) {
+    return WWNTouchInputModeTouchpad;
+  }
   NSString *type = [[WWNPreferencesManager sharedManager] touchInputType];
   if ([type isEqualToString:@"Touchpad"]) {
     return WWNTouchInputModeTouchpad;
@@ -3180,6 +3270,99 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
                          timestamp:timestampMs];
 }
 
+// ---------------------------------------------------------------------------
+#pragma mark - Indirect Pointer (iPad trackpad / mouse hover)
+// ---------------------------------------------------------------------------
+
+#if !TARGET_OS_TV
+- (UIPointerStyle *)pointerInteraction:(UIPointerInteraction *)interaction
+                        styleForRegion:(UIPointerRegion *)region
+    API_AVAILABLE(ios(13.4)) {
+  (void)interaction;
+  (void)region;
+  // Hide the system pointer over compositor content; the Wayland client's
+  // cursor (rendered via updateCursorImage) is authoritative.
+  return [UIPointerStyle hiddenPointerStyle];
+}
+
+- (void)_indirectHoverChanged:(UIHoverGestureRecognizer *)gesture {
+  if (gesture.state != UIGestureRecognizerStateBegan &&
+      gesture.state != UIGestureRecognizerStateChanged) {
+    return;
+  }
+  CGPoint loc = [gesture locationInView:self];
+  _pointerPos = loc;
+  uint32_t ts = [self _timestampMs];
+  [self _touchpad_ensurePointerEntered];
+  [self _touchpad_syncPointerPosition:ts];
+  [self _repositionCursorLayer];
+}
+#endif
+
+// ---------------------------------------------------------------------------
+#pragma mark - Virtual Pointer API (game controllers / GCMouse)
+// ---------------------------------------------------------------------------
+
+- (void)moveVirtualPointerByDx:(CGFloat)dx dy:(CGFloat)dy {
+  _currentInputMode = WWNTouchInputModeTouchpad;
+  CGFloat clampedX = _pointerPos.x + dx;
+  if (clampedX < 0)
+    clampedX = 0;
+  if (clampedX > self.bounds.size.width)
+    clampedX = self.bounds.size.width;
+  _pointerPos.x = clampedX;
+  CGFloat clampedY = _pointerPos.y + dy;
+  if (clampedY < 0)
+    clampedY = 0;
+  if (clampedY > self.bounds.size.height)
+    clampedY = self.bounds.size.height;
+  _pointerPos.y = clampedY;
+
+  uint32_t ts = [self _timestampMs];
+  [self _touchpad_ensurePointerEntered];
+  [self _touchpad_syncPointerPosition:ts];
+  [self _ensureTouchpadCursorVisible];
+  [self _repositionCursorLayer];
+}
+
+- (void)clickVirtualPointerButton:(uint32_t)linuxButtonCode
+                          pressed:(BOOL)pressed {
+  uint32_t ts = [self _timestampMs];
+  [self _touchpad_ensurePointerEntered];
+  if (pressed) {
+    [self _touchpad_syncPointerPosition:ts];
+  }
+  uint64_t buttonWindowId =
+      _touchpadPointerWindowId != 0 ? _touchpadPointerWindowId : self.wwnWindowId;
+  [[WWNCompositorBridge sharedBridge]
+      injectPointerButtonForWindow:buttonWindowId
+                            button:linuxButtonCode
+                           pressed:pressed
+                         timestamp:ts];
+}
+
+- (void)scrollVirtualPointerByDx:(CGFloat)dx dy:(CGFloat)dy {
+  uint32_t ts = [self _timestampMs];
+  [self _touchpad_ensurePointerEntered];
+  uint64_t axisWindowId =
+      _touchpadPointerWindowId != 0 ? _touchpadPointerWindowId : self.wwnWindowId;
+  WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+  if (fabs(dy) > 0.01) {
+    [bridge injectPointerAxisForWindow:axisWindowId
+                                  axis:0 // vertical
+                                 value:-dy
+                              discrete:0
+                             timestamp:ts];
+  }
+  if (fabs(dx) > 0.01) {
+    [bridge injectPointerAxisForWindow:axisWindowId
+                                  axis:1 // horizontal
+                                 value:-dx
+                              discrete:0
+                             timestamp:ts];
+  }
+}
+
 - (WWNCompositorView_ios *)_topmostCompositorViewForPoint:(CGPoint)point
                                                     inView:(UIView *)view {
   for (UIView *subview in [view.subviews reverseObjectEnumerator]) {
@@ -3520,6 +3703,29 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
       _pointerPos.y - _cursorHotspotY + _cursorLayer.bounds.size.height / 2.0);
   [self _repositionRadialLayer];
   [CATransaction commit];
+  [self _broadcastCursorStateToExternalDisplay];
+}
+
+/// Mirror the virtual cursor onto a connected external display.
+- (void)_broadcastCursorStateToExternalDisplay {
+  if (!WWNExternalDisplayIsConnected()) {
+    return;
+  }
+  UIView *container = self.superview ?: self;
+  CGPoint containerPos = [self convertPoint:_cursorLayer.position
+                                     toView:container];
+  NSMutableDictionary *info = [NSMutableDictionary dictionary];
+  info[@"position"] = [NSValue valueWithCGPoint:containerPos];
+  info[@"hidden"] = @(_cursorLayer.hidden);
+  info[@"width"] = @(_cursorLayer.bounds.size.width);
+  info[@"height"] = @(_cursorLayer.bounds.size.height);
+  if (_cursorLayer.contents) {
+    info[@"contents"] = _cursorLayer.contents;
+  }
+  [[NSNotificationCenter defaultCenter]
+      postNotificationName:WWNVirtualCursorStateNotification
+                    object:self
+                  userInfo:info];
 }
 
 // ---------------------------------------------------------------------------

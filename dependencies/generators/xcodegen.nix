@@ -307,6 +307,13 @@ let
         }
       ];
     };
+  }
+  # Layer-3 XCUITest (ci-l3-apple-xcuitest): only Wawona-iOS carries a UI-test
+  # bundle, so wire its scheme `test` action to run it.
+  // lib.optionalAttrs (targetName == "Wawona-iOS") {
+    test = {
+      targets = [ "Wawona-iOSUITests" ];
+    };
   };
 
   appSchemeNames = [
@@ -753,6 +760,27 @@ PLIST
       };
     };
     targets = {
+      # Layer-3 XCUITest bundle (ci-l3-apple-xcuitest). Drives the running app
+      # through accessibility identifiers (e.g. `wwn.compositor.surface`).
+      Wawona-iOSUITests = {
+        type = "bundle.ui-testing";
+        platform = "iOS";
+        sources = [ { path = "src/tests/xcuitest"; } ];
+        dependencies = [ { target = "Wawona-iOS"; } ];
+        settings = {
+          base = {
+            PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.Wawona.UITests";
+            TEST_TARGET_NAME = "Wawona-iOS";
+            SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+            TARGETED_DEVICE_FAMILY = "1";
+            CODE_SIGN_STYLE = "Automatic";
+            "CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]" = "NO";
+            "CODE_SIGNING_REQUIRED[sdk=iphonesimulator*]" = "NO";
+            "VALID_ARCHS[sdk=iphonesimulator*]" = "arm64";
+            "ARCHS[sdk=iphonesimulator*]" = "arm64";
+          };
+        };
+      };
       Wawona-iOS = {
         type = "application";
         platform = "iOS";
@@ -912,6 +940,9 @@ PLIST
           { sdk = "AVFoundation.framework"; }
           { sdk = "Security.framework"; }
           { sdk = "Network.framework"; }
+          { sdk = "StoreKit.framework"; }
+          { sdk = "GameController.framework"; }
+          { sdk = "CarPlay.framework"; }
         ];
       };
       Wawona-iPadOS = {
@@ -1071,6 +1102,9 @@ PLIST
           { sdk = "AVFoundation.framework"; }
           { sdk = "Security.framework"; }
           { sdk = "Network.framework"; }
+          { sdk = "StoreKit.framework"; }
+          { sdk = "GameController.framework"; }
+          { sdk = "CarPlay.framework"; }
         ];
       };
       Wawona-tvOS = {
@@ -1221,6 +1255,8 @@ PLIST
           { sdk = "AVFoundation.framework"; }
           { sdk = "Security.framework"; }
           { sdk = "Network.framework"; }
+          { sdk = "StoreKit.framework"; }
+          { sdk = "GameController.framework"; }
         ];
       };
       Wawona-macOS = {
@@ -1230,6 +1266,11 @@ PLIST
           { path = "Sources/WawonaUI"; excludes = [ "Skip/**" "VisionOS/**" ]; }
           { path = "src/platform/macos"; excludes = commonExcludes; }
           { path = "src/platform/macos/WWNIlandPresenter.m"; type = "file"; }
+          # Re-include WWNSettings.c (excluded from the glob via commonExcludes):
+          # on macOS its `#if !TARGET_OS_IPHONE` block provides the NULL
+          # wwn_startup_log_sink definition that WWNLog.h references. The config
+          # functions are `#ifndef __APPLE__` so nothing else compiles here.
+          { path = "src/platform/macos/WWNSettings.c"; type = "file"; }
           { path = "src/platform/macos/ui"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
           { path = "src/resources/Wawona.icon"; type = "folder"; }
@@ -1355,6 +1396,7 @@ PLIST
           { sdk = "AVFoundation.framework"; }
           { sdk = "Security.framework"; }
           { sdk = "Network.framework"; }
+          { sdk = "StoreKit.framework"; }
           { sdk = "ColorSync.framework"; }
         ];
       };
@@ -1492,6 +1534,8 @@ PLIST
           { sdk = "AVFoundation.framework"; }
           { sdk = "Security.framework"; }
           { sdk = "Network.framework"; }
+          { sdk = "StoreKit.framework"; }
+          { sdk = "GameController.framework"; }
           { sdk = "QuartzCore.framework"; }
           { sdk = "Metal.framework"; }
         ];
@@ -1686,6 +1730,8 @@ PLIST
 
   targetPlatformKeys = {
     Wawona-iOS = "ios";
+    # UITest bundle lives/dies with the iOS app target (ci-l3-apple-xcuitest).
+    Wawona-iOSUITests = "ios";
     Wawona-iPadOS = "ipados";
     Wawona-tvOS = "tvos";
     Wawona-watchOS = "watchos";

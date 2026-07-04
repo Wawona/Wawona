@@ -28,8 +28,6 @@ use crate::core::wayland::policy::ProtocolProfile;
 #[allow(unused_imports)]
 use crate::core::wayland::ext::subcompositor;
 #[allow(unused_imports)]
-use crate::core::wayland::ext::data_device;
-#[allow(unused_imports)]
 use crate::core::wayland::xdg::decoration;
 #[allow(unused_imports)]
 use crate::core::wayland::xdg::xdg_output;
@@ -593,10 +591,11 @@ impl Compositor {
         
         // Reconcile clients that disconnected during dispatch/flush.
         self.reconcile_disconnected_clients(state);
-        
-        // Fire presentation feedback for any committed frames
-        state.fire_presentation_feedback();
-        
+
+        // Presentation feedback fires exclusively at the present boundary
+        // (notify_frame_presented) — never per-dispatch, which raced the real
+        // present timestamps with a fake 60 Hz clock.
+
         // Periodic heartbeat for shell clients (every 1 second)
         if self.last_ping.elapsed().as_secs() >= 1 {
             self.ping_clients(state);

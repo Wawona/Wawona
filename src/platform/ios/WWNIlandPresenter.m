@@ -7,6 +7,8 @@
 //
 
 #import "WWNIlandPresenter.h"
+#import "../macos/WWNEDRSupport.h"
+#import "../macos/ui/Settings/WWNPreferencesManager.h"
 #import <IOSurface/IOSurfaceRef.h>
 #import <pthread.h>
 
@@ -71,6 +73,8 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
     _layer.device = _device;
     _layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
     _layer.framebufferOnly = NO;
+    WWNEDRConfigureMetalLayer(
+        _layer, [[WWNPreferencesManager sharedManager] colorOperations]);
 
     _queue = [_device newCommandQueue];
 
@@ -85,7 +89,7 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
     MTLRenderPipelineDescriptor *pd = [MTLRenderPipelineDescriptor new];
     pd.vertexFunction = [lib newFunctionWithName:@"wwn_vs"];
     pd.fragmentFunction = [lib newFunctionWithName:@"wwn_fs"];
-    pd.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+    pd.colorAttachments[0].pixelFormat = _layer.pixelFormat;
     _pipeline = [_device newRenderPipelineStateWithDescriptor:pd error:&err];
     if (!_pipeline) {
         NSLog(@"[iland] pipeline creation failed: %@", err);

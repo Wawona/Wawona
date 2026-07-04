@@ -1,0 +1,8 @@
+context platform=android
+context session=wawona-android-smoke
+
+open com.aspauldingcode.wawona --relaunch
+wait 3000
+appstate
+screenshot ./.agent-device/test-artifacts/android-launch.png
+close

@@ -218,8 +218,9 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for ClientState {
     ) {
         if let wl_keyboard::Event::Key { key, state: key_state, .. } = event {
             use wayland_client::WEnum;
-            if matches!(key_state, WEnum::Value(wl_keyboard::KeyState::Pressed)) && key == 38 {
-                // Linux KEY_A (30) -> xkb keycode 38 on default keymap (+8).
+            // wl_keyboard.key carries the Linux evdev scancode (KEY_A = 30);
+            // clients add 8 to obtain the xkb keycode (38 -> keysym 0x61).
+            if matches!(key_state, WEnum::Value(wl_keyboard::KeyState::Pressed)) && key == 30 {
                 state.last_keysym = Some(0x0061);
             }
         }
@@ -481,6 +482,9 @@ fn test_xdg_shell_protocol() {
 
 #[test]
 fn test_shm_pool_resize() {
+    // wl_shm pools are owned by smithay's ShmState; verify pool create/resize
+    // end-to-end through the protocol: a buffer carved from the grown region
+    // of a resized pool must commit successfully and land in compositor state.
     let mut env = TestEnv::new();
     let display = env.client.display();
     let mut event_queue = env.client.new_event_queue::<ClientState>();
@@ -497,30 +501,48 @@ fn test_shm_pool_resize() {
     };
     
     env.wait_roundtrip(&mut event_queue, &mut client_state);
-    let shm = client_state.shm.as_ref().expect("wl_shm not bound");
+    let shm = client_state.shm.as_ref().expect("wl_shm not bound").clone();
+    let compositor = client_state.compositor.as_ref().expect("wl_compositor not bound").clone();
     
-    // Create pool
+    // Create a 4096-byte pool: one 32x32 XRGB buffer (stride 128).
     let temp = tempfile::tempfile().unwrap();
+    temp.set_len(8192).unwrap();
     let pool = shm.create_pool(temp.as_fd(), 4096, &qh, ());
+    let buffer1 = pool.create_buffer(0, 32, 32, 128, wl_shm::Format::Xrgb8888, &qh, ());
     env.wait_roundtrip(&mut event_queue, &mut client_state);
     
-    // Verify pool exists in server
-    let pool_id = Proxy::id(&pool).protocol_id();
+    let surface = compositor.create_surface(&qh, ());
+    surface.attach(Some(&buffer1), 0, 0);
+    surface.commit();
+    env.wait_roundtrip(&mut event_queue, &mut client_state);
+    
+    let surface_proto_id = Proxy::id(&surface).protocol_id();
     let client_id = env.state.clients.keys().next().expect("No server client").clone();
+    let surface_id = *env
+        .state
+        .protocol_to_internal_surface
+        .get(&(client_id.clone(), surface_proto_id))
+        .expect("surface internal ID not found");
     {
-        let state = &env.state;
-        assert!(state.shm_pools.contains_key(&(client_id.clone(), pool_id)));
-        assert_eq!(state.shm_pools.get(&(client_id.clone(), pool_id)).unwrap().size, 4096);
+        let s = env.state.get_surface(surface_id).unwrap();
+        let s = s.read().unwrap();
+        assert_eq!((s.current.width, s.current.height), (32, 32));
     }
     
-    // Resize pool
+    // Grow the pool and carve a second buffer entirely from the new region.
     pool.resize(8192);
+    let buffer2 = pool.create_buffer(4096, 32, 32, 128, wl_shm::Format::Xrgb8888, &qh, ());
     env.wait_roundtrip(&mut event_queue, &mut client_state);
     
-    // Verify resize in server
+    surface.attach(Some(&buffer2), 0, 0);
+    surface.commit();
+    env.wait_roundtrip(&mut event_queue, &mut client_state);
+    
     {
-        let state = &env.state;
-        assert_eq!(state.shm_pools.get(&(client_id.clone(), pool_id)).unwrap().size, 8192);
+        let s = env.state.get_surface(surface_id).unwrap();
+        let s = s.read().unwrap();
+        assert_eq!((s.current.width, s.current.height), (32, 32));
+        assert!(matches!(s.current.buffer, crate::core::surface::BufferType::Shm(_)));
     }
 }
 
@@ -576,7 +598,8 @@ fn test_subsurface_sync_commit() {
         assert_eq!(state.subsurfaces.get(&child_id).unwrap().parent_id, parent_id);
     }
     
-    // 1. Commit child (sync mode) -> state should be CACHED, not current
+    // 1. Commit child (sync mode) -> smithay caches the state; nothing is
+    // applied (and Wawona's shadow state is untouched) until parent commit.
     child_surface.set_buffer_scale(2);
     child_surface.commit();
     env.wait_roundtrip(&mut event_queue, &mut client_state);
@@ -585,10 +608,8 @@ fn test_subsurface_sync_commit() {
         let state = &env.state;
         let child = state.get_surface(child_id).unwrap();
         let child = child.read().unwrap();
-        // current.scale should still be 1 (default)
+        // current.scale should still be 1 (default): sync commit is deferred
         assert_eq!(child.current.scale, 1);
-        // cached should contain the scale 2
-        assert_eq!(child.cached.as_ref().unwrap().scale, 2);
     }
     
     // 2. Commit parent -> child's cached state should be applied to current
@@ -601,8 +622,6 @@ fn test_subsurface_sync_commit() {
         let child = child.read().unwrap();
         // current.scale should now be 2
         assert_eq!(child.current.scale, 2);
-        // cached should be None
-        assert!(child.cached.is_none());
     }
 }
 
@@ -720,6 +739,51 @@ fn test_keyboard_key_a_keysym() {
         last_keysym: None,
     };
 
+    env.wait_roundtrip(&mut event_queue, &mut client_state);
+
+    // Keys are delivered through smithay's seat to the focused surface, so
+    // the client must have a mapped toplevel with keyboard focus first.
+    let compositor = client_state.compositor.as_ref().unwrap();
+    let surface = compositor.create_surface(&qh, ());
+    client_state.xdg_surface = Some(
+        client_state
+            .xdg_wm_base
+            .as_ref()
+            .unwrap()
+            .get_xdg_surface(&surface, &qh, ()),
+    );
+    client_state.xdg_toplevel =
+        Some(client_state.xdg_surface.as_ref().unwrap().get_toplevel(&qh, ()));
+    surface.commit();
+    env.wait_roundtrip(&mut event_queue, &mut client_state);
+
+    // Focus the surface on the smithay keyboard.
+    let surface_proto_id = Proxy::id(&surface).protocol_id();
+    let client_id = env.state.clients.keys().next().expect("No server client").clone();
+    let surface_id = *env
+        .state
+        .protocol_to_internal_surface
+        .get(&(client_id, surface_proto_id))
+        .expect("surface internal ID not found");
+    let surface_res = env
+        .state
+        .get_surface(surface_id)
+        .unwrap()
+        .read()
+        .unwrap()
+        .resource
+        .clone()
+        .expect("surface resource missing");
+    let keyboard = env
+        .state
+        .smithay_runtime
+        .seat
+        .as_ref()
+        .expect("smithay seat missing")
+        .get_keyboard()
+        .expect("smithay keyboard missing");
+    let focus_serial = env.state.next_serial();
+    keyboard.set_focus(&mut env.state, Some(surface_res), focus_serial.into());
     env.wait_roundtrip(&mut event_queue, &mut client_state);
 
     // Linux evdev KEY_A (30) -> xkb keycode 38 on default keymap.

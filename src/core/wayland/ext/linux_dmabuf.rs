@@ -102,24 +102,18 @@ impl GlobalDispatch<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1, ()> for CompositorSta
         _global_data: &(),
         data_init: &mut wayland_server::DataInit<'_, Self>,
     ) {
-        let dmabuf = data_init.init(resource, ());
-        
-        // Advertise formats (ARGB8888, XRGB8888, BGRA8888, BGRX8888)
-        // 0x34325241 = ARGB8888
-        // 0x34325258 = XRGB8888
-        // 0x34324142 = BGRA8888
-        // 0x34325842 = BGRX8888
-        dmabuf.format(0x34325241); 
-        dmabuf.format(0x34325258);
-        dmabuf.format(0x34324142);
-        dmabuf.format(0x34325842);
-        
-        // Modifier event (format + modifier)
-        // 0 = DRM_FORMAT_MOD_LINEAR
-        dmabuf.modifier(0x34325241, 0, 0); 
-        dmabuf.modifier(0x34325258, 0, 0);
-        dmabuf.modifier(0x34324142, 0, 0);
-        dmabuf.modifier(0x34325842, 0, 0);
+        let _dmabuf = data_init.init(resource, ());
+
+        // Advertisement honesty: raw (LINEAR-modifier) dmabuf import is not
+        // supported on any Wawona platform — only the IOSurface-modifier
+        // convention used by wwn-waypipe (negotiated out-of-band). Sending
+        // format/modifier events here made generic clients attempt raw
+        // dmabuf and fail at create(); advertise nothing so they fall back
+        // to wl_shm. waypipe's IOSurface path does not depend on these
+        // events.
+        tracing::debug!(
+            "linux-dmabuf bound: no raw formats advertised (IOSurface-only import)"
+        );
     }
 }
 
@@ -145,10 +139,12 @@ impl Dispatch<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1, ()> for CompositorState {
                 let _: zwp_linux_buffer_params_v1::ZwpLinuxBufferParamsV1 = data_init.init(params_id, params);
             }
             zwp_linux_dmabuf_v1::Request::GetDefaultFeedback { id } => {
-               let _: zwp_linux_dmabuf_feedback_v1::ZwpLinuxDmabufFeedbackV1 = data_init.init(id, ());
+                let feedback = data_init.init(id, ());
+                send_empty_dmabuf_feedback(&feedback);
             }
             zwp_linux_dmabuf_v1::Request::GetSurfaceFeedback { id, surface: _ } => {
-               let _: zwp_linux_dmabuf_feedback_v1::ZwpLinuxDmabufFeedbackV1 = data_init.init(id, ());
+                let feedback = data_init.init(id, ());
+                send_empty_dmabuf_feedback(&feedback);
             }
             zwp_linux_dmabuf_v1::Request::Destroy => {}
             _ => {}
@@ -156,8 +152,27 @@ impl Dispatch<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1, ()> for CompositorState {
     }
 }
 
-// Stub implementation for feedback objects
 use wayland_protocols::wp::linux_dmabuf::zv1::server::zwp_linux_dmabuf_feedback_v1;
+
+/// Send a complete (v4) feedback sequence describing zero renderable dmabuf
+/// formats. Clients waiting on `done` proceed immediately and fall back to
+/// wl_shm instead of stalling on a feedback object that never resolves.
+fn send_empty_dmabuf_feedback(
+    feedback: &zwp_linux_dmabuf_feedback_v1::ZwpLinuxDmabufFeedbackV1,
+) {
+    use std::os::fd::AsFd;
+    match tempfile::tempfile() {
+        Ok(file) => {
+            feedback.format_table(file.as_fd(), 0);
+        }
+        Err(e) => {
+            tracing::warn!("linux-dmabuf: failed to create empty format table: {}", e);
+        }
+    }
+    // No main device: there is no DRM render node on Wawona hosts.
+    feedback.main_device(Vec::new());
+    feedback.done();
+}
 
 impl Dispatch<zwp_linux_dmabuf_feedback_v1::ZwpLinuxDmabufFeedbackV1, ()> for CompositorState {
     fn request(

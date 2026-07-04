@@ -72,6 +72,8 @@ jobs:
 
       - name: Verify Android maintainability checkpoint
         run: python3 ./.github/scripts/verify-android-maintainability.py
+      - name: Verify no 'tar --wildcards' in nix recipes (bsdtar no-op guard)
+        run: python3 ./.github/scripts/verify-no-tar-wildcards.py
       - name: Verify iOS shell-tool wiring
         run: python3 ./.github/scripts/verify-ios-shell-tools.py
       - name: Verify Android shell-tool wiring
@@ -158,6 +160,17 @@ jobs:
       - name: Run Rust tests
         run: nix develop -c cargo test --lib --tests --locked
 
+      # p12: docs/protocol-status.md is auto-generated from the live advertised
+      # registry. Regenerate and fail if it drifts from the committed manifest,
+      # so protocol additions/removals can never silently desync the roadmap.
+      - name: Protocol status manifest is up to date
+        run: |
+          WWN_WRITE_PROTOCOL_STATUS=1 nix develop -c cargo test --lib \
+            tests::protocol_matrix::test_generate_protocol_status_manifest \
+            -- --exact --nocapture
+          git diff --exit-code -- docs/protocol-status.md \
+            || { echo "::error::docs/protocol-status.md is stale; run scripts/gen-protocol-status.sh"; exit 1; }
+
       # The GTK linux-ui binary is normally built via `cargo run` at app launch
       # (dependencies/wawona/linux.nix), so it never compiles in CI. Compile it
       # here against the GTK4/libadwaita devshell stack and run the linux-ui
@@ -168,6 +181,37 @@ jobs:
 
       - name: Run Linux UI unit tests
         run: nix develop -c cargo test --features linux-ui --locked
+
+  cargo-test-macos-arm64:
+    name: "macOS (arm64): cargo test"
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Active Xcode
+        run: |
+          XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XCODE_APP" ]; then
+            echo "::error::No Xcode installation found on this runner"
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE_APP"
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+      - name: Ensure Cargo path dependencies
+        run: |
+          ./scripts/ensure-waypipe.sh
+          ./scripts/ensure-coreutils.sh
+      # Layer 1 parity with cargo-test-linux: the Rust core is host-agnostic, but
+      # only Linux ran cargo test before, so macOS-only regressions (cfg(target_os),
+      # objc bridge, IOSurface paths) could land silently. Run the same suite on the
+      # native aarch64-darwin host.
+      - name: Run Rust tests (native aarch64-darwin)
+        run: nix develop -c cargo test --lib --tests --locked
 
   swift-test-macos-x86_64:
     name: "macOS (x86_64): swift test"
@@ -286,6 +330,8 @@ jobs:
 
       - name: Verify Android maintainability checkpoint
         run: python3 ./.github/scripts/verify-android-maintainability.py
+      - name: Verify no 'tar --wildcards' in nix recipes (bsdtar no-op guard)
+        run: python3 ./.github/scripts/verify-no-tar-wildcards.py
       - name: Verify iOS shell-tool wiring
         run: python3 ./.github/scripts/verify-ios-shell-tools.py
       - name: Verify Android shell-tool wiring
@@ -457,6 +503,8 @@ jobs:
 
       - name: Verify Android maintainability checkpoint
         run: python3 ./.github/scripts/verify-android-maintainability.py
+      - name: Verify no 'tar --wildcards' in nix recipes (bsdtar no-op guard)
+        run: python3 ./.github/scripts/verify-no-tar-wildcards.py
       - name: Verify iOS shell-tool wiring
         run: python3 ./.github/scripts/verify-ios-shell-tools.py
       - name: Verify Android shell-tool wiring
@@ -614,6 +662,8 @@ jobs:
 
       - name: Verify Android maintainability checkpoint
         run: python3 ./.github/scripts/verify-android-maintainability.py
+      - name: Verify no 'tar --wildcards' in nix recipes (bsdtar no-op guard)
+        run: python3 ./.github/scripts/verify-no-tar-wildcards.py
       - name: Verify iOS shell-tool wiring
         run: python3 ./.github/scripts/verify-ios-shell-tools.py
       - name: Verify Android shell-tool wiring
@@ -711,6 +761,44 @@ jobs:
       - name: Build Target
         run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-x86_64.outputs.system }}.${{ matrix.target }}" --print-build-logs
 
+  repro-rebuild:
+    name: "Linux (x86_64): reproducibility gate"
+    runs-on: ubuntu-latest
+    needs:
+      - prepare-linux
+      - verify-linux
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reclaim Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
+          docker image prune -af || true
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            build-dir = /nix/build
+            sandbox = relaxed
+            allow-import-from-derivation = true
+      # Determinism gate (Phase 8 root-cause #3): build, then rebuild with
+      # --check so Nix re-realizes the derivation and byte-compares against the
+      # first output. A non-reproducible derivation (unfiltered `./.` source
+      # churn, embedded timestamps, non-sorted archives) fails here.
+      - name: Build backend (first realization)
+        run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux.outputs.system }}.wawona-android-backend" --print-build-logs --out-link result-backend
+      - name: Rebuild backend deterministically (--check)
+        run: nix build ".#packages.${{ needs.prepare-linux.outputs.system }}.wawona-android-backend" --rebuild --print-build-logs
+      # workspace-src is the filtered-source assembly derivation feeding the APK;
+      # it must be byte-identical across host churn (Phase 8 root-cause #3, the
+      # filtered srcFor change). Rebuild it under --check too.
+      - name: Build workspace-src (first realization)
+        run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-linux.outputs.system }}.wawona-workspace-src-android" --print-build-logs --out-link result-workspace-src
+      - name: Rebuild workspace-src deterministically (--check)
+        run: nix build ".#packages.${{ needs.prepare-linux.outputs.system }}.wawona-workspace-src-android" --rebuild --print-build-logs
+      - name: Flake check (evaluation + all checks)
+        run: ./.github/scripts/nix-retry.sh nix flake check --print-build-logs
+
   smoke-linux:
     name: "Linux (x86_64): smoke gates"
     runs-on: ubuntu-latest
@@ -801,6 +889,8 @@ jobs:
         run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ needs.prepare-macos-arm64.outputs.system }}.wawona-wearos" --print-build-logs
       - name: Compile matrix (macOS host Apple targets)
         run: ./.github/scripts/nix-retry.sh ./scripts/test-macos-build-matrix.sh
+      - name: Functional compat-matrix smoke (compositor + bundled clients)
+        run: ./scripts/ci-macos-compat-smoke.sh
 
   smoke-macos-x86_64:
     name: "macOS (x86_64): smoke gates"
