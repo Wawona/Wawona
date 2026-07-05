@@ -49,21 +49,28 @@ Status source of truth: [`2026-SOURCE-OF-TRUTH.md`](./2026-SOURCE-OF-TRUTH.md).
 - **Goal**: OrbStack-style prebuilt NixOS VMs, GUI forwarded into Wawona.
 - **Status**: **first slice landed** (host launcher + guest image + flake wiring).
   See [2026-nixos-vm-bridge.md](./2026-nixos-vm-bridge.md).
-- **Entry points**:
-  - `wawona-vz` (macOS host launcher, `nix run .#wawona-vz`) —
+- **Two tracks** (both on Virtualization.framework):
+  - **Developer track (recommended, working): `microvm.nix` + `vfkit`.** Adopted
+    from the proven `/etc/nix-darwin/.dotfiles` setup. `nix run .#wawona-microvm`
+    boots the guest; `nix run .#wawona-vm-bridge` relays its Wayland session into
+    Wawona. [microvm-guest.nix](../dependencies/wawona/microvm-guest.nix). Uses
+    `writableStoreOverlay` + a virtiofs read-only `/nix/store` share → **no
+    make-disk-image/KVM** (fixes the guest-build stall). Stays on **upstream**
+    microvm.nix by attaching vsock via `vfkit.extraArgs` (upstream's runner still
+    throws on `vsock.cid`).
+  - **In-app track (future): native Swift `wawona-vz`** —
     [WawonaLinuxVZ.swift](../src/platform/macos/vm/WawonaLinuxVZ.swift) /
-    [vz-launcher.nix](../dependencies/wawona/vz-launcher.nix). Direct-kernel boot,
-    virtio-vsock + virtiofs + balloon + optional Rosetta; ad-hoc signed with
+    [vz-launcher.nix](../dependencies/wawona/vz-launcher.nix) /
+    [nixos-guest.nix](../dependencies/wawona/nixos-guest.nix). Embeddable in
+    Wawona.app with no external hypervisor; ad-hoc signed with
     `com.apple.security.virtualization`.
-  - `wawona-nixos-guest` (aarch64-linux guest image) —
-    [nixos-guest.nix](../dependencies/wawona/nixos-guest.nix). **Built on the
-    NixOS host / a Linux builder.**
   - Machines UI `virtual_machine` type + `Machine*Stub` prefs (next hook).
 - **Design**: OrbStack model — Virtualization.framework + **vsock** transport
-  (not a virtual NIC / RDP). Guest runs `waypipe --vsock` forwarding a Wayland
-  session (cage+foot today; wwn-niri/sway/… later) into Wawona's socket.
-- **Remaining**: validate the waypipe vsock topology end-to-end on the NixOS
-  host; wire the Machines UI; tune rootfs/memory; OrbStack-style virtiofs caching.
+  (not a virtual NIC / RDP). Guest runs `waypipe --socket vsock:2:1024 server`
+  forwarding a Wayland session (sway/foot today; wwn-niri/… later) into Wawona.
+- **Remaining**: boot-test the microvm guest + bridge end-to-end on this M1;
+  wire the Machines UI; tune vcpu/mem/overlay size; OrbStack-style virtiofs
+  caching.
 - **No host-NixOS dependency**: the `aarch64-linux` guest image builds locally on
   the Mac via **Determinate Nix's native (Virtualization.framework) Linux
   builder** (`external-builders` in `/etc/nix/nix.conf`): just

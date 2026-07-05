@@ -12,6 +12,54 @@ on the Mac via **Determinate Nix's native VZ Linux builder**; no separate NixOS
 host is needed. End-to-end Wayland-over-vsock still needs a boot-test — see
 "Build & run" and "Known gaps".
 
+## Two tracks
+
+There are two ways to boot the guest, both on Virtualization.framework:
+
+1. **Developer track — `microvm.nix` + `vfkit`** (recommended, working now).
+   [microvm.nix](https://github.com/microvm-nix/microvm.nix) drives `vfkit`
+   (a thin Virtualization.framework CLI). We adopted it after finding it already
+   proven in `/etc/nix-darwin/.dotfiles` (`den.aspects.microvm` + a
+   `wawona-vm-bridge.sh`). It builds the guest with **`writableStoreOverlay` +
+   a virtiofs read-only share of the host `/nix/store`**, so the rootfs is a tiny
+   writable overlay disk and **no `make-disk-image`/QEMU/KVM is needed** — which
+   is exactly what stalled the hand-rolled guest on the VZ Linux builder.
+   Files: [microvm-guest.nix](../dependencies/wawona/microvm-guest.nix); flake
+   apps `wawona-microvm` (boot) and `wawona-vm-bridge` (Wayland relay).
+2. **In-app track — native Swift launcher `wawona-vz`** (future, for embedding
+   in Wawona.app with no external hypervisor):
+   [WawonaLinuxVZ.swift](../src/platform/macos/vm/WawonaLinuxVZ.swift) +
+   [vz-launcher.nix](../dependencies/wawona/vz-launcher.nix) +
+   [nixos-guest.nix](../dependencies/wawona/nixos-guest.nix) (kernel/initrd/rootfs).
+
+### vsock over vfkit — the one caveat
+
+Upstream microvm.nix's vfkit runner still `throw`s on `microvm.vsock.cid != null`
+("vfkit vsock support not yet implemented"). The dotfiles setup works because it
+carries a **local patch** to the vendored runner. To keep Wawona on **upstream**
+microvm.nix (no fork), we instead attach the vsock device through
+`microvm.vfkit.extraArgs` (which upstream appends verbatim) and leave `cid` null:
+
+```nix
+microvm.vfkit.extraArgs = [
+  "--device" "virtio-vsock,port=1024,socketURL=/tmp/wawona-guest-vsock.sock"
+];
+```
+
+Guest waypipe connects to host **CID 2** on that port; vfkit relays it to the
+unix socket; `wawona-vm-bridge` runs a host `waypipe client` + `socat` into
+Wawona's `wayland-0`. (If/when upstream lands real vfkit vsock, switch to
+`microvm.vsock.cid` and drop the extraArgs.)
+
+### Run (developer track)
+
+```sh
+# terminal 1 — build + boot the guest (uses the aarch64-linux builder once)
+nix run .#wawona-microvm
+# terminal 2 — relay the guest Wayland session into Wawona (must be running)
+nix run .#wawona-vm-bridge          # honors WAWONA_RUNTIME=/path/to/xdg-runtime
+```
+
 ## What OrbStack does (and what we borrow)
 
 Verified from OrbStack's architecture docs + HN/benchmarks:

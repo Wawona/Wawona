@@ -10,6 +10,12 @@
     rust-overlay.url = "github:oxalica/rust-overlay";
     rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
     crate2nix.url = "github:nix-community/crate2nix";
+    # p26-vm-nixos: microvm.nix drives a NixOS guest under vfkit
+    # (Virtualization.framework) on macOS. Provides the writableStoreOverlay +
+    # virtiofs ro-store rootfs (no make-disk-image/KVM) and the vsock plumbing
+    # the Wayland-into-Wawona bridge needs.
+    microvm.url = "github:microvm-nix/microvm.nix";
+    microvm.inputs.nixpkgs.follows = "nixpkgs";
     # Reproducible, glibc-portable AppImage bundler (static appimage runtime +
     # userns-chroot AppRun that maps the bundled /nix/store closure).
     nix-appimage.url = "github:ralismark/nix-appimage";
@@ -1171,9 +1177,80 @@ EOF
         }) // (pkgs.lib.optionalAttrs (builtins.pathExists ./dependencies/wawona/vz-launcher.nix) {
           # p26-vm-nixos: native Virtualization.framework launcher (vsock+waypipe
           # Wayland bridge). Pure build (compiles the Swift launcher on first run
-          # via host xcrun, like the other wawona-* Apple wrappers).
+          # via host xcrun, like the other wawona-* Apple wrappers). This is the
+          # *in-app* track (embeddable in Wawona.app, no external hypervisor).
           wawona-vz = pkgs.callPackage ./dependencies/wawona/vz-launcher.nix { inherit wawonaVersion; };
-        })));
+        }) // (pkgs.lib.optionalAttrs (builtins.pathExists ./dependencies/wawona/microvm-guest.nix) (
+          # p26-vm-nixos: microvm.nix + vfkit *developer* track. `wawona-microvm`
+          # builds+boots the NixOS guest under Virtualization.framework;
+          # `wawona-vm-bridge` relays its vsock Wayland session into Wawona.
+          let
+            microvmGuest = import ./dependencies/wawona/microvm-guest.nix {
+              inherit nixpkgs;
+              microvm = inputs.microvm;
+              hostSystem = system;
+            };
+            vfkitRunner = microvmGuest.config.microvm.runner.vfkit;
+          in {
+            wawona-microvm = pkgs.writeShellApplication {
+              name = "wawona-microvm";
+              runtimeInputs = [ pkgs.coreutils ];
+              text = ''
+                # vfkit creates the overlay disk + vsock/restful sockets in CWD;
+                # anchor them in a stable per-user state dir so the bridge can find
+                # wawona-guest-vsock.sock reliably.
+                STATEDIR="''${XDG_STATE_HOME:-$HOME/.local/state}/wawona-microvm"
+                mkdir -p "$STATEDIR"
+                cd "$STATEDIR"
+                echo "[wawona-microvm] state dir: $STATEDIR" >&2
+                echo "[wawona-microvm] vsock socket will appear at: $STATEDIR/wawona-guest-vsock.sock" >&2
+                exec ${vfkitRunner}/bin/microvm-run "$@"
+              '';
+            };
+            wawona-vm-bridge = pkgs.writeShellApplication {
+              name = "wawona-vm-bridge";
+              runtimeInputs = [ pkgs.coreutils pkgs.socat commonPackages.waypipe ];
+              text = ''
+                # Relay the guest's vsock Wayland stream into Wawona:
+                #   guest waypipe server (vsock:2:1024)  ->  vfkit unix socket
+                #   -> socat -> host waypipe client socket -> Wawona wayland-0
+                # Must match microvm-guest.nix `vsockSocketPath`.
+                VSOCK_SOCKET="''${WAWONA_VSOCK_SOCKET:-/tmp/wawona-guest-vsock.sock}"
+                # Wawona's XDG_RUNTIME_DIR (where it advertises wayland-0). Override
+                # via WAWONA_RUNTIME if Wawona uses a different dir.
+                WAWONA_RUNTIME="''${WAWONA_RUNTIME:-/tmp/wawona-$(id -u)}"
+                WAYPIPE_SOCKET="''${WAYPIPE_SOCKET:-/tmp/waypipe-wawona.sock}"
+
+                if [ ! -d "$WAWONA_RUNTIME" ]; then
+                  echo "wawona-vm-bridge: runtime dir $WAWONA_RUNTIME not found — is Wawona running?" >&2
+                  echo "  set WAWONA_RUNTIME=/path/to/wawona/xdg-runtime and retry." >&2
+                  exit 1
+                fi
+
+                rm -f "$WAYPIPE_SOCKET"
+                export XDG_RUNTIME_DIR="$WAWONA_RUNTIME"
+                export WAYLAND_DISPLAY="wayland-0"
+                echo "[wawona-vm-bridge] starting waypipe client on $WAYPIPE_SOCKET (-> $WAWONA_RUNTIME/wayland-0)" >&2
+                waypipe --socket "$WAYPIPE_SOCKET" client &
+                WAYPIPE_PID=$!
+                trap 'kill "$WAYPIPE_PID" 2>/dev/null || true' EXIT
+
+                # Wait for the guest's vsock socket to appear.
+                for _ in $(seq 1 60); do
+                  [ -S "$VSOCK_SOCKET" ] && break
+                  sleep 1
+                done
+                if [ ! -S "$VSOCK_SOCKET" ]; then
+                  echo "wawona-vm-bridge: $VSOCK_SOCKET never appeared — start .#wawona-microvm first." >&2
+                  exit 1
+                fi
+
+                echo "[wawona-vm-bridge] bridging $VSOCK_SOCKET <-> $WAYPIPE_SOCKET" >&2
+                exec socat "UNIX-CONNECT:$VSOCK_SOCKET" "UNIX-CONNECT:$WAYPIPE_SOCKET"
+              '';
+            };
+          }
+        ))));
       in packages;
 
     getAppsForSystem = system: pkgs: systemPackages:
@@ -1246,12 +1323,27 @@ EOF
       }) // (pkgs.lib.optionalAttrs (systemPackages ? wawona-vz) {
         # p26-vm-nixos: `nix run .#wawona-vz -- --kernel ... --initrd ... --disk ...`
         wawona-vz = { type = "app"; program = "${systemPackages.wawona-vz}/bin/wawona-vz-run"; };
+      }) // (pkgs.lib.optionalAttrs (systemPackages ? wawona-microvm) {
+        # p26-vm-nixos (developer track): boot the NixOS guest under vfkit
+        # (Virtualization.framework), then bridge its Wayland session into Wawona.
+        #   term 1:  nix run .#wawona-microvm
+        #   term 2:  nix run .#wawona-vm-bridge
+        wawona-microvm = { type = "app"; program = "${systemPackages.wawona-microvm}/bin/wawona-microvm"; };
+        wawona-vm-bridge = { type = "app"; program = "${systemPackages.wawona-vm-bridge}/bin/wawona-vm-bridge"; };
       }));
 
     allSystemPackages = nixpkgs.lib.genAttrs systemsList (system: getPackagesForSystem system (pkgsFor system));
+    # p26-vm-nixos: the NixOS guest as a first-class flake output, so it can be
+    # built on a linux-builder / NixOS host and inspected. The vfkit runner
+    # (config.microvm.runner.vfkit) is what `.#wawona-microvm` execs on the Mac.
+    wawonaMicrovm = import ./dependencies/wawona/microvm-guest.nix {
+      inherit nixpkgs;
+      microvm = inputs.microvm;
+    };
   in {
     wwnSdkConfigPath = androidConfigNix;
     packages = allSystemPackages;
+    nixosConfigurations.wawona-microvm = wawonaMicrovm;
     apps = nixpkgs.lib.genAttrs systemsList (system: getAppsForSystem system (pkgsFor system) allSystemPackages.${system});
     overlays.default = final: prev: {
       wawona = self.packages.${prev.stdenv.hostPlatform.system}.wawona;

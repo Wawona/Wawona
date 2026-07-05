@@ -21,10 +21,12 @@
 #   result/initrd    initramfs
 #   result/rootfs.img  raw ext4 root filesystem (mounted as /dev/vda)
 #
-# BUILD LOCATION: this is an aarch64-linux derivation. It MUST be built on an
-# aarch64-linux machine or via a configured Linux builder — e.g. the user's
-# NixOS host, `nix-darwin`'s linux-builder, or a remote builder. It cannot be
-# realized on aarch64-darwin directly. See docs/2026-nixos-vm-bridge.md.
+# BUILD LOCATION: this is an aarch64-linux derivation, but it builds LOCALLY on
+# an Apple Silicon Mac via Determinate Nix's native (Virtualization.framework)
+# Linux builder — no separate NixOS host needed. The rootfs is assembled with
+# `make-ext4-fs` (a plain derivation, like NixOS sd-images) specifically so it
+# does NOT need `make-disk-image`'s QEMU/KVM VM, which can't run nested inside
+# the VZ builder. See docs/2026-nixos-vm-bridge.md.
 
 let
   guestSystem = nixpkgs.lib.nixosSystem {
@@ -52,6 +54,18 @@ let
             fsType = "ext4";
             autoResize = true;
           };
+
+          # The rootfs is a bare ext4 built by make-ext4-fs containing only the
+          # store closure (no partition table, no bootloader). On first boot,
+          # grow it to fill the disk and register the store paths in the Nix DB
+          # (the sd-image pattern). nix-path-registration is written into the
+          # image via populateImageCommands below.
+          boot.postBootCommands = ''
+            if [ -f /nix-path-registration ]; then
+              ${config.nix.package.out}/bin/nix-store --load-db < /nix-path-registration &&
+                rm -f /nix-path-registration
+            fi
+          '';
 
           # Optional host dir shared over virtiofs (tag matches `wawona-vz --share-tag`).
           fileSystems."/mnt/host" = lib.mkDefault {
@@ -121,15 +135,27 @@ let
 
   cfg = guestSystem.config;
 
-  # Raw, partition-table-less ext4 image → mount straight as /dev/vda.
-  rootfs = import (nixpkgs + "/nixos/lib/make-disk-image.nix") {
-    inherit pkgs lib;
-    config = cfg;
-    partitionTableType = "none";
-    format = "raw";
-    label = "nixos";
-    diskSize = 8192; # MiB; grows via autoResize on first boot
+  toplevel = cfg.system.build.toplevel;
+  closureInfo = pkgs.closureInfo { rootPaths = [ toplevel ]; };
+
+  # Bare ext4 image containing the store closure — built by a plain derivation
+  # (mkfs.ext4 -d), so NO QEMU/KVM VM is required and it realizes fine on the
+  # Determinate VZ Linux builder. Mounted directly as /dev/vda; grows on first
+  # boot via autoResize.
+  rootfs = pkgs.callPackage (nixpkgs + "/nixos/lib/make-ext4-fs.nix") {
+    storePaths = [ toplevel ];
+    volumeLabel = "nixos";
+    populateImageCommands = ''
+      mkdir -p ./files
+      cp ${closureInfo}/registration ./files/nix-path-registration
+      mkdir -p ./files/{proc,sys,dev,run,tmp,var,root,etc,bin}
+    '';
   };
+
+  # Authoritative kernel command line for direct-kernel boot. `init=` points at
+  # the built system's stage-2 init (normally a bootloader would append this).
+  kernelCmdline =
+    "init=${toplevel}/init console=hvc0 root=/dev/vda rw loglevel=4";
 in
 pkgs.runCommand "wawona-nixos-guest-${wawonaVersion}"
 {
@@ -149,16 +175,15 @@ pkgs.runCommand "wawona-nixos-guest-${wawonaVersion}"
     ln -s "${cfg.system.build.kernel}" "$out/kernel"
   fi
   ln -s "${cfg.system.build.initialRamdisk}/initrd" "$out/initrd"
-  # make-disk-image emits nixos.img (raw) under the derivation.
-  if [ -e "${rootfs}/nixos.img" ]; then
-    ln -s "${rootfs}/nixos.img" "$out/rootfs.img"
-  else
-    for f in ${rootfs}/*.img; do ln -s "$f" "$out/rootfs.img"; break; done
-  fi
+  # make-ext4-fs emits the image file directly as its $out.
+  ln -s "${rootfs}" "$out/rootfs.img"
+  # Authoritative kernel cmdline (includes the init= path); pass to wawona-vz.
+  printf '%s\n' "${kernelCmdline}" > "$out/cmdline"
   cat > "$out/boot-hint.txt" <<EOF
-  Boot with:
-    wawona-vz --kernel $out/Image --initrd $out/initrd --disk <writable-copy-of>/rootfs.img \\
-              --vsock-listen ${toString vsockPort} --forward-unix \$XDG_RUNTIME_DIR/wayland-0
-  (copy rootfs.img somewhere writable first — the store copy is read-only)
+  # copy rootfs.img somewhere writable first — the store copy is read-only
+  cp $out/rootfs.img /tmp/wawona-rootfs.img && chmod u+w /tmp/wawona-rootfs.img
+  wawona-vz --kernel $out/Image --initrd $out/initrd --disk /tmp/wawona-rootfs.img \\
+            --cmdline "$(cat $out/cmdline)" \\
+            --vsock-listen ${toString vsockPort} --forward-unix \$XDG_RUNTIME_DIR/wayland-0
 EOF
 ''
