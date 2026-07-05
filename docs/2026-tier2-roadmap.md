@@ -64,9 +64,11 @@ Status source of truth: [`2026-SOURCE-OF-TRUTH.md`](./2026-SOURCE-OF-TRUTH.md).
   session (cage+foot today; wwn-niri/sway/… later) into Wawona's socket.
 - **Remaining**: validate the waypipe vsock topology end-to-end on the NixOS
   host; wire the Machines UI; tune rootfs/memory; OrbStack-style virtiofs caching.
-- **Host-NixOS dependency**: only the guest image build needs Linux; set up
-  `nix.linux-builder`/a remote aarch64-linux builder once and the Mac can drive
-  it (also unblocks WLCS / GTK runtime / dEQP Tier-2 lanes).
+- **No host-NixOS dependency**: the `aarch64-linux` guest image builds locally on
+  the Mac via **Determinate Nix's native (Virtualization.framework) Linux
+  builder** (`external-builders` in `/etc/nix/nix.conf`): just
+  `nix build .#packages.aarch64-linux.wawona-nixos-guest`. The same builder
+  unblocks the other Tier-2 Linux lanes (WLCS / GTK runtime / dEQP).
 
 ## p27-ios-utmse — UTM SE jitless VM backend (iOS/iPadOS/visionOS)
 

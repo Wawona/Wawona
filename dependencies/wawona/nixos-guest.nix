@@ -28,8 +28,8 @@
 
 let
   guestSystem = nixpkgs.lib.nixosSystem {
-    inherit system;
     modules = [
+      { nixpkgs.hostPlatform = system; }
       (
         { config, pkgs, lib, modulesPath, ... }:
         {

@@ -7,8 +7,10 @@ the OrbStack model, not WSLg's RDP. This replaces the old QEMU-cocoa
 presented natively inside Wawona.
 
 Status: **first vertical slice landed** (host launcher + guest image + flake
-wiring). End-to-end Wayland-over-vsock still needs validation on a Linux/NixOS
-host — see "Build & run" and "Known gaps".
+wiring). Everything — including the `aarch64-linux` guest image — builds locally
+on the Mac via **Determinate Nix's native VZ Linux builder**; no separate NixOS
+host is needed. End-to-end Wayland-over-vsock still needs a boot-test — see
+"Build & run" and "Known gaps".
 
 ## What OrbStack does (and what we borrow)
 
@@ -82,30 +84,35 @@ kernel `Image` (a compressed kernel hangs at boot). NixOS builds this at
 
 ## Build & run
 
-### 1. Build the guest — **on your NixOS host** (or a Linux builder)
+### 1. Build the guest — **locally on the Mac** (Determinate native Linux builder)
 
-> **This is the step that needs NixOS.** The guest is an `aarch64-linux`
-> derivation (uncompressed arm64 kernel + initrd + ext4 rootfs). It **cannot**
-> be realized on `aarch64-darwin` directly. Everything else (the `wawona-vz`
-> launcher, the flake wiring, this doc) is done on the Mac.
+The guest is an `aarch64-linux` derivation (uncompressed arm64 kernel + initrd +
+ext4 rootfs) and can't be realized on `aarch64-darwin` directly — but you do
+**not** need a separate NixOS host. **Determinate Nix** on macOS ships a native
+Linux builder that runs the `aarch64-linux`/`x86_64-linux` build in a lightweight
+VM **using Virtualization.framework** (the same tech `wawona-vz` uses). It's
+already configured here via `external-builders` in `/etc/nix/nix.conf`:
 
-Options, best first:
+```
+external-builders = [{"program":"/usr/local/bin/determinate-nixd",
+  "args":["builder", ...], "systems":["aarch64-linux","x86_64-linux"]}]
+system-features = apple-virt ...
+```
 
-- **On the NixOS host directly** (if it is aarch64, or can emulate/cross to it):
-  ```sh
-  nix build github:Wawona/Wawona#packages.aarch64-linux.wawona-nixos-guest
-  # → ./result/{Image,initrd,rootfs.img}
-  ```
-  If your NixOS host is x86_64, either enable `boot.binfmt.emulatedSystems =
-  [ "aarch64-linux" ]` (slow, emulated build) or add an aarch64 remote builder.
-- **From the Mac via a Linux builder**: configure `nix-darwin`'s
-  `nix.linux-builder` (or a remote aarch64-linux builder) and run the same
-  `nix build .#packages.aarch64-linux.wawona-nixos-guest` on the Mac — Nix ships
-  the build to the Linux builder automatically. (This is also the
-  general answer for the other Tier-2 Linux-runtime lanes: WLCS, the GTK
-  frontend, dEQP.)
+So the build is one local command:
 
-Copy the three artifacts to the Mac (e.g. `scp result/* mac:~/wawona-guest/`).
+```sh
+nix build .#packages.aarch64-linux.wawona-nixos-guest -L
+# → ./result/{Image,initrd,rootfs.img}   (built via the VZ Linux builder)
+```
+
+No remote host, no `scp`, no `nix-darwin` linux-builder to stand up. This is also
+the general answer for the other Tier-2 Linux-runtime lanes (WLCS, the GTK
+frontend, dEQP): they all realize on the same Determinate builder.
+
+> Fallbacks (only if Determinate's builder is unavailable): a remote
+> `aarch64-linux` builder, or building on an aarch64 NixOS host. An x86_64 NixOS
+> host would need `boot.binfmt.emulatedSystems = [ "aarch64-linux" ]` (slow).
 
 ### 2. Run — on the Mac (this M1, macOS 26)
 
@@ -124,19 +131,22 @@ nix run .#wawona-vz -- \
 With Wawona running, the guest's `wawona-wayland-bridge` service connects out on
 vsock:6000 and its Wayland clients appear as Wawona windows.
 
-## Where this needs a host NixOS (summary)
+## Where everything runs (summary)
 
-| Task | Where | Why |
+Thanks to Determinate's native (VZ-backed) Linux builder, **all of this is local
+to the Mac** — no separate NixOS host required.
+
+| Task | Where | Notes |
 | --- | --- | --- |
-| Build `wawona-nixos-guest` (Image/initrd/rootfs) | **NixOS / Linux builder** | aarch64-linux derivation; can't build on darwin |
-| Iterate the guest NixOS config (session, packages, waypipe wiring) | **NixOS** | fastest to rebuild + boot-test there |
-| Validate waypipe vsock client/server direction end-to-end | **NixOS guest** | needs a real Linux Wayland client |
-| Build/run `wawona-vz` launcher | Mac (this M1) | Virtualization.framework is macOS-only |
+| Build `wawona-nixos-guest` (Image/initrd/rootfs) | Mac, via Determinate Linux builder | `nix build .#packages.aarch64-linux.wawona-nixos-guest` |
+| Iterate the guest NixOS config (session, packages, waypipe) | Mac (same builder) | rebuild locally; boot-test under `wawona-vz` |
+| Validate waypipe vsock direction end-to-end | Mac (`wawona-vz` boots the guest) | needs the guest actually running |
+| Build/run `wawona-vz` launcher | Mac | Virtualization.framework is macOS-only |
 | Everything else (flake, docs, bridge code) | Mac | pure |
 
-If you set up `nix.linux-builder` (or a remote aarch64-linux builder) once, the
-Mac can drive the guest build too — and the same builder unblocks the remaining
-Tier-2 Linux lanes (WLCS, GTK runtime, dEQP), per the plan's Phase 26 pivot.
+A remote aarch64-linux builder is now only a fallback if the Determinate builder
+is disabled. The same builder unblocks the remaining Tier-2 Linux lanes (WLCS,
+GTK runtime, dEQP).
 
 ## Known gaps (honest status)
 
