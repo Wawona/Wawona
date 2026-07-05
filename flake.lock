@@ -360,6 +360,28 @@
         "type": "github"
       }
     },
+    "microvm_2": {
+      "inputs": {
+        "nixpkgs": [
+          "wwn-vms",
+          "nixpkgs"
+        ],
+        "spectrum": "spectrum_2"
+      },
+      "locked": {
+        "lastModified": 1782764610,
+        "narHash": "sha256-CzCF8RD9a9kwRrpeQ+z67sqqADUG0tf+4+YBSUG30y0=",
+        "owner": "microvm-nix",
+        "repo": "microvm.nix",
+        "rev": "3904edd282a7166cdad6c597964718e6d018baa6",
+        "type": "github"
+      },
+      "original": {
+        "owner": "microvm-nix",
+        "repo": "microvm.nix",
+        "type": "github"
+      }
+    },
     "nix-appimage": {
       "inputs": {
         "flake-compat": "flake-compat_2",
@@ -497,6 +519,7 @@
         "nix-xcodeenvtests": "nix-xcodeenvtests",
         "nixpkgs": "nixpkgs_3",
         "rust-overlay": "rust-overlay",
+        "wwn-containers": "wwn-containers",
         "wwn-coreutils": "wwn-coreutils",
         "wwn-fastfetch": "wwn-fastfetch",
         "wwn-foot": "wwn-foot",
@@ -504,6 +527,7 @@
         "wwn-kmscube": "wwn-kmscube",
         "wwn-neovim": "wwn-neovim",
         "wwn-toolchain": "wwn-toolchain",
+        "wwn-vms": "wwn-vms",
         "wwn-waypipe": "wwn-waypipe",
         "wwn-weston": "wwn-weston",
         "wwn-zsh": "wwn-zsh"
@@ -734,6 +758,22 @@
         "url": "https://spectrum-os.org/git/spectrum"
       }
     },
+    "spectrum_2": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1782480951,
+        "narHash": "sha256-jrfyAgv5XfYDXJJ28OzANQOQIlsfNaI1kM9Mt13n+5k=",
+        "ref": "refs/heads/main",
+        "rev": "e4562d4c7646fea3cbb7306ff9b7ff41154c75c3",
+        "revCount": 1400,
+        "type": "git",
+        "url": "https://spectrum-os.org/git/spectrum"
+      },
+      "original": {
+        "type": "git",
+        "url": "https://spectrum-os.org/git/spectrum"
+      }
+    },
     "systems": {
       "locked": {
         "lastModified": 1681028828,
@@ -777,6 +817,31 @@
         "owner": "nix-systems",
         "repo": "default",
         "type": "github"
+      }
+    },
+    "wwn-containers": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "rust-overlay": [
+          "rust-overlay"
+        ],
+        "wwn-toolchain": [
+          "wwn-toolchain"
+        ],
+        "wwn-vms": [
+          "wwn-vms"
+        ]
+      },
+      "locked": {
+        "narHash": "sha256-vTWxymuOlxQdBeZ1RXmHnKm7qa1obdPzOutvSza3Hhk=",
+        "path": "/Users/8amps/Wawona/wwn-containers",
+        "type": "path"
+      },
+      "original": {
+        "path": "/Users/8amps/Wawona/wwn-containers",
+        "type": "path"
       }
     },
     "wwn-coreutils": {
@@ -948,6 +1013,29 @@
         "owner": "Wawona",
         "repo": "wwn-toolchain",
         "type": "github"
+      }
+    },
+    "wwn-vms": {
+      "inputs": {
+        "microvm": "microvm_2",
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "rust-overlay": [
+          "rust-overlay"
+        ],
+        "wwn-toolchain": [
+          "wwn-toolchain"
+        ]
+      },
+      "locked": {
+        "narHash": "sha256-Z9vT5acOZpEm6dYR6dcLc5XgL9Ml/pe4kg89zW7e/F0=",
+        "path": "/Users/8amps/Wawona/wwn-vms",
+        "type": "path"
+      },
+      "original": {
+        "path": "/Users/8amps/Wawona/wwn-vms",
+        "type": "path"
       }
     },
     "wwn-waypipe": {

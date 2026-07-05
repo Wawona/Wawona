@@ -63,9 +63,22 @@
     wwn-neovim.url = "github:Wawona/wwn-neovim";
     wwn-neovim.inputs.nixpkgs.follows = "nixpkgs";
     wwn-neovim.inputs.wwn-toolchain.follows = "wwn-toolchain";
+    # VM + container substrate. Local path: inputs while pre-release; switched to
+    # github:Wawona/wwn-vms / wwn-containers once stable (see wwn-vms/wwn-containers
+    # port plans). wwn-containers depends on wwn-vms, so pin both to Wawona's
+    # single nixpkgs/toolchain and make containers follow this same wwn-vms.
+    wwn-vms.url = "path:/Users/8amps/Wawona/wwn-vms";
+    wwn-vms.inputs.nixpkgs.follows = "nixpkgs";
+    wwn-vms.inputs.rust-overlay.follows = "rust-overlay";
+    wwn-vms.inputs.wwn-toolchain.follows = "wwn-toolchain";
+    wwn-containers.url = "path:/Users/8amps/Wawona/wwn-containers";
+    wwn-containers.inputs.nixpkgs.follows = "nixpkgs";
+    wwn-containers.inputs.rust-overlay.follows = "rust-overlay";
+    wwn-containers.inputs.wwn-toolchain.follows = "wwn-toolchain";
+    wwn-containers.inputs.wwn-vms.follows = "wwn-vms";
   };
 
-  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-waypipe, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-neovim, ... }:
+  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-waypipe, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-neovim, wwn-vms, wwn-containers, ... }:
   let
     linuxSystems = [ "x86_64-linux" "aarch64-linux" ];
     darwinSystems = [ "x86_64-darwin" "aarch64-darwin" ];
@@ -186,7 +199,9 @@
       // wwn-waypipe.registryFragment
       // wwn-foot.registryFragment
       // wwn-fastfetch.registryFragment
-      // wwn-neovim.registryFragment;
+      // wwn-neovim.registryFragment
+      // wwn-vms.registryFragment
+      // wwn-containers.registryFragment;
     mkWawonaToolchains = { pkgs, pkgsAndroid ? null, pkgsIos ? null, androidSDK ? null, androidAllowExperimentalFallback ? false, wawonaSrc ? null }:
       wwn-toolchain.lib.mkToolchains {
         inherit pkgs pkgsAndroid pkgsIos androidSDK androidAllowExperimentalFallback wawonaSrc;
