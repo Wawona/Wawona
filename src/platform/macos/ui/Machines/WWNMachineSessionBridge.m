@@ -2,6 +2,7 @@
 #import "../Settings/WWNWaypipeRunner.h"
 #import "../Settings/WWNPreferencesManager.h"
 #import "WWNVirtualMachineRunner.h"
+#import "WWNContainerRunner.h"
 
 @implementation WWNMachineSessionBridge
 
@@ -11,8 +12,11 @@
 }
 
 + (BOOL)profileUsesVirtualMachineBackend:(WWNMachineProfile *)profile {
-  return [profile.type isEqualToString:kWWNMachineTypeVirtualMachine] ||
-         [profile.type isEqualToString:kWWNMachineTypeContainer];
+  return [profile.type isEqualToString:kWWNMachineTypeVirtualMachine];
+}
+
++ (BOOL)profileUsesContainerBackend:(WWNMachineProfile *)profile {
+  return [profile.type isEqualToString:kWWNMachineTypeContainer];
 }
 
 + (BOOL)profileUsesNativeCompositorClient:(WWNMachineProfile *)profile {
@@ -73,6 +77,7 @@
     [runner stopWaypipe];
   }
   [[WWNVirtualMachineRunner sharedRunner] stopAll];
+  [[WWNContainerRunner sharedRunner] stopAll];
 }
 
 + (BOOL)connectProfile:(WWNMachineProfile *)profile
@@ -118,12 +123,19 @@
     return YES;
   }
 
-  // p26-vm-nixos / p25-macos-containers: boot a Linux guest (NixOS microvm via
-  // vfkit, or a container) whose Wayland session bridges into Wawona over
+  // p26-vm-nixos: boot a NixOS guest (wwn-vms: microvm/vfkit or the native
+  // wawona-vz launcher) whose Wayland session bridges into Wawona over
   // vsock+waypipe. The profile's custom script is the boot command.
   if ([self profileUsesVirtualMachineBackend:profile]) {
     return [[WWNVirtualMachineRunner sharedRunner] launchProfile:profile
                                                           error:error];
+  }
+
+  // OCI containers (wwn-containers): Apple Containerization on macOS, or
+  // container-in-VM on other targets. Delegates to the container runner.
+  if ([self profileUsesContainerBackend:profile]) {
+    return [[WWNContainerRunner sharedRunner] launchProfile:profile
+                                                      error:error];
   }
 
   if (error) {
@@ -165,6 +177,9 @@
     [[WWNWaypipeRunner sharedRunner] stopWaypipe];
   } else if ([self profileUsesVirtualMachineBackend:profile]) {
     [[WWNVirtualMachineRunner sharedRunner]
+        stopProfileWithMachineId:profile.machineId];
+  } else if ([self profileUsesContainerBackend:profile]) {
+    [[WWNContainerRunner sharedRunner]
         stopProfileWithMachineId:profile.machineId];
   }
 

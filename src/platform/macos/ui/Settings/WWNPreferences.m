@@ -718,19 +718,32 @@ static UIImage *WWNAboutLogo(void) {
     ITEM(@"Session Thumbnails", @"MachineSessionThumbnailsEnabled",
          WSettingSwitch, @YES,
          @"Save the last frame from a machine session and show it on machine cards."),
-    ITEM(@"Virtual Machine Provider", @"MachineVMProviderStub", WSettingText,
-         @"utm-se", @"UTM or UTM SE on macOS; simulators/emulators on mobile."),
-    ITEM(@"Virtual Machine VSock Port", @"MachineVMDefaultVsockStub",
+    ITEM(@"Virtual Machine Provider", @"MachineVMProvider", WSettingText,
+         @"nixos-vm",
+         @"wwn-vms VM engine. macOS: Virtualization.framework (microvm/vfkit + "
+         @"wawona-vz). iOS/tvOS/visionOS: jitless QEMU-TCTI. Android: QEMU/AVF. "
+         @"Built-in guest is NixOS-only."),
+    ITEM(@"Virtual Machine VSock Port", @"MachineVMVsockPort",
          WSettingNumber, @"1024",
-         @"Stub default VSock port for future VM launches."),
-    ITEM(@"Container Runtime", @"MachineContainerRuntimeStub", WSettingText,
-         @"docker", @"Stub setting for future container integration."),
-    ITEM(@"Container Namespace", @"MachineContainerNamespaceStub", WSettingText,
-         @"default", @"Stub namespace for future container runtime hooks."),
+         @"vsock port the guest's waypipe server binds; bridged into Wawona."),
+    ITEM(@"Container Runtime", @"MachineContainerRuntime", WSettingText,
+#if TARGET_OS_OSX
+         @"containerization",
+#else
+         @"container-in-vm",
+#endif
+         @"wwn-containers execution backend. macOS: Apple Containerization "
+         @"framework. Mobile/Android: container-in-VM (crun in a wwn-vms guest) "
+         @"or rootless proot. watchOS: image management only."),
+    ITEM(@"Container Image Store", @"MachineContainerImageStore", WSettingText,
+         @"~/.local/share/wawona/oci",
+         @"Content-addressable OCI store (wwn-oci) for pulled images. Universal "
+         @"and App-Store-compliant on every target."),
     ITEM(
-        @"Status", nil, WSettingInfo, @"Partial",
-        @"macOS opens UTM/UTM SE for VM profiles. Use nix run .#wawona-ios or "
-        @".#wawona-android for iOS Simulator / Android emulator.")
+        @"Status", nil, WSettingInfo, @"Active",
+        @"VM + container backends are provided by the wwn-vms / wwn-containers "
+        @"dependencies. macOS runs them directly; other targets are "
+        @"capability-gated (see each dep's COMPLIANCE.md).")
   ];
   [sects addObject:machines];
 

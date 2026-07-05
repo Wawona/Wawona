@@ -287,29 +287,10 @@ final class WWNMachinesViewModel: ObservableObject {
       disconnect(other)
     }
 
-    if profile.type == kWWNMachineTypeVirtualMachine ||
-      profile.type == kWWNMachineTypeContainer {
-      #if os(macOS)
-      if profile.type == kWWNMachineTypeVirtualMachine {
-        let provider = (UserDefaults.standard.string(forKey: kWWNPrefsMachineVMProviderStub as String) ?? "utm-se").lowercased()
-        if provider.hasPrefix("utm") {
-          let utmURLs = [
-            URL(fileURLWithPath: "/Applications/UTM.app"),
-            URL(fileURLWithPath: "/Applications/UTM SE.app"),
-          ]
-          if let url = utmURLs.first(where: { FileManager.default.fileExists(atPath: $0.path) }) {
-            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { _, _ in
-              self.statusByMachineId[profile.machineId] = .connected
-              onConnected?()
-            }
-            return
-          }
-        }
-      }
-      #endif
-      statusByMachineId[profile.machineId] = .degraded
-      return
-    }
+    // VM (wwn-vms) and container (wwn-containers) profiles are driven through the
+    // session bridge, which delegates to WWNVirtualMachineRunner /
+    // WWNContainerRunner. They fall through to the WWNMachineSessionBridge.connect
+    // path below like every other backed machine type.
 
     if profile.type == kWWNMachineTypeNative,
        WWNWaypipeRunner.shared() == nil {

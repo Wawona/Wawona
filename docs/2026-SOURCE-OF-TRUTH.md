@@ -51,9 +51,11 @@ remote/nested Xwayland can attach. Details: [`2026-x11-strategy.md`](./2026-x11-
 
 - Preference keys are declared in
   `src/platform/macos/ui/Settings/WWNPreferencesManager.{h,m}` (shared with iOS).
-- Keys ending in `…Stub` (e.g. `MachineContainerRuntimeStub`) are **live**
-  placeholders consumed by `WWNMachineProfileStore.m` for deferred Tier-2
-  machine/VM/container features — they are intentional, not dead code.
+- Machine engine keys (`MachineVMProvider`, `MachineVMVsockPort`,
+  `MachineContainerRuntime`, `MachineContainerImageStore`) are backed by the
+  `wwn-vms` (VM engine) and `wwn-containers` (OCI) dependencies and consumed by
+  `WWNMachineProfileStore.m` + the VM/container runners. They are
+  capability-driven per target (see each dep's `COMPLIANCE.md`), not stubs.
 - Graphics driver default is capability-tiered:
   `+[WWNPreferencesManager defaultVulkanDriverForHardware]` → KosmicKrisp on
   Apple Silicon + macOS 26+, else MoltenVK.

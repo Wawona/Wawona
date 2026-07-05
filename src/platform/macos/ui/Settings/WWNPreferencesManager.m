@@ -62,13 +62,11 @@ NSString *const kWWNPrefsWaypipeVsock = @"WaypipeVsock";
 NSString *const kWWNPrefsWaypipeXwls = @"WaypipeXwls";
 NSString *const kWWNPrefsWaypipeTitlePrefix = @"WaypipeTitlePrefix";
 NSString *const kWWNPrefsWaypipeSecCtx = @"WaypipeSecCtx";
-NSString *const kWWNPrefsMachineVMProviderStub = @"MachineVMProviderStub";
-NSString *const kWWNPrefsMachineVMDefaultVsockStub =
-    @"MachineVMDefaultVsockStub";
-NSString *const kWWNPrefsMachineContainerRuntimeStub =
-    @"MachineContainerRuntimeStub";
-NSString *const kWWNPrefsMachineContainerNamespaceStub =
-    @"MachineContainerNamespaceStub";
+NSString *const kWWNPrefsMachineVMProvider = @"MachineVMProvider";
+NSString *const kWWNPrefsMachineVMVsockPort = @"MachineVMVsockPort";
+NSString *const kWWNPrefsMachineContainerRuntime = @"MachineContainerRuntime";
+NSString *const kWWNPrefsMachineContainerImageStore =
+    @"MachineContainerImageStore";
 // SSH configuration keys (separate from Waypipe)
 NSString *const kWWNPrefsSSHHost = @"SSHHost";
 NSString *const kWWNPrefsSSHUser = @"SSHUser";
@@ -307,11 +305,17 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
     kWWNPrefsWaypipeTitlePrefix : @"",
     kWWNPrefsWaypipeSecCtx : @"",
     kWWNPrefsWaypipeUseSSHConfig : @YES,
-    // Machine stubs
-    kWWNPrefsMachineVMProviderStub : @"utm-se",
-    kWWNPrefsMachineVMDefaultVsockStub : @"1024",
-    kWWNPrefsMachineContainerRuntimeStub : @"docker",
-    kWWNPrefsMachineContainerNamespaceStub : @"default",
+    // Machine engines: wwn-vms VM provider + wwn-containers OCI runtime. The
+    // container runtime default is capability-driven per target (Apple
+    // Containerization on macOS; container-in-VM elsewhere).
+    kWWNPrefsMachineVMProvider : @"nixos-vm",
+    kWWNPrefsMachineVMVsockPort : @"1024",
+#if TARGET_OS_OSX
+    kWWNPrefsMachineContainerRuntime : @"containerization",
+#else
+    kWWNPrefsMachineContainerRuntime : @"container-in-vm",
+#endif
+    kWWNPrefsMachineContainerImageStore : @"~/.local/share/wawona/oci",
     // SSH
     kWWNPrefsSSHHost : @"",
     kWWNPrefsSSHUser : @"",
@@ -419,10 +423,10 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
   [defaults removeObjectForKey:kWWNPrefsWaypipeTitlePrefix];
   [defaults removeObjectForKey:kWWNPrefsWaypipeSecCtx];
   [defaults removeObjectForKey:kWWNPrefsWaypipeCustomScript];
-  [defaults removeObjectForKey:kWWNPrefsMachineVMProviderStub];
-  [defaults removeObjectForKey:kWWNPrefsMachineVMDefaultVsockStub];
-  [defaults removeObjectForKey:kWWNPrefsMachineContainerRuntimeStub];
-  [defaults removeObjectForKey:kWWNPrefsMachineContainerNamespaceStub];
+  [defaults removeObjectForKey:kWWNPrefsMachineVMProvider];
+  [defaults removeObjectForKey:kWWNPrefsMachineVMVsockPort];
+  [defaults removeObjectForKey:kWWNPrefsMachineContainerRuntime];
+  [defaults removeObjectForKey:kWWNPrefsMachineContainerImageStore];
   // SSH
   [defaults removeObjectForKey:kWWNPrefsSSHHost];
   [defaults removeObjectForKey:kWWNPrefsSSHUser];

@@ -60,11 +60,12 @@ extern NSString *const kWWNPrefsWaypipeVsock;
 extern NSString *const kWWNPrefsWaypipeXwls;
 extern NSString *const kWWNPrefsWaypipeTitlePrefix;
 extern NSString *const kWWNPrefsWaypipeSecCtx;
-// Machine settings (v0.2.4 — UTM launcher on macOS; sim/emulator docs elsewhere)
-extern NSString *const kWWNPrefsMachineVMProviderStub;
-extern NSString *const kWWNPrefsMachineVMDefaultVsockStub;
-extern NSString *const kWWNPrefsMachineContainerRuntimeStub;
-extern NSString *const kWWNPrefsMachineContainerNamespaceStub;
+// Machine settings — backed by the wwn-vms (VM engine) + wwn-containers (OCI)
+// dependencies. Capability-driven per target (see each dep's COMPLIANCE.md).
+extern NSString *const kWWNPrefsMachineVMProvider;
+extern NSString *const kWWNPrefsMachineVMVsockPort;
+extern NSString *const kWWNPrefsMachineContainerRuntime;
+extern NSString *const kWWNPrefsMachineContainerImageStore;
 // SSH configuration keys (separate from Waypipe)
 extern NSString *const kWWNPrefsSSHHost;
 extern NSString *const kWWNPrefsSSHUser;
