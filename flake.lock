@@ -797,7 +797,7 @@
         ]
       },
       "locked": {
-        "narHash": "sha256-vTWxymuOlxQdBeZ1RXmHnKm7qa1obdPzOutvSza3Hhk=",
+        "narHash": "sha256-fAzhfa0QgbWEePeeA4VTlu76hVk/guYuOc6mHl1PyPE=",
         "path": "/Users/8amps/Wawona/wwn-containers",
         "type": "path"
       },
@@ -977,6 +977,23 @@
         "type": "github"
       }
     },
+    "wwn-utm": {
+      "inputs": {
+        "nixpkgs": [
+          "wwn-vms",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "narHash": "sha256-5jAp/HL3og+HaCJhOYPPGCjXy1rM3Or7T929Y1fCz3w=",
+        "path": "/Users/8amps/Wawona/UTM",
+        "type": "path"
+      },
+      "original": {
+        "path": "/Users/8amps/Wawona/UTM",
+        "type": "path"
+      }
+    },
     "wwn-vms": {
       "inputs": {
         "microvm": [
@@ -990,10 +1007,11 @@
         ],
         "wwn-toolchain": [
           "wwn-toolchain"
-        ]
+        ],
+        "wwn-utm": "wwn-utm"
       },
       "locked": {
-        "narHash": "sha256-U3dzE+PeVJ205fOgwko1Fk0iPSKUuZHeGDxdgC9O9Cw=",
+        "narHash": "sha256-gnIFdj4XtVEkdGl8arHSI+RTX/lavuEYHs436IOadT0=",
         "path": "/Users/8amps/Wawona/wwn-vms",
         "type": "path"
       },
