@@ -68,7 +68,23 @@ Status source of truth: [`2026-SOURCE-OF-TRUTH.md`](./2026-SOURCE-OF-TRUTH.md).
   `WWNVirtualMachineRunner`; the `Machine*Stub` prefs are replaced by real
   `MachineVMProvider` / `MachineVMVsockPort` settings.
 - **Design**: OrbStack model — Virtualization.framework + **vsock** transport
-  (not a virtual NIC / RDP). Guest runs `waypipe --socket vsock:2:1024 server`.
+  (not a virtual NIC / RDP). Guest runs `waypipe --vsock -s 1024 server -- <client>`
+  (connects out to host CID 2; vfkit default listen mode forwards to the host
+  unix socket that the bridge listens on).
+- **End-to-end verified (2026-07-05)**: guest boots to login under vfkit and a
+  Wayland client (`foot`) is relayed all the way to a compositor `wayland-0`
+  (`foot → waypipe server → vsock CID2:1024 → vfkit → socat LISTEN → waypipe
+  client → wayland-0`; 126 protocol bytes + bidirectional wire-version 17
+  handshake observed). Bugs fixed to get here:
+  - launcher wraps vfkit in a **pty** (microvm.nix's `virtio-serial,stdio`
+    console fails with "operation not supported on socket" under NSTask/headless);
+  - bridge `socat` must **UNIX-LISTEN** on the vfkit vsock socket, not connect;
+  - guest uses waypipe's real `--vsock -s <port>` form (not `--socket vsock:…`);
+  - guest forwards a Wayland **client** (`foot`), not the `sway` compositor
+    (waypipe forwards clients; Wawona *is* the compositor). Nested compositors
+    are the Phase-29 `wwn-*` path (a compositor bound to `WLR_BACKENDS=wayland`).
+  Last inch to a literal on-screen window: run the Wawona GUI and start
+  `wawona-vm-bridge` (it defaults `WAWONA_RUNTIME` to Wawona's XDG runtime dir).
 - **No host-NixOS dependency**: guest images build locally on the Mac via
   Determinate Nix's native (Virtualization.framework) Linux builder.
 
