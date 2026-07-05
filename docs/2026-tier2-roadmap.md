@@ -37,53 +37,66 @@ Status source of truth: [`2026-SOURCE-OF-TRUTH.md`](./2026-SOURCE-OF-TRUTH.md).
 
 - **Goal**: "WSLg for macOS" — run Linux GUI apps in an Apple container, bridged
   to Wawona over vsock waypipe.
-- **Entry points**: `Machine*Stub` prefs + `WWNMachineProfileStore`;
-  `WWNWaypipeRunner` (`waypipeVsock` flag already exists).
-- **Plan**: wrap `containerization.framework` (macOS 26 SDK-gated); expose a
-  vsock socket; run `waypipe --vsock` client/server across the boundary; surface
-  container lifecycle in the Machines UI (stubs already persisted).
-- **Gating**: macOS 26+, new entitlements.
+- **Now owned by [`wwn-containers`](../../wwn-containers)** (split out of Wawona):
+  - Universal OCI image management is the Rust `wwn-oci` core (registry v2 pull,
+    CAS store, manifest/index parse, layer unpack) — `nix build .#wwn-oci`.
+  - macOS execution backend `wwn-containerd` wraps Apple's Containerization
+    framework (per-container VM + `vminitd`, gRPC/vsock); runtime-compiled Swift
+    (host SDK) like `wawona-vz`.
+- **Entry points**: `MachineContainerRuntime` / `MachineContainerImageStore`
+  prefs (the `Machine*Stub` prefs are gone), `WWNContainerRunner`,
+  `WWNMachineSessionBridge` (container profiles route here).
+- **Gating**: macOS 26+, `com.apple.security.virtualization`; direct/notarized
+  only (MAS ships image-management-only). See `wwn-containers/COMPLIANCE.md`.
 
 ## p26-vm-nixos — prebuilt NixOS VMs via Virtualization.framework
 
 - **Goal**: OrbStack-style prebuilt NixOS VMs, GUI forwarded into Wawona.
-- **Status**: **first slice landed** (host launcher + guest image + flake wiring).
-  See [2026-nixos-vm-bridge.md](./2026-nixos-vm-bridge.md).
-- **Two tracks** (both on Virtualization.framework):
-  - **Developer track (recommended, working): `microvm.nix` + `vfkit`.** Adopted
-    from the proven `/etc/nix-darwin/.dotfiles` setup. `nix run .#wawona-microvm`
+- **Now owned by [`wwn-vms`](../../wwn-vms)** (split out of Wawona). Wawona
+  consumes it as a flake input; the built-in VM is **NixOS-only**. See
+  [2026-nixos-vm-bridge.md](./2026-nixos-vm-bridge.md).
+- **Two macOS tracks** (both on Virtualization.framework), relocated into wwn-vms:
+  - **Developer track (working): `microvm.nix` + `vfkit`** —
+    `wwn-vms/dependencies/vms/microvm-guest.nix`. `nix run .#wawona-microvm`
     boots the guest; `nix run .#wawona-vm-bridge` relays its Wayland session into
-    Wawona. [microvm-guest.nix](../dependencies/wawona/microvm-guest.nix). Uses
-    `writableStoreOverlay` + a virtiofs read-only `/nix/store` share → **no
-    make-disk-image/KVM** (fixes the guest-build stall). Stays on **upstream**
-    microvm.nix by attaching vsock via `vfkit.extraArgs` (upstream's runner still
-    throws on `vsock.cid`).
-  - **In-app track (future): native Swift `wawona-vz`** —
-    [WawonaLinuxVZ.swift](../src/platform/macos/vm/WawonaLinuxVZ.swift) /
-    [vz-launcher.nix](../dependencies/wawona/vz-launcher.nix) /
-    [nixos-guest.nix](../dependencies/wawona/nixos-guest.nix). Embeddable in
-    Wawona.app with no external hypervisor; ad-hoc signed with
-    `com.apple.security.virtualization`.
-  - Machines UI `virtual_machine` type + `Machine*Stub` prefs (next hook).
+    Wawona. `writableStoreOverlay` + virtiofs ro `/nix/store` → **no
+    make-disk-image/KVM**; stays on upstream microvm.nix via `vfkit.extraArgs`.
+  - **In-app track: native Swift `wawona-vz`** —
+    `wwn-vms/dependencies/vms/{WawonaLinuxVZ.swift,vz-launcher.nix}`. Embeddable,
+    ad-hoc signed with `com.apple.security.virtualization`.
+- **Machines UI wired**: `virtual_machine` profiles route through
+  `WWNVirtualMachineRunner`; the `Machine*Stub` prefs are replaced by real
+  `MachineVMProvider` / `MachineVMVsockPort` settings.
 - **Design**: OrbStack model — Virtualization.framework + **vsock** transport
-  (not a virtual NIC / RDP). Guest runs `waypipe --socket vsock:2:1024 server`
-  forwarding a Wayland session (sway/foot today; wwn-niri/… later) into Wawona.
-- **Remaining**: boot-test the microvm guest + bridge end-to-end on this M1;
-  wire the Machines UI; tune vcpu/mem/overlay size; OrbStack-style virtiofs
-  caching.
-- **No host-NixOS dependency**: the `aarch64-linux` guest image builds locally on
-  the Mac via **Determinate Nix's native (Virtualization.framework) Linux
-  builder** (`external-builders` in `/etc/nix/nix.conf`): just
-  `nix build .#packages.aarch64-linux.wawona-nixos-guest`. The same builder
-  unblocks the other Tier-2 Linux lanes (WLCS / GTK runtime / dEQP).
+  (not a virtual NIC / RDP). Guest runs `waypipe --socket vsock:2:1024 server`.
+- **No host-NixOS dependency**: guest images build locally on the Mac via
+  Determinate Nix's native (Virtualization.framework) Linux builder.
 
 ## p27-ios-utmse — UTM SE jitless VM backend (iOS/iPadOS/visionOS)
 
 - **Goal**: run a jitless VM on iOS (UTM SE model), reusing Wawona's GUI.
-- **Entry points**: `wwn-utm` (per porting convention), Machines UI.
-- **Plan**: integrate the jitless (TCG-interpreter) backend; App Store
-  compliance (no JIT); present guest via the same compositor path; scope to what
-  SE performance allows.
+- **Now the mobile engine of [`wwn-vms`](../../wwn-vms)** (unifies with p26/p29
+  under the vms/containers split):
+  - `wwn-vms/dependencies/vms/mobile/engine.nix` — jitless **QEMU-TCTI** engine
+    sourced from the aligned UTM fork **`wwn-utm`** (`../../UTM/flake.nix`,
+    wired as a `wwn-vms` input: `qemuUtmPatch`, build scripts, iOS-SE scheme).
+  - `wwn-vms/dependencies/vms/mobile/guest.nix` — bundled minimal NixOS guest
+    (`nixosConfigurations.wawona-mobile-guest`), shipped as ODR/bundled data.
+- **Containers on iOS**: container-in-VM via `wwn-containers`
+  (`nixosConfigurations.wawona-container-guest`, crun in the guest, Wayland over
+  vsock+waypipe).
+- **Compliance**: no JIT, no Hypervisor.framework; guest is data. TCTI is the
+  honest ceiling. See `wwn-vms/COMPLIANCE.md`.
+
+## p29-wwn-vms-containers — VM/container substrate split (supersedes p29-utm-orbstack)
+
+- **Done (scaffold + wiring)**: [`wwn-vms`](../../wwn-vms) (VM engines +
+  NixOS-only guests) and [`wwn-containers`](../../wwn-containers) (universal OCI
+  core + per-target execution backends) are separate `wwn-*` deps consumed by
+  Wawona via local `path:` inputs; both `registryFragment`s merge into
+  `mergedRegistry`. The UTM fork is aligned as `wwn-utm`.
+- **Remaining**: real per-target engine cross-builds (QEMU-TCTI for Apple,
+  QEMU/AVF for Android), then flip Wawona inputs from `path:` to `github:`.
 
 ## p11-mode-b — macOS SkyLight/WindowServer replacement (SIP-gated stretch)
 

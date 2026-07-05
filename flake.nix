@@ -63,16 +63,15 @@
     wwn-neovim.url = "github:Wawona/wwn-neovim";
     wwn-neovim.inputs.nixpkgs.follows = "nixpkgs";
     wwn-neovim.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    # VM + container substrate. Local path: inputs while pre-release; switched to
-    # github:Wawona/wwn-vms / wwn-containers once stable (see wwn-vms/wwn-containers
-    # port plans). wwn-containers depends on wwn-vms, so pin both to Wawona's
-    # single nixpkgs/toolchain and make containers follow this same wwn-vms.
-    wwn-vms.url = "path:/Users/8amps/Wawona/wwn-vms";
+    # VM + container substrate. wwn-containers depends on wwn-vms, so pin both to
+    # Wawona's single nixpkgs/toolchain and make containers follow this same
+    # wwn-vms.
+    wwn-vms.url = "github:Wawona/wwn-vms";
     wwn-vms.inputs.nixpkgs.follows = "nixpkgs";
     wwn-vms.inputs.rust-overlay.follows = "rust-overlay";
     wwn-vms.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-vms.inputs.microvm.follows = "microvm";
-    wwn-containers.url = "path:/Users/8amps/Wawona/wwn-containers";
+    wwn-containers.url = "github:Wawona/wwn-containers";
     wwn-containers.inputs.nixpkgs.follows = "nixpkgs";
     wwn-containers.inputs.rust-overlay.follows = "rust-overlay";
     wwn-containers.inputs.wwn-toolchain.follows = "wwn-toolchain";

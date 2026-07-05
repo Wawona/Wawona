@@ -797,13 +797,17 @@
         ]
       },
       "locked": {
-        "narHash": "sha256-fAzhfa0QgbWEePeeA4VTlu76hVk/guYuOc6mHl1PyPE=",
-        "path": "/Users/8amps/Wawona/wwn-containers",
-        "type": "path"
+        "lastModified": 1783289088,
+        "narHash": "sha256-GnGP3fxlKDZa8wYWJ4dhQMN505jX3lyHTxXZtPyGLPg=",
+        "owner": "Wawona",
+        "repo": "wwn-containers",
+        "rev": "906c4a71e646d89e11c76ec4ba17b8fca0482613",
+        "type": "github"
       },
       "original": {
-        "path": "/Users/8amps/Wawona/wwn-containers",
-        "type": "path"
+        "owner": "Wawona",
+        "repo": "wwn-containers",
+        "type": "github"
       }
     },
     "wwn-coreutils": {
@@ -985,13 +989,17 @@
         ]
       },
       "locked": {
-        "narHash": "sha256-5jAp/HL3og+HaCJhOYPPGCjXy1rM3Or7T929Y1fCz3w=",
-        "path": "/Users/8amps/Wawona/UTM",
-        "type": "path"
+        "lastModified": 1783288156,
+        "narHash": "sha256-RJTkNROqNRqdJZEp4QBLewlv+pMieh3XkcfDLQG5/w4=",
+        "owner": "Wawona",
+        "repo": "UTM",
+        "rev": "51e1a7f44b63c6511c349aecb6619b6a7b6dbca1",
+        "type": "github"
       },
       "original": {
-        "path": "/Users/8amps/Wawona/UTM",
-        "type": "path"
+        "owner": "Wawona",
+        "repo": "UTM",
+        "type": "github"
       }
     },
     "wwn-vms": {
@@ -1011,13 +1019,17 @@
         "wwn-utm": "wwn-utm"
       },
       "locked": {
-        "narHash": "sha256-gnIFdj4XtVEkdGl8arHSI+RTX/lavuEYHs436IOadT0=",
-        "path": "/Users/8amps/Wawona/wwn-vms",
-        "type": "path"
+        "lastModified": 1783289047,
+        "narHash": "sha256-F/U7Wdq7SlVm8b1NMxdKtds3f9NVN6TsiSzx3mZmSAk=",
+        "owner": "Wawona",
+        "repo": "wwn-vms",
+        "rev": "eb9857e342098d8b223c459cb041b86902f49f40",
+        "type": "github"
       },
       "original": {
-        "path": "/Users/8amps/Wawona/wwn-vms",
-        "type": "path"
+        "owner": "Wawona",
+        "repo": "wwn-vms",
+        "type": "github"
       }
     },
     "wwn-waypipe": {

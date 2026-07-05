@@ -12,6 +12,13 @@ on the Mac via **Determinate Nix's native VZ Linux builder**; no separate NixOS
 host is needed. End-to-end Wayland-over-vsock still needs a boot-test — see
 "Build & run" and "Known gaps".
 
+> **Relocated into [`wwn-vms`](../../wwn-vms).** The VM engine + guests now live in
+> the `wwn-vms` dependency (`dependencies/vms/`), consumed by Wawona as a flake
+> input. The macOS `microvm-guest.nix`, `vz-launcher.nix`, and `WawonaLinuxVZ.swift`
+> moved there; the flake apps `wawona-microvm` / `wawona-vm-bridge` / `wawona-vz`
+> are unchanged. Containers are the sibling [`wwn-containers`](../../wwn-containers).
+> The deferred `nixos-guest.nix` artifact track stays in Wawona for now.
+
 ## Two tracks
 
 There are two ways to boot the guest, both on Virtualization.framework:
@@ -24,13 +31,14 @@ There are two ways to boot the guest, both on Virtualization.framework:
    a virtiofs read-only share of the host `/nix/store`**, so the rootfs is a tiny
    writable overlay disk and **no `make-disk-image`/QEMU/KVM is needed** — which
    is exactly what stalled the hand-rolled guest on the VZ Linux builder.
-   Files: [microvm-guest.nix](../dependencies/wawona/microvm-guest.nix); flake
+   Files: [microvm-guest.nix](../../wwn-vms/dependencies/vms/microvm-guest.nix); flake
    apps `wawona-microvm` (boot) and `wawona-vm-bridge` (Wayland relay).
 2. **In-app track — native Swift launcher `wawona-vz`** (future, for embedding
    in Wawona.app with no external hypervisor):
-   [WawonaLinuxVZ.swift](../src/platform/macos/vm/WawonaLinuxVZ.swift) +
-   [vz-launcher.nix](../dependencies/wawona/vz-launcher.nix) +
-   [nixos-guest.nix](../dependencies/wawona/nixos-guest.nix) (kernel/initrd/rootfs).
+   [WawonaLinuxVZ.swift](../../wwn-vms/dependencies/vms/WawonaLinuxVZ.swift) +
+   [vz-launcher.nix](../../wwn-vms/dependencies/vms/vz-launcher.nix) +
+   [nixos-guest.nix](../dependencies/wawona/nixos-guest.nix) (kernel/initrd/rootfs;
+   deferred artifact track, still in Wawona).
 
 ### vsock over vfkit — the one caveat
 
@@ -116,8 +124,8 @@ a natural flake output).
   └────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Host launcher**: `wawona-vz` ([WawonaLinuxVZ.swift](../src/platform/macos/vm/WawonaLinuxVZ.swift),
-  built by [vz-launcher.nix](../dependencies/wawona/vz-launcher.nix)). Direct-kernel
+- **Host launcher**: `wawona-vz` ([WawonaLinuxVZ.swift](../../wwn-vms/dependencies/vms/WawonaLinuxVZ.swift),
+  built by [vz-launcher.nix](../../wwn-vms/dependencies/vms/vz-launcher.nix)). Direct-kernel
   boot (`VZLinuxBootLoader`), virtio-blk root, virtio console on `hvc0`, entropy,
   memory balloon, `VZVirtioSocketDevice`, optional virtiofs + Rosetta. It runs a
   bidirectional **vsock↔unix bridge** so guest Wayland traffic reaches Wawona's
