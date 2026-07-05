@@ -60,6 +60,21 @@ nix run .#wawona-microvm
 nix run .#wawona-vm-bridge          # honors WAWONA_RUNTIME=/path/to/xdg-runtime
 ```
 
+**Build status:** `nix build .#packages.aarch64-darwin.wawona-microvm` is
+**verified** — the guest closure, systemd initrd, vfkit runner, and wrapper all
+realize in ~90s on the Determinate aarch64-linux (VZ) builder with **no
+make-disk-image and no KVM**. Boot-test (guest → bridge → Wawona window) is the
+next validation.
+
+### Machines UI wiring
+
+The `virtual_machine` (and `container`) machine type is wired on macOS:
+`WWNMachineSessionBridge` → `WWNVirtualMachineRunner` runs the profile's custom
+script as a tracked subprocess (with `WAWONA_RUNTIME` exported) and tears it down
+on disconnect. Configure a VM profile's custom script to the two `nix run`
+commands above. On iOS/etc. the runner is a stub (the in-process UTM SE backend,
+p27, is the mobile path).
+
 ## What OrbStack does (and what we borrow)
 
 Verified from OrbStack's architecture docs + HN/benchmarks:
@@ -198,6 +213,13 @@ GTK runtime, dEQP).
 
 ## Known gaps (honest status)
 
+- **`wawona-vz` artifact track does not build on the VZ builder**: the
+  `wawona-nixos-guest` (kernel/initrd/rootfs for the embedded Swift launcher)
+  fails in `make-initrd-ng` on a dangling `ncurses` terminfo symlink
+  (`share/terminfo/l/linux`, `No such file or directory`) on the Determinate VZ
+  Linux builder — independent of scripted-vs-systemd initrd. The microvm/vfkit
+  track builds its own initrd fine, so it is the working path; the embedded
+  `wawona-vz` in-app track is deferred until this store/ncurses issue is fixed.
 - **waypipe vsock topology unverified**: the guest service runs
   `waypipe --vsock -s <port> server -- cage -- foot`; the precise
   client/server/`-s` semantics for vsock need a real Linux boot to confirm, and

@@ -1,12 +1,18 @@
 #import "WWNMachineSessionBridge.h"
 #import "../Settings/WWNWaypipeRunner.h"
 #import "../Settings/WWNPreferencesManager.h"
+#import "WWNVirtualMachineRunner.h"
 
 @implementation WWNMachineSessionBridge
 
 + (BOOL)profileRequiresWaypipeTransport:(WWNMachineProfile *)profile {
   return [profile.type isEqualToString:kWWNMachineTypeSSHWaypipe] ||
          [profile.type isEqualToString:kWWNMachineTypeSSHTerminal];
+}
+
++ (BOOL)profileUsesVirtualMachineBackend:(WWNMachineProfile *)profile {
+  return [profile.type isEqualToString:kWWNMachineTypeVirtualMachine] ||
+         [profile.type isEqualToString:kWWNMachineTypeContainer];
 }
 
 + (BOOL)profileUsesNativeCompositorClient:(WWNMachineProfile *)profile {
@@ -66,6 +72,7 @@
   if (runner.isRunning) {
     [runner stopWaypipe];
   }
+  [[WWNVirtualMachineRunner sharedRunner] stopAll];
 }
 
 + (BOOL)connectProfile:(WWNMachineProfile *)profile
@@ -111,6 +118,14 @@
     return YES;
   }
 
+  // p26-vm-nixos / p25-macos-containers: boot a Linux guest (NixOS microvm via
+  // vfkit, or a container) whose Wayland session bridges into Wawona over
+  // vsock+waypipe. The profile's custom script is the boot command.
+  if ([self profileUsesVirtualMachineBackend:profile]) {
+    return [[WWNVirtualMachineRunner sharedRunner] launchProfile:profile
+                                                          error:error];
+  }
+
   if (error) {
     *error = [NSError
         errorWithDomain:@"WWNMachineSessionBridge"
@@ -148,6 +163,9 @@
 #endif
   } else if ([self profileRequiresWaypipeTransport:profile]) {
     [[WWNWaypipeRunner sharedRunner] stopWaypipe];
+  } else if ([self profileUsesVirtualMachineBackend:profile]) {
+    [[WWNVirtualMachineRunner sharedRunner]
+        stopProfileWithMachineId:profile.machineId];
   }
 
   if ([[WWNMachineProfileStore activeMachineId] isEqualToString:profile.machineId]) {

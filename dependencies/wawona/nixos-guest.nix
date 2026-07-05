@@ -38,6 +38,15 @@ let
           # Direct-kernel boot: no bootloader, root on the single virtio disk.
           boot.loader.grub.enable = false;
           boot.loader.systemd-boot.enable = false;
+          # Modern systemd initrd (also clears the 26.11 scripted-initrd
+          # deprecation). NOTE: this does NOT currently build on the Determinate
+          # VZ Linux builder — `make-initrd-ng` aborts on a dangling ncurses
+          # terminfo symlink (share/terminfo/l/linux) in this store view. The
+          # microvm/vfkit track (microvm-guest.nix) builds its own initrd fine and
+          # is the working p26 path; this wawona-vz artifact track is deferred
+          # until the ncurses/make-initrd-ng issue is resolved. See
+          # docs/2026-nixos-vm-bridge.md "Known gaps".
+          boot.initrd.systemd.enable = true;
           boot.initrd.availableKernelModules = [
             "virtio_pci"
             "virtio_blk"
