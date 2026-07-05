@@ -96,7 +96,13 @@ Status source of truth: [`2026-SOURCE-OF-TRUTH.md`](./2026-SOURCE-OF-TRUTH.md).
   Wawona via local `path:` inputs; both `registryFragment`s merge into
   `mergedRegistry`. The UTM fork is aligned as `wwn-utm`.
 - **Remaining**: real per-target engine cross-builds (QEMU-TCTI for Apple,
-  QEMU/AVF for Android), then flip Wawona inputs from `path:` to `github:`.
+  QEMU/AVF for Android), then flip Wawona inputs from `path:` to `github:` (done).
+- **Native `container` CLI (scaffolded, not implemented)**: Wawona's native
+  terminals + `wwn-zsh` must expose a `container` command to manage/run OCI
+  containers from a shell on every target (Apple ecosystem + Android), as the
+  terminal front-end to the same `wwn-containers` substrate as Settings →
+  Containers and Machine profile → Containers. Requirement of record:
+  [2026-container-cli.md](./2026-container-cli.md).
 
 ## p11-mode-b — macOS SkyLight/WindowServer replacement (SIP-gated stretch)
 
