@@ -47,9 +47,26 @@ Status source of truth: [`2026-SOURCE-OF-TRUTH.md`](./2026-SOURCE-OF-TRUTH.md).
 ## p26-vm-nixos — prebuilt NixOS VMs via Virtualization.framework
 
 - **Goal**: OrbStack-style prebuilt NixOS VMs, GUI forwarded into Wawona.
-- **Entry points**: `wawona-linux-vm` app (Linux), Machines UI, waypipe/vsock.
-- **Plan**: ship a signed NixOS VM image; boot via `Virtualization.framework`;
-  forward the guest Wayland session over vsock waypipe; manage via Machines UI.
+- **Status**: **first slice landed** (host launcher + guest image + flake wiring).
+  See [2026-nixos-vm-bridge.md](./2026-nixos-vm-bridge.md).
+- **Entry points**:
+  - `wawona-vz` (macOS host launcher, `nix run .#wawona-vz`) —
+    [WawonaLinuxVZ.swift](../src/platform/macos/vm/WawonaLinuxVZ.swift) /
+    [vz-launcher.nix](../dependencies/wawona/vz-launcher.nix). Direct-kernel boot,
+    virtio-vsock + virtiofs + balloon + optional Rosetta; ad-hoc signed with
+    `com.apple.security.virtualization`.
+  - `wawona-nixos-guest` (aarch64-linux guest image) —
+    [nixos-guest.nix](../dependencies/wawona/nixos-guest.nix). **Built on the
+    NixOS host / a Linux builder.**
+  - Machines UI `virtual_machine` type + `Machine*Stub` prefs (next hook).
+- **Design**: OrbStack model — Virtualization.framework + **vsock** transport
+  (not a virtual NIC / RDP). Guest runs `waypipe --vsock` forwarding a Wayland
+  session (cage+foot today; wwn-niri/sway/… later) into Wawona's socket.
+- **Remaining**: validate the waypipe vsock topology end-to-end on the NixOS
+  host; wire the Machines UI; tune rootfs/memory; OrbStack-style virtiofs caching.
+- **Host-NixOS dependency**: only the guest image build needs Linux; set up
+  `nix.linux-builder`/a remote aarch64-linux builder once and the Mac can drive
+  it (also unblocks WLCS / GTK runtime / dEQP Tier-2 lanes).
 
 ## p27-ios-utmse — UTM SE jitless VM backend (iOS/iPadOS/visionOS)
 

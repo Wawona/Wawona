@@ -650,6 +650,15 @@
           wawona-linux-vm = pkgs.callPackage ./dependencies/wawona/linux-vm.nix {
             inherit wawonaVersion;
           };
+          # p26-vm-nixos: prebuilt NixOS guest (kernel+initrd+rootfs) for the
+          # native Virtualization.framework bridge (wawona-vz on the macOS host).
+          # Built here on the Linux/NixOS host and copied to the Mac, since VZ
+          # direct-kernel boot needs aarch64-linux artifacts. See
+          # docs/2026-nixos-vm-bridge.md.
+          wawona-nixos-guest = import ./dependencies/wawona/nixos-guest.nix {
+            inherit nixpkgs pkgs wawonaVersion;
+            system = pkgs.system;
+          };
           install = pkgs.writeShellScriptBin "install" ''
             set -euo pipefail
             exec ${pkgs.nix}/bin/nix profile install "${self.outPath}#wawona" "$@"
@@ -1159,6 +1168,11 @@ EOF
           gl-cts-ios = toolchains.buildForIOS "gl-cts" { };
         }) // (pkgs.lib.optionalAttrs hasGraphicsValidate {
           graphics-validate-macos = pkgs.callPackage ./dependencies/tests/graphics-validate.nix { };
+        }) // (pkgs.lib.optionalAttrs (builtins.pathExists ./dependencies/wawona/vz-launcher.nix) {
+          # p26-vm-nixos: native Virtualization.framework launcher (vsock+waypipe
+          # Wayland bridge). Pure build (compiles the Swift launcher on first run
+          # via host xcrun, like the other wawona-* Apple wrappers).
+          wawona-vz = pkgs.callPackage ./dependencies/wawona/vz-launcher.nix { inherit wawonaVersion; };
         })));
       in packages;
 
@@ -1229,6 +1243,9 @@ EOF
         graphics-validate-macos = { type = "app"; program = "${systemPackages.graphics-validate-macos}/bin/graphics-validate-macos"; };
         # Fast graphics driver-sanity smoke, runnable as `nix run .#graphics-smoke`.
         graphics-smoke = { type = "app"; program = "${systemPackages.graphics-validate-macos}/bin/graphics-validate-macos"; };
+      }) // (pkgs.lib.optionalAttrs (systemPackages ? wawona-vz) {
+        # p26-vm-nixos: `nix run .#wawona-vz -- --kernel ... --initrd ... --disk ...`
+        wawona-vz = { type = "app"; program = "${systemPackages.wawona-vz}/bin/wawona-vz-run"; };
       }));
 
     allSystemPackages = nixpkgs.lib.genAttrs systemsList (system: getPackagesForSystem system (pkgsFor system));
