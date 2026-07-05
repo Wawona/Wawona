@@ -23,6 +23,9 @@ object WawonaTestTags {
     /** The compositor surface view host. */
     const val COMPOSITOR_SURFACE = "wwn.compositor.surface"
 
+    /** Desktop-replacement app drawer open button (shown over the desktop). */
+    const val APP_DRAWER_OPEN = "wwn.appdrawer.open"
+
     fun menuItem(label: String): String =
         MENU_ITEM_PREFIX + label.lowercase().replace(' ', '.')
 }

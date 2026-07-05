@@ -52,6 +52,7 @@ private enum class SettingsTab(val label: String, val icon: ImageVector) {
     GRAPHICS("Graphics", Icons.Filled.GraphicEq),
     CONNECTION("Connection", Icons.Filled.Computer),
     LOCAL_SHELL("Local Shell", Icons.Filled.Folder),
+    DESKTOP("Desktop", Icons.Filled.DesktopMac),
     ADVANCED("Advanced", Icons.Filled.Tune),
     WAYPIPE("Waypipe", Icons.Filled.Wifi),
     SSH("SSH", Icons.Filled.Lock),
@@ -66,6 +67,7 @@ private enum class SettingsTab(val label: String, val icon: ImageVector) {
             GRAPHICS -> Color(0xFFEA4335)
             CONNECTION -> Color(0xFFFBBC04)
             LOCAL_SHELL -> Color(0xFF188038)
+            DESKTOP -> Color(0xFF00ACC1)
             ADVANCED -> Color(0xFF9AA0A6)
             WAYPIPE -> Color(0xFF1A73E8)
             SSH -> Color(0xFF5F6368)
@@ -226,6 +228,7 @@ private fun SettingsSectionContent(
             SettingsTab.GRAPHICS -> GraphicsSection(prefs)
             SettingsTab.CONNECTION -> ConnectionSection(prefs, localIpAddress, context, SettingsTab.CONNECTION.accentColor)
             SettingsTab.LOCAL_SHELL -> LocalShellSection(context, SettingsTab.LOCAL_SHELL.accentColor)
+            SettingsTab.DESKTOP -> DesktopSection(prefs, context, SettingsTab.DESKTOP.accentColor)
             SettingsTab.ADVANCED -> AdvancedSection(prefs)
             SettingsTab.WAYPIPE -> WaypipeSection(prefs, context, SettingsTab.WAYPIPE.accentColor)
             SettingsTab.SSH -> SSHSection(prefs, SettingsTab.SSH.accentColor)
@@ -351,9 +354,6 @@ private fun AdvancedSection(prefs: SharedPreferences) {
         SettingsSwitchItem(prefs, "multipleClients", "Multiple Clients",
             "Allow multiple Wayland clients", Icons.Filled.Group, default = false,
             iconTint = SettingsTab.ADVANCED.accentColor)
-        SettingsSwitchItem(prefs, "enableLauncher", "Enable Launcher",
-            "Show built-in application launcher", Icons.Filled.Apps, default = false,
-            iconTint = SettingsTab.ADVANCED.accentColor)
         SettingsSwitchItem(prefs, "westonSimpleSHMEnabled", "Enable Weston Simple SHM",
             "Start weston-simple-shm on launch", Icons.Filled.PlayArrow, default = false,
             iconTint = SettingsTab.ADVANCED.accentColor)
@@ -363,6 +363,168 @@ private fun AdvancedSection(prefs: SharedPreferences) {
         SettingsSwitchItem(prefs, "westonTerminalEnabled", "Enable Weston Terminal",
             "Start native weston-terminal client", Icons.Filled.Terminal, default = false,
             iconTint = SettingsTab.ADVANCED.accentColor)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DesktopSection(prefs: SharedPreferences, context: Context, accent: Color) {
+    var enabled by remember { mutableStateOf(DesktopReplacement.isEnabled(prefs)) }
+    var selectedMachineId by remember { mutableStateOf(DesktopReplacement.desktopMachineId(prefs)) }
+    val profiles = remember { MachineProfileStore.loadProfiles(prefs) }
+    val nativeMachines = remember(profiles) { DesktopReplacement.eligibleMachines(profiles) }
+    var isHome by remember { mutableStateOf(DesktopReplacement.isWawonaHome(context)) }
+    var pickerExpanded by remember { mutableStateOf(false) }
+
+    SettingsSectionHeader("Desktop Replacement", Icons.Filled.DesktopMac, accent)
+
+    Surface(
+        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = accent.copy(alpha = 0.12f),
+    ) {
+        Text(
+            "Turn Wawona into an Android Launcher: one native machine becomes your " +
+                "Wayland desktop, and an app drawer lets you open both Android apps and " +
+                "the Wayland clients from Machine Configuration. Only a Native machine " +
+                "can be the desktop — VM, container, and network (waypipe/SSH) machines " +
+                "are not eligible.\n\n" +
+                "Unlike macOS Desktop Replacement, Android does not require SIP changes or " +
+                "Recovery-mode steps. Set Wawona as your Home app below.",
+            Modifier.padding(14.dp),
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+
+    SettingsGroup(accent) {
+        Surface(
+            onClick = {
+                enabled = !enabled
+                DesktopReplacement.setEnabled(prefs, enabled)
+            },
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.45f),
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Apps, null, Modifier.size(24.dp), tint = accent)
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Enable Desktop Replacement",
+                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium))
+                        Spacer(Modifier.height(4.dp))
+                        Text("Run Wawona as the device desktop / home.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Spacer(Modifier.width(16.dp))
+                Switch(checked = enabled, onCheckedChange = {
+                    enabled = it
+                    DesktopReplacement.setEnabled(prefs, it)
+                })
+            }
+        }
+    }
+
+    if (enabled) {
+        SettingsSectionHeader("Desktop Machine", Icons.Filled.Computer, accent)
+        if (nativeMachines.isEmpty()) {
+            Surface(
+                Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
+            ) {
+                Text(
+                    "No Native machine profiles found. Create a Native machine in " +
+                        "Machine Configuration first, then select it here.",
+                    Modifier.padding(12.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        } else {
+            val selectedProfile = nativeMachines.firstOrNull { it.id == selectedMachineId }
+            SettingsGroup(accent) {
+                ExposedDropdownMenuBox(
+                    expanded = pickerExpanded,
+                    onExpandedChange = { pickerExpanded = it },
+                ) {
+                    OutlinedTextField(
+                        value = selectedProfile?.name?.ifBlank { "Unnamed Machine" }
+                            ?: "Select a native machine",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Desktop Machine (Native only)") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = pickerExpanded) },
+                        modifier = Modifier.fillMaxWidth().menuAnchor().padding(8.dp),
+                    )
+                    DropdownMenu(expanded = pickerExpanded, onDismissRequest = { pickerExpanded = false }) {
+                        nativeMachines.forEach { machine ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(machine.name.ifBlank { "Unnamed Machine" })
+                                        Text(
+                                            BundledClients.labelFor(machine.nativeLauncher),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    selectedMachineId = machine.id
+                                    DesktopReplacement.setDesktopMachineId(prefs, machine.id)
+                                    pickerExpanded = false
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        SettingsSectionHeader("Android Home", Icons.Filled.Home, accent)
+        SettingsGroup(accent) {
+            Row(
+                Modifier.fillMaxWidth().padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    if (isHome) Icons.Filled.CheckCircle else Icons.Filled.Info,
+                    null,
+                    Modifier.size(22.dp),
+                    tint = if (isHome) Color(0xFF34D399) else accent,
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    if (isHome) "Wawona is your current Home app."
+                    else "Wawona is not the current Home app.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            OutlinedButton(
+                onClick = {
+                    val intent = DesktopReplacement.homeRoleRequestIntent(context)
+                    if (intent != null) {
+                        try {
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Unable to open Home settings: ${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    isHome = DesktopReplacement.isWawonaHome(context)
+                },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                Text(if (isHome) "Change Default Home App" else "Set Wawona as Home App")
+            }
+        }
     }
 }
 

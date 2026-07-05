@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -62,7 +63,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.AlertDialog
@@ -142,6 +146,19 @@ class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
         } catch (e: Exception) {
             WLog.e("ACTIVITY", "Fatal error in onCreate: ${e.message}")
             throw e
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        // When Wawona holds the HOME role, pressing the Home button re-delivers a
+        // MAIN/HOME intent to this already-running activity. Signal the Compose
+        // tree so the desktop can surface the app drawer.
+        val isHomeIntent = intent.action == android.content.Intent.ACTION_MAIN &&
+            intent.categories?.contains(android.content.Intent.CATEGORY_HOME) == true
+        if (isHomeIntent) {
+            HomeIntentBus.signalHome()
         }
     }
 
@@ -245,6 +262,13 @@ fun WawonaApp(
     var respectSafeArea by remember {
         mutableStateOf(prefs.getBoolean("respectSafeArea", true))
     }
+    var desktopModeEnabled by remember {
+        mutableStateOf(DesktopReplacement.isEnabled(prefs))
+    }
+    var desktopMachineId by remember {
+        mutableStateOf(DesktopReplacement.desktopMachineId(prefs))
+    }
+    var showAppDrawer by remember { mutableStateOf(false) }
     val immersiveCompositorMode =
         !showWelcome && !showMachinesHome && sessionOrchestrator.activeSessionId != null
 
@@ -336,6 +360,10 @@ fun WawonaApp(
                     }
                     activity?.window?.decorView?.let { ViewCompat.requestApplyInsets(it) }
                 }
+                DesktopReplacement.KEY_ENABLED ->
+                    desktopModeEnabled = DesktopReplacement.isEnabled(sp)
+                DesktopReplacement.KEY_MACHINE_ID ->
+                    desktopMachineId = DesktopReplacement.desktopMachineId(sp)
             }
         }
         prefs.registerOnSharedPreferenceChangeListener(listener)
@@ -756,7 +784,68 @@ fun WawonaApp(
         confirmSessionClose()
     }
 
+    /**
+     * Desktop Replacement: connect the user-selected native "desktop" machine so
+     * the running compositor becomes the Wayland desktop. Only native machines
+     * are eligible; anything else is ignored.
+     */
+    fun launchDesktopMachine(): Boolean {
+        val desktop = DesktopReplacement.resolveDesktopMachine(prefs, profiles) ?: return false
+        val existing = sessionOrchestrator.sessions.firstOrNull {
+            it.machineId == desktop.id && it.state == MachineSessionState.CONNECTED
+        }
+        if (existing != null) {
+            focusMachine(desktop)
+        } else {
+            val session = sessionOrchestrator.startSession(desktop)
+            connectMachine(desktop, session.sessionId)
+        }
+        return true
+    }
 
+    fun launchWaylandMachineFromDrawer(profile: MachineProfile) {
+        showAppDrawer = false
+        val existing = sessionOrchestrator.sessions.firstOrNull {
+            it.machineId == profile.id && it.state == MachineSessionState.CONNECTED
+        }
+        if (existing != null) {
+            focusMachine(profile)
+        } else {
+            val session = sessionOrchestrator.startSession(profile)
+            connectMachine(profile, session.sessionId)
+        }
+    }
+
+    fun launchAndroidAppFromDrawer(app: AndroidApp) {
+        if (!AndroidAppLauncher.launch(context, app.packageName)) {
+            Toast.makeText(context, "Unable to launch ${app.label}", Toast.LENGTH_SHORT).show()
+        } else {
+            showAppDrawer = false
+        }
+    }
+
+    /* On entering desktop mode with a valid native desktop machine, boot straight
+     * into the Wayland desktop instead of the Machine Configuration grid. */
+    LaunchedEffect(desktopModeEnabled, desktopMachineId, profiles, showWelcome) {
+        if (showWelcome) return@LaunchedEffect
+        if (!desktopModeEnabled) return@LaunchedEffect
+        if (sessionOrchestrator.activeSessionId != null) return@LaunchedEffect
+        if (DesktopReplacement.resolveDesktopMachine(prefs, profiles) != null && showMachinesHome) {
+            launchDesktopMachine()
+        }
+    }
+
+    /* HOME button (Wawona holding the launcher role) opens the app drawer over
+     * the desktop, re-connecting the desktop machine if needed. */
+    val homeTick by HomeIntentBus.homeTick
+    LaunchedEffect(homeTick) {
+        if (homeTick == 0) return@LaunchedEffect
+        if (!desktopModeEnabled) return@LaunchedEffect
+        if (sessionOrchestrator.activeSessionId == null) {
+            launchDesktopMachine()
+        }
+        showAppDrawer = true
+    }
 
     val density = LocalDensity.current
     val imeBottom = with(density) { WindowInsets.ime.getBottom(this) }
@@ -822,7 +911,12 @@ fun WawonaApp(
             onOpenSettings = { showSettingsDialog = true }
         )
     } else {
-        BackHandler(enabled = SessionExitSettings.resolvedSwipeBackEnabled(prefs, activeProfile())) {
+        // In desktop mode, Back is a launcher gesture: open the app drawer instead
+        // of tearing down the desktop session.
+        BackHandler(enabled = desktopModeEnabled && !showAppDrawer) {
+            showAppDrawer = true
+        }
+        BackHandler(enabled = !desktopModeEnabled && SessionExitSettings.resolvedSwipeBackEnabled(prefs, activeProfile())) {
             requestSessionCloseConfirm()
         }
         Box(
@@ -845,6 +939,31 @@ fun WawonaApp(
                     .fillMaxSize()
                     .testTag(WawonaTestTags.COMPOSITOR_SURFACE)
             )
+
+            if (desktopModeEnabled) {
+                Surface(
+                    onClick = { showAppDrawer = true },
+                    shape = RoundedCornerShape(24.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f),
+                    shadowElevation = 6.dp,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .statusBarsPadding()
+                        .padding(start = 12.dp, top = 8.dp)
+                        .testTag(WawonaTestTags.APP_DRAWER_OPEN),
+                ) {
+                    Box(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Filled.Apps,
+                            contentDescription = "Open app drawer",
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+            }
 
             if (showAccessoryBar) {
                 ModifierAccessoryBar(
@@ -950,6 +1069,16 @@ fun WawonaApp(
             onApply = {
                 WawonaSettings.apply(prefs)
             }
+        )
+    }
+
+    if (showAppDrawer) {
+        BackHandler(enabled = true) { showAppDrawer = false }
+        AppDrawer(
+            waylandMachines = profiles.filter { DesktopReplacement.isEligible(it) },
+            onLaunchWaylandMachine = { launchWaylandMachineFromDrawer(it) },
+            onLaunchAndroidApp = { launchAndroidAppFromDrawer(it) },
+            onDismiss = { showAppDrawer = false },
         )
     }
 
