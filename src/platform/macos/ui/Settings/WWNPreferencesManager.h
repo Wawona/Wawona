@@ -77,6 +77,11 @@ extern NSString *const kWWNPrefsSSHKeyPassphrase;
 extern NSString *const kWWNPrefsWaypipeUseSSHConfig;
 extern NSString *const kWWNForceSSDChangedNotification;
 extern NSString *const kWWNPrefsMachineSessionThumbnailsEnabled;
+// Desktop Replacement (wwn-iland Mode B): run Wawona as the desktop by replacing
+// SkyLight/WindowServer. macOS-only, SIP-gated, never an App Store path. The
+// chosen desktop machine MUST be a Native machine profile.
+extern NSString *const kWWNPrefsDesktopReplacementEnabled;
+extern NSString *const kWWNPrefsDesktopReplacementMachineId;
 @interface WWNPreferencesManager : NSObject
 
 + (instancetype)sharedManager;

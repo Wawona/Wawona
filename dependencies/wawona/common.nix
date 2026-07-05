@@ -71,6 +71,8 @@ rec {
     "src/platform/macos/ui/Settings/WWNPreferences.h"
     "src/platform/macos/ui/Settings/WWNPreferencesManager.m"
     "src/platform/macos/ui/Settings/WWNPreferencesManager.h"
+    "src/platform/macos/ui/Settings/WWNSipStatus.m"
+    "src/platform/macos/ui/Settings/WWNSipStatus.h"
     "src/platform/macos/ui/About/WWNAboutPanel.m"
     "src/platform/macos/ui/About/WWNAboutPanel.h"
     "src/platform/macos/ui/Settings/WWNSettingsDefines.h"

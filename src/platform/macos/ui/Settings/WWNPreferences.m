@@ -1,5 +1,9 @@
 #import "WWNPreferences.h"
 #import "../Machines/WWNMachinesCoordinator.h"
+#import "../Machines/WWNMachineProfileStore.h"
+#if TARGET_OS_OSX
+#import "WWNSipStatus.h"
+#endif
 #import "../../platform/macos/WWNCompositorBridge.h"
 #import "../../../../util/WWNLog.h"
 #import "../../WWNPlatformCallbacks.h"
@@ -166,6 +170,9 @@
 - (void)debouncedReloadData;
 #if (TARGET_OS_IPHONE || TARGET_OS_OSX)
 - (void)showLocalShellHelp;
+#endif
+#if TARGET_OS_OSX
+- (void)showDesktopReplacementSipHowTo;
 #endif
 #if TARGET_OS_IPHONE
 - (void)confirmResetShellDotfiles;
@@ -704,6 +711,90 @@ static UIImage *WWNAboutLogo(void) {
 #endif
   advanced.items = advancedItems;
   [sects addObject:advanced];
+
+#if TARGET_OS_OSX
+  // DESKTOP REPLACEMENT (macOS only; wwn-iland Mode B; SIP-gated stretch).
+  // Mirrors the Android Launcher desktop-replacement flow: the user picks a
+  // single Native machine to become the Wayland desktop. On macOS this
+  // corresponds to iland Mode B replacing SkyLight/WindowServer (requires SIP
+  // disabled + root; never an App Store path). Non-native machines (VM,
+  // container, waypipe/SSH) are intentionally not selectable.
+  {
+    WWNPreferencesSection *desktop = [[WWNPreferencesSection alloc] init];
+    desktop.title = @"Desktop";
+    desktop.icon = @"macwindow.on.rectangle";
+    desktop.iconColor = [NSColor systemTealColor];
+
+    NSMutableArray *desktopItems = [NSMutableArray array];
+
+    // System Integrity Protection status — Mode B requires SIP disabled or
+    // partially disabled (`csrutil enable --without debug`). Surface the current
+    // state so the user knows whether desktop replacement can actually engage.
+    WWNSipStatusType sipStatus = [WWNSipStatus current];
+    BOOL sipAllowsDesktop = [WWNSipStatus allowsDesktopReplacement:sipStatus];
+    [desktopItems
+        addObject:ITEM(@"System Integrity Protection", nil, WSettingInfo,
+                       [WWNSipStatus describe:sipStatus],
+                       sipAllowsDesktop
+                           ? @"SIP permits wwn-iland Mode B (debugging and "
+                             @"library injection). Desktop replacement can "
+                             @"engage."
+                           : @"SIP is blocking wwn-iland Mode B. Partially "
+                             @"disable SIP before enabling desktop replacement "
+                             @"(see SIP Requirements & How-To below).")];
+
+    WWNSettingItem *sipHowToBtn =
+        ITEM(@"SIP Requirements & How-To", @"DesktopReplacementSipHowTo",
+             WSettingButton, nil,
+             @"Why SIP must change, Recovery steps, and how this differs from "
+             @"Android Desktop Replacement.");
+    sipHowToBtn.actionBlock = ^{
+      [weakSelf showDesktopReplacementSipHowTo];
+    };
+    [desktopItems addObject:sipHowToBtn];
+
+    [desktopItems
+        addObject:ITEM(@"Enable Desktop Replacement",
+                       @"DesktopReplacementEnabled", WSettingSwitch, @NO,
+                       @"Run Wawona as the macOS desktop by replacing "
+                       @"SkyLight/WindowServer via wwn-iland Mode B. Requires "
+                       @"SIP partially disabled (not App Store). Pick one "
+                       @"Native machine below.")];
+
+    // Native-machine picker, populated from the machine profile store.
+    NSArray<WWNMachineProfile *> *allProfiles =
+        [WWNMachineProfileStore loadProfiles];
+    NSMutableArray<NSString *> *nativeNames = [NSMutableArray array];
+    NSMutableArray<NSString *> *nativeIds = [NSMutableArray array];
+    for (WWNMachineProfile *p in allProfiles) {
+      if ([p.type isEqualToString:@"native"]) {
+        NSString *label = p.name.length ? p.name : @"Unnamed Machine";
+        [nativeNames addObject:label];
+        [nativeIds addObject:p.machineId ?: @""];
+      }
+    }
+    if (nativeIds.count > 0) {
+      WWNSettingItem *machineItem =
+          ITEM(@"Desktop Machine (Native only)",
+               @"DesktopReplacementMachineId", WSettingPopup,
+               nativeIds.firstObject,
+               @"The Native machine whose ported Wayland client becomes the "
+               @"desktop. Only Native machines are eligible.");
+      machineItem.options = nativeNames;
+      machineItem.optionValues = nativeIds;
+      [desktopItems addObject:machineItem];
+    } else {
+      [desktopItems
+          addObject:ITEM(@"Desktop Machine", nil, WSettingInfo, @"None",
+                         @"No Native machine profiles found. Create a Native "
+                         @"machine in Machine Configuration, then select it "
+                         @"here.")];
+    }
+
+    desktop.items = desktopItems;
+    [sects addObject:desktop];
+  }
+#endif
 
   // MACHINES (stubs)
   WWNPreferencesSection *machines = [[WWNPreferencesSection alloc] init];
@@ -4335,6 +4426,27 @@ static UIImage *WWNAboutLogo(void) {
     alert.messageText = @"Could Not Open Finder";
     alert.informativeText = [WWNRootfsProvider snapshot][@"home"];
     [alert runModal];
+  }
+}
+
+- (void)showDesktopReplacementSipHowTo {
+  WWNSipStatusType sipStatus = [WWNSipStatus current];
+  NSAlert *alert = [[NSAlert alloc] init];
+  alert.messageText = @"Desktop Replacement — SIP Requirements";
+  alert.informativeText = [WWNSipStatus desktopReplacementHowToMessage];
+  if ([WWNSipStatus allowsDesktopReplacement:sipStatus]) {
+    alert.alertStyle = NSAlertStyleInformational;
+  } else {
+    alert.alertStyle = NSAlertStyleWarning;
+  }
+  [alert addButtonWithTitle:@"OK"];
+  [alert addButtonWithTitle:@"Copy csrutil Command"];
+  NSModalResponse response = [alert runModal];
+  if (response == NSAlertSecondButtonReturn) {
+    NSPasteboard *pb = [NSPasteboard generalPasteboard];
+    [pb clearContents];
+    [pb setString:@"csrutil enable --without debug"
+            forType:NSPasteboardTypeString];
   }
 }
 #endif

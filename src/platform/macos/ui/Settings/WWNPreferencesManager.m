@@ -83,6 +83,10 @@ static NSString *const kWWNWawonaPreferencesDidSaveNotification =
     @"WawonaPreferencesDidSave";
 NSString *const kWWNPrefsMachineSessionThumbnailsEnabled =
     @"MachineSessionThumbnailsEnabled";
+NSString *const kWWNPrefsDesktopReplacementEnabled =
+    @"DesktopReplacementEnabled";
+NSString *const kWWNPrefsDesktopReplacementMachineId =
+    @"DesktopReplacementMachineId";
 
 static NSString *WWNPreferredSharedRuntimeDir(void) {
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
@@ -277,6 +281,9 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
     kWWNPrefsMultipleClients : @YES,
 #endif
     kWWNPrefsMachineSessionThumbnailsEnabled : @YES,
+    // Desktop Replacement (macOS Mode B; off by default, SIP-gated)
+    kWWNPrefsDesktopReplacementEnabled : @NO,
+    kWWNPrefsDesktopReplacementMachineId : @"",
     // Waypipe
     kWWNPrefsWaypipeDisplay : @"wayland-0",
     kWWNPrefsWaypipeSocket : defaultSocket,
