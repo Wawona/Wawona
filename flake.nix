@@ -1211,26 +1211,37 @@ EOF
           in {
             wawona-microvm = pkgs.writeShellApplication {
               name = "wawona-microvm";
-              runtimeInputs = [ pkgs.coreutils ];
+              runtimeInputs = [ pkgs.coreutils pkgs.python3 ];
               text = ''
-                # vfkit creates the overlay disk + vsock/restful sockets in CWD;
-                # anchor them in a stable per-user state dir so the bridge can find
-                # wawona-guest-vsock.sock reliably.
+                # vfkit creates the overlay disk + restful socket in CWD; anchor
+                # them in a stable per-user state dir. The guest vsock lands on the
+                # host-side unix socket (vsockSocketPath in microvm-guest.nix),
+                # which the bridge listens on — default /tmp/wawona-guest-vsock.sock.
                 STATEDIR="''${XDG_STATE_HOME:-$HOME/.local/state}/wawona-microvm"
                 mkdir -p "$STATEDIR"
                 cd "$STATEDIR"
                 echo "[wawona-microvm] state dir: $STATEDIR" >&2
-                echo "[wawona-microvm] vsock socket will appear at: $STATEDIR/wawona-guest-vsock.sock" >&2
-                exec ${vfkitRunner}/bin/microvm-run "$@"
+                echo "[wawona-microvm] guest vsock -> host unix socket: /tmp/wawona-guest-vsock.sock (the bridge listens here)" >&2
+                # microvm.nix's vfkit runner attaches the guest console via
+                # `--device virtio-serial,stdio`, which fails with "operation not
+                # supported on socket" whenever stdio is not a real TTY — exactly
+                # the case when Wawona launches this via NSTask (no controlling
+                # terminal). Allocate a pty with Python's pty.spawn (works even
+                # with no parent TTY) so the stdio console has a terminal.
+                exec python3 -c 'import pty,sys; sys.exit(pty.spawn(sys.argv[1:]) or 0)' \
+                  ${vfkitRunner}/bin/microvm-run "$@"
               '';
             };
             wawona-vm-bridge = pkgs.writeShellApplication {
               name = "wawona-vm-bridge";
               runtimeInputs = [ pkgs.coreutils pkgs.socat commonPackages.waypipe ];
               text = ''
-                # Relay the guest's vsock Wayland stream into Wawona:
-                #   guest waypipe server (vsock:2:1024)  ->  vfkit unix socket
-                #   -> socat -> host waypipe client socket -> Wawona wayland-0
+                # Relay the guest's vsock Wayland stream into Wawona. vfkit runs in
+                # default "listen" mode (guest->host): when the guest waypipe server
+                # connects to host CID 2:1024, vfkit connects to the host-side unix
+                # socket, which THIS bridge must be LISTENING on. So:
+                #   guest waypipe server --vsock -s 1024  ->  vfkit  ->
+                #   socat UNIX-LISTEN:<vsock sock>  ->  waypipe client  ->  wayland-0
                 # Must match microvm-guest.nix `vsockSocketPath`.
                 VSOCK_SOCKET="''${WAWONA_VSOCK_SOCKET:-/tmp/wawona-guest-vsock.sock}"
                 # Wawona's XDG_RUNTIME_DIR (where it advertises wayland-0). Override
@@ -1244,7 +1255,7 @@ EOF
                   exit 1
                 fi
 
-                rm -f "$WAYPIPE_SOCKET"
+                rm -f "$WAYPIPE_SOCKET" "$VSOCK_SOCKET"
                 export XDG_RUNTIME_DIR="$WAWONA_RUNTIME"
                 export WAYLAND_DISPLAY="wayland-0"
                 echo "[wawona-vm-bridge] starting waypipe client on $WAYPIPE_SOCKET (-> $WAWONA_RUNTIME/wayland-0)" >&2
@@ -1252,18 +1263,15 @@ EOF
                 WAYPIPE_PID=$!
                 trap 'kill "$WAYPIPE_PID" 2>/dev/null || true' EXIT
 
-                # Wait for the guest's vsock socket to appear.
-                for _ in $(seq 1 60); do
-                  [ -S "$VSOCK_SOCKET" ] && break
+                # Wait for waypipe's client socket to come up, then listen on the
+                # vfkit-facing socket. vfkit connects here when the guest dials out;
+                # ,fork lets the guest session reconnect (waypipe/systemd restarts).
+                for _ in $(seq 1 30); do
+                  [ -S "$WAYPIPE_SOCKET" ] && break
                   sleep 1
                 done
-                if [ ! -S "$VSOCK_SOCKET" ]; then
-                  echo "wawona-vm-bridge: $VSOCK_SOCKET never appeared — start .#wawona-microvm first." >&2
-                  exit 1
-                fi
-
-                echo "[wawona-vm-bridge] bridging $VSOCK_SOCKET <-> $WAYPIPE_SOCKET" >&2
-                exec socat "UNIX-CONNECT:$VSOCK_SOCKET" "UNIX-CONNECT:$WAYPIPE_SOCKET"
+                echo "[wawona-vm-bridge] listening on $VSOCK_SOCKET, forwarding to $WAYPIPE_SOCKET" >&2
+                exec socat "UNIX-LISTEN:$VSOCK_SOCKET,fork" "UNIX-CONNECT:$WAYPIPE_SOCKET"
               '';
             };
           }

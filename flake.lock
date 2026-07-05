@@ -1019,11 +1019,11 @@
         "wwn-utm": "wwn-utm"
       },
       "locked": {
-        "lastModified": 1783289047,
-        "narHash": "sha256-F/U7Wdq7SlVm8b1NMxdKtds3f9NVN6TsiSzx3mZmSAk=",
+        "lastModified": 1783291169,
+        "narHash": "sha256-EmJI/ggsLtg2AE2P9W3z56NiSkq1WTybbZ7QgnbYbW8=",
         "owner": "Wawona",
         "repo": "wwn-vms",
-        "rev": "eb9857e342098d8b223c459cb041b86902f49f40",
+        "rev": "c5610c7c101daf89fb24b15b8d86e9b445a0b6d6",
         "type": "github"
       },
       "original": {
