@@ -71,6 +71,7 @@
     wwn-vms.inputs.nixpkgs.follows = "nixpkgs";
     wwn-vms.inputs.rust-overlay.follows = "rust-overlay";
     wwn-vms.inputs.wwn-toolchain.follows = "wwn-toolchain";
+    wwn-vms.inputs.microvm.follows = "microvm";
     wwn-containers.url = "path:/Users/8amps/Wawona/wwn-containers";
     wwn-containers.inputs.nixpkgs.follows = "nixpkgs";
     wwn-containers.inputs.rust-overlay.follows = "rust-overlay";
@@ -1189,18 +1190,20 @@ EOF
           gl-cts-ios = toolchains.buildForIOS "gl-cts" { };
         }) // (pkgs.lib.optionalAttrs hasGraphicsValidate {
           graphics-validate-macos = pkgs.callPackage ./dependencies/tests/graphics-validate.nix { };
-        }) // (pkgs.lib.optionalAttrs (builtins.pathExists ./dependencies/wawona/vz-launcher.nix) {
+        }) // (pkgs.lib.optionalAttrs (builtins.pathExists "${wwn-vms}/dependencies/vms/vz-launcher.nix") {
           # p26-vm-nixos: native Virtualization.framework launcher (vsock+waypipe
           # Wayland bridge). Pure build (compiles the Swift launcher on first run
           # via host xcrun, like the other wawona-* Apple wrappers). This is the
           # *in-app* track (embeddable in Wawona.app, no external hypervisor).
-          wawona-vz = pkgs.callPackage ./dependencies/wawona/vz-launcher.nix { inherit wawonaVersion; };
-        }) // (pkgs.lib.optionalAttrs (builtins.pathExists ./dependencies/wawona/microvm-guest.nix) (
+          # Sourced from the wwn-vms dependency (relocated out of Wawona).
+          wawona-vz = pkgs.callPackage "${wwn-vms}/dependencies/vms/vz-launcher.nix" { inherit wawonaVersion; };
+        }) // (pkgs.lib.optionalAttrs (builtins.pathExists "${wwn-vms}/dependencies/vms/microvm-guest.nix") (
           # p26-vm-nixos: microvm.nix + vfkit *developer* track. `wawona-microvm`
           # builds+boots the NixOS guest under Virtualization.framework;
           # `wawona-vm-bridge` relays its vsock Wayland session into Wawona.
+          # The guest definition lives in the wwn-vms dependency.
           let
-            microvmGuest = import ./dependencies/wawona/microvm-guest.nix {
+            microvmGuest = import "${wwn-vms}/dependencies/vms/microvm-guest.nix" {
               inherit nixpkgs;
               microvm = inputs.microvm;
               hostSystem = system;
@@ -1351,7 +1354,7 @@ EOF
     # p26-vm-nixos: the NixOS guest as a first-class flake output, so it can be
     # built on a linux-builder / NixOS host and inspected. The vfkit runner
     # (config.microvm.runner.vfkit) is what `.#wawona-microvm` execs on the Mac.
-    wawonaMicrovm = import ./dependencies/wawona/microvm-guest.nix {
+    wawonaMicrovm = import "${wwn-vms}/dependencies/vms/microvm-guest.nix" {
       inherit nixpkgs;
       microvm = inputs.microvm;
     };
