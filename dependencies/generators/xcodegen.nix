@@ -645,17 +645,22 @@ PLIST
     outputFiles = rootfsEmbedOutputs;
   };
 
-  mobileGuestIosEmbedScript = guestArtifacts: pkgs.writeShellScript "embed-mobile-guest-ios.sh" ''
+  # The guest kernel/rootfs are a large aarch64-linux NixOS image. Resolve the
+  # path from the environment at xcodebuild time (like WAWONA_UTM_SYSROOT for the
+  # engine) rather than baking a store path in, so generating the Xcode project
+  # never forces building the (heavy, cross-arch) guest. A device build that wants
+  # the bundled VM sets WAWONA_MOBILE_GUEST_DIR to the built artifacts.
+  mobileGuestIosEmbedScript = _guestArtifacts: pkgs.writeShellScript "embed-mobile-guest-ios.sh" ''
     case "''${PLATFORM_NAME:-}" in
       iphoneos|appletvos|xros)
-        guestSrc="${strip guestArtifacts}"
+        guestSrc="''${WAWONA_MOBILE_GUEST_DIR:-}"
         ;;
       *)
         exit 0
         ;;
     esac
-    if [ ! -d "$guestSrc" ]; then
-      echo "warning: wawona-mobile-guest-artifacts not built" >&2
+    if [ -z "$guestSrc" ] || [ ! -d "$guestSrc" ]; then
+      echo "note: wawona-mobile-guest-artifacts not provided; set WAWONA_MOBILE_GUEST_DIR to embed the bundled VM guest" >&2
       exit 0
     fi
     BUNDLE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
@@ -685,17 +690,21 @@ PLIST
     outputFiles = mobileGuestEmbedOutputs;
   };
 
-  mobileVmEngineIosEmbedScript = engineSysroot: pkgs.writeShellScript "embed-mobile-vm-engine-ios.sh" ''
+  # The QEMU-TCTI engine is a multi-GB sysroot built impurely (needs Xcode +
+  # WAWONA_UTM_SYSROOT). Resolve it from the environment at xcodebuild time so
+  # project generation never forces the impure engine build. A device build that
+  # wants the bundled engine sets WAWONA_MOBILE_VM_ENGINE_DIR to the built sysroot.
+  mobileVmEngineIosEmbedScript = _engineSysroot: pkgs.writeShellScript "embed-mobile-vm-engine-ios.sh" ''
     case "''${PLATFORM_NAME:-}" in
       iphoneos|appletvos|xros)
-        engineSrc="${strip engineSysroot}"
+        engineSrc="''${WAWONA_MOBILE_VM_ENGINE_DIR:-}"
         ;;
       *)
         exit 0
         ;;
     esac
-    if [ ! -d "$engineSrc/Frameworks" ]; then
-      echo "warning: wwn-vms-mobile-engine sysroot not built (missing Frameworks/)" >&2
+    if [ -z "$engineSrc" ] || [ ! -d "$engineSrc/Frameworks" ]; then
+      echo "note: wwn-vms-mobile-engine sysroot not provided; set WAWONA_MOBILE_VM_ENGINE_DIR to embed the bundled QEMU-TCTI engine" >&2
       exit 0
     fi
     BUNDLE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
@@ -827,6 +836,7 @@ PLIST
         HEADER_SEARCH_PATHS = [
           "$(inherited)"
           "$(SRCROOT)/src"
+          "$(SRCROOT)/src/util"
           "$(SRCROOT)/src/platform/macos/ui"
           "$(SRCROOT)/src/platform/macos/ui/Machines"
           "$(SRCROOT)/src/platform/macos/ui/Helpers"
@@ -883,6 +893,7 @@ PLIST
           { path = "src/platform/macos/ui/Machines"; excludes = commonExcludes; }
           { path = "src/platform/macos/ui/Settings"; excludes = commonExcludes; }
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
+          { path = "src/platform/macos/ui/Modules"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
@@ -1047,6 +1058,7 @@ PLIST
           { path = "src/platform/macos/ui/Machines"; excludes = commonExcludes; }
           { path = "src/platform/macos/ui/Settings"; excludes = commonExcludes; }
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
+          { path = "src/platform/macos/ui/Modules"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
@@ -1209,6 +1221,7 @@ PLIST
           { path = "src/platform/macos/ui/Machines"; excludes = commonExcludes; }
           { path = "src/platform/macos/ui/Settings"; excludes = commonExcludes; }
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
+          { path = "src/platform/macos/ui/Modules"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
@@ -1506,6 +1519,7 @@ PLIST
             excludes = commonExcludes ++ [ "WWNWaypipeRunner.m" ];
           }
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
+          { path = "src/platform/macos/ui/Modules"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }

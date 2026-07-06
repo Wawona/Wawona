@@ -134,14 +134,6 @@ static CGFloat        const kMaxOverlayH   = 0.72;   /* fraction of screen heigh
     self.textView.layer.masksToBounds = YES;
     self.textView.textContainerInset = UIEdgeInsetsMake(8, 8, 8, 8);
 
-    UIFontDescriptor *monoDesc =
-        [UIFontDescriptor preferredFontDescriptorWithTextStyle:UIFontTextStyleBody];
-    monoDesc = [monoDesc fontDescriptorByAddingAttributes:@{
-        UIFontDescriptorFeatureSettingsAttribute: @[
-            @{ UIFontFeatureTypeIdentifierKey: @(kNumberSpacingType),
-               UIFontFeatureSelectorIdentifierKey: @(kMonospacedNumbersSelector) }
-        ]
-    }];
     self.textView.font = [UIFont monospacedSystemFontOfSize:12.5
                                                      weight:UIFontWeightRegular];
     self.textView.textColor = [UIColor systemGreenColor];

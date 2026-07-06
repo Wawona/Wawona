@@ -100,10 +100,12 @@ static void *WWNMobileWaypipeThread(void *ctx) {
       [NSTemporaryDirectory() stringByAppendingPathComponent:@"wawona-mobile-vsock.sock"];
   [[NSFileManager defaultManager] removeItemAtPath:vsockSocket error:nil];
 
-  if (waypipe_main) {
+  {
     self.waypipeRunning = YES;
     char *socketPath = strdup(vsockSocket.UTF8String);
-    pthread_create(&self.waypipeThread, NULL, WWNMobileWaypipeThread, socketPath);
+    // pthread_create needs the address of the backing ivar; &self.waypipeThread
+    // (a property expression) is not addressable.
+    pthread_create(&_waypipeThread, NULL, WWNMobileWaypipeThread, socketPath);
   }
 
   WWNQemuSystem *qemu = [[WWNQemuSystem alloc] initWithArguments:@[]
