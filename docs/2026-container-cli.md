@@ -1,9 +1,16 @@
-# Native `container` CLI — requirement (scaffolded; not yet implemented)
+# Native `container` CLI — requirement + implementation status
 
-> **Status: SCAFFOLD + REQUIREMENT ONLY.** The command surface exists as a
-> placeholder (`wwn-containers` `container-cli` package); every subcommand is a
-> stub. This document is the requirement of record. **Implementation is future
-> work — do not build it out yet.**
+> **Status: PARTIALLY IMPLEMENTED (2026-07-05, verified on macOS 26.5.1 arm64).**
+> Image management is REAL on the host: `pull` / `images` / `rmi` / `inspect` /
+> `resolve` are wired to `wwn-oci` (digest-verified registry v2 pull, CAS store,
+> per-image rootfs unpack, local catalog under `$WWN_OCI_ROOT` /
+> `~/.local/share/wwn-oci`). `run` is REAL on macOS: it boots a per-container VM
+> via `wwn-containerd` (Apple Containerization framework; kernel discovered from
+> `WAWONA_VM_KERNEL` or the installed containerization kernels; optional bundled
+> initfs via `WAWONA_VM_INITFS`) — verified booting `alpine:3.20`. Still stubs:
+> `exec`/`ps`/`start`/`stop`/`rm`/`logs` (need a persistent container session;
+> `wwn-containerd` is one-shot run+wait), `run` on non-macOS targets
+> (container-in-VM via `wwn-vms`), and per-target cross-built registry variants.
 
 ## Goal
 
