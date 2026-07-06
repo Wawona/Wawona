@@ -2596,13 +2596,16 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
     resolve_ssh_binary_paths(); /* native lib dir probe lives there today */
 
   if (g_zsh_bin_path[0]) {
+    /* Keep a copy in the rootfs for PATH discoverability, but SHELL must
+     * point at the APK-extracted native lib: on API 29+ exec() of files in
+     * app-private storage is denied by SELinux (execute_no_trans). */
     char zsh_dest[512];
     snprintf(zsh_dest, sizeof(zsh_dest), "%s/zsh", usr_bin);
     struct stat st;
     if (stat(zsh_dest, &st) != 0)
       wwn_copy_file(g_zsh_bin_path, zsh_dest);
-    setenv("SHELL", zsh_dest, 1);
-    setenv("WAWONA_SHELL", zsh_dest, 1);
+    setenv("SHELL", g_zsh_bin_path, 1);
+    setenv("WAWONA_SHELL", g_zsh_bin_path, 1);
   }
 
   char home[512];

@@ -464,7 +464,15 @@ let
   angleSimDylib = angleDylibDeps iosSimDeps;
   angleDeviceDylib = angleDylibDeps iosDeps;
 
-  angleEmbedScript = anglePkg: pkgs.writeShellScript "embed-angle-dylibs.sh" ''
+  # platformGlob gates the phase on PLATFORM_NAME: both the Simulator and
+  # Device ANGLE phases run on every build, and without the gate whichever ran
+  # last clobbered the other's slice (device Mach-O in a simulator bundle ->
+  # dyld "Library not loaded: @rpath/libEGL.framework/libEGL" at launch).
+  angleEmbedScript = platformGlob: anglePkg: pkgs.writeShellScript "embed-angle-dylibs.sh" ''
+    case "''${PLATFORM_NAME:-}" in
+      ${platformGlob}) ;;
+      *) exit 0 ;;
+    esac
     DEST="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME/Frameworks"
     EGL_SRC="${strip anglePkg}/lib/libEGL.dylib"
     GLES_SRC="${strip anglePkg}/lib/libGLESv2.dylib"
@@ -505,10 +513,10 @@ PLIST
   '';
 
   angleSimEmbedScript =
-    if angleSimDylib != null then angleEmbedScript angleSimDylib
+    if angleSimDylib != null then angleEmbedScript "*simulator" angleSimDylib
     else pkgs.writeShellScript "embed-angle-sim-dylibs-noop.sh" "exit 0";
   angleDeviceEmbedScript =
-    if angleDeviceDylib != null then angleEmbedScript angleDeviceDylib
+    if angleDeviceDylib != null then angleEmbedScript "iphoneos|appletvos|xros" angleDeviceDylib
     else pkgs.writeShellScript "embed-angle-device-dylibs-noop.sh" "exit 0";
 
   angleSimEmbedPhase = {
@@ -679,15 +687,13 @@ PLIST
     echo "Embedded wawona-mobile-guest into $DEST"
   '';
 
-  mobileGuestEmbedOutputs = [
-    "$(BUILT_PRODUCTS_DIR)/$(FULL_PRODUCT_NAME)/wawona-mobile-guest/rootfs.img"
-  ];
-
+  # No declared outputFiles: Xcode pre-creates declared output paths inside the
+  # bundle even when the script no-ops (simulator), leaving empty directories
+  # that installd rejects (e.g. a Frameworks/*.framework with no Info.plist).
   iosMobileGuestEmbedPhase = {
     path = mobileGuestIosEmbedScript mobileGuestArtifacts;
     name = "Embed wawona-mobile-guest (VM kernel + rootfs)";
-    basedOnDependencyAnalysis = true;
-    outputFiles = mobileGuestEmbedOutputs;
+    basedOnDependencyAnalysis = false;
   };
 
   # The QEMU-TCTI engine is a multi-GB sysroot built impurely (needs Xcode +
@@ -718,15 +724,13 @@ PLIST
     echo "Embedded QEMU-TCTI engine frameworks into $DEST"
   '';
 
-  mobileVmEngineEmbedOutputs = [
-    "$(BUILT_PRODUCTS_DIR)/$(FULL_PRODUCT_NAME)/Frameworks/qemu-aarch64-softmmu.framework/qemu-aarch64-softmmu"
-  ];
-
+  # No declared outputFiles (see iosMobileGuestEmbedPhase note): Xcode
+  # pre-created Frameworks/qemu-aarch64-softmmu.framework/ in simulator
+  # bundles, which installd rejected for the missing Info.plist.
   iosMobileVmEngineEmbedPhase = {
     path = mobileVmEngineIosEmbedScript mobileVmEngine;
     name = "Embed QEMU-TCTI engine (mobile VM)";
-    basedOnDependencyAnalysis = true;
-    outputFiles = mobileVmEngineEmbedOutputs;
+    basedOnDependencyAnalysis = false;
   };
 
   neovimRootfsIosEmbedScript = deviceRootfs: simRootfs: pkgs.writeShellScript "embed-neovim-rootfs-ios.sh" ''
