@@ -1,2 +1,7 @@
 export TEAM_ID="REPLACE_ME_WITH_REAL_ID"
+# Optional: bundled VM guest + QEMU-TCTI engine for iOS/tvOS/visionOS device
+# builds. The guest must be built on a real Linux builder (case-sensitive
+# store) — CI builds it: gh run download -R Wawona/wwn-vms -n wawona-mobile-guest-artifacts -D .artifacts/wawona-mobile-guest
+#export WAWONA_MOBILE_GUEST_DIR="$PWD/.artifacts/wawona-mobile-guest"
+#export WAWONA_MOBILE_VM_ENGINE_DIR="/path/to/wwn-vms-mobile-engine-ios-tci"
 use flake .

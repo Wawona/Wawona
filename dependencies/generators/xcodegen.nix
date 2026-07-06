@@ -668,7 +668,7 @@ PLIST
     rm -rf "$DEST"
     mkdir -p "$DEST"
     cp -f "$guestSrc"/* "$DEST/" 2>/dev/null || true
-    for k in zImage vmlinuz vmlinux; do
+    for k in Image zImage vmlinuz vmlinux; do
       if [ -f "$guestSrc/$k" ]; then
         cp -f "$guestSrc/$k" "$DEST/$k"
       fi

@@ -205,12 +205,16 @@
   }
 
   NSFileManager *fm = NSFileManager.defaultManager;
-  NSString *kernel = [guestDir stringByAppendingPathComponent:@"zImage"];
-  if (![fm fileExistsAtPath:kernel]) {
-    kernel = [guestDir stringByAppendingPathComponent:@"vmlinuz"];
+  NSString *kernel = nil;
+  for (NSString *name in @[ @"Image", @"zImage", @"vmlinuz", @"vmlinux" ]) {
+    NSString *candidate = [guestDir stringByAppendingPathComponent:name];
+    if ([fm fileExistsAtPath:candidate]) {
+      kernel = candidate;
+      break;
+    }
   }
-  if (![fm fileExistsAtPath:kernel]) {
-    kernel = [guestDir stringByAppendingPathComponent:@"vmlinux"];
+  if (kernel == nil) {
+    kernel = [guestDir stringByAppendingPathComponent:@"Image"];
   }
   NSString *rootfs = [guestDir stringByAppendingPathComponent:@"rootfs.img"];
   unsigned memoryMB = 768;

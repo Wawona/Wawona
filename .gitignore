@@ -78,6 +78,8 @@ android-dependencies/
 # Nix build artifacts
 result
 result-*
+# CI-built guest/engine artifacts pulled down locally (gh run download)
+.artifacts/
 /nix/
 .nix-gcroots/
 
