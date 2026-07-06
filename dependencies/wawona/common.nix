@@ -68,6 +68,24 @@ rec {
     "src/platform/macos/ui/Machines/WWNMachinesCoordinator.h"
     "src/platform/macos/ui/Machines/WWNMachineSessionBridge.m"
     "src/platform/macos/ui/Machines/WWNMachineSessionBridge.h"
+    # VM/container runners + jitless QEMU engine (shared macOS/iOS; each file
+    # carries TARGET_OS_OSX branches). Referenced by WWNMachineSessionBridge.m.
+    "src/platform/macos/ui/Machines/WWNVirtualMachineRunner.m"
+    "src/platform/macos/ui/Machines/WWNVirtualMachineRunner.h"
+    "src/platform/macos/ui/Machines/WWNContainerRunner.m"
+    "src/platform/macos/ui/Machines/WWNContainerRunner.h"
+    "src/platform/macos/ui/Machines/WWNMobileVmEngine.m"
+    "src/platform/macos/ui/Machines/WWNMobileVmEngine.h"
+    "src/platform/macos/ui/Machines/WWNQemuProcess.m"
+    "src/platform/macos/ui/Machines/WWNQemuProcess.h"
+    "src/platform/macos/ui/Machines/WWNQemuSystem.m"
+    "src/platform/macos/ui/Machines/WWNQemuSystem.h"
+    # Machine session thumbnails (referenced by WWNCompositorBridge.m + view model).
+    "src/platform/macos/ui/Machines/WWNMachineThumbnailStore.m"
+    "src/platform/macos/ui/Machines/WWNMachineThumbnailStore.h"
+    # Module manager (referenced by main.m; defines WWNModuleStore(+Bridge) inline).
+    "src/platform/macos/ui/Modules/WWNModuleManager.m"
+    "src/platform/macos/ui/Modules/WWNModuleManager.h"
     "src/platform/macos/ui/Settings/WWNPreferences.m"
     "src/platform/macos/ui/Settings/WWNPreferences.h"
     "src/platform/macos/ui/Settings/WWNPreferencesManager.m"

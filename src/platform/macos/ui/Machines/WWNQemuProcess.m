@@ -84,9 +84,9 @@ static void *WWNQemuStartThread(void *args) {
   }
 
   if (self.entry) {
-    self.status = self.entry(self, argc, argv, envp);
+    self->_status = self.entry(self, argc, argv, envp);
   } else {
-    self.status = -1;
+    self->_status = -1;
   }
   dispatch_semaphore_signal(self.done);
   return NULL;
@@ -114,7 +114,7 @@ static void *WWNQemuStartThread(void *args) {
   }
 
   self.processName = name;
-  self.status = 0;
+  _status = 0;
   self.fatal = 0;
 
 #if TARGET_OS_IPHONE || TARGET_OS_TV || TARGET_OS_VISION

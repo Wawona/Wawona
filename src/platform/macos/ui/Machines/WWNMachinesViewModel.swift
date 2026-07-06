@@ -299,15 +299,9 @@ final class WWNMachinesViewModel: ObservableObject {
     }
 
     do {
-      var error: NSError?
-      let ok = WWNMachineSessionBridge.connectProfile(profile, error: &error)
-      if !ok {
-        throw error ?? NSError(
-          domain: "WWNMachinesViewModel",
-          code: 1,
-          userInfo: [NSLocalizedDescriptionKey: "Connect failed."]
-        )
-      }
+      // ObjC `+ (BOOL)connectProfile:error:` imports to Swift as the throwing
+      // method `connect(_:)` (error-peeling + trailing-noun drop).
+      try WWNMachineSessionBridge.connect(profile)
     } catch {
       statusByMachineId[profile.machineId] = .error
       return

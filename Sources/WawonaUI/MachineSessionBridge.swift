@@ -43,13 +43,15 @@ public enum MachineSessionBridge {
     ) throws {
         profileStore.activeMachineId = profile.id
         profileStore.save()
-        var error: NSError?
         guard let objc = WWNMachineProfileStore.profile(byId: profile.id) else {
             throw ConnectError.missingProfile
         }
-        let ok = WWNMachineSessionBridge.connectProfile(objc, error: &error)
-        if !ok {
-            throw ConnectError.backendFailed(error?.localizedDescription ?? "Connect failed.")
+        do {
+            // ObjC `+ (BOOL)connectProfile:error:` bridges to Swift as the
+            // throwing method `connect(_:)` (error-peeling + trailing-noun drop).
+            try WWNMachineSessionBridge.connect(objc)
+        } catch {
+            throw ConnectError.backendFailed(error.localizedDescription)
         }
         MachineRuntimeSettingsApplicator.apply(profile: profile, preferences: preferences)
     }
