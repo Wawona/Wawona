@@ -122,6 +122,11 @@ object WawonaNative {
     external fun nativeIsBundledClientRunning(): Boolean
     external fun nativeGetRunningBundledClientId(): String?
 
+    /** Boot bundled mobile NixOS guest (QEMU/AVF when engine is embedded). */
+    external fun nativeLaunchMobileVm(guestDir: String, memoryMb: Int): Boolean
+    external fun nativeStopMobileVm()
+    external fun nativeIsMobileVmRunning(): Boolean
+
     external fun nativeTestPing(host: String, port: Int, timeoutMs: Int): String
     external fun nativeTestSSH(host: String, user: String, password: String, port: Int): String
 }

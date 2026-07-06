@@ -243,51 +243,29 @@ private fun SettingsSectionContent(
 private fun MachineStubsSection(prefs: SharedPreferences, accent: Color) {
     SettingsSectionHeader("Virtual Machines", Icons.Filled.Storage, accent)
     SettingsTextInputItem(
-        prefs, "machineVmProviderStub", "VM Provider",
-        "Provider identifier for future VM integration", Icons.Filled.Storage,
+        prefs, "machineVmProvider", "VM Provider",
+        "Hypervisor lane (microvm, utm-se, qemu-jit)", Icons.Filled.Storage,
         "utm-se", KeyboardType.Text
     )
     SettingsTextInputItem(
-        prefs, "machineVmDefaultVsockStub", "Default VSock Port",
-        "Saved for future VM launch support", Icons.Filled.Tune,
+        prefs, "machineVmDefaultVsockPort", "Default VSock Port",
+        "Guest waypipe port (wwn-vms mobile guest default)", Icons.Filled.Tune,
         "1024", KeyboardType.Number
     )
-    Surface(
-        Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-    ) {
-        Text(
-            "VM launch is a stub. Future support will come from Wawona's UTM SE fork.",
-            Modifier.padding(12.dp),
-            style = MaterialTheme.typography.bodySmall
-        )
-    }
 
     Spacer(Modifier.height(12.dp))
 
     SettingsSectionHeader("Containers", Icons.Filled.Inventory2, accent)
     SettingsTextInputItem(
-        prefs, "machineContainerRuntimeStub", "Container Runtime",
-        "Default runtime for future container integration", Icons.Filled.Inventory2,
-        "docker", KeyboardType.Text
+        prefs, "machineContainerDefaultRef", "Default Image Ref",
+        "OCI reference for container profiles", Icons.Filled.Inventory2,
+        "alpine:3.20", KeyboardType.Text
     )
     SettingsTextInputItem(
-        prefs, "machineContainerNamespaceStub", "Container Namespace",
-        "Saved stub value for upcoming runtime hooks", Icons.Filled.AccountTree,
-        "default", KeyboardType.Text
+        prefs, "machineContainerRuntime", "Container Runtime",
+        "In-guest runtime (crun/podman/proot)", Icons.Filled.AccountTree,
+        "crun", KeyboardType.Text
     )
-    Surface(
-        Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-    ) {
-        Text(
-            "Container launch is a stub and intentionally non-functional right now.",
-            Modifier.padding(12.dp),
-            style = MaterialTheme.typography.bodySmall
-        )
-    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

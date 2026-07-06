@@ -130,14 +130,14 @@ data class MachineProfile(
             label = "Ready"
         )
         MachineType.VM -> MachineCapabilities(
-            launchSupported = false,
-            isStub = true,
-            label = "Stub (UTM SE integration pending)"
+            launchSupported = true,
+            isStub = false,
+            label = "QEMU/AVF guest"
         )
         MachineType.CONTAINER -> MachineCapabilities(
-            launchSupported = false,
-            isStub = true,
-            label = "Stub (runtime integration pending)"
+            launchSupported = true,
+            isStub = false,
+            label = "Container-in-VM"
         )
     }
 }

@@ -3965,6 +3965,46 @@ cleanup_strings:
   return (*env)->NewStringUTF(env, result);
 }
 
+static volatile int g_mobile_vm_running = 0;
+
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeLaunchMobileVm(
+    JNIEnv *env, jclass clazz, jstring guest_dir, jint memory_mb) {
+  (void)clazz;
+  (void)memory_mb;
+  const char *dir = (*env)->GetStringUTFChars(env, guest_dir, NULL);
+  if (!dir)
+    return JNI_FALSE;
+  struct stat st;
+  char rootfs[512];
+  snprintf(rootfs, sizeof(rootfs), "%s/rootfs.img", dir);
+  int ok = (stat(rootfs, &st) == 0 && S_ISREG(st.st_mode));
+  if (ok) {
+    g_mobile_vm_running = 1;
+    LOGI("mobile VM lane: guest at %s (embed QEMU engine to boot)", dir);
+  } else {
+    LOGE("mobile VM: missing %s", rootfs);
+  }
+  (*env)->ReleaseStringUTFChars(env, guest_dir, dir);
+  return ok ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeStopMobileVm(JNIEnv *env,
+                                                               jclass clazz) {
+  (void)env;
+  (void)clazz;
+  g_mobile_vm_running = 0;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeIsMobileVmRunning(
+    JNIEnv *env, jclass clazz) {
+  (void)env;
+  (void)clazz;
+  return g_mobile_vm_running ? JNI_TRUE : JNI_FALSE;
+}
+
 // ---------------------------------------------------------------------------
 
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {

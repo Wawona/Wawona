@@ -24,6 +24,7 @@ rec {
     "Sources/WawonaUI/WawonaApp.swift"
     "Sources/WawonaUI/UIContractAdapters.swift"
     "Sources/WawonaUI/MachineRuntimeSettingsApplicator.swift"
+    "Sources/WawonaUI/MachineSessionBridge.swift"
     "Sources/WawonaUI/CompositorBridge.swift"
     "Sources/WawonaUI/WelcomeView.swift"
     "Sources/WawonaUI/ContentView.swift"

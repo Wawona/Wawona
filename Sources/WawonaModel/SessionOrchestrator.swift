@@ -40,6 +40,13 @@ public final class SessionOrchestrator: ObservableObject {
         return session
     }
 
+    public func markFailed(machineId: String, reason: String = "Connect failed") -> MachineSession {
+        var session = MachineSession(machineId: machineId, status: .error)
+        sessions = sessions + [session]
+        _ = reason
+        return session
+    }
+
     public func disconnect(sessionId: UUID) {
         guard let idx = sessions.firstIndex(where: { $0.id == sessionId }) else { return }
         var next = sessions

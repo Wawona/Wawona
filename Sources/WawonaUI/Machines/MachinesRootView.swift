@@ -117,10 +117,16 @@ struct MachinesRootView: View {
     }
 
     private func connect(_ profile: MachineProfile) {
-        _ = sessions.connect(machineId: profile.id)
-        profileStore.activeMachineId = profile.id
-        profileStore.save()
-        MachineRuntimeSettingsApplicator.apply(profile: profile, preferences: preferences)
+        do {
+            try MachineSessionBridge.connect(
+                profile: profile,
+                preferences: preferences,
+                profileStore: profileStore
+            )
+            _ = sessions.connect(machineId: profile.id)
+        } catch {
+            _ = sessions.markFailed(machineId: profile.id, reason: error.localizedDescription)
+        }
     }
 
     private func delete(_ profile: MachineProfile) {

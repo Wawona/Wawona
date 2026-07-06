@@ -1,5 +1,7 @@
 #import "WWNVirtualMachineRunner.h"
 
+#import "WWNMobileVmEngine.h"
+
 #import <TargetConditionals.h>
 
 #if TARGET_OS_OSX
@@ -55,19 +57,10 @@
 
   NSString *command = [self bootCommandForProfile:profile];
   if (!command) {
-    if (error) {
-      *error = [NSError
-          errorWithDomain:@"WWNVirtualMachineRunner"
-                     code:2
-                 userInfo:@{
-                   NSLocalizedDescriptionKey : @"No VM boot command configured. "
-                       @"Set the machine's custom script, e.g. run from the "
-                       @"Wawona repo:\n"
-                       @"  nix run .#wawona-microvm &\n"
-                       @"  nix run .#wawona-vm-bridge"
-                 }];
-    }
-    return NO;
+    // Default developer lane: microvm guest + vsock/waypipe bridge into Wawona.
+    command =
+        @"wawona-microvm >/tmp/wawona-microvm.log 2>&1 & "
+         "sleep 2; exec wawona-vm-bridge";
   }
 
   // Replace any existing subprocess for this machine before starting a new one.
@@ -172,25 +165,73 @@
 
 - (BOOL)launchProfile:(WWNMachineProfile *)profile
                 error:(NSError *_Nullable *_Nullable)error {
-  (void)profile;
-  if (error) {
-    *error = [NSError
-        errorWithDomain:@"WWNVirtualMachineRunner"
-                   code:100
-               userInfo:@{
-                 NSLocalizedDescriptionKey :
-                     @"Local VM/container backend is not available on this "
-                     @"platform (in-process UTM SE backend is planned)."
-               }];
+  if (!profile) {
+    if (error) {
+      *error = [NSError errorWithDomain:@"WWNVirtualMachineRunner" code:1
+                               userInfo:@{NSLocalizedDescriptionKey : @"Missing machine profile."}];
+    }
+    return NO;
   }
-  return NO;
+
+  NSString *custom = [profile.customScript
+      stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  if (custom.length > 0) {
+    if (error) {
+      *error = [NSError
+          errorWithDomain:@"WWNVirtualMachineRunner"
+                     code:101
+                 userInfo:@{
+                   NSLocalizedDescriptionKey :
+                       @"Custom shell scripts are not supported for VMs on iOS. "
+                       @"Use the bundled NixOS mobile guest (wawona-mobile-guest)."
+                 }];
+    }
+    return NO;
+  }
+
+  NSString *guestDir = [[NSBundle mainBundle] pathForResource:@"wawona-mobile-guest" ofType:nil];
+  if (guestDir.length == 0) {
+    if (error) {
+      *error = [NSError
+          errorWithDomain:@"WWNVirtualMachineRunner"
+                     code:102
+                 userInfo:@{
+                   NSLocalizedDescriptionKey :
+                       @"Bundled mobile guest (wawona-mobile-guest) is not embedded. "
+                       @"Build wawona-mobile-guest-artifacts and enable the Xcode embed phase."
+                 }];
+    }
+    return NO;
+  }
+
+  NSFileManager *fm = NSFileManager.defaultManager;
+  NSString *kernel = [guestDir stringByAppendingPathComponent:@"zImage"];
+  if (![fm fileExistsAtPath:kernel]) {
+    kernel = [guestDir stringByAppendingPathComponent:@"vmlinuz"];
+  }
+  if (![fm fileExistsAtPath:kernel]) {
+    kernel = [guestDir stringByAppendingPathComponent:@"vmlinux"];
+  }
+  NSString *rootfs = [guestDir stringByAppendingPathComponent:@"rootfs.img"];
+  unsigned memoryMB = 768;
+  id memOverride = profile.runtimeOverrides[@"memoryMB"];
+  if ([memOverride respondsToSelector:@selector(unsignedIntegerValue)]) {
+    memoryMB = (unsigned)[memOverride unsignedIntegerValue];
+  }
+
+  return [[WWNMobileVmEngine sharedEngine] launchProfileWithKernelPath:kernel
+                                                            rootfsPath:rootfs
+                                                              memoryMB:memoryMB
+                                                                 error:error];
 }
 
 - (void)stopProfileWithMachineId:(NSString *)machineId {
   (void)machineId;
+  [[WWNMobileVmEngine sharedEngine] stop];
 }
 
 - (void)stopAll {
+  [[WWNMobileVmEngine sharedEngine] stop];
 }
 
 @end

@@ -1,5 +1,7 @@
 #import "WWNContainerRunner.h"
 
+#import "WWNVirtualMachineRunner.h"
+
 #import <TargetConditionals.h>
 
 #if TARGET_OS_OSX
@@ -49,21 +51,8 @@
 
   NSString *command = [self bootCommandForProfile:profile];
   if (!command) {
-    if (error) {
-      *error = [NSError
-          errorWithDomain:@"WWNContainerRunner"
-                     code:2
-                 userInfo:@{
-                   NSLocalizedDescriptionKey :
-                       @"No container command configured. On macOS set the "
-                       @"machine's custom script to a wwn-containers command, "
-                       @"e.g. from the Wawona repo:\n"
-                       @"  nix run .#wwn-containerd -- run -i alpine:3.20 -k "
-                       @"<kernel>\n"
-                       @"or pull an image first with `wwn-oci pull <ref>`."
-                 }];
-    }
-    return NO;
+    // Default macOS lane: `container` CLI (wwn-containers) with a tiny image.
+    command = @"container run --rm -it alpine:3.20 /bin/sh";
   }
 
   [self stopProfileWithMachineId:profile.machineId];
@@ -166,25 +155,17 @@
 
 - (BOOL)launchProfile:(WWNMachineProfile *)profile
                 error:(NSError *_Nullable *_Nullable)error {
-  (void)profile;
-  if (error) {
-    *error = [NSError
-        errorWithDomain:@"WWNContainerRunner"
-                   code:100
-               userInfo:@{
-                 NSLocalizedDescriptionKey :
-                     @"On this platform containers run in-VM (wwn-vms guest) via "
-                     @"the VM backend, or are image-management-only (watchOS)."
-               }];
-  }
-  return NO;
+  // Container-in-VM on Apple mobile: boot the bundled NixOS guest (same engine
+  // as virtual_machine); OCI execution runs inside the guest over virtiofs.
+  return [[WWNVirtualMachineRunner sharedRunner] launchProfile:profile error:error];
 }
 
 - (void)stopProfileWithMachineId:(NSString *)machineId {
-  (void)machineId;
+  [[WWNVirtualMachineRunner sharedRunner] stopProfileWithMachineId:machineId];
 }
 
 - (void)stopAll {
+  [[WWNVirtualMachineRunner sharedRunner] stopAll];
 }
 
 @end

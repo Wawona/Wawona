@@ -708,22 +708,7 @@ fun WawonaApp(
                 WawonaSettings.apply(prefs)
                 launchWaypipe()
             }
-            MachineType.VM -> {
-                Toast.makeText(
-                    context,
-                    "Virtual machine runtime is a stub (UTM SE integration pending).",
-                    Toast.LENGTH_LONG
-                ).show()
-                false
-            }
-            MachineType.CONTAINER -> {
-                Toast.makeText(
-                    context,
-                    "Container runtime is a stub (integration pending).",
-                    Toast.LENGTH_LONG
-                ).show()
-                false
-            }
+            MachineType.VM, MachineType.CONTAINER -> AndroidMobileVmRunner.launch(context, profile)
         }
 
         if (launched) {
@@ -759,7 +744,7 @@ fun WawonaApp(
             when (profile.type) {
                 MachineType.NATIVE -> stopNativeClient(profile.nativeLauncher)
                 MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> stopWaypipe()
-                else -> stopWaypipe()
+                MachineType.VM, MachineType.CONTAINER -> AndroidMobileVmRunner.stop()
             }
             sessionOrchestrator.markDisconnected(session.sessionId)
             if (sessionOrchestrator.activeSessionId == session.sessionId) {

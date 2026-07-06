@@ -31,6 +31,9 @@
   macosNeovim ? null,
   macosZsh ? null,
   macosKmscube ? null,
+  # Bundled mobile VM guest (kernel + rootfs.img) and iOS-TCI QEMU engine sysroot.
+  mobileGuestArtifacts ? null,
+  mobileVmEngine ? null,
   # When set (e.g. [ "ios" "ipados" ]), only emit matching app targets (+ shared libs).
   platformFilter ? null,
   applePath,
@@ -520,7 +523,12 @@ PLIST
     basedOnDependencyAnalysis = false;
   };
 
+  mobileVmEmbedPhases =
+    lib.optionals (mobileGuestArtifacts != null) [ iosMobileGuestEmbedPhase ]
+    ++ lib.optionals (mobileVmEngine != null) [ iosMobileVmEngineEmbedPhase ];
+
   iosPostBuildPhases = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase iosRootfsEmbedPhase iosNeovimRootfsEmbedPhase ]
+    ++ mobileVmEmbedPhases
     ++ lib.optionals (angleSimDylib != null) [ angleSimEmbedPhase ]
     ++ lib.optionals (angleDeviceDylib != null) [ angleDeviceEmbedPhase ];
 
@@ -635,6 +643,81 @@ PLIST
     name = "Embed wawona-rootfs (shell templates)";
     basedOnDependencyAnalysis = true;
     outputFiles = rootfsEmbedOutputs;
+  };
+
+  mobileGuestIosEmbedScript = guestArtifacts: pkgs.writeShellScript "embed-mobile-guest-ios.sh" ''
+    case "''${PLATFORM_NAME:-}" in
+      iphoneos|appletvos|xros)
+        guestSrc="${strip guestArtifacts}"
+        ;;
+      *)
+        exit 0
+        ;;
+    esac
+    if [ ! -d "$guestSrc" ]; then
+      echo "warning: wawona-mobile-guest-artifacts not built" >&2
+      exit 0
+    fi
+    BUNDLE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
+    DEST="$BUNDLE/wawona-mobile-guest"
+    rm -rf "$DEST"
+    mkdir -p "$DEST"
+    cp -f "$guestSrc"/* "$DEST/" 2>/dev/null || true
+    for k in zImage vmlinuz vmlinux; do
+      if [ -f "$guestSrc/$k" ]; then
+        cp -f "$guestSrc/$k" "$DEST/$k"
+      fi
+    done
+    if [ -f "$guestSrc/rootfs.img" ]; then
+      cp -f "$guestSrc/rootfs.img" "$DEST/rootfs.img"
+    fi
+    echo "Embedded wawona-mobile-guest into $DEST"
+  '';
+
+  mobileGuestEmbedOutputs = [
+    "$(BUILT_PRODUCTS_DIR)/$(FULL_PRODUCT_NAME)/wawona-mobile-guest/rootfs.img"
+  ];
+
+  iosMobileGuestEmbedPhase = {
+    path = mobileGuestIosEmbedScript mobileGuestArtifacts;
+    name = "Embed wawona-mobile-guest (VM kernel + rootfs)";
+    basedOnDependencyAnalysis = true;
+    outputFiles = mobileGuestEmbedOutputs;
+  };
+
+  mobileVmEngineIosEmbedScript = engineSysroot: pkgs.writeShellScript "embed-mobile-vm-engine-ios.sh" ''
+    case "''${PLATFORM_NAME:-}" in
+      iphoneos|appletvos|xros)
+        engineSrc="${strip engineSysroot}"
+        ;;
+      *)
+        exit 0
+        ;;
+    esac
+    if [ ! -d "$engineSrc/Frameworks" ]; then
+      echo "warning: wwn-vms-mobile-engine sysroot not built (missing Frameworks/)" >&2
+      exit 0
+    fi
+    BUNDLE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
+    DEST="$BUNDLE/Frameworks"
+    mkdir -p "$DEST"
+    cp -R "$engineSrc/Frameworks/." "$DEST/"
+    if [ -d "$engineSrc/vulkan" ]; then
+      mkdir -p "$BUNDLE/vulkan"
+      cp -R "$engineSrc/vulkan/." "$BUNDLE/vulkan/"
+    fi
+    echo "Embedded QEMU-TCTI engine frameworks into $DEST"
+  '';
+
+  mobileVmEngineEmbedOutputs = [
+    "$(BUILT_PRODUCTS_DIR)/$(FULL_PRODUCT_NAME)/Frameworks/qemu-aarch64-softmmu.framework/qemu-aarch64-softmmu"
+  ];
+
+  iosMobileVmEngineEmbedPhase = {
+    path = mobileVmEngineIosEmbedScript mobileVmEngine;
+    name = "Embed QEMU-TCTI engine (mobile VM)";
+    basedOnDependencyAnalysis = true;
+    outputFiles = mobileVmEngineEmbedOutputs;
   };
 
   neovimRootfsIosEmbedScript = deviceRootfs: simRootfs: pkgs.writeShellScript "embed-neovim-rootfs-ios.sh" ''
@@ -970,7 +1053,7 @@ PLIST
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
         ] ++ iosUtilSources;
         preBuildScripts = [ stampBuildNumberPhase ipadosPreBuild ];
-        postBuildScripts = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase ipadosRootfsEmbedPhase ipadosNeovimRootfsEmbedPhase ];
+        postBuildScripts = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase ipadosRootfsEmbedPhase ipadosNeovimRootfsEmbedPhase ] ++ mobileVmEmbedPhases;
 
         settings = {
           base = {

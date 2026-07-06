@@ -115,8 +115,8 @@ public struct MachineSettingsView: View {
                 ForEach(MachineType.allCases.filter { $0 != .container && $0 != .virtualMachine }, id: \.self) { t in
                     Text(t.userFacingName).tag(t)
                 }
-                #elseif os(iOS)
-                ForEach(MachineType.allCases.filter { $0 != .container }, id: \.self) { t in
+                #elseif os(iOS) || os(tvOS) || os(visionOS)
+                ForEach(MachineType.allCases, id: \.self) { t in
                     Text(t.userFacingName).tag(t)
                 }
                 #else

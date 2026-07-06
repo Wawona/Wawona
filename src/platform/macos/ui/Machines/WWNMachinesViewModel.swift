@@ -299,7 +299,15 @@ final class WWNMachinesViewModel: ObservableObject {
     }
 
     do {
-      try WWNMachineSessionBridge.connect(profile)
+      var error: NSError?
+      let ok = WWNMachineSessionBridge.connectProfile(profile, error: &error)
+      if !ok {
+        throw error ?? NSError(
+          domain: "WWNMachinesViewModel",
+          code: 1,
+          userInfo: [NSLocalizedDescriptionKey: "Connect failed."]
+        )
+      }
     } catch {
       statusByMachineId[profile.machineId] = .error
       return
@@ -600,7 +608,9 @@ final class WWNMachinesViewModel: ObservableObject {
       return selectedClientId(for: profile) != nil
     }
     return profile.type == kWWNMachineTypeSSHWaypipe ||
-      profile.type == kWWNMachineTypeSSHTerminal
+      profile.type == kWWNMachineTypeSSHTerminal ||
+      profile.type == kWWNMachineTypeVirtualMachine ||
+      profile.type == kWWNMachineTypeContainer
   }
 }
 

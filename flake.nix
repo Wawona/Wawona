@@ -817,8 +817,16 @@
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
             workspaceSrc = workspace-src-watchos; platform = "watchos"; simulator = true; nativeDeps = watchosSimDeps;
           };
+          mobileGuestArtifacts =
+            if builtins.pathExists "${wwn-vms}/dependencies/vms/mobile/guest-artifacts.nix" then
+              wwn-vms.packages.aarch64-linux.wawona-mobile-guest-artifacts or null
+            else null;
+          mobileVmEngine =
+            if pkgs.stdenv.isDarwin && (wwn-vms.packages.${system}.wwn-vms-mobile-engine-ios-tci or null) != null then
+              wwn-vms.packages.${system}.wwn-vms-mobile-engine-ios-tci
+            else null;
           mkXcodegen = platformFilter: pkgs.callPackage ./dependencies/generators/xcodegen.nix {
-             inherit wawonaVersion wawonaSrc iosDeps iosSimDeps ipadosDeps ipadosSimDeps tvosDeps tvosSimDeps visionosDeps visionosSimDeps watchosDeps watchosSimDeps macosDeps platformFilter;
+             inherit wawonaVersion wawonaSrc iosDeps iosSimDeps ipadosDeps ipadosSimDeps tvosDeps tvosSimDeps visionosDeps visionosSimDeps watchosDeps watchosSimDeps macosDeps platformFilter mobileGuestArtifacts mobileVmEngine;
              macosBackend = backend-macos;
              iosBackend = backend-ios;
              iosSimBackend = backend-ios-sim;
