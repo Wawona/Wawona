@@ -66,11 +66,22 @@
     done
     shopt -u nullglob globstar
     if [ -n "$APK_VERIFY_PATH" ]; then
+      # Capture the APK entry list once. Do NOT use `unzip -l | grep -q`: grep -q
+      # closes the pipe on first match, unzip then dies with SIGPIPE (exit 141),
+      # and with `set -o pipefail` (active in this build) the pipeline reports
+      # non-zero — a false "missing" even though the lib is present. Use a
+      # pipe-free glob match against the captured list instead.
+      APK_ENTRIES="$(unzip -Z1 "$APK_VERIFY_PATH")"
       for lib in libweston_simple_shm.so libfoot.so; do
-        if ! unzip -l "$APK_VERIFY_PATH" | grep -Fq "lib/arm64-v8a/$lib"; then
-          echo "ERROR: APK $APK_VERIFY_PATH missing lib/arm64-v8a/$lib"
-          exit 1
-        fi
+        case "$APK_ENTRIES" in
+          *"lib/arm64-v8a/$lib"*) ;;
+          *)
+            echo "ERROR: APK $APK_VERIFY_PATH missing lib/arm64-v8a/$lib"
+            echo "=== APK lib/arm64-v8a entries ==="
+            printf '%s\n' "$APK_ENTRIES" | grep "lib/arm64-v8a/" || true
+            exit 1
+            ;;
+        esac
       done
       echo "Verified bundled client libraries in APK"
     fi
