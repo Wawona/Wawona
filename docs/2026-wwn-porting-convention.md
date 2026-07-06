@@ -24,7 +24,10 @@ pure-Nix packaging of already-portable software.
 
 - Repo: `wwn-<upstream-name>`, lowercase, hyphenated (`wwn-hyprland`, not
   `wwn-Hyprland`).
-- The existing UTM fork must be renamed/aliased to **`wwn-utm`** to match.
+- Resolved exception: there is **no `wwn-utm` repo**. The UTM engine unit
+  (QEMU-TCTI patches + build scripts + reference backends) is vendored inside
+  `wwn-vms` at `dependencies/vms/utm/` (the old `Wawona/UTM` fork was never
+  published; folding it into `wwn-vms` removed the phantom dependency).
 - Bundle/attr names in Nix follow the same stem (`wwn-niri`, attr `niri` inside).
 
 ## Repo skeleton
@@ -43,7 +46,8 @@ Each `wwn-*` repo provides:
 ## Planned ports
 
 `wwn-niri`, `wwn-sway`, `wwn-hyprland`, `wwn-xfce`, `wwn-kde`, `wwn-gnome`,
-`wwn-cosmic`, `wwn-utm`. Full ports are downstream; repos start as
+`wwn-cosmic` (VM/UTM engine: vendored in `wwn-vms`, not a separate repo).
+Full ports are downstream; repos start as
 flake + `registryFragment` skeleton + port-plan README
 (tracked by `p29-wwn-ports-scaffold`). Their StoreKit catalog entries already
 exist in `wwn-apt` with `status: planned`.

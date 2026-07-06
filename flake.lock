@@ -797,11 +797,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1783303613,
-        "narHash": "sha256-kTQL0qpDg2a6XfwBtvU6oHK7MZRrnaL6JmAjFHx9oX8=",
+        "lastModified": 1783307756,
+        "narHash": "sha256-y5rjI4ctd0db+glLXBrDdXCAKHP4wvDCtYdKyS0MsRA=",
         "owner": "Wawona",
         "repo": "wwn-containers",
-        "rev": "5359e75efaee173e492020b3d2cdfd0111a33ecb",
+        "rev": "b76d6281b2b2445032ff3612551acd1a2654173e",
         "type": "github"
       },
       "original": {
@@ -981,27 +981,6 @@
         "type": "github"
       }
     },
-    "wwn-utm": {
-      "inputs": {
-        "nixpkgs": [
-          "wwn-vms",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1783288156,
-        "narHash": "sha256-RJTkNROqNRqdJZEp4QBLewlv+pMieh3XkcfDLQG5/w4=",
-        "owner": "Wawona",
-        "repo": "UTM",
-        "rev": "51e1a7f44b63c6511c349aecb6619b6a7b6dbca1",
-        "type": "github"
-      },
-      "original": {
-        "owner": "Wawona",
-        "repo": "UTM",
-        "type": "github"
-      }
-    },
     "wwn-vms": {
       "inputs": {
         "microvm": [
@@ -1015,15 +994,14 @@
         ],
         "wwn-toolchain": [
           "wwn-toolchain"
-        ],
-        "wwn-utm": "wwn-utm"
+        ]
       },
       "locked": {
-        "lastModified": 1783291169,
-        "narHash": "sha256-EmJI/ggsLtg2AE2P9W3z56NiSkq1WTybbZ7QgnbYbW8=",
+        "lastModified": 1783307740,
+        "narHash": "sha256-ROZo+OyZccG6eBpyPsssash7xlEf8a4WEtF3UCpYVIs=",
         "owner": "Wawona",
         "repo": "wwn-vms",
-        "rev": "c5610c7c101daf89fb24b15b8d86e9b445a0b6d6",
+        "rev": "c6465ed5119caa98ae563812f6c3cc9a57d542c8",
         "type": "github"
       },
       "original": {

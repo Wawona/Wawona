@@ -94,8 +94,11 @@ Status source of truth: [`2026-SOURCE-OF-TRUTH.md`](./2026-SOURCE-OF-TRUTH.md).
 - **Now the mobile engine of [`wwn-vms`](../../wwn-vms)** (unifies with p26/p29
   under the vms/containers split):
   - `wwn-vms/dependencies/vms/mobile/engine.nix` — jitless **QEMU-TCTI** engine
-    sourced from the aligned UTM fork **`wwn-utm`** (`../../UTM/flake.nix`,
-    wired as a `wwn-vms` input: `qemuUtmPatch`, build scripts, iOS-SE scheme).
+    built from the **vendored UTM sources in-repo**
+    (`wwn-vms/dependencies/vms/utm/`, exposed as `wwn-vms.lib.utm`:
+    `qemuUtmPatch`, build scripts, iOS-SE scheme). The former separate
+    `wwn-utm` repo/input was folded into `wwn-vms` (the `github:Wawona/UTM`
+    repo was never published — phantom dependency, fixed 2026-07-05).
   - `wwn-vms/dependencies/vms/mobile/guest.nix` — bundled minimal NixOS guest
     (`nixosConfigurations.wawona-mobile-guest`), shipped as ODR/bundled data.
 - **Containers on iOS**: container-in-VM via `wwn-containers`
@@ -110,7 +113,8 @@ Status source of truth: [`2026-SOURCE-OF-TRUTH.md`](./2026-SOURCE-OF-TRUTH.md).
   NixOS-only guests) and [`wwn-containers`](../../wwn-containers) (universal OCI
   core + per-target execution backends) are separate `wwn-*` deps consumed by
   Wawona via local `path:` inputs; both `registryFragment`s merge into
-  `mergedRegistry`. The UTM fork is aligned as `wwn-utm`.
+  `mergedRegistry`. The UTM engine sources are vendored inside `wwn-vms`
+  (`dependencies/vms/utm/`); there is no separate `wwn-utm` repo.
 - **Remaining**: real per-target engine cross-builds (QEMU-TCTI for Apple,
   QEMU/AVF for Android), then flip Wawona inputs from `path:` to `github:` (done).
 - **Native `container` CLI (scaffolded, not implemented)**: Wawona's native
