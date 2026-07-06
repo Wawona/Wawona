@@ -95,19 +95,16 @@ jobs:
           path: .agent-device/test-artifacts/
           if-no-files-found: warn
 
-  android-emu-e2e:
-    name: "Android emulator: GUI smoke (agent-device replay)"
-    runs-on: ubuntu-latest
+  # The NDK's prebuilt linux-x86_64 clang cannot run inside the Linux nix
+  # sandbox (needs host FHS loader paths), so the APK is built on macOS —
+  # same pattern as android-parity.yml — and shipped to the KVM-capable
+  # ubuntu runner that hosts the emulator.
+  android-apk:
+    name: "Android: build Wawona.apk (nix, macOS)"
+    runs-on: macos-15
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
-
-      - name: Enable KVM group perms
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
-            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v22
@@ -119,6 +116,34 @@ jobs:
 
       - name: Build Wawona.apk
         run: ./.github/scripts/nix-retry.sh nix build ".#wawona-android" --print-build-logs --out-link result-android
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: wawona-apk
+          path: result-android/bin/Wawona.apk
+          if-no-files-found: error
+
+  android-emu-e2e:
+    name: "Android emulator: GUI smoke (agent-device replay)"
+    needs: android-apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable KVM group perms
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Download APK
+        uses: actions/download-artifact@v4
+        with:
+          name: wawona-apk
+          path: dist/
 
       - name: Install agent-device
         run: npm install -g "agent-device@${AGENT_DEVICE_VERSION}"
@@ -132,7 +157,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot-save
           disable-animations: true
           script: |
-            WAWONA_ANDROID_APK=result-android/bin/Wawona.apk ./scripts/agent-device-smoke.sh android
+            WAWONA_ANDROID_APK=dist/Wawona.apk ./scripts/agent-device-smoke.sh android
 
       - name: Upload Android screenshots
         if: always()
