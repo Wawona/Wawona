@@ -1,0 +1,31 @@
+# Machines-lane e2e: onboarding -> profile list -> native weston session.
+# Native compositor screens return sparse accessibility snapshots on Android,
+# so this flow drives coordinate taps (1080x2424 px reference device) and
+# uses screenshots as the source of truth.
+context platform=android
+context session=wawona-android-machines
+
+open com.aspauldingcode.wawona --relaunch
+wait 4000
+screenshot ./.agent-device/test-artifacts/android-first-screen.png
+
+# First launch shows "Welcome to Wawona"; Continue lands on Machine
+# Configuration. On relaunch the app goes straight there, in which case this
+# tap hits empty space below the machine list and is a no-op.
+click 540 1404
+wait 2000
+screenshot ./.agent-device/test-artifacts/android-machines-root.png
+
+# Open the Add Machine Profile sheet via the "+" FAB, capture, dismiss.
+click 938 2219
+wait 1500
+screenshot ./.agent-device/test-artifacts/android-add-machine-sheet.png
+back
+wait 1000
+
+# Start the Default Machine (bundled weston-terminal, in-process compositor).
+click 227 1039
+wait 10000
+screenshot ./.agent-device/test-artifacts/android-weston-session.png
+
+close

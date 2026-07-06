@@ -1,5 +1,5 @@
 [
-  { "command": "open", "input": { "app": "com.aspauldingcode.wawona", "platform": "android", "serial": "a7f9f954", "relaunch": true } },
+  { "command": "open", "input": { "app": "com.aspauldingcode.wawona", "platform": "android", "relaunch": true } },
   { "command": "wait", "input": { "kind": "duration", "durationMs": 3000 } },
   { "command": "appState", "input": {} },
   { "command": "screenshot", "input": { "path": "./.agent-device/test-artifacts/android-smoke.png" } },

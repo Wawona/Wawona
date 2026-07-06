@@ -1,0 +1,143 @@
+name: Device GUI e2e
+
+# Deterministic GUI smoke tests on real simulator/emulator instances.
+# All flows are recorded agent-device .ad/batch replays (scripts live in
+# .agent-device/); no AI/LLM calls are made, so runs consume zero model
+# credits. Local reproduction: scripts/agent-device-smoke.sh [ios|android].
+#
+# Runner constraints (researched Jul 2026):
+# - iOS simulators run fine on GitHub's arm64 macOS runners (simulators are
+#   host processes, not VMs; no nested virtualization involved).
+# - The Android SDK emulator needs KVM, which only x86_64 ubuntu runners
+#   expose (ubuntu-24.04-arm has no /dev/kvm; arm64 macOS runners have no
+#   nested virt). The Wawona APK is arm64-only, so we run it on an API 30
+#   google_apis x86_64 image, which ships ARM-to-x86 binary translation.
+
+on:
+  workflow_dispatch: {}
+  workflow_call: {}
+  push:
+    branches: [development, master]
+    paths:
+      - "src/**"
+      - "android/**"
+      - "Sources/**"
+      - "dependencies/**"
+      - "flake.nix"
+      - "flake.lock"
+      - ".agent-device/**"
+      - "scripts/agent-device-smoke.sh"
+      - ".github/workflows/device-e2e.yml"
+
+concurrency:
+  group: device-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AGENT_DEVICE_VERSION: "0.18.3"
+
+jobs:
+  ios-sim-e2e:
+    name: "iOS simulator: GUI smoke (agent-device replay)"
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select active Xcode
+        run: |
+          XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$XCODE_APP" ] || { echo "::error::No Xcode found"; exit 1; }
+          sudo xcode-select -s "$XCODE_APP"
+          xcodebuild -version
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+
+      - name: Build Wawona.app (iOS simulator slice)
+        run: ./.github/scripts/nix-retry.sh nix build ".#wawona-ios" --print-build-logs --out-link result-ios
+
+      - name: Install agent-device
+        run: npm install -g "agent-device@${AGENT_DEVICE_VERSION}"
+
+      - name: Cache agent-device XCTest runner
+        uses: actions/cache@v4
+        with:
+          path: ~/.agent-device/apple-runner/derived
+          key: agent-device-runner-${{ env.AGENT_DEVICE_VERSION }}-${{ runner.os }}-xcode-26
+
+      - name: Ensure simulator device exists
+        run: |
+          SIM_NAME="${WAWONA_IOS_SIM:-iPhone 17 Pro}"
+          if ! xcrun simctl list devices available | grep -q "$SIM_NAME ("; then
+            echo "Creating simulator '$SIM_NAME'"
+            DEVTYPE=$(xcrun simctl list devicetypes | grep -F "$SIM_NAME (" | sed -E 's/.*\((com[^)]*)\).*/\1/' | head -1)
+            RUNTIME=$(xcrun simctl list runtimes | grep -E "^iOS" | tail -1 | sed -E 's/.*(com\.apple\.CoreSimulator\.SimRuntime\.[A-Za-z0-9._-]+).*/\1/')
+            xcrun simctl create "$SIM_NAME" "$DEVTYPE" "$RUNTIME"
+          fi
+          xcrun simctl list devices available | grep "$SIM_NAME" || true
+
+      - name: Run iOS GUI smoke (deterministic replay)
+        env:
+          WAWONA_IOS_APP: result-ios/Wawona.app
+        run: ./scripts/agent-device-smoke.sh ios
+
+      - name: Upload iOS screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: device-e2e-ios
+          path: .agent-device/test-artifacts/
+          if-no-files-found: warn
+
+  android-emu-e2e:
+    name: "Android emulator: GUI smoke (agent-device replay)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable KVM group perms
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+
+      - name: Build Wawona.apk
+        run: ./.github/scripts/nix-retry.sh nix build ".#wawona-android" --print-build-logs --out-link result-android
+
+      - name: Install agent-device
+        run: npm install -g "agent-device@${AGENT_DEVICE_VERSION}"
+
+      - name: Run Android GUI smoke (deterministic replay)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot-save
+          disable-animations: true
+          script: |
+            WAWONA_ANDROID_APK=result-android/bin/Wawona.apk ./scripts/agent-device-smoke.sh android
+
+      - name: Upload Android screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: device-e2e-android
+          path: .agent-device/test-artifacts/
+          if-no-files-found: warn

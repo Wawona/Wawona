@@ -50,38 +50,14 @@ jobs:
           git diff --exit-code -- docs/protocol-status.md \
             || { echo "::error::docs/protocol-status.md stale; run scripts/gen-protocol-status.sh"; exit 1; }
 
+  # Cross-platform GUI parity/e2e: delegate to the deterministic agent-device
+  # replay lanes (iOS simulator on macOS runner, Android emulator on ubuntu
+  # KVM runner). Screenshots are uploaded as device-e2e-{ios,android}
+  # artifacts; scripts/ui_parity_diff.py can be pointed at them once the
+  # light/dark capture matrix it expects is recorded.
   ui-parity:
     name: "Layer 3: cross-platform UI parity"
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: DeterminateSystems/nix-installer-action@v22
-        with:
-          determinate: true
-          extra-conf: |
-            sandbox = relaxed
-            allow-import-from-derivation = true
-      - name: Install Pillow (parity diff dep)
-        run: python3 -m pip install --user pillow
-      # Capture iOS + Android UI snapshots via agent-device batch flows. The
-      # batch specs enumerate the same screens on both platforms into a shared
-      # screenshots dir consumed by ui_parity_diff.py. Requires the agent-device
-      # CLI + simulators/emulators on the runner.
-      - name: agent-device sanity
-        run: agent-device --version
-      - name: Capture iOS snapshots
-        run: agent-device replay .agent-device/wawona-ios-smoke.ad --batch .agent-device/wawona-ios-smoke-batch.json --artifacts artifacts/ui-parity
-      - name: Capture Android snapshots
-        run: agent-device replay .agent-device/wawona-android-smoke.ad --batch .agent-device/wawona-android-smoke-batch.json --artifacts artifacts/ui-parity
-      - name: UI parity diff gate
-        run: python3 scripts/ui_parity_diff.py --screenshots-dir artifacts/ui-parity --threshold 0.12
-      - name: Upload parity artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ui-parity-snapshots
-          path: artifacts/ui-parity
-          if-no-files-found: warn
+    uses: ./.github/workflows/device-e2e.yml
 
   capability-lane:
     name: "Layer 2: nested Weston + XWayland capability"
