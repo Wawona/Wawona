@@ -35,7 +35,13 @@ gtk4 = { version = "0.9", optional = true }
 cairo-rs = { version = "0.20", optional = true }
 libadwaita = { version = "0.7", optional = true }
 
-uniffi = { version = "0.30.0", features = ["cli"] }
+# No "cli" feature: it pulls uniffi_bindgen (+clap/camino/askama/goblin/…) into
+# the graph. crate2nix then builds uniffi_bindgen with feature sets that diverge
+# from the rest of the uniffi family, producing mismatched crate SVHs that fail
+# with E0460/E0463 ("can't find crate for uniffi"). The scaffolding + derives we
+# use come from uniffi_macros (default features); the uniffi-bindgen CLI binary
+# is not built here, so cli is unnecessary.
+uniffi = { version = "0.30.0" }
 
 # Core Wayland
 wayland-server = "0.31.13"
@@ -76,9 +82,11 @@ coreutils = { path = "./coreutils", optional = true, default-features = false, f
 ] }
 
 [build-dependencies]
-# Use uniffi_build only here — not `uniffi` with `build` feature. Two uniffi feature
-# graphs (cli vs build) confuse crate2nix host rlib resolution → E0460 vs uniffi_bindgen.
-uniffi_build = { version = "0.30.0" }
+# UniFFI scaffolding is generated in-crate via uniffi::setup_scaffolding! (see
+# src/lib.rs), so there is intentionally NO uniffi_build here. Depending on
+# uniffi_build pulls uniffi_bindgen into the build-dependency graph with a
+# different feature set than the `uniffi` (cli) normal dependency; crate2nix
+# then builds two mismatched uniffi_bindgen rlibs and rustc fails with E0460.
 wayland-scanner = "0.31.8"
 
 

@@ -1,6 +1,9 @@
 package com.aspauldingcode.wawona
 
 import android.content.Context
+import android.content.SharedPreferences
+import android.os.Handler
+import android.os.Looper
 import android.text.InputType
 import android.view.InputDevice
 import android.view.KeyEvent
@@ -13,43 +16,181 @@ import android.view.inputmethod.InputConnection
 private const val BTN_LEFT = 0x110
 private const val BTN_RIGHT = 0x111
 
+private const val TAP_MOVEMENT_PX = 12f
+private const val TAP_DURATION_MS = 300L
+private const val TOUCHPAD_SENSITIVITY = 1.5f
+private const val SCROLL_SENSITIVITY = 12f
+private const val DRAG_ARM_SHOW_MS = 500L
+private const val DRAG_ENGAGE_MS = 1000L
+
 /**
  * A SurfaceView subclass that supports Android IME input (including emoji).
  *
- * When focused, the system IME can send text via our WawonaInputConnection,
- * which routes committed text and composition to the Wawona compositor
- * through JNI -> Rust -> Wayland text-input-v3.
- *
- * When "Enable Text Assist" is on, the view configures the IME for
- * autocorrect, text suggestions, auto-capitalize, and swipe-to-type.
- * When "Enable Dictation" is also on, voice input flags are included.
- *
- * Touchpad mode: 1-finger = pointer, tap = click, 2-finger drag = scroll.
+ * Touchpad mode mirrors iOS: relative pointer with a persistent virtual
+ * cursor, tap-to-click at the cursor, two-finger scroll/tap, and a
+ * press-and-hold radial dial for click-drag.
  */
 class WawonaSurfaceView(context: Context) : SurfaceView(context) {
 
     private val prefs = context.getSharedPreferences("wawona_prefs", Context.MODE_PRIVATE)
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var touchpadOverlay: TouchpadOverlayView? = null
+
     private var lastSyncedLayoutW = 0
     private var lastSyncedLayoutH = 0
-    private var touchpadFirstDownX = 0f
-    private var touchpadFirstDownY = 0f
-    private var touchpadFirstDownTime = 0L
-    private var touchpadTwoFingerCenterX = 0f
-    private var touchpadTwoFingerCenterY = 0f
-    private var touchpadTwoFingerDownTime = 0L
-    private var touchpadHadTwoFingers = false
-    private var touchpadLastX = 0f
-    private var touchpadLastY = 0f
-    private val tapThresholdPx = 10
-    private val tapThresholdMs = 300L
+
+    // Direct-touch scroll tracking
+    private var directScrollLastX = 0f
+    private var directScrollLastY = 0f
+
+    // Touchpad virtual pointer (view coordinates, persists across gestures)
+    private var virtualPointerX = 0f
+    private var virtualPointerY = 0f
+    private var pointerInitialized = false
+    private var pointerEntered = false
+    private var activeFingerCount = 0
+    private var maxFingerCount = 0
+    private var scrollActive = false
+    private var totalMovement = 0f
+    private var gestureStartTime = 0L
+    private var prevTouchX = 0f
+    private var prevTouchY = 0f
+    private var prevScrollCenterX = 0f
+    private var prevScrollCenterY = 0f
+    private var twoFingerDownTime = 0L
+    private var twoFingerCenterX = 0f
+    private var twoFingerCenterY = 0f
+    private var dragging = false
+    private var dragGeneration = 0
+    private var engageDragRunnable: Runnable? = null
+    private var radialAnimator: Runnable? = null
+    private var radialAnimStartMs = 0L
+
+    private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        when (key) {
+            "touchpadMode", "renderMacOSPointer" -> {
+                post { updateOverlayCursorVisibility() }
+            }
+        }
+    }
 
     init {
         isFocusable = true
         isFocusableInTouchMode = true
-        // TalkBack: describe the compositor surface so screen-reader users know
-        // touches interact directly with the hosted Wayland application.
-        contentDescription = "Wayland application surface. Touch interacts directly with the application."
+        contentDescription =
+            "Wayland application surface. Touch interacts directly with the application."
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
+        prefs.registerOnSharedPreferenceChangeListener(prefListener)
+    }
+
+    override fun onDetachedFromWindow() {
+        prefs.unregisterOnSharedPreferenceChangeListener(prefListener)
+        cancelDragArm()
+        super.onDetachedFromWindow()
+    }
+
+    fun bindTouchpadOverlay(overlay: TouchpadOverlayView) {
+        touchpadOverlay = overlay
+        updateOverlayCursorVisibility()
+    }
+
+    private fun touchpadModeEnabled(): Boolean = prefs.getBoolean("touchpadMode", false)
+
+    private fun virtualPointerEnabled(): Boolean =
+        prefs.getBoolean("renderMacOSPointer", false)
+
+    private fun ensureVirtualPointer() {
+        if (!pointerInitialized && width > 0 && height > 0) {
+            virtualPointerX = width / 2f
+            virtualPointerY = height / 2f
+            pointerInitialized = true
+            touchpadOverlay?.setCursorPosition(virtualPointerX, virtualPointerY)
+        }
+    }
+
+    private fun updateOverlayCursorVisibility() {
+        val show = touchpadModeEnabled() && virtualPointerEnabled()
+        touchpadOverlay?.setCursorVisible(show)
+        if (show) {
+            touchpadOverlay?.setCursorPosition(virtualPointerX, virtualPointerY)
+        } else {
+            touchpadOverlay?.setRadialDial(false)
+        }
+    }
+
+    private fun clampPointer() {
+        if (width <= 0 || height <= 0) return
+        virtualPointerX = virtualPointerX.coerceIn(0f, width.toFloat())
+        virtualPointerY = virtualPointerY.coerceIn(0f, height.toFloat())
+    }
+
+    private fun syncPointer(ts: Int) {
+        if (!pointerEntered) {
+            WawonaNative.nativePointerEnter(virtualPointerX.toDouble(), virtualPointerY.toDouble(), ts)
+            pointerEntered = true
+        } else {
+            WawonaNative.nativePointerMotion(virtualPointerX.toDouble(), virtualPointerY.toDouble(), ts)
+        }
+    }
+
+    private fun leavePointer(ts: Int) {
+        if (pointerEntered) {
+            WawonaNative.nativePointerLeave(ts)
+            pointerEntered = false
+        }
+    }
+
+    private fun clickAtPointer(button: Int, ts: Int) {
+        syncPointer(ts)
+        WawonaNative.nativePointerButton(button, 1, ts)
+        WawonaNative.nativePointerButton(button, 0, ts + 1)
+    }
+
+    private fun cancelDragArm() {
+        dragGeneration++
+        radialAnimator?.let { mainHandler.removeCallbacks(it) }
+        engageDragRunnable?.let { mainHandler.removeCallbacks(it) }
+        radialAnimator = null
+        engageDragRunnable = null
+        touchpadOverlay?.setRadialDial(false)
+    }
+
+    private fun scheduleDragArm() {
+        cancelDragArm()
+        val gen = dragGeneration
+        radialAnimStartMs = System.currentTimeMillis()
+        radialAnimator = object : Runnable {
+            override fun run() {
+                if (gen != dragGeneration || activeFingerCount != 1 || scrollActive || dragging) return
+                if (totalMovement >= TAP_MOVEMENT_PX) return
+                val elapsed = System.currentTimeMillis() - radialAnimStartMs
+                if (elapsed < DRAG_ARM_SHOW_MS) {
+                    mainHandler.postDelayed(this, 16)
+                    return
+                }
+                val progress =
+                    ((elapsed - DRAG_ARM_SHOW_MS).toFloat() / (DRAG_ENGAGE_MS - DRAG_ARM_SHOW_MS))
+                        .coerceIn(0f, 1f)
+                touchpadOverlay?.setRadialDial(true, progress)
+                if (elapsed < DRAG_ENGAGE_MS) {
+                    mainHandler.postDelayed(this, 16)
+                }
+            }
+        }
+        mainHandler.post(radialAnimator!!)
+        engageDragRunnable = Runnable {
+            if (gen != dragGeneration || activeFingerCount != 1 || scrollActive || dragging) return@Runnable
+            if (totalMovement >= TAP_MOVEMENT_PX) return@Runnable
+            dragging = true
+            touchpadOverlay?.setRadialDial(false)
+            syncPointer((System.currentTimeMillis() % Int.MAX_VALUE).toInt())
+            WawonaNative.nativePointerButton(
+                BTN_LEFT,
+                1,
+                (System.currentTimeMillis() % Int.MAX_VALUE).toInt()
+            )
+        }
+        mainHandler.postDelayed(engageDragRunnable!!, DRAG_ENGAGE_MS)
     }
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
@@ -57,6 +198,8 @@ class WawonaSurfaceView(context: Context) : SurfaceView(context) {
         val w = right - left
         val h = bottom - top
         if (w <= 0 || h <= 0) return
+        ensureVirtualPointer()
+        updateOverlayCursorVisibility()
         if (w == lastSyncedLayoutW && h == lastSyncedLayoutH) return
         lastSyncedLayoutW = w
         lastSyncedLayoutH = h
@@ -68,7 +211,6 @@ class WawonaSurfaceView(context: Context) : SurfaceView(context) {
     }
 
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection {
-        val prefs = context.getSharedPreferences("wawona_prefs", Context.MODE_PRIVATE)
         val textAssist = prefs.getBoolean("enableTextAssist", false)
         val dictation = prefs.getBoolean("enableDictation", false)
 
@@ -101,9 +243,7 @@ class WawonaSurfaceView(context: Context) : SurfaceView(context) {
         }
 
         val ts = (event.eventTime % Int.MAX_VALUE).toInt()
-        val touchpadMode = prefs.getBoolean("touchpadMode", false)
-
-        if (touchpadMode) {
+        if (touchpadModeEnabled()) {
             return handleTouchpadMode(event, ts)
         }
 
@@ -112,6 +252,8 @@ class WawonaSurfaceView(context: Context) : SurfaceView(context) {
                 val idx = event.actionIndex
                 WawonaNative.nativeTouchDown(event.getPointerId(idx), event.getX(idx), event.getY(idx), ts)
                 WawonaNative.nativeTouchFrame()
+                directScrollLastX = event.getX(idx)
+                directScrollLastY = event.getY(idx)
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
                 val idx = event.actionIndex
@@ -123,6 +265,14 @@ class WawonaSurfaceView(context: Context) : SurfaceView(context) {
                     WawonaNative.nativeTouchMotion(event.getPointerId(i), event.getX(i), event.getY(i), ts)
                 }
                 WawonaNative.nativeTouchFrame()
+                if (event.pointerCount == 1) {
+                    val dx = event.getX(0) - directScrollLastX
+                    val dy = event.getY(0) - directScrollLastY
+                    directScrollLastX = event.getX(0)
+                    directScrollLastY = event.getY(0)
+                    if (dy != 0f) WawonaNative.nativePointerAxis(0, -dy, ts)
+                    if (dx != 0f) WawonaNative.nativePointerAxis(1, -dx, ts)
+                }
             }
             MotionEvent.ACTION_UP -> {
                 val idx = event.actionIndex
@@ -134,98 +284,123 @@ class WawonaSurfaceView(context: Context) : SurfaceView(context) {
                 WawonaNative.nativeTouchUp(event.getPointerId(idx), ts)
                 WawonaNative.nativeTouchFrame()
             }
-            MotionEvent.ACTION_CANCEL -> {
-                WawonaNative.nativeTouchCancel()
-            }
+            MotionEvent.ACTION_CANCEL -> WawonaNative.nativeTouchCancel()
         }
         return true
     }
 
     private fun handleTouchpadMode(event: MotionEvent, ts: Int): Boolean {
+        ensureVirtualPointer()
+        updateOverlayCursorVisibility()
+
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                touchpadFirstDownX = event.getX(0)
-                touchpadFirstDownY = event.getY(0)
-                touchpadFirstDownTime = event.eventTime
-                touchpadHadTwoFingers = false
-                touchpadLastX = event.getX(0)
-                touchpadLastY = event.getY(0)
-                WawonaNative.nativePointerEnter(event.getX(0).toDouble(), event.getY(0).toDouble(), ts)
-                WawonaNative.nativePointerMotion(event.getX(0).toDouble(), event.getY(0).toDouble(), ts)
+                activeFingerCount = 1
+                maxFingerCount = 1
+                scrollActive = false
+                totalMovement = 0f
+                gestureStartTime = event.eventTime
+                prevTouchX = event.getX(0)
+                prevTouchY = event.getY(0)
+                dragging = false
+                scheduleDragArm()
+                syncPointer(ts)
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
-                if (event.pointerCount == 2) {
-                    touchpadHadTwoFingers = true
-                    touchpadTwoFingerCenterX = (event.getX(0) + event.getX(1)) / 2f
-                    touchpadTwoFingerCenterY = (event.getY(0) + event.getY(1)) / 2f
-                    touchpadTwoFingerDownTime = event.eventTime
-                    touchpadLastX = touchpadTwoFingerCenterX
-                    touchpadLastY = touchpadTwoFingerCenterY
+                activeFingerCount = event.pointerCount
+                if (activeFingerCount > maxFingerCount) maxFingerCount = activeFingerCount
+                if (activeFingerCount >= 2) {
+                    cancelDragArm()
+                    prevScrollCenterX = (event.getX(0) + event.getX(1)) / 2f
+                    prevScrollCenterY = (event.getY(0) + event.getY(1)) / 2f
+                    twoFingerCenterX = prevScrollCenterX
+                    twoFingerCenterY = prevScrollCenterY
+                    twoFingerDownTime = event.eventTime
+                    syncPointer(ts)
                 }
             }
             MotionEvent.ACTION_MOVE -> {
-                when (event.pointerCount) {
-                    1 -> {
-                        WawonaNative.nativePointerMotion(event.getX(0).toDouble(), event.getY(0).toDouble(), ts)
-                    }
-                    2 -> {
-                        val vscroll = event.getAxisValue(MotionEvent.AXIS_VSCROLL)
-                        val hscroll = event.getAxisValue(MotionEvent.AXIS_HSCROLL)
-                        if (vscroll != 0f || hscroll != 0f) {
-                            val cx = (event.getX(0) + event.getX(1)) / 2f
-                            val cy = (event.getY(0) + event.getY(1)) / 2f
-                            WawonaNative.nativePointerMotion(cx.toDouble(), cy.toDouble(), ts)
-                            if (vscroll != 0f) WawonaNative.nativePointerAxis(0, vscroll, ts)
-                            if (hscroll != 0f) WawonaNative.nativePointerAxis(1, hscroll, ts)
-                        } else {
-                            val cx = (event.getX(0) + event.getX(1)) / 2f
-                            val cy = (event.getY(0) + event.getY(1)) / 2f
-                            val dx = cx - touchpadLastX
-                            val dy = cy - touchpadLastY
-                            touchpadLastX = cx
-                            touchpadLastY = cy
-                            if (dx != 0f || dy != 0f) {
-                                WawonaNative.nativePointerMotion(cx.toDouble(), cy.toDouble(), ts)
-                                WawonaNative.nativePointerAxis(0, -dy, ts)
-                                WawonaNative.nativePointerAxis(1, dx, ts)
-                            }
+                when {
+                    event.pointerCount >= 2 -> {
+                        scrollActive = true
+                        cancelDragArm()
+                        val cx = (event.getX(0) + event.getX(1)) / 2f
+                        val cy = (event.getY(0) + event.getY(1)) / 2f
+                        val dx = (cx - prevScrollCenterX) * SCROLL_SENSITIVITY
+                        val dy = (cy - prevScrollCenterY) * SCROLL_SENSITIVITY
+                        prevScrollCenterX = cx
+                        prevScrollCenterY = cy
+                        totalMovement += kotlin.math.abs(dx) + kotlin.math.abs(dy)
+                        syncPointer(ts)
+                        if (kotlin.math.abs(dy) > 0.5f) {
+                            WawonaNative.nativePointerAxis(0, -dy, ts)
+                        }
+                        if (kotlin.math.abs(dx) > 0.5f) {
+                            WawonaNative.nativePointerAxis(1, dx, ts)
                         }
                     }
-                }
-            }
-            MotionEvent.ACTION_UP -> {
-                WawonaNative.nativePointerLeave(ts)
-                if (touchpadHadTwoFingers) {
-                    val x = event.getX(0)
-                    val y = event.getY(0)
-                    val dx = kotlin.math.abs(x - touchpadTwoFingerCenterX)
-                    val dy = kotlin.math.abs(y - touchpadTwoFingerCenterY)
-                    val dt = event.eventTime - touchpadTwoFingerDownTime
-                    if (dx <= tapThresholdPx && dy <= tapThresholdPx && dt <= tapThresholdMs) {
-                        WawonaNative.nativePointerButton(BTN_RIGHT, 1, ts)
-                        WawonaNative.nativePointerButton(BTN_RIGHT, 0, ts + 1)
-                    }
-                } else {
-                    val x = event.getX(0)
-                    val y = event.getY(0)
-                    val dx = kotlin.math.abs(x - touchpadFirstDownX)
-                    val dy = kotlin.math.abs(y - touchpadFirstDownY)
-                    val dt = event.eventTime - touchpadFirstDownTime
-                    if (dx <= tapThresholdPx && dy <= tapThresholdPx && dt <= tapThresholdMs) {
-                        WawonaNative.nativePointerButton(BTN_LEFT, 1, ts)
-                        WawonaNative.nativePointerButton(BTN_LEFT, 0, ts + 1)
+                    event.pointerCount == 1 -> {
+                        val x = event.getX(0)
+                        val y = event.getY(0)
+                        val dx = (x - prevTouchX) * TOUCHPAD_SENSITIVITY
+                        val dy = (y - prevTouchY) * TOUCHPAD_SENSITIVITY
+                        prevTouchX = x
+                        prevTouchY = y
+                        totalMovement += kotlin.math.abs(dx) + kotlin.math.abs(dy)
+                        if (!dragging && totalMovement >= TAP_MOVEMENT_PX) {
+                            cancelDragArm()
+                        }
+                        virtualPointerX += dx
+                        virtualPointerY += dy
+                        clampPointer()
+                        touchpadOverlay?.setCursorPosition(virtualPointerX, virtualPointerY)
+                        syncPointer(ts)
                     }
                 }
             }
             MotionEvent.ACTION_POINTER_UP -> {
-                if (event.pointerCount == 2) {
-                    val idx = event.actionIndex
-                    val remaining = if (idx == 0) 1 else 0
-                    touchpadLastX = event.getX(remaining)
-                    touchpadLastY = event.getY(remaining)
-                }
+                activeFingerCount = event.pointerCount - 1
             }
-            MotionEvent.ACTION_CANCEL -> WawonaNative.nativePointerLeave(ts)
+            MotionEvent.ACTION_UP -> {
+                val remaining = 0
+                val gestureEnding = remaining <= 0
+                val duration = event.eventTime - gestureStartTime
+                val lowMovement = totalMovement < TAP_MOVEMENT_PX
+                val shortTap = lowMovement && duration < TAP_DURATION_MS
+
+                if (dragging) {
+                    syncPointer(ts)
+                    WawonaNative.nativePointerButton(BTN_LEFT, 0, ts)
+                    dragging = false
+                } else if (gestureEnding && !scrollActive && lowMovement && shortTap && maxFingerCount >= 2) {
+                    clickAtPointer(BTN_RIGHT, ts)
+                } else if (gestureEnding && !scrollActive && shortTap && maxFingerCount <= 1) {
+                    clickAtPointer(BTN_LEFT, ts)
+                }
+
+                cancelDragArm()
+                if (gestureEnding) {
+                    scrollActive = false
+                    maxFingerCount = 0
+                    // Keep pointer entered between gestures (matches iOS touchpad).
+                }
+                activeFingerCount = 0
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                if (dragging) {
+                    WawonaNative.nativePointerButton(
+                        BTN_LEFT,
+                        0,
+                        (System.currentTimeMillis() % Int.MAX_VALUE).toInt()
+                    )
+                    dragging = false
+                }
+                cancelDragArm()
+                scrollActive = false
+                activeFingerCount = 0
+                maxFingerCount = 0
+                leavePointer(ts)
+            }
         }
         return true
     }
@@ -272,16 +447,14 @@ class WawonaSurfaceView(context: Context) : SurfaceView(context) {
     }
 
     override fun onGenericMotionEvent(event: MotionEvent): Boolean {
-        if (event.action == MotionEvent.ACTION_SCROLL && event.source and InputDevice.SOURCE_CLASS_POINTER != 0) {
+        if (event.action == MotionEvent.ACTION_SCROLL &&
+            event.source and InputDevice.SOURCE_CLASS_POINTER != 0
+        ) {
             val vscroll = event.getAxisValue(MotionEvent.AXIS_VSCROLL)
             val hscroll = event.getAxisValue(MotionEvent.AXIS_HSCROLL)
             val ts = (event.eventTime % Int.MAX_VALUE).toInt()
-            if (vscroll != 0f) {
-                WawonaNative.nativePointerAxis(0, vscroll, ts)
-            }
-            if (hscroll != 0f) {
-                WawonaNative.nativePointerAxis(1, hscroll, ts)
-            }
+            if (vscroll != 0f) WawonaNative.nativePointerAxis(0, vscroll, ts)
+            if (hscroll != 0f) WawonaNative.nativePointerAxis(1, hscroll, ts)
             return true
         }
         return super.onGenericMotionEvent(event)

@@ -15,6 +15,13 @@
 , runtimeLibDirs ? ""
 , opensshBinaryPath ? ""
 , sshpassBinaryPath ? ""
+, zshBinaryPath ? ""
+, zshSharePath ? ""
+, fastfetchBinaryPath ? ""
+, neovimBinaryPath ? ""
+, waypipeBinaryPath ? ""
+, waypipeBinaryPathFallback ? ""
+, anowawAndroid ? null
 }:
 
 let
@@ -41,6 +48,10 @@ let
       "";
   projectDir = "Wawona-gradle-project";
   legacyOutDir = "dependencies/generators/gradlegen/output/Wawona-gradle-project";
+  westonSrc = pkgs.fetchurl {
+    url = "https://gitlab.freedesktop.org/wayland/weston/-/releases/13.0.0/downloads/weston-13.0.0.tar.xz";
+    sha256 = "sha256-Uv8dSqI5Si5BbIWjOLYnzpf6cdQ+t2L9Sq8UXTb8eVo=";
+  };
   sdkDirInit =
     if androidSdkRoot != null then
       "SDK_DIR=${lib.escapeShellArg (toString androidSdkRoot)}"
@@ -53,6 +64,12 @@ let
   runtimeLibDirsEscaped = lib.escapeShellArg runtimeLibDirs;
   opensshBinaryPathEscaped = lib.escapeShellArg opensshBinaryPath;
   sshpassBinaryPathEscaped = lib.escapeShellArg sshpassBinaryPath;
+  zshBinaryPathEscaped = lib.escapeShellArg zshBinaryPath;
+  zshSharePathEscaped = lib.escapeShellArg zshSharePath;
+  fastfetchBinaryPathEscaped = lib.escapeShellArg fastfetchBinaryPath;
+  neovimBinaryPathEscaped = lib.escapeShellArg neovimBinaryPath;
+  waypipeBinaryPathEscaped = lib.escapeShellArg waypipeBinaryPath;
+  waypipeBinaryPathFallbackEscaped = lib.escapeShellArg waypipeBinaryPathFallback;
   westonShmPath = if westonSimpleShmSrc != null then toString westonSimpleShmSrc else "";
   westonPolyfillPath =
     if westonAndroidSignalPolyfill != null then toString westonAndroidSignalPolyfill else "";
@@ -232,12 +249,62 @@ let
       echo "Warning: Weston simple-shm sources missing; native CMake will fail until deps are present."
     fi
 
+    # anowaW app bridge: stage Kotlin shims (mirrors dependencies/wawona/android.nix).
+    ANOWAW_KT_SRC=""
+    ANOWAW_JNI_SRC=""
+    ANOWAW_SO=""
+    if [ -n "${if anowawAndroid != null then toString anowawAndroid else ""}" ] && [ -d "${if anowawAndroid != null then toString anowawAndroid else "/nonexistent"}/share/anowaw/kotlin" ]; then
+      ANOWAW_KT_SRC="${toString anowawAndroid}/share/anowaw/kotlin"
+      if [ -f "${toString anowawAndroid}/share/anowaw/jni/anowaw_jni.c" ]; then
+        ANOWAW_JNI_SRC="${toString anowawAndroid}/share/anowaw/jni/anowaw_jni.c"
+      fi
+      if [ -f "${toString anowawAndroid}/lib/libanowaw.so" ]; then
+        ANOWAW_SO="${toString anowawAndroid}/lib/libanowaw.so"
+      fi
+    fi
+    if [ -z "$ANOWAW_KT_SRC" ]; then
+      for candidate in \
+        "$REPO_ROOT/../wwn-anowaW/platform/android/kotlin" \
+        "$REPO_ROOT/wwn-anowaW/platform/android/kotlin"; do
+        if [ -d "$candidate" ]; then
+          ANOWAW_KT_SRC="$candidate"
+          anowaw_base="$(dirname "$(dirname "$candidate")")"
+          if [ -f "$anowaw_base/jni/anowaw_jni.c" ]; then
+            ANOWAW_JNI_SRC="$anowaw_base/jni/anowaw_jni.c"
+          fi
+          break
+        fi
+      done
+    fi
+    if [ -n "$ANOWAW_KT_SRC" ]; then
+      ANOWAW_KT_DIR="$OUT/app/src/main/kotlin/com/aspauldingcode/wawona/anowaw"
+      mkdir -p "$ANOWAW_KT_DIR"
+      cp "$ANOWAW_KT_SRC"/*.kt "$ANOWAW_KT_DIR/"
+      chmod -R u+w "$ANOWAW_KT_DIR" 2>/dev/null || true
+      echo "Staged anowaW Kotlin shims from $ANOWAW_KT_SRC"
+    else
+      echo "Warning: anowaW Kotlin shims not found; Studio builds fail on AnowawSession until wwn-anowaW is available."
+    fi
+    if [ -n "$ANOWAW_JNI_SRC" ]; then
+      ANOWAW_JNI_DST="$WAWONA_SRC/src/platform/android/anowaw_jni.c"
+      mkdir -p "$(dirname "$ANOWAW_JNI_DST")"
+      cp -f "$ANOWAW_JNI_SRC" "$ANOWAW_JNI_DST"
+      chmod u+w "$ANOWAW_JNI_DST" 2>/dev/null || true
+      echo "Staged anowaw_jni.c into $ANOWAW_JNI_DST"
+    fi
+
     # Mirror Nix runtime libs into jniLibs for Android Studio builds.
     RUNTIME_LIB_DIRS=${runtimeLibDirsEscaped}
     RUST_BACKEND_SO=${rustBackendSharedLibEscaped}
     OPENSSH_BIN=${opensshBinaryPathEscaped}
     SSHPASS_BIN=${sshpassBinaryPathEscaped}
-    if [ -n "$RUNTIME_LIB_DIRS" ] || [ -n "$RUST_BACKEND_SO" ] || [ -n "$OPENSSH_BIN" ] || [ -n "$SSHPASS_BIN" ]; then
+    ZSH_BIN=${zshBinaryPathEscaped}
+    ZSH_SHARE=${zshSharePathEscaped}
+    FASTFETCH_BIN=${fastfetchBinaryPathEscaped}
+    NEOVIM_BIN=${neovimBinaryPathEscaped}
+    WAYPIPE_BIN=${waypipeBinaryPathEscaped}
+    WAYPIPE_BIN_FALLBACK=${waypipeBinaryPathFallbackEscaped}
+    if [ -n "$RUNTIME_LIB_DIRS" ] || [ -n "$RUST_BACKEND_SO" ] || [ -n "$OPENSSH_BIN" ] || [ -n "$SSHPASS_BIN" ] || [ -n "$ZSH_BIN" ] || [ -n "$ZSH_SHARE" ] || [ -n "$FASTFETCH_BIN" ] || [ -n "$NEOVIM_BIN" ] || [ -n "$WAYPIPE_BIN" ] || [ -n "$WAYPIPE_BIN_FALLBACK" ]; then
       JNI_LIB_DIR="$OUT/app/src/main/jniLibs/arm64-v8a"
       mkdir -p "$JNI_LIB_DIR"
       if [ -n "$RUNTIME_LIB_DIRS" ]; then
@@ -268,13 +335,107 @@ let
       if [ -n "$OPENSSH_BIN" ] && [ -f "$OPENSSH_BIN" ]; then
         cp -L "$OPENSSH_BIN" "$JNI_LIB_DIR/libssh_bin.so"
         chmod +x "$JNI_LIB_DIR/libssh_bin.so"
+        # Sibling tools from the same wwn-ssh package (dropbearkey shipped as
+        # ssh-keygen, scp, dropbearconvert), when present.
+        OPENSSH_BIN_DIR="$(dirname "$OPENSSH_BIN")"
+        if [ -f "$OPENSSH_BIN_DIR/ssh-keygen" ]; then
+          cp -L "$OPENSSH_BIN_DIR/ssh-keygen" "$JNI_LIB_DIR/libssh_keygen_bin.so"
+          chmod +x "$JNI_LIB_DIR/libssh_keygen_bin.so"
+        fi
+        if [ -f "$OPENSSH_BIN_DIR/scp" ]; then
+          cp -L "$OPENSSH_BIN_DIR/scp" "$JNI_LIB_DIR/libscp_bin.so"
+          chmod +x "$JNI_LIB_DIR/libscp_bin.so"
+        fi
+        if [ -f "$OPENSSH_BIN_DIR/dropbearconvert" ]; then
+          cp -L "$OPENSSH_BIN_DIR/dropbearconvert" "$JNI_LIB_DIR/libdropbearconvert_bin.so"
+          chmod +x "$JNI_LIB_DIR/libdropbearconvert_bin.so"
+        fi
       fi
       if [ -n "$SSHPASS_BIN" ] && [ -f "$SSHPASS_BIN" ]; then
         cp -L "$SSHPASS_BIN" "$JNI_LIB_DIR/libsshpass_bin.so"
         chmod +x "$JNI_LIB_DIR/libsshpass_bin.so"
       fi
+      if [ -n "$ZSH_BIN" ] && [ -f "$ZSH_BIN" ]; then
+        cp -L "$ZSH_BIN" "$JNI_LIB_DIR/libzsh_bin.so"
+        chmod +x "$JNI_LIB_DIR/libzsh_bin.so"
+      fi
+      if [ -n "$ZSH_SHARE" ] && [ -d "$ZSH_SHARE" ]; then
+        mkdir -p "$OUT/app/src/main/assets/zsh"
+        cp -RL "$ZSH_SHARE/." "$OUT/app/src/main/assets/zsh/"
+        chmod -R u+w "$OUT/app/src/main/assets/zsh" 2>/dev/null || true
+      fi
+      if [ -n "$FASTFETCH_BIN" ] && [ -f "$FASTFETCH_BIN" ]; then
+        cp -L "$FASTFETCH_BIN" "$JNI_LIB_DIR/libfastfetch_bin.so"
+        chmod +x "$JNI_LIB_DIR/libfastfetch_bin.so"
+      fi
+      if [ -n "$NEOVIM_BIN" ] && [ -f "$NEOVIM_BIN" ]; then
+        cp -L "$NEOVIM_BIN" "$JNI_LIB_DIR/libnvim_bin.so"
+        chmod +x "$JNI_LIB_DIR/libnvim_bin.so"
+      fi
+      if [ -n "$WAYPIPE_BIN" ] && [ -f "$WAYPIPE_BIN" ]; then
+        cp -L "$WAYPIPE_BIN" "$JNI_LIB_DIR/libwaypipe_bin.so"
+        chmod +x "$JNI_LIB_DIR/libwaypipe_bin.so"
+      elif [ -n "$WAYPIPE_BIN_FALLBACK" ] && [ -f "$WAYPIPE_BIN_FALLBACK" ]; then
+        cp -L "$WAYPIPE_BIN_FALLBACK" "$JNI_LIB_DIR/libwaypipe_bin.so"
+        chmod +x "$JNI_LIB_DIR/libwaypipe_bin.so"
+      fi
+      if [ -n "$ANOWAW_SO" ] && [ -f "$ANOWAW_SO" ]; then
+        cp -L "$ANOWAW_SO" "$JNI_LIB_DIR/libanowaw.so"
+        chmod u+w "$JNI_LIB_DIR/libanowaw.so" 2>/dev/null || true
+      fi
       chmod -R u+w "$JNI_LIB_DIR" 2>/dev/null || true
       echo "Mirrored Nix runtime .so libs into $JNI_LIB_DIR"
+    fi
+
+    # xkeyboard-config: required at runtime by xkbcommon (rules/evdev, symbols,
+    # etc.) to resolve the seat's keymap. Without this, smithay's
+    # seat.add_keyboard() fails for both the primary and fallback XKB config,
+    # the seat ends up with zero keyboard capability, and no key event ever
+    # reaches any Wayland client (weston-terminal included) — a silent,
+    # total keyboard-input failure. Extracted into wawona-rootfs at runtime
+    # by WawonaShellRootfs. Mirrors dependencies/wawona/android.nix.
+    XKB_ASSET_DIR="$OUT/app/src/main/assets/xkb"
+    if [ ! -f "$XKB_ASSET_DIR/rules/evdev" ]; then
+      mkdir -p "$XKB_ASSET_DIR"
+      cp -RL ${pkgs.xkeyboard_config}/share/X11/xkb/. "$XKB_ASSET_DIR/"
+      chmod -R u+w "$XKB_ASSET_DIR"
+      echo "Bundled xkeyboard-config into $XKB_ASSET_DIR"
+    fi
+
+    # DejaVu fonts for the in-process weston toytoolkit clients (cairo/
+    # fontconfig text rendering). android_jni.c writes a fonts.conf pointing
+    # here at runtime.
+    FONTS_ASSET_DIR="$OUT/app/src/main/assets/fonts/truetype"
+    if [ ! -f "$FONTS_ASSET_DIR/DejaVuSans.ttf" ]; then
+      mkdir -p "$FONTS_ASSET_DIR"
+      cp -L ${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSans.ttf \
+            ${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSans-Bold.ttf \
+            ${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSansMono.ttf \
+            ${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSansMono-Bold.ttf \
+            "$FONTS_ASSET_DIR/"
+      chmod -R u+w "$OUT/app/src/main/assets/fonts"
+      echo "Bundled DejaVu fonts into $FONTS_ASSET_DIR"
+    fi
+
+    # Weston toytoolkit PNGs (sign_close.png, sign_maximize.png,
+    # sign_minimize.png, icon_window.png, ...). These are not cosmetic on
+    # mobile: frame.c sizes CSD buttons from the loaded image surface, so
+    # missing assets collapse the close/max/min controls into 1x1 placeholders.
+    WESTON_ASSET_DIR="$OUT/app/src/main/assets/weston"
+    if [ ! -f "$WESTON_ASSET_DIR/sign_close.png" ] || [ ! -f "$WESTON_ASSET_DIR/sign_maximize.png" ] || [ ! -f "$WESTON_ASSET_DIR/sign_minimize.png" ]; then
+      rm -rf "$WESTON_ASSET_DIR"
+      mkdir -p "$WESTON_ASSET_DIR"
+      tar xf ${westonSrc} \
+        --strip-components=2 \
+        -C "$WESTON_ASSET_DIR" \
+        weston-13.0.0/data
+      find "$WESTON_ASSET_DIR" -type f ! -name '*.png' -delete 2>/dev/null || true
+      chmod -R u+w "$WESTON_ASSET_DIR"
+      if [ ! -f "$WESTON_ASSET_DIR/icon_window.png" ]; then
+        echo "ERROR: Weston frame assets missing from $WESTON_ASSET_DIR"
+        exit 1
+      fi
+      echo "Bundled Weston PNG assets into $WESTON_ASSET_DIR"
     fi
 
     if [ -f "$REPO_ROOT/android/gradlew" ] && [ -d "$REPO_ROOT/android/gradle/wrapper" ]; then

@@ -21,6 +21,31 @@ extension MachineType {
         }
     }
 
+    /// Backend engine label for virtual-machine and container types.
+    ///
+    /// The engine is fixed per build target by the `wwn-vms` / `wwn-containers`
+    /// capability lanes and is never user-configurable (Residual E). This is a
+    /// read-only display string; it returns `nil` for types without a distinct
+    /// engine.
+    public var backendEngineLabel: String? {
+        switch self {
+        case .virtualMachine:
+            #if os(macOS)
+            return "Virtualization.framework"
+            #else
+            return "QEMU (TCTI)"
+            #endif
+        case .container:
+            #if os(macOS)
+            return "containerization.framework"
+            #else
+            return "container-in-VM"
+            #endif
+        default:
+            return nil
+        }
+    }
+
     /// SF Symbol name for this machine type (shared across iOS and watchOS).
     public var symbolName: String {
         switch self {
@@ -105,8 +130,6 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
     public var sshPort: Int
     public var sshPassword: String
     public var remoteCommand: String
-    public var vmSubtype: String
-    public var containerSubtype: String
     public var launchers: [ClientLauncher]
     public var favorite: Bool
     public var runtimeOverrides: MachineRuntimeOverrides
@@ -120,8 +143,6 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
         case sshPort
         case sshPassword
         case remoteCommand
-        case vmSubtype
-        case containerSubtype
         case launchers
         case favorite
         case runtimeOverrides
@@ -136,8 +157,6 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
         sshPort: Int = 22,
         sshPassword: String = "",
         remoteCommand: String = "weston-simple-shm",
-        vmSubtype: String = "",
-        containerSubtype: String = "",
         launchers: [ClientLauncher] = [],
         favorite: Bool = false,
         runtimeOverrides: MachineRuntimeOverrides = MachineRuntimeOverrides()
@@ -150,8 +169,6 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
         self.sshPort = sshPort
         self.sshPassword = sshPassword
         self.remoteCommand = remoteCommand
-        self.vmSubtype = vmSubtype
-        self.containerSubtype = containerSubtype
         self.launchers = launchers
         self.favorite = favorite
         self.runtimeOverrides = runtimeOverrides
@@ -167,8 +184,9 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
         sshPort = try container.decodeIfPresent(Int.self, forKey: .sshPort) ?? 22
         sshPassword = try container.decodeIfPresent(String.self, forKey: .sshPassword) ?? ""
         remoteCommand = try container.decodeIfPresent(String.self, forKey: .remoteCommand) ?? "weston-simple-shm"
-        vmSubtype = try container.decodeIfPresent(String.self, forKey: .vmSubtype) ?? ""
-        containerSubtype = try container.decodeIfPresent(String.self, forKey: .containerSubtype) ?? ""
+        // vmSubtype / containerSubtype were removed (Residual E): backend
+        // selection is fixed per build target, not user-editable. Any such keys
+        // in legacy JSON are ignored on decode.
         launchers = try container.decodeIfPresent([ClientLauncher].self, forKey: .launchers) ?? []
         favorite = try container.decodeIfPresent(Bool.self, forKey: .favorite) ?? false
         runtimeOverrides = try container.decodeIfPresent(MachineRuntimeOverrides.self, forKey: .runtimeOverrides) ?? MachineRuntimeOverrides()
@@ -184,11 +202,53 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
         try container.encode(sshPort, forKey: .sshPort)
         try container.encode(sshPassword, forKey: .sshPassword)
         try container.encode(remoteCommand, forKey: .remoteCommand)
-        try container.encode(vmSubtype, forKey: .vmSubtype)
-        try container.encode(containerSubtype, forKey: .containerSubtype)
         try container.encode(launchers, forKey: .launchers)
         try container.encode(favorite, forKey: .favorite)
         try container.encode(runtimeOverrides, forKey: .runtimeOverrides)
+    }
+}
+
+// MARK: - App Bridge (anowaW) eligibility
+
+extension MachineProfile {
+    /// The effective client id this native machine launches, resolved from the
+    /// runtime override (`bundledAppID`) or the auto-launch launcher, else the
+    /// `remoteCommand`. Lowercased and trimmed.
+    public var resolvedNativeClientId: String {
+        let candidate = runtimeOverrides.bundledAppID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let candidate, !candidate.isEmpty { return candidate.lowercased() }
+        if let auto = launchers.first(where: { $0.autoLaunch }) ?? launchers.first {
+            let name = auto.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !name.isEmpty { return name.lowercased() }
+        }
+        return remoteCommand.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    /// True when this is a local-only native machine whose client is a **nested
+    /// Wayland compositor** rather than a plain Weston demo client
+    /// (`weston-terminal`, `weston-simple-shm`, `foot`, toytoolkit).
+    ///
+    /// For anowaW v1 this is intentionally restricted to **weston nested**
+    /// (`weston` running `--backend=wayland`); other nesting hosts are out of
+    /// scope (see wwn-anowaW README "Scope").
+    public var isNestedCompositorClient: Bool {
+        guard type == .native else { return false }
+        let cid = resolvedNativeClientId
+        // Reject demo/toolkit clients explicitly.
+        if cid.contains("weston-terminal") || cid.contains("weston-simple-shm") { return false }
+        if cid == "foot" || cid.hasSuffix("/foot") || cid.hasSuffix(" foot") { return false }
+        // v1: only the nested `weston` compositor qualifies.
+        return cid == "weston" || cid.hasSuffix("/weston")
+            || cid.contains("weston --backend=wayland")
+            || cid.contains("weston-backend=wayland")
+    }
+
+    /// The App Bridge (anowaW) desktop machine may be selected **only** when it
+    /// is a local-only, nested-Weston native machine. Mirrors the Kotlin
+    /// `MachineProfile.isAppBridgeEligible` and the ObjC
+    /// `profileEligibleForAppBridge:`.
+    public var isAppBridgeEligible: Bool {
+        type == .native && isNestedCompositorClient
     }
 }
 

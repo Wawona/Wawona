@@ -66,6 +66,7 @@ remote/nested Xwayland can attach. Details: [`2026-x11-strategy.md`](./2026-x11-
 - Platform delivery matrix: [`2026-platform-delivery-matrix.md`](./2026-platform-delivery-matrix.md)
 - X11 strategy: [`2026-x11-strategy.md`](./2026-x11-strategy.md)
 - wlroots compatibility: [`2026-wlroots-compat.md`](./2026-wlroots-compat.md)
+- Smithay adoption decision (RFC #35 closure): [`compliance/smithay-adoption-decision.md`](./compliance/smithay-adoption-decision.md)
 - Compositing frameworks / present-path contract: [`2026-compositing-frameworks.md`](./2026-compositing-frameworks.md)
 - Toolkit / DE compatibility: [`2026-toolkit-de-compat.md`](./2026-toolkit-de-compat.md)
 - Universal client strategy: [`2026-universal-client-strategy.md`](./2026-universal-client-strategy.md)

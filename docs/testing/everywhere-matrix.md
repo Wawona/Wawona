@@ -2,6 +2,9 @@
 
 Structured build verification (CI) plus manual functional smoke per platform.
 
+For copy-pasteable exercise recipes (Waypipe/DELIVERER, native macOS Weston,
+iOS on-device shell, agent-device replays), see [`commands.md`](./commands.md).
+
 ## Nix build targets (Phase 5A — CI)
 
 | Platform | Flake target | Notes |

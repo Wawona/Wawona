@@ -6,10 +6,21 @@ import java.io.FileOutputStream
 
 /**
  * Extracts bundled share trees from APK assets into the app files dir:
- * zsh (shell fpath) and xkeyboard-config (compositor keymaps).
+ * zsh (shell fpath), xkeyboard-config (compositor keymaps), weston data
+ * (CSD frame PNGs), and DejaVu fonts (fontconfig text rendering).
  */
 object WawonaShellRootfs {
-    private const val MARKER = ".installed-v2"
+    // Bumped v4 -> v5: earlier gradlegen-built APKs omitted assets/weston,
+    // leaving toytoolkit CSD buttons with 1x1 placeholder icons instead of
+    // the normal close/max/min glyphs and spacing.
+    //
+    // Bumped v3 -> v4: earlier gradlegen-built APKs shipped an empty
+    // assets/xkb (no rules/evdev), so xkbcommon failed to resolve a keymap,
+    // smithay's seat.add_keyboard() had nothing to fall back to, and the
+    // seat ended up with zero keyboard capability — no key ever reached any
+    // client. Bump the marker so devices with a stale (incomplete) rootfs
+    // from before that fix get re-extracted instead of skipping install.
+    private const val MARKER = ".installed-v5"
 
     fun ensureInstalled(context: Context): File {
         val root = File(context.filesDir, "wawona-rootfs")
@@ -30,6 +41,10 @@ object WawonaShellRootfs {
             val shareWeston = File(root, "usr/share/weston")
             shareWeston.mkdirs()
             copyAssetDir(context, "weston", shareWeston)
+
+            val shareFonts = File(root, "usr/share/fonts")
+            shareFonts.mkdirs()
+            copyAssetDir(context, "fonts", shareFonts)
 
             File(root, "home").mkdirs()
             File(root, "usr/bin").mkdirs()

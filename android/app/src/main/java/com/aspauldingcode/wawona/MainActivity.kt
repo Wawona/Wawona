@@ -1,7 +1,10 @@
 package com.aspauldingcode.wawona
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.SharedPreferences
+import android.content.res.Configuration
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -32,6 +35,8 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -57,10 +62,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.material.icons.Icons
@@ -219,10 +226,18 @@ class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
 }
 
 private enum class KeyboardUiMode {
-    PIP,
+    HIDDEN_EXTERNAL,
+    PIP_FLOATING,
+    PIP_DOCKED_LEFT,
+    PIP_DOCKED_RIGHT,
     ACCESSORY_ONLY,
     EXPANDED,
 }
+
+private fun KeyboardUiMode.isPip(): Boolean =
+    this == KeyboardUiMode.PIP_FLOATING ||
+        this == KeyboardUiMode.PIP_DOCKED_LEFT ||
+        this == KeyboardUiMode.PIP_DOCKED_RIGHT
 
 @Composable
 fun WawonaApp(
@@ -244,11 +259,22 @@ fun WawonaApp(
     var startupLogClientLabel by remember { mutableStateOf("") }
     val startupLogLines = remember { mutableStateOf(listOf<String>()) }
     var windowTitle by remember { mutableStateOf("") }
+    val clipboardManager = remember {
+        context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    }
+    // Guards against the feedback loop: writing to ClipboardManager ourselves
+    // (a client copied something) synchronously fires our own
+    // OnPrimaryClipChangedListener, which would otherwise bounce that same
+    // text right back into the compositor as if the user had copied it
+    // natively. Set immediately before every self-triggered write, cleared
+    // by the listener once it sees the matching change.
+    var suppressNextClipboardChange by remember { mutableStateOf(false) }
     var nativeRuntimeReady by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
     var thumbnailRevision by remember { mutableIntStateOf(0) }
     var surfaceViewRef by remember { mutableStateOf<WawonaSurfaceView?>(null) }
-    var keyboardUiMode by remember { mutableStateOf(KeyboardUiMode.EXPANDED) }
+    var keyboardUiMode by remember { mutableStateOf(KeyboardUiMode.ACCESSORY_ONLY) }
+    var keyboardUiModeBeforeExternal by remember { mutableStateOf(KeyboardUiMode.ACCESSORY_ONLY) }
     var pipButtonOffsetX by remember { mutableStateOf(16f) }
     var pipButtonOffsetY by remember { mutableStateOf(160f) }
     val appScope = rememberCoroutineScope()
@@ -590,6 +616,35 @@ fun WawonaApp(
     var lastPolledOutputW by remember { mutableIntStateOf(0) }
     var lastPolledOutputH by remember { mutableIntStateOf(0) }
 
+    // Native copy (another app, or text the user pasted from outside Wawona)
+    // -> push into the compositor so Wayland clients (e.g. weston-terminal)
+    // can paste it. Uses a real listener (not polling) since ClipboardManager
+    // notifies listeners immediately when the primary clip changes.
+    DisposableEffect(clipboardManager) {
+        val listener = ClipboardManager.OnPrimaryClipChangedListener {
+            if (suppressNextClipboardChange) {
+                suppressNextClipboardChange = false
+                return@OnPrimaryClipChangedListener
+            }
+            if (!prefs.getBoolean("universalClipboard", true)) {
+                return@OnPrimaryClipChangedListener
+            }
+            val text = clipboardManager.primaryClip
+                ?.takeIf { it.itemCount > 0 }
+                ?.getItemAt(0)
+                ?.coerceToText(context)
+                ?.toString()
+            if (!text.isNullOrEmpty()) {
+                try {
+                    WawonaNative.nativeSetClipboardText(text)
+                } catch (_: Exception) {
+                }
+            }
+        }
+        clipboardManager.addPrimaryClipChangedListener(listener)
+        onDispose { clipboardManager.removePrimaryClipChangedListener(listener) }
+    }
+
     LaunchedEffect(Unit) {
         while (true) {
             try {
@@ -604,6 +659,13 @@ fun WawonaApp(
                     else -> false
                 }
                 windowTitle = WawonaNative.nativeGetFocusedWindowTitle()
+                if (prefs.getBoolean("universalClipboard", true)) {
+                    val clientText = WawonaNative.nativePollClipboardText()
+                    if (!clientText.isNullOrEmpty()) {
+                        suppressNextClipboardChange = true
+                        clipboardManager.setPrimaryClip(ClipData.newPlainText("Wawona", clientText))
+                    }
+                }
                 ScreencopyHelper.pollAndCapture(activity?.window)
                 val hasWindow = windowTitle.isNotEmpty()
                 if (hasWindow && !hadWindow) {
@@ -691,12 +753,16 @@ fun WawonaApp(
         val targetSession = sessionId ?: sessionOrchestrator.startSession(profile).sessionId
         MachineProfileStore.applyMachineToPrefs(prefs, profile)
         MachineProfileStore.setActiveMachineId(prefs, profile.id)
+        respectSafeArea = prefs.getBoolean("respectSafeArea", true)
+        try {
+            WawonaSettings.apply(prefs)
+            activity?.window?.decorView?.let { ViewCompat.requestApplyInsets(it) }
+        } catch (_: Exception) {
+        }
         if (!ensureNativeRuntimeReady()) {
             sessionOrchestrator.markDegraded(targetSession, "Failed to initialize compositor runtime")
             return
         }
-        WawonaSettings.apply(prefs)
-
         val launched = when (profile.type) {
             MachineType.NATIVE -> launchNativeMachine(profile)
             MachineType.SSH_WAYPIPE -> launchWaypipe()
@@ -714,6 +780,14 @@ fun WawonaApp(
         if (launched) {
             sessionOrchestrator.markConnected(targetSession)
             sessionOrchestrator.setActiveSession(targetSession)
+            /* App Bridge (anowaW): once the nested-Weston desktop machine is up,
+             * attach the bridge so Android apps can be embedded as Wayland
+             * windows. Only fires for an eligible desktop machine with the
+             * feature enabled; no-op otherwise. */
+            if (profile.isAppBridgeEligible &&
+                DesktopReplacement.isAppBridgeEnabled(prefs)) {
+                appScope.launch { AnowawSession.attach(context, prefs) }
+            }
             /* Show startup log overlay before switching to compositor view. */
             val label = when (profile.type) {
                 MachineType.NATIVE -> profile.nativeLauncher.ifBlank { "weston-terminal" }
@@ -741,6 +815,7 @@ fun WawonaApp(
                     thumbnailRevision += 1
                 }
             }
+            if (AnowawSession.isActive) AnowawSession.detach()
             when (profile.type) {
                 MachineType.NATIVE -> stopNativeClient(profile.nativeLauncher)
                 MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> stopWaypipe()
@@ -760,7 +835,12 @@ fun WawonaApp(
         } ?: return
         MachineProfileStore.applyMachineToPrefs(prefs, profile)
         MachineProfileStore.setActiveMachineId(prefs, profile.id)
-        WawonaSettings.apply(prefs)
+        respectSafeArea = prefs.getBoolean("respectSafeArea", true)
+        try {
+            WawonaSettings.apply(prefs)
+            activity?.window?.decorView?.let { ViewCompat.requestApplyInsets(it) }
+        } catch (_: Exception) {
+        }
         sessionOrchestrator.setActiveSession(session.sessionId)
         showMachinesHome = false
     }
@@ -802,6 +882,14 @@ fun WawonaApp(
     }
 
     fun launchAndroidAppFromDrawer(app: AndroidApp) {
+        // When the App Bridge is active, open the app as a window inside the
+        // Wayland desktop instead of full-screen. Fall back to a normal launch
+        // if bridging is unavailable or disallowed (e.g. third-party app in the
+        // Play-safe baseline tier).
+        if (AnowawSession.isActive && AnowawSession.launchAppIntoDesktop(context, app)) {
+            showAppDrawer = false
+            return
+        }
         if (!AndroidAppLauncher.launch(context, app.packageName)) {
             Toast.makeText(context, "Unable to launch ${app.label}", Toast.LENGTH_SHORT).show()
         } else {
@@ -833,24 +921,66 @@ fun WawonaApp(
     }
 
     val density = LocalDensity.current
+    val configuration = LocalConfiguration.current
     val imeBottom = with(density) { WindowInsets.ime.getBottom(this) }
+    val imeVisible = imeBottom > 0
+    val safeAreaPadding = if (respectSafeArea) {
+        WindowInsets.safeDrawing.asPaddingValues()
+    } else {
+        androidx.compose.foundation.layout.PaddingValues()
+    }
     val systemBarBottomPx = with(density) { WindowInsets.systemBars.getBottom(this) }
     val systemBarBottomDp = with(density) { systemBarBottomPx.toDp() }
+    val hardwareKeyboardActive =
+        configuration.keyboard != Configuration.KEYBOARD_NOKEYS &&
+            configuration.hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_NO
     val inSessionUi = !showWelcome && !showMachinesHome
-    val showAccessoryBar = inSessionUi && keyboardUiMode != KeyboardUiMode.PIP
-    val showKeyboardPipButton = inSessionUi && keyboardUiMode == KeyboardUiMode.PIP
+    val showAccessoryBar =
+        inSessionUi && !hardwareKeyboardActive && !keyboardUiMode.isPip()
+    val showKeyboardPipButton =
+        inSessionUi && !hardwareKeyboardActive && keyboardUiMode.isPip()
+
+    LaunchedEffect(hardwareKeyboardActive, inSessionUi) {
+        if (!inSessionUi) return@LaunchedEffect
+        if (hardwareKeyboardActive) {
+            if (keyboardUiMode != KeyboardUiMode.HIDDEN_EXTERNAL) {
+                keyboardUiModeBeforeExternal = keyboardUiMode
+            }
+            keyboardUiMode = KeyboardUiMode.HIDDEN_EXTERNAL
+            hideNativeKeyboard()
+        } else if (keyboardUiMode == KeyboardUiMode.HIDDEN_EXTERNAL) {
+            keyboardUiMode =
+                if (keyboardUiModeBeforeExternal == KeyboardUiMode.HIDDEN_EXTERNAL) {
+                    KeyboardUiMode.EXPANDED
+                } else {
+                    keyboardUiModeBeforeExternal
+                }
+        }
+    }
 
     LaunchedEffect(keyboardUiMode, inSessionUi) {
         if (!inSessionUi) return@LaunchedEffect
         when (keyboardUiMode) {
             KeyboardUiMode.EXPANDED -> showNativeKeyboard()
-            KeyboardUiMode.ACCESSORY_ONLY, KeyboardUiMode.PIP -> hideNativeKeyboard()
+            KeyboardUiMode.ACCESSORY_ONLY,
+            KeyboardUiMode.HIDDEN_EXTERNAL,
+            KeyboardUiMode.PIP_FLOATING,
+            KeyboardUiMode.PIP_DOCKED_LEFT,
+            KeyboardUiMode.PIP_DOCKED_RIGHT -> hideNativeKeyboard()
         }
     }
 
-    LaunchedEffect(imeBottom, keyboardUiMode, inSessionUi) {
-        if (!inSessionUi) return@LaunchedEffect
-        if (keyboardUiMode == KeyboardUiMode.EXPANDED && imeBottom <= 0) {
+    LaunchedEffect(imeBottom, keyboardUiMode, inSessionUi, hardwareKeyboardActive) {
+        if (!inSessionUi || hardwareKeyboardActive) return@LaunchedEffect
+        if (imeVisible && !keyboardUiMode.isPip() &&
+            keyboardUiMode != KeyboardUiMode.HIDDEN_EXTERNAL
+        ) {
+            if (keyboardUiMode != KeyboardUiMode.EXPANDED) {
+                keyboardUiMode = KeyboardUiMode.EXPANDED
+            }
+        } else if (keyboardUiMode.isPip() && imeVisible) {
+            keyboardUiMode = KeyboardUiMode.EXPANDED
+        } else if (keyboardUiMode == KeyboardUiMode.EXPANDED && !imeVisible) {
             showNativeKeyboard()
         }
     }
@@ -901,27 +1031,34 @@ fun WawonaApp(
         BackHandler(enabled = desktopModeEnabled && !showAppDrawer) {
             showAppDrawer = true
         }
-        BackHandler(enabled = !desktopModeEnabled && SessionExitSettings.resolvedSwipeBackEnabled(prefs, activeProfile())) {
-            requestSessionCloseConfirm()
+        BackHandler(enabled = !desktopModeEnabled && inSessionUi) {
+            if (SessionExitSettings.resolvedSwipeBackEnabled(prefs, activeProfile())) {
+                requestSessionCloseConfirm()
+            } else {
+                appScope.launch {
+                    captureActiveThumbnail(activeProfile())
+                    tearDownActiveSession(activeProfile())
+                }
+            }
         }
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(LocalWawonaCompositorBackground.current)
-                .windowInsetsPadding(WindowInsets.ime)
         ) {
-            // Full-bleed surface: safe area / cutouts are applied in native via
-            // nativeUpdateSafeArea + respectSafeArea (matches Wawona Settings).
-            // Do not also pad here — that double-applied insets and broke output size.
+            // Respect safe area by inset-padding the compositor (iOS
+            // safeAreaLayoutGuide parity). wl_output size follows the padded
+            // surface; do not also crop via native safe_area_insets.
             AndroidView(
                 factory = { ctx: Context ->
-                    WawonaSurfaceView(ctx).apply {
-                        holder.addCallback(surfaceCallback)
+                    WawonaCompositorContainer(ctx).apply {
+                        surfaceView.holder.addCallback(surfaceCallback)
                     }
                 },
-                update = { view -> surfaceViewRef = view },
+                update = { container -> surfaceViewRef = container.surfaceView },
                 modifier = Modifier
                     .fillMaxSize()
+                    .padding(safeAreaPadding)
                     .testTag(WawonaTestTags.COMPOSITOR_SURFACE)
             )
 
@@ -951,11 +1088,28 @@ fun WawonaApp(
             }
 
             if (showAccessoryBar) {
+                val safeLeftDp = if (respectSafeArea) {
+                    with(density) { WindowInsets.safeDrawing.getLeft(this, LayoutDirection.Ltr).toDp() }
+                } else {
+                    0.dp
+                }
+                val safeRightDp = if (respectSafeArea) {
+                    with(density) { WindowInsets.safeDrawing.getRight(this, LayoutDirection.Ltr).toDp() }
+                } else {
+                    0.dp
+                }
+                val accessoryBottomPadding = when {
+                    imeVisible -> with(density) { imeBottom.toDp() }
+                    keyboardUiMode == KeyboardUiMode.EXPANDED -> systemBarBottomDp
+                    else -> systemBarBottomDp + 8.dp
+                }
                 ModifierAccessoryBar(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(
-                            bottom = if (keyboardUiMode == KeyboardUiMode.EXPANDED) 0.dp else systemBarBottomDp + 8.dp
+                            start = safeLeftDp,
+                            end = safeRightDp,
+                            bottom = accessoryBottomPadding
                         )
                         .fillMaxWidth(),
                     keyboardExpanded = keyboardUiMode == KeyboardUiMode.EXPANDED,
@@ -968,22 +1122,38 @@ fun WawonaApp(
                             }
                     },
                     onCollapseToPipByDrag = {
-                        keyboardUiMode = KeyboardUiMode.PIP
+                        keyboardUiMode = KeyboardUiMode.PIP_FLOATING
                     }
                 )
             }
 
             if (showKeyboardPipButton) {
                 BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                    val pipSizePx = with(density) { 48.dp.toPx() }
-                    val maxX = (constraints.maxWidth - pipSizePx).coerceAtLeast(0f)
-                    val maxY = (constraints.maxHeight - pipSizePx).coerceAtLeast(0f)
+                    val pipDocked = keyboardUiMode == KeyboardUiMode.PIP_DOCKED_LEFT ||
+                        keyboardUiMode == KeyboardUiMode.PIP_DOCKED_RIGHT
+                    val pipWidthDp = if (pipDocked) 30.dp else 56.dp
+                    val pipHeightDp = 42.dp
+                    val pipWidthPx = with(density) { pipWidthDp.toPx() }
+                    val pipHeightPx = with(density) { pipHeightDp.toPx() }
+                    val maxX = (constraints.maxWidth - pipWidthPx).coerceAtLeast(0f)
+                    val maxY = (constraints.maxHeight - pipHeightPx).coerceAtLeast(0f)
                     val bottomInsetPx = maxOf(
                         with(density) { 16.dp.toPx() },
                         systemBarBottomPx.toFloat() + with(density) { 8.dp.toPx() }
                     )
                     val clampedYMax = (maxY - bottomInsetPx).coerceAtLeast(0f)
-                    pipButtonOffsetX = pipButtonOffsetX.coerceIn(0f, maxX)
+                    pipButtonOffsetX = pipButtonOffsetX.coerceIn(
+                        if (keyboardUiMode == KeyboardUiMode.PIP_DOCKED_LEFT) {
+                            with(density) { (-14).dp.toPx() }
+                        } else {
+                            0f
+                        },
+                        if (keyboardUiMode == KeyboardUiMode.PIP_DOCKED_RIGHT) {
+                            (constraints.maxWidth - with(density) { 16.dp.toPx() }).coerceAtLeast(0f)
+                        } else {
+                            maxX
+                        }
+                    )
                     pipButtonOffsetY = pipButtonOffsetY.coerceIn(0f, clampedYMax)
 
                     TextButton(
@@ -996,21 +1166,47 @@ fun WawonaApp(
                                 )
                             }
                             .pointerInput(maxX, clampedYMax) {
-                                detectDragGestures { change, dragAmount ->
-                                    change.consume()
-                                    pipButtonOffsetX =
-                                        (pipButtonOffsetX + dragAmount.x).coerceIn(0f, maxX)
-                                    pipButtonOffsetY =
-                                        (pipButtonOffsetY + dragAmount.y).coerceIn(0f, clampedYMax)
-                                }
+                                detectDragGestures(
+                                    onDragStart = {
+                                        keyboardUiMode = KeyboardUiMode.PIP_FLOATING
+                                    },
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        pipButtonOffsetX =
+                                            (pipButtonOffsetX + dragAmount.x).coerceIn(0f, maxX)
+                                        pipButtonOffsetY =
+                                            (pipButtonOffsetY + dragAmount.y).coerceIn(0f, clampedYMax)
+                                    },
+                                    onDragEnd = {
+                                        val dockThreshold = with(density) { 28.dp.toPx() }
+                                        keyboardUiMode = when {
+                                            pipButtonOffsetX <= dockThreshold -> {
+                                                pipButtonOffsetX = with(density) { (-14).dp.toPx() }
+                                                KeyboardUiMode.PIP_DOCKED_LEFT
+                                            }
+                                            pipButtonOffsetX >= maxX - dockThreshold -> {
+                                                pipButtonOffsetX = (constraints.maxWidth - with(density) { 16.dp.toPx() })
+                                                    .coerceAtLeast(0f)
+                                                KeyboardUiMode.PIP_DOCKED_RIGHT
+                                            }
+                                            else -> KeyboardUiMode.PIP_FLOATING
+                                        }
+                                    }
+                                )
                             }
                             .background(
-                                MaterialTheme.colorScheme.surfaceContainerHigh,
+                                MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.78f),
                                 RoundedCornerShape(24.dp)
                             )
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                            .size(width = pipWidthDp, height = pipHeightDp)
                     ) {
-                        Text("⌨")
+                        Text(
+                            when (keyboardUiMode) {
+                                KeyboardUiMode.PIP_DOCKED_LEFT -> "›"
+                                KeyboardUiMode.PIP_DOCKED_RIGHT -> "‹"
+                                else -> "⌨"
+                            }
+                        )
                     }
                 }
             }
@@ -1021,26 +1217,6 @@ fun WawonaApp(
                     lines = startupLogLines.value,
                     onDismiss = { showStartupLog = false },
                     modifier = Modifier.align(Alignment.Center)
-                )
-            }
-
-            if (isWaypipeRunning && android.os.Build.VERSION.SDK_INT >= 36) {
-                ExpressiveFabMenu(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(
-                            end = 16.dp,
-                            bottom = if (showAccessoryBar) 88.dp else if (showKeyboardPipButton) 72.dp else 16.dp
-                        ),
-                    isWaypipeRunning = true,
-                    onStopWaypipeClick = {
-                        try {
-                            WawonaNative.nativeStopWaypipe()
-                            isWaypipeRunning = false
-                        } catch (e: Exception) {
-                            WLog.e("WAYPIPE", "Error stopping waypipe: ${e.message}")
-                        }
-                    },
                 )
             }
 

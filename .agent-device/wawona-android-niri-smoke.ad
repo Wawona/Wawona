@@ -1,0 +1,20 @@
+context platform=android
+context session=wawona-android-niri-smoke
+
+# Prereq: the machine profile's Bundled Client is set to Niri
+# (Machines -> Edit -> Wayland Client -> Niri). Starting the machine
+# then exec's libniri_bin.so with NIRI_BACKEND=nested; logcat shows
+# "listening on Wayland socket: wayland-1" when the nested compositor
+# is serving its own clients.
+
+open com.aspauldingcode.wawona --relaunch
+wait 3000
+appstate
+screenshot ./.agent-device/test-artifacts/android-niri-home.png
+
+# Start the (Niri-configured) default machine.
+press "Start"
+wait 12000
+appstate
+screenshot ./.agent-device/test-artifacts/android-niri-session.png
+close

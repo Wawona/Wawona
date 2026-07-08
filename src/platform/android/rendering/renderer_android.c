@@ -87,15 +87,21 @@ void renderer_android_cleanup(void) {
 int renderer_android_create_pipeline(
     VkDevice device, VkPhysicalDevice physical_device, VkRenderPass render_pass,
     uint32_t queue_family, uint32_t extent_width, uint32_t extent_height) {
-  if (s_renderer) {
+  if (s_renderer && s_renderer->pipeline != VK_NULL_HANDLE) {
     LOGI("Renderer pipeline already created");
     return 0;
   }
 
-  s_renderer = calloc(1, sizeof(RendererAndroid));
+  /* s_renderer can already exist here after a swapchain-only resize: see
+   * renderer_android_destroy_pipeline(), which intentionally preserves the
+   * struct (and its cached textures) across a VkDevice-preserving resize.
+   * Only allocate fresh state on the very first call. */
   if (!s_renderer) {
-    LOGE("Failed to allocate renderer");
-    return -1;
+    s_renderer = calloc(1, sizeof(RendererAndroid));
+    if (!s_renderer) {
+      LOGE("Failed to allocate renderer");
+      return -1;
+    }
   }
 
   s_renderer->device = device;
@@ -415,24 +421,26 @@ err:
   return -1;
 }
 
+/* Destroy only the pipeline objects (pipeline, layout, sampler, descriptor
+ * pool, vertex buffer) but deliberately KEEP `s_renderer` allocated and its
+ * `cache[]` (uploaded SHM textures) intact.
+ *
+ * This is called every time the Android render thread stops - including on
+ * every "swapchain-only" resize (see nativeResizeSurface in android_jni.c),
+ * which explicitly preserves the VkDevice and only recreates the swapchain.
+ * Wiping the whole buffer cache here (as this used to do via a single
+ * free(s_renderer)) discarded every already-uploaded client texture on every
+ * resize; since clients don't re-commit a buffer just because the compositor
+ * resized, surfaces would render as empty/black until the client happened to
+ * redraw on its own. Cached textures are safe to keep as long as the same
+ * VkDevice is reused by the next renderer_android_create_pipeline() call -
+ * see renderer_android_destroy_all() for the real teardown used when the
+ * VkDevice itself is being destroyed. */
 void renderer_android_destroy_pipeline(void) {
   if (!s_renderer || !s_renderer->device)
     return;
 
   VkDevice dev = s_renderer->device;
-  for (int i = 0; i < MAX_CACHED_BUFFERS; i++) {
-    CachedTexture *t = &s_renderer->cache[i];
-    if (t->image_view != VK_NULL_HANDLE)
-      vkDestroyImageView(dev, t->image_view, NULL);
-    if (t->image != VK_NULL_HANDLE)
-      vkDestroyImage(dev, t->image, NULL);
-    if (t->memory != VK_NULL_HANDLE)
-      vkFreeMemory(dev, t->memory, NULL);
-    if (t->staging_buffer != VK_NULL_HANDLE)
-      vkDestroyBuffer(dev, t->staging_buffer, NULL);
-    if (t->staging_memory != VK_NULL_HANDLE)
-      vkFreeMemory(dev, t->staging_memory, NULL);
-  }
   if (s_renderer->vertex_buffer != VK_NULL_HANDLE)
     vkDestroyBuffer(dev, s_renderer->vertex_buffer, NULL);
   if (s_renderer->vertex_buffer_memory != VK_NULL_HANDLE)
@@ -448,9 +456,46 @@ void renderer_android_destroy_pipeline(void) {
   if (s_renderer->descriptor_set_layout != VK_NULL_HANDLE)
     vkDestroyDescriptorSetLayout(dev, s_renderer->descriptor_set_layout, NULL);
 
+  s_renderer->vertex_buffer = VK_NULL_HANDLE;
+  s_renderer->vertex_buffer_memory = VK_NULL_HANDLE;
+  s_renderer->pipeline = VK_NULL_HANDLE;
+  s_renderer->descriptor_pool = VK_NULL_HANDLE;
+  s_renderer->sampler = VK_NULL_HANDLE;
+  s_renderer->pipeline_layout = VK_NULL_HANDLE;
+  s_renderer->descriptor_set_layout = VK_NULL_HANDLE;
+
+  LOGI("Android renderer pipeline destroyed (buffer cache preserved)");
+}
+
+/* Full teardown, including the cached SHM textures. Call this only when the
+ * owning VkDevice is itself about to be destroyed (app backgrounded / surface
+ * fully released) - never on a swapchain-only resize. */
+void renderer_android_destroy_all(void) {
+  if (!s_renderer)
+    return;
+
+  renderer_android_destroy_pipeline();
+
+  VkDevice dev = s_renderer->device;
+  if (dev != VK_NULL_HANDLE) {
+    for (int i = 0; i < MAX_CACHED_BUFFERS; i++) {
+      CachedTexture *t = &s_renderer->cache[i];
+      if (t->image_view != VK_NULL_HANDLE)
+        vkDestroyImageView(dev, t->image_view, NULL);
+      if (t->image != VK_NULL_HANDLE)
+        vkDestroyImage(dev, t->image, NULL);
+      if (t->memory != VK_NULL_HANDLE)
+        vkFreeMemory(dev, t->memory, NULL);
+      if (t->staging_buffer != VK_NULL_HANDLE)
+        vkDestroyBuffer(dev, t->staging_buffer, NULL);
+      if (t->staging_memory != VK_NULL_HANDLE)
+        vkFreeMemory(dev, t->staging_memory, NULL);
+    }
+  }
+
   free(s_renderer);
   s_renderer = NULL;
-  LOGI("Android renderer pipeline destroyed");
+  LOGI("Android renderer fully destroyed (buffer cache cleared)");
 }
 
 /* Upload SHM buffer to a VkImage and cache it. cmd_buf must be recording.
@@ -779,9 +824,19 @@ void renderer_android_draw_quads(VkCommandBuffer cmd_buf,
   if (ext_y < 1)
     ext_y = 1;
 
+  static int s_draw_quads_frame = 0;
+  s_draw_quads_frame++;
+  int should_log = (s_draw_quads_frame % 60 == 0);
+
   for (size_t i = 0; i < node_count; i++) {
     const struct CRenderNode *n = &nodes[i];
     VkImageView view = renderer_android_get_texture(n->buffer_id);
+    if (should_log)
+      LOGI("draw_quads[%zu]: buffer_id=%llu x=%.1f y=%.1f w=%.1f h=%.1f "
+           "content_rect=(%.2f,%.2f,%.2f,%.2f) view=%s",
+           i, (unsigned long long)n->buffer_id, n->x, n->y, n->width, n->height,
+           n->content_rect_x, n->content_rect_y, n->content_rect_w,
+           n->content_rect_h, view == VK_NULL_HANDLE ? "NULL" : "ok");
     if (view == VK_NULL_HANDLE)
       continue;
 
@@ -845,6 +900,37 @@ void renderer_android_draw_quads(VkCommandBuffer cmd_buf,
 }
 
 /* Draw cursor as final textured quad. Same pipeline as scene nodes. */
+#define WAWONA_ILAND_OVERLAY_BUFFER_ID ((uint64_t)0xFFFFFFFFFFFFFFFEu)
+
+void renderer_android_draw_iland_overlay(VkCommandBuffer cmd_buf,
+                                         const uint8_t *pixels, uint32_t width,
+                                         uint32_t height, uint32_t stride,
+                                         uint32_t extent_width,
+                                         uint32_t extent_height) {
+  if (!s_renderer || !pixels || width == 0 || height == 0)
+    return;
+
+  size_t tight = (size_t)width * height * 4;
+  if (renderer_android_cache_buffer(cmd_buf, WAWONA_ILAND_OVERLAY_BUFFER_ID,
+                                    width, height, stride, 0, pixels,
+                                    tight) != 0)
+    return;
+
+  CRenderNode node = {
+      .buffer_id = WAWONA_ILAND_OVERLAY_BUFFER_ID,
+      .x = 0,
+      .y = 0,
+      .width = (float)extent_width,
+      .height = (float)extent_height,
+      .opacity = 1.0f,
+      .content_rect_x = 0,
+      .content_rect_y = 0,
+      .content_rect_w = 1.0f,
+      .content_rect_h = 1.0f,
+  };
+  renderer_android_draw_quads(cmd_buf, &node, 1, extent_width, extent_height);
+}
+
 void renderer_android_draw_cursor(VkCommandBuffer cmd_buf,
                                   uint64_t cursor_buffer_id, float cursor_x,
                                   float cursor_y, float cursor_hotspot_x,

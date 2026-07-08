@@ -140,15 +140,10 @@ public struct MachineSettingsView: View {
                 }
             }
 
-            if profile.type == .virtualMachine {
-                TextField("VM Type", text: vmSubtypeBinding)
+            if let backend = profile.type.backendEngineLabel {
+                LabeledContent("Backend", value: backend)
+                    .foregroundStyle(.secondary)
             }
-
-            #if !os(iOS) && !os(watchOS)
-            if profile.type == .container {
-                TextField("Container Type", text: containerSubtypeBinding)
-            }
-            #endif
         }
     }
 
@@ -297,22 +292,6 @@ public struct MachineSettingsView: View {
             set: { value in updateDraft { $0.type = value } }
         )
     }
-
-    private var vmSubtypeBinding: Binding<String> {
-        Binding(
-            get: { draft?.vmSubtype ?? "" },
-            set: { value in updateDraft { $0.vmSubtype = value } }
-        )
-    }
-
-    #if !os(iOS)
-    private var containerSubtypeBinding: Binding<String> {
-        Binding(
-            get: { draft?.containerSubtype ?? "" },
-            set: { value in updateDraft { $0.containerSubtype = value } }
-        )
-    }
-    #endif
 
     private var sshHostBinding: Binding<String> {
         Binding(

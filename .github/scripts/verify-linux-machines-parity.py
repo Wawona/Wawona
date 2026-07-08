@@ -21,9 +21,11 @@ STORE = ROOT / "src/linux/profile_store.rs"
 REQUIRED_TYPE_RAWS = ("native", "ssh_waypipe", "ssh_terminal", "virtual_machine", "container")
 
 # MachineProfile CodingKeys (Swift property names used verbatim as JSON keys).
+# vmSubtype / containerSubtype were removed (Residual E): the VM/container
+# backend is fixed per build target and is no longer a serialized profile field.
 REQUIRED_PROFILE_KEYS = (
     '"type"', '"sshHost"', '"sshUser"', '"sshPort"', '"sshPassword"',
-    '"remoteCommand"', '"vmSubtype"', '"containerSubtype"', '"runtimeOverrides"',
+    '"remoteCommand"', '"runtimeOverrides"',
     '"executablePath"', '"autoLaunch"', '"displayName"',
 )
 

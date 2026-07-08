@@ -1,5 +1,6 @@
 package com.aspauldingcode.wawona
 
+import android.graphics.Matrix
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.BaseInputConnection
@@ -226,15 +227,36 @@ class WawonaInputConnection(
     private fun reportCursorAnchorInfo() {
         val rect = IntArray(4)
         WawonaNative.nativeGetCursorRect(rect)
-        val info = CursorAnchorInfo.Builder()
-            .setInsertionMarkerLocation(
-                rect[0].toFloat(),
-                rect[1].toFloat(),
-                (rect[1] + rect[3]).toFloat(),
-                (rect[1] + rect[3]).toFloat(),
-                CursorAnchorInfo.FLAG_HAS_VISIBLE_REGION
-            )
-            .build()
+
+        // API 35+ (and targetSdk 36) require setMatrix() whenever positional
+        // cursor anchors are reported; without it Builder.build() throws and
+        // kills the app when the IME requests CURSOR_UPDATE_IMMEDIATE (common
+        // on physical devices, less so on emulators).
+        val matrix = Matrix()
+        val location = IntArray(2)
+        view.getLocationInWindow(location)
+        matrix.setTranslate(location[0].toFloat(), location[1].toFloat())
+        val scaleX = view.scaleX
+        val scaleY = view.scaleY
+        if (scaleX != 1f || scaleY != 1f) {
+            matrix.postScale(scaleX, scaleY, 0f, 0f)
+        }
+
+        val info = try {
+            CursorAnchorInfo.Builder()
+                .setMatrix(matrix)
+                .setInsertionMarkerLocation(
+                    rect[0].toFloat(),
+                    rect[1].toFloat(),
+                    (rect[1] + rect[3]).toFloat(),
+                    (rect[1] + rect[3]).toFloat(),
+                    CursorAnchorInfo.FLAG_HAS_VISIBLE_REGION
+                )
+                .build()
+        } catch (e: IllegalArgumentException) {
+            WLog.e("INPUT", "reportCursorAnchorInfo failed: ${e.message}")
+            return
+        }
         val imm = view.context.getSystemService(
             android.content.Context.INPUT_METHOD_SERVICE
         ) as? android.view.inputmethod.InputMethodManager

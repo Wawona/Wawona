@@ -14,6 +14,7 @@ FLAKE_LOCK = ROOT / "flake.lock"
 XCODEGEN = ROOT / "dependencies/generators/xcodegen.nix"
 PREBUILD = ROOT / "scripts/xcode-prebuild.sh"
 IOS_ROOTFS = ROOT / "dependencies/wawona/ios-rootfs.nix"
+MOBILE_DEPS = ROOT / "dependencies/wawona/mobile-platform-deps.nix"
 
 # Floor for the pinned wwn-fastfetch input. 104cf22 (lastModified 1782867490)
 # shipped the IOKit/SMC crash fix but NOT the in-process exit()/signal/atexit
@@ -68,10 +69,30 @@ def verify_xcodegen(text: str) -> list[str]:
         "fastfetchLdflags",
         "neovimLdflags",
         "neovimRootfsIosEmbedScript",
+        # ssh in-process client (issue Residual F): the -force_load of
+        # libssh-inprocess.a is what resolves the ssh_main weak symbol.
+        "opensshInprocessLdflags",
+        "libssh-inprocess.a",
     ):
         if needle not in text:
             errors.append(f"xcodegen.nix missing shell-tool wiring: {needle}")
     return errors
+
+
+def verify_openssh_built(text: str) -> list[str]:
+    """openssh must be built for the mobile/tv variant.
+
+    Without it, iosDeps.openssh is null, opensshInprocessLdflags is empty, and
+    the ssh_main weak symbol resolves to NULL so `ssh` always reports
+    NOT_HANDLED in the in-process dispatcher (Residual F).
+    """
+    if 'openssh = buildFn "openssh"' not in text:
+        return [
+            'mobile-platform-deps.nix does not build openssh (`openssh = '
+            'buildFn "openssh" { ... }`); iosDeps.openssh would be null and '
+            "ssh would be unavailable in the in-process shell (Residual F)"
+        ]
+    return []
 
 
 def verify_prebuild(text: str) -> list[str]:
@@ -131,6 +152,7 @@ def main() -> int:
     errors: list[str] = []
     errors.extend(verify_flake_outputs(read(FLAKE)))
     errors.extend(verify_xcodegen(read(XCODEGEN)))
+    errors.extend(verify_openssh_built(read(MOBILE_DEPS)))
     errors.extend(verify_prebuild(read(PREBUILD)))
     errors.extend(verify_fastfetch_lock())
     if IOS_ROOTFS.is_file():

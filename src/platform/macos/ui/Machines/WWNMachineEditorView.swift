@@ -19,8 +19,6 @@ struct WWNMachineEditorView: View {
   @State private var sshKeyPassphrase: String
   @State private var sshAuthMethod: Int
   @State private var remoteCommand: String
-  @State private var vmSubtype: String
-  @State private var containerSubtype: String
 
   @State private var selectedClientId: String
   @State private var customCommand: String
@@ -56,6 +54,9 @@ struct WWNMachineEditorView: View {
   @State private var colorOperations: Bool
   @State private var shakeToCloseEnabled: Bool
   @State private var swipeBackToCloseEnabled: Bool
+  #if os(macOS)
+  @State private var alwaysOnTop: Bool
+  #endif
 
   init(
     title: String,
@@ -77,8 +78,6 @@ struct WWNMachineEditorView: View {
     _sshKeyPassphrase = State(initialValue: initial?.sshKeyPassphrase ?? "")
     _sshAuthMethod = State(initialValue: initial?.sshAuthMethod ?? 0)
     _remoteCommand = State(initialValue: initial?.remoteCommand ?? "")
-    _vmSubtype = State(initialValue: initial?.vmSubtype ?? "qemu")
-    _containerSubtype = State(initialValue: initial?.containerSubtype ?? "docker")
 
     let runtimeOverrides: [String: Any] = initial?.runtimeOverrides ?? [:]
     let overrides: [String: Any] = initial?.settingsOverrides ?? [:]
@@ -125,6 +124,9 @@ struct WWNMachineEditorView: View {
       initialValue: (runtimeOverrides["swipeBackToCloseEnabled"] as? Bool)
         ?? (UserDefaults.standard.object(forKey: "wawona.pref.swipeBackToCloseEnabled") as? Bool ?? true)
     )
+    #if os(macOS)
+    _alwaysOnTop = State(initialValue: (runtimeOverrides["alwaysOnTop"] as? Bool) ?? false)
+    #endif
 
     let initialNativeClientId: String
     if let stored = runtimeOverrides["bundledAppID"] as? String, !stored.isEmpty {
@@ -208,6 +210,15 @@ struct WWNMachineEditorView: View {
             Toggle("Shake to Exit Machine", isOn: $shakeToCloseEnabled)
             Toggle("Swipe Back to Exit Machine", isOn: $swipeBackToCloseEnabled)
           }
+
+          #if os(macOS)
+          sectionCard("Window Behavior", subtitle: "Per-machine window overrides (macOS only).") {
+            Toggle("Always on Top", isOn: $alwaysOnTop)
+            Text("Keeps this machine's window above all other windows, even when it isn't focused. Off by default.")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
+          #endif
 
           if type == kWWNMachineTypeVirtualMachine {
             virtualMachineSection
@@ -498,13 +509,12 @@ struct WWNMachineEditorView: View {
   // MARK: - Virtual Machine Section
 
   private var virtualMachineSection: some View {
-    sectionCard("Virtual Machine", subtitle: "Hypervisor metadata for launch orchestration.") {
-      labeledField("VM Subtype") {
-        TextField("qemu, utm, ...", text: $vmSubtype)
-          .textFieldStyle(.roundedBorder)
-          .wwnDisableAutocapitalization()
+    sectionCard("Virtual Machine", subtitle: "Hypervisor is selected automatically for this platform.") {
+      labeledField("Backend") {
+        Text("Virtualization.framework")
+          .foregroundStyle(.secondary)
       }
-      Text("VM launch support is currently placeholder behavior until runtime integration is complete.")
+      Text("The VM engine is fixed per build target (Virtualization.framework on macOS) and is not user-configurable.")
         .font(.footnote)
         .foregroundStyle(.secondary)
     }
@@ -513,11 +523,10 @@ struct WWNMachineEditorView: View {
   // MARK: - Container Section
 
   private var containerSection: some View {
-    sectionCard("Container", subtitle: "Container runtime and startup command.") {
-      labeledField("Container Subtype") {
-        TextField("docker, podman, ...", text: $containerSubtype)
-          .textFieldStyle(.roundedBorder)
-          .wwnDisableAutocapitalization()
+    sectionCard("Container", subtitle: "Container runtime is selected automatically for this platform.") {
+      labeledField("Backend") {
+        Text("containerization.framework")
+          .foregroundStyle(.secondary)
       }
       labeledField("Startup Command") {
         TextField("weston-simple-shm", text: $remoteCommand)
@@ -734,9 +743,8 @@ struct WWNMachineEditorView: View {
     profile.waypipeLoginShell = waypipeLoginShell
     profile.waypipeTitlePrefix = waypipeTitlePrefix
     profile.waypipeSecCtx = waypipeSecCtx
-    profile.vmSubtype = vmSubtype.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "qemu" : vmSubtype
-    profile.containerSubtype =
-      containerSubtype.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "docker" : containerSubtype
+    // vmSubtype / containerSubtype are no longer user-editable (Residual E):
+    // the backend engine is fixed per build target. Leave profile defaults as-is.
 
     var overrides: [String: Any] = profile.settingsOverrides
     var runtimeOverrides: [String: Any] = profile.runtimeOverrides
@@ -746,6 +754,7 @@ struct WWNMachineEditorView: View {
     overrides["WestonTerminalEnabled"] = selectedClientId == "weston-terminal"
     overrides["WestonSimpleSHMEnabled"] = selectedClientId == "weston-simple-shm"
     overrides["FootEnabled"] = selectedClientId == "foot"
+    overrides["NiriEnabled"] = selectedClientId == "niri"
 
     if type == kWWNMachineTypeNative {
       let trimmedCustom = customCommand.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -822,6 +831,13 @@ struct WWNMachineEditorView: View {
     } else {
       runtimeOverrides.removeValue(forKey: "swipeBackToCloseEnabled")
     }
+    #if os(macOS)
+    if alwaysOnTop {
+      runtimeOverrides["alwaysOnTop"] = true
+    } else {
+      runtimeOverrides.removeValue(forKey: "alwaysOnTop")
+    }
+    #endif
     runtimeOverrides["legacySettingsOverrides"] = overrides
 
     profile.settingsOverrides = overrides

@@ -861,14 +861,18 @@ else
     fi
 
     ${lib.optionalString isMacOS ''
+      # Swift bindings are produced from the built library's embedded UniFFI
+      # metadata (proc-macro / setup_scaffolding! mode — there is no UDL to
+      # point at anymore). Best-effort: only runs when a uniffi-bindgen binary
+      # is available in the crate output.
       mkdir -p $out/uniffi/swift
-      if [ -f "$out/bin/uniffi-bindgen" ] && [ -f "${workspaceSrc}/src/wawona.udl" ]; then
+      WAWONA_DYLIB="$(find ${rootBuild.lib or rootBuild}/lib -name "libwawona*.dylib" 2>/dev/null | head -1)"
+      if [ -f "$out/bin/uniffi-bindgen" ] && [ -n "$WAWONA_DYLIB" ]; then
         $out/bin/uniffi-bindgen generate \
-          ${workspaceSrc}/src/wawona.udl \
+          --library "$WAWONA_DYLIB" \
           --language swift \
           --out-dir $out/uniffi/swift 2>&1 | tee $out/uniffi/generation.log || true
       fi
-      cp ${workspaceSrc}/src/wawona.udl $out/uniffi/ 2>/dev/null || true
     ''}
   '';
 

@@ -146,6 +146,13 @@ Wawona-gradle-project/
 dependencies/generators/gradlegen/generated/
 dependencies/generators/gradlegen/output/
 
+# Stray generated shader header: MUST NOT live next to renderer_android.c.
+# `#include "shader_spv.h"` (quoted) resolves relative to the source file's own
+# directory before falling back to -I search paths, so a copy here silently
+# shadows the freshly generated dependencies/generators/gradlegen/generated/shader_spv.h
+# and makes every android_quad.vert/.frag edit a no-op at link time.
+src/platform/android/rendering/shader_spv.h
+
 # Legacy generated files (remove after migration)
 # src/platform/macos/wawona-Swift.h
 

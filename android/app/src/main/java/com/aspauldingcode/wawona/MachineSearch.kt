@@ -96,8 +96,8 @@ object MachineSearch {
             if (profile.sshHost.isBlank()) "SSH endpoint not configured"
             else "${profile.sshUser.ifBlank { "user" }}@${profile.sshHost}"
         }
-        MachineType.VM -> "VM profile (${profile.vmSubtype.uppercase()})"
-        MachineType.CONTAINER -> "Container profile (${profile.containerSubtype.uppercase()})"
+        MachineType.VM -> "VM profile (QEMU/AVF)"
+        MachineType.CONTAINER -> "Container profile (container-in-VM)"
     }
 
     internal fun summary(profile: MachineProfile): String = when (profile.type) {
@@ -114,8 +114,8 @@ object MachineSearch {
             val cmd = profile.remoteCommand.ifBlank { "bash -l" }
             "SSH terminal command: $cmd"
         }
-        MachineType.VM -> "Subtype: ${profile.vmSubtype.ifBlank { "qemu" }}"
-        MachineType.CONTAINER -> "Subtype: ${profile.containerSubtype.ifBlank { "docker" }}"
+        MachineType.VM -> "Backend: QEMU/AVF"
+        MachineType.CONTAINER -> "Backend: container-in-VM"
     }
 
     private fun launchCommandPreview(profile: MachineProfile): String = summary(profile)

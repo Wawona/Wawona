@@ -184,10 +184,9 @@ pub struct MachineProfile {
     pub ssh_password: String,
     #[serde(rename = "remoteCommand", default = "default_remote_command")]
     pub remote_command: String,
-    #[serde(rename = "vmSubtype", default)]
-    pub vm_subtype: String,
-    #[serde(rename = "containerSubtype", default)]
-    pub container_subtype: String,
+    // vmSubtype / containerSubtype were removed (Residual E): backend selection
+    // is fixed per build target, not user-editable. Legacy JSON keys are
+    // ignored on deserialize.
     #[serde(default)]
     pub launchers: Vec<ClientLauncher>,
     #[serde(default)]
@@ -208,8 +207,6 @@ impl MachineProfile {
             ssh_port: 22,
             ssh_password: String::new(),
             remote_command: default_remote_command(),
-            vm_subtype: String::new(),
-            container_subtype: String::new(),
             launchers: Vec::new(),
             favorite: false,
             runtime_overrides: MachineRuntimeOverrides::default(),
@@ -223,20 +220,9 @@ impl MachineProfile {
             MachineType::SshWaypipe | MachineType::SshTerminal => {
                 format!("{}@{}:{}", self.ssh_user, self.ssh_host, self.ssh_port)
             }
-            MachineType::VirtualMachine => {
-                if self.vm_subtype.is_empty() {
-                    "Virtual machine".to_string()
-                } else {
-                    format!("VM · {}", self.vm_subtype)
-                }
-            }
-            MachineType::Container => {
-                if self.container_subtype.is_empty() {
-                    "Container".to_string()
-                } else {
-                    format!("Container · {}", self.container_subtype)
-                }
-            }
+            // Backend engine is fixed per build target, not user-selected.
+            MachineType::VirtualMachine => "Virtual machine".to_string(),
+            MachineType::Container => "Container".to_string(),
         }
     }
 

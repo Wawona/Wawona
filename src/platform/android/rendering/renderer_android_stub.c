@@ -50,6 +50,15 @@ void renderer_android_draw_quads(VkCommandBuffer cmd_buf, const CRenderNode *nod
   (void)extent_height;
 }
 
+void renderer_android_draw_iland_overlay(VkCommandBuffer cmd_buf,
+                                         const uint8_t *pixels, uint32_t width,
+                                         uint32_t height, uint32_t stride,
+                                         uint32_t extent_width,
+                                         uint32_t extent_height) {
+  (void)cmd_buf; (void)pixels; (void)width; (void)height; (void)stride;
+  (void)extent_width; (void)extent_height;
+}
+
 void renderer_android_draw_cursor(VkCommandBuffer cmd_buf, uint64_t cursor_buffer_id,
                                   float cursor_x, float cursor_y, float cursor_hotspot_x,
                                   float cursor_hotspot_y, uint32_t extent_width,

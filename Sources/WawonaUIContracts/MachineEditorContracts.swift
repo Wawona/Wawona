@@ -9,8 +9,6 @@ public enum MachineEditorIntent: Sendable {
     case updateSSHPort(String)
     case updateSSHPassword(String)
     case updateRemoteCommand(String)
-    case updateVMSubtype(String)
-    case updateContainerSubtype(String)
     case updateInputProfile(String)
     case updateBundledAppID(String)
     case updateWaypipeEnabled(Bool)
@@ -25,8 +23,6 @@ public enum MachineEditorFieldID: String, Sendable, CaseIterable {
     case sshPort
     case sshPassword
     case remoteCommand
-    case vmSubtype
-    case containerSubtype
     case inputProfile
     case bundledAppID
     case waypipeEnabled
@@ -61,8 +57,6 @@ public struct MachineEditorState: Sendable, Hashable {
     public var sshPortText: String
     public var sshPassword: String
     public var remoteCommand: String
-    public var vmSubtype: String
-    public var containerSubtype: String
     public var inputProfile: String
     public var bundledAppID: String
     public var waypipeEnabled: Bool
@@ -77,8 +71,6 @@ public struct MachineEditorState: Sendable, Hashable {
         sshPortText: String = "22",
         sshPassword: String = "",
         remoteCommand: String = "",
-        vmSubtype: String = "",
-        containerSubtype: String = "",
         inputProfile: String = "direct",
         bundledAppID: String = "",
         waypipeEnabled: Bool = true
@@ -92,8 +84,6 @@ public struct MachineEditorState: Sendable, Hashable {
         self.sshPortText = sshPortText
         self.sshPassword = sshPassword
         self.remoteCommand = remoteCommand
-        self.vmSubtype = vmSubtype
-        self.containerSubtype = containerSubtype
         self.inputProfile = inputProfile
         self.bundledAppID = bundledAppID
         self.waypipeEnabled = waypipeEnabled
@@ -110,8 +100,6 @@ public enum MachineEditorValidationIssue: String, Sendable {
     case missingSSHHost
     case missingSSHUser
     case invalidSSHPort
-    case missingVMSubtype
-    case missingContainerSubtype
 }
 
 /// Declared as `struct` to keep cross-platform generated bindings stable.
@@ -190,11 +178,10 @@ public struct MachineEditorValidation: Sendable {
                 MachineEditorFieldID.remoteCommand,
                 MachineEditorFieldID.waypipeEnabled,
             ])
-        } else if state.isVirtualMachine {
-            fields.append(MachineEditorFieldID.vmSubtype)
-        } else if state.isContainer {
-            fields.append(MachineEditorFieldID.containerSubtype)
         }
+        // Virtual-machine and container backends are selected automatically per
+        // build target (see wwn-vms / wwn-containers capability lanes); they
+        // expose no user-editable subtype field (Residual E).
         fields.append(MachineEditorFieldID.inputProfile)
         return fields
     }
@@ -217,10 +204,6 @@ public struct MachineEditorValidation: Sendable {
             return MachineEditorFieldMetadata(id: .sshPassword, label: "Password", helperText: "Optional when key auth is used.")
         case .remoteCommand:
             return MachineEditorFieldMetadata(id: .remoteCommand, label: "Remote Command", helperText: "Command to execute after SSH session starts.")
-        case .vmSubtype:
-            return MachineEditorFieldMetadata(id: .vmSubtype, label: "VM Type", helperText: "Virtualization backend/profile name.", required: true)
-        case .containerSubtype:
-            return MachineEditorFieldMetadata(id: .containerSubtype, label: "Container Type", helperText: "Container runtime/profile name.", required: true)
         case .inputProfile:
             return MachineEditorFieldMetadata(id: .inputProfile, label: "Input Profile", helperText: "Input behavior profile.", required: true)
         case .bundledAppID:
@@ -247,12 +230,6 @@ public struct MachineEditorValidation: Sendable {
                 issues.append(MachineEditorValidationIssue.invalidSSHPort)
                 return issues
             }
-        }
-        if state.isVirtualMachine && state.vmSubtype.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty {
-            issues.append(MachineEditorValidationIssue.missingVMSubtype)
-        }
-        if state.isContainer && state.containerSubtype.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty {
-            issues.append(MachineEditorValidationIssue.missingContainerSubtype)
         }
         return issues
     }

@@ -11,6 +11,7 @@
   WWNNativeView *_parentView;
   __weak NSWindow *_parentWindow;
   CGSize _contentSize;
+  BOOL _dismissed;
 }
 
 @synthesize contentView = _contentView;
@@ -30,7 +31,14 @@
                                               defer:NO];
 
     _window.backgroundColor = [NSColor clearColor];
-    _window.hasShadow = YES;
+    // xdg_popup content (menus, tooltips) already paints its own CSD shadow
+    // when the client wants one; AppKit's window shadow additionally boxes
+    // the borderless popup in a rectangular drop shadow that doesn't match
+    // the client's actual (often non-rectangular / partially transparent)
+    // popup shape, showing up as an unwanted halo. Disable it here so it's
+    // suppressed uniformly for both native in-process and remote (waypipe)
+    // Weston clients.
+    _window.hasShadow = NO;
     _window.opaque = NO;
     // Menu-like stacking so popups can extend beyond the parent window frame.
     _window.level = NSPopUpMenuWindowLevel;
@@ -80,13 +88,27 @@
 }
 
 - (void)dismiss {
+  // wwnRemovePopupHost:windowId: invokes -dismiss and then (via onDismiss)
+  // re-enters the bridge's popup-dismissed handler, which looks the popup
+  // back up and calls -dismiss again before the first call has returned.
+  // Without this guard that round-trip recurses forever (dismiss ->
+  // onDismiss -> handlePopupDismissed -> wwnRemovePopupHost -> dismiss ->
+  // ...) and crashes with a stack overflow. Make dismiss idempotent so the
+  // re-entrant call is a no-op.
+  if (_dismissed) {
+    return;
+  }
+  _dismissed = YES;
+
   if (_parentWindow) {
     [_parentWindow removeChildWindow:_window];
     _parentWindow = nil;
   }
   [_window orderOut:nil];
   if (self.onDismiss) {
-    self.onDismiss();
+    void (^callback)(void) = self.onDismiss;
+    self.onDismiss = nil;
+    callback();
   }
 }
 

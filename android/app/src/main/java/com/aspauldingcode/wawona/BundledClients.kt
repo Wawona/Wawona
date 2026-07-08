@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Rotate90DegreesCcw
 import androidx.compose.material.icons.filled.StackedBarChart
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.ViewColumn
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -37,9 +38,12 @@ object BundledClients {
         BundledClientOption("weston-terminal", "Weston Terminal", "Terminal emulator — uses host cursor", Icons.Filled.Terminal),
         BundledClientOption("weston-simple-shm", "Weston Simple SHM", "Minimal shared-memory Wayland client", Icons.Filled.Dashboard),
         BundledClientOption("weston", "Weston", "Wayland reference compositor (nested compositor)", Icons.Filled.ViewModule),
+        BundledClientOption("niri", "Niri", "Scrollable-tiling compositor (nested compositor)", Icons.Filled.ViewColumn),
         BundledClientOption("foot", "Foot Terminal", "Lightweight Wayland terminal emulator", Icons.Filled.Create),
         BundledClientOption("weston-flower", "Weston Flower", "Animated cairo demo (toytoolkit)", Icons.Filled.Eco),
-        BundledClientOption("kmscube", "KMS Cube", "Spinning GL cube via iland + ANGLE", Icons.Filled.ViewInAr),
+        BundledClientOption("kmscube", "KMS Cube", "Spinning GL cube via iland + ANGLE (userland KMS)", Icons.Filled.ViewInAr),
+        BundledClientOption("opengl-cube", "OpenGL Cube", "GLES cube via iland userland KMS", Icons.Filled.ViewInAr),
+        BundledClientOption("vkcube", "Vulkan Cube", "Vulkan API smoke test", Icons.Filled.ViewInAr),
         BundledClientOption("weston-simple-egl", "Weston Simple EGL", "Wayland EGL demo client", Icons.Filled.Cloud),
         BundledClientOption("weston-smoke", "Weston Smoke", "Smoke particle cairo demo", Icons.Filled.Cloud),
         BundledClientOption("weston-clickdot", "Weston Clickdot", "Pointer click visualization demo", Icons.Filled.TouchApp),

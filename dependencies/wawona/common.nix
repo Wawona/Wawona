@@ -68,6 +68,12 @@ rec {
     "src/platform/macos/ui/Machines/WWNMachinesCoordinator.h"
     "src/platform/macos/ui/Machines/WWNMachineSessionBridge.m"
     "src/platform/macos/ui/Machines/WWNMachineSessionBridge.h"
+    # anowaW App Bridge lifecycle owner. Compiles everywhere; the actual
+    # ScreenCaptureKit/CGEvent bridge is gated behind __has_include of the
+    # wwn-anowaW header (AnowawMacBridge.h), so non-macOS / un-vendored builds
+    # get a safe stub. macOS links libanowaw.a + anowaw_mac_shim.o (see macos.nix).
+    "src/platform/macos/ui/Machines/WWNAnowaWController.m"
+    "src/platform/macos/ui/Machines/WWNAnowaWController.h"
     # VM/container runners + jitless QEMU engine (shared macOS/iOS; each file
     # carries TARGET_OS_OSX branches). Referenced by WWNMachineSessionBridge.m.
     "src/platform/macos/ui/Machines/WWNVirtualMachineRunner.m"

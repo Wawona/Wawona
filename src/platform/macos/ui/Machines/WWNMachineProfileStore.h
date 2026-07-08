@@ -24,8 +24,6 @@ extern NSString *const kWWNMachineTypeContainer;
 @property(nonatomic, copy) NSString *sshKeyPassphrase;
 @property(nonatomic, copy) NSString *remoteCommand;
 @property(nonatomic, copy) NSString *customScript;
-@property(nonatomic, copy) NSString *vmSubtype;
-@property(nonatomic, copy) NSString *containerSubtype;
 @property(nonatomic, copy) NSString *waypipeCompress;
 @property(nonatomic, copy) NSString *waypipeThreads;
 @property(nonatomic, copy) NSString *waypipeVideo;
@@ -66,10 +64,22 @@ extern NSString *const kWWNMachineTypeContainer;
 + (BOOL)resolvedRenderMacOSPointerForProfile:
     (nullable WWNMachineProfile *)profile;
 + (BOOL)resolvedRenderMacOSPointerActive;
+/// macOS-only per-machine window override: keep this machine's window above
+/// all other windows, even when unfocused. Defaults to NO — there is no
+/// global fallback preference for this (unlike shake/swipe-to-close), it is
+/// purely a per-machine choice.
++ (BOOL)resolvedAlwaysOnTopForProfile:(nullable WWNMachineProfile *)profile;
 + (BOOL)profileIndicatesNestedWithNativeClientId:(NSString *)clientId
                                    customCommand:(NSString *)customCommand
     NS_SWIFT_NAME(profileIndicatesNested(nativeClientId:customCommand:));
 + (BOOL)profileIndicatesNestedCompositor:(WWNMachineProfile *)profile;
+
+/// App Bridge (anowaW) eligibility: YES only when the profile is a local-only
+/// native machine whose client is the **nested Weston** compositor
+/// (`weston` running `--backend=wayland`), never a plain demo client. This is
+/// stricter than -profileIndicatesNestedCompositor: (which also accepts
+/// sway/niri/etc.) because anowaW v1 supports weston nested only.
++ (BOOL)profileEligibleForAppBridge:(WWNMachineProfile *)profile;
 
 @end
 

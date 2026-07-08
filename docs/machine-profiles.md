@@ -9,7 +9,6 @@ Each profile uses this normalized shape:
 - `sshEnabled`, `sshHost`, `sshUser`, `sshPassword`
 - `sshBinary`, `sshAuthMethod`, `sshKeyPath`, `sshKeyPassphrase`
 - `remoteCommand`, `customScript`
-- `vmSubtype`, `containerSubtype`
 - `waypipeCompress`, `waypipeThreads`, `waypipeVideo`
 - `waypipeDebug`, `waypipeOneshot`, `waypipeDisableGpu`, `waypipeLoginShell`
 - `waypipeTitlePrefix`, `waypipeSecCtx`
@@ -23,6 +22,14 @@ Machine `type` values:
 - `ssh_terminal`
 - `virtual_machine`
 - `container`
+
+## Deprecated / removed fields
+
+- `vmSubtype`, `containerSubtype` — **removed**. The VM engine and container
+  runtime are selected automatically per build target by the `wwn-vms` and
+  `wwn-containers` capability lanes and are never user-configurable. These keys
+  are ignored on load (readers tolerate them for backward compatibility) and are
+  no longer written on save.
 
 Transient (non-persisted) UI/runtime status values used by machine grid cards:
 

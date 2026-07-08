@@ -56,6 +56,9 @@ int renderer_android_create_pipeline(
     VkDevice device, VkPhysicalDevice physical_device, VkRenderPass render_pass,
     uint32_t queue_family, uint32_t extent_width, uint32_t extent_height);
 void renderer_android_destroy_pipeline(void);
+/* Full teardown (pipeline + cached SHM textures). Call only when the owning
+ * VkDevice is being destroyed, never on a swapchain-only resize. */
+void renderer_android_destroy_all(void);
 
 /* Buffer cache - SHM upload. cmd_buf must be in recording state. */
 int renderer_android_cache_buffer(VkCommandBuffer cmd_buf, uint64_t buffer_id,
@@ -76,6 +79,13 @@ void renderer_android_draw_cursor(VkCommandBuffer cmd_buf,
                                   float cursor_y, float cursor_hotspot_x,
                                   float cursor_hotspot_y, uint32_t extent_width,
                                   uint32_t extent_height);
+
+/* Fullscreen iland GL client overlay (kmscube / weston-simple-egl page-flips). */
+void renderer_android_draw_iland_overlay(VkCommandBuffer cmd_buf,
+                                         const uint8_t *pixels, uint32_t width,
+                                         uint32_t height, uint32_t stride,
+                                         uint32_t extent_width,
+                                         uint32_t extent_height);
 
 #ifdef __cplusplus
 }

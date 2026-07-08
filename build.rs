@@ -1,8 +1,11 @@
 fn main() {
-    // Generate UniFFI scaffolding
-    uniffi_build::generate_scaffolding("src/wawona.udl")
-        .expect("Failed to generate UniFFI scaffolding");
-    println!("cargo:rerun-if-changed=src/wawona.udl");
+    // UniFFI scaffolding is generated in-crate via uniffi::setup_scaffolding!
+    // (see src/lib.rs). We deliberately do NOT call
+    // uniffi_build::generate_scaffolding here: pulling uniffi_build into the
+    // build-dependency graph makes crate2nix resolve uniffi_bindgen with a
+    // different feature set than the `uniffi` (cli) normal dependency, which
+    // produces two mismatched uniffi_bindgen rlibs and fails with E0460
+    // ("found possibly newer version of crate uniffi_bindgen").
 
     // Rerun if wlroots protocols change
     println!("cargo:rerun-if-changed=protocols/wlroots/");

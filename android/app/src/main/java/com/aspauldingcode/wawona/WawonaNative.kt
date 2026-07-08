@@ -76,6 +76,10 @@ object WawonaNative {
     external fun nativePointerLeave(timestampMs: Int)
     external fun nativeKeyboardFocus(hasFocus: Boolean)
     external fun nativeGetFocusedWindowTitle(): String
+    /** Push text copied on the native side (ClipboardManager) into the compositor so clients can paste it. */
+    external fun nativeSetClipboardText(text: String)
+    /** Pop text a Wayland client just copied, or null if nothing changed since the last poll. */
+    external fun nativePollClipboardText(): String?
     /** Returns capture_id if pending, else 0. Fills outWidthHeight with [width, height]. */
     external fun nativeGetPendingScreencopy(outWidthHeight: IntArray): Long
     external fun nativeScreencopyComplete(captureId: Long, pixels: ByteArray)

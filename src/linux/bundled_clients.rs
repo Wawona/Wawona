@@ -52,13 +52,25 @@ pub const BUNDLED_CLIENTS: &[BundledClient] = &[
     BundledClient {
         id: "kmscube",
         name: "KMS Cube",
-        description: "Spinning GL cube via iland + ANGLE",
+        description: "Spinning GL cube via iland + ANGLE (userland KMS)",
+        icon_name: "view-paged-symbolic",
+    },
+    BundledClient {
+        id: "opengl-cube",
+        name: "OpenGL Cube",
+        description: "GLES cube via iland userland KMS",
+        icon_name: "view-paged-symbolic",
+    },
+    BundledClient {
+        id: "vkcube",
+        name: "Vulkan Cube",
+        description: "Vulkan API smoke test",
         icon_name: "view-paged-symbolic",
     },
     BundledClient {
         id: "weston-simple-egl",
         name: "Weston Simple EGL",
-        description: "Wayland EGL demo client",
+        description: "Wayland EGL demo client (iland + ANGLE)",
         icon_name: "weather-overcast-symbolic",
     },
     BundledClient {

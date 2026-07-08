@@ -40,25 +40,25 @@ func validationFlagsMissingAndInvalidFields() {
 }
 
 @Test
-func vmAndContainerVisibility() {
-    let vmState = MachineEditorState(name: "VM", typeRawValue: "virtual_machine")
-    let vmFields = MachineEditorValidation.visibleFields(for: vmState)
-    #expect(vmFields.contains(.vmSubtype))
-    #expect(!vmFields.contains(.containerSubtype))
+func vmAndContainerExposeNoSubtypeField() {
+    // Backend engines are fixed per build target (wwn-vms / wwn-containers) and
+    // are never user-editable, so VM/container editors expose no subtype field.
+    let vmFields = MachineEditorValidation.visibleFields(
+        for: MachineEditorState(name: "VM", typeRawValue: "virtual_machine"))
+    #expect(vmFields == [.name, .type, .inputProfile])
 
-    let containerState = MachineEditorState(name: "Container", typeRawValue: "container")
-    let containerFields = MachineEditorValidation.visibleFields(for: containerState)
-    #expect(containerFields.contains(.containerSubtype))
-    #expect(!containerFields.contains(.vmSubtype))
+    let containerFields = MachineEditorValidation.visibleFields(
+        for: MachineEditorState(name: "Container", typeRawValue: "container"))
+    #expect(containerFields == [.name, .type, .inputProfile])
 }
 
 @Test
-func vmAndContainerValidation() {
-    let vmState = MachineEditorState(name: "VM", typeRawValue: "virtual_machine", vmSubtype: "")
-    let vmIssues = MachineEditorValidation.validate(vmState)
-    #expect(vmIssues.contains(.missingVMSubtype))
+func vmAndContainerHaveNoSubtypeValidation() {
+    let vmIssues = MachineEditorValidation.validate(
+        MachineEditorState(name: "VM", typeRawValue: "virtual_machine"))
+    #expect(vmIssues.isEmpty)
 
-    let containerState = MachineEditorState(name: "Container", typeRawValue: "container", containerSubtype: "")
-    let containerIssues = MachineEditorValidation.validate(containerState)
-    #expect(containerIssues.contains(.missingContainerSubtype))
+    let containerIssues = MachineEditorValidation.validate(
+        MachineEditorState(name: "Container", typeRawValue: "container"))
+    #expect(containerIssues.isEmpty)
 }

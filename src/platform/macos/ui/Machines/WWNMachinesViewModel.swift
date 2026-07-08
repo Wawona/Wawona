@@ -61,6 +61,13 @@ let kBundledClients: [BundledClient] = [
     description: "Wayland reference compositor (nested compositor)"
   ),
   BundledClient(
+    id: "niri",
+    name: "Niri",
+    prefsKey: "NiriEnabled",
+    icon: "rectangle.split.3x1",
+    description: "Scrollable-tiling compositor (nested compositor)"
+  ),
+  BundledClient(
     id: "foot",
     name: "Foot Terminal",
     prefsKey: "FootEnabled",
@@ -79,14 +86,28 @@ let kBundledClients: [BundledClient] = [
     name: "KMS Cube",
     prefsKey: "KmscubeEnabled",
     icon: "cube",
-    description: "Spinning GL cube via iland + ANGLE"
+    description: "Spinning GL cube via iland + ANGLE (userland KMS)"
+  ),
+  BundledClient(
+    id: "opengl-cube",
+    name: "OpenGL Cube",
+    prefsKey: "OpenglCubeEnabled",
+    icon: "cube",
+    description: "GLES cube via iland userland KMS"
+  ),
+  BundledClient(
+    id: "vkcube",
+    name: "Vulkan Cube",
+    prefsKey: "VkcubeEnabled",
+    icon: "cube",
+    description: "Vulkan API smoke test"
   ),
   BundledClient(
     id: "weston-simple-egl",
     name: "Weston Simple EGL",
     prefsKey: "WestonSimpleEglEnabled",
     icon: "cube.transparent",
-    description: "Wayland EGL demo client (requires weston-ios-gl archive)"
+    description: "Wayland EGL demo client (iland + ANGLE)"
   ),
   BundledClient(
     id: "weston-smoke",
@@ -282,10 +303,20 @@ final class WWNMachinesViewModel: ObservableObject {
   func connect(_ profile: WWNMachineProfile, onConnected: (() -> Void)? = nil) {
     statusByMachineId[profile.machineId] = .connecting
 
+    #if os(iOS) || os(tvOS) || os(visionOS)
+    // Non-macOS platforms back every machine with a single in-process engine
+    // (WWNMobileVmEngine for VMs; the WWNWaypipeRunner function-pointer table
+    // for bundled clients), so only one profile can actually be running at a
+    // time. Stop whatever's active before starting the next one.
     for other in profiles where other.machineId != profile.machineId &&
       status(for: other.machineId) != .disconnected {
       disconnect(other)
     }
+    #endif
+    // On macOS every machine/client is its own out-of-process NSTask (see
+    // WWNVirtualMachineRunner/WWNContainerRunner, keyed by machineId), so
+    // multiple profiles can and should run concurrently — connecting one
+    // must never tear down another that's already running.
 
     // VM (wwn-vms) and container (wwn-containers) profiles are driven through the
     // session bridge, which delegates to WWNVirtualMachineRunner /
@@ -496,11 +527,10 @@ final class WWNMachinesViewModel: ObservableObject {
       }
       return "No client configured"
     case kWWNMachineTypeVirtualMachine:
-      let subtype = profile.vmSubtype.isEmpty ? "qemu" : profile.vmSubtype
-      return "VM profile (\(subtype.uppercased()))"
+      // Backend engine is fixed per build target, not user-selected (Residual E).
+      return "VM profile (Virtualization.framework)"
     case kWWNMachineTypeContainer:
-      let subtype = profile.containerSubtype.isEmpty ? "docker" : profile.containerSubtype
-      return "Container profile (\(subtype.uppercased()))"
+      return "Container profile (containerization.framework)"
     default:
       if profile.sshHost.isEmpty {
         return "SSH endpoint not configured"
@@ -551,9 +581,9 @@ final class WWNMachinesViewModel: ObservableObject {
       let command = profile.remoteCommand.isEmpty ? "terminal default" : profile.remoteCommand
       return "SSH terminal command: \(command)"
     case kWWNMachineTypeVirtualMachine:
-      return "Subtype: \(profile.vmSubtype.isEmpty ? "qemu" : profile.vmSubtype)"
+      return "Backend: Virtualization.framework"
     case kWWNMachineTypeContainer:
-      return "Subtype: \(profile.containerSubtype.isEmpty ? "docker" : profile.containerSubtype)"
+      return "Backend: containerization.framework"
     default:
       return "No remote transport required"
     }

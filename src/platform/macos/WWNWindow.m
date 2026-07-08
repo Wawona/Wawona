@@ -282,6 +282,52 @@
                          timestamp:(uint32_t)(event.timestamp * 1000)];
 }
 
+// wl_pointer.axis (scroll). NSEvent already applies the user's natural-
+// scrolling preference before we see it, so deltas are forwarded as-is —
+// no manual inversion. Trackpads report continuous, already-pixel-scaled
+// deltas via scrollingDelta{X,Y} (hasPreciseScrollingDeltas); traditional
+// mouse wheels report whole "clicks" via delta{X,Y} (~1.0 per notch), which
+// we scale up to roughly match the pixel-ish magnitude wl_pointer.axis
+// expects — same 15x convention the Linux GTK UI uses for its scroll
+// controller (see wawona-linux-ui.rs) so client-side scroll speed (e.g.
+// weston-terminal's AXIS_UNITS_PER_LINE) behaves consistently everywhere.
+- (void)scrollWheel:(NSEvent *)event {
+  double dx, dy;
+  uint32_t source; // matches WWNCoreInjectPointerAxis's AxisSource::Finger today
+  if (event.hasPreciseScrollingDeltas) {
+    dx = event.scrollingDeltaX;
+    dy = event.scrollingDeltaY;
+    source = 1; // continuous / trackpad
+  } else {
+    dx = event.deltaX * 15.0;
+    dy = event.deltaY * 15.0;
+    source = 0; // wheel
+  }
+  (void)source; // WWNCoreInjectPointerAxis doesn't take a source yet.
+
+  if (dx == 0.0 && dy == 0.0) {
+    return;
+  }
+
+  uint64_t windowId = [self wwnWindowId];
+  uint32_t timestampMs = (uint32_t)(event.timestamp * 1000);
+  WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+  if (dy != 0.0) {
+    [bridge injectPointerAxisForWindow:windowId
+                                  axis:0 // vertical
+                                 value:dy
+                              discrete:0
+                             timestamp:timestampMs];
+  }
+  if (dx != 0.0) {
+    [bridge injectPointerAxisForWindow:windowId
+                                  axis:1 // horizontal
+                                 value:dx
+                              discrete:0
+                             timestamp:timestampMs];
+  }
+}
+
 // Helper to translate macOS keycodes to XKB/Evdev keycodes (offset by 8)
 static uint32_t MacosToXkbKeycode(unsigned short macCode) {
   switch (macCode) {

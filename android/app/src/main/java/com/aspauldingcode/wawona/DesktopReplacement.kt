@@ -30,11 +30,40 @@ object DesktopReplacement {
     /** Machine profile id chosen to be the desktop. MUST be [MachineType.NATIVE]. */
     const val KEY_MACHINE_ID = "wawona.desktop.machineId"
 
+    /**
+     * App Bridge (anowaW): render native Android apps as Wayland clients inside
+     * the nested desktop. Layered on top of Desktop Replacement — reuses
+     * [KEY_MACHINE_ID] as the single, local-only, nested-Weston desktop.
+     */
+    const val KEY_APP_BRIDGE_ENABLED = "wawona.anowaW.enabled"
+
+    /**
+     * Power mode: use Shizuku/root to embed *arbitrary* third-party apps
+     * (trusted virtual displays + setLaunchDisplayId). Non-Play; explicit
+     * opt-in. When off, only Wawona's own activities can be embedded and the
+     * full display can be mirrored via consented MediaProjection.
+     */
+    const val KEY_APP_BRIDGE_POWER_MODE = "wawona.anowaW.powerMode"
+
     fun isEnabled(prefs: SharedPreferences): Boolean =
         prefs.getBoolean(KEY_ENABLED, false)
 
     fun setEnabled(prefs: SharedPreferences, enabled: Boolean) {
         prefs.edit().putBoolean(KEY_ENABLED, enabled).apply()
+    }
+
+    fun isAppBridgeEnabled(prefs: SharedPreferences): Boolean =
+        prefs.getBoolean(KEY_APP_BRIDGE_ENABLED, false)
+
+    fun setAppBridgeEnabled(prefs: SharedPreferences, enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_APP_BRIDGE_ENABLED, enabled).apply()
+    }
+
+    fun isPowerModeEnabled(prefs: SharedPreferences): Boolean =
+        prefs.getBoolean(KEY_APP_BRIDGE_POWER_MODE, false)
+
+    fun setPowerModeEnabled(prefs: SharedPreferences, enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_APP_BRIDGE_POWER_MODE, enabled).apply()
     }
 
     fun desktopMachineId(prefs: SharedPreferences): String? =
@@ -47,11 +76,25 @@ object DesktopReplacement {
         }.apply()
     }
 
-    /** A native machine profile is the only kind eligible to be the desktop. */
-    fun isEligible(profile: MachineProfile): Boolean = profile.type == MachineType.NATIVE
+    /**
+     * Only a local-only, **nested-Wayland-compositor** native machine may be
+     * the desktop. A plain Weston demo client (`weston-terminal`,
+     * `weston-simple-shm`, `foot`) is not a desktop and is filtered out.
+     * For v1 this resolves to the nested `weston` compositor.
+     */
+    fun isEligible(profile: MachineProfile): Boolean =
+        profile.type == MachineType.NATIVE && profile.isNestedCompositor
 
     fun eligibleMachines(profiles: List<MachineProfile>): List<MachineProfile> =
         profiles.filter { isEligible(it) }
+
+    /**
+     * Machines eligible to be the App Bridge (anowaW) desktop. Same constraint
+     * as [isEligible] today (local-only nested Weston), surfaced separately so
+     * the App Bridge selector reads intentionally.
+     */
+    fun appBridgeEligibleMachines(profiles: List<MachineProfile>): List<MachineProfile> =
+        profiles.filter { it.isAppBridgeEligible }
 
     /**
      * Resolve the configured desktop machine, if desktop mode is fully set up.

@@ -1,0 +1,60 @@
+# iOS native shell CLI smoke (Residual F): open the bundled weston-terminal in a
+# native machine session and exercise the in-process commands that must dispatch
+# without fork/exec (whoami, ls, fastfetch, ssh, apt).
+#
+# Coordinate taps are pinned to the iPhone 17 Pro logical size (402x874);
+# compositor/terminal surfaces expose no accessibility nodes, so screenshots are
+# the source of truth. Re-validate coordinates with `snapshot -i --json` if the
+# root layout changes. Text is delivered with `type`; `keyboard return` submits
+# each command line to the PTY.
+context platform=ios
+context session=wawona-ios-shell-cli
+context device=iPhone 17 Pro
+
+open com.aspauldingcode.Wawona --relaunch
+wait 3000
+screenshot ./.agent-device/test-artifacts/ios-shell-cli-root.png
+
+# Start the Default Machine (bundled weston-terminal, in-process compositor).
+click 69 374
+wait 10000
+screenshot ./.agent-device/test-artifacts/ios-shell-cli-terminal.png
+
+# Focus the terminal surface so the software keyboard/PTY receives input.
+click 201 437
+wait 800
+
+# whoami — coreutils identity (must not panic on the sandbox getpwuid path).
+type "whoami"
+keyboard return
+wait 1000
+screenshot ./.agent-device/test-artifacts/ios-shell-cli-whoami.png
+
+# ls / echo — baseline coreutils dispatch.
+type "ls /"
+keyboard return
+wait 800
+type "echo wawona-smoke-ok"
+keyboard return
+wait 800
+screenshot ./.agent-device/test-artifacts/ios-shell-cli-coreutils.png
+
+# fastfetch — bundled client archive dispatch.
+type "fastfetch --version"
+keyboard return
+wait 1500
+screenshot ./.agent-device/test-artifacts/ios-shell-cli-fastfetch.png
+
+# ssh — must resolve ssh_main via libssh-inprocess.a (no NOT_HANDLED).
+type "ssh"
+keyboard return
+wait 1200
+screenshot ./.agent-device/test-artifacts/ios-shell-cli-ssh.png
+
+# apt — in-process module front-end (App Store compliant, no exec).
+type "apt help"
+keyboard return
+wait 1000
+screenshot ./.agent-device/test-artifacts/ios-shell-cli-apt.png
+
+close

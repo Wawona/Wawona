@@ -38,12 +38,14 @@ log "starting compositor host"
 "$HOST_BIN" >/tmp/wawona-cap-host.log 2>&1 &
 HOST_PID=$!
 cleanup() {
+  kill "$NIRI_PID" 2>/dev/null || true
   kill "$NESTED_PID" 2>/dev/null || true
   kill "$HOST_PID" 2>/dev/null || true
   wait 2>/dev/null || true
 }
 trap cleanup EXIT
 NESTED_PID=0
+NIRI_PID=0
 
 # 2. Wait for the parent Wayland socket.
 for _ in $(seq 1 "$SOCKET_WAIT_SECS"); do
@@ -81,6 +83,37 @@ if grep -qiE 'xwayland|DISPLAY=|X11' /tmp/wawona-cap-nested.log; then
   log "PASS: XWayland bridge initialized"
 else
   log "NOTE: XWayland readiness not observed in log (may be lazy-start)"
+fi
+
+# 6. niri (wwn-niri) nested stage: run the Wawona-patched niri as a Wayland
+# client of the Wawona compositor (NIRI_BACKEND=nested) and assert it comes up
+# and serves its own child Wayland socket. Optional: runs when a niri binary
+# is provided (WAWONA_CAP_NIRI_BIN) or discoverable on PATH; the mandatory
+# per-platform niri gates live in the wwn-niri flake + macOS smoke
+# (scripts/niri-smoke-macos.sh).
+NIRI_BIN="${WAWONA_CAP_NIRI_BIN:-$(command -v niri || true)}"
+NIRI_PID=0
+if [[ -n "$NIRI_BIN" && -x "$NIRI_BIN" ]]; then
+  log "starting nested niri ($NIRI_BIN)"
+  NIRI_BACKEND=nested "$NIRI_BIN" >/tmp/wawona-cap-niri.log 2>&1 &
+  NIRI_PID=$!
+  NIRI_CHILD=""
+  for _ in $(seq 1 "$NESTED_WAIT_SECS"); do
+    NIRI_CHILD="$(grep -oE 'listening on Wayland socket: [^ ]+' /tmp/wawona-cap-niri.log | awk '{print $NF}' | head -n1 || true)"
+    [[ -n "$NIRI_CHILD" && -S "$RUNTIME_DIR/$NIRI_CHILD" ]] && break
+    kill -0 "$NIRI_PID" 2>/dev/null || { log "FAIL: nested niri exited early"; sed -n '1,120p' /tmp/wawona-cap-niri.log; exit 1; }
+    sleep 1
+  done
+  if [[ -n "$NIRI_CHILD" && -S "$RUNTIME_DIR/$NIRI_CHILD" ]]; then
+    log "PASS: nested niri child socket up ($NIRI_CHILD)"
+  else
+    log "FAIL: nested niri child socket never appeared"
+    sed -n '1,120p' /tmp/wawona-cap-niri.log
+    exit 1
+  fi
+  kill "$NIRI_PID" 2>/dev/null || true
+else
+  log "NOTE: niri binary not available (set WAWONA_CAP_NIRI_BIN) — skipping the niri nested stage"
 fi
 
 kill -0 "$HOST_PID" 2>/dev/null || { log "FAIL: parent compositor died"; exit 1; }

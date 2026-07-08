@@ -793,6 +793,31 @@ pub enum SelectionSource {
     Wlr(zwlr_data_control_source_v1::ZwlrDataControlSourceV1),
 }
 
+/// Bridges the Wayland `wl_data_device` clipboard selection to/from the
+/// native platform pasteboard.
+///
+/// Deliberately a tiny, independently-lockable struct (rather than living
+/// directly on `CompositorState`) because `SelectionHandler::new_selection`
+/// must read the client's offered selection data via a pipe fd, and that
+/// read can only complete *after* the compositor flushes/dispatches so the
+/// client actually receives the `wl_data_source.send` request — which
+/// cannot happen if we block synchronously inside the handler that's
+/// running on the same dispatch turn. The read is done on a background
+/// thread instead; giving it its own `Arc<RwLock<_>>` (cloned out of
+/// `CompositorState` before spawning) means that thread never needs to
+/// touch the much larger, contended main compositor state lock.
+#[derive(Debug, Default)]
+pub struct ClipboardBridge {
+    /// Text pulled from a Wayland client's clipboard selection, queued for
+    /// the native platform layer to push into its pasteboard. Popped (and
+    /// cleared) by the native side polling via FFI.
+    pub pending_from_client: Option<String>,
+    /// Text most recently pushed from the native pasteboard (host copy).
+    /// Served back to Wayland clients via `SelectionHandler::send_selection`
+    /// when the compositor is the active selection source.
+    pub outgoing_to_client: Option<String>,
+}
+
 /// Collection of seat resources bound by clients.
 /// Delegates to sub-state modules: KeyboardState, PointerState, TouchState.
 #[derive(Debug)]
@@ -1389,6 +1414,13 @@ pub struct CompositorState {
     pub protocol_profile: ProtocolProfile,
     /// Smithay runtime protocol ownership boundary.
     pub smithay_runtime: SmithayRuntimeState,
+
+    /// Bridge between the Wayland wl_data_device clipboard selection and the
+    /// native platform pasteboard (NSPasteboard / UIPasteboard /
+    /// ClipboardManager). See `SelectionHandler` impl in
+    /// `core::wayland::mod` and `WWNCoreSetClipboardText` /
+    /// `WWNCorePollClipboardText` in the FFI layer.
+    pub clipboard_bridge: Arc<RwLock<ClipboardBridge>>,
     
     // =========================================================================
     // ID Generators
@@ -1496,6 +1528,7 @@ impl CompositorState {
             advertise_fullscreen_shell,
             protocol_profile,
             smithay_runtime: SmithayRuntimeState::default(),
+            clipboard_bridge: Arc::new(RwLock::new(ClipboardBridge::default())),
             next_surface_id: 1,
             next_window_id: 1,
             serial: 0,

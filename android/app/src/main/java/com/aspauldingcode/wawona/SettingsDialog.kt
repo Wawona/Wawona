@@ -2,6 +2,7 @@ package com.aspauldingcode.wawona
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.aspauldingcode.wawona.anowaw.AnowawPowerController
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.background
@@ -353,6 +354,8 @@ private fun DesktopSection(prefs: SharedPreferences, context: Context, accent: C
     val nativeMachines = remember(profiles) { DesktopReplacement.eligibleMachines(profiles) }
     var isHome by remember { mutableStateOf(DesktopReplacement.isWawonaHome(context)) }
     var pickerExpanded by remember { mutableStateOf(false) }
+    var appBridgeEnabled by remember { mutableStateOf(DesktopReplacement.isAppBridgeEnabled(prefs)) }
+    var powerModeEnabled by remember { mutableStateOf(DesktopReplacement.isPowerModeEnabled(prefs)) }
 
     SettingsSectionHeader("Desktop Replacement", Icons.Filled.DesktopMac, accent)
 
@@ -501,6 +504,138 @@ private fun DesktopSection(prefs: SharedPreferences, context: Context, accent: C
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
             ) {
                 Text(if (isHome) "Change Default Home App" else "Set Wawona as Home App")
+            }
+        }
+
+        // ── App Bridge (anowaW) ──────────────────────────────────────────────
+        SettingsSectionHeader("App Bridge (anowaW)", Icons.Filled.Apps, accent)
+
+        Surface(
+            Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            shape = RoundedCornerShape(16.dp),
+            color = accent.copy(alpha = 0.12f),
+        ) {
+            Text(
+                "Render native Android apps as windows inside the nested Wayland " +
+                    "desktop. Requires the selected desktop machine to be a local, " +
+                    "nested Weston compositor.\n\n" +
+                    "Baseline (Play-safe): your own Wawona surfaces are embedded and " +
+                    "the screen can be mirrored with your consent. Power Mode uses " +
+                    "Shizuku or root to embed any installed app — this is not " +
+                    "Play-compliant and must be enabled deliberately.",
+                Modifier.padding(14.dp),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+
+        val appBridgeEligible = remember(profiles) {
+            DesktopReplacement.appBridgeEligibleMachines(profiles)
+        }
+        val selectedEligible = appBridgeEligible.any { it.id == selectedMachineId }
+
+        SettingsGroup(accent) {
+            Surface(
+                onClick = {
+                    val next = !appBridgeEnabled
+                    appBridgeEnabled = next
+                    DesktopReplacement.setAppBridgeEnabled(prefs, next)
+                },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.45f),
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Apps, null, Modifier.size(24.dp), tint = accent)
+                        Spacer(Modifier.width(16.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Enable App Bridge",
+                                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium))
+                            Spacer(Modifier.height(4.dp))
+                            Text("Show Android apps as Wayland windows in the desktop.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    Spacer(Modifier.width(16.dp))
+                    Switch(
+                        checked = appBridgeEnabled,
+                        enabled = selectedEligible,
+                        onCheckedChange = {
+                            appBridgeEnabled = it
+                            DesktopReplacement.setAppBridgeEnabled(prefs, it)
+                        },
+                    )
+                }
+            }
+        }
+
+        if (!selectedEligible) {
+            Surface(
+                Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
+            ) {
+                Text(
+                    "Select a nested-Weston desktop machine above to enable the App " +
+                        "Bridge. Plain Weston clients (weston-terminal, simple-shm, " +
+                        "foot) and remote/VM/container machines are not eligible.",
+                    Modifier.padding(12.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+
+        if (appBridgeEnabled) {
+            val power = remember { AnowawPowerController(context) }
+            SettingsGroup(accent) {
+                Surface(
+                    onClick = {
+                        if (power.isAvailable()) {
+                            val next = !powerModeEnabled
+                            powerModeEnabled = next
+                            DesktopReplacement.setPowerModeEnabled(prefs, next)
+                        } else {
+                            Toast.makeText(context, power.statusDescription(), Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.45f),
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Bolt, null, Modifier.size(24.dp), tint = accent)
+                            Spacer(Modifier.width(16.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("Power Mode (Shizuku / root)",
+                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium))
+                                Spacer(Modifier.height(4.dp))
+                                Text("Embed any installed app. Not Play-compliant. " +
+                                    power.statusDescription(),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        Spacer(Modifier.width(16.dp))
+                        Switch(
+                            checked = powerModeEnabled,
+                            enabled = power.isAvailable(),
+                            onCheckedChange = {
+                                powerModeEnabled = it
+                                DesktopReplacement.setPowerModeEnabled(prefs, it)
+                            },
+                        )
+                    }
+                }
             }
         }
     }

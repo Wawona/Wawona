@@ -759,15 +759,17 @@ static UIImage *WWNAboutLogo(void) {
                        @"Run Wawona as the macOS desktop by replacing "
                        @"SkyLight/WindowServer via wwn-iland Mode B. Requires "
                        @"SIP partially disabled (not App Store). Pick one "
-                       @"Native machine below.")];
+                       @"nested-Weston machine below.")];
 
-    // Native-machine picker, populated from the machine profile store.
+    // Machine picker, populated from the machine profile store. Only local
+    // nested-Weston native machines qualify (App Bridge shares this selection),
+    // so plain Weston demo clients / VM / container / SSH machines are excluded.
     NSArray<WWNMachineProfile *> *allProfiles =
         [WWNMachineProfileStore loadProfiles];
     NSMutableArray<NSString *> *nativeNames = [NSMutableArray array];
     NSMutableArray<NSString *> *nativeIds = [NSMutableArray array];
     for (WWNMachineProfile *p in allProfiles) {
-      if ([p.type isEqualToString:@"native"]) {
+      if ([WWNMachineProfileStore profileEligibleForAppBridge:p]) {
         NSString *label = p.name.length ? p.name : @"Unnamed Machine";
         [nativeNames addObject:label];
         [nativeIds addObject:p.machineId ?: @""];
@@ -775,21 +777,36 @@ static UIImage *WWNAboutLogo(void) {
     }
     if (nativeIds.count > 0) {
       WWNSettingItem *machineItem =
-          ITEM(@"Desktop Machine (Native only)",
+          ITEM(@"Desktop Machine (nested Weston only)",
                @"DesktopReplacementMachineId", WSettingPopup,
                nativeIds.firstObject,
-               @"The Native machine whose ported Wayland client becomes the "
-               @"desktop. Only Native machines are eligible.");
+               @"The local Native machine whose nested Weston compositor "
+               @"becomes the desktop. Plain Weston clients (weston-terminal, "
+               @"simple-shm, foot) and remote/VM/container machines are not "
+               @"eligible.");
       machineItem.options = nativeNames;
       machineItem.optionValues = nativeIds;
       [desktopItems addObject:machineItem];
     } else {
       [desktopItems
           addObject:ITEM(@"Desktop Machine", nil, WSettingInfo, @"None",
-                         @"No Native machine profiles found. Create a Native "
-                         @"machine in Machine Configuration, then select it "
-                         @"here.")];
+                         @"No eligible machine found. Create a Native machine "
+                         @"running the nested Weston compositor "
+                         @"(weston --backend=wayland) in Machine "
+                         @"Configuration, then select it here.")];
     }
+
+    // ── App Bridge (anowaW) ──────────────────────────────────────────────
+    [desktopItems
+        addObject:ITEM(@"App Bridge (anowaW)", @"AnowaWEnabled", WSettingSwitch,
+                       @NO,
+                       @"Render native macOS apps as windows inside the nested "
+                       @"Wayland desktop. Uses ScreenCaptureKit per-window "
+                       @"capture plus CGEvent/Accessibility input injection, so "
+                       @"it needs Screen Recording and Accessibility "
+                       @"permissions (Developer ID, not the Mac App Store). "
+                       @"Requires the desktop machine above to be a nested "
+                       @"Weston compositor.")];
 
     desktop.items = desktopItems;
     [sects addObject:desktop];
@@ -809,23 +826,31 @@ static UIImage *WWNAboutLogo(void) {
     ITEM(@"Session Thumbnails", @"MachineSessionThumbnailsEnabled",
          WSettingSwitch, @YES,
          @"Save the last frame from a machine session and show it on machine cards."),
-    ITEM(@"Virtual Machine Provider", @"MachineVMProvider", WSettingText,
-         @"nixos-vm",
-         @"wwn-vms VM engine. macOS: Virtualization.framework (microvm/vfkit + "
-         @"wawona-vz). iOS/tvOS/visionOS: jitless QEMU-TCTI. Android: QEMU/AVF. "
-         @"Built-in guest is NixOS-only."),
+    // VM engine and container runtime are fixed per build target by the
+    // wwn-vms / wwn-containers capability lanes; they are read-only here and
+    // never user-configurable (Residual E). Engine swaps belong in the Nix
+    // engines/bridges, not in user preferences.
+    ITEM(@"Virtual Machine Engine", nil, WSettingInfo,
+#if TARGET_OS_OSX
+         @"Virtualization.framework",
+#else
+         @"QEMU (TCTI)",
+#endif
+         @"Selected automatically for this platform by wwn-vms. macOS: "
+         @"Virtualization.framework. iOS/tvOS/visionOS: jitless QEMU-TCTI. "
+         @"Android: QEMU/AVF."),
     ITEM(@"Virtual Machine VSock Port", @"MachineVMVsockPort",
          WSettingNumber, @"1024",
          @"vsock port the guest's waypipe server binds; bridged into Wawona."),
-    ITEM(@"Container Runtime", @"MachineContainerRuntime", WSettingText,
+    ITEM(@"Container Runtime", nil, WSettingInfo,
 #if TARGET_OS_OSX
-         @"containerization",
+         @"containerization.framework",
 #else
-         @"container-in-vm",
+         @"container-in-VM",
 #endif
-         @"wwn-containers execution backend. macOS: Apple Containerization "
-         @"framework. Mobile/Android: container-in-VM (crun in a wwn-vms guest) "
-         @"or rootless proot. watchOS: image management only."),
+         @"Selected automatically for this platform by wwn-containers. macOS: "
+         @"Apple Containerization framework. Mobile/Android: container-in-VM "
+         @"(crun in a wwn-vms guest). watchOS: image management only."),
     ITEM(@"Container Image Store", @"MachineContainerImageStore", WSettingText,
          @"~/.local/share/wawona/oci",
          @"Content-addressable OCI store (wwn-oci) for pulled images. Universal "

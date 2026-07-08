@@ -55,6 +55,10 @@ endif()
 if(DEFINED NIX_DEP_LIBS AND NIX_DEP_LIBS MATCHES "libweston-compositor-13")
   set(WAWONA_WESTON_COMPOSITOR ON)
 endif()
+set(WAWONA_ILAND_GL OFF)
+if(DEFINED NIX_DEP_LIBS AND NIX_DEP_LIBS MATCHES "libiland_userland")
+  set(WAWONA_ILAND_GL ON)
+endif()
 if(NOT WAWONA_STUDIO_FALLBACK AND NOT WAWONA_WESTON_TOYTOOLKIT)
   include_directories(
       ${WAWONA_ROOT}/deps/weston-simple-shm
@@ -72,6 +76,13 @@ set(WAWONA_SOURCES
     ${WAWONA_ROOT}/src/platform/android/input_android.c
     ${WAWONA_ROOT}/src/platform/macos/WWNSettings.c
 )
+# anowaW app-bridge JNI glue: staged into the project by the Nix Android build
+# (dependencies/wawona/android.nix) from the wwn-anowaW dep. Guarded by EXISTS so
+# IDE/Studio fallback builds without the staged file still configure.
+if(EXISTS "${WAWONA_ROOT}/src/platform/android/anowaw_jni.c")
+  list(APPEND WAWONA_SOURCES ${WAWONA_ROOT}/src/platform/android/anowaw_jni.c)
+  set(WAWONA_HAVE_ANOWAW ON)
+endif()
 if(WAWONA_STUDIO_FALLBACK)
   list(APPEND WAWONA_SOURCES
       ${WAWONA_ROOT}/src/platform/android/rendering/renderer_android_stub.c
@@ -81,6 +92,11 @@ else()
   list(APPEND WAWONA_SOURCES
       ${WAWONA_ROOT}/src/platform/android/rendering/renderer_android.c
   )
+  if(WAWONA_ILAND_GL)
+    list(APPEND WAWONA_SOURCES
+        ${WAWONA_ROOT}/src/platform/android/iland_presenter_android.c
+    )
+  endif()
   if(NOT WAWONA_WESTON_TOYTOOLKIT)
     list(APPEND WAWONA_SOURCES
         ${WAWONA_ROOT}/src/platform/android/cairo_shim.c
@@ -128,6 +144,57 @@ if (DEFINED NIX_DEP_LIBS)
             list(APPEND NIX_EXTRA_LINK_FLAGS "${flag}")
         else()
             list(APPEND NIX_EXTRA_LINK_FLAGS "${flag}")
+        endif()
+    endforeach()
+endif()
+
+# Auto-link nested Weston compositor when materialized in .nix-deps but absent
+# from stale gradle.properties (common after partial gradlegen refresh).
+set(_WAWONA_WESTON_COMPOSITOR_LINKED OFF)
+foreach(flag ${NIX_EXTRA_LINK_FLAGS})
+    if(flag MATCHES "libweston-compositor-13\\.a$")
+        set(_WAWONA_WESTON_COMPOSITOR_LINKED ON)
+    endif()
+endforeach()
+if(NOT _WAWONA_WESTON_COMPOSITOR_LINKED)
+    foreach(dir ${NIX_LIB_DIRS})
+        set(_compositor_archive "${dir}/libweston-compositor-13.a")
+        if(EXISTS "${_compositor_archive}")
+            list(APPEND NIX_EXTRA_LINK_FLAGS
+                "-Wl,-u,weston_compositor_main"
+                "${_compositor_archive}")
+            set(WAWONA_WESTON_COMPOSITOR ON)
+            message(STATUS "Auto-linking nested Weston compositor: ${_compositor_archive}")
+            break()
+        endif()
+    endforeach()
+endif()
+
+# Auto-link iland userland KMS + kmscube when materialized in .nix-deps.
+set(_WAWONA_ILAND_LINKED OFF)
+foreach(flag ${NIX_EXTRA_LINK_FLAGS})
+    if(flag MATCHES "libiland_userland\\.a$")
+        set(_WAWONA_ILAND_LINKED ON)
+        set(WAWONA_ILAND_GL ON)
+    endif()
+endforeach()
+if(NOT _WAWONA_ILAND_LINKED)
+    foreach(dir ${NIX_LIB_DIRS})
+        set(_iland_archive "${dir}/libiland_userland.a")
+        if(EXISTS "${_iland_archive}")
+            list(APPEND NIX_EXTRA_LINK_FLAGS
+                "-Wl,--whole-archive"
+                "${_iland_archive}"
+                "-Wl,--no-whole-archive")
+            set(_kmscube_archive "${dir}/libkmscube.a")
+            if(EXISTS "${_kmscube_archive}")
+                list(APPEND NIX_EXTRA_LINK_FLAGS
+                    "-Wl,-u,kmscube_main"
+                    "${_kmscube_archive}")
+            endif()
+            set(WAWONA_ILAND_GL ON)
+            message(STATUS "Auto-linking iland GL stack: ${_iland_archive}")
+            break()
         endif()
     endforeach()
 endif()
@@ -180,6 +247,11 @@ else()
     target_link_options(wawona PRIVATE "-Wl,--wrap=strtod_l")
   endif()
 endif()
+if(WAWONA_HAVE_ANOWAW)
+  # libanowaw.so is bundled into jniLibs via androidDeps; link it so the JNI
+  # glue resolves the anowaw_* C ABI.
+  list(APPEND _WAWONA_LINK_LIBS anowaw)
+endif()
 target_link_libraries(wawona PRIVATE ${_WAWONA_LINK_LIBS} ${NIX_EXTRA_LINK_FLAGS})
 
 if (NIX_LIB_DIRS)
@@ -196,4 +268,8 @@ if(WAWONA_WESTON_TOYTOOLKIT)
 endif()
 if(WAWONA_WESTON_COMPOSITOR)
   target_compile_definitions(wawona PRIVATE WAWONA_WESTON_COMPOSITOR=1)
+endif()
+if(WAWONA_ILAND_GL)
+  target_compile_definitions(wawona PRIVATE WAWONA_ILAND_GL=1)
+  target_link_libraries(wawona PRIVATE android)
 endif()

@@ -24,8 +24,6 @@ enum WawonaUIContractAdapters {
             sshPortText: String(profile.sshPort),
             sshPassword: profile.sshPassword,
             remoteCommand: profile.remoteCommand,
-            vmSubtype: profile.vmSubtype,
-            containerSubtype: profile.containerSubtype,
             inputProfile: profile.runtimeOverrides.inputProfile ?? "direct",
             bundledAppID: profile.runtimeOverrides.bundledAppID ?? "",
             waypipeEnabled: profile.runtimeOverrides.waypipeEnabled ?? true
@@ -38,8 +36,6 @@ enum WawonaUIContractAdapters {
             id: state.id ?? UUID().uuidString,
             name: state.name.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines),
             type: type,
-            vmSubtype: state.vmSubtype.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines),
-            containerSubtype: state.containerSubtype.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines),
             runtimeOverrides: MachineRuntimeOverrides(
                 inputProfile: state.inputProfile.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines),
                 bundledAppID: state.bundledAppID.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines),

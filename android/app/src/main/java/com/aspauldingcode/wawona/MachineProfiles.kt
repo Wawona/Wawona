@@ -95,8 +95,6 @@ data class MachineProfile(
     val nativeLauncher: String = "weston-terminal",
     val remoteCommand: String = "",
     val customScript: String = "",
-    val vmSubtype: String = "qemu",
-    val containerSubtype: String = "docker",
     val waypipeCompress: String = "lz4",
     val waypipeThreads: String = "0",
     val waypipeVideo: String = "none",
@@ -107,12 +105,41 @@ data class MachineProfile(
     val waypipeTitlePrefix: String = "",
     val waypipeSecCtx: String = "",
     val settingsOverrides: JSONObject = JSONObject(),
+    val runtimeOverrides: JSONObject = JSONObject(),
     val vmSettings: VirtualMachineSettings = VirtualMachineSettings(),
     val containerSettings: ContainerSettings = ContainerSettings(),
     val favorite: Boolean = false,
     val createdAtMs: Long = System.currentTimeMillis(),
     val updatedAtMs: Long = System.currentTimeMillis()
 ) {
+    /**
+     * True when this is a local-only native machine whose launcher is a
+     * **nested Wayland compositor** rather than a plain Weston demo client
+     * (`weston-terminal`, `weston-simple-shm`, `foot`, toytoolkit).
+     *
+     * For anowaW v1 this is restricted to the **weston nested** compositor
+     * (`weston` running `--backend=wayland`); other nesting hosts are out of
+     * scope (see wwn-anowaW README "Scope"). Mirrors Swift
+     * `MachineProfile.isNestedCompositorClient` and ObjC
+     * `profileEligibleForAppBridge:`.
+     */
+    val isNestedCompositor: Boolean
+        get() {
+            if (type != MachineType.NATIVE) return false
+            val cid = nativeLauncher.trim().lowercase()
+            if (cid.contains("weston-terminal") || cid.contains("weston-simple-shm")) return false
+            if (cid == "foot" || cid.endsWith("/foot")) return false
+            return cid == "weston" || cid.endsWith("/weston") ||
+                cid.contains("weston --backend=wayland")
+        }
+
+    /**
+     * The App Bridge (anowaW) desktop machine may be selected only when it is a
+     * local-only, nested-Weston native machine.
+     */
+    val isAppBridgeEligible: Boolean
+        get() = type == MachineType.NATIVE && isNestedCompositor
+
     fun capabilities(): MachineCapabilities = when (type) {
         MachineType.NATIVE -> MachineCapabilities(
             launchSupported = true,
@@ -199,13 +226,18 @@ object MachineProfileStore {
     fun applyMachineToPrefs(prefs: SharedPreferences, profile: MachineProfile) {
         val sanitizedHost = MachineInputSanitizer.sanitizeHost(profile.sshHost)
         val normalizedPort = MachineInputSanitizer.normalizePort(profile.sshPort.toString())
-        applySettingsOverridesToPrefs(prefs, profile.settingsOverrides)
-        val touchInputOverride =
-            decodeStringOverride(profile.settingsOverrides, "touchInputType")
-                ?: decodeStringOverride(profile.settingsOverrides, "TouchInputType")
-        val pointerOverride =
-            decodeBooleanOverride(profile.settingsOverrides, "renderMacOSPointer")
-                ?: decodeBooleanOverride(profile.settingsOverrides, "RenderMacOSPointer")
+        SettingsOverrides.applyToPrefs(prefs, profile)
+        val merged = SettingsOverrides.merge(profile)
+        val touchInputOverride = SettingsOverrides.readString(
+            merged,
+            "touchInputType",
+            prefs.getString("touchInputType", "multiTouch") ?: "multiTouch"
+        )
+        val pointerOverride = SettingsOverrides.readBool(
+            merged,
+            "renderMacOSPointer",
+            prefs.getBoolean("renderMacOSPointer", false)
+        )
         prefs.edit()
             .putBoolean("waypipeSSHEnabled", profile.sshEnabled)
             .putString("nativeLauncher", profile.nativeLauncher)
@@ -229,8 +261,8 @@ object MachineProfileStore {
             .putString("waypipeTitlePrefix", profile.waypipeTitlePrefix)
             .putString("waypipeSecCtx", profile.waypipeSecCtx)
             .apply {
-                touchInputOverride?.let { putBoolean("touchpadMode", it.equals("Touchpad", ignoreCase = true)) }
-                pointerOverride?.let { putBoolean("renderMacOSPointer", it) }
+                putBoolean("touchpadMode", touchInputOverride.equals("Touchpad", ignoreCase = true))
+                putBoolean("renderMacOSPointer", pointerOverride)
             }
             .apply()
     }
@@ -327,8 +359,6 @@ object MachineProfileStore {
         put("nativeLauncher", profile.nativeLauncher)
         put("remoteCommand", profile.remoteCommand)
         put("customScript", profile.customScript)
-        put("vmSubtype", profile.vmSubtype)
-        put("containerSubtype", profile.containerSubtype)
         put("waypipeCompress", profile.waypipeCompress)
         put("waypipeThreads", profile.waypipeThreads)
         put("waypipeVideo", profile.waypipeVideo)
@@ -339,6 +369,7 @@ object MachineProfileStore {
         put("waypipeTitlePrefix", profile.waypipeTitlePrefix)
         put("waypipeSecCtx", profile.waypipeSecCtx)
         put("settingsOverrides", profile.settingsOverrides)
+        put("runtimeOverrides", profile.runtimeOverrides)
         put("favorite", profile.favorite)
         put("createdAtMs", profile.createdAtMs)
         put("updatedAtMs", profile.updatedAtMs)
@@ -385,8 +416,6 @@ object MachineProfileStore {
             nativeLauncher = obj.optString("nativeLauncher", "weston-terminal"),
             remoteCommand = obj.optString("remoteCommand", ""),
             customScript = obj.optString("customScript", ""),
-            vmSubtype = obj.optString("vmSubtype", "qemu"),
-            containerSubtype = obj.optString("containerSubtype", "docker"),
             waypipeCompress = obj.optString("waypipeCompress", "lz4"),
             waypipeThreads = obj.optString("waypipeThreads", "0"),
             waypipeVideo = obj.optString("waypipeVideo", "none"),
@@ -397,6 +426,7 @@ object MachineProfileStore {
             waypipeTitlePrefix = obj.optString("waypipeTitlePrefix", ""),
             waypipeSecCtx = obj.optString("waypipeSecCtx", ""),
             settingsOverrides = obj.optJSONObject("settingsOverrides") ?: JSONObject(),
+            runtimeOverrides = obj.optJSONObject("runtimeOverrides") ?: JSONObject(),
             vmSettings = VirtualMachineSettings(
                 provider = vmObj.optString("provider", "utm-se"),
                 vmIdentifier = vmObj.optString("vmIdentifier", ""),

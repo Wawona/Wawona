@@ -7,6 +7,11 @@
   rustBackend,
   weston,
   foot ? null,
+  niri ? null,
+  # anowaW app-bridge static lib (libanowaw.a + anowaw_mac_shim.o) + headers,
+  # from `toolchains.buildForMacOS "anowaw"`. When null the compositor still
+  # builds; WWNAnowaWController falls back to its no-op stub (see common.nix).
+  anowaw ? null,
   fastfetch ? null,
   neovim ? null,
   zsh ? null,
@@ -404,11 +409,18 @@ let
         while IFS= read -r rpath; do
           [ -n "$rpath" ] || continue
           case "$rpath" in
-            @executable_path/../Frameworks) continue ;;
+            @executable_path/../Frameworks|@executable_path/../../Frameworks) continue ;;
           esac
           install_name_tool -delete_rpath "$rpath" "$macho" 2>/dev/null || true
         done < <(otool -l "$macho" 2>/dev/null | awk '/cmd LC_RPATH/{getline; getline; if ($1=="path") print $2}' || true)
         install_name_tool -add_rpath "@executable_path/../Frameworks" "$macho" 2>/dev/null || true
+        # Resources/bin executables sit one level deeper than Contents/MacOS;
+        # point them at Contents/Frameworks too.
+        case "$macho" in
+          */Contents/Resources/bin/*)
+            install_name_tool -add_rpath "@executable_path/../../Frameworks" "$macho" 2>/dev/null || true
+            ;;
+        esac
       done < <(list_machos | sort -u)
     }
   '';
@@ -446,6 +458,10 @@ in
       kmscube
       rustBackend
       waypipe
+      # wwn-ssh macOS backend: regular OpenSSH + sshpass, bundled into
+      # Resources/bin below so ssh/ssh-keygen work in the in-app terminal.
+      (buildModule.buildForMacOS "openssh" { })
+      (buildModule.buildForMacOS "sshpass" { })
     ];
 
     prePatch = ''
@@ -664,9 +680,11 @@ GEN_HEADER
             $CC -c "$src_file" \
                -Isrc -Isrc/util -Isrc/platform/macos \
                -Isrc/platform/macos/ui -Isrc/platform/macos/ui/Helpers \
+               -Isrc/platform/macos/ui/Machines -Isrc/platform/macos/ui/Settings \
                -Idependencies/clients/wawona-shell/src \
                -Imacos-dependencies/include \
                -Imacos-dependencies/uniffi \
+               ${lib.optionalString (anowaw != null) "-I${anowaw}/include"} \
                -I. \
                -I${rustBackend}/include \
                -fobjc-arc -fPIC \
@@ -731,6 +749,20 @@ GEN_HEADER
       # PHASE 3: Link everything together
       echo "🔗 Phase 3: Linking final binary..."
 
+      # anowaW app-bridge: static core lib + ScreenCaptureKit/CGEvent shim object.
+      # The shim (.o) is best-effort in wwn-anowaW (needs the macOS SDK frameworks
+      # at dep-build time), so only add it when present. libanowaw.a is safe to
+      # pass unconditionally — if WWNAnowaWController compiled as a stub (header
+      # not vendored) its symbols simply go unreferenced.
+      ANOWAW_LINK=""
+      ${lib.optionalString (anowaw != null) ''
+        ANOWAW_LINK="${anowaw}/lib/libanowaw.a"
+        if [ -f "${anowaw}/lib/anowaw_mac_shim.o" ]; then
+          ANOWAW_LINK="$ANOWAW_LINK ${anowaw}/lib/anowaw_mac_shim.o"
+        fi
+        ANOWAW_LINK="$ANOWAW_LINK -framework ScreenCaptureKit -framework ApplicationServices"
+      ''}
+
       XKBCOMMON_LIBS=$(pkg-config --libs xkbcommon 2>/dev/null || echo "-Lmacos-dependencies/lib -lxkbcommon")
       WAYLAND_LIBS=$(pkg-config --libs wayland-client wayland-server 2>/dev/null || echo "-Lmacos-dependencies/lib -lwayland-client -lwayland-server")
       OPENSSL_LIBS=$(pkg-config --libs openssl 2>/dev/null || echo "-Lmacos-dependencies/lib -lssl -lcrypto")
@@ -790,6 +822,7 @@ GEN_HEADER
          $WAYLAND_LIBS \
          $OPENSSL_LIBS \
          $ZLIB_LIBS \
+         $ANOWAW_LINK \
          ${rustBackend}/lib/libwawona.a \
          $LINK_SYSROOT_ARGS \
          $LINK_OPT_FLAGS \
@@ -875,6 +908,30 @@ GEN_HEADER
               fi
             fi
             
+            echo "DEBUG: Looking for OpenSSH client tools in buildInputs (wwn-ssh macOS backend)..."
+            OPENSSH_BIN_DIR=""
+            for dep in $buildInputs; do
+              if [ -f "$dep/bin/ssh" ] && [ -f "$dep/bin/ssh-keygen" ]; then
+                OPENSSH_BIN_DIR="$dep/bin"
+                break
+              fi
+            done
+
+            if [ -n "$OPENSSH_BIN_DIR" ]; then
+              mkdir -p $out/Applications/Wawona.app/Contents/Resources/bin
+              for tool in ssh ssh-keygen scp sftp ssh-agent ssh-add; do
+                if [ -f "$OPENSSH_BIN_DIR/$tool" ]; then
+                  install -m 755 "$OPENSSH_BIN_DIR/$tool" $out/Applications/Wawona.app/Contents/Resources/bin/$tool
+                  if command -v codesign >/dev/null 2>&1; then
+                    codesign --force --sign - --timestamp=none "$out/Applications/Wawona.app/Contents/Resources/bin/$tool" 2>/dev/null || true
+                  fi
+                fi
+              done
+              echo "Bundled OpenSSH client tools from $OPENSSH_BIN_DIR"
+            else
+              echo "WARNING: OpenSSH client tools not found in buildInputs"
+            fi
+
             echo "DEBUG: Looking for waypipe binary in buildInputs..."
             WAYPIPE_BIN=""
             for dep in $buildInputs; do
@@ -960,6 +1017,23 @@ GEN_HEADER
             fi
             '' else ''
             echo "Warning: foot not provided, skipping foot bundling"
+            ''}
+
+            # Bundle niri (scrollable-tiling compositor, runs nested under Wawona)
+            ${if niri != null then ''
+            if [ -f "${niri}/bin/niri" ]; then
+              cp "${niri}/bin/niri" $out/Applications/Wawona.app/Contents/Resources/bin/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/niri
+              if [ -f "${niri}/share/niri/default-config.kdl" ]; then
+                mkdir -p "$APP/share/niri"
+                cp "${niri}/share/niri/default-config.kdl" "$APP/share/niri/default-config.kdl"
+              fi
+              echo "DEBUG: Bundled niri (nested compositor)"
+            else
+              echo "Warning: niri binary not found at ${niri}/bin/niri"
+            fi
+            '' else ''
+            echo "Warning: niri not provided, skipping niri bundling"
             ''}
 
             # Bundle fastfetch

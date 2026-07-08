@@ -6,6 +6,7 @@
 #import "../macos/ui/Machines/WWNMachineProfileStore.h"
 #import "../../util/WWNLog.h"
 #import "WWNCompositorBridge.h"
+#import <GameController/GameController.h>
 #import <QuartzCore/QuartzCore.h>
 #import <TargetConditionals.h>
 #import <math.h>
@@ -485,9 +486,10 @@ static const CGFloat kKeyboardPipChevronWidth = 28.0;
 static const CGFloat kKeyboardPipChevronHeight = 42.0;
 
 typedef NS_ENUM(NSInteger, WWNKeyboardUiMode) {
-  WWNKeyboardUiModePip = 0,
-  WWNKeyboardUiModeAccessoryOnly = 1,
-  WWNKeyboardUiModeExpanded = 2,
+  WWNKeyboardUiModeHiddenExternal = 0,
+  WWNKeyboardUiModePip = 1,
+  WWNKeyboardUiModeAccessoryOnly = 2,
+  WWNKeyboardUiModeExpanded = 3,
 };
 
 typedef NS_ENUM(NSInteger, WWNKeyboardPipDockSide) {
@@ -564,8 +566,11 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   UIButton *_keyboardModeButton;
   UIButton *_keyboardPipButton;
   WWNKeyboardUiMode _keyboardUiMode;
+  WWNKeyboardUiMode _keyboardUiModeBeforeExternal;
   WWNKeyboardPipDockSide _keyboardPipDockSide;
   BOOL _draggedModeButton;
+  BOOL _draggedAccessoryBar;
+  BOOL _hardwareKeyboardActive;
   BOOL _physicalCapsLockActive;
   BOOL _virtualShiftActive;
 
@@ -693,6 +698,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     _lastWaylandLayoutSize = CGSizeZero;
     _sessionActive = YES;
     _keyboardUiMode = WWNKeyboardUiModeExpanded;
+    _keyboardUiModeBeforeExternal = WWNKeyboardUiModeExpanded;
     _collapsedInputView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 1, 1)];
     _collapsedInputView.backgroundColor = UIColor.clearColor;
     _collapsedInputView.opaque = NO;
@@ -722,12 +728,24 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     }
 #endif
 
+    NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
+    [nc addObserver:self
+           selector:@selector(_keyboardWillShow:)
+               name:UIKeyboardWillShowNotification
+             object:nil];
+    [nc addObserver:self
+           selector:@selector(_keyboardWillHide:)
+               name:UIKeyboardWillHideNotification
+             object:nil];
+    [self _refreshHardwareKeyboardState];
+
     WWNLog("IOS_VIEW", @"Created view for window %llu", self.wwnWindowId);
   }
   return self;
 }
 
 - (void)dealloc {
+  [[NSNotificationCenter defaultCenter] removeObserver:self];
   [_ilandPresenter invalidate];
 }
 
@@ -1056,9 +1074,58 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 #pragma mark - Input Accessory View (Special Keys Toolbar)
 // ---------------------------------------------------------------------------
 
+- (BOOL)_hardwareKeyboardConnected {
+#if !TARGET_OS_TV
+  if (@available(iOS 14.0, *)) {
+    return [GCKeyboard coalescedKeyboard] != nil;
+  }
+#endif
+  return NO;
+}
+
+- (void)_setHardwareKeyboardActive:(BOOL)active {
+  if (_hardwareKeyboardActive == active &&
+      (_keyboardUiMode == WWNKeyboardUiModeHiddenExternal) == active) {
+    return;
+  }
+  _hardwareKeyboardActive = active;
+  if (active) {
+    if (_keyboardUiMode != WWNKeyboardUiModeHiddenExternal) {
+      _keyboardUiModeBeforeExternal = _keyboardUiMode;
+    }
+    [self _setKeyboardUiMode:WWNKeyboardUiModeHiddenExternal];
+  } else if (_keyboardUiMode == WWNKeyboardUiModeHiddenExternal) {
+    WWNKeyboardUiMode restore = _keyboardUiModeBeforeExternal;
+    if (restore == WWNKeyboardUiModeHiddenExternal) {
+      restore = WWNKeyboardUiModeExpanded;
+    }
+    [self _setKeyboardUiMode:restore];
+  }
+}
+
+- (void)_refreshHardwareKeyboardState {
+  [self _setHardwareKeyboardActive:[self _hardwareKeyboardConnected]];
+}
+
+- (void)_keyboardWillShow:(NSNotification *)note {
+  (void)note;
+  _hardwareKeyboardActive = NO;
+  if (_keyboardUiMode == WWNKeyboardUiModePip ||
+      _keyboardUiMode == WWNKeyboardUiModeAccessoryOnly) {
+    [self _setKeyboardUiMode:WWNKeyboardUiModeExpanded];
+  }
+}
+
+- (void)_keyboardWillHide:(NSNotification *)note {
+  (void)note;
+  [self _refreshHardwareKeyboardState];
+}
+
 #if !TARGET_OS_VISION
 - (UIView *)inputAccessoryView {
-  if (_keyboardUiMode == WWNKeyboardUiModePip) {
+  [self _refreshHardwareKeyboardState];
+  if (_keyboardUiMode == WWNKeyboardUiModePip ||
+      _keyboardUiMode == WWNKeyboardUiModeHiddenExternal) {
     return nil;
   }
   if (!_accessoryBar) {
@@ -1069,6 +1136,9 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 }
 
 - (UIView *)inputView {
+  if (_keyboardUiMode == WWNKeyboardUiModeHiddenExternal) {
+    return nil;
+  }
   if (_keyboardUiMode == WWNKeyboardUiModeAccessoryOnly) {
     return _collapsedInputView;
   }
@@ -1077,7 +1147,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 
 /// Build the two-row special key toolbar that sits above the iOS keyboard.
 ///
-/// Row 1: ESC  `  TAB  /  —  ↑  HOME  END  PGUP
+/// Row 1: ESC  `  TAB  /  —  ↑  HOME  PGUP  END
 /// Row 2: ⇧  CTRL  ALT  ⌘  ←  ↓  →  PGDN  ⌨↑/⌨↓
 - (UIView *)_buildAccessoryBar {
   CGFloat contentHeight = 80;
@@ -1087,6 +1157,11 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   UIView *bar =
       [[UIView alloc] initWithFrame:CGRectMake(0, 0, 400, contentHeight)];
   bar.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+  UIPanGestureRecognizer *barPan = [[UIPanGestureRecognizer alloc]
+      initWithTarget:self
+              action:@selector(_handleAccessoryBarPan:)];
+  barPan.cancelsTouchesInView = NO;
+  [bar addGestureRecognizer:barPan];
 
   // Background: Liquid Glass on iOS 26+, dark chrome blur on older versions.
   // The effect view is edge-to-edge (no corner radius) so it blends
@@ -1168,9 +1243,9 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
       addArrangedSubview:[self _keyButton:@"↑" action:@selector(_tapArrowUp)]];
   [row1
       addArrangedSubview:[self _keyButton:@"HOME" action:@selector(_tapHome)]];
-  [row1 addArrangedSubview:[self _keyButton:@"END" action:@selector(_tapEnd)]];
   [row1 addArrangedSubview:[self _keyButton:@"PGUP"
                                      action:@selector(_tapPageUp)]];
+  [row1 addArrangedSubview:[self _keyButton:@"END" action:@selector(_tapEnd)]];
 
   // Row 2
   UIButton *shiftBtn = [self _keyButton:@"⇧" action:@selector(_tapModShift:)];
@@ -1346,6 +1421,30 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   } else if (gesture.state == UIGestureRecognizerStateCancelled ||
              gesture.state == UIGestureRecognizerStateFailed) {
     _draggedModeButton = NO;
+  }
+}
+
+- (void)_handleAccessoryBarPan:(UIPanGestureRecognizer *)gesture {
+  if (_keyboardUiMode == WWNKeyboardUiModeHiddenExternal ||
+      _keyboardUiMode == WWNKeyboardUiModePip) {
+    return;
+  }
+  CGPoint translation = [gesture translationInView:self];
+  if (gesture.state == UIGestureRecognizerStateBegan) {
+    _draggedAccessoryBar = NO;
+  } else if (gesture.state == UIGestureRecognizerStateChanged) {
+    if (fabs(translation.x) > kKeyboardModeDragThreshold ||
+        fabs(translation.y) > kKeyboardModeDragThreshold) {
+      _draggedAccessoryBar = YES;
+    }
+  } else if (gesture.state == UIGestureRecognizerStateEnded) {
+    if (_draggedAccessoryBar) {
+      [self _setKeyboardUiMode:WWNKeyboardUiModePip];
+    }
+    _draggedAccessoryBar = NO;
+  } else if (gesture.state == UIGestureRecognizerStateCancelled ||
+             gesture.state == UIGestureRecognizerStateFailed) {
+    _draggedAccessoryBar = NO;
   }
 }
 
@@ -1580,6 +1679,19 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 - (void)_setKeyboardUiMode:(WWNKeyboardUiMode)mode {
   _keyboardUiMode = mode;
   [self _updateKeyboardModeButtonTitle];
+
+  if (mode == WWNKeyboardUiModeHiddenExternal) {
+    if (_keyboardPipButton) {
+      [self _updateKeyboardPipButtonVisualState:NO];
+      _keyboardPipButton.hidden = YES;
+    }
+    _keyboardPipDockSide = WWNKeyboardPipDockSideNone;
+    if (!self.isFirstResponder) {
+      [self becomeFirstResponder];
+    }
+    [self reloadInputViews];
+    return;
+  }
 
   if (mode == WWNKeyboardUiModePip) {
     [self resignFirstResponder];
@@ -2826,10 +2938,37 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
     if (touchId == _primaryTouchId) {
       // Movement tracking stays in view space (tap threshold is a screen-space
       // distance); only the injected coordinates are surface-mapped.
-      _touchTotalMovement += fabs(loc.x - _prevTouchPoint.x) +
-                             fabs(loc.y - _prevTouchPoint.y);
+      CGFloat rawDx = loc.x - _prevTouchPoint.x;
+      CGFloat rawDy = loc.y - _prevTouchPoint.y;
+      _touchTotalMovement += fabs(rawDx) + fabs(rawDy);
       _prevTouchPoint = loc;
       [self _multitouch_mirrorPointerAt:loc timestamp:ts enterIfNeeded:NO];
+
+      // Bundled toytoolkit clients (weston-terminal, etc.) only understand
+      // wl_pointer.axis for scrolling, not wl_touch — without this, a
+      // one-finger drag over such a client just sends touch events it
+      // ignores and nothing scrolls. Synthesize a scroll axis alongside the
+      // raw wl_touch forwarding above so direct-touch drags still scroll
+      // pointer-only clients. Gated to single-finger so it doesn't fight any
+      // future multi-finger gesture handling in this (non-touchpad) mode.
+      if (_activeTouchCount == 1) {
+        CGFloat sdx = rawDx * kScrollSensitivity;
+        CGFloat sdy = rawDy * kScrollSensitivity;
+        if (fabs(sdy) > 0.5) {
+          [bridge injectPointerAxisForWindow:targetWindowId
+                                        axis:0 // vertical
+                                       value:-sdy
+                                    discrete:0
+                                   timestamp:ts];
+        }
+        if (fabs(sdx) > 0.5) {
+          [bridge injectPointerAxisForWindow:targetWindowId
+                                        axis:1 // horizontal
+                                       value:-sdx
+                                    discrete:0
+                                   timestamp:ts];
+        }
+      }
     }
   }
   [bridge injectTouchFrame];
@@ -3538,6 +3677,7 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
       }
 
       handled = YES;
+      [self _setHardwareKeyboardActive:YES];
       _pressedPhysicalKeyCount++;
 
       [self _sendKeyboardEnterIfNeeded];

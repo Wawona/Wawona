@@ -24,6 +24,12 @@ let
     }
     // lib.optionalAttrs (variant == "mobile" || variant == "tv") {
       waypipe = buildFn "waypipe" { inherit simulator; };
+      # In-process OpenSSH client. Without this, iosDeps.openssh is null,
+      # opensshInprocessLdflags (xcodegen.nix) is empty, and the ssh_main weak
+      # symbol resolves to NULL so `ssh` always reports NOT_HANDLED in the
+      # in-process dispatcher (Residual F). Building it links libssh-inprocess.a
+      # which exports _ssh_main / _ssh_keygen_main for wawona-dispatch.
+      openssh = buildFn "openssh" { inherit simulator; };
     };
   base =
     {
@@ -32,7 +38,7 @@ let
       libwayland = buildFn "libwayland" { inherit simulator; };
       epoll-shim = buildFn "epoll-shim" { inherit simulator; };
       pixman = buildFn "pixman" { inherit simulator; };
-      weston = buildFn "weston" { inherit simulator; };
+      weston = buildFn "weston" { inherit simulator; enableGlClients = true; };
       weston-simple-shm = buildFn "weston-simple-shm" { inherit simulator; };
   # Unified archive: Settings can switch Wayland/Pixman vs iland DRM/GL at runtime.
       "weston-compositor" = buildFn "weston-compositor" { inherit simulator; enableIlandDrm = true; };

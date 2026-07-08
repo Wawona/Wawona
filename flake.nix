@@ -10,6 +10,9 @@
     rust-overlay.url = "github:oxalica/rust-overlay";
     rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
     crate2nix.url = "github:nix-community/crate2nix";
+    # Keep crate2nix on the single nixpkgs lineage; without this it and its
+    # transitive cachix pull independent nixpkgs revs into flake.lock (#47).
+    crate2nix.inputs.nixpkgs.follows = "nixpkgs";
     # p26-vm-nixos: microvm.nix drives a NixOS guest under vfkit
     # (Virtualization.framework) on macOS. Provides the writableStoreOverlay +
     # virtiofs ro-store rootfs (no make-disk-image/KVM) and the vsock plumbing
@@ -48,9 +51,20 @@
     wwn-zsh.url = "github:Wawona/wwn-zsh";
     wwn-zsh.inputs.nixpkgs.follows = "nixpkgs";
     wwn-zsh.inputs.wwn-toolchain.follows = "wwn-toolchain";
+    # SSH stack split out of wwn-toolchain: chooses the App-Store/Play
+    # compliant backend per platform (in-process OpenSSH + libssh2 on Apple
+    # mobile, Dropbear on Android, regular OpenSSH on macOS/Linux) + sshpass.
+    wwn-ssh.url = "github:Wawona/wwn-ssh";
+    wwn-ssh.inputs.nixpkgs.follows = "nixpkgs";
+    wwn-ssh.inputs.rust-overlay.follows = "rust-overlay";
+    wwn-ssh.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-waypipe.url = "github:Wawona/wwn-waypipe";
     wwn-waypipe.inputs.nixpkgs.follows = "nixpkgs";
     wwn-waypipe.inputs.wwn-toolchain.follows = "wwn-toolchain";
+    wwn-anowaW.url = "github:Wawona/wwn-anowaW";
+    wwn-anowaW.inputs.nixpkgs.follows = "nixpkgs";
+    wwn-anowaW.inputs.wwn-toolchain.follows = "wwn-toolchain";
+    wwn-anowaW.inputs.rust-overlay.follows = "rust-overlay";
     wwn-coreutils.url = "github:Wawona/wwn-coreutils";
     wwn-coreutils.inputs.nixpkgs.follows = "nixpkgs";
     wwn-coreutils.inputs.wwn-toolchain.follows = "wwn-toolchain";
@@ -63,6 +77,12 @@
     wwn-neovim.url = "github:Wawona/wwn-neovim";
     wwn-neovim.inputs.nixpkgs.follows = "nixpkgs";
     wwn-neovim.inputs.wwn-toolchain.follows = "wwn-toolchain";
+    # niri (scrollable-tiling compositor), Phase-29 port #1: runs nested as a
+    # Wayland client of the Wawona compositor on every target.
+    wwn-niri.url = "github:Wawona/wwn-niri";
+    wwn-niri.inputs.nixpkgs.follows = "nixpkgs";
+    wwn-niri.inputs.wwn-toolchain.follows = "wwn-toolchain";
+    wwn-niri.inputs.rust-overlay.follows = "rust-overlay";
     # VM + container substrate. wwn-containers depends on wwn-vms, so pin both to
     # Wawona's single nixpkgs/toolchain and make containers follow this same
     # wwn-vms.
@@ -78,7 +98,7 @@
     wwn-containers.inputs.wwn-vms.follows = "wwn-vms";
   };
 
-  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-waypipe, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-neovim, wwn-vms, wwn-containers, ... }:
+  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-ssh, wwn-waypipe, wwn-anowaW, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-neovim, wwn-niri, wwn-vms, wwn-containers, ... }:
   let
     linuxSystems = [ "x86_64-linux" "aarch64-linux" ];
     darwinSystems = [ "x86_64-darwin" "aarch64-darwin" ];
@@ -159,7 +179,7 @@
           fastfetchMacosNix fastfetchIosNix fastfetchLdflagsNix
           neovimMacosNix neovimIosNix neovimLdflagsNix
           westonToytoolkitLdflagsNix westonCompositorLdflagsNix mobileBaseLdflagsNix ilandGlLdflagsNix
-          westonAndroidSignalPolyfill;
+          ilandGlAndroidLdflagsNix westonAndroidSignalPolyfill;
         # The Apple toolchain (xcode-wrapper) used to live in-tree; wwn-iland's
         # gl-clients recipes accept it as `xcodeUtils`/`iosToolchain`. Resolve it
         # from the wwn-toolchain input so callPackage can auto-fill those formals.
@@ -192,14 +212,17 @@
     # cross-compile toolchain + library substrate comes from wwn-toolchain via
     # mkToolchains; the merged registry overlays each app repo's fragment.
     mergedRegistry = wwn-toolchain.lib.baseRegistry
+      // wwn-ssh.registryFragment
       // wwn-iland.registryFragment
       // wwn-kmscube.registryFragment
       // wwn-weston.registryFragment
       // wwn-zsh.registryFragment
       // wwn-waypipe.registryFragment
+      // wwn-anowaW.registryFragment
       // wwn-foot.registryFragment
       // wwn-fastfetch.registryFragment
       // wwn-neovim.registryFragment
+      // wwn-niri.registryFragment
       // wwn-vms.registryFragment
       // wwn-containers.registryFragment;
     mkWawonaToolchains = { pkgs, pkgsAndroid ? null, pkgsIos ? null, androidSDK ? null, androidAllowExperimentalFallback ? false, wawonaSrc ? null }:
@@ -236,6 +259,7 @@
     westonCompositorLdflagsNix = "${wwn-weston}/dependencies/generators/weston-compositor-ldflags.nix";
     mobileBaseLdflagsNix = "${wwn-toolchain}/dependencies/generators/mobile-base-ldflags.nix";
     ilandGlLdflagsNix = "${wwn-iland}/dependencies/generators/iland-gl-ldflags.nix";
+    ilandGlAndroidLdflagsNix = "${wwn-iland}/dependencies/generators/iland-gl-android-ldflags.nix";
     androidConfigNix = "${wwn-toolchain}/dependencies/android/sdk-config.nix";
     androidWrapperNix = "${wwn-toolchain}/dependencies/utils/android-wrapper.nix";
     # --------------------------------------------------------------------------
@@ -430,7 +454,7 @@
           targetPkgs = pkgsAndroidCross;
           waypipe = toolchainsAndroid.buildForAndroid "waypipe" { };
           inherit androidToolchainNix westonSimpleShmPatchedSrcNix westonAndroidSignalPolyfill
-            androidConfigNix westonToytoolkitLdflagsNix westonCompositorLdflagsNix;
+            androidConfigNix westonToytoolkitLdflagsNix westonCompositorLdflagsNix ilandGlAndroidLdflagsNix;
         };
         wawonaWearAndroidPkg = import ./dependencies/wawona/android.nix {
           pkgs = androidPkgs;
@@ -444,7 +468,7 @@
           waypipe = toolchainsAndroid.buildForAndroid "waypipe" { };
           appTarget = "wearos";
           inherit androidToolchainNix westonSimpleShmPatchedSrcNix westonAndroidSignalPolyfill
-            androidConfigNix westonToytoolkitLdflagsNix westonCompositorLdflagsNix;
+            androidConfigNix westonToytoolkitLdflagsNix westonCompositorLdflagsNix ilandGlAndroidLdflagsNix;
         };
 
         androidToolchainSanity = import androidToolchainSanityNix {
@@ -472,9 +496,22 @@
           (toolchainsAndroid.buildForAndroid "lz4" { })
         ] ++ (pkgs.lib.attrValues mobileToytoolkitDepsAndroid)
           ++ [
-            (toolchainsAndroid.buildForAndroid "weston" { })
+            (toolchainsAndroid.buildForAndroid "weston" { enableGlClients = true; })
+            (toolchainsAndroid.buildForAndroid "weston-compositor" { })
             (toolchainsAndroid.buildForAndroid "libintl" { })
+            (toolchainsAndroid.buildForAndroid "iland" { })
+            (toolchainsAndroid.buildForAndroid "angle" { })
+            (toolchainsAndroid.buildForAndroid "kmscube" { })
           ];
+        studioIlandGlLdflags = import ilandGlAndroidLdflagsNix {
+          inherit (pkgs) lib;
+          deps = {
+            iland = toolchainsAndroid.buildForAndroid "iland" { };
+            angle = toolchainsAndroid.buildForAndroid "angle" { };
+            kmscube = toolchainsAndroid.buildForAndroid "kmscube" { };
+            "iland-gl-clients" = toolchainsAndroid.buildForAndroid "kmscube" { };
+          };
+        };
         studioWestonToytoolkitLdflags = import westonToytoolkitLdflagsNix {
           inherit (pkgs) lib;
           deps = mobileToytoolkitDepsAndroid // {
@@ -484,19 +521,40 @@
           forceLoadWeston = true;
           linkMode = "whole_archive";
         };
+        studioWestonCompositorLdflags = import westonCompositorLdflagsNix {
+          inherit (pkgs) lib;
+          deps = {
+            weston-compositor = toolchainsAndroid.buildForAndroid "weston-compositor" { };
+            libwayland = toolchainsAndroid.buildForAndroid "libwayland" { };
+            expat = toolchainsAndroid.buildForAndroid "expat" { };
+          };
+          forceLoadCompositor = false;
+          linkMode = "whole_archive";
+        };
         studioNixDepIncludes =
           (pkgs.lib.concatMapStringsSep " " (d: "-I${d}/include") studioAndroidDeps)
           + " -I${toolchainsAndroid.buildForAndroid "pixman" { }}/include/pixman-1"
           + " -I${toolchainsAndroid.buildForAndroid "weston" { }}/include/weston-gen";
         studioNixDepLibs =
           (pkgs.lib.concatMapStringsSep " " (d: "-L${d}/lib") studioAndroidDeps)
-          + " ${pkgs.lib.concatStringsSep " " studioWestonToytoolkitLdflags}";
+          + " ${pkgs.lib.concatStringsSep " " (studioWestonToytoolkitLdflags ++ studioWestonCompositorLdflags ++ studioIlandGlLdflags)}";
         studioRuntimeLibDirs =
           pkgs.lib.concatMapStringsSep ":" (d: "${d}/lib") studioAndroidDeps;
         studioRustBackendLib = "${backend-android}/lib/libwawona.a";
         studioRustBackendSharedLib = "${backend-android}/lib/libwawona_core.so";
         studioOpenSSHBin = "${toolchainsAndroid.buildForAndroid "openssh" { }}/bin/ssh";
         studioSshpassBin = "${toolchainsAndroid.buildForAndroid "sshpass" { }}/bin/sshpass";
+        studioZshPkg = toolchainsAndroid.buildForAndroid "zsh" { };
+        studioZshBin = "${studioZshPkg}/bin/zsh";
+        studioZshShare = "${studioZshPkg}/share/zsh";
+        studioFastfetchBin = "${toolchainsAndroid.buildForAndroid "fastfetch" { }}/bin/fastfetch";
+        studioNeovimBin = "${toolchainsAndroid.buildForAndroid "neovim" { }}/bin/nvim";
+        # waypipe ships a real ELF binary as `waypipe.real` plus a Vulkan-wrapper
+        # script named `waypipe`; gradlegen.nix picks whichever exists at build
+        # time (same fallback android-shell-tools.nix uses for the release APK).
+        studioWaypipePkg = toolchainsAndroid.buildForAndroid "waypipe" { };
+        studioWaypipeBin = "${studioWaypipePkg}/bin/waypipe.real";
+        studioWaypipeBinFallback = "${studioWaypipePkg}/bin/waypipe";
 
         gradlegenPkg = pkgs.callPackage ./dependencies/generators/gradlegen.nix {
           wawonaSrc = if isLinuxHost then ./. else src;
@@ -511,6 +569,12 @@
           runtimeLibDirs = studioRuntimeLibDirs;
           opensshBinaryPath = studioOpenSSHBin;
           sshpassBinaryPath = studioSshpassBin;
+          zshBinaryPath = studioZshBin;
+          zshSharePath = studioZshShare;
+          fastfetchBinaryPath = studioFastfetchBin;
+          neovimBinaryPath = studioNeovimBin;
+          waypipeBinaryPath = studioWaypipeBin;
+          waypipeBinaryPathFallback = studioWaypipeBinFallback;
         };
 
         # ── Cross-Platform Packages ───────────────────────────────────────
@@ -543,6 +607,7 @@
                 buildModule = toolchains; inherit wawonaSrc wawonaVersion;
                 waypipe = toolchains.buildForMacOS "waypipe" { }; weston = toolchains.buildForMacOS "weston" { };
                 foot = toolchains.buildForMacOS "foot" { };
+                niri = toolchains.buildForMacOS "niri" { };
                 fastfetch = toolchains.buildForMacOS "fastfetch" { };
                 rustBackend = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
                   inherit crate2nix wawonaVersion toolchains nixpkgs;
@@ -632,7 +697,7 @@
             targetPkgs = pkgsAndroidCross;
             waypipe = toolchainsAndroid.buildForAndroid "waypipe" { };
             inherit androidToolchainNix westonSimpleShmPatchedSrcNix westonAndroidSignalPolyfill
-            androidConfigNix westonToytoolkitLdflagsNix westonCompositorLdflagsNix;
+            androidConfigNix westonToytoolkitLdflagsNix westonCompositorLdflagsNix ilandGlAndroidLdflagsNix;
             releaseArtifact = "release-aab";
           };
           angle-android = toolchainsAndroid.buildForAndroid "angle" { };
@@ -752,6 +817,9 @@
             pixman = toolchains.buildForMacOS "pixman" { };
             waypipe = toolchains.buildForMacOS "waypipe" { };
             sshpass = toolchains.buildForMacOS "sshpass" { };
+            # wwn-ssh macOS backend: regular OpenSSH (ssh, ssh-keygen, scp, ...)
+            # bundled into Resources/bin for the in-app terminal.
+            openssh = toolchains.buildForMacOS "openssh" { };
             iland = toolchains.buildForMacOS "iland" { };
             angle = toolchains.buildForMacOS "angle" { };
             kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
@@ -853,6 +921,9 @@
             buildModule = toolchains; inherit wawonaSrc wawonaVersion;
             waypipe = toolchains.buildForMacOS "waypipe" { }; weston = toolchains.buildForMacOS "weston" { };
             foot = toolchains.buildForMacOS "foot" { };
+            niri = toolchains.buildForMacOS "niri" { };
+            # anowaW app bridge (libanowaw.a + anowaw_mac_shim.o + headers).
+            anowaw = toolchains.buildForMacOS "anowaw" { };
             fastfetch = pkgs.fastfetch;
             neovim = null;
             zsh = pkgs.zsh;
@@ -1111,6 +1182,11 @@ EOF
           foot = (import ./dependencies/wawona/shell-wrappers.nix).footWrapper pkgs (toolchains.buildForMacOS "foot" {}) wawona-macos;
           waypipe-ios = toolchains.buildForIOS "waypipe" { };
           waypipe-ios-sim = toolchains.buildForIOS "waypipe" { simulator = true; };
+          # anowaW app bridge static lib (libanowaw.a) for the App Bridge on
+          # Apple platforms. macOS is the shipping target (Developer ID); the
+          # iOS build exists for link/instantiation parity.
+          anowaw-macos = toolchains.buildForMacOS "anowaw" { };
+          anowaw-ios = toolchains.buildForIOS "anowaw" { };
           # weston toytoolkit (cairo/pango) cross-compile stack for Apple mobile,
           # exposed individually for incremental build verification.
           freetype-ios = toolchains.buildForIOS "freetype" { };
@@ -1184,6 +1260,12 @@ EOF
           fastfetch-android = toolchainsAndroid.buildForAndroid "fastfetch" { };
           neovim-android = toolchainsAndroid.buildForAndroid "neovim" { };
           waypipe-android = toolchainsAndroid.buildForAndroid "waypipe" { };
+          # anowaW app bridge: native lib (libanowaw.so) linked into the Android
+          # app; the Kotlin/JNI shims are staged into the generated project.
+          anowaw-android = toolchainsAndroid.buildForAndroid "anowaw" { };
+          # niri (wwn-niri): nested scrollable-tiling compositor; ships
+          # bin/niri + lib/libniri_bin.so (jniLibs exec pattern).
+          niri-android = toolchainsAndroid.buildForAndroid "niri" { };
           default = (import ./dependencies/wawona/shell-wrappers.nix).macosWrapper pkgs wawona-macos;
           # Consumer-facing package name for use as a flake input or overlay,
           # matching the nixpkgs convention of installing `pkgs.wawona`.

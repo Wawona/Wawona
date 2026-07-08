@@ -11,6 +11,7 @@
   fastfetchAndroid ? null,
   neovimAndroid ? null,
   waypipeAndroid ? null,
+  niriAndroid ? null,
 }:
 {
   preBuildFragment = ''
@@ -56,6 +57,19 @@
       chmod +x "$JNI_LIB_DIR/libwaypipe_bin.so"
     else
       echo "WARNING: Missing Android waypipe binary at ${waypipeAndroid}/bin/waypipe"
+    fi
+    ''}
+
+    ${lib.optionalString (niriAndroid != null) ''
+    # niri (wwn-niri): nested scrollable-tiling compositor. Shipped as a
+    # JNI-named PIE executable so the installer extracts it into the
+    # exec-allowed nativeLibraryDir (waypipe pattern); android_jni.c execs it
+    # with NIRI_BACKEND=nested against the Wawona Wayland socket.
+    if [ -f "${niriAndroid}/lib/libniri_bin.so" ]; then
+      cp -L "${niriAndroid}/lib/libniri_bin.so" "$JNI_LIB_DIR/libniri_bin.so"
+      chmod +x "$JNI_LIB_DIR/libniri_bin.so"
+    else
+      echo "WARNING: Missing Android niri binary at ${niriAndroid}/lib/libniri_bin.so"
     fi
     ''}
   '';

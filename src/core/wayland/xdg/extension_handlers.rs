@@ -59,8 +59,11 @@ impl XdgDecorationHandler for CompositorState {
         } else {
             match self.decoration_policy {
                 crate::core::state::DecorationPolicy::ForceServer => Mode::ServerSide,
+                // "Prefer" policies only pick the default for clients that
+                // don't care; an explicit request (e.g. nested niri asking
+                // for SSD) is honored.
                 crate::core::state::DecorationPolicy::PreferServer => mode,
-                crate::core::state::DecorationPolicy::PreferClient => Mode::ClientSide,
+                crate::core::state::DecorationPolicy::PreferClient => mode,
             }
         };
 

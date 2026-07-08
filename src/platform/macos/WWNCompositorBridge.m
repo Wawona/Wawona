@@ -112,6 +112,9 @@ extern void WWNCoreTextInputGetCursorRect(void *core, int32_t *out_x,
 extern CBufferData *WWNCorePopPendingBuffer(void *core);
 extern void WWNBufferDataFree(CBufferData *data);
 extern IOSurfaceRef IOSurfaceLookup(uint32_t csid);
+extern void WWNCoreSetClipboardText(void *core, const char *text);
+extern char *WWNCorePollClipboardText(void *core);
+extern void WWNStringFree(char *s);
 
 // Screencopy (zwlr_screencopy)
 typedef struct {
@@ -360,6 +363,14 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   // main thread; without barriers, ARM64 weak ordering can cause the
   // main thread to read a stale YES and skip ticks indefinitely.
   atomic_bool _compositorBusy;
+
+  // Clipboard <-> NSPasteboard/UIPasteboard bridge. `_lastPasteboardChangeCount`
+  // tracks the pasteboard's `changeCount` as of our last read *or* write, so
+  // that a write we perform ourselves (native text a client just copied)
+  // never gets read back and bounced into the compositor as if the user had
+  // copied it natively, and vice versa. See -_syncClipboardWithPasteboard.
+  NSInteger _lastPasteboardChangeCount;
+  BOOL _pasteboardChangeCountInitialized;
 
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
   NSMutableDictionary<NSNumber *, id> *_windows;
@@ -892,6 +903,74 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
 #endif
 
 /// Shared compositor tick implementation.
+/// Bridges the Wayland `wl_data_device` clipboard selection to/from the
+/// native pasteboard (NSPasteboard on macOS, UIPasteboard on iOS/iPadOS/
+/// tvOS/visionOS) so e.g. right-click Copy in weston-terminal reaches the
+/// system clipboard and vice versa. Must run on the main thread (pasteboard
+/// access is only officially supported there). Called once per compositor
+/// tick from the main-queue half of -_compositorTick.
+///
+/// `_lastPasteboardChangeCount` is updated after *every* read or write we
+/// perform, so a change we caused ourselves is never mistaken for a native
+/// copy on the next tick (which would otherwise bounce straight back into
+/// the compositor as a spurious "client" selection, and vice versa).
+- (void)_syncClipboardWithPasteboard {
+  if (!_rustCore) {
+    return;
+  }
+  if (![[WWNPreferencesManager sharedManager] universalClipboardEnabled]) {
+    return;
+  }
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+  UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
+#else
+  NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+#endif
+  NSInteger changeCount = pasteboard.changeCount;
+
+  // A client (e.g. weston-terminal) copied text — push it to the native
+  // pasteboard.
+  char *clientText = WWNCorePollClipboardText(_rustCore);
+  if (clientText) {
+    NSString *text = [NSString stringWithUTF8String:clientText];
+    WWNStringFree(clientText);
+    if (text) {
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+      pasteboard.string = text;
+#else
+      [pasteboard clearContents];
+      [pasteboard setString:text forType:NSPasteboardTypeString];
+#endif
+      _lastPasteboardChangeCount = pasteboard.changeCount;
+      _pasteboardChangeCountInitialized = YES;
+      return;
+    }
+  }
+
+  // Native copy (another app, or the user pasting into a text field outside
+  // Wawona) — push it into the compositor so clients can paste it.
+  if (!_pasteboardChangeCountInitialized) {
+    // First tick: just observe, don't push whatever was already on the
+    // pasteboard before Wawona launched into every freshly-focused client.
+    _lastPasteboardChangeCount = changeCount;
+    _pasteboardChangeCountInitialized = YES;
+    return;
+  }
+  if (changeCount == _lastPasteboardChangeCount) {
+    return;
+  }
+  _lastPasteboardChangeCount = changeCount;
+
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+  NSString *nativeText = pasteboard.string;
+#else
+  NSString *nativeText = [pasteboard stringForType:NSPasteboardTypeString];
+#endif
+  if (nativeText.length > 0) {
+    WWNCoreSetClipboardText(_rustCore, nativeText.UTF8String);
+  }
+}
+
 /// Called from CADisplayLink (iOS) or NSTimer (macOS).  The callback fires
 /// on the main thread but we immediately dispatch the heavy Rust work to
 /// _compositorQueue, then bounce lightweight UI updates back to main.
@@ -1034,6 +1113,9 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
         }
         WWNWindowEventFree(event);
       }
+
+      // Bridge the Wayland clipboard selection <-> native pasteboard.
+      [self _syncClipboardWithPasteboard];
 
       // Apply render scene (update CALayer geometry and contents)
       if (scene) {
@@ -2926,6 +3008,14 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   if (ownerMachineId.length > 0) {
     _windowOwnerMachineIdByWindowId[@(event->window_id)] = ownerMachineId;
   }
+  if (!kiosk) {
+    WWNMachineProfile *ownerProfile =
+        ownerMachineId.length > 0 ? [WWNMachineProfileStore profileById:ownerMachineId]
+                                   : nil;
+    if ([WWNMachineProfileStore resolvedAlwaysOnTopForProfile:ownerProfile]) {
+      window.level = NSFloatingWindowLevel;
+    }
+  }
   WWNLog("BRIDGE", @"Created window %llu: %@ (total windows: %lu)",
          event->window_id, title, (unsigned long)[_windows count]);
 
@@ -3071,7 +3161,12 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
     styleMask = NSWindowStyleMaskBorderless | NSWindowStyleMaskResizable |
                 NSWindowStyleMaskMiniaturizable;
   }
+  // setStyleMask resizes the frame (titlebar added/removed); suppress the
+  // windowDidResize-driven resize injection — the authoritative content size
+  // is injected explicitly below (post size-sync).
+  window.processingResize = YES;
   [window setStyleMask:styleMask];
+  window.processingResize = NO;
   [window applyPresentationPolicyForServerSideDecorations:useServerDecorations];
   [self wwnApplySurfaceDragPolicyForWindow:window];
 
@@ -3081,8 +3176,16 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   // reconfigure_window_decorations sends an xdg_toplevel.configure to the
   // client.  Without this, nested compositors receive the pre-titlebar
   // dimensions and render at the wrong size.
+  //
+  // Skip this before the first size sync: the NSWindow is still at its
+  // 256x256 placeholder then, and injecting that as an authoritative
+  // configure coerces clients that switch decoration modes at startup
+  // (e.g. nested niri requesting SSD) into a tiny window, defeating
+  // first-commit trust.
+  BOOL sizeSynced =
+      [_windowsWithInitialSizeSynced containsObject:@(event->window_id)];
   NSSize contentSize = WWNWaylandContentSizeForWindow(window);
-  if (contentSize.width > 0 && contentSize.height > 0) {
+  if (sizeSynced && contentSize.width > 0 && contentSize.height > 0) {
     WWNLog("BRIDGE",
            @"Decoration mode changed for window %llu: %s — injecting "
            @"content resize %.0fx%.0f",
@@ -3643,11 +3746,12 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
   if (!popup) {
     return;
   }
-  if ([popup conformsToProtocol:@protocol(WWNPopupHost)]) {
-    [(id<WWNPopupHost>)popup dismiss];
-  } else if ([popup isKindOfClass:[WWNView class]]) {
-    [(WWNView *)popup removeFromSuperview];
-  }
+  // Remove from the tracking dictionaries before invoking -dismiss: dismiss
+  // synchronously fires onDismiss -> handlePopupDismissed:, which looks the
+  // popup back up by windowId. Clearing it first means that re-entrant
+  // lookup finds nothing and safely no-ops instead of calling -dismiss
+  // again on the same popup (which previously recursed until stack
+  // overflow). -[WWNPopupWindow dismiss] is also idempotent as a backstop.
   [_popups removeObjectForKey:@(windowId)];
   [_windows removeObjectForKey:@(windowId)];
   [_latestResizeDims removeObjectForKey:@(windowId)];
@@ -3656,6 +3760,11 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
   [NSObject cancelPreviousPerformRequestsWithTarget:self
                                            selector:@selector(_drainPendingWindowResizeForId:)
                                              object:@(windowId)];
+  if ([popup conformsToProtocol:@protocol(WWNPopupHost)]) {
+    [(id<WWNPopupHost>)popup dismiss];
+  } else if ([popup isKindOfClass:[WWNView class]]) {
+    [(WWNView *)popup removeFromSuperview];
+  }
 }
 
 - (void)handlePopupCreated:(CWindowEvent *)event {

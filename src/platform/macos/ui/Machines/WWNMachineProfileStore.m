@@ -22,6 +22,7 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
     @"machineThumbnailEnabledOverride";
 static NSString *const kWWNRuntimeShakeToCloseEnabled = @"shakeToCloseEnabled";
 static NSString *const kWWNRuntimeSwipeBackToCloseEnabled = @"swipeBackToCloseEnabled";
+static NSString *const kWWNRuntimeAlwaysOnTop = @"alwaysOnTop";
 static NSString *const kWWNPrefShakeToCloseEnabled = @"wawona.pref.shakeToCloseEnabled";
 static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBackToCloseEnabled";
 
@@ -49,8 +50,6 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
     _sshKeyPassphrase = @"";
     _remoteCommand = @"";
     _customScript = @"";
-    _vmSubtype = @"qemu";
-    _containerSubtype = @"docker";
     _waypipeCompress = @"lz4";
     _waypipeThreads = @"0";
     _waypipeVideo = @"none";
@@ -100,8 +99,6 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
     @"sshPort" : @(self.sshPort > 0 ? self.sshPort : 22),
     @"sshPassword" : self.sshPassword ?: @"",
     @"remoteCommand" : self.remoteCommand ?: @"",
-    @"vmSubtype" : self.vmSubtype ?: @"qemu",
-    @"containerSubtype" : self.containerSubtype ?: @"docker",
     @"launchers" : @[],
     kWWNMachineRuntimeOverrides : runtimeOverrides,
     @"favorite" : @(self.favorite),
@@ -159,9 +156,9 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
     kWWNPrefsWaypipeXwls,
     kWWNPrefsWaypipeTitlePrefix,
     kWWNPrefsWaypipeSecCtx,
-    kWWNPrefsMachineVMProvider,
+    // MachineVMProvider / MachineContainerRuntime are no longer user-scoped:
+    // the engine is fixed per build target (Residual E).
     kWWNPrefsMachineVMVsockPort,
-    kWWNPrefsMachineContainerRuntime,
     kWWNPrefsMachineContainerImageStore,
     kWWNPrefsSSHHost,
     kWWNPrefsSSHUser,
@@ -287,8 +284,6 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   profile.sshKeyPassphrase = [obj[@"sshKeyPassphrase"] isKindOfClass:[NSString class]] ? obj[@"sshKeyPassphrase"] : @"";
   profile.remoteCommand = [obj[@"remoteCommand"] isKindOfClass:[NSString class]] ? obj[@"remoteCommand"] : @"";
   profile.customScript = [obj[@"customScript"] isKindOfClass:[NSString class]] ? obj[@"customScript"] : @"";
-  profile.vmSubtype = [obj[@"vmSubtype"] isKindOfClass:[NSString class]] ? obj[@"vmSubtype"] : @"qemu";
-  profile.containerSubtype = [obj[@"containerSubtype"] isKindOfClass:[NSString class]] ? obj[@"containerSubtype"] : @"docker";
   profile.waypipeCompress = [obj[@"waypipeCompress"] isKindOfClass:[NSString class]] ? obj[@"waypipeCompress"] : @"lz4";
   profile.waypipeThreads = [obj[@"waypipeThreads"] isKindOfClass:[NSString class]] ? obj[@"waypipeThreads"] : @"0";
   profile.waypipeVideo = [obj[@"waypipeVideo"] isKindOfClass:[NSString class]] ? obj[@"waypipeVideo"] : @"none";
@@ -310,6 +305,32 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
       [obj[kWWNMachineSettingsOverrides] isKindOfClass:[NSDictionary class]]) {
     legacySettingsOverrides = obj[kWWNMachineSettingsOverrides];
   }
+  // Migrate legacy Server-Side Decorations (issue #53): older profiles stored
+  // the SSD toggle under settingsOverrides["ForceServerSideDecorations"], but
+  // the canonical per-machine key is runtimeOverrides["forceSSD"] (machine
+  // override first, global fallback second). Normalize on load so the resolved
+  // precedence path (applyMachineToRuntimePrefs) honors saved values.
+  if (runtimeOverrides[@"forceSSD"] == nil &&
+      [legacySettingsOverrides[kWWNPrefsForceServerSideDecorations]
+          respondsToSelector:@selector(boolValue)]) {
+    NSMutableDictionary *migrated = [runtimeOverrides mutableCopy];
+    migrated[@"forceSSD"] = @([legacySettingsOverrides[kWWNPrefsForceServerSideDecorations]
+        boolValue]);
+    runtimeOverrides = migrated;
+  }
+  // Migrate legacy SSH port (issue #48): older profiles persisted the port
+  // under settingsOverrides["SSHPort"] rather than the canonical top-level
+  // "sshPort" key. Honor the legacy value only when the modern key is absent,
+  // so an explicit top-level port always wins and the resolved precedence path
+  // (applyMachineToRuntimePrefs) never silently falls back to 22.
+  if (obj[@"sshPort"] == nil &&
+      [legacySettingsOverrides[kWWNPrefsSSHPort]
+          respondsToSelector:@selector(integerValue)]) {
+    NSInteger legacyPort = [legacySettingsOverrides[kWWNPrefsSSHPort] integerValue];
+    if (legacyPort > 0) {
+      profile.sshPort = legacyPort;
+    }
+  }
   profile.runtimeOverrides = runtimeOverrides;
   profile.settingsOverrides = legacySettingsOverrides;
   if ([runtimeOverrides[kWWNRuntimeWaypipeEnabled]
@@ -329,6 +350,7 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
     merged[@"WestonSimpleSHMEnabled"] =
         @([bundledAppID isEqualToString:@"weston-simple-shm"]);
     merged[@"FootEnabled"] = @([bundledAppID isEqualToString:@"foot"]);
+    merged[@"NiriEnabled"] = @([bundledAppID isEqualToString:@"niri"]);
     profile.settingsOverrides = merged;
   }
   profile.favorite = [obj[@"favorite"] respondsToSelector:@selector(boolValue)] ? [obj[@"favorite"] boolValue] : NO;
@@ -541,6 +563,11 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   if ([cid isEqualToString:@"weston"]) {
     return YES;
   }
+  // niri (wwn-niri) always runs nested: a Wayland client of the Wawona
+  // compositor hosting its own scrollable-tiling clients.
+  if ([cid isEqualToString:@"niri"]) {
+    return YES;
+  }
   if (![cid isEqualToString:@"custom"]) {
     return NO;
   }
@@ -609,6 +636,46 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
                       ? so[@"NativeCustomCommand"]
                       : @"";
   return [self profileIndicatesNestedWithNativeClientId:cid customCommand:cmd];
+}
+
++ (BOOL)profileEligibleForAppBridge:(WWNMachineProfile *)profile {
+  // Local-only native machines only.
+  if (![profile.type isEqualToString:kWWNMachineTypeNative]) {
+    return NO;
+  }
+  NSDictionary *so =
+      [profile.settingsOverrides isKindOfClass:[NSDictionary class]]
+          ? profile.settingsOverrides
+          : @{};
+  NSString *cid = [so[@"NativeClientId"] isKindOfClass:[NSString class]]
+                      ? so[@"NativeClientId"]
+                      : @"";
+  NSString *cmd = [so[@"NativeCustomCommand"] isKindOfClass:[NSString class]]
+                      ? so[@"NativeCustomCommand"]
+                      : @"";
+
+  // Preset weston client: the nested compositor path.
+  if ([cid isEqualToString:@"weston"]) {
+    return YES;
+  }
+  // Custom command must be weston with a nested wayland backend, and must not be
+  // a demo/toolkit client.
+  if ([cid isEqualToString:@"custom"]) {
+    NSString *lower =
+        [[cmd stringByTrimmingCharactersInSet:
+                  [NSCharacterSet whitespaceAndNewlineCharacterSet]]
+            lowercaseString];
+    if ([lower containsString:@"weston-terminal"] ||
+        [lower containsString:@"weston-simple-shm"]) {
+      return NO;
+    }
+    if ([lower containsString:@"weston"] &&
+        ([lower containsString:@"--backend=wayland"] ||
+         [lower containsString:@"-b wayland"])) {
+      return YES;
+    }
+  }
+  return NO;
 }
 
 + (void)applyMachineToRuntimePrefs:(WWNMachineProfile *)profile {
@@ -846,6 +913,19 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
     profile = [self profileById:activeId];
   }
   return [self resolvedRenderMacOSPointerForProfile:profile];
+}
+
++ (BOOL)resolvedAlwaysOnTopForProfile:(WWNMachineProfile *)profile {
+  if (!profile) {
+    return NO;
+  }
+  NSDictionary *runtimeOverrides =
+      [profile.runtimeOverrides isKindOfClass:[NSDictionary class]]
+          ? profile.runtimeOverrides
+          : @{};
+  id value = runtimeOverrides[kWWNRuntimeAlwaysOnTop];
+  return [value respondsToSelector:@selector(boolValue)] ? [value boolValue]
+                                                          : NO;
 }
 
 @end

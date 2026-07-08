@@ -8,12 +8,6 @@ package com.aspauldingcode.wawona
  * keep them here as the single source of truth.
  */
 object WawonaTestTags {
-    /** Primary speed-dial FAB that opens the launch/actions menu. */
-    const val LAUNCH_FAB = "wwn.launch.fab"
-
-    /** A single action item inside the speed-dial menu (prefix + label). */
-    const val MENU_ITEM_PREFIX = "wwn.menu.item."
-
     /** Settings entry point (open settings dialog). */
     const val SETTINGS_OPEN = "wwn.settings.open"
 
@@ -25,7 +19,4 @@ object WawonaTestTags {
 
     /** Desktop-replacement app drawer open button (shown over the desktop). */
     const val APP_DRAWER_OPEN = "wwn.appdrawer.open"
-
-    fun menuItem(label: String): String =
-        MENU_ITEM_PREFIX + label.lowercase().replace(' ', '.')
 }

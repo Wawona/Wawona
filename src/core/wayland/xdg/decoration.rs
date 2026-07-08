@@ -44,7 +44,18 @@ use smithay::wayland::shell::xdg::ToplevelSurface;
 use std::collections::HashMap;
 
 pub fn is_weston_family_app_id(app_id: &str) -> bool {
-    app_id == "weston" || app_id.starts_with("weston-")
+    // The weston toy-toolkit (clients/window.c) doesn't app_id its clients
+    // as bare "weston"/"weston-*" — e.g. weston-terminal registers as
+    // "org.freedesktop.weston.wayland-terminal" (see clients/terminal.c
+    // window_set_appid). Matching only the exact/prefix forms above missed
+    // every real weston-family client, silently disabling both CSD-crop
+    // fallback policy selection and (via should_host_lock_app_id) the
+    // mobile edge-to-edge host-lock for weston-terminal: the window sat at
+    // an undersized default geometry instead of filling the usable screen
+    // area, which read as "wrong offset / edges not matching the screen".
+    // `.contains("weston")` matches both forms; mirrors the equivalent
+    // (already-correct) check in ffi/api.rs.
+    app_id == "weston" || app_id.starts_with("weston-") || app_id.contains("weston")
 }
 
 fn app_id_matches_bundled_client(app_id: &str, client_id: &str) -> bool {

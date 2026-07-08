@@ -16,6 +16,19 @@ impl CompositorState {
     pub fn inject_key(&mut self, key: u32, key_state: wl_keyboard::KeyState, time: u32) {
         self.ext.idle_notify.record_activity();
 
+        // Instrumentation for remote-compositor keyboard bugs (issues #55/#56).
+        // `key` is a Linux evdev scancode; the XKB keycode is `key + 8`. Logging
+        // both, plus which delivery path is taken, separates a keymap/translation
+        // bug (wrong keysym for a given scancode) from a transport bug (waypipe
+        // relay dropping or reordering events). Enable with RUST_LOG=trace.
+        tracing::trace!(
+            evdev = key,
+            xkb = key.saturating_add(8),
+            state = ?key_state,
+            path = if self.smithay_runtime.seat.is_some() { "smithay" } else { "legacy" },
+            "inject_key",
+        );
+
         // Keyboard delivery is owned by smithay's seat: keys reach the
         // focused surface's wl_keyboard with correct XKB modifier tracking.
         // `key` is a Linux evdev scancode; smithay expects XKB codes (+8).
@@ -50,7 +63,12 @@ impl CompositorState {
                      wl_keyboard::KeyState::Released => xkbcommon::xkb::KeyDirection::Up,
                      _ => xkbcommon::xkb::KeyDirection::Up,
                  };
-                 if state.update_key(key, direction) {
+                 // xkb_state_update_key expects the XKB keycode (evdev + 8),
+                 // while the wl_keyboard.key event below carries the raw evdev
+                 // scancode (the client applies the +8 offset itself). Passing
+                 // the raw scancode here corrupts modifier tracking in this
+                 // fallback path (issues #55/#56).
+                 if state.update_key(key.saturating_add(8), direction) {
                      new_mods = Some(state.serialize_modifiers());
                  }
              }

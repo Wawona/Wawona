@@ -21,6 +21,7 @@
   westonSimpleShmPatchedSrcNix,
   westonToytoolkitLdflagsNix,
   westonCompositorLdflagsNix,
+  ilandGlAndroidLdflagsNix,
   androidConfigNix,
   westonAndroidSignalPolyfill ? null,
   releaseArtifact ? "debug",
@@ -57,12 +58,16 @@ let
   fastfetchAndroid = buildModule.buildForAndroid "fastfetch" { };
   neovimAndroid = buildModule.buildForAndroid "neovim" { };
   waypipeAndroid = buildModule.buildForAndroid "waypipe" { };
+  # niri (wwn-niri): nested scrollable-tiling compositor (Wayland client of
+  # the Wawona compositor); ships as lib/libniri_bin.so (exec'd, waypipe pattern).
+  niriAndroid = buildModule.buildForAndroid "niri" { };
+  # anowaW app bridge: libanowaw.so + staged Kotlin/JNI shims (share/anowaw).
+  anowawAndroid = buildModule.buildForAndroid "anowaw" { };
   mobileToytoolkitDeps = import ./mobile-toytoolkit-deps.nix {
     buildFn = buildModule.buildForAndroid;
   };
-  westonAndroid = buildModule.buildForAndroid "weston" { };
+  westonAndroid = buildModule.buildForAndroid "weston" { enableGlClients = true; };
   westonSimpleShmAndroid = buildModule.buildForAndroid "weston-simple-shm" { };
-  westonCompositorAndroid = buildModule.buildForAndroid "weston-compositor" { };
   libintlAndroid = buildModule.buildForAndroid "libintl" { };
   westonToytoolkitLdflags = import westonToytoolkitLdflagsNix {
     inherit (pkgs) lib;
@@ -73,23 +78,35 @@ let
     forceLoadWeston = true;
     linkMode = "whole_archive";
   };
-  westonCompositorLdflags =
-    if westonCompositorAndroid != null then
-      import westonCompositorLdflagsNix {
-        inherit (pkgs) lib;
-        deps = mobileToytoolkitDeps // {
-          weston-compositor = westonCompositorAndroid;
-        };
-        forceLoadCompositor = true;
-        linkMode = "whole_archive";
-      }
-    else [ ];
+  westonCompositorAndroid = buildModule.buildForAndroid "weston-compositor" { };
+  ilandAndroid = buildModule.buildForAndroid "iland" { };
+  angleAndroid = buildModule.buildForAndroid "angle" { };
+  kmscubeAndroid = buildModule.buildForAndroid "kmscube" { };
+  westonCompositorLdflags = import westonCompositorLdflagsNix {
+    inherit (pkgs) lib;
+    deps = {
+      weston-compositor = westonCompositorAndroid;
+      libwayland = libwaylandAndroid;
+      expat = buildModule.buildForAndroid "expat" { };
+    };
+    forceLoadCompositor = false;
+    linkMode = "whole_archive";
+  };
+  ilandGlLdflags = import ilandGlAndroidLdflagsNix {
+    inherit (pkgs) lib;
+    deps = {
+      iland = ilandAndroid;
+      angle = angleAndroid;
+      kmscube = kmscubeAndroid;
+      "iland-gl-clients" = kmscubeAndroid;
+    };
+  };
   rustBackendPath = if rustBackend != null then toString rustBackend else "";
   androidQuadVert = ../../src/platform/android/rendering/shaders/android_quad.vert;
   androidQuadFrag = ../../src/platform/android/rendering/shaders/android_quad.frag;
 
   shellTools = import ./android-shell-tools.nix {
-    inherit lib zshAndroid fastfetchAndroid neovimAndroid waypipeAndroid;
+    inherit lib zshAndroid fastfetchAndroid neovimAndroid waypipeAndroid niriAndroid;
   };
   westonData = import ./android-weston-data.nix { inherit lib pkgs; };
   bundledClients = import ./android-bundled-clients.nix {
@@ -106,7 +123,16 @@ let
     "libxml2"
     "xkbcommon"
     "openssl"
-  ] ++ (lib.attrNames mobileToytoolkitDeps) ++ [ "weston" "libintl" ];
+    "anowaw"
+  ] ++ (lib.attrNames mobileToytoolkitDeps) ++ [
+    "weston"
+    "weston-compositor"
+    "libintl"
+    "iland"
+    "angle"
+    "kmscube"
+    "iland-gl-clients"
+  ];
   gradleTask =
     if releaseArtifact == "release-aab" then ":Wawona:bundleRelease"
     else if releaseArtifact == "release-apk" then ":Wawona:assembleRelease"
@@ -156,6 +182,8 @@ let
     "src/platform/android/input_android.c"
     "src/platform/android/rendering/renderer_android.c"
     "src/platform/android/rendering/renderer_android.h"
+    "src/platform/android/iland_presenter_android.c"
+    "src/platform/android/iland_presenter_android.h"
     "src/platform/macos/WWNSettings.c"
     "src/platform/macos/WWNSettings.h"
   ];
@@ -289,7 +317,9 @@ let
     esac
     if [ "$USE_SYSTEM_SDK" = "true" ]; then
       SYS_IMG_DIR="$ANDROID_SDK_ROOT/system-images"
-      for api_dir in android-36.1 android-36 android-35; do
+      # Keep API 36 (Android 16) as the pinned emulator target; only fall
+      # back to other images when android-36 is absent.
+      for api_dir in android-36 android-36.1 android-35; do
         if [ -d "$SYS_IMG_DIR/$api_dir/google_apis_playstore/$PREFERRED_ABI" ]; then
           SYSTEM_IMAGE="system-images;$api_dir;google_apis_playstore;$PREFERRED_ABI"
           AVD_NAME="WawonaEmulator_$PREFERRED_ABI_$(echo $api_dir | tr '.' '_' | tr '-' '_')"
@@ -381,7 +411,34 @@ let
         exit 1
       fi
     fi
-    
+
+    # Repair avdmanager-created AVD defaults (idempotent, also fixes
+    # previously created AVDs; takes effect on the next emulator boot):
+    # - hw.keyboard=no drops physical key events from the host, so host
+    #   keyboard passthrough needs hw.keyboard=yes;
+    # - the 320x640@160 fallback display is too small for realistic UI
+    #   testing and makes the camera hole-punch cutout emulation overlay
+    #   render at the wrong geometry — use a Pixel-like panel instead.
+    AVD_CONFIG_INI="$ANDROID_AVD_HOME/$AVD_NAME.avd/config.ini"
+    if [ -f "$AVD_CONFIG_INI" ]; then
+      if grep -qE '^hw\.keyboard *= *no' "$AVD_CONFIG_INI"; then
+        sed -i.bak -E 's/^hw\.keyboard *= *no/hw.keyboard = yes/' "$AVD_CONFIG_INI" && rm -f "$AVD_CONFIG_INI.bak"
+        echo "[Wawona] Enabled host keyboard passthrough (hw.keyboard=yes) in $AVD_CONFIG_INI"
+      elif ! grep -qE '^hw\.keyboard' "$AVD_CONFIG_INI"; then
+        printf 'hw.keyboard = yes\n' >> "$AVD_CONFIG_INI"
+        echo "[Wawona] Added hw.keyboard=yes to $AVD_CONFIG_INI"
+      fi
+      if grep -qE '^hw\.lcd\.width *= *320$' "$AVD_CONFIG_INI"; then
+        sed -i.bak -E \
+          -e 's/^hw\.lcd\.width *=.*/hw.lcd.width = 1080/' \
+          -e 's/^hw\.lcd\.height *=.*/hw.lcd.height = 2424/' \
+          -e 's/^hw\.lcd\.density *=.*/hw.lcd.density = 420/' \
+          -e 's/^hw\.mainKeys *=.*/hw.mainKeys = no/' \
+          "$AVD_CONFIG_INI" && rm -f "$AVD_CONFIG_INI.bak"
+        echo "[Wawona] Upgraded AVD display to 1080x2424@420 (Pixel-like) in $AVD_CONFIG_INI"
+      fi
+    fi
+
     adb start-server 2>/dev/null || true
     
     # ── Surgical Device Detection ──
@@ -467,45 +524,35 @@ let
     fi
     fi
 
-    # Optional display cutout emulation (enabled by default) so safe-area /
-    # notch behavior can be tested on the emulator consistently.
-    # Set WAWONA_EMULATOR_CUTOUT=off to disable.
-    CUTOUT_MODE="''${WAWONA_EMULATOR_CUTOUT:-on}"
+    # Center-top display cutout for Wawona safe-area testing on the emulator.
+    # Stock "hole" is a top-LEFT punch hole (@left) and does not paint visibly on
+    # API 36 Play images; "tall" is a center-top notch with fill=true (visible +
+    # top inset).  Override: WAWONA_EMULATOR_CUTOUT=tall|hole|emu01|corner|off
+    CUTOUT_MODE="''${WAWONA_EMULATOR_CUTOUT:-tall}"
     if [ "$CUTOUT_MODE" != "off" ] && [ -z "''${ADB_SERIAL:-}" ]; then
       EMULATOR_SERIAL=$(adb devices | awk '/emulator-[0-9]+[[:space:]]+device$/ {print $1; exit}')
       if [ -n "$EMULATOR_SERIAL" ]; then
-        echo "[Wawona] Enabling display cutout emulation on $EMULATOR_SERIAL..."
-        # Try to locate available cutout overlays dynamically (API/skin dependent).
-        CUTOUT_PACKAGES=$(adb -s "$EMULATOR_SERIAL" shell cmd overlay list 2>/dev/null | tr -d '\r' | grep -oE 'com\.android\.internal\.display\.cutout\.emulation\.[A-Za-z0-9._-]+' | sort -u || true)
-        if [ -n "$CUTOUT_PACKAGES" ]; then
-          # First disable all cutout emulation overlays for a clean baseline.
-          while IFS= read -r pkg; do
-            [ -z "$pkg" ] && continue
-            adb -s "$EMULATOR_SERIAL" shell cmd overlay disable --user 0 "$pkg" >/dev/null 2>&1 || true
-          done <<< "$CUTOUT_PACKAGES"
-
-          # Prefer a top camera-hole style overlay if present.
-          TARGET_CUTOUT_PKG=""
-          for preferred in \
-            "com.android.internal.display.cutout.emulation.hole" \
-            "com.android.internal.display.cutout.emulation.tall" \
-            "com.android.internal.display.cutout.emulation.corner"
-          do
-            if echo "$CUTOUT_PACKAGES" | grep -q "^$preferred$"; then
-              TARGET_CUTOUT_PKG="$preferred"
-              break
+        case "$CUTOUT_MODE" in
+          on) CUTOUT_MODE=tall ;;  # legacy alias
+          hole|tall|corner|double|emu01|waterfall)
+            CUTOUT_PKG="com.android.internal.display.cutout.emulation.''${CUTOUT_MODE}"
+            echo "[Wawona] Enabling display cutout emulation ($CUTOUT_MODE) on $EMULATOR_SERIAL..."
+            if adb -s "$EMULATOR_SERIAL" shell cmd overlay enable-exclusive --user 0 --category "$CUTOUT_PKG" >/dev/null 2>&1; then
+              adb -s "$EMULATOR_SERIAL" shell am crash com.android.systemui >/dev/null 2>&1 || true
+              sleep 2
+              CUTOUT_SPEC=$(adb -s "$EMULATOR_SERIAL" shell cmd overlay lookup android android:string/config_mainBuiltInDisplayCutout 2>/dev/null | tr -d '\r' || true)
+              CUTOUT_INSETS=$(adb -s "$EMULATOR_SERIAL" shell dumpsys display 2>/dev/null | sed -n 's/.*cutout DisplayCutout{insets=Rect(\([^)]*\)).*/\1/p' | head -n1 || true)
+              echo "[Wawona] Cutout overlay active: $CUTOUT_PKG"
+              echo "[Wawona] Cutout insets (L,T,R,B): ''${CUTOUT_INSETS:-unknown}"
+              echo "[Wawona] Cutout spec: ''${CUTOUT_SPEC:0:80}''${CUTOUT_SPEC:+...}"
+            else
+              echo "[Wawona] WARNING: Could not enable cutout overlay $CUTOUT_PKG"
             fi
-          done
-          if [ -z "$TARGET_CUTOUT_PKG" ]; then
-            TARGET_CUTOUT_PKG=$(echo "$CUTOUT_PACKAGES" | head -n 1)
-          fi
-          if [ -n "$TARGET_CUTOUT_PKG" ]; then
-            adb -s "$EMULATOR_SERIAL" shell cmd overlay enable --user 0 "$TARGET_CUTOUT_PKG" >/dev/null 2>&1 || true
-            echo "[Wawona] Display cutout overlay active: $TARGET_CUTOUT_PKG"
-          fi
-        else
-          echo "[Wawona] No cutout emulation overlays exposed on this system image."
-        fi
+            ;;
+          *)
+            echo "[Wawona] WARNING: Unknown WAWONA_EMULATOR_CUTOUT=$CUTOUT_MODE (use tall|hole|emu01|corner|off)"
+            ;;
+        esac
       fi
     fi
 
@@ -824,6 +871,12 @@ in
       done
       shopt -u nullglob
 
+      # ANGLE ships as libEGL.so / libGLESv2.so but with SONAMEs
+      # libEGL_angle.so / libGLESv2_angle.so; libwawona.so links against the
+      # SONAME, so stage SONAME-named copies too or the loader fails at launch.
+      [ -f "$JNI_LIB_DIR/libEGL.so" ] && cp -f "$JNI_LIB_DIR/libEGL.so" "$JNI_LIB_DIR/libEGL_angle.so"
+      [ -f "$JNI_LIB_DIR/libGLESv2.so" ] && cp -f "$JNI_LIB_DIR/libGLESv2.so" "$JNI_LIB_DIR/libGLESv2_angle.so"
+
       # Bundle SSH client helpers with stable names expected by android_jni.c.
       # We ship Dropbear dbclient as libssh_bin.so and sshpass as libsshpass_bin.so
       # in jniLibs so runtime path resolution can execute them directly.
@@ -832,6 +885,25 @@ in
         chmod +x "$JNI_LIB_DIR/libssh_bin.so"
       else
         echo "WARNING: Missing Android ssh binary at ${opensshBin}/bin/ssh"
+      fi
+
+      # Key management (wwn-ssh): dropbearkey ships as ssh-keygen (same
+      # -t/-f/-y CLI for ed25519), plus scp and dropbearconvert.
+      if [ -f "${opensshBin}/bin/ssh-keygen" ]; then
+        cp -L "${opensshBin}/bin/ssh-keygen" "$JNI_LIB_DIR/libssh_keygen_bin.so"
+        chmod +x "$JNI_LIB_DIR/libssh_keygen_bin.so"
+      else
+        echo "WARNING: Missing Android ssh-keygen binary at ${opensshBin}/bin/ssh-keygen"
+      fi
+
+      if [ -f "${opensshBin}/bin/scp" ]; then
+        cp -L "${opensshBin}/bin/scp" "$JNI_LIB_DIR/libscp_bin.so"
+        chmod +x "$JNI_LIB_DIR/libscp_bin.so"
+      fi
+
+      if [ -f "${opensshBin}/bin/dropbearconvert" ]; then
+        cp -L "${opensshBin}/bin/dropbearconvert" "$JNI_LIB_DIR/libdropbearconvert_bin.so"
+        chmod +x "$JNI_LIB_DIR/libdropbearconvert_bin.so"
       fi
 
       if [ -f "${sshpassBin}/bin/sshpass" ]; then
@@ -850,12 +922,38 @@ in
       cp -RL ${pkgs.xkeyboard_config}/share/X11/xkb/. app/src/main/assets/xkb/
       chmod -R u+w app/src/main/assets/xkb
 
+      # DejaVu fonts for the in-process weston toytoolkit clients (cairo/
+      # fontconfig text rendering). iOS embeds the same tree under share/fonts;
+      # android_jni.c writes a fonts.conf pointing here at runtime.
+      mkdir -p app/src/main/assets/fonts/truetype
+      cp -L ${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSans.ttf \
+            ${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSans-Bold.ttf \
+            ${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSansMono.ttf \
+            ${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSansMono-Bold.ttf \
+            app/src/main/assets/fonts/truetype/
+      chmod -R u+w app/src/main/assets/fonts
+
       # Weston toytoolkit PNGs (sign_close.png, icon_window.png, …) for CSD clients.
       ${westonData.preBuildFragment}
 
       # In-process Wayland clients (weston-simple-shm, foot); see
       # android-bundled-clients.nix.
       ${bundledClients.preBuildFragment}
+
+      # anowaW app bridge: stage the Kotlin shims into the app sourceSet and the
+      # JNI glue next to android_jni.c so CMake picks it up. libanowaw.so is
+      # bundled into jniLibs by the androidDeps .so copy loop above.
+      if [ -d "${anowawAndroid}/share/anowaw/kotlin" ]; then
+        ANOWAW_KT_DIR="app/src/main/kotlin/com/aspauldingcode/wawona/anowaw"
+        mkdir -p "$ANOWAW_KT_DIR"
+        cp -L ${anowawAndroid}/share/anowaw/kotlin/*.kt "$ANOWAW_KT_DIR/"
+        chmod -R u+w "$ANOWAW_KT_DIR"
+      fi
+      if [ -f "${anowawAndroid}/share/anowaw/jni/anowaw_jni.c" ]; then
+        cp -L ${anowawAndroid}/share/anowaw/jni/anowaw_jni.c \
+              src/platform/android/anowaw_jni.c
+        chmod u+w src/platform/android/anowaw_jni.c
+      fi
 
       # Prefer the Rust shared library for Android linking; the static archive
       # can be malformed on some host toolchain combinations.
@@ -869,7 +967,7 @@ in
       export ANDROID_NDK_ROOT="$ndk_root"
       export ANDROID_NDK_HOME="$ndk_root"
       export DEP_INCLUDES="${lib.concatMapStringsSep " " (d: "-I${d}/include") (getDeps "android" androidDeps)} -I${buildModule.buildForAndroid "pixman" { }}/include/pixman-1 -I${westonAndroid}/include/weston-gen"
-      export DEP_LIBS="${lib.concatMapStringsSep " " (d: "-L${d}/lib") (getDeps "android" androidDeps)} ${lib.concatStringsSep " " westonToytoolkitLdflags}"
+      export DEP_LIBS="${lib.concatMapStringsSep " " (d: "-L${d}/lib") (getDeps "android" androidDeps)} ${lib.concatStringsSep " " (westonToytoolkitLdflags ++ westonCompositorLdflags ++ ilandGlLdflags)}"
       export RUST_BACKEND_LIB="$RUST_BACKEND_LINK_LIB"
     '';
 

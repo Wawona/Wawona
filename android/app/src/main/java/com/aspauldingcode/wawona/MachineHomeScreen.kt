@@ -784,12 +784,10 @@ private fun MachineEditorSheet(
     var vmIdentifier by remember { mutableStateOf(initial?.vmSettings?.vmIdentifier ?: "") }
     var vmVsockPort by remember { mutableStateOf(initial?.vmSettings?.vsockPort ?: "") }
     var vmNotes by remember { mutableStateOf(initial?.vmSettings?.notes ?: "") }
-    var vmSubtype by remember { mutableStateOf(initial?.vmSubtype ?: "qemu") }
     var containerRef by remember { mutableStateOf(initial?.containerSettings?.containerRef ?: "") }
     var containerRuntime by remember { mutableStateOf(initial?.containerSettings?.runtime ?: "docker") }
     var containerEntry by remember { mutableStateOf(initial?.containerSettings?.entryCommand ?: "") }
     var containerNotes by remember { mutableStateOf(initial?.containerSettings?.notes ?: "") }
-    var containerSubtype by remember { mutableStateOf(initial?.containerSubtype ?: "docker") }
     var machineTypePickerExpanded by remember { mutableStateOf(false) }
     var authMethodExpanded by remember { mutableStateOf(false) }
     var touchInputExpanded by remember { mutableStateOf(false) }
@@ -797,7 +795,7 @@ private fun MachineEditorSheet(
     var openglExpanded by remember { mutableStateOf(false) }
 
     val existingOverrides = remember(initial) {
-        if (initial?.settingsOverrides != null) JSONObject(initial.settingsOverrides.toString()) else JSONObject()
+        if (initial != null) SettingsOverrides.merge(initial) else JSONObject()
     }
     var machineThumbnailEnabled by remember {
         mutableStateOf(readBoolOverride(existingOverrides, "machineThumbnailEnabledOverride", true))
@@ -809,11 +807,17 @@ private fun MachineEditorSheet(
         mutableStateOf(readBoolOverride(existingOverrides, "autoScale", prefs.getBoolean("autoRetinaScaling", true)))
     }
     var respectSafeArea by remember {
-        mutableStateOf(readBoolOverride(existingOverrides, "respectSafeArea", prefs.getBoolean("respectSafeArea", true)))
+        mutableStateOf(
+            SettingsOverrides.readBool(
+                existingOverrides,
+                "respectSafeArea",
+                prefs.getBoolean("respectSafeArea", true)
+            )
+        )
     }
     var showVirtualPointer by remember {
         mutableStateOf(
-            readBoolOverride(
+            SettingsOverrides.readBool(
                 existingOverrides,
                 "renderMacOSPointer",
                 prefs.getBoolean("renderMacOSPointer", false)
@@ -822,7 +826,7 @@ private fun MachineEditorSheet(
     }
     var touchInputType by remember {
         mutableStateOf(
-            readStringOverride(
+            SettingsOverrides.readString(
                 existingOverrides,
                 "touchInputType",
                 if (prefs.getBoolean("touchpadMode", false)) "Touchpad" else "Multi-Touch"
@@ -848,10 +852,22 @@ private fun MachineEditorSheet(
         mutableStateOf(readBoolOverride(existingOverrides, "colorOperations", prefs.getBoolean("colorSyncSupport", false)))
     }
     var shakeToCloseOverride by remember {
-        mutableStateOf(readBoolOverride(existingOverrides, "shakeToCloseEnabled", prefs.getBoolean("wawona.pref.shakeToCloseEnabled", true)))
+        mutableStateOf(
+            SettingsOverrides.readBool(
+                existingOverrides,
+                "shakeToCloseEnabled",
+                prefs.getBoolean("wawona.pref.shakeToCloseEnabled", true)
+            )
+        )
     }
     var swipeBackOverride by remember {
-        mutableStateOf(readBoolOverride(existingOverrides, "swipeBackToCloseEnabled", prefs.getBoolean("wawona.pref.swipeBackToCloseEnabled", true)))
+        mutableStateOf(
+            SettingsOverrides.readBool(
+                existingOverrides,
+                "swipeBackToCloseEnabled",
+                prefs.getBoolean("wawona.pref.swipeBackToCloseEnabled", true)
+            )
+        )
     }
 
     fun performSave() {
@@ -900,14 +916,11 @@ private fun MachineEditorSheet(
                 sshKeyPassphrase = sshKeyPassphrase,
                 nativeLauncher = nativeLauncher,
                 remoteCommand = remoteCommand.trim(),
-                vmSubtype = vmSubtype.trim().ifEmpty { "qemu" },
-                containerSubtype = containerSubtype.trim().ifEmpty { "docker" },
                 settingsOverrides = settingsOverrides,
                 vmSettings = base.vmSettings.copy(
                     vmIdentifier = vmIdentifier.trim(),
                     vsockPort = vmVsockPort.trim(),
-                    notes = vmNotes.trim(),
-                    provider = vmSubtype.trim().ifEmpty { "qemu" }
+                    notes = vmNotes.trim()
                 ),
                 containerSettings = base.containerSettings.copy(
                     runtime = containerRuntime.trim().ifEmpty { "docker" },
@@ -1148,9 +1161,11 @@ private fun MachineEditorSheet(
                     if (type == MachineType.VM) {
                         EditorSectionCard(
                             title = "Virtual Machine",
-                            subtitle = "Hypervisor metadata for launch orchestration."
+                            subtitle = "Hypervisor is selected automatically for this platform."
                         ) {
-                            OutlinedTextField(value = vmSubtype, onValueChange = { vmSubtype = it }, label = { Text("Subtype") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                            // VM engine is fixed per build target by wwn-vms and is
+                            // not user-configurable (Residual E).
+                            OutlinedTextField(value = "QEMU/AVF", onValueChange = {}, label = { Text("Backend") }, singleLine = true, readOnly = true, modifier = Modifier.fillMaxWidth())
                             OutlinedTextField(value = vmIdentifier, onValueChange = { vmIdentifier = it }, label = { Text("VM Identifier") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                             OutlinedTextField(value = vmVsockPort, onValueChange = { vmVsockPort = it }, label = { Text("VSock Port") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                             OutlinedTextField(value = vmNotes, onValueChange = { vmNotes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth())
@@ -1160,10 +1175,11 @@ private fun MachineEditorSheet(
                     if (type == MachineType.CONTAINER) {
                         EditorSectionCard(
                             title = "Container",
-                            subtitle = "Container runtime and startup command."
+                            subtitle = "Container runtime is selected automatically for this platform."
                         ) {
-                            OutlinedTextField(value = containerSubtype, onValueChange = { containerSubtype = it }, label = { Text("Subtype") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                            OutlinedTextField(value = containerRuntime, onValueChange = { containerRuntime = it }, label = { Text("Runtime") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                            // Container backend is fixed per build target by
+                            // wwn-containers and is not user-configurable (Residual E).
+                            OutlinedTextField(value = "container-in-VM", onValueChange = {}, label = { Text("Backend") }, singleLine = true, readOnly = true, modifier = Modifier.fillMaxWidth())
                             OutlinedTextField(value = containerRef, onValueChange = { containerRef = it }, label = { Text("Container Ref") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                             OutlinedTextField(value = containerEntry, onValueChange = { containerEntry = it }, label = { Text("Entry Command") }, modifier = Modifier.fillMaxWidth())
                             OutlinedTextField(value = containerNotes, onValueChange = { containerNotes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth())

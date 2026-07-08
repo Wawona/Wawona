@@ -3059,7 +3059,52 @@ impl WawonaCore {
         }
         state.seat.broadcast_pointer_frame(None);
     }
-    
+
+    /// Push text copied on the native platform (NSPasteboard / UIPasteboard /
+    /// ClipboardManager) into the compositor so Wayland clients can paste it.
+    /// Makes the compositor the active `wl_data_device` selection source;
+    /// `SelectionHandler::send_selection` serves this text out when a client
+    /// requests it. See `ClipboardBridge`.
+    pub fn set_clipboard_text(&self, text: String) {
+        if !self.is_running() {
+            return;
+        }
+        let mut state = self.state.write_recover();
+        if let Ok(mut bridge) = state.clipboard_bridge.write() {
+            bridge.outgoing_to_client = Some(text);
+        }
+        let Some(dh) = state.smithay_runtime.display_handle.clone() else {
+            return;
+        };
+        let Some(seat) = state.smithay_runtime.seat.clone() else {
+            return;
+        };
+        let mime_types = vec![
+            "text/plain;charset=utf-8".to_string(),
+            "text/plain".to_string(),
+            "UTF8_STRING".to_string(),
+        ];
+        smithay::wayland::selection::data_device::set_data_device_selection(
+            &dh, &seat, mime_types, (),
+        );
+    }
+
+    /// Pop the most recent text a Wayland client copied to the clipboard
+    /// (queued by `SelectionHandler::new_selection`), clearing it. Returns
+    /// `None` if nothing new has been copied since the last poll. The
+    /// native platform layer should push the result into its pasteboard.
+    pub fn poll_clipboard_text(&self) -> Option<String> {
+        if !self.is_running() {
+            return None;
+        }
+        let state = self.state.write_recover();
+        state
+            .clipboard_bridge
+            .write()
+            .ok()
+            .and_then(|mut bridge| bridge.pending_from_client.take())
+    }
+
     /// Inject pointer enter event
     pub fn inject_pointer_enter(
         &self,
@@ -4576,26 +4621,33 @@ impl WawonaCore {
             return BufferRenderInfo { stride: 0, format: 0, iosurface_id: 0, width: 0, height: 0 };
         }
 
-        let state = self.state.read_recover();
         let buffer_id_u32 = buffer_id as u32;
 
-        let auth_buffer = if let Some(client_id) = self
+        // Resolve the client id (if any) while holding only the `compositor`
+        // lock, then acquire `state` afterwards. This preserves the
+        // compositor-before-state lock order used everywhere else (e.g.
+        // process_events()); acquiring `state` first and then `compositor`
+        // (as this function previously did) is the reverse order and can
+        // deadlock against any thread that holds `compositor` while waiting
+        // on `state` (see process_events(), invoked from each client's own
+        // event-loop thread for in-process native clients like
+        // weston-terminal).
+        let client_id = self
             .compositor
             .lock_recover()
             .as_ref()
-            .and_then(|c| c.internal_to_client_id(texture.client_id.id))
-        {
-            state.buffers.get(&(client_id, buffer_id_u32)).cloned()
-        } else {
-            None
-        }
-        .or_else(|| {
-            state
-                .buffers
-                .iter()
-                .find(|(_, b)| b.read_recover().id == buffer_id_u32)
-                .map(|(_, b)| b.clone())
-        });
+            .and_then(|c| c.internal_to_client_id(texture.client_id.id));
+
+        let state = self.state.read_recover();
+        let auth_buffer = client_id
+            .and_then(|client_id| state.buffers.get(&(client_id, buffer_id_u32)).cloned())
+            .or_else(|| {
+                state
+                    .buffers
+                    .iter()
+                    .find(|(_, b)| b.read_recover().id == buffer_id_u32)
+                    .map(|(_, b)| b.clone())
+            });
 
         if let Some(auth_buffer) = auth_buffer {
             let buffer = auth_buffer.read_recover();

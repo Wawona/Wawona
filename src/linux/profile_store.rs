@@ -194,8 +194,6 @@ pub fn canonical_from_legacy(legacy: &config::LinuxMachineProfile) -> MachinePro
         ssh_port: legacy.ssh_port as i32,
         ssh_password: legacy.ssh_password.clone(),
         remote_command,
-        vm_subtype: String::new(),
-        container_subtype: String::new(),
         launchers: Vec::new(),
         favorite: false,
         runtime_overrides: Default::default(),

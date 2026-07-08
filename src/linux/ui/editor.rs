@@ -122,16 +122,17 @@ pub fn show_editor(
     add_row(&remote_group, "Password", &password_entry);
     add_row(&remote_group, "Port", &port_entry);
 
-    // VM / Container subtype
+    // VM / Container backend — fixed per build target, not user-editable
+    // (Residual E). Shown read-only for information.
     let vm_group = adw::PreferencesGroup::new();
     vm_group.set_title("Virtual Machine");
-    let vm_subtype = gtk::Entry::builder().text(&profile.vm_subtype).build();
-    add_row(&vm_group, "Subtype", &vm_subtype);
+    let vm_backend = gtk::Label::new(Some("QEMU/KVM"));
+    add_row(&vm_group, "Backend", &vm_backend);
 
     let container_group = adw::PreferencesGroup::new();
     container_group.set_title("Container");
-    let container_subtype = gtk::Entry::builder().text(&profile.container_subtype).build();
-    add_row(&container_group, "Subtype", &container_subtype);
+    let container_backend = gtk::Label::new(Some("crun"));
+    add_row(&container_group, "Backend", &container_backend);
 
     // Command
     let command_group = adw::PreferencesGroup::new();
@@ -349,8 +350,6 @@ pub fn show_editor(
             ssh_port: port_entry.text().parse::<i32>().unwrap_or(22),
             ssh_password: password_entry.text().to_string(),
             remote_command: cmd_entry.text().to_string(),
-            vm_subtype: vm_subtype.text().to_string(),
-            container_subtype: container_subtype.text().to_string(),
             favorite: favorite_switch.is_active(),
             launchers: baseline.launchers.clone(),
             runtime_overrides: baseline.runtime_overrides.clone(),

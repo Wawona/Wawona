@@ -965,6 +965,44 @@ pub extern "C" fn WWNCoreInjectPointerAxis(
     }));
 }
 
+/// Push text copied on the native platform (NSPasteboard / UIPasteboard /
+/// ClipboardManager) into the compositor so Wayland clients can paste it.
+/// `text` must be a valid, NUL-terminated UTF-8 C string; it is copied
+/// synchronously and is not retained by the core.
+#[no_mangle]
+pub extern "C" fn WWNCoreSetClipboardText(core: *mut WWNCore, text: *const c_char) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() || text.is_null() {
+            return;
+        }
+        let core = unsafe { &*core };
+        let text = unsafe { CStr::from_ptr(text) };
+        if let Ok(text) = text.to_str() {
+            core.set_clipboard_text(text.to_string());
+        }
+    }));
+}
+
+/// Pop the most recent text a Wayland client copied to the clipboard,
+/// clearing it. Returns NULL if nothing new has been copied since the last
+/// poll. Caller must free the returned string with `WWNStringFree`.
+#[no_mangle]
+pub extern "C" fn WWNCorePollClipboardText(core: *mut WWNCore) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() {
+            return std::ptr::null_mut();
+        }
+        let core = unsafe { &*core };
+        match core.poll_clipboard_text() {
+            Some(text) => CString::new(text).ok()
+                .map(|s| s.into_raw())
+                .unwrap_or(std::ptr::null_mut()),
+            None => std::ptr::null_mut(),
+        }
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
 /// Inject keyboard key event
 /// keycode: Linux key code
 /// state: 0 = Released, 1 = Pressed

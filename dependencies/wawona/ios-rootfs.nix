@@ -74,6 +74,46 @@ let
       print -rn -- $'\033[2J\033[H'
     }
 
+    # `apt` — optional feature modules on iOS are delivered as App Store
+    # purchases / on-demand resources, never by downloading binaries into the
+    # sandbox (there is no fork/exec). This in-process function is a read-only
+    # front-end that sources the bundled wwn-apt library when the catalog is
+    # embedded, and otherwise prints guidance. It never execs a shell script.
+    apt() {
+      local aptlib="$WAWONA_BUNDLE_ROOTFS/usr/share/wawona/apt/apt-common.sh"
+      if [[ -r "$aptlib" && -z "''${WAWONA_APT_NO_LIB:-}" ]]; then
+        . "$aptlib"
+        if (( ''${+functions[wwn_apt_dispatch]} )); then
+          wwn_apt_dispatch "$@"
+          return $?
+        fi
+      fi
+      local sub="''${1:-help}"
+      case "$sub" in
+        ""|help|-h|--help)
+          print -- "apt — Wawona optional module manager (App Store compliant)."
+          print -- "Usage: apt <command>"
+          print -- "  list   Show available optional modules."
+          print -- "  help   Show this help."
+          print -- "Modules are delivered via the App Store (StoreKit / on-demand"
+          print -- "resources); packages are not downloaded into the sandbox."
+          ;;
+        list)
+          print -- "No optional modules are installed in this build."
+          print -- "Manage modules from Wawona Settings > Modules."
+          ;;
+        install|remove|update|upgrade|search)
+          print -- "apt: '$sub' is managed through the App Store on iOS."
+          print -- "Open Wawona Settings > Modules to add or remove features."
+          return 1
+          ;;
+        *)
+          print -- "apt: unknown command '$sub' (try: apt help)."
+          return 1
+          ;;
+      esac
+    }
+
     # Bundled in-process utilities (uutils coreutils) that the zsh exec hook
     # dispatches WITHOUT fork/exec on the iOS sandbox. Keep in sync with the
     # `coreutils` feature subset in Cargo.toml and wwn_safe_subset in
@@ -148,5 +188,5 @@ Bundled Wawona userland templates — do not modify files inside the app bundle.
 zsh is linked into the app binary; this tree holds templates, share files, and
 writable HOME data under Application Support after first launch.
 EOF
-    echo "17" > $out/rootfs/etc/zsh/.template-version
+    echo "18" > $out/rootfs/etc/zsh/.template-version
   ''

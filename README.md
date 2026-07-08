@@ -13,7 +13,23 @@
   </details>
 </div>
 
-> **Project Vision:** Read about long-term objectives in [Project Goals](docs/goals.md).
+> **Project Vision:** Read about long-term objectives in [Project Goals](docs/goals.md) and the themed [Roadmap](docs/roadmap.md).
+
+### What can you do with Wawona?
+
+Wawona brings the Linux desktop world to devices that never had it. In plain terms:
+
+- **Run Linux graphical apps on your Mac, iPhone, iPad, and Android** — Wawona is a real Wayland compositor, so Wayland apps and desktops draw directly into a native window on your device.
+- **Connect to a remote Linux machine and use its apps as if they were local** — point Wawona at a Linux box over SSH and its windows appear on your screen, forwarded efficiently with Waypipe.
+- **Nest full Linux desktops** — run desktops and compositors like KDE Plasma, XFCE, COSMIC, sway, and niri inside Wawona (see the previews above).
+- **Use a real terminal on iOS and iPadOS** — a genuine bundled `zsh` with common tools, running on-device and App Store–compliant (no jailbreak, no remote server required).
+- **Manage many connections from one place** — save machines and switch between them without digging through settings.
+
+If you have used an SSH client or a remote desktop app before, think of Wawona as that, but for the whole Linux graphical stack, built natively for Apple and Android devices.
+
+### Demo
+
+A walkthrough video showcasing nested desktops, remote apps, and the on-device shell is planned ([#45](https://github.com/Wawona/Wawona/issues/45)). Until then, the previews above and the [Usage Guide](docs/usage.md) show what a running session looks like.
 
 ### App Store–compliant local zsh (iOS / iPadOS)
 

@@ -41,13 +41,11 @@ extern void wwn_mobile_clear_wayland_socket_fd(void);
 extern void wwn_propagate_mobile_env(void);
 extern void wwn_launch_host_client(char *const *argp, char *const *envp);
 extern int foot_main(int argc, char **argv);
-#if !TARGET_OS_IPHONE
 extern int simple_egl_main(int argc, char **argv) __attribute__((weak));
 #endif
 extern int wwn_weston_is_compat_shim(void) __attribute__((weak));
 extern int wwn_weston_terminal_is_compat_shim(void) __attribute__((weak));
 extern int wwn_foot_is_compat_shim(void) __attribute__((weak));
-#endif
 extern int weston_compositor_main(int argc, char **argv) __attribute__((weak_import));
 extern int weston_terminal_main(int argc, char **argv);
 #if TARGET_OS_IPHONE
@@ -498,9 +496,16 @@ static NSString *WWNPreferredHostShellPath(void) {
           [prefix addObject:@"WLR_NO_HARDWARE_CURSORS=1"];
         }
         NSString *joined = [prefix componentsJoinedByString:@" "];
-        remoteCommand = [NSString stringWithFormat:@"%@ %@", joined, remoteCommand];
+        // Prefix with `env` so the assignments run through a real executable.
+        // A bare `VAR=val cmd` prefix is only honored when a shell interprets
+        // it; if waypipe exec()s the command directly the first token is taken
+        // as the program name and fails with "No such file or directory"
+        // (issue #54). `env` is always a valid argv[0], applies the
+        // assignments, then execs the command in both shell and direct paths.
+        remoteCommand =
+            [NSString stringWithFormat:@"env %@ %@", joined, remoteCommand];
         WWNLog("WAYPIPE",
-               @"Applied remote sway software-render fallback env: %@",
+               @"Applied remote sway software-render fallback env via env(1): %@",
                joined);
       }
     }
@@ -1247,10 +1252,8 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       @"weston-editor" : [NSValue valueWithPointer:(void *)editor_main],
       @"weston-constraints" :
           [NSValue valueWithPointer:(void *)constraints_main],
-#if !TARGET_OS_IPHONE
       @"weston-simple-egl" :
           [NSValue valueWithPointer:(void *)simple_egl_main],
-#endif
     };
   });
   NSValue *entry = map[clientId];
@@ -1589,6 +1592,36 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   task.executableURL = [NSURL fileURLWithPath:path];
 
   NSMutableDictionary *env = [self wwnMutableHostWaylandEnvironment];
+  if ([name isEqualToString:@"niri"]) {
+    // niri (wwn-niri) runs nested — a Wayland client of the Wawona
+    // compositor hosting its own scrollable-tiling clients. Force the
+    // nested backend and point it at the bundled read-only config.
+    env[@"NIRI_BACKEND"] = @"nested";
+    NSString *shareRoot = env[@"WAWONA_SHARE_ROOT"];
+    if (shareRoot.length > 0) {
+      NSString *kdl = [shareRoot
+          stringByAppendingPathComponent:@"niri/default-config.kdl"];
+      if ([[NSFileManager defaultManager] fileExistsAtPath:kdl]) {
+        env[@"NIRI_CONFIG"] = kdl;
+      }
+    }
+    // niri renders GLES through ANGLE's Vulkan-over-Wayland winsys; point
+    // the Vulkan loader at the bundled ICD (kosmickrisp or MoltenVK) so
+    // eglInitialize succeeds. Mirror the app's own ICD selection.
+    const char *icd = getenv("VK_ICD_FILENAMES");
+    if (icd && icd[0]) {
+      env[@"VK_ICD_FILENAMES"] = @(icd);
+      env[@"VK_DRIVER_FILES"] = @(icd);
+    } else {
+      NSString *bundleRes = [[NSBundle mainBundle] resourcePath];
+      NSString *icdJson = [bundleRes
+          stringByAppendingPathComponent:@"vulkan/icd.d/MoltenVK_icd.json"];
+      if ([[NSFileManager defaultManager] fileExistsAtPath:icdJson]) {
+        env[@"VK_ICD_FILENAMES"] = icdJson;
+        env[@"VK_DRIVER_FILES"] = icdJson;
+      }
+    }
+  }
   task.environment = env;
   NSError *err;
   if ([task launchAndReturnError:&err]) {
@@ -1780,10 +1813,13 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       }
     }
 
-    char *argv_weston[12];
+    char *argv_weston[13];
     int argc_weston = 0;
     argv_weston[argc_weston++] = "weston";
     argv_weston[argc_weston++] = (char *)backend;
+    /* Deterministic nested socket so the anowaW app bridge can attach. Keep in
+     * sync with kWWNAnowaWNestedSocket and AnowawSession.NESTED_SOCKET. */
+    argv_weston[argc_weston++] = "--socket=wawona-nested";
     argv_weston[argc_weston++] = "--shell=desktop-shell.so";
     argv_weston[argc_weston++] = widthArg;
     argv_weston[argc_weston++] = heightArg;
@@ -1923,6 +1959,9 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 
   NSMutableArray<NSString *> *args = [NSMutableArray arrayWithObjects:
       @"--backend=wayland",
+      // Deterministic nested socket so the anowaW app bridge can attach. Keep
+      // in sync with kWWNAnowaWNestedSocket and AnowawSession.NESTED_SOCKET.
+      @"--socket=wawona-nested",
       @"--shell=desktop-shell.so",
       [NSString stringWithFormat:@"--width=%u", outW],
       [NSString stringWithFormat:@"--height=%u", outH],
@@ -2031,6 +2070,9 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     char *argv_weston[] = {
         (char *)"weston",
         (char *)"--backend=drm",
+        /* Deterministic nested socket so the anowaW app bridge can attach
+         * regardless of backend. */
+        (char *)"--socket=wawona-nested",
         (char *)"--shell=desktop-shell.so",
         args->width,
         args->height,
@@ -2038,7 +2080,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
         args->config[0] ? args->config : NULL,
         NULL,
     };
-    int argc_weston = args->config[0] ? 7 : 6;
+    int argc_weston = args->config[0] ? 8 : 7;
     WWNLog("WESTON", @"Starting in-process nested Weston (iland DRM) on macOS");
     int rc = westonFnForBlock(argc_weston, argv_weston);
     WWNLog("WESTON", @"In-process nested Weston (DRM) exited rc=%d", rc);

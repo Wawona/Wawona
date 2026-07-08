@@ -87,6 +87,7 @@ NSString *const kWWNPrefsDesktopReplacementEnabled =
     @"DesktopReplacementEnabled";
 NSString *const kWWNPrefsDesktopReplacementMachineId =
     @"DesktopReplacementMachineId";
+NSString *const kWWNPrefsAnowaWEnabled = @"AnowaWEnabled";
 
 static NSString *WWNPreferredSharedRuntimeDir(void) {
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
@@ -284,6 +285,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
     // Desktop Replacement (macOS Mode B; off by default, SIP-gated)
     kWWNPrefsDesktopReplacementEnabled : @NO,
     kWWNPrefsDesktopReplacementMachineId : @"",
+    kWWNPrefsAnowaWEnabled : @NO,
     // Waypipe
     kWWNPrefsWaypipeDisplay : @"wayland-0",
     kWWNPrefsWaypipeSocket : defaultSocket,

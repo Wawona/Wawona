@@ -159,10 +159,12 @@ let
   # openssh in-process static lib — provides ssh_main, ssh_keygen_main, scp_main
   # for in-process dispatch on iOS (App Store compliant, no fork/exec).
   # Weak on builds without openssh linked; wawona-dispatch.c symbols are weak.
+  # -lresolv: openbsd-compat's getrrsetbyname.o (force-loaded with the rest of
+  # the archive) calls res_query/res_init from libresolv.
   opensshInprocessLdflags = deps:
     let libssh = "${strip (deps.openssh or null)}/lib/libssh-inprocess.a";
     in if (deps.openssh or null) == null || !builtins.pathExists libssh then [] else [
-      "-force_load" libssh
+      "-force_load" libssh "-lresolv"
     ];
   # Static archives with C++ (ANGLE, Rust backend, fastfetch, …) need libc++
   # after every -force_load block; append once at the end of OTHER_LDFLAGS.
@@ -1410,6 +1412,14 @@ PLIST
 
               bundle_bin "$WAYPIPE_SRC" "waypipe"
               bundle_bin "$SSHPASS_SRC" "sshpass"
+
+              # wwn-ssh macOS backend: regular OpenSSH client tools.
+              OPENSSH_BIN_DIR="${strip (macosDeps.openssh or null)}/bin"
+              if [ -d "$OPENSSH_BIN_DIR" ]; then
+                for tool in ssh ssh-keygen scp sftp ssh-agent ssh-add; do
+                  bundle_bin "$OPENSSH_BIN_DIR/$tool" "$tool"
+                done
+              fi
 
               if [ -d "$WESTON_SRC" ]; then
                 for client in "$WESTON_SRC"/weston*; do

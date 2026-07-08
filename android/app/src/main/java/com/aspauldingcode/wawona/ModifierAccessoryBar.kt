@@ -267,9 +267,36 @@ fun ModifierAccessoryBar(
     val keySticky = scheme.primary.copy(alpha = 0.6f)
     val keyLocked = scheme.primary.copy(alpha = 0.85f)
     val keyText = scheme.onSurface
+    var trayDragX by remember { mutableStateOf(0f) }
+    var trayDragY by remember { mutableStateOf(0f) }
 
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = {
+                        trayDragX = 0f
+                        trayDragY = 0f
+                    },
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        trayDragX += dragAmount.x
+                        trayDragY += dragAmount.y
+                    },
+                    onDragEnd = {
+                        if (abs(trayDragX) > 28f || abs(trayDragY) > 28f) {
+                            onCollapseToPipByDrag()
+                        }
+                        trayDragX = 0f
+                        trayDragY = 0f
+                    },
+                    onDragCancel = {
+                        trayDragX = 0f
+                        trayDragY = 0f
+                    }
+                )
+            },
         color = barBg,
         contentColor = keyText
     ) {
@@ -292,8 +319,8 @@ fun ModifierAccessoryBar(
                 (if (ModifierState.shiftActive) "_" else "—") to { sendAccessoryKey(LinuxKey.MINUS) },
                 "↑" to { sendAccessoryKey(LinuxKey.UP) },
                 "HOME" to { sendAccessoryKey(LinuxKey.HOME) },
-                "END" to { sendAccessoryKey(LinuxKey.END) },
-                "PGUP" to { sendAccessoryKey(LinuxKey.PAGEUP) }
+                "PGUP" to { sendAccessoryKey(LinuxKey.PAGEUP) },
+                "END" to { sendAccessoryKey(LinuxKey.END) }
             ).forEach { (label, action) ->
                 AccessoryKey(
                     label, keyInactive, keyText,

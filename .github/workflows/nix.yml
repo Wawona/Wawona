@@ -94,6 +94,10 @@ jobs:
         run: python3 ./.github/scripts/verify-linux-bundled-clients.py
       - name: Verify Linux shell-tool wiring
         run: python3 ./.github/scripts/verify-linux-shell-tools.py
+      - name: Verify waypipe remote-sway env fallback (issue #54 guard)
+        run: python3 ./.github/scripts/verify-waypipe-remote-sway-env.py
+      - name: Verify nixpkgs lineage (issue #47 guard)
+        run: python3 ./.github/scripts/verify-nixpkgs-lineage.py
       - name: Upload Wayland ownership inventory artifact
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
@@ -352,6 +356,10 @@ jobs:
         run: python3 ./.github/scripts/verify-linux-bundled-clients.py
       - name: Verify Linux shell-tool wiring
         run: python3 ./.github/scripts/verify-linux-shell-tools.py
+      - name: Verify waypipe remote-sway env fallback (issue #54 guard)
+        run: python3 ./.github/scripts/verify-waypipe-remote-sway-env.py
+      - name: Verify nixpkgs lineage (issue #47 guard)
+        run: python3 ./.github/scripts/verify-nixpkgs-lineage.py
       - name: Upload Wayland ownership inventory artifact
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
@@ -527,6 +535,10 @@ jobs:
         run: python3 ./.github/scripts/verify-linux-bundled-clients.py
       - name: Verify Linux shell-tool wiring
         run: python3 ./.github/scripts/verify-linux-shell-tools.py
+      - name: Verify waypipe remote-sway env fallback (issue #54 guard)
+        run: python3 ./.github/scripts/verify-waypipe-remote-sway-env.py
+      - name: Verify nixpkgs lineage (issue #47 guard)
+        run: python3 ./.github/scripts/verify-nixpkgs-lineage.py
       - name: Upload Wayland ownership inventory artifact
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
@@ -686,6 +698,10 @@ jobs:
         run: python3 ./.github/scripts/verify-linux-bundled-clients.py
       - name: Verify Linux shell-tool wiring
         run: python3 ./.github/scripts/verify-linux-shell-tools.py
+      - name: Verify waypipe remote-sway env fallback (issue #54 guard)
+        run: python3 ./.github/scripts/verify-waypipe-remote-sway-env.py
+      - name: Verify nixpkgs lineage (issue #47 guard)
+        run: python3 ./.github/scripts/verify-nixpkgs-lineage.py
       - name: Upload Wayland ownership inventory artifact
         if: ${{ always() }}
         uses: actions/upload-artifact@v4

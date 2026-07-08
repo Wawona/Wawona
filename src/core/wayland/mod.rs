@@ -311,6 +311,98 @@ impl smithay::input::SeatHandler for crate::core::state::CompositorState {
 
 impl smithay::wayland::selection::SelectionHandler for crate::core::state::CompositorState {
     type SelectionUserData = ();
+
+    /// A client set the clipboard (or primary) selection — pull its text
+    /// so the native platform layer can push it into NSPasteboard /
+    /// UIPasteboard / ClipboardManager (see `ClipboardBridge`).
+    ///
+    /// The actual read happens on a background thread: `request_data_
+    /// device_client_selection` only queues a `wl_data_source.send` to the
+    /// client, which won't reach it until the compositor flushes/dispatches
+    /// again after this call returns, so blocking here on the pipe would
+    /// deadlock.
+    fn new_selection(
+        &mut self,
+        ty: smithay::wayland::selection::SelectionTarget,
+        source: Option<smithay::wayland::selection::SelectionSource>,
+        seat: smithay::input::Seat<Self>,
+    ) {
+        if ty != smithay::wayland::selection::SelectionTarget::Clipboard {
+            return;
+        }
+        let Some(source) = source else {
+            // Selection cleared client-side; nothing to push natively.
+            return;
+        };
+        let mimes = source.mime_types();
+        let mime = ["text/plain;charset=utf-8", "text/plain", "UTF8_STRING", "STRING"]
+            .into_iter()
+            .find(|candidate| mimes.iter().any(|m| m == candidate))
+            .map(str::to_string);
+        let Some(mime) = mime else {
+            return;
+        };
+
+        let (reader, writer) = match nix::unistd::pipe() {
+            Ok(fds) => fds,
+            Err(err) => {
+                tracing::warn!("Clipboard bridge: failed to create pipe: {err}");
+                return;
+            }
+        };
+        if let Err(err) =
+            smithay::wayland::selection::data_device::request_data_device_client_selection(
+                &seat, mime, writer,
+            )
+        {
+            tracing::warn!("Clipboard bridge: failed to request client selection: {err:?}");
+            return;
+        }
+
+        let bridge = self.clipboard_bridge.clone();
+        std::thread::Builder::new()
+            .name("wwn-clipboard-read".into())
+            .spawn(move || {
+                use std::io::Read;
+                let mut file = std::fs::File::from(reader);
+                let mut buf = Vec::new();
+                if file.read_to_end(&mut buf).is_err() {
+                    return;
+                }
+                if let Ok(text) = String::from_utf8(buf) {
+                    if let Ok(mut bridge) = bridge.write() {
+                        bridge.pending_from_client = Some(text);
+                    }
+                }
+            })
+            .ok();
+    }
+
+    /// A client requested to read the compositor-owned selection (i.e. the
+    /// native pasteboard content most recently pushed via
+    /// `WWNCoreSetClipboardText`) — write it into the client-provided fd.
+    fn send_selection(
+        &mut self,
+        ty: smithay::wayland::selection::SelectionTarget,
+        _mime_type: String,
+        fd: std::os::fd::OwnedFd,
+        _seat: smithay::input::Seat<Self>,
+        _user_data: &Self::SelectionUserData,
+    ) {
+        if ty != smithay::wayland::selection::SelectionTarget::Clipboard {
+            return;
+        }
+        let text = self
+            .clipboard_bridge
+            .read()
+            .ok()
+            .and_then(|bridge| bridge.outgoing_to_client.clone());
+        if let Some(text) = text {
+            use std::io::Write;
+            let mut file = std::fs::File::from(fd);
+            let _ = file.write_all(text.as_bytes());
+        }
+    }
 }
 
 impl smithay::wayland::selection::data_device::ClientDndGrabHandler

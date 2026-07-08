@@ -15,6 +15,9 @@
 #include "../macos/WWNSettings.h"
 #include "input_android.h"
 #include "rendering/renderer_android.h"
+#ifdef WAWONA_ILAND_GL
+#include "iland_presenter_android.h"
+#endif
 #include <android/choreographer.h>
 #include <android/log.h>
 #include <android/looper.h>
@@ -189,6 +192,9 @@ extern void WWNCoreInjectPointerLeave(void *core, uint64_t window_id,
 extern void WWNCoreInjectPointerAxis(void *core, uint64_t window_id,
                                      uint32_t axis, double value,
                                      uint32_t timestamp_ms);
+extern void WWNCoreSetClipboardText(void *core, const char *text);
+extern char *WWNCorePollClipboardText(void *core);
+extern void WWNStringFree(char *s);
 extern uint64_t WWNCoreWindowIdAtPoint(void *core, double x, double y);
 extern void WWNCoreInjectKeyboardEnter(void *core, uint64_t window_id,
                                        const uint32_t *keys, size_t count,
@@ -208,7 +214,11 @@ extern int waypipe_main(int argc, const char **argv) __attribute__((weak));
 extern int weston_simple_shm_main(int argc, const char **argv)
     __attribute__((weak));
 extern int weston_main(int argc, const char **argv) __attribute__((weak));
+#ifdef WAWONA_WESTON_COMPOSITOR
+extern int weston_compositor_main(int argc, char **argv);
+#else
 extern int weston_compositor_main(int argc, char **argv) __attribute__((weak));
+#endif
 extern volatile sig_atomic_t wwn_weston_compositor_shutdown_requested;
 extern int weston_terminal_main(int argc, const char **argv)
     __attribute__((weak));
@@ -228,6 +238,8 @@ extern int editor_main(int argc, const char **argv) __attribute__((weak));
 extern int constraints_main(int argc, const char **argv) __attribute__((weak));
 extern int simple_egl_main(int argc, const char **argv) __attribute__((weak));
 extern int kmscube_main(int argc, char **argv) __attribute__((weak));
+extern int opengl_cube_main(int argc, char **argv) __attribute__((weak));
+extern int vkcube_main(int argc, char **argv) __attribute__((weak));
 extern int wwn_weston_is_compat_shim(void) __attribute__((weak));
 extern int wwn_weston_terminal_is_compat_shim(void) __attribute__((weak));
 extern int wwn_foot_is_compat_shim(void) __attribute__((weak));
@@ -402,6 +414,12 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeKeyboardFocus(
 JNIEXPORT jstring JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeGetFocusedWindowTitle(
     JNIEnv *env, jobject thiz);
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeSetClipboardText(
+    JNIEnv *env, jobject thiz, jstring text);
+JNIEXPORT jstring JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativePollClipboardText(
+    JNIEnv *env, jobject thiz);
 JNIEXPORT jlong JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeGetPendingScreencopy(
     JNIEnv *env, jobject thiz, jintArray outWidthHeight);
@@ -521,6 +539,34 @@ static uint64_t resolve_pointer_window_id(double logical_x, double logical_y) {
   return g_pointer_window_id;
 }
 
+/*
+ * Safe area insets arrive from Kotlin (WindowInsetsCompat) in raw physical
+ * display pixels, but the compositor's scene graph (window positions, sizes,
+ * content_rect crop math) operates entirely in the *logical* output space —
+ * physical pixels divided by the auto-scale factor (see WWNCoreSetOutputSize
+ * above). Pushing the raw physical inset straight into
+ * WWNCoreSetSafeAreaInsets applies it as if it were already a logical-space
+ * offset, over-cropping/offsetting windows by ~scale-factor times too much
+ * (e.g. a 142px physical status bar inset at scale=3 ate 142 logical units
+ * out of an ~808-unit-tall output instead of the correct ~47). Always scale
+ * by the same factor used for the output size so insets and window geometry
+ * agree on units.
+ */
+static void push_safe_area_to_core(void) {
+  if (!g_core)
+    return;
+  int sf = compute_auto_scale_factor();
+  int32_t top = g_safeAreaTop / sf;
+  int32_t right = g_safeAreaRight / sf;
+  int32_t bottom = g_safeAreaBottom / sf;
+  int32_t left = g_safeAreaLeft / sf;
+  WWNCoreSetSafeAreaInsets(g_core, top, right, bottom, left);
+  LOGI("Safe area insets: physical(T=%d,R=%d,B=%d,L=%d) scale=%d -> "
+       "logical(T=%d,R=%d,B=%d,L=%d)",
+       g_safeAreaTop, g_safeAreaRight, g_safeAreaBottom, g_safeAreaLeft, sf,
+       top, right, bottom, left);
+}
+
 static void apply_output_scale(void) {
   if (!g_core || g_output_width == 0 || g_output_height == 0)
     return;
@@ -534,6 +580,9 @@ static void apply_output_scale(void) {
   WWNCoreSetOutputSize(g_core, lw, lh, (float)sf);
   LOGI("Auto-scale: physical=%ux%u density=%.2f scale=%d logical=%ux%u",
        g_output_width, g_output_height, g_display_density, sf, lw, lh);
+  /* Scale factor may have just changed (density/setting update) — re-push
+   * safe area insets so they stay in sync with the new logical output. */
+  push_safe_area_to_core();
 }
 
 // ============================================================================
@@ -1151,6 +1200,9 @@ static void choreographer_frame_cb(long frameTimeNanos, void *data) {
   if (g_core) {
     CBufferData *buf;
     while ((buf = WWNCorePopPendingBuffer(g_core)) != NULL) {
+      LOGI("pending buffer: id=%llu %ux%u stride=%u format=%u pixels=%s size=%zu",
+           (unsigned long long)buf->buffer_id, buf->width, buf->height,
+           buf->stride, buf->format, buf->pixels ? "set" : "NULL", buf->size);
       if (buf->pixels && buf->width > 0 && buf->height > 0) {
         renderer_android_cache_buffer(ctx->cmdBuf, buf->buffer_id, buf->width,
                                       buf->height, buf->stride, buf->format,
@@ -1186,9 +1238,36 @@ static void choreographer_frame_cb(long frameTimeNanos, void *data) {
   /* Draw scene nodes as textured quads; keep scene alive for post-present
    * notifications so buffer releases happen after the frame is submitted. */
   CRenderScene *scene = NULL;
+
+  /* iland GL overlay (kmscube / nested Weston DRM) composites above empty
+   * compositor when active — tests userland KMS + GLES via ANGLE. */
+#ifdef WAWONA_ILAND_GL
+  if (wwn_iland_presenter_android_is_active()) {
+    uint8_t *iland_pixels = NULL;
+    uint32_t iland_w = 0, iland_h = 0, iland_stride = 0;
+    if (wwn_iland_presenter_android_take_frame(&iland_pixels, &iland_w,
+                                               &iland_h, &iland_stride)) {
+      int sf = compute_auto_scale_factor();
+      uint32_t logical_w = ctx->extent.width / (uint32_t)sf;
+      uint32_t logical_h = ctx->extent.height / (uint32_t)sf;
+      if (logical_w == 0)
+        logical_w = 1;
+      if (logical_h == 0)
+        logical_h = 1;
+      renderer_android_draw_iland_overlay(ctx->cmdBuf, iland_pixels, iland_w,
+                                          iland_h, iland_stride, logical_w,
+                                          logical_h);
+    }
+  }
+#endif
+
   if (g_core) {
     scene = WWNCoreGetRenderScene(g_core);
     if (scene) {
+      if (ctx->frame_count % 60 == 0)
+        LOGI("frame scene: count=%zu has_cursor=%d cursor_buffer_id=%llu",
+             scene->count, scene->has_cursor,
+             (unsigned long long)scene->cursor_buffer_id);
       if (scene->count > 0) {
         uint64_t new_wid = scene->nodes[0].window_id;
         if (new_wid != g_pointer_window_id) {
@@ -1634,6 +1713,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeSetSurface(JNIEnv *env,
   LOGI("Creating swapchain...");
   if (create_swapchain(pd) != 0) {
     LOGE("Failed to create swapchain");
+    renderer_android_destroy_all();
     vkDestroyDevice(g_device, NULL);
     vkDestroySurfaceKHR(g_instance, g_surface, NULL);
     ANativeWindow_release(win);
@@ -1653,6 +1733,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeSetSurface(JNIEnv *env,
     LOGE("Failed to create render thread: %d", thread_result);
     g_running = 0;
     vkDestroySwapchainKHR(g_device, g_swapchain, NULL);
+    renderer_android_destroy_all();
     vkDestroyDevice(g_device, NULL);
     vkDestroySurfaceKHR(g_instance, g_surface, NULL);
     ANativeWindow_release(win);
@@ -1724,6 +1805,12 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeDestroySurface(JNIEnv *env,
     vkDestroySurfaceKHR(g_instance, g_surface, NULL);
     g_surface = VK_NULL_HANDLE;
   }
+
+  /* Full purge (including cached SHM textures) since the VkDevice they
+   * belong to is about to be destroyed below - unlike nativeResizeSurface's
+   * swapchain-only resize, which preserves the device and must NOT lose the
+   * buffer cache (see renderer_android_destroy_pipeline()). */
+  renderer_android_destroy_all();
 
   if (g_device) {
     vkDestroyDevice(g_device, NULL);
@@ -1912,26 +1999,17 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeUpdateSafeArea(
   g_rawSafeAreaRight = right;
   g_rawSafeAreaBottom = bottom;
 
-  if (WWNSettings_GetRespectSafeArea()) {
-    g_safeAreaLeft = left;
-    g_safeAreaTop = top;
-    g_safeAreaRight = right;
-    g_safeAreaBottom = bottom;
-    LOGI("JNI Update Safe Area: Applied (L=%d, T=%d, R=%d, B=%d)", left, top,
-         right, bottom);
-  } else {
-    g_safeAreaLeft = 0;
-    g_safeAreaTop = 0;
-    g_safeAreaRight = 0;
-    g_safeAreaBottom = 0;
-    LOGI("JNI Update Safe Area: Cached (L=%d, T=%d, R=%d, B=%d), but disabled",
-         left, top, right, bottom);
-  }
-  /* Push to Rust backend for layer-shell exclusive zones etc. */
-  if (g_core) {
-    WWNCoreSetSafeAreaInsets(g_core, g_safeAreaTop, g_safeAreaRight,
-                             g_safeAreaBottom, g_safeAreaLeft);
-  }
+  /* Android respects safe area by inset-padding the compositor view in Compose
+   * (same model as iOS safeAreaLayoutGuide). The wl_output size already matches
+   * the inset container — do not also shrink via Rust safe_area_insets. */
+  g_safeAreaLeft = 0;
+  g_safeAreaTop = 0;
+  g_safeAreaRight = 0;
+  g_safeAreaBottom = 0;
+  LOGI("JNI Update Safe Area: raw(T=%d,R=%d,B=%d,L=%d) respect=%s -> core insets zeroed",
+       top, right, bottom, left,
+       WWNSettings_GetRespectSafeArea() ? "on" : "off");
+  push_safe_area_to_core();
   pthread_mutex_unlock(&g_lock);
 }
 
@@ -2019,31 +2097,23 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeApplySettings(
   config.openglDriver[sizeof(config.openglDriver) - 1] = '\0';
   WWNSettings_UpdateConfig(&config);
 
-  // Apply safe-area globals from preference *before* pushing to the core (avoid stale insets).
-  if (respectSafeArea) {
-    g_safeAreaLeft = g_rawSafeAreaLeft;
-    g_safeAreaTop = g_rawSafeAreaTop;
-    g_safeAreaRight = g_rawSafeAreaRight;
-    g_safeAreaBottom = g_rawSafeAreaBottom;
-  } else {
-    g_safeAreaLeft = 0;
-    g_safeAreaTop = 0;
-    g_safeAreaRight = 0;
-    g_safeAreaBottom = 0;
-  }
+  // Safe area is applied in Compose when enabled (iOS safeAreaLayoutGuide parity).
+  g_safeAreaLeft = 0;
+  g_safeAreaTop = 0;
+  g_safeAreaRight = 0;
+  g_safeAreaBottom = 0;
 
-  LOGI("Safe area updated based on settings: %s (L=%d, T=%d, R=%d, B=%d)",
-       respectSafeArea ? "enabled" : "disabled", g_safeAreaLeft, g_safeAreaTop,
-       g_safeAreaRight, g_safeAreaBottom);
+  LOGI("Safe area updated based on settings: %s (Compose inset when enabled)",
+       respectSafeArea ? "enabled" : "disabled");
 
   /* Push to Rust backend */
   if (g_core) {
     WWNCoreSetForceSSD(g_core, forceServerSideDecorations ? 1 : 0);
-    WWNCoreSetSafeAreaInsets(g_core, g_safeAreaTop, g_safeAreaRight,
-                             g_safeAreaBottom, g_safeAreaLeft);
   }
+  push_safe_area_to_core();
 
-  // Reapply output scale (auto-scale toggle may have changed)
+  // Reapply output scale (auto-scale toggle may have changed); this also
+  // re-pushes safe area insets scaled to the (possibly new) logical output.
   apply_output_scale();
 
   LOGI("Wawona settings applied successfully with safe area support");
@@ -2144,6 +2214,38 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeCommitText(JNIEnv *env,
       WWNCoreInjectKey(g_core, WWN_KEY_LEFTSHIFT, 0, ts);
   }
   (*env)->ReleaseStringUTFChars(env, text, utf8);
+}
+
+/* Push text copied on the native side (Android ClipboardManager) into the
+ * compositor so Wayland clients (e.g. weston-terminal) can paste it. */
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeSetClipboardText(
+    JNIEnv *env, jobject thiz, jstring text) {
+  (void)thiz;
+  if (!g_core || !text)
+    return;
+  const char *utf8 = (*env)->GetStringUTFChars(env, text, NULL);
+  if (!utf8)
+    return;
+  WWNCoreSetClipboardText(g_core, utf8);
+  (*env)->ReleaseStringUTFChars(env, text, utf8);
+}
+
+/* Pop the most recent text a Wayland client copied to the clipboard,
+ * clearing it. Returns null if nothing new has been copied since the last
+ * poll — the Kotlin side pushes the result into ClipboardManager. */
+JNIEXPORT jstring JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativePollClipboardText(
+    JNIEnv *env, jobject thiz) {
+  (void)thiz;
+  if (!g_core)
+    return NULL;
+  char *text = WWNCorePollClipboardText(g_core);
+  if (!text)
+    return NULL;
+  jstring result = (*env)->NewStringUTF(env, text);
+  WWNStringFree(text);
+  return result;
 }
 
 JNIEXPORT void JNICALL
@@ -2524,25 +2626,6 @@ static char g_ssh_bin_path[512] = {0};
 static char g_sshpass_bin_path[512] = {0};
 static char g_zsh_bin_path[512] = {0};
 
-static int wwn_copy_file(const char *src, const char *dst) {
-  FILE *in = fopen(src, "rb");
-  if (!in)
-    return -1;
-  FILE *out = fopen(dst, "wb");
-  if (!out) {
-    fclose(in);
-    return -1;
-  }
-  char buf[4096];
-  size_t n;
-  while ((n = fread(buf, 1, sizeof buf, in)) > 0)
-    fwrite(buf, 1, n, out);
-  fclose(in);
-  fclose(out);
-  chmod(dst, 0755);
-  return 0;
-}
-
 static int wwn_android_native_lib_dir(char *out, size_t out_len) {
   Dl_info info;
   if (!out || out_len == 0)
@@ -2559,6 +2642,17 @@ static int wwn_android_native_lib_dir(char *out, size_t out_len) {
   return 0;
 }
 
+/* PATH entries under usr/bin must resolve to something exec()-able. Android
+ * Q+ (API 29+) denies execve() of files living in app-private storage
+ * (files/cache — SELinux execute_no_trans / W^X), which is exactly where
+ * wawona-rootfs/usr/bin lives, so a byte-for-byte copy there (the old
+ * behavior, still used for e.g. weston asset trees) silently produces a
+ * dead, "Permission denied" binary for fastfetch/waypipe/ssh/nvim/zsh.
+ * The native lib dir (native_lib_dir, extracted from the APK's jniLibs with
+ * extractNativeLibs=true) is always exec()-able by design, and exec()
+ * permission checks follow the *resolved* target of a symlink — so a
+ * symlink here keeps the friendly PATH name while actually executing out of
+ * the native lib dir, same as SHELL/g_ssh_bin_path already do directly. */
 static void wwn_android_install_shell_tool(const char *native_lib_dir,
                                            const char *usr_bin,
                                            const char *jni_lib_name,
@@ -2575,10 +2669,123 @@ static void wwn_android_install_shell_tool(const char *native_lib_dir,
   snprintf(dst, sizeof(dst), "%s/%s", usr_bin, bin_name);
   if (stat(src, &st) != 0)
     return;
-  if (stat(dst, &st) == 0)
+
+  char existing_target[512];
+  ssize_t existing_len = readlink(dst, existing_target, sizeof(existing_target) - 1);
+  if (existing_len > 0) {
+    existing_target[existing_len] = '\0';
+    if (strcmp(existing_target, src) == 0)
+      return; /* already linked correctly */
+    unlink(dst);
+  } else if (lstat(dst, &st) == 0) {
+    /* Stale non-exec'able regular-file copy from an older Wawona build
+     * (or a broken symlink) — replace it with a working symlink. */
+    unlink(dst);
+  }
+
+  if (symlink(src, dst) == 0)
+    LOGI("Shell env: linked %s -> %s", dst, src);
+  else
+    LOGE("Shell env: failed to symlink %s -> %s (%s)", dst, src, strerror(errno));
+}
+
+static int wwn_android_should_write_generated_file(const char *path) {
+  FILE *fp = fopen(path, "r");
+  if (!fp)
+    return 1;
+
+  char buf[512];
+  size_t n = fread(buf, 1, sizeof(buf) - 1, fp);
+  fclose(fp);
+  buf[n] = '\0';
+  return strstr(buf, "Wawona Android generated") != NULL;
+}
+
+static void wwn_android_write_generated_file(const char *path,
+                                             const char *contents) {
+  if (!path || !contents || !wwn_android_should_write_generated_file(path))
     return;
-  if (wwn_copy_file(src, dst) == 0)
-    LOGI("Shell env: installed %s -> %s", bin_name, dst);
+
+  FILE *fp = fopen(path, "w");
+  if (!fp) {
+    LOGE("Shell env: failed to write %s (%s)", path, strerror(errno));
+    return;
+  }
+  fputs(contents, fp);
+  fclose(fp);
+}
+
+static void wwn_android_write_zsh_defaults(const char *home,
+                                           const char *rootfs) {
+  if (!home || !home[0] || !rootfs || !rootfs[0])
+    return;
+
+  char zshenv[512], zshrc[512], zlogin[512];
+  snprintf(zshenv, sizeof(zshenv), "%s/.zshenv", home);
+  snprintf(zshrc, sizeof(zshrc), "%s/.zshrc", home);
+  snprintf(zlogin, sizeof(zlogin), "%s/.zlogin", home);
+
+  wwn_android_write_generated_file(
+      zshenv,
+      "# Wawona Android generated .zshenv - safe to edit; Wawona will only\n"
+      "# replace this file while this marker remains present.\n"
+      ": ${WAWONA_BUNDLE_ROOTFS:=${WAWONA_ROOTFS:-${HOME:h}}}\n"
+      "typeset -gU fpath\n"
+      "fpath=(\n"
+      "  $WAWONA_BUNDLE_ROOTFS/usr/share/zsh/Functions\n"
+      "  $WAWONA_BUNDLE_ROOTFS/usr/share/zsh/Functions/**(/N)\n"
+      ")\n"
+      "if [[ -n \"${WAWONA_ENABLE_COMPINIT:-}\" ]]; then\n"
+      "  fpath=(\n"
+      "    $WAWONA_BUNDLE_ROOTFS/usr/share/zsh/Completion\n"
+      "    $WAWONA_BUNDLE_ROOTFS/usr/share/zsh/Completion/**(/N)\n"
+      "    $fpath\n"
+      "  )\n"
+      "fi\n");
+
+  wwn_android_write_generated_file(
+      zshrc,
+      "# Wawona Android generated .zshrc - safe to edit; Wawona will only\n"
+      "# replace this file while this marker remains present.\n"
+      "cd \"$HOME\" 2>/dev/null\n"
+      "export HISTFILE=\"$HOME/.zsh_history\"\n"
+      "export HISTSIZE=2000\n"
+      "export SAVEHIST=2000\n"
+      "setopt SHARE_HISTORY HIST_IGNORE_DUPS HIST_IGNORE_SPACE\n"
+      "setopt INTERACTIVE_COMMENTS NO_BEEP NO_NOMATCH\n"
+      "unsetopt MONITOR 2>/dev/null\n"
+      "PROMPT_EOL_MARK=\"\"\n"
+      "PROMPT='%F{cyan}%~%f %# '\n"
+      "chpwd_functions=()\n"
+      "precmd_functions=( ${precmd_functions:#__vte*} ${precmd_functions:#_vte*} )\n"
+      "for __wwn_vte_fn in __vte_osc7 _vte_precmd __vte_precmd; do\n"
+      "  (( ${+functions[$__wwn_vte_fn]} )) && unfunction $__wwn_vte_fn 2>/dev/null\n"
+      "done\n"
+      "unset __wwn_vte_fn\n"
+      "precmd() { print -Pn \"\\e]0;%~\\a\" }\n"
+      "clear() { print -rn -- $'\\033[2J\\033[H' }\n"
+      "command_not_found_handler() {\n"
+      "  local cmd=\"$1\"\n"
+      "  print -u2 -- \"zsh: command not found: $cmd\"\n"
+      "  return 127\n"
+      "}\n"
+      "if [[ -z \"${WAWONA_ZSH_BANNER_SHOWN:-}\" ]]; then\n"
+      "  export WAWONA_ZSH_BANNER_SHOWN=1\n"
+      "  print -P \"%F{green}Wawona%f zsh ${ZSH_VERSION} - bundled Android userland.\"\n"
+      "  print -P \"%F{blue}Bundled:%f uutils coreutils, fastfetch, neovim, waypipe, ssh/ssh-keygen, weston-* clients.\"\n"
+      "fi\n");
+
+  wwn_android_write_generated_file(
+      zlogin,
+      "# Wawona Android generated .zlogin - safe to edit; Wawona will only\n"
+      "# replace this file while this marker remains present.\n"
+      "if [[ -z \"${WAWONA_ZSH_BANNER_SHOWN:-}\" ]]; then\n"
+      "  export WAWONA_ZSH_BANNER_SHOWN=1\n"
+      "  print -P \"%F{green}Wawona%f zsh ${ZSH_VERSION} - bundled Android userland.\"\n"
+      "  print -P \"%F{blue}Bundled:%f uutils coreutils, fastfetch, neovim, waypipe, ssh/ssh-keygen, weston-* clients.\"\n"
+      "fi\n");
+
+  LOGI("Shell env: zsh defaults ensured in %s (rootfs: %s)", home, rootfs);
 }
 
 static void wwn_android_prepare_shell_environment(const char *files_dir) {
@@ -2596,14 +2803,28 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
     resolve_ssh_binary_paths(); /* native lib dir probe lives there today */
 
   if (g_zsh_bin_path[0]) {
-    /* Keep a copy in the rootfs for PATH discoverability, but SHELL must
-     * point at the APK-extracted native lib: on API 29+ exec() of files in
-     * app-private storage is denied by SELinux (execute_no_trans). */
+    /* Symlink (not copy — see wwn_android_install_shell_tool) into the
+     * rootfs for PATH discoverability ("zsh" typed at the prompt), but
+     * SHELL must point at the APK-extracted native lib directly: on API
+     * 29+ exec() of files in app-private storage is denied by SELinux
+     * (execute_no_trans). */
     char zsh_dest[512];
     snprintf(zsh_dest, sizeof(zsh_dest), "%s/zsh", usr_bin);
-    struct stat st;
-    if (stat(zsh_dest, &st) != 0)
-      wwn_copy_file(g_zsh_bin_path, zsh_dest);
+    char existing_target[512];
+    ssize_t existing_len =
+        readlink(zsh_dest, existing_target, sizeof(existing_target) - 1);
+    if (existing_len > 0) {
+      existing_target[existing_len] = '\0';
+      if (strcmp(existing_target, g_zsh_bin_path) != 0) {
+        unlink(zsh_dest);
+        symlink(g_zsh_bin_path, zsh_dest);
+      }
+    } else {
+      struct stat st;
+      if (lstat(zsh_dest, &st) == 0)
+        unlink(zsh_dest); /* stale copy from an older build */
+      symlink(g_zsh_bin_path, zsh_dest);
+    }
     setenv("SHELL", g_zsh_bin_path, 1);
     setenv("WAWONA_SHELL", g_zsh_bin_path, 1);
   }
@@ -2618,6 +2839,9 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
   setenv("ZDOTDIR", home, 1);
   setenv("USER", "wawona", 1);
   setenv("TERM", "xterm-256color", 1);
+  setenv("PROMPT", "%F{cyan}%~%f %# ", 1);
+  setenv("PS1", "%F{cyan}%~%f %# ", 1);
+  wwn_android_write_zsh_defaults(home, rootfs);
 
   char share_zsh[512];
   snprintf(share_zsh, sizeof(share_zsh), "%s/usr/share/zsh", rootfs);
@@ -2642,6 +2866,72 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
          weston_data);
   }
 
+  /* Fontconfig: no system-wide /etc/fonts on Android, so without an explicit
+   * config cairo/fontconfig finds zero fonts and toytoolkit clients
+   * (weston-terminal, …) render blank text. Mirror the Apple-platform fix
+   * (WWNConfigureBundledFontsIfNeeded): generate a fonts.conf pointing at the
+   * bundled DejaVu tree plus Android system fonts. */
+  if (getenv("FONTCONFIG_FILE") == NULL) {
+    char fc_dir[512];
+    snprintf(fc_dir, sizeof(fc_dir), "%s/fontconfig", files_dir);
+    mkdir(fc_dir, 0755);
+    char fc_cache[512];
+    snprintf(fc_cache, sizeof(fc_cache), "%s/cache", fc_dir);
+    mkdir(fc_cache, 0755);
+
+    char font_dir[512];
+    snprintf(font_dir, sizeof(font_dir), "%s/usr/share/fonts", rootfs);
+
+    char fc_conf[512];
+    snprintf(fc_conf, sizeof(fc_conf), "%s/fonts.conf", fc_dir);
+    FILE *fp = fopen(fc_conf, "w");
+    if (fp) {
+      fprintf(fp,
+              "<?xml version=\"1.0\"?>\n"
+              "<!DOCTYPE fontconfig SYSTEM \"urn:fontconfig:fonts.dtd\">\n"
+              "<fontconfig>\n"
+              "  <dir>%s</dir>\n"
+              "  <dir>/system/fonts</dir>\n"
+              "  <cachedir>%s</cachedir>\n"
+              "  <alias>\n"
+              "    <family>monospace</family>\n"
+              "    <prefer><family>DejaVu Sans Mono</family></prefer>\n"
+              "  </alias>\n"
+              "  <alias>\n"
+              "    <family>sans-serif</family>\n"
+              "    <prefer><family>DejaVu Sans</family></prefer>\n"
+              "  </alias>\n"
+              "</fontconfig>\n",
+              font_dir, fc_cache);
+      fclose(fp);
+      setenv("FONTCONFIG_FILE", fc_conf, 1);
+      setenv("FONTCONFIG_PATH", fc_dir, 1);
+      LOGI("Shell env: FONTCONFIG_FILE=%s (fonts: %s)", fc_conf, font_dir);
+
+      char mono_font[512];
+      snprintf(mono_font, sizeof(mono_font),
+               "%s/truetype/DejaVuSansMono.ttf", font_dir);
+      struct stat mono_st;
+      if (stat(mono_font, &mono_st) == 0)
+        setenv("WAWONA_MONO_FONT", mono_font, 1);
+      {
+        int font_px = (int)(12.0f * g_display_density + 0.5f);
+        if (font_px < 12)
+          font_px = 12;
+        if (font_px > 36)
+          font_px = 36;
+        char font_size_buf[16];
+        snprintf(font_size_buf, sizeof(font_size_buf), "%d", font_px);
+        setenv("WAWONA_TERMINAL_FONT_SIZE", font_size_buf, 1);
+        LOGI("Shell env: WAWONA_TERMINAL_FONT_SIZE=%s (density=%.2f)",
+             font_size_buf, g_display_density);
+      }
+    } else {
+      LOGE("Shell env: failed to write %s (text rendering will be blank)",
+           fc_conf);
+    }
+  }
+
   char path_buf[768];
   snprintf(path_buf, sizeof(path_buf), "%s:%s", usr_bin, "/system/bin");
   setenv("PATH", path_buf, 1);
@@ -2657,6 +2947,21 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
       wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libwaypipe_bin.so",
                                      "waypipe-rs");
       wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libssh_bin.so", "ssh");
+      /* wwn-ssh key management: dropbearkey ships as ssh-keygen (same
+       * -t/-f/-y CLI for ed25519 keys), plus scp and dropbearconvert. */
+      wwn_android_install_shell_tool(native_lib_dir, usr_bin,
+                                     "libssh_keygen_bin.so", "ssh-keygen");
+      wwn_android_install_shell_tool(native_lib_dir, usr_bin,
+                                     "libssh_keygen_bin.so", "dropbearkey");
+      wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libscp_bin.so",
+                                     "scp");
+      wwn_android_install_shell_tool(native_lib_dir, usr_bin,
+                                     "libdropbearconvert_bin.so",
+                                     "dropbearconvert");
+      wwn_android_install_shell_tool(native_lib_dir, usr_bin,
+                                     "libsshpass_bin.so", "sshpass");
+      wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libniri_bin.so",
+                                     "niri");
     }
   }
 
@@ -3258,8 +3563,13 @@ static void *weston_thread_func(void *arg) {
     chdir(xdg_dir);
   }
   wwn_weston_compositor_shutdown_requested = 0;
-  char *argv[] = {"weston", "--backend=wayland", "--shell=desktop-shell.so", NULL};
-  weston_compositor_main(3, argv);
+  /* Deterministic nested socket name so the anowaW app bridge can attach
+   * reliably (WAYLAND_DISPLAY=wayland-0 is Wawona's root Smithay socket; the
+   * nested compositor exposes "wawona-nested"). Keep in sync with
+   * AnowawSession.NESTED_SOCKET (Kotlin) and kWWNAnowaWNestedSocket (macOS). */
+  char *argv[] = {"weston", "--backend=wayland", "--socket=wawona-nested",
+                  "--shell=desktop-shell.so", NULL};
+  weston_compositor_main(4, argv);
   if (saved_cwd[0])
     chdir(saved_cwd);
   g_weston_running = 0;
@@ -3281,6 +3591,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeRunWeston(
   }
   if (g_weston_running)
     return JNI_FALSE;
+  wwn_android_prepare_shell_environment(getenv("WAWONA_FILES_DIR"));
   g_weston_running = 1;
   if (pthread_create(&g_weston_thread, NULL, weston_thread_func, NULL) != 0) {
     g_weston_running = 0;
@@ -3327,10 +3638,29 @@ static void *weston_terminal_thread_func(void *arg) {
     return NULL;
   }
   char saved_cwd[512] = "";
-  const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
-  if (xdg_dir) { getcwd(saved_cwd, sizeof(saved_cwd)); chdir(xdg_dir); }
-  const char *argv[] = {"weston-terminal", NULL};
-  weston_terminal_main(1, argv);
+  const char *home_dir = getenv("HOME");
+  if (home_dir && home_dir[0]) {
+    getcwd(saved_cwd, sizeof(saved_cwd));
+    if (chdir(home_dir) == 0)
+      LOGI("weston-terminal cwd=%s", home_dir);
+    else
+      LOGE("weston-terminal chdir to HOME %s failed: %s", home_dir,
+           strerror(errno));
+  }
+  // weston-terminal's default (non-maximized/non-fullscreen) startup path
+  // hardcodes an 80x24 character grid sized from the host's font metrics
+  // (see terminal_create()/terminal_resize(80, 24) upstream), completely
+  // ignoring the compositor-suggested xdg_toplevel size. On a small mobile
+  // display that grid is wider than the entire screen, so the window is
+  // drawn far larger than the viewport and gets clipped at the right/bottom
+  // edges. Passing --maximized makes weston-terminal call
+  // window_set_maximized() at startup, which switches resize_handler() into
+  // "fit the host-given size" mode (columns/rows are derived from the
+  // configure width/height instead of forcing a fixed 80x24 window size),
+  // so it correctly fills Wawona's host-locked output-sized window instead
+  // of overflowing it.
+  const char *argv[] = {"weston-terminal", "--maximized", NULL};
+  weston_terminal_main(2, argv);
   if (saved_cwd[0]) chdir(saved_cwd);
   g_weston_terminal_running = 0;
   return NULL;
@@ -3384,12 +3714,49 @@ typedef struct {
 } WwnClientEntry;
 
 static int kmscube_stub_main(int argc, const char **argv) {
-  if (!kmscube_main) {
+  (void)argc;
+  (void)argv;
+#ifdef WAWONA_ILAND_GL
+  if (!wwn_iland_presenter_android_launch_kmscube()) {
     LOGE("kmscube unavailable on Android (iland + ANGLE GL client not linked "
          "in this build)");
     return 1;
   }
-  return kmscube_main(argc, (char **)argv);
+  while (wwn_iland_presenter_android_is_active()) {
+    usleep(100000);
+  }
+  return 0;
+#else
+  LOGE("kmscube unavailable on Android (rebuild with iland + ANGLE via gradlegen)");
+  return 1;
+#endif
+}
+
+static int opengl_cube_stub_main(int argc, const char **argv) {
+#ifdef WAWONA_ILAND_GL
+  if (!opengl_cube_main) {
+    LOGE("opengl-cube unavailable (libopengl_cube.a not linked)");
+    return 1;
+  }
+  if (!wwn_iland_presenter_android_is_active())
+    wwn_iland_presenter_android_init();
+  char *mutable_argv[] = {(char *)"opengl-cube", NULL};
+  return opengl_cube_main(1, mutable_argv);
+#else
+  (void)argc;
+  (void)argv;
+  LOGE("opengl-cube unavailable on Android (rebuild with iland + ANGLE via gradlegen)");
+  return 1;
+#endif
+}
+
+static int vkcube_stub_main(int argc, const char **argv) {
+  if (!vkcube_main) {
+    LOGE("vkcube unavailable (libvkcube.a not linked)");
+    return 1;
+  }
+  char *mutable_argv[] = {(char *)"vkcube", NULL};
+  return vkcube_main(1, mutable_argv);
 }
 
 static int simple_egl_stub_main(int argc, const char **argv) {
@@ -3420,6 +3787,8 @@ static const WwnClientEntry kBundledClients[] = {
     {"weston-constraints", constraints_main},
     {"weston-simple-egl", simple_egl_stub_main},
     {"kmscube", kmscube_stub_main},
+    {"opengl-cube", opengl_cube_stub_main},
+    {"vkcube", vkcube_stub_main},
 };
 
 static wwn_client_main_fn wwn_client_main_for_id(const char *client_id) {
@@ -3550,6 +3919,78 @@ static void *bundled_client_thread_func(void *arg) {
   return NULL;
 }
 
+/* niri (wwn-niri): nested scrollable-tiling compositor. Unlike the in-process
+ * client table, niri ships as a PIE executable (libniri_bin.so, waypipe
+ * pattern) and is fork/exec'd from the exec-allowed nativeLibraryDir as a
+ * Wayland client of the Wawona compositor (NIRI_BACKEND=nested). It then
+ * serves its own scrollable-tiling clients on a child socket inside
+ * XDG_RUNTIME_DIR. */
+static pid_t g_niri_pid = 0;
+
+static int wwn_niri_running(void) {
+  if (g_niri_pid <= 0)
+    return 0;
+  if (waitpid(g_niri_pid, NULL, WNOHANG) == 0)
+    return 1;
+  g_niri_pid = 0;
+  return 0;
+}
+
+static jboolean wwn_launch_niri_nested(void) {
+  if (wwn_niri_running()) {
+    LOGI("niri already running (PID %d) — ignoring relaunch", (int)g_niri_pid);
+    return JNI_TRUE;
+  }
+
+  char native_lib_dir[512];
+  char niri_path[560];
+  if (wwn_android_native_lib_dir(native_lib_dir, sizeof(native_lib_dir)) != 0) {
+    LOGE("niri: could not resolve native lib dir");
+    return JNI_FALSE;
+  }
+  snprintf(niri_path, sizeof(niri_path), "%s/libniri_bin.so", native_lib_dir);
+  if (access(niri_path, X_OK) != 0) {
+    LOGE("niri binary not found or not executable at %s: %s", niri_path,
+         strerror(errno));
+    return JNI_FALSE;
+  }
+
+  pid_t pid = fork();
+  if (pid == 0) {
+    /* WAYLAND_DISPLAY and XDG_RUNTIME_DIR are inherited from the app
+     * process; force the nested (Wayland client of Wawona) backend. */
+    setenv("NIRI_BACKEND", "nested", 1);
+    /* The exec'd binary leaves the app's linker namespace, so its NEEDED
+     * libs (libwayland-*, libxkbcommon bundled in jniLibs) must be found
+     * via LD_LIBRARY_PATH. */
+    setenv("LD_LIBRARY_PATH", native_lib_dir, 1);
+    const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
+    if (xdg_dir)
+      chdir(xdg_dir);
+    const char *argv_niri[] = {"niri", NULL};
+    execv(niri_path, (char *const *)argv_niri);
+    _exit(127);
+  }
+  if (pid < 0) {
+    LOGE("niri: fork failed: %s", strerror(errno));
+    return JNI_FALSE;
+  }
+  g_niri_pid = pid;
+  LOGI("Launched niri (nested compositor) PID %d from %s", (int)pid,
+       niri_path);
+  return JNI_TRUE;
+}
+
+static void wwn_stop_niri(void) {
+  if (g_niri_pid <= 0)
+    return;
+  kill(g_niri_pid, SIGTERM);
+  /* Best-effort reap; if it ignores SIGTERM the next launch/status check
+   * escalates naturally through wwn_niri_running(). */
+  waitpid(g_niri_pid, NULL, WNOHANG);
+  g_niri_pid = 0;
+}
+
 JNIEXPORT jboolean JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeRunBundledClient(
     JNIEnv *env, jobject thiz, jstring clientId) {
@@ -3567,6 +4008,13 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeRunBundledClient(
     (*env)->ReleaseStringUTFChars(env, clientId, id_utf);
     return Java_com_aspauldingcode_wawona_WawonaNative_nativeRunWeston(env,
                                                                        thiz);
+  }
+
+  /* niri (wwn-niri) is exec'd out-of-process (waypipe pattern), not routed
+   * through the in-process client-main table. */
+  if (strcmp(id_utf, "niri") == 0) {
+    (*env)->ReleaseStringUTFChars(env, clientId, id_utf);
+    return wwn_launch_niri_nested();
   }
 
   if (g_bundled_client_running) {
@@ -3610,6 +4058,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeStopBundledClient(
       &g_simple_shm_running) {
     g_simple_shm_running = 0;
   }
+  wwn_stop_niri();
 }
 
 JNIEXPORT jboolean JNICALL

@@ -59,8 +59,6 @@ struct MachineEditorView: View {
             sshPortText: String(normalizedPort),
             sshPassword: sshPassword,
             remoteCommand: remoteCommand,
-            vmSubtype: base.vmSubtype,
-            containerSubtype: base.containerSubtype,
             inputProfile: base.inputProfile,
             bundledAppID: isNative ? selectedLauncherName : base.bundledAppID,
             waypipeEnabled: base.waypipeEnabled

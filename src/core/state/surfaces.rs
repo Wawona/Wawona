@@ -384,6 +384,15 @@ impl CompositorState {
                             );
 
                             if should_accept_client_commit_size {
+                                // The platform may have created the host window at a
+                                // placeholder size (256x256) while the core window was
+                                // seeded at the output size. Always emit a size sync on
+                                // the first accepted commit — even when the committed
+                                // size equals the seeded size — so the host window
+                                // adopts the client's real dimensions.
+                                if is_first_commit {
+                                    size_changed = true;
+                                }
                                 window.width = target_width;
                                 window.height = target_height;
                                 window.geometry_x = target_geometry_x;

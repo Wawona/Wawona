@@ -63,9 +63,12 @@ extern crate waypipe;
 #[cfg(feature = "coreutils")]
 extern crate coreutils;
 
-// Generate UniFFI scaffolding
-// This must be in lib.rs for the generated code to work correctly
-uniffi::include_scaffolding!("wawona");
+// Generate UniFFI scaffolding purely from the proc-macro metadata
+// (#[uniffi::export] / #[derive(uniffi::…)]). The UDL is empty (namespace
+// only), so no build-script scaffolding is needed. Using setup_scaffolding!
+// instead of a build.rs + uniffi_build build-dependency keeps uniffi_bindgen
+// in a single crate2nix dependency graph and avoids E0460 (see build.rs).
+uniffi::setup_scaffolding!("wawona");
 
 #[cfg(test)]
 mod tests;

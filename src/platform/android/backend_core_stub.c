@@ -203,6 +203,17 @@ void WWNCoreInjectPointerAxis(void *core, uint64_t window_id, uint32_t axis, dou
   (void)value;
   (void)timestamp_ms;
 }
+void WWNCoreSetClipboardText(void *core, const char *text) {
+  (void)core;
+  (void)text;
+}
+char *WWNCorePollClipboardText(void *core) {
+  (void)core;
+  return NULL;
+}
+void WWNStringFree(char *s) {
+  (void)s;
+}
 void WWNCoreInjectKeyboardEnter(void *core, uint64_t window_id, const uint32_t *keys, size_t count, uint32_t timestamp_ms) {
   (void)core;
   (void)window_id;

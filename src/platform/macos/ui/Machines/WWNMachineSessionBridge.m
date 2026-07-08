@@ -1,6 +1,7 @@
 #import "WWNMachineSessionBridge.h"
 #import "../Settings/WWNWaypipeRunner.h"
 #import "../Settings/WWNPreferencesManager.h"
+#import "WWNAnowaWController.h"
 #import "WWNVirtualMachineRunner.h"
 #import "WWNContainerRunner.h"
 
@@ -93,7 +94,20 @@
     return NO;
   }
 
+#if TARGET_OS_IPHONE
+  // iOS/iPadOS/tvOS/visionOS back every machine with a single in-process
+  // engine (WWNMobileVmEngine for VMs; the WWNWaypipeRunner function-pointer
+  // table for bundled clients — see launchBundledClientWithId:), so only one
+  // profile can actually be running at a time. Tear down whatever's active
+  // before starting the next one.
   [self stopAllActiveTransports];
+#endif
+  // On macOS every machine/client is tracked as its own out-of-process NSTask
+  // keyed by id (WWNVirtualMachineRunner.tasksByMachineId,
+  // WWNContainerRunner, WWNWaypipeRunner.genericClientTasks), each with its
+  // own "already running" guard. Connecting one profile must never stop an
+  // unrelated one that's already running — do NOT call
+  // stopAllActiveTransports here.
 
   [[WWNPreferencesManager sharedManager] syncFromCanonicalWawonaPreferences];
   [WWNMachineProfileStore applyMachineToRuntimePrefs:profile];
@@ -114,6 +128,12 @@
       return NO;
     }
     [[WWNWaypipeRunner sharedRunner] launchBundledClientWithId:clientId];
+    // App Bridge (anowaW): once the nested-Weston desktop is up, attach the
+    // bridge so native AppKit apps can be embedded as Wayland windows. No-op
+    // unless the profile is App Bridge eligible and the feature is enabled.
+    if ([clientId isEqualToString:@"weston"]) {
+      [[WWNAnowaWController sharedController] attachForProfile:profile];
+    }
     return YES;
   }
 
@@ -162,6 +182,7 @@
     WWNWaypipeRunner *runner = [WWNWaypipeRunner sharedRunner];
     NSString *clientId = [self nativeClientIdForProfile:profile];
     if ([clientId isEqualToString:@"weston"]) {
+      [[WWNAnowaWController sharedController] detach];
       [runner stopWeston];
     } else if ([clientId isEqualToString:@"weston-terminal"]) {
       [runner stopWestonTerminal];
