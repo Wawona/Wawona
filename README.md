@@ -107,11 +107,8 @@ After applying your flake, Wawona is available as `pkgs.wawona`, and the activat
 
 See [Usage Guide](docs/usage.md) and [Settings Reference](docs/settings.md).
 
-### WearOS + Linux VM automation
+### Linux VM automation
 
-- **WearOS build/test automation:** `nix run .#wawona-wearos`
-  - Builds Android artifacts with Nix and validates Wear shell wiring.
-  - If a WearOS emulator/device is connected over `adb`, it performs install/launch smoke checks.
 - **Linux KDE Plasma VM automation:** `nix run .#wawona-linux-vm`
   - Launches a NixOS VM (Plasma 6 Wayland) in QEMU for Linux UI testing.
   - Uses `kvm` on Linux when available; on macOS uses `hvf` and falls back to `tcg` if unavailable.

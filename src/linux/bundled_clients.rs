@@ -16,9 +16,15 @@ pub struct BundledClient {
     pub icon_name: &'static str,
 }
 
-/// The 19 canonical bundled clients, in the same order as the Apple/Android
+/// The 22 canonical bundled clients, in the same order as the Apple/Android
 /// catalogs.
 pub const BUNDLED_CLIENTS: &[BundledClient] = &[
+    BundledClient {
+        id: "weston-terminal",
+        name: "Weston Terminal",
+        description: "Terminal emulator — uses host cursor",
+        icon_name: "utilities-terminal-symbolic",
+    },
     BundledClient {
         id: "weston-simple-shm",
         name: "Weston Simple SHM",
@@ -32,10 +38,10 @@ pub const BUNDLED_CLIENTS: &[BundledClient] = &[
         icon_name: "view-app-grid-symbolic",
     },
     BundledClient {
-        id: "weston-terminal",
-        name: "Weston Terminal",
-        description: "Terminal emulator — uses host cursor",
-        icon_name: "utilities-terminal-symbolic",
+        id: "niri",
+        name: "Niri",
+        description: "Scrollable-tiling compositor (nested compositor)",
+        icon_name: "view-column-symbolic",
     },
     BundledClient {
         id: "foot",
@@ -70,7 +76,7 @@ pub const BUNDLED_CLIENTS: &[BundledClient] = &[
     BundledClient {
         id: "weston-simple-egl",
         name: "Weston Simple EGL",
-        description: "Wayland EGL demo client (iland + ANGLE)",
+        description: "Wayland EGL demo client",
         icon_name: "weather-overcast-symbolic",
     },
     BundledClient {
@@ -162,12 +168,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn catalog_has_nineteen_unique_clients() {
-        assert_eq!(BUNDLED_CLIENTS.len(), 19);
+    fn catalog_has_twenty_two_unique_clients() {
+        assert_eq!(BUNDLED_CLIENTS.len(), 22);
         let mut ids: Vec<&str> = BUNDLED_CLIENTS.iter().map(|c| c.id).collect();
         ids.sort_unstable();
         ids.dedup();
-        assert_eq!(ids.len(), 19, "bundled client ids must be unique");
+        assert_eq!(ids.len(), 22, "bundled client ids must be unique");
     }
 
     #[test]

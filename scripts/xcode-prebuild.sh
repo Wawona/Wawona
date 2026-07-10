@@ -107,10 +107,16 @@ fi
 
 echo "Realizing Nix backend(s) for ${TARGET_NAME} (sdk=${_sdk:-unknown}, active=${_active_backend}, nix=$NIX)"
 
+# By default, build only the active backend matching the current SDK.
+# Set WAWONA_WARM_BOTH_BACKENDS=1 for release builds that need both.
 build_args=()
-for backend in "${BACKENDS[@]}"; do
-  build_args+=("$FLAKE_REF#$backend")
-done
+if [ "${WAWONA_WARM_BOTH_BACKENDS:-0}" = "1" ]; then
+  for backend in "${BACKENDS[@]}"; do
+    build_args+=("$FLAKE_REF#$backend")
+  done
+else
+  build_args+=("$FLAKE_REF#$_active_backend")
+fi
 _nix_flags=(--impure)
 if [ -n "${WAWONA_NIX_FLAGS:-}" ]; then
   # shellcheck disable=SC2206

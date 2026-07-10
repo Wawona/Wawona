@@ -45,15 +45,22 @@ nix build .#wawona-android-backend
 
 ## Xcode Iteration
 
-For day-to-day Swift/UI work in Xcode, warm the Nix store once, then skip the pre-build phase on subsequent builds.
+The Xcode pre-build phase is **incremental**: it only runs when declared inputs
+(`Cargo.lock`, `flake.nix`, `Cargo.toml`, `xcode-prebuild.sh`) have changed.
+By default it builds only the **active SDK backend** (device or simulator, not
+both), cutting ~50% of Nix work on each rebuild.
 
 ```bash
 # One-time warm (full iOS, both device and simulator backends)
 nix build .#wawona-ios-backend .#wawona-ios-sim-backend
 mkdir -p .nix-gcroots && nix build --out-link .nix-gcroots/xcodegen .#xcodegen
 
-# UI-only iteration (after warm store)
+# UI-only iteration — no special env needed; prebuild auto-skips when inputs
+# are unchanged. For explicit skip (no Nix at all):
 export WAWONA_SKIP_NIX_PREBUILD=1
+
+# Release builds that want both device+sim warm in one pass:
+export WAWONA_WARM_BOTH_BACKENDS=1
 
 # Skip redundant simulator runtime download during Nix iOS app builds
 export WAWONA_SKIP_IOS_SIMULATOR_PLATFORM_DOWNLOAD=1
@@ -74,7 +81,6 @@ Use `nom` / `nb` for cold builds with build visibility. See [2026-nix-build-syst
 nix run .#xcodegen      # Generate Wawona.xcodeproj (iOS + macOS)
 nix run .#xcodegen-ios  # iOS only
 nix run .#gradlegen     # Generate ./Wawona-gradle-project for Android Studio
-nix run .#wawona-wearos # Build and run WearOS flow
 ```
 
 ## Requirements

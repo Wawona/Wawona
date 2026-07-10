@@ -23,7 +23,7 @@ is **green** only when all its gates pass. Job names refer to
 | macOS (arm64) | `verify-macos-arm64` | `cargo-test-macos-arm64` | `build-macos-arm64` | `smoke-macos-arm64` (compat-matrix + bundled clients) | agent-device (local) |
 | macOS (x86_64) | flake check | `swift-test-macos-x86_64` | — | — | — |
 | iOS/iPadOS/tvOS/visionOS/watchOS | flake check | `cargo-test-macos-arm64` (shared core) | `*-sim-backend` builds | agent-device replays (local/nightly) | XCUITest (nightly, `p_ci-l3-apple-xcuitest`) |
-| Android / Wear | — | shared core | `wawona-android`, `wawona-wearos-android` | Compose UI Test (nightly, `p_ci-l3-android-espresso`) | agent-device (device) |
+| Android | — | shared core | `wawona-android` | Compose UI Test (nightly, `p_ci-l3-android-espresso`) | agent-device (device) |
 
 ## Determinism / reproducibility gate
 

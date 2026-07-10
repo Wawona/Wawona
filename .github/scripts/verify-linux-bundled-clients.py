@@ -50,10 +50,10 @@ def main() -> int:
     android = android_catalog(ANDROID.read_text(encoding="utf-8"))
     linux = linux_catalog(LINUX.read_text(encoding="utf-8"))
 
-    if len(android) != 19:
-        errors.append(f"expected 19 Android bundled clients, found {len(android)}")
-    if len(linux) != 19:
-        errors.append(f"expected 19 Linux bundled clients, found {len(linux)}")
+    if len(android) != 22:
+        errors.append(f"expected 22 Android bundled clients, found {len(android)}")
+    if len(linux) != 22:
+        errors.append(f"expected 22 Linux bundled clients, found {len(linux)}")
 
     if [c[0] for c in android] != [c[0] for c in linux]:
         errors.append(

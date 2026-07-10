@@ -26,6 +26,7 @@ targets=(
   ".#wawona-watchos-app-sim"
   ".#wawona-watchos-app-device"
   ".#wawona-visionos-app-sim"
+  ".#wawona-visionos-app-device"
   ".#wawona-ios-backend"
   ".#wawona-ios-sim-backend"
   ".#wawona-ipados-backend"

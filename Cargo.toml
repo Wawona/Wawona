@@ -143,7 +143,6 @@ required-features = ["linux-ui"]
 # std::panic::catch_unwind for poison recovery, so panic=abort is unsafe here.
 [profile.release]
 lto = "thin"           # cross-crate inlining without full-LTO link blowup
-codegen-units = 1      # better optimization; release builds are cache-warm in CI
 strip = "debuginfo"    # smaller dylib/staticlib shipped into app bundles
 opt-level = 3
 

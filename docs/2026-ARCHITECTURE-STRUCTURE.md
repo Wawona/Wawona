@@ -7,7 +7,7 @@
 
 ---
 
-## **2026 UI Overhaul Addendum (Native Android + WearOS)**
+## **2026 UI Overhaul Addendum (Native Android)**
 
 Wawona now uses native UI layers per platform while keeping the compositor bridge native:
 

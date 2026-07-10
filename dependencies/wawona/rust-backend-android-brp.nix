@@ -104,13 +104,13 @@ rustPlatform.buildRustPackage rec {
     export CFLAGS_aarch64_linux_android="--target=${androidToolchainEffective.androidTarget} --sysroot=${NDK_SYSROOT} -isystem ${NDK_SYSROOT}/usr/include -isystem ${NDK_SYSROOT}/usr/include/aarch64-linux-android -fPIC ${androidToolchainEffective.androidNdkCflags}"
     export CXXFLAGS_aarch64_linux_android="--target=${androidToolchainEffective.androidTarget} --sysroot=${NDK_SYSROOT} -isystem ${NDK_SYSROOT}/usr/include -isystem ${NDK_SYSROOT}/usr/include/aarch64-linux-android -fPIC ${androidToolchainEffective.androidNdkCflags}"
     export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=${NDK_SYSROOT} -isystem ${NDK_SYSROOT}/usr/include -isystem ${NDK_SYSROOT}/usr/include/aarch64-linux-android --target=${androidToolchainEffective.androidTarget} ${androidToolchainEffective.androidNdkCflags}"
-    export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-L native=${nativeDeps.xkbcommon}/lib -L native=${nativeDeps.libwayland}/lib -l xkbcommon -l wayland-client"
+    export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-L native=${nativeDeps.xkbcommon}/lib -L native=${nativeDeps.libwayland}/lib -l xkbcommon -l wayland-client -C link-arg=-fuse-ld=mold"
   '';
 
   buildPhase = ''
     runHook preBuild
     cargo build \
-      --jobs "''${NIX_BUILD_CORES:-1}" \
+      --jobs "''${NIX_BUILD_CORES}" \
       --offline \
       --profile release \
       --target aarch64-linux-android \

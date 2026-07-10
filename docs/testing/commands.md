@@ -69,9 +69,9 @@ agent-device replay Wawona/.agent-device/wawona-android-machines.ad
 
 The macOS convenience wrapper is `Wawona/scripts/agent-device-smoke.sh`.
 
-## Android / WearOS / Linux VM automation
+## Android / Linux VM automation
 
 ```bash
-nix run .#wawona-wearos       # Android/Wear build + adb install/launch smoke
+nix run .#wawona-android        # Android build + adb install/launch smoke
 nix run .#wawona-linux-vm     # NixOS Plasma 6 Wayland VM for Linux UI testing
 ```

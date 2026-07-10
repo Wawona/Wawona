@@ -39,8 +39,6 @@ PAIRS: tuple[SnapshotPair, ...] = (
     SnapshotPair("phone-home-dark", "ios_phone_home_dark.png", "android_phone_home_dark.png"),
     SnapshotPair("phone-settings-light", "ios_phone_settings_light.png", "android_phone_settings_light.png"),
     SnapshotPair("phone-settings-dark", "ios_phone_settings_dark.png", "android_phone_settings_dark.png"),
-    SnapshotPair("wear-home-light", "watchos_wear_home_light.png", "wearos_wear_home_light.png"),
-    SnapshotPair("wear-home-dark", "watchos_wear_home_dark.png", "wearos_wear_home_dark.png"),
 )
 
 

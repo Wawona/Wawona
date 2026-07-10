@@ -116,6 +116,12 @@ let
     inherit lib deps;
     forceLoadCompositor = true;
   };
+  # Apple mobile also force_loads libweston-13.a (toytoolkit); lazy compositor
+  # linking avoids duplicate generated protocol symbols (tearing-control-v1, etc.).
+  westonCompositorLdflagsAppleMobile = deps: import westonCompositorLdflagsNix {
+    inherit lib deps;
+    forceLoadCompositor = false;
+  };
   mobileBaseLdflags = deps: import mobileBaseLdflagsNix { inherit lib deps; };
   ilandGlLdflags = { deps, simulator ? false }: import ilandGlLdflagsNix {
     inherit lib deps simulator;
@@ -190,7 +196,7 @@ let
     ];
   xkbIosEmbedScript = pkgs.writeShellScript "embed-xkb-ios.sh" ''
     case "''${PLATFORM_NAME:-}" in
-      iphoneos|iphonesimulator|appletvos|appletvsimulator)
+      iphoneos|iphonesimulator|appletvos|appletvsimulator|xros|xrsimulator)
         ;;
       *)
         exit 0
@@ -198,8 +204,13 @@ let
     esac
     BUNDLE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
     DEST="$BUNDLE/share/X11/xkb"
-    mkdir -p "$DEST"
-    cp -R "${pkgs.xkeyboard_config}/share/X11/xkb/." "$DEST/"
+    mkdir -p "$(dirname "$DEST")"
+    if [ "''${PLATFORM_NAME:-}" = "iphonesimulator" ] || [ "''${PLATFORM_NAME:-}" = "macosx" ]; then
+      ln -sfn "${pkgs.xkeyboard_config}/share/X11/xkb" "$DEST"
+    else
+      mkdir -p "$DEST"
+      cp -R "${pkgs.xkeyboard_config}/share/X11/xkb/." "$DEST/"
+    fi
     echo "Embedded xkeyboard-config into $DEST"
   '';
   # Bundle TrueType fonts so the in-process weston toytoolkit clients
@@ -208,7 +219,7 @@ let
   # during init and the nested compositor shows only a solid clear color.
   fontIosEmbedScript = pkgs.writeShellScript "embed-fonts-ios.sh" ''
     case "''${PLATFORM_NAME:-}" in
-      iphoneos|iphonesimulator|appletvos|appletvsimulator)
+      iphoneos|iphonesimulator|appletvos|appletvsimulator|xros|xrsimulator)
         ;;
       *)
         exit 0
@@ -219,7 +230,13 @@ let
     mkdir -p "$DEST"
     # Nix store font paths are often symlinks; iOS installd rejects symlinks in .app
     # bundles (MIInstallerErrorDomain Code 70). -L dereferences to real files.
-    cp -RL "${pkgs.dejavu_fonts}/share/fonts/." "$DEST/"
+    mkdir -p "$(dirname "$DEST")"
+    if [ "''${PLATFORM_NAME:-}" = "iphonesimulator" ] || [ "''${PLATFORM_NAME:-}" = "macosx" ]; then
+      ln -sfn "${pkgs.dejavu_fonts}/share/fonts" "$DEST"
+    else
+      mkdir -p "$DEST"
+      cp -RL "${pkgs.dejavu_fonts}/share/fonts/." "$DEST/"
+    fi
     echo "Embedded DejaVu fonts into $DEST"
   '';
   xcodeUtils = import applePath { inherit lib pkgs TEAM_ID; };
@@ -262,7 +279,6 @@ let
   mkPreBuildPhase = { withZsh ? false }: {
     name = "Build Rust Backend via Nix";
     basedOnDependencyAnalysis = false;
-    alwaysOutOfDate = true;
     inputFiles = nixPreBuildInputs ++ [ "$(SRCROOT)/scripts/xcode-prebuild.sh" ];
     outputFiles = libwawonaOutputPaths { inherit withZsh; };
     script = ''
@@ -287,7 +303,6 @@ let
   stampBuildNumberPhase = {
     name = "Stamp Build Number";
     basedOnDependencyAnalysis = false;
-    alwaysOutOfDate = true;
     inputFiles = [ "$(SRCROOT)/scripts/xcode-stamp-build-number.sh" ];
     outputFiles = [
       "$(SRCROOT)/.build/wwn-build-number.xcconfig"
@@ -407,7 +422,7 @@ let
             "-lzstd"
             "-llz4"
             "-lepoll-shim"
-          ] ++ (mobileBaseLdflags deps) ++ westonToytoolkitLdflagsAppleMobile deps ++ westonCompositorLdflags deps
+          ] ++ (mobileBaseLdflags deps) ++ westonToytoolkitLdflagsAppleMobile deps ++ westonCompositorLdflagsAppleMobile deps
           ++ (ilandGlLdflags { inherit deps; simulator = false; }) ++ footLdflags deps ++ fastfetchLdflags deps ++ neovimLdflags deps ++ extraDeviceLdflags
           ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
           "OTHER_LDFLAGS[sdk=${simSdk}*]" = [
@@ -427,7 +442,7 @@ let
             "-lzstd"
             "-llz4"
             "-lepoll-shim"
-          ] ++ (mobileBaseLdflags simDeps) ++ westonToytoolkitLdflagsAppleMobile simDeps ++ westonCompositorLdflags simDeps
+          ] ++ (mobileBaseLdflags simDeps) ++ westonToytoolkitLdflagsAppleMobile simDeps ++ westonCompositorLdflagsAppleMobile simDeps
           ++ (ilandGlLdflags { deps = simDeps; simulator = true; }) ++ footLdflags simDeps ++ fastfetchLdflags simDeps ++ neovimLdflags simDeps ++ extraSimLdflags
           ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
           GCC_PREPROCESSOR_DEFINITIONS = [ "$(inherited)" ] ++ extraDefines ++ versionDefs;
@@ -546,7 +561,7 @@ PLIST
 
   westonDataIosEmbedScript = pkgs.writeShellScript "embed-weston-data-ios.sh" ''
     case "''${PLATFORM_NAME:-}" in
-      iphoneos|iphonesimulator|appletvos|appletvsimulator)
+      iphoneos|iphonesimulator|appletvos|appletvsimulator|xros|xrsimulator)
         ;;
       *)
         exit 0
@@ -588,7 +603,13 @@ PLIST
     done
     CURSOR_SRC="${pkgs.adwaita-icon-theme}/share/icons/Adwaita/cursors"
     if [ -d "$CURSOR_SRC" ]; then
-      cp -RL "$CURSOR_SRC/." "$ICONS_DEST/"
+      mkdir -p "$(dirname "$ICONS_DEST")"
+      if [ "''${PLATFORM_NAME:-}" = "iphonesimulator" ] || [ "''${PLATFORM_NAME:-}" = "macosx" ]; then
+        ln -sfn "$CURSOR_SRC" "$ICONS_DEST"
+      else
+        mkdir -p "$ICONS_DEST"
+        cp -RL "$CURSOR_SRC/." "$ICONS_DEST/"
+      fi
       echo "Embedded Adwaita cursors into $ICONS_DEST"
     else
       echo "warning: Adwaita cursors not found at $CURSOR_SRC" >&2
@@ -616,10 +637,10 @@ PLIST
 
   rootfsIosEmbedScript = deviceRootfs: simRootfs: pkgs.writeShellScript "embed-rootfs-ios.sh" ''
     case "''${PLATFORM_NAME:-}" in
-      iphoneos)
+      iphoneos|appletvos|xros)
         rootfsSrc="${strip deviceRootfs}/rootfs"
         ;;
-      iphonesimulator)
+      iphonesimulator|appletvsimulator|xrsimulator)
         rootfsSrc="${strip simRootfs}/rootfs"
         ;;
       *)
@@ -633,8 +654,13 @@ PLIST
     BUNDLE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
     DEST="$BUNDLE/wawona-rootfs"
     rm -rf "$DEST"
-    mkdir -p "$DEST"
-    cp -R "$rootfsSrc/." "$DEST/"
+    mkdir -p "$(dirname "$DEST")"
+    if [ "''${PLATFORM_NAME:-}" = "iphonesimulator" ] || [ "''${PLATFORM_NAME:-}" = "macosx" ]; then
+      ln -sfn "$rootfsSrc" "$DEST"
+    else
+      mkdir -p "$DEST"
+      cp -R "$rootfsSrc/." "$DEST/"
+    fi
     echo "Embedded wawona-rootfs into $DEST (template $(cat "$DEST/etc/zsh/.template-version" 2>/dev/null || echo unknown))"
   '';
 
@@ -739,10 +765,10 @@ PLIST
 
   neovimRootfsIosEmbedScript = deviceRootfs: simRootfs: pkgs.writeShellScript "embed-neovim-rootfs-ios.sh" ''
     case "''${PLATFORM_NAME:-}" in
-      iphoneos)
+      iphoneos|appletvos|xros)
         rootfsSrc="${strip deviceRootfs}/rootfs"
         ;;
-      iphonesimulator)
+      iphonesimulator|appletvsimulator|xrsimulator)
         rootfsSrc="${strip simRootfs}/rootfs"
         ;;
       *)
@@ -756,8 +782,13 @@ PLIST
     BUNDLE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
     DEST="$BUNDLE/neovim-rootfs"
     rm -rf "$DEST"
-    mkdir -p "$DEST"
-    cp -R "$rootfsSrc/." "$DEST/"
+    mkdir -p "$(dirname "$DEST")"
+    if [ "''${PLATFORM_NAME:-}" = "iphonesimulator" ] || [ "''${PLATFORM_NAME:-}" = "macosx" ]; then
+      ln -sfn "$rootfsSrc" "$DEST"
+    else
+      mkdir -p "$DEST"
+      cp -R "$rootfsSrc/." "$DEST/"
+    fi
     echo "Embedded neovim-rootfs into $DEST"
   '';
 
@@ -778,6 +809,36 @@ PLIST
     name = "Embed neovim-rootfs (runtime templates)";
     basedOnDependencyAnalysis = true;
     outputFiles = neovimRootfsEmbedOutputs;
+  };
+
+  # tvOS rootfs/neovim-rootfs embed phases.  The underlying scripts gate on
+  # PLATFORM_NAME; tvOS passes `appletvos` / `appletvsimulator` which the
+  # rootfs script does not match today (only iphoneos/iphonesimulator).  Use
+  # basedOnDependencyAnalysis=false so they always attempt; the scripts no-op
+  # gracefully when the rootfs artifact is absent.
+  tvosRootfsEmbedPhase = {
+    path = rootfsIosEmbedScript (tvosDeps."wawona-rootfs" or null) (tvosSimDeps."wawona-rootfs" or null);
+    name = "Embed wawona-rootfs (shell templates)";
+    basedOnDependencyAnalysis = false;
+  };
+
+  tvosNeovimRootfsEmbedPhase = {
+    path = neovimRootfsIosEmbedScript (tvosDeps."neovim-rootfs" or null) (tvosSimDeps."neovim-rootfs" or null);
+    name = "Embed neovim-rootfs (runtime templates)";
+    basedOnDependencyAnalysis = false;
+  };
+
+  # visionOS rootfs/neovim-rootfs embed phases.
+  visionosRootfsEmbedPhase = {
+    path = rootfsIosEmbedScript (visionosDeps."wawona-rootfs" or null) (visionosSimDeps."wawona-rootfs" or null);
+    name = "Embed wawona-rootfs (shell templates)";
+    basedOnDependencyAnalysis = false;
+  };
+
+  visionosNeovimRootfsEmbedPhase = {
+    path = neovimRootfsIosEmbedScript (visionosDeps."neovim-rootfs" or null) (visionosSimDeps."neovim-rootfs" or null);
+    name = "Embed neovim-rootfs (runtime templates)";
+    basedOnDependencyAnalysis = false;
   };
 
   # src/core is entirely Rust (0 C/ObjC files) — excluded entirely
@@ -857,6 +918,7 @@ PLIST
       configs = {
         Debug = {
           STRING_CATALOG_GENERATE_SYMBOLS = "NO";
+          DEBUG_INFORMATION_FORMAT = "dwarf";
         };
       };
     };
@@ -969,7 +1031,7 @@ PLIST
                "-lssl"
                "-lcrypto"
                "-lepoll-shim"
-             ] ++ westonToytoolkitLdflagsAppleMobile iosDeps ++ westonCompositorLdflags iosDeps
+             ] ++ westonToytoolkitLdflagsAppleMobile iosDeps ++ westonCompositorLdflagsAppleMobile iosDeps
              ++ (ilandGlLdflags { deps = iosDeps; simulator = false; }) ++ footLdflags iosDeps ++ fastfetchLdflags iosDeps ++ neovimLdflags iosDeps
              ++ opensshInprocessLdflags iosDeps
              ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
@@ -1000,7 +1062,7 @@ PLIST
               "-lssl"
               "-lcrypto"
                "-lepoll-shim"
-             ] ++ westonToytoolkitLdflagsAppleMobile iosSimDeps ++ westonCompositorLdflags iosSimDeps
+             ] ++ westonToytoolkitLdflagsAppleMobile iosSimDeps ++ westonCompositorLdflagsAppleMobile iosSimDeps
              ++ (ilandGlLdflags { deps = iosSimDeps; simulator = true; }) ++ footLdflags iosSimDeps ++ fastfetchLdflags iosSimDeps ++ neovimLdflags iosSimDeps
              ++ opensshInprocessLdflags iosSimDeps
              ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
@@ -1134,8 +1196,9 @@ PLIST
               "-lssl"
               "-lcrypto"
               "-lepoll-shim"
-            ] ++ westonToytoolkitLdflagsAppleMobile ipadosDeps ++ westonCompositorLdflags ipadosDeps
+            ] ++ westonToytoolkitLdflagsAppleMobile ipadosDeps ++ westonCompositorLdflagsAppleMobile ipadosDeps
             ++ (ilandGlLdflags { deps = ipadosDeps; simulator = false; }) ++ footLdflags ipadosDeps ++ fastfetchLdflags ipadosDeps ++ neovimLdflags ipadosDeps
+            ++ opensshInprocessLdflags ipadosDeps
             ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
             "OTHER_LDFLAGS[sdk=iphonesimulator*]" = [
               "$(inherited)"
@@ -1164,8 +1227,9 @@ PLIST
               "-lssl"
               "-lcrypto"
               "-lepoll-shim"
-            ] ++ westonToytoolkitLdflagsAppleMobile ipadosSimDeps ++ westonCompositorLdflags ipadosSimDeps
+            ] ++ westonToytoolkitLdflagsAppleMobile ipadosSimDeps ++ westonCompositorLdflagsAppleMobile ipadosSimDeps
             ++ (ilandGlLdflags { deps = ipadosSimDeps; simulator = true; }) ++ footLdflags ipadosSimDeps ++ fastfetchLdflags ipadosSimDeps ++ neovimLdflags ipadosSimDeps
+            ++ opensshInprocessLdflags ipadosSimDeps
             ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
@@ -1236,6 +1300,10 @@ PLIST
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
         ] ++ iosUtilSources;
         preBuildScripts = [ stampBuildNumberPhase tvosPreBuild ];
+        postBuildScripts = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase tvosRootfsEmbedPhase tvosNeovimRootfsEmbedPhase ]
+          ++ mobileVmEmbedPhases
+          ++ lib.optionals (angleSimDylib != null) [ angleSimEmbedPhase ]
+          ++ lib.optionals (angleDeviceDylib != null) [ angleDeviceEmbedPhase ];
 
         settings = {
           base = {
@@ -1291,7 +1359,7 @@ PLIST
               "-lssl"
               "-lcrypto"
               "-lepoll-shim"
-            ] ++ westonToytoolkitLdflagsAppleMobile tvosDeps ++ westonCompositorLdflags tvosDeps ++ footLdflags tvosDeps ++ fastfetchLdflags tvosDeps ++ neovimLdflags tvosDeps ++ [ derivedRustLib ] ++ finalCxxLdflags;
+            ] ++ westonToytoolkitLdflagsAppleMobile tvosDeps ++ westonCompositorLdflagsAppleMobile tvosDeps ++ footLdflags tvosDeps ++ fastfetchLdflags tvosDeps ++ neovimLdflags tvosDeps ++ [ derivedRustLib ] ++ finalCxxLdflags;
             "OTHER_LDFLAGS[sdk=appletvsimulator*]" = [
               "$(inherited)"
             ] ++ ios26SwiftUiClientLdflags ++ [
@@ -1319,7 +1387,7 @@ PLIST
               "-lssl"
               "-lcrypto"
               "-lepoll-shim"
-            ] ++ westonToytoolkitLdflagsAppleMobile tvosSimDeps ++ westonCompositorLdflags tvosSimDeps ++ footLdflags tvosSimDeps ++ fastfetchLdflags tvosSimDeps ++ neovimLdflags tvosSimDeps ++ [ derivedRustLib ] ++ finalCxxLdflags;
+            ] ++ westonToytoolkitLdflagsAppleMobile tvosSimDeps ++ westonCompositorLdflagsAppleMobile tvosSimDeps ++ footLdflags tvosSimDeps ++ fastfetchLdflags tvosSimDeps ++ neovimLdflags tvosSimDeps ++ [ derivedRustLib ] ++ finalCxxLdflags;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"
@@ -1708,7 +1776,7 @@ PLIST
               "$(inherited)"
               "${strip (macosDeps.libwayland or null)}/include"
               "${strip (macosDeps.libwayland or null)}/include/wayland"
-              "${strip (iosDeps.xkbcommon or null)}/include"
+              "${strip (macosDeps.xkbcommon or null)}/include"
               "$(SRCROOT)/src"
               "$(SRCROOT)/src/platform/macos/ui"
               "$(SRCROOT)/src/platform/macos/ui/Machines"
@@ -1794,6 +1862,10 @@ PLIST
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
         ] ++ iosUtilSources;
         preBuildScripts = [ stampBuildNumberPhase visionosPreBuild ];
+        postBuildScripts = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase visionosRootfsEmbedPhase visionosNeovimRootfsEmbedPhase ]
+          ++ mobileVmEmbedPhases
+          ++ lib.optionals (angleSimDylib != null) [ angleSimEmbedPhase ]
+          ++ lib.optionals (angleDeviceDylib != null) [ angleDeviceEmbedPhase ];
         settings = {
           base = {
             INFOPLIST_FILE = "src/resources/app-bundle/Info.plist";
@@ -1842,7 +1914,7 @@ PLIST
               "-lssh2"
               "-lssl"
               "-lcrypto"
-            ] ++ westonToytoolkitLdflagsAppleMobile visionosDeps ++ westonCompositorLdflags visionosDeps ++ fastfetchLdflags visionosDeps ++ neovimLdflags visionosDeps ++ [ derivedRustLib ] ++ finalCxxLdflags;
+            ] ++ westonToytoolkitLdflagsAppleMobile visionosDeps ++ westonCompositorLdflagsAppleMobile visionosDeps ++ fastfetchLdflags visionosDeps ++ neovimLdflags visionosDeps ++ [ derivedRustLib ] ++ finalCxxLdflags;
             "OTHER_LDFLAGS[sdk=xrsimulator*]" = [
               "$(inherited)"
             ] ++ ios26SwiftUiClientLdflags ++ [
@@ -1861,7 +1933,7 @@ PLIST
               "-lssh2"
               "-lssl"
               "-lcrypto"
-            ] ++ westonToytoolkitLdflagsAppleMobile visionosSimDeps ++ westonCompositorLdflags visionosSimDeps ++ fastfetchLdflags visionosSimDeps ++ neovimLdflags visionosSimDeps ++ [ derivedRustLib ] ++ finalCxxLdflags;
+            ] ++ westonToytoolkitLdflagsAppleMobile visionosSimDeps ++ westonCompositorLdflagsAppleMobile visionosSimDeps ++ fastfetchLdflags visionosSimDeps ++ neovimLdflags visionosSimDeps ++ [ derivedRustLib ] ++ finalCxxLdflags;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"
@@ -2039,7 +2111,7 @@ PLIST
               "-lmbedtls"
               "-lssl"
               "-lcrypto"
-            ] ++ westonToytoolkitLdflagsAppleMobile watchosDeps ++ westonCompositorLdflags watchosDeps ++ footLdflags watchosDeps ++ fastfetchLdflags watchosDeps ++ neovimLdflags watchosDeps ++ [
+            ] ++ westonToytoolkitLdflagsAppleMobile watchosDeps ++ westonCompositorLdflagsAppleMobile watchosDeps ++ footLdflags watchosDeps ++ fastfetchLdflags watchosDeps ++ neovimLdflags watchosDeps ++ [
               "-lwayland-server"
             ] ++ lib.optionals (watchosDeps ? waypipe && watchosDeps.waypipe != null) [
               "-force_load" "${strip watchosDeps.waypipe}/lib/libwaypipe.a"
@@ -2070,7 +2142,7 @@ PLIST
               "-lmbedtls"
               "-lssl"
               "-lcrypto"
-            ] ++ westonToytoolkitLdflagsAppleMobile watchosSimDeps ++ westonCompositorLdflags watchosSimDeps ++ footLdflags watchosSimDeps ++ fastfetchLdflags watchosSimDeps ++ neovimLdflags watchosSimDeps ++ [
+            ] ++ westonToytoolkitLdflagsAppleMobile watchosSimDeps ++ westonCompositorLdflagsAppleMobile watchosSimDeps ++ footLdflags watchosSimDeps ++ fastfetchLdflags watchosSimDeps ++ neovimLdflags watchosSimDeps ++ [
               "-lwayland-server"
             ] ++ lib.optionals (watchosSimDeps ? waypipe && watchosSimDeps.waypipe != null) [
               "-force_load" "${strip watchosSimDeps.waypipe}/lib/libwaypipe.a"
@@ -2202,29 +2274,60 @@ PLIST
         echo "Keeping explicit TEAM_ID from environment; install matching cert/account for this team in Xcode."
       fi
     fi
-    if [ -n "$EFFECTIVE_TEAM_ID" ]; then
-      # Only apply team to iOS-family targets so macOS signing stays untouched.
-      TMP_SPEC="$TMP_SPEC" EFFECTIVE_TEAM_ID="$EFFECTIVE_TEAM_ID" ${pkgs.python3}/bin/python3 <<'EOF'
+    # Always run the Python materializer and team stamp script
+    TMP_SPEC="$TMP_SPEC" EFFECTIVE_TEAM_ID="$EFFECTIVE_TEAM_ID" REPO_ROOT="$REPO_ROOT" ${pkgs.python3}/bin/python3 <<'EOF'
 import json
 from pathlib import Path
 import os
+import re
+import shutil
 
 p = Path(os.environ["TMP_SPEC"])
 data = json.loads(p.read_text())
+repo_root = Path(os.environ["REPO_ROOT"])
+nix_deps_dir = repo_root / ".nix-deps"
+
+# Clean old materialized deps
+if nix_deps_dir.exists():
+    shutil.rmtree(nix_deps_dir)
+nix_deps_include = nix_deps_dir / "include"
+nix_deps_lib = nix_deps_dir / "lib"
+nix_deps_include.mkdir(parents=True, exist_ok=True)
+nix_deps_lib.mkdir(parents=True, exist_ok=True)
+
+def process_paths(obj):
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            obj[k] = process_paths(v)
+    elif isinstance(obj, list):
+        for i in range(len(obj)):
+            obj[i] = process_paths(obj[i])
+    elif isinstance(obj, str):
+        matches = re.findall(r'(/nix/store/([a-zA-Z0-9]{32}-[a-zA-Z0-9_.-]+))', obj)
+        for match, name in matches:
+            dep_path = Path(match)
+            if (dep_path / "include").exists():
+                os.system(f"ln -sfn '{dep_path}/include' '{nix_deps_include}/{name}'")
+            if (dep_path / "lib").exists():
+                os.system(f"ln -sfn '{dep_path}/lib' '{nix_deps_lib}/{name}'")
+        obj = re.sub(r'/nix/store/([a-zA-Z0-9]{32}-[a-zA-Z0-9_.-]+)/include', r'$(SRCROOT)/.nix-deps/include/\1', obj)
+        obj = re.sub(r'/nix/store/([a-zA-Z0-9]{32}-[a-zA-Z0-9_.-]+)/lib', r'$(SRCROOT)/.nix-deps/lib/\1', obj)
+    return obj
+
+data = process_paths(data)
+
 team = os.environ.get("EFFECTIVE_TEAM_ID", "").strip()
 if team:
     targets = data.setdefault("targets", {})
     for target_name in ("Wawona-iOS", "Wawona-iPadOS", "Wawona-tvOS"):
         target = targets.get(target_name)
-        # Only stamp targets that survived platformFilter; setdefault would
-        # otherwise fabricate an empty (platform-less) target and xcodegen would
-        # abort with "Unknown Target platform:".
         if target is None:
             continue
         base = target.setdefault("settings", {}).setdefault("base", {})
         base["DEVELOPMENT_TEAM"] = team
-    p.write_text(json.dumps(data, indent=2))
+p.write_text(json.dumps(data, indent=2))
 EOF
+    if [ -n "$EFFECTIVE_TEAM_ID" ]; then
       echo "Applied TEAM_ID=$EFFECTIVE_TEAM_ID to Wawona-iOS, Wawona-iPadOS, and Wawona-tvOS."
     fi
     ${xcodeUtils.xcodeWrapper}/bin/xcode-wrapper ${pkgs.xcodegen}/bin/xcodegen generate --spec "$TMP_SPEC"

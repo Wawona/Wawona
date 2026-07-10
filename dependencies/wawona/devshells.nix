@@ -52,7 +52,9 @@ builtins.listToAttrs (map (system: let
   '';
 
   linuxShell = pkgs.mkShell {
-    nativeBuildInputs = [ pkgs.pkg-config ];
+    preferLocalBuild = true;
+    CARGO_PROFILE_RELEASE_LTO = "false";
+    nativeBuildInputs = [ pkgs.pkg-config pkgs.ccacheWrapper ];
     buildInputs = [
       pkgs.rustToolchain
       # Wayland client stack: `pkgs.wayland` ships wayland-client.pc required by
@@ -80,6 +82,7 @@ builtins.listToAttrs (map (system: let
       pkgs.nix-output-monitor
     ] ++ releasePackages pkgs;
     shellHook = ''
+      export CCACHE_DIR="$PWD/.ccache"
       alias nb='nom build'
       alias nd='nom develop'
       ${releaseShellHook}
@@ -87,8 +90,11 @@ builtins.listToAttrs (map (system: let
   };
 
   darwinShell = pkgs.mkShell {
+    preferLocalBuild = true;
+    CARGO_PROFILE_RELEASE_LTO = "false";
     nativeBuildInputs = [
       pkgs.pkg-config
+      pkgs.ccacheWrapper
     ];
 
     buildInputs = [
@@ -105,6 +111,7 @@ builtins.listToAttrs (map (system: let
     ] else []);
 
     shellHook = ''
+      export CCACHE_DIR="$PWD/.ccache"
       export XDG_RUNTIME_DIR="/tmp/wawona-$(id -u)"
       export WAYLAND_DISPLAY="wayland-0"
       mkdir -p $XDG_RUNTIME_DIR
@@ -136,6 +143,7 @@ builtins.listToAttrs (map (system: let
   };
 
   releaseShell = pkgs.mkShell {
+    preferLocalBuild = true;
     inputsFrom = [
       (if pkgs.stdenv.isDarwin then darwinShell else linuxShell)
     ];
@@ -152,6 +160,7 @@ builtins.listToAttrs (map (system: let
   # `nix develop .#linux-ui-check -c cargo build --bin wawona-linux-ui --features linux-ui`
   # without a Linux machine.
   linuxUiCheckShell = pkgs.mkShell {
+    preferLocalBuild = true;
     inputsFrom = [
       (if pkgs.stdenv.isDarwin then darwinShell else linuxShell)
     ];

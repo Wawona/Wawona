@@ -1,7 +1,7 @@
 { lib, pkgs, buildModule, wawonaSrc, wawonaVersion, pkgsAndroid, pkgsIos, rustBackendMacOS ? null, rustBackendIOS ? null, rustBackendIOSSim ? null, rustBackendAndroid ? null, weston ? null, waypipe ? null, androidSDK ? null, androidSrc ? null, ... }:
 
 # Central entry point for Wawona applications.
-# Returns: { ios, ipados, macos, watchos, android, linux, linux-vm, wearos, visionos, common, generators }
+# Returns: { ios, ipados, macos, watchos, android, linux, linux-vm, visionos, common, generators }
 
 let
   # Dependency version strings (registry entries in wwn-toolchain / wwn-* repos)
@@ -44,10 +44,6 @@ let
     };
 
     linux-vm = pkgs.callPackage ./linux-vm.nix {
-      inherit wawonaVersion;
-    };
-
-    wearos = pkgs.callPackage ./wearos.nix {
       inherit wawonaVersion;
     };
 
