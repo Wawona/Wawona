@@ -2441,12 +2441,7 @@ for user_scheme_dir in user_scheme_dirs:
     user_mgmt.write_bytes(plistlib.dumps(user_data))
 EOF_PY
 
-    if [ -d "Wawona.xcodeproj" ]; then
-      rm -rf "$PROJECT_DIR"
-      cp -R "Wawona.xcodeproj" "$PROJECT_DIR"
-    fi
     echo "Wawona.xcodeproj generated at ./Wawona.xcodeproj (repo root)."
-    echo "Mirror copy written to $PROJECT_DIR."
   '';
 
   # Script to generate AND open project
@@ -2471,7 +2466,7 @@ EOF_PY
     cd "$REPO_ROOT"
     ${generateScript}/bin/xcodegen
     
-    PROJECT_DIR="dependencies/generators/xcodegen/output/Wawona.xcodeproj"
+    PROJECT_DIR="Wawona.xcodeproj"
     echo "Opening $PROJECT_DIR..."
     if [ -d "$PROJECT_DIR" ]; then
       open "$PROJECT_DIR"
