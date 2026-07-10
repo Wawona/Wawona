@@ -1721,35 +1721,7 @@ PLIST
               echo "Relocated $(ls "$FW"/*.dylib 2>/dev/null | wc -l | tr -d ' ') dylib(s) into Frameworks"
               rm -rf "$RELOC_TMP"
 
-              # Re-seal the whole app envelope. This script mutates nested
-              # Mach-Os after Xcode has planned signing; on incremental builds
-              # Xcode's own CodeSign step may not re-run, leaving CodeResources
-              # stale ("a sealed resource is missing or invalid"). Resealing the
-              # bundle here guarantees the outer signature matches the current
-              # (relocated + individually signed) contents. A subsequent Xcode
-              # CodeSign, when it does run, simply reseals the identical tree.
-              if [ "''${CODE_SIGNING_ALLOWED:-YES}" = "YES" ] && [ -n "''${CODESIGNING_FOLDER_PATH:-}" ]; then
-                reseal_identity="''${EXPANDED_CODE_SIGN_IDENTITY:-}"
-                [ -z "$reseal_identity" ] && reseal_identity="-"
-                reseal_ent=""
-                for cand in \
-                  "''${TARGET_TEMP_DIR:-}/$FULL_PRODUCT_NAME.xcent" \
-                  "''${TARGET_TEMP_DIR:-}/$PRODUCT_NAME.app.xcent" \
-                  "$SRCROOT/''${CODE_SIGN_ENTITLEMENTS:-}"; do
-                  if [ -n "$cand" ] && [ -f "$cand" ]; then reseal_ent="$cand"; break; fi
-                done
-                if [ -n "$reseal_ent" ]; then
-                  /usr/bin/codesign --force --timestamp=none --sign "$reseal_identity" \
-                    --entitlements "$reseal_ent" --generate-entitlement-der \
-                    "$CODESIGNING_FOLDER_PATH" 2>/dev/null \
-                    || /usr/bin/codesign --force --timestamp=none --sign - "$CODESIGNING_FOLDER_PATH"
-                else
-                  /usr/bin/codesign --force --timestamp=none --sign "$reseal_identity" \
-                    "$CODESIGNING_FOLDER_PATH" 2>/dev/null \
-                    || /usr/bin/codesign --force --timestamp=none --sign - "$CODESIGNING_FOLDER_PATH"
-                fi
-                echo "Re-sealed app bundle after dylib relocation"
-              fi
+
             '';
           }
         ];
