@@ -1733,6 +1733,8 @@ PLIST
             CODE_SIGN_ENTITLEMENTS = "src/resources/app-bundle/Wawona-iCloud.entitlements";
             SUPPORTED_PLATFORMS = "macosx";
             CODE_SIGN_STYLE = "Automatic";
+            EAGER_LINKING = "NO";
+            ENABLE_DEBUG_DYLIB = "NO";
             DEAD_CODE_STRIPPING = "YES";
             HEADER_SEARCH_PATHS = [
               "$(inherited)"
