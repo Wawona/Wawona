@@ -1548,6 +1548,17 @@ PLIST
                 for _so in "$RES_DEST/lib/weston"/*.dylib; do sign_bin "$_so"; done
                 echo "Bundled lib/weston modules"
               fi
+              
+              ANGLE_STORE="${strip (macosDeps.angle or null)}"
+              if [ -n "$ANGLE_STORE" ] && [ -d "$ANGLE_STORE/vulkan" ]; then
+                mkdir -p "$RES_DEST/vulkan"
+                cp -R "$ANGLE_STORE/vulkan/." "$RES_DEST/vulkan/"
+                chmod -R u+w "$RES_DEST/vulkan"
+                for _so in "$RES_DEST/vulkan/icd.d"/*.dylib 2>/dev/null; do
+                  [ -f "$_so" ] && sign_bin "$_so"
+                done
+                echo "Bundled ANGLE Vulkan ICDs"
+              fi
               if [ -d "$WESTON_STORE/lib/libweston-13" ]; then
                 mkdir -p "$RES_DEST/lib/libweston-13"
                 cp -R "$WESTON_STORE/lib/libweston-13/." "$RES_DEST/lib/libweston-13/"
