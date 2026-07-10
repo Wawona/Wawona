@@ -1728,10 +1728,9 @@ PLIST
             INFOPLIST_FILE = "src/resources/app-bundle/Info.plist";
             GENERATE_INFOPLIST_FILE = "NO";
             PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.Wawona";
-            CODE_SIGN_ENTITLEMENTS = "src/resources/app-bundle/Wawona-iCloud.entitlements";
             SUPPORTED_PLATFORMS = "macosx";
             CODE_SIGN_STYLE = "Automatic";
-            CODE_SIGN_INJECT_BASE_ENTITLEMENTS = "NO";
+            CODE_SIGN_INJECT_BASE_ENTITLEMENTS = "YES";
             EAGER_LINKING = "NO";
             ENABLE_DEBUG_DYLIB = "NO";
             DEAD_CODE_STRIPPING = "YES";
@@ -1771,6 +1770,14 @@ PLIST
               "USE_RUST_CORE=1"
               "PRODUCT_BUNDLE_IDENTIFIER=\\\"com.aspauldingcode.Wawona\\\""
             ] ++ versionDefs;
+          };
+          configs = {
+            Release = {
+              CODE_SIGN_ENTITLEMENTS = "src/resources/app-bundle/Wawona-iCloud.entitlements";
+            };
+            Debug = {
+              CODE_SIGN_IDENTITY = "-";
+            };
           };
         };
         dependencies = [
