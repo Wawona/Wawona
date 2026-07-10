@@ -65,7 +65,7 @@ let
   derivedRustLib = "$(DERIVED_FILE_DIR)/libwawona.a";
   derivedZshLib = "$(DERIVED_FILE_DIR)/libwawona-zsh.a";
   # Prebuild symlinks the active SDK's archives here (see scripts/xcode-prebuild.sh).
-  mobileZshLdflags = [ derivedZshLib ];
+  mobileZshLdflags = [ "-Wl,-ld_classic" "-Wl,-multiply_defined,suppress" derivedZshLib ];
   # Pin matches weston-compositor-apple-mobile (13.0.0). Do not use pkgs.weston on
   # Darwin — it pulls pipewire and fails eval (valgrind marked broken in nixpkgs).
   westonTerminalPng = pkgs.fetchurl {
@@ -118,10 +118,14 @@ let
   };
   # Apple mobile also force_loads libweston-13.a (toytoolkit); lazy compositor
   # linking avoids duplicate generated protocol symbols (tearing-control-v1, etc.).
-  westonCompositorLdflagsAppleMobile = deps: import westonCompositorLdflagsNix {
-    inherit lib deps;
-    forceLoadCompositor = false;
-  };
+  westonCompositorLdflagsAppleMobile = deps:
+    let
+      flags = import westonCompositorLdflagsNix {
+        inherit lib deps;
+        forceLoadCompositor = false;
+      };
+    in
+      map (x: if x == "-Wl,-u,weston_compositor_main" then "-Wl,-u,_weston_compositor_main" else x) flags;
   mobileBaseLdflags = deps: import mobileBaseLdflagsNix { inherit lib deps; };
   ilandGlLdflags = { deps, simulator ? false }: import ilandGlLdflagsNix {
     inherit lib deps simulator;
@@ -413,8 +417,8 @@ let
             "-llz4"
             "-lepoll-shim"
           ] ++ (mobileBaseLdflags deps) ++ westonToytoolkitLdflagsAppleMobile deps ++ westonCompositorLdflagsAppleMobile deps
-          ++ (ilandGlLdflags { inherit deps; simulator = false; }) ++ footLdflags deps ++ fastfetchLdflags deps ++ neovimLdflags deps ++ extraDeviceLdflags
-          ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
+          ++ (ilandGlLdflags { inherit deps; simulator = false; }) ++ footLdflags deps ++ extraDeviceLdflags
+          ++ [ derivedRustLib ] ++ finalCxxLdflags;
           "OTHER_LDFLAGS[sdk=${simSdk}*]" = [
             "$(inherited)"
           ] ++ ios26SwiftUiClientLdflags ++ [
@@ -433,8 +437,8 @@ let
             "-llz4"
             "-lepoll-shim"
           ] ++ (mobileBaseLdflags simDeps) ++ westonToytoolkitLdflagsAppleMobile simDeps ++ westonCompositorLdflagsAppleMobile simDeps
-          ++ (ilandGlLdflags { deps = simDeps; simulator = true; }) ++ footLdflags simDeps ++ fastfetchLdflags simDeps ++ neovimLdflags simDeps ++ extraSimLdflags
-          ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
+          ++ (ilandGlLdflags { deps = simDeps; simulator = true; }) ++ footLdflags simDeps ++ extraSimLdflags
+          ++ [ derivedRustLib ] ++ finalCxxLdflags;
           GCC_PREPROCESSOR_DEFINITIONS = [ "$(inherited)" ] ++ extraDefines ++ versionDefs;
         };
       };

@@ -75,11 +75,11 @@ _with_zsh=0
 case "${TARGET_NAME:-}" in
   Wawona-iOS)
     BACKENDS=(wawona-ios-backend wawona-ios-sim-backend)
-    _with_zsh=1
+    _with_zsh=0
     ;;
   Wawona-iPadOS)
     BACKENDS=(wawona-ipados-backend wawona-ipados-sim-backend)
-    _with_zsh=1
+    _with_zsh=0
     ;;
   Wawona-macOS)
     BACKENDS=(wawona-macos-backend)
