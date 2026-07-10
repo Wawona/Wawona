@@ -53,10 +53,16 @@ let
     // lib.optionalAttrs
       (variant == "mobile" || variant == "tv" || variant == "watch" || variant == "vision")
       {
+        # In-process zsh stack across the Apple family. coreutils is size-gated
+        # off watchOS in rust-backend-c2n.nix, but the shell itself ships
+        # everywhere (constrained UX on watch/tv is applied at the view layer).
         "wawona-pty" = buildFn "wawona-pty" { inherit simulator; };
         "wawona-rootfs" = buildFn "wawona-rootfs" { inherit simulator; };
+        zsh = buildFn "zsh" { inherit simulator; };
       }
     // lib.optionalAttrs (variant == "mobile") {
+        fastfetch = buildFn "fastfetch" { inherit simulator; };
+        neovim = buildFn "neovim" { inherit simulator; };
         "neovim-rootfs" = buildFn "neovim-rootfs" { inherit simulator; };
       }
     // lib.optionalAttrs (variant == "vision") {

@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Realize Nix Rust (and optional zsh) archives for the active Xcode target/SDK.
-# Symlinks into $DERIVED_FILE_DIR so OTHER_LDFLAGS paths exist before linking.
+# Copies into $DERIVED_FILE_DIR so OTHER_LDFLAGS paths exist before linking.
+# Static archives that carry colliding internal symbols (zsh, neovim, openssh)
+# are privatised via nmedit so only the public dispatch entry points remain
+# globally visible.  This avoids duplicate-symbol linker errors without
+# resorting to -multiply_defined,suppress (unsupported by ld-prime) or dylibs
+# (App Store non-compliant).
 set -euo pipefail
 
 derived="${DERIVED_FILE_DIR:?DERIVED_FILE_DIR is unset — is this script running as an Xcode build phase?}"
@@ -75,11 +80,11 @@ _with_zsh=0
 case "${TARGET_NAME:-}" in
   Wawona-iOS)
     BACKENDS=(wawona-ios-backend wawona-ios-sim-backend)
-    _with_zsh=0
+    _with_zsh=1
     ;;
   Wawona-iPadOS)
     BACKENDS=(wawona-ipados-backend wawona-ipados-sim-backend)
-    _with_zsh=0
+    _with_zsh=1
     ;;
   Wawona-macOS)
     BACKENDS=(wawona-macos-backend)
@@ -143,28 +148,107 @@ for _dep in "${LINK_DEPS[@]:-}"; do
   "$NIX" build --no-link "${_nix_flags[@]}" "$FLAKE_REF#$_dep"
 done
 
+# ---------------------------------------------------------------------------
+# privatize_lib — merge a static archive into a single relocatable .o, strip
+# all global symbols except the listed exports, and repackage as .a.
+# This prevents duplicate-symbol collisions when linking multiple UNIX
+# toolchains (zsh, neovim, openssh) into a single iOS binary.
+#
+# Usage: privatize_lib <src.a> <dst.a> <arch> <platform> <min_ver> <export_sym> [<export_sym> ...]
+# ---------------------------------------------------------------------------
+privatize_lib() {
+  local src="$1" dst="$2" arch="$3" platform="$4" min_ver="$5"
+  shift 5
+
+  local tmp_dir
+  tmp_dir="$(mktemp -d)"
+  local merged_o="$tmp_dir/merged.o"
+  local exports="$tmp_dir/exports.txt"
+
+  for sym in "$@"; do
+    echo "$sym" >> "$exports"
+  done
+
+  # Merge every .o in the archive into a single relocatable
+  ld -r -arch "$arch" -platform_version "$platform" "$min_ver" "$min_ver" \
+    -all_load "$src" -o "$merged_o" 2>/dev/null || \
+  ld -r -arch "$arch" -platform_version "$platform" "$min_ver" "$min_ver" \
+    -all_load "$src" -o "$merged_o"
+
+  # Make everything private except the public API
+  nmedit -s "$exports" "$merged_o"
+
+  # Repackage
+  libtool -static "$merged_o" -o "$dst"
+
+  rm -rf "$tmp_dir"
+  echo "Privatized $(basename "$src") -> $(basename "$dst") (exports: $*)"
+}
+
+# ---------------------------------------------------------------------------
+# Determine arch and platform for ld -r / nmedit
+# ---------------------------------------------------------------------------
+_arch="arm64"
+_ld_platform="ios"
+_min_ver="17.0"
+case "$_sdk" in
+  iphonesimulator*)
+    _ld_platform="ios-simulator"
+    ;;
+  iphoneos*)
+    _ld_platform="ios"
+    ;;
+  *)
+    _ld_platform="ios"
+    ;;
+esac
+
 if [ "$_with_zsh" = "1" ]; then
   _zsh_attr="zsh-ios"
   case "$_sdk" in
     *simulator*) _zsh_attr="zsh-ios-sim" ;;
   esac
   zsh_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_zsh_attr")"
-  ln -sfn "$zsh_out/lib/libwawona-zsh.a" "$derived/libwawona-zsh.a"
-  echo "Linked $derived/libwawona-zsh.a -> $zsh_out/lib/libwawona-zsh.a"
+  privatize_lib "$zsh_out/lib/libwawona-zsh.a" "$derived/libwawona-zsh.a" \
+    "$_arch" "$_ld_platform" "$_min_ver" \
+    _wawona_zsh_main
+  echo "Privatized $derived/libwawona-zsh.a (from $zsh_out)"
 
   _nvim_attr="neovim-ios-device"
   case "$_sdk" in
     *simulator*) _nvim_attr="neovim-ios" ;;
   esac
   nvim_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_nvim_attr")"
-  ln -sfn "$nvim_out/lib/libwawona-neovim.a" "$derived/libwawona-neovim.a"
-  echo "Linked $derived/libwawona-neovim.a -> $nvim_out/lib/libwawona-neovim.a"
+  privatize_lib "$nvim_out/lib/libwawona-neovim.a" "$derived/libwawona-neovim.a" \
+    "$_arch" "$_ld_platform" "$_min_ver" \
+    _wawona_nvim_main
+  echo "Privatized $derived/libwawona-neovim.a (from $nvim_out)"
 
   _ff_attr="fastfetch-ios-device"
   case "$_sdk" in
     *simulator*) _ff_attr="fastfetch-ios" ;;
   esac
   ff_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_ff_attr")"
-  ln -sfn "$ff_out/lib/libfastfetch.a" "$derived/libfastfetch.a"
-  echo "Linked $derived/libfastfetch.a -> $ff_out/lib/libfastfetch.a"
+  privatize_lib "$ff_out/lib/libfastfetch.a" "$derived/libfastfetch.a" \
+    "$_arch" "$_ld_platform" "$_min_ver" \
+    _fastfetch_main
+  echo "Privatized $derived/libfastfetch.a (from $ff_out)"
+
+  # openssh: privatize libssh-inprocess.a to avoid collisions with libssh2 and
+  # neovim (_chachapoly_*, _xmalloc, _xcalloc, _log_init, _match_user, etc.)
+  # openssh is built as part of iosDeps (not a standalone flake attr), so we
+  # find its archive from the .nix-deps symlink farm or the active backend's
+  # build closure.
+  _ssh_lib=""
+  if [ -d "${SRCROOT:-.}/.nix-deps/lib" ]; then
+    _ssh_lib="$(find "${SRCROOT:-.}/.nix-deps/lib" -name "libssh-inprocess.a" -path "*openssh*" 2>/dev/null | head -n 1)"
+  fi
+  if [ -n "$_ssh_lib" ] && [ -f "$_ssh_lib" ]; then
+    privatize_lib "$_ssh_lib" "$derived/libssh-inprocess.a" \
+      "$_arch" "$_ld_platform" "$_min_ver" \
+      _ssh_main _ssh_keygen_main _scp_main _wwn_openssh_keygen_real_main
+    echo "Privatized $derived/libssh-inprocess.a (from $_ssh_lib)"
+  else
+    echo "warning: libssh-inprocess.a not found in .nix-deps; openssh symbols will not be privatized" >&2
+  fi
 fi

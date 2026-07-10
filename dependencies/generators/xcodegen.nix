@@ -64,8 +64,12 @@ let
     else "1";
   derivedRustLib = "$(DERIVED_FILE_DIR)/libwawona.a";
   derivedZshLib = "$(DERIVED_FILE_DIR)/libwawona-zsh.a";
-  # Prebuild symlinks the active SDK's archives here (see scripts/xcode-prebuild.sh).
-  mobileZshLdflags = [ "-Wl,-ld_classic" "-Wl,-multiply_defined,suppress" derivedZshLib ];
+  derivedNvimLib = "$(DERIVED_FILE_DIR)/libwawona-neovim.a";
+  derivedSshLib = "$(DERIVED_FILE_DIR)/libssh-inprocess.a";
+  derivedFfLib = "$(DERIVED_FILE_DIR)/libfastfetch.a";
+  # Prebuild copies and privatises (nmedit) the active SDK's archives here
+  # (see scripts/xcode-prebuild.sh) so internal symbols don't collide.
+  mobileZshLdflags = [ derivedZshLib ];
   # Pin matches weston-compositor-apple-mobile (13.0.0). Do not use pkgs.weston on
   # Darwin — it pulls pipewire and fails eval (valgrind marked broken in nixpkgs).
   westonTerminalPng = pkgs.fetchurl {
@@ -162,11 +166,11 @@ let
         else [ "CoreFoundation" "Foundation" ];
       frameworkFlags = lib.concatMap (f: [ "-framework" f ]) frameworks;
     in if ff == null || !builtins.pathExists libff then [] else
-      [ "-force_load" libff ] ++ frameworkFlags;
+      [ "-force_load" derivedFfLib ] ++ frameworkFlags;
   neovimLdflags = deps:
     let libnvim = "${strip (deps.neovim or null)}/lib/libwawona-neovim.a";
     in if (deps.neovim or null) == null || !builtins.pathExists libnvim then [] else [
-      "-force_load" libnvim
+      "-force_load" derivedNvimLib
     ];
   # openssh in-process static lib — provides ssh_main, ssh_keygen_main, scp_main
   # for in-process dispatch on iOS (App Store compliant, no fork/exec).
@@ -176,7 +180,7 @@ let
   opensshInprocessLdflags = deps:
     let libssh = "${strip (deps.openssh or null)}/lib/libssh-inprocess.a";
     in if (deps.openssh or null) == null || !builtins.pathExists libssh then [] else [
-      "-force_load" libssh "-lresolv"
+      "-force_load" derivedSshLib "-lresolv"
     ];
   # Static archives with C++ (ANGLE, Rust backend, fastfetch, …) need libc++
   # after every -force_load block; append once at the end of OTHER_LDFLAGS.
@@ -1011,9 +1015,9 @@ PLIST
                "-lcrypto"
                "-lepoll-shim"
              ] ++ westonToytoolkitLdflagsAppleMobile iosDeps ++ westonCompositorLdflagsAppleMobile iosDeps
-             ++ (ilandGlLdflags { deps = iosDeps; simulator = false; }) ++ footLdflags iosDeps
+             ++ (ilandGlLdflags { deps = iosDeps; simulator = false; }) ++ footLdflags iosDeps ++ fastfetchLdflags iosDeps ++ neovimLdflags iosDeps
              ++ opensshInprocessLdflags iosDeps
-             ++ [ derivedRustLib ] ++ finalCxxLdflags;
+             ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
             "OTHER_LDFLAGS[sdk=iphonesimulator*]" = [
               "$(inherited)"
             ] ++ ios26SwiftUiClientLdflags ++ [
@@ -1042,9 +1046,9 @@ PLIST
               "-lcrypto"
                "-lepoll-shim"
              ] ++ westonToytoolkitLdflagsAppleMobile iosSimDeps ++ westonCompositorLdflagsAppleMobile iosSimDeps
-             ++ (ilandGlLdflags { deps = iosSimDeps; simulator = true; }) ++ footLdflags iosSimDeps
+             ++ (ilandGlLdflags { deps = iosSimDeps; simulator = true; }) ++ footLdflags iosSimDeps ++ fastfetchLdflags iosSimDeps ++ neovimLdflags iosSimDeps
              ++ opensshInprocessLdflags iosSimDeps
-             ++ [ derivedRustLib ] ++ finalCxxLdflags;
+             ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"
@@ -1176,9 +1180,9 @@ PLIST
               "-lcrypto"
               "-lepoll-shim"
             ] ++ westonToytoolkitLdflagsAppleMobile ipadosDeps ++ westonCompositorLdflagsAppleMobile ipadosDeps
-            ++ (ilandGlLdflags { deps = ipadosDeps; simulator = false; }) ++ footLdflags ipadosDeps
+            ++ (ilandGlLdflags { deps = ipadosDeps; simulator = false; }) ++ footLdflags ipadosDeps ++ fastfetchLdflags ipadosDeps ++ neovimLdflags ipadosDeps
             ++ opensshInprocessLdflags ipadosDeps
-            ++ [ derivedRustLib ] ++ finalCxxLdflags;
+            ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
             "OTHER_LDFLAGS[sdk=iphonesimulator*]" = [
               "$(inherited)"
             ] ++ ios26SwiftUiClientLdflags ++ [
@@ -1207,9 +1211,9 @@ PLIST
               "-lcrypto"
               "-lepoll-shim"
             ] ++ westonToytoolkitLdflagsAppleMobile ipadosSimDeps ++ westonCompositorLdflagsAppleMobile ipadosSimDeps
-            ++ (ilandGlLdflags { deps = ipadosSimDeps; simulator = true; }) ++ footLdflags ipadosSimDeps
+            ++ (ilandGlLdflags { deps = ipadosSimDeps; simulator = true; }) ++ footLdflags ipadosSimDeps ++ fastfetchLdflags ipadosSimDeps ++ neovimLdflags ipadosSimDeps
             ++ opensshInprocessLdflags ipadosSimDeps
-            ++ [ derivedRustLib ] ++ finalCxxLdflags;
+            ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"
