@@ -1466,9 +1466,7 @@ PLIST
                 name="$2"
                 if [ -f "$src" ]; then
                   install -m 755 "$src" "$BIN_DEST/$name"
-                  install -m 755 "$src" "$MACOS_DEST/$name"
                   sign_bin "$BIN_DEST/$name"
-                  sign_bin "$MACOS_DEST/$name"
                   echo "Bundled $name"
                 fi
               }

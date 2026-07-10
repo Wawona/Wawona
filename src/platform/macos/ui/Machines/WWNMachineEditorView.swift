@@ -211,14 +211,7 @@ struct WWNMachineEditorView: View {
             Toggle("Swipe Back to Exit Machine", isOn: $swipeBackToCloseEnabled)
           }
 
-          #if os(macOS)
-          sectionCard("Window Behavior", subtitle: "Per-machine window overrides (macOS only).") {
-            Toggle("Always on Top", isOn: $alwaysOnTop)
-            Text("Keeps this machine's window above all other windows, even when it isn't focused. Off by default.")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          }
-          #endif
+
 
           if type == kWWNMachineTypeVirtualMachine {
             virtualMachineSection
@@ -259,6 +252,15 @@ struct WWNMachineEditorView: View {
       }
       #endif
       Toggle("Force Server-Side Decorations", isOn: $forceServerSideDecorations)
+      #if os(macOS)
+      VStack(alignment: .leading, spacing: 2) {
+        Toggle("Always on Top", isOn: $alwaysOnTop)
+        Text("Keeps this machine's window above all other windows, even when it isn't focused.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .padding(.leading, 24)
+      }
+      #endif
       Toggle("Auto Scale", isOn: $autoScale)
       #if os(iOS) || os(tvOS)
       Toggle("Respect Safe Area", isOn: $respectSafeArea)
