@@ -204,13 +204,8 @@ let
     esac
     BUNDLE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
     DEST="$BUNDLE/share/X11/xkb"
-    mkdir -p "$(dirname "$DEST")"
-    if [ "''${PLATFORM_NAME:-}" = "iphonesimulator" ] || [ "''${PLATFORM_NAME:-}" = "macosx" ]; then
-      ln -sfn "${pkgs.xkeyboard_config}/share/X11/xkb" "$DEST"
-    else
-      mkdir -p "$DEST"
-      cp -R "${pkgs.xkeyboard_config}/share/X11/xkb/." "$DEST/"
-    fi
+    mkdir -p "$DEST"
+    cp -R "${pkgs.xkeyboard_config}/share/X11/xkb/." "$DEST/"
     echo "Embedded xkeyboard-config into $DEST"
   '';
   # Bundle TrueType fonts so the in-process weston toytoolkit clients
@@ -230,13 +225,8 @@ let
     mkdir -p "$DEST"
     # Nix store font paths are often symlinks; iOS installd rejects symlinks in .app
     # bundles (MIInstallerErrorDomain Code 70). -L dereferences to real files.
-    mkdir -p "$(dirname "$DEST")"
-    if [ "''${PLATFORM_NAME:-}" = "iphonesimulator" ] || [ "''${PLATFORM_NAME:-}" = "macosx" ]; then
-      ln -sfn "${pkgs.dejavu_fonts}/share/fonts" "$DEST"
-    else
-      mkdir -p "$DEST"
-      cp -RL "${pkgs.dejavu_fonts}/share/fonts/." "$DEST/"
-    fi
+    mkdir -p "$DEST"
+    cp -RL "${pkgs.dejavu_fonts}/share/fonts/." "$DEST/"
     echo "Embedded DejaVu fonts into $DEST"
   '';
   xcodeUtils = import applePath { inherit lib pkgs TEAM_ID; };
@@ -603,13 +593,8 @@ PLIST
     done
     CURSOR_SRC="${pkgs.adwaita-icon-theme}/share/icons/Adwaita/cursors"
     if [ -d "$CURSOR_SRC" ]; then
-      mkdir -p "$(dirname "$ICONS_DEST")"
-      if [ "''${PLATFORM_NAME:-}" = "iphonesimulator" ] || [ "''${PLATFORM_NAME:-}" = "macosx" ]; then
-        ln -sfn "$CURSOR_SRC" "$ICONS_DEST"
-      else
-        mkdir -p "$ICONS_DEST"
-        cp -RL "$CURSOR_SRC/." "$ICONS_DEST/"
-      fi
+      mkdir -p "$ICONS_DEST"
+      cp -RL "$CURSOR_SRC/." "$ICONS_DEST/"
       echo "Embedded Adwaita cursors into $ICONS_DEST"
     else
       echo "warning: Adwaita cursors not found at $CURSOR_SRC" >&2
@@ -654,13 +639,8 @@ PLIST
     BUNDLE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
     DEST="$BUNDLE/wawona-rootfs"
     rm -rf "$DEST"
-    mkdir -p "$(dirname "$DEST")"
-    if [ "''${PLATFORM_NAME:-}" = "iphonesimulator" ] || [ "''${PLATFORM_NAME:-}" = "macosx" ]; then
-      ln -sfn "$rootfsSrc" "$DEST"
-    else
-      mkdir -p "$DEST"
-      cp -R "$rootfsSrc/." "$DEST/"
-    fi
+    mkdir -p "$DEST"
+    cp -R "$rootfsSrc/." "$DEST/"
     echo "Embedded wawona-rootfs into $DEST (template $(cat "$DEST/etc/zsh/.template-version" 2>/dev/null || echo unknown))"
   '';
 
@@ -782,13 +762,8 @@ PLIST
     BUNDLE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
     DEST="$BUNDLE/neovim-rootfs"
     rm -rf "$DEST"
-    mkdir -p "$(dirname "$DEST")"
-    if [ "''${PLATFORM_NAME:-}" = "iphonesimulator" ] || [ "''${PLATFORM_NAME:-}" = "macosx" ]; then
-      ln -sfn "$rootfsSrc" "$DEST"
-    else
-      mkdir -p "$DEST"
-      cp -R "$rootfsSrc/." "$DEST/"
-    fi
+    mkdir -p "$DEST"
+    cp -R "$rootfsSrc/." "$DEST/"
     echo "Embedded neovim-rootfs into $DEST"
   '';
 
