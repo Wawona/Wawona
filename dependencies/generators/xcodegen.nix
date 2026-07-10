@@ -1554,7 +1554,7 @@ PLIST
                 mkdir -p "$RES_DEST/vulkan"
                 cp -R "$ANGLE_STORE/vulkan/." "$RES_DEST/vulkan/"
                 chmod -R u+w "$RES_DEST/vulkan"
-                for _so in "$RES_DEST/vulkan/icd.d"/*.dylib 2>/dev/null; do
+                for _so in "$RES_DEST/vulkan/icd.d"/*.dylib; do
                   [ -f "$_so" ] && sign_bin "$_so"
                 done
                 echo "Bundled ANGLE Vulkan ICDs"
