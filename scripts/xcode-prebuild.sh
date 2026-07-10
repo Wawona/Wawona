@@ -138,7 +138,7 @@ case "${TARGET_NAME:-}" in
     LINK_DEPS=(kmscube)
     ;;
 esac
-for _dep in "${LINK_DEPS[@]}"; do
+for _dep in "${LINK_DEPS[@]:-}"; do
   echo "Realizing link-only dep: $_dep"
   "$NIX" build --no-link "${_nix_flags[@]}" "$FLAKE_REF#$_dep"
 done
