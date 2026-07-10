@@ -8,6 +8,7 @@
   weston,
   foot ? null,
   niri ? null,
+  fuzzel ? null,
   # anowaW app-bridge static lib (libanowaw.a + anowaw_mac_shim.o) + headers,
   # from `toolchains.buildForMacOS "anowaw"`. When null the compositor still
   # builds; WWNAnowaWController falls back to its no-op stub (see common.nix).
@@ -1034,6 +1035,19 @@ GEN_HEADER
             fi
             '' else ''
             echo "Warning: niri not provided, skipping niri bundling"
+            ''}
+
+            # Bundle fuzzel (niri Mod+D launcher)
+            ${if fuzzel != null then ''
+            if [ -f "${fuzzel}/bin/fuzzel" ]; then
+              cp "${fuzzel}/bin/fuzzel" $out/Applications/Wawona.app/Contents/Resources/bin/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/fuzzel
+              echo "DEBUG: Bundled fuzzel launcher"
+            else
+              echo "Warning: fuzzel binary not found at ${fuzzel}/bin/fuzzel"
+            fi
+            '' else ''
+            echo "Warning: fuzzel not provided, skipping fuzzel bundling"
             ''}
 
             # Bundle fastfetch

@@ -122,6 +122,21 @@ active_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAK
 ln -sfn "$active_out/lib/libwawona.a" "$derived/libwawona.a"
 echo "Linked $derived/libwawona.a -> $active_out/lib/libwawona.a"
 
+# Realize link-only native deps that the app links by absolute /nix/store path
+# (OTHER_LDFLAGS), but that are NOT in the Rust backend's build closure. These
+# impure (__noChroot) derivations are not in the binary cache, so unless they
+# are built here the linker fails with "Library not found" (e.g. kmscube-macos).
+LINK_DEPS=()
+case "${TARGET_NAME:-}" in
+  Wawona-macOS)
+    LINK_DEPS=(kmscube)
+    ;;
+esac
+for _dep in "${LINK_DEPS[@]}"; do
+  echo "Realizing link-only dep: $_dep"
+  "$NIX" build --no-link "${_nix_flags[@]}" "$FLAKE_REF#$_dep"
+done
+
 if [ "$_with_zsh" = "1" ]; then
   _zsh_attr="zsh-ios"
   case "$_sdk" in

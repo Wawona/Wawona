@@ -1609,6 +1609,9 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     // the Vulkan loader at the bundled ICD (kosmickrisp or MoltenVK) so
     // eglInitialize succeeds. Mirror the app's own ICD selection.
     const char *icd = getenv("VK_ICD_FILENAMES");
+    if (!icd || !icd[0]) {
+      icd = getenv("VK_DRIVER_FILES");
+    }
     if (icd && icd[0]) {
       env[@"VK_ICD_FILENAMES"] = @(icd);
       env[@"VK_DRIVER_FILES"] = @(icd);
@@ -1620,6 +1623,22 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
         env[@"VK_ICD_FILENAMES"] = icdJson;
         env[@"VK_DRIVER_FILES"] = icdJson;
       }
+    }
+    // Bundled ANGLE/MoltenVK live in Contents/Frameworks. niri links
+    // libwayland-egl but dlopen's libEGL at runtime; without this path
+    // eglInitialize fails and niri panics in nested backend init.
+    // Mirrors scripts/niri-smoke-macos.sh and macos.nix bundle layout.
+    NSString *frameworksDir = [[[NSBundle mainBundle] bundlePath]
+        stringByAppendingPathComponent:@"Contents/Frameworks"];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:frameworksDir]) {
+      env[@"DYLD_LIBRARY_PATH"] = frameworksDir;
+    }
+    // niri spawns fuzzel via `spawn "fuzzel"`; put bundled helpers on PATH.
+    NSString *bundleBin = [[[NSBundle mainBundle] bundlePath]
+        stringByAppendingPathComponent:@"Contents/Resources/bin"];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:bundleBin]) {
+      NSString *path = env[@"PATH"] ?: @"/usr/bin:/bin:/usr/sbin:/sbin";
+      env[@"PATH"] = [NSString stringWithFormat:@"%@:%@", bundleBin, path];
     }
   }
   task.environment = env;

@@ -13,7 +13,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, readonly) int status;
 
 typedef int (*WWNQemuProcessEntry)(
-    WWNQemuProcess *process, int argc, const char *argv[], const char *envp[]);
+    WWNQemuProcess *process, int argc, const char *_Nullable *_Nullable argv,
+    const char *_Nullable *_Nullable envp);
 
 @property(nonatomic) WWNQemuProcessEntry entry;
 

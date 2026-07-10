@@ -548,6 +548,33 @@ pub mod smithay_runtime {
                         model: output_state.name.clone(),
                     },
                 );
+                // Establish a current + preferred mode BEFORE exposing the
+                // global. Without a current mode, smithay's Output sends
+                // geometry/scale but never a wl_output.mode event, so clients
+                // that require modes (notably weston's nested wayland-backend,
+                // which reports "No valid modes found" and skips the output)
+                // cannot create an output. wl_output.mode carries physical
+                // pixels (logical * scale); refresh stays in mHz.
+                let scale_int = if output_state.scale < 1.0 {
+                    1
+                } else {
+                    output_state.scale.round() as i32
+                };
+                let mode = smithay::output::Mode {
+                    size: (
+                        (output_state.width as f32 * output_state.scale).round() as i32,
+                        (output_state.height as f32 * output_state.scale).round() as i32,
+                    )
+                        .into(),
+                    refresh: output_state.refresh as i32,
+                };
+                output.change_current_state(
+                    Some(mode),
+                    Some(smithay::utils::Transform::Normal),
+                    Some(smithay::output::Scale::Integer(scale_int)),
+                    None,
+                );
+                output.set_preferred(mode);
                 let _ = output.create_global::<CompositorState>(dh);
                 state.smithay_runtime.smithay_outputs.push(output);
             }

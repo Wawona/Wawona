@@ -31,6 +31,8 @@
   macosNeovim ? null,
   macosZsh ? null,
   macosKmscube ? null,
+  macosNiri ? null,
+  macosFuzzel ? null,
   # Bundled mobile VM guest (kernel + rootfs.img) and iOS-TCI QEMU engine sysroot.
   mobileGuestArtifacts ? null,
   mobileVmEngine ? null,
@@ -1394,6 +1396,27 @@ PLIST
               NEOVIM_BIN="${strip macosNeovim}/bin"
               ZSH_BIN="${strip macosZsh}/bin"
               KMSCUBE_BIN="${strip macosKmscube}/bin"
+              NIRI_BIN="${strip macosNiri}/bin"
+              NIRI_CFG="${strip macosNiri}/share/niri/default-config.kdl"
+              FUZZEL_BIN="${strip macosFuzzel}/bin"
+
+              # Bundled helper binaries are copied out of the read-only Nix
+              # store, so they carry no signature valid for this app. The final
+              # CodeSign phase seals every nested Mach-O and aborts with "code
+              # object is not signed at all" unless each one is signed here.
+              # Use the target's resolved identity when signing is enabled,
+              # otherwise ad-hoc so the bundle still seals for local runs.
+              sign_bin() {
+                target="$1"
+                [ -f "$target" ] || return 0
+                if [ "''${CODE_SIGNING_ALLOWED:-YES}" != "YES" ]; then
+                  return 0
+                fi
+                identity="''${EXPANDED_CODE_SIGN_IDENTITY:-}"
+                if [ -z "$identity" ]; then identity="-"; fi
+                /usr/bin/codesign --force --timestamp=none --sign "$identity" "$target" 2>/dev/null \
+                  || /usr/bin/codesign --force --timestamp=none --sign - "$target"
+              }
 
               bundle_bin() {
                 src="$1"
@@ -1401,6 +1424,8 @@ PLIST
                 if [ -f "$src" ]; then
                   install -m 755 "$src" "$BIN_DEST/$name"
                   install -m 755 "$src" "$MACOS_DEST/$name"
+                  sign_bin "$BIN_DEST/$name"
+                  sign_bin "$MACOS_DEST/$name"
                   echo "Bundled $name"
                 fi
               }
@@ -1439,6 +1464,234 @@ PLIST
               bundle_bin "$NEOVIM_BIN/nvim" "vim"
               bundle_bin "$ZSH_BIN/zsh" "zsh"
               bundle_bin "$KMSCUBE_BIN/kmscube" "kmscube"
+
+              # niri (wwn-niri): nested scrollable-tiling compositor. Ship the
+              # binary plus its read-only KDL config, resolved at runtime via
+              # WAWONA_SHARE_ROOT (Contents/Resources/share/niri).
+              bundle_bin "$NIRI_BIN/niri" "niri"
+              if [ -f "$NIRI_CFG" ]; then
+                SHARE_NIRI="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources/share/niri"
+                mkdir -p "$SHARE_NIRI"
+                install -m 644 "$NIRI_CFG" "$SHARE_NIRI/default-config.kdl"
+                echo "Bundled niri default-config.kdl"
+              fi
+
+              # fuzzel (wwn-niri): niri's Mod+D launcher; must be on PATH when
+              # niri spawns child processes (see WWNWaypipeRunner niri env).
+              bundle_bin "$FUZZEL_BIN/fuzzel" "fuzzel"
+
+              # Weston nested compositor runtime assets. The weston binaries are
+              # bundled above, but nested weston also needs its data (PNGs), shell
+              # + backend modules, TrueType fonts, and a cursor theme. The app
+              # refuses to launch nested weston when WESTON_DATA_DIR /
+              # WESTON_MODULE_DIR / WESTON_BACKEND_DIR are unset, and those are
+              # derived at runtime from these bundle paths (Resources/share/weston,
+              # Resources/lib/weston, Resources/lib/libweston-13). Mirrors macos.nix.
+              WESTON_STORE="${strip macosWeston}"
+              RES_DEST="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources"
+              if [ -d "$WESTON_STORE/share/weston" ]; then
+                mkdir -p "$RES_DEST/share/weston"
+                cp -R "$WESTON_STORE/share/weston/." "$RES_DEST/share/weston/"
+                chmod -R u+w "$RES_DEST/share/weston"
+                if [ ! -f "$RES_DEST/share/weston/terminal.png" ] && [ -f "$RES_DEST/share/weston/icon_terminal.png" ]; then
+                  ln -sf icon_terminal.png "$RES_DEST/share/weston/terminal.png"
+                fi
+                echo "Bundled share/weston assets"
+              fi
+              if [ -d "$WESTON_STORE/lib/weston" ]; then
+                mkdir -p "$RES_DEST/lib/weston"
+                cp -R "$WESTON_STORE/lib/weston/." "$RES_DEST/lib/weston/"
+                chmod -R u+w "$RES_DEST/lib/weston"
+                for _so in "$RES_DEST/lib/weston"/*.dylib; do sign_bin "$_so"; done
+                echo "Bundled lib/weston modules"
+              fi
+              if [ -d "$WESTON_STORE/lib/libweston-13" ]; then
+                mkdir -p "$RES_DEST/lib/libweston-13"
+                cp -R "$WESTON_STORE/lib/libweston-13/." "$RES_DEST/lib/libweston-13/"
+                chmod -R u+w "$RES_DEST/lib/libweston-13"
+                for _so in "$RES_DEST/lib/libweston-13"/*.dylib; do sign_bin "$_so"; done
+                echo "Bundled lib/libweston-13 backends"
+              fi
+              mkdir -p "$RES_DEST/share/fonts"
+              cp -RL "${pkgs.dejavu_fonts}/share/fonts/." "$RES_DEST/share/fonts/"
+              chmod -R u+w "$RES_DEST/share/fonts"
+              echo "Bundled DejaVu fonts"
+              CURSOR_SRC="${pkgs.adwaita-icon-theme}/share/icons/Adwaita/cursors"
+              if [ -d "$CURSOR_SRC" ]; then
+                mkdir -p "$RES_DEST/share/icons/Adwaita"
+                cp -RL "$CURSOR_SRC" "$RES_DEST/share/icons/Adwaita/cursors"
+                chmod -R u+w "$RES_DEST/share/icons/Adwaita/cursors"
+                echo "Bundled Adwaita cursors"
+              fi
+
+              # ----------------------------------------------------------------
+              # Make the app self-contained: copy every non-system dylib the
+              # app + bundled helpers link by absolute /nix/store path into
+              # Contents/Frameworks and rewrite the load commands to @rpath.
+              # Xcode links Rust/native code against /nix/store/.../*.dylib
+              # (pixman, cairo, pango, glib, openssl, weston, ...). Those paths
+              # exist only on this build machine, so a copied/exported app — or
+              # one run after `nix` GC removes the store path — aborts at launch
+              # with dyld "Library not loaded: .../libpixman-1.0.dylib". The
+              # pure macos.nix build already does this; mirror it here.
+              CONTENTS="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH"
+              FW="$CONTENTS/Frameworks"
+              mkdir -p "$FW"
+
+              # NOTE: Xcode run-script phases execute under /bin/sh, which lacks
+              # process substitution (< <(...)) and needs plain temp-file reads.
+              RELOC_TMP="$(mktemp -d)"
+              MACHO_LIST="$RELOC_TMP/machos"
+              DEP_LIST="$RELOC_TMP/deps"
+              RPATH_LIST="$RELOC_TMP/rpaths"
+
+              is_macho() { file "$1" 2>/dev/null | grep -q 'Mach-O'; }
+
+              write_macho_list() {
+                : > "$MACHO_LIST"
+                raw="$RELOC_TMP/raw"
+                : > "$raw"
+                # find (not shell globs) so hidden Mach-Os like .foot-wrapped are
+                # included. Only real files (not the weston .so symlinks) so each
+                # .dylib target is rewritten once.
+                for d in "$CONTENTS/MacOS" "$CONTENTS/Resources/bin" \
+                         "$CONTENTS/Resources/lib/weston" "$CONTENTS/Resources/lib/libweston-13"; do
+                  [ -d "$d" ] || continue
+                  find "$d" -maxdepth 1 -type f 2>/dev/null >> "$raw"
+                done
+                for f in "$FW"/*.dylib; do
+                  [ -f "$f" ] && echo "$f" >> "$raw"
+                done
+                while IFS= read -r f; do
+                  [ -n "$f" ] && is_macho "$f" && echo "$f" >> "$MACHO_LIST"
+                done < "$raw"
+                sort -u "$MACHO_LIST" -o "$MACHO_LIST"
+              }
+
+              dep_is_bundlable() {
+                case "$1" in
+                  /usr/lib/*|/System/*|/Library/*|@*) return 1 ;;
+                esac
+                return 0
+              }
+
+              # Idempotent rpath add — repeated script runs (incremental builds)
+              # must not accumulate duplicate LC_RPATHs or the bundle bytes keep
+              # changing under Xcode's cached CodeSign.
+              add_rpath_once() {
+                m="$1"; rp="$2"
+                otool -l "$m" 2>/dev/null \
+                  | awk '/cmd LC_RPATH/{getline; getline; if ($1=="path") print $2}' \
+                  | grep -qx "$rp" && return 0
+                install_name_tool -add_rpath "$rp" "$m" 2>/dev/null || true
+              }
+
+              copy_dep() {
+                dep="$1"
+                dep_is_bundlable "$dep" || return 1
+                [ -f "$dep" ] || return 1
+                base="$(basename "$dep")"
+                if [ ! -f "$FW/$base" ]; then
+                  cp -L "$dep" "$FW/$base"
+                  chmod 755 "$FW/$base"
+                  install_name_tool -id "@rpath/$base" "$FW/$base" 2>/dev/null || true
+                  echo "Bundled dylib: $base"
+                  return 0
+                fi
+                return 1
+              }
+
+              round=0
+              while [ "$round" -lt 32 ]; do
+                round=$((round + 1))
+                added=0
+                write_macho_list
+                while IFS= read -r macho; do
+                  [ -n "$macho" ] || continue
+                  otool -L "$macho" 2>/dev/null | awk 'NR>1 {print $1}' | grep '\.dylib' > "$DEP_LIST" || true
+                  while IFS= read -r dep; do
+                    [ -n "$dep" ] || continue
+                    if copy_dep "$dep"; then added=1; fi
+                  done < "$DEP_LIST"
+                done < "$MACHO_LIST"
+                [ "$added" -eq 1 ] || break
+              done
+
+              write_macho_list
+              while IFS= read -r macho; do
+                [ -n "$macho" ] || continue
+                otool -L "$macho" 2>/dev/null | awk 'NR>1 {print $1}' | grep '\.dylib' > "$DEP_LIST" || true
+                while IFS= read -r dep; do
+                  [ -n "$dep" ] || continue
+                  dep_is_bundlable "$dep" || continue
+                  base="$(basename "$dep")"
+                  if [ -f "$FW/$base" ]; then
+                    install_name_tool -change "$dep" "@rpath/$base" "$macho" 2>/dev/null || true
+                  fi
+                done < "$DEP_LIST"
+
+                otool -l "$macho" 2>/dev/null | awk '/cmd LC_RPATH/{getline; getline; if ($1=="path") print $2}' > "$RPATH_LIST" || true
+                while IFS= read -r rpath; do
+                  [ -n "$rpath" ] || continue
+                  # Keep every @-relative rpath (@executable_path/@loader_path) —
+                  # the Debug build needs @executable_path to find the sibling
+                  # Wawona.debug.dylib. Only strip absolute filesystem rpaths
+                  # (e.g. /nix/store/...), which are what break portability.
+                  case "$rpath" in
+                    @*) continue ;;
+                  esac
+                  install_name_tool -delete_rpath "$rpath" "$macho" 2>/dev/null || true
+                done < "$RPATH_LIST"
+                add_rpath_once "$macho" "@executable_path/../Frameworks"
+                case "$macho" in
+                  */Contents/Resources/bin/*)
+                    add_rpath_once "$macho" "@executable_path/../../Frameworks" ;;
+                  */Contents/Resources/lib/*)
+                    add_rpath_once "$macho" "@executable_path/../../../Frameworks" ;;
+                esac
+              done < "$MACHO_LIST"
+
+              # install_name_tool invalidates signatures; re-seal every Mach-O
+              # we touched so the final app CodeSign phase does not abort.
+              for dylib in "$FW"/*.dylib; do
+                [ -f "$dylib" ] && sign_bin "$dylib"
+              done
+              write_macho_list
+              while IFS= read -r macho; do
+                [ -n "$macho" ] && sign_bin "$macho"
+              done < "$MACHO_LIST"
+              echo "Relocated $(ls "$FW"/*.dylib 2>/dev/null | wc -l | tr -d ' ') dylib(s) into Frameworks"
+              rm -rf "$RELOC_TMP"
+
+              # Re-seal the whole app envelope. This script mutates nested
+              # Mach-Os after Xcode has planned signing; on incremental builds
+              # Xcode's own CodeSign step may not re-run, leaving CodeResources
+              # stale ("a sealed resource is missing or invalid"). Resealing the
+              # bundle here guarantees the outer signature matches the current
+              # (relocated + individually signed) contents. A subsequent Xcode
+              # CodeSign, when it does run, simply reseals the identical tree.
+              if [ "''${CODE_SIGNING_ALLOWED:-YES}" = "YES" ] && [ -n "''${CODESIGNING_FOLDER_PATH:-}" ]; then
+                reseal_identity="''${EXPANDED_CODE_SIGN_IDENTITY:-}"
+                [ -z "$reseal_identity" ] && reseal_identity="-"
+                reseal_ent=""
+                for cand in \
+                  "''${TARGET_TEMP_DIR:-}/$FULL_PRODUCT_NAME.xcent" \
+                  "''${TARGET_TEMP_DIR:-}/$PRODUCT_NAME.app.xcent" \
+                  "$SRCROOT/''${CODE_SIGN_ENTITLEMENTS:-}"; do
+                  if [ -n "$cand" ] && [ -f "$cand" ]; then reseal_ent="$cand"; break; fi
+                done
+                if [ -n "$reseal_ent" ]; then
+                  /usr/bin/codesign --force --timestamp=none --sign "$reseal_identity" \
+                    --entitlements "$reseal_ent" --generate-entitlement-der \
+                    "$CODESIGNING_FOLDER_PATH" 2>/dev/null \
+                    || /usr/bin/codesign --force --timestamp=none --sign - "$CODESIGNING_FOLDER_PATH"
+                else
+                  /usr/bin/codesign --force --timestamp=none --sign "$reseal_identity" \
+                    "$CODESIGNING_FOLDER_PATH" 2>/dev/null \
+                    || /usr/bin/codesign --force --timestamp=none --sign - "$CODESIGNING_FOLDER_PATH"
+                fi
+                echo "Re-sealed app bundle after dylib relocation"
+              fi
             '';
           }
         ];
@@ -1471,7 +1724,8 @@ PLIST
               "-L${pkgs.openssl.out}/lib"
               "-lxkbcommon"
               "-lwayland-client"
-              "-lwayland-server"
+              # -lwayland-server is provided by westonCompositorLdflags below;
+              # listing it here too triggers "ignoring duplicate libraries".
               "-lpixman-1"
               "-lssl"
               "-lcrypto"

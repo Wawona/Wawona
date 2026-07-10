@@ -41,7 +41,7 @@ public final class SessionOrchestrator: ObservableObject {
     }
 
     public func markFailed(machineId: String, reason: String = "Connect failed") -> MachineSession {
-        var session = MachineSession(machineId: machineId, status: .error)
+        let session = MachineSession(machineId: machineId, status: .error)
         sessions = sessions + [session]
         _ = reason
         return session

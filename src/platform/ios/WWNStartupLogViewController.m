@@ -15,7 +15,7 @@
  */
 
 #import "WWNStartupLogViewController.h"
-#import "WWNStartupLogger.h"
+#import "../../util/WWNStartupLogger.h"
 
 static NSTimeInterval const kFadeDuration  = 0.4;
 static NSTimeInterval const kAutoTimeout   = 60.0;   /* max time before auto-dismiss */

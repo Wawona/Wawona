@@ -164,7 +164,8 @@ static NSDictionary<NSString *, NSString *> *WWNRootfsHostSnapshot(void) {
     return NO;
   }
 #if TARGET_OS_OSX
-  return [[NSWorkspace sharedWorkspace] openFile:path];
+  return [[NSWorkspace sharedWorkspace]
+      openURL:[NSURL fileURLWithPath:path isDirectory:YES]];
 #elif TARGET_OS_IPHONE
   // No public API to deep-link Files.app to a folder; caller shows instructions.
   return NO;

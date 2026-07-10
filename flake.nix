@@ -608,6 +608,7 @@
                 waypipe = toolchains.buildForMacOS "waypipe" { }; weston = toolchains.buildForMacOS "weston" { };
                 foot = toolchains.buildForMacOS "foot" { };
                 niri = toolchains.buildForMacOS "niri" { };
+                fuzzel = toolchains.buildForMacOS "fuzzel" { };
                 fastfetch = toolchains.buildForMacOS "fastfetch" { };
                 rustBackend = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
                   inherit crate2nix wawonaVersion toolchains nixpkgs;
@@ -811,6 +812,7 @@
             wawonaSrc = src; waypipeSrc = waypipe-patched-watchos; coreutilsSrc = coreutils-patched-ios; platform = "watchos"; inherit wawonaVersion;
           };
           mobilePlatformDeps = import ./dependencies/wawona/mobile-platform-deps.nix { lib = pkgs.lib; inherit pkgs; };
+          macosToytoolkitDeps = import ./dependencies/wawona/macos-toytoolkit-deps.nix { inherit pkgs; };
           macosDeps = {
             libwayland = toolchains.buildForMacOS "libwayland" { };
             xkbcommon = toolchains.buildForMacOS "xkbcommon" { };
@@ -825,7 +827,7 @@
             kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
             "iland-gl-clients" = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
             weston = toolchains.buildForMacOS "weston" { };
-          };
+          } // macosToytoolkitDeps;
           iosDeps = mobilePlatformDeps { buildFn = toolchains.buildForIOS; inherit toolchains; };
           iosSimDeps = mobilePlatformDeps { buildFn = toolchains.buildForIOS; inherit toolchains; simulator = true; };
           ipadosDeps = mobilePlatformDeps { buildFn = toolchains.buildForIPadOS; inherit toolchains; };
@@ -912,6 +914,8 @@
              macosNeovim = null;
              macosZsh = pkgs.zsh;
              macosKmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
+             macosNiri = toolchains.buildForMacOS "niri" { };
+             macosFuzzel = toolchains.buildForMacOS "fuzzel" { };
           };
           xcodegenOutputs = mkXcodegen null;
           xcodegenIosOutputs = mkXcodegen [ "ios" "ipados" ];
@@ -922,6 +926,7 @@
             waypipe = toolchains.buildForMacOS "waypipe" { }; weston = toolchains.buildForMacOS "weston" { };
             foot = toolchains.buildForMacOS "foot" { };
             niri = toolchains.buildForMacOS "niri" { };
+            fuzzel = toolchains.buildForMacOS "fuzzel" { };
             # anowaW app bridge (libanowaw.a + anowaw_mac_shim.o + headers).
             anowaw = toolchains.buildForMacOS "anowaw" { };
             fastfetch = pkgs.fastfetch;
