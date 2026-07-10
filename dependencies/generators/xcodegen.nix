@@ -2264,7 +2264,8 @@ nix_deps_dir = repo_root / ".nix-deps"
 
 # Clean old materialized deps
 if nix_deps_dir.exists():
-    shutil.rmtree(nix_deps_dir)
+    os.system(f"chmod -R u+w '{nix_deps_dir}' 2>/dev/null || true")
+    shutil.rmtree(nix_deps_dir, ignore_errors=True)
 nix_deps_include = nix_deps_dir / "include"
 nix_deps_lib = nix_deps_dir / "lib"
 nix_deps_include.mkdir(parents=True, exist_ok=True)
@@ -2282,9 +2283,11 @@ def process_paths(obj):
         for match, name in matches:
             dep_path = Path(match)
             if (dep_path / "include").exists():
-                os.system(f"ln -sfn '{dep_path}/include' '{nix_deps_include}/{name}'")
+                os.system(f"cp -R '{dep_path}/include' '{nix_deps_include}/{name}'")
+                os.system(f"chmod -R u+w '{nix_deps_include}/{name}'")
             if (dep_path / "lib").exists():
-                os.system(f"ln -sfn '{dep_path}/lib' '{nix_deps_lib}/{name}'")
+                os.system(f"cp -R '{dep_path}/lib' '{nix_deps_lib}/{name}'")
+                os.system(f"chmod -R u+w '{nix_deps_lib}/{name}'")
         obj = re.sub(r'/nix/store/([a-zA-Z0-9]{32}-[a-zA-Z0-9_.-]+)/include', r'$(SRCROOT)/.nix-deps/include/\1', obj)
         obj = re.sub(r'/nix/store/([a-zA-Z0-9]{32}-[a-zA-Z0-9_.-]+)/lib', r'$(SRCROOT)/.nix-deps/lib/\1', obj)
     return obj
