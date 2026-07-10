@@ -1985,7 +1985,6 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       [NSString stringWithFormat:@"--width=%u", outW],
       [NSString stringWithFormat:@"--height=%u", outH],
       [NSString stringWithFormat:@"--scale=%u", hostScale],
-      @"--fullscreen",
       nil];
   if (configPath[0]) {
     [args addObject:[NSString stringWithFormat:@"--config=%s", configPath]];

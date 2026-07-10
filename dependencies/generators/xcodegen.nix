@@ -1547,15 +1547,24 @@ PLIST
                 echo "Bundled lib/weston modules"
               fi
               
-              ANGLE_STORE="${strip (macosDeps.angle or null)}"
-              if [ -n "$ANGLE_STORE" ] && [ -d "$ANGLE_STORE/vulkan" ]; then
-                mkdir -p "$RES_DEST/vulkan"
-                cp -R "$ANGLE_STORE/vulkan/." "$RES_DEST/vulkan/"
+              MOLTENVK_STORE="${strip (pkgs.moltenvk or null)}"
+              if [ -n "$MOLTENVK_STORE" ] && [ -d "$MOLTENVK_STORE/share/vulkan/icd.d" ]; then
+                mkdir -p "$RES_DEST/vulkan/icd.d"
+                cp "$MOLTENVK_STORE/share/vulkan/icd.d/"*.json "$RES_DEST/vulkan/icd.d/"
                 chmod -R u+w "$RES_DEST/vulkan"
-                for _so in "$RES_DEST/vulkan/icd.d"/*.dylib; do
-                  [ -f "$_so" ] && sign_bin "$_so"
+                
+                FRAMEWORKS_DEST="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Frameworks"
+                mkdir -p "$FRAMEWORKS_DEST"
+                for mvk_dylib in "$MOLTENVK_STORE/lib/libMoltenVK"*.dylib; do
+                  if [ -f "$mvk_dylib" ]; then
+                    fname=$(basename "$mvk_dylib")
+                    cp "$mvk_dylib" "$FRAMEWORKS_DEST/"
+                    chmod u+w "$FRAMEWORKS_DEST/$fname"
+                    sign_bin "$FRAMEWORKS_DEST/$fname"
+                    sed -i "" -e "s|\"library_path\":.*|\"library_path\": \"../../../Frameworks/libMoltenVK.dylib\",|" "$RES_DEST/vulkan/icd.d/"*.json
+                  fi
                 done
-                echo "Bundled ANGLE Vulkan ICDs"
+                echo "Bundled MoltenVK Vulkan ICD"
               fi
               if [ -d "$WESTON_STORE/lib/libweston-13" ]; then
                 mkdir -p "$RES_DEST/lib/libweston-13"
@@ -1777,6 +1786,7 @@ PLIST
             };
             Debug = {
               CODE_SIGN_IDENTITY = "-";
+              CODE_SIGN_STYLE = "Manual";
             };
           };
         };
