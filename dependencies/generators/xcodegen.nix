@@ -1606,7 +1606,11 @@ PLIST
                   [ -f "$f" ] && echo "$f" >> "$raw"
                 done
                 while IFS= read -r f; do
-                  [ -n "$f" ] && is_macho "$f" && echo "$f" >> "$MACHO_LIST"
+                  if [ -n "$f" ] && is_macho "$f"; then
+                    if [ "$f" != "$CONTENTS/MacOS/$EXECUTABLE_NAME" ]; then
+                      echo "$f" >> "$MACHO_LIST"
+                    fi
+                  fi
                 done < "$raw"
                 sort -u "$MACHO_LIST" -o "$MACHO_LIST"
               }
@@ -2221,14 +2225,15 @@ PLIST
     OUTPUT_ROOT="dependencies/generators/xcodegen/output"
     PROJECT_DIR="$OUTPUT_ROOT/Wawona.xcodeproj"
 
+    # Preserve Wawona.xcodeproj to maintain Xcode's Index.noindex data.
+    # XcodeGen will gracefully update project.pbxproj in place.
     if [ -d "$PROJECT_DIR" ]; then
       chmod -R u+w "$PROJECT_DIR" 2>/dev/null || true
-      rm -rf "$PROJECT_DIR"
     fi
     if [ -d "Wawona.xcodeproj" ]; then
       chmod -R u+w "Wawona.xcodeproj" 2>/dev/null || true
-      rm -rf "Wawona.xcodeproj"
     fi
+
 
     mkdir -p "$OUTPUT_ROOT"
     # Keep the mutable spec in the current project root so relative source
@@ -2239,7 +2244,6 @@ PLIST
     cp "$SPEC_PATH" "$TMP_SPEC"
     chmod u+w "$TMP_SPEC"
     trap 'rm -f "$TMP_SPEC"' EXIT
-    rm -rf "./Wawona.xcodeproj"
     EFFECTIVE_TEAM_ID="''${TEAM_ID:-}"
     if [ -n "$EFFECTIVE_TEAM_ID" ] && command -v security >/dev/null 2>&1; then
       if ! security find-identity -v -p codesigning 2>/dev/null | grep -q "(''$EFFECTIVE_TEAM_ID)"; then
@@ -2308,7 +2312,7 @@ EOF
     if [ -n "$EFFECTIVE_TEAM_ID" ]; then
       echo "Applied TEAM_ID=$EFFECTIVE_TEAM_ID to Wawona-iOS, Wawona-iPadOS, and Wawona-tvOS."
     fi
-    ${xcodeUtils.xcodeWrapper}/bin/xcode-wrapper ${pkgs.xcodegen}/bin/xcodegen generate --spec "$TMP_SPEC"
+    ${xcodeUtils.xcodeWrapper}/bin/xcode-wrapper ${pkgs.xcodegen}/bin/xcodegen generate --use-cache --spec "$TMP_SPEC"
 
     mkdir -p "Wawona.xcodeproj/xcshareddata/xcschemes"
     cat > "Wawona.xcodeproj/xcshareddata/xcschemes/xcschememanagement.plist" <<'EOF'
