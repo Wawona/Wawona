@@ -236,19 +236,18 @@ if [ "$_with_zsh" = "1" ]; then
 
   # openssh: privatize libssh-inprocess.a to avoid collisions with libssh2 and
   # neovim (_chachapoly_*, _xmalloc, _xcalloc, _log_init, _match_user, etc.)
-  # openssh is built as part of iosDeps (not a standalone flake attr), so we
-  # find its archive from the .nix-deps symlink farm or the active backend's
-  # build closure.
-  _ssh_lib=""
-  if [ -d "${SRCROOT:-.}/.nix-deps/lib" ]; then
-    _ssh_lib="$(find "${SRCROOT:-.}/.nix-deps/lib" -name "libssh-inprocess.a" -path "*openssh*" 2>/dev/null | head -n 1)"
-  fi
-  if [ -n "$_ssh_lib" ] && [ -f "$_ssh_lib" ]; then
-    privatize_lib "$_ssh_lib" "$derived/libssh-inprocess.a" \
+  _ssh_attr="openssh-ios"
+  case "$_sdk" in
+    *simulator*) _ssh_attr="openssh-ios-sim" ;;
+  esac
+  if ssh_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_ssh_attr" 2>/dev/null)" \
+     && [ -f "$ssh_out/lib/libssh-inprocess.a" ]; then
+    privatize_lib "$ssh_out/lib/libssh-inprocess.a" "$derived/libssh-inprocess.a" \
       "$_arch" "$_ld_platform" "$_min_ver" \
       _ssh_main _ssh_keygen_main _scp_main _wwn_openssh_keygen_real_main
-    echo "Privatized $derived/libssh-inprocess.a (from $_ssh_lib)"
+    echo "Privatized $derived/libssh-inprocess.a (from $ssh_out)"
   else
-    echo "warning: libssh-inprocess.a not found in .nix-deps; openssh symbols will not be privatized" >&2
+    echo "error: failed to realize $FLAKE_REF#$_ssh_attr (libssh-inprocess.a required for iOS link)" >&2
+    exit 1
   fi
 fi

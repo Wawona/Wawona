@@ -71,18 +71,7 @@ extern void wawona_window_info_free(CWindowInfo *info);
   NSFileManager *fm = [NSFileManager defaultManager];
 
   if (!runtime_dir) {
-#if TARGET_OS_SIMULATOR
-    runtimePath = [NSString stringWithFormat:@"/tmp/wawona_sim_%d", getuid()];
-#else
-    // Use NSTemporaryDirectory()/w to match WWNPreferredSharedRuntimeDir()
-    // which the preferences system and waypipe runner both expect.
-    runtimePath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"w"];
-#endif
-    [fm createDirectoryAtPath:runtimePath
-        withIntermediateDirectories:YES
-                         attributes:@{NSFilePosixPermissions : @0700}
-                              error:nil];
-
+    runtimePath = [WWNPreferencesManager preferredSharedRuntimeDir];
     setenv("XDG_RUNTIME_DIR", [runtimePath UTF8String], 1);
     WWNLog("MAIN", @"Set XDG_RUNTIME_DIR to: %@", runtimePath);
   }

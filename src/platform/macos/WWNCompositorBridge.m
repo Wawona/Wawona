@@ -8,6 +8,7 @@
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
 #import "WWNCompositorView_ios.h"
 #import "WWNPopupHost.h"
+#import "ui/Settings/WWNWaypipeRunner.h"
 #endif
 #import "../../util/WWNLog.h"
 #import "WWNPlatformCallbacks.h"
@@ -514,25 +515,11 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
 - (void)_setupRuntimeEnvironmentWithSocketName:(NSString *)socketName {
   // 1. Set XDG_RUNTIME_DIR to a well-known, stable directory
   // On macOS, use /tmp/wawona-<uid> so clients in other terminals can find it.
-  // On iOS, use NSTemporaryDirectory() (sandboxed).
+  // On iOS, use a short shared runtime dir (see WWNPreferencesManager).
   NSString *runtimeDir;
 
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
-#if TARGET_OS_SIMULATOR
-  // Simulator: use a short path to stay within the 104-byte Unix socket
-  // sun_path limit.  NSTemporaryDirectory() on the simulator maps to the
-  // host's CoreSimulator container which can be 150+ chars.
-  runtimeDir =
-      [NSString stringWithFormat:@"/tmp/wawona_sim_%u", (unsigned)getuid()];
-#else
-  // Device: NSTemporaryDirectory()/w — matches WWNPreferredSharedRuntimeDir()
-  // in WWNPreferencesManager.m so the waypipe runner finds the socket.
-  runtimeDir = NSTemporaryDirectory();
-  if (!runtimeDir) {
-    runtimeDir = [NSHomeDirectory() stringByAppendingPathComponent:@"tmp"];
-  }
-  runtimeDir = [runtimeDir stringByAppendingPathComponent:@"w"];
-#endif
+  runtimeDir = [WWNPreferencesManager preferredSharedRuntimeDir];
 #else
   // macOS: use /tmp/wawona-<uid> matching the client wrapper scripts in
   // flake.nix
@@ -4210,6 +4197,25 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
                                      x:viewFrame.size.width / 2.0
                                      y:viewFrame.size.height / 2.0
                              timestamp:0];
+    // Nested compositors (niri, etc.) need wl_keyboard focus for hotkeys like
+    // Mod+D → fuzzel. Weston-terminal only uses a PTY and must skip this.
+    NSString *bundledClient =
+        [WWNWaypipeRunner sharedRunner].activeIOSBundledClientId;
+    BOOL needsCompositorKeyboard =
+        !event->host_locked && [bundledClient isEqualToString:@"niri"];
+    if (needsCompositorKeyboard) {
+      [self injectKeyboardEnterForWindow:windowId keys:@[]];
+      if (_compositorQueue) {
+        dispatch_sync(_compositorQueue, ^{
+          WWNCoreFlushClients(self->_rustCore);
+        });
+      } else {
+        WWNCoreFlushClients(_rustCore);
+      }
+      if ([view isKindOfClass:[WWNCompositorView_ios class]]) {
+        [(WWNCompositorView_ios *)view activateKeyboard];
+      }
+    }
     return;
   }
 

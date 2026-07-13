@@ -70,6 +70,16 @@ let
   # Prebuild copies and privatises (nmedit) the active SDK's archives here
   # (see scripts/xcode-prebuild.sh) so internal symbols don't collide.
   mobileZshLdflags = [ derivedZshLib ];
+  # Force the in-process dispatch entry points out of libwawona.a / privatized
+  # archives.  Weak refs from libwwn-pty.a alone do not pull these symbols.
+  mobileDispatchLdflags = [
+    "-Wl,-u,_wawona_coreutils_main"
+    "-Wl,-u,_fastfetch_main"
+    "-Wl,-u,_wawona_nvim_main"
+    "-Wl,-u,_waypipe_main"
+    "-Wl,-u,_niri_main"
+    "-Wl,-u,_fuzzel_main"
+  ];
   # Pin matches weston-compositor-apple-mobile (13.0.0). Do not use pkgs.weston on
   # Darwin — it pulls pipewire and fails eval (valgrind marked broken in nixpkgs).
   westonTerminalPng = pkgs.fetchurl {
@@ -172,6 +182,38 @@ let
     in if (deps.neovim or null) == null || !builtins.pathExists libnvim then [] else [
       "-force_load" derivedNvimLib
     ];
+  # wwn-niri: static lib + niri_main C ABI (in-process nested compositor).
+  niriLdflags = deps:
+    let
+      niri = deps.niri or null;
+      libniri = "${strip niri}/lib/libniri.a";
+      cg = deps."cairo-gobject" or null;
+      cgLib = "${strip cg}/lib/libcairo-gobject.a";
+    in
+      (if niri == null || !builtins.pathExists libniri then [] else [
+        "-L${strip niri}/lib"
+        "-Wl,-u,_niri_main"
+        "-force_load" libniri
+      ])
+      ++ lib.optionals (cg != null && builtins.pathExists cgLib) [
+        "-L${strip cg}/lib"
+        "-lcairo-gobject"
+      ];
+  # wwn-niri fuzzel: static lib + fuzzel_main (niri spawns via mobile posix_spawn).
+  fuzzelLdflags = deps:
+    let
+      fuzzel = deps.fuzzel or null;
+      libfuzzel = "${strip fuzzel}/lib/libfuzzel.a";
+      fcft = deps.fcft or null;
+    in
+      (if fuzzel == null || !builtins.pathExists libfuzzel then [] else [
+        "-Wl,-u,_fuzzel_main"
+        libfuzzel
+      ])
+      ++ lib.optionals (fcft != null) [
+        "-L${strip fcft}/lib"
+        "-lfcft"
+      ];
   # openssh in-process static lib — provides ssh_main, ssh_keygen_main, scp_main
   # for in-process dispatch on iOS (App Store compliant, no fork/exec).
   # Weak on builds without openssh linked; wawona-dispatch.c symbols are weak.
@@ -266,7 +308,12 @@ let
   # target, with input/output paths so Xcode skips the script on incremental builds.
   libwawonaOutputPaths = { withZsh ? false }:
     [ derivedRustLib ]
-    ++ lib.optionals withZsh [ derivedZshLib ];
+    ++ lib.optionals withZsh [
+      derivedZshLib
+      derivedNvimLib
+      derivedFfLib
+      derivedSshLib
+    ];
 
   nixPreBuildInputs = [
     "$(SRCROOT)/Cargo.lock"
@@ -552,7 +599,7 @@ PLIST
     lib.optionals (mobileGuestArtifacts != null) [ iosMobileGuestEmbedPhase ]
     ++ lib.optionals (mobileVmEngine != null) [ iosMobileVmEngineEmbedPhase ];
 
-  iosPostBuildPhases = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase iosRootfsEmbedPhase iosNeovimRootfsEmbedPhase ]
+  iosPostBuildPhases = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase niriDataEmbedPhase iosRootfsEmbedPhase iosNeovimRootfsEmbedPhase ]
     ++ mobileVmEmbedPhases
     ++ lib.optionals (angleSimDylib != null) [ angleSimEmbedPhase ]
     ++ lib.optionals (angleDeviceDylib != null) [ angleDeviceEmbedPhase ];
@@ -626,6 +673,44 @@ PLIST
     name = "Embed Weston data (icons, cursors)";
     basedOnDependencyAnalysis = true;
     outputFiles = westonDataEmbedOutputs;
+  };
+
+  niriDataIosEmbedScript = deviceNiri: simNiri: pkgs.writeShellScript "embed-niri-data-ios.sh" ''
+    case "''${PLATFORM_NAME:-}" in
+      iphoneos|iphonesimulator|appletvos|appletvsimulator|xros|xrsimulator)
+        ;;
+      *)
+        exit 0
+        ;;
+    esac
+    case "''${PLATFORM_NAME:-}" in
+      *simulator*)
+        niriSrc="${strip simNiri}/share/niri/default-config.kdl"
+        ;;
+      *)
+        niriSrc="${strip deviceNiri}/share/niri/default-config.kdl"
+        ;;
+    esac
+    if [ ! -f "$niriSrc" ]; then
+      echo "warning: niri default-config.kdl not built for this platform" >&2
+      exit 0
+    fi
+    BUNDLE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
+    DEST="$BUNDLE/share/niri"
+    mkdir -p "$DEST"
+    cp -L "$niriSrc" "$DEST/default-config.kdl"
+    echo "Embedded niri default-config.kdl into $DEST"
+  '';
+
+  niriDataEmbedOutputs = [
+    "$(BUILT_PRODUCTS_DIR)/$(FULL_PRODUCT_NAME)/share/niri/default-config.kdl"
+  ];
+
+  niriDataEmbedPhase = {
+    path = niriDataIosEmbedScript (iosDeps.niri or null) (iosSimDeps.niri or null);
+    name = "Embed niri config (default-config.kdl)";
+    basedOnDependencyAnalysis = true;
+    outputFiles = niriDataEmbedOutputs;
   };
 
   rootfsIosEmbedScript = deviceRootfs: simRootfs: pkgs.writeShellScript "embed-rootfs-ios.sh" ''
@@ -1015,9 +1100,9 @@ PLIST
                "-lcrypto"
                "-lepoll-shim"
              ] ++ westonToytoolkitLdflagsAppleMobile iosDeps ++ westonCompositorLdflagsAppleMobile iosDeps
-             ++ (ilandGlLdflags { deps = iosDeps; simulator = false; }) ++ footLdflags iosDeps ++ fastfetchLdflags iosDeps ++ neovimLdflags iosDeps
+             ++ (ilandGlLdflags { deps = iosDeps; simulator = false; }) ++ footLdflags iosDeps ++ fastfetchLdflags iosDeps ++ neovimLdflags iosDeps ++ niriLdflags iosDeps ++ fuzzelLdflags iosDeps
              ++ opensshInprocessLdflags iosDeps
-             ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
+             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
             "OTHER_LDFLAGS[sdk=iphonesimulator*]" = [
               "$(inherited)"
             ] ++ ios26SwiftUiClientLdflags ++ [
@@ -1046,9 +1131,9 @@ PLIST
               "-lcrypto"
                "-lepoll-shim"
              ] ++ westonToytoolkitLdflagsAppleMobile iosSimDeps ++ westonCompositorLdflagsAppleMobile iosSimDeps
-             ++ (ilandGlLdflags { deps = iosSimDeps; simulator = true; }) ++ footLdflags iosSimDeps ++ fastfetchLdflags iosSimDeps ++ neovimLdflags iosSimDeps
+             ++ (ilandGlLdflags { deps = iosSimDeps; simulator = true; }) ++ footLdflags iosSimDeps ++ fastfetchLdflags iosSimDeps ++ neovimLdflags iosSimDeps ++ niriLdflags iosSimDeps ++ fuzzelLdflags iosSimDeps
              ++ opensshInprocessLdflags iosSimDeps
-             ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
+             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"
@@ -1180,9 +1265,9 @@ PLIST
               "-lcrypto"
               "-lepoll-shim"
             ] ++ westonToytoolkitLdflagsAppleMobile ipadosDeps ++ westonCompositorLdflagsAppleMobile ipadosDeps
-            ++ (ilandGlLdflags { deps = ipadosDeps; simulator = false; }) ++ footLdflags ipadosDeps ++ fastfetchLdflags ipadosDeps ++ neovimLdflags ipadosDeps
+            ++ (ilandGlLdflags { deps = ipadosDeps; simulator = false; }) ++ footLdflags ipadosDeps ++ fastfetchLdflags ipadosDeps ++ neovimLdflags ipadosDeps ++ niriLdflags ipadosDeps ++ fuzzelLdflags ipadosDeps
             ++ opensshInprocessLdflags ipadosDeps
-            ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
+            ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
             "OTHER_LDFLAGS[sdk=iphonesimulator*]" = [
               "$(inherited)"
             ] ++ ios26SwiftUiClientLdflags ++ [
@@ -1211,9 +1296,9 @@ PLIST
               "-lcrypto"
               "-lepoll-shim"
             ] ++ westonToytoolkitLdflagsAppleMobile ipadosSimDeps ++ westonCompositorLdflagsAppleMobile ipadosSimDeps
-            ++ (ilandGlLdflags { deps = ipadosSimDeps; simulator = true; }) ++ footLdflags ipadosSimDeps ++ fastfetchLdflags ipadosSimDeps ++ neovimLdflags ipadosSimDeps
+            ++ (ilandGlLdflags { deps = ipadosSimDeps; simulator = true; }) ++ footLdflags ipadosSimDeps ++ fastfetchLdflags ipadosSimDeps ++ neovimLdflags ipadosSimDeps ++ niriLdflags ipadosSimDeps ++ fuzzelLdflags ipadosSimDeps
             ++ opensshInprocessLdflags ipadosSimDeps
-            ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
+            ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"

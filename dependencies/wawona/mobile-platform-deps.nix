@@ -64,6 +64,12 @@ let
         fastfetch = buildFn "fastfetch" { inherit simulator; };
         neovim = buildFn "neovim" { inherit simulator; };
         "neovim-rootfs" = buildFn "neovim-rootfs" { inherit simulator; };
+        # wwn-niri: in-process nested compositor (libniri.a + niri_main C ABI).
+        # wwn-niri fuzzel stack (Mod+D launcher spawned in-process on iOS).
+        fcft = buildFn "fcft" { inherit simulator; };
+        "cairo-gobject" = buildFn "cairo-gobject" { inherit simulator; };
+        niri = buildFn "niri" { inherit simulator; };
+        fuzzel = buildFn "fuzzel" { inherit simulator; };
       }
     // lib.optionalAttrs (variant == "vision") {
       libssh2 = buildFn "libssh2" { inherit simulator; };

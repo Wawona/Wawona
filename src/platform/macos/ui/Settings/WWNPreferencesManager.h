@@ -172,6 +172,11 @@ extern NSString *const kWWNPrefsAnowaWEnabled;
 // Graphics Driver Selection (Settings > Graphics > Drivers)
 - (NSString *)vulkanDriver;
 - (void)setVulkanDriver:(NSString *)driver;
+// Short XDG_RUNTIME_DIR for Wayland sockets (Darwin sun_path is 104 bytes).
++ (NSString *)preferredSharedRuntimeDir;
+// Nested Weston socket name; shorter on physical iOS (container paths are long).
++ (NSString *)preferredNestedSocketName;
+
 // Capability-tiered default ICD: KosmicKrisp on Apple Silicon + macOS 26+,
 // MoltenVK otherwise. Used when the user has not made an explicit choice.
 + (NSString *)defaultVulkanDriverForHardware;

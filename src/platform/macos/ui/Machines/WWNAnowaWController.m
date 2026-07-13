@@ -58,15 +58,16 @@ NSString *const kWWNAnowaWNestedSocket = @"wawona-nested";
     NSLog(@"[anowaW] Screen Recording permission not granted; skipping attach");
     return;
   }
-  AnowawMacBridge *bridge =
-      [[AnowawMacBridge alloc] initWithSocketName:kWWNAnowaWNestedSocket];
+  AnowawMacBridge *bridge = [[AnowawMacBridge alloc]
+      initWithSocketName:[WWNPreferencesManager preferredNestedSocketName]];
   if (!bridge) {
     NSLog(@"[anowaW] failed to attach bridge to socket %@",
-          kWWNAnowaWNestedSocket);
+          [WWNPreferencesManager preferredNestedSocketName]);
     return;
   }
   self.bridge = bridge;
-  NSLog(@"[anowaW] attached to nested Weston socket %@", kWWNAnowaWNestedSocket);
+  NSLog(@"[anowaW] attached to nested Weston socket %@",
+        [WWNPreferencesManager preferredNestedSocketName]);
 #else
   (void)profile;
 #endif

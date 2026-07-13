@@ -56,6 +56,8 @@ typedef void (^WaypipeOutputHandler)(NSString *output);
 #if TARGET_OS_IPHONE
 /// Disconnect in-process clients and reset iOS native launch state.
 - (void)stopActiveIOSBundledClient;
+/// Active bundled client id during an in-process iOS launch (e.g. @"niri").
+@property(nonatomic, copy, readonly) NSString *activeIOSBundledClientId;
 #endif
 
 /// Terminate all bundled native Wayland clients (weston, foot, etc.).

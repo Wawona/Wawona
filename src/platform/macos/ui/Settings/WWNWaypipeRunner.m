@@ -47,6 +47,7 @@ extern int wwn_weston_is_compat_shim(void) __attribute__((weak));
 extern int wwn_weston_terminal_is_compat_shim(void) __attribute__((weak));
 extern int wwn_foot_is_compat_shim(void) __attribute__((weak));
 extern int weston_compositor_main(int argc, char **argv) __attribute__((weak_import));
+extern int niri_main(void) __attribute__((weak_import));
 extern int weston_terminal_main(int argc, char **argv);
 #if TARGET_OS_IPHONE
 extern int flower_main(int argc, char **argv);
@@ -1224,6 +1225,36 @@ static NSString *WWNPreferredHostShellPath(void) {
 }
 
 #if TARGET_OS_IPHONE
+/// Env niri's nested backend needs on Apple mobile (GLES via ANGLE EGL).
+static void wwnConfigureNiriNestedEnv(void) {
+  setenv("NIRI_BACKEND", "nested", 1);
+  NSString *kdl = WWNWawonaBundledSharePath(@"niri/default-config.kdl");
+  if ([[NSFileManager defaultManager] fileExistsAtPath:kdl]) {
+    setenv("NIRI_CONFIG", kdl.UTF8String, 1);
+  }
+  // smithay dlopen's libEGL.dylib at runtime. ANGLE ships in the app
+  // Frameworks directory; without this path eglInitialize fails and niri panics
+  // during nested-backend init. Mirrors macOS NSTask env and niri-smoke-macos.sh.
+  NSString *frameworksDir = [[[NSBundle mainBundle] bundlePath]
+      stringByAppendingPathComponent:@"Frameworks"];
+  if ([[NSFileManager defaultManager] fileExistsAtPath:frameworksDir]) {
+    setenv("DYLD_LIBRARY_PATH", frameworksDir.UTF8String, 1);
+  }
+  const char *icd = getenv("VK_ICD_FILENAMES");
+  if (!icd || !icd[0]) {
+    icd = getenv("VK_DRIVER_FILES");
+  }
+  if (!icd || !icd[0]) {
+    NSString *bundleRes = [[NSBundle mainBundle] resourcePath];
+    NSString *icdJson = [bundleRes
+        stringByAppendingPathComponent:@"vulkan/icd.d/MoltenVK_icd.json"];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:icdJson]) {
+      setenv("VK_ICD_FILENAMES", icdJson.UTF8String, 1);
+      setenv("VK_DRIVER_FILES", icdJson.UTF8String, 1);
+    }
+  }
+}
+
 typedef int (*WWNClientMainFn)(int, char **);
 
 static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
@@ -1332,6 +1363,10 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   }
   if ([clientId isEqualToString:@"foot"]) {
     [self launchFoot];
+    return;
+  }
+  if ([clientId isEqualToString:@"niri"]) {
+    [self launchNiri];
     return;
   }
   if ([clientId isEqualToString:@"kmscube"]) {
@@ -1837,8 +1872,12 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     argv_weston[argc_weston++] = "weston";
     argv_weston[argc_weston++] = (char *)backend;
     /* Deterministic nested socket so the anowaW app bridge can attach. Keep in
-     * sync with kWWNAnowaWNestedSocket and AnowawSession.NESTED_SOCKET. */
-    argv_weston[argc_weston++] = "--socket=wawona-nested";
+     * sync with +preferredNestedSocketName and AnowawSession.NESTED_SOCKET. */
+    static char nested_socket_arg[48];
+    NSString *nestedSocket = [WWNPreferencesManager preferredNestedSocketName];
+    snprintf(nested_socket_arg, sizeof(nested_socket_arg), "--socket=%s",
+             nestedSocket.UTF8String);
+    argv_weston[argc_weston++] = nested_socket_arg;
     argv_weston[argc_weston++] = "--shell=desktop-shell.so";
     argv_weston[argc_weston++] = widthArg;
     argv_weston[argc_weston++] = heightArg;
@@ -1868,6 +1907,26 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
            @"host-scale %.1fx weston-scale %u, prep %.0fms)...",
            backend, outW, outH, outScale, launchScale,
            (CFAbsoluteTimeGetCurrent() - launchStart) * 1000.0);
+    if (!weston_compositor_main) {
+      WWNLog("WESTON",
+             @"weston_compositor_main not linked in this build — nested Weston "
+             @"unavailable");
+      if (saved_cwd[0]) {
+        chdir(saved_cwd);
+      }
+      self.westonRunning = NO;
+      [self wwnEndIOSNativeClientLaunch];
+      dispatch_async(dispatch_get_main_queue(), ^{
+        [[NSNotificationCenter defaultCenter]
+            postNotificationName:@"WWNNativeClientLaunchFailedNotification"
+                          object:self
+                        userInfo:@{
+                          @"clientId" : @"weston",
+                          @"reason" : @"weston_compositor_main not linked",
+                        }];
+      });
+      return;
+    }
     int result = weston_compositor_main(argc_weston, argv_weston);
     WWNLog("WESTON", @"weston_compositor_main exit code: %d (total %.0fms)", result,
            (CFAbsoluteTimeGetCurrent() - launchStart) * 1000.0);
@@ -1979,8 +2038,9 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   NSMutableArray<NSString *> *args = [NSMutableArray arrayWithObjects:
       @"--backend=wayland",
       // Deterministic nested socket so the anowaW app bridge can attach. Keep
-      // in sync with kWWNAnowaWNestedSocket and AnowawSession.NESTED_SOCKET.
-      @"--socket=wawona-nested",
+      // in sync with +preferredNestedSocketName and AnowawSession.NESTED_SOCKET.
+      [NSString stringWithFormat:@"--socket=%@",
+                                 [WWNPreferencesManager preferredNestedSocketName]],
       @"--shell=desktop-shell.so",
       [NSString stringWithFormat:@"--width=%u", outW],
       [NSString stringWithFormat:@"--height=%u", outH],
@@ -2144,6 +2204,50 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
                                 prepareIland:YES];
 #endif
 }
+
+#if TARGET_OS_IPHONE
+- (void)launchNiri {
+  if (self.iosNativeClientInFlight) {
+    return;
+  }
+
+  dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+    CFAbsoluteTime launchStart = CFAbsoluteTimeGetCurrent();
+    if (![self wwnBeginIOSNativeClientLaunch:@"niri"]) {
+      return;
+    }
+
+    const char *parent_display = getenv("WAYLAND_DISPLAY");
+    if (!parent_display || parent_display[0] == '\0') {
+      parent_display = "wayland-0";
+    }
+    setenv("WAYLAND_DISPLAY", parent_display, 1);
+    wwnConfigureNiriNestedEnv();
+
+    WWNLog("NIRI", @"Launching in-process niri_main (nested)...");
+    if (!niri_main) {
+      WWNLog("NIRI",
+             @"niri_main not linked in this build — nested niri unavailable");
+      [self wwnEndIOSNativeClientLaunch];
+      dispatch_async(dispatch_get_main_queue(), ^{
+        [[NSNotificationCenter defaultCenter]
+            postNotificationName:@"WWNNativeClientLaunchFailedNotification"
+                          object:self
+                        userInfo:@{
+                          @"clientId" : @"niri",
+                          @"reason" : @"niri_main not linked",
+                        }];
+      });
+      return;
+    }
+
+    int result = niri_main();
+    WWNLog("NIRI", @"niri_main exit code: %d (total %.0fms)", result,
+           (CFAbsoluteTimeGetCurrent() - launchStart) * 1000.0);
+    [self wwnEndIOSNativeClientLaunch];
+  });
+}
+#endif
 
 - (void)stopWeston {
 #if TARGET_OS_IPHONE

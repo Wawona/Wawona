@@ -1184,6 +1184,12 @@ EOF
           "wawona-pty-ios-sim" = toolchains.buildForIOS "wawona-pty" { simulator = true; };
           zsh-ios = toolchains.buildForIOS "zsh" { };
           zsh-ios-sim = toolchains.buildForIOS "zsh" { simulator = true; };
+          openssh-ios = toolchains.buildForIOS "openssh" { };
+          openssh-ios-sim = toolchains.buildForIOS "openssh" { simulator = true; };
+          niri-ios = toolchains.buildForIOS "niri" { };
+          niri-ios-sim = toolchains.buildForIOS "niri" { simulator = true; };
+          fuzzel-ios = toolchains.buildForIOS "fuzzel" { };
+          fuzzel-ios-sim = toolchains.buildForIOS "fuzzel" { simulator = true; };
           "zsh-framework-ios" = toolchains.buildForIOS "zsh-framework" { };
           "zsh-framework-ios-sim" = toolchains.buildForIOS "zsh-framework" { simulator = true; };
           "wawona-rootfs-ios" = toolchains.buildForIOS "wawona-rootfs" { };

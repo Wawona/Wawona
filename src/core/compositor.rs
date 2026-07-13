@@ -779,45 +779,45 @@ impl Compositor {
     /// Ensure XDG_RUNTIME_DIR exists with proper permissions
     fn ensure_runtime_dir() -> Result<String> {
         use std::os::unix::fs::PermissionsExt;
-        
-        // Check if XDG_RUNTIME_DIR is already set (e.g. by the ObjC/Swift layer on iOS)
+
+        // Honor XDG_RUNTIME_DIR from the ObjC/Swift layer (iOS uses short /tmp paths).
         if let Ok(dir) = std::env::var("XDG_RUNTIME_DIR") {
-            if let Ok(metadata) = std::fs::metadata(&dir) {
-                let perms = metadata.permissions();
-                if perms.mode() & 0o777 == 0o700 {
+            if !dir.is_empty() {
+                std::fs::create_dir_all(&dir)
+                    .with_context(|| format!("Failed to create XDG_RUNTIME_DIR {}", dir))?;
+                if let Ok(metadata) = std::fs::metadata(&dir) {
+                    let perms = metadata.permissions();
+                    if perms.mode() & 0o777 != 0o700 {
+                        // On iOS the sandbox already provides isolation — tighten when
+                        // possible but accept the directory if chmod fails.
+                        let mut new_perms = perms.clone();
+                        new_perms.set_mode(0o700);
+                        if let Err(e) = std::fs::set_permissions(&dir, new_perms) {
+                            tracing::warn!(
+                                "Could not set 0700 on XDG_RUNTIME_DIR ({}): {} — using as-is",
+                                dir,
+                                e
+                            );
+                        }
+                    }
                     return Ok(dir);
                 }
-                // On iOS, the sandbox already provides isolation — the app container
-                // tmp directory may not have 0o700 perms. Try to tighten them, but
-                // accept the directory regardless since /tmp is not writable on iOS.
-                let mut new_perms = perms.clone();
-                new_perms.set_mode(0o700);
-                if let Err(e) = std::fs::set_permissions(&dir, new_perms) {
-                    tracing::warn!(
-                        "Could not set 0700 on XDG_RUNTIME_DIR ({}): {} — using as-is",
-                        dir, e
-                    );
-                }
-                return Ok(dir);
             }
         }
-        
+
         // Create runtime directory: /tmp/wawona-<UID>
         // Must match the macosEnv path in flake.nix and the ObjC bridge
         let uid = unsafe { libc::getuid() };
         let runtime_dir = format!("/tmp/wawona-{}", uid);
-        
-        // Create directory if it doesn't exist
+
         std::fs::create_dir_all(&runtime_dir)?;
-        
-        // Set strict permissions: 0700
+
         let mut perms = std::fs::metadata(&runtime_dir)?.permissions();
         perms.set_mode(0o700);
         std::fs::set_permissions(&runtime_dir, perms)?;
-        
-        // Set environment variable
+
         std::env::set_var("XDG_RUNTIME_DIR", &runtime_dir);
-        
+
         tracing::debug!("Created XDG_RUNTIME_DIR: {}", runtime_dir);
         Ok(runtime_dir)
     }

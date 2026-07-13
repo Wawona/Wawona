@@ -90,32 +90,62 @@ NSString *const kWWNPrefsDesktopReplacementMachineId =
 NSString *const kWWNPrefsAnowaWEnabled = @"AnowaWEnabled";
 
 static NSString *WWNPreferredSharedRuntimeDir(void) {
+  return [WWNPreferencesManager preferredSharedRuntimeDir];
+}
+
+@implementation WWNPreferencesManager
+
++ (NSString *)preferredSharedRuntimeDir {
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+  NSFileManager *fm = [NSFileManager defaultManager];
+  NSError *dirError = nil;
 #if TARGET_OS_SIMULATOR
-  // Simulator: use a short path to stay within the 104-byte Unix socket
-  // sun_path limit.  NSTemporaryDirectory() maps to the host's
-  // CoreSimulator container path which can be 150+ chars.
+  // Simulator: short path under host /tmp (CoreSimulator TMPDIR can be 150+).
   NSString *candidate =
       [NSString stringWithFormat:@"/tmp/wawona_sim_%u", (unsigned)getuid()];
 #else
-  // Device: NSTemporaryDirectory()/w — short enough on real hardware.
-  NSString *tmpDir = NSTemporaryDirectory();
-  NSString *candidate = [tmpDir stringByAppendingPathComponent:@"w"];
+  // Device: prefer short /tmp path when writable (nested socket names fit).
+  NSString *candidate =
+      [NSString stringWithFormat:@"/tmp/wawona_dev_%u", (unsigned)getuid()];
 #endif
+  if ([fm createDirectoryAtPath:candidate
+      withIntermediateDirectories:YES
+                       attributes:@{NSFilePosixPermissions : @0700}
+                            error:&dirError]) {
+    return candidate;
+  }
 
-  // Ensure the directory exists
-  [[NSFileManager defaultManager] createDirectoryAtPath:candidate
-                            withIntermediateDirectories:YES
-                                             attributes:nil
-                                                  error:nil];
+#if !TARGET_OS_SIMULATOR
+  // Physical device: creating under /tmp is often EPERM. Fall back to the app
+  // sandbox tmp (always writable). Nested sockets use +preferredNestedSocketName.
+  NSString *sandbox = NSTemporaryDirectory();
+  if (sandbox.length > 0) {
+    if ([sandbox hasSuffix:@"/"]) {
+      sandbox = [sandbox substringToIndex:sandbox.length - 1];
+    }
+    dirError = nil;
+    if ([fm createDirectoryAtPath:sandbox
+        withIntermediateDirectories:YES
+                         attributes:@{NSFilePosixPermissions : @0700}
+                              error:&dirError]) {
+      return sandbox;
+    }
+  }
+#endif
+  (void)dirError;
   return candidate;
 #else
-  // macOS canonical runtime path used by compositor host and launch agents.
   return [NSString stringWithFormat:@"/tmp/wawona-%u", (unsigned)getuid()];
 #endif
 }
 
-@implementation WWNPreferencesManager
++ (NSString *)preferredNestedSocketName {
+#if TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+  return @"nested";
+#else
+  return @"wawona-nested";
+#endif
+}
 
 - (BOOL)eglDriversEnabled {
   return NO;

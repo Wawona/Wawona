@@ -27,6 +27,8 @@ FASTFETCH_KNOWN_BAD_REV = "104cf2284ad161ecb82b3d182123ff2e437e3a34"
 REQUIRED_FLAKE_OUTPUTS = (
     "zsh-ios",
     "zsh-ios-sim",
+    "openssh-ios",
+    "openssh-ios-sim",
     "zsh-android",
     "fastfetch-ios",
     "fastfetch-ios-device",
@@ -101,8 +103,10 @@ def verify_prebuild(text: str) -> list[str]:
         "libwawona-zsh.a",
         "libwawona-neovim.a",
         "libfastfetch.a",
+        "libssh-inprocess.a",
         "neovim-ios",
         "fastfetch-ios",
+        "openssh-ios",
     ):
         if needle not in text:
             errors.append(f"xcode-prebuild.sh missing: {needle}")
