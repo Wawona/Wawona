@@ -68,6 +68,8 @@ pub fn build_scope_row(scope: Rc<RefCell<MachineScope>>, on_change: Rc<dyn Fn()>
 }
 
 pub fn build_home_shell(on_rebuild: Rc<dyn Fn()>) -> HomeShell {
+    install_machine_card_styles();
+
     let search = gtk::SearchEntry::builder()
         .placeholder_text("Search machines")
         .hexpand(true)
@@ -82,7 +84,7 @@ pub fn build_home_shell(on_rebuild: Rc<dyn Fn()>) -> HomeShell {
 
     let flow = gtk::FlowBox::new();
     flow.set_selection_mode(gtk::SelectionMode::None);
-    flow.set_homogeneous(true);
+    flow.set_homogeneous(false);
     flow.set_max_children_per_line(3);
     flow.set_min_children_per_line(1);
     flow.set_column_spacing(14);
@@ -173,6 +175,7 @@ pub fn rebuild_home(ctx: RebuildHome<'_>) {
             ctx.layout,
         );
         ctx.shell.flow.insert(&root, -1);
+        configure_flowbox_child(&root);
     }
 }
 
@@ -222,7 +225,7 @@ fn rebuild_summary_strip(
 }
 
 struct MachineCard {
-    root: gtk::Box,
+    root: gtk::Frame,
     start_btn: gtk::Button,
     stop_btn: gtk::Button,
     focus_btn: gtk::Button,
@@ -237,6 +240,10 @@ fn build_machine_card(
 ) -> MachineCard {
     let frame = gtk::Frame::new(None);
     frame.add_css_class("card");
+    frame.add_css_class("machine-card");
+    frame.set_halign(gtk::Align::Fill);
+    frame.set_hexpand(true);
+    frame.set_vexpand(false);
     frame.set_width_request(300);
 
     let vbox = gtk::Box::new(gtk::Orientation::Vertical, 12);
@@ -251,16 +258,21 @@ fn build_machine_card(
     // the machine-type icon (mirrors macOS `headerBanner`).
     let banner = gtk::Overlay::new();
     let thumb_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    thumb_box.add_css_class("card");
+    thumb_box.add_css_class("machine-banner");
     thumb_box.set_height_request(90);
+    let mut has_thumbnail = false;
     if let Ok(path) = thumbnail_store::thumbnail_path(&profile.id) {
         if path.is_file() {
+            has_thumbnail = true;
             let pic = gtk::Picture::for_filename(&path);
             pic.set_can_shrink(true);
             pic.set_hexpand(true);
             pic.set_vexpand(true);
             thumb_box.append(&pic);
         }
+    }
+    if !has_thumbnail {
+        thumb_box.add_css_class("machine-banner-placeholder");
     }
     banner.set_child(Some(&thumb_box));
 
@@ -358,11 +370,8 @@ fn build_machine_card(
     vbox.append(&actions);
     frame.set_child(Some(&vbox));
 
-    let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    root.append(&frame);
-
     MachineCard {
-        root,
+        root: frame,
         start_btn,
         stop_btn,
         focus_btn,
@@ -380,17 +389,79 @@ fn button_with_icon_label(icon: &str, label: &str) -> gtk::Button {
     btn
 }
 
-fn chip(text: &str) -> gtk::Label {
+fn chip(text: &str) -> gtk::Box {
+    let pill = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    pill.add_css_class("machine-chip");
     let lbl = gtk::Label::new(Some(text));
     lbl.add_css_class("caption-heading");
-    lbl.add_css_class("chip");
-    lbl.add_css_class("card");
-    lbl.set_margin_top(2);
-    lbl.set_margin_bottom(2);
-    // Padding via label margins inside the frame-like card class.
-    lbl.set_width_chars(0);
+    lbl.set_margin_start(8);
+    lbl.set_margin_end(8);
+    lbl.set_margin_top(4);
+    lbl.set_margin_bottom(4);
     lbl.set_xalign(0.5);
-    lbl
+    pill.append(&lbl);
+    pill
+}
+
+fn configure_flowbox_child(card: &impl IsA<gtk::Widget>) {
+    if let Some(fbc) = card
+        .parent()
+        .and_then(|parent| parent.downcast::<gtk::FlowBoxChild>().ok())
+    {
+        fbc.set_can_focus(false);
+        fbc.set_vexpand(false);
+        fbc.set_hexpand(true);
+        fbc.set_halign(gtk::Align::Fill);
+    }
+}
+
+fn install_machine_card_styles() {
+    use std::sync::Once;
+
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        let provider = gtk::CssProvider::new();
+        provider.load_from_data(
+            r#"
+            flowbox flowboxchild {
+              padding: 0;
+            }
+
+            .machine-card {
+              border: 1px solid transparent;
+            }
+
+            .machine-card:hover {
+              border-color: alpha(currentColor, 0.08);
+            }
+
+            .machine-banner {
+              border-radius: 12px;
+              min-height: 90px;
+            }
+
+            .machine-banner-placeholder {
+              background-image: linear-gradient(
+                135deg,
+                alpha(@accent_color, 0.22),
+                alpha(@theme_fg_color, 0.08)
+              );
+            }
+
+            .machine-chip {
+              background-color: alpha(currentColor, 0.08);
+              border-radius: 999px;
+            }
+            "#,
+        );
+        if let Some(display) = gtk::gdk::Display::default() {
+            gtk::style_context_add_provider_for_display(
+                &display,
+                &provider,
+                gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+            );
+        }
+    });
 }
 
 fn attach_card_actions(
