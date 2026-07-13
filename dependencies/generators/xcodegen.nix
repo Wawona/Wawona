@@ -79,6 +79,8 @@ let
     "-Wl,-u,_waypipe_main"
     "-Wl,-u,_niri_main"
     "-Wl,-u,_fuzzel_main"
+    "-Wl,-u,_wawona_dispatch_can_handle"
+    "-Wl,-u,_wawona_dispatch_inprocess"
   ];
   # Pin matches weston-compositor-apple-mobile (13.0.0). Do not use pkgs.weston on
   # Darwin — it pulls pipewire and fails eval (valgrind marked broken in nixpkgs).
