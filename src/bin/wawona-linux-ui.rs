@@ -382,7 +382,7 @@ mod app {
 
         let window = adw::ApplicationWindow::builder()
             .application(app)
-            .title("Wawona")
+            .title("Wawona Machine Control Panel")
             .default_width(900)
             .default_height(640)
             .width_request(320)
@@ -391,16 +391,23 @@ mod app {
         window.set_resizable(true);
         install_breakpoint(&window, &layout_binding);
 
+        // Toolbar mirrors macOS `detailToolbarContent`: title "Machines",
+        // search in the toolbar, and trailing primary actions [Add][Settings].
         let header = adw::HeaderBar::new();
 
-        let new_btn = gtk::Button::from_icon_name("list-add-symbolic");
-        new_btn.set_tooltip_text(Some("New Machine"));
-        new_btn.add_css_class("suggested-action");
-        header.pack_start(&new_btn);
-
+        // pack_end order: first packed sits furthest right, so Settings goes
+        // in before Add to render as [Add][Settings].
         let settings_btn = gtk::Button::from_icon_name("emblem-system-symbolic");
         settings_btn.set_tooltip_text(Some("Settings"));
         header.pack_end(&settings_btn);
+
+        let new_btn_content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        new_btn_content.append(&gtk::Image::from_icon_name("list-add-symbolic"));
+        new_btn_content.append(&gtk::Label::new(Some("Add")));
+        let new_btn = gtk::Button::new();
+        new_btn.set_child(Some(&new_btn_content));
+        new_btn.set_tooltip_text(Some("Add Machine Profile"));
+        header.pack_end(&new_btn);
 
         let rebuild_slot: Rc<RefCell<Option<Rc<dyn Fn()>>>> = Rc::new(RefCell::new(None));
         let rebuild_slot_for_shell = rebuild_slot.clone();
@@ -413,8 +420,11 @@ mod app {
         header.set_title_widget(Some(&home.search));
 
         let home_body = clamp_content(&home.root);
-        window.set_titlebar(Some(&header));
-        window.set_child(Some(&home_body));
+        home_body.set_vexpand(true);
+        let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        root.append(&header);
+        root.append(&home_body);
+        window.set_content(Some(&root));
 
         {
             let home_c = home.clone();
@@ -934,11 +944,13 @@ mod app {
             let sessions_n = machine_sessions.clone();
             let binding = layout_binding.clone();
             new_btn.connect_clicked(move |_| {
-                wawona::wlog!("UI", "New Machine button pressed");
+                wawona::wlog!("UI", "Add Machine button pressed");
+                let default_type = home.scope.borrow().default_machine_type();
                 show_editor(
                     &window,
                     &state,
                     None,
+                    default_type,
                     &home,
                     sessions_n.clone(),
                     binding.get(),

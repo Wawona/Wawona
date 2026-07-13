@@ -1,4 +1,6 @@
-//! Machines home: card grid, search, scope segmented control.
+//! Machines home — 1:1 with macOS `WWNMachinesGridView`: summary strip,
+//! adaptive card grid, scope filter, and card actions (Start / Stop / Focus /
+//! Edit / Delete).
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -14,7 +16,10 @@ use crate::linux::machine_profile::MachineProfile;
 use crate::linux::runtime;
 use crate::linux::thumbnail_store;
 use crate::linux::ui::{editor, SharedAppState};
-use crate::linux::ui_model::{empty_state_text, visible_machines, LayoutMode, MachineScope};
+use crate::linux::ui_model::{
+    empty_state_text, launch_supported, machine_configuration_summary, machine_scope_label,
+    machine_subtitle, visible_machines, LayoutMode, MachineScope,
+};
 use crate::wlog;
 
 pub type MachineSessions = Rc<RefCell<HashMap<String, Child>>>;
@@ -22,6 +27,7 @@ pub type MachineSessions = Rc<RefCell<HashMap<String, Child>>>;
 pub struct HomeShell {
     pub root: gtk::Box,
     pub search: gtk::SearchEntry,
+    pub summary: gtk::Box,
     pub flow: gtk::FlowBox,
     pub scope: Rc<RefCell<MachineScope>>,
     pub query: Rc<RefCell<String>>,
@@ -35,6 +41,7 @@ pub struct RebuildHome<'a> {
     pub layout: LayoutMode,
 }
 
+/// "Machine Scope" filter (sidebar on macOS; linked segmented control here).
 pub fn build_scope_row(scope: Rc<RefCell<MachineScope>>, on_change: Rc<dyn Fn()>) -> gtk::Box {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     row.set_halign(gtk::Align::Center);
@@ -66,16 +73,23 @@ pub fn build_home_shell(on_rebuild: Rc<dyn Fn()>) -> HomeShell {
         .hexpand(true)
         .build();
 
+    // Summary strip: "Machines" + Profiles / Connected / Ready pills
+    // (mirrors macOS `summaryStrip`).
+    let summary = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    summary.set_margin_start(18);
+    summary.set_margin_end(18);
+    summary.set_margin_top(8);
+
     let flow = gtk::FlowBox::new();
     flow.set_selection_mode(gtk::SelectionMode::None);
     flow.set_homogeneous(true);
     flow.set_max_children_per_line(3);
     flow.set_min_children_per_line(1);
-    flow.set_column_spacing(12);
-    flow.set_row_spacing(12);
-    flow.set_margin_start(12);
-    flow.set_margin_end(12);
-    flow.set_margin_bottom(12);
+    flow.set_column_spacing(14);
+    flow.set_row_spacing(14);
+    flow.set_margin_start(16);
+    flow.set_margin_end(16);
+    flow.set_margin_bottom(16);
 
     let scope = Rc::new(RefCell::new(MachineScope::All));
     let query = Rc::new(RefCell::new(String::new()));
@@ -96,11 +110,13 @@ pub fn build_home_shell(on_rebuild: Rc<dyn Fn()>) -> HomeShell {
 
     let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
     root.append(&scope_row);
+    root.append(&summary);
     root.append(&scroll);
 
     HomeShell {
         root,
         search,
+        summary,
         flow,
         scope,
         query,
@@ -118,6 +134,7 @@ pub fn rebuild_home(ctx: RebuildHome<'_>) {
     let scope = *ctx.shell.scope.borrow();
     let query = ctx.shell.query.borrow().clone();
     let active_id = app.store.active_machine_id.clone();
+    let all_profiles: Vec<MachineProfile> = app.store.profiles.clone();
     let visible: Vec<MachineProfile> = visible_machines(&app.store.profiles, &query, scope)
         .into_iter()
         .cloned()
@@ -126,10 +143,12 @@ pub fn rebuild_home(ctx: RebuildHome<'_>) {
     let has_query = !query.trim().is_empty();
     drop(app);
 
+    rebuild_summary_strip(&ctx.shell.summary, &all_profiles, &ctx.sessions);
+
     if visible.is_empty() {
         let (title, subtitle) = empty_state_text(scope, has_any, has_query);
         let empty = adw::StatusPage::builder()
-            .icon_name("computer-symbolic")
+            .icon_name("system-search-symbolic")
             .title(title)
             .description(subtitle)
             .build();
@@ -157,10 +176,56 @@ pub fn rebuild_home(ctx: RebuildHome<'_>) {
     }
 }
 
+/// "Machines" heading + Profiles / Connected / Ready pills.
+fn rebuild_summary_strip(
+    summary: &gtk::Box,
+    profiles: &[MachineProfile],
+    sessions: &MachineSessions,
+) {
+    while let Some(child) = summary.first_child() {
+        summary.remove(&child);
+    }
+
+    let heading_icon = gtk::Image::from_icon_name("network-server-symbolic");
+    let heading = gtk::Label::new(Some("Machines"));
+    heading.add_css_class("heading");
+    summary.append(&heading_icon);
+    summary.append(&heading);
+
+    let connected = profiles
+        .iter()
+        .filter(|p| machine_session_status(&p.id, sessions).0)
+        .count();
+    let ready = profiles.iter().filter(|p| launch_supported(p)).count();
+
+    for (title, value) in [
+        ("Profiles", profiles.len()),
+        ("Connected", connected),
+        ("Ready", ready),
+    ] {
+        let pill = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        pill.add_css_class("card");
+        pill.set_margin_top(2);
+        pill.set_margin_bottom(2);
+        let t = gtk::Label::new(Some(title));
+        t.add_css_class("caption");
+        t.set_margin_start(10);
+        t.set_margin_top(4);
+        t.set_margin_bottom(4);
+        let v = gtk::Label::new(Some(&value.to_string()));
+        v.add_css_class("caption-heading");
+        v.set_margin_end(10);
+        pill.append(&t);
+        pill.append(&v);
+        summary.append(&pill);
+    }
+}
+
 struct MachineCard {
     root: gtk::Box,
-    run_btn: gtk::Button,
+    start_btn: gtk::Button,
     stop_btn: gtk::Button,
+    focus_btn: gtk::Button,
     edit_btn: gtk::Button,
     delete_btn: gtk::Button,
 }
@@ -172,18 +237,22 @@ fn build_machine_card(
 ) -> MachineCard {
     let frame = gtk::Frame::new(None);
     frame.add_css_class("card");
-    frame.set_width_request(240);
+    frame.set_width_request(300);
 
-    let vbox = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    vbox.set_margin_top(12);
-    vbox.set_margin_bottom(12);
-    vbox.set_margin_start(12);
-    vbox.set_margin_end(12);
+    let vbox = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    vbox.set_margin_top(16);
+    vbox.set_margin_bottom(16);
+    vbox.set_margin_start(16);
+    vbox.set_margin_end(16);
 
-    // Thumbnail or type icon placeholder
+    let (running, _pid) = machine_session_status(&profile.id, sessions);
+
+    // Header banner: thumbnail (or type placeholder) with name + subtitle and
+    // the machine-type icon (mirrors macOS `headerBanner`).
+    let banner = gtk::Overlay::new();
     let thumb_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
     thumb_box.add_css_class("card");
-    thumb_box.set_height_request(120);
+    thumb_box.set_height_request(90);
     if let Ok(path) = thumbnail_store::thumbnail_path(&profile.id) {
         if path.is_file() {
             let pic = gtk::Picture::for_filename(&path);
@@ -191,93 +260,137 @@ fn build_machine_card(
             pic.set_hexpand(true);
             pic.set_vexpand(true);
             thumb_box.append(&pic);
-        } else {
-            let icon = gtk::Image::from_icon_name(profile.machine_type.icon_name());
-            icon.set_pixel_size(48);
-            icon.set_halign(gtk::Align::Center);
-            icon.set_valign(gtk::Align::Center);
-            thumb_box.set_valign(gtk::Align::Center);
-            thumb_box.append(&icon);
         }
     }
+    banner.set_child(Some(&thumb_box));
 
-    let title_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    let title = gtk::Label::new(Some(&profile.name));
-    title.set_halign(gtk::Align::Start);
-    title.set_hexpand(true);
-    title.add_css_class("heading");
-    title.set_xalign(0.0);
-
-    let fav = gtk::Image::from_icon_name(if profile.favorite {
-        "starred-symbolic"
+    let banner_text = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    banner_text.set_margin_start(12);
+    banner_text.set_margin_end(12);
+    banner_text.set_valign(gtk::Align::Center);
+    let name_col = gtk::Box::new(gtk::Orientation::Vertical, 4);
+    name_col.set_hexpand(true);
+    name_col.set_valign(gtk::Align::Center);
+    let title = gtk::Label::new(Some(if profile.name.is_empty() {
+        "Unnamed Machine"
     } else {
-        "non-starred-symbolic"
-    });
-    title_row.append(&title);
-    title_row.append(&fav);
-
-    let subtitle = gtk::Label::new(Some(&format!(
-        "{} · {}",
-        profile.machine_type.user_facing_name(),
-        profile.summary()
-    )));
-    subtitle.set_wrap(true);
+        &profile.name
+    }));
+    title.add_css_class("title-3");
+    title.set_xalign(0.0);
+    title.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    let subtitle = gtk::Label::new(Some(&machine_subtitle(profile)));
     subtitle.add_css_class("dim-label");
     subtitle.set_xalign(0.0);
+    subtitle.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    name_col.append(&title);
+    name_col.append(&subtitle);
+    let type_icon = gtk::Image::from_icon_name(profile.machine_type.icon_name());
+    type_icon.set_pixel_size(24);
+    banner_text.append(&name_col);
+    banner_text.append(&type_icon);
+    banner.add_overlay(&banner_text);
 
-    let (running, pid) = machine_session_status(&profile.id, sessions);
-    let status_text = if running {
-        pid.map(|p| format!("Running · pid {p}"))
-            .unwrap_or_else(|| "Running".to_string())
-    } else if is_active {
-        "Active".to_string()
+    // Status badge + scope/type/active chips.
+    let badge_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    let status_text = if running { "Connected" } else { "Disconnected" };
+    let status_icon = gtk::Image::from_icon_name(if running {
+        "emblem-ok-symbolic"
     } else {
-        "Stopped".to_string()
-    };
-    let status = gtk::Label::new(Some(&status_text));
-    status.add_css_class(if running { "success" } else { "dim-label" });
-    status.set_xalign(0.0);
+        "media-playback-pause-symbolic"
+    });
+    let status = gtk::Label::new(Some(status_text));
+    status.add_css_class("caption-heading");
+    if running {
+        status.add_css_class("success");
+        status_icon.add_css_class("success");
+    } else {
+        status.add_css_class("dim-label");
+        status_icon.add_css_class("dim-label");
+    }
+    badge_row.append(&status_icon);
+    badge_row.append(&status);
 
-    let actions = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-    actions.set_halign(gtk::Align::End);
+    let chips = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    chips.set_halign(gtk::Align::End);
+    chips.set_hexpand(true);
+    chips.append(&chip(&machine_scope_label(profile.machine_type).to_uppercase()));
+    chips.append(&chip(&profile.machine_type.user_facing_name().to_uppercase()));
+    if is_active {
+        chips.append(&chip("ACTIVE"));
+    }
+    badge_row.append(&chips);
 
-    let run_btn = gtk::Button::from_icon_name("media-playback-start-symbolic");
-    run_btn.set_tooltip_text(Some("Run"));
-    run_btn.add_css_class("flat");
-    let stop_btn = gtk::Button::from_icon_name("media-playback-stop-symbolic");
-    stop_btn.set_tooltip_text(Some("Stop"));
-    stop_btn.add_css_class("flat");
-    let edit_btn = gtk::Button::from_icon_name("document-edit-symbolic");
-    edit_btn.set_tooltip_text(Some("Edit"));
-    edit_btn.add_css_class("flat");
-    let delete_btn = gtk::Button::from_icon_name("user-trash-symbolic");
-    delete_btn.set_tooltip_text(Some("Delete"));
-    delete_btn.add_css_class("flat");
-    actions.append(&run_btn);
+    // Summary line (e.g. "Runs: Weston Terminal").
+    let summary = gtk::Label::new(Some(&machine_configuration_summary(profile)));
+    summary.set_wrap(true);
+    summary.set_lines(3);
+    summary.add_css_class("dim-label");
+    summary.add_css_class("caption");
+    summary.set_xalign(0.0);
+
+    // Action row: Start (or Focus + Stop when running), Edit, Delete.
+    let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+
+    let start_btn = button_with_icon_label("media-playback-start-symbolic", "Start");
+    start_btn.add_css_class("suggested-action");
+    let focus_btn = button_with_icon_label("find-location-symbolic", "Focus");
+    let stop_btn = button_with_icon_label("media-playback-stop-symbolic", "Stop");
+    stop_btn.add_css_class("destructive-action");
+    let edit_btn = button_with_icon_label("emblem-system-symbolic", "Edit");
+    let delete_btn = button_with_icon_label("user-trash-symbolic", "Delete");
+
+    start_btn.set_visible(!running);
+    start_btn.set_sensitive(launch_supported(profile));
+    focus_btn.set_visible(running);
+    stop_btn.set_visible(running);
+    delete_btn.set_sensitive(!running);
+
+    actions.append(&start_btn);
+    actions.append(&focus_btn);
     actions.append(&stop_btn);
     actions.append(&edit_btn);
     actions.append(&delete_btn);
 
-    vbox.append(&thumb_box);
-    vbox.append(&title_row);
-    vbox.append(&subtitle);
-    vbox.append(&status);
+    vbox.append(&banner);
+    vbox.append(&badge_row);
+    vbox.append(&summary);
     vbox.append(&actions);
     frame.set_child(Some(&vbox));
 
     let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
     root.append(&frame);
 
-    run_btn.set_sensitive(!running);
-    stop_btn.set_sensitive(running);
-
     MachineCard {
         root,
-        run_btn,
+        start_btn,
         stop_btn,
+        focus_btn,
         edit_btn,
         delete_btn,
     }
+}
+
+fn button_with_icon_label(icon: &str, label: &str) -> gtk::Button {
+    let content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    content.append(&gtk::Image::from_icon_name(icon));
+    content.append(&gtk::Label::new(Some(label)));
+    let btn = gtk::Button::new();
+    btn.set_child(Some(&content));
+    btn
+}
+
+fn chip(text: &str) -> gtk::Label {
+    let lbl = gtk::Label::new(Some(text));
+    lbl.add_css_class("caption-heading");
+    lbl.add_css_class("chip");
+    lbl.add_css_class("card");
+    lbl.set_margin_top(2);
+    lbl.set_margin_bottom(2);
+    // Padding via label margins inside the frame-like card class.
+    lbl.set_width_chars(0);
+    lbl.set_xalign(0.5);
+    lbl
 }
 
 fn attach_card_actions(
@@ -289,14 +402,11 @@ fn attach_card_actions(
     sessions: MachineSessions,
     layout: LayoutMode,
 ) {
-    let run_btn = card.run_btn;
+    let start_btn = card.start_btn;
     let stop_btn = card.stop_btn;
+    let focus_btn = card.focus_btn;
     let edit_btn = card.edit_btn;
     let delete_btn = card.delete_btn;
-
-    let (running, _) = machine_session_status(&profile.id, &sessions);
-    run_btn.set_sensitive(!running);
-    stop_btn.set_sensitive(running);
 
     let mid = profile.id.clone();
     let mname = profile.name.clone();
@@ -304,11 +414,14 @@ fn attach_card_actions(
     let state_r = state.clone();
     let parent_r = parent.clone();
     let sessions_r = sessions.clone();
-    run_btn.connect_clicked(move |_| {
+    start_btn.connect_clicked(move |_| {
         match try_launch_profile(&mid, &state_r) {
             Ok(child) => {
                 wlog!("UI", "Launched '{}' pid={}", mname, child.id());
                 sessions_r.borrow_mut().insert(mid.clone(), child);
+                let mut app = state_r.borrow_mut();
+                let _ = app.store.set_active(Some(mid.clone()));
+                drop(app);
                 rebuild_home(RebuildHome {
                     shell: &shell_r,
                     state: &state_r,
@@ -321,6 +434,25 @@ fn attach_card_actions(
         }
     });
 
+    // Focus: mark active (host window raise is compositor-driven).
+    let mid = profile.id.clone();
+    let shell_f = shell.clone();
+    let state_f = state.clone();
+    let parent_f = parent.clone();
+    let sessions_f = sessions.clone();
+    focus_btn.connect_clicked(move |_| {
+        let mut app = state_f.borrow_mut();
+        let _ = app.store.set_active(Some(mid.clone()));
+        drop(app);
+        rebuild_home(RebuildHome {
+            shell: &shell_f,
+            state: &state_f,
+            parent: &parent_f,
+            sessions: sessions_f.clone(),
+            layout,
+        });
+    });
+
     let mid = profile.id.clone();
     let shell_s = shell.clone();
     let state_s = state.clone();
@@ -328,6 +460,11 @@ fn attach_card_actions(
     let sessions_s = sessions.clone();
     stop_btn.connect_clicked(move |_| {
         stop_machine(&mid, &sessions_s);
+        let mut app = state_s.borrow_mut();
+        if app.store.active_machine_id.as_deref() == Some(mid.as_str()) {
+            let _ = app.store.set_active(None);
+        }
+        drop(app);
         rebuild_home(RebuildHome {
             shell: &shell_s,
             state: &state_s,
@@ -347,6 +484,7 @@ fn attach_card_actions(
             &parent_e,
             &state_e,
             Some(existing.clone()),
+            existing.machine_type,
             &shell_e,
             sessions_e.clone(),
             layout,
@@ -377,6 +515,7 @@ impl Clone for HomeShell {
         Self {
             root: self.root.clone(),
             search: self.search.clone(),
+            summary: self.summary.clone(),
             flow: self.flow.clone(),
             scope: self.scope.clone(),
             query: self.query.clone(),

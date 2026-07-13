@@ -3,6 +3,7 @@
   wawonaVersion,
   wawonaSrc ? ../..,
   waypipeSrc ? null,
+  coreutilsSrc ? null,
   westonSimpleShmLinuxNix,
   ...
 }:
@@ -63,6 +64,19 @@ pkgs.writeShellApplication {
 
     if [ ! -f "$workdir/waypipe/Cargo.toml" ]; then
       echo "Missing ./waypipe dependency and failed to stage waypipe source." >&2
+      exit 1
+    fi
+
+    # Cargo resolves the optional ./coreutils path dependency even when the
+    # feature is disabled, so the manifest must exist in the staged workspace.
+    if [ ! -f "$workdir/coreutils/Cargo.toml" ]; then
+      mkdir -p "$workdir/coreutils"
+      cp -rL "${coreutilsSrc}"/. "$workdir/coreutils"/
+      chmod -R u+w "$workdir/coreutils"
+    fi
+
+    if [ ! -f "$workdir/coreutils/Cargo.toml" ]; then
+      echo "Missing ./coreutils dependency and failed to stage coreutils source." >&2
       exit 1
     fi
 

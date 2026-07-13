@@ -226,15 +226,14 @@ impl MachineProfile {
         }
     }
 
-    /// Resolve the command/client this profile launches for native machines,
-    /// preferring an explicit `remoteCommand` then the bundled-app override.
+    /// Resolve the command/client this profile launches for native machines.
+    /// The selected bundled client (`bundledAppID`) wins, then a custom
+    /// `remoteCommand`, then the weston-terminal default — matching how the
+    /// macOS front-end resolves `selectedClientId(for:)`.
     pub fn effective_command(&self) -> String {
         match self.machine_type {
             MachineType::Native => {
-                let custom = self.remote_command.trim();
-                if !custom.is_empty() {
-                    custom.to_string()
-                } else if let Some(app) = self
+                if let Some(app) = self
                     .runtime_overrides
                     .bundled_app_id
                     .as_deref()
@@ -243,7 +242,12 @@ impl MachineProfile {
                 {
                     app.to_string()
                 } else {
-                    "weston-terminal".to_string()
+                    let custom = self.remote_command.trim();
+                    if custom.is_empty() {
+                        "weston-terminal".to_string()
+                    } else {
+                        custom.to_string()
+                    }
                 }
             }
             _ => self.remote_command.clone(),

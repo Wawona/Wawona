@@ -33,7 +33,7 @@ pub fn present_sheet(
         }
     }
 
-    dialog.set_child(Some(content));
+    dialog.set_content(Some(content));
     dialog.present();
     dialog
 }

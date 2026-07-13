@@ -63,12 +63,122 @@ impl MachineScope {
         &[Self::All, Self::Local, Self::Remote]
     }
 
+    /// The sensible machine type to default to when adding a new profile from
+    /// this filter (mirrors `WWNMachineFilter.defaultMachineType`).
+    pub fn default_machine_type(self) -> crate::linux::machine_profile::MachineType {
+        match self {
+            Self::Remote => crate::linux::machine_profile::MachineType::SshWaypipe,
+            _ => crate::linux::machine_profile::MachineType::Native,
+        }
+    }
+
     pub fn matches(self, machine_type: crate::linux::machine_profile::MachineType) -> bool {
         match self {
             Self::All => true,
             Self::Local => machine_type.is_local(),
             Self::Remote => machine_type.is_remote(),
         }
+    }
+}
+
+/// Scope chip label (mirrors `machineScopeLabel(for:)` on macOS).
+pub fn machine_scope_label(machine_type: crate::linux::machine_profile::MachineType) -> &'static str {
+    if machine_type.is_local() {
+        "Local"
+    } else {
+        "Remote"
+    }
+}
+
+/// Display label for a native profile's configured client: the bundled client
+/// name, a custom command, or `None` (mirrors `selectedClientName(for:)`).
+fn native_client_label(profile: &MachineProfile) -> Option<String> {
+    use crate::linux::bundled_clients;
+    if let Some(id) = profile
+        .runtime_overrides
+        .bundled_app_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        return Some(bundled_clients::label_for(id));
+    }
+    let custom = profile.remote_command.trim();
+    if custom.is_empty() {
+        None
+    } else {
+        Some(custom.to_string())
+    }
+}
+
+/// Card subtitle (mirrors `machineSubtitle(for:)` on macOS).
+pub fn machine_subtitle(profile: &MachineProfile) -> String {
+    use crate::linux::machine_profile::MachineType;
+    match profile.machine_type {
+        MachineType::Native => match native_client_label(profile) {
+            Some(label) => label,
+            None => "No client configured".to_string(),
+        },
+        MachineType::VirtualMachine => "VM profile (QEMU/KVM)".to_string(),
+        MachineType::Container => "Container profile (crun)".to_string(),
+        MachineType::SshWaypipe | MachineType::SshTerminal => {
+            if profile.ssh_host.is_empty() {
+                "SSH endpoint not configured".to_string()
+            } else {
+                let user = if profile.ssh_user.is_empty() {
+                    "user"
+                } else {
+                    &profile.ssh_user
+                };
+                format!("{}@{}", user, profile.ssh_host)
+            }
+        }
+    }
+}
+
+/// Card summary line (mirrors `machineConfigurationSummary(for:)` on macOS).
+pub fn machine_configuration_summary(profile: &MachineProfile) -> String {
+    use crate::linux::machine_profile::MachineType;
+    match profile.machine_type {
+        MachineType::Native => match native_client_label(profile) {
+            Some(label) => format!("Runs: {}", label),
+            None => "No client configured — edit to select one".to_string(),
+        },
+        MachineType::SshWaypipe => {
+            let command = if profile.remote_command.is_empty() {
+                "weston-simple-shm"
+            } else {
+                &profile.remote_command
+            };
+            format!("Waypipe command: {}", command)
+        }
+        MachineType::SshTerminal => {
+            let command = if profile.remote_command.is_empty() {
+                "terminal default"
+            } else {
+                &profile.remote_command
+            };
+            format!("SSH terminal command: {}", command)
+        }
+        MachineType::VirtualMachine => "Backend: QEMU/KVM".to_string(),
+        MachineType::Container => "Backend: crun".to_string(),
+    }
+}
+
+/// Whether "Start" is enabled for this profile (mirrors `launchSupported(for:)`).
+pub fn launch_supported(profile: &MachineProfile) -> bool {
+    use crate::linux::machine_profile::MachineType;
+    match profile.machine_type {
+        MachineType::Native => {
+            profile
+                .runtime_overrides
+                .bundled_app_id
+                .as_deref()
+                .map(str::trim)
+                .is_some_and(|s| !s.is_empty())
+                || !profile.remote_command.trim().is_empty()
+        }
+        _ => true,
     }
 }
 
@@ -111,20 +221,17 @@ pub fn visible_machines<'a>(
     out
 }
 
-/// Placeholder text shown when a filtered list is empty, matching the empty
-/// states used elsewhere.
-pub fn empty_state_text(scope: MachineScope, has_any: bool, has_query: bool) -> (&'static str, &'static str) {
-    if has_query {
-        ("No matches", "No machines match your search.")
-    } else if !has_any {
-        ("No machines yet", "Tap + to add your first machine.")
-    } else {
-        match scope {
-            MachineScope::Local => ("No local machines", "Add a native, VM, or container profile."),
-            MachineScope::Remote => ("No remote machines", "Add an SSH or Waypipe profile."),
-            MachineScope::All => ("No machines yet", "Tap + to add your first machine."),
-        }
-    }
+/// Placeholder text shown when the filtered list is empty (mirrors the macOS
+/// `ContentUnavailableView` in `WWNMachinesGridView`).
+pub fn empty_state_text(
+    _scope: MachineScope,
+    _has_any: bool,
+    _has_query: bool,
+) -> (&'static str, &'static str) {
+    (
+        "No Matching Machines",
+        "Adjust search/filter settings or add a new machine profile.",
+    )
 }
 
 #[cfg(test)]
@@ -179,9 +286,47 @@ mod tests {
     }
 
     #[test]
-    fn empty_state_varies_by_context() {
-        assert_eq!(empty_state_text(MachineScope::All, false, false).0, "No machines yet");
-        assert_eq!(empty_state_text(MachineScope::Remote, true, false).0, "No remote machines");
-        assert_eq!(empty_state_text(MachineScope::All, true, true).0, "No matches");
+    fn empty_state_matches_macos_content_unavailable_view() {
+        assert_eq!(
+            empty_state_text(MachineScope::All, false, false).0,
+            "No Matching Machines"
+        );
+        assert_eq!(
+            empty_state_text(MachineScope::Remote, true, true).0,
+            "No Matching Machines"
+        );
+    }
+
+    #[test]
+    fn card_labels_match_macos_view_model() {
+        let mut native = machine("Local", false, MachineType::Native);
+        native.remote_command.clear();
+        native.runtime_overrides.bundled_app_id = Some("foot".into());
+        assert_eq!(machine_subtitle(&native), "Foot Terminal");
+        assert_eq!(machine_configuration_summary(&native), "Runs: Foot Terminal");
+        assert!(launch_supported(&native));
+        assert_eq!(machine_scope_label(native.machine_type), "Local");
+
+        let mut unconfigured = machine("Empty", false, MachineType::Native);
+        unconfigured.remote_command.clear();
+        assert_eq!(machine_subtitle(&unconfigured), "No client configured");
+        assert!(!launch_supported(&unconfigured));
+
+        let mut ssh = machine("Remote", false, MachineType::SshWaypipe);
+        ssh.ssh_host = "host".into();
+        ssh.ssh_user = "me".into();
+        assert_eq!(machine_subtitle(&ssh), "me@host");
+        assert_eq!(machine_scope_label(ssh.machine_type), "Remote");
+        assert_eq!(
+            machine_configuration_summary(&ssh),
+            "Waypipe command: weston-simple-shm"
+        );
+    }
+
+    #[test]
+    fn scope_default_machine_type_mirrors_macos_filter() {
+        assert_eq!(MachineScope::Remote.default_machine_type(), MachineType::SshWaypipe);
+        assert_eq!(MachineScope::All.default_machine_type(), MachineType::Native);
+        assert_eq!(MachineScope::Local.default_machine_type(), MachineType::Native);
     }
 }

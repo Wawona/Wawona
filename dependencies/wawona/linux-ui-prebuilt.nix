@@ -12,6 +12,7 @@
   wawonaSrc ? ../..,
   waypipeSrc,
   coreutilsSrc,
+  westonSimpleShmLinuxNix,
 }:
 
 let
@@ -19,6 +20,20 @@ let
     inherit wawonaSrc waypipeSrc wawonaVersion coreutilsSrc;
     platform = "macos"; # keep the [[bin]] targets + lib crate-types
   };
+
+  # Bundled Wayland clients + transports the Machine Configuration launcher
+  # spawns (weston demos, foot, kmscube, waypipe/ssh). The JIT runner
+  # (linux.nix) provides these via runtimeInputs; the prebuilt binary needs
+  # them on the wrapper PATH or every "Start" is `command not found`.
+  clientPath = lib.makeBinPath [
+    pkgs.weston
+    (pkgs.callPackage westonSimpleShmLinuxNix { })
+    pkgs.foot
+    pkgs.kmscube
+    pkgs.waypipe
+    pkgs.openssh
+    pkgs.fastfetch
+  ];
 
   rustPlatform = pkgs.makeRustPlatform {
     cargo = pkgs.rustToolchain;
@@ -74,6 +89,10 @@ rustPlatform.buildRustPackage {
     pkgs.wrapGAppsHook4
   ];
   buildInputs = gtkStack;
+
+  preFixup = ''
+    gappsWrapperArgs+=(--prefix PATH : "${clientPath}")
+  '';
 
   meta = {
     description = "Wawona Linux GTK binaries (ahead-of-time compiled)";

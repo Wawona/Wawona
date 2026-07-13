@@ -609,6 +609,7 @@
             else pkgs.callPackage ./dependencies/wawona/linux.nix {
               inherit wawonaVersion;
               waypipeSrc = waypipe-src;
+              coreutilsSrc = coreutils-src;
             };
         } // pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin {
           # ANGLE companion: iland userland graphics core (GBM/EGL/DRM over IOSurface).
@@ -670,6 +671,7 @@
           wawona-linux = pkgs.callPackage ./dependencies/wawona/linux.nix {
             inherit wawonaVersion;
             waypipeSrc = waypipe-src;
+            coreutilsSrc = coreutils-src;
           };
           wawona-linux-ui-bin = pkgs.callPackage ./dependencies/wawona/linux-ui-prebuilt.nix {
             inherit wawonaVersion;
@@ -688,10 +690,12 @@
           wawona-linux-compositor-host = pkgs.callPackage ./dependencies/wawona/linux-host.nix {
             inherit wawonaVersion;
             waypipeSrc = waypipe-src;
+            coreutilsSrc = coreutils-src;
           };
           wawona-linux-tray = pkgs.callPackage ./dependencies/wawona/linux-tray.nix {
             inherit wawonaVersion;
             waypipeSrc = waypipe-src;
+            coreutilsSrc = coreutils-src;
           };
           wawona-linux-vm = pkgs.callPackage ./dependencies/wawona/linux-vm.nix {
             inherit wawonaVersion;
@@ -712,12 +716,14 @@
           default = pkgs.callPackage ./dependencies/wawona/linux.nix {
             inherit wawonaVersion;
             waypipeSrc = waypipe-src;
+            coreutilsSrc = coreutils-src;
           };
           # Consumer-facing package name for use as a flake input or overlay,
           # matching the nixpkgs convention of installing `pkgs.wawona`.
           wawona = pkgs.callPackage ./dependencies/wawona/linux.nix {
             inherit wawonaVersion;
             waypipeSrc = waypipe-src;
+            coreutilsSrc = coreutils-src;
           };
         }) // (pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin (let
           teamId = let value = builtins.getEnv "TEAM_ID"; in if value == "" then null else value;
