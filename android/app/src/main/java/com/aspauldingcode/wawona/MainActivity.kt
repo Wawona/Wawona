@@ -246,16 +246,20 @@ private fun KeyboardUiMode.isPip(): Boolean =
  * even when the user expects soft+accessory input (issue #82).
  */
 private fun hasRealExternalKeyboard(configuration: Configuration): Boolean {
-    val devices = InputDevice.getDeviceIds().mapNotNull { InputDevice.getDevice(it) }
-    val external = devices.any { device ->
-        if (device.isVirtual) return@any false
+    var external = false
+    for (id in InputDevice.getDeviceIds()) {
+        val device = InputDevice.getDevice(id) ?: continue
+        if (device.isVirtual) continue
         val sources = device.sources
         val isFullKeyboard =
             (sources and InputDevice.SOURCE_KEYBOARD) == InputDevice.SOURCE_KEYBOARD &&
                 device.keyboardType == InputDevice.KEYBOARD_TYPE_ALPHABETIC
         // Exclude the built-in/virtual soft-keyboard path; require a non-virtual
         // alphabetic keyboard that Configuration also considers "shown".
-        isFullKeyboard && !device.name.contains("Virtual", ignoreCase = true)
+        if (isFullKeyboard && !device.name.contains("Virtual", ignoreCase = true)) {
+            external = true
+            break
+        }
     }
     if (!external) return false
     return configuration.keyboard == Configuration.KEYBOARD_QWERTY &&
