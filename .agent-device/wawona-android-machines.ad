@@ -1,7 +1,6 @@
 # Machines-lane e2e: onboarding -> profile list -> native weston session.
-# Native compositor screens return sparse accessibility snapshots on Android,
-# so this flow drives coordinate taps (1080x2424 px reference device) and
-# uses screenshots as the source of truth.
+# Prefer label selectors over coordinates — emulator skins (pixel_7 1080x2400)
+# diverge from the old 1080x2424 recording frame and miss the Start button.
 context platform=android
 context session=wawona-android-machines
 
@@ -9,23 +8,28 @@ open com.aspauldingcode.wawona --relaunch
 wait 4000
 screenshot ./.agent-device/test-artifacts/android-first-screen.png
 
-# First launch shows "Welcome to Wawona"; Continue lands on Machine
-# Configuration. On relaunch the app goes straight there, in which case this
-# tap hits empty space below the machine list and is a no-op.
-click 540 1404
-wait 2000
+# First launch may show Welcome; Continue is a no-op when already past it.
+press label="Continue"
+wait 1500
 screenshot ./.agent-device/test-artifacts/android-machines-root.png
 
+# Dismiss Android immersive-mode coach mark when present (no-op otherwise).
+press label="Got it"
+wait 500
+
 # Open the Add Machine Profile sheet via the "+" FAB, capture, dismiss.
-click 938 2219
+press label="Add"
 wait 1500
 screenshot ./.agent-device/test-artifacts/android-add-machine-sheet.png
 back
 wait 1000
 
 # Start the Default Machine (bundled weston-terminal, in-process compositor).
-click 227 1039
+press label="Start"
 wait 10000
+# Immersive coach mark can appear on first compositor surface.
+press label="Got it"
+wait 500
 screenshot ./.agent-device/test-artifacts/android-weston-session.png
 
 close

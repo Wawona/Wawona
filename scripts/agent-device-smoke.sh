@@ -95,12 +95,36 @@ run_android() {
   agent-device batch --session wawona-android-smoke --platform android --serial "$serial" \
     --steps-file "$ROOT/.agent-device/wawona-android-smoke-batch.json" --json
 
-  echo "== Android: machines-lane replay =="
-  local machines_ad
-  machines_ad="$(mktemp "${TMPDIR:-/tmp}/wawona-android-machines.XXXXXX.ad")"
-  android_scale_ad_file "$ROOT/.agent-device/wawona-android-machines.ad" "$machines_ad"
-  agent-device replay "$machines_ad"
-  rm -f "$machines_ad"
+  echo "== Android: machines-lane (label-driven) =="
+  local sess=wawona-android-machines
+  local ad_common=(--platform android --serial "$serial" --session "$sess")
+  agent-device open com.aspauldingcode.wawona --relaunch "${ad_common[@]}"
+  agent-device wait 4000 "${ad_common[@]}"
+  agent-device screenshot "$ARTIFACTS/android-first-screen.png" "${ad_common[@]}"
+  if agent-device is visible 'label="Continue"' "${ad_common[@]}" >/dev/null 2>&1; then
+    agent-device press 'label="Continue"' "${ad_common[@]}"
+    agent-device wait 1500 "${ad_common[@]}"
+  fi
+  agent-device screenshot "$ARTIFACTS/android-machines-root.png" "${ad_common[@]}"
+  if agent-device is visible 'label="Got it"' "${ad_common[@]}" >/dev/null 2>&1; then
+    agent-device press 'label="Got it"' "${ad_common[@]}"
+    agent-device wait 500 "${ad_common[@]}"
+  fi
+  if agent-device is visible 'label="Add"' "${ad_common[@]}" >/dev/null 2>&1; then
+    agent-device press 'label="Add"' "${ad_common[@]}"
+    agent-device wait 1500 "${ad_common[@]}"
+    agent-device screenshot "$ARTIFACTS/android-add-machine-sheet.png" "${ad_common[@]}"
+    agent-device back "${ad_common[@]}"
+    agent-device wait 1000 "${ad_common[@]}"
+  fi
+  agent-device press 'label="Start"' "${ad_common[@]}"
+  agent-device wait 10000 "${ad_common[@]}"
+  if agent-device is visible 'label="Got it"' "${ad_common[@]}" >/dev/null 2>&1; then
+    agent-device press 'label="Got it"' "${ad_common[@]}"
+    agent-device wait 500 "${ad_common[@]}"
+  fi
+  agent-device screenshot "$ARTIFACTS/android-weston-session.png" "${ad_common[@]}"
+  agent-device close "${ad_common[@]}"
 }
 
 run_fuzzel() {

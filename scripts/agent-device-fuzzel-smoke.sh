@@ -97,20 +97,53 @@ run_android_fuzzel() {
   # shellcheck source=scripts/lib/android-ad-scale.sh
   source "$ROOT/scripts/lib/android-ad-scale.sh"
 
-  echo "== Android: niri+fuzzel .ad replay =="
-  local niri_ad
-  niri_ad="$(mktemp "${TMPDIR:-/tmp}/wawona-android-niri-fuzzel.XXXXXX.ad")"
-  android_scale_ad_file "$ROOT/.agent-device/wawona-android-niri-fuzzel.ad" "$niri_ad"
-  agent-device replay "$niri_ad" --platform android --serial "$serial"
-  rm -f "$niri_ad"
+  # Label-driven flow (coordinate .ad taps miss Start / hit Remote on pixel_7).
+  local sess=wawona-android-niri-fuzzel
+  local ad_common=(--platform android --serial "$serial" --session "$sess")
+  echo "== Android: niri+fuzzel label-driven start =="
+  agent-device open com.aspauldingcode.wawona --relaunch "${ad_common[@]}"
+  agent-device wait 4000 "${ad_common[@]}"
+  agent-device screenshot "$ARTIFACTS/android-fuzzel-e2e-01-home.png" "${ad_common[@]}"
+  if agent-device is visible 'label="Continue"' "${ad_common[@]}" >/dev/null 2>&1; then
+    agent-device press 'label="Continue"' "${ad_common[@]}"
+    agent-device wait 1500 "${ad_common[@]}"
+  fi
+  agent-device screenshot "$ARTIFACTS/android-fuzzel-e2e-02-machines.png" "${ad_common[@]}"
+  if agent-device is visible 'label="Got it"' "${ad_common[@]}" >/dev/null 2>&1; then
+    agent-device press 'label="Got it"' "${ad_common[@]}"
+    agent-device wait 500 "${ad_common[@]}"
+  fi
+  if agent-device is visible 'label="All Machines"' "${ad_common[@]}" >/dev/null 2>&1; then
+    agent-device press 'label="All Machines"' "${ad_common[@]}"
+    agent-device wait 500 "${ad_common[@]}"
+  fi
+  agent-device press 'label="Start"' "${ad_common[@]}"
+  agent-device wait 12000 "${ad_common[@]}"
+  agent-device screenshot "$ARTIFACTS/android-fuzzel-e2e-03-niri-starting.png" "${ad_common[@]}"
+  if agent-device is visible 'label="Done"' "${ad_common[@]}" >/dev/null 2>&1; then
+    agent-device press 'label="Done"' "${ad_common[@]}"
+    agent-device wait 1000 "${ad_common[@]}"
+  fi
+  if agent-device is visible 'label="Got it"' "${ad_common[@]}" >/dev/null 2>&1; then
+    agent-device press 'label="Got it"' "${ad_common[@]}"
+    agent-device wait 500 "${ad_common[@]}"
+  fi
+  agent-device screenshot "$ARTIFACTS/android-fuzzel-e2e-04-niri-focused.png" "${ad_common[@]}"
+  # Keep app in foreground for Alt+D; do not close the session yet.
 
-  # Replay closes the agent-device session; the app stays running.
-  local procs
-  procs="$(adb -s "$serial" shell 'ps -A' | grep -E '[n]iri|[f]uzzel' || true)"
+  local procs=""
+  local i
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    procs="$(adb -s "$serial" shell 'ps -A' | grep -E '[n]iri|[f]uzzel' || true)"
+    if echo "$procs" | grep -q 'niri'; then
+      break
+    fi
+    sleep 2
+  done
   echo "$procs" | tee "$ARTIFACTS/android-fuzzel-e2e-procs-pre.txt"
 
   if ! echo "$procs" | grep -q 'fuzzel'; then
-    # Clear any sticky launcher, then inject Alt+D (nested niri Mod = Alt).
+    # Focus compositor surface center, then inject Alt+D (nested niri Mod = Alt).
     local focus_xy
     focus_xy="$(android_scale_xy 540 1100)"
     adb -s "$serial" shell input tap $focus_xy
@@ -122,9 +155,10 @@ run_android_fuzzel() {
     procs="$(adb -s "$serial" shell 'ps -A' | grep -E '[n]iri|[f]uzzel' || true)"
     echo "$procs" | tee "$ARTIFACTS/android-fuzzel-e2e-procs.txt"
   else
-    echo "fuzzel already running after .ad focus — skipping Alt+D inject"
+    echo "fuzzel already running after start — skipping Alt+D inject"
     echo "$procs" | tee "$ARTIFACTS/android-fuzzel-e2e-procs.txt"
   fi
+  agent-device close "${ad_common[@]}" >/dev/null 2>&1 || true
 
   local shot="$ARTIFACTS/android-fuzzel-e2e-05-after-alt-d.png"
   adb -s "$serial" exec-out screencap -p >"$shot"
