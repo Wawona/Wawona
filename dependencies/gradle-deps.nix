@@ -164,13 +164,20 @@ let
     cp -aL ${rawMitmCache}/. "$out/"
     chmod -R u+w "$out"
     src="$out/https/dl.google.com/dl/android/maven2"
-    dst="$out/https/plugins.gradle.org/m2"
+    # Seed portal / maven.google.com trees with Google-hosted AGP bits.
+    # Skip existing paths: lockfile entries under multiple hosts hardlink to
+    # the same file, and `cp -aL` then fails with "are the same file".
     if [ -d "$src/com/android" ]; then
-      mkdir -p "$dst/com/android"
-      cp -aL "$src/com/android/." "$dst/com/android/"
-      # google() repository URL before redirect (belt-and-suspenders).
-      mkdir -p "$out/https/maven.google.com/com/android"
-      cp -aL "$src/com/android/." "$out/https/maven.google.com/com/android/"
+      for dst_root in \
+        "$out/https/plugins.gradle.org/m2" \
+        "$out/https/maven.google.com"
+      do
+        mkdir -p "$dst_root/com/android"
+        # --skip-old-files: portal lockfile entries hardlink to the Google
+        # tree; overwriting those twins makes cp fail ("same file").
+        (cd "$src/com/android" && tar cf - .) \
+          | (cd "$dst_root/com/android" && tar xpf - --skip-old-files)
+      done
     fi
   '';
 in
