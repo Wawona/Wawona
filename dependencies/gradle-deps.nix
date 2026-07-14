@@ -144,15 +144,34 @@ let
     '';
   };
 in
-{
-  depsFile = ./gradle-deps.json;
-
-  mitmCache = gradle.fetchDeps {
+let
+  rawMitmCache = gradle.fetchDeps {
     pkg = depsPackage;
     data = ./gradle-deps.json;
     silent = false;
     useBwrap = false;
   };
+  # Seed plugins.gradle.org with Google-hosted AGP plugin markers so portal
+  # lookups hit the MITM cache (CI previously failed with cache-miss →
+  # SocketException → UnknownPluginException for com.android.application).
+  mitmCache = pkgs.runCommand "wawona-android-gradle-deps-deps" {
+    # Keep gradle-deps-update (fetchDeps passthru) reachable from the wrapper.
+    passthru = rawMitmCache.passthru or { };
+  } ''
+    cp -a ${rawMitmCache}/. "$out/"
+    chmod -R u+w "$out"
+    src="$out/https/dl.google.com/dl/android/maven2"
+    dst="$out/https/plugins.gradle.org/m2"
+    if [ -d "$src/com/android" ]; then
+      mkdir -p "$dst/com/android"
+      cp -a "$src/com/android/." "$dst/com/android/"
+    fi
+  '';
+in
+{
+  depsFile = ./gradle-deps.json;
+
+  inherit mitmCache;
 
   gradleFlags = commonGradleFlags;
 

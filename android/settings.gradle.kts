@@ -1,10 +1,12 @@
 pluginManagement {
     repositories {
-        google()
+        // Prefer Google Maven explicitly: AGP plugin markers live here.
+        // gradlePluginPortal() alone misses them in sandboxed MITM builds
+        // (cache keyed under dl.google.com, not plugins.gradle.org).
         maven { url = uri("https://dl.google.com/dl/android/maven2/") }
+        google()
         maven { url = uri("https://plugins.gradle.org/m2/") }
         mavenCentral()
-        gradlePluginPortal()
     }
 }
 

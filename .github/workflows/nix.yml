@@ -333,16 +333,28 @@ jobs:
             echo "::group::Syntax Check: $scheme"
             echo "Checking $scheme ($dest)..."
             
-            # Run analyze, but ignore linker errors since we skipped Nix prebuild
+            # Simulator destinations + unsigned: device SDKs require a
+            # DEVELOPMENT_TEAM even for frontend syntax checks.
             set +e
-            xcodebuild clean build -project Wawona.xcodeproj -scheme "$scheme" -destination "$dest" > build.log 2>&1
+            xcodebuild clean build \
+              -project Wawona.xcodeproj \
+              -scheme "$scheme" \
+              -destination "$dest" \
+              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGN_IDENTITY=- \
+              > build.log 2>&1
             local exit_code=$?
             set -e
             
             if [ $exit_code -ne 0 ]; then
               if grep -q "error:" build.log; then
                 # If there is an error that is NOT a missing Nix dependency, fail!
-                if grep -v "libwawona" build.log | grep -v "linker command failed" | grep -v "clang: error: no such file or directory" | grep -q "error:"; then
+                if grep -v "libwawona" build.log \
+                  | grep -v "linker command failed" \
+                  | grep -v "clang: error: no such file or directory" \
+                  | grep -v "requires a development team" \
+                  | grep -q "error:"; then
                   echo "::error::Swift/ObjC Syntax error detected in $scheme!"
                   cat build.log
                   exit 1
@@ -355,7 +367,7 @@ jobs:
             echo "::endgroup::"
           }
           
-          check_target "Wawona-tvOS" "generic/platform=tvOS"
-          check_target "Wawona-watchOS" "generic/platform=watchOS"
-          check_target "Wawona-visionOS" "generic/platform=visionOS"
+          check_target "Wawona-tvOS" "generic/platform=tvOS Simulator"
+          check_target "Wawona-watchOS" "generic/platform=watchOS Simulator"
+          check_target "Wawona-visionOS" "generic/platform=visionOS Simulator"
           check_target "Wawona-iOS" "generic/platform=iOS Simulator"
