@@ -139,7 +139,13 @@ class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
 
             prefs = getSharedPreferences("wawona_prefs", Context.MODE_PRIVATE)
 
-
+            // Extract Freedesktop catalog / fonts / weston assets before any
+            // nested-niri session starts (fuzzel Exec + XDG_DATA_DIRS).
+            try {
+                WawonaShellRootfs.ensureInstalled(this)
+            } catch (e: Exception) {
+                WLog.e("ACTIVITY", "Shell rootfs install failed: ${e.message}")
+            }
 
             setContent {
                 WawonaTheme {
