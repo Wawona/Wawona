@@ -110,8 +110,8 @@ run_android() {
     agent-device press 'label="Got it"' "${ad_common[@]}"
     agent-device wait 500 "${ad_common[@]}"
   fi
-  if agent-device is visible 'label="Add"' "${ad_common[@]}" >/dev/null 2>&1; then
-    agent-device press 'label="Add"' "${ad_common[@]}"
+  if agent-device is visible 'label="Add Machine"' "${ad_common[@]}" >/dev/null 2>&1; then
+    agent-device press 'label="Add Machine"' "${ad_common[@]}"
     agent-device wait 1500 "${ad_common[@]}"
     agent-device screenshot "$ARTIFACTS/android-add-machine-sheet.png" "${ad_common[@]}"
     agent-device back "${ad_common[@]}"
