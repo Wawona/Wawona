@@ -222,7 +222,6 @@ extern int weston_compositor_main(int argc, char **argv) __attribute__((weak));
 extern volatile sig_atomic_t wwn_weston_compositor_shutdown_requested;
 extern int weston_terminal_main(int argc, const char **argv)
     __attribute__((weak));
-extern int foot_main(int argc, const char **argv) __attribute__((weak));
 extern int flower_main(int argc, const char **argv) __attribute__((weak));
 extern int clickdot_main(int argc, const char **argv) __attribute__((weak));
 extern int smoke_main(int argc, const char **argv) __attribute__((weak));
@@ -2975,6 +2974,9 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
       /* fuzzel (wwn-niri): niri Mod+D launcher — same jniLibs PIE pattern. */
       wwn_android_install_shell_tool(native_lib_dir, usr_bin,
                                      "libfuzzel_bin.so", "fuzzel");
+      /* foot (wwn-foot): Wayland terminal — fork/exec libfoot_bin.so. */
+      wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libfoot_bin.so",
+                                     "foot");
     }
   }
 
@@ -3826,7 +3828,8 @@ static int simple_egl_stub_main(int argc, const char **argv) {
 static const WwnClientEntry kBundledClients[] = {
     {"weston-simple-shm", weston_simple_shm_main},
     {"weston-terminal", weston_terminal_main},
-    {"foot", foot_main},
+    /* foot is fork/exec'd as libfoot_bin.so (see wwn_launch_foot), not
+     * launched via the in-process foot_main dlopen stub. */
     {"weston-flower", flower_main},
     {"weston-clickdot", clickdot_main},
     {"weston-smoke", smoke_main},
@@ -3857,19 +3860,41 @@ static wwn_client_main_fn wwn_client_main_for_id(const char *client_id) {
   return NULL;
 }
 
+static jboolean wwn_foot_binary_available(void) {
+  char native_lib_dir[512];
+  char foot_path[560];
+  if (wwn_android_native_lib_dir(native_lib_dir, sizeof(native_lib_dir)) != 0)
+    return JNI_FALSE;
+  snprintf(foot_path, sizeof(foot_path), "%s/libfoot_bin.so", native_lib_dir);
+  return access(foot_path, X_OK) == 0 ? JNI_TRUE : JNI_FALSE;
+}
+
+/* Refuse only when the companion libfoot.so explicitly reports shim=1.
+ * Missing symbol / dlopen failure does not block a real libfoot_bin.so. */
+static int wwn_foot_compat_shim_value(void) {
+  if (wwn_foot_is_compat_shim)
+    return wwn_foot_is_compat_shim();
+  void *handle = dlopen("libfoot.so", RTLD_NOW | RTLD_LOCAL);
+  if (!handle)
+    return 0;
+  dlerror();
+  int (*fn)(void) = (int (*)(void))dlsym(handle, "wwn_foot_is_compat_shim");
+  int value = (fn != NULL) ? fn() : 0;
+  dlclose(handle);
+  return value;
+}
+
 static jboolean wwn_bundled_client_available(const char *client_id) {
   if (!client_id || client_id[0] == '\0')
     return JNI_FALSE;
   if (strcmp(client_id, "foot") == 0) {
-    if (!foot_main) {
-      LOGE("foot symbol is unavailable in this build");
-      return JNI_FALSE;
-    }
-    if (wwn_foot_is_compat_shim && wwn_foot_is_compat_shim() != 0) {
-      LOGE("Refusing to launch foot: compatibility shim build detected");
-      return JNI_FALSE;
-    }
-    return JNI_TRUE;
+    if (wwn_foot_binary_available() && wwn_foot_compat_shim_value() == 0)
+      return JNI_TRUE;
+    /* Shim-only builds fall back to weston-terminal on launch. */
+    if (weston_terminal_main)
+      return JNI_TRUE;
+    LOGE("foot unavailable (no libfoot_bin.so and no weston-terminal fallback)");
+    return JNI_FALSE;
   }
   if (strcmp(client_id, "kmscube") == 0) {
     if (!kmscube_main) {
@@ -3942,14 +3967,6 @@ static void *bundled_client_thread_func(void *arg) {
       wwn_weston_terminal_is_compat_shim &&
       wwn_weston_terminal_is_compat_shim() != 0) {
     LOGE("Refusing to launch weston-terminal: compatibility shim build detected");
-    g_bundled_client_running = 0;
-    g_bundled_client_id[0] = '\0';
-    return NULL;
-  }
-  if (strcmp(client_id, "foot") == 0 &&
-      wwn_foot_is_compat_shim &&
-      wwn_foot_is_compat_shim() != 0) {
-    LOGE("Refusing to launch foot: compatibility shim build detected");
     g_bundled_client_running = 0;
     g_bundled_client_id[0] = '\0';
     return NULL;
@@ -4046,6 +4063,129 @@ static void wwn_stop_niri(void) {
   g_niri_pid = 0;
 }
 
+/* foot (wwn-foot): Wayland terminal as PIE libfoot_bin.so — fork/exec like niri
+ * so the terminal runs out-of-process with its own main(). */
+static pid_t g_foot_pid = 0;
+
+static int wwn_foot_running(void) {
+  if (g_foot_pid <= 0)
+    return 0;
+  if (waitpid(g_foot_pid, NULL, WNOHANG) == 0)
+    return 1;
+  g_foot_pid = 0;
+  return 0;
+}
+
+static jboolean wwn_launch_foot(void) {
+  if (wwn_foot_running()) {
+    LOGI("foot already running (PID %d) — ignoring relaunch", (int)g_foot_pid);
+    return JNI_TRUE;
+  }
+  if (wwn_foot_compat_shim_value() != 0) {
+    /* Old APKs shipped a weston-simple-shm stub as "foot" — that paints a
+     * black/empty surface. Prefer the real in-process terminal instead. */
+    LOGI("foot compat shim detected — falling back to weston-terminal");
+    return Java_com_aspauldingcode_wawona_WawonaNative_nativeRunWestonTerminal(
+        NULL, NULL);
+  }
+
+  char native_lib_dir[512];
+  char foot_path[560];
+  if (wwn_android_native_lib_dir(native_lib_dir, sizeof(native_lib_dir)) != 0) {
+    LOGE("foot: could not resolve native lib dir");
+    return JNI_FALSE;
+  }
+  snprintf(foot_path, sizeof(foot_path), "%s/libfoot_bin.so", native_lib_dir);
+  if (access(foot_path, X_OK) != 0) {
+    LOGE("foot binary not found or not executable at %s: %s", foot_path,
+         strerror(errno));
+    return JNI_FALSE;
+  }
+
+  const char *files_dir = getenv("WAWONA_FILES_DIR");
+  if (files_dir && files_dir[0])
+    wwn_android_prepare_shell_environment(files_dir);
+  setenv("TERM", "xterm-256color", 1);
+
+  /* Explicit foot.ini with DejaVu path — same pattern as macOS launchFoot.
+   * Relying on fontconfig "monospace" alone still yields a blank window when
+   * fcft fails to resolve a face. */
+  char ini_path[560];
+  const char *xdg_runtime = getenv("XDG_RUNTIME_DIR");
+  if (xdg_runtime && xdg_runtime[0])
+    snprintf(ini_path, sizeof(ini_path), "%s/wawona-foot.ini", xdg_runtime);
+  else if (files_dir && files_dir[0])
+    snprintf(ini_path, sizeof(ini_path), "%s/wawona-foot.ini", files_dir);
+  else
+    snprintf(ini_path, sizeof(ini_path), "/data/local/tmp/wawona-foot.ini");
+
+  const char *mono = getenv("WAWONA_MONO_FONT");
+  const char *font_size = getenv("WAWONA_TERMINAL_FONT_SIZE");
+  int size_px = 14;
+  if (font_size && font_size[0]) {
+    int parsed = atoi(font_size);
+    if (parsed >= 10 && parsed <= 48)
+      size_px = parsed;
+  }
+  {
+    FILE *fp = fopen(ini_path, "w");
+    if (fp) {
+      if (mono && mono[0] && access(mono, R_OK) == 0)
+        fprintf(fp, "[main]\nfont=%s:size=%d\ndpi-aware=yes\n\n", mono,
+                size_px);
+      else
+        fprintf(fp, "[main]\nfont=monospace:size=%d\ndpi-aware=yes\n\n",
+                size_px);
+      fputs("[tweak]\nfont-monospace-warn=no\n", fp);
+      fclose(fp);
+    } else {
+      LOGE("foot: failed to write %s: %s", ini_path, strerror(errno));
+      ini_path[0] = '\0';
+    }
+  }
+
+  pid_t pid = fork();
+  if (pid == 0) {
+    setenv("LD_LIBRARY_PATH", native_lib_dir, 1);
+    setenv("TERM", "xterm-256color", 1);
+    if (xdg_runtime && xdg_runtime[0])
+      chdir(xdg_runtime);
+    const char *shell = getenv("SHELL");
+    if (ini_path[0] && shell && shell[0]) {
+      const char *argv_foot[] = {"foot", "-o", "tweak.font-monospace-warn=no",
+                                 "-c", ini_path, shell, NULL};
+      execv(foot_path, (char *const *)argv_foot);
+    } else if (ini_path[0]) {
+      const char *argv_foot[] = {"foot", "-o", "tweak.font-monospace-warn=no",
+                                 "-c", ini_path, NULL};
+      execv(foot_path, (char *const *)argv_foot);
+    } else if (shell && shell[0]) {
+      const char *argv_foot[] = {"foot", shell, NULL};
+      execv(foot_path, (char *const *)argv_foot);
+    } else {
+      const char *argv_foot[] = {"foot", NULL};
+      execv(foot_path, (char *const *)argv_foot);
+    }
+    _exit(127);
+  }
+  if (pid < 0) {
+    LOGE("foot: fork failed: %s", strerror(errno));
+    return JNI_FALSE;
+  }
+  g_foot_pid = pid;
+  LOGI("Launched foot PID %d from %s (ini=%s)", (int)pid, foot_path,
+       ini_path[0] ? ini_path : "(none)");
+  return JNI_TRUE;
+}
+
+static void wwn_stop_foot(void) {
+  if (g_foot_pid <= 0)
+    return;
+  kill(g_foot_pid, SIGTERM);
+  waitpid(g_foot_pid, NULL, WNOHANG);
+  g_foot_pid = 0;
+}
+
 JNIEXPORT jboolean JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeRunBundledClient(
     JNIEnv *env, jobject thiz, jstring clientId) {
@@ -4070,6 +4210,12 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeRunBundledClient(
   if (strcmp(id_utf, "niri") == 0) {
     (*env)->ReleaseStringUTFChars(env, clientId, id_utf);
     return wwn_launch_niri_nested();
+  }
+
+  /* foot (wwn-foot): same out-of-process PIE pattern as niri. */
+  if (strcmp(id_utf, "foot") == 0) {
+    (*env)->ReleaseStringUTFChars(env, clientId, id_utf);
+    return wwn_launch_foot();
   }
 
   if (g_bundled_client_running) {
@@ -4114,6 +4260,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeStopBundledClient(
     g_simple_shm_running = 0;
   }
   wwn_stop_niri();
+  wwn_stop_foot();
 }
 
 JNIEXPORT jboolean JNICALL
@@ -4121,6 +4268,8 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeIsBundledClientRunning(
     JNIEnv *env, jobject thiz) {
   (void)env;
   (void)thiz;
+  if (wwn_foot_running())
+    return JNI_TRUE;
   return g_bundled_client_running ? JNI_TRUE : JNI_FALSE;
 }
 
@@ -4128,6 +4277,8 @@ JNIEXPORT jstring JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeGetRunningBundledClientId(
     JNIEnv *env, jobject thiz) {
   (void)thiz;
+  if (wwn_foot_running())
+    return (*env)->NewStringUTF(env, "foot");
   if (!g_bundled_client_running || g_bundled_client_id[0] == '\0')
     return NULL;
   return (*env)->NewStringUTF(env, g_bundled_client_id);
@@ -4137,59 +4288,28 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeGetRunningBundledClientId(
 // Foot client
 // ============================================================================
 
-static int g_foot_running = 0;
-static pthread_t g_foot_thread = 0;
-
-static void *foot_thread_func(void *arg) {
-  (void)arg;
-  LOGI("Starting foot background thread");
-  if (!foot_main) {
-    LOGE("foot symbol is unavailable in this build");
-    g_foot_running = 0;
-    return NULL;
-  }
-  char saved_cwd[512] = "";
-  const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
-  if (xdg_dir) { getcwd(saved_cwd, sizeof(saved_cwd)); chdir(xdg_dir); }
-  const char *argv[] = {"foot", NULL};
-  foot_main(1, argv);
-  if (saved_cwd[0]) chdir(saved_cwd);
-  g_foot_running = 0;
-  return NULL;
-}
-
 JNIEXPORT jboolean JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeRunFoot(
     JNIEnv *env, jobject thiz) {
-  (void)env; (void)thiz;
-  if (!foot_main) {
-    LOGE("Refusing to launch foot: symbol unavailable in this build");
-    return JNI_FALSE;
-  }
-  if (wwn_foot_is_compat_shim && wwn_foot_is_compat_shim() != 0) {
-    LOGE("Refusing to launch foot: compatibility shim build detected");
-    return JNI_FALSE;
-  }
-  if (g_foot_running) return JNI_FALSE;
-  g_foot_running = 1;
-  if (pthread_create(&g_foot_thread, NULL, foot_thread_func, NULL) != 0) {
-    g_foot_running = 0; return JNI_FALSE;
-  }
-  return JNI_TRUE;
+  (void)env;
+  (void)thiz;
+  return wwn_launch_foot();
 }
 
 JNIEXPORT void JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeStopFoot(
     JNIEnv *env, jobject thiz) {
-  (void)env; (void)thiz;
-  g_foot_running = 0;
+  (void)env;
+  (void)thiz;
+  wwn_stop_foot();
 }
 
 JNIEXPORT jboolean JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeIsFootRunning(
     JNIEnv *env, jobject thiz) {
-  (void)env; (void)thiz;
-  return g_foot_running ? JNI_TRUE : JNI_FALSE;
+  (void)env;
+  (void)thiz;
+  return wwn_foot_running() ? JNI_TRUE : JNI_FALSE;
 }
 
 // ---------------------------------------------------------------------------

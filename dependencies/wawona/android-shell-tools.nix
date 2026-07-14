@@ -1,4 +1,4 @@
-# Bundled interactive shell tools (zsh, fastfetch, neovim, waypipe, niri, fuzzel)
+# Bundled interactive shell tools (zsh, fastfetch, neovim, waypipe, niri, fuzzel, foot)
 # for the Android APK.
 #
 # Extracted from android.nix to keep that file under its maintainability budget.
@@ -14,6 +14,7 @@
   waypipeAndroid ? null,
   niriAndroid ? null,
   fuzzelAndroid ? null,
+  footAndroid ? null,
   applicationsCatalog ? null,
 }:
 {
@@ -95,6 +96,21 @@
       chmod +x "$JNI_LIB_DIR/libfuzzel_bin.so"
     else
       echo "WARNING: Missing Android fuzzel binary at ${fuzzelAndroid}"
+    fi
+    ''}
+
+    ${lib.optionalString (footAndroid != null) ''
+    # foot (wwn-foot): Wayland terminal. Primary packaging lives in
+    # android-bundled-clients.nix; also expose PATH symlink usr/bin/foot →
+    # libfoot_bin.so for nested shells / niri.
+    if [ -f "${footAndroid}/lib/libfoot_bin.so" ]; then
+      cp -L "${footAndroid}/lib/libfoot_bin.so" "$JNI_LIB_DIR/libfoot_bin.so"
+      chmod +x "$JNI_LIB_DIR/libfoot_bin.so"
+    elif [ -f "${footAndroid}/bin/foot" ]; then
+      cp -L "${footAndroid}/bin/foot" "$JNI_LIB_DIR/libfoot_bin.so"
+      chmod +x "$JNI_LIB_DIR/libfoot_bin.so"
+    else
+      echo "WARNING: Missing Android foot binary at ${footAndroid}"
     fi
     ''}
 

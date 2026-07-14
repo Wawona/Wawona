@@ -1005,6 +1005,11 @@ GEN_HEADER
             if [ -d "${pkgs.dejavu_fonts}/share/fonts" ]; then
               mkdir -p "$APP/share/fonts"
               cp -RL "${pkgs.dejavu_fonts}/share/fonts/." "$APP/share/fonts/"
+              # Mirror under Contents/Resources/share for Resource-relative
+              # lookups (foot/fcft + older ShareRoot layouts).
+              mkdir -p "$APP/Contents/Resources/share/fonts"
+              cp -RL "${pkgs.dejavu_fonts}/share/fonts/." "$APP/Contents/Resources/share/fonts/"
+              chmod -R u+w "$APP/share/fonts" "$APP/Contents/Resources/share/fonts"
               echo "DEBUG: Bundled DejaVu fonts"
             fi
 

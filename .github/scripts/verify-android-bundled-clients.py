@@ -21,6 +21,7 @@ JNI_LIBS = ROOT / "android/app/src/main/jniLibs/arm64-v8a"
 REQUIRED_APK_LIBS = (
     "lib/arm64-v8a/libweston_simple_shm.so",
     "lib/arm64-v8a/libfoot.so",
+    "lib/arm64-v8a/libfoot_bin.so",
 )
 
 
@@ -36,8 +37,12 @@ def verify_android_nix(src: str) -> list[str]:
         errors.append("android.nix must build libweston_simple_shm.so")
     if "libfoot.so" not in src:
         errors.append("android.nix must bundle libfoot.so")
+    if "libfoot_bin.so" not in src:
+        errors.append("android.nix must bundle libfoot_bin.so")
     if not re.search(r"Missing required Android foot library", src):
         errors.append("android.nix must require libfoot.so copy")
+    if not re.search(r"Missing required Android foot binary", src):
+        errors.append("android.nix must require libfoot_bin.so copy")
     if "Verified bundled client libraries in APK" not in src:
         errors.append("android.nix must verify bundled client libs in APK")
     return errors
@@ -58,7 +63,11 @@ def verify_android_jni(src: str) -> list[str]:
     errors = []
     for client_id in ("foot", "weston-simple-egl", "kmscube"):
         if f'"{client_id}"' not in src:
-            errors.append(f"android_jni.c kBundledClients must include {client_id}")
+            errors.append(f"android_jni.c must reference {client_id}")
+    if "libfoot_bin.so" not in src:
+        errors.append("android_jni.c must fork/exec libfoot_bin.so for foot")
+    if "wwn_launch_foot" not in src:
+        errors.append("android_jni.c must provide wwn_launch_foot")
     if "kmscube_stub_main" not in src:
         errors.append("android_jni.c must provide kmscube_stub_main")
     if "simple_egl_stub_main" not in src:
@@ -68,7 +77,7 @@ def verify_android_jni(src: str) -> list[str]:
 
 def verify_jni_libs_tree() -> list[str]:
     errors = []
-    for lib in ("libweston_simple_shm.so", "libfoot.so"):
+    for lib in ("libweston_simple_shm.so", "libfoot.so", "libfoot_bin.so"):
         path = JNI_LIBS / lib
         if not path.is_file():
             errors.append(f"missing workspace jniLibs artifact: {path.relative_to(ROOT)}")

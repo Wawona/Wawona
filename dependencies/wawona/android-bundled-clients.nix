@@ -1,9 +1,10 @@
-# Bundled in-process Wayland clients (weston-simple-shm, foot) for the Android APK.
+# Bundled Wayland clients (weston-simple-shm, foot) for the Android APK.
 #
 # Extracted from android.nix to keep that file under its maintainability budget.
 # `preBuildFragment` compiles weston-simple-shm in-tree and bundles foot as
-# dlopen'able .so libraries; `verifyApkFragment` asserts both are packaged in
-# the built APK. Both are spliced into the APK derivation (preBuild / buildPhase).
+# libfoot_bin.so (fork/exec PIE) plus companion libfoot.so; `verifyApkFragment`
+# asserts both are packaged in the built APK. Both are spliced into the APK
+# derivation (preBuild / buildPhase).
 {
   androidCC,
   libwaylandAndroid,
@@ -32,7 +33,20 @@
     chmod +x "$JNI_LIB_DIR/libweston_simple_shm.so"
     echo "Built libweston_simple_shm.so for in-process client launch"
 
-    # foot Wayland terminal client as libfoot.so (dlopen'd by wawona_client_stubs.c).
+    # foot: PIE as libfoot_bin.so (fork/exec, niri pattern) + companion
+    # libfoot.so (shim probe / legacy dlopen stub).
+    FOOT_BIN="${footAndroid}/lib/libfoot_bin.so"
+    if [ ! -f "$FOOT_BIN" ] && [ -f "${footAndroid}/bin/foot" ]; then
+      FOOT_BIN="${footAndroid}/bin/foot"
+    fi
+    if [ ! -f "$FOOT_BIN" ]; then
+      echo "ERROR: Missing required Android foot binary at ${footAndroid}/lib/libfoot_bin.so"
+      exit 1
+    fi
+    cp -L "$FOOT_BIN" "$JNI_LIB_DIR/libfoot_bin.so"
+    chmod +x "$JNI_LIB_DIR/libfoot_bin.so"
+    echo "Bundled libfoot_bin.so for out-of-process foot launch"
+
     FOOT_LIB="${footAndroid}/lib/arm64-v8a/libfoot.so"
     if [ ! -f "$FOOT_LIB" ]; then
       echo "ERROR: Missing required Android foot library at $FOOT_LIB"
@@ -40,9 +54,9 @@
     fi
     cp -L "$FOOT_LIB" "$JNI_LIB_DIR/libfoot.so"
     chmod +x "$JNI_LIB_DIR/libfoot.so"
-    echo "Bundled libfoot.so for in-process client launch"
+    echo "Bundled libfoot.so companion (wwn_foot_is_compat_shim)"
 
-    for lib in libweston_simple_shm.so libfoot.so; do
+    for lib in libweston_simple_shm.so libfoot.so libfoot_bin.so; do
       if [ ! -f "$JNI_LIB_DIR/$lib" ]; then
         echo "ERROR: Required bundled client library missing: $JNI_LIB_DIR/$lib"
         exit 1
@@ -73,7 +87,7 @@
       # pipe-free glob match against the captured list instead.
       APK_ENTRIES="$(unzip -Z1 "$APK_VERIFY_PATH")"
       # Shell DT_NEEDED libs (waypipe → libzstd.so) + bundled clients (issue #80).
-      for lib in libweston_simple_shm.so libfoot.so libzstd.so libwaypipe_bin.so; do
+      for lib in libweston_simple_shm.so libfoot.so libfoot_bin.so libzstd.so libwaypipe_bin.so; do
         case "$APK_ENTRIES" in
           *"lib/arm64-v8a/$lib"*) ;;
           *)

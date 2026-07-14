@@ -2493,7 +2493,12 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   if (self.footRunning || self.iosNativeClientInFlight)
     return;
   if (wwn_foot_is_compat_shim && wwn_foot_is_compat_shim() != 0) {
-    WWNLog("FOOT", @"Refusing to launch 'foot': compatibility shim routes to weston-simple-shm.");
+    // Foot is still a weston-simple-shm shim on Apple mobile — launching it
+    // leaves an empty/black compositor. Fall back to the real terminal.
+    WWNLog("FOOT",
+           @"foot is a compatibility shim on this platform; launching "
+           @"weston-terminal instead (real foot port pending).");
+    [self launchWestonTerminal];
     return;
   }
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
@@ -2502,18 +2507,24 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     }
     self.footRunning = YES;
 
-    char *argv_foot[] = {"foot", NULL};
-    int argc_foot = 1;
+    [WWNRootfsProvider applyShellEnvironment];
 
     char saved_cwd[512] = "";
-    const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
-    if (xdg_dir) {
+    const char *home_dir = getenv("HOME");
+    if (home_dir && home_dir[0]) {
       getcwd(saved_cwd, sizeof(saved_cwd));
-      chdir(xdg_dir);
+      chdir(home_dir);
     }
 
-    WWNLog("FOOT", @"Launching in-process foot_main...");
-    int result = foot_main(argc_foot, argv_foot);
+    const char *shell = getenv("WAWONA_SHELL");
+    char *argv_foot[] = {
+        "foot",
+        (char *)(shell && shell[0] ? shell : "/usr/bin/zsh"),
+        NULL,
+    };
+    WWNLog("FOOT", @"Launching in-process foot_main (shell=%s)...",
+           argv_foot[1]);
+    int result = foot_main(2, argv_foot);
     WWNLog("FOOT", @"foot_main exit code: %d", result);
 
     if (saved_cwd[0])
@@ -2526,15 +2537,95 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   if (self.footRunning)
     return;
   self.footRunning = YES;
-  NSTask *task = nil;
-  BOOL running = YES;
-  [self launchGenericWestonClient:@"foot"
-                        taskInOut:&task
-                    runningFlagIn:&running];
-  self.footTask = task;
-  self.footRunning = running;
-  if (task) {
+  [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
+
+  // Prefer the real Mach-O (.foot-wrapped) over the shell wrapper — the
+  // wrapper shebang points at a nix-store bash that may be unavailable when
+  // the app is relocated, which surfaces as an instant black/empty session.
+  NSString *path = [self findBinaryNamed:@".foot-wrapped"];
+  if (!path) {
+    path = [self findBinaryNamed:@"foot"];
+  }
+  if (!path) {
+    WWNLog("FOOT", @"Could not find foot in app bundle.");
+    self.footRunning = NO;
+    return;
+  }
+
+  // Ensure fontconfig + DejaVu aliases exist before fcft probes monospace.
+  WWNConfigureBundledRuntimeEnvIfNeeded();
+
+  NSString *fontDir = WWNWawonaBundledSharePath(@"fonts");
+  NSString *monoTtf =
+      [fontDir stringByAppendingPathComponent:@"truetype/DejaVuSansMono.ttf"];
+  NSFileManager *fm = [NSFileManager defaultManager];
+  if (![fm fileExistsAtPath:monoTtf]) {
+    WWNLog("FOOT", @"Missing bundled mono font at %@ — text will be blank",
+           monoTtf);
+  }
+
+  NSString *runtimeDir = NSTemporaryDirectory();
+  const char *xdg = getenv("XDG_RUNTIME_DIR");
+  if (xdg && xdg[0]) {
+    runtimeDir = @(xdg);
+  }
+  NSString *iniPath =
+      [runtimeDir stringByAppendingPathComponent:@"wawona-foot.ini"];
+  NSString *fontSpec = [fm fileExistsAtPath:monoTtf]
+                           ? [NSString stringWithFormat:@"%@:size=12", monoTtf]
+                           : @"monospace:size=12";
+  NSString *ini = [NSString
+      stringWithFormat:
+          @"[main]\n"
+           "font=%@\n"
+           "dpi-aware=yes\n"
+           "\n"
+           "[tweak]\n"
+           "font-monospace-warn=no\n",
+          fontSpec];
+  NSError *iniErr = nil;
+  if (![ini writeToFile:iniPath
+             atomically:YES
+               encoding:NSUTF8StringEncoding
+                  error:&iniErr]) {
+    WWNLog("FOOT", @"Failed to write %@: %@", iniPath, iniErr);
+  }
+
+  NSMutableDictionary *env = [self wwnMutableHostWaylandEnvironment];
+  NSString *shellPath = WWNPreferredHostShellPath();
+  env[@"SHELL"] = shellPath;
+  env[@"TERM"] = @"xterm-256color";
+  if ([fm fileExistsAtPath:monoTtf]) {
+    env[@"WAWONA_MONO_FONT"] = monoTtf;
+  }
+  const char *fcFile = getenv("FONTCONFIG_FILE");
+  if (fcFile && fcFile[0]) {
+    env[@"FONTCONFIG_FILE"] = @(fcFile);
+  }
+  const char *fcPath = getenv("FONTCONFIG_PATH");
+  if (fcPath && fcPath[0]) {
+    env[@"FONTCONFIG_PATH"] = @(fcPath);
+  }
+
+  NSTask *task = [[NSTask alloc] init];
+  task.executableURL = [NSURL fileURLWithPath:path];
+  // -c config; -o suppress monospace warn; then login shell as command.
+  task.arguments = @[
+    @"-o", @"tweak.font-monospace-warn=no", @"-c", iniPath, shellPath
+  ];
+  task.environment = env;
+
+  NSError *err = nil;
+  if ([task launchAndReturnError:&err]) {
+    self.footTask = task;
+    self.footRunning = YES;
+    WWNLog("FOOT", @"Launched foot PID %d (bin=%@ font=%@ shell=%@)",
+           task.processIdentifier, path, fontSpec, shellPath);
+    [self wwnPumpHostCompositorAfterNativeClientLaunch];
     [self _installNativeClientTerminationHandler:task kind:@"foot"];
+  } else {
+    WWNLog("FOOT", @"Failed to launch foot: %@", err);
+    self.footRunning = NO;
   }
 #endif
 }
