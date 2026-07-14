@@ -52,7 +52,8 @@ object WawonaShellRootfs {
             nvimRuntime.mkdirs()
             copyAssetDir(context, "nvim/runtime", nvimRuntime)
 
-            File(root, "home").mkdirs()            File(root, "home/.local/share").mkdirs()
+            File(root, "home").mkdirs()
+            File(root, "home/.local/share").mkdirs()
             File(root, "home/.cache").mkdirs()
             File(root, "usr/bin").mkdirs()
 
