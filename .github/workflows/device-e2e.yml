@@ -84,6 +84,24 @@ jobs:
             allow-import-from-derivation = true
       - uses: DeterminateSystems/flakehub-cache-action@v3
 
+      - name: Warm CoreSimulator before iOS nix build
+        run: |
+          # downloadPlatform soft-fail needs simctl/showsdks; cold runners often
+          # print "Unable to connect to simulator" until Simulator is warmed.
+          open -a Simulator || true
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if xcrun simctl list runtimes 2>/dev/null | grep -q 'iOS'; then
+              echo "iOS Simulator runtime visible"
+              break
+            fi
+            sleep 2
+          done
+          xcrun simctl list runtimes || true
+          xcodebuild -showsdks | grep -i iphone || true
+          if xcrun simctl list runtimes 2>/dev/null | grep -q 'iOS'; then
+            echo "WAWONA_SKIP_IOS_SIMULATOR_PLATFORM_DOWNLOAD=1" >> "$GITHUB_ENV"
+          fi
+
       - name: Build Wawona.app (iOS simulator slice)
         run: ./.github/scripts/nix-retry.sh nix build ".#wawona-ios" --print-build-logs --out-link result-ios
 

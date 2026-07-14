@@ -320,23 +320,35 @@ in
       ${gradleSupport.prepareProject}
       ${gradleSupport.prepareEnvironment}
 
-      # Prefer offline filesystem mirrors from mitmCache. A MITM cache miss
-      # otherwise falls through to outbound HTTPS and fails in the Darwin
-      # sandbox (SocketException → UnknownPluginException for AGP).
+      # Offline-only Maven: HTTPS through MITM still SocketExceptions in the
+      # Darwin sandbox and disables repos mid-resolve (kotlin via mavenCentral
+      # after AGP already resolved). Rewrite settings to file:// mirrors only.
       GOOGLE_MAVEN_FS="${mitmCache}/https/dl.google.com/dl/android/maven2"
       PORTAL_MAVEN_FS="${mitmCache}/https/plugins.gradle.org/m2"
-      if [ -d "$GOOGLE_MAVEN_FS" ] && [ -f settings.gradle.kts ]; then
-        awk -v g="$GOOGLE_MAVEN_FS" -v p="$PORTAL_MAVEN_FS" '
-          /^    repositories \{/ {
-            print
-            print "        maven { url = uri(\"file://" g "\") }"
-            print "        maven { url = uri(\"file://" p "\") }"
-            next
-          }
-          { print }
-        ' settings.gradle.kts > settings.gradle.kts.nix
-        mv settings.gradle.kts.nix settings.gradle.kts
-        echo "Injected file:// maven mirrors into settings.gradle.kts"
+      CENTRAL_MAVEN_FS="${mitmCache}/https/repo.maven.apache.org/maven2"
+      if [ -d "$GOOGLE_MAVEN_FS" ] && [ -d "$CENTRAL_MAVEN_FS" ]; then
+        cat > settings.gradle.kts <<EOF
+pluginManagement {
+    repositories {
+        maven { url = uri("file://$GOOGLE_MAVEN_FS") }
+        maven { url = uri("file://$PORTAL_MAVEN_FS") }
+        maven { url = uri("file://$CENTRAL_MAVEN_FS") }
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        maven { url = uri("file://$GOOGLE_MAVEN_FS") }
+        maven { url = uri("file://$CENTRAL_MAVEN_FS") }
+    }
+}
+
+rootProject.name = "Wawona"
+include(":Wawona")
+project(":Wawona").projectDir = file("app")
+EOF
+        echo "Rewrote settings.gradle.kts to offline file:// maven mirrors"
       fi
 
       # Normalize daemon/jvmargs so --no-daemon stays in-process. A mismatched
