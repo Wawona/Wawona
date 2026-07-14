@@ -1215,13 +1215,27 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   // seamlessly with the native iOS virtual keyboard beneath.
   if (@available(iOS 26, *)) {
 #if !TARGET_OS_TV && !TARGET_OS_VISION
-    UIGlassEffect *glass = [[UIGlassEffect alloc] init];
-    UIVisualEffectView *glassView =
-        [[UIVisualEffectView alloc] initWithEffect:glass];
-    glassView.frame = bar.bounds;
-    glassView.autoresizingMask =
-        UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    [bar addSubview:glassView];
+    // UIGlassEffect is unavailable on some Apple platforms; resolve at runtime.
+    Class glassClass = NSClassFromString(@"UIGlassEffect");
+    UIVisualEffect *glass =
+        glassClass ? [[glassClass alloc] init] : nil;
+    if (glass) {
+      UIVisualEffectView *glassView =
+          [[UIVisualEffectView alloc] initWithEffect:glass];
+      glassView.frame = bar.bounds;
+      glassView.autoresizingMask =
+          UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+      [bar addSubview:glassView];
+    } else {
+      UIBlurEffect *blur =
+          [UIBlurEffect effectWithStyle:UIBlurEffectStyleDark];
+      UIVisualEffectView *blurView =
+          [[UIVisualEffectView alloc] initWithEffect:blur];
+      blurView.frame = bar.bounds;
+      blurView.autoresizingMask =
+          UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+      [bar addSubview:blurView];
+    }
 #else
     UIBlurEffect *blur =
         [UIBlurEffect effectWithStyle:UIBlurEffectStyleDark];
@@ -1534,12 +1548,14 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   _keyboardPipButton.adjustsImageWhenHighlighted = NO;
 
   UIVisualEffect *effect = nil;
-#if TARGET_OS_TV
+#if TARGET_OS_TV || TARGET_OS_VISION
   effect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleDark];
 #else
   if (@available(iOS 26, *)) {
-    effect = [[UIGlassEffect alloc] init];
-  } else {
+    Class glassClass = NSClassFromString(@"UIGlassEffect");
+    effect = glassClass ? [[glassClass alloc] init] : nil;
+  }
+  if (!effect) {
     effect = [UIBlurEffect
         effectWithStyle:UIBlurEffectStyleSystemChromeMaterial];
   }
@@ -3142,13 +3158,6 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
                             button:BTN_LEFT
                            pressed:YES
                          timestamp:ts];
-#if !TARGET_OS_TV
-  if (@available(iOS 10.0, *)) {
-    UIImpactFeedbackGenerator *fb = [[UIImpactFeedbackGenerator alloc]
-        initWithStyle:UIImpactFeedbackStyleMedium];
-    [fb impactOccurred];
-  }
-#endif
   [self _touchpad_hideRadial];
 }
 
