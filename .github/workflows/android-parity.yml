@@ -3,6 +3,7 @@ name: Android parity builds
 # Parity with Nix CI: run on development (WIP) and master (release).
 # docs/ci.md — FlakeHub Cache required on Nix jobs.
 on:
+  workflow_dispatch: {}
   push:
     branches: [development, main, master]
     paths:
