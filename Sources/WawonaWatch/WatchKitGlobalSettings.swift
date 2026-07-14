@@ -11,7 +11,7 @@ enum WatchKitGlobalSettings {
 
     static func open() {
         registerHost()
-        WWNWatchPreferencesCoordinator.sharedCoordinator().showSettings()
+        WWNWatchPreferencesCoordinator.shared().showSettings()
     }
 }
 #endif
