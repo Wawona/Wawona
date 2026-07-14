@@ -2962,7 +2962,39 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
                                      "libsshpass_bin.so", "sshpass");
       wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libniri_bin.so",
                                      "niri");
+      /* fuzzel (wwn-niri): niri Mod+D launcher — same jniLibs PIE pattern. */
+      wwn_android_install_shell_tool(native_lib_dir, usr_bin,
+                                     "libfuzzel_bin.so", "fuzzel");
     }
+  }
+
+  /* Freedesktop catalog for fuzzel (issue #78). share/applications + hicolor
+   * live under the synthetic rootfs usr/share (extracted from APK assets). */
+  {
+    char share_buf[768];
+    snprintf(share_buf, sizeof(share_buf), "%s/usr/share", rootfs);
+    const char *existing = getenv("XDG_DATA_DIRS");
+    if (existing && existing[0]) {
+      char combined[1536];
+      snprintf(combined, sizeof(combined), "%s:%s", share_buf, existing);
+      setenv("XDG_DATA_DIRS", combined, 1);
+    } else {
+      setenv("XDG_DATA_DIRS", share_buf, 1);
+    }
+    char data_home[768];
+    snprintf(data_home, sizeof(data_home), "%s/home/.local/share", rootfs);
+    setenv("XDG_DATA_HOME", data_home, 1);
+    char cache_home[768];
+    snprintf(cache_home, sizeof(cache_home), "%s/home/.cache", rootfs);
+    char home_dir[768];
+    char local_dir[768];
+    snprintf(home_dir, sizeof(home_dir), "%s/home", rootfs);
+    snprintf(local_dir, sizeof(local_dir), "%s/home/.local", rootfs);
+    mkdir(home_dir, 0755);
+    mkdir(local_dir, 0755);
+    mkdir(data_home, 0755);
+    mkdir(cache_home, 0755);
+    LOGI("Shell env: XDG_DATA_DIRS=%s (fuzzel catalog)", share_buf);
   }
 
   LOGI("Shell env: ROOTFS=%s SHELL=%s", rootfs, getenv("SHELL") ?: "(unset)");

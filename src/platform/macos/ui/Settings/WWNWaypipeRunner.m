@@ -1225,6 +1225,56 @@ static NSString *WWNPreferredHostShellPath(void) {
 }
 
 #if TARGET_OS_IPHONE
+/// Ensure writable XDG dirs for fuzzel locks/cache and point discovery at the
+/// bundled Freedesktop catalog (share/applications + hicolor). Desktop entries
+/// are packaged by applications-catalog.nix; do not re-seed them here (#78).
+static void wwnEnsureFuzzelXdgEnv(void) {
+  NSString *home = NSHomeDirectory();
+  if (home.length == 0) {
+    return;
+  }
+  NSString *dataHome =
+      [home stringByAppendingPathComponent:@".local/share"];
+  NSString *cache = [home stringByAppendingPathComponent:@".cache"];
+  NSError *err = nil;
+  [[NSFileManager defaultManager] createDirectoryAtPath:dataHome
+                            withIntermediateDirectories:YES
+                                             attributes:nil
+                                                  error:&err];
+  [[NSFileManager defaultManager] createDirectoryAtPath:cache
+                            withIntermediateDirectories:YES
+                                             attributes:nil
+                                                  error:nil];
+  // Writable XDG_DATA_HOME for fuzzel cache/state; catalog lives in the bundle.
+  setenv("XDG_DATA_HOME", dataHome.UTF8String, 1);
+
+  NSString *shareRoot = WWNWawonaShareRoot();
+  NSString *appsDir =
+      [shareRoot stringByAppendingPathComponent:@"applications"];
+  if ([[NSFileManager defaultManager] fileExistsAtPath:appsDir]) {
+    const char *existing = getenv("XDG_DATA_DIRS");
+    NSString *combined;
+    if (existing && existing[0]) {
+      NSString *ex = @(existing);
+      NSArray<NSString *> *parts = [ex componentsSeparatedByString:@":"];
+      if (![parts containsObject:shareRoot]) {
+        combined = [NSString stringWithFormat:@"%@:%@", shareRoot, ex];
+        setenv("XDG_DATA_DIRS", combined.UTF8String, 1);
+      }
+    } else {
+      combined = [NSString
+          stringWithFormat:@"%@:/usr/local/share:/usr/share", shareRoot];
+      setenv("XDG_DATA_DIRS", combined.UTF8String, 1);
+    }
+    WWNLog("NIRI", @"fuzzel XDG_DATA_DIRS includes bundled catalog at %@",
+           appsDir);
+  } else {
+    WWNLog("NIRI",
+           @"No bundled share/applications at %@ — fuzzel list will be empty",
+           appsDir);
+  }
+}
+
 /// Env niri's nested backend needs on Apple mobile (GLES via ANGLE EGL).
 static void wwnConfigureNiriNestedEnv(void) {
   setenv("NIRI_BACKEND", "nested", 1);
@@ -1253,6 +1303,7 @@ static void wwnConfigureNiriNestedEnv(void) {
       setenv("VK_DRIVER_FILES", icdJson.UTF8String, 1);
     }
   }
+  wwnEnsureFuzzelXdgEnv();
 }
 
 typedef int (*WWNClientMainFn)(int, char **);
@@ -1674,6 +1725,26 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     if ([[NSFileManager defaultManager] fileExistsAtPath:bundleBin]) {
       NSString *path = env[@"PATH"] ?: @"/usr/bin:/bin:/usr/sbin:/sbin";
       env[@"PATH"] = [NSString stringWithFormat:@"%@:%@", bundleBin, path];
+    }
+    // fuzzel discovers apps via XDG (issue #78). Point at bundled
+    // share/applications + share/icons/hicolor.
+    if (shareRoot.length > 0) {
+      NSString *appsDir =
+          [shareRoot stringByAppendingPathComponent:@"applications"];
+      if ([[NSFileManager defaultManager] fileExistsAtPath:appsDir]) {
+        NSString *existing = env[@"XDG_DATA_DIRS"];
+        if (existing.length > 0) {
+          NSArray<NSString *> *parts =
+              [existing componentsSeparatedByString:@":"];
+          if (![parts containsObject:shareRoot]) {
+            env[@"XDG_DATA_DIRS"] =
+                [NSString stringWithFormat:@"%@:%@", shareRoot, existing];
+          }
+        } else {
+          env[@"XDG_DATA_DIRS"] = [NSString
+              stringWithFormat:@"%@:/usr/local/share:/usr/share", shareRoot];
+        }
+      }
     }
   }
   task.environment = env;

@@ -6,13 +6,16 @@
 # Usage:
 #   scripts/agent-device-smoke.sh ios       # iOS simulator lane
 #   scripts/agent-device-smoke.sh android   # Android device/emulator lane
-#   scripts/agent-device-smoke.sh all       # both (default)
+#   scripts/agent-device-smoke.sh fuzzel    # nested niri + fuzzel (issue #78)
+#   scripts/agent-device-smoke.sh all       # ios + android + fuzzel (default)
 #
 # Env:
 #   WAWONA_IOS_SIM         simulator name   (default: iPhone 17 Pro)
 #   WAWONA_IOS_APP         path to Wawona.app to (re)install before testing
 #   WAWONA_ANDROID_SERIAL  adb serial       (default: first "device" entry)
 #   WAWONA_ANDROID_APK     path to Wawona.apk to (re)install before testing
+#   WAWONA_MACOS_APP       path to macOS Wawona.app for fuzzel lane
+#   WAWONA_SKIP_FUZZEL=1   skip nested niri+fuzzel lanes
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -93,15 +96,30 @@ run_android() {
   agent-device replay "$ROOT/.agent-device/wawona-android-machines.ad"
 }
 
+run_fuzzel() {
+  if [[ "${WAWONA_SKIP_FUZZEL:-}" == "1" ]]; then
+    echo "== fuzzel: skipped (WAWONA_SKIP_FUZZEL=1) =="
+    return 0
+  fi
+  chmod +x "$ROOT/scripts/agent-device-fuzzel-smoke.sh"
+  # Platform-filtered entry: CI jobs pass android-fuzzel / ios-fuzzel.
+  "$ROOT/scripts/agent-device-fuzzel-smoke.sh" "${WAWONA_FUZZEL_LANE:-fuzzel}"
+}
+
 case "$LANE" in
   ios) run_ios ;;
   android) run_android ;;
+  fuzzel|android-fuzzel|ios-fuzzel|macos-fuzzel)
+    chmod +x "$ROOT/scripts/agent-device-fuzzel-smoke.sh"
+    "$ROOT/scripts/agent-device-fuzzel-smoke.sh" "$LANE"
+    ;;
   all)
     run_ios
     run_android
+    run_fuzzel
     ;;
   *)
-    echo "usage: $0 [ios|android|all]" >&2
+    echo "usage: $0 [ios|android|fuzzel|android-fuzzel|ios-fuzzel|macos-fuzzel|all]" >&2
     exit 2
     ;;
 esac

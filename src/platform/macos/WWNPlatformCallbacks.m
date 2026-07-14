@@ -177,6 +177,35 @@ static void WWNSetEnvIfUnset(NSString *key, NSString *value) {
   setenv(k, value.UTF8String, 1);
 }
 
+/// Prepend bundle share to XDG_DATA_DIRS so fuzzel finds share/applications
+/// and share/icons/hicolor (issue #78).
+static void WWNPrependBundledXdgDataDirs(NSString *shareRoot) {
+  if (!shareRoot.length) {
+    return;
+  }
+  NSString *appsDir =
+      [shareRoot stringByAppendingPathComponent:@"applications"];
+  if (![[NSFileManager defaultManager] fileExistsAtPath:appsDir]) {
+    return;
+  }
+  const char *existing = getenv("XDG_DATA_DIRS");
+  NSString *combined;
+  if (existing && existing[0]) {
+    NSString *ex = @(existing);
+    NSArray<NSString *> *parts = [ex componentsSeparatedByString:@":"];
+    if ([parts containsObject:shareRoot]) {
+      return;
+    }
+    combined = [NSString stringWithFormat:@"%@:%@", shareRoot, ex];
+  } else {
+    combined = [NSString
+        stringWithFormat:@"%@:/usr/local/share:/usr/share", shareRoot];
+  }
+  setenv("XDG_DATA_DIRS", combined.UTF8String, 1);
+  WWNLog("BUNDLE", @"XDG_DATA_DIRS prepended with share root: %s",
+         shareRoot.UTF8String);
+}
+
 NSString *WWNWawonaAppBundleRoot(void) {
   if (gWWNCachedBundleRoot.length > 0) {
     return gWWNCachedBundleRoot;
@@ -582,6 +611,7 @@ void WWNConfigureBundledRuntimeEnvIfNeeded(void) {
     WWNConfigureBundledXkbIfNeeded();
     WWNConfigureBundledFontsIfNeeded();
     WWNConfigureBundledWestonDataIfNeeded();
+    WWNPrependBundledXdgDataDirs(shareRoot);
   });
 }
 

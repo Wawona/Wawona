@@ -61,6 +61,13 @@ let
   # niri (wwn-niri): nested scrollable-tiling compositor (Wayland client of
   # the Wawona compositor); ships as lib/libniri_bin.so (exec'd, waypipe pattern).
   niriAndroid = buildModule.buildForAndroid "niri" { };
+  # fuzzel (wwn-niri): niri Mod+D launcher; PIE libfuzzel_bin.so (waypipe pattern).
+  fuzzelAndroid = buildModule.buildForAndroid "fuzzel" { };
+  # Freedesktop .desktop + hicolor icons for nested-niri fuzzel (issue #78).
+  applicationsCatalog = pkgs.callPackage ../generators/applications-catalog.nix {
+    inherit pkgs lib;
+    wawonaSrc = wawonaSrc;
+  };
   # anowaW app bridge: libanowaw.so + staged Kotlin/JNI shims (share/anowaw).
   anowawAndroid = buildModule.buildForAndroid "anowaw" { };
   mobileToytoolkitDeps = import ./mobile-toytoolkit-deps.nix {
@@ -106,7 +113,7 @@ let
   androidQuadFrag = ../../src/platform/android/rendering/shaders/android_quad.frag;
 
   shellTools = import ./android-shell-tools.nix {
-    inherit lib zshAndroid fastfetchAndroid neovimAndroid waypipeAndroid niriAndroid;
+    inherit lib zshAndroid fastfetchAndroid neovimAndroid waypipeAndroid niriAndroid fuzzelAndroid applicationsCatalog;
   };
   westonData = import ./android-weston-data.nix { inherit lib pkgs; };
   bundledClients = import ./android-bundled-clients.nix {

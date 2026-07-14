@@ -3,7 +3,13 @@ name: Device GUI e2e
 # Deterministic GUI smoke tests on real simulator/emulator instances.
 # All flows are recorded agent-device .ad/batch replays (scripts live in
 # .agent-device/); no AI/LLM calls are made, so runs consume zero model
-# credits. Local reproduction: scripts/agent-device-smoke.sh [ios|android].
+# credits. Local reproduction:
+#   scripts/agent-device-smoke.sh [ios|android|fuzzel|android-fuzzel|ios-fuzzel]
+#   scripts/niri-fuzzel-smoke-macos.sh
+#   scripts/applications-catalog-smoke.sh   # headless Linux/macOS catalog
+#
+# Nested niri + fuzzel (issue #78) lanes assert .desktop catalog + icons and
+# that Mod+D/Alt+D spawns fuzzel with a populated launcher.
 #
 # Runner constraints (researched Jul 2026):
 # - iOS simulators run fine on GitHub's arm64 macOS runners (simulators are
@@ -27,6 +33,12 @@ on:
       - "flake.lock"
       - ".agent-device/**"
       - "scripts/agent-device-smoke.sh"
+      - "scripts/agent-device-fuzzel-smoke.sh"
+      - "scripts/agent-device-set-niri-android.sh"
+      - "scripts/agent-device-set-niri-ios.sh"
+      - "scripts/niri-smoke-macos.sh"
+      - "scripts/niri-fuzzel-smoke-macos.sh"
+      - "scripts/applications-catalog-smoke.sh"
       - ".github/workflows/device-e2e.yml"
 
 concurrency:
@@ -86,6 +98,12 @@ jobs:
         env:
           WAWONA_IOS_APP: result-ios/Wawona.app
         run: ./scripts/agent-device-smoke.sh ios
+
+      - name: Run iOS nested niri + fuzzel e2e (issue #78)
+        env:
+          WAWONA_IOS_APP: result-ios/Wawona.app
+          WAWONA_FUZZEL_REQUIRE_IOS: "1"
+        run: ./scripts/agent-device-smoke.sh ios-fuzzel
 
       - name: Upload iOS screenshots
         if: always()
@@ -157,7 +175,10 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot-save
           disable-animations: true
           script: |
-            WAWONA_ANDROID_APK=dist/Wawona.apk ./scripts/agent-device-smoke.sh android
+            set -euo pipefail
+            export WAWONA_ANDROID_APK=dist/Wawona.apk
+            ./scripts/agent-device-smoke.sh android
+            ./scripts/agent-device-smoke.sh android-fuzzel
 
       - name: Upload Android screenshots
         if: always()
@@ -166,3 +187,61 @@ jobs:
           name: device-e2e-android
           path: .agent-device/test-artifacts/
           if-no-files-found: warn
+
+  # Headless catalog + macOS nested niri/fuzzel (no emulator required).
+  catalog-and-macos-fuzzel:
+    name: "Catalog + macOS nested niri/fuzzel"
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+
+      - name: Applications catalog smoke (headless)
+        run: chmod +x ./scripts/applications-catalog-smoke.sh && ./scripts/applications-catalog-smoke.sh
+
+      - name: Build Wawona.app (macOS)
+        run: ./.github/scripts/nix-retry.sh nix build ".#wawona-macos" --print-build-logs --out-link result-macos
+
+      - name: Nested niri + fuzzel smoke (macOS)
+        env:
+          WAWONA_MACOS_APP: result-macos/Applications/Wawona.app
+          WAWONA_FUZZEL_REQUIRE_MACOS: "1"
+        run: |
+          chmod +x ./scripts/niri-fuzzel-smoke-macos.sh ./scripts/niri-smoke-macos.sh
+          ./scripts/niri-fuzzel-smoke-macos.sh "$WAWONA_MACOS_APP"
+
+      - name: Upload macOS fuzzel artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: device-e2e-macos-fuzzel
+          path: .agent-device/test-artifacts/
+          if-no-files-found: warn
+
+  # Linux runners assert the Freedesktop catalog derivation only (no nested
+  # compositor GUI on GHA Linux without a full Wayland session).
+  linux-catalog:
+    name: "Linux: applications catalog smoke"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+
+      - name: Applications catalog smoke
+        run: chmod +x ./scripts/applications-catalog-smoke.sh && ./scripts/applications-catalog-smoke.sh

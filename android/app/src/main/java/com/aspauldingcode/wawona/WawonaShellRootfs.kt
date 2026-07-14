@@ -10,6 +10,9 @@ import java.io.FileOutputStream
  * (CSD frame PNGs), and DejaVu fonts (fontconfig text rendering).
  */
 object WawonaShellRootfs {
+    // Bumped v5 -> v6: ship Freedesktop applications catalog
+    // (share/applications + icons/hicolor) for nested-niri fuzzel Mod+D.
+    //
     // Bumped v4 -> v5: earlier gradlegen-built APKs omitted assets/weston,
     // leaving toytoolkit CSD buttons with 1x1 placeholder icons instead of
     // the normal close/max/min glyphs and spacing.
@@ -20,7 +23,7 @@ object WawonaShellRootfs {
     // seat ended up with zero keyboard capability — no key ever reached any
     // client. Bump the marker so devices with a stale (incomplete) rootfs
     // from before that fix get re-extracted instead of skipping install.
-    private const val MARKER = ".installed-v5"
+    private const val MARKER = ".installed-v6"
 
     fun ensureInstalled(context: Context): File {
         val root = File(context.filesDir, "wawona-rootfs")
@@ -46,7 +49,18 @@ object WawonaShellRootfs {
             shareFonts.mkdirs()
             copyAssetDir(context, "fonts", shareFonts)
 
+            // fuzzel Freedesktop catalog (issue #78)
+            val shareApplications = File(root, "usr/share/applications")
+            shareApplications.mkdirs()
+            copyAssetDir(context, "applications", shareApplications)
+
+            val shareIcons = File(root, "usr/share/icons")
+            shareIcons.mkdirs()
+            copyAssetDir(context, "icons", shareIcons)
+
             File(root, "home").mkdirs()
+            File(root, "home/.local/share").mkdirs()
+            File(root, "home/.cache").mkdirs()
             File(root, "usr/bin").mkdirs()
 
             marker.writeText("ok")

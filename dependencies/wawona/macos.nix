@@ -37,6 +37,11 @@
 let
   common = import ./common.nix { inherit lib pkgs wawonaSrc; };
 
+  # Freedesktop .desktop + hicolor icons for nested-niri fuzzel (issue #78).
+  applicationsCatalog = pkgs.callPackage ../generators/applications-catalog.nix {
+    inherit pkgs lib wawonaSrc;
+  };
+
   ilandGlLdflags = { deps, simulator ? false }: import ilandGlLdflagsNix {
     inherit lib deps simulator;
     forceLoad = true;
@@ -1049,6 +1054,15 @@ GEN_HEADER
             '' else ''
             echo "Warning: fuzzel not provided, skipping fuzzel bundling"
             ''}
+
+            # Freedesktop catalog for fuzzel (share/applications + hicolor icons).
+            # Runtime prepends XDG_DATA_DIRS=$WAWONA_SHARE_ROOT (issue #78).
+            if [ -d "${applicationsCatalog}/share/applications" ]; then
+              mkdir -p "$APP/share/applications" "$APP/share/icons"
+              cp -R "${applicationsCatalog}/share/applications/." "$APP/share/applications/"
+              cp -R "${applicationsCatalog}/share/icons/hicolor" "$APP/share/icons/"
+              echo "DEBUG: Bundled fuzzel applications catalog"
+            fi
 
             # Bundle fastfetch
             ${if fastfetch != null then ''

@@ -1,0 +1,36 @@
+# Nested niri + fuzzel (Mod+D) GUI e2e — Android.
+#
+# Prereq (scripts/agent-device-smoke.sh fuzzel sets this): Default Machine
+# nativeLauncher=niri in SharedPreferences. Coordinate taps target a
+# 1080x2424 reference frame; compositor surfaces are accessibility-sparse
+# so screenshots + logcat assertions are the source of truth.
+#
+# Alt+D is injected by the smoke wrapper via `adb shell input keycombination`
+# after this replay returns (agent-device has no hardware-mod key API yet).
+context platform=android
+context session=wawona-android-niri-fuzzel
+
+open com.aspauldingcode.wawona --relaunch
+wait 4000
+screenshot ./.agent-device/test-artifacts/android-fuzzel-e2e-01-home.png
+
+# Dismiss welcome if present (no-op when already past onboarding).
+click 540 1404
+wait 1500
+screenshot ./.agent-device/test-artifacts/android-fuzzel-e2e-02-machines.png
+
+# Start Default Machine (Niri).
+click 256 960
+wait 12000
+screenshot ./.agent-device/test-artifacts/android-fuzzel-e2e-03-niri-starting.png
+
+# Dismiss "Starting niri" Done overlay when present.
+click 919 435
+wait 2000
+
+# Focus the compositor surface (center of the nested session).
+click 540 1100
+wait 500
+screenshot ./.agent-device/test-artifacts/android-fuzzel-e2e-04-niri-focused.png
+
+# Leave session open — smoke.sh injects Alt+D next, then re-snapshots.

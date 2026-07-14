@@ -1237,6 +1237,7 @@ EOF
           # niri (wwn-niri): nested scrollable-tiling compositor; ships
           # bin/niri + lib/libniri_bin.so (jniLibs exec pattern).
           niri-android = toolchainsAndroid.buildForAndroid "niri" { };
+          fuzzel-android = toolchainsAndroid.buildForAndroid "fuzzel" { };
           default = (import ./dependencies/wawona/shell-wrappers.nix).macosWrapper pkgs wawona-macos;
           # Consumer-facing package name for use as a flake input or overlay,
           # matching the nixpkgs convention of installing `pkgs.wawona`.

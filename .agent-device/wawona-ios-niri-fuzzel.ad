@@ -1,0 +1,29 @@
+# Nested niri + fuzzel (Mod+D) GUI e2e — iOS simulator.
+#
+# Prereq: Default Machine bundledAppID=niri (set by
+# scripts/agent-device-set-niri-ios.sh before replay). Coordinate taps target
+# iPhone 17 Pro logical size (402x874). Compositor surfaces are
+# accessibility-sparse; screenshots + process/log assertions in the smoke
+# wrapper are the source of truth.
+#
+# Mod+D is injected by the smoke wrapper (simctl / accessory) after this
+# replay returns — agent-device has no hardware-mod key API yet.
+context platform=ios
+context session=wawona-ios-niri-fuzzel
+context device=iPhone 17 Pro
+
+open com.aspauldingcode.Wawona --relaunch
+wait 4000
+screenshot ./.agent-device/test-artifacts/ios-fuzzel-e2e-01-home.png
+
+# Start Default Machine (Niri).
+click 69 374
+wait 14000
+screenshot ./.agent-device/test-artifacts/ios-fuzzel-e2e-02-niri.png
+
+# Focus the compositor surface.
+click 201 520
+wait 500
+screenshot ./.agent-device/test-artifacts/ios-fuzzel-e2e-03-focused.png
+
+# Leave session open — smoke.sh injects Mod+D next, then re-snapshots.

@@ -1,4 +1,5 @@
-# Bundled interactive shell tools (zsh, fastfetch, neovim, waypipe) for the Android APK.
+# Bundled interactive shell tools (zsh, fastfetch, neovim, waypipe, niri, fuzzel)
+# for the Android APK.
 #
 # Extracted from android.nix to keep that file under its maintainability budget.
 # `preBuildFragment` is spliced into the APK derivation's preBuild after
@@ -12,6 +13,8 @@
   neovimAndroid ? null,
   waypipeAndroid ? null,
   niriAndroid ? null,
+  fuzzelAndroid ? null,
+  applicationsCatalog ? null,
 }:
 {
   preBuildFragment = ''
@@ -70,6 +73,32 @@
       chmod +x "$JNI_LIB_DIR/libniri_bin.so"
     else
       echo "WARNING: Missing Android niri binary at ${niriAndroid}/lib/libniri_bin.so"
+    fi
+    ''}
+
+    ${lib.optionalString (fuzzelAndroid != null) ''
+    # fuzzel (wwn-niri): niri Mod+D launcher. Same waypipe/jniLibs PIE pattern
+    # as niri — PATH symlink usr/bin/fuzzel → libfuzzel_bin.so (issue #78).
+    if [ -f "${fuzzelAndroid}/lib/libfuzzel_bin.so" ]; then
+      cp -L "${fuzzelAndroid}/lib/libfuzzel_bin.so" "$JNI_LIB_DIR/libfuzzel_bin.so"
+      chmod +x "$JNI_LIB_DIR/libfuzzel_bin.so"
+    elif [ -f "${fuzzelAndroid}/bin/fuzzel" ]; then
+      cp -L "${fuzzelAndroid}/bin/fuzzel" "$JNI_LIB_DIR/libfuzzel_bin.so"
+      chmod +x "$JNI_LIB_DIR/libfuzzel_bin.so"
+    else
+      echo "WARNING: Missing Android fuzzel binary at ${fuzzelAndroid}"
+    fi
+    ''}
+
+    ${lib.optionalString (applicationsCatalog != null) ''
+    # Freedesktop applications catalog for fuzzel (share/applications + hicolor).
+    # Extracted into wawona-rootfs/usr/share by WawonaShellRootfs (issue #78).
+    if [ -d "${applicationsCatalog}/share/applications" ]; then
+      mkdir -p app/src/main/assets/applications app/src/main/assets/icons
+      cp -R "${applicationsCatalog}/share/applications/." app/src/main/assets/applications/
+      cp -R "${applicationsCatalog}/share/icons/hicolor" app/src/main/assets/icons/
+      chmod -R u+w app/src/main/assets/applications app/src/main/assets/icons
+      echo "Bundled fuzzel applications catalog into APK assets"
     fi
     ''}
   '';

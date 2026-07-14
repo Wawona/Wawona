@@ -81,6 +81,7 @@ let
     "-Wl,-u,_fuzzel_main"
     "-Wl,-u,_wawona_dispatch_can_handle"
     "-Wl,-u,_wawona_dispatch_inprocess"
+    "-Wl,-u,_wawona_dispatch_spawn_async"
   ];
   # Pin matches weston-compositor-apple-mobile (13.0.0). Do not use pkgs.weston on
   # Darwin — it pulls pipewire and fails eval (valgrind marked broken in nixpkgs).
@@ -601,7 +602,44 @@ PLIST
     lib.optionals (mobileGuestArtifacts != null) [ iosMobileGuestEmbedPhase ]
     ++ lib.optionals (mobileVmEngine != null) [ iosMobileVmEngineEmbedPhase ];
 
-  iosPostBuildPhases = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase niriDataEmbedPhase iosRootfsEmbedPhase iosNeovimRootfsEmbedPhase ]
+  # Freedesktop .desktop + hicolor icons for nested-niri fuzzel (issue #78).
+  applicationsCatalog = pkgs.callPackage ./applications-catalog.nix {
+    inherit pkgs lib wawonaSrc;
+  };
+
+  appsCatalogIosEmbedScript = pkgs.writeShellScript "embed-applications-catalog-ios.sh" ''
+    case "''${PLATFORM_NAME:-}" in
+      iphoneos|iphonesimulator|appletvos|appletvsimulator|xros|xrsimulator)
+        ;;
+      *)
+        exit 0
+        ;;
+    esac
+    BUNDLE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
+    CATALOG="${applicationsCatalog}"
+    if [ ! -d "$CATALOG/share/applications" ]; then
+      echo "warning: applications catalog missing at $CATALOG" >&2
+      exit 0
+    fi
+    mkdir -p "$BUNDLE/share/applications" "$BUNDLE/share/icons"
+    cp -R "$CATALOG/share/applications/." "$BUNDLE/share/applications/"
+    cp -R "$CATALOG/share/icons/hicolor" "$BUNDLE/share/icons/"
+    echo "Embedded fuzzel applications catalog into $BUNDLE/share"
+  '';
+
+  appsCatalogEmbedOutputs = [
+    "$(BUILT_PRODUCTS_DIR)/$(FULL_PRODUCT_NAME)/share/applications/foot.desktop"
+    "$(BUILT_PRODUCTS_DIR)/$(FULL_PRODUCT_NAME)/share/icons/hicolor/index.theme"
+  ];
+
+  appsCatalogEmbedPhase = {
+    path = appsCatalogIosEmbedScript;
+    name = "Embed fuzzel applications catalog";
+    basedOnDependencyAnalysis = true;
+    outputFiles = appsCatalogEmbedOutputs;
+  };
+
+  iosPostBuildPhases = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase niriDataEmbedPhase appsCatalogEmbedPhase iosRootfsEmbedPhase iosNeovimRootfsEmbedPhase ]
     ++ mobileVmEmbedPhases
     ++ lib.optionals (angleSimDylib != null) [ angleSimEmbedPhase ]
     ++ lib.optionals (angleDeviceDylib != null) [ angleDeviceEmbedPhase ];
@@ -1678,6 +1716,16 @@ PLIST
                 cp -RL "$CURSOR_SRC" "$RES_DEST/share/icons/Adwaita/cursors"
                 chmod -R u+w "$RES_DEST/share/icons/Adwaita/cursors"
                 echo "Bundled Adwaita cursors"
+              fi
+
+              # Freedesktop catalog for fuzzel Mod+D (issue #78).
+              APPS_CATALOG="${applicationsCatalog}"
+              if [ -d "$APPS_CATALOG/share/applications" ]; then
+                mkdir -p "$RES_DEST/share/applications" "$RES_DEST/share/icons"
+                cp -R "$APPS_CATALOG/share/applications/." "$RES_DEST/share/applications/"
+                cp -R "$APPS_CATALOG/share/icons/hicolor" "$RES_DEST/share/icons/"
+                chmod -R u+w "$RES_DEST/share/applications" "$RES_DEST/share/icons/hicolor"
+                echo "Bundled fuzzel applications catalog"
               fi
 
               # ----------------------------------------------------------------
