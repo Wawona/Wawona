@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<document type="com.apple.InterfaceBuilder.WatchKit.Storyboard" version="3.0" toolsVersion="23504" targetRuntime="watchKit" propertyAccessControl="none" useAutolayout="YES" colorMatched="YES">
+<document type="com.apple.InterfaceBuilder.WatchKit.Storyboard" version="3.0" toolsVersion="23504" targetRuntime="watchKit" propertyAccessControl="none" useAutolayout="YES" colorMatched="YES" initialViewController="WWN-SettingsRoot">
     <device id="watch44"/>
     <dependencies>
         <deployment identifier="watchOS"/>
@@ -8,7 +8,7 @@
     <scenes>
         <scene sceneID="settings-root-scene">
             <objects>
-                <controller identifier="SettingsRoot" id="WWN-SettingsRoot" customClass="WWNWatchSettingsRootInterfaceController" customModuleProvider="target">
+                <controller identifier="SettingsRoot" id="WWN-SettingsRoot" initial="YES" customClass="WWNWatchSettingsRootInterfaceController" customModuleProvider="target">
                     <items>
                         <table alignment="left" id="WWN-SectionsTable">
                             <tableRow identifier="SectionRow" id="WWN-SectionRow" customClass="WWNWatchSettingsActionRowController" customModuleProvider="target">
