@@ -1,8 +1,10 @@
 name: Android parity builds
 
+# Parity with Nix CI: run on development (WIP) and master (release).
+# docs/ci.md — FlakeHub Cache required on Nix jobs.
 on:
   push:
-    branches: [main, master]
+    branches: [development, main, master]
     paths:
       - 'android/**'
       - 'dependencies/**'
@@ -14,6 +16,7 @@ on:
       - '.github/scripts/nix-build-shell-tools.sh'
       - '.github/scripts/nix-build-android-meson-sandbox-gate.sh'
   pull_request:
+    branches: [development, main, master]
     paths:
       - 'android/**'
       - 'dependencies/**'

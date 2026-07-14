@@ -1,8 +1,8 @@
 name: Nightly full matrix
 
-# Deep gates that are too slow/flaky for the PR path (Layer 3 functional +
-# graphics CTS + cross-platform UI parity + capability lanes). PRs get the fast
-# gate in nix.yml; `main` gets this nightly. See docs/2026-greenlight-gates.md.
+# Deep / slow gates (L3–L4 + capability). Push/PR fast path: nix.yml + device-e2e.
+# Always exercises the development tip so WIP is deep-tested before promote.
+# docs/ci.md · FlakeHub Cache on every Nix job.
 
 on:
   schedule:
@@ -17,12 +17,17 @@ concurrency:
   group: nightly-full-matrix-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  WAWONA_NIGHTLY_REF: development
+
 jobs:
   graphics-smoke:
     name: "macOS (arm64): graphics driver-sanity"
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.WAWONA_NIGHTLY_REF }}
       - uses: DeterminateSystems/nix-installer-action@v22
         with:
           determinate: true
@@ -39,6 +44,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.WAWONA_NIGHTLY_REF }}
       - uses: DeterminateSystems/nix-installer-action@v22
         with:
           determinate: true
@@ -58,20 +65,23 @@ jobs:
           git diff --exit-code -- docs/protocol-status.md \
             || { echo "::error::docs/protocol-status.md stale; run scripts/gen-protocol-status.sh"; exit 1; }
 
-  # Cross-platform GUI parity/e2e: delegate to the deterministic agent-device
-  # replay lanes (iOS simulator on macOS runner, Android emulator on ubuntu
-  # KVM runner). Screenshots are uploaded as device-e2e-{ios,android}
-  # artifacts; scripts/ui_parity_diff.py can be pointed at them once the
-  # light/dark capture matrix it expects is recorded.
+  # Cross-platform GUI parity/e2e on development tip.
   ui-parity:
     name: "Layer 3: cross-platform UI parity"
     uses: ./.github/workflows/device-e2e.yml
+    with:
+      checkout_ref: development
+    permissions:
+      contents: read
+      id-token: write
 
   capability-lane:
     name: "Layer 2: nested Weston + XWayland capability"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.WAWONA_NIGHTLY_REF }}
       - uses: DeterminateSystems/nix-installer-action@v22
         with:
           determinate: true

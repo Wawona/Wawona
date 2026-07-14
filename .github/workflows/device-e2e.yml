@@ -21,7 +21,13 @@ name: Device GUI e2e
 
 on:
   workflow_dispatch: {}
-  workflow_call: {}
+  workflow_call:
+    inputs:
+      checkout_ref:
+        description: "Git ref to test (nightly passes development)"
+        type: string
+        required: false
+        default: ""
   push:
     branches: [development, master]
     paths:
@@ -59,6 +65,8 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Select active Xcode
         run: |
@@ -128,6 +136,8 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v22
@@ -155,6 +165,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Enable KVM group perms
         run: |
@@ -201,6 +213,8 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v22
@@ -241,6 +255,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v22

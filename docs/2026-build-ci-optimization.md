@@ -37,18 +37,25 @@ Operational runbook: [`flakehub-cache.md`](./flakehub-cache.md).
 ## Per-repo CI dedupe
 
 - **One owner per artifact.** `wwn-toolchain` builds toolchains; `wwn-weston`
-  builds Weston + clients; Wawona consumes them via flake inputs. Do not rebuild
-  a sibling's artifact in Wawona CI — pull it from cache.
+  builds Weston + clients; Wawona consumes them via flake inputs and **FlakeHub
+  Cache** substitutes. Do not rebuild a sibling's artifact in Wawona CI when the
+  hash is already cached.
+- **Curated push/PR matrix.** `nix.yml` builds only
+  [`.github/ci-package-matrix.json`](../.github/ci-package-matrix.json) (~13
+  attrs), not `builtins.attrNames` of every package. See [`ci.md`](./ci.md).
+- **Branch parity.** `development` and `master` both run Nix CI + Android parity
+  + Device e2e. Release Beta / Release stay on `master` / tags.
 - **Path filters.** Workflows use `on.push/pull_request.paths` (see
-  `android-parity.yml`) so a docs-only change doesn't trigger native builds.
+  `android-parity.yml`, `device-e2e.yml`) so a docs-only change doesn't trigger
+  native builds where filtered.
 - **Fast PR gate vs nightly.**
-  - *PR gate* (`nix.yml`): flake eval, `cargo test` (Linux + macOS), platform
-    builds, reproducibility gate, protocol-status drift, macOS compat smoke.
-  - *Nightly* (`nightly-full-matrix.yml`): graphics CTS, cross-platform UI
-    parity, nested-Weston/XWayland capability lane — the slow/flaky deep gates.
+  - *Push/PR gate* (`nix.yml` + parity + e2e): verify, tests, curated builds,
+    GUI smoke on `development`/`master`.
+  - *Nightly* (`nightly-full-matrix.yml`): always checks out **`development`**
+    for deep/flaky lanes (graphics, capability, full e2e call).
 - **Reproducibility.** `repro-rebuild` `--rebuild`s backend + workspace-src and
   byte-compares; `verify-no-tar-wildcards.py` bans nondeterministic archives.
-  Deterministic outputs are what make the shared cache safe to trust.
+  Deterministic outputs are what make FlakeHub Cache safe to trust.
 
 ## Sizing rules of thumb
 

@@ -1,10 +1,12 @@
 name: Nix CI
 
+# Branch policy: development = WIP gate; master = release/green.
+# What/why: docs/ci.md. Cache: FlakeHub (flakehub-cache-action@v3).
 on:
   push:
-    branches: [ main, master ]
+    branches: [ development, master, main ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ development, master, main ]
   workflow_dispatch:
 
 permissions:
@@ -50,54 +52,45 @@ jobs:
 
       - uses: DeterminateSystems/flakehub-cache-action@v3
 
-      - name: Derive Unified Package Matrix
+      - name: Load curated package matrix
         id: matrix
         run: |
-          export TARGETS_LINUX_X64=$(nix eval --json --impure ".#packages.x86_64-linux" --apply builtins.attrNames || echo "[]")
-          export TARGETS_LINUX_ARM64=$(nix eval --json --impure ".#packages.aarch64-linux" --apply builtins.attrNames || echo "[]")
-          export TARGETS_MACOS_X64=$(nix eval --json --impure ".#packages.x86_64-darwin" --apply builtins.attrNames || echo "[]")
-          export TARGETS_MACOS_ARM64=$(nix eval --json --impure ".#packages.aarch64-darwin" --apply builtins.attrNames || echo "[]")
-
           python3 - <<'PYEOF'
-          import json, os, sys
+          import json, os, subprocess, sys
 
-          def load(env_var):
-              val = os.environ.get(env_var, "[]")
-              return json.loads(val) if val.strip() else []
+          path = ".github/ci-package-matrix.json"
+          with open(path) as f:
+              data = json.load(f)
+          include = data["include"]
+          if not include:
+              print("::error::ci-package-matrix.json include[] is empty", file=sys.stderr)
+              sys.exit(1)
 
-          platforms = {
-              "x86_64-linux": {"targets": load("TARGETS_LINUX_X64"), "os": "ubuntu-latest"},
-              "aarch64-linux": {"targets": load("TARGETS_LINUX_ARM64"), "os": "ubuntu-24.04-arm"},
-              "x86_64-darwin": {"targets": load("TARGETS_MACOS_X64"), "os": "macos-26"},
-              "aarch64-darwin": {"targets": load("TARGETS_MACOS_ARM64"), "os": "macos-26"}
-          }
+          # Fail closed if an attr disappeared from the flake.
+          for row in include:
+              system, target = row["system"], row["target"]
+              probe = subprocess.run(
+                  [
+                      "nix", "eval", "--raw",
+                      f".#packages.{system}.{target}.name",
+                  ],
+                  capture_output=True,
+                  text=True,
+              )
+              if probe.returncode != 0:
+                  print(
+                      f"::error::matrix target missing: packages.{system}.{target}\n{probe.stderr}",
+                      file=sys.stderr,
+                  )
+                  sys.exit(1)
 
-          excluded_targets = {
-              "wawona-ios-ipa", "wawona-ios-xcarchive", 
-              "wawona-ipados-ipa", "wawona-tvos-ipa", "wawona-visionos-ipa", "wawona-watchos-ipa"
-          }
-
-          filtered_matrix = []
-          for system, data in platforms.items():
-              for target in data["targets"]:
-                  if target in excluded_targets:
-                      continue
-                  if target.endswith("-xcode-env") or target.endswith("-project"):
-                      continue
-                  if target.endswith("-sim") or target.endswith("-sim-backend") or target.endswith("-simulator"):
-                      continue
-                  if any(t in target for t in ["tvos", "watchos", "visionos"]):
-                      continue
-                  if target == "wawona-ipados-backend":
-                      continue
-                      
-                  filtered_matrix.append({
-                      "system": system,
-                      "target": target,
-                      "os": data["os"]
-                  })
-
-          matrix_json = json.dumps({"include": filtered_matrix})
+          # GHA matrix only needs system/os/target.
+          slim = [
+              {"system": r["system"], "os": r["os"], "target": r["target"]}
+              for r in include
+          ]
+          matrix_json = json.dumps({"include": slim})
+          print(f"Curated matrix entries: {len(slim)}")
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               f.write(f"matrix={matrix_json}\n")
           PYEOF

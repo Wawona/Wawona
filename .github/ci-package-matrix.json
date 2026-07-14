@@ -1,0 +1,83 @@
+{
+  "description": "Curated Nix CI package matrix (~15 builds). Full attrNames is for nightly/research only — see docs/ci.md.",
+  "include": [
+    {
+      "system": "aarch64-darwin",
+      "os": "macos-26",
+      "target": "wawona-macos",
+      "why": "Primary macOS product artifact"
+    },
+    {
+      "system": "aarch64-darwin",
+      "os": "macos-26",
+      "target": "wawona-ios-backend",
+      "why": "iOS Rust/native backend (device); app install covered by device-e2e"
+    },
+    {
+      "system": "aarch64-darwin",
+      "os": "macos-26",
+      "target": "wawona-android-backend",
+      "why": "Android native backend on Darwin host (NDK path)"
+    },
+    {
+      "system": "aarch64-darwin",
+      "os": "macos-26",
+      "target": "weston-ios",
+      "why": "Layer-1 nested compositor stack; FlakeHub cross-repo hit target"
+    },
+    {
+      "system": "aarch64-darwin",
+      "os": "macos-26",
+      "target": "zsh-ios",
+      "why": "In-process shell / rootfs wiring smoke"
+    },
+    {
+      "system": "aarch64-darwin",
+      "os": "macos-26",
+      "target": "niri-ios",
+      "why": "Bundled nested compositor used by fuzzel e2e"
+    },
+    {
+      "system": "aarch64-darwin",
+      "os": "macos-26",
+      "target": "graphics-validate-macos",
+      "why": "Graphics/driver sanity check (L2)"
+    },
+    {
+      "system": "x86_64-linux",
+      "os": "ubuntu-latest",
+      "target": "wawona-linux-ui-bin",
+      "why": "Linux GTK host UI binary"
+    },
+    {
+      "system": "x86_64-linux",
+      "os": "ubuntu-latest",
+      "target": "wawona-appimage",
+      "why": "Linux distribution artifact + AppImage smoke"
+    },
+    {
+      "system": "x86_64-linux",
+      "os": "ubuntu-latest",
+      "target": "wawona-android-backend",
+      "why": "Android backend also builds on Linux CI hosts"
+    },
+    {
+      "system": "x86_64-linux",
+      "os": "ubuntu-latest",
+      "target": "weston",
+      "why": "Linux Weston client/compositor packaging"
+    },
+    {
+      "system": "aarch64-linux",
+      "os": "ubuntu-24.04-arm",
+      "target": "wawona-appimage",
+      "why": "aarch64 Linux ship artifact"
+    },
+    {
+      "system": "aarch64-linux",
+      "os": "ubuntu-24.04-arm",
+      "target": "wawona-linux-ui-bin",
+      "why": "aarch64 Linux UI binary"
+    }
+  ]
+}

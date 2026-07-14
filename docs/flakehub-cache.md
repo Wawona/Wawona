@@ -4,7 +4,8 @@ Wawona uses **Determinate FlakeHub Cache** (`https://cache.flakehub.com`) as the
 org-wide Nix binary cache. There is **no** self-hosted Attic/Cachix or
 `cache.wawona.io`.
 
-Companion: [`2026-build-ci-optimization.md`](./2026-build-ci-optimization.md).
+Companion: [`2026-build-ci-optimization.md`](./2026-build-ci-optimization.md),
+[`ci.md`](./ci.md) (branch × workflow + curated matrix).
 Upstream docs: [FlakeHub Cache](https://docs.determinate.systems/flakehub/cache).
 
 ## What it does
