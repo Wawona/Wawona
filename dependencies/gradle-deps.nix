@@ -93,6 +93,15 @@ let
         GRADLE_OPTS="''${GRADLE_OPTS} -Djavax.net.ssl.trustStore=''${MITM_CACHE_KEYSTORE} -Djavax.net.ssl.trustStorePassword=''${MITM_CACHE_KS_PWD}"
       fi
       export GRADLE_OPTS
+      # Plugin markers (com.*.gradle.plugin poms) resolve during settings /
+      # plugins {} configuration. resolveAllArtifacts only walks project
+      # classpaths and never records AGP or Kotlin Compose plugin markers.
+      gradle help \
+        --no-daemon --max-workers=1 \
+        -Dorg.gradle.daemon=false \
+        -Dorg.gradle.parallel=false \
+        -Dorg.gradle.workers.max=1 \
+        --stacktrace
       cat > resolve-artifacts.init.gradle <<'EOF'
       gradle.projectsLoaded {
         rootProject.tasks.register("resolveAllArtifacts") {
