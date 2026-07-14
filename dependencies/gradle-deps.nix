@@ -165,6 +165,9 @@ let
     if [ -d "$src/com/android" ]; then
       mkdir -p "$dst/com/android"
       cp -a "$src/com/android/." "$dst/com/android/"
+      # google() repository URL before redirect (belt-and-suspenders).
+      mkdir -p "$out/https/maven.google.com/com/android"
+      cp -a "$src/com/android/." "$out/https/maven.google.com/com/android/"
     fi
   '';
 in

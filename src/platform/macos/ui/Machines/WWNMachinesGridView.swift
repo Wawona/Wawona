@@ -496,7 +496,11 @@ final class WWNMachinesHostingBridge: NSObject {
       }
     )
     let hosting = UIHostingController(rootView: root)
+    #if os(tvOS)
+    hosting.view.backgroundColor = .black
+    #else
     hosting.view.backgroundColor = UIColor.systemBackground
+    #endif
     return hosting
   }
 }

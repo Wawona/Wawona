@@ -1,10 +1,10 @@
 pluginManagement {
     repositories {
-        // Prefer Google Maven explicitly: AGP plugin markers live here.
-        // gradlePluginPortal() alone misses them in sandboxed MITM builds
-        // (cache keyed under dl.google.com, not plugins.gradle.org).
+        // Explicit dl.google.com only — do not use google()/maven.google.com.
+        // Offline MITM caches artifacts under dl.google.com; google() hits
+        // maven.google.com first and 301-redirects, which the proxy cannot
+        // follow in the Nix sandbox (SocketException → UnknownPluginException).
         maven { url = uri("https://dl.google.com/dl/android/maven2/") }
-        google()
         maven { url = uri("https://plugins.gradle.org/m2/") }
         mavenCentral()
     }
@@ -13,7 +13,8 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
-        google()
+        // Same as pluginManagement: avoid maven.google.com redirect under MITM.
+        maven { url = uri("https://dl.google.com/dl/android/maven2/") }
         mavenCentral()
     }
 }

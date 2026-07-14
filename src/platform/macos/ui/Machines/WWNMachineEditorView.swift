@@ -498,7 +498,9 @@ struct WWNMachineEditorView: View {
       Text(previewCommand)
         .font(.system(.caption, design: .monospaced))
         .foregroundStyle(.secondary)
+        #if !os(tvOS)
         .textSelection(.enabled)
+        #endif
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
         .background(
