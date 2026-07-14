@@ -136,9 +136,12 @@
 // MARK: - Main Class Extension
 
 @interface WWNPreferences () <WWNWaypipeRunnerDelegate
-#if TARGET_OS_IPHONE
+#if TARGET_OS_IPHONE && !TARGET_OS_TV
                               ,
                               UITextFieldDelegate, UIDocumentPickerDelegate
+#elif TARGET_OS_IPHONE
+                              ,
+                              UITextFieldDelegate
 #else
                               ,
                               NSTextFieldDelegate, NSToolbarDelegate
@@ -177,6 +180,8 @@
 #if TARGET_OS_IPHONE
 - (void)confirmResetShellDotfiles;
 - (void)confirmReinstallSystemTree;
+#endif
+#if TARGET_OS_IPHONE && !TARGET_OS_TV
 - (void)importFileToShellHome;
 #endif
 #if (TARGET_OS_IPHONE || TARGET_OS_OSX) && !TARGET_OS_TV
@@ -625,17 +630,17 @@ static UIImage *WWNAboutLogo(void) {
 #endif
     }
 
+#if TARGET_OS_IPHONE && !TARGET_OS_TV
     if (caps & WWNRootfsCapabilityImportFile) {
       WWNSettingItem *importBtn =
           ITEM(@"Import File to Home", @"RootfsImportFile", WSettingButton, nil,
                @"Copy a file into shell HOME.");
       importBtn.actionBlock = ^{
-#if TARGET_OS_IPHONE
         [weakSelf importFileToShellHome];
-#endif
       };
       [localItems addObject:importBtn];
     }
+#endif
 
     if (caps & WWNRootfsCapabilityResetDotfiles) {
       WWNSettingItem *resetDotfilesBtn =
@@ -4260,6 +4265,7 @@ static UIImage *WWNAboutLogo(void) {
       alertControllerWithTitle:@"Local Shell Files"
                        message:message
                 preferredStyle:UIAlertControllerStyleAlert];
+#if !TARGET_OS_TV
   [alert
       addAction:[UIAlertAction actionWithTitle:@"Copy HOME Path"
                                          style:UIAlertActionStyleDefault
@@ -4267,6 +4273,7 @@ static UIImage *WWNAboutLogo(void) {
                                          UIPasteboard.generalPasteboard.string =
                                              rootfs[@"home"];
                                        }]];
+#endif
   [alert addAction:[UIAlertAction actionWithTitle:@"OK"
                                             style:UIAlertActionStyleCancel
                                           handler:nil]];
@@ -4366,6 +4373,7 @@ static UIImage *WWNAboutLogo(void) {
   [self presentViewController:alert animated:YES completion:nil];
 }
 
+#if !TARGET_OS_TV
 - (void)importFileToShellHome {
   UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc]
       initForOpeningContentTypes:@[ UTTypeItem ]
@@ -4427,7 +4435,8 @@ static UIImage *WWNAboutLogo(void) {
     [src stopAccessingSecurityScopedResource];
   }
 }
-#endif
+#endif /* !TARGET_OS_TV */
+#endif /* TARGET_OS_IPHONE */
 
 #if TARGET_OS_OSX
 - (void)showLocalShellHelp {
