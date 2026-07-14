@@ -1000,6 +1000,9 @@
   }
  },
  "https://plugins.gradle.org/m2": {
+  "com/android/application#com.android.application.gradle.plugin/9.1.1": {
+   "pom": "sha256-FWTpI+KZKfanWDGIw3eClsPXUQsQpbeRs83b7QRrnt0="
+  },
   "com/google/auto#auto-parent/6": {
    "pom": "sha256-BfdAxmSBZdsAz2GN1WwgDEcl41jm1U9YU+C+wVc06go="
   },

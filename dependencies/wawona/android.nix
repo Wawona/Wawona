@@ -320,6 +320,25 @@ in
       ${gradleSupport.prepareProject}
       ${gradleSupport.prepareEnvironment}
 
+      # Prefer offline filesystem mirrors from mitmCache. A MITM cache miss
+      # otherwise falls through to outbound HTTPS and fails in the Darwin
+      # sandbox (SocketException → UnknownPluginException for AGP).
+      GOOGLE_MAVEN_FS="${mitmCache}/https/dl.google.com/dl/android/maven2"
+      PORTAL_MAVEN_FS="${mitmCache}/https/plugins.gradle.org/m2"
+      if [ -d "$GOOGLE_MAVEN_FS" ] && [ -f settings.gradle.kts ]; then
+        awk -v g="$GOOGLE_MAVEN_FS" -v p="$PORTAL_MAVEN_FS" '
+          /^    repositories \{/ {
+            print
+            print "        maven { url = uri(\"file://" g "\") }"
+            print "        maven { url = uri(\"file://" p "\") }"
+            next
+          }
+          { print }
+        ' settings.gradle.kts > settings.gradle.kts.nix
+        mv settings.gradle.kts.nix settings.gradle.kts
+        echo "Injected file:// maven mirrors into settings.gradle.kts"
+      fi
+
       # Normalize daemon/jvmargs so --no-daemon stays in-process. A mismatched
       # jvmargs profile forks a single-use daemon that needs localhost TCP and
       # fails in the Nix sandbox (DaemonConnectionException / Operation not permitted).

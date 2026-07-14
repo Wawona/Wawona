@@ -158,16 +158,19 @@ let
     # Keep gradle-deps-update (fetchDeps passthru) reachable from the wrapper.
     passthru = rawMitmCache.passthru or { };
   } ''
-    cp -a ${rawMitmCache}/. "$out/"
+    # Dereference store symlinks: mitm-cache replay in the Darwin sandbox can
+    # miss symlink targets and attempt outbound HTTPS (SocketException →
+    # UnknownPluginException for com.android.application).
+    cp -aL ${rawMitmCache}/. "$out/"
     chmod -R u+w "$out"
     src="$out/https/dl.google.com/dl/android/maven2"
     dst="$out/https/plugins.gradle.org/m2"
     if [ -d "$src/com/android" ]; then
       mkdir -p "$dst/com/android"
-      cp -a "$src/com/android/." "$dst/com/android/"
+      cp -aL "$src/com/android/." "$dst/com/android/"
       # google() repository URL before redirect (belt-and-suspenders).
       mkdir -p "$out/https/maven.google.com/com/android"
-      cp -a "$src/com/android/." "$out/https/maven.google.com/com/android/"
+      cp -aL "$src/com/android/." "$out/https/maven.google.com/com/android/"
     fi
   '';
 in
