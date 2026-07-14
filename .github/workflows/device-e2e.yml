@@ -222,8 +222,10 @@ jobs:
           arch: x86_64
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot-save
           disable-animations: true
+          # android-emulator-runner invokes /usr/bin/sh (dash on Ubuntu);
+          # do not use bash-only `set -o pipefail` here.
           script: |
-            set -euo pipefail
+            set -eu
             export WAWONA_ANDROID_APK=dist/Wawona.apk
             ./scripts/agent-device-smoke.sh android
             ./scripts/agent-device-smoke.sh android-fuzzel
