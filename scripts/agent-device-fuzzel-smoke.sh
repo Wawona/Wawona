@@ -129,6 +129,42 @@ run_android_fuzzel() {
   echo "$procs" | grep -q 'fuzzel' || { echo "FAIL: fuzzel not running after Alt+D" >&2; exit 1; }
   echo "PASS: fuzzel process up"
 
+  # Catalog Exec must resolve on PATH (weston-simple-shm → libwawona_wl_bin.so).
+  local wl_link
+  wl_link="$(adb -s "$serial" shell 'run-as com.aspauldingcode.wawona sh -c "ls -l files/wawona-rootfs/usr/bin/weston-simple-shm 2>/dev/null"' | tr -d '\r')"
+  echo "$wl_link" | tee "$ARTIFACTS/android-fuzzel-e2e-wl-path.txt"
+  echo "$wl_link" | grep -q 'wawona_wl_bin\|weston-simple-shm' || {
+    echo "FAIL: usr/bin/weston-simple-shm missing (fuzzel Exec cannot launch clients)" >&2
+    exit 1
+  }
+  echo "PASS: weston-simple-shm on PATH"
+
+  # Launch Weston Simple SHM from fuzzel: type filter + Enter.
+  adb -s "$serial" shell input text 'weston-simple'
+  sleep 0.5
+  adb -s "$serial" shell input keyevent 66   # ENTER
+  sleep 3
+
+  local after_launch
+  after_launch="$(adb -s "$serial" shell 'ps -A' | grep -E '[n]iri|[f]uzzel|[w]eston-simple|[w]awona_wl' || true)"
+  echo "$after_launch" | tee "$ARTIFACTS/android-fuzzel-e2e-procs-after-launch.txt"
+
+  local shot2="$ARTIFACTS/android-fuzzel-e2e-06-after-client-launch.png"
+  adb -s "$serial" exec-out screencap -p >"$shot2"
+  assert_png_exists "$shot2"
+
+  # Client may appear as libwawona_wl_bin.so or remain under the Wawona PID;
+  # require either a new process OR log evidence of launcher success.
+  adb -s "$serial" logcat -d >"$logf" 2>/dev/null || true
+  if ! rg -q 'WawonaWlBin|launch weston-simple-shm|weston_simple_shm_main' "$logf"; then
+    if ! echo "$after_launch" | grep -qE 'wawona_wl|weston-simple'; then
+      echo "FAIL: no evidence weston-simple-shm launched from fuzzel" >&2
+      rg -i 'fuzzel|WawonaWl|weston-simple|exec' "$logf" | head -40 || true
+      exit 1
+    fi
+  fi
+  echo "PASS: nested Wayland client launch evidence"
+
   # Must not regress to NotFound / timerfd crash.
   if rg -q 'error spawning "fuzzel"|timerfd_create|SIGSEGV' "$logf"; then
     echo "FAIL: spawn/timerfd regression in logcat" >&2

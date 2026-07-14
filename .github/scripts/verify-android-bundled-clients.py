@@ -22,6 +22,7 @@ REQUIRED_APK_LIBS = (
     "lib/arm64-v8a/libweston_simple_shm.so",
     "lib/arm64-v8a/libfoot.so",
     "lib/arm64-v8a/libfoot_bin.so",
+    "lib/arm64-v8a/libwawona_wl_bin.so",
 )
 
 
@@ -39,6 +40,8 @@ def verify_android_nix(src: str) -> list[str]:
         errors.append("android.nix must bundle libfoot.so")
     if "libfoot_bin.so" not in src:
         errors.append("android.nix must bundle libfoot_bin.so")
+    if "libwawona_wl_bin.so" not in src:
+        errors.append("android.nix must bundle libwawona_wl_bin.so for fuzzel Exec")
     if not re.search(r"Missing required Android foot library", src):
         errors.append("android.nix must require libfoot.so copy")
     if not re.search(r"Missing required Android foot binary", src):
@@ -66,6 +69,8 @@ def verify_android_jni(src: str) -> list[str]:
             errors.append(f"android_jni.c must reference {client_id}")
     if "libfoot_bin.so" not in src:
         errors.append("android_jni.c must fork/exec libfoot_bin.so for foot")
+    if "libwawona_wl_bin.so" not in src:
+        errors.append("android_jni.c must PATH-link libwawona_wl_bin.so for weston Exec")
     if "wwn_launch_foot" not in src:
         errors.append("android_jni.c must provide wwn_launch_foot")
     if "kmscube_stub_main" not in src:

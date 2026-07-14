@@ -100,18 +100,9 @@
     ''}
 
     ${lib.optionalString (footAndroid != null) ''
-    # foot (wwn-foot): Wayland terminal. Primary packaging lives in
-    # android-bundled-clients.nix; also expose PATH symlink usr/bin/foot →
-    # libfoot_bin.so for nested shells / niri.
-    if [ -f "${footAndroid}/lib/libfoot_bin.so" ]; then
-      cp -L "${footAndroid}/lib/libfoot_bin.so" "$JNI_LIB_DIR/libfoot_bin.so"
-      chmod +x "$JNI_LIB_DIR/libfoot_bin.so"
-    elif [ -f "${footAndroid}/bin/foot" ]; then
-      cp -L "${footAndroid}/bin/foot" "$JNI_LIB_DIR/libfoot_bin.so"
-      chmod +x "$JNI_LIB_DIR/libfoot_bin.so"
-    else
-      echo "WARNING: Missing Android foot binary at ${footAndroid}"
-    fi
+    # foot (wwn-foot): PATH symlink usr/bin/foot → libfoot_bin.so is created at
+    # runtime by android_jni.c. The PIE itself is bundled exclusively by
+    # android-bundled-clients.nix (avoids a read-only double-copy race here).
     ''}
 
     ${lib.optionalString (applicationsCatalog != null) ''

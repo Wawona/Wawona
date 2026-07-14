@@ -2977,6 +2977,22 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
       /* foot (wwn-foot): Wayland terminal — fork/exec libfoot_bin.so. */
       wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libfoot_bin.so",
                                      "foot");
+      /* Nested-niri fuzzel catalog Exec=weston-* → multicall PIE that dlopens
+       * the real client and inherits niri's WAYLAND_DISPLAY (issue #78). */
+      {
+        static const char *const wl_execs[] = {
+            "weston-simple-shm", "weston-flower",   "weston-clickdot",
+            "weston-smoke",      "weston-eventdemo", "weston-resizor",
+            "weston-cliptest",   "weston-transformed", "weston-stacking",
+            "weston-dnd",        "weston-image",    "weston-scaler",
+            "weston-editor",     "weston-constraints",
+        };
+        size_t wi;
+        for (wi = 0; wi < sizeof(wl_execs) / sizeof(wl_execs[0]); wi++) {
+          wwn_android_install_shell_tool(native_lib_dir, usr_bin,
+                                         "libwawona_wl_bin.so", wl_execs[wi]);
+        }
+      }
     }
   }
 
