@@ -24,11 +24,13 @@ static inline BOOL WWNEDRConfigureMetalLayer(CAMetalLayer *layer,
   if (!layer || !hdrEnabled) {
     return NO;
   }
-#if TARGET_OS_WATCH
+#if TARGET_OS_WATCH || TARGET_OS_TV
+  // CAMetalLayer.wantsExtendedDynamicRangeContent is unavailable on tvOS/watchOS.
+  (void)layer;
   return NO;
 #else
 #if !TARGET_OS_OSX
-  if (@available(iOS 16.0, tvOS 16.0, visionOS 1.0, *)) {
+  if (@available(iOS 16.0, visionOS 1.0, *)) {
     // wantsExtendedDynamicRangeContent exists on this OS.
   } else {
     return NO;
