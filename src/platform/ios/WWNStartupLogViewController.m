@@ -88,7 +88,13 @@ static CGFloat        const kMaxOverlayH   = 0.72;   /* fraction of screen heigh
     [root addGestureRecognizer:bgTap];
 
     /* Blurred glass card. */
-    UIBlurEffect *blur = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThickMaterialDark];
+#if TARGET_OS_TV
+    UIBlurEffect *blur =
+        [UIBlurEffect effectWithStyle:UIBlurEffectStyleExtraDark];
+#else
+    UIBlurEffect *blur =
+        [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThickMaterialDark];
+#endif
     self.blurContainer = [[UIVisualEffectView alloc] initWithEffect:blur];
     self.blurContainer.translatesAutoresizingMaskIntoConstraints = NO;
     self.blurContainer.layer.cornerRadius  = kCornerRadius;
@@ -126,7 +132,9 @@ static CGFloat        const kMaxOverlayH   = 0.72;   /* fraction of screen heigh
     /* Log text view — selectable, copyable, non-editable. */
     self.textView = [[UITextView alloc] init];
     self.textView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.textView.editable    = NO;
+#if !TARGET_OS_TV
+    self.textView.editable = NO;
+#endif
     self.textView.selectable  = YES;
     self.textView.scrollEnabled = YES;
     self.textView.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.4];

@@ -1530,15 +1530,16 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   _keyboardPipButton.adjustsImageWhenHighlighted = NO;
 
   UIVisualEffect *effect = nil;
-  if (@available(iOS 26, *)) {
-#if !TARGET_OS_TV
-    effect = [[UIGlassEffect alloc] init];
+#if TARGET_OS_TV
+  effect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleDark];
 #else
-    effect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemChromeMaterial];
-#endif
+  if (@available(iOS 26, *)) {
+    effect = [[UIGlassEffect alloc] init];
   } else {
-    effect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemChromeMaterial];
+    effect = [UIBlurEffect
+        effectWithStyle:UIBlurEffectStyleSystemChromeMaterial];
   }
+#endif
   UIVisualEffectView *fx = [[UIVisualEffectView alloc] initWithEffect:effect];
   fx.tag = kTagKeyboardPipEffectView;
   fx.userInteractionEnabled = NO;
