@@ -1214,7 +1214,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   // The effect view is edge-to-edge (no corner radius) so it blends
   // seamlessly with the native iOS virtual keyboard beneath.
   if (@available(iOS 26, *)) {
-#if !TARGET_OS_TV
+#if !TARGET_OS_TV && !TARGET_OS_VISION
     UIGlassEffect *glass = [[UIGlassEffect alloc] init];
     UIVisualEffectView *glassView =
         [[UIVisualEffectView alloc] initWithEffect:glass];
