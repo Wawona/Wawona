@@ -169,12 +169,24 @@ jobs:
       - name: Build Wawona.apk
         run: ./.github/scripts/nix-retry.sh nix build ".#wawona-android" --print-build-logs --out-link result-android
 
+      - name: Stage APK for upload
+        run: |
+          mkdir -p dist
+          cp -L result-android/bin/Wawona.apk dist/Wawona.apk
+          ls -lh dist/Wawona.apk
+
+      # GitHub CreateArtifact has been timing out on this runner; retry upload.
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: Wandalen/wretry.action@v3.8.0
         with:
-          name: wawona-apk
-          path: result-android/bin/Wawona.apk
-          if-no-files-found: error
+          action: actions/upload-artifact@v4
+          attempt_limit: 8
+          attempt_delay: 10000
+          with: |
+            name: wawona-apk
+            path: dist/Wawona.apk
+            if-no-files-found: error
+            compression-level: 0
 
   android-emu-e2e:
     name: "Android emulator: GUI smoke (agent-device replay)"
