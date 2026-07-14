@@ -402,6 +402,9 @@ let
         chmod +x "$JNI_LIB_DIR/libwaypipe_bin.so"
       fi
       if [ -n "$ANOWAW_SO" ] && [ -f "$ANOWAW_SO" ]; then
+        # runtimeLibDirs may already have copied a read-only store .so here;
+        # replace it so the dedicated anowaw stage always wins.
+        rm -f "$JNI_LIB_DIR/libanowaw.so"
         cp -L "$ANOWAW_SO" "$JNI_LIB_DIR/libanowaw.so"
         chmod u+w "$JNI_LIB_DIR/libanowaw.so" 2>/dev/null || true
       fi

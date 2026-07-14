@@ -1348,16 +1348,19 @@ EOF
           inherit pkgs systemPackages;
           xcodeUtils = import applePath { inherit (pkgs) lib pkgs; nixXcodeenvtests = inputs."nix-xcodeenvtests"; };
         };
-        hasGraphicsValidate = builtins.pathExists ./dependencies/tests/graphics-validate.nix;
         hasAndroidCts = builtins.pathExists ./dependencies/libs/vulkan-cts/android.nix
           && builtins.pathExists ./dependencies/libs/vulkan-cts/gl-cts-android.nix;
       in {
         nom = { type = "app"; program = "${pkgs.nix-output-monitor}/bin/nom"; };
         local-runner = { type = "app"; program = "${systemPackages.local-runner}/bin/local-runner"; };
+      } // (pkgs.lib.optionalAttrs (systemPackages ? wawona-android) {
+        # Android apps are host-cross packages; only expose when the package set
+        # actually provides them (avoids flake check forcing angle-android on
+        # unsupported hostPlatform meta).
         wawona-android-provision = { type = "app"; program = "${systemPackages.wawona-android-provision}/bin/provision-android"; };
         wawona-android-project = { type = "app"; program = "${systemPackages.gradlegen}/bin/gradlegen"; };
         wawona-android = { type = "app"; program = "${systemPackages.wawona-android}/bin/wawona-android-run"; };
-      } // (pkgs.lib.optionalAttrs hasAndroidCts {
+      }) // (pkgs.lib.optionalAttrs (hasAndroidCts && systemPackages ? vulkan-cts-android) {
         vulkan-cts-android = { type = "app"; program = "${systemPackages.vulkan-cts-android}/bin/vulkan-cts-android-run"; };
         gl-cts-android = { type = "app"; program = "${systemPackages.gl-cts-android}/bin/gl-cts-android-run"; };
       }) // (pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
@@ -1369,7 +1372,10 @@ EOF
         wawona-linux-tray = { type = "app"; program = "${systemPackages.wawona-linux-tray}/bin/wawona-linux-tray-run"; };
         weston-simple-shm = { type = "app"; program = "${systemPackages.weston-simple-shm}/bin/weston-simple-shm"; };
         wawona-linux-vm = { type = "app"; program = "${systemPackages.wawona-linux-vm}/bin/wawona-linux-vm-run"; };
-      }) // (pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin {
+      }) // (pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin (
+        # Parenthesize the // chain: function application binds tighter than //,
+        # so without parens graphics-validate leaked onto linux flake check.
+        {
         weston = {
           type = "app";
           program = "${(import ./dependencies/wawona/shell-wrappers.nix).westonAppWrapper pkgs systemPackages.weston systemPackages.wawona-macos "weston"}/bin/weston";
@@ -1403,7 +1409,7 @@ EOF
         xcodegen-macos = { type = "app"; program = "${systemPackages.xcodegen-macos}/bin/xcodegen"; };
         xcodegen-apple = { type = "app"; program = "${systemPackages.xcodegen-apple}/bin/xcodegen"; };
         wawona-ios-provision = { type = "app"; program = "${systemPackages.wawona-ios-provision}/bin/provision-xcode"; };
-      } // (pkgs.lib.optionalAttrs hasGraphicsValidate {
+      } // (pkgs.lib.optionalAttrs (systemPackages ? graphics-validate-macos) {
         graphics-validate-macos = { type = "app"; program = "${systemPackages.graphics-validate-macos}/bin/graphics-validate-macos"; };
         # Fast graphics driver-sanity smoke, runnable as `nix run .#graphics-smoke`.
         graphics-smoke = { type = "app"; program = "${systemPackages.graphics-validate-macos}/bin/graphics-validate-macos"; };
@@ -1417,7 +1423,7 @@ EOF
         #   term 2:  nix run .#wawona-vm-bridge
         wawona-microvm = { type = "app"; program = "${systemPackages.wawona-microvm}/bin/wawona-microvm"; };
         wawona-vm-bridge = { type = "app"; program = "${systemPackages.wawona-vm-bridge}/bin/wawona-vm-bridge"; };
-      }));
+      })));
 
     allSystemPackages = nixpkgs.lib.genAttrs systemsList (system: getPackagesForSystem system (pkgsFor system));
     # p26-vm-nixos: the NixOS guest as a first-class flake output, so it can be
