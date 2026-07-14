@@ -291,6 +291,28 @@ let
       cp -f "$ANOWAW_JNI_SRC" "$ANOWAW_JNI_DST"
       chmod u+w "$ANOWAW_JNI_DST" 2>/dev/null || true
       echo "Staged anowaw_jni.c into $ANOWAW_JNI_DST"
+      # Header must sit next to the JNI glue: CMake already adds
+      # src/platform/android to include_directories, and parity/Studio
+      # builds may not have anowaw in NIX_DEP_INCLUDES/.nix-deps.
+      ANOWAW_HDR=""
+      if [ -n "${if anowawAndroid != null then toString anowawAndroid else ""}" ] \
+         && [ -f "${if anowawAndroid != null then toString anowawAndroid else "/nonexistent"}/include/anowaw.h" ]; then
+        ANOWAW_HDR="${toString anowawAndroid}/include/anowaw.h"
+      else
+        for hdr in \
+          "$(dirname "$(dirname "$ANOWAW_JNI_SRC")")/../../include/anowaw.h" \
+          "$REPO_ROOT/../wwn-anowaW/include/anowaw.h" \
+          "$REPO_ROOT/wwn-anowaW/include/anowaw.h"; do
+          if [ -f "$hdr" ]; then ANOWAW_HDR="$hdr"; break; fi
+        done
+      fi
+      if [ -n "$ANOWAW_HDR" ]; then
+        cp -f "$ANOWAW_HDR" "$WAWONA_SRC/src/platform/android/anowaw.h"
+        chmod u+w "$WAWONA_SRC/src/platform/android/anowaw.h" 2>/dev/null || true
+        echo "Staged anowaw.h into $WAWONA_SRC/src/platform/android/anowaw.h"
+      else
+        echo "Warning: anowaw.h not found; CMake will fail compiling anowaw_jni.c"
+      fi
     fi
 
     # Mirror Nix runtime libs into jniLibs for Android Studio builds.

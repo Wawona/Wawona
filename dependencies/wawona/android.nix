@@ -437,6 +437,14 @@ in
         cp -L ${anowawAndroid}/share/anowaw/jni/anowaw_jni.c \
               src/platform/android/anowaw_jni.c
         chmod u+w src/platform/android/anowaw_jni.c
+        # CMake compiles anowaw_jni.c with src/platform/android on the include
+        # path; stage the ABI header beside it so parity/Gradle builds that
+        # omit anowaw from DEP_INCLUDES still resolve #include "anowaw.h".
+        if [ -f "${anowawAndroid}/include/anowaw.h" ]; then
+          cp -L ${anowawAndroid}/include/anowaw.h \
+                src/platform/android/anowaw.h
+          chmod u+w src/platform/android/anowaw.h
+        fi
       fi
 
       # Prefer the Rust shared library for Android linking; the static archive

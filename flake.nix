@@ -458,6 +458,8 @@
           (toolchainsAndroid.buildForAndroid "openssl" { })
           (toolchainsAndroid.buildForAndroid "zstd" { })
           (toolchainsAndroid.buildForAndroid "lz4" { })
+          # anowaW C ABI header + libanowaw.so for Gradle/CMake parity builds
+          (toolchainsAndroid.buildForAndroid "anowaw" { })
         ] ++ (pkgs.lib.attrValues mobileToytoolkitDepsAndroid)
           ++ [
             (toolchainsAndroid.buildForAndroid "weston" { enableGlClients = true; })
