@@ -908,11 +908,15 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   if (![[WWNPreferencesManager sharedManager] universalClipboardEnabled]) {
     return;
   }
-#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+#if TARGET_OS_TV
+  // UIPasteboard is unavailable on tvOS; skip native clipboard bridge.
+  return;
+#elif TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
   UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
 #else
   NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
 #endif
+#if !TARGET_OS_TV
   NSInteger changeCount = pasteboard.changeCount;
 
   // A client (e.g. weston-terminal) copied text — push it to the native
@@ -956,6 +960,7 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   if (nativeText.length > 0) {
     WWNCoreSetClipboardText(_rustCore, nativeText.UTF8String);
   }
+#endif /* !TARGET_OS_TV */
 }
 
 /// Called from CADisplayLink (iOS) or NSTimer (macOS).  The callback fires
