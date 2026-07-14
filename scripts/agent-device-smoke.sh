@@ -88,12 +88,19 @@ run_android() {
     adb -s "$serial" install "$WAWONA_ANDROID_APK"
   fi
 
+  # shellcheck source=scripts/lib/android-ad-scale.sh
+  source "$ROOT/scripts/lib/android-ad-scale.sh"
+
   echo "== Android: launch smoke batch =="
   agent-device batch --session wawona-android-smoke --platform android --serial "$serial" \
     --steps-file "$ROOT/.agent-device/wawona-android-smoke-batch.json" --json
 
   echo "== Android: machines-lane replay =="
-  agent-device replay "$ROOT/.agent-device/wawona-android-machines.ad"
+  local machines_ad
+  machines_ad="$(mktemp "${TMPDIR:-/tmp}/wawona-android-machines.XXXXXX.ad")"
+  android_scale_ad_file "$ROOT/.agent-device/wawona-android-machines.ad" "$machines_ad"
+  agent-device replay "$machines_ad"
+  rm -f "$machines_ad"
 }
 
 run_fuzzel() {

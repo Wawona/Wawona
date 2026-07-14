@@ -217,14 +217,18 @@ jobs:
       - name: Run Android GUI smoke (deterministic replay)
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 30
+          # API 34+ ships `input keycombination` (needed for Alt+D / fuzzel).
+          # pixel_7 is 1080x2400 — close to the 1080x2424 reference used by
+          # Android .ad recordings (scripts also scale taps via wm size).
+          api-level: 34
           target: google_apis
           arch: x86_64
+          profile: pixel_7
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot-save
           disable-animations: true
-          # android-emulator-runner runs each script line in a fresh /usr/bin/sh,
-          # so export/set must share one line with the smoke invocations.
-          script: export WAWONA_ANDROID_APK="$GITHUB_WORKSPACE/dist/Wawona.apk"; ./scripts/agent-device-smoke.sh android; ./scripts/agent-device-smoke.sh android-fuzzel
+          # android-emulator-runner runs the script as one sh -c string; keep
+          # export and both lanes in a single command, fail-fast with &&.
+          script: export WAWONA_ANDROID_APK="$GITHUB_WORKSPACE/dist/Wawona.apk" && ./scripts/agent-device-smoke.sh android && ./scripts/agent-device-smoke.sh android-fuzzel
 
       - name: Upload Android screenshots
         if: always()

@@ -94,9 +94,15 @@ run_android_fuzzel() {
 
   adb -s "$serial" logcat -c || true
 
+  # shellcheck source=scripts/lib/android-ad-scale.sh
+  source "$ROOT/scripts/lib/android-ad-scale.sh"
+
   echo "== Android: niri+fuzzel .ad replay =="
-  agent-device replay "$ROOT/.agent-device/wawona-android-niri-fuzzel.ad" \
-    --platform android --serial "$serial"
+  local niri_ad
+  niri_ad="$(mktemp "${TMPDIR:-/tmp}/wawona-android-niri-fuzzel.XXXXXX.ad")"
+  android_scale_ad_file "$ROOT/.agent-device/wawona-android-niri-fuzzel.ad" "$niri_ad"
+  agent-device replay "$niri_ad" --platform android --serial "$serial"
+  rm -f "$niri_ad"
 
   # Replay closes the agent-device session; the app stays running.
   local procs
@@ -105,11 +111,13 @@ run_android_fuzzel() {
 
   if ! echo "$procs" | grep -q 'fuzzel'; then
     # Clear any sticky launcher, then inject Alt+D (nested niri Mod = Alt).
-    adb -s "$serial" shell input tap 540 1100
+    local focus_xy
+    focus_xy="$(android_scale_xy 540 1100)"
+    adb -s "$serial" shell input tap $focus_xy
     sleep 0.3
     adb -s "$serial" shell input keyevent 111   # KEYCODE_ESCAPE
     sleep 0.3
-    adb -s "$serial" shell input keycombination 57 32
+    android_inject_alt_d || true
     sleep 2.5
     procs="$(adb -s "$serial" shell 'ps -A' | grep -E '[n]iri|[f]uzzel' || true)"
     echo "$procs" | tee "$ARTIFACTS/android-fuzzel-e2e-procs.txt"
