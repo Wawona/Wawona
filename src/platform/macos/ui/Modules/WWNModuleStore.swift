@@ -45,6 +45,10 @@ public final class WWNModuleStore: NSObject {
                     completion(error(2, "Product '\(productId)' not found in App Store Connect"))
                     return
                 }
+                #if os(visionOS)
+                // Product.purchase(options:) is unavailable on visionOS.
+                completion(error(8, "In-app purchase is not available on visionOS yet"))
+                #else
                 let result = try await product.purchase()
                 switch result {
                 case .success(let verification):
@@ -62,6 +66,7 @@ public final class WWNModuleStore: NSObject {
                 @unknown default:
                     completion(error(6, "Unknown purchase result"))
                 }
+                #endif
             } catch {
                 completion(Self.error(7, error.localizedDescription))
             }
