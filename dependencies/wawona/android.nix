@@ -986,13 +986,11 @@ in
         : "''${ANDROID_KEY_PASSWORD:?Missing ANDROID_KEY_PASSWORD}"
       fi
 
-      # Build APK/AAB using Gradle
+      # Build APK/AAB using Gradle.
+      # Always use Nix gradle here: ./gradlew forceFetches the wrapper zip and
+      # fails in the sandbox (SocketException: Operation not permitted).
       export GRADLE_OPTS="-Xmx6144m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
-      GRADLE_CMD=gradle
-      if [ -x ./gradlew ]; then
-        GRADLE_CMD=./gradlew
-      fi
-      $GRADLE_CMD ${gradleTask} --no-build-cache --no-watch-fs --no-daemon --max-workers=1 \
+      gradle ${gradleTask} --no-build-cache --no-watch-fs --no-daemon --max-workers=1 \
         -Dorg.gradle.parallel=false \
         -Dorg.gradle.workers.max=1 \
         -Dorg.gradle.daemon=false \

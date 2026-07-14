@@ -242,6 +242,20 @@ int __wrap_memfd_create(const char *name, unsigned int flags) {
   return -1;
 #endif
 }
+
+/* Rust nix::unistd::syncfs is linked from libwawona.a; provide a syscall
+ * wrapper when Bionic does not export syncfs for the active minSdk. */
+int __wrap_syncfs(int fd) {
+#if defined(__NR_syncfs)
+  return (int)syscall(__NR_syncfs, fd);
+#elif defined(__aarch64__)
+  return (int)syscall(267, fd); /* __NR_syncfs on aarch64 */
+#else
+  (void)fd;
+  errno = ENOSYS;
+  return -1;
+#endif
+}
 #endif
 
 #ifndef WAWONA_WESTON_COMPOSITOR

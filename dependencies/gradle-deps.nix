@@ -78,18 +78,42 @@ let
     gradleUpdateScript = ''
       runHook preBuild
       runHook preGradleUpdate
-      GRADLE_CMD=gradle
-      if [ -x ./gradlew ]; then
-        GRADLE_CMD=./gradlew
-      fi
-      $GRADLE_CMD :Wawona:dependencies :Wawona:compileDebugKotlin :Wawona:mergeDebugResources :Wawona:desugarDebugFileDependencies \
+      # Always use Nix gradle: ./gradlew forceFetches the wrapper zip in sandbox.
+      # Download all resolvable configuration artifacts without compiling app
+      # sources (compileDebugKotlin needs anowaw bindings unavailable here).
+      # Metadata-only `:dependencies` is not enough — mitm lockfile would drop AARs.
+      cat > resolve-artifacts.init.gradle <<'EOF'
+      gradle.projectsLoaded {
+        rootProject.tasks.register("resolveAllArtifacts") {
+          doLast {
+            allprojects { project ->
+              // Snapshot first — resolving can mutate the configurations container.
+              def configs = project.configurations.findAll { it.canBeResolved }
+              // Prefer app classpaths that pull AARs for assembleDebug.
+              def preferred = configs.findAll { cfg ->
+                def n = cfg.name
+                n.contains("CompileClasspath") || n.contains("RuntimeClasspath") ||
+                  n.contains("AnnotationProcessor") || n.startsWith("kotlin") ||
+                  n.contains("lint") || n.contains("coreLibraryDesugaring")
+              }
+              (preferred ?: configs).each { config ->
+                try {
+                  def files = config.files
+                  println "Resolved artifacts for ''${config.name}: ''${files.size()}"
+                } catch (Throwable e) {
+                  println "Skip ''${config.name}: ''${e.message}"
+                }
+              }
+            }
+          }
+        }
+      }
+      EOF
+      gradle resolveAllArtifacts -I resolve-artifacts.init.gradle \
         --no-daemon --max-workers=1 \
         -Dorg.gradle.daemon=false \
         -Dorg.gradle.parallel=false \
         -Dorg.gradle.workers.max=1 \
-        -Dkotlin.daemon.enabled=false \
-        -Dkotlin.compiler.execution.strategy=in-process \
-        -Dkotlin.incremental=false \
         --stacktrace
       runHook postGradleUpdate
     '';

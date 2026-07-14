@@ -243,6 +243,8 @@ else()
   # those to hard link failures for -lcairo/-lpango etc.
   target_link_options(wawona PRIVATE "-Wl,--no-fatal-warnings")
   target_link_options(wawona PRIVATE "-Wl,--wrap=memfd_create")
+  # Rust nix crate references syncfs; Bionic may not export it at minSdk.
+  target_link_options(wawona PRIVATE "-Wl,--wrap=syncfs")
   if(WAWONA_WESTON_TOYTOOLKIT)
     target_link_options(wawona PRIVATE "-Wl,--wrap=strtod_l")
   endif()
