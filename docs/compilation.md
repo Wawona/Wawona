@@ -75,6 +75,18 @@ unset WAWONA_SKIP_NIX_PREBUILD
 
 Use `nom` / `nb` for cold builds with build visibility. See [2026-nix-build-system.md](2026-nix-build-system.md) for the full pipeline.
 
+## FlakeHub Cache (shared org binary cache)
+
+To pull prebuilt Layer-1/`wwn-*` store paths on a laptop (same cache CI uses):
+
+```bash
+determinate-nixd login   # once per machine
+determinate-nixd status  # Logged in: true
+```
+
+Details, limits (forks / anonymous cold rebuild), and CI fragment:
+[`flakehub-cache.md`](flakehub-cache.md).
+
 ## Project Generators
 
 ```bash

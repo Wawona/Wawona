@@ -9,6 +9,10 @@ on:
     - cron: "0 8 * * *" # 08:00 UTC daily
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+  id-token: write
+
 concurrency:
   group: nightly-full-matrix-${{ github.ref }}
   cancel-in-progress: true
@@ -25,6 +29,8 @@ jobs:
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+
       - name: Graphics validate smoke (check)
         run: nix build ".#checks.aarch64-darwin.graphics-validate-smoke" --print-build-logs
 
@@ -39,6 +45,8 @@ jobs:
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+
       - name: Ensure Cargo path dependencies
         run: |
           ./scripts/ensure-waypipe.sh
@@ -70,5 +78,7 @@ jobs:
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+
       - name: Nested Weston + XWayland capability smoke
         run: ./scripts/ci-capability-lane.sh

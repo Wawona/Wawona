@@ -41,6 +41,10 @@ on:
       - "scripts/applications-catalog-smoke.sh"
       - ".github/workflows/device-e2e.yml"
 
+permissions:
+  contents: read
+  id-token: write
+
 concurrency:
   group: device-e2e-${{ github.ref }}
   cancel-in-progress: true
@@ -70,6 +74,7 @@ jobs:
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
 
       - name: Build Wawona.app (iOS simulator slice)
         run: ./.github/scripts/nix-retry.sh nix build ".#wawona-ios" --print-build-logs --out-link result-ios
@@ -131,6 +136,7 @@ jobs:
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
 
       - name: Build Wawona.apk
         run: ./.github/scripts/nix-retry.sh nix build ".#wawona-android" --print-build-logs --out-link result-android
@@ -203,6 +209,7 @@ jobs:
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
 
       - name: Applications catalog smoke (headless)
         run: chmod +x ./scripts/applications-catalog-smoke.sh && ./scripts/applications-catalog-smoke.sh
@@ -242,6 +249,7 @@ jobs:
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
 
       - name: Applications catalog smoke
         run: chmod +x ./scripts/applications-catalog-smoke.sh && ./scripts/applications-catalog-smoke.sh

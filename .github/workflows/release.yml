@@ -15,6 +15,7 @@ concurrency:
 
 permissions:
   contents: write
+  id-token: write
 
 env:
   NIXPKGS_ALLOW_UNFREE: '1'
@@ -34,6 +35,7 @@ jobs:
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
 
       - name: Build macOS app
         run: ./.github/scripts/nix-retry.sh nix build .#wawona-macos --print-build-logs
@@ -76,6 +78,7 @@ jobs:
             sandbox = relaxed
             allow-import-from-derivation = true
             trusted-users = runner root
+      - uses: DeterminateSystems/flakehub-cache-action@v3
 
       - name: Build signed iPhone IPA
         env:
@@ -108,6 +111,7 @@ jobs:
             build-dir = /nix/build
             sandbox = relaxed
             allow-import-from-derivation = true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
 
       - name: Build Android APK
         run: ./.github/scripts/nix-retry.sh nix build .#wawona-android --print-build-logs
@@ -151,6 +155,7 @@ jobs:
             sandbox = relaxed
             allow-import-from-derivation = true
             trusted-users = runner root
+      - uses: DeterminateSystems/flakehub-cache-action@v3
 
       - name: Build AppImage
         run: |

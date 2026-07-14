@@ -48,6 +48,8 @@ jobs:
             trusted-users = runner root
             flake-registry = https://github.com/NixOS/flake-registry/archive/master.tar.gz
 
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+
       - name: Derive Unified Package Matrix
         id: matrix
         run: |
@@ -165,7 +167,7 @@ jobs:
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
-      - uses: DeterminateSystems/magic-nix-cache-action@v8
+      - uses: DeterminateSystems/flakehub-cache-action@v3
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Cache cargo artifacts
@@ -212,7 +214,7 @@ jobs:
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
-      - uses: DeterminateSystems/magic-nix-cache-action@v8
+      - uses: DeterminateSystems/flakehub-cache-action@v3
       - name: Ensure Cargo path dependencies
         run: |
           ./scripts/ensure-waypipe.sh
@@ -240,7 +242,7 @@ jobs:
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
-      - uses: DeterminateSystems/magic-nix-cache-action@v8
+      - uses: DeterminateSystems/flakehub-cache-action@v3
       - name: Run Swift tests
         run: |
           swift build --product WawonaPackageTests
@@ -283,7 +285,7 @@ jobs:
             sandbox = relaxed
             allow-import-from-derivation = true
 
-      - uses: DeterminateSystems/magic-nix-cache-action@v8
+      - uses: DeterminateSystems/flakehub-cache-action@v3
 
       - name: Build Target
         run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ matrix.system }}.${{ matrix.target }}" --print-build-logs
@@ -323,7 +325,7 @@ jobs:
             sandbox = relaxed
             allow-import-from-derivation = true
             
-      - uses: DeterminateSystems/magic-nix-cache-action@v8
+      - uses: DeterminateSystems/flakehub-cache-action@v3
             
       - name: Generate Xcode Project
         run: nix run .#xcodegen

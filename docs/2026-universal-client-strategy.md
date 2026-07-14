@@ -18,10 +18,10 @@ tiered**.
 
 ## Per-client caching
 
-- **Build cache:** each `wwn-*` port is its own flake with its own binary cache
-  key, so a client rebuilds only when *its* source changes — not on every Wawona
-  build. Shared substituter config: [`2026-greenlight-gates.md`](./2026-greenlight-gates.md)
-  and per-repo CI notes (`p13-build-ci`).
+- **Build cache:** each `wwn-*` port is its own flake; owner CI pushes to
+  **FlakeHub Cache** so a client rebuilds only when *its* source changes — not on
+  every Wawona build. Shared cache: [`flakehub-cache.md`](./flakehub-cache.md)
+  and [`2026-build-ci-optimization.md`](./2026-build-ci-optimization.md).
 - **Runtime cache:** ODR/StoreKit assets land in a managed cache dir tracked by
   `WWNModuleManager`'s `installed.json`; eviction is LRU by Apple's ODR policy on
   device, explicit `apt remove` otherwise.

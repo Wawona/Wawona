@@ -73,4 +73,5 @@ remote/nested Xwayland can attach. Details: [`2026-x11-strategy.md`](./2026-x11-
 - Green-light gates: [`2026-greenlight-gates.md`](./2026-greenlight-gates.md)
 - wwn-* porting convention: [`2026-wwn-porting-convention.md`](./2026-wwn-porting-convention.md)
 - Build/CI optimization: [`2026-build-ci-optimization.md`](./2026-build-ci-optimization.md)
+- Org FlakeHub Cache: [`flakehub-cache.md`](./flakehub-cache.md)
 - Tier-2 roadmap (remaining large features): [`2026-tier2-roadmap.md`](./2026-tier2-roadmap.md)

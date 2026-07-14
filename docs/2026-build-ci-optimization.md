@@ -18,16 +18,21 @@ and [`2026-universal-client-strategy.md`](./2026-universal-client-strategy.md).
 
 ## Shared binary cache (all repos)
 
-- CI installs Nix via `DeterminateSystems/nix-installer-action`, which provides
-  the Magic Nix Cache (GitHub-Actions-scoped) automatically — no secrets needed.
-- For cross-repo sharing (Wawona ↔ `wwn-*`), publish heavy derivations
-  (toolchains, Weston/ANGLE/Vulkan archives, per-client ports) to a shared
-  substituter so a client rebuilds only when *its* source changes:
-  - Recommended: an Attic (or Cachix) cache keyed per store path.
-  - Push from the repo that *owns* the derivation (e.g. `wwn-weston` pushes
-    weston artifacts); Wawona and siblings pull as a substituter.
-  - Add the cache URL + public key to each repo's `nix.conf`
-    (`extra-substituters`, `extra-trusted-public-keys`).
+**Policy:** org **FlakeHub Cache** (Determinate). No self-hosted Attic/Cachix /
+`cache.wawona.io`. Magic Nix Cache is retired in favor of FlakeHub.
+
+Operational runbook: [`flakehub-cache.md`](./flakehub-cache.md).
+
+- CI installs Nix via `DeterminateSystems/nix-installer-action` with
+  `determinate: true`, then `DeterminateSystems/flakehub-cache-action@v3`
+  (`permissions.id-token: write`). Trusted builders push; runners and logged-in
+  laptops pull from `cache.flakehub.com`.
+- Cross-repo sharing (Wawona ↔ `wwn-*`): the repo that **owns** the derivation
+  builds it in CI (e.g. `wwn-toolchain` substrate, `wwn-weston` archives). Wawona
+  substitutes when store hashes match (single nixpkgs lineage via `follows` +
+  `verify-nixpkgs-lineage.py`).
+- Local: `determinate-nixd login` (or `fh login`). Fork PRs and anonymous
+  contributors rebuild cold.
 
 ## Per-repo CI dedupe
 

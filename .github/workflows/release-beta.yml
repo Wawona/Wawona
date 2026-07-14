@@ -24,6 +24,7 @@ concurrency:
 
 permissions:
   contents: read
+  id-token: write
 
 env:
   NIXPKGS_ALLOW_UNFREE: "1"
@@ -56,6 +57,7 @@ jobs:
           extra-conf: |
             allow-import-from-derivation = true
             trusted-users = runner root
+      - uses: DeterminateSystems/flakehub-cache-action@v3
 
       - name: Run Fastlane iOS beta
         env:
@@ -108,6 +110,7 @@ jobs:
             sandbox = relaxed
             allow-import-from-derivation = true
             trusted-users = runner root
+      - uses: DeterminateSystems/flakehub-cache-action@v3
 
       - name: Prepare Android signing keystore
         env:
@@ -158,6 +161,7 @@ jobs:
             sandbox = relaxed
             allow-import-from-derivation = true
             trusted-users = runner root
+      - uses: DeterminateSystems/flakehub-cache-action@v3
 
       - name: Build AppImage
         run: |
