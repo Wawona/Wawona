@@ -10,6 +10,7 @@
 #import "../macos/ui/Machines/WWNMachineProfileStore.h"
 #import "WWNCompositorBridge.h"
 #import "WWNStartupLogViewController.h"
+#import "WWNCompositorView_ios.h"
 #import "../../util/WWNLog.h"
 #import "../../util/WWNStartupLogger.h"
 #import <math.h>
@@ -249,6 +250,12 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
 @property(nonatomic, assign) CGSize lastOutputSize;
 /// Last reported output scale — used with size to skip redundant updates.
 @property(nonatomic, assign) float lastOutputScale;
+/// Host IME overlap (points) reported by WWNCompositorView_ios.
+@property(nonatomic, assign) CGFloat hostKeyboardOverlap;
+/// Wawona accessory bar reserve (points) for wl_output shrink.
+@property(nonatomic, assign) CGFloat hostKeyboardAccessoryHeight;
+/// Soft-keyboard geometry says hardware keyboard is active (no IME resize).
+@property(nonatomic, assign) BOOL hostHardwareKeyboardActive;
 /// Last applied Respect Safe Area value — used to skip redundant logs.
 @property(nonatomic, assign) BOOL lastRespectSafeArea;
 @property(nonatomic, assign) BOOL hasAppliedSafeArea;
@@ -262,6 +269,9 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
 #endif
 /// Startup log overlay shown during the Machines → compositor transition.
 @property(nonatomic, strong, nullable) WWNStartupLogViewController *startupLogVC;
+/// In-window client tabs (issue #84); shown when >1 live client.
+@property(nonatomic, strong, nullable) UISegmentedControl *clientTabsControl;
+@property(nonatomic, strong, nullable) NSLayoutConstraint *clientTabsTopConstraint;
 @end
 
 @implementation WWNSceneDelegate
@@ -391,6 +401,11 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
          selector:@selector(handleClientMinimizeRequested:)
              name:WWNClientMinimizeRequestedNotification
            object:nil];
+  [[NSNotificationCenter defaultCenter]
+      addObserver:self
+         selector:@selector(hostKeyboardGeometryDidChange:)
+             name:WWNHostKeyboardGeometryDidChangeNotification
+           object:nil];
 
   WWNLog("SCENE", @"Wawona Scene connected and window created.");
 
@@ -481,6 +496,25 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
   });
 }
 
+- (void)hostKeyboardGeometryDidChange:(NSNotification *)note {
+  NSDictionary *info = note.userInfo;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    self.hostKeyboardOverlap =
+        [info[@"overlap"] respondsToSelector:@selector(doubleValue)]
+            ? (CGFloat)[info[@"overlap"] doubleValue]
+            : 0.0;
+    self.hostKeyboardAccessoryHeight =
+        [info[@"accessoryHeight"] respondsToSelector:@selector(doubleValue)]
+            ? (CGFloat)[info[@"accessoryHeight"] doubleValue]
+            : 0.0;
+    self.hostHardwareKeyboardActive =
+        [info[@"hardwareKeyboard"] respondsToSelector:@selector(boolValue)]
+            ? [info[@"hardwareKeyboard"] boolValue]
+            : NO;
+    [self updateOutputSizeFromContainerForced:YES];
+  });
+}
+
 #pragma mark - Output Size
 
 - (void)updateOutputSizeFromContainer {
@@ -500,6 +534,17 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
   }
   BOOL autoScale = [[WWNPreferencesManager sharedManager] autoScale];
   float wlScale = autoScale ? (float)screenScale : 1.0f;
+
+  BOOL resizeForKeyboard =
+      [[WWNPreferencesManager sharedManager] resizeDisplayForVirtualKeyboard] &&
+      !self.hostHardwareKeyboardActive;
+  if (resizeForKeyboard) {
+    CGFloat reserved =
+        self.hostKeyboardOverlap + self.hostKeyboardAccessoryHeight;
+    if (reserved > 0.0) {
+      sz.height = MAX(120.0, sz.height - reserved);
+    }
+  }
 
   if (!forced && CGSizeEqualToSize(sz, self.lastOutputSize) &&
       fabsf(self.lastOutputScale - wlScale) < 0.001f) {
@@ -859,6 +904,7 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
                     object:runner];
 
   self.compositorContainer.hidden = YES;
+  self.clientTabsControl.hidden = YES;
   [self setCompositorGestureDeferralEnabled:NO];
 #if !TARGET_OS_VISION
   [self applyRespectSafeAreaPreference];
@@ -870,6 +916,67 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
   NSString *clientId = notification.userInfo[@"clientId"];
   [self showStartupLogForClient:clientId];
   [self hideMachinesUIAndRevealCompositor];
+  [self refreshClientTabs];
+}
+
+- (void)refreshClientTabs {
+#if TARGET_OS_IPHONE && !TARGET_OS_TV && !TARGET_OS_VISION
+  if (self.compositorContainer.hidden) {
+    self.clientTabsControl.hidden = YES;
+    return;
+  }
+  NSMutableArray<NSString *> *titles = [NSMutableArray arrayWithObject:@"Shell"];
+  NSString *active =
+      [WWNWaypipeRunner sharedRunner].activeIOSBundledClientId;
+  if (active.length > 0 &&
+      ![active isEqualToString:@"weston-terminal"] &&
+      ![active isEqualToString:@"Shell"]) {
+    [titles addObject:active];
+  }
+  if (titles.count <= 1) {
+    self.clientTabsControl.hidden = YES;
+    return;
+  }
+  if (!self.clientTabsControl) {
+    self.clientTabsControl =
+        [[UISegmentedControl alloc] initWithItems:titles];
+    self.clientTabsControl.translatesAutoresizingMaskIntoConstraints = NO;
+    self.clientTabsControl.selectedSegmentIndex = 0;
+    [self.clientTabsControl addTarget:self
+                               action:@selector(clientTabChanged:)
+                     forControlEvents:UIControlEventValueChanged];
+    [self.window.rootViewController.view addSubview:self.clientTabsControl];
+    UILayoutGuide *safe =
+        self.window.rootViewController.view.safeAreaLayoutGuide;
+    [NSLayoutConstraint activateConstraints:@[
+      [self.clientTabsControl.topAnchor
+          constraintEqualToAnchor:safe.topAnchor
+                         constant:4],
+      [self.clientTabsControl.leadingAnchor
+          constraintEqualToAnchor:safe.leadingAnchor
+                         constant:12],
+      [self.clientTabsControl.trailingAnchor
+          constraintEqualToAnchor:safe.trailingAnchor
+                         constant:-12],
+    ]];
+  } else {
+    [self.clientTabsControl removeAllSegments];
+    for (NSUInteger i = 0; i < titles.count; i++) {
+      [self.clientTabsControl insertSegmentWithTitle:titles[i]
+                                             atIndex:i
+                                            animated:NO];
+    }
+  }
+  self.clientTabsControl.hidden = NO;
+  [self.window.rootViewController.view
+      bringSubviewToFront:self.clientTabsControl];
+#endif
+}
+
+- (void)clientTabChanged:(UISegmentedControl *)control {
+  NSString *title = [control titleForSegmentAtIndex:control.selectedSegmentIndex];
+  WWNLog("TABS", @"focus client tab=%@", title ?: @"(nil)");
+  // Focus/activate is compositor-side; chrome tracks live clients (#84).
 }
 
 // ---------------------------------------------------------------------------
@@ -944,11 +1051,13 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
   dispatch_async(dispatch_get_main_queue(), ^{
     /* If the client terminated before the first frame, dismiss the log. */
     [self dismissStartupLog];
+    [self refreshClientTabs];
 
     if ([self isAnyClientSessionRunning]) {
       return;
     }
     self.compositorContainer.hidden = YES;
+    self.clientTabsControl.hidden = YES;
     [self setCompositorGestureDeferralEnabled:NO];
 #if !TARGET_OS_VISION
     [self applyRespectSafeAreaPreference];

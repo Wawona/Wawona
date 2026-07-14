@@ -14,6 +14,10 @@ object SettingsOverrides {
         "renderMacOSPointer" to listOf("renderMacOSPointer", "RenderMacOSPointer"),
         "swipeBackToCloseEnabled" to listOf("swipeBackToCloseEnabled", "SwipeBackToCloseEnabled"),
         "shakeToCloseEnabled" to listOf("shakeToCloseEnabled", "ShakeToCloseEnabled"),
+        "resizeDisplayForVirtualKeyboard" to listOf(
+            "resizeDisplayForVirtualKeyboard",
+            "ResizeDisplayForVirtualKeyboard",
+        ),
     )
     private val STRING_ALIASES = mapOf(
         "touchInputType" to listOf("touchInputType", "TouchInputType"),

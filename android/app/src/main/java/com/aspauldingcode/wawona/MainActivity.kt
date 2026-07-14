@@ -13,6 +13,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.view.InputDevice
 import android.view.inputmethod.InputMethodManager
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -238,6 +239,28 @@ private fun KeyboardUiMode.isPip(): Boolean =
     this == KeyboardUiMode.PIP_FLOATING ||
         this == KeyboardUiMode.PIP_DOCKED_LEFT ||
         this == KeyboardUiMode.PIP_DOCKED_RIGHT
+
+/**
+ * True only when a real external/physical keyboard is present.
+ * Emulators often report Configuration.KEYBOARD_QWERTY with hardKeyboardHidden=NO
+ * even when the user expects soft+accessory input (issue #82).
+ */
+private fun hasRealExternalKeyboard(configuration: Configuration): Boolean {
+    val devices = InputDevice.getDeviceIds().mapNotNull { InputDevice.getDevice(it) }
+    val external = devices.any { device ->
+        if (device.isVirtual) return@any false
+        val sources = device.sources
+        val isFullKeyboard =
+            (sources and InputDevice.SOURCE_KEYBOARD) == InputDevice.SOURCE_KEYBOARD &&
+                device.keyboardType == InputDevice.KEYBOARD_TYPE_ALPHABETIC
+        // Exclude the built-in/virtual soft-keyboard path; require a non-virtual
+        // alphabetic keyboard that Configuration also considers "shown".
+        isFullKeyboard && !device.name.contains("Virtual", ignoreCase = true)
+    }
+    if (!external) return false
+    return configuration.keyboard == Configuration.KEYBOARD_QWERTY &&
+        configuration.hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_NO
+}
 
 @Composable
 fun WawonaApp(
@@ -796,6 +819,14 @@ fun WawonaApp(
             startupLogClientLabel = label
             showStartupLog = true
             showMachinesHome = false
+            // Reset accessory mode on session entry so a prior false-positive
+            // HIDDEN_EXTERNAL (issue #82) does not stick.
+            if (!hasRealExternalKeyboard(
+                    context.resources.configuration
+                )
+            ) {
+                keyboardUiMode = KeyboardUiMode.ACCESSORY_ONLY
+            }
         } else {
             sessionOrchestrator.markDegraded(
                 targetSession,
@@ -931,14 +962,54 @@ fun WawonaApp(
     }
     val systemBarBottomPx = with(density) { WindowInsets.systemBars.getBottom(this) }
     val systemBarBottomDp = with(density) { systemBarBottomPx.toDp() }
-    val hardwareKeyboardActive =
-        configuration.keyboard != Configuration.KEYBOARD_NOKEYS &&
-            configuration.hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_NO
+    val hardwareKeyboardActive = hasRealExternalKeyboard(configuration)
+    val resizeDisplayForVirtualKeyboard =
+        prefs.getBoolean("resizeDisplayForVirtualKeyboard", true) && !hardwareKeyboardActive
     val inSessionUi = !showWelcome && !showMachinesHome
     val showAccessoryBar =
         inSessionUi && !hardwareKeyboardActive && !keyboardUiMode.isPip()
     val showKeyboardPipButton =
         inSessionUi && !hardwareKeyboardActive && keyboardUiMode.isPip()
+    // Accessory bar content is ~36dp keys + padding; keep in sync with ModifierAccessoryBar.
+    val accessoryBarHeightDp = if (showAccessoryBar) 44.dp else 0.dp
+    val imeResizePx = if (resizeDisplayForVirtualKeyboard && imeVisible) imeBottom else 0
+    val compositorBottomPadPx =
+        if (resizeDisplayForVirtualKeyboard) {
+            imeResizePx + with(density) { accessoryBarHeightDp.roundToPx() }
+        } else {
+            0
+        }
+    val compositorBottomPadDp = with(density) { compositorBottomPadPx.toDp() }
+
+    var selectedClientTabId by remember { mutableStateOf("shell") }
+    var clientTabs by remember { mutableStateOf(listOf(ClientTab("shell", "Shell"))) }
+    LaunchedEffect(inSessionUi) {
+        if (!inSessionUi) {
+            clientTabs = emptyList()
+            return@LaunchedEffect
+        }
+        while (true) {
+            clientTabs = buildList {
+                add(ClientTab("shell", "Shell"))
+                try {
+                    if (WawonaNative.nativeIsBundledClientRunning()) {
+                        val id = WawonaNative.nativeGetRunningBundledClientId()
+                        if (!id.isNullOrBlank() && id != "weston-terminal") {
+                            add(ClientTab(id, id))
+                        }
+                    }
+                    if (WawonaNative.nativeIsWestonSimpleSHMRunning()) {
+                        add(ClientTab("weston-simple-shm", "simple-shm"))
+                    }
+                } catch (_: Exception) {
+                }
+            }
+            if (clientTabs.none { it.id == selectedClientTabId } && clientTabs.isNotEmpty()) {
+                selectedClientTabId = clientTabs.first().id
+            }
+            kotlinx.coroutines.delay(1000)
+        }
+    }
 
     LaunchedEffect(hardwareKeyboardActive, inSessionUi) {
         if (!inSessionUi) return@LaunchedEffect
@@ -1059,6 +1130,7 @@ fun WawonaApp(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(safeAreaPadding)
+                    .padding(bottom = compositorBottomPadDp)
                     .testTag(WawonaTestTags.COMPOSITOR_SURFACE)
             )
 
@@ -1085,6 +1157,23 @@ fun WawonaApp(
                         )
                     }
                 }
+            }
+
+            if (inSessionUi && clientTabs.size > 1) {
+                ClientSessionTabs(
+                    tabs = clientTabs,
+                    selectedId = selectedClientTabId,
+                    onSelect = { tab ->
+                        selectedClientTabId = tab.id
+                        WLog.i("TABS", "focus client tab=${tab.id}")
+                        // Focus/activate is compositor-side; tab chrome tracks
+                        // running clients until a dedicated activate JNI lands.
+                    },
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .statusBarsPadding()
+                        .padding(top = if (desktopModeEnabled) 48.dp else 4.dp),
+                )
             }
 
             if (showAccessoryBar) {

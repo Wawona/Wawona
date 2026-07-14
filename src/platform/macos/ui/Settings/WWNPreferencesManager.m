@@ -31,6 +31,9 @@ NSString *const kWWNPrefsEnableDmabuf = @"DmabufEnabled";
 NSString *const kWWNPrefsVulkanDriver = @"VulkanDriver";
 NSString *const kWWNPrefsOpenGLDriver = @"OpenGLDriver";
 NSString *const kWWNPrefsRespectSafeArea = @"RespectSafeArea";
+// Matches Android prefs key (camelCase) for cross-platform sync.
+NSString *const kWWNPrefsResizeDisplayForVirtualKeyboard =
+    @"resizeDisplayForVirtualKeyboard";
 NSString *const kWWNPrefsExternalDisplayTouchpad = @"ExternalDisplayTouchpad";
 NSString *const kWWNPrefsHasSeenWelcome = @"HasSeenWelcome";
 // Waypipe configuration keys
@@ -281,6 +284,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
     kWWNPrefsForceServerSideDecorations : @NO,
     kWWNPrefsAutoScale : @YES,
     kWWNPrefsRespectSafeArea : @YES,
+    kWWNPrefsResizeDisplayForVirtualKeyboard : @YES,
     kWWNPrefsExternalDisplayTouchpad : @YES,
     kWWNPrefsHasSeenWelcome : @NO,
     kWWNPrefsRenderMacOSPointer : @NO,
@@ -417,6 +421,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
   [defaults removeObjectForKey:kWWNPrefsAutoScale];
   [defaults removeObjectForKey:kWWNPrefsAutoRetinaScaling];
   [defaults removeObjectForKey:kWWNPrefsRespectSafeArea];
+  [defaults removeObjectForKey:kWWNPrefsResizeDisplayForVirtualKeyboard];
   [defaults removeObjectForKey:kWWNPrefsHasSeenWelcome];
   [defaults removeObjectForKey:kWWNPrefsRenderMacOSPointer];
   // Input
@@ -809,6 +814,17 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 - (void)setRespectSafeArea:(BOOL)enabled {
   [[NSUserDefaults standardUserDefaults] setBool:enabled
                                           forKey:kWWNPrefsRespectSafeArea];
+}
+
+- (BOOL)resizeDisplayForVirtualKeyboard {
+  return [[NSUserDefaults standardUserDefaults]
+      boolForKey:kWWNPrefsResizeDisplayForVirtualKeyboard];
+}
+
+- (void)setResizeDisplayForVirtualKeyboard:(BOOL)enabled {
+  [[NSUserDefaults standardUserDefaults]
+      setBool:enabled
+       forKey:kWWNPrefsResizeDisplayForVirtualKeyboard];
 }
 
 - (BOOL)hasSeenWelcome {

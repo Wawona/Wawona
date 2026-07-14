@@ -29,6 +29,7 @@ extern NSString *const kWWNPrefsEnableDmabuf;
 extern NSString *const kWWNPrefsVulkanDriver;
 extern NSString *const kWWNPrefsOpenGLDriver;
 extern NSString *const kWWNPrefsRespectSafeArea;
+extern NSString *const kWWNPrefsResizeDisplayForVirtualKeyboard;
 extern NSString *const kWWNPrefsExternalDisplayTouchpad;
 extern NSString *const kWWNPrefsHasSeenWelcome;
 // Waypipe configuration keys
@@ -129,6 +130,8 @@ extern NSString *const kWWNPrefsAnowaWEnabled;
 // Input
 - (BOOL)renderMacOSPointer;
 - (void)setRenderMacOSPointer:(BOOL)enabled;
+- (BOOL)resizeDisplayForVirtualKeyboard;
+- (void)setResizeDisplayForVirtualKeyboard:(BOOL)enabled;
 - (BOOL)swapCmdAsCtrl; // Legacy - use swapCmdWithAlt
 - (void)setSwapCmdAsCtrl:(BOOL)enabled;
 - (BOOL)swapCmdWithAlt; // New unified method

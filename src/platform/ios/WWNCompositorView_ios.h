@@ -5,6 +5,11 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+/// Posted when host IME overlap or accessory reserve used for wl_output resize changes.
+/// userInfo: overlap (NSNumber CGFloat), accessoryHeight (NSNumber CGFloat),
+/// hardwareKeyboard (NSNumber BOOL).
+FOUNDATION_EXPORT NSNotificationName const WWNHostKeyboardGeometryDidChangeNotification;
+
 /**
  * WWNCompositorView_ios
  *

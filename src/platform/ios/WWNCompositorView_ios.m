@@ -15,6 +15,9 @@
 extern int wwn_ios_terminal_is_active(void);
 extern ssize_t wwn_ios_terminal_inject(const void *buf, size_t len);
 
+NSNotificationName const WWNHostKeyboardGeometryDidChangeNotification =
+    @"WWNHostKeyboardGeometryDidChangeNotification";
+
 // ===========================================================================
 // UITextPosition / UITextRange subclasses for UITextInput
 // ===========================================================================
@@ -573,6 +576,8 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   BOOL _hardwareKeyboardActive;
   BOOL _physicalCapsLockActive;
   BOOL _virtualShiftActive;
+  /// Bottom overlap of the host IME with this view (points); 0 when hidden.
+  CGFloat _hostKeyboardOverlap;
 
   // Touchpad mode state
   CGPoint _pointerPos;     // Virtual cursor position (view coords)
@@ -1108,17 +1113,55 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 }
 
 - (void)_keyboardWillShow:(NSNotification *)note {
-  (void)note;
   _hardwareKeyboardActive = NO;
+  NSValue *frameVal = note.userInfo[UIKeyboardFrameEndUserInfoKey];
+  if ([frameVal isKindOfClass:[NSValue class]]) {
+    CGRect kbScreen = [frameVal CGRectValue];
+    CGRect kbInView = [self convertRect:kbScreen fromView:nil];
+    CGFloat overlap =
+        MAX(0.0, CGRectGetMaxY(self.bounds) - CGRectGetMinY(kbInView));
+    _hostKeyboardOverlap = overlap;
+  }
   if (_keyboardUiMode == WWNKeyboardUiModePip ||
       _keyboardUiMode == WWNKeyboardUiModeAccessoryOnly) {
     [self _setKeyboardUiMode:WWNKeyboardUiModeExpanded];
+  } else {
+    [self _notifyHostKeyboardGeometryChanged];
   }
 }
 
 - (void)_keyboardWillHide:(NSNotification *)note {
   (void)note;
+  _hostKeyboardOverlap = 0.0;
+  [self _notifyHostKeyboardGeometryChanged];
   [self _refreshHardwareKeyboardState];
+}
+
+- (CGFloat)_accessoryHeightForOutputResize {
+#if TARGET_OS_VISION
+  return 0.0;
+#else
+  if (_keyboardUiMode == WWNKeyboardUiModePip ||
+      _keyboardUiMode == WWNKeyboardUiModeHiddenExternal) {
+    return 0.0;
+  }
+  if (_accessoryBarHeightConstraint) {
+    return _accessoryBarHeightConstraint.constant;
+  }
+  return 80.0;
+#endif
+}
+
+- (void)_notifyHostKeyboardGeometryChanged {
+  NSDictionary *info = @{
+    @"overlap" : @(_hostKeyboardOverlap),
+    @"accessoryHeight" : @([self _accessoryHeightForOutputResize]),
+    @"hardwareKeyboard" : @(_hardwareKeyboardActive),
+  };
+  [[NSNotificationCenter defaultCenter]
+      postNotificationName:WWNHostKeyboardGeometryDidChangeNotification
+                    object:self
+                  userInfo:info];
 }
 
 #if !TARGET_OS_VISION
@@ -1303,6 +1346,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     return;
   }
   _accessoryBarHeightConstraint.constant = targetHeight;
+  [self _notifyHostKeyboardGeometryChanged];
 }
 
 - (UIStackView *)_makeRowStack {
@@ -1690,6 +1734,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
       [self becomeFirstResponder];
     }
     [self reloadInputViews];
+    [self _notifyHostKeyboardGeometryChanged];
     return;
   }
 
@@ -1702,6 +1747,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
                                     animated:NO];
     [self _updateKeyboardPipButtonVisualState:YES];
     [self _dockKeyboardPipButtonToNearestEdgeAnimated:NO velocityX:0];
+    [self _notifyHostKeyboardGeometryChanged];
     return;
   }
 
@@ -1715,6 +1761,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   [self _updateCollapsedInputViewHeight];
   [self becomeFirstResponder];
   [self reloadInputViews];
+  [self _notifyHostKeyboardGeometryChanged];
 }
 
 /// Route accessory-bar keys to the iOS PTY when weston-terminal is active.

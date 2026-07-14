@@ -17,6 +17,9 @@ object WawonaTestTags {
     /** The compositor surface view host. */
     const val COMPOSITOR_SURFACE = "wwn.compositor.surface"
 
+    /** In-session multi-client tab strip (issue #84). */
+    const val CLIENT_TABS = "wwn.client.tabs"
+
     /** Desktop-replacement app drawer open button (shown over the desktop). */
     const val APP_DRAWER_OPEN = "wwn.appdrawer.open"
 }

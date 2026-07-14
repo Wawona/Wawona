@@ -72,7 +72,8 @@
       # non-zero — a false "missing" even though the lib is present. Use a
       # pipe-free glob match against the captured list instead.
       APK_ENTRIES="$(unzip -Z1 "$APK_VERIFY_PATH")"
-      for lib in libweston_simple_shm.so libfoot.so; do
+      # Shell DT_NEEDED libs (waypipe → libzstd.so) + bundled clients (issue #80).
+      for lib in libweston_simple_shm.so libfoot.so libzstd.so libwaypipe_bin.so; do
         case "$APK_ENTRIES" in
           *"lib/arm64-v8a/$lib"*) ;;
           *)

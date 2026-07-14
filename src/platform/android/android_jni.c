@@ -2772,7 +2772,9 @@ static void wwn_android_write_zsh_defaults(const char *home,
       "if [[ -z \"${WAWONA_ZSH_BANNER_SHOWN:-}\" ]]; then\n"
       "  export WAWONA_ZSH_BANNER_SHOWN=1\n"
       "  print -P \"%F{green}Wawona%f zsh ${ZSH_VERSION} - bundled Android userland.\"\n"
-      "  print -P \"%F{blue}Bundled:%f uutils coreutils, fastfetch, neovim, waypipe, ssh/ssh-keygen, weston-* clients.\"\n"
+      "  print -P \"%F{blue}Bundled:%f uutils coreutils, fastfetch, neovim, waypipe, ssh/ssh-keygen, niri, fuzzel.\"\n"
+      "  print -P \"%F{yellow}Note:%f weston demos launch from Machines (not PATH) until multi-client tabs land.\"\n"
+      "  print -P \"%F{yellow}Note:%f ssh is Dropbear — use short options (ssh -V), not GNU --version.\"\n"
       "fi\n");
 
   wwn_android_write_generated_file(
@@ -2782,7 +2784,9 @@ static void wwn_android_write_zsh_defaults(const char *home,
       "if [[ -z \"${WAWONA_ZSH_BANNER_SHOWN:-}\" ]]; then\n"
       "  export WAWONA_ZSH_BANNER_SHOWN=1\n"
       "  print -P \"%F{green}Wawona%f zsh ${ZSH_VERSION} - bundled Android userland.\"\n"
-      "  print -P \"%F{blue}Bundled:%f uutils coreutils, fastfetch, neovim, waypipe, ssh/ssh-keygen, weston-* clients.\"\n"
+      "  print -P \"%F{blue}Bundled:%f uutils coreutils, fastfetch, neovim, waypipe, ssh/ssh-keygen, niri, fuzzel.\"\n"
+      "  print -P \"%F{yellow}Note:%f weston demos launch from Machines (not PATH) until multi-client tabs land.\"\n"
+      "  print -P \"%F{yellow}Note:%f ssh is Dropbear — use short options (ssh -V), not GNU --version.\"\n"
       "fi\n");
 
   LOGI("Shell env: zsh defaults ensured in %s (rootfs: %s)", home, rootfs);
@@ -2939,6 +2943,12 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
   {
     char native_lib_dir[512];
     if (wwn_android_native_lib_dir(native_lib_dir, sizeof(native_lib_dir)) == 0) {
+      /* PIE shell tools (waypipe→libzstd.so, etc.) resolve DT_NEEDED from
+       * nativeLibraryDir. Without this, exec of usr/bin/waypipe fails with
+       * "library \"libzstd.so\" not found" (issue #80). */
+      setenv("LD_LIBRARY_PATH", native_lib_dir, 1);
+      LOGI("Shell env: LD_LIBRARY_PATH=%s", native_lib_dir);
+
       wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libfastfetch_bin.so",
                                      "fastfetch");
       wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libnvim_bin.so", "nvim");
@@ -2965,6 +2975,19 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
       /* fuzzel (wwn-niri): niri Mod+D launcher — same jniLibs PIE pattern. */
       wwn_android_install_shell_tool(native_lib_dir, usr_bin,
                                      "libfuzzel_bin.so", "fuzzel");
+    }
+  }
+
+  /* Neovim runtime from APK assets → rootfs (issue #81). */
+  {
+    char vimruntime[768];
+    snprintf(vimruntime, sizeof(vimruntime), "%s/usr/share/nvim/runtime", rootfs);
+    if (access(vimruntime, R_OK) == 0) {
+      setenv("VIMRUNTIME", vimruntime, 1);
+      LOGI("Shell env: VIMRUNTIME=%s", vimruntime);
+    } else {
+      LOGI("Shell env: VIMRUNTIME missing at %s (nvim may FORTIFY-abort)",
+           vimruntime);
     }
   }
 

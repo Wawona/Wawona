@@ -10,20 +10,9 @@ import java.io.FileOutputStream
  * (CSD frame PNGs), and DejaVu fonts (fontconfig text rendering).
  */
 object WawonaShellRootfs {
-    // Bumped v5 -> v6: ship Freedesktop applications catalog
-    // (share/applications + icons/hicolor) for nested-niri fuzzel Mod+D.
-    //
-    // Bumped v4 -> v5: earlier gradlegen-built APKs omitted assets/weston,
-    // leaving toytoolkit CSD buttons with 1x1 placeholder icons instead of
-    // the normal close/max/min glyphs and spacing.
-    //
-    // Bumped v3 -> v4: earlier gradlegen-built APKs shipped an empty
-    // assets/xkb (no rules/evdev), so xkbcommon failed to resolve a keymap,
-    // smithay's seat.add_keyboard() had nothing to fall back to, and the
-    // seat ended up with zero keyboard capability — no key ever reached any
-    // client. Bump the marker so devices with a stale (incomplete) rootfs
-    // from before that fix get re-extracted instead of skipping install.
-    private const val MARKER = ".installed-v6"
+    // Bumped v6 -> v7: ship neovim runtime (VIMRUNTIME) for Android nvim
+    // (issue #81). Prior: applications catalog for fuzzel (v6).
+    private const val MARKER = ".installed-v7"
 
     fun ensureInstalled(context: Context): File {
         val root = File(context.filesDir, "wawona-rootfs")
@@ -58,8 +47,12 @@ object WawonaShellRootfs {
             shareIcons.mkdirs()
             copyAssetDir(context, "icons", shareIcons)
 
-            File(root, "home").mkdirs()
-            File(root, "home/.local/share").mkdirs()
+            // neovim runtime for VIMRUNTIME (issue #81)
+            val nvimRuntime = File(root, "usr/share/nvim/runtime")
+            nvimRuntime.mkdirs()
+            copyAssetDir(context, "nvim/runtime", nvimRuntime)
+
+            File(root, "home").mkdirs()            File(root, "home/.local/share").mkdirs()
             File(root, "home/.cache").mkdirs()
             File(root, "usr/bin").mkdirs()
 

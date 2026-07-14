@@ -648,6 +648,15 @@ private fun InputSection(prefs: SharedPreferences) {
         SettingsSwitchItem(prefs, "touchpadMode", "Touchpad Mode",
             "1-finger = pointer, tap = click, 2-finger drag = scroll. When off, use direct touch (multi-touch)",
             Icons.Filled.TouchApp, default = false, iconTint = SettingsTab.INPUT.accentColor)
+        SettingsSwitchItem(
+            prefs,
+            "resizeDisplayForVirtualKeyboard",
+            "Resize Display for Virtual Keyboard",
+            "Shrink the Wayland output by host IME + Wawona extra keyboard height (issue #83)",
+            Icons.Filled.Keyboard,
+            default = true,
+            iconTint = SettingsTab.INPUT.accentColor,
+        )
         SettingsSwitchItem(prefs, "enableTextAssist", "Enable Text Assist",
             "Autocorrect, text suggestions, smart punctuation, swipe-to-type, and text replacements via the native keyboard",
             Icons.Filled.Spellcheck, default = false, iconTint = SettingsTab.INPUT.accentColor)

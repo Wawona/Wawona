@@ -45,6 +45,14 @@
     if [ -f "${neovimAndroid}/bin/nvim" ]; then
       cp -L "${neovimAndroid}/bin/nvim" "$JNI_LIB_DIR/libnvim_bin.so"
       chmod +x "$JNI_LIB_DIR/libnvim_bin.so"
+      # Runtime tree for VIMRUNTIME (issue #81); extracted by WawonaShellRootfs.
+      if [ -d "${neovimAndroid}/share/nvim/runtime" ]; then
+        mkdir -p app/src/main/assets/nvim/runtime
+        cp -RL "${neovimAndroid}/share/nvim/runtime/." app/src/main/assets/nvim/runtime/
+        chmod -R u+w app/src/main/assets/nvim
+      else
+        echo "WARNING: Missing Android neovim runtime at ${neovimAndroid}/share/nvim/runtime"
+      fi
     else
       echo "WARNING: Missing Android neovim binary at ${neovimAndroid}/bin/nvim"
     fi

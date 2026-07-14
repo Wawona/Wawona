@@ -467,6 +467,9 @@ static UIImage *WWNAboutLogo(void) {
 
   input.items = @[
     touchInputItem,
+    ITEM(@"Resize Display for Virtual Keyboard",
+         @"resizeDisplayForVirtualKeyboard", WSettingSwitch, @YES,
+         @"host IME + Wawona extra keyboard."),
     ITEM(@"Swap CMD with ALT", @"SwapCmdWithAlt", WSettingSwitch, @YES,
          @"Swaps Command and Alt keys."),
     ITEM(@"Universal Clipboard", @"UniversalClipboard", WSettingSwitch, @YES,
