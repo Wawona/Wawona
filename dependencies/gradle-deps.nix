@@ -68,10 +68,14 @@ let
       export ANDROID_NDK_ROOT="$ndk_root"
       export ANDROID_NDK_HOME="$ndk_root"
 
-      # Force daemonless behavior in sandboxed CI prefetch runs.
+      # Normalize daemon/jvmargs so --no-daemon stays in-process (no single-use
+      # daemon TCP). Heap must match GRADLE_OPTS in gradleUpdateScript.
       if [ -f gradle.properties ]; then
         grep -v -E '^org\.gradle\.(jvmargs|daemon)=' gradle.properties > gradle.properties.nix
         mv gradle.properties.nix gradle.properties
+        echo 'org.gradle.daemon=false' >> gradle.properties
+        # Include -Xms64m so Wanted matches the gradle launcher client JVM.
+        echo 'org.gradle.jvmargs=-Xms64m -Xmx6144m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8' >> gradle.properties
       fi
     '';
 
@@ -82,6 +86,13 @@ let
       # Download all resolvable configuration artifacts without compiling app
       # sources (compileDebugKotlin needs anowaw bindings unavailable here).
       # Metadata-only `:dependencies` is not enough — mitm lockfile would drop AARs.
+      # Match org.gradle.jvmargs + mitm trustStore so --no-daemon stays
+      # in-process (no localhost single-use daemon in the Nix sandbox).
+      GRADLE_OPTS="-Xms64m -Xmx6144m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
+      if [ -n "''${MITM_CACHE_KEYSTORE-}" ] && [ -n "''${MITM_CACHE_KS_PWD-}" ]; then
+        GRADLE_OPTS="''${GRADLE_OPTS} -Djavax.net.ssl.trustStore=''${MITM_CACHE_KEYSTORE} -Djavax.net.ssl.trustStorePassword=''${MITM_CACHE_KS_PWD}"
+      fi
+      export GRADLE_OPTS
       cat > resolve-artifacts.init.gradle <<'EOF'
       gradle.projectsLoaded {
         rootProject.tasks.register("resolveAllArtifacts") {

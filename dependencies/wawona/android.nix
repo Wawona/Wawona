@@ -843,11 +843,18 @@ in
       ${gradleSupport.prepareProject}
       ${gradleSupport.prepareEnvironment}
 
-      # Ensure no daemon-only JVM profile leaks in from gradle.properties.
-      # With --no-daemon we still see single-use daemon forks if jvmargs is set.
+      # Normalize daemon/jvmargs so --no-daemon stays in-process. A mismatched
+      # jvmargs profile forks a single-use daemon that needs localhost TCP and
+      # fails in the Nix sandbox (DaemonConnectionException / Operation not permitted).
+      # Re-append matching jvmargs + daemon=false; heap must match GRADLE_OPTS below
+      # (defaults are only 512m and OOM on assembleDebug).
       if [ -f gradle.properties ]; then
         grep -v -E '^org\.gradle\.(jvmargs|daemon)=' gradle.properties > gradle.properties.nix
         mv gradle.properties.nix gradle.properties
+        echo 'org.gradle.daemon=false' >> gradle.properties
+        # Include -Xms64m: the gradle launcher always sets it on the client JVM;
+        # omit it from Wanted and Gradle forks a single-use daemon.
+        echo 'org.gradle.jvmargs=-Xms64m -Xmx6144m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8' >> gradle.properties
       fi
 
       # Bundle Nix-built shared libraries into the APK so the Android loader
@@ -989,12 +996,20 @@ in
       # Build APK/AAB using Gradle.
       # Always use Nix gradle here: ./gradlew forceFetches the wrapper zip and
       # fails in the sandbox (SocketException: Operation not permitted).
-      export GRADLE_OPTS="-Xmx6144m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
+      #
+      # Keep --no-daemon truly in-process: client GRADLE_OPTS must match
+      # org.gradle.jvmargs (above) plus mitm trustStore that gradle-setup-hook
+      # injects via -D flags. Do not pass -Dorg.gradle.jvmargs on the CLI
+      # (that forces a mismatch/fork → DaemonConnectionException in CI).
+      GRADLE_OPTS="-Xms64m -Xmx6144m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
+      if [ -n "''${MITM_CACHE_KEYSTORE-}" ] && [ -n "''${MITM_CACHE_KS_PWD-}" ]; then
+        GRADLE_OPTS="''${GRADLE_OPTS} -Djavax.net.ssl.trustStore=''${MITM_CACHE_KEYSTORE} -Djavax.net.ssl.trustStorePassword=''${MITM_CACHE_KS_PWD}"
+      fi
+      export GRADLE_OPTS
       gradle ${gradleTask} --no-build-cache --no-watch-fs --no-daemon --max-workers=1 \
         -Dorg.gradle.parallel=false \
         -Dorg.gradle.workers.max=1 \
         -Dorg.gradle.daemon=false \
-        -Dorg.gradle.jvmargs="-Xmx6144m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
         -Dkotlin.daemon.enabled=false \
         -Dkotlin.compiler.execution.strategy=in-process \
         -Dkotlin.incremental=false \
