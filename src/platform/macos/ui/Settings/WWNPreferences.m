@@ -598,6 +598,7 @@ static UIImage *WWNAboutLogo(void) {
            @"Bundled vs installed rootfs template (mobile only)."),
     ]];
 
+#if !TARGET_OS_TV
     if (caps & WWNRootfsCapabilityICloudSync) {
       BOOL iCloudOn = [WWNRootfsProvider isICloudSyncEnabled];
       [localItems addObject:
@@ -609,6 +610,7 @@ static UIImage *WWNAboutLogo(void) {
           addObject:ITEM(@"iCloud Status", nil, WSettingInfo,
                          rootfs[@"iCloudStatus"] ?: @"", @"Current iCloud sync state.")];
     }
+#endif
 
     if (caps & WWNRootfsCapabilityBrowseUserFiles) {
 #if TARGET_OS_OSX
