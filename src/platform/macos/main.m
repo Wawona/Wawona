@@ -93,10 +93,15 @@ extern void wawona_window_info_free(CWindowInfo *info);
     // actual output dimensions once the UIWindowScene is available.
     CGSize screenSize = CGSizeMake(390, 844);
     BOOL autoScale = [[WWNPreferencesManager sharedManager] autoScale];
+#if TARGET_OS_VISION
+    // UIScreen is unavailable on visionOS; scene scale is applied later.
+    CGFloat nativeScale = 2.0;
+#else
     CGFloat nativeScale = UIScreen.mainScreen.scale;
     if (nativeScale <= 0.0) {
       nativeScale = 2.0;
     }
+#endif
     CGFloat scale = autoScale ? nativeScale : 1.0;
 
     [compositor setOutputWidth:(uint32_t)screenSize.width
