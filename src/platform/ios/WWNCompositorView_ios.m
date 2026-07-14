@@ -733,6 +733,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     }
 #endif
 
+#if !TARGET_OS_TV
     NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
     [nc addObserver:self
            selector:@selector(_keyboardWillShow:)
@@ -743,6 +744,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
                name:UIKeyboardWillHideNotification
              object:nil];
     [self _refreshHardwareKeyboardState];
+#endif
 
     WWNLog("IOS_VIEW", @"Created view for window %llu", self.wwnWindowId);
   }
@@ -1112,6 +1114,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   [self _setHardwareKeyboardActive:[self _hardwareKeyboardConnected]];
 }
 
+#if !TARGET_OS_TV
 - (void)_keyboardWillShow:(NSNotification *)note {
   _hardwareKeyboardActive = NO;
   NSValue *frameVal = note.userInfo[UIKeyboardFrameEndUserInfoKey];
@@ -1136,6 +1139,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   [self _notifyHostKeyboardGeometryChanged];
   [self _refreshHardwareKeyboardState];
 }
+#endif
 
 - (CGFloat)_accessoryHeightForOutputResize {
 #if TARGET_OS_VISION
@@ -3138,11 +3142,13 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
                             button:BTN_LEFT
                            pressed:YES
                          timestamp:ts];
+#if !TARGET_OS_TV
   if (@available(iOS 10.0, *)) {
     UIImpactFeedbackGenerator *fb = [[UIImpactFeedbackGenerator alloc]
         initWithStyle:UIImpactFeedbackStyleMedium];
     [fb impactOccurred];
   }
+#endif
   [self _touchpad_hideRadial];
 }
 
