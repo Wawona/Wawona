@@ -142,17 +142,12 @@ run_android() {
   # shellcheck source=scripts/lib/android-ad-scale.sh
   source "$ROOT/scripts/lib/android-ad-scale.sh"
 
-  echo "== Android: launch smoke batch =="
-  agent-device batch --session wawona-android-smoke --platform android --serial "$serial" \
-    --steps-file "$ROOT/.agent-device/wawona-android-smoke-batch.json" --json
-
-  echo "== Android: machines-lane (label-driven) =="
-  local sess=wawona-android-machines
+  echo "== Android: single-session smoke (stable wwn.* ids) =="
+  local sess=wawona-android-smoke
   local ad_common=(--platform android --serial "$serial" --session "$sess")
   dismiss_android_blockers() {
     adb -s "$serial" shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1 || true
     agent-device alert dismiss "${ad_common[@]}" >/dev/null 2>&1 || true
-    # ANR sheets expose Wait / Close app; prefer Wait so the app can recover.
     if agent-device is visible 'label="Wait"' "${ad_common[@]}" >/dev/null 2>&1; then
       agent-device press 'label="Wait"' "${ad_common[@]}" >/dev/null 2>&1 || true
     fi
@@ -160,8 +155,12 @@ run_android() {
       agent-device press 'label="Close app"' "${ad_common[@]}" >/dev/null 2>&1 || true
     fi
   }
-  # Compose a11y is sparse on CI (agent-device interactive snapshot often empty).
-  # Prefer uiautomator text bounds → find/label → known reference taps.
+  # Prefer id= (Compose testTagsAsResourceId). Fall back to label / uia / coords.
+  android_press_id() {
+    local id="$1"
+    agent-device press "id=\"$id\"" "${ad_common[@]}" >/dev/null 2>&1 && return 0
+    return 1
+  }
   android_press_text() {
     local text="$1"
     android_uia_tap_text "$text" && return 0
@@ -170,50 +169,60 @@ run_android() {
     return 1
   }
   android_dismiss_welcome() {
-    if android_press_text "Continue"; then
+    if android_press_id "wwn.welcome.continue" || android_press_text "Continue"; then
       agent-device wait 2000 "${ad_common[@]}"
       return 0
     fi
-    # Centered Continue on welcome (1080x2424 recording coords).
     android_tap_ref 540 1404
     agent-device wait 2000 "${ad_common[@]}"
-    if android_uia_has_text "Continue"; then
-      android_tap_ref 540 1450
-      agent-device wait 2000 "${ad_common[@]}"
-    fi
   }
   android_press_start() {
-    if android_press_text "Start"; then
+    if android_press_id "wwn.machines.start" || android_press_text "Start"; then
       return 0
     fi
-    # Machine Configuration Start (bottom-left of card in recordings).
     android_tap_ref 227 1039
     agent-device wait 800 "${ad_common[@]}"
-    if android_uia_has_text "Start"; then
-      android_tap_ref 216 1040
-      agent-device wait 800 "${ad_common[@]}"
-    fi
-    # Success if Start is gone (session starting) or Stop/session chrome appears.
     if ! android_uia_has_text "Start"; then
       return 0
     fi
     return 1
   }
+
   agent-device open com.aspauldingcode.wawona --relaunch "${ad_common[@]}"
   agent-device wait 4000 "${ad_common[@]}"
   dismiss_android_blockers
+  agent-device snapshot -i "${ad_common[@]}" || true
   agent-device screenshot "$ARTIFACTS/android-first-screen.png" "${ad_common[@]}"
   android_dismiss_welcome
   dismiss_android_blockers
+  agent-device wait 'id="wwn.machines.root"' 20000 "${ad_common[@]}" \
+    || agent-device wait text "Machine Configuration" 20000 "${ad_common[@]}"
+  agent-device is visible 'id="wwn.machines.root"' "${ad_common[@]}" \
+    || agent-device is visible 'label="Machine Configuration"' "${ad_common[@]}" \
+    || true
   agent-device screenshot "$ARTIFACTS/android-machines-root.png" "${ad_common[@]}"
-  if android_uia_has_text "Continue"; then
+  if android_uia_has_text "Continue" && ! agent-device is visible 'id="wwn.machines.root"' "${ad_common[@]}" >/dev/null 2>&1; then
     echo "FAIL: still on Welcome after Continue" >&2
     agent-device snapshot -i --raw "${ad_common[@]}" || true
     exit 1
   fi
   android_press_text "Got it" || true
   agent-device wait 500 "${ad_common[@]}"
-  if android_press_text "Add Machine"; then
+
+  # Settings → Display → Done (parity with iOS smoke).
+  if android_press_id "wwn.machines.settings" || android_press_text "Settings"; then
+    agent-device wait 'id="wwn.settings.display"' 15000 "${ad_common[@]}" \
+      || agent-device wait text Display 15000 "${ad_common[@]}" || true
+    if android_press_id "wwn.settings.display" || android_press_text "Display"; then
+      agent-device wait 800 "${ad_common[@]}"
+    fi
+    agent-device screenshot "$ARTIFACTS/android-settings-display.png" "${ad_common[@]}"
+    android_press_id "wwn.settings.done" || android_press_text "Done" || agent-device back "${ad_common[@]}" || true
+    agent-device wait 1000 "${ad_common[@]}"
+  fi
+  dismiss_android_blockers
+
+  if android_press_id "wwn.machines.add" || android_press_text "Add Machine"; then
     agent-device wait 1500 "${ad_common[@]}"
     agent-device screenshot "$ARTIFACTS/android-add-machine-sheet.png" "${ad_common[@]}"
     agent-device back "${ad_common[@]}"
@@ -221,9 +230,9 @@ run_android() {
   fi
   dismiss_android_blockers
   android_press_start || {
-    echo "FAIL: could not press Start on machines screen" >&2
+    echo "FAIL: could not press Start (id=wwn.machines.start)" >&2
     agent-device snapshot -i --raw "${ad_common[@]}" || true
-    adb -s "$serial" exec-out cat /sdcard/wawona-ui.xml 2>/dev/null | tr '>' '\n' | grep -E 'text=|content-desc=' | head -40 || true
+    adb -s "$serial" exec-out cat /sdcard/wawona-ui.xml 2>/dev/null | tr '>' '\n' | grep -E 'text=|content-desc=|resource-id=' | head -50 || true
     exit 1
   }
   agent-device wait 10000 "${ad_common[@]}"

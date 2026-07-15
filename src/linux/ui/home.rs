@@ -114,6 +114,11 @@ pub fn build_home_shell(on_rebuild: Rc<dyn Fn()>) -> HomeShell {
     root.append(&scope_row);
     root.append(&summary);
     root.append(&scroll);
+    crate::linux::ui::a11y::set_wwn_a11y(
+        &root,
+        crate::linux::ui::a11y::id::MACHINES_ROOT,
+        Some("Machines"),
+    );
 
     HomeShell {
         root,
@@ -346,11 +351,36 @@ fn build_machine_card(
 
     let start_btn = button_with_icon_label("media-playback-start-symbolic", "Start");
     start_btn.add_css_class("suggested-action");
+    crate::linux::ui::a11y::set_wwn_a11y(
+        &start_btn,
+        crate::linux::ui::a11y::id::MACHINES_START,
+        Some("Start"),
+    );
     let focus_btn = button_with_icon_label("find-location-symbolic", "Focus");
+    crate::linux::ui::a11y::set_wwn_a11y(
+        &focus_btn,
+        crate::linux::ui::a11y::id::MACHINES_FOCUS,
+        Some("Focus"),
+    );
     let stop_btn = button_with_icon_label("media-playback-stop-symbolic", "Stop");
     stop_btn.add_css_class("destructive-action");
+    crate::linux::ui::a11y::set_wwn_a11y(
+        &stop_btn,
+        crate::linux::ui::a11y::id::MACHINES_STOP,
+        Some("Stop"),
+    );
     let edit_btn = button_with_icon_label("emblem-system-symbolic", "Edit");
+    crate::linux::ui::a11y::set_wwn_a11y(
+        &edit_btn,
+        crate::linux::ui::a11y::id::MACHINES_EDIT,
+        Some("Edit"),
+    );
     let delete_btn = button_with_icon_label("user-trash-symbolic", "Delete");
+    crate::linux::ui::a11y::set_wwn_a11y(
+        &delete_btn,
+        crate::linux::ui::a11y::id::MACHINES_DELETE,
+        Some("Delete"),
+    );
 
     start_btn.set_visible(!running);
     start_btn.set_sensitive(launch_supported(profile));

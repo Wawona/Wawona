@@ -1,35 +1,27 @@
-# Machines-lane e2e: onboarding -> profile list -> native weston session.
-# Prefer label selectors over coordinates — emulator skins (pixel_7 1080x2400)
-# diverge from the old 1080x2424 recording frame and miss the Start button.
+# Android machines lane — stable wwn.* ids (Compose testTagsAsResourceId).
 context platform=android
 context session=wawona-android-machines
 
 open com.aspauldingcode.wawona --relaunch
 wait 4000
 screenshot ./.agent-device/test-artifacts/android-first-screen.png
-
-# First launch may show Welcome; Continue is a no-op when already past it.
-press label="Continue"
-wait 1500
+press id="wwn.welcome.continue"
+wait 2000
+wait id="wwn.machines.root" 20000
 screenshot ./.agent-device/test-artifacts/android-machines-root.png
-
-# Dismiss Android immersive-mode coach mark when present (no-op otherwise).
-press label="Got it"
-wait 500
-
-# Open the Add Machine Profile sheet via the "+" FAB, capture, dismiss.
-press label="Add"
+press id="wwn.machines.settings"
+wait id="wwn.settings.display" 15000
+press id="wwn.settings.display"
+wait 800
+screenshot ./.agent-device/test-artifacts/android-settings-display.png
+press id="wwn.settings.done"
+wait 1000
+press id="wwn.machines.add"
 wait 1500
 screenshot ./.agent-device/test-artifacts/android-add-machine-sheet.png
 back
 wait 1000
-
-# Start the Default Machine (bundled weston-terminal, in-process compositor).
-press label="Start"
+press id="wwn.machines.start"
 wait 10000
-# Immersive coach mark can appear on first compositor surface.
-press label="Got it"
-wait 500
 screenshot ./.agent-device/test-artifacts/android-weston-session.png
-
 close

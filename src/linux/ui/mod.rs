@@ -1,5 +1,6 @@
 //! GTK4/libadwaita shell for the Linux Wawona launcher UI.
 
+pub mod a11y;
 mod adaptive;
 mod editor;
 mod home;

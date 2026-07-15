@@ -47,19 +47,19 @@ import java.io.File
 import java.net.NetworkInterface
 import androidx.compose.animation.togetherWith
 
-private enum class SettingsTab(val label: String, val icon: ImageVector) {
-    DISPLAY("Display", Icons.Filled.DesktopWindows),
-    INPUT("Input", Icons.Filled.Keyboard),
-    GRAPHICS("Graphics", Icons.Filled.GraphicEq),
-    CONNECTION("Connection", Icons.Filled.Computer),
-    LOCAL_SHELL("Local Shell", Icons.Filled.Folder),
-    DESKTOP("Desktop", Icons.Filled.DesktopMac),
-    ADVANCED("Advanced", Icons.Filled.Tune),
-    WAYPIPE("Waypipe", Icons.Filled.Wifi),
-    SSH("SSH", Icons.Filled.Lock),
-    MACHINES("Machines", Icons.Filled.Storage),
-    ABOUT("About", Icons.Filled.Info),
-    DEPENDENCIES("Dependencies", Icons.Filled.Inventory);
+private enum class SettingsTab(val label: String, val icon: ImageVector, val testTag: String) {
+    DISPLAY("Display", Icons.Filled.DesktopWindows, WawonaTestTags.SETTINGS_DISPLAY),
+    INPUT("Input", Icons.Filled.Keyboard, WawonaTestTags.SETTINGS_INPUT),
+    GRAPHICS("Graphics", Icons.Filled.GraphicEq, WawonaTestTags.SETTINGS_GRAPHICS),
+    CONNECTION("Connection", Icons.Filled.Computer, WawonaTestTags.SETTINGS_CONNECTION),
+    LOCAL_SHELL("Local Shell", Icons.Filled.Folder, WawonaTestTags.SETTINGS_LOCAL_SHELL),
+    DESKTOP("Desktop", Icons.Filled.DesktopMac, WawonaTestTags.SETTINGS_DESKTOP),
+    ADVANCED("Advanced", Icons.Filled.Tune, WawonaTestTags.SETTINGS_ADVANCED),
+    WAYPIPE("Waypipe", Icons.Filled.Wifi, WawonaTestTags.SETTINGS_WAYPIPE),
+    SSH("SSH", Icons.Filled.Lock, WawonaTestTags.SETTINGS_SSH),
+    MACHINES("Machines", Icons.Filled.Storage, WawonaTestTags.SETTINGS_MACHINES),
+    ABOUT("About", Icons.Filled.Info, WawonaTestTags.SETTINGS_ABOUT),
+    DEPENDENCIES("Dependencies", Icons.Filled.Inventory, WawonaTestTags.SETTINGS_DEPENDENCIES);
 
     val accentColor: Color
         get() = when (this) {
@@ -104,9 +104,17 @@ fun SettingsDialog(
                 }
             }
         },
+        actions = {
+            TextButton(
+                onClick = { onApply(); onDismiss() },
+                modifier = Modifier.testTag(WawonaTestTags.SETTINGS_DONE),
+            ) {
+                Text("Done")
+            }
+        },
     ) { _ ->
         if (isWide) {
-            Row(Modifier.fillMaxSize().testTag(WawonaTestTags.SETTINGS_DIALOG)) {
+            Row(Modifier.fillMaxSize().testTag(WawonaTestTags.SETTINGS_ROOT)) {
                 SettingsSidebarList(
                     selected = selectedTab,
                     onSelect = { selectedTab = it },
@@ -134,7 +142,7 @@ fun SettingsDialog(
                     }
                 },
                 label = "SettingsNavigation",
-                modifier = Modifier.testTag(WawonaTestTags.SETTINGS_DIALOG)
+                modifier = Modifier.testTag(WawonaTestTags.SETTINGS_ROOT)
             ) { currentTab ->
                 if (currentTab == null) {
                     SettingsSidebarList(
@@ -165,7 +173,8 @@ private fun SettingsSidebarList(
     Column(
         modifier
             .verticalScroll(rememberScrollState())
-            .padding(vertical = 8.dp),
+            .padding(vertical = 8.dp)
+            .testTag(WawonaTestTags.SETTINGS_ROOT),
     ) {
         SettingsTab.entries.forEach { tab ->
             val isSelected = selected == tab
@@ -180,6 +189,7 @@ private fun SettingsSidebarList(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 2.dp)
+                    .testTag(tab.testTag)
                     .border(
                         width = 1.dp,
                         color = if (isSelected) {
@@ -196,7 +206,7 @@ private fun SettingsSidebarList(
                 ) {
                     Icon(
                         tab.icon,
-                        contentDescription = null,
+                        contentDescription = tab.label,
                         modifier = Modifier.size(20.dp),
                         tint = tab.accentColor,
                     )
@@ -219,6 +229,7 @@ private fun SettingsSectionContent(
     Column(
         modifier
             .fillMaxSize()
+            .testTag(tab.testTag)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 12.dp)
             .padding(bottom = 24.dp),

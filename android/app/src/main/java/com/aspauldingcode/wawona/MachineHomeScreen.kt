@@ -37,6 +37,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -206,7 +207,9 @@ fun MachineWelcomeScreen(
     }
 
     Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        modifier = Modifier
+            .nestedScroll(scrollBehavior.nestedScrollConnection)
+            .testTag(WawonaTestTags.MACHINES_ROOT),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
@@ -262,7 +265,10 @@ fun MachineWelcomeScreen(
                         IconButton(onClick = { searchExpanded = true }) {
                             Icon(Icons.Filled.Search, contentDescription = "Search machines")
                         }
-                        IconButton(onClick = onOpenSettings) {
+                        IconButton(
+                            onClick = onOpenSettings,
+                            modifier = Modifier.testTag(WawonaTestTags.MACHINES_SETTINGS),
+                        ) {
                             Icon(Icons.Filled.Settings, contentDescription = "Settings")
                         }
                     }
@@ -278,7 +284,8 @@ fun MachineWelcomeScreen(
                 shadowElevation = 6.dp,
                 modifier = Modifier
                     .padding(end = 16.dp, bottom = 16.dp)
-                    .size(44.dp),
+                    .size(44.dp)
+                    .testTag(WawonaTestTags.MACHINES_ADD),
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
@@ -457,6 +464,7 @@ private fun MachineGridCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .testTag(WawonaTestTags.machinesCard(profile.id))
             .shadow(
                 elevation = 20.dp,
                 shape = cardShape,
@@ -525,14 +533,17 @@ private fun MachineGridCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 if (isRunning) {
-                    CompactOutlinedButton(onClick = onFocus, modifier = Modifier.weight(1f)) {
+                    CompactOutlinedButton(
+                        onClick = onFocus,
+                        modifier = Modifier.weight(1f).testTag(WawonaTestTags.MACHINES_FOCUS),
+                    ) {
                         Icon(Icons.Outlined.CenterFocusStrong, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.size(4.dp))
                         Text("Focus", maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     CompactFilledButton(
                         onClick = onStop,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).testTag(WawonaTestTags.MACHINES_STOP),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.error,
                             contentColor = MaterialTheme.colorScheme.onError,
@@ -545,7 +556,7 @@ private fun MachineGridCard(
                 } else {
                     CompactFilledButton(
                         onClick = onConnect,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).testTag(WawonaTestTags.MACHINES_START),
                         enabled = capabilities.launchSupported && status != MachineStatus.CONNECTING,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
@@ -564,7 +575,10 @@ private fun MachineGridCard(
                         )
                     }
                 }
-                CompactOutlinedButton(onClick = onEdit, modifier = Modifier.weight(1f)) {
+                CompactOutlinedButton(
+                    onClick = onEdit,
+                    modifier = Modifier.weight(1f).testTag(WawonaTestTags.MACHINES_EDIT),
+                ) {
                     Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.size(4.dp))
                     Text("Edit", maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -572,7 +586,7 @@ private fun MachineGridCard(
                 CompactOutlinedButton(
                     onClick = onDelete,
                     enabled = !isRunning,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).testTag(WawonaTestTags.MACHINES_DELETE),
                     contentColor = MaterialTheme.colorScheme.error,
                     borderColor = MaterialTheme.colorScheme.error.copy(alpha = 0.5f),
                 ) {
@@ -957,6 +971,7 @@ private fun MachineEditorSheet(
         LaunchedEffect(showClientPicker) { contentScrollState.scrollTo(0) }
         AnimatedContent(
             targetState = showClientPicker,
+            modifier = Modifier.testTag(WawonaTestTags.MACHINES_EDITOR),
             transitionSpec = {
                 val slideSpec = tween<androidx.compose.ui.unit.IntOffset>(durationMillis = 320, easing = FastOutSlowInEasing)
                 val fadeSpec = tween<Float>(durationMillis = 220, easing = LinearOutSlowInEasing)

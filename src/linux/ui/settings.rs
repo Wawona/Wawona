@@ -22,12 +22,22 @@ pub fn show_settings(
     let header = adw::HeaderBar::new();
     let done_btn = gtk::Button::with_label("Done");
     done_btn.add_css_class("suggested-action");
+    crate::linux::ui::a11y::set_wwn_a11y(
+        &done_btn,
+        crate::linux::ui::a11y::id::SETTINGS_DONE,
+        Some("Done"),
+    );
     header.pack_end(&done_btn);
 
     let sidebar = gtk::ListBox::new();
     sidebar.set_selection_mode(gtk::SelectionMode::Single);
     sidebar.add_css_class("navigation-sidebar");
     sidebar.set_width_request(180);
+    crate::linux::ui::a11y::set_wwn_a11y(
+        &sidebar,
+        crate::linux::ui::a11y::id::SETTINGS_ROOT,
+        Some("Settings"),
+    );
 
     let sections = [
         "Machines",
@@ -44,12 +54,16 @@ pub fn show_settings(
         "About",
     ];
     for name in &sections {
-        let row = gtk::Label::new(Some(name));
-        row.set_xalign(0.0);
-        row.set_margin_start(8);
-        row.set_margin_end(8);
-        row.set_margin_top(4);
-        row.set_margin_bottom(4);
+        let row = gtk::ListBoxRow::new();
+        let label = gtk::Label::new(Some(name));
+        label.set_xalign(0.0);
+        label.set_margin_start(8);
+        label.set_margin_end(8);
+        label.set_margin_top(4);
+        label.set_margin_bottom(4);
+        row.set_child(Some(&label));
+        let id = crate::linux::ui::a11y::settings_section_id(name);
+        crate::linux::ui::a11y::set_wwn_a11y(&row, &id, Some(name));
         sidebar.append(&row);
     }
 
@@ -87,6 +101,11 @@ pub fn show_settings(
     add_row(&display_group, "Auto Scale", &auto_scale);
     add_row(&display_group, "Wayland Display", &wayland_display);
     display_page.add(&display_group);
+    crate::linux::ui::a11y::set_wwn_a11y(
+        &display_page,
+        crate::linux::ui::a11y::id::SETTINGS_DISPLAY,
+        Some("Display"),
+    );
     stack.add_named(&display_page, Some("Display"));
 
     // Input

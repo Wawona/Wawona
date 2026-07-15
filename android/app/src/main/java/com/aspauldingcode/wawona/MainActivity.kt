@@ -61,6 +61,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalConfiguration
@@ -149,12 +151,20 @@ class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
 
             setContent {
                 WawonaTheme {
-                    WawonaApp(
-                        prefs = prefs,
-                        surfaceCallback = this@MainActivity,
-                        cacheDirPath = cacheDir.absolutePath,
-                        displayDensity = resources.displayMetrics.density
-                    )
+                    // Expose Compose testTags as Android resource-ids for
+                    // agent-device / UiAutomator (id="wwn.…").
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics { testTagsAsResourceId = true }
+                    ) {
+                        WawonaApp(
+                            prefs = prefs,
+                            surfaceCallback = this@MainActivity,
+                            cacheDirPath = cacheDir.absolutePath,
+                            displayDensity = resources.displayMetrics.density
+                        )
+                    }
                 }
             }
             handleNestedWlClientIntent(intent)
@@ -1511,6 +1521,7 @@ private fun AppWelcomeScreen(onContinue: () -> Unit) {
             .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
             .padding(horizontal = 28.dp, vertical = 24.dp)
+            .testTag(WawonaTestTags.WELCOME_ROOT)
     ) {
         Column(
             modifier = Modifier.align(Alignment.Center),
@@ -1529,7 +1540,10 @@ private fun AppWelcomeScreen(onContinue: () -> Unit) {
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.78f)
             )
             Spacer(modifier = Modifier.height(6.dp))
-            Button(onClick = onContinue) {
+            Button(
+                onClick = onContinue,
+                modifier = Modifier.testTag(WawonaTestTags.WELCOME_CONTINUE),
+            ) {
                 Text("Continue")
             }
         }

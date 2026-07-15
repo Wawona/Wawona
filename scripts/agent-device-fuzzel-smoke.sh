@@ -100,10 +100,10 @@ run_android_fuzzel() {
   # shellcheck source=scripts/lib/android-ad-scale.sh
   source "$ROOT/scripts/lib/android-ad-scale.sh"
 
-  # Compose a11y is sparse on CI — uiautomator text bounds + ref-tap fallbacks.
+  # Prefer id= (Compose testTagsAsResourceId); fall back to uia/label/coords.
   local sess=wawona-android-niri-fuzzel
   local ad_common=(--platform android --serial "$serial" --session "$sess")
-  echo "== Android: niri+fuzzel uiautomator start =="
+  echo "== Android: niri+fuzzel id= start =="
   dismiss_android_blockers() {
     adb -s "$serial" shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1 || true
     agent-device alert dismiss "${ad_common[@]}" >/dev/null 2>&1 || true
@@ -114,6 +114,11 @@ run_android_fuzzel() {
       agent-device press 'label="Close app"' "${ad_common[@]}" >/dev/null 2>&1 || true
     fi
   }
+  android_press_id() {
+    local id="$1"
+    agent-device press "id=\"$id\"" "${ad_common[@]}" >/dev/null 2>&1 && return 0
+    return 1
+  }
   android_press_text() {
     local text="$1"
     android_uia_tap_text "$text" && return 0
@@ -122,7 +127,7 @@ run_android_fuzzel() {
     return 1
   }
   android_dismiss_welcome() {
-    if android_press_text "Continue"; then
+    if android_press_id "wwn.welcome.continue" || android_press_text "Continue"; then
       agent-device wait 2000 "${ad_common[@]}"
       return 0
     fi
@@ -134,7 +139,7 @@ run_android_fuzzel() {
     fi
   }
   android_press_start() {
-    if android_press_text "Start"; then
+    if android_press_id "wwn.machines.start" || android_press_text "Start"; then
       return 0
     fi
     android_tap_ref 227 1039
