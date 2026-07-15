@@ -129,21 +129,18 @@ run_android_fuzzel() {
     return 1
   }
   android_dismiss_welcome() {
-    local attempt
-    for attempt in 1 2 3 4 5; do
-      if android_uia_has_id "wwn.machines.root" || android_uia_has_text "Machine Configuration"; then
-        return 0
-      fi
-      android_press_id "wwn.welcome.continue" || true
-      android_press_text "Continue" || true
-      agent-device press 'label="Continue"' "${ad_common[@]}" >/dev/null 2>&1 || true
-      agent-device press 'text="Continue"' "${ad_common[@]}" >/dev/null 2>&1 || true
-      android_tap_ref 540 1404 || true
-      android_tap_ref 540 1450 || true
-      adb -s "$serial" shell input tap 540 1404 >/dev/null 2>&1 || true
-      agent-device wait 2500 "${ad_common[@]}"
-      dismiss_android_blockers
-    done
+    # Single pass only — CI fail-fast; no smoke/control retries.
+    if android_uia_has_id "wwn.machines.root" || android_uia_has_text "Machine Configuration"; then
+      return 0
+    fi
+    android_press_id "wwn.welcome.continue" || true
+    android_press_text "Continue" || true
+    agent-device press 'label="Continue"' "${ad_common[@]}" >/dev/null 2>&1 || true
+    agent-device press 'text="Continue"' "${ad_common[@]}" >/dev/null 2>&1 || true
+    android_tap_ref 540 1404 || true
+    adb -s "$serial" shell input tap 540 1404 >/dev/null 2>&1 || true
+    agent-device wait 2500 "${ad_common[@]}"
+    dismiss_android_blockers
   }
   android_press_start() {
     # Pre-a11y semantics: successful tap counts; session settles after wait.
@@ -267,13 +264,9 @@ run_android_fuzzel() {
   # shellcheck disable=SC2086
   adb -s "$serial" shell input tap $focus_xy
   sleep 0.3
-  local inj
-  for inj in 1 2 3 4 5; do
-    echo "== Android: Alt+D inject attempt $inj =="
-    android_inject_alt_d || true
-    sleep 2
-    android_fuzzel_ready && break
-  done
+  echo "== Android: Alt+D inject (single attempt) =="
+  android_inject_alt_d || true
+  sleep 2
   procs="$(adb -s "$serial" shell 'ps -A -w' 2>/dev/null | tr -d '\r' | grep -iE 'niri|fuzzel' || true)"
   {
     echo "fuzzel_ready=$(android_fuzzel_ready && echo yes || echo no)"

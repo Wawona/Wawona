@@ -11,6 +11,9 @@ name: Device GUI e2e
 # Nested niri + fuzzel (issue #78) lanes assert .desktop catalog + icons and
 # that Mod+D/Alt+D spawns fuzzel with a populated launcher.
 #
+# Fail-fast: iOS/Android GUI smoke and fuzzel lanes run once — no suite
+# retries, no erase/reprepare loops. One chance per job; flake = red.
+#
 # Runner constraints (researched Jul 2026):
 # - iOS simulators run fine on GitHub's arm64 macOS runners (simulators are
 #   host processes, not VMs; no nested virtualization involved).
@@ -130,33 +133,14 @@ jobs:
           WAWONA_IOS_APP: result-ios/Wawona.app
           WAWONA_IOS_PREPARE_TIMEOUT_MS: "600000"
         run: |
+          # One attempt only — no smoke retries (iOS or Android GUI e2e).
           SIM_NAME="${WAWONA_IOS_SIM:-iPhone 17 Pro}"
-          # agent-device daemon lease/timeout + cached-runner connect flakes.
-          for attempt in 1 2 3 4 5; do
-            echo "== iOS smoke attempt $attempt =="
-            pkill -f "agent-device/dist/src/internal/daemon.js" 2>/dev/null || true
-            sleep 2
-            if [[ "$attempt" -gt 1 ]]; then
-              xcrun simctl terminate "$SIM_NAME" com.aspauldingcode.Wawona 2>/dev/null || true
-              xcrun simctl shutdown "$SIM_NAME" 2>/dev/null || true
-              sleep 2
-              # Erase clears wedged CoreSimulator state (xcrun exit 4).
-              xcrun simctl erase "$SIM_NAME" 2>/dev/null || true
-              sleep 2
-            fi
-            if [[ "$attempt" -ge 3 ]]; then
-              # "artifact restored but runner did not connect" → rebuild XCTest runner.
-              rm -rf "$HOME/.agent-device/apple-runner/derived" || true
-            fi
-            xcrun simctl bootstatus "$SIM_NAME" -b || xcrun simctl boot "$SIM_NAME" || true
-            xcrun simctl bootstatus "$SIM_NAME"
-            if ./scripts/agent-device-smoke.sh ios; then
-              exit 0
-            fi
-            echo "iOS smoke attempt $attempt failed; retrying..."
-            sleep 5
-          done
-          exit 1
+          echo "== iOS smoke (single attempt) =="
+          pkill -f "agent-device/dist/src/internal/daemon.js" 2>/dev/null || true
+          sleep 2
+          xcrun simctl bootstatus "$SIM_NAME" -b || xcrun simctl boot "$SIM_NAME" || true
+          xcrun simctl bootstatus "$SIM_NAME"
+          ./scripts/agent-device-smoke.sh ios
 
       - name: Run iOS nested niri + fuzzel e2e (issue #78)
         env:
@@ -164,30 +148,14 @@ jobs:
           WAWONA_FUZZEL_REQUIRE_IOS: "1"
           WAWONA_IOS_PREPARE_TIMEOUT_MS: "600000"
         run: |
+          # One attempt only — no smoke retries (iOS or Android GUI e2e).
           SIM_NAME="${WAWONA_IOS_SIM:-iPhone 17 Pro}"
-          for attempt in 1 2 3 4 5; do
-            echo "== iOS fuzzel attempt $attempt =="
-            pkill -f "agent-device/dist/src/internal/daemon.js" 2>/dev/null || true
-            sleep 2
-            if [[ "$attempt" -gt 1 ]]; then
-              xcrun simctl terminate "$SIM_NAME" com.aspauldingcode.Wawona 2>/dev/null || true
-              xcrun simctl shutdown "$SIM_NAME" 2>/dev/null || true
-              sleep 2
-              xcrun simctl erase "$SIM_NAME" 2>/dev/null || true
-              sleep 2
-            fi
-            if [[ "$attempt" -ge 3 ]]; then
-              rm -rf "$HOME/.agent-device/apple-runner/derived" || true
-            fi
-            xcrun simctl bootstatus "$SIM_NAME" -b || xcrun simctl boot "$SIM_NAME" || true
-            xcrun simctl bootstatus "$SIM_NAME"
-            if ./scripts/agent-device-smoke.sh ios-fuzzel; then
-              exit 0
-            fi
-            echo "iOS fuzzel attempt $attempt failed; retrying..."
-            sleep 5
-          done
-          exit 1
+          echo "== iOS fuzzel (single attempt) =="
+          pkill -f "agent-device/dist/src/internal/daemon.js" 2>/dev/null || true
+          sleep 2
+          xcrun simctl bootstatus "$SIM_NAME" -b || xcrun simctl boot "$SIM_NAME" || true
+          xcrun simctl bootstatus "$SIM_NAME"
+          ./scripts/agent-device-smoke.sh ios-fuzzel
 
       - name: Upload iOS screenshots
         if: always()
@@ -281,14 +249,15 @@ jobs:
           profile: pixel_7
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot-save
           disable-animations: true
-          # android-emulator-runner runs the script as one sh -c string; keep
-          # export and both lanes in a single command, fail-fast with &&.
+          # One attempt only per lane (no smoke retries). Fail-fast with &&.
           # immersive_mode_confirmations suppresses the teal "Got it" coach mark
           # that blocks compositor input after Start.
           script: >-
             adb shell settings put secure immersive_mode_confirmations confirmed
             && export WAWONA_ANDROID_APK="$GITHUB_WORKSPACE/dist/Wawona.apk"
+            && echo "== Android smoke (single attempt) =="
             && ./scripts/agent-device-smoke.sh android
+            && echo "== Android fuzzel (single attempt) =="
             && ./scripts/agent-device-smoke.sh android-fuzzel
 
       - name: Upload Android screenshots

@@ -171,25 +171,18 @@ run_android() {
     return 1
   }
   android_dismiss_welcome() {
-    local attempt
-    for attempt in 1 2 3 4 5; do
-      # Only treat Welcome as gone when Machines is positively visible.
-      # (uiautomator dump failure must NOT skip Continue — that left CI stuck
-      # on the welcome screen with identical first/machines screenshots.)
-      if android_uia_has_id "wwn.machines.root" || android_uia_has_text "Machine Configuration"; then
-        return 0
-      fi
-      android_press_id "wwn.welcome.continue" || true
-      android_press_text "Continue" || true
-      agent-device press 'label="Continue"' "${ad_common[@]}" >/dev/null 2>&1 || true
-      agent-device press 'text="Continue"' "${ad_common[@]}" >/dev/null 2>&1 || true
-      # Centered Continue on 1080x2400 / 1080x2424 welcome (pixel_7 CI).
-      android_tap_ref 540 1404 || true
-      android_tap_ref 540 1450 || true
-      adb -s "$serial" shell input tap 540 1404 >/dev/null 2>&1 || true
-      agent-device wait 2500 "${ad_common[@]}"
-      dismiss_android_blockers
-    done
+    # Single pass only — CI fail-fast; no smoke/control retries.
+    if android_uia_has_id "wwn.machines.root" || android_uia_has_text "Machine Configuration"; then
+      return 0
+    fi
+    android_press_id "wwn.welcome.continue" || true
+    android_press_text "Continue" || true
+    agent-device press 'label="Continue"' "${ad_common[@]}" >/dev/null 2>&1 || true
+    agent-device press 'text="Continue"' "${ad_common[@]}" >/dev/null 2>&1 || true
+    android_tap_ref 540 1404 || true
+    adb -s "$serial" shell input tap 540 1404 >/dev/null 2>&1 || true
+    agent-device wait 2500 "${ad_common[@]}"
+    dismiss_android_blockers
   }
   android_press_start() {
     # Match pre-a11y gate: a successful tap is enough here. Session chrome is
@@ -244,24 +237,18 @@ run_android() {
   agent-device wait 500 "${ad_common[@]}"
 
   android_dismiss_modals() {
-    # Settings / Add Machine sheets leave a Material3 scrim that eats Start taps
-    # while the Machines card (and text="Start") stays visible underneath.
-    local i
-    for i in 1 2 3 4 5; do
-      if android_uia_has_text "Cancel" \
-        || android_uia_has_text "Wawona Settings" \
-        || android_uia_has_text "Add Machine Profile" \
-        || android_uia_has_id "wwn.settings.root" \
-        || android_uia_has_id "wwn.machines.editor"; then
-        android_press_text "Cancel" || true
-        android_press_id "wwn.settings.done" || android_press_text "Done" || true
-        agent-device back "${ad_common[@]}" >/dev/null 2>&1 || true
-        adb -s "$serial" shell input keyevent 4 >/dev/null 2>&1 || true
-        agent-device wait 800 "${ad_common[@]}"
-        continue
-      fi
-      return 0
-    done
+    # Single pass — Settings/Add sheets leave a scrim that eats Start taps.
+    if android_uia_has_text "Cancel" \
+      || android_uia_has_text "Wawona Settings" \
+      || android_uia_has_text "Add Machine Profile" \
+      || android_uia_has_id "wwn.settings.root" \
+      || android_uia_has_id "wwn.machines.editor"; then
+      android_press_text "Cancel" || true
+      android_press_id "wwn.settings.done" || android_press_text "Done" || true
+      agent-device back "${ad_common[@]}" >/dev/null 2>&1 || true
+      adb -s "$serial" shell input keyevent 4 >/dev/null 2>&1 || true
+      agent-device wait 800 "${ad_common[@]}"
+    fi
   }
 
   # Match fuzzel lane: Start while Machines is unobstructed. Opening Settings/Add
