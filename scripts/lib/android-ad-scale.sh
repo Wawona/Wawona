@@ -63,21 +63,37 @@ android_tap_ref() {
 
 # Compose often hides text from agent-device a11y filters; uiautomator TextView
 # bounds remain reliable for Continue / Start on the welcome + machines screens.
-android_uia_tap_text() {
-  local want="$1"
+android_uia_tap_node() {
+  # $1 = grep -E pattern matched against one flattened node line
+  local pattern="$1"
+  local label="${2:-node}"
   local serial="${ANDROID_SERIAL:-${WAWONA_ANDROID_SERIAL:-}}"
   local adb=(adb)
   [[ -n "$serial" ]] && adb=(adb -s "$serial")
   local xml line x1 y1 x2 y2 cx cy
   xml="$(android_uia_dump)" || return 1
-  line="$(printf '%s' "$xml" | tr '>' '\n' | grep -F "text=\"$want\"" | head -1)"
+  line="$(printf '%s' "$xml" | tr '>' '\n' | grep -E "$pattern" | head -1)"
   [[ -n "$line" ]] || return 1
   read -r x1 y1 x2 y2 <<<"$(printf '%s' "$line" | sed -n 's/.*bounds="\[\([0-9]*\),\([0-9]*\)\]\[\([0-9]*\),\([0-9]*\)\]".*/\1 \2 \3 \4/p')"
   [[ -n "${x1:-}" && -n "${y1:-}" && -n "${x2:-}" && -n "${y2:-}" ]] || return 1
   cx=$(( (x1 + x2) / 2 ))
   cy=$(( (y1 + y2) / 2 ))
-  echo "== Android: uia tap text='$want' at ${cx},${cy} =="
+  # Reject zero-size / offscreen nodes.
+  if (( cx <= 0 || cy <= 0 || x2 <= x1 || y2 <= y1 )); then
+    return 1
+  fi
+  echo "== Android: uia tap ${label} at ${cx},${cy} bounds=[${x1},${y1}][${x2},${y2}] =="
   "${adb[@]}" shell input tap "$cx" "$cy"
+}
+
+android_uia_tap_text() {
+  local want="$1"
+  android_uia_tap_node "text=\"${want}\"" "text=${want}"
+}
+
+android_uia_tap_id() {
+  local want="$1"
+  android_uia_tap_node "resource-id=\"[^\"]*${want}\"" "id=${want}"
 }
 
 android_uia_dump() {
