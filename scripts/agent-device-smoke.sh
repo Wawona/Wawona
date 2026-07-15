@@ -41,6 +41,9 @@ stop_agent_device_daemons() {
 }
 
 run_ios() {
+  local sess=wawona-ios-smoke
+  local ad_common=(--platform ios --device "$IOS_DEVICE" --session "$sess")
+
   echo "== iOS: boot simulator '$IOS_DEVICE' =="
   xcrun simctl bootstatus "$IOS_DEVICE" -b || xcrun simctl boot "$IOS_DEVICE" || true
   xcrun simctl bootstatus "$IOS_DEVICE"
@@ -51,6 +54,7 @@ run_ios() {
     STAGE="$(mktemp -d)/Wawona.app"
     cp -R "$WAWONA_IOS_APP" "$STAGE"
     chmod -R u+w "$STAGE"
+    xcrun simctl uninstall "$IOS_DEVICE" com.aspauldingcode.Wawona 2>/dev/null || true
     xcrun simctl install "$IOS_DEVICE" "$STAGE"
   fi
 
@@ -59,15 +63,58 @@ run_ios() {
   agent-device prepare ios-runner --platform ios --device "$IOS_DEVICE" \
     --timeout "${WAWONA_IOS_PREPARE_TIMEOUT_MS:-600000}"
 
-  # Each replay below starts its own daemon. Stop the prepare daemon first so
-  # its runner lease doesn't block them (see `agent-device help workflow`).
+  # Stop the prepare daemon so the smoke session can take the runner lease
+  # (see `agent-device help workflow`).
   stop_agent_device_daemons
 
-  echo "== iOS: launch smoke replay =="
-  agent-device replay "$ROOT/.agent-device/wawona-ios-smoke.ad"
-
-  echo "== iOS: machines-lane replay =="
-  agent-device replay "$ROOT/.agent-device/wawona-ios-machines.ad"
+  echo "== iOS: single-session smoke (stable wwn.* ids) =="
+  # Serial CLI keeps Welcome optional without failing the batch on missing Continue.
+  agent-device open com.aspauldingcode.Wawona --relaunch "${ad_common[@]}"
+  agent-device wait 2500 "${ad_common[@]}"
+  agent-device snapshot -i "${ad_common[@]}" || true
+  agent-device screenshot "$ARTIFACTS/ios-first-screen.png" "${ad_common[@]}"
+  if agent-device is visible 'id="wwn.welcome.continue"' "${ad_common[@]}" >/dev/null 2>&1; then
+    agent-device press 'id="wwn.welcome.continue"' "${ad_common[@]}"
+    agent-device wait 1500 "${ad_common[@]}"
+  elif agent-device is visible 'label="Continue"' "${ad_common[@]}" >/dev/null 2>&1; then
+    agent-device press 'label="Continue"' "${ad_common[@]}"
+    agent-device wait 1500 "${ad_common[@]}"
+  fi
+  agent-device wait 'id="wwn.machines.root"' 20000 "${ad_common[@]}" \
+    || agent-device wait text "Machine Configuration" 20000 "${ad_common[@]}"
+  agent-device is visible 'id="wwn.machines.root"' "${ad_common[@]}" \
+    || agent-device is visible 'label="Machine Configuration"' "${ad_common[@]}"
+  agent-device is visible 'id="wwn.machines.start"' "${ad_common[@]}" \
+    || agent-device is visible 'label="Start"' "${ad_common[@]}"
+  agent-device screenshot "$ARTIFACTS/ios-machines-root.png" "${ad_common[@]}"
+  agent-device press 'id="wwn.machines.settings"' "${ad_common[@]}" \
+    || agent-device press 'label="Settings"' "${ad_common[@]}"
+  agent-device wait 'id="wwn.settings.display"' 15000 "${ad_common[@]}" \
+    || agent-device wait text Display 15000 "${ad_common[@]}"
+  agent-device is visible 'id="wwn.settings.display"' "${ad_common[@]}" \
+    || agent-device is visible 'label="Display"' "${ad_common[@]}"
+  agent-device screenshot "$ARTIFACTS/ios-settings-display.png" "${ad_common[@]}"
+  agent-device press 'id="wwn.settings.done"' "${ad_common[@]}" \
+    || agent-device press 'label="Done"' "${ad_common[@]}"
+  agent-device wait 'id="wwn.machines.root"' 15000 "${ad_common[@]}"
+  agent-device press 'id="wwn.machines.add"' "${ad_common[@]}" \
+    || agent-device press 'label="Add Machine"' "${ad_common[@]}"
+  agent-device wait 1200 "${ad_common[@]}"
+  agent-device screenshot "$ARTIFACTS/ios-add-machine-sheet.png" "${ad_common[@]}"
+  # Dismiss add sheet (swipe/back) then Start a machine.
+  agent-device press 'id="wwn.machines.root"' "${ad_common[@]}" >/dev/null 2>&1 || true
+  agent-device back "${ad_common[@]}" >/dev/null 2>&1 || true
+  agent-device wait 800 "${ad_common[@]}"
+  agent-device press 'id="wwn.machines.start"' "${ad_common[@]}" \
+    || agent-device press 'label="Start"' "${ad_common[@]}" \
+    || {
+      echo "FAIL: Start control not found (id=wwn.machines.start)" >&2
+      agent-device snapshot -i --raw "${ad_common[@]}" || true
+      exit 1
+    }
+  agent-device wait 10000 "${ad_common[@]}"
+  agent-device screenshot "$ARTIFACTS/ios-weston-session.png" "${ad_common[@]}"
+  agent-device close "${ad_common[@]}"
 }
 
 run_android() {

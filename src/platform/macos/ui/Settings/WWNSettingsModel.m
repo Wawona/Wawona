@@ -12,6 +12,10 @@
   item.type = type;
   item.defaultValue = def;
   item.desc = desc;
+  if (key.length > 0) {
+    item.accessibilityIdentifier =
+        [NSString stringWithFormat:@"wwn.settings.%@", key];
+  }
   return item;
 }
 @end

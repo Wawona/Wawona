@@ -55,12 +55,15 @@ struct MachineStatusView: View {
                 } label: {
                     Image(systemName: "gear")
                 }
+                .accessibilityIdentifier("wwn.watch.settings")
                 .accessibilityLabel("Wawona Settings")
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { showingAdd = true } label: {
                     Image(systemName: "plus")
                 }
+                .accessibilityIdentifier("wwn.watch.add")
+                .accessibilityLabel("Add Machine")
             }
         }
         .sheet(isPresented: $showingAdd) {

@@ -43,6 +43,8 @@ struct QuickConnectView: View {
                     Label("Disconnect", systemImage: "stop.circle.fill")
                 }
                 .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("wwn.watch.disconnect")
+                .accessibilityLabel("Disconnect")
             } else {
                 Button {
                     profileStore.activeMachineId = profile.id
@@ -54,6 +56,8 @@ struct QuickConnectView: View {
                     Label("Connect", systemImage: "play.fill")
                 }
                 .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("wwn.watch.connect")
+                .accessibilityLabel("Connect")
             }
         }
         .navigationDestination(item: $runningSession) { session in

@@ -10,6 +10,8 @@
 @interface WWNSettingItem : NSObject
 @property(nonatomic, copy) NSString *title;
 @property(nonatomic, copy) NSString *key;
+/// Stable agent-device / XCUITest id (`wwn.settings.<key>` when key is set).
+@property(nonatomic, copy, nullable) NSString *accessibilityIdentifier;
 @property(nonatomic, copy) NSString *desc;
 @property(nonatomic, assign) WWNSettingType type;
 @property(nonatomic, strong) id defaultValue;
@@ -33,6 +35,8 @@
 
 @interface WWNPreferencesSection : NSObject
 @property(nonatomic, copy) NSString *title;
+/// Stable agent-device / XCUITest id (e.g. `wwn.settings.display`).
+@property(nonatomic, copy, nullable) NSString *accessibilityIdentifier;
 @property(nonatomic, copy) NSString *icon;
 #if TARGET_OS_IPHONE
 @property(nonatomic, strong) UIColor *iconColor;

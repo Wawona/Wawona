@@ -39,6 +39,7 @@ struct MachinesRootView: View {
                 .padding()
             }
             .navigationTitle("Machines")
+            .wwnA11y(WawonaA11y.machinesRoot, label: "Machines")
             #if os(macOS)
             .searchable(text: $search, placement: .toolbar, prompt: "Search machines")
             #endif
@@ -50,6 +51,7 @@ struct MachinesRootView: View {
                     } label: {
                         Label("Settings", systemImage: "gearshape")
                     }
+                    .wwnA11y(WawonaA11y.machinesSettings, label: "Settings")
                 }
                 #else
                 ToolbarItemGroup(placement: .topBarTrailing) {
@@ -58,11 +60,13 @@ struct MachinesRootView: View {
                     } label: {
                         Label("Add Machine", systemImage: "plus")
                     }
+                    .wwnA11y(WawonaA11y.machinesAdd, label: "Add Machine")
                     Button {
                         openPlatformSettings()
                     } label: {
                         Label("Settings", systemImage: "gearshape")
                     }
+                    .wwnA11y(WawonaA11y.machinesSettings, label: "Settings")
                     Button {
                         withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
                             isGlassSearchPresented = true

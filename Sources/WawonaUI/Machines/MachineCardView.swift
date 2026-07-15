@@ -38,11 +38,15 @@ struct MachineCardView: View {
 
                 HStack {
                     Button("Connect", action: onConnect)
+                        .wwnA11y(WawonaA11y.machinesConnect, label: "Connect")
                     Button("Edit", action: onEdit)
+                        .wwnA11y(WawonaA11y.machinesEdit, label: "Edit")
                     Button("Delete", role: .destructive, action: onDelete)
+                        .wwnA11y(WawonaA11y.machinesDelete, label: "Delete")
                 }
             }
         }
+        .wwnA11y(WawonaA11y.machinesCard(profile.id), label: profile.name)
     }
 
     var subtitle: String {

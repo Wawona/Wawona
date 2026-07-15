@@ -26,12 +26,14 @@ struct WelcomeView: View {
                         preferences.save()
                     }
                     .buttonStyle(.borderedProminent)
+                    .wwnA11y(WawonaA11y.welcomeAddFirst, label: "Add Your First Machine")
                 }
                 .padding(20)
             }
             .frame(maxWidth: 520)
             .padding()
         }
+        .wwnA11y(WawonaA11y.welcomeRoot, label: "Welcome to Wawona")
         .task {
             withAnimation(.easeInOut(duration: 1.2).repeatForever()) {
                 pulse = true

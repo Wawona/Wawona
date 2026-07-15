@@ -31,6 +31,7 @@ rec {
     "Sources/WawonaUI/Components/GlassCard.swift"
     "Sources/WawonaUI/Components/SectionHeader.swift"
     "Sources/WawonaUI/Components/StatusBadge.swift"
+    "Sources/WawonaUI/AccessibilityIdentifiers.swift"
     "Sources/WawonaUI/Machines/MachinesRootView.swift"
     "Sources/WawonaUI/Machines/MachinesGridView.swift"
     "Sources/WawonaUI/Machines/MachineCardView.swift"

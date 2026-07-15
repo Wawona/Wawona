@@ -565,6 +565,7 @@ in
       echo "📦 Phase 1: Compiling Swift sources..."
       SWIFT_OBJ=""
       SWIFT_SOURCES=(
+        "src/platform/macos/ui/Machines/WWNAccessibilityIdentifiers.swift"
         "src/platform/macos/ui/Machines/WWNMachineCardView.swift"
         "src/platform/macos/ui/Machines/WWNMachineEditorView.swift"
         "src/platform/macos/ui/Machines/WWNMachinesViewModel.swift"

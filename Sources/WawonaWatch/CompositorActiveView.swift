@@ -30,6 +30,8 @@ struct CompositorActiveView: View {
                 Label("Stop", systemImage: "stop.fill")
             }
             .buttonStyle(.borderedProminent)
+            .accessibilityIdentifier("wwn.watch.stop")
+            .accessibilityLabel("Stop")
         }
         .confirmationDialog(
             "Close current Wayland app?",

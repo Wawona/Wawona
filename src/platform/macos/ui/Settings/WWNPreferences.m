@@ -333,6 +333,9 @@ static UIImage *WWNAboutLogo(void) {
         initWithBarButtonSystemItem:UIBarButtonSystemItemDone
                              target:self
                              action:@selector(dismissSelf)];
+    self.navigationItem.rightBarButtonItem.accessibilityIdentifier =
+        @"wwn.settings.done";
+    self.navigationItem.rightBarButtonItem.accessibilityLabel = @"Done";
     [[NSNotificationCenter defaultCenter]
         addObserver:self
            selector:@selector(defaultsChanged:)
@@ -386,6 +389,9 @@ static UIImage *WWNAboutLogo(void) {
 - (void)viewDidLoad {
   [super viewDidLoad];
 
+  self.view.accessibilityIdentifier = @"wwn.settings.root";
+  self.view.accessibilityLabel = @"Settings";
+
   // Remove extra top padding
   self.tableView.tableHeaderView =
       [[UIView alloc] initWithFrame:CGRectMake(0, 0, 1.0, 1.0)];
@@ -411,6 +417,10 @@ static UIImage *WWNAboutLogo(void) {
 #if TARGET_OS_IPHONE
 - (void)setActiveSection:(WWNPreferencesSection *)activeSection {
   _activeSection = activeSection;
+  if (activeSection.accessibilityIdentifier.length > 0) {
+    self.tableView.accessibilityIdentifier = activeSection.accessibilityIdentifier;
+    self.tableView.accessibilityLabel = activeSection.title;
+  }
   if (self.isViewLoaded) {
     [self.tableView reloadData];
   }
@@ -424,6 +434,7 @@ static UIImage *WWNAboutLogo(void) {
   // DISPLAY
   WWNPreferencesSection *display = [[WWNPreferencesSection alloc] init];
   display.title = @"Display";
+  display.accessibilityIdentifier = @"wwn.settings.display";
   display.icon = @"display";
 #if TARGET_OS_IPHONE
   display.iconColor = [UIColor systemBlueColor];
@@ -459,6 +470,7 @@ static UIImage *WWNAboutLogo(void) {
   // INPUT
   WWNPreferencesSection *input = [[WWNPreferencesSection alloc] init];
   input.title = @"Input";
+  input.accessibilityIdentifier = @"wwn.settings.input";
   input.icon = @"keyboard";
 #if TARGET_OS_IPHONE
   input.iconColor = [UIColor systemPurpleColor];
@@ -485,6 +497,7 @@ static UIImage *WWNAboutLogo(void) {
   // GRAPHICS
   WWNPreferencesSection *graphics = [[WWNPreferencesSection alloc] init];
   graphics.title = @"Graphics";
+  graphics.accessibilityIdentifier = @"wwn.settings.graphics";
   graphics.icon = @"cpu";
 #if TARGET_OS_IPHONE
   graphics.iconColor = [UIColor systemRedColor];
@@ -520,6 +533,7 @@ static UIImage *WWNAboutLogo(void) {
   // CONNECTION
   WWNPreferencesSection *connection = [[WWNPreferencesSection alloc] init];
   connection.title = @"Connection";
+  connection.accessibilityIdentifier = @"wwn.settings.connection";
   connection.icon = @"network";
 #if TARGET_OS_IPHONE
   connection.iconColor = [UIColor systemOrangeColor];
@@ -577,6 +591,7 @@ static UIImage *WWNAboutLogo(void) {
 
     WWNPreferencesSection *localShell = [[WWNPreferencesSection alloc] init];
     localShell.title = @"Local Shell";
+    localShell.accessibilityIdentifier = @"wwn.settings.local.shell";
     localShell.icon = @"terminal";
 #if TARGET_OS_IPHONE
     localShell.iconColor = [UIColor systemGreenColor];
@@ -677,6 +692,7 @@ static UIImage *WWNAboutLogo(void) {
   // ADVANCED
   WWNPreferencesSection *advanced = [[WWNPreferencesSection alloc] init];
   advanced.title = @"Advanced";
+  advanced.accessibilityIdentifier = @"wwn.settings.advanced";
   advanced.icon = @"gearshape.2";
 #if TARGET_OS_IPHONE
   advanced.iconColor = [UIColor systemGrayColor];
@@ -732,6 +748,7 @@ static UIImage *WWNAboutLogo(void) {
   {
     WWNPreferencesSection *desktop = [[WWNPreferencesSection alloc] init];
     desktop.title = @"Desktop";
+    desktop.accessibilityIdentifier = @"wwn.settings.desktop";
     desktop.icon = @"macwindow.on.rectangle";
     desktop.iconColor = [NSColor systemTealColor];
 
@@ -826,6 +843,7 @@ static UIImage *WWNAboutLogo(void) {
   // MACHINES (stubs)
   WWNPreferencesSection *machines = [[WWNPreferencesSection alloc] init];
   machines.title = @"Machines";
+  machines.accessibilityIdentifier = @"wwn.settings.machines";
   machines.icon = @"server.rack";
 #if TARGET_OS_IPHONE
   machines.iconColor = [UIColor systemCyanColor];
@@ -876,6 +894,7 @@ static UIImage *WWNAboutLogo(void) {
   // WAYPIPE
   WWNPreferencesSection *waypipe = [[WWNPreferencesSection alloc] init];
   waypipe.title = @"Waypipe";
+  waypipe.accessibilityIdentifier = @"wwn.settings.waypipe";
   waypipe.icon = @"arrow.triangle.2.circlepath";
 #if TARGET_OS_IPHONE
   waypipe.iconColor = [UIColor systemGreenColor];
@@ -977,6 +996,7 @@ static UIImage *WWNAboutLogo(void) {
 #else
   ssh.title = @"OpenSSH";
 #endif
+  ssh.accessibilityIdentifier = @"wwn.settings.ssh";
   ssh.icon = @"lock.shield";
 #if TARGET_OS_IPHONE
   ssh.iconColor = [UIColor systemBlueColor];
@@ -1081,6 +1101,7 @@ static UIImage *WWNAboutLogo(void) {
   // ABOUT
   WWNPreferencesSection *about = [[WWNPreferencesSection alloc] init];
   about.title = @"About";
+  about.accessibilityIdentifier = @"wwn.settings.about";
   about.icon = @"info.circle";
 #if TARGET_OS_IPHONE
   about.iconColor = [UIColor systemPurpleColor];
@@ -1152,6 +1173,7 @@ static UIImage *WWNAboutLogo(void) {
   // DEPENDENCIES
   WWNPreferencesSection *deps = [[WWNPreferencesSection alloc] init];
   deps.title = @"Dependencies";
+  deps.accessibilityIdentifier = @"wwn.settings.dependencies";
   deps.icon = @"shippingbox";
 #if TARGET_OS_IPHONE
   deps.iconColor = [UIColor systemBrownColor];
@@ -3427,6 +3449,8 @@ static UIImage *WWNAboutLogo(void) {
   cell.imageView.clipsToBounds = NO;
 
   cell.textLabel.text = item.title;
+  cell.accessibilityLabel = item.title;
+  cell.accessibilityIdentifier = item.accessibilityIdentifier;
   if (item.type != WSettingHeader) {
     cell.textLabel.font = [UIFont systemFontOfSize:17];
   }

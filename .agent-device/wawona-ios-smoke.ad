@@ -1,16 +1,22 @@
+# Deterministic iOS smoke — stable wwn.* accessibility identifiers.
+# Prefer agent-device batch / scripts/agent-device-smoke.sh ios (same selectors).
 context platform=ios
 context session=wawona-ios-smoke
 context device=iPhone 17 Pro
 
-open com.aspauldingcode.Wawona
-wait 2000
+open com.aspauldingcode.Wawona --relaunch
+wait 2500
 snapshot -i
-screenshot ./.agent-device/test-artifacts/ios-machines.png
-press @e5
-wait 800
-snapshot -i
+screenshot ./.agent-device/test-artifacts/ios-first-screen.png
+is visible id="wwn.machines.root"
+is visible id="wwn.machines.start"
+press id="wwn.machines.settings"
+wait selector id="wwn.settings.display" --timeout-ms 15000
+is visible id="wwn.settings.display"
 screenshot ./.agent-device/test-artifacts/ios-settings-display.png
-press @e5
-wait 500
-snapshot -i
+press id="wwn.settings.done"
+wait selector id="wwn.machines.root" --timeout-ms 15000
+press id="wwn.machines.add"
+wait 1200
+screenshot ./.agent-device/test-artifacts/ios-add-machine-sheet.png
 close

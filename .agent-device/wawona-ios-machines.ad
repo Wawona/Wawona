@@ -1,25 +1,12 @@
-# Machines-lane e2e: profile list -> add-profile sheet -> native weston session.
-# Coordinate taps are pinned to the iPhone 17 Pro logical size (402x874);
-# compositor-side screens expose no accessibility nodes, so screenshots are
-# the source of truth (consumed by scripts/ui_parity_diff.py in CI).
+# Machines Start session — uses stable wwn.* ids (no coordinate taps).
 context platform=ios
 context session=wawona-ios-machines
 context device=iPhone 17 Pro
 
 open com.aspauldingcode.Wawona --relaunch
-wait 3000
+wait 2500
 screenshot ./.agent-device/test-artifacts/ios-machines-root.png
-
-# Open the Add Machine Profile sheet via the "+" FAB, capture, dismiss.
-click 341 732
-wait 1200
-screenshot ./.agent-device/test-artifacts/ios-add-machine-sheet.png
-click 58 100
-wait 1000
-
-# Start the Default Machine (bundled weston-terminal, in-process compositor).
-click 69 374
+press id="wwn.machines.start"
 wait 10000
 screenshot ./.agent-device/test-artifacts/ios-weston-session.png
-
 close

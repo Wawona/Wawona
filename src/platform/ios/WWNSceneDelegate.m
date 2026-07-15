@@ -142,6 +142,8 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
 
   self.view.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.78];
 
+  self.view.accessibilityIdentifier = @"wwn.welcome.root";
+
   UIView *card = [[UIView alloc] init];
   card.translatesAutoresizingMaskIntoConstraints = NO;
 #if TARGET_OS_TV
@@ -159,6 +161,7 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
   titleLabel.textAlignment = NSTextAlignmentCenter;
   titleLabel.font = [UIFont systemFontOfSize:28 weight:UIFontWeightSemibold];
   titleLabel.numberOfLines = 0;
+  titleLabel.accessibilityIdentifier = @"wwn.welcome.title";
 
   UILabel *bodyLabel = [[UILabel alloc] init];
   bodyLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -174,6 +177,8 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
   [continueButton setTitle:@"Continue" forState:UIControlStateNormal];
   continueButton.titleLabel.font =
       [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
+  continueButton.accessibilityIdentifier = @"wwn.welcome.continue";
+  continueButton.accessibilityLabel = @"Continue";
   UIButtonConfiguration *continueConfig = [UIButtonConfiguration filledButtonConfiguration];
   continueConfig.baseBackgroundColor = [UIColor systemBlueColor];
   continueConfig.baseForegroundColor = [UIColor whiteColor];

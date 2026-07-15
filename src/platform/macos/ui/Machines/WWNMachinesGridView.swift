@@ -27,6 +27,7 @@ struct WWNMachinesGridView: View {
       splitView
       #endif
     }
+    .wwnA11y(WWNA11y.machinesRoot, label: detailNavigationTitle)
     .sheet(isPresented: $isCreating) {
         WWNMachineEditorView(
           title: "Add Machine Profile",
@@ -136,14 +137,16 @@ struct WWNMachinesGridView: View {
       Button {
         isCreating = true
       } label: {
-        Label("Add", systemImage: "plus")
+        Label("Add Machine", systemImage: "plus")
       }
+      .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
 
       if let onOpenSettings {
         Button(action: onOpenSettings) {
           Image(systemName: "gearshape")
         }
         .help("Settings")
+        .wwnA11y(WWNA11y.machinesSettings, label: "Settings")
       }
     }
     #else
@@ -153,7 +156,7 @@ struct WWNMachinesGridView: View {
         Button(action: onOpenSettings) {
           Image(systemName: "gearshape")
         }
-        .accessibilityLabel("Settings")
+        .wwnA11y(WWNA11y.machinesSettings, label: "Settings")
       }
     }
     #endif
@@ -436,6 +439,7 @@ struct WWNMachinesGridView: View {
       }
     }
     .pickerStyle(.segmented)
+    .wwnA11y(WWNA11y.machinesFilter, label: "Machine Scope")
   }
 
   private var iosScopeFilterSelection: Binding<WWNMachineFilter> {
@@ -457,7 +461,7 @@ struct WWNMachinesGridView: View {
       }
       .buttonStyle(.glassProminent)
       .buttonBorderShape(.circle)
-      .accessibilityLabel("Add Machine")
+      .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
     } else {
       Button {
         isCreating = true
@@ -468,7 +472,7 @@ struct WWNMachinesGridView: View {
       }
       .buttonStyle(.borderedProminent)
       .buttonBorderShape(.circle)
-      .accessibilityLabel("Add Machine")
+      .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
     }
   }
   #endif

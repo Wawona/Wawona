@@ -4327,6 +4327,9 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
   UIView *clientView = [_windows objectForKey:@(event->window_id)];
   if (clientView && newTitle.length > 0) {
     clientView.accessibilityLabel = newTitle;
+    if (clientView.accessibilityIdentifier.length == 0) {
+      clientView.accessibilityIdentifier = @"wwn.compositor.surface";
+    }
   }
 
   // Update the UIWindowScene title so it appears in the app switcher

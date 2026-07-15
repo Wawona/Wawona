@@ -1,12 +1,95 @@
 [
-  { "command": "open", "input": { "app": "com.aspauldingcode.Wawona", "platform": "ios", "device": "iPhone 17 Pro" } },
-  { "command": "wait", "input": { "kind": "duration", "durationMs": 2000 } },
-  { "command": "snapshot", "input": { "interactiveOnly": true } },
-  { "command": "is", "input": { "predicate": "visible", "selector": "label=\"Machine Configuration\"" } },
-  { "command": "is", "input": { "predicate": "visible", "selector": "label=\"Start\" role=button" } },
-  { "command": "press", "input": { "target": { "kind": "selector", "selector": "label=\"Settings\" role=button" } } },
-  { "command": "wait", "input": { "kind": "duration", "durationMs": 800 } },
-  { "command": "is", "input": { "predicate": "visible", "selector": "label=\"Display\"" } },
-  { "command": "screenshot", "input": { "path": "./.agent-device/test-artifacts/ios-settings-batch.png" } },
-  { "command": "close", "input": {} }
+  {
+    "command": "open",
+    "input": {
+      "app": "com.aspauldingcode.Wawona",
+      "platform": "ios",
+      "device": "iPhone 17 Pro",
+      "relaunch": true
+    }
+  },
+  {
+    "command": "wait",
+    "input": { "kind": "duration", "durationMs": 2500 }
+  },
+  {
+    "command": "snapshot",
+    "input": { "interactiveOnly": true }
+  },
+  {
+    "command": "screenshot",
+    "input": { "path": "./.agent-device/test-artifacts/ios-first-screen.png" }
+  },
+  {
+    "command": "wait",
+    "input": {
+      "kind": "selector",
+      "selector": "id=\"wwn.machines.root\"",
+      "timeoutMs": 20000
+    }
+  },
+  {
+    "command": "is",
+    "input": {
+      "predicate": "visible",
+      "selector": "id=\"wwn.machines.start\""
+    }
+  },
+  {
+    "command": "press",
+    "input": {
+      "target": { "kind": "selector", "selector": "id=\"wwn.machines.settings\"" }
+    }
+  },
+  {
+    "command": "wait",
+    "input": {
+      "kind": "selector",
+      "selector": "id=\"wwn.settings.display\"",
+      "timeoutMs": 15000
+    }
+  },
+  {
+    "command": "is",
+    "input": {
+      "predicate": "visible",
+      "selector": "id=\"wwn.settings.display\""
+    }
+  },
+  {
+    "command": "screenshot",
+    "input": { "path": "./.agent-device/test-artifacts/ios-settings-display.png" }
+  },
+  {
+    "command": "press",
+    "input": {
+      "target": { "kind": "selector", "selector": "id=\"wwn.settings.done\"" }
+    }
+  },
+  {
+    "command": "wait",
+    "input": {
+      "kind": "selector",
+      "selector": "id=\"wwn.machines.root\"",
+      "timeoutMs": 15000
+    }
+  },
+  {
+    "command": "press",
+    "input": {
+      "target": { "kind": "selector", "selector": "id=\"wwn.machines.add\"" }
+    }
+  },
+  {
+    "command": "wait",
+    "input": { "kind": "duration", "durationMs": 1200 }
+  },
+  {
+    "command": "screenshot",
+    "input": { "path": "./.agent-device/test-artifacts/ios-add-machine-sheet.png" }
+  },
+  {
+    "command": "close",
+    "input": {}
+  }
 ]

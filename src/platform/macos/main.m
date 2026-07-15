@@ -428,6 +428,11 @@ static void setup_signal_sources(void) {
     alert.informativeText =
         @"A clean Wayland compositor experience for macOS, iOS, and Android.";
     [alert addButtonWithTitle:@"Continue"];
+    if (alert.buttons.count > 0) {
+      NSButton *continueButton = alert.buttons.firstObject;
+      continueButton.accessibilityIdentifier = @"wwn.welcome.continue";
+      continueButton.accessibilityLabel = @"Continue";
+    }
     [alert runModal];
     [prefs setHasSeenWelcome:YES];
   }

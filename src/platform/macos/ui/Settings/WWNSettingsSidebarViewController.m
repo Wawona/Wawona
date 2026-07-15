@@ -78,6 +78,8 @@
   [super viewDidLoad];
 
   self.title = @"Settings";
+  self.view.accessibilityIdentifier = @"wwn.settings.root";
+  self.view.accessibilityLabel = @"Settings";
 #if !TARGET_OS_TV
   self.navigationController.navigationBar.prefersLargeTitles = YES;
 #endif
@@ -104,6 +106,15 @@
                  cell.contentConfiguration = content;
                  cell.accessories =
                      @[ [[UICellAccessoryDisclosureIndicator alloc] init] ];
+                 cell.accessibilityLabel = section.title;
+                 cell.accessibilityIdentifier =
+                     section.accessibilityIdentifier
+                         ?: [NSString
+                                stringWithFormat:@"wwn.settings.%@",
+                                                 [[section.title lowercaseString]
+                                                     stringByReplacingOccurrencesOfString:
+                                                         @" "
+                                                                             withString:@"."]];
                }];
 
   // Configure data source
