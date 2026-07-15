@@ -98,13 +98,26 @@ run_android() {
   echo "== Android: machines-lane (label-driven) =="
   local sess=wawona-android-machines
   local ad_common=(--platform android --serial "$serial" --session "$sess")
+  dismiss_android_blockers() {
+    adb -s "$serial" shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1 || true
+    agent-device alert dismiss "${ad_common[@]}" >/dev/null 2>&1 || true
+    # ANR sheets expose Wait / Close app; prefer Wait so the app can recover.
+    if agent-device is visible 'label="Wait"' "${ad_common[@]}" >/dev/null 2>&1; then
+      agent-device press 'label="Wait"' "${ad_common[@]}" >/dev/null 2>&1 || true
+    fi
+    if agent-device is visible 'label="Close app"' "${ad_common[@]}" >/dev/null 2>&1; then
+      agent-device press 'label="Close app"' "${ad_common[@]}" >/dev/null 2>&1 || true
+    fi
+  }
   agent-device open com.aspauldingcode.wawona --relaunch "${ad_common[@]}"
   agent-device wait 4000 "${ad_common[@]}"
+  dismiss_android_blockers
   agent-device screenshot "$ARTIFACTS/android-first-screen.png" "${ad_common[@]}"
   if agent-device is visible 'label="Continue"' "${ad_common[@]}" >/dev/null 2>&1; then
     agent-device press 'label="Continue"' "${ad_common[@]}"
     agent-device wait 1500 "${ad_common[@]}"
   fi
+  dismiss_android_blockers
   agent-device screenshot "$ARTIFACTS/android-machines-root.png" "${ad_common[@]}"
   if agent-device is visible 'label="Got it"' "${ad_common[@]}" >/dev/null 2>&1; then
     agent-device press 'label="Got it"' "${ad_common[@]}"
@@ -117,8 +130,10 @@ run_android() {
     agent-device back "${ad_common[@]}"
     agent-device wait 1000 "${ad_common[@]}"
   fi
+  dismiss_android_blockers
   agent-device press 'label="Start"' "${ad_common[@]}"
   agent-device wait 10000 "${ad_common[@]}"
+  dismiss_android_blockers
   if agent-device is visible 'label="Got it"' "${ad_common[@]}" >/dev/null 2>&1; then
     agent-device press 'label="Got it"' "${ad_common[@]}"
     agent-device wait 500 "${ad_common[@]}"

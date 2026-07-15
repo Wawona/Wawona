@@ -101,13 +101,25 @@ run_android_fuzzel() {
   local sess=wawona-android-niri-fuzzel
   local ad_common=(--platform android --serial "$serial" --session "$sess")
   echo "== Android: niri+fuzzel label-driven start =="
+  dismiss_android_blockers() {
+    adb -s "$serial" shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1 || true
+    agent-device alert dismiss "${ad_common[@]}" >/dev/null 2>&1 || true
+    if agent-device is visible 'label="Wait"' "${ad_common[@]}" >/dev/null 2>&1; then
+      agent-device press 'label="Wait"' "${ad_common[@]}" >/dev/null 2>&1 || true
+    fi
+    if agent-device is visible 'label="Close app"' "${ad_common[@]}" >/dev/null 2>&1; then
+      agent-device press 'label="Close app"' "${ad_common[@]}" >/dev/null 2>&1 || true
+    fi
+  }
   agent-device open com.aspauldingcode.wawona --relaunch "${ad_common[@]}"
   agent-device wait 4000 "${ad_common[@]}"
+  dismiss_android_blockers
   agent-device screenshot "$ARTIFACTS/android-fuzzel-e2e-01-home.png" "${ad_common[@]}"
   if agent-device is visible 'label="Continue"' "${ad_common[@]}" >/dev/null 2>&1; then
     agent-device press 'label="Continue"' "${ad_common[@]}"
     agent-device wait 1500 "${ad_common[@]}"
   fi
+  dismiss_android_blockers
   agent-device screenshot "$ARTIFACTS/android-fuzzel-e2e-02-machines.png" "${ad_common[@]}"
   if agent-device is visible 'label="Got it"' "${ad_common[@]}" >/dev/null 2>&1; then
     agent-device press 'label="Got it"' "${ad_common[@]}"
@@ -117,8 +129,10 @@ run_android_fuzzel() {
     agent-device press 'label="All Machines"' "${ad_common[@]}"
     agent-device wait 500 "${ad_common[@]}"
   fi
+  dismiss_android_blockers
   agent-device press 'label="Start"' "${ad_common[@]}"
   agent-device wait 12000 "${ad_common[@]}"
+  dismiss_android_blockers
   agent-device screenshot "$ARTIFACTS/android-fuzzel-e2e-03-niri-starting.png" "${ad_common[@]}"
   if agent-device is visible 'label="Done"' "${ad_common[@]}" >/dev/null 2>&1; then
     agent-device press 'label="Done"' "${ad_common[@]}"
