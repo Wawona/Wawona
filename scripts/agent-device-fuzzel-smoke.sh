@@ -67,6 +67,8 @@ run_android_fuzzel() {
   export ANDROID_SERIAL="$serial"
   echo "== Android fuzzel: serial=$serial =="
   adb -s "$serial" shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+  # Prefer hard-keyboard input so Gboard does not cover fuzzel's filter field.
+  adb -s "$serial" shell settings put secure show_ime_with_hard_keyboard 0 >/dev/null 2>&1 || true
 
   if [[ -n "${WAWONA_ANDROID_APK:-}" ]]; then
     echo "== Android: install $WAWONA_ANDROID_APK =="
@@ -207,8 +209,17 @@ run_android_fuzzel() {
     android_guest_evidence fuzzel && return 0
     local log
     log="$(adb -s "$serial" logcat -d 2>/dev/null | tr -d '\r' || true)"
-    echo "$log" | grep -qiE "spawn(ed)? ['\"]?fuzzel|Running fuzzel|fuzzel: |application:'libfuzzel" && return 0
+    # SELinux audit lines use tag "fuzzel" when the binary is alive.
+    echo "$log" | grep -qE ' W fuzzel |application:.libfuzzel|error spawning "fuzzel"' && {
+      echo "$log" | grep -q 'error spawning "fuzzel"' && return 1
+      return 0
+    }
     return 1
+  }
+  android_hide_ime() {
+    adb -s "$serial" shell input keyevent 111 >/dev/null 2>&1 || true # ESC
+    adb -s "$serial" shell input keyevent 4 >/dev/null 2>&1 || true   # BACK
+    sleep 0.4
   }
 
   local procs="" evidence=""
@@ -277,10 +288,18 @@ run_android_fuzzel() {
   echo "PASS: weston-simple-shm on PATH"
 
   # Launch Weston Simple SHM from fuzzel while the session is still open.
+  # Gboard otherwise swallows `input text` above the nested compositor.
+  android_hide_ime
+  focus_xy="$(android_scale_xy 540 900)"
+  # shellcheck disable=SC2086
+  adb -s "$serial" shell input tap $focus_xy
+  sleep 0.3
+  android_hide_ime
+  adb -s "$serial" logcat -c >/dev/null 2>&1 || true
   adb -s "$serial" shell input text 'weston-simple'
-  sleep 0.5
+  sleep 0.8
   adb -s "$serial" shell input keyevent 66   # ENTER
-  sleep 3
+  sleep 4
 
   local after_launch
   after_launch="$(adb -s "$serial" shell 'ps -A -w' 2>/dev/null | tr -d '\r' | grep -iE 'niri|fuzzel|weston-simple|wawona_wl' || true)"
@@ -292,8 +311,24 @@ run_android_fuzzel() {
 
   # Client may appear as libwawona_wl_bin.so or remain under the Wawona PID;
   # require either a new process OR log evidence of launcher success.
-  # Ubuntu runners lack ripgrep — use grep.
   adb -s "$serial" logcat -d >"$logf" 2>/dev/null || true
+  if ! grep -qE 'WawonaWlBin|launch weston-simple-shm|weston_simple_shm_main' "$logf"; then
+    if ! echo "$after_launch" | grep -qE 'wawona_wl|weston-simple'; then
+      echo "WARN: fuzzel Enter did not launch client; retry once" >&2
+      android_hide_ime
+      android_inject_alt_d || true
+      sleep 1.5
+      android_hide_ime
+      adb -s "$serial" shell input text 'weston-simple'
+      sleep 0.8
+      adb -s "$serial" shell input keyevent 66
+      sleep 4
+      adb -s "$serial" logcat -d >"$logf" 2>/dev/null || true
+      after_launch="$(adb -s "$serial" shell 'ps -A -w' 2>/dev/null | tr -d '\r' | grep -iE 'niri|fuzzel|weston-simple|wawona_wl' || true)"
+      echo "$after_launch" | tee "$ARTIFACTS/android-fuzzel-e2e-procs-after-launch.txt"
+      adb -s "$serial" exec-out screencap -p >"$shot2"
+    fi
+  fi
   if ! grep -qE 'WawonaWlBin|launch weston-simple-shm|weston_simple_shm_main' "$logf"; then
     if ! echo "$after_launch" | grep -qE 'wawona_wl|weston-simple'; then
       echo "FAIL: no evidence weston-simple-shm launched from fuzzel" >&2
