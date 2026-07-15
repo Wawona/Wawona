@@ -68,36 +68,55 @@ android_uia_tap_text() {
   local serial="${ANDROID_SERIAL:-${WAWONA_ANDROID_SERIAL:-}}"
   local adb=(adb)
   [[ -n "$serial" ]] && adb=(adb -s "$serial")
-  "${adb[@]}" shell uiautomator dump /sdcard/wawona-ui.xml >/dev/null 2>&1 || return 1
   local xml line x1 y1 x2 y2 cx cy
-  xml="$("${adb[@]}" exec-out cat /sdcard/wawona-ui.xml 2>/dev/null | tr -d '\r')" || return 1
+  xml="$(android_uia_dump)" || return 1
   line="$(printf '%s' "$xml" | tr '>' '\n' | grep -F "text=\"$want\"" | head -1)"
   [[ -n "$line" ]] || return 1
   read -r x1 y1 x2 y2 <<<"$(printf '%s' "$line" | sed -n 's/.*bounds="\[\([0-9]*\),\([0-9]*\)\]\[\([0-9]*\),\([0-9]*\)\]".*/\1 \2 \3 \4/p')"
   [[ -n "${x1:-}" && -n "${y1:-}" && -n "${x2:-}" && -n "${y2:-}" ]] || return 1
   cx=$(( (x1 + x2) / 2 ))
   cy=$(( (y1 + y2) / 2 ))
+  echo "== Android: uia tap text='$want' at ${cx},${cy} =="
   "${adb[@]}" shell input tap "$cx" "$cy"
+}
+
+android_uia_dump() {
+  local serial="${ANDROID_SERIAL:-${WAWONA_ANDROID_SERIAL:-}}"
+  local adb=(adb)
+  [[ -n "$serial" ]] && adb=(adb -s "$serial")
+  local out path
+  # Prefer exec-out dump (avoids /sdcard permission issues on some API 34 images).
+  out="$("${adb[@]}" exec-out uiautomator dump /dev/tty 2>/dev/null | tr -d '\r')" || true
+  if printf '%s' "$out" | grep -q '<hierarchy'; then
+    printf '%s' "$out"
+    return 0
+  fi
+  "${adb[@]}" shell uiautomator dump /sdcard/wawona-ui.xml >/dev/null 2>&1 \
+    || "${adb[@]}" shell uiautomator dump >/dev/null 2>&1 \
+    || return 1
+  for path in /sdcard/wawona-ui.xml /sdcard/window_dump.xml; do
+    out="$("${adb[@]}" exec-out cat "$path" 2>/dev/null | tr -d '\r')" || true
+    if printf '%s' "$out" | grep -q '<hierarchy'; then
+      printf '%s' "$out"
+      return 0
+    fi
+  done
+  return 1
 }
 
 android_uia_has_text() {
   local want="$1"
-  local serial="${ANDROID_SERIAL:-${WAWONA_ANDROID_SERIAL:-}}"
-  local adb=(adb)
-  [[ -n "$serial" ]] && adb=(adb -s "$serial")
-  "${adb[@]}" shell uiautomator dump /sdcard/wawona-ui.xml >/dev/null 2>&1 || return 1
-  "${adb[@]}" exec-out cat /sdcard/wawona-ui.xml 2>/dev/null | tr -d '\r' | grep -Fq "text=\"$want\""
+  local xml
+  xml="$(android_uia_dump)" || return 1
+  printf '%s' "$xml" | grep -Fq "text=\"$want\""
 }
 
 # Compose testTagsAsResourceId → resource-id containing the wwn.* tag.
 android_uia_has_id() {
   local want="$1"
-  local serial="${ANDROID_SERIAL:-${WAWONA_ANDROID_SERIAL:-}}"
-  local adb=(adb)
-  [[ -n "$serial" ]] && adb=(adb -s "$serial")
-  "${adb[@]}" shell uiautomator dump /sdcard/wawona-ui.xml >/dev/null 2>&1 || return 1
-  "${adb[@]}" exec-out cat /sdcard/wawona-ui.xml 2>/dev/null | tr -d '\r' \
-    | grep -Eiq "resource-id=\"[^\"]*${want}\""
+  local xml
+  xml="$(android_uia_dump)" || return 1
+  printf '%s' "$xml" | grep -Eiq "resource-id=\"[^\"]*${want}\""
 }
 
 # Poll UiAutomator until text or resource-id appears (agent-device waits can miss Compose).

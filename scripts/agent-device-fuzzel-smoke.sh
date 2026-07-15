@@ -128,16 +128,18 @@ run_android_fuzzel() {
   }
   android_dismiss_welcome() {
     local attempt
-    for attempt in 1 2 3; do
-      if ! android_uia_has_text "Continue" && ! android_uia_has_id "wwn.welcome.continue"; then
+    for attempt in 1 2 3 4 5; do
+      if android_uia_has_id "wwn.machines.root" || android_uia_has_text "Machine Configuration"; then
         return 0
       fi
-      android_press_id "wwn.welcome.continue" \
-        || android_press_text "Continue" \
-        || android_tap_ref 540 1404 \
-        || android_tap_ref 540 1450 \
-        || true
-      agent-device wait 2000 "${ad_common[@]}"
+      android_press_id "wwn.welcome.continue" || true
+      android_press_text "Continue" || true
+      agent-device press 'label="Continue"' "${ad_common[@]}" >/dev/null 2>&1 || true
+      agent-device press 'text="Continue"' "${ad_common[@]}" >/dev/null 2>&1 || true
+      android_tap_ref 540 1404 || true
+      android_tap_ref 540 1450 || true
+      adb -s "$serial" shell input tap 540 1404 >/dev/null 2>&1 || true
+      agent-device wait 2500 "${ad_common[@]}"
       dismiss_android_blockers
     done
   }
