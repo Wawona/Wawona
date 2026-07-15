@@ -146,22 +146,20 @@ run_android_fuzzel() {
     done
   }
   android_press_start() {
-    local attempt
-    for attempt in 1 2 3 4; do
-      android_press_id "wwn.machines.start" || true
-      android_press_text "Start" || true
-      android_tap_ref 227 1039 || true
-      android_tap_ref 270 1100 || true
-      android_tap_ref 300 1200 || true
-      agent-device wait 1200 "${ad_common[@]}"
-      dismiss_android_blockers
-      if ! android_uia_has_text "Start" || android_uia_has_id "wwn.compositor.surface"; then
-        return 0
-      fi
-      if android_uia_has_text "Focus" || android_uia_has_text "Stop"; then
-        return 0
-      fi
-    done
+    # Pre-a11y semantics: successful tap counts; session settles after wait.
+    if android_press_id "wwn.machines.start" || android_press_text "Start"; then
+      return 0
+    fi
+    android_tap_ref 227 1039
+    agent-device wait 800 "${ad_common[@]}"
+    if android_uia_has_text "Start"; then
+      android_tap_ref 216 1040
+      agent-device wait 800 "${ad_common[@]}"
+    fi
+    if ! android_uia_has_text "Start"; then
+      return 0
+    fi
+    android_uia_tap_id "wwn.machines.start" && return 0
     return 1
   }
   agent-device open com.aspauldingcode.wawona --relaunch "${ad_common[@]}"

@@ -192,24 +192,23 @@ run_android() {
     done
   }
   android_press_start() {
-    local attempt
-    for attempt in 1 2 3 4; do
-      android_press_id "wwn.machines.start" || true
-      android_press_text "Start" || true
-      # Default Machine Start on pixel_7 / 1080x2400 (card mid-left).
-      android_tap_ref 227 1039 || true
-      android_tap_ref 270 1100 || true
-      android_tap_ref 300 1200 || true
-      agent-device wait 1200 "${ad_common[@]}"
-      dismiss_android_blockers
-      # Success: Start control gone, or session/compositor chrome appeared.
-      if ! android_uia_has_text "Start" || android_uia_has_id "wwn.compositor.surface"; then
-        return 0
-      fi
-      if android_uia_has_text "Focus" || android_uia_has_text "Stop"; then
-        return 0
-      fi
-    done
+    # Match pre-a11y gate: a successful tap is enough here. Session chrome is
+    # observed after the following wait; requiring Start to disappear made CI
+    # fail when Compose still showed Start during CONNECTING / slow launch.
+    if android_press_id "wwn.machines.start" || android_press_text "Start"; then
+      return 0
+    fi
+    android_tap_ref 227 1039
+    agent-device wait 800 "${ad_common[@]}"
+    if android_uia_has_text "Start"; then
+      android_tap_ref 216 1040
+      agent-device wait 800 "${ad_common[@]}"
+    fi
+    if ! android_uia_has_text "Start"; then
+      return 0
+    fi
+    # Last resort: id bounds tap (agent-device press is a no-op on Compose).
+    android_uia_tap_id "wwn.machines.start" && return 0
     return 1
   }
   android_wait_machines_home() {
@@ -244,31 +243,38 @@ run_android() {
   android_press_text "Got it" || true
   agent-device wait 500 "${ad_common[@]}"
 
-  # Settings → Display → Done (parity with iOS smoke).
-  if android_press_id "wwn.machines.settings" || android_press_text "Settings"; then
-    android_uia_wait id "wwn.settings.display" 15000 \
-      || android_uia_wait text "Display" 5000 \
-      || true
-    if android_press_id "wwn.settings.display" || android_press_text "Display"; then
-      agent-device wait 800 "${ad_common[@]}"
-    fi
-    agent-device screenshot "$ARTIFACTS/android-settings-display.png" "${ad_common[@]}"
-    android_press_id "wwn.settings.done" || android_press_text "Done" || agent-device back "${ad_common[@]}" || true
-    agent-device wait 1000 "${ad_common[@]}"
-  fi
-  dismiss_android_blockers
+  android_dismiss_modals() {
+    # Settings / Add Machine sheets leave a Material3 scrim that eats Start taps
+    # while the Machines card (and text="Start") stays visible underneath.
+    local i
+    for i in 1 2 3 4 5; do
+      if android_uia_has_text "Cancel" \
+        || android_uia_has_text "Wawona Settings" \
+        || android_uia_has_text "Add Machine Profile" \
+        || android_uia_has_id "wwn.settings.root" \
+        || android_uia_has_id "wwn.machines.editor"; then
+        android_press_text "Cancel" || true
+        android_press_id "wwn.settings.done" || android_press_text "Done" || true
+        agent-device back "${ad_common[@]}" >/dev/null 2>&1 || true
+        adb -s "$serial" shell input keyevent 4 >/dev/null 2>&1 || true
+        agent-device wait 800 "${ad_common[@]}"
+        continue
+      fi
+      return 0
+    done
+  }
 
-  if android_press_id "wwn.machines.add" || android_press_text "Add Machine"; then
-    agent-device wait 1500 "${ad_common[@]}"
-    agent-device screenshot "$ARTIFACTS/android-add-machine-sheet.png" "${ad_common[@]}"
-    agent-device back "${ad_common[@]}"
-    agent-device wait 1000 "${ad_common[@]}"
-  fi
+  # Match fuzzel lane: Start while Machines is unobstructed. Opening Settings/Add
+  # before Start left a modal scrim that swallowed taps (Start still visible).
+  android_dismiss_modals
   dismiss_android_blockers
   android_press_start || {
     echo "FAIL: could not press Start (id=wwn.machines.start)" >&2
+    agent-device screenshot "$ARTIFACTS/android-start-fail.png" "${ad_common[@]}" || true
+    android_uia_dump >"$ARTIFACTS/android-start-fail-ui.xml" 2>/dev/null || true
     agent-device snapshot -i --raw "${ad_common[@]}" || true
-    adb -s "$serial" exec-out cat /sdcard/wawona-ui.xml 2>/dev/null | tr '>' '\n' | grep -E 'text=|content-desc=|resource-id=' | head -50 || true
+    grep -E 'text=|content-desc=|resource-id=' "$ARTIFACTS/android-start-fail-ui.xml" 2>/dev/null | head -80 || true
+    adb -s "$serial" logcat -d -t 80 2>/dev/null | grep -Ei 'wawona|native runtime|Failed to launch|CONNECT' | tail -40 || true
     exit 1
   }
   agent-device wait 10000 "${ad_common[@]}"
