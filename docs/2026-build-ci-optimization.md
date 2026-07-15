@@ -40,19 +40,23 @@ Operational runbook: [`flakehub-cache.md`](./flakehub-cache.md).
   builds Weston + clients; Wawona consumes them via flake inputs and **FlakeHub
   Cache** substitutes. Do not rebuild a sibling's artifact in Wawona CI when the
   hash is already cached.
+- **Product binaries once per SHA.** [`product-build.yml`](../.github/workflows/product-build.yml)
+  owns `wawona-ios` / `wawona-android` / `wawona-macos` / `wawona-appimage`.
+  [`device-gate.yml`](../.github/workflows/device-gate.yml) runs product-build
+  then Device e2e with `products_ready`. Release packages DMG/APK/AppImage from
+  those GHA artifacts; Release Beta resolves AppImages by SHA when possible.
+  Impure IPA/AAB stay publish-only. See [`ci.md`](./ci.md).
 - **Curated push/PR matrix.** `nix.yml` builds only
-  [`.github/ci-package-matrix.json`](../.github/ci-package-matrix.json) (~13
-  attrs), not `builtins.attrNames` of every package. See [`ci.md`](./ci.md).
+  [`.github/ci-package-matrix.json`](../.github/ci-package-matrix.json)
+  (backends / substrate — not full product apps).
 - **Branch parity.** `development` and `master` both run Nix CI + Android parity
-  + Device e2e. Release Beta / Release stay on `master` / tags.
-- **Path filters.** Workflows use `on.push/pull_request.paths` (see
-  `android-parity.yml`, `device-e2e.yml`) so a docs-only change doesn't trigger
-  native builds where filtered.
+  + Device gate. Release Beta / Release stay on `master` / tags.
+- **Path filters.** `device-gate.yml` / `android-parity.yml` use path filters so
+  docs-only changes skip native builds.
 - **Fast PR gate vs nightly.**
-  - *Push/PR gate* (`nix.yml` + parity + e2e): verify, tests, curated builds,
-    GUI smoke on `development`/`master`.
-  - *Nightly* (`nightly-full-matrix.yml`): always checks out **`development`**
-    for deep/flaky lanes (graphics, capability, full e2e call).
+  - *Push gate* (`nix.yml` + parity + device-gate): curated builds + GUI smoke/fuzzel.
+  - *PR:* fuzzel lanes skipped; smoke still runs when device-e2e is invoked.
+  - *Nightly:* calls device-gate on **`development` tip**.
 - **Reproducibility.** `repro-rebuild` `--rebuild`s backend + workspace-src and
   byte-compares; `verify-no-tar-wildcards.py` bans nondeterministic archives.
   Deterministic outputs are what make FlakeHub Cache safe to trust.

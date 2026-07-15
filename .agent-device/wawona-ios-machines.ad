@@ -4,9 +4,9 @@ context session=wawona-ios-machines
 context device=iPhone 17 Pro
 
 open com.aspauldingcode.Wawona --relaunch
-wait 2500
+wait 2000
 screenshot ./.agent-device/test-artifacts/ios-machines-root.png
 press id="wwn.machines.start"
-wait 10000
+wait 8000
 screenshot ./.agent-device/test-artifacts/ios-weston-session.png
 close

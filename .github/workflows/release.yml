@@ -1,8 +1,7 @@
 name: Release
 
 # Tag push (v*) → GitHub Release with macOS DMG, Android APK, iOS IPA, and Linux
-# AppImages (x86_64 + aarch64). Store submission (App Store / Play production)
-# is separate: use fastlane ios release / Play production lanes when ready.
+# AppImages. Pure products come from product-build (once); IPA stays impure.
 
 on:
   push:
@@ -16,35 +15,42 @@ concurrency:
 permissions:
   contents: write
   id-token: write
+  actions: read
 
 env:
   NIXPKGS_ALLOW_UNFREE: '1'
 
 jobs:
+  products:
+    name: Product build
+    uses: ./.github/workflows/product-build.yml
+    permissions:
+      contents: read
+      id-token: write
+
   release-macos:
+    needs: products
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select Xcode
-        run: ./.github/scripts/select-xcode.sh
-
-      - uses: DeterminateSystems/nix-installer-action@v22
+      - name: Download product-macos-app
+        uses: actions/download-artifact@v4
         with:
-          determinate: true
-          extra-conf: |
-            sandbox = relaxed
-            allow-import-from-derivation = true
-      - uses: DeterminateSystems/flakehub-cache-action@v3
-
-      - name: Build macOS app
-        run: ./.github/scripts/nix-retry.sh nix build .#wawona-macos --print-build-logs
+          name: product-macos-app
+          path: product-macos-app/
 
       - name: Create DMG
         run: |
           VERSION=$(cat VERSION)
           mkdir -p dmg-staging
-          cp -R result/Applications/Wawona.app dmg-staging/
+          if [[ -d product-macos-app/Wawona.app ]]; then
+            cp -R product-macos-app/Wawona.app dmg-staging/
+          else
+            found="$(find product-macos-app -name 'Wawona.app' -type d | head -1)"
+            [[ -n "$found" ]] || { echo "Wawona.app missing"; exit 1; }
+            cp -R "$found" dmg-staging/
+          fi
           ln -s /Applications dmg-staging/Applications
           hdiutil create -volname "Wawona" -srcfolder dmg-staging \
             -ov -format UDZO "Wawona-${VERSION}.dmg"
@@ -94,32 +100,26 @@ jobs:
           path: dist/Wawona-*-iOS.ipa
 
   release-android:
+    needs: products
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
-            /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
-          docker image prune -af || true
-
-      - uses: DeterminateSystems/nix-installer-action@v22
+      - name: Download product-android-apk
+        uses: actions/download-artifact@v4
         with:
-          determinate: true
-          extra-conf: |
-            build-dir = /nix/build
-            sandbox = relaxed
-            allow-import-from-derivation = true
-      - uses: DeterminateSystems/flakehub-cache-action@v3
-
-      - name: Build Android APK
-        run: ./.github/scripts/nix-retry.sh nix build .#wawona-android --print-build-logs
+          name: product-android-apk
+          path: dist/
 
       - name: Copy APK
         run: |
           VERSION=$(cat VERSION)
-          cp result/bin/Wawona.apk "Wawona-${VERSION}.apk"
+          if [[ ! -f dist/Wawona.apk ]]; then
+            found="$(find dist -name 'Wawona.apk' -type f | head -1)"
+            [[ -n "$found" ]] || { echo "APK missing"; exit 1; }
+            cp -L "$found" dist/Wawona.apk
+          fi
+          cp dist/Wawona.apk "Wawona-${VERSION}.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -129,47 +129,35 @@ jobs:
 
   release-linux:
     name: "Linux AppImage (${{ matrix.system }})"
+    needs: products
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-latest
-            system: x86_64-linux
-          - runner: ubuntu-24.04-arm
-            system: aarch64-linux
-    runs-on: ${{ matrix.runner }}
+          - system: x86_64-linux
+          - system: aarch64-linux
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
-            /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
-          docker image prune -af || true
-
-      - uses: DeterminateSystems/nix-installer-action@v22
+      - name: Download product AppImage
+        uses: actions/download-artifact@v4
         with:
-          determinate: true
-          extra-conf: |
-            build-dir = /nix/build
-            sandbox = relaxed
-            allow-import-from-derivation = true
-            trusted-users = runner root
-      - uses: DeterminateSystems/flakehub-cache-action@v3
+          name: product-appimage-${{ matrix.system }}
+          path: dist/
 
-      - name: Build AppImage
+      - name: Stage for release
         run: |
-          ./.github/scripts/nix-retry.sh \
-            nix build ".#packages.${{ matrix.system }}.wawona-appimage" --print-build-logs
-
-      - name: Smoke-test and stage AppImage
-        run: ./.github/scripts/appimage-smoke.sh result "${{ matrix.system }}"
+          mkdir -p release-stage
+          find dist -name '*.AppImage' -type f -exec cp -v {} release-stage/ \;
+          ls -la release-stage/
+          test "$(ls release-stage/*.AppImage | wc -l)" -ge 1
 
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
         with:
           name: linux-appimage-${{ matrix.system }}
-          path: dist/*.AppImage
+          path: release-stage/*.AppImage
 
   create-release:
     needs: [release-macos, release-ios, release-android, release-linux]
@@ -196,13 +184,7 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
 
-          PRERELEASE=""
-          if echo "$VERSION" | grep -q '-'; then
-            PRERELEASE="--prerelease"
-          fi
-
-          gh release create "$TAG" \
-            --title "Wawona v${VERSION}" \
+          gh release create "$TAG" release-assets/* \
+            --title "Wawona $VERSION" \
             --generate-notes \
-            $PRERELEASE \
-            release-assets/*
+            --latest

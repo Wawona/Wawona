@@ -3,22 +3,45 @@
 Branch policy lives in [`.cursor/rules/wawona-branch-workflow.mdc`](../.cursor/rules/wawona-branch-workflow.mdc).
 Green-light gate *layers* (L0–L4) live in [`2026-greenlight-gates.md`](./2026-greenlight-gates.md).
 Binary cache: [`flakehub-cache.md`](./flakehub-cache.md).
+Build dedupe: [`2026-build-ci-optimization.md`](./2026-build-ci-optimization.md).
+
+## When to beta vs release
+
+| You do… | Runs… | Ships… |
+|---------|-------|--------|
+| Work / PR on **`development`** | Nix CI, Android parity, **Device gate** (product-build → e2e) | Nothing to stores or GitHub Releases |
+| Promote green tip → **`master`** (push) | **Release Beta** | TestFlight + Play internal + Linux AppImage workflow artifacts |
+| Tag **`v*`** on a release commit | **Release Beta** *and* **Release** | Store betas + GitHub Release assets |
+
+**Promote rule:** `development` → `master` only when Nix CI + Android parity + Device gate/e2e are green on that tip.
 
 ## Branch × workflow
 
 | Workflow | `development` | `master` | Why |
 |----------|:-------------:|:--------:|-----|
-| **Nix CI** (`nix.yml`) | push + PR | push + PR | L0–L2: verify scripts, cargo/swift tests, **curated** package builds. Required before promote. |
-| **Android parity** | push (path filter) + PR | push + PR | Android shell-tool / meson / gradle assemble. |
-| **Device GUI e2e** | push (path filter) | push (path filter) | L3: agent-device replays (iOS sim, Android emu, macOS niri/fuzzel). |
-| **Nightly full matrix** | tip checked out | — | L4 + slow lanes; always tests **`development` tip** on schedule. |
-| **Release Beta** | — | push | TestFlight / Play internal / AppImage betas — release channel only. |
-| **Release** | — | tags `v*` | GitHub Release assets. |
-| **publish-ios** | — | manual | Legacy TestFlight; prefer Release Beta. |
+| **Nix CI** (`nix.yml`) | push + PR | push + PR | L0–L2: verify, cargo/swift tests, **curated** backends (not full product apps) |
+| **Android parity** | path filter + PR | push + PR | Gradle assembleDebug + meson/shell gates |
+| **Device gate** (`device-gate.yml`) | path filter push | path filter push | Calls **product-build** once, then **Device GUI e2e** |
+| **Product build** (`product-build.yml`) | via device-gate / Release | via gate / Beta resolve / Release | Sole pure producer: iOS sim `.app`, debug APK, macOS `.app`, AppImages |
+| **Device GUI e2e** | via device-gate (`products_ready`) | via gate | Smoke + fuzzel (fuzzel skipped on `pull_request` only) |
+| **Nightly full matrix** | tip via device-gate | — | L4 + deep lanes on **`development` tip** |
+| **Release Beta** | — | push + tags `v*` | Fastlane stores; AppImages resolved from product-build when possible |
+| **Release** | — | tags `v*` | GitHub Release: DMG/APK/AppImage from product-build; IPA impure |
 
-`main` is accepted as an alias of `master` in a few triggers for legacy remotes.
+## Single-build product pipeline
 
-**Promote rule:** `development` → `master` only when required workflows are green on that tip (Nix CI, Android parity, Device e2e). Release Beta runs *after* promote on `master`.
+Pure ship/test binaries are built **once per SHA** by [`product-build.yml`](../.github/workflows/product-build.yml):
+
+| Artifact | Attr | Consumers |
+|----------|------|-----------|
+| `product-ios-sim` | `.#wawona-ios` | Device e2e |
+| `product-android-apk` | `.#wawona-android` | Device e2e, Release |
+| `product-macos-app` | `.#wawona-macos` | Device e2e, Release (DMG wrap) |
+| `product-appimage-<system>` | `.#wawona-appimage` | Release Beta, Release |
+
+Helpers: [`.github/scripts/resolve-product-artifacts.sh`](../.github/scripts/resolve-product-artifacts.sh).
+
+Signed IPA/AAB remain **impure** Fastlane/Release steps (secrets); they reuse FlakeHub-warmed pure intermediates.
 
 ## FlakeHub Cache (required)
 
@@ -28,32 +51,22 @@ Every Nix-installing job must:
 2. `DeterminateSystems/nix-installer-action` with `determinate: true`
 3. `DeterminateSystems/flakehub-cache-action@v3`
 
-No Magic Nix Cache. No self-hosted Attic. Owner `wwn-*` repos push the same way so Wawona substitutes Layer-1 paths.
-
 ## Why the package matrix is curated
 
-Historically `nix.yml` built **every** `packages.<system>` attr (~100+ Darwin × 2 + Linux). That:
-
-- Burned Actions minutes without improving signal
-- Flooded FlakeHub with low-value intermediates
-- Made “is development green?” unreadable
-
-Push/PR Nix CI now builds only [`.github/ci-package-matrix.json`](../.github/ci-package-matrix.json) (~13 targets): product backends, one nested compositor, shell, graphics validate, Linux AppImage/UI. Full attr enumeration belongs in research / one-off `workflow_dispatch`, not the merge gate.
+Push/PR Nix CI builds only [`.github/ci-package-matrix.json`](../.github/ci-package-matrix.json): backends, weston/niri/shell, graphics validate, `wawona-linux-ui-bin`. **Not** `wawona-macos` / `wawona-appimage` / full iOS/Android apps — those are **product-build**.
 
 ## Job map (Nix CI)
 
 | Job | Layer | Why |
 |-----|-------|-----|
 | `prepare-matrix` | L0 | Verify scripts + flake check; emit curated matrix |
-| `cargo-test-linux` | L1 | Rust core + linux-ui + protocol-status drift |
-| `cargo-test-macos-arm64` | L1 | Native Darwin Rust tests |
-| `swift-test-macos-x86_64` | L1 | SwiftUI / model contract tests |
-| `build` (matrix) | L2 | Curated `nix build` + FlakeHub push/pull |
+| `cargo-test-*` / `swift-test-*` | L1 | Language tests |
+| `build` (matrix) | L2 | Curated attrs + FlakeHub |
 | `frontend-syntax-check` | L2-lite | Xcode syntax without full Nix backend |
 
-## Adding a matrix target
+## Device e2e speed notes
 
-1. Confirm `nix build .#packages.<system>.<attr>` works locally.
-2. Append to `.github/ci-package-matrix.json` with a one-line `why`.
-3. Prefer attrs that **fail closed** on real regressions over “build every lib.”
-4. Heavy IPA / full `wawona-ios` / full `wawona-android` APK stay on **device-e2e** / release, not every push.
+- Fail-fast: one smoke/fuzzel attempt (no suite retries).
+- Same-session `prepare ios-runner` + `open` (do not kill prepare daemon before open).
+- Fuzzel: required on `development`/`master` **push**; skipped on `pull_request` only.
+- XCTest runner cache key includes Xcode version; hit/miss is logged.

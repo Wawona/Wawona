@@ -1,0 +1,252 @@
+name: Product build
+
+# Sole pure producer for ship/test binaries. Consumers (device-e2e, Release,
+# Release Beta) download GHA artifacts; FlakeHub Cache substitutes store paths.
+# Do not schedule this on push directly — device-gate / Release call it once
+# per SHA via workflow_call.
+
+on:
+  workflow_dispatch: {}
+  workflow_call:
+    inputs:
+      checkout_ref:
+        description: "Git ref to build (empty = caller sha)"
+        type: string
+        required: false
+        default: ""
+
+concurrency:
+  group: product-build-${{ github.sha }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  NIXPKGS_ALLOW_UNFREE: "1"
+
+jobs:
+  ios-sim:
+    name: "iOS sim .app"
+    runs-on: macos-26
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+
+      - name: Select Xcode
+        run: |
+          XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$XCODE_APP" ] || { echo "::error::No Xcode found"; exit 1; }
+          sudo xcode-select -s "$XCODE_APP"
+          xcodebuild -version | tee /tmp/xcode-version.txt
+
+      - name: Warm CoreSimulator
+        run: |
+          open -a Simulator || true
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if xcrun simctl list runtimes 2>/dev/null | grep -q 'iOS'; then
+              echo "iOS Simulator runtime visible"
+              break
+            fi
+            sleep 2
+          done
+          if xcrun simctl list runtimes 2>/dev/null | grep -q 'iOS'; then
+            echo "WAWONA_SKIP_IOS_SIMULATOR_PLATFORM_DOWNLOAD=1" >> "$GITHUB_ENV"
+          fi
+
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+
+      - name: Build wawona-ios
+        run: ./.github/scripts/nix-retry.sh nix build ".#wawona-ios" --print-build-logs --out-link result-ios
+
+      - name: Stage + manifest
+        run: |
+          mkdir -p dist/ios-sim
+          cp -R result-ios/Wawona.app dist/ios-sim/
+          OUT="$(readlink -f result-ios)"
+          {
+            echo "{"
+            echo "  \"attr\": \"wawona-ios\","
+            echo "  \"sha\": \"${{ github.sha }}\","
+            echo "  \"outPath\": \"$OUT\","
+            echo "  \"artifact\": \"product-ios-sim\""
+            echo "}"
+          } > dist/ios-sim/product-manifest.json
+          # Note whether path looks cache-backed (best-effort).
+          if nix path-info --json "$OUT" 2>/dev/null | grep -q cache.flakehub.com; then
+            echo "flakehub_substitute=likely" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          ls -la dist/ios-sim/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: product-ios-sim
+          path: dist/ios-sim/
+          if-no-files-found: error
+          retention-days: 14
+
+  android-apk:
+    name: "Android debug APK"
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+
+      - name: Build wawona-android
+        run: ./.github/scripts/nix-retry.sh nix build ".#wawona-android" --print-build-logs --out-link result-android
+
+      - name: Stage APK
+        run: |
+          mkdir -p dist
+          cp -L result-android/bin/Wawona.apk dist/Wawona.apk
+          OUT="$(readlink -f result-android)"
+          {
+            echo "{"
+            echo "  \"attr\": \"wawona-android\","
+            echo "  \"sha\": \"${{ github.sha }}\","
+            echo "  \"outPath\": \"$OUT\","
+            echo "  \"artifact\": \"product-android-apk\""
+            echo "}"
+          } > dist/product-manifest.json
+          ls -lh dist/Wawona.apk
+
+      - uses: Wandalen/wretry.action@v3.8.0
+        with:
+          action: actions/upload-artifact@v4
+          attempt_limit: 8
+          attempt_delay: 10000
+          with: |
+            name: product-android-apk
+            path: |
+              dist/Wawona.apk
+              dist/product-manifest.json
+            if-no-files-found: error
+            compression-level: 0
+            retention-days: 14
+
+  macos-app:
+    name: "macOS .app"
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+
+      - name: Select Xcode
+        run: ./.github/scripts/select-xcode.sh
+
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+
+      - name: Build wawona-macos
+        run: ./.github/scripts/nix-retry.sh nix build ".#wawona-macos" --print-build-logs --out-link result-macos
+
+      - name: Stage app
+        run: |
+          mkdir -p dist/macos-app
+          cp -R result-macos/Applications/Wawona.app dist/macos-app/
+          OUT="$(readlink -f result-macos)"
+          {
+            echo "{"
+            echo "  \"attr\": \"wawona-macos\","
+            echo "  \"sha\": \"${{ github.sha }}\","
+            echo "  \"outPath\": \"$OUT\","
+            echo "  \"artifact\": \"product-macos-app\""
+            echo "}"
+          } > dist/macos-app/product-manifest.json
+          ls -la dist/macos-app/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: product-macos-app
+          path: dist/macos-app/
+          if-no-files-found: error
+          retention-days: 14
+
+  appimage:
+    name: "Linux AppImage (${{ matrix.system }})"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            system: x86_64-linux
+          - runner: ubuntu-24.04-arm
+            system: aarch64-linux
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
+          docker image prune -af || true
+
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            build-dir = /nix/build
+            sandbox = relaxed
+            allow-import-from-derivation = true
+            trusted-users = runner root
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+
+      - name: Build AppImage
+        run: |
+          ./.github/scripts/nix-retry.sh \
+            nix build ".#packages.${{ matrix.system }}.wawona-appimage" --print-build-logs --out-link result
+
+      - name: Smoke-test and stage AppImage
+        run: ./.github/scripts/appimage-smoke.sh result "${{ matrix.system }}"
+
+      - name: Manifest
+        run: |
+          OUT="$(readlink -f result)"
+          {
+            echo "{"
+            echo "  \"attr\": \"wawona-appimage\","
+            echo "  \"system\": \"${{ matrix.system }}\","
+            echo "  \"sha\": \"${{ github.sha }}\","
+            echo "  \"outPath\": \"$OUT\","
+            echo "  \"artifact\": \"product-appimage-${{ matrix.system }}\""
+            echo "}"
+          } > dist/product-manifest.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: product-appimage-${{ matrix.system }}
+          path: |
+            dist/*.AppImage
+            dist/product-manifest.json
+          if-no-files-found: error
+          retention-days: 14

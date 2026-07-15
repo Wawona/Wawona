@@ -77,7 +77,7 @@ run_ios() {
       --timeout "${WAWONA_IOS_PREPARE_TIMEOUT_MS:-600000}" || true
     agent-device open com.aspauldingcode.Wawona --relaunch "${ad_common[@]}"
   fi
-  agent-device wait 3000 "${ad_common[@]}" || true
+  agent-device wait 2500 "${ad_common[@]}" || true
   agent-device snapshot -i "${ad_common[@]}" || true
   agent-device screenshot "$ARTIFACTS/ios-first-screen.png" "${ad_common[@]}" || true
 
@@ -150,7 +150,7 @@ run_ios() {
     agent-device snapshot -i --raw "${ad_common[@]}" || true
     exit 1
   fi
-  agent-device wait 10000 "${ad_common[@]}" || true
+  agent-device wait 8000 "${ad_common[@]}" || true
   agent-device screenshot "$ARTIFACTS/ios-weston-session.png" "${ad_common[@]}" || true
   agent-device close "${ad_common[@]}" || true
 }
@@ -328,7 +328,7 @@ run_android() {
     agent-device snapshot -i --raw "${ad_common[@]}" || true
     exit 1
   }
-  agent-device wait 10000 "${ad_common[@]}" || true
+  agent-device wait 8000 "${ad_common[@]}" || true
   dismiss_android_blockers
   android_press_text "Got it" || android_tap_ref 900 720 || true
   agent-device wait 500 "${ad_common[@]}" || true

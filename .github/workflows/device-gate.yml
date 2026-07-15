@@ -1,0 +1,66 @@
+name: Device gate
+
+# Single scheduler for product binaries + Device GUI e2e on development/master.
+# product-build runs once per SHA; device-e2e consumes artifacts (no rebuild).
+
+on:
+  workflow_dispatch: {}
+  workflow_call:
+    inputs:
+      checkout_ref:
+        description: "Git ref to build/test (nightly passes development)"
+        type: string
+        required: false
+        default: ""
+  push:
+    branches: [development, master]
+    paths:
+      - "src/**"
+      - "android/**"
+      - "Sources/**"
+      - "dependencies/**"
+      - "flake.nix"
+      - "flake.lock"
+      - ".agent-device/**"
+      - "scripts/agent-device-smoke.sh"
+      - "scripts/agent-device-fuzzel-smoke.sh"
+      - "scripts/agent-device-set-niri-android.sh"
+      - "scripts/agent-device-set-niri-ios.sh"
+      - "scripts/niri-smoke-macos.sh"
+      - "scripts/niri-fuzzel-smoke-macos.sh"
+      - "scripts/applications-catalog-smoke.sh"
+      - ".github/workflows/device-e2e.yml"
+      - ".github/workflows/device-gate.yml"
+      - ".github/workflows/product-build.yml"
+      - ".github/scripts/resolve-product-artifacts.sh"
+
+concurrency:
+  group: device-gate-${{ github.ref }}-${{ inputs.checkout_ref || github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+  actions: read
+
+jobs:
+  products:
+    name: Product build
+    uses: ./.github/workflows/product-build.yml
+    with:
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
+    permissions:
+      contents: read
+      id-token: write
+
+  e2e:
+    name: Device GUI e2e
+    needs: products
+    uses: ./.github/workflows/device-e2e.yml
+    with:
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
+      products_ready: true
+    permissions:
+      contents: read
+      id-token: write
+      actions: read

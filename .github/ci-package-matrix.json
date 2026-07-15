@@ -1,17 +1,11 @@
 {
-  "description": "Curated Nix CI package matrix (~15 builds). Full attrNames is for nightly/research only — see docs/ci.md.",
+  "description": "Curated Nix CI package matrix. Product binaries (wawona-macos, wawona-appimage, wawona-ios, wawona-android) are owned by product-build.yml — see docs/ci.md.",
   "include": [
     {
       "system": "aarch64-darwin",
       "os": "macos-26",
-      "target": "wawona-macos",
-      "why": "Primary macOS product artifact"
-    },
-    {
-      "system": "aarch64-darwin",
-      "os": "macos-26",
       "target": "wawona-ios-backend",
-      "why": "iOS Rust/native backend (device); app install covered by device-e2e"
+      "why": "iOS Rust/native backend (device); app install covered by product-build + device-e2e"
     },
     {
       "system": "aarch64-darwin",
@@ -47,13 +41,7 @@
       "system": "x86_64-linux",
       "os": "ubuntu-latest",
       "target": "wawona-linux-ui-bin",
-      "why": "Linux GTK host UI binary"
-    },
-    {
-      "system": "x86_64-linux",
-      "os": "ubuntu-latest",
-      "target": "wawona-appimage",
-      "why": "Linux distribution artifact + AppImage smoke"
+      "why": "Linux GTK host UI binary (AppImage input; AppImage itself is product-build)"
     },
     {
       "system": "x86_64-linux",
@@ -66,12 +54,6 @@
       "os": "ubuntu-latest",
       "target": "weston",
       "why": "Linux Weston client/compositor packaging"
-    },
-    {
-      "system": "aarch64-linux",
-      "os": "ubuntu-24.04-arm",
-      "target": "wawona-appimage",
-      "why": "aarch64 Linux ship artifact"
     },
     {
       "system": "aarch64-linux",

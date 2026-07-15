@@ -13,17 +13,17 @@ context session=wawona-ios-niri-fuzzel
 context device=iPhone 17 Pro
 
 open com.aspauldingcode.Wawona --relaunch
-wait 4000
+wait 3000
 screenshot ./.agent-device/test-artifacts/ios-fuzzel-e2e-01-home.png
 
 # Start Default Machine (Niri).
 click 69 374
-wait 14000
+wait 11000
 screenshot ./.agent-device/test-artifacts/ios-fuzzel-e2e-02-niri.png
 
 # Focus the compositor surface.
 click 201 520
-wait 500
+wait 400
 screenshot ./.agent-device/test-artifacts/ios-fuzzel-e2e-03-focused.png
 
 # Leave session open — smoke.sh injects Mod+D next, then re-snapshots.

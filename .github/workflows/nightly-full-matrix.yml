@@ -65,15 +65,16 @@ jobs:
           git diff --exit-code -- docs/protocol-status.md \
             || { echo "::error::docs/protocol-status.md stale; run scripts/gen-protocol-status.sh"; exit 1; }
 
-  # Cross-platform GUI parity/e2e on development tip.
+  # Cross-platform GUI parity/e2e on development tip (product-build → e2e).
   ui-parity:
     name: "Layer 3: cross-platform UI parity"
-    uses: ./.github/workflows/device-e2e.yml
+    uses: ./.github/workflows/device-gate.yml
     with:
       checkout_ref: development
     permissions:
       contents: read
       id-token: write
+      actions: read
 
   capability-lane:
     name: "Layer 2: nested Weston + XWayland capability"

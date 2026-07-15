@@ -75,11 +75,13 @@ GHA-scoped only and superseded here by FlakeHub Cache.
 
 After landing cache wiring on `development` / `main`:
 
-1. Open a green **Nix CI** run → build job logs → search for `cache.flakehub.com`
-   / substitute messages.
-2. Compare wall-clock of the build matrix job before vs after a warm cache
-   (same attrs, unchanged flake inputs).
-3. On a laptop with a clean-ish store, time `nix build` of a known substrate
+1. Open a green **Nix CI** or **Product build** run → build job logs → search for
+   `cache.flakehub.com` / substitute messages.
+2. Compare wall-clock of the build matrix / product-build job before vs after a
+   warm cache (same attrs, unchanged flake inputs).
+3. On a warm tip, Device gate e2e should **download** `product-*` artifacts
+   (seconds) rather than recompile `wawona-ios` / `wawona-android` / `wawona-macos`.
+4. On a laptop with a clean-ish store, time `nix build` of a known substrate
    attr twice (first may still compile; second / peer machine should substitute).
 
 FlakeHub does **not** reduce Nix **eval** / crate2nix IFD cost — see issue #68

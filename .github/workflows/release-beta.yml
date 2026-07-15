@@ -25,6 +25,7 @@ concurrency:
 permissions:
   contents: read
   id-token: write
+  actions: read
 
 env:
   NIXPKGS_ALLOW_UNFREE: "1"
@@ -146,13 +147,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Resolve AppImage from product-build (same SHA)
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          chmod +x ./.github/scripts/resolve-product-artifacts.sh
+          mkdir -p dist
+          if ./.github/scripts/resolve-product-artifacts.sh \
+               "$GITHUB_SHA" "product-appimage-${{ matrix.system }}" dist 7200; then
+            echo "resolved=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "resolved=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Reclaim disk space
+        if: steps.resolve.outputs.resolved != 'true'
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
             /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
           docker image prune -af || true
 
       - name: Install Nix
+        if: steps.resolve.outputs.resolved != 'true'
         uses: DeterminateSystems/nix-installer-action@v22
         with:
           determinate: true
@@ -162,14 +179,14 @@ jobs:
             allow-import-from-derivation = true
             trusted-users = runner root
       - uses: DeterminateSystems/flakehub-cache-action@v3
+        if: steps.resolve.outputs.resolved != 'true'
 
-      - name: Build AppImage
+      - name: Build AppImage (fallback)
+        if: steps.resolve.outputs.resolved != 'true'
         run: |
           ./.github/scripts/nix-retry.sh \
             nix build ".#packages.${{ matrix.system }}.wawona-appimage" --print-build-logs
-
-      - name: Smoke-test and stage AppImage
-        run: ./.github/scripts/appimage-smoke.sh result "${{ matrix.system }}"
+          ./.github/scripts/appimage-smoke.sh result "${{ matrix.system }}"
 
       - name: Upload beta AppImage (workflow artifact)
         uses: actions/upload-artifact@v4
@@ -177,3 +194,4 @@ jobs:
           name: wawona-beta-appimage-${{ matrix.system }}
           path: dist/*.AppImage
           retention-days: 30
+          if-no-files-found: error
