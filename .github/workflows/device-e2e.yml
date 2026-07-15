@@ -128,13 +128,36 @@ jobs:
       - name: Run iOS GUI smoke (deterministic replay)
         env:
           WAWONA_IOS_APP: result-ios/Wawona.app
-        run: ./scripts/agent-device-smoke.sh ios
+        run: |
+          # agent-device daemon lease/timeout flakes on cold XCTest runners.
+          for attempt in 1 2 3; do
+            echo "== iOS smoke attempt $attempt =="
+            pkill -f "agent-device/dist/src/internal/daemon.js" 2>/dev/null || true
+            sleep 2
+            if ./scripts/agent-device-smoke.sh ios; then
+              exit 0
+            fi
+            echo "iOS smoke attempt $attempt failed; retrying..."
+            sleep 5
+          done
+          exit 1
 
       - name: Run iOS nested niri + fuzzel e2e (issue #78)
         env:
           WAWONA_IOS_APP: result-ios/Wawona.app
           WAWONA_FUZZEL_REQUIRE_IOS: "1"
-        run: ./scripts/agent-device-smoke.sh ios-fuzzel
+        run: |
+          for attempt in 1 2 3; do
+            echo "== iOS fuzzel attempt $attempt =="
+            pkill -f "agent-device/dist/src/internal/daemon.js" 2>/dev/null || true
+            sleep 2
+            if ./scripts/agent-device-smoke.sh ios-fuzzel; then
+              exit 0
+            fi
+            echo "iOS fuzzel attempt $attempt failed; retrying..."
+            sleep 5
+          done
+          exit 1
 
       - name: Upload iOS screenshots
         if: always()
