@@ -203,10 +203,11 @@ run_android_fuzzel() {
     [[ -f "$shot" && "$(wc -c <"$shot")" -gt 100000 ]]
   }
   android_fuzzel_ready() {
+    # Do not treat shell-env "linked …/fuzzel -> libfuzzel_bin.so" as running.
     android_guest_evidence fuzzel && return 0
     local log
     log="$(adb -s "$serial" logcat -d 2>/dev/null | tr -d '\r' || true)"
-    echo "$log" | grep -qiE "libfuzzel|Launched.*fuzzel|spawn.*fuzzel|fuzzel_bin" && return 0
+    echo "$log" | grep -qiE "spawn(ed)? ['\"]?fuzzel|Running fuzzel|fuzzel: |application:'libfuzzel" && return 0
     return 1
   }
 
@@ -231,29 +232,23 @@ run_android_fuzzel() {
   }
   echo "PASS: niri session evidence"
 
-  # Dismiss niri "Important Hotkeys" overlay before Mod+D.
+  # Dismiss niri "Important Hotkeys" overlay, then always inject Alt+D.
   adb -s "$serial" shell input keyevent 111 >/dev/null 2>&1 || true
   sleep 0.5
   adb -s "$serial" shell input keyevent 111 >/dev/null 2>&1 || true
   sleep 0.3
-
-  if ! android_fuzzel_ready; then
-    local focus_xy
-    focus_xy="$(android_scale_xy 540 1100)"
-    # shellcheck disable=SC2086
-    adb -s "$serial" shell input tap $focus_xy
-    sleep 0.3
-    adb -s "$serial" shell input keyevent 111   # KEYCODE_ESCAPE
-    sleep 0.3
-    local inj
-    for inj in 1 2 3 4 5; do
-      android_inject_alt_d || true
-      sleep 2
-      android_fuzzel_ready && break
-    done
-  else
-    echo "fuzzel already running after start — skipping Alt+D inject"
-  fi
+  local focus_xy
+  focus_xy="$(android_scale_xy 540 1100)"
+  # shellcheck disable=SC2086
+  adb -s "$serial" shell input tap $focus_xy
+  sleep 0.3
+  local inj
+  for inj in 1 2 3 4 5; do
+    echo "== Android: Alt+D inject attempt $inj =="
+    android_inject_alt_d || true
+    sleep 2
+    android_fuzzel_ready && break
+  done
   procs="$(adb -s "$serial" shell 'ps -A -w' 2>/dev/null | tr -d '\r' | grep -iE 'niri|fuzzel' || true)"
   {
     echo "fuzzel_ready=$(android_fuzzel_ready && echo yes || echo no)"
@@ -271,8 +266,6 @@ run_android_fuzzel() {
   android_fuzzel_ready || { echo "FAIL: fuzzel not running after Alt+D" >&2; exit 1; }
   echo "PASS: fuzzel process up"
 
-  agent-device close "${ad_common[@]}" >/dev/null 2>&1 || true
-
   # Catalog Exec must resolve on PATH (weston-simple-shm → libwawona_wl_bin.so).
   local wl_link
   wl_link="$(adb -s "$serial" shell 'run-as com.aspauldingcode.wawona sh -c "ls -l files/wawona-rootfs/usr/bin/weston-simple-shm 2>/dev/null"' | tr -d '\r')"
@@ -283,14 +276,14 @@ run_android_fuzzel() {
   }
   echo "PASS: weston-simple-shm on PATH"
 
-  # Launch Weston Simple SHM from fuzzel: type filter + Enter.
+  # Launch Weston Simple SHM from fuzzel while the session is still open.
   adb -s "$serial" shell input text 'weston-simple'
   sleep 0.5
   adb -s "$serial" shell input keyevent 66   # ENTER
   sleep 3
 
   local after_launch
-  after_launch="$(adb -s "$serial" shell 'ps -A' | grep -E '[n]iri|[f]uzzel|[w]eston-simple|[w]awona_wl' || true)"
+  after_launch="$(adb -s "$serial" shell 'ps -A -w' 2>/dev/null | tr -d '\r' | grep -iE 'niri|fuzzel|weston-simple|wawona_wl' || true)"
   echo "$after_launch" | tee "$ARTIFACTS/android-fuzzel-e2e-procs-after-launch.txt"
 
   local shot2="$ARTIFACTS/android-fuzzel-e2e-06-after-client-launch.png"
@@ -299,27 +292,29 @@ run_android_fuzzel() {
 
   # Client may appear as libwawona_wl_bin.so or remain under the Wawona PID;
   # require either a new process OR log evidence of launcher success.
+  # Ubuntu runners lack ripgrep — use grep.
   adb -s "$serial" logcat -d >"$logf" 2>/dev/null || true
-  if ! rg -q 'WawonaWlBin|launch weston-simple-shm|weston_simple_shm_main' "$logf"; then
+  if ! grep -qE 'WawonaWlBin|launch weston-simple-shm|weston_simple_shm_main' "$logf"; then
     if ! echo "$after_launch" | grep -qE 'wawona_wl|weston-simple'; then
       echo "FAIL: no evidence weston-simple-shm launched from fuzzel" >&2
-      rg -i 'fuzzel|WawonaWl|weston-simple|exec' "$logf" | head -40 || true
+      grep -iE 'fuzzel|WawonaWl|weston-simple|exec' "$logf" | head -40 || true
       exit 1
     fi
   fi
   echo "PASS: nested Wayland client launch evidence"
 
   # Must not regress to NotFound / timerfd crash.
-  if rg -q 'error spawning "fuzzel"|timerfd_create|SIGSEGV' "$logf"; then
+  if grep -qE 'error spawning "fuzzel"|timerfd_create|SIGSEGV' "$logf"; then
     echo "FAIL: spawn/timerfd regression in logcat" >&2
-    rg -n 'fuzzel|timerfd|SIGSEGV|spawn' "$logf" | head -40
+    grep -nE 'fuzzel|timerfd|SIGSEGV|spawn' "$logf" | head -40
     exit 1
   fi
 
   # Soft assertion: XDG / catalog path mentioned when present.
-  rg -i 'XDG_DATA|share/applications|fuzzel' "$logf" | head -20 \
+  grep -iE 'XDG_DATA|share/applications|fuzzel' "$logf" | head -20 \
     | tee "$ARTIFACTS/android-fuzzel-e2e-xdg-hints.txt" || true
 
+  agent-device close "${ad_common[@]}" >/dev/null 2>&1 || true
   echo "== Android fuzzel e2e PASSED =="
 }
 
