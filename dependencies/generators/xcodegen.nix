@@ -36,8 +36,13 @@
   # Bundled mobile VM guest (kernel + rootfs.img) and iOS-TCI QEMU engine sysroot.
   mobileGuestArtifacts ? null,
   mobileVmEngine ? null,
-  # When set (e.g. [ "ios" "ipados" ]), only emit matching app targets (+ shared libs).
+  # Prefer SDK-gated construction: only emit matching app targets (+ shared libs).
+  # Combined with flake `mkXcodegen` passing empty unused platform deps, filtered
+  # targets do not realize device/macOS/tvOS closures for ios-sim CI.
   platformFilter ? null,
+  # When true, omit iphoneos* ldflags/headers and device-side embed strip() so
+  # realizing the project does not force the device native closure (CI sim path).
+  simulatorOnly ? false,
   applePath,
   westonToytoolkitLdflagsNix,
   westonCompositorLdflagsNix,
@@ -48,6 +53,9 @@
 let
   lib = pkgs.lib;
   strip = d: if d == null then "" else toString d;
+  # Device store paths are omitted entirely for simulator-only project gens.
+  deviceStrip = d: if simulatorOnly then "" else strip d;
+  wantPlatform = p: platformFilter == null || builtins.elem p platformFilter;
   # Overridable via `nix build --impure` (Fastlane sets WAWONA_VERSION / WAWONA_BUILD_NUMBER).
   effectiveVersion =
     let
@@ -447,32 +455,9 @@ let
           "ONLY_ACTIVE_ARCH" = "YES";
           LD_RUNPATH_SEARCH_PATHS = [ "$(inherited)" "@executable_path/Frameworks" ];
           LD_CLIENT_NAME = "SwiftUI";
-          "OTHER_CFLAGS[sdk=${deviceSdk}*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
           "OTHER_CFLAGS[sdk=${simSdk}*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
-          "OTHER_SWIFT_FLAGS[sdk=${deviceSdk}*]" = [ "$(inherited)" ] ++ ios26SwiftAutolinkOff;
           "OTHER_SWIFT_FLAGS[sdk=${simSdk}*]" = [ "$(inherited)" ] ++ ios26SwiftAutolinkOff;
-          "LIBRARY_SEARCH_PATHS[sdk=${deviceSdk}*]" = ios26SwiftLibSearchPaths;
           "LIBRARY_SEARCH_PATHS[sdk=${simSdk}*]" = ios26SwiftLibSearchPaths;
-          "OTHER_LDFLAGS[sdk=${deviceSdk}*]" = [
-            "$(inherited)"
-          ] ++ ios26SwiftUiClientLdflags ++ [
-            "-L${strip (deps.libwayland or null)}/lib"
-            "-L${strip (deps.xkbcommon or null)}/lib"
-            "-L${strip (deps.libffi or null)}/lib"
-            "-L${strip (deps.pixman or null)}/lib"
-            "-L${strip (deps.zstd or null)}/lib"
-            "-L${strip (deps.lz4 or null)}/lib"
-            "-L${strip (deps.epoll-shim or null)}/lib"
-            "-lxkbcommon"
-            "-lwayland-client"
-            "-lffi"
-            "-lpixman-1"
-            "-lzstd"
-            "-llz4"
-            "-lepoll-shim"
-          ] ++ (mobileBaseLdflags deps) ++ westonToytoolkitLdflagsAppleMobile deps ++ westonCompositorLdflagsAppleMobile deps
-          ++ (ilandGlLdflags { inherit deps; simulator = false; }) ++ footLdflags deps ++ extraDeviceLdflags
-          ++ [ derivedRustLib ] ++ finalCxxLdflags;
           "OTHER_LDFLAGS[sdk=${simSdk}*]" = [
             "$(inherited)"
           ] ++ ios26SwiftUiClientLdflags ++ [
@@ -494,6 +479,30 @@ let
           ++ (ilandGlLdflags { deps = simDeps; simulator = true; }) ++ footLdflags simDeps ++ extraSimLdflags
           ++ [ derivedRustLib ] ++ finalCxxLdflags;
           GCC_PREPROCESSOR_DEFINITIONS = [ "$(inherited)" ] ++ extraDefines ++ versionDefs;
+        } // lib.optionalAttrs (!simulatorOnly) {
+          "OTHER_CFLAGS[sdk=${deviceSdk}*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
+          "OTHER_SWIFT_FLAGS[sdk=${deviceSdk}*]" = [ "$(inherited)" ] ++ ios26SwiftAutolinkOff;
+          "LIBRARY_SEARCH_PATHS[sdk=${deviceSdk}*]" = ios26SwiftLibSearchPaths;
+          "OTHER_LDFLAGS[sdk=${deviceSdk}*]" = [
+            "$(inherited)"
+          ] ++ ios26SwiftUiClientLdflags ++ [
+            "-L${strip (deps.libwayland or null)}/lib"
+            "-L${strip (deps.xkbcommon or null)}/lib"
+            "-L${strip (deps.libffi or null)}/lib"
+            "-L${strip (deps.pixman or null)}/lib"
+            "-L${strip (deps.zstd or null)}/lib"
+            "-L${strip (deps.lz4 or null)}/lib"
+            "-L${strip (deps.epoll-shim or null)}/lib"
+            "-lxkbcommon"
+            "-lwayland-client"
+            "-lffi"
+            "-lpixman-1"
+            "-lzstd"
+            "-llz4"
+            "-lepoll-shim"
+          ] ++ (mobileBaseLdflags deps) ++ westonToytoolkitLdflagsAppleMobile deps ++ westonCompositorLdflagsAppleMobile deps
+          ++ (ilandGlLdflags { inherit deps; simulator = false; }) ++ footLdflags deps ++ extraDeviceLdflags
+          ++ [ derivedRustLib ] ++ finalCxxLdflags;
         };
       };
     };
@@ -529,7 +538,8 @@ let
        else null;
 
   angleSimDylib = angleDylibDeps iosSimDeps;
-  angleDeviceDylib = angleDylibDeps iosDeps;
+  # Skip device ANGLE IFD when generating a simulator-only project.
+  angleDeviceDylib = if simulatorOnly then null else angleDylibDeps iosDeps;
 
   # platformGlob gates the phase on PLATFORM_NAME: both the Simulator and
   # Device ANGLE phases run on every build, and without the gate whichever ran
@@ -747,7 +757,9 @@ PLIST
   ];
 
   niriDataEmbedPhase = {
-    path = niriDataIosEmbedScript (iosDeps.niri or null) (iosSimDeps.niri or null);
+    path = niriDataIosEmbedScript
+      (if simulatorOnly then null else (iosDeps.niri or null))
+      (iosSimDeps.niri or null);
     name = "Embed niri config (default-config.kdl)";
     basedOnDependencyAnalysis = true;
     outputFiles = niriDataEmbedOutputs;
@@ -783,14 +795,18 @@ PLIST
   ];
 
   iosRootfsEmbedPhase = {
-    path = rootfsIosEmbedScript (iosDeps."wawona-rootfs" or null) (iosSimDeps."wawona-rootfs" or null);
+    path = rootfsIosEmbedScript
+      (if simulatorOnly then null else (iosDeps."wawona-rootfs" or null))
+      (iosSimDeps."wawona-rootfs" or null);
     name = "Embed wawona-rootfs (shell templates)";
     basedOnDependencyAnalysis = true;
     outputFiles = rootfsEmbedOutputs;
   };
 
   ipadosRootfsEmbedPhase = {
-    path = rootfsIosEmbedScript (ipadosDeps."wawona-rootfs" or null) (ipadosSimDeps."wawona-rootfs" or null);
+    path = rootfsIosEmbedScript
+      (if simulatorOnly then null else (ipadosDeps."wawona-rootfs" or null))
+      (ipadosSimDeps."wawona-rootfs" or null);
     name = "Embed wawona-rootfs (shell templates)";
     basedOnDependencyAnalysis = true;
     outputFiles = rootfsEmbedOutputs;
@@ -906,14 +922,18 @@ PLIST
   ];
 
   iosNeovimRootfsEmbedPhase = {
-    path = neovimRootfsIosEmbedScript (iosDeps."neovim-rootfs" or null) (iosSimDeps."neovim-rootfs" or null);
+    path = neovimRootfsIosEmbedScript
+      (if simulatorOnly then null else (iosDeps."neovim-rootfs" or null))
+      (iosSimDeps."neovim-rootfs" or null);
     name = "Embed neovim-rootfs (runtime templates)";
     basedOnDependencyAnalysis = true;
     outputFiles = neovimRootfsEmbedOutputs;
   };
 
   ipadosNeovimRootfsEmbedPhase = {
-    path = neovimRootfsIosEmbedScript (ipadosDeps."neovim-rootfs" or null) (ipadosSimDeps."neovim-rootfs" or null);
+    path = neovimRootfsIosEmbedScript
+      (if simulatorOnly then null else (ipadosDeps."neovim-rootfs" or null))
+      (ipadosSimDeps."neovim-rootfs" or null);
     name = "Embed neovim-rootfs (runtime templates)";
     basedOnDependencyAnalysis = true;
     outputFiles = neovimRootfsEmbedOutputs;
@@ -1105,44 +1125,10 @@ PLIST
             "ONLY_ACTIVE_ARCH" = "YES";
             LD_RUNPATH_SEARCH_PATHS = [ "$(inherited)" "@executable_path/Frameworks" ];
             LD_CLIENT_NAME = "SwiftUI";
-            "OTHER_CFLAGS[sdk=iphoneos*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
             "OTHER_CFLAGS[sdk=iphonesimulator*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
-            "OTHER_SWIFT_FLAGS[sdk=iphoneos*]" = [ "$(inherited)" ] ++ ios26SwiftAutolinkOff;
             "OTHER_SWIFT_FLAGS[sdk=iphonesimulator*]" = [ "$(inherited)" ] ++ ios26SwiftAutolinkOff;
-            "LIBRARY_SEARCH_PATHS[sdk=iphoneos*]" = ios26SwiftLibSearchPaths;
             "LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]" = ios26SwiftLibSearchPaths;
             # Do not add SubFrameworks (UIUtilities / SwiftUICore) — same as tvOS.
-            "OTHER_LDFLAGS[sdk=iphoneos*]" = [
-              "$(inherited)"
-            ] ++ ios26SwiftUiClientLdflags ++ [
-              "-L${strip (iosDeps.libwayland or null)}/lib"
-              "-L${strip (iosDeps.xkbcommon or null)}/lib"
-              "-L${strip (iosDeps.libffi or null)}/lib"
-              "-L${strip (iosDeps.pixman or null)}/lib"
-              "-L${strip (iosDeps.zstd or null)}/lib"
-              "-L${strip (iosDeps.lz4 or null)}/lib"
-              "-L${strip (iosDeps.libssh2 or null)}/lib"
-              "-L${strip (iosDeps.mbedtls or null)}/lib"
-              "-L${strip (iosDeps.openssl or null)}/lib"
-              "-L${strip (iosDeps.epoll-shim or null)}/lib"
-               "-lxkbcommon"
-               "-lwayland-client"
-               "-lffi"
-               "-lpixman-1"
-               "-lzstd"
-               "-llz4"
-               "-lz"
-               "-lssh2"
-               "-lmbedcrypto"
-               "-lmbedx509"
-               "-lmbedtls"
-               "-lssl"
-               "-lcrypto"
-               "-lepoll-shim"
-             ] ++ westonToytoolkitLdflagsAppleMobile iosDeps ++ westonCompositorLdflagsAppleMobile iosDeps
-             ++ (ilandGlLdflags { deps = iosDeps; simulator = false; }) ++ footLdflags iosDeps ++ fastfetchLdflags iosDeps ++ neovimLdflags iosDeps ++ niriLdflags iosDeps ++ fuzzelLdflags iosDeps
-             ++ opensshInprocessLdflags iosDeps
-             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
             "OTHER_LDFLAGS[sdk=iphonesimulator*]" = [
               "$(inherited)"
             ] ++ ios26SwiftUiClientLdflags ++ [
@@ -1179,13 +1165,6 @@ PLIST
               "TARGET_OS_IPHONE=1"
               "PRODUCT_BUNDLE_IDENTIFIER=\\\"com.aspauldingcode.Wawona\\\""
             ] ++ versionDefs;
-            "HEADER_SEARCH_PATHS[sdk=iphoneos*]" = [
-              "$(inherited)"
-              "${strip (iosDeps.libwayland or null)}/include"
-              "${strip (iosDeps.libwayland or null)}/include/wayland"
-              "${strip (iosDeps.xkbcommon or null)}/include"
-              "${strip (iosDeps.libssh2 or null)}/include"
-            ] ++ (pixmanHeaderPaths iosDeps) ++ (ilandGlHeaderPaths iosDeps);
             "HEADER_SEARCH_PATHS[sdk=iphonesimulator*]" = [
               "$(inherited)"
               "${strip (iosSimDeps.libwayland or null)}/include"
@@ -1193,6 +1172,48 @@ PLIST
               "${strip (iosSimDeps.xkbcommon or null)}/include"
               "${strip (iosSimDeps.libssh2 or null)}/include"
             ] ++ (pixmanHeaderPaths iosSimDeps) ++ (ilandGlHeaderPaths iosSimDeps);
+          } // lib.optionalAttrs (!simulatorOnly) {
+            "OTHER_CFLAGS[sdk=iphoneos*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
+            "OTHER_SWIFT_FLAGS[sdk=iphoneos*]" = [ "$(inherited)" ] ++ ios26SwiftAutolinkOff;
+            "LIBRARY_SEARCH_PATHS[sdk=iphoneos*]" = ios26SwiftLibSearchPaths;
+            "OTHER_LDFLAGS[sdk=iphoneos*]" = [
+              "$(inherited)"
+            ] ++ ios26SwiftUiClientLdflags ++ [
+              "-L${strip (iosDeps.libwayland or null)}/lib"
+              "-L${strip (iosDeps.xkbcommon or null)}/lib"
+              "-L${strip (iosDeps.libffi or null)}/lib"
+              "-L${strip (iosDeps.pixman or null)}/lib"
+              "-L${strip (iosDeps.zstd or null)}/lib"
+              "-L${strip (iosDeps.lz4 or null)}/lib"
+              "-L${strip (iosDeps.libssh2 or null)}/lib"
+              "-L${strip (iosDeps.mbedtls or null)}/lib"
+              "-L${strip (iosDeps.openssl or null)}/lib"
+              "-L${strip (iosDeps.epoll-shim or null)}/lib"
+               "-lxkbcommon"
+               "-lwayland-client"
+               "-lffi"
+               "-lpixman-1"
+               "-lzstd"
+               "-llz4"
+               "-lz"
+               "-lssh2"
+               "-lmbedcrypto"
+               "-lmbedx509"
+               "-lmbedtls"
+               "-lssl"
+               "-lcrypto"
+               "-lepoll-shim"
+             ] ++ westonToytoolkitLdflagsAppleMobile iosDeps ++ westonCompositorLdflagsAppleMobile iosDeps
+             ++ (ilandGlLdflags { deps = iosDeps; simulator = false; }) ++ footLdflags iosDeps ++ fastfetchLdflags iosDeps ++ neovimLdflags iosDeps ++ niriLdflags iosDeps ++ fuzzelLdflags iosDeps
+             ++ opensshInprocessLdflags iosDeps
+             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
+            "HEADER_SEARCH_PATHS[sdk=iphoneos*]" = [
+              "$(inherited)"
+              "${strip (iosDeps.libwayland or null)}/include"
+              "${strip (iosDeps.libwayland or null)}/include/wayland"
+              "${strip (iosDeps.xkbcommon or null)}/include"
+              "${strip (iosDeps.libssh2 or null)}/include"
+            ] ++ (pixmanHeaderPaths iosDeps) ++ (ilandGlHeaderPaths iosDeps);
           };
         };
         dependencies = [
@@ -2307,6 +2328,9 @@ PLIST
         if platformFilter == null then
           projectConfig.targets
         else
+          # Note: filterAttrs forces attr values. Callers that care about eval
+          # cost should pass empty/null unused platform deps (see flake mkXcodegen)
+          # and/or simulatorOnly so forced targets do not realize heavy closures.
           lib.filterAttrs (
             name: _target:
             lib.elem name sharedXcodeTargets

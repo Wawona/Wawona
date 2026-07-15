@@ -67,6 +67,12 @@ Push/PR Nix CI builds only [`.github/ci-package-matrix.json`](../.github/ci-pack
 ## Device e2e speed notes
 
 - Fail-fast: one smoke/fuzzel attempt (no suite retries).
+- Device gate fans out product-build by product (`only: ios-sim|…`) so **iOS e2e
+  starts when `product-ios-sim` is ready** — it does not wait for AppImages/macOS/Android.
+- iOS CI lane: `agent-device-smoke.sh ios-ci` (one prepare for smoke; fuzzel reuses
+  warm XCTest derived data; skipped on `pull_request` via `WAWONA_SKIP_FUZZEL`).
 - Same-session `prepare ios-runner` + `open` (do not kill prepare daemon before open).
 - Fuzzel: required on `development`/`master` **push**; skipped on `pull_request` only.
-- XCTest runner cache key includes Xcode version; hit/miss is logged.
+- XCTest runner cache key includes Xcode version (via `select-xcode.sh` outputs); hit/miss is logged.
+- Product iOS sim uses `xcodegenIosSimOutputs` (`simulatorOnly`, ios-only) so project
+  gen does not force device/macOS native closures.

@@ -10,6 +10,7 @@
   toolchains,
   nixpkgs,
   nativeDeps,
+  cargoNixDrv ? null,
 }:
 
 pkgs.callPackage ./rust-backend-c2n.nix {
@@ -20,6 +21,7 @@ pkgs.callPackage ./rust-backend-c2n.nix {
     toolchains
     nixpkgs
     nativeDeps
+    cargoNixDrv
     ;
   platform = "ios";
   simulator = false;

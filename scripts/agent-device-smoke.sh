@@ -153,8 +153,11 @@ run_ios() {
   agent-device wait 8000 "${ad_common[@]}" || true
   agent-device screenshot "$ARTIFACTS/ios-weston-session.png" "${ad_common[@]}" || true
   agent-device close "${ad_common[@]}" || true
-  # Release XCTest runner lease so a following ios-fuzzel lane can prepare/replay.
-  stop_agent_device_daemons
+  # By default release the XCTest runner lease so a following ios-fuzzel lane can
+  # prepare/replay. CI `ios-ci` keeps the lease and reuses the same session.
+  if [[ "${WAWONA_KEEP_IOS_RUNNER:-}" != "1" ]]; then
+    stop_agent_device_daemons
+  fi
 }
 
 run_android() {
@@ -353,6 +356,22 @@ run_fuzzel() {
 
 case "$LANE" in
   ios) run_ios ;;
+  # CI: chain smoke then fuzzel in one job (shared sim boot / app install).
+  # Fuzzel still uses `agent-device replay`, which starts its own daemon — the
+  # fuzzel wrapper prepare→stop→replay handoff is required (KEEP only avoids a
+  # redundant kill between smoke close and fuzzel entry).
+  ios-ci)
+    export WAWONA_KEEP_IOS_RUNNER=1
+    run_ios
+    if [[ "${WAWONA_SKIP_FUZZEL:-}" == "1" ]]; then
+      echo "== ios-ci: fuzzel skipped (WAWONA_SKIP_FUZZEL=1) =="
+      stop_agent_device_daemons
+    else
+      chmod +x "$ROOT/scripts/agent-device-fuzzel-smoke.sh"
+      "$ROOT/scripts/agent-device-fuzzel-smoke.sh" ios-fuzzel
+      stop_agent_device_daemons
+    fi
+    ;;
   android) run_android ;;
   fuzzel|android-fuzzel|ios-fuzzel|macos-fuzzel)
     chmod +x "$ROOT/scripts/agent-device-fuzzel-smoke.sh"
@@ -364,7 +383,7 @@ case "$LANE" in
     run_fuzzel
     ;;
   *)
-    echo "usage: $0 [ios|android|fuzzel|android-fuzzel|ios-fuzzel|macos-fuzzel|all]" >&2
+    echo "usage: $0 [ios|ios-ci|android|fuzzel|android-fuzzel|ios-fuzzel|macos-fuzzel|all]" >&2
     exit 2
     ;;
 esac

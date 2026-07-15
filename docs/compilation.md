@@ -64,6 +64,10 @@ export WAWONA_WARM_BOTH_BACKENDS=1
 
 # Skip redundant simulator runtime download during Nix iOS app builds
 export WAWONA_SKIP_IOS_SIMULATOR_PLATFORM_DOWNLOAD=1
+
+# CI product-build / device-e2e set the skip flag via
+# `.github/scripts/warm-ios-simulator-sdk.sh` when the iphonesimulator SDK is present.
+# Product `.#wawona-ios` uses `xcodegenIosSimOutputs` (ios-only + simulatorOnly).
 ```
 
 After a `Cargo.lock` change, unset `WAWONA_SKIP_NIX_PREBUILD` or rebuild the relevant backend:

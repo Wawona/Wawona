@@ -4,8 +4,8 @@
     {
       "system": "aarch64-darwin",
       "os": "macos-26",
-      "target": "wawona-ios-backend",
-      "why": "iOS Rust/native backend (device); app install covered by product-build + device-e2e"
+      "target": "wawona-ios-sim-backend",
+      "why": "iOS sim Rust/native backend (product-build .#wawona-ios path); app install covered by product-build + device-e2e"
     },
     {
       "system": "aarch64-darwin",

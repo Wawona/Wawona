@@ -797,10 +797,15 @@
           visionosSimDeps = mobilePlatformDeps { buildFn = toolchains.buildForVisionOS; inherit toolchains; variant = "vision"; simulator = true; };
           watchosDeps = mobilePlatformDeps { buildFn = toolchains.buildForWatchOS; inherit toolchains; variant = "watch"; };
           watchosSimDeps = mobilePlatformDeps { buildFn = toolchains.buildForWatchOS; inherit toolchains; variant = "watch"; simulator = true; };
+          sharedIosCargoNix = crate2nix.tools.${pkgs.stdenv.hostPlatform.system}.generatedCargoNix {
+            name = "wawona-ios-workspace";
+            src = workspace-src-ios;
+          };
           appleHostCrates = pkgs.callPackage ./dependencies/wawona/apple-host-crates.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs;
             workspaceSrc = workspace-src-ios;
             nativeDeps = iosDeps;
+            cargoNixDrv = sharedIosCargoNix;
           };
           backend-macos = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs;
@@ -809,27 +814,35 @@
           backend-ios = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
             workspaceSrc = workspace-src-ios; platform = "ios"; nativeDeps = iosDeps;
+            cargoNixDrv = sharedIosCargoNix;
           };
           backend-ios-sim = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
             workspaceSrc = workspace-src-ios; platform = "ios"; simulator = true; nativeDeps = iosSimDeps;
+            cargoNixDrv = sharedIosCargoNix;
+            # Product-sim CI: skip thin LTO / O3 on the Rust backend (Xcode stays Debug).
+            release = false;
           };
 
           backend-tvos = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
             workspaceSrc = workspace-src-ios; platform = "tvos"; nativeDeps = tvosDeps;
+            cargoNixDrv = sharedIosCargoNix;
           };
           backend-tvos-sim = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
             workspaceSrc = workspace-src-ios; platform = "tvos"; simulator = true; nativeDeps = tvosSimDeps;
+            cargoNixDrv = sharedIosCargoNix;
           };
           backend-visionos = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
             workspaceSrc = workspace-src-ios; platform = "visionos"; nativeDeps = visionosDeps;
+            cargoNixDrv = sharedIosCargoNix;
           };
           backend-visionos-sim = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
             workspaceSrc = workspace-src-ios; platform = "visionos"; simulator = true; nativeDeps = visionosSimDeps;
+            cargoNixDrv = sharedIosCargoNix;
           };
           backend-watchos = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
@@ -847,34 +860,58 @@
             if pkgs.stdenv.isDarwin && (wwn-vms.packages.${system}.wwn-vms-mobile-engine-ios-tci or null) != null then
               wwn-vms.packages.${system}.wwn-vms-mobile-engine-ios-tci
             else null;
-          mkXcodegen = platformFilter: pkgs.callPackage ./dependencies/generators/xcodegen.nix {
-             inherit wawonaVersion wawonaSrc iosDeps iosSimDeps tvosDeps tvosSimDeps visionosDeps visionosSimDeps watchosDeps watchosSimDeps macosDeps platformFilter mobileGuestArtifacts mobileVmEngine;
-             macosBackend = backend-macos;
-             iosBackend = backend-ios;
-             iosSimBackend = backend-ios-sim;
-             ipadosBackend = backend-ios;
-             ipadosSimBackend = backend-ios-sim;
-             ipadosDeps = iosDeps;
-             ipadosSimDeps = iosSimDeps;
-             tvosBackend = backend-tvos;
-             tvosSimBackend = backend-tvos-sim;
-             visionosBackend = backend-visionos;
-             visionosSimBackend = backend-visionos-sim;
-             watchosBackend = backend-watchos;
-             watchosSimBackend = backend-watchos-sim;
-             macosWeston = toolchains.buildForMacOS "weston" { };
-             macosFoot = toolchains.buildForMacOS "foot" { };
-             macosFastfetch = pkgs.fastfetch;
-             macosNeovim = null;
-             macosZsh = pkgs.zsh;
-             macosKmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
-             macosNiri = toolchains.buildForMacOS "niri" { };
-             macosFuzzel = toolchains.buildForMacOS "fuzzel" { };
+          mkXcodegen = {
+            platformFilter ? null,
+            simulatorOnly ? false,
+          }:
+            let
+              want = p: platformFilter == null || builtins.elem p platformFilter;
+              # Empty unused platform deps so filterAttrs-forced targets do not
+              # realize heavy closures (eval may still walk attrs; builds do not).
+              empty = { };
+            in
+            pkgs.callPackage ./dependencies/generators/xcodegen.nix {
+              inherit wawonaVersion wawonaSrc platformFilter simulatorOnly mobileGuestArtifacts mobileVmEngine;
+              iosDeps = if want "ios" || want "ipados" then (if simulatorOnly then empty else iosDeps) else empty;
+              iosSimDeps = if want "ios" || want "ipados" then iosSimDeps else empty;
+              ipadosDeps = if want "ipados" then (if simulatorOnly then empty else iosDeps) else empty;
+              ipadosSimDeps = if want "ipados" then iosSimDeps else empty;
+              tvosDeps = if want "tvos" then (if simulatorOnly then empty else tvosDeps) else empty;
+              tvosSimDeps = if want "tvos" then tvosSimDeps else empty;
+              visionosDeps = if want "visionos" then (if simulatorOnly then empty else visionosDeps) else empty;
+              visionosSimDeps = if want "visionos" then visionosSimDeps else empty;
+              watchosDeps = if want "watchos" then (if simulatorOnly then empty else watchosDeps) else empty;
+              watchosSimDeps = if want "watchos" then watchosSimDeps else empty;
+              macosDeps = if want "macos" then macosDeps else empty;
+              macosBackend = if want "macos" then backend-macos else null;
+              iosBackend = if (want "ios" || want "ipados") && !simulatorOnly then backend-ios else null;
+              iosSimBackend = if want "ios" || want "ipados" then backend-ios-sim else null;
+              ipadosBackend = if want "ipados" && !simulatorOnly then backend-ios else null;
+              ipadosSimBackend = if want "ipados" then backend-ios-sim else null;
+              tvosBackend = if want "tvos" && !simulatorOnly then backend-tvos else null;
+              tvosSimBackend = if want "tvos" then backend-tvos-sim else null;
+              visionosBackend = if want "visionos" && !simulatorOnly then backend-visionos else null;
+              visionosSimBackend = if want "visionos" then backend-visionos-sim else null;
+              watchosBackend = if want "watchos" && !simulatorOnly then backend-watchos else null;
+              watchosSimBackend = if want "watchos" then backend-watchos-sim else null;
+              macosWeston = if want "macos" then toolchains.buildForMacOS "weston" { } else null;
+              macosFoot = if want "macos" then toolchains.buildForMacOS "foot" { } else null;
+              macosFastfetch = if want "macos" then pkgs.fastfetch else null;
+              macosNeovim = null;
+              macosZsh = if want "macos" then pkgs.zsh else null;
+              macosKmscube =
+                if want "macos" then pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; } else null;
+              macosNiri = if want "macos" then toolchains.buildForMacOS "niri" { } else null;
+              macosFuzzel = if want "macos" then toolchains.buildForMacOS "fuzzel" { } else null;
+            };
+          xcodegenOutputs = mkXcodegen { };
+          xcodegenIosOutputs = mkXcodegen { platformFilter = [ "ios" "ipados" ]; };
+          xcodegenIosSimOutputs = mkXcodegen {
+            platformFilter = [ "ios" ];
+            simulatorOnly = true;
           };
-          xcodegenOutputs = mkXcodegen null;
-          xcodegenIosOutputs = mkXcodegen [ "ios" "ipados" ];
-          xcodegenMacosOutputs = mkXcodegen [ "macos" ];
-          xcodegenAppleOutputs = mkXcodegen [ "ios" "ipados" "macos" ];
+          xcodegenMacosOutputs = mkXcodegen { platformFilter = [ "macos" ]; };
+          xcodegenAppleOutputs = mkXcodegen { platformFilter = [ "ios" "ipados" "macos" ]; };
           wawona-macos = pkgs.callPackage ./dependencies/wawona/macos.nix {
             buildModule = toolchains; inherit wawonaSrc wawonaVersion;
             waypipe = toolchains.buildForMacOS "waypipe" { }; weston = toolchains.buildForMacOS "weston" { };
@@ -895,7 +932,8 @@
           wawona-ios-app-sim = pkgs.callPackage ./dependencies/wawona/ios.nix {
             inherit wawonaSrc wawonaVersion teamId;
             TEAM_ID = teamId;
-            xcodeProject = xcodegenAppleOutputs.project;
+            # iOS-sim-only project: no macOS/iPadOS/device native fan-out.
+            xcodeProject = xcodegenIosSimOutputs.project;
             simulator = true;
           };
           wawona-watchos-app-sim = pkgs.callPackage ./dependencies/wawona/watchos.nix {
@@ -1139,6 +1177,7 @@ EOF
           wawona-ios-xcode-wrapper = apple.xcodeWrapperDrv;
           xcodegen = xcodegenOutputs.app;
           xcodegen-ios = xcodegenIosOutputs.app;
+          xcodegen-ios-sim = xcodegenIosSimOutputs.app;
           xcodegen-macos = xcodegenMacosOutputs.app;
           xcodegen-apple = xcodegenAppleOutputs.app;
           xcodegen-fast = xcodegenAppleOutputs.app;

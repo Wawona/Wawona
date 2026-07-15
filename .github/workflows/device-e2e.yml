@@ -24,6 +24,11 @@ on:
         type: boolean
         required: false
         default: false
+      lanes:
+        description: "Lane subset: all | ios | android | macos | linux"
+        type: string
+        required: false
+        default: "all"
 
 permissions:
   contents: read
@@ -31,7 +36,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: device-e2e-${{ github.ref }}-${{ inputs.products_ready && 'products' || 'standalone' }}
+  group: device-e2e-${{ github.ref }}-${{ inputs.products_ready && 'products' || 'standalone' }}-${{ inputs.lanes || 'all' }}
   cancel-in-progress: true
 
 env:
@@ -40,6 +45,7 @@ env:
 jobs:
   ios-sim-e2e:
     name: "iOS simulator: GUI smoke (agent-device replay)"
+    if: ${{ (inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'ios' }}
     runs-on: macos-26
     timeout-minutes: 135
     steps:
@@ -47,16 +53,9 @@ jobs:
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
 
-      - name: Select active Xcode
+      - name: Select Xcode
         id: xcode
-        run: |
-          XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
-          [ -n "$XCODE_APP" ] || { echo "::error::No Xcode found"; exit 1; }
-          sudo xcode-select -s "$XCODE_APP"
-          xcodebuild -version | tee /tmp/xcode-version.txt
-          XCODE_VER=$(xcodebuild -version | awk '/Xcode/{print $2; exit}')
-          echo "version=$XCODE_VER" >> "$GITHUB_OUTPUT"
-          echo "Xcode $XCODE_VER selected"
+        run: ./.github/scripts/select-xcode.sh
 
       - name: Install Nix
         if: ${{ !inputs.products_ready }}
@@ -69,21 +68,9 @@ jobs:
       - uses: DeterminateSystems/flakehub-cache-action@v3
         if: ${{ !inputs.products_ready }}
 
-      - name: Warm CoreSimulator before iOS nix build
+      - name: Ensure iOS Simulator SDK before nix build
         if: ${{ !inputs.products_ready }}
-        run: |
-          open -a Simulator || true
-          for i in 1 2 3 4 5 6 7 8 9 10; do
-            if xcrun simctl list runtimes 2>/dev/null | grep -q 'iOS'; then
-              echo "iOS Simulator runtime visible"
-              break
-            fi
-            sleep 2
-          done
-          xcrun simctl list runtimes || true
-          if xcrun simctl list runtimes 2>/dev/null | grep -q 'iOS'; then
-            echo "WAWONA_SKIP_IOS_SIMULATOR_PLATFORM_DOWNLOAD=1" >> "$GITHUB_ENV"
-          fi
+        run: ./.github/scripts/warm-ios-simulator-sdk.sh
 
       - name: Build Wawona.app (iOS simulator slice)
         if: ${{ !inputs.products_ready }}
@@ -143,34 +130,21 @@ jobs:
           fi
           xcrun simctl list devices available | grep "$SIM_NAME" || true
 
-      - name: Run iOS GUI smoke (deterministic replay)
+      # One job: smoke then fuzzel (shared sim). Fuzzel replay still prepare→stop→replay.
+      - name: Run iOS GUI smoke + nested fuzzel
         env:
           WAWONA_IOS_APP: result-ios/Wawona.app
           WAWONA_IOS_PREPARE_TIMEOUT_MS: "600000"
+          WAWONA_FUZZEL_REQUIRE_IOS: ${{ github.event_name != 'pull_request' && '1' || '0' }}
+          WAWONA_SKIP_FUZZEL: ${{ github.event_name == 'pull_request' && '1' || '' }}
         run: |
           SIM_NAME="${WAWONA_IOS_SIM:-iPhone 17 Pro}"
-          echo "== iOS smoke (single attempt) =="
+          echo "== iOS smoke (+ fuzzel when not PR) =="
           pkill -f "agent-device/dist/src/internal/daemon.js" 2>/dev/null || true
           sleep 1
           xcrun simctl bootstatus "$SIM_NAME" -b || xcrun simctl boot "$SIM_NAME" || true
           xcrun simctl bootstatus "$SIM_NAME"
-          ./scripts/agent-device-smoke.sh ios
-
-      - name: Run iOS nested niri + fuzzel e2e (issue #78)
-        # Promote gate: keep fuzzel on push to development/master. Skip on PRs only.
-        if: ${{ github.event_name != 'pull_request' }}
-        env:
-          WAWONA_IOS_APP: result-ios/Wawona.app
-          WAWONA_FUZZEL_REQUIRE_IOS: "1"
-          WAWONA_IOS_PREPARE_TIMEOUT_MS: "600000"
-        run: |
-          SIM_NAME="${WAWONA_IOS_SIM:-iPhone 17 Pro}"
-          echo "== iOS fuzzel (single attempt) =="
-          pkill -f "agent-device/dist/src/internal/daemon.js" 2>/dev/null || true
-          sleep 1
-          xcrun simctl bootstatus "$SIM_NAME" -b || xcrun simctl boot "$SIM_NAME" || true
-          xcrun simctl bootstatus "$SIM_NAME"
-          ./scripts/agent-device-smoke.sh ios-fuzzel
+          ./scripts/agent-device-smoke.sh ios-ci
 
       - name: Upload iOS screenshots
         if: always()
@@ -182,6 +156,7 @@ jobs:
 
   android-apk:
     name: "Android: Wawona.apk"
+    if: ${{ (inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'android' }}
     runs-on: ${{ inputs.products_ready && 'ubuntu-latest' || 'macos-15' }}
     timeout-minutes: 120
     steps:
@@ -245,6 +220,7 @@ jobs:
 
   android-emu-e2e:
     name: "Android emulator: GUI smoke (agent-device replay)"
+    if: ${{ (inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'android' }}
     needs: android-apk
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -296,7 +272,10 @@ jobs:
 
   catalog-and-macos-fuzzel:
     name: "Catalog + macOS nested niri/fuzzel"
-    runs-on: macos-15
+    if: ${{ (inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'macos' }}
+    # Must match product-build macos-app runner: macos-26 builds are
+    # min-version 26 and abort on macos-15 ("newer than running OS").
+    runs-on: macos-26
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
@@ -366,6 +345,7 @@ jobs:
 
   linux-catalog:
     name: "Linux: applications catalog smoke"
+    if: ${{ (inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'linux' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

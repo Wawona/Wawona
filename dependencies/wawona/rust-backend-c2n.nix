@@ -33,6 +33,11 @@
 , androidToolchain ? null
 , appleHostCrates ? null # shared host crate graph (dependencies/wawona/apple-host-crates.nix)
 , hostGraphOnly ? false   # build/export host-side crate graph only (apple-host-crates)
+  # Optional pre-generated Cargo.nix (#68 Phase 3.1). When set, skips a second
+  # generatedCargoNix IFD for backends that share the same workspaceSrc.
+, cargoNixDrv ? null
+  # When false, buildRustCrate uses non-release (faster CI sim backends; no thin LTO).
+, release ? true
   # Extracted-repo toolchain handles (default to legacy in-tree copies; Wawona's
   # flake injects wwn-toolchain store paths via the pkgs overlay).
 , applePath
@@ -149,10 +154,14 @@ let
   else null;
 
   # ── crate2nix: generate per-crate derivations ─────────────────────
-  cargoNixDrv = crate2nix.tools.${pkgs.stdenv.hostPlatform.system}.generatedCargoNix {
-    name = "wawona-${platform}${lib.optionalString (isAppleCross && simulator) "-sim"}";
-    src = workspaceSrc;
-  };
+  cargoNixDrv' =
+    if cargoNixDrv != null then
+      cargoNixDrv
+    else
+      crate2nix.tools.${pkgs.stdenv.hostPlatform.system}.generatedCargoNix {
+        name = "wawona-${platform}${lib.optionalString (isAppleCross && simulator) "-sim"}";
+        src = workspaceSrc;
+      };
 
   # ── Cross-compilation via stdenv.hostPlatform override ─────────────
   #
@@ -446,12 +455,17 @@ let
     };
 
   buildRustCrateForTarget = p:
-    if hostGraphOnly then
-      hostBRC
-    else if !isCross then
-      hostBRC
-    else
-      mkCrossBRC {};
+    let
+      brc =
+        if hostGraphOnly then
+          hostBRC
+        else if !isCross then
+          hostBRC
+        else
+          mkCrossBRC {};
+    in
+    # Propagate release=false to every crate (CI sim: skip thin LTO / O3).
+    attrs: brc (attrs // lib.optionalAttrs (!release) { release = false; });
 
   # Import the generated Cargo.nix with our custom buildRustCrateForPkgs.
   # For cross builds, override pkgs.stdenv.hostPlatform so that the generated
@@ -468,7 +482,7 @@ let
     else
       pkgs;
 
-  cargoNix = import cargoNixDrv {
+  cargoNix = import cargoNixDrv' {
     pkgs = cargoNixPkgs;
     buildRustCrateForPkgs = buildRustCrateForTarget;
   };
@@ -522,6 +536,8 @@ let
       preConfigure = (attrs.preConfigure or "") + lib.optionalString pkgs.stdenv.isDarwin ''
         export MACOSX_DEPLOYMENT_TARGET="${macosDeploymentTarget}"
       '';
+      # Product-sim CI can set release=false to skip thin LTO / O3 on the root crate.
+      release = release;
       nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [
         pkgs.pkg-config
       ] ++ lib.optionals (isIOS || isTVOS || isVisionOS) [

@@ -45,12 +45,16 @@ jobs:
           VERSION=$(cat VERSION)
           mkdir -p dmg-staging
           if [[ -d product-macos-app/Wawona.app ]]; then
-            cp -R product-macos-app/Wawona.app dmg-staging/
+            ditto product-macos-app/Wawona.app dmg-staging/Wawona.app
           else
             found="$(find product-macos-app -name 'Wawona.app' -type d | head -1)"
             [[ -n "$found" ]] || { echo "Wawona.app missing"; exit 1; }
-            cp -R "$found" dmg-staging/
+            ditto "$found" dmg-staging/Wawona.app
           fi
+          # GHA artifact zip can drop +x; restore before packaging.
+          chmod -R u+w dmg-staging/Wawona.app
+          find dmg-staging/Wawona.app/Contents/MacOS -type f -exec chmod +x {} + 2>/dev/null || true
+          find dmg-staging/Wawona.app/Contents/Resources/bin -type f -exec chmod +x {} + 2>/dev/null || true
           ln -s /Applications dmg-staging/Applications
           hdiutil create -volname "Wawona" -srcfolder dmg-staging \
             -ov -format UDZO "Wawona-${VERSION}.dmg"

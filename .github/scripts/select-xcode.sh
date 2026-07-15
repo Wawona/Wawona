@@ -21,6 +21,8 @@ fi
 echo "Selected Xcode: $XCODE_APP"
 "$DEVELOPER_DIR/usr/bin/xcodebuild" -version
 
+XCODE_VER=$("$DEVELOPER_DIR/usr/bin/xcodebuild" -version | awk '/Xcode/{print $2; exit}')
+
 if [ -n "${GITHUB_ENV:-}" ]; then
   {
     echo "DEVELOPER_DIR=$DEVELOPER_DIR"
@@ -32,4 +34,13 @@ else
   export DEVELOPER_DIR XCODE_APP
   export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
   export TOOLCHAINS=com.apple.dt.toolchain.XcodeDefault
+fi
+
+# For actions/cache keys and job outputs (e.g. XCTest runner cache).
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
+  {
+    echo "version=$XCODE_VER"
+    echo "developer_dir=$DEVELOPER_DIR"
+    echo "xcode_app=$XCODE_APP"
+  } >> "$GITHUB_OUTPUT"
 fi

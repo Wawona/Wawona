@@ -1,7 +1,8 @@
 name: Device gate
 
 # Single scheduler for product binaries + Device GUI e2e on development/master.
-# product-build runs once per SHA; device-e2e consumes artifacts (no rebuild).
+# Product jobs are called separately so iOS e2e can start when ios-sim is ready
+# (without waiting for AppImages / macOS / Android).
 
 on:
   workflow_dispatch: {}
@@ -33,6 +34,9 @@ on:
       - ".github/workflows/device-gate.yml"
       - ".github/workflows/product-build.yml"
       - ".github/scripts/resolve-product-artifacts.sh"
+      - ".github/scripts/select-xcode.sh"
+      - ".github/scripts/warm-ios-simulator-sdk.sh"
+      - ".github/ci-package-matrix.json"
 
 concurrency:
   group: device-gate-${{ github.ref }}-${{ inputs.checkout_ref || github.sha }}
@@ -44,23 +48,106 @@ permissions:
   actions: read
 
 jobs:
-  products:
-    name: Product build
+  product-ios:
+    name: Product iOS sim
     uses: ./.github/workflows/product-build.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
+      only: ios-sim
     permissions:
       contents: read
       id-token: write
 
-  e2e:
-    name: Device GUI e2e
-    needs: products
+  product-android:
+    name: Product Android APK
+    uses: ./.github/workflows/product-build.yml
+    with:
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
+      only: android-apk
+    permissions:
+      contents: read
+      id-token: write
+
+  product-macos:
+    name: Product macOS app
+    uses: ./.github/workflows/product-build.yml
+    with:
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
+      only: macos-app
+    permissions:
+      contents: read
+      id-token: write
+
+  product-appimage:
+    name: Product AppImages
+    uses: ./.github/workflows/product-build.yml
+    with:
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
+      only: appimage
+    permissions:
+      contents: read
+      id-token: write
+
+  e2e-ios:
+    name: Device e2e iOS
+    needs: product-ios
     uses: ./.github/workflows/device-e2e.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
       products_ready: true
+      lanes: ios
     permissions:
       contents: read
       id-token: write
       actions: read
+
+  e2e-android:
+    name: Device e2e Android
+    needs: product-android
+    uses: ./.github/workflows/device-e2e.yml
+    with:
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
+      products_ready: true
+      lanes: android
+    permissions:
+      contents: read
+      id-token: write
+      actions: read
+
+  e2e-macos:
+    name: Device e2e macOS
+    needs: product-macos
+    uses: ./.github/workflows/device-e2e.yml
+    with:
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
+      products_ready: true
+      lanes: macos
+    permissions:
+      contents: read
+      id-token: write
+      actions: read
+
+  e2e-linux:
+    name: Device e2e Linux catalog
+    uses: ./.github/workflows/device-e2e.yml
+    with:
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
+      products_ready: true
+      lanes: linux
+    permissions:
+      contents: read
+      id-token: write
+      actions: read
+
+  # Single rollup so AppImage product failures still fail the gate (no e2e consumer).
+  gate:
+    name: Device gate
+    needs:
+      - e2e-ios
+      - e2e-android
+      - e2e-macos
+      - e2e-linux
+      - product-appimage
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Device gate green (products + e2e lanes)"

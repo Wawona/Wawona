@@ -4,9 +4,18 @@ name: Product build
 # Release Beta) download GHA artifacts; FlakeHub Cache substitutes store paths.
 # Do not schedule this on push directly — device-gate / Release call it once
 # per SHA via workflow_call.
+#
+# `only` lets device-gate fan out product jobs so iOS e2e can start when
+# ios-sim finishes (without waiting for AppImages/macOS/Android).
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      only:
+        description: "Product subset: all | ios-sim | android-apk | macos-app | appimage"
+        type: string
+        required: false
+        default: "all"
   workflow_call:
     inputs:
       checkout_ref:
@@ -14,9 +23,14 @@ on:
         type: string
         required: false
         default: ""
+      only:
+        description: "Product subset: all | ios-sim | android-apk | macos-app | appimage"
+        type: string
+        required: false
+        default: "all"
 
 concurrency:
-  group: product-build-${{ github.sha }}
+  group: product-build-${{ github.sha }}-${{ inputs.only || 'all' }}
   cancel-in-progress: false
 
 permissions:
@@ -29,6 +43,7 @@ env:
 jobs:
   ios-sim:
     name: "iOS sim .app"
+    if: ${{ (inputs.only || 'all') == 'all' || (inputs.only || 'all') == 'ios-sim' }}
     runs-on: macos-26
     timeout-minutes: 120
     steps:
@@ -37,25 +52,12 @@ jobs:
           ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Select Xcode
-        run: |
-          XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
-          [ -n "$XCODE_APP" ] || { echo "::error::No Xcode found"; exit 1; }
-          sudo xcode-select -s "$XCODE_APP"
-          xcodebuild -version | tee /tmp/xcode-version.txt
+        id: xcode
+        run: ./.github/scripts/select-xcode.sh
 
-      - name: Warm CoreSimulator
-        run: |
-          open -a Simulator || true
-          for i in 1 2 3 4 5 6 7 8 9 10; do
-            if xcrun simctl list runtimes 2>/dev/null | grep -q 'iOS'; then
-              echo "iOS Simulator runtime visible"
-              break
-            fi
-            sleep 2
-          done
-          if xcrun simctl list runtimes 2>/dev/null | grep -q 'iOS'; then
-            echo "WAWONA_SKIP_IOS_SIMULATOR_PLATFORM_DOWNLOAD=1" >> "$GITHUB_ENV"
-          fi
+      # SDK check is cheap; set skip before Nix so build-app.nix never hits CDN.
+      - name: Ensure iOS Simulator SDK (skip platform download when present)
+        run: ./.github/scripts/warm-ios-simulator-sdk.sh
 
       - uses: DeterminateSystems/nix-installer-action@v22
         with:
@@ -94,10 +96,12 @@ jobs:
           name: product-ios-sim
           path: dist/ios-sim/
           if-no-files-found: error
+          compression-level: 0
           retention-days: 14
 
   android-apk:
     name: "Android debug APK"
+    if: ${{ (inputs.only || 'all') == 'all' || (inputs.only || 'all') == 'android-apk' }}
     runs-on: macos-15
     timeout-minutes: 120
     steps:
@@ -147,6 +151,7 @@ jobs:
 
   macos-app:
     name: "macOS .app"
+    if: ${{ (inputs.only || 'all') == 'all' || (inputs.only || 'all') == 'macos-app' }}
     runs-on: macos-26
     timeout-minutes: 90
     steps:
@@ -205,10 +210,12 @@ jobs:
           name: product-macos-app
           path: dist/macos-app/
           if-no-files-found: error
+          compression-level: 0
           retention-days: 14
 
   appimage:
     name: "Linux AppImage (${{ matrix.system }})"
+    if: ${{ (inputs.only || 'all') == 'all' || (inputs.only || 'all') == 'appimage' }}
     strategy:
       fail-fast: false
       matrix:
