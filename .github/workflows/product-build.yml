@@ -71,7 +71,9 @@ jobs:
       - name: Stage + manifest
         run: |
           mkdir -p dist/ios-sim
-          cp -R result-ios/Wawona.app dist/ios-sim/
+          # Dereference store symlinks so the GHA artifact is self-contained.
+          ditto result-ios/Wawona.app dist/ios-sim/Wawona.app
+          test -d dist/ios-sim/Wawona.app
           OUT="$(readlink -f result-ios)"
           {
             echo "{"
@@ -169,7 +171,13 @@ jobs:
       - name: Stage app
         run: |
           mkdir -p dist/macos-app
-          cp -R result-macos/Applications/Wawona.app dist/macos-app/
+          # Nix .app trees keep store symlinks (niri/fuzzel under Resources/bin).
+          # GHA artifacts must be self-contained — dereference before upload.
+          ditto result-macos/Applications/Wawona.app dist/macos-app/Wawona.app
+          NIRI="dist/macos-app/Wawona.app/Contents/Resources/bin/niri"
+          FUZZEL="dist/macos-app/Wawona.app/Contents/Resources/bin/fuzzel"
+          test -x "$NIRI" || { echo "FAIL: staged niri missing at $NIRI"; ls -laR dist/macos-app/Wawona.app/Contents/Resources/bin || true; exit 1; }
+          test -x "$FUZZEL" || { echo "FAIL: staged fuzzel missing at $FUZZEL"; exit 1; }
           OUT="$(readlink -f result-macos)"
           {
             echo "{"
@@ -180,6 +188,7 @@ jobs:
             echo "}"
           } > dist/macos-app/product-manifest.json
           ls -la dist/macos-app/
+          ls -la dist/macos-app/Wawona.app/Contents/Resources/bin/ | head -40
 
       - uses: actions/upload-artifact@v4
         with:

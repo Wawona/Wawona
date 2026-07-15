@@ -278,7 +278,10 @@ jobs:
           profile: pixel_7
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot-save
           disable-animations: true
-          script: |
+          # android-emulator-runner uses /usr/bin/sh; wrap in bash for if/set.
+          # Promote gate: fuzzel on push; skip only on pull_request.
+          script: >
+            bash -lc '
             set -euo pipefail
             adb shell settings put secure immersive_mode_confirmations confirmed
             export WAWONA_ANDROID_APK="$GITHUB_WORKSPACE/dist/Wawona.apk"
@@ -290,6 +293,7 @@ jobs:
               echo "== Android fuzzel (single attempt) =="
               ./scripts/agent-device-smoke.sh android-fuzzel
             fi
+            '
 
       - name: Upload Android screenshots
         if: always()
@@ -336,13 +340,14 @@ jobs:
         run: |
           mkdir -p result-macos/Applications
           if [[ -d product-macos-app/Wawona.app ]]; then
-            cp -R product-macos-app/Wawona.app result-macos/Applications/
+            ditto product-macos-app/Wawona.app result-macos/Applications/Wawona.app
           else
             found="$(find product-macos-app -name 'Wawona.app' -type d | head -1)"
             [[ -n "$found" ]] || { echo "Wawona.app missing"; exit 1; }
-            cp -R "$found" result-macos/Applications/
+            ditto "$found" result-macos/Applications/Wawona.app
           fi
-          test -d result-macos/Applications/Wawona.app
+          test -x result-macos/Applications/Wawona.app/Contents/Resources/bin/niri \
+            || { echo "FAIL: niri missing in product-macos-app artifact"; ls -laR result-macos/Applications/Wawona.app/Contents/Resources/bin || true; exit 1; }
 
       - name: Nested niri + fuzzel smoke (macOS)
         if: ${{ github.event_name != 'pull_request' }}

@@ -396,12 +396,17 @@ run_ios_fuzzel() {
   chmod +x "$ROOT/scripts/agent-device-set-niri-ios.sh"
   "$ROOT/scripts/agent-device-set-niri-ios.sh" "$IOS_DEVICE"
 
-  # Same session as wawona-ios-niri-fuzzel.ad — keep prepare daemon alive so
-  # replay open does not re-lease XCTest under the hard 90s RPC timeout.
+  # Warm the XCTest runner, then release the prepare-daemon lease before
+  # replay. agent-device replay starts its own daemon; a live prepare lease
+  # fails as "already owned by another agent-device daemon". (CLI open/smoke
+  # can share the prepare session; replay cannot.)
   local fuzzel_sess=wawona-ios-niri-fuzzel
+  stop_agent_device_daemons
   echo "== iOS: prepare XCTest runner (session=$fuzzel_sess) =="
   agent-device prepare ios-runner --platform ios --device "$IOS_DEVICE" \
-    --session "$fuzzel_sess" --timeout 300000
+    --session "$fuzzel_sess" --timeout "${WAWONA_IOS_PREPARE_TIMEOUT_MS:-600000}"
+  echo "== iOS: stop prepare daemon so replay can own the runner =="
+  stop_agent_device_daemons
 
   echo "== iOS: niri+fuzzel .ad replay =="
   agent-device replay "$ROOT/.agent-device/wawona-ios-niri-fuzzel.ad" \

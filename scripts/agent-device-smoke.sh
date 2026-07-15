@@ -153,6 +153,8 @@ run_ios() {
   agent-device wait 8000 "${ad_common[@]}" || true
   agent-device screenshot "$ARTIFACTS/ios-weston-session.png" "${ad_common[@]}" || true
   agent-device close "${ad_common[@]}" || true
+  # Release XCTest runner lease so a following ios-fuzzel lane can prepare/replay.
+  stop_agent_device_daemons
 }
 
 run_android() {
