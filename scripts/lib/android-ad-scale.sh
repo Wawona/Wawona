@@ -89,6 +89,36 @@ android_uia_has_text() {
   "${adb[@]}" exec-out cat /sdcard/wawona-ui.xml 2>/dev/null | tr -d '\r' | grep -Fq "text=\"$want\""
 }
 
+# Compose testTagsAsResourceId → resource-id containing the wwn.* tag.
+android_uia_has_id() {
+  local want="$1"
+  local serial="${ANDROID_SERIAL:-${WAWONA_ANDROID_SERIAL:-}}"
+  local adb=(adb)
+  [[ -n "$serial" ]] && adb=(adb -s "$serial")
+  "${adb[@]}" shell uiautomator dump /sdcard/wawona-ui.xml >/dev/null 2>&1 || return 1
+  "${adb[@]}" exec-out cat /sdcard/wawona-ui.xml 2>/dev/null | tr -d '\r' \
+    | grep -Eiq "resource-id=\"[^\"]*${want}\""
+}
+
+# Poll UiAutomator until text or resource-id appears (agent-device waits can miss Compose).
+android_uia_wait() {
+  local kind="$1" # text | id
+  local want="$2"
+  local timeout_ms="${3:-20000}"
+  local elapsed=0
+  local step=1000
+  while (( elapsed < timeout_ms )); do
+    if [[ "$kind" == "id" ]]; then
+      android_uia_has_id "$want" && return 0
+    else
+      android_uia_has_text "$want" && return 0
+    fi
+    sleep "$(awk -v s="$step" 'BEGIN { printf "%.3f", s/1000 }')"
+    elapsed=$((elapsed + step))
+  done
+  return 1
+}
+
 # Alt+D for nested niri Mod+D. keycombination exists on API 34+ images only.
 android_inject_alt_d() {
   local serial="${ANDROID_SERIAL:-${WAWONA_ANDROID_SERIAL:-}}"

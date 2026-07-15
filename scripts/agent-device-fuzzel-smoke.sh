@@ -127,16 +127,19 @@ run_android_fuzzel() {
     return 1
   }
   android_dismiss_welcome() {
-    if android_press_id "wwn.welcome.continue" || android_press_text "Continue"; then
+    local attempt
+    for attempt in 1 2 3; do
+      if ! android_uia_has_text "Continue" && ! android_uia_has_id "wwn.welcome.continue"; then
+        return 0
+      fi
+      android_press_id "wwn.welcome.continue" \
+        || android_press_text "Continue" \
+        || android_tap_ref 540 1404 \
+        || android_tap_ref 540 1450 \
+        || true
       agent-device wait 2000 "${ad_common[@]}"
-      return 0
-    fi
-    android_tap_ref 540 1404
-    agent-device wait 2000 "${ad_common[@]}"
-    if android_uia_has_text "Continue"; then
-      android_tap_ref 540 1450
-      agent-device wait 2000 "${ad_common[@]}"
-    fi
+      dismiss_android_blockers
+    done
   }
   android_press_start() {
     if android_press_id "wwn.machines.start" || android_press_text "Start"; then

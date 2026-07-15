@@ -169,12 +169,19 @@ run_android() {
     return 1
   }
   android_dismiss_welcome() {
-    if android_press_id "wwn.welcome.continue" || android_press_text "Continue"; then
+    local attempt
+    for attempt in 1 2 3; do
+      if ! android_uia_has_text "Continue" && ! android_uia_has_id "wwn.welcome.continue"; then
+        return 0
+      fi
+      android_press_id "wwn.welcome.continue" \
+        || android_press_text "Continue" \
+        || android_tap_ref 540 1404 \
+        || android_tap_ref 540 1450 \
+        || true
       agent-device wait 2000 "${ad_common[@]}"
-      return 0
-    fi
-    android_tap_ref 540 1404
-    agent-device wait 2000 "${ad_common[@]}"
+      dismiss_android_blockers
+    done
   }
   android_press_start() {
     if android_press_id "wwn.machines.start" || android_press_text "Start"; then
@@ -187,6 +194,14 @@ run_android() {
     fi
     return 1
   }
+  android_wait_machines_home() {
+    # Prefer UiAutomator: agent-device id=/text waits often miss Compose nodes on CI.
+    android_uia_wait id "wwn.machines.root" 25000 && return 0
+    android_uia_wait text "Machine Configuration" 5000 && return 0
+    agent-device wait 'id="wwn.machines.root"' 5000 "${ad_common[@]}" >/dev/null 2>&1 && return 0
+    agent-device wait 'text="Machine Configuration"' 5000 "${ad_common[@]}" >/dev/null 2>&1 && return 0
+    return 1
+  }
 
   agent-device open com.aspauldingcode.wawona --relaunch "${ad_common[@]}"
   agent-device wait 4000 "${ad_common[@]}"
@@ -195,13 +210,15 @@ run_android() {
   agent-device screenshot "$ARTIFACTS/android-first-screen.png" "${ad_common[@]}"
   android_dismiss_welcome
   dismiss_android_blockers
-  agent-device wait 'id="wwn.machines.root"' 20000 "${ad_common[@]}" \
-    || agent-device wait text "Machine Configuration" 20000 "${ad_common[@]}"
-  agent-device is visible 'id="wwn.machines.root"' "${ad_common[@]}" \
-    || agent-device is visible 'label="Machine Configuration"' "${ad_common[@]}" \
-    || true
+  if ! android_wait_machines_home; then
+    echo "FAIL: machines home not reached after Welcome" >&2
+    agent-device screenshot "$ARTIFACTS/android-machines-root.png" "${ad_common[@]}" || true
+    agent-device snapshot -i --raw "${ad_common[@]}" || true
+    adb -s "$serial" exec-out cat /sdcard/wawona-ui.xml 2>/dev/null | tr '>' '\n' | grep -E 'text=|content-desc=|resource-id=' | head -60 || true
+    exit 1
+  fi
   agent-device screenshot "$ARTIFACTS/android-machines-root.png" "${ad_common[@]}"
-  if android_uia_has_text "Continue" && ! agent-device is visible 'id="wwn.machines.root"' "${ad_common[@]}" >/dev/null 2>&1; then
+  if android_uia_has_text "Continue"; then
     echo "FAIL: still on Welcome after Continue" >&2
     agent-device snapshot -i --raw "${ad_common[@]}" || true
     exit 1
@@ -211,8 +228,9 @@ run_android() {
 
   # Settings → Display → Done (parity with iOS smoke).
   if android_press_id "wwn.machines.settings" || android_press_text "Settings"; then
-    agent-device wait 'id="wwn.settings.display"' 15000 "${ad_common[@]}" \
-      || agent-device wait text Display 15000 "${ad_common[@]}" || true
+    android_uia_wait id "wwn.settings.display" 15000 \
+      || android_uia_wait text "Display" 5000 \
+      || true
     if android_press_id "wwn.settings.display" || android_press_text "Display"; then
       agent-device wait 800 "${ad_common[@]}"
     fi
