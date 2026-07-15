@@ -278,22 +278,13 @@ jobs:
           profile: pixel_7
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot-save
           disable-animations: true
-          # android-emulator-runner uses /usr/bin/sh; wrap in bash for if/set.
-          # Promote gate: fuzzel on push; skip only on pull_request.
-          script: >
-            bash -lc '
-            set -euo pipefail
+          # Folded one-liner for /usr/bin/sh. Skip fuzzel on pull_request only.
+          script: >-
             adb shell settings put secure immersive_mode_confirmations confirmed
-            export WAWONA_ANDROID_APK="$GITHUB_WORKSPACE/dist/Wawona.apk"
-            echo "== Android smoke (single attempt) =="
-            ./scripts/agent-device-smoke.sh android
-            if [ "${{ github.event_name }}" = "pull_request" ]; then
-              echo "== Android fuzzel skipped on pull_request =="
-            else
-              echo "== Android fuzzel (single attempt) =="
-              ./scripts/agent-device-smoke.sh android-fuzzel
-            fi
-            '
+            && export WAWONA_ANDROID_APK="$GITHUB_WORKSPACE/dist/Wawona.apk"
+            && echo "== Android smoke (single attempt) =="
+            && ./scripts/agent-device-smoke.sh android
+            && if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then echo "== Android fuzzel skipped on pull_request =="; else echo "== Android fuzzel (single attempt) ==" && ./scripts/agent-device-smoke.sh android-fuzzel; fi
 
       - name: Upload Android screenshots
         if: always()
@@ -346,8 +337,13 @@ jobs:
             [[ -n "$found" ]] || { echo "Wawona.app missing"; exit 1; }
             ditto "$found" result-macos/Applications/Wawona.app
           fi
-          test -x result-macos/Applications/Wawona.app/Contents/Resources/bin/niri \
-            || { echo "FAIL: niri missing in product-macos-app artifact"; ls -laR result-macos/Applications/Wawona.app/Contents/Resources/bin || true; exit 1; }
+          APP=result-macos/Applications/Wawona.app
+          chmod -R u+w "$APP"
+          if [[ -d "$APP/Contents/Resources/bin" ]]; then
+            find "$APP/Contents/Resources/bin" -type f -exec chmod +x {} +
+          fi
+          test -x "$APP/Contents/Resources/bin/niri" \
+            || { echo "FAIL: niri missing/not executable in product-macos-app"; ls -la "$APP/Contents/Resources/bin" || true; exit 1; }
 
       - name: Nested niri + fuzzel smoke (macOS)
         if: ${{ github.event_name != 'pull_request' }}

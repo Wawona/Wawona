@@ -174,10 +174,17 @@ jobs:
           # Nix .app trees keep store symlinks (niri/fuzzel under Resources/bin).
           # GHA artifacts must be self-contained — dereference before upload.
           ditto result-macos/Applications/Wawona.app dist/macos-app/Wawona.app
+          # Artifact zip can drop +x; restore exec bits on bundled tools.
+          chmod -R u+w dist/macos-app/Wawona.app
+          if [[ -d dist/macos-app/Wawona.app/Contents/Resources/bin ]]; then
+            find dist/macos-app/Wawona.app/Contents/Resources/bin -type f -exec chmod +x {} +
+          fi
           NIRI="dist/macos-app/Wawona.app/Contents/Resources/bin/niri"
           FUZZEL="dist/macos-app/Wawona.app/Contents/Resources/bin/fuzzel"
-          test -x "$NIRI" || { echo "FAIL: staged niri missing at $NIRI"; ls -laR dist/macos-app/Wawona.app/Contents/Resources/bin || true; exit 1; }
-          test -x "$FUZZEL" || { echo "FAIL: staged fuzzel missing at $FUZZEL"; exit 1; }
+          test -f "$NIRI" || { echo "FAIL: staged niri missing at $NIRI"; ls -laR dist/macos-app/Wawona.app/Contents/Resources/bin || true; exit 1; }
+          test -f "$FUZZEL" || { echo "FAIL: staged fuzzel missing at $FUZZEL"; exit 1; }
+          chmod +x "$NIRI" "$FUZZEL"
+          test -x "$NIRI" && test -x "$FUZZEL"
           OUT="$(readlink -f result-macos)"
           {
             echo "{"
