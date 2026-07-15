@@ -18,7 +18,9 @@ while [ "$attempt" -le "$max_attempts" ]; do
     exit 0
   fi
 
-  if grep -Eq "Could not resolve host|HTTP error 418|timed out|Connection reset by peer|502 Bad Gateway|503 Service Unavailable|504 Gateway Timeout" "$log_file"; then
+  # Network flakes + Darwin Xcode MetalToolchain ROFS cleanup after a successful
+  # xcodebuild (cannot unlink .../DVTDownloads/MetalToolchain/... Read-only file system).
+  if grep -Eq "Could not resolve host|HTTP error 418|timed out|Connection reset by peer|502 Bad Gateway|503 Service Unavailable|504 Gateway Timeout|cannot unlink .*Read-only file system|MetalToolchain/.*/RestoreVersion\.plist" "$log_file"; then
     rm -f "$log_file"
     if [ "$attempt" -lt "$max_attempts" ]; then
       sleep_seconds=$((attempt * 20))

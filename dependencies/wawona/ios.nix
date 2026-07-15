@@ -58,7 +58,11 @@ let
       throw "ios.nix: simulator build needs sdk mapping for nativeSdk=${nativeSdk}";
   destinationPlatform = if simulator then "${platformName} Simulator" else platformName;
 in
-xcodeUtils.buildApp {
+# Xcode 26+ may mount Metal.xctoolchain under $HOME/.../DVTDownloads (HOME=$TMPDIR/home
+# in build-app.nix). Nix then fails cleanup with:
+#   error: cannot unlink ".../MetalToolchain/.../RestoreVersion.plist": Read-only file system
+# Detach those mounts before the build phase returns so the temp tree is removable.
+(xcodeUtils.buildApp {
   name = "Wawona";
   src = xcodeProject;
   target = xcodeTarget;
@@ -93,4 +97,19 @@ xcodeUtils.buildApp {
     # Swift macro plugin server often breaks for that slice (malformed response / sandbox_apply).
     ++ lib.optionals simulator [ ''ONLY_ACTIVE_ARCH=YES'' ]
   );
-}
+}).overrideAttrs (old: {
+  buildPhase = (old.buildPhase or "") + ''
+    metal_mounts="$HOME/Library/Developer/DVTDownloads/MetalToolchain/mounts"
+    if [ -d "$metal_mounts" ]; then
+      echo "Detaching MetalToolchain mounts under $metal_mounts ..."
+      for mnt in "$metal_mounts"/*; do
+        [ -e "$mnt" ] || continue
+        /usr/bin/hdiutil detach "$mnt" -force 2>/dev/null \
+          || /sbin/umount -f "$mnt" 2>/dev/null \
+          || true
+      done
+      # Drop leftover mountpoint dirs so Nix can unlink $HOME.
+      rm -rf "$HOME/Library/Developer/DVTDownloads/MetalToolchain" 2>/dev/null || true
+    fi
+  '';
+})
