@@ -25,9 +25,9 @@ mod app {
         RuntimeState,
     };
     use wawona::linux::ui::{
-        clamp_content, install_breakpoint, show_editor, show_settings, AppState, HomeShell,
-        LayoutBinding, MachineSessions, RebuildHome, SharedAppState,
-        build_home_shell, rebuild_home,
+        a11y, build_home_shell, clamp_content, install_breakpoint, rebuild_home, show_editor,
+        show_settings, AppState, HomeShell, LayoutBinding, MachineSessions, RebuildHome,
+        SharedAppState,
     };
     use wawona::linux::ui_model::LayoutMode;
     use wawona::linux::service;
@@ -399,9 +399,9 @@ mod app {
         // in before Add to render as [Add][Settings].
         let settings_btn = gtk::Button::from_icon_name("emblem-system-symbolic");
         settings_btn.set_tooltip_text(Some("Settings"));
-        crate::linux::ui::a11y::set_wwn_a11y(
+        a11y::set_wwn_a11y(
             &settings_btn,
-            crate::linux::ui::a11y::id::MACHINES_SETTINGS,
+            a11y::id::MACHINES_SETTINGS,
             Some("Settings"),
         );
         header.pack_end(&settings_btn);
@@ -412,11 +412,7 @@ mod app {
         let new_btn = gtk::Button::new();
         new_btn.set_child(Some(&new_btn_content));
         new_btn.set_tooltip_text(Some("Add Machine Profile"));
-        crate::linux::ui::a11y::set_wwn_a11y(
-            &new_btn,
-            crate::linux::ui::a11y::id::MACHINES_ADD,
-            Some("Add Machine"),
-        );
+        a11y::set_wwn_a11y(&new_btn, a11y::id::MACHINES_ADD, Some("Add Machine"));
         header.pack_end(&new_btn);
 
         let rebuild_slot: Rc<RefCell<Option<Rc<dyn Fn()>>>> = Rc::new(RefCell::new(None));
@@ -540,9 +536,9 @@ mod app {
                             let da = gtk::DrawingArea::new();
                             da.set_hexpand(true);
                             da.set_vexpand(true);
-                            crate::linux::ui::a11y::set_wwn_a11y(
+                            a11y::set_wwn_a11y(
                                 &da,
-                                crate::linux::ui::a11y::id::COMPOSITOR_SURFACE,
+                                a11y::id::COMPOSITOR_SURFACE,
                                 Some("Wayland application"),
                             );
                             client_win.set_child(Some(&da));
