@@ -58,20 +58,25 @@ run_ios() {
     xcrun simctl install "$IOS_DEVICE" "$STAGE"
   fi
 
-  echo "== iOS: prepare XCTest runner (one-time per machine) =="
-  # CI cold runners often exceed 5m for first XCTest runner connect.
-  agent-device prepare ios-runner --platform ios --device "$IOS_DEVICE" \
-    --timeout "${WAWONA_IOS_PREPARE_TIMEOUT_MS:-600000}"
-
-  # Stop the prepare daemon so the smoke session can take the runner lease
-  # (see `agent-device help workflow`).
-  stop_agent_device_daemons
-
   # Drop stale lane artifacts so CI uploads only this run (repo has old PNGs).
   rm -f "$ARTIFACTS"/ios-*.png
 
+  echo "== iOS: prepare XCTest runner (session=$sess) =="
+  # Prepare + open must share one session/daemon. Stopping the prepare daemon
+  # forces open to re-acquire the XCTest runner lease under a hard 90s RPC
+  # timeout — that is what flakes as "Daemon request timed out" on CI.
+  agent-device prepare ios-runner "${ad_common[@]}" \
+    --timeout "${WAWONA_IOS_PREPARE_TIMEOUT_MS:-600000}"
+
   echo "== iOS: single-session smoke (stable wwn.* ids) =="
-  agent-device open com.aspauldingcode.Wawona --relaunch "${ad_common[@]}"
+  # One open retry for residual daemon flakes (not a suite retry).
+  if ! agent-device open com.aspauldingcode.Wawona --relaunch "${ad_common[@]}"; then
+    echo "== iOS: open timed out; recreate same-session prepare and retry once =="
+    stop_agent_device_daemons
+    agent-device prepare ios-runner "${ad_common[@]}" \
+      --timeout "${WAWONA_IOS_PREPARE_TIMEOUT_MS:-600000}" || true
+    agent-device open com.aspauldingcode.Wawona --relaunch "${ad_common[@]}"
+  fi
   agent-device wait 3000 "${ad_common[@]}" || true
   agent-device snapshot -i "${ad_common[@]}" || true
   agent-device screenshot "$ARTIFACTS/ios-first-screen.png" "${ad_common[@]}" || true
