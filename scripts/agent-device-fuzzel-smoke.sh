@@ -290,24 +290,31 @@ run_android_fuzzel() {
   # Fuzzel often exits immediately on Berberis (no lasting filter UI), so Android
   # `input text` cannot drive Exec=. Mirror macOS: launch the catalog client
   # against niri's nested Wayland socket via the PATH multicall PIE.
-  local xdg nested libdir wl_bin
+  local xdg nested libdir wl_bin runtime_listing
   xdg="$(adb -s "$serial" logcat -d 2>/dev/null | tr -d '\r' \
     | sed -n 's/.*XDG_RUNTIME_DIR=\([^[:space:]]*\).*/\1/p' | tail -1)"
-  [[ -n "$xdg" ]] || xdg="/data/user/0/com.aspauldingcode.wawona/cache"
-  nested="$(adb -s "$serial" shell "run-as com.aspauldingcode.wawona sh -c 'ls \"$xdg\" 2>/dev/null'" \
-    | tr -d '\r' | grep -E '^wayland-' | grep -v '^wayland-0$' | head -1 || true)"
+  [[ -n "$xdg" ]] || xdg="/data/user/0/com.aspauldingcode.wawona/cache/wawona-runtime"
+  # Prefer niri's advertised nested socket name from logcat.
+  nested="$(adb -s "$serial" logcat -d 2>/dev/null | tr -d '\r' \
+    | sed -n 's/.*listening on Wayland socket: //p' | tail -1 | awk '{print $1}')"
+  runtime_listing="$(adb -s "$serial" shell "run-as com.aspauldingcode.wawona sh -c 'ls -1 \"$xdg\" 2>/dev/null'" | tr -d '\r' || true)"
   if [[ -z "$nested" ]]; then
-    nested="$(adb -s "$serial" shell "run-as com.aspauldingcode.wawona sh -c 'ls \"$xdg\" 2>/dev/null'" \
-      | tr -d '\r' | grep -E '^wayland-' | head -1 || true)"
+    # Socket entries may appear as wayland-N or wayland-N.lock — never use .lock.
+    nested="$(printf '%s\n' "$runtime_listing" | sed 's/\.lock$//' \
+      | grep -E '^wayland-[0-9]+$' | grep -v '^wayland-0$' | sort -u | head -1 || true)"
   fi
   libdir="$(adb -s "$serial" shell 'pm path com.aspauldingcode.wawona' | tr -d '\r' \
     | sed -n 's/^package://p' | head -1 | sed 's|/base\.apk$|/lib/arm64|')"
   wl_bin="$libdir/libwawona_wl_bin.so"
-  echo "nested_socket=${nested:-none} xdg=$xdg wl_bin=$wl_bin" \
-    | tee "$ARTIFACTS/android-fuzzel-e2e-nested-socket.txt"
-  [[ -n "$nested" ]] || {
-    echo "FAIL: no nested Wayland socket under $xdg" >&2
+  {
+    echo "nested_socket=${nested:-none} xdg=$xdg wl_bin=$wl_bin"
+    echo "--- runtime dir ---"
+    printf '%s\n' "$runtime_listing"
+  } | tee "$ARTIFACTS/android-fuzzel-e2e-nested-socket.txt"
+  [[ -n "$nested" && "$nested" != "wayland-0" && "$nested" != *.lock ]] || {
+    echo "FAIL: no nested Wayland socket under $xdg (got '${nested:-none}')" >&2
     adb -s "$serial" shell "run-as com.aspauldingcode.wawona sh -c 'ls -la \"$xdg\" 2>/dev/null'" || true
+    adb -s "$serial" logcat -d 2>/dev/null | grep -iE 'listening on Wayland|NIRI_NESTED|socket' | tail -20 || true
     exit 1
   }
 
