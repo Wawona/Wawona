@@ -67,6 +67,15 @@ static const char *basename_of(const char *path) {
 int main(int argc, char **argv) {
   const char *argv0 = (argc > 0 && argv[0]) ? argv[0] : "wawona-wl-client";
   const char *name = basename_of(argv0);
+  /* Berberis-safe execs pass the real path as argv[0] (libwawona_wl_bin.so).
+   * Allow `libwawona_wl_bin.so weston-simple-shm` and WAWONA_WL_EXEC=… */
+  if (lookup_client(name) == NULL) {
+    const char *env_exec = getenv("WAWONA_WL_EXEC");
+    if (env_exec && env_exec[0])
+      name = env_exec;
+    else if (argc > 1 && argv[1] && argv[1][0])
+      name = basename_of(argv[1]);
+  }
   const struct client_map *entry = lookup_client(name);
   void *handle;
   client_main_fn fn;

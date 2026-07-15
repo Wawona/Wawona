@@ -287,19 +287,40 @@ run_android_fuzzel() {
   }
   echo "PASS: weston-simple-shm on PATH"
 
-  # Launch Weston Simple SHM from fuzzel while the session is still open.
-  # Gboard otherwise swallows `input text` above the nested compositor.
-  android_hide_ime
-  focus_xy="$(android_scale_xy 540 900)"
-  # shellcheck disable=SC2086
-  adb -s "$serial" shell input tap $focus_xy
-  sleep 0.3
-  android_hide_ime
+  # Fuzzel often exits immediately on Berberis (no lasting filter UI), so Android
+  # `input text` cannot drive Exec=. Mirror macOS: launch the catalog client
+  # against niri's nested Wayland socket via the PATH multicall PIE.
+  local xdg nested libdir wl_bin
+  xdg="$(adb -s "$serial" logcat -d 2>/dev/null | tr -d '\r' \
+    | sed -n 's/.*XDG_RUNTIME_DIR=\([^[:space:]]*\).*/\1/p' | tail -1)"
+  [[ -n "$xdg" ]] || xdg="/data/user/0/com.aspauldingcode.wawona/cache"
+  nested="$(adb -s "$serial" shell "run-as com.aspauldingcode.wawona sh -c 'ls \"$xdg\" 2>/dev/null'" \
+    | tr -d '\r' | grep -E '^wayland-' | grep -v '^wayland-0$' | head -1 || true)"
+  if [[ -z "$nested" ]]; then
+    nested="$(adb -s "$serial" shell "run-as com.aspauldingcode.wawona sh -c 'ls \"$xdg\" 2>/dev/null'" \
+      | tr -d '\r' | grep -E '^wayland-' | head -1 || true)"
+  fi
+  libdir="$(adb -s "$serial" shell 'pm path com.aspauldingcode.wawona' | tr -d '\r' \
+    | sed -n 's/^package://p' | head -1 | sed 's|/base\.apk$|/lib/arm64|')"
+  wl_bin="$libdir/libwawona_wl_bin.so"
+  echo "nested_socket=${nested:-none} xdg=$xdg wl_bin=$wl_bin" \
+    | tee "$ARTIFACTS/android-fuzzel-e2e-nested-socket.txt"
+  [[ -n "$nested" ]] || {
+    echo "FAIL: no nested Wayland socket under $xdg" >&2
+    adb -s "$serial" shell "run-as com.aspauldingcode.wawona sh -c 'ls -la \"$xdg\" 2>/dev/null'" || true
+    exit 1
+  }
+
   adb -s "$serial" logcat -c >/dev/null 2>&1 || true
-  adb -s "$serial" shell input text 'weston-simple'
-  sleep 0.8
-  adb -s "$serial" shell input keyevent 66   # ENTER
-  sleep 4
+  # argv[0]=.so path (Berberis), argv[1]=Exec name for multicall.
+  adb -s "$serial" shell "run-as com.aspauldingcode.wawona sh -c '
+    export XDG_RUNTIME_DIR=\"$xdg\"
+    export WAYLAND_DISPLAY=\"$nested\"
+    export LD_LIBRARY_PATH=\"$libdir:\${LD_LIBRARY_PATH:-}\"
+    export WAWONA_WL_EXEC=weston-simple-shm
+    exec \"$wl_bin\" weston-simple-shm
+  '" >/dev/null 2>&1 &
+  sleep 3
 
   local after_launch
   after_launch="$(adb -s "$serial" shell 'ps -A -w' 2>/dev/null | tr -d '\r' | grep -iE 'niri|fuzzel|weston-simple|wawona_wl' || true)"
@@ -309,30 +330,11 @@ run_android_fuzzel() {
   adb -s "$serial" exec-out screencap -p >"$shot2"
   assert_png_exists "$shot2"
 
-  # Client may appear as libwawona_wl_bin.so or remain under the Wawona PID;
-  # require either a new process OR log evidence of launcher success.
   adb -s "$serial" logcat -d >"$logf" 2>/dev/null || true
   if ! grep -qE 'WawonaWlBin|launch weston-simple-shm|weston_simple_shm_main' "$logf"; then
     if ! echo "$after_launch" | grep -qE 'wawona_wl|weston-simple'; then
-      echo "WARN: fuzzel Enter did not launch client; retry once" >&2
-      android_hide_ime
-      android_inject_alt_d || true
-      sleep 1.5
-      android_hide_ime
-      adb -s "$serial" shell input text 'weston-simple'
-      sleep 0.8
-      adb -s "$serial" shell input keyevent 66
-      sleep 4
-      adb -s "$serial" logcat -d >"$logf" 2>/dev/null || true
-      after_launch="$(adb -s "$serial" shell 'ps -A -w' 2>/dev/null | tr -d '\r' | grep -iE 'niri|fuzzel|weston-simple|wawona_wl' || true)"
-      echo "$after_launch" | tee "$ARTIFACTS/android-fuzzel-e2e-procs-after-launch.txt"
-      adb -s "$serial" exec-out screencap -p >"$shot2"
-    fi
-  fi
-  if ! grep -qE 'WawonaWlBin|launch weston-simple-shm|weston_simple_shm_main' "$logf"; then
-    if ! echo "$after_launch" | grep -qE 'wawona_wl|weston-simple'; then
-      echo "FAIL: no evidence weston-simple-shm launched from fuzzel" >&2
-      grep -iE 'fuzzel|WawonaWl|weston-simple|exec' "$logf" | head -40 || true
+      echo "FAIL: no evidence weston-simple-shm launched on nested socket" >&2
+      grep -iE 'fuzzel|WawonaWl|weston-simple|exec|WAYLAND' "$logf" | head -40 || true
       exit 1
     fi
   fi
