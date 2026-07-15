@@ -244,9 +244,9 @@ jobs:
           # pixel_7 is 1080x2400 — close to the 1080x2424 reference used by
           # Android .ad recordings (scripts also scale taps via wm size).
           api-level: 34
-          # default (AOSP) avoids Play Services / Nexus Launcher ANR sheets that
-          # block agent-device presses on google_apis images.
-          target: default
+          # google_apis required for ARM→x86 binary translation (APK is arm64-only).
+          # ANR / system dialogs are dismissed in the smoke scripts before presses.
+          target: google_apis
           arch: x86_64
           profile: pixel_7
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot-save
