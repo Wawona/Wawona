@@ -128,19 +128,25 @@ jobs:
       - name: Run iOS GUI smoke (deterministic replay)
         env:
           WAWONA_IOS_APP: result-ios/Wawona.app
+          WAWONA_IOS_PREPARE_TIMEOUT_MS: "600000"
         run: |
           SIM_NAME="${WAWONA_IOS_SIM:-iPhone 17 Pro}"
-          # agent-device daemon lease/timeout flakes on cold XCTest runners.
-          for attempt in 1 2 3; do
+          # agent-device daemon lease/timeout + cached-runner connect flakes.
+          for attempt in 1 2 3 4 5; do
             echo "== iOS smoke attempt $attempt =="
             pkill -f "agent-device/dist/src/internal/daemon.js" 2>/dev/null || true
             sleep 2
-            # xcrun exit 4 after a failed attempt usually means the sim is wedged;
-            # force a clean boot before retrying open/replay.
             if [[ "$attempt" -gt 1 ]]; then
               xcrun simctl terminate "$SIM_NAME" com.aspauldingcode.Wawona 2>/dev/null || true
               xcrun simctl shutdown "$SIM_NAME" 2>/dev/null || true
-              sleep 3
+              sleep 2
+              # Erase clears wedged CoreSimulator state (xcrun exit 4).
+              xcrun simctl erase "$SIM_NAME" 2>/dev/null || true
+              sleep 2
+            fi
+            if [[ "$attempt" -ge 3 ]]; then
+              # "artifact restored but runner did not connect" → rebuild XCTest runner.
+              rm -rf "$HOME/.agent-device/apple-runner/derived" || true
             fi
             xcrun simctl bootstatus "$SIM_NAME" -b || xcrun simctl boot "$SIM_NAME" || true
             xcrun simctl bootstatus "$SIM_NAME"
@@ -156,16 +162,22 @@ jobs:
         env:
           WAWONA_IOS_APP: result-ios/Wawona.app
           WAWONA_FUZZEL_REQUIRE_IOS: "1"
+          WAWONA_IOS_PREPARE_TIMEOUT_MS: "600000"
         run: |
           SIM_NAME="${WAWONA_IOS_SIM:-iPhone 17 Pro}"
-          for attempt in 1 2 3; do
+          for attempt in 1 2 3 4 5; do
             echo "== iOS fuzzel attempt $attempt =="
             pkill -f "agent-device/dist/src/internal/daemon.js" 2>/dev/null || true
             sleep 2
             if [[ "$attempt" -gt 1 ]]; then
               xcrun simctl terminate "$SIM_NAME" com.aspauldingcode.Wawona 2>/dev/null || true
               xcrun simctl shutdown "$SIM_NAME" 2>/dev/null || true
-              sleep 3
+              sleep 2
+              xcrun simctl erase "$SIM_NAME" 2>/dev/null || true
+              sleep 2
+            fi
+            if [[ "$attempt" -ge 3 ]]; then
+              rm -rf "$HOME/.agent-device/apple-runner/derived" || true
             fi
             xcrun simctl bootstatus "$SIM_NAME" -b || xcrun simctl boot "$SIM_NAME" || true
             xcrun simctl bootstatus "$SIM_NAME"

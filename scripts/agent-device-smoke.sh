@@ -55,7 +55,9 @@ run_ios() {
   fi
 
   echo "== iOS: prepare XCTest runner (one-time per machine) =="
-  agent-device prepare ios-runner --platform ios --device "$IOS_DEVICE" --timeout 300000
+  # CI cold runners often exceed 5m for first XCTest runner connect.
+  agent-device prepare ios-runner --platform ios --device "$IOS_DEVICE" \
+    --timeout "${WAWONA_IOS_PREPARE_TIMEOUT_MS:-600000}"
 
   # Each replay below starts its own daemon. Stop the prepare daemon first so
   # its runner lease doesn't block them (see `agent-device help workflow`).
