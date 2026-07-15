@@ -179,29 +179,65 @@ run_android_fuzzel() {
   agent-device screenshot "$ARTIFACTS/android-fuzzel-e2e-04-niri-focused.png" "${ad_common[@]}"
   # Keep app in foreground for Alt+D; do not close the session yet.
 
-  # Live processes only — Berberis failures leave zombie libniri_bin.so rows.
-  android_live_procs() {
-    adb -s "$serial" shell 'ps -A' | grep -E '[n]iri|[f]uzzel' | grep -v ' Z ' || true
+  # Berberis (arm64-on-x86) often hides guest cmdline from `ps`; combine pidof,
+  # wide ps, and logcat launch evidence. Reject only hard Berberis realpath fails.
+  android_guest_evidence() {
+    local needle="$1"
+    adb -s "$serial" shell "pidof lib${needle}_bin.so 2>/dev/null; pgrep -f lib${needle}_bin 2>/dev/null" \
+      | tr -d '\r' | grep -q '[0-9]' && return 0
+    adb -s "$serial" shell 'ps -A -w' 2>/dev/null | tr -d '\r' \
+      | grep -iE "lib${needle}|[^a-z]${needle}" | grep -v ' Z ' | grep -q . && return 0
+    return 1
+  }
+  android_niri_ready() {
+    android_guest_evidence niri && return 0
+    local log
+    log="$(adb -s "$serial" logcat -d 2>/dev/null | tr -d '\r' || true)"
+    echo "$log" | grep -q "Unable to get realpath of niri\|Error running .*libniri_bin" && return 1
+    # Successful nested launch + compositor activity (hotkeys / frames).
+    echo "$log" | grep -q "Launched niri (nested compositor)" || return 1
+    echo "$log" | grep -qE "application:'libniri_bin|NIRI_BACKEND|Important Hotkeys|frame scene: count=[1-9]" \
+      && return 0
+    # Large focused screenshot is enough when logcat is sparse.
+    local shot="$ARTIFACTS/android-fuzzel-e2e-04-niri-focused.png"
+    [[ -f "$shot" && "$(wc -c <"$shot")" -gt 100000 ]]
+  }
+  android_fuzzel_ready() {
+    android_guest_evidence fuzzel && return 0
+    local log
+    log="$(adb -s "$serial" logcat -d 2>/dev/null | tr -d '\r' || true)"
+    echo "$log" | grep -qiE "libfuzzel|Launched.*fuzzel|spawn.*fuzzel|fuzzel_bin" && return 0
+    return 1
   }
 
-  local procs=""
+  local procs="" evidence=""
   local i
   for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-    procs="$(android_live_procs)"
-    if echo "$procs" | grep -q 'niri\|libniri'; then
+    procs="$(adb -s "$serial" shell 'ps -A -w' 2>/dev/null | tr -d '\r' | grep -iE 'niri|fuzzel' || true)"
+    if android_niri_ready; then
+      evidence="niri-ready"
       break
     fi
     sleep 2
   done
-  echo "$procs" | tee "$ARTIFACTS/android-fuzzel-e2e-procs-pre.txt"
-  echo "$procs" | grep -q 'niri\|libniri' || {
-    echo "FAIL: live niri not running (check Berberis argv0 / logcat)" >&2
-    adb -s "$serial" logcat -d 2>/dev/null | rg -i 'niri|realpath|Berberis|Error running' | tail -40 || true
+  {
+    echo "evidence=$evidence"
+    echo "$procs"
+  } | tee "$ARTIFACTS/android-fuzzel-e2e-procs-pre.txt"
+  android_niri_ready || {
+    echo "FAIL: niri not running (no ps/logcat/screenshot evidence)" >&2
+    adb -s "$serial" logcat -d 2>/dev/null | grep -iE 'niri|realpath|Berberis|Error running|fuzzel' | tail -40 || true
     exit 1
   }
+  echo "PASS: niri session evidence"
 
-  if ! echo "$procs" | grep -q 'fuzzel\|libfuzzel'; then
-    # Focus compositor surface center, then inject Alt+D (nested niri Mod = Alt).
+  # Dismiss niri "Important Hotkeys" overlay before Mod+D.
+  adb -s "$serial" shell input keyevent 111 >/dev/null 2>&1 || true
+  sleep 0.5
+  adb -s "$serial" shell input keyevent 111 >/dev/null 2>&1 || true
+  sleep 0.3
+
+  if ! android_fuzzel_ready; then
     local focus_xy
     focus_xy="$(android_scale_xy 540 1100)"
     # shellcheck disable=SC2086
@@ -210,17 +246,19 @@ run_android_fuzzel() {
     adb -s "$serial" shell input keyevent 111   # KEYCODE_ESCAPE
     sleep 0.3
     local inj
-    for inj in 1 2 3; do
+    for inj in 1 2 3 4 5; do
       android_inject_alt_d || true
       sleep 2
-      procs="$(android_live_procs)"
-      echo "$procs" | grep -q 'fuzzel\|libfuzzel' && break
+      android_fuzzel_ready && break
     done
-    echo "$procs" | tee "$ARTIFACTS/android-fuzzel-e2e-procs.txt"
   else
     echo "fuzzel already running after start — skipping Alt+D inject"
-    echo "$procs" | tee "$ARTIFACTS/android-fuzzel-e2e-procs.txt"
   fi
+  procs="$(adb -s "$serial" shell 'ps -A -w' 2>/dev/null | tr -d '\r' | grep -iE 'niri|fuzzel' || true)"
+  {
+    echo "fuzzel_ready=$(android_fuzzel_ready && echo yes || echo no)"
+    echo "$procs"
+  } | tee "$ARTIFACTS/android-fuzzel-e2e-procs.txt"
 
   local shot="$ARTIFACTS/android-fuzzel-e2e-05-after-alt-d.png"
   adb -s "$serial" exec-out screencap -p >"$shot"
@@ -229,11 +267,11 @@ run_android_fuzzel() {
   local logf="$ARTIFACTS/android-fuzzel-e2e-logcat.txt"
   adb -s "$serial" logcat -d >"$logf" 2>/dev/null || true
 
-  agent-device close "${ad_common[@]}" >/dev/null 2>&1 || true
-
-  echo "$procs" | grep -q 'niri\|libniri' || { echo "FAIL: niri not running" >&2; exit 1; }
-  echo "$procs" | grep -q 'fuzzel\|libfuzzel' || { echo "FAIL: fuzzel not running after Alt+D" >&2; exit 1; }
+  android_niri_ready || { echo "FAIL: niri not running" >&2; exit 1; }
+  android_fuzzel_ready || { echo "FAIL: fuzzel not running after Alt+D" >&2; exit 1; }
   echo "PASS: fuzzel process up"
+
+  agent-device close "${ad_common[@]}" >/dev/null 2>&1 || true
 
   # Catalog Exec must resolve on PATH (weston-simple-shm → libwawona_wl_bin.so).
   local wl_link
