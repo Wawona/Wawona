@@ -339,9 +339,11 @@ jobs:
           fi
           APP=result-macos/Applications/Wawona.app
           chmod -R u+w "$APP"
-          if [[ -d "$APP/Contents/Resources/bin" ]]; then
-            find "$APP/Contents/Resources/bin" -type f -exec chmod +x {} +
-          fi
+          find "$APP/Contents/MacOS" -type f -exec chmod +x {} + 2>/dev/null || true
+          find "$APP/Contents/Resources/bin" -type f -exec chmod +x {} + 2>/dev/null || true
+          find "$APP" \( -name '*.dylib' -o -name '*.so' \) -type f -exec chmod +x {} + 2>/dev/null || true
+          test -x "$APP/Contents/MacOS/Wawona" \
+            || { echo "FAIL: MacOS/Wawona not executable"; ls -la "$APP/Contents/MacOS" || true; exit 1; }
           test -x "$APP/Contents/Resources/bin/niri" \
             || { echo "FAIL: niri missing/not executable in product-macos-app"; ls -la "$APP/Contents/Resources/bin" || true; exit 1; }
 

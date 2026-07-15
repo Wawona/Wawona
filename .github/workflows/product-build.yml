@@ -174,17 +174,20 @@ jobs:
           # Nix .app trees keep store symlinks (niri/fuzzel under Resources/bin).
           # GHA artifacts must be self-contained — dereference before upload.
           ditto result-macos/Applications/Wawona.app dist/macos-app/Wawona.app
-          # Artifact zip can drop +x; restore exec bits on bundled tools.
-          chmod -R u+w dist/macos-app/Wawona.app
-          if [[ -d dist/macos-app/Wawona.app/Contents/Resources/bin ]]; then
-            find dist/macos-app/Wawona.app/Contents/Resources/bin -type f -exec chmod +x {} +
-          fi
-          NIRI="dist/macos-app/Wawona.app/Contents/Resources/bin/niri"
-          FUZZEL="dist/macos-app/Wawona.app/Contents/Resources/bin/fuzzel"
-          test -f "$NIRI" || { echo "FAIL: staged niri missing at $NIRI"; ls -laR dist/macos-app/Wawona.app/Contents/Resources/bin || true; exit 1; }
+          # Artifact zip can drop +x; restore exec bits on launcher + tools.
+          APP=dist/macos-app/Wawona.app
+          chmod -R u+w "$APP"
+          find "$APP/Contents/MacOS" -type f -exec chmod +x {} + 2>/dev/null || true
+          find "$APP/Contents/Resources/bin" -type f -exec chmod +x {} + 2>/dev/null || true
+          find "$APP" \( -name '*.dylib' -o -name '*.so' \) -type f -exec chmod +x {} + 2>/dev/null || true
+          NIRI="$APP/Contents/Resources/bin/niri"
+          FUZZEL="$APP/Contents/Resources/bin/fuzzel"
+          MAIN="$APP/Contents/MacOS/Wawona"
+          test -f "$NIRI" || { echo "FAIL: staged niri missing at $NIRI"; ls -laR "$APP/Contents/Resources/bin" || true; exit 1; }
           test -f "$FUZZEL" || { echo "FAIL: staged fuzzel missing at $FUZZEL"; exit 1; }
-          chmod +x "$NIRI" "$FUZZEL"
-          test -x "$NIRI" && test -x "$FUZZEL"
+          test -f "$MAIN" || { echo "FAIL: staged MacOS/Wawona missing"; exit 1; }
+          chmod +x "$NIRI" "$FUZZEL" "$MAIN"
+          test -x "$NIRI" && test -x "$FUZZEL" && test -x "$MAIN"
           OUT="$(readlink -f result-macos)"
           {
             echo "{"
