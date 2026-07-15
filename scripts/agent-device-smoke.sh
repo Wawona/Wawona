@@ -109,35 +109,39 @@ run_android() {
       agent-device press 'label="Close app"' "${ad_common[@]}" >/dev/null 2>&1 || true
     fi
   }
+  # Compose often exposes button text via find(), not label= selectors.
+  android_find_press() {
+    local text="$1"
+    agent-device find "$text" press "${ad_common[@]}" >/dev/null 2>&1 \
+      || agent-device press "label=\"$text\"" "${ad_common[@]}" >/dev/null 2>&1 \
+      || return 1
+  }
   agent-device open com.aspauldingcode.wawona --relaunch "${ad_common[@]}"
   agent-device wait 4000 "${ad_common[@]}"
   dismiss_android_blockers
   agent-device screenshot "$ARTIFACTS/android-first-screen.png" "${ad_common[@]}"
-  if agent-device is visible 'label="Continue"' "${ad_common[@]}" >/dev/null 2>&1; then
-    agent-device press 'label="Continue"' "${ad_common[@]}"
-    agent-device wait 1500 "${ad_common[@]}"
-  fi
+  android_find_press "Continue" || true
+  agent-device wait 1500 "${ad_common[@]}"
   dismiss_android_blockers
   agent-device screenshot "$ARTIFACTS/android-machines-root.png" "${ad_common[@]}"
-  if agent-device is visible 'label="Got it"' "${ad_common[@]}" >/dev/null 2>&1; then
-    agent-device press 'label="Got it"' "${ad_common[@]}"
-    agent-device wait 500 "${ad_common[@]}"
-  fi
-  if agent-device is visible 'label="Add Machine"' "${ad_common[@]}" >/dev/null 2>&1; then
-    agent-device press 'label="Add Machine"' "${ad_common[@]}"
+  android_find_press "Got it" || true
+  agent-device wait 500 "${ad_common[@]}"
+  if android_find_press "Add Machine"; then
     agent-device wait 1500 "${ad_common[@]}"
     agent-device screenshot "$ARTIFACTS/android-add-machine-sheet.png" "${ad_common[@]}"
     agent-device back "${ad_common[@]}"
     agent-device wait 1000 "${ad_common[@]}"
   fi
   dismiss_android_blockers
-  agent-device press 'label="Start"' "${ad_common[@]}"
+  android_find_press "Start" || {
+    echo "FAIL: could not press Start on machines screen" >&2
+    agent-device snapshot -i "${ad_common[@]}" || true
+    exit 1
+  }
   agent-device wait 10000 "${ad_common[@]}"
   dismiss_android_blockers
-  if agent-device is visible 'label="Got it"' "${ad_common[@]}" >/dev/null 2>&1; then
-    agent-device press 'label="Got it"' "${ad_common[@]}"
-    agent-device wait 500 "${ad_common[@]}"
-  fi
+  android_find_press "Got it" || true
+  agent-device wait 500 "${ad_common[@]}"
   agent-device screenshot "$ARTIFACTS/android-weston-session.png" "${ad_common[@]}"
   agent-device close "${ad_common[@]}"
 }
