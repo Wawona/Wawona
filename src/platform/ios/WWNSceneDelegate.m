@@ -165,8 +165,8 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
 
   UILabel *bodyLabel = [[UILabel alloc] init];
   bodyLabel.translatesAutoresizingMaskIntoConstraints = NO;
-  bodyLabel.text =
-      @"Minimal Wayland compositing for Apple platforms and Android.";
+  bodyLabel.text = @"The portable nested compositor that makes no assumptions "
+                   @"about the host.";
   bodyLabel.textAlignment = NSTextAlignmentCenter;
   bodyLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightRegular];
   bodyLabel.numberOfLines = 0;
@@ -179,6 +179,13 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
       [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
   continueButton.accessibilityIdentifier = @"wwn.welcome.continue";
   continueButton.accessibilityLabel = @"Continue";
+  // Keep Continue as its own a11y node — XCTest otherwise collapses the modal
+  // to a single "Welcome to Wawona" other (CI smoke cannot press by id).
+  card.isAccessibilityElement = NO;
+  titleLabel.isAccessibilityElement = YES;
+  bodyLabel.isAccessibilityElement = YES;
+  continueButton.isAccessibilityElement = YES;
+  self.view.accessibilityViewIsModal = YES;
   UIButtonConfiguration *continueConfig = [UIButtonConfiguration filledButtonConfiguration];
   continueConfig.baseBackgroundColor = [UIColor systemBlueColor];
   continueConfig.baseForegroundColor = [UIColor whiteColor];

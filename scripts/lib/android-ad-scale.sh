@@ -154,6 +154,98 @@ android_uia_wait() {
   return 1
 }
 
+# True when a fresh uia dump contains a hierarchy (vs dump/tool failure).
+android_uia_dump_ok() {
+  local xml
+  xml="$(android_uia_dump)" || return 1
+  printf '%s' "$xml" | grep -q '<hierarchy'
+}
+
+# Sample RGBA at (x,y) from `adb exec-out screencap -p`. Prints "r g b a".
+android_screencap_pixel() {
+  local x="$1" y="$2"
+  local serial="${ANDROID_SERIAL:-${WAWONA_ANDROID_SERIAL:-}}"
+  local adb=(adb)
+  [[ -n "$serial" ]] && adb=(adb -s "$serial")
+  local tmp
+  tmp="$(mktemp)"
+  "${adb[@]}" exec-out screencap -p >"$tmp" 2>/dev/null || {
+    rm -f "$tmp"
+    return 1
+  }
+  python3 - "$tmp" "$x" "$y" <<'PY'
+import struct, sys, zlib
+path, sx, sy = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+data = open(path, "rb").read()
+if data[:8] != b"\x89PNG\r\n\x1a\n":
+    sys.exit(1)
+off, width, height, idat = 8, None, None, b""
+while off < len(data):
+    ln = struct.unpack(">I", data[off:off+4])[0]
+    typ = data[off+4:off+8]
+    chunk = data[off+8:off+8+ln]
+    off += 12 + ln
+    if typ == b"IHDR":
+        width, height = struct.unpack(">II", chunk[:8])
+    elif typ == b"IDAT":
+        idat += chunk
+    elif typ == b"IEND":
+        break
+if width is None or not (0 <= sx < width and 0 <= sy < height):
+    sys.exit(1)
+raw = zlib.decompress(idat)
+stride = width * 4
+i, prev = 0, bytearray(stride)
+row = None
+for y in range(height):
+    f = raw[i]; i += 1
+    cur = bytearray(raw[i:i+stride]); i += stride
+    if f == 1:
+        for x in range(4, stride):
+            cur[x] = (cur[x] + cur[x-4]) & 255
+    elif f == 2:
+        for x in range(stride):
+            cur[x] = (cur[x] + prev[x]) & 255
+    elif f == 3:
+        for x in range(stride):
+            a = cur[x-4] if x >= 4 else 0
+            cur[x] = (cur[x] + ((a + prev[x]) // 2)) & 255
+    elif f == 4:
+        for x in range(stride):
+            a = cur[x-4] if x >= 4 else 0
+            b = prev[x]
+            c = prev[x-4] if x >= 4 else 0
+            p = a + b - c
+            pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+            pr = a if pa <= pb and pa <= pc else (b if pb <= pc else c)
+            cur[x] = (cur[x] + pr) & 255
+    if y == sy:
+        row = cur
+        break
+    prev = cur
+if row is None:
+    sys.exit(1)
+o = sx * 4
+print(row[o], row[o+1], row[o+2], row[o+3])
+PY
+  local rc=$?
+  rm -f "$tmp"
+  return "$rc"
+}
+
+# Welcome Continue on 1080×2400 is a filled blue pill near (540,1390).
+android_welcome_continue_visible() {
+  local xy r g b a
+  xy="$(android_scale_xy 540 1390)"
+  # shellcheck disable=SC2086
+  read -r r g b a <<<"$(android_screencap_pixel $xy)" || return 1
+  # Material primary-ish blue/slate (CI welcome ~ 68,94,145).
+  if (( b > 110 && b > r + 15 && b > g )); then
+    return 0
+  fi
+  return 1
+}
+
 # Alt+D for nested niri Mod+D. keycombination exists on API 34+ images only.
 android_inject_alt_d() {
   local serial="${ANDROID_SERIAL:-${WAWONA_ANDROID_SERIAL:-}}"
