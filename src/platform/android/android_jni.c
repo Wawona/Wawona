@@ -4055,7 +4055,9 @@ static jboolean wwn_launch_niri_nested(void) {
     const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
     if (xdg_dir)
       chdir(xdg_dir);
-    const char *argv_niri[] = {"niri", NULL};
+    /* argv[0] must be a realpath()-able path: Berberis (arm64-on-x86 emu)
+     * rejects bare "niri" with "Unable to get realpath of niri". */
+    const char *argv_niri[] = {niri_path, NULL};
     execv(niri_path, (char *const *)argv_niri);
     _exit(127);
   }
@@ -4167,19 +4169,22 @@ static jboolean wwn_launch_foot(void) {
     if (xdg_runtime && xdg_runtime[0])
       chdir(xdg_runtime);
     const char *shell = getenv("SHELL");
+    /* argv[0] must be realpath()-able for Berberis (arm64-on-x86 emu). */
     if (ini_path[0] && shell && shell[0]) {
-      const char *argv_foot[] = {"foot", "-o", "tweak.font-monospace-warn=no",
-                                 "-c", ini_path, shell, NULL};
+      const char *argv_foot[] = {foot_path, "-o",
+                                 "tweak.font-monospace-warn=no", "-c",
+                                 ini_path, shell, NULL};
       execv(foot_path, (char *const *)argv_foot);
     } else if (ini_path[0]) {
-      const char *argv_foot[] = {"foot", "-o", "tweak.font-monospace-warn=no",
-                                 "-c", ini_path, NULL};
+      const char *argv_foot[] = {foot_path, "-o",
+                                 "tweak.font-monospace-warn=no", "-c",
+                                 ini_path, NULL};
       execv(foot_path, (char *const *)argv_foot);
     } else if (shell && shell[0]) {
-      const char *argv_foot[] = {"foot", shell, NULL};
+      const char *argv_foot[] = {foot_path, shell, NULL};
       execv(foot_path, (char *const *)argv_foot);
     } else {
-      const char *argv_foot[] = {"foot", NULL};
+      const char *argv_foot[] = {foot_path, NULL};
       execv(foot_path, (char *const *)argv_foot);
     }
     _exit(127);
@@ -4517,8 +4522,9 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeTestSSH(
     else
       snprintf(target, sizeof(target), "%s", host_str);
 
+    /* argv[0] must be realpath()-able for Berberis (arm64-on-x86 emu). */
     const char *argv_ssh[] = {
-        "ssh", "-y", "-T", "-p", port_str, target, "uname -a", NULL
+        g_ssh_bin_path, "-y", "-T", "-p", port_str, target, "uname -a", NULL
     };
     LOGI("[SSH Test] exec: ssh -y -T -p %s %s uname -a", port_str, target);
     execv(g_ssh_bin_path, (char *const *)argv_ssh);

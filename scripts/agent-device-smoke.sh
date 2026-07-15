@@ -79,6 +79,8 @@ run_android() {
   fi
   export ANDROID_SERIAL="$serial"
   echo "== Android: serial=$serial =="
+  # Suppress immersive-mode "Got it" coach mark (blocks compositor input).
+  adb -s "$serial" shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
 
   if [[ -n "${WAWONA_ANDROID_APK:-}" ]]; then
     echo "== Android: install $WAWONA_ANDROID_APK =="
@@ -177,7 +179,7 @@ run_android() {
   }
   agent-device wait 10000 "${ad_common[@]}"
   dismiss_android_blockers
-  android_find_press "Got it" || true
+  android_press_text "Got it" || android_tap_ref 900 720 || true
   agent-device wait 500 "${ad_common[@]}"
   agent-device screenshot "$ARTIFACTS/android-weston-session.png" "${ad_common[@]}"
   agent-device close "${ad_common[@]}"

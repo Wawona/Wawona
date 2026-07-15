@@ -66,6 +66,7 @@ run_android_fuzzel() {
   fi
   export ANDROID_SERIAL="$serial"
   echo "== Android fuzzel: serial=$serial =="
+  adb -s "$serial" shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
 
   if [[ -n "${WAWONA_ANDROID_APK:-}" ]]; then
     echo "== Android: install $WAWONA_ANDROID_APK =="
@@ -171,41 +172,55 @@ run_android_fuzzel() {
   agent-device wait 12000 "${ad_common[@]}"
   dismiss_android_blockers
   agent-device screenshot "$ARTIFACTS/android-fuzzel-e2e-03-niri-starting.png" "${ad_common[@]}"
-  android_press_text "Done" || true
+  android_press_text "Done" || android_tap_ref 950 420 || true
   agent-device wait 1000 "${ad_common[@]}"
-  android_press_text "Got it" || true
+  android_press_text "Got it" || android_tap_ref 900 720 || true
   agent-device wait 500 "${ad_common[@]}"
   agent-device screenshot "$ARTIFACTS/android-fuzzel-e2e-04-niri-focused.png" "${ad_common[@]}"
   # Keep app in foreground for Alt+D; do not close the session yet.
 
+  # Live processes only — Berberis failures leave zombie libniri_bin.so rows.
+  android_live_procs() {
+    adb -s "$serial" shell 'ps -A' | grep -E '[n]iri|[f]uzzel' | grep -v ' Z ' || true
+  }
+
   local procs=""
   local i
-  for i in 1 2 3 4 5 6 7 8 9 10; do
-    procs="$(adb -s "$serial" shell 'ps -A' | grep -E '[n]iri|[f]uzzel' || true)"
-    if echo "$procs" | grep -q 'niri'; then
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+    procs="$(android_live_procs)"
+    if echo "$procs" | grep -q 'niri\|libniri'; then
       break
     fi
     sleep 2
   done
   echo "$procs" | tee "$ARTIFACTS/android-fuzzel-e2e-procs-pre.txt"
+  echo "$procs" | grep -q 'niri\|libniri' || {
+    echo "FAIL: live niri not running (check Berberis argv0 / logcat)" >&2
+    adb -s "$serial" logcat -d 2>/dev/null | rg -i 'niri|realpath|Berberis|Error running' | tail -40 || true
+    exit 1
+  }
 
-  if ! echo "$procs" | grep -q 'fuzzel'; then
+  if ! echo "$procs" | grep -q 'fuzzel\|libfuzzel'; then
     # Focus compositor surface center, then inject Alt+D (nested niri Mod = Alt).
     local focus_xy
     focus_xy="$(android_scale_xy 540 1100)"
+    # shellcheck disable=SC2086
     adb -s "$serial" shell input tap $focus_xy
     sleep 0.3
     adb -s "$serial" shell input keyevent 111   # KEYCODE_ESCAPE
     sleep 0.3
-    android_inject_alt_d || true
-    sleep 2.5
-    procs="$(adb -s "$serial" shell 'ps -A' | grep -E '[n]iri|[f]uzzel' || true)"
+    local inj
+    for inj in 1 2 3; do
+      android_inject_alt_d || true
+      sleep 2
+      procs="$(android_live_procs)"
+      echo "$procs" | grep -q 'fuzzel\|libfuzzel' && break
+    done
     echo "$procs" | tee "$ARTIFACTS/android-fuzzel-e2e-procs.txt"
   else
     echo "fuzzel already running after start — skipping Alt+D inject"
     echo "$procs" | tee "$ARTIFACTS/android-fuzzel-e2e-procs.txt"
   fi
-  agent-device close "${ad_common[@]}" >/dev/null 2>&1 || true
 
   local shot="$ARTIFACTS/android-fuzzel-e2e-05-after-alt-d.png"
   adb -s "$serial" exec-out screencap -p >"$shot"
@@ -214,8 +229,10 @@ run_android_fuzzel() {
   local logf="$ARTIFACTS/android-fuzzel-e2e-logcat.txt"
   adb -s "$serial" logcat -d >"$logf" 2>/dev/null || true
 
-  echo "$procs" | grep -q 'niri' || { echo "FAIL: niri not running" >&2; exit 1; }
-  echo "$procs" | grep -q 'fuzzel' || { echo "FAIL: fuzzel not running after Alt+D" >&2; exit 1; }
+  agent-device close "${ad_common[@]}" >/dev/null 2>&1 || true
+
+  echo "$procs" | grep -q 'niri\|libniri' || { echo "FAIL: niri not running" >&2; exit 1; }
+  echo "$procs" | grep -q 'fuzzel\|libfuzzel' || { echo "FAIL: fuzzel not running after Alt+D" >&2; exit 1; }
   echo "PASS: fuzzel process up"
 
   # Catalog Exec must resolve on PATH (weston-simple-shm → libwawona_wl_bin.so).
