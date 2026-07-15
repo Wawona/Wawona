@@ -48,6 +48,47 @@ android_scale_xy() {
     'BEGIN { printf "%d %d", int(x*aw/rw+0.5), int(y*ah/rh+0.5) }')"
 }
 
+# Tap at 1080x2424 reference coords (scaled to current display).
+android_tap_ref() {
+  local x="$1" y="$2"
+  local serial="${ANDROID_SERIAL:-${WAWONA_ANDROID_SERIAL:-}}"
+  local adb=(adb)
+  [[ -n "$serial" ]] && adb=(adb -s "$serial")
+  local xy
+  xy="$(android_scale_xy "$x" "$y")"
+  # intentional word-split: "x y"
+  # shellcheck disable=SC2086
+  "${adb[@]}" shell input tap $xy
+}
+
+# Compose often hides text from agent-device a11y filters; uiautomator TextView
+# bounds remain reliable for Continue / Start on the welcome + machines screens.
+android_uia_tap_text() {
+  local want="$1"
+  local serial="${ANDROID_SERIAL:-${WAWONA_ANDROID_SERIAL:-}}"
+  local adb=(adb)
+  [[ -n "$serial" ]] && adb=(adb -s "$serial")
+  "${adb[@]}" shell uiautomator dump /sdcard/wawona-ui.xml >/dev/null 2>&1 || return 1
+  local xml line x1 y1 x2 y2 cx cy
+  xml="$("${adb[@]}" exec-out cat /sdcard/wawona-ui.xml 2>/dev/null | tr -d '\r')" || return 1
+  line="$(printf '%s' "$xml" | tr '>' '\n' | grep -F "text=\"$want\"" | head -1)"
+  [[ -n "$line" ]] || return 1
+  read -r x1 y1 x2 y2 <<<"$(printf '%s' "$line" | sed -n 's/.*bounds="\[\([0-9]*\),\([0-9]*\)\]\[\([0-9]*\),\([0-9]*\)\]".*/\1 \2 \3 \4/p')"
+  [[ -n "${x1:-}" && -n "${y1:-}" && -n "${x2:-}" && -n "${y2:-}" ]] || return 1
+  cx=$(( (x1 + x2) / 2 ))
+  cy=$(( (y1 + y2) / 2 ))
+  "${adb[@]}" shell input tap "$cx" "$cy"
+}
+
+android_uia_has_text() {
+  local want="$1"
+  local serial="${ANDROID_SERIAL:-${WAWONA_ANDROID_SERIAL:-}}"
+  local adb=(adb)
+  [[ -n "$serial" ]] && adb=(adb -s "$serial")
+  "${adb[@]}" shell uiautomator dump /sdcard/wawona-ui.xml >/dev/null 2>&1 || return 1
+  "${adb[@]}" exec-out cat /sdcard/wawona-ui.xml 2>/dev/null | tr -d '\r' | grep -Fq "text=\"$want\""
+}
+
 # Alt+D for nested niri Mod+D. keycombination exists on API 34+ images only.
 android_inject_alt_d() {
   local serial="${ANDROID_SERIAL:-${WAWONA_ANDROID_SERIAL:-}}"

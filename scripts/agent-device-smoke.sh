@@ -109,33 +109,70 @@ run_android() {
       agent-device press 'label="Close app"' "${ad_common[@]}" >/dev/null 2>&1 || true
     fi
   }
-  # Compose often exposes button text via find(), not label= selectors.
-  android_find_press() {
+  # Compose a11y is sparse on CI (agent-device interactive snapshot often empty).
+  # Prefer uiautomator text bounds → find/label → known reference taps.
+  android_press_text() {
     local text="$1"
-    agent-device find "$text" press "${ad_common[@]}" >/dev/null 2>&1 \
-      || agent-device press "label=\"$text\"" "${ad_common[@]}" >/dev/null 2>&1 \
-      || return 1
+    android_uia_tap_text "$text" && return 0
+    agent-device find "$text" press --first "${ad_common[@]}" >/dev/null 2>&1 && return 0
+    agent-device press "label=\"$text\"" "${ad_common[@]}" >/dev/null 2>&1 && return 0
+    return 1
+  }
+  android_dismiss_welcome() {
+    if android_press_text "Continue"; then
+      agent-device wait 2000 "${ad_common[@]}"
+      return 0
+    fi
+    # Centered Continue on welcome (1080x2424 recording coords).
+    android_tap_ref 540 1404
+    agent-device wait 2000 "${ad_common[@]}"
+    if android_uia_has_text "Continue"; then
+      android_tap_ref 540 1450
+      agent-device wait 2000 "${ad_common[@]}"
+    fi
+  }
+  android_press_start() {
+    if android_press_text "Start"; then
+      return 0
+    fi
+    # Machine Configuration Start (bottom-left of card in recordings).
+    android_tap_ref 227 1039
+    agent-device wait 800 "${ad_common[@]}"
+    if android_uia_has_text "Start"; then
+      android_tap_ref 216 1040
+      agent-device wait 800 "${ad_common[@]}"
+    fi
+    # Success if Start is gone (session starting) or Stop/session chrome appears.
+    if ! android_uia_has_text "Start"; then
+      return 0
+    fi
+    return 1
   }
   agent-device open com.aspauldingcode.wawona --relaunch "${ad_common[@]}"
   agent-device wait 4000 "${ad_common[@]}"
   dismiss_android_blockers
   agent-device screenshot "$ARTIFACTS/android-first-screen.png" "${ad_common[@]}"
-  android_find_press "Continue" || true
-  agent-device wait 1500 "${ad_common[@]}"
+  android_dismiss_welcome
   dismiss_android_blockers
   agent-device screenshot "$ARTIFACTS/android-machines-root.png" "${ad_common[@]}"
-  android_find_press "Got it" || true
+  if android_uia_has_text "Continue"; then
+    echo "FAIL: still on Welcome after Continue" >&2
+    agent-device snapshot -i --raw "${ad_common[@]}" || true
+    exit 1
+  fi
+  android_press_text "Got it" || true
   agent-device wait 500 "${ad_common[@]}"
-  if android_find_press "Add Machine"; then
+  if android_press_text "Add Machine"; then
     agent-device wait 1500 "${ad_common[@]}"
     agent-device screenshot "$ARTIFACTS/android-add-machine-sheet.png" "${ad_common[@]}"
     agent-device back "${ad_common[@]}"
     agent-device wait 1000 "${ad_common[@]}"
   fi
   dismiss_android_blockers
-  android_find_press "Start" || {
+  android_press_start || {
     echo "FAIL: could not press Start on machines screen" >&2
-    agent-device snapshot -i "${ad_common[@]}" || true
+    agent-device snapshot -i --raw "${ad_common[@]}" || true
+    adb -s "$serial" exec-out cat /sdcard/wawona-ui.xml 2>/dev/null | tr '>' '\n' | grep -E 'text=|content-desc=' | head -40 || true
     exit 1
   }
   agent-device wait 10000 "${ad_common[@]}"

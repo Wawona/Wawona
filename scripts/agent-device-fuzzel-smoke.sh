@@ -97,10 +97,10 @@ run_android_fuzzel() {
   # shellcheck source=scripts/lib/android-ad-scale.sh
   source "$ROOT/scripts/lib/android-ad-scale.sh"
 
-  # Label-driven flow (coordinate .ad taps miss Start / hit Remote on pixel_7).
+  # Compose a11y is sparse on CI — uiautomator text bounds + ref-tap fallbacks.
   local sess=wawona-android-niri-fuzzel
   local ad_common=(--platform android --serial "$serial" --session "$sess")
-  echo "== Android: niri+fuzzel label-driven start =="
+  echo "== Android: niri+fuzzel uiautomator start =="
   dismiss_android_blockers() {
     adb -s "$serial" shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1 || true
     agent-device alert dismiss "${ad_common[@]}" >/dev/null 2>&1 || true
@@ -111,37 +111,70 @@ run_android_fuzzel() {
       agent-device press 'label="Close app"' "${ad_common[@]}" >/dev/null 2>&1 || true
     fi
   }
+  android_press_text() {
+    local text="$1"
+    android_uia_tap_text "$text" && return 0
+    agent-device find "$text" press --first "${ad_common[@]}" >/dev/null 2>&1 && return 0
+    agent-device press "label=\"$text\"" "${ad_common[@]}" >/dev/null 2>&1 && return 0
+    return 1
+  }
+  android_dismiss_welcome() {
+    if android_press_text "Continue"; then
+      agent-device wait 2000 "${ad_common[@]}"
+      return 0
+    fi
+    android_tap_ref 540 1404
+    agent-device wait 2000 "${ad_common[@]}"
+    if android_uia_has_text "Continue"; then
+      android_tap_ref 540 1450
+      agent-device wait 2000 "${ad_common[@]}"
+    fi
+  }
+  android_press_start() {
+    if android_press_text "Start"; then
+      return 0
+    fi
+    android_tap_ref 227 1039
+    agent-device wait 800 "${ad_common[@]}"
+    if android_uia_has_text "Start"; then
+      android_tap_ref 216 1040
+      agent-device wait 800 "${ad_common[@]}"
+    fi
+    if ! android_uia_has_text "Start"; then
+      return 0
+    fi
+    return 1
+  }
   agent-device open com.aspauldingcode.wawona --relaunch "${ad_common[@]}"
   agent-device wait 4000 "${ad_common[@]}"
   dismiss_android_blockers
   agent-device screenshot "$ARTIFACTS/android-fuzzel-e2e-01-home.png" "${ad_common[@]}"
-  if agent-device is visible 'label="Continue"' "${ad_common[@]}" >/dev/null 2>&1; then
-    agent-device press 'label="Continue"' "${ad_common[@]}"
-    agent-device wait 1500 "${ad_common[@]}"
-  fi
+  android_dismiss_welcome
   dismiss_android_blockers
   agent-device screenshot "$ARTIFACTS/android-fuzzel-e2e-02-machines.png" "${ad_common[@]}"
-  if agent-device is visible 'label="Got it"' "${ad_common[@]}" >/dev/null 2>&1; then
-    agent-device press 'label="Got it"' "${ad_common[@]}"
-    agent-device wait 500 "${ad_common[@]}"
+  if android_uia_has_text "Continue"; then
+    echo "FAIL: still on Welcome after Continue" >&2
+    agent-device snapshot -i --raw "${ad_common[@]}" || true
+    exit 1
   fi
-  if agent-device is visible 'label="All Machines"' "${ad_common[@]}" >/dev/null 2>&1; then
-    agent-device press 'label="All Machines"' "${ad_common[@]}"
-    agent-device wait 500 "${ad_common[@]}"
-  fi
+  android_press_text "Got it" || true
+  agent-device wait 500 "${ad_common[@]}"
+  android_press_text "All Machines" || true
+  agent-device wait 500 "${ad_common[@]}"
   dismiss_android_blockers
-  agent-device press 'label="Start"' "${ad_common[@]}"
+  android_press_start || {
+    echo "FAIL: could not press Start before niri session" >&2
+    agent-device snapshot -i --raw "${ad_common[@]}" || true
+    adb -s "$serial" exec-out cat /sdcard/wawona-ui.xml 2>/dev/null | tr '>' '\n' | grep -E 'text=|content-desc=' | head -40 || true
+    exit 1
+  }
   agent-device wait 12000 "${ad_common[@]}"
   dismiss_android_blockers
   agent-device screenshot "$ARTIFACTS/android-fuzzel-e2e-03-niri-starting.png" "${ad_common[@]}"
-  if agent-device is visible 'label="Done"' "${ad_common[@]}" >/dev/null 2>&1; then
-    agent-device press 'label="Done"' "${ad_common[@]}"
-    agent-device wait 1000 "${ad_common[@]}"
-  fi
-  if agent-device is visible 'label="Got it"' "${ad_common[@]}" >/dev/null 2>&1; then
-    agent-device press 'label="Got it"' "${ad_common[@]}"
-    agent-device wait 500 "${ad_common[@]}"
-  fi
+  android_press_text "Done" || true
+  agent-device wait 1000 "${ad_common[@]}"
+  android_press_text "Got it" || true
+  agent-device wait 500 "${ad_common[@]}"
   agent-device screenshot "$ARTIFACTS/android-fuzzel-e2e-04-niri-focused.png" "${ad_common[@]}"
   # Keep app in foreground for Alt+D; do not close the session yet.
 
