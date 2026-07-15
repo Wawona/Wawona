@@ -65,7 +65,8 @@ jobs:
   ios-sim-e2e:
     name: "iOS simulator: GUI smoke (agent-device replay)"
     runs-on: macos-26
-    timeout-minutes: 90
+    # nix iOS sim build + smoke + fuzzel + flakehub post often exceeds 90m on cold runners.
+    timeout-minutes: 135
     steps:
       - uses: actions/checkout@v4
         with:
