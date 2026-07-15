@@ -396,13 +396,16 @@ run_ios_fuzzel() {
   chmod +x "$ROOT/scripts/agent-device-set-niri-ios.sh"
   "$ROOT/scripts/agent-device-set-niri-ios.sh" "$IOS_DEVICE"
 
-  echo "== iOS: prepare XCTest runner =="
-  agent-device prepare ios-runner --platform ios --device "$IOS_DEVICE" --timeout 300000
-  stop_agent_device_daemons
+  # Same session as wawona-ios-niri-fuzzel.ad — keep prepare daemon alive so
+  # replay open does not re-lease XCTest under the hard 90s RPC timeout.
+  local fuzzel_sess=wawona-ios-niri-fuzzel
+  echo "== iOS: prepare XCTest runner (session=$fuzzel_sess) =="
+  agent-device prepare ios-runner --platform ios --device "$IOS_DEVICE" \
+    --session "$fuzzel_sess" --timeout 300000
 
   echo "== iOS: niri+fuzzel .ad replay =="
   agent-device replay "$ROOT/.agent-device/wawona-ios-niri-fuzzel.ad" \
-    --platform ios --device "$IOS_DEVICE"
+    --platform ios --device "$IOS_DEVICE" --session "$fuzzel_sess"
 
   # Replay ends the session; reopen briefly for accessory taps, then screenshot
   # via simctl (hardware Mod+D is not available through agent-device).
