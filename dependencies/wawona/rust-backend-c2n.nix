@@ -454,6 +454,8 @@ let
       override = newArgs: mkCrossBRC (overrideArgs // newArgs);
     };
 
+  # crate2nix expects buildRustCrateForPkgs to return a set (often with
+  # __functor/override), not a bare lambda.
   buildRustCrateForTarget = p:
     let
       brc =
@@ -464,8 +466,13 @@ let
         else
           mkCrossBRC {};
     in
-    # Propagate release=false to every crate (CI sim: skip thin LTO / O3).
-    attrs: brc (attrs // lib.optionalAttrs (!release) { release = false; });
+    if release then
+      brc
+    else
+      brc // {
+        # Propagate release=false to every crate (CI sim: skip thin LTO / O3).
+        __functor = self: attrs: brc (attrs // { release = false; });
+      };
 
   # Import the generated Cargo.nix with our custom buildRustCrateForPkgs.
   # For cross builds, override pkgs.stdenv.hostPlatform so that the generated
