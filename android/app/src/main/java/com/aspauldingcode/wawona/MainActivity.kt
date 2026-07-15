@@ -157,6 +157,7 @@ class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
                     )
                 }
             }
+            handleNestedWlClientIntent(intent)
         } catch (e: Exception) {
             WLog.e("ACTIVITY", "Fatal error in onCreate: ${e.message}")
             throw e
@@ -173,6 +174,19 @@ class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
             intent.categories?.contains(android.content.Intent.CATEGORY_HOME) == true
         if (isHomeIntent) {
             HomeIntentBus.signalHome()
+        }
+        handleNestedWlClientIntent(intent)
+    }
+
+    /** adb: am start --activity-single-top -n …/.MainActivity --es wawona_nested_wl_client weston-simple-shm */
+    private fun handleNestedWlClientIntent(intent: android.content.Intent?) {
+        val exec = intent?.getStringExtra("wawona_nested_wl_client") ?: return
+        if (exec.isBlank()) return
+        try {
+            val ok = WawonaNative.nativeRunNestedWlClient(exec)
+            WLog.i("NATIVE", "nested wl client '$exec' launched=$ok")
+        } catch (e: Exception) {
+            WLog.e("NATIVE", "nested wl client '$exec' failed: ${e.message}")
         }
     }
 

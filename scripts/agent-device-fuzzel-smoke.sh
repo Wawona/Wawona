@@ -319,15 +319,12 @@ run_android_fuzzel() {
   }
 
   adb -s "$serial" logcat -c >/dev/null 2>&1 || true
-  # argv[0]=.so path (Berberis), argv[1]=Exec name for multicall.
-  adb -s "$serial" shell "run-as com.aspauldingcode.wawona sh -c '
-    export XDG_RUNTIME_DIR=\"$xdg\"
-    export WAYLAND_DISPLAY=\"$nested\"
-    export LD_LIBRARY_PATH=\"$libdir:\${LD_LIBRARY_PATH:-}\"
-    export WAWONA_WL_EXEC=weston-simple-shm
-    exec \"$wl_bin\" weston-simple-shm
-  '" >/dev/null 2>&1 &
-  sleep 3
+  # Must launch from the app process (Berberis): adb shell exec of arm64 PIEs
+  # fails with CANNOT LINK against host x86_64. Intent → JNI fork/exec.
+  adb -s "$serial" shell am start --activity-single-top \
+    -n com.aspauldingcode.wawona/.MainActivity \
+    --es wawona_nested_wl_client weston-simple-shm >/dev/null
+  sleep 4
 
   local after_launch
   after_launch="$(adb -s "$serial" shell 'ps -A -w' 2>/dev/null | tr -d '\r' | grep -iE 'niri|fuzzel|weston-simple|wawona_wl' || true)"

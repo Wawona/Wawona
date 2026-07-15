@@ -34,6 +34,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/resource.h>
+#include <dirent.h>
 #include <errno.h>
 #include <unistd.h>
 #include <vulkan/vulkan.h>
@@ -4079,6 +4080,89 @@ static void wwn_stop_niri(void) {
    * escalates naturally through wwn_niri_running(). */
   waitpid(g_niri_pid, NULL, WNOHANG);
   g_niri_pid = 0;
+}
+
+/* Launch a nested-niri catalog client (libwawona_wl_bin.so multicall) against
+ * niri's child Wayland socket. Must be fork/exec'd from the app process so
+ * Berberis (arm64-on-x86) can translate it — adb shell exec fails to link. */
+static jboolean wwn_launch_nested_wl_client(const char *exec_name) {
+  char native_lib_dir[512];
+  char wl_bin[560];
+  char nested[128];
+  const char *xdg;
+  DIR *dir;
+  struct dirent *ent;
+
+  if (!exec_name || !exec_name[0])
+    return JNI_FALSE;
+  if (wwn_android_native_lib_dir(native_lib_dir, sizeof(native_lib_dir)) != 0) {
+    LOGE("nested wl client: no native lib dir");
+    return JNI_FALSE;
+  }
+  snprintf(wl_bin, sizeof(wl_bin), "%s/libwawona_wl_bin.so", native_lib_dir);
+  if (access(wl_bin, X_OK) != 0) {
+    LOGE("nested wl client: missing %s", wl_bin);
+    return JNI_FALSE;
+  }
+  xdg = getenv("XDG_RUNTIME_DIR");
+  if (!xdg || !xdg[0]) {
+    LOGE("nested wl client: XDG_RUNTIME_DIR unset");
+    return JNI_FALSE;
+  }
+  nested[0] = '\0';
+  dir = opendir(xdg);
+  if (!dir) {
+    LOGE("nested wl client: opendir(%s) failed: %s", xdg, strerror(errno));
+    return JNI_FALSE;
+  }
+  while ((ent = readdir(dir)) != NULL) {
+    const char *n = ent->d_name;
+    if (strncmp(n, "wayland-", 8) != 0)
+      continue;
+    if (strstr(n, ".lock"))
+      continue;
+    if (strcmp(n, "wayland-0") == 0)
+      continue;
+    snprintf(nested, sizeof(nested), "%s", n);
+    break;
+  }
+  closedir(dir);
+  if (!nested[0]) {
+    LOGE("nested wl client: no nested wayland-* socket in %s", xdg);
+    return JNI_FALSE;
+  }
+
+  pid_t pid = fork();
+  if (pid == 0) {
+    setenv("LD_LIBRARY_PATH", native_lib_dir, 1);
+    setenv("WAYLAND_DISPLAY", nested, 1);
+    setenv("WAWONA_WL_EXEC", exec_name, 1);
+    chdir(xdg);
+    const char *argv_wl[] = {wl_bin, exec_name, NULL};
+    execv(wl_bin, (char *const *)argv_wl);
+    _exit(127);
+  }
+  if (pid < 0) {
+    LOGE("nested wl client: fork failed: %s", strerror(errno));
+    return JNI_FALSE;
+  }
+  LOGI("Launched nested wl client '%s' PID %d on %s via %s", exec_name,
+       (int)pid, nested, wl_bin);
+  return JNI_TRUE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeRunNestedWlClient(
+    JNIEnv *env, jobject thiz, jstring execName) {
+  (void)thiz;
+  if (!execName)
+    return JNI_FALSE;
+  const char *utf = (*env)->GetStringUTFChars(env, execName, NULL);
+  if (!utf)
+    return JNI_FALSE;
+  jboolean ok = wwn_launch_nested_wl_client(utf);
+  (*env)->ReleaseStringUTFChars(env, execName, utf);
+  return ok;
 }
 
 /* foot (wwn-foot): Wayland terminal as PIE libfoot_bin.so — fork/exec like niri

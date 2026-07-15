@@ -126,6 +126,9 @@ object WawonaNative {
     external fun nativeIsBundledClientRunning(): Boolean
     external fun nativeGetRunningBundledClientId(): String?
 
+    /** Fork/exec catalog client against nested niri Wayland socket (issue #78). */
+    external fun nativeRunNestedWlClient(execName: String): Boolean
+
     /** Boot bundled mobile NixOS guest (QEMU/AVF when engine is embedded). */
     external fun nativeLaunchMobileVm(guestDir: String, memoryMb: Int): Boolean
     external fun nativeStopMobileVm()
