@@ -52,9 +52,11 @@ Public Wawona                    Private aspauldingcode/.password-store
 
 | Profile | Provider | Use |
 |---------|----------|-----|
-| `local` | `pass_apple` / `pass_android` | Local Fastlane (`./scripts/release-env.sh …`) |
+| `local` | `pass_apple` / `pass_android` | Local Fastlane (`./scripts/release-env.sh ...`) |
 | `sync` | pass | `./scripts/sync-github-secrets.sh` |
-| `ci` | `env` | GitHub Actions (secrets already injected) |
+| `ci-apple` | `env` | Release Beta Apple job |
+| `ci-android` | `env` | Release Beta Android job |
+| `ci` | `env` (all optional) | Combined env when both platforms are present |
 
 ## One-time bootstrap (new tier-0 machine)
 

@@ -29,9 +29,9 @@ if ! command -v secretspec >/dev/null 2>&1; then
 fi
 
 case "$PROFILE" in
-  ci)
+  ci|ci-apple|ci-android)
     export SECRETSPEC_PROVIDER="${SECRETSPEC_PROVIDER:-env}"
-    exec secretspec run -P ci -- "$@"
+    exec secretspec run -P "$PROFILE" -- "$@"
     ;;
   sync)
     exec secretspec run -P sync -- "$@"

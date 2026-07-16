@@ -71,7 +71,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           TEAM_ID: ${{ secrets.TEAM_ID }}
           WAWONA_BUILD_NUMBER: ${{ github.run_number }}
-          SECRETSPEC_PROFILE: ci
+          SECRETSPEC_PROFILE: ci-apple
           SECRETSPEC_PROVIDER: env
           CI: "true"
           LANG: en_US.UTF-8
@@ -126,7 +126,7 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           PLAY_STORE_JSON_KEY: ${{ secrets.PLAY_STORE_JSON_KEY }}
-          SECRETSPEC_PROFILE: ci
+          SECRETSPEC_PROFILE: ci-android
           SECRETSPEC_PROVIDER: env
           CI: "true"
         working-directory: .
