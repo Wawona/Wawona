@@ -79,17 +79,29 @@ run_match() {
   local type="$1"
   local platform="$2"
   local app_id="$3"
-  echo "Running fastlane match $type ($platform) for $app_id..."
+  local force_flag="${4:-}"
+  echo "Running fastlane match $type ($platform) for $app_id ${force_flag}..."
   nix develop --command bash -lc \
-    "export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 FASTLANE_IS_INTERACTIVE=false MATCH_PASSWORD='${MATCH_PASSWORD}' TEAM_ID='${TEAM_ID}' MATCH_GIT_URL='${MATCH_GIT_URL}'; fastlane match ${type} --platform ${platform} --app_identifier '${app_id}' --readonly false --api_key_path '${API_KEY_JSON}'"
+    "export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 FASTLANE_IS_INTERACTIVE=false MATCH_PASSWORD='${MATCH_PASSWORD}' TEAM_ID='${TEAM_ID}' MATCH_GIT_URL='${MATCH_GIT_URL}'; fastlane match ${type} --platform ${platform} --app_identifier '${app_id}' --readonly false ${force_flag} --api_key_path '${API_KEY_JSON}'"
 }
 
-# TestFlight/CI appstore profiles. match 2.232.x supports ios + tvos platforms only;
-# watchOS uses platform ios with the watch bundle ID; visionOS uses the main iOS profile.
-run_match appstore ios "$MAIN_APP_ID"
-run_match appstore tvos "$MAIN_APP_ID"
-if [[ "$INCLUDE_WATCH" == "1" ]]; then
-  run_match appstore ios "$WATCH_APP_ID"
+# Prefer Fastfile lane: enables iCloud on App ID + force-regenerates App Store profiles.
+if [[ "${MATCH_USE_FASTFILE:-1}" == "1" ]]; then
+  echo "Running fastlane regenerate_signing (iCloud + force match)..."
+  nix develop --command bash -lc \
+    "export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 FASTLANE_IS_INTERACTIVE=false MATCH_PASSWORD='${MATCH_PASSWORD}' TEAM_ID='${TEAM_ID}' MATCH_GIT_URL='${MATCH_GIT_URL}' MATCH_FORCE=1 MATCH_READONLY=0 APP_STORE_CONNECT_KEY_ID='${ASC_KEY_ID}' APP_STORE_CONNECT_ISSUER_ID='${ASC_ISSUER_ID}' APP_STORE_CONNECT_API_KEY=\"\$(base64 < '${ASC_P8_PATH}' | tr -d '\n')\"; fastlane regenerate_signing"
+else
+  FORCE_FLAG=""
+  if [[ "${MATCH_FORCE:-1}" == "1" ]]; then
+    FORCE_FLAG="--force"
+  fi
+  # TestFlight/CI appstore profiles. match 2.232.x supports ios + tvos platforms only;
+  # watchOS uses platform ios with the watch bundle ID; visionOS uses the main iOS profile.
+  run_match appstore ios "$MAIN_APP_ID" "$FORCE_FLAG"
+  run_match appstore tvos "$MAIN_APP_ID" "$FORCE_FLAG"
+  if [[ "$INCLUDE_WATCH" == "1" ]]; then
+    run_match appstore ios "$WATCH_APP_ID" "$FORCE_FLAG"
+  fi
 fi
 
 # Development profiles: main iOS + watch (tvOS dev profiles need registered Apple TV devices).

@@ -40,6 +40,17 @@ lane :validate_env do
   UI.success("Environment validated")
 end
 
+desc "Enable iCloud on App IDs and force-regenerate App Store match profiles"
+lane :regenerate_signing do
+  validate_env
+  setup_ci if ENV["CI"]
+  ENV["MATCH_FORCE"] = "1"
+  ENV["MATCH_READONLY"] = "0"
+  api_key = asc_api_key
+  install_testflight_profiles!(api_key)
+  UI.success("App Store profiles regenerated (iCloud-capable). apple-signing repo updated.")
+end
+
 # TestFlight targets (macOS is intentionally excluded — not distributed via TestFlight).
 # profile_name must match fastlane match App Store profile naming.
 APPLE_BETA_TARGETS = [
@@ -111,10 +122,59 @@ def asc_api_key
   )
 end
 
+def match_force?
+  ENV["MATCH_FORCE"].to_s == "1"
+end
+
+def match_readonly?
+  return false if match_force?
+  return ENV["MATCH_READONLY"].to_s != "0" if ENV.key?("MATCH_READONLY")
+  !!ENV["CI"]
+end
+
+# App targets use Wawona-iCloud.entitlements; App Store profiles must include
+# those capabilities or xcodebuild fails at archive. `produce` has no api_key
+# option — uses Apple ID session / portal cookies when APPLE_ID is set.
+def ensure_icloud_app_id!(_api_key, app_id)
+  unless ENV["APPLE_ID"].to_s.strip.empty?
+    UI.message("Ensuring iCloud capability on App ID #{app_id}")
+    produce(
+      username: ENV.fetch("APPLE_ID"),
+      app_identifier: app_id,
+      skip_itc: true,
+      enable_services: {
+        icloud: "xcode5_compatible"
+      }
+    )
+  else
+    UI.important("APPLE_ID unset — skipping produce iCloud; App ID must already have iCloud enabled")
+  end
+rescue StandardError => e
+  UI.important("produce iCloud for #{app_id}: #{e.message}")
+end
+
+def assert_distribution_identity!
+  out = `security find-identity -v -p codesigning 2>/dev/null`
+  UI.message("Codesigning identities:\n#{out}")
+  unless out.match?(/Apple Distribution|iPhone Distribution|iOS Distribution/)
+    UI.user_error!(
+      "No Apple/iOS Distribution identity in keychain after match. " \
+      "Check MATCH_* secrets and aspauldingcode/apple-signing certs."
+    )
+  end
+end
+
 def install_testflight_profiles!(api_key)
   # match 2.232.x platforms: ios, tvos only. visionOS + watchOS use ios with their bundle IDs.
   # Install ios last for the main bundle id so MATCH_PROVISIONING_PROFILE_MAPPING
   # keeps the iOS App Store profile (tvos match would otherwise overwrite it).
+  readonly = match_readonly?
+  force = match_force?
+  UI.message("match readonly=#{readonly} force=#{force}")
+
+  # Main iOS App ID needs iCloud before App Store profile regeneration.
+  ensure_icloud_app_id!(api_key, MAIN_BUNDLE_ID) unless readonly
+
   [
     ["tvos", MAIN_BUNDLE_ID],
     ["ios", WATCH_BUNDLE_ID],
@@ -122,12 +182,14 @@ def install_testflight_profiles!(api_key)
   ].each do |platform, app_id|
     match(
       type: "appstore",
-      readonly: !!ENV["CI"],
+      readonly: readonly,
+      force: force,
       platform: platform,
       app_identifier: app_id,
       api_key: api_key
     )
   end
+  assert_distribution_identity!
 end
 
 def ensure_asc_platform_version!(api_key, platform, app_id = MAIN_BUNDLE_ID)
