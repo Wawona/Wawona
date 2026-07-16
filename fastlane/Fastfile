@@ -111,10 +111,12 @@ end
 
 def install_testflight_profiles!(api_key)
   # match 2.232.x platforms: ios, tvos only. visionOS + watchOS use ios with their bundle IDs.
+  # Install ios last for the main bundle id so MATCH_PROVISIONING_PROFILE_MAPPING
+  # keeps the iOS App Store profile (tvos match would otherwise overwrite it).
   [
-    ["ios", MAIN_BUNDLE_ID],
     ["tvos", MAIN_BUNDLE_ID],
-    ["ios", WATCH_BUNDLE_ID]
+    ["ios", WATCH_BUNDLE_ID],
+    ["ios", MAIN_BUNDLE_ID]
   ].each do |platform, app_id|
     match(
       type: "appstore",

@@ -86,7 +86,9 @@ jobs:
       (github.event_name == 'workflow_dispatch' &&
        (github.event.inputs.lane == 'beta' ||
         contains(github.event.inputs.lane, 'android')))
-    runs-on: ubuntu-latest
+    # macOS: Android cross deps (e.g. zsh-android) fail configure on ubuntu
+    # ("C compiler cannot create executables"); product-build APK already uses macOS.
+    runs-on: macos-15
     environment: release-beta
     steps:
       - uses: actions/checkout@v4
@@ -97,17 +99,11 @@ jobs:
             echo "WAWONA_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
           fi
 
-      - name: Reclaim disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android "${AGENT_TOOLSDIRECTORY:-}" || true
-          df -h
-
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v22
         with:
           determinate: true
           extra-conf: |
-            build-dir = /nix/build
             sandbox = relaxed
             allow-import-from-derivation = true
             trusted-users = runner root
