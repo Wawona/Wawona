@@ -172,8 +172,10 @@ def nix_ipa_path(attr, bundle_id: MAIN_BUNDLE_ID, profile_name: nil)
     "WAWONA_PROVISIONING_PROFILE_SPECIFIER" => profile
   )
   UI.message("Building #{attr} (version #{env['WAWONA_VERSION']}, build #{env['WAWONA_BUILD_NUMBER']})")
+  # sandbox false: match profiles + setup_ci keychain live on the host FS.
   out = sh(
-    "nix build .##{attr} --impure --print-out-paths --print-build-logs",
+    "nix build .##{attr} --impure --option sandbox false " \
+    "--print-out-paths --print-build-logs",
     env: env,
     log: true
   ).strip.split("\n").last
@@ -184,14 +186,15 @@ end
 
 def nix_aab_path
   env = {
-    "ANDROID_KEYSTORE_PATH" => ENV["ANDROID_KEYSTORE_PATH"],
-    "ANDROID_KEYSTORE_BASE64" => ENV["ANDROID_KEYSTORE_BASE64"],
-    "ANDROID_KEYSTORE_PASSWORD" => ENV["ANDROID_KEYSTORE_PASSWORD"],
-    "ANDROID_KEY_ALIAS" => ENV["ANDROID_KEY_ALIAS"],
-    "ANDROID_KEY_PASSWORD" => ENV["ANDROID_KEY_PASSWORD"]
-  }.compact
+    # BASE64 is required for sandboxed/daemon builds; path alone is unreadable.
+    "ANDROID_KEYSTORE_BASE64" => ENV.fetch("ANDROID_KEYSTORE_BASE64"),
+    "ANDROID_KEYSTORE_PASSWORD" => ENV.fetch("ANDROID_KEYSTORE_PASSWORD"),
+    "ANDROID_KEY_ALIAS" => ENV.fetch("ANDROID_KEY_ALIAS"),
+    "ANDROID_KEY_PASSWORD" => ENV.fetch("ANDROID_KEY_PASSWORD")
+  }
   out = sh(
-    "nix build .#wawona-android-aab --impure --print-out-paths --print-build-logs",
+    "nix build .#wawona-android-aab --impure --option sandbox false " \
+    "--print-out-paths --print-build-logs",
     env: env,
     log: true
   ).strip.split("\n").last

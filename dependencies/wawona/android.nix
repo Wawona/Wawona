@@ -507,17 +507,19 @@ EOF
       runHook preBuild
 
       if [ "${if isReleaseBuild then "1" else "0"}" = "1" ]; then
-        export ANDROID_KEYSTORE_PATH="${releaseKeystorePath}"
-        export ANDROID_KEYSTORE_BASE64="${releaseKeystoreBase64}"
         export ANDROID_KEYSTORE_PASSWORD="${releaseKeystorePassword}"
         export ANDROID_KEY_ALIAS="${releaseKeyAlias}"
         export ANDROID_KEY_PASSWORD="${releaseKeyPassword}"
-        if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
-          KEYSTORE_PATH="''${ANDROID_KEYSTORE_PATH:-$TMPDIR/wawona-upload.jks}"
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$KEYSTORE_PATH"
+        # Prefer BASE64 baked at impure eval — host RUNNER_TEMP paths are
+        # not readable inside the Nix build sandbox (Permission denied).
+        if [ -n "${releaseKeystoreBase64}" ]; then
+          KEYSTORE_PATH="$TMPDIR/wawona-upload.jks"
+          printf '%s' "${releaseKeystoreBase64}" | base64 -d > "$KEYSTORE_PATH"
           export ANDROID_KEYSTORE_PATH="$KEYSTORE_PATH"
+        elif [ -n "${releaseKeystorePath}" ] && [ -f "${releaseKeystorePath}" ]; then
+          export ANDROID_KEYSTORE_PATH="${releaseKeystorePath}"
         fi
-        : "''${ANDROID_KEYSTORE_PATH:?Set ANDROID_KEYSTORE_PATH or ANDROID_KEYSTORE_BASE64 for release builds (nix build --impure)}"
+        : "''${ANDROID_KEYSTORE_PATH:?Set ANDROID_KEYSTORE_BASE64 (preferred) or a sandbox-readable ANDROID_KEYSTORE_PATH}"
         : "''${ANDROID_KEYSTORE_PASSWORD:?Missing ANDROID_KEYSTORE_PASSWORD}"
         : "''${ANDROID_KEY_ALIAS:?Missing ANDROID_KEY_ALIAS}"
         : "''${ANDROID_KEY_PASSWORD:?Missing ANDROID_KEY_PASSWORD}"
