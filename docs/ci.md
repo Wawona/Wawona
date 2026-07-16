@@ -25,6 +25,14 @@ Build dedupe: [`2026-build-ci-optimization.md`](./2026-build-ci-optimization.md)
 | **Product build** (`product-build.yml`) | via device-gate / Release | via gate / Beta resolve / Release | Sole pure producer: iOS sim `.app`, debug APK, macOS `.app`, AppImages |
 | **Device GUI e2e** | via device-gate (`products_ready`) | via gate | Smoke + fuzzel (fuzzel skipped on `pull_request` only) |
 | **Nightly full matrix** | tip via device-gate | — | L4 + deep lanes on **`development` tip** |
+
+### Device gate concurrency (tip-only)
+
+Device gate, product-build, and Device GUI e2e share a **branch tip** concurrency key (`development` / `master`, or Nightly’s `checkout_ref: development`), not per-SHA:
+
+- One in-flight Device gate **per tip**. A newer push (or Nightly targeting the same tip) cancels the older gate **and** its product + e2e children.
+- Cancelled jobs on a superseded SHA are expected — they are not product failures. Promote only cares about a **success** tip Device gate.
+- Skipped product jobs from `only:` filters remain **Skipped** (not Cancelled).
 | **Release Beta** | — | push + tags `v*` | Fastlane stores; AppImages resolved from product-build when possible |
 | **Release** | — | tags `v*` | GitHub Release: DMG/APK/AppImage from product-build; IPA impure |
 
@@ -67,6 +75,8 @@ Push/PR Nix CI builds only [`.github/ci-package-matrix.json`](../.github/ci-pack
 ## Device e2e speed notes
 
 - Fail-fast: one smoke/fuzzel attempt (no suite retries).
+- Tip-only concurrency (see above): obsolete SHA gates cancel together; do not
+  treat cancelled non-tip Device gate runs as red for promote.
 - Device gate fans out product-build by product (`only: ios-sim|…`) so **iOS e2e
   starts when `product-ios-sim` is ready** — it does not wait for AppImages/macOS/Android.
 - iOS CI lane: `agent-device-smoke.sh ios-ci` (one prepare for smoke; fuzzel reuses

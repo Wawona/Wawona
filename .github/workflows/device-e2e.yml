@@ -11,11 +11,27 @@ name: Device GUI e2e
 # products_ready=false: build in-job (workflow_dispatch / legacy callers).
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      tip_key:
+        description: "Tip concurrency key (branch name; empty = github.ref_name)"
+        type: string
+        required: false
+        default: ""
+      lanes:
+        description: "Lane subset: all | ios | android | macos | linux"
+        type: string
+        required: false
+        default: "all"
   workflow_call:
     inputs:
       checkout_ref:
         description: "Git ref to test (nightly/device-gate pass tip)"
+        type: string
+        required: false
+        default: ""
+      tip_key:
+        description: "Tip concurrency key (branch tip; empty = github.ref_name)"
         type: string
         required: false
         default: ""
@@ -35,8 +51,10 @@ permissions:
   id-token: write
   actions: read
 
+# Tip-only: share group with Device gate tip (not per-SHA) so obsolete e2e
+# cancels with the parent tip, and nightly/push targeting the same tip align.
 concurrency:
-  group: device-e2e-${{ github.ref }}-${{ inputs.products_ready && 'products' || 'standalone' }}-${{ inputs.lanes || 'all' }}
+  group: device-e2e-${{ inputs.tip_key || github.ref_name }}-${{ inputs.products_ready && 'products' || 'standalone' }}-${{ inputs.lanes || 'all' }}
   cancel-in-progress: true
 
 env:

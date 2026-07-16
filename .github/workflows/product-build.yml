@@ -16,10 +16,20 @@ on:
         type: string
         required: false
         default: "all"
+      tip_key:
+        description: "Tip concurrency key (branch name; empty = github.ref_name)"
+        type: string
+        required: false
+        default: ""
   workflow_call:
     inputs:
       checkout_ref:
         description: "Git ref to build (empty = caller sha)"
+        type: string
+        required: false
+        default: ""
+      tip_key:
+        description: "Tip concurrency key (branch tip; empty = github.ref_name)"
         type: string
         required: false
         default: ""
@@ -29,9 +39,10 @@ on:
         required: false
         default: "all"
 
+# Tip-only: cancel obsolete product builds when a newer tip gate supersedes.
 concurrency:
-  group: product-build-${{ github.sha }}-${{ inputs.only || 'all' }}
-  cancel-in-progress: false
+  group: product-build-${{ inputs.tip_key || github.ref_name }}-${{ inputs.only || 'all' }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
