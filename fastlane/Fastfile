@@ -294,13 +294,16 @@ def ensure_xcodegen!
   UI.user_error!("Wawona.xcodeproj missing after xcodegen") unless Dir.exist?(project)
 end
 
-# nix develop puts clang-wrapper/cctools ahead of Xcode on PATH; xcodebuild then
-# invokes the wrong ld ("unknown options: -Xlinker -dynamiclib"). Keep Apple
-# tools first and drop nix linker wrappers before gym.
+# nix develop exports CC/CXX/LD/NIX_LDFLAGS and clang-wrapper on PATH;
+# xcodebuild then fails Ld with "unknown options: -Xlinker -dynamiclib".
+# Prefer Apple tools and clear nix compiler env before gym.
 def prefer_xcode_toolchain!
   developer_dir = ENV["DEVELOPER_DIR"].to_s
   developer_dir = `xcode-select -p`.strip if developer_dir.empty?
-  drop = %w[clang-wrapper cctools binutils-darwin ld64-wrapper]
+  drop = %w[
+    clang-wrapper cctools binutils-darwin ld64-wrapper
+    ccache-links compiler-rt
+  ]
   filtered = ENV.fetch("PATH", "").split(":").reject do |p|
     drop.any? { |frag| p.include?(frag) }
   end
@@ -308,7 +311,17 @@ def prefer_xcode_toolchain!
   head << File.join(developer_dir, "usr/bin") unless developer_dir.empty?
   head.concat(%w[/usr/bin /bin /usr/sbin /sbin])
   ENV["PATH"] = (head + filtered).uniq.join(":")
-  UI.message("PATH prefers Xcode toolchain (#{developer_dir})")
+
+  %w[
+    CC CXX CPP LD AR AS NM RANLIB STRIP OBJCOPY OBJDUMP
+    NIX_CC NIX_CFLAGS_COMPILE NIX_CFLAGS_LINK NIX_LDFLAGS
+    NIX_LDFLAGS_FOR_TARGET MACOSX_DEPLOYMENT_TARGET
+    DEVELOPER_DIR_FOR_BUILD SDKROOT
+  ].each { |k| ENV.delete(k) }
+
+  ENV["DEVELOPER_DIR"] = developer_dir unless developer_dir.empty?
+  ENV["TOOLCHAINS"] ||= "com.apple.dt.toolchain.XcodeDefault"
+  UI.message("Xcode toolchain preferred (#{developer_dir}); cleared nix CC/LD env")
 end
 
 def gym_output_dir
