@@ -232,6 +232,16 @@ in
     dontUseGradleCheck = true;
     __darwinAllowLocalNetworking = true;
 
+    # Release AAB/APK signing secrets must reach the build sandbox under
+    # `nix build --impure` (Fastlane / Release Beta).
+    impureEnvVars = [
+      "ANDROID_KEYSTORE_PATH"
+      "ANDROID_KEYSTORE_BASE64"
+      "ANDROID_KEYSTORE_PASSWORD"
+      "ANDROID_KEY_ALIAS"
+      "ANDROID_KEY_PASSWORD"
+    ];
+
     mitmCache = gradleSupport.mitmCache;
     gradleFlags = gradleSupport.gradleFlags;
     gradleUpdateTask = ":Wawona:assembleDebug";

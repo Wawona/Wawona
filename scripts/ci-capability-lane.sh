@@ -9,8 +9,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/wawona-cap-$(id -u)}"
-DISPLAY_NAME="${WAYLAND_DISPLAY:-wayland-0}"
+# Prefer an isolated runtime dir so CI doesn't collide with a session bus dir.
+RUNTIME_DIR="${WAWONA_CAP_RUNTIME_DIR:-/tmp/wawona-cap-$(id -u)}"
+# Host binary defaults to wawona-0 (see src/linux/service.rs), not wayland-0.
+DISPLAY_NAME="${WAYLAND_DISPLAY:-wawona-0}"
 SOCKET_WAIT_SECS="${WAWONA_CAP_SOCKET_WAIT:-90}"
 NESTED_WAIT_SECS="${WAWONA_CAP_NESTED_WAIT:-30}"
 

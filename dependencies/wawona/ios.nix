@@ -81,7 +81,9 @@ in
     generateIPA
     generateXCArchive
     ;
-  automaticProvisioning = autoSigning;
+  # IPA builds sign via fastlane match (host keychain/profiles), not Xcode Automatic.
+  matchHostSigning = generateIPA;
+  automaticProvisioning = autoSigning && !generateIPA;
   developmentTeam = developmentTeam;
   inherit bundleId;
   appVersion = projectVersion;
@@ -95,11 +97,24 @@ in
       ''CODE_SIGNING_ALLOWED=NO''
       ''CODE_SIGNING_REQUIRED=NO''
     ]
+    # Impure Release Beta: fastlane match installs App Store profiles; force
+    # Manual signing so xcodebuild does not look for a Development account.
+    ++ lib.optionals (releaseBuild && generateIPA) [
+      ''CODE_SIGN_STYLE=''${WAWONA_CODE_SIGN_STYLE:-Manual}''
+      ''CODE_SIGN_IDENTITY="''${WAWONA_CODE_SIGN_IDENTITY:-Apple Distribution}"''
+      ''PROVISIONING_PROFILE_SPECIFIER="''${WAWONA_PROVISIONING_PROFILE_SPECIFIER:-match AppStore ${bundleId}}"''
+    ]
     # build-app.nix forces ONLY_ACTIVE_ARCH=NO; that pulls x86_64 simulator slice on Apple Silicon.
     # Swift macro plugin server often breaks for that slice (malformed response / sandbox_apply).
     ++ lib.optionals simulator [ ''ONLY_ACTIVE_ARCH=YES'' ]
   );
 }).overrideAttrs (old: {
+  impureEnvVars = (old.impureEnvVars or [ ]) ++ [
+    "WAWONA_HOST_HOME"
+    "WAWONA_CODE_SIGN_STYLE"
+    "WAWONA_CODE_SIGN_IDENTITY"
+    "WAWONA_PROVISIONING_PROFILE_SPECIFIER"
+  ];
   buildPhase = (old.buildPhase or "") + ''
     metal_mounts="$HOME/Library/Developer/DVTDownloads/MetalToolchain/mounts"
     if [ -d "$metal_mounts" ]; then

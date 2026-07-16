@@ -69,7 +69,8 @@ xcodeUtils.buildApp {
     generateIPA
     generateXCArchive
     ;
-  automaticProvisioning = autoSigning;
+  matchHostSigning = generateIPA;
+  automaticProvisioning = autoSigning && !generateIPA;
   developmentTeam = developmentTeam;
   inherit bundleId;
   appVersion = projectVersion;
@@ -82,6 +83,11 @@ xcodeUtils.buildApp {
     ++ lib.optionals (!releaseBuild) [
       ''CODE_SIGNING_ALLOWED=NO''
       ''CODE_SIGNING_REQUIRED=NO''
+    ]
+    ++ lib.optionals (releaseBuild && generateIPA) [
+      ''CODE_SIGN_STYLE=''${WAWONA_CODE_SIGN_STYLE:-Manual}''
+      ''CODE_SIGN_IDENTITY="''${WAWONA_CODE_SIGN_IDENTITY:-Apple Distribution}"''
+      ''PROVISIONING_PROFILE_SPECIFIER="''${WAWONA_PROVISIONING_PROFILE_SPECIFIER:-match AppStore ${bundleId}}"''
     ]
     ++ lib.optionals simulator [ ''ONLY_ACTIVE_ARCH=YES'' ]
   );

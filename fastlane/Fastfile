@@ -39,12 +39,13 @@ lane :validate_env do
 end
 
 # TestFlight targets (macOS is intentionally excluded — not distributed via TestFlight).
+# profile_name must match fastlane match App Store profile naming.
 APPLE_BETA_TARGETS = [
-  { ipa: "wawona-ios-ipa", name: "iPhone (iOS)", app_platform: "ios", bundle_id: "com.aspauldingcode.Wawona" },
-  { ipa: "wawona-ipados-ipa", name: "iPad (iPadOS)", app_platform: "ios", bundle_id: "com.aspauldingcode.Wawona" },
-  { ipa: "wawona-tvos-ipa", name: "Apple TV (tvOS)", app_platform: "appletvos", bundle_id: "com.aspauldingcode.Wawona" },
-  { ipa: "wawona-visionos-ipa", name: "Apple Vision Pro (visionOS)", app_platform: "xros", bundle_id: "com.aspauldingcode.Wawona" },
-  { ipa: "wawona-watchos-ipa", name: "Apple Watch (watchOS)", app_platform: "ios", bundle_id: "com.aspauldingcode.Wawona.watch" }
+  { ipa: "wawona-ios-ipa", name: "iPhone (iOS)", app_platform: "ios", bundle_id: "com.aspauldingcode.Wawona", profile_name: "match AppStore com.aspauldingcode.Wawona" },
+  { ipa: "wawona-ipados-ipa", name: "iPad (iPadOS)", app_platform: "ios", bundle_id: "com.aspauldingcode.Wawona", profile_name: "match AppStore com.aspauldingcode.Wawona" },
+  { ipa: "wawona-tvos-ipa", name: "Apple TV (tvOS)", app_platform: "appletvos", bundle_id: "com.aspauldingcode.Wawona", profile_name: "match AppStore com.aspauldingcode.Wawona tvos" },
+  { ipa: "wawona-visionos-ipa", name: "Apple Vision Pro (visionOS)", app_platform: "xros", bundle_id: "com.aspauldingcode.Wawona", profile_name: "match AppStore com.aspauldingcode.Wawona" },
+  { ipa: "wawona-watchos-ipa", name: "Apple Watch (watchOS)", app_platform: "ios", bundle_id: "com.aspauldingcode.Wawona.watch", profile_name: "match AppStore com.aspauldingcode.Wawona.watch" }
 ].freeze
 
 MAIN_BUNDLE_ID = "com.aspauldingcode.Wawona"
@@ -151,17 +152,39 @@ def ensure_all_asc_versions!(api_key)
   end
 end
 
-def nix_ipa_path(attr)
-  env = nix_build_env
+def nix_ipa_path(attr, bundle_id: MAIN_BUNDLE_ID, profile_name: nil)
+  profile = profile_name || ENV["WAWONA_PROVISIONING_PROFILE_SPECIFIER"] || "match AppStore #{bundle_id}"
+  env = nix_build_env.merge(
+    # Preserve match profiles + setup_ci keychain inside the nix IPA build.
+    "WAWONA_HOST_HOME" => ENV.fetch("HOME"),
+    "WAWONA_CODE_SIGN_STYLE" => ENV.fetch("WAWONA_CODE_SIGN_STYLE", "Manual"),
+    "WAWONA_CODE_SIGN_IDENTITY" => ENV.fetch("WAWONA_CODE_SIGN_IDENTITY", "Apple Distribution"),
+    "WAWONA_PROVISIONING_PROFILE_SPECIFIER" => profile
+  )
   UI.message("Building #{attr} (version #{env['WAWONA_VERSION']}, build #{env['WAWONA_BUILD_NUMBER']})")
-  out = sh("nix build .##{attr} --impure --print-out-paths", env: env, log: false).strip.split("\n").last
+  out = sh(
+    "nix build .##{attr} --impure --print-out-paths --print-build-logs",
+    env: env,
+    log: true
+  ).strip.split("\n").last
   ipa = Dir.glob(File.join(out, "**", "*.ipa")).first
   UI.user_error!("No IPA found in #{out} for #{attr}") unless ipa
   ipa
 end
 
 def nix_aab_path
-  out = sh("nix build .#wawona-android-aab --impure --print-out-paths", log: false).strip.split("\n").last
+  env = {
+    "ANDROID_KEYSTORE_PATH" => ENV["ANDROID_KEYSTORE_PATH"],
+    "ANDROID_KEYSTORE_BASE64" => ENV["ANDROID_KEYSTORE_BASE64"],
+    "ANDROID_KEYSTORE_PASSWORD" => ENV["ANDROID_KEYSTORE_PASSWORD"],
+    "ANDROID_KEY_ALIAS" => ENV["ANDROID_KEY_ALIAS"],
+    "ANDROID_KEY_PASSWORD" => ENV["ANDROID_KEY_PASSWORD"]
+  }.compact
+  out = sh(
+    "nix build .#wawona-android-aab --impure --print-out-paths --print-build-logs",
+    env: env,
+    log: true
+  ).strip.split("\n").last
   aab = Dir.glob(File.join(out, "**", "*.aab")).first
   UI.user_error!("No AAB found in #{out}") unless aab
   aab
@@ -177,7 +200,11 @@ platform :ios do
     ensure_all_asc_versions!(api_key)
 
     APPLE_BETA_TARGETS.each do |target|
-      ipa = nix_ipa_path(target[:ipa])
+      ipa = nix_ipa_path(
+        target[:ipa],
+        bundle_id: target[:bundle_id],
+        profile_name: target[:profile_name]
+      )
       upload_to_testflight(
         **testflight_upload_options(api_key, target),
         ipa: ipa
@@ -202,7 +229,11 @@ platform :ios do
     ensure_all_asc_versions!(api_key)
 
     APPLE_BETA_TARGETS.each do |target|
-      ipa = nix_ipa_path(target[:ipa])
+      ipa = nix_ipa_path(
+        target[:ipa],
+        bundle_id: target[:bundle_id],
+        profile_name: target[:profile_name]
+      )
       deliver(
         api_key: api_key,
         app_identifier: target[:bundle_id],
