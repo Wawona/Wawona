@@ -27,14 +27,18 @@ export XDG_RUNTIME_DIR="$RUNTIME_DIR"
 rm -f "$RUNTIME_DIR/$DISPLAY_NAME" "$RUNTIME_DIR/$DISPLAY_NAME.lock"
 
 # 1. Build + launch the Wawona Linux compositor in host mode.
-log "building .#wawona-linux-compositor-host"
-HOST_BIN="$(nix build "$ROOT#wawona-linux-compositor-host" --print-out-paths --no-link)/bin/wawona-linux-compositor-host-run"
+# Prefer the ahead-of-time binary from wawona-linux-ui-bin. The
+# wawona-linux-compositor-host app is a cargo-run wrapper that compiles on
+# first launch and will miss the socket wait on cold CI runners.
+log "building .#wawona-linux-ui-bin (prebuilt compositor-host)"
+UI_BIN_OUT="$(nix build "$ROOT#wawona-linux-ui-bin" --print-out-paths --no-link)"
+HOST_BIN="$UI_BIN_OUT/bin/wawona-linux-compositor-host"
 if [[ ! -x "$HOST_BIN" ]]; then
   log "FAIL: compositor-host binary not found at $HOST_BIN"
   exit 1
 fi
 
-log "starting compositor host"
+log "starting compositor host ($HOST_BIN)"
 "$HOST_BIN" >/tmp/wawona-cap-host.log 2>&1 &
 HOST_PID=$!
 cleanup() {
@@ -50,10 +54,10 @@ NIRI_PID=0
 # 2. Wait for the parent Wayland socket.
 for _ in $(seq 1 "$SOCKET_WAIT_SECS"); do
   [[ -S "$RUNTIME_DIR/$DISPLAY_NAME" ]] && break
-  kill -0 "$HOST_PID" 2>/dev/null || { log "FAIL: host exited before socket"; sed -n '1,120p' /tmp/wawona-cap-host.log; exit 1; }
+  kill -0 "$HOST_PID" 2>/dev/null || { log "FAIL: host exited before socket"; sed -n '1,200p' /tmp/wawona-cap-host.log; exit 1; }
   sleep 1
 done
-[[ -S "$RUNTIME_DIR/$DISPLAY_NAME" ]] || { log "FAIL: parent socket never appeared"; sed -n '1,120p' /tmp/wawona-cap-host.log; exit 1; }
+[[ -S "$RUNTIME_DIR/$DISPLAY_NAME" ]] || { log "FAIL: parent socket never appeared"; sed -n '1,200p' /tmp/wawona-cap-host.log; exit 1; }
 log "parent socket up: $DISPLAY_NAME"
 export WAYLAND_DISPLAY="$DISPLAY_NAME"
 
