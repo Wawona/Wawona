@@ -285,13 +285,28 @@ run_android_fuzzel() {
   echo "PASS: fuzzel process up"
 
   # Catalog Exec must resolve on PATH (weston-simple-shm → libwawona_wl_bin.so).
-  local wl_link
-  wl_link="$(adb -s "$serial" shell 'run-as com.aspauldingcode.wawona sh -c "ls -l files/wawona-rootfs/usr/bin/weston-simple-shm 2>/dev/null"' | tr -d '\r')"
-  echo "$wl_link" | tee "$ARTIFACTS/android-fuzzel-e2e-wl-path.txt"
-  echo "$wl_link" | grep -q 'wawona_wl_bin\|weston-simple-shm' || {
+  # Soften adb: `ls`/`run-as` exit 1 when missing, and with `set -o pipefail`
+  # that aborted the lane before any FAIL message (empty wl-path artifact).
+  local wl_link usr_bin_listing
+  wl_link="$(
+    adb -s "$serial" shell \
+      'run-as com.aspauldingcode.wawona sh -c "ls -l files/wawona-rootfs/usr/bin/weston-simple-shm 2>/dev/null"' \
+      2>/dev/null | tr -d '\r' || true
+  )"
+  usr_bin_listing="$(
+    adb -s "$serial" shell \
+      'run-as com.aspauldingcode.wawona sh -c "ls -la files/wawona-rootfs/usr/bin 2>/dev/null | head -80"' \
+      2>/dev/null | tr -d '\r' || true
+  )"
+  {
+    echo "weston-simple-shm=$wl_link"
+    echo "--- usr/bin ---"
+    printf '%s\n' "$usr_bin_listing"
+  } | tee "$ARTIFACTS/android-fuzzel-e2e-wl-path.txt"
+  if ! printf '%s\n' "$wl_link" "$usr_bin_listing" | grep -qE 'wawona_wl_bin|weston-simple-shm'; then
     echo "FAIL: usr/bin/weston-simple-shm missing (fuzzel Exec cannot launch clients)" >&2
     exit 1
-  }
+  fi
   echo "PASS: weston-simple-shm on PATH"
 
   # Fuzzel often exits immediately on Berberis (no lasting filter UI), so Android
