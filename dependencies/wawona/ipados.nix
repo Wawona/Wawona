@@ -54,6 +54,8 @@ xcodeUtils.buildApp {
   name = "Wawona";
   src = xcodeProject;
   target = xcodeTarget;
+  # Xcode requires -scheme (not just -target) when -archivePath is set for IPA.
+  scheme = xcodeTarget;
   inherit sdk;
   __noChroot = true;
   configuration = if releaseBuild then "Release" else "Debug";
