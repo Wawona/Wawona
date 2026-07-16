@@ -119,6 +119,19 @@ export XDG_DATA_DIRS="$SHARE_ROOT${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
 export XDG_DATA_HOME="$RUNTIME_DIR/xdg-data-home"
 export PATH="$(dirname "$FUZZEL_BIN"):$PATH"
 [[ -n "$NIRI_CFG" ]] && export NIRI_CONFIG="$NIRI_CFG"
+# Same XKB handoff as niri-smoke-macos (artifact apps lack nix-store xkb).
+if [[ -z "${XKB_CONFIG_ROOT:-}" ]]; then
+  for cand in \
+    "$APP/Contents/Resources/share/X11/xkb" \
+    "$APP/share/X11/xkb"
+  do
+    if [[ -d "$cand/rules" ]]; then
+      export XKB_CONFIG_ROOT="$cand"
+      break
+    fi
+  done
+fi
+[[ -n "${XKB_CONFIG_ROOT:-}" ]] || { log "FAIL: XKB_CONFIG_ROOT unset for fuzzel niri restart"; exit 1; }
 
 "$NIRI_BIN" >/tmp/wawona-niri-fuzzel-niri.log 2>&1 &
 NIRI_PID=$!
