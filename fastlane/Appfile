@@ -2,3 +2,6 @@ app_identifier(ENV.fetch("APP_IDENTIFIER", "com.aspauldingcode.Wawona"))
 apple_id(ENV["APPLE_ID"]) if ENV["APPLE_ID"]
 team_id(ENV["TEAM_ID"]) if ENV["TEAM_ID"]
 itc_team_id(ENV["TEAM_ID"]) if ENV["TEAM_ID"]
+
+# supply / upload_to_play_store (Android applicationId)
+package_name(ENV.fetch("ANDROID_PACKAGE_NAME", "com.aspauldingcode.wawona"))

@@ -277,6 +277,7 @@ platform :android do
   desc "Upload Android AAB to Play internal track"
   lane :beta do
     upload_to_play_store(
+      package_name: ENV.fetch("ANDROID_PACKAGE_NAME", "com.aspauldingcode.wawona"),
       track: "internal",
       aab: nix_aab_path,
       json_key_data: ENV.fetch("PLAY_STORE_JSON_KEY"),
