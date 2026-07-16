@@ -19,9 +19,11 @@ if [ ! -x "$DEVELOPER_DIR/usr/bin/xcodebuild" ]; then
 fi
 
 echo "Selected Xcode: $XCODE_APP"
-"$DEVELOPER_DIR/usr/bin/xcodebuild" -version
-
-XCODE_VER=$("$DEVELOPER_DIR/usr/bin/xcodebuild" -version | awk '/Xcode/{print $2; exit}')
+# Capture once — piping a live xcodebuild into awk can SIGPIPE/abort on
+# Xcode 26 ("Broken pipe" / NSFileHandleOperationException).
+XCODE_VERSION_OUT="$("$DEVELOPER_DIR/usr/bin/xcodebuild" -version)"
+printf '%s\n' "$XCODE_VERSION_OUT"
+XCODE_VER="$(printf '%s\n' "$XCODE_VERSION_OUT" | awk '/Xcode/{print $2; exit}')"
 
 if [ -n "${GITHUB_ENV:-}" ]; then
   {
