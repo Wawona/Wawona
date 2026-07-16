@@ -371,3 +371,62 @@ jobs:
           check_target "Wawona-watchOS" "generic/platform=watchOS Simulator"
           check_target "Wawona-visionOS" "generic/platform=visionOS Simulator"
           check_target "Wawona-iOS" "generic/platform=iOS Simulator"
+
+  # Folded from former android-parity.yml: Gradle assembleDebug + meson/shell
+  # gates. Nix APK + emu e2e stay on Device gate. Path-filtered so non-Android
+  # tips skip this job.
+  android-path-filter:
+    name: "Android path filter"
+    runs-on: ubuntu-latest
+    outputs:
+      android: ${{ steps.filter.outputs.android }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            android:
+              - 'android/**'
+              - 'dependencies/**'
+              - 'src/platform/android/**'
+              - 'flake.nix'
+              - 'flake.lock'
+              - '.github/scripts/verify-android-shell-tools.py'
+              - '.github/scripts/verify-android-meson-sandbox.py'
+              - '.github/scripts/nix-build-shell-tools.sh'
+              - '.github/scripts/nix-build-android-meson-sandbox-gate.sh'
+              - '.github/workflows/nix.yml'
+
+  android-gradle-gate:
+    name: "macOS: Android Gradle + meson gate"
+    needs: android-path-filter
+    if: ${{ github.event_name == 'workflow_dispatch' || needs.android-path-filter.outputs.android == 'true' }}
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+
+      - name: Verify Android shell-tool wiring
+        run: python3 ./.github/scripts/verify-android-shell-tools.py
+      - name: Checkout flake inputs for meson verify
+        run: ./.github/scripts/checkout-flake-inputs.sh
+      - name: Verify Android meson sandbox hooks
+        run: python3 ./.github/scripts/verify-android-meson-sandbox.py
+      - name: Build weston + compositor + bundled shell tools
+        run: ./.github/scripts/nix-build-android-meson-sandbox-gate.sh
+      - name: Build bundled shell tools + weston-ios
+        run: |
+          nix build .#zsh-android .#fastfetch-android .#neovim-android \
+            .#weston-ios --no-link
+      - name: Gradle project assembleDebug
+        run: |
+          nix run .#gradlegen
+          cd Wawona-gradle-project
+          ./gradlew :Wawona:assembleDebug --no-daemon

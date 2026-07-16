@@ -1,7 +1,7 @@
 name: Nightly full matrix
 
-# Deep / slow gates (L3–L4 + capability). Push/PR fast path: nix.yml + device-e2e.
-# Always exercises the development tip so WIP is deep-tested before promote.
+# Deep / slow gates (graphics, protocol drift, Weston/XWayland capability).
+# Push path already runs Device gate (products + GUI e2e) — do not re-call it here.
 # docs/ci.md · FlakeHub Cache on every Nix job.
 
 on:
@@ -64,17 +64,6 @@ jobs:
             tests::protocol_matrix::test_generate_protocol_status_manifest -- --exact --nocapture
           git diff --exit-code -- docs/protocol-status.md \
             || { echo "::error::docs/protocol-status.md stale; run scripts/gen-protocol-status.sh"; exit 1; }
-
-  # Cross-platform GUI parity/e2e on development tip (product-build → e2e).
-  ui-parity:
-    name: "Layer 3: cross-platform UI parity"
-    uses: ./.github/workflows/device-gate.yml
-    with:
-      checkout_ref: development
-    permissions:
-      contents: read
-      id-token: write
-      actions: read
 
   capability-lane:
     name: "Layer 2: nested Weston + XWayland capability"

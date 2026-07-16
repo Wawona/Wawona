@@ -49,14 +49,16 @@ Operational runbook: [`flakehub-cache.md`](./flakehub-cache.md).
 - **Curated push/PR matrix.** `nix.yml` builds only
   [`.github/ci-package-matrix.json`](../.github/ci-package-matrix.json)
   (backends / substrate — not full product apps).
-- **Branch parity.** `development` and `master` both run Nix CI + Android parity
-  + Device gate. Release Beta / Release stay on `master` / tags.
-- **Path filters.** `device-gate.yml` / `android-parity.yml` use path filters so
+- **Branch parity.** `development` and `master` both run Nix CI + Device gate.
+  Android Gradle/meson lives inside Nix CI (path-filtered). Release Beta / Release
+  stay on `master` / tags. Nightly does not re-run Device gate.
+- **Path filters.** `device-gate.yml` and Nix CI `android-gradle-gate` use path filters so
   docs-only changes skip native builds.
 - **Fast PR gate vs nightly.**
-  - *Push gate* (`nix.yml` + parity + device-gate): curated builds + GUI smoke/fuzzel.
+  - *Push gate* (`nix.yml` + device-gate): curated builds + path-filtered Android
+    Gradle/meson + GUI smoke/fuzzel.
   - *PR:* fuzzel lanes skipped; smoke still runs when device-e2e is invoked.
-  - *Nightly:* calls device-gate on **`development` tip**.
+  - *Nightly:* graphics + protocol drift + capability only (no Device gate).
 - **Reproducibility.** `repro-rebuild` `--rebuild`s backend + workspace-src and
   byte-compares; `verify-no-tar-wildcards.py` bans nondeterministic archives.
   Deterministic outputs are what make FlakeHub Cache safe to trust.

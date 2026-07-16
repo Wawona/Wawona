@@ -9,32 +9,33 @@ Build dedupe: [`2026-build-ci-optimization.md`](./2026-build-ci-optimization.md)
 
 | You do… | Runs… | Ships… |
 |---------|-------|--------|
-| Work / PR on **`development`** | Nix CI, Android parity, **Device gate** (product-build → e2e) | Nothing to stores or GitHub Releases |
+| Work / PR on **`development`** | **Nix CI** + **Device gate** (product-build → e2e) | Nothing to stores or GitHub Releases |
 | Promote green tip → **`master`** (push) | **Release Beta** | TestFlight + Play internal + Linux AppImage workflow artifacts |
 | Tag **`v*`** on a release commit | **Release Beta** *and* **Release** | Store betas + GitHub Release assets |
 
-**Promote rule:** `development` → `master` only when Nix CI + Android parity + Device gate/e2e are green on that tip.
+**Promote rule:** `development` → `master` only when **Nix CI** + **Device gate** are green on that tip.
 
 ## Branch × workflow
 
 | Workflow | `development` | `master` | Why |
 |----------|:-------------:|:--------:|-----|
-| **Nix CI** (`nix.yml`) | push + PR | push + PR | L0–L2: verify, cargo/swift tests, **curated** backends (not full product apps) |
-| **Android parity** | path filter + PR | push + PR | Gradle assembleDebug + meson/shell gates |
+| **Nix CI** (`nix.yml`) | push + PR | push + PR | L0–L2: verify, cargo/swift tests, curated backends; path-filtered **Android Gradle + meson** gate (folded from former android-parity) |
 | **Device gate** (`device-gate.yml`) | path filter push | path filter push | Fans out **product-build** by product (`only:`); e2e lanes start per-product (iOS e2e does not wait on AppImages) |
-| **Product build** (`product-build.yml`) | via device-gate / Release | via gate / Beta resolve / Release | Sole pure producer: iOS sim `.app`, debug APK, macOS `.app`, AppImages |
-| **Device GUI e2e** | via device-gate (`products_ready`) | via gate | Smoke + fuzzel (fuzzel skipped on `pull_request` only) |
-| **Nightly full matrix** | tip via device-gate | — | L4 + deep lanes on **`development` tip** |
+| **Product build** (`product-build.yml`) | via device-gate / Release | via gate / Beta resolve / Release | Sole pure producer: iOS sim `.app`, debug APK, macOS `.app`, AppImages (callable only) |
+| **Device GUI e2e** | via device-gate (`products_ready`) | via gate | Smoke + fuzzel (fuzzel skipped on `pull_request` only); callable only |
+| **Nightly full matrix** | schedule / dispatch | — | Graphics + protocol drift + Weston/XWayland capability (does **not** re-run Device gate) |
+| **Release Beta** | — | push + tags `v*` | Fastlane stores; AppImages resolved from product-build when possible |
+| **Release** | — | tags `v*` | GitHub Release: DMG/APK/AppImage from product-build; IPA impure |
+
+Removed: **publish-ios** (use Release Beta `workflow_dispatch`) and standalone **Android parity** (Gradle/meson folded into Nix CI).
 
 ### Device gate concurrency (tip-only)
 
-Device gate, product-build, and Device GUI e2e share a **branch tip** concurrency key (`development` / `master`, or Nightly’s `checkout_ref: development`), not per-SHA:
+Device gate, product-build, and Device GUI e2e share a **branch tip** concurrency key (`development` / `master`), not per-SHA:
 
-- One in-flight Device gate **per tip**. A newer push (or Nightly targeting the same tip) cancels the older gate **and** its product + e2e children.
+- One in-flight Device gate **per tip**. A newer push cancels the older gate **and** its product + e2e children.
 - Cancelled jobs on a superseded SHA are expected — they are not product failures. Promote only cares about a **success** tip Device gate.
 - Skipped product jobs from `only:` filters remain **Skipped** (not Cancelled).
-| **Release Beta** | — | push + tags `v*` | Fastlane stores; AppImages resolved from product-build when possible |
-| **Release** | — | tags `v*` | GitHub Release: DMG/APK/AppImage from product-build; IPA impure |
 
 ## Single-build product pipeline
 
@@ -71,6 +72,7 @@ Push/PR Nix CI builds only [`.github/ci-package-matrix.json`](../.github/ci-pack
 | `cargo-test-*` / `swift-test-*` | L1 | Language tests |
 | `build` (matrix) | L2 | Curated attrs + FlakeHub |
 | `frontend-syntax-check` | L2-lite | Xcode syntax without full Nix backend |
+| `android-gradle-gate` | L2 (path filter) | Gradle `assembleDebug` + meson/shell (former Android parity) |
 
 ## Device e2e speed notes
 
