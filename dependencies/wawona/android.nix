@@ -517,7 +517,9 @@ EOF
         export ANDROID_KEYSTORE_PASSWORD="${releaseKeystorePassword}"
         export ANDROID_KEY_ALIAS="${releaseKeyAlias}"
         export ANDROID_KEY_PASSWORD="${releaseKeyPassword}"
-        # Prefer BASE64 baked at impure eval — host RUNNER_TEMP paths are
+        export WAWONA_BUILD_NUMBER="${releaseBuildNumber}"
+        export WAWONA_VERSION="${releaseVersionName}"
+        # Prefer BASE64 baked at impure eval - host RUNNER_TEMP paths are
         # not readable inside the Nix build sandbox (Permission denied).
         if [ -n "${releaseKeystoreBase64}" ]; then
           KEYSTORE_PATH="$TMPDIR/wawona-upload.jks"
