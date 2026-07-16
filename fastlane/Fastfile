@@ -187,9 +187,10 @@ def assert_distribution_identity!
   sha
 end
 
-# Export match Distribution identity to mode-0600 temp PKCS12 + pass files.
-# Paths (not contents) are passed into nix via --impure getEnv. Never log
-# the password or P12 bytes.
+# Export match Distribution identity into a private keychain under a host
+# temp dir (/var/folders or /tmp) — never under /nix/var/nix/builds (security
+# cannot use keychains there). Paths only are passed into nix; never log
+# password or P12 bytes.
 def stage_distribution_cert_for_nix!
   require "securerandom"
   require "open3"
@@ -202,6 +203,7 @@ def stage_distribution_cert_for_nix!
   dir = Dir.mktmpdir("wawona-dist-")
   p12_path = File.join(dir, "dist.p12")
   pass_path = File.join(dir, "pass")
+  kc_path = File.join(dir, "signing.keychain-db")
   pass = SecureRandom.hex(32)
   File.write(pass_path, pass)
   File.chmod(0o600, pass_path)
@@ -226,17 +228,53 @@ def stage_distribution_cert_for_nix!
   end
   File.chmod(0o600, p12_path)
 
-  ENV["WAWONA_DIST_P12_FILE"] = p12_path
+  # Build keychain on the host filesystem (absolute path). macOS security
+  # rejects keychains under the nix build TMPDIR.
+  Open3.capture2("security", "delete-keychain", kc_path)
+  _o, _c_err, c_st = Open3.capture3("security", "create-keychain", "-p", pass, kc_path)
+  unless c_st.success? && File.size?(kc_path)
+    FileUtils.remove_entry(dir, true)
+    UI.user_error!("Failed to create signing keychain for nix IPA")
+  end
+  Open3.capture3("security", "set-keychain-settings", "-t", "3600", "-u", kc_path)
+  Open3.capture3("security", "unlock-keychain", "-p", pass, kc_path)
+  _i, _i_err, i_st = Open3.capture3(
+    "security", "import", p12_path, "-k", kc_path, "-P", pass,
+    "-A", "-T", "/usr/bin/codesign", "-T", "/usr/bin/security", "-T", "/usr/bin/xcodebuild"
+  )
+  unless i_st.success?
+    FileUtils.remove_entry(dir, true)
+    UI.user_error!("Failed to import Distribution cert into signing keychain")
+  end
+  Open3.capture3(
+    "security", "set-key-partition-list",
+    "-S", "apple-tool:,apple:,codesign:",
+    "-s", "-k", pass, kc_path
+  )
+  FileUtils.rm_f(p12_path)
+
+  out, = Open3.capture2("security", "find-identity", "-v", "-p", "codesigning", kc_path)
+  unless out.match?(/Apple Distribution|iPhone Distribution|iOS Distribution/i)
+    FileUtils.remove_entry(dir, true)
+    UI.user_error!("Signing keychain has no Distribution identity after import")
+  end
+
+  ENV["WAWONA_DIST_KEYCHAIN"] = kc_path
   ENV["WAWONA_DIST_P12_PASS_FILE"] = pass_path
   ENV["WAWONA_DIST_SIGN_DIR"] = dir
   ENV["WAWONA_CODE_SIGN_IDENTITY"] = sha
-  UI.message("Staged Distribution cert for nix IPA (#{sha[0, 8]}…)")
+  UI.message("Staged Distribution keychain for nix IPA (#{sha[0, 8]}…)")
 end
 
 def cleanup_staged_distribution_cert!
+  kc = ENV.delete("WAWONA_DIST_KEYCHAIN")
   dir = ENV.delete("WAWONA_DIST_SIGN_DIR")
   ENV.delete("WAWONA_DIST_P12_FILE")
   ENV.delete("WAWONA_DIST_P12_PASS_FILE")
+  if kc && File.exist?(kc)
+    require "open3"
+    Open3.capture2("security", "delete-keychain", kc)
+  end
   FileUtils.remove_entry(dir, true) if dir && File.directory?(dir)
 rescue StandardError
   # best-effort cleanup
@@ -321,21 +359,21 @@ def nix_ipa_path(attr, bundle_id: MAIN_BUNDLE_ID, profile_name: nil)
   staged = Dir.glob(File.expand_path("~/Library/Developer/Xcode/UserData/Provisioning Profiles/*.mobileprovision"))
   staged.each { |src| FileUtils.cp(src, profiles_dir) }
   UI.user_error!("No match profiles staged under #{profiles_dir}") if staged.empty?
-  stage_distribution_cert_for_nix! if ENV["WAWONA_DIST_P12_FILE"].to_s.empty?
+  stage_distribution_cert_for_nix! if ENV["WAWONA_DIST_KEYCHAIN"].to_s.empty?
   env = nix_build_env.merge(
     # Eval-time (--impure) path inputs for ios.nix / build-app matchHostSigning.
-    # Cert material: paths to mode-0600 temp files only (never log contents).
+    # Cert material: host keychain + pass-file paths only (never log contents).
     "WAWONA_HOST_HOME" => ENV.fetch("HOME"),
     "WAWONA_PROFILES_DIR" => profiles_dir,
     "WAWONA_CODE_SIGN_STYLE" => ENV.fetch("WAWONA_CODE_SIGN_STYLE", "Manual"),
     "WAWONA_CODE_SIGN_IDENTITY" => ENV.fetch("WAWONA_CODE_SIGN_IDENTITY", "Apple Distribution"),
     "WAWONA_PROVISIONING_PROFILE_SPECIFIER" => profile,
-    "WAWONA_DIST_P12_FILE" => ENV.fetch("WAWONA_DIST_P12_FILE"),
+    "WAWONA_DIST_KEYCHAIN" => ENV.fetch("WAWONA_DIST_KEYCHAIN"),
     "WAWONA_DIST_P12_PASS_FILE" => ENV.fetch("WAWONA_DIST_P12_PASS_FILE")
   )
   UI.message(
     "Building #{attr} (version #{env['WAWONA_VERSION']}, build #{env['WAWONA_BUILD_NUMBER']}, " \
-    "profiles=#{staged.size}, dist_p12=staged)"
+    "profiles=#{staged.size}, dist_keychain=staged)"
   )
   # sandbox false + empty build-users-group: import staged P12 into build keychain.
   out = nix_sh(nix_impure_build_cmd(attr), env).strip.split("\n").last

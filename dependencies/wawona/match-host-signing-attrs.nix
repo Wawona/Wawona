@@ -18,7 +18,7 @@ old: {
       profileSpecifier = builtins.getEnv "WAWONA_PROVISIONING_PROFILE_SPECIFIER";
       codeSignIdentity = builtins.getEnv "WAWONA_CODE_SIGN_IDENTITY";
       codeSignStyle = builtins.getEnv "WAWONA_CODE_SIGN_STYLE";
-      distP12File = builtins.getEnv "WAWONA_DIST_P12_FILE";
+      distKeychain = builtins.getEnv "WAWONA_DIST_KEYCHAIN";
       distP12PassFile = builtins.getEnv "WAWONA_DIST_P12_PASS_FILE";
     in
     ''
@@ -27,7 +27,7 @@ old: {
       ${lib.optionalString (codeSignStyle != "") ''export WAWONA_CODE_SIGN_STYLE="${codeSignStyle}"''}
       ${lib.optionalString (codeSignIdentity != "") ''export WAWONA_CODE_SIGN_IDENTITY="${codeSignIdentity}"''}
       ${lib.optionalString (profileSpecifier != "") ''export WAWONA_PROVISIONING_PROFILE_SPECIFIER="${profileSpecifier}"''}
-      ${lib.optionalString (distP12File != "") ''export WAWONA_DIST_P12_FILE="${distP12File}"''}
+      ${lib.optionalString (distKeychain != "") ''export WAWONA_DIST_KEYCHAIN="${distKeychain}"''}
       ${lib.optionalString (distP12PassFile != "") ''export WAWONA_DIST_P12_PASS_FILE="${distP12PassFile}"''}
     ''
     + (old.buildPhase or "")
