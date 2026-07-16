@@ -289,9 +289,26 @@ def ensure_xcodegen!
     UI.message("Skipping xcodegen (WAWONA_SKIP_XCODEGEN=1)")
     return
   end
-  UI.message("Generating Xcode project (nix run .#xcodegen)…")
+  UI.message("Generating Xcode project (nix run .#xcodegen)...")
   sh("nix", "run", ".#xcodegen")
   UI.user_error!("Wawona.xcodeproj missing after xcodegen") unless Dir.exist?(project)
+end
+
+# nix develop puts clang-wrapper/cctools ahead of Xcode on PATH; xcodebuild then
+# invokes the wrong ld ("unknown options: -Xlinker -dynamiclib"). Keep Apple
+# tools first and drop nix linker wrappers before gym.
+def prefer_xcode_toolchain!
+  developer_dir = ENV["DEVELOPER_DIR"].to_s
+  developer_dir = `xcode-select -p`.strip if developer_dir.empty?
+  drop = %w[clang-wrapper cctools binutils-darwin ld64-wrapper]
+  filtered = ENV.fetch("PATH", "").split(":").reject do |p|
+    drop.any? { |frag| p.include?(frag) }
+  end
+  head = []
+  head << File.join(developer_dir, "usr/bin") unless developer_dir.empty?
+  head.concat(%w[/usr/bin /bin /usr/sbin /sbin])
+  ENV["PATH"] = (head + filtered).uniq.join(":")
+  UI.message("PATH prefers Xcode toolchain (#{developer_dir})")
 end
 
 def gym_output_dir
@@ -380,6 +397,7 @@ platform :ios do
     validate_env
     setup_ci if ENV["CI"]
     ensure_xcodegen!
+    prefer_xcode_toolchain!
     api_key = asc_api_key
     install_testflight_profiles!(api_key)
     ensure_all_asc_versions!(api_key)
@@ -406,6 +424,7 @@ platform :ios do
     validate_env
     setup_ci if ENV["CI"]
     ensure_xcodegen!
+    prefer_xcode_toolchain!
     api_key = asc_api_key
     install_testflight_profiles!(api_key)
     ensure_all_asc_versions!(api_key)
