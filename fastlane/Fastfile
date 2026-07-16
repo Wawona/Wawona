@@ -156,13 +156,20 @@ def ensure_all_asc_versions!(api_key)
   end
 end
 
+# Fastlane's FastFile#sh only forwards log/step_name/error_callback from a
+# trailing options hash — `env:` is silently dropped. Pass env as Open3's
+# leading Hash (merged with ENV so PATH/HOME/NIX_* survive).
+def nix_sh(command, extra_env)
+  sh(ENV.to_h.merge(extra_env.transform_keys(&:to_s)), command, log: true)
+end
+
 def nix_ipa_path(attr, bundle_id: MAIN_BUNDLE_ID, profile_name: nil)
   profile = profile_name || ENV["WAWONA_PROVISIONING_PROFILE_SPECIFIER"] || "match AppStore #{bundle_id}"
   profiles_dir = File.join(Dir.tmpdir, "wawona-match-profiles-#{Process.pid}")
   FileUtils.mkdir_p(profiles_dir)
-  Dir.glob(File.expand_path("~/Library/Developer/Xcode/UserData/Provisioning Profiles/*.mobileprovision")).each do |src|
-    FileUtils.cp(src, profiles_dir)
-  end
+  staged = Dir.glob(File.expand_path("~/Library/Developer/Xcode/UserData/Provisioning Profiles/*.mobileprovision"))
+  staged.each { |src| FileUtils.cp(src, profiles_dir) }
+  UI.user_error!("No match profiles staged under #{profiles_dir}") if staged.empty?
   env = nix_build_env.merge(
     # Eval-time (--impure) inputs for ios.nix / build-app matchHostSigning.
     "WAWONA_HOST_HOME" => ENV.fetch("HOME"),
@@ -171,13 +178,15 @@ def nix_ipa_path(attr, bundle_id: MAIN_BUNDLE_ID, profile_name: nil)
     "WAWONA_CODE_SIGN_IDENTITY" => ENV.fetch("WAWONA_CODE_SIGN_IDENTITY", "Apple Distribution"),
     "WAWONA_PROVISIONING_PROFILE_SPECIFIER" => profile
   )
-  UI.message("Building #{attr} (version #{env['WAWONA_VERSION']}, build #{env['WAWONA_BUILD_NUMBER']})")
+  UI.message(
+    "Building #{attr} (version #{env['WAWONA_VERSION']}, build #{env['WAWONA_BUILD_NUMBER']}, " \
+    "profiles=#{staged.size}, host_home=#{env['WAWONA_HOST_HOME']})"
+  )
   # sandbox false: match profiles + setup_ci keychain live on the host FS.
-  out = sh(
+  out = nix_sh(
     "nix build .##{attr} --impure --option sandbox false " \
     "--print-out-paths --print-build-logs",
-    env: env,
-    log: true
+    env
   ).strip.split("\n").last
   ipa = Dir.glob(File.join(out, "**", "*.ipa")).first
   UI.user_error!("No IPA found in #{out} for #{attr}") unless ipa
@@ -192,11 +201,10 @@ def nix_aab_path
     "ANDROID_KEY_ALIAS" => ENV.fetch("ANDROID_KEY_ALIAS"),
     "ANDROID_KEY_PASSWORD" => ENV.fetch("ANDROID_KEY_PASSWORD")
   }
-  out = sh(
+  out = nix_sh(
     "nix build .#wawona-android-aab --impure --option sandbox false " \
     "--print-out-paths --print-build-logs",
-    env: env,
-    log: true
+    env
   ).strip.split("\n").last
   aab = Dir.glob(File.join(out, "**", "*.aab")).first
   UI.user_error!("No AAB found in #{out}") unless aab

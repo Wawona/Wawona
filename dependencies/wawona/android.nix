@@ -545,6 +545,7 @@ EOF
         -Dkotlin.daemon.enabled=false \
         -Dkotlin.compiler.execution.strategy=in-process \
         -Dkotlin.incremental=false \
+        ${lib.optionalString isReleaseBuild "-x lintVitalAnalyzeRelease -x lintVitalReportRelease"} \
         --info --stacktrace || {
         echo "=== Gradle Build Failed! Accessing Diagnostic Reports ==="
         REPORT_PATH="app/build/outputs/logs/manifest-merger-debug-report.txt"

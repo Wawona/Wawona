@@ -50,7 +50,7 @@ let
       throw "ipados.nix: simulator build needs sdk mapping for nativeSdk=${nativeSdk}";
   destinationPlatform = if simulator then "${platformName} Simulator" else platformName;
 in
-xcodeUtils.buildApp {
+(xcodeUtils.buildApp {
   name = "Wawona";
   src = xcodeProject;
   target = xcodeTarget;
@@ -91,4 +91,4 @@ xcodeUtils.buildApp {
     ]
     ++ lib.optionals simulator [ ''ONLY_ACTIVE_ARCH=YES'' ]
   );
-}
+}).overrideAttrs (import ./match-host-signing-attrs.nix { inherit lib; })

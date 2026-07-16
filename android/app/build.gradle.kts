@@ -96,6 +96,13 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    // Release AAB/APK: lintVital pulls desktop compose variants
+    // (material-icons-core-desktop, graphics-shapes-desktop) that are absent
+    // from the offline mitm gradle deps cache used by nix builds.
+    lint {
+        checkReleaseBuilds = false
+    }
+
     buildFeatures {
         compose = true
     }
