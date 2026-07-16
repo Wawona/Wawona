@@ -304,21 +304,31 @@ def gym_output_dir
   end
 end
 
-# Nix owns xcodegen + Rust prebuild (Xcode build phase → xcode-prebuild.sh).
+# Nix owns xcodegen + Rust prebuild (Xcode build phase -> xcode-prebuild.sh).
 # Fastlane owns match keychain, gym archive/export, and TestFlight upload.
+#
+# Do NOT pass PROVISIONING_PROFILE_SPECIFIER via global xcargs — it applies to
+# every target (WawonaModel / WawonaUIContracts frameworks cannot take profiles).
 def gym_ipa(target)
   team_id = ENV.fetch("TEAM_ID")
   profile = target[:profile_name]
   identity = ENV.fetch("WAWONA_CODE_SIGN_IDENTITY", "Apple Distribution")
+  project = File.expand_path("../Wawona.xcodeproj", __dir__)
+
+  update_code_signing_settings(
+    path: project,
+    use_automatic_signing: false,
+    team_id: team_id,
+    targets: [target[:scheme]],
+    code_sign_identity: identity,
+    profile_name: profile,
+    bundle_identifier: target[:bundle_id]
+  )
+
   xcargs = [
-    "CODE_SIGN_STYLE=Manual",
     "DEVELOPMENT_TEAM=#{team_id}",
-    "CODE_SIGN_IDENTITY=#{identity.shellescape}",
-    "PROVISIONING_PROFILE_SPECIFIER=#{profile.shellescape}",
     "CURRENT_PROJECT_VERSION=#{wawona_build_number}",
-    "MARKETING_VERSION=#{wawona_version}",
-    "CODE_SIGNING_ALLOWED=YES",
-    "CODE_SIGNING_REQUIRED=YES"
+    "MARKETING_VERSION=#{wawona_version}"
   ].join(" ")
 
   UI.message(
@@ -327,7 +337,7 @@ def gym_ipa(target)
   )
 
   build_app(
-    project: File.expand_path("../Wawona.xcodeproj", __dir__),
+    project: project,
     scheme: target[:scheme],
     clean: true,
     silent: false,
