@@ -193,6 +193,11 @@ jobs:
           test -f "$MAIN" || { echo "FAIL: staged MacOS/Wawona missing"; exit 1; }
           chmod +x "$NIRI" "$FUZZEL" "$MAIN"
           test -x "$NIRI" && test -x "$FUZZEL" && test -x "$MAIN"
+          # Bundle XKB data so nested niri works after artifact download (no nix store).
+          XKB_OUT="$(nix build --no-link --print-out-paths nixpkgs#xkeyboard_config)"
+          mkdir -p "$APP/Contents/Resources/share/X11"
+          ditto "$XKB_OUT/share/X11/xkb" "$APP/Contents/Resources/share/X11/xkb"
+          test -d "$APP/Contents/Resources/share/X11/xkb/rules"
           OUT="$(readlink -f result-macos)"
           {
             echo "{"

@@ -31,6 +31,32 @@ fi
 NIRI_BIN="${WAWONA_NIRI_BIN:-$APP/Contents/Resources/bin/niri}"
 [[ -x "$NIRI_BIN" ]] || { log "FAIL: bundled niri missing at $NIRI_BIN"; exit 1; }
 
+# Bundled niri is compiled against a nix-store XKB path that is absent after
+# GHA artifact unpack. Prefer app-bundled xkb, then nixpkgs, then env.
+if [[ -z "${XKB_CONFIG_ROOT:-}" ]]; then
+  for cand in \
+    "$APP/Contents/Resources/share/X11/xkb" \
+    "$APP/share/X11/xkb"
+  do
+    if [[ -d "$cand/rules" ]]; then
+      export XKB_CONFIG_ROOT="$cand"
+      break
+    fi
+  done
+fi
+if [[ -z "${XKB_CONFIG_ROOT:-}" ]] && command -v nix >/dev/null 2>&1; then
+  SYS="$(nix eval --impure --raw --expr builtins.currentSystem 2>/dev/null || uname -m | sed 's/arm64/aarch64/;s/x86_64/x86_64/')-darwin"
+  XKB_OUT="$(nix build --no-link --print-out-paths "nixpkgs#xkeyboard_config" 2>/dev/null || true)"
+  if [[ -z "$XKB_OUT" ]]; then
+    XKB_OUT="$(nix build --no-link --print-out-paths --impure --expr "with import (builtins.getFlake \"$ROOT\").inputs.nixpkgs { system = \"$SYS\"; }; xkeyboard_config" 2>/dev/null || true)"
+  fi
+  if [[ -n "$XKB_OUT" && -d "$XKB_OUT/share/X11/xkb/rules" ]]; then
+    export XKB_CONFIG_ROOT="$XKB_OUT/share/X11/xkb"
+  fi
+fi
+[[ -n "${XKB_CONFIG_ROOT:-}" ]] || log "WARN: XKB_CONFIG_ROOT unset; nested niri may BadKeymap on artifact apps"
+[[ -n "${XKB_CONFIG_ROOT:-}" ]] && log "XKB_CONFIG_ROOT=$XKB_CONFIG_ROOT"
+
 # Fresh runtime dir so socket discovery is deterministic.
 RUNTIME_DIR="$(mktemp -d /tmp/wawona-niri-smoke.XXXXXX)"
 chmod 700 "$RUNTIME_DIR"

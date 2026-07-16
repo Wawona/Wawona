@@ -21,7 +21,7 @@ Build dedupe: [`2026-build-ci-optimization.md`](./2026-build-ci-optimization.md)
 |----------|:-------------:|:--------:|-----|
 | **Nix CI** (`nix.yml`) | push + PR | push + PR | L0–L2: verify, cargo/swift tests, **curated** backends (not full product apps) |
 | **Android parity** | path filter + PR | push + PR | Gradle assembleDebug + meson/shell gates |
-| **Device gate** (`device-gate.yml`) | path filter push | path filter push | Calls **product-build** once, then **Device GUI e2e** |
+| **Device gate** (`device-gate.yml`) | path filter push | path filter push | Fans out **product-build** by product (`only:`); e2e lanes start per-product (iOS e2e does not wait on AppImages) |
 | **Product build** (`product-build.yml`) | via device-gate / Release | via gate / Beta resolve / Release | Sole pure producer: iOS sim `.app`, debug APK, macOS `.app`, AppImages |
 | **Device GUI e2e** | via device-gate (`products_ready`) | via gate | Smoke + fuzzel (fuzzel skipped on `pull_request` only) |
 | **Nightly full matrix** | tip via device-gate | — | L4 + deep lanes on **`development` tip** |
