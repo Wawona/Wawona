@@ -8,6 +8,10 @@
 # artifact (device-gate may fan out one product-build call per product), waits
 # if still in progress (up to wait-seconds, default 5400), then downloads into
 # dest-dir.
+#
+# Fail-fast: if no in-progress/queued product-build exists after an initial
+# grace window (~120s), exit 1 immediately instead of spinning until deadline.
+# Prefer owning product-build via workflow_call (see release.yml / release-beta.yml).
 set -euo pipefail
 
 SHA="${1:?usage: $0 <sha> <artifact-name> <dest-dir> [wait-seconds]}"
@@ -16,6 +20,8 @@ DEST="${3:?}"
 WAIT_SECS="${4:-5400}"
 REPO="${GITHUB_REPOSITORY:-Wawona/Wawona}"
 WORKFLOW="product-build.yml"
+# Allow a short window for a sibling workflow_call to appear in the API.
+GRACE_SECS="${RESOLVE_PRODUCT_GRACE_SECS:-120}"
 
 if ! command -v gh >/dev/null; then
   echo "error: gh CLI required" >&2
@@ -24,6 +30,7 @@ fi
 
 mkdir -p "$DEST"
 deadline=$((SECONDS + WAIT_SECS))
+started=$SECONDS
 
 run_has_artifact() {
   local id="$1"
@@ -67,8 +74,17 @@ while (( SECONDS < deadline )); do
     sleep 30
     continue
   fi
-  echo "== no product-build run with $ARTIFACT for $SHA yet; waiting =="
-  sleep 20
+
+  elapsed=$((SECONDS - started))
+  if (( elapsed >= GRACE_SECS )); then
+    echo "error: no in-progress product-build for sha=$SHA after ${GRACE_SECS}s grace; " \
+      "refusing to wait ${WAIT_SECS}s (artifact=$ARTIFACT). " \
+      "Call product-build.yml from the consumer workflow instead." >&2
+    exit 1
+  fi
+
+  echo "== no product-build run with $ARTIFACT for $SHA yet; grace ${elapsed}s/${GRACE_SECS}s =="
+  sleep 15
 done
 
 if [[ -z "$run_id" ]]; then

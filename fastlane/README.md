@@ -1,64 +1,88 @@
-# Wawona Fastlane
+fastlane documentation
+----
 
-Nix builds the artifacts; Fastlane orchestrates signing (match) and uploads (TestFlight / Play).
+# Installation
 
-## TestFlight platforms
+Make sure you have the latest version of the Xcode command line tools installed:
 
-`fastlane ios beta` uploads **five** builds to TestFlight:
-
-| Device | Nix output | Bundle ID |
-|--------|------------|-----------|
-| iPhone | `wawona-ios-ipa` | `com.aspauldingcode.Wawona` |
-| iPad | `wawona-ipados-ipa` | `com.aspauldingcode.Wawona` |
-| Apple TV | `wawona-tvos-ipa` | `com.aspauldingcode.Wawona` |
-| Apple Vision Pro | `wawona-visionos-ipa` | `com.aspauldingcode.Wawona` (iOS appstore profile) |
-| Apple Watch | `wawona-watchos-ipa` | `com.aspauldingcode.Wawona.watch` |
-
-**macOS is not uploaded** — the macOS app is distributed outside TestFlight.
-
-TestFlight beta feedback email: `aspauldingcode@gmail.com` (override with `BETA_FEEDBACK_EMAIL`).
-
-External tester auto-distribution is **off** until you create groups in App Store Connect. Set `BETA_TESTFLIGHT_GROUPS=Wawona Beta` (comma-separated) to enable upload → wait for processing → distribute + notify.
-
-## App Store Connect setup
-
-In [App Store Connect](https://appstoreconnect.apple.com), create (or verify) a **Wawona** app with bundle ID `com.aspauldingcode.Wawona` and enable platforms: iOS, tvOS, visionOS. The watch app uses `com.aspauldingcode.Wawona.watch` as a companion to the iOS app.
-
-## Prerequisites
-
-- `nix develop` (provides fastlane, ruby, cocoapods, jdk17)
-- `.release-secrets.env` copied from `.release-secrets.env.template` (store keys under `.secrets/` — gitignored)
-- `aspauldingcode/apple-signing` populated via `scripts/bootstrap-apple-signing.sh`
-- GitHub Environment `release-beta` secrets synced via `scripts/sync-github-secrets.sh --apple-only` (Android/Play when Google verification completes)
-
-See `.release-secrets.env.template` for step-by-step instructions on obtaining each secret value.
-
-## Versioning
-
-Single source of truth: `VERSION` (currently `0.2.4`).
-
-Fastlane reads `WAWONA_VERSION` (optional override; strips a leading `v` from tags) and `WAWONA_BUILD_NUMBER` (defaults to `GITHUB_RUN_NUMBER` in CI, or a timestamp locally). Both are passed into `nix build --impure` so every IPA gets the same marketing version and build number.
-
-Before uploading, Fastlane also calls `deliver` (metadata-only) for **iOS, tvOS, and visionOS** so App Store Connect has a `0.2.4` version row on each platform — fixing the default `1.0` placeholder on tvOS/visionOS.
-
-## Local beta upload
-
-```bash
-cd Wawona
-source .release-secrets.env
-export TEAM_ID WAWONA_VERSION=0.2.4 WAWONA_BUILD_NUMBER=1
-nix develop --command bash -lc 'export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer; fastlane ios beta'
+```sh
+xcode-select --install
 ```
 
-## CI
+For _fastlane_ installation instructions, see [Installing _fastlane_](https://docs.fastlane.tools/#installing-fastlane)
 
-Two release workflows serve different channels:
+# Available Actions
 
-| Workflow | Trigger | Output |
-|----------|---------|--------|
-| [`release-beta.yml`](../.github/workflows/release-beta.yml) | Every push to `master`, tag `v0.2.*`, or manual dispatch | Signed TestFlight (Apple) / Play internal (Android, when secrets ready) |
-| [`release.yml`](../.github/workflows/release.yml) | Tag `v*` | Unsigned GitHub Release (macOS `.dmg` + Android `.apk`) |
+### sync_version
 
-`release-beta.yml` runs `fastlane ios beta` (Apple only) on automatic triggers. Use workflow input `ios beta` for Apple platforms only; `android beta` when Play secrets are ready.
+```sh
+[bundle exec] fastlane sync_version
+```
 
-Additional lanes: `fastlane sync_version`, `fastlane validate_env`, `fastlane ios release` (App Store submit).
+Sync version from VERSION file to Cargo.toml and Android build.gradle.kts
+
+### validate_env
+
+```sh
+[bundle exec] fastlane validate_env
+```
+
+Verify release environment (Apple credentials)
+
+### regenerate_signing
+
+```sh
+[bundle exec] fastlane regenerate_signing
+```
+
+Enable iCloud on App IDs and force-regenerate App Store match profiles
+
+### beta
+
+```sh
+[bundle exec] fastlane beta
+```
+
+Upload Apple + Android beta builds
+
+----
+
+
+## iOS
+
+### ios beta
+
+```sh
+[bundle exec] fastlane ios beta
+```
+
+Upload iPhone, iPad, Apple TV, Apple Vision Pro, and Apple Watch to TestFlight (excludes macOS)
+
+### ios release
+
+```sh
+[bundle exec] fastlane ios release
+```
+
+Submit iOS builds for App Store review
+
+----
+
+
+## Android
+
+### android beta
+
+```sh
+[bundle exec] fastlane android beta
+```
+
+Upload Android AAB to Play internal track
+
+----
+
+This README.md is auto-generated and will be re-generated every time [_fastlane_](https://fastlane.tools) is run.
+
+More information about _fastlane_ can be found on [fastlane.tools](https://fastlane.tools).
+
+The documentation of _fastlane_ can be found on [docs.fastlane.tools](https://docs.fastlane.tools).

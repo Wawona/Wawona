@@ -113,14 +113,15 @@ See [README](../README.md) for environment setup.
 Wawona v0.2.4 adds Fastlane automation. See [wwn-mcp/knowledge/wawona/fastlane.md](../../wwn-mcp/knowledge/wawona/fastlane.md).
 
 ```bash
-cp .release-secrets.env.template .release-secrets.env   # fill locally, never commit
+# Tier 0 — see docs/maintainers/secrets.md (SecretSpec + pass)
+./scripts/migrate-release-secrets-to-pass.sh            # one-shot if migrating from dotenv
 ./scripts/bootstrap-apple-signing.sh                    # one-time match → apple-signing repo
-./scripts/sync-github-secrets.sh                        # gh CLI → Environment release-beta
+./scripts/sync-github-secrets.sh                        # pass → GitHub Environment release-beta
 
 nix develop .#release
-source .release-secrets.env
-fastlane ios beta       # requires TEAM_ID + signed IPAs
-fastlane android beta   # requires Play upload key + service account JSON
+secretspec check -P local
+./scripts/release-env.sh fastlane ios beta              # match + gym + TestFlight
+./scripts/release-env.sh fastlane android beta          # Play internal
 ```
 
 Signed IPAs: `TEAM_ID=… nix build .#wawona-ios-ipa --impure` (also ipados/tvos/watchos/visionos variants).

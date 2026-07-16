@@ -18,25 +18,25 @@ under the `store-safe` **protocol profile**, which is enforced end-to-end:
   [`ios-local-shell/APP-STORE-COMPLIANCE.md`](./ios-local-shell/APP-STORE-COMPLIANCE.md),
   [`ios-local-shell/APP-REVIEW-NOTES.md`](./ios-local-shell/APP-REVIEW-NOTES.md).
 
-Status: **implemented and shippable**; the `wawona-ios-ipa` output is the
-store-bound artifact uploaded by Fastlane.
+Status: **implemented and shippable**; gym-exported App Store IPAs are the
+store-bound artifacts uploaded by Fastlane.
 
 ## #24 — TestFlight + Fastlane automation
 
-Fully automated. Nix builds signed IPAs; Fastlane handles signing (`match`) and
-upload.
+Fully automated. **Nix** generates the Xcode project (`xcodegen`) and supplies
+Rust/native via the Xcode prebuild phase; **Fastlane** runs `match` + `build_app`
+(gym) + TestFlight upload.
 
-- [`fastlane/Fastfile`](../fastlane/Fastfile): `ios beta` uploads iPhone, iPad,
-  Apple TV, Apple Vision Pro, and Apple Watch to TestFlight; `ios release`
-  submits for App Store review; `sync_version` / `validate_env` support lanes.
+- [`fastlane/Fastfile`](../fastlane/Fastfile): `ios beta` builds each scheme
+  (`Wawona-iOS` / iPadOS / tvOS / visionOS / watchOS) with gym and uploads to
+  TestFlight; `ios release` submits for App Store review.
 - [`.github/workflows/release-beta.yml`](../.github/workflows/release-beta.yml):
   push to `master` (or manual dispatch) runs `fastlane ios beta` on `macos-26`
-  with the App Store Connect API key + `match` secrets from the `release-beta`
-  GitHub Environment.
-- Setup and secrets: [`fastlane/README.md`](../fastlane/README.md) and
-  `.release-secrets.env.template`.
+  with secrets from the `release-beta` GitHub Environment.
+- Secrets (tier 0): [`maintainers/secrets.md`](./maintainers/secrets.md) —
+  SecretSpec + private pass store (`aspauldingcode/.password-store`).
 
-Status: **done.** No code work remains; it runs on every green push to master.
+Status: **done.** Runs on every green push to master once secrets are synced.
 
 ## #27 — Beta program
 

@@ -1,37 +1,33 @@
 #!/usr/bin/env bash
-# Create .secrets/ and .release-secrets.env if missing.
+# Tier-0 helper: point maintainers at SecretSpec + pass (legacy dotenv optional).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-mkdir -p .secrets
+cat <<'EOF'
+Wawona release secrets are managed with SecretSpec + a private pass store.
 
-if [[ ! -f .secrets/README.md ]]; then
-  cat > .secrets/README.md <<'EOF'
-# Local release secrets (gitignored contents)
+  docs/maintainers/secrets.md
 
-Drop key files here. See ../.release-secrets.env.template for how to obtain each value.
+Typical flow:
+  1. Ensure ~/.password-store tracks github.com/aspauldingcode/.password-store
+  2. nix develop .#release
+  3. secretspec check -P local
+  4. ./scripts/sync-github-secrets.sh
+  5. ./scripts/release-env.sh fastlane validate_env
+
+Migrating from an old .release-secrets.env:
+  ./scripts/migrate-release-secrets-to-pass.sh
+  (cd "$PASSWORD_STORE_DIR" && pass git push)
 EOF
+
+if [[ ! -d .secrets ]]; then
+  mkdir -p .secrets
+  echo "Created .secrets/ (gitignored; migration staging only)"
 fi
 
-touch .secrets/.gitkeep
-
-if [[ ! -f .release-secrets.env ]]; then
-  cp .release-secrets.env.template .release-secrets.env
-  # Point paths at .secrets/ when template uses bare examples
-  sed -i '' \
-    -e 's|^ASC_P8_PATH=.*|ASC_P8_PATH=.secrets/AuthKey.p8|' \
-    -e 's|^ANDROID_KEYSTORE_PATH=.*|ANDROID_KEYSTORE_PATH=.secrets/wawona-upload.keystore|' \
-    -e 's|^PLAY_JSON_PATH=.*|PLAY_JSON_PATH=.secrets/play-store.json|' \
-    .release-secrets.env 2>/dev/null || sed -i \
-    -e 's|^ASC_P8_PATH=.*|ASC_P8_PATH=.secrets/AuthKey.p8|' \
-    -e 's|^ANDROID_KEYSTORE_PATH=.*|ANDROID_KEYSTORE_PATH=.secrets/wawona-upload.keystore|' \
-    -e 's|^PLAY_JSON_PATH=.*|PLAY_JSON_PATH=.secrets/play-store.json|' \
-    .release-secrets.env
-  echo "Created .release-secrets.env — fill in values, then run ./scripts/sync-github-secrets.sh"
-else
-  echo ".release-secrets.env already exists"
+if [[ -f .release-secrets.env ]]; then
+  echo ""
+  echo "Note: .release-secrets.env still present - prefer pass; migrate when ready."
 fi
-
-echo "Ready: .secrets/ (drop AuthKey.p8, wawona-upload.keystore, play-store.json here)"

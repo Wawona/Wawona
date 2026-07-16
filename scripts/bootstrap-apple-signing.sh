@@ -1,21 +1,48 @@
 #!/usr/bin/env bash
 # Create aspauldingcode/apple-signing (if missing) and populate via fastlane match.
+# Tier 0: secrets from SecretSpec/pass (see docs/maintainers/secrets.md).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-if [[ -f .release-secrets.env ]]; then
-  # shellcheck source=/dev/null
-  source .release-secrets.env
+export SECRETSPEC_FILE="${SECRETSPEC_FILE:-$ROOT/secretspec.toml}"
+export PASSWORD_STORE_DIR="${PASSWORD_STORE_DIR:-$HOME/.password-store}"
+
+load_from_pass() {
+  command -v secretspec >/dev/null 2>&1 || return 1
+  secretspec get -P local APPLE_ID >/dev/null 2>&1 || return 1
+  APPLE_ID="$(secretspec get -P local APPLE_ID)"
+  TEAM_ID="$(secretspec get -P local TEAM_ID)"
+  MATCH_PASSWORD="$(secretspec get -P local MATCH_PASSWORD)"
+  ASC_KEY_ID="$(secretspec get -P local ASC_KEY_ID)"
+  ASC_ISSUER_ID="$(secretspec get -P local ASC_ISSUER_ID)"
+  ASC_P8="$(secretspec get -P local ASC_P8)"
+  ASC_P8_PATH="$(mktemp)"
+  printf '%s\n' "$ASC_P8" > "$ASC_P8_PATH"
+  chmod 600 "$ASC_P8_PATH"
+  export APPLE_ID TEAM_ID MATCH_PASSWORD ASC_KEY_ID ASC_ISSUER_ID ASC_P8_PATH
+  trap 'rm -f "$ASC_P8_PATH"' EXIT
+  return 0
+}
+
+if ! load_from_pass; then
+  if [[ -f .release-secrets.env ]]; then
+    echo "WARN: falling back to .release-secrets.env - migrate with ./scripts/migrate-release-secrets-to-pass.sh" >&2
+    # shellcheck source=/dev/null
+    source .release-secrets.env
+  else
+    echo "Missing pass secrets and .release-secrets.env - see docs/maintainers/secrets.md" >&2
+    exit 1
+  fi
 fi
 
-: "${MATCH_PASSWORD:?Set MATCH_PASSWORD in .release-secrets.env}"
-: "${APPLE_ID:?Set APPLE_ID in .release-secrets.env}"
-: "${TEAM_ID:?Set TEAM_ID in .release-secrets.env}"
-: "${ASC_P8_PATH:?Set ASC_P8_PATH in .release-secrets.env}"
-: "${ASC_KEY_ID:?Set ASC_KEY_ID in .release-secrets.env}"
-: "${ASC_ISSUER_ID:?Set ASC_ISSUER_ID in .release-secrets.env}"
+: "${MATCH_PASSWORD:?Set MATCH_PASSWORD (pass or .release-secrets.env)}"
+: "${APPLE_ID:?Set APPLE_ID}"
+: "${TEAM_ID:?Set TEAM_ID}"
+: "${ASC_P8_PATH:?Set ASC_P8 (pass) or ASC_P8_PATH}"
+: "${ASC_KEY_ID:?Set ASC_KEY_ID}"
+: "${ASC_ISSUER_ID:?Set ASC_ISSUER_ID}"
 
 export MATCH_PASSWORD APPLE_ID TEAM_ID
 export MATCH_GIT_URL="${MATCH_GIT_URL:-git@github.com:aspauldingcode/apple-signing.git}"
@@ -58,7 +85,7 @@ EOF
 fi
 
 if [[ ! -f fastlane/Matchfile ]]; then
-  echo "fastlane/Matchfile missing — run from Wawona tree after fastlane scaffold" >&2
+  echo "fastlane/Matchfile missing - run from Wawona tree after fastlane scaffold" >&2
   exit 1
 fi
 
@@ -67,7 +94,7 @@ WATCH_APP_ID="com.aspauldingcode.Wawona.watch"
 INCLUDE_WATCH="${MATCH_INCLUDE_WATCH:-1}"
 
 API_KEY_JSON="$(mktemp)"
-trap 'rm -f "$API_KEY_JSON"' EXIT
+trap 'rm -f "$API_KEY_JSON" "${ASC_P8_PATH:-}"' EXIT
 jq -n \
   --arg key_id "$ASC_KEY_ID" \
   --arg issuer_id "$ASC_ISSUER_ID" \
@@ -81,22 +108,20 @@ run_match() {
   local app_id="$3"
   local force_flag="${4:-}"
   echo "Running fastlane match $type ($platform) for $app_id ${force_flag}..."
-  nix develop --command bash -lc \
+  nix develop .#release --command bash -lc \
     "export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 FASTLANE_IS_INTERACTIVE=false MATCH_PASSWORD='${MATCH_PASSWORD}' TEAM_ID='${TEAM_ID}' MATCH_GIT_URL='${MATCH_GIT_URL}'; fastlane match ${type} --platform ${platform} --app_identifier '${app_id}' --readonly false ${force_flag} --api_key_path '${API_KEY_JSON}'"
 }
 
 # Prefer Fastfile lane: enables iCloud on App ID + force-regenerates App Store profiles.
 if [[ "${MATCH_USE_FASTFILE:-1}" == "1" ]]; then
   echo "Running fastlane regenerate_signing (iCloud + force match)..."
-  nix develop --command bash -lc \
+  nix develop .#release --command bash -lc \
     "export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 FASTLANE_IS_INTERACTIVE=false MATCH_PASSWORD='${MATCH_PASSWORD}' TEAM_ID='${TEAM_ID}' MATCH_GIT_URL='${MATCH_GIT_URL}' MATCH_FORCE=1 MATCH_READONLY=0 APP_STORE_CONNECT_KEY_ID='${ASC_KEY_ID}' APP_STORE_CONNECT_ISSUER_ID='${ASC_ISSUER_ID}' APP_STORE_CONNECT_API_KEY=\"\$(base64 < '${ASC_P8_PATH}' | tr -d '\n')\"; fastlane regenerate_signing"
 else
   FORCE_FLAG=""
   if [[ "${MATCH_FORCE:-1}" == "1" ]]; then
     FORCE_FLAG="--force"
   fi
-  # TestFlight/CI appstore profiles. match 2.232.x supports ios + tvos platforms only;
-  # watchOS uses platform ios with the watch bundle ID; visionOS uses the main iOS profile.
   run_match appstore ios "$MAIN_APP_ID" "$FORCE_FLAG"
   run_match appstore tvos "$MAIN_APP_ID" "$FORCE_FLAG"
   if [[ "$INCLUDE_WATCH" == "1" ]]; then
@@ -104,7 +129,6 @@ else
   fi
 fi
 
-# Development profiles: main iOS + watch (tvOS dev profiles need registered Apple TV devices).
 run_match development ios "$MAIN_APP_ID"
 if [[ "$INCLUDE_WATCH" == "1" ]]; then
   run_match development ios "$WATCH_APP_ID"

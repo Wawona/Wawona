@@ -71,13 +71,16 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           TEAM_ID: ${{ secrets.TEAM_ID }}
           WAWONA_BUILD_NUMBER: ${{ github.run_number }}
+          SECRETSPEC_PROFILE: ci
+          SECRETSPEC_PROVIDER: env
           CI: "true"
           LANG: en_US.UTF-8
           LC_ALL: en_US.UTF-8
         working-directory: .
         run: |
           LANE="${{ github.event.inputs.lane || 'ios beta' }}"
-          nix develop .#release --command bash -c "fastlane $LANE"
+          nix develop .#release --command bash -c \
+            './scripts/release-env.sh fastlane '"$LANE"
 
   android-beta:
     name: "Play internal track (Android)"
@@ -123,15 +126,31 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           PLAY_STORE_JSON_KEY: ${{ secrets.PLAY_STORE_JSON_KEY }}
+          SECRETSPEC_PROFILE: ci
+          SECRETSPEC_PROVIDER: env
           CI: "true"
         working-directory: .
         run: |
           LANE="${{ github.event.inputs.lane || 'android beta' }}"
-          nix develop .#release --command bash -lc "fastlane $LANE"
+          nix develop .#release --command bash -lc \
+            './scripts/release-env.sh fastlane '"$LANE"
+
+  # Release Beta owns AppImages (same SHA) — do not scavenge Device-gate product-build.
+  products-appimage:
+    name: Product AppImages
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    uses: ./.github/workflows/product-build.yml
+    with:
+      only: appimage
+      tip_key: ${{ github.ref_name }}
+    permissions:
+      contents: read
+      id-token: write
 
   linux-beta:
     name: "Linux AppImage beta (${{ matrix.system }})"
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: products-appimage
     strategy:
       fail-fast: false
       matrix:
@@ -144,46 +163,29 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Resolve AppImage from product-build (same SHA)
-        id: resolve
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          chmod +x ./.github/scripts/resolve-product-artifacts.sh
-          mkdir -p dist
-          if ./.github/scripts/resolve-product-artifacts.sh \
-               "$GITHUB_SHA" "product-appimage-${{ matrix.system }}" dist 7200; then
-            echo "resolved=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "resolved=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Reclaim disk space
-        if: steps.resolve.outputs.resolved != 'true'
-        run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
-            /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
-          docker image prune -af || true
-
-      - name: Install Nix
-        if: steps.resolve.outputs.resolved != 'true'
-        uses: DeterminateSystems/nix-installer-action@v22
+      - name: Download product AppImage
+        uses: actions/download-artifact@v8
         with:
-          determinate: true
-          extra-conf: |
-            build-dir = /nix/build
-            sandbox = relaxed
-            allow-import-from-derivation = true
-            trusted-users = runner root
-      - uses: DeterminateSystems/flakehub-cache-action@v3
-        if: steps.resolve.outputs.resolved != 'true'
+          name: product-appimage-${{ matrix.system }}
+          path: dist/
 
-      - name: Build AppImage (fallback)
-        if: steps.resolve.outputs.resolved != 'true'
+      - name: Stage AppImage
         run: |
-          ./.github/scripts/nix-retry.sh \
-            nix build ".#packages.${{ matrix.system }}.wawona-appimage" --print-build-logs
-          ./.github/scripts/appimage-smoke.sh result "${{ matrix.system }}"
+          mkdir -p dist
+          mapfile -t images < <(find dist -name '*.AppImage' -type f)
+          if [[ ${#images[@]} -eq 0 ]]; then
+            echo "error: no AppImage in product-appimage-${{ matrix.system }}" >&2
+            find dist -type f | head -50 >&2 || true
+            exit 1
+          fi
+          # Normalize to dist/*.AppImage for the upload step
+          for img in "${images[@]}"; do
+            base="$(basename "$img")"
+            if [[ "$img" != "dist/$base" ]]; then
+              cp -v "$img" "dist/$base"
+            fi
+          done
+          ls -la dist/*.AppImage
 
       - name: Upload beta AppImage (workflow artifact)
         uses: actions/upload-artifact@v7

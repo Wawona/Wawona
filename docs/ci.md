@@ -4,6 +4,7 @@ Branch policy lives in [`.cursor/rules/wawona-branch-workflow.mdc`](../.cursor/r
 Green-light gate *layers* (L0–L4) live in [`2026-greenlight-gates.md`](./2026-greenlight-gates.md).
 Binary cache: [`flakehub-cache.md`](./flakehub-cache.md).
 Build dedupe: [`2026-build-ci-optimization.md`](./2026-build-ci-optimization.md).
+Release secrets (tier 0): [`maintainers/secrets.md`](./maintainers/secrets.md).
 
 ## When to beta vs release
 
@@ -21,10 +22,10 @@ Build dedupe: [`2026-build-ci-optimization.md`](./2026-build-ci-optimization.md)
 |----------|:-------------:|:--------:|-----|
 | **Nix CI** (`nix.yml`) | push + PR | push + PR | L0–L2: verify, cargo/swift tests, curated backends; path-filtered **Android Gradle + meson** gate (folded from former android-parity) |
 | **Device gate** (`device-gate.yml`) | path filter push | path filter push | Fans out **product-build** by product (`only:`); e2e lanes start per-product (iOS e2e does not wait on AppImages) |
-| **Product build** (`product-build.yml`) | via device-gate / Release | via gate / Beta resolve / Release | Sole pure producer: iOS sim `.app`, debug APK, macOS `.app`, AppImages (callable only) |
+| **Product build** (`product-build.yml`) | via device-gate / Release | via gate / Release Beta (`only: appimage`) / Release | Sole pure producer: iOS sim `.app`, debug APK, macOS `.app`, AppImages (callable only) |
 | **Device GUI e2e** | via device-gate (`products_ready`) | via gate | Smoke + fuzzel (fuzzel skipped on `pull_request` only); callable only |
 | **Nightly full matrix** | schedule / dispatch | — | Graphics + protocol drift + Weston/XWayland capability (does **not** re-run Device gate) |
-| **Release Beta** | — | push + tags `v*` | Fastlane stores; AppImages resolved from product-build when possible |
+| **Release Beta** | — | push + tags `v*` | Fastlane stores (match+gym); owns AppImages via product-build `only: appimage` |
 | **Release** | — | tags `v*` | GitHub Release: DMG/APK/AppImage from product-build; IPA impure |
 
 Removed: **publish-ios** (use Release Beta `workflow_dispatch`) and standalone **Android parity** (Gradle/meson folded into Nix CI).
@@ -50,7 +51,7 @@ Pure ship/test binaries are built **once per SHA** by [`product-build.yml`](../.
 
 Helpers: [`.github/scripts/resolve-product-artifacts.sh`](../.github/scripts/resolve-product-artifacts.sh).
 
-Signed IPA/AAB remain **impure** Fastlane/Release steps (secrets); they reuse FlakeHub-warmed pure intermediates.
+Signed IPA/AAB remain **impure** Fastlane/Release steps (secrets; match + gym for Apple IPAs); they reuse FlakeHub-warmed pure intermediates (Rust via `xcode-prebuild.sh`).
 
 ## FlakeHub Cache (required)
 

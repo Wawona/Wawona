@@ -1,6 +1,8 @@
 { systems, pkgsFor }:
 
 let
+  # secretspec: CI + local release-env. pass/gnupg stay on the host (dendritic /
+  # sops-nix); bundling gnupg here forces a slow Darwin rebuild of the shell.
   releasePackages = pkgs: with pkgs; [
     fastlane
     ruby
@@ -8,6 +10,7 @@ let
     cocoapods
     jdk17
     gh
+    secretspec
   ];
 in
 builtins.listToAttrs (map (system: let
@@ -20,12 +23,10 @@ builtins.listToAttrs (map (system: let
   xcodeUtils = if pkgs.stdenv.isDarwin then import pkgs.applePath { inherit (pkgs) lib pkgs; } else null;
 
   releaseShellHook = ''
-    if [ -f .release-secrets.env ]; then
-      echo "Release secrets: source .release-secrets.env before fastlane beta"
-    else
-      echo "Release: copy .release-secrets.env.template → .release-secrets.env"
-    fi
-    echo "Fastlane: nix develop .#release --command fastlane ios beta"
+    export SECRETSPEC_FILE="''${SECRETSPEC_FILE:-$PWD/secretspec.toml}"
+    export PASSWORD_STORE_DIR="''${PASSWORD_STORE_DIR:-$HOME/.password-store}"
+    echo "Release secrets: SecretSpec + pass (tier 0 -> docs/maintainers/secrets.md)"
+    echo "Fastlane: ./scripts/release-env.sh fastlane ios beta"
   '';
 
   # Fastlane match and xcodebuild need DEVELOPER_DIR and xcodebuild on PATH inside
