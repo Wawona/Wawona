@@ -86,6 +86,9 @@ jobs:
 
       - name: Load curated package matrix
         id: matrix
+        env:
+          # workflow_dispatch always full; push/PR honor ci-scope.native.
+          WAWONA_CI_NATIVE: ${{ github.event_name == 'workflow_dispatch' && 'true' || needs.ci-scope.outputs.native }}
         run: |
           python3 - <<'PYEOF'
           import json, os, subprocess, sys
@@ -128,13 +131,30 @@ jobs:
                   )
                   sys.exit(1)
 
+          # Path-filter Darwin cells here (job-level `if` cannot use matrix context).
+          native = os.environ.get("WAWONA_CI_NATIVE", "true").lower() == "true"
+          if not native:
+              before = len(include)
+              include = [
+                  r for r in include if not str(r.get("os", "")).startswith("macos")
+              ]
+              print(
+                  f"ci-scope native=false: dropped {before - len(include)} Darwin matrix rows"
+              )
+              if not include:
+                  print(
+                      "::error::path filter removed every matrix row; keep at least one Linux cell",
+                      file=sys.stderr,
+                  )
+                  sys.exit(1)
+
           # GHA matrix only needs system/os/target.
           slim = [
               {"system": r["system"], "os": r["os"], "target": r["target"]}
               for r in include
           ]
           matrix_json = json.dumps({"include": slim})
-          print(f"Curated matrix entries: {len(slim)}")
+          print(f"Curated matrix entries: {len(slim)} (native={native})")
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               f.write(f"matrix={matrix_json}\n")
           PYEOF
@@ -285,9 +305,8 @@ jobs:
   build:
     name: "${{ matrix.system }}: ${{ matrix.target }}"
     runs-on: ${{ matrix.os }}
-    needs: [prepare-matrix, ci-scope]
-    # Docs-only tips: keep Linux L2, skip Darwin matrix cells.
-    if: ${{ github.event_name == 'workflow_dispatch' || needs.ci-scope.outputs.native == 'true' || !startsWith(matrix.os, 'macos') }}
+    # Darwin rows already dropped in prepare-matrix when ci-scope.native=false.
+    needs: [prepare-matrix]
     strategy:
       fail-fast: true
       matrix: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
