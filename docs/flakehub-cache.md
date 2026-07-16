@@ -84,27 +84,21 @@ After landing cache wiring on `development` / `main`:
 4. On a laptop with a clean-ish store, time `nix build` of a known substrate
    attr twice (first may still compile; second / peer machine should substitute).
 
-FlakeHub does **not** reduce Nix **eval** / crate2nix IFD cost — see issue #68
-Phases 3–4 for that work.
+FlakeHub does **not** reduce Nix **eval** / crate2nix IFD cost, and it does
+**not** ship Apple platform SDKs. Runner speedups for those:
+
+- Pin host Xcode ([`select-xcode.sh`](../.github/scripts/select-xcode.sh); see [`ci.md`](./ci.md))
+- Path-filter Darwin Nix CI cells on docs-only tips
+- Hoist `generatedCargoNix` per `workspace-src-*` (ios / macos / watchos)
+- `nixConfig` / CI `max-jobs` + `cores`
+
+L2 `build` jobs append a FlakeHub hit probe to the step summary (`nix path-info`
++ `cache.flakehub.com`). Treat “likely” as a hint — same-job local builds can
+false-positive.
 
 ## Issue #68
 
-Tracking issue [#68](https://github.com/Wawona/Wawona/issues/68) cache policy now matches this doc:
-FlakeHub Cache in; Magic Nix Cache retired; no self-hosted Attic/Cachix.
-
-## Baseline wall-time (pre–FlakeHub wiring)
-
-Sample from Nix CI run `28757935270` (2026-07-05, `master`, overall ~29 min
-wall, several jobs failed — use only as a rough pre-cache reference):
-
-| Job class | Approx window |
-|-----------|----------------|
-| Sample successful cargo test (macOS arm64) | ~29 min (`23:02`–`23:32`) |
-| Sample successful cargo test (Linux) | ~12 min (`23:02`–`23:14`) |
-
-After FlakeHub is warm on green `main`/`development` builds:
-
-1. Re-run the same attrs and compare matrix job durations.
-2. Grep logs for `cache.flakehub.com` / substitute hits.
-3. Only then resume #68 **4.1** (curated PR matrix) and **3.1** (IFD hoist) —
-   those are eval/matrix work, not cache wiring.
+Tracking issue [#68](https://github.com/Wawona/Wawona/issues/68): FlakeHub Cache
+in; Magic Nix Cache retired; curated matrix landed
+([`ci-package-matrix.json`](../.github/ci-package-matrix.json)); remaining wins
+are Xcode pin, path filters, IFD hoist, and runner cores — **not** apple-sdks.

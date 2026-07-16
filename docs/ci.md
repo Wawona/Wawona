@@ -20,7 +20,7 @@ Release secrets (tier 0): [`maintainers/secrets.md`](./maintainers/secrets.md).
 
 | Workflow | `development` | `master` | Why |
 |----------|:-------------:|:--------:|-----|
-| **Nix CI** (`nix.yml`) | push + PR | push + PR | L0–L2: verify, cargo/swift tests, curated backends; path-filtered **Android Gradle + meson** gate (folded from former android-parity) |
+| **Nix CI** (`nix.yml`) | push + PR | push + PR | L0–L2: verify, cargo/swift tests, curated backends; **native path filter** skips Darwin matrix on docs-only tips; Android Gradle/meson path-filtered |
 | **Device gate** (`device-gate.yml`) | path filter push | path filter push | Fans out **product-build** by product (`only:`); e2e lanes start per-product (iOS e2e does not wait on AppImages) |
 | **Product build** (`product-build.yml`) | via device-gate / Release | via gate / Release Beta (`only: appimage`) / Release | Sole pure producer: iOS sim `.app`, debug APK, macOS `.app`, AppImages (callable only) |
 | **Device GUI e2e** | via device-gate (`products_ready`) | via gate | Smoke + fuzzel (fuzzel skipped on `pull_request` only); callable only |
@@ -69,11 +69,42 @@ Push/PR Nix CI builds only [`.github/ci-package-matrix.json`](../.github/ci-pack
 
 | Job | Layer | Why |
 |-----|-------|-----|
-| `prepare-matrix` | L0 | Verify scripts + flake check; emit curated matrix |
-| `cargo-test-*` / `swift-test-*` | L1 | Language tests |
-| `build` (matrix) | L2 | Curated attrs + FlakeHub |
-| `frontend-syntax-check` | L2-lite | Xcode syntax without full Nix backend |
-| `android-gradle-gate` | L2 (path filter) | Gradle `assembleDebug` + meson/shell (former Android parity) |
+| `ci-scope` | L0 | Path filter: `native` vs docs-only |
+| `prepare-matrix` | L0 | Verify scripts + flake check; emit curated matrix (always) |
+| `cargo-test-*` / `swift-test-*` | L1 | Language tests (Darwin jobs skip when `native=false`) |
+| `build` (matrix) | L2 | Curated attrs + FlakeHub (Darwin cells skip when `native=false`) |
+| `frontend-syntax-check` | L2-lite | Xcode syntax without full Nix backend (skipped when docs-only) |
+| `android-gradle-gate` | L2 (path filter) | Gradle `assembleDebug` + meson/shell |
+
+`workflow_dispatch` always runs the full Darwin surface.
+
+## Host Xcode pin (impure Apple builds)
+
+Runners use [`.github/scripts/select-xcode.sh`](../.github/scripts/select-xcode.sh) — **pinned**, not “newest”.
+
+| | |
+|--|--|
+| Default pin | `/Applications/Xcode_26.6.0.app` (macos-26 image) |
+| Override | `WAWONA_XCODE_APP` or `WAWONA_XCODE_VERSION` |
+| Missing pin | Fail closed (lists installed `Xcode*.app`) |
+
+**Bump procedure:** update `DEFAULT_XCODE_APP` in `select-xcode.sh` in a reviewed PR after confirming the GHA image ships that app. Expect impure weston/backend/product hash churn + XCTest cache misses — that is intentional.
+
+FlakeHub caches **Nix store paths** only. It does **not** ship Apple platform SDKs (`iphoneos` / simulator). Keep `warm-ios-simulator-sdk.sh` + host Xcode.
+
+## CI anti-patterns (do not reintroduce)
+
+1. Confusing FlakeHub store cache with Apple SDKs / `apple-sdks.nix`.
+2. Unpinned “newest Xcode” (`sort -V \| tail -1`) in workflows.
+3. Warming device backend when product needs sim (or the reverse).
+4. Expecting FlakeHub to fix crate2nix IFD / eval time — hoist IFDs instead.
+5. Serializing iOS e2e behind AppImages/macOS/Android product jobs.
+6. Rebuilding products outside `product-build.yml`.
+7. Killing agent-device prepare daemon between `prepare` and `open`.
+8. Re-planning completed curated-matrix / gate fan-out work.
+9. Reintroducing Magic Nix Cache / Attic / Cachix / `cache.wawona.io`.
+10. nixpkgs lineage drift across `wwn-*` without `follows` / `verify-nixpkgs-lineage.py`.
+11. Leaving `WAWONA_SKIP_NIX_PREBUILD=1` after `Cargo.lock` changes.
 
 ## Device e2e speed notes
 

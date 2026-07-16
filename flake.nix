@@ -1,6 +1,12 @@
 {
   description = "Wawona Compositor";
 
+  # Runner defaults for compile-heavy attrs. CI may reinforce via installer extra-conf.
+  nixConfig = {
+    max-jobs = "auto";
+    cores = 0;
+  };
+
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     android-nixpkgs = {
@@ -577,6 +583,9 @@
                 niri = toolchains.buildForMacOS "niri" { };
                 fuzzel = toolchains.buildForMacOS "fuzzel" { };
                 fastfetch = toolchains.buildForMacOS "fastfetch" { };
+                # Legacy commonPackages.wawona path (apps use wawona-macos +
+                # sharedMacosCargoNix). Keep a self-contained backend here so this
+                # attrset does not forward-ref the later packages let-binding.
                 rustBackend = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
                   inherit crate2nix wawonaVersion toolchains nixpkgs;
                   workspaceSrc = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
@@ -797,9 +806,18 @@
           visionosSimDeps = mobilePlatformDeps { buildFn = toolchains.buildForVisionOS; inherit toolchains; variant = "vision"; simulator = true; };
           watchosDeps = mobilePlatformDeps { buildFn = toolchains.buildForWatchOS; inherit toolchains; variant = "watch"; };
           watchosSimDeps = mobilePlatformDeps { buildFn = toolchains.buildForWatchOS; inherit toolchains; variant = "watch"; simulator = true; };
+          # One generatedCargoNix IFD per distinct workspaceSrc (#68 / runner speedups).
           sharedIosCargoNix = crate2nix.tools.${pkgs.stdenv.hostPlatform.system}.generatedCargoNix {
             name = "wawona-ios-workspace";
             src = workspace-src-ios;
+          };
+          sharedMacosCargoNix = crate2nix.tools.${pkgs.stdenv.hostPlatform.system}.generatedCargoNix {
+            name = "wawona-macos-workspace";
+            src = workspace-src-macos;
+          };
+          sharedWatchosCargoNix = crate2nix.tools.${pkgs.stdenv.hostPlatform.system}.generatedCargoNix {
+            name = "wawona-watchos-workspace";
+            src = workspace-src-watchos;
           };
           appleHostCrates = pkgs.callPackage ./dependencies/wawona/apple-host-crates.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs;
@@ -810,6 +828,7 @@
           backend-macos = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs;
             workspaceSrc = workspace-src-macos; platform = "macos"; nativeDeps = macosDeps;
+            cargoNixDrv = sharedMacosCargoNix;
           };
           backend-ios = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
@@ -847,10 +866,12 @@
           backend-watchos = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
             workspaceSrc = workspace-src-watchos; platform = "watchos"; nativeDeps = watchosDeps;
+            cargoNixDrv = sharedWatchosCargoNix;
           };
           backend-watchos-sim = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
             workspaceSrc = workspace-src-watchos; platform = "watchos"; simulator = true; nativeDeps = watchosSimDeps;
+            cargoNixDrv = sharedWatchosCargoNix;
           };
           mobileGuestArtifacts =
             if builtins.pathExists "${wwn-vms}/dependencies/vms/mobile/guest-artifacts.nix" then

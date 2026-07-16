@@ -52,8 +52,16 @@ Operational runbook: [`flakehub-cache.md`](./flakehub-cache.md).
 - **Branch parity.** `development` and `master` both run Nix CI + Device gate.
   Android Gradle/meson lives inside Nix CI (path-filtered). Release Beta / Release
   stay on `master` / tags. Nightly does not re-run Device gate.
-- **Path filters.** `device-gate.yml` and Nix CI `android-gradle-gate` use path filters so
-  docs-only changes skip native builds.
+- **Path filters.** `device-gate.yml`, Nix CI `ci-scope` (skips Darwin matrix /
+  frontend-syntax / cargo-macos on docs-only tips), and `android-gradle-gate` so
+  non-native pushes stop burning macos-26 minutes. `workflow_dispatch` stays full.
+- **Host Xcode pin.** [`.github/scripts/select-xcode.sh`](../.github/scripts/select-xcode.sh)
+  pins `Xcode_26.6.0.app` (not newest). Bump deliberately — see [`ci.md`](./ci.md).
+  Do **not** chase `apple-sdks.nix` / FlakeHub Apple frameworks for product SDKs.
+- **crate2nix IFD hoist.** One `generatedCargoNix` per `workspace-src-*`
+  (ios / macos / watchos); backends that share a workspace pass `cargoNixDrv`.
+- **Runner cores.** Flake `nixConfig.max-jobs/cores` + CI installer `extra-conf`
+  (`max-jobs = auto`, `cores = 0`) for compile-heavy attrs.
 - **Fast PR gate vs nightly.**
   - *Push gate* (`nix.yml` + device-gate): curated builds + path-filtered Android
     Gradle/meson + GUI smoke/fuzzel.

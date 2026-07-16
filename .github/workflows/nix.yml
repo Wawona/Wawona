@@ -25,9 +25,39 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
+  # Always-on scope probe so docs-only tips skip Darwin minutes but keep L0.
+  ci-scope:
+    name: "CI scope"
+    runs-on: ubuntu-latest
+    outputs:
+      native: ${{ steps.filter.outputs.native }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          # workflow_dispatch forces full matrix via job `if`s (ignore this output).
+          filters: |
+            native:
+              - 'src/**'
+              - 'Sources/**'
+              - 'android/**'
+              - 'dependencies/**'
+              - 'flake.nix'
+              - 'flake.lock'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'fastlane/**'
+              - 'secretspec.toml'
+              - '.github/workflows/nix.yml'
+              - '.github/ci-package-matrix.json'
+              - '.github/scripts/**'
+              - 'scripts/**'
+
   prepare-matrix:
     name: "Prepare Unified Matrix"
     runs-on: ubuntu-latest
+    needs: [ci-scope]
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
@@ -48,6 +78,8 @@ jobs:
             sandbox = relaxed
             allow-import-from-derivation = true
             trusted-users = runner root
+            max-jobs = auto
+            cores = 0
             flake-registry = https://github.com/NixOS/flake-registry/archive/master.tar.gz
 
       - uses: DeterminateSystems/flakehub-cache-action@v3
@@ -66,20 +98,32 @@ jobs:
               print("::error::ci-package-matrix.json include[] is empty", file=sys.stderr)
               sys.exit(1)
 
-          # Fail closed if an attr disappeared from the flake.
+          # Fail closed if an attr disappeared. One attrNames probe per system
+          # (avoids N Darwin IFD graphs from per-target `.name` evals on Linux).
+          by_system = {}
           for row in include:
-              system, target = row["system"], row["target"]
+              by_system.setdefault(row["system"], set()).add(row["target"])
+          for system, targets in by_system.items():
               probe = subprocess.run(
                   [
-                      "nix", "eval", "--raw",
-                      f".#packages.{system}.{target}.name",
+                      "nix", "eval", "--json",
+                      f".#packages.{system}",
+                      "--apply", "builtins.attrNames",
                   ],
                   capture_output=True,
                   text=True,
               )
               if probe.returncode != 0:
                   print(
-                      f"::error::matrix target missing: packages.{system}.{target}\n{probe.stderr}",
+                      f"::error::failed to list packages.{system}\n{probe.stderr}",
+                      file=sys.stderr,
+                  )
+                  sys.exit(1)
+              names = set(json.loads(probe.stdout))
+              missing = sorted(targets - names)
+              if missing:
+                  print(
+                      f"::error::matrix targets missing under packages.{system}: {missing}",
                       file=sys.stderr,
                   )
                   sys.exit(1)
@@ -190,16 +234,12 @@ jobs:
   cargo-test-macos-arm64:
     name: "macOS (arm64): cargo test"
     runs-on: macos-26
+    needs: [ci-scope]
+    if: ${{ github.event_name == 'workflow_dispatch' || needs.ci-scope.outputs.native == 'true' }}
     steps:
       - uses: actions/checkout@v5
-      - name: Select Active Xcode
-        run: |
-          XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
-          if [ -z "$XCODE_APP" ]; then
-            echo "::error::No Xcode installation found on this runner"
-            exit 1
-          fi
-          sudo xcode-select -s "$XCODE_APP"
+      - name: Select pinned Xcode
+        run: ./.github/scripts/select-xcode.sh
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v22
         with:
@@ -207,6 +247,8 @@ jobs:
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
+            max-jobs = auto
+            cores = 0
       - uses: DeterminateSystems/flakehub-cache-action@v3
       - name: Ensure Cargo path dependencies
         run: |
@@ -218,16 +260,12 @@ jobs:
   swift-test-macos-x86_64:
     name: "macOS (x86_64): swift test"
     runs-on: macos-26
+    needs: [ci-scope]
+    if: ${{ github.event_name == 'workflow_dispatch' || needs.ci-scope.outputs.native == 'true' }}
     steps:
       - uses: actions/checkout@v5
-      - name: Select Active Xcode
-        run: |
-          XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
-          if [ -z "$XCODE_APP" ]; then
-            echo "::error::No Xcode installation found on this runner"
-            exit 1
-          fi
-          sudo xcode-select -s "$XCODE_APP"
+      - name: Select pinned Xcode
+        run: ./.github/scripts/select-xcode.sh
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v22
         with:
@@ -235,6 +273,8 @@ jobs:
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
+            max-jobs = auto
+            cores = 0
       - uses: DeterminateSystems/flakehub-cache-action@v3
       - name: Run Swift tests
         run: |
@@ -245,7 +285,9 @@ jobs:
   build:
     name: "${{ matrix.system }}: ${{ matrix.target }}"
     runs-on: ${{ matrix.os }}
-    needs: [prepare-matrix]
+    needs: [prepare-matrix, ci-scope]
+    # Docs-only tips: keep Linux L2, skip Darwin matrix cells.
+    if: ${{ github.event_name == 'workflow_dispatch' || needs.ci-scope.outputs.native == 'true' || !startsWith(matrix.os, 'macos') }}
     strategy:
       fail-fast: true
       matrix: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
@@ -259,15 +301,9 @@ jobs:
           docker image prune -af || true
           df -h
 
-      - name: Select Active Xcode
+      - name: Select pinned Xcode
         if: runner.os == 'macOS'
-        run: |
-          XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
-          if [ -z "$XCODE_APP" ]; then
-            echo "::error::No Xcode installation found on this runner"
-            exit 1
-          fi
-          sudo xcode-select -s "$XCODE_APP"
+        run: ./.github/scripts/select-xcode.sh
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v22
@@ -277,11 +313,31 @@ jobs:
             build-dir = /nix/build
             sandbox = relaxed
             allow-import-from-derivation = true
+            max-jobs = auto
+            cores = 0
 
       - uses: DeterminateSystems/flakehub-cache-action@v3
 
       - name: Build Target
         run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ matrix.system }}.${{ matrix.target }}" --print-build-logs
+
+      - name: FlakeHub hit summary
+        if: success()
+        run: |
+          {
+            echo "### ${{ matrix.system }} / ${{ matrix.target }}"
+            OUT="$(readlink -f result 2>/dev/null || true)"
+            if [[ -n "$OUT" ]]; then
+              echo "- outPath: \`$OUT\`"
+              if nix path-info --json "$OUT" 2>/dev/null | grep -q cache.flakehub.com; then
+                echo "- flakehub_substitute: likely"
+              else
+                echo "- flakehub_substitute: unknown (path present; narinfo not from FlakeHub in this probe)"
+              fi
+            else
+              echo "- outPath: missing"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: AppImage smoke (type-2 magic + non-FUSE extract)
         if: ${{ matrix.target == 'wawona-appimage' }}
@@ -298,18 +354,14 @@ jobs:
   frontend-syntax-check:
     name: "macOS: Fast Path Frontend Check"
     runs-on: macos-26
+    needs: [ci-scope]
+    if: ${{ github.event_name == 'workflow_dispatch' || needs.ci-scope.outputs.native == 'true' }}
     steps:
       - uses: actions/checkout@v5
-      
-      - name: Select Active Xcode
-        run: |
-          XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
-          if [ -z "$XCODE_APP" ]; then
-            echo "::error::No Xcode installation found on this runner"
-            exit 1
-          fi
-          sudo xcode-select -s "$XCODE_APP"
-          
+
+      - name: Select pinned Xcode
+        run: ./.github/scripts/select-xcode.sh
+
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v22
         with:
@@ -317,7 +369,9 @@ jobs:
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
-            
+            max-jobs = auto
+            cores = 0
+
       - uses: DeterminateSystems/flakehub-cache-action@v3
             
       - name: Generate Xcode Project
