@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "fileutils"
+
 default_platform(:ios)
 
 # --- Common helpers ---
@@ -156,9 +158,15 @@ end
 
 def nix_ipa_path(attr, bundle_id: MAIN_BUNDLE_ID, profile_name: nil)
   profile = profile_name || ENV["WAWONA_PROVISIONING_PROFILE_SPECIFIER"] || "match AppStore #{bundle_id}"
+  profiles_dir = File.join(Dir.tmpdir, "wawona-match-profiles-#{Process.pid}")
+  FileUtils.mkdir_p(profiles_dir)
+  Dir.glob(File.expand_path("~/Library/Developer/Xcode/UserData/Provisioning Profiles/*.mobileprovision")).each do |src|
+    FileUtils.cp(src, profiles_dir)
+  end
   env = nix_build_env.merge(
-    # Preserve match profiles + setup_ci keychain inside the nix IPA build.
+    # Eval-time (--impure) inputs for ios.nix / build-app matchHostSigning.
     "WAWONA_HOST_HOME" => ENV.fetch("HOME"),
+    "WAWONA_PROFILES_DIR" => profiles_dir,
     "WAWONA_CODE_SIGN_STYLE" => ENV.fetch("WAWONA_CODE_SIGN_STYLE", "Manual"),
     "WAWONA_CODE_SIGN_IDENTITY" => ENV.fetch("WAWONA_CODE_SIGN_IDENTITY", "Apple Distribution"),
     "WAWONA_PROVISIONING_PROFILE_SPECIFIER" => profile

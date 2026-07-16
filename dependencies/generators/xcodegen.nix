@@ -2148,6 +2148,10 @@ PLIST
             DEFINES_MODULE = "YES";
             SKIP_INSTALL = "YES";
             BUILD_LIBRARY_FOR_DISTRIBUTION = "NO";
+            # Frameworks are re-signed on embed; a global Manual
+            # PROVISIONING_PROFILE_SPECIFIER from IPA CI must not apply here.
+            CODE_SIGNING_ALLOWED = "NO";
+            CODE_SIGNING_REQUIRED = "NO";
           };
         };
         dependencies = [ ];
@@ -2177,6 +2181,8 @@ PLIST
             SWIFT_OBJC_BRIDGING_HEADER = "";
             DEFINES_MODULE = "YES";
             SKIP_INSTALL = "YES";
+            CODE_SIGNING_ALLOWED = "NO";
+            CODE_SIGNING_REQUIRED = "NO";
             BUILD_LIBRARY_FOR_DISTRIBUTION = "NO";
           };
         };

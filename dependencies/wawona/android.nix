@@ -218,6 +218,15 @@ let
   };
 
 
+  # Impure Release Beta: read secrets at eval time (daemon builders do not
+  # see the client's impureEnvVars). Paths/passwords stay out of flake.lock;
+  # only `--impure` CI/local release builds set them.
+  releaseKeystorePath = builtins.getEnv "ANDROID_KEYSTORE_PATH";
+  releaseKeystoreBase64 = builtins.getEnv "ANDROID_KEYSTORE_BASE64";
+  releaseKeystorePassword = builtins.getEnv "ANDROID_KEYSTORE_PASSWORD";
+  releaseKeyAlias = builtins.getEnv "ANDROID_KEY_ALIAS";
+  releaseKeyPassword = builtins.getEnv "ANDROID_KEY_PASSWORD";
+
 in
   pkgs.stdenv.mkDerivation (finalAttrs: rec {
     name = "wawona-android";
@@ -231,16 +240,6 @@ in
     dontUseGradleBuild = true;
     dontUseGradleCheck = true;
     __darwinAllowLocalNetworking = true;
-
-    # Release AAB/APK signing secrets must reach the build sandbox under
-    # `nix build --impure` (Fastlane / Release Beta).
-    impureEnvVars = [
-      "ANDROID_KEYSTORE_PATH"
-      "ANDROID_KEYSTORE_BASE64"
-      "ANDROID_KEYSTORE_PASSWORD"
-      "ANDROID_KEY_ALIAS"
-      "ANDROID_KEY_PASSWORD"
-    ];
 
     mitmCache = gradleSupport.mitmCache;
     gradleFlags = gradleSupport.gradleFlags;
@@ -508,12 +507,17 @@ EOF
       runHook preBuild
 
       if [ "${if isReleaseBuild then "1" else "0"}" = "1" ]; then
-        if [ -n "''${ANDROID_KEYSTORE_BASE64:-}" ]; then
+        export ANDROID_KEYSTORE_PATH="${releaseKeystorePath}"
+        export ANDROID_KEYSTORE_BASE64="${releaseKeystoreBase64}"
+        export ANDROID_KEYSTORE_PASSWORD="${releaseKeystorePassword}"
+        export ANDROID_KEY_ALIAS="${releaseKeyAlias}"
+        export ANDROID_KEY_PASSWORD="${releaseKeyPassword}"
+        if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
           KEYSTORE_PATH="''${ANDROID_KEYSTORE_PATH:-$TMPDIR/wawona-upload.jks}"
-          echo "''${ANDROID_KEYSTORE_BASE64}" | base64 -d > "$KEYSTORE_PATH"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$KEYSTORE_PATH"
           export ANDROID_KEYSTORE_PATH="$KEYSTORE_PATH"
         fi
-        : "''${ANDROID_KEYSTORE_PATH:?Set ANDROID_KEYSTORE_PATH or ANDROID_KEYSTORE_BASE64 for release builds}"
+        : "''${ANDROID_KEYSTORE_PATH:?Set ANDROID_KEYSTORE_PATH or ANDROID_KEYSTORE_BASE64 for release builds (nix build --impure)}"
         : "''${ANDROID_KEYSTORE_PASSWORD:?Missing ANDROID_KEYSTORE_PASSWORD}"
         : "''${ANDROID_KEY_ALIAS:?Missing ANDROID_KEY_ALIAS}"
         : "''${ANDROID_KEY_PASSWORD:?Missing ANDROID_KEY_PASSWORD}"

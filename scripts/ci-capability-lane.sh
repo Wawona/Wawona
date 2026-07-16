@@ -127,11 +127,7 @@ fi
 
 kill -0 "$HOST_PID" 2>/dev/null || { log "FAIL: parent compositor died"; exit 1; }
 log "capability lane PASSED"
-# Disarm EXIT trap before teardown: killing Weston/host can SIGTERM the
-# script (exit 143) and fail an otherwise green GHA step.
+# Do not kill host/weston here: SIGTERM can hit this shell (GHA exit 143)
+# even after disarming the EXIT trap. Let the runner reap orphans.
 trap - EXIT
-kill "$NIRI_PID" 2>/dev/null || true
-kill "$NESTED_PID" 2>/dev/null || true
-kill "$HOST_PID" 2>/dev/null || true
-wait 2>/dev/null || true
 exit 0
