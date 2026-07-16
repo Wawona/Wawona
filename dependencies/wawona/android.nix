@@ -226,6 +226,13 @@ let
   releaseKeystorePassword = builtins.getEnv "ANDROID_KEYSTORE_PASSWORD";
   releaseKeyAlias = builtins.getEnv "ANDROID_KEY_ALIAS";
   releaseKeyPassword = builtins.getEnv "ANDROID_KEY_PASSWORD";
+  # Play requires monotonically increasing versionCode; bake at impure eval.
+  releaseBuildNumber =
+    let bn = builtins.getEnv "WAWONA_BUILD_NUMBER";
+    in if bn == "" then "1" else bn;
+  releaseVersionName =
+    let v = builtins.getEnv "WAWONA_VERSION";
+    in if v == "" then projectVersion else lib.removePrefix "v" v;
 
 in
   pkgs.stdenv.mkDerivation (finalAttrs: rec {

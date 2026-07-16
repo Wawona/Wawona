@@ -13,8 +13,9 @@ android {
         applicationId = "com.aspauldingcode.wawona"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.2.4"
+        // Release Beta / Play: Fastlane + nix set WAWONA_BUILD_NUMBER / WAWONA_VERSION.
+        versionCode = (System.getenv("WAWONA_BUILD_NUMBER") ?: "1").toInt()
+        versionName = System.getenv("WAWONA_VERSION") ?: "0.2.4"
         // Layer-3 Compose UI tests (ci-l3-android-espresso).
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

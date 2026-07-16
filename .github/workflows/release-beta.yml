@@ -126,6 +126,7 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           PLAY_STORE_JSON_KEY: ${{ secrets.PLAY_STORE_JSON_KEY }}
+          WAWONA_BUILD_NUMBER: ${{ github.run_number }}
           SECRETSPEC_PROFILE: ci-android
           SECRETSPEC_PROVIDER: env
           CI: "true"

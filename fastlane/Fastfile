@@ -396,7 +396,9 @@ def nix_aab_path
     "ANDROID_KEYSTORE_BASE64" => ENV.fetch("ANDROID_KEYSTORE_BASE64"),
     "ANDROID_KEYSTORE_PASSWORD" => ENV.fetch("ANDROID_KEYSTORE_PASSWORD"),
     "ANDROID_KEY_ALIAS" => ENV.fetch("ANDROID_KEY_ALIAS"),
-    "ANDROID_KEY_PASSWORD" => ENV.fetch("ANDROID_KEY_PASSWORD")
+    "ANDROID_KEY_PASSWORD" => ENV.fetch("ANDROID_KEY_PASSWORD"),
+    "WAWONA_VERSION" => wawona_version,
+    "WAWONA_BUILD_NUMBER" => wawona_build_number
   }
   out = nix_sh(nix_impure_build_cmd("wawona-android-aab"), env).strip.split("\n").last
   aab = Dir.glob(File.join(out, "**", "*.aab")).first
