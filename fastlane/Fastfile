@@ -163,6 +163,16 @@ def nix_sh(command, extra_env)
   sh(ENV.to_h.merge(extra_env.transform_keys(&:to_s)), command, log: true)
 end
 
+# Impure store signing needs the *runner* uid: nixbld cannot mkdir/write
+# /Users/runner (match profiles + fastlane_tmp_keychain). sandbox false alone
+# is not enough on multi-user Determinate Nix.
+def nix_impure_build_cmd(attr)
+  "nix build .##{attr} --impure --option sandbox false " \
+    "--option build-users-group \"\" " \
+    "--print-out-paths --print-build-logs"
+end
+
+
 def nix_ipa_path(attr, bundle_id: MAIN_BUNDLE_ID, profile_name: nil)
   profile = profile_name || ENV["WAWONA_PROVISIONING_PROFILE_SPECIFIER"] || "match AppStore #{bundle_id}"
   profiles_dir = File.join(Dir.tmpdir, "wawona-match-profiles-#{Process.pid}")
@@ -182,12 +192,8 @@ def nix_ipa_path(attr, bundle_id: MAIN_BUNDLE_ID, profile_name: nil)
     "Building #{attr} (version #{env['WAWONA_VERSION']}, build #{env['WAWONA_BUILD_NUMBER']}, " \
     "profiles=#{staged.size}, host_home=#{env['WAWONA_HOST_HOME']})"
   )
-  # sandbox false: match profiles + setup_ci keychain live on the host FS.
-  out = nix_sh(
-    "nix build .##{attr} --impure --option sandbox false " \
-    "--print-out-paths --print-build-logs",
-    env
-  ).strip.split("\n").last
+  # sandbox false + empty build-users-group: host HOME/keychain/profiles.
+  out = nix_sh(nix_impure_build_cmd(attr), env).strip.split("\n").last
   ipa = Dir.glob(File.join(out, "**", "*.ipa")).first
   UI.user_error!("No IPA found in #{out} for #{attr}") unless ipa
   ipa
@@ -201,11 +207,7 @@ def nix_aab_path
     "ANDROID_KEY_ALIAS" => ENV.fetch("ANDROID_KEY_ALIAS"),
     "ANDROID_KEY_PASSWORD" => ENV.fetch("ANDROID_KEY_PASSWORD")
   }
-  out = nix_sh(
-    "nix build .#wawona-android-aab --impure --option sandbox false " \
-    "--print-out-paths --print-build-logs",
-    env
-  ).strip.split("\n").last
+  out = nix_sh(nix_impure_build_cmd("wawona-android-aab"), env).strip.split("\n").last
   aab = Dir.glob(File.join(out, "**", "*.aab")).first
   UI.user_error!("No AAB found in #{out}") unless aab
   aab
