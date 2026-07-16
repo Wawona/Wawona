@@ -153,15 +153,93 @@ rescue StandardError => e
   UI.important("produce iCloud for #{app_id}: #{e.message}")
 end
 
+def find_distribution_identity_sha
+  require "open3"
+  keychains = [
+    File.expand_path("~/Library/Keychains/fastlane_tmp_keychain-db"),
+    File.expand_path("~/Library/Keychains/login.keychain-db")
+  ].select { |p| File.file?(p) }
+
+  scan = lambda do |out|
+    m = out.match(/([0-9A-F]{40})\s+"(Apple Distribution[^"]*|iPhone Distribution[^"]*|iOS Distribution[^"]*)"/i)
+    m && m[1]
+  end
+
+  keychains.each do |kc|
+    out, = Open3.capture2("security", "find-identity", "-v", "-p", "codesigning", kc)
+    sha = scan.call(out)
+    return [sha, kc] if sha
+  end
+  out, = Open3.capture2("security", "find-identity", "-v", "-p", "codesigning")
+  sha = scan.call(out)
+  [sha, nil]
+end
+
 def assert_distribution_identity!
-  out = `security find-identity -v -p codesigning 2>/dev/null`
-  UI.message("Codesigning identities:\n#{out}")
-  unless out.match?(/Apple Distribution|iPhone Distribution|iOS Distribution/)
+  sha, = find_distribution_identity_sha
+  unless sha
     UI.user_error!(
       "No Apple/iOS Distribution identity in keychain after match. " \
       "Check MATCH_* secrets and aspauldingcode/apple-signing certs."
     )
   end
+  UI.message("Distribution identity present (#{sha[0, 8]}…)")
+  sha
+end
+
+# Export match Distribution identity to mode-0600 temp PKCS12 + pass files.
+# Paths (not contents) are passed into nix via --impure getEnv. Never log
+# the password or P12 bytes.
+def stage_distribution_cert_for_nix!
+  require "securerandom"
+  require "open3"
+  require "tmpdir"
+  require "fileutils"
+
+  sha, source_kc = find_distribution_identity_sha
+  UI.user_error!("No Apple Distribution identity to stage for nix IPA") unless sha
+
+  dir = Dir.mktmpdir("wawona-dist-")
+  p12_path = File.join(dir, "dist.p12")
+  pass_path = File.join(dir, "pass")
+  pass = SecureRandom.hex(32)
+  File.write(pass_path, pass)
+  File.chmod(0o600, pass_path)
+
+  if source_kc
+    # setup_ci / match use an empty keychain password; allow headless export.
+    Open3.capture2("security", "unlock-keychain", "-p", "", source_kc)
+    Open3.capture3(
+      "security", "set-key-partition-list",
+      "-S", "apple-tool:,apple:,codesign:,security:",
+      "-s", "-k", "", source_kc
+    )
+  end
+
+  args = ["security", "export", "-t", "identities", "-f", "pkcs12", "-P", pass, "-o", p12_path]
+  args += ["-k", source_kc] if source_kc
+  _stdout, stderr, status = Open3.capture3(*args)
+  unless status.success? && File.size?(p12_path)
+    FileUtils.remove_entry(dir, true)
+    detail = stderr.to_s.strip.empty? ? "security export failed" : "security export failed (see runner keychain ACL)"
+    UI.user_error!("Failed to stage Distribution cert for nix: #{detail}")
+  end
+  File.chmod(0o600, p12_path)
+
+  ENV["WAWONA_DIST_P12_FILE"] = p12_path
+  ENV["WAWONA_DIST_P12_PASS_FILE"] = pass_path
+  ENV["WAWONA_DIST_SIGN_DIR"] = dir
+  ENV["WAWONA_CODE_SIGN_IDENTITY"] = sha
+  UI.message("Staged Distribution cert for nix IPA (#{sha[0, 8]}…)")
+end
+
+def cleanup_staged_distribution_cert!
+  dir = ENV.delete("WAWONA_DIST_SIGN_DIR")
+  ENV.delete("WAWONA_DIST_P12_FILE")
+  ENV.delete("WAWONA_DIST_P12_PASS_FILE")
+  FileUtils.remove_entry(dir, true) if dir && File.directory?(dir)
+rescue StandardError
+  # best-effort cleanup
 end
 
 def install_testflight_profiles!(api_key)
@@ -190,6 +268,7 @@ def install_testflight_profiles!(api_key)
     )
   end
   assert_distribution_identity!
+  stage_distribution_cert_for_nix!
 end
 
 def ensure_asc_platform_version!(api_key, platform, app_id = MAIN_BUNDLE_ID)
@@ -242,19 +321,23 @@ def nix_ipa_path(attr, bundle_id: MAIN_BUNDLE_ID, profile_name: nil)
   staged = Dir.glob(File.expand_path("~/Library/Developer/Xcode/UserData/Provisioning Profiles/*.mobileprovision"))
   staged.each { |src| FileUtils.cp(src, profiles_dir) }
   UI.user_error!("No match profiles staged under #{profiles_dir}") if staged.empty?
+  stage_distribution_cert_for_nix! if ENV["WAWONA_DIST_P12_FILE"].to_s.empty?
   env = nix_build_env.merge(
-    # Eval-time (--impure) inputs for ios.nix / build-app matchHostSigning.
+    # Eval-time (--impure) path inputs for ios.nix / build-app matchHostSigning.
+    # Cert material: paths to mode-0600 temp files only (never log contents).
     "WAWONA_HOST_HOME" => ENV.fetch("HOME"),
     "WAWONA_PROFILES_DIR" => profiles_dir,
     "WAWONA_CODE_SIGN_STYLE" => ENV.fetch("WAWONA_CODE_SIGN_STYLE", "Manual"),
     "WAWONA_CODE_SIGN_IDENTITY" => ENV.fetch("WAWONA_CODE_SIGN_IDENTITY", "Apple Distribution"),
-    "WAWONA_PROVISIONING_PROFILE_SPECIFIER" => profile
+    "WAWONA_PROVISIONING_PROFILE_SPECIFIER" => profile,
+    "WAWONA_DIST_P12_FILE" => ENV.fetch("WAWONA_DIST_P12_FILE"),
+    "WAWONA_DIST_P12_PASS_FILE" => ENV.fetch("WAWONA_DIST_P12_PASS_FILE")
   )
   UI.message(
     "Building #{attr} (version #{env['WAWONA_VERSION']}, build #{env['WAWONA_BUILD_NUMBER']}, " \
-    "profiles=#{staged.size}, host_home=#{env['WAWONA_HOST_HOME']})"
+    "profiles=#{staged.size}, dist_p12=staged)"
   )
-  # sandbox false + empty build-users-group: host HOME/keychain/profiles.
+  # sandbox false + empty build-users-group: import staged P12 into build keychain.
   out = nix_sh(nix_impure_build_cmd(attr), env).strip.split("\n").last
   ipa = Dir.glob(File.join(out, "**", "*.ipa")).first
   UI.user_error!("No IPA found in #{out} for #{attr}") unless ipa
@@ -281,27 +364,31 @@ platform :ios do
     validate_env
     setup_ci if ENV["CI"]
     api_key = asc_api_key
-    install_testflight_profiles!(api_key)
-    ensure_all_asc_versions!(api_key)
+    begin
+      install_testflight_profiles!(api_key)
+      ensure_all_asc_versions!(api_key)
 
-    APPLE_BETA_TARGETS.each do |target|
-      ipa = nix_ipa_path(
-        target[:ipa],
-        bundle_id: target[:bundle_id],
-        profile_name: target[:profile_name]
-      )
-      upload_to_testflight(
-        **testflight_upload_options(api_key, target),
-        ipa: ipa
-      )
-      if beta_testflight_groups.any?
-        UI.success(
-          "Uploaded and distributed #{target[:name]} #{wawona_version} (#{wawona_build_number}) " \
-          "to TestFlight groups: #{beta_testflight_groups.join(', ')}"
+      APPLE_BETA_TARGETS.each do |target|
+        ipa = nix_ipa_path(
+          target[:ipa],
+          bundle_id: target[:bundle_id],
+          profile_name: target[:profile_name]
         )
-      else
-        UI.success("Uploaded #{target[:name]} #{wawona_version} (#{wawona_build_number}) to TestFlight")
+        upload_to_testflight(
+          **testflight_upload_options(api_key, target),
+          ipa: ipa
+        )
+        if beta_testflight_groups.any?
+          UI.success(
+            "Uploaded and distributed #{target[:name]} #{wawona_version} (#{wawona_build_number}) " \
+            "to TestFlight groups: #{beta_testflight_groups.join(', ')}"
+          )
+        else
+          UI.success("Uploaded #{target[:name]} #{wawona_version} (#{wawona_build_number}) to TestFlight")
+        end
       end
+    ensure
+      cleanup_staged_distribution_cert!
     end
   end
 
@@ -310,27 +397,31 @@ platform :ios do
     validate_env
     setup_ci if ENV["CI"]
     api_key = asc_api_key
-    install_testflight_profiles!(api_key)
-    ensure_all_asc_versions!(api_key)
+    begin
+      install_testflight_profiles!(api_key)
+      ensure_all_asc_versions!(api_key)
 
-    APPLE_BETA_TARGETS.each do |target|
-      ipa = nix_ipa_path(
-        target[:ipa],
-        bundle_id: target[:bundle_id],
-        profile_name: target[:profile_name]
-      )
-      deliver(
-        api_key: api_key,
-        app_identifier: target[:bundle_id],
-        platform: target[:app_platform],
-        ipa: ipa,
-        submit_for_review: true,
-        force: true,
-        skip_screenshots: true,
-        skip_metadata: true,
-        run_precheck_before_submit: false
-      )
-      UI.success("Submitted #{target[:name]} #{wawona_version} (#{wawona_build_number}) for App Store review")
+      APPLE_BETA_TARGETS.each do |target|
+        ipa = nix_ipa_path(
+          target[:ipa],
+          bundle_id: target[:bundle_id],
+          profile_name: target[:profile_name]
+        )
+        deliver(
+          api_key: api_key,
+          app_identifier: target[:bundle_id],
+          platform: target[:app_platform],
+          ipa: ipa,
+          submit_for_review: true,
+          force: true,
+          skip_screenshots: true,
+          skip_metadata: true,
+          run_precheck_before_submit: false
+        )
+        UI.success("Submitted #{target[:name]} #{wawona_version} (#{wawona_build_number}) for App Store review")
+      end
+    ensure
+      cleanup_staged_distribution_cert!
     end
   end
 end
