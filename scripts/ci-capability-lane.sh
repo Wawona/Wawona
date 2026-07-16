@@ -62,11 +62,14 @@ log "parent socket up: $DISPLAY_NAME"
 export WAYLAND_DISPLAY="$DISPLAY_NAME"
 
 # 3. Launch nested Weston with XWayland enabled on a child socket.
-WESTON_BIN="$(nix build "$ROOT#weston-simple-shm" --print-out-paths --no-link 2>/dev/null)/bin/weston 2>/dev/null || command -v weston || true"
 WESTON_BIN="$(command -v weston || true)"
-if [[ -z "$WESTON_BIN" ]]; then
-  # Fall back to nixpkgs weston (reference target).
-  WESTON_BIN="$(nix build nixpkgs#weston --print-out-paths --no-link)/bin/weston"
+if [[ -z "$WESTON_BIN" || ! -x "$WESTON_BIN" ]]; then
+  # Prefer flake weston; fall back to nixpkgs reference weston.
+  if WESTON_OUT="$(nix build "$ROOT#weston" --print-out-paths --no-link 2>/dev/null)"; then
+    WESTON_BIN="$WESTON_OUT/bin/weston"
+  else
+    WESTON_BIN="$(nix build nixpkgs#weston --print-out-paths --no-link)/bin/weston"
+  fi
 fi
 CHILD_SOCKET="wayland-cap-child"
 log "starting nested Weston ($WESTON_BIN) socket=$CHILD_SOCKET"
