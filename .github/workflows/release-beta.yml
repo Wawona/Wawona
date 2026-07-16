@@ -40,7 +40,7 @@ jobs:
     runs-on: macos-26
     environment: release-beta
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Resolve release version
         run: |
@@ -91,7 +91,7 @@ jobs:
     runs-on: macos-15
     environment: release-beta
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Resolve release version
         run: |
@@ -142,7 +142,7 @@ jobs:
             system: aarch64-linux
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Resolve AppImage from product-build (same SHA)
         id: resolve
@@ -186,7 +186,7 @@ jobs:
           ./.github/scripts/appimage-smoke.sh result "${{ matrix.system }}"
 
       - name: Upload beta AppImage (workflow artifact)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wawona-beta-appimage-${{ matrix.system }}
           path: dist/*.AppImage

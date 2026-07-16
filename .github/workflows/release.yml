@@ -32,10 +32,10 @@ jobs:
     needs: products
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Download product-macos-app
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: product-macos-app
           path: product-macos-app/
@@ -60,7 +60,7 @@ jobs:
             -ov -format UDZO "Wawona-${VERSION}.dmg"
 
       - name: Upload DMG
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: macos-dmg
           path: Wawona-*.dmg
@@ -70,7 +70,7 @@ jobs:
     runs-on: macos-26
     environment: release-beta
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Resolve version from tag
         run: |
@@ -98,7 +98,7 @@ jobs:
           ./.github/scripts/stage-ios-ipa.sh "$WAWONA_VERSION"
 
       - name: Upload IPA
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ios-ipa
           path: dist/Wawona-*-iOS.ipa
@@ -107,10 +107,10 @@ jobs:
     needs: products
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Download product-android-apk
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: product-android-apk
           path: dist/
@@ -126,7 +126,7 @@ jobs:
           cp dist/Wawona.apk "Wawona-${VERSION}.apk"
 
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: android-apk
           path: Wawona-*.apk
@@ -142,10 +142,10 @@ jobs:
           - system: aarch64-linux
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Download product AppImage
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: product-appimage-${{ matrix.system }}
           path: dist/
@@ -158,7 +158,7 @@ jobs:
           test "$(ls release-stage/*.AppImage | wc -l)" -ge 1
 
       - name: Upload AppImage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux-appimage-${{ matrix.system }}
           path: release-stage/*.AppImage
@@ -167,9 +167,9 @@ jobs:
     needs: [release-macos, release-ios, release-android, release-linux]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true

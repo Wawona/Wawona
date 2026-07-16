@@ -31,7 +31,7 @@ jobs:
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Reclaim Disk Space
         run: |
@@ -134,13 +134,13 @@ jobs:
         run: python3 ./.github/scripts/verify-nixpkgs-lineage.py
       - name: Upload Wayland ownership inventory artifact
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wayland-runtime-ownership-${{ github.job }}
           path: docs/compliance/generated/wayland-runtime-ownership.json
       - name: Upload no-equivalent closure artifact
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wayland-no-equivalent-closure-${{ github.job }}
           path: docs/compliance/generated/wayland-no-equivalent-closure.json
@@ -152,7 +152,7 @@ jobs:
     name: "Linux (x86_64): cargo test"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install Nix (for ensure-waypipe.sh; GitLab blocks anonymous cargo git fetch)
         uses: DeterminateSystems/nix-installer-action@v22
         with:
@@ -191,7 +191,7 @@ jobs:
     name: "macOS (arm64): cargo test"
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Select Active Xcode
         run: |
           XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
@@ -219,7 +219,7 @@ jobs:
     name: "macOS (x86_64): swift test"
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Select Active Xcode
         run: |
           XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
@@ -250,7 +250,7 @@ jobs:
       fail-fast: true
       matrix: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Reclaim Disk Space
         if: runner.os == 'Linux'
@@ -289,7 +289,7 @@ jobs:
 
       - name: Upload AppImage artifact
         if: ${{ matrix.target == 'wawona-appimage' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wawona-appimage-${{ matrix.system }}
           path: dist/*.AppImage
@@ -299,7 +299,7 @@ jobs:
     name: "macOS: Fast Path Frontend Check"
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       
       - name: Select Active Xcode
         run: |
@@ -381,8 +381,8 @@ jobs:
     outputs:
       android: ${{ steps.filter.outputs.android }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -404,7 +404,7 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || needs.android-path-filter.outputs.android == 'true' }}
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: DeterminateSystems/nix-installer-action@v22
         with:
           determinate: true

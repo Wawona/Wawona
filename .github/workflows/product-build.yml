@@ -58,7 +58,7 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
 
@@ -102,7 +102,7 @@ jobs:
           fi
           ls -la dist/ios-sim/
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: product-ios-sim
           path: dist/ios-sim/
@@ -116,7 +116,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
 
@@ -146,19 +146,15 @@ jobs:
           } > dist/product-manifest.json
           ls -lh dist/Wawona.apk
 
-      - uses: Wandalen/wretry.action@v3.8.0
+      - uses: actions/upload-artifact@v7
         with:
-          action: actions/upload-artifact@v4
-          attempt_limit: 8
-          attempt_delay: 10000
-          with: |
-            name: product-android-apk
-            path: |
-              dist/Wawona.apk
-              dist/product-manifest.json
-            if-no-files-found: error
-            compression-level: 0
-            retention-days: 14
+          name: product-android-apk
+          path: |
+            dist/Wawona.apk
+            dist/product-manifest.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
 
   macos-app:
     name: "macOS .app"
@@ -166,7 +162,7 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
 
@@ -221,7 +217,7 @@ jobs:
           ls -la dist/macos-app/
           ls -la dist/macos-app/Wawona.app/Contents/Resources/bin/ | head -40
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: product-macos-app
           path: dist/macos-app/
@@ -243,7 +239,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
 
@@ -284,7 +280,7 @@ jobs:
             echo "}"
           } > dist/product-manifest.json
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: product-appimage-${{ matrix.system }}
           path: |
