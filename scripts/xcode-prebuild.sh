@@ -11,6 +11,36 @@ set -euo pipefail
 derived="${DERIVED_FILE_DIR:?DERIVED_FILE_DIR is unset — is this script running as an Xcode build phase?}"
 mkdir -p "$derived"
 
+# Local getprogname/setprogname for Apple mobile — force-loaded before weston /
+# fontconfig so App Store Connect never sees libSystem's private ___progname.
+case "${PLATFORM_NAME:-}" in
+  iphoneos|iphonesimulator|appletvos|appletvsimulator|xros|xrsimulator)
+    _stub_src="${SRCROOT:?}/src/platform/ios/WWNGetprognameStub.c"
+    _stub_a="$derived/libwawona-getprogname.a"
+    _stub_o="$derived/wawona-getprogname.o"
+    _sdkroot="${SDKROOT:-$(xcrun --sdk "${PLATFORM_NAME}" --show-sdk-path)}"
+    _arch="${ARCHS%% *}"
+    _arch="${_arch:-arm64}"
+    _min_flag=()
+    case "${PLATFORM_NAME}" in
+      iphoneos|iphonesimulator)
+        _min_flag=(-miphoneos-version-min="${IPHONEOS_DEPLOYMENT_TARGET:-17.0}")
+        ;;
+      appletvos|appletvsimulator)
+        _min_flag=(-mtvos-version-min="${TVOS_DEPLOYMENT_TARGET:-17.0}")
+        ;;
+      xros|xrsimulator)
+        _min_flag=(-mxros-version-min="${XROS_DEPLOYMENT_TARGET:-1.0}")
+        ;;
+    esac
+    xcrun --sdk "${PLATFORM_NAME}" clang -c "$_stub_src" \
+      -isysroot "$_sdkroot" -arch "$_arch" "${_min_flag[@]}" \
+      -fPIC -O2 -o "$_stub_o"
+    xcrun --sdk "${PLATFORM_NAME}" libtool -static -o "$_stub_a" "$_stub_o"
+    echo "Built $_stub_a (getprogname stub for App Store)"
+    ;;
+esac
+
 wwn_find_nix() {
   if [ -n "${WAWONA_NIX:-}" ] && [ -x "${WAWONA_NIX}" ]; then
     echo "${WAWONA_NIX}"

@@ -1,17 +1,16 @@
-// Provide getprogname/setprogname for Apple mobile so static archives
-// (weston, fontconfig) do not bind libSystem's private ___progname.
-// App Store Connect rejects that import (altool code 11 / non-public symbols).
+// Interpose getprogname/setprogname for Apple mobile App Store builds.
+//
+// Weston and fontconfig call getprogname(). libSystem's implementation pulls
+// the private ___progname symbol; altool rejects that import (code 11).
+//
+// This file is only compiled into iOS/tvOS/visionOS app targets (src/platform/ios).
+// Do not gate on TARGET_OS_* macros: an empty translation unit silently leaves
+// the libSystem import in place.
 
-#include <TargetConditionals.h>
-
-#if defined(__APPLE__) && (TARGET_OS_IPHONE || TARGET_OS_TV || TARGET_OS_VISION || TARGET_OS_WATCH)
-
-const char *getprogname(void) {
+__attribute__((used)) const char *getprogname(void) {
   return "Wawona";
 }
 
-void setprogname(const char *name) {
+__attribute__((used)) void setprogname(const char *name) {
   (void)name;
 }
-
-#endif

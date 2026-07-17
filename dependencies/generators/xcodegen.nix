@@ -75,9 +75,15 @@ let
   derivedNvimLib = "$(DERIVED_FILE_DIR)/libwawona-neovim.a";
   derivedSshLib = "$(DERIVED_FILE_DIR)/libssh-inprocess.a";
   derivedFfLib = "$(DERIVED_FILE_DIR)/libfastfetch.a";
+  derivedGetprognameLib = "$(DERIVED_FILE_DIR)/libwawona-getprogname.a";
   # Prebuild copies and privatises (nmedit) the active SDK's archives here
   # (see scripts/xcode-prebuild.sh) so internal symbols don't collide.
   mobileZshLdflags = [ derivedZshLib ];
+  # Force-load before weston/fontconfig so getprogname resolves locally and
+  # App Store Connect never sees libSystem's private ___progname import.
+  mobileGetprognameLdflags = [
+    "-force_load" derivedGetprognameLib
+  ];
   # Force the in-process dispatch entry points out of libwawona.a / privatized
   # archives.  Weak refs from libwwn-pty.a alone do not pull these symbols.
   mobileDispatchLdflags = [
@@ -1193,7 +1199,7 @@ PLIST
             "LIBRARY_SEARCH_PATHS[sdk=iphoneos*]" = ios26SwiftLibSearchPaths;
             "OTHER_LDFLAGS[sdk=iphoneos*]" = [
               "$(inherited)"
-            ] ++ ios26SwiftUiClientLdflags ++ [
+            ] ++ mobileGetprognameLdflags ++ ios26SwiftUiClientLdflags ++ [
               "-L${strip (iosDeps.libwayland or null)}/lib"
               "-L${strip (iosDeps.xkbcommon or null)}/lib"
               "-L${strip (iosDeps.libffi or null)}/lib"
@@ -1315,7 +1321,7 @@ PLIST
             # Do not add SubFrameworks (UIUtilities / SwiftUICore) — same as tvOS.
             "OTHER_LDFLAGS[sdk=iphoneos*]" = [
               "$(inherited)"
-            ] ++ ios26SwiftUiClientLdflags ++ [
+            ] ++ mobileGetprognameLdflags ++ ios26SwiftUiClientLdflags ++ [
               "-L${strip (ipadosDeps.libwayland or null)}/lib"
               "-L${strip (ipadosDeps.xkbcommon or null)}/lib"
               "-L${strip (ipadosDeps.libffi or null)}/lib"
@@ -1478,7 +1484,7 @@ PLIST
             # tvOS app targets are not allowed to link.
             "OTHER_LDFLAGS[sdk=appletvos*]" = [
               "$(inherited)"
-            ] ++ ios26SwiftUiClientLdflags ++ [
+            ] ++ mobileGetprognameLdflags ++ ios26SwiftUiClientLdflags ++ [
               "-L${strip (tvosDeps.libwayland or null)}/lib"
               "-L${strip (tvosDeps.xkbcommon or null)}/lib"
               "-L${strip (tvosDeps.libffi or null)}/lib"
@@ -2057,7 +2063,7 @@ PLIST
             ];
             "OTHER_LDFLAGS[sdk=xros*]" = [
               "$(inherited)"
-            ] ++ ios26SwiftUiClientLdflags ++ [
+            ] ++ mobileGetprognameLdflags ++ ios26SwiftUiClientLdflags ++ [
               "-L${strip (visionosDeps.libwayland or null)}/lib"
               "-L${strip (visionosDeps.xkbcommon or null)}/lib"
               "-L${strip (visionosDeps.libffi or null)}/lib"
