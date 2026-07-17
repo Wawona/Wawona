@@ -1112,7 +1112,8 @@ PLIST
               "ui/**"
             ];
           }
-          { path = "src/platform/ios"; excludes = commonExcludes ++ [ "WWNWaypipeRunnerVisionStub.m" ]; }
+          # WWNGetprognameStub.c is force-loaded via prebuild archive (not compiled here).
+          { path = "src/platform/ios"; excludes = commonExcludes ++ [ "WWNWaypipeRunnerVisionStub.m" "WWNGetprognameStub.c" ]; }
           { path = "src/platform/macos/ui/Machines"; excludes = commonExcludes; }
           { path = "src/platform/macos/ui/Settings"; excludes = commonExcludes; }
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
@@ -1278,7 +1279,8 @@ PLIST
               "ui/**"
             ];
           }
-          { path = "src/platform/ios"; excludes = commonExcludes ++ [ "WWNWaypipeRunnerVisionStub.m" ]; }
+          # WWNGetprognameStub.c is force-loaded via prebuild archive (not compiled here).
+          { path = "src/platform/ios"; excludes = commonExcludes ++ [ "WWNWaypipeRunnerVisionStub.m" "WWNGetprognameStub.c" ]; }
           { path = "src/platform/macos/ui/Machines"; excludes = commonExcludes; }
           { path = "src/platform/macos/ui/Settings"; excludes = commonExcludes; }
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
@@ -1443,7 +1445,8 @@ PLIST
               "ui/**"
             ];
           }
-          { path = "src/platform/ios"; excludes = commonExcludes ++ [ "WWNWaypipeRunnerVisionStub.m" ]; }
+          # WWNGetprognameStub.c is force-loaded via prebuild archive (not compiled here).
+          { path = "src/platform/ios"; excludes = commonExcludes ++ [ "WWNWaypipeRunnerVisionStub.m" "WWNGetprognameStub.c" ]; }
           { path = "src/platform/macos/ui/Machines"; excludes = commonExcludes; }
           { path = "src/platform/macos/ui/Settings"; excludes = commonExcludes; }
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
@@ -2016,7 +2019,7 @@ PLIST
               "WWNLaunchAgentManager.m"
             ];
           }
-          { path = "src/platform/ios"; excludes = commonExcludes; }
+          { path = "src/platform/ios"; excludes = commonExcludes ++ [ "WWNGetprognameStub.c" ]; }
           { path = "src/platform/ios/WWNWaypipeRunnerVisionStub.m"; type = "file"; }
           { path = "src/platform/macos/ui/Machines"; excludes = commonExcludes; }
           {
