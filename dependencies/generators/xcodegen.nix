@@ -556,6 +556,20 @@ let
     # Prebuilt XCFramework slices use LC_ID_DYLIB @rpath/libEGL.framework/libEGL.
     write_fw_plist() {
       local fw="$1" exe="$2"
+      # App Store Connect (altool 90360) requires MinimumOSVersion on embedded
+      # frameworks; match the app deployment target for the active platform.
+      local min_os="''${IPHONEOS_DEPLOYMENT_TARGET:-17.0}"
+      case "''${PLATFORM_NAME:-}" in
+        appletvos|appletvsimulator)
+          min_os="''${TVOS_DEPLOYMENT_TARGET:-''${min_os}}"
+          ;;
+        xros|xrsimulator)
+          min_os="''${XROS_DEPLOYMENT_TARGET:-1.0}"
+          ;;
+        iphonesimulator|iphoneos)
+          min_os="''${IPHONEOS_DEPLOYMENT_TARGET:-17.0}"
+          ;;
+      esac
       cat > "$DEST/$fw.framework/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -566,6 +580,7 @@ let
   <key>CFBundlePackageType</key><string>FMWK</string>
   <key>CFBundleShortVersionString</key><string>1.0</string>
   <key>CFBundleVersion</key><string>1</string>
+  <key>MinimumOSVersion</key><string>$min_os</string>
 </dict></plist>
 PLIST
     }
