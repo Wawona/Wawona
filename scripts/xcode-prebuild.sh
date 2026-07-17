@@ -21,20 +21,10 @@ case "${PLATFORM_NAME:-}" in
     _sdkroot="${SDKROOT:-$(xcrun --sdk "${PLATFORM_NAME}" --show-sdk-path)}"
     _arch="${ARCHS%% *}"
     _arch="${_arch:-arm64}"
-    _min_flag=()
-    case "${PLATFORM_NAME}" in
-      iphoneos|iphonesimulator)
-        _min_flag=(-miphoneos-version-min="${IPHONEOS_DEPLOYMENT_TARGET:-17.0}")
-        ;;
-      appletvos|appletvsimulator)
-        _min_flag=(-mtvos-version-min="${TVOS_DEPLOYMENT_TARGET:-17.0}")
-        ;;
-      xros|xrsimulator)
-        _min_flag=(-mxros-version-min="${XROS_DEPLOYMENT_TARGET:-1.0}")
-        ;;
-    esac
+    # No -m*-version-min: visionOS clang rejects -mxros-version-min, and this
+    # stub has no SDK API surface that needs a deployment floor.
     xcrun --sdk "${PLATFORM_NAME}" clang -c "$_stub_src" \
-      -isysroot "$_sdkroot" -arch "$_arch" "${_min_flag[@]}" \
+      -isysroot "$_sdkroot" -arch "$_arch" \
       -fPIC -O2 -o "$_stub_o"
     xcrun --sdk "${PLATFORM_NAME}" libtool -static -o "$_stub_a" "$_stub_o"
     echo "Built $_stub_a (getprogname stub for App Store)"
