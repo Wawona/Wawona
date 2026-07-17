@@ -23,13 +23,6 @@ enum WawonaA11y {
   static let settingsDisplay = "wwn.settings.display"
 }
 
-extension View {
-  @ViewBuilder
-  func wwnA11y(_ id: String, label: String? = nil) -> some View {
-    if let label {
-      self.accessibilityIdentifier(id).accessibilityLabel(label)
-    } else {
-      self.accessibilityIdentifier(id)
-    }
-  }
-}
+// View.wwnA11y(_:) is defined in
+// src/platform/macos/ui/Machines/WWNAccessibilityIdentifiers.swift.
+// Wawona-macOS compiles both trees into one module — keep a single extension.
