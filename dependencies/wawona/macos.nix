@@ -512,10 +512,14 @@ in
         echo "📦 Phase 0: Building via generated Xcode project..."
         cp -R "${xcodeProject}" ./_xcode_project
         chmod -R u+w ./_xcode_project || true
-        mkdir -p "$TMPDIR/wawona-home"
+        mkdir -p "$TMPDIR/wawona-home/.cache" "$TMPDIR/wawona-home/.config"
         export HOME="$TMPDIR/wawona-home"
+        export XDG_CACHE_HOME="$HOME/.cache"
+        export XDG_CONFIG_HOME="$HOME/.config"
         # Keep Nix as the orchestrator, but isolate xcodebuild from cc-wrapper
         # and NIX_* flags that can leak invalid linker options into Apple's ld.
+        # Pass HOME/XDG_* explicitly: xcodebuild script phases otherwise inherit
+        # nixbld's /var/empty and nested nix dies on ~/.cache.
         if env \
           -u NIX_CFLAGS_COMPILE \
           -u NIX_CXXFLAGS_COMPILE \
@@ -530,14 +534,18 @@ in
           -u CC \
           -u CXX \
           -u LD \
+          HOME="$HOME" \
+          XDG_CACHE_HOME="$XDG_CACHE_HOME" \
+          XDG_CONFIG_HOME="$XDG_CONFIG_HOME" \
           xcodebuild \
           -project "./_xcode_project/Wawona.xcodeproj" \
           -scheme "Wawona-macOS" \
           -configuration Release \
           -derivedDataPath "./_xcode_project/DerivedData" \
-          -destination "platform=macOS" \
+          -destination "platform=macOS,arch=arm64" \
           CODE_SIGNING_ALLOWED=NO \
           CODE_SIGNING_REQUIRED=NO \
+          ONLY_ACTIVE_ARCH=YES \
           build; then
           XCODE_APP="./_xcode_project/DerivedData/Build/Products/Release/Wawona.app"
           if [ -d "$XCODE_APP" ]; then
@@ -565,6 +573,8 @@ in
       echo "📦 Phase 1: Compiling Swift sources..."
       SWIFT_OBJ=""
       SWIFT_SOURCES=(
+        # Shared View.wwnA11y(_:) — must stay unique with WWNAccessibilityIdentifiers.swift
+        "Sources/WawonaUI/AccessibilityIdentifiers.swift"
         "src/platform/macos/ui/Machines/WWNAccessibilityIdentifiers.swift"
         "src/platform/macos/ui/Machines/WWNMachineCardView.swift"
         "src/platform/macos/ui/Machines/WWNMachineEditorView.swift"
@@ -848,10 +858,52 @@ GEN_HEADER
             if [ -f .use_xcodebuild_app ] && [ -d "xcodebuild-out/Wawona.app" ]; then
               mkdir -p $out/Applications
               cp -R "xcodebuild-out/Wawona.app" "$out/Applications/Wawona.app"
+              APP="$out/Applications/Wawona.app"
+
+              # Same runtime assets as the manual install path — Xcode's .app does
+              # not embed weston share/fonts; postInstall verifies these exist.
+              mkdir -p "$APP/Contents/Resources/bin" "$APP/Contents/MacOS"
+              if [ -d "${weston}/bin" ]; then
+                for client in "${weston}/bin"/weston*; do
+                  base="$(basename "$client")"
+                  case "$base" in *.so|*.dylib) continue ;; esac
+                  if [ -f "$client" ]; then
+                    cp "$client" "$APP/Contents/Resources/bin/"
+                    cp "$client" "$APP/Contents/MacOS/"
+                    chmod +x "$APP/Contents/Resources/bin/$base" "$APP/Contents/MacOS/$base"
+                  fi
+                done
+              fi
+              if [ -d "${weston}/share/weston" ]; then
+                mkdir -p "$APP/share/weston"
+                cp -r "${weston}/share/weston/"* "$APP/share/weston/"
+                if [ ! -f "$APP/share/weston/terminal.png" ] && [ -f "$APP/share/weston/icon_terminal.png" ]; then
+                  ln -sf icon_terminal.png "$APP/share/weston/terminal.png"
+                fi
+              fi
+              if [ -d "${weston}/lib/weston" ]; then
+                mkdir -p "$APP/lib/weston"
+                cp -r "${weston}/lib/weston/"* "$APP/lib/weston/"
+              fi
+              if [ -d "${weston}/lib/libweston-13" ]; then
+                mkdir -p "$APP/lib/libweston-13"
+                cp -r "${weston}/lib/libweston-13/"* "$APP/lib/libweston-13/"
+              fi
+              CURSOR_SRC="${pkgs.adwaita-icon-theme}/share/icons/Adwaita/cursors"
+              if [ -d "$CURSOR_SRC" ]; then
+                mkdir -p "$APP/share/icons/Adwaita"
+                cp -r "$CURSOR_SRC" "$APP/share/icons/Adwaita/cursors"
+              fi
+              if [ -d "${pkgs.dejavu_fonts}/share/fonts" ]; then
+                mkdir -p "$APP/share/fonts"
+                cp -RL "${pkgs.dejavu_fonts}/share/fonts/." "$APP/share/fonts/"
+                mkdir -p "$APP/Contents/Resources/share/fonts"
+                cp -RL "${pkgs.dejavu_fonts}/share/fonts/." "$APP/Contents/Resources/share/fonts/"
+              fi
 
               ${bundleMacOSAppDylibs}
               echo "Bundling portable dylibs for Xcode-built Wawona.app..."
-              bundle_macos_app_dylibs "$out/Applications/Wawona.app"
+              bundle_macos_app_dylibs "$APP"
 
               mkdir -p $project
               cp -r . "$project/"

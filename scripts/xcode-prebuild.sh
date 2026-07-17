@@ -8,6 +8,17 @@
 # (App Store non-compliant).
 set -euo pipefail
 
+# xcodebuild script phases reset HOME to the build user's pw_dir (/var/empty for
+# nixbld). Nested `nix` then dies creating /var/empty/.cache. Relocate early.
+if [ -z "${HOME:-}" ] || [ "$HOME" = "/var/empty" ] || [ ! -w "$HOME" ]; then
+  HOME="${NIX_BUILD_TOP:-${TMPDIR:-/tmp}}/wawona-xcode-home"
+  export HOME
+  mkdir -p "$HOME"
+fi
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
+export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+mkdir -p "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME"
+
 derived="${DERIVED_FILE_DIR:?DERIVED_FILE_DIR is unset — is this script running as an Xcode build phase?}"
 mkdir -p "$derived"
 
@@ -150,8 +161,11 @@ fi
 "$NIX" build --no-link "${_nix_flags[@]}" "${build_args[@]}"
 
 active_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_active_backend")"
-ln -sfn "$active_out/lib/libwawona.a" "$derived/libwawona.a"
-echo "Linked $derived/libwawona.a -> $active_out/lib/libwawona.a"
+# Copy (don't symlink): auto-GC can delete the store path between this script
+# exiting and the final link step, leaving a dangling symlink that fails clang.
+rm -f "$derived/libwawona.a"
+cp -f "$active_out/lib/libwawona.a" "$derived/libwawona.a"
+echo "Copied $derived/libwawona.a <- $active_out/lib/libwawona.a"
 
 # Realize link-only native deps that the app links by absolute /nix/store path
 # (OTHER_LDFLAGS), but that are NOT in the Rust backend's build closure. These

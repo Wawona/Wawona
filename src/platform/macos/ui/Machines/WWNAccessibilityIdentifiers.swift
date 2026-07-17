@@ -34,14 +34,5 @@ enum WWNA11y {
   static let watchStop = "wwn.watch.stop"
 }
 
-extension View {
-  /// Attach a stable identifier and optional human-readable label.
-  @ViewBuilder
-  func wwnA11y(_ id: String, label: String? = nil) -> some View {
-    if let label {
-      self.accessibilityIdentifier(id).accessibilityLabel(label)
-    } else {
-      self.accessibilityIdentifier(id)
-    }
-  }
-}
+// View.wwnA11y(_:) lives in Sources/WawonaUI/AccessibilityIdentifiers.swift.
+// Do not redefine it here — Wawona-macOS compiles both into one module.

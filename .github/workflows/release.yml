@@ -57,6 +57,20 @@ jobs:
           find dmg-staging/Wawona.app/Contents/MacOS -type f -exec chmod +x {} + 2>/dev/null || true
           find dmg-staging/Wawona.app/Contents/Resources/bin -type f -exec chmod +x {} + 2>/dev/null || true
           ln -s /Applications dmg-staging/Applications
+          # LaunchAgents pkg: compositor + menubar + session WAYLAND_DISPLAY /
+          # XDG_RUNTIME_DIR so clients can run without the Wawona UI open.
+          # Install order: drag Wawona.app → Applications, then open the .pkg.
+          chmod +x ./scripts/macos-launch-agent-pkg.sh
+          WAWONA_VERSION="$VERSION" ./scripts/macos-launch-agent-pkg.sh \
+            "dmg-staging/Install Wawona LaunchAgents.pkg"
+          cat > dmg-staging/README.txt <<EOF
+Wawona macOS install
+====================
+1. Drag Wawona.app into Applications.
+2. Double-click "Install Wawona LaunchAgents.pkg" to load the compositor
+   and menubar agents and publish WAYLAND_DISPLAY / XDG_RUNTIME_DIR so
+   Wayland apps can connect without opening the Wawona window.
+EOF
           hdiutil create -volname "Wawona" -srcfolder dmg-staging \
             -ov -format UDZO "Wawona-${VERSION}.dmg"
 

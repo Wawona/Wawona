@@ -945,10 +945,11 @@
             neovim = null;
             zsh = pkgs.zsh;
             kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
-            # Keep runtime package host-only: do not force xcodegen/project outputs,
-            # which pull in non-macOS backend graphs.
+            # macOS-only xcodegen project (platformFilter = ["macos"]) so product
+            # builds use the same Wawona-macOS scheme as local xcodebuild, without
+            # pulling iOS/device backend graphs.
             rustBackend = backend-macos;
-            xcodeProject = "";
+            xcodeProject = xcodegenMacosOutputs.project;
           };
           wawona-ios-app-sim = pkgs.callPackage ./dependencies/wawona/ios.nix {
             inherit wawonaSrc wawonaVersion teamId;
