@@ -323,14 +323,15 @@ let
 
   # Target-scoped pre-build: only realize the Rust backend(s) for the active Xcode
   # target, with input/output paths so Xcode skips the script on incremental builds.
-  libwawonaOutputPaths = { withZsh ? false }:
+  libwawonaOutputPaths = { withZsh ? false, withGetprogname ? false }:
     [ derivedRustLib ]
     ++ lib.optionals withZsh [
       derivedZshLib
       derivedNvimLib
       derivedFfLib
       derivedSshLib
-    ];
+    ]
+    ++ lib.optionals withGetprogname [ derivedGetprognameLib ];
 
   nixPreBuildInputs = [
     "$(SRCROOT)/Cargo.lock"
@@ -338,25 +339,28 @@ let
     "$(SRCROOT)/Cargo.toml"
   ];
 
-  mkPreBuildPhase = { withZsh ? false }: {
+  mkPreBuildPhase = { withZsh ? false, withGetprogname ? false }: {
     name = "Build Rust Backend via Nix";
     basedOnDependencyAnalysis = false;
-    inputFiles = nixPreBuildInputs ++ [ "$(SRCROOT)/scripts/xcode-prebuild.sh" ];
-    outputFiles = libwawonaOutputPaths { inherit withZsh; };
+    inputFiles = nixPreBuildInputs ++ [
+      "$(SRCROOT)/scripts/xcode-prebuild.sh"
+      "$(SRCROOT)/src/platform/ios/WWNGetprognameStub.c"
+    ];
+    outputFiles = libwawonaOutputPaths { inherit withZsh withGetprogname; };
     script = ''
       exec "''${SRCROOT}/scripts/xcode-prebuild.sh"
     '';
   };
 
-  iosPreBuild = mkPreBuildPhase { withZsh = true; };
+  iosPreBuild = mkPreBuildPhase { withZsh = true; withGetprogname = true; };
 
-  ipadosPreBuild = mkPreBuildPhase { withZsh = true; };
+  ipadosPreBuild = mkPreBuildPhase { withZsh = true; withGetprogname = true; };
 
-  tvosPreBuild = mkPreBuildPhase { };
+  tvosPreBuild = mkPreBuildPhase { withGetprogname = true; };
 
   macosPreBuild = mkPreBuildPhase { };
 
-  visionosPreBuild = mkPreBuildPhase { };
+  visionosPreBuild = mkPreBuildPhase { withGetprogname = true; };
 
   watchosPreBuild = mkPreBuildPhase { };
 
