@@ -243,7 +243,10 @@ let
     ];
   # Static archives with C++ (ANGLE, Rust backend, fastfetch, …) need libc++
   # after every -force_load block; append once at the end of OTHER_LDFLAGS.
-  finalCxxLdflags = [ "-lc++" "-lc++abi" "-ldl" "-framework" "IOKit" ];
+  # IOKit is in iOS/macOS/visionOS SDKs but absent from tvOS/watchOS.
+  finalCxxLdflagsBase = [ "-lc++" "-lc++abi" "-ldl" ];
+  finalCxxLdflags = finalCxxLdflagsBase ++ [ "-framework" "IOKit" ];
+  finalCxxLdflagsNoIokit = finalCxxLdflagsBase;
   # iOS 26+ UIKit/SwiftUI modules embed LC_LINKER_OPTION auto-link entries for
   # header-only UIUtilities and private SwiftUICore. Failed autolink breaks -lc++.
   ios26ObjcAutolinkOff = [ "-fno-autolink" ];
@@ -1526,7 +1529,7 @@ PLIST
               "-lssl"
               "-lcrypto"
               "-lepoll-shim"
-            ] ++ westonToytoolkitLdflagsAppleMobile tvosDeps ++ westonCompositorLdflagsAppleMobile tvosDeps ++ footLdflags tvosDeps ++ fastfetchLdflags tvosDeps ++ neovimLdflags tvosDeps ++ [ derivedRustLib ] ++ finalCxxLdflags;
+            ] ++ westonToytoolkitLdflagsAppleMobile tvosDeps ++ westonCompositorLdflagsAppleMobile tvosDeps ++ footLdflags tvosDeps ++ fastfetchLdflags tvosDeps ++ neovimLdflags tvosDeps ++ [ derivedRustLib ] ++ finalCxxLdflagsNoIokit;
             "OTHER_LDFLAGS[sdk=appletvsimulator*]" = [
               "$(inherited)"
             ] ++ ios26SwiftUiClientLdflags ++ [
@@ -1554,7 +1557,7 @@ PLIST
               "-lssl"
               "-lcrypto"
               "-lepoll-shim"
-            ] ++ westonToytoolkitLdflagsAppleMobile tvosSimDeps ++ westonCompositorLdflagsAppleMobile tvosSimDeps ++ footLdflags tvosSimDeps ++ fastfetchLdflags tvosSimDeps ++ neovimLdflags tvosSimDeps ++ [ derivedRustLib ] ++ finalCxxLdflags;
+            ] ++ westonToytoolkitLdflagsAppleMobile tvosSimDeps ++ westonCompositorLdflagsAppleMobile tvosSimDeps ++ footLdflags tvosSimDeps ++ fastfetchLdflags tvosSimDeps ++ neovimLdflags tvosSimDeps ++ [ derivedRustLib ] ++ finalCxxLdflagsNoIokit;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"
@@ -2314,7 +2317,7 @@ PLIST
               "-force_load" "${strip watchosDeps.waypipe}/lib/libwaypipe.a"
             ] ++ lib.optionals (watchosBackend != null) [
               derivedRustLib
-            ] ++ finalCxxLdflags;
+            ] ++ finalCxxLdflagsNoIokit;
             "OTHER_LDFLAGS[sdk=watchsimulator*]" = [
               "$(inherited)"
               "-L${strip (watchosSimDeps.libffi or null)}/lib"
@@ -2345,7 +2348,7 @@ PLIST
               "-force_load" "${strip watchosSimDeps.waypipe}/lib/libwaypipe.a"
             ] ++ lib.optionals (watchosSimBackend != null) [
               derivedRustLib
-            ] ++ finalCxxLdflags;
+            ] ++ finalCxxLdflagsNoIokit;
           };
         };
         dependencies = [
