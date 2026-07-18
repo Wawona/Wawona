@@ -44,7 +44,9 @@ let
       "weston-compositor" = buildFn "weston-compositor" { inherit simulator; enableIlandDrm = true; };
     }
     // lib.optionalAttrs (variant == "mobile" || variant == "tv" || variant == "watch") networkStack
-    // lib.optionalAttrs (variant == "mobile" || variant == "vision") {
+    # tvOS shares the iOS compositor/GL sources; without iland/ANGLE/kmscube the
+    # tv archive fails at link (egl*, iland_drm_*, kmscube_main).
+    // lib.optionalAttrs (variant == "mobile" || variant == "tv" || variant == "vision") {
       iland = buildFn "iland" { inherit simulator; };
       angle = buildFn "angle" { inherit simulator; };
       kmscube = buildFn "kmscube" { inherit simulator; };
@@ -60,12 +62,12 @@ let
         "wawona-rootfs" = buildFn "wawona-rootfs" { inherit simulator; };
         zsh = buildFn "zsh" { inherit simulator; };
       }
-    // lib.optionalAttrs (variant == "mobile") {
+    // lib.optionalAttrs (variant == "mobile" || variant == "tv") {
         fastfetch = buildFn "fastfetch" { inherit simulator; };
         neovim = buildFn "neovim" { inherit simulator; };
         "neovim-rootfs" = buildFn "neovim-rootfs" { inherit simulator; };
         # wwn-niri: in-process nested compositor (libniri.a + niri_main C ABI).
-        # wwn-niri fuzzel stack (Mod+D launcher spawned in-process on iOS).
+        # wwn-niri fuzzel stack (Mod+D launcher spawned in-process on iOS/tvOS).
         fcft = buildFn "fcft" { inherit simulator; };
         "cairo-gobject" = buildFn "cairo-gobject" { inherit simulator; };
         niri = buildFn "niri" { inherit simulator; };

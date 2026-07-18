@@ -1529,7 +1529,11 @@ PLIST
               "-lssl"
               "-lcrypto"
               "-lepoll-shim"
-            ] ++ westonToytoolkitLdflagsAppleMobile tvosDeps ++ westonCompositorLdflagsAppleMobile tvosDeps ++ footLdflags tvosDeps ++ fastfetchLdflags tvosDeps ++ neovimLdflags tvosDeps ++ [ derivedRustLib ] ++ finalCxxLdflagsNoIokit;
+              "-lwayland-egl"
+            ] ++ westonToytoolkitLdflagsAppleMobile tvosDeps ++ westonCompositorLdflagsAppleMobile tvosDeps
+            ++ (ilandGlLdflags { deps = tvosDeps; simulator = false; }) ++ footLdflags tvosDeps ++ fastfetchLdflags tvosDeps ++ neovimLdflags tvosDeps ++ niriLdflags tvosDeps ++ fuzzelLdflags tvosDeps
+            ++ opensshInprocessLdflags tvosDeps
+            ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflagsNoIokit;
             "OTHER_LDFLAGS[sdk=appletvsimulator*]" = [
               "$(inherited)"
             ] ++ ios26SwiftUiClientLdflags ++ [
@@ -1557,7 +1561,11 @@ PLIST
               "-lssl"
               "-lcrypto"
               "-lepoll-shim"
-            ] ++ westonToytoolkitLdflagsAppleMobile tvosSimDeps ++ westonCompositorLdflagsAppleMobile tvosSimDeps ++ footLdflags tvosSimDeps ++ fastfetchLdflags tvosSimDeps ++ neovimLdflags tvosSimDeps ++ [ derivedRustLib ] ++ finalCxxLdflagsNoIokit;
+              "-lwayland-egl"
+            ] ++ westonToytoolkitLdflagsAppleMobile tvosSimDeps ++ westonCompositorLdflagsAppleMobile tvosSimDeps
+            ++ (ilandGlLdflags { deps = tvosSimDeps; simulator = true; }) ++ footLdflags tvosSimDeps ++ fastfetchLdflags tvosSimDeps ++ neovimLdflags tvosSimDeps ++ niriLdflags tvosSimDeps ++ fuzzelLdflags tvosSimDeps
+            ++ opensshInprocessLdflags tvosSimDeps
+            ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflagsNoIokit;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"
@@ -2105,7 +2113,10 @@ PLIST
               "-lssh2"
               "-lssl"
               "-lcrypto"
-            ] ++ westonToytoolkitLdflagsAppleMobile visionosDeps ++ westonCompositorLdflagsAppleMobile visionosDeps ++ fastfetchLdflags visionosDeps ++ neovimLdflags visionosDeps ++ [ derivedRustLib ] ++ finalCxxLdflags;
+              "-lwayland-egl"
+            ] ++ westonToytoolkitLdflagsAppleMobile visionosDeps ++ westonCompositorLdflagsAppleMobile visionosDeps
+            ++ (ilandGlLdflags { deps = visionosDeps; simulator = false; }) ++ fastfetchLdflags visionosDeps ++ neovimLdflags visionosDeps
+            ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
             "OTHER_LDFLAGS[sdk=xrsimulator*]" = [
               "$(inherited)"
             ] ++ ios26SwiftUiClientLdflags ++ [
@@ -2124,7 +2135,10 @@ PLIST
               "-lssh2"
               "-lssl"
               "-lcrypto"
-            ] ++ westonToytoolkitLdflagsAppleMobile visionosSimDeps ++ westonCompositorLdflagsAppleMobile visionosSimDeps ++ fastfetchLdflags visionosSimDeps ++ neovimLdflags visionosSimDeps ++ [ derivedRustLib ] ++ finalCxxLdflags;
+              "-lwayland-egl"
+            ] ++ westonToytoolkitLdflagsAppleMobile visionosSimDeps ++ westonCompositorLdflagsAppleMobile visionosSimDeps
+            ++ (ilandGlLdflags { deps = visionosSimDeps; simulator = true; }) ++ fastfetchLdflags visionosSimDeps ++ neovimLdflags visionosSimDeps
+            ++ mobileZshLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"
