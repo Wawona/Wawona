@@ -60,16 +60,10 @@ end
 # gym builds via scheme; match profiles must already include App Store + iCloud.
 APPLE_BETA_TARGETS = [
   {
+    # Universal (phone+iPad). Do not also upload Wawona-iPadOS — same bundle id
+    # and CFBundleVersion would collide on the IOS App Store Connect platform.
     scheme: "Wawona-iOS",
-    name: "iPhone (iOS)",
-    app_platform: "ios",
-    destination: "generic/platform=iOS",
-    bundle_id: "com.aspauldingcode.Wawona",
-    profile_name: "match AppStore com.aspauldingcode.Wawona"
-  },
-  {
-    scheme: "Wawona-iPadOS",
-    name: "iPad (iPadOS)",
+    name: "iPhone + iPad (iOS)",
     app_platform: "ios",
     destination: "generic/platform=iOS",
     bundle_id: "com.aspauldingcode.Wawona",
@@ -445,7 +439,7 @@ def nix_aab_path
 end
 
 platform :ios do
-  desc "Upload iPhone, iPad, Apple TV, Apple Vision Pro, and Apple Watch to TestFlight (excludes macOS)"
+  desc "Upload universal iOS, Apple TV, Apple Vision Pro, and Apple Watch to TestFlight (excludes macOS)"
   lane :beta do
     validate_env
     setup_ci if ENV["CI"]

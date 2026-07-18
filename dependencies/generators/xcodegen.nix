@@ -1139,7 +1139,9 @@ PLIST
             # Reduces actool work that ties thinned catalogs to installed Simulator runtimes.
             ENABLE_ON_DEMAND_RESOURCES = "NO";
             SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-            TARGETED_DEVICE_FAMILY = "1";
+            # Universal phone+iPad so TestFlight does not need a second IPA with the
+            # same bundle id / CFBundleVersion (duplicate ASC build number).
+            TARGETED_DEVICE_FAMILY = "1,2";
             SUPPORTS_MACCATALYST = "NO";
             SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = "NO";
             SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = "NO";
@@ -1305,9 +1307,8 @@ PLIST
             GENERATE_INFOPLIST_FILE = "NO";
             PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.Wawona";
             CODE_SIGN_ENTITLEMENTS = "src/resources/app-bundle/Wawona-iCloud.entitlements";
-            # watchOS icon assets are currently generated outside Assets.xcassets.
-            # Leave blank so actool does not require a watch-specific AppIcon set.
-            ASSETCATALOG_COMPILER_APPICON_NAME = "";
+            # Must match AppIcon.appiconset (iPad 152x152 etc). Empty name → ITMS-90713/90023.
+            ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon";
             ENABLE_ON_DEMAND_RESOURCES = "NO";
             SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
             TARGETED_DEVICE_FAMILY = "2";
