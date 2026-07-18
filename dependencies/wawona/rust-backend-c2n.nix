@@ -509,6 +509,30 @@ let
       features = lib.unique ((attrs.features or []) ++ [ "errno" ]);
     };
 
+    # platform-info 2.1.0 only excludes domainname for macos/ios; tvOS/watchOS/
+    # visionOS libc::utsname also lacks that GNU field (ITMS/tvOS backend build).
+    platform-info = attrs: lib.optionalAttrs isAppleCross {
+      postPatch = (attrs.postPatch or "") + ''
+        patch -p1 < ${../patches/platform-info-2.1.0-apple-utsname-domainname.patch}
+      '';
+    };
+
+    # uu_cp treats mode bits as u32 except on macos/android/…; Apple mobile
+    # libc mode_t is u16 (same cast path as macos).
+    uu_cp = attrs: lib.optionalAttrs isAppleCross {
+      postPatch = (attrs.postPatch or "") + ''
+        patch -p1 < ${../patches/uu_cp-0.0.30-apple-mode-bits.patch}
+      '';
+    };
+
+    # uu_date only stubs clock_settime for macos/ios; tvOS/watchOS/visionOS
+    # also lack libc::clock_settime.
+    uu_date = attrs: lib.optionalAttrs isAppleCross {
+      postPatch = (attrs.postPatch or "") + ''
+        patch -p1 < ${../patches/uu_date-0.0.30-apple-clock-settime.patch}
+      '';
+    };
+
     weedle2 = attrs: {
       # Crates are gzipped tarballs; `.crate` is not always recognized by stdenv unpack on Linux CI.
       src = pkgs.fetchurl {

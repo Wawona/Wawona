@@ -1,0 +1,22 @@
+--- a/src/cp.rs
++++ b/src/cp.rs
+@@ -2397,6 +2397,9 @@
+             target_os = "android",
+             target_os = "macos",
+             target_os = "ios",
++            target_os = "tvos",
++            target_os = "watchos",
++            target_os = "visionos",
+             target_os = "freebsd",
+             target_os = "redox",
+         )))]
+@@ -2414,6 +2417,9 @@
+             target_os = "android",
+             target_os = "macos",
+             target_os = "ios",
++            target_os = "tvos",
++            target_os = "watchos",
++            target_os = "visionos",
+             target_os = "freebsd",
+             target_os = "redox",
+         ))]
