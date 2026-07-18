@@ -88,6 +88,9 @@
 	</dict>
 	<key>UIFileSharingEnabled</key>
 	<true/>
+	<!-- Standard HTTPS/SSH crypto only (exempt). Avoids ASC export-compliance prompts. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 	<key>NSUbiquitousContainers</key>

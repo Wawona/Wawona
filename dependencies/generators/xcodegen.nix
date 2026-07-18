@@ -1119,6 +1119,9 @@ PLIST
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
           { path = "src/platform/macos/ui/Modules"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
+          # Required-reason API manifest (UserDefaults / boot time / file timestamps).
+          # Missing this makes ASC accept the IPA then discard the build (never listed).
+          { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
@@ -1286,6 +1289,9 @@ PLIST
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
           { path = "src/platform/macos/ui/Modules"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
+          # Required-reason API manifest (UserDefaults / boot time / file timestamps).
+          # Missing this makes ASC accept the IPA then discard the build (never listed).
+          { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
@@ -1452,6 +1458,9 @@ PLIST
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
           { path = "src/platform/macos/ui/Modules"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
+          # Required-reason API manifest (UserDefaults / boot time / file timestamps).
+          # Missing this makes ASC accept the IPA then discard the build (never listed).
+          { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
@@ -1602,6 +1611,9 @@ PLIST
           { path = "src/platform/macos/WWNSettings.c"; type = "file"; }
           { path = "src/platform/macos/ui"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
+          # Required-reason API manifest (UserDefaults / boot time / file timestamps).
+          # Missing this makes ASC accept the IPA then discard the build (never listed).
+          { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
@@ -2029,6 +2041,9 @@ PLIST
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
           { path = "src/platform/macos/ui/Modules"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
+          # Required-reason API manifest (UserDefaults / boot time / file timestamps).
+          # Missing this makes ASC accept the IPA then discard the build (never listed).
+          { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
@@ -2224,6 +2239,9 @@ PLIST
           { path = "src/platform/watchos"; excludes = commonExcludes; }
           { path = "src/platform/watchos/ui/Settings/WWNWatchSettings.storyboard"; }
           { path = "src/resources/Assets.xcassets"; }
+          # Required-reason API manifest (UserDefaults / boot time / file timestamps).
+          # Missing this makes ASC accept the IPA then discard the build (never listed).
+          { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
         ];

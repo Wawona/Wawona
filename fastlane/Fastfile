@@ -2,6 +2,7 @@
 
 require "fileutils"
 require "shellwords"
+require "tmpdir"
 
 default_platform(:ios)
 
@@ -111,14 +112,22 @@ def beta_testflight_groups
      .reject(&:empty?)
 end
 
+def testflight_wait_timeout_seconds
+  Integer(ENV.fetch("TESTFLIGHT_WAIT_TIMEOUT", "2700"))
+end
+
 def testflight_upload_options(api_key, target)
+  # IMPORTANT: do NOT pass `changelog` when skip_waiting is true.
+  # pilot still polls until the build appears whenever changelog is set, and
+  # if ASC discards the binary (privacy manifest / invalid build) that wait
+  # never ends (see Release Beta #60: 4.5h hang on build 60).
   opts = {
     api_key: api_key,
     app_identifier: target[:bundle_id],
     app_platform: target[:app_platform],
     beta_app_feedback_email: BETA_FEEDBACK_EMAIL,
-    changelog: "Wawona #{wawona_version} (#{wawona_build_number}) beta",
-    skip_waiting_for_build_processing: true
+    skip_waiting_for_build_processing: true,
+    wait_processing_timeout_duration: testflight_wait_timeout_seconds
   }
   groups = beta_testflight_groups
   if groups.any?
@@ -126,8 +135,37 @@ def testflight_upload_options(api_key, target)
     opts[:distribute_external] = true
     opts[:notify_external_testers] = true
     opts[:skip_waiting_for_build_processing] = false
+    opts[:changelog] = "Wawona #{wawona_version} (#{wawona_build_number}) beta"
   end
   opts
+end
+
+# Refuse upload if the IPA still imports libSystem's private ___progname.
+def assert_ipa_no_private_progname!(ipa)
+  require "open3"
+  UI.message("Checking #{File.basename(ipa)} for private ___progname…")
+  Dir.mktmpdir("wawona-ipa-progname") do |dir|
+    sh("unzip -q #{ipa.shellescape} -d #{dir.shellescape}")
+    app = Dir.glob(File.join(dir, "Payload", "*.app")).first
+    UI.user_error!("No Payload/*.app in #{ipa}") unless app
+    plist = File.join(app, "Info.plist")
+    exe_name, st = Open3.capture2(
+      "/usr/libexec/PlistBuddy", "-c", "Print :CFBundleExecutable", plist
+    )
+    exe_name = exe_name.to_s.strip
+    UI.user_error!("CFBundleExecutable missing in #{plist}") unless st.success? && !exe_name.empty?
+    bin = File.join(app, exe_name)
+    UI.user_error!("Missing executable #{bin}") unless File.file?(bin)
+    undefs, st = Open3.capture2("nm", "-u", bin)
+    UI.user_error!("nm -u failed for #{bin}") unless st.success?
+    if undefs.include?("___progname")
+      UI.user_error!(
+        "#{exe_name} imports private ___progname — App Store Connect will reject " \
+        "the binary. Fix OpenSSH / getprogname stubs before uploading."
+      )
+    end
+    UI.success("#{exe_name}: no ___progname undefined import")
+  end
 end
 
 def wawona_version
@@ -419,6 +457,7 @@ platform :ios do
 
     APPLE_BETA_TARGETS.each do |target|
       ipa = gym_ipa(target)
+      assert_ipa_no_private_progname!(ipa)
       upload_to_testflight(
         **testflight_upload_options(api_key, target),
         ipa: ipa
@@ -446,6 +485,7 @@ platform :ios do
 
     APPLE_BETA_TARGETS.each do |target|
       ipa = gym_ipa(target)
+      assert_ipa_no_private_progname!(ipa)
       deliver(
         api_key: api_key,
         app_identifier: target[:bundle_id],

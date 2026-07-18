@@ -30,6 +30,12 @@ Rust/native via the Xcode prebuild phase; **Fastlane** runs `match` + `build_app
 - [`fastlane/Fastfile`](../fastlane/Fastfile): `ios beta` builds each scheme
   (`Wawona-iOS` / iPadOS / tvOS / visionOS / watchOS) with gym and uploads to
   TestFlight; `ios release` submits for App Store review.
+- Privacy manifest: [`src/resources/app-bundle/PrivacyInfo.xcprivacy`](../src/resources/app-bundle/PrivacyInfo.xcprivacy)
+  (required-reason APIs). Without it, ASC can accept the IPA then never list
+  the build — pilot then hangs if a `changelog` is set.
+- Upload path: no `changelog` unless `BETA_TESTFLIGHT_GROUPS` is set; always
+  set `wait_processing_timeout_duration` (default 2700s) so CI cannot poll forever.
+  Preflight: `nm -u` rejects IPAs that still import private `___progname`.
 - [`.github/workflows/release-beta.yml`](../.github/workflows/release-beta.yml):
   push to `master` (or manual dispatch) runs `fastlane ios beta` on `macos-26`
   with secrets from the `release-beta` GitHub Environment.
