@@ -1089,6 +1089,26 @@ pub extern "C" fn WWNCoreInjectKeyboardLeave(
 // Text Input (IME / Emoji)
 // ============================================================================
 
+/// Returns 1 when a Wayland client has `zwp_text_input_v3.enable` active.
+/// Host OSK code should poll this each compositor tick.
+#[no_mangle]
+pub extern "C" fn WWNCoreTextInputIsEnabled(core: *mut WWNCore) -> i32 {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() {
+            return 0;
+        }
+        let core = unsafe { &*core };
+        if core.text_input_is_enabled() {
+            1
+        } else {
+            0
+        }
+    })) {
+        Ok(v) => v,
+        Err(_) => 0,
+    }
+}
+
 /// Commit a UTF-8 string to the focused Wayland client via text-input-v3.
 ///
 /// This is how platform IME, emoji pickers, and composed text reach the

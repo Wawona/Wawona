@@ -77,19 +77,26 @@ impl CompositorState {
             .get(&(client_id.clone(), xdg_surface_id))
             .map(|surf| surf.pending_serial)
             .unwrap_or(0);
+        // Previously we deferred when pending_serial != 0 (nested native
+        // ack latency). Over waypipe RTT that blocked mid-drag live resize
+        // (#63/#80/#88): host streamed injectWindowResize but configures
+        // only flushed after ack. Always emit a fresh configure; xdg-shell
+        // clients ack the latest serial. Still stash deferred size so an
+        // ack path can reconcile if send fails below.
         if superseded_pending_serial != 0 {
             crate::wlog!(
                 crate::util::logging::COMPOSITOR,
-                "send_toplevel_configure: superseding unacked serial {} with new size={}x{} for xdg_surface={}",
+                "send_toplevel_configure: live-supersede unacked serial {} with new size={}x{} for xdg_surface={}",
                 superseded_pending_serial,
                 width,
                 height,
                 xdg_surface_id
             );
-            if let Some(toplevel_data) = self.xdg.toplevels.get_mut(&(client_id.clone(), toplevel_id)) {
+            if let Some(toplevel_data) =
+                self.xdg.toplevels.get_mut(&(client_id.clone(), toplevel_id))
+            {
                 toplevel_data.deferred_configure_size = Some((width, height));
             }
-            return None;
         }
 
         let smithay_surface = self
@@ -340,10 +347,11 @@ impl CompositorState {
                 let is_kiosk_window = self.is_host_locked_window(window.id);
                 
                 node.set_position(window.x, window.y);
-                // Render to the client's last committed buffer size when available.
-                // During live resize the requested window size can change before the
-                // client submits a matching buffer; using the requested size here
-                // stretches the old frame instead of showing the real committed size.
+                // Present at committed buffer size (OWL: frame == buffer).
+                // Only while the host is size-authoritative mid live-resize
+                // (#111) stretch the last buffer into the host size so nested
+                // niri does not flash before/after sizes. Never leave a giant
+                // host frame around a small demo client — that is a sync bug.
                 let mut render_width = window.width.max(0) as u32;
                 let mut render_height = window.height.max(0) as u32;
                 if !is_kiosk_window {
@@ -356,12 +364,18 @@ impl CompositorState {
                         let surface = surface_ref.read().unwrap();
                         let committed_width = surface.current.width.max(0) as u32;
                         let committed_height = surface.current.height.max(0) as u32;
-                        // The scene node always presents the buffer at its
-                        // committed (logical) size — never stretched to the
-                        // requested window size. When a client lags behind a
-                        // host resize, the old frame stays at its own size
-                        // until the client commits a matching buffer.
-                        if committed_width > 0 && committed_height > 0 {
+                        let win_w = window.width.max(0) as u32;
+                        let win_h = window.height.max(0) as u32;
+                        let host_ahead = window.size_authority.is_host()
+                            && win_w > 0
+                            && win_h > 0
+                            && committed_width > 0
+                            && committed_height > 0
+                            && (committed_width != win_w || committed_height != win_h);
+                        if host_ahead {
+                            render_width = win_w;
+                            render_height = win_h;
+                        } else if committed_width > 0 && committed_height > 0 {
                             render_width = committed_width;
                             render_height = committed_height;
                         }
@@ -372,8 +386,6 @@ impl CompositorState {
                         // (window) size with the inferred scale so it is not
                         // drawn double-sized and pointer coords stay aligned.
                         if surface.current.scale <= 1 && output_scale > 1.0 {
-                            let win_w = window.width.max(0) as u32;
-                            let win_h = window.height.max(0) as u32;
                             let scaled_w = (win_w as f32 * output_scale).round() as u32;
                             let scaled_h = (win_h as f32 * output_scale).round() as u32;
                             if win_w > 0

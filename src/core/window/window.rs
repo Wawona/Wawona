@@ -44,6 +44,11 @@ pub struct Window {
     /// applies to every Wayland client, not just known demo apps.
     pub has_committed_buffer: bool,
 
+    /// Size-authority state machine (host ↔ client). See
+    /// [`crate::core::window::size_authority`] and
+    /// `.cursor/rules/wawona-host-client-size-sync.mdc`.
+    pub size_authority: crate::core::window::SizeAuthority,
+
     /// CSD geometry offset: the (x, y) origin of the content area within the
     /// surface buffer.  When the window is cropped to exclude the CSD shadow,
     /// pointer coordinates from the platform must be shifted by this offset to
@@ -75,6 +80,7 @@ impl Window {
             modal: false,
             host_locked: false,
             has_committed_buffer: false,
+            size_authority: crate::core::window::SizeAuthority::AwaitingFirstCommit,
             geometry_x: 0,
             geometry_y: 0,
             outputs: Vec::new(),

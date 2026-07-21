@@ -362,6 +362,10 @@ impl CompositorState {
             }
             
             tracing::info!("Destroyed window {}", window_id);
+
+            crate::core::wayland::wlr::foreign_toplevel_management::notify_toplevel_destroyed(
+                self, window_id,
+            );
             
             self.pending_compositor_events.push(crate::core::compositor::CompositorEvent::WindowDestroyed {
                 window_id,

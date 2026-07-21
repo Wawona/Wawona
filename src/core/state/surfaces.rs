@@ -339,58 +339,40 @@ impl CompositorState {
                                 }
                             }
 
-                            let expected_configure_known = expected_toplevel_size
-                                .map(|(expected_w, expected_h)| expected_w > 0 && expected_h > 0)
-                                .unwrap_or(false);
-                            // The client's first-ever commit is always its true preferred
-                            // size (the initial configure is deliberately deferred to
-                            // 0x0 — see shell_handler::new_toplevel). Trust it
-                            // unconditionally so every client, not just a known-app
-                            // allowlist, starts edge-to-edge with its own content.
-                            let is_first_commit = !window.has_committed_buffer
-                                && target_width > 0
-                                && target_height > 0;
-                            let should_accept_client_commit_size = is_first_commit
-                                || crate::core::wayland::xdg::decoration::committed_size_matches_expected(
-                                    target_width,
-                                    target_height,
-                                    expected_toplevel_size,
-                                );
-                            let expected_delta = expected_toplevel_size.map(|(expected_w, expected_h)| {
-                                (
-                                    (target_width - expected_w).abs(),
-                                    (target_height - expected_h).abs(),
-                                )
-                            });
-                            crate::wlog_hot!(
-                                crate::util::logging::STATE,
-                                "Host sync decision: window={} surf={} pending_serial={} last_acked_serial={} tl_pending_serial={} tl_last_acked_serial={} committed={}x{} target={}x{} xdg_geom={:?} expected_toplevel={:?} expected_delta={:?} expected_known={} first_commit={} accept={}",
-                                wid,
-                                id,
-                                xdg_pending_serial,
-                                xdg_last_acked_serial,
-                                toplevel_pending_serial,
-                                toplevel_last_acked_serial,
-                                surface.current.width,
-                                surface.current.height,
+                            // Permanent size-authority state machine — see
+                            // `core::window::size_authority`. Exactly one side
+                            // may change agreed size; no host↔client ping-pong.
+                            let decision = window.size_authority.clone().on_client_commit(
                                 target_width,
                                 target_height,
-                                xdg_geometry,
-                                expected_toplevel_size,
-                                expected_delta,
-                                expected_configure_known,
-                                is_first_commit,
-                                should_accept_client_commit_size
+                                window.width,
+                                window.height,
+                                xdg_pending_serial,
+                                window.has_committed_buffer,
+                            );
+                            crate::wlog_hot!(
+                                crate::util::logging::STATE,
+                                "SizeAuthority decision: window={} surf={} reason={} apply={} emit={} stretch={} pending_serial={} committed={}x{} current={}x{} auth_host={}",
+                                wid,
+                                id,
+                                decision.reason,
+                                decision.apply_client_size,
+                                decision.emit_size_changed,
+                                decision.stretch_present_to_host,
+                                xdg_pending_serial,
+                                target_width,
+                                target_height,
+                                window.width,
+                                window.height,
+                                decision.authority.is_host()
                             );
 
-                            if should_accept_client_commit_size {
-                                // The platform may have created the host window at a
-                                // placeholder size (256x256) while the core window was
-                                // seeded at the output size. Always emit a size sync on
-                                // the first accepted commit — even when the committed
-                                // size equals the seeded size — so the host window
-                                // adopts the client's real dimensions.
-                                if is_first_commit {
+                            window.size_authority = decision.authority;
+                            if decision.apply_client_size {
+                                if decision.emit_size_changed
+                                    || window.width != target_width
+                                    || window.height != target_height
+                                {
                                     size_changed = true;
                                 }
                                 window.width = target_width;
@@ -398,6 +380,21 @@ impl CompositorState {
                                 window.geometry_x = target_geometry_x;
                                 window.geometry_y = target_geometry_y;
                                 window.has_committed_buffer = true;
+                                // Placement ≠ sizing: center client-constrained
+                                // surfaces in the output (flower/smoke 200×200).
+                                if window.size_authority.is_client() {
+                                    let (ow, oh) = self
+                                        .outputs
+                                        .get(self.primary_output)
+                                        .map(|o| (o.width as i32, o.height as i32))
+                                        .unwrap_or((0, 0));
+                                    crate::core::window::apply_placement(
+                                        &mut window,
+                                        crate::core::window::PlacementPolicy::Center,
+                                        ow,
+                                        oh,
+                                    );
+                                }
                                 for tl in self.xdg.toplevels.values_mut() {
                                     if tl.surface_id == id {
                                         tl.width = target_width.max(0) as u32;
@@ -406,41 +403,17 @@ impl CompositorState {
                                     }
                                 }
                             } else {
-                                if expected_configure_known {
-                                    crate::wlog!(
-                                        crate::util::logging::STATE,
-                                        "Ignoring untracked client commit size for window {}: committed={}x{} expected_configure={}x{} delta={}x{} pending_serial={} last_acked_serial={} tl_pending_serial={} tl_last_acked_serial={}",
-                                        wid,
-                                        target_width,
-                                        target_height,
-                                        expected_toplevel_size.map(|(w, _)| w).unwrap_or(0),
-                                        expected_toplevel_size.map(|(_, h)| h).unwrap_or(0),
-                                        expected_toplevel_size
-                                            .map(|(w, _)| (target_width - w).abs())
-                                            .unwrap_or(0),
-                                        expected_toplevel_size
-                                            .map(|(_, h)| (target_height - h).abs())
-                                            .unwrap_or(0),
-                                        xdg_pending_serial,
-                                        xdg_last_acked_serial,
-                                        toplevel_pending_serial,
-                                        toplevel_last_acked_serial
-                                    );
-                                } else {
-                                    crate::wlog!(
-                                        crate::util::logging::STATE,
-                                        "Deferring host sync until non-zero toplevel configure: window={} surf={} committed={}x{} expected_toplevel={:?} pending_serial={} last_acked_serial={} tl_pending_serial={} tl_last_acked_serial={}",
-                                        wid,
-                                        id,
-                                        target_width,
-                                        target_height,
-                                        expected_toplevel_size,
-                                        xdg_pending_serial,
-                                        xdg_last_acked_serial,
-                                        toplevel_pending_serial,
-                                        toplevel_last_acked_serial
-                                    );
-                                }
+                                crate::wlog!(
+                                    crate::util::logging::STATE,
+                                    "SizeAuthority hold: window={} reason={} committed={}x{} expected_toplevel={:?} pending_serial={} tl_pending_serial={}",
+                                    wid,
+                                    decision.reason,
+                                    target_width,
+                                    target_height,
+                                    expected_toplevel_size,
+                                    xdg_pending_serial,
+                                    toplevel_pending_serial
+                                );
                             }
                         } else {
                             crate::wlog!(

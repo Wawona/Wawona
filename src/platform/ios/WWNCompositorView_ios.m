@@ -568,6 +568,9 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   NSLayoutConstraint *_accessoryBarHeightConstraint;
   UIButton *_keyboardModeButton;
   UIButton *_keyboardPipButton;
+#if TARGET_OS_TV
+  UIButton *_tvKeyboardToggleButton;
+#endif
   WWNKeyboardUiMode _keyboardUiMode;
   WWNKeyboardUiMode _keyboardUiModeBeforeExternal;
   WWNKeyboardPipDockSide _keyboardPipDockSide;
@@ -702,8 +705,14 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     _lastContentsScale = 0;
     _lastWaylandLayoutSize = CGSizeZero;
     _sessionActive = YES;
+#if TARGET_OS_TV
+    // tvOS: start accessory/collapsed; expand when text-input Enables or user taps ⌨.
+    _keyboardUiMode = WWNKeyboardUiModeAccessoryOnly;
+    _keyboardUiModeBeforeExternal = WWNKeyboardUiModeAccessoryOnly;
+#else
     _keyboardUiMode = WWNKeyboardUiModeExpanded;
     _keyboardUiModeBeforeExternal = WWNKeyboardUiModeExpanded;
+#endif
     _collapsedInputView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 1, 1)];
     _collapsedInputView.backgroundColor = UIColor.clearColor;
     _collapsedInputView.opaque = NO;
@@ -764,6 +773,10 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   _contentLayer.device = MTLCreateSystemDefaultDevice();
   _contentLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
   _contentLayer.framebufferOnly = NO;
+  // Transparent host plate for CSD / nested Metal present (matches AppKit CSD).
+  _contentLayer.opaque = NO;
+  self.opaque = NO;
+  self.backgroundColor = UIColor.clearColor;
   WWNEDRConfigureMetalLayer(
       _contentLayer, [[WWNPreferencesManager sharedManager] colorOperations]);
   _contentLayer.contentsGravity = kCAGravityResize;
@@ -843,6 +856,17 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   _waylandFrameView.hidden = NO;
   if (!CGRectIsEmpty(frame)) {
     CGSize bounds = self.bounds.size;
+#if TARGET_OS_TV
+    // 10-foot UI: desktop window geometry/chrome is unusable with Siri Remote.
+    // Always present Wayland clients full-bleed in the host compositor view.
+    (void)normalizedContentRect;
+    if (bounds.width > 0.0 && bounds.height > 0.0) {
+      frame = CGRectMake(0, 0, bounds.width, bounds.height);
+    }
+    _waylandFrameView.frame = frame;
+    _waylandFrameView.autoresizingMask =
+        UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+#else
     BOOL hasCsdCrop =
         (normalizedContentRect.size.width > 0.0 &&
          normalizedContentRect.size.height > 0.0 &&
@@ -857,9 +881,18 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
       // Nested Weston fullscreen: minor configure/scale drift leaves gutters;
       // snap the presentation view to the host compositor edges.
       frame = CGRectMake(0, 0, bounds.width, bounds.height);
+    } else if (!hasCsdCrop && bounds.width > 0.0 && bounds.height > 0.0 &&
+               (frame.size.width + 0.5 < bounds.width ||
+                frame.size.height + 0.5 < bounds.height) &&
+               fabs(frame.origin.x) < 0.5 && fabs(frame.origin.y) < 0.5) {
+      // Client-constrained surface with no scene placement yet: center in
+      // the host view (sizing stays negotiated; this is placement only).
+      frame.origin.x = floor((bounds.width - frame.size.width) / 2.0);
+      frame.origin.y = floor((bounds.height - frame.size.height) / 2.0);
     }
     _waylandFrameView.frame = frame;
     _waylandFrameView.autoresizingMask = UIViewAutoresizingNone;
+#endif
   } else {
     _waylandFrameView.frame = self.bounds;
     _waylandFrameView.autoresizingMask =
@@ -1057,6 +1090,11 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     _keyboardPipButton.center = center;
     [self _dockKeyboardPipButtonToNearestEdgeAnimated:NO velocityX:0];
   }
+#if TARGET_OS_TV
+  [self _ensureTvKeyboardToggleButton];
+  [self bringSubviewToFront:_tvKeyboardToggleButton];
+  [self _updateTvKeyboardToggleTitle];
+#endif
 }
 
 // ---------------------------------------------------------------------------
@@ -2842,13 +2880,120 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   if (!self.isFirstResponder) {
     [self becomeFirstResponder];
   }
+#if TARGET_OS_TV
+  [self _ensureTvKeyboardToggleButton];
+  [self _updateTvKeyboardToggleTitle];
+#endif
 }
 
 - (void)deactivateKeyboard {
   if (self.isFirstResponder) {
     [self resignFirstResponder];
   }
+#if TARGET_OS_TV
+  [self _ensureTvKeyboardToggleButton];
+  [self _updateTvKeyboardToggleTitle];
+#endif
 }
+
+- (void)toggleKeyboard {
+#if TARGET_OS_TV
+  if (self.isFirstResponder && _keyboardUiMode == WWNKeyboardUiModeExpanded) {
+    [self _setKeyboardUiMode:WWNKeyboardUiModeAccessoryOnly];
+    [self resignFirstResponder];
+  } else {
+    [self _setKeyboardUiMode:WWNKeyboardUiModeExpanded];
+    [self becomeFirstResponder];
+  }
+  [self _updateTvKeyboardToggleTitle];
+#else
+  if (_keyboardUiMode == WWNKeyboardUiModeExpanded) {
+    [self _setKeyboardUiMode:WWNKeyboardUiModeAccessoryOnly];
+  } else if (_keyboardUiMode == WWNKeyboardUiModePip ||
+             _keyboardUiMode == WWNKeyboardUiModeHiddenExternal) {
+    [self _setKeyboardUiMode:WWNKeyboardUiModeExpanded];
+  } else {
+    [self _setKeyboardUiMode:WWNKeyboardUiModeExpanded];
+  }
+#endif
+}
+
+- (void)applyHostKeyboardForTextInputEnabled:(BOOL)enabled {
+  if (enabled) {
+#if TARGET_OS_TV
+    [self _setKeyboardUiMode:WWNKeyboardUiModeExpanded];
+    [self becomeFirstResponder];
+#else
+    if (_keyboardUiMode == WWNKeyboardUiModePip ||
+        _keyboardUiMode == WWNKeyboardUiModeHiddenExternal) {
+      // User parked keyboard in PIP / external — don't yank it open.
+      return;
+    }
+    [self _setKeyboardUiMode:WWNKeyboardUiModeExpanded];
+#endif
+  } else {
+#if TARGET_OS_TV
+    if (_keyboardUiMode == WWNKeyboardUiModeExpanded) {
+      [self _setKeyboardUiMode:WWNKeyboardUiModeAccessoryOnly];
+      [self resignFirstResponder];
+    }
+#else
+    if (_keyboardUiMode == WWNKeyboardUiModeExpanded) {
+      [self _setKeyboardUiMode:WWNKeyboardUiModeAccessoryOnly];
+    }
+#endif
+  }
+#if TARGET_OS_TV
+  [self _ensureTvKeyboardToggleButton];
+  [self _updateTvKeyboardToggleTitle];
+#endif
+}
+
+#if TARGET_OS_TV
+- (void)_ensureTvKeyboardToggleButton {
+  if (_tvKeyboardToggleButton) {
+    return;
+  }
+  _tvKeyboardToggleButton = [UIButton buttonWithType:UIButtonTypeSystem];
+  _tvKeyboardToggleButton.translatesAutoresizingMaskIntoConstraints = NO;
+  _tvKeyboardToggleButton.accessibilityIdentifier = @"wwn.keyboard.toggle";
+  _tvKeyboardToggleButton.accessibilityLabel = @"Toggle Keyboard";
+  UIButtonConfiguration *cfg = [UIButtonConfiguration filledButtonConfiguration];
+  cfg.cornerStyle = UIButtonConfigurationCornerStyleMedium;
+  cfg.baseBackgroundColor = [UIColor colorWithWhite:0.18 alpha:0.92];
+  cfg.baseForegroundColor = UIColor.whiteColor;
+  cfg.contentInsets = NSDirectionalEdgeInsetsMake(16, 28, 16, 28);
+  cfg.title = @"⌨ Keyboard";
+  cfg.titleTextAttributesTransformer =
+      ^NSDictionary<NSAttributedStringKey, id> *(NSDictionary<NSAttributedStringKey, id> *incoming) {
+        NSMutableDictionary *out = [incoming mutableCopy] ?: [NSMutableDictionary dictionary];
+        out[NSFontAttributeName] = [UIFont systemFontOfSize:28 weight:UIFontWeightSemibold];
+        return out;
+      };
+  _tvKeyboardToggleButton.configuration = cfg;
+  [_tvKeyboardToggleButton addTarget:self
+                              action:@selector(toggleKeyboard)
+                    forControlEvents:UIControlEventPrimaryActionTriggered];
+  [self addSubview:_tvKeyboardToggleButton];
+  [NSLayoutConstraint activateConstraints:@[
+    [_tvKeyboardToggleButton.trailingAnchor constraintEqualToAnchor:self.safeAreaLayoutGuide.trailingAnchor
+                                                           constant:-40],
+    [_tvKeyboardToggleButton.bottomAnchor constraintEqualToAnchor:self.safeAreaLayoutGuide.bottomAnchor
+                                                        constant:-40],
+  ]];
+}
+
+- (void)_updateTvKeyboardToggleTitle {
+  if (!_tvKeyboardToggleButton) {
+    return;
+  }
+  BOOL open = self.isFirstResponder && _keyboardUiMode == WWNKeyboardUiModeExpanded;
+  UIButtonConfiguration *cfg = _tvKeyboardToggleButton.configuration;
+  cfg.title = open ? @"⌨ Hide Keyboard" : @"⌨ Show Keyboard";
+  _tvKeyboardToggleButton.configuration = cfg;
+  _tvKeyboardToggleButton.accessibilityLabel = open ? @"Hide Keyboard" : @"Show Keyboard";
+}
+#endif
 
 // ===========================================================================
 #pragma mark - Touch Handling (Multi-Touch + Touchpad)
@@ -3718,6 +3863,15 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 
 - (void)pressesBegan:(NSSet<UIPress *> *)presses
            withEvent:(UIPressesEvent *)event {
+#if TARGET_OS_TV
+  // Menu has no UIKey — forward to the host VC for long-press exit / Escape.
+  for (UIPress *press in presses) {
+    if (press.type == UIPressTypeMenu) {
+      [super pressesBegan:presses withEvent:event];
+      return;
+    }
+  }
+#endif
   if (@available(iOS 13.4, *)) {
     WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
     uint32_t ts = [self _timestampMs];
@@ -3772,6 +3926,14 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 
 - (void)pressesEnded:(NSSet<UIPress *> *)presses
            withEvent:(UIPressesEvent *)event {
+#if TARGET_OS_TV
+  for (UIPress *press in presses) {
+    if (press.type == UIPressTypeMenu) {
+      [super pressesEnded:presses withEvent:event];
+      return;
+    }
+  }
+#endif
   if (@available(iOS 13.4, *)) {
     WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
     uint32_t ts = [self _timestampMs];
@@ -3819,6 +3981,14 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 
 - (void)pressesCancelled:(NSSet<UIPress *> *)presses
                withEvent:(UIPressesEvent *)event {
+#if TARGET_OS_TV
+  for (UIPress *press in presses) {
+    if (press.type == UIPressTypeMenu) {
+      [super pressesCancelled:presses withEvent:event];
+      return;
+    }
+  }
+#endif
   if (@available(iOS 13.4, *)) {
     WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
     uint32_t ts = [self _timestampMs];

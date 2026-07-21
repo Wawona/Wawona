@@ -1283,20 +1283,13 @@ impl WawonaCore {
                     info.height = height;
                 }
                 let window_id_ffi = WindowId { id: window_id as u64 };
+                // #111: do NOT update per-window wl_output here on txn settle.
+                // Settling mid-drag (whenever a nested compositor catches up)
+                // applied intermittent mode changes out of step with the latest
+                // host size and flashed niri/weston between before/after
+                // framebuffers. Output geometry is pushed in lockstep with
+                // xdg_toplevel.configure from inject_window_resize instead.
                 let txn = self.take_resize_transaction_for_size(window_id_ffi, width, height);
-                if let Some(ref txn) = txn {
-                    // Resize settled: bring this client's wl_output/xdg_output
-                    // geometry in line with the final window size so nested
-                    // compositors track their host window without per-drag
-                    // output churn.
-                    if matches!(txn.cause, WindowSizeCause::HostConfigure) {
-                        let scale = {
-                            let cur = self.output_size.read_recover();
-                            cur.2
-                        };
-                        self.set_output_geometry_for_window(window_id_ffi, width, height, scale);
-                    }
-                }
                 let (cause, size_kind, configure_serial, transaction_id) = if let Some(txn) = txn {
                     (txn.cause, txn.size_kind, txn.configure_serial, txn.id)
                 } else {
@@ -1869,20 +1862,197 @@ impl WawonaCore {
             }
             CompositorEvent::LayerSurfaceCommitted { client_id, surface_id, buffer_id } => {
                 let internal_client_id = format!("{:?}", client_id);
-                // Layer surface commit - TODO: Implement full layer surface rendering
-                // For now, just flush frame callbacks so the client can continue rendering
-                crate::wlog_hot!(crate::util::logging::FFI, "LayerSurfaceCommitted client={}, surface={}, buffer_id={:?}", 
-                    internal_client_id, surface_id, buffer_id);
-                
-                let mut state = self.state.write_recover();
-                
-                // Release buffer immediately for now since we don't render layer surfaces yet
-                // This prevents buffer exhaustion for wlroots clients
-                if let Some(bid) = buffer_id {
-                    state.release_buffer(client_id, bid as u32);
+                crate::wlog_hot!(
+                    crate::util::logging::FFI,
+                    "LayerSurfaceCommitted client={}, surface={}, buffer_id={:?}",
+                    internal_client_id,
+                    surface_id,
+                    buffer_id
+                );
+
+                // Queue layer buffers for presentation (DesktopHost / Android
+                // scene quads). Synthetic window id keeps pending_buffers unique
+                // without colliding with xdg toplevel ids.
+                const LAYER_WINDOW_FLAG: u64 = 1u64 << 63;
+                let Some(bid) = buffer_id else {
+                    let mut state = self.state.write_recover();
+                    state.flush_frame_callbacks(
+                        surface_id,
+                        Some(crate::core::state::CompositorState::get_timestamp_ms()),
+                    );
+                    return;
+                };
+                let buffer_id_u32 = bid as u32;
+
+                enum LayerRaw {
+                    Shm {
+                        pixels: Vec<u8>,
+                        width: u32,
+                        height: u32,
+                        stride: u32,
+                        format: u32,
+                    },
+                    Iosurface {
+                        id: u32,
+                        width: u32,
+                        height: u32,
+                        format: u32,
+                    },
+                    None,
                 }
-                
-                state.flush_frame_callbacks(surface_id, Some(crate::core::state::CompositorState::get_timestamp_ms()));
+
+                let raw = {
+                    let mut state = self.state.write_recover();
+                    let auth = state
+                        .buffers
+                        .get(&(client_id.clone(), buffer_id_u32))
+                        .cloned()
+                        .or_else(|| {
+                            state
+                                .buffers
+                                .iter()
+                                .find(|(_, b)| b.read_recover().id == buffer_id_u32)
+                                .map(|(_, b)| b.clone())
+                        });
+                    match auth {
+                        Some(auth_buffer) => {
+                            let buffer = auth_buffer.read_recover();
+                            match &buffer.buffer_type {
+                                crate::core::surface::BufferType::Shm(shm) => {
+                                    if let Some(pool) =
+                                        state.shm_pools.get_mut(&(client_id.clone(), shm.pool_id))
+                                    {
+                                        if let Some(ptr) = pool.map() {
+                                            let offset = shm.offset as usize;
+                                            let size = (shm.height * shm.stride) as usize;
+                                            if offset + size <= pool.size {
+                                                let raw_pixels = unsafe {
+                                                    std::slice::from_raw_parts(ptr.add(offset), size)
+                                                }
+                                                .to_vec();
+                                                LayerRaw::Shm {
+                                                    pixels: raw_pixels,
+                                                    width: shm.width as u32,
+                                                    height: shm.height as u32,
+                                                    stride: shm.stride as u32,
+                                                    format: shm.format,
+                                                }
+                                            } else {
+                                                LayerRaw::None
+                                            }
+                                        } else {
+                                            LayerRaw::None
+                                        }
+                                    } else {
+                                        LayerRaw::None
+                                    }
+                                }
+                                crate::core::surface::BufferType::Native(native) => {
+                                    LayerRaw::Iosurface {
+                                        id: native.id as u32,
+                                        width: native.width as u32,
+                                        height: native.height as u32,
+                                        format: native.format,
+                                    }
+                                }
+                                _ => LayerRaw::None,
+                            }
+                        }
+                        None => LayerRaw::None,
+                    }
+                };
+
+                let buffer_data = match raw {
+                    LayerRaw::Shm {
+                        mut pixels,
+                        width,
+                        height,
+                        stride,
+                        format,
+                    } => {
+                        let (fmt, needs_alpha) = match format {
+                            0 => (types::BufferFormat::Argb8888, false),
+                            1 => (types::BufferFormat::Xrgb8888, true),
+                            _ => (types::BufferFormat::Argb8888, false),
+                        };
+                        if needs_alpha {
+                            for chunk in pixels.chunks_exact_mut(4) {
+                                chunk[3] = 0xFF;
+                            }
+                        }
+                        Some(types::BufferData::Shm {
+                            pixels,
+                            width,
+                            height,
+                            format: fmt,
+                            stride,
+                        })
+                    }
+                    LayerRaw::Iosurface {
+                        id,
+                        width,
+                        height,
+                        format,
+                    } => Some(types::BufferData::Iosurface {
+                        id,
+                        width,
+                        height,
+                        format,
+                    }),
+                    LayerRaw::None => None,
+                };
+
+                if let Some(data) = buffer_data {
+                    let layer_win = types::WindowId {
+                        id: LAYER_WINDOW_FLAG | (surface_id as u64),
+                    };
+                    let mut pending = self.pending_buffers.write_recover();
+                    let new_buffer = types::WindowBuffer {
+                        window_id: layer_win,
+                        surface_id: types::SurfaceId { id: surface_id },
+                        buffer: types::Buffer {
+                            id: types::BufferId { id: bid },
+                            data: data.clone(),
+                        },
+                    };
+                    if let Some(old_buffer) = pending.insert(layer_win, new_buffer) {
+                        if old_buffer.buffer.id.id != bid {
+                            let mut state = self.state.write_recover();
+                            state.release_buffer(client_id.clone(), old_buffer.buffer.id.id as u32);
+                        }
+                    }
+                    self.pending_redraws.write_recover().push(layer_win);
+                    let surf_state = types::SurfaceState {
+                        id: types::SurfaceId { id: surface_id },
+                        buffer_id: Some(types::BufferId { id: bid }),
+                        buffer_x: 0,
+                        buffer_y: 0,
+                        buffer_width: data.width(),
+                        buffer_height: data.height(),
+                        buffer_scale: 1.0,
+                        buffer_transform: types::OutputTransform::Normal,
+                        damage: Vec::new(),
+                        opaque_region: Vec::new(),
+                        input_region: Vec::new(),
+                        role: types::SurfaceRole::None,
+                    };
+                    self.ffi_surfaces.write_recover().insert(surface_id, surf_state);
+                    crate::wlog_hot!(
+                        crate::util::logging::FFI,
+                        "LayerSurfaceCommitted queued surf={} buf={} {}x{}",
+                        surface_id,
+                        bid,
+                        data.width(),
+                        data.height()
+                    );
+                } else {
+                    let mut state = self.state.write_recover();
+                    state.release_buffer(client_id.clone(), buffer_id_u32);
+                    state.flush_frame_callbacks(
+                        surface_id,
+                        Some(crate::core::state::CompositorState::get_timestamp_ms()),
+                    );
+                }
             }
             CompositorEvent::CursorCommitted { client_id, surface_id, buffer_id, hotspot_x, hotspot_y } => {
                 let internal_client_id = format!("{:?}", client_id);
@@ -2564,16 +2734,6 @@ impl WawonaCore {
 
         let wid = window_id.id as u32;
 
-        // Update core window dimensions.
-        {
-            let state = self.state.write_recover();
-            if let Some(window) = state.get_window(wid) {
-                let mut window = window.write_recover();
-                window.width = width as i32;
-                window.height = height as i32;
-            }
-        }
-
         // Find the specific toplevel associated with this window.
         let target_toplevel: Option<(wayland_server::backend::ClientId, u32)> = {
             let state = self.state.read_recover();
@@ -2609,12 +2769,17 @@ impl WawonaCore {
         }
 
         if let Some(tid) = target_toplevel {
-            // Per-window wl_output/xdg_output geometry is intentionally NOT
-            // updated here: this path runs on every live-drag tick and
-            // broadcasting output mode churn mid-drag reconfigures nested
-            // compositors continuously. The per-client output override is sent
-            // once the resize transaction settles (client committed a matching
-            // buffer) in the WindowSizeChanged handler instead.
+            // #111: push per-window wl_output/xdg_output in lockstep with
+            // xdg_toplevel.configure. Nested compositors (niri) size their
+            // framebuffer from output mode; updating only on txn-settle made
+            // mode lag/lead the host and flash before/after sizes mid-drag.
+            // set_output_geometry_for_window is per-client and deduped.
+            let scale = {
+                let cur = self.output_size.read_recover();
+                cur.2
+            };
+            self.set_output_geometry_for_window(window_id, width, height, scale);
+
             crate::wlog!(crate::util::logging::FFI,
                 "Window resize: window={} {}x{}, reconfiguring toplevel {:?}",
                 wid, width, height, tid.1);
@@ -2629,9 +2794,21 @@ impl WawonaCore {
                     Size { width, height },
                     GeometrySizeKind::Content,
                 );
+                if let Some(window) = state.get_window(wid) {
+                    let mut window = window.write_recover();
+                    window.width = width as i32;
+                    window.height = height as i32;
+                    let decision = window
+                        .size_authority
+                        .clone()
+                        .on_host_resize_request(width, height, txn.id)
+                        .authority
+                        .on_configure_sent(serial);
+                    window.size_authority = decision;
+                }
                 crate::wlog!(
                     crate::util::logging::FFI,
-                    "Resize transaction started: id={} window={} serial={} requested={}x{}",
+                    "Resize transaction started: id={} window={} serial={} requested={}x{} size_auth=Host",
                     txn.id,
                     window_id.id,
                     txn.configure_serial,
@@ -2639,6 +2816,18 @@ impl WawonaCore {
                     txn.requested_size.height
                 );
             } else {
+                // Configure not sent yet — still mark host authoritative so
+                // lagging commits cannot yank size while we wait.
+                if let Some(window) = state.get_window(wid) {
+                    let mut window = window.write_recover();
+                    window.width = width as i32;
+                    window.height = height as i32;
+                    let decision = window
+                        .size_authority
+                        .clone()
+                        .on_host_resize_request(width, height, 0);
+                    window.size_authority = decision.authority;
+                }
                 crate::wtrace!(
                     crate::util::logging::FFI,
                     "Window resize: configure deferred until client acks pending xdg_surface serial (window={} {}x{})",
@@ -2651,8 +2840,19 @@ impl WawonaCore {
             crate::wlog!(crate::util::logging::FFI,
                 "Window resize: window={} {}x{}, fullscreen_shell - updating global output mode",
                 wid, width, height);
-            
-            // Get current scale to preserve it
+            {
+                let state = self.state.write_recover();
+                if let Some(window) = state.get_window(wid) {
+                    let mut window = window.write_recover();
+                    window.width = width as i32;
+                    window.height = height as i32;
+                    window.size_authority = window
+                        .size_authority
+                        .clone()
+                        .on_host_resize_request(width, height, 0)
+                        .authority;
+                }
+            }
             let scale = {
                 let cur = self.output_size.read_recover();
                 cur.2
@@ -2662,6 +2862,17 @@ impl WawonaCore {
             crate::wlog!(crate::util::logging::FFI,
                 "Window resize: window={} {}x{}, no toplevel/fullscreen_shell found to reconfigure",
                 wid, width, height);
+            let state = self.state.write_recover();
+            if let Some(window) = state.get_window(wid) {
+                let mut window = window.write_recover();
+                window.width = width as i32;
+                window.height = height as i32;
+                window.size_authority = window
+                    .size_authority
+                    .clone()
+                    .on_host_resize_request(width, height, 0)
+                    .authority;
+            }
         }
     }
 
@@ -4483,6 +4694,21 @@ impl WawonaCore {
 // Methods NOT exported via UniFFI (C API only — tuples / non-Record types)
 // ============================================================================
 impl WawonaCore {
+    /// True when any `zwp_text_input_v3` instance is currently `Enable`d.
+    /// Host platforms poll this to show/hide the soft keyboard automatically.
+    pub fn text_input_is_enabled(&self) -> bool {
+        if !self.is_running() {
+            return false;
+        }
+        let state = self.state.read_recover();
+        state
+            .ext
+            .text_input
+            .instances
+            .values()
+            .any(|instance| instance.enabled)
+    }
+
     /// Read the surrounding text and cursor position reported by the focused
     /// Wayland client via `set_surrounding_text`.  Returns `(text, cursor, anchor)`.
     /// The platform can use this to seed its native IME context for autocorrect.

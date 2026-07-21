@@ -21,30 +21,37 @@ impl GlobalDispatch<zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManager
         data_init: &mut wayland_server::DataInit<'_, Self>,
     ) {
         let manager: zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1 = data_init.init(resource, ());
-        
+
         // Advertise all existing windows
         for (&window_id, window_lock) in state.windows.iter() {
             let window = window_lock.read().unwrap();
-            
+
             let handle_resource = client.create_resource::<zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1, u32, CompositorState>(
                 handle,
                 manager.version(),
                 window_id,
             ).expect("Failed to create zwlr_foreign_toplevel_handle_v1");
-            
+
             manager.toplevel(&handle_resource);
-            
-            // Send initial state
             send_toplevel_info(&handle_resource, &window);
+            state
+                .wlr
+                .foreign_toplevel_handles
+                .entry(window_id)
+                .or_default()
+                .push(handle_resource);
         }
+
+        // Initial list complete for this bind (handles already sent .done).
+        state.wlr.foreign_toplevel_managers.push(manager);
     }
 }
 
 impl Dispatch<zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1, ()> for CompositorState {
     fn request(
-        _state: &mut Self,
+        state: &mut Self,
         _client: &wayland_server::Client,
-        _resource: &zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1,
+        resource: &zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1,
         request: zwlr_foreign_toplevel_manager_v1::Request,
         _data: &(),
         _dhandle: &DisplayHandle,
@@ -52,7 +59,11 @@ impl Dispatch<zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1, ()
     ) {
         match request {
             zwlr_foreign_toplevel_manager_v1::Request::Stop => {
-                // Client stops receiving events
+                let id = resource.id();
+                state
+                    .wlr
+                    .foreign_toplevel_managers
+                    .retain(|m| m.id() != id);
             }
             _ => {}
         }
@@ -208,6 +219,81 @@ impl Dispatch<zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1, u32>
                 }
             }
             _ => {}
+        }
+    }
+}
+
+/// Advertise a newly mapped toplevel to every bound foreign-toplevel manager.
+pub fn notify_toplevel_created(state: &mut CompositorState, window_id: u32) {
+    let Some(dhandle) = state.smithay_runtime.display_handle.clone() else {
+        return;
+    };
+    let Some(window_lock) = state.windows.get(&window_id).cloned() else {
+        return;
+    };
+    let (title, app_id, maximized, minimized, activated, fullscreen) = match window_lock.read() {
+        Ok(w) => (
+            w.title.clone(),
+            w.app_id.clone(),
+            w.maximized,
+            w.minimized,
+            w.activated,
+            w.fullscreen,
+        ),
+        Err(_) => return,
+    };
+
+    // Snapshot managers first so we can mutate handle maps while iterating.
+    let managers: Vec<_> = state.wlr.foreign_toplevel_managers.clone();
+    for manager in managers {
+        let Some(client) = manager.client() else {
+            continue;
+        };
+        let Ok(handle_resource) = client.create_resource::<
+            zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1,
+            u32,
+            CompositorState,
+        >(&dhandle, manager.version(), window_id) else {
+            continue;
+        };
+        manager.toplevel(&handle_resource);
+        handle_resource.title(title.clone());
+        handle_resource.app_id(app_id.clone());
+        let mut states = Vec::new();
+        if maximized {
+            states.push(zwlr_foreign_toplevel_handle_v1::State::Maximized as u32);
+        }
+        if minimized {
+            states.push(zwlr_foreign_toplevel_handle_v1::State::Minimized as u32);
+        }
+        if activated {
+            states.push(zwlr_foreign_toplevel_handle_v1::State::Activated as u32);
+        }
+        if fullscreen {
+            states.push(zwlr_foreign_toplevel_handle_v1::State::Fullscreen as u32);
+        }
+        let states_bytes: &[u8] = unsafe {
+            std::slice::from_raw_parts(
+                states.as_ptr() as *const u8,
+                states.len() * std::mem::size_of::<u32>(),
+            )
+        };
+        handle_resource.state(states_bytes.to_vec());
+        handle_resource.done();
+        state
+            .wlr
+            .foreign_toplevel_handles
+            .entry(window_id)
+            .or_default()
+            .push(handle_resource);
+    }
+}
+
+/// Notify managers that a toplevel was destroyed.
+pub fn notify_toplevel_destroyed(state: &mut CompositorState, window_id: u32) {
+    if let Some(handles) = state.wlr.foreign_toplevel_handles.remove(&window_id) {
+        for handle in handles {
+            handle.closed();
         }
     }
 }

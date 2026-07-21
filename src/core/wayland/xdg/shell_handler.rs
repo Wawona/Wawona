@@ -212,12 +212,15 @@ impl XdgShellHandler for CompositorState {
 
         let window_id = self.next_window_id();
         let mut window = Window::new(window_id, surface_id);
-        let (initial_width, initial_height) = {
-            let output = self.primary_output();
-            (output.width, output.height)
-        };
-        window.width = initial_width as i32;
-        window.height = initial_height as i32;
+        // OWL / xdg-shell: initial configure is 0x0 ("client decides"). Keep
+        // core + toplevel expected size at 0 so host sync does not treat the
+        // wl_output size as a configure the client must match (weston-flower /
+        // weston-smoke stay 200×200; seeding output size left a giant host
+        // window around a small buffer).
+        let (initial_width, initial_height) = (0u32, 0u32);
+        window.width = 0;
+        window.height = 0;
+        window.size_authority = crate::core::window::SizeAuthority::AwaitingFirstCommit;
 
         let mut toplevel_data =
             XdgToplevelData::new(window_id, surface_id, xdg_surface_id);
@@ -310,6 +313,9 @@ impl XdgShellHandler for CompositorState {
             fullscreen_shell: false,
             host_locked,
         });
+        crate::core::wayland::wlr::foreign_toplevel_management::notify_toplevel_created(
+            self, window_id,
+        );
         crate::wlog!(
             crate::util::logging::COMPOSITOR,
             "new_toplevel: pushed WindowCreated pending (window_id={})",
