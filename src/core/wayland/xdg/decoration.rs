@@ -48,13 +48,14 @@ pub fn is_weston_family_app_id(app_id: &str) -> bool {
     // as bare "weston"/"weston-*" — e.g. weston-terminal registers as
     // "org.freedesktop.weston.wayland-terminal" (see clients/terminal.c
     // window_set_appid). Matching only the exact/prefix forms above missed
-    // every real weston-family client, silently disabling both CSD-crop
-    // fallback policy selection and (via should_host_lock_app_id) the
-    // mobile edge-to-edge host-lock for weston-terminal: the window sat at
-    // an undersized default geometry instead of filling the usable screen
-    // area, which read as "wrong offset / edges not matching the screen".
-    // `.contains("weston")` matches both forms; mirrors the equivalent
-    // (already-correct) check in ffi/api.rs.
+    // every real weston-family client, silently disabling CSD-crop fallback
+    // policy selection. `.contains("weston")` matches both forms; mirrors
+    // the equivalent check in ffi/api.rs.
+    //
+    // Do NOT use this helper for host-lock/kiosk fill: auto-locking all
+    // weston-family app_ids stretched fixed-size demos (flower/smoke
+    // 200×200) into the output. Host-lock is fullscreen_shell / explicit
+    // only — see `state/host_lock.rs`.
     app_id == "weston" || app_id.starts_with("weston-") || app_id.contains("weston")
 }
 
@@ -109,13 +110,19 @@ pub fn prefers_macos_surface_window_drag(app_id: &str) -> bool {
         .any(|id| app_id_matches_bundled_client(app_id, id))
 }
 
-/// Tolerance (in px per axis) for treating a committed buffer size as a match
-/// for the last configured toplevel size. Covers CSD chrome and geometry
-/// insets without an app-id allowlist.
+/// Loose tolerance for “is this commit related to the last configure?” checks
+/// (CSD chrome / geometry insets). **Not** used to drive host window sizing —
+/// see [`committed_size_authorizes_host_sync`] (#111).
 pub const COMMIT_SIZE_TOLERANCE: i32 = 64;
 
+/// Strict tolerance when adopting a commit as the host window’s size.
+/// Near-miss accepts (tens of px) during live host resize let nested
+/// compositors (niri/weston) yank `window.width` backward and flash the
+/// framebuffer between before/after sizes (#111).
+pub const HOST_SYNC_SIZE_TOLERANCE: i32 = 1;
+
 /// Whether a client-committed buffer size satisfies the compositor's last
-/// configure expectation.
+/// configure expectation (loose).
 ///
 /// First-commit trust (see `shell_handler::new_toplevel`, which sends a 0x0
 /// initial configure) means a commit with no known expectation is always the
@@ -136,6 +143,29 @@ pub fn committed_size_matches_expected(
                 && (committed_h - expected_h).abs() <= COMMIT_SIZE_TOLERANCE
         }
         // No (or zero) configured size: the client is choosing freely.
+        _ => true,
+    }
+}
+
+/// Whether a commit may update the core/host window size.
+///
+/// When the compositor has advertised a positive toplevel size (host live
+/// resize, etc.), only near-exact commits may move `window.width/height`.
+/// Loose [`COMMIT_SIZE_TOLERANCE`] matching is intentionally **not** used
+/// here — it caused nested niri/weston framebuffer ping-pong (#111).
+pub fn committed_size_authorizes_host_sync(
+    committed_w: i32,
+    committed_h: i32,
+    expected_toplevel: Option<(i32, i32)>,
+) -> bool {
+    if committed_w <= 0 || committed_h <= 0 {
+        return false;
+    }
+    match expected_toplevel {
+        Some((expected_w, expected_h)) if expected_w > 0 && expected_h > 0 => {
+            (committed_w - expected_w).abs() <= HOST_SYNC_SIZE_TOLERANCE
+                && (committed_h - expected_h).abs() <= HOST_SYNC_SIZE_TOLERANCE
+        }
         _ => true,
     }
 }
@@ -455,6 +485,15 @@ mod tests {
         assert!(!committed_size_matches_expected(200, 200, Some((1680, 1050))));
         // Degenerate commits never match.
         assert!(!committed_size_matches_expected(0, 200, None));
+    }
+
+    #[test]
+    fn host_sync_rejects_near_miss_during_configured_resize() {
+        // #111: loose CSD tolerance must not authorize host size rollback.
+        assert!(committed_size_matches_expected(870, 600, Some((900, 600))));
+        assert!(!committed_size_authorizes_host_sync(870, 600, Some((900, 600))));
+        assert!(committed_size_authorizes_host_sync(900, 600, Some((900, 600))));
+        assert!(committed_size_authorizes_host_sync(200, 200, None));
     }
 
     #[test]

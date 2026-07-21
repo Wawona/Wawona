@@ -1817,10 +1817,16 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   if (backingScale < 1.0) {
     backingScale = MAX(1.0, node->scale);
   }
-  // Always fill the node. Top-left natural-size presentation during lag was
-  // the visible before/after flash for nested compositors (#111).
-  layer.contentsGravity = kCAGravityResize;
-  layer.contentsScale = bufferMatchesNode ? backingScale : MAX(1.0, node->scale);
+  // Stretch only while the host is driving size mid live-resize (#111) and
+  // the buffer has not caught up. Otherwise present 1:1 (xdg negotiated
+  // size) — never scale a fixed client like weston-flower into a larger node.
+  if (bufferMatchesNode) {
+    layer.contentsGravity = kCAGravityResize;
+    layer.contentsScale = backingScale;
+  } else {
+    layer.contentsGravity = kCAGravityTopLeft;
+    layer.contentsScale = MAX(1.0, node->scale);
+  }
 #else
   layer.contentsScale = MAX(1.0, node->scale);
 #endif
@@ -3168,7 +3174,10 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   WWNView *contentView = [[WWNView alloc] initWithFrame:contentViewRect];
   contentView.wantsLayer = YES;
   contentView.layer.backgroundColor = [[NSColor clearColor] CGColor];
-  contentView.layer.contentsGravity = kCAGravityResize;
+  // Never upscale a smaller Wayland buffer into the content view. Host
+  // content size must track the committed buffer (xdg / OWL); Resize would
+  // silently stretch flower/smoke 200×200 into a wrong-sized window.
+  contentView.layer.contentsGravity = kCAGravityTopLeft;
   contentView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
 
   [window setContentView:contentView];

@@ -1,12 +1,28 @@
-//! Host-locked (kiosk) window policy — weston-family clients fill the compositor
-//! view edge-to-edge; Wawona is not a floating window manager for these surfaces.
+//! Host-locked (kiosk) window policy.
+//!
+//! A host-locked surface fills the primary output and ignores client-preferred
+//! floating sizes. That is appropriate for `fullscreen_shell` / explicit
+//! embedded kiosk hosts — **not** for ordinary xdg_toplevel clients.
+//!
+//! ## Wayland rule
+//!
+//! Sizing is negotiated via `xdg_toplevel.configure` (0×0 = client decides).
+//! Do **not** host-lock by `app_id` for weston-family demos
+//! (`weston-flower`, `weston-smoke`, …): that forced `configure(output)` and
+//! stretched a fixed 200×200 buffer into a giant host window, which violates
+//! xdg-shell and OWL (host frame == committed buffer).
 
 use crate::core::compositor::CompositorEvent;
-use crate::core::wayland::xdg::decoration::is_weston_family_app_id;
 
 impl super::CompositorState {
-    pub fn should_host_lock_app_id(app_id: &str) -> bool {
-        !app_id.is_empty() && is_weston_family_app_id(app_id)
+    /// Auto host-lock from app_id is disabled.
+    ///
+    /// Historical code locked every `*weston*` app_id to the output. That
+    /// broke fixed-size clients (flower/smoke) by stretching their buffers.
+    /// Keep host-lock for `fullscreen_shell` and explicit
+    /// [`Self::lock_window_to_primary_output`] callers only.
+    pub fn should_host_lock_app_id(_app_id: &str) -> bool {
+        false
     }
 
     /// Host-lock check from already-known window fields (safe while holding `window.write()`).
@@ -87,8 +103,26 @@ impl super::CompositorState {
                         height,
                     });
             }
-        } else if self.is_host_locked_window(window_id) {
+        } else if self.is_host_locked_window(window_id)
+            && self.ext.fullscreen_shell.presented_window_id != Some(window_id)
+        {
+            // Clear stale app_id-based locks (e.g. after policy change / rematch).
             self.unlock_host_window(window_id);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::CompositorState;
+
+    #[test]
+    fn weston_flower_is_not_auto_host_locked() {
+        assert!(!CompositorState::should_host_lock_app_id(
+            "org.freedesktop.weston.wayland-flower"
+        ));
+        assert!(!CompositorState::should_host_lock_app_id("weston-flower"));
+        assert!(!CompositorState::should_host_lock_app_id("weston-smoke"));
+        assert!(!CompositorState::should_host_lock_app_id("weston"));
     }
 }
