@@ -33,8 +33,9 @@ mod applet {
         let restart = gtk::Button::with_label("Restart Compositor");
         let open = gtk::Button::with_label("Open Wawona Linux");
         let install = gtk::Button::with_label("Install Services");
+        let quit = gtk::Button::with_label("Quit Wawona");
 
-        for btn in [&start, &stop, &restart, &open, &install] {
+        for btn in [&start, &stop, &restart, &open, &install, &quit] {
             root.append(btn);
         }
 
@@ -92,11 +93,25 @@ mod applet {
                 .spawn();
         });
 
+        let app_weak = app.downgrade();
+        let status_clone = status.clone();
+        quit.connect_clicked(move |_| {
+            // Tear down systemd units + autostart before exit so Restart=/login
+            // cannot reopen Wawona (macOS Quit Wawona parity).
+            match service::stop_compositor_and_tray_services() {
+                Ok(_) => status_clone.set_label("Stopped services; quitting"),
+                Err(e) => status_clone.set_label(&format!("Stop failed: {e}")),
+            }
+            if let Some(app) = app_weak.upgrade() {
+                app.quit();
+            }
+        });
+
         let window = adw::ApplicationWindow::builder()
             .application(app)
             .title("Wawona Applet")
             .default_width(320)
-            .default_height(260)
+            .default_height(300)
             .content(&root)
             .build();
         window.present();

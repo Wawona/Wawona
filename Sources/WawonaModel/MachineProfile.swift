@@ -76,6 +76,8 @@ public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
     public var waypipeEnabled: Bool?
     public var forceSSD: Bool?
     public var renderMacOSPointer: Bool?
+    /// "virtual" or "host" — nested compositor cursor grab when virtual cursor is on.
+    public var nestedCompositorCursor: String?
     public var autoScale: Bool?
     public var waylandDisplay: String?
     public var colorOperations: Bool?
@@ -94,6 +96,7 @@ public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
         waypipeEnabled: Bool? = nil,
         forceSSD: Bool? = nil,
         renderMacOSPointer: Bool? = nil,
+        nestedCompositorCursor: String? = nil,
         autoScale: Bool? = nil,
         waylandDisplay: String? = nil,
         colorOperations: Bool? = nil,
@@ -111,6 +114,7 @@ public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
         self.waypipeEnabled = waypipeEnabled
         self.forceSSD = forceSSD
         self.renderMacOSPointer = renderMacOSPointer
+        self.nestedCompositorCursor = nestedCompositorCursor
         self.autoScale = autoScale
         self.waylandDisplay = waylandDisplay
         self.colorOperations = colorOperations

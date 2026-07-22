@@ -14,6 +14,9 @@ extern NSString *const kWWNPrefsNestedCompositorsSupport;
 extern NSString *const kWWNPrefsNestedWestonBackend;
 extern NSString *const kWWNPrefsUseMetal4ForNested; // Deprecated - removed
 extern NSString *const kWWNPrefsRenderMacOSPointer;
+/// Nested compositor cursor source when virtual cursor is enabled:
+/// @"virtual" (virtual pointer) or @"host" (real macOS / host cursor).
+extern NSString *const kWWNPrefsNestedCompositorCursor;
 extern NSString *const kWWNPrefsMultipleClients;
 extern NSString *const kWWNPrefsSwapCmdAsCtrl;  // Legacy - use SwapCmdWithAlt
 extern NSString *const kWWNPrefsSwapCmdWithAlt; // New unified key
@@ -132,6 +135,9 @@ extern NSString *const kWWNPrefsAnowaWEnabled;
 // Input
 - (BOOL)renderMacOSPointer;
 - (void)setRenderMacOSPointer:(BOOL)enabled;
+/// @"virtual" or @"host". Only meaningful when renderMacOSPointer is YES.
+- (NSString *)nestedCompositorCursor;
+- (void)setNestedCompositorCursor:(NSString *)mode;
 - (BOOL)resizeDisplayForVirtualKeyboard;
 - (void)setResizeDisplayForVirtualKeyboard:(BOOL)enabled;
 - (BOOL)swapCmdAsCtrl; // Legacy - use swapCmdWithAlt

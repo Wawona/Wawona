@@ -30,8 +30,10 @@ struct QuickConnectView: View {
                     machineID: profile.id
                 )
             } label: {
-                Label("Overrides", systemImage: "slider.horizontal.3")
+                Label("Machine Settings", systemImage: "slider.horizontal.3")
             }
+            .accessibilityIdentifier("wwn.watch.machineSettings")
+            .accessibilityLabel("Machine Settings")
             if let activeSession, activeSession.status == .connected {
                 Button(role: .destructive) {
                     if requiresExitConfirmation {

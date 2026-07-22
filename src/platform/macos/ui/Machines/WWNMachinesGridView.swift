@@ -12,27 +12,26 @@ struct WWNMachinesGridView: View {
   @State private var isCreating = false
   @State private var searchQuery = ""
 
-  #if os(macOS)
-  @State private var columnVisibility: NavigationSplitViewVisibility = .all
-  #endif
-
   var body: some View {
     Group {
-      #if os(iOS)
+      #if os(iOS) || os(visionOS)
       iosRoot
+      #elseif os(tvOS)
+      tvosRoot
       #elseif os(macOS)
-      splitView
+      macRoot
         .background(WWNMachineKeyboardInputGate())
       #else
-      splitView
+      macRoot
       #endif
     }
     .wwnA11y(WWNA11y.machinesRoot, label: detailNavigationTitle)
+    #if !os(tvOS)
     .sheet(isPresented: $isCreating) {
         WWNMachineEditorView(
           title: "Add Machine Profile",
           initial: nil,
-          defaultType: model.selectedFilter.defaultMachineType
+          defaultType: kWWNMachineTypeNative
         ) { profile in
           model.upsert(profile)
         }
@@ -50,27 +49,152 @@ struct WWNMachinesGridView: View {
         .presentationContentInteraction(.scrolls)
         #endif
       }
+    #endif
+    #if !os(macOS)
       .animation(.spring(duration: 0.42, bounce: 0.26), value: visibleProfiles.count)
-  }
-
-  @ViewBuilder
-  private var splitView: some View {
-    #if os(macOS)
-    NavigationSplitView(columnVisibility: $columnVisibility) {
-      sidebar
-    } detail: {
-      detailContent
-    }
-    #else
-    NavigationSplitView {
-      sidebar
-    } detail: {
-      detailContent
-    }
     #endif
   }
 
-  #if os(iOS)
+  #if os(tvOS)
+  /// 10-foot Machines UI: card focusables + NavigationStack (no FAB / split / sheets).
+  private var tvosRoot: some View {
+    NavigationStack {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 28) {
+          Text("Machines")
+            .font(.title2.weight(.bold))
+            .foregroundStyle(.secondary)
+
+          if visibleProfiles.isEmpty {
+            ContentUnavailableView(
+              "No Machines",
+              systemImage: "tv",
+              description: Text("Add a Local or Remote machine profile, then Start it with the Siri Remote.")
+            )
+            .frame(maxWidth: .infinity, minHeight: 220)
+          } else {
+            LazyVStack(spacing: 22) {
+              ForEach(visibleProfiles, id: \.machineId) { profile in
+                let machineStatus = model.status(for: profile.machineId)
+                let running = machineStatus == .connected || machineStatus == .connecting
+                NavigationLink {
+                  WWNMachineTVDetailView(
+                    profile: profile,
+                    status: machineStatus,
+                    typeLabel: model.machineTypeLabel(for: profile),
+                    scopeLabel: model.machineScopeLabel(for: profile),
+                    subtitle: model.machineSubtitle(for: profile),
+                    summary: model.machineConfigurationSummary(for: profile),
+                    launchSupported: model.launchSupported(for: profile),
+                    isActive: profile.machineId == model.activeMachineId,
+                    isRunning: running,
+                    onEdit: { editingProfile = profile },
+                    onDelete: { model.delete(profile) },
+                    onConnect: {
+                      model.connect(profile) {
+                        onConnect?()
+                      }
+                    },
+                    onStop: { model.disconnect(profile) },
+                    onFocus: { model.focusRunningMachine(profile) }
+                  )
+                } label: {
+                  WWNMachineTVRow(
+                    profile: profile,
+                    status: machineStatus,
+                    typeLabel: model.machineTypeLabel(for: profile),
+                    scopeLabel: model.machineScopeLabel(for: profile),
+                    subtitle: model.machineSubtitle(for: profile),
+                    isActive: profile.machineId == model.activeMachineId,
+                    isRunning: running
+                  )
+                  .frame(maxWidth: .infinity, alignment: .leading)
+                  .padding(28)
+                }
+                .buttonStyle(.card)
+              }
+            }
+            .frame(maxWidth: 1100, alignment: .leading)
+          }
+
+          Text("\(model.profiles.count) profiles · \(model.connectedCount) connected · \(model.launchableCount) ready")
+            .font(.title3)
+            .foregroundStyle(.secondary)
+
+          HStack(spacing: 24) {
+            Button {
+              isCreating = true
+            } label: {
+              Label("Add Machine", systemImage: "plus")
+                .font(.title3.weight(.semibold))
+                .frame(minWidth: 260, minHeight: 52)
+            }
+            .buttonStyle(.borderedProminent)
+            .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
+
+            if let onOpenSettings {
+              Button(action: onOpenSettings) {
+                Label("Settings", systemImage: "gearshape")
+                  .font(.title3.weight(.semibold))
+                  .frame(minWidth: 220, minHeight: 52)
+              }
+              .buttonStyle(.bordered)
+              .wwnA11y(WWNA11y.machinesSettings, label: "Settings")
+            }
+          }
+        }
+        .padding(48)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+      }
+      .navigationTitle("Machines")
+      .fullScreenCover(isPresented: $isCreating) {
+        WWNMachineEditorView(
+          title: "Add Machine Profile",
+          initial: nil,
+          defaultType: kWWNMachineTypeNative
+        ) { profile in
+          model.upsert(profile)
+        }
+        .presentationBackground(Color(white: 0.07))
+      }
+      .fullScreenCover(item: $editingProfile) { profile in
+        WWNMachineEditorView(title: "Edit Machine Profile", initial: profile) { updated in
+          model.upsert(updated)
+        }
+        .presentationBackground(Color(white: 0.07))
+      }
+    }
+    .preferredColorScheme(.dark)
+  }
+  #endif
+
+  #if os(macOS)
+  private var macRoot: some View {
+    NavigationStack {
+      detailPane
+        .modifier(MacDetailTopInsetForTransparentTitlebar())
+        .navigationTitle(detailNavigationTitle)
+        .toolbarTitleDisplayMode(.inline)
+        .searchable(text: $searchQuery, placement: .toolbar, prompt: "Search machines")
+        .toolbar {
+          detailToolbarContent
+        }
+        .modifier(MacUnifiedToolbarMaterial())
+    }
+  }
+  #else
+  private var macRoot: some View {
+    NavigationStack {
+      detailPane
+        .navigationTitle(detailNavigationTitle)
+        .toolbar {
+          detailToolbarContent
+        }
+    }
+  }
+  #endif
+
+  #if os(iOS) || os(visionOS)
   private var iosRoot: some View {
     NavigationStack {
       detailPane
@@ -89,31 +213,8 @@ struct WWNMachinesGridView: View {
   }
   #endif
 
-  private var detailContent: some View {
-    #if os(macOS)
-    removeSidebarToggleIfAvailable(
-      from: detailPane
-      .modifier(MacDetailTopInsetForTransparentTitlebar())
-      .navigationTitle(detailNavigationTitle)
-      .toolbarTitleDisplayMode(.inline)
-      .searchable(text: $searchQuery, placement: .toolbar, prompt: "Search machines")
-      .toolbar {
-        detailToolbarContent
-      }
-      .modifier(MacUnifiedToolbarMaterial())
-    )
-    #else
-    detailPane
-      .navigationTitle(detailNavigationTitle)
-      .toolbar {
-        detailToolbarContent
-      }
-    #endif
-  }
-
   private var detailNavigationTitle: String {
     #if os(macOS)
-    // Short title prevents clipping when sidebar is expanded and toolbar is populated.
     return "Machines"
     #else
     return "Machine Configuration"
@@ -123,16 +224,6 @@ struct WWNMachinesGridView: View {
   @ToolbarContentBuilder
   private var detailToolbarContent: some ToolbarContent {
     #if os(macOS)
-    ToolbarItem(placement: .navigation) {
-      Button {
-        withAnimation(.easeInOut(duration: 0.2)) {
-          columnVisibility = (columnVisibility == .detailOnly) ? .all : .detailOnly
-        }
-      } label: {
-        Image(systemName: "sidebar.left")
-      }
-      .help("Toggle Sidebar")
-    }
     ToolbarItemGroup(placement: .primaryAction) {
       Button {
         isCreating = true
@@ -151,7 +242,6 @@ struct WWNMachinesGridView: View {
     }
     #else
     ToolbarItemGroup(placement: .topBarTrailing) {
-
       if let onOpenSettings {
         Button(action: onOpenSettings) {
           Image(systemName: "gearshape")
@@ -162,140 +252,76 @@ struct WWNMachinesGridView: View {
     #endif
   }
 
-  #if os(macOS)
-  #endif
-
-  // MARK: - Sidebar
-
-  private var sidebar: some View {
-    Group {
-      #if os(macOS)
-      List(selection: macSidebarSelection) {
-        Section("Machine Scope") {
-          ForEach(WWNMachineFilter.allCases) { filter in
-            Label(filter.rawValue, systemImage: filterIcon(filter))
-              .tag(filter)
-          }
-        }
-      }
-      .listStyle(.sidebar)
-      .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 280)
-      .toolbar(removing: .sidebarToggle)
-      #else
-      List(selection: compactSidebarSelection) {
-        Section("Machine Scope") {
-          ForEach(WWNMachineFilter.allCases) { filter in
-            Label(filter.rawValue, systemImage: filterIcon(filter))
-              .tag(filter)
-          }
-        }
-      }
-      #if os(tvOS)
-      .listStyle(.plain)
-      #else
-      .listStyle(.sidebar)
-      #endif
-      .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 280)
-      #endif
-    }
-  }
-
-  #if os(macOS)
-  @ViewBuilder
-  private func removeSidebarToggleIfAvailable<V: View>(from view: V) -> some View {
-    if #available(macOS 13.0, *) {
-      view.toolbar(removing: .sidebarToggle)
-    } else {
-      view
-    }
-  }
-
-  private var macSidebarSelection: Binding<WWNMachineFilter?> {
-    Binding(
-      get: { model.selectedFilter },
-      set: { selected in
-        guard let selected, selected != model.selectedFilter else { return }
-        // Defer mutation to next runloop; direct publish during List selection
-        // update can trigger "Publishing changes from within view updates".
-        DispatchQueue.main.async {
-          model.selectedFilter = selected
-        }
-      }
-    )
-  }
-  #endif
-
-  #if !os(macOS)
-  /// Selection-driven list rows (matches Settings-style sidebar highlight on iPad / compact split).
-  private var compactSidebarSelection: Binding<WWNMachineFilter?> {
-    Binding(
-      get: { model.selectedFilter },
-      set: { selected in
-        guard let selected, selected != model.selectedFilter else { return }
-        DispatchQueue.main.async {
-          model.selectedFilter = selected
-        }
-      }
-    )
-  }
-  #endif
-
   // MARK: - Detail
 
   private var detailPane: some View {
+    #if os(macOS)
+    // Avoid GeometryReader: it re-evaluates the entire grid on every window
+    // bounds change during titlebar drag and amplifies move lag.
+    ScrollView {
+      VStack(alignment: .leading, spacing: 16) {
+        summaryStrip
+        machinesGrid(columns: gridColumns(for: 1000))
+      }
+      .padding(16)
+      .frame(maxWidth: 1320, alignment: .leading)
+      .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+    #else
     GeometryReader { proxy in
       let detailWidth = max(proxy.size.width, 320)
       ScrollView {
         VStack(alignment: .leading, spacing: 16) {
-          #if os(iOS)
-          iosScopeFilterPicker
-          #else
           summaryStrip
-          #endif
-
-          if visibleProfiles.isEmpty {
-            ContentUnavailableView(
-              "No Matching Machines",
-              systemImage: "magnifyingglass",
-              description: Text("Adjust search/filter settings or add a new machine profile.")
-            )
-            .frame(maxWidth: .infinity)
-            .padding(.top, 30)
-          } else {
-            LazyVGrid(columns: gridColumns(for: detailWidth), spacing: 14) {
-              ForEach(visibleProfiles, id: \.machineId) { profile in
-                let machineStatus = model.status(for: profile.machineId)
-                WWNMachineCardView(
-                  profile: profile,
-                  status: machineStatus,
-                  thumbnailImage: model.thumbnailImage(for: profile),
-                  typeLabel: model.machineTypeLabel(for: profile),
-                  scopeLabel: model.machineScopeLabel(for: profile),
-                  subtitle: model.machineSubtitle(for: profile),
-                  summary: model.machineConfigurationSummary(for: profile),
-                  launchSupported: model.launchSupported(for: profile),
-                  isActive: profile.machineId == model.activeMachineId,
-                  isRunning: machineStatus == .connected || machineStatus == .connecting,
-                  onEdit: {
-                    editingProfile = profile
-                  },
-                  onDelete: { model.delete(profile) },
-                  onConnect: {
-                    model.connect(profile) {
-                      onConnect?()
-                    }
-                  },
-                  onStop: { model.disconnect(profile) },
-                  onFocus: { model.focusRunningMachine(profile) }
-                )
-                .transition(.scale(scale: 0.95).combined(with: .opacity))
-              }
-            }
-          }
+          machinesGrid(columns: gridColumns(for: detailWidth))
         }
         .padding(16)
         .frame(maxWidth: 1320, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .topLeading)
+      }
+    }
+    #endif
+  }
+
+  @ViewBuilder
+  private func machinesGrid(columns: [GridItem]) -> some View {
+    if visibleProfiles.isEmpty {
+      ContentUnavailableView(
+        "No Matching Machines",
+        systemImage: "magnifyingglass",
+        description: Text("Adjust search or add a new machine profile.")
+      )
+      .frame(maxWidth: .infinity)
+      .padding(.top, 30)
+    } else {
+      LazyVGrid(columns: columns, spacing: 14) {
+        ForEach(visibleProfiles, id: \.machineId) { profile in
+          let machineStatus = model.status(for: profile.machineId)
+          WWNMachineCardView(
+            profile: profile,
+            status: machineStatus,
+            thumbnailImage: model.thumbnailImage(for: profile),
+            typeLabel: model.machineTypeLabel(for: profile),
+            scopeLabel: model.machineScopeLabel(for: profile),
+            subtitle: model.machineSubtitle(for: profile),
+            summary: model.machineConfigurationSummary(for: profile),
+            launchSupported: model.launchSupported(for: profile),
+            isActive: profile.machineId == model.activeMachineId,
+            isRunning: machineStatus == .connected || machineStatus == .connecting,
+            onEdit: { editingProfile = profile },
+            onDelete: { model.delete(profile) },
+            onConnect: {
+              model.connect(profile) {
+                onConnect?()
+              }
+            },
+            onStop: { model.disconnect(profile) },
+            onFocus: { model.focusRunningMachine(profile) }
+          )
+          #if !os(macOS)
+          .transition(.scale(scale: 0.95).combined(with: .opacity))
+          #endif
+        }
       }
     }
   }
@@ -321,7 +347,7 @@ struct WWNMachinesGridView: View {
   // MARK: - Filtering
 
   private var visibleProfiles: [WWNMachineProfile] {
-    let base = model.filteredProfiles
+    let base = model.profiles
     let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     if query.isEmpty { return base }
 
@@ -423,34 +449,10 @@ struct WWNMachinesGridView: View {
     .background(Color.secondary.opacity(0.14), in: Capsule())
   }
 
-  private func filterIcon(_ filter: WWNMachineFilter) -> String {
-    switch filter {
-    case .all: return "circle.grid.2x2"
-    case .local: return "desktopcomputer"
-    case .remote: return "network"
-    }
-  }
-
-  #if os(iOS)
-  private var iosScopeFilterPicker: some View {
-    Picker("Machine Scope", selection: iosScopeFilterSelection) {
-      ForEach(WWNMachineFilter.allCases) { filter in
-        Text(filter.rawValue).tag(filter)
-      }
-    }
-    .pickerStyle(.segmented)
-    .wwnA11y(WWNA11y.machinesFilter, label: "Machine Scope")
-  }
-
-  private var iosScopeFilterSelection: Binding<WWNMachineFilter> {
-    Binding(
-      get: { model.selectedFilter },
-      set: { model.selectedFilter = $0 }
-    )
-  }
-
+  #if os(iOS) || os(visionOS)
   @ViewBuilder
   private var iosAddMachineButton: some View {
+    #if os(iOS)
     if #available(iOS 26, *) {
       Button {
         isCreating = true
@@ -463,17 +465,24 @@ struct WWNMachinesGridView: View {
       .buttonBorderShape(.circle)
       .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
     } else {
-      Button {
-        isCreating = true
-      } label: {
-        Image(systemName: "plus")
-          .font(.title2.weight(.semibold))
-          .frame(width: 56, height: 56)
-      }
-      .buttonStyle(.borderedProminent)
-      .buttonBorderShape(.circle)
-      .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
+      addMachineCircleButton
     }
+    #else
+    addMachineCircleButton
+    #endif
+  }
+
+  private var addMachineCircleButton: some View {
+    Button {
+      isCreating = true
+    } label: {
+      Image(systemName: "plus")
+        .font(.title2.weight(.semibold))
+        .frame(width: 56, height: 56)
+    }
+    .buttonStyle(.borderedProminent)
+    .buttonBorderShape(.circle)
+    .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
   }
   #endif
 
@@ -482,6 +491,208 @@ struct WWNMachinesGridView: View {
 extension WWNMachineProfile: Identifiable {
   public var id: String { machineId }
 }
+
+#if os(tvOS)
+/// Compact, focusable machine row for the tvOS Machines list.
+/// Do not add a trailing chevron — `NavigationLink` already provides one.
+struct WWNMachineTVRow: View {
+  let profile: WWNMachineProfile
+  let status: WWNMachineTransientStatus
+  let typeLabel: String
+  let scopeLabel: String
+  let subtitle: String
+  let isActive: Bool
+  let isRunning: Bool
+
+  var body: some View {
+    HStack(spacing: 28) {
+      Image(systemName: iconName)
+        .font(.system(size: 44, weight: .semibold))
+        .foregroundStyle(statusColor)
+        .frame(width: 72, height: 72)
+
+      VStack(alignment: .leading, spacing: 10) {
+        Text(profile.name.isEmpty ? "Unnamed Machine" : profile.name)
+          .font(.title2.weight(.bold))
+          .lineLimit(1)
+        Text(subtitle.isEmpty ? typeLabel : subtitle)
+          .font(.title3)
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+        HStack(spacing: 14) {
+          metaChip(scopeLabel)
+          metaChip(typeLabel)
+          Text(status.title)
+            .font(.title3.weight(.bold))
+            .foregroundStyle(statusColor)
+          if isActive {
+            Text("Active")
+              .font(.title3.weight(.bold))
+              .foregroundStyle(.yellow)
+          }
+        }
+      }
+
+      Spacer(minLength: 0)
+    }
+    .padding(.vertical, 18)
+    .wwnA11y(
+      WWNA11y.machinesCard(profile.machineId),
+      label: profile.name.isEmpty ? "Unnamed Machine" : profile.name
+    )
+  }
+
+  private var iconName: String {
+    switch profile.type {
+    case kWWNMachineTypeNative:
+      return "desktopcomputer"
+    case kWWNMachineTypeSSHTerminal:
+      return "terminal"
+    default:
+      return "network"
+    }
+  }
+
+  private var statusColor: Color {
+    switch status {
+    case .connected: return .green
+    case .connecting: return .blue
+    case .degraded: return .orange
+    case .error: return .red
+    case .disconnected: return .secondary
+    }
+  }
+
+  private func metaChip(_ text: String) -> some View {
+    Text(text)
+      .font(.title3.weight(.semibold))
+      .padding(.horizontal, 14)
+      .padding(.vertical, 6)
+      .background(Color.secondary.opacity(0.22), in: Capsule())
+  }
+}
+
+/// Detail actions for one machine — large focusable buttons for Siri Remote.
+struct WWNMachineTVDetailView: View {
+  let profile: WWNMachineProfile
+  let status: WWNMachineTransientStatus
+  let typeLabel: String
+  let scopeLabel: String
+  let subtitle: String
+  let summary: String
+  let launchSupported: Bool
+  let isActive: Bool
+  let isRunning: Bool
+  let onEdit: () -> Void
+  let onDelete: () -> Void
+  let onConnect: () -> Void
+  let onStop: () -> Void
+  let onFocus: () -> Void
+
+  @Environment(\.dismiss) private var dismiss
+
+  var body: some View {
+    ScrollView {
+      VStack(alignment: .leading, spacing: 36) {
+        VStack(alignment: .leading, spacing: 14) {
+          Text(profile.name.isEmpty ? "Unnamed Machine" : profile.name)
+            .font(.largeTitle.weight(.bold))
+          Text(subtitle)
+            .font(.title2)
+            .foregroundStyle(.secondary)
+          Text(summary)
+            .font(.title3)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+          HStack(spacing: 24) {
+            Label(scopeLabel, systemImage: "circle.grid.2x2")
+            Label(typeLabel, systemImage: "tag")
+            Label(status.title, systemImage: "circle.fill")
+              .foregroundStyle(statusColor)
+          }
+          .font(.title3.weight(.semibold))
+        }
+
+        VStack(spacing: 22) {
+          if isRunning {
+            Button {
+              onFocus()
+            } label: {
+              Label("Focus Session", systemImage: "scope")
+                .font(.title3.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: 56)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .wwnA11y(WWNA11y.machinesFocus, label: "Focus Session")
+
+            Button(role: .destructive) {
+              onStop()
+            } label: {
+              Label("Stop Session", systemImage: "stop.fill")
+                .font(.title3.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: 56)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .wwnA11y(WWNA11y.machinesStop, label: "Stop Session")
+          } else {
+            Button {
+              onConnect()
+            } label: {
+              Label("Start Machine", systemImage: "play.fill")
+                .font(.title3.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: 56)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(!launchSupported)
+            .wwnA11y(WWNA11y.machinesStart, label: "Start Machine")
+          }
+
+          Button {
+            onEdit()
+          } label: {
+            Label("Edit Profile", systemImage: "slider.horizontal.3")
+              .font(.title3.weight(.semibold))
+              .frame(maxWidth: .infinity, minHeight: 56)
+          }
+          .buttonStyle(.bordered)
+          .controlSize(.large)
+          .wwnA11y(WWNA11y.machinesEdit, label: "Edit Profile")
+
+          Button(role: .destructive) {
+            onDelete()
+            dismiss()
+          } label: {
+            Label("Delete Profile", systemImage: "trash")
+              .font(.title3.weight(.semibold))
+              .frame(maxWidth: .infinity, minHeight: 56)
+          }
+          .buttonStyle(.bordered)
+          .controlSize(.large)
+          .disabled(isRunning)
+          .wwnA11y(WWNA11y.machinesDelete, label: "Delete Profile")
+        }
+        .frame(maxWidth: 900)
+      }
+      .padding(48)
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .navigationTitle("Machine")
+  }
+
+  private var statusColor: Color {
+    switch status {
+    case .connected: return .green
+    case .connecting: return .blue
+    case .degraded: return .orange
+    case .error: return .red
+    case .disconnected: return .secondary
+    }
+  }
+}
+#endif
 
 // MARK: - iOS Hosting Bridge
 
@@ -499,15 +710,34 @@ final class WWNMachinesHostingBridge: NSObject {
         WWNPreferences.shared().show(nil)
       }
     )
-    let hosting = UIHostingController(rootView: root)
     #if os(tvOS)
+    let hosting = WWNMachinesTVHostingController(rootView: root)
     hosting.view.backgroundColor = .black
     #else
+    let hosting = UIHostingController(rootView: root)
     hosting.view.backgroundColor = UIColor.systemBackground
     #endif
     return hosting
   }
 }
+
+#if os(tvOS)
+/// Prefers the first focusable control in the Machines list after welcome dismiss.
+private final class WWNMachinesTVHostingController<Content: View>: UIHostingController<Content> {
+  override var preferredFocusEnvironments: [any UIFocusEnvironment] {
+    if let first = view.subviews.first(where: { $0.canBecomeFocused }) {
+      return [first]
+    }
+    return super.preferredFocusEnvironments
+  }
+
+  override func viewDidAppear(_ animated: Bool) {
+    super.viewDidAppear(animated)
+    setNeedsFocusUpdate()
+    updateFocusIfNeeded()
+  }
+}
+#endif
 #endif
 
 // MARK: - macOS Hosting Bridge
@@ -533,8 +763,10 @@ private struct MacDetailTopInsetForTransparentTitlebar: ViewModifier {
 private struct MacUnifiedToolbarMaterial: ViewModifier {
   func body(content: Content) -> some View {
     if #available(macOS 26.0, *) {
+      // Opaque toolbar fill avoids continuous material sampling while the
+      // Machines window is dragged (cheaper than ultraThinMaterial).
       content
-        .toolbarBackground(.ultraThinMaterial, for: .windowToolbar)
+        .toolbarBackground(.regularMaterial, for: .windowToolbar)
         .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
     } else {
       content

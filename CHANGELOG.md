@@ -5,6 +5,16 @@ All notable changes to Wawona are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **iland Mode A / Mode B documentation and agent rules** — canonical
+  `docs/iland-mode-a-b-desktop.md`, Cursor rule `wawona-iland-mode-b-desktop`
+  (alwaysApply), tracked `docs/agent-rules/` mirror, `AGENTS.md` corrections
+  (Mode A is default; Mode B dylib only in `wawona-macos-desktop-host`, SIP-gated).
+  Settings Desktop / Android anowaW tiers documented in `docs/settings.md`.
+
 ## [0.2.4] - 2026-06-27
 
 ### Added
@@ -56,7 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - libssh2 streamlocal patch (`patch-streamlocal.sh`)
   - OpenSSH dbclient streamlocal patch (`patch-dbclient-streamlocal.sh`)
 - **Debugging**
-  - `--debug` flag for `nix run .#wawona-macos`, `.#wawona-ios`, `.#wawona-android` — launches under LLDB for native debugging. macOS: run from start; iOS: app pauses at spawn, LLDB attaches; Android: lldb-server deployed, LLDB connects via gdb-remote. See `docs/debugging.md`.
+  - `--debug` flag for flake apps (`.#wawona-macos`, `.#wawona-ios`, `.#wawona-android`, `.#wawona-linux`, …) — **opt-in** LLDB for crash/freeze catch (`process interrupt`). Default `nix run` is plain (no debugger). macOS also supports `--debug-attach`. See `docs/debugging.md`.
 - **Documentation**
   - `docs/README.md` — Documentation index
   - `docs/usage.md` — Weston (`nix run .#weston`, `.#weston-terminal`), Waypipe, native commands

@@ -25,6 +25,8 @@ Release secrets (tier 0): [`maintainers/secrets.md`](./maintainers/secrets.md).
 | **Product build** (`product-build.yml`) | via device-gate / Release | via gate / Release Beta (`only: appimage`) / Release | Sole pure producer: iOS sim `.app`, debug APK, macOS `.app`, AppImages (callable only) |
 | **Device GUI e2e** | via device-gate (`products_ready`) | via gate | Smoke + fuzzel (fuzzel skipped on `pull_request` only); callable only |
 | **Nightly full matrix** | schedule / dispatch | — | Graphics + protocol drift + Weston/XWayland capability (does **not** re-run Device gate) |
+| **Leak idle gate** (`leak-idle-gate.yml`) | path filter push + schedule + dispatch | — | Start→60s footprint/PSS plateau on product iOS/Android/macOS; fails with `LEAK_GATE_FAIL targets=…` ([docs/testing/leak-idle-gate.md](./testing/leak-idle-gate.md)). **Not** a promote blocker yet |
+| **Bundled clients matrix** (`bundled-clients-matrix.yml`) | schedule + dispatch | — | Every `kBundledClients` id × runnable platforms; `MATRIX_FAIL cells=platform/client,…` ([docs/testing/bundled-clients-matrix-gate.md](./testing/bundled-clients-matrix-gate.md)). **Not** a promote blocker yet |
 | **Release Beta** | — | push + tags `v*` | Fastlane stores (match+gym); owns AppImages via product-build `only: appimage` |
 | **Release** | — | tags `v*` | GitHub Release: DMG/APK/AppImage from product-build; IPA impure |
 
@@ -44,9 +46,10 @@ Pure ship/test binaries are built **once per SHA** by [`product-build.yml`](../.
 
 | Artifact | Attr | Consumers |
 |----------|------|-----------|
-| `product-ios-sim` | `.#wawona-ios` | Device e2e |
-| `product-android-apk` | `.#wawona-android` | Device e2e, Release |
-| `product-macos-app` | `.#wawona-macos` | Device e2e, Release (DMG wrap) |
+| `product-ios-sim` | `.#wawona-ios` | Device e2e, Leak idle gate |
+| `product-android-apk` | `.#wawona-android` | Device e2e, Leak idle gate, Release |
+| `product-macos-app` | `.#wawona-macos` | Device e2e, Leak idle gate, Release (DMG wrap). Mode A only — **must not** ship `libwayland-mac.dylib` |
+| `wawona-macos-desktop-host` | `.#wawona-macos-desktop-host` | Developer ID / Desktop Replacement Mode B. Assert dylib present via [`.github/scripts/verify-iland-mode-b-bundle.sh`](../.github/scripts/verify-iland-mode-b-bundle.sh) |
 | `product-appimage-<system>` | `.#wawona-appimage` | Release Beta, Release |
 
 Helpers: [`.github/scripts/resolve-product-artifacts.sh`](../.github/scripts/resolve-product-artifacts.sh).
@@ -105,6 +108,34 @@ FlakeHub caches **Nix store paths** only. It does **not** ship Apple platform SD
 9. Reintroducing Magic Nix Cache / Attic / Cachix / `cache.wawona.io`.
 10. nixpkgs lineage drift across `wwn-*` without `follows` / `verify-nixpkgs-lineage.py`.
 11. Leaving `WAWONA_SKIP_NIX_PREBUILD=1` after `Cargo.lock` changes.
+
+## Leak idle gate
+
+Memory plateau after Machines **Start** (not Instruments MCP — runners cannot use it;
+iOS 26 sim Allocations are often empty). See [testing/leak-idle-gate.md](./testing/leak-idle-gate.md).
+
+```bash
+# Local (same script CI runs)
+WAWONA_IOS_APP=result-ios/Wawona.app ./scripts/leak-idle-gate.sh ios
+WAWONA_ANDROID_APK=dist/Wawona.apk ./scripts/leak-idle-gate.sh android
+WAWONA_MACOS_APP=result-macos/Wawona.app ./scripts/leak-idle-gate.sh macos
+./scripts/leak-idle-gate.sh summary   # prints LEAK_GATE_FAIL targets=…
+```
+
+CI: Actions → **Leak idle gate** → job `Leak idle summary` step summary lists failing targets.
+
+## Bundled clients matrix
+
+Every Machines `kBundledClients` option × runnable platforms (nested `weston`/`niri` + demos).
+
+```bash
+./scripts/bundled-clients-matrix-gate.sh                 # all platforms
+./scripts/bundled-clients-matrix-gate.sh ios android     # subset
+WAWONA_MATRIX_CLIENTS="niri,weston" ./scripts/bundled-clients-matrix-gate.sh ios
+```
+
+See [testing/bundled-clients-matrix-gate.md](./testing/bundled-clients-matrix-gate.md).
+Summary prints `MATRIX_FAIL cells=ios/niri,android/vkcube,…`.
 
 ## Device e2e speed notes
 

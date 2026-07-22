@@ -3,6 +3,7 @@
 #import "WWNCompositorBridge.h"
 #import "WWNSettings.h"
 #import "WWNIlandPresenter.h"
+#import "ui/Machines/WWNMachineProfileStore.h"
 #import <ApplicationServices/ApplicationServices.h>
 #import <QuartzCore/QuartzCore.h>
 #import <Metal/Metal.h>
@@ -763,7 +764,7 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
 - (void)resetCursorRects {
   [super resetCursorRects];
 
-  BOOL showHostCursor = WWNSettings_GetRenderMacOSPointer();
+  BOOL showHostCursor = [WWNMachineProfileStore resolvedShowHostCursorActive];
 
   if (!showHostCursor) {
     NSImage *emptyImage = [[NSImage alloc] initWithSize:NSMakeSize(1, 1)];
@@ -957,6 +958,18 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
                   height:height];
 }
 
+- (void)windowWillStartLiveResize:(NSNotification *)notification {
+  (void)notification;
+  if (self.processingResize || self.suppressCompositorCallbacks ||
+      !self.isVisible || self.isMiniaturized ||
+      self.wwnMiniaturizeInProgress || self.wwnFullscreenTransitionInProgress) {
+    return;
+  }
+  // SSD host edge-drag: set xdg_toplevel.state.resizing before mid-drag
+  // configures stream (xdg-shell / niri interactive-resize pattern).
+  [[WWNCompositorBridge sharedBridge] beginInteractiveResize:self.wwnWindowId];
+}
+
 - (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)frameSize {
   (void)sender;
   if (self.processingResize || self.suppressCompositorCallbacks ||
@@ -985,6 +998,12 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
     return frameSize;
   }
 
+  // AppKit can emit willResize before willStartLiveResize; ensure Resizing is
+  // set for the first mid-drag configure as well.
+  if (self.inLiveResize || self.interactiveResizeInProgress) {
+    [[WWNCompositorBridge sharedBridge] beginInteractiveResize:self.wwnWindowId];
+  }
+
   uint32_t width = (uint32_t)MAX(1, lround(contentSize.width));
   uint32_t height = (uint32_t)MAX(1, lround(contentSize.height));
   [[WWNCompositorBridge sharedBridge] injectWindowResize:self.wwnWindowId
@@ -1000,8 +1019,8 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
       self.wwnMiniaturizeInProgress) {
     return;
   }
-  // Final authoritative sync after fast edge-drag to guarantee host/client
-  // dimensions converge (no lingering frame/content desync).
+  // Final authoritative sync after fast edge-drag: clears Resizing and
+  // guarantees host/client dimensions converge.
   [[WWNCompositorBridge sharedBridge]
       reconcileWindowResizeNow:self.wwnWindowId];
 }
@@ -1108,9 +1127,31 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
            self.wwnWindowId);
     self.wwnCloseDeferred = YES;
     [self.wwnCloseForceTimer invalidate];
-    // Do not auto force-destroy while the client is unwinding toolkit state.
-    // wlroots/cairo clients can assert if the host tears down too early.
-    self.wwnCloseForceTimer = nil;
+    // Grace timeout (Linux UI parity): if the client never Destroyed, escalate
+    // to force-destroy so the host window cannot stick forever (#52).
+    __weak typeof(self) weakSelf = self;
+    uint64_t wid = self.wwnWindowId;
+    self.wwnCloseForceTimer =
+        [NSTimer scheduledTimerWithTimeInterval:1.5
+                                        repeats:NO
+                                          block:^(__unused NSTimer *timer) {
+                                            __strong typeof(weakSelf) strongSelf =
+                                                weakSelf;
+                                            if (!strongSelf ||
+                                                !strongSelf.wwnCloseDeferred) {
+                                              return;
+                                            }
+                                            strongSelf.wwnCloseDeferred = NO;
+                                            strongSelf.wwnCloseForceTimer = nil;
+                                            WWNLog("INPUT",
+                                                   @"windowShouldClose: grace "
+                                                   @"timeout — force-destroy "
+                                                   @"host for window %llu",
+                                                   wid);
+                                            [[WWNCompositorBridge sharedBridge]
+                                                requestForceDestroyHostWindowForWindowId:
+                                                    wid];
+                                          }];
     return NO;
   }
   return YES;

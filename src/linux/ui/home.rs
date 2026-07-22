@@ -1,6 +1,5 @@
 //! Machines home — 1:1 with macOS `WWNMachinesGridView`: summary strip,
-//! adaptive card grid, scope filter, and card actions (Start / Stop / Focus /
-//! Edit / Delete).
+//! adaptive card grid, and card actions (Start / Stop / Focus / Edit / Delete).
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -18,7 +17,7 @@ use crate::linux::thumbnail_store;
 use crate::linux::ui::{editor, SharedAppState};
 use crate::linux::ui_model::{
     empty_state_text, launch_supported, machine_configuration_summary, machine_scope_label,
-    machine_subtitle, visible_machines, LayoutMode, MachineScope,
+    machine_subtitle, visible_machines, LayoutMode,
 };
 use crate::wlog;
 
@@ -29,7 +28,6 @@ pub struct HomeShell {
     pub search: gtk::SearchEntry,
     pub summary: gtk::Box,
     pub flow: gtk::FlowBox,
-    pub scope: Rc<RefCell<MachineScope>>,
     pub query: Rc<RefCell<String>>,
 }
 
@@ -39,32 +37,6 @@ pub struct RebuildHome<'a> {
     pub parent: &'a adw::ApplicationWindow,
     pub sessions: MachineSessions,
     pub layout: LayoutMode,
-}
-
-/// "Machine Scope" filter (sidebar on macOS; linked segmented control here).
-pub fn build_scope_row(scope: Rc<RefCell<MachineScope>>, on_change: Rc<dyn Fn()>) -> gtk::Box {
-    let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    row.set_halign(gtk::Align::Center);
-    row.set_margin_top(8);
-    row.set_margin_bottom(4);
-    row.add_css_class("linked");
-
-    for filter in MachineScope::all() {
-        let btn = gtk::ToggleButton::with_label(filter.title());
-        btn.set_hexpand(true);
-        btn.set_active(*scope.borrow() == *filter);
-        let scope_c = scope.clone();
-        let on_change_c = on_change.clone();
-        let filter = *filter;
-        btn.connect_toggled(move |b| {
-            if b.is_active() {
-                *scope_c.borrow_mut() = filter;
-                on_change_c();
-            }
-        });
-        row.append(&btn);
-    }
-    row
 }
 
 pub fn build_home_shell(on_rebuild: Rc<dyn Fn()>) -> HomeShell {
@@ -93,10 +65,8 @@ pub fn build_home_shell(on_rebuild: Rc<dyn Fn()>) -> HomeShell {
     flow.set_margin_end(16);
     flow.set_margin_bottom(16);
 
-    let scope = Rc::new(RefCell::new(MachineScope::All));
     let query = Rc::new(RefCell::new(String::new()));
 
-    let scope_row = build_scope_row(scope.clone(), on_rebuild.clone());
     let on_rebuild_search = on_rebuild.clone();
     let query_search = query.clone();
     search.connect_search_changed(move |entry| {
@@ -111,7 +81,6 @@ pub fn build_home_shell(on_rebuild: Rc<dyn Fn()>) -> HomeShell {
         .build();
 
     let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    root.append(&scope_row);
     root.append(&summary);
     root.append(&scroll);
     crate::linux::ui::a11y::set_wwn_a11y(
@@ -125,7 +94,6 @@ pub fn build_home_shell(on_rebuild: Rc<dyn Fn()>) -> HomeShell {
         search,
         summary,
         flow,
-        scope,
         query,
     }
 }
@@ -138,11 +106,10 @@ pub fn rebuild_home(ctx: RebuildHome<'_>) {
     prune_dead_sessions(&ctx.sessions);
 
     let app = ctx.state.borrow();
-    let scope = *ctx.shell.scope.borrow();
     let query = ctx.shell.query.borrow().clone();
     let active_id = app.store.active_machine_id.clone();
     let all_profiles: Vec<MachineProfile> = app.store.profiles.clone();
-    let visible: Vec<MachineProfile> = visible_machines(&app.store.profiles, &query, scope)
+    let visible: Vec<MachineProfile> = visible_machines(&app.store.profiles, &query)
         .into_iter()
         .cloned()
         .collect();
@@ -153,7 +120,7 @@ pub fn rebuild_home(ctx: RebuildHome<'_>) {
     rebuild_summary_strip(&ctx.shell.summary, &all_profiles, &ctx.sessions);
 
     if visible.is_empty() {
-        let (title, subtitle) = empty_state_text(scope, has_any, has_query);
+        let (title, subtitle) = empty_state_text(has_any, has_query);
         let empty = adw::StatusPage::builder()
             .icon_name("system-search-symbolic")
             .title(title)
@@ -618,7 +585,6 @@ impl Clone for HomeShell {
             search: self.search.clone(),
             summary: self.summary.clone(),
             flow: self.flow.clone(),
-            scope: self.scope.clone(),
             query: self.query.clone(),
         }
     }

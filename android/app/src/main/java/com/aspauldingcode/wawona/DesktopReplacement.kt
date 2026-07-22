@@ -39,9 +39,14 @@ object DesktopReplacement {
 
     /**
      * Power mode: use Shizuku/root to embed *arbitrary* third-party apps
-     * (trusted virtual displays + setLaunchDisplayId). Non-Play; explicit
-     * opt-in. When off, only Wawona's own activities can be embedded and the
-     * full display can be mirrored via consented MediaProjection.
+     * (trusted virtual displays + setLaunchDisplayId) with waypipe-rs patches
+     * for app→Wayland mirroring. Non-Play; explicit opt-in.
+     *
+     * When off (rootless / stock Android): only Wawona's own activities can be
+     * embedded and the full display can be mirrored via consented
+     * MediaProjection — still through waypipe-rs into the nested desktop, but
+     * without privileged inject. Android has no SIP; this is the root vs
+     * non-root split (see [AnowawSession]).
      */
     const val KEY_APP_BRIDGE_POWER_MODE = "wawona.anowaW.powerMode"
 

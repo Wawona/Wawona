@@ -14,8 +14,13 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)restartCompositorAgent;
 - (BOOL)stopCompositorAgent;
 - (BOOL)startCompositorAgent;
+- (BOOL)stopMenuBarAgent;
+/// Boot out compositor + menubar agents and remove their plists so KeepAlive
+/// / RunAtLoad cannot reopen Wawona until explicitly re-enabled.
+- (BOOL)stopCompositorAndMenuAgents;
 
 - (BOOL)isCompositorAgentLoaded;
+- (BOOL)isMenuBarAgentLoaded;
 - (BOOL)isAppLaunchAgentLoaded;
 
 - (BOOL)enableAppLaunchAtLogin;

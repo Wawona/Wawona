@@ -13,9 +13,9 @@ let
         -O "process handle SIGILL -s true -n false -p true" \
       '';
       hangHint = ''
-        echo "[LLDB] Xcode-style debugger: attached for the whole run."
-        echo "[LLDB] Crash/halt → LLDB stops and prints 'thread backtrace all' automatically."
-        echo "[LLDB] Hang?  process interrupt   (Xcode Pause — backtraces print on stop)"
+        echo "[LLDB] Debugger attached for the whole run (opt-in via --debug)."
+        echo "[LLDB] Crash/halt → LLDB stops and prints 'thread backtrace all'."
+        echo "[LLDB] Freeze/hang?  process interrupt   (pause — backtraces print on stop)"
         echo "[LLDB] Resume: continue           Quit: quit"
       '';
     in {
@@ -31,8 +31,9 @@ let
           echo "Error: binary not executable: $BINARY" >&2
           exit 1
         fi
-        if ! file "$BINARY" 2>/dev/null | grep -qE 'Mach-O.*executable'; then
-          echo "Error: not a Mach-O executable: $BINARY" >&2
+        # Accept Mach-O (macOS) or ELF (Linux) so flake apps share one helper.
+        if ! file "$BINARY" 2>/dev/null | grep -qE 'Mach-O.*executable|ELF.*executable'; then
+          echo "Error: not a Mach-O/ELF executable: $BINARY" >&2
           exit 1
         fi
         ${hangHint}
@@ -167,34 +168,56 @@ in rec {
       export WAWONA_APP_BIN="$BIN"
       ${binaryReadyCheck}
       ${macosEnv}
-      if [ "''${1:-}" = "--debug-attach" ]; then
-        shift
-        wawona_binary_ready || exit 1
+
+      # Default: no debugger. Opt in with --debug / WAWONA_LLDB=1.
+      # --debug-attach: attach LLDB to an already-running freeze.
+      # --no-debug / --release / WAWONA_NO_LLDB=1: accepted no-ops (compat).
+      DEBUG_MODE=false
+      ATTACH_MODE=false
+      while [ "$#" -gt 0 ]; do
+        case "$1" in
+          --debug) DEBUG_MODE=true; shift ;;
+          --debug-attach) ATTACH_MODE=true; shift ;;
+          --no-debug|--release) shift ;;
+          *) break ;;
+        esac
+      done
+      if [ "''${WAWONA_LLDB:-0}" = "1" ]; then
+        DEBUG_MODE=true
+      fi
+      if [ "''${WAWONA_NO_LLDB:-0}" = "1" ]; then
+        DEBUG_MODE=false
+        ATTACH_MODE=false
+      fi
+
+      wawona_binary_ready || exit 1
+
+      if [ "$ATTACH_MODE" = "true" ]; then
         PID=$(pgrep -x Wawona 2>/dev/null | head -1 || true)
         if [ -z "$PID" ]; then
           echo "Error: no running Wawona process found." >&2
           echo "Launch first: nix run .#wawona-macos" >&2
+          echo "Or start under LLDB: nix run .#wawona-macos -- --debug" >&2
           exit 1
         fi
         if ! kill -0 "$PID" 2>/dev/null; then
           echo "Error: Wawona PID $PID is not running." >&2
           exit 1
         fi
-        echo "[LLDB] Attaching to Wawona PID $PID..."
+        echo "[LLDB] Attaching to Wawona PID $PID (freeze catch: process interrupt)..."
         if [ -d "${dsym}" ]; then
           exec ${lldb.attachLldb}/bin/wawona-lldb-attach "$PID" "${dsym}"
         else
           exec ${lldb.attachLldb}/bin/wawona-lldb-attach "$PID"
         fi
-      elif [ "''${1:-}" = "--no-debug" ] || [ "''${1:-}" = "--release" ] || [ "''${WAWONA_NO_LLDB:-0}" = "1" ]; then
-        case "''${1:-}" in --no-debug|--release) shift ;; esac
-        wawona_binary_ready || exit 1
-        exec "$BIN" "$@"
-      else
-        [ "''${1:-}" = "--debug" ] && shift
-        wawona_binary_ready || exit 1
+      fi
+
+      if [ "$DEBUG_MODE" = "true" ]; then
+        echo "[LLDB] Launching under LLDB (--debug). Freeze? process interrupt"
         exec ${lldb.runUnderLldb}/bin/wawona-lldb-run "$BIN" "$@"
       fi
+
+      exec "$BIN" "$@"
     '';
 
   waypipeWrapper = pkgs: waypipe: wawona: pkgs.writeShellScriptBin "waypipe" ''

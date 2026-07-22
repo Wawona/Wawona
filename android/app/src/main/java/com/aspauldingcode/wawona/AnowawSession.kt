@@ -20,6 +20,19 @@ import com.aspauldingcode.wawona.anowaw.AnowawPowerController
  * source apps (own-app dispatch in baseline, privileged InputManager in power
  * mode), and turns "open Android app" drawer taps into launch-into-desktop
  * actions.
+ *
+ * Privilege tiers (no SIP on Android):
+ * - **Rootless / baseline** (power mode off, or Shizuku/root unavailable):
+ *   MediaProjection / own-app VirtualDisplay only. Third-party apps are not
+ *   embedded. waypipe-rs patches still carry mirrored surfaces into the
+ *   nested Wayland desktop when the bridge is attached.
+ * - **Root / Shizuku power mode** (prefs on + [AnowawPowerController] available):
+ *   trusted VirtualDisplay, launch any package, privileged input inject, and
+ *   the same waypipe-rs mirror path with full app→Wayland embedding.
+ *
+ * Power mode auto-falls back to baseline when Shizuku/root is unavailable at
+ * attach time; Settings surfaces the reason via
+ * [AnowawPowerController.statusDescription].
  */
 object AnowawSession {
     private const val TAG = "anowaW"
@@ -48,12 +61,18 @@ object AnowawSession {
         if (bridge != null) return true
         if (!DesktopReplacement.isAppBridgeEnabled(prefs)) return false
 
-        powerMode = DesktopReplacement.isPowerModeEnabled(prefs)
-        power = AnowawPowerController(context.applicationContext).also {
-            if (powerMode && !it.isAvailable()) {
-                Log.w(TAG, "power mode requested but unavailable: ${it.statusDescription()}")
-                powerMode = false
-            }
+        val wantPower = DesktopReplacement.isPowerModeEnabled(prefs)
+        power = AnowawPowerController(context.applicationContext)
+        powerMode = wantPower && (power?.isAvailable() == true)
+        if (wantPower && !powerMode) {
+            Log.w(
+                TAG,
+                "power mode requested but unavailable — falling back to rootless baseline: ${
+                    power?.statusDescription()
+                }",
+            )
+            // Keep the pref as the user's intent; runtime uses baseline until
+            // Shizuku/root becomes available on a later attach.
         }
 
         val b = AnowawBridge.connect(context.applicationContext, NESTED_SOCKET)
@@ -63,7 +82,11 @@ object AnowawSession {
         }
         b.inputSink = { ev -> routeInput(ev) }
         bridge = b
-        Log.i(TAG, "anowaW attached (powerMode=$powerMode)")
+        Log.i(
+            TAG,
+            "anowaW attached tier=${if (powerMode) "power(root/Shizuku)" else "rootless/baseline"} " +
+                "(waypipe-rs mirror active on nested socket $NESTED_SOCKET)",
+        )
         return true
     }
 

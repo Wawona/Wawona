@@ -46,15 +46,23 @@ struct WWNMachineCardView: View {
     .padding(16)
     .background(
       RoundedRectangle(cornerRadius: 20, style: .continuous)
+        #if os(macOS)
+        // Solid fill: ultraThinMaterial forces expensive opaque-region
+        // recalculation on every NSWindow move (drag lag on Machines).
+        .fill(Color(nsColor: .controlBackgroundColor))
+        #else
         .fill(Color.white.opacity(0.05))
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        #endif
     )
     .overlay(
       RoundedRectangle(cornerRadius: 20, style: .continuous)
         .stroke(Color.white.opacity(0.2), lineWidth: 1)
     )
+    #if !os(macOS)
     .shadow(color: .black.opacity(0.22), radius: 16, x: 0, y: 10)
     .animation(.spring(duration: 0.4, bounce: 0.24), value: status)
+    #endif
     .wwnA11y(WWNA11y.machinesCard(profile.machineId), label: profile.name.isEmpty ? "Unnamed Machine" : profile.name)
   }
 

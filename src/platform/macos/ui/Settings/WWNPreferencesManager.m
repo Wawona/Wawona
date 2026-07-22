@@ -15,6 +15,7 @@ NSString *const kWWNPrefsNestedWestonBackend = @"NestedWestonBackend";
 NSString *const kWWNPrefsUseMetal4ForNested =
     @"UseMetal4ForNested"; // Deprecated
 NSString *const kWWNPrefsRenderMacOSPointer = @"RenderMacOSPointer";
+NSString *const kWWNPrefsNestedCompositorCursor = @"NestedCompositorCursor";
 NSString *const kWWNPrefsMultipleClients = @"MultipleClients";
 NSString *const kWWNPrefsSwapCmdAsCtrl = @"SwapCmdAsCtrl";   // Legacy
 NSString *const kWWNPrefsSwapCmdWithAlt = @"SwapCmdWithAlt"; // New unified key
@@ -292,6 +293,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
     kWWNPrefsExternalDisplayTouchpad : @YES,
     kWWNPrefsHasSeenWelcome : @NO,
     kWWNPrefsRenderMacOSPointer : @NO,
+    kWWNPrefsNestedCompositorCursor : @"virtual",
     // Input
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
     // Desktop-shell launcher expects wl_pointer; Touchpad is the default on iOS.
@@ -429,6 +431,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
   [defaults removeObjectForKey:kWWNPrefsResizeDisplayForVirtualKeyboard];
   [defaults removeObjectForKey:kWWNPrefsHasSeenWelcome];
   [defaults removeObjectForKey:kWWNPrefsRenderMacOSPointer];
+  [defaults removeObjectForKey:kWWNPrefsNestedCompositorCursor];
   // Input
   [defaults removeObjectForKey:kWWNPrefsTouchInputType];
   [defaults removeObjectForKey:kWWNPrefsSwapCmdWithAlt];
@@ -593,6 +596,22 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 - (void)setRenderMacOSPointer:(BOOL)enabled {
   [[NSUserDefaults standardUserDefaults] setBool:enabled
                                           forKey:kWWNPrefsRenderMacOSPointer];
+}
+
+- (NSString *)nestedCompositorCursor {
+  NSString *mode = [[NSUserDefaults standardUserDefaults]
+      stringForKey:kWWNPrefsNestedCompositorCursor];
+  if ([mode isEqualToString:@"host"] || [mode isEqualToString:@"virtual"]) {
+    return mode;
+  }
+  return @"virtual";
+}
+
+- (void)setNestedCompositorCursor:(NSString *)mode {
+  NSString *normalized =
+      [mode isEqualToString:@"host"] ? @"host" : @"virtual";
+  [[NSUserDefaults standardUserDefaults] setObject:normalized
+                                            forKey:kWWNPrefsNestedCompositorCursor];
 }
 
 - (BOOL)swapCmdAsCtrl {

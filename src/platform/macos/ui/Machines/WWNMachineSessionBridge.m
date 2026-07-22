@@ -1,9 +1,13 @@
 #import "WWNMachineSessionBridge.h"
 #import "../Settings/WWNWaypipeRunner.h"
 #import "../Settings/WWNPreferencesManager.h"
-#import "WWNAnowaWController.h"
 #import "WWNVirtualMachineRunner.h"
 #import "WWNContainerRunner.h"
+#import "WWNPlatformCapabilities.h"
+#if TARGET_OS_OSX
+#import "WWNAnowaWController.h"
+#import "WWNDesktopReplacementController.h"
+#endif
 
 @implementation WWNMachineSessionBridge
 
@@ -95,19 +99,16 @@
   }
 
 #if TARGET_OS_IPHONE
-  // iOS/iPadOS/tvOS/visionOS back every machine with a single in-process
-  // engine (WWNMobileVmEngine for VMs; the WWNWaypipeRunner function-pointer
-  // table for bundled clients — see launchBundledClientWithId:), so only one
-  // profile can actually be running at a time. Tear down whatever's active
-  // before starting the next one.
-  [self stopAllActiveTransports];
+  // Native Wayland clients may run concurrently (multiple weston-terminal,
+  // flower, …). VM / waypipe / container backends on mobile still share a
+  // single in-process engine — tear those down before switching.
+  if (![self profileUsesNativeCompositorClient:profile]) {
+    [self stopAllActiveTransports];
+  }
 #endif
-  // On macOS every machine/client is tracked as its own out-of-process NSTask
-  // keyed by id (WWNVirtualMachineRunner.tasksByMachineId,
-  // WWNContainerRunner, WWNWaypipeRunner.genericClientTasks), each with its
-  // own "already running" guard. Connecting one profile must never stop an
-  // unrelated one that's already running — do NOT call
-  // stopAllActiveTransports here.
+  // Every native client instance is tracked independently (macOS: NSTask
+  // records keyed by machineId; iOS/Android: concurrent in-process threads).
+  // Connecting one profile must never stop an unrelated native client.
 
   [[WWNPreferencesManager sharedManager] syncFromCanonicalWawonaPreferences];
   [WWNMachineProfileStore applyMachineToRuntimePrefs:profile];
@@ -127,13 +128,53 @@
       }
       return NO;
     }
-    [[WWNWaypipeRunner sharedRunner] launchBundledClientWithId:clientId];
-    // App Bridge (anowaW): once the nested-Weston desktop is up, attach the
-    // bridge so native AppKit apps can be embedded as Wayland windows. No-op
-    // unless the profile is App Bridge eligible and the feature is enabled.
-    if ([clientId isEqualToString:@"weston"]) {
+    if (!WWNPlatformAllowsGpuStack() &&
+        ([clientId isEqualToString:@"kmscube"] ||
+         [clientId isEqualToString:@"opengl-cube"] ||
+         [clientId isEqualToString:@"vkcube"] ||
+         [clientId isEqualToString:@"weston-simple-egl"])) {
+      if (error) {
+        *error = [NSError
+            errorWithDomain:@"WWNMachineSessionBridge"
+                       code:3
+                   userInfo:@{
+                     NSLocalizedDescriptionKey : [NSString
+                         stringWithFormat:
+                             @"%@ requires a GPU stack unavailable on this "
+                             @"platform.",
+                             clientId]
+                   }];
+      }
+      return NO;
+    }
+#if TARGET_OS_OSX
+    // Mode B Desktop Replacement: SIP + Desktop prefs + desktop machine →
+    // DYLD_INSERT libwayland-mac.dylib (not Mode A in-window present).
+    WWNDesktopReplacementController *desktop =
+        [WWNDesktopReplacementController sharedController];
+    if ([desktop shouldEngageModeB] && [desktop isDesktopMachine:profile] &&
+        [clientId isEqualToString:@"weston"]) {
+      NSError *modeBError = nil;
+      if (![desktop engageForProfile:profile error:&modeBError]) {
+        if (error) {
+          *error = modeBError;
+        }
+        return NO;
+      }
+      if (WWNPlatformAllowsAnowaW()) {
+        [[WWNAnowaWController sharedController] attachForProfile:profile];
+      }
+      return YES;
+    }
+#endif
+    [[WWNWaypipeRunner sharedRunner] launchBundledClientWithId:clientId
+                                                     machineId:profile.machineId];
+#if TARGET_OS_OSX
+    // App Bridge (anowaW): macOS-only (platform-targets matrix).
+    if (WWNPlatformAllowsAnowaW() && [clientId isEqualToString:@"weston"]) {
       [[WWNAnowaWController sharedController] attachForProfile:profile];
     }
+#endif
     return YES;
   }
 
@@ -147,6 +188,18 @@
   // wawona-vz launcher) whose Wayland session bridges into Wawona over
   // vsock+waypipe. The profile's custom script is the boot command.
   if ([self profileUsesVirtualMachineBackend:profile]) {
+    if (!WWNPlatformAllowsVirtualMachine()) {
+      if (error) {
+        *error = [NSError
+            errorWithDomain:@"WWNMachineSessionBridge"
+                       code:4
+                   userInfo:@{
+                     NSLocalizedDescriptionKey :
+                         @"Virtual machines are not available on this platform."
+                   }];
+      }
+      return NO;
+    }
     return [[WWNVirtualMachineRunner sharedRunner] launchProfile:profile
                                                           error:error];
   }
@@ -154,6 +207,18 @@
   // OCI containers (wwn-containers): Apple Containerization on macOS, or
   // container-in-VM on other targets. Delegates to the container runner.
   if ([self profileUsesContainerBackend:profile]) {
+    if (!WWNPlatformAllowsContainer()) {
+      if (error) {
+        *error = [NSError
+            errorWithDomain:@"WWNMachineSessionBridge"
+                       code:5
+                   userInfo:@{
+                     NSLocalizedDescriptionKey :
+                         @"Containers are not available on this platform."
+                   }];
+      }
+      return NO;
+    }
     return [[WWNContainerRunner sharedRunner] launchProfile:profile
                                                       error:error];
   }
@@ -175,23 +240,37 @@
     return;
   }
 
+#if TARGET_OS_OSX
+  // Lockscreen → Desktop handoff: when the greeter machine stops and Desktop
+  // Replacement is armed, start the desktop machine (Mode B if SIP allows).
+  NSUserDefaults *defs = [NSUserDefaults standardUserDefaults];
+  BOOL wasLockscreen =
+      [defs boolForKey:kWWNPrefsLockscreenReplacementEnabled] &&
+      [[defs stringForKey:kWWNPrefsLockscreenReplacementMachineId]
+          isEqualToString:profile.machineId ?: @""];
+#endif
+
   if ([self profileUsesNativeCompositorClient:profile]) {
-#if TARGET_OS_IPHONE
-    [[WWNWaypipeRunner sharedRunner] stopActiveIOSBundledClient];
-#else
     WWNWaypipeRunner *runner = [WWNWaypipeRunner sharedRunner];
     NSString *clientId = [self nativeClientIdForProfile:profile];
-    if ([clientId isEqualToString:@"weston"]) {
+#if TARGET_OS_OSX
+    WWNDesktopReplacementController *desktop =
+        [WWNDesktopReplacementController sharedController];
+    if ([desktop isDesktopMachine:profile]) {
+      [desktop disengage];
+    }
+    if (WWNPlatformAllowsAnowaW() && [clientId isEqualToString:@"weston"]) {
       [[WWNAnowaWController sharedController] detach];
-      [runner stopWeston];
-    } else if ([clientId isEqualToString:@"weston-terminal"]) {
-      [runner stopWestonTerminal];
-    } else if ([clientId isEqualToString:@"weston-simple-shm"]) {
-      [runner stopWestonSimpleSHM];
-    } else if ([clientId isEqualToString:@"foot"]) {
-      [runner stopFoot];
-    } else {
-      [runner stopAllNativeClients];
+    }
+#endif
+    // Stop only this machine's instance — other copies of the same client
+    // (and other machines) keep running.
+    [runner stopBundledClientForMachineId:profile.machineId];
+#if TARGET_OS_IPHONE
+    // iOS in-process clients are not yet keyed by machineId; if nothing else
+    // is in flight, fully reset native launch state.
+    if (![runner isAnyNativeClientRunning]) {
+      [runner stopActiveIOSBundledClient];
     }
 #endif
   } else if ([self profileRequiresWaypipeTransport:profile]) {
@@ -207,6 +286,25 @@
   if ([[WWNMachineProfileStore activeMachineId] isEqualToString:profile.machineId]) {
     [WWNMachineProfileStore setActiveMachineId:nil];
   }
+
+#if TARGET_OS_OSX
+  if (wasLockscreen &&
+      [defs boolForKey:kWWNPrefsDesktopReplacementEnabled]) {
+    NSString *desktopId =
+        [defs stringForKey:kWWNPrefsDesktopReplacementMachineId];
+    if (desktopId.length > 0) {
+      WWNMachineProfile *desktopProfile =
+          [WWNMachineProfileStore profileById:desktopId];
+      if (desktopProfile) {
+        NSError *handoffErr = nil;
+        if (![self connectProfile:desktopProfile error:&handoffErr]) {
+          NSLog(@"[DesktopReplacement] lockscreen handoff failed: %@",
+                handoffErr);
+        }
+      }
+    }
+  }
+#endif
 }
 
 @end

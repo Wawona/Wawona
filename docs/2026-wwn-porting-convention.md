@@ -16,7 +16,7 @@ pure-Nix packaging of already-portable software.
 
 - `wwn-toolchain` — shared cross toolchains (Apple + Android NDK), the hub.
 - `wwn-weston` — umbrella for Weston compositor + Weston clients on Apple/Android.
-- `wwn-waypipe` — waypipe with libssh2 (iOS) / Dropbear (Android) transports.
+- `wwn-waypipe` — waypipe with libssh2 (Apple mobile) / OpenSSH portable (Android) transports.
 - `wwn-fastfetch`, `wwn-neofetch`, `wwn-zsh` — App Store-compliant CLI ports.
 - `wwn-apt` — StoreKit-backed package manager for optional modules.
 
@@ -51,3 +51,22 @@ Full ports are downstream; repos start as
 flake + `registryFragment` skeleton + port-plan README
 (tracked by `p29-wwn-ports-scaffold`). Their StoreKit catalog entries already
 exist in `wwn-apt` with `status: planned`.
+
+### Toolkit smoke (companion)
+
+- `wwn-sdl2` + `wwn-sdl2-gfx` — SDL2 Wayland + SDL2_gfx `testgfx` demo across
+  the board (software/`wl_shm` first so tvOS/watchOS stay in scope without
+  ANGLE). Tracking: [#107](https://github.com/Wawona/Wawona/issues/107),
+  plan mirror [`issues/sdl2-gfx-demo-port.md`](./issues/sdl2-gfx-demo-port.md).
+  Complements `wwn-kmscube` (GLES/iland path).
+- `wwn-gtk` — GTK4 Wayland + `gtk4-demo` / `gtk4_demo_main` across the board
+  (Cairo/`wl_shm` first on tvOS/watchOS; GL only where `allowGpu`). Delivered
+  as a **`wwn-apt` optional module** (not core-bundled). Tracking:
+  [#109](https://github.com/Wawona/Wawona/issues/109), plan mirror
+  [`issues/gtk4-demo-port.md`](./issues/gtk4-demo-port.md). Shared foundation
+  for `wwn-gtkgreet` / `wwn-gtklock` / `wwn-gnome`.
+- `wwn-qt6` + `wwn-qmlscene` — Qt6 Wayland QPA + `qmlscene` demo across the
+  board (software RHI / `wl_shm` first so tvOS/watchOS stay in scope without
+  ANGLE). Tracking: [#108](https://github.com/Wawona/Wawona/issues/108),
+  plan mirror [`issues/qmlscene-port.md`](./issues/qmlscene-port.md).
+  Complements `wwn-kmscube` and `#107`; shared Qt foundation for `#74` `wwn-kde`.

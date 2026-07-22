@@ -9,6 +9,8 @@ tiered**.
 1. **Core bundled (always present).** Minimal Weston toytoolkit clients used for
    smoke tests: `weston-simple-shm`, `weston-flower`, `weston-terminal` (mobile
    stub), `weston-smoke`, `weston-clickdot`. Statically linked; tiny.
+   Planned toolkit companion: SDL2_gfx `testgfx` (software/`wl_shm`, full Apple
+   matrix including tvOS/watchOS) — [#107](https://github.com/Wawona/Wawona/issues/107).
 2. **On-demand modules (`wwn-apt`).** Larger apps/DEs (foot, neovim, sway, niri,
    hyprland, xfce, kde, cosmic) are StoreKit products / ODR tags fetched only
    when the user installs them. Not in the base download. See

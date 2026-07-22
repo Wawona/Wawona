@@ -14,11 +14,17 @@ context device=iPhone 17 Pro
 
 open com.aspauldingcode.Wawona --relaunch
 wait 3000
+# Allow Paste via smoke wrapper host helper; Continue via agent-device.
+press label="Continue"
+press text="Continue"
 screenshot ./.agent-device/test-artifacts/ios-fuzzel-e2e-01-home.png
 
 # Start Default Machine (Niri).
 click 69 374
-wait 11000
+wait 2500
+press label="Continue"
+press text="Continue"
+wait 8000
 screenshot ./.agent-device/test-artifacts/ios-fuzzel-e2e-02-niri.png
 
 # Focus the compositor surface.

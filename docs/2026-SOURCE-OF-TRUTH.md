@@ -26,12 +26,12 @@ change, update **here first**, then the specialized docs linked below.
 
 | Platform | UI toolkit | Present path | Wayland delivery | Local shell | Notes |
 |----------|-----------|--------------|------------------|-------------|-------|
-| macOS | AppKit (+ SwiftUI settings) | CAMetalLayer / `WWNIlandPresenter` | native, nested Weston, waypipe/SSH | yes | Desktop integration; Mode B (SkyLight replace) is SIP-gated stretch |
+| macOS | AppKit (+ SwiftUI settings) | Mode A: CAMetalLayer / `WWNIlandPresenter`; Mode B (optional): `libwayland-mac.dylib` + `framebufferd` | native, nested Weston, waypipe/SSH | yes | Mode A default (store-safe). Mode B = SIP-gated Desktop Replacement in `wawona-macos-desktop-host` only — see [`iland-mode-a-b-desktop.md`](./iland-mode-a-b-desktop.md) |
 | iOS / iPadOS | UIKit | CAMetalLayer | native, nested Weston, waypipe/SSH (libssh2) | Phase 2 bundled zsh PTY | App Store compliant; StoreKit modules via `wwn-apt` |
 | tvOS | UIKit | CAMetalLayer | nested Weston, waypipe | no | Focus-engine driven; no pointer by default |
 | visionOS | UIKit | CAMetalLayer | nested Weston, waypipe | no | |
 | watchOS | WatchKit | CAMetalLayer | **remote-only (waypipe)** | **no** (redirect/stub) | See [WATCHOS-SCOPE](./ios-local-shell/WATCHOS-SCOPE.md); no XWayland toggle |
-| Android | Jetpack Compose (Material You 3) | ANativeWindow / dedicated render thread | native, nested Weston, waypipe (Dropbear) | via container | Render off JNI thread (`render_thread`, urgent-display prio) |
+| Android | Jetpack Compose (Material You 3) | ANativeWindow / dedicated render thread | native, nested Weston, waypipe (OpenSSH portable) | via container | Render off JNI thread (`render_thread`, urgent-display prio) |
 | Linux (host) | GTK4 + libadwaita | Cairo/GTK | client to host compositor; nested | yes | Reference target |
 
 Build targets per platform: [`testing/everywhere-matrix.md`](./testing/everywhere-matrix.md).
@@ -60,9 +60,12 @@ remote/nested Xwayland can attach. Details: [`2026-x11-strategy.md`](./2026-x11-
   `+[WWNPreferencesManager defaultVulkanDriverForHardware]` → KosmicKrisp on
   Apple Silicon + macOS 26+, else MoltenVK.
 - Settings semantics: [`settings.md`](./settings.md).
+- Desktop / LockScreen / Mode B keys and SIP gates:
+  [`iland-mode-a-b-desktop.md`](./iland-mode-a-b-desktop.md).
 
 ## Related canonical docs
 
+- iland Mode A / Mode B + Desktop Replacement: [`iland-mode-a-b-desktop.md`](./iland-mode-a-b-desktop.md)
 - Platform delivery matrix: [`2026-platform-delivery-matrix.md`](./2026-platform-delivery-matrix.md)
 - X11 strategy: [`2026-x11-strategy.md`](./2026-x11-strategy.md)
 - wlroots compatibility: [`2026-wlroots-compat.md`](./2026-wlroots-compat.md)

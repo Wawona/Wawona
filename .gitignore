@@ -185,9 +185,17 @@ android/app/.cxx/
 android/app/libs/
 
 # Local tooling clones (not part of upstream tree)
+vendor-research/
 swiftly.pkg
 inspirational_projects/
 .angle-test3/
 .antigravity/
 scripts/__pycache__/
 .agent-device/test-artifacts/
+
+# Local Xcode DerivedData / caches (never commit)
+.derivedData*/
+.ccache/
+.nix-deps/
+fastlane/report.xml
+.agents/

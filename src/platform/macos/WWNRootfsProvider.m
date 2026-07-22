@@ -4,7 +4,7 @@
 #import "../ios/WWNRootfsManager.h"
 #endif
 
-#if (TARGET_OS_IPHONE || TARGET_OS_OSX) && !TARGET_OS_TV
+#if (TARGET_OS_IPHONE || TARGET_OS_OSX) && !TARGET_OS_TV && !TARGET_OS_WATCH
 #import "WWNRootfsICloudSync.h"
 #endif
 

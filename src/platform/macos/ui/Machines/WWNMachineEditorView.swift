@@ -45,6 +45,7 @@ struct WWNMachineEditorView: View {
   @State private var autoScale: Bool
   @State private var respectSafeArea: Bool
   @State private var renderMacOSPointer: Bool
+  @State private var nestedCompositorCursor: String
   @State private var touchInputType: String
   @State private var swapCmdWithAlt: Bool
   @State private var universalClipboard: Bool
@@ -170,6 +171,13 @@ struct WWNMachineEditorView: View {
     #endif
     _renderMacOSPointer = State(
       initialValue: (overrides["RenderMacOSPointer"] as? Bool) ?? autoShowMacPointerDefault
+    )
+    let nestedCursorRaw =
+      (overrides["NestedCompositorCursor"] as? String)
+      ?? (overrides["nestedCompositorCursor"] as? String)
+      ?? prefs.nestedCompositorCursor()
+    _nestedCompositorCursor = State(
+      initialValue: (nestedCursorRaw == "host") ? "host" : "virtual"
     )
   }
 
@@ -379,11 +387,25 @@ struct WWNMachineEditorView: View {
       #if os(iOS) || os(tvOS)
       Toggle("Respect Safe Area", isOn: $respectSafeArea)
       #endif
-      #if os(macOS)
-      Toggle("Show macOS Cursor", isOn: $renderMacOSPointer)
-      #else
-      Toggle("Show Virtual Pointer", isOn: $renderMacOSPointer)
-      #endif
+      Toggle("Show Virtual Cursor", isOn: $renderMacOSPointer)
+      labeledField("Nested Compositor Cursor") {
+        Picker("", selection: $nestedCompositorCursor) {
+          Text("Virtual Pointer").tag("virtual")
+          #if os(macOS)
+          Text("macOS Cursor").tag("host")
+          #else
+          Text("Host Cursor").tag("host")
+          #endif
+        }
+        .pickerStyle(.menu)
+        .labelsHidden()
+        .disabled(!renderMacOSPointer)
+      }
+      Text("When nested compositors run, grab the virtual pointer or the real host cursor. Requires Show Virtual Cursor.")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .opacity(renderMacOSPointer ? 1 : 0.45)
+        .padding(.leading, 24)
       labeledField("Touch Input Type") {
         Picker("", selection: $touchInputType) {
           Text("Multi-Touch").tag("Multi-Touch")
@@ -903,6 +925,8 @@ struct WWNMachineEditorView: View {
     } else {
       overrides["RenderMacOSPointer"] = renderMacOSPointer
     }
+    overrides["NestedCompositorCursor"] =
+      (nestedCompositorCursor == "host") ? "host" : "virtual"
     #if os(tvOS)
     // Desktop window chrome is unusable on the 10-foot UI; never persist SSD/GPU stack.
     overrides["ForceServerSideDecorations"] = false

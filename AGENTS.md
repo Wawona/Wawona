@@ -43,10 +43,17 @@ and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream synta
   wrapped by ObjC (`WWNCompositorBridge.m`) / JNI (`android_jni.c`), polling
   model. Do NOT use `objc2`/`cocoa`/`jni`/`ndk` Rust crates or UniFFI callbacks.
 - **Smithay** `0.7`, `wayland_frontend` only.
-- **iland (macOS)**: replaces WindowServer/SkyLight by injecting `.dylib`s
-  (`DYLD_INSERT_LIBRARIES` + Dobby, SIP off) onto a custom IOSurface/Metal
-  framebuffer that mimics DRM/KMS/EGL/GBM — not AppKit windows. Query
-  `project=macos-internals` for Mach-O/dyld/Mach/XNU/launchd details.
+- **iland (wwn-iland) — two modes** (do not conflate):
+  - **Mode A (default, App Store–safe):** static `libiland_userland.a`, in-window
+    present via `iland_drm_set_present_callback` → `WWNIlandPresenter`. Used on
+    macOS/iOS/iPadOS/visionOS/Android (tvOS/watchOS stubs). No SIP, no dylib inject.
+  - **Mode B (optional, macOS desktop-host only):** ship `libwayland-mac.dylib`,
+    load with `DYLD_INSERT_LIBRARIES` + Dobby when SIP allows
+    (`WWNSipStatus`: Disabled or PartiallyDisabled) **and** Settings → Desktop →
+    Enable Desktop Replacement is on. Package `.#wawona-macos-desktop-host` only;
+    never in `.#wawona-macos` / iOS / Android. Canonical doc:
+    `docs/iland-mode-a-b-desktop.md`; Cursor rule `wawona-iland-mode-b-desktop`.
+  - Query `project=macos-internals` for Mach-O/dyld/Mach/XNU/launchd details.
 - **Rust backend builds via crate2nix** (per-crate Nix derivations, `Cargo.nix`)
   for isolated/incremental rebuilds — not a monolithic `buildRustPackage`. Query
   `project=crate2nix` for `tools.nix`/`defaultCrateOverrides`/strategy questions.
@@ -80,3 +87,7 @@ and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream synta
 
 - Builds are Nix-based; see `docs/compilation.md` and `docs/2026-nix-build-system.md`.
 - Don't commit secrets; `WWN_MCP_TOKEN` is provided via the environment.
+- **Desktop / LockScreen / anowaW / SIP** — macOS + Android only (see
+  `.cursor/rules/wawona-platform-targets.mdc`). Never wire onto iOS family.
+- Mode B dylib presence: assert with
+  `.github/scripts/verify-iland-mode-b-bundle.sh`.

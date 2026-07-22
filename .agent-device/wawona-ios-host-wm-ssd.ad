@@ -1,0 +1,11 @@
+# P1 host WM: Force SSD ON + weston-terminal smoke (iOS)
+# Mid-drag live-resize asserts require interactive agent-device session;
+# this replay covers prefs + launch + Start path for Force-SSD ON.
+session open --platform ios --bundle-id com.aspauldingcode.Wawona
+snapshot -i
+# Prefer Machines → Start weston-terminal when chrome is visible
+press label="Start" || true
+wait 2000
+snapshot -i
+screenshot --path .agent-device/test-artifacts/host-wm-csd/ios-force-ssd-on.png
+session close

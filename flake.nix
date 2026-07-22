@@ -832,6 +832,14 @@
             workspaceSrc = workspace-src-macos; platform = "macos"; nativeDeps = macosDeps;
             cargoNixDrv = sharedMacosCargoNix;
           };
+          # Desktop-host Rust backend: enables iland-baremetal + profile-desktop-host
+          # Cargo gates (Mode B). Never used for store-safe / App Store builds.
+          backend-macos-desktop-host = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
+            inherit crate2nix wawonaVersion toolchains nixpkgs;
+            workspaceSrc = workspace-src-macos; platform = "macos"; nativeDeps = macosDeps;
+            cargoNixDrv = sharedMacosCargoNix;
+            desktopHost = true;
+          };
           backend-ios = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
             workspaceSrc = workspace-src-ios; platform = "ios"; nativeDeps = iosDeps;
@@ -886,12 +894,25 @@
           mkXcodegen = {
             platformFilter ? null,
             simulatorOnly ? false,
+            # waypipe-on-watch currently fails openssl-sys (ios vs watch
+            # -m*-simulator-version-min clash). Drop it so project.yml can still
+            # emit Wawona-watchOS; LDFLAGS already treat waypipe as optional.
+            dropWatchWaypipe ? false,
           }:
             let
               want = p: platformFilter == null || builtins.elem p platformFilter;
               # Empty unused platform deps so filterAttrs-forced targets do not
               # realize heavy closures (eval may still walk attrs; builds do not).
               empty = { };
+              watchDepsForXcodegen =
+                if !(want "watchos") then empty
+                else if simulatorOnly then empty
+                else if dropWatchWaypipe then (watchosDeps // { waypipe = null; })
+                else watchosDeps;
+              watchSimDepsForXcodegen =
+                if !(want "watchos") then empty
+                else if dropWatchWaypipe then (watchosSimDeps // { waypipe = null; })
+                else watchosSimDeps;
             in
             pkgs.callPackage ./dependencies/generators/xcodegen.nix {
               inherit wawonaVersion wawonaSrc platformFilter simulatorOnly mobileGuestArtifacts mobileVmEngine;
@@ -903,8 +924,8 @@
               tvosSimDeps = if want "tvos" then tvosSimDeps else empty;
               visionosDeps = if want "visionos" then (if simulatorOnly then empty else visionosDeps) else empty;
               visionosSimDeps = if want "visionos" then visionosSimDeps else empty;
-              watchosDeps = if want "watchos" then (if simulatorOnly then empty else watchosDeps) else empty;
-              watchosSimDeps = if want "watchos" then watchosSimDeps else empty;
+              watchosDeps = watchDepsForXcodegen;
+              watchosSimDeps = watchSimDepsForXcodegen;
               macosDeps = if want "macos" then macosDeps else empty;
               macosBackend = if want "macos" then backend-macos else null;
               iosBackend = if (want "ios" || want "ipados") && !simulatorOnly then backend-ios else null;
@@ -935,6 +956,12 @@
           };
           xcodegenMacosOutputs = mkXcodegen { platformFilter = [ "macos" ]; };
           xcodegenAppleOutputs = mkXcodegen { platformFilter = [ "ios" "ipados" "macos" ]; };
+          # Full Apple matrix minus visionOS — used when vision deps fail to
+          # configure (e.g. lz4 -mvisionos-simulator-version-min clang gap).
+          xcodegenNoVisionOutputs = mkXcodegen {
+            platformFilter = [ "ios" "ipados" "macos" "tvos" "watchos" ];
+            dropWatchWaypipe = true;
+          };
           wawona-macos = pkgs.callPackage ./dependencies/wawona/macos.nix {
             buildModule = toolchains; inherit wawonaSrc wawonaVersion;
             waypipe = toolchains.buildForMacOS "waypipe" { }; weston = toolchains.buildForMacOS "weston" { };
@@ -952,6 +979,25 @@
             # pulling iOS/device backend graphs.
             rustBackend = backend-macos;
             xcodeProject = xcodegenMacosOutputs.project;
+            # Store-safe / default: Mode A only — no Mode B dylib.
+            ilandBaremetal = null;
+          };
+          # Desktop-host macOS: ships Mode B libwayland-mac.dylib for SIP-gated
+          # Desktop Replacement (Developer ID / full-dev; never App Store).
+          wawona-macos-desktop-host = pkgs.callPackage ./dependencies/wawona/macos.nix {
+            buildModule = toolchains; inherit wawonaSrc wawonaVersion;
+            waypipe = toolchains.buildForMacOS "waypipe" { }; weston = toolchains.buildForMacOS "weston" { };
+            foot = toolchains.buildForMacOS "foot" { };
+            niri = toolchains.buildForMacOS "niri" { };
+            fuzzel = toolchains.buildForMacOS "fuzzel" { };
+            anowaw = toolchains.buildForMacOS "anowaw" { };
+            fastfetch = pkgs.fastfetch;
+            neovim = null;
+            zsh = pkgs.zsh;
+            kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
+            rustBackend = backend-macos-desktop-host;
+            xcodeProject = xcodegenMacosOutputs.project;
+            ilandBaremetal = toolchains.buildForMacOS "iland-baremetal" { };
           };
           wawona-ios-app-sim = pkgs.callPackage ./dependencies/wawona/ios.nix {
             inherit wawonaSrc wawonaVersion teamId;
@@ -1158,6 +1204,7 @@ EOF
             echo "Wawona app bundle removed from /Applications if present."
           '';
           wawona-macos = wawona-macos;
+          wawona-macos-desktop-host = wawona-macos-desktop-host;
           coreutils-multicall-macos = coreutils-multicall-macos;
           wawona-ios = wawona-ios-app-sim;
           wawona-ipados = wawona-ipados-app-sim;
@@ -1182,6 +1229,7 @@ EOF
           wawona-ios-xcarchive = wawona-ios-xcarchive;
           wawona-ios-simulator = wawona-ios-simulator;
           wawona-macos-backend = backend-macos;
+          wawona-macos-backend-desktop-host = backend-macos-desktop-host;
           wawona-macos-xcode-env = backend-macos;
           wawona-ios-backend = backend-ios;
           wawona-ios-xcode-env = backend-ios;
@@ -1205,6 +1253,7 @@ EOF
           xcodegen-macos = xcodegenMacosOutputs.app;
           xcodegen-apple = xcodegenAppleOutputs.app;
           xcodegen-fast = xcodegenAppleOutputs.app;
+          xcodegen-novision = xcodegenNoVisionOutputs.app;
           xcodegenProject = xcodegenOutputs.project;
           weston-debug = toolchains.buildForMacOS "weston" { debug = true; };
           weston-simple-shm = toolchains.buildForMacOS "weston-simple-shm" {};
@@ -1212,11 +1261,8 @@ EOF
           foot = (import ./dependencies/wawona/shell-wrappers.nix).footWrapper pkgs (toolchains.buildForMacOS "foot" {}) wawona-macos;
           waypipe-ios = toolchains.buildForIOS "waypipe" { };
           waypipe-ios-sim = toolchains.buildForIOS "waypipe" { simulator = true; };
-          # anowaW app bridge static lib (libanowaw.a) for the App Bridge on
-          # Apple platforms. macOS is the shipping target (Developer ID); the
-          # iOS build exists for link/instantiation parity.
+          # anowaW app bridge — macOS (+ Android) only (platform-targets matrix).
           anowaw-macos = toolchains.buildForMacOS "anowaw" { };
-          anowaw-ios = toolchains.buildForIOS "anowaw" { };
           # weston toytoolkit (cairo/pango) cross-compile stack for Apple mobile,
           # exposed individually for incremental build verification.
           freetype-ios = toolchains.buildForIOS "freetype" { };
@@ -1237,6 +1283,8 @@ EOF
           angle-android = toolchainsAndroid.buildForAndroid "angle" { };
           iland-ios = toolchains.buildForIOS "iland" { };
           iland-ios-sim = toolchains.buildForIOS "iland" { simulator = true; };
+          iland-visionos = toolchains.buildForVisionOS "iland" { };
+          iland-visionos-sim = toolchains.buildForVisionOS "iland" { simulator = true; };
           kmscube-ios = toolchains.buildForIOS "kmscube" { simulator = true; };
           kmscube-ios-device = toolchains.buildForIOS "kmscube" { simulator = false; };
           fastfetch-ios = toolchains.buildForIOS "fastfetch" { simulator = true; };
@@ -1253,8 +1301,22 @@ EOF
           weston-ios-gl-sim = toolchains.buildForIOS "weston" { simulator = true; enableGlClients = true; };
           "wawona-pty-ios" = toolchains.buildForIOS "wawona-pty" { };
           "wawona-pty-ios-sim" = toolchains.buildForIOS "wawona-pty" { simulator = true; };
+          # Platform-matched PTY for Apple family (same ios.nix recipe; SDK from apple-mobile).
+          "wawona-pty-tvos" = toolchains.buildForTVOS "wawona-pty" { };
+          "wawona-pty-tvos-sim" = toolchains.buildForTVOS "wawona-pty" { simulator = true; };
+          "wawona-pty-watchos" = toolchains.buildForWatchOS "wawona-pty" { };
+          "wawona-pty-watchos-sim" = toolchains.buildForWatchOS "wawona-pty" { simulator = true; };
+          "wawona-pty-visionos" = toolchains.buildForVisionOS "wawona-pty" { };
+          "wawona-pty-visionos-sim" = toolchains.buildForVisionOS "wawona-pty" { simulator = true; };
           zsh-ios = toolchains.buildForIOS "zsh" { };
           zsh-ios-sim = toolchains.buildForIOS "zsh" { simulator = true; };
+          # Platform-matched zsh for Apple family (ios.nix is apple-mobile-aware).
+          zsh-tvos = toolchains.buildForTVOS "zsh" { };
+          zsh-tvos-sim = toolchains.buildForTVOS "zsh" { simulator = true; };
+          zsh-watchos = toolchains.buildForWatchOS "zsh" { };
+          zsh-watchos-sim = toolchains.buildForWatchOS "zsh" { simulator = true; };
+          zsh-visionos = toolchains.buildForVisionOS "zsh" { };
+          zsh-visionos-sim = toolchains.buildForVisionOS "zsh" { simulator = true; };
           # Apple mobile: never ship OpenSSH / libssh-inprocess.a (libssh2 only).
           libssh2-ios = toolchains.buildForIOS "libssh2" { };
           libssh2-ios-sim = toolchains.buildForIOS "libssh2" { simulator = true; };
@@ -1472,6 +1534,7 @@ EOF
         xcodegen-ios = { type = "app"; program = "${systemPackages.xcodegen-ios}/bin/xcodegen"; };
         xcodegen-macos = { type = "app"; program = "${systemPackages.xcodegen-macos}/bin/xcodegen"; };
         xcodegen-apple = { type = "app"; program = "${systemPackages.xcodegen-apple}/bin/xcodegen"; };
+        xcodegen-novision = { type = "app"; program = "${systemPackages.xcodegen-novision}/bin/xcodegen"; };
         wawona-ios-provision = { type = "app"; program = "${systemPackages.wawona-ios-provision}/bin/provision-xcode"; };
       } // (pkgs.lib.optionalAttrs (systemPackages ? graphics-validate-macos) {
         graphics-validate-macos = { type = "app"; program = "${systemPackages.graphics-validate-macos}/bin/graphics-validate-macos"; };

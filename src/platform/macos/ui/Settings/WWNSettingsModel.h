@@ -25,6 +25,8 @@
     NSString *imageName; // For WSettingHeader type (local asset)
 @property(nonatomic, copy)
     NSString *iconURL; // For WSettingLink type (small icon)
+/// When NO, control is grayed out and non-interactive (still visible).
+@property(nonatomic, assign) BOOL interactive;
 
 + (instancetype)itemWithTitle:(NSString *)title
                           key:(NSString *)key

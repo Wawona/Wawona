@@ -378,8 +378,8 @@ The iOS app is built in two stages:
 
 2. **Simulator automation** (`passthru.automationScript`): generates an Xcode
    project via `xcodegen.nix`, builds it with `xcodebuild` for the iOS
-   Simulator, installs the app, launches it, and attaches LLDB for crash
-   debugging.
+   Simulator, installs the app, and launches it. Pass `--debug` to pause at
+   spawn and attach LLDB for crash/freeze debugging.
 
 The automation script is what `nix run .#wawona-ios` invokes.
 

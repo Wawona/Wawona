@@ -2876,6 +2876,190 @@ impl WawonaCore {
         }
     }
 
+    /// Begin an interactive resize session (host SSD live-drag or CSD
+    /// `xdg_toplevel.resize` grab). Sets `xdg_toplevel.state.resizing` on the
+    /// next configure and keeps it set for mid-drag `resize_window` calls.
+    pub fn begin_interactive_resize(&self, window_id: WindowId) {
+        if !self.is_running() {
+            return;
+        }
+        let wid = window_id.id as u32;
+        let (tid, width, height, already) = {
+            let state = self.state.read_recover();
+            let Some(tid) = state.xdg_toplevel_key_for_window(wid).or_else(|| {
+                state
+                    .xdg
+                    .toplevels
+                    .iter()
+                    .find(|(_, data)| data.window_id == wid)
+                    .map(|(key, _)| key.clone())
+            }) else {
+                return;
+            };
+            let Some(tl) = state.xdg.toplevels.get(&tid) else {
+                return;
+            };
+            let w = if tl.width > 0 {
+                tl.width
+            } else if let Some(window) = state.get_window(wid) {
+                window.read_recover().width.max(0) as u32
+            } else {
+                0
+            };
+            let h = if tl.height > 0 {
+                tl.height
+            } else if let Some(window) = state.get_window(wid) {
+                window.read_recover().height.max(0) as u32
+            } else {
+                0
+            };
+            (tid, w, h, tl.interactive_resize)
+        };
+        if already {
+            return;
+        }
+        crate::wlog!(
+            crate::util::logging::FFI,
+            "begin_interactive_resize: window={} size={}x{}",
+            wid,
+            width,
+            height
+        );
+        {
+            let mut state = self.state.write_recover();
+            if let Some(tl) = state.xdg.toplevels.get_mut(&tid) {
+                tl.interactive_resize = true;
+            }
+            if width > 0 && height > 0 {
+                let sent_serial = state.send_toplevel_configure(tid.0.clone(), tid.1, width, height);
+                if let Some(serial) = sent_serial {
+                    let txn = self.begin_resize_transaction(
+                        window_id,
+                        serial,
+                        WindowSizeCause::HostConfigure,
+                        Size { width, height },
+                        GeometrySizeKind::Content,
+                    );
+                    if let Some(window) = state.get_window(wid) {
+                        let mut window = window.write_recover();
+                        let decision = window
+                            .size_authority
+                            .clone()
+                            .on_host_resize_request(width, height, txn.id)
+                            .authority
+                            .on_configure_sent(serial);
+                        window.size_authority = decision;
+                    }
+                }
+            }
+        }
+        self.flush_clients();
+    }
+
+    /// End an interactive resize session: clear `xdg_toplevel.state.resizing`
+    /// and emit a settle configure (even when size is unchanged). `width` /
+    /// `height` of 0 keep the last toplevel size.
+    pub fn end_interactive_resize(&self, window_id: WindowId, width: u32, height: u32) {
+        if !self.is_running() {
+            return;
+        }
+        let wid = window_id.id as u32;
+        let (tid, final_w, final_h, was_active) = {
+            let state = self.state.read_recover();
+            let Some(tid) = state.xdg_toplevel_key_for_window(wid).or_else(|| {
+                state
+                    .xdg
+                    .toplevels
+                    .iter()
+                    .find(|(_, data)| data.window_id == wid)
+                    .map(|(key, _)| key.clone())
+            }) else {
+                return;
+            };
+            let Some(tl) = state.xdg.toplevels.get(&tid) else {
+                return;
+            };
+            let w = if width > 0 {
+                width
+            } else if tl.width > 0 {
+                tl.width
+            } else if let Some(window) = state.get_window(wid) {
+                window.read_recover().width.max(1) as u32
+            } else {
+                1
+            };
+            let h = if height > 0 {
+                height
+            } else if tl.height > 0 {
+                tl.height
+            } else if let Some(window) = state.get_window(wid) {
+                window.read_recover().height.max(1) as u32
+            } else {
+                1
+            };
+            (tid, w.max(1), h.max(1), tl.interactive_resize)
+        };
+        crate::wlog!(
+            crate::util::logging::FFI,
+            "end_interactive_resize: window={} size={}x{} was_active={}",
+            wid,
+            final_w,
+            final_h,
+            was_active
+        );
+        {
+            let mut state = self.state.write_recover();
+            if let Some(tl) = state.xdg.toplevels.get_mut(&tid) {
+                tl.interactive_resize = false;
+            }
+            let scale = {
+                let cur = self.output_size.read_recover();
+                cur.2
+            };
+            // Keep per-window output geometry in lockstep with the settle
+            // configure (nested compositors size from output mode).
+            drop(state);
+            self.set_output_geometry_for_window(window_id, final_w, final_h, scale);
+            let mut state = self.state.write_recover();
+            let sent_serial =
+                state.send_toplevel_configure(tid.0.clone(), tid.1, final_w, final_h);
+            if let Some(serial) = sent_serial {
+                let txn = self.begin_resize_transaction(
+                    window_id,
+                    serial,
+                    WindowSizeCause::HostConfigure,
+                    Size {
+                        width: final_w,
+                        height: final_h,
+                    },
+                    GeometrySizeKind::Content,
+                );
+                if let Some(window) = state.get_window(wid) {
+                    let mut window = window.write_recover();
+                    window.width = final_w as i32;
+                    window.height = final_h as i32;
+                    let decision = window
+                        .size_authority
+                        .clone()
+                        .on_host_resize_request(final_w, final_h, txn.id)
+                        .authority
+                        .on_configure_sent(serial);
+                    window.size_authority = decision;
+                }
+            } else if let Some(window) = state.get_window(wid) {
+                let mut window = window.write_recover();
+                window.width = final_w as i32;
+                window.height = final_h as i32;
+                window.size_authority = window
+                    .size_authority
+                    .clone()
+                    .on_host_resize_request(final_w, final_h, 0)
+                    .authority;
+            }
+        }
+        self.flush_clients();
+    }
+
     /// Native host entered or left fullscreen — update xdg toplevel state.
     pub fn apply_host_window_fullscreen(
         &self,
@@ -3596,7 +3780,7 @@ impl WawonaCore {
 
                      // Also send text-input-v3 enter so IME / emoji
                      // commits reach this surface's text-input instance.
-                     state.ext.text_input.enter(res);
+                     state.ext.text_input.enter(res, Some(sid));
                  } else {
                  crate::wlog!(crate::util::logging::FFI, "WARNING: Surface {} has no resource for keyboard enter", 
                      sid);
@@ -3742,7 +3926,7 @@ impl WawonaCore {
                 } else {
                     state.seat.broadcast_keyboard_enter(enter_serial, res, &keys);
                 }
-                state.ext.text_input.enter(res);
+                state.ext.text_input.enter(res, Some(new_sid));
             }
         }
 
@@ -4694,19 +4878,23 @@ impl WawonaCore {
 // Methods NOT exported via UniFFI (C API only — tuples / non-Record types)
 // ============================================================================
 impl WawonaCore {
-    /// True when any `zwp_text_input_v3` instance is currently `Enable`d.
-    /// Host platforms poll this to show/hide the soft keyboard automatically.
+    /// True when a focused `zwp_text_input_v3` instance has committed `enable`.
+    /// Host platforms poll this for IME routing (commit_string vs key inject).
     pub fn text_input_is_enabled(&self) -> bool {
         if !self.is_running() {
             return false;
         }
         let state = self.state.read_recover();
-        state
-            .ext
-            .text_input
-            .instances
-            .values()
-            .any(|instance| instance.enabled)
+        state.ext.text_input.committed_enabled()
+    }
+
+    /// Soft OSK should expand: committed TI enable OR terminal-focus synthesis.
+    pub fn text_entry_wanted(&self) -> bool {
+        if !self.is_running() {
+            return false;
+        }
+        let state = self.state.read_recover();
+        crate::core::wayland::ext::text_input::text_entry_wanted(&state)
     }
 
     /// Read the surrounding text and cursor position reported by the focused
@@ -4717,14 +4905,12 @@ impl WawonaCore {
             return (String::new(), 0, 0);
         }
         let state = self.state.read_recover();
-        for (_id, instance) in &state.ext.text_input.instances {
-            if instance.enabled {
-                return (
-                    instance.surrounding_text.clone(),
-                    instance.surrounding_cursor,
-                    instance.surrounding_anchor,
-                );
-            }
+        if let Some(instance) = state.ext.text_input.focused_enabled_instance() {
+            return (
+                instance.surrounding_text.clone(),
+                instance.surrounding_cursor,
+                instance.surrounding_anchor,
+            );
         }
         (String::new(), 0, 0)
     }
@@ -4738,10 +4924,8 @@ impl WawonaCore {
             return (0, 0, 0, 0);
         }
         let state = self.state.read_recover();
-        for (_id, instance) in &state.ext.text_input.instances {
-            if instance.enabled {
-                return instance.cursor_rect;
-            }
+        if let Some(instance) = state.ext.text_input.focused_enabled_instance() {
+            return instance.cursor_rect;
         }
         (0, 0, 0, 0)
     }
@@ -4754,13 +4938,11 @@ impl WawonaCore {
             return (0, 0);
         }
         let state = self.state.read_recover();
-        for (_id, instance) in &state.ext.text_input.instances {
-            if instance.enabled {
-                return (
-                    instance.content_type.hint,
-                    instance.content_type.purpose,
-                );
-            }
+        if let Some(instance) = state.ext.text_input.focused_enabled_instance() {
+            return (
+                instance.content_type.hint,
+                instance.content_type.purpose,
+            );
         }
         (0, 0)
     }

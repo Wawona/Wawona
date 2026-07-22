@@ -38,6 +38,9 @@
 , cargoNixDrv ? null
   # When false, buildRustCrate uses non-release (faster CI sim backends; no thin LTO).
 , release ? true
+  # macOS desktop-host / full-dev: enable Mode B Cargo gates (iland-baremetal +
+  # profile-desktop-host). Never set for store-safe or mobile backends.
+, desktopHost ? false
   # Extracted-repo toolchain handles (default to legacy in-tree copies; Wawona's
   # flake injects wwn-toolchain store paths via the pkgs overlay).
 , applePath
@@ -496,12 +499,17 @@ let
 
   # ── Features to enable ─────────────────────────────────────────────
   features =
+    # waypipe-ssh = in-process waypipe + libssh2 (never OpenSSH) on Apple mobile.
     if isIOS then [ "waypipe-ssh" "smithay-protocols" "coreutils" ]
     else if isTVOS then [ "waypipe-ssh" "smithay-protocols" "coreutils" ]
-    else if isVisionOS then [ "smithay-protocols" "coreutils" ]
-    else if isWatchOS then [ "smithay-protocols" ] # watchOS: minimal feature set (no SSH/Waypipe; coreutils size-gated separately)
+    else if isVisionOS then [ "waypipe-ssh" "smithay-protocols" "coreutils" ]
+    else if isWatchOS then [ "waypipe-ssh" "smithay-protocols" ] # coreutils size-gated; Remote via libssh2
     else if isAndroid then [ "waypipe" "smithay-protocols" "coreutils" ]
-    else [ "smithay-protocols" "smithay-desktop" ]; # macOS desktop: enable smithay xwayland/backend_drm paths
+    else
+      # macOS: smithay desktop paths always; Mode B Cargo gates only for
+      # desktop-host / full-dev (dylib still gated separately in macos.nix).
+      [ "smithay-protocols" "smithay-desktop" ]
+      ++ lib.optionals desktopHost [ "profile-desktop-host" "iland-baremetal" ];
 
   # ── Per-crate build overrides ──────────────────────────────────────
   crateOverrides = pkgs.defaultCrateOverrides // {

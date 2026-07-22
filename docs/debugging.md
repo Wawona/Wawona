@@ -1,52 +1,81 @@
 # Attaching a Debugger
 
-`nix run .#wawona-macos` launches Wawona **under LLDB automatically** (Xcode Run). LLDB is skipped only if the build artifact fails sanity checks, or you opt out with `--no-debug`.
+All flake apps launch **without** a debugger by default. Pass `--debug` to
+run under LLDB (or attach) so you can catch freezes and crashes.
 
 ## Quick Reference
 
 ```bash
-# macOS — default: under LLDB (Xcode Run)
+# Default — no debugger
 nix run .#wawona-macos
+nix run .#wawona-ios
+nix run .#wawona-android
+nix run .#wawona-linux
 
-# macOS — skip LLDB
-nix run .#wawona-macos -- --no-debug
+# Opt-in LLDB (launch under debugger; freeze → process interrupt)
+nix run .#wawona-macos -- --debug
+nix run .#wawona-ios -- --debug
+nix run .#wawona-android -- --debug
 
-# macOS — attach to already-running Wawona
+# Attach to an already-running / frozen macOS process
 nix run .#wawona-macos -- --debug-attach
 
-# iOS Simulator — opt-in via --debug
-nix run .#wawona-ios -- --debug
+# Env opt-in / force-off (macOS)
+WAWONA_LLDB=1 nix run .#wawona-macos
+WAWONA_NO_LLDB=1 nix run .#wawona-macos -- --debug   # still plain run
 ```
 
 ---
 
-## macOS (default)
+## macOS
 
 ```bash
-nix run .#wawona-macos
+nix run .#wawona-macos                # plain run
+nix run .#wawona-macos -- --debug     # LLDB from process start
+nix run .#wawona-macos -- --debug-attach
 ```
+
+With `--debug`:
 
 1. Nix build must succeed
 2. Wrapper verifies `Wawona.app` + Mach-O binary exist
-3. **LLDB spawns the app** — backtraces on crash/halt, `process interrupt` on hang
+3. **LLDB spawns the app** — backtraces on crash/halt
+4. On hang/freeze: at the `(lldb)` prompt run `process interrupt`
+   (same as Xcode Pause); stop-hooks print `thread backtrace all`
 
-If the bundle or binary is missing/broken, the wrapper exits with an error and never starts LLDB.
+`--debug-attach` attaches to a live `Wawona` PID (useful when it already froze
+outside the debugger). Then `process interrupt` if it is still running.
 
-### Skip LLDB
-
-```bash
-nix run .#wawona-macos -- --no-debug
-WAWONA_NO_LLDB=1 nix run .#wawona-macos
-```
-
-### Attach to a running instance
-
-```bash
-nix run .#wawona-macos -- --debug-attach
-```
+`--no-debug` / `--release` remain accepted as no-ops for old scripts.
 
 ---
 
-## iOS / Android
+## iOS / iPadOS / tvOS / watchOS / visionOS
 
-Use `--debug` on `wawona-ios`, `wawona-android`, etc.
+```bash
+nix run .#wawona-ios -- --debug
+```
+
+App launches with `--wait-for-debugger`; LLDB attaches to the simulator PID.
+
+---
+
+## Android
+
+```bash
+nix run .#wawona-android -- --debug
+```
+
+Deploys `lldb-server`, starts the app wait-for-debugger, attaches via
+gdb-remote. See the runner tip when launching without `--debug`.
+
+---
+
+## Linux
+
+```bash
+nix run .#wawona-linux -- --debug
+```
+
+When `--debug` is set, the runner wraps the built binary with LLDB the same
+way as macOS (`process interrupt` for freezes).

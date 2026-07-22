@@ -118,5 +118,43 @@ extern int weston_simple_shm_main(int argc, char **argv);
   self.footRunning = NO;
 }
 
+- (void)launchBundledClientWithId:(NSString *)clientId {
+  [self launchBundledClientWithId:clientId machineId:nil];
+}
+
+- (void)launchBundledClientWithId:(NSString *)clientId
+                        machineId:(NSString *)machineId {
+  (void)machineId;
+  [self.delegate
+      runnerDidReceiveSSHError:
+          [NSString stringWithFormat:@"%@ is unavailable on visionOS.",
+                                     clientId ?: @"client"]];
+}
+
+- (void)stopBundledClientForMachineId:(NSString *)machineId {
+  (void)machineId;
+}
+
+- (BOOL)isBundledClientRunningForMachineId:(NSString *)machineId {
+  (void)machineId;
+  return NO;
+}
+
+- (NSUInteger)runningInstanceCountForClientId:(NSString *)clientId {
+  (void)clientId;
+  return 0;
+}
+
+- (void)stopAllNativeClients {
+  self.westonRunning = NO;
+  self.westonTerminalRunning = NO;
+  self.footRunning = NO;
+  self.isWestonSimpleSHMRunning = NO;
+}
+
+- (BOOL)isAnyNativeClientRunning {
+  return NO;
+}
+
 @end
 

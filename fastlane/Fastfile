@@ -58,10 +58,8 @@ end
 
 # TestFlight targets (macOS excluded — not distributed via TestFlight).
 # gym builds via scheme; match profiles must already include App Store + iCloud.
-#
-# Ship universal iOS first. tvOS/visionOS/watchOS still miss the iOS-parity
-# ANGLE/iland/niri/zsh link stack (undefined egl*/niri_main/… at archive time);
-# re-add those schemes once OTHER_LDFLAGS + mobile-platform-deps match iOS.
+# Full Apple family (platform-targets): restore platforms only after MBA local
+# archive+sim proof for that scheme.
 APPLE_BETA_TARGETS = [
   {
     # Universal (phone+iPad). Do not also upload Wawona-iPadOS — same bundle id
@@ -72,6 +70,30 @@ APPLE_BETA_TARGETS = [
     destination: "generic/platform=iOS",
     bundle_id: "com.aspauldingcode.Wawona",
     profile_name: "match AppStore com.aspauldingcode.Wawona"
+  },
+  {
+    scheme: "Wawona-tvOS",
+    name: "Apple TV (tvOS)",
+    app_platform: "appletvos",
+    destination: "generic/platform=tvOS",
+    bundle_id: "com.aspauldingcode.Wawona",
+    profile_name: "match AppStore com.aspauldingcode.Wawona tvos"
+  },
+  {
+    scheme: "Wawona-visionOS",
+    name: "Apple Vision Pro (visionOS)",
+    app_platform: "xros",
+    destination: "generic/platform=visionOS",
+    bundle_id: "com.aspauldingcode.Wawona",
+    profile_name: "match AppStore com.aspauldingcode.Wawona"
+  },
+  {
+    scheme: "Wawona-watchOS",
+    name: "Apple Watch (watchOS)",
+    app_platform: "ios",
+    destination: "generic/platform=watchOS",
+    bundle_id: "com.aspauldingcode.Wawona.watch",
+    profile_name: "match AppStore com.aspauldingcode.Wawona.watch"
   }
 ].freeze
 
@@ -419,7 +441,7 @@ def nix_aab_path
 end
 
 platform :ios do
-  desc "Upload universal iOS to TestFlight (tvOS/visionOS/watchOS re-enabled when link stack matches iOS)"
+  desc "Upload universal iOS, Apple TV, Apple Vision Pro, and Apple Watch to TestFlight"
   lane :beta do
     validate_env
     setup_ci if ENV["CI"]

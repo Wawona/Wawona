@@ -1,0 +1,366 @@
+name: Leak idle gate
+
+# Start→hold→Stop memory plateau gate (phys_footprint / dumpsys PSS).
+# Identifies which product target fails. See docs/testing/leak-idle-gate.md.
+#
+# Not a promote blocker yet — nightly + workflow_dispatch + path-filtered on
+# development. Device gate remains the GUI smoke authority.
+
+on:
+  workflow_dispatch:
+    inputs:
+      checkout_ref:
+        description: "Git ref to test (empty = current SHA)"
+        type: string
+        required: false
+        default: ""
+      lanes:
+        description: "Lane subset: all | ios | android | macos"
+        type: string
+        required: false
+        default: "all"
+  workflow_call:
+    inputs:
+      checkout_ref:
+        type: string
+        required: false
+        default: ""
+      tip_key:
+        type: string
+        required: false
+        default: ""
+      lanes:
+        type: string
+        required: false
+        default: "all"
+  schedule:
+    - cron: "30 9 * * *" # daily after nightly-full-matrix (08:00 UTC)
+  push:
+    branches: [development]
+    paths:
+      - "src/**"
+      - "android/**"
+      - "Sources/**"
+      - "dependencies/**"
+      - "flake.nix"
+      - "flake.lock"
+      - "scripts/leak-idle-gate.sh"
+      - "scripts/lib/leak-idle-measure.sh"
+      - "scripts/agent-device-smoke.sh"
+      - "scripts/lib/agent-device-ios-system-ui.sh"
+      - "scripts/lib/android-ad-scale.sh"
+      - ".github/workflows/leak-idle-gate.yml"
+      - ".github/workflows/product-build.yml"
+      - "docs/testing/leak-idle-gate.md"
+
+concurrency:
+  group: leak-idle-gate-${{ inputs.tip_key || inputs.checkout_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+  actions: read
+
+env:
+  AGENT_DEVICE_VERSION: "0.18.3"
+  WAWONA_LEAK_STRICT: "1"
+  WAWONA_LEAK_HOLD_SEC: "60"
+  WAWONA_LEAK_SAMPLE_SEC: "15"
+  WAWONA_LEAK_PLATEAU_MB: "20"
+  WAWONA_LEAK_MONO_MB: "8"
+
+jobs:
+  product-ios:
+    name: Product iOS sim
+    if: ${{ (inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'ios' || github.event_name == 'schedule' || github.event_name == 'push' }}
+    uses: ./.github/workflows/product-build.yml
+    with:
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
+      tip_key: ${{ inputs.tip_key || inputs.checkout_ref || github.ref_name }}
+      only: ios-sim
+    permissions:
+      contents: read
+      id-token: write
+
+  product-android:
+    name: Product Android APK
+    if: ${{ (inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'android' || github.event_name == 'schedule' || github.event_name == 'push' }}
+    uses: ./.github/workflows/product-build.yml
+    with:
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
+      tip_key: ${{ inputs.tip_key || inputs.checkout_ref || github.ref_name }}
+      only: android-apk
+    permissions:
+      contents: read
+      id-token: write
+
+  product-macos:
+    name: Product macOS app
+    if: ${{ (inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'macos' || github.event_name == 'schedule' || github.event_name == 'push' }}
+    uses: ./.github/workflows/product-build.yml
+    with:
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
+      tip_key: ${{ inputs.tip_key || inputs.checkout_ref || github.ref_name }}
+      only: macos-app
+    permissions:
+      contents: read
+      id-token: write
+
+  leak-ios:
+    name: "Leak idle: iOS"
+    needs: product-ios
+    if: ${{ always() && !cancelled() && (needs.product-ios.result == 'success') && ((inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'ios' || github.event_name == 'schedule' || github.event_name == 'push') }}
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+
+      - name: Select Xcode
+        id: xcode
+        run: ./.github/scripts/select-xcode.sh
+
+      - name: Download product-ios-sim
+        uses: actions/download-artifact@v8
+        with:
+          name: product-ios-sim
+          path: product-ios-sim/
+
+      - name: Stage iOS app
+        run: |
+          mkdir -p result-ios
+          if [[ -d product-ios-sim/Wawona.app ]]; then
+            cp -R product-ios-sim/Wawona.app result-ios/
+          else
+            find product-ios-sim -name 'Wawona.app' -type d | head -1 | while read -r p; do
+              cp -R "$p" result-ios/
+            done
+          fi
+          test -d result-ios/Wawona.app
+
+      - name: Install agent-device
+        run: npm install -g "agent-device@${AGENT_DEVICE_VERSION}"
+
+      - name: Cache agent-device XCTest runner
+        uses: actions/cache@v5
+        with:
+          path: ~/.agent-device/apple-runner/derived
+          key: agent-device-runner-${{ env.AGENT_DEVICE_VERSION }}-${{ runner.os }}-xcode-${{ steps.xcode.outputs.version }}
+          restore-keys: |
+            agent-device-runner-${{ env.AGENT_DEVICE_VERSION }}-${{ runner.os }}-xcode-
+
+      - name: Ensure simulator device exists
+        run: |
+          SIM_NAME="${WAWONA_IOS_SIM:-iPhone 17 Pro}"
+          if ! xcrun simctl list devices available | grep -q "$SIM_NAME ("; then
+            DEVTYPE=$(xcrun simctl list devicetypes | grep -F "$SIM_NAME (" | sed -E 's/.*\((com[^)]*)\).*/\1/' | head -1)
+            RUNTIME=$(xcrun simctl list runtimes | grep -E "^iOS" | tail -1 | sed -E 's/.*(com\.apple\.CoreSimulator\.SimRuntime\.[A-Za-z0-9._-]+).*/\1/')
+            xcrun simctl create "$SIM_NAME" "$DEVTYPE" "$RUNTIME"
+          fi
+
+      - name: Run iOS leak-idle gate
+        env:
+          WAWONA_IOS_APP: result-ios/Wawona.app
+          WAWONA_IOS_PREPARE_TIMEOUT_MS: "600000"
+          WAWONA_LEAK_STRICT: "1"
+        run: |
+          SIM_NAME="${WAWONA_IOS_SIM:-iPhone 17 Pro}"
+          pkill -f "agent-device/dist/src/internal/daemon.js" 2>/dev/null || true
+          sleep 1
+          xcrun simctl bootstatus "$SIM_NAME" -b || xcrun simctl boot "$SIM_NAME" || true
+          xcrun simctl bootstatus "$SIM_NAME"
+          ./scripts/leak-idle-gate.sh ios
+
+      - name: Upload iOS leak artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: leak-idle-ios
+          path: .agent-device/test-artifacts/leak-idle-gate/ios/
+          if-no-files-found: warn
+
+  leak-android:
+    name: "Leak idle: Android"
+    needs: product-android
+    if: ${{ always() && !cancelled() && (needs.product-android.result == 'success') && ((inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'android' || github.event_name == 'schedule' || github.event_name == 'push') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Download product-android-apk
+        uses: actions/download-artifact@v8
+        with:
+          name: product-android-apk
+          path: dist/
+
+      - name: Normalize APK path
+        run: |
+          if [[ ! -f dist/Wawona.apk ]]; then
+            found="$(find dist -name 'Wawona.apk' -type f | head -1)"
+            [[ -n "$found" ]] || { echo "Wawona.apk missing"; exit 1; }
+            cp -L "$found" dist/Wawona.apk
+          fi
+          test -f dist/Wawona.apk
+
+      - name: Install agent-device
+        run: npm install -g "agent-device@${AGENT_DEVICE_VERSION}"
+
+      - name: Run Android leak-idle gate
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot-save
+          disable-animations: true
+          script: >-
+            adb shell settings put secure immersive_mode_confirmations confirmed
+            && export WAWONA_ANDROID_APK="$GITHUB_WORKSPACE/dist/Wawona.apk"
+            && export WAWONA_LEAK_STRICT=1
+            && ./scripts/leak-idle-gate.sh android
+
+      - name: Upload Android leak artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: leak-idle-android
+          path: .agent-device/test-artifacts/leak-idle-gate/android/
+          if-no-files-found: warn
+
+  leak-macos:
+    name: "Leak idle: macOS"
+    needs: product-macos
+    if: ${{ always() && !cancelled() && (needs.product-macos.result == 'success') && ((inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'macos' || github.event_name == 'schedule' || github.event_name == 'push') }}
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+
+      - name: Download product-macos-app
+        uses: actions/download-artifact@v8
+        with:
+          name: product-macos-app
+          path: product-macos-app/
+
+      - name: Stage macOS app
+        run: |
+          if [[ -d product-macos-app/Wawona.app ]]; then
+            export WAWONA_MACOS_APP="$PWD/product-macos-app/Wawona.app"
+          else
+            found="$(find product-macos-app -name 'Wawona.app' -type d | head -1)"
+            [[ -n "$found" ]] || { echo "Wawona.app missing"; exit 1; }
+            export WAWONA_MACOS_APP="$found"
+          fi
+          echo "WAWONA_MACOS_APP=$WAWONA_MACOS_APP" >> "$GITHUB_ENV"
+          test -d "$WAWONA_MACOS_APP"
+
+      - name: Install agent-device
+        run: npm install -g "agent-device@${AGENT_DEVICE_VERSION}"
+
+      - name: Run macOS leak-idle gate
+        env:
+          WAWONA_LEAK_STRICT: "1"
+        run: ./scripts/leak-idle-gate.sh macos
+
+      - name: Upload macOS leak artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: leak-idle-macos
+          path: .agent-device/test-artifacts/leak-idle-gate/macos/
+          if-no-files-found: warn
+
+  summary:
+    name: Leak idle summary
+    needs: [leak-ios, leak-android, leak-macos]
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download leak artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: leak-idle-*
+          path: leak-artifacts/
+          merge-multiple: false
+
+      - name: Identify failing targets
+        run: |
+          set -euo pipefail
+          failed=""
+          passed=""
+          skipped=""
+          missing=""
+          for target in ios android macos; do
+            # artifact dirs: leak-artifacts/leak-idle-ios/verdict.json or nested
+            v="$(find leak-artifacts -path "*/${target}/verdict.json" -o -path "*/leak-idle-${target}/verdict.json" 2>/dev/null | head -1 || true)"
+            if [[ -z "$v" ]]; then
+              # also accept flat status.txt next to artifact root
+              st="$(find leak-artifacts -path "*leak-idle-${target}*" -name status.txt 2>/dev/null | head -1 || true)"
+              if [[ -n "$st" ]]; then
+                status="$(cat "$st")"
+              else
+                # Job may have been skipped by lane filter
+                if [[ "${{ needs.leak-ios.result }}" == "skipped" && "$target" == "ios" ]] \
+                  || [[ "${{ needs.leak-android.result }}" == "skipped" && "$target" == "android" ]] \
+                  || [[ "${{ needs.leak-macos.result }}" == "skipped" && "$target" == "macos" ]]; then
+                  skipped="${skipped:+$skipped,}$target"
+                  continue
+                fi
+                missing="${missing:+$missing,}$target"
+                failed="${failed:+$failed,}$target"
+                continue
+              fi
+            else
+              status="$(python3 -c "import json; print(json.load(open('$v'))['status'])")"
+              reason="$(python3 -c "import json; print(json.load(open('$v')).get('reason',''))")"
+              echo "$target: $status ($reason) ← $v"
+            fi
+            case "${status:-}" in
+              pass) passed="${passed:+$passed,}$target" ;;
+              skip) skipped="${skipped:+$skipped,}$target" ;;
+              *) failed="${failed:+$failed,}$target" ;;
+            esac
+          done
+
+          # Also fold in job-level failures (script crashed before verdict)
+          [[ "${{ needs.leak-ios.result }}" == "failure" ]] && [[ "$failed" != *ios* ]] && failed="${failed:+$failed,}ios"
+          [[ "${{ needs.leak-android.result }}" == "failure" ]] && [[ "$failed" != *android* ]] && failed="${failed:+$failed,}android"
+          [[ "${{ needs.leak-macos.result }}" == "failure" ]] && [[ "$failed" != *macos* ]] && failed="${failed:+$failed,}macos"
+
+          {
+            echo "## Leak idle gate"
+            echo ""
+            echo "| Target | Job result |"
+            echo "|--------|------------|"
+            echo "| ios | ${{ needs.leak-ios.result }} |"
+            echo "| android | ${{ needs.leak-android.result }} |"
+            echo "| macos | ${{ needs.leak-macos.result }} |"
+            echo ""
+            echo "- LEAK_GATE_PASS targets=${passed:-}"
+            echo "- LEAK_GATE_SKIP targets=${skipped:-}"
+            echo "- LEAK_GATE_FAIL targets=${failed:-}"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+          echo "LEAK_GATE_PASS targets=${passed:-}"
+          echo "LEAK_GATE_SKIP targets=${skipped:-}"
+          if [[ -n "$failed" ]]; then
+            echo "LEAK_GATE_FAIL targets=$failed"
+            echo "::error::Memory leak-idle plateau failed for: $failed"
+            exit 1
+          fi
+          echo "All scheduled leak-idle targets passed (or intentionally skipped)."

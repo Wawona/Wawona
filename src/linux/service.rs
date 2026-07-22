@@ -38,6 +38,14 @@ fn write_file(path: &Path, body: &str) -> Result<()> {
     Ok(())
 }
 
+fn remove_file_if_exists(path: &Path) -> Result<()> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(err).with_context(|| format!("failed to remove {}", path.display())),
+    }
+}
+
 pub fn install_user_units() -> Result<()> {
     let flake_ref = std::env::var("WAWONA_FLAKE").unwrap_or_else(|_| "/home/alex/Wawona".to_string());
     crate::wlog!(COMPOSITOR, "Installing user units and autostart files for flake={}", flake_ref);
@@ -146,6 +154,44 @@ pub fn restart_compositor_service() -> Result<()> {
 pub fn start_tray_service() -> Result<()> {
     crate::wlog!(COMPOSITOR, "Request: start tray service");
     run_systemctl_user(["start", "wawona-tray.service"])
+}
+
+pub fn stop_tray_service() -> Result<()> {
+    crate::wlog!(COMPOSITOR, "Request: stop tray service");
+    // Ignore "not loaded" — Quit/uninstall should still remove unit files.
+    let _ = run_systemctl_user(["stop", "wawona-tray.service"]);
+    Ok(())
+}
+
+/// Stop tray + compositor user units, disable them, and delete unit/autostart
+/// files so systemd / XDG autostart cannot reopen Wawona until reinstalled.
+///
+/// Mirrors macOS `stopCompositorAndMenuAgents`.
+pub fn stop_compositor_and_tray_services() -> Result<()> {
+    crate::wlog!(
+        COMPOSITOR,
+        "Request: stop compositor + tray services and remove autostart"
+    );
+
+    // Tray first: unloading our own unit before exit prevents Restart= respawn.
+    let _ = run_systemctl_user(["stop", "wawona-tray.service"]);
+    let _ = run_systemctl_user(["disable", "wawona-tray.service"]);
+    let _ = run_systemctl_user(["stop", "wawona-compositor.service"]);
+    let _ = run_systemctl_user(["disable", "wawona-compositor.service"]);
+
+    let unit_dir = systemd_user_dir()?;
+    remove_file_if_exists(&unit_dir.join("wawona-tray.service"))?;
+    remove_file_if_exists(&unit_dir.join("wawona-compositor.service"))?;
+    remove_file_if_exists(&autostart_dir()?.join("wawona.desktop"))?;
+
+    let _ = run_systemctl_user(["daemon-reload"]);
+    crate::wlog!(COMPOSITOR, "User units and autostart removed");
+    Ok(())
+}
+
+/// Alias for Settings / docs: uninstall systemd user units + XDG autostart.
+pub fn uninstall_user_units() -> Result<()> {
+    stop_compositor_and_tray_services()
 }
 
 pub fn run_compositor_host(socket_name: Option<String>) -> Result<()> {

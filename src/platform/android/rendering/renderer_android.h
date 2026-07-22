@@ -60,13 +60,19 @@ void renderer_android_destroy_pipeline(void);
  * VkDevice is being destroyed, never on a swapchain-only resize. */
 void renderer_android_destroy_all(void);
 
-/* Buffer cache - SHM upload. cmd_buf must be in recording state. */
-int renderer_android_cache_buffer(VkCommandBuffer cmd_buf, uint64_t buffer_id,
-                                  uint32_t width, uint32_t height,
-                                  uint32_t stride, uint32_t format,
-                                  const uint8_t *pixels, size_t size);
+/* Buffer cache - SHM upload. cmd_buf must be in recording state.
+ * surface_id scopes prune: older textures for the same surface are freed so
+ * the cache cannot grow with every frame (Apple WWNPruneBufferCacheForSurface). */
+int renderer_android_cache_buffer(VkCommandBuffer cmd_buf, uint32_t surface_id,
+                                  uint64_t buffer_id, uint32_t width,
+                                  uint32_t height, uint32_t stride,
+                                  uint32_t format, const uint8_t *pixels,
+                                  size_t size);
 VkImageView renderer_android_get_texture(uint64_t buffer_id);
+/* Hard-free GPU resources for buffer_id (call after frame presented). */
 void renderer_android_evict_buffer(uint64_t buffer_id);
+/* Drop all cached textures for surface except keep_buffer_id (0 = drop all). */
+void renderer_android_prune_surface(uint32_t surface_id, uint64_t keep_buffer_id);
 
 /* Draw scene nodes as textured quads */
 void renderer_android_draw_quads(VkCommandBuffer cmd_buf,

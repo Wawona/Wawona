@@ -153,7 +153,6 @@ struct MachineSettingsView: View {
     private func displaySection() -> some View {
         Section("Display") {
             Toggle("Force Server-Side Decorations", isOn: forceSSDBinding)
-            Toggle("Show Virtual Pointer", isOn: renderMacOSPointerBinding)
             Toggle("Auto Scale", isOn: autoScaleBinding)
             TextField("Wayland Display", text: waylandDisplayBinding)
                 .textInputAutocapitalization(.never)
@@ -164,6 +163,12 @@ struct MachineSettingsView: View {
     @ViewBuilder
     private func inputSection() -> some View {
         Section("Input") {
+            Toggle("Show Virtual Cursor", isOn: renderMacOSPointerBinding)
+            Picker("Nested Compositor Cursor", selection: nestedCompositorCursorBinding) {
+                Text("Virtual Pointer").tag("virtual")
+                Text("Host Cursor").tag("host")
+            }
+            .disabled(!(draft?.runtimeOverrides.renderMacOSPointer ?? preferences.renderMacOSPointer))
             TextField("Input Profile", text: inputProfileBinding)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -220,7 +225,8 @@ struct MachineSettingsView: View {
         Section("Resolved Runtime (Machine > Global)") {
             Text("Renderer: \(resolved.renderer)")
             Text("Force SSD: \(resolved.forceSSD ? "On" : "Off")")
-            Text("Virtual Pointer: \(resolved.renderMacOSPointer ? "On" : "Off")")
+            Text("Virtual Cursor: \(resolved.renderMacOSPointer ? "On" : "Off")")
+            Text("Nested Cursor: \(resolved.nestedCompositorCursor)")
             Text("Auto Scale: \(resolved.autoScale ? "On" : "Off")")
             Text("HDR: \(resolved.colorOperations ? "On" : "Off")")
             Text("Display: \(resolved.waylandDisplay)")
@@ -429,6 +435,22 @@ struct MachineSettingsView: View {
         Binding(
             get: { draft?.runtimeOverrides.renderMacOSPointer ?? preferences.renderMacOSPointer },
             set: { value in updateDraft { $0.runtimeOverrides.renderMacOSPointer = value } }
+        )
+    }
+
+    private var nestedCompositorCursorBinding: Binding<String> {
+        Binding(
+            get: {
+                let value = draft?.runtimeOverrides.nestedCompositorCursor
+                    ?? preferences.nestedCompositorCursor
+                return (value == "host") ? "host" : "virtual"
+            },
+            set: { value in
+                updateDraft {
+                    $0.runtimeOverrides.nestedCompositorCursor =
+                        (value == "host") ? "host" : "virtual"
+                }
+            }
         )
     }
 

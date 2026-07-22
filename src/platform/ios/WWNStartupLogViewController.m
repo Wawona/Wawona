@@ -27,7 +27,14 @@ static CGFloat        const kMaxOverlayH   = 0.72;   /* fraction of screen heigh
 @property (nonatomic, strong) UIVisualEffectView *blurContainer;
 @property (nonatomic, strong) UILabel            *titleLabel;
 @property (nonatomic, strong) UIActivityIndicatorView *spinner;
+#if TARGET_OS_VISION
+/* UITextView / UIScrollView scroll-indicator paths abort on visionOS
+ * Simulator (UIPointerInteraction / Gestures throw inside
+ * CreateScrollIndicator). Keep a non-scrolling UILabel only. */
+@property (nonatomic, strong) UILabel            *logLabel;
+#else
 @property (nonatomic, strong) UITextView         *textView;
+#endif
 @property (nonatomic, strong) UIButton           *doneButton;
 @property (nonatomic, assign) BOOL                dismissing;
 @property (nonatomic, strong) NSTimer            *timeoutTimer;
@@ -52,7 +59,7 @@ static CGFloat        const kMaxOverlayH   = 0.72;   /* fraction of screen heigh
     NSArray<NSString *> *existing = [[WWNStartupLogger shared] capturedLines];
     if (existing.count > 0) {
         NSString *joined = [existing componentsJoinedByString:@"\n"];
-        self.textView.text = joined;
+        [self setLogText:joined];
         [self scrollToBottom];
     }
 
@@ -129,6 +136,20 @@ static CGFloat        const kMaxOverlayH   = 0.72;   /* fraction of screen heigh
               forControlEvents:UIControlEventTouchUpInside];
     [card addSubview:self.doneButton];
 
+#if TARGET_OS_VISION
+    self.logLabel = [[UILabel alloc] init];
+    self.logLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.logLabel.numberOfLines = 0;
+    self.logLabel.lineBreakMode = NSLineBreakByTruncatingHead;
+    self.logLabel.font = [UIFont monospacedSystemFontOfSize:12.5
+                                                     weight:UIFontWeightRegular];
+    self.logLabel.textColor = [UIColor systemGreenColor];
+    self.logLabel.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.4];
+    self.logLabel.layer.cornerRadius = 8.0;
+    self.logLabel.layer.masksToBounds = YES;
+    self.logLabel.text = @"";
+    [card addSubview:self.logLabel];
+#else
     /* Log text view — selectable, copyable, non-editable. */
     self.textView = [[UITextView alloc] init];
     self.textView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -147,6 +168,7 @@ static CGFloat        const kMaxOverlayH   = 0.72;   /* fraction of screen heigh
     self.textView.textColor = [UIColor systemGreenColor];
     self.textView.text = @"";
     [card addSubview:self.textView];
+#endif
 
     /* Hint label at bottom. */
     UILabel *hintLabel = [[UILabel alloc] init];
@@ -210,19 +232,24 @@ static CGFloat        const kMaxOverlayH   = 0.72;   /* fraction of screen heigh
         [sep.heightAnchor constraintEqualToConstant:0.5],
     ]];
 
-    /* Text view */
+#if TARGET_OS_VISION
+    UIView *logView = self.logLabel;
+#else
+    UIView *logView = self.textView;
+#endif
+    /* Text / log view */
     [NSLayoutConstraint activateConstraints:@[
-        [self.textView.topAnchor constraintEqualToAnchor:sep.bottomAnchor
-                                                constant:inner],
-        [self.textView.leadingAnchor constraintEqualToAnchor:card.leadingAnchor
-                                                    constant:margin],
-        [self.textView.trailingAnchor constraintEqualToAnchor:card.trailingAnchor
-                                                     constant:-margin],
+        [logView.topAnchor constraintEqualToAnchor:sep.bottomAnchor
+                                          constant:inner],
+        [logView.leadingAnchor constraintEqualToAnchor:card.leadingAnchor
+                                              constant:margin],
+        [logView.trailingAnchor constraintEqualToAnchor:card.trailingAnchor
+                                               constant:-margin],
     ]];
 
     /* Hint label */
     [NSLayoutConstraint activateConstraints:@[
-        [hintLabel.topAnchor constraintEqualToAnchor:self.textView.bottomAnchor
+        [hintLabel.topAnchor constraintEqualToAnchor:logView.bottomAnchor
                                             constant:inner],
         [hintLabel.leadingAnchor constraintEqualToAnchor:card.leadingAnchor
                                                 constant:margin],
@@ -293,22 +320,45 @@ static CGFloat        const kMaxOverlayH   = 0.72;   /* fraction of screen heigh
     /* Called on main queue. */
     if (self.dismissing) return;
 
-    NSString *current = self.textView.text;
+    NSString *current = [self logText];
     if (current.length > 0) {
-        self.textView.text = [current stringByAppendingFormat:@"\n%@", line];
+        [self setLogText:[current stringByAppendingFormat:@"\n%@", line]];
     } else {
-        self.textView.text = line;
+        [self setLogText:line];
     }
     [self scrollToBottom];
 }
 
 #pragma mark - Helpers
 
+- (NSString *)logText
+{
+#if TARGET_OS_VISION
+    return self.logLabel.text ?: @"";
+#else
+    return self.textView.text ?: @"";
+#endif
+}
+
+- (void)setLogText:(NSString *)text
+{
+#if TARGET_OS_VISION
+    self.logLabel.text = text ?: @"";
+#else
+    self.textView.text = text ?: @"";
+#endif
+}
+
 - (void)scrollToBottom
 {
+#if TARGET_OS_VISION
+    /* Non-scrolling label; truncation keeps the newest lines visible. */
+    (void)self;
+#else
     if (self.textView.text.length == 0) return;
     NSRange end = NSMakeRange(self.textView.text.length - 1, 1);
     [self.textView scrollRangeToVisible:end];
+#endif
 }
 
 @end

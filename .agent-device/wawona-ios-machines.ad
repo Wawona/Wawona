@@ -5,8 +5,14 @@ context device=iPhone 17 Pro
 
 open com.aspauldingcode.Wawona --relaunch
 wait 2000
+# Allow Paste: run ios_dismiss_system_ui from smoke wrapper (host). Continue: agent-device.
+press label="Continue"
+press text="Continue"
 screenshot ./.agent-device/test-artifacts/ios-machines-root.png
 press id="wwn.machines.start"
-wait 8000
+wait 2500
+press label="Continue"
+press text="Continue"
+wait 5000
 screenshot ./.agent-device/test-artifacts/ios-weston-session.png
 close

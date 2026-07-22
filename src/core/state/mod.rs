@@ -400,6 +400,9 @@ pub struct XdgToplevelData {
     /// configure. Coalesces macOS live-resize storms so clients are not flooded with
     /// serials before they can ack (avoids SHM buffer exhaustion in nested compositors).
     pub deferred_configure_size: Option<(u32, u32)>,
+    /// Interactive resize in progress (host SSD live-resize or CSD `xdg_toplevel.resize`
+    /// grab). Mirrored into `xdg_toplevel.state.resizing` on every configure.
+    pub interactive_resize: bool,
 }
 
 impl XdgToplevelData {
@@ -428,6 +431,7 @@ impl XdgToplevelData {
             resource: None,
             toplevel_surface: None,
             deferred_configure_size: None,
+            interactive_resize: false,
         }
     }
 
@@ -1254,6 +1258,17 @@ pub struct WlrState {
     pub next_screencopy_id: u64,
     /// Gamma control: pending apply (platform applies) or restore (platform restores)
     pub gamma_control: GammaControlState,
+    /// Bound zwlr_foreign_toplevel_manager_v1 resources (for create/destroy notify).
+    pub foreign_toplevel_managers: Vec<
+        crate::core::wayland::protocol::wlroots::wlr_foreign_toplevel_management_unstable_v1::zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1,
+    >,
+    /// Per-manager handles keyed by window_id for closed/destroy updates.
+    pub foreign_toplevel_handles: HashMap<
+        u32,
+        Vec<
+            crate::core::wayland::protocol::wlroots::wlr_foreign_toplevel_management_unstable_v1::zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1,
+        >,
+    >,
     /// Pending image copy captures (desktop-protocols, platform writes pixels then signals done)
     #[cfg(feature = "desktop-protocols")]
     pub pending_image_copy_captures: Vec<crate::core::wayland::ext::image_copy_capture::PendingImageCopyCapture>,
@@ -1276,6 +1291,8 @@ impl Default for WlrState {
             pending_screencopies: Vec::new(),
             next_screencopy_id: 1,
             gamma_control: GammaControlState::default(),
+            foreign_toplevel_managers: Vec::new(),
+            foreign_toplevel_handles: HashMap::new(),
             #[cfg(feature = "desktop-protocols")]
             pending_image_copy_captures: Vec::new(),
             #[cfg(feature = "desktop-protocols")]

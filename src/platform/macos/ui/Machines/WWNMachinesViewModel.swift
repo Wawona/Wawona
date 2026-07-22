@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import WawonaModel
 #if os(macOS)
 import AppKit
 #elseif os(iOS) || os(tvOS) || os(visionOS)
@@ -36,9 +37,21 @@ struct BundledClient: Identifiable, Hashable {
   let prefsKey: String
   let icon: String
   let description: String
+  /// ANGLE / iland / Vulkan demos — hidden when PlatformCapabilities.allowsGpuStack is false.
+  var requiresGpuStack: Bool = false
 }
 
-let kBundledClients: [BundledClient] = [
+/// Bundled clients visible on this platform (GPU demos omitted on tvOS/watchOS).
+var kBundledClients: [BundledClient] {
+  kAllBundledClients.filter { client in
+    if client.requiresGpuStack {
+      return PlatformCapabilities.allowsGpuStack
+    }
+    return true
+  }
+}
+
+let kAllBundledClients: [BundledClient] = [
   BundledClient(
     id: "weston-terminal",
     name: "Weston Terminal",
@@ -86,28 +99,32 @@ let kBundledClients: [BundledClient] = [
     name: "KMS Cube",
     prefsKey: "KmscubeEnabled",
     icon: "cube",
-    description: "Spinning GL cube via iland + ANGLE (userland KMS)"
+    description: "Spinning GL cube via iland + ANGLE (userland KMS)",
+    requiresGpuStack: true
   ),
   BundledClient(
     id: "opengl-cube",
     name: "OpenGL Cube",
     prefsKey: "OpenglCubeEnabled",
     icon: "cube",
-    description: "GLES cube via iland userland KMS"
+    description: "GLES cube via iland userland KMS",
+    requiresGpuStack: true
   ),
   BundledClient(
     id: "vkcube",
     name: "Vulkan Cube",
     prefsKey: "VkcubeEnabled",
     icon: "cube",
-    description: "Vulkan API smoke test"
+    description: "Vulkan API smoke test",
+    requiresGpuStack: true
   ),
   BundledClient(
     id: "weston-simple-egl",
     name: "Weston Simple EGL",
     prefsKey: "WestonSimpleEglEnabled",
     icon: "cube.transparent",
-    description: "Wayland EGL demo client (iland + ANGLE)"
+    description: "Wayland EGL demo client (iland + ANGLE)",
+    requiresGpuStack: true
   ),
   BundledClient(
     id: "weston-smoke",
@@ -205,7 +222,11 @@ private let wwnNativeClientProcessDidTerminateNotification = Notification.Name(
 final class WWNMachinesViewModel: ObservableObject {
   @Published private(set) var profiles: [WWNMachineProfile] = []
   @Published private(set) var statusByMachineId: [String: WWNMachineTransientStatus] = [:]
-  @Published var selectedFilter: WWNMachineFilter = .all
+  #if os(macOS)
+  /// Avoid re-hitting the ObjC thumbnail store on every SwiftUI body eval
+  /// (window moves re-layout Machines and previously reloaded NSImage each time).
+  private var thumbnailCache: [String: NSImage] = [:]
+  #endif
 
   private var nativeProcessTerminateObserver: NSObjectProtocol?
 
@@ -231,24 +252,6 @@ final class WWNMachinesViewModel: ObservableObject {
 
   var activeMachineId: String? {
     WWNMachineProfileStore.activeMachineId()
-  }
-
-  var filteredProfiles: [WWNMachineProfile] {
-    switch selectedFilter {
-    case .all:
-      return profiles
-    case .local:
-      return profiles.filter { profile in
-        profile.type == kWWNMachineTypeNative ||
-          profile.type == kWWNMachineTypeVirtualMachine ||
-          profile.type == kWWNMachineTypeContainer
-      }
-    case .remote:
-      return profiles.filter { profile in
-        profile.type == kWWNMachineTypeSSHWaypipe ||
-          profile.type == kWWNMachineTypeSSHTerminal
-      }
-    }
   }
 
   var connectedCount: Int {
@@ -304,19 +307,18 @@ final class WWNMachinesViewModel: ObservableObject {
     statusByMachineId[profile.machineId] = .connecting
 
     #if os(iOS) || os(tvOS) || os(visionOS)
-    // Non-macOS platforms back every machine with a single in-process engine
-    // (WWNMobileVmEngine for VMs; the WWNWaypipeRunner function-pointer table
-    // for bundled clients), so only one profile can actually be running at a
-    // time. Stop whatever's active before starting the next one.
-    for other in profiles where other.machineId != profile.machineId &&
-      status(for: other.machineId) != .disconnected {
-      disconnect(other)
+    // Native Wayland clients may run concurrently. VM / waypipe / container
+    // backends still share a single in-process engine on mobile — stop those
+    // before switching. Never tear down an unrelated native client.
+    if profile.type != kWWNMachineTypeNative {
+      for other in profiles where other.machineId != profile.machineId &&
+        status(for: other.machineId) != .disconnected {
+        disconnect(other)
+      }
     }
     #endif
-    // On macOS every machine/client is its own out-of-process NSTask (see
-    // WWNVirtualMachineRunner/WWNContainerRunner, keyed by machineId), so
-    // multiple profiles can and should run concurrently — connecting one
-    // must never tear down another that's already running.
+    // Native clients (and macOS VM/container NSTasks) are tracked per
+    // machineId — connecting one must never tear down another.
 
     // VM (wwn-vms) and container (wwn-containers) profiles are driven through the
     // session bridge, which delegates to WWNVirtualMachineRunner /
@@ -348,27 +350,33 @@ final class WWNMachinesViewModel: ObservableObject {
     statusByMachineId[profile.machineId] = .disconnected
   }
 
-  #if os(macOS)
   func focusRunningMachine(_ profile: WWNMachineProfile) {
     guard status(for: profile.machineId) == .connected ||
             status(for: profile.machineId) == .connecting else {
       return
     }
     WWNMachineProfileStore.setActiveMachineId(profile.machineId)
+    #if os(macOS)
     _ = WWNCompositorBridge.shared().focusClientWindows(forMachineId: profile.machineId)
-  }
-  #else
-  func focusRunningMachine(_ profile: WWNMachineProfile) {
+    #elseif os(iOS) || os(tvOS) || os(visionOS)
+    // Minimize returns to Machines without killing the session; Focus must
+    // reverse that and reveal the live compositor again.
+    NotificationCenter.default.post(
+      name: NSNotification.Name(WWNClientFocusRequestedNotification),
+      object: nil,
+      userInfo: ["machineId": profile.machineId]
+    )
+    #else
     _ = profile
+    #endif
   }
-  #endif
 
   func thumbnailImage(for profile: WWNMachineProfile) -> WWNPlatformImage? {
     #if os(macOS)
     guard isThumbnailEnabled(for: profile) else {
       return nil
     }
-    return loadThumbnailImage(for: profile.machineId)
+    return cachedThumbnailImage(for: profile.machineId)
     #else
     _ = profile
     return nil
@@ -382,6 +390,17 @@ final class WWNMachinesViewModel: ObservableObject {
       return override
     }
     return WWNPreferencesManager.shared().machineSessionThumbnailsEnabled()
+  }
+
+  private func cachedThumbnailImage(for machineId: String) -> NSImage? {
+    if let cached = thumbnailCache[machineId] {
+      return cached
+    }
+    guard let image = loadThumbnailImage(for: machineId) else {
+      return nil
+    }
+    thumbnailCache[machineId] = image
+    return image
   }
 
   private func loadThumbnailImage(for machineId: String) -> NSImage? {
@@ -431,6 +450,7 @@ final class WWNMachinesViewModel: ObservableObject {
       return
     }
     if captureThumbnail(for: profile.machineId) {
+      thumbnailCache.removeValue(forKey: profile.machineId)
       objectWillChange.send()
     }
   }
@@ -459,19 +479,9 @@ final class WWNMachinesViewModel: ObservableObject {
 
       let running: Bool = {
         if profile.type == kWWNMachineTypeNative {
-          guard let clientId = selectedClientId(for: profile) else { return false }
-          switch clientId {
-          case "weston":
-            return runner.westonRunning
-          case "weston-terminal":
-            return runner.westonTerminalRunning
-          case "weston-simple-shm":
-            return runner.isWestonSimpleSHMRunning
-          case "foot":
-            return runner.footRunning
-          default:
-            return false
-          }
+          // Per-machine binding: two weston-terminal profiles must not share
+          // a single global "running" bit or one will look taken over.
+          return runner.isBundledClientRunning(forMachineId: profile.machineId)
         }
         if profile.type == kWWNMachineTypeSSHWaypipe ||
             profile.type == kWWNMachineTypeSSHTerminal {
@@ -631,25 +641,17 @@ final class WWNMachinesViewModel: ObservableObject {
     if profile.type == kWWNMachineTypeNative {
       return selectedClientId(for: profile) != nil
     }
-    return profile.type == kWWNMachineTypeSSHWaypipe ||
-      profile.type == kWWNMachineTypeSSHTerminal ||
-      profile.type == kWWNMachineTypeVirtualMachine ||
-      profile.type == kWWNMachineTypeContainer
-  }
-}
-
-enum WWNMachineFilter: String, CaseIterable, Identifiable, Hashable {
-  case all = "All Machines"
-  case local = "Local"
-  case remote = "Remote"
-
-  var id: String { rawValue }
-
-  /// The sensible machine type to default to when adding a new profile from this filter.
-  var defaultMachineType: String {
-    switch self {
-    case .remote: return kWWNMachineTypeSSHWaypipe
-    default:      return kWWNMachineTypeNative
+    if profile.type == kWWNMachineTypeSSHWaypipe ||
+      profile.type == kWWNMachineTypeSSHTerminal {
+      return true
     }
+    #if os(tvOS) || os(watchOS)
+    // Matrix: watchOS/tvOS are native + remote only.
+    return false
+    #else
+    return profile.type == kWWNMachineTypeVirtualMachine ||
+      profile.type == kWWNMachineTypeContainer
+    #endif
   }
 }
+

@@ -265,21 +265,28 @@ pub fn show_settings(
     let agent_group = adw::PreferencesGroup::new();
     agent_group.set_title("Launch Agent and Runtime");
     let install_btn = gtk::Button::with_label("Install systemd user units + autostart");
+    let uninstall_btn = gtk::Button::with_label("Uninstall systemd units + autostart");
     let start_host_btn = gtk::Button::with_label("Start compositor host service");
     let restart_host_btn = gtk::Button::with_label("Restart compositor host service");
     let stop_host_btn = gtk::Button::with_label("Stop compositor host service");
     let start_tray_btn = gtk::Button::with_label("Start tray applet service");
+    let stop_tray_btn = gtk::Button::with_label("Stop tray applet service");
     for (t, b) in [
         ("Install", &install_btn),
+        ("Uninstall", &uninstall_btn),
         ("Host Start", &start_host_btn),
         ("Host Restart", &restart_host_btn),
         ("Host Stop", &stop_host_btn),
-        ("Tray", &start_tray_btn),
+        ("Tray Start", &start_tray_btn),
+        ("Tray Stop", &stop_tray_btn),
     ] {
         add_row(&agent_group, t, b);
     }
     install_btn.connect_clicked(|_| {
         let _ = service::install_user_units();
+    });
+    uninstall_btn.connect_clicked(|_| {
+        let _ = service::uninstall_user_units();
     });
     start_host_btn.connect_clicked(|_| {
         let _ = service::start_compositor_service();
@@ -292,6 +299,9 @@ pub fn show_settings(
     });
     start_tray_btn.connect_clicked(|_| {
         let _ = service::start_tray_service();
+    });
+    stop_tray_btn.connect_clicked(|_| {
+        let _ = service::stop_tray_service();
     });
     agent_page.add(&agent_group);
     stack.add_named(&agent_page, Some("Launch Agent"));

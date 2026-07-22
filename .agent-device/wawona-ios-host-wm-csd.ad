@@ -1,0 +1,8 @@
+# P1 host WM: Force SSD OFF (CSD) + weston-terminal smoke (iOS)
+session open --platform ios --bundle-id com.aspauldingcode.Wawona
+snapshot -i
+press label="Start" || true
+wait 2000
+snapshot -i
+screenshot --path .agent-device/test-artifacts/host-wm-csd/ios-force-ssd-off.png
+session close

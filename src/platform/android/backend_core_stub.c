@@ -37,6 +37,7 @@ typedef struct {
   uint8_t decoration_mode;
   uint8_t fullscreen_shell;
   uint8_t host_locked;
+  uint8_t edges; /* must match c_api.rs CWindowEvent */
   uint8_t size_kind;
   uint8_t size_cause;
   uint32_t configure_serial;
@@ -202,6 +203,24 @@ void WWNCoreInjectPointerAxis(void *core, uint64_t window_id, uint32_t axis, dou
   (void)axis;
   (void)value;
   (void)timestamp_ms;
+}
+void WWNCoreInjectWindowResize(void *core, uint64_t window_id, uint32_t width,
+                               uint32_t height) {
+  (void)core;
+  (void)window_id;
+  (void)width;
+  (void)height;
+}
+void WWNCoreBeginInteractiveResize(void *core, uint64_t window_id) {
+  (void)core;
+  (void)window_id;
+}
+void WWNCoreEndInteractiveResize(void *core, uint64_t window_id, uint32_t width,
+                                 uint32_t height) {
+  (void)core;
+  (void)window_id;
+  (void)width;
+  (void)height;
 }
 void WWNCoreSetClipboardText(void *core, const char *text) {
   (void)core;

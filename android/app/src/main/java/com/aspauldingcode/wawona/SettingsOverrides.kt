@@ -21,6 +21,10 @@ object SettingsOverrides {
     )
     private val STRING_ALIASES = mapOf(
         "touchInputType" to listOf("touchInputType", "TouchInputType"),
+        "nestedCompositorCursor" to listOf(
+            "nestedCompositorCursor",
+            "NestedCompositorCursor",
+        ),
     )
 
     fun merge(profile: MachineProfile): JSONObject {

@@ -94,11 +94,6 @@ public struct MachineSettingsView: View {
     private func displaySection() -> some View {
         Section("Display") {
             Toggle("Force Server-Side Decorations", isOn: forceSSDBinding)
-            #if os(macOS)
-            Toggle("Show macOS Cursor", isOn: renderMacOSPointerBinding)
-            #else
-            Toggle("Show Virtual Pointer", isOn: renderMacOSPointerBinding)
-            #endif
             Toggle("Auto Scale", isOn: autoScaleBinding)
             TextField("Wayland Display", text: waylandDisplayBinding)
                 .wawonaTextFieldNoAutocaps()
@@ -170,6 +165,16 @@ public struct MachineSettingsView: View {
     @ViewBuilder
     private func inputSection() -> some View {
         Section("Input") {
+            Toggle("Show Virtual Cursor", isOn: renderMacOSPointerBinding)
+            Picker("Nested Compositor Cursor", selection: nestedCompositorCursorBinding) {
+                Text("Virtual Pointer").tag("virtual")
+                #if os(macOS)
+                Text("macOS Cursor").tag("host")
+                #else
+                Text("Host Cursor").tag("host")
+                #endif
+            }
+            .disabled(!(draft?.runtimeOverrides.renderMacOSPointer ?? preferences.renderMacOSPointer))
             TextField("Input Profile", text: inputProfileBinding)
                 .wawonaTextFieldNoAutocaps()
                 .autocorrectionDisabled()
@@ -222,11 +227,8 @@ public struct MachineSettingsView: View {
             Text("OpenGL Driver: \(resolved.openGLDriver)")
             Text("DMABUF: \(resolved.dmabufEnabled ? "Enabled" : "Disabled")")
             Text("Force SSD: \(resolved.forceSSD ? "Enabled" : "Disabled")")
-            #if os(macOS)
-            Text("Show macOS Cursor: \(resolved.renderMacOSPointer ? "Enabled" : "Disabled")")
-            #else
-            Text("Show Virtual Pointer: \(resolved.renderMacOSPointer ? "Enabled" : "Disabled")")
-            #endif
+            Text("Show Virtual Cursor: \(resolved.renderMacOSPointer ? "Enabled" : "Disabled")")
+            Text("Nested Compositor Cursor: \(resolved.nestedCompositorCursor)")
             Text("Auto Scale: \(resolved.autoScale ? "Enabled" : "Disabled")")
             Text("HDR: \(resolved.colorOperations ? "Enabled" : "Disabled")")
             Text("Display: \(resolved.waylandDisplay)")
@@ -392,6 +394,22 @@ public struct MachineSettingsView: View {
         Binding(
             get: { draft?.runtimeOverrides.renderMacOSPointer ?? preferences.renderMacOSPointer },
             set: { value in updateDraft { $0.runtimeOverrides.renderMacOSPointer = value } }
+        )
+    }
+
+    private var nestedCompositorCursorBinding: Binding<String> {
+        Binding(
+            get: {
+                let value = draft?.runtimeOverrides.nestedCompositorCursor
+                    ?? preferences.nestedCompositorCursor
+                return (value == "host") ? "host" : "virtual"
+            },
+            set: { value in
+                updateDraft {
+                    $0.runtimeOverrides.nestedCompositorCursor =
+                        (value == "host") ? "host" : "virtual"
+                }
+            }
         )
     }
 

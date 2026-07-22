@@ -253,6 +253,16 @@ static NSString *const kWWNAppLaunchAgentLabel =
   return YES;
 }
 
+- (BOOL)removePlistAtPath:(NSString *)path {
+  if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
+    return YES;
+  }
+  NSError *error = nil;
+  BOOL removed = [[NSFileManager defaultManager] removeItemAtPath:path error:&error];
+  (void)error;
+  return removed;
+}
+
 - (BOOL)restartCompositorAgent {
   NSError *menuError = nil;
   (void)[self ensureMenuBarAgent:&menuError];
@@ -262,13 +272,21 @@ static NSString *const kWWNAppLaunchAgentLabel =
 }
 
 - (BOOL)stopCompositorAgent {
-  return [self bootoutLabel:kWWNCompositorAgentLabel];
+  NSString *path = [self plistPathForLabel:kWWNCompositorAgentLabel];
+  BOOL stopped = [self bootoutLabel:kWWNCompositorAgentLabel];
+  BOOL removed = [self removePlistAtPath:path];
+  return stopped || removed;
 }
 
 - (BOOL)startCompositorAgent {
+  NSError *error = nil;
   NSString *compositorPath = [self plistPathForLabel:kWWNCompositorAgentLabel];
   if (![[NSFileManager defaultManager] fileExistsAtPath:compositorPath]) {
-    return NO;
+    if (![self writePlist:[self compositorAgentPlist]
+                   toPath:compositorPath
+                    error:&error]) {
+      return NO;
+    }
   }
   BOOL ok = [self bootstrapPlistAtPath:compositorPath];
   BOOL kicked = [self kickstartLabel:kWWNCompositorAgentLabel];
@@ -277,8 +295,26 @@ static NSString *const kWWNAppLaunchAgentLabel =
   return ok && kicked && menuReady;
 }
 
+- (BOOL)stopMenuBarAgent {
+  NSString *path = [self plistPathForLabel:kWWNMenuBarAgentLabel];
+  BOOL stopped = [self bootoutLabel:kWWNMenuBarAgentLabel];
+  BOOL removed = [self removePlistAtPath:path];
+  return stopped || removed;
+}
+
+- (BOOL)stopCompositorAndMenuAgents {
+  // Menubar first: unloading our own KeepAlive job before exit prevents respawn.
+  BOOL menu = [self stopMenuBarAgent];
+  BOOL compositor = [self stopCompositorAgent];
+  return menu && compositor;
+}
+
 - (BOOL)isCompositorAgentLoaded {
   return [self isLabelLoaded:kWWNCompositorAgentLabel];
+}
+
+- (BOOL)isMenuBarAgentLoaded {
+  return [self isLabelLoaded:kWWNMenuBarAgentLabel];
 }
 
 - (BOOL)isAppLaunchAgentLoaded {

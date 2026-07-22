@@ -8,6 +8,7 @@ struct MachineStatusView: View {
 
     @State var showingAdd = false
     @State var editingProfile: MachineProfile?
+    @State var showingGlobalSettings = false
 
     var body: some View {
         Group {
@@ -21,7 +22,11 @@ struct MachineStatusView: View {
                 List {
                     ForEach(profileStore.profiles) { profile in
                         NavigationLink {
-                            QuickConnectView(profile: profile, profileStore: profileStore, sessions: sessions)
+                            QuickConnectView(
+                                profile: profile,
+                                profileStore: profileStore,
+                                sessions: sessions
+                            )
                         } label: {
                             MachineRowLabel(profile: profile, sessions: sessions)
                         }
@@ -48,10 +53,23 @@ struct MachineStatusView: View {
         .onAppear {
             WatchKitGlobalSettings.registerHost()
         }
+        .onReceive(NotificationCenter.default.publisher(
+            for: WatchKitGlobalSettings.fallbackPresentationNeeded
+        )) { _ in
+            showingGlobalSettings = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .wawonaPreferencesDidSave)) { _ in
+            WawonaPreferences.shared.load()
+        }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
-                    WatchKitGlobalSettings.open()
+                    // Always show settings in-process. WatchKit storyboard present
+                    // from SwiftUI `@main` is unreliable (host may claim success
+                    // while nothing appears). Sheet uses the same `wawona.pref.*`
+                    // keys as `WWNWatchSettingsBridge` / WatchKit controllers.
+                    WatchKitGlobalSettings.registerHost()
+                    showingGlobalSettings = true
                 } label: {
                     Image(systemName: "gear")
                 }
@@ -72,6 +90,9 @@ struct MachineStatusView: View {
         .sheet(item: $editingProfile) { profile in
             WatchMachineOverridesSheet(machineID: profile.id, profileStore: profileStore)
         }
+        .sheet(isPresented: $showingGlobalSettings) {
+            WatchGlobalSettingsView()
+        }
     }
 }
 
@@ -84,8 +105,15 @@ struct MachineRowLabel: View {
     }
 
     private var clientLabel: String {
-        if profile.type == .native, let launcher = profile.launchers.first {
-            return launcher.displayName
+        if profile.type == .native {
+            let id = profile.runtimeOverrides.bundledAppID?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !id.isEmpty {
+                return ClientLauncher.displayName(for: id)
+            }
+            if let launcher = profile.launchers.first {
+                return launcher.displayName
+            }
         }
         return profile.type.userFacingName
     }

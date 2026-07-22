@@ -73,7 +73,45 @@
     return NO;
   }
   [view cacheDisplayInRect:bounds toBitmapImageRep:rep];
-  NSData *pngData = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+
+  // Downscale before PNG encode — full-window @2x bitmaps were leaving large
+  // ImageIO dirty regions after Stop (ISSUE-008). Card UI only needs ~320pt.
+  const CGFloat kMaxEdge = 320.0;
+  CGFloat scale =
+      MIN(1.0, kMaxEdge / MAX(bounds.size.width, bounds.size.height));
+  NSInteger outW = (NSInteger)MAX(1.0, floor(bounds.size.width * scale));
+  NSInteger outH = (NSInteger)MAX(1.0, floor(bounds.size.height * scale));
+  NSBitmapImageRep *outRep = [[NSBitmapImageRep alloc]
+      initWithBitmapDataPlanes:NULL
+                    pixelsWide:outW
+                    pixelsHigh:outH
+                 bitsPerSample:8
+               samplesPerPixel:4
+                      hasAlpha:YES
+                      isPlanar:NO
+                colorSpaceName:NSCalibratedRGBColorSpace
+                   bytesPerRow:0
+                  bitsPerPixel:0];
+  if (!outRep) {
+    NSData *pngData =
+        [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+    return [self saveThumbnailPNGData:pngData forMachineId:machineId];
+  }
+  NSGraphicsContext *ctx =
+      [NSGraphicsContext graphicsContextWithBitmapImageRep:outRep];
+  [NSGraphicsContext saveGraphicsState];
+  [NSGraphicsContext setCurrentContext:ctx];
+  NSImage *full = [[NSImage alloc] initWithSize:rep.size];
+  [full addRepresentation:rep];
+  [full drawInRect:NSMakeRect(0, 0, (CGFloat)outW, (CGFloat)outH)
+          fromRect:NSZeroRect
+         operation:NSCompositingOperationCopy
+          fraction:1.0
+   respectFlipped:YES
+            hints:@{NSImageHintInterpolation : @(NSImageInterpolationMedium)}];
+  [NSGraphicsContext restoreGraphicsState];
+  NSData *pngData =
+      [outRep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
   return [self saveThumbnailPNGData:pngData forMachineId:machineId];
 }
 

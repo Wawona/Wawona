@@ -278,7 +278,7 @@ impl CompositorState {
                         } else {
                             self.seat.broadcast_keyboard_enter(serial, res, &[]);
                         }
-                        self.ext.text_input.enter(res);
+                        self.ext.text_input.enter(res, Some(surface_id));
                     }
                 }
             } else {

@@ -30,6 +30,7 @@ iOS on-device shell, agent-device replays), see [`commands.md`](./commands.md).
 | ANGLE Android | `.#angle-android` | |
 | iland iOS | `.#iland-ios` / `.#iland-ios-sim` | GBM/EGL/DRM userland |
 | kmscube iOS | `.#iland-gl-clients-ios` | in-process `kmscube_main` |
+| SDL2_gfx demo (planned) | `.#testgfx-ios` / `-macos` / `-android` | in-process `testgfx_main`; software/`wl_shm` first — [#107](https://github.com/Wawona/Wawona/issues/107) |
 | Linux reference | `pkgs.weston` (nixpkgs) | baseline |
 
 CI runs `.github/scripts/verify-wayland-profile-smoke.py` (host-scoped `nix eval`). Use `--build` for compile verification on the matching host.

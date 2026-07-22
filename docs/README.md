@@ -40,6 +40,7 @@
 
 | Document | Description |
 |----------|-------------|
+| [iland-mode-a-b-desktop.md](iland-mode-a-b-desktop.md) | **Canonical** wwn-iland Mode A vs Mode B, SIP Desktop Replacement, dylib shipping |
 | [2026-waypipe.md](2026-waypipe.md) | Waypipe integration (macOS, iOS, Android); SSH transport, streamlocal |
 | [2026-Wawona-Android-Audit.md](2026-Wawona-Android-Audit.md) | Android implementation audit and parity checklist |
 | [macos-implementation.md](macos-implementation.md) | macOS native implementation, Metal, IOSurface |
@@ -47,11 +48,20 @@
 
 ---
 
+## Agent / Cursor rules
+
+| Document | Description |
+|----------|-------------|
+| [agent-rules/](agent-rules/) | Tracked mirrors of alwaysApply Cursor rules (`.cursor/` is gitignored) |
+| [../AGENTS.md](../AGENTS.md) | Agent entrypoint — Mode A/B, FFI, wwn-*, store asymmetry |
+
+---
+
 ## Reference
 
 | Document | Description |
 |----------|-------------|
-| [debugging.md](debugging.md) | Attach LLDB with `--debug` (macOS, iOS, Android) |
+| [debugging.md](debugging.md) | Opt-in LLDB via `--debug` (default: no debugger) |
 | [2026-LOGGING.md](2026-LOGGING.md) | Logging format convention |
 | [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) | Third-party license disclosure |
 | [drivers-how-to/](drivers-how-to/README.md) | Graphics driver setup guide (Vulkan, MoltenVK, KosmicKrisp, Android) |

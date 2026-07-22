@@ -102,17 +102,25 @@ impl GlobalDispatch<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1, ()> for CompositorSta
         _global_data: &(),
         data_init: &mut wayland_server::DataInit<'_, Self>,
     ) {
-        let _dmabuf = data_init.init(resource, ());
+        let dmabuf = data_init.init(resource, ());
 
-        // Advertisement honesty: raw (LINEAR-modifier) dmabuf import is not
-        // supported on any Wawona platform — only the IOSurface-modifier
-        // convention used by wwn-waypipe (negotiated out-of-band). Sending
-        // format/modifier events here made generic clients attempt raw
-        // dmabuf and fail at create(); advertise nothing so they fall back
-        // to wl_shm. waypipe's IOSurface path does not depend on these
-        // events.
-        tracing::debug!(
-            "linux-dmabuf bound: no raw formats advertised (IOSurface-only import)"
+        // Advertise the IOSurface-modifier convention (#86 / wwn-iland + waypipe).
+        // High bit set = IOSurface id in low 63 bits. Do NOT advertise LINEAR
+        // (raw dmabuf) — that path is unsupported and caused client failures.
+        const DRM_FORMAT_ARGB8888: u32 = 0x34325241; // 'AR24'
+        const DRM_FORMAT_XRGB8888: u32 = 0x34325258; // 'XR24'
+        const IOSURFACE_MODIFIER: u64 = 0x8000_0000_0000_0000;
+        let mod_hi = ((IOSURFACE_MODIFIER >> 32) & 0xffff_ffff) as u32;
+        let mod_lo = (IOSURFACE_MODIFIER & 0xffff_ffff) as u32;
+        if dmabuf.version() >= 3 {
+            dmabuf.modifier(DRM_FORMAT_ARGB8888, mod_hi, mod_lo);
+            dmabuf.modifier(DRM_FORMAT_XRGB8888, mod_hi, mod_lo);
+        } else {
+            dmabuf.format(DRM_FORMAT_ARGB8888);
+            dmabuf.format(DRM_FORMAT_XRGB8888);
+        }
+        tracing::info!(
+            "linux-dmabuf bound: advertised IOSurface modifiers for ARGB8888/XRGB8888"
         );
     }
 }

@@ -139,6 +139,9 @@ impl SizeAuthority {
     /// `xdg_pending_serial == 0` means the client has acked outstanding
     /// configures (no in-flight serial on the xdg_surface).
     /// `current_w/h` are the core window dimensions before this commit.
+    /// `interactive_resize` is true while `xdg_toplevel.state.resizing` is set
+    /// (host SSD live-drag or CSD resize grab) — lagging commits must not
+    /// refuse/yank the host until the settle configure clears Resizing.
     pub fn on_client_commit(
         self,
         committed_w: i32,
@@ -147,6 +150,7 @@ impl SizeAuthority {
         current_h: i32,
         xdg_pending_serial: u32,
         has_committed_buffer: bool,
+        interactive_resize: bool,
     ) -> ClientCommitDecision {
         if committed_w <= 0 || committed_h <= 0 {
             let stretch = self.is_host();
@@ -194,9 +198,10 @@ impl SizeAuthority {
                         reason: "host_request_matched",
                     };
                 }
-                if xdg_pending_serial != 0 {
-                    // Still waiting for ack of a newer configure — keep host
-                    // authority; do not apply lagging buffer to window size.
+                if xdg_pending_serial != 0 || interactive_resize {
+                    // Still waiting for ack of a newer configure, or still in
+                    // an interactive resize session — keep host authority; do
+                    // not apply lagging buffer / refuse until settle.
                     return ClientCommitDecision {
                         authority: SizeAuthority::Host {
                             requested_w,
@@ -207,11 +212,16 @@ impl SizeAuthority {
                         apply_client_size: false,
                         emit_size_changed: false,
                         stretch_present_to_host: true,
-                        reason: "host_driving_pending_configure",
+                        reason: if interactive_resize {
+                            "host_driving_interactive_resize"
+                        } else {
+                            "host_driving_pending_configure"
+                        },
                     };
                 }
-                // Client acked and still commits a different size = refused
-                // the suggestion (weston-flower/smoke). Host must adopt.
+                // Client acked the settle configure and still commits a
+                // different size = refused the suggestion (weston-flower/smoke).
+                // Host must adopt.
                 ClientCommitDecision {
                     authority: SizeAuthority::Client,
                     apply_client_size: true,
@@ -230,11 +240,26 @@ mod tests {
 
     #[test]
     fn first_commit_makes_client_authoritative() {
-        let d = SizeAuthority::AwaitingFirstCommit.on_client_commit(200, 200, 0, 0, 0, false);
+        let d = SizeAuthority::AwaitingFirstCommit.on_client_commit(
+            200, 200, 0, 0, 0, false, false,
+        );
         assert_eq!(d.authority, SizeAuthority::Client);
         assert!(d.apply_client_size);
         assert!(d.emit_size_changed);
         assert!(!d.stretch_present_to_host);
+        assert_eq!(d.reason, "first_commit_client_decides");
+    }
+
+    #[test]
+    fn first_commit_applies_even_with_pending_initial_configure_serial() {
+        // Mirrors surfaces.rs: initial xdg configure is 0×0 with a non-zero
+        // serial; weston often commits before that serial is cleared.
+        let d = SizeAuthority::AwaitingFirstCommit.on_client_commit(
+            1024, 768, 0, 0, /*pending*/ 1, false, false,
+        );
+        assert_eq!(d.authority, SizeAuthority::Client);
+        assert!(d.apply_client_size);
+        assert!(d.emit_size_changed);
         assert_eq!(d.reason, "first_commit_client_decides");
     }
 
@@ -244,12 +269,29 @@ mod tests {
             .on_host_resize_request(900, 700, 1)
             .authority
             .on_configure_sent(42);
-        let d = host.on_client_commit(800, 600, 900, 700, /*pending*/ 42, true);
+        let d = host.on_client_commit(800, 600, 900, 700, /*pending*/ 42, true, false);
         assert!(d.authority.is_host());
         assert!(!d.apply_client_size);
         assert!(!d.emit_size_changed);
         assert!(d.stretch_present_to_host);
         assert_eq!(d.reason, "host_driving_pending_configure");
+    }
+
+    #[test]
+    fn host_drag_ignores_mismatch_while_interactive_resize() {
+        // Mid-drag: client may ack+commit an older size with no pending serial
+        // before the next configure arrives. Must not refuse/yank.
+        let host = SizeAuthority::Host {
+            requested_w: 900,
+            requested_h: 700,
+            configure_serial: 7,
+            generation: 3,
+        };
+        let d = host.on_client_commit(800, 600, 900, 700, 0, true, true);
+        assert!(d.authority.is_host());
+        assert!(!d.apply_client_size);
+        assert!(d.stretch_present_to_host);
+        assert_eq!(d.reason, "host_driving_interactive_resize");
     }
 
     #[test]
@@ -260,7 +302,7 @@ mod tests {
             configure_serial: 7,
             generation: 3,
         };
-        let d = host.on_client_commit(900, 700, 900, 700, 0, true);
+        let d = host.on_client_commit(900, 700, 900, 700, 0, true, false);
         assert_eq!(d.authority, SizeAuthority::Client);
         assert!(d.apply_client_size);
         assert!(!d.stretch_present_to_host);
@@ -276,7 +318,7 @@ mod tests {
             configure_serial: 9,
             generation: 1,
         };
-        let d = host.on_client_commit(200, 200, 1024, 768, 0, true);
+        let d = host.on_client_commit(200, 200, 1024, 768, 0, true, false);
         assert_eq!(d.authority, SizeAuthority::Client);
         assert!(d.apply_client_size);
         assert!(d.emit_size_changed);
@@ -300,9 +342,15 @@ mod tests {
             // Lagging commit at previous size with pending serial.
             let lag_w = (host_w as i32) - 10;
             let lag_h = (host_h as i32) - 8;
-            let d = auth
-                .clone()
-                .on_client_commit(lag_w, lag_h, host_w as i32, host_h as i32, gen as u32, true);
+            let d = auth.clone().on_client_commit(
+                lag_w,
+                lag_h,
+                host_w as i32,
+                host_h as i32,
+                gen as u32,
+                true,
+                true,
+            );
             assert!(
                 !d.apply_client_size,
                 "gen {gen}: lagging commit must not apply"
@@ -321,6 +369,7 @@ mod tests {
             host_h as i32,
             0,
             true,
+            false,
         );
         assert_eq!(d.authority, SizeAuthority::Client);
         assert!(d.apply_client_size);
@@ -328,11 +377,13 @@ mod tests {
 
     #[test]
     fn client_mode_always_follows_buffer() {
-        let d = SizeAuthority::Client.on_client_commit(200, 200, 64, 64, 0, true);
+        let d = SizeAuthority::Client.on_client_commit(200, 200, 64, 64, 0, true, false);
         assert!(d.apply_client_size);
         assert!(d.emit_size_changed);
         assert_eq!(d.authority, SizeAuthority::Client);
-        let d2 = d.authority.on_client_commit(250, 250, 200, 200, 0, true);
+        let d2 = d
+            .authority
+            .on_client_commit(250, 250, 200, 200, 0, true, false);
         assert!(d2.apply_client_size);
         assert!(d2.emit_size_changed);
         assert!(!d2.stretch_present_to_host);

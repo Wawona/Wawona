@@ -68,7 +68,7 @@ class WawonaSurfaceView(context: Context) : SurfaceView(context) {
 
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         when (key) {
-            "touchpadMode", "renderMacOSPointer" -> {
+            "touchpadMode", "renderMacOSPointer", "nestedCompositorCursor" -> {
                 post { updateOverlayCursorVisibility() }
             }
         }
@@ -96,8 +96,11 @@ class WawonaSurfaceView(context: Context) : SurfaceView(context) {
 
     private fun touchpadModeEnabled(): Boolean = prefs.getBoolean("touchpadMode", false)
 
-    private fun virtualPointerEnabled(): Boolean =
-        prefs.getBoolean("renderMacOSPointer", false)
+    private fun virtualPointerEnabled(): Boolean {
+        if (!prefs.getBoolean("renderMacOSPointer", false)) return false
+        // Nested compositor cursor "host" prefers the system cursor over the overlay.
+        return prefs.getString("nestedCompositorCursor", "virtual") != "host"
+    }
 
     private fun ensureVirtualPointer() {
         if (!pointerInitialized && width > 0 && height > 0) {
@@ -214,25 +217,29 @@ class WawonaSurfaceView(context: Context) : SurfaceView(context) {
         val textAssist = prefs.getBoolean("enableTextAssist", false)
         val dictation = prefs.getBoolean("enableDictation", false)
 
-        if (textAssist) {
-            outAttrs.inputType = InputType.TYPE_CLASS_TEXT or
-                InputType.TYPE_TEXT_FLAG_AUTO_CORRECT or
-                InputType.TYPE_TEXT_FLAG_AUTO_COMPLETE or
-                InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-            outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN or
-                EditorInfo.IME_ACTION_UNSPECIFIED
-            if (dictation) {
-                outAttrs.imeOptions = outAttrs.imeOptions or
-                    EditorInfo.IME_FLAG_NO_EXTRACT_UI
-            }
-        } else {
-            outAttrs.inputType = InputType.TYPE_CLASS_TEXT or
-                InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-            outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN or
-                EditorInfo.IME_FLAG_NO_EXTRACT_UI
+        val purpose = try {
+            val hp = IntArray(2)
+            WawonaNative.nativeGetTextInputContentType(hp)
+            hp[1]
+        } catch (_: Exception) {
+            0
         }
+        outAttrs.inputType = inputTypeForContentPurpose(purpose, textAssist)
+        outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN or
+            if (textAssist && !dictation) {
+                EditorInfo.IME_ACTION_UNSPECIFIED
+            } else {
+                EditorInfo.IME_FLAG_NO_EXTRACT_UI
+            }
 
         return WawonaInputConnection(this, true)
+    }
+
+    /** Restart IME so content_type → InputType changes take effect. */
+    fun restartInputForContentType() {
+        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE)
+            as? android.view.inputmethod.InputMethodManager
+        imm?.restartInput(this)
     }
 
     override fun onCheckIsTextEditor(): Boolean = true
@@ -463,5 +470,37 @@ class WawonaSurfaceView(context: Context) : SurfaceView(context) {
     override fun onFocusChanged(gainFocus: Boolean, direction: Int, previouslyFocusedRect: android.graphics.Rect?) {
         super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
         WawonaNative.nativeKeyboardFocus(gainFocus)
+    }
+}
+
+/** Map zwp_text_input_v3.content_purpose → Android InputType. */
+private fun inputTypeForContentPurpose(purpose: Int, textAssist: Boolean): Int {
+    val baseText = if (textAssist) {
+        InputType.TYPE_CLASS_TEXT or
+            InputType.TYPE_TEXT_FLAG_AUTO_CORRECT or
+            InputType.TYPE_TEXT_FLAG_AUTO_COMPLETE or
+            InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+    } else {
+        InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+    }
+    return when (purpose) {
+        2, 9 -> // digits / pin
+            InputType.TYPE_CLASS_NUMBER or
+                if (purpose == 9) InputType.TYPE_NUMBER_VARIATION_PASSWORD else 0
+        3 -> // number
+            InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+        4 -> // phone
+            InputType.TYPE_CLASS_PHONE
+        5 -> // url
+            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+        6 -> // email
+            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+        8 -> // password
+            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        13 -> // terminal
+            InputType.TYPE_CLASS_TEXT or
+                InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
+                InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+        else -> baseText
     }
 }

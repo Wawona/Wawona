@@ -357,8 +357,8 @@ let
       if [ -n "$OPENSSH_BIN" ] && [ -f "$OPENSSH_BIN" ]; then
         cp -L "$OPENSSH_BIN" "$JNI_LIB_DIR/libssh_bin.so"
         chmod +x "$JNI_LIB_DIR/libssh_bin.so"
-        # Sibling tools from the same wwn-ssh package (dropbearkey shipped as
-        # ssh-keygen, scp, dropbearconvert), when present.
+        # Sibling tools from the same wwn-ssh OpenSSH portable package
+        # (ssh-keygen, scp), when present next to ssh.
         OPENSSH_BIN_DIR="$(dirname "$OPENSSH_BIN")"
         if [ -f "$OPENSSH_BIN_DIR/ssh-keygen" ]; then
           cp -L "$OPENSSH_BIN_DIR/ssh-keygen" "$JNI_LIB_DIR/libssh_keygen_bin.so"
@@ -367,10 +367,6 @@ let
         if [ -f "$OPENSSH_BIN_DIR/scp" ]; then
           cp -L "$OPENSSH_BIN_DIR/scp" "$JNI_LIB_DIR/libscp_bin.so"
           chmod +x "$JNI_LIB_DIR/libscp_bin.so"
-        fi
-        if [ -f "$OPENSSH_BIN_DIR/dropbearconvert" ]; then
-          cp -L "$OPENSSH_BIN_DIR/dropbearconvert" "$JNI_LIB_DIR/libdropbearconvert_bin.so"
-          chmod +x "$JNI_LIB_DIR/libdropbearconvert_bin.so"
         fi
       fi
       if [ -n "$SSHPASS_BIN" ] && [ -f "$SSHPASS_BIN" ]; then

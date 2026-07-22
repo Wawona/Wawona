@@ -6,6 +6,10 @@ context device=iPhone 17 Pro
 
 open com.aspauldingcode.Wawona --relaunch
 wait 2500
+# Prefer scripts/agent-device-smoke.sh (host Allow Paste + agent-device Continue).
+# Replay-only path: Continue via agent-device; Allow Paste needs host helper.
+press label="Continue"
+press text="Continue"
 snapshot -i
 screenshot ./.agent-device/test-artifacts/ios-first-screen.png
 is visible id="wwn.machines.root"

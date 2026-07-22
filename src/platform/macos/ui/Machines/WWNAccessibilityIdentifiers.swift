@@ -10,7 +10,6 @@ enum WWNA11y {
   static let machinesTitle = "wwn.machines.title"
   static let machinesSettings = "wwn.machines.settings"
   static let machinesAdd = "wwn.machines.add"
-  static let machinesFilter = "wwn.machines.filter"
   static let machinesStart = "wwn.machines.start"
   static let machinesStop = "wwn.machines.stop"
   static let machinesFocus = "wwn.machines.focus"

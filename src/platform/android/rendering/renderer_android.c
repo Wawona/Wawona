@@ -24,6 +24,7 @@
 #endif
 
 typedef struct CachedTexture {
+  uint32_t surface_id;
   uint64_t buffer_id;
   VkImage image;
   VkImageView image_view;
@@ -35,6 +36,24 @@ typedef struct CachedTexture {
   size_t staging_size;
   int in_use;
 } CachedTexture;
+
+static void free_cached_texture(VkDevice dev, CachedTexture *t) {
+  if (!t)
+    return;
+  if (dev != VK_NULL_HANDLE) {
+    if (t->image_view != VK_NULL_HANDLE)
+      vkDestroyImageView(dev, t->image_view, NULL);
+    if (t->image != VK_NULL_HANDLE)
+      vkDestroyImage(dev, t->image, NULL);
+    if (t->memory != VK_NULL_HANDLE)
+      vkFreeMemory(dev, t->memory, NULL);
+    if (t->staging_buffer != VK_NULL_HANDLE)
+      vkDestroyBuffer(dev, t->staging_buffer, NULL);
+    if (t->staging_memory != VK_NULL_HANDLE)
+      vkFreeMemory(dev, t->staging_memory, NULL);
+  }
+  memset(t, 0, sizeof(*t));
+}
 
 typedef struct RendererAndroid {
   VkDevice device;
@@ -477,33 +496,33 @@ void renderer_android_destroy_all(void) {
   renderer_android_destroy_pipeline();
 
   VkDevice dev = s_renderer->device;
-  if (dev != VK_NULL_HANDLE) {
-    for (int i = 0; i < MAX_CACHED_BUFFERS; i++) {
-      CachedTexture *t = &s_renderer->cache[i];
-      if (t->image_view != VK_NULL_HANDLE)
-        vkDestroyImageView(dev, t->image_view, NULL);
-      if (t->image != VK_NULL_HANDLE)
-        vkDestroyImage(dev, t->image, NULL);
-      if (t->memory != VK_NULL_HANDLE)
-        vkFreeMemory(dev, t->memory, NULL);
-      if (t->staging_buffer != VK_NULL_HANDLE)
-        vkDestroyBuffer(dev, t->staging_buffer, NULL);
-      if (t->staging_memory != VK_NULL_HANDLE)
-        vkFreeMemory(dev, t->staging_memory, NULL);
-    }
-  }
+  for (int i = 0; i < MAX_CACHED_BUFFERS; i++)
+    free_cached_texture(dev, &s_renderer->cache[i]);
 
   free(s_renderer);
   s_renderer = NULL;
   LOGI("Android renderer fully destroyed (buffer cache cleared)");
 }
 
+void renderer_android_prune_surface(uint32_t surface_id,
+                                    uint64_t keep_buffer_id) {
+  if (!s_renderer || surface_id == 0)
+    return;
+  VkDevice dev = s_renderer->device;
+  for (int i = 0; i < MAX_CACHED_BUFFERS; i++) {
+    CachedTexture *t = &s_renderer->cache[i];
+    if (t->surface_id == surface_id && t->buffer_id != keep_buffer_id)
+      free_cached_texture(dev, t);
+  }
+}
+
 /* Upload SHM buffer to a VkImage and cache it. cmd_buf must be recording.
  * Returns 0 on success. */
-int renderer_android_cache_buffer(VkCommandBuffer cmd_buf, uint64_t buffer_id,
-                                  uint32_t width, uint32_t height,
-                                  uint32_t stride, uint32_t format,
-                                  const uint8_t *pixels, size_t size) {
+int renderer_android_cache_buffer(VkCommandBuffer cmd_buf, uint32_t surface_id,
+                                  uint64_t buffer_id, uint32_t width,
+                                  uint32_t height, uint32_t stride,
+                                  uint32_t format, const uint8_t *pixels,
+                                  size_t size) {
   if (!s_renderer || !pixels || width == 0 || height == 0)
     return -1;
 
@@ -511,21 +530,32 @@ int renderer_android_cache_buffer(VkCommandBuffer cmd_buf, uint64_t buffer_id,
   VkPhysicalDevice pd = s_renderer->physical_device;
   VkResult res;
 
-  /* Find existing or empty slot */
+  /* Find existing or empty slot; if full, reclaim an unused or oldest slot. */
   CachedTexture *slot = NULL;
+  CachedTexture *empty = NULL;
+  CachedTexture *unused = NULL;
   for (int i = 0; i < MAX_CACHED_BUFFERS; i++) {
     if (s_renderer->cache[i].buffer_id == buffer_id) {
       slot = &s_renderer->cache[i];
       break;
     }
-    if (s_renderer->cache[i].image == VK_NULL_HANDLE) {
-      slot = &s_renderer->cache[i];
-      break;
-    }
+    if (!empty && s_renderer->cache[i].image == VK_NULL_HANDLE)
+      empty = &s_renderer->cache[i];
+    if (!unused && s_renderer->cache[i].image != VK_NULL_HANDLE &&
+        !s_renderer->cache[i].in_use)
+      unused = &s_renderer->cache[i];
+  }
+  if (!slot)
+    slot = empty;
+  if (!slot && unused) {
+    free_cached_texture(dev, unused);
+    slot = unused;
   }
   if (!slot) {
-    LOGE("Buffer cache full");
-    return -1;
+    /* Last resort: free slot 0 (bounded cache; never grow past MAX). */
+    free_cached_texture(dev, &s_renderer->cache[0]);
+    slot = &s_renderer->cache[0];
+    LOGI("Buffer cache full — reclaimed slot 0");
   }
 
   /* If reusing, destroy old image resources if size changed */
@@ -635,10 +665,13 @@ int renderer_android_cache_buffer(VkCommandBuffer cmd_buf, uint64_t buffer_id,
   /* For immediate use we need to copy. The simplest: require the caller to
    * pass a command buffer. Change signature to cache_buffer(cmdBuf, ...).
    */
+  slot->surface_id = surface_id;
   slot->buffer_id = buffer_id;
   slot->width = width;
   slot->height = height;
   slot->in_use = 1;
+  if (surface_id != 0)
+    renderer_android_prune_surface(surface_id, buffer_id);
 
   /* Staging buffer for pixel upload - reuse if size matches */
   size_t buffer_size = (size_t)height * stride;
@@ -779,14 +812,14 @@ static void get_texture_size(uint64_t buffer_id, uint32_t *width,
   }
 }
 
-/* Evict buffer from cache when frame presented */
+/* Hard-free buffer from cache when no longer needed (post-present). */
 void renderer_android_evict_buffer(uint64_t buffer_id) {
-  if (!s_renderer)
+  if (!s_renderer || buffer_id == 0)
     return;
+  VkDevice dev = s_renderer->device;
   for (int i = 0; i < MAX_CACHED_BUFFERS; i++) {
     if (s_renderer->cache[i].buffer_id == buffer_id) {
-      s_renderer->cache[i].in_use = 0;
-      /* Optionally reclaim immediately; for now keep for reuse */
+      free_cached_texture(dev, &s_renderer->cache[i]);
       break;
     }
   }
@@ -911,7 +944,8 @@ void renderer_android_draw_iland_overlay(VkCommandBuffer cmd_buf,
     return;
 
   size_t tight = (size_t)width * height * 4;
-  if (renderer_android_cache_buffer(cmd_buf, WAWONA_ILAND_OVERLAY_BUFFER_ID,
+  /* surface_id 0 — overlay is not Wayland-surface-scoped */
+  if (renderer_android_cache_buffer(cmd_buf, 0, WAWONA_ILAND_OVERLAY_BUFFER_ID,
                                     width, height, stride, 0, pixels,
                                     tight) != 0)
     return;

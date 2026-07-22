@@ -46,7 +46,7 @@ in-process zsh runs these without any remote server. Smoke each command:
 | `whoami` | prints the sandbox user (`mobile`) |
 | `ls` / `pwd` / `echo hello` | coreutils dispatch works |
 | `fastfetch --version` | bundled client archive linked |
-| `ssh -V` / `ssh user@host` | `ssh_main` from `libssh-inprocess.a` responds |
+| `ssh -V` / `ssh user@host` | Apple-mobile stub (no OpenSSH); use `waypipe ssh` (libssh2) for remote |
 | `waypipe --version` | `waypipe_main` responds |
 | `nvim --version` | neovim TUI dispatch works |
 | `apt --help` / `apt list` | in-process read-only `apt()` zsh function responds |

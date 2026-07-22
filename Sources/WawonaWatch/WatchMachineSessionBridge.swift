@@ -65,7 +65,9 @@ enum WatchMachineSessionBridge {
         if let launcher = profile.launchers.first?.name, !launcher.isEmpty {
             return launcher
         }
-        return "weston-terminal"
+        // watchOS is shm-only for nested clients (no GPU stack). Prefer
+        // weston-simple-shm over weston-terminal (compat shim / may refuse).
+        return "weston-simple-shm"
     }
 }
 #endif

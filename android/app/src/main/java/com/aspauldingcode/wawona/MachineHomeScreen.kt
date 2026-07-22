@@ -814,6 +814,16 @@ private fun MachineEditorSheet(
             )
         )
     }
+    var nestedCompositorCursor by remember {
+        mutableStateOf(
+            SettingsOverrides.readString(
+                existingOverrides,
+                "nestedCompositorCursor",
+                prefs.getString("nestedCompositorCursor", "virtual") ?: "virtual"
+            ).let { if (it == "host") "host" else "virtual" }
+        )
+    }
+    var nestedCursorExpanded by remember { mutableStateOf(false) }
     var touchInputType by remember {
         mutableStateOf(
             SettingsOverrides.readString(
@@ -878,6 +888,12 @@ private fun MachineEditorSheet(
             "renderMacOSPointer",
             showVirtualPointer,
             prefs.getBoolean("renderMacOSPointer", false)
+        )
+        writeStringOverride(
+            settingsOverrides,
+            "nestedCompositorCursor",
+            nestedCompositorCursor,
+            prefs.getString("nestedCompositorCursor", "virtual") ?: "virtual"
         )
         writeStringOverride(
             settingsOverrides,
@@ -1106,7 +1122,19 @@ private fun MachineEditorSheet(
                         ToggleRow("Force Server-Side Decorations", forceSsd) { forceSsd = it }
                         ToggleRow("Auto Scale", autoScale) { autoScale = it }
                         ToggleRow("Respect Safe Area", respectSafeArea) { respectSafeArea = it }
-                        ToggleRow("Show Virtual Pointer", showVirtualPointer) { showVirtualPointer = it }
+                        ToggleRow("Show Virtual Cursor", showVirtualPointer) { showVirtualPointer = it }
+                        StringDropdownField(
+                            label = "Nested Compositor Cursor",
+                            selected = if (nestedCompositorCursor == "host") "Host Cursor" else "Virtual Pointer",
+                            options = listOf("Virtual Pointer", "Host Cursor"),
+                            expanded = nestedCursorExpanded && showVirtualPointer,
+                            onExpandedChange = { if (showVirtualPointer) nestedCursorExpanded = it },
+                            onSelect = {
+                                nestedCompositorCursor = if (it == "Host Cursor") "host" else "virtual"
+                                nestedCursorExpanded = false
+                            },
+                            enabled = showVirtualPointer,
+                        )
                         StringDropdownField(
                             label = "Touch Input Type",
                             selected = touchInputType,
@@ -1339,20 +1367,25 @@ private fun StringDropdownField(
     options: List<String>,
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
-    onSelect: (String) -> Unit
+    onSelect: (String) -> Unit,
+    enabled: Boolean = true,
 ) {
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = onExpandedChange) {
+    ExposedDropdownMenuBox(
+        expanded = expanded && enabled,
+        onExpandedChange = { if (enabled) onExpandedChange(it) },
+    ) {
         OutlinedTextField(
             value = selected,
             onValueChange = {},
             readOnly = true,
+            enabled = enabled,
             label = { Text(label) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded && enabled) },
             modifier = Modifier
                 .fillMaxWidth()
                 .menuAnchor()
         )
-        DropdownMenu(expanded = expanded, onDismissRequest = { onExpandedChange(false) }) {
+        DropdownMenu(expanded = expanded && enabled, onDismissRequest = { onExpandedChange(false) }) {
             options.forEach { option ->
                 DropdownMenuItem(text = { Text(option) }, onClick = { onSelect(option) })
             }

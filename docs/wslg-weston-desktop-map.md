@@ -56,6 +56,27 @@ client-requested), not “always Force SSD.”
 | Android | required | clear Vulkan/GL | required | freeform as OS allows | allowed |
 | Linux | host WM | host WM | required | as DE allows | N/A |
 
+## Maximize / fullscreen / minimize / Focus (host WM policy)
+
+UIKit and Android own the host surface; Wawona cannot offer macOS-style floating
+zoom frames. `PlatformCapabilities.hostWindowManagerPolicy` is authoritative.
+
+| Platform | Maximize | Fullscreen | Minimize | Focus (Machines) |
+|----------|----------|------------|----------|------------------|
+| **macOS** | AppKit `zoom:` + xdg maximized | `toggleFullScreen:` + xdg fullscreen | AppKit miniaturize (Dock) | `orderFront` / deminiaturize |
+| **iOS phone / tvOS** | **Fill-primary**: configure to compositor bounds + xdg maximized | Same fill + xdg fullscreen (status bar already deferred in-session) | Hide compositor → Machines; **session stays alive** | Reveal compositor; do not relaunch |
+| **iPadOS / visionOS** | Fill active host `UIWindow`/scene + xdg maximized | Same | Hide primary + per-client host windows → Machines | Unhide host windows + reveal |
+| **Android** | Fill logical output + xdg maximized | Same | `showMachinesHome=true`; session stays | `focusMachine` → hide Machines home |
+| **watchOS** | No-op stub | No-op stub | No-op stub | N/A |
+| **Linux** | GTK maximize | GTK fullscreen | GTK iconify | DE focus |
+
+**iOS decision (cannot resize host windows):** treat maximize and fullscreen as
+the same host geometry (fill-primary). Advertise distinct xdg states so clients
+that branch on `maximized` vs `fullscreen` still see the bit they requested.
+Unmaximize/unfullscreen clear those bits but keep fill-primary size — there is
+no pre-max floating geometry to restore. Minimize must never terminate the
+client; Focus is the restore path.
+
 ## Issue map
 
 | Issue | Theme | Phase |

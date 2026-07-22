@@ -121,6 +121,7 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
     kWWNPrefsColorOperations,
     kWWNPrefsNestedCompositorsSupport,
     kWWNPrefsRenderMacOSPointer,
+    kWWNPrefsNestedCompositorCursor,
     kWWNPrefsMultipleClients,
     kWWNPrefsSwapCmdWithAlt,
     kWWNPrefsTouchInputType,
@@ -181,6 +182,7 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
     kWWNPrefsForceServerSideDecorations,
     kWWNPrefsAutoScale,
     kWWNPrefsRenderMacOSPointer,
+    kWWNPrefsNestedCompositorCursor,
     kWWNPrefsTouchInputType,
     kWWNPrefsSwapCmdWithAlt,
     kWWNPrefsUniversalClipboard,
@@ -754,6 +756,12 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   if ([swiftRenderPointer respondsToSelector:@selector(boolValue)]) {
     transportSnapshot[kWWNPrefsRenderMacOSPointer] = swiftRenderPointer;
   }
+  id swiftNestedCursor = swiftRuntime[@"nestedCompositorCursor"];
+  if ([swiftNestedCursor isKindOfClass:[NSString class]] &&
+      ([swiftNestedCursor isEqualToString:@"host"] ||
+       [swiftNestedCursor isEqualToString:@"virtual"])) {
+    transportSnapshot[kWWNPrefsNestedCompositorCursor] = swiftNestedCursor;
+  }
 
   [self applySettingsSnapshot:transportSnapshot];
 
@@ -917,6 +925,82 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
     profile = [self profileById:activeId];
   }
   return [self resolvedRenderMacOSPointerForProfile:profile];
+}
+
++ (NSString *)resolvedNestedCompositorCursorForProfile:
+    (WWNMachineProfile *)profile {
+  NSString *global =
+      [[WWNPreferencesManager sharedManager] nestedCompositorCursor];
+  if (!profile) {
+    return global;
+  }
+  NSDictionary *overrides =
+      [profile.settingsOverrides isKindOfClass:[NSDictionary class]]
+          ? profile.settingsOverrides
+          : @{};
+  id override = overrides[kWWNPrefsNestedCompositorCursor];
+  if (![override isKindOfClass:[NSString class]]) {
+    NSDictionary *runtime =
+        [profile.runtimeOverrides isKindOfClass:[NSDictionary class]]
+            ? profile.runtimeOverrides
+            : @{};
+    override = runtime[@"nestedCompositorCursor"];
+  }
+  if ([override isKindOfClass:[NSString class]] &&
+      ([override isEqualToString:@"host"] ||
+       [override isEqualToString:@"virtual"])) {
+    return (NSString *)override;
+  }
+  return global;
+}
+
++ (NSString *)resolvedNestedCompositorCursorActive {
+  NSString *activeId = [self activeMachineId];
+  WWNMachineProfile *profile = nil;
+  if (activeId.length > 0) {
+    profile = [self profileById:activeId];
+  }
+  return [self resolvedNestedCompositorCursorForProfile:profile];
+}
+
++ (BOOL)resolvedShowHostCursorActive {
+  if (![self resolvedRenderMacOSPointerActive]) {
+    return NO;
+  }
+  NSString *activeId = [self activeMachineId];
+  WWNMachineProfile *profile =
+      activeId.length > 0 ? [self profileById:activeId] : nil;
+  BOOL nested =
+      profile != nil && [self profileIndicatesNestedCompositor:profile];
+  if (!nested) {
+#if TARGET_OS_IPHONE
+    return NO;
+#else
+    return YES;
+#endif
+  }
+  return [[self resolvedNestedCompositorCursorForProfile:profile]
+      isEqualToString:@"host"];
+}
+
++ (BOOL)resolvedShowVirtualPointerActive {
+  if (![self resolvedRenderMacOSPointerActive]) {
+    return NO;
+  }
+  NSString *activeId = [self activeMachineId];
+  WWNMachineProfile *profile =
+      activeId.length > 0 ? [self profileById:activeId] : nil;
+  BOOL nested =
+      profile != nil && [self profileIndicatesNestedCompositor:profile];
+  if (!nested) {
+#if TARGET_OS_IPHONE
+    return YES;
+#else
+    return NO;
+#endif
+  }
+  return [[self resolvedNestedCompositorCursorForProfile:profile]
+      isEqualToString:@"virtual"];
 }
 
 + (BOOL)resolvedAlwaysOnTopForProfile:(WWNMachineProfile *)profile {

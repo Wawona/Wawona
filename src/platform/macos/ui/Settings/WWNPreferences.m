@@ -459,15 +459,6 @@ static UIImage *WWNAboutLogo(void) {
   // Respect Safe Area only makes sense on iOS (notch, Dynamic Island, etc.)
   [displayItems addObject:ITEM(@"Respect Safe Area", @"RespectSafeArea",
                                WSettingSwitch, @YES, @"Avoids notch areas.")];
-  [displayItems addObject:ITEM(@"Show Virtual Pointer", @"RenderMacOSPointer",
-                               WSettingSwitch, @NO,
-                               @"Draws a host overlay pointer in touchpad mode.")];
-#else
-  // Show macOS Cursor option only on macOS
-  [displayItems insertObject:ITEM(@"Show macOS Cursor", @"RenderMacOSPointer",
-                                  WSettingSwitch, @NO,
-                                  @"Toggles macOS cursor visibility.")
-                     atIndex:1];
 #endif
 
   display.items = displayItems;
@@ -488,7 +479,33 @@ static UIImage *WWNAboutLogo(void) {
            @"Multi-Touch", @"Input method for touch interactions.");
   touchInputItem.options = @[ @"Multi-Touch", @"Touchpad" ];
 
+  BOOL showVirtualCursor =
+      [[NSUserDefaults standardUserDefaults] boolForKey:kWWNPrefsRenderMacOSPointer];
+  WWNSettingItem *showVirtualCursorItem =
+#if TARGET_OS_IPHONE
+      ITEM(@"Show Virtual Cursor", @"RenderMacOSPointer", WSettingSwitch, @NO,
+           @"Draws a host overlay pointer in touchpad mode.");
+#else
+      ITEM(@"Show Virtual Cursor", @"RenderMacOSPointer", WSettingSwitch, @NO,
+           @"Enables virtual cursor control (host overlay or real macOS cursor).");
+#endif
+  WWNSettingItem *nestedCursorItem = ITEM(
+      @"Nested Compositor Cursor", kWWNPrefsNestedCompositorCursor,
+      WSettingPopup, @"virtual",
+      @"When using nested compositors, grab the virtual pointer or the real "
+      @"macOS / host cursor. Requires Show Virtual Cursor.");
+  nestedCursorItem.options =
+#if TARGET_OS_IPHONE
+      @[ @"Virtual Pointer", @"Host Cursor" ];
+#else
+      @[ @"Virtual Pointer", @"macOS Cursor" ];
+#endif
+  nestedCursorItem.optionValues = @[ @"virtual", @"host" ];
+  nestedCursorItem.interactive = showVirtualCursor;
+
   input.items = @[
+    showVirtualCursorItem,
+    nestedCursorItem,
     touchInputItem,
     ITEM(@"Resize Display for Virtual Keyboard",
          @"resizeDisplayForVirtualKeyboard", WSettingSwitch, @YES,
@@ -3686,7 +3703,7 @@ static UIImage *WWNAboutLogo(void) {
   if (item.type == WSettingSwitch) {
 #if TARGET_OS_TV
     BOOL swOn = YES;
-    BOOL swEnabled = YES;
+    BOOL swEnabled = item.interactive;
     if ([item.key isEqualToString:@"WaypipeOneshot"]) {
       swOn = YES;
       swEnabled = NO;
@@ -3717,9 +3734,17 @@ static UIImage *WWNAboutLogo(void) {
       cell.selectionStyle = UITableViewCellSelectionStyleDefault;
     } else {
       sw.on = [[NSUserDefaults standardUserDefaults] boolForKey:item.key];
+      sw.enabled = item.interactive;
+      if (!item.interactive) {
+        cell.textLabel.textColor = [UIColor secondaryLabelColor];
+      }
     }
 #else
     sw.on = [[NSUserDefaults standardUserDefaults] boolForKey:item.key];
+    sw.enabled = item.interactive;
+    if (!item.interactive) {
+      cell.textLabel.textColor = [UIColor secondaryLabelColor];
+    }
 #endif
     sw.tag = (ip.section * 1000) + ip.row;
     [sw addTarget:self
@@ -3798,7 +3823,13 @@ static UIImage *WWNAboutLogo(void) {
     }
   popup_done:
     cell.accessoryType = UITableViewCellAccessoryNone;
-    cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+    if (item.interactive) {
+      cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+    } else {
+      cell.selectionStyle = UITableViewCellSelectionStyleNone;
+      cell.textLabel.textColor = [UIColor secondaryLabelColor];
+      cell.detailTextLabel.textColor = [UIColor tertiaryLabelColor];
+    }
   } else if (item.type == WSettingButton) {
     cell.textLabel.textColor = [UIColor systemBlueColor];
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
@@ -4022,6 +4053,19 @@ static UIImage *WWNAboutLogo(void) {
   }
 #endif
   [[NSUserDefaults standardUserDefaults] setBool:s.on forKey:item.key];
+  if ([item.key isEqualToString:kWWNPrefsRenderMacOSPointer]) {
+    // Nested Compositor Cursor interactivity depends on Show Virtual Cursor.
+    self.sections = [self buildSections];
+    if (self.activeSection) {
+      for (WWNPreferencesSection *sect in self.sections) {
+        if ([sect.title isEqualToString:self.activeSection.title]) {
+          self.activeSection = sect;
+          break;
+        }
+      }
+    }
+    [self.tableView reloadData];
+  }
 }
 #endif
 
@@ -4077,6 +4121,10 @@ static UIImage *WWNAboutLogo(void) {
     item = self.activeSection.items[ip.row];
   } else {
     item = self.sections[ip.section].items[ip.row];
+  }
+
+  if (!item.interactive) {
+    return;
   }
 
 #if TARGET_OS_IPHONE
@@ -5133,6 +5181,7 @@ static UIImage *WWNAboutLogo(void) {
         [[NSUserDefaults standardUserDefaults] boolForKey:item.key]
             ? NSControlStateValueOn
             : NSControlStateValueOff;
+    self.switchControl.enabled = item.interactive;
     self.switchControl.target = target;
     self.switchControl.action = action;
     active = self.switchControl;
@@ -5237,6 +5286,7 @@ static UIImage *WWNAboutLogo(void) {
       [self.popupControl selectItemWithTitle:stored];
     }
   popup_sel_done:
+    self.popupControl.enabled = item.interactive;
     self.popupControl.target = target;
     self.popupControl.action = action;
     active = self.popupControl;
@@ -5511,6 +5561,9 @@ static UIImage *WWNAboutLogo(void) {
 
   id val = nil;
   if ([sender isKindOfClass:[NSSwitch class]]) {
+    if (!item.interactive) {
+      return;
+    }
     val = @([(NSSwitch *)sender state] == NSControlStateValueOn);
 #if (TARGET_OS_IPHONE || TARGET_OS_OSX) && !TARGET_OS_TV
     if ([item.key isEqualToString:WWNRootfsICloudSyncPreferenceKey]) {
@@ -5526,6 +5579,9 @@ static UIImage *WWNAboutLogo(void) {
     }
     return; // Return early for text fields - they save on each change
   } else if ([sender isKindOfClass:[NSPopUpButton class]]) {
+    if (!item.interactive) {
+      return;
+    }
     // Handle SSHAuthMethod specially - store as integer index
     if ([item.key isEqualToString:@"SSHAuthMethod"] ||
         [item.key isEqualToString:@"WaypipeSSHAuthMethod"]) {
@@ -5558,6 +5614,11 @@ static UIImage *WWNAboutLogo(void) {
     [[NSNotificationCenter defaultCenter]
         postNotificationName:@"WWNPreferencesChanged"
                       object:nil];
+    if ([item.key isEqualToString:kWWNPrefsRenderMacOSPointer]) {
+      WWNPreferences *prefs = [WWNPreferences sharedPreferences];
+      prefs.sections = [prefs buildSections];
+      [self.tableView reloadData];
+    }
   }
 }
 

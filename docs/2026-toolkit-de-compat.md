@@ -26,6 +26,7 @@ to those globals.
 | GTK4 / libadwaita apps (nautilus, gnome-text-editor) | native / waypipe | needs decoration + fractional-scale; CSD default |
 | Qt / KDE apps (konsole, dolphin, kate) | native / waypipe | needs primary-selection + decoration; set `QT_QPA_PLATFORM=wayland` |
 | Toolkit demos (weston-*, foot) | native / bundled | SHM + xdg-shell only; baseline smoke |
+| SDL2 / SDL2_gfx (`testgfx`) | native / bundled | `SDL_VIDEODRIVER=wayland`; software/`wl_shm` first (tvOS/watchOS-safe); port plan [#107](https://github.com/Wawona/Wawona/issues/107) |
 | wlroots DEs (sway, niri, hyprland) | **nested** | run as their own compositor; layer-shell client of Wawona |
 | GNOME Shell / KDE Plasma | nested / VM | heavy; prefer nested Weston or NixOS VM delivery |
 

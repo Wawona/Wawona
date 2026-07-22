@@ -273,7 +273,12 @@ impl CompositorState {
                 .find(|s| s.surface_id == id)
                 .map(|s| (s.geometry, s.pending_serial, s.last_acked_serial))
                 .unwrap_or((None, 0, 0));
-            let (expected_toplevel_size, toplevel_pending_serial, toplevel_last_acked_serial) = self
+            let (
+                expected_toplevel_size,
+                toplevel_pending_serial,
+                toplevel_last_acked_serial,
+                interactive_resize,
+            ) = self
                 .xdg
                 .toplevels
                 .values()
@@ -283,9 +288,10 @@ impl CompositorState {
                         Some((tl.width as i32, tl.height as i32)),
                         tl.pending_serial,
                         tl.last_acked_serial,
+                        tl.interactive_resize,
                     )
                 })
-                .unwrap_or((None, 0, 0));
+                .unwrap_or((None, 0, 0, false));
             if should_sync_host_window_size {
                 if let Some(window) = self.get_window(wid) {
                     let mut window = window.write().unwrap();
@@ -309,9 +315,18 @@ impl CompositorState {
                         window.geometry_x = 0;
                         window.geometry_y = 0;
                     } else {
-                        // Ignore client-driven size churn while a configure is still pending.
-                        // This prevents host/client resize ping-pong loops with nested clients.
-                        if xdg_pending_serial == 0 {
+                        // SizeAuthority owns host↔client ping-pong. Do not blanket-block
+                        // on pending_serial: the initial xdg configure is 0×0 with a
+                        // non-zero serial, and many clients (weston family) commit the
+                        // first buffer before that serial is cleared. Blocking here left
+                        // the host stuck on the 64×64 placeholder while the buffer was
+                        // already client-sized — or never adopted the real size at all.
+                        let awaiting_first = !window.has_committed_buffer
+                            || matches!(
+                                window.size_authority,
+                                crate::core::window::SizeAuthority::AwaitingFirstCommit
+                            );
+                        if xdg_pending_serial == 0 || awaiting_first {
                             let mut target_width = surface.current.width;
                             let mut target_height = surface.current.height;
                             let mut target_geometry_x = 0;
@@ -349,6 +364,7 @@ impl CompositorState {
                                 window.height,
                                 xdg_pending_serial,
                                 window.has_committed_buffer,
+                                interactive_resize,
                             );
                             crate::wlog_hot!(
                                 crate::util::logging::STATE,

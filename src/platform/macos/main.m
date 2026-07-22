@@ -89,9 +89,9 @@ extern void wawona_window_info_free(CWindowInfo *info);
 
   BOOL compositorStarted = NO;
   if (compositor) {
-    // Use a reasonable initial size; the scene delegate will set the
-    // actual output dimensions once the UIWindowScene is available.
-    CGSize screenSize = CGSizeMake(390, 844);
+    // Prefer the live screen size; scene delegate refines from
+    // compositorContainer.bounds once the UIWindowScene is available.
+    CGSize screenSize = CGSizeMake(0, 0);
     BOOL autoScale = [[WWNPreferencesManager sharedManager] autoScale];
 #if TARGET_OS_VISION
     // UIScreen is unavailable on visionOS; scene scale is applied later.
@@ -101,7 +101,11 @@ extern void wawona_window_info_free(CWindowInfo *info);
     if (nativeScale <= 0.0) {
       nativeScale = 2.0;
     }
+    screenSize = UIScreen.mainScreen.bounds.size;
 #endif
+    if (screenSize.width < 1.0 || screenSize.height < 1.0) {
+      screenSize = CGSizeMake(390, 844);
+    }
     CGFloat scale = autoScale ? nativeScale : 1.0;
 
     [compositor setOutputWidth:(uint32_t)screenSize.width
@@ -291,18 +295,40 @@ static void wwn_write_runtime_exports(NSString *socketName) {
 }
 
 static BOOL wwn_is_compositor_socket_ready(void) {
-  NSDictionary *state = [NSDictionary dictionaryWithContentsOfFile:wwn_runtime_state_path()];
+  // Menubar polls this on a timer. Prefer cheap access(2) on a cached socket
+  // path; only re-parse the runtime plist every few seconds (or when the
+  // socket disappears) so we avoid main-thread plist I/O every tick.
+  static NSString *cachedSocketPath;
+  static BOOL cachedHealthy = NO;
+  static CFAbsoluteTime lastPlistRead = 0;
+  static const CFTimeInterval kPlistRefreshSeconds = 8.0;
+
+  CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+  if (cachedSocketPath.length > 0 &&
+      (now - lastPlistRead) < kPlistRefreshSeconds) {
+    if (access(cachedSocketPath.fileSystemRepresentation, F_OK) == 0) {
+      return cachedHealthy;
+    }
+    // Socket vanished — fall through and re-read plist.
+  }
+
+  lastPlistRead = now;
+  NSDictionary *state =
+      [NSDictionary dictionaryWithContentsOfFile:wwn_runtime_state_path()];
   if (![state isKindOfClass:[NSDictionary class]]) {
+    cachedSocketPath = nil;
+    cachedHealthy = NO;
     return NO;
   }
-  if (![state[@"healthy"] boolValue]) {
+  cachedHealthy = [state[@"healthy"] boolValue];
+  NSString *socketPath =
+      [state[@"socketPath"] isKindOfClass:[NSString class]] ? state[@"socketPath"]
+                                                             : @"";
+  cachedSocketPath = socketPath.length > 0 ? [socketPath copy] : nil;
+  if (!cachedHealthy || cachedSocketPath.length == 0) {
     return NO;
   }
-  NSString *socketPath = [state[@"socketPath"] isKindOfClass:[NSString class]] ? state[@"socketPath"] : @"";
-  if (socketPath.length == 0) {
-    return NO;
-  }
-  return [[NSFileManager defaultManager] fileExistsAtPath:socketPath];
+  return access(cachedSocketPath.fileSystemRepresentation, F_OK) == 0;
 }
 
 static void activate_existing_instance(void) {
@@ -747,18 +773,21 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
     [menu addItem:[NSMenuItem separatorItem]];
 
     NSMenuItem *quitItem =
-        [[NSMenuItem alloc] initWithTitle:@"Quit Menu Bar"
+        [[NSMenuItem alloc] initWithTitle:@"Quit Wawona"
                                    action:@selector(quitMenuBar:)
                             keyEquivalent:@"q"];
     quitItem.target = self;
     [menu addItem:quitItem];
 
     _statusItem.menu = menu;
-    _pollTimer = [NSTimer scheduledTimerWithTimeInterval:2.0
-                                                   target:self
-                                                 selector:@selector(refreshStatus:)
-                                                 userInfo:nil
-                                                  repeats:YES];
+    // Default runloop mode only — avoid polling during menu tracking / window
+    // drags (same class of jank as the old compositor CommonModes timer).
+    _pollTimer = [NSTimer timerWithTimeInterval:2.0
+                                         target:self
+                                       selector:@selector(refreshStatus:)
+                                       userInfo:nil
+                                        repeats:YES];
+    [[NSRunLoop mainRunLoop] addTimer:_pollTimer forMode:NSDefaultRunLoopMode];
     [self refreshStatus:nil];
   }
   return self;
@@ -767,8 +796,11 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
 - (void)refreshStatus:(id)sender {
   (void)sender;
   BOOL running = wwn_is_compositor_socket_ready();
-  self.statusLineItem.title =
+  NSString *title =
       running ? @"Compositor: running" : @"Compositor: stopped";
+  if (![self.statusLineItem.title isEqualToString:title]) {
+    self.statusLineItem.title = title;
+  }
 }
 
 - (void)restartCompositor:(id)sender {
@@ -820,6 +852,9 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
 
 - (void)quitMenuBar:(id)sender {
   (void)sender;
+  // Boot out KeepAlive agents and remove plists before exit so launchd
+  // cannot reopen the menubar / compositor host.
+  [[WWNLaunchAgentManager sharedManager] stopCompositorAndMenuAgents];
   [NSApp terminate:nil];
 }
 

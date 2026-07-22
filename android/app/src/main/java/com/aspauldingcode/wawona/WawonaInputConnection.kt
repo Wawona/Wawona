@@ -44,6 +44,7 @@ class WawonaInputConnection(
             return commitTextWithModifiers(text.toString(), newCursorPosition)
         }
 
+        // nativeCommitText prefers TI commit_string when enabled, else key inject.
         WawonaNative.nativePreeditText("", 0, 0)
         WawonaNative.nativeCommitText(text.toString())
         syncShiftAppearanceFromCommittedText(text)

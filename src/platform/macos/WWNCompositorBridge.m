@@ -296,6 +296,8 @@ NSNotificationName const WWNNativeClientWillLaunchNotification =
     @"WWNNativeClientWillLaunchNotification";
 NSNotificationName const WWNClientMinimizeRequestedNotification =
     @"WWNClientMinimizeRequestedNotification";
+NSNotificationName const WWNClientFocusRequestedNotification =
+    @"WWNClientFocusRequestedNotification";
 NSNotificationName const WWNHostWindowsDidChangeNotification =
     @"WWNHostWindowsDidChangeNotification";
 
@@ -896,6 +898,9 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
 
   [NSApp activateIgnoringOtherApps:YES];
   for (NSWindow *window in clientWindows) {
+    if (window.isMiniaturized) {
+      [window deminiaturize:nil];
+    }
     [window orderFront:nil];
   }
   [[clientWindows firstObject] makeKeyAndOrderFront:nil];
@@ -926,6 +931,9 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
 
   [NSApp activateIgnoringOtherApps:YES];
   for (NSWindow *window in clientWindows) {
+    if (window.isMiniaturized) {
+      [window deminiaturize:nil];
+    }
     [window orderFront:nil];
   }
   [[clientWindows firstObject] makeKeyAndOrderFront:nil];
@@ -2761,6 +2769,50 @@ extern void WWNCoreInject_touch_frame(void *core);
   }
   [self injectKeyboardEnterForWindow:windowId keys:@[]];
 }
+
+- (void)setClientHostWindowsHidden:(BOOL)hidden
+                     forMachineId:(NSString *)machineId {
+  for (NSNumber *key in _iosHostWindows.allKeys) {
+    if (machineId.length > 0) {
+      NSString *owner = _windowOwnerMachineIdByWindowId[key];
+      if (owner.length > 0 && ![owner isEqualToString:machineId]) {
+        continue;
+      }
+    }
+    UIWindow *hostWindow = _iosHostWindows[key];
+    hostWindow.hidden = hidden;
+    if (!hidden) {
+      [hostWindow makeKeyAndVisible];
+    }
+  }
+}
+
+- (BOOL)focusClientWindowsForMachineId:(NSString *)machineId {
+  NSMutableArray<NSNumber *> *owned = [NSMutableArray array];
+  for (NSNumber *key in _windows.allKeys) {
+    if (machineId.length == 0) {
+      [owned addObject:key];
+      continue;
+    }
+    NSString *owner = _windowOwnerMachineIdByWindowId[key];
+    if (owner.length == 0 || [owner isEqualToString:machineId]) {
+      [owned addObject:key];
+    }
+  }
+  if (owned.count == 0) {
+    return NO;
+  }
+  [self setClientHostWindowsHidden:NO forMachineId:machineId];
+  uint64_t focusId = owned.lastObject.unsignedLongLongValue;
+  for (NSNumber *key in owned) {
+    UIView *view = _windows[key];
+    if (view.superview) {
+      [view.superview bringSubviewToFront:view];
+    }
+  }
+  [self focusTabbedClientWindowId:focusId];
+  return YES;
+}
 #endif
 
 - (BOOL)requestForceDestroyHostWindowForWindowId:(uint64_t)windowId {
@@ -3325,12 +3377,18 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
   }
 #else
   NSNumber *windowId = @(event->window_id);
+  NSString *owner =
+      _windowOwnerMachineIdByWindowId[windowId]
+          ?: [WWNMachineProfileStore activeMachineId] ?: @"";
+  NSMutableDictionary *info =
+      [NSMutableDictionary dictionaryWithObject:windowId forKey:@"windowId"];
+  if (owner.length > 0) {
+    info[@"machineId"] = owner;
+  }
   [[NSNotificationCenter defaultCenter]
       postNotificationName:WWNClientMinimizeRequestedNotification
                     object:self
-                  userInfo:@{
-                    @"windowId" : windowId,
-                  }];
+                  userInfo:info];
 #endif
 }
 
@@ -3770,7 +3828,7 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
 - (void)handleCursorShapeChanged:(CWindowEvent *)event {
   if (_windows.count == 0)
     return;
-  if (![[WWNPreferencesManager sharedManager] renderMacOSPointer])
+  if (![WWNMachineProfileStore resolvedShowHostCursorActive])
     return;
   uint32_t shape = event->surface_id;
   [self _ensureCursorRenderingEnabled];
@@ -3805,7 +3863,7 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   if (_windows.count == 0)
     return;
 
-  if (![[WWNPreferencesManager sharedManager] renderMacOSPointer])
+  if (![WWNMachineProfileStore resolvedShowHostCursorActive])
     return;
 
   if (scene->cursor_buffer_id == 0)
@@ -4353,8 +4411,13 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
 }
 
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
-/// Fill-primary host: max/fullscreen → configure to the active compositor view bounds.
-/// Also syncs xdg maximized/fullscreen so clients see the negotiated state.
+/// Fill-primary window policy (iOS / iPadOS / tvOS / visionOS / phone):
+/// UIKit owns the host window(s); Wawona cannot spawn floating AppKit-style
+/// frames or true OS zoom. Maximize and fullscreen both mean: configure the
+/// Wayland toplevel to the active host surface bounds and advertise the
+/// matching xdg state. Unmaximize/unfullscreen clear state bits but keep
+/// fill-primary geometry (no floating restore size — host has none).
+/// Minimize is handled separately (park session → Machines; Focus restores).
 - (void)_iosInjectFillPrimaryForWindowId:(uint64_t)windowId
                               maximized:(BOOL)maximized
                              fullscreen:(BOOL)fullscreen {

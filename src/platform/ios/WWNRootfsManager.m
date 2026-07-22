@@ -522,8 +522,22 @@ static NSString *const kWWNRootfsReadmeText =
 
 + (void)applyShellEnvironment {
   NSError *error = nil;
-  if (![self ensureRootfsInstalled:&error]) {
+  BOOL rootfsReady = [self ensureRootfsInstalled:&error];
+  if (!rootfsReady) {
     NSLog(@"WWNRootfs: install failed: %@", error.localizedDescription);
+    /* Still mark in-process zsh so weston-terminal does not reject /usr/bin/zsh
+     * and call exit() (which would tear down the whole host process). */
+    setenv("WAWONA_ZSH_IN_PROCESS", "1", 1);
+    setenv("WAWONA_SHELL", "/usr/bin/zsh", 1);
+    setenv("SHELL", "/usr/bin/zsh", 1);
+    setenv("TERM", "xterm-256color", 1);
+    setenv("USER", "mobile", 1);
+    const char *homeEnv = getenv("HOME");
+    if (homeEnv == NULL || homeEnv[0] == '\0') {
+      NSString *fallbackHome = NSHomeDirectory() ?: @"/tmp";
+      setenv("HOME", fallbackHome.UTF8String, 1);
+      setenv("ZDOTDIR", fallbackHome.UTF8String, 1);
+    }
     return;
   }
 

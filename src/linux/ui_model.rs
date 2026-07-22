@@ -35,52 +35,6 @@ impl LayoutMode {
     }
 }
 
-/// Home-screen scope filter, mirroring `MachineScopeFilter` / `WWNMachineFilter`
-/// on Android and macOS.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MachineScope {
-    All,
-    Local,
-    Remote,
-}
-
-impl Default for MachineScope {
-    fn default() -> Self {
-        Self::All
-    }
-}
-
-impl MachineScope {
-    pub fn title(self) -> &'static str {
-        match self {
-            Self::All => "All Machines",
-            Self::Local => "Local",
-            Self::Remote => "Remote",
-        }
-    }
-
-    pub fn all() -> &'static [MachineScope] {
-        &[Self::All, Self::Local, Self::Remote]
-    }
-
-    /// The sensible machine type to default to when adding a new profile from
-    /// this filter (mirrors `WWNMachineFilter.defaultMachineType`).
-    pub fn default_machine_type(self) -> crate::linux::machine_profile::MachineType {
-        match self {
-            Self::Remote => crate::linux::machine_profile::MachineType::SshWaypipe,
-            _ => crate::linux::machine_profile::MachineType::Native,
-        }
-    }
-
-    pub fn matches(self, machine_type: crate::linux::machine_profile::MachineType) -> bool {
-        match self {
-            Self::All => true,
-            Self::Local => machine_type.is_local(),
-            Self::Remote => machine_type.is_remote(),
-        }
-    }
-}
-
 /// Scope chip label (mirrors `machineScopeLabel(for:)` on macOS).
 pub fn machine_scope_label(machine_type: crate::linux::machine_profile::MachineType) -> &'static str {
     if machine_type.is_local() {
@@ -201,16 +155,13 @@ fn profile_matches_query(profile: &MachineProfile, needle: &str) -> bool {
 }
 
 /// Filter + order machines for display: favorites first, then by name, after
-/// applying the scope and search query. Returns borrowed references in display
-/// order.
+/// applying the search query. Returns borrowed references in display order.
 pub fn visible_machines<'a>(
     machines: &'a [MachineProfile],
     query: &str,
-    scope: MachineScope,
 ) -> Vec<&'a MachineProfile> {
     let mut out: Vec<&MachineProfile> = machines
         .iter()
-        .filter(|m| scope.matches(m.machine_type))
         .filter(|m| profile_matches_query(m, query))
         .collect();
     out.sort_by(|a, b| {
@@ -224,13 +175,12 @@ pub fn visible_machines<'a>(
 /// Placeholder text shown when the filtered list is empty (mirrors the macOS
 /// `ContentUnavailableView` in `WWNMachinesGridView`).
 pub fn empty_state_text(
-    _scope: MachineScope,
     _has_any: bool,
     _has_query: bool,
 ) -> (&'static str, &'static str) {
     (
         "No Matching Machines",
-        "Adjust search/filter settings or add a new machine profile.",
+        "Adjust search or add a new machine profile.",
     )
 }
 
@@ -255,24 +205,18 @@ mod tests {
     }
 
     #[test]
-    fn scope_filters_local_remote_and_orders() {
+    fn visible_machines_orders_favorites_then_name() {
         let machines = vec![
             machine("zeta", false, MachineType::Native),
             machine("alpha", true, MachineType::Native),
             machine("remote", false, MachineType::SshWaypipe),
         ];
-        let all = visible_machines(&machines, "", MachineScope::All);
+        let all = visible_machines(&machines, "");
         // Favorite first, then alphabetical.
         assert_eq!(all[0].name, "alpha");
         assert_eq!(all[1].name, "remote");
         assert_eq!(all[2].name, "zeta");
-
-        let local = visible_machines(&machines, "", MachineScope::Local);
-        assert_eq!(local.len(), 2);
-
-        let remote = visible_machines(&machines, "", MachineScope::Remote);
-        assert_eq!(remote.len(), 1);
-        assert_eq!(remote[0].name, "remote");
+        assert_eq!(all.len(), 3);
     }
 
     #[test]
@@ -280,19 +224,19 @@ mod tests {
         let mut m = machine("Workstation", false, MachineType::SshWaypipe);
         m.ssh_host = "build.example.com".into();
         let machines = vec![m];
-        assert_eq!(visible_machines(&machines, "work", MachineScope::All).len(), 1);
-        assert_eq!(visible_machines(&machines, "example", MachineScope::All).len(), 1);
-        assert_eq!(visible_machines(&machines, "nope", MachineScope::All).len(), 0);
+        assert_eq!(visible_machines(&machines, "work").len(), 1);
+        assert_eq!(visible_machines(&machines, "example").len(), 1);
+        assert_eq!(visible_machines(&machines, "nope").len(), 0);
     }
 
     #[test]
     fn empty_state_matches_macos_content_unavailable_view() {
         assert_eq!(
-            empty_state_text(MachineScope::All, false, false).0,
+            empty_state_text(false, false).0,
             "No Matching Machines"
         );
         assert_eq!(
-            empty_state_text(MachineScope::Remote, true, true).0,
+            empty_state_text(true, true).0,
             "No Matching Machines"
         );
     }
@@ -323,10 +267,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn scope_default_machine_type_mirrors_macos_filter() {
-        assert_eq!(MachineScope::Remote.default_machine_type(), MachineType::SshWaypipe);
-        assert_eq!(MachineScope::All.default_machine_type(), MachineType::Native);
-        assert_eq!(MachineScope::Local.default_machine_type(), MachineType::Native);
-    }
 }

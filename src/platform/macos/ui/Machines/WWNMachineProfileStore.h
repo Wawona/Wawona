@@ -64,6 +64,15 @@ extern NSString *const kWWNMachineTypeContainer;
 + (BOOL)resolvedRenderMacOSPointerForProfile:
     (nullable WWNMachineProfile *)profile;
 + (BOOL)resolvedRenderMacOSPointerActive;
+/// @"virtual" or @"host" — which cursor nested compositors grab when virtual
+/// cursor is enabled. Falls back to global NestedCompositorCursor.
++ (NSString *)resolvedNestedCompositorCursorForProfile:
+    (nullable WWNMachineProfile *)profile;
++ (NSString *)resolvedNestedCompositorCursorActive;
+/// Effective host (macOS NSCursor) visibility for the active machine.
++ (BOOL)resolvedShowHostCursorActive;
+/// Effective virtual pointer overlay visibility for the active machine.
++ (BOOL)resolvedShowVirtualPointerActive;
 /// macOS-only per-machine window override: keep this machine's window above
 /// all other windows, even when unfocused. Defaults to NO — there is no
 /// global fallback preference for this (unlike shake/swipe-to-close), it is

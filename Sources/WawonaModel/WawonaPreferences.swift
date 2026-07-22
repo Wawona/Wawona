@@ -93,6 +93,7 @@ public struct ResolvedMachineSettings: Hashable, Sendable {
     public var dmabufEnabled: Bool
     public var forceSSD: Bool
     public var renderMacOSPointer: Bool
+    public var nestedCompositorCursor: String
     public var autoScale: Bool
     public var colorOperations: Bool
     public var waylandDisplay: String
@@ -117,6 +118,8 @@ public final class WawonaPreferences: ObservableObject {
     @Published public var renderer: String = "metal"
     @Published public var forceSSD: Bool = false
     @Published public var renderMacOSPointer: Bool = false
+    /// "virtual" or "host"
+    @Published public var nestedCompositorCursor: String = "virtual"
     @Published public var autoScale: Bool = true
     @Published public var colorOperations: Bool = false
     @Published public var waylandDisplay: String = "wayland-0"
@@ -157,6 +160,9 @@ public final class WawonaPreferences: ObservableObject {
             forceSSD = defaults.bool(forKey: keyPrefix + "forceSSD")
         }
         renderMacOSPointer = defaults.bool(forKey: "RenderMacOSPointer")
+        let nestedCursor = defaults.string(forKey: "NestedCompositorCursor") ?? "virtual"
+        nestedCompositorCursor =
+            (nestedCursor == "host" || nestedCursor == "virtual") ? nestedCursor : "virtual"
         autoScale = defaults.object(forKey: keyPrefix + "autoScale") as? Bool ?? true
         colorOperations = defaults.object(forKey: keyPrefix + "colorOperations") as? Bool ?? false
         waylandDisplay = defaults.string(forKey: keyPrefix + "waylandDisplay") ?? "wayland-0"
@@ -211,6 +217,10 @@ public final class WawonaPreferences: ObservableObject {
             )
         }
         defaults.set(renderMacOSPointer, forKey: "RenderMacOSPointer")
+        defaults.set(
+            (nestedCompositorCursor == "host") ? "host" : "virtual",
+            forKey: "NestedCompositorCursor"
+        )
         defaults.set(autoScale, forKey: keyPrefix + "autoScale")
         defaults.set(colorOperations, forKey: keyPrefix + "colorOperations")
         defaults.set(waylandDisplay, forKey: keyPrefix + "waylandDisplay")
@@ -281,6 +291,12 @@ public final class WawonaPreferences: ObservableObject {
             dmabufEnabled: profile.runtimeOverrides.dmabufEnabled ?? true,
             forceSSD: profile.runtimeOverrides.forceSSD ?? forceSSD,
             renderMacOSPointer: profile.runtimeOverrides.renderMacOSPointer ?? renderMacOSPointer,
+            nestedCompositorCursor: {
+                let override = profile.runtimeOverrides.nestedCompositorCursor?
+                    .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
+                if override == "host" || override == "virtual" { return override }
+                return nestedCompositorCursor
+            }(),
             autoScale: profile.runtimeOverrides.autoScale ?? autoScale,
             colorOperations: profile.runtimeOverrides.colorOperations ?? colorOperations,
             waylandDisplay: normalizedWaylandDisplay.isEmpty ? waylandDisplay : normalizedWaylandDisplay,

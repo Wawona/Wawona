@@ -1,0 +1,218 @@
+name: Bundled clients matrix
+
+# Exercises every Machines bundled native client on product builds.
+# See docs/testing/bundled-clients-matrix-gate.md.
+# Advisory (not a promote blocker) until the matrix is consistently green.
+
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Space-separated platforms (default: ios android macos)"
+        type: string
+        required: false
+        default: "ios android macos"
+      clients:
+        description: "Comma-separated client ids (empty = all)"
+        type: string
+        required: false
+        default: ""
+  schedule:
+    - cron: "0 10 * * *" # daily after leak-idle
+
+concurrency:
+  group: bundled-clients-matrix-${{ github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+  actions: read
+
+env:
+  AGENT_DEVICE_VERSION: "0.18.3"
+  WAWONA_MATRIX_STRICT: "1"
+  WAWONA_MATRIX_CLIENT_HOLD_SEC: "12"
+  WAWONA_MATRIX_NESTED_HOLD_SEC: "20"
+
+jobs:
+  product-ios:
+    if: contains(inputs.platforms || 'ios android macos', 'ios')
+    uses: ./.github/workflows/product-build.yml
+    with:
+      checkout_ref: ${{ github.sha }}
+      tip_key: ${{ github.ref_name }}
+      only: ios-sim
+    permissions:
+      contents: read
+      id-token: write
+
+  product-android:
+    if: contains(inputs.platforms || 'ios android macos', 'android')
+    uses: ./.github/workflows/product-build.yml
+    with:
+      checkout_ref: ${{ github.sha }}
+      tip_key: ${{ github.ref_name }}
+      only: android-apk
+    permissions:
+      contents: read
+      id-token: write
+
+  product-macos:
+    if: contains(inputs.platforms || 'ios android macos', 'macos')
+    uses: ./.github/workflows/product-build.yml
+    with:
+      checkout_ref: ${{ github.sha }}
+      tip_key: ${{ github.ref_name }}
+      only: macos-app
+    permissions:
+      contents: read
+      id-token: write
+
+  matrix-ios:
+    name: Matrix iOS
+    needs: product-ios
+    if: always() && !cancelled() && needs.product-ios.result == 'success'
+    runs-on: macos-26
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v5
+      - name: Select Xcode
+        id: xcode
+        run: ./.github/scripts/select-xcode.sh
+      - uses: actions/download-artifact@v8
+        with:
+          name: product-ios-sim
+          path: product-ios-sim/
+      - name: Stage app
+        run: |
+          mkdir -p result-ios
+          if [[ -d product-ios-sim/Wawona.app ]]; then cp -R product-ios-sim/Wawona.app result-ios/
+          else find product-ios-sim -name Wawona.app -type d | head -1 | while read -r p; do cp -R "$p" result-ios/; done
+          fi
+          test -d result-ios/Wawona.app
+      - name: Install agent-device
+        run: npm install -g "agent-device@${AGENT_DEVICE_VERSION}"
+      - name: Run matrix (iOS)
+        env:
+          WAWONA_IOS_APP: result-ios/Wawona.app
+          WAWONA_MATRIX_CLIENTS: ${{ inputs.clients }}
+        run: ./scripts/bundled-clients-matrix-gate.sh ios
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: bundled-clients-matrix-ios
+          path: .agent-device/test-artifacts/bundled-clients-matrix/
+          if-no-files-found: warn
+
+  matrix-android:
+    name: Matrix Android
+    needs: product-android
+    if: always() && !cancelled() && needs.product-android.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v5
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: actions/download-artifact@v8
+        with:
+          name: product-android-apk
+          path: dist/
+      - name: Normalize APK
+        run: |
+          if [[ ! -f dist/Wawona.apk ]]; then
+            found="$(find dist -name Wawona.apk -type f | head -1)"
+            [[ -n "$found" ]] || exit 1
+            cp -L "$found" dist/Wawona.apk
+          fi
+      - name: Install agent-device
+        run: npm install -g "agent-device@${AGENT_DEVICE_VERSION}"
+      - name: Run matrix (Android emu)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot-save
+          disable-animations: true
+          script: >-
+            export WAWONA_ANDROID_APK="$GITHUB_WORKSPACE/dist/Wawona.apk"
+            && export WAWONA_MATRIX_CLIENTS="${{ inputs.clients }}"
+            && ./scripts/bundled-clients-matrix-gate.sh android
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: bundled-clients-matrix-android
+          path: .agent-device/test-artifacts/bundled-clients-matrix/
+          if-no-files-found: warn
+
+  matrix-macos:
+    name: Matrix macOS
+    needs: product-macos
+    if: always() && !cancelled() && needs.product-macos.result == 'success'
+    runs-on: macos-26
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v8
+        with:
+          name: product-macos-app
+          path: product-macos-app/
+      - name: Stage app
+        run: |
+          if [[ -d product-macos-app/Wawona.app ]]; then
+            echo "WAWONA_MACOS_APP=$PWD/product-macos-app/Wawona.app" >> "$GITHUB_ENV"
+          else
+            found="$(find product-macos-app -name Wawona.app -type d | head -1)"
+            echo "WAWONA_MACOS_APP=$found" >> "$GITHUB_ENV"
+          fi
+      - name: Run matrix (macOS)
+        env:
+          WAWONA_MATRIX_CLIENTS: ${{ inputs.clients }}
+        run: ./scripts/bundled-clients-matrix-gate.sh macos
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: bundled-clients-matrix-macos
+          path: .agent-device/test-artifacts/bundled-clients-matrix/
+          if-no-files-found: warn
+
+  summary:
+    name: Matrix summary
+    needs: [matrix-ios, matrix-android, matrix-macos]
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: bundled-clients-matrix-*
+          path: arts/
+          merge-multiple: false
+      - name: Roll up FAIL cells
+        run: |
+          set -euo pipefail
+          fails=""
+          while IFS= read -r f; do
+            [[ -f "$f" ]] || continue
+            while IFS=$'\t' read -r plat client status reason _rest; do
+              [[ "$status" == "FAIL" ]] || continue
+              fails="${fails:+$fails,}${plat}/${client}"
+              echo "FAIL $plat/$client — $reason"
+            done < <(tail -n +2 "$f")
+          done < <(find arts -name results.tsv -type f)
+          {
+            echo "## Bundled clients matrix"
+            echo ""
+            if [[ -n "$fails" ]]; then
+              echo "MATRIX_FAIL cells=$fails"
+              echo "::error::Bundled client matrix failures: $fails"
+              exit 1
+            fi
+            echo "No FAIL cells in uploaded results."
+          } | tee -a "$GITHUB_STEP_SUMMARY"

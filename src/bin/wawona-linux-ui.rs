@@ -67,6 +67,8 @@ mod app {
         resize_in_flight: HashSet<u64>,
         /// Last size sent to compositor for each host window (dedupe noisy GTK resize signals).
         last_dispatched_host_resizes: HashMap<u64, (u32, u32)>,
+        /// Host windows currently in an xdg interactive-resize session.
+        interactive_resize_active: HashSet<u64>,
     }
 
     fn dispatch_pending_host_resize(cs: &mut CompositorState, wid: u64) {
@@ -110,10 +112,30 @@ mod app {
             companions.len(),
             cs.resize_in_flight.contains(&wid)
         );
+        if cs.interactive_resize_active.insert(wid) {
+            core.begin_interactive_resize(WindowId { id: wid });
+        }
         for c_wid in companions {
             core.set_window_size_local(WindowId { id: c_wid }, w, h);
         }
         core.resize_window(WindowId { id: wid }, w, h);
+    }
+
+    fn settle_interactive_resize(cs: &mut CompositorState, wid: u64, w: u32, h: u32) {
+        if !cs.interactive_resize_active.remove(&wid) {
+            return;
+        }
+        let w = w.max(1);
+        let h = h.max(1);
+        wawona::wlog!(
+            "COMPOSITOR",
+            "Settling interactive resize wid={} {}x{}",
+            wid,
+            w,
+            h
+        );
+        cs.core
+            .end_interactive_resize(WindowId { id: wid }, w, h);
     }
 
     fn wayland_socket_exists() -> bool {
@@ -378,6 +400,7 @@ mod app {
             pending_host_resizes: HashMap::new(),
             resize_in_flight: HashSet::new(),
             last_dispatched_host_resizes: HashMap::new(),
+            interactive_resize_active: HashSet::new(),
         }));
 
         let window = adw::ApplicationWindow::builder()
@@ -643,10 +666,50 @@ mod app {
 
                             {
                                 let da_active = da.clone();
+                                let core_act = cs.core.clone();
+                                let wid_act = wid;
                                 client_win.connect_is_active_notify(move |win| {
-                                    if win.is_active() {
+                                    let active = win.is_active();
+                                    if active {
                                         let _ = da_active.grab_focus();
                                     }
+                                    core_act.set_window_activated(
+                                        WindowId { id: wid_act },
+                                        active,
+                                        true,
+                                    );
+                                });
+                            }
+
+                            // Host chrome max/fs → xdg_toplevel state (SSD + CSD hosts).
+                            {
+                                let core_m = cs.core.clone();
+                                let da_m = da.clone();
+                                let wid_m = wid;
+                                client_win.connect_notify_local(Some("maximized"), move |win, _| {
+                                    let w = da_m.width().max(1) as u32;
+                                    let h = da_m.height().max(1) as u32;
+                                    core_m.apply_host_window_maximized(
+                                        WindowId { id: wid_m },
+                                        win.is_maximized(),
+                                        w,
+                                        h,
+                                    );
+                                });
+                            }
+                            {
+                                let core_f = cs.core.clone();
+                                let da_f = da.clone();
+                                let wid_f = wid;
+                                client_win.connect_notify_local(Some("fullscreened"), move |win, _| {
+                                    let w = da_f.width().max(1) as u32;
+                                    let h = da_f.height().max(1) as u32;
+                                    core_f.apply_host_window_fullscreen(
+                                        WindowId { id: wid_f },
+                                        win.is_fullscreen(),
+                                        w,
+                                        h,
+                                    );
                                 });
                             }
 
@@ -827,6 +890,7 @@ mod app {
                             cs.pending_host_resizes.remove(&wid);
                             cs.resize_in_flight.remove(&wid);
                             cs.last_dispatched_host_resizes.remove(&wid);
+                            cs.interactive_resize_active.remove(&wid);
                             for cw in cs.client_windows.values_mut() {
                                 cw.companion_window_ids.retain(|x| *x != wid);
                             }
@@ -868,7 +932,19 @@ mod app {
                                 {
                                     cs.pending_host_resizes.remove(&window_id.id);
                                 }
-                                dispatch_pending_host_resize(&mut cs, window_id.id);
+                                if cs.pending_host_resizes.contains_key(&window_id.id) {
+                                    dispatch_pending_host_resize(&mut cs, window_id.id);
+                                } else {
+                                    // No newer host tick pending — clear
+                                    // xdg_toplevel.state.resizing with a settle
+                                    // configure (even if size is unchanged).
+                                    settle_interactive_resize(
+                                        &mut cs,
+                                        window_id.id,
+                                        width,
+                                        height,
+                                    );
+                                }
                             }
                         }
                         WindowEvent::PopupCreated { window_id, parent_id, x, y, width, height } => {
@@ -925,6 +1001,49 @@ mod app {
                                 if let Some(cw) = cs.client_windows.get(&window_id.id) {
                                     cw.drawing_area.queue_draw();
                                 }
+                            }
+                        }
+                        WindowEvent::MinimizeRequested { window_id } => {
+                            if let Some(cw) = cs.client_windows.get(&window_id.id) {
+                                wawona::wlog!("COMPOSITOR", "MinimizeRequested wid={}", window_id.id);
+                                cw.gtk_window.minimize();
+                            }
+                        }
+                        WindowEvent::MaximizeRequested { window_id } => {
+                            if let Some(cw) = cs.client_windows.get(&window_id.id) {
+                                wawona::wlog!("COMPOSITOR", "MaximizeRequested wid={}", window_id.id);
+                                cw.gtk_window.maximize();
+                            }
+                        }
+                        WindowEvent::UnmaximizeRequested { window_id } => {
+                            if let Some(cw) = cs.client_windows.get(&window_id.id) {
+                                wawona::wlog!("COMPOSITOR", "UnmaximizeRequested wid={}", window_id.id);
+                                cw.gtk_window.unmaximize();
+                            }
+                        }
+                        WindowEvent::FullscreenRequested { window_id } => {
+                            if let Some(cw) = cs.client_windows.get(&window_id.id) {
+                                wawona::wlog!("COMPOSITOR", "FullscreenRequested wid={}", window_id.id);
+                                cw.gtk_window.fullscreen();
+                            }
+                        }
+                        WindowEvent::UnfullscreenRequested { window_id } => {
+                            if let Some(cw) = cs.client_windows.get(&window_id.id) {
+                                wawona::wlog!("COMPOSITOR", "UnfullscreenRequested wid={}", window_id.id);
+                                cw.gtk_window.unfullscreen();
+                            }
+                        }
+                        WindowEvent::CloseRequested { window_id } => {
+                            if let Some(cw) = cs.client_windows.get(&window_id.id) {
+                                wawona::wlog!("COMPOSITOR", "CloseRequested wid={} → host close", window_id.id);
+                                cw.allow_host_close.set(true);
+                                cw.gtk_window.close();
+                            }
+                        }
+                        WindowEvent::Activated { window_id } => {
+                            if let Some(cw) = cs.client_windows.get(&window_id.id) {
+                                cw.gtk_window.present();
+                                let _ = cw.drawing_area.grab_focus();
                             }
                         }
                         _ => {}

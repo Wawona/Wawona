@@ -509,8 +509,13 @@ impl XdgShellHandler for CompositorState {
         })
         .unwrap_or_default();
 
-        let weston_family_client = !matches!(self.decoration_policy, DecorationPolicy::ForceServer)
-            && crate::core::wayland::xdg::decoration::is_weston_family_app_id(&app_id);
+        let weston_family =
+            crate::core::wayland::xdg::decoration::is_weston_family_app_id(&app_id);
+        let force_server = matches!(self.decoration_policy, DecorationPolicy::ForceServer);
+        // Weston-family needs an explicit host mode (CSD vs SSD). Force SSD must
+        // also re-assert ServerSide once app_id arrives — WindowCreated may have
+        // raced before the preference was applied to Rust.
+        let should_reassert_decoration = weston_family || force_server;
 
         let Some((client_id, toplevel_id)) = self.xdg_toplevel_key_for_surface(&surface) else {
             return;
@@ -525,28 +530,26 @@ impl XdgShellHandler for CompositorState {
         if let Some(window) = self.get_window(window_id) {
             let mut w = window.write().unwrap();
             w.app_id = app_id.clone();
-            if weston_family_client {
-                w.decoration_mode =
-                    if crate::core::wayland::xdg::decoration::weston_family_prefers_client_decorations(self)
-                    {
-                        DecorationMode::ClientSide
-                    } else {
-                        DecorationMode::ServerSide
-                    };
-            }
         }
-        if weston_family_client {
+        if should_reassert_decoration {
+            let xdg_mode =
+                crate::core::wayland::xdg::decoration::preferred_xdg_decoration_mode(self, window_id);
             let mode =
-                if crate::core::wayland::xdg::decoration::weston_family_prefers_client_decorations(self)
-                {
-                    DecorationMode::ClientSide
-                } else {
-                    DecorationMode::ServerSide
-                };
-            self.pending_compositor_events.push(CompositorEvent::DecorationModeChanged {
-                window_id,
-                mode,
-            });
+                crate::core::wayland::xdg::decoration::decoration_mode_from_xdg(xdg_mode);
+            let mut changed = false;
+            if let Some(window) = self.get_window(window_id) {
+                let mut w = window.write().unwrap();
+                if w.decoration_mode != mode {
+                    w.decoration_mode = mode;
+                    changed = true;
+                }
+            }
+            if changed {
+                self.pending_compositor_events.push(CompositorEvent::DecorationModeChanged {
+                    window_id,
+                    mode,
+                });
+            }
         }
         self.apply_host_lock_for_app_id(window_id, &app_id);
     }

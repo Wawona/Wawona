@@ -298,15 +298,6 @@ private fun DisplaySection(prefs: SharedPreferences) {
             "Detect and match Android UI scaling", Icons.Filled.AspectRatio, default = true, iconTint = SettingsTab.DISPLAY.accentColor)
         SettingsSwitchItem(prefs, "respectSafeArea", "Respect Safe Area",
             "Avoid system UI and notches", Icons.Filled.Security, default = true, iconTint = SettingsTab.DISPLAY.accentColor)
-        SettingsSwitchItem(
-            prefs,
-            "renderMacOSPointer",
-            "Show Virtual Pointer",
-            "Show/hide the virtual cursor used in touchpad mode.",
-            Icons.Filled.Mouse,
-            default = false,
-            iconTint = SettingsTab.DISPLAY.accentColor
-        )
     }
 }
 
@@ -761,6 +752,34 @@ private fun LockscreenSection(prefs: SharedPreferences, accent: Color) {
 private fun InputSection(prefs: SharedPreferences) {
     SettingsSectionHeader("Input", Icons.Filled.Keyboard, SettingsTab.INPUT.accentColor)
     SettingsGroup(SettingsTab.INPUT.accentColor) {
+        var showVirtualCursor by remember {
+            mutableStateOf(prefs.getBoolean("renderMacOSPointer", false))
+        }
+        SettingsSwitchItem(
+            prefs,
+            "renderMacOSPointer",
+            "Show Virtual Cursor",
+            "Show/hide the virtual cursor used in touchpad mode.",
+            Icons.Filled.Mouse,
+            default = false,
+            iconTint = SettingsTab.INPUT.accentColor,
+            onCheckedChange = { showVirtualCursor = it },
+        )
+        SettingsDropdownItem(
+            prefs,
+            "nestedCompositorCursor",
+            "Nested Compositor Cursor",
+            "When nested compositors run, grab the virtual pointer or the host cursor. Requires Show Virtual Cursor.",
+            Icons.Filled.Mouse,
+            "virtual",
+            listOf("virtual", "host"),
+            iconTint = SettingsTab.INPUT.accentColor,
+            enabled = showVirtualCursor,
+            optionLabels = mapOf(
+                "virtual" to "Virtual Pointer",
+                "host" to "Host Cursor",
+            ),
+        )
         SettingsSwitchItem(prefs, "touchpadMode", "Touchpad Mode",
             "1-finger = pointer, tap = click, 2-finger drag = scroll. When off, use direct touch (multi-touch)",
             Icons.Filled.TouchApp, default = false, iconTint = SettingsTab.INPUT.accentColor)
@@ -972,7 +991,7 @@ private fun WaypipeSection(prefs: SharedPreferences, context: Context, accent: C
             Column(Modifier.weight(1f)) {
                 Text("Waypipe & SSH Logs", style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface)
-                Text("View and copy Waypipe/Dropbear output",
+                Text("View and copy Waypipe/OpenSSH output",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -1302,7 +1321,7 @@ private fun DependenciesSection() {
     AboutDependencyRow("Zstd", "v1.5", "Zstandard compression")
     AboutDependencyRow("libffi", "v3.4", "Foreign function interface")
     AboutDependencyRow("SwiftShader", "v2024", "Vulkan software renderer")
-    AboutDependencyRow("Dropbear", "v2025.89", "SSH client for Android")
+    AboutDependencyRow("OpenSSH", "v9.8p1", "SSH client for Android (wwn-ssh portable)")
     AboutDependencyRow("OpenSSL", "v3.4", "Cryptography library")
 }
 
@@ -1544,14 +1563,20 @@ fun SettingsSwitchItem(
     prefs: SharedPreferences, key: String, title: String, description: String,
     icon: ImageVector, default: Boolean, enabled: Boolean = true,
     iconTint: Color = MaterialTheme.colorScheme.primary,
+    onCheckedChange: ((Boolean) -> Unit)? = null,
 ) {
     var checked by remember { mutableStateOf(prefs.getBoolean(key, default)) }
     LaunchedEffect(key) {
         if (enabled) checked = prefs.getBoolean(key, default)
         else { checked = default; prefs.edit().putBoolean(key, default).apply() }
     }
+    fun commit(next: Boolean) {
+        checked = next
+        prefs.edit().putBoolean(key, next).apply()
+        onCheckedChange?.invoke(next)
+    }
     Surface(
-        onClick = { if (enabled) { checked = !checked; prefs.edit().putBoolean(key, checked).apply() } },
+        onClick = { if (enabled) commit(!checked) },
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
@@ -1582,7 +1607,7 @@ fun SettingsSwitchItem(
             }
             Spacer(Modifier.width(16.dp))
             Switch(checked = checked, onCheckedChange = {
-                if (enabled) { checked = it; prefs.edit().putBoolean(key, it).apply() }
+                if (enabled) commit(it)
             }, enabled = enabled, colors = SwitchDefaults.colors(
                 checkedThumbColor = MaterialTheme.colorScheme.primary,
                 checkedTrackColor = MaterialTheme.colorScheme.primaryContainer,
@@ -1743,47 +1768,60 @@ fun SettingsDropdownItem(
     prefs: SharedPreferences, key: String, title: String, description: String,
     icon: ImageVector, default: String, options: List<String>,
     iconTint: Color = MaterialTheme.colorScheme.primary,
+    enabled: Boolean = true,
+    optionLabels: Map<String, String> = emptyMap(),
 ) {
     var expanded by remember { mutableStateOf(false) }
     var selectedOption by remember { mutableStateOf(prefs.getString(key, default) ?: default) }
     LaunchedEffect(key) { selectedOption = prefs.getString(key, default) ?: default }
+    val displayValue = optionLabels[selectedOption] ?: selectedOption
     Surface(
         Modifier.fillMaxWidth().padding(vertical = 4.dp),
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (enabled) 0.4f else 0.22f)
     ) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Icon(icon, null, Modifier.size(24.dp), tint = iconTint.copy(alpha = 0.9f))
+                Icon(icon, null, Modifier.size(24.dp),
+                    tint = iconTint.copy(alpha = if (enabled) 0.9f else 0.4f))
                 Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                        color = MaterialTheme.colorScheme.onSurface)
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.6f))
                     Spacer(Modifier.height(4.dp))
                     Text(description, style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.6f))
                 }
             }
             Spacer(Modifier.height(12.dp))
             Box {
-                ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+                ExposedDropdownMenuBox(
+                    expanded = expanded && enabled,
+                    onExpandedChange = { if (enabled) expanded = !expanded },
+                ) {
                     OutlinedTextField(
-                        value = selectedOption, onValueChange = {}, readOnly = true,
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                        value = displayValue, onValueChange = {}, readOnly = true,
+                        enabled = enabled,
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded && enabled) },
                         modifier = Modifier.fillMaxWidth().menuAnchor(),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                            disabledTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            disabledBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
                         ),
                         shape = RoundedCornerShape(12.dp)
                     )
-                    ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                    ExposedDropdownMenu(expanded = expanded && enabled, onDismissRequest = { expanded = false }) {
                         options.forEach { option ->
-                            DropdownMenuItem(text = { Text(option) }, onClick = {
-                                selectedOption = option
-                                prefs.edit().putString(key, option).apply()
-                                expanded = false
-                            })
+                            DropdownMenuItem(
+                                text = { Text(optionLabels[option] ?: option) },
+                                onClick = {
+                                    selectedOption = option
+                                    prefs.edit().putString(key, option).apply()
+                                    expanded = false
+                                },
+                            )
                         }
                     }
                 }

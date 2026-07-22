@@ -2407,7 +2407,7 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   if (_currentInputMode != WWNTouchInputModeTouchpad) {
     return;
   }
-  if (![WWNMachineProfileStore resolvedRenderMacOSPointerActive]) {
+  if (![WWNMachineProfileStore resolvedShowVirtualPointerActive]) {
     _cursorLayer.hidden = YES;
     return;
   }
@@ -4387,7 +4387,7 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
                    height:(uint32_t)height
                  hotspotX:(float)hotspotX
                  hotspotY:(float)hotspotY {
-  if (![WWNMachineProfileStore resolvedRenderMacOSPointerActive]) {
+  if (![WWNMachineProfileStore resolvedShowVirtualPointerActive]) {
     _cursorLayer.contents = nil;
     _cursorLayer.hidden = YES;
     return;

@@ -29,7 +29,17 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
 
 @interface WWNCompositorHostViewController : UIViewController
 @property(nonatomic, assign) BOOL defersSystemGesturesForCompositor;
+/// visionOS Escape / legacy short-Menu session-exit hook.
 @property(nonatomic, copy, nullable) dispatch_block_t onMenuOrEscapeDuringSession;
+#if TARGET_OS_TV
+/// Short Menu/Back: send Escape into the Wayland client (in-app Back).
+@property(nonatomic, copy, nullable) dispatch_block_t onTvMenuShortPressDuringSession;
+/// Long-press Menu/Back: tvOS replacement for shake-to-exit (confirm leave session).
+@property(nonatomic, copy, nullable) dispatch_block_t onTvMenuLongPressDuringSession;
+/// When NO (Machines UI), Menu is left to the system focus/back stack.
+@property(nonatomic, assign) BOOL interceptsMenuForSessionExit;
+- (void)cancelTvMenuLongPress;
+#endif
 @end
 
 @interface WWNShakeAwareWindow : UIWindow
@@ -44,14 +54,23 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
 
 - (void)motionEnded:(UIEventSubtype)motion withEvent:(UIEvent *)event {
   [super motionEnded:motion withEvent:event];
+#if !TARGET_OS_TV
+  // tvOS does not deliver UIEventSubtypeMotionShake for the Siri Remote.
+  // Session exit on TV uses long-press Menu instead (see host VC).
   if (motion == UIEventSubtypeMotionShake && self.onShake) {
     self.onShake();
   }
+#endif
 }
 
 @end
 
-@implementation WWNCompositorHostViewController
+@implementation WWNCompositorHostViewController {
+#if TARGET_OS_TV
+  NSTimer *_tvMenuLongPressTimer;
+  BOOL _tvMenuLongPressFired;
+#endif
+}
 
 #if !TARGET_OS_TV
 - (UIRectEdge)preferredScreenEdgesDeferringSystemGestures {
@@ -120,18 +139,86 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
   }
 }
 
-- (void)pressesEnded:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
 #if TARGET_OS_TV
+/// Deliberate hold — tvOS analogue of iOS shake-to-exit. Short Menu is Escape.
+static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
+
+- (void)_cancelTvMenuLongPressTimer {
+  [_tvMenuLongPressTimer invalidate];
+  _tvMenuLongPressTimer = nil;
+}
+
+- (void)cancelTvMenuLongPress {
+  [self _cancelTvMenuLongPressTimer];
+  _tvMenuLongPressFired = NO;
+}
+
+- (void)_tvMenuLongPressFired:(NSTimer *)timer {
+  (void)timer;
+  _tvMenuLongPressTimer = nil;
+  _tvMenuLongPressFired = YES;
+  if (self.onTvMenuLongPressDuringSession) {
+    self.onTvMenuLongPressDuringSession();
+  }
+}
+
+- (BOOL)_setContainsMenuPress:(NSSet<UIPress *> *)presses {
   for (UIPress *press in presses) {
-    if (press.type == UIPressTypeMenu && self.onMenuOrEscapeDuringSession) {
-      self.onMenuOrEscapeDuringSession();
-      return;
+    if (press.type == UIPressTypeMenu) {
+      return YES;
     }
   }
-#endif
+  return NO;
+}
+
+- (void)pressesBegan:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+  if (self.interceptsMenuForSessionExit && [self _setContainsMenuPress:presses]) {
+    _tvMenuLongPressFired = NO;
+    [self _cancelTvMenuLongPressTimer];
+    __weak typeof(self) weakSelf = self;
+    // CommonModes so the hold timer still fires while UIPress tracking runs.
+    _tvMenuLongPressTimer =
+        [NSTimer timerWithTimeInterval:kWWNTvMenuLongPressDuration
+                               repeats:NO
+                                 block:^(__unused NSTimer *t) {
+                                   __strong typeof(weakSelf) strongSelf = weakSelf;
+                                   [strongSelf _tvMenuLongPressFired:t];
+                                 }];
+    [[NSRunLoop mainRunLoop] addTimer:_tvMenuLongPressTimer
+                              forMode:NSRunLoopCommonModes];
+    // Consume Menu so short release is Escape-to-client, not system app-exit.
+    return;
+  }
+  [super pressesBegan:presses withEvent:event];
+}
+
+- (void)pressesEnded:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+  if (self.interceptsMenuForSessionExit && [self _setContainsMenuPress:presses]) {
+    BOOL fired = _tvMenuLongPressFired;
+    [self _cancelTvMenuLongPressTimer];
+    _tvMenuLongPressFired = NO;
+    if (!fired && self.onTvMenuShortPressDuringSession) {
+      self.onTvMenuShortPressDuringSession();
+    }
+    return;
+  }
   [super pressesEnded:presses withEvent:event];
 }
-#endif
+
+- (void)pressesCancelled:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+  if (self.interceptsMenuForSessionExit && [self _setContainsMenuPress:presses]) {
+    [self _cancelTvMenuLongPressTimer];
+    _tvMenuLongPressFired = NO;
+    return;
+  }
+  [super pressesCancelled:presses withEvent:event];
+}
+
+- (void)dealloc {
+  [self _cancelTvMenuLongPressTimer];
+}
+#endif // TARGET_OS_TV
+#endif // TARGET_OS_TV || TARGET_OS_VISION
 
 @end
 
@@ -284,6 +371,8 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
 /// In-window client tabs (issue #84); shown when >1 live client.
 @property(nonatomic, strong, nullable) UISegmentedControl *clientTabsControl;
 @property(nonatomic, strong, nullable) NSLayoutConstraint *clientTabsTopConstraint;
+/// Window ids parallel to clientTabsControl segments (Wayland clients only).
+@property(nonatomic, copy, nullable) NSArray<NSNumber *> *clientTabWindowIds;
 @end
 
 @implementation WWNSceneDelegate
@@ -301,6 +390,7 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
   WWNShakeAwareWindow *shakeWindow =
       [[WWNShakeAwareWindow alloc] initWithWindowScene:windowScene];
   __weak typeof(self) weakSelf = self;
+#if !TARGET_OS_TV
   shakeWindow.onShake = ^{
     __strong typeof(weakSelf) strongSelf = weakSelf;
     if (!strongSelf) {
@@ -308,6 +398,7 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
     }
     [strongSelf handleShakeGesture];
   };
+#endif
   self.window = shakeWindow;
   self.window.backgroundColor = [UIColor blackColor];
 
@@ -315,7 +406,24 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
   WWNCompositorHostViewController *rootViewController =
       [[WWNCompositorHostViewController alloc] init];
   rootViewController.defersSystemGesturesForCompositor = NO;
-#if TARGET_OS_TV || TARGET_OS_VISION
+#if TARGET_OS_TV
+  // Siri Remote has no shake API. Long-press Menu = shake-to-exit;
+  // short Menu = Escape (client Back) so nested apps stay usable.
+  rootViewController.onTvMenuShortPressDuringSession = ^{
+    __strong typeof(weakSelf) strongSelf = weakSelf;
+    if (!strongSelf) {
+      return;
+    }
+    [strongSelf handleTvMenuShortPressDuringSession];
+  };
+  rootViewController.onTvMenuLongPressDuringSession = ^{
+    __strong typeof(weakSelf) strongSelf = weakSelf;
+    if (!strongSelf) {
+      return;
+    }
+    [strongSelf handleShakeGesture];
+  };
+#elif TARGET_OS_VISION
   rootViewController.onMenuOrEscapeDuringSession = ^{
     __strong typeof(weakSelf) strongSelf = weakSelf;
     if (!strongSelf) {
@@ -412,6 +520,16 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
       addObserver:self
          selector:@selector(handleClientMinimizeRequested:)
              name:WWNClientMinimizeRequestedNotification
+           object:nil];
+  [[NSNotificationCenter defaultCenter]
+      addObserver:self
+         selector:@selector(handleClientFocusRequested:)
+             name:WWNClientFocusRequestedNotification
+           object:nil];
+  [[NSNotificationCenter defaultCenter]
+      addObserver:self
+         selector:@selector(handleHostWindowsDidChange:)
+             name:WWNHostWindowsDidChangeNotification
            object:nil];
   [[NSNotificationCenter defaultCenter]
       addObserver:self
@@ -821,11 +939,32 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
 }
 
 - (void)handleShakeGesture {
+  if (self.showingMachinesUI || ![self isAnyClientSessionRunning]) {
+    return;
+  }
   if (![self isShakeToCloseEnabled]) {
     return;
   }
   [self presentSessionExitConfirmationForTrigger:WWNSessionExitTriggerShake];
 }
+
+#if TARGET_OS_TV
+/// Linux KEY_ESC — matches compositor view / bridge injection.
+static const uint32_t kWWNTvMenuEscapeKeycode = 1;
+
+- (void)handleTvMenuShortPressDuringSession {
+  if (self.showingMachinesUI || ![self isAnyClientSessionRunning]) {
+    return;
+  }
+  if (self.sessionExitPromptVisible) {
+    return;
+  }
+  WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+  uint32_t ts = (uint32_t)(CACurrentMediaTime() * 1000.0);
+  [bridge injectKeyWithKeycode:kWWNTvMenuEscapeKeycode pressed:YES timestamp:ts];
+  [bridge injectKeyWithKeycode:kWWNTvMenuEscapeKeycode pressed:NO timestamp:ts + 1];
+}
+#endif
 
 - (void)handleMenuOrEscapeDuringSession {
   if (self.showingMachinesUI || ![self isAnyClientSessionRunning]) {
@@ -901,27 +1040,47 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
     self.sessionExitPromptVisible = NO;
   }
 
-  WWNWaypipeRunner *runner = [WWNWaypipeRunner sharedRunner];
-  [runner stopActiveIOSBundledClient];
-
-  if (runner.isRunning) {
-    [runner stopWaypipe];
+  // Ask Wayland toplevels to close first (xdg_toplevel.close), then escalate
+  // remaining hosts to force-destroy before killing the session (#52).
+  WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+  NSArray<NSNumber *> *hostIds = [bridge allHostWindowIds];
+  for (NSNumber *wid in hostIds) {
+    [bridge requestHostCloseForWindowId:wid.unsignedLongLongValue];
   }
 
-  // Session was force-closed outside the SwiftUI machine card actions; clear the
-  // active machine and nudge the Machines view-model to resync transient status.
-  [WWNMachineProfileStore setActiveMachineId:nil];
-  [[NSNotificationCenter defaultCenter]
-      postNotificationName:@"WWNNativeClientProcessDidTerminateNotification"
-                    object:runner];
+  __weak typeof(self) weakSelf = self;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)),
+                 dispatch_get_main_queue(), ^{
+                   __strong typeof(weakSelf) strongSelf = weakSelf;
+                   if (!strongSelf) {
+                     return;
+                   }
+                   WWNCompositorBridge *b = [WWNCompositorBridge sharedBridge];
+                   for (NSNumber *wid in [b allHostWindowIds]) {
+                     [b requestForceDestroyHostWindowForWindowId:
+                             wid.unsignedLongLongValue];
+                   }
 
-  self.compositorContainer.hidden = YES;
-  self.clientTabsControl.hidden = YES;
-  [self setCompositorGestureDeferralEnabled:NO];
+                   WWNWaypipeRunner *runner = [WWNWaypipeRunner sharedRunner];
+                   [runner stopActiveIOSBundledClient];
+                   if (runner.isRunning) {
+                     [runner stopWaypipe];
+                   }
+
+                   [WWNMachineProfileStore setActiveMachineId:nil];
+                   [[NSNotificationCenter defaultCenter]
+                       postNotificationName:
+                           @"WWNNativeClientProcessDidTerminateNotification"
+                                     object:runner];
+
+                   strongSelf.compositorContainer.hidden = YES;
+                   strongSelf.clientTabsControl.hidden = YES;
+                   [strongSelf setCompositorGestureDeferralEnabled:NO];
 #if !TARGET_OS_VISION
-  [self applyRespectSafeAreaPreference];
+                   [strongSelf applyRespectSafeAreaPreference];
 #endif
-  [self showMachinesUI];
+                   [strongSelf showMachinesUI];
+                 });
 }
 
 - (void)handleNativeClientWillLaunch:(NSNotification *)notification {
@@ -931,29 +1090,60 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
   [self refreshClientTabs];
 }
 
+- (void)handleHostWindowsDidChange:(NSNotification *)notification {
+  (void)notification;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [self refreshClientTabs];
+  });
+}
+
+/// Phone + tvOS: in-window tabs for Wayland clients (#84).
+/// iPadOS / visionOS use one UIWindowScene per client (no Shell tab strip).
+- (BOOL)usesClientTabChrome {
+#if TARGET_OS_VISION
+  return NO;
+#elif TARGET_OS_TV
+  return YES;
+#elif TARGET_OS_IPHONE
+  // Phone only — iPadOS uses one UIWindowScene per Wayland client.
+  return UIDevice.currentDevice.userInterfaceIdiom != UIUserInterfaceIdiomPad;
+#else
+  return NO;
+#endif
+}
+
 - (void)refreshClientTabs {
-#if TARGET_OS_IPHONE && !TARGET_OS_TV && !TARGET_OS_VISION
+  if (![self usesClientTabChrome]) {
+    self.clientTabsControl.hidden = YES;
+    self.clientTabWindowIds = nil;
+    return;
+  }
   if (self.compositorContainer.hidden) {
     self.clientTabsControl.hidden = YES;
     return;
   }
-  NSMutableArray<NSString *> *titles = [NSMutableArray arrayWithObject:@"Shell"];
-  NSString *active =
-      [WWNWaypipeRunner sharedRunner].activeIOSBundledClientId;
-  if (active.length > 0 &&
-      ![active isEqualToString:@"weston-terminal"] &&
-      ![active isEqualToString:@"Shell"]) {
-    [titles addObject:active];
+
+  // Tabs = live Wayland toplevels only. Shell / Machines is host chrome and
+  // must never appear as a segment (nested niri used to show Shell + Niri).
+  WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+  NSArray<NSNumber *> *ids = [bridge tabbedClientWindowIds];
+  NSMutableArray<NSString *> *titles = [NSMutableArray arrayWithCapacity:ids.count];
+  for (NSNumber *wid in ids) {
+    [titles addObject:[bridge titleForHostWindowId:wid.unsignedLongLongValue]];
   }
+  self.clientTabWindowIds = ids;
+
   if (titles.count <= 1) {
     self.clientTabsControl.hidden = YES;
     return;
   }
+
+  NSInteger previousSelection = self.clientTabsControl.selectedSegmentIndex;
   if (!self.clientTabsControl) {
     self.clientTabsControl =
         [[UISegmentedControl alloc] initWithItems:titles];
     self.clientTabsControl.translatesAutoresizingMaskIntoConstraints = NO;
-    self.clientTabsControl.selectedSegmentIndex = 0;
+    self.clientTabsControl.accessibilityIdentifier = @"wwn.client.tabs";
     [self.clientTabsControl addTarget:self
                                action:@selector(clientTabChanged:)
                      forControlEvents:UIControlEventValueChanged];
@@ -979,16 +1169,28 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
                                             animated:NO];
     }
   }
+  NSInteger select = previousSelection;
+  if (select < 0 || (NSUInteger)select >= titles.count) {
+    select = (NSInteger)(titles.count - 1);
+  }
+  self.clientTabsControl.selectedSegmentIndex = select;
   self.clientTabsControl.hidden = NO;
   [self.window.rootViewController.view
       bringSubviewToFront:self.clientTabsControl];
-#endif
+  WWNLog("TABS", @"refreshed %lu Wayland client tab(s): %@",
+         (unsigned long)titles.count, [titles componentsJoinedByString:@", "]);
 }
 
 - (void)clientTabChanged:(UISegmentedControl *)control {
-  NSString *title = [control titleForSegmentAtIndex:control.selectedSegmentIndex];
-  WWNLog("TABS", @"focus client tab=%@", title ?: @"(nil)");
-  // Focus/activate is compositor-side; chrome tracks live clients (#84).
+  NSInteger idx = control.selectedSegmentIndex;
+  if (idx < 0 || (NSUInteger)idx >= self.clientTabWindowIds.count) {
+    return;
+  }
+  uint64_t target = self.clientTabWindowIds[(NSUInteger)idx].unsignedLongLongValue;
+  NSString *title = [control titleForSegmentAtIndex:idx];
+  WWNLog("TABS", @"focus Wayland client tab=%@ window=%llu", title ?: @"(nil)",
+         target);
+  [[WWNCompositorBridge sharedBridge] focusTabbedClientWindowId:target];
 }
 
 // ---------------------------------------------------------------------------
@@ -1006,6 +1208,13 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
       @"[LAUNCH] Starting %@ …", label];
   [[WWNStartupLogger shared] appendLine:header];
 
+#if TARGET_OS_VISION
+  /* visionOS Simulator: UITextView/UIScrollView scroll-indicator creation
+   * throws in Gestures/UIPointerInteraction and can take down the process
+   * (ISSUE-016). Capture logs without presenting the overlay UI. */
+  (void)label;
+  return;
+#else
   WWNStartupLogViewController *logVC = [[WWNStartupLogViewController alloc] init];
   logVC.clientLabel = label;
   self.startupLogVC = logVC;
@@ -1034,6 +1243,7 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
          selector:@selector(handleFirstWaylandFrame:)
              name:@"WWNFirstWaylandFrameNotification"
            object:nil];
+#endif
 }
 
 - (void)handleFirstWaylandFrame:(NSNotification *)notification
@@ -1079,7 +1289,6 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
 }
 
 - (void)handleClientMinimizeRequested:(NSNotification *)notification {
-  (void)notification;
   dispatch_async(dispatch_get_main_queue(), ^{
     if (self.sessionExitPromptVisible) {
       return;
@@ -1087,7 +1296,41 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
     if (![self isAnyClientSessionRunning]) {
       return;
     }
+    // Keep the Wayland client alive; only park the host chrome and return to
+    // Machines. Focus reverses this via handleClientFocusRequested:.
+    NSString *machineId = notification.userInfo[@"machineId"];
+    if (machineId.length == 0) {
+      machineId = [WWNMachineProfileStore activeMachineId];
+    }
+    [[WWNCompositorBridge sharedBridge] setClientHostWindowsHidden:YES
+                                                     forMachineId:machineId];
     [self showMachinesUI];
+  });
+}
+
+- (void)handleClientFocusRequested:(NSNotification *)notification {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    if (self.sessionExitPromptVisible) {
+      return;
+    }
+    if (![self isAnyClientSessionRunning]) {
+      return;
+    }
+    NSString *machineId = notification.userInfo[@"machineId"];
+    if (machineId.length == 0) {
+      machineId = [WWNMachineProfileStore activeMachineId];
+    }
+    if (machineId.length > 0) {
+      [WWNMachineProfileStore setActiveMachineId:machineId];
+    }
+    [[WWNCompositorBridge sharedBridge] setClientHostWindowsHidden:NO
+                                                     forMachineId:machineId];
+    [self hideMachinesUIAndRevealCompositor];
+    [self refreshClientTabs];
+    (void)[[WWNCompositorBridge sharedBridge]
+        focusClientWindowsForMachineId:machineId ?: @""];
+    WWNLog("SCENE", @"Focus restored compositor for machine=%@",
+           machineId.length > 0 ? machineId : @"(active)");
   });
 }
 
@@ -1098,16 +1341,23 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
 #endif
   [self setCompositorGestureDeferralEnabled:YES];
   self.showingMachinesUI = NO;
-#if TARGET_OS_TV || TARGET_OS_VISION
+#if TARGET_OS_TV
+  if ([self.window.rootViewController
+          isKindOfClass:[WWNCompositorHostViewController class]]) {
+    WWNCompositorHostViewController *host =
+        (WWNCompositorHostViewController *)self.window.rootViewController;
+    host.interceptsMenuForSessionExit = YES;
+    [host becomeFirstResponder];
+  }
+#elif TARGET_OS_VISION
   if ([self.window.rootViewController isKindOfClass:[WWNCompositorHostViewController class]]) {
     [self.window.rootViewController becomeFirstResponder];
   }
 #endif
   // Force a layout pass so compositorContainer.bounds reflects the actual
-  // screen dimensions before we push the size to the Wayland compositor.
-  // Without this, a just-revealed container may still report CGSizeZero or
-  // stale bounds, causing the nested Weston compositor to launch with the
-  // wrong --width/--height and leave gutters on screen.
+  // screen dimensions before we push wl_output / host geometry to the
+  // Wayland compositor. Client window sizes are negotiated via xdg_toplevel
+  // (not launch --width/--height argv).
   [self.window.rootViewController.view layoutIfNeeded];
   [self updateOutputSizeFromContainerForced:YES];
 }
@@ -1160,8 +1410,18 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
 - (void)showMachinesUI {
   [self setCompositorGestureDeferralEnabled:NO];
   self.compositorContainer.hidden = YES;
+  self.clientTabsControl.hidden = YES;
 #if !TARGET_OS_VISION
   [self applyRespectSafeAreaPreference];
+#endif
+#if TARGET_OS_TV
+  if ([self.window.rootViewController
+          isKindOfClass:[WWNCompositorHostViewController class]]) {
+    WWNCompositorHostViewController *host =
+        (WWNCompositorHostViewController *)self.window.rootViewController;
+    host.interceptsMenuForSessionExit = NO;
+    [host cancelTvMenuLongPress];
+  }
 #endif
 
   if (self.machinesViewController) {

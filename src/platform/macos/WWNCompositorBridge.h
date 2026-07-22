@@ -18,6 +18,10 @@ FOUNDATION_EXPORT NSNotificationName const WWNNativeClientWillLaunchNotification
 /// Posted when a client requests minimize (xdg_toplevel.set_minimized). iOS
 /// uses this to return to Machines UI while keeping the session running.
 FOUNDATION_EXPORT NSNotificationName const WWNClientMinimizeRequestedNotification;
+/// Posted when Machines UI Focus is tapped for a running session. UIKit hosts
+/// reveal the compositor without relaunching/terminating the client.
+/// userInfo may include @"machineId" (NSString).
+FOUNDATION_EXPORT NSNotificationName const WWNClientFocusRequestedNotification;
 /// Posted on the main queue when Wayland toplevel host windows are created,
 /// destroyed, or retitled. Tab chrome (phone/tvOS/watchOS) refreshes from this.
 /// Tabs map 1:1 to Wayland client toplevels — never Shell / Machines chrome.
@@ -318,6 +322,13 @@ typedef struct {
 @property(nonatomic, weak, nullable) UIView *externalMirrorView;
 /// Detach presentation from live compositor views before stopping native clients.
 - (void)tearDownActiveIOSCompositorViews;
+/// Hide/show dedicated per-client UIWindows (iPadOS/visionOS). Used by
+/// minimize → Machines and Focus → compositor.
+- (void)setClientHostWindowsHidden:(BOOL)hidden
+                     forMachineId:(nullable NSString *)machineId;
+/// Raise Wayland surfaces / host windows for a machine after Focus.
+/// Returns YES if at least one surface was focused.
+- (BOOL)focusClientWindowsForMachineId:(NSString *)machineId;
 #else
 /// YES when any connected client has requested cursor management through
 /// either wp_cursor_shape (named shapes) or wl_pointer.set_cursor (bitmaps).

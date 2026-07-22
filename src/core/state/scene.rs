@@ -106,7 +106,14 @@ impl CompositorState {
             .and_then(|tl| tl.toplevel_surface.clone());
 
         if let Some(toplevel_surface) = smithay_surface {
-            let (final_w, final_h, activated, pending_maximized, pending_fullscreen) = {
+            let (
+                final_w,
+                final_h,
+                activated,
+                pending_maximized,
+                pending_fullscreen,
+                interactive_resize,
+            ) = {
                 let Some(toplevel_data) =
                     self.xdg.toplevels.get_mut(&(client_id.clone(), toplevel_id))
                 else {
@@ -132,6 +139,7 @@ impl CompositorState {
                     toplevel_data.activated,
                     toplevel_data.pending_maximized,
                     toplevel_data.pending_fullscreen,
+                    toplevel_data.interactive_resize,
                 )
             };
 
@@ -153,16 +161,26 @@ impl CompositorState {
                 } else {
                     state.states.unset(State::Fullscreen);
                 }
+                // xdg-shell: Resizing must be set for the duration of an
+                // interactive resize and cleared on the settle configure
+                // (niri/smithay/WSLg RAIL pattern). Mid-drag suggestions
+                // without this bit are not a live resize session.
+                if interactive_resize {
+                    state.states.set(State::Resizing);
+                } else {
+                    state.states.unset(State::Resizing);
+                }
             });
             let serial = u32::from(toplevel_surface.send_configure());
             crate::wlog!(
                 crate::util::logging::COMPOSITOR,
-                "send_toplevel_configure: client={:?} tl_id={} size={}x{} serial={} (smithay)",
+                "send_toplevel_configure: client={:?} tl_id={} size={}x{} serial={} resizing={} (smithay)",
                 client_id,
                 toplevel_id,
                 final_w,
                 final_h,
-                serial
+                serial,
+                interactive_resize
             );
             if let Some(toplevel_data) = self.xdg.toplevels.get_mut(&(client_id.clone(), toplevel_id)) {
                 toplevel_data.pending_serial = serial;

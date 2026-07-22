@@ -219,6 +219,36 @@ pub extern "C" fn WWNCoreInjectWindowResize(
     }));
 }
 
+/// Begin interactive resize (`xdg_toplevel.state.resizing` set).
+#[no_mangle]
+pub extern "C" fn WWNCoreBeginInteractiveResize(core: *mut WWNCore, window_id: u64) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() {
+            return;
+        }
+        let core = unsafe { &*core };
+        core.begin_interactive_resize(WindowId { id: window_id });
+    }));
+}
+
+/// End interactive resize: clear Resizing and send settle configure.
+/// Pass width/height 0 to keep the last toplevel size.
+#[no_mangle]
+pub extern "C" fn WWNCoreEndInteractiveResize(
+    core: *mut WWNCore,
+    window_id: u64,
+    width: u32,
+    height: u32,
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() {
+            return;
+        }
+        let core = unsafe { &*core };
+        core.end_interactive_resize(WindowId { id: window_id }, width, height);
+    }));
+}
+
 /// Host entered or left native fullscreen — sync xdg toplevel fullscreen state.
 #[no_mangle]
 pub extern "C" fn WWNCoreApplyHostWindowFullscreen(
@@ -1089,8 +1119,8 @@ pub extern "C" fn WWNCoreInjectKeyboardLeave(
 // Text Input (IME / Emoji)
 // ============================================================================
 
-/// Returns 1 when a Wayland client has `zwp_text_input_v3.enable` active.
-/// Host OSK code should poll this each compositor tick.
+/// Returns 1 when a Wayland client has committed `zwp_text_input_v3.enable`.
+/// Use for IME routing (commit_string vs key inject), not soft-OSK visibility.
 #[no_mangle]
 pub extern "C" fn WWNCoreTextInputIsEnabled(core: *mut WWNCore) -> i32 {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -1099,6 +1129,26 @@ pub extern "C" fn WWNCoreTextInputIsEnabled(core: *mut WWNCore) -> i32 {
         }
         let core = unsafe { &*core };
         if core.text_input_is_enabled() {
+            1
+        } else {
+            0
+        }
+    })) {
+        Ok(v) => v,
+        Err(_) => 0,
+    }
+}
+
+/// Returns 1 when the soft OSK should expand: committed text-input enable
+/// OR keyboard-focused allowlisted terminal (synthesis).
+#[no_mangle]
+pub extern "C" fn WWNCoreTextEntryWanted(core: *mut WWNCore) -> i32 {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() {
+            return 0;
+        }
+        let core = unsafe { &*core };
+        if core.text_entry_wanted() {
             1
         } else {
             0

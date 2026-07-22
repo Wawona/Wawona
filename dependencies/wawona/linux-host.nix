@@ -38,6 +38,7 @@ pkgs.writeShellApplication {
     pkgs.foot
     pkgs.fastfetch
     pkgs.coreutils
+    pkgs.lldb
   ];
   text = ''
     set -euo pipefail
@@ -70,6 +71,25 @@ pkgs.writeShellApplication {
     if [ ! -f "$workdir/coreutils/Cargo.toml" ]; then
       echo "Missing ./coreutils dependency and failed to stage coreutils source." >&2
       exit 1
+    fi
+
+    DEBUG_MODE=false
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --debug) DEBUG_MODE=true; shift ;;
+        --no-debug|--release) shift ;;
+        *) break ;;
+      esac
+    done
+    if [ "''${WAWONA_LLDB:-0}" = "1" ]; then DEBUG_MODE=true; fi
+    if [ "''${WAWONA_NO_LLDB:-0}" = "1" ]; then DEBUG_MODE=false; fi
+
+    if [ "$DEBUG_MODE" = "true" ]; then
+      echo "[LLDB] Building then launching under LLDB (--debug). Freeze? process interrupt" >&2
+      cargo build --manifest-path "$workdir/Cargo.toml" --bin wawona-linux-compositor-host --features linux-ui
+      BIN="$workdir/target/debug/wawona-linux-compositor-host"
+      [ -x "$BIN" ] || { echo "Error: expected binary missing at $BIN" >&2; exit 1; }
+      exec lldb -O "target create \"$BIN\"" -O "target stop-hook add -o 'thread backtrace all'" -O "run" -- "$@"
     fi
 
     exec cargo run --manifest-path "$workdir/Cargo.toml" --bin wawona-linux-compositor-host --features linux-ui -- "$@"
