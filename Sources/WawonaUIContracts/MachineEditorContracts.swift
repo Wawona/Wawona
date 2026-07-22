@@ -8,6 +8,9 @@ public enum MachineEditorIntent: Sendable {
     case updateSSHUser(String)
     case updateSSHPort(String)
     case updateSSHPassword(String)
+    case updateSSHAuthMethod(Int)
+    case updateSSHKeyPath(String)
+    case updateSSHKeyPassphrase(String)
     case updateRemoteCommand(String)
     case updateInputProfile(String)
     case updateBundledAppID(String)
@@ -22,6 +25,9 @@ public enum MachineEditorFieldID: String, Sendable, CaseIterable {
     case sshUser
     case sshPort
     case sshPassword
+    case sshAuthMethod
+    case sshKeyPath
+    case sshKeyPassphrase
     case remoteCommand
     case inputProfile
     case bundledAppID
@@ -56,6 +62,9 @@ public struct MachineEditorState: Sendable, Hashable {
     public var sshUser: String
     public var sshPortText: String
     public var sshPassword: String
+    public var sshAuthMethod: Int
+    public var sshKeyPath: String
+    public var sshKeyPassphrase: String
     public var remoteCommand: String
     public var inputProfile: String
     public var bundledAppID: String
@@ -70,6 +79,9 @@ public struct MachineEditorState: Sendable, Hashable {
         sshUser: String = "",
         sshPortText: String = "22",
         sshPassword: String = "",
+        sshAuthMethod: Int = 0,
+        sshKeyPath: String = "",
+        sshKeyPassphrase: String = "",
         remoteCommand: String = "",
         inputProfile: String = "direct",
         bundledAppID: String = "",
@@ -83,6 +95,9 @@ public struct MachineEditorState: Sendable, Hashable {
         self.sshUser = sshUser
         self.sshPortText = sshPortText
         self.sshPassword = sshPassword
+        self.sshAuthMethod = sshAuthMethod
+        self.sshKeyPath = sshKeyPath
+        self.sshKeyPassphrase = sshKeyPassphrase
         self.remoteCommand = remoteCommand
         self.inputProfile = inputProfile
         self.bundledAppID = bundledAppID
@@ -175,6 +190,9 @@ public struct MachineEditorValidation: Sendable {
                 MachineEditorFieldID.sshUser,
                 MachineEditorFieldID.sshPort,
                 MachineEditorFieldID.sshPassword,
+                MachineEditorFieldID.sshAuthMethod,
+                MachineEditorFieldID.sshKeyPath,
+                MachineEditorFieldID.sshKeyPassphrase,
                 MachineEditorFieldID.remoteCommand,
                 MachineEditorFieldID.waypipeEnabled,
             ])
@@ -202,6 +220,12 @@ public struct MachineEditorValidation: Sendable {
             return MachineEditorFieldMetadata(id: .sshPort, label: "Port", helperText: "SSH port (1-65535).", required: true)
         case .sshPassword:
             return MachineEditorFieldMetadata(id: .sshPassword, label: "Password", helperText: "Optional when key auth is used.")
+        case .sshAuthMethod:
+            return MachineEditorFieldMetadata(id: .sshAuthMethod, label: "Auth Method", helperText: "0=password, 1=publickey.")
+        case .sshKeyPath:
+            return MachineEditorFieldMetadata(id: .sshKeyPath, label: "Key Path", helperText: "OpenSSH private key path (GPG-export compatible).")
+        case .sshKeyPassphrase:
+            return MachineEditorFieldMetadata(id: .sshKeyPassphrase, label: "Key Passphrase", helperText: "Passphrase for encrypted keys.")
         case .remoteCommand:
             return MachineEditorFieldMetadata(id: .remoteCommand, label: "Remote Command", helperText: "Command to execute after SSH session starts.")
         case .inputProfile:

@@ -17,14 +17,13 @@ struct MachineEditorView: View {
     @State var remoteCommand: String
     @State var selectedLauncherName: String
     @State var inputProfile: String
-    @State var bundledAppID: String
     @State var waypipeEnabled: Bool
 
     private var isEditing: Bool { existingProfile != nil }
     private var isSSH: Bool { type == .sshWaypipe || type == .sshTerminal }
     private var canSave: Bool { !name.trimmingCharacters(in: .whitespaces).isEmpty }
     private var selectableTypes: [MachineType] {
-        MachineType.allCases.filter { $0 != .virtualMachine && $0 != .container }
+        PlatformCapabilities.availableMachineTypes
     }
 
     init(profileStore: MachineProfileStore, profile: MachineProfile? = nil) {
@@ -37,9 +36,11 @@ struct MachineEditorView: View {
         _sshPort = State(initialValue: profile.map { "\($0.sshPort)" } ?? "22")
         _sshPassword = State(initialValue: profile?.sshPassword ?? "")
         _remoteCommand = State(initialValue: profile?.remoteCommand ?? "weston-simple-shm")
-        _selectedLauncherName = State(initialValue: profile?.launchers.first?.name ?? "weston-terminal")
+        let launcher = profile?.runtimeOverrides.bundledAppID?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let fallback = profile?.launchers.first?.name ?? "weston-simple-shm"
+        _selectedLauncherName = State(initialValue: launcher.isEmpty ? fallback : launcher)
         _inputProfile = State(initialValue: profile?.runtimeOverrides.inputProfile ?? "direct")
-        _bundledAppID = State(initialValue: profile?.runtimeOverrides.bundledAppID ?? "")
         _waypipeEnabled = State(initialValue: profile?.runtimeOverrides.waypipeEnabled ?? true)
     }
 
@@ -55,38 +56,51 @@ struct MachineEditorView: View {
                     }
                     .pickerStyle(.navigationLink)
                 }
+
                 if type == .native {
-                    Section("Wayland Client") {
-                        ForEach(ClientLauncher.presets, id: \.name) { launcher in
-                            Button {
-                                selectedLauncherName = launcher.name
-                            } label: {
-                                HStack(spacing: 10) {
-                                    Image(systemName: selectedLauncherName == launcher.name ? "checkmark.circle.fill" : "circle")
-                                    Text(launcher.displayName)
-                                }
+                    Section {
+                        NavigationLink {
+                            WatchBundledClientPickerView(selection: $selectedLauncherName)
+                        } label: {
+                            HStack {
+                                Text("Wayland Client")
+                                Spacer()
+                                Text(ClientLauncher.displayName(for: selectedLauncherName))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
                             }
-                            .buttonStyle(.plain)
                         }
+                    } footer: {
+                        Text("Connects via local Wayland socket. No network or SSH required.")
                     }
                 }
+
                 if isSSH {
                     Section("Remote Host") {
                         TextField("Host", text: $sshHost)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
                         TextField("Username", text: $sshUser)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
                         SecureField("Password", text: $sshPassword)
                         TextField("Port", text: $sshPort)
-                        TextField(type == .sshWaypipe ? "Waypipe command" : "SSH command", text: $remoteCommand)
+                        TextField(
+                            type == .sshWaypipe ? "Waypipe command" : "SSH command",
+                            text: $remoteCommand
+                        )
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
                     }
                     Section("Remote Session") {
                         Toggle("Waypipe Enabled", isOn: $waypipeEnabled)
                     }
                 }
+
                 Section("Input") {
                     TextField("Input Profile", text: $inputProfile)
-                }
-                Section("Native Session") {
-                    TextField("Bundled App ID", text: $bundledAppID)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
                 }
             }
             .navigationTitle(isEditing ? "Edit Machine" : "Add Machine")
@@ -111,11 +125,12 @@ struct MachineEditorView: View {
         profile.sshPassword = sshPassword
         profile.remoteCommand = remoteCommand.trimmingCharacters(in: .whitespaces)
         profile.runtimeOverrides.inputProfile = inputProfile.trimmingCharacters(in: .whitespaces)
-        profile.runtimeOverrides.bundledAppID = bundledAppID.trimmingCharacters(in: .whitespaces)
         profile.runtimeOverrides.waypipeEnabled = waypipeEnabled
         if type == .native {
+            profile.runtimeOverrides.bundledAppID = selectedLauncherName
             profile.launchers = ClientLauncher.presets.filter { $0.name == selectedLauncherName }
         } else {
+            profile.runtimeOverrides.bundledAppID = nil
             profile.launchers = []
         }
         profileStore.upsert(profile)

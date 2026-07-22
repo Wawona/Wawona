@@ -83,6 +83,8 @@ extern NSString *const kWWNPrefsMachineSessionThumbnailsEnabled;
 // chosen desktop machine MUST be a Native machine profile.
 extern NSString *const kWWNPrefsDesktopReplacementEnabled;
 extern NSString *const kWWNPrefsDesktopReplacementMachineId;
+extern NSString *const kWWNPrefsLockscreenReplacementEnabled;
+extern NSString *const kWWNPrefsLockscreenReplacementMachineId;
 // App Bridge (anowaW): render native macOS (Cocoa/AppKit) apps as Wayland
 // clients inside the nested-Weston desktop. Layered on Desktop Replacement and
 // reusing its single, local-only, nested-Weston machine selection. macOS uses

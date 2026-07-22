@@ -1,7 +1,7 @@
 # Android — Engineering Status (2026-06)
 
 Wawona on Android is a **native Jetpack Compose host** with a full JNI → Rust Wayland
-compositor path, Vulkan rendering, and Dropbear/waypipe SSH — not a WebView wrapper.
+compositor path, Vulkan rendering, and OpenSSH/waypipe SSH — not a WebView wrapper.
 
 ## Architecture
 
@@ -20,7 +20,7 @@ MainActivity (ComponentActivity, edge-to-edge)
 | Theme | Material 3 **Expressive** (`MaterialExpressiveTheme`, dynamic color on API 31+) |
 | Compositor | Shared Rust core (Smithay), same protocol surface as macOS/iOS |
 | Graphics | Vulkan swapchain (no Cocoa/Metal) |
-| Remote | waypipe in-process + bundled Dropbear (`fork`/`exec` allowed on Android) |
+| Remote | waypipe in-process + bundled OpenSSH portable (`fork`/`exec` `--ssh-bin`) |
 | Input | Touch, touchpad mode, physical keyboard, text-input-v3, modifier accessory bar |
 
 ## Material 3 Expressive
@@ -63,7 +63,7 @@ Studio fallback: `WAWONA_STUDIO_FALLBACK=1` in CMake → stub renderer/core for 
 | Nested Weston compositor | `weston-compositor-android` wired | Full |
 | Local zsh + weston-terminal | zsh + assets + PTY spawn | In-process only |
 | foot / fastfetch / neovim | jniLibs `.so` launchers | In-process / linked |
-| waypipe SSH | Dropbear + libssh2 path | libssh2 in-process |
+| waypipe SSH | OpenSSH `--ssh-bin` + `-i` | libssh2 in-process CLI + streamlocal |
 | iland DRM nested compositor | Buildable; optional toggle pending | Full |
 | Settings | Compose bottom sheet | SwiftUI navigation |
 | Modifier accessory bar | M3-themed | iOS keyboard bar |

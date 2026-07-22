@@ -110,3 +110,74 @@ int waypipe_main(int argc, char **argv) {
     (void)argc; (void)argv;
     return 1;
 }
+
+// ── Extra client / host helpers referenced by force-loaded weston/pty ────────
+// watchOS LDFLAGS historically omitted xkb/zsh/openssh client archives; keep
+// weak stubs so Debug sim links while deps catch up (ISSUE-017).
+
+__attribute__((weak))
+int fastfetch_main(int argc, char **argv) {
+    (void)argc; (void)argv;
+    return 1;
+}
+
+__attribute__((weak))
+int fuzzel_main(int argc, char **argv) {
+    (void)argc; (void)argv;
+    return 1;
+}
+
+__attribute__((weak))
+int niri_main(int argc, char **argv) {
+    (void)argc; (void)argv;
+    return 1;
+}
+
+__attribute__((weak))
+int wawona_nvim_main(int argc, char **argv) {
+    (void)argc; (void)argv;
+    return 1;
+}
+
+__attribute__((weak))
+int wawona_coreutils_main(int argc, char **argv) {
+    (void)argc; (void)argv;
+    return 1;
+}
+
+/* ssh_main / ssh_keygen_main / scp_main: provided by libwwn-ssh-cli.a (wwn-ssh). */
+
+/* Weston toytoolkit demo clients referenced by wawona-dispatch tables. */
+#define WWN_WATCH_CLIENT_STUB(name) \
+    __attribute__((weak)) int name(int argc, char **argv) { \
+        (void)argc; (void)argv; \
+        return 127; \
+    }
+WWN_WATCH_CLIENT_STUB(flower_main)
+WWN_WATCH_CLIENT_STUB(clickdot_main)
+WWN_WATCH_CLIENT_STUB(smoke_main)
+WWN_WATCH_CLIENT_STUB(eventdemo_main)
+WWN_WATCH_CLIENT_STUB(resizor_main)
+WWN_WATCH_CLIENT_STUB(cliptest_main)
+WWN_WATCH_CLIENT_STUB(transformed_main)
+WWN_WATCH_CLIENT_STUB(stacking_main)
+WWN_WATCH_CLIENT_STUB(dnd_main)
+WWN_WATCH_CLIENT_STUB(image_main)
+WWN_WATCH_CLIENT_STUB(scaler_main)
+WWN_WATCH_CLIENT_STUB(editor_main)
+WWN_WATCH_CLIENT_STUB(constraints_main)
+#undef WWN_WATCH_CLIENT_STUB
+
+/* Weak fallback only. xcodegen -force_load's libwawona-zsh.a so the real
+ * App Store–compliant in-process zsh wins at link time. */
+__attribute__((weak))
+int wawona_zsh_main(int argc, char **argv) {
+    (void)argc; (void)argv;
+    return 1;
+}
+
+__attribute__((weak))
+void wwn_ios_pump_host_compositor(void) {}
+
+__attribute__((weak))
+void wwn_ios_refresh_bundle_env(void) {}

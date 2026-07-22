@@ -1,0 +1,12 @@
+# Sparse Android OpenSSH proof companion.
+# Primary gate is scripts/agent-device-smoke.sh android-shell-ssh (APK strings /
+# optional on-device libssh_bin.so -V). This replay only confirms the app launches
+# after SSH packaging changes (coordinates/tags for terminal PTY are unstable).
+context platform=android
+context session=wawona-android-shell-ssh
+
+open com.aspauldingcode.wawona --relaunch
+wait 3000
+appstate
+screenshot ./.agent-device/test-artifacts/android-shell-ssh-launch.png
+close

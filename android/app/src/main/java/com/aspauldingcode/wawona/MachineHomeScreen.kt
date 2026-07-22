@@ -81,9 +81,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -193,17 +190,13 @@ fun MachineWelcomeScreen(
 ) {
     var editorProfile by remember { mutableStateOf<MachineProfile?>(null) }
     var creating by remember { mutableStateOf(false) }
-    var scopeFilter by remember { mutableStateOf(MachineScopeFilter.ALL) }
     var searchQuery by remember { mutableStateOf("") }
     var searchExpanded by remember { mutableStateOf(false) }
     val listBottomPadding = 72.dp
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
 
-    val scopedProfiles = remember(profiles, scopeFilter) {
-        profiles.filter { scopeFilter.matches(it.type) }
-    }
-    val visibleProfiles = remember(scopedProfiles, searchQuery) {
-        MachineSearch.fuzzyFilter(scopedProfiles, searchQuery, MachineSearch::searchableText)
+    val visibleProfiles = remember(profiles, searchQuery) {
+        MachineSearch.fuzzyFilter(profiles, searchQuery, MachineSearch::searchableText)
     }
 
     Scaffold(
@@ -314,23 +307,6 @@ fun MachineWelcomeScreen(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                        MachineScopeFilter.entries.forEachIndexed { index, filter ->
-                            SegmentedButton(
-                                selected = scopeFilter == filter,
-                                onClick = { scopeFilter = filter },
-                                shape = SegmentedButtonDefaults.itemShape(
-                                    index = index,
-                                    count = MachineScopeFilter.entries.size,
-                                ),
-                            ) {
-                                Text(filter.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                        }
-                    }
-                }
-
                 if (visibleProfiles.isEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Column(
@@ -353,7 +329,7 @@ fun MachineWelcomeScreen(
                             )
                             Spacer(Modifier.height(6.dp))
                             Text(
-                                "Adjust search/filter settings or add a new machine profile.",
+                                "Adjust search or add a new machine profile.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

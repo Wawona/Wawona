@@ -27,7 +27,14 @@ REQUIRED_ANDROID_NIX = (
     "libfastfetch_bin.so",
     "libnvim_bin.so",
     "libwaypipe_bin.so",
+    "libssh_bin.so",
+    "libssh_keygen_bin.so",
     "assets/zsh",
+)
+
+FORBIDDEN_ANDROID_NIX = (
+    "dropbearconvert",
+    "libdropbearconvert_bin.so",
 )
 
 
@@ -46,11 +53,21 @@ def main() -> int:
     for needle in REQUIRED_ANDROID_NIX:
         if needle not in android_nix:
             errors.append(f"android.nix missing shell-tool wiring: {needle}")
+    for bad in FORBIDDEN_ANDROID_NIX:
+        if bad in android_nix:
+            errors.append(f"android.nix must not ship Dropbear leftover: {bad}")
 
-    if "libzsh_bin.so" not in read(ANDROID_JNI):
+    jni = read(ANDROID_JNI)
+    if "libzsh_bin.so" not in jni:
         errors.append("android_jni.c must resolve libzsh_bin.so from nativeLibDir")
-    if "libwaypipe_bin.so" not in read(ANDROID_JNI):
+    if "libwaypipe_bin.so" not in jni:
         errors.append("android_jni.c must install libwaypipe_bin.so into usr/bin")
+    if "StrictHostKeyChecking=accept-new" not in jni:
+        errors.append("android_jni.c must use OpenSSH argv (StrictHostKeyChecking)")
+    if '"-y"' in jni or "'-y'" in jni:
+        # Dropbear-only accept-new hostkey flag must not remain for product SSH.
+        if "Dropbear" in jni and "OpenSSH" not in jni:
+            errors.append("android_jni.c still looks Dropbear-only")
 
     if errors:
         print("Android shell-tools wiring check FAILED:")
@@ -58,7 +75,7 @@ def main() -> int:
             print(f"- {err}")
         return 1
 
-    print("Android shell-tools wiring check OK")
+    print("Android shell-tools wiring check OK (OpenSSH portable; no Dropbear)")
     return 0
 
 

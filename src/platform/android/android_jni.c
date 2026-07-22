@@ -41,7 +41,11 @@
 #include <vulkan/vulkan_android.h>
 
 #include <stdarg.h>
+#include <stdatomic.h>
+#include <stdbool.h>
 #include <time.h>
+
+#define WWN_MAX_NATIVE_CLIENT_PIDS 32
 
 static void wwn_log(int prio, const char *tag, const char *fmt, ...)
     __attribute__((format(printf, 3, 4)));
@@ -129,10 +133,17 @@ extern void WWNCoreNotifyFramePresented(void *core, uint32_t surface_id,
                                         uint64_t buffer_id, uint32_t timestamp);
 extern void WWNCoreFlushClients(void *core);
 
-/* Window events - drain and apply title to UI */
+/* Window events - drain and apply title / fill-primary WM */
 enum {
   CWindowEventTypeCreated = 0,
+  CWindowEventTypeDestroyed = 1,
   CWindowEventTypeTitleChanged = 2,
+  CWindowEventTypeSizeChanged = 3,
+  CWindowEventTypeMinimizeRequested = 9,
+  CWindowEventTypeMaximizeRequested = 10,
+  CWindowEventTypeUnmaximizeRequested = 11,
+  CWindowEventTypeFullscreenRequested = 14,
+  CWindowEventTypeUnfullscreenRequested = 15,
 };
 typedef struct {
   uint64_t event_type;
@@ -145,6 +156,7 @@ typedef struct {
   uint8_t decoration_mode;
   uint8_t fullscreen_shell;
   uint8_t host_locked;
+  uint8_t edges;       /* xdg_toplevel resize_edge — must match c_api.rs layout */
   uint8_t size_kind;   /* 0=Frame, 1=Content, 2=Buffer */
   uint8_t size_cause;  /* 0=Unknown, 1=HostConfigure, 2=ClientCommit, 3=OutputModeChange */
   uint32_t configure_serial;
@@ -152,6 +164,20 @@ typedef struct {
 } CWindowEvent;
 extern CWindowEvent *WWNCorePopWindowEvent(void *core);
 extern void WWNWindowEventFree(CWindowEvent *event);
+extern void WWNCoreInjectWindowResize(void *core, uint64_t window_id,
+                                      uint32_t width, uint32_t height);
+extern void WWNCoreBeginInteractiveResize(void *core, uint64_t window_id);
+extern void WWNCoreEndInteractiveResize(void *core, uint64_t window_id,
+                                        uint32_t width, uint32_t height);
+extern void WWNCoreApplyHostWindowMaximized(void *core, uint64_t window_id,
+                                            bool maximized, uint32_t width,
+                                            uint32_t height);
+extern void WWNCoreApplyHostWindowFullscreen(void *core, uint64_t window_id,
+                                             bool fullscreen, uint32_t width,
+                                             uint32_t height);
+extern bool WWNCoreRequestWindowClose(void *core, uint64_t window_id);
+extern void WWNCoreSetWindowActivated(void *core, uint64_t window_id,
+                                      bool active);
 
 /* Screencopy (zwlr_screencopy_manager_v1) - platform writes ARGB8888 to ptr */
 typedef struct {
@@ -207,6 +233,10 @@ extern void WWNCoreTextInputPreedit(void *core, const char *text,
                                     int32_t cursor_begin, int32_t cursor_end);
 extern void WWNCoreTextInputDeleteSurrounding(void *core, uint32_t before,
                                               uint32_t after);
+extern int WWNCoreTextInputIsEnabled(void *core);
+extern int WWNCoreTextEntryWanted(void *core);
+extern void WWNCoreTextInputGetContentType(void *core, uint32_t *out_hint,
+                                           uint32_t *out_purpose);
 extern void WWNCoreTextInputGetCursorRect(void *core, int32_t *out_x,
                                           int32_t *out_y, int32_t *out_width,
                                           int32_t *out_height);
@@ -305,12 +335,21 @@ JNIEXPORT void JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeGetCursorRect(
     JNIEnv *env, jobject thiz, jintArray outRect);
 JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeTextInputIsEnabled(
+    JNIEnv *env, jobject thiz);
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeTextEntryWanted(
+    JNIEnv *env, jobject thiz);
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeGetTextInputContentType(
+    JNIEnv *env, jobject thiz, jintArray outHintPurpose);
+JNIEXPORT jboolean JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeRunWaypipe(
     JNIEnv *env, jobject thiz, jboolean sshEnabled, jstring sshHost,
-    jstring sshUser, jstring sshPassword, jstring remoteCommand,
-    jstring compress, jint threads, jstring video, jboolean debug,
-    jboolean oneshot, jboolean noGpu, jboolean loginShell, jstring titlePrefix,
-    jstring secCtx);
+    jstring sshUser, jstring sshPassword, jstring sshKeyPath, jint sshAuthMethod,
+    jstring remoteCommand, jstring compress, jint threads, jstring video,
+    jboolean debug, jboolean oneshot, jboolean noGpu, jboolean loginShell,
+    jstring titlePrefix, jstring secCtx);
 JNIEXPORT void JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeStopWaypipe(JNIEnv *env,
                                                               jobject thiz);
@@ -411,6 +450,15 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativePointerLeave(
 JNIEXPORT void JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeKeyboardFocus(
     JNIEnv *env, jobject thiz, jboolean hasFocus);
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeRequestActiveWindowClose(
+    JNIEnv *env, jobject thiz);
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeConsumeMinimizeRequested(
+    JNIEnv *env, jobject thiz);
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeSetWindowActivated(
+    JNIEnv *env, jobject thiz, jlong windowId, jboolean active);
 JNIEXPORT jstring JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeGetFocusedWindowTitle(
     JNIEnv *env, jobject thiz);
@@ -454,6 +502,15 @@ uint32_t g_queue_family = 0;
 ANativeWindow *g_window = NULL;
 uint32_t g_output_width = 0;
 uint32_t g_output_height = 0;
+
+/* Interactive resize settle: keep xdg_toplevel.state.resizing set across
+ * mid-drag host size ticks; clear on the first idle frame after the last
+ * inject (xdg-shell / niri pattern). */
+static uint64_t g_interactive_resize_window = 0;
+static uint32_t g_interactive_resize_w = 0;
+static uint32_t g_interactive_resize_h = 0;
+static int g_interactive_resize_active = 0;
+static int g_interactive_resize_idle_frames = 0;
 
 // Threading
 static int g_running = 0;
@@ -539,6 +596,43 @@ static uint64_t resolve_pointer_window_id(double logical_x, double logical_y) {
   return g_pointer_window_id;
 }
 
+/* Pending client minimize — Kotlin polls and returns to Machines UI. */
+static volatile int g_minimize_requested = 0;
+
+/* Fill-primary host (single surface): max/fullscreen → logical output size.
+ * Also syncs xdg maximized/fullscreen so clients see negotiated WM state. */
+static void android_inject_fill_primary(uint64_t window_id, int maximized,
+                                        int fullscreen) {
+  if (!g_core || window_id == 0 || g_output_width == 0 || g_output_height == 0)
+    return;
+  int sf = compute_auto_scale_factor();
+  if (sf < 1)
+    sf = 1;
+  uint32_t lw = g_output_width / (uint32_t)sf;
+  uint32_t lh = g_output_height / (uint32_t)sf;
+  if (lw == 0)
+    lw = 1;
+  if (lh == 0)
+    lh = 1;
+  LOGI("WM fill-primary: window=%llu logical=%ux%u max=%d fs=%d",
+       (unsigned long long)window_id, lw, lh, maximized, fullscreen);
+  /* Max/fullscreen uses Maximized/Fullscreen states, not Resizing. */
+  if (g_interactive_resize_active && g_interactive_resize_window == window_id) {
+    WWNCoreEndInteractiveResize(g_core, window_id, lw, lh);
+    g_interactive_resize_active = 0;
+    g_interactive_resize_window = 0;
+  }
+  WWNCoreInjectWindowResize(g_core, window_id, lw, lh);
+  if (fullscreen) {
+    WWNCoreApplyHostWindowFullscreen(g_core, window_id, true, lw, lh);
+  } else if (maximized) {
+    WWNCoreApplyHostWindowMaximized(g_core, window_id, true, lw, lh);
+  } else {
+    WWNCoreApplyHostWindowFullscreen(g_core, window_id, false, lw, lh);
+    WWNCoreApplyHostWindowMaximized(g_core, window_id, false, lw, lh);
+  }
+}
+
 /*
  * Safe area insets arrive from Kotlin (WindowInsetsCompat) in raw physical
  * display pixels, but the compositor's scene graph (window positions, sizes,
@@ -567,6 +661,125 @@ static void push_safe_area_to_core(void) {
        top, right, bottom, left);
 }
 
+/* OWL host↔client size: track which windows may receive host fill configures.
+ * Fixed demos (weston-flower/smoke 200×200, simple-shm preferred) must not be
+ * streamed to logical output size on every density/output tick. */
+#define ANDROID_OWL_MAX_WINDOWS 64
+typedef struct {
+  uint64_t window_id;
+  uint8_t host_locked;
+  uint8_t follow_host;
+  uint8_t in_use;
+} AndroidOwlWindow;
+static AndroidOwlWindow g_owl_windows[ANDROID_OWL_MAX_WINDOWS];
+
+static AndroidOwlWindow *android_owl_find(uint64_t window_id, int create) {
+  AndroidOwlWindow *free_slot = NULL;
+  for (int i = 0; i < ANDROID_OWL_MAX_WINDOWS; i++) {
+    if (g_owl_windows[i].in_use && g_owl_windows[i].window_id == window_id)
+      return &g_owl_windows[i];
+    if (!g_owl_windows[i].in_use && free_slot == NULL)
+      free_slot = &g_owl_windows[i];
+  }
+  if (!create || free_slot == NULL)
+    return NULL;
+  memset(free_slot, 0, sizeof(*free_slot));
+  free_slot->window_id = window_id;
+  free_slot->in_use = 1;
+  return free_slot;
+}
+
+static void android_owl_forget(uint64_t window_id) {
+  AndroidOwlWindow *w = android_owl_find(window_id, 0);
+  if (w)
+    memset(w, 0, sizeof(*w));
+}
+
+static int android_window_should_follow_host(uint64_t window_id) {
+  if (window_id == 0)
+    return 0;
+  AndroidOwlWindow *w = android_owl_find(window_id, 0);
+  if (!w)
+    return 0; /* unknown: do not force fill (OWL default after 0×0 seed) */
+  return w->host_locked || w->follow_host;
+}
+
+static void android_owl_on_created(const CWindowEvent *evt) {
+  if (!evt || evt->window_id == 0)
+    return;
+  AndroidOwlWindow *w = android_owl_find(evt->window_id, 1);
+  if (!w)
+    return;
+  w->host_locked = evt->host_locked || evt->fullscreen_shell;
+  /* Ordinary toplevels wait for ClientCommit; host_locked fills immediately. */
+  w->follow_host = w->host_locked ? 1 : 0;
+  LOGI("OWL create window=%llu host_locked=%u follow_host=%u",
+       (unsigned long long)evt->window_id, w->host_locked, w->follow_host);
+}
+
+static void android_owl_on_size_changed(const CWindowEvent *evt) {
+  if (!evt || evt->window_id == 0 || evt->width == 0 || evt->height == 0)
+    return;
+  /* Only ClientCommit drives follow_host (macOS/iOS SizeAuthority parity). */
+  if (evt->size_cause != 2)
+    return;
+  AndroidOwlWindow *w = android_owl_find(evt->window_id, 1);
+  if (!w)
+    return;
+  if (w->host_locked) {
+    w->follow_host = 1;
+    return;
+  }
+  int sf = compute_auto_scale_factor();
+  if (sf < 1)
+    sf = 1;
+  uint32_t lw =
+      g_output_width > 0 ? g_output_width / (uint32_t)sf : 0;
+  uint32_t lh =
+      g_output_height > 0 ? g_output_height / (uint32_t)sf : 0;
+  int fills = (lw > 0 && lh > 0 && evt->width * 10 >= lw * 9 &&
+               evt->height * 10 >= lh * 9);
+  w->follow_host = fills ? 1 : 0;
+  LOGI("OWL ClientCommit window=%llu %ux%u follow_host=%u (output %ux%u)",
+       (unsigned long long)evt->window_id, evt->width, evt->height,
+       w->follow_host, lw, lh);
+}
+
+static void android_begin_stream_resize(uint64_t window_id, uint32_t lw,
+                                        uint32_t lh) {
+  if (!g_core || window_id == 0 || lw == 0 || lh == 0)
+    return;
+  if (!android_window_should_follow_host(window_id))
+    return;
+  if (!g_interactive_resize_active || g_interactive_resize_window != window_id) {
+    WWNCoreBeginInteractiveResize(g_core, window_id);
+    g_interactive_resize_active = 1;
+  }
+  g_interactive_resize_window = window_id;
+  g_interactive_resize_w = lw;
+  g_interactive_resize_h = lh;
+  g_interactive_resize_idle_frames = 0;
+  WWNCoreInjectWindowResize(g_core, window_id, lw, lh);
+}
+
+static void android_maybe_settle_interactive_resize(void) {
+  if (!g_core || !g_interactive_resize_active || g_interactive_resize_window == 0)
+    return;
+  /* Settle after one idle vsync with no further host size ticks. */
+  if (g_interactive_resize_idle_frames < 1) {
+    g_interactive_resize_idle_frames++;
+    return;
+  }
+  LOGI("WM settle interactive resize window=%llu %ux%u",
+       (unsigned long long)g_interactive_resize_window, g_interactive_resize_w,
+       g_interactive_resize_h);
+  WWNCoreEndInteractiveResize(g_core, g_interactive_resize_window,
+                              g_interactive_resize_w, g_interactive_resize_h);
+  g_interactive_resize_active = 0;
+  g_interactive_resize_window = 0;
+  g_interactive_resize_idle_frames = 0;
+}
+
 static void apply_output_scale(void) {
   if (!g_core || g_output_width == 0 || g_output_height == 0)
     return;
@@ -583,6 +796,12 @@ static void apply_output_scale(void) {
   /* Scale factor may have just changed (density/setting update) — re-push
    * safe area insets so they stay in sync with the new logical output. */
   push_safe_area_to_core();
+  /* Stream host size only for windows that follow host (host_locked / fillers).
+   * Fixed weston demos stay on Client authority after refuse/preferred commit. */
+  if (g_pointer_window_id != 0 &&
+      android_window_should_follow_host(g_pointer_window_id)) {
+    android_begin_stream_resize(g_pointer_window_id, lw, lh);
+  }
 }
 
 // ============================================================================
@@ -1162,6 +1381,7 @@ static void choreographer_frame_cb(long frameTimeNanos, void *data) {
 
   if (g_core) {
     WWNCoreProcessEvents(g_core);
+    android_maybe_settle_interactive_resize();
     /* Drain window events - update g_window_title for TitleChanged */
     CWindowEvent *evt;
     while ((evt = WWNCorePopWindowEvent(g_core)) != NULL) {
@@ -1172,6 +1392,50 @@ static void choreographer_frame_cb(long frameTimeNanos, void *data) {
         strncpy(g_window_title, evt->title, WINDOW_TITLE_MAX - 1);
         g_window_title[WINDOW_TITLE_MAX - 1] = '\0';
         pthread_mutex_unlock(&g_title_lock);
+      }
+      switch (evt->event_type) {
+      case CWindowEventTypeCreated:
+        android_owl_on_created(evt);
+        break;
+      case CWindowEventTypeDestroyed:
+        android_owl_forget(evt->window_id);
+        break;
+      case CWindowEventTypeSizeChanged:
+        android_owl_on_size_changed(evt);
+        break;
+      case CWindowEventTypeMinimizeRequested:
+        LOGI("WM MinimizeRequested window=%llu",
+             (unsigned long long)evt->window_id);
+        g_minimize_requested = 1;
+        break;
+      case CWindowEventTypeMaximizeRequested: {
+        AndroidOwlWindow *owl = android_owl_find(evt->window_id, 1);
+        if (owl)
+          owl->follow_host = 1;
+        android_inject_fill_primary(evt->window_id, /*maximized=*/1,
+                                    /*fullscreen=*/0);
+        break;
+      }
+      case CWindowEventTypeFullscreenRequested: {
+        AndroidOwlWindow *owl = android_owl_find(evt->window_id, 1);
+        if (owl)
+          owl->follow_host = 1;
+        android_inject_fill_primary(evt->window_id, /*maximized=*/0,
+                                    /*fullscreen=*/1);
+        break;
+      }
+      case CWindowEventTypeUnmaximizeRequested:
+      case CWindowEventTypeUnfullscreenRequested: {
+        /* Restore OWL follow from last ClientCommit rather than keep fill. */
+        AndroidOwlWindow *owl = android_owl_find(evt->window_id, 0);
+        if (owl && !owl->host_locked)
+          owl->follow_host = 0;
+        android_inject_fill_primary(evt->window_id, /*maximized=*/0,
+                                    /*fullscreen=*/0);
+        break;
+      }
+      default:
+        break;
       }
       WWNWindowEventFree(evt);
     }
@@ -1204,9 +1468,10 @@ static void choreographer_frame_cb(long frameTimeNanos, void *data) {
            (unsigned long long)buf->buffer_id, buf->width, buf->height,
            buf->stride, buf->format, buf->pixels ? "set" : "NULL", buf->size);
       if (buf->pixels && buf->width > 0 && buf->height > 0) {
-        renderer_android_cache_buffer(ctx->cmdBuf, buf->buffer_id, buf->width,
-                                      buf->height, buf->stride, buf->format,
-                                      buf->pixels, buf->size);
+        renderer_android_cache_buffer(ctx->cmdBuf, buf->surface_id,
+                                      buf->buffer_id, buf->width, buf->height,
+                                      buf->stride, buf->format, buf->pixels,
+                                      buf->size);
       }
       WWNBufferDataFree(buf);
     }
@@ -2170,8 +2435,15 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeCommitText(JNIEnv *env,
     return;
   }
 
-  /* Check whether every character has a Linux keycode mapping (mirrors the
-   * iOS allMappable check in insertText:). */
+  /* Prefer text-input-v3 when the client has committed Enable. */
+  if (WWNCoreTextInputIsEnabled(g_core)) {
+    WWNCoreTextInputCommit(g_core, utf8);
+    (*env)->ReleaseStringUTFChars(env, text, utf8);
+    return;
+  }
+
+  /* Terminal synthesis / no TI: key inject for mappable ASCII; TI commit
+   * only as a last resort for unmappable (emoji/CJK). */
   int all_mappable = 1;
   for (const char *p = utf8; *p; p++) {
     if ((unsigned char)*p > 127) {
@@ -2186,20 +2458,11 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeCommitText(JNIEnv *env,
   }
 
   if (!all_mappable) {
-    /* Non-ASCII or unmappable — use text-input-v3 (emoji, CJK, etc.) */
     WWNCoreTextInputCommit(g_core, utf8);
     (*env)->ReleaseStringUTFChars(env, text, utf8);
     return;
   }
 
-  /* All characters are mappable — synthesize wl_keyboard.key events for
-   * maximum compatibility (same pattern as iOS charToLinuxKeycode path).
-   * This ensures remote clients via waypipe that only speak wl_keyboard
-   * still receive the input.
-   *
-   * Modifier state is driven entirely by the Shift key press/release —
-   * the Rust core's XKB state machine (update_key) updates the
-   * depressed/latched/locked mask automatically. */
   uint32_t ts = 0;
   for (const char *p = utf8; *p; p++) {
     int needs_shift = 0;
@@ -2288,6 +2551,42 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeGetCursorRect(
   int sf = compute_auto_scale_factor();
   jint buf[4] = {x * sf, y * sf, w * sf, h * sf};
   (*env)->SetIntArrayRegion(env, outRect, 0, 4, buf);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeTextInputIsEnabled(
+    JNIEnv *env, jobject thiz) {
+  (void)env;
+  (void)thiz;
+  if (!g_core)
+    return JNI_FALSE;
+  return WWNCoreTextInputIsEnabled(g_core) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeTextEntryWanted(
+    JNIEnv *env, jobject thiz) {
+  (void)env;
+  (void)thiz;
+  if (!g_core)
+    return JNI_FALSE;
+  return WWNCoreTextEntryWanted(g_core) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeGetTextInputContentType(
+    JNIEnv *env, jobject thiz, jintArray outHintPurpose) {
+  (void)thiz;
+  if (!outHintPurpose)
+    return;
+  jsize len = (*env)->GetArrayLength(env, outHintPurpose);
+  if (len < 2)
+    return;
+  uint32_t hint = 0, purpose = 0;
+  if (g_core)
+    WWNCoreTextInputGetContentType(g_core, &hint, &purpose);
+  jint buf[2] = {(jint)hint, (jint)purpose};
+  (*env)->SetIntArrayRegion(env, outHintPurpose, 0, 2, buf);
 }
 
 // ============================================================================
@@ -2601,9 +2900,43 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeKeyboardFocus(
     return;
   if (hasFocus) {
     WWNCoreInjectKeyboardEnter(g_core, g_pointer_window_id, NULL, 0, 0);
+    WWNCoreSetWindowActivated(g_core, g_pointer_window_id, true);
   } else {
     WWNCoreInjectKeyboardLeave(g_core, g_pointer_window_id);
+    WWNCoreSetWindowActivated(g_core, g_pointer_window_id, false);
   }
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeRequestActiveWindowClose(
+    JNIEnv *env, jobject thiz) {
+  (void)env;
+  (void)thiz;
+  if (!g_core || g_pointer_window_id == 0)
+    return JNI_FALSE;
+  return WWNCoreRequestWindowClose(g_core, g_pointer_window_id) ? JNI_TRUE
+                                                                : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeConsumeMinimizeRequested(
+    JNIEnv *env, jobject thiz) {
+  (void)env;
+  (void)thiz;
+  if (!g_minimize_requested)
+    return JNI_FALSE;
+  g_minimize_requested = 0;
+  return JNI_TRUE;
+}
+
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeSetWindowActivated(
+    JNIEnv *env, jobject thiz, jlong windowId, jboolean active) {
+  (void)env;
+  (void)thiz;
+  if (!g_core || windowId == 0)
+    return;
+  WWNCoreSetWindowActivated(g_core, (uint64_t)windowId, active == JNI_TRUE);
 }
 
 // ============================================================================
@@ -2774,7 +3107,7 @@ static void wwn_android_write_zsh_defaults(const char *home,
       "  print -P \"%F{green}Wawona%f zsh ${ZSH_VERSION} - bundled Android userland.\"\n"
       "  print -P \"%F{blue}Bundled:%f uutils coreutils, fastfetch, neovim, waypipe, ssh/ssh-keygen, niri, fuzzel.\"\n"
       "  print -P \"%F{yellow}Note:%f weston demos launch from Machines (not PATH) until multi-client tabs land.\"\n"
-      "  print -P \"%F{yellow}Note:%f ssh is Dropbear — use short options (ssh -V), not GNU --version.\"\n"
+      "  print -P \"%F{yellow}Note:%f ssh is OpenSSH portable (wwn-ssh) — try ssh -V / ssh-keygen -t ed25519.\"\n"
       "fi\n");
 
   wwn_android_write_generated_file(
@@ -2786,7 +3119,7 @@ static void wwn_android_write_zsh_defaults(const char *home,
       "  print -P \"%F{green}Wawona%f zsh ${ZSH_VERSION} - bundled Android userland.\"\n"
       "  print -P \"%F{blue}Bundled:%f uutils coreutils, fastfetch, neovim, waypipe, ssh/ssh-keygen, niri, fuzzel.\"\n"
       "  print -P \"%F{yellow}Note:%f weston demos launch from Machines (not PATH) until multi-client tabs land.\"\n"
-      "  print -P \"%F{yellow}Note:%f ssh is Dropbear — use short options (ssh -V), not GNU --version.\"\n"
+      "  print -P \"%F{yellow}Note:%f ssh is OpenSSH portable (wwn-ssh) — try ssh -V / ssh-keygen -t ed25519.\"\n"
       "fi\n");
 
   LOGI("Shell env: zsh defaults ensured in %s (rootfs: %s)", home, rootfs);
@@ -2957,17 +3290,11 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
       wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libwaypipe_bin.so",
                                      "waypipe-rs");
       wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libssh_bin.so", "ssh");
-      /* wwn-ssh key management: dropbearkey ships as ssh-keygen (same
-       * -t/-f/-y CLI for ed25519 keys), plus scp and dropbearconvert. */
+      /* wwn-ssh: OpenSSH portable ssh-keygen + scp (not Dropbear). */
       wwn_android_install_shell_tool(native_lib_dir, usr_bin,
                                      "libssh_keygen_bin.so", "ssh-keygen");
-      wwn_android_install_shell_tool(native_lib_dir, usr_bin,
-                                     "libssh_keygen_bin.so", "dropbearkey");
       wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libscp_bin.so",
                                      "scp");
-      wwn_android_install_shell_tool(native_lib_dir, usr_bin,
-                                     "libdropbearconvert_bin.so",
-                                     "dropbearconvert");
       wwn_android_install_shell_tool(native_lib_dir, usr_bin,
                                      "libsshpass_bin.so", "sshpass");
       wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libniri_bin.so",
@@ -3102,6 +3429,8 @@ typedef struct {
   char ssh_host[256];
   char ssh_user[128];
   char ssh_password[256];
+  char ssh_key_path[512];
+  int ssh_auth_method; /* 0 = password, 1 = publickey */
   char remote_command[512];
   char compress[64];
   int threads;
@@ -3189,8 +3518,7 @@ static void *waypipe_thread_func(void *arg) {
     // Uses waypipe's native "ssh" subcommand. Waypipe creates a local Unix
     // socket, spawns the SSH client with -R /remote.sock:/local.sock, and
     // the remote waypipe server connects back through the SSH tunnel.
-    // Dropbear (dbclient) is patched to support -R with Unix socket paths
-    // via streamlocal-forward@openssh.com.
+    // OpenSSH portable supports streamlocal-forward@openssh.com natively.
 
     if (!g_ssh_bin_path[0]) {
       LOGE("SSH binary (libssh_bin.so) not found — cannot start waypipe SSH");
@@ -3236,14 +3564,28 @@ static void *waypipe_thread_func(void *arg) {
     argv[argc++] = "--ssh-bin";
     argv[argc++] = g_ssh_bin_path;
     argv[argc++] = "ssh";
-    argv[argc++] = "-y";
+    argv[argc++] = "-o";
+    argv[argc++] = "StrictHostKeyChecking=accept-new";
+    argv[argc++] = "-o";
+    argv[argc++] = "UserKnownHostsFile=/dev/null";
     argv[argc++] = "-T";
     argv[argc++] = "-p";
     argv[argc++] = port_str;
     argv[argc++] = "-l";
     argv[argc++] = g_waypipe_config.ssh_user;
+    if (g_waypipe_config.ssh_auth_method == 1 &&
+        g_waypipe_config.ssh_key_path[0]) {
+      argv[argc++] = "-i";
+      argv[argc++] = g_waypipe_config.ssh_key_path;
+      argv[argc++] = "-o";
+      argv[argc++] = "PreferredAuthentications=publickey";
+    } else {
+      argv[argc++] = "-o";
+      argv[argc++] =
+          "PreferredAuthentications=password,keyboard-interactive";
+    }
     argv[argc++] = g_waypipe_config.ssh_host;
-    /* Dropbear does not support "--" (OpenSSH option separator); omit it */
+    argv[argc++] = "--";
     argv[argc++] = rcmd;
     argv[argc] = NULL;
 
@@ -3368,10 +3710,10 @@ static void *waypipe_thread_func(void *arg) {
 JNIEXPORT jboolean JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeRunWaypipe(
     JNIEnv *env, jobject thiz, jboolean sshEnabled, jstring sshHost,
-    jstring sshUser, jstring sshPassword, jstring remoteCommand,
-    jstring compress, jint threads, jstring video, jboolean debug,
-    jboolean oneshot, jboolean noGpu, jboolean loginShell, jstring titlePrefix,
-    jstring secCtx) {
+    jstring sshUser, jstring sshPassword, jstring sshKeyPath, jint sshAuthMethod,
+    jstring remoteCommand, jstring compress, jint threads, jstring video,
+    jboolean debug, jboolean oneshot, jboolean noGpu, jboolean loginShell,
+    jstring titlePrefix, jstring secCtx) {
   (void)thiz;
 
   if (g_waypipe_running) {
@@ -3381,6 +3723,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeRunWaypipe(
 
   memset(&g_waypipe_config, 0, sizeof(g_waypipe_config));
   g_waypipe_config.ssh_enabled = sshEnabled;
+  g_waypipe_config.ssh_auth_method = (int)sshAuthMethod;
   g_waypipe_config.threads = threads;
   g_waypipe_config.debug = debug;
   g_waypipe_config.oneshot = oneshot;
@@ -3388,6 +3731,13 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeRunWaypipe(
   g_waypipe_config.login_shell = loginShell;
 
   const char *str;
+
+  str = sshKeyPath ? (*env)->GetStringUTFChars(env, sshKeyPath, NULL) : NULL;
+  if (str) {
+    strncpy(g_waypipe_config.ssh_key_path, str,
+            sizeof(g_waypipe_config.ssh_key_path) - 1);
+    (*env)->ReleaseStringUTFChars(env, sshKeyPath, str);
+  }
 
   str = (*env)->GetStringUTFChars(env, sshHost, NULL);
   if (str) {
@@ -3516,29 +3866,20 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeIsWaypipeRunning(
 // Weston Simple SHM execution
 // ============================================================================
 
-static int g_weston_shm_running = 0;
-static pthread_t g_weston_shm_thread = 0;
+static _Atomic int g_weston_shm_count = 0;
 
 static void *weston_simple_shm_thread_func(void *arg) {
   (void)arg;
-  LOGI("Starting weston-simple-shm background thread (%ux%u)", g_output_width,
-       g_output_height);
+  LOGI("Starting weston-simple-shm background thread");
   if (!weston_simple_shm_main) {
     LOGE("weston-simple-shm symbol is unavailable in this build");
-    g_weston_shm_running = 0;
+    atomic_fetch_sub(&g_weston_shm_count, 1);
     return NULL;
   }
 
-  char w_str[16];
-  char h_str[16];
-  snprintf(w_str, sizeof(w_str), "%u",
-           g_output_width > 0 ? g_output_width : 250);
-  snprintf(h_str, sizeof(h_str), "%u",
-           g_output_height > 0 ? g_output_height : 250);
-
-  const char *argv[] = {"weston-simple-shm", "--width", w_str,
-                        "--height",          h_str,     NULL};
-  int argc = 5;
+  // No --width/--height: size is negotiated via xdg_toplevel with Wawona.
+  char *argv[] = {"weston-simple-shm", NULL};
+  int argc = 1;
 
   char saved_cwd[512] = "";
   const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
@@ -3553,7 +3894,7 @@ static void *weston_simple_shm_thread_func(void *arg) {
   if (saved_cwd[0])
     chdir(saved_cwd);
 
-  g_weston_shm_running = 0;
+  atomic_fetch_sub(&g_weston_shm_count, 1);
   return NULL;
 }
 
@@ -3563,22 +3904,18 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeRunWestonSimpleSHM(
   (void)env;
   (void)thiz;
 
-  if (g_weston_shm_running) {
-    LOGE("weston-simple-shm is already running");
-    return JNI_FALSE;
-  }
-
-  g_weston_shm_running = 1;
-
-  int result = pthread_create(&g_weston_shm_thread, NULL,
-                              weston_simple_shm_thread_func, NULL);
+  atomic_fetch_add(&g_weston_shm_count, 1);
+  pthread_t thread = 0;
+  int result = pthread_create(&thread, NULL, weston_simple_shm_thread_func, NULL);
   if (result != 0) {
     LOGE("Failed to create weston-simple-shm thread: %d", result);
-    g_weston_shm_running = 0;
+    atomic_fetch_sub(&g_weston_shm_count, 1);
     return JNI_FALSE;
   }
+  pthread_detach(thread);
 
-  LOGI("weston-simple-shm launched successfully");
+  LOGI("weston-simple-shm launched successfully (instances=%d)",
+       atomic_load(&g_weston_shm_count));
   return JNI_TRUE;
 }
 
@@ -3588,23 +3925,17 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeStopWestonSimpleSHM(
   (void)env;
   (void)thiz;
 
-  if (!g_weston_shm_running) {
+  if (atomic_load(&g_weston_shm_count) <= 0) {
     LOGI("weston-simple-shm is not running");
     return;
   }
 
-  LOGI("Stopping weston-simple-shm...");
+  LOGI("Stopping weston-simple-shm (all instances)...");
   if (&g_simple_shm_running) {
     g_simple_shm_running = 0;
   }
-
-  if (g_weston_shm_thread) {
-    pthread_join(g_weston_shm_thread, NULL);
-    g_weston_shm_thread = 0;
-  }
-
-  g_weston_shm_running = 0;
-  LOGI("weston-simple-shm stopped cleanly");
+  atomic_store(&g_weston_shm_count, 0);
+  LOGI("weston-simple-shm stop requested");
 }
 
 JNIEXPORT jboolean JNICALL
@@ -3612,7 +3943,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeIsWestonSimpleSHMRunning(
     JNIEnv *env, jobject thiz) {
   (void)env;
   (void)thiz;
-  return g_weston_shm_running ? JNI_TRUE : JNI_FALSE;
+  return atomic_load(&g_weston_shm_count) > 0 ? JNI_TRUE : JNI_FALSE;
 }
 
 // ============================================================================
@@ -3700,15 +4031,14 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeIsWestonRunning(
 // Weston-terminal client
 // ============================================================================
 
-static int g_weston_terminal_running = 0;
-static pthread_t g_weston_terminal_thread = 0;
+static _Atomic int g_weston_terminal_count = 0;
 
 static void *weston_terminal_thread_func(void *arg) {
   (void)arg;
   LOGI("Starting weston-terminal background thread");
   if (!weston_terminal_main) {
     LOGE("weston-terminal symbol is unavailable in this build");
-    g_weston_terminal_running = 0;
+    atomic_fetch_sub(&g_weston_terminal_count, 1);
     return NULL;
   }
   char saved_cwd[512] = "";
@@ -3721,22 +4051,13 @@ static void *weston_terminal_thread_func(void *arg) {
       LOGE("weston-terminal chdir to HOME %s failed: %s", home_dir,
            strerror(errno));
   }
-  // weston-terminal's default (non-maximized/non-fullscreen) startup path
-  // hardcodes an 80x24 character grid sized from the host's font metrics
-  // (see terminal_create()/terminal_resize(80, 24) upstream), completely
-  // ignoring the compositor-suggested xdg_toplevel size. On a small mobile
-  // display that grid is wider than the entire screen, so the window is
-  // drawn far larger than the viewport and gets clipped at the right/bottom
-  // edges. Passing --maximized makes weston-terminal call
-  // window_set_maximized() at startup, which switches resize_handler() into
-  // "fit the host-given size" mode (columns/rows are derived from the
-  // configure width/height instead of forcing a fixed 80x24 window size),
-  // so it correctly fills Wawona's host-locked output-sized window instead
-  // of overflowing it.
-  const char *argv[] = {"weston-terminal", "--maximized", NULL};
-  weston_terminal_main(2, argv);
+  // No --maximized / size argv: window size is negotiated via xdg_toplevel
+  // with Wawona (initial 0×0 configure → client preferred → host adopts /
+  // host resize configures). Do not force client-side size workarounds.
+  char *argv[] = {"weston-terminal", NULL};
+  weston_terminal_main(1, argv);
   if (saved_cwd[0]) chdir(saved_cwd);
-  g_weston_terminal_running = 0;
+  atomic_fetch_sub(&g_weston_terminal_count, 1);
   return NULL;
 }
 
@@ -3753,12 +4074,16 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeRunWestonTerminal(
     LOGE("Refusing to launch weston-terminal: compatibility shim build detected");
     return JNI_FALSE;
   }
-  if (g_weston_terminal_running) return JNI_FALSE;
   wwn_android_prepare_shell_environment(getenv("WAWONA_FILES_DIR"));
-  g_weston_terminal_running = 1;
-  if (pthread_create(&g_weston_terminal_thread, NULL, weston_terminal_thread_func, NULL) != 0) {
-    g_weston_terminal_running = 0; return JNI_FALSE;
+  atomic_fetch_add(&g_weston_terminal_count, 1);
+  pthread_t thread = 0;
+  if (pthread_create(&thread, NULL, weston_terminal_thread_func, NULL) != 0) {
+    atomic_fetch_sub(&g_weston_terminal_count, 1);
+    return JNI_FALSE;
   }
+  pthread_detach(thread);
+  LOGI("weston-terminal launched (instances=%d)",
+       atomic_load(&g_weston_terminal_count));
   return JNI_TRUE;
 }
 
@@ -3766,14 +4091,14 @@ JNIEXPORT void JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeStopWestonTerminal(
     JNIEnv *env, jobject thiz) {
   (void)env; (void)thiz;
-  g_weston_terminal_running = 0;
+  atomic_store(&g_weston_terminal_count, 0);
 }
 
 JNIEXPORT jboolean JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeIsWestonTerminalRunning(
     JNIEnv *env, jobject thiz) {
   (void)env; (void)thiz;
-  return g_weston_terminal_running ? JNI_TRUE : JNI_FALSE;
+  return atomic_load(&g_weston_terminal_count) > 0 ? JNI_TRUE : JNI_FALSE;
 }
 
 // ============================================================================
@@ -3953,9 +4278,9 @@ static jboolean wwn_bundled_client_available(const char *client_id) {
   return wwn_client_main_for_id(client_id) ? JNI_TRUE : JNI_FALSE;
 }
 
-static int g_bundled_client_running = 0;
-static pthread_t g_bundled_client_thread = 0;
+static _Atomic int g_bundled_client_count = 0;
 static char g_bundled_client_id[64] = "";
+static pthread_mutex_t g_bundled_client_mu = PTHREAD_MUTEX_INITIALIZER;
 
 typedef struct {
   char id[64];
@@ -3963,29 +4288,29 @@ typedef struct {
 
 static void *bundled_client_thread_func(void *arg) {
   bundled_client_thread_arg_t *params = (bundled_client_thread_arg_t *)arg;
-  const char *client_id = params ? params->id : "";
-  free(params);
+  char client_id[64] = "";
+  if (params) {
+    snprintf(client_id, sizeof(client_id), "%s", params->id);
+    free(params);
+  }
 
   wwn_client_main_fn fn = wwn_client_main_for_id(client_id);
   if (!fn) {
     LOGE("No bundled client entry for '%s'", client_id);
-    g_bundled_client_running = 0;
-    g_bundled_client_id[0] = '\0';
+    atomic_fetch_sub(&g_bundled_client_count, 1);
     return NULL;
   }
 
   if (strcmp(client_id, "weston") == 0) {
     LOGE("Use nativeRunWeston() for nested compositor (not bundled client table)");
-    g_bundled_client_running = 0;
-    g_bundled_client_id[0] = '\0';
+    atomic_fetch_sub(&g_bundled_client_count, 1);
     return NULL;
   }
   if (strcmp(client_id, "weston-terminal") == 0 &&
       wwn_weston_terminal_is_compat_shim &&
       wwn_weston_terminal_is_compat_shim() != 0) {
     LOGE("Refusing to launch weston-terminal: compatibility shim build detected");
-    g_bundled_client_running = 0;
-    g_bundled_client_id[0] = '\0';
+    atomic_fetch_sub(&g_bundled_client_count, 1);
     return NULL;
   }
 
@@ -4003,8 +4328,11 @@ static void *bundled_client_thread_func(void *arg) {
 
   if (saved_cwd[0])
     chdir(saved_cwd);
-  g_bundled_client_running = 0;
-  g_bundled_client_id[0] = '\0';
+  if (atomic_fetch_sub(&g_bundled_client_count, 1) <= 1) {
+    pthread_mutex_lock(&g_bundled_client_mu);
+    g_bundled_client_id[0] = '\0';
+    pthread_mutex_unlock(&g_bundled_client_mu);
+  }
   return NULL;
 }
 
@@ -4014,22 +4342,34 @@ static void *bundled_client_thread_func(void *arg) {
  * Wayland client of the Wawona compositor (NIRI_BACKEND=nested). It then
  * serves its own scrollable-tiling clients on a child socket inside
  * XDG_RUNTIME_DIR. */
-static pid_t g_niri_pid = 0;
+static pid_t g_niri_pids[WWN_MAX_NATIVE_CLIENT_PIDS];
+static int g_niri_pid_count = 0;
+static pthread_mutex_t g_niri_mu = PTHREAD_MUTEX_INITIALIZER;
+
+static void wwn_niri_reap(void) {
+  pthread_mutex_lock(&g_niri_mu);
+  int dst = 0;
+  for (int i = 0; i < g_niri_pid_count; i++) {
+    pid_t pid = g_niri_pids[i];
+    if (pid <= 0)
+      continue;
+    if (waitpid(pid, NULL, WNOHANG) == 0)
+      g_niri_pids[dst++] = pid;
+  }
+  g_niri_pid_count = dst;
+  pthread_mutex_unlock(&g_niri_mu);
+}
 
 static int wwn_niri_running(void) {
-  if (g_niri_pid <= 0)
-    return 0;
-  if (waitpid(g_niri_pid, NULL, WNOHANG) == 0)
-    return 1;
-  g_niri_pid = 0;
-  return 0;
+  wwn_niri_reap();
+  pthread_mutex_lock(&g_niri_mu);
+  int n = g_niri_pid_count;
+  pthread_mutex_unlock(&g_niri_mu);
+  return n > 0;
 }
 
 static jboolean wwn_launch_niri_nested(void) {
-  if (wwn_niri_running()) {
-    LOGI("niri already running (PID %d) — ignoring relaunch", (int)g_niri_pid);
-    return JNI_TRUE;
-  }
+  wwn_niri_reap();
 
   char native_lib_dir[512];
   char niri_path[560];
@@ -4066,20 +4406,30 @@ static jboolean wwn_launch_niri_nested(void) {
     LOGE("niri: fork failed: %s", strerror(errno));
     return JNI_FALSE;
   }
-  g_niri_pid = pid;
-  LOGI("Launched niri (nested compositor) PID %d from %s", (int)pid,
-       niri_path);
+  pthread_mutex_lock(&g_niri_mu);
+  if (g_niri_pid_count < WWN_MAX_NATIVE_CLIENT_PIDS) {
+    g_niri_pids[g_niri_pid_count++] = pid;
+  } else {
+    LOGE("niri: pid table full — orphaning PID %d", (int)pid);
+  }
+  int instances = g_niri_pid_count;
+  pthread_mutex_unlock(&g_niri_mu);
+  LOGI("Launched niri (nested compositor) PID %d from %s (instances=%d)",
+       (int)pid, niri_path, instances);
   return JNI_TRUE;
 }
 
 static void wwn_stop_niri(void) {
-  if (g_niri_pid <= 0)
-    return;
-  kill(g_niri_pid, SIGTERM);
-  /* Best-effort reap; if it ignores SIGTERM the next launch/status check
-   * escalates naturally through wwn_niri_running(). */
-  waitpid(g_niri_pid, NULL, WNOHANG);
-  g_niri_pid = 0;
+  pthread_mutex_lock(&g_niri_mu);
+  for (int i = 0; i < g_niri_pid_count; i++) {
+    pid_t pid = g_niri_pids[i];
+    if (pid > 0) {
+      kill(pid, SIGTERM);
+      waitpid(pid, NULL, WNOHANG);
+    }
+  }
+  g_niri_pid_count = 0;
+  pthread_mutex_unlock(&g_niri_mu);
 }
 
 /* Launch a nested-niri catalog client (libwawona_wl_bin.so multicall) against
@@ -4167,22 +4517,34 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeRunNestedWlClient(
 
 /* foot (wwn-foot): Wayland terminal as PIE libfoot_bin.so — fork/exec like niri
  * so the terminal runs out-of-process with its own main(). */
-static pid_t g_foot_pid = 0;
+static pid_t g_foot_pids[WWN_MAX_NATIVE_CLIENT_PIDS];
+static int g_foot_pid_count = 0;
+static pthread_mutex_t g_foot_mu = PTHREAD_MUTEX_INITIALIZER;
+
+static void wwn_foot_reap(void) {
+  pthread_mutex_lock(&g_foot_mu);
+  int dst = 0;
+  for (int i = 0; i < g_foot_pid_count; i++) {
+    pid_t pid = g_foot_pids[i];
+    if (pid <= 0)
+      continue;
+    if (waitpid(pid, NULL, WNOHANG) == 0)
+      g_foot_pids[dst++] = pid;
+  }
+  g_foot_pid_count = dst;
+  pthread_mutex_unlock(&g_foot_mu);
+}
 
 static int wwn_foot_running(void) {
-  if (g_foot_pid <= 0)
-    return 0;
-  if (waitpid(g_foot_pid, NULL, WNOHANG) == 0)
-    return 1;
-  g_foot_pid = 0;
-  return 0;
+  wwn_foot_reap();
+  pthread_mutex_lock(&g_foot_mu);
+  int n = g_foot_pid_count;
+  pthread_mutex_unlock(&g_foot_mu);
+  return n > 0;
 }
 
 static jboolean wwn_launch_foot(void) {
-  if (wwn_foot_running()) {
-    LOGI("foot already running (PID %d) — ignoring relaunch", (int)g_foot_pid);
-    return JNI_TRUE;
-  }
+  wwn_foot_reap();
   if (wwn_foot_compat_shim_value() != 0) {
     /* Old APKs shipped a weston-simple-shm stub as "foot" — that paints a
      * black/empty surface. Prefer the real in-process terminal instead. */
@@ -4277,18 +4639,30 @@ static jboolean wwn_launch_foot(void) {
     LOGE("foot: fork failed: %s", strerror(errno));
     return JNI_FALSE;
   }
-  g_foot_pid = pid;
-  LOGI("Launched foot PID %d from %s (ini=%s)", (int)pid, foot_path,
-       ini_path[0] ? ini_path : "(none)");
+  pthread_mutex_lock(&g_foot_mu);
+  if (g_foot_pid_count < WWN_MAX_NATIVE_CLIENT_PIDS) {
+    g_foot_pids[g_foot_pid_count++] = pid;
+  } else {
+    LOGE("foot: pid table full — orphaning PID %d", (int)pid);
+  }
+  int instances = g_foot_pid_count;
+  pthread_mutex_unlock(&g_foot_mu);
+  LOGI("Launched foot PID %d from %s (ini=%s instances=%d)", (int)pid, foot_path,
+       ini_path[0] ? ini_path : "(none)", instances);
   return JNI_TRUE;
 }
 
 static void wwn_stop_foot(void) {
-  if (g_foot_pid <= 0)
-    return;
-  kill(g_foot_pid, SIGTERM);
-  waitpid(g_foot_pid, NULL, WNOHANG);
-  g_foot_pid = 0;
+  pthread_mutex_lock(&g_foot_mu);
+  for (int i = 0; i < g_foot_pid_count; i++) {
+    pid_t pid = g_foot_pids[i];
+    if (pid > 0) {
+      kill(pid, SIGTERM);
+      waitpid(pid, NULL, WNOHANG);
+    }
+  }
+  g_foot_pid_count = 0;
+  pthread_mutex_unlock(&g_foot_mu);
 }
 
 JNIEXPORT jboolean JNICALL
@@ -4323,10 +4697,6 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeRunBundledClient(
     return wwn_launch_foot();
   }
 
-  if (g_bundled_client_running) {
-    (*env)->ReleaseStringUTFChars(env, clientId, id_utf);
-    return JNI_FALSE;
-  }
   if (!wwn_bundled_client_available(id_utf)) {
     LOGE("Bundled client unavailable: %s", id_utf);
     (*env)->ReleaseStringUTFChars(env, clientId, id_utf);
@@ -4341,16 +4711,18 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeRunBundledClient(
   snprintf(params->id, sizeof(params->id), "%s", id_utf);
   (*env)->ReleaseStringUTFChars(env, clientId, id_utf);
 
-  g_bundled_client_running = 1;
+  pthread_mutex_lock(&g_bundled_client_mu);
   snprintf(g_bundled_client_id, sizeof(g_bundled_client_id), "%s", params->id);
+  pthread_mutex_unlock(&g_bundled_client_mu);
+  atomic_fetch_add(&g_bundled_client_count, 1);
 
-  if (pthread_create(&g_bundled_client_thread, NULL, bundled_client_thread_func,
-                     params) != 0) {
+  pthread_t thread = 0;
+  if (pthread_create(&thread, NULL, bundled_client_thread_func, params) != 0) {
     free(params);
-    g_bundled_client_running = 0;
-    g_bundled_client_id[0] = '\0';
+    atomic_fetch_sub(&g_bundled_client_count, 1);
     return JNI_FALSE;
   }
+  pthread_detach(thread);
   return JNI_TRUE;
 }
 
@@ -4359,11 +4731,14 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeStopBundledClient(
     JNIEnv *env, jobject thiz) {
   (void)env;
   (void)thiz;
-  g_bundled_client_running = 0;
+  atomic_store(&g_bundled_client_count, 0);
+  pthread_mutex_lock(&g_bundled_client_mu);
   if (strcmp(g_bundled_client_id, "weston-simple-shm") == 0 &&
       &g_simple_shm_running) {
     g_simple_shm_running = 0;
   }
+  g_bundled_client_id[0] = '\0';
+  pthread_mutex_unlock(&g_bundled_client_mu);
   wwn_stop_niri();
   wwn_stop_foot();
 }
@@ -4375,7 +4750,9 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeIsBundledClientRunning(
   (void)thiz;
   if (wwn_foot_running())
     return JNI_TRUE;
-  return g_bundled_client_running ? JNI_TRUE : JNI_FALSE;
+  if (wwn_niri_running())
+    return JNI_TRUE;
+  return atomic_load(&g_bundled_client_count) > 0 ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT jstring JNICALL
@@ -4384,9 +4761,18 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeGetRunningBundledClientId(
   (void)thiz;
   if (wwn_foot_running())
     return (*env)->NewStringUTF(env, "foot");
-  if (!g_bundled_client_running || g_bundled_client_id[0] == '\0')
+  if (wwn_niri_running())
+    return (*env)->NewStringUTF(env, "niri");
+  pthread_mutex_lock(&g_bundled_client_mu);
+  int running = atomic_load(&g_bundled_client_count) > 0 &&
+                g_bundled_client_id[0] != '\0';
+  char id_copy[64] = "";
+  if (running)
+    snprintf(id_copy, sizeof(id_copy), "%s", g_bundled_client_id);
+  pthread_mutex_unlock(&g_bundled_client_mu);
+  if (!running)
     return NULL;
-  return (*env)->NewStringUTF(env, g_bundled_client_id);
+  return (*env)->NewStringUTF(env, id_copy);
 }
 
 // ============================================================================
@@ -4516,32 +4902,33 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeTestPing(
 }
 
 // ---------------------------------------------------------------------------
-// Test SSH: Dropbear-based connection + auth test via fork/exec
+// Test SSH: OpenSSH portable connection + auth test via fork/exec
 // ---------------------------------------------------------------------------
 #include <poll.h>
 
 JNIEXPORT jstring JNICALL
-Java_com_aspauldingcode_wawona_WawonaNative_nativeTestSSH(JNIEnv *, jobject,
-                                                          jstring, jstring,
-                                                          jstring, jint);
+Java_com_aspauldingcode_wawona_WawonaNative_nativeTestSSH(
+    JNIEnv *, jobject, jstring, jstring, jstring, jint, jstring, jint);
 JNIEXPORT jstring JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeTestSSH(
     JNIEnv *env, jobject thiz, jstring host, jstring user, jstring password,
-    jint port) {
+    jint port, jstring keyPath, jint authMethod) {
   (void)thiz;
   const char *host_str = (*env)->GetStringUTFChars(env, host, NULL);
   const char *user_str = (*env)->GetStringUTFChars(env, user, NULL);
   const char *pass_str = (*env)->GetStringUTFChars(env, password, NULL);
+  const char *key_str =
+      keyPath ? (*env)->GetStringUTFChars(env, keyPath, NULL) : NULL;
   char result[2048];
   char port_str[16];
   snprintf(port_str, sizeof(port_str), "%d", port);
 
-  LOGI("Testing SSH connection to %s@%s:%d (Dropbear)", user_str, host_str,
-       port);
+  LOGI("Testing SSH connection to %s@%s:%d (OpenSSH auth=%d)", user_str,
+       host_str, port, (int)authMethod);
 
   resolve_ssh_binary_paths();
 
-  /* Ensure XDG_RUNTIME_DIR (and thus HOME for Dropbear) is set before fork */
+  /* Ensure XDG_RUNTIME_DIR (and thus HOME for OpenSSH known_hosts) before fork */
   if (!getenv("XDG_RUNTIME_DIR")) {
     const char *cache_dir = getenv("TMPDIR");
     if (!cache_dir)
@@ -4587,19 +4974,16 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeTestSSH(
     close(out_pipe[1]);
     close(err_pipe[1]);
 
-    if (pass_str[0] != '\0') {
+    if (pass_str && pass_str[0] != '\0' && authMethod == 0) {
       setenv("SSHPASS", pass_str, 1);
     }
-    /* Dropbear needs HOME for ~/.ssh/known_hosts; use XDG_RUNTIME_DIR (writable) */
+    /* OpenSSH needs HOME for known_hosts; use XDG_RUNTIME_DIR (writable). */
     {
       const char *xdg = getenv("XDG_RUNTIME_DIR");
       if (xdg)
         setenv("HOME", xdg, 1);
     }
 
-    /* Build target: user@host or just host if user empty. Pass "uname -a" as
-     * single arg to avoid Dropbear misparsing "-a". Android Dropbear has
-     * SSHPASS env support (patched getpass), so no sshpass - avoids argv bugs. */
     char target[512];
     if (user_str[0])
       snprintf(target, sizeof(target), "%s@%s", user_str, host_str);
@@ -4607,11 +4991,31 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeTestSSH(
       snprintf(target, sizeof(target), "%s", host_str);
 
     /* argv[0] must be realpath()-able for Berberis (arm64-on-x86 emu). */
-    const char *argv_ssh[] = {
-        g_ssh_bin_path, "-y", "-T", "-p", port_str, target, "uname -a", NULL
-    };
-    LOGI("[SSH Test] exec: ssh -y -T -p %s %s uname -a", port_str, target);
-    execv(g_ssh_bin_path, (char *const *)argv_ssh);
+    char *argv_ssh[24];
+    int a = 0;
+    argv_ssh[a++] = g_ssh_bin_path;
+    argv_ssh[a++] = "-o";
+    argv_ssh[a++] = "StrictHostKeyChecking=accept-new";
+    argv_ssh[a++] = "-o";
+    argv_ssh[a++] = "UserKnownHostsFile=/dev/null";
+    argv_ssh[a++] = "-T";
+    argv_ssh[a++] = "-p";
+    argv_ssh[a++] = port_str;
+    if (authMethod == 1 && key_str && key_str[0]) {
+      argv_ssh[a++] = "-i";
+      argv_ssh[a++] = (char *)key_str;
+      argv_ssh[a++] = "-o";
+      argv_ssh[a++] = "PreferredAuthentications=publickey";
+    } else {
+      argv_ssh[a++] = "-o";
+      argv_ssh[a++] =
+          "PreferredAuthentications=password,keyboard-interactive";
+    }
+    argv_ssh[a++] = target;
+    argv_ssh[a++] = "uname -a";
+    argv_ssh[a] = NULL;
+    LOGI("[SSH Test] exec OpenSSH -T -p %s %s", port_str, target);
+    execv(g_ssh_bin_path, argv_ssh);
 
     fprintf(stderr, "exec failed: %s (path=%s)\n", strerror(errno),
             g_ssh_bin_path);
@@ -4669,7 +5073,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeTestSSH(
     if (nl)
       *nl = '\0';
     snprintf(result, sizeof(result),
-             "OK: SSH connected and authenticated (Dropbear)\nRemote: "
+             "OK: SSH connected and authenticated (OpenSSH)\nRemote: "
              "%s\nLatency: %ldms",
              uname_buf, latency_ms);
   } else {
@@ -4678,9 +5082,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeTestSSH(
              "FAIL: SSH failed (exit %d)\nHost: %s\nOutput: %s\nLatency: %ldms",
              WIFEXITED(status) ? WEXITSTATUS(status) : -1,
              host_str, out[0] ? out : "(no output)", latency_ms);
-    /* If hostname doesn't resolve, suggest using IP (skip if error shows "ssh"
-     * - that indicates a Dropbear argv bug, not a config alias issue) */
-    if (out[0] && !strstr(out, "resolving 'ssh'") &&
+    if (out[0] &&
         (strstr(out, "No address associated with hostname") ||
          strstr(out, "Could not resolve hostname"))) {
       size_t len = strlen(result);
@@ -4695,6 +5097,8 @@ cleanup_strings:
   (*env)->ReleaseStringUTFChars(env, host, host_str);
   (*env)->ReleaseStringUTFChars(env, user, user_str);
   (*env)->ReleaseStringUTFChars(env, password, pass_str);
+  if (keyPath && key_str)
+    (*env)->ReleaseStringUTFChars(env, keyPath, key_str);
   return (*env)->NewStringUTF(env, result);
 }
 

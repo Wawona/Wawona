@@ -29,13 +29,15 @@ static __weak WKInterfaceController *WWNWatchSettingsHostController = nil;
     return extension.rootInterfaceController;
 }
 
-- (void)showSettings {
+- (BOOL)showSettings {
     WKInterfaceController *host = [self hostController];
     if (!host) {
         NSLog(@"[WWNWatchPreferences] No WKInterfaceController available to present settings");
-        return;
+        return NO;
     }
+    NSLog(@"[WWNWatchPreferences] Presenting WatchKit SettingsRoot from %@", host);
     [host presentControllerWithName:@"SettingsRoot" context:nil];
+    return YES;
 }
 
 - (void)dismissSettings {

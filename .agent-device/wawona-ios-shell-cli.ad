@@ -45,11 +45,17 @@ keyboard return
 wait 1500
 screenshot ./.agent-device/test-artifacts/ios-shell-cli-fastfetch.png
 
-# ssh — must resolve ssh_main via libssh-inprocess.a (no NOT_HANDLED).
-type "ssh"
+# ssh — libssh2 CLI (libwwn-ssh-cli.a); must not exit 127 / NOT_HANDLED.
+type "ssh -V"
 keyboard return
 wait 1200
 screenshot ./.agent-device/test-artifacts/ios-shell-cli-ssh.png
+
+# ssh-keygen — OpenSSH-format key under /tmp (in-process OpenSSL).
+type "ssh-keygen -t ed25519 -f /tmp/wawona-ad-id -N '' -q && ssh-keygen -l -f /tmp/wawona-ad-id"
+keyboard return
+wait 2000
+screenshot ./.agent-device/test-artifacts/ios-shell-cli-ssh-keygen.png
 
 # apt — in-process module front-end (App Store compliant, no exec).
 type "apt help"

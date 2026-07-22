@@ -176,6 +176,8 @@ jobs:
         run: python3 ./.github/scripts/verify-ios-shell-tools.py
       - name: Verify Android shell-tool wiring
         run: python3 ./.github/scripts/verify-android-shell-tools.py
+      - name: Verify SSH backends (Apple libssh2-cli / Android OpenSSH)
+        run: python3 ./.github/scripts/verify-ssh-backends.py
       - name: Verify Wayland protocol manifest
         run: python3 ./.github/scripts/verify-wayland-protocol-manifest.py
       - name: Verify Smithay coverage contract

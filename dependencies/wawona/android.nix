@@ -408,9 +408,8 @@ EOF
       [ -f "$JNI_LIB_DIR/libEGL.so" ] && cp -f "$JNI_LIB_DIR/libEGL.so" "$JNI_LIB_DIR/libEGL_angle.so"
       [ -f "$JNI_LIB_DIR/libGLESv2.so" ] && cp -f "$JNI_LIB_DIR/libGLESv2.so" "$JNI_LIB_DIR/libGLESv2_angle.so"
 
-      # Bundle SSH client helpers with stable names expected by android_jni.c.
-      # We ship Dropbear dbclient as libssh_bin.so and sshpass as libsshpass_bin.so
-      # in jniLibs so runtime path resolution can execute them directly.
+      # Bundle OpenSSH portable client helpers (wwn-ssh) with stable jniLibs
+      # names expected by android_jni.c. Never Dropbear.
       if [ -f "${opensshBin}/bin/ssh" ]; then
         cp -L "${opensshBin}/bin/ssh" "$JNI_LIB_DIR/libssh_bin.so"
         chmod +x "$JNI_LIB_DIR/libssh_bin.so"
@@ -418,8 +417,6 @@ EOF
         echo "WARNING: Missing Android ssh binary at ${opensshBin}/bin/ssh"
       fi
 
-      # Key management (wwn-ssh): dropbearkey ships as ssh-keygen (same
-      # -t/-f/-y CLI for ed25519), plus scp and dropbearconvert.
       if [ -f "${opensshBin}/bin/ssh-keygen" ]; then
         cp -L "${opensshBin}/bin/ssh-keygen" "$JNI_LIB_DIR/libssh_keygen_bin.so"
         chmod +x "$JNI_LIB_DIR/libssh_keygen_bin.so"
@@ -430,11 +427,6 @@ EOF
       if [ -f "${opensshBin}/bin/scp" ]; then
         cp -L "${opensshBin}/bin/scp" "$JNI_LIB_DIR/libscp_bin.so"
         chmod +x "$JNI_LIB_DIR/libscp_bin.so"
-      fi
-
-      if [ -f "${opensshBin}/bin/dropbearconvert" ]; then
-        cp -L "${opensshBin}/bin/dropbearconvert" "$JNI_LIB_DIR/libdropbearconvert_bin.so"
-        chmod +x "$JNI_LIB_DIR/libdropbearconvert_bin.so"
       fi
 
       if [ -f "${sshpassBin}/bin/sshpass" ]; then

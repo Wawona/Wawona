@@ -13,6 +13,10 @@
 #import "WWNCompositorBridge.h"
 #import "WWNPlatformCallbacks.h"
 
+#if __has_include("ui/Helpers/WWNSSHKeygen.h")
+#import "ui/Helpers/WWNSSHKeygen.h"
+#endif
+
 // Legacy Apple UI bridge headers needed by Swift files in src/platform/macos/ui.
 #if __has_include("ui/Machines/WWNMachineProfileStore.h")
 #import "ui/Machines/WWNMachineProfileStore.h"

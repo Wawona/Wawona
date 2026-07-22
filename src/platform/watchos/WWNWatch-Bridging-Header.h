@@ -5,6 +5,8 @@
 #define WWNWatch_Bridging_Header_h
 
 #import "WWNWatchCompositorBridge.h"
+#import "ui/Settings/WWNWatchSettingsBridge.h"
 #import "WWNWatchPreferencesCoordinator.h"
+#import "../macos/ui/Helpers/WWNSSHKeygen.h"
 
 #endif /* WWNWatch_Bridging_Header_h */

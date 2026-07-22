@@ -124,6 +124,11 @@ public final class WawonaPreferences: ObservableObject {
     @Published public var sshUser: String = ""
     @Published public var sshPort: Int = 22
     @Published public var sshPassword: String = ""
+    /// 0 = password, 1 = public key (synced to SSHAuthMethod / WaypipeSSHAuthMethod).
+    @Published public var sshAuthMethod: Int = 0
+    @Published public var sshKeyPath: String = ""
+    @Published public var sshKeyPassphrase: String = ""
+    @Published public var sshKeyType: String = "ed25519"
     @Published public var waypipeSSHPassword: String = ""
     @Published public var logLevel: String = "info"
     @Published public var defaultInputProfile: String = "direct"
@@ -159,6 +164,17 @@ public final class WawonaPreferences: ObservableObject {
         sshUser = defaults.string(forKey: keyPrefix + "sshUser") ?? ""
         sshPort = defaults.object(forKey: keyPrefix + "sshPort") as? Int ?? 22
         sshPassword = defaults.string(forKey: keyPrefix + "sshPassword") ?? ""
+        if defaults.object(forKey: "SSHAuthMethod") != nil {
+            sshAuthMethod = defaults.integer(forKey: "SSHAuthMethod")
+        } else {
+            sshAuthMethod = defaults.object(forKey: keyPrefix + "sshAuthMethod") as? Int ?? 0
+        }
+        sshKeyPath = defaults.string(forKey: "SSHKeyPath")
+            ?? defaults.string(forKey: keyPrefix + "sshKeyPath") ?? ""
+        sshKeyPassphrase = defaults.string(forKey: "SSHKeyPassphrase")
+            ?? defaults.string(forKey: keyPrefix + "sshKeyPassphrase") ?? ""
+        sshKeyType = defaults.string(forKey: "SSHKeyType")
+            ?? defaults.string(forKey: keyPrefix + "sshKeyType") ?? "ed25519"
         waypipeSSHPassword = defaults.string(forKey: keyPrefix + "waypipeSSHPassword") ?? ""
         logLevel = defaults.string(forKey: keyPrefix + "logLevel") ?? "info"
         defaultInputProfile = defaults.string(forKey: keyPrefix + "defaultInputProfile") ?? "direct"
@@ -181,8 +197,19 @@ public final class WawonaPreferences: ObservableObject {
 
     public func save() {
         defaults.set(renderer, forKey: keyPrefix + "renderer")
+        let previousForceSSD = defaults.object(forKey: "ForceServerSideDecorations") as? Bool
+            ?? defaults.bool(forKey: keyPrefix + "forceSSD")
         defaults.set(forceSSD, forKey: "ForceServerSideDecorations")
         defaults.set(forceSSD, forKey: keyPrefix + "forceSSD")
+        // Bridge listens for this; without it, SwiftUI toggles only write
+        // defaults and the Rust decoration policy never updates (weston stays
+        // borderless even with Force SSD "on").
+        if previousForceSSD != forceSSD {
+            NotificationCenter.default.post(
+                name: Notification.Name("WWNForceSSDChangedNotification"),
+                object: nil
+            )
+        }
         defaults.set(renderMacOSPointer, forKey: "RenderMacOSPointer")
         defaults.set(autoScale, forKey: keyPrefix + "autoScale")
         defaults.set(colorOperations, forKey: keyPrefix + "colorOperations")
@@ -191,6 +218,18 @@ public final class WawonaPreferences: ObservableObject {
         defaults.set(sshUser, forKey: keyPrefix + "sshUser")
         defaults.set(sshPort, forKey: keyPrefix + "sshPort")
         defaults.set(sshPassword, forKey: keyPrefix + "sshPassword")
+        defaults.set(sshAuthMethod, forKey: keyPrefix + "sshAuthMethod")
+        defaults.set(sshKeyPath, forKey: keyPrefix + "sshKeyPath")
+        defaults.set(sshKeyPassphrase, forKey: keyPrefix + "sshKeyPassphrase")
+        defaults.set(sshKeyType, forKey: keyPrefix + "sshKeyType")
+        // Dual-sync ObjC Settings / waypipe keys so Machines + PTY share state.
+        defaults.set(sshAuthMethod, forKey: "SSHAuthMethod")
+        defaults.set(sshKeyPath, forKey: "SSHKeyPath")
+        defaults.set(sshKeyPassphrase, forKey: "SSHKeyPassphrase")
+        defaults.set(sshKeyType, forKey: "SSHKeyType")
+        defaults.set(sshAuthMethod, forKey: "WaypipeSSHAuthMethod")
+        defaults.set(sshKeyPath, forKey: "WaypipeSSHKeyPath")
+        defaults.set(sshKeyPassphrase, forKey: "WaypipeSSHKeyPassphrase")
         defaults.set(waypipeSSHPassword, forKey: keyPrefix + "waypipeSSHPassword")
         defaults.set(logLevel, forKey: keyPrefix + "logLevel")
         defaults.set(defaultInputProfile, forKey: keyPrefix + "defaultInputProfile")

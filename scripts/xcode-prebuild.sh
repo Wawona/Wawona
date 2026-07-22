@@ -122,12 +122,15 @@ case "${TARGET_NAME:-}" in
     ;;
   Wawona-tvOS)
     BACKENDS=(wawona-tvos-backend wawona-tvos-sim-backend)
+    _with_zsh=1
     ;;
   Wawona-visionOS)
     BACKENDS=(wawona-visionos-backend wawona-visionos-sim-backend)
+    _with_zsh=1
     ;;
   Wawona-watchOS)
     BACKENDS=(wawona-watchos-backend wawona-watchos-sim-backend)
+    _with_zsh=1
     ;;
   *)
     echo "Unknown TARGET_NAME=${TARGET_NAME:-}; skipping Nix prebuild"
@@ -141,26 +144,36 @@ else
   _active_backend="${BACKENDS[0]}"
 fi
 
-echo "Realizing Nix backend(s) for ${TARGET_NAME} (sdk=${_sdk:-unknown}, active=${_active_backend}, nix=$NIX)"
-
-# By default, build only the active backend matching the current SDK.
-# Set WAWONA_WARM_BOTH_BACKENDS=1 for release builds that need both.
-build_args=()
-if [ "${WAWONA_WARM_BOTH_BACKENDS:-0}" = "1" ]; then
-  for backend in "${BACKENDS[@]}"; do
-    build_args+=("$FLAKE_REF#$backend")
-  done
-else
-  build_args+=("$FLAKE_REF#$_active_backend")
-fi
 _nix_flags=(--impure)
 if [ -n "${WAWONA_NIX_FLAGS:-}" ]; then
   # shellcheck disable=SC2206
   _nix_flags+=(${WAWONA_NIX_FLAGS})
 fi
-"$NIX" build --no-link "${_nix_flags[@]}" "${build_args[@]}"
 
-active_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_active_backend")"
+# Optional: reuse a previously realized backend when flake rebuild is broken
+# (e.g. watchOS waypipe cfg gates). Set WAWONA_BACKEND_OUT to a store path
+# containing lib/libwawona.a.
+active_out=""
+if [ -n "${WAWONA_BACKEND_OUT:-}" ] && [ -f "${WAWONA_BACKEND_OUT}/lib/libwawona.a" ]; then
+  active_out="${WAWONA_BACKEND_OUT}"
+  echo "Using WAWONA_BACKEND_OUT=$active_out (skipping nix build #$_active_backend)"
+else
+  echo "Realizing Nix backend(s) for ${TARGET_NAME} (sdk=${_sdk:-unknown}, active=${_active_backend}, nix=$NIX)"
+
+  # By default, build only the active backend matching the current SDK.
+  # Set WAWONA_WARM_BOTH_BACKENDS=1 for release builds that need both.
+  build_args=()
+  if [ "${WAWONA_WARM_BOTH_BACKENDS:-0}" = "1" ]; then
+    for backend in "${BACKENDS[@]}"; do
+      build_args+=("$FLAKE_REF#$backend")
+    done
+  else
+    build_args+=("$FLAKE_REF#$_active_backend")
+  fi
+  "$NIX" build --no-link "${_nix_flags[@]}" "${build_args[@]}"
+
+  active_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_active_backend")"
+fi
 # Copy (don't symlink): auto-GC can delete the store path between this script
 # exiting and the final link step, leaving a dangling symlink that fails clang.
 rm -f "$derived/libwawona.a"
@@ -177,10 +190,15 @@ case "${TARGET_NAME:-}" in
     LINK_DEPS=(kmscube)
     ;;
 esac
-for _dep in "${LINK_DEPS[@]:-}"; do
-  echo "Realizing link-only dep: $_dep"
-  "$NIX" build --no-link "${_nix_flags[@]}" "$FLAKE_REF#$_dep"
-done
+# Only iterate when non-empty. An empty "${LINK_DEPS[@]:-}" expands to a
+# single blank word and `nix build .#` builds the flake default (macOS).
+if [ "${#LINK_DEPS[@]}" -gt 0 ]; then
+  for _dep in "${LINK_DEPS[@]}"; do
+    [ -n "$_dep" ] || continue
+    echo "Realizing link-only dep: $_dep"
+    "$NIX" build --no-link "${_nix_flags[@]}" "$FLAKE_REF#$_dep"
+  done
+fi
 
 # ---------------------------------------------------------------------------
 # privatize_lib — merge a static archive into a single relocatable .o, strip
@@ -232,56 +250,85 @@ case "$_sdk" in
   iphoneos*)
     _ld_platform="ios"
     ;;
+  appletvsimulator*)
+    _ld_platform="tvos-simulator"
+    ;;
+  appletvos*)
+    _ld_platform="tvos"
+    ;;
+  watchsimulator*)
+    _ld_platform="watchos-simulator"
+    _min_ver="10.0"
+    ;;
+  watchos*)
+    _ld_platform="watchos"
+    _min_ver="10.0"
+    ;;
+  xrsimulator*)
+    _ld_platform="xros-simulator"
+    _min_ver="26.0"
+    ;;
+  xros*)
+    _ld_platform="xros"
+    _min_ver="26.0"
+    ;;
   *)
     _ld_platform="ios"
     ;;
 esac
 
 if [ "$_with_zsh" = "1" ]; then
+  # Must match the app SDK platform — iOS zsh cannot link into tvOS/watchOS/visionOS.
   _zsh_attr="zsh-ios"
-  case "$_sdk" in
-    *simulator*) _zsh_attr="zsh-ios-sim" ;;
+  case "${TARGET_NAME:-}" in
+    Wawona-tvOS) _zsh_attr="zsh-tvos" ;;
+    Wawona-watchOS) _zsh_attr="zsh-watchos" ;;
+    Wawona-visionOS) _zsh_attr="zsh-visionos" ;;
+    *) _zsh_attr="zsh-ios" ;;
   esac
-  zsh_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_zsh_attr")"
-  privatize_lib "$zsh_out/lib/libwawona-zsh.a" "$derived/libwawona-zsh.a" \
-    "$_arch" "$_ld_platform" "$_min_ver" \
-    _wawona_zsh_main
-  echo "Privatized $derived/libwawona-zsh.a (from $zsh_out)"
-
-  _nvim_attr="neovim-ios-device"
   case "$_sdk" in
-    *simulator*) _nvim_attr="neovim-ios" ;;
+    *simulator*) _zsh_attr="${_zsh_attr}-sim" ;;
   esac
-  nvim_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_nvim_attr")"
-  privatize_lib "$nvim_out/lib/libwawona-neovim.a" "$derived/libwawona-neovim.a" \
-    "$_arch" "$_ld_platform" "$_min_ver" \
-    _wawona_nvim_main
-  echo "Privatized $derived/libwawona-neovim.a (from $nvim_out)"
-
-  _ff_attr="fastfetch-ios-device"
-  case "$_sdk" in
-    *simulator*) _ff_attr="fastfetch-ios" ;;
-  esac
-  ff_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_ff_attr")"
-  privatize_lib "$ff_out/lib/libfastfetch.a" "$derived/libfastfetch.a" \
-    "$_arch" "$_ld_platform" "$_min_ver" \
-    _fastfetch_main
-  echo "Privatized $derived/libfastfetch.a (from $ff_out)"
-
-  # openssh: privatize libssh-inprocess.a to avoid collisions with libssh2 and
-  # neovim (_chachapoly_*, _xmalloc, _xcalloc, _log_init, _match_user, etc.)
-  _ssh_attr="openssh-ios"
-  case "$_sdk" in
-    *simulator*) _ssh_attr="openssh-ios-sim" ;;
-  esac
-  if ssh_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_ssh_attr" 2>/dev/null)" \
-     && [ -f "$ssh_out/lib/libssh-inprocess.a" ]; then
-    privatize_lib "$ssh_out/lib/libssh-inprocess.a" "$derived/libssh-inprocess.a" \
-      "$_arch" "$_ld_platform" "$_min_ver" \
-      _ssh_main _ssh_keygen_main _scp_main _wwn_openssh_keygen_real_main
-    echo "Privatized $derived/libssh-inprocess.a (from $ssh_out)"
+  if [ -n "${WAWONA_ZSH_LIB:-}" ] && [ -f "${WAWONA_ZSH_LIB}" ]; then
+    cp -f "${WAWONA_ZSH_LIB}" "$derived/libwawona-zsh.a"
+    echo "Using WAWONA_ZSH_LIB=$WAWONA_ZSH_LIB"
   else
-    echo "error: failed to realize $FLAKE_REF#$_ssh_attr (libssh-inprocess.a required for iOS link)" >&2
-    exit 1
+    zsh_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_zsh_attr")"
+    privatize_lib "$zsh_out/lib/libwawona-zsh.a" "$derived/libwawona-zsh.a" \
+      "$_arch" "$_ld_platform" "$_min_ver" \
+      _wawona_zsh_main
+    echo "Privatized $derived/libwawona-zsh.a (from $zsh_out)"
   fi
+
+  # neovim/fastfetch: linked on iOS/iPadOS (and eventually visionOS). Skip on
+  # tvOS/watchOS — mobile-platform-deps does not ship them there.
+  case "${TARGET_NAME:-}" in
+    Wawona-iOS|Wawona-iPadOS|Wawona-visionOS)
+      _nvim_attr="neovim-ios-device"
+      case "$_sdk" in
+        *simulator*) _nvim_attr="neovim-ios" ;;
+      esac
+      nvim_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_nvim_attr")"
+      privatize_lib "$nvim_out/lib/libwawona-neovim.a" "$derived/libwawona-neovim.a" \
+        "$_arch" "$_ld_platform" "$_min_ver" \
+        _wawona_nvim_main
+      echo "Privatized $derived/libwawona-neovim.a (from $nvim_out)"
+
+      _ff_attr="fastfetch-ios-device"
+      case "$_sdk" in
+        *simulator*) _ff_attr="fastfetch-ios" ;;
+      esac
+      ff_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_ff_attr")"
+      privatize_lib "$ff_out/lib/libfastfetch.a" "$derived/libfastfetch.a" \
+        "$_arch" "$_ld_platform" "$_min_ver" \
+        _fastfetch_main
+      echo "Privatized $derived/libfastfetch.a (from $ff_out)"
+      ;;
+    *)
+      echo "Skipping neovim/fastfetch privatize for ${TARGET_NAME:-unknown}"
+      ;;
+  esac
+
+  # Apple mobile SSH CLI is libwwn-ssh-cli.a from wwn-ssh (force_loaded via
+  # xcodegen store path). Never libssh-inprocess.a / OpenSSH on App Store targets.
 fi

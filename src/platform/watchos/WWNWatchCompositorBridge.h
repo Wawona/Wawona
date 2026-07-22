@@ -92,31 +92,4 @@ extern NSNotificationName const WWNWatchCompositorFrameReadyNotification;
 
 @end
 
-/// Objective-C bridge for watchOS settings persistence (NSUserDefaults-backed).
-@interface WWNWatchSettingsBridge : NSObject
-
-+ (instancetype)sharedBridge;
-
-@property(nonatomic, copy) NSString *renderer;
-@property(nonatomic, assign) BOOL forceSSD;
-@property(nonatomic, assign) BOOL autoScale;
-@property(nonatomic, assign) BOOL colorOperations;
-@property(nonatomic, copy) NSString *waylandDisplay;
-@property(nonatomic, copy) NSString *sshHost;
-@property(nonatomic, copy) NSString *sshUser;
-@property(nonatomic, assign) NSInteger sshPort;
-@property(nonatomic, copy) NSString *sshPassword;
-@property(nonatomic, copy) NSString *waypipeSSHPassword;
-@property(nonatomic, copy) NSString *logLevel;
-@property(nonatomic, copy) NSString *defaultInputProfile;
-@property(nonatomic, copy) NSString *defaultBundledAppID;
-@property(nonatomic, assign) BOOL defaultWaypipeEnabled;
-@property(nonatomic, assign) BOOL shakeToCloseEnabled;
-@property(nonatomic, assign) BOOL swipeBackToCloseEnabled;
-@property(nonatomic, assign) BOOL hasCompletedWelcome;
-
-- (void)synchronize;
-
-@end
-
 NS_ASSUME_NONNULL_END

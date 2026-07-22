@@ -10,7 +10,7 @@
 |----------|-----------|-------------|--------|
 | **macOS** | OpenSSH process spawn | IOSurface → Metal | Working |
 | **iOS** | libssh2 in-process | IOSurface → Metal | Built, integrated |
-| **Android** | Dropbear SSH (fork/exec) | SHM → Vulkan | Working |
+| **Android** | OpenSSH portable (fork/exec `--ssh-bin`) | SHM → Vulkan | Working |
 
 ---
 
@@ -155,14 +155,14 @@ Adds:
 
 ## Android Implementation
 
-- **Dropbear SSH** (lightweight client) bundled as static ARM64 executable
+- **OpenSSH portable** client bundled as `libssh_bin.so` / `libssh_keygen_bin.so` / `libscp_bin.so` (wwn-ssh; replaces Dropbear)
 - SSH binaries (`libssh_bin.so`, `libsshpass_bin.so`) in `jniLibs/arm64-v8a/`
 - `extractNativeLibs=true` in AndroidManifest.xml
 - `resolve_ssh_binary_paths()` uses `dladdr()` to find native lib dir
 - Waypipe Rust backend exposes `waypipe_main()` for JNI
 - SSH bridge thread: `fork()` → `exec(dbclient)` with `SSHPASS` env
 
-**Key difference from iOS:** Android uses fork/exec (Dropbear); iOS uses libssh2 in-process.
+**Key difference from iOS:** Android uses fork/exec OpenSSH (`--ssh-bin`); Apple mobile uses libssh2 in-process (CLI + streamlocal).
 
 ---
 
@@ -170,4 +170,4 @@ Adds:
 
 - **macOS**: OpenSSH spawn, IOSurface zero-copy
 - **iOS**: `nix build .#waypipe-ios` succeeds; libssh2 streamlocal transport; static FFmpeg/video
-- **Android**: Dropbear + waypipe_main from JNI; working
+- **Android**: OpenSSH `--ssh-bin` + waypipe_main from JNI; working

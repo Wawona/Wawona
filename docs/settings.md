@@ -74,7 +74,8 @@ SwiftUI does **not** implement global settings on macOS, iOS, or watchOS. On wat
 | **Nested Compositors** | `nestedCompositorsSupport` / `NestedCompositorsSupport` | Switch | On | All | Support nested Wayland compositors |
 | **Multiple Clients** | `multipleClients` / `MultipleClients` | Switch | On (macOS), Off (iOS/Android) | All | Allow multiple Wayland clients simultaneously |
 | **Shake to Exit Machine** | `wawona.pref.shakeToCloseEnabled` | Switch | On | iOS, Android, watchOS | When enabled, shake shows a confirmation before closing the active machine session |
-| **Swipe Back to Exit Machine** | `wawona.pref.swipeBackToCloseEnabled` | Switch | On | iOS, Android, watchOS | When enabled, back/swipe/menu shows a confirmation before closing the active session |
+| **Long-press Menu to Exit Machine** | `wawona.pref.shakeToCloseEnabled` (same key) | Switch | On | tvOS | Siri Remote has no shake API; hold Menu/Back (~1s) confirms session exit. Short Menu sends Escape to the Wayland client |
+| **Swipe Back to Exit Machine** | `wawona.pref.swipeBackToCloseEnabled` | Switch | On | iOS, Android, watchOS | When enabled, edge swipe back asks before closing the active session (not used on tvOS) |
 | **Per-machine shake override** | `runtimeOverrides.shakeToCloseEnabled` | Optional bool | inherit global | All | Machine editor / override sheet |
 | **Per-machine swipe-back override** | `runtimeOverrides.swipeBackToCloseEnabled` | Optional bool | inherit global | All | Machine editor / override sheet |
 
@@ -112,11 +113,50 @@ SwiftUI does **not** implement global settings on macOS, iOS, or watchOS. On wat
 |---------|-----|------|---------|-------------|
 | **SSH Host** | `SSHHost` / `waypipeSSHHost` | Text | (empty) | Remote host IP or hostname |
 | **SSH User** | `SSHUser` / `waypipeSSHUser` | Text | (empty) | SSH username |
-| **Auth Method** | `SSHAuthMethod` / `sshAuthMethod` | Dropdown | password | Password or Public Key |
+| **SSH Port** | `SSHPort` / `waypipeSSHPort` | Text | 22 | SSH port (Test SSH + waypipe honor this) |
+| **Auth Method** | `SSHAuthMethod` / `WaypipeSSHAuthMethod` / `sshAuthMethod` | Dropdown | password | Password or Public Key (namespaces stay synced) |
 | **Password** | `SSHPassword` / `waypipeSSHPassword` | Password | (empty) | SSH password (when Auth = Password) |
-| **Key Path** | `SSHKeyPath` / `sshKeyPath` | Text | ~/.ssh/id_ed25519 (macOS) | Path to private key |
-| **Key Passphrase** | `SSHKeyPassphrase` / `sshKeyPassphrase` | Password | (empty) | Passphrase for encrypted key |
+| **Key Type** | `SSHKeyType` / `sshKeyType` | Dropdown | ed25519 | Algorithm for Generate Key (`ed25519` / `ecdsa` / `rsa`) |
+| **Generate Key** | (action) | Button | — | Invokes platform `ssh-keygen`; writes Documents/ssh (Apple) or filesDir/ssh (Android); sets `SSHKeyPath` **and** `WaypipeSSHKeyPath`; dual-syncs Machine apply |
+| **Import GPG SSH Key** | (action) | Button | — | Pair a GPG Authentication key exported as OpenSSH via `gpg --export-ssh-key` (or any OpenSSH/PEM private key). macOS may also use gpg-agent as `ssh-agent`. |
+| **Key Path** | `SSHKeyPath` / `WaypipeSSHKeyPath` / `sshKeyPath` | Text | ~/.ssh/id_ed25519 (macOS) | Path to private key (dual-namespace sync) |
+| **Key Passphrase** | `SSHKeyPassphrase` / `WaypipeSSHKeyPassphrase` / `sshKeyPassphrase` | Password | (empty) | Passphrase for encrypted key (used by Generate Key `-N` and auth) |
 | **Enable SSH** | `waypipeSSHEnabled` | Switch | On | Use SSH transport for Waypipe |
+
+**Hard requirement:** every Apple target (incl. watchOS/tvOS/visionOS) and Android can generate **ed25519 / ecdsa / rsa** from Settings GUI **and** from the in-app PTY (`ssh-keygen` via wwn-zsh → `ssh_keygen_main` / OpenSSH). Empty passphrase → OpenSSH `openssh-key-v1` (GPG-export compatible). Non-empty → encrypted private key (Apple: PKCS#8; Android/macOS OpenSSH: native). Public key auth syncs across Machines via `applyMachineToRuntimePrefs` (`SSH*` ↔ `WaypipeSSH*`).
+
+Apple mobile terminal/Settings keygen uses **libssh2 CLI** (`libwwn-ssh-cli.a`). Android uses **OpenSSH portable** jniLibs. Never OpenSSH-inprocess on Apple mobile. GnuPG itself is not bundled on mobile — pair with `gpg --export-ssh-key` on a host that has GPG.
+
+---
+
+## Desktop Replacement (macOS + Android only)
+
+Never shown on iOS / iPadOS / tvOS / watchOS / visionOS. Canonical behavior:
+[`iland-mode-a-b-desktop.md`](./iland-mode-a-b-desktop.md).
+
+### macOS (`NSUserDefaults`)
+
+| Setting | Key | Type | Default | Description |
+|---------|-----|------|---------|-------------|
+| SIP status (info) | (runtime `WWNSipStatus`) | Info | — | `csrutil status` classify; Mode B needs Disabled or PartiallyDisabled |
+| Enable Desktop Replacement | `DesktopReplacementEnabled` | Switch | Off | Mode B when SIP allows; refused/cleared if SIP blocks or Mode B dylib missing |
+| Desktop Machine | `DesktopReplacementMachineId` | Popup | — | Nested Weston native machine only |
+| App Bridge (anowaW) | `AnowaWEnabled` | Switch | Off | ScreenCaptureKit + Accessibility into nested Weston |
+| Enable Lockscreen Replacement | `LockscreenReplacementEnabled` | Switch | Off | Greeter before Desktop |
+| Lockscreen Machine | `LockscreenReplacementMachineId` | Popup | — | gtkgreet / gtklock / similar |
+
+Mode B loads bundled `libwayland-mac.dylib` only from
+`wawona-macos-desktop-host` builds. Store-safe `wawona-macos` stays Mode A.
+
+### Android (`SharedPreferences`)
+
+| Setting | Key | Description |
+|---------|-----|-------------|
+| Desktop enabled | `wawona.desktop.enabled` | HOME / launcher role |
+| Desktop machine | `wawona.desktop.machineId` | Nested Weston native only |
+| App Bridge | `wawona.anowaW.enabled` | Mirror apps into nested desktop |
+| Power mode | `wawona.anowaW.powerMode` | Shizuku/root vs rootless baseline (no SIP) |
+| Lockscreen | `wawona.lockscreen.*` | Greeter machine before desktop |
 
 ---
 

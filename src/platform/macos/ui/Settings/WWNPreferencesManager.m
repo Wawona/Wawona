@@ -91,6 +91,10 @@ NSString *const kWWNPrefsDesktopReplacementEnabled =
 NSString *const kWWNPrefsDesktopReplacementMachineId =
     @"DesktopReplacementMachineId";
 NSString *const kWWNPrefsAnowaWEnabled = @"AnowaWEnabled";
+NSString *const kWWNPrefsLockscreenReplacementEnabled =
+    @"LockscreenReplacementEnabled";
+NSString *const kWWNPrefsLockscreenReplacementMachineId =
+    @"LockscreenReplacementMachineId";
 
 static NSString *WWNPreferredSharedRuntimeDir(void) {
   return [WWNPreferencesManager preferredSharedRuntimeDir];
@@ -318,6 +322,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
     kWWNPrefsMachineSessionThumbnailsEnabled : @YES,
     // Desktop Replacement (macOS Mode B; off by default, SIP-gated)
     kWWNPrefsDesktopReplacementEnabled : @NO,
+    kWWNPrefsLockscreenReplacementEnabled : @NO,
     kWWNPrefsDesktopReplacementMachineId : @"",
     kWWNPrefsAnowaWEnabled : @NO,
     // Waypipe
@@ -508,8 +513,12 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
   [[NSUserDefaults standardUserDefaults]
       setBool:enabled
        forKey:kWWNPrefsForceServerSideDecorations];
+  // Keep the Swift mirror key in sync so MachineSettings / WawonaPreferences
+  // and the ObjC compositor path never disagree.
+  [[NSUserDefaults standardUserDefaults] setBool:enabled
+                                          forKey:@"wawona.pref.forceSSD"];
 
-  // Post notification for hot-reload
+  // Post notification for hot-reload (bridge + any UI observers).
   [[NSNotificationCenter defaultCenter]
       postNotificationName:kWWNForceSSDChangedNotification
                     object:self];
@@ -1355,6 +1364,10 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
   }
   [[NSUserDefaults standardUserDefaults] setInteger:clamped
                                              forKey:kWWNPrefsSSHPort];
+  // Keep waypipe port string in sync for Android/JNI host:port paths.
+  [[NSUserDefaults standardUserDefaults]
+      setObject:[NSString stringWithFormat:@"%ld", (long)clamped]
+         forKey:@"WaypipeSSHPort"];
 }
 
 - (NSInteger)sshAuthMethod {
@@ -1365,6 +1378,10 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 - (void)setSshAuthMethod:(NSInteger)method {
   [[NSUserDefaults standardUserDefaults] setInteger:method
                                              forKey:kWWNPrefsSSHAuthMethod];
+  // Keep WaypipeSSH* namespace in sync (Settings + Machines runtime).
+  [[NSUserDefaults standardUserDefaults]
+      setInteger:method
+          forKey:kWWNPrefsWaypipeSSHAuthMethod];
 }
 
 // Helper methods for preference storage
@@ -1398,6 +1415,9 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 - (void)setSshKeyPath:(NSString *)keyPath {
   [[NSUserDefaults standardUserDefaults] setObject:keyPath
                                             forKey:kWWNPrefsSSHKeyPath];
+  [[NSUserDefaults standardUserDefaults]
+      setObject:keyPath ?: @""
+         forKey:kWWNPrefsWaypipeSSHKeyPath];
 }
 
 - (NSString *)sshKeyPassphrase {
@@ -1406,6 +1426,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 
 - (void)setSshKeyPassphrase:(NSString *)passphrase {
   [self setSecureValue:passphrase forKey:kWWNPrefsSSHKeyPassphrase];
+  [self setWaypipeSSHKeyPassphrase:passphrase];
 }
 
 @end

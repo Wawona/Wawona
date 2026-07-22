@@ -3,7 +3,8 @@
   buildFn,
   toolchains,
   simulator ? false,
-  # mobile: iOS/iPadOS (full stack). tv: tvOS. watch: watchOS (no waypipe). vision: visionOS.
+  # mobile: iOS/iPadOS (full stack). tv: tvOS. watch: watchOS. vision: visionOS.
+  # All Apple mobile variants: libssh2 + waypipe remote (never OpenSSH).
   variant ? "mobile",
   extras ? {},
 }:
@@ -16,21 +17,26 @@ let
       lz4 = buildFn "lz4" { inherit simulator; };
       zlib = buildFn "zlib" { inherit simulator; };
       libssh2 = buildFn "libssh2" { inherit simulator; };
+      # In-process OpenSSH-shaped CLI (ssh_main / ssh_keygen_main / scp_main).
+      # Never OpenSSH / libssh-inprocess.a on Apple mobile.
+      "ssh-cli" = buildFn "ssh-cli" { inherit simulator; };
       mbedtls = buildFn "mbedtls" { inherit simulator; };
       openssl = buildFn "openssl" { inherit simulator; };
       ffmpeg = buildFn "ffmpeg" { inherit simulator; };
       foot = buildFn "foot" { inherit simulator; };
       sshpass = buildFn "sshpass" { inherit simulator; };
     }
-    // lib.optionalAttrs (variant == "mobile" || variant == "tv") {
+    # Apple mobile family: libssh2 + ssh-cli only (never OpenSSH).
+    # OpenSSH ships on macOS via macos.nix; Android uses OpenSSH portable.
+    # waypipe on every Apple mobile variant that advertises Remote in the
+    # platform-targets matrix (phone/tv/watch/vision).
+    // lib.optionalAttrs (
+      variant == "mobile" || variant == "tv" || variant == "watch" || variant == "vision"
+    ) {
       waypipe = buildFn "waypipe" { inherit simulator; };
-      # In-process OpenSSH client. Without this, iosDeps.openssh is null,
-      # opensshInprocessLdflags (xcodegen.nix) is empty, and the ssh_main weak
-      # symbol resolves to NULL so `ssh` always reports NOT_HANDLED in the
-      # in-process dispatcher (Residual F). Building it links libssh-inprocess.a
-      # which exports _ssh_main / _ssh_keygen_main for wawona-dispatch.
-      openssh = buildFn "openssh" { inherit simulator; };
     };
+  # tv/watch: shm/pixman only — no ANGLE/Vulkan (platform-targets matrix).
+  allowGpu = variant == "mobile" || variant == "vision";
   base =
     {
       xkbcommon = buildFn "xkbcommon" { inherit simulator; };
@@ -38,13 +44,24 @@ let
       libwayland = buildFn "libwayland" { inherit simulator; };
       epoll-shim = buildFn "epoll-shim" { inherit simulator; };
       pixman = buildFn "pixman" { inherit simulator; };
-      weston = buildFn "weston" { inherit simulator; enableGlClients = true; };
+      weston = buildFn "weston" {
+        inherit simulator;
+        enableGlClients = allowGpu;
+      };
       weston-simple-shm = buildFn "weston-simple-shm" { inherit simulator; };
-  # Unified archive: Settings can switch Wayland/Pixman vs iland DRM/GL at runtime.
-      "weston-compositor" = buildFn "weston-compositor" { inherit simulator; enableIlandDrm = true; };
+      # Unified archive: Settings can switch Wayland/Pixman vs iland DRM/GL at
+      # runtime on GPU platforms only.
+      "weston-compositor" = buildFn "weston-compositor" {
+        inherit simulator;
+        enableIlandDrm = allowGpu;
+      };
     }
-    // lib.optionalAttrs (variant == "mobile" || variant == "tv" || variant == "watch") networkStack
-    // lib.optionalAttrs (variant == "mobile" || variant == "vision") {
+    # Full network stack (libssh2 + waypipe + compression) on all Apple mobile
+    # variants that support Remote. visionOS shares the same libssh2 path.
+    // lib.optionalAttrs (
+      variant == "mobile" || variant == "tv" || variant == "watch" || variant == "vision"
+    ) networkStack
+    // lib.optionalAttrs allowGpu {
       iland = buildFn "iland" { inherit simulator; };
       angle = buildFn "angle" { inherit simulator; };
       kmscube = buildFn "kmscube" { inherit simulator; };
@@ -71,15 +88,12 @@ let
         neovim = buildFn "neovim" { inherit simulator; };
         "neovim-rootfs" = buildFn "neovim-rootfs" { inherit simulator; };
         # wwn-niri: in-process nested compositor (libniri.a + niri_main C ABI).
-        # wwn-niri fuzzel stack (Mod+D launcher spawned in-process on iOS).
+        # wwn-niri fuzzel stack (Mod+D launcher spawned in-process).
+        # fuzzel uses fork/exec — not available on tvOS; keep off tv/watch.
         "cairo-gobject" = buildFn "cairo-gobject" { inherit simulator; };
         niri = buildFn "niri" { inherit simulator; };
         fuzzel = buildFn "fuzzel" { inherit simulator; };
-      }
-    // lib.optionalAttrs (variant == "vision") {
-      libssh2 = buildFn "libssh2" { inherit simulator; };
-      openssl = buildFn "openssl" { inherit simulator; };
-    };
+      };
 in
 base
 // (mobileToytoolkitDeps { inherit buildFn simulator; })

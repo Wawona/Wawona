@@ -1,4 +1,5 @@
 #import "WWNWatchSettingsInterfaceController.h"
+#import "WWNWatchSettingsBridge.h"
 #import "WWNWatchCompositorBridge.h"
 
 static NSString *const kWWNWatchSettingsSectionKey = @"section";
@@ -80,6 +81,7 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
 
 - (void)awakeWithContext:(id)context {
     [super awakeWithContext:context];
+    [[self bridge] reloadFromDefaults];
     self.sectionTitle = [(NSDictionary *)context objectForKey:kWWNWatchSettingsSectionKey] ?: @"Settings";
     [self setTitle:self.sectionTitle];
     self.rows = [self buildRowsForSection:self.sectionTitle];

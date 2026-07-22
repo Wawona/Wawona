@@ -75,11 +75,22 @@ object WawonaNative {
     external fun nativePointerEnter(x: Double, y: Double, timestampMs: Int)
     external fun nativePointerLeave(timestampMs: Int)
     external fun nativeKeyboardFocus(hasFocus: Boolean)
+    /** Ask focused toplevel to close (`xdg_toplevel.close`). */
+    external fun nativeRequestActiveWindowClose(): Boolean
+    /** True once after a client MinimizeRequested; consumed on read. */
+    external fun nativeConsumeMinimizeRequested(): Boolean
+    external fun nativeSetWindowActivated(windowId: Long, active: Boolean)
     external fun nativeGetFocusedWindowTitle(): String
     /** Push text copied on the native side (ClipboardManager) into the compositor so clients can paste it. */
     external fun nativeSetClipboardText(text: String)
     /** Pop text a Wayland client just copied, or null if nothing changed since the last poll. */
     external fun nativePollClipboardText(): String?
+    /** True when a Wayland client has committed zwp_text_input_v3.enable (IME routing). */
+    external fun nativeTextInputIsEnabled(): Boolean
+    /** Soft OSK should expand: committed TI or terminal-focus synthesis. */
+    external fun nativeTextEntryWanted(): Boolean
+    /** Fills [hint, purpose] from committed zwp_text_input_v3.content_type. */
+    external fun nativeGetTextInputContentType(outHintPurpose: IntArray)
     /** Returns capture_id if pending, else 0. Fills outWidthHeight with [width, height]. */
     external fun nativeGetPendingScreencopy(outWidthHeight: IntArray): Long
     external fun nativeScreencopyComplete(captureId: Long, pixels: ByteArray)
@@ -93,6 +104,8 @@ object WawonaNative {
         sshHost: String,
         sshUser: String,
         sshPassword: String,
+        sshKeyPath: String,
+        sshAuthMethod: Int,
         remoteCommand: String,
         compress: String,
         threads: Int,
@@ -135,5 +148,12 @@ object WawonaNative {
     external fun nativeIsMobileVmRunning(): Boolean
 
     external fun nativeTestPing(host: String, port: Int, timeoutMs: Int): String
-    external fun nativeTestSSH(host: String, user: String, password: String, port: Int): String
+    external fun nativeTestSSH(
+        host: String,
+        user: String,
+        password: String,
+        port: Int,
+        keyPath: String,
+        authMethod: Int
+    ): String
 }

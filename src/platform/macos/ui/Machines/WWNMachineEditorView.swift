@@ -174,6 +174,122 @@ struct WWNMachineEditorView: View {
   }
 
   var body: some View {
+    #if os(tvOS)
+    tvosEditorBody
+    #else
+    desktopMobileEditorBody
+    #endif
+  }
+
+  #if os(tvOS)
+  /// Form-based editor: navigation-link pickers and large focusable rows for Siri Remote.
+  private var tvosEditorBody: some View {
+    NavigationStack {
+      Form {
+        Section {
+          TextField("Display Name", text: $name)
+          Picker("Type", selection: $type) {
+            machineTypeOptions
+          }
+          .pickerStyle(.navigationLink)
+          Toggle("Show Session Thumbnail", isOn: $machineThumbnailEnabled)
+        } header: {
+          Text("Connection Profile")
+        } footer: {
+          Text("tvOS supports Native and Remote (SSH) machines only.")
+        }
+
+        if type == kWWNMachineTypeNative {
+          Section("Wayland Client") {
+            NavigationLink {
+              WWNNativeClientPickerView(
+                selectedClientId: $selectedClientId,
+                customCommand: $customCommand
+              )
+            } label: {
+              HStack {
+                Text("Bundled Client")
+                Spacer()
+                Text(nativeClientSummary)
+                  .foregroundStyle(.secondary)
+                  .lineLimit(1)
+              }
+            }
+          }
+        }
+
+        if isRemote {
+          Section("Remote SSH") {
+            TextField("Host", text: $sshHost)
+            TextField("User", text: $sshUser)
+            TextField("Port", text: $sshPort)
+            SecureField("Password", text: $sshPassword)
+            TextField("Remote Command", text: $remoteCommand)
+          }
+
+          Section("Waypipe") {
+            Picker("Compress", selection: $waypipeCompress) {
+              Text("None").tag("none")
+              Text("LZ4").tag("lz4")
+              Text("Zstd").tag("zstd")
+            }
+            .pickerStyle(.navigationLink)
+            Toggle("Debug", isOn: $waypipeDebug)
+            Toggle("Login Shell", isOn: $waypipeLoginShell)
+            Toggle("XWayland", isOn: $waypipeXwls)
+          }
+
+          Section("Command Preview") {
+            Text(previewCommand)
+              .font(.system(.caption, design: .monospaced))
+              .foregroundStyle(.secondary)
+          }
+        }
+
+        Section {
+          Toggle("Auto Scale", isOn: $autoScale)
+          Toggle("Respect Safe Area", isOn: $respectSafeArea)
+          Toggle("Universal Clipboard", isOn: $universalClipboard)
+          Button("Open Wawona Settings…") {
+            WWNPreferences.shared().show(nil)
+          }
+        } header: {
+          Text("Display")
+        }
+
+        Section {
+          Toggle("Long-press Menu to Exit Machine", isOn: $shakeToCloseEnabled)
+        } header: {
+          Text("Session Exit")
+        } footer: {
+          Text(
+            "Siri Remote has no shake API. Short Menu/Back sends Escape to the "
+              + "Wayland client. Long-press Menu (~1s) confirms leaving the session "
+              + "when this is enabled (same preference key as Shake to Exit on iPhone)."
+          )
+        }
+      }
+      // Default tvOS Form chrome is glass over the Machines grid — unreadable at 10ft.
+      // Note: `.scrollContentBackground` is unavailable on tvOS; opaque background is enough.
+      .background {
+        Color(white: 0.07).ignoresSafeArea()
+      }
+      .navigationTitle(title)
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) {
+          Button("Cancel") { dismiss() }
+        }
+        ToolbarItem(placement: .confirmationAction) {
+          Button("Save", action: save)
+        }
+      }
+    }
+    .preferredColorScheme(.dark)
+    .presentationBackground(Color(white: 0.07))
+  }
+  #endif
+
+  private var desktopMobileEditorBody: some View {
     NavigationStack {
       ScrollView {
         VStack(alignment: .leading, spacing: 16) {
@@ -210,8 +326,6 @@ struct WWNMachineEditorView: View {
             Toggle("Shake to Exit Machine", isOn: $shakeToCloseEnabled)
             Toggle("Swipe Back to Exit Machine", isOn: $swipeBackToCloseEnabled)
           }
-
-
 
           if type == kWWNMachineTypeVirtualMachine {
             virtualMachineSection
@@ -310,8 +424,10 @@ struct WWNMachineEditorView: View {
     Text("Native").tag(kWWNMachineTypeNative)
     Text("SSH + Waypipe").tag(kWWNMachineTypeSSHWaypipe)
     Text("SSH Terminal").tag(kWWNMachineTypeSSHTerminal)
+    #if !os(tvOS) && !os(watchOS)
     Text("Virtual Machine").tag(kWWNMachineTypeVirtualMachine)
     Text("Container").tag(kWWNMachineTypeContainer)
+    #endif
   }
 
   // MARK: - Native Client Section
@@ -396,6 +512,19 @@ struct WWNMachineEditorView: View {
           SecureField("Optional", text: $sshKeyPassphrase)
             .textFieldStyle(.roundedBorder)
         }
+        Button("Generate Key (ed25519)") {
+          var err: NSError?
+          if let path = WWNSSHKeygen.generateKeyType(
+            "ed25519", passphrase: sshKeyPassphrase, error: &err
+          ) {
+            sshKeyPath = path
+            sshAuthMethod = 1
+          }
+        }
+        .buttonStyle(.bordered)
+        Text("Also: Import GPG SSH key via Settings → SSH (gpg --export-ssh-key).")
+          .font(.caption)
+          .foregroundStyle(.secondary)
       }
       labeledField(isWaypipe ? "Remote Command" : "SSH Command") {
         TextField(isWaypipe ? "weston-simple-shm" : "bash -l", text: $remoteCommand)
@@ -774,18 +903,28 @@ struct WWNMachineEditorView: View {
     } else {
       overrides["RenderMacOSPointer"] = renderMacOSPointer
     }
+    #if os(tvOS)
+    // Desktop window chrome is unusable on the 10-foot UI; never persist SSD/GPU stack.
+    overrides["ForceServerSideDecorations"] = false
+    overrides["VulkanDriver"] = "none"
+    overrides["OpenGLDriver"] = "none"
+    overrides["DmabufEnabled"] = false
+    overrides["ColorOperations"] = false
+    overrides["TouchInputType"] = "Touchpad"
+    #else
     overrides["ForceServerSideDecorations"] = forceServerSideDecorations
-    overrides["AutoScale"] = autoScale
-    #if os(iOS) || os(tvOS)
-    overrides["RespectSafeArea"] = respectSafeArea
-    #endif
     overrides["TouchInputType"] = touchInputType
-    overrides["SwapCmdWithAlt"] = swapCmdWithAlt
-    overrides["UniversalClipboard"] = universalClipboard
     overrides["VulkanDriver"] = vulkanDriver
     overrides["OpenGLDriver"] = openGLDriver
     overrides["DmabufEnabled"] = dmabufEnabled
     overrides["ColorOperations"] = colorOperations
+    #endif
+    overrides["AutoScale"] = autoScale
+    #if os(iOS) || os(tvOS)
+    overrides["RespectSafeArea"] = respectSafeArea
+    #endif
+    overrides["SwapCmdWithAlt"] = swapCmdWithAlt
+    overrides["UniversalClipboard"] = universalClipboard
     overrides["WaylandDisplayNumber"] = Int(waypipeDisplayNumber) ?? 0
     overrides["WaypipeCompress"] = waypipeCompress
     overrides["WaypipeCompressLevel"] = Int(waypipeCompressLevel) ?? 7
@@ -870,6 +1009,11 @@ private struct WWNNativeClientPickerView: View {
       .padding(16)
     }
     .navigationTitle("Wayland Client")
+    #if os(tvOS)
+    .background {
+      Color(white: 0.07).ignoresSafeArea()
+    }
+    #endif
   }
 
   @ViewBuilder

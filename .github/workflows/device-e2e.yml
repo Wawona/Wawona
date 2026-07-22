@@ -163,6 +163,9 @@ jobs:
           xcrun simctl bootstatus "$SIM_NAME" -b || xcrun simctl boot "$SIM_NAME" || true
           xcrun simctl bootstatus "$SIM_NAME"
           ./scripts/agent-device-smoke.sh ios-ci
+          # Sparse SSH PTY proof (libssh2 CLI): path-filtered Device gate tips.
+          echo "== iOS shell CLI (ssh -V / ssh-keygen) =="
+          ./scripts/agent-device-smoke.sh ios-shell-cli
 
       - name: Upload iOS screenshots
         if: always()
@@ -274,6 +277,8 @@ jobs:
             && export WAWONA_ANDROID_APK="$GITHUB_WORKSPACE/dist/Wawona.apk"
             && echo "== Android smoke (single attempt) =="
             && ./scripts/agent-device-smoke.sh android
+            && echo "== Android shell SSH (OpenSSH jniLibs) =="
+            && ./scripts/agent-device-smoke.sh android-shell-ssh
             && if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then echo "== Android fuzzel skipped on pull_request =="; else echo "== Android fuzzel (single attempt) ==" && ./scripts/agent-device-smoke.sh android-fuzzel; fi
 
       - name: Upload Android screenshots

@@ -58,8 +58,9 @@
     wwn-zsh.inputs.nixpkgs.follows = "nixpkgs";
     wwn-zsh.inputs.wwn-toolchain.follows = "wwn-toolchain";
     # SSH stack split out of wwn-toolchain: chooses the App-Store/Play
-    # compliant backend per platform (in-process OpenSSH + libssh2 on Apple
-    # mobile, Dropbear on Android, regular OpenSSH on macOS/Linux) + sshpass.
+    # compliant backend per platform (libssh2 CLI on Apple mobile — never
+    # OpenSSH; OpenSSH portable on Android; regular OpenSSH on macOS/Linux)
+    # + sshpass.
     wwn-ssh.url = "github:Wawona/wwn-ssh";
     wwn-ssh.inputs.nixpkgs.follows = "nixpkgs";
     wwn-ssh.inputs.rust-overlay.follows = "rust-overlay";
@@ -67,6 +68,7 @@
     wwn-waypipe.url = "github:Wawona/wwn-waypipe";
     wwn-waypipe.inputs.nixpkgs.follows = "nixpkgs";
     wwn-waypipe.inputs.wwn-toolchain.follows = "wwn-toolchain";
+    wwn-waypipe.inputs.wwn-ssh.follows = "wwn-ssh";
     wwn-anowaW.url = "github:Wawona/wwn-anowaW";
     wwn-anowaW.inputs.nixpkgs.follows = "nixpkgs";
     wwn-anowaW.inputs.wwn-toolchain.follows = "wwn-toolchain";
@@ -1253,8 +1255,9 @@ EOF
           "wawona-pty-ios-sim" = toolchains.buildForIOS "wawona-pty" { simulator = true; };
           zsh-ios = toolchains.buildForIOS "zsh" { };
           zsh-ios-sim = toolchains.buildForIOS "zsh" { simulator = true; };
-          openssh-ios = toolchains.buildForIOS "openssh" { };
-          openssh-ios-sim = toolchains.buildForIOS "openssh" { simulator = true; };
+          # Apple mobile: never ship OpenSSH / libssh-inprocess.a (libssh2 only).
+          libssh2-ios = toolchains.buildForIOS "libssh2" { };
+          libssh2-ios-sim = toolchains.buildForIOS "libssh2" { simulator = true; };
           niri-ios = toolchains.buildForIOS "niri" { };
           niri-ios-sim = toolchains.buildForIOS "niri" { simulator = true; };
           fuzzel-ios = toolchains.buildForIOS "fuzzel" { };

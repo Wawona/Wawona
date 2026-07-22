@@ -69,12 +69,10 @@ rec {
     "src/platform/macos/ui/Machines/WWNMachinesCoordinator.h"
     "src/platform/macos/ui/Machines/WWNMachineSessionBridge.m"
     "src/platform/macos/ui/Machines/WWNMachineSessionBridge.h"
-    # anowaW App Bridge lifecycle owner. Compiles everywhere; the actual
-    # ScreenCaptureKit/CGEvent bridge is gated behind __has_include of the
-    # wwn-anowaW header (AnowawMacBridge.h), so non-macOS / un-vendored builds
-    # get a safe stub. macOS links libanowaw.a + anowaw_mac_shim.o (see macos.nix).
-    "src/platform/macos/ui/Machines/WWNAnowaWController.m"
-    "src/platform/macos/ui/Machines/WWNAnowaWController.h"
+    # Header-only platform gates used by WWNMachineSessionBridge.m (must be in
+    # the staged source list — nix copies only explicitly listed paths).
+    "src/platform/macos/ui/Machines/WWNPlatformCapabilities.h"
+    # anowaW App Bridge — macOS-only (added in macos.nix sources, not shared).
     # VM/container runners + jitless QEMU engine (shared macOS/iOS; each file
     # carries TARGET_OS_OSX branches). Referenced by WWNMachineSessionBridge.m.
     "src/platform/macos/ui/Machines/WWNVirtualMachineRunner.m"
@@ -97,8 +95,7 @@ rec {
     "src/platform/macos/ui/Settings/WWNPreferences.h"
     "src/platform/macos/ui/Settings/WWNPreferencesManager.m"
     "src/platform/macos/ui/Settings/WWNPreferencesManager.h"
-    "src/platform/macos/ui/Settings/WWNSipStatus.m"
-    "src/platform/macos/ui/Settings/WWNSipStatus.h"
+    # WWNSipStatus — macOS-only (Desktop Replacement SIP helper; see macos.nix).
     "src/platform/macos/ui/About/WWNAboutPanel.m"
     "src/platform/macos/ui/About/WWNAboutPanel.h"
     "src/platform/macos/ui/Settings/WWNSettingsDefines.h"
@@ -106,8 +103,6 @@ rec {
     "src/platform/macos/ui/Settings/WWNSettingsModel.h"
     "src/platform/macos/ui/Settings/WWNWaypipeRunner.m"
     "src/platform/macos/ui/Settings/WWNWaypipeRunner.h"
-    "src/platform/macos/ui/Settings/WWNSSHClient.m"
-    "src/platform/macos/ui/Settings/WWNSSHClient.h"
     "src/platform/macos/ui/Settings/WWNSettingsSplitViewController.m"
     "src/platform/macos/ui/Settings/WWNSettingsSplitViewController.h"
     "src/platform/macos/ui/Settings/WWNSettingsSidebarViewController.m"

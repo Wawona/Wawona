@@ -23,6 +23,9 @@ enum WawonaUIContractAdapters {
             sshUser: profile.sshUser,
             sshPortText: String(profile.sshPort),
             sshPassword: profile.sshPassword,
+            sshAuthMethod: profile.sshAuthMethod,
+            sshKeyPath: profile.sshKeyPath,
+            sshKeyPassphrase: profile.sshKeyPassphrase,
             remoteCommand: profile.remoteCommand,
             inputProfile: profile.runtimeOverrides.inputProfile ?? "direct",
             bundledAppID: profile.runtimeOverrides.bundledAppID ?? "",
@@ -51,6 +54,9 @@ enum WawonaUIContractAdapters {
             profile.sshUser = state.sshUser.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
             profile.sshPort = MachineEditorValidation.normalizedPort(from: state)
             profile.sshPassword = state.sshPassword
+            profile.sshAuthMethod = state.sshAuthMethod
+            profile.sshKeyPath = state.sshKeyPath.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+            profile.sshKeyPassphrase = state.sshKeyPassphrase
             profile.remoteCommand = state.remoteCommand.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
         }
 

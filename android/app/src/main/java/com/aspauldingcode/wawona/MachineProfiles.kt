@@ -47,18 +47,6 @@ enum class MachineStatus {
         }
 }
 
-enum class MachineScopeFilter(val label: String) {
-    ALL("All Machines"),
-    LOCAL("Local"),
-    REMOTE("Remote");
-
-    fun matches(type: MachineType): Boolean = when (this) {
-        ALL -> true
-        LOCAL -> type.isLocal
-        REMOTE -> !type.isLocal
-    }
-}
-
 data class MachineCapabilities(
     val launchSupported: Boolean,
     val isStub: Boolean,

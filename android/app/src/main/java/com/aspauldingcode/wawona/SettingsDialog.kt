@@ -240,7 +240,10 @@ private fun SettingsSectionContent(
             SettingsTab.GRAPHICS -> GraphicsSection(prefs)
             SettingsTab.CONNECTION -> ConnectionSection(prefs, localIpAddress, context, SettingsTab.CONNECTION.accentColor)
             SettingsTab.LOCAL_SHELL -> LocalShellSection(context, SettingsTab.LOCAL_SHELL.accentColor)
-            SettingsTab.DESKTOP -> DesktopSection(prefs, context, SettingsTab.DESKTOP.accentColor)
+            SettingsTab.DESKTOP -> {
+                DesktopSection(prefs, context, SettingsTab.DESKTOP.accentColor)
+                LockscreenSection(prefs, SettingsTab.DESKTOP.accentColor)
+            }
             SettingsTab.ADVANCED -> AdvancedSection(prefs)
             SettingsTab.WAYPIPE -> WaypipeSection(prefs, context, SettingsTab.WAYPIPE.accentColor)
             SettingsTab.SSH -> SSHSection(prefs, SettingsTab.SSH.accentColor)
@@ -528,12 +531,13 @@ private fun DesktopSection(prefs: SharedPreferences, context: Context, accent: C
         ) {
             Text(
                 "Render native Android apps as windows inside the nested Wayland " +
-                    "desktop. Requires the selected desktop machine to be a local, " +
-                    "nested Weston compositor.\n\n" +
-                    "Baseline (Play-safe): your own Wawona surfaces are embedded and " +
-                    "the screen can be mirrored with your consent. Power Mode uses " +
-                    "Shizuku or root to embed any installed app — this is not " +
-                    "Play-compliant and must be enabled deliberately.",
+                    "desktop (waypipe-rs mirror). Requires a local nested Weston " +
+                    "desktop machine.\n\n" +
+                    "Rootless / baseline (Play-safe): own Wawona surfaces + consented " +
+                    "MediaProjection mirroring — no SIP, no root.\n\n" +
+                    "Power Mode (Shizuku or root): embed any installed app with " +
+                    "privileged input. Auto-falls back to rootless if Shizuku/root " +
+                    "is unavailable. Not Play-compliant.",
                 Modifier.padding(14.dp),
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -645,6 +649,107 @@ private fun DesktopSection(prefs: SharedPreferences, context: Context, accent: C
                                 DesktopReplacement.setPowerModeEnabled(prefs, it)
                             },
                         )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LockscreenSection(prefs: SharedPreferences, accent: Color) {
+    var enabled by remember { mutableStateOf(LockscreenReplacement.isEnabled(prefs)) }
+    var selectedMachineId by remember { mutableStateOf(LockscreenReplacement.lockscreenMachineId(prefs)) }
+    val profiles = remember { MachineProfileStore.loadProfiles(prefs) }
+    val lockMachines = remember(profiles) { LockscreenReplacement.eligibleMachines(profiles) }
+    var pickerExpanded by remember { mutableStateOf(false) }
+
+    SettingsSectionHeader("Lockscreen Replacement", Icons.Filled.Lock, accent)
+    Surface(
+        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = accent.copy(alpha = 0.12f),
+    ) {
+        Text(
+            "Run a local greeter/lock machine (gtkgreet, gtklock, …) before the " +
+                "Desktop Replacement session. Unlock resumes the configured desktop " +
+                "machine when Desktop Replacement is enabled. macOS + Android only.",
+            Modifier.padding(14.dp),
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+    SettingsGroup(accent) {
+        Surface(
+            onClick = {
+                enabled = !enabled
+                LockscreenReplacement.setEnabled(prefs, enabled)
+            },
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.45f),
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Enable Lockscreen Replacement",
+                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Local Native greeter before desktop session.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = enabled, onCheckedChange = {
+                    enabled = it
+                    LockscreenReplacement.setEnabled(prefs, it)
+                })
+            }
+        }
+    }
+    if (enabled) {
+        if (lockMachines.isEmpty()) {
+            Text(
+                "No greeter/lock Native machines found. Create one with gtkgreet or gtklock.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 8.dp),
+            )
+        } else {
+            val selected = lockMachines.firstOrNull { it.id == selectedMachineId }
+            SettingsGroup(accent) {
+                ExposedDropdownMenuBox(
+                    expanded = pickerExpanded,
+                    onExpandedChange = { pickerExpanded = it },
+                ) {
+                    OutlinedTextField(
+                        value = selected?.name ?: "Select lockscreen machine",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Lockscreen Machine") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = pickerExpanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth(),
+                    )
+                    ExposedDropdownMenu(
+                        expanded = pickerExpanded,
+                        onDismissRequest = { pickerExpanded = false },
+                    ) {
+                        lockMachines.forEach { machine ->
+                            DropdownMenuItem(
+                                text = { Text(machine.name) },
+                                onClick = {
+                                    selectedMachineId = machine.id
+                                    LockscreenReplacement.setLockscreenMachineId(prefs, machine.id)
+                                    pickerExpanded = false
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -917,8 +1022,8 @@ private fun SSHSection(prefs: SharedPreferences, accent: Color) {
 
     SettingsInfoRow(
         title = "SSH Library",
-        value = "v2025.89",
-        description = "Dropbear SSH client used for connections",
+        value = "OpenSSH",
+        description = "OpenSSH portable client (wwn-ssh) for terminal + waypipe",
         icon = Icons.Filled.Lock
     )
 
@@ -964,33 +1069,97 @@ private fun SSHSection(prefs: SharedPreferences, accent: Color) {
         SettingsPasswordInputItem(prefs, "waypipeSSHPassword", "SSH Password",
             "Password for SSH authentication", Icons.Filled.Password, "")
     } else {
+        SettingsDropdownItem(prefs, "sshKeyType", "Key Type",
+            "Algorithm for Generate Key", Icons.Filled.VpnKey, "ed25519",
+            listOf("ed25519", "ecdsa", "rsa"))
         SettingsTextInputItem(prefs, "sshKeyPath", "Private Key Path",
-            "Path to SSH private key (e.g., /sdcard/.ssh/id_ed25519)", Icons.Filled.Key,
+            "Path to SSH private key (synced to waypipeSSHKeyPath)", Icons.Filled.Key,
             "", KeyboardType.Text)
         SettingsTextInputItem(prefs, "sshKeyPassphrase", "Key Passphrase",
             "Passphrase for encrypted private key (leave empty if none)", Icons.Filled.Password,
             "", KeyboardType.Password)
     }
 
-    Spacer(Modifier.height(12.dp))
+    Spacer(modifier.height(12.dp))
 
     // Test buttons -- read prefs FRESH at click time (not cached at composition)
     SettingsSectionHeader("Diagnostics", Icons.Filled.NetworkCheck, accent)
     val scope = rememberCoroutineScope()
     var pingResult by remember { mutableStateOf<String?>(null) }
     var sshResult by remember { mutableStateOf<String?>(null) }
+    var keygenResult by remember { mutableStateOf<String?>(null) }
     var isPinging by remember { mutableStateOf(false) }
     var isSshTesting by remember { mutableStateOf(false) }
+    var isKeygen by remember { mutableStateOf(false) }
+    val ctxGen = LocalContext.current
+
+    if (authMethod.value != "password") {
+        val gpgImportLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.GetContent()
+        ) { uri: Uri? ->
+            if (uri == null) return@rememberLauncherForActivityResult
+            scope.launch {
+                keygenResult = withContext(Dispatchers.IO) {
+                    try {
+                        androidImportGpgSshKey(ctxGen, prefs, uri)
+                    } catch (e: Exception) {
+                        "FAIL: ${e.message}"
+                    }
+                }
+            }
+        }
+        OutlinedButton(
+            onClick = {
+                isKeygen = true
+                keygenResult = null
+                scope.launch {
+                    keygenResult = withContext(Dispatchers.IO) {
+                        try {
+                            androidGenerateSshKey(ctxGen, prefs)
+                        } catch (e: Exception) {
+                            "FAIL: ${e.message}"
+                        }
+                    }
+                    isKeygen = false
+                }
+            },
+            enabled = !isKeygen,
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+        ) {
+            Icon(Icons.Filled.Key, null, Modifier.size(18.dp))
+            Spacer(modifier.width(6.dp))
+            Text(if (isKeygen) "Generating…" else "Generate Key")
+        }
+        OutlinedButton(
+            onClick = { gpgImportLauncher.launch("*/*") },
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+        ) {
+            Icon(Icons.Filled.Upload, null, Modifier.size(18.dp))
+            Spacer(modifier.width(6.dp))
+            Text("Import GPG SSH Key")
+        }
+        Text(
+            "Import OpenSSH private keys from `gpg --export-ssh-key` (or id_*). " +
+                "Generate Key supports ed25519 / ecdsa / rsa; passphrase optional.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(vertical = 4.dp)
+        )
+        keygenResult?.let { TestResultCard(it, ctxGen) }
+    }
 
     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(
             onClick = {
                 val host = prefs.getString("waypipeSSHHost", "") ?: ""
+                val port = (prefs.getString("waypipeSSHPort", "22") ?: "22").toIntOrNull() ?: 22
                 if (host.isBlank()) { pingResult = "FAIL: SSH Host is empty"; return@OutlinedButton }
                 isPinging = true; pingResult = null
                 scope.launch {
                     pingResult = withContext(Dispatchers.IO) {
-                        try { WawonaNative.nativeTestPing(host, 22, 5000) }
+                        try { WawonaNative.nativeTestPing(host, port, 5000) }
                         catch (e: Exception) { "FAIL: ${e.message}" }
                     }
                     isPinging = false
@@ -1010,13 +1179,21 @@ private fun SSHSection(prefs: SharedPreferences, accent: Color) {
                 val host = prefs.getString("waypipeSSHHost", "") ?: ""
                 val user = prefs.getString("waypipeSSHUser", "") ?: ""
                 val pass = prefs.getString("waypipeSSHPassword", "") ?: ""
+                val port = (prefs.getString("waypipeSSHPort", "22") ?: "22").toIntOrNull() ?: 22
+                val keyPath = prefs.getString("waypipeSSHKeyPath", null)
+                    ?: prefs.getString("sshKeyPath", "") ?: ""
+                val auth = prefs.getString("sshAuthMethod", "password") ?: "password"
+                val authMethodInt = if (auth == "publickey" || auth == "1") 1 else 0
                 if (host.isBlank()) { sshResult = "FAIL: SSH Host is empty"; return@OutlinedButton }
                 if (user.isBlank()) { sshResult = "FAIL: SSH User is empty"; return@OutlinedButton }
                 isSshTesting = true; sshResult = null
                 scope.launch {
                     sshResult = withContext(Dispatchers.IO) {
-                        try { WawonaNative.nativeTestSSH(host, user, pass, 22) }
-                        catch (e: Exception) { "FAIL: ${e.message}" }
+                        try {
+                            WawonaNative.nativeTestSSH(
+                                host, user, pass, port, keyPath, authMethodInt
+                            )
+                        } catch (e: Exception) { "FAIL: ${e.message}" }
                     }
                     isSshTesting = false
                 }
@@ -1661,4 +1838,74 @@ fun AdvancedWaypipeDialog(prefs: SharedPreferences, onDismiss: () -> Unit) {
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } }
     )
+}
+
+private fun androidImportGpgSshKey(
+    context: Context,
+    prefs: SharedPreferences,
+    uri: Uri
+): String {
+    val sshDir = File(context.filesDir, "ssh")
+    if (!sshDir.exists()) sshDir.mkdirs()
+    val name = uri.lastPathSegment?.substringAfterLast('/')?.ifBlank { null } ?: "id_gpg_ssh"
+    var dest = File(sshDir, name)
+    if (dest.exists()) {
+        dest = File(sshDir, "${name}_${System.currentTimeMillis()}")
+    }
+    context.contentResolver.openInputStream(uri)?.use { input ->
+        dest.outputStream().use { output -> input.copyTo(output) }
+    } ?: return "FAIL: could not read selected file"
+    val text = dest.readText()
+    if (!text.contains("PRIVATE KEY") && !text.contains("OPENSSH PRIVATE KEY")) {
+        dest.delete()
+        return "FAIL: not an OpenSSH/PEM private key (use gpg --export-ssh-key)"
+    }
+    dest.setReadable(false, false)
+    dest.setWritable(false, false)
+    dest.setReadable(true, true)
+    dest.setWritable(true, true)
+    prefs.edit()
+        .putString("sshKeyPath", dest.absolutePath)
+        .putString("waypipeSSHKeyPath", dest.absolutePath)
+        .putString("sshAuthMethod", "publickey")
+        .apply()
+    return "OK: Imported GPG/OpenSSH key → ${dest.absolutePath}"
+}
+
+private fun androidGenerateSshKey(context: Context, prefs: SharedPreferences): String {
+    val keyType = prefs.getString("sshKeyType", "ed25519") ?: "ed25519"
+    val type = when (keyType) {
+        "ecdsa", "rsa", "ed25519" -> keyType
+        else -> "ed25519"
+    }
+    val sshDir = File(context.filesDir, "ssh")
+    if (!sshDir.exists()) sshDir.mkdirs()
+    var keyFile = File(sshDir, "id_$type")
+    if (keyFile.exists()) {
+        keyFile = File(sshDir, "id_${type}_${System.currentTimeMillis()}")
+    }
+    val nativeDir = context.applicationInfo.nativeLibraryDir
+    val keygen = File(nativeDir, "libssh_keygen_bin.so")
+    if (!keygen.exists()) {
+        return "FAIL: ssh-keygen not found at ${keygen.absolutePath}"
+    }
+    val pass = prefs.getString("sshKeyPassphrase", "") ?: ""
+    val pb = ProcessBuilder(
+        keygen.absolutePath, "-t", type, "-f", keyFile.absolutePath, "-N", pass, "-q"
+    )
+    pb.redirectErrorStream(true)
+    val proc = pb.start()
+    val out = proc.inputStream.bufferedReader().readText()
+    val code = proc.waitFor()
+    if (code != 0) {
+        return "FAIL: ssh-keygen exited $code\n$out"
+    }
+    prefs.edit()
+        .putString("sshKeyPath", keyFile.absolutePath)
+        .putString("waypipeSSHKeyPath", keyFile.absolutePath)
+        .putString("sshAuthMethod", "publickey")
+        .apply()
+    val pub = File(keyFile.absolutePath + ".pub")
+    val pubText = if (pub.exists()) pub.readText().trim() else ""
+    return "OK: Generated ${keyFile.absolutePath}\n$pubText"
 }

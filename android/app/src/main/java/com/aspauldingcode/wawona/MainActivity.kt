@@ -57,6 +57,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -376,12 +377,16 @@ fun WawonaApp(
     }
 
     fun launchNativeClient(clientId: String): Boolean {
-        if (isNativeClientRunning(clientId)) {
-            return true
-        }
+        // Always spawn a new instance. Multiple Machines profiles may share the
+        // same client id (e.g. two weston-terminal sessions) and must not
+        // short-circuit into a single shared process.
         val launched = when (clientId) {
             "weston-simple-shm" -> WawonaNative.nativeRunWestonSimpleSHM()
-            "weston" -> WawonaNative.nativeRunWeston()
+            "weston" -> {
+                // Nested Weston keeps a shared socket — reuse if already up.
+                if (WawonaNative.nativeIsWestonRunning()) true
+                else WawonaNative.nativeRunWeston()
+            }
             "weston-terminal" -> WawonaNative.nativeRunWestonTerminal()
             else -> WawonaNative.nativeRunBundledClient(clientId)
         }
@@ -408,6 +413,21 @@ fun WawonaApp(
                     WawonaNative.nativeStopBundledClient()
                 }
             }
+        }
+    }
+
+    fun otherConnectedNativeSessionsUse(
+        clientId: String,
+        exceptMachineId: String
+    ): Boolean {
+        return sessionOrchestrator.sessions.any { session ->
+            session.machineId != exceptMachineId &&
+                (session.state == MachineSessionState.CONNECTED ||
+                    session.state == MachineSessionState.CONNECTING) &&
+                profiles.firstOrNull { it.id == session.machineId }
+                    ?.takeIf { it.type == MachineType.NATIVE }
+                    ?.nativeLauncher
+                    ?.ifBlank { "weston-terminal" } == clientId
         }
     }
 
@@ -494,6 +514,8 @@ fun WawonaApp(
     }
 
     fun tearDownActiveSession(profile: MachineProfile?) {
+        // Prefer xdg_toplevel.close before force-stopping the session (#52).
+        runCatching { WawonaNative.nativeRequestActiveWindowClose() }
         when (profile?.type) {
             MachineType.NATIVE -> stopNativeClient(profile.nativeLauncher.ifBlank { "weston-terminal" })
             MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> stopWaypipe()
@@ -763,6 +785,10 @@ fun WawonaApp(
         val wpSshUser = prefs.getString("waypipeSSHUser", "") ?: ""
         val wpRemoteCommand = prefs.getString("waypipeRemoteCommand", "") ?: ""
         val sshPassword = prefs.getString("waypipeSSHPassword", "") ?: ""
+        val sshKeyPath = prefs.getString("waypipeSSHKeyPath", null)
+            ?: prefs.getString("sshKeyPath", "") ?: ""
+        val authRaw = prefs.getString("sshAuthMethod", "password") ?: "password"
+        val sshAuthMethod = if (authRaw == "publickey" || authRaw == "1") 1 else 0
         val remoteCmd = wpRemoteCommand.ifEmpty { "weston-simple-shm" }
         val compress = prefs.getString("waypipeCompress", "lz4") ?: "lz4"
         val threads = (prefs.getString("waypipeThreads", "0") ?: "0").toIntOrNull() ?: 0
@@ -780,8 +806,8 @@ fun WawonaApp(
                 return true
             }
             val launched = WawonaNative.nativeRunWaypipe(
-                wpSshEnabled, wpSshHost, wpSshUser, sshPassword,
-                remoteCmd, compress, threads, video,
+                wpSshEnabled, wpSshHost, wpSshUser, sshPassword, sshKeyPath,
+                sshAuthMethod, remoteCmd, compress, threads, video,
                 debug, oneshot || wpSshEnabled, noGpu,
                 loginShell, titlePrefix, secCtx
             )
@@ -882,7 +908,14 @@ fun WawonaApp(
             }
             if (AnowawSession.isActive) AnowawSession.detach()
             when (profile.type) {
-                MachineType.NATIVE -> stopNativeClient(profile.nativeLauncher)
+                MachineType.NATIVE -> {
+                    val launcher = profile.nativeLauncher.ifBlank { "weston-terminal" }
+                    // JNI stop is still client-wide; only tear down when no
+                    // other connected machine is using the same launcher.
+                    if (!otherConnectedNativeSessionsUse(launcher, profile.id)) {
+                        stopNativeClient(launcher)
+                    }
+                }
                 MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> stopWaypipe()
                 MachineType.VM, MachineType.CONTAINER -> AndroidMobileVmRunner.stop()
             }
@@ -1017,6 +1050,21 @@ fun WawonaApp(
 
     var selectedClientTabId by remember { mutableStateOf("shell") }
     var clientTabs by remember { mutableStateOf(listOf(ClientTab("shell", "Shell"))) }
+
+    // Client MinimizeRequested → return to Machines (fill-primary host has no iconify).
+    LaunchedEffect(inSessionUi) {
+        if (!inSessionUi) return@LaunchedEffect
+        while (true) {
+            kotlinx.coroutines.delay(250)
+            if (!inSessionUi) break
+            if (runCatching { WawonaNative.nativeConsumeMinimizeRequested() }.getOrDefault(false)) {
+                val profile = activeProfile()
+                captureActiveThumbnail(profile)
+                showMachinesHome = true
+            }
+        }
+    }
+
     LaunchedEffect(inSessionUi) {
         if (!inSessionUi) {
             clientTabs = emptyList()
@@ -1075,17 +1123,44 @@ fun WawonaApp(
         }
     }
 
+    // Soft OSK follows text_entry_wanted (committed TI or terminal synthesis),
+    // same policy as iOS. Respect PIP / external-keyboard parking.
+    val keyboardUiModeLatest = rememberUpdatedState(keyboardUiMode)
+    LaunchedEffect(inSessionUi, hardwareKeyboardActive, nativeRuntimeReady) {
+        if (!inSessionUi || !nativeRuntimeReady) return@LaunchedEffect
+        var lastWanted: Boolean? = null
+        while (true) {
+            if (hardwareKeyboardActive) {
+                kotlinx.coroutines.delay(200)
+                continue
+            }
+            val wanted = try {
+                WawonaNative.nativeTextEntryWanted()
+            } catch (_: Exception) {
+                false
+            }
+            if (lastWanted == null || wanted != lastWanted) {
+                lastWanted = wanted
+                val mode = keyboardUiModeLatest.value
+                if (mode.isPip() || mode == KeyboardUiMode.HIDDEN_EXTERNAL) {
+                    // User parked keyboard — don't yank it open/closed.
+                } else if (wanted && mode != KeyboardUiMode.EXPANDED) {
+                    keyboardUiMode = KeyboardUiMode.EXPANDED
+                    surfaceViewRef?.restartInputForContentType()
+                } else if (!wanted && mode == KeyboardUiMode.EXPANDED) {
+                    keyboardUiMode = KeyboardUiMode.ACCESSORY_ONLY
+                }
+            }
+            kotlinx.coroutines.delay(100)
+        }
+    }
+
+    // IME visibility only maintains Expanded when already Expanded (user/text_entry_wanted).
+    // Never promote ACCESSORY_ONLY → EXPANDED from imeVisible — that forced Gboard open for
+    // demos like weston-simple-shm that only need the accessory bar.
     LaunchedEffect(imeBottom, keyboardUiMode, inSessionUi, hardwareKeyboardActive) {
         if (!inSessionUi || hardwareKeyboardActive) return@LaunchedEffect
-        if (imeVisible && !keyboardUiMode.isPip() &&
-            keyboardUiMode != KeyboardUiMode.HIDDEN_EXTERNAL
-        ) {
-            if (keyboardUiMode != KeyboardUiMode.EXPANDED) {
-                keyboardUiMode = KeyboardUiMode.EXPANDED
-            }
-        } else if (keyboardUiMode.isPip() && imeVisible) {
-            keyboardUiMode = KeyboardUiMode.EXPANDED
-        } else if (keyboardUiMode == KeyboardUiMode.EXPANDED && !imeVisible) {
+        if (keyboardUiMode == KeyboardUiMode.EXPANDED && !imeVisible) {
             showNativeKeyboard()
         }
     }

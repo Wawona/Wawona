@@ -3,6 +3,7 @@
 #import "../Machines/WWNMachineProfileStore.h"
 #if TARGET_OS_OSX
 #import "WWNSipStatus.h"
+#import "../Machines/WWNDesktopReplacementController.h"
 #endif
 #import "../../platform/macos/WWNCompositorBridge.h"
 #import "../../../../util/WWNLog.h"
@@ -45,8 +46,10 @@
 #endif
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <libssh2.h>
+#import "WWNSSHKeygen.h"
 #else
 #import "../../platform/macos/WWNRootfsProvider.h"
+#import "WWNSSHKeygen.h"
 #if !TARGET_OS_TV
 #import "../../platform/macos/WWNRootfsICloudSync.h"
 #endif
@@ -170,6 +173,9 @@
 - (void)pingHost;
 - (void)pingSSHHost;
 - (void)testSSHConnection;
+- (void)generateSSHKey;
+- (void)importGPGSSHKey;
+- (void)syncSSHKeyPrefsFromUI;
 - (void)debouncedReloadData;
 #if (TARGET_OS_IPHONE || TARGET_OS_OSX)
 - (void)showLocalShellHelp;
@@ -727,6 +733,13 @@ static UIImage *WWNAboutLogo(void) {
 #endif
          @"Allow multiple Wayland clients to connect simultaneously.")];
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+#if TARGET_OS_TV
+  [advancedItems addObject:ITEM(@"Long-press Menu to Exit Machine",
+                                @"wawona.pref.shakeToCloseEnabled", WSettingSwitch, @YES,
+                                @"Hold Menu/Back on the Siri Remote (~1s) to confirm closing the "
+                                @"active machine session. Short Menu sends Escape to the client. "
+                                @"(tvOS has no shake API.)")];
+#else
   [advancedItems addObject:ITEM(@"Shake to Exit Machine", @"wawona.pref.shakeToCloseEnabled",
                                 WSettingSwitch, @YES,
                                 @"Shake the device to confirm closing the active machine session.")];
@@ -734,6 +747,7 @@ static UIImage *WWNAboutLogo(void) {
                                 @"wawona.pref.swipeBackToCloseEnabled", WSettingSwitch, @YES,
                                 @"When enabled, edge swipe back asks before closing the active "
                                 @"machine session. When off, swipe back closes immediately.")];
+#endif
 #endif
   advanced.items = advancedItems;
   [sects addObject:advanced];
@@ -754,11 +768,19 @@ static UIImage *WWNAboutLogo(void) {
 
     NSMutableArray *desktopItems = [NSMutableArray array];
 
+    // If the user previously enabled Desktop but SIP was re-enabled, clear the
+    // pref so Mode B cannot engage until they fix SIP again.
+    BOOL clearedForSip = [[WWNDesktopReplacementController sharedController]
+        reconcilePrefsWithCurrentSip];
+
     // System Integrity Protection status — Mode B requires SIP disabled or
     // partially disabled (`csrutil enable --without debug`). Surface the current
     // state so the user knows whether desktop replacement can actually engage.
     WWNSipStatusType sipStatus = [WWNSipStatus current];
     BOOL sipAllowsDesktop = [WWNSipStatus allowsDesktopReplacement:sipStatus];
+    if (clearedForSip) {
+      sipAllowsDesktop = NO;
+    }
     [desktopItems
         addObject:ITEM(@"System Integrity Protection", nil, WSettingInfo,
                        [WWNSipStatus describe:sipStatus],
@@ -834,6 +856,60 @@ static UIImage *WWNAboutLogo(void) {
                        @"permissions (Developer ID, not the Mac App Store). "
                        @"Requires the desktop machine above to be a nested "
                        @"Weston compositor.")];
+
+    // ── Lockscreen Replacement (#103) — macOS + Android only ─────────────
+    [desktopItems
+        addObject:ITEM(@"Enable Lockscreen Replacement",
+                       @"LockscreenReplacementEnabled", WSettingSwitch, @NO,
+                       @"Run a local greeter/lock machine (gtkgreet, gtklock, …) "
+                       @"before the Desktop Replacement session. Never available "
+                       @"on iOS/iPadOS/tvOS/watchOS/visionOS.")];
+    NSMutableArray<NSString *> *lockNames = [NSMutableArray array];
+    NSMutableArray<NSString *> *lockIds = [NSMutableArray array];
+    for (WWNMachineProfile *p in allProfiles) {
+      if (![p.type isEqualToString:kWWNMachineTypeNative])
+        continue;
+      NSDictionary *so =
+          [p.settingsOverrides isKindOfClass:[NSDictionary class]]
+              ? p.settingsOverrides
+              : @{};
+      NSString *cid = [so[@"NativeClientId"] isKindOfClass:[NSString class]]
+                          ? so[@"NativeClientId"]
+                          : @"";
+      NSString *cmd = [so[@"NativeCustomCommand"] isKindOfClass:[NSString class]]
+                          ? so[@"NativeCustomCommand"]
+                          : @"";
+      NSString *script =
+          [p.customScript isKindOfClass:[NSString class]] ? p.customScript : @"";
+      NSString *launcher =
+          [[NSString stringWithFormat:@"%@ %@ %@", cid, cmd, script]
+              lowercaseString];
+      BOOL greeter = [launcher containsString:@"gtkgreet"] ||
+                     [launcher containsString:@"gtklock"] ||
+                     [launcher containsString:@"greetd"] ||
+                     [launcher containsString:@"wlgreet"] ||
+                     [launcher containsString:@"lock"];
+      if (!greeter)
+        continue;
+      [lockNames addObject:p.name.length ? p.name : @"Unnamed Lock"];
+      [lockIds addObject:p.machineId ?: @""];
+    }
+    if (lockIds.count > 0) {
+      WWNSettingItem *lockMachine = ITEM(
+          @"Lockscreen Machine (greeter)", @"LockscreenReplacementMachineId",
+          WSettingPopup, lockIds.firstObject,
+          @"Local Native greeter/lock machine. Unlock handoff resumes the "
+          @"Desktop Replacement machine when Desktop is enabled.");
+      lockMachine.options = lockNames;
+      lockMachine.optionValues = lockIds;
+      [desktopItems addObject:lockMachine];
+    } else {
+      [desktopItems
+          addObject:ITEM(@"Lockscreen Machine", nil, WSettingInfo, @"None",
+                         @"Create a Native machine with gtkgreet/gtklock (or "
+                         @"similar) in Machine Configuration to enable "
+                         @"Lockscreen Replacement.")];
+    }
 
     desktop.items = desktopItems;
     [sects addObject:desktop];
@@ -1047,6 +1123,8 @@ static UIImage *WWNAboutLogo(void) {
                            @"Remote host address.")];
   [sshItems addObject:ITEM(@"SSH User", @"SSHUser", WSettingText, @"",
                            @"SSH username.")];
+  [sshItems addObject:ITEM(@"SSH Port", @"SSHPort", WSettingText, @"22",
+                           @"SSH port (1-65535).")];
   [sshItems addObject:sshAuthMethodItem];
 
   // Get current auth method to show appropriate nested options
@@ -1058,33 +1136,43 @@ static UIImage *WWNAboutLogo(void) {
     [sshItems addObject:ITEM(@"Password", @"SSHPassword", WSettingPassword, @"",
                              @"SSH password.")];
   } else {
-    // Public Key authentication
-#if TARGET_OS_IPHONE
-    // iOS: libssh2 - use key management instead of path
-    WWNSettingItem *keyInfoItem = ITEM(@"SSH Key", @"SSHKeyInfo", WSettingInfo,
-                                       @"", @"Tap to view or manage SSH keys.");
-    // Get the public key fingerprint or status
-    NSString *keyStatus = @"Not configured";
-    NSString *keyPath =
-        [[NSUserDefaults standardUserDefaults] stringForKey:@"SSHKeyPath"];
-    if (keyPath.length > 0) {
-      keyStatus = [keyPath lastPathComponent];
-    }
-    keyInfoItem.defaultValue = keyStatus;
-    [sshItems addObject:keyInfoItem];
+    // Public Key authentication — Generate / Import + path (synced to Waypipe*)
+    WWNSettingItem *keyTypeItem =
+        ITEM(@"Key Type", @"SSHKeyType", WSettingPopup, @"ed25519",
+             @"Algorithm for Generate Key (ed25519, ecdsa, rsa).");
+    keyTypeItem.options = @[ @"ed25519", @"ecdsa", @"rsa" ];
+    [sshItems addObject:keyTypeItem];
 
-    // Still allow setting a key path for advanced users (e.g., imported keys)
+    WWNSettingItem *genKeyBtn =
+        ITEM(@"Generate Key", @"SSHGenerateKey", WSettingButton, nil,
+             @"Create an OpenSSH-format key under Documents/ssh and set Key "
+             @"Path (also WaypipeSSHKeyPath).");
+    genKeyBtn.actionBlock = ^{
+      [weakSelf generateSSHKey];
+    };
+    [sshItems addObject:genKeyBtn];
+
+    WWNSettingItem *importGpgBtn =
+        ITEM(@"Import GPG SSH Key", @"SSHImportGPGKey", WSettingButton, nil,
+             @"Pair a GPG Authentication subkey: run gpg --export-ssh-key on a "
+             @"host with GnuPG, then import the OpenSSH private key here "
+             @"(also accepts id_ed25519 / id_rsa / id_ecdsa).");
+    importGpgBtn.actionBlock = ^{
+      [weakSelf importGPGSSHKey];
+    };
+    [sshItems addObject:importGpgBtn];
+
+#if TARGET_OS_IPHONE
     [sshItems addObject:ITEM(@"Key Path", @"SSHKeyPath", WSettingText, @"",
-                             @"Path to private key (relative to app documents "
-                             @"or absolute).")];
+                             @"Path to private key (Documents/ssh/… or "
+                             @"absolute). Synced to WaypipeSSHKeyPath.")];
 #else
-    // macOS: Use system SSH - allow key path
     [sshItems
         addObject:ITEM(@"Key Path", @"SSHKeyPath", WSettingText,
                        @"~/.ssh/id_ed25519",
-                       @"Path to private key file (e.g., ~/.ssh/id_ed25519).")];
+                       @"Path to private key (e.g. ~/.ssh/id_ed25519). Synced "
+                       @"to WaypipeSSHKeyPath.")];
 #endif
-    // Key passphrase (for encrypted keys)
     [sshItems
         addObject:
             ITEM(@"Key Passphrase", @"SSHKeyPassphrase", WSettingPassword, @"",
@@ -1891,6 +1979,8 @@ static UIImage *WWNAboutLogo(void) {
   NSString *keyPath = prefs.sshKeyPath;
   NSString *keyPassphrase = prefs.sshKeyPassphrase;
   NSInteger authMethod = prefs.sshAuthMethod;
+  NSInteger sshPort = prefs.sshPort > 0 ? prefs.sshPort : 22;
+  NSString *portStr = [NSString stringWithFormat:@"%ld", (long)sshPort];
 
   dispatch_async(
       dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
@@ -1903,7 +1993,8 @@ static UIImage *WWNAboutLogo(void) {
         hints.ai_family = AF_UNSPEC;
         hints.ai_socktype = SOCK_STREAM;
 
-        int gai = getaddrinfo([host UTF8String], "22", &hints, &res);
+        int gai = getaddrinfo([host UTF8String], [portStr UTF8String], &hints,
+                              &res);
         if (gai != 0 || !res) {
           resultTitle = @"DNS Lookup Failed";
           resultMessage =
@@ -1928,13 +2019,13 @@ static UIImage *WWNAboutLogo(void) {
 
         if (connect(sock, res->ai_addr, res->ai_addrlen) != 0) {
           resultTitle = @"Connection Failed";
-          resultMessage =
-              [NSString stringWithFormat:
-                            @"Could not connect to %@:22\n\n%s\n\nCheck that:\n"
-                            @"- The host address is correct\n"
-                            @"- SSH server is running on port 22\n"
-                            @"- You are on the same network",
-                            host, strerror(errno)];
+          resultMessage = [NSString
+              stringWithFormat:
+                  @"Could not connect to %@:%@\n\n%s\n\nCheck that:\n"
+                  @"- The host address is correct\n"
+                  @"- SSH server is running on the configured port\n"
+                  @"- You are on the same network",
+                  host, portStr, strerror(errno)];
           close(sock);
           freeaddrinfo(res);
           goto show_result;
@@ -2202,6 +2293,9 @@ static UIImage *WWNAboutLogo(void) {
         }
 
         [sshArgs addObject:@"-4"]; // IPv4 only for faster connection
+        NSInteger sshPort = prefs.sshPort > 0 ? prefs.sshPort : 22;
+        [sshArgs addObject:@"-p"];
+        [sshArgs addObject:[NSString stringWithFormat:@"%ld", (long)sshPort]];
 
         NSString *target = [NSString stringWithFormat:@"%@@%@", user, host];
         [sshArgs addObject:target];
@@ -2418,6 +2512,133 @@ static UIImage *WWNAboutLogo(void) {
       });
 #endif
 }
+
+- (void)syncSSHKeyPrefsFromUI {
+  WWNPreferencesManager *prefs = [WWNPreferencesManager sharedManager];
+  NSString *path = prefs.sshKeyPath ?: @"";
+  NSString *pass = prefs.sshKeyPassphrase ?: @"";
+  NSInteger method = prefs.sshAuthMethod;
+  prefs.waypipeSSHKeyPath = path;
+  prefs.waypipeSSHKeyPassphrase = pass;
+  prefs.waypipeSSHAuthMethod = method;
+  if (prefs.sshHost.length > 0)
+    prefs.waypipeSSHHost = prefs.sshHost;
+  if (prefs.sshUser.length > 0)
+    prefs.waypipeSSHUser = prefs.sshUser;
+  if (prefs.sshPassword.length > 0)
+    prefs.waypipeSSHPassword = prefs.sshPassword;
+}
+
+- (void)generateSSHKey {
+  WWNPreferencesManager *prefs = [WWNPreferencesManager sharedManager];
+  NSString *keyType =
+      [[NSUserDefaults standardUserDefaults] stringForKey:@"SSHKeyType"]
+          ?: @"ed25519";
+  NSString *passphrase = prefs.sshKeyPassphrase ?: @"";
+  NSError *err = nil;
+  NSString *keyPath = [WWNSSHKeygen generateKeyType:keyType
+                                         passphrase:passphrase
+                                              error:&err];
+  if (keyPath) {
+    [self syncSSHKeyPrefsFromUI];
+    self.sections = [self buildSections];
+    [self debouncedReloadData];
+    NSString *pubPath = [keyPath stringByAppendingString:@".pub"];
+    NSString *pub =
+        [NSString stringWithContentsOfFile:pubPath
+                                  encoding:NSUTF8StringEncoding
+                                     error:nil];
+    NSString *msg =
+        pub.length > 0
+            ? [NSString stringWithFormat:@"%@\n%@", keyPath, pub]
+            : keyPath;
+#if TARGET_OS_IPHONE
+    [self presentSafeAlertWithTitle:@"SSH Key Generated" message:msg];
+#else
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"SSH Key Generated";
+    alert.informativeText = msg;
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+#endif
+  } else {
+    NSString *detail = err.localizedDescription ?: @"ssh-keygen failed";
+#if TARGET_OS_IPHONE
+    [self presentSafeAlertWithTitle:@"Key Generation Failed" message:detail];
+#else
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Key Generation Failed";
+    alert.informativeText = detail;
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+#endif
+  }
+}
+
+- (void)importGPGSSHKey {
+  // Import OpenSSH-format private keys (including gpg --export-ssh-key output).
+#if TARGET_OS_IPHONE && TARGET_OS_TV
+  [self presentSafeAlertWithTitle:@"Import GPG SSH Key"
+                          message:@"On tvOS, paste or set Key Path to an "
+                                  @"OpenSSH-format private key under "
+                                  @"Documents/ssh (gpg --export-ssh-key)."];
+#elif TARGET_OS_IPHONE
+  UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController
+      alloc] initForOpeningContentTypes:@[ UTTypeData, UTTypeItem ]
+                                 asCopy:YES];
+  picker.allowsMultipleSelection = NO;
+  picker.delegate = (id)self;
+  [self presentViewController:picker animated:YES completion:nil];
+#else
+  NSOpenPanel *panel = [NSOpenPanel openPanel];
+  panel.canChooseFiles = YES;
+  panel.canChooseDirectories = NO;
+  panel.allowsMultipleSelection = NO;
+  panel.message =
+      @"Select an OpenSSH private key (gpg --export-ssh-key or id_*).";
+  if ([panel runModal] != NSModalResponseOK)
+    return;
+  NSURL *url = panel.URL;
+  if (!url)
+    return;
+  NSError *err = nil;
+  NSString *dest = [WWNSSHKeygen installOpenSSHPrivateKeyAtURL:url error:&err];
+  if (!dest) {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Import Failed";
+    alert.informativeText = err.localizedDescription ?: @"Could not import key";
+    [alert runModal];
+    return;
+  }
+  [self syncSSHKeyPrefsFromUI];
+  self.sections = [self buildSections];
+  [self debouncedReloadData];
+  NSAlert *ok = [[NSAlert alloc] init];
+  ok.messageText = @"GPG/OpenSSH Key Imported";
+  ok.informativeText = dest;
+  [ok runModal];
+#endif
+}
+
+#if TARGET_OS_IPHONE && !TARGET_OS_TV
+- (void)documentPicker:(UIDocumentPickerViewController *)controller
+    didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
+  (void)controller;
+  NSURL *url = urls.firstObject;
+  if (!url)
+    return;
+  NSError *err = nil;
+  NSString *dest = [WWNSSHKeygen installOpenSSHPrivateKeyAtURL:url error:&err];
+  if (!dest) {
+    [self presentSafeAlertWithTitle:@"Import Failed"
+                            message:err.localizedDescription ?: @"import failed"];
+    return;
+  }
+  [self syncSSHKeyPrefsFromUI];
+  self.sections = [self buildSections];
+  [self presentSafeAlertWithTitle:@"GPG/OpenSSH Key Imported" message:dest];
+}
+#endif
 
 - (void)pingSSHHost {
   WWNLog("UI", @"Ping SSH Host button pressed");
@@ -3768,6 +3989,36 @@ static UIImage *WWNAboutLogo(void) {
   if ([item.key isEqualToString:WWNRootfsICloudSyncPreferenceKey]) {
     [self handleLocalShellICloudSyncToggle:s.on];
     return;
+  }
+#endif
+#if TARGET_OS_OSX
+  if ([item.key isEqualToString:kWWNPrefsDesktopReplacementEnabled] && s.on) {
+    WWNSipStatusType sipStatus = [WWNSipStatus current];
+    if (![WWNSipStatus allowsDesktopReplacement:sipStatus]) {
+      s.on = NO;
+      [[NSUserDefaults standardUserDefaults]
+          setBool:NO
+           forKey:kWWNPrefsDesktopReplacementEnabled];
+      [self showDesktopReplacementSipHowTo];
+      return;
+    }
+    NSString *dylib = [[WWNDesktopReplacementController sharedController]
+        bundledDylibPath];
+    if (dylib.length == 0) {
+      s.on = NO;
+      [[NSUserDefaults standardUserDefaults]
+          setBool:NO
+           forKey:kWWNPrefsDesktopReplacementEnabled];
+      NSAlert *alert = [[NSAlert alloc] init];
+      alert.messageText = @"Mode B dylib not in this build";
+      alert.informativeText =
+          @"Desktop Replacement requires libwayland-mac.dylib from the "
+          @"desktop-host package (nix build .#wawona-macos-desktop-host). "
+          @"Store-safe builds stay on Mode A in-window present.";
+      alert.alertStyle = NSAlertStyleWarning;
+      [alert runModal];
+      return;
+    }
   }
 #endif
   [[NSUserDefaults standardUserDefaults] setBool:s.on forKey:item.key];

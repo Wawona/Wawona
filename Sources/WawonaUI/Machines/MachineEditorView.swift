@@ -12,6 +12,9 @@ struct MachineEditorView: View {
     @State var sshUser: String
     @State var sshPort: Int
     @State var sshPassword: String
+    @State var sshAuthMethod: Int
+    @State var sshKeyPath: String
+    @State var sshKeyPassphrase: String
     @State var remoteCommand: String
 
     let existingProfileId: String?
@@ -36,6 +39,9 @@ struct MachineEditorView: View {
         _sshUser = State(initialValue: state.sshUser)
         _sshPort = State(initialValue: MachineEditorValidation.normalizedPort(from: state))
         _sshPassword = State(initialValue: state.sshPassword)
+        _sshAuthMethod = State(initialValue: state.sshAuthMethod)
+        _sshKeyPath = State(initialValue: state.sshKeyPath)
+        _sshKeyPassphrase = State(initialValue: state.sshKeyPassphrase)
         _remoteCommand = State(initialValue: state.remoteCommand)
     }
 
@@ -58,6 +64,9 @@ struct MachineEditorView: View {
             sshUser: sshUser,
             sshPortText: String(normalizedPort),
             sshPassword: sshPassword,
+            sshAuthMethod: sshAuthMethod,
+            sshKeyPath: sshKeyPath,
+            sshKeyPassphrase: sshKeyPassphrase,
             remoteCommand: remoteCommand,
             inputProfile: base.inputProfile,
             bundledAppID: isNative ? selectedLauncherName : base.bundledAppID,
@@ -88,15 +97,9 @@ struct MachineEditorView: View {
                 Section("Profile") {
                     TextField("Name", text: $name)
                     Picker("Type", selection: $type) {
-                        #if os(iOS)
-                        ForEach(MachineType.allCases.filter { $0 != .container }, id: \.self) { t in
+                        ForEach(PlatformCapabilities.availableMachineTypes, id: \.self) { t in
                             Text(t.userFacingName).tag(t)
                         }
-                        #else
-                        ForEach(MachineType.allCases, id: \.self) { t in
-                            Text(t.userFacingName).tag(t)
-                        }
-                        #endif
                     }
                     .pickerStyle(.menu)
                 }
@@ -132,6 +135,16 @@ struct MachineEditorView: View {
                         SecureField("Password", text: $sshPassword)
                             .textContentType(.password)
                         TextField("Port", text: sshPortText)
+                            .wawonaTextFieldNoAutocaps()
+                            .autocorrectionDisabled()
+                        Picker("Auth", selection: $sshAuthMethod) {
+                            Text("Password").tag(0)
+                            Text("Public Key").tag(1)
+                        }
+                        TextField("Key Path", text: $sshKeyPath)
+                            .wawonaTextFieldNoAutocaps()
+                            .autocorrectionDisabled()
+                        SecureField("Key Passphrase", text: $sshKeyPassphrase)
                             .wawonaTextFieldNoAutocaps()
                             .autocorrectionDisabled()
                     }

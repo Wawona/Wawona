@@ -48,6 +48,11 @@ run_ios() {
   xcrun simctl bootstatus "$IOS_DEVICE" -b || xcrun simctl boot "$IOS_DEVICE" || true
   xcrun simctl bootstatus "$IOS_DEVICE"
 
+  # shellcheck source=scripts/lib/agent-device-ios-system-ui.sh
+  source "$ROOT/scripts/lib/agent-device-ios-system-ui.sh"
+  echo "== iOS: prepare system UI (disable pasteboard sync; keyboard tutorial prefs) =="
+  ios_prepare_system_ui
+
   if [[ -n "${WAWONA_IOS_APP:-}" ]]; then
     echo "== iOS: install $WAWONA_IOS_APP =="
     # Nix-store bundles are read-only; stage a writable copy for simctl.
@@ -78,6 +83,7 @@ run_ios() {
     agent-device open com.aspauldingcode.Wawona --relaunch "${ad_common[@]}"
   fi
   agent-device wait 2500 "${ad_common[@]}" || true
+  ios_dismiss_system_ui "${ad_common[@]}"
   agent-device snapshot -i "${ad_common[@]}" || true
   agent-device screenshot "$ARTIFACTS/ios-first-screen.png" "${ad_common[@]}" || true
 
@@ -99,6 +105,7 @@ run_ios() {
     agent-device wait 2500 "${ad_common[@]}" || true
   }
   ios_dismiss_welcome
+  ios_dismiss_system_ui "${ad_common[@]}"
 
   if ! agent-device wait 'id="wwn.machines.root"' 20000 "${ad_common[@]}" >/dev/null 2>&1 \
     && ! agent-device wait 'text="Machine Configuration"' 8000 "${ad_common[@]}" >/dev/null 2>&1 \
@@ -150,7 +157,12 @@ run_ios() {
     agent-device snapshot -i --raw "${ad_common[@]}" || true
     exit 1
   fi
-  agent-device wait 8000 "${ad_common[@]}" || true
+  agent-device wait 2500 "${ad_common[@]}" || true
+  # Allow Paste (host) + keyboard tutorial Continue (agent-device press).
+  # Use agent-device type/fill for keyboard input after this.
+  ios_dismiss_system_ui "${ad_common[@]}"
+  agent-device wait 5000 "${ad_common[@]}" || true
+  ios_dismiss_system_ui "${ad_common[@]}"
   agent-device screenshot "$ARTIFACTS/ios-weston-session.png" "${ad_common[@]}" || true
   agent-device close "${ad_common[@]}" || true
   # By default release the XCTest runner lease so a following ios-fuzzel lane can
@@ -354,6 +366,74 @@ run_fuzzel() {
   "$ROOT/scripts/agent-device-fuzzel-smoke.sh" "${WAWONA_FUZZEL_LANE:-fuzzel}"
 }
 
+run_ios_shell_cli() {
+  # Sparse Device-gate replay: libssh2 CLI in PTY (ssh -V / ssh-keygen).
+  # Prefer headless wwn-ssh matrix for routine CI; this proves dispatch in-app.
+  echo "== iOS shell CLI: agent-device replay wawona-ios-shell-cli.ad =="
+  mkdir -p "$ARTIFACTS"
+  stop_agent_device_daemons
+  source "$ROOT/scripts/lib/agent-device-ios-system-ui.sh"
+  ios_prepare_system_ui || true
+  agent-device prepare ios-runner || true
+  agent-device replay "$ROOT/.agent-device/wawona-ios-shell-cli.ad" \
+    --platform ios \
+    --device "${WAWONA_IOS_DEVICE:-iPhone 17 Pro}" \
+    --session wawona-ios-shell-cli
+  stop_agent_device_daemons
+}
+
+run_android_shell_ssh() {
+  # Sparse OpenSSH proof: APK ships libssh*_bin.so with OpenSSH_ banner.
+  # Emulator ABI may not exec aarch64; strings smoke is the portable gate.
+  echo "== Android shell SSH: OpenSSH jniLibs banner =="
+  local apk="${WAWONA_ANDROID_APK:-}"
+  if [[ -z "$apk" || ! -f "$apk" ]]; then
+    echo "WAWONA_ANDROID_APK missing; skip android-shell-ssh" >&2
+    return 0
+  fi
+  local tmp
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  unzip -l "$apk" | grep -E 'libssh(_keygen)?_bin\.so' >/dev/null || {
+    echo "FAIL: APK missing libssh_bin.so / libssh_keygen_bin.so" >&2
+    return 1
+  }
+  local found=0
+  while IFS= read -r path; do
+    unzip -p "$apk" "$path" >"$tmp/bin.so" 2>/dev/null || continue
+    if strings "$tmp/bin.so" | grep -q 'OpenSSH_'; then
+      found=1
+      echo "OK OpenSSH_ in $path"
+    fi
+    if strings "$tmp/bin.so" | grep -qi dropbear; then
+      echo "FAIL: Dropbear strings in $path" >&2
+      return 1
+    fi
+  done < <(unzip -Z1 "$apk" | grep -E 'libssh(_keygen)?_bin\.so$' || true)
+  [[ "$found" -eq 1 ]] || {
+    echo "FAIL: no OpenSSH_ banner in bundled ssh libs" >&2
+    return 1
+  }
+  # Optional on-device exec when a matching ABI binary is present.
+  local serial="${WAWONA_ANDROID_SERIAL:-}"
+  if [[ -z "$serial" ]]; then
+    serial="$(adb devices 2>/dev/null | awk 'NR>1 && $2=="device"{print $1; exit}')"
+  fi
+  if [[ -n "$serial" ]]; then
+    local so
+    so="$(adb -s "$serial" shell 'find /data/app /data/data/com.aspauldingcode.wawona -name libssh_bin.so 2>/dev/null | head -1' | tr -d '\r')"
+    if [[ -n "$so" ]]; then
+      echo "== Android: exec $so -V =="
+      adb -s "$serial" shell "\"$so\" -V" 2>&1 | tee "$ARTIFACTS/android-shell-ssh-V.txt" || true
+      if grep -q 'OpenSSH_' "$ARTIFACTS/android-shell-ssh-V.txt" 2>/dev/null; then
+        echo "OK on-device ssh -V"
+      else
+        echo "note: on-device -V skipped/unavailable (ABI); APK strings OK"
+      fi
+    fi
+  fi
+}
+
 case "$LANE" in
   ios) run_ios ;;
   # CI: chain smoke then fuzzel in one job (shared sim boot / app install).
@@ -372,7 +452,9 @@ case "$LANE" in
       stop_agent_device_daemons
     fi
     ;;
+  ios-shell-cli) run_ios_shell_cli ;;
   android) run_android ;;
+  android-shell-ssh) run_android_shell_ssh ;;
   fuzzel|android-fuzzel|ios-fuzzel|macos-fuzzel)
     chmod +x "$ROOT/scripts/agent-device-fuzzel-smoke.sh"
     "$ROOT/scripts/agent-device-fuzzel-smoke.sh" "$LANE"
@@ -383,7 +465,7 @@ case "$LANE" in
     run_fuzzel
     ;;
   *)
-    echo "usage: $0 [ios|ios-ci|android|fuzzel|android-fuzzel|ios-fuzzel|macos-fuzzel|all]" >&2
+    echo "usage: $0 [ios|ios-ci|ios-shell-cli|android|android-shell-ssh|fuzzel|android-fuzzel|ios-fuzzel|macos-fuzzel|all]" >&2
     exit 2
     ;;
 esac

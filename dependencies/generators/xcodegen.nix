@@ -73,12 +73,14 @@ let
   derivedRustLib = "$(DERIVED_FILE_DIR)/libwawona.a";
   derivedZshLib = "$(DERIVED_FILE_DIR)/libwawona-zsh.a";
   derivedNvimLib = "$(DERIVED_FILE_DIR)/libwawona-neovim.a";
-  derivedSshLib = "$(DERIVED_FILE_DIR)/libssh-inprocess.a";
+  derivedSshCliLib = "$(DERIVED_FILE_DIR)/libwwn-ssh-cli.a";
   derivedFfLib = "$(DERIVED_FILE_DIR)/libfastfetch.a";
   derivedGetprognameLib = "$(DERIVED_FILE_DIR)/libwawona-getprogname.a";
   # Prebuild copies and privatises (nmedit) the active SDK's archives here
   # (see scripts/xcode-prebuild.sh) so internal symbols don't collide.
-  mobileZshLdflags = [ derivedZshLib ];
+  # -force_load: WWNWatchStubs (and any weak fallback) must not satisfy
+  # wawona_zsh_main before the privatized archive is pulled in.
+  mobileZshLdflags = [ "-force_load" derivedZshLib ];
   # Force-load before weston/fontconfig so getprogname resolves locally and
   # App Store Connect never sees libSystem's private ___progname import.
   mobileGetprognameLdflags = [
@@ -231,16 +233,21 @@ let
         "-L${strip fcft}/lib"
         "-lfcft"
       ];
-  # openssh in-process static lib — provides ssh_main, ssh_keygen_main, scp_main
-  # for in-process dispatch on iOS (App Store compliant, no fork/exec).
-  # Weak on builds without openssh linked; wawona-dispatch.c symbols are weak.
-  # -lresolv: openbsd-compat's getrrsetbyname.o (force-loaded with the rest of
-  # the archive) calls res_query/res_init from libresolv.
-  opensshInprocessLdflags = deps:
-    let libssh = "${strip (deps.openssh or null)}/lib/libssh-inprocess.a";
-    in if (deps.openssh or null) == null || !builtins.pathExists libssh then [] else [
-      "-force_load" derivedSshLib "-lresolv"
+  # Apple mobile SSH CLI: libwwn-ssh-cli.a from wwn-ssh (libssh2 + OpenSSL).
+  # Never OpenSSH-inprocess archives on App Store targets (libssh2 CLI only).
+  # Force-load the nix-store archive directly (no prebuild privatize needed).
+  sshCliLdflags = deps:
+    let
+      cli = deps."ssh-cli" or null;
+      archive = "${strip cli}/lib/libwwn-ssh-cli.a";
+    in if cli == null || !builtins.pathExists archive then [] else [
+      "-force_load" archive
+      "-Wl,-u,_ssh_main"
+      "-Wl,-u,_ssh_keygen_main"
+      "-Wl,-u,_scp_main"
     ];
+  # glib/gio (res_9_*) needs libresolv on Apple even with zero OpenSSH.
+  appleMobileResolvLdflags = [ "-lresolv" ];
   # Static archives with C++ (ANGLE, Rust backend, fastfetch, …) need libc++
   # after every -force_load block; append once at the end of OTHER_LDFLAGS.
   # IOKit is in iOS/macOS/visionOS SDKs but absent from tvOS/watchOS.
@@ -275,7 +282,12 @@ let
     BUNDLE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
     DEST="$BUNDLE/share/X11/xkb"
     mkdir -p "$DEST"
-    cp -R "${pkgs.xkeyboard_config}/share/X11/xkb/." "$DEST/"
+    # -L: dereference symlinks. Preserving xorg→base links makes
+    # `simctl install` fail with NSPOSIXErrorDomain/13 (copyfile EPERM)
+    # on modern iOS Simulator installd.
+    cp -RL "${pkgs.xkeyboard_config}/share/X11/xkb/." "$DEST/"
+    chmod -R u+w "$DEST" 2>/dev/null || true
+    find "$DEST" -type l -delete 2>/dev/null || true
     echo "Embedded xkeyboard-config into $DEST"
   '';
   # Bundle TrueType fonts so the in-process weston toytoolkit clients
@@ -332,7 +344,6 @@ let
       derivedZshLib
       derivedNvimLib
       derivedFfLib
-      derivedSshLib
     ]
     ++ lib.optionals withGetprogname [ derivedGetprognameLib ];
 
@@ -359,13 +370,13 @@ let
 
   ipadosPreBuild = mkPreBuildPhase { withZsh = true; withGetprogname = true; };
 
-  tvosPreBuild = mkPreBuildPhase { withGetprogname = true; };
+  tvosPreBuild = mkPreBuildPhase { withZsh = true; withGetprogname = true; };
 
   macosPreBuild = mkPreBuildPhase { };
 
-  visionosPreBuild = mkPreBuildPhase { withGetprogname = true; };
+  visionosPreBuild = mkPreBuildPhase { withZsh = true; withGetprogname = true; };
 
-  watchosPreBuild = mkPreBuildPhase { };
+  watchosPreBuild = mkPreBuildPhase { withZsh = true; };
 
   # Runs before Nix prebuild; writes $(SRCROOT)/.build/wwn-build-number.xcconfig so
   # every Xcode build gets a fresh CURRENT_PROJECT_VERSION (timestamp locally, CI run id).
@@ -566,6 +577,22 @@ let
     DEST="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME/Frameworks"
     EGL_SRC="${strip anglePkg}/lib/libEGL.dylib"
     GLES_SRC="${strip anglePkg}/lib/libGLESv2.dylib"
+    # Local builds often have GC'd /nix/store paths; fall back to mirrored .nix-deps.
+    if [ ! -f "$EGL_SRC" ] || [ ! -f "$GLES_SRC" ]; then
+      HASH=$(basename "${strip anglePkg}")
+      FALLBACK_DIR="$SRCROOT/.nix-deps/lib/$HASH"
+      if [ -f "$FALLBACK_DIR/lib/libEGL.dylib" ]; then
+        EGL_SRC="$FALLBACK_DIR/lib/libEGL.dylib"
+        GLES_SRC="$FALLBACK_DIR/lib/libGLESv2.dylib"
+      elif [ -f "$FALLBACK_DIR/libEGL.dylib" ]; then
+        EGL_SRC="$FALLBACK_DIR/libEGL.dylib"
+        GLES_SRC="$FALLBACK_DIR/libGLESv2.dylib"
+      else
+        echo "error: ANGLE dylibs missing at ${strip anglePkg}/lib and $FALLBACK_DIR" >&2
+        exit 1
+      fi
+      echo "ANGLE embed: using .nix-deps fallback ($FALLBACK_DIR)"
+    fi
     # Prebuilt XCFramework slices use LC_ID_DYLIB @rpath/libEGL.framework/libEGL.
     write_fw_plist() {
       local fw="$1" exe="$2"
@@ -621,7 +648,8 @@ PLIST
     if angleSimDylib != null then angleEmbedScript "*simulator" angleSimDylib
     else pkgs.writeShellScript "embed-angle-sim-dylibs-noop.sh" "exit 0";
   angleDeviceEmbedScript =
-    if angleDeviceDylib != null then angleEmbedScript "iphoneos|appletvos|xros" angleDeviceDylib
+    # No appletvos — tvOS must not ship ANGLE (platform-targets matrix).
+    if angleDeviceDylib != null then angleEmbedScript "iphoneos|xros" angleDeviceDylib
     else pkgs.writeShellScript "embed-angle-device-dylibs-noop.sh" "exit 0";
 
   angleSimEmbedPhase = {
@@ -795,10 +823,10 @@ PLIST
 
   rootfsIosEmbedScript = deviceRootfs: simRootfs: pkgs.writeShellScript "embed-rootfs-ios.sh" ''
     case "''${PLATFORM_NAME:-}" in
-      iphoneos|appletvos|xros)
+      iphoneos|appletvos|xros|watchos)
         rootfsSrc="${strip deviceRootfs}/rootfs"
         ;;
-      iphonesimulator|appletvsimulator|xrsimulator)
+      iphonesimulator|appletvsimulator|xrsimulator|watchsimulator)
         rootfsSrc="${strip simRootfs}/rootfs"
         ;;
       *)
@@ -922,10 +950,10 @@ PLIST
 
   neovimRootfsIosEmbedScript = deviceRootfs: simRootfs: pkgs.writeShellScript "embed-neovim-rootfs-ios.sh" ''
     case "''${PLATFORM_NAME:-}" in
-      iphoneos|appletvos|xros)
+      iphoneos|appletvos|xros|watchos)
         rootfsSrc="${strip deviceRootfs}/rootfs"
         ;;
-      iphonesimulator|appletvsimulator|xrsimulator)
+      iphonesimulator|appletvsimulator|xrsimulator|watchsimulator)
         rootfsSrc="${strip simRootfs}/rootfs"
         ;;
       *)
@@ -986,7 +1014,11 @@ PLIST
 
   # visionOS rootfs/neovim-rootfs embed phases.
   visionosRootfsEmbedPhase = {
-    path = rootfsIosEmbedScript (visionosDeps."wawona-rootfs" or null) (visionosSimDeps."wawona-rootfs" or null);
+    # visionOS deps may omit wawona-rootfs; fall back to iOS templates (same
+    # shell tree; ISSUE-016 nested weston-terminal needs WAWONA_* rootfs env).
+    path = rootfsIosEmbedScript
+      (visionosDeps."wawona-rootfs" or iosDeps."wawona-rootfs" or null)
+      (visionosSimDeps."wawona-rootfs" or iosSimDeps."wawona-rootfs" or null);
     name = "Embed wawona-rootfs (shell templates)";
     basedOnDependencyAnalysis = false;
   };
@@ -994,6 +1026,15 @@ PLIST
   visionosNeovimRootfsEmbedPhase = {
     path = neovimRootfsIosEmbedScript (visionosDeps."neovim-rootfs" or null) (visionosSimDeps."neovim-rootfs" or null);
     name = "Embed neovim-rootfs (runtime templates)";
+    basedOnDependencyAnalysis = false;
+  };
+
+  # watchOS rootfs embed (in-process zsh; neovim-rootfs optional / often absent).
+  watchosRootfsEmbedPhase = {
+    path = rootfsIosEmbedScript
+      (watchosDeps."wawona-rootfs" or iosDeps."wawona-rootfs" or null)
+      (watchosSimDeps."wawona-rootfs" or iosSimDeps."wawona-rootfs" or null);
+    name = "Embed wawona-rootfs (shell templates)";
     basedOnDependencyAnalysis = false;
   };
 
@@ -1117,8 +1158,17 @@ PLIST
           }
           # WWNGetprognameStub.c is force-loaded via prebuild archive (not compiled here).
           { path = "src/platform/ios"; excludes = commonExcludes ++ [ "WWNWaypipeRunnerVisionStub.m" "WWNGetprognameStub.c" ]; }
-          { path = "src/platform/macos/ui/Machines"; excludes = commonExcludes; }
-          { path = "src/platform/macos/ui/Settings"; excludes = commonExcludes; }
+          {
+            path = "src/platform/macos/ui/Machines";
+            excludes = commonExcludes ++ [
+              "WWNAnowaWController.m" "WWNAnowaWController.h"
+              "WWNDesktopReplacementController.m" "WWNDesktopReplacementController.h"
+            ];
+          }
+          {
+            path = "src/platform/macos/ui/Settings";
+            excludes = commonExcludes ++ [ "WWNSipStatus.m" "WWNSipStatus.h" ];
+          }
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
           { path = "src/platform/macos/ui/Modules"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
@@ -1192,7 +1242,8 @@ PLIST
                "-lepoll-shim"
              ] ++ westonToytoolkitLdflagsAppleMobile iosSimDeps ++ westonCompositorLdflagsAppleMobile iosSimDeps
              ++ (ilandGlLdflags { deps = iosSimDeps; simulator = true; }) ++ footLdflags iosSimDeps ++ fastfetchLdflags iosSimDeps ++ neovimLdflags iosSimDeps ++ niriLdflags iosSimDeps ++ fuzzelLdflags iosSimDeps
-             ++ opensshInprocessLdflags iosSimDeps
+             ++ sshCliLdflags iosSimDeps
+             ++ appleMobileResolvLdflags
              ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
@@ -1239,7 +1290,8 @@ PLIST
                "-lepoll-shim"
              ] ++ westonToytoolkitLdflagsAppleMobile iosDeps ++ westonCompositorLdflagsAppleMobile iosDeps
              ++ (ilandGlLdflags { deps = iosDeps; simulator = false; }) ++ footLdflags iosDeps ++ fastfetchLdflags iosDeps ++ neovimLdflags iosDeps ++ niriLdflags iosDeps ++ fuzzelLdflags iosDeps
-             ++ opensshInprocessLdflags iosDeps
+             ++ sshCliLdflags iosDeps
+             ++ appleMobileResolvLdflags
              ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
             "HEADER_SEARCH_PATHS[sdk=iphoneos*]" = [
               "$(inherited)"
@@ -1289,8 +1341,17 @@ PLIST
           }
           # WWNGetprognameStub.c is force-loaded via prebuild archive (not compiled here).
           { path = "src/platform/ios"; excludes = commonExcludes ++ [ "WWNWaypipeRunnerVisionStub.m" "WWNGetprognameStub.c" ]; }
-          { path = "src/platform/macos/ui/Machines"; excludes = commonExcludes; }
-          { path = "src/platform/macos/ui/Settings"; excludes = commonExcludes; }
+          {
+            path = "src/platform/macos/ui/Machines";
+            excludes = commonExcludes ++ [
+              "WWNAnowaWController.m" "WWNAnowaWController.h"
+              "WWNDesktopReplacementController.m" "WWNDesktopReplacementController.h"
+            ];
+          }
+          {
+            path = "src/platform/macos/ui/Settings";
+            excludes = commonExcludes ++ [ "WWNSipStatus.m" "WWNSipStatus.h" ];
+          }
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
           { path = "src/platform/macos/ui/Modules"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
@@ -1364,7 +1425,8 @@ PLIST
               "-lepoll-shim"
             ] ++ westonToytoolkitLdflagsAppleMobile ipadosDeps ++ westonCompositorLdflagsAppleMobile ipadosDeps
             ++ (ilandGlLdflags { deps = ipadosDeps; simulator = false; }) ++ footLdflags ipadosDeps ++ fastfetchLdflags ipadosDeps ++ neovimLdflags ipadosDeps ++ niriLdflags ipadosDeps ++ fuzzelLdflags ipadosDeps
-            ++ opensshInprocessLdflags ipadosDeps
+            ++ sshCliLdflags ipadosDeps
+             ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
             "OTHER_LDFLAGS[sdk=iphonesimulator*]" = [
               "$(inherited)"
@@ -1395,7 +1457,8 @@ PLIST
               "-lepoll-shim"
             ] ++ westonToytoolkitLdflagsAppleMobile ipadosSimDeps ++ westonCompositorLdflagsAppleMobile ipadosSimDeps
             ++ (ilandGlLdflags { deps = ipadosSimDeps; simulator = true; }) ++ footLdflags ipadosSimDeps ++ fastfetchLdflags ipadosSimDeps ++ neovimLdflags ipadosSimDeps ++ niriLdflags ipadosSimDeps ++ fuzzelLdflags ipadosSimDeps
-            ++ opensshInprocessLdflags ipadosSimDeps
+            ++ sshCliLdflags ipadosSimDeps
+             ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
@@ -1455,10 +1518,24 @@ PLIST
               "ui/**"
             ];
           }
-          # WWNGetprognameStub.c is force-loaded via prebuild archive (not compiled here).
-          { path = "src/platform/ios"; excludes = commonExcludes ++ [ "WWNWaypipeRunnerVisionStub.m" "WWNGetprognameStub.c" ]; }
-          { path = "src/platform/macos/ui/Machines"; excludes = commonExcludes; }
-          { path = "src/platform/macos/ui/Settings"; excludes = commonExcludes; }
+          # Real WWNIlandPresenter.m pulls ANGLE/iland; use the tv/watch stub.
+          # Optional C stubs cover dispatch symbols Darwin will not leave undefined.
+          { path = "src/platform/ios"; excludes = commonExcludes ++ [
+            "WWNWaypipeRunnerVisionStub.m"
+            "WWNGetprognameStub.c"
+            "WWNIlandPresenter.m"
+          ]; }
+          {
+            path = "src/platform/macos/ui/Machines";
+            excludes = commonExcludes ++ [
+              "WWNAnowaWController.m" "WWNAnowaWController.h"
+              "WWNDesktopReplacementController.m" "WWNDesktopReplacementController.h"
+            ];
+          }
+          {
+            path = "src/platform/macos/ui/Settings";
+            excludes = commonExcludes ++ [ "WWNSipStatus.m" "WWNSipStatus.h" ];
+          }
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
           { path = "src/platform/macos/ui/Modules"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
@@ -1470,10 +1547,8 @@ PLIST
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
         ] ++ iosUtilSources;
         preBuildScripts = [ stampBuildNumberPhase tvosPreBuild ];
-        postBuildScripts = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase tvosRootfsEmbedPhase tvosNeovimRootfsEmbedPhase ]
-          ++ mobileVmEmbedPhases
-          ++ lib.optionals (angleSimDylib != null) [ angleSimEmbedPhase ]
-          ++ lib.optionals (angleDeviceDylib != null) [ angleDeviceEmbedPhase ];
+        # No ANGLE embed / no VM guest on tvOS (platform-targets: no GL, no VM).
+        postBuildScripts = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase tvosRootfsEmbedPhase tvosNeovimRootfsEmbedPhase ];
 
         settings = {
           base = {
@@ -1529,7 +1604,10 @@ PLIST
               "-lssl"
               "-lcrypto"
               "-lepoll-shim"
-            ] ++ westonToytoolkitLdflagsAppleMobile tvosDeps ++ westonCompositorLdflagsAppleMobile tvosDeps ++ footLdflags tvosDeps ++ fastfetchLdflags tvosDeps ++ neovimLdflags tvosDeps ++ [ derivedRustLib ] ++ finalCxxLdflagsNoIokit;
+            ] ++ westonToytoolkitLdflagsAppleMobile tvosDeps ++ westonCompositorLdflagsAppleMobile tvosDeps ++ footLdflags tvosDeps
+            ++ sshCliLdflags tvosDeps
+             ++ appleMobileResolvLdflags
+            ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" derivedRustLib ] ++ finalCxxLdflagsNoIokit;
             "OTHER_LDFLAGS[sdk=appletvsimulator*]" = [
               "$(inherited)"
             ] ++ ios26SwiftUiClientLdflags ++ [
@@ -1557,7 +1635,10 @@ PLIST
               "-lssl"
               "-lcrypto"
               "-lepoll-shim"
-            ] ++ westonToytoolkitLdflagsAppleMobile tvosSimDeps ++ westonCompositorLdflagsAppleMobile tvosSimDeps ++ footLdflags tvosSimDeps ++ fastfetchLdflags tvosSimDeps ++ neovimLdflags tvosSimDeps ++ [ derivedRustLib ] ++ finalCxxLdflagsNoIokit;
+            ] ++ westonToytoolkitLdflagsAppleMobile tvosSimDeps ++ westonCompositorLdflagsAppleMobile tvosSimDeps ++ footLdflags tvosSimDeps
+            ++ sshCliLdflags tvosSimDeps
+             ++ appleMobileResolvLdflags
+            ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" derivedRustLib ] ++ finalCxxLdflagsNoIokit;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"
@@ -1669,6 +1750,19 @@ PLIST
                 fi
               }
 
+              # Fail the build when a required nested-client binary is missing
+              # from the Nix store path baked into this script (silent skip left
+              # macOS Debug apps without niri/fuzzel).
+              require_bin() {
+                src="$1"
+                name="$2"
+                if [ ! -f "$src" ]; then
+                  echo "error: required bundled binary missing: $name ($src)" >&2
+                  exit 1
+                fi
+                bundle_bin "$src" "$name"
+              }
+
               BIN_DEST="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources/bin"
               MACOS_DEST="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/MacOS"
               mkdir -p "$BIN_DEST"
@@ -1702,22 +1796,24 @@ PLIST
               bundle_bin "$NEOVIM_BIN/nvim" "vi"
               bundle_bin "$NEOVIM_BIN/nvim" "vim"
               bundle_bin "$ZSH_BIN/zsh" "zsh"
-              bundle_bin "$KMSCUBE_BIN/kmscube" "kmscube"
+              require_bin "$KMSCUBE_BIN/kmscube" "kmscube"
 
               # niri (wwn-niri): nested scrollable-tiling compositor. Ship the
               # binary plus its read-only KDL config, resolved at runtime via
               # WAWONA_SHARE_ROOT (Contents/Resources/share/niri).
-              bundle_bin "$NIRI_BIN/niri" "niri"
-              if [ -f "$NIRI_CFG" ]; then
-                SHARE_NIRI="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources/share/niri"
-                mkdir -p "$SHARE_NIRI"
-                install -m 644 "$NIRI_CFG" "$SHARE_NIRI/default-config.kdl"
-                echo "Bundled niri default-config.kdl"
+              require_bin "$NIRI_BIN/niri" "niri"
+              if [ ! -f "$NIRI_CFG" ]; then
+                echo "error: required niri config missing: $NIRI_CFG" >&2
+                exit 1
               fi
+              SHARE_NIRI="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources/share/niri"
+              mkdir -p "$SHARE_NIRI"
+              install -m 644 "$NIRI_CFG" "$SHARE_NIRI/default-config.kdl"
+              echo "Bundled niri default-config.kdl"
 
               # fuzzel (wwn-niri): niri's Mod+D launcher; must be on PATH when
               # niri spawns child processes (see WWNWaypipeRunner niri env).
-              bundle_bin "$FUZZEL_BIN/fuzzel" "fuzzel"
+              require_bin "$FUZZEL_BIN/fuzzel" "fuzzel"
 
               # Weston nested compositor runtime assets. The weston binaries are
               # bundled above, but nested weston also needs its data (PNGs), shell
@@ -2035,12 +2131,23 @@ PLIST
               "WWNLaunchAgentManager.m"
             ];
           }
-          { path = "src/platform/ios"; excludes = commonExcludes ++ [ "WWNGetprognameStub.c" ]; }
-          { path = "src/platform/ios/WWNWaypipeRunnerVisionStub.m"; type = "file"; }
-          { path = "src/platform/macos/ui/Machines"; excludes = commonExcludes; }
+          # Real waypipe runner (not VisionStub) — visionOS macOS-parity remote.
+          { path = "src/platform/ios"; excludes = commonExcludes ++ [ "WWNGetprognameStub.c" "WWNWaypipeRunnerVisionStub.m" ]; }
+          {
+            path = "src/platform/macos/ui/Machines";
+            excludes = commonExcludes ++ [
+              "WWNAnowaWController.m"
+              "WWNAnowaWController.h"
+              "WWNDesktopReplacementController.m"
+              "WWNDesktopReplacementController.h"
+            ];
+          }
           {
             path = "src/platform/macos/ui/Settings";
-            excludes = commonExcludes ++ [ "WWNWaypipeRunner.m" ];
+            excludes = commonExcludes ++ [
+              "WWNSipStatus.m"
+              "WWNSipStatus.h"
+            ];
           }
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
           { path = "src/platform/macos/ui/Modules"; excludes = commonExcludes; }
@@ -2063,7 +2170,8 @@ PLIST
             GENERATE_INFOPLIST_FILE = "NO";
             PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.Wawona";
             CODE_SIGN_ENTITLEMENTS = "src/resources/app-bundle/Wawona-iCloud.entitlements";
-            ASSETCATALOG_COMPILER_APPICON_NAME = "Wawona";
+            # visionOS uses AppIcon.solidimagestack (not tvOS Wawona.brandassets).
+            ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon";
             SUPPORTED_PLATFORMS = "xros xrsimulator";
             CODE_SIGN_STYLE = "Automatic";
             ENABLE_DEBUG_DYLIB = "NO";
@@ -2087,6 +2195,9 @@ PLIST
             "FRAMEWORK_SEARCH_PATHS[sdk=xrsimulator*]" = [
               "$(inherited)"
             ];
+            # zstd/lz4/mbedtls: vision variant omits Loop C network stack until
+            # -mvisionos recipes land; fall back to iOS device packages (same
+            # arm64 archives already used by other visionosDeps *-ios paths).
             "OTHER_LDFLAGS[sdk=xros*]" = [
               "$(inherited)"
             ] ++ mobileGetprognameLdflags ++ ios26SwiftUiClientLdflags ++ [
@@ -2094,18 +2205,32 @@ PLIST
               "-L${strip (visionosDeps.xkbcommon or null)}/lib"
               "-L${strip (visionosDeps.libffi or null)}/lib"
               "-L${strip (visionosDeps.pixman or null)}/lib"
+              "-L${strip (visionosDeps.zstd or iosDeps.zstd or null)}/lib"
+              "-L${strip (visionosDeps.lz4 or iosDeps.lz4 or null)}/lib"
               "-L${strip (visionosDeps.epoll-shim or null)}/lib"
               "-L${strip (visionosDeps.libssh2 or null)}/lib"
+              "-L${strip (visionosDeps.mbedtls or iosDeps.mbedtls or null)}/lib"
               "-L${strip (visionosDeps.openssl or null)}/lib"
               "-lxkbcommon"
               "-lwayland-client"
               "-lffi"
               "-lpixman-1"
+              "-lzstd"
+              "-llz4"
+              "-lz"
               "-lepoll-shim"
               "-lssh2"
+              "-lmbedcrypto"
+              "-lmbedx509"
+              "-lmbedtls"
               "-lssl"
               "-lcrypto"
-            ] ++ westonToytoolkitLdflagsAppleMobile visionosDeps ++ westonCompositorLdflagsAppleMobile visionosDeps ++ fastfetchLdflags visionosDeps ++ neovimLdflags visionosDeps ++ [ derivedRustLib ] ++ finalCxxLdflags;
+              "-lwayland-egl"
+            ] ++ westonToytoolkitLdflagsAppleMobile visionosDeps ++ westonCompositorLdflagsAppleMobile visionosDeps
+            ++ (ilandGlLdflags { deps = visionosDeps; simulator = false; }) ++ footLdflags visionosDeps ++ fastfetchLdflags visionosDeps ++ neovimLdflags visionosDeps ++ niriLdflags visionosDeps ++ fuzzelLdflags visionosDeps
+            ++ sshCliLdflags visionosDeps
+             ++ appleMobileResolvLdflags
+            ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
             "OTHER_LDFLAGS[sdk=xrsimulator*]" = [
               "$(inherited)"
             ] ++ ios26SwiftUiClientLdflags ++ [
@@ -2113,18 +2238,32 @@ PLIST
               "-L${strip (visionosSimDeps.xkbcommon or null)}/lib"
               "-L${strip (visionosSimDeps.libffi or null)}/lib"
               "-L${strip (visionosSimDeps.pixman or null)}/lib"
+              "-L${strip (visionosSimDeps.zstd or iosSimDeps.zstd or null)}/lib"
+              "-L${strip (visionosSimDeps.lz4 or iosSimDeps.lz4 or null)}/lib"
               "-L${strip (visionosSimDeps.epoll-shim or null)}/lib"
               "-L${strip (visionosSimDeps.libssh2 or null)}/lib"
+              "-L${strip (visionosSimDeps.mbedtls or iosSimDeps.mbedtls or null)}/lib"
               "-L${strip (visionosSimDeps.openssl or null)}/lib"
               "-lxkbcommon"
               "-lwayland-client"
               "-lffi"
               "-lpixman-1"
+              "-lzstd"
+              "-llz4"
+              "-lz"
               "-lepoll-shim"
               "-lssh2"
+              "-lmbedcrypto"
+              "-lmbedx509"
+              "-lmbedtls"
               "-lssl"
               "-lcrypto"
-            ] ++ westonToytoolkitLdflagsAppleMobile visionosSimDeps ++ westonCompositorLdflagsAppleMobile visionosSimDeps ++ fastfetchLdflags visionosSimDeps ++ neovimLdflags visionosSimDeps ++ [ derivedRustLib ] ++ finalCxxLdflags;
+              "-lwayland-egl"
+            ] ++ westonToytoolkitLdflagsAppleMobile visionosSimDeps ++ westonCompositorLdflagsAppleMobile visionosSimDeps
+            ++ (ilandGlLdflags { deps = visionosSimDeps; simulator = true; }) ++ footLdflags visionosSimDeps ++ fastfetchLdflags visionosSimDeps ++ neovimLdflags visionosSimDeps ++ niriLdflags visionosSimDeps ++ fuzzelLdflags visionosSimDeps
+            ++ sshCliLdflags visionosSimDeps
+             ++ appleMobileResolvLdflags
+            ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"
@@ -2137,14 +2276,14 @@ PLIST
               "${strip (visionosDeps.libwayland or null)}/include/wayland"
               "${strip (visionosDeps.xkbcommon or null)}/include"
               "${strip (visionosDeps.libssh2 or null)}/include"
-            ] ++ (pixmanHeaderPaths visionosDeps);
+            ] ++ (pixmanHeaderPaths visionosDeps) ++ (ilandGlHeaderPaths visionosDeps);
             "HEADER_SEARCH_PATHS[sdk=xrsimulator*]" = [
               "$(inherited)"
               "${strip (visionosSimDeps.libwayland or null)}/include"
               "${strip (visionosSimDeps.libwayland or null)}/include/wayland"
               "${strip (visionosSimDeps.xkbcommon or null)}/include"
               "${strip (visionosSimDeps.libssh2 or null)}/include"
-            ] ++ (pixmanHeaderPaths visionosSimDeps);
+            ] ++ (pixmanHeaderPaths visionosSimDeps) ++ (ilandGlHeaderPaths visionosSimDeps);
           };
         };
         dependencies = [
@@ -2181,6 +2320,12 @@ PLIST
             PRODUCT_MODULE_NAME = "WawonaModel";
             PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.WawonaModel";
             SUPPORTED_PLATFORMS = "macosx iphoneos iphonesimulator appletvos appletvsimulator xros xrsimulator watchos watchsimulator";
+            # Do NOT set SDKROOT / SDKROOT[sdk=*]. Xcode ignores SDK-conditioned
+            # SDKROOT at the target level (warning: "SDK condition on SDKROOT is
+            # unsupported"). A forced SDKROOT=iphoneos made Embed Frameworks
+            # install iOS-simulator WawonaModel into watch apps (ISSUE-017 dyld
+            # "have iOS-simulator, need watchOS-simulator"). Inherit SDKROOT
+            # from the dependent app destination instead.
             TARGETED_DEVICE_FAMILY = "1,2,3,4,7";
             MACOSX_DEPLOYMENT_TARGET = "14.0";
             TVOS_DEPLOYMENT_TARGET = "17.0";
@@ -2216,6 +2361,7 @@ PLIST
             PRODUCT_MODULE_NAME = "WawonaUIContracts";
             PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.WawonaUIContracts";
             SUPPORTED_PLATFORMS = "macosx iphoneos iphonesimulator appletvos appletvsimulator xros xrsimulator watchos watchsimulator";
+            # Inherit SDKROOT from dependent destination (see WawonaModel / ISSUE-017).
             TARGETED_DEVICE_FAMILY = "1,2,3,4,7";
             MACOSX_DEPLOYMENT_TARGET = "14.0";
             TVOS_DEPLOYMENT_TARGET = "17.0";
@@ -2241,6 +2387,9 @@ PLIST
         sources = [
           { path = "Sources/WawonaWatch"; excludes = commonExcludes; }
           { path = "src/platform/watchos"; excludes = commonExcludes; }
+          # Shared SSH keygen / GPG-SSH import (libwwn-ssh-cli).
+          { path = "src/platform/macos/ui/Helpers/WWNSSHKeygen.m"; type = "file"; }
+          { path = "src/platform/macos/ui/Helpers/WWNSSHKeygen.h"; type = "file"; }
           { path = "src/platform/watchos/ui/Settings/WWNWatchSettings.storyboard"; }
           { path = "src/resources/Assets.xcassets"; }
           # Required-reason API manifest (UserDefaults / boot time / file timestamps).
@@ -2250,21 +2399,36 @@ PLIST
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
         ];
         preBuildScripts = [ stampBuildNumberPhase watchosPreBuild ];
+        postBuildScripts = [
+          watchosRootfsEmbedPhase
+          {
+            name = "Fix Watch Embedded Frameworks";
+            basedOnDependencyAnalysis = false;
+            inputFiles = [ "$(SRCROOT)/scripts/watchos-fix-embedded-frameworks.sh" ];
+            script = ''
+              exec "''${SRCROOT}/scripts/watchos-fix-embedded-frameworks.sh"
+            '';
+          }
+        ];
         settings = {
           base = {
             PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.Wawona.watch";
             SUPPORTED_PLATFORMS = "watchos watchsimulator";
             WATCHOS_DEPLOYMENT_TARGET = "10.0";
             GENERATE_INFOPLIST_FILE = "YES";
-            # watch icon assets are generated outside this shared AppIcon set.
-            ASSETCATALOG_COMPILER_APPICON_NAME = "";
+            # watch slots live in the shared AppIcon.appiconset (watch + watch-marketing).
+            ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon";
             INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "com.aspauldingcode.Wawona";
             SWIFT_OBJC_BRIDGING_HEADER = "src/platform/watchos/WWNWatch-Bridging-Header.h";
             SWIFT_INSTALL_OBJC_HEADER = "NO";
             CODE_SIGNING_ALLOWED = "NO";
             CODE_SIGNING_REQUIRED = "NO";
             LD_RUNPATH_SEARCH_PATHS = [ "$(inherited)" "@executable_path/Frameworks" ];
-            GCC_PREPROCESSOR_DEFINITIONS = [ "$(inherited)" "TARGET_OS_WATCH=1" ];
+            GCC_PREPROCESSOR_DEFINITIONS = [
+              "$(inherited)"
+              "TARGET_OS_IPHONE=1"
+              "TARGET_OS_WATCH=1"
+            ];
             "VALID_ARCHS[sdk=watchos*]" = "arm64";
             "ARCHS[sdk=watchos*]" = "arm64";
             "VALID_ARCHS[sdk=watchsimulator*]" = "arm64";
@@ -2276,6 +2440,7 @@ PLIST
               "${strip (watchosDeps.libwayland or null)}/include/wayland"
               "${strip (watchosDeps.libssh2 or null)}/include"
               "$(SRCROOT)/src/platform/watchos"
+              "$(SRCROOT)/src/platform/macos/ui/Helpers"
             ] ++ (pixmanHeaderPaths watchosDeps);
             # -force_load is needed for the Wayland client libraries because
             # WWNWatchStubs.c provides __attribute__((weak)) definitions of
@@ -2293,11 +2458,12 @@ PLIST
               "-L${strip (watchosDeps.libwayland or null)}/lib"
               "-L${strip (watchosDeps.epoll-shim or null)}/lib"
               "-L${strip (watchosDeps.pixman or null)}/lib"
-              "-L${strip (watchosDeps.zstd or null)}/lib"
-              "-L${strip (watchosDeps.lz4 or null)}/lib"
+              "-L${strip (watchosDeps.zstd or iosDeps.zstd or null)}/lib"
+              "-L${strip (watchosDeps.lz4 or iosDeps.lz4 or null)}/lib"
               "-L${strip (watchosDeps.libssh2 or null)}/lib"
-              "-L${strip (watchosDeps.mbedtls or null)}/lib"
+              "-L${strip (watchosDeps.mbedtls or iosDeps.mbedtls or null)}/lib"
               "-L${strip (watchosDeps.openssl or null)}/lib"
+              "-L${strip (watchosDeps.xkbcommon or iosDeps.xkbcommon or null)}/lib"
               "-lffi"
               "-lwayland-client"
               "-lepoll-shim"
@@ -2311,11 +2477,13 @@ PLIST
               "-lmbedtls"
               "-lssl"
               "-lcrypto"
+              "-lxkbcommon"
             ] ++ westonToytoolkitLdflagsAppleMobile watchosDeps ++ westonCompositorLdflagsAppleMobile watchosDeps ++ footLdflags watchosDeps ++ fastfetchLdflags watchosDeps ++ neovimLdflags watchosDeps ++ [
               "-lwayland-server"
             ] ++ lib.optionals (watchosDeps ? waypipe && watchosDeps.waypipe != null) [
               "-force_load" "${strip watchosDeps.waypipe}/lib/libwaypipe.a"
-            ] ++ lib.optionals (watchosBackend != null) [
+            ] ++ sshCliLdflags watchosDeps
+            ++ appleMobileResolvLdflags ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" ] ++ lib.optionals (watchosBackend != null) [
               derivedRustLib
             ] ++ finalCxxLdflagsNoIokit;
             "OTHER_LDFLAGS[sdk=watchsimulator*]" = [
@@ -2324,11 +2492,13 @@ PLIST
               "-L${strip (watchosSimDeps.libwayland or null)}/lib"
               "-L${strip (watchosSimDeps.epoll-shim or null)}/lib"
               "-L${strip (watchosSimDeps.pixman or null)}/lib"
-              "-L${strip (watchosSimDeps.zstd or null)}/lib"
-              "-L${strip (watchosSimDeps.lz4 or null)}/lib"
+              "-L${strip (watchosSimDeps.zstd or iosSimDeps.zstd or null)}/lib"
+              "-L${strip (watchosSimDeps.lz4 or iosSimDeps.lz4 or null)}/lib"
               "-L${strip (watchosSimDeps.libssh2 or null)}/lib"
-              "-L${strip (watchosSimDeps.mbedtls or null)}/lib"
+              "-L${strip (watchosSimDeps.mbedtls or iosSimDeps.mbedtls or null)}/lib"
               "-L${strip (watchosSimDeps.openssl or null)}/lib"
+              # weston toytoolkit needs xkb; watch deps often omit it — fall back to iOS.
+              "-L${strip (watchosSimDeps.xkbcommon or iosSimDeps.xkbcommon or null)}/lib"
               "-lffi"
               "-lwayland-client"
               "-lepoll-shim"
@@ -2342,11 +2512,13 @@ PLIST
               "-lmbedtls"
               "-lssl"
               "-lcrypto"
+              "-lxkbcommon"
             ] ++ westonToytoolkitLdflagsAppleMobile watchosSimDeps ++ westonCompositorLdflagsAppleMobile watchosSimDeps ++ footLdflags watchosSimDeps ++ fastfetchLdflags watchosSimDeps ++ neovimLdflags watchosSimDeps ++ [
               "-lwayland-server"
             ] ++ lib.optionals (watchosSimDeps ? waypipe && watchosSimDeps.waypipe != null) [
               "-force_load" "${strip watchosSimDeps.waypipe}/lib/libwaypipe.a"
-            ] ++ lib.optionals (watchosSimBackend != null) [
+            ] ++ sshCliLdflags watchosSimDeps
+            ++ appleMobileResolvLdflags ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" ] ++ lib.optionals (watchosSimBackend != null) [
               derivedRustLib
             ] ++ finalCxxLdflagsNoIokit;
           };
@@ -2593,6 +2765,40 @@ EOF
 </dict>
 </plist>
 EOF
+
+    # ISSUE-017: XcodeGen still emits SDKROOT=iphoneos for platform=iOS
+    # frameworks even when the project.json omits it. Strip SDKROOT from
+    # WawonaModel / WawonaUIContracts so Embed Frameworks inherits the app
+    # destination SDK (watchsimulator → WATCHOSSIMULATOR products).
+    ${pkgs.python3}/bin/python3 <<'EOF_SDK'
+import re
+from pathlib import Path
+
+pbx = Path("Wawona.xcodeproj/project.pbxproj")
+if pbx.exists():
+    text = pbx.read_text()
+
+    def strip_sdkroot(body: str) -> str:
+        body = re.sub(r'^[ \t]*SDKROOT = [^;]+;\n', "", body, flags=re.M)
+        body = re.sub(r'^[ \t]*"SDKROOT\[sdk=[^\]]+\]" = [^;]+;\n', "", body, flags=re.M)
+        return body
+
+    def repl(m: re.Match) -> str:
+        header, body, footer = m.group(1), m.group(2), m.group(3)
+        if re.search(r"PRODUCT_NAME = Wawona(Model|UIContracts);", body):
+            body = strip_sdkroot(body)
+        return header + body + footer
+
+    text2 = re.sub(
+        r"(/\* [^*]+ \*/ = \{\n\t\t\tisa = XCBuildConfiguration;\n\t\t\tbuildSettings = \{)(.*?)(\n\t\t\t\};\n\t\t\tname = [^;]+;)",
+        repl,
+        text,
+        flags=re.S,
+    )
+    if text2 != text:
+        pbx.write_text(text2)
+        print("Stripped SDKROOT from WawonaModel/WawonaUIContracts (ISSUE-017).")
+EOF_SDK
 
     # Prevent framework-only model targets from showing up as runnable schemes.
     # Xcode can keep stale user schemes in xcuserdata, so clean those and

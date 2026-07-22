@@ -111,19 +111,9 @@ public struct MachineSettingsView: View {
         Section("Machine Configuration") {
             TextField("Name", text: nameBinding)
             Picker("Type", selection: typeBinding) {
-                #if os(watchOS)
-                ForEach(MachineType.allCases.filter { $0 != .container && $0 != .virtualMachine }, id: \.self) { t in
+                ForEach(PlatformCapabilities.availableMachineTypes, id: \.self) { t in
                     Text(t.userFacingName).tag(t)
                 }
-                #elseif os(iOS) || os(tvOS) || os(visionOS)
-                ForEach(MachineType.allCases, id: \.self) { t in
-                    Text(t.userFacingName).tag(t)
-                }
-                #else
-                ForEach(MachineType.allCases, id: \.self) { t in
-                    Text(t.userFacingName).tag(t)
-                }
-                #endif
             }
 
             if profile.type == .native {
@@ -215,7 +205,11 @@ public struct MachineSettingsView: View {
                 Text("Warn").tag("warn")
                 Text("Error").tag("error")
             }
+            #if os(tvOS)
+            Toggle("Long-press Menu to Exit Machine", isOn: shakeToCloseBinding)
+            #else
             Toggle("Shake to Exit Machine", isOn: shakeToCloseBinding)
+            #endif
         }
     }
 
@@ -244,7 +238,11 @@ public struct MachineSettingsView: View {
             Text("Waypipe: \(resolved.waypipeEnabled ? "Enabled" : "Disabled")")
             Text("Bundled App: \(resolved.bundledAppID.isEmpty ? "Off" : resolved.bundledAppID)")
             Text("Log Level: \(resolved.logLevel)")
+            #if os(tvOS)
+            Text("Long-press Menu to Exit: \(resolved.shakeToCloseEnabled ? "Enabled" : "Disabled")")
+            #else
             Text("Shake to Exit: \(resolved.shakeToCloseEnabled ? "Enabled" : "Disabled")")
+            #endif
         }
     }
 

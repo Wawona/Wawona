@@ -129,6 +129,9 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
     public var sshUser: String
     public var sshPort: Int
     public var sshPassword: String
+    public var sshAuthMethod: Int
+    public var sshKeyPath: String
+    public var sshKeyPassphrase: String
     public var remoteCommand: String
     public var launchers: [ClientLauncher]
     public var favorite: Bool
@@ -142,6 +145,9 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
         case sshUser
         case sshPort
         case sshPassword
+        case sshAuthMethod
+        case sshKeyPath
+        case sshKeyPassphrase
         case remoteCommand
         case launchers
         case favorite
@@ -156,6 +162,9 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
         sshUser: String = "",
         sshPort: Int = 22,
         sshPassword: String = "",
+        sshAuthMethod: Int = 0,
+        sshKeyPath: String = "",
+        sshKeyPassphrase: String = "",
         remoteCommand: String = "weston-simple-shm",
         launchers: [ClientLauncher] = [],
         favorite: Bool = false,
@@ -168,6 +177,9 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
         self.sshUser = sshUser
         self.sshPort = sshPort
         self.sshPassword = sshPassword
+        self.sshAuthMethod = sshAuthMethod
+        self.sshKeyPath = sshKeyPath
+        self.sshKeyPassphrase = sshKeyPassphrase
         self.remoteCommand = remoteCommand
         self.launchers = launchers
         self.favorite = favorite
@@ -183,6 +195,9 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
         sshUser = try container.decodeIfPresent(String.self, forKey: .sshUser) ?? ""
         sshPort = try container.decodeIfPresent(Int.self, forKey: .sshPort) ?? 22
         sshPassword = try container.decodeIfPresent(String.self, forKey: .sshPassword) ?? ""
+        sshAuthMethod = try container.decodeIfPresent(Int.self, forKey: .sshAuthMethod) ?? 0
+        sshKeyPath = try container.decodeIfPresent(String.self, forKey: .sshKeyPath) ?? ""
+        sshKeyPassphrase = try container.decodeIfPresent(String.self, forKey: .sshKeyPassphrase) ?? ""
         remoteCommand = try container.decodeIfPresent(String.self, forKey: .remoteCommand) ?? "weston-simple-shm"
         // vmSubtype / containerSubtype were removed (Residual E): backend
         // selection is fixed per build target, not user-editable. Any such keys
@@ -201,6 +216,9 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
         try container.encode(sshUser, forKey: .sshUser)
         try container.encode(sshPort, forKey: .sshPort)
         try container.encode(sshPassword, forKey: .sshPassword)
+        try container.encode(sshAuthMethod, forKey: .sshAuthMethod)
+        try container.encode(sshKeyPath, forKey: .sshKeyPath)
+        try container.encode(sshKeyPassphrase, forKey: .sshKeyPassphrase)
         try container.encode(remoteCommand, forKey: .remoteCommand)
         try container.encode(launchers, forKey: .launchers)
         try container.encode(favorite, forKey: .favorite)

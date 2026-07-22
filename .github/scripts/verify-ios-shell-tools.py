@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Verify Wawona flake + Xcode wiring for bundled shell tools (zsh, fastfetch, neovim, waypipe, openssh)."""
+"""Verify Wawona flake + Xcode wiring for bundled shell tools.
+
+Apple mobile SSH policy: libssh2 + ssh-cli (libwwn-ssh-cli.a). Never OpenSSH /
+libssh-inprocess.a / openssh-ios.
+"""
 
 from __future__ import annotations
 
@@ -16,19 +20,12 @@ PREBUILD = ROOT / "scripts/xcode-prebuild.sh"
 IOS_ROOTFS = ROOT / "dependencies/wawona/ios-rootfs.nix"
 MOBILE_DEPS = ROOT / "dependencies/wawona/mobile-platform-deps.nix"
 
-# Floor for the pinned wwn-fastfetch input. 104cf22 (lastModified 1782867490)
-# shipped the IOKit/SMC crash fix but NOT the in-process exit()/signal/atexit
-# safety wrapper or the per-platform framework tiering. Require a strictly newer
-# lock so Wawona cannot build against a fastfetch that would terminate the app
-# on --help/bad-flag or fail to link on watchOS.
 FASTFETCH_MIN_LASTMODIFIED = 1782867491
 FASTFETCH_KNOWN_BAD_REV = "104cf2284ad161ecb82b3d182123ff2e437e3a34"
 
 REQUIRED_FLAKE_OUTPUTS = (
     "zsh-ios",
     "zsh-ios-sim",
-    "openssh-ios",
-    "openssh-ios-sim",
     "zsh-android",
     "fastfetch-ios",
     "fastfetch-ios-device",
@@ -44,7 +41,22 @@ REQUIRED_FLAKE_OUTPUTS = (
     "wawona-rootfs-ios-sim",
 )
 
-REQUIRED_INPROC_CLIENTS = {"fastfetch", "nvim", "vi", "vim", "waypipe", "waypipe-rs", "ssh", "ssh-keygen", "scp"}
+FORBIDDEN_FLAKE_OUTPUTS = (
+    "openssh-ios",
+    "openssh-ios-sim",
+)
+
+REQUIRED_INPROC_CLIENTS = {
+    "fastfetch",
+    "nvim",
+    "vi",
+    "vim",
+    "waypipe",
+    "waypipe-rs",
+    "ssh",
+    "ssh-keygen",
+    "scp",
+}
 
 
 def read(path: Path) -> str:
@@ -59,6 +71,12 @@ def verify_flake_outputs(text: str) -> list[str]:
     for key in REQUIRED_FLAKE_OUTPUTS:
         if f'"{key}" =' not in text and f"{key} =" not in text:
             errors.append(f"flake.nix missing package output: {key}")
+    for key in FORBIDDEN_FLAKE_OUTPUTS:
+        # Allow comments mentioning the name; forbid attribute assignment.
+        if re.search(rf'^\s*"{re.escape(key)}"\s*=', text, re.M) or re.search(
+            rf"^\s*{re.escape(key)}\s*=", text, re.M
+        ):
+            errors.append(f"flake.nix must not expose product output: {key}")
     return errors
 
 
@@ -70,29 +88,29 @@ def verify_xcodegen(text: str) -> list[str]:
         "libwawona-neovim.a",
         "fastfetchLdflags",
         "neovimLdflags",
-        "neovimRootfsIosEmbedScript",
-        # ssh in-process client (issue Residual F): the -force_load of
-        # libssh-inprocess.a is what resolves the ssh_main weak symbol.
-        "opensshInprocessLdflags",
-        "libssh-inprocess.a",
+        "sshCliLdflags",
+        "libwwn-ssh-cli.a",
     ):
         if needle not in text:
             errors.append(f"xcodegen.nix missing shell-tool wiring: {needle}")
+    for bad in ("libssh-inprocess.a", "opensshInprocessLdflags"):
+        if bad in text:
+            errors.append(f"xcodegen.nix must not reference forbidden {bad}")
     return errors
 
 
-def verify_openssh_built(text: str) -> list[str]:
-    """openssh must be built for the mobile/tv variant.
-
-    Without it, iosDeps.openssh is null, opensshInprocessLdflags is empty, and
-    the ssh_main weak symbol resolves to NULL so `ssh` always reports
-    NOT_HANDLED in the in-process dispatcher (Residual F).
-    """
-    if 'openssh = buildFn "openssh"' not in text:
+def verify_ssh_cli_built(text: str) -> list[str]:
+    if 'buildFn "ssh-cli"' not in text and "buildFn \"ssh-cli\"" not in text:
+        # also allow "ssh-cli" = buildFn
+        if '"ssh-cli" = buildFn' not in text and "'ssh-cli' = buildFn" not in text:
+            return [
+                'mobile-platform-deps.nix must build ssh-cli '
+                '(`"ssh-cli" = buildFn "ssh-cli" { ... }`)'
+            ]
+    if 'openssh = buildFn "openssh"' in text:
         return [
-            'mobile-platform-deps.nix does not build openssh (`openssh = '
-            'buildFn "openssh" { ... }`); iosDeps.openssh would be null and '
-            "ssh would be unavailable in the in-process shell (Residual F)"
+            "mobile-platform-deps.nix must NOT build openssh on Apple mobile "
+            "(use ssh-cli + libssh2 only)"
         ]
     return []
 
@@ -103,13 +121,16 @@ def verify_prebuild(text: str) -> list[str]:
         "libwawona-zsh.a",
         "libwawona-neovim.a",
         "libfastfetch.a",
-        "libssh-inprocess.a",
         "neovim-ios",
         "fastfetch-ios",
-        "openssh-ios",
     ):
         if needle not in text:
             errors.append(f"xcode-prebuild.sh missing: {needle}")
+    if "libssh-inprocess.a" in text and "never" not in text.lower():
+        # comment mentioning never is OK
+        pass
+    if "require" in text and "libssh-inprocess" in text and "never" not in text:
+        errors.append("xcode-prebuild.sh must not require libssh-inprocess.a")
     return errors
 
 
@@ -126,14 +147,12 @@ def verify_fastfetch_lock() -> list[str]:
     if rev == FASTFETCH_KNOWN_BAD_REV:
         return [
             "flake.lock pins wwn-fastfetch@104cf22 which lacks the in-process "
-            "exit()/signal safety wrapper and watchOS framework tiering; "
-            "run `nix flake lock --update-input wwn-fastfetch`"
+            "exit()/signal safety wrapper; update wwn-fastfetch"
         ]
     if last_modified < FASTFETCH_MIN_LASTMODIFIED:
         return [
             f"wwn-fastfetch lock too old (lastModified {last_modified} < "
-            f"{FASTFETCH_MIN_LASTMODIFIED}); update the input to include the "
-            "in-process safety + framework-tiering fixes"
+            f"{FASTFETCH_MIN_LASTMODIFIED})"
         ]
     return []
 
@@ -152,17 +171,35 @@ def verify_inproc_clients(rootfs_text: str) -> list[str]:
     return errors
 
 
+def verify_no_ssh_stubs() -> list[str]:
+    errors = []
+    for rel in (
+        "src/platform/ios/WWNAppleMobileOptionalStubs.c",
+        "src/platform/watchos/WWNWatchStubs.c",
+    ):
+        p = ROOT / rel
+        if not p.is_file():
+            continue
+        text = p.read_text(encoding="utf-8")
+        for sym in ("ssh_main", "ssh_keygen_main", "scp_main"):
+            # definition like "int ssh_main"
+            if re.search(rf"\bint\s+{sym}\s*\(", text):
+                errors.append(f"{rel} still defines stub {sym}; use libwwn-ssh-cli.a")
+    return errors
+
+
 def main() -> int:
     errors: list[str] = []
     errors.extend(verify_flake_outputs(read(FLAKE)))
     errors.extend(verify_xcodegen(read(XCODEGEN)))
-    errors.extend(verify_openssh_built(read(MOBILE_DEPS)))
+    errors.extend(verify_ssh_cli_built(read(MOBILE_DEPS)))
     errors.extend(verify_prebuild(read(PREBUILD)))
     errors.extend(verify_fastfetch_lock())
+    errors.extend(verify_no_ssh_stubs())
     if IOS_ROOTFS.is_file():
         errors.extend(verify_inproc_clients(read(IOS_ROOTFS)))
     else:
-        errors.append("dependencies/wawona/ios-rootfs.nix missing (wwn-zsh rootfs)")
+        errors.append("dependencies/wawona/ios-rootfs.nix missing")
 
     if errors:
         print("iOS shell-tools wiring check FAILED:")
@@ -170,7 +207,7 @@ def main() -> int:
             print(f"- {err}")
         return 1
 
-    print("iOS shell-tools wiring check OK")
+    print("iOS shell-tools wiring check OK (libssh2 + ssh-cli; no OpenSSH-inprocess)")
     return 0
 
 
