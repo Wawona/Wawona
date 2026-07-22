@@ -1088,6 +1088,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     w = outW > 0 ? (int)outW : 640;
     h = outH > 0 ? (int)outH : 480;
   }
+  [_ilandPresenter syncPreferredModeFromLayer];
   WWNLog("KMSCUBE", @"launchNestedKmscube Metal present %dx%d", w, h);
   return [_ilandPresenter launchNestedKmscubeWithWidth:w height:h];
 }
@@ -1106,6 +1107,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   self.backgroundColor = UIColor.blackColor;
   CGFloat scale = self.window.screen.scale > 0 ? self.window.screen.scale : 3.0;
   _contentLayer.contentsScale = scale;
+  _contentLayer.frame = self.bounds;
   _contentLayer.drawableSize =
       CGSizeMake(MAX(1.0, self.bounds.size.width * scale),
                  MAX(1.0, self.bounds.size.height * scale));
@@ -1118,6 +1120,9 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
            @"WWNIlandPresenter init failed (Metal device/shader/pipeline)");
     return NO;
   }
+  // Re-pin preferred DRM mode after drawableSize is final (presenter init may
+  // have run with a zero/stale drawable).
+  [_ilandPresenter syncPreferredModeFromLayer];
   // Ensure Metal plate is not covered by sibling Wayland window views.
   if (self.superview) {
     [self.superview bringSubviewToFront:self];

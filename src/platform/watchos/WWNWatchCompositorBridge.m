@@ -8,11 +8,13 @@
 
 #import "WWNWatchCompositorBridge.h"
 #import "WWNMiniWaylandServer.h"
+#import "WWNWatchShellEnvironment.h"
 #import <CoreGraphics/CoreGraphics.h>
 #import <pthread.h>
 #import <signal.h>
 #import <stdlib.h>
 #import <string.h>
+#import <unistd.h>
 
 // ── Client entry points ───────────────────────────────────────────────────────
 // Provided by -force_load'd static libraries (weston, foot, etc.) built via Nix.
@@ -87,72 +89,6 @@ NSNotificationName const WWNWatchCompositorFrameReadyNotification =
 - (BOOL)_isCompatShimEnabledForClient:(const char *)name;
 @end
 
-static NSString *const kWWNWatchPrefPrefix = @"wawona.pref.";
-
-@implementation WWNWatchSettingsBridge
-
-+ (instancetype)sharedBridge {
-    static WWNWatchSettingsBridge *sharedInstance = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        sharedInstance = [[WWNWatchSettingsBridge alloc] init];
-    });
-    return sharedInstance;
-}
-
-- (NSUserDefaults *)defaults { return [NSUserDefaults standardUserDefaults]; }
-- (NSString *)key:(NSString *)suffix { return [kWWNWatchPrefPrefix stringByAppendingString:suffix]; }
-- (NSString *)stringForSuffix:(NSString *)suffix fallback:(NSString *)fallback {
-    NSString *value = [[self defaults] stringForKey:[self key:suffix]];
-    return value.length > 0 ? value : fallback;
-}
-- (BOOL)boolForSuffix:(NSString *)suffix fallback:(BOOL)fallback {
-    id obj = [[self defaults] objectForKey:[self key:suffix]];
-    return [obj respondsToSelector:@selector(boolValue)] ? [obj boolValue] : fallback;
-}
-- (NSInteger)intForSuffix:(NSString *)suffix fallback:(NSInteger)fallback {
-    id obj = [[self defaults] objectForKey:[self key:suffix]];
-    return [obj respondsToSelector:@selector(integerValue)] ? [obj integerValue] : fallback;
-}
-
-- (NSString *)renderer { return [self stringForSuffix:@"renderer" fallback:@"metal"]; }
-- (void)setRenderer:(NSString *)v { [[self defaults] setObject:(v ?: @"metal") forKey:[self key:@"renderer"]]; }
-- (BOOL)forceSSD { return [self boolForSuffix:@"forceSSD" fallback:NO]; }
-- (void)setForceSSD:(BOOL)v { [[self defaults] setBool:v forKey:[self key:@"forceSSD"]]; }
-- (BOOL)autoScale { return [self boolForSuffix:@"autoScale" fallback:YES]; }
-- (void)setAutoScale:(BOOL)v { [[self defaults] setBool:v forKey:[self key:@"autoScale"]]; }
-- (BOOL)colorOperations { return [self boolForSuffix:@"colorOperations" fallback:NO]; }
-- (void)setColorOperations:(BOOL)v { [[self defaults] setBool:v forKey:[self key:@"colorOperations"]]; }
-- (NSString *)waylandDisplay { return [self stringForSuffix:@"waylandDisplay" fallback:@"wayland-0"]; }
-- (void)setWaylandDisplay:(NSString *)v { [[self defaults] setObject:(v ?: @"wayland-0") forKey:[self key:@"waylandDisplay"]]; }
-- (NSString *)sshHost { return [self stringForSuffix:@"sshHost" fallback:@""]; }
-- (void)setSshHost:(NSString *)v { [[self defaults] setObject:(v ?: @"") forKey:[self key:@"sshHost"]]; }
-- (NSString *)sshUser { return [self stringForSuffix:@"sshUser" fallback:@""]; }
-- (void)setSshUser:(NSString *)v { [[self defaults] setObject:(v ?: @"") forKey:[self key:@"sshUser"]]; }
-- (NSInteger)sshPort { return [self intForSuffix:@"sshPort" fallback:22]; }
-- (void)setSshPort:(NSInteger)v { [[self defaults] setInteger:(v > 0 ? v : 22) forKey:[self key:@"sshPort"]]; }
-- (NSString *)sshPassword { return [self stringForSuffix:@"sshPassword" fallback:@""]; }
-- (void)setSshPassword:(NSString *)v { [[self defaults] setObject:(v ?: @"") forKey:[self key:@"sshPassword"]]; }
-- (NSString *)waypipeSSHPassword { return [self stringForSuffix:@"waypipeSSHPassword" fallback:@""]; }
-- (void)setWaypipeSSHPassword:(NSString *)v { [[self defaults] setObject:(v ?: @"") forKey:[self key:@"waypipeSSHPassword"]]; }
-- (NSString *)logLevel { return [self stringForSuffix:@"logLevel" fallback:@"info"]; }
-- (void)setLogLevel:(NSString *)v { [[self defaults] setObject:(v ?: @"info") forKey:[self key:@"logLevel"]]; }
-- (NSString *)defaultInputProfile { return [self stringForSuffix:@"defaultInputProfile" fallback:@"direct"]; }
-- (void)setDefaultInputProfile:(NSString *)v { [[self defaults] setObject:(v ?: @"direct") forKey:[self key:@"defaultInputProfile"]]; }
-- (NSString *)defaultBundledAppID { return [self stringForSuffix:@"defaultBundledAppID" fallback:@"weston-terminal"]; }
-- (void)setDefaultBundledAppID:(NSString *)v { [[self defaults] setObject:(v ?: @"weston-terminal") forKey:[self key:@"defaultBundledAppID"]]; }
-- (BOOL)defaultWaypipeEnabled { return [self boolForSuffix:@"defaultWaypipeEnabled" fallback:YES]; }
-- (void)setDefaultWaypipeEnabled:(BOOL)v { [[self defaults] setBool:v forKey:[self key:@"defaultWaypipeEnabled"]]; }
-- (BOOL)shakeToCloseEnabled { return [self boolForSuffix:@"shakeToCloseEnabled" fallback:YES]; }
-- (void)setShakeToCloseEnabled:(BOOL)v { [[self defaults] setBool:v forKey:[self key:@"shakeToCloseEnabled"]]; }
-- (BOOL)swipeBackToCloseEnabled { return [self boolForSuffix:@"swipeBackToCloseEnabled" fallback:YES]; }
-- (void)setSwipeBackToCloseEnabled:(BOOL)v { [[self defaults] setBool:v forKey:[self key:@"swipeBackToCloseEnabled"]]; }
-- (BOOL)hasCompletedWelcome { return [self boolForSuffix:@"hasCompletedWelcome" fallback:NO]; }
-- (void)setHasCompletedWelcome:(BOOL)v { [[self defaults] setBool:v forKey:[self key:@"hasCompletedWelcome"]]; }
-- (void)synchronize { [[self defaults] synchronize]; }
-
-@end
-
 // ── Server dispatch thread ────────────────────────────────────────────────────
 // Runs a blocking event loop for WWNMiniWaylandServer so client requests are
 // processed as soon as they arrive (not polled at a timer interval).
@@ -193,16 +129,26 @@ static void *compositorThreadFunc(void *ctx) {
 typedef struct {
     int (*entry)(int argc, char **argv);
     const char *name;
+    /* Optional owned argv (NULL-terminated). When set, used instead of {name}. */
+    int argc;
+    char **argv;
 } ClientThreadArgs;
 
 static void *clientThreadFunc(void *ctx) {
     ClientThreadArgs *args = (ClientThreadArgs *)ctx;
-    char *argv[] = { (char *)args->name, NULL };
+    char *fallback[] = { (char *)args->name, NULL };
+    int argc = args->argv ? args->argc : 1;
+    char **argv = args->argv ? args->argv : fallback;
 
     NSLog(@"[WatchCompositor] Client '%s' starting", args->name);
-    int rc = args->entry(1, argv);
+    int rc = args->entry(argc, argv);
     NSLog(@"[WatchCompositor] Client '%s' exited with code %d", args->name, rc);
 
+    if (args->argv) {
+        for (int i = 0; i < args->argc; i++)
+            free(args->argv[i]);
+        free(args->argv);
+    }
     free(args);
     return NULL;
 }
@@ -303,6 +249,9 @@ static void miniServerFrameCallback(const uint8_t *pixels,
               getenv("XDG_RUNTIME_DIR") ?: "(unset)");
         _isRunning = YES;
         [self _startDispatchThread];
+        // Do not auto-launch here — Swift `WatchMachineSessionBridge.connect`
+        // (and WAWONA_WATCH_AUTO_CLIENT via WawonaWatchMain) owns client Start.
+        // Dual auto-launch raced: connect → launch, then env block → stopClient.
         return YES;
     }
 
@@ -470,12 +419,46 @@ static void miniServerFrameCallback(const uint8_t *pixels,
 
 // MARK: - Client launch
 
-- (void)_launchClient:(int (*)(int, char **))entry name:(const char *)name {
+/// Automation hook: `WAWONA_WATCH_AUTO_CLIENT=weston-simple-shm|weston-smoke|…`
+/// launches a shm-class native client after compositor start (ISSUE-017 verify).
+- (void)_maybeAutoLaunchBundledClientFromEnvironment {
+    const char *autoClient = getenv("WAWONA_WATCH_AUTO_CLIENT");
+    if (!autoClient || autoClient[0] == '\0') {
+        return;
+    }
+    NSString *clientId = [NSString stringWithUTF8String:autoClient];
+    NSLog(@"[WatchCompositor] Auto-launching bundled client '%@' (WAWONA_WATCH_AUTO_CLIENT)",
+          clientId);
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!self) {
+            return;
+        }
+        if ([clientId isEqualToString:@"weston"]) {
+            [self launchWeston];
+        } else if ([clientId isEqualToString:@"weston-terminal"]) {
+            [self launchWestonTerminal];
+        } else if ([clientId isEqualToString:@"foot"]) {
+            [self launchFoot];
+        } else {
+            // Default / weston-simple-shm / weston-smoke → shm path
+            [self launchWestonSimpleSHM];
+        }
+    });
+}
+
+- (void)_launchClient:(int (*)(int, char **))entry
+                 name:(const char *)name
+                 argc:(int)argc
+                 argv:(char **)argv {
     [self stopClient];
 
     ClientThreadArgs *args = malloc(sizeof(ClientThreadArgs));
     args->entry = entry;
     args->name  = name;
+    args->argc  = argc;
+    args->argv  = argv;
 
     int rc = pthread_create(&_clientThread, NULL, clientThreadFunc, args);
     if (rc == 0) {
@@ -483,12 +466,19 @@ static void miniServerFrameCallback(const uint8_t *pixels,
         _clientThreadValid = YES;
         NSLog(@"[WatchCompositor] Launched client '%s'", name);
     } else {
+        if (argv) {
+            for (int i = 0; i < argc; i++)
+                free(argv[i]);
+            free(argv);
+        }
         free(args);
         NSLog(@"[WatchCompositor] Failed to launch client '%s' (pthread_create=%d)", name, rc);
     }
 }
 
-- (void)launchWestonSimpleSHM   { [self _launchClient:weston_simple_shm_main name:"weston-simple-shm"]; }
+- (void)launchWestonSimpleSHM {
+    [self _launchClient:weston_simple_shm_main name:"weston-simple-shm" argc:0 argv:NULL];
+}
 - (void)launchWeston {
     [self stopClient];
 
@@ -523,14 +513,44 @@ static void miniServerFrameCallback(const uint8_t *pixels,
     if ([self _isCompatShimEnabledForClient:"weston-terminal"]) {
         return;
     }
-    [self _launchClient:weston_terminal_main name:"weston-terminal"];
+    [WWNWatchShellEnvironment apply];
+    const char *home_dir = getenv("HOME");
+    if (home_dir && home_dir[0]) {
+        chdir(home_dir);
+    }
+    const char *shell = getenv("WAWONA_SHELL");
+    if (!shell || !shell[0]) {
+        shell = "/usr/bin/zsh";
+    }
+    char **argv = calloc(4, sizeof(char *));
+    argv[0] = strdup("weston-terminal");
+    argv[1] = strdup("--shell");
+    argv[2] = strdup(shell);
+    argv[3] = NULL;
+    [self _launchClient:weston_terminal_main
+                   name:"weston-terminal"
+                   argc:3
+                   argv:argv];
 }
 
 - (void)launchFoot {
     if ([self _isCompatShimEnabledForClient:"foot"]) {
         return;
     }
-    [self _launchClient:foot_main name:"foot"];
+    [WWNWatchShellEnvironment apply];
+    const char *home_dir = getenv("HOME");
+    if (home_dir && home_dir[0]) {
+        chdir(home_dir);
+    }
+    const char *shell = getenv("WAWONA_SHELL");
+    if (!shell || !shell[0]) {
+        shell = "/usr/bin/zsh";
+    }
+    char **argv = calloc(3, sizeof(char *));
+    argv[0] = strdup("foot");
+    argv[1] = strdup(shell);
+    argv[2] = NULL;
+    [self _launchClient:foot_main name:"foot" argc:2 argv:argv];
 }
 
 - (void)stopClient {

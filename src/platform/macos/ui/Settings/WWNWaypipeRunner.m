@@ -2,12 +2,12 @@
 #import "WWNPreferencesManager.h"
 #import "../../../../util/WWNLog.h"
 #import "../../WWNPlatformCallbacks.h"
-#import "WWNSSHClient.h"
 #import "../../WWNCompositorBridge.h"
 #if __has_include("../Machines/WWNMachineProfileStore.h")
 #import "../Machines/WWNMachineProfileStore.h"
 #import "../Machines/WWNMachineSessionBridge.h"
 #endif
+#import "../Machines/WWNPlatformCapabilities.h"
 #if TARGET_OS_IPHONE
 #import "../../platform/macos/WWNRootfsProvider.h"
 #endif
@@ -65,6 +65,35 @@ extern int editor_main(int argc, char **argv);
 extern int constraints_main(int argc, char **argv);
 #endif
 
+/// Log module for bundled native clients. Do not use "WESTON" for non-Weston
+/// clients — the startup log overlays these tags and misled users into thinking
+/// Weston was launching kmscube/niri/foot/etc.
+static const char *WWNBundledClientLogModule(NSString *clientId) {
+  if (clientId.length == 0) {
+    return "CLIENT";
+  }
+  if ([clientId hasPrefix:@"weston"]) {
+    return "WESTON";
+  }
+  if ([clientId isEqualToString:@"kmscube"] ||
+      [clientId isEqualToString:@"opengl-cube"]) {
+    return "KMSCUBE";
+  }
+  if ([clientId isEqualToString:@"vkcube"]) {
+    return "VKCUBE";
+  }
+  if ([clientId isEqualToString:@"niri"]) {
+    return "NIRI";
+  }
+  if ([clientId isEqualToString:@"foot"]) {
+    return "FOOT";
+  }
+  if ([clientId isEqualToString:@"fuzzel"]) {
+    return "FUZZEL";
+  }
+  return "CLIENT";
+}
+
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
 static NSString *WWNPreferredHostShellPath(void) {
   const char *override = getenv("WAWONA_SHELL");
@@ -87,12 +116,21 @@ static NSString *WWNPreferredHostShellPath(void) {
 }
 #endif
 
-@interface WWNWaypipeRunner () <WWNSSHClientDelegate>
+#if !TARGET_OS_IPHONE
+@interface WWNNativeClientRecord : NSObject
+@property(nonatomic, copy) NSString *clientId;
+@property(nonatomic, copy, nullable) NSString *machineId;
+@property(nonatomic, strong) NSTask *task;
+@end
+@implementation WWNNativeClientRecord
+@end
+#endif
+
+@interface WWNWaypipeRunner ()
 @property(nonatomic, assign) pid_t currentPid;
 #if !TARGET_OS_IPHONE
 @property(nonatomic, strong) NSTask *currentTask;
 #endif
-@property(nonatomic, strong) WWNSSHClient *sshClient;
 @property(nonatomic, assign) BOOL running;
 @property(nonatomic, assign) BOOL stopping;
 
@@ -101,19 +139,19 @@ static NSString *WWNPreferredHostShellPath(void) {
 @property(nonatomic, assign) BOOL westonTerminalRunning;
 @property(nonatomic, assign) BOOL footRunning;
 #if TARGET_OS_IPHONE
-@property(nonatomic, assign) BOOL iosNativeClientInFlight;
+// Count of concurrent in-process launches (not a singleton mutex).
+@property(nonatomic, assign) NSInteger iosNativeClientInFlightCount;
 @property(nonatomic, copy) NSString *activeIOSBundledClientId;
+// Machines profile ids with an in-process client still running.
+@property(nonatomic, strong) NSMutableSet<NSString *> *iosRunningMachineIds;
 #endif
 #if !TARGET_OS_IPHONE
-@property(nonatomic, strong) NSTask *westonSimpleSHMTask;
-@property(nonatomic, strong) NSTask *westonTask;
-@property(nonatomic, strong) NSTask *westonTerminalTask;
-@property(nonatomic, strong) NSTask *footTask;
-// Generic bundled clients (everything without a dedicated flag above).
-// Keyed by client id so each client has a launch guard and its NSTask is
-// tracked for stop/termination handling instead of being leaked.
+// Multi-instance registry: every launched NSTask is one record. Machines
+// bind via machineId so Stop only kills that copy.
 @property(nonatomic, strong)
-    NSMutableDictionary<NSString *, NSTask *> *genericClientTasks;
+    NSMutableArray<WWNNativeClientRecord *> *nativeClientRecords;
+@property(nonatomic, strong) NSTask *westonTask; // nested compositor (singleton OK)
+@property(nonatomic, copy, nullable) NSString *westonMachineId;
 #endif
 #if TARGET_OS_IPHONE
 @property(nonatomic, assign)
@@ -124,6 +162,10 @@ static NSString *WWNPreferredHostShellPath(void) {
 @property(nonatomic, assign) int savedStdout; // Saved original stdout fd
 @property(nonatomic, strong) NSLock *fdLock;  // Protects fd close/access
 #endif
+
+- (void)_launchWestonTerminalWithMachineId:(NSString *)machineId;
+- (void)_launchWestonSimpleSHMWithMachineId:(NSString *)machineId;
+- (void)_launchFootWithMachineId:(NSString *)machineId;
 @end
 
 @implementation WWNWaypipeRunner
@@ -139,17 +181,27 @@ static NSString *WWNPreferredHostShellPath(void) {
 
 - (void)stopAllNativeClients {
   [self stopWaypipe];
+#if TARGET_OS_IPHONE
   [self stopWestonSimpleSHM];
   [self stopWestonTerminal];
   [self stopWeston];
   [self stopFoot];
-#if !TARGET_OS_IPHONE
-  for (NSTask *task in self.genericClientTasks.allValues) {
-    if (task.isRunning) {
-      [task terminate];
+#else
+  NSArray<WWNNativeClientRecord *> *snapshot =
+      [self.nativeClientRecords copy] ?: @[];
+  for (WWNNativeClientRecord *rec in snapshot) {
+    if (rec.task.isRunning) {
+      [rec.task terminate];
     }
   }
-  [self.genericClientTasks removeAllObjects];
+  [self.nativeClientRecords removeAllObjects];
+  [self _refreshRunningFlagsFromRecords];
+  if (self.westonTask.isRunning) {
+    [self.westonTask terminate];
+  }
+  self.westonTask = nil;
+  self.westonMachineId = nil;
+  self.westonRunning = NO;
 #endif
 }
 
@@ -164,8 +216,10 @@ static NSString *WWNPreferredHostShellPath(void) {
     _savedStderr = -1;
     _savedStdout = -1;
     _fdLock = [[NSLock alloc] init];
+    _iosNativeClientInFlightCount = 0;
+    _iosRunningMachineIds = [NSMutableSet set];
 #else
-    _genericClientTasks = [NSMutableDictionary dictionary];
+    _nativeClientRecords = [NSMutableArray array];
 #endif
   }
   return self;
@@ -179,14 +233,13 @@ static NSString *WWNPreferredHostShellPath(void) {
 #if TARGET_OS_IPHONE
   return self.westonRunning || self.westonTerminalRunning ||
          self.isWestonSimpleSHMRunning || self.footRunning ||
-         self.iosNativeClientInFlight;
+         self.iosNativeClientInFlightCount > 0;
 #else
-  if (self.westonRunning || self.westonTerminalRunning ||
-      self.isWestonSimpleSHMRunning || self.footRunning) {
+  if (self.westonTask.isRunning) {
     return YES;
   }
-  for (NSTask *task in self.genericClientTasks.allValues) {
-    if (task.isRunning) {
+  for (WWNNativeClientRecord *rec in self.nativeClientRecords) {
+    if (rec.task.isRunning) {
       return YES;
     }
   }
@@ -197,6 +250,155 @@ static NSString *WWNPreferredHostShellPath(void) {
 - (BOOL)isWestonSimpleSHMRunning {
   return self.westonSimpleSHMRunning;
 }
+
+#if !TARGET_OS_IPHONE
+- (void)_refreshRunningFlagsFromRecords {
+  BOOL shm = NO, term = NO, foot = NO, weston = self.westonTask.isRunning;
+  for (WWNNativeClientRecord *rec in self.nativeClientRecords) {
+    if (!rec.task.isRunning) {
+      continue;
+    }
+    if ([rec.clientId isEqualToString:@"weston-simple-shm"]) {
+      shm = YES;
+    } else if ([rec.clientId isEqualToString:@"weston-terminal"]) {
+      term = YES;
+    } else if ([rec.clientId isEqualToString:@"foot"]) {
+      foot = YES;
+    } else if ([rec.clientId isEqualToString:@"weston"]) {
+      weston = YES;
+    }
+  }
+  self.westonSimpleSHMRunning = shm;
+  self.westonTerminalRunning = term;
+  self.footRunning = foot;
+  self.westonRunning = weston;
+}
+
+- (void)_registerNativeTask:(NSTask *)task
+                   clientId:(NSString *)clientId
+                  machineId:(NSString *)machineId {
+  if (!task || clientId.length == 0) {
+    return;
+  }
+  WWNNativeClientRecord *rec = [[WWNNativeClientRecord alloc] init];
+  rec.clientId = clientId;
+  rec.machineId = machineId.length > 0 ? [machineId copy] : nil;
+  rec.task = task;
+  [self.nativeClientRecords addObject:rec];
+  [self _refreshRunningFlagsFromRecords];
+  [self _installNativeClientTerminationHandler:task kind:clientId];
+}
+
+- (WWNNativeClientRecord *)_recordForMachineId:(NSString *)machineId {
+  if (machineId.length == 0) {
+    return nil;
+  }
+  for (WWNNativeClientRecord *rec in self.nativeClientRecords) {
+    if ([rec.machineId isEqualToString:machineId] && rec.task.isRunning) {
+      return rec;
+    }
+  }
+  return nil;
+}
+
+- (WWNNativeClientRecord *)_recordForTask:(NSTask *)task {
+  for (WWNNativeClientRecord *rec in self.nativeClientRecords) {
+    if (rec.task == task) {
+      return rec;
+    }
+  }
+  return nil;
+}
+
+- (NSUInteger)runningInstanceCountForClientId:(NSString *)clientId {
+  if (clientId.length == 0) {
+    return 0;
+  }
+  NSUInteger n = 0;
+  for (WWNNativeClientRecord *rec in self.nativeClientRecords) {
+    if ([rec.clientId isEqualToString:clientId] && rec.task.isRunning) {
+      n++;
+    }
+  }
+  if ([clientId isEqualToString:@"weston"] && self.westonTask.isRunning) {
+    n++;
+  }
+  return n;
+}
+
+- (BOOL)isBundledClientRunningForMachineId:(NSString *)machineId {
+  if ([self _recordForMachineId:machineId] != nil) {
+    return YES;
+  }
+  return self.westonTask.isRunning &&
+         machineId.length > 0 &&
+         [self.westonMachineId isEqualToString:machineId];
+}
+
+- (void)stopBundledClientForMachineId:(NSString *)machineId {
+  if (self.westonTask.isRunning && machineId.length > 0 &&
+      [self.westonMachineId isEqualToString:machineId]) {
+    [self.westonTask terminate];
+    self.westonTask = nil;
+    self.westonMachineId = nil;
+    self.westonRunning = NO;
+    return;
+  }
+  WWNNativeClientRecord *rec = [self _recordForMachineId:machineId];
+  if (!rec) {
+    return;
+  }
+  if (rec.task.isRunning) {
+    [rec.task terminate];
+  }
+  [self.nativeClientRecords removeObject:rec];
+  [self _refreshRunningFlagsFromRecords];
+}
+
+- (void)_terminateAllNativeTasksWithClientId:(NSString *)clientId {
+  if (clientId.length == 0) {
+    return;
+  }
+  NSMutableArray<WWNNativeClientRecord *> *dead = [NSMutableArray array];
+  for (WWNNativeClientRecord *rec in self.nativeClientRecords) {
+    if (![rec.clientId isEqualToString:clientId]) {
+      continue;
+    }
+    if (rec.task.isRunning) {
+      [rec.task terminate];
+    }
+    [dead addObject:rec];
+  }
+  [self.nativeClientRecords removeObjectsInArray:dead];
+  [self _refreshRunningFlagsFromRecords];
+}
+#endif
+
+#if TARGET_OS_IPHONE
+- (NSUInteger)runningInstanceCountForClientId:(NSString *)clientId {
+  (void)clientId;
+  // iOS tracks aggregate in-flight count; per-id counts are not retained.
+  return (NSUInteger)MAX(0, self.iosNativeClientInFlightCount);
+}
+
+- (BOOL)isBundledClientRunningForMachineId:(NSString *)machineId {
+  if (machineId.length == 0) {
+    return self.iosNativeClientInFlightCount > 0;
+  }
+  return [self.iosRunningMachineIds containsObject:machineId];
+}
+
+- (void)stopBundledClientForMachineId:(NSString *)machineId {
+  if (machineId.length > 0) {
+    [self.iosRunningMachineIds removeObject:machineId];
+  }
+  // In-process clients share one compositor view stack today — stopping one
+  // machine tears down views only when nothing else remains bound.
+  if (self.iosRunningMachineIds.count == 0) {
+    [self stopActiveIOSBundledClient];
+  }
+}
+#endif
 
 #if TARGET_OS_IPHONE
 /// Thread-safe cleanup of all redirected file descriptors.
@@ -1215,11 +1417,6 @@ static NSString *WWNPreferredHostShellPath(void) {
   [self cleanupFileDescriptors];
 #endif
 
-  if (self.sshClient) {
-    [self.sshClient disconnect];
-    self.sshClient = nil;
-  }
-
   self.running = NO;
   self.stopping = NO;
 }
@@ -1346,13 +1543,10 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   if (clientId.length == 0) {
     return NO;
   }
-  if (self.iosNativeClientInFlight) {
-    WWNLog("WESTON",
-           @"Refusing duplicate in-process launch for '%@' (already running '%@')",
-           clientId, self.activeIOSBundledClientId ?: @"(unknown)");
-    return NO;
-  }
-  self.iosNativeClientInFlight = YES;
+  // Multiple concurrent in-process clients are allowed (including two
+  // weston-terminal instances). Each launch gets its own GCD worker; do not
+  // serialize behind a singleton "in flight" mutex.
+  self.iosNativeClientInFlightCount += 1;
   self.activeIOSBundledClientId = [clientId copy];
 #if TARGET_OS_IPHONE
   wwn_weston_client_log_init();
@@ -1362,8 +1556,13 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   wwn_weston_compositor_shutdown_requested = 0;
   wwn_ios_refresh_bundle_env();
   wwn_propagate_mobile_env();
-  wwn_mobile_clear_wayland_socket_fd();
-  unsetenv("WAYLAND_SOCKET");
+  // Only clear inherited socket state for the first concurrent client. A
+  // second launch must not tear down WAYLAND_SOCKET / FD wiring used by an
+  // already-running in-process client.
+  if (self.iosNativeClientInFlightCount == 1) {
+    wwn_mobile_clear_wayland_socket_fd();
+    unsetenv("WAYLAND_SOCKET");
+  }
 #endif
   [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
   [[WWNCompositorBridge sharedBridge]
@@ -1372,8 +1571,12 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 }
 
 - (void)wwnEndIOSNativeClientLaunch {
-  self.iosNativeClientInFlight = NO;
-  self.activeIOSBundledClientId = nil;
+  if (self.iosNativeClientInFlightCount > 0) {
+    self.iosNativeClientInFlightCount -= 1;
+  }
+  if (self.iosNativeClientInFlightCount == 0) {
+    self.activeIOSBundledClientId = nil;
+  }
   dispatch_async(dispatch_get_main_queue(), ^{
     [[NSNotificationCenter defaultCenter]
         postNotificationName:@"WWNNativeClientProcessDidTerminateNotification"
@@ -1388,43 +1591,86 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   self.westonTerminalRunning = NO;
   self.westonSimpleSHMRunning = NO;
   self.footRunning = NO;
-  self.iosNativeClientInFlight = NO;
+  self.iosNativeClientInFlightCount = 0;
   self.activeIOSBundledClientId = nil;
+  [self.iosRunningMachineIds removeAllObjects];
 }
 #endif
 
 // MARK: - Generic bundled client launcher
 
 - (void)launchBundledClientWithId:(NSString *)clientId {
+  [self launchBundledClientWithId:clientId machineId:nil];
+}
+
+- (void)launchBundledClientWithId:(NSString *)clientId
+                        machineId:(NSString *)machineId {
   if (clientId.length == 0)
     return;
 
+#if !TARGET_OS_IPHONE
+  // Idempotent per machine: reconnecting the same profile must not spawn a
+  // duplicate while that profile's instance is still alive. A *different*
+  // machine with the same client id always gets a new process.
+  if (machineId.length > 0 && [self _recordForMachineId:machineId]) {
+    WWNLog(WWNBundledClientLogModule(clientId),
+           @"%@ already running for machine %@ — keeping existing instance",
+           clientId, machineId);
+    return;
+  }
+#endif
+
 #if TARGET_OS_IPHONE
+  if (machineId.length > 0) {
+    [self.iosRunningMachineIds addObject:machineId];
+  }
   if ([clientId isEqualToString:@"weston"]) {
     [self launchWeston];
     return;
   }
   if ([clientId isEqualToString:@"weston-terminal"]) {
-    [self launchWestonTerminal];
+    [self _launchWestonTerminalWithMachineId:machineId];
     return;
   }
   if ([clientId isEqualToString:@"weston-simple-shm"]) {
-    [self launchWestonSimpleSHM];
+    [self _launchWestonSimpleSHMWithMachineId:machineId];
     return;
   }
   if ([clientId isEqualToString:@"foot"]) {
-    [self launchFoot];
+    [self _launchFootWithMachineId:machineId];
     return;
   }
   if ([clientId isEqualToString:@"niri"]) {
     [self launchNiri];
     return;
   }
+  if ([clientId isEqualToString:@"kmscube"] ||
+      [clientId isEqualToString:@"opengl-cube"] ||
+      [clientId isEqualToString:@"vkcube"] ||
+      [clientId isEqualToString:@"weston-simple-egl"]) {
+    if (!WWNPlatformAllowsGpuStack()) {
+      WWNLog(WWNBundledClientLogModule(clientId),
+             @"Refusing GPU client %@ — platform has no GPU stack "
+             @"(tvOS/watchOS)",
+             clientId);
+      if (machineId.length > 0) {
+        [self.iosRunningMachineIds removeObject:machineId];
+      }
+      return;
+    }
+  }
   if ([clientId isEqualToString:@"kmscube"]) {
     dispatch_async(dispatch_get_main_queue(), ^{
-      BOOL ok = [[WWNCompositorBridge sharedBridge] launchNestedKmscubeOnPrimaryView];
+      WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+      [bridge prepareOutputSizeForNativeClientLaunchWithClientId:@"kmscube"];
+      BOOL ok = [bridge launchNestedKmscubeOnPrimaryView];
       if (!ok) {
-        WWNLog("WESTON", @"kmscube launch failed (no compositor view or kmscube_main unavailable)");
+        WWNLog("KMSCUBE",
+               @"kmscube launch failed (no compositor view or "
+               @"kmscube_main unavailable)");
+      } else {
+        WWNLog("KMSCUBE",
+               @"launchNestedKmscube started via iland Metal presenter");
       }
     });
     return;
@@ -1432,12 +1678,22 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 
   WWNClientMainFn entry = WWNClientMainForId(clientId);
   if (!entry) {
-    WWNLog("WESTON", @"Unknown bundled client id: %@", clientId);
+    WWNLog(WWNBundledClientLogModule(clientId),
+           @"Unknown bundled client id: %@", clientId);
+    if (machineId.length > 0) {
+      [self.iosRunningMachineIds removeObject:machineId];
+    }
     return;
   }
 
+  NSString *boundMachineId = [machineId copy];
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
     if (![self wwnBeginIOSNativeClientLaunch:clientId]) {
+      if (boundMachineId.length > 0) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+          [self.iosRunningMachineIds removeObject:boundMachineId];
+        });
+      }
       return;
     }
 
@@ -1449,45 +1705,97 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       chdir(xdg_dir);
     }
 
-    WWNLog("WESTON", @"Launching in-process %@...", clientId);
+    const char *logMod = WWNBundledClientLogModule(clientId);
+    WWNLog(logMod, @"Launching in-process %@...", clientId);
     int result = entry(1, argv);
-    WWNLog("WESTON", @"%@ exit code: %d", clientId, result);
+    WWNLog(logMod, @"%@ exit code: %d", clientId, result);
 
     if (saved_cwd[0])
       chdir(saved_cwd);
 
     [self wwnEndIOSNativeClientLaunch];
+    if (boundMachineId.length > 0) {
+      dispatch_async(dispatch_get_main_queue(), ^{
+        [self.iosRunningMachineIds removeObject:boundMachineId];
+      });
+    }
+    if (result != 0) {
+      NSString *reason =
+          [NSString stringWithFormat:@"%@ exited %d", clientId, result];
+      dispatch_async(dispatch_get_main_queue(), ^{
+        [[NSNotificationCenter defaultCenter]
+            postNotificationName:@"WWNNativeClientLaunchFailedNotification"
+                          object:self
+                        userInfo:@{
+                          @"clientId" : clientId,
+                          @"reason" : reason,
+                          @"exitCode" : @(result),
+                        }];
+      });
+    }
   });
 #else
-  if ([clientId isEqualToString:@"weston-simple-shm"]) {
-    [self launchWestonSimpleSHM];
+  if ([clientId isEqualToString:@"kmscube"] ||
+      [clientId isEqualToString:@"opengl-cube"] ||
+      [clientId isEqualToString:@"vkcube"] ||
+      [clientId isEqualToString:@"weston-simple-egl"]) {
+    if (!WWNPlatformAllowsGpuStack()) {
+      WWNLog(WWNBundledClientLogModule(clientId),
+             @"Refusing GPU client %@ — platform has no GPU stack",
+             clientId);
+      return;
+    }
+  }
+  // Product Start path: in-process iland Metal presenter (not NSTask kmscube).
+  if ([clientId isEqualToString:@"kmscube"]) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+      [bridge prepareOutputSizeForNativeClientLaunchWithClientId:@"kmscube"];
+      BOOL ok = [bridge launchNestedKmscubeOnPrimaryView];
+      if (!ok) {
+        WWNLog("KMSCUBE",
+               @"kmscube launch failed (no compositor view or "
+               @"kmscube_main unavailable)");
+      } else {
+        WWNLog("KMSCUBE",
+               @"launchNestedKmscube started via iland Metal presenter");
+      }
+    });
     return;
   }
   if ([clientId isEqualToString:@"weston"]) {
+    // Nested Weston remains a singleton (shared nested socket). Reuse the
+    // existing process when already running; still bind ownership to this
+    // machine so Stop targets the right profile.
+    if (self.westonTask.isRunning || self.westonRunning) {
+      if (machineId.length > 0) {
+        self.westonMachineId = [machineId copy];
+      }
+      return;
+    }
+    if (machineId.length > 0) {
+      self.westonMachineId = [machineId copy];
+    }
     [self launchWeston];
     return;
   }
   if ([clientId isEqualToString:@"weston-terminal"]) {
-    [self launchWestonTerminal];
+    [self _launchWestonTerminalWithMachineId:machineId];
+    return;
+  }
+  if ([clientId isEqualToString:@"weston-simple-shm"]) {
+    [self _launchWestonSimpleSHMWithMachineId:machineId];
     return;
   }
   if ([clientId isEqualToString:@"foot"]) {
-    [self launchFoot];
-    return;
-  }
-  // Launch guard: one instance per generic client id at a time.
-  NSTask *existing = self.genericClientTasks[clientId];
-  if (existing && existing.isRunning) {
-    WWNLog("WESTON", @"%@ already running (PID %d) — ignoring relaunch",
-           clientId, existing.processIdentifier);
+    [self _launchFootWithMachineId:machineId];
     return;
   }
   BOOL running = YES;
   NSTask *task = nil;
   [self launchGenericWestonClient:clientId taskInOut:&task runningFlagIn:&running];
   if (task) {
-    self.genericClientTasks[clientId] = task;
-    [self _installNativeClientTerminationHandler:task kind:clientId];
+    [self _registerNativeTask:task clientId:clientId machineId:machineId];
   }
 #endif
 }
@@ -1495,12 +1803,19 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 // MARK: - Weston Simple SHM
 
 - (void)launchWestonSimpleSHM {
-#if TARGET_OS_IPHONE
-  if (self.westonSimpleSHMRunning || self.iosNativeClientInFlight)
-    return;
+  [self _launchWestonSimpleSHMWithMachineId:nil];
+}
 
+- (void)_launchWestonSimpleSHMWithMachineId:(NSString *)machineId {
+#if TARGET_OS_IPHONE
+  NSString *boundMachineId = [machineId copy];
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
     if (![self wwnBeginIOSNativeClientLaunch:@"weston-simple-shm"]) {
+      if (boundMachineId.length > 0) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+          [self.iosRunningMachineIds removeObject:boundMachineId];
+        });
+      }
       return;
     }
     self.westonSimpleSHMRunning = YES;
@@ -1510,6 +1825,11 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       WWNLog("WESTON_SHM", @"FATAL: weston_simple_shm_main symbol is NULL!");
       self.westonSimpleSHMRunning = NO;
       [self wwnEndIOSNativeClientLaunch];
+      if (boundMachineId.length > 0) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+          [self.iosRunningMachineIds removeObject:boundMachineId];
+        });
+      }
       return;
     }
 
@@ -1530,14 +1850,17 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     if (saved_cwd[0])
       chdir(saved_cwd);
 
-    self.westonSimpleSHMRunning = NO;
     [self wwnEndIOSNativeClientLaunch];
+    if (boundMachineId.length > 0) {
+      dispatch_async(dispatch_get_main_queue(), ^{
+        [self.iosRunningMachineIds removeObject:boundMachineId];
+      });
+    }
+    if (self.iosNativeClientInFlightCount == 0) {
+      self.westonSimpleSHMRunning = NO;
+    }
   });
 #else
-  if (self.westonSimpleSHMRunning)
-    return;
-
-  self.westonSimpleSHMRunning = YES;
   [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
   [[WWNCompositorBridge sharedBridge]
       prepareOutputSizeForNativeClientLaunchWithClientId:@"weston-simple-shm"];
@@ -1545,7 +1868,6 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   if (!path) {
     WWNLog("WESTON_SHM",
            @"Could not find weston-simple-shm executable in app bundle.");
-    self.westonSimpleSHMRunning = NO;
     return;
   }
 
@@ -1555,14 +1877,14 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 
   NSError *err;
   if ([task launchAndReturnError:&err]) {
-    self.westonSimpleSHMTask = task;
     WWNLog("WESTON_SHM", @"Launched weston-simple-shm with PID %d",
            task.processIdentifier);
     [self wwnPumpHostCompositorAfterNativeClientLaunch];
-    [self _installNativeClientTerminationHandler:task kind:@"westonSimpleSHM"];
+    [self _registerNativeTask:task
+                     clientId:@"weston-simple-shm"
+                    machineId:machineId];
   } else {
     WWNLog("WESTON_SHM", @"Failed to launch weston-simple-shm: %@", err);
-    self.westonSimpleSHMRunning = NO;
   }
 #endif
 }
@@ -1571,14 +1893,10 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 #if TARGET_OS_IPHONE
   [[WWNCompositorBridge sharedBridge] tearDownActiveIOSCompositorViews];
   self.westonSimpleSHMRunning = NO;
-  self.iosNativeClientInFlight = NO;
+  self.iosNativeClientInFlightCount = 0;
   self.activeIOSBundledClientId = nil;
 #else
-  if (self.westonSimpleSHMTask) {
-    [self.westonSimpleSHMTask terminate];
-    self.westonSimpleSHMTask = nil;
-  }
-  self.westonSimpleSHMRunning = NO;
+  [self _terminateAllNativeTasksWithClientId:@"weston-simple-shm"];
 #endif
 }
 
@@ -1660,6 +1978,9 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 }
 #endif
 
+/// Out-of-process bundled client (niri/kmscube demos/etc.). Named historically
+/// for Weston demos; log module must follow the real client id — never brand
+/// non-Weston launches as [WESTON] (see GitHub issue for this mis-tag).
 - (void)launchGenericWestonClient:(NSString *)name
                         taskInOut:(NSTask *__strong *)taskPtr
                     runningFlagIn:(BOOL *)runningFlag {
@@ -1668,9 +1989,10 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   [[WWNCompositorBridge sharedBridge]
       prepareOutputSizeForNativeClientLaunchWithClientId:name];
 #endif
+  const char *logMod = WWNBundledClientLogModule(name);
   NSString *path = [self findBinaryNamed:name];
   if (!path) {
-    WWNLog("WESTON", @"Could not find executable %@ in app bundle.", name);
+    WWNLog(logMod, @"Could not find executable %@ in app bundle.", name);
     *runningFlag = NO;
     return;
   }
@@ -1751,16 +2073,16 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   NSError *err;
   if ([task launchAndReturnError:&err]) {
     *taskPtr = task;
-    WWNLog("WESTON", @"Launched %@ with PID %d", name, task.processIdentifier);
+    WWNLog(logMod, @"Launched %@ with PID %d", name, task.processIdentifier);
     [self wwnPumpHostCompositorAfterNativeClientLaunch];
   } else {
-    WWNLog("WESTON", @"Failed to launch %@: %@", name, err);
+    WWNLog(logMod, @"Failed to launch %@: %@", name, err);
     *runningFlag = NO;
   }
 }
 
-/// When the child exits (quit, crash, SIGKILL), clear flags and notify so UI can
-/// drop "connected" without requiring Stop. `kind` is @"weston" | @"westonTerminal" | @"westonSimpleSHM" | @"foot".
+/// When the child exits (quit, crash, SIGKILL), drop its registry record and
+/// notify so UI can clear "connected" without requiring Stop.
 - (void)_installNativeClientTerminationHandler:(NSTask *)task kind:(NSString *)kind {
   if (!task || !kind)
     return;
@@ -1770,34 +2092,18 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       WWNWaypipeRunner *s = weakSelf;
       if (!s)
         return;
-      if ([kind isEqualToString:@"weston"]) {
-        if (s.westonTask != finished)
-          return;
+      if (s.westonTask == finished) {
         s.westonTask = nil;
-        s.westonRunning = NO;
-      } else if ([kind isEqualToString:@"westonTerminal"]) {
-        if (s.westonTerminalTask != finished)
-          return;
-        s.westonTerminalTask = nil;
-        s.westonTerminalRunning = NO;
-      } else if ([kind isEqualToString:@"westonSimpleSHM"]) {
-        if (s.westonSimpleSHMTask != finished)
-          return;
-        s.westonSimpleSHMTask = nil;
-        s.westonSimpleSHMRunning = NO;
-      } else if ([kind isEqualToString:@"foot"]) {
-        if (s.footTask != finished)
-          return;
-        s.footTask = nil;
-        s.footRunning = NO;
-      } else {
-        // Generic bundled client: kind is the client id.
-        if (s.genericClientTasks[kind] != finished)
-          return;
-        [s.genericClientTasks removeObjectForKey:kind];
-        WWNLog("WESTON", @"Generic client %@ terminated (status %d)", kind,
-               finished.terminationStatus);
+        s.westonMachineId = nil;
       }
+      WWNNativeClientRecord *rec = [s _recordForTask:finished];
+      if (rec) {
+        WWNLog(WWNBundledClientLogModule(rec.clientId),
+               @"%@ terminated (status %d machine=%@)", rec.clientId,
+               finished.terminationStatus, rec.machineId ?: @"-");
+        [s.nativeClientRecords removeObject:rec];
+      }
+      [s _refreshRunningFlagsFromRecords];
       [[NSNotificationCenter defaultCenter]
           postNotificationName:@"WWNNativeClientProcessDidTerminateNotification"
                         object:s];
@@ -1867,7 +2173,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 - (void)wwnLaunchWestonCompositorWithBackend:(const char *)backend
                                   usePixman:(BOOL)usePixman
                                prepareIland:(BOOL)prepareIland {
-  if (self.westonRunning || self.iosNativeClientInFlight) {
+  if (self.westonRunning) {
     return;
   }
   self.westonRunning = YES;
@@ -1900,10 +2206,15 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       setenv("WAYLAND_DISPLAY", parent_display, 1);
     }
 
-    uint32_t outW = 420;
-    uint32_t outH = 912;
+    uint32_t outW = 0;
+    uint32_t outH = 0;
     float outScale = 1.0f;
     [bridge latestOutputWidth:&outW height:&outH scale:&outScale];
+    if (outW == 0 || outH == 0) {
+      WWNLog("WESTON",
+             @"Host output size still unset after prepare — nested weston "
+             @"will negotiate via xdg_toplevel");
+    }
 
     unsigned hostScale =
         (unsigned)lrintf(outScale >= 1.0f ? outScale : 1.0f);
@@ -1914,11 +2225,9 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     snprintf(scaleEnv, sizeof(scaleEnv), "%u", hostScale);
     setenv("WAWONA_OUTPUT_SCALE", scaleEnv, 1);
 
-    char widthArg[32];
-    char heightArg[32];
+    // Do not pass --width/--height. Nested Weston is a Wayland client of
+    // Wawona; size is negotiated via xdg_toplevel / per-window wl_output.
     char scaleArg[32];
-    snprintf(widthArg, sizeof(widthArg), "--width=%u", outW);
-    snprintf(heightArg, sizeof(heightArg), "--height=%u", outH);
     unsigned launchScale = hostScale;
     snprintf(scaleArg, sizeof(scaleArg), "--scale=%u", launchScale);
 
@@ -1950,8 +2259,6 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
              nestedSocket.UTF8String);
     argv_weston[argc_weston++] = nested_socket_arg;
     argv_weston[argc_weston++] = "--shell=desktop-shell.so";
-    argv_weston[argc_weston++] = widthArg;
-    argv_weston[argc_weston++] = heightArg;
     argv_weston[argc_weston++] = scaleArg;
     if (!prepareIland) {
       argv_weston[argc_weston++] = "--fullscreen";
@@ -2106,6 +2413,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   snprintf(scaleEnv, sizeof(scaleEnv), "%u", hostScale);
   setenv("WAWONA_OUTPUT_SCALE", scaleEnv, 1);
 
+  // No --width/--height: nested Weston sizes via xdg negotiation with Wawona.
   NSMutableArray<NSString *> *args = [NSMutableArray arrayWithObjects:
       @"--backend=wayland",
       // Deterministic nested socket so the anowaW app bridge can attach. Keep
@@ -2113,10 +2421,10 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       [NSString stringWithFormat:@"--socket=%@",
                                  [WWNPreferencesManager preferredNestedSocketName]],
       @"--shell=desktop-shell.so",
-      [NSString stringWithFormat:@"--width=%u", outW],
-      [NSString stringWithFormat:@"--height=%u", outH],
       [NSString stringWithFormat:@"--scale=%u", hostScale],
       nil];
+  (void)outW;
+  (void)outH;
   if (configPath[0]) {
     [args addObject:[NSString stringWithFormat:@"--config=%s", configPath]];
   }
@@ -2194,8 +2502,6 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   }
 
   typedef struct {
-    char width[32];
-    char height[32];
     char scale[32];
     char config[600];
   } WWNWestonDrmLaunchArgs;
@@ -2205,8 +2511,10 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     self.westonRunning = NO;
     return;
   }
-  snprintf(launchArgs->width, sizeof(launchArgs->width), "--width=%u", outW);
-  snprintf(launchArgs->height, sizeof(launchArgs->height), "--height=%u", outH);
+  // No --width/--height: DRM/iland output size follows host view via
+  // runtime wl_output updates, not launch argv.
+  (void)outW;
+  (void)outH;
   snprintf(launchArgs->scale, sizeof(launchArgs->scale), "--scale=%u", hostScale);
   if (configArg[0]) {
     strncpy(launchArgs->config, configArg, sizeof(launchArgs->config) - 1);
@@ -2223,13 +2531,11 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
          * regardless of backend. */
         (char *)"--socket=wawona-nested",
         (char *)"--shell=desktop-shell.so",
-        args->width,
-        args->height,
         args->scale,
         args->config[0] ? args->config : NULL,
         NULL,
     };
-    int argc_weston = args->config[0] ? 8 : 7;
+    int argc_weston = args->config[0] ? 6 : 5;
     WWNLog("WESTON", @"Starting in-process nested Weston (iland DRM) on macOS");
     int rc = westonFnForBlock(argc_weston, argv_weston);
     WWNLog("WESTON", @"In-process nested Weston (DRM) exited rc=%d", rc);
@@ -2244,15 +2550,10 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 #endif
 
 - (void)launchWeston {
-#if TARGET_OS_IPHONE
-  if (self.westonRunning || self.iosNativeClientInFlight) {
-    return;
-  }
-#else
+  // Nested Weston keeps a single preferred nested socket; treat as singleton.
   if (self.westonRunning) {
     return;
   }
-#endif
 #if TARGET_OS_IPHONE
   NSString *backend =
       [[WWNPreferencesManager sharedManager] nestedWestonBackend];
@@ -2278,10 +2579,6 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 
 #if TARGET_OS_IPHONE
 - (void)launchNiri {
-  if (self.iosNativeClientInFlight) {
-    return;
-  }
-
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
     CFAbsoluteTime launchStart = CFAbsoluteTimeGetCurrent();
     if (![self wwnBeginIOSNativeClientLaunch:@"niri"]) {
@@ -2294,11 +2591,37 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     }
     setenv("WAYLAND_DISPLAY", parent_display, 1);
     wwnConfigureNiriNestedEnv();
+    // Surface niri panics/errors in Simulator Console (host reads stderr).
+    if (!getenv("RUST_BACKTRACE") || !getenv("RUST_BACKTRACE")[0]) {
+      setenv("RUST_BACKTRACE", "1", 0);
+    }
+    if (!getenv("RUST_LOG") || !getenv("RUST_LOG")[0]) {
+      setenv("RUST_LOG", "niri=debug,smithay::backend::egl=info", 0);
+    }
 
-    WWNLog("NIRI", @"Launching in-process niri_main (nested)...");
+    char saved_cwd[512] = "";
+    const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
+    if (xdg_dir && xdg_dir[0]) {
+      getcwd(saved_cwd, sizeof(saved_cwd));
+      if (chdir(xdg_dir) != 0) {
+        WWNLog("NIRI", @"WARN: chdir(XDG_RUNTIME_DIR=%s) failed errno=%d",
+               xdg_dir, errno);
+      }
+    }
+
+    WWNLog("NIRI",
+           @"Launching in-process niri_main (nested) WAYLAND_DISPLAY=%s "
+           @"XDG_RUNTIME_DIR=%s NIRI_CONFIG=%s DYLD_LIBRARY_PATH=%s",
+           getenv("WAYLAND_DISPLAY") ?: "(null)",
+           getenv("XDG_RUNTIME_DIR") ?: "(null)",
+           getenv("NIRI_CONFIG") ?: "(null)",
+           getenv("DYLD_LIBRARY_PATH") ?: "(null)");
     if (!niri_main) {
       WWNLog("NIRI",
              @"niri_main not linked in this build — nested niri unavailable");
+      if (saved_cwd[0]) {
+        chdir(saved_cwd);
+      }
       [self wwnEndIOSNativeClientLaunch];
       dispatch_async(dispatch_get_main_queue(), ^{
         [[NSNotificationCenter defaultCenter]
@@ -2315,7 +2638,26 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     int result = niri_main();
     WWNLog("NIRI", @"niri_main exit code: %d (total %.0fms)", result,
            (CFAbsoluteTimeGetCurrent() - launchStart) * 1000.0);
+    if (saved_cwd[0]) {
+      chdir(saved_cwd);
+    }
     [self wwnEndIOSNativeClientLaunch];
+    if (result != 0) {
+      NSString *reason =
+          [NSString stringWithFormat:@"niri_main exited %d (see stderr for "
+                                     @"niri_main: fatal/panicked)",
+                                     result];
+      dispatch_async(dispatch_get_main_queue(), ^{
+        [[NSNotificationCenter defaultCenter]
+            postNotificationName:@"WWNNativeClientLaunchFailedNotification"
+                          object:self
+                        userInfo:@{
+                          @"clientId" : @"niri",
+                          @"reason" : reason,
+                          @"exitCode" : @(result),
+                        }];
+      });
+    }
   });
 }
 #endif
@@ -2325,29 +2667,41 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   wwn_weston_compositor_shutdown_requested = 1;
   [[WWNCompositorBridge sharedBridge] tearDownActiveIOSCompositorViews];
   self.westonRunning = NO;
-  self.iosNativeClientInFlight = NO;
+  self.iosNativeClientInFlightCount = 0;
   self.activeIOSBundledClientId = nil;
 #else
   if (self.westonTask) {
     [self.westonTask terminate];
     self.westonTask = nil;
   }
+  self.westonMachineId = nil;
   self.westonRunning = NO;
 #endif
 }
 
 // MARK: - Weston Terminal
 - (void)launchWestonTerminal {
+  [self _launchWestonTerminalWithMachineId:nil];
+}
+
+- (void)_launchWestonTerminalWithMachineId:(NSString *)machineId {
 #if TARGET_OS_IPHONE
-  if (self.westonTerminalRunning || self.iosNativeClientInFlight)
-    return;
+  NSString *boundMachineId = [machineId copy];
   if (wwn_weston_terminal_is_compat_shim &&
       wwn_weston_terminal_is_compat_shim() != 0) {
     WWNLog("WESTON_TERM", @"Refusing to launch 'weston-terminal': compatibility shim routes to weston-simple-shm.");
+    if (boundMachineId.length > 0) {
+      [self.iosRunningMachineIds removeObject:boundMachineId];
+    }
     return;
   }
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
     if (![self wwnBeginIOSNativeClientLaunch:@"weston-terminal"]) {
+      if (boundMachineId.length > 0) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+          [self.iosRunningMachineIds removeObject:boundMachineId];
+        });
+      }
       return;
     }
     self.westonTerminalRunning = YES;
@@ -2370,14 +2724,13 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
         (char *)(shell && shell[0] ? shell : "/usr/bin/zsh"),
         NULL,
     };
-    WWNLog("WESTON_TERM", @"Launching iOS weston-terminal (in-process zsh via libwawona-zsh.a, label=%s)...",
-           argv_term[2]);
-    // Runs on a background utility queue, so the join below does not block the
-    // UI. The join is intentional: it holds westonTerminalRunning/native-client
-    // state for the whole session and resets it (below) only once zsh exits.
-    // Detaching would reset state early and allow a second launch to re-init the
-    // non-reentrant in-process zsh. Any perceived launch delay is the paced zsh
-    // bootstrap on ios_zsh_thread, not a main-thread stall.
+    WWNLog("WESTON_TERM",
+           @"Launching iOS weston-terminal instance (in-process zsh via "
+           @"libwawona-zsh.a, label=%s, inFlight=%ld)...",
+           argv_term[2], (long)self.iosNativeClientInFlightCount);
+    // Join on this GCD worker until the client exits so in-flight count /
+    // westonTerminalRunning stay accurate for the whole session. Multiple
+    // workers may run concurrently for multiple Machines profiles.
     wwn_launch_host_client(argv_term, environ);
     WWNLog("WESTON_TERM", @"weston-terminal client thread finished");
 
@@ -2385,18 +2738,21 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       chdir(saved_cwd);
     }
 
-    self.westonTerminalRunning = NO;
     [self wwnEndIOSNativeClientLaunch];
+    if (boundMachineId.length > 0) {
+      dispatch_async(dispatch_get_main_queue(), ^{
+        [self.iosRunningMachineIds removeObject:boundMachineId];
+      });
+    }
+    if (self.iosNativeClientInFlightCount == 0) {
+      self.westonTerminalRunning = NO;
+    }
   });
 #else
-  if (self.westonTerminalRunning)
-    return;
-  self.westonTerminalRunning = YES;
   [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
   NSString *path = [self findBinaryNamed:@"weston-terminal"];
   if (!path) {
     WWNLog("WESTON_TERM", @"Could not find weston-terminal in app bundle.");
-    self.westonTerminalRunning = NO;
     return;
   }
 
@@ -2459,14 +2815,14 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   task.environment = env;
   NSError *err;
   if ([task launchAndReturnError:&err]) {
-    self.westonTerminalTask = task;
     WWNLog("WESTON_TERM", @"Launched weston-terminal with PID %d (shell=%@)",
            task.processIdentifier, shellPath);
     [self wwnPumpHostCompositorAfterNativeClientLaunch];
-    [self _installNativeClientTerminationHandler:task kind:@"westonTerminal"];
+    [self _registerNativeTask:task
+                     clientId:@"weston-terminal"
+                    machineId:machineId];
   } else {
     WWNLog("WESTON_TERM", @"Failed to launch weston-terminal: %@", err);
-    self.westonTerminalRunning = NO;
   }
 #endif
 }
@@ -2475,39 +2831,43 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 #if TARGET_OS_IPHONE
   [[WWNCompositorBridge sharedBridge] tearDownActiveIOSCompositorViews];
   self.westonTerminalRunning = NO;
-  self.iosNativeClientInFlight = NO;
+  self.iosNativeClientInFlightCount = 0;
   self.activeIOSBundledClientId = nil;
 #else
-  if (self.westonTerminalTask) {
-    [self.westonTerminalTask terminate];
-    self.westonTerminalTask = nil;
-  }
-  self.westonTerminalRunning = NO;
+  [self _terminateAllNativeTasksWithClientId:@"weston-terminal"];
 #endif
 }
 
 // MARK: - Foot Terminal
 
 - (void)launchFoot {
+  [self _launchFootWithMachineId:nil];
+}
+
+- (void)_launchFootWithMachineId:(NSString *)machineId {
 #if TARGET_OS_IPHONE
-  if (self.footRunning || self.iosNativeClientInFlight)
-    return;
+  NSString *boundMachineId = [machineId copy];
   if (wwn_foot_is_compat_shim && wwn_foot_is_compat_shim() != 0) {
-    // Foot is still a weston-simple-shm shim on Apple mobile — launching it
-    // leaves an empty/black compositor. Fall back to the real terminal.
+    // Legacy APKs/archives only. Refuse silent weston-terminal substitution —
+    // real foot must be force_loaded (wwn_foot_is_compat_shim == 0).
     WWNLog("FOOT",
-           @"foot is a compatibility shim on this platform; launching "
-           @"weston-terminal instead (real foot port pending).");
-    [self launchWestonTerminal];
+           @"Refusing foot launch: compatibility shim still linked "
+           @"(rebuild with wwn-foot apple-mobile).");
     return;
   }
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
     if (![self wwnBeginIOSNativeClientLaunch:@"foot"]) {
+      if (boundMachineId.length > 0) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+          [self.iosRunningMachineIds removeObject:boundMachineId];
+        });
+      }
       return;
     }
     self.footRunning = YES;
 
     [WWNRootfsProvider applyShellEnvironment];
+    WWNConfigureBundledRuntimeEnvIfNeeded();
 
     char saved_cwd[512] = "";
     const char *home_dir = getenv("HOME");
@@ -2516,27 +2876,63 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       chdir(home_dir);
     }
 
+    // Match macOS/Android: explicit foot.ini + monospace face so fcft does
+    // not resolve to a blank window on first frame.
+    NSString *runtimeDir = NSTemporaryDirectory();
+    const char *xdg = getenv("XDG_RUNTIME_DIR");
+    if (xdg && xdg[0]) {
+      runtimeDir = @(xdg);
+    }
+    NSString *iniPath =
+        [runtimeDir stringByAppendingPathComponent:@"wawona-foot.ini"];
+    NSString *fontDir = WWNWawonaBundledSharePath(@"fonts");
+    NSString *monoTtf =
+        [fontDir stringByAppendingPathComponent:@"truetype/DejaVuSansMono.ttf"];
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSString *fontSpec = [fm fileExistsAtPath:monoTtf]
+                             ? [NSString stringWithFormat:@"%@:size=14", monoTtf]
+                             : @"monospace:size=14";
+    NSString *ini = [NSString
+        stringWithFormat:@"[main]\nfont=%@\ndpi-aware=yes\n\n"
+                          "[tweak]\nfont-monospace-warn=no\n",
+                         fontSpec];
+    [ini writeToFile:iniPath
+          atomically:YES
+            encoding:NSUTF8StringEncoding
+               error:nil];
+
     const char *shell = getenv("WAWONA_SHELL");
+    if (!shell || !shell[0]) {
+      shell = "/usr/bin/zsh";
+    }
     char *argv_foot[] = {
         "foot",
-        (char *)(shell && shell[0] ? shell : "/usr/bin/zsh"),
+        "-o",
+        "tweak.font-monospace-warn=no",
+        "-c",
+        (char *)iniPath.fileSystemRepresentation,
+        (char *)shell,
         NULL,
     };
-    WWNLog("FOOT", @"Launching in-process foot_main (shell=%s)...",
-           argv_foot[1]);
-    int result = foot_main(2, argv_foot);
+    WWNLog("FOOT", @"Launching in-process foot_main (shell=%s ini=%@)...",
+           shell, iniPath);
+    int result = foot_main(6, argv_foot);
     WWNLog("FOOT", @"foot_main exit code: %d", result);
 
     if (saved_cwd[0])
       chdir(saved_cwd);
 
-    self.footRunning = NO;
     [self wwnEndIOSNativeClientLaunch];
+    if (boundMachineId.length > 0) {
+      dispatch_async(dispatch_get_main_queue(), ^{
+        [self.iosRunningMachineIds removeObject:boundMachineId];
+      });
+    }
+    if (self.iosNativeClientInFlightCount == 0) {
+      self.footRunning = NO;
+    }
   });
 #else
-  if (self.footRunning)
-    return;
-  self.footRunning = YES;
   [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
 
   // Prefer the real Mach-O (.foot-wrapped) over the shell wrapper — the
@@ -2548,7 +2944,6 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   }
   if (!path) {
     WWNLog("FOOT", @"Could not find foot in app bundle.");
-    self.footRunning = NO;
     return;
   }
 
@@ -2617,15 +3012,12 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 
   NSError *err = nil;
   if ([task launchAndReturnError:&err]) {
-    self.footTask = task;
-    self.footRunning = YES;
     WWNLog("FOOT", @"Launched foot PID %d (bin=%@ font=%@ shell=%@)",
            task.processIdentifier, path, fontSpec, shellPath);
     [self wwnPumpHostCompositorAfterNativeClientLaunch];
-    [self _installNativeClientTerminationHandler:task kind:@"foot"];
+    [self _registerNativeTask:task clientId:@"foot" machineId:machineId];
   } else {
     WWNLog("FOOT", @"Failed to launch foot: %@", err);
-    self.footRunning = NO;
   }
 #endif
 }
@@ -2634,14 +3026,10 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 #if TARGET_OS_IPHONE
   [[WWNCompositorBridge sharedBridge] tearDownActiveIOSCompositorViews];
   self.footRunning = NO;
-  self.iosNativeClientInFlight = NO;
+  self.iosNativeClientInFlightCount = 0;
   self.activeIOSBundledClientId = nil;
 #else
-  if (self.footTask) {
-    [self.footTask terminate];
-    self.footTask = nil;
-  }
-  self.footRunning = NO;
+  [self _terminateAllNativeTasksWithClientId:@"foot"];
 #endif
 }
 

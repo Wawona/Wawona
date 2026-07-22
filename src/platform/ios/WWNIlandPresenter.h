@@ -24,6 +24,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)invalidate;
 
+/// Re-read layer bounds×scale into drawableSize + iland preferred DRM mode.
+- (void)syncPreferredModeFromLayer;
+
 - (BOOL)launchNestedKmscubeWithWidth:(int)width height:(int)height;
 
 @end

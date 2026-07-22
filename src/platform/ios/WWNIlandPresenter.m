@@ -12,6 +12,7 @@
 #import "../../util/WWNLog.h"
 #import <IOSurface/IOSurfaceRef.h>
 #import <errno.h>
+#import <math.h>
 #import <pthread.h>
 #import <unistd.h>
 
@@ -138,10 +139,37 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
     if (gActivePresenter == self) gActivePresenter = nil;
 }
 
+- (void)syncPreferredModeFromLayer {
+    if (!_layer) return;
+    CGFloat scale = _layer.contentsScale > 0.0 ? _layer.contentsScale : 1.0;
+    CGSize px = CGSizeMake(MAX(1.0, _layer.bounds.size.width * scale),
+                           MAX(1.0, _layer.bounds.size.height * scale));
+    _layer.drawableSize = px;
+    iland_drm_set_preferred_mode((uint32_t)(px.width + 0.5),
+                                 (uint32_t)(px.height + 0.5), 0);
+    WWNLog("KMSCUBE", @"syncPreferredModeFromLayer %.0fx%.0f (scale=%.1f)",
+           px.width, px.height, scale);
+}
+
 - (void)presentIOSurface:(IOSurfaceRef)surface {
     NSUInteger w = IOSurfaceGetWidth(surface);
     NSUInteger h = IOSurfaceGetHeight(surface);
     if (w == 0 || h == 0) return;
+
+    // Keep Metal drawable matched to the host layer (bounds × scale). Preferred
+    // DRM mode is set at init, but prepareIland may resize after that — refresh
+    // here so nested kmscube frames are not squeezed into a stale drawable.
+    CGFloat scale = _layer.contentsScale > 0.0 ? _layer.contentsScale : 1.0;
+    CGSize want =
+        CGSizeMake(MAX(1.0, _layer.bounds.size.width * scale),
+                   MAX(1.0, _layer.bounds.size.height * scale));
+    if (fabs(_layer.drawableSize.width - want.width) > 0.5 ||
+        fabs(_layer.drawableSize.height - want.height) > 0.5) {
+        _layer.drawableSize = want;
+        iland_drm_set_preferred_mode((uint32_t)(want.width + 0.5),
+                                     (uint32_t)(want.height + 0.5), 0);
+    }
+
     static int s_presentCount = 0;
     if (s_presentCount < 5) {
         uint32_t fcc = 0;
@@ -159,6 +187,15 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
                s_presentCount, (unsigned long)w, (unsigned long)h, fcc, px0,
                _layer.drawableSize.width, _layer.drawableSize.height,
                (int)_layer.opaque);
+    }
+    // First iland frame: dismiss startup log (Wayland-path notification is
+    // never posted for DRM/Metal nested clients).
+    if (s_presentCount == 0) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [[NSNotificationCenter defaultCenter]
+                postNotificationName:@"WWNFirstWaylandFrameNotification"
+                              object:nil];
+        });
     }
     s_presentCount++;
 

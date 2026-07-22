@@ -47,8 +47,7 @@ let
     {
       id = "foot";
       name = "Foot Terminal";
-      # Apple mobile ships a foot→weston-terminal shim until real foot lands.
-      comment = "Wayland terminal (weston-terminal on Apple mobile)";
+      comment = "Fast Wayland terminal emulator";
       categories = "System;TerminalEmulator;";
       icon = "foot";
     }
