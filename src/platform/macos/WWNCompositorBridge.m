@@ -13,9 +13,9 @@
 #import "../../util/WWNLog.h"
 #import "WWNPlatformCallbacks.h"
 #import "ui/Settings/WWNPreferencesManager.h"
+#import "ui/Machines/WWNMachineProfileStore.h"
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
 #import "WWNWindow.h"
-#import "ui/Machines/WWNMachineProfileStore.h"
 #endif
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
 #import <UIKit/UIKit.h>
@@ -85,6 +85,9 @@ extern uint32_t WWNCoreGetTimestampMs(void *core);
 extern void WWNCoreFree(void *core);
 extern void WWNCoreInjectWindowResize(void *core, uint64_t window_id,
                                       uint32_t width, uint32_t height);
+extern void WWNCoreBeginInteractiveResize(void *core, uint64_t window_id);
+extern void WWNCoreEndInteractiveResize(void *core, uint64_t window_id,
+                                        uint32_t width, uint32_t height);
 extern void WWNCoreApplyHostWindowFullscreen(void *core, uint64_t window_id,
                                              bool fullscreen, uint32_t width,
                                              uint32_t height);
@@ -114,6 +117,9 @@ extern void WWNCoreTextInputPreedit(void *core, const char *text,
 extern void WWNCoreTextInputDeleteSurrounding(void *core, uint32_t before,
                                               uint32_t after);
 extern int WWNCoreTextInputIsEnabled(void *core);
+extern int WWNCoreTextEntryWanted(void *core);
+extern void WWNCoreTextInputGetContentType(void *core, uint32_t *out_hint,
+                                           uint32_t *out_purpose);
 extern void WWNCoreTextInputGetCursorRect(void *core, int32_t *out_x,
                                           int32_t *out_y, int32_t *out_width,
                                           int32_t *out_height);
@@ -290,6 +296,8 @@ NSNotificationName const WWNNativeClientWillLaunchNotification =
     @"WWNNativeClientWillLaunchNotification";
 NSNotificationName const WWNClientMinimizeRequestedNotification =
     @"WWNClientMinimizeRequestedNotification";
+NSNotificationName const WWNHostWindowsDidChangeNotification =
+    @"WWNHostWindowsDidChangeNotification";
 
 static uint32_t WWNBridgeFrameTimestampMs(void *core) {
   if (core) {
@@ -388,9 +396,10 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   NSInteger _lastPasteboardChangeCount;
   BOOL _pasteboardChangeCountInitialized;
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
-  // Last polled zwp_text_input_v3 enabled state (host soft-keyboard sync).
-  BOOL _lastTextInputEnabled;
-  BOOL _lastTextInputEnabledInitialized;
+  // Last polled text_entry_wanted (committed TI or terminal synthesis).
+  BOOL _lastTextEntryWanted;
+  BOOL _lastTextEntryWantedInitialized;
+  uint32_t _lastTextInputPurpose;
 #endif
 
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
@@ -399,6 +408,9 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   NSMutableDictionary<NSNumber *, UIWindow *> *_iosHostWindows;
   NSMutableSet<NSNumber *> *_hostLockedWindowIds;
   BOOL _iosPerWindowHostingEnabled;
+  // Host compositor view for iland Metal demos (kmscube) / nested DRM when
+  // no Wayland toplevel exists yet. containerView is a plain UIView.
+  WWNCompositorView_ios *_ilandHostView;
 #else
   NSMutableDictionary<NSNumber *, id>
       *_windows; /* WWNWindow toplevel or WWNView popup */
@@ -451,6 +463,8 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   uint32_t _sentOutputW;
   uint32_t _sentOutputH;
   float _sentOutputScale;
+  // Once a live host surface has seeded wl_output, never invent phone portrait.
+  BOOL _hasObservedRealOutputSize;
 
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
   // Saved gamma for restore (nested compositor may not use; main display only)
@@ -458,6 +472,8 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   CGGammaValue *_savedGammaGreen;
   CGGammaValue *_savedGammaBlue;
   uint32_t _savedGammaSize;
+  // Host window for iland Metal demos (kmscube) when no Wayland toplevel exists.
+  NSWindow *_ilandHostWindow;
 #endif
 }
 
@@ -518,13 +534,47 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     _windowsWithInitialSizeSynced = [NSMutableSet set];
     _windowsAutoShownAfterFirstBuffer = [NSMutableSet set];
     [self setForceSSD:WWNForceSSDEnabled()];
+    // SwiftUI MachineSettings / WawonaPreferences write Force SSD to defaults
+    // and post this notification. ObjC WWNPreferences only observes defaults
+    // after its window is opened — without this, Force SSD toggles never reach
+    // Rust and weston stays borderless (no macOS SSD chrome / resize controls).
+    [[NSNotificationCenter defaultCenter]
+        addObserver:self
+           selector:@selector(_forceSSDPreferenceChanged:)
+               name:kWWNForceSSDChangedNotification
+             object:nil];
+    [[NSNotificationCenter defaultCenter]
+        addObserver:self
+           selector:@selector(_forceSSDUserDefaultsChanged:)
+               name:NSUserDefaultsDidChangeNotification
+             object:nil];
   }
   return self;
 }
 
 - (void)dealloc {
+  [[NSNotificationCenter defaultCenter] removeObserver:self];
   if (_rustCore) {
     WWNCoreFree(_rustCore);
+  }
+}
+
+- (void)_forceSSDPreferenceChanged:(NSNotification *)notification {
+  (void)notification;
+  [self setForceSSD:WWNForceSSDEnabled()];
+}
+
+- (void)_forceSSDUserDefaultsChanged:(NSNotification *)notification {
+  (void)notification;
+  // Cover Swift paths that write ForceServerSideDecorations / wawona.pref.forceSSD
+  // without posting kWWNForceSSDChangedNotification.
+  static BOOL sLastForceSSD = NO;
+  static BOOL sHasForceSSDSample = NO;
+  BOOL enabled = WWNForceSSDEnabled();
+  if (!sHasForceSSDSample || sLastForceSSD != enabled) {
+    sHasForceSSDSample = YES;
+    sLastForceSSD = enabled;
+    [self setForceSSD:enabled];
   }
 }
 
@@ -621,6 +671,11 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   }
 
   if (success) {
+    // Re-apply after start: init may have raced, and Swift prefs can change
+    // between WWNCoreNew and WWNCoreStart. decoration_policy must match the
+    // Force SSD toggle before the first client connects.
+    [self setForceSSD:WWNForceSSDEnabled()];
+
     // Export WAYLAND_DISPLAY so child processes and logs can reference it
     NSString *displayName = socketName ?: @"wayland-0";
     setenv("WAYLAND_DISPLAY", [displayName UTF8String], 1);
@@ -863,7 +918,10 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     }
   }
   if (clientWindows.count == 0) {
-    return [self focusClientWindows];
+    // Do not fall back to focusing every client window — that steals focus
+    // from other machines when this profile has no windows yet (or its
+    // windows were closed). Caller can retry after the client maps a surface.
+    return NO;
   }
 
   [NSApp activateIgnoringOtherApps:YES];
@@ -992,19 +1050,31 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
 }
 
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
-/// Drive host soft keyboard from Wayland `zwp_text_input_v3` Enable/Disable.
-/// Clients (terminals, editors, password fields) Enable when they need input;
-/// we Expand the OSK. On Disable we collapse to accessory-only (still toggleable).
+/// Drive host soft keyboard from `text_entry_wanted` (committed TI-v3 enable
+/// OR allowlisted terminal keyboard focus). Accessory bar stays independent.
+/// tvOS: manual toggle only — do not auto-Expand from synthesis/TI.
 - (void)_syncHostKeyboardWithTextInput {
   if (!_rustCore) {
     return;
   }
-  BOOL enabled = WWNCoreTextInputIsEnabled(_rustCore) != 0;
-  if (_lastTextInputEnabledInitialized && enabled == _lastTextInputEnabled) {
+#if TARGET_OS_TV
+  return;
+#else
+  BOOL wanted = WWNCoreTextEntryWanted(_rustCore) != 0;
+  uint32_t hint = 0;
+  uint32_t purpose = 0;
+  WWNCoreTextInputGetContentType(_rustCore, &hint, &purpose);
+
+  BOOL wantedChanged = !_lastTextEntryWantedInitialized ||
+                       wanted != _lastTextEntryWanted;
+  BOOL purposeChanged = _lastTextEntryWantedInitialized &&
+                        purpose != _lastTextInputPurpose;
+  if (!wantedChanged && !purposeChanged) {
     return;
   }
-  _lastTextInputEnabled = enabled;
-  _lastTextInputEnabledInitialized = YES;
+  _lastTextEntryWanted = wanted;
+  _lastTextEntryWantedInitialized = YES;
+  _lastTextInputPurpose = purpose;
 
   WWNCompositorView_ios *focusView = nil;
   for (NSNumber *key in self->_windows) {
@@ -1020,11 +1090,11 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     return;
   }
 
-  if (enabled) {
-    [focusView applyHostKeyboardForTextInputEnabled:YES];
-  } else {
-    [focusView applyHostKeyboardForTextInputEnabled:NO];
+  [focusView applyTextInputContentPurpose:purpose];
+  if (wantedChanged) {
+    [focusView applyHostKeyboardForTextInputEnabled:wanted];
   }
+#endif
 }
 #endif
 
@@ -1625,12 +1695,23 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   CGRect frame =
       CGRectMake(localX, localY, node->width, node->height);
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
-  if ([_hostLockedWindowIds containsObject:winId]) {
+  // Host-owned shells (weston-terminal/foot) set followHostSize without the
+  // rust host_locked bit. Expand presentation to the compositor container so
+  // cell-snap / CSD lag (e.g. 398×763 vs 402×778) cannot leave gutters —
+  // presentWaylandFrame also stretches, but the logged/scene frame must match
+  // host bounds or placement races recentering.
+  BOOL hostOwnsFrame = [_hostLockedWindowIds containsObject:winId] ||
+                       ([iosView isKindOfClass:[WWNCompositorView_ios class]] &&
+                        (((WWNCompositorView_ios *)iosView).hostLocked ||
+                         ((WWNCompositorView_ios *)iosView).followHostSize));
+  if (hostOwnsFrame) {
     CGRect hostBounds = iosView.superview
                             ? iosView.superview.bounds
                             : (self.containerView ? self.containerView.bounds
                                                   : iosView.bounds);
-    frame = CGRectMake(0, 0, hostBounds.size.width, hostBounds.size.height);
+    if (hostBounds.size.width > 0.0 && hostBounds.size.height > 0.0) {
+      frame = CGRectMake(0, 0, hostBounds.size.width, hostBounds.size.height);
+    }
   }
 #endif
   CGRect contentRect = CGRectMake(0, 0, 1, 1);
@@ -1817,14 +1898,17 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   if (backingScale < 1.0) {
     backingScale = MAX(1.0, node->scale);
   }
-  // Stretch only while the host is driving size mid live-resize (#111) and
-  // the buffer has not caught up. Otherwise present 1:1 (xdg negotiated
-  // size) — never scale a fixed client like weston-flower into a larger node.
+  // #111 / xdg interactive resize: while SizeAuthority::Host, scene sizes the
+  // node to the host request and the buffer lags — stretch into the node so
+  // chrome and content stay aligned mid-drag. When buffer matches (Client
+  // authority / settle), fill 1:1 at the window backing scale. Scene never
+  // leaves a giant node around a fixed client (flower) under Client authority,
+  // so mismatch implies host-ahead stretch, not a TopLeft letterbox.
   if (bufferMatchesNode) {
     layer.contentsGravity = kCAGravityResize;
     layer.contentsScale = backingScale;
   } else {
-    layer.contentsGravity = kCAGravityTopLeft;
+    layer.contentsGravity = kCAGravityResize;
     layer.contentsScale = MAX(1.0, node->scale);
   }
 #else
@@ -2288,6 +2372,22 @@ extern void WWNCoreInject_touch_frame(void *core);
   }];
 }
 
+- (BOOL)isTextInputEnabled {
+  // Read-only poll; safe off the compositor queue (RwLock). Avoid
+  // dispatch_sync here — insertText runs on main and can deadlock the tick.
+  if (!_rustCore) {
+    return NO;
+  }
+  return WWNCoreTextInputIsEnabled(_rustCore) != 0;
+}
+
+- (BOOL)textEntryWanted {
+  if (!_rustCore) {
+    return NO;
+  }
+  return WWNCoreTextEntryWanted(_rustCore) != 0;
+}
+
 - (void)textInputPreeditString:(NSString *)text
                    cursorBegin:(int32_t)cursorBegin
                      cursorEnd:(int32_t)cursorEnd {
@@ -2510,6 +2610,29 @@ extern void WWNCoreInject_touch_frame(void *core);
                 inModes:runLoopModes];
 }
 
+- (void)beginInteractiveResize:(uint64_t)windowId {
+  if (!_rustCore || windowId == 0)
+    return;
+  WWNLog("BRIDGE", @"beginInteractiveResize window=%llu", windowId);
+  WWNCoreBeginInteractiveResize(self->_rustCore, windowId);
+}
+
+- (void)endInteractiveResize:(uint64_t)windowId
+                       width:(uint32_t)width
+                      height:(uint32_t)height {
+  if (!_rustCore || windowId == 0)
+    return;
+  WWNLog("BRIDGE", @"endInteractiveResize window=%llu size=%ux%u", windowId,
+         width, height);
+  WWNCoreEndInteractiveResize(self->_rustCore, windowId, width, height);
+}
+
+- (void)settleInteractiveResizeForId:(NSNumber *)windowIdNumber {
+  if (![windowIdNumber isKindOfClass:[NSNumber class]])
+    return;
+  [self reconcileWindowResizeNow:windowIdNumber.unsignedLongLongValue];
+}
+
 - (void)reconcileWindowResizeNow:(uint64_t)windowId {
   if (!_rustCore)
     return;
@@ -2520,6 +2643,9 @@ extern void WWNCoreInject_touch_frame(void *core);
   NSSize contentSize = WWNWaylandContentSizeForWindow(window);
   uint32_t width = (uint32_t)MAX(1, lround(contentSize.width));
   uint32_t height = (uint32_t)MAX(1, lround(contentSize.height));
+  // Settle configure clears xdg_toplevel.state.resizing even when size is
+  // unchanged (required by xdg-shell / niri interactive-resize pattern).
+  [self endInteractiveResize:windowId width:width height:height];
   NSNumber *key = @(windowId);
   CGSize dims = CGSizeMake(width, height);
   BOOL hasInFlightResize = [_resizeInFlightWindows containsObject:key];
@@ -2548,7 +2674,22 @@ extern void WWNCoreInject_touch_frame(void *core);
          windowId, width, height, window.inLiveResize);
   [self _drainPendingWindowResizeForId:key];
 #else
-  (void)windowId;
+  // iOS/iPadOS/tvOS/watchOS/visionOS: settle configure after host layout resize.
+  NSValue *dimsVal = _latestResizeDims[@(windowId)];
+  uint32_t width = 0;
+  uint32_t height = 0;
+  if (dimsVal) {
+    CGSize dims;
+    [dimsVal getValue:&dims];
+    width = (uint32_t)MAX(1, lround(dims.width));
+    height = (uint32_t)MAX(1, lround(dims.height));
+  }
+  [self endInteractiveResize:windowId width:width height:height];
+  NSNumber *key = @(windowId);
+  [NSObject cancelPreviousPerformRequestsWithTarget:self
+                                           selector:@selector(_drainPendingWindowResizeForId:)
+                                             object:key];
+  [self _drainPendingWindowResizeForId:key];
 #endif
 }
 
@@ -2566,6 +2707,61 @@ extern void WWNCoreInject_touch_frame(void *core);
 - (NSArray<NSNumber *> *)allHostWindowIds {
   return [_windows.allKeys copy] ?: @[];
 }
+
+#if TARGET_OS_IPHONE
+- (void)_notifyHostWindowsDidChange {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [[NSNotificationCenter defaultCenter]
+        postNotificationName:WWNHostWindowsDidChangeNotification
+                      object:self];
+  });
+}
+
+- (NSArray<NSNumber *> *)tabbedClientWindowIds {
+  // iPadOS / visionOS: one scene per client — no in-window tab strip.
+  if (_iosPerWindowHostingEnabled) {
+    return @[];
+  }
+  NSMutableArray<NSNumber *> *ids = [NSMutableArray array];
+  NSArray<NSNumber *> *keys =
+      [[_windows allKeys] sortedArrayUsingSelector:@selector(compare:)];
+  for (NSNumber *key in keys) {
+    UIView *view = _windows[key];
+    // fullscreen_shell surfaces are display-only kiosk layers, not tabs.
+    if ([view.accessibilityIdentifier
+            isEqualToString:@"wwn.compositor.fullscreen-shell"]) {
+      continue;
+    }
+    [ids addObject:key];
+  }
+  return ids;
+}
+
+- (NSString *)titleForHostWindowId:(uint64_t)windowId {
+  UIView *view = _windows[@(windowId)];
+  if (view.accessibilityLabel.length > 0) {
+    return view.accessibilityLabel;
+  }
+  NSString *bundled =
+      [WWNWaypipeRunner sharedRunner].activeIOSBundledClientId;
+  if (bundled.length > 0) {
+    return bundled;
+  }
+  return [NSString stringWithFormat:@"Client %llu", windowId];
+}
+
+- (void)focusTabbedClientWindowId:(uint64_t)windowId {
+  UIView *view = _windows[@(windowId)];
+  if (view.superview) {
+    [view.superview bringSubviewToFront:view];
+  }
+  for (NSNumber *wid in _windows.allKeys) {
+    BOOL active = wid.unsignedLongLongValue == windowId;
+    [self setWindowActivated:wid.unsignedLongLongValue active:active];
+  }
+  [self injectKeyboardEnterForWindow:windowId keys:@[]];
+}
+#endif
 
 - (BOOL)requestForceDestroyHostWindowForWindowId:(uint64_t)windowId {
   if (!_rustCore || !_compositorQueue) {
@@ -2661,7 +2857,87 @@ extern void WWNCoreInject_touch_frame(void *core);
   _latestOutputW = w;
   _latestOutputH = h;
   _latestOutputScale = s;
+  if (w > 0 && h > 0) {
+    _hasObservedRealOutputSize = YES;
+  }
   [self _drainPendingOutputResize];
+}
+
+/// Seed wl_output from the live host surface (window / compositor container /
+/// main screen). Prefer this over inventing a phone-portrait fallback.
+- (BOOL)seedOutputSizeFromLiveHostSurface {
+  uint32_t w = 0;
+  uint32_t h = 0;
+  float s = 1.0f;
+
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+  UIView *host = self.containerView;
+  if (host) {
+    CGSize sz = host.bounds.size;
+    if (sz.width > 1.0 && sz.height > 1.0) {
+      w = (uint32_t)lround(sz.width);
+      h = (uint32_t)lround(sz.height);
+      CGFloat scale = host.traitCollection.displayScale;
+      if (scale <= 0.0 && host.window) {
+        scale = host.window.traitCollection.displayScale;
+      }
+      if (scale <= 0.0) {
+        scale = 1.0;
+      }
+      s = (float)scale;
+    }
+  }
+#if !TARGET_OS_VISION
+  if ((w == 0 || h == 0) && [UIScreen mainScreen]) {
+    CGRect bounds = [UIScreen mainScreen].bounds;
+    if (bounds.size.width > 1.0 && bounds.size.height > 1.0) {
+      w = (uint32_t)lround(bounds.size.width);
+      h = (uint32_t)lround(bounds.size.height);
+      s = (float)[UIScreen mainScreen].scale;
+    }
+  }
+#endif
+#else
+  for (NSNumber *key in [_windows allKeys]) {
+    id candidate = [_windows objectForKey:key];
+    if (![candidate isKindOfClass:[WWNWindow class]]) {
+      continue;
+    }
+    NSWindow *window = (NSWindow *)candidate;
+    NSSize size = [window contentRectForFrameRect:window.frame].size;
+    if (size.width > 1.0 && size.height > 1.0) {
+      w = (uint32_t)lround(size.width);
+      h = (uint32_t)lround(size.height);
+      s = (float)(window.backingScaleFactor > 0 ? window.backingScaleFactor
+                                               : 1.0);
+      break;
+    }
+  }
+  if ((w == 0 || h == 0) && [NSScreen mainScreen]) {
+    NSSize size = [NSScreen mainScreen].frame.size;
+    if (size.width > 1.0 && size.height > 1.0) {
+      w = (uint32_t)lround(size.width);
+      h = (uint32_t)lround(size.height);
+      s = (float)[NSScreen mainScreen].backingScaleFactor;
+    }
+  }
+#endif
+
+  if (w == 0 || h == 0) {
+    return NO;
+  }
+  if (s <= 0) {
+    s = 1.0f;
+  }
+  if (w == _latestOutputW && h == _latestOutputH &&
+      fabsf(s - _latestOutputScale) < 0.001f) {
+    _hasObservedRealOutputSize = YES;
+    return YES;
+  }
+  WWNLog("BRIDGE", @"Seeding output from live host surface: %ux%u @ %.1fx", w,
+         h, s);
+  [self setOutputWidth:w height:h scale:s];
+  return YES;
 }
 
 - (void)currentOutputWidth:(uint32_t *)width
@@ -2670,10 +2946,19 @@ extern void WWNCoreInject_touch_frame(void *core);
   uint32_t w = _sentOutputW ?: _latestOutputW;
   uint32_t h = _sentOutputH ?: _latestOutputH;
   float s = _sentOutputScale > 0 ? _sentOutputScale : _latestOutputScale;
-  if (w == 0)
-    w = 420;
-  if (h == 0)
-    h = 912;
+  if ((w == 0 || h == 0) && !_hasObservedRealOutputSize) {
+    [self seedOutputSizeFromLiveHostSurface];
+    w = _sentOutputW ?: _latestOutputW;
+    h = _sentOutputH ?: _latestOutputH;
+    s = _sentOutputScale > 0 ? _sentOutputScale : _latestOutputScale;
+  }
+  // Last-resort phone portrait only before any real host size is known.
+  if (!_hasObservedRealOutputSize) {
+    if (w == 0)
+      w = 420;
+    if (h == 0)
+      h = 912;
+  }
   if (s <= 0)
     s = 1.0f;
   if (width)
@@ -2690,10 +2975,19 @@ extern void WWNCoreInject_touch_frame(void *core);
   uint32_t w = _latestOutputW;
   uint32_t h = _latestOutputH;
   float s = _latestOutputScale;
-  if (w == 0)
-    w = 420;
-  if (h == 0)
-    h = 912;
+  if ((w == 0 || h == 0) && !_hasObservedRealOutputSize) {
+    [self seedOutputSizeFromLiveHostSurface];
+    w = _latestOutputW;
+    h = _latestOutputH;
+    s = _latestOutputScale;
+  }
+  // Last-resort phone portrait only before any real host size is known.
+  if (!_hasObservedRealOutputSize) {
+    if (w == 0)
+      w = 420;
+    if (h == 0)
+      h = 912;
+  }
   if (s <= 0)
     s = 1.0f;
   if (width)
@@ -2723,15 +3017,39 @@ extern void WWNCoreInject_touch_frame(void *core);
   // never from pre-sizing the global output to a demo launch size, which
   // reconfigured every other connected client.
 
+  void (^seedOnMain)(void) = ^{
 #if TARGET_OS_IPHONE
-  NSDictionary *userInfo = clientId ? @{@"clientId": clientId} : nil;
-  dispatch_sync(dispatch_get_main_queue(), ^{
+    NSDictionary *userInfo = clientId ? @{@"clientId" : clientId} : nil;
     [[NSNotificationCenter defaultCenter]
         postNotificationName:WWNNativeClientWillLaunchNotification
                       object:nil
                     userInfo:userInfo];
-  });
 #endif
+    [self seedOutputSizeFromLiveHostSurface];
+  };
+  const BOOL onMain = [NSThread isMainThread];
+  if (onMain) {
+    seedOnMain();
+  } else {
+    dispatch_sync(dispatch_get_main_queue(), seedOnMain);
+  }
+
+  // Never sleep the main thread waiting for the async Rust drain — kmscube
+  // Start prepares from the main queue.
+  if (onMain) {
+    uint32_t w = _latestOutputW;
+    uint32_t h = _latestOutputH;
+    if (w > 0 && h > 0) {
+      WWNLog("BRIDGE",
+             @"Native client launch output ready (main): %ux%u @ %.1fx", w, h,
+             _latestOutputScale > 0 ? _latestOutputScale : 1.0f);
+    } else {
+      WWNLog("BRIDGE",
+             @"Native client launch on main with unset output — client will "
+             @"negotiate size");
+    }
+    return;
+  }
 
   const NSTimeInterval step = 0.01;
   NSTimeInterval waited = 0;
@@ -2760,6 +3078,17 @@ extern void WWNCoreInject_touch_frame(void *core);
     lastH = h;
     [NSThread sleepForTimeInterval:step];
     waited += step;
+  }
+
+  if (_latestOutputW == 0 || _latestOutputH == 0) {
+    void (^reseed)(void) = ^{
+      [self seedOutputSizeFromLiveHostSurface];
+    };
+    if ([NSThread isMainThread]) {
+      reseed();
+    } else {
+      dispatch_sync(dispatch_get_main_queue(), reseed);
+    }
   }
 
   WWNLog("BRIDGE",
@@ -3034,9 +3363,14 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
     styleMask = NSWindowStyleMaskBorderless | NSWindowStyleMaskResizable |
                 NSWindowStyleMaskMiniaturizable;
   }
-  // Avoid styleMask thrash (#53): only mutate when the negotiated mode actually
-  // changes the host chrome bits.
-  BOOL styleNeedsUpdate = (window.styleMask != styleMask);
+  // Avoid styleMask thrash (#53): compare chrome-relevant bits only so leftover
+  // FullSizeContentView / textured bits from kiosk transitions don't block SSD.
+  NSWindowStyleMask chromeBits =
+      NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
+      NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable |
+      NSWindowStyleMaskBorderless | NSWindowStyleMaskFullSizeContentView;
+  BOOL styleNeedsUpdate =
+      ((window.styleMask & chromeBits) != (styleMask & chromeBits));
   BOOL presentationNeedsUpdate =
       (window.clientSideDecorated == useServerDecorations);
   if (styleNeedsUpdate) {
@@ -3368,6 +3702,7 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   NSRect startFrame = window.frame;
   uint64_t windowId = event->window_id;
   window.interactiveResizeInProgress = YES;
+  [self beginInteractiveResize:windowId];
 
   // CSD xdg_toplevel.resize: stream host frame + Wayland configure every drag
   // tick (WSLg WindowMove-style continuous geometry). Never wait for mouse-up.
@@ -3916,31 +4251,71 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
 #endif // !TARGET_OS_IPHONE
 
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
-- (BOOL)launchNestedKmscubeOnPrimaryView {
+/// Prefer an existing Wayland host view; otherwise create a dedicated Metal
+/// presentation window so kmscube/iland can present before any toplevel exists.
+- (WWNView *)ensureIlandPresentationView {
   for (NSNumber *key in _windows) {
     id w = _windows[key];
     if ([w isKindOfClass:[WWNWindow class]]) {
       WWNView *view = (WWNView *)[(WWNWindow *)w contentView];
       if ([view isKindOfClass:[WWNView class]]) {
-        return [view launchNestedKmscube];
+        NSSize size = view.bounds.size;
+        if (size.width > 1.0 && size.height > 1.0) {
+          return view;
+        }
       }
     }
   }
-  return NO;
+
+  if (_ilandHostWindow) {
+    WWNView *view = (WWNView *)_ilandHostWindow.contentView;
+    if ([view isKindOfClass:[WWNView class]]) {
+      [_ilandHostWindow makeKeyAndOrderFront:nil];
+      return view;
+    }
+  }
+
+  [self seedOutputSizeFromLiveHostSurface];
+  uint32_t w = _latestOutputW > 0 ? _latestOutputW : 1280;
+  uint32_t h = _latestOutputH > 0 ? _latestOutputH : 720;
+  NSRect contentRect = NSMakeRect(80, 80, (CGFloat)w, (CGFloat)h);
+  NSWindow *window =
+      [[NSWindow alloc] initWithContentRect:contentRect
+                                  styleMask:(NSWindowStyleMaskTitled |
+                                             NSWindowStyleMaskClosable |
+                                             NSWindowStyleMaskResizable |
+                                             NSWindowStyleMaskMiniaturizable)
+                                    backing:NSBackingStoreBuffered
+                                      defer:NO];
+  window.title = @"KMSCube";
+  window.releasedWhenClosed = NO;
+  WWNView *view =
+      [[WWNView alloc] initWithFrame:NSMakeRect(0, 0, contentRect.size.width,
+                                                contentRect.size.height)];
+  view.wantsLayer = YES;
+  view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  window.contentView = view;
+  [window makeKeyAndOrderFront:nil];
+  _ilandHostWindow = window;
+  WWNLog("BRIDGE", @"Created iland presentation host %ux%u for nested GL client",
+         w, h);
+  return view;
+}
+
+- (BOOL)launchNestedKmscubeOnPrimaryView {
+  WWNView *view = [self ensureIlandPresentationView];
+  if (!view) {
+    return NO;
+  }
+  return [view launchNestedKmscube];
 }
 
 - (BOOL)prepareIlandMetalPresentationOnPrimaryView {
-  for (NSNumber *key in _windows) {
-    id w = _windows[key];
-    if ([w isKindOfClass:[WWNWindow class]]) {
-      WWNView *view = (WWNView *)[(WWNWindow *)w contentView];
-      if ([view isKindOfClass:[WWNView class]] &&
-          [view prepareIlandMetalPresentation]) {
-        return YES;
-      }
-    }
+  WWNView *view = [self ensureIlandPresentationView];
+  if (!view) {
+    return NO;
   }
-  return NO;
+  return [view prepareIlandMetalPresentation];
 }
 #endif
 
@@ -4260,6 +4635,11 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
       [(WWNCompositorView_ios *)popup prepareForSessionTeardown];
     }
   }
+  if (_ilandHostView) {
+    [_ilandHostView prepareForSessionTeardown];
+    [_ilandHostView removeFromSuperview];
+    _ilandHostView = nil;
+  }
   [_surfaceLayers removeAllObjects];
   [_bufferCache removeAllObjects];
   [_latestBufferBySurface removeAllObjects];
@@ -4267,30 +4647,89 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
   _waylandPresentGeneration = 0;
 }
 
-- (BOOL)launchNestedKmscubeOnPrimaryView {
+/// Prefer an existing Wayland host view; otherwise create a dedicated Metal
+/// presentation view in containerView so kmscube/iland can present before any
+/// toplevel exists (macOS parity with ensureIlandPresentationView).
+- (WWNCompositorView_ios *)ensureIlandPresentationView {
   for (NSNumber *key in _windows) {
-    id view = _windows[key];
-    if ([view isKindOfClass:[WWNCompositorView_ios class]]) {
-      return [(WWNCompositorView_ios *)view launchNestedKmscube];
+    id candidate = _windows[key];
+    if (![candidate isKindOfClass:[WWNCompositorView_ios class]]) {
+      continue;
+    }
+    WWNCompositorView_ios *view = (WWNCompositorView_ios *)candidate;
+    CGSize size = view.bounds.size;
+    if (size.width > 1.0 && size.height > 1.0) {
+      return view;
     }
   }
+
   if ([self.containerView isKindOfClass:[WWNCompositorView_ios class]]) {
-    return [(WWNCompositorView_ios *)self.containerView launchNestedKmscube];
+    return (WWNCompositorView_ios *)self.containerView;
   }
-  return NO;
+
+  if (_ilandHostView.superview) {
+    return _ilandHostView;
+  }
+
+  if (!self.containerView) {
+    WWNLog("BRIDGE",
+           @"ensureIlandPresentationView: containerView is nil — cannot host "
+           @"iland/kmscube");
+    return nil;
+  }
+
+  [self seedOutputSizeFromLiveHostSurface];
+  CGRect frame = self.containerView.bounds;
+  if (frame.size.width < 1.0 || frame.size.height < 1.0) {
+    uint32_t w = _latestOutputW > 0 ? _latestOutputW : 390;
+    uint32_t h = _latestOutputH > 0 ? _latestOutputH : 844;
+    frame = CGRectMake(0, 0, (CGFloat)w, (CGFloat)h);
+  }
+
+  WWNCompositorView_ios *view =
+      [[WWNCompositorView_ios alloc] initWithFrame:frame];
+  view.autoresizingMask =
+      UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+  view.accessibilityIdentifier = @"wwn.compositor.iland-host";
+  view.accessibilityLabel = @"kmscube";
+  view.hostLocked = YES;
+  view.followHostSize = YES;
+  // Above any race-created Wayland window views — insertSubview:atIndex:0
+  // left the Metal plate covered by a later opaque SHM window (black screen).
+  [self.containerView addSubview:view];
+  [self.containerView bringSubviewToFront:view];
+  _ilandHostView = view;
+  WWNLog("BRIDGE",
+         @"Created iland presentation host %.0fx%.0f for nested GL client",
+         frame.size.width, frame.size.height);
+  return view;
+}
+
+- (BOOL)launchNestedKmscubeOnPrimaryView {
+  WWNCompositorView_ios *view = [self ensureIlandPresentationView];
+  if (!view) {
+    WWNLog("KMSCUBE",
+           @"launch failed: no Metal host view (containerView=%@)",
+           self.containerView ? @"set" : @"nil");
+    return NO;
+  }
+  BOOL ok = [view launchNestedKmscube];
+  if (!ok) {
+    WWNLog("KMSCUBE",
+           @"launch failed after host view ready (%@ %.0fx%.0f) — "
+           @"check iland presenter / kmscube_main link",
+           NSStringFromClass([view class]), view.bounds.size.width,
+           view.bounds.size.height);
+  }
+  return ok;
 }
 
 - (BOOL)prepareIlandMetalPresentationOnPrimaryView {
-  for (NSNumber *key in _windows) {
-    id view = _windows[key];
-    if ([view isKindOfClass:[WWNCompositorView_ios class]]) {
-      return [(WWNCompositorView_ios *)view prepareIlandMetalPresentation];
-    }
+  WWNCompositorView_ios *view = [self ensureIlandPresentationView];
+  if (!view) {
+    return NO;
   }
-  if ([self.containerView isKindOfClass:[WWNCompositorView_ios class]]) {
-    return [(WWNCompositorView_ios *)self.containerView prepareIlandMetalPresentation];
-  }
-  return NO;
+  return [view prepareIlandMetalPresentation];
 }
 
 - (void)handleWindowHostLocked:(CWindowEvent *)event {
@@ -4336,8 +4775,27 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
   WWNCompositorView_ios *view =
       [[WWNCompositorView_ios alloc] initWithFrame:frame];
   view.wwnWindowId = event->window_id;
+  // OWL: host_locked/fullscreen_shell own size; ordinary toplevels wait for
+  // ClientCommit (0×0 seed) — never inject fill-to-container on map.
+  view.hostLocked = (event->host_locked || event->fullscreen_shell) ? YES : NO;
+  view.followHostSize = view.hostLocked;
+  view.clientCommittedSize = CGSizeZero;
   view.autoresizingMask =
       UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+  view.accessibilityIdentifier = event->fullscreen_shell
+                                     ? @"wwn.compositor.fullscreen-shell"
+                                     : @"wwn.compositor.surface";
+  // Seed tab/VoiceOver title from xdg title or the active bundled client id.
+  // Never use "Shell" — Shell/Machines is host chrome, not a Wayland client.
+  if (event->title && strlen(event->title) > 0) {
+    view.accessibilityLabel = [NSString stringWithUTF8String:event->title];
+  } else {
+    NSString *bundled =
+        [WWNWaypipeRunner sharedRunner].activeIOSBundledClientId;
+    if (bundled.length > 0) {
+      view.accessibilityLabel = bundled;
+    }
+  }
 
   if (_iosPerWindowHostingEnabled && !event->host_locked &&
       !event->fullscreen_shell) {
@@ -4398,6 +4856,7 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
   }
 
   [_windows setObject:view forKey:@(event->window_id)];
+  [self _notifyHostWindowsDidChange];
 
   // Fullscreen shell (kiosk) windows are display-only surfaces presented
   // behind the primary toplevel.  Activating them would steal keyboard
@@ -4409,11 +4868,56 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
     return;
   }
 
-  // First native toplevel: activate immediately and skip activateKeyboard
-  // (can block the main queue). Do NOT force an output-sized configure —
-  // sizing is client-preferred via xdg-shell (0×0 seed); placement centers
-  // after the first real client commit (weston-flower/smoke 200×200).
+  // First native toplevel: activate immediately. Soft OSK is deferred
+  // (async accessory / text-input Expand) so UIKit keyboard animation does
+  // not stall configure delivery.
+  //
+  // Sizing:
+  // - host_locked / fullscreen_shell → fill container
+  // - weston-terminal / foot (shell apps) → fill container on phone/tablet
+  //   so the PTY grid matches the compositor view (not a floating 80×25)
+  // - demos (flower/smoke/simple-shm) → client-preferred via xdg 0×0 seed;
+  //   never inject output size (keeps 200×200 fixed clients correct)
   BOOL firstNativeToplevel = (_windows.count == 1);
+  NSString *bundledClientForSize =
+      [WWNWaypipeRunner sharedRunner].activeIOSBundledClientId;
+  if (bundledClientForSize.length == 0) {
+    // WindowCreated can race the runner ivar; resolve from active machine.
+    // Top-level defaults NativeClientId is often unset — only the profile JSON
+    // carries bundledAppID / NativeClientId (see agent-device-set-client-ios).
+    NSString *mid = [WWNMachineProfileStore activeMachineId];
+    WWNMachineProfile *profile =
+        mid.length > 0 ? [WWNMachineProfileStore profileById:mid] : nil;
+    id runtimeBundled = profile.runtimeOverrides[@"bundledAppID"];
+    id settingsNative = profile.settingsOverrides[@"NativeClientId"];
+    if ([runtimeBundled isKindOfClass:[NSString class]] &&
+        [(NSString *)runtimeBundled length] > 0) {
+      bundledClientForSize = (NSString *)runtimeBundled;
+    } else if ([settingsNative isKindOfClass:[NSString class]]) {
+      bundledClientForSize = (NSString *)settingsNative;
+    }
+  }
+  BOOL fillShellToHost =
+      [bundledClientForSize isEqualToString:@"weston-terminal"] ||
+      [bundledClientForSize isEqualToString:@"wayland-terminal"] ||
+      [bundledClientForSize isEqualToString:@"foot"];
+  BOOL injectFillConfigure = event->host_locked || fillShellToHost;
+  if (injectFillConfigure && [view isKindOfClass:[WWNCompositorView_ios class]]) {
+    view.followHostSize = YES;
+    // Treat fill shells as host-owned for presentation/placement even when
+    // smithay did not mark host_locked (ordinary xdg toplevel). Prevents OWL
+    // "client refused" adoption of cell-snap buffers from re-centering gutters.
+    if (fillShellToHost) {
+      view.hostLocked = YES;
+      [_hostLockedWindowIds addObject:@(event->window_id)];
+    }
+  }
+  WWNLog("BRIDGE",
+         @"iOS size policy window=%llu client='%@' fillShell=%d followHost=%d",
+         event->window_id, bundledClientForSize ?: @"(nil)", fillShellToHost,
+         (injectFillConfigure && [view isKindOfClass:[WWNCompositorView_ios class]])
+             ? 1
+             : 0);
 
   if (event->host_locked || firstNativeToplevel) {
     uint64_t windowId = event->window_id;
@@ -4422,26 +4926,34 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
     uint32_t w = (uint32_t)MAX(1, viewFrame.size.width);
     uint32_t h = (uint32_t)MAX(1, viewFrame.size.height);
     WWNLog("BRIDGE",
-           @"%@ window %llu — immediate activate%@ (skip keyboard)",
+           @"%@ window %llu — immediate activate%@ (defer accessory keyboard)",
            event->host_locked ? @"Host-locked" : @"First native toplevel",
            windowId,
-           event->host_locked
-               ? [NSString stringWithFormat:@" + fill configure %ux%u", w, h]
+           injectFillConfigure
+               ? [NSString stringWithFormat:@" + fill configure %ux%u%@", w, h,
+                                            fillShellToHost && !event->host_locked
+                                                ? @" (shell)"
+                                                : @""]
                : @" (client-preferred size)");
     if (_compositorQueue) {
       dispatch_sync(_compositorQueue, ^{
         WWNCoreSetWindowActivatedSilent(self->_rustCore, windowId, true);
-        if (event->host_locked) {
+        if (injectFillConfigure) {
           WWNCoreInjectWindowResize(self->_rustCore, windowId, w, h);
         }
         WWNCoreFlushClients(self->_rustCore);
       });
     } else {
       WWNCoreSetWindowActivatedSilent(_rustCore, windowId, true);
-      if (event->host_locked) {
+      if (injectFillConfigure) {
         WWNCoreInjectWindowResize(_rustCore, windowId, w, h);
       }
       WWNCoreFlushClients(_rustCore);
+    }
+    // Shell fill: advertise maximized so weston-terminal skips floating
+    // cell-snap and keeps SHM at the host configure size.
+    if (fillShellToHost && !event->host_locked) {
+      [self syncHostMaximized:YES forWindowId:windowId width:w height:h];
     }
     [self injectPointerEnterForWindow:windowId
                                      x:viewFrame.size.width / 2.0
@@ -4462,12 +4974,24 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
       } else {
         WWNCoreFlushClients(_rustCore);
       }
-      // Soft OSK follows zwp_text_input_v3 Enable (tick sync), not forced here.
-#if TARGET_OS_TV
+      // Soft OSK expands via zwp_text_input_v3 Enable (tick sync). Always
+      // show the Wawona extra keyboard (accessory bar) so Mod/Esc/arrows
+      // remain available for niri / nested clients.
       if ([view isKindOfClass:[WWNCompositorView_ios class]]) {
-        [(WWNCompositorView_ios *)view applyHostKeyboardForTextInputEnabled:NO];
+        WWNCompositorView_ios *cv = (WWNCompositorView_ios *)view;
+        // Nested compositor: accessory-only FR for Mod hotkeys. Soft Expand
+        // still waits for first Wayland frame (applyHostKeyboard stashes it).
+        [cv applyHostKeyboardForTextInputEnabled:NO];
+        dispatch_async(dispatch_get_main_queue(), ^{
+          [cv activateKeyboard];
+        });
       }
-#endif
+    } else if ([view isKindOfClass:[WWNCompositorView_ios class]]) {
+      // Terminal / demo toplevels: do NOT activateKeyboard here. Soft OSK or
+      // even accessory FR before the first buffer stalls ticks and leaves
+      // weston-terminal under the startup log forever. First frame arms KB.
+      WWNCompositorView_ios *cv = (WWNCompositorView_ios *)view;
+      [cv applyHostKeyboardForTextInputEnabled:NO];
     }
     return;
   }
@@ -4502,9 +5026,12 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
     WWNCoreFlushClients(self->_rustCore);
   }];
 
-  // 5. Soft keyboard follows zwp_text_input_v3 Enable via
-  //    -_syncHostKeyboardWithTextInput (polled each tick). Do not force
-  //    OSK open on every window activate — terminals/editors will Enable.
+  // 5. Mode only — first Wayland frame arms accessory / soft OSK
+  //    (see -[WWNCompositorView_ios armHostKeyboardAfterFirstFrame]).
+  if ([view isKindOfClass:[WWNCompositorView_ios class]]) {
+    WWNCompositorView_ios *cv = (WWNCompositorView_ios *)view;
+    [cv applyHostKeyboardForTextInputEnabled:NO];
+  }
 }
 
 - (void)handleWindowDestroyed:(CWindowEvent *)event {
@@ -4555,6 +5082,7 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
     _lastCursorSurfaceId = 0;
     WWNLog("BRIDGE", @"All iOS windows destroyed — cleared presentation caches");
   }
+  [self _notifyHostWindowsDidChange];
 }
 
 - (void)handleWindowTitleChanged:(CWindowEvent *)event {
@@ -4564,13 +5092,38 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
   WWNLog("BRIDGE", @"iOS handleWindowTitleChanged: window %llu → '%@'",
          event->window_id, newTitle);
 
-  // VoiceOver: keep the compositor surface's accessibility label in sync with
-  // the client's window title.
+  // VoiceOver + tab chrome: keep the compositor surface's label in sync with
+  // the client's window title. Never invent a "Shell" tab from host UI.
   UIView *clientView = [_windows objectForKey:@(event->window_id)];
   if (clientView && newTitle.length > 0) {
     clientView.accessibilityLabel = newTitle;
     if (clientView.accessibilityIdentifier.length == 0) {
       clientView.accessibilityIdentifier = @"wwn.compositor.surface";
+    }
+  }
+
+  // Late shell detection: if map-time fill missed (empty bundled id), adopt
+  // followHost when the xdg title identifies weston-terminal / foot.
+  NSString *titleLower = newTitle.lowercaseString;
+  BOOL titleLooksLikeShell =
+      [titleLower containsString:@"weston terminal"] ||
+      [titleLower containsString:@"wayland-terminal"] ||
+      [titleLower hasPrefix:@"foot"] || [titleLower containsString:@"foot "];
+  if (titleLooksLikeShell &&
+      [clientView isKindOfClass:[WWNCompositorView_ios class]]) {
+    WWNCompositorView_ios *cv = (WWNCompositorView_ios *)clientView;
+    if (!cv.followHostSize && !cv.hostLocked && self.containerView) {
+      cv.followHostSize = YES;
+      uint32_t w = (uint32_t)MAX(1, self.containerView.bounds.size.width);
+      uint32_t h = (uint32_t)MAX(1, self.containerView.bounds.size.height);
+      WWNLog("BRIDGE",
+             @"iOS shell title '%@' → followHost + fill configure %ux%u",
+             newTitle, w, h);
+      [self injectWindowResize:event->window_id width:w height:h];
+      [self syncHostMaximized:YES
+                  forWindowId:event->window_id
+                        width:w
+                       height:h];
     }
   }
 
@@ -4589,37 +5142,131 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
   if (scene) {
     scene.title = newTitle;
   }
+  [self _notifyHostWindowsDidChange];
 }
 
 - (void)handleWindowSizeChanged:(CWindowEvent *)event {
   UIView *window = [_windows objectForKey:@(event->window_id)];
-  if (window) {
-    UIWindow *hostWindow = _iosHostWindows[@(event->window_id)];
-    if (hostWindow && hostWindow.rootViewController) {
-      window.frame = hostWindow.rootViewController.view.bounds;
-      // Per-window hosting (iPad Stage Manager): honor a client-chosen size
-      // by steering the scene's minimum size toward it. iPadOS has no API to
-      // set an absolute scene size; the minimum keeps Stage Manager from
-      // clipping the client's buffer while the user can still grow the
-      // window (host resizes flow back as configures).
-      UIWindowScene *scene = hostWindow.windowScene;
-      BOOL clientChosen = event->size_cause == 2 /* ClientCommit */;
-      if (scene && !event->host_locked && clientChosen && event->width > 0 &&
-          event->height > 0) {
-        scene.sizeRestrictions.minimumSize =
-            CGSizeMake(event->width, event->height);
-      }
-      return;
+  if (!window) {
+    return;
+  }
+
+  WWNCompositorView_ios *iosView =
+      [window isKindOfClass:[WWNCompositorView_ios class]]
+          ? (WWNCompositorView_ios *)window
+          : nil;
+  BOOL hostLocked =
+      event->host_locked ||
+      [_hostLockedWindowIds containsObject:@(event->window_id)] ||
+      (iosView && iosView.hostLocked);
+
+  // Host-originated configure/output acks — do not re-apply (macOS parity).
+  if (!hostLocked && (event->size_cause == 1 || event->size_cause == 3)) {
+    WWNLog("BRIDGE",
+           @"iOS ignoring non-authoritative SizeChanged window=%llu "
+           @"event=%ux%u cause=%u",
+           event->window_id, event->width, event->height, event->size_cause);
+    return;
+  }
+
+  UIWindow *hostWindow = _iosHostWindows[@(event->window_id)];
+  CGRect hostBounds = CGRectZero;
+  if (hostWindow && hostWindow.rootViewController) {
+    hostBounds = hostWindow.rootViewController.view.bounds;
+  } else if (self.containerView) {
+    hostBounds = self.containerView.bounds;
+  } else {
+    hostBounds = window.bounds;
+  }
+
+  BOOL clientChosen = event->size_cause == 2 /* ClientCommit */;
+  if (iosView && clientChosen && event->width > 0 && event->height > 0) {
+    iosView.clientCommittedSize = CGSizeMake(event->width, event->height);
+    NSString *shellClient =
+        [WWNWaypipeRunner sharedRunner].activeIOSBundledClientId;
+    if (shellClient.length == 0) {
+      NSString *mid = [WWNMachineProfileStore activeMachineId];
+      WWNMachineProfile *profile =
+          mid.length > 0 ? [WWNMachineProfileStore profileById:mid] : nil;
+      id rb = profile.runtimeOverrides[@"bundledAppID"];
+      id sn = profile.settingsOverrides[@"NativeClientId"];
+      if ([rb isKindOfClass:[NSString class]] && [(NSString *)rb length] > 0)
+        shellClient = (NSString *)rb;
+      else if ([sn isKindOfClass:[NSString class]])
+        shellClient = (NSString *)sn;
     }
-    // Always fill the container — the Wayland client is told the output
-    // dimensions via wl_output.mode so its buffer already matches.
-    // Using the container's bounds ensures edge-to-edge drawing.
+    BOOL activeShell =
+        [shellClient isEqualToString:@"weston-terminal"] ||
+        [shellClient isEqualToString:@"wayland-terminal"] ||
+        [shellClient isEqualToString:@"foot"];
+    if (hostLocked || activeShell || iosView.followHostSize) {
+      // Shells / host-locked always follow the compositor container. Do not
+      // drop followHost when the first commit is still a floating cell-snap
+      // (e.g. 80×25) — that cleared full-bleed and re-centered gutters.
+      iosView.followHostSize = YES;
+      if (activeShell && hostBounds.size.width > 0 &&
+          hostBounds.size.height > 0 &&
+          (fabs((CGFloat)event->width - hostBounds.size.width) > 1.0 ||
+           fabs((CGFloat)event->height - hostBounds.size.height) > 1.0)) {
+        // Nudge on any >1pt mismatch. A 95% threshold missed 398×763 vs
+        // 402×778 (~99%), so the refuse-echo configure stuck and drain
+        // skipped "already sent" host dims.
+        NSNumber *nudgeKey = @(event->window_id);
+        [_sentResizeDims removeObjectForKey:nudgeKey];
+        WWNLog("BRIDGE",
+               @"iOS shell fill nudge window=%llu commit=%ux%u → host=%.0fx%.0f",
+               event->window_id, event->width, event->height,
+               hostBounds.size.width, hostBounds.size.height);
+        [self injectWindowResize:event->window_id
+                           width:(uint32_t)MAX(1, hostBounds.size.width)
+                          height:(uint32_t)MAX(1, hostBounds.size.height)];
+      }
+    } else if (hostBounds.size.width > 0 && hostBounds.size.height > 0) {
+      // Fillers (niri ≈ output) follow host layout; fixed demos do not.
+      BOOL fillsHost = ((CGFloat)event->width >= hostBounds.size.width * 0.90 &&
+                        (CGFloat)event->height >= hostBounds.size.height * 0.90);
+      iosView.followHostSize = fillsHost;
+    } else {
+      iosView.followHostSize = NO;
+    }
+    WWNLog("BRIDGE",
+           @"iOS ClientCommit SizeChanged window=%llu %ux%u followHost=%@ "
+           @"hostLocked=%@ shell='%@'",
+           event->window_id, event->width, event->height,
+           iosView.followHostSize ? @"yes" : @"no",
+           hostLocked ? @"yes" : @"no", shellClient ?: @"(nil)");
+  }
+
+  if (hostWindow && hostWindow.rootViewController) {
+    // Hit-testing view still fills the scene; presentation centers via
+    // presentWaylandFrame when followHostSize is NO.
+    window.frame = hostBounds;
+    UIWindowScene *scene = hostWindow.windowScene;
+    if (scene && !hostLocked && clientChosen && event->width > 0 &&
+        event->height > 0) {
+      // Stage Manager: minimum tracks client size so fixed 200×200 is not
+      // clipped; absolute scene size is OS-controlled.
+      scene.sizeRestrictions.minimumSize =
+          CGSizeMake(event->width, event->height);
+    }
+    return;
+  }
+
+  if (hostLocked || (iosView && iosView.followHostSize)) {
     if (self.containerView) {
       window.frame = self.containerView.bounds;
-    } else {
-      window.frame = CGRectMake(window.frame.origin.x, window.frame.origin.y,
-                                event->width, event->height);
     }
+  } else if (clientChosen && event->width > 0 && event->height > 0) {
+    // Client-constrained: keep the host surface view filling the container
+    // for input, but do not rewrite bounds to the event size (would fight
+    // autoresizing). Presentation uses scene node + center placement.
+    if (self.containerView && !CGRectEqualToRect(window.frame, hostBounds) &&
+        hostBounds.size.width > 0) {
+      window.frame = hostBounds;
+    }
+  } else if (!self.containerView) {
+    window.frame = CGRectMake(window.frame.origin.x, window.frame.origin.y,
+                              event->width, event->height);
   }
 }
 

@@ -25,6 +25,19 @@ FOUNDATION_EXPORT NSNotificationName const WWNHostKeyboardGeometryDidChangeNotif
 /// The Wayland window ID associated with this view
 @property(nonatomic, assign) uint64_t wwnWindowId;
 
+/// YES when host owns placement/size (kiosk / host_locked / fullscreen_shell).
+@property(nonatomic, assign) BOOL hostLocked;
+
+/// YES when host layout/rotation/split may inject configures (SizeAuthority::Host).
+/// Normal toplevels start NO (OWL: client decides after 0×0). Becomes YES when
+/// the client commits ≈ host size (niri/fillers). Stays NO for fixed clients
+/// (weston-flower/smoke 200×200, simple-shm preferred) so we never force
+/// fill-to-output configures that fight SizeAuthority.
+@property(nonatomic, assign) BOOL followHostSize;
+
+/// Last ClientCommit size adopted from the compositor (points).
+@property(nonatomic, assign) CGSize clientCommittedSize;
+
 /// Access to the Metal content layer for rendering (WWNIlandPresenter target)
 @property(nonatomic, strong, readonly) CAMetalLayer *contentLayer;
 
@@ -39,6 +52,27 @@ FOUNDATION_EXPORT NSNotificationName const WWNHostKeyboardGeometryDidChangeNotif
 
 /// Hide the iOS virtual keyboard for this view
 - (void)deactivateKeyboard;
+
+/// Toggle soft keyboard expanded ↔ accessory/hidden (iOS/Android parity).
+/// On tvOS this is the manual ⌨ control when auto text-input detection misses.
+- (void)toggleKeyboard;
+
+/// Apply host OSK mode from `text_entry_wanted` (Expand vs AccessoryOnly).
+/// Soft Expand is deferred until the first Wayland frame (see
+/// `armHostKeyboardAfterFirstFrame`) so UIKit keyboard animation cannot
+/// stall configure/buffer delivery for weston-terminal.
+/// Terminals keep the extended accessory bar (Esc/Ctrl/⌨↓) even with a
+/// hardware keyboard; user ⌨↓ dismiss is sticky against terminal synthesis.
+- (void)applyHostKeyboardForTextInputEnabled:(BOOL)enabled;
+
+/// True after the first client buffer was presented into this view.
+- (BOOL)isHostKeyboardReady;
+
+/// Become first responder / apply pending text_entry_wanted after first frame.
+- (void)armHostKeyboardAfterFirstFrame;
+
+/// Map committed `zwp_text_input_v3.content_purpose` onto UIKeyboardType.
+- (void)applyTextInputContentPurpose:(uint32_t)purpose;
 
 /// Update the Wayland cursor image displayed in touchpad mode.
 /// Pass nil to hide the cursor.

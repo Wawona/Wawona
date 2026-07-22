@@ -18,6 +18,10 @@ FOUNDATION_EXPORT NSNotificationName const WWNNativeClientWillLaunchNotification
 /// Posted when a client requests minimize (xdg_toplevel.set_minimized). iOS
 /// uses this to return to Machines UI while keeping the session running.
 FOUNDATION_EXPORT NSNotificationName const WWNClientMinimizeRequestedNotification;
+/// Posted on the main queue when Wayland toplevel host windows are created,
+/// destroyed, or retitled. Tab chrome (phone/tvOS/watchOS) refreshes from this.
+/// Tabs map 1:1 to Wayland client toplevels — never Shell / Machines chrome.
+FOUNDATION_EXPORT NSNotificationName const WWNHostWindowsDidChangeNotification;
 
 /// Window event types from Rust compositor
 typedef NS_ENUM(NSInteger, WWNWindowEventType) {
@@ -119,8 +123,8 @@ typedef struct {
                      width:(uint32_t)width
                     height:(uint32_t)height;
 
-/// Host green-button / Mission Control changed native fullscreen or zoom.
-#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+/// Host changed native fullscreen or zoom (macOS) or fill-primary max/fs (mobile).
+/// Syncs xdg_toplevel maximized/fullscreen state on every Apple host.
 - (void)syncHostFullscreen:(BOOL)fullscreen
                 forWindowId:(uint64_t)windowId
                       width:(uint32_t)width
@@ -129,15 +133,40 @@ typedef struct {
              forWindowId:(uint64_t)windowId
                    width:(uint32_t)width
                   height:(uint32_t)height;
-#endif
 
 /// Force immediate authoritative resize sync for current host content size.
 /// Use at end of live-resize to avoid host/client edge desync.
 - (void)reconcileWindowResizeNow:(uint64_t)windowId;
 
+/// Mark xdg_toplevel.state.resizing for an interactive host/CSD resize session.
+- (void)beginInteractiveResize:(uint64_t)windowId;
+/// Clear Resizing and emit the settle configure (width/height 0 = keep last).
+- (void)endInteractiveResize:(uint64_t)windowId
+                       width:(uint32_t)width
+                      height:(uint32_t)height;
+/// Debounced settle after host layout resize (iOS/iPadOS/tvOS/watchOS/visionOS).
+- (void)settleInteractiveResizeForId:(NSNumber *)windowIdNumber;
+
 /// Ask the Wayland client to close (`xdg_toplevel.close`). Returns YES if a
 /// toplevel was found (caller should cancel the NSWindow close until teardown).
 - (BOOL)requestHostCloseForWindowId:(uint64_t)windowId;
+
+/// Snapshot of currently tracked host window ids (toplevels). Used by session
+/// teardown to send xdg_toplevel.close before force-stopping clients.
+- (NSArray<NSNumber *> *)allHostWindowIds;
+
+#if TARGET_OS_IPHONE
+/// Sorted toplevel ids suitable for in-window client tabs (excludes
+/// fullscreen_shell kiosk surfaces). Empty when per-window hosting is on
+/// (iPadOS/visionOS) — those platforms use one UIWindowScene per client.
+- (NSArray<NSNumber *> *)tabbedClientWindowIds;
+
+/// Best-effort title for a host window (xdg title, else bundled client id).
+- (NSString *)titleForHostWindowId:(uint64_t)windowId;
+
+/// Activate + raise a tabbed client surface inside the shared container.
+- (void)focusTabbedClientWindowId:(uint64_t)windowId;
+#endif
 
 /// Drop compositor window state without client cooperation. Drains pending
 /// `WindowDestroyed` on the main queue when invoked from the compositor queue.
@@ -187,6 +216,12 @@ typedef struct {
 /// Commit a composed string (emoji, IME output, etc.) to the focused
 /// Wayland client via text-input-v3.
 - (void)textInputCommitString:(NSString *)text;
+
+/// Committed `zwp_text_input_v3.enable` (IME routing).
+- (BOOL)isTextInputEnabled;
+
+/// Soft OSK should expand (committed TI or terminal synthesis).
+- (BOOL)textEntryWanted;
 
 /// Send a preedit (composition preview) string via text-input-v3.
 - (void)textInputPreeditString:(NSString *)text
@@ -265,6 +300,10 @@ typedef struct {
 /// Pop next pending window creation info
 /// @return Dictionary with windowId, width, height, title keys, or nil if none
 - (nullable NSDictionary *)popPendingWindow;
+
+/// Seed wl_output from the live host surface (container / window / screen).
+/// Prefer this over phone-portrait fallbacks before native client launch.
+- (BOOL)seedOutputSizeFromLiveHostSurface;
 
 /// Launch kmscube on the first toplevel compositor view (iland + ANGLE GL demo).
 - (BOOL)launchNestedKmscubeOnPrimaryView;

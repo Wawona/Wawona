@@ -9,8 +9,11 @@
 #import "WWNIlandPresenter.h"
 #import "WWNEDRSupport.h"
 #import "ui/Settings/WWNPreferencesManager.h"
+#import "../../util/WWNLog.h"
 #import <IOSurface/IOSurfaceRef.h>
+#import <errno.h>
 #import <pthread.h>
+#import <unistd.h>
 
 // iland present hook. Declared here (rather than including iland_present.h) so
 // this file compiles even when the iland headers aren't on the include path;
@@ -22,6 +25,10 @@ typedef void (*iland_present_callback_t)(uint32_t crtc_id,
                                          uint32_t flags,
                                          void *user);
 extern void iland_drm_set_present_callback(iland_present_callback_t cb, void *user);
+extern int g_drm_event_pipe_write;
+#ifndef DRM_VIRTUAL_FD
+#define DRM_VIRTUAL_FD 42
+#endif
 
 // In-process kmscube entry point (libkmscube.a, main renamed via -Dmain=).
 // Weakly imported so the app links even without the GL-clients package.
@@ -95,10 +102,20 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
         NSLog(@"[iland] shader compile failed: %@", err);
         return nil;
     }
+    // CSD / transparent host: alpha from client buffer must composite through
+    // the Metal layer (opaque=NO + blend). Opaque clear would paint a black plate.
+    _layer.opaque = NO;
     MTLRenderPipelineDescriptor *pd = [MTLRenderPipelineDescriptor new];
     pd.vertexFunction = [lib newFunctionWithName:@"wwn_vs"];
     pd.fragmentFunction = [lib newFunctionWithName:@"wwn_fs"];
     pd.colorAttachments[0].pixelFormat = _layer.pixelFormat;
+    pd.colorAttachments[0].blendingEnabled = YES;
+    pd.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+    pd.colorAttachments[0].destinationRGBBlendFactor =
+        MTLBlendFactorOneMinusSourceAlpha;
+    pd.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+    pd.colorAttachments[0].destinationAlphaBlendFactor =
+        MTLBlendFactorOneMinusSourceAlpha;
     _pipeline = [_device newRenderPipelineStateWithDescriptor:pd error:&err];
     if (!_pipeline) {
         NSLog(@"[iland] pipeline creation failed: %@", err);
@@ -156,32 +173,59 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
 
 // --- in-process nested client launcher ---
 
+static BOOL wwn_prepare_iland_virtual_drm_fd(void) {
+    if (g_drm_event_pipe_write >= 0)
+        return YES;
+    int p[2];
+    if (pipe(p) != 0)
+        return NO;
+    if (dup2(p[0], DRM_VIRTUAL_FD) < 0) {
+        close(p[0]);
+        close(p[1]);
+        return NO;
+    }
+    close(p[0]);
+    g_drm_event_pipe_write = p[1];
+    return YES;
+}
+
 static void *wwn_kmscube_thread(void *arg) {
     WWNIlandPresenter *self = (__bridge WWNIlandPresenter *)arg;
-    char wbuf[16], hbuf[16];
-    snprintf(wbuf, sizeof(wbuf), "%d", self->_clientWidth);
-    snprintf(hbuf, sizeof(hbuf), "%d", self->_clientHeight);
+    (void)self->_clientWidth;
+    (void)self->_clientHeight;
+    if (!wwn_prepare_iland_virtual_drm_fd()) {
+        WWNLog("KMSCUBE", @"aborting kmscube_main — virtual DRM fd not ready");
+        return NULL;
+    }
     // kmscube reads /dev/dri/card0 (iland's virtual DRM) by default.
     char *argv[] = { (char *)"kmscube", NULL };
-    kmscube_main(1, argv);
+    WWNLog("KMSCUBE", @"kmscube_main enter (iland DRM present)");
+    int rc = kmscube_main(1, argv);
+    WWNLog("KMSCUBE", @"kmscube_main exit rc=%d", rc);
     return NULL;
 }
 
 - (BOOL)launchNestedKmscubeWithWidth:(int)width height:(int)height {
     if (kmscube_main == NULL) {
-        NSLog(@"[iland] kmscube_main unavailable (link libkmscube.a)");
+        WWNLog("KMSCUBE", @"kmscube_main unavailable (link libkmscube.a)");
         return NO;
     }
     if (_clientThreadStarted) return YES;
+    if (!wwn_prepare_iland_virtual_drm_fd()) {
+        WWNLog("KMSCUBE", @"virtual DRM fd prepare failed");
+        return NO;
+    }
     _clientWidth = width > 0 ? width : 1280;
     _clientHeight = height > 0 ? height : 720;
     int rc = pthread_create(&_clientThread, NULL, wwn_kmscube_thread,
                             (__bridge void *)self);
     if (rc != 0) {
-        NSLog(@"[iland] pthread_create failed: %d", rc);
+        WWNLog("KMSCUBE", @"pthread_create failed: %d", rc);
         return NO;
     }
     _clientThreadStarted = YES;
+    WWNLog("KMSCUBE", @"started in-process kmscube %dx%d via iland",
+           _clientWidth, _clientHeight);
     return YES;
 }
 

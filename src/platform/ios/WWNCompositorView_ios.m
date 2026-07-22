@@ -3,6 +3,7 @@
 #import "WWNIlandPresenter.h"
 #import "../macos/WWNEDRSupport.h"
 #import "../macos/ui/Settings/WWNPreferencesManager.h"
+#import "../macos/ui/Settings/WWNWaypipeRunner.h"
 #import "../macos/ui/Machines/WWNMachineProfileStore.h"
 #import "../../util/WWNLog.h"
 #import "WWNCompositorBridge.h"
@@ -632,6 +633,20 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   NSDictionary *_markedTextStyle;
   UITextInputStringTokenizer *_tokenizer;
   BOOL _textAssistEnabled;
+
+  // Host IME traits from committed zwp_text_input_v3.content_purpose.
+  UIKeyboardType _hostKeyboardType;
+  BOOL _hostSecureTextEntry;
+
+  // Soft OSK / first-responder are deferred until the first Wayland frame so
+  // UIKit keyboard animation cannot stall xdg configure + buffer delivery
+  // (weston-terminal otherwise hangs under the startup log overlay).
+  BOOL _hostKeyboardReady;
+  BOOL _pendingTextEntryWanted;
+  BOOL _pendingTextEntryWantedValid;
+  /// User collapsed soft OSK via ⌨↓ — sticky until they expand again.
+  /// Prevents terminal text_entry synthesis from immediately re-Expanding.
+  BOOL _userCollapsedSoftOsk;
 }
 
 @synthesize keyboardActive = _keyboardActive;
@@ -704,16 +719,29 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     _lastPresentedWaylandImage = NULL;
     _lastContentsScale = 0;
     _lastWaylandLayoutSize = CGSizeZero;
+    // OWL defaults until bridge sets hostLocked / ClientCommit updates follow.
+    self.hostLocked = NO;
+    self.followHostSize = NO;
+    self.clientCommittedSize = CGSizeZero;
     _sessionActive = YES;
 #if TARGET_OS_TV
     // tvOS: start accessory/collapsed; expand when text-input Enables or user taps ⌨.
     _keyboardUiMode = WWNKeyboardUiModeAccessoryOnly;
     _keyboardUiModeBeforeExternal = WWNKeyboardUiModeAccessoryOnly;
 #else
-    _keyboardUiMode = WWNKeyboardUiModeExpanded;
-    _keyboardUiModeBeforeExternal = WWNKeyboardUiModeExpanded;
+    // Soft OSK starts collapsed; tick sync expands via text_entry_wanted.
+    _keyboardUiMode = WWNKeyboardUiModeAccessoryOnly;
+    _keyboardUiModeBeforeExternal = WWNKeyboardUiModeAccessoryOnly;
 #endif
-    _collapsedInputView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 1, 1)];
+    _hostKeyboardType = UIKeyboardTypeDefault;
+    _hostSecureTextEntry = NO;
+    _hostKeyboardReady = NO;
+    _pendingTextEntryWanted = NO;
+    _pendingTextEntryWantedValid = NO;
+    _userCollapsedSoftOsk = NO;
+    // Zero-height inputView suppresses the soft OSK while still allowing
+    // inputAccessoryView (Esc/Mod). A 1×1 view can still fire keyboardWillShow.
+    _collapsedInputView = [[UIView alloc] initWithFrame:CGRectZero];
     _collapsedInputView.backgroundColor = UIColor.clearColor;
     _collapsedInputView.opaque = NO;
     _collapsedInputView.userInteractionEnabled = NO;
@@ -766,25 +794,30 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 }
 
 - (void)_ensureMetalPresentationLayer {
-  if (_contentLayer) {
+  if (_contentLayer && _ilandPresenter) {
     return;
   }
-  _contentLayer = [CAMetalLayer layer];
-  _contentLayer.device = MTLCreateSystemDefaultDevice();
-  _contentLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
-  _contentLayer.framebufferOnly = NO;
-  // Transparent host plate for CSD / nested Metal present (matches AppKit CSD).
-  _contentLayer.opaque = NO;
-  self.opaque = NO;
-  self.backgroundColor = UIColor.clearColor;
-  WWNEDRConfigureMetalLayer(
-      _contentLayer, [[WWNPreferencesManager sharedManager] colorOperations]);
-  _contentLayer.contentsGravity = kCAGravityResize;
-  _contentLayer.masksToBounds = YES;
-  _contentLayer.frame = self.bounds;
-  [self.layer insertSublayer:_contentLayer atIndex:0];
-  _ilandPresenter = [[WWNIlandPresenter alloc] initWithLayer:_contentLayer
-                                                      device:_contentLayer.device];
+  if (!_contentLayer) {
+    _contentLayer = [CAMetalLayer layer];
+    _contentLayer.device = MTLCreateSystemDefaultDevice();
+    _contentLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
+    _contentLayer.framebufferOnly = NO;
+    // Transparent host plate for CSD / nested Metal present (matches AppKit CSD).
+    _contentLayer.opaque = NO;
+    self.opaque = NO;
+    self.backgroundColor = UIColor.clearColor;
+    WWNEDRConfigureMetalLayer(
+        _contentLayer, [[WWNPreferencesManager sharedManager] colorOperations]);
+    _contentLayer.contentsGravity = kCAGravityResize;
+    _contentLayer.masksToBounds = YES;
+    _contentLayer.frame = self.bounds;
+    [self.layer insertSublayer:_contentLayer atIndex:0];
+  }
+  if (!_ilandPresenter) {
+    _ilandPresenter =
+        [[WWNIlandPresenter alloc] initWithLayer:_contentLayer
+                                          device:_contentLayer.device];
+  }
 }
 
 - (void)_teardownMetalPresentationLayer {
@@ -801,6 +834,10 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   [self _mirrorFrameToExternalDisplay:NULL contentRect:CGRectZero];
   _keyboardActive = NO;
   _keyboardEnterSent = NO;
+  _hostKeyboardReady = NO;
+  _pendingTextEntryWanted = NO;
+  _pendingTextEntryWantedValid = NO;
+  _userCollapsedSoftOsk = NO;
   _activeTouchCount = 0;
   [self resignFirstResponder];
   [self presentWaylandFrame:NULL
@@ -856,16 +893,34 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   _waylandFrameView.hidden = NO;
   if (!CGRectIsEmpty(frame)) {
     CGSize bounds = self.bounds.size;
-#if TARGET_OS_TV
-    // 10-foot UI: desktop window geometry/chrome is unusable with Siri Remote.
-    // Always present Wayland clients full-bleed in the host compositor view.
-    (void)normalizedContentRect;
-    if (bounds.width > 0.0 && bounds.height > 0.0) {
-      frame = CGRectMake(0, 0, bounds.width, bounds.height);
+    // In-process weston-terminal / foot must fill the compositor view even if
+    // ClientCommit briefly left followHostSize=NO (floating 80×25 gutters).
+    BOOL shellFillPresent = (wwn_ios_terminal_is_active() != 0);
+    BOOL hostOwnsPresent =
+        self.hostLocked || self.followHostSize || shellFillPresent;
+    if (shellFillPresent && !self.followHostSize) {
+      self.followHostSize = YES;
     }
-    _waylandFrameView.frame = frame;
-    _waylandFrameView.autoresizingMask =
-        UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+#if TARGET_OS_TV
+    // 10-foot UI: host-owned surfaces go full-bleed. Client-constrained demos
+    // (flower/smoke 200×200) stay at negotiated size and are centered — same
+    // OWL rule as iPhone/iPad (do not stretch fixed buffers).
+    (void)normalizedContentRect;
+    if (hostOwnsPresent && bounds.width > 0.0 && bounds.height > 0.0) {
+      frame = CGRectMake(0, 0, bounds.width, bounds.height);
+      _waylandFrameView.frame = frame;
+      _waylandFrameView.autoresizingMask =
+          UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    } else {
+      if (bounds.width > 0.0 && bounds.height > 0.0 &&
+          (frame.size.width + 0.5 < bounds.width ||
+           frame.size.height + 0.5 < bounds.height)) {
+        frame.origin.x = floor((bounds.width - frame.size.width) / 2.0);
+        frame.origin.y = floor((bounds.height - frame.size.height) / 2.0);
+      }
+      _waylandFrameView.frame = frame;
+      _waylandFrameView.autoresizingMask = UIViewAutoresizingNone;
+    }
 #else
     BOOL hasCsdCrop =
         (normalizedContentRect.size.width > 0.0 &&
@@ -874,13 +929,15 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
           normalizedContentRect.origin.y > 0.001 ||
           normalizedContentRect.size.width < 0.999 ||
           normalizedContentRect.size.height < 0.999));
-    if (!hasCsdCrop && bounds.width > 0.0 && bounds.height > 0.0 &&
-        frame.size.width >= bounds.width * 0.94 &&
-        frame.size.height >= bounds.height * 0.94 &&
-        (frame.size.width < bounds.width || frame.size.height < bounds.height)) {
-      // Nested Weston fullscreen: minor configure/scale drift leaves gutters;
-      // snap the presentation view to the host compositor edges.
+    if (hostOwnsPresent && bounds.width > 0.0 && bounds.height > 0.0) {
+      // Shell / host-locked: fill the compositor container. Cell-snap or CSD
+      // crop must not leave gutters when followHostSize is set (e.g.
+      // weston-terminal on iPhone). Stretch is intentional until the client
+      // commits exact host configure pixels.
       frame = CGRectMake(0, 0, bounds.width, bounds.height);
+      _waylandFrameView.frame = frame;
+      _waylandFrameView.autoresizingMask =
+          UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     } else if (!hasCsdCrop && bounds.width > 0.0 && bounds.height > 0.0 &&
                (frame.size.width + 0.5 < bounds.width ||
                 frame.size.height + 0.5 < bounds.height) &&
@@ -889,9 +946,12 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
       // the host view (sizing stays negotiated; this is placement only).
       frame.origin.x = floor((bounds.width - frame.size.width) / 2.0);
       frame.origin.y = floor((bounds.height - frame.size.height) / 2.0);
+      _waylandFrameView.frame = frame;
+      _waylandFrameView.autoresizingMask = UIViewAutoresizingNone;
+    } else {
+      _waylandFrameView.frame = frame;
+      _waylandFrameView.autoresizingMask = UIViewAutoresizingNone;
     }
-    _waylandFrameView.frame = frame;
-    _waylandFrameView.autoresizingMask = UIViewAutoresizingNone;
 #endif
   } else {
     _waylandFrameView.frame = self.bounds;
@@ -914,23 +974,29 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     contentsScale = 1.0;
   }
 
-  // HiDPI parity with macOS (WWNCompositorBridge draw_quads): a buffer whose
-  // aspect matches the view fills it 1:1 (Retina-crisp for @2x/@3x commits);
-  // a mismatched buffer is anchored top-left at its intended scale instead of
-  // being stretched into a blurry fit.
+  // HiDPI parity with macOS: matching buffer fills 1:1. While the host is
+  // driving layout size (#111 interactive resize) and the buffer still lags,
+  // stretch into the view so chrome/content stay aligned. Only letterbox
+  // (TopLeft) when aspect is mismatched under a settled client size.
   CGFloat displayScale = self.traitCollection.displayScale;
   if (displayScale <= 0.0) {
     displayScale = 1.0;
   }
   BOOL aspectMatches =
       fabs(scaleX - scaleY) <= 0.02 * MAX(MAX(scaleX, scaleY), (CGFloat)1.0);
+  BOOL bufferMatchesView =
+      fabs((CGFloat)imgW / contentsScale - viewW) <= 1.0 &&
+      fabs((CGFloat)imgH / contentsScale - viewH) <= 1.0;
   NSString *gravity = kCAGravityResize;
-  if (!aspectMatches) {
+  if (!aspectMatches && bufferMatchesView) {
     gravity = kCAGravityTopLeft;
     // Infer the buffer's intended scale: HiDPI commit (>= ~displayScale in
     // both axes) maps buffer pixels to points at displayScale, otherwise 1:1.
     BOOL hiDpiBuffer = (scaleX >= displayScale * 0.9 && scaleY >= displayScale * 0.9);
     contentsScale = hiDpiBuffer ? displayScale : 1.0;
+  } else if (!aspectMatches && !bufferMatchesView) {
+    // Host-ahead mid layout: stretch lagging buffer into the view.
+    gravity = kCAGravityResize;
   }
 
   BOOL unchanged =
@@ -959,9 +1025,12 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 
   [self _mirrorFrameToExternalDisplay:image contentRect:normalizedContentRect];
 
-  /* Notify the startup log overlay that the first real frame has arrived. */
+  /* Notify the startup log overlay that the first real frame has arrived.
+   * Also arm host keyboard (accessory / soft OSK) — deferred until now so
+   * UIKit cannot stall the first configure/buffer path. */
   if (wasEmpty && image != NULL) {
     dispatch_async(dispatch_get_main_queue(), ^{
+      [self armHostKeyboardAfterFirstFrame];
       [[NSNotificationCenter defaultCenter]
           postNotificationName:@"WWNFirstWaylandFrameNotification"
                         object:self];
@@ -996,15 +1065,30 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 }
 
 - (BOOL)launchNestedKmscube {
+  // Ensure wl_output / host view have a real size before Metal present.
+  [[WWNCompositorBridge sharedBridge] seedOutputSizeFromLiveHostSurface];
+  [self layoutIfNeeded];
   if (![self prepareIlandMetalPresentation]) {
+    WWNLog("KMSCUBE",
+           @"prepareIlandMetalPresentation failed (ilandPresenter=%@ "
+           @"contentLayer=%@ bounds=%.0fx%.0f)",
+           _ilandPresenter ? @"ok" : @"nil", _contentLayer ? @"ok" : @"nil",
+           self.bounds.size.width, self.bounds.size.height);
     return NO;
   }
   int w = (int)self.bounds.size.width;
   int h = (int)self.bounds.size.height;
   if (w <= 0 || h <= 0) {
-    w = 640;
-    h = 480;
+    uint32_t outW = 0;
+    uint32_t outH = 0;
+    float outScale = 1.0f;
+    [[WWNCompositorBridge sharedBridge] latestOutputWidth:&outW
+                                                   height:&outH
+                                                    scale:&outScale];
+    w = outW > 0 ? (int)outW : 640;
+    h = outH > 0 ? (int)outH : 480;
   }
+  WWNLog("KMSCUBE", @"launchNestedKmscube Metal present %dx%d", w, h);
   return [_ilandPresenter launchNestedKmscubeWithWidth:w height:h];
 }
 
@@ -1015,7 +1099,31 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   _waylandLayer.hidden = YES;
   _contentLayer.hidden = NO;
   _contentLayer.frame = self.bounds;
-  return _ilandPresenter != nil;
+  // kmscube is an opaque full-bleed GL client; keep the host plate opaque so
+  // transparent CSD blending does not leave a black empty window chrome.
+  _contentLayer.opaque = YES;
+  self.opaque = YES;
+  self.backgroundColor = UIColor.blackColor;
+  CGFloat scale = self.window.screen.scale > 0 ? self.window.screen.scale : 3.0;
+  _contentLayer.contentsScale = scale;
+  _contentLayer.drawableSize =
+      CGSizeMake(MAX(1.0, self.bounds.size.width * scale),
+                 MAX(1.0, self.bounds.size.height * scale));
+  // DRM/GL clients are not text surfaces — keep soft OSK down.
+  if (self.isFirstResponder) {
+    [self resignFirstResponder];
+  }
+  if (_ilandPresenter == nil) {
+    WWNLog("KMSCUBE",
+           @"WWNIlandPresenter init failed (Metal device/shader/pipeline)");
+    return NO;
+  }
+  // Ensure Metal plate is not covered by sibling Wayland window views.
+  if (self.superview) {
+    [self.superview bringSubviewToFront:self];
+  }
+  [self.layer insertSublayer:_contentLayer above:_waylandLayer];
+  return YES;
 }
 
 - (CAMetalLayer *)contentLayer {
@@ -1063,17 +1171,39 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   if (_waylandFrameView.autoresizingMask != UIViewAutoresizingNone) {
     _waylandFrameView.frame = self.bounds;
   }
-  if (!CGSizeEqualToSize(_lastWaylandLayoutSize, self.bounds.size)) {
+  BOOL layoutSizeChanged =
+      !CGSizeEqualToSize(_lastWaylandLayoutSize, self.bounds.size);
+  if (layoutSizeChanged) {
     _lastWaylandLayoutSize = self.bounds.size;
     _lastPresentToken = 0;
   }
   [CATransaction commit];
 
-  if (self.bounds.size.width > 0 && self.bounds.size.height > 0) {
-    [[WWNCompositorBridge sharedBridge]
-        injectWindowResize:self.wwnWindowId
-                     width:(uint32_t)self.bounds.size.width
-                    height:(uint32_t)self.bounds.size.height];
+  // OWL / SizeAuthority: only host-locked or followHostSize surfaces receive
+  // layout configures. Injecting container bounds into weston-flower/smoke or
+  // simple-shm preferred size forces Host authority and stretches fixed clients.
+  BOOL mayInjectHostSize = self.hostLocked || self.followHostSize;
+  if (mayInjectHostSize && self.bounds.size.width > 0 &&
+      self.bounds.size.height > 0 && self.wwnWindowId != 0) {
+    uint32_t width = (uint32_t)self.bounds.size.width;
+    uint32_t height = (uint32_t)self.bounds.size.height;
+    WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+    // Host layout/rotation/split is an interactive resize session: set
+    // xdg_toplevel.state.resizing for mid-layout configures, settle after idle.
+    if (layoutSizeChanged) {
+      [bridge beginInteractiveResize:self.wwnWindowId];
+    }
+    [bridge injectWindowResize:self.wwnWindowId width:width height:height];
+    if (layoutSizeChanged) {
+      NSNumber *key = @(self.wwnWindowId);
+      [NSObject cancelPreviousPerformRequestsWithTarget:bridge
+                                               selector:@selector(settleInteractiveResizeForId:)
+                                                 object:key];
+      [bridge performSelector:@selector(settleInteractiveResizeForId:)
+                   withObject:key
+                   afterDelay:0.12
+                      inModes:@[ NSRunLoopCommonModes ]];
+    }
   }
 
   if (_keyboardPipButton && !_keyboardPipButton.hidden) {
@@ -1128,7 +1258,40 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   return NO;
 }
 
+/// Terminals / foot need the extended accessory bar (Esc/Ctrl/⌘/⌨↓) even when
+/// a hardware keyboard is attached. HiddenExternal would strip inputAccessoryView.
+- (BOOL)_wantsExtendedKeyboardBar {
+#if TARGET_OS_VISION
+  return NO;
+#else
+  if (wwn_ios_terminal_is_active() != 0) {
+    return YES;
+  }
+  NSString *client =
+      [WWNWaypipeRunner sharedRunner].activeIOSBundledClientId;
+  return [client isEqualToString:@"weston-terminal"] ||
+         [client isEqualToString:@"wayland-terminal"] ||
+         [client isEqualToString:@"foot"];
+#endif
+}
+
 - (void)_setHardwareKeyboardActive:(BOOL)active {
+  if ([self _wantsExtendedKeyboardBar]) {
+    // Collapse soft OSK when a HW keyboard appears, but keep AccessoryOnly so
+    // dismiss / modifiers stay available (simulator Mac keyboard + phones).
+    _hardwareKeyboardActive = active;
+    if (active) {
+      if (_keyboardUiMode == WWNKeyboardUiModeExpanded ||
+          _keyboardUiMode == WWNKeyboardUiModeHiddenExternal ||
+          _keyboardUiMode == WWNKeyboardUiModePip) {
+        _userCollapsedSoftOsk = YES;
+        [self _setKeyboardUiMode:WWNKeyboardUiModeAccessoryOnly];
+      } else if (!self.isFirstResponder && _hostKeyboardReady) {
+        [self activateKeyboard];
+      }
+    }
+    return;
+  }
   if (_hardwareKeyboardActive == active &&
       (_keyboardUiMode == WWNKeyboardUiModeHiddenExternal) == active) {
     return;
@@ -1141,8 +1304,10 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     [self _setKeyboardUiMode:WWNKeyboardUiModeHiddenExternal];
   } else if (_keyboardUiMode == WWNKeyboardUiModeHiddenExternal) {
     WWNKeyboardUiMode restore = _keyboardUiModeBeforeExternal;
-    if (restore == WWNKeyboardUiModeHiddenExternal) {
-      restore = WWNKeyboardUiModeExpanded;
+    if (restore == WWNKeyboardUiModeHiddenExternal ||
+        restore == WWNKeyboardUiModePip) {
+      // Soft OSK follows text_entry_wanted — never restore to Expanded by default.
+      restore = WWNKeyboardUiModeAccessoryOnly;
     }
     [self _setKeyboardUiMode:restore];
   }
@@ -1156,19 +1321,25 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 - (void)_keyboardWillShow:(NSNotification *)note {
   _hardwareKeyboardActive = NO;
   NSValue *frameVal = note.userInfo[UIKeyboardFrameEndUserInfoKey];
+  CGFloat kbHeight = 0.0;
   if ([frameVal isKindOfClass:[NSValue class]]) {
     CGRect kbScreen = [frameVal CGRectValue];
     CGRect kbInView = [self convertRect:kbScreen fromView:nil];
     CGFloat overlap =
         MAX(0.0, CGRectGetMaxY(self.bounds) - CGRectGetMinY(kbInView));
     _hostKeyboardOverlap = overlap;
+    kbHeight = CGRectGetHeight(kbScreen);
   }
-  if (_keyboardUiMode == WWNKeyboardUiModePip ||
-      _keyboardUiMode == WWNKeyboardUiModeAccessoryOnly) {
-    [self _setKeyboardUiMode:WWNKeyboardUiModeExpanded];
-  } else {
-    [self _notifyHostKeyboardGeometryChanged];
+  // Soft Expand is owned by text_entry_wanted / user toggle — never promote
+  // AccessoryOnly→Expanded from UIKeyboardWillShow. Becoming first responder
+  // for the accessory bar (weston-simple-shm, flower, …) posts this
+  // notification and previously forced the full soft OSK open.
+  if (_keyboardUiMode == WWNKeyboardUiModeAccessoryOnly && kbHeight > 48.0) {
+    // System tried to show a real soft keyboard while we want accessory-only;
+    // reassert collapsed inputView.
+    [self reloadInputViews];
   }
+  [self _notifyHostKeyboardGeometryChanged];
 }
 
 - (void)_keyboardWillHide:(NSNotification *)note {
@@ -1208,7 +1379,16 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 
 #if !TARGET_OS_VISION
 - (UIView *)inputAccessoryView {
-  [self _refreshHardwareKeyboardState];
+  if ([self _wantsExtendedKeyboardBar]) {
+    // Do not let GCKeyboard (always present on Simulator) force HiddenExternal
+    // mid-query — that returned nil and hid Esc/Ctrl/⌨↓ for weston-terminal.
+    _hardwareKeyboardActive = [self _hardwareKeyboardConnected];
+    if (_keyboardUiMode == WWNKeyboardUiModeHiddenExternal) {
+      _keyboardUiMode = WWNKeyboardUiModeAccessoryOnly;
+    }
+  } else {
+    [self _refreshHardwareKeyboardState];
+  }
   if (_keyboardUiMode == WWNKeyboardUiModePip ||
       _keyboardUiMode == WWNKeyboardUiModeHiddenExternal) {
     return nil;
@@ -1495,8 +1675,12 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     return;
   }
   if (_keyboardUiMode == WWNKeyboardUiModeExpanded) {
+    // Sticky collapse: terminal text_entry_wanted stays true while focused, so
+    // without this flag the next sync would immediately re-Expand soft OSK.
+    _userCollapsedSoftOsk = YES;
     [self _setKeyboardUiMode:WWNKeyboardUiModeAccessoryOnly];
   } else {
+    _userCollapsedSoftOsk = NO;
     [self _setKeyboardUiMode:WWNKeyboardUiModeExpanded];
   }
 }
@@ -1624,7 +1808,8 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   if (!_collapsedInputView) {
     return;
   }
-  _collapsedInputView.frame = CGRectMake(0, 0, 1, 1);
+  CGFloat width = self.bounds.size.width > 0 ? self.bounds.size.width : 320.0;
+  _collapsedInputView.frame = CGRectMake(0, 0, width, 0);
 }
 
 - (void)_tapKeyboardPipButton:(UIButton *)sender {
@@ -2313,12 +2498,31 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   [self.inputDelegate textWillChange:self];
   [self.inputDelegate selectionWillChange:self];
 
+  // Prefer text-input-v3 when the client has committed Enable (TI wins over
+  // terminal PTY synthesis). Text Assist also uses the TI path.
+  BOOL tiEnabled = [bridge isTextInputEnabled];
+  if (_textAssistEnabled || tiEnabled) {
+    if (_textAssistEnabled) {
+      if (_markedRange.location != NSNotFound) {
+        [_textBuffer replaceCharactersInRange:_markedRange withString:text];
+        _selectedRange = NSMakeRange(_markedRange.location + text.length, 0);
+        _markedRange = NSMakeRange(NSNotFound, 0);
+      } else {
+        [_textBuffer insertString:text atIndex:_selectedRange.location];
+        _selectedRange = NSMakeRange(_selectedRange.location + text.length, 0);
+      }
+    }
+    [bridge textInputPreeditString:@"" cursorBegin:0 cursorEnd:0];
+    [bridge textInputCommitString:text];
+    [self.inputDelegate selectionDidChange:self];
+    [self.inputDelegate textDidChange:self];
+    [self _clearStickyModifiers];
+    return;
+  }
+
   /*
-   * weston-terminal only reads wl_keyboard / PTY — not text-input-v3.  Route
-   * soft keyboard here before Text Assist or wl_keyboard fallbacks.
-   *
-   * Modifier combos (Ctrl+C, etc.) must not take the plain-text fast path:
-   * synthesize the control byte locally or fall through to wl_keyboard.
+   * Terminals without TI: PTY inject / wl_keyboard. Modifier combos (Ctrl+C)
+   * must not take the plain-text fast path.
    */
   if (wwn_ios_terminal_is_active()) {
     BOOL hasCtrlOrAltOrSuper =
@@ -2358,25 +2562,7 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
     }
   }
 
-  // --- Text Assist mode: commit via text-input-v3 ---
-  if (_textAssistEnabled) {
-    if (_markedRange.location != NSNotFound) {
-      [_textBuffer replaceCharactersInRange:_markedRange withString:text];
-      _selectedRange = NSMakeRange(_markedRange.location + text.length, 0);
-      _markedRange = NSMakeRange(NSNotFound, 0);
-    } else {
-      [_textBuffer insertString:text atIndex:_selectedRange.location];
-      _selectedRange = NSMakeRange(_selectedRange.location + text.length, 0);
-    }
-    [bridge textInputPreeditString:@"" cursorBegin:0 cursorEnd:0];
-    [bridge textInputCommitString:text];
-    [self.inputDelegate selectionDidChange:self];
-    [self.inputDelegate textDidChange:self];
-    [self _clearStickyModifiers];
-    return;
-  }
-
-  // --- Legacy key-event mode (Text Assist OFF) ---
+  // --- Synthesis / legacy: key events for terminals without TI ---
 
   if (_markedRange.location != NSNotFound) {
     [bridge textInputPreeditString:@"" cursorBegin:0 cursorEnd:0];
@@ -2563,7 +2749,11 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 }
 
 - (UIKeyboardType)keyboardType {
-  return UIKeyboardTypeDefault;
+  return _hostKeyboardType;
+}
+
+- (BOOL)isSecureTextEntry {
+  return _hostSecureTextEntry;
 }
 
 - (UIReturnKeyType)returnKeyType {
@@ -2908,45 +3098,181 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   [self _updateTvKeyboardToggleTitle];
 #else
   if (_keyboardUiMode == WWNKeyboardUiModeExpanded) {
+    _userCollapsedSoftOsk = YES;
     [self _setKeyboardUiMode:WWNKeyboardUiModeAccessoryOnly];
   } else if (_keyboardUiMode == WWNKeyboardUiModePip ||
              _keyboardUiMode == WWNKeyboardUiModeHiddenExternal) {
+    _userCollapsedSoftOsk = NO;
     [self _setKeyboardUiMode:WWNKeyboardUiModeExpanded];
   } else {
+    _userCollapsedSoftOsk = NO;
     [self _setKeyboardUiMode:WWNKeyboardUiModeExpanded];
   }
 #endif
 }
 
-- (void)applyHostKeyboardForTextInputEnabled:(BOOL)enabled {
-  if (enabled) {
+- (BOOL)isHostKeyboardReady {
+  return _hostKeyboardReady;
+}
+
+- (void)armHostKeyboardAfterFirstFrame {
 #if TARGET_OS_TV
+  _hostKeyboardReady = YES;
+  return;
+#else
+  if (_hostKeyboardReady) {
+    return;
+  }
+  _hostKeyboardReady = YES;
+  // Accessory bar first; soft Expand applied from pending text_entry_wanted.
+  // Terminals always arm AccessoryOnly (+ FR) so Esc/Ctrl/⌨↓ appear even when
+  // a Mac/hardware keyboard would otherwise force HiddenExternal.
+  if (_keyboardUiMode != WWNKeyboardUiModePip &&
+      _keyboardUiMode != WWNKeyboardUiModeExpanded) {
+    _keyboardUiMode = WWNKeyboardUiModeAccessoryOnly;
+  }
+  if ([self _wantsExtendedKeyboardBar] &&
+      _keyboardUiMode == WWNKeyboardUiModeHiddenExternal) {
+    _keyboardUiMode = WWNKeyboardUiModeAccessoryOnly;
+  }
+  [self activateKeyboard];
+  if (_pendingTextEntryWantedValid) {
+    BOOL wanted = _pendingTextEntryWanted;
+    _pendingTextEntryWantedValid = NO;
+    [self applyHostKeyboardForTextInputEnabled:wanted];
+  } else if ([self _wantsExtendedKeyboardBar] && !self.isFirstResponder) {
+    [self activateKeyboard];
+  }
+  WWNLog("IOS_VIEW",
+         @"armHostKeyboardAfterFirstFrame extendedBar=%d mode=%ld fr=%d",
+         [self _wantsExtendedKeyboardBar] ? 1 : 0, (long)_keyboardUiMode,
+         self.isFirstResponder ? 1 : 0);
+#endif
+}
+
+- (void)applyHostKeyboardForTextInputEnabled:(BOOL)enabled {
+  // Soft Expand/collapse from text_entry_wanted. Do NOT becomeFirstResponder
+  // via `_setKeyboardUiMode` — that stalls configure/buffer delivery.
+#if TARGET_OS_TV
+  if (enabled) {
     [self _setKeyboardUiMode:WWNKeyboardUiModeExpanded];
     [self becomeFirstResponder];
-#else
-    if (_keyboardUiMode == WWNKeyboardUiModePip ||
-        _keyboardUiMode == WWNKeyboardUiModeHiddenExternal) {
-      // User parked keyboard in PIP / external — don't yank it open.
-      return;
-    }
-    [self _setKeyboardUiMode:WWNKeyboardUiModeExpanded];
-#endif
-  } else {
-#if TARGET_OS_TV
-    if (_keyboardUiMode == WWNKeyboardUiModeExpanded) {
-      [self _setKeyboardUiMode:WWNKeyboardUiModeAccessoryOnly];
-      [self resignFirstResponder];
-    }
-#else
-    if (_keyboardUiMode == WWNKeyboardUiModeExpanded) {
-      [self _setKeyboardUiMode:WWNKeyboardUiModeAccessoryOnly];
-    }
-#endif
+  } else if (_keyboardUiMode == WWNKeyboardUiModeExpanded) {
+    [self _setKeyboardUiMode:WWNKeyboardUiModeAccessoryOnly];
+    [self resignFirstResponder];
   }
-#if TARGET_OS_TV
   [self _ensureTvKeyboardToggleButton];
   [self _updateTvKeyboardToggleTitle];
+  return;
+#else
+  if (_keyboardUiMode == WWNKeyboardUiModePip) {
+    return;
+  }
+  // Terminals: recover from HiddenExternal so accessory can show.
+  if (_keyboardUiMode == WWNKeyboardUiModeHiddenExternal) {
+    if (![self _wantsExtendedKeyboardBar]) {
+      return;
+    }
+    _keyboardUiMode = WWNKeyboardUiModeAccessoryOnly;
+  }
+  if (!_hostKeyboardReady) {
+    // Stash until first Wayland frame — Expand/FR before that leaves
+    // weston-terminal stuck under the startup log with no buffer.
+    _pendingTextEntryWanted = enabled;
+    _pendingTextEntryWantedValid = YES;
+    // Prefer accessory until armed; soft Expand applied after first frame
+    // (unless user already collapsed).
+    _keyboardUiMode = WWNKeyboardUiModeAccessoryOnly;
+    [self _updateKeyboardModeButtonTitle];
+    return;
+  }
+  if (!enabled) {
+    _userCollapsedSoftOsk = NO;
+  }
+  // Terminal synthesis keeps wanted=YES while focused. Honor sticky dismiss.
+  BOOL expandSoft =
+      enabled && !_userCollapsedSoftOsk &&
+      !(_hardwareKeyboardActive && [self _wantsExtendedKeyboardBar]);
+  WWNKeyboardUiMode mode =
+      expandSoft ? WWNKeyboardUiModeExpanded : WWNKeyboardUiModeAccessoryOnly;
+  if (_keyboardUiMode == mode) {
+    if (!self.isFirstResponder &&
+        (mode == WWNKeyboardUiModeExpanded ||
+         mode == WWNKeyboardUiModeAccessoryOnly)) {
+      dispatch_async(dispatch_get_main_queue(), ^{
+        if (self->_keyboardUiMode == WWNKeyboardUiModeExpanded ||
+            self->_keyboardUiMode == WWNKeyboardUiModeAccessoryOnly) {
+          [self becomeFirstResponder];
+          [self reloadInputViews];
+        }
+      });
+    }
+    return;
+  }
+  _keyboardUiMode = mode;
+  [self _updateKeyboardModeButtonTitle];
+  [self _updateAccessoryBarHeightForMode];
+  [self _updateCollapsedInputViewHeight];
+  if (_keyboardPipButton) {
+    _keyboardPipButton.hidden = YES;
+  }
+  if (self.isFirstResponder) {
+    [self reloadInputViews];
+  } else if (mode == WWNKeyboardUiModeExpanded ||
+             mode == WWNKeyboardUiModeAccessoryOnly) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      if (self->_keyboardUiMode == WWNKeyboardUiModeExpanded ||
+          self->_keyboardUiMode == WWNKeyboardUiModeAccessoryOnly) {
+        [self becomeFirstResponder];
+        [self reloadInputViews];
+      }
+    });
+  }
+  [self _notifyHostKeyboardGeometryChanged];
 #endif
+}
+
+- (void)applyTextInputContentPurpose:(uint32_t)purpose {
+  // zwp_text_input_v3.content_purpose
+  UIKeyboardType type = UIKeyboardTypeDefault;
+  BOOL secure = NO;
+  switch (purpose) {
+  case 2:  // digits
+  case 9:  // pin
+    type = UIKeyboardTypeNumberPad;
+    secure = (purpose == 9);
+    break;
+  case 3: // number
+    type = UIKeyboardTypeDecimalPad;
+    break;
+  case 4: // phone
+    type = UIKeyboardTypePhonePad;
+    break;
+  case 5: // url
+    type = UIKeyboardTypeURL;
+    break;
+  case 6: // email
+    type = UIKeyboardTypeEmailAddress;
+    break;
+  case 8: // password
+    type = UIKeyboardTypeASCIICapable;
+    secure = YES;
+    break;
+  case 13: // terminal
+    type = UIKeyboardTypeASCIICapable;
+    break;
+  default:
+    type = UIKeyboardTypeDefault;
+    break;
+  }
+  if (type == _hostKeyboardType && secure == _hostSecureTextEntry) {
+    return;
+  }
+  _hostKeyboardType = type;
+  _hostSecureTextEntry = secure;
+  if (self.isFirstResponder) {
+    [self reloadInputViews];
+  }
 }
 
 #if TARGET_OS_TV

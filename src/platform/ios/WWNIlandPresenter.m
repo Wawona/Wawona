@@ -9,8 +9,11 @@
 #import "WWNIlandPresenter.h"
 #import "../macos/WWNEDRSupport.h"
 #import "../macos/ui/Settings/WWNPreferencesManager.h"
+#import "../../util/WWNLog.h"
 #import <IOSurface/IOSurfaceRef.h>
+#import <errno.h>
 #import <pthread.h>
+#import <unistd.h>
 
 typedef void (*iland_present_callback_t)(uint32_t crtc_id,
                                          uint32_t fb_id,
@@ -21,6 +24,11 @@ extern void iland_drm_set_present_callback(iland_present_callback_t cb, void *us
 extern void iland_drm_set_preferred_mode(uint32_t w, uint32_t h, uint32_t refresh);
 
 extern int kmscube_main(int argc, char *argv[]) __attribute__((weak_import));
+/* iland drm_linux.c — write end of the page-flip event pipe (fd 42 read end). */
+extern int g_drm_event_pipe_write;
+#ifndef DRM_VIRTUAL_FD
+#define DRM_VIRTUAL_FD 42
+#endif
 
 static NSString *const kShaderSource = @""
 "#include <metal_stdlib>\n"
@@ -86,10 +94,19 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
         NSLog(@"[iland] shader compile failed: %@", err);
         return nil;
     }
+    // CSD / transparent host plate: clear+blend with alpha (macOS parity).
+    _layer.opaque = NO;
     MTLRenderPipelineDescriptor *pd = [MTLRenderPipelineDescriptor new];
     pd.vertexFunction = [lib newFunctionWithName:@"wwn_vs"];
     pd.fragmentFunction = [lib newFunctionWithName:@"wwn_fs"];
     pd.colorAttachments[0].pixelFormat = _layer.pixelFormat;
+    pd.colorAttachments[0].blendingEnabled = YES;
+    pd.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+    pd.colorAttachments[0].destinationRGBBlendFactor =
+        MTLBlendFactorOneMinusSourceAlpha;
+    pd.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+    pd.colorAttachments[0].destinationAlphaBlendFactor =
+        MTLBlendFactorOneMinusSourceAlpha;
     _pipeline = [_device newRenderPipelineStateWithDescriptor:pd error:&err];
     if (!_pipeline) {
         NSLog(@"[iland] pipeline creation failed: %@", err);
@@ -125,6 +142,25 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
     NSUInteger w = IOSurfaceGetWidth(surface);
     NSUInteger h = IOSurfaceGetHeight(surface);
     if (w == 0 || h == 0) return;
+    static int s_presentCount = 0;
+    if (s_presentCount < 5) {
+        uint32_t fcc = 0;
+        size_t bpr = IOSurfaceGetBytesPerRow(surface);
+        IOSurfaceLock(surface, kIOSurfaceLockReadOnly, NULL);
+        const uint8_t *base = (const uint8_t *)IOSurfaceGetBaseAddress(surface);
+        uint32_t px0 = 0;
+        if (base && bpr >= 4)
+            memcpy(&px0, base, 4);
+        IOSurfaceUnlock(surface, kIOSurfaceLockReadOnly, NULL);
+        fcc = IOSurfaceGetPixelFormat(surface);
+        WWNLog("KMSCUBE",
+               @"iland present #%d IOSurface %lux%lu fcc=0x%08x px0=0x%08x "
+               @"drawable=%.0fx%.0f opaque=%d",
+               s_presentCount, (unsigned long)w, (unsigned long)h, fcc, px0,
+               _layer.drawableSize.width, _layer.drawableSize.height,
+               (int)_layer.opaque);
+    }
+    s_presentCount++;
 
     MTLTextureDescriptor *td =
         [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
@@ -137,14 +173,30 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
     id<MTLTexture> srcTex = [_device newTextureWithDescriptor:td
                                                     iosurface:surface
                                                         plane:0];
-    if (!srcTex) return;
+    if (!srcTex) {
+        static int s_texFail;
+        if (s_texFail++ < 3) {
+            WWNLog("KMSCUBE", @"Metal IOSurface→texture failed %lux%lu",
+                   (unsigned long)w, (unsigned long)h);
+        }
+        return;
+    }
 
     id<CAMetalDrawable> drawable = [_layer nextDrawable];
-    if (!drawable) return;
+    if (!drawable) {
+        static int s_drawFail;
+        if (s_drawFail++ < 3) {
+            WWNLog("KMSCUBE", @"Metal nextDrawable nil (layer %.0fx%.0f)",
+                   _layer.drawableSize.width, _layer.drawableSize.height);
+        }
+        return;
+    }
 
     MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
     rp.colorAttachments[0].texture = drawable.texture;
     rp.colorAttachments[0].loadAction = MTLLoadActionClear;
+    // Opaque host plate for kmscube; CSD paths that need alpha keep blending
+    // enabled on the pipeline but clear to black so empty frames aren't void.
     rp.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1);
     rp.colorAttachments[0].storeAction = MTLStoreActionStore;
 
@@ -159,30 +211,70 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
     [cb commit];
 }
 
+/// Mirror wayland-mac constructor: pipe → DRM_VIRTUAL_FD so select/poll work
+/// for in-process kmscube (Apple mobile has no Dobby open/ioctl hooks).
+static BOOL wwn_prepare_iland_virtual_drm_fd(void) {
+    if (g_drm_event_pipe_write >= 0) {
+        return YES;
+    }
+    int p[2];
+    if (pipe(p) != 0) {
+        WWNLog("KMSCUBE", @"pipe() for DRM virtual fd failed errno=%d", errno);
+        return NO;
+    }
+    if (dup2(p[0], DRM_VIRTUAL_FD) < 0) {
+        WWNLog("KMSCUBE", @"dup2(DRM_VIRTUAL_FD) failed errno=%d", errno);
+        close(p[0]);
+        close(p[1]);
+        return NO;
+    }
+    close(p[0]);
+    g_drm_event_pipe_write = p[1];
+    WWNLog("KMSCUBE", @"prepared iland virtual DRM fd=%d (event pipe)",
+           DRM_VIRTUAL_FD);
+    return YES;
+}
+
 static void *wwn_kmscube_thread(void *arg) {
     WWNIlandPresenter *self = (__bridge WWNIlandPresenter *)arg;
     (void)self->_clientWidth;
     (void)self->_clientHeight;
+    if (!wwn_prepare_iland_virtual_drm_fd()) {
+        WWNLog("KMSCUBE", @"aborting kmscube_main — virtual DRM fd not ready");
+        return NULL;
+    }
     char *argv[] = { (char *)"kmscube", NULL };
-    kmscube_main(1, argv);
+    WWNLog("KMSCUBE", @"kmscube_main enter (iland DRM present)");
+    int rc = kmscube_main(1, argv);
+    WWNLog("KMSCUBE", @"kmscube_main exit rc=%d", rc);
     return NULL;
 }
 
 - (BOOL)launchNestedKmscubeWithWidth:(int)width height:(int)height {
     if (kmscube_main == NULL) {
-        NSLog(@"[iland] kmscube_main unavailable (link libkmscube.a)");
+        WWNLog("KMSCUBE",
+               @"kmscube_main unavailable — link libkmscube.a "
+               @"(-Wl,-u,_kmscube_main -lkmscube)");
         return NO;
     }
-    if (_clientThreadStarted) return YES;
+    if (_clientThreadStarted) {
+        WWNLog("KMSCUBE", @"kmscube thread already running");
+        return YES;
+    }
+    if (!wwn_prepare_iland_virtual_drm_fd()) {
+        return NO;
+    }
     _clientWidth = width > 0 ? width : 1280;
     _clientHeight = height > 0 ? height : 720;
     int rc = pthread_create(&_clientThread, NULL, wwn_kmscube_thread,
                             (__bridge void *)self);
     if (rc != 0) {
-        NSLog(@"[iland] pthread_create failed: %d", rc);
+        WWNLog("KMSCUBE", @"pthread_create failed: %d", rc);
         return NO;
     }
     _clientThreadStarted = YES;
+    WWNLog("KMSCUBE", @"started in-process kmscube %dx%d via iland",
+           _clientWidth, _clientHeight);
     return YES;
 }
 
