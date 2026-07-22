@@ -63,6 +63,9 @@ rec {
     # Apple platform UI
     "src/platform/macos/ui/Helpers/WWNImageLoader.m"
     "src/platform/macos/ui/Helpers/WWNImageLoader.h"
+    # Shared SSH keygen / GPG-SSH import (libwwn-ssh-cli on Apple mobile).
+    "src/platform/macos/ui/Helpers/WWNSSHKeygen.m"
+    "src/platform/macos/ui/Helpers/WWNSSHKeygen.h"
     "src/platform/macos/ui/Machines/WWNMachineProfileStore.m"
     "src/platform/macos/ui/Machines/WWNMachineProfileStore.h"
     "src/platform/macos/ui/Machines/WWNMachinesCoordinator.m"
