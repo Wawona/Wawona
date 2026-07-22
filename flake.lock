@@ -883,11 +883,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1784014038,
-        "narHash": "sha256-rhAf9AAa4QwSWEVMyD4Ni8w59syzcx+lBtvkWf8cUUU=",
+        "lastModified": 1784684693,
+        "narHash": "sha256-jCLX/FvPvu9sM55W/MWBqxEtcvZGzBwirH2IBkYdwSY=",
         "owner": "Wawona",
         "repo": "wwn-foot",
-        "rev": "dd49ebb913fbee31c4316d6ab5156e22008e9bc5",
+        "rev": "0b454c52aa26e5f4700f3df9b9749377316c1bfe",
         "type": "github"
       },
       "original": {
@@ -984,11 +984,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1784002422,
-        "narHash": "sha256-ejNVIBqHlxDrr0cBGmCBzdqS5EB7PBFbxuU2uoLBkiw=",
+        "lastModified": 1784684702,
+        "narHash": "sha256-0SaK3+jiVzU/l83wooXssWP+s0Qr516BBYbH6ZYbfDY=",
         "owner": "Wawona",
         "repo": "wwn-niri",
-        "rev": "8b74f66f5421d818d8808bc7a1d8de3932f06b9a",
+        "rev": "3c9c414f15bf29d8eecc3e1ccf714d48755ff660",
         "type": "github"
       },
       "original": {
@@ -1063,11 +1063,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1784267860,
-        "narHash": "sha256-hshrCxvOLQRaSeD9JAltQ3h2rXOLbkSkoF3zzwiNo3w=",
+        "lastModified": 1784684698,
+        "narHash": "sha256-ZO5NOq+Ije9d655Lv2VLbCCECPo16OGMNnC/5aLCmqk=",
         "owner": "Wawona",
         "repo": "wwn-toolchain",
-        "rev": "a1f2ff3d1126e908f3d97afedd6f178ba4dca8ee",
+        "rev": "f5862245b877ccf98df38a202f88ca086cfd0080",
         "type": "github"
       },
       "original": {

@@ -132,6 +132,7 @@ let
     typeset -gaU WAWONA_INPROC_CLIENTS
     WAWONA_INPROC_CLIENTS=(
       fastfetch nvim vi vim waypipe waypipe-rs ssh ssh-keygen scp
+      fuzzel foot weston-terminal
       weston-simple-shm weston-flower weston-clickdot weston-smoke
       weston-eventdemo weston-resizor weston-cliptest weston-transformed
       weston-stacking weston-dnd weston-image weston-scaler

@@ -38,9 +38,17 @@ let
   # wawona_dispatch_can_handle() / bundled PATH binaries.
   apps = [
     {
+      id = "weston-terminal";
+      name = "Weston Terminal";
+      comment = "In-process Wayland terminal (zsh)";
+      categories = "System;TerminalEmulator;";
+      icon = "weston-terminal";
+    }
+    {
       id = "foot";
       name = "Foot Terminal";
-      comment = "Fast, lightweight Wayland terminal";
+      # Apple mobile ships a foot→weston-terminal shim until real foot lands.
+      comment = "Wayland terminal (weston-terminal on Apple mobile)";
       categories = "System;TerminalEmulator;";
       icon = "foot";
     }
@@ -160,6 +168,7 @@ let
 
   # Map icon id -> source PNG path for install phase.
   iconSources = {
+    weston-terminal = iconTerminalPng;
     foot = terminalPng;
     nvim = iconEditorPng;
     fastfetch = waylandPng;
