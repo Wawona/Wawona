@@ -13,6 +13,10 @@
   # from `toolchains.buildForMacOS "anowaw"`. When null the compositor still
   # builds; WWNAnowaWController falls back to its no-op stub (see common.nix).
   anowaw ? null,
+  # Mode B dylib (libwayland-mac.dylib) from `buildForMacOS "iland-baremetal"`.
+  # When non-null, copy into Contents/Library/Wawona/iland/ for Desktop
+  # Replacement. Store-safe / App Store builds MUST pass null.
+  ilandBaremetal ? null,
   fastfetch ? null,
   neovim ? null,
   zsh ? null,
@@ -153,6 +157,13 @@ let
     "src/platform/macos/WWNRootfsProvider.h"
     "src/platform/macos/WWNRootfsICloudSync.m"
     "src/platform/macos/WWNRootfsICloudSync.h"
+    # Desktop Replacement / anowaW — macOS + Android only (matrix).
+    "src/platform/macos/ui/Machines/WWNAnowaWController.m"
+    "src/platform/macos/ui/Machines/WWNAnowaWController.h"
+    "src/platform/macos/ui/Machines/WWNDesktopReplacementController.m"
+    "src/platform/macos/ui/Machines/WWNDesktopReplacementController.h"
+    "src/platform/macos/ui/Settings/WWNSipStatus.m"
+    "src/platform/macos/ui/Settings/WWNSipStatus.h"
   ];
 
   # Use full list: filterSources can empty the list when wawonaSrc is cleanSourceWith
@@ -313,6 +324,26 @@ let
 
   generateIcons = platform: ''
     mkdir -p "$out/Applications/Wawona.app/Contents/Resources"
+  '';
+
+  # Mode B dylib — desktop-host / full-dev only (never store-safe).
+  bundleIlandBaremetalDylib = lib.optionalString (ilandBaremetal != null) ''
+    bundle_iland_baremetal_dylib() {
+      local app="$1"
+      local src="${ilandBaremetal}/lib/libwayland-mac.dylib"
+      if [ ! -f "$src" ]; then
+        echo "ERROR: ilandBaremetal set but $src missing" >&2
+        exit 1
+      fi
+      local dest="$app/Contents/Library/Wawona/iland"
+      mkdir -p "$dest"
+      cp -L "$src" "$dest/libwayland-mac.dylib"
+      chmod 755 "$dest/libwayland-mac.dylib"
+      if command -v codesign >/dev/null 2>&1; then
+        codesign --force --sign - --timestamp=none "$dest/libwayland-mac.dylib" 2>/dev/null || true
+      fi
+      echo "Bundled Mode B dylib: $dest/libwayland-mac.dylib"
+    }
   '';
 
   # Copy non-system dylibs into Contents/Frameworks and rewrite load paths so the
@@ -902,8 +933,10 @@ GEN_HEADER
               fi
 
               ${bundleMacOSAppDylibs}
+              ${bundleIlandBaremetalDylib}
               echo "Bundling portable dylibs for Xcode-built Wawona.app..."
               bundle_macos_app_dylibs "$APP"
+              ${lib.optionalString (ilandBaremetal != null) ''bundle_iland_baremetal_dylib "$APP"''}
 
               mkdir -p $project
               cp -r . "$project/"
@@ -1291,8 +1324,10 @@ PLIST_EOF
             ${installMacOSIcons}
 
             ${bundleMacOSAppDylibs}
+            ${bundleIlandBaremetalDylib}
             echo "Bundling portable dylibs into Wawona.app..."
             bundle_macos_app_dylibs "$out/Applications/Wawona.app"
+            ${lib.optionalString (ilandBaremetal != null) ''bundle_iland_baremetal_dylib "$out/Applications/Wawona.app"''}
             if command -v codesign >/dev/null 2>&1; then
               find "$out/Applications/Wawona.app/Contents/Frameworks" -type f -name '*.dylib' \
                 -exec codesign --force --sign - --timestamp=none {} \; 2>/dev/null || true
@@ -1321,5 +1356,18 @@ PLIST_EOF
         fi
       done
       echo "Verified macOS bundled weston/fonts/backend assets"
+      ${if ilandBaremetal != null then ''
+      if [ ! -f "$APP/Contents/Library/Wawona/iland/libwayland-mac.dylib" ]; then
+        echo "ERROR: desktop-host build missing Mode B dylib" >&2
+        exit 1
+      fi
+      echo "Verified Mode B libwayland-mac.dylib present (desktop-host)"
+      '' else ''
+      if [ -f "$APP/Contents/Library/Wawona/iland/libwayland-mac.dylib" ]; then
+        echo "ERROR: store-safe/default macOS build must not ship Mode B dylib" >&2
+        exit 1
+      fi
+      echo "Verified Mode B dylib absent (store-safe / Mode A)"
+      ''}
     '';
   }
