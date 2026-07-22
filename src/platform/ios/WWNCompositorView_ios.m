@@ -1324,7 +1324,12 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 
 #if !TARGET_OS_TV
 - (void)_keyboardWillShow:(NSNotification *)note {
-  _hardwareKeyboardActive = NO;
+  // Never clear HW-keyboard state here. Accessory-bar first-responder posts
+  // UIKeyboardWillShow even when GCKeyboard/Mac keyboard is attached; wiping
+  // the flag let text_entry_wanted expand the soft OSK on Simulator.
+  BOOL hwAttached = [self _hardwareKeyboardConnected];
+  _hardwareKeyboardActive = hwAttached;
+
   NSValue *frameVal = note.userInfo[UIKeyboardFrameEndUserInfoKey];
   CGFloat kbHeight = 0.0;
   if ([frameVal isKindOfClass:[NSValue class]]) {
@@ -1339,9 +1344,18 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   // AccessoryOnly→Expanded from UIKeyboardWillShow. Becoming first responder
   // for the accessory bar (weston-simple-shm, flower, …) posts this
   // notification and previously forced the full soft OSK open.
-  if (_keyboardUiMode == WWNKeyboardUiModeAccessoryOnly && kbHeight > 48.0) {
-    // System tried to show a real soft keyboard while we want accessory-only;
-    // reassert collapsed inputView.
+  BOOL wantSoftCollapsed =
+      (_keyboardUiMode == WWNKeyboardUiModeAccessoryOnly) ||
+      (_keyboardUiMode == WWNKeyboardUiModeHiddenExternal) || hwAttached;
+  if (wantSoftCollapsed && kbHeight > 48.0) {
+    // System tried to show a real soft keyboard while HW keyboard is attached
+    // or we only want the accessory bar — reassert collapsed inputView.
+    if (_keyboardUiMode == WWNKeyboardUiModeExpanded && hwAttached) {
+      _userCollapsedSoftOsk = YES;
+      _keyboardUiMode = [self _wantsExtendedKeyboardBar]
+                            ? WWNKeyboardUiModeAccessoryOnly
+                            : WWNKeyboardUiModeHiddenExternal;
+    }
     [self reloadInputViews];
   }
   [self _notifyHostKeyboardGeometryChanged];
@@ -3194,12 +3208,23 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   if (!enabled) {
     _userCollapsedSoftOsk = NO;
   }
-  // Terminal synthesis keeps wanted=YES while focused. Honor sticky dismiss.
+  // Re-probe HW keyboard every time — WillShow used to clear the flag and
+  // soft-expand incorrectly while a Mac/Bluetooth keyboard stayed attached.
+  _hardwareKeyboardActive = [self _hardwareKeyboardConnected];
+  // Soft OSK only when no hardware keyboard. Terminals keep AccessoryOnly
+  // (Esc/Ctrl/⌨↓) with HW attached; other clients use HiddenExternal.
   BOOL expandSoft =
-      enabled && !_userCollapsedSoftOsk &&
-      !(_hardwareKeyboardActive && [self _wantsExtendedKeyboardBar]);
-  WWNKeyboardUiMode mode =
-      expandSoft ? WWNKeyboardUiModeExpanded : WWNKeyboardUiModeAccessoryOnly;
+      enabled && !_userCollapsedSoftOsk && !_hardwareKeyboardActive;
+  WWNKeyboardUiMode mode;
+  if (expandSoft) {
+    mode = WWNKeyboardUiModeExpanded;
+  } else if ([self _wantsExtendedKeyboardBar] || !enabled) {
+    mode = WWNKeyboardUiModeAccessoryOnly;
+  } else if (_hardwareKeyboardActive) {
+    mode = WWNKeyboardUiModeHiddenExternal;
+  } else {
+    mode = WWNKeyboardUiModeAccessoryOnly;
+  }
   if (_keyboardUiMode == mode) {
     if (!self.isFirstResponder &&
         (mode == WWNKeyboardUiModeExpanded ||
