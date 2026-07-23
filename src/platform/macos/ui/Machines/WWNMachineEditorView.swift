@@ -535,9 +535,8 @@ struct WWNMachineEditorView: View {
             .textFieldStyle(.roundedBorder)
         }
         Button("Generate Key (ed25519)") {
-          var err: NSError?
-          if let path = WWNSSHKeygen.generateKeyType(
-            "ed25519", passphrase: sshKeyPassphrase, error: &err
+          if let path = try? WWNSSHKeygen.generateKeyType(
+            "ed25519", passphrase: sshKeyPassphrase
           ) {
             sshKeyPath = path
             sshAuthMethod = 1

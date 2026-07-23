@@ -95,18 +95,17 @@ struct WatchGlobalSettingsView: View {
                             .autocorrectionDisabled()
                         SecureField("Key Passphrase", text: $preferences.sshKeyPassphrase)
                         Button("Generate Key") {
-                            var err: NSError?
-                            if let path = WWNSSHKeygen.generateKeyType(
-                                preferences.sshKeyType,
-                                passphrase: preferences.sshKeyPassphrase,
-                                error: &err
-                            ) {
+                            do {
+                                let path = try WWNSSHKeygen.generateKeyType(
+                                    preferences.sshKeyType,
+                                    passphrase: preferences.sshKeyPassphrase
+                                )
                                 preferences.sshKeyPath = path
                                 preferences.sshAuthMethod = 1
                                 preferences.save()
                                 keygenMessage = "Created \(path)"
-                            } else {
-                                keygenMessage = err?.localizedDescription ?? "Keygen failed"
+                            } catch {
+                                keygenMessage = error.localizedDescription
                             }
                         }
                         Text("GPG: copy gpg --export-ssh-key into Documents/ssh and set Key Path.")

@@ -127,11 +127,9 @@ struct MachineSettingsView: View {
                     .autocorrectionDisabled()
                 SecureField("Key Passphrase", text: sshKeyPassphraseBinding)
                 Button("Generate ed25519 Key") {
-                    var err: NSError?
-                    if let path = WWNSSHKeygen.generateKeyType(
+                    if let path = try? WWNSSHKeygen.generateKeyType(
                         "ed25519",
-                        passphrase: draft?.sshKeyPassphrase ?? "",
-                        error: &err
+                        passphrase: draft?.sshKeyPassphrase ?? ""
                     ) {
                         updateDraft {
                             $0.sshKeyPath = path
