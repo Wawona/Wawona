@@ -94,7 +94,9 @@ let
       "26.0";
   deploymentFlag =
     if platform == "visionos" then
-      (if simulator then "-mvisionos-simulator-version-min=26.0" else "-mvisionos-version-min=26.0")
+      # The xros deployment version belongs in the -target triple. Apple clang
+      # has no -mvisionos[-simulator]-version-min spelling.
+      ""
     else if platform == "tvos" then
       (if simulator then "-mtvos-simulator-version-min=17.0" else "-mtvos-version-min=17.0")
     else if platform == "watchos" then
@@ -762,8 +764,7 @@ let
     } // lib.optionalAttrs ((isIOS || isTVOS || isVisionOS) && nativeDeps ? ffmpeg) {
       preConfigure = (attrs.preConfigure or "") + ''
         IOS_BINDGEN_SYSROOT="$(xcrun --sdk ${xcrunSdk} --show-sdk-path)"
-        IOS_BINDGEN_MIN_FLAG="${deploymentFlag}"
-        export BINDGEN_EXTRA_CLANG_ARGS="$BINDGEN_EXTRA_CLANG_ARGS --target=${linkerTarget} -isysroot $IOS_BINDGEN_SYSROOT $IOS_BINDGEN_MIN_FLAG"
+        export BINDGEN_EXTRA_CLANG_ARGS="$BINDGEN_EXTRA_CLANG_ARGS --target=${linkerTarget} -isysroot $IOS_BINDGEN_SYSROOT${lib.optionalString (!isVisionOS) " ${deploymentFlag}"}"
       '';
     };
 
