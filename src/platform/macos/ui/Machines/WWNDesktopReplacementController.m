@@ -19,6 +19,8 @@
 @interface WWNDesktopReplacementController ()
 @property (nonatomic, assign) pid_t modeBPid;
 @property (nonatomic, copy, nullable) NSString *modeBMachineId;
+- (BOOL)terminateModeBProcess:(pid_t)pid
+                         error:(NSError *_Nullable *_Nullable)error;
 @end
 
 @implementation WWNDesktopReplacementController
@@ -126,6 +128,22 @@
   if (self.modeBPid > 0 && kill(self.modeBPid, 0) == 0 &&
       [self.modeBMachineId isEqualToString:profile.machineId]) {
     return YES;
+  }
+  if (self.modeBPid > 0) {
+    /*
+     * A different Desktop profile (or a stale PID) must not share the
+     * framebufferd/inputd set of the previous injected Weston.  Mode B
+     * helpers are owned by the dylib and exit with its Weston process.
+     */
+    NSError *stopError = nil;
+    if (![self terminateModeBProcess:self.modeBPid error:&stopError]) {
+      if (error) {
+        *error = stopError;
+      }
+      return NO;
+    }
+    self.modeBPid = 0;
+    self.modeBMachineId = nil;
   }
 
   NSString *dylib = [self bundledDylibPath];
@@ -259,11 +277,86 @@
 }
 
 - (void)disengage {
-  if (self.modeBPid > 0) {
-    kill(self.modeBPid, SIGTERM);
+  NSError *error = nil;
+  if (self.modeBPid > 0 &&
+      ![self terminateModeBProcess:self.modeBPid error:&error]) {
+    NSLog(@"[DesktopReplacement] Mode B stop failed: %@", error);
+    return;
   }
   self.modeBPid = 0;
   self.modeBMachineId = nil;
+}
+
+- (BOOL)terminateModeBProcess:(pid_t)pid
+                         error:(NSError *_Nullable *_Nullable)error {
+  if (pid <= 0) {
+    return YES;
+  }
+
+  /*
+   * Mode B Weston was launched by osascript with administrator privileges,
+   * therefore an ordinary GUI-process kill(2) commonly returns EPERM.  Stop
+   * the root-owned session through the same privilege boundary, wait for its
+   * dylib destructor to stop framebufferd/inputd/caffeinate, then escalate
+   * only if the process failed to leave. `pid` is an integer from the prior
+   * launch output, not user-controlled shell text.
+   */
+  NSString *shellCmd = [NSString
+      stringWithFormat:
+          @"if kill -0 %d 2>/dev/null; then "
+          @"kill -TERM %d; "
+          @"i=0; while kill -0 %d 2>/dev/null && [ $i -lt 50 ]; do "
+          @"sleep 0.1; i=$((i + 1)); done; "
+          @"if kill -0 %d 2>/dev/null; then "
+          @"kill -KILL %d; "
+          @"for helper in framebufferd inputd caffeinate; do "
+          @"p=/tmp/libwayland-support/$helper.pid; "
+          @"if [ -r \"$p\" ]; then hp=$(cat \"$p\"); "
+          @"case \"$hp\" in ''|*[!0-9]*) ;; "
+          @"*) kill -TERM \"$hp\" 2>/dev/null || true ;; esac; "
+          @"rm -f \"$p\"; fi; done; "
+          @"fi; "
+          @"fi",
+          (int)pid, (int)pid, (int)pid, (int)pid, (int)pid];
+  NSString *osa =
+      [NSString stringWithFormat:@"do shell script %@ with administrator "
+                                 @"privileges",
+                                 [self wwnAppleScriptQuote:shellCmd]];
+
+  NSTask *task = [[NSTask alloc] init];
+  task.executableURL = [NSURL fileURLWithPath:@"/usr/bin/osascript"];
+  task.arguments = @[ @"-e", osa ];
+  NSPipe *errPipe = [NSPipe pipe];
+  task.standardError = errPipe;
+
+  NSError *launchError = nil;
+  if (![task launchAndReturnError:&launchError]) {
+    if (error) {
+      *error = launchError;
+    }
+    return NO;
+  }
+  [task waitUntilExit];
+  if (task.terminationStatus == 0) {
+    NSLog(@"[DesktopReplacement] Mode B disengaged pid=%d", (int)pid);
+    return YES;
+  }
+
+  NSData *errData = [[errPipe fileHandleForReading] readDataToEndOfFile];
+  NSString *errText =
+      [[NSString alloc] initWithData:errData encoding:NSUTF8StringEncoding];
+  if (error) {
+    *error = [NSError
+        errorWithDomain:@"WWNDesktopReplacement"
+                   code:7
+               userInfo:@{
+                 NSLocalizedDescriptionKey : [NSString
+                     stringWithFormat:@"Mode B privileged stop failed "
+                                      @"(status=%d output=%@).",
+                                      task.terminationStatus, errText ?: @""]
+               }];
+  }
+  return NO;
 }
 
 - (NSString *)wwnShellQuote:(NSString *)s {

@@ -145,11 +145,51 @@ Engage path is **real and gated** but not a CI-proven finished product.
 - Dylib constructor (root-gated, Dobby hooks, extracts framebufferd/inputd)
   `wayland-mac.c:259-337`; framebufferd CAWindowServer present
   `framebufferd/src/main.m:267-303`. — REAL (upstream-derived)
-- **Gaps:** flip vsync TODO `drm_linux.c:708-713`; disengage `kill(SIGTERM)` only,
-  no daemon teardown `WWNMachineSessionBridge.m:243-306`; **no CI job builds/runs
-  `wawona-macos-desktop-host`**; `verify-iland-mode-b-bundle.sh` exists but is
-  **not invoked by any workflow** (only an inline nix assert), while
-  `docs/ci.md:51-52` overstates coverage → doc/CI drift. Tracked by #87.
+- **Remaining gaps:** flip completion still signals when the Mach surface message
+  is accepted rather than at a display-vblank (`drm_linux.c` page-flip); **no CI
+  job builds/runs `wawona-macos-desktop-host`**; and
+  `verify-iland-mode-b-bundle.sh` is **not invoked by any workflow** (only an
+  inline Nix assert), while `docs/ci.md:51-52` overstates coverage. Tracked by
+  #87.
+
+### P3 Mode B hardening — in progress
+
+Mode B remains **macOS desktop-host only**: root + SIP debugging restrictions
+disabled/partially-disabled + explicit Desktop Replacement preference. No
+mobile/Android/store artifact is changed by this work.
+
+**Lifecycle implementation:** `wayland-mac.c` now records the PIDs of the
+root-owned `framebufferd`, `inputd`, and `caffeinate` processes it launches
+under `/tmp/libwayland-support/`. Its dylib destructor stops only those
+helpers, in reverse startup order, and removes the PID records; it deliberately
+does not touch helpers when a pre-existing Mode B Mach service belongs to
+another owner. Failed helper extraction/spawn now fails the constructor instead
+of falling into an unbounded service-wait loop. The desktop controller now
+stops the root-owned injected Weston through the same administrator boundary
+that launched it, waits for normal destructor cleanup, and only then escalates;
+the escalation consumes the root-owned PID records to prevent orphaned helpers.
+
+**Why:** the old controller used unprivileged `kill(SIGTERM)` on a root process,
+so it could silently fail with `EPERM`; it also had no helper teardown
+ownership. The new lifecycle closes that leak without adding any Mode B symbol
+or package to Mode A/store outputs.
+
+**Acceptance still pending:** build `iland-baremetal-macos`; static/syntax
+checks; desktop-host package bundle test (`--mode present`) plus product/mobile
+absence checks; a manually authorized SIP-eligible desktop-host smoke proving
+Weston → page flip → framebufferd, and a shutdown smoke proving no owned helper
+PIDs survive. **waypipe zero-copy impact: none** (the IOSurface Mach-port
+handoff remains unchanged).
+
+**Build evidence (macOS arm64):** `nix build .#iland-baremetal-macos` is green
+after repairing the recipe's coherent Xcode compiler/SDK selection, ANGLE header
+path, and `codesign` invocation without leaking BSD `find`/`cut` into Nix
+fixup. The artifact is an ad-hoc-signed arm64
+`libwayland-mac.dylib`, exports `drmModePageFlip` and `wayland_mac_init`, and
+passes both `verify-iland-mode-b-bundle.sh --mode present` (desktop-host-shaped
+fixture) and `--mode absent` (store-shaped fixture). This verifies packaging
+and compile/link ownership; it does **not** claim a SIP/root live desktop smoke
+or vblank-correct flips. Grade remains **WIRED**, not PROPER.
 
 ## R3 — External stacks (reuse cheat-sheet)
 
