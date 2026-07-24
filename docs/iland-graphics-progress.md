@@ -44,7 +44,7 @@ separately. Evidence is `file:line` in the local tree or an issue.
 | macOS 3rd-party product | A | WIRED (ANGLE dlopen; `OpenGLDriver` pref **never applied** — STUB selection) | WIRED (MVK/KK ICD set at launch only, not on connect) | WIRED (userland `drmMode*` real; card-open interpose absent in Mode A `.a`) | WIRED (page-flip→callback real; immediate fake vsync; format lie) | N/A (Desktop tweak = desktop-host B) |
 | macOS desktop-host | A (toggle off) | WIRED (same as product) | WIRED | WIRED | WIRED | N/A |
 | macOS desktop-host | B (SIP partial + toggle) | WIRED | WIRED | WIRED (Dobby `open`/`ioctl` hooks real) | WIRED→FUCKUP (framebufferd present real; **vsync TODO** `drm_linux.c:708`; no CI proof) | WIRED (engage path real, not CI-proven; #87) |
-| iOS / iPadOS / visionOS | A | FUCKUP (ANGLE present works but purple tint #94; iPad/vision multi-window modes unproven) | STUB→WIRED (MVK intended; ICD apply-on-connect missing) | FUCKUP (kmscube cannot open card — #58; needs Mode-A open shim) | FUCKUP (mode falls back to 1920×1080 without preferred mode; format ignored #94) | N/A |
+| iOS / iPadOS / visionOS | A | FUCKUP (ANGLE present works but purple tint #94; iPad/vision multi-window modes unproven) | STUB→WIRED (MVK intended; ICD apply-on-connect missing) | WIRED (Mode-A open shim landed — `iland_drm_open_card` + `iland_drm_open_compat.h`; #58 open path fixed, device render unproven) | FUCKUP (mode falls back to 1920×1080 without preferred mode; format ignored #94) | N/A |
 | tvOS / watchOS | A soft | N/A (empty `libiland_userland.a`; correct) | N/A | N/A | N/A | N/A |
 | Android Play / Home Desktop | A (no root) | STUB (system/ANGLE `.so` present; `OpenGLDriver` pref has **no consumer**) | WIRED (system/SwiftShader/Turnip ICD via `VK_ICD_FILENAMES` at instance create) | WIRED (userland `drm_linux.c`; heap "IOSurface", no AHB) | WIRED (present callback; zero-copy forced off) | WIRED (Home = rootless Mode A launcher/VD; no dylib) |
 | Android power | B (root FB) | STUB | WIRED (+ optional Turnip) | WIRED | WIRED | WIRED (root FB optional; not Play-required) |
@@ -54,6 +54,30 @@ separately. Evidence is `file:line` in the local tree or an issue.
 Home Desktop / App Store cells PROPER.
 
 ---
+
+## P1 progress log
+
+**#58 Mode-A device open (landed in `wwn-iland`):** added `iland_drm_open_card()`
+in `drm_linux.c` + a reusable force-include header
+`shims/drm/drm/include/iland_drm_open_compat.h` that redirects a stock client's
+raw `open("/dev/dri/cardN")` to the in-process virtual DRM fd (non-DRM paths
+defer to libc `open`, incl. `O_CREAT` mode). Store-safe: no DYLD interpose, no
+`/dev/dri`, no privilege. Wired the force-include into iland's own GL-clients
+recipes (`gl-clients-macos.nix`, `gl-clients-ios.nix`) and installed the header
+in `macos.nix` / `ios.nix` / `android.nix`. **Verified:** `clang -fsyntax-only`
+on `drm_linux.c` (clean) + a compile/run test proving the macro routes
+`/dev/dri/*` → shim (fd 42) while 2-arg and 3-arg passthrough opens compile.
+**Grade: WIRED** (open path fixed + mechanism proven; in-app kmscube render →
+PROPER pending Nix build + Agent-Device). **waypipe zero-copy impact: none.**
+
+**Remaining to close #58 for the product (next P1 steps):**
+1. Force-include `iland_drm_open_compat.h` in **wwn-kmscube** (product kmscube)
+   and **wwn-weston** (drm-backend + weston-simple-egl) recipes — they consume
+   iland headers via fragment/`ilandSrc`.
+2. #94 format fix: `drmModeAddFB2` honor fourcc + GBM format→pixelFormat map.
+3. Preferred-mode set before first connector enumerate on every Apple/Android
+   target; re-set on resize.
+4. Nix build iland + kmscube; Agent-Device kmscube in-app on iOS-shaped build.
 
 ## R1 — Mode A fail point (#58) + Apple KMS / IOSurface map
 
@@ -298,7 +322,16 @@ none | preserved | broken→fix**. P0 impact: **none** (research-only).
 ## Repos touched this phase
 
 P0 (docs-only, `Wawona`): this progress doc, draft `wwn-repo-dag.md`, GitHub epic.
-No `wwn-*` recipe edits; no flake.lock bumps. All other repos read-only.
+No `wwn-*` recipe edits; no flake.lock bumps.
+
+P1 (in progress):
+- `Wawona`: Mode A/B store matrix + portable-KMS model in `iland-mode-a-b-desktop.md`;
+  workspace `wawona-repo-dag.mdc` Cursor rule; AGENTS.md DAG stub (on disk).
+- `wwn-iland`: `iland_drm_open_card` + `iland_drm_open_compat.h` (#58 Mode-A open
+  shim); header install in `macos.nix`/`ios.nix`/`android.nix`; force-include in
+  `gl-clients-macos.nix`/`gl-clients-ios.nix`; AGENTS/README DAG layer identity.
+- `wwn-toolchain`: AGENTS.md (new) + README DAG layer identity (on disk).
+**waypipe zero-copy impact: none.**
 
 ## P1 entry criteria (written; P1 not started)
 
