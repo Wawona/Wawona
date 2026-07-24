@@ -108,12 +108,19 @@ for **PROPER**, and Android AHardwareBuffer remains a separate open path.
 
 **Android GPU compositor correction (working tree; verification pending):**
 the product dependency in `dependencies/wawona/android.nix` now selects
-`weston-compositor-drm`, and the nested launch in
+`weston-compositor-gl`, and the nested launch in
 `src/platform/android/android_jni.c` explicitly requests `--renderer=gl`.
 This follows R10's short path (Wayland backend + Weston GL → host EGL) while
 retaining the non-DRM compositor as the explicit pixman fallback. Do not grade
 this above **WIRED** until the Android product builds and Agent-Device captures
 the renderer/backend logs from the Play/Home session.
+
+Local overrides against `wwn-weston` `b32ab72` and `wwn-iland` `98004e7`
+successfully built both static Weston compositor variants and all native
+Wawona Android code. The product derivation then stopped only at its expected
+signing-input gate (`ANDROID_KEYSTORE_BASE64`/`ANDROID_KEYSTORE_PATH`), not a
+graphics compile or link failure. This closes the build half of **WIRED**;
+signed install plus runtime renderer logs remain.
 
 **Android AHardwareBuffer conversion (inner loop in progress):** the prior
 Android `iosurface_compat` object was only a heap allocation and forced the
@@ -125,6 +132,23 @@ resizes. The next code step is EGL native-buffer rendering plus Vulkan external
 memory import; until that lands, the existing mapped fallback remains active
 and Android zero-copy is **not** complete. The Android Nix build is the current
 inner-loop gate.
+
+**Android product red build (P1/R10 inner-loop evidence):** selecting
+`weston-compositor-drm` correctly reached Weston's GL renderer configuration,
+but Meson rejected it because the Android compositor recipe exposed iland DRM
+metadata without an EGL pkg-config contract (`libweston + gl-renderer requires
+egl`). The corrective contract belongs in `wwn-weston`'s DRM-enabled recipe:
+publish the selected L1 ANGLE headers/libs as `egl.pc`/`glesv2.pc`; do not
+disable GL or fall back to pixman to make the build green.
+
+The EGL/GBM contracts passed on subsequent local-override builds. The product
+session actually launches Weston's **Wayland backend + GL renderer**; compiling
+the Linux DRM backend additionally pulled in irrelevant seatd/udev/vblank
+surface area and conflicting kernel/libdrm headers. The recipe is therefore
+split explicitly: `weston-compositor-gl` is the Android product nested path
+(ANGLE/EGL/iland GBM, no pixman); `weston-compositor-drm` remains the separate
+Mode-A KMS acceptance artifact and must be completed against the canonical
+iland libdrm ABI rather than hidden behind product fallback.
 
 ## R1 — Mode A fail point (#58) + Apple KMS / IOSurface map
 
@@ -357,7 +381,7 @@ and explicitly starts Weston's GL renderer. macOS still lacks a product
 | visionOS | same | `iland-drm-gl` | WIRED; runtime evidence pending |
 | tvOS / watchOS | `renderer-gl=false`, `allowGpu=false` | pixman | correct (no GPU) |
 | macOS | `weston-compositor.macos=null`; `backend-drm=false`,`renderer-gl=false` (`macos.nix:57-66`) | requests `iland-drm-gl`, then falls back if `weston_main` is absent | FUCKUP (build gap) |
-| Android | product selects `weston-compositor-drm` | `--backend=wayland --renderer=gl` | WIRED; build/device evidence pending |
+| Android | product selects `weston-compositor-gl` (DRM acceptance remains separate) | `--backend=wayland --renderer=gl` | WIRED; native build passed, signed device evidence pending |
 
 Remaining fix: add and package a macOS compositor-drm recipe; then verify each
 GPU target logs the GL renderer while explicit software mode and tv/watch stay

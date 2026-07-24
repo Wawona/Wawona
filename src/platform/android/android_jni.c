@@ -1508,20 +1508,28 @@ static void choreographer_frame_cb(long frameTimeNanos, void *data) {
    * compositor when active — tests userland KMS + GLES via ANGLE. */
 #ifdef WAWONA_ILAND_GL
   if (wwn_iland_presenter_android_is_active()) {
-    uint8_t *iland_pixels = NULL;
+    AHardwareBuffer *iland_buffer = NULL;
     uint32_t iland_w = 0, iland_h = 0, iland_stride = 0;
-    if (wwn_iland_presenter_android_take_frame(&iland_pixels, &iland_w,
-                                               &iland_h, &iland_stride)) {
-      int sf = compute_auto_scale_factor();
-      uint32_t logical_w = ctx->extent.width / (uint32_t)sf;
-      uint32_t logical_h = ctx->extent.height / (uint32_t)sf;
-      if (logical_w == 0)
-        logical_w = 1;
-      if (logical_h == 0)
-        logical_h = 1;
-      renderer_android_draw_iland_overlay(ctx->cmdBuf, iland_pixels, iland_w,
-                                          iland_h, iland_stride, logical_w,
-                                          logical_h);
+    if (wwn_iland_presenter_android_take_hardware_buffer(
+            &iland_buffer, &iland_w, &iland_h, &iland_stride)) {
+      void *iland_pixels = NULL;
+      if (AHardwareBuffer_lock(iland_buffer,
+                               AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN, -1, NULL,
+                               &iland_pixels) == 0 &&
+          iland_pixels) {
+        int sf = compute_auto_scale_factor();
+        uint32_t logical_w = ctx->extent.width / (uint32_t)sf;
+        uint32_t logical_h = ctx->extent.height / (uint32_t)sf;
+        if (logical_w == 0)
+          logical_w = 1;
+        if (logical_h == 0)
+          logical_h = 1;
+        renderer_android_draw_iland_overlay(
+            ctx->cmdBuf, iland_pixels, iland_w, iland_h, iland_stride,
+            logical_w, logical_h);
+        AHardwareBuffer_unlock(iland_buffer, NULL);
+      }
+      AHardwareBuffer_release(iland_buffer);
     }
   }
 #endif
@@ -3972,9 +3980,12 @@ static void *weston_thread_func(void *arg) {
    * reliably (WAYLAND_DISPLAY=wayland-0 is Wawona's root Smithay socket; the
    * nested compositor exposes "wawona-nested"). Keep in sync with
    * AnowawSession.NESTED_SOCKET (Kotlin) and kWWNAnowaWNestedSocket (macOS). */
-  char *argv[] = {"weston", "--backend=wayland", "--socket=wawona-nested",
-                  "--shell=desktop-shell.so", NULL};
-  weston_compositor_main(4, argv);
+  /* GPU-capable Android defaults to Weston's GL renderer. The separately
+   * packaged non-DRM compositor remains the explicit pixman/software path;
+   * do not silently regress the Play/Home product to CPU composition. */
+  char *argv[] = {"weston", "--backend=wayland", "--renderer=gl",
+                  "--socket=wawona-nested", "--shell=desktop-shell.so", NULL};
+  weston_compositor_main(5, argv);
   if (saved_cwd[0])
     chdir(saved_cwd);
   g_weston_running = 0;

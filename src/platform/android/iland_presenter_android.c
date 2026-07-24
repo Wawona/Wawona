@@ -22,8 +22,7 @@ extern int kmscube_main(int argc, char **argv) __attribute__((weak));
 #endif
 
 static pthread_mutex_t g_frame_lock = PTHREAD_MUTEX_INITIALIZER;
-static uint8_t *g_frame_pixels = NULL;
-static size_t g_frame_size = 0;
+static AHardwareBuffer *g_frame_buffer = NULL;
 static uint32_t g_frame_width = 0;
 static uint32_t g_frame_height = 0;
 static uint32_t g_frame_stride = 0;
@@ -45,35 +44,24 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
   if (!surface)
     return;
 
-  IOSurfaceLock(surface);
   uint32_t w = IOSurfaceGetWidth(surface);
   uint32_t h = IOSurfaceGetHeight(surface);
   size_t stride = IOSurfaceGetBytesPerRow(surface);
-  size_t need = (size_t)stride * h;
-  uint8_t *src = (uint8_t *)IOSurfaceGetBaseAddress(surface);
-  if (!src || w == 0 || h == 0) {
-    IOSurfaceUnlock(surface);
+  AHardwareBuffer *buffer = ILandIOSurfaceGetHardwareBuffer(surface);
+  if (!buffer || w == 0 || h == 0)
     return;
-  }
+  AHardwareBuffer_acquire(buffer);
 
   pthread_mutex_lock(&g_frame_lock);
-  if (g_frame_size < need) {
-    uint8_t *p = realloc(g_frame_pixels, need);
-    if (!p) {
-      pthread_mutex_unlock(&g_frame_lock);
-      IOSurfaceUnlock(surface);
-      return;
-    }
-    g_frame_pixels = p;
-    g_frame_size = need;
-  }
-  memcpy(g_frame_pixels, src, need);
+  AHardwareBuffer *old_buffer = g_frame_buffer;
+  g_frame_buffer = buffer;
   g_frame_width = w;
   g_frame_height = h;
   g_frame_stride = (uint32_t)stride;
   g_frame_dirty = 1;
   pthread_mutex_unlock(&g_frame_lock);
-  IOSurfaceUnlock(surface);
+  if (old_buffer)
+    AHardwareBuffer_release(old_buffer);
 }
 
 void wwn_iland_presenter_android_init(void) {
@@ -92,12 +80,13 @@ void wwn_iland_presenter_android_shutdown(void) {
   }
   iland_drm_set_present_callback(NULL, NULL);
   pthread_mutex_lock(&g_frame_lock);
-  free(g_frame_pixels);
-  g_frame_pixels = NULL;
-  g_frame_size = 0;
+  AHardwareBuffer *old_buffer = g_frame_buffer;
+  g_frame_buffer = NULL;
   g_frame_width = g_frame_height = g_frame_stride = 0;
   g_frame_dirty = 0;
   pthread_mutex_unlock(&g_frame_lock);
+  if (old_buffer)
+    AHardwareBuffer_release(old_buffer);
   g_presenter_active = 0;
 }
 
@@ -146,18 +135,19 @@ int wwn_iland_presenter_android_launch_kmscube(void) {
 
 int wwn_iland_presenter_android_is_active(void) { return g_presenter_active; }
 
-int wwn_iland_presenter_android_take_frame(uint8_t **out_pixels,
-                                           uint32_t *out_w, uint32_t *out_h,
-                                           uint32_t *out_stride) {
-  if (!out_pixels || !out_w || !out_h || !out_stride)
+int wwn_iland_presenter_android_take_hardware_buffer(
+    AHardwareBuffer **out_buffer, uint32_t *out_w, uint32_t *out_h,
+    uint32_t *out_stride) {
+  if (!out_buffer || !out_w || !out_h || !out_stride)
     return 0;
   pthread_mutex_lock(&g_frame_lock);
-  if (!g_frame_dirty || !g_frame_pixels || g_frame_width == 0 ||
+  if (!g_frame_dirty || !g_frame_buffer || g_frame_width == 0 ||
       g_frame_height == 0) {
     pthread_mutex_unlock(&g_frame_lock);
     return 0;
   }
-  *out_pixels = g_frame_pixels;
+  AHardwareBuffer_acquire(g_frame_buffer);
+  *out_buffer = g_frame_buffer;
   *out_w = g_frame_width;
   *out_h = g_frame_height;
   *out_stride = g_frame_stride;

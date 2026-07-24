@@ -315,7 +315,13 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
     // Advanced
     kWWNPrefsColorOperations : @NO,
     kWWNPrefsNestedCompositorsSupport : @YES,
+#if TARGET_OS_TV || TARGET_OS_WATCH
     kWWNPrefsNestedWestonBackend : @"wayland-pixman",
+#else
+    // GPU-capable Apple products default to iland DRM/GBM + ANGLE/Metal.
+    // Pixman is an explicit fallback, not the product default.
+    kWWNPrefsNestedWestonBackend : @"iland-drm-gl",
+#endif
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
     kWWNPrefsMultipleClients : @NO,
 #else
@@ -565,14 +571,23 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
   NSString *value = [[NSUserDefaults standardUserDefaults]
       stringForKey:kWWNPrefsNestedWestonBackend];
   if (value.length == 0) {
+#if TARGET_OS_TV || TARGET_OS_WATCH
     return @"wayland-pixman";
+#else
+    return @"iland-drm-gl";
+#endif
   }
   return value;
 }
 
 - (void)setNestedWestonBackend:(NSString *)backend {
+#if TARGET_OS_TV || TARGET_OS_WATCH
+  NSString *defaultBackend = @"wayland-pixman";
+#else
+  NSString *defaultBackend = @"iland-drm-gl";
+#endif
   NSString *value =
-      (backend.length > 0) ? backend : @"wayland-pixman";
+      (backend.length > 0) ? backend : defaultBackend;
   [[NSUserDefaults standardUserDefaults] setObject:value
                                             forKey:kWWNPrefsNestedWestonBackend];
 }

@@ -89,7 +89,7 @@ let
   # iland + ANGLE. Pixman remains available through the explicit
   # weston-compositor package for software fallback, but is not the Play/Home
   # product default (graphics plan P1/R10).
-  westonCompositorAndroid = buildModule.buildForAndroid "weston-compositor-drm" { };
+  westonCompositorAndroid = buildModule.buildForAndroid "weston-compositor-gl" { };
   ilandAndroid = buildModule.buildForAndroid "iland" { };
   angleAndroid = buildModule.buildForAndroid "angle" { };
   kmscubeAndroid = buildModule.buildForAndroid "kmscube" { };
