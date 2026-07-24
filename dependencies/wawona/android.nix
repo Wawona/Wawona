@@ -85,7 +85,11 @@ let
     forceLoadWeston = true;
     linkMode = "whole_archive";
   };
-  westonCompositorAndroid = buildModule.buildForAndroid "weston-compositor" { };
+  # GPU-capable Android product sessions use Weston's DRM/GL renderer over
+  # iland + ANGLE. Pixman remains available through the explicit
+  # weston-compositor package for software fallback, but is not the Play/Home
+  # product default (graphics plan P1/R10).
+  westonCompositorAndroid = buildModule.buildForAndroid "weston-compositor-drm" { };
   ilandAndroid = buildModule.buildForAndroid "iland" { };
   angleAndroid = buildModule.buildForAndroid "angle" { };
   kmscubeAndroid = buildModule.buildForAndroid "kmscube" { };

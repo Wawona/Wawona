@@ -41,10 +41,10 @@ separately. Evidence is `file:line` in the local tree or an issue.
 
 | Target | Mode | OpenGL / GLES | Vulkan | DRM | KMS | Desktop Repl. DRM/KMS |
 |--------|------|---------------|--------|-----|-----|------------------------|
-| macOS 3rd-party product | A | WIRED (ANGLE dlopen; `OpenGLDriver` pref **never applied** — STUB selection) | WIRED (MVK/KK ICD set at launch only, not on connect) | WIRED (userland `drmMode*` real; card-open interpose absent in Mode A `.a`) | WIRED (page-flip→callback real; immediate fake vsync; format lie) | N/A (Desktop tweak = desktop-host B) |
+| macOS 3rd-party product | A | WIRED (ANGLE dlopen; `OpenGLDriver` pref **never applied** — STUB selection) | WIRED (MVK/KK ICD set at launch only, not on connect) | WIRED (stock `/dev/dri/cardN` redirect is store-safe and shared by product consumers) | WIRED (fourcc contract enforced; page-flip→callback remains immediate synthetic cadence) | N/A (Desktop tweak = desktop-host B) |
 | macOS desktop-host | A (toggle off) | WIRED (same as product) | WIRED | WIRED | WIRED | N/A |
 | macOS desktop-host | B (SIP partial + toggle) | WIRED | WIRED | WIRED (Dobby `open`/`ioctl` hooks real) | WIRED→FUCKUP (framebufferd present real; **vsync TODO** `drm_linux.c:708`; no CI proof) | WIRED (engage path real, not CI-proven; #87) |
-| iOS / iPadOS / visionOS | A | FUCKUP (ANGLE present works but purple tint #94; iPad/vision multi-window modes unproven) | STUB→WIRED (MVK intended; ICD apply-on-connect missing) | WIRED (Mode-A open shim landed — `iland_drm_open_card` + `iland_drm_open_compat.h`; #58 open path fixed, device render unproven) | FUCKUP (mode falls back to 1920×1080 without preferred mode; format ignored #94) | N/A |
+| iOS / iPadOS / visionOS | A | WIRED (ANGLE present path; target runtime/tint evidence remains pending) | STUB→WIRED (MVK intended; ICD apply-on-connect missing) | WIRED (Mode-A open shim landed — `iland_drm_open_card` + `iland_drm_open_compat.h`; #58 open path fixed, device render unproven) | WIRED (preferred-mode host wiring + fourcc contract landed; scene/multi-window runtime evidence pending) | N/A |
 | tvOS / watchOS | A soft | N/A (empty `libiland_userland.a`; correct) | N/A | N/A | N/A | N/A |
 | Android Play / Home Desktop | A (no root) | STUB (system/ANGLE `.so` present; `OpenGLDriver` pref has **no consumer**) | WIRED (system/SwiftShader/Turnip ICD via `VK_ICD_FILENAMES` at instance create) | WIRED (userland `drm_linux.c`; heap "IOSurface", no AHB) | WIRED (present callback; zero-copy forced off) | WIRED (Home = rootless Mode A launcher/VD; no dylib) |
 | Android power | B (root FB) | STUB | WIRED (+ optional Turnip) | WIRED | WIRED | WIRED (root FB optional; not Play-required) |
@@ -73,14 +73,58 @@ compiles, exports `_iland_drm_open_card` (`nm`), ships `iland_drm_open_compat.h`
 **Grade: WIRED** (build + integration proven; in-app kmscube *render* → PROPER
 pending full Wawona app build + Agent-Device). **waypipe zero-copy impact: none.**
 
+**#94 format contract + stock-consumer wiring (landed on `development`):**
+`wwn-iland` [`eedd2e5`](https://github.com/Wawona/wwn-iland/commit/eedd2e5cf2e62256c048f5a532e8eda50e1314bf)
+now records each GBM BO's DRM fourcc, allocates only the matching IOSurface
+pixel format (`XRGB8888`/`ARGB8888` → BGRA; supported 10-bit formats → `l10r`),
+and makes `drmModeAddFB2` reject unsupported or mismatched backing rather than
+claiming successful channel-swapped presentation. `wwn-kmscube`
+[`cfb0449`](https://github.com/Wawona/wwn-kmscube/commit/cfb0449) replaces its
+private `open()` implementation with the installed iland compatibility header
+for Apple and Android; `wwn-weston`
+[`5a8fc72`](https://github.com/Wawona/wwn-weston/commit/5a8fc72) force-includes
+the same header in Apple DRM compositor builds. Verified: `nix build
+.#iland-macos`, `.#kmscube-macos`, and `.#weston-compositor-ios`. This moves the
+format implementation from **FUCKUP** to **WIRED**, not **PROPER**: no
+product-shaped iOS/iPadOS/visionOS or Android runtime capture has yet proved
+the target frame and Android still uses the CPU compatibility surface instead
+of an AHardwareBuffer zero-copy backend.
+
+**Apple IOSurface dmabuf bridge (#86, landed):** `wwn-iland`
+[`dec66e5`](https://github.com/Wawona/wwn-iland/commit/dec66e5) makes GBM export
+the existing waypipe IOSurface modifier convention (high bit + IOSurface ID),
+supplies the protocol placeholder fd, and imports that modifier with
+`IOSurfaceLookup` without copying pixels. Both `nix build .#iland-macos` and
+`nix build .#iland-ios` pass. This proves ABI/build parity with waypipe's
+transport contract; cross-process runtime/Mach-port evidence is still required
+for **PROPER**, and Android AHardwareBuffer remains a separate open path.
+
 **Remaining to close #58 for the product (next P1 steps):**
-1. Force-include `iland_drm_open_compat.h` in **wwn-kmscube** (product kmscube)
-   and **wwn-weston** (drm-backend + weston-simple-egl) recipes — they consume
-   iland headers via fragment/`ilandSrc`.
-2. #94 format fix: `drmModeAddFB2` honor fourcc + GBM format→pixelFormat map.
-3. Preferred-mode set before first connector enumerate on every Apple/Android
+1. Preferred-mode set before first connector enumerate on every Apple/Android
    target; re-set on resize.
-4. Nix build iland + kmscube; Agent-Device kmscube in-app on iOS-shaped build.
+2. Nix build target variants + Agent-Device kmscube in-app on iOS-shaped build.
+3. Replace Android's CPU compatibility surface with an AHardwareBuffer-backed
+   BO/FB path and prove waypipe remains zero-copy (#86).
+
+**Android GPU compositor correction (working tree; verification pending):**
+the product dependency in `dependencies/wawona/android.nix` now selects
+`weston-compositor-drm`, and the nested launch in
+`src/platform/android/android_jni.c` explicitly requests `--renderer=gl`.
+This follows R10's short path (Wayland backend + Weston GL → host EGL) while
+retaining the non-DRM compositor as the explicit pixman fallback. Do not grade
+this above **WIRED** until the Android product builds and Agent-Device captures
+the renderer/backend logs from the Play/Home session.
+
+**Android AHardwareBuffer conversion (inner loop in progress):** the prior
+Android `iosurface_compat` object was only a heap allocation and forced the
+EGL→presenter→Vulkan path through repeated CPU copies. The P1 implementation
+now allocates `AHardwareBuffer` objects with GPU color-output/sampled-image
+usage plus a CPU-mappable fallback, exposes the native buffer to the product
+presenter, and synchronizes iland's preferred mode when the Android swapchain
+resizes. The next code step is EGL native-buffer rendering plus Vulkan external
+memory import; until that lands, the existing mapped fallback remains active
+and Android zero-copy is **not** complete. The Android Nix build is the current
+inner-loop gate.
 
 ## R1 — Mode A fail point (#58) + Apple KMS / IOSurface map
 
@@ -300,22 +344,24 @@ symbol-for-symbol and message-for-message; Mode A golden = present-callback
 delete/avoid:** homegrown GL init, `iland_open()` client rewrite, "IOSurface
 instead of GBM" dual worlds, hand-rolled Rust GL/VK drivers.
 
-## R10 — Compositor backend audit (pixman vs GPU) — FUCKUP to fix in P1
+## R10 — Compositor backend audit (pixman vs GPU)
 
-Every GPU-capable product nested session **defaults to `wayland` + `--use-pixman`**;
-worse, Android and the macOS weston recipe **don't build DRM/GL in at all**.
+GPU-capable Apple defaults now select `iland-drm-gl`; tvOS/watchOS retain the
+required software default. Android product wiring selects the DRM/GL archive
+and explicitly starts Weston's GL renderer. macOS still lacks a product
+`weston-compositor-drm` recipe, so this cross-cutting item remains open.
 
 | Target | Build renderer/backend | Runtime default | Verdict |
 |--------|------------------------|-----------------|---------|
-| iOS / iPadOS | DRM+GL compiled in (`enableIlandDrm=true`, `mobile-platform-deps.nix:54-57`) | `--use-pixman` (`WWNWaypipeRunner.m:2564-2566`) | FUCKUP (default) |
-| visionOS | same | `--use-pixman` | FUCKUP (default) |
+| iOS / iPadOS | DRM+GL compiled in (`enableIlandDrm=true`, `mobile-platform-deps.nix:54-57`) | `iland-drm-gl` (GPU-target default) | WIRED; runtime evidence pending |
+| visionOS | same | `iland-drm-gl` | WIRED; runtime evidence pending |
 | tvOS / watchOS | `renderer-gl=false`, `allowGpu=false` | pixman | correct (no GPU) |
-| macOS | `weston-compositor.macos=null`; `backend-drm=false`,`renderer-gl=false` (`macos.nix:57-66`) | `--backend=wayland --use-pixman`; DRM path weak | FUCKUP (build + default) |
-| Android | product `android.nix:88` without `enableIlandDrm`; `backend-drm=false` (`compositor-android.nix:179-183`) | wayland/pixman only | FUCKUP (build + default) |
+| macOS | `weston-compositor.macos=null`; `backend-drm=false`,`renderer-gl=false` (`macos.nix:57-66`) | requests `iland-drm-gl`, then falls back if `weston_main` is absent | FUCKUP (build gap) |
+| Android | product selects `weston-compositor-drm` | `--backend=wayland --renderer=gl` | WIRED; build/device evidence pending |
 
-Fix: default `NestedWestonBackend`→`iland-drm-gl` on GPU platforms
-(`WWNPreferencesManager.m:318,564-568`; runtime `WWNWaypipeRunner.m:2560-2576`),
-pass `enableIlandDrm=true` for Android, add a macOS compositor-drm recipe.
+Remaining fix: add and package a macOS compositor-drm recipe; then verify each
+GPU target logs the GL renderer while explicit software mode and tv/watch stay
+pixman.
 
 ## R11 — DAG / cycle watch list
 
