@@ -64,11 +64,14 @@ raw `open("/dev/dri/cardN")` to the in-process virtual DRM fd (non-DRM paths
 defer to libc `open`, incl. `O_CREAT` mode). Store-safe: no DYLD interpose, no
 `/dev/dri`, no privilege. Wired the force-include into iland's own GL-clients
 recipes (`gl-clients-macos.nix`, `gl-clients-ios.nix`) and installed the header
-in `macos.nix` / `ios.nix` / `android.nix`. **Verified:** `clang -fsyntax-only`
-on `drm_linux.c` (clean) + a compile/run test proving the macro routes
-`/dev/dri/*` → shim (fd 42) while 2-arg and 3-arg passthrough opens compile.
-**Grade: WIRED** (open path fixed + mechanism proven; in-app kmscube render →
-PROPER pending Nix build + Agent-Device). **waypipe zero-copy impact: none.**
+in `macos.nix` / `ios.nix` / `android.nix`. **Verified (macOS, 4 levels):** (1) `clang -fsyntax-only` on `drm_linux.c` clean;
+(2) macro-routing compile/run test — `/dev/dri/*` → shim (fd 42), 2-arg + 3-arg
+passthrough opens compile; (3) **`nix build .#iland-macos` green** — archive
+compiles, exports `_iland_drm_open_card` (`nm`), ships `iland_drm_open_compat.h`;
+(4) **integration** — the real `test/kmscube.c` (`open("/dev/dri/card0")` at
+`:237`) compiles against the built artifact with the force-include applied.
+**Grade: WIRED** (build + integration proven; in-app kmscube *render* → PROPER
+pending full Wawona app build + Agent-Device). **waypipe zero-copy impact: none.**
 
 **Remaining to close #58 for the product (next P1 steps):**
 1. Force-include `iland_drm_open_compat.h` in **wwn-kmscube** (product kmscube)
