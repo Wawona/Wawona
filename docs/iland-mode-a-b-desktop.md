@@ -82,11 +82,77 @@ Prefs (macOS `NSUserDefaults`):
 Auto-fallback power → baseline is required when privilege is missing. See
 `DesktopReplacement.kt`, `AnowawSession.kt`, Settings Desktop / App Bridge copy.
 
+## Store / distribution compliance (per target)
+
+macOS is **third-party distribution** (Developer ID / notarized), **not** Mac
+App Store — never gated on Mac App Store review rules (see
+`wawona-macos-no-appstore.mdc`). Everything that ships to a store must be
+**Mode A–shaped end-to-end**.
+
+| Target | Distribution | Compliance bar for graphics / Desktop |
+|--------|--------------|----------------------------------------|
+| **iOS** | App Store | Mode A only; static `libiland_userland`; in-app KMS/DRM; no `DYLD_INSERT`, no private SkyLight/IOKit abuse, no Mode B dylib; SSH = libssh2 only |
+| **iPadOS** | App Store | Same + multi-window (1 host window per Wayland client) |
+| **visionOS** | App Store | Same Mode A / macOS-product GLES+Vulkan parity via store-safe stack (MVK/ANGLE); no Mode B; multi-window required |
+| **tvOS** | App Store | Mode A **software only** — no ANGLE/MVK/KK/Vulkan ICD, no IOKit, no GPU DRM clients |
+| **watchOS** | App Store | Same software policy as tvOS |
+| **Android** | Google Play | Mode A: in-app KMS/DRM + consented MediaProjection / own VD; Home Desktop **without root**; optional power/root is sideload/opt-in, never Play-required |
+| **macOS** | **3rd-party** (not MAS) | Mode A default (SIP OK). Mode B desktop-host OK under SIP partial\|off; never contaminate iOS/Android store artifacts |
+
+### Store-compliance checklist (assert per store build)
+
+1. **No Mode B artifacts** in App Store IPA / Play AAB/APK (no
+   `libwayland-mac.dylib`, no inject, no `framebufferd`).
+2. **No SIP disablement / root** required for any store-listed feature
+   (including kmscube, waypipe, Android Home Desktop).
+3. **Private API / entitlement firewall:** Mode A present = public
+   Metal/UIKit/AppKit/Surface + userland DRM shims only.
+4. **tvOS/watchOS:** software Mode A only — never "fix" compliance by shipping
+   GPU stacks.
+5. **visionOS/iPadOS:** store Mode A meets multi-window + product GLES/Vulkan
+   expectations without Mode B.
+6. **Shared Nix/xcodegen:** gate Mode B + desktop-host dylibs so store schemes
+   cannot link them; `verify-iland-mode-b-bundle.sh` is the evidence.
+7. **macOS 3rd-party:** may ship desktop-host flavor separately; never reuse
+   its packaging for iOS/Android store builds.
+
+Leak vectors to watch (from graphics-stack epic R7): manual packaging copying
+the dylib; sharing iOS GPU post-build phases onto tv/watch; adding IOKit
+ldflags to tv/watch; linking OpenSSH into mobile `OTHER_LDFLAGS`; shared
+Settings sections without `#if` platform guards; enabling `desktopHost` on the
+wrong flake attr.
+
+## Portable KMS abstraction + IOSurface (Mode A)
+
+`wwn-iland` is a **portable KMS-like display stack**, not "IOSurface replaces
+GBM." On Apple, a backend **emulates the KMS object model** (connector, encoder,
+CRTC, plane, framebuffer); **GBM and libdrm stay the client-facing ABI** and map
+into that allocator/present path. IOSurface is the shared **FB / BO backing**;
+page-flip triggers the present callback into the Metal layer.
+
+| Concept | Linux-shaped ABI (clients keep) | Apple backend meaning |
+|---------|----------------------------------|------------------------|
+| Device | `drmOpen` / card fd | iland device → window/display session |
+| Connector + mode | `drmModeGetConnector` / modes | Display or window size + Hz (must reflect real scene size) |
+| CRTC | `drmModeGetCrtc` / page-flip | Metal present cadence |
+| Framebuffer | `drmModeAddFB*` | IOSurface-backed FB id (must honor fourcc) |
+| GBM BO | `gbm_bo_*` | Same IOSurface (unified allocator, not a second buffer world) |
+| Page-flip | `drmModePageFlip` | present callback → CAMetalLayer drawable / host import |
+
+Minimal layers: GLES → **ANGLE → Metal**; Vulkan → **MoltenVK or KosmicKrisp →
+Metal**. IOSurface is the shared backing for FB/dmabuf zero-copy (#86), not a
+third GL stack. Per-target IOSurface reality + current gaps (#58 card-open, #94
+format/size) are tracked in [`iland-graphics-progress.md`](iland-graphics-progress.md).
+
 ## Agent / Cursor rules
 
 - Workspace: `.cursor/rules/wawona-iland-mode-b-desktop.mdc` (alwaysApply)
 - Wawona repo: `Wawona/.cursor/rules/wawona-iland-mode-b-desktop.mdc`
+- Repo DAG: `.cursor/rules/wawona-repo-dag.mdc` (+ Wawona repo mirror);
+  canonical `docs/wwn-repo-dag.md`
 - Platform matrix: `.cursor/rules/wawona-platform-targets.mdc` (Desktop /
   LockScreen / anowaW = macOS + Android only)
 - tvOS/watchOS GL stubs: `.cursor/rules/wwn-iland-apple-fallback.mdc`
 - Agent entry: `Wawona/AGENTS.md`, `wwn-iland/AGENTS.md`
+- Graphics-stack progress + capability matrix:
+  [`iland-graphics-progress.md`](iland-graphics-progress.md); epic #122
