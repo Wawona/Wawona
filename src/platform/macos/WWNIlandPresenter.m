@@ -39,6 +39,7 @@ extern int g_drm_event_pipe_write;
 // main renamed via -Dmain=). Weakly imported so the app links even without the
 // GL-clients packages.
 extern int kmscube_main(int argc, char *argv[]) __attribute__((weak_import));
+extern int opengl_cube_main(int argc, char *argv[]) __attribute__((weak_import));
 extern int vkcube_main(int argc, char *argv[]) __attribute__((weak_import));
 
 // Minimal fullscreen-textured-quad shader compiled at runtime. Samples the
@@ -78,6 +79,11 @@ static NSString *const kShaderSource = @""
     int                     _clientWidth;
     int                     _clientHeight;
     NSString               *_clientId;
+    // Log tag for the present path. Presenting is not exclusive to the cubes
+    // (the iland DRM Weston backend presents here too), so it starts neutral and
+    // is narrowed when a known client is launched — reporting every present as
+    // KMSCUBE made a running opengl-cube or vkcube look like kmscube.
+    const char             *_presentLogModule;
 }
 
 // Single active presenter for the C trampoline (one nested client at a time).
@@ -257,7 +263,7 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
     static int s_presentCount = 0;
     const int kPresentLogPeriod = 300;
     if (s_presentCount < 5 || s_presentCount % kPresentLogPeriod == 0) {
-        WWNLog("KMSCUBE",
+        WWNLog(_presentLogModule ?: "ILAND",
                @"iland present #%d IOSurface %lux%lu fcc=0x%08x "
                @"drawable=%lux%lu opaque=%d",
                s_presentCount, (unsigned long)w, (unsigned long)h,
@@ -289,7 +295,7 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
         if (tw != s_lastFitW || th != s_lastFitH) {
             s_lastFitW = tw;
             s_lastFitH = th;
-            WWNLog("KMSCUBE",
+            WWNLog(_presentLogModule ?: "ILAND",
                    @"host resized to %lux%lu; client mode is fixed at %lux%lu — "
                    @"letterboxing to %.0fx%.0f",
                    (unsigned long)tw, (unsigned long)th, (unsigned long)w,
@@ -362,6 +368,7 @@ static const char *const kVkcubeArgv[] = { "--display-mode=kms", NULL };
 
 static const wwn_cube_client_t kCubeClients[] = {
     { "kmscube",     "KMSCUBE",     NULL },
+    { "opengl-cube", "OPENGL_CUBE", NULL },
     { "vkcube",      "VKCUBE",      kVkcubeArgv },
 };
 
@@ -375,6 +382,7 @@ static const wwn_cube_client_t *wwn_cube_client_for_id(NSString *clientId) {
 
 static wwn_cube_entry_t wwn_cube_entry_for_id(NSString *clientId) {
     if ([clientId isEqualToString:@"kmscube"]) return kmscube_main;
+    if ([clientId isEqualToString:@"opengl-cube"]) return opengl_cube_main;
     if ([clientId isEqualToString:@"vkcube"]) return vkcube_main;
     return NULL;
 }
@@ -416,7 +424,7 @@ static void *wwn_cube_thread(void *arg) {
                             height:(int)height {
     const wwn_cube_client_t *client = wwn_cube_client_for_id(clientId);
     if (client == NULL) {
-        WWNLog("KMSCUBE", @"unknown iland GPU client id %@", clientId);
+        WWNLog("CLIENT", @"unknown iland GPU client id %@", clientId);
         return NO;
     }
     if (wwn_cube_entry_for_id(clientId) == NULL) {
@@ -430,6 +438,7 @@ static void *wwn_cube_thread(void *arg) {
         return NO;
     }
     _clientId = [clientId copy];
+    _presentLogModule = client->logModule;
     _clientWidth = width > 0 ? width : 1280;
     _clientHeight = height > 0 ? height : 720;
     int rc = pthread_create(&_clientThread, NULL, wwn_cube_thread,

@@ -71,6 +71,9 @@ let
       # presenting through MoltenVK. GPU variants only; wwn-kmscube has no
       # tv/watch recipe for it by design.
       vkcube = buildFn "vkcube" { inherit simulator; };
+      # Same mesa/kmscube sources as `kmscube` under opengl_cube_main, so Machines
+      # can present the GLES cube as its own id. No tv/watch recipe by design.
+      "opengl-cube" = buildFn "opengl-cube" { inherit simulator; };
     }
     // lib.optionalAttrs
       (variant == "mobile" || variant == "tv" || variant == "watch" || variant == "vision")

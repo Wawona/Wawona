@@ -31,6 +31,7 @@
   macosNeovim ? null,
   macosZsh ? null,
   macosKmscube ? null,
+  macosOpenglCube ? null,
   macosNiri ? null,
   macosFuzzel ? null,
   # Bundled mobile VM guest (kernel + rootfs.img) and iOS-TCI QEMU engine sysroot.
@@ -194,7 +195,9 @@ let
     "${strip (deps.iland or null)}/include/GLES2"
     "${strip (deps.angle or null)}/include"
     "${strip (deps.kmscube or deps."iland-gl-clients" or null)}/include"
-  ] ++ lib.optional (deps.vkcube or null != null) "${strip deps.vkcube}/include";
+  ]
+  ++ lib.optional (deps.vkcube or null != null) "${strip deps.vkcube}/include"
+  ++ lib.optional (deps."opengl-cube" or null != null) "${strip deps."opengl-cube"}/include";
   # foot: force-load the privatized $(DERIVED_FILE_DIR) copy (see xcode-prebuild.sh),
   # not the raw store archive — its embedded protocol symbols must be localised so
   # they do not collide with weston / fuzzel at final link.
@@ -1799,6 +1802,7 @@ PLIST
               NEOVIM_BIN="${strip macosNeovim}/bin"
               ZSH_BIN="${strip macosZsh}/bin"
               KMSCUBE_BIN="${strip macosKmscube}/bin"
+              OPENGL_CUBE_BIN="${strip macosOpenglCube}/bin"
               NIRI_BIN="${strip macosNiri}/bin"
               NIRI_CFG="${strip macosNiri}/share/niri/default-config.kdl"
               FUZZEL_BIN="${strip macosFuzzel}/bin"
@@ -1878,6 +1882,11 @@ PLIST
               bundle_bin "$NEOVIM_BIN/nvim" "vim"
               bundle_bin "$ZSH_BIN/zsh" "zsh"
               require_bin "$KMSCUBE_BIN/kmscube" "kmscube"
+              # Debug/CLI counterpart of the in-process opengl_cube_main archive.
+              # Product Start uses the presenter, not this binary.
+              if [ -f "$OPENGL_CUBE_BIN/opengl-cube" ]; then
+                bundle_bin "$OPENGL_CUBE_BIN/opengl-cube" "opengl-cube"
+              fi
 
               # niri (wwn-niri): nested scrollable-tiling compositor. Ship the
               # binary plus its read-only KDL config, resolved at runtime via

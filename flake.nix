@@ -801,6 +801,7 @@
             kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
             "iland-gl-clients" = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
             vkcube = toolchains.buildForMacOS "vkcube" { };
+            "opengl-cube" = toolchains.buildForMacOS "opengl-cube" { };
             weston = toolchains.buildForMacOS "weston" { };
             "weston-compositor" = toolchains.buildForMacOS "weston-compositor-drm" { };
           } // macosToytoolkitDeps;
@@ -949,6 +950,8 @@
               macosZsh = if want "macos" then pkgs.zsh else null;
               macosKmscube =
                 if want "macos" then pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; } else null;
+              macosOpenglCube =
+                if want "macos" then toolchains.buildForMacOS "opengl-cube" { } else null;
               macosNiri = if want "macos" then toolchains.buildForMacOS "niri" { } else null;
               macosFuzzel = if want "macos" then toolchains.buildForMacOS "fuzzel" { } else null;
             };

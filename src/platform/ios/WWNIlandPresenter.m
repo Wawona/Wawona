@@ -27,6 +27,7 @@ extern void iland_drm_set_preferred_mode(uint32_t w, uint32_t h, uint32_t refres
 extern void iland_drm_complete_page_flip(uint32_t crtc_id, uint32_t fb_id);
 
 extern int kmscube_main(int argc, char *argv[]) __attribute__((weak_import));
+extern int opengl_cube_main(int argc, char *argv[]) __attribute__((weak_import));
 extern int vkcube_main(int argc, char *argv[]) __attribute__((weak_import));
 /* iland drm_linux.c — write end of the page-flip event pipe (fd 42 read end). */
 extern int g_drm_event_pipe_write;
@@ -65,6 +66,9 @@ static NSString *const kShaderSource = @""
     int                     _clientWidth;
     int                     _clientHeight;
     NSString               *_clientId;
+    // See the macOS presenter: presenting is not cube-exclusive, so this starts
+    // neutral and narrows once a known client launches.
+    const char             *_presentLogModule;
 }
 
 static WWNIlandPresenter *gActivePresenter = nil;
@@ -197,7 +201,8 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
     _layer.drawableSize = px;
     iland_drm_set_preferred_mode((uint32_t)(px.width + 0.5),
                                  (uint32_t)(px.height + 0.5), 0);
-    WWNLog("KMSCUBE", @"syncPreferredModeFromLayer %.0fx%.0f (scale=%.1f)",
+    WWNLog(_presentLogModule ?: "ILAND",
+           @"syncPreferredModeFromLayer %.0fx%.0f (scale=%.1f)",
            px.width, px.height, scale);
 }
 
@@ -232,7 +237,7 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
             memcpy(&px0, base, 4);
         IOSurfaceUnlock(surface, kIOSurfaceLockReadOnly, NULL);
         fcc = IOSurfaceGetPixelFormat(surface);
-        WWNLog("KMSCUBE",
+        WWNLog(_presentLogModule ?: "ILAND",
                @"iland present #%d IOSurface %lux%lu fcc=0x%08x px0=0x%08x "
                @"opaque=%d",
                s_presentCount, (unsigned long)w, (unsigned long)h, fcc, px0,
@@ -255,7 +260,8 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
     if (!srcTex) {
         static int s_texFail;
         if (s_texFail++ < 3) {
-            WWNLog("KMSCUBE", @"Metal IOSurface→texture failed %lux%lu",
+            WWNLog(_presentLogModule ?: "ILAND",
+                   @"Metal IOSurface→texture failed %lux%lu",
                    (unsigned long)w, (unsigned long)h);
         }
         iland_drm_complete_page_flip(crtcID, framebufferID);
@@ -266,7 +272,8 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
     if (!drawable) {
         static int s_drawFail;
         if (s_drawFail++ < 3) {
-            WWNLog("KMSCUBE", @"Metal nextDrawable nil (layer %.0fx%.0f)",
+            WWNLog(_presentLogModule ?: "ILAND",
+                   @"Metal nextDrawable nil (layer %.0fx%.0f)",
                    _layer.drawableSize.width, _layer.drawableSize.height);
         }
         iland_drm_complete_page_flip(crtcID, framebufferID);
@@ -299,7 +306,7 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
         if (tw != s_lastFitW || th != s_lastFitH) {
             s_lastFitW = tw;
             s_lastFitH = th;
-            WWNLog("KMSCUBE",
+            WWNLog(_presentLogModule ?: "ILAND",
                    @"host resized to %lux%lu; client mode is fixed at %lux%lu — "
                    @"letterboxing to %.0fx%.0f",
                    (unsigned long)tw, (unsigned long)th, (unsigned long)w,
@@ -339,18 +346,18 @@ static BOOL wwn_prepare_iland_virtual_drm_fd(void) {
     }
     int p[2];
     if (pipe(p) != 0) {
-        WWNLog("KMSCUBE", @"pipe() for DRM virtual fd failed errno=%d", errno);
+        WWNLog("ILAND", @"pipe() for DRM virtual fd failed errno=%d", errno);
         return NO;
     }
     if (dup2(p[0], DRM_VIRTUAL_FD) < 0) {
-        WWNLog("KMSCUBE", @"dup2(DRM_VIRTUAL_FD) failed errno=%d", errno);
+        WWNLog("ILAND", @"dup2(DRM_VIRTUAL_FD) failed errno=%d", errno);
         close(p[0]);
         close(p[1]);
         return NO;
     }
     close(p[0]);
     g_drm_event_pipe_write = p[1];
-    WWNLog("KMSCUBE", @"prepared iland virtual DRM fd=%d (event pipe)",
+    WWNLog("ILAND", @"prepared iland virtual DRM fd=%d (event pipe)",
            DRM_VIRTUAL_FD);
     return YES;
 }
@@ -371,6 +378,7 @@ static const char *const kVkcubeArgv[] = { "--display-mode=kms", NULL };
 
 static const wwn_cube_client_t kCubeClients[] = {
     { "kmscube",     "KMSCUBE",     NULL },
+    { "opengl-cube", "OPENGL_CUBE", NULL },
     { "vkcube",      "VKCUBE",      kVkcubeArgv },
 };
 
@@ -384,6 +392,7 @@ static const wwn_cube_client_t *wwn_cube_client_for_id(NSString *clientId) {
 
 static wwn_cube_entry_t wwn_cube_entry_for_id(NSString *clientId) {
     if ([clientId isEqualToString:@"kmscube"]) return kmscube_main;
+    if ([clientId isEqualToString:@"opengl-cube"]) return opengl_cube_main;
     if ([clientId isEqualToString:@"vkcube"]) return vkcube_main;
     return NULL;
 }
@@ -424,7 +433,7 @@ static void *wwn_cube_thread(void *arg) {
                             height:(int)height {
     const wwn_cube_client_t *client = wwn_cube_client_for_id(clientId);
     if (client == NULL) {
-        WWNLog("KMSCUBE", @"unknown iland GPU client id %@", clientId);
+        WWNLog("CLIENT", @"unknown iland GPU client id %@", clientId);
         return NO;
     }
     if (wwn_cube_entry_for_id(clientId) == NULL) {
@@ -441,6 +450,7 @@ static void *wwn_cube_thread(void *arg) {
         return NO;
     }
     _clientId = [clientId copy];
+    _presentLogModule = client->logModule;
     _clientWidth = width > 0 ? width : 1280;
     _clientHeight = height > 0 ? height : 720;
     int rc = pthread_create(&_clientThread, NULL, wwn_cube_thread,

@@ -69,6 +69,7 @@ let
       inherit weston kmscube;
       "iland-gl-clients" = kmscube;
       vkcube = buildModule.buildForMacOS "vkcube" { };
+      "opengl-cube" = buildModule.buildForMacOS "opengl-cube" { };
     } // (if nativeDeps != null then nativeDeps else { });
 
   appleGlWestonLinkFlags =
@@ -1213,6 +1214,15 @@ GEN_HEADER
               chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/kmscube
               chmod +x $out/Applications/Wawona.app/Contents/MacOS/kmscube
               echo "DEBUG: Bundled kmscube"
+            fi
+            '' else ''
+            ''}
+
+            ${if effectiveNativeDeps."opengl-cube" or null != null then ''
+            if [ -f "${effectiveNativeDeps."opengl-cube"}/bin/opengl-cube" ]; then
+              cp "${effectiveNativeDeps."opengl-cube"}/bin/opengl-cube" $out/Applications/Wawona.app/Contents/Resources/bin/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/opengl-cube
+              echo "DEBUG: Bundled opengl-cube"
             fi
             '' else ''
             ''}
