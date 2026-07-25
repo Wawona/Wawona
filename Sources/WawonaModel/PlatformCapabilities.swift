@@ -4,41 +4,116 @@ import Foundation
 import UIKit
 #endif
 
+/// Why a capability is unavailable on this target.
+///
+/// The distinction is load-bearing, and a plain `Bool` erases it. "tvOS and
+/// watchOS have no GPU stack" was one flag covering three different situations,
+/// so unfinished work read like policy and an SDK limitation read like a
+/// decision. Each case has a different correct response:
+///
+/// - `planned`   — our work is unfinished. Finish it; never harden into removal.
+/// - `blocked`   — we want it, the platform offers no public API. Re-check on
+///                 SDK updates. Never route around it with private API.
+/// - `forbidden` — product or store rule. Never "fix" it by turning it on.
+public enum CapabilityGate: Sendable, Equatable {
+    case available
+    /// Intended, not shipped yet. Opt in with `flag` once the slices are bundled.
+    case planned(flag: String)
+    /// Wanted, but the platform SDK exposes nothing to build on.
+    case blocked(reason: String)
+    case forbidden(reason: String)
+
+    public var isAvailable: Bool {
+        if case .available = self { return true }
+        return false
+    }
+
+    /// True when the capability is off only because our work is unfinished.
+    public var isPlanned: Bool {
+        if case .planned = self { return true }
+        return false
+    }
+
+    /// True when no amount of Wawona-side work can enable this today.
+    public var isBlocked: Bool {
+        if case .blocked = self { return true }
+        return false
+    }
+}
+
 /// Single source of truth for per-platform product gates.
 /// Aligns with `.cursor/rules/wawona-platform-targets.mdc`.
 public enum PlatformCapabilities: Sendable {
-    public static var allowsVirtualMachine: Bool {
+    private static func isFlagEnabled(_ name: String) -> Bool {
+        guard let value = ProcessInfo.processInfo.environment[name] else { return false }
+        return value == "1" || value.lowercased() == "true"
+    }
+
+    /// Policy: tvOS and watchOS are native + remote only. Not a TODO.
+    public static var virtualMachineGate: CapabilityGate {
         #if os(tvOS) || os(watchOS)
-        return false
+        return .forbidden(reason: "tvOS/watchOS are native + remote only")
         #else
-        return true
+        return .available
         #endif
     }
 
-    public static var allowsContainer: Bool {
+    public static var allowsVirtualMachine: Bool { virtualMachineGate.isAvailable }
+
+    /// Policy: same as VMs — no container machine types on tvOS/watchOS.
+    public static var containerGate: CapabilityGate {
         #if os(tvOS) || os(watchOS)
-        return false
+        return .forbidden(reason: "tvOS/watchOS are native + remote only")
         #else
-        return true
+        return .available
         #endif
     }
+
+    public static var allowsContainer: Bool { containerGate.isAvailable }
 
     /// ANGLE / Vulkan / iland GL stack may be bundled and linked.
-    public static var allowsGpuStack: Bool {
-        #if os(tvOS) || os(watchOS)
-        return false
+    ///
+    /// tvOS and watchOS are not the same case, verified against the 26.5 SDKs:
+    ///
+    /// - **tvOS ships `Metal.framework` *and* `OpenGLES.framework`**, and
+    ///   `CAMetalLayer` is available since tvOS 9. Both a Vulkan (MoltenVK) and
+    ///   a GLES path are legal public API, so this is a porting job — the final
+    ///   phase of the graphics plan, not a prohibition.
+    /// - **watchOS ships no `Metal.framework` at all** (device or simulator),
+    ///   no `OpenGLES.framework`, and `CAMetalLayer` is `API_UNAVAILABLE(watchos)`.
+    ///   ANGLE and MoltenVK both terminate in Metal, so neither has a floor.
+    ///   SceneKit/SpriteKit are present but are not a shader backdoor, and
+    ///   private Metal would forfeit store compliance.
+    ///
+    /// Until slices are actually bundled the tvOS gate stays `planned` whatever
+    /// the environment says — a runtime flag cannot conjure a framework into the
+    /// bundle.
+    public static var gpuStackGate: CapabilityGate {
+        #if os(tvOS)
+        #if WWN_TVOS_GPU_BUNDLED
+        return isFlagEnabled("WWN_TVOS_GPU") ? .available : .planned(flag: "WWN_TVOS_GPU")
         #else
-        return true
+        return .planned(flag: "WWN_TVOS_GPU")
+        #endif
+        #elseif os(watchOS)
+        return .blocked(reason: "watchOS SDK exposes no Metal.framework and CAMetalLayer is API_UNAVAILABLE(watchos)")
+        #else
+        return .available
         #endif
     }
 
-    public static var allowsDesktopReplacement: Bool {
+    public static var allowsGpuStack: Bool { gpuStackGate.isAvailable }
+
+    /// Policy: Mode B / desktop + lockscreen replacement is macOS only.
+    public static var desktopReplacementGate: CapabilityGate {
         #if os(macOS)
-        return true
+        return .available
         #else
-        return false
+        return .forbidden(reason: "Desktop/LockScreen replacement is macOS + Android only")
         #endif
     }
+
+    public static var allowsDesktopReplacement: Bool { desktopReplacementGate.isAvailable }
 
     public static var allowsAnowaW: Bool {
         #if os(macOS)
