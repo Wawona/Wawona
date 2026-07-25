@@ -220,7 +220,10 @@ then blocks. Five is the buffer count, so this looks like page-flip completions
 not being recycled — but the measurement is not yet trustworthy, because
 XCUITest's pasteboard read raises a SpringBoard "Allow Paste" alert over the
 app, and host-dismissing it needs an Accessibility grant this environment does
-not have. Re-measure with the app unobstructed before treating it as a defect.
+not have. The presenter chains `iland_drm_complete_page_flip` to the Metal
+command buffer's completion handler after `presentDrawable:`, so a layer that
+stops vending drawables while covered would stall flips exactly this way.
+Re-measure with the app unobstructed before treating it as a defect.
 
 The waypipe ICD bind is intact on the same bundle: `MoltenVK_icd.json` and
 `kosmickrisp_icd.json` ship in `Contents/Resources/vulkan/icd.d/` with
