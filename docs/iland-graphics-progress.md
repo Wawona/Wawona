@@ -194,6 +194,34 @@ and absent from tvOS/watchOS, which still define 0 Vulkan/EGL entry points. All
 seven Apple bundles pass `verify-iland-graphics-bundle.sh`. Runtime Start of the
 `vkcube` machine is the remaining acceptance step.
 
+**2026-07-25 vkcube runtime acceptance on the iOS simulator:** Start on a
+Default Machine with `bundledAppID=vkcube` runs the whole Mode A path in
+process. From the launch console:
+
+```
+[BRIDGE] Created iland presentation host 402x778 for nested GL client
+[VKCUBE] started in-process vkcube 402x778 via iland
+[VKCUBE] vkcube enter (iland DRM present)
+[mvk-info] MoltenVK version 1.4.1, supporting Vulkan version 1.4.334.
+[mvk-info] Created VkDevice to run on GPU Apple iOS simulator GPU
+vkcube: rendering 1206x2334 via Vulkan -> iland KMS/GBM
+[KMSCUBE] iland present #0 IOSurface 1206x2334 fcc=0x42475241 drawable=1206x2334
+...
+[VKCUBE] vkcube exit rc=0
+```
+
+So the bundled static MoltenVK creates a device, krh/vkcube renders through the
+iland virtual DRM (fd 42), and the resulting IOSurfaces reach the Metal
+presenter at the right size and fourcc (`0x42475241`, `DRM_FORMAT_ARGB8888`).
+
+One open question: with the default 5-frame budget the run completes and exits
+`rc=0`, but with `WAWONA_VKCUBE_FRAMES=100000` it presents exactly 5 frames and
+then blocks. Five is the buffer count, so this looks like page-flip completions
+not being recycled — but the measurement is not yet trustworthy, because
+XCUITest's pasteboard read raises a SpringBoard "Allow Paste" alert over the
+app, and host-dismissing it needs an Accessibility grant this environment does
+not have. Re-measure with the app unobstructed before treating it as a defect.
+
 The waypipe ICD bind is intact on the same bundle: `MoltenVK_icd.json` and
 `kosmickrisp_icd.json` ship in `Contents/Resources/vulkan/icd.d/` with
 `library_path` `../../../Frameworks/lib{MoltenVK,vulkan_kosmickrisp}.dylib`,
