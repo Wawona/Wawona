@@ -83,3 +83,12 @@ typedef void (^WaypipeOutputHandler)(NSString *output);
 - (BOOL)isAnyNativeClientRunning;
 
 @end
+
+/// Resolves the display backend a bundled compositor should run against:
+/// @"wayland" to nest it inside Wawona, or @"drm" to run it against
+/// wwn-iland's userland KMS the way it would run on bare metal. Pass the
+/// machine's CompositorBackend override, or nil to take the global setting.
+/// Falls back to @"wayland" when the choice is unavailable (notably
+/// OpenGLDriver=none, which leaves nothing behind iland to present with).
+FOUNDATION_EXPORT NSString *_Nonnull WWNResolveCompositorBackend(
+    NSString *_Nullable overrideValue);

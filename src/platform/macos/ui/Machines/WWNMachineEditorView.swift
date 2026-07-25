@@ -51,6 +51,7 @@ struct WWNMachineEditorView: View {
   @State private var universalClipboard: Bool
   @State private var vulkanDriver: String
   @State private var openGLDriver: String
+  @State private var compositorBackend: String
   @State private var dmabufEnabled: Bool
   @State private var colorOperations: Bool
   @State private var shakeToCloseEnabled: Bool
@@ -115,6 +116,7 @@ struct WWNMachineEditorView: View {
     _universalClipboard = State(initialValue: (overrides["UniversalClipboard"] as? Bool) ?? prefs.universalClipboardEnabled())
     _vulkanDriver = State(initialValue: overrides["VulkanDriver"] as? String ?? prefs.vulkanDriver())
     _openGLDriver = State(initialValue: overrides["OpenGLDriver"] as? String ?? prefs.openglDriver())
+    _compositorBackend = State(initialValue: overrides["CompositorBackend"] as? String ?? prefs.compositorBackend())
     _dmabufEnabled = State(initialValue: (overrides["DmabufEnabled"] as? Bool) ?? prefs.dmabufEnabled())
     _colorOperations = State(initialValue: (overrides["ColorOperations"] as? Bool) ?? prefs.colorOperations())
     _shakeToCloseEnabled = State(
@@ -436,6 +438,22 @@ struct WWNMachineEditorView: View {
         }
         .pickerStyle(.menu)
         .labelsHidden()
+      }
+      // Nested compositors (niri, weston) support both. Running them nested
+      // when they could drive iland's userspace KMS wastes that path, so make
+      // it a choice instead of a hardcode.
+      labeledField("Display Backend") {
+        Picker("", selection: $compositorBackend) {
+          Text("Auto").tag("auto")
+          Text("Wayland (nested)").tag("wayland")
+          Text("DRM/KMS (wwn-iland)").tag("drm")
+        }
+        .pickerStyle(.menu)
+        .labelsHidden()
+        .disabled(openGLDriver == "none")
+        .help(openGLDriver == "none"
+          ? "DRM/KMS presents through iland, which needs an OpenGL driver."
+          : "Wayland runs the client nested inside Wawona. DRM/KMS runs it against wwn-iland's userspace display stack, as it would on bare metal.")
       }
       Toggle("Enable DMABUF", isOn: $dmabufEnabled)
       Toggle("HDR / Color Operations", isOn: $colorOperations)
@@ -945,6 +963,7 @@ struct WWNMachineEditorView: View {
     overrides["DmabufEnabled"] = dmabufEnabled
     overrides["ColorOperations"] = colorOperations
     #endif
+    overrides["CompositorBackend"] = compositorBackend
     overrides["AutoScale"] = autoScale
     #if os(iOS) || os(tvOS)
     overrides["RespectSafeArea"] = respectSafeArea

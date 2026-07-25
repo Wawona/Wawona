@@ -31,6 +31,10 @@ extern NSString *const kWWNPrefsEnableVulkanDrivers;
 extern NSString *const kWWNPrefsEnableDmabuf;
 extern NSString *const kWWNPrefsVulkanDriver;
 extern NSString *const kWWNPrefsOpenGLDriver;
+/// Which display backend a bundled client/nested compositor runs on:
+/// `auto` | `wayland` (nested Wayland client of Wawona) | `drm`
+/// (wwn-iland userspace DRM/KMS/GBM, the bare-metal-shaped path).
+extern NSString *const kWWNPrefsCompositorBackend;
 extern NSString *const kWWNPrefsRespectSafeArea;
 extern NSString *const kWWNPrefsResizeDisplayForVirtualKeyboard;
 extern NSString *const kWWNPrefsExternalDisplayTouchpad;
@@ -193,6 +197,14 @@ extern NSString *const kWWNPrefsAnowaWEnabled;
 + (NSString *)defaultVulkanDriverForHardware;
 - (NSString *)openglDriver;
 - (void)setOpenGLDriver:(NSString *)driver;
+
+// Display backend for bundled clients / nested compositors.
+// Stored as `auto` | `wayland` | `drm`; `auto` resolves per client (see
+// WWNResolveCompositorBackend in WWNWaypipeRunner.m). A client that supports
+// both must never hardcode one — niri and weston each have a real DRM backend,
+// which is the whole reason wwn-iland's userspace KMS exists.
+- (NSString *)compositorBackend;
+- (void)setCompositorBackend:(NSString *)backend;
 
 // Waypipe Configuration
 - (NSString *)waypipeDisplay;

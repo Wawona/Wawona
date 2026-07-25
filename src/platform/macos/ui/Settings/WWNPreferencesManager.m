@@ -31,6 +31,7 @@ NSString *const kWWNPrefsEnableVulkanDrivers = @"VulkanDriversEnabled";
 NSString *const kWWNPrefsEnableDmabuf = @"DmabufEnabled";
 NSString *const kWWNPrefsVulkanDriver = @"VulkanDriver";
 NSString *const kWWNPrefsOpenGLDriver = @"OpenGLDriver";
+NSString *const kWWNPrefsCompositorBackend = @"CompositorBackend";
 NSString *const kWWNPrefsRespectSafeArea = @"RespectSafeArea";
 // Matches Android prefs key (camelCase) for cross-platform sync.
 NSString *const kWWNPrefsResizeDisplayForVirtualKeyboard =
@@ -308,6 +309,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
     kWWNPrefsEnableDmabuf : @YES,
     kWWNPrefsVulkanDriver : [WWNPreferencesManager defaultVulkanDriverForHardware],
     kWWNPrefsOpenGLDriver : @"angle",
+    kWWNPrefsCompositorBackend : @"auto",
     // Connection
     kWWNPrefsTCPListenerPort : @6000,
     kWWNPrefsWaylandSocketDir : defaultSocketDir,
@@ -448,6 +450,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
   [defaults removeObjectForKey:kWWNPrefsEnableDmabuf];
   [defaults removeObjectForKey:kWWNPrefsVulkanDriver];
   [defaults removeObjectForKey:kWWNPrefsOpenGLDriver];
+  [defaults removeObjectForKey:kWWNPrefsCompositorBackend];
   // Connection
   [defaults removeObjectForKey:kWWNPrefsTCPListenerPort];
   [defaults removeObjectForKey:kWWNPrefsWaylandSocketDir];
@@ -829,6 +832,25 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 - (void)setOpenGLDriver:(NSString *)driver {
   [[NSUserDefaults standardUserDefaults] setObject:driver
                                             forKey:kWWNPrefsOpenGLDriver];
+}
+
+- (NSString *)compositorBackend {
+#if TARGET_OS_TV || TARGET_OS_WATCH
+  // No iland GL stack on these targets (tvOS planned, watchOS blocked — see
+  // wawona-platform-targets), so the DRM backend has nothing to present on.
+  return @"wayland";
+#else
+  NSString *backend = [[NSUserDefaults standardUserDefaults]
+      stringForKey:kWWNPrefsCompositorBackend];
+  return [@[ @"auto", @"wayland", @"drm" ] containsObject:backend] ? backend
+                                                                   : @"auto";
+#endif
+}
+
+- (void)setCompositorBackend:(NSString *)backend {
+  [[NSUserDefaults standardUserDefaults]
+      setObject:backend
+         forKey:kWWNPrefsCompositorBackend];
 }
 
 // New unified display methods

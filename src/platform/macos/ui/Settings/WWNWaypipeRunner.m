@@ -68,17 +68,16 @@ extern int constraints_main(int argc, char **argv);
 
 /// Cube clients that render through the in-process iland virtual DRM and are
 /// composited by WWNIlandPresenter, rather than launched as ordinary Wayland
-/// clients. Keep in sync with the table in WWNIlandPresenter.m. `opengl-cube`
-/// belongs here too once wwn-kmscube grows an Apple recipe for it.
+/// clients. Keep in sync with the table in WWNIlandPresenter.m.
 static BOOL WWNIsIlandGpuCubeClientId(NSString *clientId) {
   return [clientId isEqualToString:@"kmscube"] ||
+         [clientId isEqualToString:@"opengl-cube"] ||
          [clientId isEqualToString:@"vkcube"];
 }
 
 /// Clients whose first frame requires a real GL or Vulkan driver.
 static BOOL WWNIsGpuFamilyClientId(NSString *clientId) {
   return WWNIsIlandGpuCubeClientId(clientId) ||
-         [clientId isEqualToString:@"opengl-cube"] ||
          [clientId isEqualToString:@"weston-simple-egl"];
 }
 
@@ -115,9 +114,13 @@ static const char *WWNBundledClientLogModule(NSString *clientId) {
   if ([clientId hasPrefix:@"weston"]) {
     return "WESTON";
   }
-  if ([clientId isEqualToString:@"kmscube"] ||
-      [clientId isEqualToString:@"opengl-cube"]) {
+  if ([clientId isEqualToString:@"kmscube"]) {
     return "KMSCUBE";
+  }
+  // Distinct tag even though both compile the same mesa sources: a Start has to
+  // be attributable to one catalog id.
+  if ([clientId isEqualToString:@"opengl-cube"]) {
+    return "OPENGL_CUBE";
   }
   if ([clientId isEqualToString:@"vkcube"]) {
     return "VKCUBE";
@@ -1461,6 +1464,39 @@ static NSString *WWNPreferredHostShellPath(void) {
   self.stopping = NO;
 }
 
+/// Resolve the display backend for a bundled client: `wayland` (nested Wayland
+/// client of Wawona) or `drm` (wwn-iland userspace DRM/KMS/GBM).
+///
+/// Clients that support both must never hardcode one. niri and weston each have
+/// a real DRM backend, and running them nested when they could drive iland's
+/// userspace KMS throws away the path iland exists to provide. `auto` keeps the
+/// nested default because it needs no GPU stack, but the user's choice — global
+/// preference or per-machine override — always wins where the platform allows.
+NSString *WWNResolveCompositorBackend(NSString *overrideValue) {
+  NSString *choice = overrideValue.length > 0
+                         ? overrideValue
+                         : [[WWNPreferencesManager sharedManager]
+                               compositorBackend];
+
+  if ([choice isEqualToString:@"drm"]) {
+    // The DRM backend presents through iland; without the GL stack there is
+    // nothing behind it, so fall back rather than launch a client that hangs.
+    NSString *gl = [[WWNPreferencesManager sharedManager] openglDriver];
+    if ([gl isEqualToString:@"none"]) {
+      WWNLog("BACKEND",
+             @"drm backend requested but OpenGLDriver=none; using wayland");
+      return @"wayland";
+    }
+    return @"drm";
+  }
+
+  if ([choice isEqualToString:@"wayland"]) {
+    return @"wayland";
+  }
+
+  return @"wayland"; // auto
+}
+
 #if TARGET_OS_IPHONE
 /// Ensure writable XDG dirs for fuzzel locks/cache and point discovery at the
 /// bundled Freedesktop catalog (share/applications + hicolor). Desktop entries
@@ -1512,9 +1548,13 @@ static void wwnEnsureFuzzelXdgEnv(void) {
   }
 }
 
-/// Env niri's nested backend needs on Apple mobile (GLES via ANGLE EGL).
+/// Env niri needs on Apple mobile (GLES via ANGLE EGL), honouring the
+/// configured backend rather than assuming nested.
 static void wwnConfigureNiriNestedEnv(void) {
-  setenv("NIRI_BACKEND", "nested", 1);
+  // niri names its DRM/KMS backend "tty" and its nested one "winit"/"nested".
+  NSString *backend = WWNResolveCompositorBackend(nil);
+  setenv("NIRI_BACKEND",
+         [backend isEqualToString:@"drm"] ? "tty" : "nested", 1);
   NSString *kdl = WWNWawonaBundledSharePath(@"niri/default-config.kdl");
   if ([[NSFileManager defaultManager] fileExistsAtPath:kdl]) {
     setenv("NIRI_CONFIG", kdl.UTF8String, 1);
@@ -2030,10 +2070,15 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 
   NSMutableDictionary *env = [self wwnMutableHostWaylandEnvironment];
   if ([name isEqualToString:@"niri"]) {
-    // niri (wwn-niri) runs nested — a Wayland client of the Wawona
-    // compositor hosting its own scrollable-tiling clients. Force the
-    // nested backend and point it at the bundled read-only config.
-    env[@"NIRI_BACKEND"] = @"nested";
+    // niri (wwn-niri) hosts its own scrollable-tiling clients either as a
+    // nested Wayland client of Wawona or on iland's userspace DRM/KMS ("tty").
+    // Which one is the user's choice, not a hardcode. Point it at the bundled
+    // read-only config either way.
+    NSString *backend = WWNResolveCompositorBackend(nil);
+    env[@"NIRI_BACKEND"] =
+        [backend isEqualToString:@"drm"] ? @"tty" : @"nested";
+    WWNLog("NIRI", @"backend=%@ (NIRI_BACKEND=%@)", backend,
+           env[@"NIRI_BACKEND"]);
     NSString *shareRoot = env[@"WAWONA_SHARE_ROOT"];
     if (shareRoot.length > 0) {
       NSString *kdl = [shareRoot
@@ -2442,9 +2487,13 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   snprintf(scaleEnv, sizeof(scaleEnv), "%u", hostScale);
   setenv("WAWONA_OUTPUT_SCALE", scaleEnv, 1);
 
-  // No --width/--height: nested Weston sizes via xdg negotiation with Wawona.
+  // Backend is configurable, not assumed: weston can drive iland's userspace
+  // DRM/KMS instead of nesting. No --width/--height either way — nested Weston
+  // sizes via xdg negotiation with Wawona.
+  NSString *westonBackend = WWNResolveCompositorBackend(nil);
   NSMutableArray<NSString *> *args = [NSMutableArray arrayWithObjects:
-      @"--backend=wayland",
+      [westonBackend isEqualToString:@"drm"] ? @"--backend=drm"
+                                             : @"--backend=wayland",
       // Deterministic nested socket so the anowaW app bridge can attach. Keep
       // in sync with +preferredNestedSocketName and AnowawSession.NESTED_SOCKET.
       [NSString stringWithFormat:@"--socket=%@",
@@ -2584,9 +2633,12 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     return;
   }
 #if TARGET_OS_IPHONE
+  // Legacy weston-specific key wins when explicitly set; otherwise fall back to
+  // the general per-client backend choice so weston and niri behave the same.
   NSString *backend =
       [[WWNPreferencesManager sharedManager] nestedWestonBackend];
-  if ([backend isEqualToString:@"iland-drm-gl"]) {
+  if ([backend isEqualToString:@"iland-drm-gl"] ||
+      [WWNResolveCompositorBackend(nil) isEqualToString:@"drm"]) {
     [self launchWestonDrm];
     return;
   }

@@ -758,12 +758,25 @@ static UIImage *WWNAboutLogo(void) {
   nestedWestonBackendItem.optionValues =
       @[ @"wayland-pixman", @"iland-drm-gl" ];
 #endif
+  // General per-client backend choice. niri and weston both have real DRM
+  // backends; pinning them to nested Wayland discards the userspace DRM/KMS/GBM
+  // path wwn-iland exists to provide. Per-machine profiles override this.
+  WWNSettingItem *compositorBackendItem =
+      ITEM(@"Display Backend", @"CompositorBackend", WSettingPopup, @"auto",
+           @"How bundled clients and nested compositors present. Wayland runs "
+           @"them nested inside Wawona; DRM/KMS runs them against wwn-iland's "
+           @"userspace display stack, as they would on bare metal.");
+  compositorBackendItem.options =
+      @[ @"Auto", @"Wayland (nested)", @"DRM/KMS (wwn-iland)" ];
+  compositorBackendItem.optionValues = @[ @"auto", @"wayland", @"drm" ];
+
   NSMutableArray *advancedItems = [NSMutableArray arrayWithArray:@[
     ITEM(@"Color Operations", @"ColorOperations", WSettingSwitch, @NO,
          @"Color profiles and HDR."),
     ITEM(@"Nested Compositors", @"NestedCompositorsSupport", WSettingSwitch,
          @YES, @"Support for nested compositors."),
   ]];
+  [advancedItems addObject:compositorBackendItem];
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
   [advancedItems addObject:nestedWestonBackendItem];
 #endif
