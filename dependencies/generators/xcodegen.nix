@@ -194,7 +194,7 @@ let
     "${strip (deps.iland or null)}/include/GLES2"
     "${strip (deps.angle or null)}/include"
     "${strip (deps.kmscube or deps."iland-gl-clients" or null)}/include"
-  ];
+  ] ++ lib.optional (deps.vkcube or null != null) "${strip deps.vkcube}/include";
   # foot: force-load the privatized $(DERIVED_FILE_DIR) copy (see xcode-prebuild.sh),
   # not the raw store archive — its embedded protocol symbols must be localised so
   # they do not collide with weston / fuzzel at final link.

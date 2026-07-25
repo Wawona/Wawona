@@ -34,9 +34,16 @@ NS_ASSUME_NONNULL_BEGIN
 /// Unregister the iland present callback. Safe to call multiple times.
 - (void)invalidate;
 
-/// Launch the in-process kmscube client on a background thread. It will present
-/// through this presenter. Requires the app to be linked against libkmscube.a
-/// (flake .#iland-gl-clients). Returns NO if the entry point is unavailable.
+/// Launch one of the bundled in-process cube clients on a background thread; it
+/// presents through this presenter. `clientId` is a Machines catalog id:
+/// `kmscube` and `opengl-cube` render GLES through iland + ANGLE, `vkcube`
+/// renders Vulkan through the host ICD. All three drive the same iland virtual
+/// DRM. Returns NO for an unknown id, or when the client's archive is absent.
+- (BOOL)launchNestedIlandGpuClient:(NSString *)clientId
+                             width:(int)width
+                            height:(int)height;
+
+/// Back-compat wrapper for `launchNestedIlandGpuClient:@"kmscube"`.
 - (BOOL)launchNestedKmscubeWithWidth:(int)width height:(int)height;
 
 @end

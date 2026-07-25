@@ -65,6 +65,15 @@ extern int editor_main(int argc, char **argv);
 extern int constraints_main(int argc, char **argv);
 #endif
 
+/// Cube clients that render through the in-process iland virtual DRM and are
+/// composited by WWNIlandPresenter, rather than launched as ordinary Wayland
+/// clients. Keep in sync with the table in WWNIlandPresenter.m. `opengl-cube`
+/// belongs here too once wwn-kmscube grows an Apple recipe for it.
+static BOOL WWNIsIlandGpuCubeClientId(NSString *clientId) {
+  return [clientId isEqualToString:@"kmscube"] ||
+         [clientId isEqualToString:@"vkcube"];
+}
+
 /// Log module for bundled native clients. Do not use "WESTON" for non-Weston
 /// clients — the startup log overlays these tags and misled users into thinking
 /// Weston was launching kmscube/niri/foot/etc.
@@ -1644,9 +1653,8 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     [self launchNiri];
     return;
   }
-  if ([clientId isEqualToString:@"kmscube"] ||
+  if (WWNIsIlandGpuCubeClientId(clientId) ||
       [clientId isEqualToString:@"opengl-cube"] ||
-      [clientId isEqualToString:@"vkcube"] ||
       [clientId isEqualToString:@"weston-simple-egl"]) {
     if (!WWNPlatformAllowsGpuStack()) {
       WWNLog(WWNBundledClientLogModule(clientId),
@@ -1659,18 +1667,18 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       return;
     }
   }
-  if ([clientId isEqualToString:@"kmscube"]) {
+  if (WWNIsIlandGpuCubeClientId(clientId)) {
     dispatch_async(dispatch_get_main_queue(), ^{
       WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
-      [bridge prepareOutputSizeForNativeClientLaunchWithClientId:@"kmscube"];
-      BOOL ok = [bridge launchNestedKmscubeOnPrimaryView];
+      [bridge prepareOutputSizeForNativeClientLaunchWithClientId:clientId];
+      BOOL ok = [bridge launchNestedIlandGpuClientOnPrimaryView:clientId];
+      const char *logMod = WWNBundledClientLogModule(clientId);
       if (!ok) {
-        WWNLog("KMSCUBE",
-               @"kmscube launch failed (no compositor view or "
-               @"kmscube_main unavailable)");
+        WWNLog(logMod,
+               @"%@ launch failed (no compositor view or entry point "
+               @"unavailable)", clientId);
       } else {
-        WWNLog("KMSCUBE",
-               @"launchNestedKmscube started via iland Metal presenter");
+        WWNLog(logMod, @"%@ started via iland Metal presenter", clientId);
       }
     });
     return;
@@ -1735,9 +1743,8 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     }
   });
 #else
-  if ([clientId isEqualToString:@"kmscube"] ||
+  if (WWNIsIlandGpuCubeClientId(clientId) ||
       [clientId isEqualToString:@"opengl-cube"] ||
-      [clientId isEqualToString:@"vkcube"] ||
       [clientId isEqualToString:@"weston-simple-egl"]) {
     if (!WWNPlatformAllowsGpuStack()) {
       WWNLog(WWNBundledClientLogModule(clientId),
@@ -1746,19 +1753,19 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       return;
     }
   }
-  // Product Start path: in-process iland Metal presenter (not NSTask kmscube).
-  if ([clientId isEqualToString:@"kmscube"]) {
+  // Product Start path: in-process iland Metal presenter (not an NSTask).
+  if (WWNIsIlandGpuCubeClientId(clientId)) {
     dispatch_async(dispatch_get_main_queue(), ^{
       WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
-      [bridge prepareOutputSizeForNativeClientLaunchWithClientId:@"kmscube"];
-      BOOL ok = [bridge launchNestedKmscubeOnPrimaryView];
+      [bridge prepareOutputSizeForNativeClientLaunchWithClientId:clientId];
+      BOOL ok = [bridge launchNestedIlandGpuClientOnPrimaryView:clientId];
+      const char *logMod = WWNBundledClientLogModule(clientId);
       if (!ok) {
-        WWNLog("KMSCUBE",
-               @"kmscube launch failed (no compositor view or "
-               @"kmscube_main unavailable)");
+        WWNLog(logMod,
+               @"%@ launch failed (no compositor view or entry point "
+               @"unavailable)", clientId);
       } else {
-        WWNLog("KMSCUBE",
-               @"launchNestedKmscube started via iland Metal presenter");
+        WWNLog(logMod, @"%@ started via iland Metal presenter", clientId);
       }
     });
     return;

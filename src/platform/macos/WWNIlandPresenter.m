@@ -34,9 +34,11 @@ extern int g_drm_event_pipe_write;
 #define DRM_VIRTUAL_FD 42
 #endif
 
-// In-process kmscube entry point (libkmscube.a, main renamed via -Dmain=).
-// Weakly imported so the app links even without the GL-clients package.
+// In-process cube entry points (lib{kmscube,opengl_cube,vkcube}.a, each with
+// main renamed via -Dmain=). Weakly imported so the app links even without the
+// GL-clients packages.
 extern int kmscube_main(int argc, char *argv[]) __attribute__((weak_import));
+extern int vkcube_main(int argc, char *argv[]) __attribute__((weak_import));
 
 // Minimal fullscreen-textured-quad shader compiled at runtime. Samples the
 // client's BGRA IOSurface texture and draws it flipped (GL origin is
@@ -65,6 +67,7 @@ static NSString *const kShaderSource = @""
     BOOL                    _clientThreadStarted;
     int                     _clientWidth;
     int                     _clientHeight;
+    NSString               *_clientId;
 }
 
 // Single active presenter for the C trampoline (one nested client at a time).
@@ -233,44 +236,108 @@ static BOOL wwn_prepare_iland_virtual_drm_fd(void) {
     return YES;
 }
 
-static void *wwn_kmscube_thread(void *arg) {
-    WWNIlandPresenter *self = (__bridge WWNIlandPresenter *)arg;
-    (void)self->_clientWidth;
-    (void)self->_clientHeight;
-    if (!wwn_prepare_iland_virtual_drm_fd()) {
-        WWNLog("KMSCUBE", @"aborting kmscube_main — virtual DRM fd not ready");
-        return NULL;
+typedef int (*wwn_cube_entry_t)(int argc, char *argv[]);
+
+typedef struct {
+    const char *clientId;
+    const char *logModule;
+    // Extra argv beyond argv[0]; NULL-terminated.
+    const char *const *argv;
+} wwn_cube_client_t;
+
+// All three drive the same iland virtual DRM; only the entry point and the
+// renderer behind it differ. vkcube's adaptation is KMS-only, but it accepts
+// --display-mode=kms so the intent is visible in logs.
+static const char *const kVkcubeArgv[] = { "--display-mode=kms", NULL };
+
+static const wwn_cube_client_t kCubeClients[] = {
+    { "kmscube",     "KMSCUBE",     NULL },
+    { "vkcube",      "VKCUBE",      kVkcubeArgv },
+};
+
+static const wwn_cube_client_t *wwn_cube_client_for_id(NSString *clientId) {
+    for (size_t i = 0; i < sizeof(kCubeClients) / sizeof(kCubeClients[0]); i++) {
+        if ([clientId isEqualToString:@(kCubeClients[i].clientId)])
+            return &kCubeClients[i];
     }
-    // kmscube reads /dev/dri/card0 (iland's virtual DRM) by default.
-    char *argv[] = { (char *)"kmscube", NULL };
-    WWNLog("KMSCUBE", @"kmscube_main enter (iland DRM present)");
-    int rc = kmscube_main(1, argv);
-    WWNLog("KMSCUBE", @"kmscube_main exit rc=%d", rc);
     return NULL;
 }
 
-- (BOOL)launchNestedKmscubeWithWidth:(int)width height:(int)height {
-    if (kmscube_main == NULL) {
-        WWNLog("KMSCUBE", @"kmscube_main unavailable (link libkmscube.a)");
+static wwn_cube_entry_t wwn_cube_entry_for_id(NSString *clientId) {
+    if ([clientId isEqualToString:@"kmscube"]) return kmscube_main;
+    if ([clientId isEqualToString:@"vkcube"]) return vkcube_main;
+    return NULL;
+}
+
+static void *wwn_cube_thread(void *arg) {
+    WWNIlandPresenter *self = (__bridge WWNIlandPresenter *)arg;
+    (void)self->_clientWidth;
+    (void)self->_clientHeight;
+    NSString *clientId = self->_clientId;
+    const wwn_cube_client_t *client = wwn_cube_client_for_id(clientId);
+    wwn_cube_entry_t entry = wwn_cube_entry_for_id(clientId);
+    if (client == NULL || entry == NULL)
+        return NULL;
+
+    if (!wwn_prepare_iland_virtual_drm_fd()) {
+        WWNLog(client->logModule,
+               @"aborting %@ — virtual DRM fd not ready", clientId);
+        return NULL;
+    }
+
+    // The clients open /dev/dri/card0 (iland's virtual DRM) by default.
+    char *argv[8];
+    int argc = 0;
+    argv[argc++] = (char *)client->clientId;
+    for (const char *const *extra = client->argv; extra && *extra; extra++) {
+        if (argc >= (int)(sizeof(argv) / sizeof(argv[0])) - 1) break;
+        argv[argc++] = (char *)*extra;
+    }
+    argv[argc] = NULL;
+
+    WWNLog(client->logModule, @"%@ enter (iland DRM present)", clientId);
+    int rc = entry(argc, argv);
+    WWNLog(client->logModule, @"%@ exit rc=%d", clientId, rc);
+    return NULL;
+}
+
+- (BOOL)launchNestedIlandGpuClient:(NSString *)clientId
+                             width:(int)width
+                            height:(int)height {
+    const wwn_cube_client_t *client = wwn_cube_client_for_id(clientId);
+    if (client == NULL) {
+        WWNLog("KMSCUBE", @"unknown iland GPU client id %@", clientId);
+        return NO;
+    }
+    if (wwn_cube_entry_for_id(clientId) == NULL) {
+        WWNLog(client->logModule,
+               @"%@ unavailable — archive not linked", clientId);
         return NO;
     }
     if (_clientThreadStarted) return YES;
     if (!wwn_prepare_iland_virtual_drm_fd()) {
-        WWNLog("KMSCUBE", @"virtual DRM fd prepare failed");
+        WWNLog(client->logModule, @"virtual DRM fd prepare failed");
         return NO;
     }
+    _clientId = [clientId copy];
     _clientWidth = width > 0 ? width : 1280;
     _clientHeight = height > 0 ? height : 720;
-    int rc = pthread_create(&_clientThread, NULL, wwn_kmscube_thread,
+    int rc = pthread_create(&_clientThread, NULL, wwn_cube_thread,
                             (__bridge void *)self);
     if (rc != 0) {
-        WWNLog("KMSCUBE", @"pthread_create failed: %d", rc);
+        WWNLog(client->logModule, @"pthread_create failed: %d", rc);
         return NO;
     }
     _clientThreadStarted = YES;
-    WWNLog("KMSCUBE", @"started in-process kmscube %dx%d via iland",
-           _clientWidth, _clientHeight);
+    WWNLog(client->logModule, @"started in-process %@ %dx%d via iland",
+           clientId, _clientWidth, _clientHeight);
     return YES;
+}
+
+- (BOOL)launchNestedKmscubeWithWidth:(int)width height:(int)height {
+    return [self launchNestedIlandGpuClient:@"kmscube"
+                                      width:width
+                                     height:height];
 }
 
 @end

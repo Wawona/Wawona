@@ -68,6 +68,7 @@ let
       angle = buildModule.buildForMacOS "angle" { };
       inherit weston kmscube;
       "iland-gl-clients" = kmscube;
+      vkcube = buildModule.buildForMacOS "vkcube" { };
     } // (if nativeDeps != null then nativeDeps else { });
 
   appleGlWestonLinkFlags =

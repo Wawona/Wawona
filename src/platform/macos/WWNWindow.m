@@ -134,7 +134,7 @@
   return ilandPresenter_ != nil;
 }
 
-- (BOOL)launchNestedKmscube {
+- (BOOL)launchNestedIlandGpuClient:(NSString *)clientId {
   if (![self prepareIlandMetalPresentation]) {
     return NO;
   }
@@ -144,7 +144,13 @@
     w = 1280;
     h = 720;
   }
-  return [ilandPresenter_ launchNestedKmscubeWithWidth:w height:h];
+  return [ilandPresenter_ launchNestedIlandGpuClient:clientId
+                                               width:w
+                                              height:h];
+}
+
+- (BOOL)launchNestedKmscube {
+  return [self launchNestedIlandGpuClient:@"kmscube"];
 }
 
 - (void)updateTrackingAreas {

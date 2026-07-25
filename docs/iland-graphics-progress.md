@@ -163,6 +163,37 @@ cannot be tripped by prose. Result: `ios`, `ipados`, `visionos` (MoltenVK +
 ANGLE present and resolving inside the bundle) and `tvos`, `watchos` (no driver
 markers, 0 entry points) all pass, alongside `macos` and `macos-desktop`.
 
+**2026-07-25 vkcube reaches the Apple app for the first time:** `vkcube-*`
+built for every Apple GPU target and had correct slices (macOS `platform 1`,
+iOS `2`, iOS-sim `7`, xrOS `11`, xrOS-sim `12`, each exporting `_vkcube_main`),
+but **no Apple bundle linked it** — `iland-gl-ldflags.nix` only knew about
+kmscube, and no Wawona dep requested `vkcube`. Wired end to end:
+`iland-gl-ldflags` now emits the same undefined-symbol archive pull for
+`opengl_cube_main` and `vkcube_main`; `mobile-platform-deps.nix` adds `vkcube`
+under `allowGpu` (so tv/watch never see it, matching wwn-kmscube having no
+tv/watch recipe); and the presenters gained
+`-launchNestedIlandGpuClient:width:height:`, a table keyed on the Machines
+catalog id, with `-launchNestedKmscubeWithWidth:height:` kept as a wrapper.
+`opengl-cube` is in the ldflags generator but out of the Apple presenter table
+until wwn-kmscube grows an Apple recipe for it, so nothing weak-imports a
+symbol no target defines.
+
+macOS needed one more change. It selects MoltenVK or KosmicKrisp at runtime and
+bundles both as ICD dylibs in `Contents/Frameworks` with **no Vulkan loader**,
+so linking `vk*` directly left 61 undefined symbols at app link. The Android
+runtime dispatch table was generalised (`vulkan_dispatch_android.h` →
+`vulkan_dispatch.h`, gated on `__ANDROID__ || TARGET_OS_OSX`) and keyed on a new
+`WWN_VULKAN_LIBRARY` that `WWNSettings_ApplyGraphicsDriverSelection` resolves to
+the selected ICD; it falls back to `vk_icdGetInstanceProcAddr` for Mesa-derived
+ICDs like KosmicKrisp that export only the negotiated name. `libvkcube.a` for
+macOS now has 0 undefined Vulkan symbols; Apple mobile keeps its 61 and resolves
+them against static MoltenVK.
+
+Result: `_vkcube_main` is defined in macOS, iOS, iPadOS, and visionOS binaries
+and absent from tvOS/watchOS, which still define 0 Vulkan/EGL entry points. All
+seven Apple bundles pass `verify-iland-graphics-bundle.sh`. Runtime Start of the
+`vkcube` machine is the remaining acceptance step.
+
 **2026-07-25 visionOS ANGLE slice acceptance:** `angle-visionos` and
 `angle-visionos-sim` build from the pinned Chromium/ANGLE sources plus the
 checked-in `0001-chromium-build-add-xros-target.patch`, so no GN tree is

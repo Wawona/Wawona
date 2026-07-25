@@ -4526,12 +4526,16 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
   return view;
 }
 
-- (BOOL)launchNestedKmscubeOnPrimaryView {
+- (BOOL)launchNestedIlandGpuClientOnPrimaryView:(NSString *)clientId {
   WWNView *view = [self ensureIlandPresentationView];
   if (!view) {
     return NO;
   }
-  return [view launchNestedKmscube];
+  return [view launchNestedIlandGpuClient:clientId];
+}
+
+- (BOOL)launchNestedKmscubeOnPrimaryView {
+  return [self launchNestedIlandGpuClientOnPrimaryView:@"kmscube"];
 }
 
 - (BOOL)prepareIlandMetalPresentationOnPrimaryView {
@@ -5043,23 +5047,27 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
   return view;
 }
 
-- (BOOL)launchNestedKmscubeOnPrimaryView {
+- (BOOL)launchNestedIlandGpuClientOnPrimaryView:(NSString *)clientId {
   WWNCompositorView_ios *view = [self ensureIlandPresentationView];
   if (!view) {
     WWNLog("KMSCUBE",
-           @"launch failed: no Metal host view (containerView=%@)",
-           self.containerView ? @"set" : @"nil");
+           @"%@ launch failed: no Metal host view (containerView=%@)",
+           clientId, self.containerView ? @"set" : @"nil");
     return NO;
   }
-  BOOL ok = [view launchNestedKmscube];
+  BOOL ok = [view launchNestedIlandGpuClient:clientId];
   if (!ok) {
     WWNLog("KMSCUBE",
-           @"launch failed after host view ready (%@ %.0fx%.0f) — "
-           @"check iland presenter / kmscube_main link",
-           NSStringFromClass([view class]), view.bounds.size.width,
+           @"%@ launch failed after host view ready (%@ %.0fx%.0f) — "
+           @"check iland presenter / entry point link",
+           clientId, NSStringFromClass([view class]), view.bounds.size.width,
            view.bounds.size.height);
   }
   return ok;
+}
+
+- (BOOL)launchNestedKmscubeOnPrimaryView {
+  return [self launchNestedIlandGpuClientOnPrimaryView:@"kmscube"];
 }
 
 - (BOOL)prepareIlandMetalPresentationOnPrimaryView {

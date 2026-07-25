@@ -155,6 +155,26 @@ void WWNSettings_ApplyGraphicsDriverSelection(void) {
     unsetenv("VK_ICD_FILENAMES");
   }
 
+  // The manifests above only matter to a Vulkan loader, and the bundle ships
+  // ICD dylibs without one. In-process clients (vkcube) dlopen the ICD
+  // directly, so hand them the resolved library path.
+  NSString *icdLibrary = nil;
+  if (vkDriver && strcmp(vkDriver, "kosmickrisp") == 0)
+    icdLibrary = @"libvulkan_kosmickrisp.dylib";
+  else if (vkDriver && strcmp(vkDriver, "moltenvk") == 0)
+    icdLibrary = @"libMoltenVK.dylib";
+  NSString *icdPath = nil;
+  if (icdLibrary) {
+    NSString *candidate = [[bundle privateFrameworksPath]
+        stringByAppendingPathComponent:icdLibrary];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:candidate])
+      icdPath = candidate;
+  }
+  if (icdPath)
+    setenv("WWN_VULKAN_LIBRARY", icdPath.UTF8String, 1);
+  else
+    unsetenv("WWN_VULKAN_LIBRARY");
+
   const char *glDriver = selection.openGLDriver;
   setenv("WWN_OPENGL_DRIVER", glDriver ?: "none", 1);
   if (glDriver && strcmp(glDriver, "angle") == 0) {

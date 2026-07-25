@@ -800,6 +800,7 @@
             angle = toolchains.buildForMacOS "angle" { };
             kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
             "iland-gl-clients" = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
+            vkcube = toolchains.buildForMacOS "vkcube" { };
             weston = toolchains.buildForMacOS "weston" { };
             "weston-compositor" = toolchains.buildForMacOS "weston-compositor-drm" { };
           } // macosToytoolkitDeps;

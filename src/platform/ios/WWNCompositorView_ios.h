@@ -83,6 +83,7 @@ FOUNDATION_EXPORT NSNotificationName const WWNHostKeyboardGeometryDidChangeNotif
                  hotspotY:(float)hotspotY;
 
 /// Launch in-process kmscube (iland + ANGLE) into this view's Metal layer.
+- (BOOL)launchNestedIlandGpuClient:(NSString *)clientId;
 - (BOOL)launchNestedKmscube;
 
 /// Prepare Metal + iland present callback for nested Weston (DRM/GL overlay).

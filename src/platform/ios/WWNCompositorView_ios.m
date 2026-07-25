@@ -1074,7 +1074,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
        contentsGravity:_waylandFrameView.layer.contentsGravity];
 }
 
-- (BOOL)launchNestedKmscube {
+- (BOOL)launchNestedIlandGpuClient:(NSString *)clientId {
   // Ensure wl_output / host view have a real size before Metal present.
   [[WWNCompositorBridge sharedBridge] seedOutputSizeFromLiveHostSurface];
   [self layoutIfNeeded];
@@ -1099,8 +1099,14 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     h = outH > 0 ? (int)outH : 480;
   }
   [_ilandPresenter syncPreferredModeFromLayer];
-  WWNLog("KMSCUBE", @"launchNestedKmscube Metal present %dx%d", w, h);
-  return [_ilandPresenter launchNestedKmscubeWithWidth:w height:h];
+  WWNLog("KMSCUBE", @"%@ Metal present %dx%d", clientId, w, h);
+  return [_ilandPresenter launchNestedIlandGpuClient:clientId
+                                               width:w
+                                              height:h];
+}
+
+- (BOOL)launchNestedKmscube {
+  return [self launchNestedIlandGpuClient:@"kmscube"];
 }
 
 - (BOOL)prepareIlandMetalPresentation {

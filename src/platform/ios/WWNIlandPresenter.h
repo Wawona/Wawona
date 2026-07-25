@@ -27,6 +27,16 @@ NS_ASSUME_NONNULL_BEGIN
 /// Re-read layer bounds×scale into drawableSize + iland preferred DRM mode.
 - (void)syncPreferredModeFromLayer;
 
+/// Launch one of the bundled in-process cube clients on a background thread; it
+/// presents through this presenter. `clientId` is a Machines catalog id:
+/// `kmscube` and `opengl-cube` render GLES through iland + ANGLE, `vkcube`
+/// renders Vulkan through MoltenVK. All three drive the same iland virtual DRM.
+/// Returns NO for an unknown id, or when the client's archive is absent.
+- (BOOL)launchNestedIlandGpuClient:(NSString *)clientId
+                             width:(int)width
+                            height:(int)height;
+
+/// Back-compat wrapper for `launchNestedIlandGpuClient:@"kmscube"`.
 - (BOOL)launchNestedKmscubeWithWidth:(int)width height:(int)height;
 
 @end
