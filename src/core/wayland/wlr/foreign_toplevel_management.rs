@@ -83,37 +83,25 @@ impl Dispatch<zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1, u32>
         let window_id = *data;
         match request {
             zwlr_foreign_toplevel_handle_v1::Request::SetMaximized => {
-                if let Some(window_lock) = state.windows.get(&window_id) {
-                    let mut window = window_lock.write().unwrap();
-                    window.maximized = true;
-                }
-                // Find the toplevel and send configure
-                if let Some((tl_id, tl_data)) = state.xdg.toplevels.iter().find(|(_, t)| t.window_id == window_id) {
-                    let tl_id = tl_id.clone();
-                    let w = tl_data.width;
-                    let h = tl_data.height;
-                    if let Some(tl) = state.xdg.toplevels.get_mut(&tl_id) {
-                        tl.pending_maximized = true;
-                    }
-                    state.send_toplevel_configure(tl_id.0.clone(), tl_id.1, w, h);
-                }
+                // Host-authority path (fill-primary on iOS, AppKit zoom on macOS):
+                // emit the event and let the platform bridge resize + sync xdg
+                // state. Do not pre-configure at the current client size here —
+                // that races host fill-primary and never reaches ObjC/Swift
+                // (Close/Minimize push events; Maximize must too).
+                state.pending_compositor_events.push(
+                    crate::core::compositor::CompositorEvent::WindowMaximized {
+                        window_id,
+                        maximized: true,
+                    },
+                );
             }
             zwlr_foreign_toplevel_handle_v1::Request::UnsetMaximized => {
-                if let Some(window_lock) = state.windows.get(&window_id) {
-                    let mut window = window_lock.write().unwrap();
-                    window.maximized = false;
-                }
-                if let Some((tl_id, _)) = state.xdg.toplevels.iter().find(|(_, t)| t.window_id == window_id) {
-                    let tl_id = tl_id.clone();
-                    if let Some(tl) = state.xdg.toplevels.get_mut(&tl_id) {
-                        tl.pending_maximized = false;
-                    }
-                    let (rw, rh) = state
-                        .get_window(window_id)
-                        .and_then(|w| w.read().ok().map(|w| (w.width.max(1) as u32, w.height.max(1) as u32)))
-                        .unwrap_or((1, 1));
-                    state.send_toplevel_configure(tl_id.0.clone(), tl_id.1, rw, rh);
-                }
+                state.pending_compositor_events.push(
+                    crate::core::compositor::CompositorEvent::WindowMaximized {
+                        window_id,
+                        maximized: false,
+                    },
+                );
             }
             zwlr_foreign_toplevel_handle_v1::Request::SetMinimized => {
                 if let Some(window_lock) = state.windows.get(&window_id) {

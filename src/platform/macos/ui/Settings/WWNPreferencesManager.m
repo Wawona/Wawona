@@ -775,7 +775,9 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 // default when the hardware supports it so users get the faster path, and fall
 // back to MoltenVK otherwise. An explicit user choice always wins.
 + (NSString *)defaultVulkanDriverForHardware {
-#if TARGET_OS_OSX
+#if TARGET_OS_TV || TARGET_OS_WATCH
+  return @"none";
+#elif TARGET_OS_OSX
   int isARM64 = 0;
   size_t sz = sizeof(isARM64);
   if (sysctlbyname("hw.optional.arm64", &isARM64, &sz, NULL, 0) != 0) {
@@ -793,9 +795,20 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 }
 
 - (NSString *)vulkanDriver {
-  return
-      [[NSUserDefaults standardUserDefaults] stringForKey:kWWNPrefsVulkanDriver]
-          ?: [WWNPreferencesManager defaultVulkanDriverForHardware];
+#if TARGET_OS_TV || TARGET_OS_WATCH
+  return @"none";
+#else
+  NSString *driver =
+      [[NSUserDefaults standardUserDefaults] stringForKey:kWWNPrefsVulkanDriver];
+#if TARGET_OS_OSX
+  NSSet *allowed = [NSSet setWithArray:@[ @"none", @"moltenvk", @"kosmickrisp" ]];
+#else
+  NSSet *allowed = [NSSet setWithArray:@[ @"none", @"moltenvk" ]];
+#endif
+  return [allowed containsObject:driver]
+             ? driver
+             : [WWNPreferencesManager defaultVulkanDriverForHardware];
+#endif
 }
 
 - (void)setVulkanDriver:(NSString *)driver {
@@ -804,9 +817,13 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 }
 
 - (NSString *)openglDriver {
-  return
-      [[NSUserDefaults standardUserDefaults] stringForKey:kWWNPrefsOpenGLDriver]
-          ?: @"angle";
+#if TARGET_OS_TV || TARGET_OS_WATCH
+  return @"none";
+#else
+  NSString *driver =
+      [[NSUserDefaults standardUserDefaults] stringForKey:kWWNPrefsOpenGLDriver];
+  return [@[ @"none", @"angle" ] containsObject:driver] ? driver : @"angle";
+#endif
 }
 
 - (void)setOpenGLDriver:(NSString *)driver {

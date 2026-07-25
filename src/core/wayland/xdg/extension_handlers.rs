@@ -45,19 +45,23 @@ impl XdgDecorationHandler for CompositorState {
             return;
         };
 
+        // Force SSD per-machine (#120): resolve against this window's client
+        // policy so an explicit request is judged by that machine's setting,
+        // not a concurrent machine's global Force SSD.
+        let policy = self.window_decoration_policy(window_id);
         let weston_family = !matches!(
-            self.decoration_policy,
+            policy,
             crate::core::state::DecorationPolicy::ForceServer
         ) && crate::core::wayland::xdg::decoration::is_weston_family_app(self, window_id);
 
         let actual_mode = if weston_family {
-            if crate::core::wayland::xdg::decoration::weston_family_prefers_client_decorations(self) {
+            if crate::core::wayland::xdg::decoration::weston_family_prefers_client_decorations(policy) {
                 Mode::ClientSide
             } else {
                 Mode::ServerSide
             }
         } else {
-            match self.decoration_policy {
+            match policy {
                 crate::core::state::DecorationPolicy::ForceServer => Mode::ServerSide,
                 // "Prefer" policies only pick the default for clients that
                 // don't care; an explicit request (e.g. nested niri asking

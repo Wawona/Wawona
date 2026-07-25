@@ -302,9 +302,11 @@ impl CompositorState {
                         window.host_locked,
                         self.ext.fullscreen_shell.presented_window_id,
                     );
+                    let window_policy =
+                        window.decoration_policy.unwrap_or(self.decoration_policy);
                     let should_apply_window_geometry =
                         crate::core::wayland::xdg::decoration::should_crop_buffer_to_window_geometry(
-                            self,
+                            window_policy,
                             window.decoration_mode,
                         );
                     if is_kiosk_window {
@@ -339,7 +341,7 @@ impl CompositorState {
                                 let buf_h = surface.current.height as i32;
                                 if let Some((inter_x1, inter_y1, inter_w, inter_h)) =
                                     crate::core::wayland::xdg::decoration::resolve_window_content_geometry(
-                                        self,
+                                        window_policy,
                                         &app_id,
                                         decoration_mode,
                                         buf_w,

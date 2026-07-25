@@ -204,6 +204,45 @@ pub extern "C" fn WWNCoreSetForceSSD(
     }));
 }
 
+/// Stage the decoration policy for the next machine's client launch.
+///
+/// Force SSD per-machine (#120): call immediately before launching a machine's
+/// Wayland client with that machine's resolved `forceSSD`. Unlike
+/// `WWNCoreSetForceSSD`, this does not change the global default or restyle any
+/// already-connected client, so concurrent CSD + SSD machines do not stomp.
+#[no_mangle]
+pub extern "C" fn WWNCoreSetForceSSDForClientLaunch(
+    core: *mut WWNCore,
+    enabled: bool
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() {
+            return;
+        }
+
+        let core = unsafe { &*core };
+        core.set_force_ssd_for_client_launch(enabled);
+    }));
+}
+
+/// Mark whether a window is hosted in its own independent OS window/scene
+/// (macOS NSWindow-per-toplevel, or one `UIWindowScene` per Wayland client on
+/// iPadOS/visionOS). See `WWNCore::set_window_host_scene_independent` (#120).
+#[no_mangle]
+pub extern "C" fn WWNCoreSetWindowHostSceneIndependent(
+    core: *mut WWNCore,
+    window_id: u64,
+    independent: bool,
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() {
+            return;
+        }
+        let core = unsafe { &*core };
+        core.set_window_host_scene_independent(WindowId { id: window_id }, independent);
+    }));
+}
+
 /// Inject window resize
 #[no_mangle]
 pub extern "C" fn WWNCoreInjectWindowResize(
@@ -423,6 +462,7 @@ pub enum CWindowEventType {
     HostLocked = 13,
     FullscreenRequested = 14,
     UnfullscreenRequested = 15,
+    CloseRequested = 16,
 }
 
 /// C-compatible window event structure
@@ -598,6 +638,11 @@ pub extern "C" fn WWNCorePopWindowEvent(core: *mut WWNCore) -> *mut CWindowEvent
                 },
                 super::types::WindowEvent::UnfullscreenRequested { window_id } => {
                     c_event.event_type = CWindowEventType::UnfullscreenRequested as u64;
+                    c_event.window_id = window_id.id;
+                    true
+                },
+                super::types::WindowEvent::CloseRequested { window_id } => {
+                    c_event.event_type = CWindowEventType::CloseRequested as u64;
                     c_event.window_id = window_id.id;
                     true
                 },

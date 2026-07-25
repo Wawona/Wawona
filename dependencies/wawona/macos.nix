@@ -29,7 +29,8 @@
   sshpassVersion ? "unknown",
   waypipeVersion ? "unknown",
   waypipe,
-  moltenvk ? pkgs.moltenvk or null,
+  moltenvk ? null,
+  kosmickrisp ? null,
   xcodeProject ? null,
   applePath,
   westonToytoolkitLdflagsNix,
@@ -1246,14 +1247,14 @@ GEN_HEADER
                 done
                 if [ -n "$MVK_ICD" ]; then
                   cp "$MVK_ICD" "$out/Applications/Wawona.app/Contents/Resources/vulkan/icd.d/MoltenVK_icd.json"
-                  sed -i "s|\"library_path\":.*|\"library_path\": \"../../Frameworks/$MVK_DYLIB_NAME\",|" \
+                  sed -i "s|\"library_path\":.*|\"library_path\": \"../../../Frameworks/$MVK_DYLIB_NAME\",|" \
                     "$out/Applications/Wawona.app/Contents/Resources/vulkan/icd.d/MoltenVK_icd.json"
                 else
                   cat > "$out/Applications/Wawona.app/Contents/Resources/vulkan/icd.d/MoltenVK_icd.json" <<MVK_ICD_EOF
               {
                   "file_format_version": "1.0.1",
                   "ICD": {
-                      "library_path": "../../Frameworks/$MVK_DYLIB_NAME",
+                      "library_path": "../../../Frameworks/$MVK_DYLIB_NAME",
                       "api_version": "1.2.0",
                       "is_portability_driver": true
                   }
@@ -1266,6 +1267,22 @@ MVK_ICD_EOF
                 fi
               else
                 echo "Info: MoltenVK .dylib not found, skipping"
+              fi
+            ''}
+
+            # Bundle Mesa KosmicKrisp as an explicit alternative ICD.
+            ${lib.optionalString (kosmickrisp != null) ''
+              KK_DYLIB="${kosmickrisp}/lib/libvulkan_kosmickrisp.dylib"
+              KK_ICD="${kosmickrisp}/share/vulkan/icd.d/kosmickrisp_mesa_icd.aarch64.json"
+              test -f "$KK_DYLIB"
+              test -f "$KK_ICD"
+              cp "$KK_DYLIB" "$out/Applications/Wawona.app/Contents/Frameworks/"
+              cp "$KK_ICD" "$out/Applications/Wawona.app/Contents/Resources/vulkan/icd.d/kosmickrisp_icd.json"
+              sed -i 's|"library_path":[[:space:]]*"[^"]*"|"library_path": "../../../Frameworks/libvulkan_kosmickrisp.dylib"|' \
+                "$out/Applications/Wawona.app/Contents/Resources/vulkan/icd.d/kosmickrisp_icd.json"
+              if command -v codesign >/dev/null 2>&1; then
+                codesign --force --sign - --timestamp=none \
+                  "$out/Applications/Wawona.app/Contents/Frameworks/libvulkan_kosmickrisp.dylib"
               fi
             ''}
             
@@ -1346,6 +1363,19 @@ PLIST_EOF
       ln -snf $out/Applications/Wawona.app/lib $out/lib
 
       APP="$out/Applications/Wawona.app"
+      ${lib.optionalString (kosmickrisp != null) ''
+      mkdir -p "$APP/Contents/Frameworks" "$APP/Contents/Resources/vulkan/icd.d"
+      cp "${kosmickrisp}/lib/libvulkan_kosmickrisp.dylib" "$APP/Contents/Frameworks/"
+      cp "${kosmickrisp}/share/vulkan/icd.d/kosmickrisp_mesa_icd.aarch64.json" \
+        "$APP/Contents/Resources/vulkan/icd.d/kosmickrisp_icd.json"
+      sed -i 's|"library_path":[[:space:]]*"[^"]*"|"library_path": "../../../Frameworks/libvulkan_kosmickrisp.dylib"|' \
+        "$APP/Contents/Resources/vulkan/icd.d/kosmickrisp_icd.json"
+      if command -v codesign >/dev/null 2>&1; then
+        codesign --force --sign - --timestamp=none \
+          "$APP/Contents/Frameworks/libvulkan_kosmickrisp.dylib"
+        codesign --force --sign - --timestamp=none "$APP"
+      fi
+      ''}
       for req in \
         "$APP/share/weston/pattern.png" \
         "$APP/share/weston/terminal.png" \

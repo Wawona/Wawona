@@ -150,7 +150,11 @@ struct MachineSettingsView: View {
     @ViewBuilder
     private func displaySection() -> some View {
         Section("Display") {
-            Toggle("Force Server-Side Decorations", isOn: forceSSDBinding)
+            // Force SSD is macOS-only (#120): watchOS always draws SSD, so the
+            // toggle would be inert here.
+            if PlatformCapabilities.supportsClientSideDecorations {
+                Toggle("Force Server-Side Decorations", isOn: forceSSDBinding)
+            }
             Toggle("Auto Scale", isOn: autoScaleBinding)
             TextField("Wayland Display", text: waylandDisplayBinding)
                 .textInputAutocapitalization(.never)
@@ -403,7 +407,7 @@ struct MachineSettingsView: View {
 
     private var vulkanDriverBinding: Binding<String> {
         Binding(
-            get: { draft?.runtimeOverrides.vulkanDriver ?? "moltenvk" },
+            get: { draft?.runtimeOverrides.vulkanDriver ?? preferences.vulkanDriver },
             set: { value in updateDraft { $0.runtimeOverrides.vulkanDriver = value } }
         )
     }

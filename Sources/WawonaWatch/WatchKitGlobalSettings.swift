@@ -38,7 +38,10 @@ struct WatchGlobalSettingsView: View {
             Form {
                 Section("Display") {
                     Toggle("Auto Scale", isOn: $preferences.autoScale)
-                    Toggle("Force SSD", isOn: $preferences.forceSSD)
+                    // Force SSD is macOS-only (#120): watchOS always draws SSD.
+                    if PlatformCapabilities.supportsClientSideDecorations {
+                        Toggle("Force SSD", isOn: $preferences.forceSSD)
+                    }
                     Toggle("Color Operations (HDR)", isOn: $preferences.colorOperations)
                 }
                 Section("Graphics") {

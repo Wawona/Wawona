@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       only:
-        description: "Product subset: all | ios-sim | android-apk | macos-app | appimage"
+        description: "Product subset: all | ios-sim | apple-family | android-apk | macos-app | appimage"
         type: string
         required: false
         default: "all"
@@ -34,7 +34,7 @@ on:
         required: false
         default: ""
       only:
-        description: "Product subset: all | ios-sim | android-apk | macos-app | appimage"
+        description: "Product subset: all | ios-sim | apple-family | android-apk | macos-app | appimage"
         type: string
         required: false
         default: "all"
@@ -102,10 +102,77 @@ jobs:
           fi
           ls -la dist/ios-sim/
 
+      - name: Verify store-safe iOS graphics bundle
+        run: ./.github/scripts/verify-iland-graphics-bundle.sh --platform ios dist/ios-sim/Wawona.app
+
       - uses: actions/upload-artifact@v7
         with:
           name: product-ios-sim
           path: dist/ios-sim/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  apple-family:
+    name: "${{ matrix.label }} sim .app"
+    if: ${{ (inputs.only || 'all') == 'all' || (inputs.only || 'all') == 'apple-family' }}
+    runs-on: macos-26
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: ipados
+            label: iPadOS
+            attr: wawona-ipados
+          - target: visionos
+            label: visionOS
+            attr: wawona-visionos
+          - target: tvos
+            label: tvOS
+            attr: wawona-tvos
+          - target: watchos
+            label: watchOS
+            attr: wawona-watchos
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+
+      - name: Select Xcode
+        run: ./.github/scripts/select-xcode.sh
+
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+
+      - name: Build ${{ matrix.label }} simulator app
+        run: >-
+          ./.github/scripts/nix-retry.sh nix build
+          ".#${{ matrix.attr }}" --print-build-logs
+          --out-link "result-${{ matrix.target }}"
+
+      - name: Stage and audit ${{ matrix.label }}
+        run: |
+          OUT_DIR="dist/${{ matrix.target }}-sim"
+          mkdir -p "$OUT_DIR"
+          APP="$(find -L "result-${{ matrix.target }}" -type d -name '*.app' -print -quit)"
+          test -n "$APP"
+          ditto "$APP" "$OUT_DIR/Wawona.app"
+          ./.github/scripts/verify-iland-graphics-bundle.sh \
+            --platform "${{ matrix.target }}" "$OUT_DIR/Wawona.app"
+          printf '{"attr":"%s","sha":"%s","artifact":"product-%s-sim"}\n' \
+            "${{ matrix.attr }}" "${{ github.sha }}" "${{ matrix.target }}" \
+            > "$OUT_DIR/product-manifest.json"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: product-${{ matrix.target }}-sim
+          path: dist/${{ matrix.target }}-sim/
           if-no-files-found: error
           compression-level: 0
           retention-days: 14
@@ -146,6 +213,13 @@ jobs:
           } > dist/product-manifest.json
           ls -lh dist/Wawona.apk
 
+      - name: Verify Play-safe Android graphics bundle
+        run: |
+          rm -rf dist/apk-unpacked
+          mkdir -p dist/apk-unpacked
+          unzip -q dist/Wawona.apk -d dist/apk-unpacked
+          ./.github/scripts/verify-iland-graphics-bundle.sh --platform android dist/apk-unpacked
+
       - uses: actions/upload-artifact@v7
         with:
           name: product-android-apk
@@ -179,6 +253,9 @@ jobs:
 
       - name: Build wawona-macos
         run: ./.github/scripts/nix-retry.sh nix build ".#wawona-macos" --print-build-logs --out-link result-macos
+
+      - name: Build wawona-macos-desktop-host
+        run: ./.github/scripts/nix-retry.sh nix build ".#wawona-macos-desktop-host" --print-build-logs --out-link result-macos-desktop-host
 
       - name: Stage app
         run: |
@@ -217,10 +294,36 @@ jobs:
           ls -la dist/macos-app/
           ls -la dist/macos-app/Wawona.app/Contents/Resources/bin/ | head -40
 
+      - name: Verify macOS Mode A and Mode B bundles
+        run: |
+          ./.github/scripts/verify-iland-graphics-bundle.sh --platform macos dist/macos-app/Wawona.app
+          mkdir -p dist/macos-desktop-host
+          ditto result-macos-desktop-host/Applications/Wawona.app \
+            dist/macos-desktop-host/Wawona.app
+          ./.github/scripts/verify-iland-graphics-bundle.sh --platform macos-desktop \
+            dist/macos-desktop-host/Wawona.app
+          OUT="$(readlink -f result-macos-desktop-host)"
+          {
+            echo "{"
+            echo "  \"attr\": \"wawona-macos-desktop-host\","
+            echo "  \"sha\": \"${{ github.sha }}\","
+            echo "  \"outPath\": \"$OUT\","
+            echo "  \"artifact\": \"product-macos-desktop-host\""
+            echo "}"
+          } > dist/macos-desktop-host/product-manifest.json
+
       - uses: actions/upload-artifact@v7
         with:
           name: product-macos-app
           path: dist/macos-app/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: product-macos-desktop-host
+          path: dist/macos-desktop-host/
           if-no-files-found: error
           compression-level: 0
           retention-days: 14

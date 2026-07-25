@@ -102,7 +102,7 @@ All platforms share the **same Rust core**, so protocol support is identical:
 | `waypipeRSSupport` | Always true | ✅ | ✅ |
 | `enableTCPListener` | Hardcoded false | ✅ | ✅ |
 | `touchpadMode` | ✅ | ✅ | N/A |
-| `vulkanDriver` | Android: swiftshader/turnip/system | N/A | N/A |
+| `vulkanDriver` | Android: swiftshader/system (runtime-only; no direct KGSL) | N/A | N/A |
 
 **Gaps:**
 - `multipleClients` disabled by default on Android — consider enabling for parity.

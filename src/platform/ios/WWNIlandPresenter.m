@@ -23,6 +23,7 @@ typedef void (*iland_present_callback_t)(uint32_t crtc_id,
                                          void *user);
 extern void iland_drm_set_present_callback(iland_present_callback_t cb, void *user);
 extern void iland_drm_set_preferred_mode(uint32_t w, uint32_t h, uint32_t refresh);
+extern void iland_drm_complete_page_flip(uint32_t crtc_id, uint32_t fb_id);
 
 extern int kmscube_main(int argc, char *argv[]) __attribute__((weak_import));
 /* iland drm_linux.c — write end of the page-flip event pipe (fd 42 read end). */
@@ -62,11 +63,15 @@ static WWNIlandPresenter *gActivePresenter = nil;
 static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
                                          IOSurfaceRef surface, uint32_t flags,
                                          void *user) {
-    (void)crtc_id; (void)fb_id; (void)flags; (void)user;
+    (void)flags; (void)user;
     @autoreleasepool {
         WWNIlandPresenter *p = gActivePresenter;
         if (p && surface) {
-            [p presentIOSurface:surface];
+            [p presentIOSurface:surface
+                         crtcID:crtc_id
+                  framebufferID:fb_id];
+        } else {
+            iland_drm_complete_page_flip(crtc_id, fb_id);
         }
     }
 }
@@ -151,10 +156,15 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
            px.width, px.height, scale);
 }
 
-- (void)presentIOSurface:(IOSurfaceRef)surface {
+- (void)presentIOSurface:(IOSurfaceRef)surface
+                  crtcID:(uint32_t)crtcID
+           framebufferID:(uint32_t)framebufferID {
     NSUInteger w = IOSurfaceGetWidth(surface);
     NSUInteger h = IOSurfaceGetHeight(surface);
-    if (w == 0 || h == 0) return;
+    if (w == 0 || h == 0) {
+        iland_drm_complete_page_flip(crtcID, framebufferID);
+        return;
+    }
 
     // Keep Metal drawable matched to the host layer (bounds × scale). Preferred
     // DRM mode is set at init, but prepareIland may resize after that — refresh
@@ -216,6 +226,7 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
             WWNLog("KMSCUBE", @"Metal IOSurface→texture failed %lux%lu",
                    (unsigned long)w, (unsigned long)h);
         }
+        iland_drm_complete_page_flip(crtcID, framebufferID);
         return;
     }
 
@@ -226,6 +237,7 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
             WWNLog("KMSCUBE", @"Metal nextDrawable nil (layer %.0fx%.0f)",
                    _layer.drawableSize.width, _layer.drawableSize.height);
         }
+        iland_drm_complete_page_flip(crtcID, framebufferID);
         return;
     }
 
@@ -244,6 +256,9 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
     [enc setFragmentTexture:srcTex atIndex:0];
     [enc drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
     [enc endEncoding];
+    [cb addCompletedHandler:^(__unused id<MTLCommandBuffer> completed) {
+        iland_drm_complete_page_flip(crtcID, framebufferID);
+    }];
     [cb presentDrawable:drawable];
     [cb commit];
 }

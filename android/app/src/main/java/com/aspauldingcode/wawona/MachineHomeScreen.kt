@@ -840,10 +840,17 @@ private fun MachineEditorSheet(
         mutableStateOf(readBoolOverride(existingOverrides, "universalClipboard", prefs.getBoolean("universalClipboard", false)))
     }
     var vulkanDriver by remember {
-        mutableStateOf(readStringOverride(existingOverrides, "vulkanDriver", prefs.getString("vulkanDriver", "none") ?: "none"))
+        mutableStateOf(
+            readStringOverride(
+                existingOverrides,
+                "vulkanDriver",
+                prefs.getString("vulkanDriver", "system") ?: "system"
+            ).lowercase().takeIf { it in setOf("none", "swiftshader", "system") }
+                ?: "system"
+        )
     }
     var openglDriver by remember {
-        mutableStateOf(readStringOverride(existingOverrides, "openglDriver", prefs.getString("openglDriver", "none") ?: "none"))
+        mutableStateOf(readStringOverride(existingOverrides, "openglDriver", prefs.getString("openglDriver", "system") ?: "system"))
     }
     var dmabufEnabled by remember {
         mutableStateOf(readBoolOverride(existingOverrides, "dmabufEnabled", prefs.getBoolean("nestedCompositorsSupport", true)))
@@ -903,8 +910,8 @@ private fun MachineEditorSheet(
         )
         writeBoolOverride(settingsOverrides, "swapCmdWithAlt", swapCmdAlt, prefs.getBoolean("swapCmdAsCtrl", false))
         writeBoolOverride(settingsOverrides, "universalClipboard", universalClipboard, prefs.getBoolean("universalClipboard", false))
-        writeStringOverride(settingsOverrides, "vulkanDriver", vulkanDriver, prefs.getString("vulkanDriver", "none") ?: "none")
-        writeStringOverride(settingsOverrides, "openglDriver", openglDriver, prefs.getString("openglDriver", "none") ?: "none")
+        writeStringOverride(settingsOverrides, "vulkanDriver", vulkanDriver, prefs.getString("vulkanDriver", "system") ?: "system")
+        writeStringOverride(settingsOverrides, "openglDriver", openglDriver, prefs.getString("openglDriver", "system") ?: "system")
         writeBoolOverride(settingsOverrides, "dmabufEnabled", dmabufEnabled, prefs.getBoolean("nestedCompositorsSupport", true))
         writeBoolOverride(settingsOverrides, "colorOperations", colorOperations, prefs.getBoolean("colorSyncSupport", false))
         writeBoolOverride(settingsOverrides, "shakeToCloseEnabled", shakeToCloseOverride, prefs.getBoolean("wawona.pref.shakeToCloseEnabled", true))
@@ -1151,7 +1158,7 @@ private fun MachineEditorSheet(
                         StringDropdownField(
                             label = "Vulkan Driver",
                             selected = vulkanDriver,
-                            options = listOf("none", "swiftshader", "turnip", "system"),
+                            options = listOf("none", "swiftshader", "system"),
                             expanded = vulkanExpanded,
                             onExpandedChange = { vulkanExpanded = it },
                             onSelect = {

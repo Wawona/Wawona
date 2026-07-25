@@ -59,8 +59,20 @@ object WawonaSettings {
 
         // Graphics Driver selection (Settings > Graphics > Drivers)
         // UI stores display strings (e.g. "SwiftShader"); normalize to lowercase for native
-        val vulkanDriver = (prefs.getString("vulkanDriver", "none") ?: "none").lowercase()
-        val openglDriver = (prefs.getString("openglDriver", "none") ?: "none").lowercase()
+        val storedVulkanDriver =
+            (prefs.getString("vulkanDriver", "system") ?: "system").lowercase()
+        val vulkanDriver =
+            storedVulkanDriver
+                .takeIf { it in setOf("none", "system", "swiftshader") }
+                ?: "system"
+        if (storedVulkanDriver != vulkanDriver) {
+            prefs.edit().putString("vulkanDriver", "System").apply()
+        }
+        val openglDriver =
+            (prefs.getString("openglDriver", "system") ?: "system")
+                .lowercase()
+                .takeIf { it in setOf("none", "system", "angle") }
+                ?: "system"
         
         WawonaNative.nativeApplySettings(
             forceServerSideDecorations,

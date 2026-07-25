@@ -419,8 +419,12 @@ struct WWNMachineEditorView: View {
       labeledField("Vulkan Driver") {
         Picker("", selection: $vulkanDriver) {
           Text("None").tag("none")
+#if os(macOS)
           Text("MoltenVK").tag("moltenvk")
           Text("KosmicKrisp").tag("kosmickrisp")
+#elseif !os(tvOS) && !os(watchOS)
+          Text("MoltenVK").tag("moltenvk")
+#endif
         }
         .pickerStyle(.menu)
         .labelsHidden()
@@ -429,7 +433,6 @@ struct WWNMachineEditorView: View {
         Picker("", selection: $openGLDriver) {
           Text("None").tag("none")
           Text("ANGLE").tag("angle")
-          Text("MoltenGL").tag("moltengl")
         }
         .pickerStyle(.menu)
         .labelsHidden()

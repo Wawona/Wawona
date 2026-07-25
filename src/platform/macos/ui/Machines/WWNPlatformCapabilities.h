@@ -67,8 +67,12 @@ static inline bool WWNPlatformAllowsMultiWindowScenes(void) {
 /// Compile-time gate for tabbed client chrome. Phone idiom is runtime-checked
 /// in WWNSceneDelegate (-usesClientTabChrome). Tabs = Wayland clients only.
 static inline bool WWNPlatformAllowsClientTabs(void) {
-#if TARGET_OS_TV || TARGET_OS_WATCH
+#if TARGET_OS_TV
   return true;
+#elif TARGET_OS_WATCH
+  /* watchOS runs a single client at a time (stub host WM, no tab surface);
+   * native + remote only per wawona-platform-targets. No tab consumer exists. */
+  return false;
 #elif TARGET_OS_IOS && !TARGET_OS_VISION
   return true; /* phone only at runtime; iPad uses multi-window scenes */
 #else

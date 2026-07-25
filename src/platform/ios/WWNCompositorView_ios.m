@@ -678,8 +678,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     [self.layer addSublayer:_waylandLayer];
 
     _waylandFrameView = [[UIView alloc] initWithFrame:self.bounds];
-    _waylandFrameView.autoresizingMask =
-        UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    _waylandFrameView.autoresizingMask = UIViewAutoresizingNone;
     _waylandFrameView.userInteractionEnabled = NO;
     _waylandFrameOpaque = YES;
     _waylandFrameView.backgroundColor = UIColor.clearColor;
@@ -891,16 +890,18 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   }
 
   _waylandFrameView.hidden = NO;
+  // In-process weston-terminal / foot must fill the compositor view even if
+  // ClientCommit briefly left followHostSize=NO (floating 80×25 gutters).
+  BOOL shellFillPresent = (wwn_ios_terminal_is_active() != 0);
+  BOOL hostOwnsPresent =
+      self.hostLocked || self.followHostSize || shellFillPresent;
+  if (shellFillPresent && !self.followHostSize) {
+    self.followHostSize = YES;
+    hostOwnsPresent = YES;
+  }
+
   if (!CGRectIsEmpty(frame)) {
     CGSize bounds = self.bounds.size;
-    // In-process weston-terminal / foot must fill the compositor view even if
-    // ClientCommit briefly left followHostSize=NO (floating 80×25 gutters).
-    BOOL shellFillPresent = (wwn_ios_terminal_is_active() != 0);
-    BOOL hostOwnsPresent =
-        self.hostLocked || self.followHostSize || shellFillPresent;
-    if (shellFillPresent && !self.followHostSize) {
-      self.followHostSize = YES;
-    }
 #if TARGET_OS_TV
     // 10-foot UI: host-owned surfaces go full-bleed. Client-constrained demos
     // (flower/smoke 200×200) stay at negotiated size and are centered — same
@@ -912,9 +913,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
       _waylandFrameView.autoresizingMask =
           UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     } else {
-      if (bounds.width > 0.0 && bounds.height > 0.0 &&
-          (frame.size.width + 0.5 < bounds.width ||
-           frame.size.height + 0.5 < bounds.height)) {
+      if (bounds.width > 0.0 && bounds.height > 0.0) {
         frame.origin.x = floor((bounds.width - frame.size.width) / 2.0);
         frame.origin.y = floor((bounds.height - frame.size.height) / 2.0);
       }
@@ -922,13 +921,6 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
       _waylandFrameView.autoresizingMask = UIViewAutoresizingNone;
     }
 #else
-    BOOL hasCsdCrop =
-        (normalizedContentRect.size.width > 0.0 &&
-         normalizedContentRect.size.height > 0.0 &&
-         (normalizedContentRect.origin.x > 0.001 ||
-          normalizedContentRect.origin.y > 0.001 ||
-          normalizedContentRect.size.width < 0.999 ||
-          normalizedContentRect.size.height < 0.999));
     if (hostOwnsPresent && bounds.width > 0.0 && bounds.height > 0.0) {
       // Shell / host-locked: fill the compositor container. Cell-snap or CSD
       // crop must not leave gutters when followHostSize is set (e.g.
@@ -938,17 +930,26 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
       _waylandFrameView.frame = frame;
       _waylandFrameView.autoresizingMask =
           UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    } else if (!hasCsdCrop && bounds.width > 0.0 && bounds.height > 0.0 &&
-               (frame.size.width + 0.5 < bounds.width ||
-                frame.size.height + 0.5 < bounds.height) &&
-               fabs(frame.origin.x) < 0.5 && fabs(frame.origin.y) < 0.5) {
-      // Client-constrained surface with no scene placement yet: center in
-      // the host view (sizing stays negotiated; this is placement only).
-      frame.origin.x = floor((bounds.width - frame.size.width) / 2.0);
-      frame.origin.y = floor((bounds.height - frame.size.height) / 2.0);
-      _waylandFrameView.frame = frame;
-      _waylandFrameView.autoresizingMask = UIViewAutoresizingNone;
     } else {
+      // Client-constrained (flower/smoke/simple-shm): keep the presentation
+      // plate at the client's negotiated size and only move it when the host
+      // UIWindowScene resizes — never upscale the buffer to fill the scene.
+      size_t imgWEarly = CGImageGetWidth(image);
+      size_t imgHEarly = CGImageGetHeight(image);
+      if (imgWEarly > 0 && imgHEarly > 0 &&
+          (frame.size.width > (CGFloat)imgWEarly + 1.0 ||
+           frame.size.height > (CGFloat)imgHEarly + 1.0)) {
+        frame.size.width = (CGFloat)imgWEarly;
+        frame.size.height = (CGFloat)imgHEarly;
+      }
+      if (self.clientCommittedSize.width > 0 &&
+          self.clientCommittedSize.height > 0) {
+        frame.size = self.clientCommittedSize;
+      }
+      if (bounds.width > 0.0 && bounds.height > 0.0) {
+        frame.origin.x = floor((bounds.width - frame.size.width) / 2.0);
+        frame.origin.y = floor((bounds.height - frame.size.height) / 2.0);
+      }
       _waylandFrameView.frame = frame;
       _waylandFrameView.autoresizingMask = UIViewAutoresizingNone;
     }
@@ -957,6 +958,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     _waylandFrameView.frame = self.bounds;
     _waylandFrameView.autoresizingMask =
         UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    hostOwnsPresent = YES;
   }
 
   CGFloat viewW = _waylandFrameView.bounds.size.width;
@@ -974,29 +976,37 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     contentsScale = 1.0;
   }
 
-  // HiDPI parity with macOS: matching buffer fills 1:1. While the host is
-  // driving layout size (#111 interactive resize) and the buffer still lags,
-  // stretch into the view so chrome/content stay aligned. Only letterbox
-  // (TopLeft) when aspect is mismatched under a settled client size.
   CGFloat displayScale = self.traitCollection.displayScale;
   if (displayScale <= 0.0) {
     displayScale = 1.0;
   }
-  BOOL aspectMatches =
-      fabs(scaleX - scaleY) <= 0.02 * MAX(MAX(scaleX, scaleY), (CGFloat)1.0);
-  BOOL bufferMatchesView =
-      fabs((CGFloat)imgW / contentsScale - viewW) <= 1.0 &&
-      fabs((CGFloat)imgH / contentsScale - viewH) <= 1.0;
   NSString *gravity = kCAGravityResize;
-  if (!aspectMatches && bufferMatchesView) {
+  if (!hostOwnsPresent) {
+    // Fixed / client-authoritative surfaces: 1:1 buffer pixels in the
+    // presentation plate (TopLeft). iPadOS scene resize only recenters — it
+    // must never change contentsScale or use Resize gravity upscaling.
     gravity = kCAGravityTopLeft;
-    // Infer the buffer's intended scale: HiDPI commit (>= ~displayScale in
-    // both axes) maps buffer pixels to points at displayScale, otherwise 1:1.
-    BOOL hiDpiBuffer = (scaleX >= displayScale * 0.9 && scaleY >= displayScale * 0.9);
-    contentsScale = hiDpiBuffer ? displayScale : 1.0;
-  } else if (!aspectMatches && !bufferMatchesView) {
-    // Host-ahead mid layout: stretch lagging buffer into the view.
-    gravity = kCAGravityResize;
+    BOOL hiDpiBuffer =
+        (scaleX >= displayScale * 0.9 && scaleY >= displayScale * 0.9);
+    contentsScale = hiDpiBuffer ? displayScale : MAX(MAX(scaleX, scaleY), 1.0);
+  } else {
+    // HiDPI parity with macOS: matching buffer fills 1:1. While the host is
+    // driving layout size (#111 interactive resize) and the buffer still lags,
+    // stretch into the view so chrome/content stay aligned. Only letterbox
+    // (TopLeft) when aspect is mismatched under a settled client size.
+    BOOL aspectMatches =
+        fabs(scaleX - scaleY) <= 0.02 * MAX(MAX(scaleX, scaleY), (CGFloat)1.0);
+    BOOL bufferMatchesView =
+        fabs((CGFloat)imgW / contentsScale - viewW) <= 1.0 &&
+        fabs((CGFloat)imgH / contentsScale - viewH) <= 1.0;
+    if (!aspectMatches && bufferMatchesView) {
+      gravity = kCAGravityTopLeft;
+      BOOL hiDpiBuffer =
+          (scaleX >= displayScale * 0.9 && scaleY >= displayScale * 0.9);
+      contentsScale = hiDpiBuffer ? displayScale : 1.0;
+    } else if (!aspectMatches && !bufferMatchesView) {
+      gravity = kCAGravityResize;
+    }
   }
 
   BOOL unchanged =
@@ -1105,7 +1115,12 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   _contentLayer.opaque = YES;
   self.opaque = YES;
   self.backgroundColor = UIColor.blackColor;
-  CGFloat scale = self.window.screen.scale > 0 ? self.window.screen.scale : 3.0;
+  // UIWindow.screen is unavailable on visionOS. Trait collections expose the
+  // effective display scale on every UIKit target, including volumetric scenes.
+  CGFloat scale = self.traitCollection.displayScale;
+  if (scale <= 0.0) {
+    scale = 1.0;
+  }
   _contentLayer.contentsScale = scale;
   _contentLayer.frame = self.bounds;
   _contentLayer.drawableSize =
@@ -1173,11 +1188,24 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     _contentLayer.frame = self.bounds;
   }
   _waylandLayer.frame = self.bounds;
-  if (_waylandFrameView.autoresizingMask != UIViewAutoresizingNone) {
-    _waylandFrameView.frame = self.bounds;
-  }
   BOOL layoutSizeChanged =
       !CGSizeEqualToSize(_lastWaylandLayoutSize, self.bounds.size);
+  if (_waylandFrameView.autoresizingMask != UIViewAutoresizingNone) {
+    _waylandFrameView.frame = self.bounds;
+  } else if (!self.hostLocked && !self.followHostSize &&
+             self.clientCommittedSize.width > 0 &&
+             self.clientCommittedSize.height > 0 && layoutSizeChanged) {
+    // Client-constrained (flower/smoke/simple-shm): host UIWindowScene resize
+    // must only re-center the presentation plate — never stretch it to the new
+    // compositor bounds (that upscales the buffer via kCAGravityResize).
+    CGRect presentFrame = _waylandFrameView.frame;
+    presentFrame.size = self.clientCommittedSize;
+    presentFrame.origin.x =
+        floor((self.bounds.size.width - presentFrame.size.width) / 2.0);
+    presentFrame.origin.y =
+        floor((self.bounds.size.height - presentFrame.size.height) / 2.0);
+    _waylandFrameView.frame = presentFrame;
+  }
   if (layoutSizeChanged) {
     _lastWaylandLayoutSize = self.bounds.size;
     _lastPresentToken = 0;

@@ -33,7 +33,6 @@ int fuzzel_main(int argc, char *argv[]) {
   (void)argv;
   return 127;
 }
-int niri_main(void) { return 127; }
 int simple_egl_main(int argc, char *argv[]) {
   (void)argc;
   (void)argv;

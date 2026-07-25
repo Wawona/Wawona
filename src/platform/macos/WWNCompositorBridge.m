@@ -104,6 +104,58 @@ extern void WWNCoreSetWindowActivatedSilent(void *core, uint64_t window_id,
 extern void WWNCoreFlushClients(void *core);
 extern uint32_t WWNCoreDisconnectAllClients(void *core);
 extern void WWNCoreSetForceSSD(void *core, bool enabled);
+extern void WWNCoreSetForceSSDForClientLaunch(void *core, bool enabled);
+extern void WWNCoreSetWindowHostSceneIndependent(void *core, uint64_t window_id,
+                                                 bool independent);
+
+#if TARGET_OS_IPHONE
+NSString *const WWNClientWindowSceneActivityType =
+    @"com.aspauldingcode.Wawona.clientWindow";
+NSString *const WWNClientWindowSceneWindowIdKey = @"wwn.windowId";
+
+/// Bundled weston demos with a fixed preferred size (200×200 or simple-shm
+/// preferred). Must never receive host fill configures or stretch presentation
+/// when the iPadOS UIWindowScene resizes — OWL keeps Client authority.
+static BOOL WWNIosBundledClientPrefersFixedSize(NSString *clientId) {
+  if (clientId.length == 0) {
+    return NO;
+  }
+  static NSSet<NSString *> *fixedClients;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    fixedClients = [NSSet setWithArray:@[
+      @"weston-smoke",
+      @"weston-flower",
+      @"weston-simple-shm",
+      @"weston-clickdot",
+      @"weston-eventdemo",
+    ]];
+  });
+  return [fixedClients containsObject:clientId];
+}
+
+static NSString *WWNIosResolveBundledClientIdForWindow(WWNCompositorBridge *bridge,
+                                                       uint64_t windowId) {
+  NSString *clientId =
+      [WWNWaypipeRunner sharedRunner].activeIOSBundledClientId;
+  if (clientId.length == 0) {
+    NSString *mid = [WWNMachineProfileStore activeMachineId];
+    WWNMachineProfile *profile =
+        mid.length > 0 ? [WWNMachineProfileStore profileById:mid] : nil;
+    id runtimeBundled = profile.runtimeOverrides[@"bundledAppID"];
+    id settingsNative = profile.settingsOverrides[@"NativeClientId"];
+    if ([runtimeBundled isKindOfClass:[NSString class]] &&
+        [(NSString *)runtimeBundled length] > 0) {
+      clientId = (NSString *)runtimeBundled;
+    } else if ([settingsNative isKindOfClass:[NSString class]]) {
+      clientId = (NSString *)settingsNative;
+    }
+  }
+  (void)bridge;
+  (void)windowId;
+  return clientId;
+}
+#endif
 extern bool WWNCoreWindowPrefersMacOSSurfaceDrag(const void *core,
                                                  uint64_t window_id);
 extern void WWNCoreSetSafeAreaInsets(void *core, int32_t top, int32_t right,
@@ -410,6 +462,18 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   NSMutableDictionary<NSNumber *, UIWindow *> *_iosHostWindows;
   NSMutableSet<NSNumber *> *_hostLockedWindowIds;
   BOOL _iosPerWindowHostingEnabled;
+  // iPadOS / visionOS multi-window (#120): client toplevel views awaiting their
+  // dedicated UIWindowScene. handleWindowCreated stages the view here and
+  // requests a new scene carrying the window id; the scene delegate claims the
+  // view in -scene:willConnectToSession: once the OS actually connects the
+  // scene, so the client gets its own host window/scene (not stacked onto the
+  // primary scene).
+  NSMutableDictionary<NSNumber *, UIView *> *_pendingSceneClientViews;
+  /// Window ids with a pending xdg_toplevel.close grace period (iOS family).
+  NSMutableSet<NSNumber *> *_iosHostCloseDeferred;
+  /// Last host-reported xdg maximized/fullscreen bits (fill-primary iOS family).
+  NSMutableDictionary<NSNumber *, NSNumber *> *_iosHostMaximizedByWindowId;
+  NSMutableDictionary<NSNumber *, NSNumber *> *_iosHostFullscreenByWindowId;
   // Host compositor view for iland Metal demos (kmscube) / nested DRM when
   // no Wayland toplevel exists yet. containerView is a plain UIView.
   WWNCompositorView_ios *_ilandHostView;
@@ -428,9 +492,11 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   NSMutableDictionary<NSNumber *, NSNumber *> *_presentGenerationBySurface;
   uint64_t _waylandPresentGeneration;
 #endif
-#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+  // Which machine owns each toplevel window id. Available on ALL platforms:
+  // macOS uses it for per-machine window raise; iOS/iPadOS/visionOS use it for
+  // per-machine focus / minimize / hide when multiple machines run
+  // concurrently (#84 / concurrent machines).
   NSMutableDictionary<NSNumber *, NSString *> *_windowOwnerMachineIdByWindowId;
-#endif
 
   // Per-window resize coalescing.  Each window gets its own "latest"
   // dimensions so concurrent resizes of different windows never collide.
@@ -514,6 +580,10 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     _popups = [NSMutableDictionary dictionary];
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
     _iosHostWindows = [NSMutableDictionary dictionary];
+    _pendingSceneClientViews = [NSMutableDictionary dictionary];
+    _iosHostCloseDeferred = [NSMutableSet set];
+    _iosHostMaximizedByWindowId = [NSMutableDictionary dictionary];
+    _iosHostFullscreenByWindowId = [NSMutableDictionary dictionary];
     _hostLockedWindowIds = [NSMutableSet set];
     _iosPerWindowHostingEnabled = WWNEnablePerWindowHosting();
     WWNLog("BRIDGE", @"iOS/vision per-window hosting %@", _iosPerWindowHostingEnabled ? @"enabled" : @"disabled");
@@ -527,9 +597,7 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     _presentGenerationBySurface = [NSMutableDictionary dictionary];
     _waylandPresentGeneration = 0;
 #endif
-#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
     _windowOwnerMachineIdByWindowId = [NSMutableDictionary dictionary];
-#endif
     _latestResizeDims = [NSMutableDictionary dictionary];
     _sentResizeDims = [NSMutableDictionary dictionary];
     _resizeInFlightWindows = [NSMutableSet set];
@@ -825,9 +893,7 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   [_latestBufferBySurface removeAllObjects];
   [_lastPresentedBufferBySurface removeAllObjects];
   [_staleSceneSelectionsBySurface removeAllObjects];
-#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
   [_windowOwnerMachineIdByWindowId removeAllObjects];
-#endif
   atomic_store(&_compositorBusy, false);
   [_latestResizeDims removeAllObjects];
   [_sentResizeDims removeAllObjects];
@@ -1720,6 +1786,17 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     if (hostBounds.size.width > 0.0 && hostBounds.size.height > 0.0) {
       frame = CGRectMake(0, 0, hostBounds.size.width, hostBounds.size.height);
     }
+  } else if (cgImage && node->buffer_width > 0 && node->buffer_height > 0 &&
+             node->scale > 0.0f) {
+    // SizeAuthority::Host can leave node dimensions at a stale host request
+    // while the client buffer stays at its fixed preferred size (flower/smoke
+    // 200×200). Never pass an oversized frame into presentWaylandFrame — that
+    // triggers kCAGravityResize upscaling when the iPadOS scene resizes.
+    float bufLogicalW = (float)node->buffer_width / node->scale;
+    float bufLogicalH = (float)node->buffer_height / node->scale;
+    if (node->width > bufLogicalW + 1.0f || node->height > bufLogicalH + 1.0f) {
+      frame = CGRectMake(localX, localY, bufLogicalW, bufLogicalH);
+    }
   }
 #endif
   CGRect contentRect = CGRectMake(0, 0, 1, 1);
@@ -2568,6 +2645,28 @@ extern void WWNCoreInject_touch_frame(void *core);
   }];
 }
 
+- (BOOL)shouldFollowHostSizeForWindowId:(uint64_t)windowId {
+#if TARGET_OS_IPHONE
+  NSString *clientId =
+      WWNIosResolveBundledClientIdForWindow(self, windowId);
+  if (WWNIosBundledClientPrefersFixedSize(clientId)) {
+    return NO;
+  }
+  id view = _windows[@(windowId)];
+  if ([view isKindOfClass:[WWNCompositorView_ios class]]) {
+    WWNCompositorView_ios *iosView = (WWNCompositorView_ios *)view;
+    return iosView.hostLocked || iosView.followHostSize;
+  }
+  return NO;
+#else
+  // macOS AppKit windows always own their own frame (CSD/SSD live-resize is
+  // host-driven by design); this gate exists for the mobile per-window
+  // dedicated-scene hosting path (#120).
+  (void)windowId;
+  return YES;
+#endif
+}
+
 - (void)injectWindowResize:(uint64_t)windowId
                      width:(uint32_t)width
                     height:(uint32_t)height {
@@ -2763,11 +2862,44 @@ extern void WWNCoreInject_touch_frame(void *core);
   if (view.superview) {
     [view.superview bringSubviewToFront:view];
   }
+  // In-window tabs (#84): only the selected client's surface is visible; the
+  // others are hidden so switching tabs actually swaps what the user sees
+  // (fill-primary surfaces otherwise stack opaquely and the raise alone is not
+  // enough once a client repaints). fullscreen_shell kiosk layers are display
+  // surfaces, not tabs — leave their visibility untouched.
+  NSArray<NSNumber *> *tabbed = [self tabbedClientWindowIds];
+  NSSet<NSNumber *> *tabbedSet = [NSSet setWithArray:tabbed];
   for (NSNumber *wid in _windows.allKeys) {
+    if (![tabbedSet containsObject:wid]) {
+      continue;
+    }
+    UIView *client = _windows[wid];
     BOOL active = wid.unsignedLongLongValue == windowId;
+    client.hidden = !active;
     [self setWindowActivated:wid.unsignedLongLongValue active:active];
   }
   [self injectKeyboardEnterForWindow:windowId keys:@[]];
+}
+
+- (UIView *)takePendingSceneClientViewForWindowId:(uint64_t)windowId {
+  NSNumber *key = @(windowId);
+  UIView *view = _pendingSceneClientViews[key];
+  if (view) {
+    [_pendingSceneClientViews removeObjectForKey:key];
+  }
+  return view;
+}
+
+- (void)registerClientHostWindow:(UIWindow *)window
+                     forWindowId:(uint64_t)windowId {
+  if (!window) {
+    return;
+  }
+  _iosHostWindows[@(windowId)] = window;
+}
+
+- (BOOL)perWindowHostingEnabled {
+  return _iosPerWindowHostingEnabled;
 }
 
 - (void)setClientHostWindowsHidden:(BOOL)hidden
@@ -2784,6 +2916,17 @@ extern void WWNCoreInject_touch_frame(void *core);
     if (!hidden) {
       [hostWindow makeKeyAndVisible];
     }
+  }
+}
+
+- (void)setClientHostWindowHidden:(BOOL)hidden forWindowId:(uint64_t)windowId {
+  UIWindow *hostWindow = _iosHostWindows[@(windowId)];
+  if (!hostWindow) {
+    return;
+  }
+  hostWindow.hidden = hidden;
+  if (!hidden) {
+    [hostWindow makeKeyAndVisible];
   }
 }
 
@@ -3196,6 +3339,20 @@ extern void WWNCoreInject_touch_frame(void *core);
     WWNLog("BRIDGE", @"Force SSD set to: %d", enabled);
   }];
 }
+
+// Force SSD per-machine (#120): stage the decoration policy for the NEXT
+// machine's client launch. Unlike -setForceSSD:, this does not touch the
+// global default or restyle any already-connected machine, so concurrent
+// CSD + SSD machines never stomp each other.
+- (void)setForceSSDForClientLaunch:(BOOL)enabled {
+  if (!_rustCore) {
+    return;
+  }
+  [self _dispatchToRust:^{
+    WWNCoreSetForceSSDForClientLaunch(self->_rustCore, enabled);
+    WWNLog("BRIDGE", @"Force SSD staged for next client launch: %d", enabled);
+  }];
+}
 - (void)setKeyboardRepeatRate:(int32_t)rate delay:(int32_t)delay {
 }
 - (void)notifyFrameComplete {
@@ -3235,6 +3392,7 @@ typedef enum : uint32_t {
   CWindowEventTypeHostLocked = 13,
   CWindowEventTypeFullscreenRequested = 14,
   CWindowEventTypeUnfullscreenRequested = 15,
+  CWindowEventTypeCloseRequested = 16,
 } CWindowEventType;
 
 typedef struct CWindowEvent {
@@ -3323,6 +3481,9 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
   case CWindowEventTypeUnfullscreenRequested:
     [self handleWindowUnfullscreenRequested:event];
     break;
+  case CWindowEventTypeCloseRequested:
+    [self handleWindowCloseRequested:event];
+    break;
   case CWindowEventTypeCursorShapeChanged:
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
     [self handleCursorShapeChanged:event];
@@ -3380,6 +3541,11 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
   NSString *owner =
       _windowOwnerMachineIdByWindowId[windowId]
           ?: [WWNMachineProfileStore activeMachineId] ?: @"";
+  if (_iosPerWindowHostingEnabled) {
+    [self setClientHostWindowHidden:YES forWindowId:event->window_id];
+  } else {
+    [self setClientHostWindowsHidden:YES forMachineId:owner];
+  }
   NSMutableDictionary *info =
       [NSMutableDictionary dictionaryWithObject:windowId forKey:@"windowId"];
   if (owner.length > 0) {
@@ -4393,6 +4559,12 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
   [self _dispatchToRust:^{
     WWNCoreApplyHostWindowFullscreen(self->_rustCore, wid, fs, w, h);
   }];
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+  _iosHostFullscreenByWindowId[@(windowId)] = @(fullscreen);
+  if (fullscreen) {
+    _iosHostMaximizedByWindowId[@(windowId)] = @NO;
+  }
+#endif
 }
 
 - (void)syncHostMaximized:(BOOL)maximized
@@ -4408,9 +4580,105 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
   [self _dispatchToRust:^{
     WWNCoreApplyHostWindowMaximized(self->_rustCore, wid, mz, w, h);
   }];
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+  _iosHostMaximizedByWindowId[@(windowId)] = @(maximized);
+  if (maximized) {
+    _iosHostFullscreenByWindowId[@(windowId)] = @NO;
+  }
+#endif
 }
 
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+/// Resolve the active UIKit host surface bounds for fill-primary WM sync.
+/// Dedicated UIWindowScene clients use their own host window, not the primary
+/// Machines scene container.
+- (CGSize)_iosFillPrimaryHostSizeForWindowId:(uint64_t)windowId {
+  UIWindow *hostWindow = _iosHostWindows[@(windowId)];
+  if (hostWindow && hostWindow.rootViewController) {
+    [hostWindow.rootViewController.view layoutIfNeeded];
+    CGSize size = hostWindow.rootViewController.view.bounds.size;
+    if (size.width > 0 && size.height > 0) {
+      return size;
+    }
+  }
+  UIView *host = nil;
+  id winObj = _windows[@(windowId)];
+  if ([winObj isKindOfClass:[UIView class]]) {
+    host = (UIView *)winObj;
+  } else if ([self.containerView isKindOfClass:[UIView class]]) {
+    host = self.containerView;
+  }
+  if (host) {
+    [host layoutIfNeeded];
+    return host.bounds.size;
+  }
+  return CGSizeMake(640, 480);
+}
+
+- (void)_iosClearHostCloseDeferredForWindowId:(uint64_t)windowId {
+  [_iosHostCloseDeferred removeObject:@(windowId)];
+  [NSObject cancelPreviousPerformRequestsWithTarget:self
+                                           selector:@selector(_iosForceDestroyIfCloseStillDeferred:)
+                                             object:@(windowId)];
+}
+
+- (void)_iosForceDestroyIfCloseStillDeferred:(NSNumber *)windowIdKey {
+  if (![_iosHostCloseDeferred containsObject:windowIdKey]) {
+    return;
+  }
+  [_iosHostCloseDeferred removeObject:windowIdKey];
+  [self requestForceDestroyHostWindowForWindowId:windowIdKey.unsignedLongLongValue];
+}
+
+/// Mirror macOS WWNWindow windowShouldClose: — ask the Wayland client to exit,
+/// then force-destroy if it does not tear down within the grace window.
+- (void)_iosBeginGracefulHostCloseForWindowId:(uint64_t)windowId {
+  NSNumber *key = @(windowId);
+  if ([_iosHostCloseDeferred containsObject:key]) {
+    WWNLog("BRIDGE",
+           @"iOS host close: second close for window %llu — force-destroy",
+           windowId);
+    [self _iosClearHostCloseDeferredForWindowId:windowId];
+    [self requestForceDestroyHostWindowForWindowId:windowId];
+    return;
+  }
+  BOOL sent = [self requestHostCloseForWindowId:windowId];
+  if (!sent) {
+    [self requestForceDestroyHostWindowForWindowId:windowId];
+    return;
+  }
+  [_iosHostCloseDeferred addObject:key];
+  WWNLog("BRIDGE",
+         @"iOS host close: sent xdg_toplevel.close for window %llu — deferring "
+         @"scene teardown",
+         windowId);
+  [self performSelector:@selector(_iosForceDestroyIfCloseStillDeferred:)
+             withObject:key
+             afterDelay:1.5];
+}
+
+- (void)_iosSetFollowHostSizeForFillPrimaryWindowId:(uint64_t)windowId {
+  NSString *clientId = WWNIosResolveBundledClientIdForWindow(self, windowId);
+  if (WWNIosBundledClientPrefersFixedSize(clientId)) {
+    return;
+  }
+  id view = _windows[@(windowId)];
+  if ([view isKindOfClass:[WWNCompositorView_ios class]]) {
+    ((WWNCompositorView_ios *)view).followHostSize = YES;
+  }
+}
+
+- (void)resyncFillPrimaryHostStateForWindowId:(uint64_t)windowId {
+  BOOL fullscreen = [_iosHostFullscreenByWindowId[@(windowId)] boolValue];
+  BOOL maximized = [_iosHostMaximizedByWindowId[@(windowId)] boolValue];
+  if (!fullscreen && !maximized) {
+    return;
+  }
+  [self _iosInjectFillPrimaryForWindowId:windowId
+                              maximized:maximized && !fullscreen
+                             fullscreen:fullscreen];
+}
+
 /// Fill-primary window policy (iOS / iPadOS / tvOS / visionOS / phone):
 /// UIKit owns the host window(s); Wawona cannot spawn floating AppKit-style
 /// frames or true OS zoom. Maximize and fullscreen both mean: configure the
@@ -4421,14 +4689,7 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
 - (void)_iosInjectFillPrimaryForWindowId:(uint64_t)windowId
                               maximized:(BOOL)maximized
                              fullscreen:(BOOL)fullscreen {
-  UIView *host = nil;
-  id winObj = _windows[@(windowId)];
-  if ([winObj isKindOfClass:[UIView class]]) {
-    host = (UIView *)winObj;
-  } else if ([self.containerView isKindOfClass:[UIView class]]) {
-    host = self.containerView;
-  }
-  CGSize size = host ? host.bounds.size : CGSizeMake(640, 480);
+  CGSize size = [self _iosFillPrimaryHostSizeForWindowId:windowId];
   uint32_t width = (uint32_t)MAX(1, lround(size.width));
   uint32_t height = (uint32_t)MAX(1, lround(size.height));
   [self injectWindowResize:windowId width:width height:height];
@@ -4444,10 +4705,23 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
 }
 #endif
 
+- (void)handleWindowCloseRequested:(CWindowEvent *)event {
+  WWNLog("BRIDGE", @"handleWindowCloseRequested: id=%llu", event->window_id);
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+  [self _iosBeginGracefulHostCloseForWindowId:event->window_id];
+#else
+  WWNWindow *window = _windows[@(event->window_id)];
+  if (window) {
+    [window performClose:nil];
+  }
+#endif
+}
+
 // Shared AppKit + UIKit (must stay outside the macOS-only block above).
 - (void)handleWindowMaximizeRequested:(CWindowEvent *)event {
   WWNLog("BRIDGE", @"handleWindowMaximizeRequested: id=%llu", event->window_id);
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+  [self _iosSetFollowHostSizeForFillPrimaryWindowId:event->window_id];
   [self _iosInjectFillPrimaryForWindowId:event->window_id
                               maximized:YES
                              fullscreen:NO];
@@ -4515,6 +4789,7 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
 - (void)handleWindowFullscreenRequested:(CWindowEvent *)event {
   WWNLog("BRIDGE", @"handleWindowFullscreenRequested: id=%llu", event->window_id);
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+  [self _iosSetFollowHostSizeForFillPrimaryWindowId:event->window_id];
   [self _iosInjectFillPrimaryForWindowId:event->window_id
                               maximized:NO
                              fullscreen:YES];
@@ -4862,52 +5137,70 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
 
   if (_iosPerWindowHostingEnabled && !event->host_locked &&
       !event->fullscreen_shell) {
-    UIWindowScene *scene = self.containerView.window.windowScene;
-    if (!scene) {
-      for (UIScene *candidate in UIApplication.sharedApplication.connectedScenes) {
-        if ([candidate isKindOfClass:[UIWindowScene class]]) {
-          scene = (UIWindowScene *)candidate;
-          break;
-        }
-      }
-    }
+    // iPadOS / visionOS multi-window (#120): request a DEDICATED UIWindowScene
+    // for this client and attach its view only once that scene actually
+    // connects (in -scene:willConnectToSession:). Attaching a UIWindow to the
+    // existing scene synchronously — as the old code did — stacked every client
+    // onto the primary scene instead of giving each its own OS window/scene.
+    BOOL requestedScene = NO;
 #if !TARGET_OS_TV
-    // Prefer activating an additional UIWindowScene (iPadOS / visionOS matrix).
     if (@available(iOS 17.0, visionOS 1.0, *)) {
+      uint64_t widForScene = event->window_id;
+      _pendingSceneClientViews[@(widForScene)] = view;
+
+      NSUserActivity *activity = [[NSUserActivity alloc]
+          initWithActivityType:WWNClientWindowSceneActivityType];
+      activity.userInfo = @{WWNClientWindowSceneWindowIdKey : @(widForScene)};
+
       UISceneSessionActivationRequest *request = [UISceneSessionActivationRequest
           requestWithRole:UIWindowSceneSessionRoleApplication];
+      request.userActivity = activity;
       [UIApplication.sharedApplication
           activateSceneSessionForRequest:request
                             errorHandler:^(NSError *err) {
                               WWNLog("BRIDGE",
-                                     @"Scene activation failed for window %llu: %@",
-                                     event->window_id, err);
+                                     @"Scene activation failed for window %llu: %@ — "
+                                     @"falling back to shared container",
+                                     widForScene, err);
+                              // Falling back to the shared container: this
+                              // window is no longer independently scened, so
+                              // let it participate in the shared-output
+                              // resize sweep again.
+                              WWNCoreSetWindowHostSceneIndependent(
+                                  self->_rustCore, widForScene, false);
+                              dispatch_async(dispatch_get_main_queue(), ^{
+                                UIView *pending = [self
+                                    takePendingSceneClientViewForWindowId:widForScene];
+                                if (pending && self.containerView) {
+                                  [self.containerView insertSubview:pending
+                                                            atIndex:0];
+                                }
+                              });
                             }];
+      requestedScene = YES;
+      // This window now lives in its own independent UIWindowScene — never
+      // let the shared/global output resize sweep (primary scene rotation,
+      // safe-area/keyboard changes, …) snap it back to the primary window's
+      // size. See ipad-scene-parity / vision-shell-parity (#120).
+      WWNCoreSetWindowHostSceneIndependent(self->_rustCore, widForScene, true);
+      WWNLog("BRIDGE",
+             @"Requested dedicated UIWindowScene for window %llu (deferred attach)",
+             widForScene);
     }
 #endif
-    if (scene) {
-      // Dedicated UIWindow on a scene (new session when activation succeeds).
-      UIWindow *hostWindow = [[UIWindow alloc] initWithWindowScene:scene];
-      UIViewController *hostController = [[UIViewController alloc] init];
-      hostController.view.backgroundColor = UIColor.blackColor;
-      hostController.view.frame = hostWindow.bounds;
-      hostController.view.autoresizingMask =
-          UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-      hostWindow.rootViewController = hostController;
-      view.frame = hostController.view.bounds;
-      [hostController.view addSubview:view];
-      hostWindow.hidden = NO;
-      [hostWindow makeKeyAndVisible];
-      _iosHostWindows[@(event->window_id)] = hostWindow;
-      WWNLog("BRIDGE", @"Added window %llu in dedicated host UIWindow (%.0fx%.0f)",
-             event->window_id, hostWindow.bounds.size.width, hostWindow.bounds.size.height);
-    } else if (self.containerView) {
-      [self.containerView insertSubview:view atIndex:0];
-      WWNLog("BRIDGE", @"No UIWindowScene found; fell back to container for window %llu",
-             event->window_id);
-    } else {
-      WWNLog("BRIDGE", @"Warning: No containerView/windowScene set, window %llu not visible",
-             event->window_id);
+    if (!requestedScene) {
+      // Pre-iOS 17 (no multi-scene activation API): host in the shared
+      // container so the client is still visible.
+      if (self.containerView) {
+        [self.containerView insertSubview:view atIndex:0];
+        WWNLog("BRIDGE",
+               @"Per-window hosting unavailable; container fallback for window %llu",
+               event->window_id);
+      } else {
+        WWNLog("BRIDGE",
+               @"Warning: No containerView set, window %llu not visible",
+               event->window_id);
+      }
     }
   } else if (self.containerView) {
     [self.containerView insertSubview:view atIndex:0];
@@ -4919,6 +5212,15 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
   }
 
   [_windows setObject:view forKey:@(event->window_id)];
+  // Record which machine owns this toplevel so per-machine focus / minimize /
+  // hide (focusClientWindowsForMachineId:, setClientHostWindowsHidden:) work
+  // when multiple machines run concurrently on iOS — mirrors the macOS path.
+  // Without this, every window has an empty owner and "focus machine" matches
+  // all clients (#84 / concurrent machines).
+  NSString *iosOwnerMachineId = [WWNMachineProfileStore activeMachineId];
+  if (iosOwnerMachineId.length > 0) {
+    _windowOwnerMachineIdByWindowId[@(event->window_id)] = iosOwnerMachineId;
+  }
   [self _notifyHostWindowsDidChange];
 
   // Fullscreen shell (kiosk) windows are display-only surfaces presented
@@ -4974,6 +5276,12 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
       view.hostLocked = YES;
       [_hostLockedWindowIds addObject:@(event->window_id)];
     }
+  } else if (WWNIosBundledClientPrefersFixedSize(bundledClientForSize) &&
+             [view isKindOfClass:[WWNCompositorView_ios class]]) {
+    // Explicit guard: fixed weston demos must stay Client-authoritative even
+    // if a prior session left followHostSize set on a recycled view (should
+    // not happen) or a race mis-classifies the bundled id.
+    ((WWNCompositorView_ios *)view).followHostSize = NO;
   }
   WWNLog("BRIDGE",
          @"iOS size policy window=%llu client='%@' fillShell=%d followHost=%d",
@@ -5112,6 +5420,23 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
   if (hostWindow) {
     hostWindow.hidden = YES;
     hostWindow.rootViewController = nil;
+#if !TARGET_OS_TV
+    // iPadOS / visionOS multi-window (#120): tear down the client's dedicated
+    // UIWindowScene so the OS window actually closes instead of lingering empty.
+    if (_iosPerWindowHostingEnabled) {
+      UISceneSession *session = hostWindow.windowScene.session;
+      if (session) {
+        [UIApplication.sharedApplication
+            requestSceneSessionDestruction:session
+                              options:nil
+                         errorHandler:^(NSError *err) {
+                           WWNLog("BRIDGE",
+                                  @"Scene destruction failed for window %llu: %@",
+                                  event->window_id, err);
+                         }];
+      }
+    }
+#endif
     [_iosHostWindows removeObjectForKey:winKey];
   }
 
@@ -5130,6 +5455,11 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
   [_sentResizeDims removeObjectForKey:winKey];
   [_resizeInFlightWindows removeObject:winKey];
   [_hostLockedWindowIds removeObject:winKey];
+  [_windowOwnerMachineIdByWindowId removeObjectForKey:winKey];
+  [_pendingSceneClientViews removeObjectForKey:winKey];
+  [self _iosClearHostCloseDeferredForWindowId:event->window_id];
+  [_iosHostMaximizedByWindowId removeObjectForKey:winKey];
+  [_iosHostFullscreenByWindowId removeObjectForKey:winKey];
   [NSObject cancelPreviousPerformRequestsWithTarget:self
                                            selector:@selector(_drainPendingWindowResizeForId:)
                                              object:winKey];
@@ -5262,7 +5592,10 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
         [shellClient isEqualToString:@"weston-terminal"] ||
         [shellClient isEqualToString:@"wayland-terminal"] ||
         [shellClient isEqualToString:@"foot"];
-    if (hostLocked || activeShell || iosView.followHostSize) {
+    BOOL fixedSizeClient = WWNIosBundledClientPrefersFixedSize(shellClient);
+    if (fixedSizeClient) {
+      iosView.followHostSize = NO;
+    } else if (hostLocked || activeShell || iosView.followHostSize) {
       // Shells / host-locked always follow the compositor container. Do not
       // drop followHost when the first commit is still a floating cell-snap
       // (e.g. 80×25) — that cleared full-bleed and re-centered gutters.

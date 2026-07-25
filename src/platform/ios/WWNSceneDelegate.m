@@ -222,6 +222,66 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
 
 @end
 
+// iPadOS / visionOS multi-window (#120): hosts a single Wayland client's view
+// in its own dedicated UIWindowScene (see -connectClientWindowScene:). This
+// window's geometry is independent of the primary Machines scene and of any
+// other client's window — report layout-driven size changes (Stage Manager
+// drag, Split View, rotation, …) so the scene delegate can push a per-window
+// injectWindowResize instead of relying on the shared/global output size.
+@interface WWNClientSceneHostViewController : UIViewController
+@property(nonatomic, copy, nullable) void (^onSizeChanged)(CGSize size);
+@end
+
+@implementation WWNClientSceneHostViewController {
+  CGSize _wwnLastReportedSize;
+}
+
+- (void)viewDidLayoutSubviews {
+  [super viewDidLayoutSubviews];
+  [self wwnReportSizeIfChanged:self.view.bounds.size];
+}
+
+// viewDidLayoutSubviews tracks *live* drag frames (mirrors macOS live-resize
+// streaming), but Stage Manager / Split View / rotation transitions can
+// coalesce or skip intermediate layout passes on iPadOS/visionOS, especially
+// when the client itself isn't actively re-laying-out content that would
+// otherwise trigger Auto Layout. viewWillTransitionToSize:… is the
+// OS-guaranteed callback for *every* scene bounds change and always carries
+// the final target size, so use it as a backstop — without it, a resize that
+// doesn't otherwise dirty layout can silently never reach injectWindowResize:
+// and the client keeps rendering at its old size (#120).
+- (void)viewWillTransitionToSize:(CGSize)size
+        withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator {
+  [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
+  [self wwnReportSizeIfChanged:size];
+  __weak typeof(self) weakSelf = self;
+  [coordinator animateAlongsideTransition:nil
+                                completion:^(id<UIViewControllerTransitionCoordinatorContext> ctx) {
+    // Report once more after the transition settles in case the coordinator's
+    // target size differed from the final laid-out bounds (e.g. safe-area
+    // insets resolved late).
+    __strong typeof(weakSelf) strongSelf = weakSelf;
+    if (strongSelf) {
+      [strongSelf wwnReportSizeIfChanged:strongSelf.view.bounds.size];
+    }
+  }];
+}
+
+- (void)wwnReportSizeIfChanged:(CGSize)size {
+  if (size.width <= 0 || size.height <= 0) {
+    return;
+  }
+  if (CGSizeEqualToSize(size, _wwnLastReportedSize)) {
+    return;
+  }
+  _wwnLastReportedSize = size;
+  if (self.onSizeChanged) {
+    self.onSizeChanged(size);
+  }
+}
+
+@end
+
 @implementation WWNWelcomeViewController
 
 - (void)viewDidLoad {
@@ -373,9 +433,106 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
 @property(nonatomic, strong, nullable) NSLayoutConstraint *clientTabsTopConstraint;
 /// Window ids parallel to clientTabsControl segments (Wayland clients only).
 @property(nonatomic, copy, nullable) NSArray<NSNumber *> *clientTabWindowIds;
+/// iPadOS / visionOS multi-window (#120): when this scene delegate hosts a
+/// single Wayland client in its own UIWindowScene, the client's window id
+/// (0 = primary Machines scene). Used to tear the client down on disconnect.
+@property(nonatomic, assign) uint64_t hostedClientWindowId;
 @end
 
 @implementation WWNSceneDelegate
+
+#if !TARGET_OS_TV
+// iPadOS / visionOS multi-window (#120): host a single Wayland client toplevel
+// in its own dedicated UIWindowScene. Called from -scene:willConnectToSession:
+// when the scene was activated by -[WWNCompositorBridge handleWindowCreated]
+// with a client-window user activity.
+- (void)connectClientWindowScene:(UIWindowScene *)windowScene
+                     forWindowId:(uint64_t)windowId
+                         session:(UISceneSession *)session {
+  WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+  UIView *clientView = [bridge takePendingSceneClientViewForWindowId:windowId];
+  if (!clientView) {
+    // The client was destroyed before its scene connected: nothing to host.
+    WWNLog("SCENE",
+           @"client-window scene connected for window %llu but no pending view; "
+           @"ignoring",
+           windowId);
+    return;
+  }
+
+  self.hostedClientWindowId = windowId;
+
+  UIWindow *hostWindow =
+      [[UIWindow alloc] initWithWindowScene:windowScene];
+  hostWindow.backgroundColor = [UIColor blackColor];
+  WWNClientSceneHostViewController *hostController =
+      [[WWNClientSceneHostViewController alloc] init];
+
+  // Wire the resize callback BEFORE the view is loaded/added to any window —
+  // loadView/viewDidLoad below and the rootViewController assignment can
+  // trigger the first layout pass, and we don't want that first (correct)
+  // size to be silently swallowed by a nil callback.
+  //
+  // This window's size is driven exclusively by its own dedicated scene —
+  // never by the primary Machines scene's shared output (#120). Push a
+  // per-window resize on every layout/transition change (Stage Manager
+  // drag, Split View, rotation, …) instead of the shared
+  // setOutputWidth:height:scale:.
+  //
+  // OWL / SizeAuthority gate: mirrors WWNCompositorView_ios.layoutSubviews'
+  // mayInjectHostSize (hostLocked || followHostSize). clientView (the actual
+  // WWNCompositorView_ios) is a flex-resizing subview of this controller's
+  // view, so its own layoutSubviews already independently observes this same
+  // bounds change and applies the identical gate — without this check here
+  // too, this callback unconditionally forced host authority on every
+  // fixed-size demo client (weston-flower/smoke, simple-shm), stretching
+  // their small negotiated buffer to fill the dedicated scene window instead
+  // of leaving it centered at the size the client actually wants.
+  __weak WWNCompositorBridge *weakBridge = bridge;
+  hostController.onSizeChanged = ^(CGSize size) {
+    if (![weakBridge shouldFollowHostSizeForWindowId:windowId]) {
+      WWNLog("SCENE",
+             @"Dedicated scene window %llu size changed → %.0fx%.0f but "
+             @"client does not follow host size; leaving negotiated size "
+             @"alone",
+             windowId, size.width, size.height);
+      return;
+    }
+    uint32_t w = (uint32_t)MAX(1, lround(size.width));
+    uint32_t h = (uint32_t)MAX(1, lround(size.height));
+    WWNLog("SCENE",
+           @"Dedicated scene window %llu size changed → injectWindowResize "
+           @"%.0fx%.0f",
+           windowId, size.width, size.height);
+    [weakBridge injectWindowResize:windowId width:w height:h];
+    [weakBridge resyncFillPrimaryHostStateForWindowId:windowId];
+  };
+
+  hostController.view.backgroundColor = [UIColor blackColor];
+  hostWindow.rootViewController = hostController;
+
+  clientView.frame = hostController.view.bounds;
+  clientView.autoresizingMask =
+      UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+  [hostController.view addSubview:clientView];
+
+  hostWindow.hidden = NO;
+  [hostWindow makeKeyAndVisible];
+  self.window = hostWindow;
+
+  [bridge registerClientHostWindow:hostWindow forWindowId:windowId];
+
+  // Title the scene so it reads correctly in the app switcher / Stage Manager.
+  NSString *title = [bridge titleForHostWindowId:windowId];
+  if (title.length > 0) {
+    windowScene.title = title;
+  }
+
+  WWNLog("SCENE",
+         @"Hosted Wayland client window %llu in dedicated UIWindowScene (%.0fx%.0f)",
+         windowId, hostWindow.bounds.size.width, hostWindow.bounds.size.height);
+}
+#endif
 
 - (void)scene:(UIScene *)scene
     willConnectToSession:(UISceneSession *)session
@@ -387,6 +544,32 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
     return;
 
   UIWindowScene *windowScene = (UIWindowScene *)scene;
+
+#if !TARGET_OS_TV
+  // iPadOS / visionOS multi-window (#120): a scene requested by
+  // -handleWindowCreated for a specific Wayland client carries its window id in
+  // an NSUserActivity. Host ONLY that client's view in this scene — do not
+  // rebuild the Machines UI or touch the shared compositor container (that path
+  // belongs to the primary scene below).
+  uint64_t clientSceneWindowId = 0;
+  for (NSUserActivity *activity in connectionOptions.userActivities) {
+    if ([activity.activityType
+            isEqualToString:WWNClientWindowSceneActivityType]) {
+      NSNumber *wid = activity.userInfo[WWNClientWindowSceneWindowIdKey];
+      if ([wid isKindOfClass:[NSNumber class]]) {
+        clientSceneWindowId = wid.unsignedLongLongValue;
+      }
+      break;
+    }
+  }
+  if (clientSceneWindowId != 0) {
+    [self connectClientWindowScene:windowScene
+                       forWindowId:clientSceneWindowId
+                           session:session];
+    return;
+  }
+#endif
+
   WWNShakeAwareWindow *shakeWindow =
       [[WWNShakeAwareWindow alloc] initWithWindowScene:windowScene];
   __weak typeof(self) weakSelf = self;
@@ -754,6 +937,16 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
 // Deprecated in iOS 26 — migrate to registerForTraitChanges: when the
 // minimum deployment target is raised to iOS 17+.
 - (void)wwn_handleWindowSceneGeometryChange {
+#if !TARGET_OS_TV
+  // Dedicated client scenes resize via WWNClientSceneHostViewController; the
+  // primary Machines scene owns compositorContainer / shared wl_output.
+  if (self.hostedClientWindowId != 0) {
+    return;
+  }
+#endif
+  if (!self.compositorContainer) {
+    return;
+  }
   WWNLog("SCENE", @"Scene geometry changed (container %.0fx%.0f)",
         self.compositorContainer.bounds.size.width,
         self.compositorContainer.bounds.size.height);
@@ -836,6 +1029,19 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
 
 - (void)sceneDidDisconnect:(UIScene *)scene {
   WWNLog("SCENE", @"Scene disconnected");
+#if !TARGET_OS_TV
+  // iPadOS / visionOS multi-window (#120): closing a client's dedicated
+  // UIWindowScene (app switcher / Stage Manager) must ask the Wayland client to
+  // close so the compositor tears the toplevel down instead of leaking it.
+  if (self.hostedClientWindowId != 0) {
+    uint64_t wid = self.hostedClientWindowId;
+    self.hostedClientWindowId = 0;
+    WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+    if (![bridge requestHostCloseForWindowId:wid]) {
+      [bridge requestForceDestroyHostWindowForWindowId:wid];
+    }
+  }
+#endif
 }
 
 - (void)sceneDidBecomeActive:(UIScene *)scene {
@@ -1086,8 +1292,26 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
 - (void)handleNativeClientWillLaunch:(NSNotification *)notification {
   NSString *clientId = notification.userInfo[@"clientId"];
   [self showStartupLogForClient:clientId];
-  [self hideMachinesUIAndRevealCompositor];
+  // iPadOS / visionOS multi-window (#120): this fires on the PRIMARY scene's
+  // delegate (the client's own scene doesn't exist yet — it's requested
+  // later, once the toplevel actually maps). When clients get their own
+  // dedicated UIWindowScene, the primary Machines scene must stay exactly as
+  // it is — hiding its Machines UI and revealing its (now-unused, empty)
+  // compositorContainer leaves the user with a black, uninteractable window
+  // and no way to launch another machine.
+  if (![self clientsUseDedicatedScenes]) {
+    [self hideMachinesUIAndRevealCompositor];
+  }
   [self refreshClientTabs];
+}
+
+/// iPadOS / visionOS multi-window (#120): YES when Wayland clients are hosted
+/// in their own dedicated `UIWindowScene` rather than the primary scene's
+/// shared compositor container. The primary (Machines) scene must never hide
+/// its SwiftUI configuration UI or reveal its compositor container for such
+/// clients — they render in a different OS window entirely.
+- (BOOL)clientsUseDedicatedScenes {
+  return [[WWNCompositorBridge sharedBridge] perWindowHostingEnabled];
 }
 
 - (void)handleHostWindowsDidChange:(NSNotification *)notification {
@@ -1126,6 +1350,21 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
   // Tabs = live Wayland toplevels only. Shell / Machines is host chrome and
   // must never appear as a segment (nested niri used to show Shell + Niri).
   WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+
+  // Preserve selection by Wayland window id, not by segment index: creating or
+  // closing a client reorders/renumbers segments, so an index would silently
+  // select the wrong client (#84). Capture BEFORE clientTabWindowIds is
+  // replaced below.
+  NSNumber *previouslySelectedWindowId = nil;
+  if (self.clientTabsControl &&
+      self.clientTabsControl.selectedSegmentIndex >= 0 &&
+      (NSUInteger)self.clientTabsControl.selectedSegmentIndex <
+          self.clientTabWindowIds.count) {
+    previouslySelectedWindowId =
+        self.clientTabWindowIds[(NSUInteger)self.clientTabsControl
+                                    .selectedSegmentIndex];
+  }
+
   NSArray<NSNumber *> *ids = [bridge tabbedClientWindowIds];
   NSMutableArray<NSString *> *titles = [NSMutableArray arrayWithCapacity:ids.count];
   for (NSNumber *wid in ids) {
@@ -1135,10 +1374,14 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
 
   if (titles.count <= 1) {
     self.clientTabsControl.hidden = YES;
+    // Dropping back to a single client: make sure it is visible again — an
+    // earlier tab switch may have hidden it while another tab was selected.
+    if (ids.count == 1) {
+      [bridge focusTabbedClientWindowId:ids[0].unsignedLongLongValue];
+    }
     return;
   }
 
-  NSInteger previousSelection = self.clientTabsControl.selectedSegmentIndex;
   if (!self.clientTabsControl) {
     self.clientTabsControl =
         [[UISegmentedControl alloc] initWithItems:titles];
@@ -1169,14 +1412,33 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
                                             animated:NO];
     }
   }
-  NSInteger select = previousSelection;
-  if (select < 0 || (NSUInteger)select >= titles.count) {
+  NSInteger select = NSNotFound;
+  if (previouslySelectedWindowId != nil) {
+    NSUInteger found = [ids indexOfObject:previouslySelectedWindowId];
+    if (found != NSNotFound) {
+      select = (NSInteger)found;
+    }
+  }
+  if (select == NSNotFound || select < 0 ||
+      (NSUInteger)select >= titles.count) {
+    // New client (or the selected one closed): follow the newest tab.
     select = (NSInteger)(titles.count - 1);
   }
   self.clientTabsControl.selectedSegmentIndex = select;
   self.clientTabsControl.hidden = NO;
   [self.window.rootViewController.view
       bringSubviewToFront:self.clientTabsControl];
+  // Keep the visible surface in sync with the selected tab: focus hides the
+  // other tabbed clients so the selection is actually what the user sees.
+  [bridge focusTabbedClientWindowId:
+              self.clientTabWindowIds[(NSUInteger)select].unsignedLongLongValue];
+#if TARGET_OS_TV
+  // tvOS: let the focus engine re-evaluate so the segmented control is
+  // reachable with the Siri Remote once it (dis)appears.
+  UIViewController *rootVC = self.window.rootViewController;
+  [rootVC setNeedsFocusUpdate];
+  [rootVC updateFocusIfNeeded];
+#endif
   WWNLog("TABS", @"refreshed %lu Wayland client tab(s): %@",
          (unsigned long)titles.count, [titles componentsJoinedByString:@", "]);
 }
@@ -1215,6 +1477,16 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
   (void)label;
   return;
 #else
+  if ([self clientsUseDedicatedScenes]) {
+    // iPadOS multi-window (#120): this notification fires on the PRIMARY
+    // scene's delegate, but the client is launching into its OWN dedicated
+    // UIWindowScene which doesn't exist yet. Presenting the overlay here
+    // would show it on top of the (uninvolved) Machines UI instead of the
+    // client's eventual window — capture logs without presenting.
+    (void)label;
+    return;
+  }
+#endif
   WWNStartupLogViewController *logVC = [[WWNStartupLogViewController alloc] init];
   logVC.clientLabel = label;
   self.startupLogVC = logVC;
@@ -1243,7 +1515,6 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
          selector:@selector(handleFirstWaylandFrame:)
              name:@"WWNFirstWaylandFrameNotification"
            object:nil];
-#endif
 }
 
 - (void)handleFirstWaylandFrame:(NSNotification *)notification
@@ -1296,14 +1567,36 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
     if (![self isAnyClientSessionRunning]) {
       return;
     }
+    NSNumber *windowId = notification.userInfo[@"windowId"];
+    WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+
+#if !TARGET_OS_TV
+    // Dedicated client scene: hide only this OS window; primary scene shows
+    // Machines below.
+    if (self.hostedClientWindowId != 0) {
+      if (windowId &&
+          windowId.unsignedLongLongValue == self.hostedClientWindowId) {
+        self.window.hidden = YES;
+      }
+      return;
+    }
+#endif
+
     // Keep the Wayland client alive; only park the host chrome and return to
     // Machines. Focus reverses this via handleClientFocusRequested:.
     NSString *machineId = notification.userInfo[@"machineId"];
     if (machineId.length == 0) {
       machineId = [WWNMachineProfileStore activeMachineId];
     }
-    [[WWNCompositorBridge sharedBridge] setClientHostWindowsHidden:YES
-                                                     forMachineId:machineId];
+    if ([self clientsUseDedicatedScenes] && windowId) {
+      [bridge setClientHostWindowHidden:YES
+                             forWindowId:windowId.unsignedLongLongValue];
+    } else {
+      [bridge setClientHostWindowsHidden:YES forMachineId:machineId];
+    }
+    // Dedicated client scenes are separate UIWindowScenes — bring the primary
+    // Machines scene forward so minimize visibly parks to Machines (#120).
+    [self.window makeKeyAndVisible];
     [self showMachinesUI];
   });
 }
@@ -1316,6 +1609,20 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
     if (![self isAnyClientSessionRunning]) {
       return;
     }
+    NSNumber *windowId = notification.userInfo[@"windowId"];
+    WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+
+#if !TARGET_OS_TV
+    if (self.hostedClientWindowId != 0) {
+      if (!windowId ||
+          windowId.unsignedLongLongValue == self.hostedClientWindowId) {
+        self.window.hidden = NO;
+        [self.window makeKeyAndVisible];
+      }
+      return;
+    }
+#endif
+
     NSString *machineId = notification.userInfo[@"machineId"];
     if (machineId.length == 0) {
       machineId = [WWNMachineProfileStore activeMachineId];
@@ -1323,12 +1630,22 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
     if (machineId.length > 0) {
       [WWNMachineProfileStore setActiveMachineId:machineId];
     }
-    [[WWNCompositorBridge sharedBridge] setClientHostWindowsHidden:NO
-                                                     forMachineId:machineId];
-    [self hideMachinesUIAndRevealCompositor];
+    if ([self clientsUseDedicatedScenes] && windowId) {
+      [bridge setClientHostWindowHidden:NO
+                             forWindowId:windowId.unsignedLongLongValue];
+    } else {
+      [bridge setClientHostWindowsHidden:NO forMachineId:machineId ?: @""];
+    }
+    // iPadOS / visionOS multi-window (#120): dedicated-scene clients live in
+    // their own UIWindowScene, not the primary scene's shared container —
+    // the primary (Machines) scene must stay exactly as it is. Focusing such
+    // a client is handled below via focusClientWindowsForMachineId:, which
+    // brings its own window/scene forward.
+    if (![self clientsUseDedicatedScenes]) {
+      [self hideMachinesUIAndRevealCompositor];
+    }
     [self refreshClientTabs];
-    (void)[[WWNCompositorBridge sharedBridge]
-        focusClientWindowsForMachineId:machineId ?: @""];
+    (void)[bridge focusClientWindowsForMachineId:machineId ?: @""];
     WWNLog("SCENE", @"Focus restored compositor for machine=%@",
            machineId.length > 0 ? machineId : @"(active)");
   });
@@ -1465,7 +1782,18 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
           if (!strongSelf) {
             return;
           }
-          [strongSelf hideMachinesUIAndRevealCompositor];
+          // iPadOS / visionOS multi-window (#120): this "Start"/"Connect"
+          // callback fires on the PRIMARY scene the instant the user taps
+          // Start, well before any dedicated client UIWindowScene exists.
+          // When clients get their own dedicated scene, the primary
+          // Machines scene must stay exactly as it is — unconditionally
+          // hiding its Machines UI and revealing its (now-unused, empty)
+          // compositorContainer here is exactly what turned the primary
+          // window black and uninteractable. See the matching guards in
+          // handleNativeClientWillLaunch: / handleClientFocusRequested:.
+          if (![strongSelf clientsUseDedicatedScenes]) {
+            [strongSelf hideMachinesUIAndRevealCompositor];
+          }
         }];
     if (!machinesVC) {
       self.showingMachinesUI = NO;

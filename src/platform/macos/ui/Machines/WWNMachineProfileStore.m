@@ -752,6 +752,20 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   if ([swiftAutoScale respondsToSelector:@selector(boolValue)]) {
     transportSnapshot[kWWNPrefsAutoScale] = swiftAutoScale;
   }
+  id swiftVulkanDriver = swiftRuntime[@"vulkanDriver"];
+  if ([swiftVulkanDriver isKindOfClass:[NSString class]] &&
+      [swiftVulkanDriver length] > 0) {
+    transportSnapshot[kWWNPrefsVulkanDriver] = swiftVulkanDriver;
+  }
+  id swiftOpenGLDriver = swiftRuntime[@"openGLDriver"];
+  if ([swiftOpenGLDriver isKindOfClass:[NSString class]] &&
+      [swiftOpenGLDriver length] > 0) {
+    transportSnapshot[kWWNPrefsOpenGLDriver] = swiftOpenGLDriver;
+  }
+  id swiftDmabuf = swiftRuntime[@"dmabufEnabled"];
+  if ([swiftDmabuf respondsToSelector:@selector(boolValue)]) {
+    transportSnapshot[kWWNPrefsEnableDmabuf] = swiftDmabuf;
+  }
   id swiftRenderPointer = swiftRuntime[@"renderMacOSPointer"];
   if ([swiftRenderPointer respondsToSelector:@selector(boolValue)]) {
     transportSnapshot[kWWNPrefsRenderMacOSPointer] = swiftRenderPointer;
@@ -765,9 +779,22 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
 
   [self applySettingsSnapshot:transportSnapshot];
 
-  // Push Force SSD into the compositor once; avoid re-entering via prefs observers.
+  // Force SSD per-machine (#120): stage THIS machine's decoration policy for
+  // its next client launch instead of globally re-decorating every live
+  // client (the old -setForceSSD: here stomped every concurrent machine).
+  // The effective value is the machine's explicit Force SSD override (from
+  // settingsOverrides or runtimeOverrides, both collected into
+  // transportSnapshot above) or, absent an override, the global default which
+  // "seeds" new machines. The connecting client's first toplevel claims and
+  // pins this, so a later machine connecting — or a later global toggle —
+  // never restyles it.
+  id machineForceSSDValue = transportSnapshot[kWWNPrefsForceServerSideDecorations];
+  BOOL machineForceSSD =
+      [machineForceSSDValue respondsToSelector:@selector(boolValue)]
+          ? [machineForceSSDValue boolValue]
+          : [[WWNPreferencesManager sharedManager] forceServerSideDecorations];
   [[WWNCompositorBridge sharedBridge]
-      setForceSSD:[[WWNPreferencesManager sharedManager] forceServerSideDecorations]];
+      setForceSSDForClientLaunch:machineForceSSD];
 }
 
 + (void)applyActiveMachineToRuntimePrefs {
@@ -837,7 +864,7 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
           ? runtimeOverrides[kWWNRuntimeRenderer]
           : @"";
   if (renderer.length == 0) {
-    renderer = [prefs vulkanDriver];
+    renderer = @"metal";
   }
 
   return @{

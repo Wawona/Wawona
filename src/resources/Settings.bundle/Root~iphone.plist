@@ -121,13 +121,11 @@
 			<array>
 				<string>None</string>
 				<string>MoltenVK</string>
-				<string>KosmicKrisp</string>
 			</array>
 			<key>Values</key>
 			<array>
 				<string>none</string>
 				<string>moltenvk</string>
-				<string>kosmickrisp</string>
 			</array>
 		</dict>
 		<!-- OpenGL Driver (iOS: None, ANGLE) -->

@@ -48,6 +48,21 @@ public enum PlatformCapabilities: Sendable {
         #endif
     }
 
+    /// Client-side decorations (CSD) only render correctly on macOS Wawona,
+    /// which draws host chrome around a client-decorated surface. Every other
+    /// target draws server-side decorations unconditionally because a Wayland
+    /// client cannot present standalone CSD in the fill-primary / desktop
+    /// shell. Gates the Force SSD setting UI to macOS only and forces effective
+    /// SSD elsewhere. See Force SSD per-machine (#120) and
+    /// `.cursor/rules/wawona-platform-targets.mdc`.
+    public static var supportsClientSideDecorations: Bool {
+        #if os(macOS)
+        return true
+        #else
+        return false
+        #endif
+    }
+
     /// One host window/scene per Wayland client (macOS NSWindow parity).
     /// Required on iPadOS + visionOS; optional elsewhere.
     public static var allowsMultiWindowScenes: Bool {
@@ -67,10 +82,15 @@ public enum PlatformCapabilities: Sendable {
     }
 
     /// In-window tab strip: one tab per Wayland client toplevel (never Shell).
-    /// Used on phone iOS / tvOS / watchOS where multi-window scenes are off.
+    /// Used on phone iOS + tvOS where multi-window scenes are off. watchOS is
+    /// single-client (stub WM) and Android has its own Compose tab strip.
     public static var allowsClientTabs: Bool {
-        #if os(tvOS) || os(watchOS)
+        #if os(tvOS)
         return true
+        #elseif os(watchOS)
+        // watchOS runs a single client at a time (stub host WM, no tab surface);
+        // native + remote only per wawona-platform-targets. No tab consumer.
+        return false
         #elseif os(iOS)
         return !allowsMultiWindowScenes
         #else

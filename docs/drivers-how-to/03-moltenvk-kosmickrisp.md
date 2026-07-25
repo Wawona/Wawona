@@ -5,7 +5,8 @@ Setup and usage of Vulkan-over-Metal for Wawona on macOS and iOS.
 ## MoltenVK
 
 - **What it is:** Vulkan Portability implementation that translates Vulkan to Apple’s Metal.
-- **Platforms:** macOS, iOS, tvOS.
+- **Platforms used by Wawona:** macOS, iOS, iPadOS, visionOS. Wawona
+  intentionally excludes Vulkan from tvOS/watchOS.
 - **Source and docs:** [MoltenVK on GitHub](https://github.com/KhronosGroup/MoltenVK) (runtime, build instructions, user guide).
 
 ### Using MoltenVK in Wawona
@@ -24,7 +25,9 @@ The MoltenVK repo includes a **Demos** folder with Xcode projects showing Vulkan
 ## KosmicKrisp
 
 - **What it is:** Mesa-based Vulkan driver that implements Vulkan on top of Metal (alternative to MoltenVK).
-- **Status:** Newer; check Mesa and LunarG release notes for current support and limitations.
+- **Status:** Upstream Mesa supports macOS on Apple Silicon (Metal 4). Its
+  current driver documentation says iOS is not supported yet, though the
+  implementation was designed with A14+ iOS GPUs in mind.
 - **Docs:** [KosmicKrisp — Mesa 3D](https://docs.mesa3d.org/drivers/kosmickrisp.html) (build, dependencies, limitations).
 - **LunarG:** [Vulkan SDK 1.4.335.0](https://www.lunarg.com/lunarg-releases-vulkan-sdk-1-4-335-0/) and related posts mention KosmicKrisp in the SDK context.
 

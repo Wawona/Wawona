@@ -12,6 +12,7 @@
 #import "../../util/WWNLog.h"
 #import <IOSurface/IOSurfaceRef.h>
 #import <errno.h>
+#import <math.h>
 #import <pthread.h>
 #import <unistd.h>
 
@@ -25,6 +26,9 @@ typedef void (*iland_present_callback_t)(uint32_t crtc_id,
                                          uint32_t flags,
                                          void *user);
 extern void iland_drm_set_present_callback(iland_present_callback_t cb, void *user);
+extern void iland_drm_set_preferred_mode(uint32_t width, uint32_t height,
+                                         uint32_t refresh_millihz);
+extern void iland_drm_complete_page_flip(uint32_t crtc_id, uint32_t fb_id);
 extern int g_drm_event_pipe_write;
 #ifndef DRM_VIRTUAL_FD
 #define DRM_VIRTUAL_FD 42
@@ -69,11 +73,15 @@ static WWNIlandPresenter *gActivePresenter = nil;
 static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
                                          IOSurfaceRef surface, uint32_t flags,
                                          void *user) {
-    (void)crtc_id; (void)fb_id; (void)flags; (void)user;
+    (void)flags; (void)user;
     @autoreleasepool {
         WWNIlandPresenter *p = gActivePresenter;
         if (p && surface) {
-            [p presentIOSurface:surface];
+            [p presentIOSurface:surface
+                         crtcID:crtc_id
+                  framebufferID:fb_id];
+        } else {
+            iland_drm_complete_page_flip(crtc_id, fb_id);
         }
     }
 }
@@ -124,6 +132,7 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
 
     gActivePresenter = self;
     iland_drm_set_present_callback(wwn_iland_present_trampoline, (__bridge void *)self);
+    [self syncPreferredModeFromLayer];
     return self;
 }
 
@@ -132,11 +141,37 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
     if (gActivePresenter == self) gActivePresenter = nil;
 }
 
+- (void)syncPreferredModeFromLayer {
+    CGSize size = _layer.drawableSize;
+    if (size.width <= 0 || size.height <= 0) {
+        size = _layer.bounds.size;
+        CGFloat scale = _layer.contentsScale > 0 ? _layer.contentsScale : 1.0;
+        size.width *= scale;
+        size.height *= scale;
+    }
+    if (size.width <= 0 || size.height <= 0) return;
+
+    /*
+     * Mode A has no WindowServer-plist authority for an app-sized surface.
+     * Set this before stock DRM clients enumerate connectors and refresh it
+     * on each present so KMS never advertises the 1920x1080 fallback (#94).
+     */
+    iland_drm_set_preferred_mode((uint32_t)llround(size.width),
+                                 (uint32_t)llround(size.height),
+                                 60000);
+}
+
 // Wrap the presented IOSurface as a Metal texture and draw it into the layer.
-- (void)presentIOSurface:(IOSurfaceRef)surface {
+- (void)presentIOSurface:(IOSurfaceRef)surface
+                  crtcID:(uint32_t)crtcID
+           framebufferID:(uint32_t)framebufferID {
+    [self syncPreferredModeFromLayer];
     NSUInteger w = IOSurfaceGetWidth(surface);
     NSUInteger h = IOSurfaceGetHeight(surface);
-    if (w == 0 || h == 0) return;
+    if (w == 0 || h == 0) {
+        iland_drm_complete_page_flip(crtcID, framebufferID);
+        return;
+    }
 
     MTLTextureDescriptor *td =
         [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
@@ -149,10 +184,16 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
     id<MTLTexture> srcTex = [_device newTextureWithDescriptor:td
                                                     iosurface:surface
                                                         plane:0];
-    if (!srcTex) return;
+    if (!srcTex) {
+        iland_drm_complete_page_flip(crtcID, framebufferID);
+        return;
+    }
 
     id<CAMetalDrawable> drawable = [_layer nextDrawable];
-    if (!drawable) return;
+    if (!drawable) {
+        iland_drm_complete_page_flip(crtcID, framebufferID);
+        return;
+    }
 
     MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
     rp.colorAttachments[0].texture = drawable.texture;
@@ -167,6 +208,9 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
     [enc setFragmentTexture:srcTex atIndex:0];
     [enc drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
     [enc endEncoding];
+    [cb addCompletedHandler:^(__unused id<MTLCommandBuffer> completed) {
+        iland_drm_complete_page_flip(crtcID, framebufferID);
+    }];
     [cb presentDrawable:drawable];
     [cb commit];
 }

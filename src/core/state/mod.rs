@@ -1416,9 +1416,24 @@ pub struct CompositorState {
     // Configuration
     // =========================================================================
     
-    /// Decoration policy
+    /// Global decoration policy — the **default** for clients (machines) that
+    /// have no per-client override. Global Settings seed this; it must not
+    /// retroactively rewrite live clients that carry an explicit override.
     pub decoration_policy: DecorationPolicy,
-    
+
+    /// Per-client (per-machine) decoration policy override. Keyed by the
+    /// Wayland `ClientId`. When present it wins over `decoration_policy`, so
+    /// concurrent machines with different Force SSD settings do not stomp each
+    /// other (e.g. machine A CSD while machine B forces SSD). See
+    /// `.cursor/plans` Force SSD per-machine and issue #120.
+    pub client_decoration_policy: HashMap<ClientId, DecorationPolicy>,
+
+    /// Decoration policy to assign to the **next** client that connects. The
+    /// host sets this immediately before launching a machine's Wayland client
+    /// (from that machine's resolved `forceSSD`); the first toplevel from that
+    /// client claims it. `None` means "use the global default."
+    pub pending_client_decoration_policy: Option<DecorationPolicy>,
+
     /// Keyboard repeat rate (Hz)
     pub keyboard_repeat_rate: i32,
     
@@ -1540,6 +1555,8 @@ impl CompositorState {
             image_capture_source_output: HashMap::new(),
             frame_callbacks: HashMap::new(),
             decoration_policy,
+            client_decoration_policy: HashMap::new(),
+            pending_client_decoration_policy: None,
             keyboard_repeat_rate: 33,
             keyboard_repeat_delay: 500,
             advertise_fullscreen_shell,
@@ -1754,6 +1771,17 @@ impl CompositorState {
             std::collections::HashMap::new();
         for (&wid, window_ref) in &self.windows {
             if let Ok(mut window) = window_ref.write() {
+                // Windows hosted in their own independent OS window/scene
+                // (macOS NSWindow-per-toplevel, iPadOS/visionOS
+                // UIWindowScene-per-client) are never sized from the shared
+                // primary output — that would snap them to the *other*
+                // window's size whenever it resizes/rotates (#120). Their
+                // size is driven exclusively via resize_window /
+                // injectWindowResize from their own host geometry.
+                if window.host_scene_independent {
+                    continue;
+                }
+
                 let old_w = window.width;
                 let old_h = window.height;
                 let old_x = window.x;
@@ -1811,7 +1839,21 @@ impl CompositorState {
         tracing::info!("Output size set to {}x{} @ {}x (phys: {}x{}mm)", 
             safe_width, safe_height, safe_scale, phys_w, phys_h);
     }
-    
+
+    /// Mark whether a window is hosted in its own independent OS window/scene
+    /// (macOS NSWindow-per-toplevel, or one `UIWindowScene` per Wayland client
+    /// on iPadOS/visionOS — `ipad-scene-parity` / `vision-shell-parity`,
+    /// #120). Independent windows are excluded from the shared-output resize
+    /// sweep in [`Self::set_output_size`]; their geometry is driven solely by
+    /// `resize_window` calls scoped to their own host window/scene.
+    pub fn set_window_host_scene_independent(&mut self, window_id: u32, independent: bool) {
+        if let Some(window) = self.get_window(window_id) {
+            if let Ok(mut window) = window.write() {
+                window.host_scene_independent = independent;
+            }
+        }
+    }
+
     /// Set platform safe area insets on the primary output.
     pub fn set_safe_area_insets(&mut self, top: i32, right: i32, bottom: i32, left: i32) {
         let idx = self.primary_output;
@@ -1834,15 +1876,53 @@ impl CompositorState {
         crate::core::Compositor::timestamp_ms()
     }
     
-    /// Get decoration mode for new windows
+    /// Get decoration mode for new windows (global default; used where no
+    /// client is known — kept for tests / legacy callers).
     pub fn decoration_mode_for_new_window(&self) -> DecorationMode {
-        match self.decoration_policy {
+        Self::decoration_mode_for_policy(self.decoration_policy)
+    }
+
+    /// Map a decoration policy to the default mode for a new window.
+    pub fn decoration_mode_for_policy(policy: DecorationPolicy) -> DecorationMode {
+        match policy {
             DecorationPolicy::PreferClient => DecorationMode::ClientSide,
             DecorationPolicy::PreferServer => DecorationMode::ServerSide,
             DecorationPolicy::ForceServer => DecorationMode::ServerSide,
         }
     }
-    
+
+    /// Resolve the effective decoration policy for a client: the per-client
+    /// override if present, otherwise the global default.
+    pub fn effective_decoration_policy(&self, client: Option<&ClientId>) -> DecorationPolicy {
+        client
+            .and_then(|c| self.client_decoration_policy.get(c).copied())
+            .unwrap_or(self.decoration_policy)
+    }
+
+    /// Resolve the effective decoration policy for a window from its stored
+    /// per-client override (falling back to the global default).
+    pub fn window_decoration_policy(&self, window_id: u32) -> DecorationPolicy {
+        self.get_window(window_id)
+            .and_then(|w| w.read().ok().and_then(|w| w.decoration_policy))
+            .unwrap_or(self.decoration_policy)
+    }
+
+    /// Claim the pending per-client decoration policy for `client` if the
+    /// client has no override yet. Called when a client's first toplevel maps.
+    pub fn claim_pending_decoration_policy(&mut self, client: &ClientId) {
+        if self.client_decoration_policy.contains_key(client) {
+            return;
+        }
+        if let Some(policy) = self.pending_client_decoration_policy.take() {
+            self.client_decoration_policy.insert(client.clone(), policy);
+        }
+    }
+
+    /// Drop a client's per-client decoration override (client disconnected).
+    pub fn remove_client_decoration_policy(&mut self, client: &ClientId) {
+        self.client_decoration_policy.remove(client);
+    }
+
 }
 
 #[cfg(test)]
@@ -1994,6 +2074,9 @@ impl CompositorState {
         self.shm_pools.retain(|(cid, _), _| *cid != client);
         self.regions.retain(|(cid, _), _| *cid != client);
         self.clients.remove(&client);
+        // Force SSD per-machine (#120): drop this machine's decoration override
+        // so a reused ClientId cannot inherit a stale policy.
+        self.client_decoration_policy.remove(&client);
 
         self.wlr.layer_surfaces.retain(|(cid, _), _| *cid != client);
         self.wlr.surface_to_layer.retain(|(cid, _), _| *cid != client);

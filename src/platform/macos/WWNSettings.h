@@ -43,12 +43,24 @@ bool WWNSettings_GetEGLDriversEnabled(void);
 
 // Graphics Driver Selection (Settings > Graphics > Drivers)
 // Returns pointer to static buffer; valid until next call. Copy if needed.
-// Values: Vulkan: "none", "moltenvk", "kosmickrisp" (Apple); "none",
-// "swiftshader", "turnip", "system" (Android)
-//         OpenGL: "none", "angle", "moltengl" (macOS); "none", "angle",
+// Values: Vulkan: "none", "moltenvk", "kosmickrisp" (macOS); "none",
+// "swiftshader", "system" (Android)
+//         OpenGL: "none", "angle" (Apple); "none", "angle",
 //         "system" (Android)
 const char *WWNSettings_GetVulkanDriver(void);
 const char *WWNSettings_GetOpenGLDriver(void);
+typedef struct {
+  const char *vulkanDriver;
+  const char *openGLDriver;
+  bool vulkanEnabled;
+  bool openGLEnabled;
+} WWNGraphicsDriverSelection;
+// Canonical runtime policy. Profile overrides have already been applied to
+// settings; this validates machine > global > platform-default values.
+WWNGraphicsDriverSelection WWNSettings_ResolveGraphicsDriverSelection(void);
+// Applies the current global/per-machine selection to loader/EGL environment.
+// Call after profile overrides change and before launching a graphics client.
+void WWNSettings_ApplyGraphicsDriverSelection(void);
 
 // Dmabuf Support
 bool WWNSettings_GetDmabufEnabled(void);
@@ -75,7 +87,7 @@ typedef struct {
   bool vulkanDrivers;   // derived from backend choice
   bool eglDrivers;      // derived from backend choice
   // Graphics driver dropdown selection (Settings > Graphics > Drivers)
-  char vulkanDriver[32]; // "none", "swiftshader", "turnip", "system"
+  char vulkanDriver[32]; // "none", "swiftshader", "system"
   char openglDriver[32]; // "none", "angle", "system"
 } WWNSettingsConfig;
 

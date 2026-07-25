@@ -5,6 +5,11 @@ import android.view.Surface
 object WawonaNative {
     init {
         try {
+            // Nix ANGLE archives use *_angle SONAMEs while Android packages the
+            // libraries under their conventional EGL/GLES filenames. Preload
+            // both so the dynamic linker can satisfy libwawona's SONAME deps.
+            System.loadLibrary("EGL")
+            System.loadLibrary("GLESv2")
             WLog.d("NATIVE", "Loading native library 'wawona'")
             System.loadLibrary("wawona")
             WLog.d("NATIVE", "Native library 'wawona' loaded successfully")
@@ -79,6 +84,20 @@ object WawonaNative {
     external fun nativeRequestActiveWindowClose(): Boolean
     /** True once after a client MinimizeRequested; consumed on read. */
     external fun nativeConsumeMinimizeRequested(): Boolean
+    /** Returns the toplevel that requested minimize, or 0 when none is pending. */
+    external fun nativeConsumeMinimizedWindow(): Long
+    /** Reserve the next mapped Wayland toplevel for an Android SessionActivity. */
+    external fun nativeReserveNextHostWindow(hostId: Long)
+    /** Returns the Wayland toplevel atomically claimed by this host task, or 0. */
+    external fun nativeGetWindowForHost(hostId: Long): Long
+    /** Send this SessionActivity's settled freeform bounds to its toplevel. */
+    external fun nativeResizeHostWindow(hostId: Long, width: Int, height: Int)
+    /** Sync task focus to the claimed Wayland toplevel. */
+    external fun nativeSetHostWindowFocused(hostId: Long, focused: Boolean)
+    /** Ask the toplevel in a closing host task to close gracefully. */
+    external fun nativeCloseHostWindow(hostId: Long): Boolean
+    /** Detach a destroyed Android SessionActivity from its toplevel claim. */
+    external fun nativeReleaseHostWindow(hostId: Long)
     external fun nativeSetWindowActivated(windowId: Long, active: Boolean)
     external fun nativeGetFocusedWindowTitle(): String
     /** Push text copied on the native side (ClipboardManager) into the compositor so clients can paste it. */

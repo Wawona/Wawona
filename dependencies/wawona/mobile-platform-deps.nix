@@ -64,6 +64,7 @@ let
     // lib.optionalAttrs allowGpu {
       iland = buildFn "iland" { inherit simulator; };
       angle = buildFn "angle" { inherit simulator; };
+      moltenvk = buildFn "moltenvk" { inherit simulator; };
       kmscube = buildFn "kmscube" { inherit simulator; };
       "iland-gl-clients" = buildFn "kmscube" { inherit simulator; };
     }
@@ -83,15 +84,20 @@ let
         # fcft required by real foot (all Apple mobile variants).
         fcft = buildFn "fcft" { inherit simulator; };
       }
-    // lib.optionalAttrs (variant == "mobile") {
+    // lib.optionalAttrs (
+      variant == "mobile" || variant == "tv" || variant == "watch" || variant == "vision"
+    ) {
+        # Weston and Niri are native in-process clients across the Apple
+        # family. tvOS/watchOS use the constrained non-VM product surface.
+        "cairo-gobject" = buildFn "cairo-gobject" { inherit simulator; };
+        niri = buildFn "niri" { inherit simulator; };
+      }
+    // lib.optionalAttrs (variant == "mobile" || variant == "vision") {
         fastfetch = buildFn "fastfetch" { inherit simulator; };
         neovim = buildFn "neovim" { inherit simulator; };
         "neovim-rootfs" = buildFn "neovim-rootfs" { inherit simulator; };
-        # wwn-niri: in-process nested compositor (libniri.a + niri_main C ABI).
         # wwn-niri fuzzel stack (Mod+D launcher spawned in-process).
         # fuzzel uses fork/exec — not available on tvOS; keep off tv/watch.
-        "cairo-gobject" = buildFn "cairo-gobject" { inherit simulator; };
-        niri = buildFn "niri" { inherit simulator; };
         fuzzel = buildFn "fuzzel" { inherit simulator; };
       };
 in

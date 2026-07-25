@@ -27,6 +27,7 @@
         <activity android:name=".MainActivity"
             android:label="@string/app_name"
             android:exported="true"
+            android:launchMode="singleTask"
             android:configChanges="orientation|keyboardHidden|screenSize|smallestScreenSize|density"
             android:windowSoftInputMode="adjustNothing">
             <intent-filter>
@@ -44,6 +45,15 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <!-- One freeform/adjacent Android task per claimed Wayland toplevel. -->
+        <activity
+            android:name=".SessionActivity"
+            android:label="@string/app_name"
+            android:exported="false"
+            android:resizeableActivity="true"
+            android:configChanges="orientation|keyboardHidden|screenSize|smallestScreenSize|density"
+            android:windowSoftInputMode="adjustNothing" />
 
         <!-- Android Auto: template-based status dashboard (Car App Library). -->
         <meta-data

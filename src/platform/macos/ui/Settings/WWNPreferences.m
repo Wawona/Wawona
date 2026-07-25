@@ -156,6 +156,12 @@
 @property(nonatomic, assign) BOOL waypipeMarkedConnected;
 #if TARGET_OS_IPHONE
 @property(nonatomic, strong) UIAlertController *waypipeStatusAlert;
+// Which import a presented UIDocumentPicker is servicing (both the GPG/OpenSSH
+// key import and the shell-home file import share this VC as delegate).
+@property(nonatomic, assign) BOOL documentPickerImportsSSHKey;
+#if !TARGET_OS_TV
+- (void)importPickedFileToShellHome:(NSArray<NSURL *> *)urls;
+#endif
 #else
 @property(nonatomic, strong) NSSplitViewController *splitVC;
 @property(nonatomic, strong) WWNPreferencesSidebar *sidebar;
@@ -528,22 +534,41 @@ static UIImage *WWNAboutLogo(void) {
   graphics.iconColor = [NSColor systemRedColor];
 #endif
   WWNSettingItem *vulkanDriverItem =
+#if TARGET_OS_TV || TARGET_OS_WATCH
+      ITEM(@"Vulkan Driver", @"VulkanDriver", WSettingPopup, @"none",
+           @"Vulkan is unavailable on this platform.");
+#else
       ITEM(@"Vulkan Driver", @"VulkanDriver", WSettingPopup, @"moltenvk",
-           @"Stub setting only. No functional behavior is currently implemented. "
-           @"Future Wawona versions will add full Vulkan driver support.");
+           @"Select the Vulkan ICD used by newly launched machine sessions.");
+#endif
+#if TARGET_OS_OSX
   vulkanDriverItem.options = @[ @"None", @"MoltenVK", @"KosmicKrisp" ];
   vulkanDriverItem.optionValues = @[ @"none", @"moltenvk", @"kosmickrisp" ];
+#elif TARGET_OS_TV || TARGET_OS_WATCH
+  vulkanDriverItem.options = @[ @"None" ];
+  vulkanDriverItem.optionValues = @[ @"none" ];
+#else
+  vulkanDriverItem.options = @[ @"None", @"MoltenVK" ];
+  vulkanDriverItem.optionValues = @[ @"none", @"moltenvk" ];
+#endif
 
   WWNSettingItem *openGLDriverItem =
+#if TARGET_OS_TV || TARGET_OS_WATCH
+      ITEM(@"OpenGL Driver", @"OpenGLDriver", WSettingPopup, @"none",
+           @"OpenGL ES is unavailable on this platform.");
+#else
       ITEM(@"OpenGL Driver", @"OpenGLDriver", WSettingPopup, @"angle",
-           @"Stub setting only. No functional behavior is currently implemented. "
-           @"Future Wawona versions will add full OpenGL driver support.");
-#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+           @"Select the OpenGL ES implementation used by newly launched machine sessions.");
+#endif
+#if TARGET_OS_TV || TARGET_OS_WATCH
+  openGLDriverItem.options = @[ @"None" ];
+  openGLDriverItem.optionValues = @[ @"none" ];
+#elif TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
   openGLDriverItem.options = @[ @"None", @"ANGLE" ];
   openGLDriverItem.optionValues = @[ @"none", @"angle" ];
 #else
-  openGLDriverItem.options = @[ @"None", @"ANGLE", @"MoltenGL" ];
-  openGLDriverItem.optionValues = @[ @"none", @"angle", @"moltengl" ];
+  openGLDriverItem.options = @[ @"None", @"ANGLE" ];
+  openGLDriverItem.optionValues = @[ @"none", @"angle" ];
 #endif
 
   graphics.items = @[
@@ -1325,9 +1350,6 @@ static UIImage *WWNAboutLogo(void) {
 
 #if TARGET_OS_IPHONE
   // iOS-specific dependencies
-  [depItems addObject:ITEM(@"kosmickrisp", nil, WSettingInfo,
-                           [self getKosmickrispVersion],
-                           @"Mesa Vulkan driver for iOS")];
   [depItems
       addObject:ITEM(@"epoll-shim", nil, WSettingInfo,
                      [self getEpollShimVersion], @"epoll compatibility layer")];
@@ -1664,12 +1686,6 @@ static UIImage *WWNAboutLogo(void) {
 }
 
 #if TARGET_OS_IPHONE
-- (NSString *)getKosmickrispVersion {
-  // kosmickrisp (Mesa/Vulkan) is bundled for iOS
-  return
-      [self cleanVersion:[NSString stringWithUTF8String:WAWONA_MESA_VERSION]];
-}
-
 - (NSString *)getEpollShimVersion {
   return [self
       cleanVersion:[NSString stringWithUTF8String:WAWONA_EPOLL_SHIM_VERSION]];
@@ -2605,6 +2621,7 @@ static UIImage *WWNAboutLogo(void) {
                                  asCopy:YES];
   picker.allowsMultipleSelection = NO;
   picker.delegate = (id)self;
+  self.documentPickerImportsSSHKey = YES;
   [self presentViewController:picker animated:YES completion:nil];
 #else
   NSOpenPanel *panel = [NSOpenPanel openPanel];
@@ -2638,9 +2655,17 @@ static UIImage *WWNAboutLogo(void) {
 }
 
 #if TARGET_OS_IPHONE && !TARGET_OS_TV
+// Single UIDocumentPickerDelegate callback shared by importGPGSSHKey and
+// importFileToShellHome; -documentPickerImportsSSHKey (set before presenting)
+// selects which import runs. Previously two identical selectors were declared,
+// which failed to compile on iOS.
 - (void)documentPicker:(UIDocumentPickerViewController *)controller
     didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
   (void)controller;
+  if (!self.documentPickerImportsSSHKey) {
+    [self importPickedFileToShellHome:urls];
+    return;
+  }
   NSURL *url = urls.firstObject;
   if (!url)
     return;
@@ -4705,6 +4730,7 @@ static UIImage *WWNAboutLogo(void) {
                       asCopy:YES];
   picker.delegate = self;
   picker.allowsMultipleSelection = NO;
+  self.documentPickerImportsSSHKey = NO;
   if (picker.popoverPresentationController) {
     picker.popoverPresentationController.sourceView = self.view;
     picker.popoverPresentationController.sourceRect = self.view.bounds;
@@ -4712,8 +4738,7 @@ static UIImage *WWNAboutLogo(void) {
   [self presentViewController:picker animated:YES completion:nil];
 }
 
-- (void)documentPicker:(UIDocumentPickerViewController *)controller
-    didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
+- (void)importPickedFileToShellHome:(NSArray<NSURL *> *)urls {
   NSURL *src = urls.firstObject;
   if (!src) {
     return;

@@ -127,6 +127,16 @@ typedef struct {
                      width:(uint32_t)width
                     height:(uint32_t)height;
 
+/// OWL / SizeAuthority: mirrors the `mayInjectHostSize` gate in
+/// WWNCompositorView_ios.layoutSubviews (host_locked || followHostSize).
+/// Callers that observe host-side layout/scene bounds changes (dedicated
+/// per-window UIWindowScene hosting on iPadOS/visionOS, #120) MUST check this
+/// before calling injectWindowResize:, or fixed-size demo clients
+/// (weston-flower/smoke, simple-shm) get their small buffer force-stretched
+/// to the host window instead of staying centered at their own size. Returns
+/// NO for windows not yet tracked (fail closed — nothing to resize yet).
+- (BOOL)shouldFollowHostSizeForWindowId:(uint64_t)windowId;
+
 /// Host changed native fullscreen or zoom (macOS) or fill-primary max/fs (mobile).
 /// Syncs xdg_toplevel maximized/fullscreen state on every Apple host.
 - (void)syncHostFullscreen:(BOOL)fullscreen
@@ -170,6 +180,26 @@ typedef struct {
 
 /// Activate + raise a tabbed client surface inside the shared container.
 - (void)focusTabbedClientWindowId:(uint64_t)windowId;
+
+/// iPadOS / visionOS multi-window (#120): NSUserActivity type used to route a
+/// newly-activated UIWindowScene to a specific Wayland client toplevel. The
+/// activity's userInfo carries @{ WWNClientWindowSceneWindowIdKey: @(windowId) }.
+extern NSString *const WWNClientWindowSceneActivityType;
+extern NSString *const WWNClientWindowSceneWindowIdKey;
+
+/// Claim the client view staged by -handleWindowCreated for `windowId` (removes
+/// it from the pending map). The scene delegate calls this once the dedicated
+/// UIWindowScene connects, then hosts the view in that scene's window. Returns
+/// nil if there is no pending view (e.g. the client was destroyed first).
+- (UIView *)takePendingSceneClientViewForWindowId:(uint64_t)windowId;
+
+/// Register the dedicated host UIWindow the scene delegate created for a client
+/// toplevel so per-machine focus / minimize / teardown can find it.
+- (void)registerClientHostWindow:(UIWindow *)window
+                     forWindowId:(uint64_t)windowId;
+
+/// Whether one UIWindowScene per Wayland client is active (iPadOS / visionOS).
+- (BOOL)perWindowHostingEnabled;
 #endif
 
 /// Drop compositor window state without client cooperation. Drains pending
@@ -273,8 +303,14 @@ typedef struct {
                       bottom:(int32_t)bottom
                         left:(int32_t)left;
 
-/// Set force server-side decorations
+/// Set force server-side decorations (global default; restyles live clients
+/// that have no per-machine override).
 - (void)setForceSSD:(BOOL)enabled;
+
+/// Stage the decoration policy for the NEXT machine's client launch without
+/// touching the global default or any already-connected client. Force SSD
+/// per-machine (#120): concurrent CSD + SSD machines must not stomp.
+- (void)setForceSSDForClientLaunch:(BOOL)enabled;
 
 /// Set keyboard repeat rate
 - (void)setKeyboardRepeatRate:(int32_t)rate delay:(int32_t)delay;
@@ -326,6 +362,11 @@ typedef struct {
 /// minimize → Machines and Focus → compositor.
 - (void)setClientHostWindowsHidden:(BOOL)hidden
                      forMachineId:(nullable NSString *)machineId;
+/// Hide/show one dedicated client UIWindow (iPadOS/visionOS multi-window).
+- (void)setClientHostWindowHidden:(BOOL)hidden forWindowId:(uint64_t)windowId;
+/// Re-apply tracked fill-primary maximized/fullscreen xdg state after a
+/// dedicated scene resizes (Stage Manager / Split View).
+- (void)resyncFillPrimaryHostStateForWindowId:(uint64_t)windowId;
 /// Raise Wayland surfaces / host windows for a machine after Focus.
 /// Returns YES if at least one surface was focused.
 - (BOOL)focusClientWindowsForMachineId:(NSString *)machineId;

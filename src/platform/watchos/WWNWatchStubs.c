@@ -128,12 +128,6 @@ int fuzzel_main(int argc, char **argv) {
 }
 
 __attribute__((weak))
-int niri_main(int argc, char **argv) {
-    (void)argc; (void)argv;
-    return 1;
-}
-
-__attribute__((weak))
 int wawona_nvim_main(int argc, char **argv) {
     (void)argc; (void)argv;
     return 1;

@@ -17,6 +17,12 @@ pub struct Window {
     pub width: i32,
     pub height: i32,
     pub decoration_mode: DecorationMode,
+    /// Per-client (per-machine) decoration policy override captured when this
+    /// window's client connected. `None` means "follow the global default"
+    /// (`CompositorState::decoration_policy`); `Some` pins the policy so a
+    /// concurrent machine toggling Force SSD cannot restyle this window. See
+    /// Force SSD per-machine (#120).
+    pub decoration_policy: Option<crate::core::state::DecorationPolicy>,
     pub surface_id: u32,
     pub app_id: String,
     
@@ -30,6 +36,18 @@ pub struct Window {
     pub modal: bool,
     /// When true the host OS view owns placement/size (kiosk / embedded-app).
     pub host_locked: bool,
+
+    /// When true, this window is hosted in its own independent OS
+    /// window/scene (macOS NSWindow-per-toplevel, or iPadOS/visionOS
+    /// `UIWindowScene`-per-client — see `ipad-scene-parity` /
+    /// `vision-shell-parity`, #120). Its size is driven exclusively by that
+    /// dedicated host geometry via `resize_window`/`injectWindowResize`.
+    /// `CompositorState::set_output_size` MUST skip these windows in its
+    /// maximized/fullscreen resize sweep: that sweep snaps windows to the
+    /// *shared* primary-output rect, which is the wrong rect for a window
+    /// that lives in its own separately-sized scene (resizing the primary
+    /// Machines window must never resize an unrelated client window).
+    pub host_scene_independent: bool,
 
     /// Whether the client has committed at least one buffer for this toplevel.
     ///
@@ -70,6 +88,7 @@ impl Window {
             width: 800,
             height: 600,
             decoration_mode: DecorationMode::ClientSide,
+            decoration_policy: None,
             surface_id,
             app_id: "".to_string(),
             maximized: false,
@@ -79,6 +98,7 @@ impl Window {
             resizing: false,
             modal: false,
             host_locked: false,
+            host_scene_independent: false,
             has_committed_buffer: false,
             size_authority: crate::core::window::SizeAuthority::AwaitingFirstCommit,
             geometry_x: 0,

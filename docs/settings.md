@@ -37,8 +37,8 @@ SwiftUI does **not** implement global settings on macOS, iOS, or watchOS. On wat
 
 | Setting | Key | Type | Default | Platforms | Description |
 |---------|-----|------|---------|------------|-------------|
-| **Vulkan Driver** | `vulkanDriver` / `VulkanDriver` | Dropdown | `system` (Android), `moltenvk` (macOS/iOS) | All | Vulkan implementation. Android: None, SwiftShader, Turnip, System. macOS/iOS: None, MoltenVK, KosmicKrisp |
-| **OpenGL Driver** | `openglDriver` / `OpenGLDriver` | Dropdown | `system` (Android), `angle` (macOS/iOS) | All | OpenGL/GLES implementation. Android: None, ANGLE, System. macOS: None, ANGLE, MoltenGL. iOS: None, ANGLE |
+| **Vulkan Driver** | `vulkanDriver` / `VulkanDriver` | Dropdown | `system` (Android), `moltenvk` (macOS/iOS) | All | Vulkan implementation. Android runtime-only policy: None, System, or SwiftShader for offscreen iland clients; host ANativeWindow WSI remains on the system loader. macOS/iOS: None, MoltenVK; macOS also offers KosmicKrisp |
+| **OpenGL Driver** | `openglDriver` / `OpenGLDriver` | Dropdown | `system` (Android), `angle` (macOS/iOS) | All | OpenGL/GLES implementation. Android: None, ANGLE, System. Apple GPU targets: None, ANGLE |
 | **DmaBuf Support** | `dmabufEnabled` / `DmabufEnabled` | Switch | On | All | Zero-copy texture sharing between clients |
 
 ---

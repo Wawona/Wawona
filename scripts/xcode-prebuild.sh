@@ -331,4 +331,42 @@ if [ "$_with_zsh" = "1" ]; then
 
   # Apple mobile SSH CLI is libwwn-ssh-cli.a from wwn-ssh (force_loaded via
   # xcodegen store path). Never libssh-inprocess.a / OpenSSH on App Store targets.
+
+  # foot + fuzzel: Wayland client archives that each embed their own copy of the
+  # generated protocol marshalling (xdg_toplevel_interface, …). Force-loaded raw,
+  # those symbols collide with weston's (and each other's). Privatize like
+  # neovim/zsh — merge to one .o, keep only the *_main entry global — so the
+  # protocol symbols become local and weston's copies stay authoritative.
+  # foot is linked on every Apple-mobile target; fuzzel on iOS/iPadOS/visionOS.
+  _foot_dev_attr="foot-ios"; _foot_sim_attr="foot-ios-sim"
+  _fuzzel_dev_attr="fuzzel-ios"; _fuzzel_sim_attr="fuzzel-ios-sim"
+  case "${TARGET_NAME:-}" in
+    Wawona-tvOS)
+      _foot_dev_attr="foot-tvos"; _foot_sim_attr="foot-tvos-sim"
+      _fuzzel_dev_attr=""; _fuzzel_sim_attr="" ;;
+    Wawona-watchOS)
+      _foot_dev_attr="foot-watchos"; _foot_sim_attr="foot-watchos-sim"
+      _fuzzel_dev_attr=""; _fuzzel_sim_attr="" ;;
+  esac
+  if [ "$_is_sim" = "1" ]; then
+    _foot_attr="$_foot_sim_attr"; _fuzzel_attr="$_fuzzel_sim_attr"
+  else
+    _foot_attr="$_foot_dev_attr"; _fuzzel_attr="$_fuzzel_dev_attr"
+  fi
+
+  foot_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_foot_attr")"
+  privatize_lib "$foot_out/lib/libfoot.a" "$derived/libfoot.a" \
+    "$_arch" "$_ld_platform" "$_min_ver" \
+    _foot_main _wwn_foot_is_compat_shim
+  echo "Privatized $derived/libfoot.a (from $foot_out)"
+
+  if [ -n "$_fuzzel_attr" ]; then
+    fuzzel_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_fuzzel_attr")"
+    privatize_lib "$fuzzel_out/lib/libfuzzel.a" "$derived/libfuzzel.a" \
+      "$_arch" "$_ld_platform" "$_min_ver" \
+      _fuzzel_main
+    echo "Privatized $derived/libfuzzel.a (from $fuzzel_out)"
+  else
+    echo "Skipping fuzzel privatize for ${TARGET_NAME:-unknown} (not linked)"
+  fi
 fi

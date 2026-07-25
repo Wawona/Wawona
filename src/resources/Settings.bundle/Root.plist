@@ -121,16 +121,14 @@
 			<array>
 				<string>None</string>
 				<string>MoltenVK</string>
-				<string>KosmicKrisp</string>
 			</array>
 			<key>Values</key>
 			<array>
 				<string>none</string>
 				<string>moltenvk</string>
-				<string>kosmickrisp</string>
 			</array>
 		</dict>
-		<!-- OpenGL Driver (base: None, ANGLE; ~mac adds MoltenGL) -->
+		<!-- OpenGL Driver -->
 		<dict>
 			<key>Type</key>
 			<string>PSMultiValueSpecifier</string>

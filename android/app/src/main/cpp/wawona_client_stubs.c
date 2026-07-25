@@ -224,6 +224,8 @@ int posix_spawnp(pid_t *pid, const char *file,
 #endif /* WAWONA_WESTON_TOYTOOLKIT */
 
 #if defined(__ANDROID__)
+#include <android/hardware_buffer.h>
+#include <dlfcn.h>
 #include <errno.h>
 #include <sys/syscall.h>
 #include <unistd.h>
@@ -255,6 +257,53 @@ int __wrap_syncfs(int fd) {
   errno = ENOSYS;
   return -1;
 #endif
+}
+
+typedef int (*WwnAhbAllocateFn)(const AHardwareBuffer_Desc *,
+                                AHardwareBuffer **);
+typedef void (*WwnAhbDescribeFn)(const AHardwareBuffer *,
+                                 AHardwareBuffer_Desc *);
+typedef void (*WwnAhbReleaseFn)(AHardwareBuffer *);
+typedef int (*WwnAhbLockFn)(AHardwareBuffer *, uint64_t, int32_t,
+                            const ARect *, void **);
+typedef int (*WwnAhbUnlockFn)(AHardwareBuffer *, int32_t *);
+
+int __wrap_AHardwareBuffer_allocate(const AHardwareBuffer_Desc *desc,
+                                    AHardwareBuffer **out_buffer) {
+  WwnAhbAllocateFn fn =
+      (WwnAhbAllocateFn)dlsym(RTLD_NEXT, "AHardwareBuffer_allocate");
+  return fn ? fn(desc, out_buffer) : -ENOSYS;
+}
+
+void __wrap_AHardwareBuffer_describe(const AHardwareBuffer *buffer,
+                                     AHardwareBuffer_Desc *out_desc) {
+  WwnAhbDescribeFn fn =
+      (WwnAhbDescribeFn)dlsym(RTLD_NEXT, "AHardwareBuffer_describe");
+  if (fn)
+    fn(buffer, out_desc);
+  else if (out_desc)
+    memset(out_desc, 0, sizeof(*out_desc));
+}
+
+void __wrap_AHardwareBuffer_release(AHardwareBuffer *buffer) {
+  WwnAhbReleaseFn fn =
+      (WwnAhbReleaseFn)dlsym(RTLD_NEXT, "AHardwareBuffer_release");
+  if (fn)
+    fn(buffer);
+}
+
+int __wrap_AHardwareBuffer_lock(AHardwareBuffer *buffer, uint64_t usage,
+                                int32_t fence, const ARect *rect,
+                                void **out_address) {
+  WwnAhbLockFn fn = (WwnAhbLockFn)dlsym(RTLD_NEXT, "AHardwareBuffer_lock");
+  return fn ? fn(buffer, usage, fence, rect, out_address) : -ENOSYS;
+}
+
+int __wrap_AHardwareBuffer_unlock(AHardwareBuffer *buffer,
+                                  int32_t *out_fence) {
+  WwnAhbUnlockFn fn =
+      (WwnAhbUnlockFn)dlsym(RTLD_NEXT, "AHardwareBuffer_unlock");
+  return fn ? fn(buffer, out_fence) : -ENOSYS;
 }
 #endif
 

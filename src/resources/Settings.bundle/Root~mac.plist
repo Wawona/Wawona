@@ -131,7 +131,7 @@
 				<string>kosmickrisp</string>
 			</array>
 		</dict>
-		<!-- OpenGL Driver (macOS: None, ANGLE, MoltenGL) -->
+		<!-- OpenGL Driver (macOS: None, ANGLE) -->
 		<dict>
 			<key>Type</key>
 			<string>PSMultiValueSpecifier</string>
@@ -145,13 +145,11 @@
 			<array>
 				<string>None</string>
 				<string>ANGLE</string>
-				<string>MoltenGL</string>
 			</array>
 			<key>Values</key>
 			<array>
 				<string>none</string>
 				<string>angle</string>
-				<string>moltengl</string>
 			</array>
 		</dict>
 		<!-- Enable DMABUF -->

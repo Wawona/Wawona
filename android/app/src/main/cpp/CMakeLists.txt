@@ -245,6 +245,13 @@ else()
   target_link_options(wawona PRIVATE "-Wl,--wrap=memfd_create")
   # Rust nix crate references syncfs; Bionic may not export it at minSdk.
   target_link_options(wawona PRIVATE "-Wl,--wrap=syncfs")
+  # AHardwareBuffer starts at API 26 while Wawona keeps API 24 compatibility.
+  # Resolve these entry points dynamically; wrappers return ENOSYS on API 24/25.
+  foreach(_ahb_symbol allocate describe release lock unlock)
+    target_link_options(
+      wawona PRIVATE "-Wl,--wrap=AHardwareBuffer_${_ahb_symbol}"
+    )
+  endforeach()
   if(WAWONA_WESTON_TOYTOOLKIT)
     target_link_options(wawona PRIVATE "-Wl,--wrap=strtod_l")
   endif()

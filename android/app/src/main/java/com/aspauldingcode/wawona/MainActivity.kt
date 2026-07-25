@@ -247,11 +247,15 @@ class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
     }
 
     override fun onDestroy() {
-        WLog.d("ACTIVITY", "onDestroy — shutting down compositor core")
-        try {
-            WawonaNative.nativeShutdown()
-        } catch (e: Exception) {
-            WLog.e("ACTIVITY", "Error in nativeShutdown: ${e.message}")
+        if (isFinishing && !SessionActivityRegistry.hasActiveSessions()) {
+            WLog.d("ACTIVITY", "onDestroy — shutting down idle compositor core")
+            try {
+                WawonaNative.nativeShutdown()
+            } catch (e: Exception) {
+                WLog.e("ACTIVITY", "Error in nativeShutdown: ${e.message}")
+            }
+        } else {
+            WLog.d("ACTIVITY", "onDestroy — preserving process compositor for host tasks")
         }
         super.onDestroy()
     }
@@ -846,6 +850,15 @@ fun WawonaApp(
             sessionOrchestrator.markDegraded(targetSession, "Failed to initialize compositor runtime")
             return
         }
+        // Start is the Android multi-window entry point. Always give a machine
+        // its own task on Android 7+; the OS chooses fullscreen/split/freeform.
+        // The C claim map consumes the reservation exactly once on Created.
+        val hostId =
+            if (SessionActivity.supportsHostTask()) SessionActivity.newHostId() else 0L
+        if (hostId != 0L) {
+            SessionActivityRegistry.reserve(targetSession, hostId)
+            WawonaNative.nativeReserveNextHostWindow(hostId)
+        }
         val launched = when (profile.type) {
             MachineType.NATIVE -> launchNativeMachine(profile)
             MachineType.SSH_WAYPIPE -> launchWaypipe()
@@ -861,6 +874,15 @@ fun WawonaApp(
         }
 
         if (launched) {
+            if (hostId != 0L) {
+                context.startActivity(
+                    SessionActivity.createIntent(
+                        context = context,
+                        hostId = hostId,
+                        title = profile.name.ifBlank { "Wayland client" },
+                    ),
+                )
+            }
             sessionOrchestrator.markConnected(targetSession)
             sessionOrchestrator.setActiveSession(targetSession)
             /* App Bridge (anowaW): once the nested-Weston desktop machine is up,
@@ -878,7 +900,9 @@ fun WawonaApp(
             }
             startupLogClientLabel = label
             showStartupLog = true
-            showMachinesHome = false
+            // A SessionActivity owns this client's surface. Keep MainActivity
+            // on Machines so returning/back/minimize never steals that surface.
+            showMachinesHome = hostId != 0L
             // Reset accessory mode on session entry so a prior false-positive
             // HIDDEN_EXTERNAL (issue #82) does not stick.
             if (!hasRealExternalKeyboard(
@@ -888,6 +912,10 @@ fun WawonaApp(
                 keyboardUiMode = KeyboardUiMode.ACCESSORY_ONLY
             }
         } else {
+            if (hostId != 0L) {
+                WawonaNative.nativeReleaseHostWindow(hostId)
+                SessionActivityRegistry.release(targetSession)
+            }
             sessionOrchestrator.markDegraded(
                 targetSession,
                 "Launch unsupported or failed for ${profile.type.value}"
@@ -920,6 +948,7 @@ fun WawonaApp(
                 MachineType.VM, MachineType.CONTAINER -> AndroidMobileVmRunner.stop()
             }
             sessionOrchestrator.markDisconnected(session.sessionId)
+            SessionActivityRegistry.release(session.sessionId)
             if (sessionOrchestrator.activeSessionId == session.sessionId) {
                 sessionOrchestrator.setActiveSession(null)
                 showMachinesHome = true
@@ -940,6 +969,7 @@ fun WawonaApp(
         } catch (_: Exception) {
         }
         sessionOrchestrator.setActiveSession(session.sessionId)
+        SessionActivityRegistry.focus(session.sessionId)
         showMachinesHome = false
     }
 
@@ -1057,9 +1087,12 @@ fun WawonaApp(
         while (true) {
             kotlinx.coroutines.delay(250)
             if (!inSessionUi) break
-            if (runCatching { WawonaNative.nativeConsumeMinimizeRequested() }.getOrDefault(false)) {
+            val minimizedWindowId =
+                runCatching { WawonaNative.nativeConsumeMinimizedWindow() }.getOrDefault(0L)
+            if (minimizedWindowId != 0L) {
                 val profile = activeProfile()
                 captureActiveThumbnail(profile)
+                SessionActivityRegistry.park(minimizedWindowId)
                 showMachinesHome = true
             }
         }
@@ -1072,7 +1105,9 @@ fun WawonaApp(
         }
         while (true) {
             clientTabs = buildList {
-                add(ClientTab("shell", "Shell"))
+                // #84: tabs map 1:1 to live Wayland clients only — never the
+                // host "Shell"/Machines chrome. The Machines home is reached via
+                // the host back/Focus affordance, not a tab segment.
                 try {
                     if (WawonaNative.nativeIsBundledClientRunning()) {
                         val id = WawonaNative.nativeGetRunningBundledClientId()

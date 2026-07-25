@@ -65,6 +65,16 @@ and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream synta
   `flake.nix` adds them as inputs, builds toolchains via
   `wwn-toolchain.lib.mkToolchains`, and merges each repo's `registryFragment`
   over `baseRegistry`. Edit a patched recipe in its `wwn-*` repo, not in Wawona.
+- **Weston + Niri ship natively everywhere:** bundle real target-native
+  compositor archives in macOS, iOS, iPadOS, tvOS, watchOS, visionOS, and
+  Android products. Never substitute success-shaped entry-point stubs or omit
+  either compositor. tvOS/watchOS use constrained non-GL fallbacks; this does
+  not permit ANGLE/Vulkan, VMs, or containers on those targets. See
+  workspace rule `wawona-bundled-compositors`.
+- **Graphics stays runtime-only:** iland virtualizes DRM/KMS/GBM in userland.
+  Never open real `/dev/dri` or `/dev/kgsl`, forward real DRM/KMS/KGSL ioctls,
+  ship kernel code, or require kernel patches. Mode B `baremetal` remains
+  userland SkyLight/Mach IPC. Direct Turnip/KGSL is forbidden.
 - **Patched upstreams**: query `get_patch` before assuming upstream behavior. The
   patch anchors are checked in each repo's CI (`verify-weston-ios-patches.py` in
   `wwn-weston`, `verify-zsh-ios-patches.py` in `wwn-zsh`); Wawona keeps the
@@ -77,14 +87,31 @@ and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream synta
   Containerization.framework. Query `project=ios-shell`.
 - **Store-rule asymmetry**: Apple non-macOS platforms = strict (App Store 2.5.2:
   no post-bundle executable code, no JIT, no fork/exec). Android (Play) is more
-  permissive. macOS is exempt and its limits never propagate to other platforms.
-  Default to the Apple-strict answer when platform is ambiguous.
+  permissive. Default to the Apple-strict answer when platform is ambiguous.
+- **macOS is NEVER App Store constrained (hard rule)**: never limit any macOS
+  artifact by App Store / App Review / TestFlight rules, and never "make macOS
+  compliant". macOS may freely use fork/exec/posix_spawn, dlopen, JIT,
+  `DYLD_INSERT_LIBRARIES` (iland Mode B dylib), SIP-gated WindowServer
+  replacement, private frameworks, OpenSSH/`socat`, and the most capable native
+  path. Never reuse an Apple-mobile store-safe shim on macOS when a fuller native
+  path exists (e.g. macOS waypipe = native IOSurface/Mach, not the mobile
+  `--socket-fds`/no-`socat` path). macOS freedoms never propagate to other Apple
+  platforms; mobile store-safety never propagates onto macOS. See
+  `.cursor/rules/wawona-macos-no-appstore.mdc`.
 - **Virtualization**: Wawona iOS will host on-device, JIT-less VMs inside Wawona
   (not UTM) only to run Wayland compositors. Containers only on macOS (maybe
   Android); other Apple platforms = VMs or native only.
 
 ## Conventions
 
+- **Repo DAG (acyclic L0–L4; never invert):** `wwn-toolchain` (L0 substrate:
+  cairo/pango/pixman/libwayland/…) → `wwn-iland` (L1 complete graphics stack:
+  iland + ANGLE/ICDs after P2) → `wwn-kmscube` (L2) → `wwn-weston` (L3) →
+  Wawona (L4). `wwn-waypipe`/`wwn-anowaW`/`wwn-vms` are L3′ (→ toolchain). Never
+  add a `wwn-*` flake input to `wwn-toolchain`, never put graphics keys in its
+  `baseRegistry`, never make `wwn-iland` depend on weston/kmscube/waypipe, and
+  never make Wawona an input of any `wwn-*`. Canonical: `docs/wwn-repo-dag.md`;
+  workspace rule `wawona-repo-dag`.
 - Builds are Nix-based; see `docs/compilation.md` and `docs/2026-nix-build-system.md`.
 - Don't commit secrets; `WWN_MCP_TOKEN` is provided via the environment.
 - **Desktop / LockScreen / anowaW / SIP** — macOS + Android only (see

@@ -362,7 +362,7 @@ final class WWNMachinesViewModel: ObservableObject {
     // Minimize returns to Machines without killing the session; Focus must
     // reverse that and reveal the live compositor again.
     NotificationCenter.default.post(
-      name: NSNotification.Name(WWNClientFocusRequestedNotification),
+      name: .WWNClientFocusRequested,
       object: nil,
       userInfo: ["machineId": profile.machineId]
     )

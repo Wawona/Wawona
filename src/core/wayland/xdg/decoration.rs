@@ -180,11 +180,11 @@ pub fn is_weston_terminal_app_id(app_id: &str) -> bool {
 /// Under Force SSD we still crop when clients ignore server-side decoration and
 /// keep painting CSD into the buffer (common for weston-terminal over waypipe).
 pub fn should_crop_buffer_to_window_geometry(
-    state: &CompositorState,
+    policy: DecorationPolicy,
     decoration_mode: DecorationMode,
 ) -> bool {
     matches!(decoration_mode, DecorationMode::ClientSide)
-        || matches!(state.decoration_policy, DecorationPolicy::ForceServer)
+        || matches!(policy, DecorationPolicy::ForceServer)
 }
 
 fn geometry_intersects_buffer(
@@ -224,14 +224,14 @@ fn geometry_covers_full_buffer(gx: i32, gy: i32, gw: i32, gh: i32, buf_w: i32, b
 /// SSD (the old 5px inset produced content/window misalignment and cursor
 /// offset for every client that did not match the guess).
 pub fn resolve_window_content_geometry(
-    state: &CompositorState,
+    policy: DecorationPolicy,
     _app_id: &str,
     decoration_mode: DecorationMode,
     surface_width: i32,
     surface_height: i32,
     xdg_geometry: Option<(i32, i32, i32, i32)>,
 ) -> Option<(i32, i32, i32, i32)> {
-    if !should_crop_buffer_to_window_geometry(state, decoration_mode) {
+    if !should_crop_buffer_to_window_geometry(policy, decoration_mode) {
         return None;
     }
 
@@ -258,25 +258,27 @@ pub fn is_weston_family_app(state: &CompositorState, window_id: u32) -> bool {
 /// Weston-family clients (weston-terminal, nested Weston, etc.) draw CSD in their
 /// own buffer when the host is not forcing server-side decorations. Same policy
 /// for in-process mobile clients and Linux clients forwarded over waypipe.
-pub(crate) fn weston_family_prefers_client_decorations(state: &CompositorState) -> bool {
-    !matches!(state.decoration_policy, DecorationPolicy::ForceServer)
+pub(crate) fn weston_family_prefers_client_decorations(policy: DecorationPolicy) -> bool {
+    !matches!(policy, DecorationPolicy::ForceServer)
 }
 
 pub fn preferred_xdg_decoration_mode(
     state: &CompositorState,
     window_id: u32,
 ) -> Mode {
-    let weston_family = matches!(state.decoration_policy, DecorationPolicy::ForceServer)
+    // Force SSD per-machine (#120): resolve against this window's client policy.
+    let policy = state.window_decoration_policy(window_id);
+    let weston_family = matches!(policy, DecorationPolicy::ForceServer)
         .then_some(false)
         .unwrap_or_else(|| is_weston_family_app(state, window_id));
     if weston_family {
-        if weston_family_prefers_client_decorations(state) {
+        if weston_family_prefers_client_decorations(policy) {
             Mode::ClientSide
         } else {
             Mode::ServerSide
         }
     } else {
-        match state.decoration_policy {
+        match policy {
             DecorationPolicy::PreferClient => Mode::ClientSide,
             DecorationPolicy::PreferServer => Mode::ServerSide,
             DecorationPolicy::ForceServer => Mode::ServerSide,
@@ -399,7 +401,7 @@ mod tests {
         };
         let state = CompositorState::new(Some(config));
         let geom = resolve_window_content_geometry(
-            &state,
+            state.decoration_policy,
             "org.freedesktop.weston.wayland-terminal",
             DecorationMode::ServerSide,
             800,
@@ -417,7 +419,7 @@ mod tests {
         };
         let state = CompositorState::new(Some(config));
         let geom = resolve_window_content_geometry(
-            &state,
+            state.decoration_policy,
             "weston",
             DecorationMode::ServerSide,
             800,
@@ -435,7 +437,7 @@ mod tests {
         };
         let state = CompositorState::new(Some(config));
         let geom = resolve_window_content_geometry(
-            &state,
+            state.decoration_policy,
             "org.freedesktop.weston.wayland-terminal",
             DecorationMode::ServerSide,
             800,
@@ -449,7 +451,7 @@ mod tests {
     fn csd_mode_without_geometry_keeps_full_buffer() {
         let state = CompositorState::new(None);
         let geom = resolve_window_content_geometry(
-            &state,
+            state.decoration_policy,
             "org.freedesktop.weston.wayland-terminal",
             DecorationMode::ClientSide,
             800,
@@ -501,10 +503,11 @@ mod tests {
         // Force SSD without client-provided window geometry must not invent
         // a crop (the old 5px inset hack).
         assert!(resolve_window_content_geometry(
-            &CompositorState::new(Some(CompositorConfig {
+            CompositorState::new(Some(CompositorConfig {
                 force_ssd: true,
                 ..Default::default()
-            })),
+            }))
+            .decoration_policy,
             "org.freedesktop.weston.wayland-smoke",
             DecorationMode::ClientSide,
             200,

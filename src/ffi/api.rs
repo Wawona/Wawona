@@ -517,16 +517,29 @@ impl WawonaCore {
         let mut state = self.state.write_recover();
 
         crate::wlog!(crate::util::logging::FFI, "FFI: set_force_ssd({})", enabled);
-        
-        // 1. Update policy
+
+        // 1. Update the GLOBAL default policy. Force SSD per-machine (#120):
+        //    this is only the default for clients (machines) with no explicit
+        //    per-client override; toggling the global Settings switch must NOT
+        //    rewrite live machines that carry their own Force SSD setting.
         state.decoration_policy = if enabled {
             crate::core::state::DecorationPolicy::ForceServer
         } else {
             crate::core::state::DecorationPolicy::PreferClient
         };
-        
+
         // 2. Update cached state
         *self.force_ssd.write_recover() = enabled;
+
+        // Window ids belonging to clients that carry a per-machine override —
+        // these must be left untouched by the global toggle below.
+        let overridden_windows: std::collections::HashSet<u32> = state
+            .xdg
+            .toplevels
+            .iter()
+            .filter(|((client_id, _), _)| state.client_decoration_policy.contains_key(client_id))
+            .map(|(_, tl)| tl.window_id)
+            .collect();
         
         // 3. Notify existing decorations if protocol is active
         use wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as XdgMode;
@@ -548,6 +561,7 @@ impl WawonaCore {
             .xdg
             .toplevels
             .values()
+            .filter(|tl| !overridden_windows.contains(&tl.window_id))
             .filter_map(|tl| tl.toplevel_surface.clone().map(|s| (tl.window_id, s)))
             .collect();
 
@@ -556,7 +570,7 @@ impl WawonaCore {
             .decoration
             .decorations
             .values()
-            .filter(|d| d.kde_resource.is_some())
+            .filter(|d| d.kde_resource.is_some() && !overridden_windows.contains(&d.window_id))
             .cloned()
             .collect();
 
@@ -617,6 +631,54 @@ impl WawonaCore {
                 }
             }
         }
+    }
+
+    /// Stage the decoration policy for the **next** machine's Wayland client.
+    ///
+    /// Force SSD per-machine (#120): the host calls this immediately before
+    /// launching a machine's client, passing that machine's resolved
+    /// `forceSSD`. The first toplevel from the connecting client claims the
+    /// staged policy and pins it, so concurrent machines (e.g. one CSD, one
+    /// SSD) never stomp each other. Unlike [`set_force_ssd`], this does **not**
+    /// touch the global default or any already-connected client.
+    pub fn set_force_ssd_for_client_launch(&self, enabled: bool) {
+        let mut state = self.state.write_recover();
+        let policy = if enabled {
+            crate::core::state::DecorationPolicy::ForceServer
+        } else {
+            crate::core::state::DecorationPolicy::PreferClient
+        };
+        crate::wlog!(
+            crate::util::logging::FFI,
+            "FFI: set_force_ssd_for_client_launch({}) -> pending {:?}",
+            enabled,
+            policy
+        );
+        state.pending_client_decoration_policy = Some(policy);
+    }
+
+    /// Mark whether `window_id` is hosted in its own independent OS
+    /// window/scene (macOS NSWindow-per-toplevel, or one `UIWindowScene` per
+    /// Wayland client on iPadOS/visionOS — see `ipad-scene-parity` /
+    /// `vision-shell-parity`, #120).
+    ///
+    /// Independent windows are excluded from the shared-output resize sweep
+    /// in `CompositorState::set_output_size`: without this, resizing the
+    /// *primary* host window (Machines UI) would snap every fill-primary
+    /// (maximized) client — including ones now living in their own,
+    /// differently-sized scene — to the primary window's size, producing
+    /// visible resize glitches on the unrelated client window.
+    pub fn set_window_host_scene_independent(&self, window_id: WindowId, independent: bool) {
+        let wid = window_id.id as u32;
+        crate::wlog!(
+            crate::util::logging::FFI,
+            "FFI: set_window_host_scene_independent(window={}, independent={})",
+            wid,
+            independent
+        );
+        self.state
+            .write_recover()
+            .set_window_host_scene_independent(wid, independent);
     }
 
     /// Set whether to advertise zwp_fullscreen_shell_v1

@@ -7,6 +7,9 @@ and `AGENTS.md`).
 
 Upstream inspiration: [CoreBedtime/iland](https://github.com/CoreBedtime/iland).
 Wawona packaging: [wwn-iland](https://github.com/Wawona/wwn-iland).
+Stack architecture and toolkit contracts:
+[`iland-graphics-stack.md`](iland-graphics-stack.md). Repository ownership:
+[`wwn-repo-dag.md`](wwn-repo-dag.md).
 
 ## Summary
 
@@ -138,6 +141,12 @@ page-flip triggers the present callback into the Metal layer.
 | Framebuffer | `drmModeAddFB*` | IOSurface-backed FB id (must honor fourcc) |
 | GBM BO | `gbm_bo_*` | Same IOSurface (unified allocator, not a second buffer world) |
 | Page-flip | `drmModePageFlip` | present callback → CAMetalLayer drawable / host import |
+
+All of these objects are runtime-only userland emulation. Even the historical
+Mode B `baremetal` package name does not authorize kernel DRM/KMS: virtual
+`/dev/dri` opens and ioctls terminate inside iland, while framebufferd returns
+a Mach present ACK from its host-vsync path. No Wawona kernel module, kernel
+patch, real DRM node, or direct KGSL path is permitted.
 
 Minimal layers: GLES → **ANGLE → Metal**; Vulkan → **MoltenVK or KosmicKrisp →
 Metal**. IOSurface is the shared backing for FB/dmabuf zero-copy (#86), not a

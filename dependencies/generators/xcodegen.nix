@@ -75,6 +75,12 @@ let
   derivedNvimLib = "$(DERIVED_FILE_DIR)/libwawona-neovim.a";
   derivedSshCliLib = "$(DERIVED_FILE_DIR)/libwwn-ssh-cli.a";
   derivedFfLib = "$(DERIVED_FILE_DIR)/libfastfetch.a";
+  # foot / fuzzel are Wayland clients whose static archives embed their own copy
+  # of the generated protocol marshalling (xdg_toplevel_interface, …). Prebuild
+  # privatises them here (single merged .o, only the *_main entry exported) so
+  # those symbols become local and never collide with weston's copies.
+  derivedFootLib = "$(DERIVED_FILE_DIR)/libfoot.a";
+  derivedFuzzelLib = "$(DERIVED_FILE_DIR)/libfuzzel.a";
   derivedGetprognameLib = "$(DERIVED_FILE_DIR)/libwawona-getprogname.a";
   # Prebuild copies and privatises (nmedit) the active SDK's archives here
   # (see scripts/xcode-prebuild.sh) so internal symbols don't collide.
@@ -164,6 +170,20 @@ let
     inherit lib deps simulator;
     forceLoad = true;
   };
+  moltenvkLdflags = deps:
+    let
+      mvk = deps.moltenvk or null;
+      archive = "${strip mvk}/lib/libMoltenVK.a";
+    in
+      if mvk == null || !builtins.pathExists archive then [ ] else [
+        "-force_load" archive
+        "-framework" "Metal"
+        "-framework" "Foundation"
+        "-framework" "QuartzCore"
+        "-framework" "CoreGraphics"
+        "-framework" "IOSurface"
+        "-framework" "UIKit"
+      ];
   pixmanHeaderPaths = deps: lib.optionals (deps ? pixman && deps.pixman != null) [
     "${strip deps.pixman}/include"
     "${strip deps.pixman}/include/pixman-1"
@@ -175,11 +195,19 @@ let
     "${strip (deps.angle or null)}/include"
     "${strip (deps.kmscube or deps."iland-gl-clients" or null)}/include"
   ];
+  # foot: force-load the privatized $(DERIVED_FILE_DIR) copy (see xcode-prebuild.sh),
+  # not the raw store archive — its embedded protocol symbols must be localised so
+  # they do not collide with weston / fuzzel at final link.
   footLdflags = deps:
-    let libfoot = "${strip (deps.foot or null)}/lib/libfoot.a";
-    in if (deps.foot or null) == null || !builtins.pathExists libfoot then [] else [
-      "-force_load" libfoot
-    ];
+    let
+      libfoot = "${strip (deps.foot or null)}/lib/libfoot.a";
+      fcft = deps.fcft or null;
+    in if (deps.foot or null) == null || !builtins.pathExists libfoot then [] else
+      [ "-force_load" derivedFootLib ]
+      # foot depends on fcft (font shaping). On iOS/iPadOS/visionOS fuzzel also
+      # pulls fcft, but tvOS/watchOS link foot without fuzzel, so foot must own
+      # it. Duplicate -lfcft with fuzzel is harmless (ld dedups library refs).
+      ++ lib.optionals (fcft != null) [ "-L${strip fcft}/lib" "-lfcft" ];
   # fastfetch links its frameworks from the per-platform list emitted by
   # wwn-fastfetch ($out/nix-support/fastfetch-frameworks). This keeps Wawona free
   # of per-platform framework knowledge: watchOS (no Metal/VideoToolbox) linking
@@ -209,12 +237,17 @@ let
       cg = deps."cairo-gobject" or null;
       cgLib = "${strip cg}/lib/libcairo-gobject.a";
     in
-      (if niri == null || !builtins.pathExists libniri then [] else [
+      # Deliberately no builtins.pathExists on the output: that only reports
+      # whether the archive is *already realised*, so a target that had never
+      # built niri silently dropped -force_load while still emitting
+      # -Wl,-u,_niri_main, and failed to link. Niri is mandatory on every Apple
+      # target, so a null dep is the only legitimate way to opt out.
+      (if niri == null then [] else [
         "-L${strip niri}/lib"
         "-Wl,-u,_niri_main"
         "-force_load" libniri
       ])
-      ++ lib.optionals (cg != null && builtins.pathExists cgLib) [
+      ++ lib.optionals (cg != null) [
         "-L${strip cg}/lib"
         "-lcairo-gobject"
       ];
@@ -227,7 +260,7 @@ let
     in
       (if fuzzel == null || !builtins.pathExists libfuzzel then [] else [
         "-Wl,-u,_fuzzel_main"
-        libfuzzel
+        "-force_load" derivedFuzzelLib
       ])
       ++ lib.optionals (fcft != null) [
         "-L${strip fcft}/lib"
@@ -273,7 +306,7 @@ let
     ];
   xkbIosEmbedScript = pkgs.writeShellScript "embed-xkb-ios.sh" ''
     case "''${PLATFORM_NAME:-}" in
-      iphoneos|iphonesimulator|appletvos|appletvsimulator|xros|xrsimulator)
+      iphoneos|iphonesimulator|appletvos|appletvsimulator|xros|xrsimulator|watchos|watchsimulator)
         ;;
       *)
         exit 0
@@ -338,13 +371,18 @@ let
 
   # Target-scoped pre-build: only realize the Rust backend(s) for the active Xcode
   # target, with input/output paths so Xcode skips the script on incremental builds.
-  libwawonaOutputPaths = { withZsh ? false, withGetprogname ? false }:
+  libwawonaOutputPaths = { withZsh ? false, withGetprogname ? false, withFoot ? false, withFuzzel ? false }:
     [ derivedRustLib ]
     ++ lib.optionals withZsh [
       derivedZshLib
       derivedNvimLib
       derivedFfLib
     ]
+    # foot/fuzzel are privatized into $(DERIVED_FILE_DIR) by xcode-prebuild.sh;
+    # declare them as outputs so Xcode's linker input check finds them. foot ships
+    # on every Apple-mobile target; fuzzel only on iOS/iPadOS/visionOS.
+    ++ lib.optionals withFoot [ derivedFootLib ]
+    ++ lib.optionals withFuzzel [ derivedFuzzelLib ]
     ++ lib.optionals withGetprogname [ derivedGetprognameLib ];
 
   nixPreBuildInputs = [
@@ -353,30 +391,30 @@ let
     "$(SRCROOT)/Cargo.toml"
   ];
 
-  mkPreBuildPhase = { withZsh ? false, withGetprogname ? false }: {
+  mkPreBuildPhase = { withZsh ? false, withGetprogname ? false, withFoot ? false, withFuzzel ? false }: {
     name = "Build Rust Backend via Nix";
     basedOnDependencyAnalysis = false;
     inputFiles = nixPreBuildInputs ++ [
       "$(SRCROOT)/scripts/xcode-prebuild.sh"
       "$(SRCROOT)/src/platform/ios/WWNGetprognameStub.c"
     ];
-    outputFiles = libwawonaOutputPaths { inherit withZsh withGetprogname; };
+    outputFiles = libwawonaOutputPaths { inherit withZsh withGetprogname withFoot withFuzzel; };
     script = ''
       exec "''${SRCROOT}/scripts/xcode-prebuild.sh"
     '';
   };
 
-  iosPreBuild = mkPreBuildPhase { withZsh = true; withGetprogname = true; };
+  iosPreBuild = mkPreBuildPhase { withZsh = true; withGetprogname = true; withFoot = true; withFuzzel = true; };
 
-  ipadosPreBuild = mkPreBuildPhase { withZsh = true; withGetprogname = true; };
+  ipadosPreBuild = mkPreBuildPhase { withZsh = true; withGetprogname = true; withFoot = true; withFuzzel = true; };
 
-  tvosPreBuild = mkPreBuildPhase { withZsh = true; withGetprogname = true; };
+  tvosPreBuild = mkPreBuildPhase { withZsh = true; withGetprogname = true; withFoot = true; };
 
   macosPreBuild = mkPreBuildPhase { };
 
-  visionosPreBuild = mkPreBuildPhase { withZsh = true; withGetprogname = true; };
+  visionosPreBuild = mkPreBuildPhase { withZsh = true; withGetprogname = true; withFoot = true; withFuzzel = true; };
 
-  watchosPreBuild = mkPreBuildPhase { withZsh = true; };
+  watchosPreBuild = mkPreBuildPhase { withZsh = true; withFoot = true; };
 
   # Runs before Nix prebuild; writes $(SRCROOT)/.build/wwn-build-number.xcconfig so
   # every Xcode build gets a fresh CURRENT_PROJECT_VERSION (timestamp locally, CI run id).
@@ -500,7 +538,7 @@ let
             "-llz4"
             "-lepoll-shim"
           ] ++ (mobileBaseLdflags simDeps) ++ westonToytoolkitLdflagsAppleMobile simDeps ++ westonCompositorLdflagsAppleMobile simDeps
-          ++ (ilandGlLdflags { deps = simDeps; simulator = true; }) ++ footLdflags simDeps ++ extraSimLdflags
+          ++ (ilandGlLdflags { deps = simDeps; simulator = true; }) ++ moltenvkLdflags simDeps ++ footLdflags simDeps ++ extraSimLdflags
           ++ [ derivedRustLib ] ++ finalCxxLdflags;
           GCC_PREPROCESSOR_DEFINITIONS = [ "$(inherited)" ] ++ extraDefines ++ versionDefs;
         } // lib.optionalAttrs (!simulatorOnly) {
@@ -525,7 +563,7 @@ let
             "-llz4"
             "-lepoll-shim"
           ] ++ (mobileBaseLdflags deps) ++ westonToytoolkitLdflagsAppleMobile deps ++ westonCompositorLdflagsAppleMobile deps
-          ++ (ilandGlLdflags { inherit deps; simulator = false; }) ++ footLdflags deps ++ extraDeviceLdflags
+          ++ (ilandGlLdflags { inherit deps; simulator = false; }) ++ moltenvkLdflags deps ++ footLdflags deps ++ extraDeviceLdflags
           ++ [ derivedRustLib ] ++ finalCxxLdflags;
         };
       };
@@ -645,11 +683,11 @@ PLIST
   '';
 
   angleSimEmbedScript =
-    if angleSimDylib != null then angleEmbedScript "*simulator" angleSimDylib
+    if angleSimDylib != null then angleEmbedScript "iphonesimulator" angleSimDylib
     else pkgs.writeShellScript "embed-angle-sim-dylibs-noop.sh" "exit 0";
   angleDeviceEmbedScript =
     # No appletvos — tvOS must not ship ANGLE (platform-targets matrix).
-    if angleDeviceDylib != null then angleEmbedScript "iphoneos|xros" angleDeviceDylib
+    if angleDeviceDylib != null then angleEmbedScript "iphoneos" angleDeviceDylib
     else pkgs.writeShellScript "embed-angle-device-dylibs-noop.sh" "exit 0";
 
   angleSimEmbedPhase = {
@@ -705,10 +743,25 @@ PLIST
     outputFiles = appsCatalogEmbedOutputs;
   };
 
-  iosPostBuildPhases = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase niriDataEmbedPhase appsCatalogEmbedPhase iosRootfsEmbedPhase iosNeovimRootfsEmbedPhase ]
+  # Single source of truth for the GPU-capable Apple-mobile targets
+  # (iOS, iPadOS, visionOS — the three that must ship niri/fuzzel data, the
+  # VM/container embeds, and bundled ANGLE per wawona-platform-targets).
+  # ALWAYS call this from those three targets' postBuildScripts instead of
+  # hand-listing phases per target: a hand-maintained per-target list is
+  # exactly how Wawona-iPadOS silently drifted from Wawona-iOS and shipped
+  # without libEGL/libGLESv2 (dyld "Library not loaded: @rpath/libEGL...").
+  # tvOS/watchOS intentionally do NOT call this — they must never get
+  # ANGLE/Vulkan/OpenGL or VM/container embeds (native + remote only).
+  mkAppleGpuPostBuildPhases = { rootfsEmbedPhase, neovimRootfsEmbedPhase }:
+    [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase niriDataEmbedPhase appsCatalogEmbedPhase rootfsEmbedPhase neovimRootfsEmbedPhase ]
     ++ mobileVmEmbedPhases
     ++ lib.optionals (angleSimDylib != null) [ angleSimEmbedPhase ]
     ++ lib.optionals (angleDeviceDylib != null) [ angleDeviceEmbedPhase ];
+
+  iosPostBuildPhases = mkAppleGpuPostBuildPhases {
+    rootfsEmbedPhase = iosRootfsEmbedPhase;
+    neovimRootfsEmbedPhase = iosNeovimRootfsEmbedPhase;
+  };
 
   westonDataIosEmbedScript = pkgs.writeShellScript "embed-weston-data-ios.sh" ''
     case "''${PLATFORM_NAME:-}" in
@@ -812,14 +865,17 @@ PLIST
     "$(BUILT_PRODUCTS_DIR)/$(FULL_PRODUCT_NAME)/share/niri/default-config.kdl"
   ];
 
-  niriDataEmbedPhase = {
+  mkNiriDataEmbedPhase = deviceDeps: simDeps: {
     path = niriDataIosEmbedScript
-      (if simulatorOnly then null else (iosDeps.niri or null))
-      (iosSimDeps.niri or null);
+      (if simulatorOnly then null else (deviceDeps.niri or null))
+      (simDeps.niri or null);
     name = "Embed niri config (default-config.kdl)";
     basedOnDependencyAnalysis = true;
     outputFiles = niriDataEmbedOutputs;
   };
+  niriDataEmbedPhase = mkNiriDataEmbedPhase iosDeps iosSimDeps;
+  tvosNiriDataEmbedPhase = mkNiriDataEmbedPhase tvosDeps tvosSimDeps;
+  watchosNiriDataEmbedPhase = mkNiriDataEmbedPhase watchosDeps watchosSimDeps;
 
   rootfsIosEmbedScript = deviceRootfs: simRootfs: pkgs.writeShellScript "embed-rootfs-ios.sh" ''
     case "''${PLATFORM_NAME:-}" in
@@ -842,6 +898,15 @@ PLIST
     rm -rf "$DEST"
     mkdir -p "$DEST"
     cp -R "$rootfsSrc/." "$DEST/"
+    # /nix/store is read-only (dr-xr-xr-x dirs, -r--r--r-- files) by design;
+    # plain cp -R preserves that mode verbatim into the embedded copy. A
+    # read-only *directory* in the app bundle then breaks anything that later
+    # needs to add/replace entries under it — notably the iOS Simulator's own
+    # install/copy machinery (MobileInstallation), which fails the whole
+    # `simctl install` with a bare "Permission denied" deep inside this tree
+    # (no relation to code signing). Make the embedded copy writable so it
+    # behaves like a normal bundle resource, not a read-only store path.
+    chmod -R u+w "$DEST"
     echo "Embedded wawona-rootfs into $DEST (template $(cat "$DEST/etc/zsh/.template-version" 2>/dev/null || echo unknown))"
   '';
 
@@ -969,6 +1034,11 @@ PLIST
     rm -rf "$DEST"
     mkdir -p "$DEST"
     cp -R "$rootfsSrc/." "$DEST/"
+    # See the matching comment in rootfsIosEmbedScript: /nix/store dirs are
+    # read-only and cp -R preserves that mode, which breaks Simulator install
+    # (MobileInstallation "Permission denied") and any later rebuild that
+    # needs to overwrite this tree. Make the embedded copy writable.
+    chmod -R u+w "$DEST"
     echo "Embedded neovim-rootfs into $DEST"
   '';
 
@@ -1241,7 +1311,7 @@ PLIST
               "-lcrypto"
                "-lepoll-shim"
              ] ++ westonToytoolkitLdflagsAppleMobile iosSimDeps ++ westonCompositorLdflagsAppleMobile iosSimDeps
-             ++ (ilandGlLdflags { deps = iosSimDeps; simulator = true; }) ++ footLdflags iosSimDeps ++ fastfetchLdflags iosSimDeps ++ neovimLdflags iosSimDeps ++ niriLdflags iosSimDeps ++ fuzzelLdflags iosSimDeps
+             ++ (ilandGlLdflags { deps = iosSimDeps; simulator = true; }) ++ moltenvkLdflags iosSimDeps ++ footLdflags iosSimDeps ++ fastfetchLdflags iosSimDeps ++ neovimLdflags iosSimDeps ++ niriLdflags iosSimDeps ++ fuzzelLdflags iosSimDeps
              ++ sshCliLdflags iosSimDeps
              ++ appleMobileResolvLdflags
              ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
@@ -1289,7 +1359,7 @@ PLIST
                "-lcrypto"
                "-lepoll-shim"
              ] ++ westonToytoolkitLdflagsAppleMobile iosDeps ++ westonCompositorLdflagsAppleMobile iosDeps
-             ++ (ilandGlLdflags { deps = iosDeps; simulator = false; }) ++ footLdflags iosDeps ++ fastfetchLdflags iosDeps ++ neovimLdflags iosDeps ++ niriLdflags iosDeps ++ fuzzelLdflags iosDeps
+             ++ (ilandGlLdflags { deps = iosDeps; simulator = false; }) ++ moltenvkLdflags iosDeps ++ footLdflags iosDeps ++ fastfetchLdflags iosDeps ++ neovimLdflags iosDeps ++ niriLdflags iosDeps ++ fuzzelLdflags iosDeps
              ++ sshCliLdflags iosDeps
              ++ appleMobileResolvLdflags
              ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
@@ -1363,7 +1433,14 @@ PLIST
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
         ] ++ iosUtilSources;
         preBuildScripts = [ stampBuildNumberPhase ipadosPreBuild ];
-        postBuildScripts = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase ipadosRootfsEmbedPhase ipadosNeovimRootfsEmbedPhase ] ++ mobileVmEmbedPhases;
+        # mkAppleGpuPostBuildPhases keeps this permanently in sync with
+        # Wawona-iOS/Wawona-visionOS (niri data / fuzzel apps catalog / VM
+        # embeds / ANGLE) — see its definition for why this must never go
+        # back to a hand-maintained per-target list.
+        postBuildScripts = mkAppleGpuPostBuildPhases {
+          rootfsEmbedPhase = ipadosRootfsEmbedPhase;
+          neovimRootfsEmbedPhase = ipadosNeovimRootfsEmbedPhase;
+        };
 
         settings = {
           base = {
@@ -1424,7 +1501,7 @@ PLIST
               "-lcrypto"
               "-lepoll-shim"
             ] ++ westonToytoolkitLdflagsAppleMobile ipadosDeps ++ westonCompositorLdflagsAppleMobile ipadosDeps
-            ++ (ilandGlLdflags { deps = ipadosDeps; simulator = false; }) ++ footLdflags ipadosDeps ++ fastfetchLdflags ipadosDeps ++ neovimLdflags ipadosDeps ++ niriLdflags ipadosDeps ++ fuzzelLdflags ipadosDeps
+            ++ (ilandGlLdflags { deps = ipadosDeps; simulator = false; }) ++ moltenvkLdflags ipadosDeps ++ footLdflags ipadosDeps ++ fastfetchLdflags ipadosDeps ++ neovimLdflags ipadosDeps ++ niriLdflags ipadosDeps ++ fuzzelLdflags ipadosDeps
             ++ sshCliLdflags ipadosDeps
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
@@ -1456,7 +1533,7 @@ PLIST
               "-lcrypto"
               "-lepoll-shim"
             ] ++ westonToytoolkitLdflagsAppleMobile ipadosSimDeps ++ westonCompositorLdflagsAppleMobile ipadosSimDeps
-            ++ (ilandGlLdflags { deps = ipadosSimDeps; simulator = true; }) ++ footLdflags ipadosSimDeps ++ fastfetchLdflags ipadosSimDeps ++ neovimLdflags ipadosSimDeps ++ niriLdflags ipadosSimDeps ++ fuzzelLdflags ipadosSimDeps
+            ++ (ilandGlLdflags { deps = ipadosSimDeps; simulator = true; }) ++ moltenvkLdflags ipadosSimDeps ++ footLdflags ipadosSimDeps ++ fastfetchLdflags ipadosSimDeps ++ neovimLdflags ipadosSimDeps ++ niriLdflags ipadosSimDeps ++ fuzzelLdflags ipadosSimDeps
             ++ sshCliLdflags ipadosSimDeps
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
@@ -1548,7 +1625,7 @@ PLIST
         ] ++ iosUtilSources;
         preBuildScripts = [ stampBuildNumberPhase tvosPreBuild ];
         # No ANGLE embed / no VM guest on tvOS (platform-targets: no GL, no VM).
-        postBuildScripts = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase tvosRootfsEmbedPhase tvosNeovimRootfsEmbedPhase ];
+        postBuildScripts = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase tvosNiriDataEmbedPhase tvosRootfsEmbedPhase tvosNeovimRootfsEmbedPhase ];
 
         settings = {
           base = {
@@ -1604,7 +1681,10 @@ PLIST
               "-lssl"
               "-lcrypto"
               "-lepoll-shim"
-            ] ++ westonToytoolkitLdflagsAppleMobile tvosDeps ++ westonCompositorLdflagsAppleMobile tvosDeps ++ footLdflags tvosDeps
+              # niri's wayland-egl crate references wl_egl_window_* even on the
+              # software-only tvOS surface.
+              "-lwayland-egl"
+            ] ++ westonToytoolkitLdflagsAppleMobile tvosDeps ++ westonCompositorLdflagsAppleMobile tvosDeps ++ niriLdflags tvosDeps ++ footLdflags tvosDeps
             ++ sshCliLdflags tvosDeps
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" derivedRustLib ] ++ finalCxxLdflagsNoIokit;
@@ -1635,7 +1715,8 @@ PLIST
               "-lssl"
               "-lcrypto"
               "-lepoll-shim"
-            ] ++ westonToytoolkitLdflagsAppleMobile tvosSimDeps ++ westonCompositorLdflagsAppleMobile tvosSimDeps ++ footLdflags tvosSimDeps
+              "-lwayland-egl"
+            ] ++ westonToytoolkitLdflagsAppleMobile tvosSimDeps ++ westonCompositorLdflagsAppleMobile tvosSimDeps ++ niriLdflags tvosSimDeps ++ footLdflags tvosSimDeps
             ++ sshCliLdflags tvosSimDeps
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" derivedRustLib ] ++ finalCxxLdflagsNoIokit;
@@ -2160,10 +2241,13 @@ PLIST
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
         ] ++ iosUtilSources;
         preBuildScripts = [ stampBuildNumberPhase visionosPreBuild ];
-        postBuildScripts = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase visionosRootfsEmbedPhase visionosNeovimRootfsEmbedPhase ]
-          ++ mobileVmEmbedPhases
-          ++ lib.optionals (angleSimDylib != null) [ angleSimEmbedPhase ]
-          ++ lib.optionals (angleDeviceDylib != null) [ angleDeviceEmbedPhase ];
+        # mkAppleGpuPostBuildPhases — see Wawona-iOS/-iPadOS. This also fixes
+        # visionOS previously missing niri data / fuzzel apps catalog, which
+        # macOS-parity (wawona-platform-targets) requires it to have.
+        postBuildScripts = mkAppleGpuPostBuildPhases {
+          rootfsEmbedPhase = visionosRootfsEmbedPhase;
+          neovimRootfsEmbedPhase = visionosNeovimRootfsEmbedPhase;
+        };
         settings = {
           base = {
             INFOPLIST_FILE = "src/resources/app-bundle/Info.plist";
@@ -2227,7 +2311,7 @@ PLIST
               "-lcrypto"
               "-lwayland-egl"
             ] ++ westonToytoolkitLdflagsAppleMobile visionosDeps ++ westonCompositorLdflagsAppleMobile visionosDeps
-            ++ (ilandGlLdflags { deps = visionosDeps; simulator = false; }) ++ footLdflags visionosDeps ++ fastfetchLdflags visionosDeps ++ neovimLdflags visionosDeps ++ niriLdflags visionosDeps ++ fuzzelLdflags visionosDeps
+            ++ (ilandGlLdflags { deps = visionosDeps; simulator = false; }) ++ moltenvkLdflags visionosDeps ++ footLdflags visionosDeps ++ fastfetchLdflags visionosDeps ++ neovimLdflags visionosDeps ++ niriLdflags visionosDeps ++ fuzzelLdflags visionosDeps
             ++ sshCliLdflags visionosDeps
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
@@ -2260,7 +2344,7 @@ PLIST
               "-lcrypto"
               "-lwayland-egl"
             ] ++ westonToytoolkitLdflagsAppleMobile visionosSimDeps ++ westonCompositorLdflagsAppleMobile visionosSimDeps
-            ++ (ilandGlLdflags { deps = visionosSimDeps; simulator = true; }) ++ footLdflags visionosSimDeps ++ fastfetchLdflags visionosSimDeps ++ neovimLdflags visionosSimDeps ++ niriLdflags visionosSimDeps ++ fuzzelLdflags visionosSimDeps
+            ++ (ilandGlLdflags { deps = visionosSimDeps; simulator = true; }) ++ moltenvkLdflags visionosSimDeps ++ footLdflags visionosSimDeps ++ fastfetchLdflags visionosSimDeps ++ neovimLdflags visionosSimDeps ++ niriLdflags visionosSimDeps ++ fuzzelLdflags visionosSimDeps
             ++ sshCliLdflags visionosSimDeps
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
@@ -2400,6 +2484,7 @@ PLIST
         ];
         preBuildScripts = [ stampBuildNumberPhase watchosPreBuild ];
         postBuildScripts = [
+          watchosNiriDataEmbedPhase
           watchosRootfsEmbedPhase
           {
             name = "Fix Watch Embedded Frameworks";
@@ -2478,10 +2563,18 @@ PLIST
               "-lssl"
               "-lcrypto"
               "-lxkbcommon"
-            ] ++ westonToytoolkitLdflagsAppleMobile watchosDeps ++ westonCompositorLdflagsAppleMobile watchosDeps ++ footLdflags watchosDeps ++ fastfetchLdflags watchosDeps ++ neovimLdflags watchosDeps ++ [
+              # niri's wayland-egl crate references wl_egl_window_*, which lives
+              # in libwayland-egl even on the software-only watchOS surface.
+              "-lwayland-egl"
+            ] ++ westonToytoolkitLdflagsAppleMobile watchosDeps ++ westonCompositorLdflagsAppleMobile watchosDeps ++ niriLdflags watchosDeps ++ footLdflags watchosDeps ++ fastfetchLdflags watchosDeps ++ neovimLdflags watchosDeps ++ [
               "-lwayland-server"
             ] ++ lib.optionals (watchosDeps ? waypipe && watchosDeps.waypipe != null) [
-              "-force_load" "${strip watchosDeps.waypipe}/lib/libwaypipe.a"
+              # Lazy archive link, not -force_load: niri is already force-loaded
+              # and both are Rust staticlibs bundling std/core, so forcing both
+              # yields thousands of duplicate symbols. _waypipe_main is kept
+              # alive by the global -Wl,-u in mobileDispatchLdflags.
+              "-L${strip watchosDeps.waypipe}/lib"
+              "-lwaypipe"
             ] ++ sshCliLdflags watchosDeps
             ++ appleMobileResolvLdflags ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" ] ++ lib.optionals (watchosBackend != null) [
               derivedRustLib
@@ -2513,10 +2606,12 @@ PLIST
               "-lssl"
               "-lcrypto"
               "-lxkbcommon"
-            ] ++ westonToytoolkitLdflagsAppleMobile watchosSimDeps ++ westonCompositorLdflagsAppleMobile watchosSimDeps ++ footLdflags watchosSimDeps ++ fastfetchLdflags watchosSimDeps ++ neovimLdflags watchosSimDeps ++ [
+              "-lwayland-egl"
+            ] ++ westonToytoolkitLdflagsAppleMobile watchosSimDeps ++ westonCompositorLdflagsAppleMobile watchosSimDeps ++ niriLdflags watchosSimDeps ++ footLdflags watchosSimDeps ++ fastfetchLdflags watchosSimDeps ++ neovimLdflags watchosSimDeps ++ [
               "-lwayland-server"
             ] ++ lib.optionals (watchosSimDeps ? waypipe && watchosSimDeps.waypipe != null) [
-              "-force_load" "${strip watchosSimDeps.waypipe}/lib/libwaypipe.a"
+              "-L${strip watchosSimDeps.waypipe}/lib"
+              "-lwaypipe"
             ] ++ sshCliLdflags watchosSimDeps
             ++ appleMobileResolvLdflags ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" ] ++ lib.optionals (watchosSimBackend != null) [
               derivedRustLib

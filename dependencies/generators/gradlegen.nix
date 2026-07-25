@@ -338,9 +338,8 @@ let
               if [ -f "$so" ]; then
                 base_so="$(basename "$so")"
                 case "$base_so" in
-                  # Upstream prebuilts currently fail 16KB page-size checks.
-                  # Keep APK clean for Android 15+/Play requirements.
-                  libvk_swiftshader.so|libSPIRV-Tools-shared.so)
+                  # Tool-only shared SPIR-V library is not needed by the ICD.
+                  libSPIRV-Tools-shared.so)
                     continue
                     ;;
                 esac

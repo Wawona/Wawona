@@ -105,12 +105,11 @@ int WWNSettings_GetRenderingBackend(void) {
 }
 
 bool WWNSettings_GetVulkanDriversEnabled(void) {
-    return g_config.vulkanDrivers;
+    return WWNSettings_ResolveGraphicsDriverSelection().vulkanEnabled;
 }
 
 bool WWNSettings_GetEGLDriversEnabled(void) {
-  // EGL disabled - Vulkan only mode
-  return false;
+  return WWNSettings_ResolveGraphicsDriverSelection().openGLEnabled;
 }
 
 // Graphics Driver Selection
@@ -120,6 +119,29 @@ const char *WWNSettings_GetVulkanDriver(void) {
 
 const char *WWNSettings_GetOpenGLDriver(void) {
   return g_config.openglDriver[0] ? g_config.openglDriver : "system";
+}
+
+static bool wwnDriverIs(const char *value, const char *expected) {
+  return value && strcmp(value, expected) == 0;
+}
+
+WWNGraphicsDriverSelection WWNSettings_ResolveGraphicsDriverSelection(void) {
+  const char *vulkan = WWNSettings_GetVulkanDriver();
+  const char *openGL = WWNSettings_GetOpenGLDriver();
+
+  if (!wwnDriverIs(vulkan, "none") && !wwnDriverIs(vulkan, "system") &&
+      !wwnDriverIs(vulkan, "swiftshader"))
+    vulkan = "system";
+  if (!wwnDriverIs(openGL, "none") && !wwnDriverIs(openGL, "system") &&
+      !wwnDriverIs(openGL, "angle"))
+    openGL = "system";
+
+  return (WWNGraphicsDriverSelection){
+      .vulkanDriver = vulkan,
+      .openGLDriver = openGL,
+      .vulkanEnabled = !wwnDriverIs(vulkan, "none"),
+      .openGLEnabled = !wwnDriverIs(openGL, "none"),
+  };
 }
 
 // Dmabuf Support

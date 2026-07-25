@@ -6,17 +6,17 @@ plan` and of GitHub epic **#122** (`Wawona/Wawona`). Updated every inner-loop
 iteration (grades + repos touched + waypipe zero-copy impact).
 
 - Plan: Cursor plan `wwn-iland graphics stack` (dual-loop, P0→P4).
+- Canonical stack: [`iland-graphics-stack.md`](iland-graphics-stack.md).
 - Canonical Mode A/B: [`iland-mode-a-b-desktop.md`](iland-mode-a-b-desktop.md).
-- Repo layering: [`wwn-repo-dag.md`](wwn-repo-dag.md) (draft, this phase).
+- Repo layering: [`wwn-repo-dag.md`](wwn-repo-dag.md) (enforced).
 - Drivers cheat-sheet: [`drivers-how-to/`](drivers-how-to/README.md).
 - Related issues: #58 (kmscube `/dev/dri/card0` open), #86 (IOSurface dmabuf
   zero-copy), #87 (macOS Mode B SkyLight replacement), #94 (purple tint +
   edge-to-edge sizing), #110 (nested-client launch umbrella).
 
-> **Phase status:** P0 **RESEARCH-ONLY — in progress.** No product/registry/
-> recipe code has been changed. All entries below are findings + grades against
-> the local checkouts (`/Users/8amps/Wawona/*`). P1 code may not start until P0
-> is closed and the GitHub epic reflects it.
+> **Phase status:** P0 closed. P1 Mode A acceptance and P2 native graphics
+> ownership are **in progress**. No target is PROPER until product build +
+> authoritative client + runtime evidence pass.
 
 ---
 
@@ -41,13 +41,13 @@ separately. Evidence is `file:line` in the local tree or an issue.
 
 | Target | Mode | OpenGL / GLES | Vulkan | DRM | KMS | Desktop Repl. DRM/KMS |
 |--------|------|---------------|--------|-----|-----|------------------------|
-| macOS 3rd-party product | A | WIRED (ANGLE dlopen; `OpenGLDriver` pref **never applied** — STUB selection) | WIRED (MVK/KK ICD set at launch only, not on connect) | WIRED (stock `/dev/dri/cardN` redirect is store-safe and shared by product consumers) | WIRED (fourcc contract enforced; page-flip→callback remains immediate synthetic cadence) | N/A (Desktop tweak = desktop-host B) |
+| macOS 3rd-party product | A | WIRED (ANGLE direct-to-Metal; selection applied at connect) | WIRED (L1 MoltenVK/KK ICD selection applied at connect; runtime proof pending) | WIRED (virtual `/dev/dri/cardN` names are intercepted entirely in userland; no real device open) | WIRED (fourcc contract enforced; page-flip→callback remains immediate synthetic cadence) | N/A (Desktop tweak = desktop-host B) |
 | macOS desktop-host | A (toggle off) | WIRED (same as product) | WIRED | WIRED | WIRED | N/A |
-| macOS desktop-host | B (SIP partial + toggle) | WIRED | WIRED | WIRED (Dobby `open`/`ioctl` hooks real) | WIRED→FUCKUP (framebufferd present real; **vsync TODO** `drm_linux.c:708`; no CI proof) | WIRED (engage path real, not CI-proven; #87) |
-| iOS / iPadOS / visionOS | A | WIRED (ANGLE present path; target runtime/tint evidence remains pending) | STUB→WIRED (MVK intended; ICD apply-on-connect missing) | WIRED (Mode-A open shim landed — `iland_drm_open_card` + `iland_drm_open_compat.h`; #58 open path fixed, device render unproven) | WIRED (preferred-mode host wiring + fourcc contract landed; scene/multi-window runtime evidence pending) | N/A |
+| macOS desktop-host | B (SIP partial + toggle) | WIRED | WIRED | WIRED (Dobby `open`/`ioctl` hooks virtual calls) | WIRED (framebufferd host-vsync present + Mach ACK drives page-flip event; runtime proof pending) | WIRED (engage path real, not CI-proven; #87) |
+| iOS / iPadOS / visionOS | A | WIRED (ANGLE direct-to-Metal present path; target runtime/tint evidence remains pending) | WIRED (pinned store-safe MoltenVK 1.4.1 static slice is L1-owned and force-linked; vkcube runtime proof pending) | WIRED (Mode-A open shim landed — `iland_drm_open_card` + `iland_drm_open_compat.h`; #58 open path fixed, device render unproven) | WIRED (preferred-mode host wiring + fourcc contract landed; scene/multi-window runtime evidence pending) | N/A |
 | tvOS / watchOS | A soft | N/A (empty `libiland_userland.a`; correct) | N/A | N/A | N/A | N/A |
-| Android Play / Home Desktop | A (no root) | STUB (system/ANGLE `.so` present; `OpenGLDriver` pref has **no consumer**) | WIRED (system/SwiftShader/Turnip ICD via `VK_ICD_FILENAMES` at instance create) | WIRED (userland `drm_linux.c`; heap "IOSurface", no AHB) | WIRED (present callback; zero-copy forced off) | WIRED (Home = rootless Mode A launcher/VD; no dylib) |
-| Android power | B (root FB) | STUB | WIRED (+ optional Turnip) | WIRED | WIRED | WIRED (root FB optional; not Play-required) |
+| Android Play / Home Desktop | A (no root) | WIRED (`OpenGLDriver` is consumed at connect; ANGLE remains the bundled direct backend) | WIRED (system loader owns host ANativeWindow WSI; bundled SwiftShader is the offscreen client ICD; no direct KGSL path) | WIRED (userland `drm_linux.c`; GBM storage is AHardwareBuffer-backed) | WIRED (present callback; zero-copy import acceptance pending) | WIRED (Home = rootless Mode A launcher/VD; no dylib) |
+| Android power | B (Shizuku/root WM) | WIRED | WIRED (same runtime-only drivers) | WIRED | WIRED | WIRED (window/display policy only; no root framebuffer or kernel-device access) |
 
 **Never** mark Desktop-Replacement DRM/KMS PROPER on macOS **product Mode A**
 (Desktop tweak is desktop-host Mode B only), or require root to mark Android
@@ -56,6 +56,168 @@ Home Desktop / App Store cells PROPER.
 ---
 
 ## P1 progress log
+
+**2026-07-24 P2 graphics-driver ownership loop:** `wwn-iland` now owns
+ANGLE, SwiftShader, and MoltenVK registry entries. Apple-mobile MoltenVK uses
+the pinned upstream 1.4.1 all-platform release (`sha256:
+2c498bf8c98b88ba1e84c1f153403d4c1a8490c122d9e2a3df238b25d4e10557`),
+selects the exact iOS/xrOS device or simulator static slice, and records
+source/slice/private-API metadata. Wawona force-links it only on
+iOS/iPadOS/visionOS; tvOS/watchOS registry variants remain null. Android now
+splits Vulkan by role. The host renderer always uses Android's system
+`libvulkan.so` for loader-owned `vkCreateAndroidSurfaceKHR` and ANativeWindow
+swapchains. A `swiftshader` machine selection identifies the bundled portable
+offscreen client ICD (`WWN_SWIFTSHADER_LIBRARY`) for iland KMS/GBM clients; it
+is never direct-loaded as the host surface implementation. Android vkcube now
+uses an isolated per-client dispatch table to direct-load that library without
+changing the process-global host loader. Device evidence remains an acceptance
+gap, so the grade stays WIRED.
+
+**2026-07-25 non-hermetic link flags (root cause of recurring Apple stubs):**
+`xcodegen.nix` gated ten link-flag helpers (MoltenVK, foot, fastfetch, neovim,
+niri, cairo-gobject, fuzzel, ssh-cli, weston-simple-shm) on
+`builtins.pathExists <output>/lib/lib*.a`. That predicate reports whether the
+archive is *already realised in the store*, not whether the platform provides
+it, and evaluation happens before realisation. A target that had never built
+niri therefore dropped `-force_load libniri.a` while still emitting the global
+`-Wl,-u,_niri_main`, so the link failed with an undefined `_niri_main` — and
+because the archive was then never referenced, it was never built, making the
+condition permanently false. iOS/iPadOS/visionOS only linked niri because
+`niri-ios` is a top-level flake package that had been realised earlier; tvOS had
+not. `niriLdflags` now keys off `deps.niri != null` alone, so a null dep is the
+only way to opt out and a missing archive fails loudly. The remaining nine sites
+carry the same hazard and should follow.
+
+Two further Apple link gaps surfaced from the same area: the tvOS **simulator**
+`OTHER_LDFLAGS` block omitted `niriLdflags` entirely (the device block had it),
+and neither tvOS nor watchOS linked `-lwayland-egl`, which niri's `wayland-egl`
+crate needs for `wl_egl_window_*` even on those software-only surfaces.
+
+**2026-07-25 Apple present-ACK link fix:** the Mach present-ACK added for Mode B
+vsync is implemented only in `drm.c`, which is built for the macOS host. Apple
+mobile and Android compile `drm_linux.c` against IPC stub translation units, so
+`mode_b_flip_worker` referenced an undefined `drm_receive_present_ack` and
+`Wawona.app` failed to link for iOS/iPadOS/visionOS. The stub sets now declare
+and define the ACK (returning failure), and the call site is unconditional
+again: off the macOS Mode B host the flip completes unsynchronised instead of
+failing the build. Verified by rebuilding every `iland-*` archive, all of which
+now resolve the symbol.
+
+**2026-07-25 bundle policy verified against real artifacts:** running
+`verify-iland-graphics-bundle.sh` on built bundles corrected two wrong
+assumptions. First, iOS ships ANGLE as **embedded dynamic frameworks**
+(`Frameworks/libEGL.dylib`, `libGLESv2.framework`) while visionOS links the
+static archives, so "drivers must be static" was wrong; the check now requires
+drivers to *resolve inside the bundle* (`@rpath`/`@executable_path`, or a system
+path), which is the actual store-safety property. Second, matching with
+`strings | grep -q` under `set -o pipefail` reported failure on success, because
+`grep -q` exits early and `strings` dies on SIGPIPE. Results: `ios` passes
+(MoltenVK in the main executable, ANGLE in the embedded framework), `macos`
+passes with MoltenVK + KosmicKrisp and no Mode B dylib, and `macos-desktop`
+passes with the Mode B dylib at
+`Contents/Library/Wawona/iland/libwayland-mac.dylib`.
+
+**2026-07-25 Apple package matrix proof:** all sixteen Apple graphics packages
+(`iland-{macos,ios,ios-sim,ipados,tvos,watchos,visionos,visionos-sim}`,
+`iland-baremetal-macos`, `moltenvk-{macos,ios,ios-sim,visionos,visionos-sim}`,
+`kosmickrisp-macos`, `angle-{ios,ios-sim}`) build from `wwn-iland`. Slice audit
+of the built archives:
+
+| Package | `LC_BUILD_VERSION` | Contents |
+|---|---|---|
+| `iland-macos` | 1 (macOS) | 93 EGL/GBM/DRM entry points |
+| `iland-ios` / `iland-ipados` | 2 (iOS) | 93 entry points |
+| `iland-ios-sim` | 7 (iOS sim) | 93 entry points |
+| `iland-visionos` | 11 (xrOS) | 93 entry points |
+| `iland-visionos-sim` | 12 (xrOS sim) | 93 entry points |
+| `iland-tvos` / `iland-watchos` | none | 8-byte empty archive, 0 GPU symbols |
+| `moltenvk-ios` / `-ios-sim` | 2 / 7 | `vkCreateInstance` present |
+| `moltenvk-visionos` / `-sim` | 11 / 12 | `vkCreateInstance` present |
+| `moltenvk-macos` | macOS dylib | `libMoltenVK.dylib` + ICD manifest |
+| `kosmickrisp-macos` | macOS dylib | `libvulkan_kosmickrisp.dylib` + aarch64 ICD |
+| `iland-baremetal-macos` | macOS dylib | `libwayland-mac.dylib`, `libwwn-iland.dylib` |
+
+The empty tvOS/watchOS archives are the enforced no-GPU contract, not a
+regression. `verify-iland-graphics-bundle.sh` now asserts this positively for
+iOS/iPadOS/visionOS (statically linked MoltenVK + ANGLE markers, and no dynamic
+`libvulkan`/`libEGL`/`libGLESv2` link) and negatively for tvOS/watchOS
+(no statically embedded MoltenVK/ANGLE/SwiftShader).
+
+**2026-07-25 all five Apple mobile bundles pass, and the driver markers are now
+precise:** the first run of the negative tvOS/watchOS check failed tvOS on both
+`MoltenVK` and `ANGLE (`, and both were false positives from shared code that
+ships on every target regardless of driver. The bare name `MoltenVK` appears in
+the ICD path literal `vulkan/icd.d/MoltenVK_icd.json` used by driver selection,
+and in Rust `ash` enum-name metadata such as `IOSSurfaceCreateFlagsMVK`;
+`ANGLE (` appears inside kmscube's UI copy, "Spinning GL cube via iland + ANGLE
+(userland KMS)". Neither implies a linked driver: tvOS and watchOS define **0**
+symbols matching `_vk[A-Z]`, `_egl[A-Z]`, or `_angle_egl`, against 430 Vulkan
+entry points on iOS.
+
+The markers are therefore narrowed to things only a real driver emits:
+`MoltenVK version` (the driver's own banner) as a substring, and `ANGLE (` as a
+**whole-string** match, since ANGLE's renderer string is that literal on its own
+while the kmscube sentence merely contains it. The negative check additionally
+counts defined Vulkan/EGL entry points, which is the definitive signal and
+cannot be tripped by prose. Result: `ios`, `ipados`, `visionos` (MoltenVK +
+ANGLE present and resolving inside the bundle) and `tvos`, `watchos` (no driver
+markers, 0 entry points) all pass, alongside `macos` and `macos-desktop`.
+
+**2026-07-25 visionOS ANGLE slice acceptance:** `angle-visionos` and
+`angle-visionos-sim` build from the pinned Chromium/ANGLE sources plus the
+checked-in `0001-chromium-build-add-xros-target.patch`, so no GN tree is
+patched ad hoc at build time. Slice proof on the built archives: device
+`libEGL.a`/`libGLESv2.a` are arm64 with `LC_BUILD_VERSION platform 11` (xrOS)
+and the simulator archives are arm64 with `platform 12` (xrOS simulator). Both
+export the 21 `_angle_egl*` renamed entry points, and the remaining 94
+unrenamed ANGLE EGL symbols have **zero** overlap with the 18 EGL entry points
+`libiland_userland.a` exports, so no client EGL call can bypass the iland
+present path through a duplicate-symbol resolution. EGL runtime smoke on device
+remains the open acceptance item.
+
+**2026-07-25 macOS GPU Weston package:** `wwn-weston` now maps the macOS
+`weston-compositor`, `-drm`, and `-gl` registry variants to the same
+in-process iland DRM + ANGLE path used by GPU-capable Apple mobile targets.
+`nix build .#weston-compositor-macos` passes on Apple Silicon. This closes the
+package/build gap; product runtime evidence is still required before PROPER.
+
+**2026-07-24 KosmicKrisp correction:** current upstream Mesa/Nixpkgs provides
+KosmicKrisp for Apple-Silicon macOS. `wwn-iland` now exposes a Vulkan-only
+Mesa KosmicKrisp package; its build produced
+`libvulkan_kosmickrisp.dylib` plus the aarch64 ICD manifest. Wawona's macOS
+product bundles and signs it beside MoltenVK. A direct ICD smoke test returned
+`VK_SUCCESS` from `vkCreateInstance` and enumerated one physical device.
+Mesa's latest driver
+documentation still says iOS is not supported, so iOS-family registry variants
+remain fail-loud instead of claiming a nonexistent upstream target.
+
+**2026-07-24 waypipe IOSurface acceptance:** the Apple-mobile `waypipe-rs`
+build now keeps its real GBM bindings, resolves them from statically linked
+`libiland_userland.a`, recognizes iland's IOSurface modifier, and builds
+successfully for `aarch64-apple-ios-sim`. This also corrected iland's public
+GBM flag values and restored the standard `gbm_import_fd_data` ABI.
+
+**2026-07-24 visionOS native-compositor loop:** visionOS previously linked
+`WWNVisionClientStubs.c:niri_main`, which returned `1`; `visionosDeps` omitted
+Niri/fuzzel. Working tree now includes real Niri/fuzzel/tool deps for the
+`vision` variant, native `aarch64-apple-visionos[-sim]` Rust targets, no
+success-shaped vision client stubs, static-process Smithay EGL loading, and an
+iland `eglGetProcAddress` bridge into namespaced ANGLE. Native Niri and Neovim
+visionOS archives build. Regeneration exposed and fixed a wrong-platform
+`cairo-gobject` recipe that emitted iOS objects into xros. Verification:
+`xcodegen` completed; `Wawona-visionOS` built, installed, and launched on Apple
+Vision Pro simulator; final xros executable exports real `_niri_main` and has
+`LC_BUILD_VERSION platform 12` (visionOS). Runtime Niri connect remains
+unproven: the matrix gate's host LLDB attach stalls before evaluating
+`connectProfile`; a watchdog now bounds that attach instead of hanging CI.
+**Grade remains WIRED. waypipe zero-copy impact: none.**
+
+**weston-constraints concurrent crash:** crash stack and Weston source identify
+the upstream SHM reuse bug: the current-buffer fast path returned a released
+buffer without restoring `buffer->used = true`. The patch is now applied to
+Apple mobile, Android compositor-client builds, and macOS. `weston-terminal`
+concurrency accelerates release/redraw but is not root cause. Exact dual-client
+runtime replay remains required before PROPER.
 
 **#58 Mode-A device open (landed in `wwn-iland`):** added `iland_drm_open_card()`
 in `drm_linux.c` + a reusable force-include header
@@ -267,18 +429,14 @@ or vblank-correct flips. Grade remains **WIRED**, not PROPER.
   via `VK_DRIVER_FILES`/`VK_ICD_FILENAMES`. **VM-only, must not leak into Mode A:**
   virtio-gpu, virglrenderer, Venus, gfxstream (stay in `wwn-vms`/UTM engine;
   confirmed `wwn-vms/README.md:9-11,40`).
-- **Local packaging inventory:** ANGLE — macOS `pkgs.angle`
-  (`wwn-toolchain/.../angle/macos.nix:16`), iOS prebuilt (XCSoar + jeremyfa) +
-  GN source path, Android prebuilt (kubuszok) + GN; MoltenVK — `pkgs.moltenvk`
-  (Wawona `macos.nix`); SwiftShader — `google/swiftshader` Android/Wear only
-  (`registry.nix:58-63`, ios/macos = null); **KosmicKrisp — no recipe** (docs +
-  runtime ICD select only); **Turnip — not packaged** (settings point at
-  `/data/local/tmp/freedreno_icd.json`).
-- **Termux/Android:** rootless = system Vulkan + OEM Adreno ICD, GLES via system
-  EGL or bundled ANGLE; Turnip generally needs root/privileged install (KGSL +
-  loadable ICD). Wawona's rootless Play path uses system/ANGLE/SwiftShader.
+- **Local packaging inventory:** `wwn-iland` owns ANGLE, MoltenVK,
+  SwiftShader and macOS KosmicKrisp recipes/registry entries. Turnip is
+  intentionally not packaged because direct KGSL access violates Wawona's
+  runtime-only/no-direct-kernel policy.
+- **Termux/Android:** Wawona uses system Vulkan or bundled SwiftShader, and
+  system EGL or bundled ANGLE. It never opens KGSL directly.
 - **Minimal-layers verdict:** one hop per API — Apple GLES→ANGLE→Metal,
-  Vulkan→MVK|KK→Metal; Android GLES→ANGLE|system, Vulkan→system|Turnip|SwiftShader.
+  Vulkan→MVK|KK→Metal; Android GLES→ANGLE|system, Vulkan→system|SwiftShader.
   Reject GLES→Zink→Vulkan→MVK→Metal.
 
 ## R4 — Pref apply gap
@@ -290,6 +448,26 @@ or vblank-correct flips. Grade remains **WIRED**, not PROPER.
 | VulkanDriver (Android) | `WawonaSettings.kt:62-81`→JNI | REAL at instance create `android_jni.c:1022-1047` (`VK_ICD_FILENAMES`) | PARTIAL (global real; per-machine ad-hoc) |
 | OpenGLDriver (Android) | same | stored `android_jni.c:2428-2430`, **no consumer** | STUB |
 | DriverSelector abstraction | — | — | **MISSING** |
+
+### P2 DriverSelector / ownership progress
+
+- `wwn-toolchain` `2bd941e` removes `angle` and `swiftshader` from L0's
+  `baseRegistry` and deletes Android's SwiftShader bypass.
+- `wwn-iland` `55b705c` owns both keys in its L1 `registryFragment`; an Android
+  iland build passes against the split registry. ANGLE and SwiftShader recipes
+  now live under `wwn-iland/dependencies/libs/`; L0 retains substrate only.
+- Apple now applies Vulkan and OpenGL selections through one
+  `WWNSettings_ApplyGraphicsDriverSelection` function at startup and after
+  per-machine overrides. It sets both Vulkan loader variables, applies the
+  KosmicKrisp→MoltenVK fallback, and selects ANGLE/Metal independently.
+- Android applies Vulkan and OpenGL policy together before Vulkan instance
+  creation; waypipe no longer silently forces SwiftShader. ANGLE selects its
+  Vulkan backend independently of the host Vulkan ICD choice.
+
+This advances DriverSelector from **MISSING** to **WIRED**. Android cannot
+change the already-created host Vulkan instance per machine without renderer
+recreation; that lifecycle remains an acceptance item rather than pretending
+an environment rewrite hot-switches Vulkan.
 
 **Hook point:** a `machine>global>default` resolver called from both `main.m`
 launch and after `applyMachineToRuntimePrefs` (`WWNMachineSessionBridge.m:114`),
@@ -389,12 +567,11 @@ pixman.
 
 ## R11 — DAG / cycle watch list
 
-Flake edges are acyclic (R5). The real smell: **`angle` and `swiftshader` live in
-L0 `baseRegistry`** (`wwn-toolchain/.../registry.nix:280-290,58-63`) — they are
-graphics-stack keys that belong in L1 `wwn-iland.registryFragment` (P2 move).
-`moltenvk` is `pkgs.moltenvk` (nixpkgs), `kosmickrisp` has no recipe (orphan) —
-both to be owned/wired under L1 in P2. `pixman` correctly stays L0 (cairo depends
-on it `cairo/ios.nix:24`); moving it to iland would force cairo→iland (cycle).
+Flake edges are acyclic (R5). P2 resolved ANGLE, SwiftShader, MoltenVK and
+KosmicKrisp ownership under L1
+`wwn-iland.registryFragment`; L0 now carries fail-loud ownership sentinels only.
+`pixman` correctly stays L0 (cairo depends on it `cairo/ios.nix:24`); moving it
+to iland would force cairo→iland (cycle).
 In-toolchain `freetype↔harfbuzz↔cairo` disable edges are intentional one-way
 (`freetype/ios.nix:4-5`, `harfbuzz/ios.nix:6-7`) — keep. `ffmpeg`/`spirv-tools`
 in L0 are borderline but not iland/weston; leave unless proven graphics-only.
@@ -403,7 +580,8 @@ in L0 are borderline but not iland/weston; leave unless proven graphics-only.
 pixman/cairo/pango into iland (forbidden); angle left owned by toolchain after
 move; iland→weston/kmscube/waypipe flake edges; toolchain baseRegistry absorbing
 fragments; kmscube→weston; Wawona as input of any wwn-*; MVK/KK recipe pulling
-full mesa+iland headers; Android Turnip packaged in toolchain instead of L1.
+full mesa+iland headers. Direct Turnip/KGSL is forbidden by runtime-only policy,
+not relocated to another layer.
 
 ---
 
@@ -416,7 +594,7 @@ Apple (macOS/iOS/iPadOS/visionOS) — parallel, not stacked:
   DRM/KMS/GBM → iland userland → same present callback (no extra GL/VK hop)
 Android:
   GLES → EGL → ANGLE OR system GLES → Surface present
-  Vulkan → loader → system OR Turnip OR SwiftShader
+  Vulkan → loader → system OR SwiftShader
 tvOS/watchOS: software/pixman only (no GPU translate stack)
 ```
 

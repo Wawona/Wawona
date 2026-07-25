@@ -4,6 +4,7 @@
 #import "WWNVirtualMachineRunner.h"
 #import "WWNContainerRunner.h"
 #import "WWNPlatformCapabilities.h"
+#import "../../WWNSettings.h"
 #if TARGET_OS_OSX
 #import "WWNAnowaWController.h"
 #import "WWNDesktopReplacementController.h"
@@ -113,6 +114,7 @@
   [[WWNPreferencesManager sharedManager] syncFromCanonicalWawonaPreferences];
   [WWNMachineProfileStore applyMachineToRuntimePrefs:profile];
   [WWNMachineProfileStore setActiveMachineId:profile.machineId];
+  WWNSettings_ApplyGraphicsDriverSelection();
 
   if ([self profileUsesNativeCompositorClient:profile]) {
     NSString *clientId = [self nativeClientIdForProfile:profile];

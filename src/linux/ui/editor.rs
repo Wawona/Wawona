@@ -179,7 +179,7 @@ pub fn show_editor(
             .unwrap_or("none"),
     ));
     let opengl_driver = gtk::ComboBoxText::new();
-    for (id, label) in [("none", "None"), ("angle", "ANGLE"), ("moltengl", "MoltenGL")] {
+    for (id, label) in [("none", "None"), ("angle", "ANGLE")] {
         opengl_driver.append(Some(id), label);
     }
     opengl_driver.set_active_id(Some(

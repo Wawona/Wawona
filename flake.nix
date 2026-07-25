@@ -42,14 +42,14 @@
     wwn-toolchain.url = "github:Wawona/wwn-toolchain/development";
     wwn-toolchain.inputs.nixpkgs.follows = "nixpkgs";
     wwn-toolchain.inputs.rust-overlay.follows = "rust-overlay";
-    wwn-iland.url = "github:Wawona/wwn-iland";
+    wwn-iland.url = "github:Wawona/wwn-iland/development";
     wwn-iland.inputs.nixpkgs.follows = "nixpkgs";
     wwn-iland.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    wwn-kmscube.url = "github:Wawona/wwn-kmscube";
+    wwn-kmscube.url = "github:Wawona/wwn-kmscube/development";
     wwn-kmscube.inputs.nixpkgs.follows = "nixpkgs";
     wwn-kmscube.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-kmscube.inputs.wwn-iland.follows = "wwn-iland";
-    wwn-weston.url = "github:Wawona/wwn-weston";
+    wwn-weston.url = "github:Wawona/wwn-weston/development";
     wwn-weston.inputs.nixpkgs.follows = "nixpkgs";
     wwn-weston.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-weston.inputs.wwn-iland.follows = "wwn-iland";
@@ -82,12 +82,12 @@
     wwn-fastfetch.url = "github:Wawona/wwn-fastfetch";
     wwn-fastfetch.inputs.nixpkgs.follows = "nixpkgs";
     wwn-fastfetch.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    wwn-neovim.url = "github:Wawona/wwn-neovim";
+    wwn-neovim.url = "github:Wawona/wwn-neovim/development";
     wwn-neovim.inputs.nixpkgs.follows = "nixpkgs";
     wwn-neovim.inputs.wwn-toolchain.follows = "wwn-toolchain";
     # niri (scrollable-tiling compositor), Phase-29 port #1: runs nested as a
     # Wayland client of the Wawona compositor on every target.
-    wwn-niri.url = "github:Wawona/wwn-niri";
+    wwn-niri.url = "github:Wawona/wwn-niri/development";
     wwn-niri.inputs.nixpkgs.follows = "nixpkgs";
     wwn-niri.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-niri.inputs.rust-overlay.follows = "rust-overlay";
@@ -581,6 +581,8 @@
               (pkgs.callPackage ./dependencies/wawona/macos.nix {
                 buildModule = toolchains; inherit wawonaSrc wawonaVersion;
                 waypipe = toolchains.buildForMacOS "waypipe" { }; weston = toolchains.buildForMacOS "weston" { };
+                moltenvk = toolchains.buildForMacOS "moltenvk" { };
+                kosmickrisp = toolchains.buildForMacOS "kosmickrisp" { };
                 foot = toolchains.buildForMacOS "foot" { };
                 niri = toolchains.buildForMacOS "niri" { };
                 fuzzel = toolchains.buildForMacOS "fuzzel" { };
@@ -799,6 +801,7 @@
             kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
             "iland-gl-clients" = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
             weston = toolchains.buildForMacOS "weston" { };
+            "weston-compositor" = toolchains.buildForMacOS "weston-compositor-drm" { };
           } // macosToytoolkitDeps;
           iosDeps = mobilePlatformDeps { buildFn = toolchains.buildForIOS; inherit toolchains; };
           iosSimDeps = mobilePlatformDeps { buildFn = toolchains.buildForIOS; inherit toolchains; simulator = true; };
@@ -965,6 +968,8 @@
           wawona-macos = pkgs.callPackage ./dependencies/wawona/macos.nix {
             buildModule = toolchains; inherit wawonaSrc wawonaVersion;
             waypipe = toolchains.buildForMacOS "waypipe" { }; weston = toolchains.buildForMacOS "weston" { };
+            moltenvk = toolchains.buildForMacOS "moltenvk" { };
+            kosmickrisp = toolchains.buildForMacOS "kosmickrisp" { };
             foot = toolchains.buildForMacOS "foot" { };
             niri = toolchains.buildForMacOS "niri" { };
             fuzzel = toolchains.buildForMacOS "fuzzel" { };
@@ -987,6 +992,8 @@
           wawona-macos-desktop-host = pkgs.callPackage ./dependencies/wawona/macos.nix {
             buildModule = toolchains; inherit wawonaSrc wawonaVersion;
             waypipe = toolchains.buildForMacOS "waypipe" { }; weston = toolchains.buildForMacOS "weston" { };
+            moltenvk = toolchains.buildForMacOS "moltenvk" { };
+            kosmickrisp = toolchains.buildForMacOS "kosmickrisp" { };
             foot = toolchains.buildForMacOS "foot" { };
             niri = toolchains.buildForMacOS "niri" { };
             fuzzel = toolchains.buildForMacOS "fuzzel" { };
@@ -1324,6 +1331,16 @@ EOF
           niri-ios-sim = toolchains.buildForIOS "niri" { simulator = true; };
           fuzzel-ios = toolchains.buildForIOS "fuzzel" { };
           fuzzel-ios-sim = toolchains.buildForIOS "fuzzel" { simulator = true; };
+          # foot (Wayland client): privatized in xcode-prebuild.sh so its embedded
+          # generated-protocol symbols stay local and never collide with weston /
+          # fuzzel. Linked on every Apple-mobile target, hence platform-matched
+          # builds (iOS attrs are reused for iPadOS/visionOS, mirroring neovim).
+          foot-ios = toolchains.buildForIOS "foot" { };
+          foot-ios-sim = toolchains.buildForIOS "foot" { simulator = true; };
+          foot-tvos = toolchains.buildForTVOS "foot" { };
+          foot-tvos-sim = toolchains.buildForTVOS "foot" { simulator = true; };
+          foot-watchos = toolchains.buildForWatchOS "foot" { };
+          foot-watchos-sim = toolchains.buildForWatchOS "foot" { simulator = true; };
           "zsh-framework-ios" = toolchains.buildForIOS "zsh-framework" { };
           "zsh-framework-ios-sim" = toolchains.buildForIOS "zsh-framework" { simulator = true; };
           "wawona-rootfs-ios" = toolchains.buildForIOS "wawona-rootfs" { };
@@ -1581,8 +1598,17 @@ EOF
         }).${system}.default;
       }
     );
-    checks = nixpkgs.lib.genAttrs systemsList (system: let pkgs = pkgsFor system; in pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin (
-      (pkgs.lib.optionalAttrs (builtins.pathExists ./dependencies/tests/graphics-validate.nix) {
+    checks = nixpkgs.lib.genAttrs systemsList (system: let pkgs = pkgsFor system; in pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin ({
+      graphics-driver-policy = pkgs.runCommand "graphics-driver-policy" { } ''
+        ${pkgs.clang}/bin/clang -U__APPLE__ -DTARGET_OS_IPHONE=0 \
+          -I${./src/platform/macos} \
+          ${./src/platform/macos/WWNSettings.c} \
+          ${./dependencies/tests/graphics-driver-policy.c} \
+          -o graphics-driver-policy
+        ./graphics-driver-policy
+        touch $out
+      '';
+    } // (pkgs.lib.optionalAttrs (builtins.pathExists ./dependencies/tests/graphics-validate.nix) {
         # Fast graphics driver-sanity gate (ci-graphics-cts). Runs the validator
         # produced by graphics-validate.nix; passes in the sandbox even without a
         # bundled ICD (software/SHM path) so it is a stable PR gate.
@@ -1590,7 +1616,7 @@ EOF
           ${allSystemPackages.${system}.graphics-validate-macos}/bin/graphics-validate-macos
           touch $out
         '';
-      })
-    ));
+      }))
+    );
   };
 }

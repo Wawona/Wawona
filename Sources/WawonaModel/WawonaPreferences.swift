@@ -115,7 +115,22 @@ public struct ResolvedMachineSettings: Hashable, Sendable {
 public final class WawonaPreferences: ObservableObject {
     public static let shared = WawonaPreferences()
 
+    private static var defaultVulkanDriver: String {
+        #if os(tvOS) || os(watchOS)
+        return "none"
+        #elseif os(macOS) && arch(arm64)
+        if #available(macOS 26.0, *) {
+            return "kosmickrisp"
+        }
+        return "moltenvk"
+        #else
+        return "moltenvk"
+        #endif
+    }
+
     @Published public var renderer: String = "metal"
+    @Published public var vulkanDriver: String = WawonaPreferences.defaultVulkanDriver
+    @Published public var openGLDriver: String = "angle"
     @Published public var forceSSD: Bool = false
     @Published public var renderMacOSPointer: Bool = false
     /// "virtual" or "host"
@@ -154,6 +169,8 @@ public final class WawonaPreferences: ObservableObject {
 
     public func load() {
         renderer = defaults.string(forKey: keyPrefix + "renderer") ?? "metal"
+        vulkanDriver = defaults.string(forKey: "VulkanDriver") ?? WawonaPreferences.defaultVulkanDriver
+        openGLDriver = defaults.string(forKey: "OpenGLDriver") ?? "angle"
         if defaults.object(forKey: "ForceServerSideDecorations") != nil {
             forceSSD = defaults.bool(forKey: "ForceServerSideDecorations")
         } else {
@@ -203,6 +220,8 @@ public final class WawonaPreferences: ObservableObject {
 
     public func save() {
         defaults.set(renderer, forKey: keyPrefix + "renderer")
+        defaults.set(vulkanDriver, forKey: "VulkanDriver")
+        defaults.set(openGLDriver, forKey: "OpenGLDriver")
         let previousForceSSD = defaults.object(forKey: "ForceServerSideDecorations") as? Bool
             ?? defaults.bool(forKey: keyPrefix + "forceSSD")
         defaults.set(forceSSD, forKey: "ForceServerSideDecorations")
@@ -286,10 +305,22 @@ public final class WawonaPreferences: ObservableObject {
             machineName: profile.name,
             machineType: profile.type,
             renderer: normalizedRenderer.isEmpty ? renderer : normalizedRenderer,
-            vulkanDriver: normalizedVulkanDriver.isEmpty ? "moltenvk" : normalizedVulkanDriver,
-            openGLDriver: normalizedOpenGLDriver.isEmpty ? "angle" : normalizedOpenGLDriver,
-            dmabufEnabled: profile.runtimeOverrides.dmabufEnabled ?? true,
-            forceSSD: profile.runtimeOverrides.forceSSD ?? forceSSD,
+            vulkanDriver: PlatformCapabilities.allowsGpuStack
+                ? (normalizedVulkanDriver.isEmpty ? vulkanDriver : normalizedVulkanDriver)
+                : "none",
+            openGLDriver: PlatformCapabilities.allowsGpuStack
+                ? (normalizedOpenGLDriver.isEmpty ? openGLDriver : normalizedOpenGLDriver)
+                : "none",
+            dmabufEnabled: PlatformCapabilities.allowsGpuStack
+                ? (profile.runtimeOverrides.dmabufEnabled ?? true)
+                : false,
+            // Force SSD is macOS-only (#120): CSD only renders on macOS Wawona.
+            // Everywhere else the resolved value is unconditionally SSD, so a
+            // stored per-machine/global override can never yield a broken CSD
+            // client on iOS/iPadOS/tvOS/watchOS/visionOS/Android.
+            forceSSD: PlatformCapabilities.supportsClientSideDecorations
+                ? (profile.runtimeOverrides.forceSSD ?? forceSSD)
+                : true,
             renderMacOSPointer: profile.runtimeOverrides.renderMacOSPointer ?? renderMacOSPointer,
             nestedCompositorCursor: {
                 let override = profile.runtimeOverrides.nestedCompositorCursor?

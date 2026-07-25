@@ -91,9 +91,10 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
 - (NSArray<WWNWatchSettingsRowModel *> *)buildRowsForSection:(NSString *)section {
     WWNWatchSettingsBridge *bridge = [self bridge];
     if ([section isEqualToString:@"Display"]) {
+        // Force SSD is macOS-only (#120): watchOS always draws server-side
+        // decorations (CSD only renders on macOS Wawona), so the row is omitted.
         return @[
             [self toggleRow:@"Auto Scale" key:@"autoScale" value:bridge.autoScale],
-            [self toggleRow:@"Force SSD" key:@"forceSSD" value:bridge.forceSSD],
             [self toggleRow:@"Color Operations (HDR)" key:@"colorOperations" value:bridge.colorOperations],
         ];
     }

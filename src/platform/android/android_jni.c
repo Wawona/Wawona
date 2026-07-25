@@ -23,6 +23,7 @@
 #include <android/looper.h>
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
+#include <dlfcn.h>
 #include <jni.h>
 #include <sys/types.h>
 #include <bits/signal_types.h>
@@ -44,6 +45,26 @@
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <time.h>
+
+#ifdef WAWONA_ILAND_GL
+typedef int (*WWNAHardwareBufferLockFn)(AHardwareBuffer *, uint64_t, int32_t,
+                                        const ARect *, void **);
+typedef int (*WWNAHardwareBufferUnlockFn)(AHardwareBuffer *, int32_t *);
+typedef void (*WWNAHardwareBufferReleaseFn)(AHardwareBuffer *);
+static WWNAHardwareBufferLockFn g_ahb_lock = NULL;
+static WWNAHardwareBufferUnlockFn g_ahb_unlock = NULL;
+static WWNAHardwareBufferReleaseFn g_ahb_release = NULL;
+static pthread_once_t g_ahb_symbols_once = PTHREAD_ONCE_INIT;
+
+static void wwn_load_ahb_symbols(void) {
+  g_ahb_lock =
+      (WWNAHardwareBufferLockFn)dlsym(RTLD_DEFAULT, "AHardwareBuffer_lock");
+  g_ahb_unlock =
+      (WWNAHardwareBufferUnlockFn)dlsym(RTLD_DEFAULT, "AHardwareBuffer_unlock");
+  g_ahb_release = (WWNAHardwareBufferReleaseFn)dlsym(
+      RTLD_DEFAULT, "AHardwareBuffer_release");
+}
+#endif
 
 #define WWN_MAX_NATIVE_CLIENT_PIDS 32
 
@@ -598,6 +619,89 @@ static uint64_t resolve_pointer_window_id(double logical_x, double logical_y) {
 
 /* Pending client minimize — Kotlin polls and returns to Machines UI. */
 static volatile int g_minimize_requested = 0;
+static volatile uint64_t g_minimize_requested_window_id = 0;
+
+/* Android freeform host-scene claims (#120).
+ *
+ * A task is reserved before its client launches; the next created Wayland
+ * toplevel atomically claims that task.  This avoids the Termux-style race
+ * where two adjacent SessionActivities both attach to the same first window.
+ * The rendering backend remains responsible for presenting the claimed scene.
+ */
+#define ANDROID_HOST_SCENE_MAX_WINDOWS 64
+typedef struct {
+  uint64_t window_id;
+  uint64_t host_id;
+  uint8_t in_use;
+} AndroidHostSceneClaim;
+typedef struct {
+  uint64_t host_id;
+  uint64_t order;
+  uint8_t in_use;
+} AndroidHostSceneReservation;
+static AndroidHostSceneClaim g_host_scene_claims[ANDROID_HOST_SCENE_MAX_WINDOWS];
+static AndroidHostSceneReservation
+    g_host_scene_reservations[ANDROID_HOST_SCENE_MAX_WINDOWS];
+static pthread_mutex_t g_host_scene_claim_lock = PTHREAD_MUTEX_INITIALIZER;
+static uint64_t g_host_scene_reservation_order = 0;
+
+static void android_host_scene_claim_created_window(uint64_t window_id) {
+  if (window_id == 0)
+    return;
+  pthread_mutex_lock(&g_host_scene_claim_lock);
+  int reservation_index = -1;
+  uint64_t oldest_order = UINT64_MAX;
+  for (int i = 0; i < ANDROID_HOST_SCENE_MAX_WINDOWS; i++) {
+    if (g_host_scene_reservations[i].in_use &&
+        g_host_scene_reservations[i].order < oldest_order) {
+      reservation_index = i;
+      oldest_order = g_host_scene_reservations[i].order;
+    }
+  }
+  if (reservation_index >= 0) {
+    uint64_t host_id = g_host_scene_reservations[reservation_index].host_id;
+    for (int i = 0; i < ANDROID_HOST_SCENE_MAX_WINDOWS; i++) {
+      if (!g_host_scene_claims[i].in_use) {
+        g_host_scene_claims[i].window_id = window_id;
+        g_host_scene_claims[i].host_id = host_id;
+        g_host_scene_claims[i].in_use = 1;
+        LOGI("Host scene claim: host=%llu window=%llu",
+             (unsigned long long)host_id,
+             (unsigned long long)window_id);
+        break;
+      }
+    }
+    memset(&g_host_scene_reservations[reservation_index], 0,
+           sizeof(g_host_scene_reservations[reservation_index]));
+  }
+  pthread_mutex_unlock(&g_host_scene_claim_lock);
+}
+
+static void android_host_scene_forget_window(uint64_t window_id) {
+  pthread_mutex_lock(&g_host_scene_claim_lock);
+  for (int i = 0; i < ANDROID_HOST_SCENE_MAX_WINDOWS; i++) {
+    if (g_host_scene_claims[i].in_use &&
+        g_host_scene_claims[i].window_id == window_id) {
+      memset(&g_host_scene_claims[i], 0, sizeof(g_host_scene_claims[i]));
+      break;
+    }
+  }
+  pthread_mutex_unlock(&g_host_scene_claim_lock);
+}
+
+static uint64_t android_host_scene_window_for_host(uint64_t host_id) {
+  uint64_t window_id = 0;
+  pthread_mutex_lock(&g_host_scene_claim_lock);
+  for (int i = 0; i < ANDROID_HOST_SCENE_MAX_WINDOWS; i++) {
+    if (g_host_scene_claims[i].in_use &&
+        g_host_scene_claims[i].host_id == host_id) {
+      window_id = g_host_scene_claims[i].window_id;
+      break;
+    }
+  }
+  pthread_mutex_unlock(&g_host_scene_claim_lock);
+  return window_id;
+}
 
 /* Fill-primary host (single surface): max/fullscreen → logical output size.
  * Also syncs xdg maximized/fullscreen so clients see negotiated WM state. */
@@ -951,34 +1055,257 @@ static void update_safe_area(JNIEnv *env, jobject activity) {
 // Vulkan Initialization
 // ============================================================================
 
+static int wwn_android_native_lib_dir(char *out, size_t out_len);
+
+static void *g_vulkan_driver_handle = NULL;
+static PFN_vkGetInstanceProcAddr wwn_vkGetInstanceProcAddr = NULL;
+static PFN_vkGetDeviceProcAddr wwn_vkGetDeviceProcAddr = NULL;
+#define WWN_VK_GLOBAL(name) static PFN_##name wwn_##name = NULL
+WWN_VK_GLOBAL(vkCreateInstance);
+WWN_VK_GLOBAL(vkEnumeratePhysicalDevices);
+WWN_VK_GLOBAL(vkGetPhysicalDeviceProperties);
+WWN_VK_GLOBAL(vkGetPhysicalDeviceQueueFamilyProperties);
+WWN_VK_GLOBAL(vkGetPhysicalDeviceSurfaceSupportKHR);
+WWN_VK_GLOBAL(vkEnumerateDeviceExtensionProperties);
+WWN_VK_GLOBAL(vkCreateDevice);
+WWN_VK_GLOBAL(vkGetPhysicalDeviceSurfaceCapabilitiesKHR);
+WWN_VK_GLOBAL(vkCreateAndroidSurfaceKHR);
+WWN_VK_GLOBAL(vkDestroySurfaceKHR);
+WWN_VK_GLOBAL(vkDestroyInstance);
+WWN_VK_GLOBAL(vkGetDeviceQueue);
+WWN_VK_GLOBAL(vkCreateSwapchainKHR);
+WWN_VK_GLOBAL(vkGetSwapchainImagesKHR);
+WWN_VK_GLOBAL(vkCreateImageView);
+WWN_VK_GLOBAL(vkDestroyImageView);
+WWN_VK_GLOBAL(vkCreateRenderPass);
+WWN_VK_GLOBAL(vkDestroyRenderPass);
+WWN_VK_GLOBAL(vkCreateFramebuffer);
+WWN_VK_GLOBAL(vkDestroyFramebuffer);
+WWN_VK_GLOBAL(vkWaitForFences);
+WWN_VK_GLOBAL(vkAcquireNextImageKHR);
+WWN_VK_GLOBAL(vkResetFences);
+WWN_VK_GLOBAL(vkBeginCommandBuffer);
+WWN_VK_GLOBAL(vkCmdBeginRenderPass);
+WWN_VK_GLOBAL(vkCmdSetViewport);
+WWN_VK_GLOBAL(vkCmdSetScissor);
+WWN_VK_GLOBAL(vkCmdEndRenderPass);
+WWN_VK_GLOBAL(vkEndCommandBuffer);
+WWN_VK_GLOBAL(vkQueueSubmit);
+WWN_VK_GLOBAL(vkQueuePresentKHR);
+WWN_VK_GLOBAL(vkCreateCommandPool);
+WWN_VK_GLOBAL(vkAllocateCommandBuffers);
+WWN_VK_GLOBAL(vkDestroyCommandPool);
+WWN_VK_GLOBAL(vkCreateSemaphore);
+WWN_VK_GLOBAL(vkDestroySemaphore);
+WWN_VK_GLOBAL(vkCreateFence);
+WWN_VK_GLOBAL(vkDestroyFence);
+WWN_VK_GLOBAL(vkDeviceWaitIdle);
+WWN_VK_GLOBAL(vkFreeCommandBuffers);
+WWN_VK_GLOBAL(vkDestroyDevice);
+WWN_VK_GLOBAL(vkDestroySwapchainKHR);
+#undef WWN_VK_GLOBAL
+
+#define vkCreateInstance wwn_vkCreateInstance
+#define vkEnumeratePhysicalDevices wwn_vkEnumeratePhysicalDevices
+#define vkGetPhysicalDeviceProperties wwn_vkGetPhysicalDeviceProperties
+#define vkGetPhysicalDeviceQueueFamilyProperties wwn_vkGetPhysicalDeviceQueueFamilyProperties
+#define vkGetPhysicalDeviceSurfaceSupportKHR wwn_vkGetPhysicalDeviceSurfaceSupportKHR
+#define vkEnumerateDeviceExtensionProperties wwn_vkEnumerateDeviceExtensionProperties
+#define vkCreateDevice wwn_vkCreateDevice
+#define vkGetPhysicalDeviceSurfaceCapabilitiesKHR wwn_vkGetPhysicalDeviceSurfaceCapabilitiesKHR
+#define vkCreateAndroidSurfaceKHR wwn_vkCreateAndroidSurfaceKHR
+#define vkDestroySurfaceKHR wwn_vkDestroySurfaceKHR
+#define vkDestroyInstance wwn_vkDestroyInstance
+#define vkGetDeviceQueue wwn_vkGetDeviceQueue
+#define vkCreateSwapchainKHR wwn_vkCreateSwapchainKHR
+#define vkGetSwapchainImagesKHR wwn_vkGetSwapchainImagesKHR
+#define vkCreateImageView wwn_vkCreateImageView
+#define vkDestroyImageView wwn_vkDestroyImageView
+#define vkCreateRenderPass wwn_vkCreateRenderPass
+#define vkDestroyRenderPass wwn_vkDestroyRenderPass
+#define vkCreateFramebuffer wwn_vkCreateFramebuffer
+#define vkDestroyFramebuffer wwn_vkDestroyFramebuffer
+#define vkWaitForFences wwn_vkWaitForFences
+#define vkAcquireNextImageKHR wwn_vkAcquireNextImageKHR
+#define vkResetFences wwn_vkResetFences
+#define vkBeginCommandBuffer wwn_vkBeginCommandBuffer
+#define vkCmdBeginRenderPass wwn_vkCmdBeginRenderPass
+#define vkCmdSetViewport wwn_vkCmdSetViewport
+#define vkCmdSetScissor wwn_vkCmdSetScissor
+#define vkCmdEndRenderPass wwn_vkCmdEndRenderPass
+#define vkEndCommandBuffer wwn_vkEndCommandBuffer
+#define vkQueueSubmit wwn_vkQueueSubmit
+#define vkQueuePresentKHR wwn_vkQueuePresentKHR
+#define vkCreateCommandPool wwn_vkCreateCommandPool
+#define vkAllocateCommandBuffers wwn_vkAllocateCommandBuffers
+#define vkDestroyCommandPool wwn_vkDestroyCommandPool
+#define vkCreateSemaphore wwn_vkCreateSemaphore
+#define vkDestroySemaphore wwn_vkDestroySemaphore
+#define vkCreateFence wwn_vkCreateFence
+#define vkDestroyFence wwn_vkDestroyFence
+#define vkDeviceWaitIdle wwn_vkDeviceWaitIdle
+#define vkFreeCommandBuffers wwn_vkFreeCommandBuffers
+#define vkDestroyDevice wwn_vkDestroyDevice
+#define vkDestroySwapchainKHR wwn_vkDestroySwapchainKHR
+
+static int wwn_load_host_vulkan(void) {
+  const char *path = "libvulkan.so";
+
+  if (g_vulkan_driver_handle) {
+    dlclose(g_vulkan_driver_handle);
+    g_vulkan_driver_handle = NULL;
+  }
+  g_vulkan_driver_handle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
+  if (!g_vulkan_driver_handle) {
+    LOGE("Could not load Vulkan driver %s: %s", path, dlerror());
+    return -1;
+  }
+  wwn_vkGetInstanceProcAddr = (PFN_vkGetInstanceProcAddr)dlsym(
+      g_vulkan_driver_handle, "vkGetInstanceProcAddr");
+  if (!wwn_vkGetInstanceProcAddr) {
+    LOGE("%s has no vkGetInstanceProcAddr", path);
+    dlclose(g_vulkan_driver_handle);
+    g_vulkan_driver_handle = NULL;
+    return -1;
+  }
+  wwn_vkCreateInstance = (PFN_vkCreateInstance)wwn_vkGetInstanceProcAddr(
+      VK_NULL_HANDLE, "vkCreateInstance");
+  if (!wwn_vkCreateInstance) {
+    LOGE("%s has no vkCreateInstance", path);
+    return -1;
+  }
+  LOGI("Loaded Vulkan driver library: %s", path);
+  return 0;
+}
+
+static int wwn_load_vulkan_instance_dispatch(VkInstance instance) {
+#define WWN_LOAD_INSTANCE(name)                                                \
+  do {                                                                         \
+    wwn_##name = (PFN_##name)wwn_vkGetInstanceProcAddr(instance, #name);       \
+    if (!wwn_##name) {                                                          \
+      LOGE("Vulkan instance entrypoint missing: %s", #name);                    \
+      return -1;                                                                \
+    }                                                                           \
+  } while (0)
+  WWN_LOAD_INSTANCE(vkEnumeratePhysicalDevices);
+  WWN_LOAD_INSTANCE(vkGetPhysicalDeviceProperties);
+  WWN_LOAD_INSTANCE(vkGetPhysicalDeviceQueueFamilyProperties);
+  WWN_LOAD_INSTANCE(vkGetPhysicalDeviceSurfaceSupportKHR);
+  WWN_LOAD_INSTANCE(vkEnumerateDeviceExtensionProperties);
+  WWN_LOAD_INSTANCE(vkCreateDevice);
+  WWN_LOAD_INSTANCE(vkGetPhysicalDeviceSurfaceCapabilitiesKHR);
+  WWN_LOAD_INSTANCE(vkCreateAndroidSurfaceKHR);
+  WWN_LOAD_INSTANCE(vkDestroySurfaceKHR);
+  WWN_LOAD_INSTANCE(vkDestroyInstance);
+#undef WWN_LOAD_INSTANCE
+  wwn_vkGetDeviceProcAddr = (PFN_vkGetDeviceProcAddr)
+      wwn_vkGetInstanceProcAddr(instance, "vkGetDeviceProcAddr");
+  return wwn_vkGetDeviceProcAddr ? 0 : -1;
+}
+
+static int wwn_load_vulkan_device_dispatch(VkDevice device) {
+#define WWN_LOAD_DEVICE(name)                                                  \
+  do {                                                                         \
+    wwn_##name = (PFN_##name)wwn_vkGetDeviceProcAddr(device, #name);           \
+    if (!wwn_##name) {                                                          \
+      LOGE("Vulkan device entrypoint missing: %s", #name);                      \
+      return -1;                                                                \
+    }                                                                           \
+  } while (0)
+  WWN_LOAD_DEVICE(vkGetDeviceQueue);
+  WWN_LOAD_DEVICE(vkCreateSwapchainKHR);
+  WWN_LOAD_DEVICE(vkGetSwapchainImagesKHR);
+  WWN_LOAD_DEVICE(vkCreateImageView);
+  WWN_LOAD_DEVICE(vkDestroyImageView);
+  WWN_LOAD_DEVICE(vkCreateRenderPass);
+  WWN_LOAD_DEVICE(vkDestroyRenderPass);
+  WWN_LOAD_DEVICE(vkCreateFramebuffer);
+  WWN_LOAD_DEVICE(vkDestroyFramebuffer);
+  WWN_LOAD_DEVICE(vkWaitForFences);
+  WWN_LOAD_DEVICE(vkAcquireNextImageKHR);
+  WWN_LOAD_DEVICE(vkResetFences);
+  WWN_LOAD_DEVICE(vkBeginCommandBuffer);
+  WWN_LOAD_DEVICE(vkCmdBeginRenderPass);
+  WWN_LOAD_DEVICE(vkCmdSetViewport);
+  WWN_LOAD_DEVICE(vkCmdSetScissor);
+  WWN_LOAD_DEVICE(vkCmdEndRenderPass);
+  WWN_LOAD_DEVICE(vkEndCommandBuffer);
+  WWN_LOAD_DEVICE(vkQueueSubmit);
+  WWN_LOAD_DEVICE(vkQueuePresentKHR);
+  WWN_LOAD_DEVICE(vkCreateCommandPool);
+  WWN_LOAD_DEVICE(vkAllocateCommandBuffers);
+  WWN_LOAD_DEVICE(vkDestroyCommandPool);
+  WWN_LOAD_DEVICE(vkCreateSemaphore);
+  WWN_LOAD_DEVICE(vkDestroySemaphore);
+  WWN_LOAD_DEVICE(vkCreateFence);
+  WWN_LOAD_DEVICE(vkDestroyFence);
+  WWN_LOAD_DEVICE(vkDeviceWaitIdle);
+  WWN_LOAD_DEVICE(vkFreeCommandBuffers);
+  WWN_LOAD_DEVICE(vkDestroyDevice);
+  WWN_LOAD_DEVICE(vkDestroySwapchainKHR);
+#undef WWN_LOAD_DEVICE
+  return 0;
+}
+
+static int apply_graphics_driver_selection(void) {
+  WWNGraphicsDriverSelection selection =
+      WWNSettings_ResolveGraphicsDriverSelection();
+  const char *vulkanDriver = selection.vulkanDriver;
+  setenv("WWN_VULKAN_DRIVER", vulkanDriver, 1);
+  unsetenv("WWN_DISABLE_VULKAN");
+  if (strcmp(vulkanDriver, "none") == 0) {
+    unsetenv("VK_DRIVER_FILES");
+    unsetenv("VK_ICD_FILENAMES");
+    unsetenv("WWN_SWIFTSHADER_LIBRARY");
+    setenv("WWN_DISABLE_VULKAN", "1", 1);
+  } else if (strcmp(vulkanDriver, "swiftshader") == 0) {
+    char native_lib_dir[512];
+    char swiftshader_path[640];
+    if (wwn_android_native_lib_dir(native_lib_dir, sizeof(native_lib_dir)) != 0)
+      return -1;
+    snprintf(swiftshader_path, sizeof(swiftshader_path),
+             "%s/libvk_swiftshader.so", native_lib_dir);
+    setenv("WWN_SWIFTSHADER_LIBRARY", swiftshader_path, 1);
+    unsetenv("VK_DRIVER_FILES");
+    unsetenv("VK_ICD_FILENAMES");
+  } else {
+    unsetenv("VK_DRIVER_FILES");
+    unsetenv("VK_ICD_FILENAMES");
+    unsetenv("WWN_SWIFTSHADER_LIBRARY");
+  }
+
+  const char *openGLDriver = selection.openGLDriver;
+  setenv("WWN_OPENGL_DRIVER", openGLDriver, 1);
+  if (strcmp(openGLDriver, "angle") == 0) {
+    setenv("ANGLE_DEFAULT_PLATFORM", "vulkan", 1);
+    unsetenv("WWN_DISABLE_EGL");
+  } else if (strcmp(openGLDriver, "none") == 0) {
+    setenv("WWN_DISABLE_EGL", "1", 1);
+    unsetenv("ANGLE_DEFAULT_PLATFORM");
+  } else {
+    unsetenv("WWN_DISABLE_EGL");
+    unsetenv("ANGLE_DEFAULT_PLATFORM");
+  }
+  LOGI("Graphics drivers applied: Vulkan=%s OpenGL=%s", vulkanDriver,
+       openGLDriver);
+  if (strcmp(vulkanDriver, "none") == 0)
+    return -1;
+  /*
+   * Android ANativeWindow WSI is owned by the system Vulkan loader. Bundled
+   * SwiftShader is a portable, offscreen client ICD for iland KMS/GBM; it
+   * cannot provide vkCreateAndroidSurfaceKHR for this host surface.
+   */
+  return wwn_load_host_vulkan();
+}
+
 /**
  * Create Vulkan instance with Android surface extensions
  */
 static VkResult create_instance(void) {
-  const char *vulkanDriver = WWNSettings_GetVulkanDriver();
-
-  // If Waypipe support is enabled, force SwiftShader for compatibility
-  if (WWNSettings_GetWaypipeRSSupportEnabled()) {
-    LOGI("Waypipe support enabled: Forcing SwiftShader ICD");
-    setenv("VK_ICD_FILENAMES", "/system/etc/vulkan/icd.d/swiftshader_icd.json",
-           1);
-  } else if (strcmp(vulkanDriver, "none") == 0) {
-    // Vulkan disabled - use SwiftShader as safe fallback so compositor can
-    // still run
-    LOGI("Vulkan driver 'none' selected: Using SwiftShader fallback");
-    setenv("VK_ICD_FILENAMES", "/system/etc/vulkan/icd.d/swiftshader_icd.json",
-           1);
-  } else if (strcmp(vulkanDriver, "swiftshader") == 0) {
-    LOGI("Vulkan driver 'swiftshader' selected");
-    setenv("VK_ICD_FILENAMES", "/system/etc/vulkan/icd.d/swiftshader_icd.json",
-           1);
-  } else if (strcmp(vulkanDriver, "turnip") == 0) {
-    LOGI("Vulkan driver 'turnip' (freedreno) selected");
-    setenv("VK_ICD_FILENAMES", "/data/local/tmp/freedreno_icd.json", 1);
-  } else {
-    // "system" or unknown - use system default (unset or platform default)
-    LOGI("Vulkan driver 'system' selected: Using platform default");
-    unsetenv("VK_ICD_FILENAMES");
+  if (apply_graphics_driver_selection() != 0 ||
+      getenv("WWN_DISABLE_VULKAN")) {
+    LOGI("Vulkan disabled by graphics driver policy");
+    return VK_ERROR_INITIALIZATION_FAILED;
   }
 
   const char *exts[] = {VK_KHR_SURFACE_EXTENSION_NAME,
@@ -998,13 +1325,12 @@ static VkResult create_instance(void) {
   VkResult res = vkCreateInstance(&ci, NULL, &g_instance);
   if (res != VK_SUCCESS) {
     LOGE("vkCreateInstance failed: %d", res);
-    // Try SwiftShader fallback
-    setenv("VK_ICD_FILENAMES", "/system/etc/vulkan/icd.d/swiftshader_icd.json",
-           1);
-    res = vkCreateInstance(&ci, NULL, &g_instance);
+    return res;
   }
-  if (res != VK_SUCCESS)
-    LOGE("vkCreateInstance failed: %d", res);
+  if (wwn_load_vulkan_instance_dispatch(g_instance) != 0) {
+    LOGE("Failed to load Vulkan instance dispatch");
+    return VK_ERROR_INITIALIZATION_FAILED;
+  }
   return res;
 }
 
@@ -1140,6 +1466,10 @@ static int create_device(VkPhysicalDevice pd) {
 
   if (vkCreateDevice(pd, &dci, NULL, &g_device) != VK_SUCCESS) {
     LOGE("vkCreateDevice failed");
+    return -1;
+  }
+  if (wwn_load_vulkan_device_dispatch(g_device) != 0) {
+    LOGE("Failed to load Vulkan device dispatch");
     return -1;
   }
   vkGetDeviceQueue(g_device, g_queue_family, 0, &g_queue);
@@ -1396,9 +1726,11 @@ static void choreographer_frame_cb(long frameTimeNanos, void *data) {
       switch (evt->event_type) {
       case CWindowEventTypeCreated:
         android_owl_on_created(evt);
+        android_host_scene_claim_created_window(evt->window_id);
         break;
       case CWindowEventTypeDestroyed:
         android_owl_forget(evt->window_id);
+        android_host_scene_forget_window(evt->window_id);
         break;
       case CWindowEventTypeSizeChanged:
         android_owl_on_size_changed(evt);
@@ -1406,6 +1738,7 @@ static void choreographer_frame_cb(long frameTimeNanos, void *data) {
       case CWindowEventTypeMinimizeRequested:
         LOGI("WM MinimizeRequested window=%llu",
              (unsigned long long)evt->window_id);
+        g_minimize_requested_window_id = evt->window_id;
         g_minimize_requested = 1;
         break;
       case CWindowEventTypeMaximizeRequested: {
@@ -1507,15 +1840,18 @@ static void choreographer_frame_cb(long frameTimeNanos, void *data) {
   /* iland GL overlay (kmscube / nested Weston DRM) composites above empty
    * compositor when active — tests userland KMS + GLES via ANGLE. */
 #ifdef WAWONA_ILAND_GL
+  uint32_t iland_presented_fb_id = 0;
   if (wwn_iland_presenter_android_is_active()) {
     AHardwareBuffer *iland_buffer = NULL;
-    uint32_t iland_w = 0, iland_h = 0, iland_stride = 0;
+    uint32_t iland_w = 0, iland_h = 0, iland_stride = 0, iland_fb_id = 0;
     if (wwn_iland_presenter_android_take_hardware_buffer(
-            &iland_buffer, &iland_w, &iland_h, &iland_stride)) {
+            &iland_buffer, &iland_w, &iland_h, &iland_stride, &iland_fb_id)) {
+      iland_presented_fb_id = iland_fb_id;
       void *iland_pixels = NULL;
-      if (AHardwareBuffer_lock(iland_buffer,
-                               AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN, -1, NULL,
-                               &iland_pixels) == 0 &&
+      pthread_once(&g_ahb_symbols_once, wwn_load_ahb_symbols);
+      if (g_ahb_lock && g_ahb_unlock &&
+          g_ahb_lock(iland_buffer, AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN, -1,
+                     NULL, &iland_pixels) == 0 &&
           iland_pixels) {
         int sf = compute_auto_scale_factor();
         uint32_t logical_w = ctx->extent.width / (uint32_t)sf;
@@ -1527,9 +1863,10 @@ static void choreographer_frame_cb(long frameTimeNanos, void *data) {
         renderer_android_draw_iland_overlay(
             ctx->cmdBuf, iland_pixels, iland_w, iland_h, iland_stride,
             logical_w, logical_h);
-        AHardwareBuffer_unlock(iland_buffer, NULL);
+        g_ahb_unlock(iland_buffer, NULL);
       }
-      AHardwareBuffer_release(iland_buffer);
+      if (g_ahb_release)
+        g_ahb_release(iland_buffer);
     }
   }
 #endif
@@ -1598,6 +1935,12 @@ static void choreographer_frame_cb(long frameTimeNanos, void *data) {
       .pImageIndices = &imageIndex,
   };
   res = vkQueuePresentKHR(g_queue, &presentInfo);
+#ifdef WAWONA_ILAND_GL
+  if ((res == VK_SUCCESS || res == VK_SUBOPTIMAL_KHR) &&
+      iland_presented_fb_id != 0) {
+    wwn_iland_presenter_android_frame_presented(iland_presented_fb_id);
+  }
+#endif
   if (res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR &&
       res != VK_ERROR_OUT_OF_DATE_KHR) {
     LOGE("vkQueuePresentKHR failed: %d", res);
@@ -1881,10 +2224,11 @@ JNIEXPORT void JNICALL Java_com_aspauldingcode_wawona_WawonaNative_nativeInit(
   if (r != VK_SUCCESS) {
     LOGE("Vulkan instance creation failed (res=%d); rendering may be unavailable",
          (int)r);
+  } else {
+    uint32_t count = 0;
+    VkResult res = vkEnumeratePhysicalDevices(g_instance, &count, NULL);
+    LOGI("vkEnumeratePhysicalDevices count=%u, res=%d", count, res);
   }
-  uint32_t count = 0;
-  VkResult res = vkEnumeratePhysicalDevices(g_instance, &count, NULL);
-  LOGI("vkEnumeratePhysicalDevices count=%u, res=%d", count, res);
   pthread_mutex_unlock(&g_lock);
 }
 
@@ -2094,6 +2438,10 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeDestroySurface(JNIEnv *env,
     vkDestroyInstance(g_instance, NULL);
     g_instance = VK_NULL_HANDLE;
   }
+  if (g_vulkan_driver_handle) {
+    dlclose(g_vulkan_driver_handle);
+    g_vulkan_driver_handle = NULL;
+  }
 
   if (g_window) {
     ANativeWindow_release(g_window);
@@ -2174,6 +2522,9 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeResizeSurface(JNIEnv *env,
 
   g_output_width = (uint32_t)width;
   g_output_height = (uint32_t)height;
+#ifdef WAWONA_ILAND_GL
+  wwn_iland_presenter_android_set_surface_size(g_output_width, g_output_height);
+#endif
   apply_output_scale();
 
   g_running = 1;
@@ -2934,7 +3285,130 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeConsumeMinimizeRequested(
   if (!g_minimize_requested)
     return JNI_FALSE;
   g_minimize_requested = 0;
+  g_minimize_requested_window_id = 0;
   return JNI_TRUE;
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeConsumeMinimizedWindow(
+    JNIEnv *env, jobject thiz) {
+  (void)env;
+  (void)thiz;
+  uint64_t window_id = g_minimize_requested_window_id;
+  g_minimize_requested_window_id = 0;
+  g_minimize_requested = 0;
+  return (jlong)window_id;
+}
+
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeReserveNextHostWindow(
+    JNIEnv *env, jobject thiz, jlong host_id) {
+  (void)env;
+  (void)thiz;
+  if (host_id == 0)
+    return;
+  pthread_mutex_lock(&g_host_scene_claim_lock);
+  int free_index = -1;
+  for (int i = 0; i < ANDROID_HOST_SCENE_MAX_WINDOWS; i++) {
+    if (g_host_scene_reservations[i].in_use &&
+        g_host_scene_reservations[i].host_id == (uint64_t)host_id) {
+      pthread_mutex_unlock(&g_host_scene_claim_lock);
+      return;
+    }
+    if (!g_host_scene_reservations[i].in_use && free_index < 0)
+      free_index = i;
+  }
+  if (free_index >= 0) {
+    g_host_scene_reservation_order++;
+    if (g_host_scene_reservation_order == 0)
+      g_host_scene_reservation_order = 1;
+    g_host_scene_reservations[free_index].host_id = (uint64_t)host_id;
+    g_host_scene_reservations[free_index].order =
+        g_host_scene_reservation_order;
+    g_host_scene_reservations[free_index].in_use = 1;
+  } else {
+    LOGE("Host scene reservation table full; host=%llu",
+         (unsigned long long)host_id);
+  }
+  pthread_mutex_unlock(&g_host_scene_claim_lock);
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeGetWindowForHost(
+    JNIEnv *env, jobject thiz, jlong host_id) {
+  (void)env;
+  (void)thiz;
+  if (host_id == 0)
+    return 0;
+  return (jlong)android_host_scene_window_for_host((uint64_t)host_id);
+}
+
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeResizeHostWindow(
+    JNIEnv *env, jobject thiz, jlong host_id, jint width, jint height) {
+  (void)env;
+  (void)thiz;
+  if (!g_core || host_id == 0 || width <= 0 || height <= 0)
+    return;
+  uint64_t window_id = android_host_scene_window_for_host((uint64_t)host_id);
+  if (window_id == 0)
+    return;
+  int sf = compute_auto_scale_factor();
+  uint32_t logical_width = (uint32_t)width / (uint32_t)(sf > 0 ? sf : 1);
+  uint32_t logical_height = (uint32_t)height / (uint32_t)(sf > 0 ? sf : 1);
+  WWNCoreInjectWindowResize(g_core, window_id, logical_width ? logical_width : 1,
+                            logical_height ? logical_height : 1);
+}
+
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeSetHostWindowFocused(
+    JNIEnv *env, jobject thiz, jlong host_id, jboolean focused) {
+  (void)env;
+  (void)thiz;
+  if (!g_core || host_id == 0)
+    return;
+  uint64_t window_id = android_host_scene_window_for_host((uint64_t)host_id);
+  if (window_id != 0)
+    WWNCoreSetWindowActivated(g_core, window_id, focused == JNI_TRUE);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeCloseHostWindow(
+    JNIEnv *env, jobject thiz, jlong host_id) {
+  (void)env;
+  (void)thiz;
+  if (!g_core || host_id == 0)
+    return JNI_FALSE;
+  uint64_t window_id = android_host_scene_window_for_host((uint64_t)host_id);
+  return window_id != 0 && WWNCoreRequestWindowClose(g_core, window_id)
+             ? JNI_TRUE
+             : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeReleaseHostWindow(
+    JNIEnv *env, jobject thiz, jlong host_id) {
+  (void)env;
+  (void)thiz;
+  if (host_id == 0)
+    return;
+  pthread_mutex_lock(&g_host_scene_claim_lock);
+  for (int i = 0; i < ANDROID_HOST_SCENE_MAX_WINDOWS; i++) {
+    if (g_host_scene_reservations[i].in_use &&
+        g_host_scene_reservations[i].host_id == (uint64_t)host_id) {
+      memset(&g_host_scene_reservations[i], 0,
+             sizeof(g_host_scene_reservations[i]));
+      break;
+    }
+  }
+  for (int i = 0; i < ANDROID_HOST_SCENE_MAX_WINDOWS; i++) {
+    if (g_host_scene_claims[i].in_use &&
+        g_host_scene_claims[i].host_id == (uint64_t)host_id) {
+      memset(&g_host_scene_claims[i], 0, sizeof(g_host_scene_claims[i]));
+      break;
+    }
+  }
+  pthread_mutex_unlock(&g_host_scene_claim_lock);
 }
 
 JNIEXPORT void JNICALL
@@ -3496,10 +3970,14 @@ static void *waypipe_thread_func(void *arg) {
     argv[argc++] = "--oneshot";
   }
 
-  /* Android lacks accessible DRM render nodes; always disable the GPU/DMABUF
-   * path so waypipe negotiates CPU-side shm copies instead of trying to import
-   * DMA-BUF handles that will fail on the Android side. */
-  argv[argc++] = "--no-gpu";
+  /* Preserve the AHardwareBuffer-backed zero-copy path unless the machine
+   * explicitly disables GPU transport or selects no Vulkan implementation. */
+  const char *waypipe_vulkan_driver = WWNSettings_GetVulkanDriver();
+  if (g_waypipe_config.no_gpu ||
+      (waypipe_vulkan_driver &&
+       strcmp(waypipe_vulkan_driver, "none") == 0)) {
+    argv[argc++] = "--no-gpu";
+  }
 
   if (g_waypipe_config.login_shell) {
     argv[argc++] = "--login-shell";

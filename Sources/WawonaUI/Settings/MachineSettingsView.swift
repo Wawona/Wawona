@@ -93,7 +93,12 @@ public struct MachineSettingsView: View {
     @ViewBuilder
     private func displaySection() -> some View {
         Section("Display") {
-            Toggle("Force Server-Side Decorations", isOn: forceSSDBinding)
+            // Force SSD is macOS-only: CSD only renders on macOS Wawona, so
+            // every other target is effectively always SSD (#120). Hiding the
+            // toggle elsewhere avoids a control that cannot change anything.
+            if PlatformCapabilities.supportsClientSideDecorations {
+                Toggle("Force Server-Side Decorations", isOn: forceSSDBinding)
+            }
             Toggle("Auto Scale", isOn: autoScaleBinding)
             TextField("Wayland Display", text: waylandDisplayBinding)
                 .wawonaTextFieldNoAutocaps()
@@ -190,13 +195,19 @@ public struct MachineSettingsView: View {
             TextField("Renderer", text: rendererBinding)
                 .wawonaTextFieldNoAutocaps()
                 .autocorrectionDisabled()
-            TextField("Vulkan Driver", text: vulkanDriverBinding)
-                .wawonaTextFieldNoAutocaps()
-                .autocorrectionDisabled()
-            TextField("OpenGL Driver", text: openGLDriverBinding)
-                .wawonaTextFieldNoAutocaps()
-                .autocorrectionDisabled()
-            Toggle("Enable DMABUF", isOn: dmabufEnabledBinding)
+            if PlatformCapabilities.allowsGpuStack {
+                TextField("Vulkan Driver", text: vulkanDriverBinding)
+                    .wawonaTextFieldNoAutocaps()
+                    .autocorrectionDisabled()
+                TextField("OpenGL Driver", text: openGLDriverBinding)
+                    .wawonaTextFieldNoAutocaps()
+                    .autocorrectionDisabled()
+                Toggle("Enable DMABUF", isOn: dmabufEnabledBinding)
+            } else {
+                Text("GPU stack unavailable on this platform.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
             Toggle("HDR / Color Operations", isOn: colorOperationsBinding)
         }
     }
@@ -364,7 +375,7 @@ public struct MachineSettingsView: View {
 
     private var vulkanDriverBinding: Binding<String> {
         Binding(
-            get: { draft?.runtimeOverrides.vulkanDriver ?? "moltenvk" },
+            get: { draft?.runtimeOverrides.vulkanDriver ?? preferences.vulkanDriver },
             set: { value in updateDraft { $0.runtimeOverrides.vulkanDriver = value } }
         )
     }

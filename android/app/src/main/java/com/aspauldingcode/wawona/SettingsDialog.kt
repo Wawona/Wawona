@@ -306,10 +306,10 @@ private fun GraphicsSection(prefs: SharedPreferences) {
     SettingsSectionHeader("Drivers", Icons.Filled.Speed, SettingsTab.GRAPHICS.accentColor)
     SettingsGroup(SettingsTab.GRAPHICS.accentColor) {
         SettingsDropdownItem(prefs, "vulkanDriver", "Vulkan Driver",
-            "Select Vulkan implementation. None disables Vulkan.", Icons.Filled.Speed, "None",
-            listOf("None", "SwiftShader", "Turnip", "System"), iconTint = SettingsTab.GRAPHICS.accentColor)
+            "Select Vulkan implementation. None disables Vulkan.", Icons.Filled.Speed, "System",
+            listOf("None", "SwiftShader", "System"), iconTint = SettingsTab.GRAPHICS.accentColor)
         SettingsDropdownItem(prefs, "openglDriver", "OpenGL Driver",
-            "Select OpenGL/GLES implementation. None disables OpenGL.", Icons.Filled.GraphicEq, "None",
+            "Select OpenGL/GLES implementation. None disables OpenGL.", Icons.Filled.GraphicEq, "System",
             listOf("None", "ANGLE", "System"), iconTint = SettingsTab.GRAPHICS.accentColor)
     }
     SettingsSectionHeader("Features", Icons.Filled.Tune, SettingsTab.GRAPHICS.accentColor)
@@ -1099,7 +1099,7 @@ private fun SSHSection(prefs: SharedPreferences, accent: Color) {
             "", KeyboardType.Password)
     }
 
-    Spacer(modifier.height(12.dp))
+    Spacer(Modifier.height(12.dp))
 
     // Test buttons -- read prefs FRESH at click time (not cached at composition)
     SettingsSectionHeader("Diagnostics", Icons.Filled.NetworkCheck, accent)
@@ -1147,7 +1147,7 @@ private fun SSHSection(prefs: SharedPreferences, accent: Color) {
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
         ) {
             Icon(Icons.Filled.Key, null, Modifier.size(18.dp))
-            Spacer(modifier.width(6.dp))
+            Spacer(Modifier.width(6.dp))
             Text(if (isKeygen) "Generating…" else "Generate Key")
         }
         OutlinedButton(
@@ -1156,7 +1156,7 @@ private fun SSHSection(prefs: SharedPreferences, accent: Color) {
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
         ) {
             Icon(Icons.Filled.Upload, null, Modifier.size(18.dp))
-            Spacer(modifier.width(6.dp))
+            Spacer(Modifier.width(6.dp))
             Text("Import GPG SSH Key")
         }
         Text(

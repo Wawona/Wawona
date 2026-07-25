@@ -395,9 +395,8 @@ EOF
         for so in "$libdir"/*.so "$libdir"/*.so.*; do
           base_so="$(basename "$so")"
           case "$base_so" in
-            # These upstream prebuilts are not 16KB-page aligned.
-            # Do not bundle them; Android provides Vulkan/SwiftShader runtime paths.
-            libvk_swiftshader.so|libSPIRV-Tools-shared.so)
+            # Tool-only shared SPIR-V library is not needed by the packaged ICD.
+            libSPIRV-Tools-shared.so)
               continue
               ;;
           esac

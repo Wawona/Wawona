@@ -210,8 +210,15 @@ impl XdgShellHandler for CompositorState {
             self.ensure_xdg_surface_entry(client_id.clone(), wl_surface, surface_id, None);
         let toplevel_id = surface.xdg_toplevel().id().protocol_id();
 
+        // Force SSD per-machine (#120): the first toplevel from a client claims
+        // the policy the host staged for this machine's launch, and the window
+        // pins it so a concurrent machine toggling Force SSD cannot restyle it.
+        self.claim_pending_decoration_policy(&client_id);
+        let client_policy = self.client_decoration_policy.get(&client_id).copied();
+
         let window_id = self.next_window_id();
         let mut window = Window::new(window_id, surface_id);
+        window.decoration_policy = client_policy;
         // OWL / xdg-shell: initial configure is 0x0 ("client decides"). Keep
         // core + toplevel expected size at 0 so host sync does not treat the
         // wl_output size as a configure the client must match (weston-flower /
@@ -309,7 +316,9 @@ impl XdgShellHandler for CompositorState {
             title: String::new(),
             width: initial_width,
             height: initial_height,
-            decoration_mode: self.decoration_mode_for_new_window(),
+            decoration_mode: crate::core::state::CompositorState::decoration_mode_for_policy(
+                self.effective_decoration_policy(Some(&client_id)),
+            ),
             fullscreen_shell: false,
             host_locked,
         });
@@ -511,16 +520,23 @@ impl XdgShellHandler for CompositorState {
 
         let weston_family =
             crate::core::wayland::xdg::decoration::is_weston_family_app_id(&app_id);
-        let force_server = matches!(self.decoration_policy, DecorationPolicy::ForceServer);
+
+        let Some((client_id, toplevel_id)) = self.xdg_toplevel_key_for_surface(&surface) else {
+            return;
+        };
+        // Force SSD per-machine (#120): resolve against this client's override,
+        // not the global policy, so re-asserting SSD after app_id arrives does
+        // not leak a concurrent machine's Force SSD onto this client.
+        let force_server = matches!(
+            self.effective_decoration_policy(Some(&client_id)),
+            DecorationPolicy::ForceServer
+        );
         // Weston-family needs an explicit host mode (CSD vs SSD). Force SSD must
         // also re-assert ServerSide once app_id arrives — WindowCreated may have
         // raced before the preference was applied to Rust.
         let should_reassert_decoration = weston_family || force_server;
 
-        let Some((client_id, toplevel_id)) = self.xdg_toplevel_key_for_surface(&surface) else {
-            return;
-        };
-        let window_id = if let Some(tl) = self.xdg.toplevels.get_mut(&(client_id, toplevel_id)) {
+        let window_id = if let Some(tl) = self.xdg.toplevels.get_mut(&(client_id.clone(), toplevel_id)) {
             tl.app_id = app_id.clone();
             tl.window_id
         } else {

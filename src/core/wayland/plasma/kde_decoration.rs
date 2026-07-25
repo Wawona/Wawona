@@ -56,18 +56,20 @@ impl Dispatch<OrgKdeKwinServerDecorationManager, ()> for CompositorState {
                 // Initialize the decoration resource
                 let decoration = data_init.init(id, surface_id);
                 
-                // Determine the default mode based on policy
-                let weston_family = matches!(state.decoration_policy, DecorationPolicy::ForceServer)
+                // Determine the default mode based on this client's policy
+                // (Force SSD per-machine, #120).
+                let policy = state.effective_decoration_policy(Some(&_client.id()));
+                let weston_family = matches!(policy, DecorationPolicy::ForceServer)
                     .then_some(false)
                     .unwrap_or_else(|| state.surface_to_window.get(&surface_id).copied().map(|wid| is_weston_family_app(state, wid)).unwrap_or(false));
                 let default_mode = if weston_family {
-                    if weston_family_prefers_client_decorations(state) {
+                    if weston_family_prefers_client_decorations(policy) {
                         Mode::Client
                     } else {
                         Mode::Server
                     }
                 } else {
-                    match state.decoration_policy {
+                    match policy {
                         DecorationPolicy::PreferClient => Mode::Client,
                         DecorationPolicy::PreferServer => Mode::Server,
                         DecorationPolicy::ForceServer => Mode::Server,
@@ -120,18 +122,19 @@ impl Dispatch<OrgKdeKwinServerDecoration, u32> for CompositorState {
                 
                 tracing::debug!("Client requests KDE decoration mode: {:?}", requested_mode);
                 
-                // Apply policy
-                let weston_family = matches!(state.decoration_policy, DecorationPolicy::ForceServer)
+                // Apply this client's policy (Force SSD per-machine, #120).
+                let policy = state.effective_decoration_policy(Some(&_client.id()));
+                let weston_family = matches!(policy, DecorationPolicy::ForceServer)
                     .then_some(false)
                     .unwrap_or_else(|| state.surface_to_window.get(&surface_id).copied().map(|wid| is_weston_family_app(state, wid)).unwrap_or(false));
                 let actual_mode = if weston_family {
-                    if weston_family_prefers_client_decorations(state) {
+                    if weston_family_prefers_client_decorations(policy) {
                         Mode::Client
                     } else {
                         Mode::Server
                     }
                 } else {
-                    match state.decoration_policy {
+                    match policy {
                         DecorationPolicy::ForceServer => Mode::Server,
                         _ => requested_mode,
                     }

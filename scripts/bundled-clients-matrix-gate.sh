@@ -127,6 +127,28 @@ apple_pid() {
 
 # --- lldb connect / disconnect (Apple) ---------------------------------------
 
+run_lldb_batch() {
+  local script="$1" out="$2"
+  local timeout_sec="${WAWONA_MATRIX_LLDB_TIMEOUT_SEC:-45}"
+  local debugger_pid watchdog_pid status=0
+
+  xcrun lldb -b -s "$script" >"$out" 2>&1 &
+  debugger_pid=$!
+  (
+    sleep "$timeout_sec"
+    if kill -0 "$debugger_pid" 2>/dev/null; then
+      printf 'MATRIX_LLDB_TIMEOUT after %ss\n' "$timeout_sec" >>"$out"
+      kill -TERM "$debugger_pid" 2>/dev/null || true
+    fi
+  ) &
+  watchdog_pid=$!
+
+  wait "$debugger_pid" || status=$?
+  kill "$watchdog_pid" 2>/dev/null || true
+  wait "$watchdog_pid" 2>/dev/null || true
+  return "$status"
+}
+
 lldb_connect() {
   local pid="$1" out="$2"
   local script
@@ -139,7 +161,7 @@ expr -l objc -- NSError *e = nil; BOOL ok = [WWNMachineSessionBridge connectProf
 detach
 quit
 EOF
-  xcrun lldb -b -s "$script" >"$out" 2>&1 || true
+  run_lldb_batch "$script" "$out" || true
   rm -f "$script"
   grep -Eq '\(BOOL\) \$[0-9]+ = YES' "$out"
 }
@@ -154,7 +176,7 @@ expr -l objc -- [WWNMachineSessionBridge disconnectProfile:[[WWNMachineProfileSt
 detach
 quit
 EOF
-  xcrun lldb -b -s "$script" >"$out" 2>&1 || true
+  run_lldb_batch "$script" "$out" || true
   rm -f "$script"
 }
 

@@ -76,13 +76,8 @@ extern void wawona_window_info_free(CWindowInfo *info);
     WWNLog("MAIN", @"Set XDG_RUNTIME_DIR to: %@", runtimePath);
   }
 
-  // 2. Configure Vulkan driver (statically linked on iOS)
-  const char *vkDriver = WWNSettings_GetVulkanDriver();
-  if (vkDriver && strcmp(vkDriver, "none") != 0) {
-    WWNLog("MAIN", @"Vulkan driver: %s (static link)", vkDriver);
-  } else {
-    WWNLog("MAIN", @"Vulkan drivers disabled (driver selection: none)");
-  }
+  // 2. Apply the selected parallel Vulkan and GLES/ANGLE policies.
+  WWNSettings_ApplyGraphicsDriverSelection();
 
   // 3. Initialize Rust Compositor
   WWNCompositorBridge *compositor = [WWNCompositorBridge sharedBridge];
@@ -1116,51 +1111,7 @@ int main(int argc, char *argv[]) {
                                                }
                                                     error:nil];
 
-    // Configure Vulkan ICD based on user-selected driver
-    const char *vkDriver = WWNSettings_GetVulkanDriver();
-    if (vkDriver && strcmp(vkDriver, "none") != 0) {
-      NSBundle *mainBundle = [NSBundle mainBundle];
-      NSString *icdName = nil;
-
-      if (strcmp(vkDriver, "kosmickrisp") == 0) {
-        icdName = @"kosmickrisp_icd";
-      } else if (strcmp(vkDriver, "moltenvk") == 0) {
-        icdName = @"MoltenVK_icd";
-      }
-
-      if (icdName) {
-        NSString *bundleICD = [mainBundle pathForResource:icdName
-                                                   ofType:@"json"
-                                              inDirectory:@"vulkan/icd.d"];
-        // ICD tiering fallback (p9): KosmicKrisp only exists for Apple Silicon
-        // on macOS 26+. If it was selected/defaulted but isn't present in the
-        // bundle, fall back to MoltenVK so Vulkan still works.
-        if (!bundleICD && strcmp(vkDriver, "kosmickrisp") == 0) {
-          bundleICD = [mainBundle pathForResource:@"MoltenVK_icd"
-                                           ofType:@"json"
-                                      inDirectory:@"vulkan/icd.d"];
-          if (bundleICD) {
-            WWNLog("MAIN",
-                   @"Vulkan: kosmickrisp ICD absent, falling back to MoltenVK");
-          }
-        }
-        if (bundleICD) {
-          setenv("VK_DRIVER_FILES", [bundleICD UTF8String], 1);
-          WWNLog("MAIN", @"Vulkan: %s ICD from bundle: %@", vkDriver,
-                 bundleICD);
-        } else {
-          WWNLog("MAIN",
-                 @"Vulkan: %s ICD not found in bundle, using loader defaults",
-                 vkDriver);
-        }
-      } else {
-        WWNLog("MAIN", @"Vulkan: Unknown driver '%s', using loader defaults",
-               vkDriver);
-      }
-    } else {
-      WWNLog("MAIN", @"Vulkan drivers disabled (driver selection: none)");
-      unsetenv("VK_DRIVER_FILES");
-    }
+    WWNSettings_ApplyGraphicsDriverSelection();
 
     WWNLog("MAIN", @"Starting Rust-based WWN compositor (macOS)...");
 

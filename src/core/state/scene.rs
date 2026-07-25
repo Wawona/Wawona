@@ -429,9 +429,11 @@ impl CompositorState {
                 if let Some(surf_ref) = self.get_surface(window.surface_id) {
                     let surf = surf_ref.read().unwrap();
                     let xdg_geometry = geom_by_surface.get(&window.surface_id).copied();
+                    let window_policy =
+                        window.decoration_policy.unwrap_or(self.decoration_policy);
                     if let Some((inter_x1, inter_y1, inter_w, inter_h)) =
                         crate::core::wayland::xdg::decoration::resolve_window_content_geometry(
-                            self,
+                            window_policy,
                             &window.app_id,
                             window.decoration_mode,
                             surf.current.width,

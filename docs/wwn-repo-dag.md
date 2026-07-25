@@ -4,19 +4,17 @@ Canonical, AI-enforced dependency layering for the Wawona organization repos.
 **Never invert these layers.** When adding a flake input or a registry key,
 re-read this file and the cycle watch list first.
 
-> **Status:** DRAFT (created in graphics-stack epic P0, research-only). Some
-> statements describe the **target** state after the P2 registry move (ANGLE /
-> SwiftShader → `wwn-iland`). Rows marked *(P2)* are not yet reality; see
-> [`iland-graphics-progress.md`](iland-graphics-progress.md) R11 for current
-> ownership. This doc is hardened + mirrored into Cursor rules / AGENTS.md in
-> P1/P2.
+> **Status:** ENFORCED. ANGLE and SwiftShader recipes are owned by
+> `wwn-iland.registryFragment`; `wwn-toolchain` retains substrate only. See
+> [`iland-graphics-progress.md`](iland-graphics-progress.md) for verification
+> status.
 
 Mirrors:
 - Cursor rule: `.cursor/rules/wawona-repo-dag.mdc` **and**
   `Wawona/.cursor/rules/wawona-repo-dag.mdc` (`alwaysApply: true`) — *(P1)*.
 - AGENTS: `Wawona/AGENTS.md`, `wwn-iland/AGENTS.md`, `wwn-toolchain/AGENTS.md`.
 - READMEs: `wwn-toolchain/README.md`, `wwn-iland/README.md`.
-- WWN-MCP: `wwn-mcp/knowledge/wawona/wwn-repo-dag.md` *(P4)*.
+- WWN-MCP: `wwn-mcp/knowledge/wawona/wwn-repo-dag.md`.
 
 ## Layers
 
@@ -32,7 +30,7 @@ L4  Wawona            merges all fragments; never an input of L0–L3
 ```mermaid
 flowchart BT
   tc[L0 wwn-toolchain]
-  il[L1 wwn-iland: iland, ANGLE*, ICDs*]
+  il[L1 wwn-iland: iland, ANGLE, ICDs]
   km[L2 wwn-kmscube]
   we[L3 wwn-weston]
   wp[L3' waypipe / anowaW / vms]
@@ -42,14 +40,12 @@ flowchart BT
   il --> wa
 ```
 
-`*` ANGLE + SwiftShader move from L0 to L1 in P2 (see below).
-
 ## What lives where
 
 | Layer | Repo | Owns |
 |-------|------|------|
 | **L0** | `wwn-toolchain` | Cross builders (`mkToolchains`, apple/android toolchains, `wawona-pty`); substrate libs: **cairo, cairo-gobject, pango, fontconfig, freetype, harfbuzz, fribidi, glib, pixman, libwayland, xkbcommon, epoll-shim, libpng, expat, libffi, libintl, libxml2, zlib, zstd, lz4, pcre2, openssl, mbedtls, fcft, tllist, utf8proc, ffmpeg** |
-| **L1** | `wwn-iland` | Userland KMS/DRM/GBM/EGL/udev shims + Mode A present callback + Mode B baremetal; `iland`, `iland-baremetal`; **ANGLE, SwiftShader, MoltenVK, KosmicKrisp, Turnip hooks** *(P2)*; `iland-cpu` CPU-present helpers *(P1–P2)*; DriverSelector surface |
+| **L1** | `wwn-iland` | Userland KMS/DRM/GBM/EGL/udev shims + Mode A present callback + Mode B baremetal; `iland`, `iland-baremetal`; **ANGLE and SwiftShader**; MoltenVK/KosmicKrisp packaging; `iland-cpu` CPU-present helpers; DriverSelector contract |
 | **L2** | `wwn-kmscube` | `kmscube`, `vkcube`, `opengl-cube`, GL acceptance clients |
 | **L3** | `wwn-weston` | Nested compositor + weston-simple-egl + toytoolkit clients |
 | **L3′** | `wwn-waypipe`, `wwn-anowaW`, `wwn-vms`, `wwn-apt`, `wwn-ssh`, … | Proxy / Android present / VM engine / package tooling |
@@ -67,18 +63,18 @@ flowchart BT
 4. **Source injection ≠ cycle** — `extraArgs.ilandSrc` (weston copies shims) is
    OK; building iland *from* weston sources is not.
 5. **One-way optional clients** — weston → kmscube OK; kmscube → weston forbidden.
-6. **Graphics keys live in L1 fragment** after P2 (`angle`, `swiftshader`, MVK,
+6. **Graphics keys live in L1 fragment** (`angle`, `swiftshader`, MVK,
    KK); substrate text stack stays L0. Consumers needing GLES/Vulkan merge the
    **iland** fragment (or Wawona's merge), not bare toolchain.
 
-## Current reality vs target (P0 finding)
+## Current reality
 
 - Flake-input edges are **already acyclic** L0→L4 — no inversions (verified:
   toolchain has no wwn-* inputs; iland → toolchain only; weston → toolchain +
   iland + kmscube; waypipe/anowaW/vms → toolchain; Wawona → all).
-- **Deviation:** `angle` and `swiftshader` currently sit in L0 `baseRegistry`
-  (`wwn-toolchain/dependencies/toolchains/common/registry.nix:280-290,58-63`).
-  These are graphics-stack keys → **move to L1 in P2**.
+- `angle` and `swiftshader` recipes live in `wwn-iland/dependencies/libs/` and
+  are exported by the L1 `registryFragment`. Their old L0 recipes are removed;
+  consumers must merge L1 before requesting either key.
 - `moltenvk` = `pkgs.moltenvk` (nixpkgs, wired in Wawona); `kosmickrisp` has no
   recipe. Both become L1-owned/wired in P2.
 - `pixman` correctly L0 (cairo depends on it). **Do not move to iland** — would
@@ -100,7 +96,7 @@ flowchart BT
 | **freetype↔harfbuzz↔cairo** | Classic meson cycles | Keep disabled edges in ios/android recipes |
 | **spirv-tools / ffmpeg in wrong layer** | If only graphics needs spirv, OK L1; if foot/ssh need it, keep L0 | Prefer L0 unless proven graphics-only |
 | **MVK/KK recipe needing full mesa + iland headers** | Mesa build pulls iland | KK/MVK builds are standalone ICDs; iland *links* them |
-| **Android Turnip in toolchain** | Adreno ICD next to cairo | Turnip packaging = **L1**; KGSL is not substrate |
+| **Direct Turnip/KGSL** | App-owned ICD opens a kernel device | Excluded by runtime-only policy; use system Vulkan or SwiftShader |
 
 ## Who must merge `wwn-iland` after the P2 move
 
@@ -121,7 +117,7 @@ cite this doc in the same phase iteration.
 ```text
 Wawona repo DAG (acyclic, never invert):
   L0 wwn-toolchain — substrate only (cairo, pango, pixman, libwayland, …). NO wwn-* flake inputs. NO iland/weston in baseRegistry.
-  L1 wwn-iland — complete graphics stack (iland, ANGLE, SwiftShader, MoltenVK, KosmicKrisp, Turnip hooks). Depends on toolchain ONLY.
+  L1 wwn-iland — complete graphics stack (iland, ANGLE, SwiftShader, MoltenVK, KosmicKrisp). Depends on toolchain ONLY.
   L2 wwn-kmscube — toolchain + iland.
   L3 wwn-weston — toolchain + iland + kmscube; ilandSrc is source injection only.
   L3′ waypipe / anowaW / vms / apt — toolchain; merge iland only if GPU needed; no weston flake edge from anowaW.
