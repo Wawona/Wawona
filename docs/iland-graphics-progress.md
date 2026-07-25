@@ -41,7 +41,7 @@ separately. Evidence is `file:line` in the local tree or an issue.
 
 | Target | Mode | OpenGL / GLES | Vulkan | DRM | KMS | Desktop Repl. DRM/KMS |
 |--------|------|---------------|--------|-----|-----|------------------------|
-| macOS 3rd-party product | A | **PROPER** (stock kmscube: `gl.display` non-null, no duplicate-ANGLE warning, 600+ presents at ~40 fps, clean GL/GBM/DRM teardown — 2026-07-25 log below) | **PROPER** (both ICDs serve under selection: `libMoltenVK.dylib` / `libvulkan_kosmickrisp.dylib`, each logged `(selected)` not fallback, each rendering through iland KMS/GBM to `rc=0`) | **PROPER** (stock kmscube opens the virtual card, enumerates connector 1 / CRTC 1, picks a mode, and reaches `init gbm success` entirely in userland — no real device open) | **PROPER** (continuous flips, no stall; fourcc `0x42475241` + size stable across 600 frames) | N/A (Desktop tweak = desktop-host B) |
+| macOS 3rd-party product | A | **PROPER** (stock kmscube: `gl.display` non-null, no duplicate-ANGLE warning, 600+ presents at ~40 fps, clean GL/GBM/DRM teardown — 2026-07-25 log below) | **PROPER** (both ICDs serve under selection: `libMoltenVK.dylib` / `libvulkan_kosmickrisp.dylib`, each logged `(selected)` not fallback, each rendering through iland KMS/GBM to `rc=0`) | **PROPER** (stock kmscube opens the virtual card, enumerates connector 1 / CRTC 1, picks a mode, and reaches `init gbm success` entirely in userland — no real device open) | FUCKUP → fix in tree (flips are continuous and the fourcc/size contract holds, but cadence juddered at ~35 fps on a 60 Hz display and host resize stretched the fixed-mode framebuffer; texture cache + presented-handler pacing + letterbox landed, re-verification pending) | N/A (Desktop tweak = desktop-host B) |
 | macOS desktop-host | A (toggle off) | WIRED (same as product) | WIRED | WIRED | WIRED | N/A |
 | macOS desktop-host | B (SIP partial + toggle) | WIRED | WIRED | WIRED (Dobby `open`/`ioctl` hooks virtual calls) | WIRED (framebufferd host-vsync present + Mach ACK drives page-flip event; runtime proof pending) | WIRED (engage path real, not CI-proven; #87) |
 | iOS / iPadOS / visionOS | A | WIRED (ANGLE direct-to-Metal present path; target runtime/tint evidence remains pending) | WIRED (pinned store-safe MoltenVK 1.4.1 static slice is L1-owned and force-linked; vkcube runtime proof pending) | WIRED (Mode-A open shim landed — `iland_drm_open_card` + `iland_drm_open_compat.h`; #58 open path fixed, device render unproven) | WIRED (preferred-mode host wiring + fourcc contract landed; scene/multi-window runtime evidence pending) | N/A |
@@ -520,6 +520,84 @@ Repos touched: `Wawona` (this doc), `wwn-kmscube` (provider log in
 `upstream/vkcube/vulkan_dispatch.h`; the Android/Apple env split became two macros
 so both arms share one lookup).
 **waypipe zero-copy impact: none** — no buffer, export, or dmabuf path touched.
+
+---
+
+**2026-07-25 KMS cadence + resize (KMS regraded PROPER → FUCKUP, fixes in tree):**
+The promotion above was wrong and user-visible behavior said so: the cube
+juddered, and resizing the host window did not change the client's size. Both
+were real, and both were in the present path. Sustained ~35 fps on a 60 Hz
+display should have been the tell — that is not "slow", it is frames landing an
+uneven number of vsyncs apart. Three defects, one function:
+
+1. **A fresh `MTLTexture` per frame.** `newTextureWithDescriptor:iosurface:` ran
+   on every present. A GBM surface cycles a handful of buffers, so the same
+   IOSurfaces recur and the import is pure overhead on the frame's critical path.
+   Now cached per IOSurface (extent-validated, bounded at 16 so a mode change
+   cannot grow it without bound).
+2. **Page-flip pacing — tried, measured, reverted.** Completing the flip from
+   `addCompletedHandler:` releases the client when the GPU finishes drawing,
+   which is *before* the frame is visible, so the textbook fix is to complete
+   from the drawable's `addPresentedHandler:` and lock the client to scanout.
+   Measured: throughput **halved**, ~37 fps to ~18, and staying at ~18 with the
+   window frontmost, so it was not background throttling. The reason is
+   structural: iland permits a single outstanding flip per CRTC, so gating on
+   scanout leaves nothing in flight and each frame costs several vblanks instead
+   of one. Reverted to GPU-finish completion. Decoupling client cadence from
+   presentation requires more than one in-flight flip, which is an iland ABI
+   change rather than a presenter change — recorded as the next lead below.
+3. **CALayer geometry read from the client's render thread.** Every present called
+   `syncPreferredModeFromLayer`, and the iOS variant went further and *assigned*
+   `drawableSize`. That races AppKit/UIKit precisely during a resize drag. It was
+   also pointless: `iland_drm_set_preferred_mode` only affects mode
+   *enumeration*, and stock kmscube enumerates once, sizes its GBM surface, and
+   explicitly declines to watch for hotplug (`kmscube.c:367`). Mode publication
+   now happens on the main thread from the host's layout/resize hook.
+
+That last point is also why resize "did not reach the client", and it is worth
+being precise: a stock KMS client *cannot* change mode mid-run, so the client
+staying at its startup size is correct. The bug was that the presenter stretched
+that fixed framebuffer to fill the new drawable, distorting the cube. It now
+letterboxes with a centered `MTLViewport`, which is what a real display does when
+scaling a mode it cannot change. Making the client itself reconfigure would mean
+patching kmscube, which would forfeit the stock-client basis of this acceptance.
+Live client-side resize belongs to the Wayland path (xdg configure), not the KMS
+path, and is graded separately.
+
+Result after the texture cache, measured over 1,500 frames with the window
+frontmost: 37.5 / 42.9 / 50.0 / 42.9 / 42.9 fps per 300-frame bucket. Better than
+the ~35–40 baseline, and the per-frame allocation is gone, but it is neither 60
+nor steady — the spread across buckets exceeds the ±7 % that 1-second log
+timestamps can explain, so **the judder is reduced, not solved**, and KMS stays
+FUCKUP rather than being re-promoted.
+
+Two structural leads for the remainder, both outside the presenter:
+
+- **`glFinish()` per swap.** iland's EGL shim zero-copy path calls `glFinish()`
+  in `eglSwapBuffers` (`shims/egl/src/egl.c:635`) to guarantee the client's GPU
+  work has landed in the IOSurface before the buffer is published. That is a full
+  CPU-blocking GPU sync on the frame's critical path, every frame. ANGLE and the
+  presenter use separate Metal queues on the same GPU, so *some* sync is
+  required, but a shared `MTLSharedEvent` or a GL fence would order the work on
+  the GPU instead of stalling the client thread.
+- **One outstanding flip.** See item 2 — this caps pipelining regardless of how
+  fast either side renders.
+
+Also worth recording: the zero-copy path is the default (`ILAND_EGL_ZEROCOPY`
+must be explicitly set to `0` to opt out), so the `glReadPixels` +
+`vImagePermuteChannels` readback fallback is *not* what is costing frames here.
+That was the first suspect and it was wrong.
+
+Instruments, for the record, found **zero leaks** across a 90 s Leaks recording,
+and RSS stayed flat (roughly 280–330 MB) over ~9,600 frames, so none of this was
+a leak — it was per-frame work and mis-sequenced completion. Worth noting the
+first attempt profiled the wrong process: `pgrep -f` matched the coreutils
+`timeout` wrapper (5.9 MB RSS) rather than the app, and a clean "0 leaks" from a
+3-line C program is indistinguishable from a clean result for the real target.
+
+Repos touched: `Wawona` (macOS + iOS presenters, `WWNWindow` layout hook).
+**waypipe zero-copy impact: none** — buffer import is now cached rather than
+repeated; export and dmabuf paths untouched.
 
 ---
 

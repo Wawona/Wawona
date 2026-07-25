@@ -101,6 +101,12 @@
 - (void)layout {
   [super layout];
   contentLayer_.frame = self.bounds;
+  if (metalLayer_) {
+    // -updateLayer only runs when the view is marked for display, so a live
+    // resize drag needs the layout pass to republish geometry too.
+    metalLayer_.frame = self.bounds;
+    [ilandPresenter_ hostGeometryDidChange];
+  }
 }
 
 - (void)updateLayer {
@@ -108,6 +114,10 @@
   contentLayer_.frame = self.bounds;
   if (metalLayer_) {
     metalLayer_.frame = self.bounds;
+    // Republish the mode here rather than from the present callback: the client
+    // render thread must not read CALayer geometry, and a per-present refresh
+    // was inert anyway (iland applies the preferred mode at enumeration).
+    [ilandPresenter_ hostGeometryDidChange];
   }
 }
 

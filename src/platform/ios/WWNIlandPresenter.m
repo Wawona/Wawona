@@ -14,6 +14,7 @@
 #import <errno.h>
 #import <math.h>
 #import <pthread.h>
+#import <stdatomic.h>
 #import <unistd.h>
 
 typedef void (*iland_present_callback_t)(uint32_t crtc_id,
@@ -48,11 +49,17 @@ static NSString *const kShaderSource = @""
 "  return tex.sample(s, in.uv);\n"
 "}\n";
 
+// See the macOS presenter: a GBM ring reuses a handful of IOSurfaces, so
+// importing a fresh MTLTexture per present is wasted work on the frame's
+// critical path.
+#define WWN_ILAND_TEXTURE_CACHE_MAX 16
+
 @implementation WWNIlandPresenter {
     CAMetalLayer            *_layer;
     id<MTLDevice>            _device;
     id<MTLCommandQueue>      _queue;
     id<MTLRenderPipelineState> _pipeline;
+    CFMutableDictionaryRef   _textureCache; // IOSurfaceRef -> id<MTLTexture>
     pthread_t               _clientThread;
     BOOL                    _clientThreadStarted;
     int                     _clientWidth;
@@ -136,6 +143,10 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
                                      (uint32_t)(px.height + 0.5), 0);
     }
 
+    _textureCache = CFDictionaryCreateMutable(kCFAllocatorDefault, 0,
+                                              &kCFTypeDictionaryKeyCallBacks,
+                                              &kCFTypeDictionaryValueCallBacks);
+
     gActivePresenter = self;
     iland_drm_set_present_callback(wwn_iland_present_trampoline, (__bridge void *)self);
     return self;
@@ -144,6 +155,38 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
 - (void)invalidate {
     iland_drm_set_present_callback(NULL, NULL);
     if (gActivePresenter == self) gActivePresenter = nil;
+}
+
+- (void)dealloc {
+    if (_textureCache) CFRelease(_textureCache);
+}
+
+- (id<MTLTexture>)cachedTextureForIOSurface:(IOSurfaceRef)surface
+                                       width:(NSUInteger)w
+                                      height:(NSUInteger)h {
+    id<MTLTexture> cached =
+        (__bridge id<MTLTexture>)CFDictionaryGetValue(_textureCache, surface);
+    // A resized client reuses IOSurfaces at a new size, so validate the extent
+    // rather than trusting the key alone.
+    if (cached && cached.width == w && cached.height == h) return cached;
+
+    if (CFDictionaryGetCount(_textureCache) >= WWN_ILAND_TEXTURE_CACHE_MAX) {
+        CFDictionaryRemoveAllValues(_textureCache);
+    }
+
+    MTLTextureDescriptor *td =
+        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+                                                          width:w
+                                                         height:h
+                                                      mipmapped:NO];
+    td.usage = MTLTextureUsageShaderRead;
+    td.storageMode = MTLStorageModeShared;
+
+    id<MTLTexture> tex = [_device newTextureWithDescriptor:td
+                                                iosurface:surface
+                                                    plane:0];
+    if (tex) CFDictionarySetValue(_textureCache, surface, (__bridge void *)tex);
+    return tex;
 }
 
 - (void)syncPreferredModeFromLayer {
@@ -168,19 +211,11 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
         return;
     }
 
-    // Keep Metal drawable matched to the host layer (bounds × scale). Preferred
-    // DRM mode is set at init, but prepareIland may resize after that — refresh
-    // here so nested kmscube frames are not squeezed into a stale drawable.
-    CGFloat scale = _layer.contentsScale > 0.0 ? _layer.contentsScale : 1.0;
-    CGSize want =
-        CGSizeMake(MAX(1.0, _layer.bounds.size.width * scale),
-                   MAX(1.0, _layer.bounds.size.height * scale));
-    if (fabs(_layer.drawableSize.width - want.width) > 0.5 ||
-        fabs(_layer.drawableSize.height - want.height) > 0.5) {
-        _layer.drawableSize = want;
-        iland_drm_set_preferred_mode((uint32_t)(want.width + 0.5),
-                                     (uint32_t)(want.height + 0.5), 0);
-    }
+    // Host geometry is deliberately NOT touched here. Reading — let alone
+    // assigning — CALayer state from the client's render thread races AppKit/
+    // UIKit during a resize, and republishing the preferred mode per present was
+    // inert regardless: iland applies it when a client enumerates modes, and a
+    // stock KMS client enumerates once. -hostGeometryDidChange owns that now.
 
     // First frames describe the buffer contract; the periodic frames after them
     // are what shows presentation is still running. Logging only the first few
@@ -199,9 +234,8 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
         fcc = IOSurfaceGetPixelFormat(surface);
         WWNLog("KMSCUBE",
                @"iland present #%d IOSurface %lux%lu fcc=0x%08x px0=0x%08x "
-               @"drawable=%.0fx%.0f opaque=%d",
+               @"opaque=%d",
                s_presentCount, (unsigned long)w, (unsigned long)h, fcc, px0,
-               _layer.drawableSize.width, _layer.drawableSize.height,
                (int)_layer.opaque);
     }
     // First iland frame: dismiss startup log (Wayland-path notification is
@@ -215,17 +249,9 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
     }
     s_presentCount++;
 
-    MTLTextureDescriptor *td =
-        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-                                                            width:w
-                                                           height:h
-                                                        mipmapped:NO];
-    td.usage = MTLTextureUsageShaderRead;
-    td.storageMode = MTLStorageModeShared;
-
-    id<MTLTexture> srcTex = [_device newTextureWithDescriptor:td
-                                                    iosurface:surface
-                                                        plane:0];
+    id<MTLTexture> srcTex = [self cachedTextureForIOSurface:surface
+                                                      width:w
+                                                     height:h];
     if (!srcTex) {
         static int s_texFail;
         if (s_texFail++ < 3) {
@@ -259,9 +285,45 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
     id<MTLRenderCommandEncoder> enc =
         [cb renderCommandEncoderWithDescriptor:rp];
     [enc setRenderPipelineState:_pipeline];
+
+    // A stock KMS client keeps its startup framebuffer size for the whole run,
+    // so after a host resize source and destination extents disagree. Letterbox
+    // rather than stretch — a real display scaling a mode it cannot change.
+    NSUInteger tw = drawable.texture.width;
+    NSUInteger th = drawable.texture.height;
+    if (tw > 0 && th > 0 && (tw != w || th != h)) {
+        double scale = fmin((double)tw / (double)w, (double)th / (double)h);
+        double fitW = (double)w * scale;
+        double fitH = (double)h * scale;
+        static NSUInteger s_lastFitW = 0, s_lastFitH = 0;
+        if (tw != s_lastFitW || th != s_lastFitH) {
+            s_lastFitW = tw;
+            s_lastFitH = th;
+            WWNLog("KMSCUBE",
+                   @"host resized to %lux%lu; client mode is fixed at %lux%lu — "
+                   @"letterboxing to %.0fx%.0f",
+                   (unsigned long)tw, (unsigned long)th, (unsigned long)w,
+                   (unsigned long)h, fitW, fitH);
+        }
+        MTLViewport vp = {
+            .originX = ((double)tw - fitW) * 0.5,
+            .originY = ((double)th - fitH) * 0.5,
+            .width = fitW,
+            .height = fitH,
+            .znear = 0.0,
+            .zfar = 1.0,
+        };
+        [enc setViewport:vp];
+    }
+
     [enc setFragmentTexture:srcTex atIndex:0];
     [enc drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
     [enc endEncoding];
+
+    // Complete on GPU finish. Pacing on the drawable's presented handler instead
+    // was measured on macOS and halved throughput: iland allows one outstanding
+    // flip per CRTC, so waiting for scanout leaves nothing in flight and each
+    // frame costs several vblanks. See the macOS presenter.
     [cb addCompletedHandler:^(__unused id<MTLCommandBuffer> completed) {
         iland_drm_complete_page_flip(crtcID, framebufferID);
     }];

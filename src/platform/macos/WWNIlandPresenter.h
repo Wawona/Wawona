@@ -34,6 +34,13 @@ NS_ASSUME_NONNULL_BEGIN
 /// Unregister the iland present callback. Safe to call multiple times.
 - (void)invalidate;
 
+/// Re-read the host layer geometry and republish it as the iland preferred mode.
+/// Main thread only — it touches CALayer state the client's render thread must
+/// not. Note this only reaches clients that (re-)enumerate DRM modes; a stock
+/// KMS client such as kmscube fixes its framebuffer size at startup, and the
+/// presenter letterboxes it for the rest of the session.
+- (void)hostGeometryDidChange;
+
 /// Launch one of the bundled in-process cube clients on a background thread; it
 /// presents through this presenter. `clientId` is a Machines catalog id:
 /// `kmscube` and `opengl-cube` render GLES through iland + ANGLE, `vkcube`
