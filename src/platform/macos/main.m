@@ -442,6 +442,16 @@ static void setup_signal_sources(void) {
   // wwn-apt module manager: catalog + installed.json + apt IPC socket.
   [[WWNModuleManager sharedManager] start];
   WWNPreferencesManager *prefs = [WWNPreferencesManager sharedManager];
+  // Acceptance runs need to reach a bundled client without tapping Machines;
+  // macOS UI automation needs an Accessibility grant that CI does not have.
+  NSString *autoClient = nil;
+  const char *autoClientEnv = getenv("WAWONA_AUTO_CLIENT");
+  if (autoClientEnv && autoClientEnv[0])
+    autoClient = [NSString stringWithUTF8String:autoClientEnv];
+  if (autoClient.length > 0 && ![prefs hasSeenWelcome]) {
+    // The welcome sheet is modal, so it would swallow the autostart entirely.
+    [prefs setHasSeenWelcome:YES];
+  }
   if (![prefs hasSeenWelcome]) {
     [NSApp activateIgnoringOtherApps:YES];
     NSAlert *alert = [[NSAlert alloc] init];
@@ -461,6 +471,18 @@ static void setup_signal_sources(void) {
     [[WWNAboutPanel sharedAboutPanel] showAboutPanel:NSApp];
   } else {
     [[WWNMachinesCoordinator sharedCoordinator] showMachinesWindowAndActivate:YES];
+  }
+  if (autoClient.length > 0) {
+    // Give the compositor bridge and its host window the same head start the
+    // Machines Start button implies; the GPU cube clients need a live view
+    // before iland can hand them a present sink.
+    dispatch_after(
+        dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
+        dispatch_get_main_queue(), ^{
+          WWNLog("MAIN", @"WAWONA_AUTO_CLIENT=%@ — starting bundled client",
+                 autoClient);
+          [[WWNWaypipeRunner sharedRunner] launchBundledClientWithId:autoClient];
+        });
   }
 }
 

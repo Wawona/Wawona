@@ -41,11 +41,12 @@ separately. Evidence is `file:line` in the local tree or an issue.
 
 | Target | Mode | OpenGL / GLES | Vulkan | DRM | KMS | Desktop Repl. DRM/KMS |
 |--------|------|---------------|--------|-----|-----|------------------------|
-| macOS 3rd-party product | A | WIRED (ANGLE direct-to-Metal; selection applied at connect) | WIRED (L1 MoltenVK/KK ICD selection applied at connect; runtime proof pending) | WIRED (virtual `/dev/dri/cardN` names are intercepted entirely in userland; no real device open) | WIRED (fourcc contract enforced; page-flip→callback remains immediate synthetic cadence) | N/A (Desktop tweak = desktop-host B) |
+| macOS 3rd-party product | A | **PROPER** (stock kmscube: `gl.display` non-null, no duplicate-ANGLE warning, 600+ presents at ~40 fps, clean GL/GBM/DRM teardown — 2026-07-25 log below) | **PROPER** (both ICDs serve under selection: `libMoltenVK.dylib` / `libvulkan_kosmickrisp.dylib`, each logged `(selected)` not fallback, each rendering through iland KMS/GBM to `rc=0`) | **PROPER** (stock kmscube opens the virtual card, enumerates connector 1 / CRTC 1, picks a mode, and reaches `init gbm success` entirely in userland — no real device open) | **PROPER** (continuous flips, no stall; fourcc `0x42475241` + size stable across 600 frames) | N/A (Desktop tweak = desktop-host B) |
 | macOS desktop-host | A (toggle off) | WIRED (same as product) | WIRED | WIRED | WIRED | N/A |
 | macOS desktop-host | B (SIP partial + toggle) | WIRED | WIRED | WIRED (Dobby `open`/`ioctl` hooks virtual calls) | WIRED (framebufferd host-vsync present + Mach ACK drives page-flip event; runtime proof pending) | WIRED (engage path real, not CI-proven; #87) |
 | iOS / iPadOS / visionOS | A | WIRED (ANGLE direct-to-Metal present path; target runtime/tint evidence remains pending) | WIRED (pinned store-safe MoltenVK 1.4.1 static slice is L1-owned and force-linked; vkcube runtime proof pending) | WIRED (Mode-A open shim landed — `iland_drm_open_card` + `iland_drm_open_compat.h`; #58 open path fixed, device render unproven) | WIRED (preferred-mode host wiring + fourcc contract landed; scene/multi-window runtime evidence pending) | N/A |
-| tvOS / watchOS | A soft | N/A (empty `libiland_userland.a`; correct) | N/A | N/A | N/A | N/A |
+| tvOS | A soft | MISSING (deferred — SDK has GLES/Metal, ANGLE lacks a tvOS GN target) | MISSING (deferred — MoltenVK supports tvOS 14.5+; gated `WWN_TVOS_GPU=1`) | N/A | N/A | N/A |
+| watchOS | A soft | N/A (no Metal/GLES in SDK; empty `libiland_userland.a`; correct) | N/A (no Metal backend to target) | N/A | N/A | N/A |
 | Android Play / Home Desktop | A (no root) | WIRED (`OpenGLDriver` is consumed at connect; ANGLE remains the bundled direct backend) | WIRED (system loader owns host ANativeWindow WSI; bundled SwiftShader is the offscreen client ICD; no direct KGSL path) | WIRED (userland `drm_linux.c`; GBM storage is AHardwareBuffer-backed) | WIRED (present callback; zero-copy import acceptance pending) | WIRED (Home = rootless Mode A launcher/VD; no dylib) |
 | Android power | B (Shizuku/root WM) | WIRED | WIRED (same runtime-only drivers) | WIRED | WIRED | WIRED (window/display policy only; no root framebuffer or kernel-device access) |
 
@@ -194,6 +195,75 @@ and absent from tvOS/watchOS, which still define 0 Vulkan/EGL entry points. All
 seven Apple bundles pass `verify-iland-graphics-bundle.sh`. Runtime Start of the
 `vkcube` machine is the remaining acceptance step.
 
+**2026-07-25 macOS Mode A kmscube: duplicate ANGLE image crash (FUCKUP → fixed):**
+macOS had no way to reach a bundled client without UI automation, which needs an
+Accessibility grant CI does not have, so the macOS Mode A cells had never been
+exercised at runtime. `WAWONA_AUTO_CLIENT=<clientId>` now starts a bundled
+client shortly after launch (mirroring watchOS's `WAWONA_WATCH_AUTO_CLIENT`),
+and it suppresses the modal welcome sheet, which would otherwise swallow the
+start. The first run with it exposed a real crash:
+
+```
+[MAIN] WAWONA_AUTO_CLIENT=kmscube — starting bundled client
+[BRIDGE] Created iland presentation host 1680x1050 for nested GL client
+[KMSCUBE] kmscube enter (iland DRM present)
+### Display [0]: CRTC = 1, Connector = 1, format = 0x34325258
+### Primary display => ConnectorId = 1, Resolution = 3360x1828
+DRM Format is DRM_FORMAT_XRGB8888
+init gbm success!
+gl.display = 0x0
+objc: Class ANGLESwapCGLLayer is implemented in both
+  Wawona.app/Contents/Frameworks/libGLESv2.dylib and
+  /nix/store/…-angle-7258/lib/libGLESv2.dylib …
+CRITICAL: WWN crashed. Emergency cleanup...
+```
+
+So DRM open, connector/CRTC enumeration, mode selection, and GBM init all
+succeed on macOS — the failure is one layer later, at `eglGetDisplay`. iland's
+EGL shim `dlopen`ed ANGLE by absolute Nix store path on macOS (the recipe
+rewrote the shim's MacPorts `/opt/local` default), while the app bundle links
+its own copy in `Contents/Frameworks`. Two ANGLE images in one process means two
+definitions of ANGLE's Objective-C classes, and the client dies.
+
+The shim now resolves macOS ANGLE the way it already resolved it on iOS: a
+candidate list, `@rpath/libEGL.dylib` first so dyld returns the image the host
+already mapped, then the bundle-relative paths, with the build-time absolute
+path last for unbundled CLI use and for Mode B injection into processes that
+carry no Wawona rpath. The Android `libEGL.so`/`libGLESv2.so` arms moved into
+`egl.c` behind `#elif defined(__ANDROID__)`; they had been patched in by
+`android.nix` anchored on the very macOS lines this fix changes, so the Android
+recipe would have failed loudly on an anchor that no longer existed.
+
+With one ANGLE image the objc warning disappeared but kmscube still died, now
+with `EXC_BAD_ACCESS address=0x0` and `PC = 0`, called straight from
+`kmscube_main`. Disassembly named the culprit: `bl eglInitialize` jumped to
+address 0. The chain is:
+
+1. This machine's saved preference is `OpenGLDriver=none` (and
+   `VulkanDriver=none`), which is a **supported** mode, not a misconfiguration —
+   the plan calls it an intentional efficiency mode.
+2. `WWNSettings_ApplyGraphicsDriverSelection` therefore exports
+   `WWN_OPENGL_DRIVER=none` and `WWN_DISABLE_EGL=1`.
+3. `graphics_policy_allows_angle()` refuses, so `load_angle()` returns -1 and
+   every `real_egl*` pointer stays NULL.
+4. `eglGetDisplay` handles that correctly and returns `EGL_NO_DISPLAY`, but
+   kmscube does not check, and the shim's `eglInitialize` called
+   `real_eglInitialize` unconditionally.
+
+So a preference could crash the host app, on any target including store builds.
+Both halves are fixed. The shim gained a `WWN_REQUIRE_ANGLE(fail_value)` guard on
+every entry point that dispatches to `real_egl*`, so ANGLE-absent now means clean
+EGL failure rather than a NULL jump. Wawona gained
+`WWNGpuClientRefusalReason`, which refuses a GPU-family client when the platform
+has no GPU stack *or* the resolved driver is `None`, naming the setting in the
+log — replacing two copies of a tvOS/watchOS-only check that let the
+driver-preference case through.
+
+Repos touched: `wwn-iland` (EGL shim + macOS/Android recipes), `Wawona`
+(autostart hook, present logging, GPU refusal). waypipe zero-copy impact: none —
+buffer export and dmabuf paths are untouched; this is which ANGLE image the
+process binds and whether EGL fails politely.
+
 **2026-07-25 vkcube runtime acceptance on the iOS simulator:** Start on a
 Default Machine with `bundledAppID=vkcube` runs the whole Mode A path in
 process. From the launch console:
@@ -214,16 +284,15 @@ So the bundled static MoltenVK creates a device, krh/vkcube renders through the
 iland virtual DRM (fd 42), and the resulting IOSurfaces reach the Metal
 presenter at the right size and fourcc (`0x42475241`, `DRM_FORMAT_ARGB8888`).
 
-One open question: with the default 5-frame budget the run completes and exits
-`rc=0`, but with `WAWONA_VKCUBE_FRAMES=100000` it presents exactly 5 frames and
-then blocks. Five is the buffer count, so this looks like page-flip completions
-not being recycled — but the measurement is not yet trustworthy, because
-XCUITest's pasteboard read raises a SpringBoard "Allow Paste" alert over the
-app, and host-dismissing it needs an Accessibility grant this environment does
-not have. The presenter chains `iland_drm_complete_page_flip` to the Metal
-command buffer's completion handler after `presentDrawable:`, so a layer that
-stops vending drawables while covered would stall flips exactly this way.
-Re-measure with the app unobstructed before treating it as a defect.
+The long run with `WAWONA_VKCUBE_FRAMES=100000` looked at first like it stalled
+after five frames, and five is also the buffer count, which made a page-flip
+recycling bug the obvious suspect. It was not one: `s_presentCount < 5` in
+`WWNIlandPresenter` gated the *log line*, not the present, so the frame counter
+simply stopped reporting while presentation continued. The presenter now logs
+the first five frames and then every 300th, so a genuine stall is
+distinguishable from a quiet one. macOS had no present log at all and now emits
+the same line, which is what makes the golden `(width, height, fourcc, frame
+id)` contract in the I/O verify table checkable on that target.
 
 The waypipe ICD bind is intact on the same bundle: `MoltenVK_icd.json` and
 `kosmickrisp_icd.json` ship in `Contents/Resources/vulkan/icd.d/` with
@@ -382,6 +451,125 @@ split explicitly: `weston-compositor-gl` is the Android product nested path
 (ANGLE/EGL/iland GBM, no pixman); `weston-compositor-drm` remains the separate
 Mode-A KMS acceptance artifact and must be completed against the canonical
 iland libdrm ABI rather than hidden behind product fallback.
+
+---
+
+**2026-07-25 macOS Mode A acceptance (GL + DRM + KMS → PROPER):** with the
+single-image ANGLE bind and the EGL policy guards in place, `WAWONA_AUTO_CLIENT`
+drives the whole macOS Mode A path headlessly. Two runs, one per policy branch.
+
+`OpenGLDriver=none` — refuses instead of crashing (this used to be the
+`EXC_BAD_ACCESS address=0x0` at `eglInitialize`):
+
+```
+[MAIN] WAWONA_AUTO_CLIENT=kmscube — starting bundled client
+[KMSCUBE] Refusing GPU client kmscube — Settings → Graphics → OpenGL driver is None
+```
+
+`OpenGLDriver=angle` — the full stack, end to end:
+
+```
+[KMSCUBE] started in-process kmscube 1680x914 via iland
+### Display [0]: CRTC = 1, Connector = 1, format = 0x34325258
+DRM Format is DRM_FORMAT_XRGB8888
+gbm.dev = 0xb46f948a0, gbm.surface = 0xb47f897c0
+init gbm success!
+gl.display = 0xb46d109b0
+[KMSCUBE] iland present #0   IOSurface 3360x1828 fcc=0x42475241 drawable=0x0
+[KMSCUBE] iland present #1   IOSurface 3360x1828 fcc=0x42475241 drawable=3360x1828
+[KMSCUBE] iland present #300 IOSurface 3360x1828 fcc=0x42475241 drawable=3360x1828
+[KMSCUBE] iland present #600 IOSurface 3360x1828 fcc=0x42475241 drawable=3360x1828
+Cleanup of GL, GBM and DRM completed
+```
+
+Three things this settles. `gl.display` is non-null where it was `0x0` before, and
+the `ANGLESwapCGLLayer is implemented in both` warning is gone, so the process
+binds exactly one ANGLE image. Frames #300 and #600 land ~15 s after #0, i.e.
+~40 fps sustained, which retires the page-flip-recycling suspicion for good on
+this target — presentation is not gated on a five-deep buffer ring. And teardown
+is clean rather than a leak or a hang. macOS GL, DRM, and KMS therefore move to
+**PROPER**; the client is stock kmscube keeping its real libdrm calls, all in
+userland with no `/dev/dri` open.
+
+Present #0 reports `drawable=0x0` because the layer has no drawable size until it
+is first laid out; it self-corrects at #1 and is cosmetic, not a dropped frame.
+The 3360x1828 IOSurface against a 1680x914 client is the 2× backing scale.
+
+**Vulkan needed one more round before it could be graded.** `vkcube` ran and
+exited `rc=0` under both `VulkanDriver=moltenvk` and `VulkanDriver=kosmickrisp`,
+presenting through the same iland KMS/GBM path — but the two runs were
+byte-identical, with neither a MoltenVK nor a KosmicKrisp banner to tell them
+apart. A silent fallback to `WWN_VKCUBE_PROVIDER_FALLBACK` would have looked
+exactly the same, and passing a cell on ambiguous evidence is how the fourcc and
+page-flip misreadings happened earlier. So `vulkan_dispatch.h` now names the
+resolved provider on success, and says whether it came from the environment or the
+fallback. Re-run:
+
+```
+VulkanDriver=moltenvk    → vkcube: Vulkan provider …/Frameworks/libMoltenVK.dylib (selected)
+VulkanDriver=kosmickrisp → vkcube: Vulkan provider …/Frameworks/libvulkan_kosmickrisp.dylib (selected)
+```
+
+Both resolve inside the bundle, both report `(selected)` rather than the default,
+and both render to `rc=0`. Driver selection is therefore real rather than
+decorative, and macOS Vulkan moves to **PROPER** on two independent ICDs — which
+also means KosmicKrisp's Mesa-style `vk_icdGetInstanceProcAddr`-only export path
+is exercised, not just MoltenVK's.
+
+Repos touched: `Wawona` (this doc), `wwn-kmscube` (provider log in
+`upstream/vkcube/vulkan_dispatch.h`; the Android/Apple env split became two macros
+so both arms share one lookup).
+**waypipe zero-copy impact: none** — no buffer, export, or dmabuf path touched.
+
+---
+
+**2026-07-25 tvOS/watchOS GPU re-scope (policy change, work deferred):** the
+`❌` in the platform-targets GPU row was treated as one fact about two platforms.
+It is two different facts, and only one of them is permanent. Checked against the
+installed SDKs (Xcode 26.6) rather than documentation:
+
+```
+=== WatchOS (SDK 26.5) ===        === AppleTVOS ===
+  Metal:      ABSENT               Metal:      present
+  MetalKit:   ABSENT               MetalKit:   present
+  OpenGLES:   ABSENT               OpenGLES:   present
+  QuartzCore: present              QuartzCore: present
+```
+
+**tvOS is deferred, not impossible.** It has Metal, MetalKit, and even the
+deprecated `OpenGLES.framework`, and MoltenVK upstream lists tvOS (14.5+) as a
+supported platform built strictly on public API, so it is store-legal. Two
+asymmetric paths: Vulkan is short, because MoltenVK already builds for tvOS and
+Wawona dispatches straight into the ICD via `WWN_VULKAN_LIBRARY` — which matters,
+since LunarG's Jan-2026 status notes the Vulkan **loader** does not work on tvOS
+yet, a limitation we already sidestep. GLES is long, because ANGLE has no
+maintained Chromium GN tvOS target, the same wall that made visionOS ANGLE a
+pinned-artifact-plus-patch-series job (P2a). This is scheduled as the **final**
+graphics phase, after every other target is PROPER.
+
+**watchOS has no floor.** The watchOS 26.5 SDK ships no `Metal.framework` at all
+— device or simulator — no `OpenGLES.framework`, and no Metal `.tbd` to link.
+`CAMetalLayer.h` is present (headers are shared across platforms) but the class is
+annotated `API_AVAILABLE(macos(10.11), ios(13.0), tvos(13.0))
+API_UNAVAILABLE(watchos)`. The only rendering frameworks are SpriteKit and
+SceneKit, which render internally and expose no device, drawable, or shader entry
+point. Since ANGLE and MoltenVK both terminate in Metal, neither has a backend;
+MoltenVK's own platform list is macOS/iOS/tvOS/visionOS, so watchOS is absent
+rather than merely untested. Enabling watchOS GPU therefore requires a public
+Metal-equivalent surface to appear first — it is not a porting task today, and
+must not be "solved" via private API or SpriteKit as a shader backdoor.
+
+Enforcement: `verify-iland-graphics-bundle.sh` keeps tv/watch strict by default,
+but tvOS strictness is now conditional on `WWN_TVOS_GPU != 1`, and setting
+`WWN_TVOS_GPU=1` inverts it into a positive MoltenVK assertion — so the deferred
+phase flips one variable instead of rewriting the verifier, with no window where a
+driver can drift in unnoticed. watchOS strictness is unconditional.
+
+Repos touched: `Wawona` (verifier, this doc), workspace `wawona-platform-targets`
+rule (GPU row `❌` → `⏳`, hard rule 1 split per platform).
+**waypipe zero-copy impact: none** — no buffer path touched.
+
+---
 
 ## R1 — Mode A fail point (#58) + Apple KMS / IOSurface map
 
@@ -666,7 +854,9 @@ Apple (macOS/iOS/iPadOS/visionOS) — parallel, not stacked:
 Android:
   GLES → EGL → ANGLE OR system GLES → Surface present
   Vulkan → loader → system OR SwiftShader
-tvOS/watchOS: software/pixman only (no GPU translate stack)
+tvOS: software/pixman today; deferred final phase adds
+  Vulkan → MoltenVK(tvOS) → Metal present   (no loader: direct ICD dispatch)
+watchOS: software/pixman only — no Metal in the SDK, so no translate stack exists
 ```
 
 Reject: GLES→Zink→Vulkan→MVK→Metal; virgl/Venus in Mode A; pixman nested on

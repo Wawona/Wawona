@@ -107,8 +107,20 @@ must retain its zero-copy dmabuf route.
   where allowed. iPadOS and visionOS require one host scene per Wayland client.
 - Android: AHardwareBuffer/Surface-backed Mode A; optional separate Mode B
   power path.
-- tvOS and watchOS: native/remote software-only presentation. No ANGLE,
-  MoltenVK, Vulkan ICD, IOKit, VM or container graphics bundles.
+- tvOS and watchOS: native/remote software-only presentation today. No ANGLE,
+  MoltenVK, Vulkan ICD, IOKit, VM or container graphics bundles. The two are
+  excluded for different reasons and only one is permanent:
+  - tvOS is **deferred**. Its SDK ships Metal, MetalKit and (deprecated)
+    OpenGLES, and MoltenVK supports tvOS 14.5+ on public API only, so Vulkan is
+    reachable and store-legal. Turning it on is the final phase of this stack,
+    gated behind `WWN_TVOS_GPU=1` in `verify-iland-graphics-bundle.sh`. The
+    Vulkan loader does not work on tvOS, so it must use the same direct ICD
+    dispatch (`WWN_VULKAN_LIBRARY`) the other targets already use. GLES is the
+    slower half: ANGLE has no maintained Chromium GN tvOS target.
+  - watchOS is **blocked**. Its SDK ships no `Metal.framework` (device or
+    simulator), no OpenGLES, and `CAMetalLayer` is `API_UNAVAILABLE(watchos)`, so
+    ANGLE and MoltenVK have nothing to terminate in. This needs a public
+    Metal-equivalent surface to exist first, not a port.
 - Every Apple target and Android ships real native Weston and Niri entry points;
   compatibility stubs are not acceptance.
 

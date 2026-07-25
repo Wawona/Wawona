@@ -118,7 +118,24 @@ if [[ "$platform" == "ios" || "$platform" == "ipados" || "$platform" == "visiono
   done < <(mach_o_files)
 fi
 
-if [[ "$platform" == "tvos" || "$platform" == "watchos" ]]; then
+# tvOS GPU support is a scheduled reversal, not a permanent exclusion: the
+# AppleTVOS SDK ships Metal/MetalKit/OpenGLES and MoltenVK lists tvOS 14.5+ as a
+# supported public-API platform, so the final graphics phase turns it on behind
+# WWN_TVOS_GPU=1. Until that phase lands the default stays strict, so a driver
+# cannot drift into a tvOS bundle ahead of the work.
+if [[ "$platform" == "tvos" && "${WWN_TVOS_GPU:-0}" == "1" ]]; then
+  if ! carrier="$(bundle_has_marker 'MoltenVK version')"; then
+    echo "FAIL: tvos WWN_TVOS_GPU=1 but bundle has no statically linked MoltenVK" >&2
+    exit 1
+  fi
+  echo "OK: tvos MoltenVK found in $carrier (WWN_TVOS_GPU=1)"
+fi
+
+# watchOS has no such opt-in. Its exclusion is not policy: the watchOS 26.5 SDK
+# ships no Metal.framework (device or simulator) and CAMetalLayer is annotated
+# API_UNAVAILABLE(watchos), so ANGLE and MoltenVK have no backend to terminate
+# in. See docs/iland-graphics-progress.md for the SDK evidence.
+if [[ ( "$platform" == "tvos" && "${WWN_TVOS_GPU:-0}" != "1" ) || "$platform" == "watchos" ]]; then
   for marker in 'MoltenVK version' 'SwiftShader'; do
     if carrier="$(bundle_has_marker "$marker")"; then
       echo "FAIL: $platform bundle statically embeds forbidden driver '$marker': $carrier" >&2

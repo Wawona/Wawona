@@ -182,8 +182,12 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
                                      (uint32_t)(want.height + 0.5), 0);
     }
 
+    // First frames describe the buffer contract; the periodic frames after them
+    // are what shows presentation is still running. Logging only the first few
+    // made a healthy run look like it stalled at frame 5.
     static int s_presentCount = 0;
-    if (s_presentCount < 5) {
+    const int kPresentLogPeriod = 300;
+    if (s_presentCount < 5 || s_presentCount % kPresentLogPeriod == 0) {
         uint32_t fcc = 0;
         size_t bpr = IOSurfaceGetBytesPerRow(surface);
         IOSurfaceLock(surface, kIOSurfaceLockReadOnly, NULL);

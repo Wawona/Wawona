@@ -3,6 +3,7 @@
 #import "../../../../util/WWNLog.h"
 #import "../../WWNPlatformCallbacks.h"
 #import "../../WWNCompositorBridge.h"
+#import "../../WWNSettings.h"
 #if __has_include("../Machines/WWNMachineProfileStore.h")
 #import "../Machines/WWNMachineProfileStore.h"
 #import "../Machines/WWNMachineSessionBridge.h"
@@ -72,6 +73,36 @@ extern int constraints_main(int argc, char **argv);
 static BOOL WWNIsIlandGpuCubeClientId(NSString *clientId) {
   return [clientId isEqualToString:@"kmscube"] ||
          [clientId isEqualToString:@"vkcube"];
+}
+
+/// Clients whose first frame requires a real GL or Vulkan driver.
+static BOOL WWNIsGpuFamilyClientId(NSString *clientId) {
+  return WWNIsIlandGpuCubeClientId(clientId) ||
+         [clientId isEqualToString:@"opengl-cube"] ||
+         [clientId isEqualToString:@"weston-simple-egl"];
+}
+
+/// Why this GPU client cannot run here, or nil if it can. A GPU-capable
+/// platform is not enough: `OpenGLDriver=none` / `VulkanDriver=none` is a
+/// supported efficiency mode (docs/iland-graphics-stack.md), and a client
+/// started under it can never get past its first EGL/Vulkan call. Refuse with a
+/// reason instead, so the log points at the setting rather than at the driver.
+static NSString *WWNGpuClientRefusalReason(NSString *clientId) {
+  if (!WWNIsGpuFamilyClientId(clientId)) {
+    return nil;
+  }
+  if (!WWNPlatformAllowsGpuStack()) {
+    return @"platform has no GPU stack (tvOS/watchOS)";
+  }
+  WWNGraphicsDriverSelection selection =
+      WWNSettings_ResolveGraphicsDriverSelection();
+  if ([clientId isEqualToString:@"vkcube"]) {
+    return selection.vulkanEnabled
+               ? nil
+               : @"Settings → Graphics → Vulkan driver is None";
+  }
+  return selection.openGLEnabled ? nil
+                                 : @"Settings → Graphics → OpenGL driver is None";
 }
 
 /// Log module for bundled native clients. Do not use "WESTON" for non-Weston
@@ -1653,19 +1684,14 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     [self launchNiri];
     return;
   }
-  if (WWNIsIlandGpuCubeClientId(clientId) ||
-      [clientId isEqualToString:@"opengl-cube"] ||
-      [clientId isEqualToString:@"weston-simple-egl"]) {
-    if (!WWNPlatformAllowsGpuStack()) {
-      WWNLog(WWNBundledClientLogModule(clientId),
-             @"Refusing GPU client %@ — platform has no GPU stack "
-             @"(tvOS/watchOS)",
-             clientId);
-      if (machineId.length > 0) {
-        [self.iosRunningMachineIds removeObject:machineId];
-      }
-      return;
+  NSString *gpuRefusal = WWNGpuClientRefusalReason(clientId);
+  if (gpuRefusal) {
+    WWNLog(WWNBundledClientLogModule(clientId),
+           @"Refusing GPU client %@ — %@", clientId, gpuRefusal);
+    if (machineId.length > 0) {
+      [self.iosRunningMachineIds removeObject:machineId];
     }
+    return;
   }
   if (WWNIsIlandGpuCubeClientId(clientId)) {
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -1743,15 +1769,11 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     }
   });
 #else
-  if (WWNIsIlandGpuCubeClientId(clientId) ||
-      [clientId isEqualToString:@"opengl-cube"] ||
-      [clientId isEqualToString:@"weston-simple-egl"]) {
-    if (!WWNPlatformAllowsGpuStack()) {
-      WWNLog(WWNBundledClientLogModule(clientId),
-             @"Refusing GPU client %@ — platform has no GPU stack",
-             clientId);
-      return;
-    }
+  NSString *gpuRefusal = WWNGpuClientRefusalReason(clientId);
+  if (gpuRefusal) {
+    WWNLog(WWNBundledClientLogModule(clientId),
+           @"Refusing GPU client %@ — %@", clientId, gpuRefusal);
+    return;
   }
   // Product Start path: in-process iland Metal presenter (not an NSTask).
   if (WWNIsIlandGpuCubeClientId(clientId)) {

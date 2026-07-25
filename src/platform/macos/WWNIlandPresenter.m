@@ -176,6 +176,21 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
         return;
     }
 
+    // Golden present contract (docs/iland-graphics-stack.md I/O verify table):
+    // size + fourcc + frame id are what acceptance grades, so record the first
+    // frames and then a periodic frame proving presentation is still running.
+    static int s_presentCount = 0;
+    const int kPresentLogPeriod = 300;
+    if (s_presentCount < 5 || s_presentCount % kPresentLogPeriod == 0) {
+        WWNLog("KMSCUBE",
+               @"iland present #%d IOSurface %lux%lu fcc=0x%08x "
+               @"drawable=%.0fx%.0f opaque=%d",
+               s_presentCount, (unsigned long)w, (unsigned long)h,
+               IOSurfaceGetPixelFormat(surface), _layer.drawableSize.width,
+               _layer.drawableSize.height, (int)_layer.opaque);
+    }
+    s_presentCount++;
+
     MTLTextureDescriptor *td =
         [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
                                                             width:w
