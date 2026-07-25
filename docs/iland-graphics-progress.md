@@ -194,6 +194,15 @@ and absent from tvOS/watchOS, which still define 0 Vulkan/EGL entry points. All
 seven Apple bundles pass `verify-iland-graphics-bundle.sh`. Runtime Start of the
 `vkcube` machine is the remaining acceptance step.
 
+The waypipe ICD bind is intact on the same bundle: `MoltenVK_icd.json` and
+`kosmickrisp_icd.json` ship in `Contents/Resources/vulkan/icd.d/` with
+`library_path` `../../../Frameworks/lib{MoltenVK,vulkan_kosmickrisp}.dylib`,
+which resolves to the dylibs the bundle actually carries.
+`WWNSettings_ApplyGraphicsDriverSelection` points `VK_DRIVER_FILES` at the
+manifest for the selected driver, and `WWNWaypipeRunner` falls back to
+`--no-gpu` SHM transport when that variable is unset, so a missing ICD degrades
+transport instead of producing empty IOSurface frames.
+
 **2026-07-25 visionOS ANGLE slice acceptance:** `angle-visionos` and
 `angle-visionos-sim` build from the pinned Chromium/ANGLE sources plus the
 checked-in `0001-chromium-build-add-xros-target.patch`, so no GN tree is
