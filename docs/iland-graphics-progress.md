@@ -47,7 +47,7 @@ separately. Evidence is `file:line` in the local tree or an issue.
 | iOS / iPadOS / visionOS | A | WIRED (ANGLE direct-to-Metal present path; target runtime/tint evidence remains pending) | WIRED (pinned store-safe MoltenVK 1.4.1 static slice is L1-owned and force-linked; vkcube runtime proof pending) | WIRED (Mode-A open shim landed — `iland_drm_open_card` + `iland_drm_open_compat.h`; #58 open path fixed, device render unproven) | WIRED (preferred-mode host wiring + fourcc contract landed; scene/multi-window runtime evidence pending) | N/A |
 | tvOS | A soft | MISSING (deferred — SDK has GLES/Metal, ANGLE lacks a tvOS GN target) | MISSING (deferred — MoltenVK supports tvOS 14.5+; gated `WWN_TVOS_GPU=1`) | N/A | N/A | N/A |
 | watchOS | A soft | N/A (no Metal/GLES in SDK; empty `libiland_userland.a`; correct) | N/A (no Metal backend to target) | N/A | N/A | N/A |
-| Android Play / Home Desktop | A (no root) | WIRED (`OpenGLDriver` is consumed at connect; ANGLE remains the bundled direct backend) | WIRED (system loader owns host ANativeWindow WSI; bundled SwiftShader is the offscreen client ICD; no direct KGSL path) | WIRED (userland `drm_linux.c`; GBM storage is AHardwareBuffer-backed) | WIRED (present callback; zero-copy import acceptance pending) | WIRED (Home = rootless Mode A launcher/VD; no dylib) |
+| Android Play / Home Desktop | A (no root) | WIRED (`OpenGLDriver` is consumed at connect; ANGLE remains the bundled direct backend) | split: `system` WIRED (loader owns ANativeWindow WSI) / `swiftshader` **FUCKUP** — selecting it cannot create an instance at all (see the Android WSI trace below); no direct KGSL path either way | WIRED (userland `drm_linux.c`; GBM storage is AHardwareBuffer-backed) | WIRED (present callback; zero-copy import acceptance pending) | WIRED (Home = rootless Mode A launcher/VD; no dylib) |
 | Android power | B (Shizuku/root WM) | WIRED | WIRED (same runtime-only drivers) | WIRED | WIRED | WIRED (window/display policy only; no root framebuffer or kernel-device access) |
 
 **Never** mark Desktop-Replacement DRM/KMS PROPER on macOS **product Mode A**
@@ -520,6 +520,48 @@ Repos touched: `Wawona` (this doc), `wwn-kmscube` (provider log in
 `upstream/vkcube/vulkan_dispatch.h`; the Android/Apple env split became two macros
 so both arms share one lookup).
 **waypipe zero-copy impact: none** — no buffer, export, or dmabuf path touched.
+
+---
+
+**2026-07-25 Android SwiftShader WSI trace (regrades the `swiftshader` cell to
+FUCKUP; design recorded, not yet implemented):** the Android Vulkan cell was
+graded as one thing, but the two driver selections behave very differently, and
+`swiftshader` is not merely unproven — it cannot start.
+
+`wwn_load_vulkan_driver()` `dlopen`s `libvk_swiftshader.so` directly, bypassing
+the Android loader. But `vkCreateAndroidSurfaceKHR` is **loader-owned** WSI on
+Android, not ICD-owned, so the ICD's `vkGetInstanceProcAddr` will never return
+it — and `wwn_load_vulkan_instance_dispatch()` loads that symbol through a
+fail-closed macro. Selecting SwiftShader therefore returns
+`VK_ERROR_INITIALIZATION_FAILED` from `create_instance()`, before a surface is
+ever requested. The build makes this structural rather than accidental: our
+recipe compiles SwiftShader as a portable Linux-style ICD under `__TERMUX__`,
+which enables `VK_EXT_headless_surface` and strips `vkCreateAndroidSurfaceKHR`,
+Gralloc swapchain, `hwvulkan_module_t`, and AHB external memory. Upstream's
+`HeadlessSurfaceKHR::present()` returns `VK_SUCCESS` without displaying
+anything, so even a working headless swapchain renders in-process only.
+
+Two packaging gaps compound it: `dependencies/wawona/android.nix` copies only
+`*.so` into `jniLibs`, so `vulkan/icd.d/vk_swiftshader_icd.json` never reaches
+the APK, and `apply_graphics_driver_selection()` *clears* `VK_ICD_FILENAMES` /
+`VK_DRIVER_FILES` instead of pointing them at the bundled manifest — the
+opposite of what macOS does in `WWNSettings_ApplyGraphicsDriverSelection()`.
+
+Agreed shape of the fix (deferred to `p3-android`), which keeps the recipe's own
+split of "ICD renders, host app owns Android presentation": always load
+`libvulkan.so` and select SwiftShader via a staged ICD manifest rather than
+direct `dlopen`; branch WSI by driver (`VK_KHR_android_surface` +
+`vkCreateAndroidSurfaceKHR` for system, `VK_EXT_headless_surface` +
+`vkCreateHeadlessSurfaceEXT` for SwiftShader); and add a small app-owned present
+adapter that copies the acquired swapchain image to `ANativeWindow` (CPU
+`vkCmdCopyImageToBuffer` + `ANativeWindow_lock`/`unlockAndPost` first, AHB-backed
+second). Explicitly rejected: enabling stock Android HAL SwiftShader (needs
+non-NDK framework headers), and any Turnip/KGSL path — both barred by the
+runtime-only rule.
+
+**waypipe zero-copy impact: none** (analysis only). Note the AHB half of #86
+stays blocked on the same missing
+`VK_ANDROID_external_memory_android_hardware_buffer` support in this ICD.
 
 ---
 
