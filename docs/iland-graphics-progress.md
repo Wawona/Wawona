@@ -89,7 +89,15 @@ copies swapchain/`VkImage` pixels into an IOSurface slot via
 re-hosted as an xdg-shell Wayland client (`main.c`); the old KMS/GBM path is
 kept as `vkcube_kms.c`. Machines Start routes `vkcube` like `opengl-cube`
 (compositor client), not through `WWNIlandPresenter`. Grade stays WIRED until a
-rendered frame is observed.
+rendered frame is observed. SHAs: wwn-iland `fe08db2`, wwn-kmscube `d37dd29`,
+Wawona `03b146e`.
+
+**2026-07-26 `final-tvos-gpu` still deferred.** Plan order: only after every
+other GPU target is PROPER. `verify-iland-graphics-bundle.sh` already flips
+from "no MoltenVK on tvOS" to "require MoltenVK" when `WWN_TVOS_GPU=1`;
+watchOS stays blocked (no Metal in SDK). Do not start the MoltenVK/ANGLE tvOS
+port while macOS Wayland+Vulkan / Apple-mobile / Android cells are still
+WIRED/MISSING.
 
 **2026-07-26 KMS pipelining (depth-2 flips + fence flush).** The single
 outstanding-flip constraint is gone: `drm_linux.c` keeps a depth-2 queue, so a
