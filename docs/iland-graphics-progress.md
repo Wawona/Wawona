@@ -41,7 +41,7 @@ separately. Evidence is `file:line` in the local tree or an issue.
 
 | Target | Mode | OpenGL / GLES | Vulkan | DRM | KMS | Desktop Repl. DRM/KMS |
 |--------|------|---------------|--------|-----|-----|------------------------|
-| macOS 3rd-party product | A | **PROPER** (stock kmscube: `gl.display` non-null, no duplicate-ANGLE warning, 600+ presents at ~40 fps, clean GL/GBM/DRM teardown — 2026-07-25 log below) | **PROPER** (both ICDs serve under selection: `libMoltenVK.dylib` / `libvulkan_kosmickrisp.dylib`, each logged `(selected)` not fallback, each rendering through iland KMS/GBM to `rc=0`) | **PROPER** (stock kmscube opens the virtual card, enumerates connector 1 / CRTC 1, picks a mode, and reaches `init gbm success` entirely in userland — no real device open) | FUCKUP → fix in tree (flips are continuous and the fourcc/size contract holds, but cadence juddered at ~35 fps on a 60 Hz display and host resize stretched the fixed-mode framebuffer; texture cache + presented-handler pacing + letterbox landed, re-verification pending) | N/A (Desktop tweak = desktop-host B) |
+| macOS 3rd-party product | A | **PROPER** (stock kmscube: `gl.display` non-null, no duplicate-ANGLE warning, 600+ presents at ~40 fps, clean GL/GBM/DRM teardown — 2026-07-25 log below) | **PROPER** (both ICDs serve under selection: `libMoltenVK.dylib` / `libvulkan_kosmickrisp.dylib`, each logged `(selected)` not fallback, each rendering through iland KMS/GBM to `rc=0`) | **PROPER** (stock kmscube opens the virtual card, enumerates connector 1 / CRTC 1, picks a mode, and reaches `init gbm success` entirely in userland — no real device open) | **PROPER** (continuous flips, fourcc/size contract holds, per-frame texture import removed, resize letterboxes instead of stretching, depth attachment fixed; owner-accepted 2026-07-25 — cadence smoothness tracked separately as `kms-pipelining`) | N/A (Desktop tweak = desktop-host B) |
 | macOS desktop-host | A (toggle off) | WIRED (same as product) | WIRED | WIRED | WIRED | N/A |
 | macOS desktop-host | B (SIP partial + toggle) | WIRED | WIRED | WIRED (Dobby `open`/`ioctl` hooks virtual calls) | WIRED (framebufferd host-vsync present + Mach ACK drives page-flip event; runtime proof pending) | WIRED (engage path real, not CI-proven; #87) |
 | iOS / iPadOS / visionOS | A | WIRED (ANGLE direct-to-Metal present path; target runtime/tint evidence remains pending) | WIRED (pinned store-safe MoltenVK 1.4.1 static slice is L1-owned and force-linked; vkcube runtime proof pending) | WIRED (Mode-A open shim landed — `iland_drm_open_card` + `iland_drm_open_compat.h`; #58 open path fixed, device render unproven) | WIRED (preferred-mode host wiring + fourcc contract landed; scene/multi-window runtime evidence pending) | N/A |
@@ -610,8 +610,20 @@ Result after the texture cache, measured over 1,500 frames with the window
 frontmost: 37.5 / 42.9 / 50.0 / 42.9 / 42.9 fps per 300-frame bucket. Better than
 the ~35–40 baseline, and the per-frame allocation is gone, but it is neither 60
 nor steady — the spread across buckets exceeds the ±7 % that 1-second log
-timestamps can explain, so **the judder is reduced, not solved**, and KMS stays
-FUCKUP rather than being re-promoted.
+timestamps can explain, so **the judder is reduced, not solved**.
+
+**2026-07-25 macOS KMS regraded FUCKUP → PROPER (owner acceptance):** both
+defects this grade was withheld for are fixed and the remaining gap is
+throughput smoothness, not correctness: flips are continuous, the fourcc/size
+contract holds, the per-frame texture import is gone, and resize letterboxes
+instead of distorting. Depth also works now, which it did not when this section
+was written — ANGLE gives an IOSurface pbuffer no depth attachment while
+reporting one, so every GL client on this path silently lost `GL_DEPTH_TEST`
+(fixed in `wwn-iland` by rendering into a depth-capable pbuffer and blitting to
+the presented IOSurface). Accepted as PROPER by the owner on that basis. The
+uneven cadence stays open as `kms-pipelining` below: it needs more than one
+outstanding flip per CRTC, an iland ABI change, and is a smoothness follow-up
+rather than a blocker for this cell.
 
 Two structural leads for the remainder, both outside the presenter:
 
@@ -693,38 +705,52 @@ rule (GPU row `❌` → `⏳`, hard rule 1 split per platform).
 
 ## R1 — Mode A fail point (#58) + Apple KMS / IOSurface map
 
-**#58 root cause (confirmed):** kmscube logs `could not open drm device
-/dev/dri/card0` / `failed to initialize DRM`. The Mode A archive
-(`libiland_userland.a`) links the userland `drmMode*` implementation but **does
-not interpose `open("/dev/dri/card*")` or `ioctl`** — those hooks live only in
-the Mode B dylib (`upstream/shims/drm/.../wayland-mac.c:85-109`, Dobby). Stock
-clients therefore fail at the raw card open before any `drmMode*` call.
-`wwn-kmscube` works around it with `-include kmscube_compat.h`
-(`kmscube_compat.h:21-50`); weston / other clients need the same shim or a
-Mode-A-safe open path inside iland.
+**#58 root cause (fixed):** kmscube logged `could not open drm device
+/dev/dri/card0` / `failed to initialize DRM` because the Mode A archive
+(`libiland_userland.a`) linked the userland `drmMode*` implementation but did
+**not** interpose `open("/dev/dri/card*")` — those hooks live only in the Mode B
+dylib (`upstream/shims/drm/.../wayland-mac.c:85-109`, Dobby), so stock clients
+failed at the raw card open before any `drmMode*` call. Mode A now has its own
+open path, `iland_drm_open_card` (`drm_linux.c:374`), which
+`iland_drm_open_compat.h` redirects `open()` onto; `wwn-kmscube` force-includes
+it. Any other stock client needs the same one-line include, which is the
+Mode-A-safe equivalent of Mode B's Dobby hook.
 
-**Linked libdrm surface is substantially REAL** (all in
-`dependencies/libs/iland/upstream/shims/drm/drm/src/drm_linux.c`):
+**As-built libdrm surface** (all in
+`dependencies/libs/iland/upstream/shims/drm/drm/src/drm_linux.c`, line numbers
+re-checked 2026-07-25 — the previous table's had drifted by ~150 lines):
 
 | Symbol | file:line | Grade |
 |--------|-----------|-------|
-| `drmOpen`/`drmOpenWithType` | `234-244` | REAL (returns virtual fd 42) |
-| `drmModeGetResources` | `275-301` | REAL (1 CRTC/1 connector/1 encoder) |
-| `drmModeGetConnector` | `315-346` | REAL (fake DP connected; `init_modes()`) |
-| `drmModeGetEncoder`/`GetCrtc` | `360-403` | REAL |
-| `drmModeCreateDumbBuffer` | `448-495` | REAL (→ IOSurface via DisplaySurface) |
-| `drmModeAddFB` | `573-614` | REAL (dumb + GBM handle registry) |
-| `drmModeAddFB2`/`WithModifiers` | `616-628`,`1635-1647` | **PARTIAL/BROKEN — `(void)pixel_format`; fourcc ignored** |
-| `drmModeSetCrtc` | `656-671` | PARTIAL (records state; no present until flip) |
-| `drmModePageFlip` | `673-716` | REAL Mode A (→ `g_present_cb`); else Mode B IPC |
-| `drmHandleEvent` | `718-750` | PARTIAL (immediate pipe byte; no vblank timing) |
-| `drmIoctl` | `754-759` | STUB (`ENOSYS`) |
-| `drmModeGetPlaneResources`/`GetPlane` | `1308-1375` | PARTIAL (primary plane 1 only) |
-| `drmModeAtomicCommit` | `1419-1526` | PARTIAL (applies props; immediate flip event) |
-| `drmModeSetCursor`/`MoveCursor` | `1541-1554` | STUB (`ENOTSUP`) |
-| `drmPrimeHandleToFD`/`FDToHandle` | `1608-1631` | STUB (fake fd/handle) |
-| `iland_drm_set_present_callback` | `30-34` | REAL (Mode A gate) |
-| `iland_drm_set_preferred_mode` | `59-66` | REAL (**required on iOS/Android**) |
+| `iland_drm_open_card` | `374` | REAL (Mode A `/dev/dri/card*` open, no Dobby) |
+| `drmOpen`/`drmOpenWithType` | `346`,`352` | REAL (returns virtual fd 42) |
+| `drmModeGetResources` | `418` | REAL (1 CRTC/1 connector/1 encoder) |
+| `drmModeGetConnector` | `458` | REAL (fake DP connected; `init_modes()`) |
+| `drmModeGetEncoder`/`GetCrtc` | `503`,`527` | REAL |
+| `drmModeCreateDumbBuffer` | `592` | REAL (→ IOSurface via DisplaySurface) |
+| `drmModeAddFB` | `722` | REAL (dumb + GBM handle registry → IOSurface) |
+| `drmModeAddFB2` | `767` | REAL (fourcc enforced against the backing IOSurface: mismatch = `EINVAL`, #94) |
+| `drmModeSetCrtc` | `844` | PARTIAL (records state; no present until flip) |
+| `drmModePageFlip` | `861` | REAL Mode A (→ `g_present_cb`); else Mode B IPC |
+| `drmHandleEvent` | `905` | PARTIAL (pipe byte on GPU-finish; not scanout-timed — see `kms-pipelining`) |
+| `drmIoctl` | `945` | STUB (`ENOSYS`) |
+| `drmModeObjectGetProperties` | `1398` | REAL (per-object prop tables + `IN_FORMATS` blob) |
+| `drmModeGetPlaneResources`/`GetPlane` | `1499`,`1523` | PARTIAL (primary plane 1 only; gated on the universal-planes client cap) |
+| `drmModeAtomicCommit` | `1610` | PARTIAL (applies props; immediate flip event) |
+| `drmModeSetCursor`/`MoveCursor` | `1741`,`1749` | STUB (`ENOTSUP`) |
+| `drmModeSetPlane` | `1884` | PARTIAL (primary plane only) |
+| `drmPrimeHandleToFD`/`FDToHandle` | `1808`,`1824` | STUB (fake fd/handle) |
+| `iland_drm_set_present_callback` | `37` | REAL (Mode A gate) |
+| `iland_drm_set_preferred_mode` | `66` | REAL (**required on iOS/Android**) |
+
+**The Apple backend emulates KMS objects; it does not substitute IOSurface for
+GBM.** Both ABIs land on one buffer: `gbm_bo` registers its IOSurface in a
+handle registry (`lookup_gbm_buffer:710`), `drmModeAddFB*` resolves that handle
+and retains the *same* IOSurface as the FB's backing (`722`, `767`), and
+`drmModePageFlip` resolves the FB id back to it (`fb_id_to_surface:834`) before
+handing it to the present callback. A client that allocates through GBM and
+scans out through KMS therefore never crosses a buffer boundary — which is the
+property that makes zero-copy dmabuf export possible at all.
 
 **Apple KMS ↔ IOSurface mapping (as-built):** connector/CRTC/encoder are fixed
 fakes (`init_modes()` `89-182`). Mode source priority: (1) `iland_drm_set_preferred_mode`
@@ -736,10 +762,23 @@ plist, so without a preferred mode they get 1920×1080 then Metal stretch — th
 #94 edge-to-edge/sizing class. macOS Mode A product may also skip preferred
 mode (windowed host ≠ desktop res).
 
-**GBM↔FB allocator is unified** (single IOSurface shared via a handle registry:
-`gbm.m:60-61` `drm_register_gbm_buffer`, `drm_linux.c:581-591` FB lookup), **but**
-the format argument is ignored at alloc (always BGRA) → advertised-vs-physical
-format lie (#94).
+**Format handling is honest, not a lie (#94 closed at the allocator too).** An
+earlier revision of this section said GBM ignored the requested fourcc and always
+allocated BGRA. It does not: `iosurface_format_for_drm` (`gbm.m:22-35`) maps
+XRGB8888/ARGB8888 onto one BGRA IOSurface — they differ only in whether alpha is
+honoured, so one physical layout serves both — maps the 2101010 pair onto
+`kWSPixelFormatARGB2101010`, and **returns 0 for anything needing a different
+channel order**, which surfaces as `EINVAL` from `gbm_bo_create` and
+`gbm_device_is_format_supported` (`:69-78`). The requested DRM fourcc, not the
+physical one, is what gets registered (`:104`) and what `gbm_bo_get_format`
+returns (`:190`), which is why `drmModeAddFB2`'s equality check is meaningful
+rather than tautological.
+
+Remaining Apple-backend gaps, none of which are the object model itself:
+`drmIoctl`, cursor planes, and PRIME fd export are stubs; only a primary plane
+exists, so a client that wants an overlay gets one plane and must composite
+itself; and `drmHandleEvent` signals on GPU-finish rather than scanout
+(`kms-pipelining`).
 
 ## R2 — Mode B reality (macOS desktop-host)
 

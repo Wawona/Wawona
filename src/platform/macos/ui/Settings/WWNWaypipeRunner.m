@@ -43,6 +43,8 @@ extern void wwn_propagate_mobile_env(void);
 extern void wwn_launch_host_client(char *const *argp, char *const *envp);
 extern int foot_main(int argc, char **argv);
 extern int simple_egl_main(int argc, char **argv) __attribute__((weak));
+/* Wayland client, not an iland KMS one — see WWNIsIlandGpuCubeClientId. */
+extern int opengl_cube_main(int argc, char **argv) __attribute__((weak));
 #endif
 extern int wwn_weston_is_compat_shim(void) __attribute__((weak));
 extern int wwn_weston_terminal_is_compat_shim(void) __attribute__((weak));
@@ -69,15 +71,20 @@ extern int constraints_main(int argc, char **argv);
 /// Cube clients that render through the in-process iland virtual DRM and are
 /// composited by WWNIlandPresenter, rather than launched as ordinary Wayland
 /// clients. Keep in sync with the table in WWNIlandPresenter.m.
+///
+/// opengl-cube is deliberately absent: it is a Wayland client (wl_egl_window
+/// over iland's Wayland-EGL winsys), so routing it here started the presenter,
+/// which then waited for iland page flips that never came and left a white
+/// window while the client drew into the compositor instead.
 static BOOL WWNIsIlandGpuCubeClientId(NSString *clientId) {
   return [clientId isEqualToString:@"kmscube"] ||
-         [clientId isEqualToString:@"opengl-cube"] ||
          [clientId isEqualToString:@"vkcube"];
 }
 
 /// Clients whose first frame requires a real GL or Vulkan driver.
 static BOOL WWNIsGpuFamilyClientId(NSString *clientId) {
   return WWNIsIlandGpuCubeClientId(clientId) ||
+         [clientId isEqualToString:@"opengl-cube"] ||
          [clientId isEqualToString:@"weston-simple-egl"];
 }
 
@@ -117,8 +124,6 @@ static const char *WWNBundledClientLogModule(NSString *clientId) {
   if ([clientId isEqualToString:@"kmscube"]) {
     return "KMSCUBE";
   }
-  // Distinct tag even though both compile the same mesa sources: a Start has to
-  // be attributable to one catalog id.
   if ([clientId isEqualToString:@"opengl-cube"]) {
     return "OPENGL_CUBE";
   }
@@ -1613,9 +1618,12 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
           [NSValue valueWithPointer:(void *)constraints_main],
       @"weston-simple-egl" :
           [NSValue valueWithPointer:(void *)simple_egl_main],
+      @"opengl-cube" : [NSValue valueWithPointer:(void *)opengl_cube_main],
     };
   });
   NSValue *entry = map[clientId];
+  /* Weakly-linked entry points are NULL when their archive is absent; treat
+   * that as "no such client" rather than calling through a null pointer. */
   return entry ? (WWNClientMainFn)[entry pointerValue] : NULL;
 }
 

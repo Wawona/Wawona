@@ -317,6 +317,24 @@ static inline NSString *WWNBufferCacheKey(uint32_t surface_id,
   return [NSString stringWithFormat:@"%u:%llu", surface_id, buffer_id];
 }
 
+// Wayland buffers are top-down and so is CoreAnimation, but OpenGL renders
+// bottom-up, so a GPU client's IOSurface arrives upside down. Its wl_buffer
+// says so via the dmabuf Y_INVERT flag, which cannot reach here — we resolve
+// the surface by id and never see the buffer's flags — so iland's Wayland-EGL
+// winsys also marks the IOSurface itself. A mirrored 3D scene looks like broken
+// depth testing rather than a flip, which makes this worth being explicit about.
+static BOOL WWNBufferIsBottomUp(IOSurfaceRef surf) {
+  if (!surf) {
+    return NO;
+  }
+  CFTypeRef value = IOSurfaceCopyValue(surf, CFSTR("WWNBottomUp"));
+  BOOL bottomUp = value == kCFBooleanTrue;
+  if (value) {
+    CFRelease(value);
+  }
+  return bottomUp;
+}
+
 /// Drop stale SHM/IOSurface cache entries for a surface, keeping only `keepKey`.
 /// Required on macOS too: without this, every frame accumulates in `_bufferCache`
 /// until the session stops (looks like a session memleak).
@@ -484,6 +502,9 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
 #endif
   // Scene Graph caches
   NSMutableDictionary<id<NSCopying>, id> *_bufferCache;
+  // Cache keys whose IOSurface is bottom-up (see WWNBufferIsBottomUp). Decided
+  // once at import so the per-frame path stays a set lookup.
+  NSMutableSet<NSString *> *_bottomUpBuffers;
   NSMutableDictionary<NSNumber *, CALayer *> *_surfaceLayers;
   NSMutableDictionary<NSNumber *, NSNumber *> *_latestBufferBySurface;
   NSMutableDictionary<NSNumber *, NSNumber *> *_lastPresentedBufferBySurface;
@@ -589,6 +610,7 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     WWNLog("BRIDGE", @"iOS/vision per-window hosting %@", _iosPerWindowHostingEnabled ? @"enabled" : @"disabled");
 #endif
     _bufferCache = [NSMutableDictionary dictionary];
+    _bottomUpBuffers = [NSMutableSet set];
     _surfaceLayers = [NSMutableDictionary dictionary];
     _latestBufferBySurface = [NSMutableDictionary dictionary];
     _lastPresentedBufferBySurface = [NSMutableDictionary dictionary];
@@ -1527,8 +1549,19 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   if (buffer->iosurface_id != 0) {
     IOSurfaceRef surf = IOSurfaceLookup(buffer->iosurface_id);
     if (surf) {
+      if (WWNBufferIsBottomUp(surf)) {
+        [_bottomUpBuffers addObject:cacheKey];
+      } else {
+        [_bottomUpBuffers removeObject:cacheKey];
+      }
       _bufferCache[cacheKey] = (__bridge_transfer id)surf;
       WWNPruneBufferCacheForSurface(_bufferCache, buffer->surface_id, cacheKey);
+      // Keys outlive their cache entries otherwise. Only worth doing once the
+      // set has grown past a client's worth of swapchain slots.
+      if (_bottomUpBuffers.count > 64) {
+        [_bottomUpBuffers
+            intersectSet:[NSSet setWithArray:_bufferCache.allKeys]];
+      }
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
       _waylandPresentGeneration++;
       _presentGenerationBySurface[surfaceId] = @(_waylandPresentGeneration);
@@ -2082,6 +2115,11 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     // buffer id is re-used with new SHM pixels (new CGImage, same key).
     layer.contents = nil;
     layer.contents = content;
+    // Surface layers are siblings under the host's contentLayer, never nested,
+    // so scaling this one by -1 in Y flips its own contents and nothing else.
+    layer.transform = [_bottomUpBuffers containsObject:cacheKey]
+                          ? CATransform3DMakeScale(1.0, -1.0, 1.0)
+                          : CATransform3DIdentity;
   }
 
   [CATransaction commit];

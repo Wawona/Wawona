@@ -346,8 +346,8 @@ extern NSString *const WWNClientWindowSceneWindowIdKey;
 - (BOOL)seedOutputSizeFromLiveHostSurface;
 
 /// Launch kmscube on the first toplevel compositor view (iland + ANGLE GL demo).
-/// Launch a cube client (`kmscube`, `opengl-cube`, `vkcube`) in-process on the
-/// iland presentation view, compositing its DRM page-flips into the host layer.
+/// Launch an iland KMS client (`kmscube`, `vkcube`) in-process on the iland
+/// presentation view, compositing its DRM page-flips into the host layer.
 - (BOOL)launchNestedIlandGpuClientOnPrimaryView:(NSString *)clientId;
 
 - (BOOL)launchNestedKmscubeOnPrimaryView;

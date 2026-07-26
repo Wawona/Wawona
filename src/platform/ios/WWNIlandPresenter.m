@@ -378,7 +378,6 @@ static const char *const kVkcubeArgv[] = { "--display-mode=kms", NULL };
 
 static const wwn_cube_client_t kCubeClients[] = {
     { "kmscube",     "KMSCUBE",     NULL },
-    { "opengl-cube", "OPENGL_CUBE", NULL },
     { "vkcube",      "VKCUBE",      kVkcubeArgv },
 };
 
@@ -390,9 +389,10 @@ static const wwn_cube_client_t *wwn_cube_client_for_id(NSString *clientId) {
     return NULL;
 }
 
+/* opengl-cube is not here: it is a Wayland client and is launched as one. This
+ * presenter only hosts clients that drive iland's virtual DRM. */
 static wwn_cube_entry_t wwn_cube_entry_for_id(NSString *clientId) {
     if ([clientId isEqualToString:@"kmscube"]) return kmscube_main;
-    if ([clientId isEqualToString:@"opengl-cube"]) return opengl_cube_main;
     if ([clientId isEqualToString:@"vkcube"]) return vkcube_main;
     return NULL;
 }
