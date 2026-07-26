@@ -99,6 +99,16 @@ watchOS stays blocked (no Metal in SDK). Do not start the MoltenVK/ANGLE tvOS
 port while macOS Wayland+Vulkan / Apple-mobile / Android cells are still
 WIRED/MISSING.
 
+**2026-07-26 audit follow-up (Mode A stubs + store/#86).** Stock kmscube Mode A
+path is not ENOSYS-blocked. Remaining hard stubs are for *other* clients:
+cursor (`ENOTSUP`), PRIME fake fds, syncobj export, overlay `SetPlane`.
+Android GBM still `ENOSYS` on `get_fd`/`import`, always RGBA8 AHB, no map —
+AHB present works locally; waypipe Android GBM is still stubbed. Store
+graphics/Mode-B asserts are in CI; still missing verifier checks for OpenSSH
+on Apple mobile and Desktop/SIP UI leakage into iOS-family bundles. Apple
+IOSurface dmabuf + waypipe zero-copy remain the #86 PROPER half; AHB/waypipe
+Android is the open half.
+
 **2026-07-26 KMS pipelining (depth-2 flips + fence flush).** The single
 outstanding-flip constraint is gone: `drm_linux.c` keeps a depth-2 queue, so a
 client can arm the next page flip while the previous one is still presenting,
@@ -902,14 +912,14 @@ re-checked 2026-07-25 — the previous table's had drifted by ~150 lines):
 | `drmModeSetCrtc` | `844` | PARTIAL (records state; no present until flip) |
 | `drmModePageFlip` | `861` | REAL Mode A (→ `g_present_cb`); else Mode B IPC |
 | `drmHandleEvent` | `905` | PARTIAL (pipe byte on GPU-finish; not scanout-timed — see `kms-pipelining`) |
-| `drmIoctl` | `945` | STUB (`ENOSYS`) |
+| `drmIoctl` | `959`/`966` | REAL (shares Mode B's `drm_ioctl_dispatch`; stale STUB row removed 2026-07-26) |
 | `drmModeObjectGetProperties` | `1398` | REAL (per-object prop tables + `IN_FORMATS` blob) |
 | `drmModeGetPlaneResources`/`GetPlane` | `1499`,`1523` | PARTIAL (primary plane 1 only; gated on the universal-planes client cap) |
 | `drmModeAtomicCommit` | `1610` | PARTIAL (applies props; immediate flip event) |
-| `drmModeSetCursor`/`MoveCursor` | `1741`,`1749` | STUB (`ENOTSUP`) |
-| `drmModeSetPlane` | `1884` | PARTIAL (primary plane only) |
-| `drmPrimeHandleToFD`/`FDToHandle` | `1808`,`1824` | STUB (fake fd/handle) |
-| `drmIoctl` | `959` | REAL (shares Mode B's `drm_ioctl_dispatch`) |
+| `drmModeSetCursor`/`MoveCursor` | `1741`,`1749` | STUB (`ENOTSUP`) — breaks HW-cursor clients, not stock kmscube |
+| `drmModeSetPlane` | `1884` | PARTIAL (primary plane only; overlay no-op) |
+| `drmPrimeHandleToFD`/`FDToHandle` | `1808`,`1824` | STUB (fake fd/handle) — Apple zero-copy uses IOSurface-id modifier instead |
+| `drmSyncobjExportSyncFile` / `HandleToFD` | ~1800 | STUB (`ENOSYS`) |
 | `iland_drm_set_present_callback` | `37` | REAL (Mode A gate) |
 | `iland_drm_set_preferred_mode` | `66` | REAL (**required on iOS/Android**) |
 
