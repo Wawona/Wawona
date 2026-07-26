@@ -16,6 +16,9 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "WawonaIland", __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "WawonaIland", __VA_ARGS__)
 
+/* iland_drm_set_preferred_mode takes millihertz, not Hz. */
+#define WWN_ILAND_REFRESH_MILLIHZ 60000u
+
 #ifdef WAWONA_ILAND_GL
 extern int kmscube_main(int argc, char **argv);
 #else
@@ -86,7 +89,14 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
 }
 
 void wwn_iland_presenter_android_init(void) {
-  iland_drm_set_preferred_mode(g_surface_width, g_surface_height, 60);
+  /* Init can run before the SurfaceView reports a size, in which case this
+   * publishes the placeholder above; set_surface_size republishes (and the shim
+   * re-enumerates modes) once the real size arrives. A 0x0 would instead leave
+   * the shim on its 1920x1080 fallback, so refuse it. */
+  if (g_surface_width > 0 && g_surface_height > 0) {
+    iland_drm_set_preferred_mode(g_surface_width, g_surface_height,
+                                 WWN_ILAND_REFRESH_MILLIHZ);
+  }
   iland_drm_set_present_callback(wwn_iland_present_trampoline, NULL);
   g_presenter_active = 1;
   LOGI("iland present callback registered (%ux%u)", g_surface_width,
@@ -120,7 +130,7 @@ void wwn_iland_presenter_android_set_surface_size(uint32_t width,
   g_surface_width = width;
   g_surface_height = height;
   if (g_presenter_active)
-    iland_drm_set_preferred_mode(width, height, 60);
+    iland_drm_set_preferred_mode(width, height, WWN_ILAND_REFRESH_MILLIHZ);
 }
 
 static void *wwn_kmscube_thread(void *arg) {

@@ -411,6 +411,21 @@ EOF
       [ -f "$JNI_LIB_DIR/libEGL.so" ] && cp -f "$JNI_LIB_DIR/libEGL.so" "$JNI_LIB_DIR/libEGL_angle.so"
       [ -f "$JNI_LIB_DIR/libGLESv2.so" ] && cp -f "$JNI_LIB_DIR/libGLESv2.so" "$JNI_LIB_DIR/libGLESv2_angle.so"
 
+      # SwiftShader ICD manifest: the jniLibs copy loop only takes *.so, so the
+      # JSON never reached the APK. Stage it under assets; runtime rewrite under
+      # WAWONA_FILES_DIR points library_path at the absolute jniLibs .so path
+      # (see apply_graphics_driver_selection in android_jni.c).
+      ICD_ASSET_DIR="app/src/main/assets/vulkan/icd.d"
+      mkdir -p "$ICD_ASSET_DIR"
+      for libdir in ${lib.concatMapStringsSep " " (d: "${d}/lib") (getDeps "android" androidDeps)}; do
+        if [ -f "$libdir/vulkan/icd.d/vk_swiftshader_icd.json" ]; then
+          cp -L "$libdir/vulkan/icd.d/vk_swiftshader_icd.json" \
+            "$ICD_ASSET_DIR/vk_swiftshader_icd.json"
+          echo "DEBUG: Staged SwiftShader ICD manifest into assets"
+          break
+        fi
+      done
+
       # Bundle OpenSSH portable client helpers (wwn-ssh) with stable jniLibs
       # names expected by android_jni.c. Never Dropbear.
       if [ -f "${opensshBin}/bin/ssh" ]; then

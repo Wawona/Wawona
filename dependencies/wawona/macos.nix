@@ -70,6 +70,10 @@ let
       "iland-gl-clients" = kmscube;
       vkcube = buildModule.buildForMacOS "vkcube" { };
       "opengl-cube" = buildModule.buildForMacOS "opengl-cube" { };
+      # Not part of the weston package: it is built outside weston's meson so it
+      # can link iland's Wayland-EGL winsys rather than the wayland-egl stub.
+      # Without this the Machines entry for it had no binary to launch.
+      "weston-simple-egl" = buildModule.buildForMacOS "weston-simple-egl" { };
     } // (if nativeDeps != null then nativeDeps else { });
 
   appleGlWestonLinkFlags =
@@ -1223,6 +1227,17 @@ GEN_HEADER
               cp "${effectiveNativeDeps."opengl-cube"}/bin/opengl-cube" $out/Applications/Wawona.app/Contents/Resources/bin/
               chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/opengl-cube
               echo "DEBUG: Bundled opengl-cube"
+            fi
+            '' else ''
+            ''}
+
+            ${if effectiveNativeDeps."weston-simple-egl" or null != null then ''
+            if [ -f "${effectiveNativeDeps."weston-simple-egl"}/bin/weston-simple-egl" ]; then
+              cp "${effectiveNativeDeps."weston-simple-egl"}/bin/weston-simple-egl" $out/Applications/Wawona.app/Contents/Resources/bin/
+              cp "${effectiveNativeDeps."weston-simple-egl"}/bin/weston-simple-egl" $out/Applications/Wawona.app/Contents/MacOS/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/weston-simple-egl
+              chmod +x $out/Applications/Wawona.app/Contents/MacOS/weston-simple-egl
+              echo "DEBUG: Bundled weston-simple-egl"
             fi
             '' else ''
             ''}

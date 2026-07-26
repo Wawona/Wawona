@@ -20,6 +20,26 @@ enum WWNA11y {
     "wwn.machines.card.\(machineId)"
   }
 
+  /// Human label for a card and its actions. Profiles created without a name are
+  /// stored as the literal "Unnamed Machine", so the name alone is not
+  /// distinguishing — the visible subtitle (what the machine runs, e.g. "OpenGL
+  /// Cube") is what a person reads off the card, and it belongs in the label.
+  ///
+  /// The action *identifiers* stay shared across cards on purpose: several CI
+  /// smoke scripts press `id="wwn.machines.start"`. Labels are what disambiguate,
+  /// so a specific machine is reachable as `label="Start OpenGL Cube"`.
+  static func machinesDescriptor(name: String, subtitle: String) -> String {
+    let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    let trimmedSubtitle = subtitle.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmedSubtitle.isEmpty {
+      return trimmedName.isEmpty ? "Unnamed Machine" : trimmedName
+    }
+    if trimmedName.isEmpty || trimmedName == "Unnamed Machine" {
+      return trimmedSubtitle
+    }
+    return "\(trimmedName) — \(trimmedSubtitle)"
+  }
+
   static let settingsRoot = "wwn.settings.root"
   static let settingsDisplay = "wwn.settings.display"
   static let settingsDone = "wwn.settings.done"
@@ -42,5 +62,18 @@ extension View {
     } else {
       self.accessibilityIdentifier(id)
     }
+  }
+
+  /// Same, for a view that *contains* other labelled elements. A plain
+  /// `accessibilityLabel` on a container is inherited by its whole subtree, so
+  /// every button inside a machine card came back to XCUITest labelled with the
+  /// card's own text — eleven identical matches, none pressable by name.
+  /// `children: .contain` keeps the descendants addressable with their own
+  /// labels while the container stays findable.
+  func wwnA11yContainer(_ id: String, label: String) -> some View {
+    self
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier(id)
+      .accessibilityLabel(label)
   }
 }

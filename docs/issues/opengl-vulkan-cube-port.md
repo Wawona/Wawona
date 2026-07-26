@@ -74,22 +74,25 @@ So OpenGL Cube must **not** open `/dev/dri/card0`. It is an ordinary Wayland
 client. It still needs an **ES3** context with a **depth buffer** (upstream
 depth-tests), where kmscube needs neither.
 
-**Status of this correction:** the c2d7fa vendoring is correct and stays, but the
-host in `upstream/opengl-cube/opengl_cube.c` is currently the iland KMS one
-copied from kmscube — i.e. still the wrong path. It has to be replaced with
-`wl_egl_window` + xdg-shell (pattern: `weston-simple-egl`). Consequence: the
-"duplicated DRM scaffolding" note in Phase 1a becomes moot, because a Wayland
-client has no DRM scaffolding to duplicate.
+**Status of this correction — done.** The c2d7fa vendoring is correct and stays,
+and `upstream/opengl-cube/opengl_cube.c` is now a real Wayland client
+(`wl_display` / xdg-shell / `wl_egl_window`), no longer the iland KMS host copied
+from kmscube. Launch wiring followed: `opengl-cube` was removed from
+`WWNIsIlandGpuCubeClientId` and from both presenters' cube tables, so macOS
+launches it out-of-process as an ordinary bundled Wayland client and iOS launches
+it in-process through `WWNClientMainForId` like `weston-simple-shm`. The
+"duplicated DRM scaffolding" note in Phase 1a is moot: a Wayland client has none.
 
-**Open question — Apple mobile.** macOS is settled (Wayland-EGL, and per
-`wawona-macos-no-appstore` macOS should take the fuller native path anyway). The
-iOS family is not: this doc has long asserted Apple mobile cannot use
-`wl_egl_window` / `EGL_PLATFORM_WAYLAND_KHR` (hence
-`wwn-weston/.../simple-egl-apple-mobile-stub.c`). Either that gap gets closed in
-iland for mobile too, or `opengl-cube` stays on the presenter path there while
-macOS goes Wayland-EGL. Do not silently pick one.
+**Resolved — Apple mobile can use Wayland-EGL.** The older claim that the iOS
+family cannot use `wl_egl_window` / `EGL_PLATFORM_WAYLAND_KHR` was an artifact of
+iland having no Wayland winsys, not a platform limit: nothing in the path needs
+anything unavailable on iOS. iland now carries the winsys on
+macOS/iOS/iPadOS/visionOS (IOSurface-backed `wl_buffer`s posted through
+`zwp_linux_dmabuf_v1` with the IOSurface-id modifier), plus an AHardwareBuffer
+variant for Android. tvOS/watchOS stay on the fallback.
+`simple-egl-apple-mobile-stub.c` is therefore obsolete as a *statement of
+impossibility*; it remains only until the mobile unstub lands.
 - Vulkan Cube = krh/vkcube **KMS/GBM** against iland virtual DRM (`/dev/dri/card0` → fd 42) + host Vulkan ICD (MoltenVK Apple; device Vulkan / SwiftShader Android).
-- Apple mobile **cannot** use `wl_egl_window` / `EGL_PLATFORM_WAYLAND_KHR` (see `wwn-weston/.../simple-egl-apple-mobile-stub.c`). Nested GL goes through `WWNIlandPresenter`.
 - tvOS / watchOS: **never** link or show these clients (`allowsGpuStack == false`).
 
 **Prerequisite:** wwn-iland supplies OpenGL (ANGLE) + Vulkan + software-fallback for DRM/GBM bind. This issue owns **client packaging + launch wiring**, not a new iland graphics architecture.
@@ -98,8 +101,8 @@ macOS goes Wayland-EGL. Do not silently pick one.
 
 | Platform | Artifact | Launch |
 |----------|----------|--------|
-| **macOS** | `libopengl_cube.a` / `libvkcube.a` + `bin/opengl-cube` / `bin/vkcube` | Product Start = **in-process** iland presenter (bins for local/debug) |
-| **iOS / iPadOS / visionOS** | archives only (`*_main`) | in-process via Machines → WaypipeRunner → iland presenter |
+| **macOS** | `libopengl_cube.a` / `libvkcube.a` + `bin/opengl-cube` / `bin/vkcube` | `vkcube` = **in-process** iland presenter; `opengl-cube` = out-of-process bundled Wayland client (`bin/opengl-cube`) |
+| **iOS / iPadOS / visionOS** | archives only (`*_main`) | `vkcube` in-process via Machines → WaypipeRunner → iland presenter; `opengl-cube` in-process via `WWNClientMainForId`, same as `weston-simple-shm` |
 | **Android** | archives linked into `libwawona.so` | JNI → presenter path (mirror `kmscube_stub_main`) |
 | **tvOS / watchOS** | not built / not linked | hidden + refuse |
 
@@ -123,10 +126,13 @@ Never force-push `master`/`development`. Do not commit unless the human asks.
 ### Hard don'ts
 
 - Do **not** ship GLFW or GLEW. c2d7fa/opengl-cube *is* vendored, but ported off
-  them onto iland KMS — neither library reaches a target.
+  them onto Wayland + `wl_egl_window` — neither library reaches a target.
 - Do **not** give two catalog ids the same renderer under different entry-point
   names. If two clients look the same at runtime, one of them is wrong.
-- Do **not** implement Wayland-EGL for these cubes on Apple mobile.
+- Do **not** route `opengl-cube` through the iland KMS presenter. That is what
+  made it indistinguishable from KMS Cube (and, when both paths raced, made
+  Start sometimes show kmscube). It is a Wayland client on every target that
+  has a GPU stack.
 - Do **not** add ANGLE/Vulkan/MoltenVK to tvOS/watchOS deps or schemes.
 - Do **not** ship Mode B `libwayland-mac.dylib` for these clients.
 - Do **not** leave Android calling `opengl_cube_main` / `vkcube_main` without

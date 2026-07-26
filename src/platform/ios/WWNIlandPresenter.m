@@ -11,6 +11,8 @@
 #import "../macos/ui/Settings/WWNPreferencesManager.h"
 #import "../../util/WWNLog.h"
 #import <IOSurface/IOSurfaceRef.h>
+#import <TargetConditionals.h>
+#import <UIKit/UIKit.h>
 #import <errno.h>
 #import <math.h>
 #import <pthread.h>
@@ -23,8 +25,24 @@ typedef void (*iland_present_callback_t)(uint32_t crtc_id,
                                          uint32_t flags,
                                          void *user);
 extern void iland_drm_set_present_callback(iland_present_callback_t cb, void *user);
-extern void iland_drm_set_preferred_mode(uint32_t w, uint32_t h, uint32_t refresh);
+extern void iland_drm_set_preferred_mode(uint32_t w, uint32_t h,
+                                         uint32_t refresh_millihz);
 extern void iland_drm_complete_page_flip(uint32_t crtc_id, uint32_t fb_id);
+
+/*
+ * iland wants the mode's refresh in millihertz. Passing 0 makes it assume 60,
+ * since it can only query the real rate through CoreGraphics on macOS — so a
+ * 120 Hz ProMotion host published a 60 Hz mode and any client pacing off it
+ * (Weston's DRM backend does) ran at half the display's cadence. visionOS does
+ * not publish a comparable rate, so it stays on auto.
+ */
+static uint32_t WWNIlandRefreshMillihz(void) {
+#if !TARGET_OS_VISION
+    NSInteger fps = UIScreen.mainScreen.maximumFramesPerSecond;
+    if (fps > 0) return (uint32_t)fps * 1000u;
+#endif
+    return 0;
+}
 
 extern int kmscube_main(int argc, char *argv[]) __attribute__((weak_import));
 extern int opengl_cube_main(int argc, char *argv[]) __attribute__((weak_import));
@@ -144,7 +162,8 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
     }
     if (px.width >= 1.0 && px.height >= 1.0) {
         iland_drm_set_preferred_mode((uint32_t)(px.width + 0.5),
-                                     (uint32_t)(px.height + 0.5), 0);
+                                     (uint32_t)(px.height + 0.5),
+                                     WWNIlandRefreshMillihz());
     }
 
     _textureCache = CFDictionaryCreateMutable(kCFAllocatorDefault, 0,
@@ -165,21 +184,56 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
     if (_textureCache) CFRelease(_textureCache);
 }
 
+/*
+ * See the macOS presenter: the present callback carries only the IOSurface, so
+ * its pixel format is the only statement of what the client rendered, and
+ * importing a 10-bit surface as BGRA8Unorm gives wrong colours instead of a
+ * diagnosable failure. 0 means "refuse".
+ */
+static MTLPixelFormat WWNMetalFormatForIOSurface(uint32_t fourcc) {
+    switch (fourcc) {
+        case 'BGRA': return MTLPixelFormatBGRA8Unorm;
+        case 'l10r': return MTLPixelFormatBGR10A2Unorm;
+        case 'w30r': return MTLPixelFormatBGR10_XR;
+        case 'l64r': return MTLPixelFormatRGBA16Unorm;
+        case 'RGhA': return MTLPixelFormatRGBA16Float;
+        case 'RGfA': return MTLPixelFormatRGBA32Float;
+        default: return (MTLPixelFormat)0;
+    }
+}
+
 - (id<MTLTexture>)cachedTextureForIOSurface:(IOSurfaceRef)surface
                                        width:(NSUInteger)w
                                       height:(NSUInteger)h {
+    MTLPixelFormat fmt =
+        WWNMetalFormatForIOSurface(IOSurfaceGetPixelFormat(surface));
+    if (fmt == (MTLPixelFormat)0) {
+        static uint32_t s_lastRejected = 0;
+        uint32_t fourcc = IOSurfaceGetPixelFormat(surface);
+        if (fourcc != s_lastRejected) {
+            s_lastRejected = fourcc;
+            WWNLog(_presentLogModule ?: "ILAND",
+                   @"refusing present: IOSurface fcc=0x%08x has no Metal mapping",
+                   fourcc);
+        }
+        return nil;
+    }
+
     id<MTLTexture> cached =
         (__bridge id<MTLTexture>)CFDictionaryGetValue(_textureCache, surface);
     // A resized client reuses IOSurfaces at a new size, so validate the extent
-    // rather than trusting the key alone.
-    if (cached && cached.width == w && cached.height == h) return cached;
+    // and format rather than trusting the key alone.
+    if (cached && cached.width == w && cached.height == h &&
+        cached.pixelFormat == fmt) {
+        return cached;
+    }
 
     if (CFDictionaryGetCount(_textureCache) >= WWN_ILAND_TEXTURE_CACHE_MAX) {
         CFDictionaryRemoveAllValues(_textureCache);
     }
 
     MTLTextureDescriptor *td =
-        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:fmt
                                                           width:w
                                                          height:h
                                                       mipmapped:NO];
@@ -200,7 +254,8 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
                            MAX(1.0, _layer.bounds.size.height * scale));
     _layer.drawableSize = px;
     iland_drm_set_preferred_mode((uint32_t)(px.width + 0.5),
-                                 (uint32_t)(px.height + 0.5), 0);
+                                 (uint32_t)(px.height + 0.5),
+                                 WWNIlandRefreshMillihz());
     WWNLog(_presentLogModule ?: "ILAND",
            @"syncPreferredModeFromLayer %.0fx%.0f (scale=%.1f)",
            px.width, px.height, scale);

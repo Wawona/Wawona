@@ -63,7 +63,12 @@ struct WWNMachineCardView: View {
     .shadow(color: .black.opacity(0.22), radius: 16, x: 0, y: 10)
     .animation(.spring(duration: 0.4, bounce: 0.24), value: status)
     #endif
-    .wwnA11y(WWNA11y.machinesCard(profile.machineId), label: profile.name.isEmpty ? "Unnamed Machine" : profile.name)
+    .wwnA11yContainer(WWNA11y.machinesCard(profile.machineId), label: descriptor)
+  }
+
+  /// What a person reads off this card — see `WWNA11y.machinesDescriptor`.
+  private var descriptor: String {
+    WWNA11y.machinesDescriptor(name: profile.name, subtitle: subtitle)
   }
 
   // MARK: - Header Banner
@@ -141,7 +146,7 @@ struct WWNMachineCardView: View {
           Label("Focus", systemImage: "scope")
         }
         .buttonStyle(.bordered)
-        .wwnA11y(WWNA11y.machinesFocus, label: "Focus")
+        .wwnA11y(WWNA11y.machinesFocus, label: "Focus \(descriptor)")
 
         Button(role: .destructive) {
           onStop()
@@ -150,7 +155,7 @@ struct WWNMachineCardView: View {
         }
         .buttonStyle(.borderedProminent)
         .tint(.red)
-        .wwnA11y(WWNA11y.machinesStop, label: "Stop")
+        .wwnA11y(WWNA11y.machinesStop, label: "Stop \(descriptor)")
       } else {
         Button {
           onConnect()
@@ -159,7 +164,7 @@ struct WWNMachineCardView: View {
         }
         .buttonStyle(.borderedProminent)
         .disabled(!launchSupported)
-        .wwnA11y(WWNA11y.machinesStart, label: "Start")
+        .wwnA11y(WWNA11y.machinesStart, label: "Start \(descriptor)")
       }
 
       Button {
@@ -168,7 +173,7 @@ struct WWNMachineCardView: View {
         Label("Edit", systemImage: "slider.horizontal.3")
       }
       .buttonStyle(.bordered)
-      .wwnA11y(WWNA11y.machinesEdit, label: "Edit")
+      .wwnA11y(WWNA11y.machinesEdit, label: "Edit \(descriptor)")
 
       Button(role: .destructive) {
         onDelete()
@@ -177,7 +182,7 @@ struct WWNMachineCardView: View {
       }
       .buttonStyle(.bordered)
       .disabled(isRunning)
-      .wwnA11y(WWNA11y.machinesDelete, label: "Delete")
+      .wwnA11y(WWNA11y.machinesDelete, label: "Delete \(descriptor)")
     }
   }
 

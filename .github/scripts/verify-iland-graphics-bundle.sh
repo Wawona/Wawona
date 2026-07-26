@@ -82,6 +82,58 @@ bundle_driver_symbols() {
   echo "$total"
 }
 
+# Store-safety for every Apple target that ships through App Review. macOS is
+# deliberately excluded: per wawona-macos-no-appstore it is never store-constrained
+# and may use private frameworks, Dobby, and DYLD_INSERT_LIBRARIES freely.
+#
+# Two severities, because a string is not an API call. Linking a private
+# framework, referencing Dobby, or carrying a Mode B daemon is a hard fail:
+# those are Mode B leaking into a reviewed bundle. A bare string (a log line in
+# shared code, say) is reported but does not fail, since failing on it would
+# reward deleting diagnostics rather than removing capability.
+apple_store_safety() {
+  local binary linked bad=0
+
+  while IFS= read -r binary; do
+    linked="$(otool -L "$binary" 2>/dev/null || true)"
+    if grep -q '/System/Library/PrivateFrameworks/' <<<"$linked"; then
+      echo "FAIL: $platform links a private framework: $binary" >&2
+      grep '/System/Library/PrivateFrameworks/' <<<"$linked" >&2
+      bad=1
+    fi
+    # Defined (T/t) or referenced (U) both mean the injection machinery is in
+    # the binary; only total absence is store-safe.
+    if nm "$binary" 2>/dev/null | grep -qE ' [TtU] _?Dobby'; then
+      echo "FAIL: $platform references Dobby (Mode B code injection): $binary" >&2
+      bad=1
+    fi
+  done < <(mach_o_files)
+
+  local daemons
+  daemons="$(find "$root" -type f \
+    \( -name 'framebufferd' -o -name 'inputd' -o -name 'amfiexceptiond' \) \
+    -print 2>/dev/null || true)"
+  if [[ -n "$daemons" ]]; then
+    echo "FAIL: $platform bundle contains Mode B daemons:" >&2
+    echo "$daemons" >&2
+    bad=1
+  fi
+
+  local marker carrier
+  for marker in SkyLight CoreBedtime DYLD_INSERT_LIBRARIES; do
+    if carrier="$(bundle_has_marker "$marker")"; then
+      echo "WARN: $platform carries the string '$marker' (no linkage) in $carrier"
+    fi
+  done
+
+  [[ "$bad" -eq 0 ]] || exit 1
+  echo "OK: $platform store-safety (no private frameworks, no Dobby, no Mode B daemons)"
+}
+
+case "$platform" in
+  ios|ipados|visionos|tvos|watchos) apple_store_safety ;;
+esac
+
 if [[ "$platform" == "ios" || "$platform" == "ipados" || "$platform" == "visionos" ]]; then
   # "MoltenVK version" is the driver's own banner, unlike the bare name which
   # also shows up in ICD path literals.
@@ -193,6 +245,20 @@ if [[ "$platform" == "android" ]]; then
     exit 1
   fi
 
+  # Play Mode A: Mode B is macOS desktop-host only. A Play APK must never carry
+  # the SIP-gated dylib, Dobby, or the Mode B helper daemons.
+  mode_b_leak="$(
+    find "$root" -type f \
+      \( -name 'libwayland-mac.dylib' -o -name 'framebufferd' -o -name 'inputd' \
+         -o -name 'amfiexceptiond' -o -iname '*dobby*' \) \
+      -print 2>/dev/null || true
+  )"
+  if [[ -n "$mode_b_leak" ]]; then
+    echo "FAIL: Android Play bundle contains Mode B / privileged artifacts:" >&2
+    echo "$mode_b_leak" >&2
+    exit 1
+  fi
+
   direct_kernel_drivers="$(
     find "$root" -type f \
       \( -iname '*turnip*' -o -iname '*freedreno*' \) \
@@ -210,6 +276,12 @@ if [[ "$platform" == "android" ]]; then
       exit 1
     fi
   done
+
+  if ! find "$root" -type f -name 'vk_swiftshader_icd.json' -print -quit | grep -q .; then
+    echo "FAIL: Android graphics bundle missing staged SwiftShader ICD manifest" >&2
+    exit 1
+  fi
+  echo "OK: android Play store-safety (no Mode B, no KGSL, ANGLE+SwiftShader+ICD present)"
 fi
 
 if [[ "$platform" == "macos" ]]; then

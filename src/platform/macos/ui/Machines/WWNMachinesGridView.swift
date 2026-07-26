@@ -536,9 +536,9 @@ struct WWNMachineTVRow: View {
       Spacer(minLength: 0)
     }
     .padding(.vertical, 18)
-    .wwnA11y(
+    .wwnA11yContainer(
       WWNA11y.machinesCard(profile.machineId),
-      label: profile.name.isEmpty ? "Unnamed Machine" : profile.name
+      label: WWNA11y.machinesDescriptor(name: profile.name, subtitle: subtitle)
     )
   }
 

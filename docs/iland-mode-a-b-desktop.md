@@ -1,5 +1,8 @@
 # iland Mode A / Mode B and Desktop Replacement
 
+Live grades: [`iland-graphics-progress.md`](iland-graphics-progress.md).
+CI bundle matrix: [`testing/graphics-ci-matrix.md`](testing/graphics-ci-matrix.md).
+
 Canonical description of how Wawona uses **wwn-iland** for graphics present and
 macOS Desktop Replacement. When this conflicts with older docs or comments,
 **this file wins** (also mirrored in `.cursor/rules/wawona-iland-mode-b-desktop.mdc`

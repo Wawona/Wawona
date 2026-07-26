@@ -10,6 +10,7 @@
 #import "WWNEDRSupport.h"
 #import "ui/Settings/WWNPreferencesManager.h"
 #import "../../util/WWNLog.h"
+#import <AppKit/AppKit.h>
 #import <IOSurface/IOSurfaceRef.h>
 #import <errno.h>
 #import <math.h>
@@ -192,28 +193,80 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
      * exactly that, once, and explicitly does not watch for hotplug) will not
      * pick up a later change. Calling this per present was therefore inert for
      * resize while still reading CALayer geometry off the render thread.
+     *
+     * Refresh is millihertz. This used to be a hardcoded 60000 while iland read
+     * it as Hz, so KMS advertised a 60000 Hz mode with a matching nonsense pixel
+     * clock. Ask the screen the layer is actually on: iland's own fallback probes
+     * CGMainDisplayID, which is the wrong display in a multi-monitor setup.
      */
+    uint32_t refresh_millihz = 60000;
+    NSScreen *screen = nil;
+    id delegate = _layer.delegate;
+    if ([delegate isKindOfClass:[NSView class]]) {
+        screen = ((NSView *)delegate).window.screen;
+    }
+    if (!screen) screen = NSScreen.mainScreen;
+    if (screen.maximumFramesPerSecond > 0) {
+        refresh_millihz = (uint32_t)screen.maximumFramesPerSecond * 1000u;
+    }
+
     iland_drm_set_preferred_mode((uint32_t)llround(size.width),
                                  (uint32_t)llround(size.height),
-                                 60000);
+                                 refresh_millihz);
+}
+
+/*
+ * The present callback hands over an IOSurface and nothing else, so the surface's
+ * own pixel format is the only statement of what the client rendered. Importing
+ * everything as BGRA8Unorm silently reinterpreted a 10-bit framebuffer — which
+ * iland's GBM will hand out for the 2101010 fourccs as 'l10r' — as 8-bit, giving
+ * wrong colours rather than a diagnosable failure. 0 means "refuse".
+ */
+static MTLPixelFormat WWNMetalFormatForIOSurface(uint32_t fourcc) {
+    switch (fourcc) {
+        case 'BGRA': return MTLPixelFormatBGRA8Unorm;
+        case 'l10r': return MTLPixelFormatBGR10A2Unorm;
+        case 'w30r': return MTLPixelFormatBGR10_XR;
+        case 'l64r': return MTLPixelFormatRGBA16Unorm;
+        case 'RGhA': return MTLPixelFormatRGBA16Float;
+        case 'RGfA': return MTLPixelFormatRGBA32Float;
+        default: return (MTLPixelFormat)0;
+    }
 }
 
 // Wrap the presented IOSurface as a Metal texture and draw it into the layer.
 - (id<MTLTexture>)cachedTextureForIOSurface:(IOSurfaceRef)surface
                                        width:(NSUInteger)w
                                       height:(NSUInteger)h {
+    MTLPixelFormat fmt =
+        WWNMetalFormatForIOSurface(IOSurfaceGetPixelFormat(surface));
+    if (fmt == (MTLPixelFormat)0) {
+        static uint32_t s_lastRejected = 0;
+        uint32_t fourcc = IOSurfaceGetPixelFormat(surface);
+        if (fourcc != s_lastRejected) {
+            s_lastRejected = fourcc;
+            WWNLog(_presentLogModule ?: "ILAND",
+                   @"refusing present: IOSurface fcc=0x%08x has no Metal mapping",
+                   fourcc);
+        }
+        return nil;
+    }
+
     id<MTLTexture> cached =
         (__bridge id<MTLTexture>)CFDictionaryGetValue(_textureCache, surface);
     // A resized client reuses IOSurfaces at a new size, so validate the extent
-    // rather than trusting the key alone.
-    if (cached && cached.width == w && cached.height == h) return cached;
+    // and format rather than trusting the key alone.
+    if (cached && cached.width == w && cached.height == h &&
+        cached.pixelFormat == fmt) {
+        return cached;
+    }
 
     if (CFDictionaryGetCount(_textureCache) >= WWN_ILAND_TEXTURE_CACHE_MAX) {
         CFDictionaryRemoveAllValues(_textureCache);
     }
 
     MTLTextureDescriptor *td =
-        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:fmt
                                                           width:w
                                                          height:h
                                                       mipmapped:NO];

@@ -67,7 +67,9 @@ Mode B artifacts never enter Apple-mobile or Play product bundles.
 ## Toolkit readiness contract
 
 SDL, Qt and GTK remain separate ports. They consume Wawona's Wayland and
-graphics contracts instead of adding toolkit-private Metal renderers.
+graphics contracts instead of adding toolkit-private Metal renderers. The
+catalog of what those ports need (and which GH issues track them) is
+[`toolkit-soft-path.md`](toolkit-soft-path.md).
 
 | Consumer | GPU route | Software route |
 |----------|-----------|----------------|

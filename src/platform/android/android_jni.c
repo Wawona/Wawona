@@ -1259,15 +1259,56 @@ static int apply_graphics_driver_selection(void) {
     unsetenv("WWN_SWIFTSHADER_LIBRARY");
     setenv("WWN_DISABLE_VULKAN", "1", 1);
   } else if (strcmp(vulkanDriver, "swiftshader") == 0) {
+    /*
+     * Host ANativeWindow WSI stays on libvulkan.so (loaded below). Bundled
+     * SwiftShader is the portable offscreen ICD for iland/vkcube clients:
+     * expose it both as WWN_SWIFTSHADER_LIBRARY (direct ICD dlopen, macOS-
+     * style) and as a staged ICD manifest for any loader that respects
+     * VK_ICD_FILENAMES. The jniLibs directory is often read-only, so the
+     * JSON lives under WAWONA_FILES_DIR with an absolute library_path.
+     */
     char native_lib_dir[512];
     char swiftshader_path[640];
+    char icd_path[720];
     if (wwn_android_native_lib_dir(native_lib_dir, sizeof(native_lib_dir)) != 0)
       return -1;
     snprintf(swiftshader_path, sizeof(swiftshader_path),
              "%s/libvk_swiftshader.so", native_lib_dir);
     setenv("WWN_SWIFTSHADER_LIBRARY", swiftshader_path, 1);
-    unsetenv("VK_DRIVER_FILES");
-    unsetenv("VK_ICD_FILENAMES");
+
+    const char *files_dir = getenv("WAWONA_FILES_DIR");
+    if (files_dir && files_dir[0]) {
+      char vulkan_dir[640];
+      char icd_dir[640];
+      snprintf(vulkan_dir, sizeof(vulkan_dir), "%s/vulkan", files_dir);
+      snprintf(icd_dir, sizeof(icd_dir), "%s/vulkan/icd.d", files_dir);
+      mkdir(vulkan_dir, 0755);
+      mkdir(icd_dir, 0755);
+      snprintf(icd_path, sizeof(icd_path),
+               "%s/vulkan/icd.d/vk_swiftshader_icd.json", files_dir);
+      FILE *icd = fopen(icd_path, "w");
+      if (icd) {
+        fprintf(icd,
+                "{\n"
+                "  \"file_format_version\": \"1.0.0\",\n"
+                "  \"ICD\": {\n"
+                "    \"library_path\": \"%s\",\n"
+                "    \"api_version\": \"1.3.0\"\n"
+                "  }\n"
+                "}\n",
+                swiftshader_path);
+        fclose(icd);
+        setenv("VK_ICD_FILENAMES", icd_path, 1);
+        setenv("VK_DRIVER_FILES", icd_path, 1);
+      } else {
+        LOGE("Could not stage SwiftShader ICD at %s", icd_path);
+        unsetenv("VK_DRIVER_FILES");
+        unsetenv("VK_ICD_FILENAMES");
+      }
+    } else {
+      unsetenv("VK_DRIVER_FILES");
+      unsetenv("VK_ICD_FILENAMES");
+    }
   } else {
     unsetenv("VK_DRIVER_FILES");
     unsetenv("VK_ICD_FILENAMES");
