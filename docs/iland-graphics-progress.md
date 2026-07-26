@@ -79,6 +79,16 @@ KMS-hosted client (KMS Cube, Vulkan Cube today) as a Wayland client.
 
 ## P1 progress log
 
+**2026-07-26 KMS pipelining (depth-2 flips + fence flush).** The single
+outstanding-flip constraint is gone: `drm_linux.c` keeps a depth-2 queue, so a
+client can arm the next page flip while the previous one is still presenting,
+and `drmHandleEvent` delivers the oldest signaled completion. The EGL swap path
+prefers `EGL_SYNC_FENCE` + `eglClientWaitSync` over `glFinish` when ANGLE
+exposes it (`zc_flush_gpu`). This is the structural fix that made
+`addPresentedHandler` viable again; re-measure cadence before claiming
+vsync-locked PROPER smoothness. Tracked as `kms-pipelining` closed on the
+implementation side.
+
 **2026-07-26 Mode B packaging closed; SIP runtime proof still owed (#87).**
 Implementation is real: `.#wawona-macos-desktop-host` ships
 `libwayland-mac.dylib` + helpers; product `.#wawona-macos` sets
