@@ -29,10 +29,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Launch one of the bundled in-process cube clients on a background thread; it
 /// presents through this presenter. `clientId` is a Machines catalog id:
-/// `kmscube` renders GLES through iland + ANGLE and `vkcube` renders Vulkan
-/// through MoltenVK; both drive the same iland virtual DRM. Returns NO for an
-/// unknown id, or when the client's archive is absent. `opengl-cube` is not one
-/// of these — it is a Wayland client and goes through the compositor.
+/// `kmscube` renders GLES through iland + ANGLE into the virtual DRM. Returns
+/// NO for an unknown id, or when the archive is absent. `opengl-cube` and
+/// `vkcube` are Wayland clients (IOSurface dmabuf winsys), not KMS hosts.
 - (BOOL)launchNestedIlandGpuClient:(NSString *)clientId
                              width:(int)width
                             height:(int)height;

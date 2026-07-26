@@ -43,8 +43,9 @@ extern void wwn_propagate_mobile_env(void);
 extern void wwn_launch_host_client(char *const *argp, char *const *envp);
 extern int foot_main(int argc, char **argv);
 extern int simple_egl_main(int argc, char **argv) __attribute__((weak));
-/* Wayland client, not an iland KMS one — see WWNIsIlandGpuCubeClientId. */
+/* Wayland clients, not iland KMS — see WWNIsIlandGpuCubeClientId. */
 extern int opengl_cube_main(int argc, char **argv) __attribute__((weak));
+extern int vkcube_main(int argc, char **argv) __attribute__((weak));
 #endif
 extern int wwn_weston_is_compat_shim(void) __attribute__((weak));
 extern int wwn_weston_terminal_is_compat_shim(void) __attribute__((weak));
@@ -72,19 +73,18 @@ extern int constraints_main(int argc, char **argv);
 /// composited by WWNIlandPresenter, rather than launched as ordinary Wayland
 /// clients. Keep in sync with the table in WWNIlandPresenter.m.
 ///
-/// opengl-cube is deliberately absent: it is a Wayland client (wl_egl_window
-/// over iland's Wayland-EGL winsys), so routing it here started the presenter,
-/// which then waited for iland page flips that never came and left a white
-/// window while the client drew into the compositor instead.
+/// opengl-cube / vkcube are deliberately absent: they are Wayland clients
+/// (winsys posts IOSurface dmabuf buffers), so routing them through the iland
+/// KMS presenter waited for page flips that never came.
 static BOOL WWNIsIlandGpuCubeClientId(NSString *clientId) {
-  return [clientId isEqualToString:@"kmscube"] ||
-         [clientId isEqualToString:@"vkcube"];
+  return [clientId isEqualToString:@"kmscube"];
 }
 
 /// Clients whose first frame requires a real GL or Vulkan driver.
 static BOOL WWNIsGpuFamilyClientId(NSString *clientId) {
   return WWNIsIlandGpuCubeClientId(clientId) ||
          [clientId isEqualToString:@"opengl-cube"] ||
+         [clientId isEqualToString:@"vkcube"] ||
          [clientId isEqualToString:@"weston-simple-egl"];
 }
 
@@ -1619,6 +1619,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       @"weston-simple-egl" :
           [NSValue valueWithPointer:(void *)simple_egl_main],
       @"opengl-cube" : [NSValue valueWithPointer:(void *)opengl_cube_main],
+      @"vkcube" : [NSValue valueWithPointer:(void *)vkcube_main],
     };
   });
   NSValue *entry = map[clientId];
@@ -2077,6 +2078,23 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   task.executableURL = [NSURL fileURLWithPath:path];
 
   NSMutableDictionary *env = [self wwnMutableHostWaylandEnvironment];
+  if ([name isEqualToString:@"vkcube"]) {
+    /* Runtime ICD selection for the Wayland vkcube (dlopen path). */
+    const char *vkLib = getenv("WWN_VULKAN_LIBRARY");
+    if (vkLib && vkLib[0])
+      env[@"WWN_VULKAN_LIBRARY"] = @(vkLib);
+    NSString *frameworksDir = [[[NSBundle mainBundle] bundlePath]
+        stringByAppendingPathComponent:@"Contents/Frameworks"];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:frameworksDir]) {
+      env[@"DYLD_LIBRARY_PATH"] = frameworksDir;
+      if (!env[@"WWN_VULKAN_LIBRARY"]) {
+        NSString *mvk =
+            [frameworksDir stringByAppendingPathComponent:@"libMoltenVK.dylib"];
+        if ([[NSFileManager defaultManager] fileExistsAtPath:mvk])
+          env[@"WWN_VULKAN_LIBRARY"] = mvk;
+      }
+    }
+  }
   if ([name isEqualToString:@"niri"]) {
     // niri (wwn-niri) hosts its own scrollable-tiling clients either as a
     // nested Wayland client of Wawona or on iland's userspace DRM/KMS ("tty").

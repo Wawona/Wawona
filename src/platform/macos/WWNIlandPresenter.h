@@ -41,12 +41,10 @@ NS_ASSUME_NONNULL_BEGIN
 /// presenter letterboxes it for the rest of the session.
 - (void)hostGeometryDidChange;
 
-/// Launch one of the bundled in-process cube clients on a background thread; it
-/// presents through this presenter. `clientId` is a Machines catalog id:
-/// `kmscube` renders GLES through iland + ANGLE and `vkcube` renders Vulkan
-/// through the host ICD; both drive the same iland virtual DRM. Returns NO for
-/// an unknown id, or when the client's archive is absent. `opengl-cube` is not
-/// one of these — it is a Wayland client and goes through the compositor.
+/// Launch a bundled in-process KMS cube client on a background thread; it
+/// presents through this presenter. Today that is only `kmscube` (GLES through
+/// iland + ANGLE). `opengl-cube` and `vkcube` are Wayland clients and go
+/// through the compositor. Returns NO for an unknown id or absent archive.
 - (BOOL)launchNestedIlandGpuClient:(NSString *)clientId
                              width:(int)width
                             height:(int)height;

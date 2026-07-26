@@ -65,19 +65,31 @@ this is the winsys path (`libiland_wayland_egl`: `wl_egl_window_*` +
 
 | Target | Wayland + EGL/GLES client | Wayland + Vulkan client |
 |---|---|---|
-| macOS 3rd-party product | **PROPER** (`opengl-cube` renders a depth-correct cube through `wl_egl_window` + `eglSwapBuffers` at ~62 fps, ANGLE-on-Metal, presented from the posted IOSurface — screenshot + posted-buffer sample in the 2026-07-26 entry below) | MISSING (`wl-winsys-vulkan`: no IOSurface-backed `VkImage` WSI yet) |
-| iOS / iPadOS / visionOS | WIRED (winsys built for these targets; in-process launch via `WWNClientMainForId`; no device run yet) | MISSING (same WSI gap) |
-| Android Play / Home Desktop | WIRED (AHardwareBuffer variant of the same winsys) | MISSING |
+| macOS 3rd-party product | **PROPER** (`opengl-cube` renders a depth-correct cube through `wl_egl_window` + `eglSwapBuffers` at ~62 fps, ANGLE-on-Metal, presented from the posted IOSurface — screenshot + posted-buffer sample in the 2026-07-26 entry below) | WIRED (`libiland_wayland_vulkan` + `iland_wl_swapchain_present_pixels`; `vkcube` re-hosted as xdg-shell Wayland client — runtime frame proof pending) |
+| iOS / iPadOS / visionOS | WIRED (winsys built for these targets; in-process launch via `WWNClientMainForId`; no device run yet) | WIRED (same WSI + Wayland `vkcube` archive; no device run yet) |
+| Android Play / Home Desktop | WIRED (AHardwareBuffer variant of the same winsys) | MISSING (AHB Vulkan present variant still open) |
 | tvOS / watchOS | N/A (fallback path; no GPU stack — see the tvOS GPU section) | N/A |
 
 Grading rule for this table: **PROPER needs a rendered frame observed on that
 target**, not a client that reaches `eglSwapBuffers` without error. Do not
 promote a cell on the strength of the macOS build alone, and do not describe a
-KMS-hosted client (KMS Cube, Vulkan Cube today) as a Wayland client.
+KMS-hosted client (KMS Cube only) as a Wayland client. Vulkan Cube is now a
+Wayland client; the KMS adaptation remains as `vkcube_kms.c` for reference.
 
 ---
 
 ## P1 progress log
+
+**2026-07-26 Wayland Vulkan WSI + vkcube re-host (`wl-winsys-vulkan`).**
+`libiland_wayland_vulkan.a` wraps `vkGetInstanceProcAddr` for
+`VK_KHR_wayland_surface` / `VK_KHR_swapchain` (MoltenVK has neither) and posts
+through the same IOSurface dmabuf winsys as EGL. The ICD-neutral present path
+copies swapchain/`VkImage` pixels into an IOSurface slot via
+`iland_wl_swapchain_present_pixels` (top-down; no ANGLE Y_INVERT). `vkcube` is
+re-hosted as an xdg-shell Wayland client (`main.c`); the old KMS/GBM path is
+kept as `vkcube_kms.c`. Machines Start routes `vkcube` like `opengl-cube`
+(compositor client), not through `WWNIlandPresenter`. Grade stays WIRED until a
+rendered frame is observed.
 
 **2026-07-26 KMS pipelining (depth-2 flips + fence flush).** The single
 outstanding-flip constraint is gone: `drm_linux.c` keeps a depth-2 queue, so a

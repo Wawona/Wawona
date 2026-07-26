@@ -1231,6 +1231,15 @@ GEN_HEADER
             '' else ''
             ''}
 
+            ${if effectiveNativeDeps.vkcube or null != null then ''
+            if [ -f "${effectiveNativeDeps.vkcube}/bin/vkcube" ]; then
+              cp "${effectiveNativeDeps.vkcube}/bin/vkcube" $out/Applications/Wawona.app/Contents/Resources/bin/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/vkcube
+              echo "DEBUG: Bundled vkcube (Wayland)"
+            fi
+            '' else ''
+            ''}
+
             ${if effectiveNativeDeps."weston-simple-egl" or null != null then ''
             if [ -f "${effectiveNativeDeps."weston-simple-egl"}/bin/weston-simple-egl" ]; then
               cp "${effectiveNativeDeps."weston-simple-egl"}/bin/weston-simple-egl" $out/Applications/Wawona.app/Contents/Resources/bin/

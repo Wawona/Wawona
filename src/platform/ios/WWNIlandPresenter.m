@@ -426,14 +426,10 @@ typedef struct {
     const char *const *argv;
 } wwn_cube_client_t;
 
-// All three drive the same iland virtual DRM; only the entry point and the
-// renderer behind it differ. vkcube's adaptation is KMS-only, but it accepts
-// --display-mode=kms so the intent is visible in logs.
-static const char *const kVkcubeArgv[] = { "--display-mode=kms", NULL };
-
+// kmscube drives iland's virtual DRM. opengl-cube and vkcube are Wayland
+// clients and are launched through the compositor, not this presenter.
 static const wwn_cube_client_t kCubeClients[] = {
     { "kmscube",     "KMSCUBE",     NULL },
-    { "vkcube",      "VKCUBE",      kVkcubeArgv },
 };
 
 static const wwn_cube_client_t *wwn_cube_client_for_id(NSString *clientId) {
@@ -444,11 +440,8 @@ static const wwn_cube_client_t *wwn_cube_client_for_id(NSString *clientId) {
     return NULL;
 }
 
-/* opengl-cube is not here: it is a Wayland client and is launched as one. This
- * presenter only hosts clients that drive iland's virtual DRM. */
 static wwn_cube_entry_t wwn_cube_entry_for_id(NSString *clientId) {
     if ([clientId isEqualToString:@"kmscube"]) return kmscube_main;
-    if ([clientId isEqualToString:@"vkcube"]) return vkcube_main;
     return NULL;
 }
 
