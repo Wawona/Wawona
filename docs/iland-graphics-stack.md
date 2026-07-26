@@ -132,3 +132,17 @@ Compilation alone is `WIRED`. A capability is `PROPER` only when the
 product-shaped artifact passes bundle audit, authoritative stock client launch,
 present-callback metadata checks, runtime logs and device/simulator evidence.
 DRM open/resources and KMS modeset/page-flip are graded independently.
+
+## Doc map (P4)
+
+| Doc | Owns |
+|-----|------|
+| This file | Architecture + acceptance contract |
+| [`iland-graphics-progress.md`](iland-graphics-progress.md) | Living grades + evidence log |
+| [`iland-mode-a-b-desktop.md`](iland-mode-a-b-desktop.md) | Privilege axis + packaging |
+| [`toolkit-soft-path.md`](toolkit-soft-path.md) | SDL/Qt/GTK readiness catalog |
+| [`testing/graphics-ci-matrix.md`](testing/graphics-ci-matrix.md) | CI + Agent-Device matrix |
+| [`wwn-repo-dag.md`](wwn-repo-dag.md) | L0–L4 ownership |
+
+WWN-MCP indexes these paths under the Wawona project; prefer linking here over
+duplicating architecture prose in issue comments.

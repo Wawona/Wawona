@@ -79,6 +79,20 @@ KMS-hosted client (KMS Cube, Vulkan Cube today) as a Wayland client.
 
 ## P1 progress log
 
+**2026-07-26 Mode B packaging closed; SIP runtime proof still owed (#87).**
+Implementation is real: `.#wawona-macos-desktop-host` ships
+`libwayland-mac.dylib` + helpers; product `.#wawona-macos` sets
+`ilandBaremetal = null` and fails the build if the dylib sneaks in;
+`verify-iland-mode-b-bundle.sh` + `verify-iland-graphics-bundle.sh` assert
+present vs absent per artifact; Apple mobile / Play hard-fail on Dobby /
+Mode B daemons / private frameworks. Engage path:
+`WWNSipStatus` → Settings Desktop toggle →
+`WWNDesktopReplacementController` → privileged insert. Android power tier
+remains Shizuku/root window policy only (no dylib, no kernel FB). Grade stays
+**WIRED** until a SIP-partial host completes an engage → kmscube/weston
+present → disengage cycle under Agent-Device; that evidence belongs on #87,
+not as a store-cell blocker.
+
 **2026-07-26 IOSurface dmabuf zero-copy (#86) — Apple GPU path PROPER on
 macOS.** The Wayland-EGL winsys posts IOSurface-backed `wl_buffer`s through
 `zwp_linux_dmabuf_v1` under the high-bit IOSurface-id modifier; the compositor
