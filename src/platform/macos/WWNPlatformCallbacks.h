@@ -22,6 +22,9 @@ FOUNDATION_EXPORT NSString *WWNWawonaBundledSharePath(NSString *relativePath);
 FOUNDATION_EXPORT NSString *_Nullable WWNWawonaBundledResourcePath(NSString *filename);
 FOUNDATION_EXPORT NSString *_Nullable WWNWawonaFindBundledExecutable(NSString *name);
 FOUNDATION_EXPORT void WWNConfigureBundledRuntimeEnvIfNeeded(void);
+/// Point fuzzel at the bundled Freedesktop catalog (share/applications +
+/// hicolor) and ensure writable XDG_DATA_HOME / cache. Safe to call repeatedly.
+FOUNDATION_EXPORT void WWNEnsureFuzzelXdgEnv(void);
 FOUNDATION_EXPORT void wwn_ios_refresh_bundle_env(void);
 
 /// Platform callbacks interface for Rust → macOS/iOS communication

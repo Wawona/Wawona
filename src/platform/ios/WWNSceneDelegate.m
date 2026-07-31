@@ -1299,7 +1299,13 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
   // it is — hiding its Machines UI and revealing its (now-unused, empty)
   // compositorContainer leaves the user with a black, uninteractable window
   // and no way to launch another machine.
-  if (![self clientsUseDedicatedScenes]) {
+  //
+  // Exception: forceRevealPrimary (iland/kmscube scene-activation fallback)
+  // when the Metal host could not get a dedicated scene and landed on the
+  // primary container — Machines would otherwise cover it permanently.
+  BOOL forceReveal =
+      [notification.userInfo[@"forceRevealPrimary"] boolValue];
+  if (forceReveal || ![self clientsUseDedicatedScenes]) {
     [self hideMachinesUIAndRevealCompositor];
   }
   [self refreshClientTabs];

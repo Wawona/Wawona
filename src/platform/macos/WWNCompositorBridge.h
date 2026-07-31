@@ -208,6 +208,12 @@ extern NSString *const WWNClientWindowSceneWindowIdKey;
 
 - (void)setWindowActivated:(uint64_t)windowId active:(BOOL)active;
 
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+/// Re-evaluate whether this window's surface should initiate AppKit window
+/// drags (weston flower/smoke allowlist). Call when app_id may have landed.
+- (void)refreshMacOSSurfaceDragPolicyForWindow:(NSWindow *)window;
+#endif
+
 /// Inject keyboard modifiers
 - (void)injectModifiersWithDepressed:(uint32_t)depressed
                              latched:(uint32_t)latched

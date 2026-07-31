@@ -266,6 +266,12 @@
                             button:0x110 // BTN_LEFT
                            pressed:YES
                          timestamp:(uint32_t)(event.timestamp * 1000)];
+  // app_id often arrives after WindowCreated; refresh before the allowlist
+  // check so flower/smoke still get whole-surface drag once identified.
+  if (wwnWindow && !wwnWindow.hostLocked) {
+    [[WWNCompositorBridge sharedBridge]
+        refreshMacOSSurfaceDragPolicyForWindow:wwnWindow];
+  }
   if (wwnWindow && wwnWindow.wwnSurfaceWindowDraggable &&
       event.type == NSEventTypeLeftMouseDown && event.buttonNumber == 0) {
     [wwnWindow performWindowDragWithEvent:event];

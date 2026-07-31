@@ -1155,10 +1155,19 @@ GEN_HEADER
 
             # Freedesktop catalog for fuzzel (share/applications + hicolor icons).
             # Runtime prepends XDG_DATA_DIRS=$WAWONA_SHARE_ROOT (issue #78).
+            # Install at both App/share (nix layout) and Contents/Resources/share
+            # (Xcode Bundle Executables layout) so ShareRoot preference always
+            # finds applications/ on either packaging path.
             if [ -d "${applicationsCatalog}/share/applications" ]; then
               mkdir -p "$APP/share/applications" "$APP/share/icons"
               cp -R "${applicationsCatalog}/share/applications/." "$APP/share/applications/"
               cp -R "${applicationsCatalog}/share/icons/hicolor" "$APP/share/icons/"
+              mkdir -p "$APP/Contents/Resources/share/applications" \
+                       "$APP/Contents/Resources/share/icons"
+              cp -R "${applicationsCatalog}/share/applications/." \
+                "$APP/Contents/Resources/share/applications/"
+              cp -R "${applicationsCatalog}/share/icons/hicolor" \
+                "$APP/Contents/Resources/share/icons/"
               echo "DEBUG: Bundled fuzzel applications catalog"
             fi
 

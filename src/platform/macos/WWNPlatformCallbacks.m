@@ -186,6 +186,9 @@ static void WWNPrependBundledXdgDataDirs(NSString *shareRoot) {
   NSString *appsDir =
       [shareRoot stringByAppendingPathComponent:@"applications"];
   if (![[NSFileManager defaultManager] fileExistsAtPath:appsDir]) {
+    WWNLog("BUNDLE",
+           @"No applications catalog at %@ — fuzzel Mod+D list will be empty",
+           appsDir);
     return;
   }
   const char *existing = getenv("XDG_DATA_DIRS");
@@ -310,11 +313,28 @@ NSString *WWNWawonaShareRoot(void) {
     return gWWNCachedShareRoot;
   }
   NSString *appRoot = WWNWawonaAppBundleRoot();
-  NSString *found = WWNFirstExistingPath(@[
+  NSArray<NSString *> *candidates = @[
     [appRoot stringByAppendingPathComponent:@"share"],
     [[WWNWawonaResourcesRoot() stringByAppendingPathComponent:@"share"]
         stringByStandardizingPath],
-  ]);
+  ];
+  // Prefer a share root that actually has the fuzzel applications catalog.
+  // macos.nix historically installs at App/share; Xcode Bundle Executables
+  // installs at Contents/Resources/share. Picking the first existing directory
+  // (often App/share with only fonts/weston) left XDG_DATA_DIRS pointing at a
+  // tree without applications/ → empty Mod+D list on macOS.
+  for (NSString *cand in candidates) {
+    if (cand.length == 0) {
+      continue;
+    }
+    NSString *apps =
+        [cand stringByAppendingPathComponent:@"applications"];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:apps]) {
+      gWWNCachedShareRoot = cand;
+      return gWWNCachedShareRoot;
+    }
+  }
+  NSString *found = WWNFirstExistingPath(candidates);
   gWWNCachedShareRoot =
       found ?: [appRoot stringByAppendingPathComponent:@"share"];
   return gWWNCachedShareRoot;
@@ -596,22 +616,53 @@ static void WWNConfigureBundledWestonDataIfNeeded(void) {
   }
 }
 
+void WWNEnsureFuzzelXdgEnv(void) {
+  // Drop a stale share-root cache so catalog preference can re-run (App/share
+  // vs Contents/Resources/share).
+  gWWNCachedShareRoot = nil;
+  NSString *shareRoot = WWNWawonaShareRoot();
+  setenv("WAWONA_SHARE_ROOT", shareRoot.UTF8String, 1);
+
+  NSString *home = NSHomeDirectory();
+  if (home.length > 0) {
+    NSString *dataHome =
+        [home stringByAppendingPathComponent:@".local/share"];
+    NSString *cache = [home stringByAppendingPathComponent:@".cache"];
+    [[NSFileManager defaultManager] createDirectoryAtPath:dataHome
+                              withIntermediateDirectories:YES
+                                               attributes:nil
+                                                    error:nil];
+    [[NSFileManager defaultManager] createDirectoryAtPath:cache
+                              withIntermediateDirectories:YES
+                                               attributes:nil
+                                                    error:nil];
+    // Writable XDG_DATA_HOME for fuzzel locks/cache; catalog stays in the
+    // bundle via XDG_DATA_DIRS (do not seed desktops into DATA_HOME).
+    setenv("XDG_DATA_HOME", dataHome.UTF8String, 1);
+    const char *existingCache = getenv("XDG_CACHE_HOME");
+    if (!existingCache || !existingCache[0]) {
+      setenv("XDG_CACHE_HOME", cache.UTF8String, 1);
+    }
+  }
+
+  WWNPrependBundledXdgDataDirs(shareRoot);
+}
+
 void WWNConfigureBundledRuntimeEnvIfNeeded(void) {
   static dispatch_once_t once;
   dispatch_once(&once, ^{
     NSString *appRoot = WWNWawonaAppBundleRoot();
-    NSString *shareRoot = WWNWawonaShareRoot();
     NSString *libRoot = WWNWawonaLibRoot();
     WWNSetEnvIfUnset(@"WAWONA_APP_BUNDLE_ROOT", appRoot);
-    WWNSetEnvIfUnset(@"WAWONA_SHARE_ROOT", shareRoot);
     WWNSetEnvIfUnset(@"WAWONA_LIB_ROOT", libRoot);
-    WWNLog("BUNDLE", @"App root: %s", appRoot.UTF8String);
-    WWNLog("BUNDLE", @"Share root: %s", shareRoot.UTF8String);
-    WWNLog("BUNDLE", @"Lib root: %s", libRoot.UTF8String);
     WWNConfigureBundledXkbIfNeeded();
     WWNConfigureBundledFontsIfNeeded();
     WWNConfigureBundledWestonDataIfNeeded();
-    WWNPrependBundledXdgDataDirs(shareRoot);
+    // Sets WAWONA_SHARE_ROOT + XDG_DATA_DIRS / XDG_DATA_HOME for fuzzel.
+    WWNEnsureFuzzelXdgEnv();
+    WWNLog("BUNDLE", @"App root: %s", appRoot.UTF8String);
+    WWNLog("BUNDLE", @"Share root: %s", getenv("WAWONA_SHARE_ROOT") ?: "(nil)");
+    WWNLog("BUNDLE", @"Lib root: %s", libRoot.UTF8String);
   });
 }
 

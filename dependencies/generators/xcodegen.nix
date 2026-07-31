@@ -675,6 +675,10 @@ PLIST
     # iland dlopen also probes flat @executable_path/Frameworks/lib*.dylib.
     cp -f "$EGL_SRC" "$DEST/libEGL.dylib"
     cp -f "$GLES_SRC" "$DEST/libGLESv2.dylib"
+    # /nix/store objects are mode 444; cp preserves that. InstallCoordination's
+    # copyfile then fails with NSPOSIXErrorDomain 13 (Permission denied) when
+    # Xcode / simctl installs the .app into the Simulator.
+    chmod -R u+w "$DEST"
     if [ -n "''${EXPANDED_CODE_SIGN_IDENTITY:-}" ] && [ "''${EXPANDED_CODE_SIGN_IDENTITY}" != "-" ]; then
       for lib in \
         "$DEST/libEGL.framework/libEGL" \
@@ -733,6 +737,7 @@ PLIST
     mkdir -p "$BUNDLE/share/applications" "$BUNDLE/share/icons"
     cp -R "$CATALOG/share/applications/." "$BUNDLE/share/applications/"
     cp -R "$CATALOG/share/icons/hicolor" "$BUNDLE/share/icons/"
+    chmod -R u+w "$BUNDLE/share/applications" "$BUNDLE/share/icons/hicolor" 2>/dev/null || true
     echo "Embedded fuzzel applications catalog into $BUNDLE/share"
   '';
 
@@ -748,6 +753,34 @@ PLIST
     outputFiles = appsCatalogEmbedOutputs;
   };
 
+  # Last post-build step for GPU Apple-mobile targets: nix-copied resources
+  # (ANGLE, weston share, neovim-rootfs, …) arrive mode 444 / with
+  # com.apple.provenance. InstallCoordination copyfile then fails with
+  # NSPOSIXErrorDomain 13 when installing into the Simulator. Make the whole
+  # .app writable and strip copy-blocking xattrs before Xcode's install step.
+  simInstallWritableBundleScript = pkgs.writeShellScript "sim-install-writable-bundle.sh" ''
+    case "''${PLATFORM_NAME:-}" in
+      *simulator*)
+        ;;
+      *)
+        exit 0
+        ;;
+    esac
+    BUNDLE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
+    if [ ! -d "$BUNDLE" ]; then
+      exit 0
+    fi
+    chmod -R u+w "$BUNDLE" 2>/dev/null || true
+    /usr/bin/xattr -cr "$BUNDLE" 2>/dev/null || true
+    echo "Simulator install prep: writable + cleared xattrs on $BUNDLE"
+  '';
+
+  simInstallWritableBundlePhase = {
+    path = simInstallWritableBundleScript;
+    name = "Prep bundle for Simulator install (chmod/xattr)";
+    basedOnDependencyAnalysis = false;
+  };
+
   # Single source of truth for the GPU-capable Apple-mobile targets
   # (iOS, iPadOS, visionOS — the three that must ship niri/fuzzel data, the
   # VM/container embeds, and bundled ANGLE per wawona-platform-targets).
@@ -761,7 +794,8 @@ PLIST
     [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase niriDataEmbedPhase appsCatalogEmbedPhase rootfsEmbedPhase neovimRootfsEmbedPhase ]
     ++ mobileVmEmbedPhases
     ++ lib.optionals (angleSimDylib != null) [ angleSimEmbedPhase ]
-    ++ lib.optionals (angleDeviceDylib != null) [ angleDeviceEmbedPhase ];
+    ++ lib.optionals (angleDeviceDylib != null) [ angleDeviceEmbedPhase ]
+    ++ [ simInstallWritableBundlePhase ];
 
   iosPostBuildPhases = mkAppleGpuPostBuildPhases {
     rootfsEmbedPhase = iosRootfsEmbedPhase;
@@ -818,6 +852,7 @@ PLIST
     else
       echo "warning: Adwaita cursors not found at $CURSOR_SRC" >&2
     fi
+    chmod -R u+w "$WESTON_DEST" "$ICONS_DEST" 2>/dev/null || true
   '';
 
   westonDataEmbedOutputs = [
@@ -863,6 +898,7 @@ PLIST
     DEST="$BUNDLE/share/niri"
     mkdir -p "$DEST"
     cp -L "$niriSrc" "$DEST/default-config.kdl"
+    chmod -R u+w "$DEST" 2>/dev/null || true
     echo "Embedded niri default-config.kdl into $DEST"
   '';
 
@@ -1630,7 +1666,7 @@ PLIST
         ] ++ iosUtilSources;
         preBuildScripts = [ stampBuildNumberPhase tvosPreBuild ];
         # No ANGLE embed / no VM guest on tvOS (platform-targets: no GL, no VM).
-        postBuildScripts = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase tvosNiriDataEmbedPhase tvosRootfsEmbedPhase tvosNeovimRootfsEmbedPhase ];
+        postBuildScripts = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase tvosNiriDataEmbedPhase tvosRootfsEmbedPhase tvosNeovimRootfsEmbedPhase simInstallWritableBundlePhase ];
 
         settings = {
           base = {
@@ -1977,12 +2013,20 @@ PLIST
               fi
 
               # Freedesktop catalog for fuzzel Mod+D (issue #78).
+              # Mirror under both Contents/Resources/share (primary for Xcode)
+              # and the app-root share/ sibling (nix macos.nix layout) so
+              # WWNWawonaShareRoot's applications/ preference always hits.
               APPS_CATALOG="${applicationsCatalog}"
               if [ -d "$APPS_CATALOG/share/applications" ]; then
                 mkdir -p "$RES_DEST/share/applications" "$RES_DEST/share/icons"
                 cp -R "$APPS_CATALOG/share/applications/." "$RES_DEST/share/applications/"
                 cp -R "$APPS_CATALOG/share/icons/hicolor" "$RES_DEST/share/icons/"
                 chmod -R u+w "$RES_DEST/share/applications" "$RES_DEST/share/icons/hicolor"
+                APP_SHARE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME/share"
+                mkdir -p "$APP_SHARE/applications" "$APP_SHARE/icons"
+                cp -R "$APPS_CATALOG/share/applications/." "$APP_SHARE/applications/"
+                cp -R "$APPS_CATALOG/share/icons/hicolor" "$APP_SHARE/icons/"
+                chmod -R u+w "$APP_SHARE/applications" "$APP_SHARE/icons/hicolor"
                 echo "Bundled fuzzel applications catalog"
               fi
 
@@ -2510,6 +2554,7 @@ PLIST
               exec "''${SRCROOT}/scripts/watchos-fix-embedded-frameworks.sh"
             '';
           }
+          simInstallWritableBundlePhase
         ];
         settings = {
           base = {

@@ -616,6 +616,9 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   float _cursorHotspotY;
 
   WWNIlandPresenter *_ilandPresenter;
+  /// YES while kmscube / nested DRM-GL owns this view's CAMetalLayer. Wayland
+  /// present paths must not tear the plate down mid-session (blank kmscube).
+  BOOL _ilandPresentationActive;
   uint64_t _lastPresentToken;
   CGImageRef _lastPresentedWaylandImage;
   CGFloat _lastContentsScale;
@@ -803,6 +806,8 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     _contentLayer.framebufferOnly = NO;
     // Transparent host plate for CSD / nested Metal present (matches AppKit CSD).
     _contentLayer.opaque = NO;
+    // Match AppKit WWNWindow: GL/GBM bottoms-up into a flipped Metal layer.
+    _contentLayer.geometryFlipped = YES;
     self.opaque = NO;
     self.backgroundColor = UIColor.clearColor;
     WWNEDRConfigureMetalLayer(
@@ -820,6 +825,9 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 }
 
 - (void)_teardownMetalPresentationLayer {
+  if (_ilandPresentationActive) {
+    return;
+  }
   [_ilandPresenter invalidate];
   _ilandPresenter = nil;
   [_contentLayer removeFromSuperlayer];
@@ -828,6 +836,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 
 - (void)prepareForSessionTeardown {
   _sessionActive = NO;
+  _ilandPresentationActive = NO;
   // presentWaylandFrame: early-returns once _sessionActive is NO, so drop the
   // external-display mirror layer explicitly.
   [self _mirrorFrameToExternalDisplay:NULL contentRect:CGRectZero];
@@ -853,6 +862,10 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 }
 
 - (void)setWaylandPresentationActive:(BOOL)active {
+  if (_ilandPresentationActive) {
+    // DRM/Metal nested client owns this view — do not hide or tear Metal.
+    return;
+  }
   _waylandFrameView.hidden = !active;
   if (active) {
     [self _teardownMetalPresentationLayer];
@@ -860,6 +873,9 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 }
 
 - (void)prepareWaylandLayerSubpresentation {
+  if (_ilandPresentationActive) {
+    return;
+  }
   [self _teardownMetalPresentationLayer];
   _waylandFrameView.hidden = YES;
   _waylandFrameView.layer.contents = nil;
@@ -877,7 +893,9 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   if (!_sessionActive) {
     return;
   }
-  [self _teardownMetalPresentationLayer];
+  if (!_ilandPresentationActive) {
+    [self _teardownMetalPresentationLayer];
+  }
   _waylandLayer.hidden = YES;
   if (!image) {
     _waylandFrameView.layer.contents = nil;
@@ -1111,6 +1129,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 
 - (BOOL)prepareIlandMetalPresentation {
   [self _ensureMetalPresentationLayer];
+  _ilandPresentationActive = YES;
   _waylandFrameView.hidden = YES;
   _waylandFrameView.layer.contents = nil;
   _waylandLayer.hidden = YES;

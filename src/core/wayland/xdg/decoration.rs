@@ -73,6 +73,10 @@ fn app_id_matches_bundled_client(app_id: &str, client_id: &str) -> bool {
 /// Weston toy/demo clients that initiate `xdg_toplevel.move` from the whole
 /// surface (no real titlebar). On macOS the host must start an AppKit window
 /// drag from content clicks — not only from SSD chrome or xdg move round-trips.
+///
+/// Do **not** broaden this to nested compositors (niri/weston) or terminals:
+/// `NSWindow.movableByWindowBackground` / whole-surface `performWindowDrag`
+/// steals click-drag text selection and compositor pointer gestures.
 pub fn prefers_macos_surface_window_drag(app_id: &str) -> bool {
     if app_id.is_empty() {
         return false;
@@ -474,6 +478,9 @@ mod tests {
         assert!(!prefers_macos_surface_window_drag("weston-dnd"));
         assert!(!prefers_macos_surface_window_drag("weston-clickdot"));
         assert!(!prefers_macos_surface_window_drag("weston"));
+        // Nested compositors / interactive shells must not steal click-drags.
+        assert!(!prefers_macos_surface_window_drag("niri"));
+        assert!(!prefers_macos_surface_window_drag(""));
     }
 
     #[test]

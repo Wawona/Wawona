@@ -1520,50 +1520,7 @@ NSString *WWNResolveCompositorBackend(NSString *overrideValue) {
 /// bundled Freedesktop catalog (share/applications + hicolor). Desktop entries
 /// are packaged by applications-catalog.nix; do not re-seed them here (#78).
 static void wwnEnsureFuzzelXdgEnv(void) {
-  NSString *home = NSHomeDirectory();
-  if (home.length == 0) {
-    return;
-  }
-  NSString *dataHome =
-      [home stringByAppendingPathComponent:@".local/share"];
-  NSString *cache = [home stringByAppendingPathComponent:@".cache"];
-  NSError *err = nil;
-  [[NSFileManager defaultManager] createDirectoryAtPath:dataHome
-                            withIntermediateDirectories:YES
-                                             attributes:nil
-                                                  error:&err];
-  [[NSFileManager defaultManager] createDirectoryAtPath:cache
-                            withIntermediateDirectories:YES
-                                             attributes:nil
-                                                  error:nil];
-  // Writable XDG_DATA_HOME for fuzzel cache/state; catalog lives in the bundle.
-  setenv("XDG_DATA_HOME", dataHome.UTF8String, 1);
-
-  NSString *shareRoot = WWNWawonaShareRoot();
-  NSString *appsDir =
-      [shareRoot stringByAppendingPathComponent:@"applications"];
-  if ([[NSFileManager defaultManager] fileExistsAtPath:appsDir]) {
-    const char *existing = getenv("XDG_DATA_DIRS");
-    NSString *combined;
-    if (existing && existing[0]) {
-      NSString *ex = @(existing);
-      NSArray<NSString *> *parts = [ex componentsSeparatedByString:@":"];
-      if (![parts containsObject:shareRoot]) {
-        combined = [NSString stringWithFormat:@"%@:%@", shareRoot, ex];
-        setenv("XDG_DATA_DIRS", combined.UTF8String, 1);
-      }
-    } else {
-      combined = [NSString
-          stringWithFormat:@"%@:/usr/local/share:/usr/share", shareRoot];
-      setenv("XDG_DATA_DIRS", combined.UTF8String, 1);
-    }
-    WWNLog("NIRI", @"fuzzel XDG_DATA_DIRS includes bundled catalog at %@",
-           appsDir);
-  } else {
-    WWNLog("NIRI",
-           @"No bundled share/applications at %@ — fuzzel list will be empty",
-           appsDir);
-  }
+  WWNEnsureFuzzelXdgEnv();
 }
 
 /// Env niri needs on Apple mobile (GLES via ANGLE EGL), honouring the
@@ -2159,11 +2116,26 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     WWNLog("NIRI", @"backend=%@ (NIRI_BACKEND=%@)", backend,
            env[@"NIRI_BACKEND"]);
     NSString *shareRoot = env[@"WAWONA_SHARE_ROOT"];
+    if (shareRoot.length == 0) {
+      shareRoot = WWNWawonaShareRoot();
+      if (shareRoot.length > 0) {
+        env[@"WAWONA_SHARE_ROOT"] = shareRoot;
+      }
+    }
     if (shareRoot.length > 0) {
       NSString *kdl = [shareRoot
           stringByAppendingPathComponent:@"niri/default-config.kdl"];
       if ([[NSFileManager defaultManager] fileExistsAtPath:kdl]) {
         env[@"NIRI_CONFIG"] = kdl;
+      } else {
+        // Catalog may live under App/share while niri's KDL is only under
+        // Contents/Resources/share (or the reverse). Probe both.
+        NSString *alt = [[WWNWawonaResourcesRoot()
+            stringByAppendingPathComponent:@"share/niri/default-config.kdl"]
+            stringByStandardizingPath];
+        if ([[NSFileManager defaultManager] fileExistsAtPath:alt]) {
+          env[@"NIRI_CONFIG"] = alt;
+        }
       }
     }
     // niri renders GLES through ANGLE's Vulkan-over-Wayland winsys; point
@@ -2201,24 +2173,38 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       NSString *path = env[@"PATH"] ?: @"/usr/bin:/bin:/usr/sbin:/sbin";
       env[@"PATH"] = [NSString stringWithFormat:@"%@:%@", bundleBin, path];
     }
-    // fuzzel discovers apps via XDG (issue #78). Point at bundled
-    // share/applications + share/icons/hicolor.
-    if (shareRoot.length > 0) {
+    // fuzzel discovers apps via XDG (issue #78). Resolve the catalog share
+    // root at launch (do not trust a stale WAWONA_SHARE_ROOT) and force
+    // XDG_DATA_DIRS / XDG_DATA_HOME into the child so Mod+D is not empty.
+    WWNEnsureFuzzelXdgEnv();
+    {
+      const char *sr = getenv("WAWONA_SHARE_ROOT");
+      const char *xdgDirs = getenv("XDG_DATA_DIRS");
+      const char *xdgHome = getenv("XDG_DATA_HOME");
+      const char *xdgCache = getenv("XDG_CACHE_HOME");
+      if (sr && sr[0]) {
+        env[@"WAWONA_SHARE_ROOT"] = @(sr);
+      }
+      if (xdgDirs && xdgDirs[0]) {
+        env[@"XDG_DATA_DIRS"] = @(xdgDirs);
+      }
+      if (xdgHome && xdgHome[0]) {
+        env[@"XDG_DATA_HOME"] = @(xdgHome);
+      }
+      if (xdgCache && xdgCache[0]) {
+        env[@"XDG_CACHE_HOME"] = @(xdgCache);
+      }
       NSString *appsDir =
-          [shareRoot stringByAppendingPathComponent:@"applications"];
-      if ([[NSFileManager defaultManager] fileExistsAtPath:appsDir]) {
-        NSString *existing = env[@"XDG_DATA_DIRS"];
-        if (existing.length > 0) {
-          NSArray<NSString *> *parts =
-              [existing componentsSeparatedByString:@":"];
-          if (![parts containsObject:shareRoot]) {
-            env[@"XDG_DATA_DIRS"] =
-                [NSString stringWithFormat:@"%@:%@", shareRoot, existing];
-          }
-        } else {
-          env[@"XDG_DATA_DIRS"] = [NSString
-              stringWithFormat:@"%@:/usr/local/share:/usr/share", shareRoot];
-        }
+          sr ? [@(sr) stringByAppendingPathComponent:@"applications"] : nil;
+      if (appsDir.length > 0 &&
+          [[NSFileManager defaultManager] fileExistsAtPath:appsDir]) {
+        WWNLog("NIRI", @"fuzzel XDG_DATA_DIRS=%@ (catalog %@)",
+               env[@"XDG_DATA_DIRS"] ?: @"(unset)", appsDir);
+      } else {
+        WWNLog("NIRI",
+               @"No bundled share/applications — fuzzel Mod+D list will be "
+               @"empty (WAWONA_SHARE_ROOT=%s)",
+               sr ? sr : "(nil)");
       }
     }
   }

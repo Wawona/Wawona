@@ -264,6 +264,31 @@ static MTLPixelFormat WWNMetalFormatForIOSurface(uint32_t fourcc) {
 - (void)presentIOSurface:(IOSurfaceRef)surface
                   crtcID:(uint32_t)crtcID
            framebufferID:(uint32_t)framebufferID {
+    // CAMetalLayer nextDrawable is unreliable off the main thread on UIKit;
+    // hop the whole present so kmscube's render thread does not paint into a
+    // nil drawable (permanent black plate).
+    if (![NSThread isMainThread]) {
+        if (!surface) {
+            iland_drm_complete_page_flip(crtcID, framebufferID);
+            return;
+        }
+        CFRetain(surface);
+        __weak typeof(self) weakSelf = self;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (!strongSelf) {
+                CFRelease(surface);
+                iland_drm_complete_page_flip(crtcID, framebufferID);
+                return;
+            }
+            [strongSelf presentIOSurface:surface
+                                  crtcID:crtcID
+                           framebufferID:framebufferID];
+            CFRelease(surface);
+        });
+        return;
+    }
+
     NSUInteger w = IOSurfaceGetWidth(surface);
     NSUInteger h = IOSurfaceGetHeight(surface);
     if (w == 0 || h == 0) {

@@ -113,6 +113,11 @@ NSString *const WWNClientWindowSceneActivityType =
     @"com.aspauldingcode.Wawona.clientWindow";
 NSString *const WWNClientWindowSceneWindowIdKey = @"wwn.windowId";
 
+/// Synthetic host window id for iland DRM/KMS clients (kmscube) that have no
+/// Wayland toplevel. Used only to request a dedicated UIWindowScene on
+/// iPadOS / visionOS so the Metal plate is not buried under Machines UI.
+static const uint64_t kWWNIlandHostSceneWindowId = 0x574E4E494C414E44ULL; // "WNNILAND"
+
 /// Bundled weston demos with a fixed preferred size (200×200 or simple-shm
 /// preferred). Must never receive host fill configures or stretch presentation
 /// when the iPadOS UIWindowScene resizes — OWL keeps Client authority.
@@ -334,6 +339,90 @@ static BOOL WWNBufferIsBottomUp(IOSurfaceRef surf) {
   }
   return bottomUp;
 }
+
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+/// UIKit does not composite IOSurface-as-CALayer.contents the way AppKit does.
+/// Convert to a CGImage (with optional Y-flip for GL bottom-up) so the existing
+/// presentWaylandFrame: path can paint opengl-cube / weston-simple-egl.
+static CGImageRef WWNCreateCGImageFromIOSurface(IOSurfaceRef surf,
+                                                BOOL flipVertical) {
+  if (!surf) {
+    return NULL;
+  }
+  size_t w = IOSurfaceGetWidth(surf);
+  size_t h = IOSurfaceGetHeight(surf);
+  size_t bpr = IOSurfaceGetBytesPerRow(surf);
+  if (w == 0 || h == 0 || bpr < 4) {
+    return NULL;
+  }
+
+  // Success is 0 (IOReturn). Do not use kIOReturnSuccess — IOKit is missing on
+  // the iOS family SDKs.
+  if (IOSurfaceLock(surf, kIOSurfaceLockReadOnly, NULL) != 0) {
+    return NULL;
+  }
+  const uint8_t *base = (const uint8_t *)IOSurfaceGetBaseAddress(surf);
+  if (!base) {
+    IOSurfaceUnlock(surf, kIOSurfaceLockReadOnly, NULL);
+    return NULL;
+  }
+
+  size_t nbytes = bpr * h;
+  CFMutableDataRef data =
+      CFDataCreateMutable(kCFAllocatorDefault, (CFIndex)nbytes);
+  if (!data) {
+    IOSurfaceUnlock(surf, kIOSurfaceLockReadOnly, NULL);
+    return NULL;
+  }
+  CFDataSetLength(data, (CFIndex)nbytes);
+  uint8_t *dst = CFDataGetMutableBytePtr(data);
+  if (flipVertical) {
+    for (size_t y = 0; y < h; y++) {
+      memcpy(dst + y * bpr, base + (h - 1 - y) * bpr, bpr);
+    }
+  } else {
+    memcpy(dst, base, nbytes);
+  }
+  IOSurfaceUnlock(surf, kIOSurfaceLockReadOnly, NULL);
+
+  // Force opaque alpha. ANGLE/Metal IOSurfaces sometimes land with A=0 while
+  // RGB is populated; UIKit then composites a fully transparent CGImage over
+  // the black host window → "blank OpenGL window".
+  for (size_t y = 0; y < h; y++) {
+    uint8_t *row = dst + y * bpr;
+    for (size_t x = 0; x < w; x++) {
+      row[x * 4 + 3] = 0xFF;
+    }
+  }
+
+  static int s_iosurfPxLog = 0;
+  if (s_iosurfPxLog < 4) {
+    s_iosurfPxLog++;
+    WWNLog("CACHE",
+           @"IOSurface→CGImage %zux%zu flip=%d px0=B%d,G%d,R%d,A%d "
+           @"(forced opaque)",
+           w, h, (int)flipVertical, (int)dst[0], (int)dst[1], (int)dst[2],
+           (int)dst[3]);
+  }
+
+  CGDataProviderRef provider = CGDataProviderCreateWithCFData(data);
+  CFRelease(data);
+  if (!provider) {
+    return NULL;
+  }
+  CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+  // ANGLE / Metal IOSurfaces are BGRA8 — same little-endian layout as wl_shm
+  // ARGB8888 (B,G,R,A in memory).
+  CGBitmapInfo bitmapInfo = kCGBitmapByteOrder32Little |
+                            (CGBitmapInfo)kCGImageAlphaPremultipliedFirst;
+  CGImageRef image =
+      CGImageCreate(w, h, 8, 32, bpr, colorSpace, bitmapInfo, provider, NULL,
+                    false, kCGRenderingIntentDefault);
+  CGColorSpaceRelease(colorSpace);
+  CGDataProviderRelease(provider);
+  return image;
+}
+#endif
 
 /// Drop stale SHM/IOSurface cache entries for a surface, keeping only `keepKey`.
 /// Required on macOS too: without this, every frame accumulates in `_bufferCache`
@@ -1557,7 +1646,29 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   if (buffer->iosurface_id != 0) {
     IOSurfaceRef surf = IOSurfaceLookup(buffer->iosurface_id);
     if (surf) {
-      if (WWNBufferIsBottomUp(surf)) {
+      BOOL bottomUp = WWNBufferIsBottomUp(surf);
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+      // AppKit can assign IOSurface to CALayer.contents; UIKit cannot. Bake a
+      // CGImage (Y-flipped when GL marked WWNBottomUp) so _updateIOSPresentation
+      // hits presentWaylandFrame: instead of the blank legacy layer path.
+      CGImageRef image = WWNCreateCGImageFromIOSurface(surf, bottomUp);
+      CFRelease(surf);
+      if (image) {
+        _bufferCache[cacheKey] = (__bridge_transfer id)image;
+        [_bottomUpBuffers removeObject:cacheKey];
+        WWNPruneBufferCacheForSurface(_bufferCache, buffer->surface_id,
+                                      cacheKey);
+        _waylandPresentGeneration++;
+        _presentGenerationBySurface[surfaceId] = @(_waylandPresentGeneration);
+        WWNLog("CACHE", @"Cached IOSurface→CGImage buf=%llu bottomUp=%d",
+               buffer->buffer_id, (int)bottomUp);
+      } else {
+        WWNLog("CACHE",
+               @"FAILED IOSurface→CGImage for buf=%llu iosurface=%u",
+               buffer->buffer_id, buffer->iosurface_id);
+      }
+#else
+      if (bottomUp) {
         [_bottomUpBuffers addObject:cacheKey];
       } else {
         [_bottomUpBuffers removeObject:cacheKey];
@@ -1570,11 +1681,8 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
         [_bottomUpBuffers
             intersectSet:[NSSet setWithArray:_bufferCache.allKeys]];
       }
-#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
-      _waylandPresentGeneration++;
-      _presentGenerationBySurface[surfaceId] = @(_waylandPresentGeneration);
-#endif
       WWNLog("CACHE", @"Cached IOSurface buf=%llu", buffer->buffer_id);
+#endif
     } else {
       WWNLog("CACHE", @"FAILED IOSurface lookup for buf=%llu iosurface=%u",
              buffer->buffer_id, buffer->iosurface_id);
@@ -1873,24 +1981,14 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     return;
   }
 
-  // IOSurface fallback: attach to legacy layer tree.
-  CALayer *layer = _surfaceLayers[surfId];
-  if (!layer) {
-    layer = [CALayer layer];
-    layer.geometryFlipped = YES;
-    layer.opaque = YES;
-    layer.contentsGravity = kCAGravityTopLeft;
-    _surfaceLayers[surfId] = layer;
-    [iosView prepareWaylandLayerSubpresentation];
-    [iosView.waylandLayer addSublayer:layer];
-  }
-  [CATransaction begin];
-  [CATransaction setDisableActions:YES];
-  layer.frame = frame;
-  layer.contentsRect = contentRect;
-  layer.opacity = node->opacity;
-  layer.contents = content;
-  [CATransaction commit];
+  // IOSurface-as-CALayer.contents is AppKit-only. If an IOSurface still reaches
+  // here (cache conversion failed), drop it — painting a blank legacy layer
+  // hides the real failure mode.
+  WWNLog("RENDER",
+         @"IOS skip non-CGImage content for surf=%@ win=%@ (type=%lu) — "
+         @"IOSurface must be converted in cacheBuffer",
+         surfId, winId,
+         (unsigned long)CFGetTypeID((__bridge CFTypeRef)content));
 }
 #endif
 
@@ -3906,11 +4004,24 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
       WWNCoreWindowPrefersMacOSSurfaceDrag(_rustCore, window.wwnWindowId);
   window.wwnSurfaceWindowDraggable = draggable;
   [window setMovable:YES];
+  // SSD used to set movableByWindowBackground:YES for every non-CSD window.
+  // That lets AppKit steal click-drags inside the Wayland surface (text
+  // selection, niri/weston compositor gestures, etc.) and move the host
+  // window instead. Only the demo allowlist (flower/smoke/…) may drag from
+  // the whole surface; everyone else moves via the AppKit titlebar (SSD) or
+  // xdg_toplevel.move → performWindowDrag (CSD).
   if (draggable) {
     [window setMovableByWindowBackground:YES];
   } else {
-    [window setMovableByWindowBackground:!window.clientSideDecorated];
+    [window setMovableByWindowBackground:NO];
   }
+}
+
+- (void)refreshMacOSSurfaceDragPolicyForWindow:(NSWindow *)window {
+  if (![window isKindOfClass:[WWNWindow class]]) {
+    return;
+  }
+  [self wwnApplySurfaceDragPolicyForWindow:(WWNWindow *)window];
 }
 
 - (void)handleWindowMoveRequested:(CWindowEvent *)event {
@@ -4263,6 +4374,8 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
     if (newTitle.length > 0) {
       [[NSProcessInfo processInfo] setProcessName:newTitle];
     }
+    // Title/app_id often land together; refresh demo surface-drag allowlist.
+    [self refreshMacOSSurfaceDragPolicyForWindow:window];
   } else {
     WWNLog("BRIDGE",
            @"Warning: handleWindowTitleChanged for unknown window %llu",
@@ -5035,31 +5148,37 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
   _waylandPresentGeneration = 0;
 }
 
-/// Prefer an existing Wayland host view; otherwise create a dedicated Metal
-/// presentation view in containerView so kmscube/iland can present before any
-/// toplevel exists (macOS parity with ensureIlandPresentationView).
+/// Prefer a dedicated Metal presentation view. Do NOT hijack an arbitrary
+/// Wayland toplevel view — those tear down CAMetalLayer on the first SHM/
+/// Wayland frame and leave kmscube blank.
 - (WWNCompositorView_ios *)ensureIlandPresentationView {
+  if (_ilandHostView) {
+    return _ilandHostView;
+  }
+
   for (NSNumber *key in _windows) {
     id candidate = _windows[key];
     if (![candidate isKindOfClass:[WWNCompositorView_ios class]]) {
       continue;
     }
     WWNCompositorView_ios *view = (WWNCompositorView_ios *)candidate;
-    CGSize size = view.bounds.size;
-    if (size.width > 1.0 && size.height > 1.0) {
-      return view;
+    if ([view.accessibilityIdentifier isEqualToString:@"wwn.compositor.iland-host"]) {
+      CGSize size = view.bounds.size;
+      if (size.width > 1.0 && size.height > 1.0) {
+        _ilandHostView = view;
+        return view;
+      }
     }
   }
 
-  if ([self.containerView isKindOfClass:[WWNCompositorView_ios class]]) {
-    return (WWNCompositorView_ios *)self.containerView;
-  }
-
-  if (_ilandHostView.superview) {
+  if ([self.containerView isKindOfClass:[WWNCompositorView_ios class]] &&
+      [((WWNCompositorView_ios *)self.containerView).accessibilityIdentifier
+          isEqualToString:@"wwn.compositor.iland-host"]) {
+    _ilandHostView = (WWNCompositorView_ios *)self.containerView;
     return _ilandHostView;
   }
 
-  if (!self.containerView) {
+  if (!self.containerView && !_iosPerWindowHostingEnabled) {
     WWNLog("BRIDGE",
            @"ensureIlandPresentationView: containerView is nil — cannot host "
            @"iland/kmscube");
@@ -5067,10 +5186,11 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
   }
 
   [self seedOutputSizeFromLiveHostSurface];
-  CGRect frame = self.containerView.bounds;
+  CGRect frame = self.containerView ? self.containerView.bounds
+                                    : CGRectMake(0, 0, 1024, 768);
   if (frame.size.width < 1.0 || frame.size.height < 1.0) {
-    uint32_t w = _latestOutputW > 0 ? _latestOutputW : 390;
-    uint32_t h = _latestOutputH > 0 ? _latestOutputH : 844;
+    uint32_t w = _latestOutputW > 0 ? _latestOutputW : 1024;
+    uint32_t h = _latestOutputH > 0 ? _latestOutputH : 768;
     frame = CGRectMake(0, 0, (CGFloat)w, (CGFloat)h);
   }
 
@@ -5082,15 +5202,102 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
   view.accessibilityLabel = @"kmscube";
   view.hostLocked = YES;
   view.followHostSize = YES;
-  // Above any race-created Wayland window views — insertSubview:atIndex:0
-  // left the Metal plate covered by a later opaque SHM window (black screen).
-  [self.containerView addSubview:view];
-  [self.containerView bringSubviewToFront:view];
   _ilandHostView = view;
-  WWNLog("BRIDGE",
-         @"Created iland presentation host %.0fx%.0f for nested GL client",
-         frame.size.width, frame.size.height);
+
+  if (_iosPerWindowHostingEnabled) {
+    // iPadOS / visionOS: do NOT attach under the primary Machines container —
+    // launchNestedIlandGpuClient requests a dedicated UIWindowScene instead.
+    WWNLog("BRIDGE",
+           @"Created iland presentation host %.0fx%.0f (deferred dedicated scene)",
+           frame.size.width, frame.size.height);
+  } else if (self.containerView) {
+    // Phone / single-scene: above any race-created Wayland window views —
+    // insertSubview:atIndex:0 left the Metal plate covered by a later opaque
+    // SHM window (black screen).
+    [self.containerView addSubview:view];
+    [self.containerView bringSubviewToFront:view];
+    WWNLog("BRIDGE",
+           @"Created iland presentation host %.0fx%.0f for nested GL client",
+           frame.size.width, frame.size.height);
+  } else {
+    WWNLog("BRIDGE",
+           @"ensureIlandPresentationView: containerView is nil — cannot host "
+           @"iland/kmscube");
+    _ilandHostView = nil;
+    return nil;
+  }
   return view;
+}
+
+/// iPadOS / visionOS: put the iland Metal host in its own UIWindowScene so
+/// kmscube is visible while Machines stays on the primary scene. Mirrors the
+/// Wayland toplevel path in handleWindowCreated (no xdg_toplevel for KMS).
+- (void)requestDedicatedSceneForIlandHostView:(WWNCompositorView_ios *)view
+                                        title:(NSString *)title {
+  if (!_iosPerWindowHostingEnabled || !view) {
+    return;
+  }
+#if !TARGET_OS_TV
+  if (@available(iOS 17.0, visionOS 1.0, *)) {
+    uint64_t wid = kWWNIlandHostSceneWindowId;
+    if (title.length > 0) {
+      view.accessibilityLabel = title;
+    }
+    if (view.superview == self.containerView) {
+      [view removeFromSuperview];
+    }
+    _windows[@(wid)] = view;
+    _pendingSceneClientViews[@(wid)] = view;
+
+    NSUserActivity *activity = [[NSUserActivity alloc]
+        initWithActivityType:WWNClientWindowSceneActivityType];
+    activity.userInfo = @{WWNClientWindowSceneWindowIdKey : @(wid)};
+
+    UISceneSessionActivationRequest *request = [UISceneSessionActivationRequest
+        requestWithRole:UIWindowSceneSessionRoleApplication];
+    request.userActivity = activity;
+    [UIApplication.sharedApplication
+        activateSceneSessionForRequest:request
+                          errorHandler:^(NSError *err) {
+                            WWNLog("BRIDGE",
+                                   @"Scene activation failed for iland host "
+                                   @"%llu: %@ — falling back to primary container",
+                                   wid, err);
+                            dispatch_async(dispatch_get_main_queue(), ^{
+                              UIView *pending = [self
+                                  takePendingSceneClientViewForWindowId:wid];
+                              if (!pending) {
+                                pending = self->_ilandHostView;
+                              }
+                              if (pending && self.containerView) {
+                                if (pending.superview != self.containerView) {
+                                  [self.containerView addSubview:pending];
+                                }
+                                [self.containerView bringSubviewToFront:pending];
+                                // Primary-scene fallback: Machines would cover
+                                // the plate — reveal compositor like phone.
+                                [[NSNotificationCenter defaultCenter]
+                                    postNotificationName:
+                                        WWNNativeClientWillLaunchNotification
+                                                  object:self
+                                                userInfo:@{
+                                                  @"clientId" : title ?: @"kmscube",
+                                                  @"forceRevealPrimary" : @YES
+                                                }];
+                              }
+                            });
+                          }];
+    WWNLog("BRIDGE",
+           @"Requested dedicated UIWindowScene for iland host %llu (%@)", wid,
+           title ?: @"kmscube");
+    return;
+  }
+#endif
+  // Pre-iOS 17: attach to primary container.
+  if (self.containerView && view.superview != self.containerView) {
+    [self.containerView addSubview:view];
+    [self.containerView bringSubviewToFront:view];
+  }
 }
 
 - (BOOL)launchNestedIlandGpuClientOnPrimaryView:(NSString *)clientId {
@@ -5101,6 +5308,7 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
            clientId, self.containerView ? @"set" : @"nil");
     return NO;
   }
+  [self requestDedicatedSceneForIlandHostView:view title:clientId];
   BOOL ok = [view launchNestedIlandGpuClient:clientId];
   if (!ok) {
     WWNLog("KMSCUBE",

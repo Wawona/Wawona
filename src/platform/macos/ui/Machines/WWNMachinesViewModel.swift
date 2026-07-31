@@ -107,7 +107,7 @@ let kAllBundledClients: [BundledClient] = [
     name: "OpenGL Cube",
     prefsKey: "OpenglCubeEnabled",
     icon: "cube",
-    description: "GLES cube via iland userland KMS",
+    description: "GLES cube via Wayland-EGL (iland + ANGLE)",
     requiresGpuStack: true
   ),
   BundledClient(
