@@ -65,7 +65,7 @@ this is the winsys path (`libiland_wayland_egl`: `wl_egl_window_*` +
 
 | Target | Wayland + EGL/GLES client | Wayland + Vulkan client |
 |---|---|---|
-| macOS 3rd-party product | **PROPER** (`opengl-cube` renders a depth-correct cube through `wl_egl_window` + `eglSwapBuffers` at ~62 fps, ANGLE-on-Metal, presented from the posted IOSurface — screenshot + posted-buffer sample in the 2026-07-26 entry below) | WIRED (`libiland_wayland_vulkan` + `iland_wl_swapchain_present_pixels`; `vkcube` re-hosted as xdg-shell Wayland client — runtime frame proof pending) |
+| macOS 3rd-party product | **PROPER** (`opengl-cube` renders a depth-correct cube through `wl_egl_window` + `eglSwapBuffers` at ~62 fps, ANGLE-on-Metal, presented from the posted IOSurface — screenshot + posted-buffer sample in the 2026-07-26 entry below) | **PROPER** (`vkcube` Wayland xdg-shell + IOSurface dmabuf; owner-confirmed spinning cube under both `VulkanDriver=moltenvk` and `VulkanDriver=kosmickrisp` — 2026-07-31) |
 | iOS / iPadOS / visionOS | WIRED (winsys built for these targets; in-process launch via `WWNClientMainForId`; no device run yet) | WIRED (same WSI + Wayland `vkcube` archive; no device run yet) |
 | Android Play / Home Desktop | WIRED (AHardwareBuffer variant of the same winsys) | MISSING (AHB Vulkan present variant still open) |
 | tvOS / watchOS | N/A (fallback path; no GPU stack — see the tvOS GPU section) | N/A |
@@ -108,6 +108,33 @@ graphics/Mode-B asserts are in CI; still missing verifier checks for OpenSSH
 on Apple mobile and Desktop/SIP UI leakage into iOS-family bundles. Apple
 IOSurface dmabuf + waypipe zero-copy remain the #86 PROPER half; AHB/waypipe
 Android is the open half.
+
+**2026-07-31 Android Wayland GL/VK wiring landed (WIRED, runtime pending).**
+`wwn-iland` `8152b62` builds `libiland_wayland_egl` (+ optional vulkan WSI) for
+Android with in-process AHB id registry (`ILandIOSurfaceLookup`) and GBM
+`get_fd`/`import` under the same #86 high-bit modifier. `wwn-kmscube`
+`0b2f372` rehosts Android `opengl-cube`/`vkcube` as Wayland clients. Wawona
+`304ac58` links both archives, resolves native dmabuf present via AHB lookup,
+and stops routing `opengl-cube` through the KMS presenter. Grade stays WIRED
+until Agent-Device shows frames; waypipe Android GBM remains a separate gap.
+
+**2026-07-31 macOS Wayland+Vulkan → PROPER.** Xcode "Bundle Executables" had
+shipped `opengl-cube` but never `vkcube`, so Machines Start looked for
+`Resources/bin/vkcube` and showed no window (`VulkanDriver=none` also correctly
+refuses). Fix in tree: bundle `vkcube` in `xcodegen.nix` + in-process
+`vkcube_main` fallback. Owner confirmed a spinning cube under both MoltenVK and
+KosmicKrisp after dropping the binary into the running app. Commit the packaging
+fix so the next `wawona-macos` build ships it.
+
+**2026-07-31 macOS ANGLE clients (opengl-cube / weston-simple-egl).** Same
+bundle gap for `weston-simple-egl` (xcodegen never copied it; weston's flake
+iland pin also predated `libiland_wayland_egl`). Dropped a rebuilt binary into
+the running app. Separate Start bug: GPU refusal ran *before* machine
+`OpenGLDriver`/`VulkanDriver` were applied, so a leftover global
+`VulkanDriver=none` (or stale GL) could refuse ANGLE clients the machine
+profile enables — fixed in `WWNWaypipeRunner.m` (apply machine prefs +
+`WWNSettings_ApplyGraphicsDriverSelection` before refusal). Needs rebuild to
+take effect in-app.
 
 **2026-07-26 KMS pipelining (depth-2 flips + fence flush).** The single
 outstanding-flip constraint is gone: `drm_linux.c` keeps a depth-2 queue, so a

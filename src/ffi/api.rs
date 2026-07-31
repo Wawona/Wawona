@@ -2448,9 +2448,13 @@ fn smithay_send_pointer_frame(state: &CompositorState, client: &wayland_server::
         return 0;
     };
     let mut sent = 0;
+    // Smithay's own seat path gates this; client_pointers() does not.
+    // Opcode 5 (`frame`) is since wl_pointer v5 — see broadcast_frame.
     for ptr in pointer.client_pointers(client) {
-        ptr.frame();
-        sent += 1;
+        if ptr.version() >= 5 {
+            ptr.frame();
+            sent += 1;
+        }
     }
     sent
 }

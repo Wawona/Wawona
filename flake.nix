@@ -952,6 +952,10 @@
                 if want "macos" then pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; } else null;
               macosOpenglCube =
                 if want "macos" then toolchains.buildForMacOS "opengl-cube" { } else null;
+              macosVkcube =
+                if want "macos" then toolchains.buildForMacOS "vkcube" { } else null;
+              macosWestonSimpleEgl =
+                if want "macos" then toolchains.buildForMacOS "weston-simple-egl" { } else null;
               macosNiri = if want "macos" then toolchains.buildForMacOS "niri" { } else null;
               macosFuzzel = if want "macos" then toolchains.buildForMacOS "fuzzel" { } else null;
             };

@@ -1818,6 +1818,15 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     }
   });
 #else
+  // Apply this machine's OpenGLDriver / VulkanDriver *before* the refusal
+  // check. Otherwise Start consulted stale global prefs (e.g. leftover
+  // VulkanDriver=none after a vkcube run) and refused ANGLE clients that the
+  // machine profile actually enables.
+  if (machineId.length > 0) {
+    [WWNMachineProfileStore setActiveMachineId:machineId];
+  }
+  [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
+  WWNSettings_ApplyGraphicsDriverSelection();
   NSString *gpuRefusal = WWNGpuClientRefusalReason(clientId);
   if (gpuRefusal) {
     WWNLog(WWNBundledClientLogModule(clientId),
@@ -1869,6 +1878,9 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     [self _launchFootWithMachineId:machineId];
     return;
   }
+  // Cubes / weston-simple-egl ship as Resources/bin executables on macOS.
+  // In-process *_main fallback is the Apple-mobile path (above); do not call
+  // WWNClientMainForId here — that helper and its weak symbols are iOS-only.
   BOOL running = YES;
   NSTask *task = nil;
   [self launchGenericWestonClient:clientId taskInOut:&task runningFlagIn:&running];
@@ -2064,6 +2076,10 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
                     runningFlagIn:(BOOL *)runningFlag {
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
   [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
+  // Machine prefs just rewrote OpenGLDriver / VulkanDriver; push them into
+  // the process env (ANGLE_DEFAULT_PLATFORM, WWN_VULKAN_LIBRARY, …) before
+  // the child inherits / we copy getenv into the NSTask environment.
+  WWNSettings_ApplyGraphicsDriverSelection();
   [[WWNCompositorBridge sharedBridge]
       prepareOutputSizeForNativeClientLaunchWithClientId:name];
 #endif
@@ -2078,22 +2094,44 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   task.executableURL = [NSURL fileURLWithPath:path];
 
   NSMutableDictionary *env = [self wwnMutableHostWaylandEnvironment];
+  // GLES / Vulkan clients resolve ANGLE and ICD dylibs from
+  // Contents/Frameworks. @rpath on the binaries usually covers this, but
+  // NSTask launches still need the graphics env vars applied above, and
+  // DYLD_LIBRARY_PATH is the belt-and-suspenders path niri already uses.
+  BOOL needsFrameworks =
+      [name isEqualToString:@"vkcube"] ||
+      [name isEqualToString:@"opengl-cube"] ||
+      [name isEqualToString:@"weston-simple-egl"] ||
+      [name isEqualToString:@"kmscube"] ||
+      [name isEqualToString:@"niri"];
+  NSString *frameworksDir = [[[NSBundle mainBundle] bundlePath]
+      stringByAppendingPathComponent:@"Contents/Frameworks"];
+  if (needsFrameworks &&
+      [[NSFileManager defaultManager] fileExistsAtPath:frameworksDir]) {
+    env[@"DYLD_LIBRARY_PATH"] = frameworksDir;
+  }
   if ([name isEqualToString:@"vkcube"]) {
     /* Runtime ICD selection for the Wayland vkcube (dlopen path). */
     const char *vkLib = getenv("WWN_VULKAN_LIBRARY");
     if (vkLib && vkLib[0])
       env[@"WWN_VULKAN_LIBRARY"] = @(vkLib);
-    NSString *frameworksDir = [[[NSBundle mainBundle] bundlePath]
-        stringByAppendingPathComponent:@"Contents/Frameworks"];
-    if ([[NSFileManager defaultManager] fileExistsAtPath:frameworksDir]) {
-      env[@"DYLD_LIBRARY_PATH"] = frameworksDir;
-      if (!env[@"WWN_VULKAN_LIBRARY"]) {
-        NSString *mvk =
-            [frameworksDir stringByAppendingPathComponent:@"libMoltenVK.dylib"];
-        if ([[NSFileManager defaultManager] fileExistsAtPath:mvk])
-          env[@"WWN_VULKAN_LIBRARY"] = mvk;
-      }
+    if (!env[@"WWN_VULKAN_LIBRARY"] &&
+        [[NSFileManager defaultManager] fileExistsAtPath:frameworksDir]) {
+      NSString *mvk =
+          [frameworksDir stringByAppendingPathComponent:@"libMoltenVK.dylib"];
+      if ([[NSFileManager defaultManager] fileExistsAtPath:mvk])
+        env[@"WWN_VULKAN_LIBRARY"] = mvk;
     }
+  }
+  if ([name isEqualToString:@"opengl-cube"] ||
+      [name isEqualToString:@"weston-simple-egl"] ||
+      [name isEqualToString:@"kmscube"]) {
+    const char *anglePlat = getenv("ANGLE_DEFAULT_PLATFORM");
+    if (anglePlat && anglePlat[0])
+      env[@"ANGLE_DEFAULT_PLATFORM"] = @(anglePlat);
+    const char *glDriver = getenv("WWN_OPENGL_DRIVER");
+    if (glDriver && glDriver[0])
+      env[@"WWN_OPENGL_DRIVER"] = @(glDriver);
   }
   if ([name isEqualToString:@"niri"]) {
     // niri (wwn-niri) hosts its own scrollable-tiling clients either as a

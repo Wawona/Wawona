@@ -806,13 +806,12 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
              object:nil];
 #else
     // macOS: NSTimer at ~60fps for frame pacing.
-    // IMPORTANT: use NSDefaultRunLoopMode only — NOT NSRunLoopCommonModes.
-    // CommonModes includes NSEventTrackingRunLoopMode, so a 60Hz compositor
-    // tick steals the main thread while the user drags the Machines (or any)
-    // window titlebar and feels like severe window-move jank. Live client
-    // window resize still schedules configure drains in tracking mode via
-    // injectWindowResize; frame pacing can wait until the drag ends.
-    // Create unscheduled, then add ONLY to default mode (never CommonModes).
+    // Must run in CommonModes (includes NSEventTrackingRunLoopMode) so Wayland
+    // client windows keep presenting while the user moves or live-resizes them.
+    // Pausing ticks until mouse-up freezes the surface mid-drag — forbidden by
+    // wawona-host-wm-verification (live resize must stream presents mid-drag).
+    // Machines / non-Wayland chrome still opts out via
+    // _hostWindowInteractionPaused (see _installHostWindowInteractionPause).
     _eventTimer = [NSTimer timerWithTimeInterval:0.016
                                           target:self
                                         selector:@selector(onTimerTick:)
@@ -820,10 +819,10 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
                                          repeats:YES];
     _eventTimer.tolerance = 0.004;
     [[NSRunLoop mainRunLoop] addTimer:_eventTimer
-                              forMode:NSDefaultRunLoopMode];
+                              forMode:NSRunLoopCommonModes];
     [self _installHostWindowInteractionPause];
     WWNLog("BRIDGE",
-           @"Using NSTimer for frame pacing (60fps, default runloop mode)");
+           @"Using NSTimer for frame pacing (60fps, common runloop modes)");
 #endif
 
   } else {
@@ -1462,6 +1461,9 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
 
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
 - (void)_installHostWindowInteractionPause {
+  // Only pause the compositor tick for non-Wayland host chrome (Machines UI,
+  // etc.). WWNWindow move/live-resize must keep ticking so clients present
+  // mid-drag; configure drains alone are not enough.
   NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
   [nc addObserver:self
          selector:@selector(_hostWindowInteractionBegan:)
@@ -1508,7 +1510,13 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
 }
 
 - (void)_hostWindowInteractionBegan:(NSNotification *)note {
-  (void)note;
+  NSWindow *window = [note.object isKindOfClass:[NSWindow class]]
+                         ? (NSWindow *)note.object
+                         : nil;
+  if ([window isKindOfClass:[WWNWindow class]]) {
+    // Wayland client surface: keep presenting / processing events mid-drag.
+    return;
+  }
   _hostWindowInteractionPaused = YES;
 }
 

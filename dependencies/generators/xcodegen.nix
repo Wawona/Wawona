@@ -32,6 +32,8 @@
   macosZsh ? null,
   macosKmscube ? null,
   macosOpenglCube ? null,
+  macosVkcube ? null,
+  macosWestonSimpleEgl ? null,
   macosNiri ? null,
   macosFuzzel ? null,
   # Bundled mobile VM guest (kernel + rootfs.img) and iOS-TCI QEMU engine sysroot.
@@ -1803,6 +1805,8 @@ PLIST
               ZSH_BIN="${strip macosZsh}/bin"
               KMSCUBE_BIN="${strip macosKmscube}/bin"
               OPENGL_CUBE_BIN="${strip macosOpenglCube}/bin"
+              VKCUBE_BIN="${strip macosVkcube}/bin"
+              WESTON_SIMPLE_EGL_BIN="${strip macosWestonSimpleEgl}/bin"
               NIRI_BIN="${strip macosNiri}/bin"
               NIRI_CFG="${strip macosNiri}/share/niri/default-config.kdl"
               FUZZEL_BIN="${strip macosFuzzel}/bin"
@@ -1882,11 +1886,14 @@ PLIST
               bundle_bin "$NEOVIM_BIN/nvim" "vim"
               bundle_bin "$ZSH_BIN/zsh" "zsh"
               require_bin "$KMSCUBE_BIN/kmscube" "kmscube"
-              # Debug/CLI counterpart of the in-process opengl_cube_main archive.
-              # Product Start uses the presenter, not this binary.
+              # Wayland clients: Machines Start launches these as NSTasks against
+              # the compositor socket. Archives (opengl_cube_main / vkcube_main)
+              # remain linked for the iOS-family in-process path.
               if [ -f "$OPENGL_CUBE_BIN/opengl-cube" ]; then
                 bundle_bin "$OPENGL_CUBE_BIN/opengl-cube" "opengl-cube"
               fi
+              require_bin "$VKCUBE_BIN/vkcube" "vkcube"
+              require_bin "$WESTON_SIMPLE_EGL_BIN/weston-simple-egl" "weston-simple-egl"
 
               # niri (wwn-niri): nested scrollable-tiling compositor. Ship the
               # binary plus its read-only KDL config, resolved at runtime via
