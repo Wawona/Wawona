@@ -93,6 +93,8 @@ let
   ilandAndroid = buildModule.buildForAndroid "iland" { };
   angleAndroid = buildModule.buildForAndroid "angle" { };
   kmscubeAndroid = buildModule.buildForAndroid "kmscube" { };
+  openglCubeAndroid = buildModule.buildForAndroid "opengl-cube" { };
+  vkcubeAndroid = buildModule.buildForAndroid "vkcube" { };
   westonCompositorLdflags = import westonCompositorLdflagsNix {
     inherit (pkgs) lib;
     deps = {
@@ -110,6 +112,8 @@ let
       angle = angleAndroid;
       kmscube = kmscubeAndroid;
       "iland-gl-clients" = kmscubeAndroid;
+      "opengl-cube" = openglCubeAndroid;
+      vkcube = vkcubeAndroid;
     };
   };
   rustBackendPath = if rustBackend != null then toString rustBackend else "";

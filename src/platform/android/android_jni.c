@@ -17,6 +17,7 @@
 #include "rendering/renderer_android.h"
 #ifdef WAWONA_ILAND_GL
 #include "iland_presenter_android.h"
+#include "iosurface_compat.h"
 #endif
 #include <android/choreographer.h>
 #include <android/log.h>
@@ -1838,14 +1839,39 @@ static void choreographer_frame_cb(long frameTimeNanos, void *data) {
   if (g_core) {
     CBufferData *buf;
     while ((buf = WWNCorePopPendingBuffer(g_core)) != NULL) {
-      LOGI("pending buffer: id=%llu %ux%u stride=%u format=%u pixels=%s size=%zu",
+      LOGI("pending buffer: id=%llu %ux%u stride=%u format=%u pixels=%s "
+           "iosurface_id=%u size=%zu",
            (unsigned long long)buf->buffer_id, buf->width, buf->height,
-           buf->stride, buf->format, buf->pixels ? "set" : "NULL", buf->size);
+           buf->stride, buf->format, buf->pixels ? "set" : "NULL",
+           buf->iosurface_id, buf->size);
       if (buf->pixels && buf->width > 0 && buf->height > 0) {
         renderer_android_cache_buffer(ctx->cmdBuf, buf->surface_id,
                                       buf->buffer_id, buf->width, buf->height,
                                       buf->stride, buf->format, buf->pixels,
                                       buf->size);
+      } else if (buf->iosurface_id != 0 && buf->width > 0 && buf->height > 0) {
+        /* Wayland dmabuf / #86: high-bit modifier packs an AHB-backed
+         * ILandIOSurface id. Lock CPU-mapped pixels and upload like SHM. */
+        IOSurfaceRef surf = ILandIOSurfaceLookup(buf->iosurface_id);
+        if (surf) {
+          ILandIOSurfaceLock(surf);
+          void *base = ILandIOSurfaceGetBaseAddress(surf);
+          uint32_t stride = (uint32_t)ILandIOSurfaceGetBytesPerRow(surf);
+          size_t nbytes = (size_t)stride * buf->height;
+          if (base && stride > 0) {
+            renderer_android_cache_buffer(
+                ctx->cmdBuf, buf->surface_id, buf->buffer_id, buf->width,
+                buf->height, stride, buf->format, (const uint8_t *)base,
+                nbytes);
+          } else {
+            LOGI("AHB lookup id=%u: no mapped base (stride=%u)",
+                 buf->iosurface_id, stride);
+          }
+          ILandIOSurfaceUnlock(surf);
+          ILandIOSurfaceRelease(surf);
+        } else {
+          LOGI("AHB lookup failed for iosurface_id=%u", buf->iosurface_id);
+        }
       }
       WWNBufferDataFree(buf);
     }
@@ -4663,12 +4689,14 @@ static int kmscube_stub_main(int argc, const char **argv) {
 
 static int opengl_cube_stub_main(int argc, const char **argv) {
 #ifdef WAWONA_ILAND_GL
+  /* Wayland-EGL client — posts AHB dmabuf buffers to the compositor. Do not
+   * start the KMS presenter (that path is kmscube-only). */
   if (!opengl_cube_main) {
     LOGE("opengl-cube unavailable (libopengl_cube.a not linked)");
     return 1;
   }
-  if (!wwn_iland_presenter_android_is_active())
-    wwn_iland_presenter_android_init();
+  (void)argc;
+  (void)argv;
   char *mutable_argv[] = {(char *)"opengl-cube", NULL};
   return opengl_cube_main(1, mutable_argv);
 #else
