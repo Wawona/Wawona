@@ -1476,11 +1476,25 @@ static NSString *WWNPreferredHostShellPath(void) {
 /// userspace KMS throws away the path iland exists to provide. `auto` keeps the
 /// nested default because it needs no GPU stack, but the user's choice — global
 /// preference or per-machine override — always wins where the platform allows.
+static NSString *g_cliCompositorBackendOverride = nil;
+
+void WWNSetCompositorBackendCLIOverride(NSString *backend) {
+  g_cliCompositorBackendOverride = backend.length > 0 ? [backend copy] : nil;
+}
+
+NSString *WWNCompositorBackendCLIOverride(void) {
+  return g_cliCompositorBackendOverride;
+}
+
 NSString *WWNResolveCompositorBackend(NSString *overrideValue) {
-  NSString *choice = overrideValue.length > 0
-                         ? overrideValue
-                         : [[WWNPreferencesManager sharedManager]
-                               compositorBackend];
+  NSString *choice = nil;
+  if (overrideValue.length > 0) {
+    choice = overrideValue;
+  } else if (g_cliCompositorBackendOverride.length > 0) {
+    choice = g_cliCompositorBackendOverride;
+  } else {
+    choice = [[WWNPreferencesManager sharedManager] compositorBackend];
+  }
 
   if ([choice isEqualToString:@"drm"]) {
     // The DRM backend presents through iland; without the GL stack there is
@@ -2482,6 +2496,43 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 }
 
 - (void)launchWestonMacOSAsNestedClient {
+  if (self.westonTask.isRunning || self.westonRunning) {
+    return;
+  }
+
+  // Prefer CompositorBackend / CLI --backend over the legacy
+  // NestedWestonBackend key. Taking the DRM in-process path when the user
+  // asked for wayland hung headless CLI: westonRunning was set before the
+  // branch, so launchWestonMacOSDrmInProcess returned as a silent no-op.
+  NSString *resolvedBackend = WWNResolveCompositorBackend(nil);
+  NSString *prefsBackend =
+      [[WWNPreferencesManager sharedManager] compositorBackend];
+  NSString *legacyNested =
+      [[WWNPreferencesManager sharedManager] nestedWestonBackend];
+  BOOL wantDrm = NO;
+  if ([resolvedBackend isEqualToString:@"drm"]) {
+    wantDrm = YES;
+  } else if (WWNCompositorBackendCLIOverride() != nil ||
+             [prefsBackend isEqualToString:@"wayland"] ||
+             [prefsBackend isEqualToString:@"drm"]) {
+    // Explicit CLI or Settings choice — never fall through to legacy.
+    wantDrm = [resolvedBackend isEqualToString:@"drm"];
+  } else {
+    // auto: NestedWestonBackend still selects weston's present path.
+    wantDrm = [legacyNested isEqualToString:@"iland-drm-gl"];
+  }
+  if (wantDrm) {
+    WWNLog("WESTON", @"backend=drm — in-process iland DRM path");
+    [self launchWestonMacOSDrmInProcess];
+    return;
+  }
+
+  [self launchWestonMacOSNestedSubprocess];
+}
+
+/// Out-of-process nested Weston (`NSTask`). Used for `--backend=wayland` and as
+/// the fallback when in-process `weston_main` is unavailable for DRM.
+- (void)launchWestonMacOSNestedSubprocess {
   if (self.westonTask.isRunning) {
     return;
   }
@@ -2493,9 +2544,6 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     return;
   }
 
-  // Bundled env (WESTON_*, fontconfig, XKB, cursors) must be configured in
-  // every launch path — host-agent and menubar entry points don't run the
-  // GUI startup path that used to do this once.
   WWNConfigureBundledRuntimeEnvIfNeeded();
   NSString *envError = [self wwnValidateNestedWestonEnv];
   if (envError) {
@@ -2511,12 +2559,10 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     });
     return;
   }
-  self.westonRunning = YES;
 
   NSString *path = [self findBinaryNamed:@"weston"];
   if (!path) {
     WWNLog("WESTON", @"Could not find weston executable in app bundle.");
-    self.westonRunning = NO;
     return;
   }
 
@@ -2532,14 +2578,11 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     hostScale = 1u;
   }
 
-  NSString *backend =
-      [[WWNPreferencesManager sharedManager] nestedWestonBackend];
-  if ([backend isEqualToString:@"iland-drm-gl"]) {
-    [self launchWestonMacOSDrmInProcess];
-    return;
-  }
+  self.westonRunning = YES;
 
-  BOOL usePixman = YES;
+  // Pixman only for nested Wayland; DRM needs GL against iland.
+  NSString *westonBackend = WWNResolveCompositorBackend(nil);
+  BOOL usePixman = ![westonBackend isEqualToString:@"drm"];
 
   const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
   char configPath[512] = "";
@@ -2555,7 +2598,6 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   // Backend is configurable, not assumed: weston can drive iland's userspace
   // DRM/KMS instead of nesting. No --width/--height either way — nested Weston
   // sizes via xdg negotiation with Wawona.
-  NSString *westonBackend = WWNResolveCompositorBackend(nil);
   NSMutableArray<NSString *> *args = [NSMutableArray arrayWithObjects:
       [westonBackend isEqualToString:@"drm"] ? @"--backend=drm"
                                              : @"--backend=wayland",
@@ -2604,8 +2646,9 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
   if (![bridge prepareIlandMetalPresentationOnPrimaryView]) {
     WWNLog("WESTON",
-           @"Failed to prepare iland Metal presentation — falling back to pixman");
-    [self launchWestonMacOSAsNestedClient];
+           @"Failed to prepare iland Metal presentation — falling back to "
+           @"nested weston subprocess");
+    [self launchWestonMacOSNestedSubprocess];
     return;
   }
   typedef int (*WWNWestonMainFn)(int, char **);
@@ -2614,8 +2657,8 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   if (westonFn == NULL) {
     WWNLog("WESTON",
            @"weston_main not linked — iland Metal ready (kmscube); "
-           @"using pixman nested Weston subprocess");
-    [self launchWestonMacOSAsNestedClient];
+           @"falling back to nested weston subprocess (--backend=drm)");
+    [self launchWestonMacOSNestedSubprocess];
     return;
   }
   self.westonRunning = YES;

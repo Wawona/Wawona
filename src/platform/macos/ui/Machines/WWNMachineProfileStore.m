@@ -132,6 +132,7 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
     kWWNPrefsEnableDmabuf,
     kWWNPrefsVulkanDriver,
     kWWNPrefsOpenGLDriver,
+    kWWNPrefsCompositorBackend,
     kWWNPrefsRespectSafeArea,
     kWWNPrefsWaypipeDisplay,
     kWWNPrefsWaypipeSocket,

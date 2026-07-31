@@ -28,6 +28,8 @@
 #import "./ui/Modules/WWNModuleManager.h"
 #import "./ui/Settings/WWNPreferencesManager.h"
 #import "./ui/Settings/WWNWaypipeRunner.h"
+#import "./ui/Machines/WWNMachineProfileStore.h"
+#import "./ui/Machines/WWNMachineSessionBridge.h"
 #import "WWNSettings.h"
 
 // C FFI for Rust Compositor window events
@@ -196,6 +198,102 @@ static int g_host_lock_fd = -1;
 static int g_menubar_lock_fd = -1;
 static BOOL g_show_about_on_launch = NO;
 static BOOL g_service_host_mode = NO;
+/* CLI: run compositor without opening Machines / Settings. */
+static BOOL g_cli_headless = NO;
+static NSString *g_cli_client = nil;
+static NSString *g_cli_machine = nil;
+static NSString *g_cli_backend = nil;
+
+static void wwn_print_cli_help(void) {
+  printf(
+      "Wawona — Wayland compositor for macOS (and Apple / Android targets)\n"
+      "\n"
+      "Usage:\n"
+      "  Wawona [options]\n"
+      "\n"
+      "Informational (no GUI, no instance lock):\n"
+      "  -h, --help              Show this help and exit\n"
+      "  -v, --version           Print version and exit\n"
+      "  --list-clients          List bundled client ids and exit\n"
+      "  --list-machines         List saved Machines profiles and exit\n"
+      "\n"
+      "GUI vs headless:\n"
+      "  (default)               Start compositor + Machines control panel\n"
+      "  --headless, --no-gui    Compositor only — no Machines / Settings UI\n"
+      "  --gui                   Force Machines UI (overrides --headless)\n"
+      "\n"
+      "Start software (after compositor is up):\n"
+      "  --client <id>           Launch a bundled client (implies --headless\n"
+      "                          unless --gui is also passed). Examples:\n"
+      "                            weston, niri, weston-simple-egl,\n"
+      "                            weston-simple-shm, opengl-cube, vkcube,\n"
+      "                            weston-terminal, foot, kmscube\n"
+      "  --machine <id>          Connect a saved Machines profile by id\n"
+      "                          (implies --headless unless --gui)\n"
+      "\n"
+      "Nested compositor display backend (weston / niri):\n"
+      "  --backend <mode>        auto | wayland | drm\n"
+      "                            wayland — nest as a Wayland client of Wawona\n"
+      "                            drm     — wwn-iland userspace DRM/KMS/GBM\n"
+      "                                      (needs OpenGLDriver ≠ none)\n"
+      "                            auto    — nested wayland (safe default)\n"
+      "\n"
+      "Service modes (LaunchAgents):\n"
+      "  --compositor-host       Compositor service without Machines\n"
+      "  --menubar               Menu-bar agent\n"
+      "  --show-about            Show About instead of Machines\n"
+      "\n"
+      "Examples:\n"
+      "  # Nested Weston (Wayland backend) without the Machines GUI\n"
+      "  Wawona --headless --backend wayland --client weston\n"
+      "\n"
+      "  # Niri on wwn-iland userspace DRM/KMS\n"
+      "  Wawona --headless --backend drm --client niri\n"
+      "\n"
+      "  # Start a saved Machines profile from the shell\n"
+      "  Wawona --machine my-niri-drm\n"
+      "\n"
+      "Socket: WAYLAND_DISPLAY=wayland-0 under /tmp/wawona-$UID/\n"
+      "Prefs:  Settings → Advanced → Display Backend (same as --backend)\n");
+}
+
+static void wwn_print_list_clients(void) {
+  static const char *kClients[] = {
+      "weston",
+      "niri",
+      "weston-simple-egl",
+      "weston-simple-shm",
+      "weston-terminal",
+      "foot",
+      "opengl-cube",
+      "vkcube",
+      "kmscube",
+      "neovim",
+      "fastfetch",
+      "fuzzel",
+      NULL,
+  };
+  printf("Bundled client ids (pass to --client):\n");
+  for (const char **p = kClients; *p; p++)
+    printf("  %s\n", *p);
+}
+
+static int wwn_print_list_machines(void) {
+  @autoreleasepool {
+    NSArray<WWNMachineProfile *> *profiles =
+        [WWNMachineProfileStore loadProfiles];
+    if (profiles.count == 0) {
+      printf("No Machines profiles saved yet.\n");
+      return 0;
+    }
+    printf("%-28s  %-16s  %s\n", "MACHINE ID", "TYPE", "NAME");
+    for (WWNMachineProfile *p in profiles) {
+      printf("%-28s  %-16s  %s\n", p.machineId.UTF8String ?: "?",
+             p.type.UTF8String ?: "?", p.name.UTF8String ?: "");
+    }
+  }
+  return 0;
+}
 
 static void release_instance_lock(void) {
   if (g_instance_lock_fd >= 0) {
@@ -442,17 +540,26 @@ static void setup_signal_sources(void) {
   // wwn-apt module manager: catalog + installed.json + apt IPC socket.
   [[WWNModuleManager sharedManager] start];
   WWNPreferencesManager *prefs = [WWNPreferencesManager sharedManager];
-  // Acceptance runs need to reach a bundled client without tapping Machines;
-  // macOS UI automation needs an Accessibility grant that CI does not have.
-  NSString *autoClient = nil;
-  const char *autoClientEnv = getenv("WAWONA_AUTO_CLIENT");
-  if (autoClientEnv && autoClientEnv[0])
-    autoClient = [NSString stringWithUTF8String:autoClientEnv];
-  if (autoClient.length > 0 && ![prefs hasSeenWelcome]) {
-    // The welcome sheet is modal, so it would swallow the autostart entirely.
+
+  if (g_cli_backend.length > 0) {
+    // Session-only: do not rewrite Settings prefs from a one-shot CLI invoke.
+    WWNSetCompositorBackendCLIOverride(g_cli_backend);
+    WWNLog("MAIN", @"CLI --backend=%@", g_cli_backend);
+  }
+
+  // Acceptance / CLI: reach a bundled client without tapping Machines.
+  NSString *autoClient = g_cli_client;
+  if (autoClient.length == 0) {
+    const char *autoClientEnv = getenv("WAWONA_AUTO_CLIENT");
+    if (autoClientEnv && autoClientEnv[0])
+      autoClient = [NSString stringWithUTF8String:autoClientEnv];
+  }
+  if ((autoClient.length > 0 || g_cli_machine.length > 0 || g_cli_headless) &&
+      ![prefs hasSeenWelcome]) {
+    // Welcome sheet is modal and would block headless / auto-client start.
     [prefs setHasSeenWelcome:YES];
   }
-  if (![prefs hasSeenWelcome]) {
+  if (![prefs hasSeenWelcome] && !g_cli_headless) {
     [NSApp activateIgnoringOtherApps:YES];
     NSAlert *alert = [[NSAlert alloc] init];
     alert.messageText = @"Welcome to Wawona";
@@ -469,20 +576,45 @@ static void setup_signal_sources(void) {
   }
   if (g_show_about_on_launch) {
     [[WWNAboutPanel sharedAboutPanel] showAboutPanel:NSApp];
-  } else {
+  } else if (!g_cli_headless) {
     [[WWNMachinesCoordinator sharedCoordinator] showMachinesWindowAndActivate:YES];
+  } else {
+    WWNLog("MAIN",
+           @"Headless CLI — compositor running; Machines UI suppressed "
+           @"(WAYLAND_DISPLAY=wayland-0)");
+    // Accessory: stay out of the Dock / Cmd-Tab unless the user opens UI later.
+    [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
   }
-  if (autoClient.length > 0) {
-    // Give the compositor bridge and its host window the same head start the
-    // Machines Start button implies; the GPU cube clients need a live view
-    // before iland can hand them a present sink.
+
+  void (^startClient)(void) = ^{
+    if (g_cli_machine.length > 0) {
+      WWNMachineProfile *profile =
+          [WWNMachineProfileStore profileById:g_cli_machine];
+      if (!profile) {
+        WWNLog("MAIN", @"--machine '%@' not found (try --list-machines)",
+               g_cli_machine);
+        return;
+      }
+      NSError *err = nil;
+      if (![WWNMachineSessionBridge connectProfile:profile error:&err]) {
+        WWNLog("MAIN", @"--machine %@ failed: %@", g_cli_machine,
+               err.localizedDescription ?: @"unknown");
+      } else {
+        WWNLog("MAIN", @"Connected machine %@", g_cli_machine);
+      }
+      return;
+    }
+    if (autoClient.length > 0) {
+      WWNLog("MAIN", @"CLI --client=%@ — starting bundled client", autoClient);
+      [[WWNWaypipeRunner sharedRunner] launchBundledClientWithId:autoClient];
+    }
+  };
+
+  if (autoClient.length > 0 || g_cli_machine.length > 0) {
+    // Give the compositor bridge the same head start Machines Start implies.
     dispatch_after(
         dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
-        dispatch_get_main_queue(), ^{
-          WWNLog("MAIN", @"WAWONA_AUTO_CLIENT=%@ — starting bundled client",
-                 autoClient);
-          [[WWNWaypipeRunner sharedRunner] launchBundledClientWithId:autoClient];
-        });
+        dispatch_get_main_queue(), startClient);
   }
 }
 
@@ -892,12 +1024,16 @@ int main(int argc, char *argv[]) {
                                               forKey:@"NSQuitAlwaysKeepsWindows"];
     setbuf(stdout, NULL);
     setbuf(stderr, NULL);
-    WWNConfigureBundledRuntimeEnvIfNeeded();
 
-    BOOL compositorHostMode = NO;
-    BOOL menuBarMode = NO;
+    // --- Early CLI: --help / --version / list before any bundle env logging ---
+    BOOL forceGui = NO;
     for (int i = 1; i < argc; i++) {
-      if (strcmp(argv[i], "--version") == 0 || strcmp(argv[i], "-v") == 0) {
+      const char *arg = argv[i];
+      if (strcmp(arg, "--help") == 0 || strcmp(arg, "-h") == 0) {
+        wwn_print_cli_help();
+        return 0;
+      }
+      if (strcmp(arg, "--version") == 0 || strcmp(arg, "-v") == 0) {
 #ifdef WAWONA_VERSION
         printf("Wawona v%s\n", WAWONA_VERSION);
 #else
@@ -905,13 +1041,87 @@ int main(int argc, char *argv[]) {
 #endif
         return 0;
       }
-      if (strcmp(argv[i], "--compositor-host") == 0) {
-        compositorHostMode = YES;
-      } else if (strcmp(argv[i], "--menubar") == 0) {
-        menuBarMode = YES;
-      } else if (strcmp(argv[i], "--show-about") == 0) {
-        g_show_about_on_launch = YES;
+      if (strcmp(arg, "--list-clients") == 0) {
+        wwn_print_list_clients();
+        return 0;
       }
+      if (strcmp(arg, "--list-machines") == 0) {
+        return wwn_print_list_machines();
+      }
+    }
+
+    WWNConfigureBundledRuntimeEnvIfNeeded();
+
+    BOOL compositorHostMode = NO;
+    BOOL menuBarMode = NO;
+    for (int i = 1; i < argc; i++) {
+      const char *arg = argv[i];
+      if (strcmp(arg, "--compositor-host") == 0) {
+        compositorHostMode = YES;
+      } else if (strcmp(arg, "--menubar") == 0) {
+        menuBarMode = YES;
+      } else if (strcmp(arg, "--show-about") == 0) {
+        g_show_about_on_launch = YES;
+      } else if (strcmp(arg, "--headless") == 0 ||
+                 strcmp(arg, "--no-gui") == 0) {
+        g_cli_headless = YES;
+      } else if (strcmp(arg, "--gui") == 0) {
+        forceGui = YES;
+      } else if (strcmp(arg, "--client") == 0) {
+        if (i + 1 >= argc) {
+          fprintf(stderr, "Wawona: --client requires an id (see --list-clients)\n");
+          return 2;
+        }
+        g_cli_client = [NSString stringWithUTF8String:argv[++i]];
+      } else if (strncmp(arg, "--client=", 9) == 0) {
+        g_cli_client = [NSString stringWithUTF8String:arg + 9];
+      } else if (strcmp(arg, "--machine") == 0) {
+        if (i + 1 >= argc) {
+          fprintf(stderr,
+                  "Wawona: --machine requires an id (see --list-machines)\n");
+          return 2;
+        }
+        g_cli_machine = [NSString stringWithUTF8String:argv[++i]];
+      } else if (strncmp(arg, "--machine=", 10) == 0) {
+        g_cli_machine = [NSString stringWithUTF8String:arg + 10];
+      } else if (strcmp(arg, "--backend") == 0) {
+        if (i + 1 >= argc) {
+          fprintf(stderr,
+                  "Wawona: --backend requires auto|wayland|drm\n");
+          return 2;
+        }
+        g_cli_backend = [NSString stringWithUTF8String:argv[++i]];
+      } else if (strncmp(arg, "--backend=", 10) == 0) {
+        g_cli_backend = [NSString stringWithUTF8String:arg + 10];
+      } else if (strcmp(arg, "--help") == 0 || strcmp(arg, "-h") == 0 ||
+                 strcmp(arg, "--version") == 0 || strcmp(arg, "-v") == 0 ||
+                 strcmp(arg, "--list-clients") == 0 ||
+                 strcmp(arg, "--list-machines") == 0) {
+        // Already handled above.
+      } else if (arg[0] == '-') {
+        fprintf(stderr, "Wawona: unknown option '%s' (try --help)\n", arg);
+        return 2;
+      }
+    }
+
+    if (g_cli_backend.length > 0) {
+      NSString *b = [g_cli_backend lowercaseString];
+      if (!([b isEqualToString:@"auto"] || [b isEqualToString:@"wayland"] ||
+            [b isEqualToString:@"drm"])) {
+        fprintf(stderr,
+                "Wawona: --backend must be auto, wayland, or drm (got '%s')\n",
+                g_cli_backend.UTF8String);
+        return 2;
+      }
+      g_cli_backend = b;
+    }
+
+    // --client / --machine imply headless unless the user asked for --gui.
+    if (!forceGui && (g_cli_client.length > 0 || g_cli_machine.length > 0)) {
+      g_cli_headless = YES;
+    }
+    if (forceGui) {
+      g_cli_headless = NO;
     }
 
     if (compositorHostMode && menuBarMode) {
@@ -1004,7 +1214,11 @@ int main(int argc, char *argv[]) {
     [[NSProcessInfo processInfo] disableSuddenTermination];
 
     [NSApplication sharedApplication];
-    [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+    if (g_cli_headless) {
+      [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+    } else {
+      [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+    }
 
     WWNMacAppDelegate *delegate = [[WWNMacAppDelegate alloc] init];
     [NSApp setDelegate:delegate];
