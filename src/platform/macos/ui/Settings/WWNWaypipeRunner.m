@@ -43,9 +43,8 @@ extern void wwn_propagate_mobile_env(void);
 extern void wwn_launch_host_client(char *const *argp, char *const *envp);
 extern int foot_main(int argc, char **argv);
 extern int simple_egl_main(int argc, char **argv) __attribute__((weak));
-/* Wayland clients, not iland KMS — see WWNIsIlandGpuCubeClientId. */
-extern int opengl_cube_main(int argc, char **argv) __attribute__((weak));
-extern int vkcube_main(int argc, char **argv) __attribute__((weak));
+/* opengl_cube_main / vkcube_main: resolved via dlsym in WWNClientMainForId so
+ * tvOS (no cube archives) does not get undefined symbols from &weak_import. */
 #endif
 extern int wwn_weston_is_compat_shim(void) __attribute__((weak));
 extern int wwn_weston_terminal_is_compat_shim(void) __attribute__((weak));
@@ -1618,13 +1617,15 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
           [NSValue valueWithPointer:(void *)constraints_main],
       @"weston-simple-egl" :
           [NSValue valueWithPointer:(void *)simple_egl_main],
-      @"opengl-cube" : [NSValue valueWithPointer:(void *)opengl_cube_main],
-      @"vkcube" : [NSValue valueWithPointer:(void *)vkcube_main],
+      /* Cubes: dlsym so targets without the archives (tvOS) still link. */
+      @"opengl-cube" :
+          [NSValue valueWithPointer:dlsym(RTLD_DEFAULT, "opengl_cube_main")],
+      @"vkcube" : [NSValue valueWithPointer:dlsym(RTLD_DEFAULT, "vkcube_main")],
     };
   });
   NSValue *entry = map[clientId];
-  /* Weakly-linked entry points are NULL when their archive is absent; treat
-   * that as "no such client" rather than calling through a null pointer. */
+  /* Weakly-linked / dlsym entry points are NULL when their archive is absent;
+   * treat that as "no such client" rather than calling through a null pointer. */
   return entry ? (WWNClientMainFn)[entry pointerValue] : NULL;
 }
 
