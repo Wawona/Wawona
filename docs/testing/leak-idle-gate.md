@@ -48,7 +48,8 @@ Triggers:
   `leak-idle-*`
 - nightly schedule (`30 9 * * *` UTC) — same namespaced product-build tip_key
 
-**Not** a promote blocker — Device gate uses `continue-on-error` on the call, and the
+**Not** a promote blocker — Leak idle jobs use `continue-on-error` inside the
+reusable workflow (`continue-on-error` is invalid on `uses:` callers). The
 `Device gate` rollup job does not `needs:` Leak idle. Promote still requires **Nix CI** +
 **Device gate** only. Treat red Leak idle as a signal to triage before promote.
 

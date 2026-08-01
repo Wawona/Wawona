@@ -159,12 +159,11 @@ jobs:
       actions: read
 
   # Advisory memory plateau — reuses product-* artifacts (no second product-build).
-  # continue-on-error: not a promote blocker; must not paint Device gate red.
+  # Soft-fail lives inside leak-idle-gate.yml (continue-on-error is invalid on uses: callers).
   leak-idle:
     name: Leak idle gate
     needs: [product-ios, product-android, product-macos]
     if: ${{ always() && !cancelled() && needs.product-ios.result == 'success' && needs.product-android.result == 'success' && needs.product-macos.result == 'success' }}
-    continue-on-error: true
     uses: ./.github/workflows/leak-idle-gate.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
