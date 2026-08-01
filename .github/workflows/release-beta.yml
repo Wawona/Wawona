@@ -137,13 +137,15 @@ jobs:
             './scripts/release-env.sh fastlane '"$LANE"
 
   # Ship: beta (stores) owns AppImages (same SHA) — do not scavenge Gate: products product-build.
+  # tip_key must NOT share Gate: products' product-build-<branch>-appimage group or
+  # cancel-in-progress cancels one caller on the same master push (empty AppImage artifacts).
   products-appimage:
     name: Product AppImages
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     uses: ./.github/workflows/product-build.yml
     with:
       only: appimage
-      tip_key: ${{ github.ref_name }}
+      tip_key: ship-beta-${{ github.ref_name }}
     permissions:
       contents: read
       id-token: write
