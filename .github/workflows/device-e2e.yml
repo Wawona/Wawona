@@ -358,9 +358,12 @@ jobs:
           test -x "$APP/Contents/Resources/bin/niri" \
             || { echo "FAIL: niri missing/not executable in product-macos-app"; ls -la "$APP/Contents/Resources/bin" || true; exit 1; }
 
-      - name: Nested niri + fuzzel smoke (macOS, advisory)
-        if: ${{ github.event_name != 'pull_request' }}
-        continue-on-error: true
+      # Nested niri/fuzzel omitted from Gate: products — GHA macos runners often
+      # SIGTERM the job mid-GUI (exit 143) even with continue-on-error, which
+      # still fails the reusable workflow. Catalog smoke above is the hard check.
+      # Re-enable via Watch: graphics nightly / local scripts/niri-fuzzel-smoke-macos.sh.
+      - name: Nested niri + fuzzel smoke (macOS)
+        if: ${{ false }}
         env:
           WAWONA_MACOS_APP: result-macos/Applications/Wawona.app
           WAWONA_FUZZEL_REQUIRE_MACOS: "1"
