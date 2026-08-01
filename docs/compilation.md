@@ -110,7 +110,7 @@ See [README](../README.md) for environment setup.
 
 ## Release beta (TestFlight + Play)
 
-Wawona v0.2.4 adds Fastlane automation. See [wwn-mcp/knowledge/wawona/fastlane.md](../../wwn-mcp/knowledge/wawona/fastlane.md).
+Wawona v2.5 adds Fastlane automation. See [wwn-mcp/knowledge/wawona/fastlane.md](../../wwn-mcp/knowledge/wawona/fastlane.md).
 
 ```bash
 # Tier 0 — see docs/maintainers/secrets.md (SecretSpec + pass)

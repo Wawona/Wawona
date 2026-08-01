@@ -3,7 +3,7 @@ name: Release Beta
 # Every push to master → TestFlight (Apple), Play internal (Android), and Linux
 # AppImage prebuilts (workflow artifacts, not GitHub Releases).
 # Manual dispatch can target ios beta, android beta, or both (lane: beta).
-# Tag push v0.2.* also triggers Apple TestFlight (legacy); prefer master for betas.
+# Tag push v* also triggers Apple TestFlight (legacy); prefer master for betas.
 
 on:
   workflow_dispatch:

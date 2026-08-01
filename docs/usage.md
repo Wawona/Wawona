@@ -12,7 +12,7 @@ nix run .#wawona-linux
 
 Uses GTK4 with Wayland or X11 GDK fallback. Runtime includes weston, weston-terminal, foot, fastfetch, neovim, zsh, kmscube, and waypipe on PATH.
 
-## Virtual machines (v0.2.4)
+## Virtual machines (v2.5)
 
 | Platform | How |
 |----------|-----|

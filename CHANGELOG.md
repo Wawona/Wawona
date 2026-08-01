@@ -7,13 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-07-31
+
 ### Added
 
+- **Beta prebuilt distribution** — Fastlane automation for TestFlight (iOS /
+  iPadOS / tvOS / watchOS / visionOS) and Play internal track (Android), plus
+  Linux AppImage workflow artifacts. Release Beta runs from `master` / `v*`
+  tags via `.github/workflows/release-beta.yml`.
+- **Android GBM Apple parity + waypipe unstub** — map/unmap, format support,
+  honest AHB formats, `#86` high-bit modifier path for in-process `waypipe_main`.
+- **Wayland GL clients on Android** — OpenGL Cube, KMSCube, and weston-simple-egl
+  present through ANGLE / iland; display backend selector (Wayland vs DRM).
 - **iland Mode A / Mode B documentation and agent rules** — canonical
   `docs/iland-mode-a-b-desktop.md`, Cursor rule `wawona-iland-mode-b-desktop`
   (alwaysApply), tracked `docs/agent-rules/` mirror, `AGENTS.md` corrections
   (Mode A is default; Mode B dylib only in `wawona-macos-desktop-host`, SIP-gated).
   Settings Desktop / Android anowaW tiers documented in `docs/settings.md`.
+
+### Changed
+
+- Version bumped to **2.5.0** (Wawona v2.5 beta) across `VERSION`, Cargo.toml,
+  Android `versionName` default, and platform headers.
+- IPC `version` reply uses `CARGO_PKG_VERSION` so it stays aligned with Cargo.
 
 ## [0.2.4] - 2026-06-27
 
