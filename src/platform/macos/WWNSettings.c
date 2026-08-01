@@ -29,7 +29,8 @@ static WWNSettingsConfig g_config = {
     .vulkanDrivers = false,
     .eglDrivers = false,
     .vulkanDriver = "system",
-    .openglDriver = "system"
+    .openglDriver = "system",
+    .compositorBackend = "auto"
 };
 
 void WWNSettings_UpdateConfig(const WWNSettingsConfig *config) {
@@ -123,6 +124,24 @@ const char *WWNSettings_GetOpenGLDriver(void) {
 
 static bool wwnDriverIs(const char *value, const char *expected) {
   return value && strcmp(value, expected) == 0;
+}
+
+const char *WWNSettings_GetCompositorBackend(void) {
+  return g_config.compositorBackend[0] ? g_config.compositorBackend : "auto";
+}
+
+const char *WWNSettings_ResolveCompositorBackend(void) {
+  const char *choice = WWNSettings_GetCompositorBackend();
+  if (wwnDriverIs(choice, "drm")) {
+    /* DRM presents through iland; without a GL stack there is nothing behind
+     * it, so fall back rather than hang a nested compositor. */
+    if (wwnDriverIs(WWNSettings_GetOpenGLDriver(), "none"))
+      return "wayland";
+    return "drm";
+  }
+  if (wwnDriverIs(choice, "wayland"))
+    return "wayland";
+  return "wayland"; /* auto */
 }
 
 WWNGraphicsDriverSelection WWNSettings_ResolveGraphicsDriverSelection(void) {

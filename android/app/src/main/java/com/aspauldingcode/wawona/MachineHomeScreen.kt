@@ -783,6 +783,7 @@ private fun MachineEditorSheet(
     var touchInputExpanded by remember { mutableStateOf(false) }
     var vulkanExpanded by remember { mutableStateOf(false) }
     var openglExpanded by remember { mutableStateOf(false) }
+    var compositorBackendExpanded by remember { mutableStateOf(false) }
 
     val existingOverrides = remember(initial) {
         if (initial != null) SettingsOverrides.merge(initial) else JSONObject()
@@ -850,7 +851,17 @@ private fun MachineEditorSheet(
         )
     }
     var openglDriver by remember {
-        mutableStateOf(readStringOverride(existingOverrides, "openglDriver", prefs.getString("openglDriver", "system") ?: "system"))
+        mutableStateOf(readStringOverride(existingOverrides, "openglDriver", prefs.getString("openglDriver", "angle") ?: "angle"))
+    }
+    var compositorBackend by remember {
+        mutableStateOf(
+            SettingsOverrides.readString(
+                existingOverrides,
+                "compositorBackend",
+                prefs.getString("compositorBackend", "auto") ?: "auto"
+            ).lowercase().takeIf { it in setOf("auto", "wayland", "drm") }
+                ?: "auto"
+        )
     }
     var dmabufEnabled by remember {
         mutableStateOf(readBoolOverride(existingOverrides, "dmabufEnabled", prefs.getBoolean("nestedCompositorsSupport", true)))
@@ -911,7 +922,13 @@ private fun MachineEditorSheet(
         writeBoolOverride(settingsOverrides, "swapCmdWithAlt", swapCmdAlt, prefs.getBoolean("swapCmdAsCtrl", false))
         writeBoolOverride(settingsOverrides, "universalClipboard", universalClipboard, prefs.getBoolean("universalClipboard", false))
         writeStringOverride(settingsOverrides, "vulkanDriver", vulkanDriver, prefs.getString("vulkanDriver", "system") ?: "system")
-        writeStringOverride(settingsOverrides, "openglDriver", openglDriver, prefs.getString("openglDriver", "system") ?: "system")
+        writeStringOverride(settingsOverrides, "openglDriver", openglDriver, prefs.getString("openglDriver", "angle") ?: "angle")
+        writeStringOverride(
+            settingsOverrides,
+            "compositorBackend",
+            compositorBackend,
+            prefs.getString("compositorBackend", "auto") ?: "auto"
+        )
         writeBoolOverride(settingsOverrides, "dmabufEnabled", dmabufEnabled, prefs.getBoolean("nestedCompositorsSupport", true))
         writeBoolOverride(settingsOverrides, "colorOperations", colorOperations, prefs.getBoolean("colorSyncSupport", false))
         writeBoolOverride(settingsOverrides, "shakeToCloseEnabled", shakeToCloseOverride, prefs.getBoolean("wawona.pref.shakeToCloseEnabled", true))
@@ -1175,6 +1192,25 @@ private fun MachineEditorSheet(
                             onSelect = {
                                 openglDriver = it
                                 openglExpanded = false
+                            }
+                        )
+                        StringDropdownField(
+                            label = "Display Backend",
+                            selected = when (compositorBackend) {
+                                "wayland" -> "Wayland (nested)"
+                                "drm" -> "DRM/KMS (wwn-iland)"
+                                else -> "Auto"
+                            },
+                            options = listOf("Auto", "Wayland (nested)", "DRM/KMS (wwn-iland)"),
+                            expanded = compositorBackendExpanded,
+                            onExpandedChange = { compositorBackendExpanded = it },
+                            onSelect = {
+                                compositorBackend = when (it) {
+                                    "Wayland (nested)" -> "wayland"
+                                    "DRM/KMS (wwn-iland)" -> "drm"
+                                    else -> "auto"
+                                }
+                                compositorBackendExpanded = false
                             }
                         )
                         ToggleRow("Enable DMABUF", dmabufEnabled) { dmabufEnabled = it }

@@ -103,6 +103,14 @@ let kAllBundledClients: [BundledClient] = [
     requiresGpuStack: true
   ),
   BundledClient(
+    id: "gbm-es2-demo",
+    name: "GBM ES2 Demo",
+    prefsKey: "GbmEs2DemoEnabled",
+    icon: "cube.fill",
+    description: "ds-hwang gbm_es2_demo — DRM/GBM/GLES2 over iland (KMS)",
+    requiresGpuStack: true
+  ),
+  BundledClient(
     id: "opengl-cube",
     name: "OpenGL Cube",
     prefsKey: "OpenglCubeEnabled",

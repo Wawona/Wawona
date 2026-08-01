@@ -259,6 +259,8 @@
   WWNWindow *wwnWindow = nil;
   if ([self.window isKindOfClass:[WWNWindow class]]) {
     wwnWindow = (WWNWindow *)self.window;
+    // Kept for xdg_toplevel.move → handleWindowMoveRequested →
+    // performWindowDragWithEvent (serial must match this button press).
     wwnWindow.lastMouseDownEvent = event;
   }
   [[WWNCompositorBridge sharedBridge]
@@ -266,16 +268,11 @@
                             button:0x110 // BTN_LEFT
                            pressed:YES
                          timestamp:(uint32_t)(event.timestamp * 1000)];
-  // app_id often arrives after WindowCreated; refresh before the allowlist
-  // check so flower/smoke still get whole-surface drag once identified.
-  if (wwnWindow && !wwnWindow.hostLocked) {
-    [[WWNCompositorBridge sharedBridge]
-        refreshMacOSSurfaceDragPolicyForWindow:wwnWindow];
-  }
-  if (wwnWindow && wwnWindow.wwnSurfaceWindowDraggable &&
-      event.type == NSEventTypeLeftMouseDown && event.buttonNumber == 0) {
-    [wwnWindow performWindowDragWithEvent:event];
-  }
+  // Do NOT start an AppKit window drag here. Clients that want content-drag
+  // (weston-flower, weston-simple-egl, CSD titlebars) issue xdg_toplevel.move
+  // from their button handler; the compositor surfaces that as
+  // WindowMoveRequested. Host-initiated whole-surface drag steals text
+  // selection and nested-compositor gestures (niri).
 }
 
 - (void)mouseUp:(NSEvent *)event {

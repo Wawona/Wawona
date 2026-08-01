@@ -86,7 +86,8 @@ void renderer_android_draw_cursor(VkCommandBuffer cmd_buf,
                                   float cursor_hotspot_y, uint32_t extent_width,
                                   uint32_t extent_height);
 
-/* Fullscreen iland GL client overlay (kmscube / weston-simple-egl page-flips). */
+/* Fullscreen iland GL client overlay (kmscube / nested DRM page-flips).
+ * pixels == NULL redraws the last cached texture (sticky frame between flips). */
 void renderer_android_draw_iland_overlay(VkCommandBuffer cmd_buf,
                                          const uint8_t *pixels, uint32_t width,
                                          uint32_t height, uint32_t stride,

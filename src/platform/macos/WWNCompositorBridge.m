@@ -161,8 +161,6 @@ static NSString *WWNIosResolveBundledClientIdForWindow(WWNCompositorBridge *brid
   return clientId;
 }
 #endif
-extern bool WWNCoreWindowPrefersMacOSSurfaceDrag(const void *core,
-                                                 uint64_t window_id);
 extern void WWNCoreSetSafeAreaInsets(void *core, int32_t top, int32_t right,
                                      int32_t bottom, int32_t left);
 extern void WWNCoreInjectPointerAxis(void *core, uint64_t window_id,
@@ -3996,25 +3994,20 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
          event->window_id, (CGFloat)kw, (CGFloat)kh);
 }
 
+/// Apply host chrome drag policy from xdg-decoration mode — never from app_id.
+///
+/// Weston flower/simple-egl drag by calling `xdg_toplevel.move` on BTN_LEFT
+/// (see upstream `window_move` / flower `button_handler`). Smoke has no such
+/// handler. The host must not invent whole-surface drag via
+/// `movableByWindowBackground` or mouseDown `performWindowDrag`.
 - (void)wwnApplySurfaceDragPolicyForWindow:(WWNWindow *)window {
-  if (!window || window.hostLocked || !_rustCore) {
+  if (!window || window.hostLocked) {
     return;
   }
-  BOOL draggable =
-      WWNCoreWindowPrefersMacOSSurfaceDrag(_rustCore, window.wwnWindowId);
-  window.wwnSurfaceWindowDraggable = draggable;
   [window setMovable:YES];
-  // SSD used to set movableByWindowBackground:YES for every non-CSD window.
-  // That lets AppKit steal click-drags inside the Wayland surface (text
-  // selection, niri/weston compositor gestures, etc.) and move the host
-  // window instead. Only the demo allowlist (flower/smoke/…) may drag from
-  // the whole surface; everyone else moves via the AppKit titlebar (SSD) or
-  // xdg_toplevel.move → performWindowDrag (CSD).
-  if (draggable) {
-    [window setMovableByWindowBackground:YES];
-  } else {
-    [window setMovableByWindowBackground:NO];
-  }
+  // SSD: AppKit titlebar only. CSD: borderless; content-drag only when the
+  // client issues xdg_toplevel.move (WindowMoveRequested).
+  [window setMovableByWindowBackground:NO];
 }
 
 - (void)refreshMacOSSurfaceDragPolicyForWindow:(NSWindow *)window {
@@ -4025,18 +4018,21 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
 }
 
 - (void)handleWindowMoveRequested:(CWindowEvent *)event {
-  WWNLog("BRIDGE", @"handleWindowMoveRequested: id=%llu", event->window_id);
+  WWNLog("BRIDGE", @"handleWindowMoveRequested: id=%llu (xdg_toplevel.move)",
+         event->window_id);
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
   WWNWindow *window = _windows[@(event->window_id)];
   if (!window || window.hostLocked)
     return;
-  [self wwnApplySurfaceDragPolicyForWindow:window];
   if (window.interactiveResizeInProgress) {
     WWNLog("BRIDGE", @"Ignoring move request during interactive resize: id=%llu",
            event->window_id);
     return;
   }
 
+  // Protocol path: client button → xdg_toplevel.move(seat, serial) → here.
+  // Mirror the button's NSEvent into AppKit interactive move (same as a
+  // Linux compositor starting an interactive move grab).
   NSEvent *currentEvent = [NSApp currentEvent];
   BOOL leftMouseDown = (([NSEvent pressedMouseButtons] & 0x1) != 0);
   BOOL validCurrentEvent =

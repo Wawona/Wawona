@@ -25,6 +25,9 @@ object SettingsOverrides {
             "nestedCompositorCursor",
             "NestedCompositorCursor",
         ),
+        "compositorBackend" to listOf("compositorBackend", "CompositorBackend"),
+        "vulkanDriver" to listOf("vulkanDriver", "VulkanDriver"),
+        "openglDriver" to listOf("openglDriver", "OpenGLDriver"),
     )
 
     fun merge(profile: MachineProfile): JSONObject {

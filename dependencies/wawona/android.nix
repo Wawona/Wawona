@@ -93,6 +93,7 @@ let
   ilandAndroid = buildModule.buildForAndroid "iland" { };
   angleAndroid = buildModule.buildForAndroid "angle" { };
   kmscubeAndroid = buildModule.buildForAndroid "kmscube" { };
+  gbmEs2DemoAndroid = buildModule.buildForAndroid "gbm-es2-demo" { };
   openglCubeAndroid = buildModule.buildForAndroid "opengl-cube" { };
   vkcubeAndroid = buildModule.buildForAndroid "vkcube" { };
   westonCompositorLdflags = import westonCompositorLdflagsNix {
@@ -112,6 +113,7 @@ let
       angle = angleAndroid;
       kmscube = kmscubeAndroid;
       "iland-gl-clients" = kmscubeAndroid;
+      "gbm-es2-demo" = gbmEs2DemoAndroid;
       "opengl-cube" = openglCubeAndroid;
       vkcube = vkcubeAndroid;
     };
@@ -146,6 +148,7 @@ let
     "iland"
     "angle"
     "kmscube"
+    "gbm-es2-demo"
     "iland-gl-clients"
   ];
   gradleTask =
@@ -409,11 +412,19 @@ EOF
       done
       shopt -u nullglob
 
-      # ANGLE ships as libEGL.so / libGLESv2.so but with SONAMEs
-      # libEGL_angle.so / libGLESv2_angle.so; libwawona.so links against the
-      # SONAME, so stage SONAME-named copies too or the loader fails at launch.
-      [ -f "$JNI_LIB_DIR/libEGL.so" ] && cp -f "$JNI_LIB_DIR/libEGL.so" "$JNI_LIB_DIR/libEGL_angle.so"
-      [ -f "$JNI_LIB_DIR/libGLESv2.so" ] && cp -f "$JNI_LIB_DIR/libGLESv2.so" "$JNI_LIB_DIR/libGLESv2_angle.so"
+      # ANGLE archives are named libEGL.so / libGLESv2.so but their ELF SONAMEs
+      # are libEGL_angle.so / libGLESv2_angle.so (libwawona NEEDED). Stage only
+      # the SONAME filenames — shipping both names as separate files loads two
+      # ANGLE images (eglMakeCurrent on one, gl* on the other → empty shader
+      # compile failures). WawonaNative loads EGL_angle / GLESv2_angle.
+      if [ -f "$JNI_LIB_DIR/libEGL.so" ]; then
+        mv -f "$JNI_LIB_DIR/libEGL.so" "$JNI_LIB_DIR/libEGL_angle.so"
+      fi
+      if [ -f "$JNI_LIB_DIR/libGLESv2.so" ]; then
+        mv -f "$JNI_LIB_DIR/libGLESv2.so" "$JNI_LIB_DIR/libGLESv2_angle.so"
+      fi
+      # Drop any accidental duplicate that would reintroduce a second image.
+      rm -f "$JNI_LIB_DIR/libEGL.so" "$JNI_LIB_DIR/libGLESv2.so"
 
       # SwiftShader ICD manifest: the jniLibs copy loop only takes *.so, so the
       # JSON never reached the APK. Stage it under assets; runtime rewrite under

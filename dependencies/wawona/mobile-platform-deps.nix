@@ -67,6 +67,7 @@ let
       moltenvk = buildFn "moltenvk" { inherit simulator; };
       kmscube = buildFn "kmscube" { inherit simulator; };
       "iland-gl-clients" = buildFn "kmscube" { inherit simulator; };
+      "gbm-es2-demo" = buildFn "gbm-es2-demo" { inherit simulator; };
       # Vulkan acceptance client (krh/vkcube) over the same iland virtual DRM,
       # presenting through MoltenVK. GPU variants only; wwn-kmscube has no
       # tv/watch recipe for it by design.

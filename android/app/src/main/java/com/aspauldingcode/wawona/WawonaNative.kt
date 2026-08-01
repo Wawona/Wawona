@@ -5,11 +5,10 @@ import android.view.Surface
 object WawonaNative {
     init {
         try {
-            // Nix ANGLE archives use *_angle SONAMEs while Android packages the
-            // libraries under their conventional EGL/GLES filenames. Preload
-            // both so the dynamic linker can satisfy libwawona's SONAME deps.
-            System.loadLibrary("EGL")
-            System.loadLibrary("GLESv2")
+            // ANGLE SONAME is libEGL_angle.so / libGLESv2_angle.so. Load those
+            // only — never also load libEGL.so / libGLESv2.so as a second copy.
+            System.loadLibrary("EGL_angle")
+            System.loadLibrary("GLESv2_angle")
             WLog.d("NATIVE", "Loading native library 'wawona'")
             System.loadLibrary("wawona")
             WLog.d("NATIVE", "Native library 'wawona' loaded successfully")
@@ -52,7 +51,8 @@ object WawonaNative {
         enableTCPListener: Boolean,
         tcpPort: Int,
         vulkanDriver: String,
-        openglDriver: String
+        openglDriver: String,
+        compositorBackend: String
     )
 
     external fun nativeSetCore(corePtr: Long)

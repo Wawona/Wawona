@@ -49,6 +49,12 @@ bool WWNSettings_GetEGLDriversEnabled(void);
 //         "system" (Android)
 const char *WWNSettings_GetVulkanDriver(void);
 const char *WWNSettings_GetOpenGLDriver(void);
+// Display Backend (Settings → Advanced): "auto" | "wayland" | "drm".
+// Same semantic as macOS CompositorBackend / --backend.
+const char *WWNSettings_GetCompositorBackend(void);
+// Resolve to "wayland" or "drm". "auto" → "wayland". "drm" falls back to
+// "wayland" when OpenGLDriver=none (nothing behind iland to present).
+const char *WWNSettings_ResolveCompositorBackend(void);
 typedef struct {
   const char *vulkanDriver;
   const char *openGLDriver;
@@ -89,6 +95,8 @@ typedef struct {
   // Graphics driver dropdown selection (Settings > Graphics > Drivers)
   char vulkanDriver[32]; // "none", "swiftshader", "system"
   char openglDriver[32]; // "none", "angle", "system"
+  // Display Backend (Settings > Advanced); mirrors macOS CompositorBackend.
+  char compositorBackend[32]; // "auto", "wayland", "drm"
 } WWNSettingsConfig;
 
 void WWNSettings_UpdateConfig(const WWNSettingsConfig *config);

@@ -3302,23 +3302,6 @@ impl WawonaCore {
             .map(|wid| WindowId { id: wid as u64 })
     }
 
-    /// Whether macOS should treat the whole client surface as a window drag handle.
-    pub fn window_prefers_macos_surface_drag(&self, window_id: WindowId) -> bool {
-        if !self.is_running() {
-            return false;
-        }
-        let state = self.state.read_recover();
-        let Some(window_ref) = state.get_window(window_id.id as u32) else {
-            return false;
-        };
-        let Ok(window) = window_ref.read() else {
-            return false;
-        };
-        crate::core::wayland::xdg::decoration::prefers_macos_surface_window_drag(
-            &window.app_id,
-        )
-    }
-
     /// Inject pointer motion event
     pub fn inject_pointer_motion(
         &self,

@@ -26,12 +26,32 @@
 //! Decoration changes must resize before configure so nested compositors see matching
 //! `wl_output.mode` and `xdg_toplevel` dimensions.
 //!
+//! ## Interactive move (not an app_id allowlist)
+//!
+//! Weston demos that look “chrome-less and content-draggable” (flower, simple-egl)
+//! do **not** ask the host for special AppKit drag. They:
+//!
+//! 1. Skip `window_frame_create` → no CSD chrome painted into the buffer (fixed
+//!    content size, e.g. flower 200×200).
+//! 2. Negotiate **ClientSide** decorations when policy allows → host borderless
+//!    (no AppKit titlebar), matching a floating square on weston.
+//! 3. On `BTN_LEFT` / touch-down call `xdg_toplevel.move(seat, serial)` (see
+//!    upstream `clients/flower.c` `button_handler`, `clients/window.c`
+//!    `window_move`). Framed clients do the same from
+//!    `FRAME_STATUS_MOVE` on the painted titlebar.
+//!
+//! Wawona must answer (3) with `WindowMoveRequested` → host
+//! `performWindowDragWithEvent`, never `movableByWindowBackground` or
+//! mouseDown-initiated whole-surface drag. Clients that never call move
+//! (smoke, simple-shm) are not content-draggable on Linux either — Super+drag
+//! / compositor bindings only.
+//!
 //! ## Policy
 //!
 //! - `ForceServer` → always `Mode::ServerSide` (except weston-family uses dedicated rules).
 //! - `PreferServer` / `PreferClient` → honour client `set_mode` for normal apps.
-//! - Weston-family (`weston`, `weston-*`) → CSD when policy is not `ForceServer`, because
-//!   demo clients paint titlebars into the buffer (waypipe, nested Weston, weston-terminal).
+//! - Weston-family (`weston`, `weston-*`) → CSD when policy is not `ForceServer`
+//!   (terminals paint CSD; flower/smoke stay borderless host + no frame buffer).
 
 use wayland_protocols::xdg::decoration::zv1::server::{
     zxdg_toplevel_decoration_v1::{self, ZxdgToplevelDecorationV1, Mode},
@@ -57,61 +77,6 @@ pub fn is_weston_family_app_id(app_id: &str) -> bool {
     // 200×200) into the output. Host-lock is fullscreen_shell / explicit
     // only — see `state/host_lock.rs`.
     app_id == "weston" || app_id.starts_with("weston-") || app_id.contains("weston")
-}
-
-fn app_id_matches_bundled_client(app_id: &str, client_id: &str) -> bool {
-    if app_id == client_id || app_id.contains(client_id) {
-        return true;
-    }
-    // org.freedesktop.weston.wayland-simple-shm → weston-simple-shm
-    if let Some(suffix) = client_id.strip_prefix("weston-") {
-        return app_id.contains(suffix);
-    }
-    false
-}
-
-/// Weston toy/demo clients that initiate `xdg_toplevel.move` from the whole
-/// surface (no real titlebar). On macOS the host must start an AppKit window
-/// drag from content clicks — not only from SSD chrome or xdg move round-trips.
-///
-/// Do **not** broaden this to nested compositors (niri/weston) or terminals:
-/// `NSWindow.movableByWindowBackground` / whole-surface `performWindowDrag`
-/// steals click-drag text selection and compositor pointer gestures.
-pub fn prefers_macos_surface_window_drag(app_id: &str) -> bool {
-    if app_id.is_empty() {
-        return false;
-    }
-    if is_weston_terminal_app_id(app_id) || app_id == "weston" || app_id == "foot" {
-        return false;
-    }
-    const EXCLUDE: &[&str] = &[
-        "weston-dnd",
-        "weston-constraints",
-        "weston-resizor",
-        "weston-eventdemo",
-        "weston-clickdot",
-    ];
-    if EXCLUDE
-        .iter()
-        .any(|id| app_id_matches_bundled_client(app_id, id))
-    {
-        return false;
-    }
-    const INCLUDE: &[&str] = &[
-        "weston-simple-shm",
-        "weston-flower",
-        "weston-smoke",
-        "weston-simple-egl",
-        "weston-image",
-        "weston-transformed",
-        "weston-stacking",
-        "weston-scaler",
-        "weston-cliptest",
-        "weston-editor",
-    ];
-    INCLUDE
-        .iter()
-        .any(|id| app_id_matches_bundled_client(app_id, id))
 }
 
 /// Loose tolerance for “is this commit related to the last configure?” checks
@@ -463,24 +428,6 @@ mod tests {
             None,
         );
         assert_eq!(geom, None);
-    }
-
-    #[test]
-    fn macos_surface_drag_policy_for_demo_clients() {
-        assert!(prefers_macos_surface_window_drag(
-            "org.freedesktop.weston.wayland-simple-shm"
-        ));
-        assert!(prefers_macos_surface_window_drag("weston-flower"));
-        assert!(prefers_macos_surface_window_drag("weston-simple-egl"));
-        assert!(!prefers_macos_surface_window_drag(
-            "org.freedesktop.weston.wayland-terminal"
-        ));
-        assert!(!prefers_macos_surface_window_drag("weston-dnd"));
-        assert!(!prefers_macos_surface_window_drag("weston-clickdot"));
-        assert!(!prefers_macos_surface_window_drag("weston"));
-        // Nested compositors / interactive shells must not steal click-drags.
-        assert!(!prefers_macos_surface_window_drag("niri"));
-        assert!(!prefers_macos_surface_window_drag(""));
     }
 
     #[test]

@@ -414,6 +414,31 @@ impl CompositorState {
                                 render_width = win_w;
                                 render_height = win_h;
                                 node.scale = output_scale;
+                            } else if let Some(output) =
+                                self.outputs.get(self.primary_output)
+                            {
+                                // Window size may already equal the physical
+                                // buffer (client/host raced before density
+                                // applied). Still present at output *logical*
+                                // size when the buffer matches output×scale —
+                                // otherwise Android draws a 1080 quad into a
+                                // 360 viewport and only a black corner shows
+                                // (weston-simple-egl flash-then-black).
+                                let out_w = output.width;
+                                let out_h = output.height;
+                                let out_scaled_w =
+                                    (out_w as f32 * output_scale).round() as u32;
+                                let out_scaled_h =
+                                    (out_h as f32 * output_scale).round() as u32;
+                                if out_w > 0
+                                    && out_h > 0
+                                    && committed_width == out_scaled_w
+                                    && committed_height == out_scaled_h
+                                {
+                                    render_width = out_w;
+                                    render_height = out_h;
+                                    node.scale = output_scale;
+                                }
                             }
                         }
                     }

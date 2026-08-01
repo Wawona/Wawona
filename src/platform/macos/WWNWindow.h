@@ -18,8 +18,8 @@
 /// windowWillResize/windowDidResize callbacks are suppressed so only the
 /// settled fullscreen size reaches the Wayland client.
 @property(nonatomic, assign) BOOL wwnFullscreenTransitionInProgress;
-/// YES for demo clients (weston-simple-shm, weston-flower, …) that drag from the whole surface.
-@property(nonatomic, assign) BOOL wwnSurfaceWindowDraggable;
+/// Last left-mouse-down in this window; used when `xdg_toplevel.move` arrives
+/// after button inject (WindowMoveRequested → performWindowDragWithEvent).
 @property(nonatomic, strong) NSEvent *lastMouseDownEvent;
 /// Toggle AppKit chrome vs transparent host for SSD/CSD presentation.
 - (void)applyPresentationPolicyForServerSideDecorations:(BOOL)serverSideDecorations;

@@ -76,7 +76,8 @@ extern int constraints_main(int argc, char **argv);
 /// (winsys posts IOSurface dmabuf buffers), so routing them through the iland
 /// KMS presenter waited for page flips that never came.
 static BOOL WWNIsIlandGpuCubeClientId(NSString *clientId) {
-  return [clientId isEqualToString:@"kmscube"];
+  return [clientId isEqualToString:@"kmscube"] ||
+         [clientId isEqualToString:@"gbm-es2-demo"];
 }
 
 /// Clients whose first frame requires a real GL or Vulkan driver.

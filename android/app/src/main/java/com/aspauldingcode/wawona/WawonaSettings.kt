@@ -68,11 +68,18 @@ object WawonaSettings {
         if (storedVulkanDriver != vulkanDriver) {
             prefs.edit().putString("vulkanDriver", "System").apply()
         }
+        /* Default ANGLE: iland GBM/KMS clients need the bundled Vulkan-backed
+         * ANGLE slice; vendor "system" GLES remains selectable. */
         val openglDriver =
-            (prefs.getString("openglDriver", "system") ?: "system")
+            (prefs.getString("openglDriver", "angle") ?: "angle")
                 .lowercase()
                 .takeIf { it in setOf("none", "system", "angle") }
-                ?: "system"
+                ?: "angle"
+        val compositorBackend =
+            (prefs.getString("compositorBackend", "auto") ?: "auto")
+                .lowercase()
+                .takeIf { it in setOf("auto", "wayland", "drm") }
+                ?: "auto"
         
         WawonaNative.nativeApplySettings(
             forceServerSideDecorations,
@@ -90,7 +97,8 @@ object WawonaSettings {
             enableTCPListener,
             tcpPort,
             vulkanDriver,
-            openglDriver
+            openglDriver,
+            compositorBackend
         )
     }
 }

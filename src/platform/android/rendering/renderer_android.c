@@ -840,6 +840,12 @@ void renderer_android_draw_quads(VkCommandBuffer cmd_buf,
                                  uint32_t extent_height) {
   if (!s_renderer || !nodes || node_count == 0)
     return;
+  /* Pipeline can be VK_NULL_HANDLE briefly across surface recreate races;
+   * Adreno SIGSEGVs on vkCmdBindPipeline(NULL) rather than no-oping. */
+  if (s_renderer->pipeline == VK_NULL_HANDLE ||
+      s_renderer->pipeline_layout == VK_NULL_HANDLE ||
+      s_renderer->vertex_buffer == VK_NULL_HANDLE)
+    return;
 
   reset_descriptor_pool();
 
@@ -940,22 +946,44 @@ void renderer_android_draw_iland_overlay(VkCommandBuffer cmd_buf,
                                          uint32_t height, uint32_t stride,
                                          uint32_t extent_width,
                                          uint32_t extent_height) {
-  if (!s_renderer || !pixels || width == 0 || height == 0)
+  if (!s_renderer || width == 0 || height == 0)
     return;
 
-  size_t tight = (size_t)width * height * 4;
-  /* surface_id 0 — overlay is not Wayland-surface-scoped */
-  if (renderer_android_cache_buffer(cmd_buf, 0, WAWONA_ILAND_OVERLAY_BUFFER_ID,
-                                    width, height, stride, 0, pixels,
-                                    tight) != 0)
+  if (pixels) {
+    size_t tight = (size_t)width * height * 4;
+    /* surface_id 0 — overlay is not Wayland-surface-scoped */
+    if (renderer_android_cache_buffer(cmd_buf, 0, WAWONA_ILAND_OVERLAY_BUFFER_ID,
+                                      width, height, stride, 0, pixels,
+                                      tight) != 0)
+      return;
+  } else if (renderer_android_get_texture(WAWONA_ILAND_OVERLAY_BUFFER_ID) ==
+             VK_NULL_HANDLE) {
     return;
+  }
+
+  /* Letterbox like macOS WWNIlandPresenter: stock KMS clients keep a fixed
+   * mode after the first modeset; stretching warped the cube on host resize. */
+  float ext_x = (float)extent_width;
+  float ext_y = (float)extent_height;
+  if (ext_x < 1.f)
+    ext_x = 1.f;
+  if (ext_y < 1.f)
+    ext_y = 1.f;
+  float scale = ext_x / (float)width;
+  float scale_y = ext_y / (float)height;
+  if (scale_y < scale)
+    scale = scale_y;
+  float fit_w = (float)width * scale;
+  float fit_h = (float)height * scale;
+  float origin_x = (ext_x - fit_w) * 0.5f;
+  float origin_y = (ext_y - fit_h) * 0.5f;
 
   CRenderNode node = {
       .buffer_id = WAWONA_ILAND_OVERLAY_BUFFER_ID,
-      .x = 0,
-      .y = 0,
-      .width = (float)extent_width,
-      .height = (float)extent_height,
+      .x = origin_x,
+      .y = origin_y,
+      .width = fit_w,
+      .height = fit_h,
       .opacity = 1.0f,
       .content_rect_x = 0,
       .content_rect_y = 0,

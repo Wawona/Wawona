@@ -42,7 +42,7 @@ object BundledClients {
         BundledClientOption("foot", "Foot Terminal", "Lightweight Wayland terminal emulator", Icons.Filled.Create),
         BundledClientOption("weston-flower", "Weston Flower", "Animated cairo demo (toytoolkit)", Icons.Filled.Eco),
         BundledClientOption("kmscube", "KMS Cube", "Spinning GL cube via iland + ANGLE (userland KMS)", Icons.Filled.ViewInAr),
-        BundledClientOption("opengl-cube", "OpenGL Cube", "GLES cube via iland userland KMS", Icons.Filled.ViewInAr),
+        BundledClientOption("opengl-cube", "OpenGL Cube", "GLES cube via Wayland-EGL (ANGLE)", Icons.Filled.ViewInAr),
         BundledClientOption("vkcube", "Vulkan Cube", "Vulkan API smoke test", Icons.Filled.ViewInAr),
         BundledClientOption("weston-simple-egl", "Weston Simple EGL", "Wayland EGL demo client", Icons.Filled.Cloud),
         BundledClientOption("weston-smoke", "Weston Smoke", "Smoke particle cairo demo", Icons.Filled.Cloud),

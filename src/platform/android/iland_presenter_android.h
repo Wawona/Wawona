@@ -13,10 +13,11 @@ void wwn_iland_presenter_android_shutdown(void);
 void wwn_iland_presenter_android_set_surface_size(uint32_t width, uint32_t height);
 
 int wwn_iland_presenter_android_launch_kmscube(void);
+int wwn_iland_presenter_android_launch_gbm_es2_demo(void);
 int wwn_iland_presenter_android_is_active(void);
 int wwn_iland_presenter_android_take_hardware_buffer(
     AHardwareBuffer **out_buffer, uint32_t *out_w, uint32_t *out_h,
-    uint32_t *out_stride, uint32_t *out_fb_id);
+    uint32_t *out_stride, uint32_t *out_fb_id, int *out_is_new);
 void wwn_iland_presenter_android_frame_presented(uint32_t fb_id);
 
 #ifdef __cplusplus

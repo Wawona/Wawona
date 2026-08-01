@@ -65,7 +65,7 @@
     wwn-ssh.inputs.nixpkgs.follows = "nixpkgs";
     wwn-ssh.inputs.rust-overlay.follows = "rust-overlay";
     wwn-ssh.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    wwn-waypipe.url = "github:Wawona/wwn-waypipe";
+    wwn-waypipe.url = "github:Wawona/wwn-waypipe/development";
     wwn-waypipe.inputs.nixpkgs.follows = "nixpkgs";
     wwn-waypipe.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-waypipe.inputs.wwn-ssh.follows = "wwn-ssh";
@@ -633,6 +633,7 @@
           # via the Mode A present-redirect. macOS only.
           kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
           "iland-gl-clients" = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
+          "gbm-es2-demo" = toolchains.buildForMacOS "gbm-es2-demo" { };
         };
 
         packages = commonPackages

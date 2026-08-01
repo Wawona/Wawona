@@ -338,7 +338,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeApplySettings(
     jboolean nestedCompositorsSupport, jboolean useMetal4ForNested,
     jboolean multipleClients, jboolean waypipeRSSupport,
     jboolean enableTCPListener, jint tcpPort, jstring vulkanDriver,
-    jstring openglDriver);
+    jstring openglDriver, jstring compositorBackend);
 JNIEXPORT void JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeSetCore(JNIEnv *env,
                                                           jobject thiz,
@@ -537,6 +537,9 @@ static int g_interactive_resize_idle_frames = 0;
 // Threading
 static int g_running = 0;
 static pthread_t g_render_thread = 0;
+
+static void android_stop_render_thread_locked(void);
+static void android_teardown_swapchain_locked(void);
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 
 // Window title from drained CWindowEvent (TitleChanged) - for ActionBar/status
@@ -1318,15 +1321,14 @@ static int apply_graphics_driver_selection(void) {
 
   const char *openGLDriver = selection.openGLDriver;
   setenv("WWN_OPENGL_DRIVER", openGLDriver, 1);
-  if (strcmp(openGLDriver, "angle") == 0) {
-    setenv("ANGLE_DEFAULT_PLATFORM", "vulkan", 1);
-    unsetenv("WWN_DISABLE_EGL");
-  } else if (strcmp(openGLDriver, "none") == 0) {
+  if (strcmp(openGLDriver, "none") == 0) {
     setenv("WWN_DISABLE_EGL", "1", 1);
     unsetenv("ANGLE_DEFAULT_PLATFORM");
   } else {
+    /* Android iland GL clients always use bundled ANGLE (see egl.c load_angle).
+     * Keep the Vulkan backend selected whenever EGL is enabled. */
+    setenv("ANGLE_DEFAULT_PLATFORM", "vulkan", 1);
     unsetenv("WWN_DISABLE_EGL");
-    unsetenv("ANGLE_DEFAULT_PLATFORM");
   }
   LOGI("Graphics drivers applied: Vulkan=%s OpenGL=%s", vulkanDriver,
        openGLDriver);
@@ -1911,29 +1913,49 @@ static void choreographer_frame_cb(long frameTimeNanos, void *data) {
   if (wwn_iland_presenter_android_is_active()) {
     AHardwareBuffer *iland_buffer = NULL;
     uint32_t iland_w = 0, iland_h = 0, iland_stride = 0, iland_fb_id = 0;
+    int iland_is_new = 0;
     if (wwn_iland_presenter_android_take_hardware_buffer(
-            &iland_buffer, &iland_w, &iland_h, &iland_stride, &iland_fb_id)) {
-      iland_presented_fb_id = iland_fb_id;
-      void *iland_pixels = NULL;
-      pthread_once(&g_ahb_symbols_once, wwn_load_ahb_symbols);
-      if (g_ahb_lock && g_ahb_unlock &&
-          g_ahb_lock(iland_buffer, AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN, -1,
-                     NULL, &iland_pixels) == 0 &&
-          iland_pixels) {
-        int sf = compute_auto_scale_factor();
-        uint32_t logical_w = ctx->extent.width / (uint32_t)sf;
-        uint32_t logical_h = ctx->extent.height / (uint32_t)sf;
-        if (logical_w == 0)
-          logical_w = 1;
-        if (logical_h == 0)
-          logical_h = 1;
-        renderer_android_draw_iland_overlay(
-            ctx->cmdBuf, iland_pixels, iland_w, iland_h, iland_stride,
-            logical_w, logical_h);
-        g_ahb_unlock(iland_buffer, NULL);
+            &iland_buffer, &iland_w, &iland_h, &iland_stride, &iland_fb_id,
+            &iland_is_new)) {
+      int sf = compute_auto_scale_factor();
+      uint32_t logical_w = ctx->extent.width / (uint32_t)sf;
+      uint32_t logical_h = ctx->extent.height / (uint32_t)sf;
+      if (logical_w == 0)
+        logical_w = 1;
+      if (logical_h == 0)
+        logical_h = 1;
+      if (iland_is_new && iland_buffer) {
+        iland_presented_fb_id = iland_fb_id;
+        void *iland_pixels = NULL;
+        pthread_once(&g_ahb_symbols_once, wwn_load_ahb_symbols);
+        if (g_ahb_lock && g_ahb_unlock &&
+            g_ahb_lock(iland_buffer, AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN, -1,
+                       NULL, &iland_pixels) == 0 &&
+            iland_pixels) {
+          renderer_android_draw_iland_overlay(
+              ctx->cmdBuf, iland_pixels, iland_w, iland_h, iland_stride,
+              logical_w, logical_h);
+          g_ahb_unlock(iland_buffer, NULL);
+        } else {
+          static int s_lock_fail_logged = 0;
+          if (!s_lock_fail_logged) {
+            LOGE("iland overlay: AHardwareBuffer_lock failed (zero-copy GPU "
+                 "import still open)");
+            s_lock_fail_logged = 1;
+          }
+          /* Still redraw last good texture if we have one. */
+          renderer_android_draw_iland_overlay(ctx->cmdBuf, NULL, iland_w,
+                                               iland_h, iland_stride, logical_w,
+                                               logical_h);
+        }
+        if (g_ahb_release)
+          g_ahb_release(iland_buffer);
+      } else {
+        /* Sticky: redraw cached Vulkan texture between page flips. */
+        renderer_android_draw_iland_overlay(ctx->cmdBuf, NULL, iland_w, iland_h,
+                                             iland_stride, logical_w,
+                                             logical_h);
       }
-      if (g_ahb_release)
-        g_ahb_release(iland_buffer);
     }
   }
 #endif
@@ -2201,7 +2223,10 @@ static void *render_thread(void *arg) {
   vkDestroySemaphore(g_device, imageAvailable, NULL);
   vkDestroySemaphore(g_device, renderFinished, NULL);
   vkDestroyFence(g_device, inFlightFence, NULL);
-  renderer_android_destroy_pipeline();
+  /* Do NOT destroy the graphics pipeline here. A second SetSurface can start
+   * another render thread while this one is still exiting; destroying the
+   * shared pipeline then races the new thread's draw_quads (Adreno SIGSEGV).
+   * Pipeline teardown belongs to the waiter after pthread_join. */
   vkFreeCommandBuffers(g_device, cmdPool, 1, &cmdBuf);
   vkDestroyCommandPool(g_device, cmdPool, NULL);
   free(images);
@@ -2311,6 +2336,47 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeIsCompositorReady(
  * Set the Android Surface and initialize rendering
  * Called when the SurfaceView is created/updated
  */
+/* Stop the vsync render thread. Caller must hold g_lock. Joins before
+ * returning so Vulkan/pipeline teardown cannot race a live frame callback. */
+static void android_stop_render_thread_locked(void) {
+  g_running = 0;
+  if (!g_render_thread)
+    return;
+  pthread_t t = g_render_thread;
+  g_render_thread = 0;
+  /* Render thread never takes g_lock; join while holding is safe. */
+  pthread_join(t, NULL);
+}
+
+/* Tear down swapchain-side resources after the render thread has stopped.
+ * Leaves VkInstance / VkDevice intact. Caller holds g_lock. */
+static void android_teardown_swapchain_locked(void) {
+  if (g_device != VK_NULL_HANDLE)
+    vkDeviceWaitIdle(g_device);
+
+  if (g_framebuffers) {
+    for (uint32_t i = 0; i < g_swapchainImageCount; i++)
+      vkDestroyFramebuffer(g_device, g_framebuffers[i], NULL);
+    free(g_framebuffers);
+    g_framebuffers = NULL;
+  }
+  if (g_renderPass != VK_NULL_HANDLE) {
+    vkDestroyRenderPass(g_device, g_renderPass, NULL);
+    g_renderPass = VK_NULL_HANDLE;
+  }
+  if (g_imageViews) {
+    for (uint32_t i = 0; i < g_swapchainImageCount; i++)
+      vkDestroyImageView(g_device, g_imageViews[i], NULL);
+    free(g_imageViews);
+    g_imageViews = NULL;
+  }
+  if (g_swapchain && g_device) {
+    vkDestroySwapchainKHR(g_device, g_swapchain, NULL);
+    g_swapchain = VK_NULL_HANDLE;
+  }
+  renderer_android_destroy_pipeline();
+}
+
 JNIEXPORT void JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeSetSurface(JNIEnv *env,
                                                              jobject thiz,
@@ -2319,6 +2385,20 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeSetSurface(JNIEnv *env,
   pthread_mutex_lock(&g_lock);
 
   LOGI("nativeSetSurface called");
+
+  /* Surface recreate (split-screen / SessionActivity) used to start a second
+   * render thread without joining the first — both shared one pipeline and
+   * the exiting thread destroyed it under the new thread (SIGSEGV in
+   * draw_quads). Always stop + tear down presentation before rebuilding. */
+  if (g_render_thread || g_running || g_swapchain || g_surface) {
+    LOGI("nativeSetSurface: stopping prior render/swapchain");
+    android_stop_render_thread_locked();
+    android_teardown_swapchain_locked();
+    if (g_surface && g_instance) {
+      vkDestroySurfaceKHR(g_instance, g_surface, NULL);
+      g_surface = VK_NULL_HANDLE;
+    }
+  }
 
   if (g_window) {
     LOGI("Releasing existing ANativeWindow");
@@ -2378,28 +2458,34 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeSetSurface(JNIEnv *env,
     vkDestroySurfaceKHR(g_instance, g_surface, NULL);
     ANativeWindow_release(win);
     g_window = NULL;
+    g_surface = VK_NULL_HANDLE;
     pthread_mutex_unlock(&g_lock);
     return;
   }
   LOGI("Vulkan device picked");
 
   LOGI("Creating Vulkan device...");
-  if (create_device(pd) != 0) {
-    LOGE("Failed to create device");
-    vkDestroySurfaceKHR(g_instance, g_surface, NULL);
-    ANativeWindow_release(win);
-    g_window = NULL;
-    pthread_mutex_unlock(&g_lock);
-    return;
+  if (g_device == VK_NULL_HANDLE) {
+    if (create_device(pd) != 0) {
+      LOGE("Failed to create device");
+      vkDestroySurfaceKHR(g_instance, g_surface, NULL);
+      ANativeWindow_release(win);
+      g_window = NULL;
+      g_surface = VK_NULL_HANDLE;
+      pthread_mutex_unlock(&g_lock);
+      return;
+    }
+    LOGI("Vulkan device created");
+  } else {
+    LOGI("Reusing existing Vulkan device");
   }
-  LOGI("Vulkan device created");
 
   LOGI("Creating swapchain...");
   if (create_swapchain(pd) != 0) {
     LOGE("Failed to create swapchain");
-    renderer_android_destroy_all();
-    vkDestroyDevice(g_device, NULL);
+    android_teardown_swapchain_locked();
     vkDestroySurfaceKHR(g_instance, g_surface, NULL);
+    g_surface = VK_NULL_HANDLE;
     ANativeWindow_release(win);
     g_window = NULL;
     pthread_mutex_unlock(&g_lock);
@@ -2443,47 +2529,8 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeDestroySurface(JNIEnv *env,
   pthread_mutex_lock(&g_lock);
 
   LOGI("Destroying surface");
-  g_running = 0;
-
-  // Wait for render thread to finish
-  if (g_render_thread) {
-    pthread_join(g_render_thread, NULL);
-    g_render_thread = 0;
-  }
-
-  // Clean up Vulkan resources
-  if (g_device != VK_NULL_HANDLE) {
-    vkDeviceWaitIdle(g_device);
-  }
-
-  // Clean up Framebuffers
-  if (g_framebuffers) {
-    for (uint32_t i = 0; i < g_swapchainImageCount; i++) {
-      vkDestroyFramebuffer(g_device, g_framebuffers[i], NULL);
-    }
-    free(g_framebuffers);
-    g_framebuffers = NULL;
-  }
-
-  // Clean up Render Pass
-  if (g_renderPass != VK_NULL_HANDLE) {
-    vkDestroyRenderPass(g_device, g_renderPass, NULL);
-    g_renderPass = VK_NULL_HANDLE;
-  }
-
-  // Clean up Image Views
-  if (g_imageViews) {
-    for (uint32_t i = 0; i < g_swapchainImageCount; i++) {
-      vkDestroyImageView(g_device, g_imageViews[i], NULL);
-    }
-    free(g_imageViews);
-    g_imageViews = NULL;
-  }
-
-  if (g_swapchain && g_device) {
-    vkDestroySwapchainKHR(g_device, g_swapchain, NULL);
-    g_swapchain = VK_NULL_HANDLE;
-  }
+  android_stop_render_thread_locked();
+  android_teardown_swapchain_locked();
 
   if (g_surface && g_instance) {
     vkDestroySurfaceKHR(g_instance, g_surface, NULL);
@@ -2549,34 +2596,8 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeResizeSurface(JNIEnv *env,
 
   LOGI("Resizing surface to %dx%d (swapchain-only)", (int)width, (int)height);
 
-  g_running = 0;
-  if (g_render_thread) {
-    pthread_join(g_render_thread, NULL);
-    g_render_thread = 0;
-  }
-
-  if (g_device != VK_NULL_HANDLE)
-    vkDeviceWaitIdle(g_device);
-
-  /* Destroy swapchain resources only */
-  if (g_framebuffers) {
-    for (uint32_t i = 0; i < g_swapchainImageCount; i++)
-      vkDestroyFramebuffer(g_device, g_framebuffers[i], NULL);
-    free(g_framebuffers);
-    g_framebuffers = NULL;
-  }
-  if (g_imageViews) {
-    for (uint32_t i = 0; i < g_swapchainImageCount; i++)
-      vkDestroyImageView(g_device, g_imageViews[i], NULL);
-    free(g_imageViews);
-    g_imageViews = NULL;
-  }
-  if (g_swapchain && g_device) {
-    vkDestroySwapchainKHR(g_device, g_swapchain, NULL);
-    g_swapchain = VK_NULL_HANDLE;
-  }
-
-  renderer_android_destroy_pipeline();
+  android_stop_render_thread_locked();
+  android_teardown_swapchain_locked();
 
   ANativeWindow_setBuffersGeometry(g_window, (int32_t)width, (int32_t)height, 0);
 
@@ -2717,7 +2738,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeApplySettings(
     jboolean nestedCompositorsSupport, jboolean useMetal4ForNested,
     jboolean multipleClients, jboolean waypipeRSSupport,
     jboolean enableTCPListener, jint tcpPort, jstring vulkanDriver,
-    jstring openglDriver) {
+    jstring openglDriver, jstring compositorBackend) {
   (void)thiz;
   pthread_mutex_lock(&g_lock);
 
@@ -2745,6 +2766,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeApplySettings(
 
   char vulkanDriverBuf[32] = {0};
   char openglDriverBuf[32] = {0};
+  char compositorBackendBuf[32] = {0};
   if (vulkanDriver) {
     const char *s = (*env)->GetStringUTFChars(env, vulkanDriver, NULL);
     if (s) {
@@ -2759,8 +2781,17 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeApplySettings(
       (*env)->ReleaseStringUTFChars(env, openglDriver, s);
     }
   }
+  if (compositorBackend) {
+    const char *s = (*env)->GetStringUTFChars(env, compositorBackend, NULL);
+    if (s) {
+      strncpy(compositorBackendBuf, s, sizeof(compositorBackendBuf) - 1);
+      (*env)->ReleaseStringUTFChars(env, compositorBackend, s);
+    }
+  }
   LOGI("  Vulkan Driver: %s", vulkanDriverBuf[0] ? vulkanDriverBuf : "system");
   LOGI("  OpenGL Driver: %s", openglDriverBuf[0] ? openglDriverBuf : "system");
+  LOGI("  Display Backend: %s",
+       compositorBackendBuf[0] ? compositorBackendBuf : "auto");
 
   // Apply settings
   WWNSettingsConfig config = {
@@ -2786,7 +2817,16 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeApplySettings(
   strncpy(config.openglDriver, openglDriverBuf[0] ? openglDriverBuf : "system",
           sizeof(config.openglDriver) - 1);
   config.openglDriver[sizeof(config.openglDriver) - 1] = '\0';
+  strncpy(config.compositorBackend,
+          compositorBackendBuf[0] ? compositorBackendBuf : "auto",
+          sizeof(config.compositorBackend) - 1);
+  config.compositorBackend[sizeof(config.compositorBackend) - 1] = '\0';
   WWNSettings_UpdateConfig(&config);
+
+  /* Push OpenGL/Vulkan driver env *before* any bundled GL client starts.
+   * create_instance() also calls this, but kmscube/opengl-cube launch from
+   * MainActivity before SessionActivity brings up the host Vulkan surface. */
+  (void)apply_graphics_driver_selection();
 
   // Safe area is applied in Compose when enabled (iOS safeAreaLayoutGuide parity).
   g_safeAreaLeft = 0;
@@ -4525,12 +4565,22 @@ static void *weston_thread_func(void *arg) {
    * reliably (WAYLAND_DISPLAY=wayland-0 is Wawona's root Smithay socket; the
    * nested compositor exposes "wawona-nested"). Keep in sync with
    * AnowawSession.NESTED_SOCKET (Kotlin) and kWWNAnowaWNestedSocket (macOS). */
-  /* GPU-capable Android defaults to Weston's GL renderer. The separately
-   * packaged non-DRM compositor remains the explicit pixman/software path;
-   * do not silently regress the Play/Home product to CPU composition. */
-  char *argv[] = {"weston", "--backend=wayland", "--renderer=gl",
-                  "--socket=wawona-nested", "--shell=desktop-shell.so", NULL};
-  weston_compositor_main(5, argv);
+  const char *backend = WWNSettings_ResolveCompositorBackend();
+  const int use_drm = (backend && strcmp(backend, "drm") == 0);
+#ifdef WAWONA_ILAND_GL
+  if (use_drm)
+    wwn_iland_presenter_android_init();
+#endif
+  /* DRM/KMS → wwn-iland userspace display stack; Wayland → nested client of
+   * the Wawona compositor. Matches macOS Display Backend / --backend. */
+  char *argv_drm[] = {"weston", "--backend=drm", "--renderer=gl",
+                      "--socket=wawona-nested", "--shell=desktop-shell.so",
+                      NULL};
+  char *argv_wl[] = {"weston", "--backend=wayland", "--renderer=gl",
+                     "--socket=wawona-nested", "--shell=desktop-shell.so",
+                     NULL};
+  LOGI("weston backend=%s", use_drm ? "drm (wwn-iland)" : "wayland (nested)");
+  weston_compositor_main(5, use_drm ? argv_drm : argv_wl);
   if (saved_cwd[0])
     chdir(saved_cwd);
   g_weston_running = 0;
@@ -4672,6 +4722,10 @@ static int kmscube_stub_main(int argc, const char **argv) {
   (void)argc;
   (void)argv;
 #ifdef WAWONA_ILAND_GL
+  /* Prefer the live host surface size before the client modesets once. */
+  if (g_output_width > 0 && g_output_height > 0)
+    wwn_iland_presenter_android_set_surface_size(g_output_width,
+                                                 g_output_height);
   if (!wwn_iland_presenter_android_launch_kmscube()) {
     LOGE("kmscube unavailable on Android (iland + ANGLE GL client not linked "
          "in this build)");
@@ -4683,6 +4737,28 @@ static int kmscube_stub_main(int argc, const char **argv) {
   return 0;
 #else
   LOGE("kmscube unavailable on Android (rebuild with iland + ANGLE via gradlegen)");
+  return 1;
+#endif
+}
+
+static int gbm_es2_demo_stub_main(int argc, const char **argv) {
+  (void)argc;
+  (void)argv;
+#ifdef WAWONA_ILAND_GL
+  if (g_output_width > 0 && g_output_height > 0)
+    wwn_iland_presenter_android_set_surface_size(g_output_width,
+                                                 g_output_height);
+  if (!wwn_iland_presenter_android_launch_gbm_es2_demo()) {
+    LOGE("gbm-es2-demo unavailable on Android (iland + ANGLE GL client not "
+         "linked in this build)");
+    return 1;
+  }
+  while (wwn_iland_presenter_android_is_active()) {
+    usleep(100000);
+  }
+  return 0;
+#else
+  LOGE("gbm-es2-demo unavailable on Android (rebuild with iland + ANGLE)");
   return 1;
 #endif
 }
@@ -4745,6 +4821,7 @@ static const WwnClientEntry kBundledClients[] = {
     {"weston-constraints", constraints_main},
     {"weston-simple-egl", simple_egl_stub_main},
     {"kmscube", kmscube_stub_main},
+    {"gbm-es2-demo", gbm_es2_demo_stub_main},
     {"opengl-cube", opengl_cube_stub_main},
     {"vkcube", vkcube_stub_main},
 };
@@ -4800,6 +4877,14 @@ static jboolean wwn_bundled_client_available(const char *client_id) {
     if (!kmscube_main) {
       LOGE("kmscube unavailable on Android (iland + ANGLE GL client not linked "
            "in this build)");
+      return JNI_FALSE;
+    }
+    return JNI_TRUE;
+  }
+  if (strcmp(client_id, "gbm-es2-demo") == 0) {
+    extern int gbm_es2_demo_main(int argc, char **argv) __attribute__((weak));
+    if (!gbm_es2_demo_main) {
+      LOGE("gbm-es2-demo unavailable on Android (not linked in this build)");
       return JNI_FALSE;
     }
     return JNI_TRUE;
@@ -4942,11 +5027,21 @@ static jboolean wwn_launch_niri_nested(void) {
     return JNI_FALSE;
   }
 
+  const char *backend = WWNSettings_ResolveCompositorBackend();
+  const int use_drm = (backend && strcmp(backend, "drm") == 0);
+#ifdef WAWONA_ILAND_GL
+  /* Presenter lives in the Wawona process (parent); niri DRM page-flips into
+   * iland and the host composites the AHB overlay. Init before fork. */
+  if (use_drm)
+    wwn_iland_presenter_android_init();
+#endif
+
   pid_t pid = fork();
   if (pid == 0) {
     /* WAYLAND_DISPLAY and XDG_RUNTIME_DIR are inherited from the app
-     * process; force the nested (Wayland client of Wawona) backend. */
-    setenv("NIRI_BACKEND", "nested", 1);
+     * process. Honour Display Backend: drm → niri tty/DRM path over
+     * wwn-iland; otherwise nested Wayland client of Wawona. */
+    setenv("NIRI_BACKEND", use_drm ? "tty" : "nested", 1);
     /* The exec'd binary leaves the app's linker namespace, so its NEEDED
      * libs (libwayland-*, libxkbcommon bundled in jniLibs) must be found
      * via LD_LIBRARY_PATH. */

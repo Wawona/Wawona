@@ -109,6 +109,18 @@ on Apple mobile and Desktop/SIP UI leakage into iOS-family bundles. Apple
 IOSurface dmabuf + waypipe zero-copy remain the #86 PROPER half; AHB/waypipe
 Android is the open half.
 
+**2026-07-31 Android GBM Apple parity + waypipe unstub (WIRED).** `wwn-iland`
+Android GBM now matches Apple for `gbm_bo_map`/`unmap` (`map_count`),
+`gbm_device_is_format_supported`, `gbm_device_get_backend_name` (`iland-ahb`),
+honest AHB formats (BGRA8888 via HAL format 5; `R10G10B10A2` for 2101010), and
+tightened `get_fd`/`get_fd_for_plane`. `wwn-waypipe` stops stubbing Android
+GBM — same #86 high-bit modifier + `Library::this()` static link as Apple
+mobile (`patch-waypipe-iland-gbm.sh`). Remote SSH still cannot ship AHB
+handles (SHM/`--no-gpu` unchanged). Acceptance client
+[`gbm_es2_demo`](https://github.com/ds-hwang/gbm_es2_demo) vendored into
+`wwn-kmscube` as `gbm-es2-demo` (KMS presenter path, all Apple + Android
+registry recipes). Grade stays WIRED until Agent-Device shows frames.
+
 **2026-07-31 Android Wayland GL/VK wiring landed (WIRED, runtime pending).**
 `wwn-iland` `8152b62` builds `libiland_wayland_egl` (+ optional vulkan WSI) for
 Android with in-process AHB id registry (`ILandIOSurfaceLookup`) and GBM

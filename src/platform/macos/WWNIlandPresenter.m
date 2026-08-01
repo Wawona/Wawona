@@ -40,6 +40,7 @@ extern int g_drm_event_pipe_write;
 // main renamed via -Dmain=). Weakly imported so the app links even without the
 // GL-clients packages.
 extern int kmscube_main(int argc, char *argv[]) __attribute__((weak_import));
+extern int gbm_es2_demo_main(int argc, char *argv[]) __attribute__((weak_import));
 extern int opengl_cube_main(int argc, char *argv[]) __attribute__((weak_import));
 extern int vkcube_main(int argc, char *argv[]) __attribute__((weak_import));
 
@@ -414,11 +415,12 @@ typedef struct {
     const char *const *argv;
 } wwn_cube_client_t;
 
-// kmscube drives iland's virtual DRM. opengl-cube and vkcube are Wayland
-// clients (IOSurface dmabuf winsys) and are launched through the compositor,
-// not this presenter.
+// kmscube / gbm-es2-demo drive iland's virtual DRM. opengl-cube and vkcube are
+// Wayland clients (IOSurface dmabuf winsys) and are launched through the
+// compositor, not this presenter.
 static const wwn_cube_client_t kCubeClients[] = {
-    { "kmscube",     "KMSCUBE",     NULL },
+    { "kmscube",       "KMSCUBE",       NULL },
+    { "gbm-es2-demo",  "GBM_ES2_DEMO",  NULL },
 };
 
 static const wwn_cube_client_t *wwn_cube_client_for_id(NSString *clientId) {
@@ -431,6 +433,7 @@ static const wwn_cube_client_t *wwn_cube_client_for_id(NSString *clientId) {
 
 static wwn_cube_entry_t wwn_cube_entry_for_id(NSString *clientId) {
     if ([clientId isEqualToString:@"kmscube"]) return kmscube_main;
+    if ([clientId isEqualToString:@"gbm-es2-demo"]) return gbm_es2_demo_main;
     return NULL;
 }
 

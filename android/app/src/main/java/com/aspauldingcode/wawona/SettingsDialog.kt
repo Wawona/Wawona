@@ -309,7 +309,7 @@ private fun GraphicsSection(prefs: SharedPreferences) {
             "Select Vulkan implementation. None disables Vulkan.", Icons.Filled.Speed, "System",
             listOf("None", "SwiftShader", "System"), iconTint = SettingsTab.GRAPHICS.accentColor)
         SettingsDropdownItem(prefs, "openglDriver", "OpenGL Driver",
-            "Select OpenGL/GLES implementation. None disables OpenGL.", Icons.Filled.GraphicEq, "System",
+            "Select OpenGL/GLES implementation. None disables OpenGL.", Icons.Filled.GraphicEq, "ANGLE",
             listOf("None", "ANGLE", "System"), iconTint = SettingsTab.GRAPHICS.accentColor)
     }
     SettingsSectionHeader("Features", Icons.Filled.Tune, SettingsTab.GRAPHICS.accentColor)
@@ -335,6 +335,21 @@ private fun AdvancedSection(prefs: SharedPreferences) {
         SettingsSwitchItem(prefs, "nestedCompositorsSupport", "Nested Compositors",
             "Support nested Wayland compositors", Icons.Filled.Layers, default = true,
             iconTint = SettingsTab.ADVANCED.accentColor)
+        SettingsDropdownItem(
+            prefs,
+            "compositorBackend",
+            "Display Backend",
+            "How bundled clients and nested compositors present. Wayland runs them nested inside Wawona; DRM/KMS runs them against wwn-iland's userspace display stack.",
+            Icons.Filled.Monitor,
+            "auto",
+            listOf("auto", "wayland", "drm"),
+            iconTint = SettingsTab.ADVANCED.accentColor,
+            optionLabels = mapOf(
+                "auto" to "Auto",
+                "wayland" to "Wayland (nested)",
+                "drm" to "DRM/KMS (wwn-iland)",
+            ),
+        )
         SettingsSwitchItem(prefs, "multipleClients", "Multiple Clients",
             "Allow multiple Wayland clients", Icons.Filled.Group, default = false,
             iconTint = SettingsTab.ADVANCED.accentColor)
