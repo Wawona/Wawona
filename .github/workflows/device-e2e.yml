@@ -1,4 +1,4 @@
-name: Device GUI e2e
+name: "Build: GUI smoke"
 
 # Deterministic GUI smoke tests on real simulator/emulator instances.
 # Prefer scheduling via device-gate.yml (product-build → this workflow).

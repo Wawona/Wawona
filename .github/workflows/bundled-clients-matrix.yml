@@ -1,4 +1,4 @@
-name: Bundled clients matrix
+name: "Watch: bundled clients"
 
 # Exercises every Machines bundled native client on product builds.
 # See docs/testing/bundled-clients-matrix-gate.md.

@@ -1,4 +1,4 @@
-name: Nix CI
+name: "Gate: packages"
 
 # Branch policy: development = WIP gate; master = release/green.
 # What/why: docs/ci.md. Cache: FlakeHub (flakehub-cache-action@v3).

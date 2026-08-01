@@ -1,4 +1,4 @@
-name: Release
+name: "Ship: GitHub assets"
 
 # Tag push (v*) → GitHub Release with macOS DMG, Android APK, iOS IPA, and Linux
 # AppImages. Pure products come from product-build (once); IPA stays impure.
@@ -23,7 +23,7 @@ env:
 
 jobs:
   products:
-    name: Product build
+    name: "Build: products"
     uses: ./.github/workflows/product-build.yml
     permissions:
       contents: read

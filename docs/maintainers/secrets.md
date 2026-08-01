@@ -54,8 +54,8 @@ Public Wawona                    Private aspauldingcode/.password-store
 |---------|----------|-----|
 | `local` | `pass_apple` / `pass_android` | Local Fastlane (`./scripts/release-env.sh ...`) |
 | `sync` | pass | `./scripts/sync-github-secrets.sh` |
-| `ci-apple` | `env` | Release Beta Apple job |
-| `ci-android` | `env` | Release Beta Android job |
+| `ci-apple` | `env` | Ship: beta (stores) Apple job |
+| `ci-android` | `env` | Ship: beta (stores) Android job |
 | `ci` | `env` (all optional) | Combined env when both platforms are present |
 
 ## One-time bootstrap (new tier-0 machine)
@@ -148,6 +148,6 @@ IPA builds use **match + gym** (not `nix build …-ipa`). Nix still runs
 
 ## Related docs
 
-- Release Beta workflow: [`../ci.md`](../ci.md)
+- Ship: beta (stores) workflow: [`../ci.md`](../ci.md)
 - Distribution / TestFlight status: [`../distribution-ops.md`](../distribution-ops.md)
 - Dendritic pass + SecretSpec (host pattern): `/etc/nix-darwin/.dotfiles/docs/pass-secretspec.md` (local machines)

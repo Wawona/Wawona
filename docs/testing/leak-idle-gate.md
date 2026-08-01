@@ -1,4 +1,4 @@
-# Leak idle gate (CI)
+# Watch: idle memory (CI)
 
 Reproducible **Start → hold → Stop** memory plateau check for product builds.
 Converts local agent-device + Instruments dogfood into a GitHub Actions job matrix
@@ -37,21 +37,21 @@ Extended Apple targets (iPadOS / visionOS / tvOS / watchOS) are gated **locally*
 
 ## Workflow
 
-[`.github/workflows/leak-idle-gate.yml`](../../.github/workflows/leak-idle-gate.yml)
+[`.github/workflows/leak-idle-gate.yml`](../../.github/workflows/leak-idle-gate.yml) (**Watch: idle memory**)
 
 Triggers:
 
-- **Device gate** `workflow_call` with `products_ready: true` (product-path push to
+- **Gate: products** `workflow_call` with `products_ready: true` (product-path push to
   `development` / `master`) — downloads that run’s `product-*` artifacts; does **not**
-  re-call `product-build` (avoids tip concurrency cancel against Device gate)
+  re-call `product-build` (avoids tip concurrency cancel against Gate: products)
 - `workflow_dispatch` (optional `lanes`: `all|ios|android|macos`) — builds under tip_key
   `leak-idle-*`
 - nightly schedule (`30 9 * * *` UTC) — same namespaced product-build tip_key
 
-**Not** a promote blocker — Leak idle jobs use `continue-on-error` inside the
+**Not** a promote blocker — idle-memory jobs use `continue-on-error` inside the
 reusable workflow (`continue-on-error` is invalid on `uses:` callers). The
-`Device gate` rollup job does not `needs:` Leak idle. Promote still requires **Nix CI** +
-**Device gate** only. Treat red Leak idle as a signal to triage before promote.
+**Gate: products** rollup job does not `needs:` Watch: idle memory. Promote still requires **Gate: packages** +
+**Gate: products** only. Treat red Watch: idle memory as a signal to triage before promote.
 
 ### Failure identification
 

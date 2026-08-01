@@ -1,4 +1,4 @@
-name: Release Beta
+name: "Ship: beta (stores)"
 
 # Every push to master → TestFlight (Apple), Play internal (Android), and Linux
 # AppImage prebuilts (workflow artifacts, not GitHub Releases).

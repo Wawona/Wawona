@@ -1,4 +1,4 @@
-name: Device gate
+name: "Gate: products"
 
 # Single scheduler for product binaries + Device GUI e2e on development/master.
 # Product jobs are called separately so iOS e2e can start when ios-sim is ready
@@ -161,7 +161,7 @@ jobs:
   # Advisory memory plateau — reuses product-* artifacts (no second product-build).
   # Soft-fail lives inside leak-idle-gate.yml (continue-on-error is invalid on uses: callers).
   leak-idle:
-    name: Leak idle gate
+    name: "Watch: idle memory"
     needs: [product-ios, product-android, product-macos]
     if: ${{ always() && !cancelled() && needs.product-ios.result == 'success' && needs.product-android.result == 'success' && needs.product-macos.result == 'success' }}
     uses: ./.github/workflows/leak-idle-gate.yml
@@ -178,7 +178,7 @@ jobs:
   # Single rollup so AppImage product failures still fail the gate (no e2e consumer).
   # Intentionally does not need leak-idle (advisory; continue-on-error above).
   gate:
-    name: Device gate
+    name: "Gate: products"
     needs:
       - e2e-ios
       - e2e-android
@@ -187,4 +187,5 @@ jobs:
       - product-appimage
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Device gate green (products + e2e lanes)"
+      - run: |
+          echo "Gate: products green (Build: products + Build: GUI smoke)"

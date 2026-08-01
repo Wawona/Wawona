@@ -1,4 +1,4 @@
-name: Leak idle gate
+name: "Watch: idle memory"
 
 # Start→hold→Stop memory plateau gate (phys_footprint / dumpsys PSS).
 # Identifies which product target fails. See docs/testing/leak-idle-gate.md.

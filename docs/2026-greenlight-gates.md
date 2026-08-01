@@ -5,7 +5,7 @@ is **green** only when all its gates pass.
 
 **Where jobs run:** see [`ci.md`](./ci.md) (branch × workflow matrix). Required
 promote gates run on **`development`** with FlakeHub Cache; `master` gets the
-same gates plus Release Beta after promote.
+same gates plus Ship: beta (stores) after promote.
 
 Job names refer to `.github/workflows/nix.yml` unless noted.
 
@@ -45,8 +45,8 @@ advertised outside its `ProtocolProfile` policy.
 
 ## What "green-light everywhere" means
 
-All L0–L3 gates above green on the **`development`** tip (Nix CI curated matrix +
-Android parity + Device e2e), and the nightly full-matrix (L4 parity + graphics
+All L0–L3 gates above green on the **`development`** tip (Gate: packages curated matrix +
+Android parity + Build: GUI smoke), and Watch: graphics nightly (L4 parity + graphics
 CTS + capability lanes) green against **`development`**. Nightly wiring:
 [`ci.md`](./ci.md). Manual functional checklist (being converted to automated
 IDs) lives in [`testing/everywhere-matrix.md`](./testing/everywhere-matrix.md).

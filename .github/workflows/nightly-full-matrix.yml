@@ -1,4 +1,4 @@
-name: Nightly full matrix
+name: "Watch: graphics nightly"
 
 # Deep / slow gates (graphics, protocol drift, Weston/XWayland capability).
 # Push path already runs Device gate (products + GUI e2e) — do not re-call it here.

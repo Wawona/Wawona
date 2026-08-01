@@ -43,18 +43,18 @@ Operational runbook: [`flakehub-cache.md`](./flakehub-cache.md).
 - **Product binaries once per SHA.** [`product-build.yml`](../.github/workflows/product-build.yml)
   owns `wawona-ios` / `wawona-android` / `wawona-macos` / `wawona-appimage`.
   [`device-gate.yml`](../.github/workflows/device-gate.yml) runs product-build
-  then Device e2e with `products_ready`, and Leak idle with `products_ready` (advisory;
-  `continue-on-error` — do not re-call product-build on the Device gate tip_key).
+  then GUI smoke with `products_ready`, and Watch: idle memory with `products_ready` (advisory;
+  `continue-on-error` — do not re-call product-build on the Gate: products tip_key).
   Release packages DMG/APK/AppImage from
-  those GHA artifacts; Release Beta resolves AppImages by SHA when possible.
+  those GHA artifacts; Ship: beta (stores) resolves AppImages by SHA when possible.
   Impure IPA/AAB stay publish-only. See [`ci.md`](./ci.md).
 - **Curated push/PR matrix.** `nix.yml` builds only
   [`.github/ci-package-matrix.json`](../.github/ci-package-matrix.json)
   (backends / substrate — not full product apps).
-- **Branch parity.** `development` and `master` both run Nix CI + Device gate.
-  Android Gradle/meson lives inside Nix CI (path-filtered). Release Beta / Release
-  stay on `master` / tags. Nightly does not re-run Device gate.
-- **Path filters.** `device-gate.yml`, Nix CI `ci-scope` (skips Darwin matrix /
+- **Branch parity.** `development` and `master` both run Gate: packages + Gate: products.
+  Android Gradle/meson lives inside Gate: packages (path-filtered). Ship: beta / Ship: GitHub assets
+  stay on `master` / tags. Nightly does not re-run Gate: products.
+- **Path filters.** `device-gate.yml`, Gate: packages `ci-scope` (skips Darwin matrix /
   frontend-syntax / cargo-macos on docs-only tips), and `android-gradle-gate` so
   non-native pushes stop burning macos-26 minutes. `workflow_dispatch` stays full.
 - **Host Xcode pin.** [`.github/scripts/select-xcode.sh`](../.github/scripts/select-xcode.sh)
@@ -68,7 +68,7 @@ Operational runbook: [`flakehub-cache.md`](./flakehub-cache.md).
   - *Push gate* (`nix.yml` + device-gate): curated builds + path-filtered Android
     Gradle/meson + GUI smoke/fuzzel.
   - *PR:* fuzzel lanes skipped; smoke still runs when device-e2e is invoked.
-  - *Nightly:* graphics + protocol drift + capability only (no Device gate).
+  - *Nightly:* graphics + protocol drift + capability only (no Gate: products).
 - **Reproducibility.** `repro-rebuild` `--rebuild`s backend + workspace-src and
   byte-compares; `verify-no-tar-wildcards.py` bans nondeterministic archives.
   Deterministic outputs are what make FlakeHub Cache safe to trust.
