@@ -43,7 +43,9 @@ Operational runbook: [`flakehub-cache.md`](./flakehub-cache.md).
 - **Product binaries once per SHA.** [`product-build.yml`](../.github/workflows/product-build.yml)
   owns `wawona-ios` / `wawona-android` / `wawona-macos` / `wawona-appimage`.
   [`device-gate.yml`](../.github/workflows/device-gate.yml) runs product-build
-  then Device e2e with `products_ready`. Release packages DMG/APK/AppImage from
+  then Device e2e with `products_ready`, and Leak idle with `products_ready` (advisory;
+  `continue-on-error` — do not re-call product-build on the Device gate tip_key).
+  Release packages DMG/APK/AppImage from
   those GHA artifacts; Release Beta resolves AppImages by SHA when possible.
   Impure IPA/AAB stay publish-only. See [`ci.md`](./ci.md).
 - **Curated push/PR matrix.** `nix.yml` builds only

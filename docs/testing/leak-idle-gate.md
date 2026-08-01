@@ -41,11 +41,16 @@ Extended Apple targets (iPadOS / visionOS / tvOS / watchOS) are gated **locally*
 
 Triggers:
 
-- `workflow_dispatch` (optional `lanes`: `all|ios|android|macos`)
-- nightly schedule (`30 9 * * *` UTC)
-- path-filtered `push` to `development` (same product paths as Device gate + gate scripts)
+- **Device gate** `workflow_call` with `products_ready: true` (product-path push to
+  `development` / `master`) — downloads that run’s `product-*` artifacts; does **not**
+  re-call `product-build` (avoids tip concurrency cancel against Device gate)
+- `workflow_dispatch` (optional `lanes`: `all|ios|android|macos`) — builds under tip_key
+  `leak-idle-*`
+- nightly schedule (`30 9 * * *` UTC) — same namespaced product-build tip_key
 
-**Not** a promote blocker today — promote still requires **Nix CI** + **Device gate** only. Treat red Leak idle as a signal to triage before promote.
+**Not** a promote blocker — Device gate uses `continue-on-error` on the call, and the
+`Device gate` rollup job does not `needs:` Leak idle. Promote still requires **Nix CI** +
+**Device gate** only. Treat red Leak idle as a signal to triage before promote.
 
 ### Failure identification
 

@@ -3,8 +3,10 @@ name: Leak idle gate
 # Start→hold→Stop memory plateau gate (phys_footprint / dumpsys PSS).
 # Identifies which product target fails. See docs/testing/leak-idle-gate.md.
 #
-# Not a promote blocker yet — nightly + workflow_dispatch + path-filtered on
-# development. Device gate remains the GUI smoke authority.
+# Not a promote blocker. On development/master product pushes, Device gate
+# calls this with products_ready=true (reuse product-* artifacts — never
+# re-call product-build on the Device gate tip_key). Schedule / dispatch
+# build once under tip_key leak-idle-* so they cannot cancel Device gate.
 
 on:
   workflow_dispatch:
@@ -29,32 +31,22 @@ on:
         type: string
         required: false
         default: ""
+      products_ready:
+        description: "When true, consume Device gate product-* artifacts (no product-build)"
+        type: boolean
+        required: false
+        default: false
       lanes:
         type: string
         required: false
         default: "all"
   schedule:
     - cron: "30 9 * * *" # daily after nightly-full-matrix (08:00 UTC)
-  push:
-    branches: [development]
-    paths:
-      - "src/**"
-      - "android/**"
-      - "Sources/**"
-      - "dependencies/**"
-      - "flake.nix"
-      - "flake.lock"
-      - "scripts/leak-idle-gate.sh"
-      - "scripts/lib/leak-idle-measure.sh"
-      - "scripts/agent-device-smoke.sh"
-      - "scripts/lib/agent-device-ios-system-ui.sh"
-      - "scripts/lib/android-ad-scale.sh"
-      - ".github/workflows/leak-idle-gate.yml"
-      - ".github/workflows/product-build.yml"
-      - "docs/testing/leak-idle-gate.md"
 
 concurrency:
-  group: leak-idle-gate-${{ inputs.tip_key || inputs.checkout_ref || github.ref_name }}
+  # Include event_name so schedule/dispatch never cancel Device gate's call
+  # (both would otherwise share tip_key=master on the default branch).
+  group: leak-idle-gate-${{ github.event_name }}-${{ inputs.tip_key || inputs.checkout_ref || github.ref_name }}
   cancel-in-progress: true
 
 permissions:
@@ -71,13 +63,15 @@ env:
   WAWONA_LEAK_MONO_MB: "8"
 
 jobs:
+  # Standalone schedule/dispatch only. Never share Device gate's tip_key
+  # (product-build-development-ios-sim) — that cancelled this gate on every push.
   product-ios:
     name: Product iOS sim
-    if: ${{ (inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'ios' || github.event_name == 'schedule' || github.event_name == 'push' }}
+    if: ${{ !inputs.products_ready && ((inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'ios' || github.event_name == 'schedule') }}
     uses: ./.github/workflows/product-build.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
-      tip_key: ${{ inputs.tip_key || inputs.checkout_ref || github.ref_name }}
+      tip_key: leak-idle-${{ inputs.tip_key || inputs.checkout_ref || github.ref_name }}
       only: ios-sim
     permissions:
       contents: read
@@ -85,11 +79,11 @@ jobs:
 
   product-android:
     name: Product Android APK
-    if: ${{ (inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'android' || github.event_name == 'schedule' || github.event_name == 'push' }}
+    if: ${{ !inputs.products_ready && ((inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'android' || github.event_name == 'schedule') }}
     uses: ./.github/workflows/product-build.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
-      tip_key: ${{ inputs.tip_key || inputs.checkout_ref || github.ref_name }}
+      tip_key: leak-idle-${{ inputs.tip_key || inputs.checkout_ref || github.ref_name }}
       only: android-apk
     permissions:
       contents: read
@@ -97,11 +91,11 @@ jobs:
 
   product-macos:
     name: Product macOS app
-    if: ${{ (inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'macos' || github.event_name == 'schedule' || github.event_name == 'push' }}
+    if: ${{ !inputs.products_ready && ((inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'macos' || github.event_name == 'schedule') }}
     uses: ./.github/workflows/product-build.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
-      tip_key: ${{ inputs.tip_key || inputs.checkout_ref || github.ref_name }}
+      tip_key: leak-idle-${{ inputs.tip_key || inputs.checkout_ref || github.ref_name }}
       only: macos-app
     permissions:
       contents: read
@@ -110,7 +104,7 @@ jobs:
   leak-ios:
     name: "Leak idle: iOS"
     needs: product-ios
-    if: ${{ always() && !cancelled() && (needs.product-ios.result == 'success') && ((inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'ios' || github.event_name == 'schedule' || github.event_name == 'push') }}
+    if: ${{ always() && !cancelled() && (inputs.products_ready || needs.product-ios.result == 'success') && ((inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'ios' || github.event_name == 'schedule') }}
     runs-on: macos-26
     timeout-minutes: 90
     steps:
@@ -184,7 +178,7 @@ jobs:
   leak-android:
     name: "Leak idle: Android"
     needs: product-android
-    if: ${{ always() && !cancelled() && (needs.product-android.result == 'success') && ((inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'android' || github.event_name == 'schedule' || github.event_name == 'push') }}
+    if: ${{ always() && !cancelled() && (inputs.products_ready || needs.product-android.result == 'success') && ((inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'android' || github.event_name == 'schedule') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -243,7 +237,7 @@ jobs:
   leak-macos:
     name: "Leak idle: macOS"
     needs: product-macos
-    if: ${{ always() && !cancelled() && (needs.product-macos.result == 'success') && ((inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'macos' || github.event_name == 'schedule' || github.event_name == 'push') }}
+    if: ${{ always() && !cancelled() && (inputs.products_ready || needs.product-macos.result == 'success') && ((inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'macos' || github.event_name == 'schedule') }}
     runs-on: macos-26
     timeout-minutes: 60
     steps:

@@ -20,6 +20,7 @@ mod app {
         PointerButton, RenderScene, WindowEvent, WindowId,
     };
     use wawona::linux::config;
+    use wawona::linux::machine_profile::MachineType;
     use wawona::linux::runtime::{
         self, ensure_runtime_dir, now_unix_ms, now_unix_s, write_runtime_env, write_runtime_state,
         RuntimeState,
@@ -1075,7 +1076,7 @@ mod app {
             let binding = layout_binding.clone();
             new_btn.connect_clicked(move |_| {
                 wawona::wlog!("UI", "Add Machine button pressed");
-                let default_type = home.scope.borrow().default_machine_type();
+                let default_type = MachineType::Native;
                 show_editor(
                     &window,
                     &state,

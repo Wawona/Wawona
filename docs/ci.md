@@ -25,7 +25,7 @@ Release secrets (tier 0): [`maintainers/secrets.md`](./maintainers/secrets.md).
 | **Product build** (`product-build.yml`) | via device-gate / Release | via gate / Release Beta (`only: appimage`) / Release | Sole pure producer: iOS sim `.app`, debug APK, macOS `.app`, AppImages (callable only) |
 | **Device GUI e2e** | via device-gate (`products_ready`) | via gate | Smoke + fuzzel (fuzzel skipped on `pull_request` only); callable only |
 | **Nightly full matrix** | schedule / dispatch | — | Graphics + protocol drift + Weston/XWayland capability (does **not** re-run Device gate) |
-| **Leak idle gate** (`leak-idle-gate.yml`) | path filter push + schedule + dispatch | — | Start→60s footprint/PSS plateau on product iOS/Android/macOS; fails with `LEAK_GATE_FAIL targets=…` ([docs/testing/leak-idle-gate.md](./testing/leak-idle-gate.md)). **Not** a promote blocker yet |
+| **Leak idle gate** (`leak-idle-gate.yml`) | via Device gate (`products_ready`) + schedule + dispatch | via Device gate | Start→60s footprint/PSS plateau on product iOS/Android/macOS; fails with `LEAK_GATE_FAIL targets=…` ([docs/testing/leak-idle-gate.md](./testing/leak-idle-gate.md)). Reuses Device gate `product-*` artifacts (no duplicate product-build). **Not** a promote blocker (`continue-on-error` on the Device gate call) |
 | **Bundled clients matrix** (`bundled-clients-matrix.yml`) | schedule + dispatch | — | Every `kBundledClients` id × runnable platforms; `MATRIX_FAIL cells=platform/client,…` ([docs/testing/bundled-clients-matrix-gate.md](./testing/bundled-clients-matrix-gate.md)). **Not** a promote blocker yet |
 | **Release Beta** | — | push + tags `v*` | Fastlane stores (match+gym); owns AppImages via product-build `only: appimage` |
 | **Release** | — | tags `v*` | GitHub Release: DMG/APK/AppImage from product-build; IPA impure |
@@ -103,16 +103,23 @@ FlakeHub caches **Nix store paths** only. It does **not** ship Apple platform SD
 4. Expecting FlakeHub to fix crate2nix IFD / eval time — hoist IFDs instead.
 5. Serializing iOS e2e behind AppImages/macOS/Android product jobs.
 6. Rebuilding products outside `product-build.yml`.
-7. Killing agent-device prepare daemon between `prepare` and `open`.
-8. Re-planning completed curated-matrix / gate fan-out work.
-9. Reintroducing Magic Nix Cache / Attic / Cachix / `cache.wawona.io`.
-10. nixpkgs lineage drift across `wwn-*` without `follows` / `verify-nixpkgs-lineage.py`.
-11. Leaving `WAWONA_SKIP_NIX_PREBUILD=1` after `Cargo.lock` changes.
+7. Calling `product-build` from Leak idle (or Bundled clients) on the same tip_key as Device gate — tip concurrency cancels one caller before binaries exist. Push-path Leak idle must use `products_ready` from Device gate; schedule/dispatch use tip_key `leak-idle-*`.
+8. Killing agent-device prepare daemon between `prepare` and `open`.
+9. Re-planning completed curated-matrix / gate fan-out work.
+10. Reintroducing Magic Nix Cache / Attic / Cachix / `cache.wawona.io`.
+11. nixpkgs lineage drift across `wwn-*` without `follows` / `verify-nixpkgs-lineage.py`.
+12. Leaving `WAWONA_SKIP_NIX_PREBUILD=1` after `Cargo.lock` changes.
 
 ## Leak idle gate
 
 Memory plateau after Machines **Start** (not Instruments MCP — runners cannot use it;
 iOS 26 sim Allocations are often empty). See [testing/leak-idle-gate.md](./testing/leak-idle-gate.md).
+
+On product-path pushes, **Device gate** calls Leak idle with `products_ready: true`
+after `product-ios` / `product-android` / `product-macos` succeed (parallel with e2e).
+That reuses the same `product-*` artifacts — it must not invoke `product-build` on the
+Device gate tip_key. Nightly schedule / `workflow_dispatch` build under tip_key
+`leak-idle-*` so they cannot cancel Device gate.
 
 ```bash
 # Local (same script CI runs)
@@ -122,7 +129,8 @@ WAWONA_MACOS_APP=result-macos/Wawona.app ./scripts/leak-idle-gate.sh macos
 ./scripts/leak-idle-gate.sh summary   # prints LEAK_GATE_FAIL targets=…
 ```
 
-CI: Actions → **Leak idle gate** → job `Leak idle summary` step summary lists failing targets.
+CI: Actions → **Device gate** → job `Leak idle gate` (or standalone **Leak idle gate**
+on schedule/dispatch) → `Leak idle summary` lists failing targets.
 
 ## Bundled clients matrix
 

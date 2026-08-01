@@ -184,11 +184,15 @@ fn test_protocol_matrix_dmabuf_feedback_resolves() {
         zwp_linux_dmabuf_feedback_v1, zwp_linux_dmabuf_v1,
     };
 
+    /// High bit set = IOSurface id in low 63 bits (see linux_dmabuf.rs bind).
+    const IOSURFACE_MODIFIER: u64 = 0x8000_0000_0000_0000;
+
     #[derive(Default)]
     struct FeedbackProbe {
         dmabuf: Option<(u32, u32)>, // (name, version)
         feedback_done: bool,
-        raw_formats_advertised: bool,
+        /// Bare `format` or non-IOSurface `modifier` (e.g. LINEAR) — unrenderable.
+        unrenderable_formats_advertised: bool,
     }
 
     impl Dispatch<WlRegistry, ()> for FeedbackProbe {
@@ -217,14 +221,23 @@ fn test_protocol_matrix_dmabuf_feedback_resolves() {
             _conn: &Connection,
             _qh: &QueueHandle<Self>,
         ) {
-            // Advertisement honesty: raw formats must NOT be sent (only the
-            // out-of-band IOSurface import path works).
-            if matches!(
-                event,
-                zwp_linux_dmabuf_v1::Event::Format { .. }
-                    | zwp_linux_dmabuf_v1::Event::Modifier { .. }
-            ) {
-                state.raw_formats_advertised = true;
+            // IOSurface modifiers are intentional (#86). Reject bare Format and
+            // any modifier that is not the IOSurface high-bit convention.
+            match event {
+                zwp_linux_dmabuf_v1::Event::Format { .. } => {
+                    state.unrenderable_formats_advertised = true;
+                }
+                zwp_linux_dmabuf_v1::Event::Modifier {
+                    modifier_hi,
+                    modifier_lo,
+                    ..
+                } => {
+                    let modifier = ((modifier_hi as u64) << 32) | (modifier_lo as u64);
+                    if modifier != IOSURFACE_MODIFIER {
+                        state.unrenderable_formats_advertised = true;
+                    }
+                }
+                _ => {}
             }
         }
     }
@@ -273,8 +286,8 @@ fn test_protocol_matrix_dmabuf_feedback_resolves() {
     env.wait_roundtrip(&mut queue, &mut probe);
 
     assert!(
-        !probe.raw_formats_advertised,
-        "raw dmabuf formats/modifiers must not be advertised (unrenderable)"
+        !probe.unrenderable_formats_advertised,
+        "bare Format / non-IOSurface modifiers must not be advertised (unrenderable)"
     );
     assert!(
         probe.feedback_done,

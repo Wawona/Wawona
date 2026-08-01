@@ -158,7 +158,26 @@ jobs:
       id-token: write
       actions: read
 
+  # Advisory memory plateau — reuses product-* artifacts (no second product-build).
+  # continue-on-error: not a promote blocker; must not paint Device gate red.
+  leak-idle:
+    name: Leak idle gate
+    needs: [product-ios, product-android, product-macos]
+    if: ${{ always() && !cancelled() && needs.product-ios.result == 'success' && needs.product-android.result == 'success' && needs.product-macos.result == 'success' }}
+    continue-on-error: true
+    uses: ./.github/workflows/leak-idle-gate.yml
+    with:
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
+      tip_key: ${{ inputs.checkout_ref || github.ref_name }}
+      products_ready: true
+      lanes: all
+    permissions:
+      contents: read
+      id-token: write
+      actions: read
+
   # Single rollup so AppImage product failures still fail the gate (no e2e consumer).
+  # Intentionally does not need leak-idle (advisory; continue-on-error above).
   gate:
     name: Device gate
     needs:
