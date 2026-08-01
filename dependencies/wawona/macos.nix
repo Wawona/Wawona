@@ -68,6 +68,7 @@ let
       angle = buildModule.buildForMacOS "angle" { };
       inherit weston kmscube;
       "iland-gl-clients" = kmscube;
+      "gbm-es2-demo" = buildModule.buildForMacOS "gbm-es2-demo" { };
       vkcube = buildModule.buildForMacOS "vkcube" { };
       "opengl-cube" = buildModule.buildForMacOS "opengl-cube" { };
       # Not part of the weston package: it is built outside weston's meson so it

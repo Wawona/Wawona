@@ -476,6 +476,9 @@
             (toolchainsAndroid.buildForAndroid "iland" { })
             (toolchainsAndroid.buildForAndroid "angle" { })
             (toolchainsAndroid.buildForAndroid "kmscube" { })
+            (toolchainsAndroid.buildForAndroid "gbm-es2-demo" { })
+            (toolchainsAndroid.buildForAndroid "opengl-cube" { })
+            (toolchainsAndroid.buildForAndroid "vkcube" { })
           ];
         studioIlandGlLdflags = import ilandGlAndroidLdflagsNix {
           inherit (pkgs) lib;
@@ -484,6 +487,9 @@
             angle = toolchainsAndroid.buildForAndroid "angle" { };
             kmscube = toolchainsAndroid.buildForAndroid "kmscube" { };
             "iland-gl-clients" = toolchainsAndroid.buildForAndroid "kmscube" { };
+            "gbm-es2-demo" = toolchainsAndroid.buildForAndroid "gbm-es2-demo" { };
+            "opengl-cube" = toolchainsAndroid.buildForAndroid "opengl-cube" { };
+            vkcube = toolchainsAndroid.buildForAndroid "vkcube" { };
           };
         };
         studioWestonToytoolkitLdflags = import westonToytoolkitLdflagsNix {
@@ -801,6 +807,7 @@
             angle = toolchains.buildForMacOS "angle" { };
             kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
             "iland-gl-clients" = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
+            "gbm-es2-demo" = toolchains.buildForMacOS "gbm-es2-demo" { };
             vkcube = toolchains.buildForMacOS "vkcube" { };
             "opengl-cube" = toolchains.buildForMacOS "opengl-cube" { };
             weston = toolchains.buildForMacOS "weston" { };

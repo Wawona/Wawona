@@ -172,10 +172,14 @@ endif()
 
 # Auto-link iland userland KMS + kmscube when materialized in .nix-deps.
 set(_WAWONA_ILAND_LINKED OFF)
+set(_WAWONA_GBM_ES2_LINKED OFF)
 foreach(flag ${NIX_EXTRA_LINK_FLAGS})
     if(flag MATCHES "libiland_userland\\.a$")
         set(_WAWONA_ILAND_LINKED ON)
         set(WAWONA_ILAND_GL ON)
+    endif()
+    if(flag MATCHES "libgbm_es2_demo\\.a$")
+        set(_WAWONA_GBM_ES2_LINKED ON)
     endif()
 endforeach()
 if(NOT _WAWONA_ILAND_LINKED)
@@ -192,8 +196,33 @@ if(NOT _WAWONA_ILAND_LINKED)
                     "-Wl,-u,kmscube_main"
                     "${_kmscube_archive}")
             endif()
+            set(_gbm_es2_archive "${dir}/libgbm_es2_demo.a")
+            if(EXISTS "${_gbm_es2_archive}")
+                list(APPEND NIX_EXTRA_LINK_FLAGS
+                    "-Wl,-u,gbm_es2_demo_main"
+                    "${_gbm_es2_archive}"
+                    "-lc++_static"
+                    "-lc++abi")
+                set(_WAWONA_GBM_ES2_LINKED ON)
+            endif()
             set(WAWONA_ILAND_GL ON)
             message(STATUS "Auto-linking iland GL stack: ${_iland_archive}")
+            break()
+        endif()
+    endforeach()
+endif()
+# Presenter hard-refs gbm_es2_demo_main when WAWONA_ILAND_GL; pull it if only
+# iland+kmscube landed in NIX_DEP_LIBS (stale gradlegen without gbm-es2-demo).
+if(WAWONA_ILAND_GL AND NOT _WAWONA_GBM_ES2_LINKED)
+    foreach(dir ${NIX_LIB_DIRS})
+        set(_gbm_es2_archive "${dir}/libgbm_es2_demo.a")
+        if(EXISTS "${_gbm_es2_archive}")
+            list(APPEND NIX_EXTRA_LINK_FLAGS
+                "-Wl,-u,gbm_es2_demo_main"
+                "${_gbm_es2_archive}"
+                "-lc++_static"
+                "-lc++abi")
+            message(STATUS "Auto-linking gbm-es2-demo: ${_gbm_es2_archive}")
             break()
         endif()
     endforeach()
