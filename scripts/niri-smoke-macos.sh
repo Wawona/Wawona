@@ -96,9 +96,19 @@ log "Wawona socket up: $WAYLAND_DISPLAY (runtime dir: $RUNTIME_DIR)"
 # 2. Launch niri nested and wait for its child socket. ANGLE's Vulkan-over-
 # Wayland winsys needs the bundled Vulkan ICD (kosmickrisp or MoltenVK).
 ICD_JSON=""
-for icd in "$APP/Contents/Resources/vulkan/icd.d/"*.json; do
-  [[ -f "$icd" ]] && ICD_JSON="$icd" && break
+# Prefer MoltenVK when present (GHA nested EGL has been flakier on KosmicKrisp).
+for prefer in MoltenVK_icd.json kosmickrisp_icd.json; do
+  cand="$APP/Contents/Resources/vulkan/icd.d/$prefer"
+  if [[ -f "$cand" ]]; then
+    ICD_JSON="$cand"
+    break
+  fi
 done
+if [[ -z "$ICD_JSON" ]]; then
+  for icd in "$APP/Contents/Resources/vulkan/icd.d/"*.json; do
+    [[ -f "$icd" ]] && ICD_JSON="$icd" && break
+  done
+fi
 log "starting nested niri (VK ICD: ${ICD_JSON:-none})"
 # Product macOS app ships config under Contents/Resources/share; some layouts
 # also keep $APP/share (macos.nix). Prefer the first that exists.
