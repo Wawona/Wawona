@@ -4,7 +4,7 @@
 # Usage:
 #   resolve-product-artifacts.sh <sha> <artifact-name> <dest-dir> [wait-seconds]
 #
-# Finds a successful Product build run for the commit that uploaded the named
+# Finds a successful Build: products run for the commit that uploaded the named
 # artifact (device-gate may fan out one product-build call per product), waits
 # if still in progress (up to wait-seconds, default 5400), then downloads into
 # dest-dir.

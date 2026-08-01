@@ -51,7 +51,7 @@ permissions:
   id-token: write
   actions: read
 
-# Tip-only: share group with Device gate tip (not per-SHA) so obsolete e2e
+# Tip-only: share group with Gate: products tip (not per-SHA) so obsolete e2e
 # cancels with the parent tip, and nightly/push targeting the same tip align.
 concurrency:
   group: device-e2e-${{ inputs.tip_key || github.ref_name }}-${{ inputs.products_ready && 'products' || 'standalone' }}-${{ inputs.lanes || 'all' }}
@@ -163,7 +163,7 @@ jobs:
           xcrun simctl bootstatus "$SIM_NAME" -b || xcrun simctl boot "$SIM_NAME" || true
           xcrun simctl bootstatus "$SIM_NAME"
           ./scripts/agent-device-smoke.sh ios-ci
-          # Sparse SSH PTY proof (libssh2 CLI): path-filtered Device gate tips.
+          # Sparse SSH PTY proof (libssh2 CLI): path-filtered Gate: products tips.
           echo "== iOS shell CLI (ssh -V / ssh-keygen) =="
           ./scripts/agent-device-smoke.sh ios-shell-cli
 

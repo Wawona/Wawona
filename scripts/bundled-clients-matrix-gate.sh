@@ -603,7 +603,7 @@ passes = [r for r in rows if r["status"] == "PASS"]
 skips = [r for r in rows if r["status"] == "SKIP"]
 
 lines = [
-  "# Bundled clients matrix summary",
+  "# Watch: bundled clients summary",
   "",
   f"- PASS: {counts.get('PASS', 0)}",
   f"- FAIL: {counts.get('FAIL', 0)}",
@@ -659,7 +659,7 @@ CLIENT_DESC="${WAWONA_MATRIX_CLIENTS:-}"
 if [[ -z "$CLIENT_DESC" ]]; then
   CLIENT_DESC="ALL ($(bundled_clients_all | wc -l | tr -d ' ') clients)"
 fi
-log "Bundled clients matrix gate — $STAMP"
+log "Watch: bundled clients gate — $STAMP"
 log "Output: $OUT_ROOT"
 log "Platforms: ${PLATFORMS[*]}"
 log "Clients: $CLIENT_DESC"

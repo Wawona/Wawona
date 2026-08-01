@@ -448,7 +448,7 @@ jobs:
           check_target "Wawona-iOS" "generic/platform=iOS Simulator"
 
   # Folded from former android-parity.yml: Gradle assembleDebug + meson/shell
-  # gates. Nix APK + emu e2e stay on Device gate. Path-filtered so non-Android
+  # gates. Nix APK + emu e2e stay on Gate: products. Path-filtered so non-Android
   # tips skip this job.
   android-path-filter:
     name: "Android path filter"

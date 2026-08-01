@@ -60,5 +60,5 @@ OpenSSH in-process archives.
 
 - `.github/scripts/verify-ios-shell-tools.py` — requires `ssh-cli` / `libwwn-ssh-cli.a`;
   forbids `openssh-ios` / `libssh-inprocess.a` / stub `ssh_*` in `*Stubs*.c`.
-- Headless CLI matrix lives in `wwn-ssh/tests/cli-matrix.json` (Nix CI).
+- Headless CLI matrix lives in `wwn-ssh/tests/cli-matrix.json` (Gate: packages).
 - Sparse agent-device: `.agent-device/wawona-ios-shell-cli.ad` (`ssh -V`, keygen).

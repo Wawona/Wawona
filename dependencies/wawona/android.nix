@@ -229,7 +229,7 @@ let
   };
 
 
-  # Impure Release Beta: read secrets at eval time (daemon builders do not
+  # Impure Ship: beta (stores): read secrets at eval time (daemon builders do not
   # see the client's impureEnvVars). Paths/passwords stay out of flake.lock;
   # only `--impure` CI/local release builds set them.
   releaseKeystorePath = builtins.getEnv "ANDROID_KEYSTORE_PATH";

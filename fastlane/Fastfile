@@ -116,7 +116,7 @@ def testflight_upload_options(api_key, target)
   # IMPORTANT: do NOT pass `changelog` when skip_waiting is true.
   # pilot still polls until the build appears whenever changelog is set, and
   # if ASC discards the binary (privacy manifest / invalid build) that wait
-  # never ends (see Release Beta #60: 4.5h hang on build 60).
+  # never ends (see Ship: beta (stores) #60: 4.5h hang on build 60).
   opts = {
     api_key: api_key,
     app_identifier: target[:bundle_id],

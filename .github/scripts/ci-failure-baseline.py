@@ -60,7 +60,7 @@ def collect_failed_jobs(repo: str, run_id: str):
 def main() -> int:
     ap = argparse.ArgumentParser(description="Generate GH Actions failure baseline table")
     ap.add_argument("--repo", default="Wawona/Wawona")
-    ap.add_argument("--workflow", default="Nix CI")
+    ap.add_argument("--workflow", default="nix.yml")
     ap.add_argument("--limit", type=int, default=11, help="Number of runs to inspect")
     ap.add_argument("--out", default="ci-failure-baseline.md")
     ap.add_argument("--out-json", default="ci-failure-baseline.json")
@@ -109,7 +109,7 @@ def main() -> int:
         )
 
     lines = []
-    lines.append("# Nix CI Failure Baseline")
+    lines.append("# Gate: packages failure baseline")
     lines.append("")
     lines.append("| Run ID | Created | Failed Jobs | Top Signatures |")
     lines.append("|---|---|---:|---|")

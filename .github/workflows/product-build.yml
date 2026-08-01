@@ -1,7 +1,7 @@
 name: "Build: products"
 
 # Sole pure producer for ship/test binaries. Consumers (device-e2e, Release,
-# Release Beta) download GHA artifacts; FlakeHub Cache substitutes store paths.
+# Ship: beta (stores)) download GHA artifacts; FlakeHub Cache substitutes store paths.
 # Do not schedule this on push directly — device-gate / Release call it once
 # per SHA via workflow_call.
 #

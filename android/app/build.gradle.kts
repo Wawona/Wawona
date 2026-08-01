@@ -13,7 +13,7 @@ android {
         applicationId = "com.aspauldingcode.wawona"
         minSdk = 24
         targetSdk = 36
-        // Release Beta / Play: Fastlane + nix set WAWONA_BUILD_NUMBER / WAWONA_VERSION.
+        // Ship: beta (stores) / Play: Fastlane + nix set WAWONA_BUILD_NUMBER / WAWONA_VERSION.
         versionCode = (System.getenv("WAWONA_BUILD_NUMBER") ?: "1").toInt()
         versionName = System.getenv("WAWONA_VERSION") ?: "2.5.0"
         // Layer-3 Compose UI tests (ci-l3-android-espresso).

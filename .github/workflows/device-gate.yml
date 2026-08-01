@@ -1,6 +1,6 @@
 name: "Gate: products"
 
-# Single scheduler for product binaries + Device GUI e2e on development/master.
+# Single scheduler for product binaries + Build: GUI smoke on development/master.
 # Product jobs are called separately so iOS e2e can start when ios-sim is ready
 # (without waiting for AppImages / macOS / Android).
 
@@ -104,7 +104,7 @@ jobs:
       id-token: write
 
   e2e-ios:
-    name: Device e2e iOS
+    name: "Build: GUI smoke iOS"
     needs: product-ios
     uses: ./.github/workflows/device-e2e.yml
     with:
@@ -118,7 +118,7 @@ jobs:
       actions: read
 
   e2e-android:
-    name: Device e2e Android
+    name: "Build: GUI smoke Android"
     needs: product-android
     uses: ./.github/workflows/device-e2e.yml
     with:
@@ -132,7 +132,7 @@ jobs:
       actions: read
 
   e2e-macos:
-    name: Device e2e macOS
+    name: "Build: GUI smoke macOS"
     needs: product-macos
     uses: ./.github/workflows/device-e2e.yml
     with:
@@ -146,7 +146,7 @@ jobs:
       actions: read
 
   e2e-linux:
-    name: Device e2e Linux catalog
+    name: "Build: GUI smoke Linux catalog"
     uses: ./.github/workflows/device-e2e.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}

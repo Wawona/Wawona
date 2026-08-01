@@ -207,7 +207,7 @@ jobs:
             done < <(tail -n +2 "$f")
           done < <(find arts -name results.tsv -type f)
           {
-            echo "## Bundled clients matrix"
+            echo "## Watch: bundled clients"
             echo ""
             if [[ -n "$fails" ]]; then
               echo "MATRIX_FAIL cells=$fails"

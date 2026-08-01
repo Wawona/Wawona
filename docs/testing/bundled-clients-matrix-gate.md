@@ -1,4 +1,4 @@
-# Bundled clients matrix gate
+# Watch: bundled clients gate
 
 One automated pass that exercises **every** Machines bundled native client
 (`kBundledClients` in `WWNMachinesViewModel.swift`) on every runnable platform

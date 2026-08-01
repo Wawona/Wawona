@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Beta prebuilt distribution** — Fastlane automation for TestFlight (iOS /
   iPadOS / tvOS / watchOS / visionOS) and Play internal track (Android), plus
-  Linux AppImage workflow artifacts. Release Beta runs from `master` / `v*`
+  Linux AppImage workflow artifacts. Ship: beta (stores) runs from `master` / `v*`
   tags via `.github/workflows/release-beta.yml`.
 - **Android GBM Apple parity + waypipe unstub** — map/unmap, format support,
   honest AHB formats, `#86` high-bit modifier path for in-process `waypipe_main`.
@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Actions workflow display names use role prefixes (`Gate` / `Build` / `Watch` /
+  `Ship`); filenames unchanged. Promote blockers: **Gate: packages** +
+  **Gate: products** (see `docs/ci.md`).
 - Version bumped to **2.5.0** (Wawona v2.5 beta) across `VERSION`, Cargo.toml,
   Android `versionName` default, and platform headers.
 - IPC `version` reply uses `CARGO_PKG_VERSION` so it stays aligned with Cargo.

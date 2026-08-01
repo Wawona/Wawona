@@ -136,7 +136,7 @@ jobs:
           nix develop .#release --command bash -lc \
             './scripts/release-env.sh fastlane '"$LANE"
 
-  # Release Beta owns AppImages (same SHA) — do not scavenge Device-gate product-build.
+  # Ship: beta (stores) owns AppImages (same SHA) — do not scavenge Gate: products product-build.
   products-appimage:
     name: Product AppImages
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'

@@ -97,7 +97,7 @@ in
       ''CODE_SIGNING_ALLOWED=NO''
       ''CODE_SIGNING_REQUIRED=NO''
     ]
-    # Impure Release Beta: fastlane match installs App Store profiles; force
+    # Impure Ship: beta (stores): fastlane match installs App Store profiles; force
     # Manual signing so xcodebuild does not look for a Development account.
     ++ lib.optionals (releaseBuild && generateIPA) [
       ''CODE_SIGN_STYLE=''${WAWONA_CODE_SIGN_STYLE:-Manual}''

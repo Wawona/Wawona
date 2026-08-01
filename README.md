@@ -1,7 +1,7 @@
 # Wawona
 
-[![Nix CI (Linux/Android)](https://github.com/aspauldingcode/Wawona/actions/workflows/nix.yml/badge.svg?branch=main&event=push&job=build-linux)](https://github.com/aspauldingcode/Wawona/actions/workflows/nix.yml)
-[![Nix CI (macOS/iOS)](https://github.com/aspauldingcode/Wawona/actions/workflows/nix.yml/badge.svg?branch=main&event=push&job=build-macos-x86_64)](https://github.com/aspauldingcode/Wawona/actions/workflows/nix.yml)
+[![Gate: packages (Linux/Android)](https://github.com/aspauldingcode/Wawona/actions/workflows/nix.yml/badge.svg?branch=main&event=push&job=build-linux)](https://github.com/aspauldingcode/Wawona/actions/workflows/nix.yml)
+[![Gate: packages (macOS/iOS)](https://github.com/aspauldingcode/Wawona/actions/workflows/nix.yml/badge.svg?branch=main&event=push&job=build-macos-x86_64)](https://github.com/aspauldingcode/Wawona/actions/workflows/nix.yml)
 
 **Wawona** is a native Wayland Compositor for macOS, iOS, and Android.
 <div align="center">
