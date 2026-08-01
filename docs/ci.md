@@ -156,9 +156,10 @@ Summary prints `MATRIX_FAIL cells=ios/niri,android/vkcube,…`.
   starts when `product-ios-sim` is ready** — it does not wait for AppImages/macOS/Android.
 - iOS CI lane: `agent-device-smoke.sh ios-ci` (one prepare for smoke; fuzzel reuses
   warm XCTest derived data; skipped on `pull_request` via `WAWONA_SKIP_FUZZEL`).
-- **Nested niri/fuzzel** (iOS / Android / macOS) is **advisory** on GHA push right
-  now (`continue-on-error` / non-fatal): smoke + catalog + OpenSSH banner remain
-  hard. Re-harden once GHA nested EGL / Continue / nested-socket flakes are fixed.
+- **Nested niri/fuzzel** on GHA: iOS/Android lanes are advisory; **macOS nested
+  niri is skipped** in Gate: products (runners SIGTERM mid-GUI and fail the job
+  even with `continue-on-error`). Run `scripts/niri-fuzzel-smoke-macos.sh` locally
+  or via Watch: graphics nightly. Catalog smoke remains hard on the macOS lane.
 - Same-session `prepare ios-runner` + `open` (do not kill prepare daemon before open).
 - XCTest runner cache key includes Xcode version (via `select-xcode.sh` outputs); hit/miss is logged.
 - Product iOS sim uses `xcodegenIosSimOutputs` (`simulatorOnly`, ios-only) so project
