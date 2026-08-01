@@ -1126,11 +1126,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1785545775,
-        "narHash": "sha256-F+p/CgyHJaJWOMlFV4KuTDBUlwJNtA3Lon+lBP+rMTI=",
+        "lastModified": 1785546575,
+        "narHash": "sha256-VUrWtjNUhptFr/zpcK4xlFhWmqjPcKfk9sC1Zf0grdE=",
         "owner": "Wawona",
         "repo": "wwn-waypipe",
-        "rev": "519a7d7ec4ba3a88aac6c81d34f36f5efb634ca8",
+        "rev": "daf3fe0887c42c31edcb6794d43c1e40b38a57f3",
         "type": "github"
       },
       "original": {
