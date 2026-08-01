@@ -100,10 +100,27 @@ for icd in "$APP/Contents/Resources/vulkan/icd.d/"*.json; do
   [[ -f "$icd" ]] && ICD_JSON="$icd" && break
 done
 log "starting nested niri (VK ICD: ${ICD_JSON:-none})"
+# Product macOS app ships config under Contents/Resources/share; some layouts
+# also keep $APP/share (macos.nix). Prefer the first that exists.
+NIRI_CFG=""
+for cand in \
+  "$APP/Contents/Resources/share/niri/default-config.kdl" \
+  "$APP/share/niri/default-config.kdl"
+do
+  if [[ -f "$cand" ]]; then
+    NIRI_CFG="$cand"
+    break
+  fi
+done
+[[ -n "$NIRI_CFG" ]] || log "NOTE: no bundled niri default-config.kdl; using niri defaults"
+if [[ -n "$NIRI_CFG" ]]; then
+  export NIRI_CONFIG="$NIRI_CFG"
+else
+  unset NIRI_CONFIG || true
+fi
 NIRI_BACKEND=nested RUST_LOG=niri=debug \
-  DYLD_LIBRARY_PATH="$APP/Contents/Frameworks" \
+  DYLD_LIBRARY_PATH="$APP/Contents/Frameworks${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}" \
   VK_ICD_FILENAMES="$ICD_JSON" VK_DRIVER_FILES="$ICD_JSON" \
-  NIRI_CONFIG="$APP/share/niri/default-config.kdl" \
   "$NIRI_BIN" >/tmp/wawona-niri-smoke-niri.log 2>&1 &
 NIRI_PID=$!
 NIRI_CHILD=""

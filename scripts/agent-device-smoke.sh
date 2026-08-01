@@ -401,17 +401,22 @@ run_android_shell_ssh() {
   local found=0
   while IFS= read -r path; do
     unzip -p "$apk" "$path" >"$tmp/bin.so" 2>/dev/null || continue
-    if strings "$tmp/bin.so" | grep -q 'OpenSSH_'; then
+    # Prefer binary grep over `strings`: GNU/llvm strings can miss the banner
+    # in stripped cross-arch ELF on some runners.
+    if grep -aob 'OpenSSH_' "$tmp/bin.so" >/dev/null 2>&1; then
       found=1
       echo "OK OpenSSH_ in $path"
+    else
+      echo "note: no OpenSSH_ banner via grep -a in $path"
     fi
-    if strings "$tmp/bin.so" | grep -qi dropbear; then
+    if grep -aobi 'dropbear' "$tmp/bin.so" >/dev/null 2>&1; then
       echo "FAIL: Dropbear strings in $path" >&2
       return 1
     fi
   done < <(unzip -Z1 "$apk" | grep -E 'libssh(_keygen)?_bin\.so$' || true)
   [[ "$found" -eq 1 ]] || {
     echo "FAIL: no OpenSSH_ banner in bundled ssh libs" >&2
+    unzip -Z1 "$apk" | grep -E 'libssh' >&2 || true
     return 1
   }
   # Optional on-device exec when a matching ABI binary is present.
