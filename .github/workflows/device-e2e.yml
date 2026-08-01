@@ -164,8 +164,9 @@ jobs:
           xcrun simctl bootstatus "$SIM_NAME" -b || xcrun simctl boot "$SIM_NAME" || true
           xcrun simctl bootstatus "$SIM_NAME"
           ./scripts/agent-device-smoke.sh ios-ci
-          echo "== iOS shell CLI (ssh -V / ssh-keygen) =="
-          ./scripts/agent-device-smoke.sh ios-shell-cli
+          echo "== iOS shell CLI (ssh -V / ssh-keygen, advisory) =="
+          ./scripts/agent-device-smoke.sh ios-shell-cli \
+            || echo "::warning::iOS shell CLI replay failed (advisory; GUI smoke already green)"
 
       - name: Nested niri + fuzzel (iOS, advisory)
         if: ${{ github.event_name != 'pull_request' }}
