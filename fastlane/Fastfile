@@ -58,8 +58,12 @@ end
 
 # TestFlight targets (macOS excluded — not distributed via TestFlight).
 # gym builds via scheme; match profiles must already include App Store + iCloud.
-# Full Apple family (platform-targets): restore platforms only after MBA local
-# archive+sim proof for that scheme.
+#
+# watchOS is a companion (WKCompanionAppBundleIdentifier → com.aspauldingcode.Wawona).
+# A bare watchOS archive has no App Store export method on Xcode 26
+# (`expected one {} but found app-store`). Ship it by embedding in the iOS IPA
+# (watchapp2-container / Embed Watch Content) — tracked as a milestone follow-up;
+# do not gym Wawona-watchOS standalone.
 APPLE_BETA_TARGETS = [
   {
     # Universal (phone+iPad). Do not also upload Wawona-iPadOS — same bundle id
@@ -86,14 +90,6 @@ APPLE_BETA_TARGETS = [
     destination: "generic/platform=visionOS",
     bundle_id: "com.aspauldingcode.Wawona",
     profile_name: "match AppStore com.aspauldingcode.Wawona"
-  },
-  {
-    scheme: "Wawona-watchOS",
-    name: "Apple Watch (watchOS)",
-    app_platform: "ios",
-    destination: "generic/platform=watchOS",
-    bundle_id: "com.aspauldingcode.Wawona.watch",
-    profile_name: "match AppStore com.aspauldingcode.Wawona.watch"
   }
 ].freeze
 
@@ -441,7 +437,7 @@ def nix_aab_path
 end
 
 platform :ios do
-  desc "Upload universal iOS, Apple TV, Apple Vision Pro, and Apple Watch to TestFlight"
+  desc "Upload universal iOS, Apple TV, and Apple Vision Pro to TestFlight"
   lane :beta do
     validate_env
     setup_ci if ENV["CI"]
