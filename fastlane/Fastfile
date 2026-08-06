@@ -166,6 +166,9 @@ end
 # That folder is only assembled for app-store-connect exports; ad-hoc /
 # debugging exports and Payload-only re-zips omit it. altool may still
 # accept the upload; ASC fails later with the email.
+#
+# Gym 2.232 regenerates ExportOptions and forces method=app-store even when
+# given a custom plist path — bypass gym packaging and exportArchive ourselves.
 def assert_ipa_has_swift_support!(ipa)
   require "open3"
   listing, st = Open3.capture2("unzip", "-Z1", ipa)
@@ -177,6 +180,36 @@ def assert_ipa_has_swift_support!(ipa)
     )
   end
   UI.success("#{File.basename(ipa)}: SwiftSupport/ present")
+end
+
+# If the IPA lacks SwiftSupport/ but the .xcarchive has it, splice the folder
+# into the IPA root without touching Payload/ (signatures stay valid).
+def inject_swift_support_from_archive!(ipa, archive_path)
+  require "open3"
+  listing, st = Open3.capture2("unzip", "-Z1", ipa)
+  UI.user_error!("unzip -Z1 failed for #{ipa}") unless st.success?
+  return if listing.lines.any? { |l| l.start_with?("SwiftSupport/") }
+
+  archive_ss = File.join(archive_path, "SwiftSupport")
+  unless File.directory?(archive_ss)
+    UI.important(
+      "Neither IPA nor archive has SwiftSupport/ — forcing embed via " \
+      "ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES may be required"
+    )
+    return
+  end
+
+  UI.message("Injecting SwiftSupport/ from #{File.basename(archive_path)} into IPA…")
+  Dir.mktmpdir("wawona-swift-support") do |dir|
+    sh("unzip -q #{ipa.shellescape} -d #{dir.shellescape}")
+    FileUtils.cp_r(archive_ss, dir)
+    tmp_ipa = "#{ipa}.new"
+    FileUtils.rm_f(tmp_ipa)
+    entries = Dir.children(dir).map(&:shellescape).join(" ")
+    sh("cd #{dir.shellescape} && zip -qry #{tmp_ipa.shellescape} #{entries}")
+    FileUtils.mv(tmp_ipa, ipa)
+  end
+  UI.success("Injected SwiftSupport/ into #{File.basename(ipa)}")
 end
 
 def wawona_version
@@ -426,7 +459,10 @@ def gym_ipa(target)
   xcargs = [
     "DEVELOPMENT_TEAM=#{team_id}",
     "CURRENT_PROJECT_VERSION=#{wawona_build_number}",
-    "MARKETING_VERSION=#{wawona_version}"
+    "MARKETING_VERSION=#{wawona_version}",
+    # Force Swift stdlibs into the archive so export can assemble SwiftSupport/
+    # (ITMS-90426). Needed for ObjC host + Swift frameworks on Xcode 26.
+    "ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES=YES"
   ].join(" ")
 
   UI.message(
@@ -434,9 +470,9 @@ def gym_ipa(target)
     "destination=#{target[:destination]})"
   )
 
-  # Write ExportOptions.plist ourselves so gym cannot rewrite `method` back to
-  # deprecated "app-store". Xcode 26 needs app-store-connect for SwiftSupport/
-  # (ITMS-90426). Pass the path as a String — hash form can be mutated by gym.
+  # Gym 2.232 regenerates ExportOptions and forces method=app-store even when
+  # given a custom plist path (CI log: "Generated plist … method: app-store").
+  # Archive with gym, then exportArchive ourselves with app-store-connect.
   export_plist = File.join(gym_output_dir, "ExportOptions-#{target[:scheme]}.plist")
   profile_xml = provisioning_profiles.map do |bid, name|
     "\t\t<key>#{bid}</key>\n\t\t<string>#{name}</string>"
@@ -470,8 +506,8 @@ def gym_ipa(target)
     clean: true,
     silent: false,
     destination: target[:destination],
+    skip_package_ipa: true,
     export_method: "app-store",
-    export_options: export_plist,
     xcargs: xcargs,
     output_directory: gym_output_dir,
     output_name: "#{target[:scheme]}-#{wawona_version}-#{wawona_build_number}",
@@ -479,6 +515,32 @@ def gym_ipa(target)
     build_path: File.join(gym_output_dir, "build"),
     derived_data_path: File.join(gym_output_dir, "DerivedData-#{target[:scheme]}")
   )
+
+  archive = lane_context[SharedValues::XCODEBUILD_ARCHIVE]
+  UI.user_error!("gym produced no .xcarchive") unless archive && File.directory?(archive)
+
+  export_dir = File.join(gym_output_dir, "export-#{target[:scheme]}")
+  FileUtils.rm_rf(export_dir)
+  FileUtils.mkdir_p(export_dir)
+  UI.message("exportArchive method=app-store-connect → #{export_dir}")
+  sh(
+    "/usr/bin/xcrun", "xcodebuild",
+    "-exportArchive",
+    "-archivePath", archive,
+    "-exportOptionsPlist", export_plist,
+    "-exportPath", export_dir
+  )
+
+  exported = Dir.glob(File.join(export_dir, "*.ipa")).first
+  UI.user_error!("exportArchive produced no IPA in #{export_dir}") unless exported
+  final_ipa = File.join(
+    gym_output_dir,
+    "#{target[:scheme]}-#{wawona_version}-#{wawona_build_number}.ipa"
+  )
+  FileUtils.mv(exported, final_ipa)
+  inject_swift_support_from_archive!(final_ipa, archive)
+  lane_context[SharedValues::IPA_OUTPUT_PATH] = final_ipa
+  final_ipa
 end
 
 def nix_aab_path
