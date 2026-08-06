@@ -15,7 +15,7 @@ android {
         targetSdk = 36
         // Ship: beta (stores) / Play: Fastlane + nix set WAWONA_BUILD_NUMBER / WAWONA_VERSION.
         versionCode = (System.getenv("WAWONA_BUILD_NUMBER") ?: "1").toInt()
-        versionName = System.getenv("WAWONA_VERSION") ?: "2.5.0"
+        versionName = System.getenv("WAWONA_VERSION") ?: "26.8.6"
         // Layer-3 Compose UI tests (ci-l3-android-espresso).
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

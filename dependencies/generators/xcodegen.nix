@@ -2545,7 +2545,13 @@ PLIST
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
         ];
-        preBuildScripts = [ stampBuildNumberPhase watchosPreBuild ];
+        preBuildScripts = [
+          # Do not run stampBuildNumberPhase here: when embedded under
+          # Wawona-iOS (#136) both targets would claim
+          # .build/wwn-build-number.xcconfig ("Multiple commands produce").
+          # Standalone Wawona-watchOS scheme still stamps via scheme preActions.
+          watchosPreBuild
+        ];
         postBuildScripts = [
           watchosNiriDataEmbedPhase
           watchosRootfsEmbedPhase

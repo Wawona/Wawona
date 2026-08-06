@@ -2,37 +2,33 @@
 
 All notable changes to Wawona are documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Versioning is **CalVer** `YY.M.D` (year · month · day), Apple-style year major
+(26 = 2026). Tags are `vYY.M.D` (e.g. `v26.8.6`). Same calendar day re-ships
+bump **build number** only. Historical `0.2.x` / mistaken `2.5.0` tags remain
+as history.
 
 ## [Unreleased]
 
-## [2.5.0] - 2026-07-31
+## [26.8.6] - 2026-08-06
 
 ### Added
 
-- **Beta prebuilt distribution** — Fastlane automation for TestFlight (iOS /
-  iPadOS / tvOS / watchOS / visionOS) and Play internal track (Android), plus
-  Linux AppImage workflow artifacts. Ship: beta (stores) runs from `master` / `v*`
-  tags via `.github/workflows/release-beta.yml`.
-- **Android GBM Apple parity + waypipe unstub** — map/unmap, format support,
-  honest AHB formats, `#86` high-bit modifier path for in-process `waypipe_main`.
-- **Wayland GL clients on Android** — OpenGL Cube, KMSCube, and weston-simple-egl
-  present through ANGLE / iland; display backend selector (Wayland vs DRM).
-- **iland Mode A / Mode B documentation and agent rules** — canonical
-  `docs/iland-mode-a-b-desktop.md`, Cursor rule `wawona-iland-mode-b-desktop`
-  (alwaysApply), tracked `docs/agent-rules/` mirror, `AGENTS.md` corrections
-  (Mode A is default; Mode B dylib only in `wawona-macos-desktop-host`, SIP-gated).
-  Settings Desktop / Android anowaW tiers documented in `docs/settings.md`.
+- **watchOS App Store path** — companion embedded in `Wawona-iOS` under
+  `PlugIns/` (Xcode 26 has no bare-watch `app-store` export); see #136.
+- **Beta prebuilt distribution** — Fastlane TestFlight (iOS/iPad/tvOS/visionOS;
+  watch via iOS IPA) + Play internal + Linux AppImage artifacts.
 
 ### Changed
 
+- Adopt **CalVer `YY.M.D`**; retire mistaken marketing version `2.5.0`
+  (was meant to be `0.2.5`).
 - Actions workflow display names use role prefixes (`Gate` / `Build` / `Watch` /
-  `Ship`); filenames unchanged. Promote blockers: **Gate: packages** +
-  **Gate: products** (see `docs/ci.md`).
-- Version bumped to **2.5.0** (Wawona v2.5 beta) across `VERSION`, Cargo.toml,
-  Android `versionName` default, and platform headers.
-- IPC `version` reply uses `CARGO_PKG_VERSION` so it stays aligned with Cargo.
+  `Ship`); promote blockers: **Gate: packages** + **Gate: products**.
+
+## [2.5.0] - 2026-08-06 (superseded)
+
+Mistaken semver tag for the first CalVer beta ship. Use **26.8.6** / `v26.8.6`.
 
 ## [0.2.4] - 2026-06-27
 

@@ -6,6 +6,14 @@ Binary cache: [`flakehub-cache.md`](./flakehub-cache.md).
 Build dedupe: [`2026-build-ci-optimization.md`](./2026-build-ci-optimization.md).
 Release secrets (tier 0): [`maintainers/secrets.md`](./maintainers/secrets.md).
 
+## Versioning (CalVer)
+
+Marketing version is **`YY.M.D`** (year · month · day), Apple-style year major
+(`26` = 2026). Source of truth: [`VERSION`](../VERSION). Git tags are
+`vYY.M.D` (e.g. `v26.8.6`). Same-day re-ships keep the marketing version and
+bump **build number** (`WAWONA_BUILD_NUMBER` / `CURRENT_PROJECT_VERSION`) only.
+Do not use semver majors for product releases.
+
 ## When to beta vs release
 
 | You do… | Runs… | Ships… |
