@@ -479,8 +479,9 @@ platform :ios do
 
     ipa = gym_ipa(target)
     assert_ipa_no_private_progname!(ipa)
-    FileUtils.mkdir_p("dist")
+    # Fastlane's cwd is the fastlane/ directory; stage at repo-root dist/.
     out = File.expand_path("../dist/Wawona-#{wawona_version}-iOS.ipa", __dir__)
+    FileUtils.mkdir_p(File.dirname(out))
     FileUtils.cp(ipa, out)
     UI.success("Staged #{out}")
   end
