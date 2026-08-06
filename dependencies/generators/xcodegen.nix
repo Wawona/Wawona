@@ -948,6 +948,10 @@ PLIST
     # (no relation to code signing). Make the embedded copy writable so it
     # behaves like a normal bundle resource, not a read-only store path.
     chmod -R u+w "$DEST"
+    # App Store Connect treats +x files under the app as unsigned code objects
+    # (altool 90034 on zsh Functions/* when the watch companion embeds rootfs).
+    # Rootfs is resource data — strip execute bits after copy.
+    find "$DEST" -type f -exec chmod a-x {} + 2>/dev/null || true
     echo "Embedded wawona-rootfs into $DEST (template $(cat "$DEST/etc/zsh/.template-version" 2>/dev/null || echo unknown))"
   '';
 
