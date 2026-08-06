@@ -98,6 +98,12 @@ and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream synta
   `--socket-fds`/no-`socat` path). macOS freedoms never propagate to other Apple
   platforms; mobile store-safety never propagates onto macOS. See
   `.cursor/rules/wawona-macos-no-appstore.mdc`.
+- **ASC IPA SwiftSupport (ITMS-90426):** every App Store / TestFlight IPA must
+  include `SwiftSupport/`. Export with `method: app-store-connect` (explicit
+  ExportOptions.plist; do not let gym rewrite deprecated `app-store`). Never
+  re-zip `Payload/` alone. Assert before upload (`assert_ipa_has_swift_support!`).
+  altool success ≠ ASC acceptance. See `.cursor/rules/wawona-asc-swift-support.mdc`
+  and `docs/ci.md`.
 - **Virtualization**: Wawona iOS will host on-device, JIT-less VMs inside Wawona
   (not UTM) only to run Wayland compositors. Containers only on macOS (maybe
   Android); other Apple platforms = VMs or native only.

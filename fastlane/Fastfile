@@ -161,6 +161,23 @@ def assert_ipa_no_private_progname!(ipa)
   end
 end
 
+# ASC ITMS-90426: App Store Connect rejects IPAs without SwiftSupport/.
+# That folder is only assembled for app-store-connect exports; ad-hoc /
+# debugging exports and Payload-only re-zips omit it. altool may still
+# accept the upload; ASC fails later with the email.
+def assert_ipa_has_swift_support!(ipa)
+  require "open3"
+  listing, st = Open3.capture2("unzip", "-Z1", ipa)
+  UI.user_error!("unzip -Z1 failed for #{ipa}") unless st.success?
+  unless listing.lines.any? { |l| l.start_with?("SwiftSupport/") }
+    UI.user_error!(
+      "#{File.basename(ipa)} is missing SwiftSupport/ (ITMS-90426). " \
+      "Export with method app-store-connect; never re-zip Payload alone."
+    )
+  end
+  UI.success("#{File.basename(ipa)}: SwiftSupport/ present")
+end
+
 def wawona_version
   @wawona_version ||= begin
     raw = ENV["WAWONA_VERSION"]
@@ -416,6 +433,36 @@ def gym_ipa(target)
     "destination=#{target[:destination]})"
   )
 
+  # Write ExportOptions.plist ourselves so gym cannot rewrite `method` back to
+  # deprecated "app-store". Xcode 26 needs app-store-connect for SwiftSupport/
+  # (ITMS-90426). Pass the path as a String — hash form can be mutated by gym.
+  export_plist = File.join(gym_output_dir, "ExportOptions-#{target[:scheme]}.plist")
+  profile_xml = provisioning_profiles.map do |bid, name|
+    "\t\t<key>#{bid}</key>\n\t\t<string>#{name}</string>"
+  end.join("\n")
+  File.write(export_plist, <<~PLIST)
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+    <plist version="1.0">
+    <dict>
+    \t<key>method</key>
+    \t<string>app-store-connect</string>
+    \t<key>destination</key>
+    \t<string>export</string>
+    \t<key>signingStyle</key>
+    \t<string>manual</string>
+    \t<key>teamID</key>
+    \t<string>#{team_id}</string>
+    \t<key>uploadSymbols</key>
+    \t<true/>
+    \t<key>provisioningProfiles</key>
+    \t<dict>
+    #{profile_xml}
+    \t</dict>
+    </dict>
+    </plist>
+  PLIST
+
   build_app(
     project: project,
     scheme: target[:scheme],
@@ -423,12 +470,7 @@ def gym_ipa(target)
     silent: false,
     destination: target[:destination],
     export_method: "app-store",
-    export_options: {
-      method: "app-store",
-      signingStyle: "manual",
-      teamID: team_id,
-      provisioningProfiles: provisioning_profiles
-    },
+    export_options: export_plist,
     xcargs: xcargs,
     output_directory: gym_output_dir,
     output_name: "#{target[:scheme]}-#{wawona_version}-#{wawona_build_number}",
@@ -468,6 +510,7 @@ platform :ios do
     APPLE_BETA_TARGETS.each do |target|
       ipa = gym_ipa(target)
       assert_ipa_no_private_progname!(ipa)
+      assert_ipa_has_swift_support!(ipa)
       upload_to_testflight(
         **testflight_upload_options(api_key, target),
         ipa: ipa
@@ -497,6 +540,7 @@ platform :ios do
 
     ipa = gym_ipa(target)
     assert_ipa_no_private_progname!(ipa)
+    assert_ipa_has_swift_support!(ipa)
     # Fastlane's cwd is the fastlane/ directory; stage at repo-root dist/.
     out = File.expand_path("../dist/Wawona-#{wawona_version}-iOS.ipa", __dir__)
     FileUtils.mkdir_p(File.dirname(out))
@@ -517,6 +561,7 @@ platform :ios do
     APPLE_BETA_TARGETS.each do |target|
       ipa = gym_ipa(target)
       assert_ipa_no_private_progname!(ipa)
+      assert_ipa_has_swift_support!(ipa)
       deliver(
         api_key: api_key,
         app_identifier: target[:bundle_id],

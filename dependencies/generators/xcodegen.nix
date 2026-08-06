@@ -952,6 +952,17 @@ PLIST
     # (altool 90034 on zsh Functions/* when the watch companion embeds rootfs).
     # Rootfs is resource data — strip execute bits after copy.
     find "$DEST" -type f -exec chmod a-x {} + 2>/dev/null || true
+    # Watch companion IPAs are scanned more aggressively; drop bulky zsh
+    # function libraries that ASC still flags as unsigned code even without +x.
+    case "''${PLATFORM_NAME:-}" in
+      watchos|watchsimulator)
+        rm -rf \
+          "$DEST/usr/share/zsh/Functions" \
+          "$DEST/usr/share/zsh/Misc" \
+          "$DEST/usr/share/zsh/Completion" \
+          2>/dev/null || true
+        ;;
+    esac
     echo "Embedded wawona-rootfs into $DEST (template $(cat "$DEST/etc/zsh/.template-version" 2>/dev/null || echo unknown))"
   '';
 

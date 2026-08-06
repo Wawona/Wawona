@@ -40,7 +40,9 @@ Workflow display names use a role prefix (`Gate` / `Build` / `Watch` / `Ship`). 
 | **Ship: beta (stores)** (`release-beta.yml`) | — | push + tags `v*` | Fastlane stores (match+gym); owns AppImages via product-build `only: appimage` with `tip_key: ship-beta-<branch>` (must not share Gate: products `product-build-<branch>-appimage` or tip concurrency cancels one caller) |
 | **Ship: GitHub assets** (`release.yml`) | — | tags `v*` | GitHub Release: DMG/APK/AppImage from product-build (`macos-app` / `android-apk` / `appimage` only; tip_key `ship-assets-<tag>`); IPA via Fastlane `ios github_ipa` (match+gym, same as Ship: beta) |
 
-**watchOS store shipping:** bare `Wawona-watchOS` archives cannot export `app-store` on Xcode 26. The companion is **embedded into `Wawona-iOS`** under classic `Watch/` (XcodeGen default; App Store Connect expects this layout). Never add standalone watch to `APPLE_BETA_TARGETS`. Gate: products still builds `Wawona-watchOS` for native/sim verification. See [#136](https://github.com/Wawona/Wawona/issues/136).
+**watchOS store shipping:** bare `Wawona-watchOS` archives cannot export `app-store-connect` on Xcode 26. The companion is **embedded into `Wawona-iOS`** under classic `Watch/` (XcodeGen default; App Store Connect expects this layout). Never add standalone watch to `APPLE_BETA_TARGETS`. Gate: products still builds `Wawona-watchOS` for native/sim verification. See [#136](https://github.com/Wawona/Wawona/issues/136).
+
+**IPA export (ITMS-90426):** gym must export with `method: app-store-connect` so the IPA includes `SwiftSupport/`. Do not re-zip `Payload/` alone. Fastlane asserts `SwiftSupport/` before every TestFlight / GitHub IPA / App Store upload.
 
 Removed: **publish-ios** (use Ship: beta `workflow_dispatch`) and standalone **Android parity** (Gradle/meson folded into Gate: packages).
 
