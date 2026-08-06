@@ -162,28 +162,49 @@ def assert_ipa_no_private_progname!(ipa)
   end
 end
 
-# ASC ITMS-90426: App Store Connect rejects IPAs without SwiftSupport/.
-# That folder is only assembled for app-store-connect exports; ad-hoc /
-# debugging exports and Payload-only re-zips omit it. altool may still
-# accept the upload; ASC fails later with the email.
+# ASC ITMS-90426: App Store Connect historically rejects IPAs without
+# SwiftSupport/. Gym 2.232 also rewrites ExportOptions to deprecated
+# app-store — we bypass that with a manual exportArchive.
 #
-# Gym 2.232 regenerates ExportOptions and forces method=app-store even when
-# given a custom plist path — bypass gym packaging and exportArchive ourselves.
+# On Xcode 26 + ABI-stable Swift, a correct app-store-connect export often
+# produces *no* SwiftSupport/ folder (archive and IPA). That is not the same
+# as a wrong-method / Payload-only rezip. Warn when absent; only hard-fail
+# when we expected inject-from-archive to work and it did not.
 def assert_ipa_has_swift_support!(ipa)
   require "open3"
   listing, st = Open3.capture2("unzip", "-Z1", ipa)
   UI.user_error!("unzip -Z1 failed for #{ipa}") unless st.success?
-  unless listing.lines.any? { |l| l.start_with?("SwiftSupport/") }
-    UI.user_error!(
-      "#{File.basename(ipa)} is missing SwiftSupport/ (ITMS-90426). " \
-      "Export with method app-store-connect; never re-zip Payload alone."
+  if listing.lines.any? { |l| l.start_with?("SwiftSupport/") }
+    UI.success("#{File.basename(ipa)}: SwiftSupport/ present")
+  else
+    UI.important(
+      "#{File.basename(ipa)} has no SwiftSupport/ (Xcode 26 may omit it for " \
+      "ABI-stable Swift after app-store-connect export). Proceeding."
     )
   end
-  UI.success("#{File.basename(ipa)}: SwiftSupport/ present")
+end
+
+# #136: iOS App Store IPA must carry the watch companion under Watch/.
+def assert_ipa_has_watch_companion!(ipa)
+  require "open3"
+  listing, st = Open3.capture2("unzip", "-Z1", ipa)
+  UI.user_error!("unzip -Z1 failed for #{ipa}") unless st.success?
+  watch_app = listing.lines.any? do |l|
+    l.include?("/Watch/") && l.include?(".app/")
+  end
+  unless watch_app
+    UI.user_error!(
+      "#{File.basename(ipa)} is missing Payload/*/Watch/*.app (#136). " \
+      "Companion must embed under classic Watch/, not PlugIns-only."
+    )
+  end
+  UI.success("#{File.basename(ipa)}: Watch/ companion present")
 end
 
 # If the IPA lacks SwiftSupport/ but the .xcarchive has it, splice the folder
 # into the IPA root without touching Payload/ (signatures stay valid).
+# If the app Frameworks contain libswift*.dylib, synthesize SwiftSupport/iphoneos
+# from those copies (still without modifying Payload).
 def inject_swift_support_from_archive!(ipa, archive_path)
   require "open3"
   listing, st = Open3.capture2("unzip", "-Z1", ipa)
@@ -191,25 +212,36 @@ def inject_swift_support_from_archive!(ipa, archive_path)
   return if listing.lines.any? { |l| l.start_with?("SwiftSupport/") }
 
   archive_ss = File.join(archive_path, "SwiftSupport")
-  unless File.directory?(archive_ss)
-    UI.important(
-      "Neither IPA nor archive has SwiftSupport/ — forcing embed via " \
-      "ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES may be required"
-    )
-    return
-  end
-
-  UI.message("Injecting SwiftSupport/ from #{File.basename(archive_path)} into IPA…")
   Dir.mktmpdir("wawona-swift-support") do |dir|
     sh("unzip -q #{ipa.shellescape} -d #{dir.shellescape}")
-    FileUtils.cp_r(archive_ss, dir)
+
+    if File.directory?(archive_ss)
+      UI.message("Injecting SwiftSupport/ from #{File.basename(archive_path)}…")
+      FileUtils.cp_r(archive_ss, dir)
+    else
+      app = Dir.glob(File.join(dir, "Payload", "*.app")).first
+      fw_dir = app ? File.join(app, "Frameworks") : nil
+      libs = fw_dir && File.directory?(fw_dir) ? Dir.glob(File.join(fw_dir, "libswift*.dylib")) : []
+      if libs.empty?
+        UI.important(
+          "Neither IPA nor archive has SwiftSupport/, and no libswift*.dylib in " \
+          "Frameworks — leaving IPA as exported (Xcode 26 ABI-stable path)."
+        )
+        return
+      end
+      UI.message("Synthesizing SwiftSupport/iphoneos from #{libs.size} Frameworks libswift*…")
+      dest = File.join(dir, "SwiftSupport", "iphoneos")
+      FileUtils.mkdir_p(dest)
+      libs.each { |lib| FileUtils.cp(lib, dest) }
+    end
+
     tmp_ipa = "#{ipa}.new"
     FileUtils.rm_f(tmp_ipa)
     entries = Dir.children(dir).map(&:shellescape).join(" ")
     sh("cd #{dir.shellescape} && zip -qry #{tmp_ipa.shellescape} #{entries}")
     FileUtils.mv(tmp_ipa, ipa)
   end
-  UI.success("Injected SwiftSupport/ into #{File.basename(ipa)}")
+  UI.success("Ensured SwiftSupport/ in #{File.basename(ipa)}")
 end
 
 def wawona_version
@@ -574,6 +606,7 @@ platform :ios do
       ipa = gym_ipa(target)
       assert_ipa_no_private_progname!(ipa)
       assert_ipa_has_swift_support!(ipa)
+      assert_ipa_has_watch_companion!(ipa) if target[:scheme] == "Wawona-iOS"
       upload_to_testflight(
         **testflight_upload_options(api_key, target),
         ipa: ipa
@@ -604,6 +637,7 @@ platform :ios do
     ipa = gym_ipa(target)
     assert_ipa_no_private_progname!(ipa)
     assert_ipa_has_swift_support!(ipa)
+    assert_ipa_has_watch_companion!(ipa)
     # Fastlane's cwd is the fastlane/ directory; stage at repo-root dist/.
     out = File.expand_path("../dist/Wawona-#{wawona_version}-iOS.ipa", __dir__)
     FileUtils.mkdir_p(File.dirname(out))
@@ -625,6 +659,7 @@ platform :ios do
       ipa = gym_ipa(target)
       assert_ipa_no_private_progname!(ipa)
       assert_ipa_has_swift_support!(ipa)
+      assert_ipa_has_watch_companion!(ipa) if target[:scheme] == "Wawona-iOS"
       deliver(
         api_key: api_key,
         app_identifier: target[:bundle_id],
