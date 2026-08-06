@@ -2782,31 +2782,6 @@ PLIST
       export HOME="$TMPDIR"
       export USER="nobody"
       ${pkgs.xcodegen}/bin/xcodegen generate --spec project.yml
-      # Xcode 26: watch companion under PlugIns/ (see generateScript + #136).
-      ${pkgs.python3}/bin/python3 - <<'PY'
-from pathlib import Path
-p = Path("Wawona.xcodeproj/project.pbxproj")
-if p.is_file():
-    text = p.read_text()
-    old = 'dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";'
-    new = 'dstPath = "";'
-    if old in text:
-        out = []
-        i = 0
-        lines = text.splitlines(keepends=True)
-        while i < len(lines):
-            line = lines[i]
-            if old in line:
-                out.append(line.replace(old, new))
-                i += 1
-                if i < len(lines) and "dstSubfolderSpec = 16;" in lines[i]:
-                    out.append(lines[i].replace("dstSubfolderSpec = 16;", "dstSubfolderSpec = 13;"))
-                    i += 1
-                continue
-            out.append(line)
-            i += 1
-        p.write_text("".join(out))
-PY
       mkdir -p $out
       cp -R . "$out/"
       runHook postInstall
@@ -2927,38 +2902,11 @@ EOF
     fi
     ${xcodeUtils.xcodeWrapper}/bin/xcode-wrapper ${pkgs.xcodegen}/bin/xcodegen generate --use-cache --spec "$TMP_SPEC"
 
-    # Xcode 26: watch companion must live under PlugIns/ (dstSubfolderSpec=13),
-    # not legacy Watch/ (16). xcodegen 2.44.1 still emits Watch/ — see
-    # https://github.com/yonaskolb/XcodeGen/issues/1613 and issue #136.
-    # Only rewrite the Embed Watch Content copy phase (paired dstPath + spec).
-    if [ -f Wawona.xcodeproj/project.pbxproj ]; then
-      ${pkgs.python3}/bin/python3 - <<'PY'
-from pathlib import Path
-p = Path("Wawona.xcodeproj/project.pbxproj")
-text = p.read_text()
-old = 'dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";'
-new = 'dstPath = "";'
-if old not in text:
-    print("note: no legacy Watch/ embed path to patch")
-else:
-    out = []
-    i = 0
-    lines = text.splitlines(keepends=True)
-    while i < len(lines):
-        line = lines[i]
-        if old in line:
-            out.append(line.replace(old, new))
-            i += 1
-            if i < len(lines) and "dstSubfolderSpec = 16;" in lines[i]:
-                out.append(lines[i].replace("dstSubfolderSpec = 16;", "dstSubfolderSpec = 13;"))
-                i += 1
-            continue
-        out.append(line)
-        i += 1
-    p.write_text("".join(out))
-    print("Patched Embed Watch Content → PlugIns/ (Xcode 26).")
-PY
-    fi
+    # Keep XcodeGen's classic Embed Watch Content → Watch/ layout. Xcode 26
+    # device installs prefer PlugIns/ (XcodeGen #1613), but App Store Connect
+    # / altool reject PlugIns-only companion IPAs ("Cannot determine the
+    # platform") and rewriting the IPA after export breaks code signatures.
+    # Archive + TestFlight on Xcode 26.6 succeed with Watch/ (#136).
 
     mkdir -p "Wawona.xcodeproj/xcshareddata/xcschemes"
     cat > "Wawona.xcodeproj/xcshareddata/xcschemes/xcschememanagement.plist" <<'EOF'
