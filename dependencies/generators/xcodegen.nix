@@ -952,15 +952,17 @@ PLIST
     # (altool 90034 on zsh Functions/* when the watch companion embeds rootfs).
     # Rootfs is resource data — strip execute bits after copy.
     find "$DEST" -type f -exec chmod a-x {} + 2>/dev/null || true
-    # Watch companion IPAs are scanned more aggressively; drop bulky zsh
-    # function libraries that ASC still flags as unsigned code even without +x.
+    # Watch companion IPAs are scanned more aggressively: ASC flags share
+    # scripts (Etc/*.pl, Functions, …) as unsigned code even without +x.
+    # Keep etc/zsh templates; drop the entire usr/share/zsh tree and any
+    # leftover interpreter scripts under the watch rootfs.
     case "''${PLATFORM_NAME:-}" in
       watchos|watchsimulator)
-        rm -rf \
-          "$DEST/usr/share/zsh/Functions" \
-          "$DEST/usr/share/zsh/Misc" \
-          "$DEST/usr/share/zsh/Completion" \
-          2>/dev/null || true
+        rm -rf "$DEST/usr/share/zsh" 2>/dev/null || true
+        find "$DEST" \( \
+          -name '*.pl' -o -name '*.py' -o -name '*.rb' -o \
+          -name '*.sh' -o -name '*.bash' -o -name '*.zsh' \
+        \) -type f -delete 2>/dev/null || true
         ;;
     esac
     echo "Embedded wawona-rootfs into $DEST (template $(cat "$DEST/etc/zsh/.template-version" 2>/dev/null || echo unknown))"
@@ -2597,6 +2599,10 @@ PLIST
             SUPPORTED_PLATFORMS = "watchos watchsimulator";
             SDKROOT = "watchos";
             TARGETED_DEVICE_FAMILY = "4";
+            # ASC 90733: MinimumOSVersion < 27.0 requires arm64_32 + arm64.
+            # watchOS SDK 26.5 max deployment is 26.5 (cannot set 27.0). Ship
+            # ARCHS_STANDARD; arm64_32 links weak WWNWatchStubs only (Nix
+            # watch libs are arm64-only). Full native stack is arm64.
             WATCHOS_DEPLOYMENT_TARGET = "10.0";
             GENERATE_INFOPLIST_FILE = "YES";
             # Embedded companion: stay out of the iOS archive's root Products
@@ -2624,8 +2630,8 @@ PLIST
               "TARGET_OS_IPHONE=1"
               "TARGET_OS_WATCH=1"
             ];
-            "VALID_ARCHS[sdk=watchos*]" = "arm64";
-            "ARCHS[sdk=watchos*]" = "arm64";
+            "VALID_ARCHS[sdk=watchos*]" = "arm64_32 arm64";
+            "ARCHS[sdk=watchos*]" = "arm64_32 arm64";
             "VALID_ARCHS[sdk=watchsimulator*]" = "arm64";
             "ARCHS[sdk=watchsimulator*]" = "arm64";
             HEADER_SEARCH_PATHS = [
@@ -2647,7 +2653,9 @@ PLIST
             # -lwayland-server because both archives contain xdg-shell-protocol.o.
             # The Apple linker accepts the force-loaded copy first and silently
             # skips the duplicate from normal -l archive linking.
-            "OTHER_LDFLAGS[sdk=watchos*]" = [
+            # Full native stack is arm64-only (Nix watch libs). arm64_32 uses
+            # weak WWNWatchStubs.c so the fat binary satisfies ASC 90733.
+            "OTHER_LDFLAGS[sdk=watchos*][arch=arm64]" = [
               "$(inherited)"
               "-L${strip (watchosDeps.libffi or null)}/lib"
               "-L${strip (watchosDeps.libwayland or null)}/lib"
@@ -2689,6 +2697,10 @@ PLIST
             ++ appleMobileResolvLdflags ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" ] ++ lib.optionals (watchosBackend != null) [
               derivedRustLib
             ] ++ finalCxxLdflagsNoIokit;
+            "OTHER_LDFLAGS[sdk=watchos*][arch=arm64_32]" = [
+              "$(inherited)"
+              "-liconv"
+            ];
             "OTHER_LDFLAGS[sdk=watchsimulator*]" = [
               "$(inherited)"
               "-L${strip (watchosSimDeps.libffi or null)}/lib"

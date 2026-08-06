@@ -75,6 +75,13 @@ build_framework() {
   mkdir -p "$isolated"
 
   echo "note: watchos-ensure-framework-modules: building ${fw} for ${PLATFORM_NAME}"
+  local archs="arm64"
+  local valid="arm64"
+  if [[ "$PLATFORM_NAME" == "watchos" ]]; then
+    # Match Wawona-watchOS ARCHS (ASC 90733 needs arm64_32 + arm64).
+    archs="arm64_32 arm64"
+    valid="arm64_32 arm64"
+  fi
   "${clean_env[@]}" xcodebuild \
     -project "${PROJECT}" \
     -target "${fw}" \
@@ -84,8 +91,8 @@ build_framework() {
     OBJROOT="${scratch}/Build/Intermediates.noindex" \
     SYMROOT="${isolated}" \
     ONLY_ACTIVE_ARCH=NO \
-    ARCHS=arm64 \
-    VALID_ARCHS=arm64 \
+    ARCHS="${archs}" \
+    VALID_ARCHS="${valid}" \
     CODE_SIGNING_ALLOWED=NO \
     CODE_SIGNING_REQUIRED=NO \
     ENABLE_DEBUG_DYLIB=NO \
