@@ -2550,6 +2550,14 @@ PLIST
           # Wawona-iOS (#136) both targets would claim
           # .build/wwn-build-number.xcconfig ("Multiple commands produce").
           # Standalone Wawona-watchOS scheme still stamps via scheme preActions.
+          {
+            name = "Ensure Watch Framework Modules";
+            basedOnDependencyAnalysis = false;
+            inputFiles = [ "$(SRCROOT)/scripts/watchos-ensure-framework-modules.sh" ];
+            script = ''
+              exec "''${SRCROOT}/scripts/watchos-ensure-framework-modules.sh"
+            '';
+          }
           watchosPreBuild
         ];
         postBuildScripts = [
@@ -2568,7 +2576,12 @@ PLIST
         settings = {
           base = {
             PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.Wawona.watch";
+            # Distinct Swift module from the iOS host (project PRODUCT_NAME=Wawona).
+            PRODUCT_NAME = "WawonaWatch";
+            PRODUCT_MODULE_NAME = "WawonaWatch";
             SUPPORTED_PLATFORMS = "watchos watchsimulator";
+            SDKROOT = "watchos";
+            TARGETED_DEVICE_FAMILY = "4";
             WATCHOS_DEPLOYMENT_TARGET = "10.0";
             GENERATE_INFOPLIST_FILE = "YES";
             # Embedded companion: stay out of the iOS archive's root Products
@@ -2577,8 +2590,12 @@ PLIST
             # watch slots live in the shared AppIcon.appiconset (watch + watch-marketing).
             ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon";
             INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "com.aspauldingcode.Wawona";
+            INFOPLIST_KEY_CFBundleDisplayName = "Wawona";
             SWIFT_OBJC_BRIDGING_HEADER = "src/platform/watchos/WWNWatch-Bridging-Header.h";
             SWIFT_INSTALL_OBJC_HEADER = "NO";
+            # Xcode 26 explicit modules flake when the watch companion is built
+            # under an iOS archive destination before framework swiftmodules exist.
+            SWIFT_ENABLE_EXPLICIT_MODULES = "NO";
             CODE_SIGNING_ALLOWED = "NO";
             CODE_SIGNING_REQUIRED = "NO";
             LD_RUNPATH_SEARCH_PATHS = [ "$(inherited)" "@executable_path/Frameworks" ];
