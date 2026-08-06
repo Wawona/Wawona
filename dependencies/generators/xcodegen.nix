@@ -2634,6 +2634,11 @@ PLIST
             "ARCHS[sdk=watchos*]" = "arm64_32 arm64";
             "VALID_ARCHS[sdk=watchsimulator*]" = "arm64";
             "ARCHS[sdk=watchsimulator*]" = "arm64";
+            # Mini server needs libwayland-server (arm64 Nix only). arm64_32
+            # uses weak wwn_wls_* stubs in WWNWatchStubs.c instead.
+            "EXCLUDED_SOURCE_FILE_NAMES[arch=arm64_32]" = [
+              "WWNMiniWaylandServer.c"
+            ];
             HEADER_SEARCH_PATHS = [
               "$(inherited)"
               "${strip (watchosDeps.libffi or null)}/include"
