@@ -2596,8 +2596,11 @@ PLIST
             # Xcode 26 explicit modules flake when the watch companion is built
             # under an iOS archive destination before framework swiftmodules exist.
             SWIFT_ENABLE_EXPLICIT_MODULES = "NO";
-            CODE_SIGNING_ALLOWED = "NO";
-            CODE_SIGNING_REQUIRED = "NO";
+            CODE_SIGN_STYLE = "Automatic";
+            CODE_SIGNING_ALLOWED = "YES";
+            CODE_SIGNING_REQUIRED = "YES";
+            "CODE_SIGNING_ALLOWED[sdk=watchsimulator*]" = "NO";
+            "CODE_SIGNING_REQUIRED[sdk=watchsimulator*]" = "NO";
             LD_RUNPATH_SEARCH_PATHS = [ "$(inherited)" "@executable_path/Frameworks" ];
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
