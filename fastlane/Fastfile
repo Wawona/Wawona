@@ -161,6 +161,44 @@ def assert_ipa_no_private_progname!(ipa)
   end
 end
 
+# Xcode 26 archives embed the watch companion under PlugIns/ (dstSubfolderSpec=13).
+# App Store Connect / altool still expect the classic Watch/ layout for companion
+# IPAs; PlugIns-only packages fail with "Cannot determine the 'platform' from the
+# info.plist. (19)". Rewrite the IPA after gym when needed (#136).
+def normalize_ipa_watch_layout_for_asc!(ipa)
+  require "fileutils"
+  Dir.mktmpdir("wawona-ipa-watch") do |dir|
+    sh("unzip -q #{ipa.shellescape} -d #{dir.shellescape}")
+    app = Dir.glob(File.join(dir, "Payload", "*.app")).first
+    UI.user_error!("No Payload/*.app in #{ipa}") unless app
+
+    plugins = File.join(app, "PlugIns")
+    watch_dir = File.join(app, "Watch")
+    candidates = Dir.glob(File.join(plugins, "*.app"))
+    if candidates.empty?
+      UI.message("IPA has no PlugIns/*.app watch companion — leaving layout as-is")
+      return ipa
+    end
+
+    FileUtils.mkdir_p(watch_dir)
+    candidates.each do |src|
+      dst = File.join(watch_dir, File.basename(src))
+      UI.message("ASC layout: #{File.basename(src)} PlugIns/ → Watch/")
+      FileUtils.rm_rf(dst)
+      FileUtils.mv(src, dst)
+    end
+    FileUtils.rm_rf(plugins) if Dir.empty?(plugins)
+
+    # Rezip in place (store paths relative to Payload/).
+    FileUtils.rm_f(ipa)
+    Dir.chdir(dir) do
+      sh("zip -qry #{ipa.shellescape} Payload")
+    end
+    UI.success("Rewrote #{File.basename(ipa)} with Watch/ companion layout for ASC")
+  end
+  ipa
+end
+
 def wawona_version
   @wawona_version ||= begin
     raw = ENV["WAWONA_VERSION"]
@@ -467,6 +505,7 @@ platform :ios do
 
     APPLE_BETA_TARGETS.each do |target|
       ipa = gym_ipa(target)
+      normalize_ipa_watch_layout_for_asc!(ipa) if target[:scheme] == "Wawona-iOS"
       assert_ipa_no_private_progname!(ipa)
       upload_to_testflight(
         **testflight_upload_options(api_key, target),

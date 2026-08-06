@@ -2591,6 +2591,8 @@ PLIST
             ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon";
             INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "com.aspauldingcode.Wawona";
             INFOPLIST_KEY_CFBundleDisplayName = "Wawona";
+            INFOPLIST_KEY_WKApplication = "YES";
+            INFOPLIST_KEY_CFBundlePackageType = "APPL";
             SWIFT_OBJC_BRIDGING_HEADER = "src/platform/watchos/WWNWatch-Bridging-Header.h";
             SWIFT_INSTALL_OBJC_HEADER = "NO";
             # Xcode 26 explicit modules flake when the watch companion is built
