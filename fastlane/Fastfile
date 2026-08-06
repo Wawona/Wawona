@@ -465,6 +465,26 @@ platform :ios do
     end
   end
 
+  desc "Stage universal iOS IPA for GitHub Release (no TestFlight upload)"
+  lane :github_ipa do
+    validate_env
+    setup_ci if ENV["CI"]
+    ensure_xcodegen!
+    prefer_xcode_toolchain!
+    api_key = asc_api_key
+    install_testflight_profiles!(api_key)
+
+    target = APPLE_BETA_TARGETS.find { |t| t[:scheme] == "Wawona-iOS" }
+    UI.user_error!("Wawona-iOS missing from APPLE_BETA_TARGETS") unless target
+
+    ipa = gym_ipa(target)
+    assert_ipa_no_private_progname!(ipa)
+    FileUtils.mkdir_p("dist")
+    out = File.expand_path("../dist/Wawona-#{wawona_version}-iOS.ipa", __dir__)
+    FileUtils.cp(ipa, out)
+    UI.success("Staged #{out}")
+  end
+
   desc "Submit iOS builds for App Store review"
   lane :release do
     validate_env

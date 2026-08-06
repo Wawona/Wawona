@@ -1,7 +1,9 @@
 name: "Ship: GitHub assets"
 
 # Tag push (v*) → GitHub Release with macOS DMG, Android APK, iOS IPA, and Linux
-# AppImages. Pure products come from product-build (once); IPA stays impure.
+# AppImages. Pure products: macos / android / appimage only (no apple-family —
+# watchOS sim is not a Release asset and has flaked on -downloadPlatform iOS).
+# IPA is impure Fastlane match+gym (same signing path as Ship: beta).
 # Re-registered 2026-07-16 after Actions run-history purge left this workflow deleted.
 
 on:
@@ -22,15 +24,39 @@ env:
   NIXPKGS_ALLOW_UNFREE: '1'
 
 jobs:
-  products:
-    name: "Build: products"
+  # tip_key isolates from Gate: products / Ship: beta product-build groups.
+  product-macos:
+    name: Product macOS app
     uses: ./.github/workflows/product-build.yml
+    with:
+      only: macos-app
+      tip_key: ship-assets-${{ github.ref_name }}
+    permissions:
+      contents: read
+      id-token: write
+
+  product-android:
+    name: Product Android APK
+    uses: ./.github/workflows/product-build.yml
+    with:
+      only: android-apk
+      tip_key: ship-assets-${{ github.ref_name }}
+    permissions:
+      contents: read
+      id-token: write
+
+  product-appimage:
+    name: Product AppImages
+    uses: ./.github/workflows/product-build.yml
+    with:
+      only: appimage
+      tip_key: ship-assets-${{ github.ref_name }}
     permissions:
       contents: read
       id-token: write
 
   release-macos:
-    needs: products
+    needs: product-macos
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v5
@@ -102,17 +128,31 @@ jobs:
         with:
           determinate: true
           extra-conf: |
-            sandbox = relaxed
             allow-import-from-derivation = true
             trusted-users = runner root
       - uses: DeterminateSystems/flakehub-cache-action@v3
 
-      - name: Build signed iPhone IPA
+      # Same match+gym path as Ship: beta — nix .#wawona-ios-ipa asserts cert
+      # files that we do not pass here; Fastlane owns App Store signing.
+      - name: Build signed iPhone IPA (Fastlane)
         env:
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+          MATCH_GIT_URL: https://github.com/aspauldingcode/apple-signing.git
+          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
           TEAM_ID: ${{ secrets.TEAM_ID }}
+          WAWONA_BUILD_NUMBER: ${{ github.run_number }}
+          SECRETSPEC_PROFILE: ci-apple
+          SECRETSPEC_PROVIDER: env
+          CI: "true"
+          LANG: en_US.UTF-8
+          LC_ALL: en_US.UTF-8
         run: |
-          chmod +x ./.github/scripts/stage-ios-ipa.sh
-          ./.github/scripts/stage-ios-ipa.sh "$WAWONA_VERSION"
+          nix develop .#release --command bash -c \
+            './scripts/release-env.sh fastlane ios github_ipa'
 
       - name: Upload IPA
         uses: actions/upload-artifact@v7
@@ -121,7 +161,7 @@ jobs:
           path: dist/Wawona-*-iOS.ipa
 
   release-android:
-    needs: products
+    needs: product-android
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -150,7 +190,7 @@ jobs:
 
   release-linux:
     name: "Linux AppImage (${{ matrix.system }})"
-    needs: products
+    needs: product-appimage
     strategy:
       fail-fast: false
       matrix:
@@ -197,6 +237,7 @@ jobs:
           find artifacts -type f \( -name '*.dmg' -o -name '*.apk' -o -name '*.ipa' -o -name '*.AppImage' \) \
             -exec cp -v {} release-assets/ \;
           ls -la release-assets/
+          test "$(ls release-assets | wc -l)" -ge 4
 
       - name: Create GitHub Release
         env:
@@ -205,7 +246,11 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
 
-          gh release create "$TAG" release-assets/* \
-            --title "Wawona $VERSION" \
-            --generate-notes \
-            --latest
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release-assets/* --clobber
+          else
+            gh release create "$TAG" release-assets/* \
+              --title "Wawona $VERSION" \
+              --generate-notes \
+              --latest
+          fi
