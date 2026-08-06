@@ -5,6 +5,12 @@
 # watch Sources phase without a watchOS Swift module for those frameworks
 # ("unable to resolve module dependency: 'WawonaModel'"). Post-link
 # watchos-fix-embedded-frameworks.sh is too late for compile.
+#
+# Critical: this runs inside a Wawona-watchOS script phase. Inherited env
+# (PRODUCT_NAME=WawonaWatch, TARGET_NAME, EXECUTABLE_*, ENABLE_DEBUG_DYLIB, …)
+# leaks into nested xcodebuild and turns framework targets into the watch
+# app's debug dylib (undefined _main). Wipe product/target vars and isolate
+# BUILD_DIR before invoking xcodebuild.
 set -euo pipefail
 
 case "${PLATFORM_NAME:-}" in
@@ -16,6 +22,28 @@ PROJECT="${PROJECT_FILE_PATH:?}"
 CONFIGURATION="${CONFIGURATION:?}"
 PLATFORM_NAME="${PLATFORM_NAME:?}"
 BUILD_DIR="${BUILD_DIR:?}"
+SRCROOT="${SRCROOT:?}"
+
+# Preserve only what nested xcodebuild needs; drop watch-app product env.
+clean_env=(
+  env -i
+  "HOME=${HOME:-/var/empty}"
+  "PATH=${PATH}"
+  "TMPDIR=${TMPDIR:-/tmp}"
+  "USER=${USER:-}"
+  "LOGNAME=${LOGNAME:-${USER:-}}"
+  "SHELL=${SHELL:-/bin/bash}"
+  "TERM=${TERM:-dumb}"
+  "LANG=${LANG:-C}"
+  "SRCROOT=${SRCROOT}"
+  "PROJECT_FILE_PATH=${PROJECT}"
+)
+if [[ -n "${DEVELOPER_DIR:-}" ]]; then
+  clean_env+=("DEVELOPER_DIR=${DEVELOPER_DIR}")
+fi
+if [[ -n "${SDKROOT:-}" ]]; then
+  clean_env+=("SDKROOT=${SDKROOT}")
+fi
 
 platform_of() {
   otool -l "$1" 2>/dev/null \
@@ -42,24 +70,40 @@ swiftmodule_ready() {
 build_framework() {
   local fw="$1"
   local scratch="${DERIVED_FILE_DIR:-${TEMP_DIR:-${TMPDIR:-/tmp}}}/watchos-ensure-frameworks/${fw}"
+  local isolated="${scratch}/BuildProducts"
   rm -rf "$scratch"
-  mkdir -p "$scratch"
+  mkdir -p "$isolated"
 
   echo "note: watchos-ensure-framework-modules: building ${fw} for ${PLATFORM_NAME}"
-  xcodebuild \
+  "${clean_env[@]}" xcodebuild \
     -project "${PROJECT}" \
     -target "${fw}" \
     -sdk "${PLATFORM_NAME}" \
     -configuration "${CONFIGURATION}" \
-    BUILD_DIR="${BUILD_DIR}" \
+    BUILD_DIR="${isolated}" \
     OBJROOT="${scratch}/Build/Intermediates.noindex" \
-    SYMROOT="${BUILD_DIR}" \
+    SYMROOT="${isolated}" \
     ONLY_ACTIVE_ARCH=NO \
     ARCHS=arm64 \
     VALID_ARCHS=arm64 \
     CODE_SIGNING_ALLOWED=NO \
     CODE_SIGNING_REQUIRED=NO \
+    ENABLE_DEBUG_DYLIB=NO \
     build
+
+  # Copy watch-platform frameworks into the parent BUILD_DIR so the watch
+  # Sources phase and embed phases can see them.
+  local conf_dir
+  conf_dir="$(find "${isolated}" -type d -name "${CONFIGURATION}-${PLATFORM_NAME}" | head -1)"
+  if [[ -z "${conf_dir}" || ! -d "${conf_dir}/${fw}.framework" ]]; then
+    echo "error: watchos-ensure-framework-modules: missing ${fw}.framework under ${isolated}" >&2
+    return 1
+  fi
+  local dest_root="${BUILD_DIR}/${CONFIGURATION}-${PLATFORM_NAME}"
+  mkdir -p "${dest_root}"
+  rm -rf "${dest_root}/${fw}.framework"
+  cp -R "${conf_dir}/${fw}.framework" "${dest_root}/"
+  echo "note: watchos-ensure-framework-modules: installed ${dest_root}/${fw}.framework"
 }
 
 for fw in WawonaModel WawonaUIContracts; do

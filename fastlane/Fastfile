@@ -62,7 +62,8 @@ end
 # watchOS is a companion (WKCompanionAppBundleIdentifier → com.aspauldingcode.Wawona).
 # A bare watchOS archive has no App Store export method on Xcode 26
 # (`expected one {} but found app-store`). Ship watch by embedding into
-# Wawona-iOS (PlugIns/ on Xcode 26; see #136). Never gym Wawona-watchOS alone.
+# Wawona-iOS under classic Watch/ (ASC rejects PlugIns-only; see #136).
+# Never gym Wawona-watchOS alone.
 APPLE_BETA_TARGETS = [
   {
     # Universal (phone+iPad). Do not also upload Wawona-iPadOS — same bundle id
