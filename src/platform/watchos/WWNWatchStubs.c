@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <signal.h>
 
 typedef void *WawonaCompositorHandle;
 
@@ -139,7 +140,61 @@ int wawona_coreutils_main(int argc, char **argv) {
     return 1;
 }
 
-/* ssh_main / ssh_keygen_main / scp_main: provided by libwwn-ssh-cli.a (wwn-ssh). */
+/* ssh_main / ssh_keygen_main / scp_main: real impls from libwwn-ssh-cli on
+ * arm64; weak stubs keep the arm64_32 fat slice linking (ASC 90733). */
+__attribute__((weak))
+int ssh_main(int argc, char **argv) {
+    (void)argc; (void)argv;
+    return 1;
+}
+
+__attribute__((weak))
+int ssh_keygen_main(int argc, char **argv) {
+    (void)argc; (void)argv;
+    return 1;
+}
+
+__attribute__((weak))
+int scp_main(int argc, char **argv) {
+    (void)argc; (void)argv;
+    return 1;
+}
+
+__attribute__((weak))
+int weston_compositor_main(int argc, char **argv) {
+    (void)argc; (void)argv;
+    return 1;
+}
+
+__attribute__((weak))
+volatile sig_atomic_t wwn_weston_compositor_shutdown_requested;
+
+/* Mini Wayland server — WWNMiniWaylandServer.c is excluded on arm64_32
+ * (needs libwayland-server). Weak stubs; arm64 uses the real .c. */
+typedef struct WWNMiniWaylandServer WWNMiniWaylandServer;
+typedef void (*WWNFrameCallback)(const uint8_t *, uint32_t, uint32_t, uint32_t, void *);
+
+__attribute__((weak))
+WWNMiniWaylandServer *wwn_wls_create(const char *socket_name,
+                                     uint32_t output_width,
+                                     uint32_t output_height,
+                                     WWNFrameCallback cb,
+                                     void *userdata) {
+    (void)socket_name; (void)output_width; (void)output_height;
+    (void)cb; (void)userdata;
+    return NULL;
+}
+
+__attribute__((weak))
+int wwn_wls_dispatch(WWNMiniWaylandServer *srv, int timeout_ms) {
+    (void)srv; (void)timeout_ms;
+    return 0;
+}
+
+__attribute__((weak))
+void wwn_wls_destroy(WWNMiniWaylandServer *srv) {
+    (void)srv;
+}
 
 /* Weston toytoolkit demo clients referenced by wawona-dispatch tables. */
 #define WWN_WATCH_CLIENT_STUB(name) \
