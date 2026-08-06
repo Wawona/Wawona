@@ -917,13 +917,16 @@
               # Empty unused platform deps so filterAttrs-forced targets do not
               # realize heavy closures (eval may still walk attrs; builds do not).
               empty = { };
+              # Wawona-iOS embeds the watch companion for App Store / TF (#136),
+              # so ios-filtered projects must still realize watch deps.
+              wantWatch = want "watchos" || want "ios";
               watchDepsForXcodegen =
-                if !(want "watchos") then empty
+                if !wantWatch then empty
                 else if simulatorOnly then empty
                 else if dropWatchWaypipe then (watchosDeps // { waypipe = null; })
                 else watchosDeps;
               watchSimDepsForXcodegen =
-                if !(want "watchos") then empty
+                if !wantWatch then empty
                 else if dropWatchWaypipe then (watchosSimDeps // { waypipe = null; })
                 else watchosSimDeps;
             in
@@ -949,8 +952,8 @@
               tvosSimBackend = if want "tvos" then backend-tvos-sim else null;
               visionosBackend = if want "visionos" && !simulatorOnly then backend-visionos else null;
               visionosSimBackend = if want "visionos" then backend-visionos-sim else null;
-              watchosBackend = if want "watchos" && !simulatorOnly then backend-watchos else null;
-              watchosSimBackend = if want "watchos" then backend-watchos-sim else null;
+              watchosBackend = if wantWatch && !simulatorOnly then backend-watchos else null;
+              watchosSimBackend = if wantWatch then backend-watchos-sim else null;
               macosWeston = if want "macos" then toolchains.buildForMacOS "weston" { } else null;
               macosFoot = if want "macos" then toolchains.buildForMacOS "foot" { } else null;
               macosFastfetch = if want "macos" then pkgs.fastfetch else null;

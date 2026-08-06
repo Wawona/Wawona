@@ -61,13 +61,13 @@ end
 #
 # watchOS is a companion (WKCompanionAppBundleIdentifier → com.aspauldingcode.Wawona).
 # A bare watchOS archive has no App Store export method on Xcode 26
-# (`expected one {} but found app-store`). Ship it by embedding in the iOS IPA
-# (watchapp2-container / Embed Watch Content) — tracked as a milestone follow-up;
-# do not gym Wawona-watchOS standalone.
+# (`expected one {} but found app-store`). Ship watch by embedding into
+# Wawona-iOS (PlugIns/ on Xcode 26; see #136). Never gym Wawona-watchOS alone.
 APPLE_BETA_TARGETS = [
   {
     # Universal (phone+iPad). Do not also upload Wawona-iPadOS — same bundle id
     # and CFBundleVersion would collide on the IOS App Store Connect platform.
+    # Watch companion rides inside this IPA (xcodegen embed + gym_ipa signing).
     scheme: "Wawona-iOS",
     name: "iPhone + iPad (iOS)",
     app_platform: "ios",
@@ -95,6 +95,7 @@ APPLE_BETA_TARGETS = [
 
 MAIN_BUNDLE_ID = "com.aspauldingcode.Wawona"
 WATCH_BUNDLE_ID = "com.aspauldingcode.Wawona.watch"
+WATCH_PROFILE_NAME = "match AppStore com.aspauldingcode.Wawona.watch"
 BETA_FEEDBACK_EMAIL = ENV.fetch("BETA_FEEDBACK_EMAIL", "aspauldingcode@gmail.com")
 
 def beta_testflight_groups
@@ -385,6 +386,25 @@ def gym_ipa(target)
     bundle_identifier: target[:bundle_id]
   )
 
+  provisioning_profiles = {
+    target[:bundle_id] => profile
+  }
+
+  # Companion watch rides inside the iOS IPA (#136). Sign it and map its
+  # App Store profile into exportOptions — otherwise export drops/fails the embed.
+  if target[:scheme] == "Wawona-iOS"
+    update_code_signing_settings(
+      path: project,
+      use_automatic_signing: false,
+      team_id: team_id,
+      targets: ["Wawona-watchOS"],
+      code_sign_identity: identity,
+      profile_name: WATCH_PROFILE_NAME,
+      bundle_identifier: WATCH_BUNDLE_ID
+    )
+    provisioning_profiles[WATCH_BUNDLE_ID] = WATCH_PROFILE_NAME
+  end
+
   xcargs = [
     "DEVELOPMENT_TEAM=#{team_id}",
     "CURRENT_PROJECT_VERSION=#{wawona_build_number}",
@@ -407,9 +427,7 @@ def gym_ipa(target)
       method: "app-store",
       signingStyle: "manual",
       teamID: team_id,
-      provisioningProfiles: {
-        target[:bundle_id] => profile
-      }
+      provisioningProfiles: provisioning_profiles
     },
     xcargs: xcargs,
     output_directory: gym_output_dir,

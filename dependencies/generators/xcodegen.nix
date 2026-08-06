@@ -1416,6 +1416,9 @@ PLIST
         dependencies = [
           { target = "WawonaModel"; embed = true; codeSign = true; }
           { target = "WawonaUIContracts"; embed = true; codeSign = true; }
+          # Companion for TestFlight/App Store (bare watch archive has no
+          # app-store export on Xcode 26). Do not also embed into iPadOS.
+          { target = "Wawona-watchOS"; embed = true; codeSign = true; }
           { sdk = "UIKit.framework"; }
           { sdk = "SwiftUI.framework"; }
           { sdk = "Foundation.framework"; }
@@ -2562,6 +2565,9 @@ PLIST
             SUPPORTED_PLATFORMS = "watchos watchsimulator";
             WATCHOS_DEPLOYMENT_TARGET = "10.0";
             GENERATE_INFOPLIST_FILE = "YES";
+            # Embedded companion: stay out of the iOS archive's root Products
+            # so the archive remains an iOS App Store export (see #136).
+            SKIP_INSTALL = "YES";
             # watch slots live in the shared AppIcon.appiconset (watch + watch-marketing).
             ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon";
             INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "com.aspauldingcode.Wawona";
@@ -2719,6 +2725,8 @@ PLIST
             name: _target:
             lib.elem name sharedXcodeTargets
             || lib.elem (targetPlatformKeys.${name} or "") platformFilter
+            # iOS host embeds the watch companion for App Store / TF (#136).
+            || (name == "Wawona-watchOS" && lib.elem "ios" platformFilter)
           ) projectConfig.targets;
     in
     projectConfig
@@ -2746,6 +2754,31 @@ PLIST
       export HOME="$TMPDIR"
       export USER="nobody"
       ${pkgs.xcodegen}/bin/xcodegen generate --spec project.yml
+      # Xcode 26: watch companion under PlugIns/ (see generateScript + #136).
+      ${pkgs.python3}/bin/python3 - <<'PY'
+from pathlib import Path
+p = Path("Wawona.xcodeproj/project.pbxproj")
+if p.is_file():
+    text = p.read_text()
+    old = 'dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";'
+    new = 'dstPath = "";'
+    if old in text:
+        out = []
+        i = 0
+        lines = text.splitlines(keepends=True)
+        while i < len(lines):
+            line = lines[i]
+            if old in line:
+                out.append(line.replace(old, new))
+                i += 1
+                if i < len(lines) and "dstSubfolderSpec = 16;" in lines[i]:
+                    out.append(lines[i].replace("dstSubfolderSpec = 16;", "dstSubfolderSpec = 13;"))
+                    i += 1
+                continue
+            out.append(line)
+            i += 1
+        p.write_text("".join(out))
+PY
       mkdir -p $out
       cp -R . "$out/"
       runHook postInstall
@@ -2853,7 +2886,7 @@ data = process_paths(data)
 team = os.environ.get("EFFECTIVE_TEAM_ID", "").strip()
 if team:
     targets = data.setdefault("targets", {})
-    for target_name in ("Wawona-iOS", "Wawona-iPadOS", "Wawona-tvOS"):
+    for target_name in ("Wawona-iOS", "Wawona-iPadOS", "Wawona-tvOS", "Wawona-watchOS"):
         target = targets.get(target_name)
         if target is None:
             continue
@@ -2862,9 +2895,42 @@ if team:
 p.write_text(json.dumps(data, indent=2))
 EOF
     if [ -n "$EFFECTIVE_TEAM_ID" ]; then
-      echo "Applied TEAM_ID=$EFFECTIVE_TEAM_ID to Wawona-iOS, Wawona-iPadOS, and Wawona-tvOS."
+      echo "Applied TEAM_ID=$EFFECTIVE_TEAM_ID to Wawona-iOS, Wawona-iPadOS, Wawona-tvOS, and Wawona-watchOS."
     fi
     ${xcodeUtils.xcodeWrapper}/bin/xcode-wrapper ${pkgs.xcodegen}/bin/xcodegen generate --use-cache --spec "$TMP_SPEC"
+
+    # Xcode 26: watch companion must live under PlugIns/ (dstSubfolderSpec=13),
+    # not legacy Watch/ (16). xcodegen 2.44.1 still emits Watch/ — see
+    # https://github.com/yonaskolb/XcodeGen/issues/1613 and issue #136.
+    # Only rewrite the Embed Watch Content copy phase (paired dstPath + spec).
+    if [ -f Wawona.xcodeproj/project.pbxproj ]; then
+      ${pkgs.python3}/bin/python3 - <<'PY'
+from pathlib import Path
+p = Path("Wawona.xcodeproj/project.pbxproj")
+text = p.read_text()
+old = 'dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";'
+new = 'dstPath = "";'
+if old not in text:
+    print("note: no legacy Watch/ embed path to patch")
+else:
+    out = []
+    i = 0
+    lines = text.splitlines(keepends=True)
+    while i < len(lines):
+        line = lines[i]
+        if old in line:
+            out.append(line.replace(old, new))
+            i += 1
+            if i < len(lines) and "dstSubfolderSpec = 16;" in lines[i]:
+                out.append(lines[i].replace("dstSubfolderSpec = 16;", "dstSubfolderSpec = 13;"))
+                i += 1
+            continue
+        out.append(line)
+        i += 1
+    p.write_text("".join(out))
+    print("Patched Embed Watch Content → PlugIns/ (Xcode 26).")
+PY
+    fi
 
     mkdir -p "Wawona.xcodeproj/xcshareddata/xcschemes"
     cat > "Wawona.xcodeproj/xcshareddata/xcschemes/xcschememanagement.plist" <<'EOF'
