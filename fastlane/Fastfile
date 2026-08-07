@@ -239,13 +239,24 @@ end
 # also physically exist in that bundle's own Frameworks/ (Xcode 26 does not
 # run "Copy Swift Standard Libraries" at deployment targets this high, even
 # with ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES=YES, so we do it ourselves before
-# export). Toolchain swift-5.0/<platform> dylibs already carry a valid Apple
-# code signature — export's own manual re-sign of the outer .app bundle is
-# enough; the leaf dylibs need no re-signing by us.
+# export).
+#
+# ASC ITMS-90433: a straight copy of the toolchain dylib keeps Apple's own
+# swift-5.0/<platform> signature, which does NOT chain to our app's signing
+# identity — build 89 was rejected with "libswiftCore.dylib doesn't have the
+# correct code signature" for exactly this. Real Xcode's swift-stdlib-tool
+# always re-signs each embedded dylib with the *app's own* identity (same as
+# any other Frameworks/ item); replicate that with `codesign`, preserving the
+# original identifier/entitlements/flags so it still looks like
+# com.apple.dt.runtime.<name> (see #<embed-swift-issue>). Never leave the
+# Apple toolchain signature on an embedded copy.
 def embed_swift_runtime_into_archive!(archive_path)
   require "open3"
   app = Dir.glob(File.join(archive_path, "Products", "Applications", "*.app")).first
   UI.user_error!("No archive Products/Applications/*.app in #{archive_path}") unless app
+
+  sign_sha, = find_distribution_identity_sha
+  UI.user_error!("No distribution identity to re-sign embedded Swift dylibs") unless sign_sha
 
   embedded = {}
   embed_one = lambda do |bundle_dir, platform_subdir|
@@ -267,11 +278,16 @@ def embed_swift_runtime_into_archive!(archive_path)
       next UI.important("#{name} not in #{src_dir}; skipping (not in toolchain)") unless File.file?(src)
 
       dest = File.join(dest_dir, name)
-      FileUtils.cp(src, dest) unless File.file?(dest)
+      FileUtils.cp(src, dest)
+      _, _, cs_st = Open3.capture3(
+        "codesign", "--force", "--sign", sign_sha,
+        "--preserve-metadata=identifier,entitlements,flags", "--timestamp=none", dest
+      )
+      UI.user_error!("codesign failed for embedded #{name}") unless cs_st.success?
       name
     end
     embedded[platform_subdir] = ((embedded[platform_subdir] || []) + copied).uniq
-    UI.message("Embedded #{copied.size} Swift runtime dylib(s) into #{File.basename(bundle_dir)}/Frameworks (#{platform_subdir})")
+    UI.message("Embedded + re-signed #{copied.size} Swift runtime dylib(s) into #{File.basename(bundle_dir)}/Frameworks (#{platform_subdir})")
   end
 
   dt_platform, = Open3.capture2("/usr/libexec/PlistBuddy", "-c", "Print :DTPlatformName", File.join(app, "Info.plist"))
@@ -324,13 +340,16 @@ def swift_support_platforms_for_ipa_dir(dir)
   platforms
 end
 
-# If the IPA lacks SwiftSupport/: prefer the .xcarchive copy; else mirror
-# whatever embed_swift_runtime_into_archive! put in each bundle's Frameworks/
-# (main app → iphoneos/appletvos/watchos, Watch companion → watchos); else
-# fall back to the full Xcode toolchain swift-5.0/<platform> list. Never leave
-# the IPA without SwiftSupport/ — ASC rejects with ITMS-90426 by email after
-# altool OK, and a SwiftSupport entry with no matching Frameworks/ file
-# instead rejects with ITMS-90429/90427.
+# If the IPA lacks SwiftSupport/: prefer the .xcarchive copy; else synthesize
+# SwiftSupport/<platform> straight from the Xcode toolchain (never from
+# Frameworks/ — embed_swift_runtime_into_archive! re-signs those with our own
+# identity per ITMS-90433, but SwiftSupport/ must keep Apple's own toolchain
+# signature). Names are scoped to whatever each bundle's Frameworks/ actually
+# needed (main app → iphoneos/appletvos/watchos, Watch companion → watchos);
+# fall back to the full toolchain swift-5.0/<platform> list if Frameworks/ is
+# empty. Never leave the IPA without SwiftSupport/ — ASC rejects with
+# ITMS-90426 by email after altool OK, and a SwiftSupport entry with no
+# matching Frameworks/ file instead rejects with ITMS-90429/90427.
 def inject_swift_support_from_archive!(ipa, archive_path)
   require "open3"
   listing, st = Open3.capture2("unzip", "-Z1", ipa)
@@ -353,14 +372,21 @@ def inject_swift_support_from_archive!(ipa, archive_path)
       any_from_frameworks = false
       bundles.each do |plat, bundle_dir|
         fw_dir = File.join(bundle_dir, "Frameworks")
-        libs = File.directory?(fw_dir) ? Dir.glob(File.join(fw_dir, "libswift*.dylib")) : []
-        next if libs.empty?
+        names = File.directory?(fw_dir) ? Dir.glob(File.join(fw_dir, "libswift*.dylib")).map { |l| File.basename(l) } : []
+        next if names.empty?
 
+        src_dir = xcode_swift_5_0_lib_dir(plat)
+        UI.user_error!("Xcode swift-5.0/#{plat} missing at #{src_dir}") unless File.directory?(src_dir)
         any_from_frameworks = true
-        UI.message("Synthesizing SwiftSupport/#{plat} from #{libs.size} #{File.basename(bundle_dir)} Frameworks libswift*…")
+        UI.message("Synthesizing SwiftSupport/#{plat} from #{names.size} toolchain libswift* matching #{File.basename(bundle_dir)} Frameworks…")
         dest = File.join(dir, "SwiftSupport", plat)
         FileUtils.mkdir_p(dest)
-        libs.each { |lib| FileUtils.cp(lib, dest) unless File.exist?(File.join(dest, File.basename(lib))) }
+        names.each do |name|
+          src = File.join(src_dir, name)
+          next unless File.file?(src)
+
+          FileUtils.cp(src, File.join(dest, name)) unless File.exist?(File.join(dest, name))
+        end
       end
 
       unless any_from_frameworks
@@ -762,6 +788,20 @@ def nix_aab_path
 end
 
 platform :ios do
+  desc "Archive+export one scheme only, no upload (fast local repro for export bugs, e.g. #138)"
+  lane :debug_export do
+    validate_env
+    ensure_xcodegen!
+    prefer_xcode_toolchain!
+    api_key = asc_api_key
+    install_testflight_profiles!(api_key)
+    scheme = ENV.fetch("WAWONA_DEBUG_SCHEME", "Wawona-tvOS")
+    target = APPLE_BETA_TARGETS.find { |t| t[:scheme] == scheme }
+    UI.user_error!("#{scheme} missing from APPLE_BETA_TARGETS") unless target
+    ipa = gym_ipa(target)
+    UI.success("debug_export built #{ipa} (no upload)")
+  end
+
   desc "Upload universal iOS, Apple TV, and Apple Vision Pro to TestFlight"
   lane :beta do
     validate_env
