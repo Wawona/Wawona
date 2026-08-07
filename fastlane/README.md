@@ -50,6 +50,14 @@ Upload Apple + Android beta builds
 
 ## iOS
 
+### ios debug_export
+
+```sh
+[bundle exec] fastlane ios debug_export
+```
+
+Archive+export one scheme only, no upload (fast local repro for export bugs, e.g. #138)
+
 ### ios beta
 
 ```sh
