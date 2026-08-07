@@ -10,6 +10,21 @@ as history.
 
 ## [Unreleased]
 
+## [26.8.7] - 2026-08-07
+
+### Fixed
+
+- **App Store Connect Swift Support rejections** (`ITMS-90426`/`ITMS-90429`,
+  builds 93-95) — `embed_swift_runtime_into_archive!`'s `filter_map` leaked a
+  skipped dylib's `UI.important` return value as a fake "copied" entry,
+  making counts look inflated versus the later, correct `Frameworks/` scan
+  (e.g. reported 15 when only 10 real files existed). Fixed the count, added
+  a bundle-level re-sign after touching `Frameworks/`, switched
+  `SwiftSupport/` injection from appending onto the exported ipa to a full
+  rebuild from a fully-unzipped directory, and added
+  `assert_swift_support_frameworks_parity!` to catch a
+  `SwiftSupport`/`Frameworks` mismatch locally before upload.
+
 ## [26.8.6] - 2026-08-06
 
 ### Added
