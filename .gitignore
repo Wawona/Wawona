@@ -199,3 +199,6 @@ scripts/__pycache__/
 .nix-deps/
 fastlane/report.xml
 .agents/
+
+# Local release build output (IPAs/APKs from fastlane gym/github_ipa lanes)
+/dist/

@@ -1335,6 +1335,12 @@ PLIST
             "VALID_ARCHS[sdk=iphonesimulator*]" = "arm64";
             "ARCHS[sdk=iphonesimulator*]" = "arm64";
             "ONLY_ACTIVE_ARCH" = "YES";
+            # App target only (never the WawonaModel/WawonaUIContracts framework
+            # targets — mixed settings there causes ASC ITMS-90429/90427: Xcode's
+            # real "Embed Frameworks" phase must run swift-stdlib-tool so the
+            # exported IPA gets Frameworks/libswift*.dylib matching whatever
+            # SwiftSupport/ the export step (or our toolchain fallback) produces.
+            ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = "YES";
             LD_RUNPATH_SEARCH_PATHS = [ "$(inherited)" "@executable_path/Frameworks" ];
             LD_CLIENT_NAME = "SwiftUI";
             "OTHER_CFLAGS[sdk=iphonesimulator*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
@@ -2504,6 +2510,9 @@ PLIST
             DEFINES_MODULE = "YES";
             SKIP_INSTALL = "YES";
             BUILD_LIBRARY_FOR_DISTRIBUTION = "NO";
+            # Never on framework targets (ASC ITMS-90429/90427): only the app
+            # target's "Embed Frameworks" phase should run swift-stdlib-tool.
+            ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = "NO";
             # Frameworks are re-signed on embed; a global Manual
             # PROVISIONING_PROFILE_SPECIFIER from IPA CI must not apply here.
             CODE_SIGNING_ALLOWED = "NO";
@@ -2541,6 +2550,9 @@ PLIST
             CODE_SIGNING_ALLOWED = "NO";
             CODE_SIGNING_REQUIRED = "NO";
             BUILD_LIBRARY_FOR_DISTRIBUTION = "NO";
+            # Never on framework targets (ASC ITMS-90429/90427): only the app
+            # target's "Embed Frameworks" phase should run swift-stdlib-tool.
+            ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = "NO";
           };
         };
         dependencies = [ ];
@@ -2588,6 +2600,21 @@ PLIST
               exec "''${SRCROOT}/scripts/watchos-fix-embedded-frameworks.sh"
             '';
           }
+          {
+            # GENERATE_INFOPLIST_FILE under an iOS host project can leak
+            # MinimumOSVersion~ipad / iPhone-only keys into the watch plist.
+            # ASC accepts+validates then silently discards the build (never listed).
+            name = "Strip iOS-only keys from Watch Info.plist";
+            basedOnDependencyAnalysis = false;
+            script = ''
+              PLIST="''${TARGET_BUILD_DIR}/''${INFOPLIST_PATH}"
+              if [ -f "$PLIST" ]; then
+                /usr/libexec/PlistBuddy -c 'Delete :MinimumOSVersion~ipad' "$PLIST" 2>/dev/null || true
+                /usr/libexec/PlistBuddy -c 'Delete :LSRequiresIPhoneOS' "$PLIST" 2>/dev/null || true
+                /usr/libexec/PlistBuddy -c 'Delete :UISupportedInterfaceOrientations~ipad' "$PLIST" 2>/dev/null || true
+              fi
+            '';
+          }
           simInstallWritableBundlePhase
         ];
         settings = {
@@ -2604,6 +2631,8 @@ PLIST
             # ARCHS_STANDARD; arm64_32 links weak WWNWatchStubs only (Nix
             # watch libs are arm64-only). Full native stack is arm64.
             WATCHOS_DEPLOYMENT_TARGET = "10.0";
+            # Do not inherit project IPHONEOS_DEPLOYMENT_TARGET into watch Info.plist.
+            IPHONEOS_DEPLOYMENT_TARGET = "";
             GENERATE_INFOPLIST_FILE = "YES";
             # Embedded companion: stay out of the iOS archive's root Products
             # so the archive remains an iOS App Store export (see #136).
@@ -2624,6 +2653,9 @@ PLIST
             CODE_SIGNING_REQUIRED = "YES";
             "CODE_SIGNING_ALLOWED[sdk=watchsimulator*]" = "NO";
             "CODE_SIGNING_REQUIRED[sdk=watchsimulator*]" = "NO";
+            # App target only (see Wawona-iOS) — required so ASC ITMS-90427
+            # ("expected dylibs missing from .../WawonaWatch.app") does not fire.
+            ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = "YES";
             LD_RUNPATH_SEARCH_PATHS = [ "$(inherited)" "@executable_path/Frameworks" ];
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"

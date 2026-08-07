@@ -56,7 +56,23 @@ Upload Apple + Android beta builds
 [bundle exec] fastlane ios beta
 ```
 
-Upload iPhone, iPad, Apple TV, Apple Vision Pro, and Apple Watch to TestFlight (excludes macOS)
+Upload universal iOS, Apple TV, and Apple Vision Pro to TestFlight
+
+### ios github_ipa
+
+```sh
+[bundle exec] fastlane ios github_ipa
+```
+
+Stage universal iOS IPA for GitHub Release (no TestFlight upload)
+
+### ios upload_ios_ipa
+
+```sh
+[bundle exec] fastlane ios upload_ios_ipa
+```
+
+Upload an existing iOS IPA (with watch companion) to TestFlight
 
 ### ios release
 

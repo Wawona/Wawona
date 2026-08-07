@@ -69,6 +69,7 @@ APPLE_BETA_TARGETS = [
     # Universal (phone+iPad). Do not also upload Wawona-iPadOS — same bundle id
     # and CFBundleVersion would collide on the IOS App Store Connect platform.
     # Watch companion rides inside this IPA (xcodegen embed + gym_ipa signing).
+    # Never gym Wawona-watchOS standalone for TF (#136).
     scheme: "Wawona-iOS",
     name: "iPhone + iPad (iOS)",
     app_platform: "ios",
@@ -93,6 +94,20 @@ APPLE_BETA_TARGETS = [
     profile_name: "match AppStore com.aspauldingcode.Wawona"
   }
 ].freeze
+
+# Optional comma-separated scheme filter (e.g. WAWONA_BETA_SCHEMES=Wawona-iOS)
+# for ios-only Ship: beta while diagnosing tvOS/visionOS export separately.
+def apple_beta_targets
+  schemes = ENV.fetch("WAWONA_BETA_SCHEMES", "")
+               .split(",")
+               .map(&:strip)
+               .reject(&:empty?)
+  return APPLE_BETA_TARGETS if schemes.empty?
+
+  selected = APPLE_BETA_TARGETS.select { |t| schemes.include?(t[:scheme]) }
+  UI.user_error!("WAWONA_BETA_SCHEMES=#{schemes.inspect} matched no APPLE_BETA_TARGETS") if selected.empty?
+  selected
+end
 
 MAIN_BUNDLE_ID = "com.aspauldingcode.Wawona"
 WATCH_BUNDLE_ID = "com.aspauldingcode.Wawona.watch"
@@ -162,30 +177,34 @@ def assert_ipa_no_private_progname!(ipa)
   end
 end
 
-# ASC ITMS-90426: App Store Connect historically rejects IPAs without
-# SwiftSupport/. Gym 2.232 also rewrites ExportOptions to deprecated
-# app-store — we bypass that with a manual exportArchive.
+# ASC ITMS-90426: App Store Connect rejects IPAs without SwiftSupport/.
+# Gym 2.232 also rewrites ExportOptions to deprecated app-store — we bypass
+# that with a manual exportArchive (method: app-store-connect).
 #
-# On Xcode 26 + ABI-stable Swift, a correct app-store-connect export often
-# produces *no* SwiftSupport/ folder (archive and IPA). That is not the same
-# as a wrong-method / Payload-only rezip. Warn when absent; only hard-fail
-# when we expected inject-from-archive to work and it did not.
+# Xcode 26 + ABI-stable Swift often produces *no* SwiftSupport/ and embeds no
+# libswift*.dylib under Frameworks (apps link /usr/lib/swift/*). ASC still
+# emails ITMS-90426. Synthesize SwiftSupport/<platform>/ from the Xcode
+# toolchain's swift-5.0 libs, then hard-fail the assert if still missing.
 def assert_ipa_has_swift_support!(ipa)
   require "open3"
   listing, st = Open3.capture2("unzip", "-Z1", ipa)
   UI.user_error!("unzip -Z1 failed for #{ipa}") unless st.success?
-  if listing.lines.any? { |l| l.start_with?("SwiftSupport/") }
-    UI.success("#{File.basename(ipa)}: SwiftSupport/ present")
-  else
-    UI.important(
-      "#{File.basename(ipa)} has no SwiftSupport/ (Xcode 26 may omit it for " \
-      "ABI-stable Swift after app-store-connect export). Proceeding."
+  unless listing.lines.any? { |l| l.start_with?("SwiftSupport/") }
+    UI.user_error!(
+      "#{File.basename(ipa)} is missing SwiftSupport/ (ITMS-90426). " \
+      "Export with method app-store-connect and ensure inject_swift_support_from_archive! " \
+      "copied toolchain swift-5.0 libs before upload."
     )
   end
+  UI.success("#{File.basename(ipa)}: SwiftSupport/ present")
 end
 
 # #136: iOS App Store IPA must carry the watch companion under Watch/.
 def assert_ipa_has_watch_companion!(ipa)
+  if ENV["WAWONA_SKIP_WATCH"].to_s == "1"
+    UI.important("WAWONA_SKIP_WATCH=1 — skipping Watch/ companion assert")
+    return
+  end
   require "open3"
   listing, st = Open3.capture2("unzip", "-Z1", ipa)
   UI.user_error!("unzip -Z1 failed for #{ipa}") unless st.success?
@@ -201,10 +220,117 @@ def assert_ipa_has_watch_companion!(ipa)
   UI.success("#{File.basename(ipa)}: Watch/ companion present")
 end
 
-# If the IPA lacks SwiftSupport/ but the .xcarchive has it, splice the folder
-# into the IPA root without touching Payload/ (signatures stay valid).
-# If the app Frameworks contain libswift*.dylib, synthesize SwiftSupport/iphoneos
-# from those copies (still without modifying Payload).
+# Names of /usr/lib/swift/lib*.dylib the binary's LC_LOAD_DYLIB commands
+# reference (ABI-stable apps load these from the OS by absolute path, never
+# @rpath — embedding a copy in Frameworks/ is therefore inert at runtime, but
+# ASC's Swift-support validator still requires a same-named file to be
+# *physically present* there before it will accept SwiftSupport/ entries).
+def swift_runtime_dep_names(binary_path)
+  require "open3"
+  out, st = Open3.capture2("otool", "-L", binary_path)
+  UI.user_error!("otool -L failed for #{binary_path}") unless st.success?
+  out.lines.filter_map do |line|
+    m = line.match(%r{/usr/lib/swift/(lib[\w.]+\.dylib)})
+    m && m[1]
+  end.uniq
+end
+
+# ASC ITMS-90429/90427: every dylib listed in SwiftSupport/<platform>/ must
+# also physically exist in that bundle's own Frameworks/ (Xcode 26 does not
+# run "Copy Swift Standard Libraries" at deployment targets this high, even
+# with ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES=YES, so we do it ourselves before
+# export). Toolchain swift-5.0/<platform> dylibs already carry a valid Apple
+# code signature — export's own manual re-sign of the outer .app bundle is
+# enough; the leaf dylibs need no re-signing by us.
+def embed_swift_runtime_into_archive!(archive_path)
+  require "open3"
+  app = Dir.glob(File.join(archive_path, "Products", "Applications", "*.app")).first
+  UI.user_error!("No archive Products/Applications/*.app in #{archive_path}") unless app
+
+  embedded = {}
+  embed_one = lambda do |bundle_dir, platform_subdir|
+    plist = File.join(bundle_dir, "Info.plist")
+    exe, = Open3.capture2("/usr/libexec/PlistBuddy", "-c", "Print :CFBundleExecutable", plist)
+    exe = exe.to_s.strip
+    exe_path = File.join(bundle_dir, exe)
+    return unless File.file?(exe_path)
+
+    names = swift_runtime_dep_names(exe_path)
+    return if names.empty?
+
+    src_dir = xcode_swift_5_0_lib_dir(platform_subdir)
+    UI.user_error!("Xcode swift-5.0/#{platform_subdir} missing at #{src_dir}") unless File.directory?(src_dir)
+    dest_dir = File.join(bundle_dir, "Frameworks")
+    FileUtils.mkdir_p(dest_dir)
+    copied = names.filter_map do |name|
+      src = File.join(src_dir, name)
+      next UI.important("#{name} not in #{src_dir}; skipping (not in toolchain)") unless File.file?(src)
+
+      dest = File.join(dest_dir, name)
+      FileUtils.cp(src, dest) unless File.file?(dest)
+      name
+    end
+    embedded[platform_subdir] = ((embedded[platform_subdir] || []) + copied).uniq
+    UI.message("Embedded #{copied.size} Swift runtime dylib(s) into #{File.basename(bundle_dir)}/Frameworks (#{platform_subdir})")
+  end
+
+  dt_platform, = Open3.capture2("/usr/libexec/PlistBuddy", "-c", "Print :DTPlatformName", File.join(app, "Info.plist"))
+  main_platform = case dt_platform.to_s.strip
+                  when "appletvos" then "appletvos"
+                  when "watchos" then "watchos"
+                  else "iphoneos" # includes xros (visionOS reuses iphoneos SwiftSupport layout)
+                  end
+  embed_one.call(app, main_platform)
+
+  Dir.glob(File.join(app, "Watch", "*.app")).each { |watch_app| embed_one.call(watch_app, "watchos") }
+
+  embedded
+end
+
+def xcode_swift_5_0_lib_dir(platform_subdir)
+  dev_dir = (
+    ENV["DEVELOPER_DIR"].to_s.empty? ? `xcode-select -p`.strip : ENV["DEVELOPER_DIR"]
+  )
+  File.join(
+    dev_dir,
+    "Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0",
+    platform_subdir
+  )
+end
+
+# Map IPA contents → SwiftSupport subdirs ASC expects.
+def swift_support_platforms_for_ipa_dir(dir)
+  require "open3"
+  app = Dir.glob(File.join(dir, "Payload", "*.app")).first
+  UI.user_error!("No Payload/*.app while synthesizing SwiftSupport") unless app
+  plist = File.join(app, "Info.plist")
+  platform, = Open3.capture2(
+    "/usr/libexec/PlistBuddy", "-c", "Print :DTPlatformName", plist
+  )
+  platform = platform.to_s.strip
+  platforms = case platform
+              when "iphoneos" then ["iphoneos"]
+              when "appletvos" then ["appletvos"]
+              when "watchos" then ["watchos"]
+              when "xros" then ["iphoneos"] # visionOS reuses iphoneos SwiftSupport layout
+              else
+                UI.important("Unknown DTPlatformName=#{platform.inspect}; defaulting SwiftSupport/iphoneos")
+                ["iphoneos"]
+              end
+  # Companion watch content needs its own SwiftSupport/watchos slice.
+  if Dir.glob(File.join(app, "Watch", "*.app")).any?
+    platforms << "watchos" unless platforms.include?("watchos")
+  end
+  platforms
+end
+
+# If the IPA lacks SwiftSupport/: prefer the .xcarchive copy; else mirror
+# whatever embed_swift_runtime_into_archive! put in each bundle's Frameworks/
+# (main app → iphoneos/appletvos/watchos, Watch companion → watchos); else
+# fall back to the full Xcode toolchain swift-5.0/<platform> list. Never leave
+# the IPA without SwiftSupport/ — ASC rejects with ITMS-90426 by email after
+# altool OK, and a SwiftSupport entry with no matching Frameworks/ file
+# instead rejects with ITMS-90429/90427.
 def inject_swift_support_from_archive!(ipa, archive_path)
   require "open3"
   listing, st = Open3.capture2("unzip", "-Z1", ipa)
@@ -220,26 +346,48 @@ def inject_swift_support_from_archive!(ipa, archive_path)
       FileUtils.cp_r(archive_ss, dir)
     else
       app = Dir.glob(File.join(dir, "Payload", "*.app")).first
-      fw_dir = app ? File.join(app, "Frameworks") : nil
-      libs = fw_dir && File.directory?(fw_dir) ? Dir.glob(File.join(fw_dir, "libswift*.dylib")) : []
-      if libs.empty?
-        UI.important(
-          "Neither IPA nor archive has SwiftSupport/, and no libswift*.dylib in " \
-          "Frameworks — leaving IPA as exported (Xcode 26 ABI-stable path)."
-        )
-        return
+      main_platform = swift_support_platforms_for_ipa_dir(dir).first
+      bundles = { main_platform => app }
+      Dir.glob(File.join(app, "Watch", "*.app")).each { |w| bundles["watchos"] = w }
+
+      any_from_frameworks = false
+      bundles.each do |plat, bundle_dir|
+        fw_dir = File.join(bundle_dir, "Frameworks")
+        libs = File.directory?(fw_dir) ? Dir.glob(File.join(fw_dir, "libswift*.dylib")) : []
+        next if libs.empty?
+
+        any_from_frameworks = true
+        UI.message("Synthesizing SwiftSupport/#{plat} from #{libs.size} #{File.basename(bundle_dir)} Frameworks libswift*…")
+        dest = File.join(dir, "SwiftSupport", plat)
+        FileUtils.mkdir_p(dest)
+        libs.each { |lib| FileUtils.cp(lib, dest) unless File.exist?(File.join(dest, File.basename(lib))) }
       end
-      UI.message("Synthesizing SwiftSupport/iphoneos from #{libs.size} Frameworks libswift*…")
-      dest = File.join(dir, "SwiftSupport", "iphoneos")
-      FileUtils.mkdir_p(dest)
-      libs.each { |lib| FileUtils.cp(lib, dest) }
+
+      unless any_from_frameworks
+        platforms = swift_support_platforms_for_ipa_dir(dir)
+        platforms.each do |plat|
+          src = xcode_swift_5_0_lib_dir(plat)
+          UI.user_error!(
+            "Xcode swift-5.0/#{plat} missing at #{src} (need GM Xcode for ITMS-90426)"
+          ) unless File.directory?(src)
+          dylibs = Dir.glob(File.join(src, "libswift*.dylib"))
+          UI.user_error!("No libswift*.dylib in #{src}") if dylibs.empty?
+          dest = File.join(dir, "SwiftSupport", plat)
+          FileUtils.mkdir_p(dest)
+          UI.message("Synthesizing SwiftSupport/#{plat} from toolchain (#{dylibs.size} dylibs)…")
+          dylibs.each { |lib| FileUtils.cp(lib, dest) }
+        end
+      end
     end
 
-    tmp_ipa = "#{ipa}.new"
-    FileUtils.rm_f(tmp_ipa)
-    entries = Dir.children(dir).map(&:shellescape).join(" ")
-    sh("cd #{dir.shellescape} && zip -qry #{tmp_ipa.shellescape} #{entries}")
-    FileUtils.mv(tmp_ipa, ipa)
+    ss = File.join(dir, "SwiftSupport")
+    unless Dir.exist?(ss)
+      UI.user_error!("Failed to assemble SwiftSupport/ for #{File.basename(ipa)}")
+    end
+
+    # Append-only: do not re-zip Payload/ (preserves export layout / CRCs).
+    # Full re-zip has produced altool VERIFY OK but silent ASC discards.
+    sh("cd #{dir.shellescape} && zip -qry #{ipa.shellescape} SwiftSupport")
   end
   UI.success("Ensured SwiftSupport/ in #{File.basename(ipa)}")
 end
@@ -475,7 +623,7 @@ def gym_ipa(target)
 
   # Companion watch rides inside the iOS IPA (#136). Sign it and map its
   # App Store profile into exportOptions — otherwise export drops/fails the embed.
-  if target[:scheme] == "Wawona-iOS"
+  if target[:scheme] == "Wawona-iOS" && ENV["WAWONA_SKIP_WATCH"].to_s != "1"
     update_code_signing_settings(
       path: project,
       use_automatic_signing: false,
@@ -491,10 +639,12 @@ def gym_ipa(target)
   xcargs = [
     "DEVELOPMENT_TEAM=#{team_id}",
     "CURRENT_PROJECT_VERSION=#{wawona_build_number}",
-    "MARKETING_VERSION=#{wawona_version}",
-    # Force Swift stdlibs into the archive so export can assemble SwiftSupport/
-    # (ITMS-90426). Needed for ObjC host + Swift frameworks on Xcode 26.
-    "ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES=YES"
+    "MARKETING_VERSION=#{wawona_version}"
+    # ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES is a per-target project setting
+    # (xcodegen.nix: YES on Wawona-iOS/Wawona-watchOS app targets, NO on
+    # WawonaModel/WawonaUIContracts framework targets). A global xcarg here
+    # would force YES onto the framework targets too and reproduce ASC
+    # ITMS-90429/90427 (Frameworks/libswift* only expected on app targets).
   ].join(" ")
 
   UI.message(
@@ -520,10 +670,14 @@ def gym_ipa(target)
     \t<string>export</string>
     \t<key>signingStyle</key>
     \t<string>manual</string>
+    \t<key>signingCertificate</key>
+    \t<string>#{identity}</string>
     \t<key>teamID</key>
     \t<string>#{team_id}</string>
     \t<key>uploadSymbols</key>
     \t<true/>
+    \t<key>manageAppVersionAndBuildNumber</key>
+    \t<false/>
     \t<key>provisioningProfiles</key>
     \t<dict>
     #{profile_xml}
@@ -531,6 +685,9 @@ def gym_ipa(target)
     </dict>
     </plist>
   PLIST
+
+  # Avoid stale XCODEBUILD_ARCHIVE from a prior scheme (shared gym_output_dir).
+  lane_context[SharedValues::XCODEBUILD_ARCHIVE] = nil
 
   build_app(
     project: project,
@@ -544,12 +701,25 @@ def gym_ipa(target)
     output_directory: gym_output_dir,
     output_name: "#{target[:scheme]}-#{wawona_version}-#{wawona_build_number}",
     skip_profile_detection: true,
-    build_path: File.join(gym_output_dir, "build"),
+    build_path: File.join(gym_output_dir, "build-#{target[:scheme]}"),
     derived_data_path: File.join(gym_output_dir, "DerivedData-#{target[:scheme]}")
   )
 
   archive = lane_context[SharedValues::XCODEBUILD_ARCHIVE]
   UI.user_error!("gym produced no .xcarchive") unless archive && File.directory?(archive)
+  # Shared bundle id across iOS/tvOS/visionOS: confirm archive identity after gym so a
+  # stale XCODEBUILD_ARCHIVE cannot feed the wrong ExportOptions profile set.
+  require "open3"
+  app_props = File.join(archive, "Info.plist")
+  if File.file?(app_props)
+    bundle_id, = Open3.capture2(
+      "/usr/libexec/PlistBuddy", "-c",
+      "Print :ApplicationProperties:CFBundleIdentifier", app_props
+    )
+    UI.message("Archive #{File.basename(archive)} bundle=#{bundle_id.to_s.strip}")
+  end
+
+  embed_swift_runtime_into_archive!(archive)
 
   export_dir = File.join(gym_output_dir, "export-#{target[:scheme]}")
   FileUtils.rm_rf(export_dir)
@@ -602,7 +772,7 @@ platform :ios do
     install_testflight_profiles!(api_key)
     ensure_all_asc_versions!(api_key)
 
-    APPLE_BETA_TARGETS.each do |target|
+    apple_beta_targets.each do |target|
       ipa = gym_ipa(target)
       assert_ipa_no_private_progname!(ipa)
       assert_ipa_has_swift_support!(ipa)
@@ -631,7 +801,8 @@ platform :ios do
     api_key = asc_api_key
     install_testflight_profiles!(api_key)
 
-    target = APPLE_BETA_TARGETS.find { |t| t[:scheme] == "Wawona-iOS" }
+    target = apple_beta_targets.find { |t| t[:scheme] == "Wawona-iOS" } ||
+             APPLE_BETA_TARGETS.find { |t| t[:scheme] == "Wawona-iOS" }
     UI.user_error!("Wawona-iOS missing from APPLE_BETA_TARGETS") unless target
 
     ipa = gym_ipa(target)
@@ -645,6 +816,23 @@ platform :ios do
     UI.success("Staged #{out}")
   end
 
+  desc "Upload an existing iOS IPA (with watch companion) to TestFlight"
+  lane :upload_ios_ipa do
+    validate_env
+    setup_ci if ENV["CI"]
+    api_key = asc_api_key
+    target = APPLE_BETA_TARGETS.find { |t| t[:scheme] == "Wawona-iOS" }
+    UI.user_error!("Wawona-iOS missing from APPLE_BETA_TARGETS") unless target
+    ipa = ENV["WAWONA_IPA"].to_s
+    if ipa.empty?
+      ipa = File.expand_path("../dist/Wawona-#{wawona_version}-iOS.ipa", __dir__)
+    end
+    UI.user_error!("IPA not found: #{ipa}") unless File.file?(ipa)
+    assert_ipa_has_watch_companion!(ipa)
+    upload_to_testflight(**testflight_upload_options(api_key, target), ipa: ipa)
+    UI.success("Uploaded #{File.basename(ipa)} to TestFlight")
+  end
+
   desc "Submit iOS builds for App Store review"
   lane :release do
     validate_env
@@ -655,7 +843,7 @@ platform :ios do
     install_testflight_profiles!(api_key)
     ensure_all_asc_versions!(api_key)
 
-    APPLE_BETA_TARGETS.each do |target|
+    apple_beta_targets.each do |target|
       ipa = gym_ipa(target)
       assert_ipa_no_private_progname!(ipa)
       assert_ipa_has_swift_support!(ipa)
