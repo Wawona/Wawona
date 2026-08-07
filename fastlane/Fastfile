@@ -295,7 +295,16 @@ def embed_swift_runtime_into_archive!(archive_path)
     FileUtils.mkdir_p(dest_dir)
     copied = names.filter_map do |name|
       src = File.join(src_dir, name)
-      next UI.important("#{name} not in #{src_dir}; skipping (not in toolchain)") unless File.file?(src)
+      unless File.file?(src)
+        # `next <UI.important(...)>` used to leak UI.important's own (truthy)
+        # return value into this filter_map, so every *skipped* name was
+        # still counted as "copied" (e.g. reported 15 when only 10 real
+        # files existed) — an illusory mismatch against the later, correct
+        # Frameworks/ scan that looked exactly like build 95's ITMS-90429.
+        # `next nil` explicitly excludes skipped names instead.
+        UI.important("#{name} not in #{src_dir}; skipping (not in toolchain)")
+        next nil
+      end
 
       dest = File.join(dest_dir, name)
       FileUtils.cp(src, dest)
