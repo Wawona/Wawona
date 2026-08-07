@@ -307,8 +307,10 @@ def embed_swift_runtime_into_archive!(archive_path)
       name
     end
     embedded[platform_subdir] = ((embedded[platform_subdir] || []) + copied).uniq
-    UI.message("Embedded + re-signed #{copied.size} Swift runtime dylib(s) into #{File.basename(bundle_dir)}/Frameworks (#{platform_subdir})")
+    UI.message("Embedded + re-signed #{copied.size} Swift runtime dylib(s) into #{File.basename(bundle_dir)}/Frameworks (#{platform_subdir}): #{copied.sort.join(", ")}")
     resign_bundle.call(bundle_dir) unless copied.empty?
+    on_disk = Dir.glob(File.join(dest_dir, "*.dylib")).map { |l| File.basename(l) }.sort
+    UI.message("#{File.basename(bundle_dir)}/Frameworks now on disk (#{on_disk.size}): #{on_disk.join(", ")}")
   end
 
   dt_platform, = Open3.capture2("/usr/libexec/PlistBuddy", "-c", "Print :DTPlatformName", File.join(app, "Info.plist"))
@@ -400,7 +402,7 @@ def inject_swift_support_from_archive!(ipa, archive_path)
         src_dir = xcode_swift_5_0_lib_dir(plat)
         UI.user_error!("Xcode swift-5.0/#{plat} missing at #{src_dir}") unless File.directory?(src_dir)
         any_from_frameworks = true
-        UI.message("Synthesizing SwiftSupport/#{plat} from #{names.size} toolchain libswift* matching #{File.basename(bundle_dir)} Frameworks…")
+        UI.message("Synthesizing SwiftSupport/#{plat} from #{names.size} toolchain libswift* matching #{File.basename(bundle_dir)} Frameworks: #{names.sort.join(", ")}")
         dest = File.join(dir, "SwiftSupport", plat)
         FileUtils.mkdir_p(dest)
         names.each do |name|
