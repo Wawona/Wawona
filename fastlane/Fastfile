@@ -751,17 +751,25 @@ def gym_ipa(target)
   FileUtils.rm_rf(export_dir)
   FileUtils.mkdir_p(export_dir)
   UI.message("exportArchive method=app-store-connect → #{export_dir}")
-  # #138: exporting a 2nd/3rd scheme's .xcarchive in the SAME fastlane process
-  # (iOS, then tvOS, then visionOS — all sharing this Ruby process's ENV) has
-  # reproducibly failed with "Provisioning profile ... has platform 'tvOS',
-  # which does not match the current platform 'iOS'" — i.e. xcodebuild
-  # resolves "current platform" as whatever the FIRST export in this process
-  # was, not this archive's own platform. This is the same class of bug
-  # fastlane's own gym ships `xcbuild-safe.sh` for ("Env vars not being
-  # unset" — see fastlane/fastlane#8737, #14798): xcodebuild inherits stale
-  # xcodebuild/gym-internal ENV state across sequential invocations in one
-  # process. Run the export in a minimal, explicit environment so nothing
-  # the prior scheme's `build_app` (or this same process) touched leaks in.
+  # #138: exportArchive for Wawona-tvOS/-visionOS reproducibly failed with
+  # "Provisioning profile ... has platform 'tvOS', which does not match the
+  # current platform 'iOS'" — including in a single-scheme, single-process
+  # `debug_export` run, which ruled out cross-scheme ENV leakage in this Ruby
+  # process (the original theory here). Root cause, confirmed by inspecting a
+  # local .xcarchive's Products/Applications/Wawona.app/Info.plist directly:
+  # src/resources/app-bundle/Info.plist is shared verbatim
+  # (GENERATE_INFOPLIST_FILE=NO) across every Apple app target and hardcodes
+  # CFBundleSupportedPlatforms=[iPhoneOS] + LSRequiresIPhoneOS=true.
+  # `xcodebuild -exportArchive` reads CFBundleSupportedPlatforms — NOT
+  # DTPlatformName/DTSDKName, which were both correctly appletvos/xros in the
+  # affected archives — to decide "current platform", so it rejected the
+  # (correctly platform-scoped) provisioning profile. Fixed at the source in
+  # `dependencies/generators/xcodegen.nix` (`stripIOSOnlyInfoPlistKeysPhase`
+  # on the tvOS/macOS/visionOS app targets); verified locally end-to-end for
+  # both Wawona-tvOS and Wawona-visionOS via `fastlane ios debug_export`.
+  # Keep exporting in a minimal, explicit environment regardless — it is a
+  # reasonable defensive practice for `xcodebuild`/gym-internal ENV state
+  # even though it was not this bug's actual cause.
   clean_env = {
     "PATH" => ENV["PATH"],
     "HOME" => ENV["HOME"],

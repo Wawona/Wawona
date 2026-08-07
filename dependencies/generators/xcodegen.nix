@@ -802,6 +802,34 @@ PLIST
     neovimRootfsEmbedPhase = iosNeovimRootfsEmbedPhase;
   };
 
+  # #138 root cause: src/resources/app-bundle/Info.plist is shared verbatim
+  # (GENERATE_INFOPLIST_FILE=NO) across iOS/iPadOS/tvOS/macOS/visionOS and
+  # hardcodes CFBundleSupportedPlatforms=[iPhoneOS] + LSRequiresIPhoneOS=true.
+  # `xcodebuild -exportArchive` reads CFBundleSupportedPlatforms — NOT
+  # DTPlatformName/DTSDKName, both of which are correctly appletvos in a tvOS
+  # .xcarchive — to decide the archive's "current platform". A tvOS archive
+  # whose Info.plist still says iPhoneOS makes exportArchive believe it is
+  # exporting an iOS archive, so it rejects the (correctly tvOS) provisioning
+  # profile: "has platform tvOS, which does not match the current platform
+  # iOS". Confirmed by inspecting a local .xcarchive's Products/Applications/
+  # Wawona.app/Info.plist directly. Same bug class already fixed for watchOS
+  # below ("Strip iOS-only keys from Watch Info.plist") — apply the same fix
+  # to every non-iOS/-iPadOS app target (tvOS, macOS, visionOS). Do not add
+  # this to iOS/iPadOS: they correctly need CFBundleSupportedPlatforms=
+  # [iPhoneOS] and LSRequiresIPhoneOS=true.
+  stripIOSOnlyInfoPlistKeysPhase = {
+    name = "Strip iOS-only keys from Info.plist (#138)";
+    basedOnDependencyAnalysis = false;
+    script = ''
+      PLIST="''${TARGET_BUILD_DIR}/''${INFOPLIST_PATH}"
+      if [ -f "$PLIST" ]; then
+        /usr/libexec/PlistBuddy -c 'Delete :CFBundleSupportedPlatforms' "$PLIST" 2>/dev/null || true
+        /usr/libexec/PlistBuddy -c 'Delete :LSRequiresIPhoneOS' "$PLIST" 2>/dev/null || true
+        /usr/libexec/PlistBuddy -c 'Delete :UISupportedInterfaceOrientations~ipad' "$PLIST" 2>/dev/null || true
+      fi
+    '';
+  };
+
   westonDataIosEmbedScript = pkgs.writeShellScript "embed-weston-data-ios.sh" ''
     case "''${PLATFORM_NAME:-}" in
       iphoneos|iphonesimulator|appletvos|appletvsimulator|xros|xrsimulator)
@@ -1692,7 +1720,7 @@ PLIST
         ] ++ iosUtilSources;
         preBuildScripts = [ stampBuildNumberPhase tvosPreBuild ];
         # No ANGLE embed / no VM guest on tvOS (platform-targets: no GL, no VM).
-        postBuildScripts = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase tvosNiriDataEmbedPhase tvosRootfsEmbedPhase tvosNeovimRootfsEmbedPhase simInstallWritableBundlePhase ];
+        postBuildScripts = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase tvosNiriDataEmbedPhase tvosRootfsEmbedPhase tvosNeovimRootfsEmbedPhase simInstallWritableBundlePhase stripIOSOnlyInfoPlistKeysPhase ];
 
         settings = {
           base = {
@@ -2202,6 +2230,7 @@ PLIST
 
             '';
           }
+          stripIOSOnlyInfoPlistKeysPhase
         ];
         settings = {
           base = {
@@ -2333,7 +2362,7 @@ PLIST
         postBuildScripts = mkAppleGpuPostBuildPhases {
           rootfsEmbedPhase = visionosRootfsEmbedPhase;
           neovimRootfsEmbedPhase = visionosNeovimRootfsEmbedPhase;
-        };
+        } ++ [ stripIOSOnlyInfoPlistKeysPhase ];
         settings = {
           base = {
             INFOPLIST_FILE = "src/resources/app-bundle/Info.plist";
