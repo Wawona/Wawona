@@ -180,11 +180,24 @@ def verify_no_ssh_stubs() -> list[str]:
         p = ROOT / rel
         if not p.is_file():
             continue
-        text = p.read_text(encoding="utf-8")
+        lines = p.read_text(encoding="utf-8").splitlines()
         for sym in ("ssh_main", "ssh_keygen_main", "scp_main"):
-            # definition like "int ssh_main"
-            if re.search(rf"\bint\s+{sym}\s*\(", text):
-                errors.append(f"{rel} still defines stub {sym}; use libwwn-ssh-cli.a")
+            pattern = re.compile(rf"\bint\s+{sym}\s*\(")
+            for i, line in enumerate(lines):
+                if not pattern.search(line):
+                    continue
+                # A __attribute__((weak)) definition is a legitimate link-time
+                # seam, overridden by -force_load libwwn-ssh-cli.a + the
+                # matching -Wl,-u,_<sym> in sshCliLdflags (xcodegen.nix) on any
+                # slice that links the real archive. watchOS's arm64_32 slice
+                # has no arm64_32 libwwn-ssh-cli.a build (ASC 90733 fat-slice
+                # requirement), so it keeps the weak fallback while arm64
+                # still resolves to the real implementation. Only a *strong*
+                # (non-weak) definition is the real policy violation — it can
+                # never be overridden, so ssh would stay permanently stubbed.
+                prev = lines[i - 1].strip() if i > 0 else ""
+                if "__attribute__((weak))" not in prev:
+                    errors.append(f"{rel} still defines stub {sym}; use libwwn-ssh-cli.a")
     return errors
 
 

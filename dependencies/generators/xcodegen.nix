@@ -804,26 +804,30 @@ PLIST
 
   # #138 root cause: src/resources/app-bundle/Info.plist is shared verbatim
   # (GENERATE_INFOPLIST_FILE=NO) across iOS/iPadOS/tvOS/macOS/visionOS and
-  # hardcodes CFBundleSupportedPlatforms=[iPhoneOS] + LSRequiresIPhoneOS=true.
-  # `xcodebuild -exportArchive` reads CFBundleSupportedPlatforms — NOT
+  # used to hardcode CFBundleSupportedPlatforms=[iPhoneOS] + LSRequiresIPhoneOS
+  # =true. `xcodebuild -exportArchive` reads CFBundleSupportedPlatforms — NOT
   # DTPlatformName/DTSDKName, both of which are correctly appletvos in a tvOS
   # .xcarchive — to decide the archive's "current platform". A tvOS archive
-  # whose Info.plist still says iPhoneOS makes exportArchive believe it is
-  # exporting an iOS archive, so it rejects the (correctly tvOS) provisioning
+  # whose Info.plist still said iPhoneOS made exportArchive believe it was
+  # exporting an iOS archive, so it rejected the (correctly tvOS) provisioning
   # profile: "has platform tvOS, which does not match the current platform
-  # iOS". Confirmed by inspecting a local .xcarchive's Products/Applications/
-  # Wawona.app/Info.plist directly. Same bug class already fixed for watchOS
-  # below ("Strip iOS-only keys from Watch Info.plist") — apply the same fix
-  # to every non-iOS/-iPadOS app target (tvOS, macOS, visionOS). Do not add
-  # this to iOS/iPadOS: they correctly need CFBundleSupportedPlatforms=
-  # [iPhoneOS] and LSRequiresIPhoneOS=true.
+  # iOS". CFBundleSupportedPlatforms is now removed from the shared source
+  # plist entirely (see Info.plist) so ProcessInfoPlistFile auto-injects the
+  # correct per-target value (iPhoneOS/AppleTVOS/MacOSX/XROS) instead — this
+  # also fixed a second, same-root-cause bug where Xcode's own
+  # ValidateEmbeddedBinary misread an iOS-Simulator host as plain "iOS"
+  # device because of the hardcoded value, and rejected the (correctly
+  # watchOS-Simulator) embedded WawonaWatch.app. LSRequiresIPhoneOS +
+  # UISupportedInterfaceOrientations~ipad are iOS/iPadOS-only keys that stay
+  # hardcoded in source (iOS/iPadOS correctly need them); strip them here for
+  # every non-iOS/-iPadOS app target. Same bug class already fixed for
+  # watchOS below ("Strip iOS-only keys from Watch Info.plist").
   stripIOSOnlyInfoPlistKeysPhase = {
     name = "Strip iOS-only keys from Info.plist (#138)";
     basedOnDependencyAnalysis = false;
     script = ''
       PLIST="''${TARGET_BUILD_DIR}/''${INFOPLIST_PATH}"
       if [ -f "$PLIST" ]; then
-        /usr/libexec/PlistBuddy -c 'Delete :CFBundleSupportedPlatforms' "$PLIST" 2>/dev/null || true
         /usr/libexec/PlistBuddy -c 'Delete :LSRequiresIPhoneOS' "$PLIST" 2>/dev/null || true
         /usr/libexec/PlistBuddy -c 'Delete :UISupportedInterfaceOrientations~ipad' "$PLIST" 2>/dev/null || true
       fi
@@ -2674,6 +2678,21 @@ PLIST
             INFOPLIST_KEY_CFBundlePackageType = "APPL";
             SWIFT_OBJC_BRIDGING_HEADER = "src/platform/watchos/WWNWatch-Bridging-Header.h";
             SWIFT_INSTALL_OBJC_HEADER = "NO";
+            # Every other app target (iOS/tvOS/macOS/visionOS) disables the
+            # Simulator-only "debug dylib" launch accelerator; Wawona-watchOS
+            # never got it. With it on, Xcode additionally links a
+            # WawonaWatch.debug.dylib against the SAME flat, single-platform
+            # WawonaModel.framework used by every platform in Nix's
+            # build-app.nix (CONFIGURATION_BUILD_DIR=$out is forced globally),
+            # so linking always fails: "building for watchOS-simulator, but
+            # linking in dylib ... built for iOS-simulator" — even though the
+            # real WawonaWatch.app link (below) succeeds because
+            # watchos-ensure-framework-modules.sh merges the watchos-simulator
+            # swiftmodule slice into that same $out for the *compile* step.
+            # This dylib is a Debug+Simulator quick-launch optimization only
+            # (never produced for Release/Archive); skipping it does not
+            # affect what ships.
+            ENABLE_DEBUG_DYLIB = "NO";
             # Xcode 26 explicit modules flake when the watch companion is built
             # under an iOS archive destination before framework swiftmodules exist.
             SWIFT_ENABLE_EXPLICIT_MODULES = "NO";
@@ -2709,6 +2728,27 @@ PLIST
               "$(SRCROOT)/src/platform/watchos"
               "$(SRCROOT)/src/platform/macos/ui/Helpers"
             ] ++ (pixmanHeaderPaths watchosDeps);
+            # WawonaModel/WawonaUIContracts are embed=false, link=false above
+            # (see dependencies comment): Xcode unconditionally adds
+            # -F$(CONFIGURATION_BUILD_DIR) for every target's *own* build
+            # products dir regardless of dependency link/embed settings — in
+            # this nix build that is the shared, single-platform $out — so
+            # `-framework WawonaModel` would still resolve through -F search
+            # order to whichever platform happened to build there first.
+            # Bypass -framework/-F search for these two entirely: link the
+            # watchos-ensure-framework-modules.sh-installed Mach-O directly by
+            # absolute path (a real, never-shared-with-iOS watch build under
+            # BUILD_DIR/CONFIGURATION-PLATFORM_NAME). The dylib's own
+            # LC_ID_DYLIB install name (@rpath/<fw>.framework/<fw>) is what
+            # ends up in WawonaWatch's load commands, so at runtime it still
+            # resolves against the embedded (watch-platform, via "Fix Watch
+            # Embedded Frameworks") copy in WawonaWatch.app/Frameworks — this
+            # path is only ever consulted to satisfy the link step.
+            OTHER_LDFLAGS = [
+              "$(inherited)"
+              "$(BUILD_DIR)/$(CONFIGURATION)-$(PLATFORM_NAME)/WawonaModel.framework/WawonaModel"
+              "$(BUILD_DIR)/$(CONFIGURATION)-$(PLATFORM_NAME)/WawonaUIContracts.framework/WawonaUIContracts"
+            ];
             # -force_load is needed for the Wayland client libraries because
             # WWNWatchStubs.c provides __attribute__((weak)) definitions of
             # weston_main / weston_simple_shm_main / etc.  Without -force_load
@@ -2807,8 +2847,26 @@ PLIST
           };
         };
         dependencies = [
-          { target = "WawonaModel"; embed = true; codeSign = true; }
-          { target = "WawonaUIContracts"; embed = true; codeSign = true; }
+          # link=false, embed=false: Nix's build-app.nix forces
+          # CONFIGURATION_BUILD_DIR=$out globally, so Xcode's implicit
+          # "-F$(BUILT_PRODUCTS_DIR)" for a linked-or-embedded target
+          # dependency always resolves to whatever platform built
+          # WawonaModel/WawonaUIContracts there first (iOS-simulator, in a
+          # Wawona-iOS-embeds-Wawona-watchOS build) and keeps injecting that
+          # -F ahead of anything this target's own FRAMEWORK_SEARCH_PATHS
+          # adds, however link/embed are set individually — so `ld` fails:
+          # "building for watchOS-simulator, but linking in dylib ... built
+          # for iOS-simulator". Only turning off *both* stops Xcode adding
+          # -F$out at all. Linking instead goes through the explicit
+          # OTHER_LDFLAGS/FRAMEWORK_SEARCH_PATHS entries below, pointing at
+          # watchos-ensure-framework-modules.sh's own per-platform install
+          # (BUILD_DIR/CONFIGURATION-PLATFORM_NAME, a real watch Mach-O, never
+          # shared with iOS); embedding into WawonaWatch.app/Frameworks is
+          # handled by "Fix Watch Embedded Frameworks" below, which already
+          # finds that same install (or rebuilds it) independent of Xcode's
+          # own Embed Frameworks phase.
+          { target = "WawonaModel"; embed = false; link = false; codeSign = true; }
+          { target = "WawonaUIContracts"; embed = false; link = false; codeSign = true; }
           { sdk = "SwiftUI.framework"; }
           { sdk = "WatchKit.framework"; }
           { sdk = "Foundation.framework"; }

@@ -14,10 +14,12 @@ esac
 
 APP_FW="${TARGET_BUILD_DIR}/${FULL_PRODUCT_NAME}/Frameworks"
 
-if [[ ! -d "$APP_FW" ]]; then
-  echo "note: watchos-fix-embedded-frameworks: no Frameworks dir yet ($APP_FW)"
-  exit 0
-fi
+# WawonaModel/WawonaUIContracts are embed=false, link=false dependencies (see
+# xcodegen.nix dependencies comment) — Xcode's own Embed Frameworks phase
+# never runs for them, so this script is the *only* thing that creates
+# Frameworks/ and copies them in; do not early-exit just because it is
+# missing.
+mkdir -p "$APP_FW"
 
 platform_of() {
   otool -l "$1" 2>/dev/null \

@@ -111,6 +111,50 @@ build_framework() {
   rm -rf "${dest_root}/${fw}.framework"
   cp -R "${conf_dir}/${fw}.framework" "${dest_root}/"
   echo "note: watchos-ensure-framework-modules: installed ${dest_root}/${fw}.framework"
+
+  merge_into_configuration_build_dir "$fw" "${conf_dir}/${fw}.framework" "${dest_root}"
+}
+
+# Xcode's FRAMEWORK_SEARCH_PATHS/-F for *this* compile step resolves through
+# $(BUILT_PRODUCTS_DIR), i.e. CONFIGURATION_BUILD_DIR — not the plain
+# ${BUILD_DIR}/${CONFIGURATION}-${PLATFORM_NAME} split above. Those two are
+# the same path in a normal interactive Xcode build, but Wawona's nix
+# build-app.nix forces CONFIGURATION_BUILD_DIR=$out globally (so the whole
+# multi-platform build lands in one fixed-output store path), while BUILD_DIR
+# keeps its normal DerivedData value. Installing only under BUILD_DIR (above)
+# is therefore invisible to `swiftc -F $out` and the watch app's
+# `import WawonaModel` fails with "could not find module ... for target
+# arm64-apple-watchos-simulator" even though the framework was built.
+# $out already holds the iOS/iPadOS-built copy (same shared path across
+# every platform in this one xcodebuild invocation) — copy in only the new
+# platform's Modules/<fw>.swiftmodule/<triple> entries, never rm -rf the
+# framework, or the earlier platform's slice is destroyed.
+merge_into_configuration_build_dir() {
+  local fw="$1" src_framework="$2" dest_root="$3"
+  local cbd="${CONFIGURATION_BUILD_DIR:-}"
+  [[ -n "$cbd" && "$cbd" != "$dest_root" ]] || return 0
+
+  local dst_framework="${cbd}/${fw}.framework"
+  if [[ ! -d "$dst_framework" ]]; then
+    mkdir -p "$cbd"
+    cp -R "$src_framework" "$dst_framework"
+    echo "note: watchos-ensure-framework-modules: seeded ${dst_framework} (CONFIGURATION_BUILD_DIR)"
+    return 0
+  fi
+
+  local src_swiftmodule="${src_framework}/Modules/${fw}.swiftmodule"
+  local dst_swiftmodule="${dst_framework}/Modules/${fw}.swiftmodule"
+  if [[ -d "$src_swiftmodule" ]]; then
+    mkdir -p "$dst_swiftmodule"
+    cp -R "${src_swiftmodule}/." "${dst_swiftmodule}/"
+    echo "note: watchos-ensure-framework-modules: merged ${PLATFORM_NAME} swiftmodule into ${dst_swiftmodule}"
+  fi
+  # Headers are platform-agnostic Swift-generated interfaces; harmless to
+  # union in case the destination's copy predates a header-only change.
+  if [[ -d "${src_framework}/Headers" ]]; then
+    mkdir -p "${dst_framework}/Headers"
+    cp -Rn "${src_framework}/Headers/." "${dst_framework}/Headers/" 2>/dev/null || true
+  fi
 }
 
 for fw in WawonaModel WawonaUIContracts; do
