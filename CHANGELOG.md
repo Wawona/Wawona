@@ -10,6 +10,32 @@ as history.
 
 ## [Unreleased]
 
+## [26.8.8] - 2026-08-07
+
+### Fixed
+
+- **App Store Connect Swift Support rejections, root cause** (`ITMS-90426`/
+  `ITMS-90429`/`ITMS-90433`, builds 89-104) — every prior fix in `26.8.7`
+  (re-signing, timestamps, bundle-level re-sign, full-zip-rebuild, parity
+  assertion) was real but none were the actual bug. Diffing a downloaded
+  debug-export ipa's own signatures/dependencies directly showed
+  `embed_swift_runtime_into_archive!` treated *every* `/usr/lib/swift/lib*
+  .dylib` reference in `otool -L` (the full ABI-stable overlay set every
+  Swift binary links, mostly `weak`) as needing embedding, and fell back to
+  dumping the entire toolchain `swift-5.0/<platform>` folder into
+  `SwiftSupport/` whenever nothing matched — manufacturing content no real
+  Xcode 26 export at Wawona's deployment target (iOS/tvOS 17.0+, watchOS
+  10.0+) would ever produce. Now only a narrow, named whitelist of real
+  back-deployment compatibility dylibs (Concurrency, Span, legacy
+  Compatibility5x/DynamicReplacements/StringProcessing/RegexParser shims) is
+  ever embedded, each gated by its own minimum-OS threshold against the
+  bundle's `MinimumOSVersion`. At current deployment targets none apply, so
+  builds now correctly ship with no `SwiftSupport/` at all instead of a
+  bogus one. `Ship: beta (stores)`'s `workflow_dispatch` now also uploads
+  `debug_export` ipas as workflow artifacts for direct inspection
+  (`altool --validate-app`, `codesign -dvvv`, etc.) instead of waiting on an
+  async ASC rejection email.
+
 ## [26.8.7] - 2026-08-07
 
 ### Fixed
