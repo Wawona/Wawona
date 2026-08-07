@@ -751,13 +751,39 @@ def gym_ipa(target)
   FileUtils.rm_rf(export_dir)
   FileUtils.mkdir_p(export_dir)
   UI.message("exportArchive method=app-store-connect → #{export_dir}")
-  sh(
+  # #138: exporting a 2nd/3rd scheme's .xcarchive in the SAME fastlane process
+  # (iOS, then tvOS, then visionOS — all sharing this Ruby process's ENV) has
+  # reproducibly failed with "Provisioning profile ... has platform 'tvOS',
+  # which does not match the current platform 'iOS'" — i.e. xcodebuild
+  # resolves "current platform" as whatever the FIRST export in this process
+  # was, not this archive's own platform. This is the same class of bug
+  # fastlane's own gym ships `xcbuild-safe.sh` for ("Env vars not being
+  # unset" — see fastlane/fastlane#8737, #14798): xcodebuild inherits stale
+  # xcodebuild/gym-internal ENV state across sequential invocations in one
+  # process. Run the export in a minimal, explicit environment so nothing
+  # the prior scheme's `build_app` (or this same process) touched leaks in.
+  clean_env = {
+    "PATH" => ENV["PATH"],
+    "HOME" => ENV["HOME"],
+    "USER" => ENV["USER"],
+    "TMPDIR" => ENV["TMPDIR"],
+    "DEVELOPER_DIR" => ENV["DEVELOPER_DIR"]
+  }.compact
+  out, err, st = Open3.capture3(
+    clean_env,
     "/usr/bin/xcrun", "xcodebuild",
     "-exportArchive",
     "-archivePath", archive,
     "-exportOptionsPlist", export_plist,
-    "-exportPath", export_dir
+    "-exportPath", export_dir,
+    unsetenv_others: true
   )
+  UI.message(out) unless out.to_s.strip.empty?
+  unless st.success?
+    UI.error(err) unless err.to_s.strip.empty?
+    UI.user_error!("xcodebuild -exportArchive failed (exit #{st.exitstatus}) for #{target[:scheme]}")
+  end
+  UI.message(err) unless err.to_s.strip.empty?
 
   exported = Dir.glob(File.join(export_dir, "*.ipa")).first
   UI.user_error!("exportArchive produced no IPA in #{export_dir}") unless exported
