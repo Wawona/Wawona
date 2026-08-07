@@ -49,10 +49,22 @@ def main() -> int:
     ):
         if not stub.is_file():
             continue
-        text = stub.read_text(encoding="utf-8", errors="replace")
+        lines = stub.read_text(encoding="utf-8", errors="replace").splitlines()
         for sym in ("ssh_main", "ssh_keygen_main", "scp_main"):
-            if re.search(rf"\b{sym}\s*\(", text):
-                errors.append(f"{stub.relative_to(ROOT)} must not define {sym}")
+            pattern = re.compile(rf"\bint\s+{sym}\s*\(")
+            for i, line in enumerate(lines):
+                if not pattern.search(line):
+                    continue
+                # A __attribute__((weak)) definition is a legitimate link-time seam,
+                # overridden by -force_load libwwn-ssh-cli.a + the matching
+                # -Wl,-u,_<sym> on any slice that links the real archive. watchOS's
+                # arm64_32 slice has no arm64_32 libwwn-ssh-cli.a build (ASC 90733
+                # fat-slice requirement), so it keeps the weak fallback while arm64
+                # still resolves to the real implementation. Only a *strong*
+                # (non-weak) definition is the real policy violation.
+                prev = lines[i - 1].strip() if i > 0 else ""
+                if "__attribute__((weak))" not in prev:
+                    errors.append(f"{stub.relative_to(ROOT)} must not define {sym} (strong stub)")
 
     for ghost in (
         ROOT / "src/platform/macos/WWNSSHClient.m",
