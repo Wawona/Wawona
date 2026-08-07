@@ -817,6 +817,7 @@ platform :ios do
   desc "Archive+export one scheme only, no upload (fast local repro for export bugs, e.g. #138)"
   lane :debug_export do
     validate_env
+    setup_ci if ENV["CI"]
     ensure_xcodegen!
     prefer_xcode_toolchain!
     api_key = asc_api_key

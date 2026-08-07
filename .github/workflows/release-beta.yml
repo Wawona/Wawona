@@ -39,6 +39,10 @@ jobs:
        !contains(github.event.inputs.lane, 'android'))
     runs-on: macos-26
     environment: release-beta
+    # Safety net: a codesign keychain-ACL hang (missing setup_ci — see #138)
+    # burned 2h+ of runner time silently before this existed. A healthy run
+    # is ~15-25 min; 90 covers cold Nix/Rust cross-compiles with headroom.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
 
@@ -93,6 +97,7 @@ jobs:
     # ("C compiler cannot create executables"); product-build APK already uses macOS.
     runs-on: macos-15
     environment: release-beta
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
 
