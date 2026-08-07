@@ -197,6 +197,7 @@ def assert_ipa_has_swift_support!(ipa)
     )
   end
   UI.success("#{File.basename(ipa)}: SwiftSupport/ present")
+  assert_swift_support_frameworks_parity!(ipa)
 end
 
 # #136: iOS App Store IPA must carry the watch companion under Watch/.
@@ -258,6 +259,25 @@ def embed_swift_runtime_into_archive!(archive_path)
   sign_sha, = find_distribution_identity_sha
   UI.user_error!("No distribution identity to re-sign embedded Swift dylibs") unless sign_sha
 
+  # #build95: embedding new files into Frameworks/ *after* `xcodebuild archive`
+  # has already signed the bundle leaves the bundle's own signature/
+  # CodeResources manifest unaware of them. Re-signing only each dylib (not
+  # the bundle) was not enough — a later export produced an IPA with 5 of the
+  # 15 embedded dylibs silently missing from Frameworks/ (ITMS-90429, build
+  # 95), even though nothing in our own script touched them again. Re-sign
+  # the *bundle itself* right after modifying its Frameworks/ so CodeResources
+  # is regenerated to include the new files, same as Xcode's own
+  # swift-stdlib-tool + embed phase would if it ran during the build. Nested
+  # code must be (re-)signed before the bundle that embeds it, so watch
+  # companions are processed before the outer iOS/tvOS/visionOS app.
+  resign_bundle = lambda do |bundle_dir|
+    _, _, cs_st = Open3.capture3(
+      "codesign", "--force", "--sign", sign_sha,
+      "--preserve-metadata=identifier,entitlements,flags", "--timestamp=none", bundle_dir
+    )
+    UI.user_error!("codesign failed for #{File.basename(bundle_dir)} after embedding Swift runtime") unless cs_st.success?
+  end
+
   embedded = {}
   embed_one = lambda do |bundle_dir, platform_subdir|
     plist = File.join(bundle_dir, "Info.plist")
@@ -288,6 +308,7 @@ def embed_swift_runtime_into_archive!(archive_path)
     end
     embedded[platform_subdir] = ((embedded[platform_subdir] || []) + copied).uniq
     UI.message("Embedded + re-signed #{copied.size} Swift runtime dylib(s) into #{File.basename(bundle_dir)}/Frameworks (#{platform_subdir})")
+    resign_bundle.call(bundle_dir) unless copied.empty?
   end
 
   dt_platform, = Open3.capture2("/usr/libexec/PlistBuddy", "-c", "Print :DTPlatformName", File.join(app, "Info.plist"))
@@ -296,9 +317,10 @@ def embed_swift_runtime_into_archive!(archive_path)
                   when "watchos" then "watchos"
                   else "iphoneos" # includes xros (visionOS reuses iphoneos SwiftSupport layout)
                   end
-  embed_one.call(app, main_platform)
 
+  # Watch companion (nested code) first, outer app last.
   Dir.glob(File.join(app, "Watch", "*.app")).each { |watch_app| embed_one.call(watch_app, "watchos") }
+  embed_one.call(app, main_platform)
 
   embedded
 end
@@ -411,11 +433,84 @@ def inject_swift_support_from_archive!(ipa, archive_path)
       UI.user_error!("Failed to assemble SwiftSupport/ for #{File.basename(ipa)}")
     end
 
-    # Append-only: do not re-zip Payload/ (preserves export layout / CRCs).
-    # Full re-zip has produced altool VERIFY OK but silent ASC discards.
-    sh("cd #{dir.shellescape} && zip -qry #{ipa.shellescape} SwiftSupport")
+    # Full clean rebuild from the fully-unzipped directory, replacing the
+    # exportArchive-produced ipa outright. Appending SwiftSupport/ onto that
+    # ipa in place (previous approach) round-tripped fine through our own
+    # `unzip`/`unzip -Z1` checks locally, but ASC's own ingestion was
+    # inconsistent on top of it: SwiftSupport/ missing entirely on one build
+    # (ITMS-90426, build 93) and declared dylibs "not at the expected
+    # Frameworks location" on another (ITMS-90429, build 95) even though a
+    # fresh local re-extraction of the very same ipa showed them present.
+    # Mixing an append from the system `zip` binary onto a zip produced by a
+    # different tool (xcodebuild's own exporter) is exactly the kind of thing
+    # that round-trips for lenient readers and not for stricter ones.
+    # Rebuilding from scratch out of one fully-materialized directory (the
+    # layout every working IPA+SwiftSupport recipe uses) avoids that entirely.
+    # An earlier attempt at a full rebuild produced "altool OK, then silent
+    # ASC discard" — but that was before the #138 CFBundleSupportedPlatforms
+    # fix, which is a far more likely explanation for silent, error-free
+    # rejection than the rebuild mechanism itself. -y preserves framework
+    # version symlinks; -X drops extra file attributes.
+    rebuilt = "#{ipa}.rebuilt"
+    FileUtils.rm_f(rebuilt)
+    sh("cd #{dir.shellescape} && zip -qryX #{rebuilt.shellescape} Payload SwiftSupport")
+    FileUtils.mv(rebuilt, ipa)
   end
   UI.success("Ensured SwiftSupport/ in #{File.basename(ipa)}")
+end
+
+# Defense in depth for the ITMS-90429/90427/90426 family: verify, in the
+# *final* ipa (after any rebuild), that every dylib name declared under
+# SwiftSupport/<platform>/ is physically present in the matching bundle's own
+# Frameworks/. This is exactly the invariant ASC's own binary validator
+# checks; catching a mismatch here fails the build locally instead of
+# discovering it days later via an App Store Connect rejection email (as
+# happened for build 95: 15 dylibs embedded pre-export, only 10 survived
+# into the exported ipa's Frameworks/, and nothing before this asserted the
+# two matched).
+def assert_swift_support_frameworks_parity!(ipa)
+  require "open3"
+  Dir.mktmpdir("wawona-swift-support-check") do |dir|
+    sh("unzip -q #{ipa.shellescape} -d #{dir.shellescape}")
+    ss_root = File.join(dir, "SwiftSupport")
+    next unless Dir.exist?(ss_root)
+
+    app = Dir.glob(File.join(dir, "Payload", "*.app")).first
+    UI.user_error!("No Payload/*.app while verifying SwiftSupport/Frameworks parity") unless app
+    dt_platform, = Open3.capture2("/usr/libexec/PlistBuddy", "-c", "Print :DTPlatformName", File.join(app, "Info.plist"))
+    main_platform = case dt_platform.to_s.strip
+                    when "appletvos" then "appletvos"
+                    when "watchos" then "watchos"
+                    else "iphoneos" # includes xros
+                    end
+    bundle_for_platform = { main_platform => app }
+    Dir.glob(File.join(app, "Watch", "*.app")).each { |w| bundle_for_platform["watchos"] = w }
+
+    missing = []
+    Dir.glob(File.join(ss_root, "*")).each do |plat_dir|
+      next unless File.directory?(plat_dir)
+
+      plat = File.basename(plat_dir)
+      bundle_dir = bundle_for_platform[plat]
+      unless bundle_dir
+        UI.important("SwiftSupport/#{plat} has no matching bundle in #{File.basename(ipa)}; skipping parity check")
+        next
+      end
+      fw_dir = File.join(bundle_dir, "Frameworks")
+      Dir.glob(File.join(plat_dir, "*.dylib")).each do |lib|
+        name = File.basename(lib)
+        missing << "#{plat}/#{name} (expected #{File.basename(bundle_dir)}/Frameworks/#{name})" unless File.file?(File.join(fw_dir, name))
+      end
+    end
+
+    unless missing.empty?
+      UI.user_error!(
+        "#{File.basename(ipa)}: SwiftSupport/ declares dylibs missing from their bundle's " \
+        "Frameworks/ (would be rejected as ITMS-90429/90427):\n  - #{missing.join("\n  - ")}"
+      )
+    end
+  end
+  UI.success("#{File.basename(ipa)}: SwiftSupport/ \u2194 Frameworks/ parity OK")
 end
 
 def wawona_version
@@ -834,6 +929,9 @@ platform :ios do
     target = APPLE_BETA_TARGETS.find { |t| t[:scheme] == scheme }
     UI.user_error!("#{scheme} missing from APPLE_BETA_TARGETS") unless target
     ipa = gym_ipa(target)
+    assert_ipa_no_private_progname!(ipa)
+    assert_ipa_has_swift_support!(ipa)
+    assert_ipa_has_watch_companion!(ipa) if scheme == "Wawona-iOS"
     UI.success("debug_export built #{ipa} (no upload)")
   end
 

@@ -9,9 +9,13 @@ on:
   workflow_dispatch:
     inputs:
       lane:
-        description: "Fastlane lane (beta, ios beta, android beta)"
+        description: "Fastlane lane (beta, ios beta, android beta, ios debug_export)"
         required: false
         default: ios beta
+      debug_scheme:
+        description: "WAWONA_DEBUG_SCHEME for lane=ios debug_export (e.g. Wawona-iOS, Wawona-tvOS, Wawona-visionOS)"
+        required: false
+        default: ""
   push:
     branches:
       - master
@@ -75,6 +79,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           TEAM_ID: ${{ secrets.TEAM_ID }}
           WAWONA_BUILD_NUMBER: ${{ github.run_number }}
+          WAWONA_DEBUG_SCHEME: ${{ github.event.inputs.debug_scheme }}
           SECRETSPEC_PROFILE: ci-apple
           SECRETSPEC_PROVIDER: env
           CI: "true"
