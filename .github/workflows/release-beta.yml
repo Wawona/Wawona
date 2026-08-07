@@ -91,6 +91,15 @@ jobs:
           nix develop .#release --command bash -c \
             './scripts/release-env.sh fastlane '"$LANE"
 
+      - name: Upload debug_export ipa artifact
+        if: contains(github.event.inputs.lane, 'debug_export')
+        uses: actions/upload-artifact@v7
+        with:
+          name: wawona-debug-export-ipa-${{ github.event.inputs.debug_scheme }}
+          path: dist/*.ipa
+          retention-days: 5
+          if-no-files-found: error
+
   android-beta:
     name: "Play internal track (Android)"
     if: >-

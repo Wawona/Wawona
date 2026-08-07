@@ -943,7 +943,13 @@ platform :ios do
     assert_ipa_no_private_progname!(ipa)
     assert_ipa_has_swift_support!(ipa)
     assert_ipa_has_watch_companion!(ipa) if scheme == "Wawona-iOS"
-    UI.success("debug_export built #{ipa} (no upload)")
+    # Stage for CI artifact upload so the exact uploaded-shaped ipa can be
+    # inspected/validated locally (e.g. `xcrun altool --validate-app`)
+    # without waiting hours for an async ASC rejection email.
+    out = File.expand_path("../dist/#{scheme}-#{wawona_version}-#{wawona_build_number}.ipa", __dir__)
+    FileUtils.mkdir_p(File.dirname(out))
+    FileUtils.cp(ipa, out)
+    UI.success("debug_export built #{ipa} (no upload); staged at #{out}")
   end
 
   desc "Upload universal iOS, Apple TV, and Apple Vision Pro to TestFlight"
