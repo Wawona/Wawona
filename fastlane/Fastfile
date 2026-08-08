@@ -178,16 +178,20 @@ def assert_ipa_no_private_progname!(ipa)
   end
 end
 
-# ASC ITMS-90426/90429/90433 (#build104): SwiftSupport/ is only required when
-# the app embeds a narrow, named Swift back-deployment compatibility dylib
-# (SWIFT_BACKDEPLOY_LIB_NAMES) below that dylib's native-OS threshold. Builds
-# 89-104 kept bouncing between these three errors because an earlier version
-# of this pipeline treated *every* /usr/lib/swift/lib*.dylib reference from
-# `otool -L` — the full ABI-stable overlay list every Swift binary links,
-# most "weak" — as something to bundle. At our deployment target (iOS/tvOS
-# 17.0, watchOS 10.0) none of those are legitimately needed, so a correct
-# Xcode 26 export ships *no* SwiftSupport/ at all; manufacturing one anyway
-# is what was actually getting rejected, not a missing-folder bug.
+# Hard pre-upload Swift Support gate (#build119). The rule, reverse-
+# engineered from ASC's own per-build errors (buildUploads API, builds
+# 89-119) and encoded in SWIFT_BACKDEPLOY_LIB_NAMES' comment:
+#
+#   * Watch-bearing IPA → ASC runs the LEGACY Swift packaging validator.
+#     REQUIRED: SwiftSupport/iphoneos + SwiftSupport/watchos, each holding
+#     exactly the legacy expected set (referenced ∩ swift-5.0/<plat>), each
+#     name mirrored in that bundle's own Frameworks/, SwiftSupport copies
+#     byte-identical to the Apple-signed toolchain originals (ITMS-90433:
+#     never re-signed). Anything else fails HERE, before upload — never
+#     hours later via an Apple e-mail.
+#   * Watchless IPA → ABI-stable shape; SwiftSupport/ must be absent unless
+#     a genuine back-deployment dylib is embedded (accepted tvOS/visionOS
+#     shape — builds 118/119 state=COMPLETE).
 #
 # Gym 2.232 also rewrites ExportOptions to deprecated app-store — we bypass
 # that with a manual exportArchive (method: app-store-connect).
@@ -196,16 +200,24 @@ def assert_ipa_has_swift_support!(ipa)
   listing, st = Open3.capture2("unzip", "-Z1", ipa)
   UI.user_error!("unzip -Z1 failed for #{ipa}") unless st.success?
   has_support = listing.lines.any? { |l| l.start_with?("SwiftSupport/") }
+  has_watch = listing.lines.any? { |l| l.include?("/Watch/") && l.include?(".app/") }
 
-  # Only *require* SwiftSupport/ when the IPA actually embeds a narrow,
-  # named back-deployment dylib (see SWIFT_BACKDEPLOY_LIB_NAMES) — an app at
-  # our deployment target legitimately ships with none at all, and that is
-  # not the ITMS-90426 failure mode (#build104).
+  if has_watch
+    unless has_support
+      UI.user_error!(
+        "#{File.basename(ipa)} contains a Watch companion but no SwiftSupport/ — ASC's legacy " \
+        "validator WILL reject this as ITMS-90426 (exactly builds 110/119). " \
+        "Check embed_swift_runtime_into_archive!/inject_swift_support_from_archive!."
+      )
+    end
+    assert_legacy_swift_support!(ipa)
+    return
+  end
+
   needs_support = listing.lines.any? do |l|
     path = l.strip
     path.include?("/Frameworks/") && SWIFT_BACKDEPLOY_LIB_NAMES.any? { |n| path.end_with?("/#{n}") }
   end
-
   unless has_support
     if needs_support
       UI.user_error!(
@@ -213,11 +225,53 @@ def assert_ipa_has_swift_support!(ipa)
         "missing SwiftSupport/ (ITMS-90426). Check inject_swift_support_from_archive!."
       )
     end
-    UI.important("#{File.basename(ipa)}: no Swift back-deployment dylib embedded; SwiftSupport/ correctly absent at this deployment target")
+    UI.important("#{File.basename(ipa)}: watchless, no back-deployment dylib; SwiftSupport/ correctly absent (accepted ABI-stable shape)")
     return
   end
   UI.success("#{File.basename(ipa)}: SwiftSupport/ present")
   assert_swift_support_frameworks_parity!(ipa)
+end
+
+# Deep validation of the legacy Swift Support invariant for a watch-bearing
+# IPA — inspects the actual zip contents, never trusts prior build steps.
+def assert_legacy_swift_support!(ipa)
+  require "open3"
+  Dir.mktmpdir("wawona-legacy-ss-check") do |dir|
+    sh("unzip -q #{ipa.shellescape} -d #{dir.shellescape}")
+    app = Dir.glob(File.join(dir, "Payload", "*.app")).first
+    UI.user_error!("No Payload/*.app in #{File.basename(ipa)}") unless app
+
+    dt_platform, = Open3.capture2("/usr/libexec/PlistBuddy", "-c", "Print :DTPlatformName", File.join(app, "Info.plist"))
+    main_platform = dt_platform.to_s.strip == "appletvos" ? "appletvos" : "iphoneos"
+    bundles = { main_platform => app }
+    Dir.glob(File.join(app, "Watch", "*.app")).each { |w| bundles["watchos"] = w }
+
+    problems = []
+    bundles.each do |plat, bundle_dir|
+      expected = legacy_swift_expected_names(bundle_dir, plat).sort
+      ss_dir = File.join(dir, "SwiftSupport", plat)
+      actual = Dir.glob(File.join(ss_dir, "*.dylib")).map { |l| File.basename(l) }.sort
+      problems << "SwiftSupport/#{plat}: expected #{expected.join(', ')} — found #{actual.empty? ? '(nothing)' : actual.join(', ')}" if actual != expected
+
+      expected.each do |name|
+        fw_copy = File.join(bundle_dir, "Frameworks", name)
+        problems << "#{File.basename(bundle_dir)}/Frameworks/#{name} missing (ITMS-90429/90427)" unless File.file?(fw_copy)
+
+        ss_copy = File.join(ss_dir, name)
+        tc_copy = File.join(swift50_toolchain_dir(plat), name)
+        if File.file?(ss_copy) && !FileUtils.compare_file(ss_copy, tc_copy)
+          problems << "SwiftSupport/#{plat}/#{name} differs from the Apple-signed toolchain original (ITMS-90433 — must never be re-signed)"
+        end
+      end
+    end
+
+    unless problems.empty?
+      UI.user_error!(
+        "#{File.basename(ipa)}: legacy Swift Support invariant violated — refusing to upload:\n  - #{problems.join("\n  - ")}"
+      )
+    end
+    UI.success("#{File.basename(ipa)}: legacy Swift Support invariant OK (#{bundles.keys.sort.join(' + ')}; Frameworks parity + Apple-signed SwiftSupport verified)")
+  end
 end
 
 # #136 / #ITMS-90426-watch: iOS App Store IPA must carry the watch companion
@@ -269,23 +323,39 @@ def swift_runtime_dep_names(binary_path)
   end.uniq
 end
 
-# #build104: builds 89/93/94/95/103/104 kept bouncing between ITMS-90426/
-# 90429/90433 despite every zip/signature fix, because the actual bug was
-# upstream of all of them: `embed_swift_runtime_into_archive!` treated
-# *every* `/usr/lib/swift/lib*.dylib` reference from `otool -L` (the full
-# ABI-stable overlay list — libswiftCore, libswiftDarwin, libswiftDispatch,
-# libswiftMetal, …) as something that needed bundling. It never does: the OS
-# ships all of those from iOS/tvOS 12.2 / watchOS 5.1.1 onward, which is why
-# most show up "weak" in `otool -L`. A real Xcode 26 App Store export for an
-# app at our deployment target (iOS/tvOS 17.0, watchOS 10.0 — all comfortably
-# above every threshold below) would embed *nothing* and ship *no*
-# SwiftSupport/ folder at all. Manufacturing SwiftSupport/Frameworks content
-# Apple's own toolchain would never produce for this app is the most likely
-# reason ASC's binary validator kept rejecting it — not a zip or signature
-# detail. The only dylibs Apple ever expects *conditionally* embedded are
-# narrow, named back-deployment compatibility shims, each gated by its own
-# minimum-OS threshold (see `swift_backdeploy_needed?`). Never widen this
-# list to "everything under /usr/lib/swift/".
+# #build119 — the ACTUAL Swift Support rule for this app, empirically
+# reverse-engineered from ASC's own rejections (builds 89-119):
+#
+#   * Watchless IPAs (tvOS, visionOS, iOS without companion): ABI-stable, no
+#     SwiftSupport/ and no embedded libswift* — CONFIRMED ACCEPTED (builds
+#     118/119 tvOS + visionOS state=COMPLETE via the buildUploads API).
+#   * Watch-bearing IPAs: ASC applies the LEGACY (pre-ABI-stability) Swift
+#     packaging algorithm, deployment targets notwithstanding. Build 110 and
+#     119 shipped textbook ABI-stable IPAs (all refs /usr/lib/swift/*, minos
+#     iOS 17 / watchOS 10, clean DT* metadata, Watch/ embed) → both rejected
+#     ITMS-90426 "SwiftSupport folder is missing", while the identical-code
+#     watchless IPAs of the same builds were accepted. The rejection e-mails
+#     for earlier builds spell out the exact expected content:
+#       - build 95 (ITMS-90429) listed libswiftDarwin, Dispatch,
+#         CoreFoundation, Metal, Core, simd, QuartzCore, os, ObjectiveC,
+#         CoreImage as "not at the expected location /Payload/Wawona.app/
+#         Frameworks" — that list is PRECISELY the /usr/lib/swift/ names our
+#         main executable references (weak included) intersected with the
+#         toolchain's swift-5.0/iphoneos directory listing. ASC computed it
+#         from our own binary with the legacy algorithm.
+#       - build 89 (ITMS-90433) rejected a hand-mangled signature on an
+#         embedded libswiftCore ("Don't just modify the code signature…").
+#     So for a watch-bearing IPA, ASC requires, per platform bundle:
+#       Frameworks/libswiftX.dylib   (re-signed with the app's identity, the
+#                                     way Xcode's swift-stdlib-tool would)
+#       SwiftSupport/<plat>/libswiftX.dylib (byte-identical Apple-signed
+#                                     toolchain originals, NEVER re-signed)
+#     with X = referenced ∩ swift-5.0/<plat>. See
+#     `legacy_swift_expected_names` / `embed_swift_runtime_into_archive!`.
+#
+# The narrow back-deployment whitelist below still governs WATCHLESS bundles
+# (where it correctly selects nothing at our deployment targets — keep it
+# that way; tvOS/visionOS are accepted precisely in that shape).
 SWIFT_BACKDEPLOY_LIB_NAMES = %w[
   libswiftCompatibility50.dylib
   libswiftCompatibility51.dylib
@@ -329,6 +399,43 @@ def xcode_swift_lib_source(name, platform_subdir)
   )
   toolchain_lib = File.join(dev_dir, "Toolchains/XcodeDefault.xctoolchain/usr/lib")
   Dir.glob(File.join(toolchain_lib, "swift-*", platform_subdir, name)).first
+end
+
+# The GM toolchain's legacy Swift runtime dir for one platform — the exact
+# corpus ASC's legacy watch-bearing algorithm intersects against (#build119).
+def swift50_toolchain_dir(platform_subdir)
+  dev_dir = (
+    ENV["DEVELOPER_DIR"].to_s.empty? ? `xcode-select -p`.strip : ENV["DEVELOPER_DIR"]
+  )
+  File.join(dev_dir, "Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0", platform_subdir)
+end
+
+# All Mach-O code items of a bundle whose /usr/lib/swift references count
+# toward ASC's legacy expected set: the main executable plus every nested
+# Frameworks binary (framework executables and loose dylibs).
+def bundle_swift_ref_names(bundle_dir)
+  require "open3"
+  plist = File.join(bundle_dir, "Info.plist")
+  exe, = Open3.capture2("/usr/libexec/PlistBuddy", "-c", "Print :CFBundleExecutable", plist)
+  binaries = [File.join(bundle_dir, exe.to_s.strip)]
+  binaries += Dir.glob(File.join(bundle_dir, "Frameworks", "*.dylib"))
+  Dir.glob(File.join(bundle_dir, "Frameworks", "*.framework")) do |fw|
+    fw_exe = File.join(fw, File.basename(fw, ".framework"))
+    binaries << fw_exe if File.file?(fw_exe)
+  end
+  binaries.select { |b| File.file?(b) }.flat_map { |b| swift_runtime_dep_names(b) }.uniq
+end
+
+# ASC's legacy expected set for one bundle: every /usr/lib/swift/lib*.dylib
+# name any of its binaries reference (weak included — build 95's expected
+# list contained weak-only refs) that exists in the GM toolchain's
+# swift-5.0/<plat> dir. Deterministic; verified byte-for-byte against the
+# build 95 ITMS-90429 rejection list.
+def legacy_swift_expected_names(bundle_dir, platform_subdir)
+  tc_dir = swift50_toolchain_dir(platform_subdir)
+  UI.user_error!("Toolchain legacy Swift dir missing: #{tc_dir}") unless File.directory?(tc_dir)
+  available = Dir.glob(File.join(tc_dir, "*.dylib")).map { |l| File.basename(l) }
+  bundle_swift_ref_names(bundle_dir) & available
 end
 
 # ASC ITMS-90429/90427: every dylib listed in SwiftSupport/<platform>/ must
@@ -380,41 +487,58 @@ def embed_swift_runtime_into_archive!(archive_path)
     UI.user_error!("codesign failed for #{File.basename(bundle_dir)} after embedding Swift runtime") unless cs_st.success?
   end
 
-  embedded = {}
-  embed_one = lambda do |bundle_dir, platform_subdir|
+  # Copy `names` from the toolchain swift-5.0/<plat> dir into the bundle's
+  # Frameworks/ (re-signed with our identity, as Xcode's swift-stdlib-tool
+  # would), then re-seal the bundle. Returns the names actually copied.
+  embed_legacy_set = lambda do |bundle_dir, platform_subdir, names|
+    if names.empty?
+      UI.important("#{File.basename(bundle_dir)}: legacy Swift set empty (#{platform_subdir}) — nothing to embed")
+      return []
+    end
+    tc_dir = swift50_toolchain_dir(platform_subdir)
+    dest_dir = File.join(bundle_dir, "Frameworks")
+    FileUtils.mkdir_p(dest_dir)
+    names.sort.each do |name|
+      src = File.join(tc_dir, name)
+      UI.user_error!("#{name} missing from #{tc_dir}") unless File.file?(src)
+      dest = File.join(dest_dir, name)
+      FileUtils.cp(src, dest)
+      _, _, cs_st = Open3.capture3(
+        "codesign", "--force", "--sign", sign_sha,
+        "--preserve-metadata=identifier,entitlements,flags", dest
+      )
+      UI.user_error!("codesign failed for embedded #{name}") unless cs_st.success?
+    end
+    UI.message("Embedded + re-signed #{names.size} legacy Swift dylib(s) into #{File.basename(bundle_dir)}/Frameworks (#{platform_subdir}): #{names.sort.join(", ")}")
+    resign_bundle.call(bundle_dir)
+    names
+  end
+
+  # Back-deployment path for watchless bundles (unchanged; selects nothing at
+  # our current deployment targets — the accepted tvOS/visionOS shape).
+  embed_backdeploy = lambda do |bundle_dir, platform_subdir|
     plist = File.join(bundle_dir, "Info.plist")
     exe, = Open3.capture2("/usr/libexec/PlistBuddy", "-c", "Print :CFBundleExecutable", plist)
-    exe = exe.to_s.strip
-    exe_path = File.join(bundle_dir, exe)
-    return unless File.file?(exe_path)
+    exe_path = File.join(bundle_dir, exe.to_s.strip)
+    return [] unless File.file?(exe_path)
 
     min_os, = Open3.capture2("/usr/libexec/PlistBuddy", "-c", "Print :MinimumOSVersion", plist)
     min_os_major = min_os.to_s.strip.split(".").first.to_i
-
-    detected = swift_runtime_dep_names(exe_path)
-    names = detected.select do |name|
+    names = swift_runtime_dep_names(exe_path).select do |name|
       SWIFT_BACKDEPLOY_LIB_NAMES.include?(name) && swift_backdeploy_needed?(name, min_os_major, platform_subdir)
     end
     if names.empty?
       UI.message("#{File.basename(bundle_dir)}: no Swift back-deployment dylib needed at MinimumOSVersion=#{min_os_major} (#{platform_subdir}); leaving Frameworks/ untouched")
-      return
+      return []
     end
-
     dest_dir = File.join(bundle_dir, "Frameworks")
     FileUtils.mkdir_p(dest_dir)
     copied = names.filter_map do |name|
       src = xcode_swift_lib_source(name, platform_subdir)
       unless src
-        # `next <UI.important(...)>` used to leak UI.important's own (truthy)
-        # return value into this filter_map, so every *skipped* name was
-        # still counted as "copied" (e.g. reported 15 when only 10 real
-        # files existed) — an illusory mismatch against the later, correct
-        # Frameworks/ scan that looked exactly like build 95's ITMS-90429.
-        # `next nil` explicitly excludes skipped names instead.
         UI.important("#{name} not found in any Xcode toolchain swift-*/#{platform_subdir}; skipping")
         next nil
       end
-
       dest = File.join(dest_dir, name)
       FileUtils.cp(src, dest)
       _, _, cs_st = Open3.capture3(
@@ -424,11 +548,8 @@ def embed_swift_runtime_into_archive!(archive_path)
       UI.user_error!("codesign failed for embedded #{name}") unless cs_st.success?
       name
     end
-    embedded[platform_subdir] = ((embedded[platform_subdir] || []) + copied).uniq
-    UI.message("Embedded + re-signed #{copied.size} Swift runtime dylib(s) into #{File.basename(bundle_dir)}/Frameworks (#{platform_subdir}): #{copied.sort.join(", ")}")
     resign_bundle.call(bundle_dir) unless copied.empty?
-    on_disk = Dir.glob(File.join(dest_dir, "*.dylib")).map { |l| File.basename(l) }.sort
-    UI.message("#{File.basename(bundle_dir)}/Frameworks now on disk (#{on_disk.size}): #{on_disk.join(", ")}")
+    copied
   end
 
   dt_platform, = Open3.capture2("/usr/libexec/PlistBuddy", "-c", "Print :DTPlatformName", File.join(app, "Info.plist"))
@@ -438,9 +559,33 @@ def embed_swift_runtime_into_archive!(archive_path)
                   else "iphoneos" # includes xros (visionOS reuses iphoneos SwiftSupport layout)
                   end
 
-  # Watch companion (nested code) first, outer app last.
-  Dir.glob(File.join(app, "Watch", "*.app")).each { |watch_app| embed_one.call(watch_app, "watchos") }
-  embed_one.call(app, main_platform)
+  watch_bundles = Dir.glob(File.join(app, "Watch", "*.app"))
+  embedded = {}
+
+  if watch_bundles.any?
+    # #build119 legacy mode: watch-bearing package. Embed the full legacy
+    # expected set per bundle AND assemble <archive>/SwiftSupport/<plat>/
+    # with pristine Apple-signed toolchain originals so that
+    # `xcodebuild -exportArchive` packages them the same way Organizer does
+    # for a pre-ABI-stability archive. Nested (watch) bundle first so the
+    # outer app's re-seal covers the updated companion.
+    ss_root = File.join(archive_path, "SwiftSupport")
+    watch_bundles.each do |watch_app|
+      names = legacy_swift_expected_names(watch_app, "watchos")
+      embedded["watchos"] = embed_legacy_set.call(watch_app, "watchos", names)
+      ss_dest = File.join(ss_root, "watchos")
+      FileUtils.mkdir_p(ss_dest)
+      names.each { |n| FileUtils.cp(File.join(swift50_toolchain_dir("watchos"), n), File.join(ss_dest, n)) }
+    end
+    names = legacy_swift_expected_names(app, main_platform)
+    embedded[main_platform] = embed_legacy_set.call(app, main_platform, names)
+    ss_dest = File.join(ss_root, main_platform)
+    FileUtils.mkdir_p(ss_dest)
+    names.each { |n| FileUtils.cp(File.join(swift50_toolchain_dir(main_platform), n), File.join(ss_dest, n)) }
+    UI.success("Archive SwiftSupport/ assembled: #{Dir.glob(File.join(ss_root, '*', '*.dylib')).size} Apple-signed dylib(s) across #{Dir.glob(File.join(ss_root, '*')).map { |d| File.basename(d) }.sort.join(', ')}")
+  else
+    embedded[main_platform] = embed_backdeploy.call(app, main_platform)
+  end
 
   embedded
 end
@@ -484,8 +629,13 @@ end
 # deployment target would ever produce, and the most likely reason ASC kept
 # rejecting builds 89-104 across every zip/signature variant tried. If no
 # bundle needs any back-deployment dylib, leave the IPA exactly as exported —
-# an app at this deployment target legitimately ships with no SwiftSupport/
-# at all, and that is not an error.
+# a WATCHLESS app at this deployment target legitimately ships with no
+# SwiftSupport/ at all, and that is not an error. Watch-bearing archives
+# always carry SwiftSupport/ now (#build119, legacy mode in
+# embed_swift_runtime_into_archive!), so for them this either finds the
+# exporter already propagated it (early return) or copies it from the
+# archive here; assert_ipa_has_swift_support! hard-fails pre-upload if
+# neither happened.
 def inject_swift_support_from_archive!(ipa, archive_path)
   require "open3"
   listing, st = Open3.capture2("unzip", "-Z1", ipa)

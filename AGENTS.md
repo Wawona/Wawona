@@ -98,8 +98,11 @@ and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream synta
   `--socket-fds`/no-`socat` path). macOS freedoms never propagate to other Apple
   platforms; mobile store-safety never propagates onto macOS. See
   `.cursor/rules/wawona-macos-no-appstore.mdc`.
-- **ASC IPA SwiftSupport (ITMS-90426):** every App Store / TestFlight IPA must
-  include `SwiftSupport/`. Export with `method: app-store-connect` (explicit
+- **ASC IPA Swift Support (ITMS-90426):** watch-bearing IPAs (iOS +
+  `Watch/*.app`) need legacy Swift packaging — `SwiftSupport/{iphoneos,watchos}`
+  Apple-signed toolchain originals mirrored by re-signed `Frameworks/libswift*`
+  copies per bundle; watchless IPAs (tvOS/visionOS) must ship *without*
+  `SwiftSupport/`. Export with `method: app-store-connect` (explicit
   ExportOptions.plist; do not let gym rewrite deprecated `app-store`). Never
   re-zip `Payload/` alone. Assert before upload (`assert_ipa_has_swift_support!`).
   altool success ≠ ASC acceptance. See `.cursor/rules/wawona-asc-swift-support.mdc`

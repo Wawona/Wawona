@@ -10,6 +10,36 @@ as history.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`ITMS-90426` on build 119 — the settled Swift Support rule** (supersedes
+  the 26.8.8 "root cause" below, which was right for tvOS/visionOS and wrong
+  for iOS+Watch). Build 119 shipped a textbook ABI-stable iOS+Watch IPA
+  (every Swift ref `/usr/lib/swift/*`, minos iOS 17 / watchOS 10, GM `DT*`
+  metadata, classic `Watch/` embed, no `SwiftSupport/`) and Apple still
+  rejected it `ITMS-90426`, while the identical-commit watchless tvOS and
+  visionOS IPAs were accepted (ASC `buildUploads` API: iOS `FAILED`
+  errors=[90426], tvOS/visionOS `COMPLETE`) — the same split as every one of
+  builds 89-118. Conclusion, cross-checked by reproducing build 95's
+  ITMS-90429 expected-file list name-for-name from our own binaries: **ASC
+  runs the legacy pre-ABI-stability Swift packaging validator on any IPA
+  containing a watch companion, deployment targets notwithstanding.** Each
+  platform bundle must carry `Frameworks/libswiftX.dylib` (re-signed with the
+  app's own identity) *and* `SwiftSupport/<plat>/libswiftX.dylib`
+  (byte-identical Apple-signed toolchain originals), where X = the bundle's
+  referenced `/usr/lib/swift` names (weak included) ∩ toolchain
+  `swift-5.0/<plat>/` contents. `embed_swift_runtime_into_archive!` now
+  applies this legacy mode to watch-bearing archives — populating both
+  bundles' `Frameworks/` and archive-root `SwiftSupport/{iphoneos,watchos}`
+  before `xcodebuild -exportArchive` so Apple's own exporter signs and
+  packages them — while watchless archives keep the accepted no-SwiftSupport
+  shape. `assert_ipa_has_swift_support!` is now a hard pre-upload gate on the
+  final ipa's actual zip contents: watch-bearing ipas fail the lane unless
+  `SwiftSupport/{iphoneos,watchos}` hold exactly the expected set with full
+  Frameworks parity and untouched Apple signatures
+  (`assert_legacy_swift_support!`); watchless ipas fail if `SwiftSupport/`
+  sneaks in. No ipa reaches App Store Connect without passing this.
+
 ## [26.8.8] - 2026-08-07
 
 ### Fixed
