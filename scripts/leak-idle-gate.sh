@@ -143,7 +143,18 @@ run_ios() {
     agent-device install "$WAWONA_IOS_APP" "${ad_common[@]}"
   fi
 
-  agent-device open "$IOS_BUNDLE" "${ad_common[@]}"
+  # prepare + open must share one session/daemon. Without --relaunch + a single
+  # re-prepare retry, open re-acquires the XCTest runner lease under a hard 90s
+  # RPC timeout and the session drops mid-run (SESSION_NOT_FOUND: "No active
+  # session. Run open first."), which then reads as machines_home_not_reached.
+  # Mirror agent-device-smoke.sh's known-good open path.
+  if ! agent-device open "$IOS_BUNDLE" --relaunch "${ad_common[@]}"; then
+    echo "== iOS: open failed; recreate same-session prepare and retry once =="
+    stop_agent_device_daemons
+    agent-device prepare ios-runner --device "$IOS_DEVICE" --session "$sess" \
+      --timeout "${WAWONA_IOS_PREPARE_TIMEOUT_MS:-600000}" || true
+    agent-device open "$IOS_BUNDLE" --relaunch "${ad_common[@]}"
+  fi
   ios_prepare_system_ui || true
   agent-device wait 2000 "${ad_common[@]}" || true
 
