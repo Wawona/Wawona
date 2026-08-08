@@ -796,6 +796,37 @@ def prefer_xcode_toolchain!
   ENV["DEVELOPER_DIR"] = developer_dir unless developer_dir.empty?
   ENV["TOOLCHAINS"] ||= "com.apple.dt.toolchain.XcodeDefault"
   UI.message("Xcode toolchain preferred (#{developer_dir}); cleared nix CC/LD env")
+  delete_metal_toolchain_component!
+end
+
+# #build110: build 104 shipped a full (but illegitimate) SwiftSupport/ and
+# was rejected with ITMS-90426 "folder is missing"; build 110 shipped none
+# at all (correct per SWIFT_BACKDEPLOY_LIB_NAMES gating — no back-deploy
+# shim is needed at our deployment target) and got the *identical* rejection
+# text. That means ASC's validator does not derive its own "should this
+# binary have SwiftSupport" expectation from our reasoning about deployment
+# targets — it expects Xcode's *own* archive step to have produced one.
+# Xcode's swift-stdlib-tool never wrote SwiftSupport/ into any of our
+# .xcarchives in the first place (inject_swift_support_from_archive! never
+# once logged "Injecting … from <archive>", only its own fallback
+# synthesis) — a known, GitHub-confirmed Xcode 26 regression: the
+# `MetalToolchain` component (present by default on `macos-26` runner
+# images) rewrites toolchain search paths so swift-stdlib-tool can no longer
+# find Swift compatibility libraries during archive, and it silently skips
+# writing SwiftSupport/ instead of erroring
+# (github.com/actions/runner-images/issues/13135). `TOOLCHAINS=` alone does
+# not fix this — the component itself must be removed from the runner's
+# Xcode install. Idempotent: does nothing if already uninstalled (e.g. on a
+# local dev machine that never downloaded it).
+def delete_metal_toolchain_component!
+  require "open3"
+  out, _, st = Open3.capture3("xcodebuild", "-showComponent", "MetalToolchain")
+  return unless st.success?
+  return if out.include?("uninstalled")
+
+  UI.message("Deleting installed MetalToolchain component (Xcode 26 swift-stdlib-tool search-path regression, actions/runner-images#13135)…")
+  _, err, del_st = Open3.capture3("xcodebuild", "-deleteComponent", "MetalToolchain")
+  UI.important("xcodebuild -deleteComponent MetalToolchain failed (continuing): #{err}") unless del_st.success?
 end
 
 def gym_output_dir
