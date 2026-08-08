@@ -178,35 +178,48 @@ def assert_ipa_no_private_progname!(ipa)
   end
 end
 
-# Hard pre-upload Swift Support gate (#build119). The rule, reverse-
-# engineered from ASC's own per-build errors (buildUploads API, builds
-# 89-119) and encoded in SWIFT_BACKDEPLOY_LIB_NAMES' comment:
+# #build120 escape hatch: full legacy Swift packaging for watch-bearing
+# archives. Default OFF — build 120 shipped it with perfect parity and
+# signatures and ASC still rejected 90429, because the actual trigger of the
+# whole builds-60-120 rejection streak was loose non-Swift dylibs in the
+# device Frameworks/ (TN2435; see assert_no_loose_dylibs!). Flip only if a
+# canonical-shape (no-SwiftSupport, no-loose-dylib) upload is rejected again.
+def watch_legacy_swift_support?
+  ENV["WAWONA_WATCH_LEGACY_SWIFT_SUPPORT"].to_s == "1"
+end
+
+# Hard pre-upload Swift Support gate. The corrected rule (builds 60-120,
+# buildUploads API):
 #
-#   * Watch-bearing IPA → ASC runs the LEGACY Swift packaging validator.
-#     REQUIRED: SwiftSupport/iphoneos + SwiftSupport/watchos, each holding
-#     exactly the legacy expected set (referenced ∩ swift-5.0/<plat>), each
-#     name mirrored in that bundle's own Frameworks/, SwiftSupport copies
-#     byte-identical to the Apple-signed toolchain originals (ITMS-90433:
-#     never re-signed). Anything else fails HERE, before upload — never
-#     hours later via an Apple e-mail.
-#   * Watchless IPA → ABI-stable shape; SwiftSupport/ must be absent unless
-#     a genuine back-deployment dylib is embedded (accepted tvOS/visionOS
-#     shape — builds 118/119 state=COMPLETE).
+#   * EVERY iOS upload from build 60 (pre-watch!) through 120 failed with
+#     rotating ITMS-90426/90429/90433, while dylib-free tvOS/visionOS ipas
+#     from the same commits were accepted — including builds that shipped a
+#     perfect legacy SwiftSupport layout (120: set-parity + Apple-signed
+#     copies verified in the uploaded artifact, still 90429). The constant
+#     was never SwiftSupport content or the watch: it was ANGLE's loose
+#     `Frameworks/libEGL.dylib`/`libGLESv2.dylib` (iphoneos-only), which App
+#     Store packaging forbids (TN2435) and which flips ASC's validator into
+#     pre-ABI Swift-runtime expectations. See assert_no_loose_dylibs!.
+#   * Canonical accepted shape (all platforms, watch or not): ABI-stable —
+#     NO SwiftSupport/, no libswift* in Frameworks/, unless a genuine
+#     back-deployment shim is embedded (none at current targets).
+#   * WAWONA_WATCH_LEGACY_SWIFT_SUPPORT=1 escape hatch: watch-bearing ipas
+#     must instead carry the full legacy layout, validated deeply.
 #
 # Gym 2.232 also rewrites ExportOptions to deprecated app-store — we bypass
 # that with a manual exportArchive (method: app-store-connect).
 def assert_ipa_has_swift_support!(ipa)
   require "open3"
+  assert_no_loose_dylibs!(ipa)
   listing, st = Open3.capture2("unzip", "-Z1", ipa)
   UI.user_error!("unzip -Z1 failed for #{ipa}") unless st.success?
   has_support = listing.lines.any? { |l| l.start_with?("SwiftSupport/") }
   has_watch = listing.lines.any? { |l| l.include?("/Watch/") && l.include?(".app/") }
 
-  if has_watch
+  if has_watch && watch_legacy_swift_support?
     unless has_support
       UI.user_error!(
-        "#{File.basename(ipa)} contains a Watch companion but no SwiftSupport/ — ASC's legacy " \
-        "validator WILL reject this as ITMS-90426 (exactly builds 110/119). " \
+        "#{File.basename(ipa)}: WAWONA_WATCH_LEGACY_SWIFT_SUPPORT=1 but no SwiftSupport/ in the ipa. " \
         "Check embed_swift_runtime_into_archive!/inject_swift_support_from_archive!."
       )
     end
@@ -225,11 +238,45 @@ def assert_ipa_has_swift_support!(ipa)
         "missing SwiftSupport/ (ITMS-90426). Check inject_swift_support_from_archive!."
       )
     end
-    UI.important("#{File.basename(ipa)}: watchless, no back-deployment dylib; SwiftSupport/ correctly absent (accepted ABI-stable shape)")
+    UI.important("#{File.basename(ipa)}: no back-deployment dylib; SwiftSupport/ correctly absent (canonical ABI-stable shape)")
     return
   end
   UI.success("#{File.basename(ipa)}: SwiftSupport/ present")
   assert_swift_support_frameworks_parity!(ipa)
+end
+
+# TN2435 gate — the ACTUAL root cause of the builds 60-120 ASC rejection
+# streak. App Store bundles must not contain loose (non-framework-wrapped)
+# .dylib files under any bundle's Frameworks/; the only historical exception
+# ASC knows is pre-ABI Swift runtime dylibs (libswift*), and any other loose
+# dylib flips its validator into that legacy mode → rotating ITMS-90426/
+# 90429/90433 no matter what SwiftSupport content is shipped. ANGLE must be
+# embedded ONLY as libEGL.framework / libGLESv2.framework on device
+# (xcodegen.nix keeps flat copies simulator-only; wwn-iland's EGL shim
+# probes the framework paths first).
+def assert_no_loose_dylibs!(ipa)
+  require "open3"
+  listing, st = Open3.capture2("unzip", "-Z1", ipa)
+  UI.user_error!("unzip -Z1 failed for #{ipa}") unless st.success?
+  offenders = listing.lines.map(&:strip).select do |path|
+    next false unless path.start_with?("Payload/") && path.end_with?(".dylib")
+    segments = path.split("/")
+    # Loose = directly inside a Frameworks/ dir (not wrapped in .framework).
+    idx = segments.rindex("Frameworks")
+    next false unless idx && idx == segments.size - 2
+    name = segments.last
+    # libswift* loose copies are the one ASC-sanctioned layout (legacy mode).
+    !name.start_with?("libswift")
+  end
+  unless offenders.empty?
+    UI.user_error!(
+      "#{File.basename(ipa)}: loose non-Swift dylib(s) under Frameworks/ — forbidden in App " \
+      "Store bundles (TN2435) and the proven trigger of the ITMS-90426/90429/90433 rejection " \
+      "loop (builds 60-120):\n  - #{offenders.join("\n  - ")}\n" \
+      "Wrap them in .framework bundles (see xcodegen.nix ANGLE embed) or drop them from device builds."
+    )
+  end
+  UI.success("#{File.basename(ipa)}: no loose non-Swift dylibs in Frameworks/ (TN2435 OK)")
 end
 
 # Deep validation of the legacy Swift Support invariant for a watch-bearing
@@ -562,13 +609,21 @@ def embed_swift_runtime_into_archive!(archive_path)
   watch_bundles = Dir.glob(File.join(app, "Watch", "*.app"))
   embedded = {}
 
-  if watch_bundles.any?
-    # #build119 legacy mode: watch-bearing package. Embed the full legacy
-    # expected set per bundle AND assemble <archive>/SwiftSupport/<plat>/
-    # with pristine Apple-signed toolchain originals so that
-    # `xcodebuild -exportArchive` packages them the same way Organizer does
-    # for a pre-ABI-stability archive. Nested (watch) bundle first so the
-    # outer app's re-seal covers the updated companion.
+  if watch_bundles.any? && watch_legacy_swift_support?
+    # #build120 FALLBACK ONLY (WAWONA_WATCH_LEGACY_SWIFT_SUPPORT=1): full
+    # legacy Swift packaging for a watch-bearing archive. Build 120 proved
+    # this shape alone does NOT satisfy ASC (90429 with perfect parity and
+    # signatures) — the actual root cause of the 60-120 rejection streak was
+    # loose non-Swift dylibs (ANGLE libEGL.dylib/libGLESv2.dylib) in the
+    # device Frameworks/ (TN2435), now fixed in xcodegen.nix. Keep this
+    # branch only as an escape hatch if a future canonical-shape upload is
+    # rejected again.
+    #
+    # Embeds the legacy expected set per bundle AND assembles
+    # <archive>/SwiftSupport/<plat>/ with pristine Apple-signed toolchain
+    # originals so `xcodebuild -exportArchive` packages them the way
+    # Organizer does for a pre-ABI-stability archive. Nested (watch) bundle
+    # first so the outer app's re-seal covers the updated companion.
     ss_root = File.join(archive_path, "SwiftSupport")
     watch_bundles.each do |watch_app|
       names = legacy_swift_expected_names(watch_app, "watchos")
@@ -584,6 +639,9 @@ def embed_swift_runtime_into_archive!(archive_path)
     names.each { |n| FileUtils.cp(File.join(swift50_toolchain_dir(main_platform), n), File.join(ss_dest, n)) }
     UI.success("Archive SwiftSupport/ assembled: #{Dir.glob(File.join(ss_root, '*', '*.dylib')).size} Apple-signed dylib(s) across #{Dir.glob(File.join(ss_root, '*')).map { |d| File.basename(d) }.sort.join(', ')}")
   else
+    # Canonical ABI-stable shape (default, watch or no watch): back-deploy
+    # whitelist only — selects nothing at current deployment targets.
+    watch_bundles.each { |w| embed_backdeploy.call(w, "watchos") }
     embedded[main_platform] = embed_backdeploy.call(app, main_platform)
   end
 

@@ -672,23 +672,34 @@ PLIST
     cp -f "$GLES_SRC" "$DEST/libGLESv2.framework/libGLESv2"
     write_fw_plist libEGL libEGL
     write_fw_plist libGLESv2 libGLESv2
-    # iland dlopen also probes flat @executable_path/Frameworks/lib*.dylib.
-    cp -f "$EGL_SRC" "$DEST/libEGL.dylib"
-    cp -f "$GLES_SRC" "$DEST/libGLESv2.dylib"
+    SIGN_LIBS="$DEST/libEGL.framework/libEGL $DEST/libGLESv2.framework/libGLESv2"
+    # Flat @executable_path/Frameworks/lib*.dylib copies are SIMULATOR-ONLY
+    # dev conveniences. Loose .dylib files inside a device Frameworks/ are
+    # forbidden in App Store bundles (TN2435) — App Store Connect's Swift
+    # Support validator misreads any loose dylib as a pre-ABI-stability
+    # Swift runtime dylib and rejects the ipa with rotating ITMS-90426/
+    # 90429/90433 (every iOS upload from build 60 through 120 failed this
+    # way while dylib-free tvOS/visionOS ipas from the same commits were
+    # accepted). iland's EGL shim probes the framework-wrapped binaries
+    # first (wwn-iland egl.c load_angle/gles candidates), so devices only
+    # need libEGL.framework/libGLESv2.framework.
+    case "''${PLATFORM_NAME:-}" in
+      *simulator)
+        cp -f "$EGL_SRC" "$DEST/libEGL.dylib"
+        cp -f "$GLES_SRC" "$DEST/libGLESv2.dylib"
+        SIGN_LIBS="$SIGN_LIBS $DEST/libEGL.dylib $DEST/libGLESv2.dylib"
+        ;;
+    esac
     # /nix/store objects are mode 444; cp preserves that. InstallCoordination's
     # copyfile then fails with NSPOSIXErrorDomain 13 (Permission denied) when
     # Xcode / simctl installs the .app into the Simulator.
     chmod -R u+w "$DEST"
     if [ -n "''${EXPANDED_CODE_SIGN_IDENTITY:-}" ] && [ "''${EXPANDED_CODE_SIGN_IDENTITY}" != "-" ]; then
-      for lib in \
-        "$DEST/libEGL.framework/libEGL" \
-        "$DEST/libGLESv2.framework/libGLESv2" \
-        "$DEST/libEGL.dylib" \
-        "$DEST/libGLESv2.dylib"; do
+      for lib in $SIGN_LIBS; do
         /usr/bin/codesign --force --sign "''${EXPANDED_CODE_SIGN_IDENTITY}" --preserve-metadata=identifier,entitlements,flags "$lib"
       done
     fi
-    echo "Embedded ANGLE dylibs (framework + flat) into $DEST"
+    echo "Embedded ANGLE dylibs into $DEST (flat copies: simulator only)"
   '';
 
   angleSimEmbedScript =

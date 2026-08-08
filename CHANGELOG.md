@@ -12,33 +12,35 @@ as history.
 
 ### Fixed
 
-- **`ITMS-90426` on build 119 — the settled Swift Support rule** (supersedes
-  the 26.8.8 "root cause" below, which was right for tvOS/visionOS and wrong
-  for iOS+Watch). Build 119 shipped a textbook ABI-stable iOS+Watch IPA
-  (every Swift ref `/usr/lib/swift/*`, minos iOS 17 / watchOS 10, GM `DT*`
-  metadata, classic `Watch/` embed, no `SwiftSupport/`) and Apple still
-  rejected it `ITMS-90426`, while the identical-commit watchless tvOS and
-  visionOS IPAs were accepted (ASC `buildUploads` API: iOS `FAILED`
-  errors=[90426], tvOS/visionOS `COMPLETE`) — the same split as every one of
-  builds 89-118. Conclusion, cross-checked by reproducing build 95's
-  ITMS-90429 expected-file list name-for-name from our own binaries: **ASC
-  runs the legacy pre-ABI-stability Swift packaging validator on any IPA
-  containing a watch companion, deployment targets notwithstanding.** Each
-  platform bundle must carry `Frameworks/libswiftX.dylib` (re-signed with the
-  app's own identity) *and* `SwiftSupport/<plat>/libswiftX.dylib`
-  (byte-identical Apple-signed toolchain originals), where X = the bundle's
-  referenced `/usr/lib/swift` names (weak included) ∩ toolchain
-  `swift-5.0/<plat>/` contents. `embed_swift_runtime_into_archive!` now
-  applies this legacy mode to watch-bearing archives — populating both
-  bundles' `Frameworks/` and archive-root `SwiftSupport/{iphoneos,watchos}`
-  before `xcodebuild -exportArchive` so Apple's own exporter signs and
-  packages them — while watchless archives keep the accepted no-SwiftSupport
-  shape. `assert_ipa_has_swift_support!` is now a hard pre-upload gate on the
-  final ipa's actual zip contents: watch-bearing ipas fail the lane unless
-  `SwiftSupport/{iphoneos,watchos}` hold exactly the expected set with full
-  Frameworks parity and untouched Apple signatures
-  (`assert_legacy_swift_support!`); watchless ipas fail if `SwiftSupport/`
-  sneaks in. No ipa reaches App Store Connect without passing this.
+- **The actual root cause of every iOS App Store rejection since July
+  (builds 60-120, rotating `ITMS-90426`/`90429`/`90433`): loose non-Swift
+  dylibs in `Frameworks/`.** The ASC `buildUploads` API record shows every
+  iOS upload from build 60 (weeks **before** the watch companion existed)
+  through 120 `FAILED` with a Swift Support error, while the tvOS/visionOS
+  ipas of the same commits were always `COMPLETE`. That killed both prior
+  theories (SwiftSupport content, builds 89-110; watch-triggered legacy
+  validation, build 119-120): build 120 shipped a *perfect* legacy layout —
+  `SwiftSupport/{iphoneos,watchos}` with exact set-parity, Frameworks
+  mirrors, byte-identical Apple-signed copies, all verified in the uploaded
+  artifact — and ASC still answered `90429`, listing dylibs that were
+  physically present. The one constant, present only in the iOS ipa: ANGLE's
+  loose `Frameworks/libEGL.dylib` + `libGLESv2.dylib` flat convenience
+  copies (tvOS never bundles ANGLE; visionOS's embed glob never matched).
+  App Store bundles must not contain loose, non-framework-wrapped `.dylib`
+  files (TN2435); the only loose dylibs ASC sanctions under `Frameworks/`
+  are pre-ABI Swift runtime dylibs, so the ANGLE ones flipped its validator
+  into legacy Swift-runtime expectations no matter what SwiftSupport content
+  was shipped. Fixed on both sides: `xcodegen.nix` now embeds the flat ANGLE
+  copies **simulator-only** (device ships `libEGL.framework`/
+  `libGLESv2.framework` only), and `wwn-iland`'s EGL shim (input bumped to
+  `d6cf97a`) probes the framework-wrapped binaries first. Canonical shape
+  for every Apple-mobile ipa, watch or not, is ABI-stable — no
+  `SwiftSupport/`, no `Frameworks/libswift*`.
+  `WAWONA_WATCH_LEGACY_SWIFT_SUPPORT=1` keeps the fully-validated legacy
+  watch layout (built for build 120) as an escape hatch. New hard pre-upload
+  gates on the final ipa's actual zip contents: `assert_no_loose_dylibs!`
+  (TN2435 — the real regression guard) plus canonical/legacy Swift Support
+  shape checks; no ipa reaches App Store Connect without passing them.
 
 ## [26.8.8] - 2026-08-07
 
