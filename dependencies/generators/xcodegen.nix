@@ -3053,11 +3053,60 @@ EOF
     fi
     ${xcodeUtils.xcodeWrapper}/bin/xcode-wrapper ${pkgs.xcodegen}/bin/xcodegen generate --use-cache --spec "$TMP_SPEC"
 
-    # Keep XcodeGen's classic Embed Watch Content → Watch/ layout. Xcode 26
-    # device installs prefer PlugIns/ (XcodeGen #1613), but App Store Connect
-    # / altool reject PlugIns-only companion IPAs ("Cannot determine the
-    # platform") and rewriting the IPA after export breaks code signatures.
-    # Archive + TestFlight on Xcode 26.6 succeed with Watch/ (#136).
+    # #ITMS-90426-watch (2026-08-08): XcodeGen 2.44.1 still emits the legacy
+    # Watch/ embed (dstSubfolderSpec=16, dstPath="$(CONTENTS_FOLDER_PATH)/Watch")
+    # for "Embed Watch Content" — see
+    # https://github.com/yonaskolb/XcodeGen/issues/1613 (filed against Xcode
+    # 26.4, unmerged fix in PR #1614). Xcode 26 requires an independent
+    # (no-WatchKit-extension) watch app under PlugIns/ instead; on-device
+    # install with the legacy path fails outright ("… must be embedded in the
+    # parent app bundle's PlugIns directory, but is embedded in the parent app
+    # bundle's Watch directory"), and App Store Connect's async binary
+    # processing rejects EVERY iOS+Watch upload with a rotating
+    # ITMS-90426/90429/90433 regardless of SwiftSupport/Frameworks content
+    # (confirmed: build 104 shipped a full legacy SwiftSupport/, build 110
+    # shipped none at all — both got the identical rejection; only the iOS+
+    # Watch delivery ever fails, tvOS/visionOS ship clean). A first attempt to
+    # fix this (commit c7e3304) patched only the legacy numeric
+    # `dstSubfolderSpec`/`dstPath` fields and was reverted — it broke code
+    # signatures and got a *different* ASC rejection ("Cannot determine the
+    # platform"), because Xcode 26 also changed how it *serializes* copy-files
+    # destinations: real Xcode-26-resaved projects write a string enum,
+    # `dstSubfolder = PlugIns;`, dropping the numeric `dstSubfolderSpec`
+    # entirely (see tuist/XcodeProj#1038) — a partial numeric-only edit left
+    # the phase in a shape no Xcode 26 toolchain path actually produces.
+    # Rewrite the whole phase to match what a real Xcode 26 "New Target ->
+    # watchOS -> App" embed produces, not just its destination fields.
+    if [ -f Wawona.xcodeproj/project.pbxproj ]; then
+      ${pkgs.python3}/bin/python3 - <<'PY'
+from pathlib import Path
+import re
+
+p = Path("Wawona.xcodeproj/project.pbxproj")
+text = p.read_text()
+
+# XcodeGen/XcodeProj emit keys alphabetically, so dstSubfolderSpec always
+# immediately follows dstPath within the same phase (verified against a real
+# generated project.pbxproj) — replace the pair together in one shot rather
+# than touching dstPath and dstSubfolderSpec independently, which is what
+# left the phase in an inconsistent state last time (commit c7e3304).
+pattern = re.compile(
+    r'(?P<indent>[ \t]*)dstPath = "\$\(CONTENTS_FOLDER_PATH\)/Watch";\n'
+    r'[ \t]*dstSubfolderSpec = 16;\n'
+)
+matches = list(pattern.finditer(text))
+if not matches:
+    print("note: no legacy Watch/ embed dstPath+dstSubfolderSpec pair to patch")
+elif len(matches) > 1:
+    raise SystemExit(f"error: expected exactly one legacy Watch/ embed phase, found {len(matches)}")
+else:
+    m = matches[0]
+    replacement = f'{m.group("indent")}dstPath = "";\n{m.group("indent")}dstSubfolder = PlugIns;\n'
+    text = text[: m.start()] + replacement + text[m.end() :]
+    p.write_text(text)
+    print("Patched Embed Watch Content -> PlugIns/ (Xcode 26 dstSubfolder string form).")
+PY
+    fi
 
     mkdir -p "Wawona.xcodeproj/xcshareddata/xcschemes"
     cat > "Wawona.xcodeproj/xcshareddata/xcschemes/xcschememanagement.plist" <<'EOF'

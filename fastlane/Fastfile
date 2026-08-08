@@ -62,8 +62,9 @@ end
 # watchOS is a companion (WKCompanionAppBundleIdentifier → com.aspauldingcode.Wawona).
 # A bare watchOS archive has no App Store export method on Xcode 26
 # (`expected one {} but found app-store`). Ship watch by embedding into
-# Wawona-iOS under classic Watch/ (ASC rejects PlugIns-only; see #136).
-# Never gym Wawona-watchOS alone.
+# Wawona-iOS under PlugIns/ — Xcode 26's required location for an
+# independent (no-extension) watch app; see xcodegen.nix's postGenerate
+# patch and #136 / #ITMS-90426-watch. Never gym Wawona-watchOS alone.
 APPLE_BETA_TARGETS = [
   {
     # Universal (phone+iPad). Do not also upload Wawona-iPadOS — same bundle id
@@ -219,25 +220,30 @@ def assert_ipa_has_swift_support!(ipa)
   assert_swift_support_frameworks_parity!(ipa)
 end
 
-# #136: iOS App Store IPA must carry the watch companion under Watch/.
+# #136 / #ITMS-90426-watch: iOS App Store IPA must carry the watch companion
+# under PlugIns/ (Xcode 26 requirement for an independent, no-extension watch
+# app — see xcodegen.nix's postGenerate patch and
+# https://github.com/yonaskolb/XcodeGen/issues/1613). Legacy Watch/ embedding
+# built and uploaded but was rejected by ASC's async binary processing on
+# every single attempt (ITMS-90426/90429/90433, builds 68-110).
 def assert_ipa_has_watch_companion!(ipa)
   if ENV["WAWONA_SKIP_WATCH"].to_s == "1"
-    UI.important("WAWONA_SKIP_WATCH=1 — skipping Watch/ companion assert")
+    UI.important("WAWONA_SKIP_WATCH=1 — skipping PlugIns/ companion assert")
     return
   end
   require "open3"
   listing, st = Open3.capture2("unzip", "-Z1", ipa)
   UI.user_error!("unzip -Z1 failed for #{ipa}") unless st.success?
   watch_app = listing.lines.any? do |l|
-    l.include?("/Watch/") && l.include?(".app/")
+    l.include?("/PlugIns/") && l.include?(".app/")
   end
   unless watch_app
     UI.user_error!(
-      "#{File.basename(ipa)} is missing Payload/*/Watch/*.app (#136). " \
-      "Companion must embed under classic Watch/, not PlugIns-only."
+      "#{File.basename(ipa)} is missing Payload/*/PlugIns/*.app (#136). " \
+      "Companion must embed under Xcode 26's PlugIns/, not legacy Watch/."
     )
   end
-  UI.success("#{File.basename(ipa)}: Watch/ companion present")
+  UI.success("#{File.basename(ipa)}: PlugIns/ companion present")
 end
 
 # Names of /usr/lib/swift/lib*.dylib the binary's LC_LOAD_DYLIB commands
@@ -429,7 +435,7 @@ def embed_swift_runtime_into_archive!(archive_path)
                   end
 
   # Watch companion (nested code) first, outer app last.
-  Dir.glob(File.join(app, "Watch", "*.app")).each { |watch_app| embed_one.call(watch_app, "watchos") }
+  Dir.glob(File.join(app, "PlugIns", "*.app")).each { |watch_app| embed_one.call(watch_app, "watchos") }
   embed_one.call(app, main_platform)
 
   embedded
@@ -455,7 +461,7 @@ def swift_support_platforms_for_ipa_dir(dir)
                 ["iphoneos"]
               end
   # Companion watch content needs its own SwiftSupport/watchos slice.
-  if Dir.glob(File.join(app, "Watch", "*.app")).any?
+  if Dir.glob(File.join(app, "PlugIns", "*.app")).any?
     platforms << "watchos" unless platforms.include?("watchos")
   end
   platforms
@@ -493,7 +499,7 @@ def inject_swift_support_from_archive!(ipa, archive_path)
       app = Dir.glob(File.join(dir, "Payload", "*.app")).first
       main_platform = swift_support_platforms_for_ipa_dir(dir).first
       bundles = { main_platform => app }
-      Dir.glob(File.join(app, "Watch", "*.app")).each { |w| bundles["watchos"] = w }
+      Dir.glob(File.join(app, "PlugIns", "*.app")).each { |w| bundles["watchos"] = w }
 
       any_from_frameworks = false
       bundles.each do |plat, bundle_dir|
@@ -575,7 +581,7 @@ def assert_swift_support_frameworks_parity!(ipa)
                     else "iphoneos" # includes xros
                     end
     bundle_for_platform = { main_platform => app }
-    Dir.glob(File.join(app, "Watch", "*.app")).each { |w| bundle_for_platform["watchos"] = w }
+    Dir.glob(File.join(app, "PlugIns", "*.app")).each { |w| bundle_for_platform["watchos"] = w }
 
     missing = []
     Dir.glob(File.join(ss_root, "*")).each do |plat_dir|
