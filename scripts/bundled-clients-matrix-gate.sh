@@ -625,12 +625,15 @@ PY
   defaults write com.aspauldingcode.Wawona "$prefs_key" -bool YES
   defaults write com.aspauldingcode.Wawona hasSeenWelcome -bool YES
 
-  # `open` on a GHA-unpacked artifact fails (Gatekeeper quarantine / LaunchServices
-  # 111) and pgrep -x then finds nothing. Mirror niri-smoke-macos.sh: strip
-  # quarantine, ad-hoc re-sign, and exec the binary directly so we own the pid.
+  # `open` on a GHA-unpacked artifact fails (Gatekeeper / LaunchServices 111) and
+  # pgrep -x then finds nothing. Mirror niri-smoke-macos.sh: strip quarantine and
+  # exec the binary directly so we own the pid. The GHA artifact unzip also drops
+  # the +x bit (→ "Permission denied" on execve), so restore it first; the nix
+  # code signature is intact and valid, so no ad-hoc re-sign is needed.
   xattr -cr "$app" 2>/dev/null || true
-  codesign --force --sign - --timestamp=none "$app/Contents/MacOS/Wawona" >/dev/null 2>&1 || true
-  codesign --force --deep --sign - "$app" >/dev/null 2>&1 || true
+  chmod +x "$app/Contents/MacOS/Wawona" 2>/dev/null || true
+  find "$app/Contents/MacOS" -type f -exec chmod +x {} + 2>/dev/null || true
+  find "$app/Contents/Resources/bin" -type f -exec chmod +x {} + 2>/dev/null || true
   "$app/Contents/MacOS/Wawona" >"$cell/app.log" 2>&1 &
   local pid=$!
   # Settle: wait for the process to be alive; fall back to name/path lookup if the

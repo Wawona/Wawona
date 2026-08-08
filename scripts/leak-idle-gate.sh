@@ -336,12 +336,15 @@ run_macos() {
   echo "== macOS leak-idle: $app =="
   pkill -x Wawona 2>/dev/null || true
   sleep 1
-  # `open` on a GHA-unpacked artifact fails (Gatekeeper quarantine / LaunchServices
-  # 111) → leak_macos_pid finds nothing → "pid_not_found". Mirror the bundled
-  # clients matrix / niri-smoke: strip quarantine, ad-hoc re-sign, direct exec.
+  # `open` on a GHA-unpacked artifact fails (Gatekeeper / LaunchServices 111) →
+  # leak_macos_pid finds nothing → "pid_not_found". Mirror niri-smoke-macos.sh:
+  # strip quarantine and exec the binary directly. The GHA artifact unzip also
+  # drops the +x bit (→ "Permission denied" on execve), so restore it first; the
+  # nix code signature is intact and valid, so no ad-hoc re-sign is needed.
   xattr -cr "$app" 2>/dev/null || true
-  codesign --force --sign - --timestamp=none "$app/Contents/MacOS/Wawona" >/dev/null 2>&1 || true
-  codesign --force --deep --sign - "$app" >/dev/null 2>&1 || true
+  chmod +x "$app/Contents/MacOS/Wawona" 2>/dev/null || true
+  find "$app/Contents/MacOS" -type f -exec chmod +x {} + 2>/dev/null || true
+  find "$app/Contents/Resources/bin" -type f -exec chmod +x {} + 2>/dev/null || true
   "$app/Contents/MacOS/Wawona" >"$out_dir/macos-app.log" 2>&1 &
   local pid=$!
   local settle=0
