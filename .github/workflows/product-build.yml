@@ -180,7 +180,10 @@ jobs:
   android-apk:
     name: "Android debug APK"
     if: ${{ (inputs.only || 'all') == 'all' || (inputs.only || 'all') == 'android-apk' }}
-    runs-on: macos-15
+    # macOS (not ubuntu): Android cross deps (e.g. zsh-android) fail configure on
+    # linux; runner OS version is irrelevant (Nix supplies NDK). Aligned to
+    # macos-26 with the Apple product jobs.
+    runs-on: macos-26
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5

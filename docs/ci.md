@@ -40,6 +40,8 @@ Workflow display names use a role prefix (`Gate` / `Build` / `Watch` / `Ship`). 
 | **Ship: beta (stores)** (`release-beta.yml`) | — | push + tags `v*` | Fastlane stores (match+gym); owns AppImages via product-build `only: appimage` with `tip_key: ship-beta-<branch>` (must not share Gate: products `product-build-<branch>-appimage` or tip concurrency cancels one caller) |
 | **Ship: GitHub assets** (`release.yml`) | — | tags `v*` | GitHub Release: DMG/APK/AppImage from product-build (`macos-app` / `android-apk` / `appimage` only; tip_key `ship-assets-<tag>`); IPA via Fastlane `ios github_ipa` (match+gym, same as Ship: beta) |
 
+**macOS DMG layout:** the DMG ships **both** `Wawona.app` (drag → `/Applications`) **and** `WawonaAgent.pkg`. The pkg is a hybrid installer built from the same staged app ([`scripts/macos-launch-agent-pkg.sh`](../scripts/macos-launch-agent-pkg.sh)): its payload installs `/Applications/Wawona.app` and its `postinstall` loads the compositor + menubar LaunchAgents and publishes `WAYLAND_DISPLAY` / `XDG_RUNTIME_DIR`. Default installs for the console user; `sudo WAWONA_INSTALL_USERS=a,b installer -pkg …` targets more accounts. `release.yml` hard-fails if either `Wawona.app` or `WawonaAgent.pkg` is missing before `hdiutil`.
+
 **watchOS store shipping:** bare `Wawona-watchOS` archives cannot export `app-store-connect` on Xcode 26. The companion is **embedded into `Wawona-iOS`** under classic `Watch/` (XcodeGen default; App Store Connect expects this layout). Never add standalone watch to `APPLE_BETA_TARGETS`. Gate: products still builds `Wawona-watchOS` for native/sim verification. See [#136](https://github.com/Wawona/Wawona/issues/136).
 
 **IPA export (ITMS-90426):** gym archives only; Fastlane runs `xcodebuild -exportArchive` with an explicit `ExportOptions.plist` (`method: app-store-connect`) because gym 2.232 rewrites custom plists back to deprecated `app-store`.
@@ -116,6 +118,8 @@ Runners use [`.github/scripts/select-xcode.sh`](../.github/scripts/select-xcode.
 | Missing pin | Fail closed (lists installed `Xcode*.app`) |
 
 **Bump procedure:** update `DEFAULT_XCODE_APP` in `select-xcode.sh` in a reviewed PR after confirming the GHA image ships that app. Expect impure weston/backend/product hash churn + XCTest cache misses — that is intentional.
+
+**Runner OS:** all macOS jobs (Apple products, Android APK/AAB, Android Gradle gate, macOS e2e) run on **`macos-26`**. Android needs a macOS host (Linux fails `zsh-android` configure) but not a specific macOS version — Nix supplies the NDK — so it is aligned to `macos-26` rather than pinned to `macos-15`.
 
 FlakeHub caches **Nix store paths** only. It does **not** ship Apple platform SDKs (`iphoneos` / simulator). Keep `warm-ios-simulator-sdk.sh` + host Xcode.
 

@@ -251,23 +251,43 @@ run_android() {
     android_uia_tap_id "$id" && return 0
     return 1
   }
+  # Pixel launcher ANR / system dialogs otherwise eat the Continue+Start taps.
+  dismiss_android_blockers() {
+    adb -s "$serial" shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1 || true
+    agent-device alert dismiss "${ad_common[@]}" >/dev/null 2>&1 || true
+    if agent-device is visible 'label="Wait"' "${ad_common[@]}" >/dev/null 2>&1; then
+      agent-device press 'label="Wait"' "${ad_common[@]}" >/dev/null 2>&1 || true
+    fi
+    if agent-device is visible 'label="Close app"' "${ad_common[@]}" >/dev/null 2>&1; then
+      agent-device press 'label="Close app"' "${ad_common[@]}" >/dev/null 2>&1 || true
+    fi
+  }
 
-  agent-device open "$ANDROID_PKG" "${ad_common[@]}"
+  agent-device open "$ANDROID_PKG" --relaunch "${ad_common[@]}"
   agent-device wait 3000 "${ad_common[@]}" || true
+  dismiss_android_blockers
   agent-device press 'label="Continue"' "${ad_common[@]}" >/dev/null 2>&1 || true
+  android_press_id "wwn.welcome.continue" || true
   agent-device wait 2000 "${ad_common[@]}" || true
+  dismiss_android_blockers
 
   if ! agent-device wait 'id="wwn.machines.root"' 20000 "${ad_common[@]}" >/dev/null 2>&1 \
     && ! android_uia_has_text "Machine Configuration"; then
     write_verdict android fail "machines_home_not_reached"
+    agent-device screenshot "$out_dir/android-no-machines.png" "${ad_common[@]}" || true
+    android_uia_dump >"$out_dir/android-no-machines-ui.xml" 2>/dev/null || true
     agent-device close "${ad_common[@]}" || true
     return 1
   fi
 
+  dismiss_android_blockers
   if ! android_press_id "wwn.machines.start" \
-    && ! agent-device press 'label="Start"' "${ad_common[@]}" >/dev/null 2>&1; then
+    && ! agent-device press 'label="Start"' "${ad_common[@]}" >/dev/null 2>&1 \
+    && ! android_uia_tap_text "Start" \
+    && ! android_tap_ref 227 1039; then
     write_verdict android fail "start_not_found"
     agent-device screenshot "$out_dir/android-start-fail.png" "${ad_common[@]}" || true
+    android_uia_dump >"$out_dir/android-start-fail-ui.xml" 2>/dev/null || true
     agent-device close "${ad_common[@]}" || true
     return 1
   fi
@@ -316,13 +336,25 @@ run_macos() {
   echo "== macOS leak-idle: $app =="
   pkill -x Wawona 2>/dev/null || true
   sleep 1
-  open "$app"
-  sleep 5
-
-  local pid
-  pid="$(leak_macos_pid)"
+  # `open` on a GHA-unpacked artifact fails (Gatekeeper quarantine / LaunchServices
+  # 111) → leak_macos_pid finds nothing → "pid_not_found". Mirror the bundled
+  # clients matrix / niri-smoke: strip quarantine, ad-hoc re-sign, direct exec.
+  xattr -cr "$app" 2>/dev/null || true
+  codesign --force --sign - --timestamp=none "$app/Contents/MacOS/Wawona" >/dev/null 2>&1 || true
+  codesign --force --deep --sign - "$app" >/dev/null 2>&1 || true
+  "$app/Contents/MacOS/Wawona" >"$out_dir/macos-app.log" 2>&1 &
+  local pid=$!
+  local settle=0
+  while [ "$settle" -lt "${WAWONA_LEAK_LAUNCH_SETTLE_SEC:-8}" ]; do
+    kill -0 "$pid" 2>/dev/null && break
+    sleep 1
+    settle=$((settle + 1))
+  done
+  if ! kill -0 "$pid" 2>/dev/null; then
+    pid="$(leak_macos_pid)"
+  fi
   if [ -z "$pid" ]; then
-    write_verdict macos fail "pid_not_found"
+    write_verdict macos fail "pid_not_found (see macos-app.log)"
     return 1
   fi
   echo "== macOS pid=$pid =="

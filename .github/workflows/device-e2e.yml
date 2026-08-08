@@ -191,7 +191,7 @@ jobs:
   android-apk:
     name: "Android: Wawona.apk"
     if: ${{ (inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'android' }}
-    runs-on: ${{ inputs.products_ready && 'ubuntu-latest' || 'macos-15' }}
+    runs-on: ${{ inputs.products_ready && 'ubuntu-latest' || 'macos-26' }}
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5

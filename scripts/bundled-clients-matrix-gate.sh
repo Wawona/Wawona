@@ -153,17 +153,29 @@ lldb_connect() {
   local pid="$1" out="$2"
   local script
   script="$(mktemp)"
-  # iOS 26 sim: `expr -l objc++ -- @autoreleasepool {…}` returns empty with no
-  # error. Plain `-l objc` (no autoreleasepool) works and dumps `(BOOL) $N = YES`.
+  # Release product apps have no debug symbols, so the ObjC expression parser
+  # rejects a bare `WWNMachineSessionBridge` receiver with "use of undeclared
+  # identifier" (the class token is unknown at compile time). Resolve the class
+  # at runtime with NSClassFromString and send the real selectors to the Class
+  # object — that compiles without headers and dumps `(BOOL) $N = YES`.
+  # iOS 26 sim: `-l objc++` + @autoreleasepool returns empty; plain `-l objc` works.
   cat >"$script" <<EOF
 process attach --pid $pid
-expr -l objc -- NSError *e = nil; BOOL ok = [WWNMachineSessionBridge connectProfile:[[WWNMachineProfileStore loadProfiles] firstObject] error:&e]; ok
+expr -l objc -- Class store = NSClassFromString(@"WWNMachineProfileStore"); Class bridge = NSClassFromString(@"WWNMachineSessionBridge"); id profile = [[store loadProfiles] firstObject]; NSError *e = nil; BOOL ok = (store != nil && bridge != nil) ? [bridge connectProfile:profile error:&e] : (BOOL)0; if (!ok) { NSLog(@"WWN_MATRIX_CONNECT_ERR store=%@ bridge=%@ err=%@", store, bridge, e); } ok
 detach
 quit
 EOF
   run_lldb_batch "$script" "$out" || true
   rm -f "$script"
-  grep -Eq '\(BOOL\) \$[0-9]+ = YES' "$out"
+  if grep -Eq '\(BOOL\) \$[0-9]+ = YES' "$out"; then
+    return 0
+  fi
+  # Surface the real reason (undeclared class → symbol/link issue; err=… → runtime).
+  {
+    echo "--- connectProfile did not return YES; diagnostics ---"
+    grep -iE 'error:|undeclared|WWN_MATRIX_CONNECT_ERR|nil' "$out" | head -8 || true
+  } >>"$out"
+  return 1
 }
 
 lldb_disconnect() {
@@ -172,7 +184,7 @@ lldb_disconnect() {
   script="$(mktemp)"
   cat >"$script" <<EOF
 process attach --pid $pid
-expr -l objc -- [WWNMachineSessionBridge disconnectProfile:[[WWNMachineProfileStore loadProfiles] firstObject]]; (int)1
+expr -l objc -- Class store = NSClassFromString(@"WWNMachineProfileStore"); Class bridge = NSClassFromString(@"WWNMachineSessionBridge"); id profile = [[store loadProfiles] firstObject]; if (bridge != nil) { [bridge disconnectProfile:profile]; } (int)1
 detach
 quit
 EOF
@@ -420,9 +432,6 @@ run_android_cell() {
 
   adb -s "$serial" logcat -c >/dev/null 2>&1 || true
   adb -s "$serial" shell am force-stop "$ANDROID_PKG" >/dev/null 2>&1 || true
-  adb -s "$serial" shell monkey -p "$ANDROID_PKG" -c android.intent.category.LAUNCHER 1 \
-    >"$cell/launch.log" 2>&1 || true
-  sleep 3
 
   if ! command -v agent-device >/dev/null; then
     record android "$client" FAIL "agent-device not on PATH" "$hold" "$cell"
@@ -434,19 +443,109 @@ run_android_cell() {
   local sess="wawona-android-matrix-${client}"
   local ad_common=(--platform android --serial "$serial" --session "$sess")
 
-  agent-device open "$ANDROID_PKG" "${ad_common[@]}" >/dev/null 2>&1 || true
-  agent-device wait 2000 "${ad_common[@]}" || true
-  agent-device press 'label="Continue"' "${ad_common[@]}" >/dev/null 2>&1 || true
-  agent-device wait 1500 "${ad_common[@]}" || true
-
-  if ! agent-device press 'id="wwn.machines.start"' "${ad_common[@]}" >/dev/null 2>&1 \
-    && ! agent-device press 'label="Start"' "${ad_common[@]}" >/dev/null 2>&1 \
-    && ! android_uia_tap_id "wwn.machines.start"; then
+  # Robust launch + Welcome + Start flow ported from agent-device-smoke.sh: the
+  # Pixel launcher ANR / system dialogs and the Compose Welcome sheet otherwise
+  # eat the Start tap and the cell fails with "Start control not pressed".
+  dismiss_android_blockers() {
+    adb -s "$serial" shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1 || true
+    agent-device alert dismiss "${ad_common[@]}" >/dev/null 2>&1 || true
+    if agent-device is visible 'label="Wait"' "${ad_common[@]}" >/dev/null 2>&1; then
+      agent-device press 'label="Wait"' "${ad_common[@]}" >/dev/null 2>&1 || true
+    fi
+    if agent-device is visible 'label="Close app"' "${ad_common[@]}" >/dev/null 2>&1; then
+      agent-device press 'label="Close app"' "${ad_common[@]}" >/dev/null 2>&1 || true
+    fi
+  }
+  android_press_id() {
+    agent-device press "id=\"$1\"" "${ad_common[@]}" >/dev/null 2>&1 && return 0
+    android_uia_tap_id "$1" && return 0
+    return 1
+  }
+  android_press_text() {
+    android_uia_tap_text "$1" && return 0
+    agent-device find "$1" press --first "${ad_common[@]}" >/dev/null 2>&1 && return 0
+    agent-device press "label=\"$1\"" "${ad_common[@]}" >/dev/null 2>&1 && return 0
+    agent-device press "text=\"$1\"" "${ad_common[@]}" >/dev/null 2>&1 && return 0
+    return 1
+  }
+  android_machines_markers_present() {
+    android_uia_has_id "wwn.machines.root" && return 0
+    android_uia_has_text "Machine Configuration" && return 0
+    android_uia_has_text "Default Machine" && return 0
+    android_uia_has_text "All Machines" && return 0
+    android_uia_has_text "Disconnected" && return 0
+    return 1
+  }
+  android_dismiss_welcome() {
+    android_machines_markers_present && return 0
+    android_press_id "wwn.welcome.continue" || true
+    android_press_text "Continue" || true
+    agent-device press 'label="Continue"' "${ad_common[@]}" >/dev/null 2>&1 || true
+    android_tap_ref 540 1390 || true
+    adb -s "$serial" shell input tap 540 1390 >/dev/null 2>&1 || true
+    agent-device wait 2500 "${ad_common[@]}" || true
+    dismiss_android_blockers
+  }
+  android_wait_machines_home() {
+    local elapsed=0
+    while (( elapsed < 30000 )); do
+      android_machines_markers_present && return 0
+      if (( elapsed >= 2500 )) && ! android_welcome_continue_visible; then
+        return 0
+      fi
+      sleep 1
+      elapsed=$((elapsed + 1000))
+    done
+    android_machines_markers_present && return 0
+    android_welcome_continue_visible || return 0
+    return 1
+  }
+  android_dismiss_modals() {
+    if android_uia_has_text "Cancel" \
+      || android_uia_has_text "Wawona Settings" \
+      || android_uia_has_text "Add Machine Profile" \
+      || android_uia_has_id "wwn.settings.root" \
+      || android_uia_has_id "wwn.machines.editor"; then
+      android_press_text "Cancel" || true
+      android_press_id "wwn.settings.done" || android_press_text "Done" || true
+      agent-device back "${ad_common[@]}" >/dev/null 2>&1 || true
+      adb -s "$serial" shell input keyevent 4 >/dev/null 2>&1 || true
+      agent-device wait 800 "${ad_common[@]}" || true
+    fi
+  }
+  android_press_start() {
+    android_press_id "wwn.machines.start" && return 0
+    android_press_text "Start" && return 0
+    android_tap_ref 227 1039 && return 0
+    adb -s "$serial" shell input tap 227 1032 >/dev/null 2>&1 && return 0
+    return 1
+  }
+  matrix_android_start_fail() {
     agent-device screenshot "$cell/start-fail.png" "${ad_common[@]}" || true
-    record android "$client" FAIL "Start control not pressed" "$hold" "$cell"
+    android_uia_dump >"$cell/start-fail-ui.xml" 2>/dev/null || true
+    agent-device snapshot -i --raw "${ad_common[@]}" >"$cell/start-fail-snapshot.txt" 2>&1 || true
+    record android "$client" FAIL "Start control not pressed (see start-fail-ui.xml)" "$hold" "$cell"
     agent-device close "${ad_common[@]}" || true
+  }
+
+  agent-device open "$ANDROID_PKG" --relaunch "${ad_common[@]}" >/dev/null 2>&1 || true
+  agent-device wait 4000 "${ad_common[@]}" || true
+  dismiss_android_blockers
+  android_dismiss_welcome
+  agent-device wait 2000 "${ad_common[@]}" || true
+  dismiss_android_blockers
+  if ! android_wait_machines_home; then
+    matrix_android_start_fail
     return 1
   fi
+  android_dismiss_modals
+  dismiss_android_blockers
+  if ! android_press_start; then
+    matrix_android_start_fail
+    return 1
+  fi
+  agent-device wait 6000 "${ad_common[@]}" || true
+  dismiss_android_blockers
 
   adb -s "$serial" logcat -d >"$cell/logcat-pre.txt" 2>&1 || true
   local t=0
@@ -526,12 +625,30 @@ PY
   defaults write com.aspauldingcode.Wawona "$prefs_key" -bool YES
   defaults write com.aspauldingcode.Wawona hasSeenWelcome -bool YES
 
-  open "$app"
-  sleep 4
-  local pid
-  pid="$(pgrep -x Wawona | head -1 || true)"
+  # `open` on a GHA-unpacked artifact fails (Gatekeeper quarantine / LaunchServices
+  # 111) and pgrep -x then finds nothing. Mirror niri-smoke-macos.sh: strip
+  # quarantine, ad-hoc re-sign, and exec the binary directly so we own the pid.
+  xattr -cr "$app" 2>/dev/null || true
+  codesign --force --sign - --timestamp=none "$app/Contents/MacOS/Wawona" >/dev/null 2>&1 || true
+  codesign --force --deep --sign - "$app" >/dev/null 2>&1 || true
+  "$app/Contents/MacOS/Wawona" >"$cell/app.log" 2>&1 &
+  local pid=$!
+  # Settle: wait for the process to be alive; fall back to name/path lookup if the
+  # launcher re-execs into a differently-named helper.
+  local settle=0
+  while [[ "$settle" -lt "${WAWONA_MATRIX_LAUNCH_SETTLE_SEC:-8}" ]]; do
+    kill -0 "$pid" 2>/dev/null && break
+    sleep 1
+    settle=$((settle + 1))
+  done
+  if ! kill -0 "$pid" 2>/dev/null; then
+    pid="$(pgrep -x Wawona | head -1 || true)"
+  fi
   if [[ -z "$pid" ]]; then
-    record macos "$client" FAIL "Wawona pid not found" "$hold" "$cell"
+    pid="$(pgrep -f 'Wawona.app/Contents/MacOS/Wawona' | head -1 || true)"
+  fi
+  if [[ -z "$pid" ]]; then
+    record macos "$client" FAIL "Wawona pid not found (see app.log)" "$hold" "$cell"
     return 1
   fi
   echo "$pid" >"$cell/pid.txt"

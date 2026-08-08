@@ -107,9 +107,10 @@ jobs:
       (github.event_name == 'workflow_dispatch' &&
        (github.event.inputs.lane == 'beta' ||
         contains(github.event.inputs.lane, 'android')))
-    # macOS: Android cross deps (e.g. zsh-android) fail configure on ubuntu
-    # ("C compiler cannot create executables"); product-build APK already uses macOS.
-    runs-on: macos-15
+    # macOS (not ubuntu): Android cross deps (e.g. zsh-android) fail configure on
+    # ubuntu ("C compiler cannot create executables"). Runner OS version is
+    # irrelevant (Nix supplies NDK); aligned to macos-26 with product-build.
+    runs-on: macos-26
     environment: release-beta
     timeout-minutes: 90
     steps:
