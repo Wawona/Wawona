@@ -14,6 +14,18 @@ as history.
 
 ### Fixed
 
+- **`ITMS-90426` on build 110, second cause**: after the SwiftSupport root
+  cause below was fixed, one more attempt was made to embed the watchOS
+  companion under `PlugIns/` (`dstSubfolderSpec=13`) instead of the legacy
+  `Watch/` (`dstSubfolderSpec=16`), following upstream reports that Xcode 26
+  requires it for on-device install. That embed location archived and
+  exported fine locally, but broke `xcrun altool`/`upload_to_testflight`
+  outright with `[altool.CBF038400] Cannot determine the 'platform' from the
+  info.plist.` — before the ipa ever reached App Store Connect. Reverted to
+  XcodeGen's own default `Watch/` location, which every build 89-110
+  successfully uploaded through `altool`; no real Apple rejection ever named
+  the embed directory as a problem, only SwiftSupport content (fixed below).
+  Build 119 uploaded clean (iOS/tvOS/visionOS) with both fixes combined.
 - **App Store Connect Swift Support rejections, root cause** (`ITMS-90426`/
   `ITMS-90429`/`ITMS-90433`, builds 89-104) — every prior fix in `26.8.7`
   (re-signing, timestamps, bundle-level re-sign, full-zip-rebuild, parity
