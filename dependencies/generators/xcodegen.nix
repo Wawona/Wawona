@@ -3053,64 +3053,47 @@ EOF
     fi
     ${xcodeUtils.xcodeWrapper}/bin/xcode-wrapper ${pkgs.xcodegen}/bin/xcodegen generate --use-cache --spec "$TMP_SPEC"
 
-    # #ITMS-90426-watch (2026-08-08): XcodeGen 2.44.1 still emits the legacy
-    # Watch/ embed (dstSubfolderSpec=16, dstPath="$(CONTENTS_FOLDER_PATH)/Watch")
-    # for "Embed Watch Content" — see
-    # https://github.com/yonaskolb/XcodeGen/issues/1613 (filed against Xcode
-    # 26.4, unmerged fix in PR #1614). Xcode 26 requires an independent
-    # (no-WatchKit-extension) watch app under PlugIns/ instead; on-device
-    # install with the legacy path fails outright ("… must be embedded in the
-    # parent app bundle's PlugIns directory, but is embedded in the parent app
-    # bundle's Watch directory"), and App Store Connect's async binary
-    # processing rejects EVERY iOS+Watch upload with a rotating
-    # ITMS-90426/90429/90433 regardless of SwiftSupport/Frameworks content
-    # (confirmed: build 104 shipped a full legacy SwiftSupport/, build 110
-    # shipped none at all — both got the identical rejection; only the iOS+
-    # Watch delivery ever fails, tvOS/visionOS ship clean).
+    # #ITMS-90426-watch (2026-08-08): three embed-location variants tried for
+    # the "Embed Watch Content" copy phase, in order:
     #
-    # Two variants tried and rejected:
-    #  - Numeric dstSubfolderSpec=13/dstPath="" (commit c7e3304): archives and
-    #    exports fine locally, but ASC then rejected with a *different* error
-    #    ("Cannot determine the platform") — root cause not yet isolated.
-    #  - String enum `dstSubfolder = PlugIns;` (some real Xcode-26-resaved
-    #    projects in the wild use this, e.g. tuist/XcodeProj#1038): CocoaPods'
-    #    `xcodeproj` gem (used by Fastlane's update_code_signing_settings)
-    #    warns but does NOT drop it on re-save — however `xcodebuild archive`
-    #    itself (Xcode 26.6 GM, this runner) does not understand it either,
-    #    and fails outright ("Unknown Distribution Error", exportArchive exit
-    #    70) before ever reaching ASC. Not usable on this toolchain.
-    # Back to the numeric form, which is at least accepted by our exact
-    # xcodebuild/Xcode version end-to-end through export.
-    if [ -f Wawona.xcodeproj/project.pbxproj ]; then
-      ${pkgs.python3}/bin/python3 - <<'PY'
-from pathlib import Path
-import re
-
-p = Path("Wawona.xcodeproj/project.pbxproj")
-text = p.read_text()
-
-# XcodeGen/XcodeProj emit keys alphabetically, so dstSubfolderSpec always
-# immediately follows dstPath within the same phase (verified against a real
-# generated project.pbxproj) — replace the pair together in one shot rather
-# than touching dstPath and dstSubfolderSpec independently, which is what
-# left the phase in an inconsistent state last time (commit c7e3304).
-pattern = re.compile(
-    r'(?P<indent>[ \t]*)dstPath = "\$\(CONTENTS_FOLDER_PATH\)/Watch";\n'
-    r'[ \t]*dstSubfolderSpec = 16;\n'
-)
-matches = list(pattern.finditer(text))
-if not matches:
-    print("note: no legacy Watch/ embed dstPath+dstSubfolderSpec pair to patch")
-elif len(matches) > 1:
-    raise SystemExit(f"error: expected exactly one legacy Watch/ embed phase, found {len(matches)}")
-else:
-    m = matches[0]
-    replacement = f'{m.group("indent")}dstPath = "";\n{m.group("indent")}dstSubfolderSpec = 13;\n'
-    text = text[: m.start()] + replacement + text[m.end() :]
-    p.write_text(text)
-    print("Patched Embed Watch Content -> PlugIns/ (dstSubfolderSpec=13).")
-PY
-    fi
+    #  1. Legacy Watch/ (dstSubfolderSpec=16, dstPath="$(CONTENTS_FOLDER_PATH)/Watch")
+    #     — XcodeGen 2.44.1's own default (see
+    #     https://github.com/yonaskolb/XcodeGen/issues/1613, filed against
+    #     Xcode 26.4, unmerged fix in PR #1614, which claims Xcode 26 wants
+    #     PlugIns/ instead). Builds 89-110 shipped this way: local archive,
+    #     export, AND `xcrun altool`/`upload_to_testflight` upload all
+    #     succeeded every time. ASC's *async* binary-processing pipeline
+    #     rejected them, but purely over SwiftSupport/Frameworks content
+    #     (ITMS-90426/90429/90433) — never over embed location or directory
+    #     naming. That rotating rejection was a separate, since-fixed bug: see
+    #     `embed_swift_runtime_into_archive!`/`inject_swift_support_from_archive!`
+    #     in fastlane/Fastfile (SWIFT_BACKDEPLOY_LIB_NAMES) — Wawona's
+    #     deployment targets need zero back-deployment dylibs, so the correct
+    #     IPA has no SwiftSupport/ at all, which builds 89-104 did not ship.
+    #  2. Numeric dstSubfolderSpec=13/dstPath="" (PlugIns/, commit c7e3304):
+    #     archives and exports fine locally, but `xcrun altool`/
+    #     `upload_to_testflight` then fails immediately and locally with
+    #     "[altool.CBF038400] Cannot determine the 'platform' from the
+    #     info.plist. (19)" — before the ipa ever reaches ASC's servers.
+    #     altool's platform detection does not expect a *different-platform*
+    #     nested .app (WatchOS) under PlugIns/, which it treats as an
+    #     extension-style dir sharing the host's own platform.
+    #  3. String enum `dstSubfolder = PlugIns;` (some real Xcode-26-resaved
+    #     projects in the wild use this, e.g. tuist/XcodeProj#1038): CocoaPods'
+    #     `xcodeproj` gem (used by Fastlane's update_code_signing_settings)
+    #     warns but does NOT drop it on re-save — however `xcodebuild archive`
+    #     itself (Xcode 26.6 GM, this runner) does not understand it either,
+    #     and fails outright ("Unknown Distribution Error", exportArchive exit
+    #     70) before ever reaching ASC. Not usable on this toolchain.
+    #
+    # Verdict: variant 1 (XcodeGen's own unmodified default) is the only one
+    # that gets all the way through `xcrun altool` upload; no real rejection
+    # from Apple has ever named the Watch/ directory or embed location as a
+    # problem. Leave XcodeGen's generated project.pbxproj untouched — no
+    # postGenCommand patch here. If a future Xcode really enforces PlugIns/
+    # at *install* time (the XcodeGen issue's claim, not yet observed against
+    # this app), that will show up as a distinct, differently-worded failure
+    # and should be re-diagnosed rather than reapplying variant 2 blind.
 
     mkdir -p "Wawona.xcodeproj/xcshareddata/xcschemes"
     cat > "Wawona.xcodeproj/xcshareddata/xcschemes/xcschememanagement.plist" <<'EOF'

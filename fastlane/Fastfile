@@ -62,9 +62,9 @@ end
 # watchOS is a companion (WKCompanionAppBundleIdentifier → com.aspauldingcode.Wawona).
 # A bare watchOS archive has no App Store export method on Xcode 26
 # (`expected one {} but found app-store`). Ship watch by embedding into
-# Wawona-iOS under PlugIns/ — Xcode 26's required location for an
-# independent (no-extension) watch app; see xcodegen.nix's postGenerate
-# patch and #136 / #ITMS-90426-watch. Never gym Wawona-watchOS alone.
+# Wawona-iOS under XcodeGen's own default Watch/ location — see
+# xcodegen.nix's #ITMS-90426-watch comment for why PlugIns/ was tried and
+# reverted (breaks `xcrun altool` upload). Never gym Wawona-watchOS alone.
 APPLE_BETA_TARGETS = [
   {
     # Universal (phone+iPad). Do not also upload Wawona-iPadOS — same bundle id
@@ -220,60 +220,34 @@ def assert_ipa_has_swift_support!(ipa)
   assert_swift_support_frameworks_parity!(ipa)
 end
 
-# #ITMS-90426-watch: idempotent re-assertion of xcodegen.nix's Embed Watch
-# Content -> PlugIns/ patch (dstSubfolder = PlugIns;, not the legacy numeric
-# dstSubfolderSpec = 16;/13;) directly against the on-disk project.pbxproj.
-# Must be called after any Fastlane action that re-saves the project through
-# CocoaPods' `xcodeproj` gem (e.g. `update_code_signing_settings`), which
-# does not understand `dstSubfolder` and drops it on save.
-def ensure_watch_embed_uses_pluginspatch!(project_path)
-  pbxproj = File.join(project_path, "project.pbxproj")
-  text = File.read(pbxproj)
-
-  if text.include?("dstSubfolderSpec = 13;") && !text.include?('dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";')
-    return
-  end
-
-  original = text.dup
-  text = text.gsub('dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";', 'dstPath = "";')
-  # dstSubfolderSpec always immediately follows dstPath within the same
-  # phase (both here and in xcodegen.nix's generator patch) — replace the
-  # adjacent pair together, never dstSubfolderSpec alone, so we never leave
-  # a phase with neither key.
-  text = text.gsub(/dstPath = "";\n([ \t]*)dstSubfolderSpec = 16;/, "dstPath = \"\";\n\\1dstSubfolderSpec = 13;")
-
-  if text == original
-    UI.important("ensure_watch_embed_uses_pluginspatch!: no legacy Watch/ embed found to re-patch (already PlugIns/ or no watch target)")
-    return
-  end
-  File.write(pbxproj, text)
-  UI.message("Re-applied Embed Watch Content -> PlugIns/ patch after signing-settings resave")
-end
-
 # #136 / #ITMS-90426-watch: iOS App Store IPA must carry the watch companion
-# under PlugIns/ (Xcode 26 requirement for an independent, no-extension watch
-# app — see xcodegen.nix's postGenerate patch and
-# https://github.com/yonaskolb/XcodeGen/issues/1613). Legacy Watch/ embedding
-# built and uploaded but was rejected by ASC's async binary processing on
-# every single attempt (ITMS-90426/90429/90433, builds 68-110).
+# under Watch/ — XcodeGen's own unpatched default embed location. See
+# dependencies/generators/xcodegen.nix's #ITMS-90426-watch comment for the
+# full history of why PlugIns/ (dstSubfolderSpec=13) was tried and reverted.
 def assert_ipa_has_watch_companion!(ipa)
   if ENV["WAWONA_SKIP_WATCH"].to_s == "1"
-    UI.important("WAWONA_SKIP_WATCH=1 — skipping PlugIns/ companion assert")
+    UI.important("WAWONA_SKIP_WATCH=1 — skipping Watch/ companion assert")
     return
   end
   require "open3"
   listing, st = Open3.capture2("unzip", "-Z1", ipa)
   UI.user_error!("unzip -Z1 failed for #{ipa}") unless st.success?
+  # #ITMS-90426-watch (2026-08-08): PlugIns/ (dstSubfolderSpec=13) archives
+  # and exports fine but breaks `xcrun altool`/`upload_to_testflight` outright
+  # ("Cannot determine the 'platform' from the info.plist.") — see
+  # dependencies/generators/xcodegen.nix for the full history. Back to
+  # XcodeGen's own default Watch/ (dstSubfolderSpec=16), which every build
+  # 89-110 uploaded successfully; only SwiftSupport content ever caused a
+  # real ASC rejection for this app, never the embed directory.
   watch_app = listing.lines.any? do |l|
-    l.include?("/PlugIns/") && l.include?(".app/")
+    l.include?("/Watch/") && l.include?(".app/")
   end
   unless watch_app
     UI.user_error!(
-      "#{File.basename(ipa)} is missing Payload/*/PlugIns/*.app (#136). " \
-      "Companion must embed under Xcode 26's PlugIns/, not legacy Watch/."
+      "#{File.basename(ipa)} is missing Payload/*/Watch/*.app (#136)."
     )
   end
-  UI.success("#{File.basename(ipa)}: PlugIns/ companion present")
+  UI.success("#{File.basename(ipa)}: Watch/ companion present")
 end
 
 # Names of /usr/lib/swift/lib*.dylib the binary's LC_LOAD_DYLIB commands
@@ -465,7 +439,7 @@ def embed_swift_runtime_into_archive!(archive_path)
                   end
 
   # Watch companion (nested code) first, outer app last.
-  Dir.glob(File.join(app, "PlugIns", "*.app")).each { |watch_app| embed_one.call(watch_app, "watchos") }
+  Dir.glob(File.join(app, "Watch", "*.app")).each { |watch_app| embed_one.call(watch_app, "watchos") }
   embed_one.call(app, main_platform)
 
   embedded
@@ -491,7 +465,7 @@ def swift_support_platforms_for_ipa_dir(dir)
                 ["iphoneos"]
               end
   # Companion watch content needs its own SwiftSupport/watchos slice.
-  if Dir.glob(File.join(app, "PlugIns", "*.app")).any?
+  if Dir.glob(File.join(app, "Watch", "*.app")).any?
     platforms << "watchos" unless platforms.include?("watchos")
   end
   platforms
@@ -529,7 +503,7 @@ def inject_swift_support_from_archive!(ipa, archive_path)
       app = Dir.glob(File.join(dir, "Payload", "*.app")).first
       main_platform = swift_support_platforms_for_ipa_dir(dir).first
       bundles = { main_platform => app }
-      Dir.glob(File.join(app, "PlugIns", "*.app")).each { |w| bundles["watchos"] = w }
+      Dir.glob(File.join(app, "Watch", "*.app")).each { |w| bundles["watchos"] = w }
 
       any_from_frameworks = false
       bundles.each do |plat, bundle_dir|
@@ -611,7 +585,7 @@ def assert_swift_support_frameworks_parity!(ipa)
                     else "iphoneos" # includes xros
                     end
     bundle_for_platform = { main_platform => app }
-    Dir.glob(File.join(app, "PlugIns", "*.app")).each { |w| bundle_for_platform["watchos"] = w }
+    Dir.glob(File.join(app, "Watch", "*.app")).each { |w| bundle_for_platform["watchos"] = w }
 
     missing = []
     Dir.glob(File.join(ss_root, "*")).each do |plat_dir|
@@ -967,20 +941,6 @@ def gym_ipa(target)
 
   # Avoid stale XCODEBUILD_ARCHIVE from a prior scheme (shared gym_output_dir).
   lane_context[SharedValues::XCODEBUILD_ARCHIVE] = nil
-
-  # #ITMS-90426-watch: `update_code_signing_settings` above re-saves
-  # project.pbxproj through CocoaPods' `xcodeproj` gem, which does not know
-  # the Xcode-26-native `dstSubfolder` string enum ("Xcodeproj doesn't know
-  # about the following attributes {"dstSubfolder" => "PlugIns"}") and drops
-  # it silently on save — undoing xcodegen.nix's postGenerate patch and
-  # putting the Embed Watch Content phase back into a malformed state (no
-  # dstSubfolderSpec *or* dstSubfolder), which is what turned into
-  # `exportArchive` failing outright ("Unknown Distribution Error" / bogus
-  # ExportOptions parse error) rather than a clean archive. Re-apply the
-  # patch here, after every pbxproj-mutating Fastlane action for this scheme,
-  # immediately before the one thing (`xcodebuild`/`gym`) that actually
-  # understands the new format.
-  ensure_watch_embed_uses_pluginspatch!(project) if target[:scheme] == "Wawona-iOS"
 
   build_app(
     project: project,
