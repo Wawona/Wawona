@@ -220,6 +220,36 @@ def assert_ipa_has_swift_support!(ipa)
   assert_swift_support_frameworks_parity!(ipa)
 end
 
+# #ITMS-90426-watch: idempotent re-assertion of xcodegen.nix's Embed Watch
+# Content -> PlugIns/ patch (dstSubfolder = PlugIns;, not the legacy numeric
+# dstSubfolderSpec = 16;/13;) directly against the on-disk project.pbxproj.
+# Must be called after any Fastlane action that re-saves the project through
+# CocoaPods' `xcodeproj` gem (e.g. `update_code_signing_settings`), which
+# does not understand `dstSubfolder` and drops it on save.
+def ensure_watch_embed_uses_pluginspatch!(project_path)
+  pbxproj = File.join(project_path, "project.pbxproj")
+  text = File.read(pbxproj)
+
+  if text.include?("dstSubfolder = PlugIns;") && !text.include?('dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";')
+    return
+  end
+
+  original = text.dup
+  text = text.gsub('dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";', 'dstPath = "";')
+  # dstSubfolderSpec always immediately follows dstPath within the same
+  # phase (both here and in xcodegen.nix's generator patch) — replace the
+  # adjacent pair together, never dstSubfolderSpec alone, so we never leave
+  # a phase with neither key.
+  text = text.gsub(/dstPath = "";\n([ \t]*)dstSubfolderSpec = 16;/, "dstPath = \"\";\n\\1dstSubfolder = PlugIns;")
+
+  if text == original
+    UI.important("ensure_watch_embed_uses_pluginspatch!: no legacy Watch/ embed found to re-patch (already PlugIns/ or no watch target)")
+    return
+  end
+  File.write(pbxproj, text)
+  UI.message("Re-applied Embed Watch Content -> PlugIns/ patch after signing-settings resave")
+end
+
 # #136 / #ITMS-90426-watch: iOS App Store IPA must carry the watch companion
 # under PlugIns/ (Xcode 26 requirement for an independent, no-extension watch
 # app — see xcodegen.nix's postGenerate patch and
@@ -937,6 +967,20 @@ def gym_ipa(target)
 
   # Avoid stale XCODEBUILD_ARCHIVE from a prior scheme (shared gym_output_dir).
   lane_context[SharedValues::XCODEBUILD_ARCHIVE] = nil
+
+  # #ITMS-90426-watch: `update_code_signing_settings` above re-saves
+  # project.pbxproj through CocoaPods' `xcodeproj` gem, which does not know
+  # the Xcode-26-native `dstSubfolder` string enum ("Xcodeproj doesn't know
+  # about the following attributes {"dstSubfolder" => "PlugIns"}") and drops
+  # it silently on save — undoing xcodegen.nix's postGenerate patch and
+  # putting the Embed Watch Content phase back into a malformed state (no
+  # dstSubfolderSpec *or* dstSubfolder), which is what turned into
+  # `exportArchive` failing outright ("Unknown Distribution Error" / bogus
+  # ExportOptions parse error) rather than a clean archive. Re-apply the
+  # patch here, after every pbxproj-mutating Fastlane action for this scheme,
+  # immediately before the one thing (`xcodebuild`/`gym`) that actually
+  # understands the new format.
+  ensure_watch_embed_uses_pluginspatch!(project) if target[:scheme] == "Wawona-iOS"
 
   build_app(
     project: project,
