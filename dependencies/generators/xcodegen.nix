@@ -3066,17 +3066,21 @@ EOF
     # ITMS-90426/90429/90433 regardless of SwiftSupport/Frameworks content
     # (confirmed: build 104 shipped a full legacy SwiftSupport/, build 110
     # shipped none at all — both got the identical rejection; only the iOS+
-    # Watch delivery ever fails, tvOS/visionOS ship clean). A first attempt to
-    # fix this (commit c7e3304) patched only the legacy numeric
-    # `dstSubfolderSpec`/`dstPath` fields and was reverted — it broke code
-    # signatures and got a *different* ASC rejection ("Cannot determine the
-    # platform"), because Xcode 26 also changed how it *serializes* copy-files
-    # destinations: real Xcode-26-resaved projects write a string enum,
-    # `dstSubfolder = PlugIns;`, dropping the numeric `dstSubfolderSpec`
-    # entirely (see tuist/XcodeProj#1038) — a partial numeric-only edit left
-    # the phase in a shape no Xcode 26 toolchain path actually produces.
-    # Rewrite the whole phase to match what a real Xcode 26 "New Target ->
-    # watchOS -> App" embed produces, not just its destination fields.
+    # Watch delivery ever fails, tvOS/visionOS ship clean).
+    #
+    # Two variants tried and rejected:
+    #  - Numeric dstSubfolderSpec=13/dstPath="" (commit c7e3304): archives and
+    #    exports fine locally, but ASC then rejected with a *different* error
+    #    ("Cannot determine the platform") — root cause not yet isolated.
+    #  - String enum `dstSubfolder = PlugIns;` (some real Xcode-26-resaved
+    #    projects in the wild use this, e.g. tuist/XcodeProj#1038): CocoaPods'
+    #    `xcodeproj` gem (used by Fastlane's update_code_signing_settings)
+    #    warns but does NOT drop it on re-save — however `xcodebuild archive`
+    #    itself (Xcode 26.6 GM, this runner) does not understand it either,
+    #    and fails outright ("Unknown Distribution Error", exportArchive exit
+    #    70) before ever reaching ASC. Not usable on this toolchain.
+    # Back to the numeric form, which is at least accepted by our exact
+    # xcodebuild/Xcode version end-to-end through export.
     if [ -f Wawona.xcodeproj/project.pbxproj ]; then
       ${pkgs.python3}/bin/python3 - <<'PY'
 from pathlib import Path
@@ -3101,10 +3105,10 @@ elif len(matches) > 1:
     raise SystemExit(f"error: expected exactly one legacy Watch/ embed phase, found {len(matches)}")
 else:
     m = matches[0]
-    replacement = f'{m.group("indent")}dstPath = "";\n{m.group("indent")}dstSubfolder = PlugIns;\n'
+    replacement = f'{m.group("indent")}dstPath = "";\n{m.group("indent")}dstSubfolderSpec = 13;\n'
     text = text[: m.start()] + replacement + text[m.end() :]
     p.write_text(text)
-    print("Patched Embed Watch Content -> PlugIns/ (Xcode 26 dstSubfolder string form).")
+    print("Patched Embed Watch Content -> PlugIns/ (dstSubfolderSpec=13).")
 PY
     fi
 

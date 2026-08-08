@@ -230,7 +230,7 @@ def ensure_watch_embed_uses_pluginspatch!(project_path)
   pbxproj = File.join(project_path, "project.pbxproj")
   text = File.read(pbxproj)
 
-  if text.include?("dstSubfolder = PlugIns;") && !text.include?('dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";')
+  if text.include?("dstSubfolderSpec = 13;") && !text.include?('dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";')
     return
   end
 
@@ -240,7 +240,7 @@ def ensure_watch_embed_uses_pluginspatch!(project_path)
   # phase (both here and in xcodegen.nix's generator patch) — replace the
   # adjacent pair together, never dstSubfolderSpec alone, so we never leave
   # a phase with neither key.
-  text = text.gsub(/dstPath = "";\n([ \t]*)dstSubfolderSpec = 16;/, "dstPath = \"\";\n\\1dstSubfolder = PlugIns;")
+  text = text.gsub(/dstPath = "";\n([ \t]*)dstSubfolderSpec = 16;/, "dstPath = \"\";\n\\1dstSubfolderSpec = 13;")
 
   if text == original
     UI.important("ensure_watch_embed_uses_pluginspatch!: no legacy Watch/ embed found to re-patch (already PlugIns/ or no watch target)")
