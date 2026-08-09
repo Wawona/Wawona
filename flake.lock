@@ -1211,11 +1211,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1784755979,
-        "narHash": "sha256-XDbbYwUitdmP9tA4AsNm7/eJhwHh/rxWk14SouAHX6Q=",
+        "lastModified": 1786297286,
+        "narHash": "sha256-KkhR2/+z+cQDJqY5FQZlNStCdR9Y7j8P6IlOJbt+gIw=",
         "owner": "Wawona",
         "repo": "wwn-zsh",
-        "rev": "6ef971f229c8b2f618ae5c99aa836d9bcf0ed82d",
+        "rev": "87335e7107d355e5d36e6dd8a92e1eb59846791e",
         "type": "github"
       },
       "original": {
