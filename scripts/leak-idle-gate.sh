@@ -133,45 +133,75 @@ run_ios() {
   echo "== iOS leak-idle: simulator '$IOS_DEVICE' =="
   xcrun simctl bootstatus "$IOS_DEVICE" -b || xcrun simctl boot "$IOS_DEVICE" || true
   xcrun simctl bootstatus "$IOS_DEVICE"
-  stop_agent_device_daemons
 
-  agent-device prepare ios-runner --device "$IOS_DEVICE" --session "$sess" \
-    --timeout "${WAWONA_IOS_PREPARE_TIMEOUT_MS:-600000}"
+  # Mirror agent-device-smoke.sh run_ios exactly — it passes in the same Gate:
+  # products run. The order matters: prepare system UI and install the app
+  # BEFORE preparing the XCTest runner, then prepare → open --relaunch. The old
+  # order here (prepare → agent-device install → open → ios_prepare_system_ui
+  # after open) reinstalled over the prepared runner and touched system UI after
+  # open, which dropped the XCTest runner lease → SESSION_NOT_FOUND ("No active
+  # session. Run open first.") → machines_home_not_reached.
+  echo "== iOS: prepare system UI (disable pasteboard sync; keyboard tutorial prefs) =="
+  ios_prepare_system_ui
 
   if [ -n "${WAWONA_IOS_APP:-}" ]; then
     echo "== iOS: install $WAWONA_IOS_APP =="
-    agent-device install "$WAWONA_IOS_APP" "${ad_common[@]}"
+    # Nix-store bundles are read-only; stage a writable copy for simctl.
+    local stage
+    stage="$(mktemp -d)/Wawona.app"
+    cp -R "$WAWONA_IOS_APP" "$stage"
+    chmod -R u+w "$stage"
+    xcrun simctl uninstall "$IOS_DEVICE" "$IOS_BUNDLE" 2>/dev/null || true
+    xcrun simctl install "$IOS_DEVICE" "$stage"
   fi
 
-  # prepare + open must share one session/daemon. Without --relaunch + a single
-  # re-prepare retry, open re-acquires the XCTest runner lease under a hard 90s
-  # RPC timeout and the session drops mid-run (SESSION_NOT_FOUND: "No active
-  # session. Run open first."), which then reads as machines_home_not_reached.
-  # Mirror agent-device-smoke.sh's known-good open path.
+  rm -f "$out_dir"/ios-*.png
+
+  echo "== iOS: prepare XCTest runner (session=$sess) =="
+  # Prepare + open must share one session/daemon; stop stale daemons first.
+  stop_agent_device_daemons
+  agent-device prepare ios-runner "${ad_common[@]}" \
+    --timeout "${WAWONA_IOS_PREPARE_TIMEOUT_MS:-600000}"
+
+  # One open retry for residual daemon flakes (not a suite retry).
   if ! agent-device open "$IOS_BUNDLE" --relaunch "${ad_common[@]}"; then
     echo "== iOS: open failed; recreate same-session prepare and retry once =="
     stop_agent_device_daemons
-    agent-device prepare ios-runner --device "$IOS_DEVICE" --session "$sess" \
+    agent-device prepare ios-runner "${ad_common[@]}" \
       --timeout "${WAWONA_IOS_PREPARE_TIMEOUT_MS:-600000}" || true
     agent-device open "$IOS_BUNDLE" --relaunch "${ad_common[@]}"
   fi
-  ios_prepare_system_ui || true
-  agent-device wait 2000 "${ad_common[@]}" || true
-
-  agent-device press 'label="Continue"' "${ad_common[@]}" >/dev/null 2>&1 || true
-  agent-device press 'text="Continue"' "${ad_common[@]}" >/dev/null 2>&1 || true
-  agent-device find Continue press --first "${ad_common[@]}" >/dev/null 2>&1 || true
-  agent-device click 201 493 "${ad_common[@]}" >/dev/null 2>&1 || true
   agent-device wait 2500 "${ad_common[@]}" || true
+  ios_dismiss_system_ui "${ad_common[@]}"
+  agent-device screenshot "$out_dir/ios-first-screen.png" "${ad_common[@]}" || true
+
+  # Welcome dismiss (short-circuit if machines home already visible).
+  if ! agent-device is visible 'id="wwn.machines.root"' "${ad_common[@]}" >/dev/null 2>&1 \
+    && ! agent-device is visible 'text="Machine Configuration"' "${ad_common[@]}" >/dev/null 2>&1; then
+    agent-device press 'id="wwn.welcome.continue"' "${ad_common[@]}" >/dev/null 2>&1 || true
+    agent-device press 'label="Continue"' "${ad_common[@]}" >/dev/null 2>&1 || true
+    agent-device press 'text="Continue"' "${ad_common[@]}" >/dev/null 2>&1 || true
+    agent-device find Continue press --first "${ad_common[@]}" >/dev/null 2>&1 || true
+    agent-device click 201 493 "${ad_common[@]}" >/dev/null 2>&1 || true
+    agent-device wait 2500 "${ad_common[@]}" || true
+  fi
   ios_dismiss_system_ui "${ad_common[@]}"
 
   if ! agent-device wait 'id="wwn.machines.root"' 20000 "${ad_common[@]}" >/dev/null 2>&1 \
     && ! agent-device wait 'text="Machine Configuration"' 8000 "${ad_common[@]}" >/dev/null 2>&1; then
-    agent-device screenshot "$out_dir/ios-no-machines.png" "${ad_common[@]}" || true
-    write_verdict ios fail "machines_home_not_reached"
-    agent-device close "${ad_common[@]}" || true
-    stop_agent_device_daemons
-    return 1
+    # One more Continue point-tap then re-check (animation / first-tap miss).
+    agent-device click 201 500 "${ad_common[@]}" >/dev/null 2>&1 || true
+    agent-device wait 2000 "${ad_common[@]}" || true
+    if ! agent-device wait 'id="wwn.machines.root"' 10000 "${ad_common[@]}" >/dev/null 2>&1 \
+      && ! agent-device wait 'text="Machine Configuration"' 5000 "${ad_common[@]}" >/dev/null 2>&1 \
+      && ! agent-device find Start exists --first "${ad_common[@]}" >/dev/null 2>&1; then
+      agent-device screenshot "$out_dir/ios-no-machines.png" "${ad_common[@]}" || true
+      agent-device snapshot -i --raw "${ad_common[@]}" || true
+      write_verdict ios fail "machines_home_not_reached"
+      agent-device close "${ad_common[@]}" || true
+      stop_agent_device_daemons
+      return 1
+    fi
   fi
 
   local udid
