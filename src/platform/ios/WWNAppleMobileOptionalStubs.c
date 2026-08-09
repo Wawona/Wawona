@@ -28,9 +28,15 @@ int fastfetch_main(int argc, char *argv[]) {
   (void)argv;
   return 127;
 }
-/* NOTE: no phoon_main stub — wwn-phoon-rs (libphoon_rs.a) is force-loaded on
- * every Apple target, including tvOS, so the real C ABI entry is always
- * present. A stub here would collide with it (duplicate symbol). */
+/* tvOS does NOT force-load libphoon_rs.a: its full-std Rust archive
+ * duplicate-symbol-collides with niri's std on this tier-3 target. This block
+ * is TARGET_OS_TV-only, so a plain stub here serves tvOS without affecting the
+ * iOS/iPadOS/visionOS targets (which force-load the real phoon_main). */
+int phoon_main(int argc, char *argv[]) {
+  (void)argc;
+  (void)argv;
+  return 127;
+}
 int fuzzel_main(int argc, char *argv[]) {
   (void)argc;
   (void)argv;

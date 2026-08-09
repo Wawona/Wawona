@@ -122,8 +122,14 @@ int fastfetch_main(int argc, char **argv) {
     return 1;
 }
 
-/* No phoon_main stub: wwn-phoon-rs (libphoon_rs.a) is force-loaded on watchOS
- * too, so the real phoon_main is always linked. */
+/* watchOS does NOT force-load libphoon_rs.a: its full-std Rust archive
+ * duplicate-symbol-collides with niri's already-force-loaded std on this
+ * tier-3 target. Provide the weak phoon_main fallback so the link resolves. */
+__attribute__((weak))
+int phoon_main(int argc, char **argv) {
+    (void)argc; (void)argv;
+    return 1;
+}
 
 __attribute__((weak))
 int fuzzel_main(int argc, char **argv) {

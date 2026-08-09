@@ -1816,7 +1816,11 @@ PLIST
               # niri's wayland-egl crate references wl_egl_window_* even on the
               # software-only tvOS surface.
               "-lwayland-egl"
-            ] ++ westonToytoolkitLdflagsAppleMobile tvosDeps ++ westonCompositorLdflagsAppleMobile tvosDeps ++ niriLdflags tvosDeps ++ footLdflags tvosDeps ++ phoonLdflags tvosDeps
+            # phoon is NOT force-loaded on tvOS: its full-std libphoon_rs.a
+            # duplicate-symbol-collides with niri's / the backend's Rust std on
+            # this tier-3 target (ld: 2134 duplicate symbols). tvOS uses the weak
+            # phoon_main stub in WWNAppleMobileOptionalStubs.c instead.
+            ] ++ westonToytoolkitLdflagsAppleMobile tvosDeps ++ westonCompositorLdflagsAppleMobile tvosDeps ++ niriLdflags tvosDeps ++ footLdflags tvosDeps
             ++ sshCliLdflags tvosDeps
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" derivedRustLib ] ++ finalCxxLdflagsNoIokit;
@@ -1848,7 +1852,8 @@ PLIST
               "-lcrypto"
               "-lepoll-shim"
               "-lwayland-egl"
-            ] ++ westonToytoolkitLdflagsAppleMobile tvosSimDeps ++ westonCompositorLdflagsAppleMobile tvosSimDeps ++ niriLdflags tvosSimDeps ++ footLdflags tvosSimDeps ++ phoonLdflags tvosSimDeps
+            # phoon omitted on tvOS (see tvOS device block): weak stub instead.
+            ] ++ westonToytoolkitLdflagsAppleMobile tvosSimDeps ++ westonCompositorLdflagsAppleMobile tvosSimDeps ++ niriLdflags tvosSimDeps ++ footLdflags tvosSimDeps
             ++ sshCliLdflags tvosSimDeps
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" derivedRustLib ] ++ finalCxxLdflagsNoIokit;
@@ -2825,7 +2830,12 @@ PLIST
               # niri's wayland-egl crate references wl_egl_window_*, which lives
               # in libwayland-egl even on the software-only watchOS surface.
               "-lwayland-egl"
-            ] ++ westonToytoolkitLdflagsAppleMobile watchosDeps ++ westonCompositorLdflagsAppleMobile watchosDeps ++ niriLdflags watchosDeps ++ footLdflags watchosDeps ++ fastfetchLdflags watchosDeps ++ phoonLdflags watchosDeps ++ neovimLdflags watchosDeps ++ [
+            # phoon NOT force-loaded on watchOS: its full-std libphoon_rs.a
+            # duplicate-symbol-collides with niri's already-force-loaded Rust std
+            # (ld: 2134 duplicate symbols — the exact watchOS link failure this
+            # commit fixes). watchOS uses the weak phoon_main stub in
+            # WWNWatchStubs.c, matching how waypipe is lazily linked just below.
+            ] ++ westonToytoolkitLdflagsAppleMobile watchosDeps ++ westonCompositorLdflagsAppleMobile watchosDeps ++ niriLdflags watchosDeps ++ footLdflags watchosDeps ++ fastfetchLdflags watchosDeps ++ neovimLdflags watchosDeps ++ [
               "-lwayland-server"
             ] ++ lib.optionals (watchosDeps ? waypipe && watchosDeps.waypipe != null) [
               # Lazy archive link, not -force_load: niri is already force-loaded
@@ -2870,7 +2880,8 @@ PLIST
               "-lcrypto"
               "-lxkbcommon"
               "-lwayland-egl"
-            ] ++ westonToytoolkitLdflagsAppleMobile watchosSimDeps ++ westonCompositorLdflagsAppleMobile watchosSimDeps ++ niriLdflags watchosSimDeps ++ footLdflags watchosSimDeps ++ fastfetchLdflags watchosSimDeps ++ phoonLdflags watchosSimDeps ++ neovimLdflags watchosSimDeps ++ [
+            # phoon omitted on watchOS sim too (see watchOS device block).
+            ] ++ westonToytoolkitLdflagsAppleMobile watchosSimDeps ++ westonCompositorLdflagsAppleMobile watchosSimDeps ++ niriLdflags watchosSimDeps ++ footLdflags watchosSimDeps ++ fastfetchLdflags watchosSimDeps ++ neovimLdflags watchosSimDeps ++ [
               "-lwayland-server"
             ] ++ lib.optionals (watchosSimDeps ? waypipe && watchosSimDeps.waypipe != null) [
               "-L${strip watchosSimDeps.waypipe}/lib"
