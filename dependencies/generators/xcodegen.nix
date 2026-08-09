@@ -231,25 +231,31 @@ let
       frameworkFlags = lib.concatMap (f: [ "-framework" f ]) frameworks;
     in if ff == null || !builtins.pathExists libff then [] else
       [ "-force_load" derivedFfLib ] ++ frameworkFlags;
-  # phoon is pure Rust (std only), so no extra frameworks are required — just
-  # force-load the privatized archive so phoon_main is pulled in for dispatch.
   # wwn-phoon-rs: pure-Rust static lib + phoon_main C ABI (in-process shell
-  # tool). Like niri/waypipe, Rust name-mangles everything except the single
-  # phoon_main C entry, so there are NO symbol collisions with weston/foot —
-  # force-load the store archive directly and DO NOT privatize it. nmedit/ld -r
-  # would run an LTO pass over the mixed native+bitcode archive and dead-strip
-  # the unreferenced phoon_main (only the -u/-force_load consumer references it).
-  # phoon is mandatory on every Apple target, so — like niri — a null dep is the
-  # only legitimate opt-out (no builtins.pathExists guard, which would silently
-  # drop -force_load while still emitting -u and break the link).
+  # tool), bundled on EVERY Apple target (whole family, incl. tvOS/watchOS).
+  #
+  # LAZY archive link, NOT -force_load — exactly the waypipe treatment: niri is
+  # -force_load'd on every target and libphoon_rs.a (like libniri.a) statically
+  # embeds a full copy of Rust std/core/gimli. Force-loading BOTH pulls two std
+  # copies and yields thousands of duplicate symbols (ld: 2134 duplicate symbols
+  # on watchOS — the real failure this replaces). Instead: put phoon on the link
+  # line AFTER niri as a plain `-lphoon_rs`, and keep phoon_main alive with an
+  # explicit `-Wl,-u,_phoon_main`. The linker then pulls only phoon's own objects
+  # (phoon_main + its private code); std/core symbols are already defined by
+  # niri's force-load, so phoon's std objects are never pulled → no duplicates.
+  #
+  # DO NOT privatize (no nmedit/ld -r): Rust name-mangles everything except the
+  # phoon_main C entry, so there is nothing to collide with weston/foot. There
+  # must be NO weak phoon_main stub on any target — a weak definition would
+  # satisfy the -u and stop the real archive member from being pulled. phoon is
+  # mandatory, so a null dep is the only legitimate opt-out.
   phoonLdflags = deps:
     let
       ph = deps.phoon or null;
-      libph = "${strip ph}/lib/libphoon_rs.a";
     in if ph == null then [] else [
       "-L${strip ph}/lib"
       "-Wl,-u,_phoon_main"
-      "-force_load" libph
+      "-lphoon_rs"
     ];
   neovimLdflags = deps:
     let libnvim = "${strip (deps.neovim or null)}/lib/libwawona-neovim.a";
@@ -1816,11 +1822,10 @@ PLIST
               # niri's wayland-egl crate references wl_egl_window_* even on the
               # software-only tvOS surface.
               "-lwayland-egl"
-            # phoon is NOT force-loaded on tvOS: its full-std libphoon_rs.a
-            # duplicate-symbol-collides with niri's / the backend's Rust std on
-            # this tier-3 target (ld: 2134 duplicate symbols). tvOS uses the weak
-            # phoon_main stub in WWNAppleMobileOptionalStubs.c instead.
-            ] ++ westonToytoolkitLdflagsAppleMobile tvosDeps ++ westonCompositorLdflagsAppleMobile tvosDeps ++ niriLdflags tvosDeps ++ footLdflags tvosDeps
+            # phoon lazy-linked (see phoonLdflags): -lphoon_rs after niri's
+            # force-load so std/core dedupe (no duplicate symbols) while phoon is
+            # still bundled on tvOS.
+            ] ++ westonToytoolkitLdflagsAppleMobile tvosDeps ++ westonCompositorLdflagsAppleMobile tvosDeps ++ niriLdflags tvosDeps ++ footLdflags tvosDeps ++ phoonLdflags tvosDeps
             ++ sshCliLdflags tvosDeps
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" derivedRustLib ] ++ finalCxxLdflagsNoIokit;
@@ -1852,8 +1857,8 @@ PLIST
               "-lcrypto"
               "-lepoll-shim"
               "-lwayland-egl"
-            # phoon omitted on tvOS (see tvOS device block): weak stub instead.
-            ] ++ westonToytoolkitLdflagsAppleMobile tvosSimDeps ++ westonCompositorLdflagsAppleMobile tvosSimDeps ++ niriLdflags tvosSimDeps ++ footLdflags tvosSimDeps
+            # phoon lazy-linked on tvOS sim too (see tvOS device block).
+            ] ++ westonToytoolkitLdflagsAppleMobile tvosSimDeps ++ westonCompositorLdflagsAppleMobile tvosSimDeps ++ niriLdflags tvosSimDeps ++ footLdflags tvosSimDeps ++ phoonLdflags tvosSimDeps
             ++ sshCliLdflags tvosSimDeps
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" derivedRustLib ] ++ finalCxxLdflagsNoIokit;
@@ -2830,12 +2835,11 @@ PLIST
               # niri's wayland-egl crate references wl_egl_window_*, which lives
               # in libwayland-egl even on the software-only watchOS surface.
               "-lwayland-egl"
-            # phoon NOT force-loaded on watchOS: its full-std libphoon_rs.a
-            # duplicate-symbol-collides with niri's already-force-loaded Rust std
-            # (ld: 2134 duplicate symbols — the exact watchOS link failure this
-            # commit fixes). watchOS uses the weak phoon_main stub in
-            # WWNWatchStubs.c, matching how waypipe is lazily linked just below.
-            ] ++ westonToytoolkitLdflagsAppleMobile watchosDeps ++ westonCompositorLdflagsAppleMobile watchosDeps ++ niriLdflags watchosDeps ++ footLdflags watchosDeps ++ fastfetchLdflags watchosDeps ++ neovimLdflags watchosDeps ++ [
+            # phoon lazy-linked (see phoonLdflags), same rationale as the waypipe
+            # lazy link just below: niri is force-loaded, so -lphoon_rs after it
+            # dedupes std/core (no 2134 duplicate symbols) while keeping phoon
+            # bundled on watchOS.
+            ] ++ westonToytoolkitLdflagsAppleMobile watchosDeps ++ westonCompositorLdflagsAppleMobile watchosDeps ++ niriLdflags watchosDeps ++ footLdflags watchosDeps ++ fastfetchLdflags watchosDeps ++ phoonLdflags watchosDeps ++ neovimLdflags watchosDeps ++ [
               "-lwayland-server"
             ] ++ lib.optionals (watchosDeps ? waypipe && watchosDeps.waypipe != null) [
               # Lazy archive link, not -force_load: niri is already force-loaded
@@ -2880,8 +2884,8 @@ PLIST
               "-lcrypto"
               "-lxkbcommon"
               "-lwayland-egl"
-            # phoon omitted on watchOS sim too (see watchOS device block).
-            ] ++ westonToytoolkitLdflagsAppleMobile watchosSimDeps ++ westonCompositorLdflagsAppleMobile watchosSimDeps ++ niriLdflags watchosSimDeps ++ footLdflags watchosSimDeps ++ fastfetchLdflags watchosSimDeps ++ neovimLdflags watchosSimDeps ++ [
+            # phoon lazy-linked on watchOS sim too (see watchOS device block).
+            ] ++ westonToytoolkitLdflagsAppleMobile watchosSimDeps ++ westonCompositorLdflagsAppleMobile watchosSimDeps ++ niriLdflags watchosSimDeps ++ footLdflags watchosSimDeps ++ fastfetchLdflags watchosSimDeps ++ phoonLdflags watchosSimDeps ++ neovimLdflags watchosSimDeps ++ [
               "-lwayland-server"
             ] ++ lib.optionals (watchosSimDeps ? waypipe && watchosSimDeps.waypipe != null) [
               "-L${strip watchosSimDeps.waypipe}/lib"
