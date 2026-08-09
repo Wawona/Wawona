@@ -188,10 +188,14 @@ jobs:
           path: .agent-device/test-artifacts/
           if-no-files-found: warn
 
+  # Build the APK only when Gate: products has NOT already produced
+  # product-android-apk (products_ready). On the Gate path this job is skipped
+  # and android-emu-e2e consumes the same-run product-android-apk directly — no
+  # intermediate wawona-apk re-upload hop.
   android-apk:
     name: "Android: Wawona.apk"
-    if: ${{ (inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'android' }}
-    runs-on: ${{ inputs.products_ready && 'ubuntu-latest' || 'macos-26' }}
+    if: ${{ !inputs.products_ready && ((inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'android') }}
+    runs-on: macos-26
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5
@@ -199,7 +203,6 @@ jobs:
           ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Install Nix
-        if: ${{ !inputs.products_ready }}
         uses: DeterminateSystems/nix-installer-action@v22
         with:
           determinate: true
@@ -208,50 +211,33 @@ jobs:
             allow-import-from-derivation = true
 
       - uses: DeterminateSystems/flakehub-cache-action@v3
-        if: ${{ !inputs.products_ready }}
 
       - name: Build Wawona.apk
-        if: ${{ !inputs.products_ready }}
         run: ./.github/scripts/nix-retry.sh nix build ".#wawona-android" --print-build-logs --out-link result-android
 
-      - name: Stage APK (in-job build)
-        if: ${{ !inputs.products_ready }}
+      - name: Stage APK
         run: |
           mkdir -p dist
           cp -L result-android/bin/Wawona.apk dist/Wawona.apk
           ls -lh dist/Wawona.apk
 
-      - name: Download product-android-apk
-        if: ${{ inputs.products_ready }}
-        uses: actions/download-artifact@v8
-        with:
-          name: product-android-apk
-          path: dist/
-
-      - name: Normalize APK path
-        if: ${{ inputs.products_ready }}
-        run: |
-          if [[ ! -f dist/Wawona.apk ]]; then
-            found="$(find dist -name 'Wawona.apk' -type f | head -1)"
-            [[ -n "$found" ]] || { echo "Wawona.apk missing in product artifact"; exit 1; }
-            mkdir -p dist
-            cp -L "$found" dist/Wawona.apk
-          fi
-          test -f dist/Wawona.apk
-          ls -lh dist/Wawona.apk
-
-      - name: Upload APK for emu job
+      # Same artifact name Gate: products uses, so the emu job has one download
+      # path for both the build (this job) and the products_ready reuse path.
+      - name: Upload product-android-apk
         uses: actions/upload-artifact@v7
         with:
-          name: wawona-apk
+          name: product-android-apk
           path: dist/Wawona.apk
           if-no-files-found: error
           compression-level: 0
 
   android-emu-e2e:
     name: "Android emulator: GUI smoke (agent-device replay)"
-    if: ${{ (inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'android' }}
     needs: android-apk
+    # Runs on the Gate path (products_ready, android-apk skipped) and on the
+    # standalone build path (android-apk succeeded). !cancelled() lets it proceed
+    # past the skipped android-apk dependency under products_ready.
+    if: ${{ !cancelled() && ((inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'android') && (inputs.products_ready || needs.android-apk.result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -266,11 +252,20 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Download APK
+      - name: Download product-android-apk
         uses: actions/download-artifact@v8
         with:
-          name: wawona-apk
+          name: product-android-apk
           path: dist/
+
+      - name: Normalize APK path
+        run: |
+          if [[ ! -f dist/Wawona.apk ]]; then
+            found="$(find dist -name 'Wawona.apk' -type f | head -1)"
+            [[ -n "$found" ]] || { echo "Wawona.apk missing in product-android-apk"; exit 1; }
+            cp -L "$found" dist/Wawona.apk
+          fi
+          ls -lh dist/Wawona.apk
 
       - name: Install agent-device
         run: npm install -g "agent-device@${AGENT_DEVICE_VERSION}"

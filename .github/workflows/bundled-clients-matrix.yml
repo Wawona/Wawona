@@ -41,7 +41,10 @@ jobs:
     uses: ./.github/workflows/product-build.yml
     with:
       checkout_ref: ${{ github.sha }}
-      tip_key: ${{ github.ref_name }}
+      # Isolate from Gate: products' product-build-<tip>-* concurrency group so a
+      # scheduled/dispatched matrix run cannot cancel an in-flight Gate product
+      # build (docs/ci.md CI anti-pattern #7).
+      tip_key: bundled-clients-${{ github.ref_name }}
       only: ios-sim
     permissions:
       contents: read
@@ -52,7 +55,7 @@ jobs:
     uses: ./.github/workflows/product-build.yml
     with:
       checkout_ref: ${{ github.sha }}
-      tip_key: ${{ github.ref_name }}
+      tip_key: bundled-clients-${{ github.ref_name }}
       only: android-apk
     permissions:
       contents: read
@@ -63,7 +66,7 @@ jobs:
     uses: ./.github/workflows/product-build.yml
     with:
       checkout_ref: ${{ github.sha }}
-      tip_key: ${{ github.ref_name }}
+      tip_key: bundled-clients-${{ github.ref_name }}
       only: macos-app
     permissions:
       contents: read

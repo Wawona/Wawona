@@ -156,64 +156,8 @@ jobs:
           nix develop .#release --command bash -lc \
             './scripts/release-env.sh fastlane '"$LANE"
 
-  # Ship: beta (stores) owns AppImages (same SHA) — do not scavenge Gate: products product-build.
-  # tip_key must NOT share Gate: products' product-build-<branch>-appimage group or
-  # cancel-in-progress cancels one caller on the same master push (empty AppImage artifacts).
-  products-appimage:
-    name: Product AppImages
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    uses: ./.github/workflows/product-build.yml
-    with:
-      only: appimage
-      tip_key: ship-beta-${{ github.ref_name }}
-    permissions:
-      contents: read
-      id-token: write
-
-  linux-beta:
-    name: "Linux AppImage beta (${{ matrix.system }})"
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    needs: products-appimage
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-latest
-            system: x86_64-linux
-          - runner: ubuntu-24.04-arm
-            system: aarch64-linux
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Download product AppImage
-        uses: actions/download-artifact@v8
-        with:
-          name: product-appimage-${{ matrix.system }}
-          path: dist/
-
-      - name: Stage AppImage
-        run: |
-          mkdir -p dist
-          mapfile -t images < <(find dist -name '*.AppImage' -type f)
-          if [[ ${#images[@]} -eq 0 ]]; then
-            echo "error: no AppImage in product-appimage-${{ matrix.system }}" >&2
-            find dist -type f | head -50 >&2 || true
-            exit 1
-          fi
-          # Normalize to dist/*.AppImage for the upload step
-          for img in "${images[@]}"; do
-            base="$(basename "$img")"
-            if [[ "$img" != "dist/$base" ]]; then
-              cp -v "$img" "dist/$base"
-            fi
-          done
-          ls -la dist/*.AppImage
-
-      - name: Upload beta AppImage (workflow artifact)
-        uses: actions/upload-artifact@v7
-        with:
-          name: wawona-beta-appimage-${{ matrix.system }}
-          path: dist/*.AppImage
-          retention-days: 30
-          if-no-files-found: error
+  # Beta Linux AppImages moved to the "Ship: beta AppImages" workflow
+  # (.github/workflows/ship-beta-appimage.yml), which consumes Gate: products'
+  # same-SHA product-appimage-* via workflow_run instead of rebuilding them here.
+  # This eliminated the master-push double AppImage build (Gate: products +
+  # Ship: beta). Do not reintroduce a product-build appimage call in this file.

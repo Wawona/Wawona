@@ -39,6 +39,18 @@ on:
       - "scripts/niri-smoke-macos.sh"
       - "scripts/niri-fuzzel-smoke-macos.sh"
       - "scripts/applications-catalog-smoke.sh"
+      # Leak-idle + bundled-clients harness: Gate: products calls leak-idle with
+      # products_ready, so harness-only edits must re-run the gate (else they
+      # green Gate: packages and leave Gate: products on the previous SHA).
+      - "scripts/leak-idle-gate.sh"
+      - "scripts/lib/leak-idle-measure.sh"
+      - "scripts/bundled-clients-matrix-gate.sh"
+      - "scripts/lib/bundled-clients-catalog.sh"
+      # Shared harness libs both gate scripts (and agent-device-smoke) source.
+      - "scripts/lib/android-ad-scale.sh"
+      - "scripts/lib/agent-device-ios-system-ui.sh"
+      - ".github/workflows/leak-idle-gate.yml"
+      - ".github/workflows/bundled-clients-matrix.yml"
       - ".github/workflows/device-e2e.yml"
       - ".github/workflows/device-gate.yml"
       - ".github/workflows/product-build.yml"

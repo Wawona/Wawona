@@ -1,0 +1,76 @@
+name: "Ship: beta AppImages"
+
+# Beta Linux AppImages are NEVER rebuilt. Gate: products already builds
+# product-appimage-* on every master push (its rollup `needs: product-appimage`,
+# so a green Gate guarantees both systems exist). This workflow fires only after
+# that Gate: products run finishes successfully and re-publishes the exact same
+# binaries as 30-day beta downloads. No product-build call, no fallback: the
+# artifacts are guaranteed present by the time this runs.
+#
+# Why a separate workflow (not a job in Ship: beta (stores)): a workflow_run
+# instance and the push-triggered release-beta run would share the
+# release-beta-${{ github.ref }} concurrency group and cancel each other. Keying
+# on the Gate run's head_sha here keeps them independent.
+
+on:
+  workflow_run:
+    workflows: ["Gate: products"]
+    types: [completed]
+
+concurrency:
+  group: ship-beta-appimage-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  publish:
+    name: "Linux AppImage beta (${{ matrix.system }})"
+    # Only master push Gate runs that went green. Development pushes,
+    # workflow_dispatch/workflow_call Gate invocations, and failed gates never
+    # ship a beta AppImage — same surface as the old release-beta jobs.
+    if: >-
+      github.event.workflow_run.event == 'push'
+      && github.event.workflow_run.head_branch == 'master'
+      && github.event.workflow_run.conclusion == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        system: [x86_64-linux, aarch64-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Download Gate: products AppImage (same SHA)"
+        uses: actions/download-artifact@v8
+        with:
+          name: product-appimage-${{ matrix.system }}
+          path: dist/
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Stage AppImage
+        run: |
+          set -euo pipefail
+          mapfile -t images < <(find dist -name '*.AppImage' -type f)
+          if [[ ${#images[@]} -eq 0 ]]; then
+            echo "error: no AppImage in product-appimage-${{ matrix.system }} from Gate run ${{ github.event.workflow_run.id }}" >&2
+            find dist -type f | head -50 >&2 || true
+            exit 1
+          fi
+          # Normalize to dist/*.AppImage for the upload step.
+          for img in "${images[@]}"; do
+            base="$(basename "$img")"
+            if [[ "$img" != "dist/$base" ]]; then
+              cp -v "$img" "dist/$base"
+            fi
+          done
+          ls -la dist/*.AppImage
+
+      - name: Publish beta AppImage (workflow artifact)
+        uses: actions/upload-artifact@v7
+        with:
+          name: wawona-beta-appimage-${{ matrix.system }}
+          path: dist/*.AppImage
+          retention-days: 30
+          if-no-files-found: error

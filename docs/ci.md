@@ -19,7 +19,7 @@ Do not use semver majors for product releases.
 | You do… | Runs… | Ships… |
 |---------|-------|--------|
 | Work / PR on **`development`** | **Gate: packages** + **Gate: products** (build products → GUI smoke) | Nothing to stores or GitHub Releases |
-| Promote green tip → **`master`** (push) | **Ship: beta (stores)** | TestFlight + Play internal + Linux AppImage workflow artifacts |
+| Promote green tip → **`master`** (push) | **Ship: beta (stores)** + **Ship: beta AppImages** (after Gate: products) | TestFlight + Play internal + Linux AppImage workflow artifacts (reused from Gate: products) |
 | Tag **`v*`** on a release commit | **Ship: beta (stores)** *and* **Ship: GitHub assets** | Store betas + GitHub Release assets |
 
 **Promote rule:** `development` → `master` only when **Gate: packages** + **Gate: products** are green on that tip.
@@ -37,7 +37,8 @@ Workflow display names use a role prefix (`Gate` / `Build` / `Watch` / `Ship`). 
 | **Watch: graphics nightly** (`nightly-full-matrix.yml`) | schedule / dispatch | — | Graphics + protocol drift + Weston/XWayland capability (does **not** re-run Gate: products) |
 | **Watch: idle memory** (`leak-idle-gate.yml`) | via Gate: products (`products_ready`) + schedule + dispatch | via Gate: products | Start→60s footprint/PSS plateau on product iOS/Android/macOS; fails with `LEAK_GATE_FAIL targets=…` ([docs/testing/leak-idle-gate.md](./testing/leak-idle-gate.md)). Reuses Gate: products `product-*` artifacts (no duplicate product-build). **Not** a promote blocker (`continue-on-error` on idle-memory jobs inside the reusable workflow; invalid on `uses:` callers) |
 | **Watch: bundled clients** (`bundled-clients-matrix.yml`) | schedule + dispatch | — | Every `kBundledClients` id × runnable platforms; `MATRIX_FAIL cells=platform/client,…` ([docs/testing/bundled-clients-matrix-gate.md](./testing/bundled-clients-matrix-gate.md)). **Not** a promote blocker yet |
-| **Ship: beta (stores)** (`release-beta.yml`) | — | push + tags `v*` | Fastlane stores (match+gym); owns AppImages via product-build `only: appimage` with `tip_key: ship-beta-<branch>` (must not share Gate: products `product-build-<branch>-appimage` or tip concurrency cancels one caller) |
+| **Ship: beta (stores)** (`release-beta.yml`) | — | push + tags `v*` | Fastlane stores (match+gym). **Does not build AppImages** — see Ship: beta AppImages below |
+| **Ship: beta AppImages** (`ship-beta-appimage.yml`) | — | after a green master **Gate: products** (`workflow_run`) | Re-publishes that run's same-SHA `product-appimage-*` as 30-day `wawona-beta-appimage-*` via cross-run `download-artifact` — **no rebuild, no fallback**. Deletes the old master-push double AppImage build (Gate: products + Ship: beta). Keyed on the Gate run's `head_sha` so it never shares release-beta's concurrency group |
 | **Ship: GitHub assets** (`release.yml`) | — | tags `v*` | GitHub Release: DMG/APK/AppImage from product-build (`macos-app` / `android-apk` / `appimage` only; tip_key `ship-assets-<tag>`); IPA via Fastlane `ios github_ipa` (match+gym, same as Ship: beta) |
 
 **macOS DMG layout:** the DMG ships **both** `Wawona.app` (drag → `/Applications`) **and** `WawonaAgent.pkg`. The pkg is a hybrid installer built from the same staged app ([`scripts/macos-launch-agent-pkg.sh`](../scripts/macos-launch-agent-pkg.sh)): its payload installs `/Applications/Wawona.app` and its `postinstall` loads the compositor + menubar LaunchAgents and publishes `WAYLAND_DISPLAY` / `XDG_RUNTIME_DIR`. Default installs for the console user; `sudo WAWONA_INSTALL_USERS=a,b installer -pkg …` targets more accounts. `release.yml` hard-fails if either `Wawona.app` or `WawonaAgent.pkg` is missing before `hdiutil`.
@@ -66,6 +67,38 @@ Gate: products, Build: products, and Build: GUI smoke share a **branch tip** con
 - Cancelled jobs on a superseded SHA are expected — they are not product failures. Promote only cares about a **success** tip Gate: products.
 - Skipped product jobs from `only:` filters remain **Skipped** (not Cancelled).
 
+### Why Actions shows dozens of Skipped jobs (and Cancelled ≠ failed)
+
+A green **Gate: products** run lists ~34 **Skipped** jobs. Almost all are the
+reusable-workflow fan-out — **intentional**, not races. Do not treat them as
+failures or flakiness in review.
+
+| Class | Where | What is skipped | Why |
+|-------|-------|-----------------|-----|
+| **A1 — `only:` cross-skips** | [`product-build.yml`](../.github/workflows/product-build.yml) | Each of Gate's four product calls (`only: ios-sim\|android-apk\|macos-app\|appimage`) defines all product jobs but runs one family; the other 3–4 families show Skipped (incl. matrix placeholders like `… / ${{ matrix.label }} sim .app`) | Jobs gate on `if: only == 'all' \|\| only == '<job>'` |
+| **A2 — `lanes:` cross-skips** | [`device-e2e.yml`](../.github/workflows/device-e2e.yml) | Each GUI-smoke caller (`lanes: ios\|android\|macos\|linux`) skips the other lanes; macOS nested niri/fuzzel is hard-`if: false` (SIGTERM avoidance) | Jobs gate on `inputs.lanes` |
+| **A3 — leak `products_ready`** | [`leak-idle-gate.yml`](../.github/workflows/leak-idle-gate.yml) | `Watch: idle memory / Product iOS sim\|Android APK\|macOS app` | Gate passes `products_ready: true`; leak cells download Gate's `product-*` instead of rebuilding — **this is the reuse you want** |
+
+**UI trap:** soft-fail leak cells (`continue-on-error`) can show **red children**
+while `Gate: products` is still **success**. The GitHub job conclusion (green after
+`continue-on-error`) is not the real leak verdict — read `LEAK_GATE_FAIL targets=…`
+/ `verdict.json`. Gate: products stays green regardless.
+
+**Cancelled** (distinct from Skipped) only comes from tip concurrency: a newer
+push cancels the older `device-gate-<tip>` / `product-build-<tip>-*` /
+`nix-ci-<ref>` run. Expected. The one **wrong** kind of cancel is sharing a
+tip_key across unrelated workflows — fixed by keeping `bundled-clients-*`,
+`leak-idle-*`, `ship-beta-*`, and `ship-assets-*` off Gate's `product-build-<tip>`
+group (anti-pattern #7).
+
+**Harness-only commits must be in the path filter.** Because Gate: products
+runs the leak/bundled-clients harness via `products_ready`, edits to
+`scripts/leak-idle-gate.sh`, `scripts/bundled-clients-matrix-gate.sh`, or their
+`.yml` must be listed in [`device-gate.yml`](../.github/workflows/device-gate.yml)
+`on.push.paths` — otherwise they green **Gate: packages** and leave **Gate: products**
+on the previous SHA. Until such a path is added, exercise the fix with
+`gh workflow run "Gate: products" --ref development`.
+
 ## Single-build product pipeline
 
 Pure ship/test binaries are built **once per SHA** by [`product-build.yml`](../.github/workflows/product-build.yml) (**Build: products**):
@@ -73,10 +106,10 @@ Pure ship/test binaries are built **once per SHA** by [`product-build.yml`](../.
 | Artifact | Attr | Consumers |
 |----------|------|-----------|
 | `product-ios-sim` | `.#wawona-ios` | Build: GUI smoke, Watch: idle memory |
-| `product-android-apk` | `.#wawona-android` | Build: GUI smoke, Watch: idle memory, Ship: GitHub assets |
+| `product-android-apk` | `.#wawona-android` | Build: GUI smoke (android-emu downloads it directly — no `wawona-apk` hop), Watch: idle memory, Ship: GitHub assets |
 | `product-macos-app` | `.#wawona-macos` | Build: GUI smoke, Watch: idle memory, Ship: GitHub assets (DMG wrap). Mode A only — **must not** ship `libwayland-mac.dylib` |
 | `wawona-macos-desktop-host` | `.#wawona-macos-desktop-host` | Developer ID / Desktop Replacement Mode B. Assert dylib present via [`.github/scripts/verify-iland-mode-b-bundle.sh`](../.github/scripts/verify-iland-mode-b-bundle.sh) |
-| `product-appimage-<system>` | `.#wawona-appimage` | Ship: beta (stores), Ship: GitHub assets |
+| `product-appimage-<system>` | `.#wawona-appimage` | Ship: beta AppImages (reused cross-run via `workflow_run`, not rebuilt), Ship: GitHub assets |
 
 Helpers: [`.github/scripts/resolve-product-artifacts.sh`](../.github/scripts/resolve-product-artifacts.sh).
 
@@ -131,7 +164,7 @@ FlakeHub caches **Nix store paths** only. It does **not** ship Apple platform SD
 4. Expecting FlakeHub to fix crate2nix IFD / eval time — hoist IFDs instead.
 5. Serializing iOS GUI smoke behind AppImages/macOS/Android product jobs.
 6. Rebuilding products outside `product-build.yml`.
-7. Calling `product-build` from Watch: idle memory (or Watch: bundled clients) on the same tip_key as Gate: products — tip concurrency cancels one caller before binaries exist. Push-path idle memory must use `products_ready` from Gate: products; schedule/dispatch use tip_key `leak-idle-*`.
+7. Calling `product-build` from Watch: idle memory (or Watch: bundled clients) on the same tip_key as Gate: products — tip concurrency cancels one caller before binaries exist. Push-path idle memory must use `products_ready` from Gate: products; schedule/dispatch use tip_key `leak-idle-*`, and Watch: bundled clients uses `bundled-clients-*` (both isolated from Gate's `product-build-<tip>` group).
 8. Killing agent-device prepare daemon between `prepare` and `open`.
 9. Re-planning completed curated-matrix / gate fan-out work.
 10. Reintroducing Magic Nix Cache / Attic / Cachix / `cache.wawona.io`.
