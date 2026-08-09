@@ -3873,6 +3873,9 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
 
       wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libfastfetch_bin.so",
                                      "fastfetch");
+      /* phoon (wwn-phoon-rs): clean-room Rust moon-phase utility. */
+      wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libphoon_bin.so",
+                                     "phoon");
       wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libnvim_bin.so", "nvim");
       wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libwaypipe_bin.so",
                                      "waypipe");

@@ -28,6 +28,11 @@ int fastfetch_main(int argc, char *argv[]) {
   (void)argv;
   return 127;
 }
+int phoon_main(int argc, char *argv[]) {
+  (void)argc;
+  (void)argv;
+  return 127;
+}
 int fuzzel_main(int argc, char *argv[]) {
   (void)argc;
   (void)argv;

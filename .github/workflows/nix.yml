@@ -499,7 +499,7 @@ jobs:
         run: ./.github/scripts/nix-build-android-meson-sandbox-gate.sh
       - name: Build bundled shell tools + weston-ios
         run: |
-          nix build .#zsh-android .#fastfetch-android .#neovim-android \
+          nix build .#zsh-android .#fastfetch-android .#phoon-android .#neovim-android \
             .#weston-ios --no-link
       - name: Gradle project assembleDebug
         run: |

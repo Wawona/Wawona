@@ -28,6 +28,7 @@ let
       inherit buildModule wawonaSrc wawonaVersion weston waypipe;
       foot = buildModule.buildForMacOS "foot" { };
       fastfetch = buildModule.buildForMacOS "fastfetch" { };
+      phoon = buildModule.buildForMacOS "phoon" { };
       rustBackend = rustBackendMacOS;
     } // depVersions);
 

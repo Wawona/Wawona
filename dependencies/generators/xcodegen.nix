@@ -28,6 +28,7 @@
   macosWeston ? null,
   macosFoot ? null,
   macosFastfetch ? null,
+  macosPhoon ? null,
   macosNeovim ? null,
   macosZsh ? null,
   macosKmscube ? null,
@@ -78,6 +79,7 @@ let
   derivedNvimLib = "$(DERIVED_FILE_DIR)/libwawona-neovim.a";
   derivedSshCliLib = "$(DERIVED_FILE_DIR)/libwwn-ssh-cli.a";
   derivedFfLib = "$(DERIVED_FILE_DIR)/libfastfetch.a";
+  derivedPhoonLib = "$(DERIVED_FILE_DIR)/libphoon_rs.a";
   # foot / fuzzel are Wayland clients whose static archives embed their own copy
   # of the generated protocol marshalling (xdg_toplevel_interface, …). Prebuild
   # privatises them here (single merged .o, only the *_main entry exported) so
@@ -100,6 +102,7 @@ let
   mobileDispatchLdflags = [
     "-Wl,-u,_wawona_coreutils_main"
     "-Wl,-u,_fastfetch_main"
+    "-Wl,-u,_phoon_main"
     "-Wl,-u,_wawona_nvim_main"
     "-Wl,-u,_waypipe_main"
     "-Wl,-u,_niri_main"
@@ -229,6 +232,14 @@ let
       frameworkFlags = lib.concatMap (f: [ "-framework" f ]) frameworks;
     in if ff == null || !builtins.pathExists libff then [] else
       [ "-force_load" derivedFfLib ] ++ frameworkFlags;
+  # phoon is pure Rust (std only), so no extra frameworks are required — just
+  # force-load the privatized archive so phoon_main is pulled in for dispatch.
+  phoonLdflags = deps:
+    let
+      ph = deps.phoon or null;
+      libph = "${strip ph}/lib/libphoon_rs.a";
+    in if ph == null || !builtins.pathExists libph then [] else
+      [ "-force_load" derivedPhoonLib ];
   neovimLdflags = deps:
     let libnvim = "${strip (deps.neovim or null)}/lib/libwawona-neovim.a";
     in if (deps.neovim or null) == null || !builtins.pathExists libnvim then [] else [
@@ -1418,7 +1429,7 @@ PLIST
               "-lcrypto"
                "-lepoll-shim"
              ] ++ westonToytoolkitLdflagsAppleMobile iosSimDeps ++ westonCompositorLdflagsAppleMobile iosSimDeps
-             ++ (ilandGlLdflags { deps = iosSimDeps; simulator = true; }) ++ moltenvkLdflags iosSimDeps ++ footLdflags iosSimDeps ++ fastfetchLdflags iosSimDeps ++ neovimLdflags iosSimDeps ++ niriLdflags iosSimDeps ++ fuzzelLdflags iosSimDeps
+             ++ (ilandGlLdflags { deps = iosSimDeps; simulator = true; }) ++ moltenvkLdflags iosSimDeps ++ footLdflags iosSimDeps ++ fastfetchLdflags iosSimDeps ++ phoonLdflags iosSimDeps ++ neovimLdflags iosSimDeps ++ niriLdflags iosSimDeps ++ fuzzelLdflags iosSimDeps
              ++ sshCliLdflags iosSimDeps
              ++ appleMobileResolvLdflags
              ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
@@ -1466,7 +1477,7 @@ PLIST
                "-lcrypto"
                "-lepoll-shim"
              ] ++ westonToytoolkitLdflagsAppleMobile iosDeps ++ westonCompositorLdflagsAppleMobile iosDeps
-             ++ (ilandGlLdflags { deps = iosDeps; simulator = false; }) ++ moltenvkLdflags iosDeps ++ footLdflags iosDeps ++ fastfetchLdflags iosDeps ++ neovimLdflags iosDeps ++ niriLdflags iosDeps ++ fuzzelLdflags iosDeps
+             ++ (ilandGlLdflags { deps = iosDeps; simulator = false; }) ++ moltenvkLdflags iosDeps ++ footLdflags iosDeps ++ fastfetchLdflags iosDeps ++ phoonLdflags iosDeps ++ neovimLdflags iosDeps ++ niriLdflags iosDeps ++ fuzzelLdflags iosDeps
              ++ sshCliLdflags iosDeps
              ++ appleMobileResolvLdflags
              ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
@@ -1611,7 +1622,7 @@ PLIST
               "-lcrypto"
               "-lepoll-shim"
             ] ++ westonToytoolkitLdflagsAppleMobile ipadosDeps ++ westonCompositorLdflagsAppleMobile ipadosDeps
-            ++ (ilandGlLdflags { deps = ipadosDeps; simulator = false; }) ++ moltenvkLdflags ipadosDeps ++ footLdflags ipadosDeps ++ fastfetchLdflags ipadosDeps ++ neovimLdflags ipadosDeps ++ niriLdflags ipadosDeps ++ fuzzelLdflags ipadosDeps
+            ++ (ilandGlLdflags { deps = ipadosDeps; simulator = false; }) ++ moltenvkLdflags ipadosDeps ++ footLdflags ipadosDeps ++ fastfetchLdflags ipadosDeps ++ phoonLdflags ipadosDeps ++ neovimLdflags ipadosDeps ++ niriLdflags ipadosDeps ++ fuzzelLdflags ipadosDeps
             ++ sshCliLdflags ipadosDeps
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
@@ -1643,7 +1654,7 @@ PLIST
               "-lcrypto"
               "-lepoll-shim"
             ] ++ westonToytoolkitLdflagsAppleMobile ipadosSimDeps ++ westonCompositorLdflagsAppleMobile ipadosSimDeps
-            ++ (ilandGlLdflags { deps = ipadosSimDeps; simulator = true; }) ++ moltenvkLdflags ipadosSimDeps ++ footLdflags ipadosSimDeps ++ fastfetchLdflags ipadosSimDeps ++ neovimLdflags ipadosSimDeps ++ niriLdflags ipadosSimDeps ++ fuzzelLdflags ipadosSimDeps
+            ++ (ilandGlLdflags { deps = ipadosSimDeps; simulator = true; }) ++ moltenvkLdflags ipadosSimDeps ++ footLdflags ipadosSimDeps ++ fastfetchLdflags ipadosSimDeps ++ phoonLdflags ipadosSimDeps ++ neovimLdflags ipadosSimDeps ++ niriLdflags ipadosSimDeps ++ fuzzelLdflags ipadosSimDeps
             ++ sshCliLdflags ipadosSimDeps
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
@@ -1906,6 +1917,7 @@ PLIST
               WESTON_SRC="${strip macosWeston}/bin"
               FOOT_BIN="${strip macosFoot}/bin"
               FASTFETCH_BIN="${strip macosFastfetch}/bin"
+              PHOON_BIN="${strip macosPhoon}/bin"
               NEOVIM_BIN="${strip macosNeovim}/bin"
               ZSH_BIN="${strip macosZsh}/bin"
               KMSCUBE_BIN="${strip macosKmscube}/bin"
@@ -1986,6 +1998,7 @@ PLIST
                 bundle_bin "$FOOT_BIN/.foot-wrapped" ".foot-wrapped"
               fi
               bundle_bin "$FASTFETCH_BIN/fastfetch" "fastfetch"
+              [ -f "$PHOON_BIN/phoon" ] && bundle_bin "$PHOON_BIN/phoon" "phoon"
               bundle_bin "$NEOVIM_BIN/nvim" "nvim"
               bundle_bin "$NEOVIM_BIN/nvim" "vi"
               bundle_bin "$NEOVIM_BIN/nvim" "vim"
@@ -2441,7 +2454,7 @@ PLIST
               "-lcrypto"
               "-lwayland-egl"
             ] ++ westonToytoolkitLdflagsAppleMobile visionosDeps ++ westonCompositorLdflagsAppleMobile visionosDeps
-            ++ (ilandGlLdflags { deps = visionosDeps; simulator = false; }) ++ moltenvkLdflags visionosDeps ++ footLdflags visionosDeps ++ fastfetchLdflags visionosDeps ++ neovimLdflags visionosDeps ++ niriLdflags visionosDeps ++ fuzzelLdflags visionosDeps
+            ++ (ilandGlLdflags { deps = visionosDeps; simulator = false; }) ++ moltenvkLdflags visionosDeps ++ footLdflags visionosDeps ++ fastfetchLdflags visionosDeps ++ phoonLdflags visionosDeps ++ neovimLdflags visionosDeps ++ niriLdflags visionosDeps ++ fuzzelLdflags visionosDeps
             ++ sshCliLdflags visionosDeps
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
@@ -2474,7 +2487,7 @@ PLIST
               "-lcrypto"
               "-lwayland-egl"
             ] ++ westonToytoolkitLdflagsAppleMobile visionosSimDeps ++ westonCompositorLdflagsAppleMobile visionosSimDeps
-            ++ (ilandGlLdflags { deps = visionosSimDeps; simulator = true; }) ++ moltenvkLdflags visionosSimDeps ++ footLdflags visionosSimDeps ++ fastfetchLdflags visionosSimDeps ++ neovimLdflags visionosSimDeps ++ niriLdflags visionosSimDeps ++ fuzzelLdflags visionosSimDeps
+            ++ (ilandGlLdflags { deps = visionosSimDeps; simulator = true; }) ++ moltenvkLdflags visionosSimDeps ++ footLdflags visionosSimDeps ++ fastfetchLdflags visionosSimDeps ++ phoonLdflags visionosSimDeps ++ neovimLdflags visionosSimDeps ++ niriLdflags visionosSimDeps ++ fuzzelLdflags visionosSimDeps
             ++ sshCliLdflags visionosSimDeps
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
@@ -2801,7 +2814,7 @@ PLIST
               # niri's wayland-egl crate references wl_egl_window_*, which lives
               # in libwayland-egl even on the software-only watchOS surface.
               "-lwayland-egl"
-            ] ++ westonToytoolkitLdflagsAppleMobile watchosDeps ++ westonCompositorLdflagsAppleMobile watchosDeps ++ niriLdflags watchosDeps ++ footLdflags watchosDeps ++ fastfetchLdflags watchosDeps ++ neovimLdflags watchosDeps ++ [
+            ] ++ westonToytoolkitLdflagsAppleMobile watchosDeps ++ westonCompositorLdflagsAppleMobile watchosDeps ++ niriLdflags watchosDeps ++ footLdflags watchosDeps ++ fastfetchLdflags watchosDeps ++ phoonLdflags watchosDeps ++ neovimLdflags watchosDeps ++ [
               "-lwayland-server"
             ] ++ lib.optionals (watchosDeps ? waypipe && watchosDeps.waypipe != null) [
               # Lazy archive link, not -force_load: niri is already force-loaded
@@ -2846,7 +2859,7 @@ PLIST
               "-lcrypto"
               "-lxkbcommon"
               "-lwayland-egl"
-            ] ++ westonToytoolkitLdflagsAppleMobile watchosSimDeps ++ westonCompositorLdflagsAppleMobile watchosSimDeps ++ niriLdflags watchosSimDeps ++ footLdflags watchosSimDeps ++ fastfetchLdflags watchosSimDeps ++ neovimLdflags watchosSimDeps ++ [
+            ] ++ westonToytoolkitLdflagsAppleMobile watchosSimDeps ++ westonCompositorLdflagsAppleMobile watchosSimDeps ++ niriLdflags watchosSimDeps ++ footLdflags watchosSimDeps ++ fastfetchLdflags watchosSimDeps ++ phoonLdflags watchosSimDeps ++ neovimLdflags watchosSimDeps ++ [
               "-lwayland-server"
             ] ++ lib.optionals (watchosSimDeps ? waypipe && watchosSimDeps.waypipe != null) [
               "-L${strip watchosSimDeps.waypipe}/lib"

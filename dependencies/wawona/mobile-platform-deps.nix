@@ -102,6 +102,9 @@ let
       }
     // lib.optionalAttrs (variant == "mobile" || variant == "vision") {
         fastfetch = buildFn "fastfetch" { inherit simulator; };
+        # phoon: pure-Rust in-process shell tool. Same footprint as fastfetch
+        # (iOS/iPadOS/visionOS); tvOS/watchOS deferred (tier-3 Rust std).
+        phoon = buildFn "phoon" { inherit simulator; };
         neovim = buildFn "neovim" { inherit simulator; };
         "neovim-rootfs" = buildFn "neovim-rootfs" { inherit simulator; };
         # wwn-niri fuzzel stack (Mod+D launcher spawned in-process).

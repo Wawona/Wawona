@@ -68,6 +68,13 @@ let
       icon = "fastfetch";
     }
     {
+      id = "phoon";
+      name = "Phoon";
+      comment = "ASCII moon-phase display";
+      categories = "Utility;";
+      icon = "phoon";
+    }
+    {
       id = "weston-simple-shm";
       name = "Weston Simple SHM";
       comment = "Wawona in-process Wayland client";

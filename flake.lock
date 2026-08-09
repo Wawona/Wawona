@@ -492,6 +492,7 @@
         "wwn-kmscube": "wwn-kmscube",
         "wwn-neovim": "wwn-neovim",
         "wwn-niri": "wwn-niri",
+        "wwn-phoon-rs": "wwn-phoon-rs",
         "wwn-ssh": "wwn-ssh",
         "wwn-toolchain": "wwn-toolchain",
         "wwn-vms": "wwn-vms",
@@ -1028,6 +1029,32 @@
         "owner": "Wawona",
         "ref": "development",
         "repo": "wwn-niri",
+        "type": "github"
+      }
+    },
+    "wwn-phoon-rs": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "rust-overlay": [
+          "rust-overlay"
+        ],
+        "wwn-toolchain": [
+          "wwn-toolchain"
+        ]
+      },
+      "locked": {
+        "lastModified": 1786260804,
+        "narHash": "sha256-m4fJuJRMeis3cTcVtcwbN7IDN7nvPvvLehu7cHwzScI=",
+        "owner": "Wawona",
+        "repo": "wwn-phoon-rs",
+        "rev": "8feacf894fe248b569c8ec1df2929afc9a964335",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Wawona",
+        "repo": "wwn-phoon-rs",
         "type": "github"
       }
     },

@@ -123,6 +123,12 @@ int fastfetch_main(int argc, char **argv) {
 }
 
 __attribute__((weak))
+int phoon_main(int argc, char **argv) {
+    (void)argc; (void)argv;
+    return 1;
+}
+
+__attribute__((weak))
 int fuzzel_main(int argc, char **argv) {
     (void)argc; (void)argv;
     return 1;

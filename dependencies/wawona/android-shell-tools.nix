@@ -10,6 +10,7 @@
   lib,
   zshAndroid ? null,
   fastfetchAndroid ? null,
+  phoonAndroid ? null,
   neovimAndroid ? null,
   waypipeAndroid ? null,
   niriAndroid ? null,
@@ -39,6 +40,18 @@
       chmod +x "$JNI_LIB_DIR/libfastfetch_bin.so"
     else
       echo "WARNING: Missing Android fastfetch binary at ${fastfetchAndroid}/bin/fastfetch"
+    fi
+    ''}
+
+    ${lib.optionalString (phoonAndroid != null) ''
+    # phoon (wwn-phoon-rs): clean-room Rust moon-phase utility. Android uses the
+    # fork/exec spawn model, so ship the PIE as libphoon_bin.so (android_jni.c
+    # symlinks usr/bin/phoon → this and posix_spawn()s it).
+    if [ -f "${phoonAndroid}/bin/phoon" ]; then
+      cp -L "${phoonAndroid}/bin/phoon" "$JNI_LIB_DIR/libphoon_bin.so"
+      chmod +x "$JNI_LIB_DIR/libphoon_bin.so"
+    else
+      echo "WARNING: Missing Android phoon binary at ${phoonAndroid}/bin/phoon"
     fi
     ''}
 

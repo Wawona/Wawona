@@ -56,6 +56,8 @@ let
   zshAndroid = buildModule.buildForAndroid "zsh" { };
   footAndroid = buildModule.buildForAndroid "foot" { };
   fastfetchAndroid = buildModule.buildForAndroid "fastfetch" { };
+  # phoon (wwn-phoon-rs): clean-room Rust moon-phase utility; PIE libphoon_bin.so.
+  phoonAndroid = buildModule.buildForAndroid "phoon" { };
   neovimAndroid = buildModule.buildForAndroid "neovim" { };
   waypipeAndroid = buildModule.buildForAndroid "waypipe" { };
   # niri (wwn-niri): nested scrollable-tiling compositor (Wayland client of
@@ -123,7 +125,7 @@ let
   androidQuadFrag = ../../src/platform/android/rendering/shaders/android_quad.frag;
 
   shellTools = import ./android-shell-tools.nix {
-    inherit lib zshAndroid fastfetchAndroid neovimAndroid waypipeAndroid niriAndroid fuzzelAndroid footAndroid applicationsCatalog;
+    inherit lib zshAndroid fastfetchAndroid phoonAndroid neovimAndroid waypipeAndroid niriAndroid fuzzelAndroid footAndroid applicationsCatalog;
   };
   westonData = import ./android-weston-data.nix { inherit lib pkgs; };
   bundledClients = import ./android-bundled-clients.nix {

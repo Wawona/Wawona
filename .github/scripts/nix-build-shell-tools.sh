@@ -8,12 +8,14 @@ cd "$ROOT"
 targets=(
   ".#zsh-ios-sim"
   ".#fastfetch-ios"
+  ".#phoon-ios"
   ".#neovim-ios"
   ".#neovim-rootfs-ios-sim"
   ".#wawona-pty-ios-sim"
   ".#wawona-rootfs-ios-sim"
   ".#zsh-android"
   ".#fastfetch-android"
+  ".#phoon-android"
   ".#neovim-android"
 )
 

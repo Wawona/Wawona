@@ -131,7 +131,7 @@ let
     # Not part of the uutils safe subset; listed separately for command_not_found.
     typeset -gaU WAWONA_INPROC_CLIENTS
     WAWONA_INPROC_CLIENTS=(
-      fastfetch nvim vi vim waypipe waypipe-rs ssh ssh-keygen scp
+      fastfetch phoon nvim vi vim waypipe waypipe-rs ssh ssh-keygen scp
       fuzzel foot weston-terminal
       weston-simple-shm weston-flower weston-clickdot weston-smoke
       weston-eventdemo weston-resizor weston-cliptest weston-transformed
@@ -162,7 +162,7 @@ let
   zloginTemplate = pkgs.writeText "zlogin.template" ''
     # Wawona iOS .zlogin — runs once for login shells. Safe to edit.
     print -P "%F{green}Wawona%f zsh ''${ZSH_VERSION} — in-process, App Store compliant."
-    print -P "%F{blue}Bundled:%f uutils coreutils, fastfetch, neovim, waypipe, ssh/ssh-keygen, weston-flower, weston-smoke + more (in-process, no fork/exec)."
+    print -P "%F{blue}Bundled:%f uutils coreutils, fastfetch, phoon, neovim, waypipe, ssh/ssh-keygen, weston-flower, weston-smoke + more (in-process, no fork/exec)."
     # zsh runs interactively ("-zsh -i"); its main loop draws PROMPT before each
     # ZLE read, so do not emit a prompt here (it would double the first prompt).
   '';

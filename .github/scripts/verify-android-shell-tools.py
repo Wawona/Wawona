@@ -16,15 +16,17 @@ ANDROID_NIX_FILES = (
 FLAKE = ROOT / "flake.nix"
 ANDROID_JNI = ROOT / "src/platform/android/android_jni.c"
 
-REQUIRED_FLAKE_OUTPUTS = ("zsh-android", "fastfetch-android", "neovim-android", "waypipe-android")
+REQUIRED_FLAKE_OUTPUTS = ("zsh-android", "fastfetch-android", "phoon-android", "neovim-android", "waypipe-android")
 
 REQUIRED_ANDROID_NIX = (
     "zshAndroid",
     "fastfetchAndroid",
+    "phoonAndroid",
     "neovimAndroid",
     "waypipeAndroid",
     "libzsh_bin.so",
     "libfastfetch_bin.so",
+    "libphoon_bin.so",
     "libnvim_bin.so",
     "libwaypipe_bin.so",
     "libssh_bin.so",
@@ -62,6 +64,8 @@ def main() -> int:
         errors.append("android_jni.c must resolve libzsh_bin.so from nativeLibDir")
     if "libwaypipe_bin.so" not in jni:
         errors.append("android_jni.c must install libwaypipe_bin.so into usr/bin")
+    if "libphoon_bin.so" not in jni:
+        errors.append("android_jni.c must install libphoon_bin.so into usr/bin")
     if "StrictHostKeyChecking=accept-new" not in jni:
         errors.append("android_jni.c must use OpenSSH argv (StrictHostKeyChecking)")
     if '"-y"' in jni or "'-y'" in jni:

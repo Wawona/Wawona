@@ -18,6 +18,7 @@
   # Replacement. Store-safe / App Store builds MUST pass null.
   ilandBaremetal ? null,
   fastfetch ? null,
+  phoon ? null,
   neovim ? null,
   zsh ? null,
   kmscube ? null,
@@ -1185,6 +1186,23 @@ GEN_HEADER
             fi
             '' else ''
             echo "Warning: fastfetch not provided, skipping fastfetch bundling"
+            ''}
+
+            # Bundle phoon (clean-room Rust moon-phase utility). macOS uses the
+            # native process model, so the CLI is bundled on PATH like fastfetch;
+            # the in-process dispatcher also resolves phoon_main when linked.
+            ${if phoon != null then ''
+            if [ -f "${phoon}/bin/phoon" ]; then
+              cp "${phoon}/bin/phoon" $out/Applications/Wawona.app/Contents/Resources/bin/
+              cp "${phoon}/bin/phoon" $out/Applications/Wawona.app/Contents/MacOS/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/phoon
+              chmod +x $out/Applications/Wawona.app/Contents/MacOS/phoon
+              echo "DEBUG: Bundled phoon"
+            else
+              echo "Warning: phoon binary not found at ${phoon}/bin/phoon"
+            fi
+            '' else ''
+            echo "Warning: phoon not provided, skipping phoon bundling"
             ''}
 
             # Bundle neovim

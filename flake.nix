@@ -82,6 +82,11 @@
     wwn-fastfetch.url = "github:Wawona/wwn-fastfetch";
     wwn-fastfetch.inputs.nixpkgs.follows = "nixpkgs";
     wwn-fastfetch.inputs.wwn-toolchain.follows = "wwn-toolchain";
+    # phoon (clean-room Rust moon-phase utility), in-process shell tool.
+    wwn-phoon-rs.url = "github:Wawona/wwn-phoon-rs";
+    wwn-phoon-rs.inputs.nixpkgs.follows = "nixpkgs";
+    wwn-phoon-rs.inputs.wwn-toolchain.follows = "wwn-toolchain";
+    wwn-phoon-rs.inputs.rust-overlay.follows = "rust-overlay";
     wwn-neovim.url = "github:Wawona/wwn-neovim/development";
     wwn-neovim.inputs.nixpkgs.follows = "nixpkgs";
     wwn-neovim.inputs.wwn-toolchain.follows = "wwn-toolchain";
@@ -106,7 +111,7 @@
     wwn-containers.inputs.wwn-vms.follows = "wwn-vms";
   };
 
-  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-ssh, wwn-waypipe, wwn-anowaW, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-neovim, wwn-niri, wwn-vms, wwn-containers, ... }:
+  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-ssh, wwn-waypipe, wwn-anowaW, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-niri, wwn-vms, wwn-containers, ... }:
   let
     linuxSystems = [ "x86_64-linux" "aarch64-linux" ];
     darwinSystems = [ "x86_64-darwin" "aarch64-darwin" ];
@@ -229,6 +234,7 @@
       // wwn-anowaW.registryFragment
       // wwn-foot.registryFragment
       // wwn-fastfetch.registryFragment
+      // wwn-phoon-rs.registryFragment
       // wwn-neovim.registryFragment
       // wwn-niri.registryFragment
       // wwn-vms.registryFragment
@@ -528,6 +534,7 @@
         studioZshBin = "${studioZshPkg}/bin/zsh";
         studioZshShare = "${studioZshPkg}/share/zsh";
         studioFastfetchBin = "${toolchainsAndroid.buildForAndroid "fastfetch" { }}/bin/fastfetch";
+        studioPhoonBin = "${toolchainsAndroid.buildForAndroid "phoon" { }}/bin/phoon";
         studioNeovimBin = "${toolchainsAndroid.buildForAndroid "neovim" { }}/bin/nvim";
         # waypipe ships a real ELF binary as `waypipe.real` plus a Vulkan-wrapper
         # script named `waypipe`; gradlegen.nix picks whichever exists at build
@@ -552,6 +559,7 @@
           zshBinaryPath = studioZshBin;
           zshSharePath = studioZshShare;
           fastfetchBinaryPath = studioFastfetchBin;
+          phoonBinaryPath = studioPhoonBin;
           neovimBinaryPath = studioNeovimBin;
           waypipeBinaryPath = studioWaypipeBin;
           waypipeBinaryPathFallback = studioWaypipeBinFallback;
@@ -957,6 +965,7 @@
               macosWeston = if want "macos" then toolchains.buildForMacOS "weston" { } else null;
               macosFoot = if want "macos" then toolchains.buildForMacOS "foot" { } else null;
               macosFastfetch = if want "macos" then pkgs.fastfetch else null;
+              macosPhoon = if want "macos" then toolchains.buildForMacOS "phoon" { } else null;
               macosNeovim = null;
               macosZsh = if want "macos" then pkgs.zsh else null;
               macosKmscube =
@@ -995,6 +1004,7 @@
             # anowaW app bridge (libanowaw.a + anowaw_mac_shim.o + headers).
             anowaw = toolchains.buildForMacOS "anowaw" { };
             fastfetch = pkgs.fastfetch;
+            phoon = toolchains.buildForMacOS "phoon" { };
             neovim = null;
             zsh = pkgs.zsh;
             kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
@@ -1018,6 +1028,7 @@
             fuzzel = toolchains.buildForMacOS "fuzzel" { };
             anowaw = toolchains.buildForMacOS "anowaw" { };
             fastfetch = pkgs.fastfetch;
+            phoon = toolchains.buildForMacOS "phoon" { };
             neovim = null;
             zsh = pkgs.zsh;
             kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
@@ -1360,6 +1371,13 @@ EOF
           foot-tvos-sim = toolchains.buildForTVOS "foot" { simulator = true; };
           foot-watchos = toolchains.buildForWatchOS "foot" { };
           foot-watchos-sim = toolchains.buildForWatchOS "foot" { simulator = true; };
+          # phoon (clean-room Rust moon-phase utility, in-process shell tool).
+          # Same target footprint as fastfetch/neovim: iOS/iPadOS/visionOS +
+          # macOS + Android (iOS attrs reused for iPadOS/visionOS). tvOS/watchOS
+          # are tier-3 Rust targets (no prebuilt std) — deferred, like fastfetch.
+          phoon-ios = toolchains.buildForIOS "phoon" { simulator = true; };
+          phoon-ios-device = toolchains.buildForIOS "phoon" { simulator = false; };
+          phoon-macos = toolchains.buildForMacOS "phoon" { };
           "zsh-framework-ios" = toolchains.buildForIOS "zsh-framework" { };
           "zsh-framework-ios-sim" = toolchains.buildForIOS "zsh-framework" { simulator = true; };
           "wawona-rootfs-ios" = toolchains.buildForIOS "wawona-rootfs" { };
@@ -1393,6 +1411,7 @@ EOF
           zsh-android = toolchainsAndroid.buildForAndroid "zsh" { };
           foot-android = toolchainsAndroid.buildForAndroid "foot" { };
           fastfetch-android = toolchainsAndroid.buildForAndroid "fastfetch" { };
+          phoon-android = toolchainsAndroid.buildForAndroid "phoon" { };
           neovim-android = toolchainsAndroid.buildForAndroid "neovim" { };
           waypipe-android = toolchainsAndroid.buildForAndroid "waypipe" { };
           # anowaW app bridge: native lib (libanowaw.so) linked into the Android
