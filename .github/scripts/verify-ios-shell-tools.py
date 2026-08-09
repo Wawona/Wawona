@@ -38,6 +38,7 @@ REQUIRED_FLAKE_OUTPUTS = (
     "phoon-visionos",
     "phoon-android",
     "phoon-macos",
+    "phoon",
     "neovim-ios",
     "neovim-ios-device",
     "neovim-android",

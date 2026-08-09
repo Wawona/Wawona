@@ -755,6 +755,9 @@
             waypipeSrc = waypipe-src;
             coreutilsSrc = coreutils-src;
           };
+          # Host-native phoon CLI for Linux (`nix run .#phoon`).
+          phoon-linux = toolchains.buildForLinux "phoon" { };
+          phoon = toolchains.buildForLinux "phoon" { };
         }) // (pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin (let
           teamId = let value = builtins.getEnv "TEAM_ID"; in if value == "" then null else value;
           apple = import applePath {
@@ -1386,6 +1389,9 @@ EOF
           phoon-visionos = toolchains.buildForVisionOS "phoon" { };
           phoon-visionos-sim = toolchains.buildForVisionOS "phoon" { simulator = true; };
           phoon-macos = toolchains.buildForMacOS "phoon" { };
+          # Host-native alias: `nix run .#phoon` on Darwin → macOS CLI.
+          # (Linux hosts get the same attr from the isLinuxHost block.)
+          phoon = toolchains.buildForMacOS "phoon" { };
           "zsh-framework-ios" = toolchains.buildForIOS "zsh-framework" { };
           "zsh-framework-ios-sim" = toolchains.buildForIOS "zsh-framework" { simulator = true; };
           "wawona-rootfs-ios" = toolchains.buildForIOS "wawona-rootfs" { };

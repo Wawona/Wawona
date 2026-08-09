@@ -1046,11 +1046,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1786261949,
-        "narHash": "sha256-Dyxvbe3UEHmHiR8bQFQVOKmbtiAcGKjzDpw12UwXPsk=",
+        "lastModified": 1786297169,
+        "narHash": "sha256-jZ5XIz9qiXH03Ek3St7xPMbrghprW9sR0ik3sVLLrzU=",
         "owner": "Wawona",
         "repo": "wwn-phoon-rs",
-        "rev": "61e7d40a1b676a72b18bea48b757ac2e63918010",
+        "rev": "75fab0d9ad076d71495ab1014ea055cf7571e4a6",
         "type": "github"
       },
       "original": {
