@@ -28,11 +28,9 @@ int fastfetch_main(int argc, char *argv[]) {
   (void)argv;
   return 127;
 }
-int phoon_main(int argc, char *argv[]) {
-  (void)argc;
-  (void)argv;
-  return 127;
-}
+/* NOTE: no phoon_main stub — wwn-phoon-rs (libphoon_rs.a) is force-loaded on
+ * every Apple target, including tvOS, so the real C ABI entry is always
+ * present. A stub here would collide with it (duplicate symbol). */
 int fuzzel_main(int argc, char *argv[]) {
   (void)argc;
   (void)argv;

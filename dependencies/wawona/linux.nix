@@ -5,6 +5,9 @@
   waypipeSrc ? null,
   coreutilsSrc ? null,
   westonSimpleShmLinuxNix,
+  # phoon (wwn-phoon-rs): clean-room Rust moon-phase utility. Bundled on Linux
+  # via the toolchain build; falls back to absent if not provided.
+  phoon ? null,
   ...
 }:
 
@@ -45,7 +48,7 @@ pkgs.writeShellApplication {
     pkgs.systemd
     pkgs.coreutils
     pkgs.lldb
-  ];
+  ] ++ pkgs.lib.optional (phoon != null) phoon;
   text = ''
     set -euo pipefail
     export PKG_CONFIG_PATH="${pkgs.glib.dev}/lib/pkgconfig:${pkgs.gtk4.dev}/lib/pkgconfig:${pkgs.libadwaita.dev}/lib/pkgconfig:${pkgs.cairo.dev}/lib/pkgconfig:${pkgs.pango.dev}/lib/pkgconfig:${pkgs.gdk-pixbuf.dev}/lib/pkgconfig:${pkgs.graphene.dev}/lib/pkgconfig:${pkgs.harfbuzz.dev}/lib/pkgconfig:${pkgs.fribidi.dev}/lib/pkgconfig:${pkgs.freetype.dev}/lib/pkgconfig:${pkgs.fontconfig.dev}/lib/pkgconfig:${pkgs.wayland.dev}/lib/pkgconfig:${pkgs.libxkbcommon.dev}/lib/pkgconfig:${pkgs.openssl.dev}/lib/pkgconfig:${pkgs.libffi.dev}/lib/pkgconfig:${pkgs.zstd.dev}/lib/pkgconfig:${pkgs.lz4.dev}/lib/pkgconfig:${pkgs.vulkan-loader.dev}/lib/pkgconfig"

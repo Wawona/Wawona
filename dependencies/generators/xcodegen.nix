@@ -79,7 +79,6 @@ let
   derivedNvimLib = "$(DERIVED_FILE_DIR)/libwawona-neovim.a";
   derivedSshCliLib = "$(DERIVED_FILE_DIR)/libwwn-ssh-cli.a";
   derivedFfLib = "$(DERIVED_FILE_DIR)/libfastfetch.a";
-  derivedPhoonLib = "$(DERIVED_FILE_DIR)/libphoon_rs.a";
   # foot / fuzzel are Wayland clients whose static archives embed their own copy
   # of the generated protocol marshalling (xdg_toplevel_interface, …). Prebuild
   # privatises them here (single merged .o, only the *_main entry exported) so
@@ -234,12 +233,24 @@ let
       [ "-force_load" derivedFfLib ] ++ frameworkFlags;
   # phoon is pure Rust (std only), so no extra frameworks are required — just
   # force-load the privatized archive so phoon_main is pulled in for dispatch.
+  # wwn-phoon-rs: pure-Rust static lib + phoon_main C ABI (in-process shell
+  # tool). Like niri/waypipe, Rust name-mangles everything except the single
+  # phoon_main C entry, so there are NO symbol collisions with weston/foot —
+  # force-load the store archive directly and DO NOT privatize it. nmedit/ld -r
+  # would run an LTO pass over the mixed native+bitcode archive and dead-strip
+  # the unreferenced phoon_main (only the -u/-force_load consumer references it).
+  # phoon is mandatory on every Apple target, so — like niri — a null dep is the
+  # only legitimate opt-out (no builtins.pathExists guard, which would silently
+  # drop -force_load while still emitting -u and break the link).
   phoonLdflags = deps:
     let
       ph = deps.phoon or null;
       libph = "${strip ph}/lib/libphoon_rs.a";
-    in if ph == null || !builtins.pathExists libph then [] else
-      [ "-force_load" derivedPhoonLib ];
+    in if ph == null then [] else [
+      "-L${strip ph}/lib"
+      "-Wl,-u,_phoon_main"
+      "-force_load" libph
+    ];
   neovimLdflags = deps:
     let libnvim = "${strip (deps.neovim or null)}/lib/libwawona-neovim.a";
     in if (deps.neovim or null) == null || !builtins.pathExists libnvim then [] else [
@@ -1805,7 +1816,7 @@ PLIST
               # niri's wayland-egl crate references wl_egl_window_* even on the
               # software-only tvOS surface.
               "-lwayland-egl"
-            ] ++ westonToytoolkitLdflagsAppleMobile tvosDeps ++ westonCompositorLdflagsAppleMobile tvosDeps ++ niriLdflags tvosDeps ++ footLdflags tvosDeps
+            ] ++ westonToytoolkitLdflagsAppleMobile tvosDeps ++ westonCompositorLdflagsAppleMobile tvosDeps ++ niriLdflags tvosDeps ++ footLdflags tvosDeps ++ phoonLdflags tvosDeps
             ++ sshCliLdflags tvosDeps
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" derivedRustLib ] ++ finalCxxLdflagsNoIokit;
@@ -1837,7 +1848,7 @@ PLIST
               "-lcrypto"
               "-lepoll-shim"
               "-lwayland-egl"
-            ] ++ westonToytoolkitLdflagsAppleMobile tvosSimDeps ++ westonCompositorLdflagsAppleMobile tvosSimDeps ++ niriLdflags tvosSimDeps ++ footLdflags tvosSimDeps
+            ] ++ westonToytoolkitLdflagsAppleMobile tvosSimDeps ++ westonCompositorLdflagsAppleMobile tvosSimDeps ++ niriLdflags tvosSimDeps ++ footLdflags tvosSimDeps ++ phoonLdflags tvosSimDeps
             ++ sshCliLdflags tvosSimDeps
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" derivedRustLib ] ++ finalCxxLdflagsNoIokit;

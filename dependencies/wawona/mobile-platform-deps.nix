@@ -99,12 +99,13 @@ let
         # family. tvOS/watchOS use the constrained non-VM product surface.
         "cairo-gobject" = buildFn "cairo-gobject" { inherit simulator; };
         niri = buildFn "niri" { inherit simulator; };
+        # phoon: pure-Rust in-process shell tool. Runs on the WHOLE Apple family
+        # (rust-overlay stable ships std for the tier-3 tvOS/watchOS/visionOS
+        # triples), so it is bundled everywhere like niri — no GPU/framework deps.
+        phoon = buildFn "phoon" { inherit simulator; };
       }
     // lib.optionalAttrs (variant == "mobile" || variant == "vision") {
         fastfetch = buildFn "fastfetch" { inherit simulator; };
-        # phoon: pure-Rust in-process shell tool. Same footprint as fastfetch
-        # (iOS/iPadOS/visionOS); tvOS/watchOS deferred (tier-3 Rust std).
-        phoon = buildFn "phoon" { inherit simulator; };
         neovim = buildFn "neovim" { inherit simulator; };
         "neovim-rootfs" = buildFn "neovim-rootfs" { inherit simulator; };
         # wwn-niri fuzzel stack (Mod+D launcher spawned in-process).

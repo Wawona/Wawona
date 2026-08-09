@@ -323,22 +323,9 @@ if [ "$_with_zsh" = "1" ]; then
         "$_arch" "$_ld_platform" "$_min_ver" \
         _fastfetch_main
       echo "Privatized $derived/libfastfetch.a (from $ff_out)"
-
-      # phoon: clean-room Rust moon-phase utility (libphoon_rs.a, phoon_main).
-      # Pure Rust + std, no embedded protocol marshalling; keep only the single
-      # _phoon_main entry global. Same target footprint as fastfetch/neovim.
-      _phoon_attr="phoon-ios-device"
-      case "$_sdk" in
-        *simulator*) _phoon_attr="phoon-ios" ;;
-      esac
-      phoon_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_phoon_attr")"
-      privatize_lib "$phoon_out/lib/libphoon_rs.a" "$derived/libphoon_rs.a" \
-        "$_arch" "$_ld_platform" "$_min_ver" \
-        _phoon_main
-      echo "Privatized $derived/libphoon_rs.a (from $phoon_out)"
       ;;
     *)
-      echo "Skipping neovim/fastfetch/phoon privatize for ${TARGET_NAME:-unknown}"
+      echo "Skipping neovim/fastfetch privatize for ${TARGET_NAME:-unknown}"
       ;;
   esac
 
@@ -382,4 +369,11 @@ if [ "$_with_zsh" = "1" ]; then
   else
     echo "Skipping fuzzel privatize for ${TARGET_NAME:-unknown} (not linked)"
   fi
+
+  # NOTE: phoon (wwn-phoon-rs) is intentionally NOT privatized here. It is a
+  # pure-Rust crate like niri/waypipe: Rust name-mangles every internal symbol,
+  # so the only global C symbol is phoon_main and there is nothing to collide
+  # with. It is force-loaded straight from its nix-store archive by phoonLdflags
+  # in xcodegen.nix. Running privatize_lib on it would LTO-DCE phoon_main out of
+  # the mixed native+bitcode archive.
 fi

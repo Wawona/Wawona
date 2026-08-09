@@ -180,6 +180,7 @@ let
     foot = terminalPng;
     nvim = iconEditorPng;
     fastfetch = waylandPng;
+    phoon = iconWindowPng;
     weston-simple-shm = iconWindowPng;
     weston-flower = iconFlowerPng;
     weston-smoke = iconSmokePng;

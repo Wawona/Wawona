@@ -42,6 +42,9 @@ let
     linux = pkgs.callPackage ./linux.nix {
       inherit wawonaVersion;
       rustBackend = rustBackendMacOS;
+      # phoon (wwn-phoon-rs): clean-room Rust moon-phase utility, bundled on the
+      # Linux target too (native host build via the toolchain).
+      phoon = buildModule.buildForLinux "phoon" { };
     };
 
     linux-vm = pkgs.callPackage ./linux-vm.nix {

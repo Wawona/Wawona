@@ -31,7 +31,11 @@ REQUIRED_FLAKE_OUTPUTS = (
     "fastfetch-ios-device",
     "fastfetch-android",
     "phoon-ios",
+    "phoon-ios-sim",
     "phoon-ios-device",
+    "phoon-tvos",
+    "phoon-watchos",
+    "phoon-visionos",
     "phoon-android",
     "phoon-macos",
     "neovim-ios",
@@ -128,13 +132,19 @@ def verify_prebuild(text: str) -> list[str]:
         "libwawona-zsh.a",
         "libwawona-neovim.a",
         "libfastfetch.a",
-        "libphoon_rs.a",
         "neovim-ios",
         "fastfetch-ios",
-        "phoon-ios",
     ):
         if needle not in text:
             errors.append(f"xcode-prebuild.sh missing: {needle}")
+    # phoon (wwn-phoon-rs) is pure Rust like niri: it is force-loaded straight
+    # from its nix-store archive by phoonLdflags, NOT privatized in prebuild.
+    # So it must be ABSENT from the prebuild privatize path (mirrors niri).
+    if "libphoon_rs.a" in text:
+        errors.append(
+            "xcode-prebuild.sh must NOT privatize libphoon_rs.a "
+            "(pure-Rust: force-load the store archive via phoonLdflags instead)"
+        )
     if "libssh-inprocess.a" in text and "never" not in text.lower():
         # comment mentioning never is OK
         pass

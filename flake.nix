@@ -83,7 +83,7 @@
     wwn-fastfetch.inputs.nixpkgs.follows = "nixpkgs";
     wwn-fastfetch.inputs.wwn-toolchain.follows = "wwn-toolchain";
     # phoon (clean-room Rust moon-phase utility), in-process shell tool.
-    wwn-phoon-rs.url = "github:Wawona/wwn-phoon-rs";
+    wwn-phoon-rs.url = "github:Wawona/wwn-phoon-rs/development";
     wwn-phoon-rs.inputs.nixpkgs.follows = "nixpkgs";
     wwn-phoon-rs.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-phoon-rs.inputs.rust-overlay.follows = "rust-overlay";
@@ -1372,11 +1372,19 @@ EOF
           foot-watchos = toolchains.buildForWatchOS "foot" { };
           foot-watchos-sim = toolchains.buildForWatchOS "foot" { simulator = true; };
           # phoon (clean-room Rust moon-phase utility, in-process shell tool).
-          # Same target footprint as fastfetch/neovim: iOS/iPadOS/visionOS +
-          # macOS + Android (iOS attrs reused for iPadOS/visionOS). tvOS/watchOS
-          # are tier-3 Rust targets (no prebuilt std) — deferred, like fastfetch.
-          phoon-ios = toolchains.buildForIOS "phoon" { simulator = true; };
+          # Bundled on EVERY Apple target like foot/niri: rust-overlay stable
+          # ships std for the tier-3 tvOS/watchOS/visionOS triples, so phoon
+          # builds natively for each (iOS attrs reused for iPadOS/visionOS in
+          # prebuild, matching foot). Pure Rust — no GPU/framework deps.
+          phoon-ios = toolchains.buildForIOS "phoon" { };
+          phoon-ios-sim = toolchains.buildForIOS "phoon" { simulator = true; };
           phoon-ios-device = toolchains.buildForIOS "phoon" { simulator = false; };
+          phoon-tvos = toolchains.buildForTVOS "phoon" { };
+          phoon-tvos-sim = toolchains.buildForTVOS "phoon" { simulator = true; };
+          phoon-watchos = toolchains.buildForWatchOS "phoon" { };
+          phoon-watchos-sim = toolchains.buildForWatchOS "phoon" { simulator = true; };
+          phoon-visionos = toolchains.buildForVisionOS "phoon" { };
+          phoon-visionos-sim = toolchains.buildForVisionOS "phoon" { simulator = true; };
           phoon-macos = toolchains.buildForMacOS "phoon" { };
           "zsh-framework-ios" = toolchains.buildForIOS "zsh-framework" { };
           "zsh-framework-ios-sim" = toolchains.buildForIOS "zsh-framework" { simulator = true; };

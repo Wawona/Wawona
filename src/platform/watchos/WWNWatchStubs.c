@@ -122,11 +122,8 @@ int fastfetch_main(int argc, char **argv) {
     return 1;
 }
 
-__attribute__((weak))
-int phoon_main(int argc, char **argv) {
-    (void)argc; (void)argv;
-    return 1;
-}
+/* No phoon_main stub: wwn-phoon-rs (libphoon_rs.a) is force-loaded on watchOS
+ * too, so the real phoon_main is always linked. */
 
 __attribute__((weak))
 int fuzzel_main(int argc, char **argv) {
