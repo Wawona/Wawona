@@ -89,14 +89,22 @@ leak_ios_pid() {
   local udid="$1"
   local bundle="${2:-com.aspauldingcode.Wawona}"
   local pid
+  # iOS app launchd labels are "UIKitApplication:<bundle>[0x..][rb-legacy]", not
+  # a bare "<bundle>" — an exact `$3==bundle` never matches, so match the bundle
+  # id as a substring of the label column. (This step was previously unreached:
+  # iOS failed earlier at machines_home_not_reached before pid resolution.)
   pid="$(xcrun simctl spawn "$udid" launchctl list 2>/dev/null \
-    | awk -v b="$bundle" '$3==b {print $1; exit}')"
+    | awk -v b="$bundle" 'index($3, b) > 0 { print $1; exit }')"
   if [[ -n "$pid" && "$pid" != "-" && "$pid" =~ ^[0-9]+$ ]]; then
     printf '%s\n' "$pid"
     return 0
   fi
-  # Fallback: host-side pgrep (Simulator often surfaces the guest pid)
-  pid="$(pgrep -f "$bundle" 2>/dev/null | head -1 || true)"
+  # Fallback: host process for this sim's app binary (the simulator runs the app
+  # as a host process; its path contains the sim UDID + Wawona.app/Wawona but not
+  # the bundle id, so match on the executable path, then a looser Wawona.app).
+  pid="$(pgrep -f "Devices/$udid/data/Containers/Bundle/.*/Wawona\.app/Wawona" 2>/dev/null | head -1 || true)"
+  [[ -z "$pid" ]] && pid="$(pgrep -f "Wawona\.app/Wawona" 2>/dev/null | head -1 || true)"
+  [[ -z "$pid" ]] && pid="$(pgrep -f "$bundle" 2>/dev/null | head -1 || true)"
   [[ -n "$pid" ]] && printf '%s\n' "$pid"
 }
 
