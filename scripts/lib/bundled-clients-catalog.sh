@@ -85,6 +85,29 @@ bundled_client_skip_reason() {
           ;;
       esac
       ;;
+    android)
+      # The GitHub-hosted Android emulator is a software-GPU (SwiftShader) target
+      # with no EGL_EXT_image_dma_buf_import / AHardwareBuffer dma_buf import, so
+      # gbm-es2-demo cannot create its EGL image and CRASHES the host. Because the
+      # emulator's graphics state does not recover, that crash cascades and every
+      # later client in the run then reports "process died during hold" — verified
+      # by the 2026-08-09 run, which was 22/22 GREEN precisely because gbm-es2-demo
+      # was not yet in the catalog (vkcube / opengl-cube / weston-simple-egl all
+      # PASS on the emulator). Skip only the crasher here; it still runs on real
+      # Android hardware (AHardwareBuffer). Override with WAWONA_MATRIX_GPU_HEADLESS=0.
+      case "$client" in
+        gbm-es2-demo)
+          local headless="${WAWONA_MATRIX_GPU_HEADLESS:-}"
+          if [ -z "$headless" ] && [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+            headless=1
+          fi
+          if [ "$headless" = "1" ]; then
+            echo "gbm-es2-demo needs dma_buf import absent on the software-GPU CI emulator (crashes+cascades); validated on real Android hardware"
+            return 0
+          fi
+          ;;
+      esac
+      ;;
     macos)
       # GPU clients that need capabilities the GitHub-hosted (headless, VM) macOS
       # runner does not provide — verified by running the SAME product build on
