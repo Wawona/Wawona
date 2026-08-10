@@ -1071,6 +1071,25 @@ GEN_HEADER
                echo "Warning: Weston bin directory not found at ${weston}/bin"
             fi
 
+            # Weston shell helpers (weston-desktop-shell / weston-keyboard /
+            # weston-simple-im). desktop-shell.so spawns weston-desktop-shell from
+            # a compiled-in libexec path that is a build-time-only nix output and
+            # does not exist at runtime; bundle the helpers next to the app binary
+            # and override [shell] client= in weston.ini (WWNWaypipeRunner).
+            if [ -d "${weston}/libexec" ]; then
+              for helper in "${weston}/libexec"/weston-*; do
+                [ -f "$helper" ] || continue
+                hbase="$(basename "$helper")"
+                cp "$helper" $out/Applications/Wawona.app/Contents/Resources/bin/
+                cp "$helper" $out/Applications/Wawona.app/Contents/MacOS/
+                chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/"$hbase"
+                chmod +x $out/Applications/Wawona.app/Contents/MacOS/"$hbase"
+                echo "DEBUG: Bundled weston helper $hbase"
+              done
+            else
+              echo "Warning: Weston libexec not found at ${weston}/libexec"
+            fi
+
             # Weston nested compositor: shell/backends, PNG assets, cursors.
             APP="$out/Applications/Wawona.app"
             if [ -d "${weston}/share/weston" ]; then

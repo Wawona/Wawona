@@ -16,6 +16,10 @@ use wayland_protocols::wp::text_input::zv3::server::{
     zwp_text_input_manager_v3::{self, ZwpTextInputManagerV3},
     zwp_text_input_v3::{self, ZwpTextInputV3},
 };
+use wayland_protocols::wp::text_input::zv1::server::{
+    zwp_text_input_manager_v1::{self, ZwpTextInputManagerV1},
+    zwp_text_input_v1::{self, ZwpTextInputV1},
+};
 
 use crate::core::state::CompositorState;
 use crate::core::wayland::xdg::decoration::is_weston_terminal_app_id;
@@ -187,6 +191,29 @@ impl TextInputInstance {
     }
 }
 
+/// Per-`zwp_text_input_v1` state (legacy weston clients: weston-editor).
+///
+/// v1 is the older unstable protocol weston's own toy-toolkit still speaks. It
+/// is not double-buffered like v3: `activate`/`deactivate` are immediate and
+/// the compositor echoes the client's `commit_state` serial back on
+/// `commit_string`/`preedit_string`.
+#[derive(Debug, Clone)]
+pub struct TextInputV1Instance {
+    pub resource: ZwpTextInputV1,
+    /// Set between `activate` and `deactivate`.
+    pub active: bool,
+    /// Last serial from the client's `commit_state`, echoed on outgoing events.
+    pub serial: u32,
+    /// Surface passed to the last `activate` (for enter/leave).
+    pub surface: Option<wayland_server::protocol::wl_surface::WlSurface>,
+}
+
+impl TextInputV1Instance {
+    fn new(resource: ZwpTextInputV1) -> Self {
+        Self { resource, active: false, serial: 0, surface: None }
+    }
+}
+
 /// Compositor-wide text input state
 #[derive(Debug, Default)]
 pub struct TextInputState {
@@ -196,12 +223,36 @@ pub struct TextInputState {
     pub focused: Option<u32>,
     /// Surface that last received text-input enter (keyboard focus surface).
     pub focused_surface_id: Option<u32>,
+    /// Legacy v1 text inputs (weston-editor), keyed by resource protocol ID.
+    pub v1_instances: HashMap<u32, TextInputV1Instance>,
+    /// Currently active v1 text input.
+    pub v1_focused: Option<u32>,
 }
 
 impl TextInputState {
     /// True when any instance has committed `enabled`.
     pub fn committed_enabled(&self) -> bool {
         self.instances.values().any(|i| i.enabled)
+    }
+
+    /// True when any legacy v1 text input is active.
+    pub fn v1_active(&self) -> bool {
+        self.v1_instances.values().any(|i| i.active)
+    }
+
+    /// Active v1 instance, preferring `v1_focused`.
+    fn v1_active_instance_mut(&mut self) -> Option<&mut TextInputV1Instance> {
+        if let Some(id) = self.v1_focused {
+            if self.v1_instances.get(&id).map(|i| i.active).unwrap_or(false) {
+                return self.v1_instances.get_mut(&id);
+            }
+        }
+        let fallback = self
+            .v1_instances
+            .iter()
+            .find(|(_, i)| i.active)
+            .map(|(id, _)| *id);
+        fallback.and_then(move |id| self.v1_instances.get_mut(&id))
     }
 
     /// First committed-enabled instance, preferring `focused` when set.
@@ -275,6 +326,11 @@ impl TextInputState {
                 instance.resource.done(instance.serial);
             }
         }
+        if let Some(v1) = self.v1_active_instance_mut() {
+            if v1.resource.is_alive() {
+                v1.resource.commit_string(v1.serial, text.to_string());
+            }
+        }
     }
 
     /// Forward preedit from platform IME
@@ -288,6 +344,14 @@ impl TextInputState {
                 instance.resource.done(instance.serial);
             }
         }
+        if let Some(v1) = self.v1_active_instance_mut() {
+            if v1.resource.is_alive() {
+                // v1 preedit_string carries the trailing commit text; weston-editor
+                // applies the preedit then the commit on the next commit_state.
+                v1.resource
+                    .preedit_string(v1.serial, text.to_string(), String::new());
+            }
+        }
     }
 
     /// Forward delete_surrounding_text from platform IME
@@ -299,6 +363,13 @@ impl TextInputState {
                     .resource
                     .delete_surrounding_text(before_length, after_length);
                 instance.resource.done(instance.serial);
+            }
+        }
+        if let Some(v1) = self.v1_active_instance_mut() {
+            if v1.resource.is_alive() {
+                // v1 uses (index, length) relative to cursor, in bytes.
+                v1.resource
+                    .delete_surrounding_text(-(before_length as i32), before_length + after_length);
             }
         }
     }
@@ -348,7 +419,7 @@ pub fn terminal_text_entry_active(state: &CompositorState) -> bool {
 /// Soft OSK should expand: committed TI enable OR terminal synthesis.
 /// Real TI always wins when present (synthesis is ignored while TI enabled).
 pub fn text_entry_wanted(state: &CompositorState) -> bool {
-    if state.ext.text_input.committed_enabled() {
+    if state.ext.text_input.committed_enabled() || state.ext.text_input.v1_active() {
         return true;
     }
     terminal_text_entry_active(state)
@@ -512,6 +583,122 @@ impl Dispatch<ZwpTextInputV3, u32> for CompositorState {
 /// Register zwp_text_input_manager_v3 global
 pub fn register_text_input_manager(display: &DisplayHandle) -> wayland_server::backend::GlobalId {
     display.create_global::<CompositorState, ZwpTextInputManagerV3, ()>(1, ())
+}
+
+// ============================================================================
+// zwp_text_input_manager_v1 (legacy — weston-editor / weston toy-toolkit)
+// ============================================================================
+//
+// weston's own clients still bind the unstable v1 manager and exit with
+// "No text input manager global" when it is absent. Advertise it so those
+// clients start, and bridge activate/deactivate + IME output onto the same
+// soft-OSK path as v3.
+
+impl GlobalDispatch<ZwpTextInputManagerV1, ()> for CompositorState {
+    fn bind(
+        _state: &mut Self,
+        _handle: &DisplayHandle,
+        _client: &Client,
+        resource: New<ZwpTextInputManagerV1>,
+        _global_data: &(),
+        data_init: &mut DataInit<'_, Self>,
+    ) {
+        data_init.init(resource, ());
+        tracing::debug!("Bound zwp_text_input_manager_v1");
+    }
+}
+
+impl Dispatch<ZwpTextInputManagerV1, ()> for CompositorState {
+    fn request(
+        state: &mut Self,
+        _client: &Client,
+        _resource: &ZwpTextInputManagerV1,
+        request: zwp_text_input_manager_v1::Request,
+        _data: &(),
+        _dhandle: &DisplayHandle,
+        data_init: &mut DataInit<'_, Self>,
+    ) {
+        match request {
+            zwp_text_input_manager_v1::Request::CreateTextInput { id } => {
+                let text_input = data_init.init(id, ());
+                let ti_id = text_input.id().protocol_id();
+                state
+                    .ext
+                    .text_input
+                    .v1_instances
+                    .insert(ti_id, TextInputV1Instance::new(text_input));
+                tracing::debug!("Created v1 text input {}", ti_id);
+            }
+            _ => {}
+        }
+    }
+}
+
+// zwp_text_input_v1 — user data is () (looked up by protocol id).
+impl Dispatch<ZwpTextInputV1, ()> for CompositorState {
+    fn request(
+        state: &mut Self,
+        _client: &Client,
+        resource: &ZwpTextInputV1,
+        request: zwp_text_input_v1::Request,
+        _data: &(),
+        _dhandle: &DisplayHandle,
+        _data_init: &mut DataInit<'_, Self>,
+    ) {
+        let ti_id = resource.id().protocol_id();
+        match request {
+            zwp_text_input_v1::Request::Activate { seat: _, surface } => {
+                if let Some(inst) = state.ext.text_input.v1_instances.get_mut(&ti_id) {
+                    inst.active = true;
+                    inst.surface = Some(surface.clone());
+                    if inst.resource.is_alive() {
+                        inst.resource.enter(&surface);
+                    }
+                }
+                state.ext.text_input.v1_focused = Some(ti_id);
+                #[cfg(feature = "desktop-protocols")]
+                state.ext.input_method.activate();
+                tracing::debug!("v1 text input {} activate", ti_id);
+            }
+            zwp_text_input_v1::Request::Deactivate { seat: _ } => {
+                if let Some(inst) = state.ext.text_input.v1_instances.get_mut(&ti_id) {
+                    inst.active = false;
+                    if inst.resource.is_alive() {
+                        inst.resource.leave();
+                    }
+                }
+                if state.ext.text_input.v1_focused == Some(ti_id) {
+                    state.ext.text_input.v1_focused = None;
+                }
+                #[cfg(feature = "desktop-protocols")]
+                if !state.ext.text_input.v1_active() {
+                    state.ext.input_method.deactivate();
+                }
+                tracing::debug!("v1 text input {} deactivate", ti_id);
+            }
+            zwp_text_input_v1::Request::CommitState { serial } => {
+                if let Some(inst) = state.ext.text_input.v1_instances.get_mut(&ti_id) {
+                    inst.serial = serial;
+                }
+            }
+            zwp_text_input_v1::Request::Reset => {}
+            zwp_text_input_v1::Request::ShowInputPanel => {}
+            zwp_text_input_v1::Request::HideInputPanel => {}
+            zwp_text_input_v1::Request::SetSurroundingText { .. } => {}
+            zwp_text_input_v1::Request::SetContentType { .. } => {}
+            zwp_text_input_v1::Request::SetCursorRectangle { .. } => {}
+            zwp_text_input_v1::Request::SetPreferredLanguage { .. } => {}
+            zwp_text_input_v1::Request::InvokeAction { .. } => {}
+            _ => {}
+        }
+    }
+}
+
+/// Register zwp_text_input_manager_v1 global (legacy weston clients).
+pub fn register_text_input_manager_v1(
+    display: &DisplayHandle,
+) -> wayland_server::backend::GlobalId {
+    display.create_global::<CompositorState, ZwpTextInputManagerV1, ()>(1, ())
 }
 
 #[cfg(test)]

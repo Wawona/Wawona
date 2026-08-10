@@ -192,6 +192,49 @@ EOF
   rm -f "$script"
 }
 
+# --- agent-device Start (Apple simulators) -----------------------------------
+
+# Drive the Machines "Start" button via agent-device — the same model Android
+# and the leak-idle gate use. Replaces LLDB connectProfile, which the Release
+# ObjC expression parser rejects. Returns 0 iff Start was pressed.
+apple_start_client() {
+  local platform="$1" sim="$2" bundle="$3" cell="$4"
+  local ad_plat
+  case "$platform" in
+    ios | ipados) ad_plat=ios ;;
+    visionos) ad_plat=visionos ;;
+    tvos) ad_plat=tvos ;;
+    watchos) ad_plat=watchos ;;
+    *) ad_plat=ios ;;
+  esac
+  local sess="wawona-${platform}-matrix"
+  local ad=(--platform "$ad_plat" --device "$sim" --session "$sess")
+
+  agent-device open "$bundle" --relaunch "${ad[@]}" >"$cell/ad-open.log" 2>&1 || true
+  agent-device wait 3000 "${ad[@]}" >/dev/null 2>&1 || true
+  agent-device alert dismiss "${ad[@]}" >/dev/null 2>&1 || true
+
+  # Welcome sheet (first launch) blocks the Machines Start button.
+  if ! agent-device is visible 'id="wwn.machines.root"' "${ad[@]}" >/dev/null 2>&1; then
+    agent-device press 'id="wwn.welcome.continue"' "${ad[@]}" >/dev/null 2>&1 || true
+    agent-device press 'label="Continue"' "${ad[@]}" >/dev/null 2>&1 || true
+    agent-device find Continue press --first "${ad[@]}" >/dev/null 2>&1 || true
+    agent-device wait 1500 "${ad[@]}" >/dev/null 2>&1 || true
+    agent-device alert dismiss "${ad[@]}" >/dev/null 2>&1 || true
+  fi
+
+  if agent-device press 'id="wwn.machines.start"' "${ad[@]}" >/dev/null 2>&1 \
+    || agent-device press 'label="Start"' "${ad[@]}" >/dev/null 2>&1 \
+    || agent-device find Start press --first "${ad[@]}" >/dev/null 2>&1; then
+    agent-device wait 3000 "${ad[@]}" >/dev/null 2>&1 || true
+    agent-device screenshot "$cell/running.png" "${ad[@]}" >/dev/null 2>&1 || true
+    return 0
+  fi
+  agent-device screenshot "$cell/start-fail.png" "${ad[@]}" >/dev/null 2>&1 || true
+  agent-device snapshot -i --raw "${ad[@]}" >"$cell/start-fail-snapshot.txt" 2>&1 || true
+  return 1
+}
+
 # --- console capture ---------------------------------------------------------
 
 start_sim_log() {
@@ -303,39 +346,56 @@ run_apple_cell() {
     }
 
   xcrun simctl terminate "$udid" "$bundle" >/dev/null 2>&1 || true
-  local launch_out pid=""
-  launch_out="$(xcrun simctl launch "$udid" "$bundle" 2>&1)" || true
-  printf '%s\n' "$launch_out" >"$cell/launch.log"
-  # simctl launch prints: com.bundle.id: <pid>
-  pid="$(printf '%s\n' "$launch_out" | sed -nE 's/.*: ([0-9]+)$/\1/p' | head -1)"
-  # Let dyld/UIKit finish before LLDB attaches (early attach lands in dyld_sim).
-  sleep "${WAWONA_MATRIX_LAUNCH_SETTLE_SEC:-5}"
-  if [[ -z "$pid" || "$pid" == "-" ]]; then
-    pid="$(apple_pid "$udid" "$bundle")"
-  fi
-  if [[ -z "$pid" || "$pid" == "-" ]]; then
-    sleep 2
-    pid="$(apple_pid "$udid" "$bundle")"
-  fi
-  if [[ -z "$pid" || "$pid" == "-" ]]; then
-    record "$platform" "$client" FAIL "app pid not found after launch" "$hold" "$cell"
-    return 1
-  fi
-  echo "$pid" >"$cell/pid.txt"
 
   local logpid=""
   logpid="$(start_sim_log "$udid" "$bundle" "$cell/console.log")"
   echo "$logpid" >"$cell/logpid.txt"
 
-  if ! lldb_connect "$pid" "$cell/lldb-connect.log"; then
-    stop_log_pid "$logpid"
-    # watch often lacks WWNMachineSessionBridge — classify
-    if [[ "$platform" == "watchos" ]] && grep -qi 'error\|undeclared\|use of undeclared' "$cell/lldb-connect.log" 2>/dev/null; then
-      record "$platform" "$client" FAIL "lldb connectProfile unavailable/error (see lldb-connect.log)" "$hold" "$cell"
-    else
-      record "$platform" "$client" FAIL "lldb connectProfile did not return ok=1" "$hold" "$cell"
+  local use_lldb="${WAWONA_MATRIX_USE_LLDB:-0}"
+  local pid=""
+
+  if [[ "$use_lldb" == "1" ]]; then
+    # Legacy local-debug path: simctl launch + LLDB connectProfile injection.
+    local launch_out
+    launch_out="$(xcrun simctl launch "$udid" "$bundle" 2>&1)" || true
+    printf '%s\n' "$launch_out" >"$cell/launch.log"
+    pid="$(printf '%s\n' "$launch_out" | sed -nE 's/.*: ([0-9]+)$/\1/p' | head -1)"
+    sleep "${WAWONA_MATRIX_LAUNCH_SETTLE_SEC:-5}"
+    if [[ -z "$pid" || "$pid" == "-" ]]; then pid="$(apple_pid "$udid" "$bundle")"; fi
+    if [[ -z "$pid" || "$pid" == "-" ]]; then sleep 2; pid="$(apple_pid "$udid" "$bundle")"; fi
+    if [[ -z "$pid" || "$pid" == "-" ]]; then
+      stop_log_pid "$logpid"
+      record "$platform" "$client" FAIL "app pid not found after launch" "$hold" "$cell"
+      return 1
     fi
-    return 1
+    echo "$pid" >"$cell/pid.txt"
+    if ! lldb_connect "$pid" "$cell/lldb-connect.log"; then
+      stop_log_pid "$logpid"
+      if [[ "$platform" == "watchos" ]] && grep -qi 'error\|undeclared\|use of undeclared' "$cell/lldb-connect.log" 2>/dev/null; then
+        record "$platform" "$client" FAIL "lldb connectProfile unavailable/error (see lldb-connect.log)" "$hold" "$cell"
+      else
+        record "$platform" "$client" FAIL "lldb connectProfile did not return ok=1" "$hold" "$cell"
+      fi
+      return 1
+    fi
+  else
+    # Default path: drive the Machines "Start" button via agent-device (same as
+    # Android + leak-idle). agent-device open --relaunch launches the installed
+    # app itself, so no simctl launch / LLDB attach is needed.
+    if ! apple_start_client "$platform" "$sim" "$bundle" "$cell"; then
+      stop_log_pid "$logpid"
+      record "$platform" "$client" FAIL "agent-device Start not pressed (see start-fail-snapshot.txt)" "$hold" "$cell"
+      xcrun simctl terminate "$udid" "$bundle" >/dev/null 2>&1 || true
+      return 1
+    fi
+    pid="$(apple_pid "$udid" "$bundle")"
+    if [[ -z "$pid" || "$pid" == "-" ]]; then
+      stop_log_pid "$logpid"
+      record "$platform" "$client" FAIL "app pid not found after Start" "$hold" "$cell"
+      xcrun simctl terminate "$udid" "$bundle" >/dev/null 2>&1 || true
+      return 1
+    fi
+    echo "$pid" >"$cell/pid.txt"
   fi
 
   local t=0 alive=1
@@ -357,7 +417,9 @@ run_apple_cell() {
   # Capture screenshot best-effort
   xcrun simctl io "$udid" screenshot "$cell/running.png" >/dev/null 2>&1 || true
 
-  lldb_disconnect "$pid" "$cell/lldb-disconnect.log" || true
+  if [[ "$use_lldb" == "1" ]]; then
+    lldb_disconnect "$pid" "$cell/lldb-disconnect.log" || true
+  fi
   sleep 1
   stop_log_pid "$logpid"
 
@@ -366,7 +428,7 @@ run_apple_cell() {
     record "$platform" "$client" FAIL "console matched fail pattern: $failpat" "$hold" "$cell"
     return 1
   fi
-  if failpat="$(scan_fail "$cell/lldb-connect.log")"; then
+  if [[ "$use_lldb" == "1" ]] && failpat="$(scan_fail "$cell/lldb-connect.log")"; then
     record "$platform" "$client" FAIL "lldb log matched fail pattern: $failpat" "$hold" "$cell"
     return 1
   fi
@@ -379,11 +441,11 @@ run_apple_cell() {
   local p3
   p3="$(apple_pid "$udid" "$bundle")"
   if [[ -z "$p3" || "$p3" == "-" ]]; then
-    record "$platform" "$client" FAIL "process gone after disconnect" "$hold" "$cell"
+    record "$platform" "$client" FAIL "process gone during hold" "$hold" "$cell"
     return 1
   fi
 
-  record "$platform" "$client" PASS "alive ${hold}s after connectProfile; no fail markers" "$hold" "$cell"
+  record "$platform" "$client" PASS "alive ${hold}s after Start; no fail markers" "$hold" "$cell"
   xcrun simctl terminate "$udid" "$bundle" >/dev/null 2>&1 || true
   return 0
 }
@@ -634,7 +696,20 @@ PY
   chmod +x "$app/Contents/MacOS/Wawona" 2>/dev/null || true
   find "$app/Contents/MacOS" -type f -exec chmod +x {} + 2>/dev/null || true
   find "$app/Contents/Resources/bin" -type f -exec chmod +x {} + 2>/dev/null || true
-  "$app/Contents/MacOS/Wawona" >"$cell/app.log" 2>&1 &
+
+  # Start the client the same way the Machines "Start" button does. The macOS
+  # matrix runner has no agent-device and osascript AX clicks need TCC, so drive
+  # the app's supported WAWONA_AUTO_CLIENT hook (main.m → launchBundledClientWithId).
+  # LLDB connectProfile is retired here: on Release product builds the ObjC expr
+  # parser rejects the injected message sends ("unknown return type" / "no known
+  # method"), so every macOS cell went red on the harness, not the client. Keep
+  # the old LLDB path behind WAWONA_MATRIX_USE_LLDB=1 for local debugging only.
+  local use_lldb="${WAWONA_MATRIX_USE_LLDB:-0}"
+  if [[ "$use_lldb" == "1" ]]; then
+    "$app/Contents/MacOS/Wawona" >"$cell/app.log" 2>&1 &
+  else
+    WAWONA_AUTO_CLIENT="$client" "$app/Contents/MacOS/Wawona" >"$cell/app.log" 2>&1 &
+  fi
   local pid=$!
   # Settle: wait for the process to be alive; fall back to name/path lookup if the
   # launcher re-execs into a differently-named helper.
@@ -656,29 +731,51 @@ PY
   fi
   echo "$pid" >"$cell/pid.txt"
 
-  if ! lldb_connect "$pid" "$cell/lldb-connect.log"; then
-    record macos "$client" FAIL "lldb connectProfile did not return ok=1" "$hold" "$cell"
-    pkill -x Wawona 2>/dev/null || true
-    return 1
+  if [[ "$use_lldb" == "1" ]]; then
+    if ! lldb_connect "$pid" "$cell/lldb-connect.log"; then
+      record macos "$client" FAIL "lldb connectProfile did not return ok=1" "$hold" "$cell"
+      pkill -x Wawona 2>/dev/null || true
+      return 1
+    fi
   fi
 
+  # Hold: the host must stay alive (a GPU client like gbm-es2-demo can crash it).
   local t=0
   while [[ "$t" -lt "$hold" ]]; do
     if ! kill -0 "$pid" 2>/dev/null; then
-      record macos "$client" FAIL "process died during hold" "$hold" "$cell"
+      record macos "$client" FAIL "host process died during hold (crash?)" "$hold" "$cell"
       return 1
     fi
     sleep 2
     t=$((t + 2))
   done
 
-  lldb_disconnect "$pid" "$cell/lldb-disconnect.log" || true
-  if scan_fail "$cell/lldb-connect.log" >/dev/null; then
+  # Scan the real app.log (previously only the lldb log was scanned, so a real
+  # client crash could PASS while the host stayed up).
+  local failpat
+  if failpat="$(scan_fail "$cell/app.log")"; then
+    record macos "$client" FAIL "app.log matched fail pattern: $failpat" "$hold" "$cell"
+    pkill -x Wawona 2>/dev/null || true
+    return 1
+  fi
+  if [[ "$use_lldb" == "1" ]] && scan_fail "$cell/lldb-connect.log" >/dev/null; then
     record macos "$client" FAIL "fail marker in lldb log" "$hold" "$cell"
     pkill -x Wawona 2>/dev/null || true
     return 1
   fi
-  record macos "$client" PASS "alive ${hold}s after connectProfile" "$hold" "$cell"
+  # The client itself must not have exited/crashed during the hold even though the
+  # host survived. NSTask clients log "<id> terminated (status N …)"; in-process
+  # iland clients log "<id> exit rc=N". A nonzero exit here catches e.g.
+  # weston-image quitting on missing-image usage.
+  if grep -Eq "${client} (terminated \(status [1-9]| exit rc=[1-9]|exit code: [1-9])" \
+      "$cell/app.log" 2>/dev/null; then
+    local deathline
+    deathline="$(grep -E "${client} (terminated \(status|exit rc=|exit code:)" "$cell/app.log" | tail -1)"
+    record macos "$client" FAIL "client did not stay up: ${deathline}" "$hold" "$cell"
+    pkill -x Wawona 2>/dev/null || true
+    return 1
+  fi
+  record macos "$client" PASS "alive ${hold}s after WAWONA_AUTO_CLIENT start; no fail markers" "$hold" "$cell"
   pkill -x Wawona 2>/dev/null || true
   return 0
 }

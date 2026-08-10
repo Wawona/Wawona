@@ -110,6 +110,9 @@ jobs:
           name: product-ios-sim
           path: dist/ios-sim/
           if-no-files-found: error
+          # Bundle ships hidden Mach-Os (e.g. bin/.foot-wrapped); upload-artifact
+          # excludes dotfiles by default, which broke foot in the matrix gate.
+          include-hidden-files: true
           compression-level: 0
           retention-days: 14
 
@@ -174,6 +177,8 @@ jobs:
           name: product-${{ matrix.target }}-sim
           path: dist/${{ matrix.target }}-sim/
           if-no-files-found: error
+          # Preserve hidden Mach-Os (e.g. bin/.foot-wrapped) in the bundle.
+          include-hidden-files: true
           compression-level: 0
           retention-days: 14
 
@@ -320,6 +325,9 @@ jobs:
           name: product-macos-app
           path: dist/macos-app/
           if-no-files-found: error
+          # Preserve hidden Mach-Os (e.g. bin/.foot-wrapped) in the bundle;
+          # upload-artifact drops dotfiles by default, which broke foot.
+          include-hidden-files: true
           compression-level: 0
           retention-days: 14
 
@@ -328,6 +336,8 @@ jobs:
           name: product-macos-desktop-host
           path: dist/macos-desktop-host/
           if-no-files-found: error
+          # Preserve hidden Mach-Os (e.g. bin/.foot-wrapped) in the bundle.
+          include-hidden-files: true
           compression-level: 0
           retention-days: 14
 

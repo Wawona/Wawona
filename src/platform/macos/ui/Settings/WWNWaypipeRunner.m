@@ -2209,6 +2209,23 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       }
     }
   }
+  // weston-image is the only weston demo that takes a required positional arg:
+  // one or more image paths. With no argv it prints usage and exits (status 1),
+  // which read as a broken client. Feed it a bundled image so it renders.
+  if ([name isEqualToString:@"weston-image"]) {
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSString *img = WWNWawonaBundledSharePath(@"weston/pattern.png");
+    if (![fm fileExistsAtPath:img]) {
+      img = WWNWawonaBundledSharePath(@"weston/terminal.png");
+    }
+    if ([fm fileExistsAtPath:img]) {
+      task.arguments = @[ img ];
+      WWNLog(logMod, @"weston-image argv: %@", img);
+    } else {
+      WWNLog(logMod, @"weston-image: no bundled image found under share/weston");
+    }
+  }
+
   task.environment = env;
   NSError *err;
   if ([task launchAndReturnError:&err]) {
@@ -2275,11 +2292,36 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       hasPattern
           ? [NSString stringWithFormat:@"background-image=%@\n", backgroundImage]
           : @"";
+  // desktop-shell.so spawns the weston-desktop-shell helper (panel / background
+  // / launcher). Its compiled-in default is a build-time nix-store libexec path
+  // that does not exist at runtime ("Couldn't launch client … cannot run at
+  // all"). Point [shell] client= at the copy we bundle next to the app binary
+  // so the shell UI actually comes up. Same idea for the on-screen keyboard.
+  NSString *shellClient = [self findBinaryNamed:@"weston-desktop-shell"];
+  NSString *shellClientLine =
+      (shellClient.length > 0 && [fm isExecutableFileAtPath:shellClient])
+          ? [NSString stringWithFormat:@"client=%@\n", shellClient]
+          : @"";
+  if (shellClientLine.length == 0) {
+    WWNLog("WESTON",
+           @"weston-desktop-shell helper not bundled — desktop-shell will fall "
+           @"back to its baked libexec path and the panel/background will be "
+           @"missing");
+  } else {
+    WWNLog("WESTON", @"weston.ini [shell] client=%@", shellClient);
+  }
+  NSString *keyboardClient = [self findBinaryNamed:@"weston-keyboard"];
+  NSString *keyboardLine =
+      (keyboardClient.length > 0 && [fm isExecutableFileAtPath:keyboardClient])
+          ? [NSString stringWithFormat:@"input-method=%@\n", keyboardClient]
+          : @"";
   NSString *ini = [NSString
       stringWithFormat:@"[core]\n"
                        @"use-pixman=%s\n"
                        @"\n"
                        @"[shell]\n"
+                       @"%@"
+                       @"%@"
                        @"background-color=0xff1a1a2e\n"
                        @"%@"
                        @"background-type=tile\n"
@@ -2290,7 +2332,8 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
                        @"[launcher]\n"
                        @"icon=%@\n"
                        @"path=weston-terminal\n",
-                       usePixman ? "true" : "false", backgroundImageLine,
+                       usePixman ? "true" : "false", shellClientLine,
+                       keyboardLine, backgroundImageLine,
                        hasTerminalIcon ? terminalIcon : @""];
   NSError *iniErr = nil;
   BOOL wrote = [ini writeToFile:@(configPath)

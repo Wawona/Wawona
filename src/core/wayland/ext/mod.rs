@@ -74,6 +74,7 @@ pub fn register(_state: &mut CompositorState, dh: &DisplayHandle) {
     pointer_gestures::register_pointer_gestures(dh);
     idle_inhibit::register_idle_inhibit_manager(dh);
     text_input::register_text_input_manager(dh);
+    text_input::register_text_input_manager_v1(dh);
     keyboard_shortcuts_inhibit::register_keyboard_shortcuts_inhibit_manager(dh);
     linux_dmabuf::register_linux_dmabuf(dh);
     linux_explicit_sync::register_linux_explicit_sync(dh);

@@ -15,6 +15,7 @@ bundled_clients_all() {
     foot \
     weston-flower \
     kmscube \
+    gbm-es2-demo \
     opengl-cube \
     vkcube \
     weston-simple-egl \
@@ -41,6 +42,7 @@ bundled_client_prefs_key() {
     foot) echo FootEnabled ;;
     weston-flower) echo WestonFlowerEnabled ;;
     kmscube) echo KmscubeEnabled ;;
+    gbm-es2-demo) echo GbmEs2DemoEnabled ;;
     opengl-cube) echo OpenglCubeEnabled ;;
     vkcube) echo VkcubeEnabled ;;
     weston-simple-egl) echo WestonSimpleEglEnabled ;;
@@ -69,7 +71,7 @@ bundled_client_skip_reason() {
   case "$platform" in
     tvos|watchos)
       case "$client" in
-        kmscube|opengl-cube|vkcube|weston-simple-egl)
+        kmscube|gbm-es2-demo|opengl-cube|vkcube|weston-simple-egl)
           echo "platform-targets: no Vulkan/OpenGL/ANGLE on ${platform}"
           return 0
           ;;
@@ -130,6 +132,9 @@ bundled_client_ok_patterns() {
       ;;
     kmscube)
       printf '%s\n' 'launchNestedKmscube' 'iland Metal presenter' 'kmscube_main'
+      ;;
+    gbm-es2-demo)
+      printf '%s\n' 'iland DRM present' 'started in-process gbm-es2-demo' 'iland Metal presenter'
       ;;
     weston-smoke)
       # Require a real SHM buffer / frame — process-alive alone is not PASS.
