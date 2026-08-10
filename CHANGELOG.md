@@ -42,6 +42,25 @@ as history.
   (TN2435 — the real regression guard) plus canonical/legacy Swift Support
   shape checks; no ipa reaches App Store Connect without passing them.
 
+## [26.8.9] - 2026-08-09
+
+### Added
+
+- **phoon on every Apple target** (iOS/iPadOS/tvOS/watchOS/visionOS + sims,
+  macOS, Android, Linux): in-process `wwn-phoon-rs` shell tool. tvOS/watchOS
+  lazy-link `libphoon_rs.a` after niri's force-load so Rust std/core dedupe
+  (avoids the prior `ld: 2134 duplicate symbols` failure).
+
+### Fixed
+
+- **fontconfig / meson skew** after the nixpkgs bump: `wwn-toolchain` pins
+  fontconfig **2.17.1** for Android/iOS meson cross builds (2.18.x needs meson
+  ≥1.11; toolchain meson is 1.10.2).
+- **zsh 5.9.2 patch drift**: `wwn-zsh` `getfpfunc` compinit-guard anchor no
+  longer keys on `PATH_MAX+1` vs `PATH_MAX`.
+- CI idle-memory / product-build harness hardening from the preceding
+  `development` cycle (iOS leak PID, smoke open ordering, AppImage reuse).
+
 ## [26.8.8] - 2026-08-07
 
 ### Fixed
