@@ -5,7 +5,7 @@ Do not edit by hand; run `scripts/gen-protocol-status.sh` to refresh. -->
 
 Active profile at generation: `desktop-host`
 
-Total advertised globals: **64**
+Total advertised globals: **65**
 
 | Interface | Advertised version |
 |-----------|--------------------|
@@ -66,6 +66,7 @@ Total advertised globals: **64**
 | `zwp_primary_selection_device_manager_v1` | 1 |
 | `zwp_relative_pointer_manager_v1` | 1 |
 | `zwp_tablet_manager_v2` | 1 |
+| `zwp_text_input_manager_v1` | 1 |
 | `zwp_text_input_manager_v3` | 1 |
 | `zwp_virtual_keyboard_manager_v1` | 1 |
 | `zwp_xwayland_keyboard_grab_manager_v1` | 1 |
