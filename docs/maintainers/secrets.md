@@ -114,6 +114,26 @@ pass show secretspec/wawona/release-apple/DEVELOPER_ID_APPLICATION_P12_BASE64 | 
 Notary auth reuses `ASC_*` → GitHub `APP_STORE_CONNECT_*`. Keep identities in
 the login Keychain for local signing; pass is the CI/vault copy.
 
+CI path: **Ship: GitHub assets** → `release-macos` →
+[`scripts/macos-sign-and-notarize-dmg.sh`](../../scripts/macos-sign-and-notarize-dmg.sh)
+(entitlements:
+[`Wawona-macOS-DeveloperID.entitlements`](../../src/resources/app-bundle/Wawona-macOS-DeveloperID.entitlements)).
+
+Local (after staging an app + agent pkg):
+
+```bash
+nix develop .#release
+./scripts/release-env.sh bash -lc '
+  ./scripts/macos-sign-and-notarize-dmg.sh \
+    --app dmg-staging/Wawona.app \
+    --pkg dmg-staging/WawonaAgent.pkg \
+    --staging dmg-staging \
+    --dmg "Wawona-$(cat VERSION).dmg"
+'
+```
+
+`WAWONA_SKIP_NOTARIZE=1` signs and builds the DMG without contacting Apple.
+
 ## Day-2 operations
 
 ```bash

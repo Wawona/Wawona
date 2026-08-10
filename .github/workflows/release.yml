@@ -10,9 +10,21 @@ on:
   push:
     tags:
       - 'v*'
+  # Re-build / re-upload assets for an existing tag (e.g. after notarization wiring).
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'GitHub Release tag to (re)upload assets to (e.g. v26.8.9)'
+        required: true
+        type: string
+      build_ref:
+        description: 'Git ref to build from (empty = same as tag). Use development to ship notarization before a new tag.'
+        required: false
+        default: ''
+        type: string
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -22,6 +34,9 @@ permissions:
 
 env:
   NIXPKGS_ALLOW_UNFREE: '1'
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+  # Tag push: build the tagged SHA. Dispatch: build_ref if set, else the release tag.
+  BUILD_REF: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.build_ref || github.event.inputs.tag) || github.sha }}
 
 jobs:
   # tip_key isolates from Gate: products / Ship: beta product-build groups.
@@ -30,7 +45,8 @@ jobs:
     uses: ./.github/workflows/product-build.yml
     with:
       only: macos-app
-      tip_key: ship-assets-${{ github.ref_name }}
+      checkout_ref: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.build_ref || github.event.inputs.tag) || github.sha }}
+      tip_key: ship-assets-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
     permissions:
       contents: read
       id-token: write
@@ -40,7 +56,8 @@ jobs:
     uses: ./.github/workflows/product-build.yml
     with:
       only: android-apk
-      tip_key: ship-assets-${{ github.ref_name }}
+      checkout_ref: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.build_ref || github.event.inputs.tag) || github.sha }}
+      tip_key: ship-assets-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
     permissions:
       contents: read
       id-token: write
@@ -50,7 +67,8 @@ jobs:
     uses: ./.github/workflows/product-build.yml
     with:
       only: appimage
-      tip_key: ship-assets-${{ github.ref_name }}
+      checkout_ref: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.build_ref || github.event.inputs.tag) || github.sha }}
+      tip_key: ship-assets-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
     permissions:
       contents: read
       id-token: write
@@ -58,8 +76,12 @@ jobs:
   release-macos:
     needs: product-macos
     runs-on: macos-26
+    environment: release-beta
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.BUILD_REF }}
 
       - name: Download product-macos-app
         uses: actions/download-artifact@v8
@@ -67,9 +89,10 @@ jobs:
           name: product-macos-app
           path: product-macos-app/
 
-      - name: Create DMG
+      - name: Stage app + agent pkg
         run: |
           VERSION=$(cat VERSION)
+          echo "WAWONA_VERSION=$VERSION" >> "$GITHUB_ENV"
           mkdir -p dmg-staging
           if [[ -d product-macos-app/Wawona.app ]]; then
             ditto product-macos-app/Wawona.app dmg-staging/Wawona.app
@@ -92,8 +115,7 @@ jobs:
           WAWONA_VERSION="$VERSION" \
           WAWONA_APP_SRC="$PWD/dmg-staging/Wawona.app" \
             ./scripts/macos-launch-agent-pkg.sh "dmg-staging/WawonaAgent.pkg"
-          # Keep README lines indented so the YAML | block stays valid (a
-          # column-0 heredoc body breaks Actions' workflow parser at L67).
+          # Keep README lines indented so the YAML | block stays valid.
           {
             echo 'Wawona macOS install'
             echo '===================='
@@ -102,13 +124,30 @@ jobs:
             echo '  Wawona.app plus the compositor + menubar LaunchAgents and publish'
             echo '  WAYLAND_DISPLAY / XDG_RUNTIME_DIR so Wayland apps can connect'
             echo '  without opening the Wawona window. Dragging first is still fine.'
+            echo ''
+            echo 'This DMG is Developer ID signed and notarized (Gatekeeper-clean).'
           } > dmg-staging/README.txt
-          # Both artifacts must be present before packaging the DMG.
           [[ -d dmg-staging/Wawona.app ]] || { echo "error: dmg-staging/Wawona.app missing"; exit 1; }
           [[ -f dmg-staging/WawonaAgent.pkg ]] || { echo "error: dmg-staging/WawonaAgent.pkg missing"; exit 1; }
           [[ -x dmg-staging/Wawona.app/Contents/MacOS/Wawona ]] || { echo "error: Wawona binary not executable"; exit 1; }
-          hdiutil create -volname "Wawona" -srcfolder dmg-staging \
-            -ov -format UDZO "Wawona-${VERSION}.dmg"
+
+      - name: Developer ID sign + notarize DMG
+        env:
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          DEVELOPER_ID_APPLICATION_P12_BASE64: ${{ secrets.DEVELOPER_ID_APPLICATION_P12_BASE64 }}
+          DEVELOPER_ID_INSTALLER_P12_BASE64: ${{ secrets.DEVELOPER_ID_INSTALLER_P12_BASE64 }}
+          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+        run: |
+          chmod +x ./scripts/macos-sign-and-notarize-dmg.sh
+          ./scripts/macos-sign-and-notarize-dmg.sh \
+            --app dmg-staging/Wawona.app \
+            --pkg dmg-staging/WawonaAgent.pkg \
+            --staging dmg-staging \
+            --dmg "Wawona-${WAWONA_VERSION}.dmg" \
+            --version "$WAWONA_VERSION"
 
       - name: Upload DMG
         uses: actions/upload-artifact@v7
@@ -122,10 +161,12 @@ jobs:
     environment: release-beta
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.BUILD_REF }}
 
       - name: Resolve version from tag
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${RELEASE_TAG#v}"
           echo "WAWONA_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "WAWONA_BUILD_NUMBER=${{ github.run_number }}" >> "$GITHUB_ENV"
 
@@ -173,6 +214,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.BUILD_REF }}
 
       - name: Download product-android-apk
         uses: actions/download-artifact@v8
@@ -208,6 +251,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.BUILD_REF }}
 
       - name: Download product AppImage
         uses: actions/download-artifact@v8
@@ -233,6 +278,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - uses: actions/download-artifact@v8
         with:
@@ -250,8 +297,8 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ env.RELEASE_TAG }}
         run: |
-          TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
 
           if gh release view "$TAG" >/dev/null 2>&1; then

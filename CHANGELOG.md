@@ -19,6 +19,15 @@ as history.
   `./scripts/sync-github-secrets.sh`. Developer ID P12 base64 keys are part of
   `release-apple` for macOS notarization.
 
+### Added
+
+- **macOS Developer ID sign + notarize for GitHub DMG.**
+  `scripts/macos-sign-and-notarize-dmg.sh` +
+  `Wawona-macOS-DeveloperID.entitlements`; `release.yml` `release-macos` uses
+  Environment `release-beta` (deep codesign, `productsign` agent pkg,
+  `notarytool`, staple). `workflow_dispatch` can re-upload an existing tag
+  (`build_ref=development` when the script is ahead of the tag).
+
 ### Fixed
 
 - **The actual root cause of every iOS App Store rejection since July
