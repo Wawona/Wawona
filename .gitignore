@@ -119,9 +119,12 @@ local.properties
 Wawona.xcodeproj/
 dependencies/generators/xcodegen/output/
 
-# Release secrets (local only — sync via scripts/sync-github-secrets.sh)
+# Release secrets live in private pass (SecretSpec); never in the public tree.
+# See docs/maintainers/secrets.md. Ignore accidental local dumps:
 .envrc
 .release-secrets.env
+.secrets/
+secrets/
 .env
 .env.*
 !.env.example
@@ -129,14 +132,10 @@ dependencies/generators/xcodegen/output/
 AuthKey_*.p8
 *.jks
 *.keystore
+*.p12
 play-store-*.json
 *service-account*.json
 google-play*.json
-# .secrets/ — folder + README tracked; drop key files here (all ignored)
-.secrets/*
-!.secrets/.gitkeep
-!.secrets/README.md
-secrets/
 
 
 # direnv cache

@@ -113,8 +113,8 @@ See [README](../README.md) for environment setup.
 Wawona v2.5 adds Fastlane automation. See [wwn-mcp/knowledge/wawona/fastlane.md](../../wwn-mcp/knowledge/wawona/fastlane.md).
 
 ```bash
-# Tier 0 — see docs/maintainers/secrets.md (SecretSpec + pass)
-./scripts/migrate-release-secrets-to-pass.sh            # one-shot if migrating from dotenv
+# Tier 0 — docs/maintainers/secrets.md (SecretSpec + pass; sops-nix unlocks GPG)
+./scripts/setup-release-secrets.sh                      # verify pass + secretspec
 ./scripts/bootstrap-apple-signing.sh                    # one-time match → apple-signing repo
 ./scripts/sync-github-secrets.sh                        # pass → GitHub Environment release-beta
 

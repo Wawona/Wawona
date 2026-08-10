@@ -10,6 +10,15 @@ as history.
 
 ## [Unreleased]
 
+### Changed
+
+- **Release secrets: SecretSpec + pass only.** Removed public `.secrets/`,
+  `.release-secrets.env.template`, and the dotenv migrate script. Tier-0 flow
+  is sops-nix (host GPG) → private `aspauldingcode/.password-store` →
+  `secretspec.toml` / `./scripts/release-env.sh` /
+  `./scripts/sync-github-secrets.sh`. Developer ID P12 base64 keys are part of
+  `release-apple` for macOS notarization.
+
 ### Fixed
 
 - **The actual root cause of every iOS App Store rejection since July

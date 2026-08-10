@@ -27,20 +27,15 @@ load_from_pass() {
 }
 
 if ! load_from_pass; then
-  if [[ -f .release-secrets.env ]]; then
-    echo "WARN: falling back to .release-secrets.env - migrate with ./scripts/migrate-release-secrets-to-pass.sh" >&2
-    # shellcheck source=/dev/null
-    source .release-secrets.env
-  else
-    echo "Missing pass secrets and .release-secrets.env - see docs/maintainers/secrets.md" >&2
-    exit 1
-  fi
+  echo "Missing SecretSpec/pass secrets — see docs/maintainers/secrets.md" >&2
+  echo "Need: nix develop .#release && secretspec check -P local" >&2
+  exit 1
 fi
 
-: "${MATCH_PASSWORD:?Set MATCH_PASSWORD (pass or .release-secrets.env)}"
+: "${MATCH_PASSWORD:?Set MATCH_PASSWORD in pass (secretspec/wawona/release-apple)}"
 : "${APPLE_ID:?Set APPLE_ID}"
 : "${TEAM_ID:?Set TEAM_ID}"
-: "${ASC_P8_PATH:?Set ASC_P8 (pass) or ASC_P8_PATH}"
+: "${ASC_P8_PATH:?Set ASC_P8 in pass}"
 : "${ASC_KEY_ID:?Set ASC_KEY_ID}"
 : "${ASC_ISSUER_ID:?Set ASC_ISSUER_ID}"
 

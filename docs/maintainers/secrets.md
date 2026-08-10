@@ -9,7 +9,7 @@ need this document to build or test the public tree.
 | Lives in **public** `Wawona/Wawona` | Lives only in **private** vaults |
 | ----------------------------------- | -------------------------------- |
 | [`secretspec.toml`](../../secretspec.toml) — secret **names** | GPG ciphertext in pass |
-| Scripts (`release-env.sh`, `sync-github-secrets.sh`, migrate) | GPG private key + passphrase |
+| Scripts (`release-env.sh`, `sync-github-secrets.sh`, `setup-release-secrets.sh`) | GPG private key + passphrase |
 | This doc (procedural) | Apple/Play plaintext values |
 | GitHub Environment secret *slots* on `release-beta` | Values synced into those slots |
 
@@ -23,6 +23,10 @@ Forking the public repo does **not** grant release secrets. Values live in a
 
 Never share a GPG **private** key. Each maintainer has their own keypair; pass
 encrypts to a recipient list of **public** keys (`.gpg-id` per directory).
+
+There is **no** public-repo `.secrets/` directory and **no**
+`.release-secrets.env` workflow. Accidental local dumps of those paths are
+gitignored.
 
 ## Architecture
 
@@ -45,8 +49,8 @@ Public Wawona                    Private aspauldingcode/.password-store
 - **SecretSpec** — declares what the app needs; `secretspec run` injects env.
 - **pass** — encrypted store; team ACL via `.gpg-id` (no private-key sharing).
 - **sops-nix** (host / dendritic) — bootstraps GPG on maintainer machines only.
-  Do **not** put MATCH/Play ciphertext into public Wawona sops files.
-- **GitHub `release-beta`** — CI runtime; Actions use `SECRETSPEC_PROFILE=ci` + `env`.
+  Do **not** put MATCH/Play/Developer ID ciphertext into public Wawona sops files.
+- **GitHub `release-beta`** — CI runtime; Actions use `SECRETSPEC_PROFILE=ci*` + `env`.
 
 ## Profiles
 
@@ -72,21 +76,43 @@ Public Wawona                    Private aspauldingcode/.password-store
 
    ```bash
    nix develop .#release
+   ./scripts/setup-release-secrets.sh
    secretspec check -P local
    ./scripts/release-env.sh fastlane validate_env
    ```
 
-### Migrating from legacy `.release-secrets.env`
+## Apple pass keys (`release-apple`)
 
-If you still have a filled `.release-secrets.env` + `.secrets/*`:
+| Key | Purpose |
+|-----|---------|
+| `APPLE_ID` | Developer / match username |
+| `TEAM_ID` | Apple team |
+| `MATCH_PASSWORD` | Encrypts `apple-signing` match repo **and** Developer ID P12s |
+| `APPLE_SIGNING_PAT` | Fine-grained PAT (Contents:Read on `apple-signing`) |
+| `ASC_KEY_ID` / `ASC_ISSUER_ID` / `ASC_P8` | App Store Connect API (TestFlight + notarytool) |
+| `DEVELOPER_ID_APPLICATION_P12_BASE64` | codesign app / nested binaries for Gatekeeper DMG |
+| `DEVELOPER_ID_INSTALLER_P12_BASE64` | `productsign` for `.pkg` helpers |
+
+## Android pass keys (`release-android`)
+
+| Key | Purpose |
+|-----|---------|
+| `ANDROID_KEYSTORE_BASE64` | Upload keystore PKCS12 as base64 |
+| `ANDROID_KEYSTORE_PASSWORD` / `ANDROID_KEY_ALIAS` / `ANDROID_KEY_PASSWORD` | Keystore unlock |
+| `PLAY_STORE_JSON_KEY` | Play Console service-account JSON |
+
+## Developer ID (macOS DMG notarization)
+
+Needed for Gatekeeper-clean `.app` / DMG (not App Store). PKCS12 values in
+pass; **P12 passphrase is `MATCH_PASSWORD`**.
 
 ```bash
-./scripts/migrate-release-secrets-to-pass.sh
-(cd "$PASSWORD_STORE_DIR" && pass git push)
-./scripts/sync-github-secrets.sh
+pass show secretspec/wawona/release-apple/DEVELOPER_ID_APPLICATION_P12_BASE64 | wc -c
+./scripts/sync-github-secrets.sh --apple-only
 ```
 
-Then stop sourcing the dotenv file.
+Notary auth reuses `ASC_*` → GitHub `APP_STORE_CONNECT_*`. Keep identities in
+the login Keychain for local signing; pass is the CI/vault copy.
 
 ## Day-2 operations
 
@@ -132,7 +158,8 @@ IPA builds use **match + gym** (not `nix build …-ipa`). Nix still runs
 1. Remove their fingerprint from the relevant `.gpg-id` files.
 2. Re-encrypt those subtrees.
 3. Remove their GitHub collaborator access on `.password-store`.
-4. If compromise suspected: rotate MATCH password, ASC key, Play JSON, keystore.
+4. If compromise suspected: rotate MATCH password, ASC key, Play JSON, keystore,
+   Developer ID P12s.
 
 **Never** share one org/maintainer GPG private key among humans.
 
@@ -140,9 +167,10 @@ IPA builds use **match + gym** (not `nix build …-ipa`). Nix still runs
 
 | Secret | Rotate how |
 |--------|------------|
-| `MATCH_PASSWORD` | New passphrase → re-encrypt match repo / `fastlane match` → `pass insert` → sync |
+| `MATCH_PASSWORD` | New passphrase → re-encrypt match repo / `fastlane match` → re-export Developer ID P12s with new pass → `pass insert` → sync |
 | `ASC_P8` / key IDs | New ASC API key → pass → sync → revoke old key in ASC |
 | `APPLE_SIGNING_PAT` | New fine-grained PAT on `apple-signing` → pass → sync |
+| `DEVELOPER_ID_*_P12_BASE64` | Export new P12 from Keychain → `pass insert -m` → sync |
 | Play JSON | New SA key in GCP/Play → pass → sync → disable old key |
 | Upload keystore | Rare; Play upload-key reset process → pass → sync |
 

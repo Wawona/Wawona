@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
 # Sync Wawona release secrets from SecretSpec/pass -> GitHub Environment secrets.
-# Tier 0 only. Values come from the private pass store (not .release-secrets.env).
+# Tier 0 only. Values come from the private pass store (sops-nix unlocks GPG).
 #
 # Usage:
 #   ./scripts/sync-github-secrets.sh [--apple-only]
 #   SECRETSPEC_PROFILE=sync ./scripts/sync-github-secrets.sh
 #
-# Legacy: if .release-secrets.env exists and pass entries are missing, run
-#   ./scripts/migrate-release-secrets-to-pass.sh
-# first (see docs/maintainers/secrets.md).
+# See docs/maintainers/secrets.md.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -46,16 +44,17 @@ ss_get() {
 
 echo "Checking SecretSpec profile=${SECRETSPEC_PROFILE}..."
 if [[ "$APPLE_ONLY" -eq 1 ]]; then
-  for k in APPLE_ID TEAM_ID MATCH_PASSWORD APPLE_SIGNING_PAT ASC_KEY_ID ASC_ISSUER_ID ASC_P8; do
+  for k in APPLE_ID TEAM_ID MATCH_PASSWORD APPLE_SIGNING_PAT ASC_KEY_ID ASC_ISSUER_ID ASC_P8 \
+    DEVELOPER_ID_APPLICATION_P12_BASE64 DEVELOPER_ID_INSTALLER_P12_BASE64; do
     if [[ -z "$(ss_get "$k" 2>/dev/null || true)" ]]; then
       echo "Missing $k in pass (profile $SECRETSPEC_PROFILE)" >&2
-      echo "Migrate: ./scripts/migrate-release-secrets-to-pass.sh" >&2
+      echo "See docs/maintainers/secrets.md" >&2
       exit 1
     fi
   done
 else
   secretspec check -P "$SECRETSPEC_PROFILE" || {
-    echo "secretspec check failed - migrate from .release-secrets.env if needed" >&2
+    echo "secretspec check failed — see docs/maintainers/secrets.md" >&2
     exit 1
   }
 fi
@@ -67,6 +66,8 @@ APPLE_SIGNING_PAT="$(ss_get APPLE_SIGNING_PAT)"
 ASC_KEY_ID="$(ss_get ASC_KEY_ID)"
 ASC_ISSUER_ID="$(ss_get ASC_ISSUER_ID)"
 ASC_P8="$(ss_get ASC_P8)"
+DEVELOPER_ID_APPLICATION_P12_BASE64="$(ss_get DEVELOPER_ID_APPLICATION_P12_BASE64)"
+DEVELOPER_ID_INSTALLER_P12_BASE64="$(ss_get DEVELOPER_ID_INSTALLER_P12_BASE64)"
 
 echo "Creating GitHub Environment $GITHUB_ENV on $GITHUB_REPO..."
 gh api --method PUT "repos/$GITHUB_REPO/environments/$GITHUB_ENV" >/dev/null
@@ -88,6 +89,8 @@ set_secret APP_STORE_CONNECT_KEY_ID "$ASC_KEY_ID"
 set_secret APP_STORE_CONNECT_ISSUER_ID "$ASC_ISSUER_ID"
 set_secret APPLE_ID "$APPLE_ID"
 set_secret TEAM_ID "$TEAM_ID"
+set_secret DEVELOPER_ID_APPLICATION_P12_BASE64 "$DEVELOPER_ID_APPLICATION_P12_BASE64"
+set_secret DEVELOPER_ID_INSTALLER_P12_BASE64 "$DEVELOPER_ID_INSTALLER_P12_BASE64"
 
 if [[ "$APPLE_ONLY" -eq 0 ]]; then
   ANDROID_KEYSTORE_BASE64="$(ss_get ANDROID_KEYSTORE_BASE64)"
