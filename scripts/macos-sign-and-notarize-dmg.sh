@@ -115,6 +115,16 @@ security import "$APP_P12" -k "$KEYCHAIN" -P "$MATCH_PASSWORD" \
   -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productsign >/dev/null
 security import "$INST_P12" -k "$KEYCHAIN" -P "$MATCH_PASSWORD" \
   -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productsign >/dev/null
+# Developer ID G2 intermediate — needed for a complete signing chain in a
+# fresh keychain (system roots alone are not always enough for codesign).
+DEVID_G2="$WORKDIR/DeveloperIDG2CA.cer"
+if curl -fsSL -o "$DEVID_G2" \
+  https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer; then
+  security import "$DEVID_G2" -k "$KEYCHAIN" -T /usr/bin/codesign \
+    -T /usr/bin/security -T /usr/bin/productsign >/dev/null 2>&1 \
+    || security add-certificates -k "$KEYCHAIN" "$DEVID_G2" >/dev/null 2>&1 \
+    || true
+fi
 security set-key-partition-list -S apple-tool:,apple:,codesign:,productsign: \
   -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
 
@@ -153,15 +163,63 @@ sign_macho() {
   fi
 }
 
-echo "Deep-signing nested Mach-O (inside-out)..."
-# Bundled frameworks (bundle first, then binary inside is covered by framework sign).
-while IFS= read -r -d '' fw; do
+# GHA upload-artifact / zip materializes framework symlinks as real files/dirs
+# (top-level Foo + Resources + Versions/Current copy). codesign then errors with
+# "bundle format is ambiguous (could be app or framework)". Restore the macOS
+# layout before signing.
+repair_framework_symlinks() {
+  local fw="$1"
+  local name
+  name="$(basename "$fw" .framework)"
+  [[ -d "$fw/Versions/A" ]] || return 0
+
+  if [[ -e "$fw/Versions/Current" && ! -L "$fw/Versions/Current" ]]; then
+    rm -rf "$fw/Versions/Current"
+    ln -s A "$fw/Versions/Current"
+  elif [[ ! -e "$fw/Versions/Current" ]]; then
+    ln -s A "$fw/Versions/Current"
+  fi
+
+  if [[ -e "$fw/$name" && ! -L "$fw/$name" ]]; then
+    rm -rf "$fw/$name"
+    ln -s "Versions/Current/$name" "$fw/$name"
+  elif [[ ! -e "$fw/$name" ]]; then
+    ln -s "Versions/Current/$name" "$fw/$name"
+  fi
+
+  if [[ -e "$fw/Resources" && ! -L "$fw/Resources" ]]; then
+    rm -rf "$fw/Resources"
+    ln -s "Versions/Current/Resources" "$fw/Resources"
+  elif [[ ! -e "$fw/Resources" && -d "$fw/Versions/A/Resources" ]]; then
+    ln -s "Versions/Current/Resources" "$fw/Resources"
+  fi
+}
+
+sign_framework() {
+  local fw="$1"
+  local name bin
+  name="$(basename "$fw" .framework)"
+  repair_framework_symlinks "$fw"
+  bin="$fw/Versions/A/$name"
+  if [[ ! -f "$bin" ]]; then
+    bin="$fw/$name"
+  fi
+  if [[ -f "$bin" ]]; then
+    # Resolve symlinks so we sign the real Mach-O once.
+    bin="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$bin")"
+    sign_macho "$bin"
+  fi
   sign_macho "$fw"
+}
+
+echo "Deep-signing nested Mach-O (inside-out)..."
+while IFS= read -r -d '' fw; do
+  echo "  framework: $fw"
+  sign_framework "$fw"
 done < <(find "$APP/Contents" -name '*.framework' -print0 2>/dev/null | sort -z)
 
-# Loose dylibs / bundles
+# Loose dylibs / bundles (skip anything inside a .framework — already sealed)
 while IFS= read -r -d '' lib; do
-  # Skip anything already inside a .framework we just signed as a unit.
   case "$lib" in
     *.framework/*) continue ;;
   esac
@@ -172,7 +230,11 @@ done < <(find "$APP/Contents" \( -name '*.dylib' -o -name '*.so' \) -type f -pri
 MAIN_BIN="$APP/Contents/MacOS/Wawona"
 while IFS= read -r -d '' bin; do
   [[ "$bin" == "$MAIN_BIN" ]] && continue
-  # Skip non-Mach-O (scripts)
+  case "$bin" in
+    *.framework/*) continue ;;
+  esac
+  # Skip non-Mach-O (scripts) and symlinks into frameworks we already signed
+  [[ -L "$bin" ]] && continue
   file -b "$bin" 2>/dev/null | grep -q 'Mach-O' || continue
   sign_macho "$bin"
 done < <(find "$APP/Contents" -type f -perm +111 -print0 2>/dev/null | sort -z)
