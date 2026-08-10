@@ -1427,10 +1427,13 @@ PLIST_EOF
       # Codesign / Gatekeeper: only Contents/ may sit at the .app root. Install
       # phases still stage FHS lib/ + share/ beside Contents for convenience;
       # relocate before sealing so Developer ID notarization can succeed.
+      # Assets copied from the nix store are often mode 444 — chmod before rm.
       for d in lib share; do
         if [ -d "$APP/$d" ]; then
           mkdir -p "$APP/Contents/Resources/$d"
+          chmod -R u+w "$APP/$d" "$APP/Contents/Resources/$d" 2>/dev/null || true
           cp -a "$APP/$d/." "$APP/Contents/Resources/$d/"
+          chmod -R u+w "$APP/$d"
           rm -rf "$APP/$d"
         fi
       done
