@@ -650,6 +650,13 @@ run_macos_cell() {
   hold="$(bundled_client_hold_sec "$client")"
   [[ -n "${WAWONA_MATRIX_HOLD:-}" ]] && hold="$WAWONA_MATRIX_HOLD"
 
+  local skip
+  skip="$(bundled_client_skip_reason macos "$client")"
+  if [[ -n "$skip" ]]; then
+    record macos "$client" SKIP "$skip" "$hold" "$cell"
+    return 0
+  fi
+
   if [[ -z "$app" || ! -d "$app" ]]; then
     for cand in "$ROOT/result-macos/Wawona.app" "$ROOT/dist/Wawona.app" "$ROOT/product-macos-app/Wawona.app"; do
       [[ -d "$cand" ]] && app="$cand" && break

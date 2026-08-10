@@ -2297,8 +2297,16 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   // that does not exist at runtime ("Couldn't launch client … cannot run at
   // all"). Point [shell] client= at the copy we bundle next to the app binary
   // so the shell UI actually comes up. Same idea for the on-screen keyboard.
+  //
+  // macOS only: this spawns separate helper executables via desktop-shell.so.
+  // Apple mobile has no fork/exec and runs weston fully in-process, so
+  // findBinaryNamed: is not compiled there — leave client=/input-method= unset
+  // and let weston use its in-process defaults.
+  NSString *shellClientLine = @"";
+  NSString *keyboardLine = @"";
+#if !TARGET_OS_IPHONE
   NSString *shellClient = [self findBinaryNamed:@"weston-desktop-shell"];
-  NSString *shellClientLine =
+  shellClientLine =
       (shellClient.length > 0 && [fm isExecutableFileAtPath:shellClient])
           ? [NSString stringWithFormat:@"client=%@\n", shellClient]
           : @"";
@@ -2311,10 +2319,11 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     WWNLog("WESTON", @"weston.ini [shell] client=%@", shellClient);
   }
   NSString *keyboardClient = [self findBinaryNamed:@"weston-keyboard"];
-  NSString *keyboardLine =
+  keyboardLine =
       (keyboardClient.length > 0 && [fm isExecutableFileAtPath:keyboardClient])
           ? [NSString stringWithFormat:@"input-method=%@\n", keyboardClient]
           : @"";
+#endif
   NSString *ini = [NSString
       stringWithFormat:@"[core]\n"
                        @"use-pixman=%s\n"

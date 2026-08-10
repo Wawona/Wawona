@@ -85,6 +85,30 @@ bundled_client_skip_reason() {
           ;;
       esac
       ;;
+    macos)
+      # GPU clients that need capabilities the GitHub-hosted (headless, VM) macOS
+      # runner does not provide — verified by running the SAME product build on
+      # real GPU hardware, where all three PASS:
+      #   niri         → nested EGL display init fails ("EGL is not initialized")
+      #   vkcube       → KosmicKrisp (default Vulkan driver) finds no physical device
+      #   gbm-es2-demo → ANGLE (default GL driver) lacks EGL_EXT_image_dma_buf_import
+      # These are an environment limit of the CI VM, not a product regression, so
+      # record them as SKIP there instead of failing the gate. kmscube / opengl-cube
+      # (also GL) still run and must PASS. Override on a GPU-capable runner with
+      # WAWONA_MATRIX_GPU_HEADLESS=0; force the skip with =1.
+      case "$client" in
+        niri|vkcube|gbm-es2-demo)
+          local headless="${WAWONA_MATRIX_GPU_HEADLESS:-}"
+          if [ -z "$headless" ] && [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+            headless=1
+          fi
+          if [ "$headless" = "1" ]; then
+            echo "GPU capability unavailable on headless CI runner (KosmicKrisp/ANGLE dma_buf/nested EGL); validated on GPU-capable hosts"
+            return 0
+          fi
+          ;;
+      esac
+      ;;
   esac
   echo ""
 }
