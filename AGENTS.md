@@ -117,6 +117,26 @@ and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream synta
   (not UTM) only to run Wayland compositors. Containers only on macOS (maybe
   Android); other Apple platforms = VMs or native only.
 
+## Local before CI (do not burn the queue)
+
+Gate: packages / Gate: products often sit **queued 15–40+ minutes**. When a
+change can fail at eval, configure, **link**, or package, prove it **locally
+first**, then push. Do not use CI to discover `ld: duplicate symbols`,
+missing patch anchors, meson version floors, or `Cargo.lock` skew.
+
+- Link / `*Ldflags` / stubs / second Rust staticlib beside niri → build the
+  **affected app target** (e.g. `nix build .#wawona-watchos-app-sim`). Parse
+  or attr eval is not enough.
+- Prefer lazy `-lfoo` + `-Wl,-u,_foo_main` after niri's `-force_load` when
+  another Rust `staticlib` embeds std (waypipe precedent) — never
+  double-force-load std archives.
+- nixpkgs / `pkgs.*.src` / anchor patches → build the drifted package on the
+  tip (`.#zsh-ios`, `.#fontconfig-android`, …).
+- CalVer bumps → sync `Cargo.lock` (and any linux-ui `cargoLock` consumers)
+  before push.
+
+Full rule: workspace `.cursor/rules/wawona-local-before-ci.mdc`.
+
 ## Conventions
 
 - **Repo DAG (acyclic L0–L4; never invert):** `wwn-toolchain` (L0 substrate:
