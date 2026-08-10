@@ -33,15 +33,21 @@ if [[ ! -d "${PASSWORD_STORE_DIR:-$HOME/.password-store}/secretspec/wawona" ]]; 
   exit 1
 fi
 
-if command -v secretspec >/dev/null 2>&1; then
-  export SECRETSPEC_FILE="${SECRETSPEC_FILE:-$ROOT/secretspec.toml}"
-  secretspec check -P local || {
-    echo "secretspec check failed — see docs/maintainers/secrets.md" >&2
-    exit 1
-  }
+export SECRETSPEC_FILE="${SECRETSPEC_FILE:-$ROOT/secretspec.toml}"
+# Project providers (pass_apple / pass_android) need the flake's secretspec;
+# older global installs only know the host alias "pass".
+run_check() {
+  if [[ -n "${IN_NIX_SHELL:-}" ]] && command -v secretspec >/dev/null 2>&1; then
+    secretspec check -P local
+  else
+    nix develop "$ROOT"#release --command secretspec check -P local
+  fi
+}
+
+if run_check; then
   echo ""
   echo "secretspec check -P local: OK"
 else
-  echo ""
-  echo "Note: secretspec not on PATH — run inside: nix develop .#release"
+  echo "secretspec check failed — see docs/maintainers/secrets.md" >&2
+  exit 1
 fi
