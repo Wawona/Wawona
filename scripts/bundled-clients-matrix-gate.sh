@@ -210,26 +210,33 @@ apple_start_client() {
   local sess="wawona-${platform}-matrix"
   local ad=(--platform "$ad_plat" --device "$sim" --session "$sess")
 
-  agent-device open "$bundle" --relaunch "${ad[@]}" >"$cell/ad-open.log" 2>&1 || true
-  agent-device wait 3000 "${ad[@]}" >/dev/null 2>&1 || true
-  agent-device alert dismiss "${ad[@]}" >/dev/null 2>&1 || true
-
-  # Welcome sheet (first launch) blocks the Machines Start button.
-  if ! agent-device is visible 'id="wwn.machines.root"' "${ad[@]}" >/dev/null 2>&1; then
-    agent-device press 'id="wwn.welcome.continue"' "${ad[@]}" >/dev/null 2>&1 || true
-    agent-device press 'label="Continue"' "${ad[@]}" >/dev/null 2>&1 || true
-    agent-device find Continue press --first "${ad[@]}" >/dev/null 2>&1 || true
-    agent-device wait 1500 "${ad[@]}" >/dev/null 2>&1 || true
-    agent-device alert dismiss "${ad[@]}" >/dev/null 2>&1 || true
-  fi
-
-  if agent-device press 'id="wwn.machines.start"' "${ad[@]}" >/dev/null 2>&1 \
-    || agent-device press 'label="Start"' "${ad[@]}" >/dev/null 2>&1 \
-    || agent-device find Start press --first "${ad[@]}" >/dev/null 2>&1; then
+  # Retry the whole open→dismiss→Start sequence: the first `open` on a cold
+  # session can still time out building the runner (SESSION_NOT_FOUND on the
+  # follow-up snapshot). A second attempt reuses the now-warm runner.
+  local attempt
+  for attempt in 1 2; do
+    agent-device open "$bundle" --relaunch "${ad[@]}" >"$cell/ad-open.log" 2>&1 || true
     agent-device wait 3000 "${ad[@]}" >/dev/null 2>&1 || true
-    agent-device screenshot "$cell/running.png" "${ad[@]}" >/dev/null 2>&1 || true
-    return 0
-  fi
+    agent-device alert dismiss "${ad[@]}" >/dev/null 2>&1 || true
+
+    # Welcome sheet (first launch) blocks the Machines Start button.
+    if ! agent-device is visible 'id="wwn.machines.root"' "${ad[@]}" >/dev/null 2>&1; then
+      agent-device press 'id="wwn.welcome.continue"' "${ad[@]}" >/dev/null 2>&1 || true
+      agent-device press 'label="Continue"' "${ad[@]}" >/dev/null 2>&1 || true
+      agent-device find Continue press --first "${ad[@]}" >/dev/null 2>&1 || true
+      agent-device wait 1500 "${ad[@]}" >/dev/null 2>&1 || true
+      agent-device alert dismiss "${ad[@]}" >/dev/null 2>&1 || true
+    fi
+
+    if agent-device press 'id="wwn.machines.start"' "${ad[@]}" >/dev/null 2>&1 \
+      || agent-device press 'label="Start"' "${ad[@]}" >/dev/null 2>&1 \
+      || agent-device find Start press --first "${ad[@]}" >/dev/null 2>&1; then
+      agent-device wait 3000 "${ad[@]}" >/dev/null 2>&1 || true
+      agent-device screenshot "$cell/running.png" "${ad[@]}" >/dev/null 2>&1 || true
+      return 0
+    fi
+    [[ "$attempt" == 1 ]] && agent-device wait 2000 "${ad[@]}" >/dev/null 2>&1 || true
+  done
   agent-device screenshot "$cell/start-fail.png" "${ad[@]}" >/dev/null 2>&1 || true
   agent-device snapshot -i --raw "${ad[@]}" >"$cell/start-fail-snapshot.txt" 2>&1 || true
   return 1
@@ -802,6 +809,26 @@ run_platform() {
   fi
 
   log "======== PLATFORM $platform (${#clients[@]} clients) ========"
+
+  # Apple simulators: build/prepare the XCUITest runner ONCE up front. Otherwise
+  # the very first agent-device `open` has to build the runner inline and can hit
+  # the daemon request timeout — observed as the first client (weston-terminal)
+  # failing "Start not pressed" (SESSION_NOT_FOUND) while every later client
+  # passes. Best-effort; per-cell open also retries now.
+  case "$platform" in
+    ios | ipados | visionos)
+      if command -v agent-device >/dev/null 2>&1; then
+        local ad_plat="$platform" psim
+        [[ "$platform" == "ipados" ]] && ad_plat=ios
+        psim="$(default_sim_for "$platform")"
+        log "prepare ios-runner (platform=$ad_plat device='$psim', one-time)"
+        agent-device prepare ios-runner --platform "$ad_plat" --device "$psim" \
+          >"$OUT_ROOT/${platform}-prepare-runner.log" 2>&1 ||
+          log "WARN: prepare ios-runner failed (continuing; per-cell open retries)"
+      fi
+      ;;
+  esac
+
   local c
   for c in "${clients[@]}"; do
     case "$platform" in
