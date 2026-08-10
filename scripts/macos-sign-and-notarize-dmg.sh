@@ -150,6 +150,33 @@ find "$APP/Contents/MacOS" -type f -exec chmod +x {} + 2>/dev/null || true
 find "$APP/Contents/Resources/bin" -type f -exec chmod +x {} + 2>/dev/null || true
 find "$APP" \( -name '._*' -o -name '.DS_Store' \) -delete 2>/dev/null || true
 
+# Nix packaging historically drops FHS lib/ + share/ next to Contents/. codesign
+# then fails with "unsealed contents present in the bundle root". Runtime already
+# probes Contents/Resources/{lib,share} (see WWNPlatformCallbacks.m).
+relocate_fhs_into_contents() {
+  local app="$1"
+  local res="$app/Contents/Resources"
+  local d entry base
+  mkdir -p "$res"
+  for d in lib share; do
+    if [[ -d "$app/$d" ]]; then
+      echo "Relocating .app/$d → Contents/Resources/$d (codesign seal)"
+      mkdir -p "$res/$d"
+      cp -a "$app/$d/." "$res/$d/"
+      rm -rf "$app/$d"
+    fi
+  done
+  shopt -s nullglob
+  for entry in "$app"/*; do
+    base="$(basename "$entry")"
+    [[ "$base" == Contents ]] && continue
+    echo "error: unexpected .app root entry (breaks codesign): $entry" >&2
+    exit 1
+  done
+  shopt -u nullglob
+}
+relocate_fhs_into_contents "$APP"
+
 sign_macho() {
   local target="$1"
   local with_entitlements="${2:-0}"
@@ -249,15 +276,18 @@ spctl --assess --type execute --verbose=4 "$APP" 2>&1 || {
   echo "note: spctl assess may fail pre-notarization; continuing" >&2
 }
 
-if [[ -n "$PKG" && -f "$PKG" ]]; then
+if [[ -n "$PKG" ]]; then
+  # Rebuild from the sealed app so the installer payload matches (staging may
+  # have packaged pre-relocate lib/share at the .app root).
+  echo "Rebuilding agent pkg from sealed app → $PKG"
+  chmod +x "$ROOT/scripts/macos-launch-agent-pkg.sh"
+  WAWONA_VERSION="$VERSION" WAWONA_APP_SRC="$APP" \
+    "$ROOT/scripts/macos-launch-agent-pkg.sh" "$PKG"
   echo "productsign $PKG ..."
   SIGNED_PKG="$WORKDIR/WawonaAgent-signed.pkg"
   productsign --sign "$INST_IDENTITY" --timestamp "$PKG" "$SIGNED_PKG"
   mv -f "$SIGNED_PKG" "$PKG"
   pkgutil --check-signature "$PKG" || true
-elif [[ -n "$PKG" ]]; then
-  echo "error: --pkg path set but file missing: $PKG" >&2
-  exit 1
 fi
 
 # Ensure staging has Applications symlink + README if we own the folder.

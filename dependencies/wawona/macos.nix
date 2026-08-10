@@ -1422,10 +1422,26 @@ PLIST_EOF
       mkdir -p $out/bin
       ln -s $out/Applications/Wawona.app/Contents/MacOS/Wawona $out/bin/Wawona
       ln -s $out/Applications/Wawona.app/Contents/MacOS/Wawona $out/bin/wawona-macos
-      ln -snf $out/Applications/Wawona.app/share $out/share
-      ln -snf $out/Applications/Wawona.app/lib $out/lib
 
       APP="$out/Applications/Wawona.app"
+      # Codesign / Gatekeeper: only Contents/ may sit at the .app root. Install
+      # phases still stage FHS lib/ + share/ beside Contents for convenience;
+      # relocate before sealing so Developer ID notarization can succeed.
+      for d in lib share; do
+        if [ -d "$APP/$d" ]; then
+          mkdir -p "$APP/Contents/Resources/$d"
+          cp -a "$APP/$d/." "$APP/Contents/Resources/$d/"
+          rm -rf "$APP/$d"
+        fi
+      done
+      for entry in "$APP"/*; do
+        [ "$(basename "$entry")" = Contents ] && continue
+        echo "ERROR: unexpected .app root entry (breaks codesign): $entry" >&2
+        exit 1
+      done
+      ln -snf $out/Applications/Wawona.app/Contents/Resources/share $out/share
+      ln -snf $out/Applications/Wawona.app/Contents/Resources/lib $out/lib
+
       ${lib.optionalString (kosmickrisp != null) ''
       mkdir -p "$APP/Contents/Frameworks" "$APP/Contents/Resources/vulkan/icd.d"
       cp "${kosmickrisp}/lib/libvulkan_kosmickrisp.dylib" "$APP/Contents/Frameworks/"
@@ -1440,9 +1456,9 @@ PLIST_EOF
       fi
       ''}
       for req in \
-        "$APP/share/weston/pattern.png" \
-        "$APP/share/weston/terminal.png" \
-        "$APP/share/fonts/truetype/DejaVuSans.ttf"; do
+        "$APP/Contents/Resources/share/weston/pattern.png" \
+        "$APP/Contents/Resources/share/weston/terminal.png" \
+        "$APP/Contents/Resources/share/fonts/truetype/DejaVuSans.ttf"; do
         if [ ! -e "$req" ]; then
           echo "ERROR: required bundled asset missing: $req" >&2
           exit 1
