@@ -43,8 +43,32 @@
 #include <unistd.h>
 #include <errno.h>
 #include <time.h>
+#include <pthread.h>
+#include <fcntl.h>
+
+#include "WWNWatchKeymap.h"
+
+// Linux evdev keycodes we synthesize (client adds +8 for the xkb keycode).
+#define WWN_KEY_BACKSPACE 14
+#define WWN_KEY_TAB       15
+#define WWN_KEY_ENTER     28
+#define WWN_KEY_SPACE     57
+// Real modifier mask for Shift in the standard US keymap (index 0).
+#define WWN_MOD_SHIFT     1u
 
 // ── Server root ───────────────────────────────────────────────────────────────
+
+#define WWN_MAX_KEYBOARDS 8
+
+// Primitive input events queued from the UI (main) thread and drained on the
+// compositor dispatch thread so every Wayland protocol write stays single-threaded.
+typedef enum { WWN_EV_MODS, WWN_EV_KEY } WWNEvType;
+typedef struct WWNPendingEv {
+    WWNEvType            type;
+    uint32_t             a;   // WWN_EV_MODS: mods_depressed | WWN_EV_KEY: evdev keycode
+    uint32_t             b;   // WWN_EV_KEY: 1=press, 0=release
+    struct WWNPendingEv *next;
+} WWNPendingEv;
 
 struct WWNMiniWaylandServer {
     struct wl_display    *display;
@@ -62,7 +86,24 @@ struct WWNMiniWaylandServer {
 
     WWNFrameCallback frame_cb;
     void            *userdata;
+
+    // ── Keyboard input ───────────────────────────────────────────────────────
+    struct wl_resource *keyboards[WWN_MAX_KEYBOARDS];
+    int                 n_keyboards;
+    struct wl_resource *focus_surface;   // wl_surface that currently has kbd focus
+    int                 keymap_fd;       // fd holding the US xkb keymap (-1 = none)
+    size_t              keymap_size;     // bytes written (incl. trailing NUL)
+    uint32_t            mods_depressed;  // last-sent real modifier mask
+
+    // Cross-thread input queue (UI thread producer, dispatch thread consumer).
+    pthread_mutex_t     ev_lock;
+    WWNPendingEv       *ev_head;
+    WWNPendingEv       *ev_tail;
 };
+
+// Forward decls for keyboard helpers used before their definitions.
+static void wwn_keyboard_send_enter(struct WWNMiniWaylandServer *srv,
+                                    struct wl_resource *kb);
 
 // ── Helper: send frame done callback ─────────────────────────────────────────
 
@@ -287,6 +328,16 @@ static void surf_commit(struct wl_client *client, struct wl_resource *res)
         if (buf && buf->data && buf->pool && buf->pool->data) {
             notify_frame(surf->srv, buf->data, buf->width, buf->height, buf->stride);
         }
+
+        // 3. Give keyboard focus to the first surface that presents content, so
+        // synthesized key events (from the WatchKit text-entry affordance) reach
+        // the terminal/zsh client. Runs on the dispatch thread — safe to emit.
+        if (surf->srv && !surf->srv->focus_surface) {
+            surf->srv->focus_surface = res;
+            for (int i = 0; i < surf->srv->n_keyboards; i++) {
+                wwn_keyboard_send_enter(surf->srv, surf->srv->keyboards[i]);
+            }
+        }
     }
 
     // 3. Fire the frame callback after processing buffer release/attach (when present).
@@ -327,7 +378,11 @@ static const struct wl_surface_interface surf_impl = {
 
 static void surf_resource_destroy(struct wl_resource *res)
 {
-    free(wl_resource_get_user_data(res));
+    WWNSurface *surf = wl_resource_get_user_data(res);
+    if (surf && surf->srv && surf->srv->focus_surface == res) {
+        surf->srv->focus_surface = NULL;
+    }
+    free(surf);
 }
 
 // ── wl_region (stub) ─────────────────────────────────────────────────────────
@@ -708,9 +763,11 @@ static void output_bind(struct wl_client *client, void *data,
         wl_output_send_done(res);
 }
 
-// ── wl_seat (minimal stub — advertises zero capabilities) ────────────────────
-// We advertise no input devices, so clients should not call get_pointer/keyboard/touch.
-// No-op stubs are provided defensively so the linker is happy and rogue clients don't crash.
+// ── wl_seat (keyboard capability — feeds the WatchKit text-entry affordance) ──
+// The watch has no hardware keyboard, so input arrives as UTF-8 strings from a
+// WKInterfaceController text-input controller (or dictation). We translate that
+// to a synthetic US-layout xkb keyboard: a real keymap + wl_keyboard.key events,
+// exactly what weston-terminal/toytoolkit expects, so zsh receives typed bytes.
 
 static void ptr_set_cursor(struct wl_client *c, struct wl_resource *r,
                               uint32_t serial, struct wl_resource *surf,
@@ -735,6 +792,64 @@ static const struct wl_touch_interface touch_impl = {
     .release = touch_release,
 };
 
+// Lazily materialize the keymap into an fd the client can mmap. Returns fd or -1.
+static int wwn_ensure_keymap_fd(struct WWNMiniWaylandServer *srv)
+{
+    if (srv->keymap_fd >= 0) return srv->keymap_fd;
+
+    const char *xdg = getenv("XDG_RUNTIME_DIR");
+    char tmpl[128];
+    snprintf(tmpl, sizeof(tmpl), "%s/wwn-keymap.XXXXXX", (xdg && xdg[0]) ? xdg : "/tmp");
+    int fd = mkstemp(tmpl);
+    if (fd < 0) return -1;
+    unlink(tmpl); // keep only the open fd; content survives for mmap
+
+    size_t size = sizeof(kWWNWatchUSKeymap); // includes trailing NUL
+    ssize_t off = 0;
+    const char *p = kWWNWatchUSKeymap;
+    while ((size_t)off < size) {
+        ssize_t n = write(fd, p + off, size - (size_t)off);
+        if (n <= 0) { close(fd); return -1; }
+        off += n;
+    }
+    srv->keymap_fd   = fd;
+    srv->keymap_size = size;
+    return fd;
+}
+
+// Send wl_keyboard.enter for the focused surface (empty pressed-keys array).
+static void wwn_keyboard_send_enter(struct WWNMiniWaylandServer *srv,
+                                    struct wl_resource *kb)
+{
+    if (!kb || !srv->focus_surface) return;
+    struct wl_array keys;
+    wl_array_init(&keys);
+    uint32_t serial = wl_display_next_serial(srv->display);
+    wl_keyboard_send_enter(kb, serial, srv->focus_surface, &keys);
+    wl_array_release(&keys);
+    // Prime modifier state so the client's xkb_state starts clean.
+    uint32_t mserial = wl_display_next_serial(srv->display);
+    wl_keyboard_send_modifiers(kb, mserial, 0, 0, 0, 0);
+}
+
+static void wwn_keyboard_remove(struct WWNMiniWaylandServer *srv,
+                                struct wl_resource *kb)
+{
+    for (int i = 0; i < srv->n_keyboards; i++) {
+        if (srv->keyboards[i] == kb) {
+            srv->keyboards[i] = srv->keyboards[--srv->n_keyboards];
+            srv->keyboards[srv->n_keyboards] = NULL;
+            return;
+        }
+    }
+}
+
+static void kb_resource_destroy(struct wl_resource *res)
+{
+    struct WWNMiniWaylandServer *srv = wl_resource_get_user_data(res);
+    if (srv) wwn_keyboard_remove(srv, res);
+}
+
 static void seat_get_pointer(struct wl_client *c, struct wl_resource *r, uint32_t id)
 {
     struct wl_resource *ptr = wl_resource_create(c, &wl_pointer_interface, 7, id);
@@ -742,8 +857,38 @@ static void seat_get_pointer(struct wl_client *c, struct wl_resource *r, uint32_
 }
 static void seat_get_keyboard(struct wl_client *c, struct wl_resource *r, uint32_t id)
 {
-    struct wl_resource *kb = wl_resource_create(c, &wl_keyboard_interface, 8, id);
-    wl_resource_set_implementation(kb, &kb_impl, NULL, NULL);
+    struct WWNMiniWaylandServer *srv = wl_resource_get_user_data(r);
+    int ver = wl_resource_get_version(r);
+    struct wl_resource *kb = wl_resource_create(c, &wl_keyboard_interface, ver, id);
+    wl_resource_set_implementation(kb, &kb_impl, srv, kb_resource_destroy);
+
+    // 1. Hand the client the US keymap so xkbcommon can decode our keycodes.
+    int fd = wwn_ensure_keymap_fd(srv);
+    if (fd >= 0) {
+        // The client mmaps read-only from offset 0; rewind is not required for
+        // pread-style mmap, but keep the descriptor at a well-defined position.
+        wl_keyboard_send_keymap(kb, WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1,
+                                fd, (uint32_t)srv->keymap_size);
+    } else {
+        // libwayland must send a real fd over SCM_RIGHTS even for NO_KEYMAP.
+        int nullfd = open("/dev/null", O_RDONLY);
+        wl_keyboard_send_keymap(kb, WL_KEYBOARD_KEYMAP_FORMAT_NO_KEYMAP,
+                                nullfd >= 0 ? nullfd : fd, 0);
+        if (nullfd >= 0) close(nullfd);
+    }
+
+    // 2. Advertise a sensible repeat rate (v4+).
+    if (ver >= 4) {
+        wl_keyboard_send_repeat_info(kb, 25 /* keys/sec */, 400 /* delay ms */);
+    }
+
+    // 3. Track it and, if a surface already has focus, enter immediately.
+    if (srv->n_keyboards < WWN_MAX_KEYBOARDS) {
+        srv->keyboards[srv->n_keyboards++] = kb;
+    }
+    if (srv->focus_surface) {
+        wwn_keyboard_send_enter(srv, kb);
+    }
 }
 static void seat_get_touch(struct wl_client *c, struct wl_resource *r, uint32_t id)
 {
@@ -766,7 +911,113 @@ static void seat_bind(struct wl_client *client, void *data,
     struct wl_resource *res = wl_resource_create(client, &wl_seat_interface,
                                                   version < 8 ? (int)version : 8, id);
     wl_resource_set_implementation(res, &seat_impl, data, NULL);
-    wl_seat_send_capabilities(res, 0); // no input capabilities on watch (for now)
+    wl_seat_send_capabilities(res, WL_SEAT_CAPABILITY_KEYBOARD);
+    if (version >= 2) {
+        wl_seat_send_name(res, "wawona-watch-seat");
+    }
+}
+
+// ── Input injection (UTF-8 / keycode → wl_keyboard) ──────────────────────────
+// Producer side: called from the UI thread. We only enqueue here; the actual
+// wl protocol writes happen on the dispatch thread in wwn_wls_drain_input().
+
+// Map printable ASCII to a US-layout evdev keycode and whether Shift is needed.
+// Returns 0 for characters we cannot represent on the base US layout.
+static uint32_t wwn_ascii_to_keycode(char ch, int *needs_shift)
+{
+    *needs_shift = 0;
+    if (ch >= 'a' && ch <= 'z') {
+        static const uint8_t row[] = {
+            /* a */30,/*b*/48,/*c*/46,/*d*/32,/*e*/18,/*f*/33,/*g*/34,/*h*/35,
+            /* i */23,/*j*/36,/*k*/37,/*l*/38,/*m*/50,/*n*/49,/*o*/24,/*p*/25,
+            /* q */16,/*r*/19,/*s*/31,/*t*/20,/*u*/22,/*v*/47,/*w*/17,/*x*/45,
+            /* y */21,/*z*/44 };
+        return row[ch - 'a'];
+    }
+    if (ch >= 'A' && ch <= 'Z') { *needs_shift = 1; return wwn_ascii_to_keycode((char)(ch - 'A' + 'a'), &(int){0}); }
+    switch (ch) {
+        case '1': return 2;  case '2': return 3;  case '3': return 4;
+        case '4': return 5;  case '5': return 6;  case '6': return 7;
+        case '7': return 8;  case '8': return 9;  case '9': return 10;
+        case '0': return 11;
+        case '!': *needs_shift=1; return 2;   case '@': *needs_shift=1; return 3;
+        case '#': *needs_shift=1; return 4;   case '$': *needs_shift=1; return 5;
+        case '%': *needs_shift=1; return 6;   case '^': *needs_shift=1; return 7;
+        case '&': *needs_shift=1; return 8;   case '*': *needs_shift=1; return 9;
+        case '(': *needs_shift=1; return 10;  case ')': *needs_shift=1; return 11;
+        case '-': return 12;                  case '_': *needs_shift=1; return 12;
+        case '=': return 13;                  case '+': *needs_shift=1; return 13;
+        case '[': return 26;                  case '{': *needs_shift=1; return 26;
+        case ']': return 27;                  case '}': *needs_shift=1; return 27;
+        case '\\':return 43;                  case '|': *needs_shift=1; return 43;
+        case ';': return 39;                  case ':': *needs_shift=1; return 39;
+        case '\'':return 40;                  case '"': *needs_shift=1; return 40;
+        case '`': return 41;                  case '~': *needs_shift=1; return 41;
+        case ',': return 51;                  case '<': *needs_shift=1; return 51;
+        case '.': return 52;                  case '>': *needs_shift=1; return 52;
+        case '/': return 53;                  case '?': *needs_shift=1; return 53;
+        case ' ': return WWN_KEY_SPACE;
+        case '\t':return WWN_KEY_TAB;
+        case '\n': case '\r': return WWN_KEY_ENTER;
+        case 0x7f: case 0x08: return WWN_KEY_BACKSPACE;
+        default: return 0;
+    }
+}
+
+static void wwn_enqueue(struct WWNMiniWaylandServer *srv, WWNEvType type,
+                        uint32_t a, uint32_t b)
+{
+    WWNPendingEv *ev = calloc(1, sizeof(WWNPendingEv));
+    if (!ev) return;
+    ev->type = type; ev->a = a; ev->b = b; ev->next = NULL;
+    pthread_mutex_lock(&srv->ev_lock);
+    if (srv->ev_tail) srv->ev_tail->next = ev; else srv->ev_head = ev;
+    srv->ev_tail = ev;
+    pthread_mutex_unlock(&srv->ev_lock);
+    // The dispatch thread polls with a <=16ms timeout, so queued keys are
+    // flushed on the next loop iteration — imperceptible latency for typing.
+}
+
+static void wwn_enqueue_keystroke(struct WWNMiniWaylandServer *srv,
+                                   uint32_t keycode, int needs_shift)
+{
+    if (needs_shift) wwn_enqueue(srv, WWN_EV_MODS, WWN_MOD_SHIFT, 0);
+    wwn_enqueue(srv, WWN_EV_KEY, keycode, 1);
+    wwn_enqueue(srv, WWN_EV_KEY, keycode, 0);
+    if (needs_shift) wwn_enqueue(srv, WWN_EV_MODS, 0, 0);
+}
+
+// Consumer side: runs on the dispatch thread from wwn_wls_dispatch().
+static void wwn_wls_drain_input(struct WWNMiniWaylandServer *srv)
+{
+    pthread_mutex_lock(&srv->ev_lock);
+    WWNPendingEv *head = srv->ev_head;
+    srv->ev_head = srv->ev_tail = NULL;
+    pthread_mutex_unlock(&srv->ev_lock);
+
+    if (!head) return;
+    if (srv->n_keyboards == 0 || !srv->focus_surface) {
+        // No client to receive them yet — drop rather than buffer unboundedly.
+        while (head) { WWNPendingEv *n = head->next; free(head); head = n; }
+        return;
+    }
+
+    for (WWNPendingEv *ev = head; ev; ) {
+        uint32_t serial = wl_display_next_serial(srv->display);
+        uint32_t time_ms = wwn_monotonic_millis();
+        for (int i = 0; i < srv->n_keyboards; i++) {
+            struct wl_resource *kb = srv->keyboards[i];
+            if (ev->type == WWN_EV_MODS) {
+                wl_keyboard_send_modifiers(kb, serial, ev->a, 0, 0, 0);
+            } else {
+                wl_keyboard_send_key(kb, serial, time_ms, ev->a,
+                    ev->b ? WL_KEYBOARD_KEY_STATE_PRESSED
+                          : WL_KEYBOARD_KEY_STATE_RELEASED);
+            }
+        }
+        if (ev->type == WWN_EV_MODS) srv->mods_depressed = ev->a;
+        WWNPendingEv *n = ev->next; free(ev); ev = n;
+    }
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -825,6 +1076,8 @@ WWNMiniWaylandServer *wwn_wls_create(const char *socket_name,
     srv->output_height = output_height ? output_height : 224;
     srv->frame_cb      = frame_cb;
     srv->userdata      = userdata;
+    srv->keymap_fd     = -1;
+    pthread_mutex_init(&srv->ev_lock, NULL);
 
     // Advertise protocol globals
     srv->compositor_global = wl_global_create(disp, &wl_compositor_interface, 4, srv, comp_bind);
@@ -847,8 +1100,26 @@ int wwn_wls_dispatch(WWNMiniWaylandServer *srv, int timeout_ms)
 {
     if (!srv) return 0;
     wl_event_loop_dispatch(srv->loop, timeout_ms);
+    wwn_wls_drain_input(srv);      // emit any queued key events on this thread
     wl_display_flush_clients(srv->display);
     return 1;
+}
+
+void wwn_wls_feed_text(WWNMiniWaylandServer *srv, const char *utf8)
+{
+    if (!srv || !utf8) return;
+    for (const unsigned char *p = (const unsigned char *)utf8; *p; p++) {
+        int shift = 0;
+        uint32_t kc = wwn_ascii_to_keycode((char)*p, &shift);
+        if (kc) wwn_enqueue_keystroke(srv, kc, shift);
+        // Non-ASCII bytes (UTF-8 multibyte) have no US-layout keycode; skip.
+    }
+}
+
+void wwn_wls_feed_key(WWNMiniWaylandServer *srv, uint32_t evdev_keycode, int pressed)
+{
+    if (!srv || !evdev_keycode) return;
+    wwn_enqueue(srv, WWN_EV_KEY, evdev_keycode, pressed ? 1u : 0u);
 }
 
 void wwn_wls_destroy(WWNMiniWaylandServer *srv)
@@ -856,6 +1127,11 @@ void wwn_wls_destroy(WWNMiniWaylandServer *srv)
     if (!srv) return;
     unsetenv("WAYLAND_DISPLAY");
     wl_display_destroy(srv->display);
+    // Drain any leftover queued events, then tear down the lock + keymap fd.
+    WWNPendingEv *ev = srv->ev_head;
+    while (ev) { WWNPendingEv *n = ev->next; free(ev); ev = n; }
+    pthread_mutex_destroy(&srv->ev_lock);
+    if (srv->keymap_fd >= 0) close(srv->keymap_fd);
     free(srv);
 }
 
@@ -877,6 +1153,8 @@ WWNMiniWaylandServer *wwn_wls_create(const char *socket_name,
 }
 
 int  wwn_wls_dispatch(WWNMiniWaylandServer *srv, int timeout_ms) { (void)srv; (void)timeout_ms; return 0; }
+void wwn_wls_feed_text(WWNMiniWaylandServer *srv, const char *utf8) { (void)srv; (void)utf8; }
+void wwn_wls_feed_key(WWNMiniWaylandServer *srv, uint32_t k, int p) { (void)srv; (void)k; (void)p; }
 void wwn_wls_destroy (WWNMiniWaylandServer *srv) { (void)srv; }
 
 #endif // WWN_WL_SERVER_AVAILABLE

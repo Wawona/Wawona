@@ -563,6 +563,25 @@ static void miniServerFrameCallback(const uint8_t *pixels,
     NSLog(@"[WatchCompositor] Client stopped");
 }
 
+// MARK: - Keyboard input (WatchKit text entry → PTY)
+
+- (void)sendText:(NSString *)text {
+    if (text.length == 0) return;
+    if (!_miniServer) {
+        NSLog(@"[WatchCompositor] sendText ignored: mini server not running "
+              "(Rust backend keyboard path not yet wired)");
+        return;
+    }
+    // wwn_wls_feed_text is thread-safe; it enqueues and the dispatch thread emits.
+    wwn_wls_feed_text(_miniServer, text.UTF8String);
+    NSLog(@"[WatchCompositor] Injected %lu chars of keyboard input", (unsigned long)text.length);
+}
+
+- (void)sendKeyCode:(uint32_t)evdevKeycode pressed:(BOOL)pressed {
+    if (!_miniServer) return;
+    wwn_wls_feed_key(_miniServer, evdevKeycode, pressed ? 1 : 0);
+}
+
 // MARK: - Waypipe (SSH + Waypipe)
 
 typedef struct {

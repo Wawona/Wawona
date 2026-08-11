@@ -58,6 +58,17 @@ extern NSNotificationName const WWNWatchCompositorFrameReadyNotification;
 /// YES while an in-process client is running.
 @property(nonatomic, readonly) BOOL isClientRunning;
 
+// MARK: - Keyboard input (WatchKit text entry → PTY)
+
+/// Inject a UTF-8 string as synthetic US-layout keyboard input to the focused
+/// client (e.g. weston-terminal → zsh). Call from the main thread after the
+/// user commits a text-input controller / dictation result.
+- (void)sendText:(NSString *)text;
+
+/// Inject a single raw evdev keycode (e.g. Return=28, Backspace=14) with the
+/// given press state. Used for control keys the string path cannot express.
+- (void)sendKeyCode:(uint32_t)evdevKeycode pressed:(BOOL)pressed;
+
 // MARK: - Waypipe (SSH + Waypipe)
 
 /// Launch waypipe in-process with libssh2 for SSH tunneling.

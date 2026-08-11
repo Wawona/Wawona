@@ -47,6 +47,16 @@ WWNMiniWaylandServer *wwn_wls_create(const char *socket_name,
 /// Returns 1 while healthy, 0 if the server has shut down.
 int wwn_wls_dispatch(WWNMiniWaylandServer *srv, int timeout_ms);
 
+/// Inject UTF-8 text as synthetic US-layout keyboard input to the focused
+/// client (weston-terminal → zsh). ASCII printable + newline/tab/backspace are
+/// mapped to evdev keycodes; non-ASCII bytes are ignored. Thread-safe: may be
+/// called from the UI thread; events are emitted on the dispatch thread.
+void wwn_wls_feed_text(WWNMiniWaylandServer *srv, const char *utf8);
+
+/// Inject a single raw evdev keycode (e.g. arrows/ctrl combos) with press/release
+/// state. Thread-safe, same delivery semantics as wwn_wls_feed_text.
+void wwn_wls_feed_key(WWNMiniWaylandServer *srv, uint32_t evdev_keycode, int pressed);
+
 /// Destroy the server and close the socket.
 void wwn_wls_destroy(WWNMiniWaylandServer *srv);
 
