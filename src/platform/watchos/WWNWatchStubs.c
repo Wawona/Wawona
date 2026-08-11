@@ -210,6 +210,20 @@ void wwn_wls_destroy(WWNMiniWaylandServer *srv) {
     (void)srv;
 }
 
+/* Keyboard input injection (real impls in WWNMiniWaylandServer.c, arm64 only).
+ * arm64_32 links no mini server, so these weak fallbacks keep the fat slice
+ * linking; WWNWatchCompositorBridge nil-checks the server before calling. */
+__attribute__((weak))
+void wwn_wls_feed_text(WWNMiniWaylandServer *srv, const char *utf8) {
+    (void)srv; (void)utf8;
+}
+
+__attribute__((weak))
+void wwn_wls_feed_key(WWNMiniWaylandServer *srv, uint32_t evdev_keycode,
+                      int pressed) {
+    (void)srv; (void)evdev_keycode; (void)pressed;
+}
+
 /* Weston toytoolkit demo clients referenced by wawona-dispatch tables. */
 #define WWN_WATCH_CLIENT_STUB(name) \
     __attribute__((weak)) int name(int argc, char **argv) { \
