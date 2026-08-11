@@ -2905,6 +2905,12 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       return;
     }
 
+    // niri spawns its own clients (fuzzel, terminals) which need a coherent
+    // rootfs HOME + XDG dirs. Mirror the in-process weston launch: without
+    // this, WAWONA_ROOTFS/HOME/XDG_*_HOME are unset unless another client ran
+    // first, and niri's children write to an incoherent FS.
+    [WWNRootfsProvider applyShellEnvironment];
+
     const char *parent_display = getenv("WAYLAND_DISPLAY");
     if (!parent_display || parent_display[0] == '\0') {
       parent_display = "wayland-0";
