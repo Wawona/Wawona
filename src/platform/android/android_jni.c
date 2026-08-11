@@ -36,6 +36,8 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/resource.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <dirent.h>
 #include <errno.h>
 #include <unistd.h>
@@ -2280,6 +2282,24 @@ JNIEXPORT void JNICALL Java_com_aspauldingcode_wawona_WawonaNative_nativeInit(
     }
     char runtime_dir[256];
     snprintf(runtime_dir, sizeof(runtime_dir), "%s/wawona-runtime", cache_dir);
+    /* sun_path guard: libwayland/waypipe bind AF_UNIX sockets at
+     * XDG_RUNTIME_DIR + "/<name>" and sockaddr_un.sun_path caps at
+     * sizeof(sun_path) (108 on Android). The longest suffix we append is
+     * waypipe's "/waypipe-client-<rand>.sock" (~28 bytes), so reserve a
+     * budget and fall back to the short /data/local/tmp path (dev/emulator)
+     * if the app-private cache dir would overflow — better a diagnostic than
+     * a silent bind() EINVAL. */
+    {
+      const size_t sun_path_max = sizeof(((struct sockaddr_un *)0)->sun_path);
+      const size_t suffix_budget = 32; /* "/waypipe-client-<rand>.sock" + NUL */
+      if (strlen(runtime_dir) + suffix_budget > sun_path_max) {
+        LOGE("XDG_RUNTIME_DIR too long for AF_UNIX sun_path (%zu + %zu > %zu): "
+             "%s — falling back to /data/local/tmp",
+             strlen(runtime_dir), suffix_budget, sun_path_max, runtime_dir);
+        snprintf(runtime_dir, sizeof(runtime_dir),
+                 "/data/local/tmp/wawona-runtime");
+      }
+    }
     mkdir(runtime_dir, 0700);
     setenv("XDG_RUNTIME_DIR", runtime_dir, 1);
     setenv("TMPDIR", cache_dir, 1);
@@ -3947,6 +3967,14 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
     setenv("XDG_DATA_HOME", data_home, 1);
     char cache_home[768];
     snprintf(cache_home, sizeof(cache_home), "%s/home/.cache", rootfs);
+    /* fuzzel, GTK, foot, etc. read XDG_CONFIG_HOME / XDG_CACHE_HOME; without
+     * them set+created, config/cache writes fall back to $HOME/.config etc.
+     * which may not exist yet. Materialize both so bundled clients have a
+     * writable sandbox FS (issue #78 sandbox/rootfs). */
+    char config_home[768];
+    snprintf(config_home, sizeof(config_home), "%s/home/.config", rootfs);
+    setenv("XDG_CACHE_HOME", cache_home, 1);
+    setenv("XDG_CONFIG_HOME", config_home, 1);
     char home_dir[768];
     char local_dir[768];
     snprintf(home_dir, sizeof(home_dir), "%s/home", rootfs);
@@ -3955,7 +3983,9 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
     mkdir(local_dir, 0755);
     mkdir(data_home, 0755);
     mkdir(cache_home, 0755);
-    LOGI("Shell env: XDG_DATA_DIRS=%s (fuzzel catalog)", share_buf);
+    mkdir(config_home, 0755);
+    LOGI("Shell env: XDG_DATA_DIRS=%s XDG_CONFIG_HOME=%s (fuzzel catalog)",
+         share_buf, config_home);
   }
 
   LOGI("Shell env: ROOTFS=%s SHELL=%s", rootfs, getenv("SHELL") ?: "(unset)");
