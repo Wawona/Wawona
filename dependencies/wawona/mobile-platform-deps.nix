@@ -115,12 +115,20 @@ let
         phoon = buildFn "phoon" { inherit simulator; };
       }
     // lib.optionalAttrs (variant == "mobile" || variant == "vision") {
-        fastfetch = buildFn "fastfetch" { inherit simulator; };
         neovim = buildFn "neovim" { inherit simulator; };
         "neovim-rootfs" = buildFn "neovim-rootfs" { inherit simulator; };
         # wwn-niri fuzzel stack (Mod+D launcher spawned in-process).
         # fuzzel uses fork/exec — not available on tvOS; keep off tv/watch.
         fuzzel = buildFn "fuzzel" { inherit simulator; };
+      }
+    # fastfetch is an in-process (`fastfetch_main`) system-info tool with no
+    # fork/exec and no GPU dependency, so it ships on the WHOLE Apple family.
+    # wwn-fastfetch drops Metal/VideoToolbox on watchOS (CPU-only, no-Metal wall)
+    # via its per-platform framework list — Wawona stays framework-agnostic. #139
+    // lib.optionalAttrs (
+      variant == "mobile" || variant == "vision" || variant == "tv" || variant == "watch"
+    ) {
+        fastfetch = buildFn "fastfetch" { inherit simulator; };
       };
 in
 base

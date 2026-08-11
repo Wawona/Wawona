@@ -300,8 +300,8 @@ if [ "$_with_zsh" = "1" ]; then
     echo "Privatized $derived/libwawona-zsh.a (from $zsh_out)"
   fi
 
-  # neovim/fastfetch: linked on iOS/iPadOS (and eventually visionOS). Skip on
-  # tvOS/watchOS — mobile-platform-deps does not ship them there.
+  # neovim: linked on iOS/iPadOS/visionOS only (size + fork/exec editor). Skip
+  # on tvOS/watchOS — mobile-platform-deps does not ship it there.
   case "${TARGET_NAME:-}" in
     Wawona-iOS|Wawona-iPadOS|Wawona-visionOS)
       _nvim_attr="neovim-ios-device"
@@ -313,21 +313,31 @@ if [ "$_with_zsh" = "1" ]; then
         "$_arch" "$_ld_platform" "$_min_ver" \
         _wawona_nvim_main
       echo "Privatized $derived/libwawona-neovim.a (from $nvim_out)"
-
-      _ff_attr="fastfetch-ios-device"
-      case "$_sdk" in
-        *simulator*) _ff_attr="fastfetch-ios" ;;
-      esac
-      ff_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_ff_attr")"
-      privatize_lib "$ff_out/lib/libfastfetch.a" "$derived/libfastfetch.a" \
-        "$_arch" "$_ld_platform" "$_min_ver" \
-        _fastfetch_main
-      echo "Privatized $derived/libfastfetch.a (from $ff_out)"
       ;;
     *)
-      echo "Skipping neovim/fastfetch privatize for ${TARGET_NAME:-unknown}"
+      echo "Skipping neovim privatize for ${TARGET_NAME:-unknown}"
       ;;
   esac
+
+  # fastfetch: in-process system-info tool (no fork/exec, no GPU dep) shipped on
+  # the WHOLE Apple family (#139). iOS/iPadOS/visionOS share the iOS archive
+  # (fastfetch-ios sim / fastfetch-ios-device); tvOS/watchOS use their own
+  # SDK-matched archives (fastfetch-<plat> device / -sim), mirroring zsh above.
+  _ff_dev="fastfetch-ios-device"
+  _ff_sim="fastfetch-ios"
+  case "${TARGET_NAME:-}" in
+    Wawona-tvOS)   _ff_dev="fastfetch-tvos";   _ff_sim="fastfetch-tvos-sim" ;;
+    Wawona-watchOS) _ff_dev="fastfetch-watchos"; _ff_sim="fastfetch-watchos-sim" ;;
+  esac
+  _ff_attr="$_ff_dev"
+  case "$_sdk" in
+    *simulator*) _ff_attr="$_ff_sim" ;;
+  esac
+  ff_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_ff_attr")"
+  privatize_lib "$ff_out/lib/libfastfetch.a" "$derived/libfastfetch.a" \
+    "$_arch" "$_ld_platform" "$_min_ver" \
+    _fastfetch_main
+  echo "Privatized $derived/libfastfetch.a (from $ff_out)"
 
   # Apple mobile SSH CLI is libwwn-ssh-cli.a from wwn-ssh (force_loaded via
   # xcodegen store path). Never libssh-inprocess.a / OpenSSH on App Store targets.

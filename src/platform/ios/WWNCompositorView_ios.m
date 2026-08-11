@@ -4270,6 +4270,80 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   [self _sendKeyPress:KEY_ESC withShift:NO timestamp:ts];
 }
 
+/// Translate a hardware-keyboard/remote UIKey into the byte(s) a terminal shell
+/// expects and inject them straight into the fake PTY. wl_keyboard events do not
+/// reach the in-process PTY stdin on Apple mobile (see note above), so hardware
+/// typing — the only text input on tvOS, and hardware keyboards on iOS/iPadOS/
+/// visionOS — must be routed here for weston-terminal + in-process zsh to see
+/// it. Returns NO for bare modifiers (tracked on the wl_keyboard path) and keys
+/// with no terminal representation. #95
+- (BOOL)_injectHardwareKeyToTerminal:(UIKey *)key keycode:(uint32_t)kc
+    API_AVAILABLE(ios(13.4)) {
+  switch (kc) {
+  case KEY_ENTER: {
+    char c = '\r';
+    return wwn_ios_terminal_inject(&c, 1) > 0;
+  }
+  case KEY_BACKSPACE: {
+    char c = 0x7f;
+    return wwn_ios_terminal_inject(&c, 1) > 0;
+  }
+  case KEY_TAB: {
+    char c = '\t';
+    return wwn_ios_terminal_inject(&c, 1) > 0;
+  }
+  case KEY_ESC: {
+    char c = 0x1b;
+    return wwn_ios_terminal_inject(&c, 1) > 0;
+  }
+  case KEY_UP:
+    return wwn_ios_terminal_inject("\033[A", 3) > 0;
+  case KEY_DOWN:
+    return wwn_ios_terminal_inject("\033[B", 3) > 0;
+  case KEY_RIGHT:
+    return wwn_ios_terminal_inject("\033[C", 3) > 0;
+  case KEY_LEFT:
+    return wwn_ios_terminal_inject("\033[D", 3) > 0;
+  case KEY_HOME:
+    return wwn_ios_terminal_inject("\033[H", 3) > 0;
+  case KEY_END:
+    return wwn_ios_terminal_inject("\033[F", 3) > 0;
+  case KEY_PAGEUP:
+    return wwn_ios_terminal_inject("\033[5~", 4) > 0;
+  case KEY_PAGEDOWN:
+    return wwn_ios_terminal_inject("\033[6~", 4) > 0;
+  default:
+    break;
+  }
+
+  // Bare modifiers carry no bytes; let the caller track them for chords.
+  if (isModifierKeycode(kc))
+    return NO;
+
+  NSString *chars = key.characters;
+  if (chars.length == 0)
+    return NO;
+
+  // Ctrl+letter -> C0 control byte (Ctrl+C == 0x03, etc.).
+  if ((key.modifierFlags & UIKeyModifierControl) && chars.length == 1) {
+    unichar ch = [chars characterAtIndex:0];
+    unichar base = 0;
+    if (ch >= 'a' && ch <= 'z')
+      base = (unichar)(ch - 'a' + 1);
+    else if (ch >= 'A' && ch <= 'Z')
+      base = (unichar)(ch - 'A' + 1);
+    if (base) {
+      char c = (char)base;
+      return wwn_ios_terminal_inject(&c, 1) > 0;
+    }
+  }
+
+  const char *utf8 = [chars UTF8String];
+  if (utf8 && utf8[0])
+    return wwn_ios_terminal_inject(utf8, strlen(utf8)) > 0;
+  return NO;
+}
+
 - (void)pressesBegan:(NSSet<UIPress *> *)presses
            withEvent:(UIPressesEvent *)event {
 #if TARGET_OS_TV
@@ -4295,9 +4369,12 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
       if (kc == KEY_RESERVED)
         continue;
 
-      if (wwn_ios_terminal_is_active() && kc == KEY_BACKSPACE) {
-        static const char del = 0x7f;
-        wwn_ios_terminal_inject(&del, 1);
+      // Route hardware-keyboard/remote input straight into the PTY when a
+      // terminal is focused; wl_keyboard does not reach the in-process shell
+      // stdin on Apple mobile. Bare modifiers fall through so chords/state stay
+      // tracked on the wl_keyboard path. #95
+      if (wwn_ios_terminal_is_active() && !isModifierKeycode(kc) &&
+          [self _injectHardwareKeyToTerminal:key keycode:kc]) {
         handled = YES;
         continue;
       }
@@ -4357,7 +4434,10 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
       if (kc == KEY_RESERVED)
         continue;
 
-      if (wwn_ios_terminal_is_active() && kc == KEY_BACKSPACE) {
+      // Mirror pressesBegan: non-modifier keys were injected into the PTY on
+      // key-down and never entered the wl_keyboard press path, so swallow the
+      // key-up too (bare modifiers still fall through to untrack + wl). #95
+      if (wwn_ios_terminal_is_active() && !isModifierKeycode(kc)) {
         handled = YES;
         continue;
       }

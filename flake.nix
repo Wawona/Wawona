@@ -1329,6 +1329,13 @@ EOF
           kmscube-ios-device = toolchains.buildForIOS "kmscube" { simulator = false; };
           fastfetch-ios = toolchains.buildForIOS "fastfetch" { simulator = true; };
           fastfetch-ios-device = toolchains.buildForIOS "fastfetch" { simulator = false; };
+          # fastfetch on the whole Apple family (#139). tvOS/watchOS follow the
+          # zsh naming (plain = device, -sim = simulator); watchOS drops
+          # Metal/VideoToolbox via wwn-fastfetch's per-platform framework list.
+          fastfetch-tvos = toolchains.buildForTVOS "fastfetch" { simulator = false; };
+          fastfetch-tvos-sim = toolchains.buildForTVOS "fastfetch" { simulator = true; };
+          fastfetch-watchos = toolchains.buildForWatchOS "fastfetch" { simulator = false; };
+          fastfetch-watchos-sim = toolchains.buildForWatchOS "fastfetch" { simulator = true; };
           fastfetch-macos = toolchains.buildForMacOS "fastfetch" { };
           neovim-ios = toolchains.buildForIOS "neovim" { simulator = true; };
           neovim-ios-device = toolchains.buildForIOS "neovim" { simulator = false; };
