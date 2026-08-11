@@ -146,8 +146,8 @@ let
     command_not_found_handler() {
       local cmd="$1"
       if (( ''${WAWONA_INPROC_TOOLS[(Ie)$cmd]} )); then
-        # A bundled tool that the dispatcher could not run (e.g. a build
-        # without the coreutils feature linked, such as watchOS).
+        # A bundled tool that the dispatcher could not run (e.g. the arm64_32
+        # watch slice, which links weak stubs instead of the coreutils feature).
         print -- "wawona: '$cmd' is bundled but unavailable in this build."
       elif (( ''${WAWONA_INPROC_CLIENTS[(Ie)$cmd]} )); then
         print -- "wawona: '$cmd' is bundled but unavailable in this build."

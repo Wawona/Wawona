@@ -139,11 +139,20 @@ int wawona_nvim_main(int argc, char **argv) {
     return 1;
 }
 
+/* wawona_coreutils_main lives in libwawona.a (uutils feature enabled on
+ * watchOS) and is pulled via -Wl,-u,_wawona_coreutils_main. Same rule as
+ * phoon_main above: a weak stub here would satisfy the -u and STOP the real
+ * archive member (and all uutils applets) from linking. So only define the
+ * stub on the arm64_32 slice, which links no derivedRustLib (see
+ * xcodegen.nix OTHER_LDFLAGS[arch=arm64_32]) and therefore needs a fallback.
+ * arm64 device + arm64 simulator are LP64 and link the real dispatcher. */
+#if !defined(__LP64__)
 __attribute__((weak))
 int wawona_coreutils_main(int argc, char **argv) {
     (void)argc; (void)argv;
     return 1;
 }
+#endif
 
 /* ssh_main / ssh_keygen_main / scp_main: real impls from libwwn-ssh-cli on
  * arm64; weak stubs keep the arm64_32 fat slice linking (ASC 90733). */

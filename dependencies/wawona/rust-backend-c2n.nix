@@ -505,7 +505,7 @@ let
     if isIOS then [ "waypipe-ssh" "smithay-protocols" "coreutils" ]
     else if isTVOS then [ "waypipe-ssh" "smithay-protocols" "coreutils" ]
     else if isVisionOS then [ "waypipe-ssh" "smithay-protocols" "coreutils" ]
-    else if isWatchOS then [ "waypipe-ssh" "smithay-protocols" ] # coreutils size-gated; Remote via libssh2
+    else if isWatchOS then [ "waypipe-ssh" "smithay-protocols" "coreutils" ] # uutils enabled on all targets (per product requirement); Remote via libssh2
     else if isAndroid then [ "waypipe" "smithay-protocols" "coreutils" ]
     else
       # macOS: smithay desktop paths always; Mode B Cargo gates only for
