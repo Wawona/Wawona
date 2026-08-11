@@ -1763,7 +1763,74 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 
     const char *logMod = WWNBundledClientLogModule(clientId);
     WWNLog(logMod, @"Launching in-process %@...", clientId);
+
+    // Capture the client's own stdout/stderr into the app log. Bundled clients
+    // (vkcube, weston demos) write plain fprintf(stderr) diagnostics — e.g.
+    // "vkcube: no Vulkan physical device from any provider" — and on Apple
+    // mobile raw fd 1/2 are NOT routed to os_log, so those lines (and any crash
+    // output) were invisible in the bundled-clients matrix artifacts. Redirect
+    // fd 1/2 to a pipe for the duration of entry() and relog each line via the
+    // saved fd (WWNLogFd, never WWNLog, to avoid a feedback loop). If the client
+    // crashes without returning, whatever it printed before the fault is still
+    // flushed to the log, which is exactly what we need to root-cause it.
+    int savedOut = dup(STDOUT_FILENO);
+    int savedErr = dup(STDERR_FILENO);
+    int capPipe[2] = {-1, -1};
+    dispatch_semaphore_t capDone = NULL;
+    if (pipe(capPipe) == 0) {
+      dup2(capPipe[1], STDOUT_FILENO);
+      dup2(capPipe[1], STDERR_FILENO);
+      close(capPipe[1]);
+      int readFd = capPipe[0];
+      int logToFd = savedErr;
+      NSString *capTag = clientId;
+      capDone = dispatch_semaphore_create(0);
+      dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        char buf[1024];
+        NSMutableData *line = [NSMutableData data];
+        ssize_t n;
+        while ((n = read(readFd, buf, sizeof(buf))) > 0) {
+          for (ssize_t i = 0; i < n; i++) {
+            if (buf[i] == '\n') {
+              if (line.length > 0) {
+                NSString *s = [[NSString alloc] initWithData:line
+                                                    encoding:NSUTF8StringEncoding];
+                if (s.length > 0)
+                  WWNLogFd(logToFd, "CLIENTIO", "[%s] %s", capTag.UTF8String,
+                           s.UTF8String);
+                [line setLength:0];
+              }
+            } else {
+              [line appendBytes:&buf[i] length:1];
+            }
+          }
+        }
+        if (line.length > 0) {
+          NSString *s = [[NSString alloc] initWithData:line
+                                              encoding:NSUTF8StringEncoding];
+          if (s.length > 0)
+            WWNLogFd(logToFd, "CLIENTIO", "[%s] %s", capTag.UTF8String,
+                     s.UTF8String);
+        }
+        close(readFd);
+        dispatch_semaphore_signal(capDone);
+      });
+    }
+
     int result = entry(1, argv);
+
+    // Restore fd 1/2 and drain the reader. Closing our write-side dups (the
+    // dup2-back replaces the pipe write-ends in this process's fd table) gives
+    // the reader EOF so it can finish logging any tail line.
+    fflush(stdout);
+    fflush(stderr);
+    if (savedOut >= 0) { dup2(savedOut, STDOUT_FILENO); close(savedOut); }
+    if (savedErr >= 0) { dup2(savedErr, STDERR_FILENO); }
+    if (capDone) {
+      dispatch_semaphore_wait(
+          capDone, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)));
+    }
+    if (savedErr >= 0) close(savedErr);
     WWNLog(logMod, @"%@ exit code: %d", clientId, result);
 
     if (saved_cwd[0])
