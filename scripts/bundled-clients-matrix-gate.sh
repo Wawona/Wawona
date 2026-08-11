@@ -643,6 +643,12 @@ run_android_cell() {
   while [[ "$t" -lt "$hold" ]]; do
     if ! adb -s "$serial" shell pidof "$ANDROID_PKG" >/dev/null 2>&1; then
       adb -s "$serial" logcat -d >"$cell/logcat.txt" 2>&1 || true
+      # A crashed in-process client takes the host down with it. Release the
+      # agent-device/uiautomator session and force-stop so the NEXT cell starts
+      # from a clean launch — otherwise a stuck UiAutomation ("already
+      # registered") cascades this one failure into every later client.
+      agent-device close "${ad_common[@]}" >/dev/null 2>&1 || true
+      adb -s "$serial" shell am force-stop "$ANDROID_PKG" >/dev/null 2>&1 || true
       record android "$client" FAIL "process died during hold" "$hold" "$cell"
       return 1
     fi
