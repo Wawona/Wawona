@@ -2116,6 +2116,12 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
         [backend isEqualToString:@"drm"] ? @"tty" : @"nested";
     WWNLog("NIRI", @"backend=%@ (NIRI_BACKEND=%@)", backend,
            env[@"NIRI_BACKEND"]);
+    // niri's nested backend now requests Metal ANGLE on macOS (wwn-niri
+    // wawona-nested-port.patch); the Vulkan-ANGLE path needs a Vulkan device the
+    // headless CI VM cannot create. Pin ANGLE to Metal in the child env too so a
+    // stray ANGLE_DEFAULT_PLATFORM in the environment cannot steer it back to
+    // Vulkan. Mirror scripts/niri-smoke-macos.sh.
+    env[@"ANGLE_DEFAULT_PLATFORM"] = @"metal";
     NSString *shareRoot = env[@"WAWONA_SHARE_ROOT"];
     if (shareRoot.length == 0) {
       shareRoot = WWNWawonaShareRoot();
@@ -2139,9 +2145,9 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
         }
       }
     }
-    // niri renders GLES through ANGLE's Vulkan-over-Wayland winsys; point
-    // the Vulkan loader at the bundled ICD (kosmickrisp or MoltenVK) so
-    // eglInitialize succeeds. Mirror the app's own ICD selection.
+    // niri renders GLES through ANGLE's Metal backend on macOS (see above); the
+    // Vulkan ICD is only a fallback for other targets. Still forward the bundled
+    // ICD selection so nothing downstream loses it. Mirror the app's selection.
     const char *icd = getenv("VK_ICD_FILENAMES");
     if (!icd || !icd[0]) {
       icd = getenv("VK_DRIVER_FILES");
@@ -2374,6 +2380,13 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     CFAbsoluteTime launchStart = CFAbsoluteTimeGetCurrent();
     WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
     [WWNRootfsProvider applyShellEnvironment];
+    // Re-apply the graphics driver selection right before the in-process
+    // compositor starts, exactly like the iland GPU-client launch paths. This
+    // pins ANGLE to Metal (ANGLE_DEFAULT_PLATFORM=metal) and points the Vulkan
+    // loader at the bundled ICD, so nested weston's GL/EGL renderer initializes
+    // on the iOS Simulator instead of falling through to a Vulkan device it
+    // cannot create. Settings may have changed since app startup.
+    WWNSettings_ApplyGraphicsDriverSelection();
     if (![self wwnBeginIOSNativeClientLaunch:@"weston"]) {
       self.westonRunning = NO;
       return;

@@ -5321,6 +5321,19 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
 }
 
 - (BOOL)prepareIlandMetalPresentationOnPrimaryView {
+  // ensureIlandPresentationView + prepareIlandMetalPresentation touch UIKit and
+  // CAMetalLayer (view creation, layer.hidden/frame, self.opaque,
+  // resignFirstResponder, insertSublayer). Nested weston runs its launch on a
+  // background QoS queue (wwnLaunchWestonCompositorWithBackend) and calls in
+  // here directly, so this must hop to the main thread or UIKit aborts the app
+  // on the iOS Simulator. kmscube's own call sites are already main-thread.
+  if (![NSThread isMainThread]) {
+    __block BOOL ok = NO;
+    dispatch_sync(dispatch_get_main_queue(), ^{
+      ok = [self prepareIlandMetalPresentationOnPrimaryView];
+    });
+    return ok;
+  }
   WWNCompositorView_ios *view = [self ensureIlandPresentationView];
   if (!view) {
     return NO;

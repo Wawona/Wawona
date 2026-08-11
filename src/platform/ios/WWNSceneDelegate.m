@@ -738,7 +738,37 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
     });
   }
 
-  [self presentWelcomeIfNeeded];
+  if (![self startAutoClientIfRequested]) {
+    [self presentWelcomeIfNeeded];
+  }
+}
+
+// Acceptance / CI parity with macOS main.m: when WAWONA_AUTO_CLIENT is set
+// (simctl launch passes SIMCTL_CHILD_WAWONA_AUTO_CLIENT into the app's
+// environment), skip the modal welcome and drive a bundled client straight from
+// launch. This lets the bundled-clients matrix exercise iOS without depending on
+// the XCUITest runner / agent-device UI automation (which needs a runner build
+// that times out on cold CI). Returns YES when it took over launch.
+- (BOOL)startAutoClientIfRequested {
+  const char *autoClientEnv = getenv("WAWONA_AUTO_CLIENT");
+  if (!autoClientEnv || !autoClientEnv[0]) {
+    return NO;
+  }
+  NSString *autoClient = [NSString stringWithUTF8String:autoClientEnv];
+  if (autoClient.length == 0) {
+    return NO;
+  }
+  // Welcome sheet is modal and would block an automated auto-client start.
+  [[WWNPreferencesManager sharedManager] setHasSeenWelcome:YES];
+  WWNLog("SCENE", @"WAWONA_AUTO_CLIENT=%@ — starting bundled client", autoClient);
+  // Give the compositor bridge the same head start Machines Start implies
+  // (mirrors the 1.5s delay in macOS main.m).
+  dispatch_after(
+      dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
+      dispatch_get_main_queue(), ^{
+        [[WWNWaypipeRunner sharedRunner] launchBundledClientWithId:autoClient];
+      });
+  return YES;
 }
 
 - (void)dealloc {

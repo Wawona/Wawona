@@ -385,10 +385,10 @@ run_apple_cell() {
       fi
       return 1
     fi
-  else
-    # Default path: drive the Machines "Start" button via agent-device (same as
-    # Android + leak-idle). agent-device open --relaunch launches the installed
-    # app itself, so no simctl launch / LLDB attach is needed.
+  elif [[ "${WAWONA_MATRIX_USE_AGENT_DEVICE:-0}" == "1" ]]; then
+    # Opt-in path: drive the Machines "Start" button via agent-device. This needs
+    # a built XCUITest runner (agent-device prepare ios-runner), which times out
+    # on cold CI — hence it is no longer the default. Kept for local UI runs.
     if ! apple_start_client "$platform" "$sim" "$bundle" "$cell"; then
       stop_log_pid "$logpid"
       record "$platform" "$client" FAIL "agent-device Start not pressed (see start-fail-snapshot.txt)" "$hold" "$cell"
@@ -403,6 +403,28 @@ run_apple_cell() {
       return 1
     fi
     echo "$pid" >"$cell/pid.txt"
+  else
+    # Default path (parity with macOS WAWONA_AUTO_CLIENT): launch the app via
+    # simctl with SIMCTL_CHILD_WAWONA_AUTO_CLIENT so it auto-starts the bundled
+    # client itself. No XCUITest runner / agent-device UI automation is needed,
+    # so there is nothing to build and time out on cold CI. WWNSceneDelegate's
+    # -startAutoClientIfRequested reads WAWONA_AUTO_CLIENT and drives the client.
+    local launch_out
+    launch_out="$(SIMCTL_CHILD_WAWONA_AUTO_CLIENT="$client" \
+      xcrun simctl launch "$udid" "$bundle" 2>&1)" || true
+    printf '%s\n' "$launch_out" >"$cell/launch.log"
+    pid="$(printf '%s\n' "$launch_out" | sed -nE 's/.*: ([0-9]+)$/\1/p' | head -1)"
+    sleep "${WAWONA_MATRIX_LAUNCH_SETTLE_SEC:-5}"
+    if [[ -z "$pid" || "$pid" == "-" ]]; then pid="$(apple_pid "$udid" "$bundle")"; fi
+    if [[ -z "$pid" || "$pid" == "-" ]]; then sleep 2; pid="$(apple_pid "$udid" "$bundle")"; fi
+    if [[ -z "$pid" || "$pid" == "-" ]]; then
+      stop_log_pid "$logpid"
+      record "$platform" "$client" FAIL "app pid not found after WAWONA_AUTO_CLIENT launch" "$hold" "$cell"
+      xcrun simctl terminate "$udid" "$bundle" >/dev/null 2>&1 || true
+      return 1
+    fi
+    echo "$pid" >"$cell/pid.txt"
+    xcrun simctl io "$udid" screenshot "$cell/running.png" >/dev/null 2>&1 || true
   fi
 
   local t=0 alive=1
@@ -810,14 +832,14 @@ run_platform() {
 
   log "======== PLATFORM $platform (${#clients[@]} clients) ========"
 
-  # Apple simulators: build/prepare the XCUITest runner ONCE up front. Otherwise
-  # the very first agent-device `open` has to build the runner inline and can hit
-  # the daemon request timeout — observed as the first client (weston-terminal)
-  # failing "Start not pressed" (SESSION_NOT_FOUND) while every later client
-  # passes. Best-effort; per-cell open also retries now.
+  # Apple simulators: build/prepare the XCUITest runner ONCE up front ONLY when
+  # the opt-in agent-device Start path is selected. The default path launches via
+  # simctl + WAWONA_AUTO_CLIENT and needs no runner, so preparing it just burns
+  # ~4 min timing out on cold CI (which is how weston-terminal used to fail).
   case "$platform" in
     ios | ipados | visionos)
-      if command -v agent-device >/dev/null 2>&1; then
+      if [[ "${WAWONA_MATRIX_USE_AGENT_DEVICE:-0}" == "1" ]] \
+        && command -v agent-device >/dev/null 2>&1; then
         local ad_plat="$platform" psim
         [[ "$platform" == "ipados" ]] && ad_plat=ios
         psim="$(default_sim_for "$platform")"

@@ -804,7 +804,8 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
   NSString *driver =
       [[NSUserDefaults standardUserDefaults] stringForKey:kWWNPrefsVulkanDriver];
 #if TARGET_OS_OSX
-  NSSet *allowed = [NSSet setWithArray:@[ @"none", @"moltenvk", @"kosmickrisp" ]];
+  NSSet *allowed =
+      [NSSet setWithArray:@[ @"none", @"moltenvk", @"kosmickrisp", @"swiftshader" ]];
 #else
   NSSet *allowed = [NSSet setWithArray:@[ @"none", @"moltenvk" ]];
 #endif

@@ -108,7 +108,7 @@ WWNGraphicsDriverSelection WWNSettings_ResolveGraphicsDriverSelection(void) {
   openGL = "none";
 #elif TARGET_OS_OSX
   if (!wwnDriverIs(vulkan, "none") && !wwnDriverIs(vulkan, "moltenvk") &&
-      !wwnDriverIs(vulkan, "kosmickrisp"))
+      !wwnDriverIs(vulkan, "kosmickrisp") && !wwnDriverIs(vulkan, "swiftshader"))
     vulkan = "moltenvk";
   if (!wwnDriverIs(openGL, "none") && !wwnDriverIs(openGL, "angle"))
     openGL = "angle";
@@ -127,6 +127,30 @@ WWNGraphicsDriverSelection WWNSettings_ResolveGraphicsDriverSelection(void) {
   };
 }
 
+// Bundled in-process ICD dylib name for a driver, or nil if that driver has no
+// dylib in this build. In-process clients (vkcube) dlopen these directly since
+// the bundle ships no Vulkan loader.
+static NSString *wwnVulkanDylibName(const char *driver) {
+  if (driver && strcmp(driver, "kosmickrisp") == 0)
+    return @"libvulkan_kosmickrisp.dylib";
+  if (driver && strcmp(driver, "moltenvk") == 0)
+    return @"libMoltenVK.dylib";
+  if (driver && strcmp(driver, "swiftshader") == 0)
+    return @"libvk_swiftshader.dylib";
+  return nil;
+}
+
+// Resolve a driver's bundled ICD dylib to an on-disk path, or nil if absent.
+static NSString *wwnVulkanDylibPath(const char *driver, NSBundle *bundle) {
+  NSString *name = wwnVulkanDylibName(driver);
+  if (!name)
+    return nil;
+  NSString *candidate =
+      [[bundle privateFrameworksPath] stringByAppendingPathComponent:name];
+  return [[NSFileManager defaultManager] fileExistsAtPath:candidate] ? candidate
+                                                                     : nil;
+}
+
 void WWNSettings_ApplyGraphicsDriverSelection(void) {
   WWNGraphicsDriverSelection selection =
       WWNSettings_ResolveGraphicsDriverSelection();
@@ -137,6 +161,8 @@ void WWNSettings_ApplyGraphicsDriverSelection(void) {
     icdName = @"kosmickrisp_icd";
   else if (vkDriver && strcmp(vkDriver, "moltenvk") == 0)
     icdName = @"MoltenVK_icd";
+  else if (vkDriver && strcmp(vkDriver, "swiftshader") == 0)
+    icdName = @"vk_swiftshader_icd";
 
   NSString *icd = icdName
                       ? [bundle pathForResource:icdName
@@ -158,22 +184,33 @@ void WWNSettings_ApplyGraphicsDriverSelection(void) {
   // The manifests above only matter to a Vulkan loader, and the bundle ships
   // ICD dylibs without one. In-process clients (vkcube) dlopen the ICD
   // directly, so hand them the resolved library path.
-  NSString *icdLibrary = nil;
-  if (vkDriver && strcmp(vkDriver, "kosmickrisp") == 0)
-    icdLibrary = @"libvulkan_kosmickrisp.dylib";
-  else if (vkDriver && strcmp(vkDriver, "moltenvk") == 0)
-    icdLibrary = @"libMoltenVK.dylib";
-  NSString *icdPath = nil;
-  if (icdLibrary) {
-    NSString *candidate = [[bundle privateFrameworksPath]
-        stringByAppendingPathComponent:icdLibrary];
-    if ([[NSFileManager defaultManager] fileExistsAtPath:candidate])
-      icdPath = candidate;
-  }
+  NSString *icdPath = wwnVulkanDylibPath(vkDriver, bundle);
   if (icdPath)
     setenv("WWN_VULKAN_LIBRARY", icdPath.UTF8String, 1);
   else
     unsetenv("WWN_VULKAN_LIBRARY");
+
+  // Vulkan provider fallback chain (WWN_VULKAN_LIBRARY_FALLBACKS, colon
+  // separated). There is no Vulkan loader in the bundle, so vkcube emulates the
+  // loader's multi-ICD behaviour: it tries the selected ICD, then these, until
+  // one enumerates a physical device. On a headless CI VM / Simulator the
+  // selected driver (default KosmicKrisp) can load yet find no device; hardware
+  // MoltenVK is tried next, then the SwiftShader CPU device that always
+  // enumerates. Order is hardware-before-software, excluding the selection.
+  const char *fallbackOrder[] = {"moltenvk", "swiftshader"};
+  NSMutableArray<NSString *> *fallbacks = [NSMutableArray array];
+  for (size_t i = 0; i < sizeof(fallbackOrder) / sizeof(fallbackOrder[0]); i++) {
+    if (vkDriver && strcmp(vkDriver, fallbackOrder[i]) == 0)
+      continue;
+    NSString *p = wwnVulkanDylibPath(fallbackOrder[i], bundle);
+    if (p && (!icdPath || ![p isEqualToString:icdPath]))
+      [fallbacks addObject:p];
+  }
+  if (fallbacks.count > 0)
+    setenv("WWN_VULKAN_LIBRARY_FALLBACKS",
+           [fallbacks componentsJoinedByString:@":"].UTF8String, 1);
+  else
+    unsetenv("WWN_VULKAN_LIBRARY_FALLBACKS");
 
   const char *glDriver = selection.openGLDriver;
   setenv("WWN_OPENGL_DRIVER", glDriver ?: "none", 1);

@@ -149,6 +149,21 @@ if [[ "$platform" == "ios" || "$platform" == "ipados" || "$platform" == "visiono
   fi
   echo "OK: $platform ANGLE found in $carrier"
 
+  # On-device Apple store builds are MoltenVK-only: the SwiftShader CPU ICD is a
+  # macOS + iOS-Simulator/CI fallback and must never ship in a reviewed device
+  # binary (neither as a dylib nor statically embedded).
+  ss_files="$(find "$root" -type f -iname '*swiftshader*' -print 2>/dev/null || true)"
+  if [[ -n "$ss_files" ]]; then
+    echo "FAIL: $platform on-device bundle contains SwiftShader artifacts (device is MoltenVK-only):" >&2
+    echo "$ss_files" >&2
+    exit 1
+  fi
+  if carrier="$(bundle_has_marker 'SwiftShader')"; then
+    echo "FAIL: $platform on-device bundle statically embeds SwiftShader (device is MoltenVK-only): $carrier" >&2
+    exit 1
+  fi
+  echo "OK: $platform is MoltenVK-only (no SwiftShader)"
+
   # Drivers may be static or embedded frameworks, but they must resolve inside
   # the app bundle. An absolute path outside the bundle would mean loading a
   # driver the store never reviewed.
@@ -285,12 +300,24 @@ if [[ "$platform" == "android" ]]; then
 fi
 
 if [[ "$platform" == "macos" ]]; then
+  # macOS ships the two hardware Vulkan ICDs (KosmicKrisp + MoltenVK) that back
+  # vkcube's provider fallback chain (selected -> MoltenVK -> SwiftShader).
+  # SwiftShader is the planned CPU last-resort ICD for headless/GPU-less CI VMs
+  # (macOS + iOS-Simulator only; never on-device — asserted above). It is bundled
+  # when the SwiftShader package is available for the target; treated as an
+  # optional carrier here rather than a hard bundle requirement so the hardware
+  # paths (which the product actually ships) gate independently.
   for required in libMoltenVK.dylib libvulkan_kosmickrisp.dylib; do
     if ! find "$root" -type f -name "$required" -print -quit | grep -q .; then
       echo "FAIL: macOS graphics bundle missing $required" >&2
       exit 1
     fi
   done
+  if find "$root" -type f -name libvk_swiftshader.dylib -print -quit | grep -q .; then
+    echo "OK: macOS SwiftShader CPU fallback ICD present"
+  else
+    echo "INFO: macOS SwiftShader CPU fallback ICD not bundled (hardware ICDs only)"
+  fi
 fi
 
 echo "OK: $platform graphics bundle policy passed under $root"

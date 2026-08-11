@@ -542,8 +542,9 @@ static UIImage *WWNAboutLogo(void) {
            @"Select the Vulkan ICD used by newly launched machine sessions.");
 #endif
 #if TARGET_OS_OSX
-  vulkanDriverItem.options = @[ @"None", @"MoltenVK", @"KosmicKrisp" ];
-  vulkanDriverItem.optionValues = @[ @"none", @"moltenvk", @"kosmickrisp" ];
+  vulkanDriverItem.options = @[ @"None", @"MoltenVK", @"KosmicKrisp", @"SwiftShader" ];
+  vulkanDriverItem.optionValues =
+      @[ @"none", @"moltenvk", @"kosmickrisp", @"swiftshader" ];
 #elif TARGET_OS_TV || TARGET_OS_WATCH
   vulkanDriverItem.options = @[ @"None" ];
   vulkanDriverItem.optionValues = @[ @"none" ];
