@@ -22,6 +22,7 @@
 #import <unistd.h>
 #import <string.h>
 #import <math.h>
+#import <os/log.h>
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
 #import <pwd.h>
 #endif
@@ -1782,8 +1783,12 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       dup2(capPipe[1], STDERR_FILENO);
       close(capPipe[1]);
       int readFd = capPipe[0];
-      int logToFd = savedErr;
       NSString *capTag = clientId;
+      // Emit via os_log, NOT the raw saved fd: the bundled-clients matrix
+      // captures the simulator's unified log (simctl log stream), where raw
+      // stdout/stderr writes never appear — that is why the earlier WWNLogFd
+      // capture was invisible in the artifacts. os_log also never writes back to
+      // fd 2, so there is no feedback loop while fd 1/2 are redirected here.
       capDone = dispatch_semaphore_create(0);
       dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
         char buf[1024];
@@ -1796,8 +1801,8 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
                 NSString *s = [[NSString alloc] initWithData:line
                                                     encoding:NSUTF8StringEncoding];
                 if (s.length > 0)
-                  WWNLogFd(logToFd, "CLIENTIO", "[%s] %s", capTag.UTF8String,
-                           s.UTF8String);
+                  os_log(OS_LOG_DEFAULT, "[CLIENTIO %{public}s] %{public}s",
+                         capTag.UTF8String, s.UTF8String);
                 [line setLength:0];
               }
             } else {
@@ -1809,8 +1814,8 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
           NSString *s = [[NSString alloc] initWithData:line
                                               encoding:NSUTF8StringEncoding];
           if (s.length > 0)
-            WWNLogFd(logToFd, "CLIENTIO", "[%s] %s", capTag.UTF8String,
-                     s.UTF8String);
+            os_log(OS_LOG_DEFAULT, "[CLIENTIO %{public}s] %{public}s",
+                   capTag.UTF8String, s.UTF8String);
         }
         close(readFd);
         dispatch_semaphore_signal(capDone);
