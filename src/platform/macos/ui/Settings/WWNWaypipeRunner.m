@@ -1763,6 +1763,13 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     }
 
     const char *logMod = WWNBundledClientLogModule(clientId);
+    // Apply the resolved graphics-driver env immediately before entry() so the
+    // in-process client sees the correct Vulkan provider. On the iOS Simulator
+    // this coerces the Vulkan driver to the bundled SwiftShader CPU ICD (see
+    // WWNSettings_ResolveGraphicsDriverSelection): MoltenVK's Metal pipeline
+    // bring-up fatally aborts the whole app on headless CI, so vkcube must load
+    // SwiftShader via WWN_VULKAN_LIBRARY and never touch Metal.
+    WWNSettings_ApplyGraphicsDriverSelection();
     WWNLog(logMod, @"Launching in-process %@...", clientId);
 
     // Capture the client's own stdout/stderr into the app log. Bundled clients

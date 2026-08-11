@@ -750,6 +750,64 @@ PLIST
     basedOnDependencyAnalysis = false;
   };
 
+  # SwiftShader CPU Vulkan ICD — iOS Simulator ONLY. On the headless CI simulator
+  # MoltenVK's Metal pipeline bring-up kills the app (Metal domain 102), so vkcube
+  # needs a pure-CPU Vulkan device to fall back to. Loaded at runtime by vkcube's
+  # dlopen dispatch (WWN_VULKAN_LIBRARY), so a flat Frameworks/*.dylib is fine — and
+  # this only ever runs for *simulator (the same TN2435 loose-dylib rule that keeps
+  # ANGLE flat copies off device also keeps SwiftShader off device; device store
+  # builds must not contain it at all, enforced by verify-iland-graphics-bundle).
+  swiftshaderSimLib = iosSimDeps.swiftshader or null;
+  swiftshaderSimEmbedScript =
+    if swiftshaderSimLib != null then
+      pkgs.writeShellScript "embed-swiftshader-sim.sh" ''
+        case "''${PLATFORM_NAME:-}" in
+          *simulator*) ;;
+          *) exit 0 ;;
+        esac
+        BUNDLE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
+        DEST="$BUNDLE/Frameworks"
+        ICD_DEST="$BUNDLE/vulkan/icd.d"
+        SS_SRC="${strip swiftshaderSimLib}/lib/libvk_swiftshader.dylib"
+        if [ ! -f "$SS_SRC" ]; then
+          HASH=$(basename "${strip swiftshaderSimLib}")
+          FALLBACK_DIR="$SRCROOT/.nix-deps/lib/$HASH"
+          if [ -f "$FALLBACK_DIR/lib/libvk_swiftshader.dylib" ]; then
+            SS_SRC="$FALLBACK_DIR/lib/libvk_swiftshader.dylib"
+          fi
+        fi
+        if [ ! -f "$SS_SRC" ]; then
+          echo "warning: SwiftShader ICD missing at $SS_SRC" >&2
+          exit 0
+        fi
+        mkdir -p "$DEST" "$ICD_DEST"
+        cp -f "$SS_SRC" "$DEST/libvk_swiftshader.dylib"
+        cat > "$ICD_DEST/vk_swiftshader_icd.json" <<'ICDJSON'
+{
+  "file_format_version": "1.0.0",
+  "ICD": {
+    "library_path": "../../Frameworks/libvk_swiftshader.dylib",
+    "api_version": "1.3.0"
+  }
+}
+ICDJSON
+        chmod -R u+w "$DEST/libvk_swiftshader.dylib" "$ICD_DEST" 2>/dev/null || true
+        if [ -n "''${EXPANDED_CODE_SIGN_IDENTITY:-}" ] && [ "''${EXPANDED_CODE_SIGN_IDENTITY}" != "-" ]; then
+          /usr/bin/codesign --force --sign "''${EXPANDED_CODE_SIGN_IDENTITY}" \
+            --preserve-metadata=identifier,entitlements,flags \
+            "$DEST/libvk_swiftshader.dylib"
+        fi
+        echo "Embedded SwiftShader CPU Vulkan ICD into $DEST (simulator only)"
+      ''
+    else
+      pkgs.writeShellScript "embed-swiftshader-sim-noop.sh" "exit 0";
+
+  swiftshaderSimEmbedPhase = {
+    path = swiftshaderSimEmbedScript;
+    name = "Embed SwiftShader (Simulator CPU Vulkan ICD)";
+    basedOnDependencyAnalysis = false;
+  };
+
   mobileVmEmbedPhases =
     lib.optionals (mobileGuestArtifacts != null) [ iosMobileGuestEmbedPhase ]
     ++ lib.optionals (mobileVmEngine != null) [ iosMobileVmEngineEmbedPhase ];
@@ -834,6 +892,7 @@ PLIST
     ++ mobileVmEmbedPhases
     ++ lib.optionals (angleSimDylib != null) [ angleSimEmbedPhase ]
     ++ lib.optionals (angleDeviceDylib != null) [ angleDeviceEmbedPhase ]
+    ++ lib.optionals (swiftshaderSimLib != null) [ swiftshaderSimEmbedPhase ]
     ++ [ simInstallWritableBundlePhase ];
 
   iosPostBuildPhases = mkAppleGpuPostBuildPhases {

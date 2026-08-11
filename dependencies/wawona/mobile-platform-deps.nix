@@ -65,6 +65,16 @@ let
       iland = buildFn "iland" { inherit simulator; };
       angle = buildFn "angle" { inherit simulator; };
       moltenvk = buildFn "moltenvk" { inherit simulator; };
+    }
+    # SwiftShader CPU Vulkan ICD — iOS *Simulator* / CI only. On-device store
+    # builds stay MoltenVK-only (App Store posture; verify-iland-graphics-bundle
+    # forbids it there). The Simulator's Metal cannot bring up MoltenVK's pipeline
+    # on headless CI (the app is killed with Metal domain 102), so vkcube needs a
+    # pure-CPU device to fall back to.
+    // lib.optionalAttrs (allowGpu && simulator) {
+      swiftshader = buildFn "swiftshader" { inherit simulator; };
+    }
+    // lib.optionalAttrs allowGpu {
       kmscube = buildFn "kmscube" { inherit simulator; };
       "iland-gl-clients" = buildFn "kmscube" { inherit simulator; };
       "gbm-es2-demo" = buildFn "gbm-es2-demo" { inherit simulator; };

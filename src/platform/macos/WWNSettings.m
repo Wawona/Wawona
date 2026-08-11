@@ -112,6 +112,19 @@ WWNGraphicsDriverSelection WWNSettings_ResolveGraphicsDriverSelection(void) {
     vulkan = "moltenvk";
   if (!wwnDriverIs(openGL, "none") && !wwnDriverIs(openGL, "angle"))
     openGL = "angle";
+#elif TARGET_OS_SIMULATOR
+  // iOS / iPadOS / visionOS *Simulator*: MoltenVK's Metal pipeline bring-up
+  // fatally aborts the whole app on the headless CI simulator (the process is
+  // killed with Metal domain 102 — see the vkcube crash in the bundled-clients
+  // matrix). The bundled SwiftShader CPU Vulkan ICD renders entirely on the CPU
+  // without ever touching Metal, so default (and coerce MoltenVK to) SwiftShader
+  // on the Simulator. On-device iOS does NOT bundle SwiftShader and keeps
+  // MoltenVK (TARGET_OS_SIMULATOR is 0 there).
+  if (wwnDriverIs(vulkan, "moltenvk") ||
+      (!wwnDriverIs(vulkan, "none") && !wwnDriverIs(vulkan, "swiftshader")))
+    vulkan = "swiftshader";
+  if (!wwnDriverIs(openGL, "none") && !wwnDriverIs(openGL, "angle"))
+    openGL = "angle";
 #else
   if (!wwnDriverIs(vulkan, "none") && !wwnDriverIs(vulkan, "moltenvk"))
     vulkan = "moltenvk";

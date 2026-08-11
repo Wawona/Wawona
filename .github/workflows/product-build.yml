@@ -103,7 +103,7 @@ jobs:
           ls -la dist/ios-sim/
 
       - name: Verify store-safe iOS graphics bundle
-        run: ./.github/scripts/verify-iland-graphics-bundle.sh --platform ios dist/ios-sim/Wawona.app
+        run: ./.github/scripts/verify-iland-graphics-bundle.sh --platform ios --simulator dist/ios-sim/Wawona.app
 
       - uses: actions/upload-artifact@v7
         with:

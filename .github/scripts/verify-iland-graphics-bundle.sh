@@ -4,9 +4,11 @@ set -euo pipefail
 
 platform=""
 root=""
+simulator=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --platform) platform="${2:-}"; shift 2 ;;
+    --simulator) simulator=1; shift ;;
     -*) echo "unknown flag: $1" >&2; exit 2 ;;
     *) root="$1"; shift ;;
   esac
@@ -149,20 +151,34 @@ if [[ "$platform" == "ios" || "$platform" == "ipados" || "$platform" == "visiono
   fi
   echo "OK: $platform ANGLE found in $carrier"
 
-  # On-device Apple store builds are MoltenVK-only: the SwiftShader CPU ICD is a
-  # macOS + iOS-Simulator/CI fallback and must never ship in a reviewed device
-  # binary (neither as a dylib nor statically embedded).
-  ss_files="$(find "$root" -type f -iname '*swiftshader*' -print 2>/dev/null || true)"
-  if [[ -n "$ss_files" ]]; then
-    echo "FAIL: $platform on-device bundle contains SwiftShader artifacts (device is MoltenVK-only):" >&2
-    echo "$ss_files" >&2
-    exit 1
+  if [[ "$simulator" == "1" ]]; then
+    # iOS/iPadOS/visionOS *Simulator* / CI: MoltenVK's Metal pipeline bring-up
+    # fatally aborts the app on the headless CI simulator, so the bundled
+    # SwiftShader CPU Vulkan ICD is REQUIRED here for vkcube to fall back to. It
+    # is a loose Frameworks/*.dylib (simulator-only, same policy as the flat
+    # ANGLE sim dylibs) and is never shipped on device.
+    ss_dylib="$(find "$root" -type f -name 'libvk_swiftshader.dylib' -print -quit 2>/dev/null || true)"
+    if [[ -z "$ss_dylib" ]]; then
+      echo "FAIL: $platform simulator bundle is missing the SwiftShader CPU Vulkan ICD (libvk_swiftshader.dylib)" >&2
+      exit 1
+    fi
+    echo "OK: $platform simulator SwiftShader CPU fallback ICD present ($ss_dylib)"
+  else
+    # On-device Apple store builds are MoltenVK-only: the SwiftShader CPU ICD is a
+    # macOS + iOS-Simulator/CI fallback and must never ship in a reviewed device
+    # binary (neither as a dylib nor statically embedded).
+    ss_files="$(find "$root" -type f -iname '*swiftshader*' -print 2>/dev/null || true)"
+    if [[ -n "$ss_files" ]]; then
+      echo "FAIL: $platform on-device bundle contains SwiftShader artifacts (device is MoltenVK-only):" >&2
+      echo "$ss_files" >&2
+      exit 1
+    fi
+    if carrier="$(bundle_has_marker 'SwiftShader')"; then
+      echo "FAIL: $platform on-device bundle statically embeds SwiftShader (device is MoltenVK-only): $carrier" >&2
+      exit 1
+    fi
+    echo "OK: $platform is MoltenVK-only (no SwiftShader)"
   fi
-  if carrier="$(bundle_has_marker 'SwiftShader')"; then
-    echo "FAIL: $platform on-device bundle statically embeds SwiftShader (device is MoltenVK-only): $carrier" >&2
-    exit 1
-  fi
-  echo "OK: $platform is MoltenVK-only (no SwiftShader)"
 
   # Drivers may be static or embedded frameworks, but they must resolve inside
   # the app bundle. An absolute path outside the bundle would mean loading a
