@@ -362,7 +362,7 @@ let
   # during init and the nested compositor shows only a solid clear color.
   fontIosEmbedScript = pkgs.writeShellScript "embed-fonts-ios.sh" ''
     case "''${PLATFORM_NAME:-}" in
-      iphoneos|iphonesimulator|appletvos|appletvsimulator|xros|xrsimulator)
+      iphoneos|iphonesimulator|appletvos|appletvsimulator|xros|xrsimulator|watchos|watchsimulator)
         ;;
       *)
         exit 0
@@ -934,7 +934,7 @@ ICDJSON
 
   westonDataIosEmbedScript = pkgs.writeShellScript "embed-weston-data-ios.sh" ''
     case "''${PLATFORM_NAME:-}" in
-      iphoneos|iphonesimulator|appletvos|appletvsimulator|xros|xrsimulator)
+      iphoneos|iphonesimulator|appletvos|appletvsimulator|xros|xrsimulator|watchos|watchsimulator)
         ;;
       *)
         exit 0
@@ -2727,6 +2727,13 @@ ICDJSON
           watchosPreBuild
         ];
         postBuildScripts = [
+          # Share trees so weston-terminal/foot render (fonts for Cairo/Pango,
+          # xkb for keymap resolution, weston PNGs/cursors). Without these the
+          # watch terminal comes up blank. Scripts are platform-gated and
+          # include watchos|watchsimulator; deps are platform-agnostic pkgs.
+          xkbEmbedPhase
+          fontEmbedPhase
+          westonDataEmbedPhase
           watchosNiriDataEmbedPhase
           watchosRootfsEmbedPhase
           {

@@ -3973,8 +3973,11 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
      * writable sandbox FS (issue #78 sandbox/rootfs). */
     char config_home[768];
     snprintf(config_home, sizeof(config_home), "%s/home/.config", rootfs);
+    char state_home[768];
+    snprintf(state_home, sizeof(state_home), "%s/home/.local/state", rootfs);
     setenv("XDG_CACHE_HOME", cache_home, 1);
     setenv("XDG_CONFIG_HOME", config_home, 1);
+    setenv("XDG_STATE_HOME", state_home, 1);
     char home_dir[768];
     char local_dir[768];
     snprintf(home_dir, sizeof(home_dir), "%s/home", rootfs);
@@ -3984,6 +3987,7 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
     mkdir(data_home, 0755);
     mkdir(cache_home, 0755);
     mkdir(config_home, 0755);
+    mkdir(state_home, 0755);
     LOGI("Shell env: XDG_DATA_DIRS=%s XDG_CONFIG_HOME=%s (fuzzel catalog)",
          share_buf, config_home);
   }

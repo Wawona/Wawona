@@ -196,8 +196,128 @@
   setenv("XDG_DATA_HOME", xdgData.UTF8String, 1);
   setenv("XDG_STATE_HOME", xdgState.UTF8String, 1);
 
+  [self applyBundleShareEnv];
+
   NSLog(@"WWNWatchShell: in-process zsh; HOME=%@ WAWONA_ROOTFS=%@", home,
         active);
+}
+
+/// Resolve a subdirectory of the bundled `share/` tree embedded by the
+/// xkb/font/weston postBuild phases (xcodegen.nix). Checks the app bundle
+/// root first, then Resources, matching the layout the embed scripts write.
++ (NSString *)bundledSharePath:(NSString *)sub {
+  NSFileManager *fm = [NSFileManager defaultManager];
+  NSString *bundle = [NSBundle mainBundle].bundlePath;
+  NSString *candidate =
+      [[bundle stringByAppendingPathComponent:@"share"]
+          stringByAppendingPathComponent:sub];
+  if ([fm fileExistsAtPath:candidate]) {
+    return candidate;
+  }
+  NSString *resource = [NSBundle mainBundle].resourcePath;
+  if (resource.length > 0) {
+    candidate = [[resource stringByAppendingPathComponent:@"share"]
+        stringByAppendingPathComponent:sub];
+    if ([fm fileExistsAtPath:candidate]) {
+      return candidate;
+    }
+  }
+  return @"";
+}
+
+/// Point weston-terminal/foot at the bundled fonts (fontconfig), xkb keymap,
+/// weston data, and the share root (XDG_DATA_DIRS) so they render text and
+/// resolve resources instead of coming up blank. Mirrors the iOS
+/// WWNConfigureBundledRuntimeEnvIfNeeded path (WWNPlatformCallbacks.m), which
+/// is not compiled into the watch target.
++ (void)applyBundleShareEnv {
+  NSFileManager *fm = [NSFileManager defaultManager];
+
+  NSString *shareRoot = [NSBundle mainBundle].bundlePath;
+  shareRoot = [shareRoot stringByAppendingPathComponent:@"share"];
+  if (![fm fileExistsAtPath:shareRoot]) {
+    NSString *res = [NSBundle mainBundle].resourcePath;
+    if (res.length > 0) {
+      NSString *alt = [res stringByAppendingPathComponent:@"share"];
+      if ([fm fileExistsAtPath:alt]) {
+        shareRoot = alt;
+      }
+    }
+  }
+  if ([fm fileExistsAtPath:shareRoot] && !getenv("XDG_DATA_DIRS")) {
+    setenv("XDG_DATA_DIRS", shareRoot.UTF8String, 1);
+  }
+
+  // xkb keymap tree (rules/evdev lives two levels under share/X11/xkb).
+  NSString *xkbRules =
+      [[self bundledSharePath:@"X11/xkb"] stringByAppendingPathComponent:
+                                             @"rules/evdev"];
+  if (xkbRules.length > 0 && [fm fileExistsAtPath:xkbRules] &&
+      !getenv("XKB_CONFIG_ROOT")) {
+    NSString *root =
+        [[xkbRules stringByDeletingLastPathComponent]
+            stringByDeletingLastPathComponent];
+    setenv("XKB_CONFIG_ROOT", root.UTF8String, 1);
+  }
+
+  // weston data (terminal.png, cursors, panel, etc.).
+  NSString *westonData = [self bundledSharePath:@"weston"];
+  if (westonData.length > 0 && [fm fileExistsAtPath:westonData]) {
+    setenv("WESTON_DATA_DIR", westonData.UTF8String, 1);
+  }
+  NSString *cursors = [self bundledSharePath:@"icons/Adwaita/cursors"];
+  if (cursors.length > 0 && [fm fileExistsAtPath:cursors]) {
+    setenv("XCURSOR_PATH",
+           [self bundledSharePath:@"icons"].UTF8String, 1);
+    setenv("XCURSOR_THEME", "Adwaita", 1);
+  }
+
+  // fontconfig: synthesize a fonts.conf pointing at the bundled DejaVu fonts +
+  // a writable cache dir, or Cairo/Pango render nothing on the terminal.
+  NSString *fontDir = [self bundledSharePath:@"fonts"];
+  if (fontDir.length > 0 && [fm fileExistsAtPath:fontDir] &&
+      !getenv("FONTCONFIG_FILE")) {
+    const char *xdg = getenv("XDG_RUNTIME_DIR");
+    NSString *base = (xdg && xdg[0]) ? @(xdg) : NSTemporaryDirectory();
+    NSString *cacheDir =
+        [base stringByAppendingPathComponent:@"fontconfig-cache"];
+    [fm createDirectoryAtPath:cacheDir
+        withIntermediateDirectories:YES
+                         attributes:nil
+                              error:NULL];
+    NSString *confPath = [base stringByAppendingPathComponent:@"fonts.conf"];
+    NSString *conf = [NSString
+        stringWithFormat:@"<?xml version=\"1.0\"?>\n"
+                         @"<!DOCTYPE fontconfig SYSTEM "
+                         @"\"urn:fontconfig:fonts.dtd\">\n"
+                         @"<fontconfig>\n"
+                         @"  <dir>%@</dir>\n"
+                         @"  <cachedir>%@</cachedir>\n"
+                         @"  <alias><family>monospace</family>"
+                         @"<prefer><family>DejaVu Sans Mono</family></prefer>"
+                         @"</alias>\n"
+                         @"  <alias><family>sans-serif</family>"
+                         @"<prefer><family>DejaVu Sans</family></prefer>"
+                         @"</alias>\n"
+                         @"  <config></config>\n"
+                         @"</fontconfig>\n",
+                         fontDir, cacheDir];
+    if ([conf writeToFile:confPath
+               atomically:YES
+                 encoding:NSUTF8StringEncoding
+                    error:NULL]) {
+      setenv("FONTCONFIG_FILE", confPath.UTF8String, 1);
+      setenv("FONTCONFIG_PATH", base.UTF8String, 1);
+      NSString *monoFont = [fontDir
+          stringByAppendingPathComponent:@"truetype/DejaVuSansMono.ttf"];
+      if ([fm fileExistsAtPath:monoFont]) {
+        setenv("WAWONA_MONO_FONT", monoFont.UTF8String, 1);
+      }
+    }
+  }
+  NSLog(@"WWNWatchShell: bundle share env; XDG_DATA_DIRS=%s FONTCONFIG_FILE=%s",
+        getenv("XDG_DATA_DIRS") ?: "(unset)",
+        getenv("FONTCONFIG_FILE") ?: "(unset)");
 }
 
 @end
