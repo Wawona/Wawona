@@ -2370,9 +2370,15 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     return NO;
   }
   NSString *terminalIcon = WWNWawonaBundledSharePath(@"weston/terminal.png");
-  NSString *backgroundImage = WWNWawonaBundledSharePath(@"weston/pattern.png");
+  // Prefer background.png (RGB). pattern.png is an indexed-color PNG that
+  // cairo often fails to load — then only background-color shows (solid blue).
+  NSString *backgroundImage = WWNWawonaBundledSharePath(@"weston/background.png");
   NSFileManager *fm = [NSFileManager defaultManager];
   BOOL hasPattern = [fm fileExistsAtPath:backgroundImage];
+  if (!hasPattern) {
+    backgroundImage = WWNWawonaBundledSharePath(@"weston/pattern.png");
+    hasPattern = [fm fileExistsAtPath:backgroundImage];
+  }
   BOOL hasTerminalIcon = [fm fileExistsAtPath:terminalIcon];
   if (!hasPattern) {
     WWNLog("WESTON", @"background-image missing in bundle: %@",
@@ -2426,7 +2432,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
                        @"%@"
                        @"background-color=0xff1a1a2e\n"
                        @"%@"
-                       @"background-type=tile\n"
+                       @"background-type=scale\n"
                        @"panel-color=0xff101010\n"
                        @"panel-position=top\n"
                        @"clock-format=seconds\n"
@@ -2483,9 +2489,18 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 
     if (prepareIland) {
       if (![bridge prepareIlandMetalPresentationOnPrimaryView]) {
-        WWNLog("WESTON", @"Failed to prepare iland Metal presentation for Weston DRM");
+        WWNLog("WESTON",
+               @"Failed to prepare iland Metal presentation for Weston DRM — "
+               @"falling back to nested --backend=wayland --use-pixman");
         self.westonRunning = NO;
         [self wwnEndIOSNativeClientLaunch];
+        // Recurse onto the nested Wayland path so Start still paints a
+        // Weston desktop instead of leaving a Connected card with no surface.
+        dispatch_async(dispatch_get_main_queue(), ^{
+          [self wwnLaunchWestonCompositorWithBackend:"--backend=wayland"
+                                           usePixman:YES
+                                        prepareIland:NO];
+        });
         return;
       }
     }
@@ -2550,6 +2565,9 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     snprintf(nested_socket_arg, sizeof(nested_socket_arg), "--socket=%s",
              nestedSocket.UTF8String);
     argv_weston[argc_weston++] = nested_socket_arg;
+    /* Panel launchers connect via this named socket (not the host
+     * WAYLAND_DISPLAY). Kept in sync with wwn_launch_panel_client. */
+    setenv("WAWONA_NESTED_WAYLAND_DISPLAY", nestedSocket.UTF8String, 1);
     argv_weston[argc_weston++] = "--shell=desktop-shell.so";
     argv_weston[argc_weston++] = scaleArg;
     if (!prepareIland) {
@@ -2884,8 +2902,12 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   // the general per-client backend choice so weston and niri behave the same.
   NSString *backend =
       [[WWNPreferencesManager sharedManager] nestedWestonBackend];
-  if ([backend isEqualToString:@"iland-drm-gl"] ||
-      [WWNResolveCompositorBackend(nil) isEqualToString:@"drm"]) {
+  // wayland-pixman / wayland-* → nested Wayland client of the host compositor
+  // (the path that paints a Weston desktop on iOS Simulator).
+  BOOL wantDrm = [backend isEqualToString:@"iland-drm-gl"] ||
+                 [backend isEqualToString:@"drm"] ||
+                 [WWNResolveCompositorBackend(nil) isEqualToString:@"drm"];
+  if (wantDrm) {
     [self launchWestonDrm];
     return;
   }

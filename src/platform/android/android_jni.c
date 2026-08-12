@@ -4617,6 +4617,8 @@ static void *weston_thread_func(void *arg) {
                      "--socket=wawona-nested", "--shell=desktop-shell.so",
                      NULL};
   LOGI("weston backend=%s", use_drm ? "drm (wwn-iland)" : "wayland (nested)");
+  /* Panel launchers (weston-terminal icon) connect via this named socket. */
+  setenv("WAWONA_NESTED_WAYLAND_DISPLAY", "wawona-nested", 1);
   weston_compositor_main(5, use_drm ? argv_drm : argv_wl);
   if (saved_cwd[0])
     chdir(saved_cwd);

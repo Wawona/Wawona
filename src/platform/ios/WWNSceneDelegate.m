@@ -1654,12 +1654,15 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
     WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
 
 #if !TARGET_OS_TV
-    if (self.hostedClientWindowId != 0) {
-      if (!windowId ||
-          windowId.unsignedLongLongValue == self.hostedClientWindowId) {
-        self.window.hidden = NO;
-        [self.window makeKeyAndVisible];
-      }
+    // Dedicated-scene host (iPadOS/visionOS client window): bring that scene
+    // forward. Do not return early without also handling primary-scene Focus
+    // when the request carries a machineId (Machines "Focus" button).
+    if (self.hostedClientWindowId != 0 && windowId &&
+        windowId.unsignedLongLongValue == self.hostedClientWindowId) {
+      self.window.hidden = NO;
+      [self.window makeKeyAndVisible];
+      WWNLog("SCENE", @"Focus restored dedicated client window %llu",
+             self.hostedClientWindowId);
       return;
     }
 #endif
