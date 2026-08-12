@@ -321,3 +321,10 @@
 }
 
 @end
+
+// Strong definition: overrides the weak empty stub in WWNWatchStubs.c so
+// callers of wwn_ios_refresh_bundle_env (shared Apple-mobile launch paths)
+// get the same WESTON/FONTCONFIG/XKB/XDG share-tree env as +apply.
+void wwn_ios_refresh_bundle_env(void) {
+  [WWNWatchShellEnvironment apply];
+}

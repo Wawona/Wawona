@@ -1006,7 +1006,7 @@ ICDJSON
 
   niriDataIosEmbedScript = deviceNiri: simNiri: pkgs.writeShellScript "embed-niri-data-ios.sh" ''
     case "''${PLATFORM_NAME:-}" in
-      iphoneos|iphonesimulator|appletvos|appletvsimulator|xros|xrsimulator)
+      iphoneos|iphonesimulator|appletvos|appletvsimulator|xros|xrsimulator|watchos|watchsimulator)
         ;;
       *)
         exit 0
@@ -1822,7 +1822,9 @@ ICDJSON
         ] ++ iosUtilSources;
         preBuildScripts = [ stampBuildNumberPhase tvosPreBuild ];
         # No ANGLE embed / no VM guest on tvOS (platform-targets: no GL, no VM).
-        postBuildScripts = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase tvosNiriDataEmbedPhase tvosRootfsEmbedPhase tvosNeovimRootfsEmbedPhase simInstallWritableBundlePhase stripIOSOnlyInfoPlistKeysPhase ];
+        # appsCatalogEmbedPhase is cheap and already gates on appletvos|appletvsimulator
+        # so nested niri/fuzzel can resolve .desktop entries from the share tree.
+        postBuildScripts = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase tvosNiriDataEmbedPhase appsCatalogEmbedPhase tvosRootfsEmbedPhase tvosNeovimRootfsEmbedPhase simInstallWritableBundlePhase stripIOSOnlyInfoPlistKeysPhase ];
 
         settings = {
           base = {

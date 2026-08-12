@@ -628,20 +628,30 @@ void WWNEnsureFuzzelXdgEnv(void) {
     NSString *dataHome =
         [home stringByAppendingPathComponent:@".local/share"];
     NSString *cache = [home stringByAppendingPathComponent:@".cache"];
-    [[NSFileManager defaultManager] createDirectoryAtPath:dataHome
-                              withIntermediateDirectories:YES
-                                               attributes:nil
-                                                    error:nil];
-    [[NSFileManager defaultManager] createDirectoryAtPath:cache
-                              withIntermediateDirectories:YES
-                                               attributes:nil
-                                                    error:nil];
+    NSString *config = [home stringByAppendingPathComponent:@".config"];
+    NSString *state =
+        [home stringByAppendingPathComponent:@".local/state"];
+    NSFileManager *fm = [NSFileManager defaultManager];
+    for (NSString *dir in @[ dataHome, cache, config, state ]) {
+      [fm createDirectoryAtPath:dir
+          withIntermediateDirectories:YES
+                           attributes:nil
+                                error:nil];
+    }
     // Writable XDG_DATA_HOME for fuzzel locks/cache; catalog stays in the
     // bundle via XDG_DATA_DIRS (do not seed desktops into DATA_HOME).
     setenv("XDG_DATA_HOME", dataHome.UTF8String, 1);
     const char *existingCache = getenv("XDG_CACHE_HOME");
     if (!existingCache || !existingCache[0]) {
       setenv("XDG_CACHE_HOME", cache.UTF8String, 1);
+    }
+    const char *existingConfig = getenv("XDG_CONFIG_HOME");
+    if (!existingConfig || !existingConfig[0]) {
+      setenv("XDG_CONFIG_HOME", config.UTF8String, 1);
+    }
+    const char *existingState = getenv("XDG_STATE_HOME");
+    if (!existingState || !existingState[0]) {
+      setenv("XDG_STATE_HOME", state.UTF8String, 1);
     }
   }
 

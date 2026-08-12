@@ -256,5 +256,7 @@ int wawona_zsh_main(int argc, char **argv) {
 __attribute__((weak))
 void wwn_ios_pump_host_compositor(void) {}
 
+/* Weak fallback only. WWNWatchShellEnvironment.m provides the real
+ * wwn_ios_refresh_bundle_env that applies share-tree + rootfs shell env. */
 __attribute__((weak))
 void wwn_ios_refresh_bundle_env(void) {}
