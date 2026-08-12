@@ -54,6 +54,16 @@ as history.
 
 ### Fixed
 
+- **visionOS device archive `ld: duplicate symbol` for the EGL-image
+  entrypoints.** visionOS ships ANGLE as a `-force_load`'d static
+  `libEGL.a`/`libGLESv2.a` (iOS/Android ship it as a dylib), and ANGLE already
+  exports `eglCreateImageKHR`/`eglDestroyImageKHR`/`glEGLImageTargetTexture2DOES`.
+  The iland EGL shim's new IOSurface dma_buf copies of those three collided with
+  ANGLE's static defs on visionOS only. `wwn-iland` (input `4f9413f`) now marks
+  the three shim entrypoints `weak`, so ANGLE's strong static defs win where
+  ANGLE is a force-loaded archive while the shim stays authoritative wherever
+  ANGLE is a dylib (dma_buf import preserved on the matrix-tested targets).
+  Proven with a clean local `wawona-visionos-app-device` archive.
 - **The actual root cause of every iOS App Store rejection since July
   (builds 60-120, rotating `ITMS-90426`/`90429`/`90433`): loose non-Swift
   dylibs in `Frameworks/`.** The ASC `buildUploads` API record shows every
