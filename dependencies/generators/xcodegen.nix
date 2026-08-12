@@ -1272,11 +1272,11 @@ ICDJSON
 
   # visionOS rootfs/neovim-rootfs embed phases.
   visionosRootfsEmbedPhase = {
-    # visionOS deps may omit wawona-rootfs; fall back to iOS templates (same
-    # shell tree; ISSUE-016 nested weston-terminal needs WAWONA_* rootfs env).
+    # Built via buildForVisionOS — do not embed the iOS rootfs tree as a
+    # fallback (same "one archive per platform" rule as OTHER_LDFLAGS).
     path = rootfsIosEmbedScript
-      (visionosDeps."wawona-rootfs" or iosDeps."wawona-rootfs" or null)
-      (visionosSimDeps."wawona-rootfs" or iosSimDeps."wawona-rootfs" or null);
+      (visionosDeps."wawona-rootfs" or null)
+      (visionosSimDeps."wawona-rootfs" or null);
     name = "Embed wawona-rootfs (shell templates)";
     basedOnDependencyAnalysis = false;
   };
@@ -2502,9 +2502,9 @@ ICDJSON
             "FRAMEWORK_SEARCH_PATHS[sdk=xrsimulator*]" = [
               "$(inherited)"
             ];
-            # zstd/lz4/mbedtls: vision variant omits Loop C network stack until
-            # -mvisionos recipes land; fall back to iOS device packages (same
-            # arm64 archives already used by other visionosDeps *-ios paths).
+            # Network stack is built via buildForVisionOS (zstd/lz4/mbedtls
+            # visionos.nix). Do not fall back to iosDeps here — mixing iOS and
+            # visionOS archives in one Ld pulls two copies of shared objects.
             "OTHER_LDFLAGS[sdk=xros*]" = [
               "$(inherited)"
             ] ++ mobileGetprognameLdflags ++ ios26SwiftUiClientLdflags ++ [
@@ -2512,11 +2512,11 @@ ICDJSON
               "-L${strip (visionosDeps.xkbcommon or null)}/lib"
               "-L${strip (visionosDeps.libffi or null)}/lib"
               "-L${strip (visionosDeps.pixman or null)}/lib"
-              "-L${strip (visionosDeps.zstd or iosDeps.zstd or null)}/lib"
-              "-L${strip (visionosDeps.lz4 or iosDeps.lz4 or null)}/lib"
+              "-L${strip (visionosDeps.zstd or null)}/lib"
+              "-L${strip (visionosDeps.lz4 or null)}/lib"
               "-L${strip (visionosDeps.epoll-shim or null)}/lib"
               "-L${strip (visionosDeps.libssh2 or null)}/lib"
-              "-L${strip (visionosDeps.mbedtls or iosDeps.mbedtls or null)}/lib"
+              "-L${strip (visionosDeps.mbedtls or null)}/lib"
               "-L${strip (visionosDeps.openssl or null)}/lib"
               "-lxkbcommon"
               "-lwayland-client"
@@ -2545,11 +2545,11 @@ ICDJSON
               "-L${strip (visionosSimDeps.xkbcommon or null)}/lib"
               "-L${strip (visionosSimDeps.libffi or null)}/lib"
               "-L${strip (visionosSimDeps.pixman or null)}/lib"
-              "-L${strip (visionosSimDeps.zstd or iosSimDeps.zstd or null)}/lib"
-              "-L${strip (visionosSimDeps.lz4 or iosSimDeps.lz4 or null)}/lib"
+              "-L${strip (visionosSimDeps.zstd or null)}/lib"
+              "-L${strip (visionosSimDeps.lz4 or null)}/lib"
               "-L${strip (visionosSimDeps.epoll-shim or null)}/lib"
               "-L${strip (visionosSimDeps.libssh2 or null)}/lib"
-              "-L${strip (visionosSimDeps.mbedtls or iosSimDeps.mbedtls or null)}/lib"
+              "-L${strip (visionosSimDeps.mbedtls or null)}/lib"
               "-L${strip (visionosSimDeps.openssl or null)}/lib"
               "-lxkbcommon"
               "-lwayland-client"

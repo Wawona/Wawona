@@ -17,6 +17,13 @@ as history.
   dereferenced it (`EXC_BAD_ACCESS` at 0) and took down the whole in-process
   Wawona app. `wwn-kmscube` `ad778d3` null-checks before CRTC restore and
   treats "no usable connector" as init failure. (#52, #140)
+- **GBM ES2 Demo no longer mislabeled / aliased as KMS Cube.** The iland host
+  window always titled itself `KMSCube`, logs used the `KMSCUBE` tag for every
+  DRM client, and `prepareIlandMetalPresentation` tore down the presenter while
+  leaving the previous in-process cube thread alive — so Starting GBM ES2 Demo
+  after (or while looking like) kmscube showed the wrong identity. Host chrome,
+  accessibility, and log modules now follow the real client id; a second DRM
+  client is refused while another still owns iland. (#52, port-fidelity)
 - **Apple-mobile rootfs/XDG env applied before any in-process client.** Scene
   connect now calls `WWNRootfsProvider applyShellEnvironment` on every
   `TARGET_OS_IPHONE` target (including tvOS), and the shared
@@ -71,12 +78,14 @@ as history.
   entrypoints.** visionOS ships ANGLE as a `-force_load`'d static
   `libEGL.a`/`libGLESv2.a` (iOS/Android ship it as a dylib), and ANGLE already
   exports `eglCreateImageKHR`/`eglDestroyImageKHR`/`glEGLImageTargetTexture2DOES`.
-  The iland EGL shim's new IOSurface dma_buf copies of those three collided with
-  ANGLE's static defs on visionOS only. `wwn-iland` (input `4f9413f`) now marks
-  the three shim entrypoints `weak`, so ANGLE's strong static defs win where
-  ANGLE is a force-loaded archive while the shim stays authoritative wherever
-  ANGLE is a dylib (dma_buf import preserved on the matrix-tested targets).
-  Proven with a clean local `wawona-visionos-app-device` archive.
+  The iland EGL shim's IOSurface dma_buf copies of those collided with ANGLE's
+  static defs on visionOS only. Fixed by real dedup, not weak coexistence:
+  `wwn-iland` (`2aaf961`) extends `rename-angle-symbols.sh` so static ANGLE's
+  public image entrypoints become `_angle_*` (same pattern as the rest of the
+  EGL surface), applied to both `libEGL.a` and `libGLESv2.a`; the shim keeps
+  strong ownership of the IOSurface dma_buf path. Also drop visionOS
+  `OTHER_LDFLAGS` / rootfs embed fallbacks to iOS packages so one Ld never
+  mixes two platform archive trees.
 - **The actual root cause of every iOS App Store rejection since July
   (builds 60-120, rotating `ITMS-90426`/`90429`/`90433`): loose non-Swift
   dylibs in `Frameworks/`.** The ASC `buildUploads` API record shows every
