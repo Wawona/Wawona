@@ -4630,9 +4630,22 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
 #endif // !TARGET_OS_IPHONE
 
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+/// Host chrome title for iland KMS clients. Must match the Machines catalog —
+/// never brand every DRM client as "KMSCube".
+static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
+  if ([clientId isEqualToString:@"gbm-es2-demo"]) {
+    return @"GBM ES2 Demo";
+  }
+  if ([clientId isEqualToString:@"kmscube"]) {
+    return @"KMS Cube";
+  }
+  return clientId.length > 0 ? clientId : @"Iland GPU Client";
+}
+
 /// Prefer an existing Wayland host view; otherwise create a dedicated Metal
-/// presentation window so kmscube/iland can present before any toplevel exists.
-- (WWNView *)ensureIlandPresentationView {
+/// presentation window so iland KMS clients can present before any toplevel exists.
+- (WWNView *)ensureIlandPresentationViewForClientId:(NSString *)clientId {
+  NSString *title = WWNIlandGpuClientDisplayTitle(clientId);
   for (NSNumber *key in _windows) {
     id w = _windows[key];
     if ([w isKindOfClass:[WWNWindow class]]) {
@@ -4640,6 +4653,8 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
       if ([view isKindOfClass:[WWNView class]]) {
         NSSize size = view.bounds.size;
         if (size.width > 1.0 && size.height > 1.0) {
+          ((WWNWindow *)w).title = title;
+          view.accessibilityLabel = clientId.length > 0 ? clientId : title;
           return view;
         }
       }
@@ -4649,6 +4664,8 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
   if (_ilandHostWindow) {
     WWNView *view = (WWNView *)_ilandHostWindow.contentView;
     if ([view isKindOfClass:[WWNView class]]) {
+      _ilandHostWindow.title = title;
+      view.accessibilityLabel = clientId.length > 0 ? clientId : title;
       [_ilandHostWindow makeKeyAndOrderFront:nil];
       return view;
     }
@@ -4666,23 +4683,25 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
                                              NSWindowStyleMaskMiniaturizable)
                                     backing:NSBackingStoreBuffered
                                       defer:NO];
-  window.title = @"KMSCube";
+  window.title = title;
   window.releasedWhenClosed = NO;
   WWNView *view =
       [[WWNView alloc] initWithFrame:NSMakeRect(0, 0, contentRect.size.width,
                                                 contentRect.size.height)];
   view.wantsLayer = YES;
   view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  view.accessibilityLabel = clientId.length > 0 ? clientId : title;
   window.contentView = view;
   [window makeKeyAndOrderFront:nil];
   _ilandHostWindow = window;
-  WWNLog("BRIDGE", @"Created iland presentation host %ux%u for nested GL client",
-         w, h);
+  WWNLog("BRIDGE",
+         @"Created iland presentation host %ux%u for %@ ", w, h,
+         clientId ?: @"(nil)");
   return view;
 }
 
 - (BOOL)launchNestedIlandGpuClientOnPrimaryView:(NSString *)clientId {
-  WWNView *view = [self ensureIlandPresentationView];
+  WWNView *view = [self ensureIlandPresentationViewForClientId:clientId];
   if (!view) {
     return NO;
   }
@@ -4694,7 +4713,8 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
 }
 
 - (BOOL)prepareIlandMetalPresentationOnPrimaryView {
-  WWNView *view = [self ensureIlandPresentationView];
+  // Weston DRM prep has no Machines cube client id; keep a neutral host title.
+  WWNView *view = [self ensureIlandPresentationViewForClientId:nil];
   if (!view) {
     return NO;
   }
@@ -5195,7 +5215,9 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
   view.autoresizingMask =
       UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
   view.accessibilityIdentifier = @"wwn.compositor.iland-host";
-  view.accessibilityLabel = @"kmscube";
+  // Real client id is applied in launchNestedIlandGpuClientOnPrimaryView —
+  // do not brand every iland host as kmscube.
+  view.accessibilityLabel = @"iland-host";
   view.hostLocked = YES;
   view.followHostSize = YES;
   _ilandHostView = view;
@@ -5297,17 +5319,26 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
 }
 
 - (BOOL)launchNestedIlandGpuClientOnPrimaryView:(NSString *)clientId {
+  const char *logMod = "CLIENT";
+  if ([clientId isEqualToString:@"kmscube"]) {
+    logMod = "KMSCUBE";
+  } else if ([clientId isEqualToString:@"gbm-es2-demo"]) {
+    logMod = "GBM_ES2_DEMO";
+  }
   WWNCompositorView_ios *view = [self ensureIlandPresentationView];
   if (!view) {
-    WWNLog("KMSCUBE",
+    WWNLog(logMod,
            @"%@ launch failed: no Metal host view (containerView=%@)",
            clientId, self.containerView ? @"set" : @"nil");
     return NO;
   }
+  if (clientId.length > 0) {
+    view.accessibilityLabel = clientId;
+  }
   [self requestDedicatedSceneForIlandHostView:view title:clientId];
   BOOL ok = [view launchNestedIlandGpuClient:clientId];
   if (!ok) {
-    WWNLog("KMSCUBE",
+    WWNLog(logMod,
            @"%@ launch failed after host view ready (%@ %.0fx%.0f) — "
            @"check iland presenter / entry point link",
            clientId, NSStringFromClass([view class]), view.bounds.size.width,

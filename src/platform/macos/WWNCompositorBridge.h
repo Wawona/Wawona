@@ -353,9 +353,9 @@ extern NSString *const WWNClientWindowSceneWindowIdKey;
 /// Prefer this over phone-portrait fallbacks before native client launch.
 - (BOOL)seedOutputSizeFromLiveHostSurface;
 
-/// Launch kmscube on the first toplevel compositor view (iland + ANGLE GL demo).
-/// Launch an iland KMS client (`kmscube`) in-process on the iland
-/// presentation view, compositing its DRM page-flips into the host layer.
+/// Launch an iland KMS client (`kmscube` or `gbm-es2-demo`) in-process on the
+/// iland presentation view, compositing its DRM page-flips into the host layer.
+/// `clientId` selects the real entry point and host chrome title — never alias.
 - (BOOL)launchNestedIlandGpuClientOnPrimaryView:(NSString *)clientId;
 
 - (BOOL)launchNestedKmscubeOnPrimaryView;

@@ -519,8 +519,13 @@ static void *wwn_cube_thread(void *arg) {
         return NO;
     }
     if (_clientThreadStarted) {
-        WWNLog(client->logModule, @"cube thread already running");
-        return YES;
+        if ([_clientId isEqualToString:clientId]) {
+            return YES;
+        }
+        WWNLog(client->logModule,
+               @"refusing %@ — in-process %@ still owns iland DRM", clientId,
+               _clientId ?: @"(unknown)");
+        return NO;
     }
     if (!wwn_prepare_iland_virtual_drm_fd()) {
         return NO;
@@ -539,6 +544,10 @@ static void *wwn_cube_thread(void *arg) {
     WWNLog(client->logModule, @"started in-process %@ %dx%d via iland",
            clientId, _clientWidth, _clientHeight);
     return YES;
+}
+
+- (NSString *)runningClientId {
+    return _clientThreadStarted ? _clientId : nil;
 }
 
 - (BOOL)launchNestedKmscubeWithWidth:(int)width height:(int)height {

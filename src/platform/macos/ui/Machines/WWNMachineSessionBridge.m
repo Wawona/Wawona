@@ -132,6 +132,7 @@
     }
     if (!WWNPlatformAllowsGpuStack() &&
         ([clientId isEqualToString:@"kmscube"] ||
+         [clientId isEqualToString:@"gbm-es2-demo"] ||
          [clientId isEqualToString:@"opengl-cube"] ||
          [clientId isEqualToString:@"vkcube"] ||
          [clientId isEqualToString:@"weston-simple-egl"])) {

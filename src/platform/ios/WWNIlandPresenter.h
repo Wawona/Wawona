@@ -36,6 +36,9 @@ NS_ASSUME_NONNULL_BEGIN
                              width:(int)width
                             height:(int)height;
 
+/// Client id currently running on the presenter's DRM thread, or nil.
+- (nullable NSString *)runningClientId;
+
 /// Back-compat wrapper for `launchNestedIlandGpuClient:@"kmscube"`.
 - (BOOL)launchNestedKmscubeWithWidth:(int)width height:(int)height;
 

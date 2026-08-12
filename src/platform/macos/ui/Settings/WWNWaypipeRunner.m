@@ -125,6 +125,9 @@ static const char *WWNBundledClientLogModule(NSString *clientId) {
   if ([clientId isEqualToString:@"kmscube"]) {
     return "KMSCUBE";
   }
+  if ([clientId isEqualToString:@"gbm-es2-demo"]) {
+    return "GBM_ES2_DEMO";
+  }
   if ([clientId isEqualToString:@"opengl-cube"]) {
     return "OPENGL_CUBE";
   }

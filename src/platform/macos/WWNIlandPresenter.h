@@ -41,13 +41,18 @@ NS_ASSUME_NONNULL_BEGIN
 /// presenter letterboxes it for the rest of the session.
 - (void)hostGeometryDidChange;
 
-/// Launch a bundled in-process KMS cube client on a background thread; it
-/// presents through this presenter. Today that is only `kmscube` (GLES through
-/// iland + ANGLE). `opengl-cube` and `vkcube` are Wayland clients and go
-/// through the compositor. Returns NO for an unknown id or absent archive.
+/// Launch a bundled in-process iland KMS client on a background thread; it
+/// presents through this presenter. Supported ids: `kmscube`, `gbm-es2-demo`
+/// (each has its own entry point — never alias one to the other).
+/// `opengl-cube` and `vkcube` are Wayland clients and go through the
+/// compositor. Returns NO for an unknown id, absent archive, or when a
+/// *different* client thread already owns this presenter.
 - (BOOL)launchNestedIlandGpuClient:(NSString *)clientId
                              width:(int)width
                             height:(int)height;
+
+/// Client id currently running on the presenter's DRM thread, or nil.
+- (nullable NSString *)runningClientId;
 
 /// Back-compat wrapper for `launchNestedIlandGpuClient:@"kmscube"`.
 - (BOOL)launchNestedKmscubeWithWidth:(int)width height:(int)height;

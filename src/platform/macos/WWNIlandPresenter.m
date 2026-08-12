@@ -482,7 +482,15 @@ static void *wwn_cube_thread(void *arg) {
                @"%@ unavailable — archive not linked", clientId);
         return NO;
     }
-    if (_clientThreadStarted) return YES;
+    if (_clientThreadStarted) {
+        if ([_clientId isEqualToString:clientId]) {
+            return YES;
+        }
+        WWNLog(client->logModule,
+               @"refusing %@ — in-process %@ still owns iland DRM", clientId,
+               _clientId ?: @"(unknown)");
+        return NO;
+    }
     if (!wwn_prepare_iland_virtual_drm_fd()) {
         WWNLog(client->logModule, @"virtual DRM fd prepare failed");
         return NO;
@@ -501,6 +509,10 @@ static void *wwn_cube_thread(void *arg) {
     WWNLog(client->logModule, @"started in-process %@ %dx%d via iland",
            clientId, _clientWidth, _clientHeight);
     return YES;
+}
+
+- (NSString *)runningClientId {
+    return _clientThreadStarted ? _clientId : nil;
 }
 
 - (BOOL)launchNestedKmscubeWithWidth:(int)width height:(int)height {

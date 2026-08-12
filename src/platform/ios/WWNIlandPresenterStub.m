@@ -21,6 +21,19 @@
 - (void)invalidate {
 }
 
+- (BOOL)launchNestedIlandGpuClient:(NSString *)clientId
+                             width:(int)width
+                            height:(int)height {
+  (void)clientId;
+  (void)width;
+  (void)height;
+  return NO;
+}
+
+- (NSString *)runningClientId {
+  return nil;
+}
+
 - (BOOL)launchNestedKmscubeWithWidth:(int)width height:(int)height {
   (void)width;
   (void)height;

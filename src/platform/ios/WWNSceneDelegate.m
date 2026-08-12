@@ -1,6 +1,6 @@
 #import "WWNSceneDelegate.h"
 #import "../macos/ui/Settings/WWNPreferencesManager.h"
-#if TARGET_OS_IPHONE && !TARGET_OS_TV
+#if TARGET_OS_IPHONE
 #import "../../platform/macos/WWNRootfsProvider.h"
 #endif
 #import "../macos/WWNCompositorBridge.h"

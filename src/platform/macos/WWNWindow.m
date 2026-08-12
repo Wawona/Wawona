@@ -134,7 +134,14 @@
   }
   metalLayer_.hidden = NO;
   metalLayer_.frame = self.bounds;
+  // Never tear down a presenter that already owns an in-process DRM client —
+  // recreating it left the old kmscube/gbm thread alive and made the next
+  // Start look like the previous client (title + frames).
   if (ilandPresenter_) {
+    if ([ilandPresenter_ runningClientId].length > 0) {
+      contentLayer_.hidden = YES;
+      return YES;
+    }
     [ilandPresenter_ invalidate];
     ilandPresenter_ = nil;
   }
@@ -145,6 +152,17 @@
 }
 
 - (BOOL)launchNestedIlandGpuClient:(NSString *)clientId {
+  NSString *running = [ilandPresenter_ runningClientId];
+  if (running.length > 0) {
+    if ([running isEqualToString:clientId]) {
+      return YES;
+    }
+    WWNLog("CLIENT",
+           @"refusing %@ — in-process %@ still owns iland DRM (Stop that "
+           @"machine first)",
+           clientId, running);
+    return NO;
+  }
   if (![self prepareIlandMetalPresentation]) {
     return NO;
   }

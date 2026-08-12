@@ -1093,11 +1093,28 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 }
 
 - (BOOL)launchNestedIlandGpuClient:(NSString *)clientId {
+  const char *logMod = "CLIENT";
+  if ([clientId isEqualToString:@"kmscube"]) {
+    logMod = "KMSCUBE";
+  } else if ([clientId isEqualToString:@"gbm-es2-demo"]) {
+    logMod = "GBM_ES2_DEMO";
+  }
+  NSString *running = [_ilandPresenter runningClientId];
+  if (running.length > 0) {
+    if ([running isEqualToString:clientId]) {
+      return YES;
+    }
+    WWNLog(logMod,
+           @"refusing %@ — in-process %@ still owns iland DRM (Stop that "
+           @"machine first)",
+           clientId, running);
+    return NO;
+  }
   // Ensure wl_output / host view have a real size before Metal present.
   [[WWNCompositorBridge sharedBridge] seedOutputSizeFromLiveHostSurface];
   [self layoutIfNeeded];
   if (![self prepareIlandMetalPresentation]) {
-    WWNLog("KMSCUBE",
+    WWNLog(logMod,
            @"prepareIlandMetalPresentation failed (ilandPresenter=%@ "
            @"contentLayer=%@ bounds=%.0fx%.0f)",
            _ilandPresenter ? @"ok" : @"nil", _contentLayer ? @"ok" : @"nil",
@@ -1117,7 +1134,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     h = outH > 0 ? (int)outH : 480;
   }
   [_ilandPresenter syncPreferredModeFromLayer];
-  WWNLog("KMSCUBE", @"%@ Metal present %dx%d", clientId, w, h);
+  WWNLog(logMod, @"%@ Metal present %dx%d", clientId, w, h);
   return [_ilandPresenter launchNestedIlandGpuClient:clientId
                                                width:w
                                               height:h];
@@ -1156,7 +1173,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     [self resignFirstResponder];
   }
   if (_ilandPresenter == nil) {
-    WWNLog("KMSCUBE",
+    WWNLog("CLIENT",
            @"WWNIlandPresenter init failed (Metal device/shader/pipeline)");
     return NO;
   }
