@@ -10,6 +10,19 @@ as history.
 
 ## [Unreleased]
 
+### Fixed
+
+- **macOS GBM ES2 Demo no longer kills the host on Start.** Partial EGL/GBM
+  bring-up left `ModesetDev::saved_crtc` null; `DRMModesetter::~Impl` then
+  dereferenced it (`EXC_BAD_ACCESS` at 0) and took down the whole in-process
+  Wawona app. `wwn-kmscube` `ad778d3` null-checks before CRTC restore and
+  treats "no usable connector" as init failure. (#52, #140)
+- **Apple-mobile rootfs/XDG env applied before any in-process client.** Scene
+  connect now calls `WWNRootfsProvider applyShellEnvironment` on every
+  `TARGET_OS_IPHONE` target (including tvOS), and the shared
+  `wwnBeginIOSNativeClientLaunch` path applies it for generic `*_main` toys so
+  `HOME` / `XDG_*` / `WAWONA_ROOTFS` cannot race unset. (#31, #33, #88 sandbox FS)
+
 ## [26.8.11] - 2026-08-11
 
 ### Changed

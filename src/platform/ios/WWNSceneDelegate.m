@@ -537,8 +537,13 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
 - (void)scene:(UIScene *)scene
     willConnectToSession:(UISceneSession *)session
                  options:(UISceneConnectionOptions *)connectionOptions {
-#if TARGET_OS_IPHONE && !TARGET_OS_TV
+#if TARGET_OS_IPHONE
+  // Install rootfs + XDG_* / HOME for every Apple-mobile scene (incl. tvOS).
+  // Files-app layout is phone/pad/vision only — TV has no Files browser.
+  [WWNRootfsProvider applyShellEnvironment];
+#if !TARGET_OS_TV
   [WWNRootfsProvider prepareUserAccess];
+#endif
 #endif
   if (![scene isKindOfClass:[UIWindowScene class]])
     return;

@@ -1628,6 +1628,11 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   }
 #endif
   [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
+  // Every in-process client (toys, cubes, terminals, nested compositors) must
+  // see the same sandbox FS: HOME + XDG_* under the writable rootfs. Terminal
+  // / foot / niri / weston launchers already call this; apply here so the
+  // generic *_main path cannot race ahead with unset WAWONA_ROOTFS.
+  [WWNRootfsProvider applyShellEnvironment];
   [[WWNCompositorBridge sharedBridge]
       prepareOutputSizeForNativeClientLaunchWithClientId:clientId];
   return YES;
