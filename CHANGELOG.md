@@ -10,6 +10,8 @@ as history.
 
 ## [Unreleased]
 
+## [26.8.11] - 2026-08-11
+
 ### Changed
 
 - **Release secrets: SecretSpec + pass only.** Removed public `.secrets/`,
@@ -21,6 +23,28 @@ as history.
 
 ### Added
 
+- **Bundled clients green on every target (no skips).** iOS `vkcube` now
+  renders on a bundled SwiftShader CPU ICD (`wwn-iland` `swiftshader-ios-sim`,
+  simulator-only; device stays MoltenVK-only). Android `gbm-es2-demo` renders
+  via an iland EGL-shim CPU-readback fallback (plain GL texture +
+  `glReadPixels`→AHB) when AHB native-buffer import is unavailable on the
+  emulator's software Vulkan, plus an empty-blocking-stdin fix so the demo
+  doesn't self-exit. `weston-editor` works: the compositor now advertises
+  `zwp_text_input_manager_v1` alongside v3. New rule
+  `wawona-never-skip-bundled-clients` — fix the client/platform beneath a
+  failing bundled client, never gate it out. (#113, #122, #140)
+- **fastfetch on tvOS + watchOS.** Wired the recipe, flake attrs, link flags,
+  prebuild privatization, and stub so `fastfetch` builds/links into the tvOS
+  and watchOS apps like the rest of the Apple family. (#139)
+- **watchOS keyboard → PTY.** Real `wl_keyboard` + embedded US xkb keymap in
+  the watch mini Wayland server, driven by a WatchKit `TextField`/Send/Return
+  affordance, feeding in-process zsh. uutils/coreutils now links on the
+  watchOS arm64 slice (arm64_32 keeps weak stubs). (#95)
+- **watchOS share-tree sandbox FS.** The watch app now embeds
+  `share/{fonts,weston,X11/xkb,icons}` and `WWNWatchShellEnvironment`
+  synthesizes a `fonts.conf` + points `FONTCONFIG`/`WESTON_DATA_DIR`/
+  `XKB_CONFIG_ROOT`/`XDG_DATA_DIRS` at it, so `weston-terminal` renders text
+  instead of blank. (#31, #33)
 - **macOS Developer ID sign + notarize for GitHub DMG.**
   `scripts/macos-sign-and-notarize-dmg.sh` +
   `Wawona-macOS-DeveloperID.entitlements`; `release.yml` `release-macos` uses
