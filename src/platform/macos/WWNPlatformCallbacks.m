@@ -526,10 +526,6 @@ static void WWNConfigureBundledXkbIfNeeded(void) {
 }
 
 static void WWNConfigureBundledFontsIfNeeded(void) {
-  if (getenv("FONTCONFIG_FILE") != NULL) {
-    return;
-  }
-
   NSString *fontDir = WWNWawonaBundledSharePath(@"fonts");
   if (![[NSFileManager defaultManager] fileExistsAtPath:fontDir]) {
     WWNLog("BUNDLE", @"No bundled fonts at %s; skipping fontconfig setup",
@@ -546,6 +542,11 @@ static void WWNConfigureBundledFontsIfNeeded(void) {
                                                   error:NULL];
 
   NSString *confPath = [base stringByAppendingPathComponent:@"fonts.conf"];
+  /*
+   * Always rewrite fonts.conf for the current bundle UUID. A stale
+   * FONTCONFIG_FILE from a previous install path makes FcInit fail and
+   * weston-terminal draws with zero font metrics.
+   */
   NSString *conf = [NSString
       stringWithFormat:@"<?xml version=\"1.0\"?>\n"
                        @"<!DOCTYPE fontconfig SYSTEM "
@@ -666,7 +667,6 @@ void WWNConfigureBundledRuntimeEnvIfNeeded(void) {
     WWNSetEnvIfUnset(@"WAWONA_APP_BUNDLE_ROOT", appRoot);
     WWNSetEnvIfUnset(@"WAWONA_LIB_ROOT", libRoot);
     WWNConfigureBundledXkbIfNeeded();
-    WWNConfigureBundledFontsIfNeeded();
     WWNConfigureBundledWestonDataIfNeeded();
     // Sets WAWONA_SHARE_ROOT + XDG_DATA_DIRS / XDG_DATA_HOME for fuzzel.
     WWNEnsureFuzzelXdgEnv();
@@ -674,6 +674,8 @@ void WWNConfigureBundledRuntimeEnvIfNeeded(void) {
     WWNLog("BUNDLE", @"Share root: %s", getenv("WAWONA_SHARE_ROOT") ?: "(nil)");
     WWNLog("BUNDLE", @"Lib root: %s", libRoot.UTF8String);
   });
+  /* Fonts: rewrite every refresh so FONTCONFIG_FILE tracks the live bundle. */
+  WWNConfigureBundledFontsIfNeeded();
 }
 
 void wwn_ios_refresh_bundle_env(void) {
