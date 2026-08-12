@@ -10,25 +10,34 @@ as history.
 
 ## [Unreleased]
 
+## [26.8.12] - 2026-08-12
+
 ### Fixed
 
+- **visionOS static ANGLE / iland EGL-image `ld: duplicate symbol` (real
+  dedup).** Per-member `llvm-objcopy` rename of ANGLE's public EGL/GLES image
+  entrypoints to `_angle_*` in `wwn-iland` (`c7a3275`); shim stays strong.
+  Replaces the interim weak-export workaround. (#122)
+- **tvOS Gate: packages compile.** `WWNSceneDelegate` imports
+  `WWNRootfsProvider` on all `TARGET_OS_IPHONE` (including tvOS).
 - **macOS GBM ES2 Demo no longer kills the host on Start.** Partial EGL/GBM
   bring-up left `ModesetDev::saved_crtc` null; `DRMModesetter::~Impl` then
   dereferenced it (`EXC_BAD_ACCESS` at 0) and took down the whole in-process
   Wawona app. `wwn-kmscube` `ad778d3` null-checks before CRTC restore and
   treats "no usable connector" as init failure. (#52, #140)
-- **GBM ES2 Demo no longer mislabeled / aliased as KMS Cube.** The iland host
-  window always titled itself `KMSCube`, logs used the `KMSCUBE` tag for every
-  DRM client, and `prepareIlandMetalPresentation` tore down the presenter while
-  leaving the previous in-process cube thread alive — so Starting GBM ES2 Demo
-  after (or while looking like) kmscube showed the wrong identity. Host chrome,
-  accessibility, and log modules now follow the real client id; a second DRM
-  client is refused while another still owns iland. (#52, port-fidelity)
-- **Apple-mobile rootfs/XDG env applied before any in-process client.** Scene
-  connect now calls `WWNRootfsProvider applyShellEnvironment` on every
-  `TARGET_OS_IPHONE` target (including tvOS), and the shared
-  `wwnBeginIOSNativeClientLaunch` path applies it for generic `*_main` toys so
-  `HOME` / `XDG_*` / `WAWONA_ROOTFS` cannot race unset. (#31, #33, #88 sandbox FS)
+- **GBM ES2 Demo no longer mislabeled / aliased as KMS Cube.** Host chrome,
+  accessibility, and log modules follow the real client id; a second in-process
+  DRM client is refused while another owns iland. (#52, port-fidelity)
+- **Ship DMG latest-download alias.** `release.yml` also publishes
+  `Wawona-macOS-arm64.dmg` for wawona.io `releases/latest/download/` cards.
+
+### Added
+
+- **Sandbox / rootfs + XDG parity gaps closed.** watchOS niri KDL embed +
+  `wwn_ios_refresh_bundle_env` → real shell env; tvOS applications catalog
+  embed; macOS writable `XDG_CONFIG_HOME` / `XDG_STATE_HOME` when unset
+  (Android `XDG_STATE_HOME` and niri `applyShellEnvironment` already on tip).
+  (#31, #33, #88)
 
 ## [26.8.11] - 2026-08-11
 
