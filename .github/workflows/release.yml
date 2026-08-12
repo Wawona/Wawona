@@ -148,12 +148,16 @@ jobs:
             --staging dmg-staging \
             --dmg "Wawona-${WAWONA_VERSION}.dmg" \
             --version "$WAWONA_VERSION"
+          # Stable latest-download alias used by wawona.io download cards.
+          cp -f "Wawona-${WAWONA_VERSION}.dmg" Wawona-macOS-arm64.dmg
 
       - name: Upload DMG
         uses: actions/upload-artifact@v7
         with:
           name: macos-dmg
-          path: Wawona-*.dmg
+          path: |
+            Wawona-*.dmg
+            Wawona-macOS-arm64.dmg
 
   release-ios:
     name: "iOS IPA (GitHub Release asset)"
