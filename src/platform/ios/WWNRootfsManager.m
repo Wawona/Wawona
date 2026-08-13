@@ -532,6 +532,7 @@ static NSString *const kWWNRootfsReadmeText =
     setenv("SHELL", "/usr/bin/zsh", 1);
     setenv("TERM", "xterm-256color", 1);
     setenv("USER", "mobile", 1);
+    setenv("LOGNAME", "mobile", 1);
     const char *homeEnv = getenv("HOME");
     if (homeEnv == NULL || homeEnv[0] == '\0') {
       NSString *fallbackHome = NSHomeDirectory() ?: @"/tmp";
@@ -556,6 +557,7 @@ static NSString *const kWWNRootfsReadmeText =
   setenv("SHELL", shell.UTF8String, 1);
   setenv("TERM", "xterm-256color", 1);
   setenv("USER", "mobile", 1);
+  setenv("LOGNAME", "mobile", 1);
 
   NSFileManager *fm = [NSFileManager defaultManager];
   NSString *xdgConfig = [home stringByAppendingPathComponent:@".config"];
