@@ -234,7 +234,16 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
   NSString *inputProfile =
       [defaults stringForKey:[prefix stringByAppendingString:@"defaultInputProfile"]];
   if (inputProfile.length > 0) {
-    [self setTouchInputType:inputProfile];
+    NSString *lower = inputProfile.lowercaseString;
+    if ([lower isEqualToString:@"touchpad"] ||
+        [lower isEqualToString:@"pointer"] ||
+        [lower isEqualToString:@"virtual"] ||
+        [lower isEqualToString:@"trackpad"]) {
+      [self setTouchInputType:@"Touchpad"];
+    } else {
+      /* "direct", "multi-touch", "Multi-Touch", … */
+      [self setTouchInputType:@"Multi-Touch"];
+    }
   }
 
   NSString *renderer = [defaults stringForKey:[prefix stringByAppendingString:@"renderer"]];
@@ -296,12 +305,9 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
     kWWNPrefsRenderMacOSPointer : @NO,
     kWWNPrefsNestedCompositorCursor : @"virtual",
     // Input
-#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
-    // Desktop-shell launcher expects wl_pointer; Touchpad is the default on iOS.
-    kWWNPrefsTouchInputType : @"Touchpad",
-#else
+    // Multi-Touch (wl_touch) is the reliable path for Wayland clients (Weston
+    // panel, terminals, nested compositors). Touchpad/virtual-pointer is opt-in.
     kWWNPrefsTouchInputType : @"Multi-Touch",
-#endif
     kWWNPrefsSwapCmdWithAlt : @YES,
     kWWNPrefsUniversalClipboard : @YES,
     // Graphics

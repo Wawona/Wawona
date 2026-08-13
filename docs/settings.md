@@ -47,7 +47,7 @@ SwiftUI does **not** implement global settings on macOS, iOS, or watchOS. On wat
 
 | Setting | Key | Type | Default | Platforms | Description |
 |---------|-----|------|---------|------------|-------------|
-| **Touch Input Type** | `TouchInputType` | Dropdown | Multi-Touch | iOS | Multi-Touch (direct) or Touchpad (1-finger=pointer, tap=click, 2-finger=scroll) |
+| **Touch Input Type** | `TouchInputType` / runtime `inputProfile` | Dropdown | Multi-Touch | iOS (global + per-machine) | Multi-Touch (`wl_touch`) or Touchpad (virtual pointer). Per-machine override lives in Machine Settings → Input and Edit Machine; applied via `applyMachineToRuntimePrefs`. Prefer Multi-Touch for Weston panel / terminals / nested clients. |
 | **Touchpad Mode** | `touchpadMode` | Switch | Off | Android | Same as Touchpad on iOS |
 | **Swap CMD with ALT** | `SwapCmdWithAlt` | Switch | On (macOS/iOS) | macOS, iOS | Swap Command and Alt keys |
 | **Universal Clipboard** | `universalClipboard` / `UniversalClipboard` | Switch | On | All | Sync clipboard with host platform |

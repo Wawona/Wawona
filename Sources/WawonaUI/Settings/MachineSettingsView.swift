@@ -180,12 +180,21 @@ public struct MachineSettingsView: View {
                 #endif
             }
             .disabled(!(draft?.runtimeOverrides.renderMacOSPointer ?? preferences.renderMacOSPointer))
-            TextField("Input Profile", text: inputProfileBinding)
-                .wawonaTextFieldNoAutocaps()
-                .autocorrectionDisabled()
-            Text("Global default: \(preferences.defaultInputProfile)")
+            #if os(tvOS)
+            Text("Touch Input Type: Touchpad (tvOS)")
+                .foregroundStyle(.secondary)
+            #else
+            Picker("Touch Input Type", selection: touchInputTypeBinding) {
+                Text("Multi-Touch").tag("Multi-Touch")
+                Text("Touchpad").tag("Touchpad")
+            }
+            Text("Overrides global Settings → Input. Multi-Touch is required for many Wayland clients (Weston panel, terminals); Touchpad uses a virtual pointer.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+            Text("Global default: \(WawonaPreferences.normalizedTouchInputType(preferences.defaultInputProfile))")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            #endif
         }
     }
 
@@ -243,7 +252,7 @@ public struct MachineSettingsView: View {
             Text("Auto Scale: \(resolved.autoScale ? "Enabled" : "Disabled")")
             Text("HDR: \(resolved.colorOperations ? "Enabled" : "Disabled")")
             Text("Display: \(resolved.waylandDisplay)")
-            Text("Input: \(resolved.inputProfile)")
+            Text("Touch Input: \(WawonaPreferences.normalizedTouchInputType(resolved.inputProfile))")
             Text("Host: \(resolved.sshHost)")
             Text("User: \(resolved.sshUser)")
             Text("Port: \(resolved.sshPort)")
@@ -359,10 +368,16 @@ public struct MachineSettingsView: View {
         )
     }
 
-    private var inputProfileBinding: Binding<String> {
+    private var touchInputTypeBinding: Binding<String> {
         Binding(
-            get: { draft?.runtimeOverrides.inputProfile ?? preferences.defaultInputProfile },
-            set: { value in updateDraft { $0.runtimeOverrides.inputProfile = value } }
+            get: {
+                let raw = draft?.runtimeOverrides.inputProfile ?? preferences.defaultInputProfile
+                return WawonaPreferences.normalizedTouchInputType(raw)
+            },
+            set: { value in
+                let normalized = WawonaPreferences.normalizedTouchInputType(value)
+                updateDraft { $0.runtimeOverrides.inputProfile = normalized }
+            }
         )
     }
 

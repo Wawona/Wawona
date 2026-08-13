@@ -999,6 +999,7 @@ struct WWNMachineEditorView: View {
 
     runtimeOverrides["useBundledApp"] = (type == kWWNMachineTypeNative && !selectedClientId.isEmpty)
     runtimeOverrides["bundledAppID"] = selectedClientId
+    runtimeOverrides["inputProfile"] = touchInputType
     runtimeOverrides["waypipeEnabled"] = (type == kWWNMachineTypeSSHWaypipe || type == kWWNMachineTypeSSHTerminal)
     if machineThumbnailEnabled != WWNPreferencesManager.shared().machineSessionThumbnailsEnabled() {
       runtimeOverrides["machineThumbnailEnabledOverride"] = machineThumbnailEnabled

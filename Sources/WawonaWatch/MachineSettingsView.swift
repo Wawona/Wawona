@@ -171,10 +171,11 @@ struct MachineSettingsView: View {
                 Text("Host Cursor").tag("host")
             }
             .disabled(!(draft?.runtimeOverrides.renderMacOSPointer ?? preferences.renderMacOSPointer))
-            TextField("Input Profile", text: inputProfileBinding)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-            Text("Global default: \(preferences.defaultInputProfile)")
+            Picker("Touch Input Type", selection: touchInputTypeBinding) {
+                Text("Multi-Touch").tag("Multi-Touch")
+                Text("Touchpad").tag("Touchpad")
+            }
+            Text("Global default: \(WawonaPreferences.normalizedTouchInputType(preferences.defaultInputProfile))")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
@@ -391,10 +392,16 @@ struct MachineSettingsView: View {
         )
     }
 
-    private var inputProfileBinding: Binding<String> {
+    private var touchInputTypeBinding: Binding<String> {
         Binding(
-            get: { draft?.runtimeOverrides.inputProfile ?? preferences.defaultInputProfile },
-            set: { value in updateDraft { $0.runtimeOverrides.inputProfile = value } }
+            get: {
+                let raw = draft?.runtimeOverrides.inputProfile ?? preferences.defaultInputProfile
+                return WawonaPreferences.normalizedTouchInputType(raw)
+            },
+            set: { value in
+                let normalized = WawonaPreferences.normalizedTouchInputType(value)
+                updateDraft { $0.runtimeOverrides.inputProfile = normalized }
+            }
         )
     }
 

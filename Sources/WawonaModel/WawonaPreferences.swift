@@ -149,7 +149,21 @@ public final class WawonaPreferences: ObservableObject {
     @Published public var sshKeyType: String = "ed25519"
     @Published public var waypipeSSHPassword: String = ""
     @Published public var logLevel: String = "info"
-    @Published public var defaultInputProfile: String = "direct"
+    /// Canonical values: "Multi-Touch" or "Touchpad" (matches ObjC TouchInputType).
+    @Published public var defaultInputProfile: String = "Multi-Touch"
+
+    /// Map legacy labels ("direct", "multitouch", …) onto TouchInputType.
+    public static func normalizedTouchInputType(_ raw: String?) -> String {
+        let trimmed = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return "Multi-Touch" }
+        switch trimmed.lowercased() {
+        case "touchpad", "pointer", "virtual", "virtual-pointer", "trackpad":
+            return "Touchpad"
+        default:
+            // "Multi-Touch", "multi-touch", "direct", "multitouch", …
+            return "Multi-Touch"
+        }
+    }
     @Published public var defaultBundledAppID: String = ""
     @Published public var defaultWaypipeEnabled: Bool = true
     /// When true, Waypipe is launched with `--xwls` (XWayland integration) for supported sessions.
@@ -200,7 +214,10 @@ public final class WawonaPreferences: ObservableObject {
             ?? defaults.string(forKey: keyPrefix + "sshKeyType") ?? "ed25519"
         waypipeSSHPassword = defaults.string(forKey: keyPrefix + "waypipeSSHPassword") ?? ""
         logLevel = defaults.string(forKey: keyPrefix + "logLevel") ?? "info"
-        defaultInputProfile = defaults.string(forKey: keyPrefix + "defaultInputProfile") ?? "direct"
+        let loadedInput = defaults.string(forKey: keyPrefix + "defaultInputProfile")
+            ?? defaults.string(forKey: "TouchInputType")
+            ?? "Multi-Touch"
+        defaultInputProfile = Self.normalizedTouchInputType(loadedInput)
         defaultBundledAppID = defaults.string(forKey: keyPrefix + "defaultBundledAppID") ?? "weston-terminal"
         defaultWaypipeEnabled = defaults.object(forKey: keyPrefix + "defaultWaypipeEnabled") as? Bool ?? true
         xwaylandSupport = defaults.object(forKey: keyPrefix + "xwaylandSupport") as? Bool ?? false
@@ -285,7 +302,9 @@ public final class WawonaPreferences: ObservableObject {
         let normalizedRenderer = profile.runtimeOverrides.renderer?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
         let normalizedVulkanDriver = profile.runtimeOverrides.vulkanDriver?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
         let normalizedOpenGLDriver = profile.runtimeOverrides.openGLDriver?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
-        let normalizedInputProfile = profile.runtimeOverrides.inputProfile?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
+        let normalizedInputProfile = Self.normalizedTouchInputType(
+            profile.runtimeOverrides.inputProfile?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+        )
         let normalizedWaylandDisplay = profile.runtimeOverrides.waylandDisplay?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
         let normalizedWaypipePassword = profile.runtimeOverrides.waypipeSSHPassword ?? ""
         let normalizedLogLevel = profile.runtimeOverrides.logLevel?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""

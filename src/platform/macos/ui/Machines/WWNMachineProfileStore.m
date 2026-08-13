@@ -113,6 +113,21 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
 
 @implementation WWNMachineProfileStore
 
++ (NSString *)normalizeTouchInputType:(NSString *)raw {
+  if (raw.length == 0) {
+    return @"Multi-Touch";
+  }
+  NSString *lower = raw.lowercaseString;
+  if ([lower isEqualToString:@"touchpad"] ||
+      [lower isEqualToString:@"pointer"] ||
+      [lower isEqualToString:@"virtual"] ||
+      [lower isEqualToString:@"virtual-pointer"] ||
+      [lower isEqualToString:@"trackpad"]) {
+    return @"Touchpad";
+  }
+  return @"Multi-Touch";
+}
+
 + (NSArray<NSString *> *)machineScopedSettingsKeys {
   return @[
     kWWNPrefsUniversalClipboard,
@@ -714,8 +729,6 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   [prefs setWaypipeLoginShell:profile.waypipeLoginShell];
   [prefs setWaypipeTitlePrefix:profile.waypipeTitlePrefix ?: @""];
   [prefs setWaypipeSecCtx:profile.waypipeSecCtx ?: @""];
-  [prefs setTouchInputType:[resolved[@"inputProfile"] isKindOfClass:[NSString class]] ? resolved[@"inputProfile"] : @"Multi-Touch"];
-
   NSDictionary<NSString *, id> *overrides =
       [self normalizedSettingsOverridesForProfile:profile];
   NSMutableDictionary<NSString *, id> *transportSnapshot =
@@ -725,6 +738,23 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
     if (value != nil) {
       transportSnapshot[key] = value;
     }
+  }
+
+  /* Touch Input Type: settingsOverrides TouchInputType wins, else
+   * runtimeOverrides.inputProfile (Machine Settings), else global. Normalize
+   * legacy labels ("direct") so Multi-Touch/Touchpad match global Settings. */
+  {
+    NSString *touch = nil;
+    id soTouch = transportSnapshot[kWWNPrefsTouchInputType];
+    if ([soTouch isKindOfClass:[NSString class]] &&
+        [(NSString *)soTouch length] > 0) {
+      touch = (NSString *)soTouch;
+    } else if ([resolved[@"inputProfile"] isKindOfClass:[NSString class]]) {
+      touch = resolved[@"inputProfile"];
+    }
+    touch = [self normalizeTouchInputType:touch];
+    transportSnapshot[kWWNPrefsTouchInputType] = touch;
+    [prefs setTouchInputType:touch];
   }
 
   // Swift MachineProfileStore persists per-machine overrides under
@@ -847,9 +877,15 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
       [runtimeOverrides[kWWNRuntimeInputProfile] isKindOfClass:[NSString class]]
           ? runtimeOverrides[kWWNRuntimeInputProfile]
           : @"";
+  if (inputProfile.length == 0 &&
+      [profile.settingsOverrides[kWWNPrefsTouchInputType]
+          isKindOfClass:[NSString class]]) {
+    inputProfile = profile.settingsOverrides[kWWNPrefsTouchInputType];
+  }
   if (inputProfile.length == 0) {
     inputProfile = [prefs touchInputType];
   }
+  inputProfile = [self normalizeTouchInputType:inputProfile];
 
   BOOL waypipeEnabled = NO;
   if ([profile.type isEqualToString:kWWNMachineTypeSSHWaypipe] ||

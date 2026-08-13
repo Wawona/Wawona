@@ -137,6 +137,16 @@ missing patch anchors, meson version floors, or `Cargo.lock` skew.
 
 Full rule: workspace `.cursor/rules/wawona-local-before-ci.mdc`.
 
+## agent-device: Multi-Touch for Wayland clients
+
+Drive app/UI with agent-device (`../.cursor/rules/wawona-agent-device.mdc`).
+Before tapping **Wayland client** content (Weston panel, nested compositors,
+terminals, cubes), set **Multi-Touch** — iOS `TouchInputType=Multi-Touch`,
+Android Touchpad Mode **Off**. Touchpad / virtual-pointer left-clicks often
+no-op even when `press`/`click` succeed. Prefer `press` / `gesture`; do not
+`click --button …` on the compositor surface. Full rule:
+`../.cursor/rules/wawona-agent-device-multitouch.mdc`.
+
 ## Conventions
 
 - **Repo DAG (acyclic L0–L4; never invert):** `wwn-toolchain` (L0 substrate:
