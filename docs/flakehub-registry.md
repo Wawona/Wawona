@@ -1,8 +1,13 @@
 # FlakeHub registry (versioned flake refs)
 
-Wawona org flakes are **published** to FlakeHub as public rolling releases.
+Wawona org flakes are **published** to FlakeHub. `wwn-*` DAG repos use
+**rolling** `0.1.<commit-count>` on their tracked branch. **Wawona** also
+publishes **CalVer tags** (`vYY.M.D` → SemVer `YY.M.D`, same as
+[`VERSION`](../VERSION) / GitHub Releases).
+
 Consumers pin `https://flakehub.com/f/Wawona/<repo>/*`; `flake.lock` records
-the resolved tarball. This is separate from the **binary cache**.
+the resolved tarball. `*` is the highest SemVer: a Wawona tag `26.8.12`
+outranks rolling `0.1.N`. This is separate from the **binary cache**.
 
 Companion: [`flakehub-cache.md`](./flakehub-cache.md).
 Upstream: [Publishing to FlakeHub](https://docs.determinate.systems/flakehub/publishing/).
@@ -42,7 +47,10 @@ Each GitHub-hosted flake runs [`.github/workflows/flakehub-publish.yml`](../.git
 - **Branches:** `development` where consumers historically pinned that branch
   (`wwn-toolchain`, `wwn-iland`, `wwn-kmscube`, `wwn-weston`, `wwn-waypipe`,
   `wwn-phoon-rs`, `wwn-neovim`, `wwn-niri`, `Wawona`); `main` otherwise.
-- **Tags:** `v*` as SemVer releases; rolling still used for branch tips.
+- **Tags (Wawona):** `vYY.M.D` publishes SemVer `YY.M.D` (`rolling: false`).
+  Existing tags are backfilled via **workflow_dispatch** `tag=` (they predate
+  this workflow, so a tag push did not run it). `wwn-*` stay rolling-only
+  until they grow CalVer tags.
 - **Visibility:** `public`.
 - **`include-output-paths`:** `false`. Inspecting every output on
   `ubuntu-latest` fails without the Android SDK / on Darwin-only attrs.
@@ -56,10 +64,9 @@ not a git branch name: a tip that never hits this workflow will not appear as
 
 `flakehub-push` also runs `nix flake show --all-systems`. Nixpkgs 26.11 throws
 on `x86_64-darwin`; Wawona / anowaW / phoon-rs omit Intel Darwin from
-`packages`/`apps`. Wawona’s publish workflow additionally stages a gitignored
-`.flakehub-publish` sentinel so show can skip Android SDK IFD; the uploaded
-release tarball does not include that file, so consumers still get full
-outputs.
+`packages`/`apps`. Wawona’s publish job runs on **macos-26** with relaxed
+sandbox + FlakeHub Cache so Android SDK IFD can succeed and the tarball is
+the real flake (not an empty stub).
 
 ## Verify
 

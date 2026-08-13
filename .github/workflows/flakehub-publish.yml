@@ -1,14 +1,22 @@
 name: FlakeHub publish
 
-# Public rolling FlakeHub *releases* (registry), not the binary cache.
-# Cache stays on flakehub-cache-action in build jobs.
-# Docs: https://docs.determinate.systems/flakehub/publishing/
+# Registry releases (not the binary cache).
+# - development push: rolling 0.1.<commit-count> (DAG tips)
+# - vYY.M.D tags / dispatch: CalVer SemVer matching VERSION / GitHub Releases
+# Docs: docs/flakehub-registry.md
 
 on:
   push:
     branches: [development]
-    tags: ["v*"]
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing CalVer tag to publish (e.g. v26.8.12). Empty = rolling from this branch."
+        required: false
+        type: string
 
 permissions:
   id-token: write
@@ -16,22 +24,34 @@ permissions:
 
 jobs:
   flakehub-publish:
-    runs-on: ubuntu-latest
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v5
-      - uses: DeterminateSystems/determinate-nix-action@v3
-      - name: Lite flake surface for flakehub-push
-        run: |
-          # gitignored; staged so the dirty git flake includes it. The
-          # published tarball is the commit (without this file).
-          touch .flakehub-publish
-          git add -f .flakehub-publish
-      - uses: DeterminateSystems/flakehub-push@main
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+
+      - name: Publish rolling (development)
+        if: github.ref_type != 'tag' && (github.event.inputs.tag == '' || github.event.inputs.tag == null)
+        uses: DeterminateSystems/flakehub-push@main
         with:
           name: Wawona/Wawona
           rolling: true
           visibility: public
-          # Inspecting every output on ubuntu-latest throws (Android SDK /
-          # Darwin-only attrs). Registry publish does not need NAR paths;
-          # FlakeHub Cache already stores those from build jobs.
+          include-output-paths: false
+
+      - name: Publish CalVer tag
+        if: github.ref_type == 'tag' || (github.event.inputs.tag != '' && github.event.inputs.tag != null)
+        uses: DeterminateSystems/flakehub-push@main
+        with:
+          name: Wawona/Wawona
+          rolling: false
+          tag: ${{ github.event.inputs.tag || github.ref_name }}
+          visibility: public
           include-output-paths: false
