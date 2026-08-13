@@ -114,7 +114,10 @@
   outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-ssh, wwn-waypipe, wwn-anowaW, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-niri, wwn-vms, wwn-containers, ... }:
   let
     linuxSystems = [ "x86_64-linux" "aarch64-linux" ];
-    darwinSystems = [ "x86_64-darwin" "aarch64-darwin" ];
+    # Nixpkgs 26.11 throws on x86_64-darwin eval; flakehub-push runs
+    # `nix flake show --all-systems`. Intel Mac is gone from this flake's
+    # packages/apps surface; aarch64-darwin remains the Darwin target.
+    darwinSystems = [ "aarch64-darwin" ];
     systemsList = linuxSystems ++ darwinSystems;
 
     pkgsFor = system:
@@ -665,7 +668,7 @@
           // (pkgs.lib.optionalAttrs (isLinuxHost && builtins.pathExists ./dependencies/tests/wlcs.nix) {
             wawona-wlcs-run = pkgs.callPackage ./dependencies/tests/wlcs.nix { };
           })
-          // (pkgs.lib.optionalAttrs (isLinuxHost || androidSDK != null) {
+          // (pkgs.lib.optionalAttrs (builtins.tryEval (wawonaAndroidPkg.drvPath)).success {
           wawona-android = wawonaAndroidPkg;
           wawona-android-backend = backend-android;
           # Exposed so the CI reproducibility gate (repro-rebuild) can --rebuild

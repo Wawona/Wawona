@@ -55,9 +55,10 @@ not a git branch name: a tip that never hits this workflow will not appear as
 `*`.
 
 `flakehub-push` also runs `nix flake show --all-systems`. Nixpkgs 26.11 throws
-on `x86_64-darwin`; flakes whose own `nixpkgs` lock is that new must not
-expose Intel Darwin `packages`/`formatter`/`apps` (anowaW / phoon-rs). Wawona
-still builds Intel Mac via the aggregator’s pkgs + registry merge.
+on `x86_64-darwin`; flakes whose `packages`/`apps` enumerate Intel Darwin must
+omit that system (anowaW, phoon-rs, Wawona). Android package attrs that IFD
+the SDK are gated with `tryEval` so Ubuntu publish does not need the license
+derivation; Gate: packages still realizes them when IFD is allowed.
 
 ## Verify
 
