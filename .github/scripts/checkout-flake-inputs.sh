@@ -22,6 +22,11 @@ clone_at_lock() {
   local owner repo
   owner="$(jq -r --arg n "$input" '.nodes[$n].locked.owner // empty' flake.lock)"
   repo="$(jq -r --arg n "$input" '.nodes[$n].locked.repo // empty' flake.lock)"
+  # FlakeHub tarball locks omit owner/repo; Wawona DAG nodes are Wawona/<input>.
+  if [[ -z "$owner" || -z "$repo" ]]; then
+    owner=Wawona
+    repo="$input"
+  fi
   echo "Cloning $owner/$repo @ $rev -> $dest"
   git clone --filter=blob:none "https://github.com/${owner}/${repo}.git" "$dest"
   git -C "$dest" checkout "$rev"

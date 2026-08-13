@@ -69,5 +69,7 @@ fh list releases Wawona/wwn-toolchain
 nix flake metadata   # Wawona lock nodes should be type=tarball on api.flakehub.com
 ```
 
-Third-party inputs (`nixpkgs`, `rust-overlay`, …) stay on `github:` for this
-wave.
+Verify scripts that clone inputs from `flake.lock` (e.g.
+[`checkout-flake-inputs.sh`](../.github/scripts/checkout-flake-inputs.sh)) must
+treat FlakeHub tarball locks as `Wawona/<node>` + `locked.rev` when `owner`/`repo`
+are absent.
