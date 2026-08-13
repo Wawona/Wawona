@@ -293,18 +293,56 @@ pub fn ensure_xkb_data_root() {
 }
 
 /// The `XkbConfig` used for the seat keyboard on EVERY platform: a full
-/// `evdev/us` keymap (NOT the `MINIMAL_KEYMAP`). [`ensure_xkb_data_root`] is
+/// RMLVO keymap (NOT the `MINIMAL_KEYMAP`). [`ensure_xkb_data_root`] is
 /// invoked first so xkbcommon can find the keymap data. If data is genuinely
 /// unavailable the Smithay `add_keyboard` call returns `Err`, and the caller
 /// falls back to `MINIMAL_KEYMAP` via `KeyboardHandle::set_keymap_from_string`.
+///
+/// Layout defaults to `us`, but honors `XKB_DEFAULT_LAYOUT` /
+/// `XKB_DEFAULT_VARIANT` / `XKB_DEFAULT_OPTIONS` when set before seat init
+/// (Android follow-system via `KeyboardLayouts` → JNI `setenv`, issue #60/#141).
 pub fn wawona_xkb_config() -> xkb_config_reexport::XkbConfig<'static> {
+    use std::sync::OnceLock;
     ensure_xkb_data_root();
+
+    static LAYOUT: OnceLock<String> = OnceLock::new();
+    static VARIANT: OnceLock<String> = OnceLock::new();
+    static OPTIONS: OnceLock<Option<String>> = OnceLock::new();
+
+    let layout = LAYOUT.get_or_init(|| {
+        std::env::var("XKB_DEFAULT_LAYOUT")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "us".to_string())
+    });
+    let variant = VARIANT.get_or_init(|| {
+        std::env::var("XKB_DEFAULT_VARIANT")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default()
+    });
+    let options = OPTIONS.get_or_init(|| {
+        std::env::var("XKB_DEFAULT_OPTIONS")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    });
+
+    if layout != "us" || !variant.is_empty() {
+        tracing::info!(
+            "xkb: seat keymap layout={} variant={} (from XKB_DEFAULT_*)",
+            layout,
+            variant
+        );
+    }
+
     xkb_config_reexport::XkbConfig {
         rules: "evdev",
         model: "pc105",
-        layout: "us",
-        variant: "",
-        options: None,
+        layout: layout.as_str(),
+        variant: variant.as_str(),
+        options: options.clone(),
     }
 }
 

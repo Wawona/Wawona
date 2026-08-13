@@ -24,9 +24,18 @@ object WawonaNative {
     external fun nativePrepareShellEnvironment(filesDir: String)
 
     external fun nativeInit(cacheDir: String)
+    /**
+     * Set `XKB_DEFAULT_LAYOUT` / `XKB_DEFAULT_VARIANT` before seat keyboard
+     * init (follow-system; #60 / #141). Call before [nativeInit].
+     */
+    external fun nativeSetXkbDefaults(layout: String, variant: String)
     external fun nativeIsCompositorReady(): Boolean
     external fun nativeSetSurface(surface: Surface)
-    external fun nativeDestroySurface()
+    /**
+     * Tear down the Vulkan surface. Pass the dying [Surface] so a stale
+     * SessionActivity cannot destroy a newer host task's swapchain (#141).
+     */
+    external fun nativeDestroySurface(surface: Surface?)
     /** Fast resize: recreate swapchain only, no full teardown. */
     external fun nativeResizeSurface(width: Int, height: Int)
     /** Lightweight output sync: update compositor output size without touching the render pipeline. */

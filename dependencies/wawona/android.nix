@@ -297,6 +297,10 @@ in
         echo "ERROR: Missing ModifierAccessoryBar.kt"
         exit 1
       fi
+      if [ ! -f android/app/src/main/java/com/aspauldingcode/wawona/KeyboardLayouts.kt ]; then
+        echo "ERROR: Missing KeyboardLayouts.kt (follow-system XKB; #60/#141)"
+        exit 1
+      fi
     '';
 
     # Fix egl_buffer_handler for Android (create Android-compatible stubs)

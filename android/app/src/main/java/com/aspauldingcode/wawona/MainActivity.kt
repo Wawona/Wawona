@@ -13,7 +13,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.view.InputDevice
 import android.view.inputmethod.InputMethodManager
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -239,7 +238,7 @@ class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
         pendingResize?.let { resizeHandler.removeCallbacks(it) }
         pendingResize = null
         try {
-            WawonaNative.nativeDestroySurface()
+            WawonaNative.nativeDestroySurface(holder.surface)
             surfaceReady = false
         } catch (e: Exception) {
             WLog.e("SURFACE", "Error in surfaceDestroyed: ${e.message}")
@@ -274,32 +273,6 @@ private fun KeyboardUiMode.isPip(): Boolean =
     this == KeyboardUiMode.PIP_FLOATING ||
         this == KeyboardUiMode.PIP_DOCKED_LEFT ||
         this == KeyboardUiMode.PIP_DOCKED_RIGHT
-
-/**
- * True only when a real external/physical keyboard is present.
- * Emulators often report Configuration.KEYBOARD_QWERTY with hardKeyboardHidden=NO
- * even when the user expects soft+accessory input (issue #82).
- */
-private fun hasRealExternalKeyboard(configuration: Configuration): Boolean {
-    var external = false
-    for (id in InputDevice.getDeviceIds()) {
-        val device = InputDevice.getDevice(id) ?: continue
-        if (device.isVirtual) continue
-        val sources = device.sources
-        val isFullKeyboard =
-            (sources and InputDevice.SOURCE_KEYBOARD) == InputDevice.SOURCE_KEYBOARD &&
-                device.keyboardType == InputDevice.KEYBOARD_TYPE_ALPHABETIC
-        // Exclude the built-in/virtual soft-keyboard path; require a non-virtual
-        // alphabetic keyboard that Configuration also considers "shown".
-        if (isFullKeyboard && !device.name.contains("Virtual", ignoreCase = true)) {
-            external = true
-            break
-        }
-    }
-    if (!external) return false
-    return configuration.keyboard == Configuration.KEYBOARD_QWERTY &&
-        configuration.hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_NO
-}
 
 @Composable
 fun WawonaApp(
@@ -527,6 +500,7 @@ fun WawonaApp(
         }
         val activeId = sessionOrchestrator.activeSessionId
         if (activeId != null) {
+            SessionActivityRegistry.finishSession(activeId)
             sessionOrchestrator.markDisconnected(activeId)
         }
         sessionOrchestrator.setActiveSession(null)
@@ -560,7 +534,15 @@ fun WawonaApp(
         val targetView = surfaceViewRef ?: activity?.window?.decorView
         if (imm != null && targetView != null) {
             targetView.requestFocus()
-            imm.showSoftInput(targetView, InputMethodManager.SHOW_IMPLICIT)
+            // SHOW_IMPLICIT often no-ops on SurfaceView; force + insets (#141).
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                activity?.window?.insetsController?.show(android.view.WindowInsets.Type.ime())
+            }
+            @Suppress("DEPRECATION")
+            imm.showSoftInput(targetView, InputMethodManager.SHOW_FORCED)
+            targetView.post {
+                imm.showSoftInput(targetView, 0)
+            }
         }
     }
 
@@ -633,6 +615,9 @@ fun WawonaApp(
         return try {
             WawonaShellRootfs.ensureInstalled(context)
             WawonaNative.nativePrepareShellEnvironment(context.filesDir.absolutePath)
+            val xkb = KeyboardLayouts.resolveSystemLayout(context)
+            WawonaNative.nativeSetXkbDefaults(xkb.layout, xkb.variant)
+            WLog.i("XKB", "follow-system layout=${xkb.layout} variant=${xkb.variant}")
             WawonaNative.nativeInit(cacheDirPath)
             if (!WawonaNative.nativeIsCompositorReady()) {
                 throw IllegalStateException("Wayland compositor did not start")
@@ -853,6 +838,9 @@ fun WawonaApp(
         // Start is the Android multi-window entry point. Always give a machine
         // its own task on Android 7+; the OS chooses fullscreen/split/freeform.
         // The C claim map consumes the reservation exactly once on Created.
+        // Finish any leftover host task first so its surfaceDestroyed cannot
+        // race-destroy the new swapchain (#141).
+        SessionActivityRegistry.finishSession(targetSession)
         val hostId =
             if (SessionActivity.supportsHostTask()) SessionActivity.newHostId() else 0L
         if (hostId != 0L) {
@@ -947,8 +935,8 @@ fun WawonaApp(
                 MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> stopWaypipe()
                 MachineType.VM, MachineType.CONTAINER -> AndroidMobileVmRunner.stop()
             }
+            SessionActivityRegistry.finishSession(session.sessionId)
             sessionOrchestrator.markDisconnected(session.sessionId)
-            SessionActivityRegistry.release(session.sessionId)
             if (sessionOrchestrator.activeSessionId == session.sessionId) {
                 sessionOrchestrator.setActiveSession(null)
                 showMachinesHome = true

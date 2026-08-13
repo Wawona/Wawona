@@ -311,7 +311,11 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeSetSurface(JNIEnv *env,
                                                              jobject surface);
 JNIEXPORT void JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeDestroySurface(JNIEnv *env,
-                                                                 jobject thiz);
+                                                                 jobject thiz,
+                                                                 jobject surface);
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeSetXkbDefaults(
+    JNIEnv *env, jobject thiz, jstring layout, jstring variant);
 JNIEXPORT void JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeResizeSurface(JNIEnv *env,
                                                                 jobject thiz,
@@ -519,6 +523,9 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeImageCopyCaptureFailed(
 VkInstance g_instance = VK_NULL_HANDLE;
 VkPhysicalDevice g_physicalDevice = VK_NULL_HANDLE;
 VkSurfaceKHR g_surface = VK_NULL_HANDLE;
+/* GlobalRef to the Java Surface that owns g_window — used so a stale
+ * SessionActivity surfaceDestroyed cannot tear down a newer host task. */
+static jobject g_surface_jobj = NULL;
 VkDevice g_device = VK_NULL_HANDLE;
 VkQueue g_queue = VK_NULL_HANDLE;
 VkSwapchainKHR g_swapchain = VK_NULL_HANDLE;
@@ -2260,6 +2267,32 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativePrepareShellEnvironment(
  * Initialize the compositor - create Vulkan instance
  * Called from Android Activity.onCreate()
  */
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeSetXkbDefaults(
+    JNIEnv *env, jobject thiz, jstring layout, jstring variant) {
+  (void)thiz;
+  /* Must run before seat keyboard init (wawona_xkb_config OnceLock). */
+  if (layout) {
+    const char *utf = (*env)->GetStringUTFChars(env, layout, NULL);
+    if (utf && utf[0] != '\0') {
+      setenv("XKB_DEFAULT_LAYOUT", utf, 1);
+      LOGI("XKB_DEFAULT_LAYOUT=%s", utf);
+    }
+    if (utf)
+      (*env)->ReleaseStringUTFChars(env, layout, utf);
+  }
+  if (variant) {
+    const char *utf = (*env)->GetStringUTFChars(env, variant, NULL);
+    if (utf) {
+      setenv("XKB_DEFAULT_VARIANT", utf, 1);
+      LOGI("XKB_DEFAULT_VARIANT=%s", utf);
+      (*env)->ReleaseStringUTFChars(env, variant, utf);
+    }
+  } else {
+    setenv("XKB_DEFAULT_VARIANT", "", 1);
+  }
+}
+
 JNIEXPORT void JNICALL Java_com_aspauldingcode_wawona_WawonaNative_nativeInit(
     JNIEnv *env, jobject thiz, jstring cacheDir) {
   (void)thiz;
@@ -2425,6 +2458,10 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeSetSurface(JNIEnv *env,
     ANativeWindow_release(g_window);
     g_window = NULL;
   }
+  if (g_surface_jobj) {
+    (*env)->DeleteGlobalRef(env, g_surface_jobj);
+    g_surface_jobj = NULL;
+  }
 
   ANativeWindow *win = ANativeWindow_fromSurface(env, surface);
   if (!win) {
@@ -2433,6 +2470,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeSetSurface(JNIEnv *env,
     return;
   }
   g_window = win;
+  g_surface_jobj = (*env)->NewGlobalRef(env, surface);
   LOGI("Received ANativeWindow %p", (void *)win);
 
   // Skip safe area update for now - thiz is WawonaNative object, not Activity
@@ -2443,12 +2481,23 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeSetSurface(JNIEnv *env,
   g_safeAreaRight = 0;
   g_safeAreaBottom = 0;
 
+#define WWN_CLEAR_ANDROID_WINDOW()                                             \
+  do {                                                                         \
+    if (g_window) {                                                            \
+      ANativeWindow_release(g_window);                                         \
+      g_window = NULL;                                                         \
+    }                                                                          \
+    if (g_surface_jobj) {                                                      \
+      (*env)->DeleteGlobalRef(env, g_surface_jobj);                            \
+      g_surface_jobj = NULL;                                                   \
+    }                                                                          \
+  } while (0)
+
   if (g_instance == VK_NULL_HANDLE) {
     LOGI("Creating Vulkan instance...");
     if (create_instance() != VK_SUCCESS) {
       LOGE("Failed to create Vulkan instance");
-      ANativeWindow_release(win);
-      g_window = NULL;
+      WWN_CLEAR_ANDROID_WINDOW();
       pthread_mutex_unlock(&g_lock);
       return;
     }
@@ -2464,8 +2513,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeSetSurface(JNIEnv *env,
   VkResult res = vkCreateAndroidSurfaceKHR(g_instance, &sci, NULL, &g_surface);
   if (res != VK_SUCCESS) {
     LOGE("vkCreateAndroidSurfaceKHR failed: %d", res);
-    ANativeWindow_release(win);
-    g_window = NULL;
+    WWN_CLEAR_ANDROID_WINDOW();
     pthread_mutex_unlock(&g_lock);
     return;
   }
@@ -2476,9 +2524,8 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeSetSurface(JNIEnv *env,
   if (pd == VK_NULL_HANDLE) {
     LOGE("No Vulkan devices found");
     vkDestroySurfaceKHR(g_instance, g_surface, NULL);
-    ANativeWindow_release(win);
-    g_window = NULL;
     g_surface = VK_NULL_HANDLE;
+    WWN_CLEAR_ANDROID_WINDOW();
     pthread_mutex_unlock(&g_lock);
     return;
   }
@@ -2489,9 +2536,8 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeSetSurface(JNIEnv *env,
     if (create_device(pd) != 0) {
       LOGE("Failed to create device");
       vkDestroySurfaceKHR(g_instance, g_surface, NULL);
-      ANativeWindow_release(win);
-      g_window = NULL;
       g_surface = VK_NULL_HANDLE;
+      WWN_CLEAR_ANDROID_WINDOW();
       pthread_mutex_unlock(&g_lock);
       return;
     }
@@ -2506,8 +2552,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeSetSurface(JNIEnv *env,
     android_teardown_swapchain_locked();
     vkDestroySurfaceKHR(g_instance, g_surface, NULL);
     g_surface = VK_NULL_HANDLE;
-    ANativeWindow_release(win);
-    g_window = NULL;
+    WWN_CLEAR_ANDROID_WINDOW();
     pthread_mutex_unlock(&g_lock);
     return;
   }
@@ -2525,9 +2570,10 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeSetSurface(JNIEnv *env,
     vkDestroySwapchainKHR(g_device, g_swapchain, NULL);
     renderer_android_destroy_all();
     vkDestroyDevice(g_device, NULL);
+    g_device = VK_NULL_HANDLE;
     vkDestroySurfaceKHR(g_instance, g_surface, NULL);
-    ANativeWindow_release(win);
-    g_window = NULL;
+    g_surface = VK_NULL_HANDLE;
+    WWN_CLEAR_ANDROID_WINDOW();
     pthread_mutex_unlock(&g_lock);
     return;
   }
@@ -2543,10 +2589,21 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeSetSurface(JNIEnv *env,
  */
 JNIEXPORT void JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeDestroySurface(JNIEnv *env,
-                                                                 jobject thiz) {
-  (void)env;
+                                                                 jobject thiz,
+                                                                 jobject surface) {
   (void)thiz;
   pthread_mutex_lock(&g_lock);
+
+  /* SessionActivity teardown races: an old host task's surfaceDestroyed can
+   * land after a new SessionActivity already called nativeSetSurface. Only
+   * tear down when the dying Surface is still the active Java Surface
+   * (issue #141 — blank/unresponsive window after first run). */
+  if (surface && g_surface_jobj &&
+      !(*env)->IsSameObject(env, surface, g_surface_jobj)) {
+    LOGI("Destroying surface: ignoring stale Surface (active host still live)");
+    pthread_mutex_unlock(&g_lock);
+    return;
+  }
 
   LOGI("Destroying surface");
   android_stop_render_thread_locked();
@@ -2580,6 +2637,10 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeDestroySurface(JNIEnv *env,
   if (g_window) {
     ANativeWindow_release(g_window);
     g_window = NULL;
+  }
+  if (g_surface_jobj) {
+    (*env)->DeleteGlobalRef(env, g_surface_jobj);
+    g_surface_jobj = NULL;
   }
 
   LOGI("Surface destroyed (compositor core preserved)");
