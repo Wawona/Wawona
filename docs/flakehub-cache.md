@@ -89,6 +89,7 @@ FlakeHub does **not** reduce Nix **eval** / crate2nix IFD cost, and it does
 **not** ship Apple platform SDKs. Runner speedups for those:
 
 - Pin host Xcode ([`select-xcode.sh`](../.github/scripts/select-xcode.sh); see [`ci.md`](./ci.md))
+- Warm host simulator SDKs before Apple `xcodebuild` ([`warm-ios-simulator-sdk.sh`](../.github/scripts/warm-ios-simulator-sdk.sh) on ios-sim, apple-family, and frontend-syntax)
 - Path-filter Darwin Gate: packages cells on docs-only tips
 - Hoist `generatedCargoNix` per `workspace-src-*` (ios / macos / watchos)
 - `nixConfig` / CI `max-jobs` + `cores`
@@ -101,5 +102,7 @@ false-positive.
 
 Tracking issue [#68](https://github.com/Wawona/Wawona/issues/68): FlakeHub Cache
 in; Magic Nix Cache retired; curated matrix landed
-([`ci-package-matrix.json`](../.github/ci-package-matrix.json)); remaining wins
-are Xcode pin, path filters, IFD hoist, and runner cores — **not** apple-sdks.
+([`ci-package-matrix.json`](../.github/ci-package-matrix.json)); Xcode pin and
+simulator-SDK warm scripts are in. Remaining wins are FlakeHub hit rate, path
+filters, IFD hoist, and runner cores — **not** `apple-sdks.nix` / packaged
+Apple frameworks as a product sysroot.

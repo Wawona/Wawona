@@ -160,7 +160,17 @@ Runners use [`.github/scripts/select-xcode.sh`](../.github/scripts/select-xcode.
 
 **Runner OS:** all macOS jobs (Apple products, Android APK/AAB, Android Gradle gate, macOS e2e) run on **`macos-26`**. Android needs a macOS host (Linux fails `zsh-android` configure) but not a specific macOS version — Nix supplies the NDK — so it is aligned to `macos-26` rather than pinned to `macos-15`.
 
-FlakeHub caches **Nix store paths** only. It does **not** ship Apple platform SDKs (`iphoneos` / simulator). Keep `warm-ios-simulator-sdk.sh` + host Xcode.
+FlakeHub caches **Nix store paths** only. It does **not** ship Apple platform SDKs (`iphoneos` / `iphonesimulator` / `appletvsimulator` / `watchsimulator` / `xrsimulator`). Keep `warm-ios-simulator-sdk.sh` + host Xcode.
+
+`warm-ios-simulator-sdk.sh` runs on every Apple `xcodebuild` lane that can hit `-downloadPlatform`:
+
+| Lane | Invocation |
+|--|--|
+| `product-build` ios-sim / `device-e2e` (in-job build) | `warm-ios-simulator-sdk.sh ios` |
+| `product-build` apple-family | `warm-ios-simulator-sdk.sh <target>` (`ipados` / `tvos` / `watchos` / `visionos`) |
+| Gate: packages `frontend-syntax-check` | `warm-ios-simulator-sdk.sh all` |
+
+When the requested simulator SDK is already on the runner, the script sets `WAWONA_SKIP_IOS_SIMULATOR_PLATFORM_DOWNLOAD=1`. That skip is also required for **non-iOS** sim products: `wwn-toolchain` `build-app.nix` currently runs `-downloadPlatform iOS` for any SDK whose name ends in `simulator` (the watchOS flake noted in `release.yml`). Wiring is guarded by `.github/scripts/verify-apple-sdk-warm.py`.
 
 ## CI anti-patterns (do not reintroduce)
 

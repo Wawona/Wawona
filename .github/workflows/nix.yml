@@ -198,6 +198,8 @@ jobs:
         run: python3 ./.github/scripts/verify-waypipe-remote-sway-env.py
       - name: Verify nixpkgs lineage (issue #47 guard)
         run: python3 ./.github/scripts/verify-nixpkgs-lineage.py
+      - name: Verify Apple SDK warm + Xcode pin wiring
+        run: python3 ./.github/scripts/verify-apple-sdk-warm.py
       - name: Upload Wayland ownership inventory artifact
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
@@ -382,6 +384,9 @@ jobs:
 
       - name: Select pinned Xcode
         run: ./.github/scripts/select-xcode.sh
+
+      - name: Ensure Apple simulator SDKs
+        run: ./.github/scripts/warm-ios-simulator-sdk.sh all
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v22

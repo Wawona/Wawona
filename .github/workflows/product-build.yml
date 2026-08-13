@@ -68,7 +68,7 @@ jobs:
 
       # SDK check is cheap; set skip before Nix so build-app.nix never hits CDN.
       - name: Ensure iOS Simulator SDK (skip platform download when present)
-        run: ./.github/scripts/warm-ios-simulator-sdk.sh
+        run: ./.github/scripts/warm-ios-simulator-sdk.sh ios
 
       - uses: DeterminateSystems/nix-installer-action@v22
         with:
@@ -144,6 +144,11 @@ jobs:
 
       - name: Select Xcode
         run: ./.github/scripts/select-xcode.sh
+
+      # Same skip-flag as ios-sim: build-app.nix still runs -downloadPlatform iOS
+      # for any *simulator SDK (watch/tv/vision included). Warm the cell's SDK.
+      - name: Ensure Apple simulator SDK (skip platform download when present)
+        run: ./.github/scripts/warm-ios-simulator-sdk.sh ${{ matrix.target }}
 
       - uses: DeterminateSystems/nix-installer-action@v22
         with:

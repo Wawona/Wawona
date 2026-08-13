@@ -60,6 +60,16 @@ Operational runbook: [`flakehub-cache.md`](./flakehub-cache.md).
 - **Host Xcode pin.** [`.github/scripts/select-xcode.sh`](../.github/scripts/select-xcode.sh)
   pins `Xcode_26.6.0.app` (not newest). Bump deliberately — see [`ci.md`](./ci.md).
   Do **not** chase `apple-sdks.nix` / FlakeHub Apple frameworks for product SDKs.
+  nixpkgs `apple-sdk_15` (ANGLE Darwin) and `apple-sdk_26` (FFmpeg last-resort)
+  are the only packaged-framework uses; they are macOS-lib recipes, not product
+  `SDKROOT`.
+- **Host simulator SDK warm.** [`.github/scripts/warm-ios-simulator-sdk.sh`](../.github/scripts/warm-ios-simulator-sdk.sh)
+  is the Apple platform-SDK cache (`ios` / `ipados` / `tvos` / `watchos` /
+  `visionos` / `all`). Product ios-sim, apple-family, device-e2e in-job builds,
+  and Gate: packages frontend-syntax all run it before `xcodebuild`.
+- **Inner vs outer loop.** Fast iteration is `nix develop` / backend static libs
+  (FlakeHub-friendly). Outer `xcodegen` + `xcodebuild` / `.#wawona-ios` only when
+  app packaging inputs change — see [`compilation.md`](./compilation.md).
 - **crate2nix IFD hoist.** One `generatedCargoNix` per `workspace-src-*`
   (ios / macos / watchos); backends that share a workspace pass `cargoNixDrv`.
 - **Runner cores.** Flake `nixConfig.max-jobs/cores` + CI installer `extra-conf`
