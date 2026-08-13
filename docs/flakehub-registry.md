@@ -48,9 +48,9 @@ Each GitHub-hosted flake runs [`.github/workflows/flakehub-publish.yml`](../.git
   (`wwn-toolchain`, `wwn-iland`, `wwn-kmscube`, `wwn-weston`, `wwn-waypipe`,
   `wwn-phoon-rs`, `wwn-neovim`, `wwn-niri`, `Wawona`); `main` otherwise.
 - **Tags (Wawona):** `vYY.M.D` publishes SemVer `YY.M.D` (`rolling: false`).
-  Existing tags are backfilled via **workflow_dispatch** `tag=` (they predate
-  this workflow, so a tag push did not run it). `wwn-*` stay rolling-only
-  until they grow CalVer tags.
+  Tags that predate this workflow are backfilled with **workflow_dispatch**
+  `tag=` (the workflow file comes from `development`; checkout is the tagged
+  tree). `wwn-*` stay rolling-only until they grow CalVer tags.
 - **Visibility:** `public`.
 - **`include-output-paths`:** `false`. Inspecting every output on
   `ubuntu-latest` fails without the Android SDK / on Darwin-only attrs.
@@ -64,9 +64,11 @@ not a git branch name: a tip that never hits this workflow will not appear as
 
 `flakehub-push` also runs `nix flake show --all-systems`. Nixpkgs 26.11 throws
 on `x86_64-darwin`; Wawona / anowaW / phoon-rs omit Intel Darwin from
-`packages`/`apps`. Wawona’s publish job runs on **macos-26** with relaxed
-sandbox + FlakeHub Cache so Android SDK IFD can succeed and the tarball is
-the real flake (not an empty stub).
+`packages`/`apps` on **current** `development`. Frozen CalVer tags still list
+Intel Darwin, so the CalVer step sets `my-flake-is-too-big` (skip
+`--all-systems` / inspect). Rolling publishes keep the full show. Wawona’s
+job runs on **macos-26** with relaxed sandbox + FlakeHub Cache so Android SDK
+IFD can succeed and the tarball is the real flake (not an empty stub).
 
 ## Verify
 

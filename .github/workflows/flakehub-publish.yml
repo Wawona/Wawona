@@ -46,6 +46,10 @@ jobs:
           visibility: public
           include-output-paths: false
 
+      # Historical vYY.M.D commits still list x86_64-darwin. flakehub-push
+      # otherwise runs `nix flake show --all-systems`, and Nixpkgs 26.11
+      # throws. This flag skips --all-systems (and output inspect); the
+      # uploaded tarball is still the authentic tagged tree.
       - name: Publish CalVer tag
         if: github.ref_type == 'tag' || (github.event.inputs.tag != '' && github.event.inputs.tag != null)
         uses: DeterminateSystems/flakehub-push@main
@@ -55,3 +59,4 @@ jobs:
           tag: ${{ github.event.inputs.tag || github.ref_name }}
           visibility: public
           include-output-paths: false
+          my-flake-is-too-big: true
