@@ -3845,6 +3845,7 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
   setenv("HOME", home, 1);
   setenv("ZDOTDIR", home, 1);
   setenv("USER", "wawona", 1);
+  setenv("LOGNAME", "wawona", 1);
   setenv("TERM", "xterm-256color", 1);
   setenv("PROMPT", "%F{cyan}%~%f %# ", 1);
   setenv("PS1", "%F{cyan}%~%f %# ", 1);
@@ -3954,6 +3955,24 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
 
       wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libfastfetch_bin.so",
                                      "fastfetch");
+      /* uutils multicall (safe subset): ls/mkdir/whoami/… — must precede
+       * /system/bin on PATH so we do not silently use toybox (issue: whoami). */
+      {
+        static const char *const cu_utils[] = {
+            "coreutils", "ls",       "cat",      "cp",      "mv",     "rm",
+            "mkdir",     "rmdir",    "ln",       "touch",   "echo",   "pwd",
+            "head",      "tail",     "wc",       "sort",    "cut",    "tr",
+            "seq",       "basename", "dirname",  "stat",    "du",     "df",
+            "date",      "env",      "printenv", "uname",   "whoami", "yes",
+            "tee",       "nl",       "tac",      "fold",    "expand", "unexpand",
+            "truncate",
+        };
+        size_t ci;
+        for (ci = 0; ci < sizeof(cu_utils) / sizeof(cu_utils[0]); ci++) {
+          wwn_android_install_shell_tool(native_lib_dir, usr_bin,
+                                         "libcoreutils_bin.so", cu_utils[ci]);
+        }
+      }
       /* phoon (wwn-phoon-rs): clean-room Rust moon-phase utility. */
       wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libphoon_bin.so",
                                      "phoon");

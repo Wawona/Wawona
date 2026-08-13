@@ -25,6 +25,8 @@
   androidConfigNix,
   westonAndroidSignalPolyfill ? null,
   releaseArtifact ? "debug",
+  # uutils multicall PIE (optional until wired from flake).
+  coreutilsAndroid ? null,
   ...
 }:
 
@@ -125,7 +127,7 @@ let
   androidQuadFrag = ../../src/platform/android/rendering/shaders/android_quad.frag;
 
   shellTools = import ./android-shell-tools.nix {
-    inherit lib zshAndroid fastfetchAndroid phoonAndroid neovimAndroid waypipeAndroid niriAndroid fuzzelAndroid footAndroid applicationsCatalog;
+    inherit lib zshAndroid fastfetchAndroid coreutilsAndroid phoonAndroid neovimAndroid waypipeAndroid niriAndroid fuzzelAndroid footAndroid applicationsCatalog;
   };
   westonData = import ./android-weston-data.nix { inherit lib pkgs; };
   bundledClients = import ./android-bundled-clients.nix {

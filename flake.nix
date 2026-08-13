@@ -412,6 +412,13 @@
         coreutils-patched-android = androidPkgs.callPackage coreutilsPatchedSrcNix {
           inherit coreutils-src; patchScript = coreutilsPatchSourceSh; platform = "android";
         };
+        # Android PATH multicall (libcoreutils_bin.so); same safe subset as
+        # in-process / macOS multicall. Requires rust-overlay on androidPkgs.
+        coreutils-multicall-android = androidPkgs.callPackage
+          "${wwn-coreutils}/dependencies/libs/coreutils/multicall-android.nix" {
+            coreutils-src = coreutils-patched-android;
+            androidToolchain = toolchainsAndroid.androidToolchain;
+          };
 
         workspace-src-android = androidPkgs.callPackage ./dependencies/wawona/workspace-src.nix {
           wawonaSrc = src; waypipeSrc = waypipe-patched-android; coreutilsSrc = coreutils-patched-android; platform = "android"; inherit wawonaVersion;
@@ -443,6 +450,7 @@
           srcFiltered = src;
           androidToolchain = toolchainsAndroid.androidToolchain;
           rustBackend = backend-android;
+          coreutilsAndroid = coreutils-multicall-android;
           targetPkgs = pkgsAndroidCross;
           waypipe = toolchainsAndroid.buildForAndroid "waypipe" { };
           inherit androidToolchainNix westonSimpleShmPatchedSrcNix westonAndroidSignalPolyfill
@@ -685,12 +693,14 @@
           srcFiltered = src;
             androidToolchain = toolchainsAndroid.androidToolchain;
             rustBackend = backend-android;
+            coreutilsAndroid = coreutils-multicall-android;
             targetPkgs = pkgsAndroidCross;
             waypipe = toolchainsAndroid.buildForAndroid "waypipe" { };
             inherit androidToolchainNix westonSimpleShmPatchedSrcNix westonAndroidSignalPolyfill
             androidConfigNix westonToytoolkitLdflagsNix westonCompositorLdflagsNix ilandGlAndroidLdflagsNix;
             releaseArtifact = "release-aab";
           };
+          coreutils-multicall-android = coreutils-multicall-android;
           angle-android = toolchainsAndroid.buildForAndroid "angle" { };
           weston-android = toolchainsAndroid.buildForAndroid "weston" { };
           weston-compositor-android = toolchainsAndroid.buildForAndroid "weston-compositor" { };

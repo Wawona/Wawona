@@ -10,6 +10,7 @@
   lib,
   zshAndroid ? null,
   fastfetchAndroid ? null,
+  coreutilsAndroid ? null,
   phoonAndroid ? null,
   neovimAndroid ? null,
   waypipeAndroid ? null,
@@ -40,6 +41,17 @@
       chmod +x "$JNI_LIB_DIR/libfastfetch_bin.so"
     else
       echo "WARNING: Missing Android fastfetch binary at ${fastfetchAndroid}/bin/fastfetch"
+    fi
+    ''}
+
+    ${lib.optionalString (coreutilsAndroid != null) ''
+    # uutils multicall (safe subset). android_jni.c symlinks usr/bin/ls, whoami, …
+    # → libcoreutils_bin.so so PATH does not fall through to toybox.
+    if [ -f "${coreutilsAndroid}/bin/coreutils" ]; then
+      cp -L "${coreutilsAndroid}/bin/coreutils" "$JNI_LIB_DIR/libcoreutils_bin.so"
+      chmod +x "$JNI_LIB_DIR/libcoreutils_bin.so"
+    else
+      echo "WARNING: Missing Android coreutils multicall at ${coreutilsAndroid}/bin/coreutils"
     fi
     ''}
 
