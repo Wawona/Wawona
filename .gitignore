@@ -75,6 +75,10 @@ android-dependencies/
 # Tooling cache (may be created root-owned by sandbox/CI; keep out of cargo/git scans)
 .cache/
 
+# Staged only in FlakeHub publish CI so flake show --all-systems can skip
+# Android SDK IFD. Never commit; consumers must see full flake outputs.
+.flakehub-publish
+
 # Nix build artifacts
 result
 result-*

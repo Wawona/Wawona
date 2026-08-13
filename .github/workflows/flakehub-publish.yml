@@ -20,6 +20,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: DeterminateSystems/determinate-nix-action@v3
+      - name: Lite flake surface for flakehub-push
+        run: |
+          # gitignored; staged so the dirty git flake includes it. The
+          # published tarball is the commit (without this file).
+          touch .flakehub-publish
+          git add -f .flakehub-publish
       - uses: DeterminateSystems/flakehub-push@main
         with:
           name: Wawona/Wawona

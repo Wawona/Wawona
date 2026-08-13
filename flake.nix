@@ -119,7 +119,15 @@
     # packages/apps surface; aarch64-darwin remains the Darwin target.
     darwinSystems = [ "aarch64-darwin" ];
     systemsList = linuxSystems ++ darwinSystems;
-
+    # CI flakehub-publish.yml stages this gitignored file so `nix flake show
+    # --all-systems` can succeed without Android SDK IFD. The published
+    # tarball does not include it, so consumers still get full outputs.
+    flakehubPublishLite = builtins.pathExists ./.flakehub-publish;
+  in
+  if flakehubPublishLite then {
+    packages = nixpkgs.lib.genAttrs systemsList (_: { });
+  } else
+  let
     pkgsFor = system:
       let
         isDarwin = (system == "x86_64-darwin" || system == "aarch64-darwin");
@@ -668,7 +676,7 @@
           // (pkgs.lib.optionalAttrs (isLinuxHost && builtins.pathExists ./dependencies/tests/wlcs.nix) {
             wawona-wlcs-run = pkgs.callPackage ./dependencies/tests/wlcs.nix { };
           })
-          // (pkgs.lib.optionalAttrs (builtins.tryEval (wawonaAndroidPkg.drvPath)).success {
+          // (pkgs.lib.optionalAttrs (isLinuxHost || androidSDK != null) {
           wawona-android = wawonaAndroidPkg;
           wawona-android-backend = backend-android;
           # Exposed so the CI reproducibility gate (repro-rebuild) can --rebuild
