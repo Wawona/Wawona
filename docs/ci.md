@@ -3,6 +3,7 @@
 Branch policy lives in [`.cursor/rules/wawona-branch-workflow.mdc`](../.cursor/rules/wawona-branch-workflow.mdc).
 Green-light gate *layers* (L0–L4) live in [`2026-greenlight-gates.md`](./2026-greenlight-gates.md).
 Binary cache: [`flakehub-cache.md`](./flakehub-cache.md).
+Flake registry (rolling public releases): [`flakehub-registry.md`](./flakehub-registry.md).
 Build dedupe: [`2026-build-ci-optimization.md`](./2026-build-ci-optimization.md).
 Release secrets (tier 0): [`maintainers/secrets.md`](./maintainers/secrets.md).
 
@@ -36,7 +37,7 @@ Workflow display names use a role prefix (`Gate` / `Build` / `Watch` / `Ship`). 
 | **Build: GUI smoke** (`device-e2e.yml`) | via Gate: products (`products_ready`) | via gate | Smoke + fuzzel (fuzzel skipped on `pull_request` only); callable only |
 | **Watch: graphics nightly** (`nightly-full-matrix.yml`) | schedule / dispatch | — | Graphics + protocol drift + Weston/XWayland capability (does **not** re-run Gate: products) |
 | **Watch: idle memory** (`leak-idle-gate.yml`) | via Gate: products (`products_ready`) + schedule + dispatch | via Gate: products | Start→60s footprint/PSS plateau on product iOS/Android/macOS; fails with `LEAK_GATE_FAIL targets=…` ([docs/testing/leak-idle-gate.md](./testing/leak-idle-gate.md)). Reuses Gate: products `product-*` artifacts (no duplicate product-build). **Not** a promote blocker (`continue-on-error` on idle-memory jobs inside the reusable workflow; invalid on `uses:` callers) |
-| **Watch: bundled clients** (`bundled-clients-matrix.yml`) | schedule + dispatch | — | Every `kBundledClients` id × runnable platforms; `MATRIX_FAIL cells=platform/client,…` ([docs/testing/bundled-clients-matrix-gate.md](./testing/bundled-clients-matrix-gate.md)). **Not** a promote blocker yet |
+| **FlakeHub publish** (`flakehub-publish.yml`) | push (`development`) + tags `v*` + dispatch | — | Public rolling registry releases ([`flakehub-registry.md`](./flakehub-registry.md)); not a promote gate |
 | **Ship: beta (stores)** (`release-beta.yml`) | — | push + tags `v*` | Fastlane stores (match+gym). **Does not build AppImages** — see Ship: beta AppImages below |
 | **Ship: beta AppImages** (`ship-beta-appimage.yml`) | — | after a green master **Gate: products** (`workflow_run`) | Re-publishes that run's same-SHA `product-appimage-*` as 30-day `wawona-beta-appimage-*` via cross-run `download-artifact` — **no rebuild, no fallback**. Deletes the old master-push double AppImage build (Gate: products + Ship: beta). Keyed on the Gate run's `head_sha` so it never shares release-beta's concurrency group |
 | **Ship: GitHub assets** (`release.yml`) | — | tags `v*` (+ `workflow_dispatch`) | GitHub Release: DMG/APK/AppImage from product-build (`macos-app` / `android-apk` / `appimage` only; tip_key `ship-assets-<tag>`); IPA via Fastlane `ios github_ipa` (match+gym, same as Ship: beta). macOS DMG is **Developer ID signed + notarized** |
@@ -124,6 +125,9 @@ Every Nix-installing job must:
 1. `permissions.id-token: write`
 2. `DeterminateSystems/nix-installer-action` with `determinate: true`
 3. `DeterminateSystems/flakehub-cache-action@v3`
+
+Registry publishes are a **separate** workflow (`flakehub-publish.yml`); see
+[`flakehub-registry.md`](./flakehub-registry.md).
 
 ## Why the package matrix is curated
 

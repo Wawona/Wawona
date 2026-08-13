@@ -39,72 +39,72 @@
     # and the patched application ports (wwn-*) as flake inputs. nixpkgs and
     # wwn-toolchain are pinned uniformly so zsh's pkgs.zsh.src and weston's
     # source hashes resolve against one nixpkgs.
-    wwn-toolchain.url = "github:Wawona/wwn-toolchain/development";
+    wwn-toolchain.url = "https://flakehub.com/f/Wawona/wwn-toolchain/*";
     wwn-toolchain.inputs.nixpkgs.follows = "nixpkgs";
     wwn-toolchain.inputs.rust-overlay.follows = "rust-overlay";
-    wwn-iland.url = "github:Wawona/wwn-iland/development";
+    wwn-iland.url = "https://flakehub.com/f/Wawona/wwn-iland/*";
     wwn-iland.inputs.nixpkgs.follows = "nixpkgs";
     wwn-iland.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    wwn-kmscube.url = "github:Wawona/wwn-kmscube/development";
+    wwn-kmscube.url = "https://flakehub.com/f/Wawona/wwn-kmscube/*";
     wwn-kmscube.inputs.nixpkgs.follows = "nixpkgs";
     wwn-kmscube.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-kmscube.inputs.wwn-iland.follows = "wwn-iland";
-    wwn-weston.url = "github:Wawona/wwn-weston/development";
+    wwn-weston.url = "https://flakehub.com/f/Wawona/wwn-weston/*";
     wwn-weston.inputs.nixpkgs.follows = "nixpkgs";
     wwn-weston.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-weston.inputs.wwn-iland.follows = "wwn-iland";
     wwn-weston.inputs.wwn-kmscube.follows = "wwn-kmscube";
-    wwn-zsh.url = "github:Wawona/wwn-zsh";
+    wwn-zsh.url = "https://flakehub.com/f/Wawona/wwn-zsh/*";
     wwn-zsh.inputs.nixpkgs.follows = "nixpkgs";
     wwn-zsh.inputs.wwn-toolchain.follows = "wwn-toolchain";
     # SSH stack split out of wwn-toolchain: chooses the App-Store/Play
     # compliant backend per platform (libssh2 CLI on Apple mobile — never
     # OpenSSH; OpenSSH portable on Android; regular OpenSSH on macOS/Linux)
     # + sshpass.
-    wwn-ssh.url = "github:Wawona/wwn-ssh";
+    wwn-ssh.url = "https://flakehub.com/f/Wawona/wwn-ssh/*";
     wwn-ssh.inputs.nixpkgs.follows = "nixpkgs";
     wwn-ssh.inputs.rust-overlay.follows = "rust-overlay";
     wwn-ssh.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    wwn-waypipe.url = "github:Wawona/wwn-waypipe/development";
+    wwn-waypipe.url = "https://flakehub.com/f/Wawona/wwn-waypipe/*";
     wwn-waypipe.inputs.nixpkgs.follows = "nixpkgs";
     wwn-waypipe.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-waypipe.inputs.wwn-ssh.follows = "wwn-ssh";
-    wwn-anowaW.url = "github:Wawona/wwn-anowaW";
+    wwn-anowaW.url = "https://flakehub.com/f/Wawona/wwn-anowaW/*";
     wwn-anowaW.inputs.nixpkgs.follows = "nixpkgs";
     wwn-anowaW.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-anowaW.inputs.rust-overlay.follows = "rust-overlay";
-    wwn-coreutils.url = "github:Wawona/wwn-coreutils";
+    wwn-coreutils.url = "https://flakehub.com/f/Wawona/wwn-coreutils/*";
     wwn-coreutils.inputs.nixpkgs.follows = "nixpkgs";
     wwn-coreutils.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    wwn-foot.url = "github:Wawona/wwn-foot";
+    wwn-foot.url = "https://flakehub.com/f/Wawona/wwn-foot/*";
     wwn-foot.inputs.nixpkgs.follows = "nixpkgs";
     wwn-foot.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    wwn-fastfetch.url = "github:Wawona/wwn-fastfetch";
+    wwn-fastfetch.url = "https://flakehub.com/f/Wawona/wwn-fastfetch/*";
     wwn-fastfetch.inputs.nixpkgs.follows = "nixpkgs";
     wwn-fastfetch.inputs.wwn-toolchain.follows = "wwn-toolchain";
     # phoon (clean-room Rust moon-phase utility), in-process shell tool.
-    wwn-phoon-rs.url = "github:Wawona/wwn-phoon-rs/development";
+    wwn-phoon-rs.url = "https://flakehub.com/f/Wawona/wwn-phoon-rs/*";
     wwn-phoon-rs.inputs.nixpkgs.follows = "nixpkgs";
     wwn-phoon-rs.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-phoon-rs.inputs.rust-overlay.follows = "rust-overlay";
-    wwn-neovim.url = "github:Wawona/wwn-neovim/development";
+    wwn-neovim.url = "https://flakehub.com/f/Wawona/wwn-neovim/*";
     wwn-neovim.inputs.nixpkgs.follows = "nixpkgs";
     wwn-neovim.inputs.wwn-toolchain.follows = "wwn-toolchain";
     # niri (scrollable-tiling compositor), Phase-29 port #1: runs nested as a
     # Wayland client of the Wawona compositor on every target.
-    wwn-niri.url = "github:Wawona/wwn-niri/development";
+    wwn-niri.url = "https://flakehub.com/f/Wawona/wwn-niri/*";
     wwn-niri.inputs.nixpkgs.follows = "nixpkgs";
     wwn-niri.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-niri.inputs.rust-overlay.follows = "rust-overlay";
     # VM + container substrate. wwn-containers depends on wwn-vms, so pin both to
     # Wawona's single nixpkgs/toolchain and make containers follow this same
     # wwn-vms.
-    wwn-vms.url = "github:Wawona/wwn-vms";
+    wwn-vms.url = "https://flakehub.com/f/Wawona/wwn-vms/*";
     wwn-vms.inputs.nixpkgs.follows = "nixpkgs";
     wwn-vms.inputs.rust-overlay.follows = "rust-overlay";
     wwn-vms.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-vms.inputs.microvm.follows = "microvm";
-    wwn-containers.url = "github:Wawona/wwn-containers";
+    wwn-containers.url = "https://flakehub.com/f/Wawona/wwn-containers/*";
     wwn-containers.inputs.nixpkgs.follows = "nixpkgs";
     wwn-containers.inputs.rust-overlay.follows = "rust-overlay";
     wwn-containers.inputs.wwn-toolchain.follows = "wwn-toolchain";

@@ -73,6 +73,9 @@ flowchart BT
 - Flake-input edges are **already acyclic** L0→L4 — no inversions (verified:
   toolchain has no wwn-* inputs; iland → toolchain only; weston → toolchain +
   iland + kmscube; waypipe/anowaW/vms → toolchain; Wawona → all).
+- Org-internal URLs are FlakeHub rolling
+  (`https://flakehub.com/f/Wawona/<repo>/*`); `follows` still enforce the DAG.
+  See [`flakehub-registry.md`](./flakehub-registry.md).
 - `angle` and `swiftshader` recipes live in `wwn-iland/dependencies/libs/` and
   are exported by the L1 `registryFragment`. Their old L0 recipes are removed;
   consumers must merge L1 before requesting either key.
