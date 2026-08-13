@@ -76,6 +76,8 @@ jobs:
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
+            max-jobs = auto
+            cores = 0
       - uses: DeterminateSystems/flakehub-cache-action@v3
 
       - name: Build wawona-ios
@@ -156,6 +158,8 @@ jobs:
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
+            max-jobs = auto
+            cores = 0
       - uses: DeterminateSystems/flakehub-cache-action@v3
 
       - name: Build ${{ matrix.label }} simulator app
@@ -206,6 +210,8 @@ jobs:
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
+            max-jobs = auto
+            cores = 0
       - uses: DeterminateSystems/flakehub-cache-action@v3
 
       - name: Build wawona-android
@@ -262,6 +268,8 @@ jobs:
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
+            max-jobs = auto
+            cores = 0
       - uses: DeterminateSystems/flakehub-cache-action@v3
 
       - name: Build wawona-macos
@@ -377,6 +385,8 @@ jobs:
             build-dir = /nix/build
             sandbox = relaxed
             allow-import-from-derivation = true
+            max-jobs = auto
+            cores = 0
             trusted-users = runner root
       - uses: DeterminateSystems/flakehub-cache-action@v3
 

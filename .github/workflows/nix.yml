@@ -416,10 +416,14 @@ jobs:
             # Simulator destinations + unsigned: device SDKs require a
             # DEVELOPMENT_TEAM even for frontend syntax checks.
             set +e
-            xcodebuild clean build \
+            xcodebuild build \
               -project Wawona.xcodeproj \
               -scheme "$scheme" \
               -destination "$dest" \
+              -jobs "$(sysctl -n hw.ncpu 2>/dev/null || echo 4)" \
+              ONLY_ACTIVE_ARCH=YES \
+              ARCHS=arm64 \
+              EXCLUDED_ARCHS="x86_64 i386" \
               CODE_SIGNING_ALLOWED=NO \
               CODE_SIGNING_REQUIRED=NO \
               CODE_SIGN_IDENTITY=- \

@@ -899,6 +899,8 @@
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
             workspaceSrc = workspace-src-ios; platform = "tvos"; simulator = true; nativeDeps = tvosSimDeps;
             cargoNixDrv = sharedIosCargoNix;
+            # Product-sim CI: skip thin LTO / O3 on the Rust backend (Xcode stays Debug).
+            release = false;
           };
           backend-visionos = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
@@ -909,6 +911,8 @@
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
             workspaceSrc = workspace-src-ios; platform = "visionos"; simulator = true; nativeDeps = visionosSimDeps;
             cargoNixDrv = sharedIosCargoNix;
+            # Product-sim CI: skip thin LTO / O3 (Xcode stays Debug).
+            release = false;
           };
           backend-watchos = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
@@ -919,6 +923,8 @@
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
             workspaceSrc = workspace-src-watchos; platform = "watchos"; simulator = true; nativeDeps = watchosSimDeps;
             cargoNixDrv = sharedWatchosCargoNix;
+            # Product-sim + iOS-embedded watch companion: skip thin LTO / O3.
+            release = false;
           };
           mobileGuestArtifacts =
             if builtins.pathExists "${wwn-vms}/dependencies/vms/mobile/guest-artifacts.nix" then
@@ -1058,60 +1064,74 @@
             # iOS-sim-only project: no macOS/iPadOS/device native fan-out.
             xcodeProject = xcodegenIosSimOutputs.project;
             simulator = true;
+            rustBackend = backend-ios-sim;
+            companionBackends = { "Wawona-watchOS" = backend-watchos-sim; };
           };
           wawona-watchos-app-sim = pkgs.callPackage ./dependencies/wawona/watchos.nix {
             inherit wawonaSrc wawonaVersion teamId;
             TEAM_ID = teamId;
             xcodeProject = xcodegenOutputs.project;
             simulator = true;
+            rustBackend = backend-watchos-sim;
           };
           wawona-watchos-app-device = pkgs.callPackage ./dependencies/wawona/watchos.nix {
             inherit wawonaSrc wawonaVersion;
             TEAM_ID = teamId;
             xcodeProject = xcodegenOutputs.project;
             simulator = false;
+            rustBackend = backend-watchos;
           };
           wawona-ios-app-device = pkgs.callPackage ./dependencies/wawona/ios.nix {
             inherit wawonaSrc wawonaVersion;
             TEAM_ID = teamId;
             xcodeProject = xcodegenOutputs.project;
             simulator = false;
+            rustBackend = backend-ios;
+            companionBackends = { "Wawona-watchOS" = backend-watchos; };
           };
           wawona-ipados-app-sim = pkgs.callPackage ./dependencies/wawona/ipados.nix {
             inherit wawonaSrc wawonaVersion teamId;
             TEAM_ID = teamId;
             xcodeProject = xcodegenOutputs.project;
             simulator = true;
+            rustBackend = backend-ios-sim;
+            companionBackends = { "Wawona-watchOS" = backend-watchos-sim; };
           };
           wawona-ipados-app-device = pkgs.callPackage ./dependencies/wawona/ipados.nix {
             inherit wawonaSrc wawonaVersion;
             TEAM_ID = teamId;
             xcodeProject = xcodegenOutputs.project;
             simulator = false;
+            rustBackend = backend-ios;
+            companionBackends = { "Wawona-watchOS" = backend-watchos; };
           };
           wawona-tvos-app-sim = pkgs.callPackage ./dependencies/wawona/tvos.nix {
             inherit wawonaSrc wawonaVersion teamId;
             TEAM_ID = teamId;
             xcodeProject = xcodegenOutputs.project;
             simulator = true;
+            rustBackend = backend-tvos-sim;
           };
           wawona-tvos-app-device = pkgs.callPackage ./dependencies/wawona/tvos.nix {
             inherit wawonaSrc wawonaVersion;
             TEAM_ID = teamId;
             xcodeProject = xcodegenOutputs.project;
             simulator = false;
+            rustBackend = backend-tvos;
           };
           wawona-visionos-app-sim = pkgs.callPackage ./dependencies/wawona/visionos.nix {
             inherit wawonaSrc wawonaVersion teamId;
             TEAM_ID = teamId;
             xcodeProject = xcodegenOutputs.project;
             simulator = true;
+            rustBackend = backend-visionos-sim;
           };
           wawona-visionos-app-device = pkgs.callPackage ./dependencies/wawona/visionos.nix {
             inherit wawonaSrc wawonaVersion;
             TEAM_ID = teamId;
             xcodeProject = xcodegenOutputs.project;
             simulator = false;
+            rustBackend = backend-visionos;
           };
           wawona-ios-ipa = if teamId != null then pkgs.callPackage ./dependencies/wawona/ios.nix {
             inherit wawonaSrc wawonaVersion;
@@ -1119,6 +1139,8 @@
             xcodeProject = xcodegenOutputs.project;
             simulator = false;
             generateIPA = true;
+            rustBackend = backend-ios;
+            companionBackends = { "Wawona-watchOS" = backend-watchos; };
           } else missingTeamRelease "wawona-ios-ipa";
           wawona-ios-xcarchive = if teamId != null then pkgs.callPackage ./dependencies/wawona/ios.nix {
             inherit wawonaSrc wawonaVersion;
@@ -1126,6 +1148,8 @@
             xcodeProject = xcodegenOutputs.project;
             simulator = false;
             generateXCArchive = true;
+            rustBackend = backend-ios;
+            companionBackends = { "Wawona-watchOS" = backend-watchos; };
           } else missingTeamRelease "wawona-ios-xcarchive";
           mkPlatformIpa = name: file: args: if teamId != null then pkgs.callPackage file (args // {
             inherit wawonaSrc wawonaVersion;
@@ -1134,10 +1158,19 @@
             simulator = false;
             generateIPA = true;
           }) else missingTeamRelease name;
-          wawona-ipados-ipa = mkPlatformIpa "wawona-ipados-ipa" ./dependencies/wawona/ipados.nix { };
-          wawona-tvos-ipa = mkPlatformIpa "wawona-tvos-ipa" ./dependencies/wawona/tvos.nix { };
-          wawona-visionos-ipa = mkPlatformIpa "wawona-visionos-ipa" ./dependencies/wawona/visionos.nix { };
-          wawona-watchos-ipa = mkPlatformIpa "wawona-watchos-ipa" ./dependencies/wawona/watchos.nix { };
+          wawona-ipados-ipa = mkPlatformIpa "wawona-ipados-ipa" ./dependencies/wawona/ipados.nix {
+            rustBackend = backend-ios;
+            companionBackends = { "Wawona-watchOS" = backend-watchos; };
+          };
+          wawona-tvos-ipa = mkPlatformIpa "wawona-tvos-ipa" ./dependencies/wawona/tvos.nix {
+            rustBackend = backend-tvos;
+          };
+          wawona-visionos-ipa = mkPlatformIpa "wawona-visionos-ipa" ./dependencies/wawona/visionos.nix {
+            rustBackend = backend-visionos;
+          };
+          wawona-watchos-ipa = mkPlatformIpa "wawona-watchos-ipa" ./dependencies/wawona/watchos.nix {
+            rustBackend = backend-watchos;
+          };
           wawona-ios-simulator = apple.simulateApp {
             name = "wawona-ios-simulator";
             app = wawona-ios-app-sim;

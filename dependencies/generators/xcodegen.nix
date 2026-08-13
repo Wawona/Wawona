@@ -75,6 +75,25 @@ let
     else if gh != "" then gh
     else "1";
   derivedRustLib = "$(DERIVED_FILE_DIR)/libwawona.a";
+
+  # Simulator slices on Apple Silicon CI: never compile x86_64. App targets
+  # already set ARCHS[sdk=*simulator*]=arm64; shared frameworks did not, so
+  # generic/platform destinations still built WawonaUIContracts for x86_64.
+  appleSimArchSettings = {
+    "ARCHS[sdk=iphonesimulator*]" = "arm64";
+    "VALID_ARCHS[sdk=iphonesimulator*]" = "arm64";
+    "EXCLUDED_ARCHS[sdk=iphonesimulator*]" = "x86_64 i386";
+    "ARCHS[sdk=appletvsimulator*]" = "arm64";
+    "VALID_ARCHS[sdk=appletvsimulator*]" = "arm64";
+    "EXCLUDED_ARCHS[sdk=appletvsimulator*]" = "x86_64 i386";
+    "ARCHS[sdk=xrsimulator*]" = "arm64";
+    "VALID_ARCHS[sdk=xrsimulator*]" = "arm64";
+    "EXCLUDED_ARCHS[sdk=xrsimulator*]" = "x86_64 i386";
+    "ARCHS[sdk=watchsimulator*]" = "arm64";
+    "VALID_ARCHS[sdk=watchsimulator*]" = "arm64";
+    "EXCLUDED_ARCHS[sdk=watchsimulator*]" = "x86_64 i386";
+    ONLY_ACTIVE_ARCH = "YES";
+  };
   derivedZshLib = "$(DERIVED_FILE_DIR)/libwawona-zsh.a";
   derivedNvimLib = "$(DERIVED_FILE_DIR)/libwawona-neovim.a";
   derivedSshCliLib = "$(DERIVED_FILE_DIR)/libwwn-ssh-cli.a";
@@ -2624,7 +2643,7 @@ ICDJSON
           { path = "Sources/WawonaModel"; excludes = commonExcludes ++ [ "*.modulemap" ]; }
         ];
         settings = {
-          base = moduleVerifierFrameworkSettings // {
+          base = moduleVerifierFrameworkSettings // appleSimArchSettings // {
             PRODUCT_NAME = "WawonaModel";
             PRODUCT_MODULE_NAME = "WawonaModel";
             PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.WawonaModel";
@@ -2668,7 +2687,7 @@ ICDJSON
           { path = "Sources/WawonaUIContracts"; excludes = commonExcludes ++ [ "Skip/**" ]; }
         ];
         settings = {
-          base = moduleVerifierFrameworkSettings // {
+          base = moduleVerifierFrameworkSettings // appleSimArchSettings // {
             PRODUCT_NAME = "WawonaUIContracts";
             PRODUCT_MODULE_NAME = "WawonaUIContracts";
             PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.WawonaUIContracts";

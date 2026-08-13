@@ -29,6 +29,10 @@
   # legacy in-tree copy; Wawona's flake overrides this with the wwn-toolchain
   # input store path so the moved dir can be deleted.
   applePath,
+  # First-class Rust backend so product xcodebuild copies libwawona.a instead of
+  # nested `nix build --impure` (Gate: products iOS sim was recompiling rust).
+  rustBackend ? null,
+  companionBackends ? { },
   ...
 }:
 
@@ -91,7 +95,7 @@ in
     [
       ''-project Wawona.xcodeproj''
       ''-jobs ''${WAWONA_XCODEBUILD_JOBS:-$(sysctl -n hw.ncpu 2>/dev/null || echo 4)}''
-      ''-destination "generic/platform=${destinationPlatform}"''
+      ''-destination "generic/platform=${destinationPlatform}${lib.optionalString simulator ",arch=arm64"}"''
     ]
     ++ lib.optionals (!releaseBuild) [
       ''CODE_SIGNING_ALLOWED=NO''
@@ -104,8 +108,14 @@ in
       ''CODE_SIGN_IDENTITY="''${WAWONA_CODE_SIGN_IDENTITY:-Apple Distribution}"''
       ''PROVISIONING_PROFILE_SPECIFIER="''${WAWONA_PROVISIONING_PROFILE_SPECIFIER:-match AppStore ${bundleId}}"''
     ]
-    # build-app.nix forces ONLY_ACTIVE_ARCH=NO; that pulls x86_64 simulator slice on Apple Silicon.
-    # Swift macro plugin server often breaks for that slice (malformed response / sandbox_apply).
-    ++ lib.optionals simulator [ ''ONLY_ACTIVE_ARCH=YES'' ]
+    # build-app.nix forces ONLY_ACTIVE_ARCH=NO; generic/platform without arch=
+    # still compiles x86_64+arm64 Swift (WawonaUIContracts on macos-26).
+    ++ lib.optionals simulator [
+      ''ONLY_ACTIVE_ARCH=YES''
+      ''ARCHS=arm64''
+      ''EXCLUDED_ARCHS="x86_64 i386"''
+    ]
   );
-}).overrideAttrs (import ./match-host-signing-attrs.nix { inherit lib; })
+}).overrideAttrs (import ./inject-xcode-backend-env.nix {
+  inherit lib rustBackend xcodeTarget companionBackends;
+})

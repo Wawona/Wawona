@@ -150,13 +150,27 @@ if [ -n "${WAWONA_NIX_FLAGS:-}" ]; then
   _nix_flags+=(${WAWONA_NIX_FLAGS})
 fi
 
-# Optional: reuse a previously realized backend when flake rebuild is broken
-# (e.g. watchOS waypipe cfg gates). Set WAWONA_BACKEND_OUT to a store path
-# containing lib/libwawona.a.
+# Optional: reuse a previously realized backend (Nix product builds pass the
+# store path so xcodebuild does not nested-compile crate2nix / rustc).
+# Per-target: WAWONA_BACKEND_OUT_Wawona_iOS, …_Wawona_watchOS, …
+# Fallback:   WAWONA_BACKEND_OUT
+_backend_env=""
+case "${TARGET_NAME:-}" in
+  Wawona-iOS) _backend_env="${WAWONA_BACKEND_OUT_Wawona_iOS:-}" ;;
+  Wawona-iPadOS) _backend_env="${WAWONA_BACKEND_OUT_Wawona_iPadOS:-}" ;;
+  Wawona-macOS) _backend_env="${WAWONA_BACKEND_OUT_Wawona_macOS:-}" ;;
+  Wawona-tvOS) _backend_env="${WAWONA_BACKEND_OUT_Wawona_tvOS:-}" ;;
+  Wawona-visionOS) _backend_env="${WAWONA_BACKEND_OUT_Wawona_visionOS:-}" ;;
+  Wawona-watchOS) _backend_env="${WAWONA_BACKEND_OUT_Wawona_watchOS:-}" ;;
+esac
+if [ -z "$_backend_env" ]; then
+  _backend_env="${WAWONA_BACKEND_OUT:-}"
+fi
+
 active_out=""
-if [ -n "${WAWONA_BACKEND_OUT:-}" ] && [ -f "${WAWONA_BACKEND_OUT}/lib/libwawona.a" ]; then
-  active_out="${WAWONA_BACKEND_OUT}"
-  echo "Using WAWONA_BACKEND_OUT=$active_out (skipping nix build #$_active_backend)"
+if [ -n "$_backend_env" ] && [ -f "$_backend_env/lib/libwawona.a" ]; then
+  active_out="$_backend_env"
+  echo "Using realized backend $active_out (skipping nix build #$_active_backend)"
 else
   echo "Realizing Nix backend(s) for ${TARGET_NAME} (sdk=${_sdk:-unknown}, active=${_active_backend}, nix=$NIX)"
 

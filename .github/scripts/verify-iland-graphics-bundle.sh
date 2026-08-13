@@ -34,11 +34,19 @@ fi
 # to look for. Release binaries are stripped, but both drivers keep identifying
 # strings in __TEXT, which survive stripping.
 mach_o_files() {
+  # Don't `file` every resource (zsh functions, pngs, weston data). That scan
+  # dominated iOS product-build wall time (~8 min on a full bundle).
   while IFS= read -r candidate; do
-    if file "$candidate" 2>/dev/null | grep -q 'Mach-O'; then
+    if file -b "$candidate" 2>/dev/null | grep -q 'Mach-O'; then
       echo "$candidate"
     fi
-  done < <(find "$root" -type f -print)
+  done < <(
+    find "$root" -type f \( \
+      -perm -111 -o -name '*.dylib' -o -name '*.so' \
+    \) ! -name '*.sh' ! -name '*.py' \
+      ! -path '*/share/*' ! -path '*/zsh/functions/*' \
+      -print
+  )
 }
 
 # grep -c rather than -q: -q exits on the first hit, and the resulting SIGPIPE

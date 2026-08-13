@@ -577,6 +577,8 @@ in
           HOME="$HOME" \
           XDG_CACHE_HOME="$XDG_CACHE_HOME" \
           XDG_CONFIG_HOME="$XDG_CONFIG_HOME" \
+          WAWONA_BACKEND_OUT="${rustBackend}" \
+          WAWONA_BACKEND_OUT_Wawona_macOS="${rustBackend}" \
           xcodebuild \
           -project "./_xcode_project/Wawona.xcodeproj" \
           -scheme "Wawona-macOS" \

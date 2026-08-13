@@ -70,6 +70,11 @@ Operational runbook: [`flakehub-cache.md`](./flakehub-cache.md).
 - **Inner vs outer loop.** Fast iteration is `nix develop` / backend static libs
   (FlakeHub-friendly). Outer `xcodegen` + `xcodebuild` / `.#wawona-ios` only when
   app packaging inputs change — see [`compilation.md`](./compilation.md).
+- **Product xcodebuild must not nested-compile Rust.** `nix build .#wawona-ios`
+  passes `WAWONA_BACKEND_OUT*` so `xcode-prebuild.sh` copies `libwawona.a`.
+  Simulator Swift is `ARCHS=arm64` only (no x86_64 slice). Sim Rust backends
+  use `release = false` (skip thin LTO). These are the compile-time wins; host
+  SDK warm / apple-sdks.nix are not.
 - **crate2nix IFD hoist.** One `generatedCargoNix` per `workspace-src-*`
   (ios / macos / watchos); backends that share a workspace pass `cargoNixDrv`.
 - **Runner cores.** Flake `nixConfig.max-jobs/cores` + CI installer `extra-conf`

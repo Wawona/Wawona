@@ -20,6 +20,8 @@
   platformName ? "watchOS",
   bundleId ? "com.aspauldingcode.Wawona.watch",
   applePath,
+  rustBackend ? null,
+  companionBackends ? { },
   ...
 }:
 
@@ -72,7 +74,7 @@ in
     [
       ''-project Wawona.xcodeproj''
       ''-jobs ''${WAWONA_XCODEBUILD_JOBS:-$(sysctl -n hw.ncpu 2>/dev/null || echo 4)}''
-      ''-destination "generic/platform=${destinationPlatform}"''
+      ''-destination "generic/platform=${destinationPlatform}${lib.optionalString simulator ",arch=arm64"}"''
     ]
     ++ lib.optionals (!releaseBuild) [
       ''CODE_SIGNING_ALLOWED=NO''
@@ -83,6 +85,12 @@ in
       ''CODE_SIGN_IDENTITY="''${WAWONA_CODE_SIGN_IDENTITY:-Apple Distribution}"''
       ''PROVISIONING_PROFILE_SPECIFIER="''${WAWONA_PROVISIONING_PROFILE_SPECIFIER:-match AppStore ${bundleId}}"''
     ]
-    ++ lib.optionals simulator [ ''ONLY_ACTIVE_ARCH=YES'' ]
+    ++ lib.optionals simulator [
+      ''ONLY_ACTIVE_ARCH=YES''
+      ''ARCHS=arm64''
+      ''EXCLUDED_ARCHS="x86_64 i386"''
+    ]
   );
-}).overrideAttrs (import ./match-host-signing-attrs.nix { inherit lib; })
+}).overrideAttrs (import ./inject-xcode-backend-env.nix {
+  inherit lib rustBackend xcodeTarget companionBackends;
+})

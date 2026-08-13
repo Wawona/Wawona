@@ -69,6 +69,8 @@ export WAWONA_SKIP_IOS_SIMULATOR_PLATFORM_DOWNLOAD=1
 # skip flag via `.github/scripts/warm-ios-simulator-sdk.sh` when the requested
 # simulator SDK is present (`ios`, `ipados`, `tvos`, `watchos`, `visionos`, or `all`).
 # Product `.#wawona-ios` uses `xcodegenIosSimOutputs` (ios-only + simulatorOnly).
+# Nix product builds also pass `WAWONA_BACKEND_OUT*` so xcode-prebuild copies
+# `libwawona.a` instead of nested-compiling the Rust backend during xcodebuild.
 ```
 
 After a `Cargo.lock` change, unset `WAWONA_SKIP_NIX_PREBUILD` or rebuild the relevant backend:
