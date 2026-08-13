@@ -43,7 +43,7 @@ macOS is **out of scope** for this track — it already uses Meson `weston/macos
 | [APP-REVIEW-NOTES.md](APP-REVIEW-NOTES.md) | App Review | Copy-paste reviewer explanation |
 | [TESTFLIGHT-CHECKLIST.md](TESTFLIGHT-CHECKLIST.md) | QA | Device/simulator smoke before external testers |
 | [WATCHOS-SCOPE.md](WATCHOS-SCOPE.md) | PM, engineers | Explicit non-goals for watch |
-| [../ios-local-shell-spike.md](../ios-local-shell-spike.md) | Spike owner | Phase 0 device report template (fill after hardware test) |
+| [../legacy/ios-local-shell-spike.md](../legacy/ios-local-shell-spike.md) | Spike owner | Phase 0 device report template (archived) |
 
 ---
 

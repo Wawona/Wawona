@@ -1,6 +1,20 @@
 # Wawona Usage Guide
 
-> How to run Weston natively on macOS, use Waypipe for remote apps, and connect Wayland clients.
+> Machines-first. Nested Weston and Niri. Bundled clients. Public subset for
+> wawona.io.
+
+---
+
+## Machines
+
+Start and focus sessions from the Machines window, not from env vars. Profile
+kinds: `native`, `ssh_waypipe`, `ssh_terminal`, `virtual_machine`, `container`.
+See [`machine-profiles.md`](./machine-profiles.md).
+
+Weston and Niri both ship on every product target. Display backend is
+`CompositorBackend`: `auto` | `wayland` | `drm`.
+
+VM and container kinds are **forbidden** on tvOS and watchOS.
 
 ---
 
@@ -147,6 +161,6 @@ nix run .#foot
 | **Linux** | `nix run` (GTK shell + nested Wawona host service) | GUI-first Machine launcher (Native/SSH/Waypipe) |
 | **macOS** | `nix run .#weston`, `.#weston-terminal` | OpenSSH process spawn; Settings > Waypipe |
 | **iOS** | Via Settings > Advanced toggles | libssh2 in-process; Settings > Waypipe, SSH |
-| **Android** | Via Settings > Advanced toggles | Dropbear SSH; Settings > Waypipe, SSH |
+| **Android** | Via Settings > Advanced toggles | OpenSSH portable (`wwn-ssh`); Machines > Waypipe |
 
 On iOS and Android, **Enable Native Weston** and **Enable Weston Terminal** in Settings > Advanced start these on app launch.

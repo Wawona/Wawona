@@ -1,6 +1,7 @@
 # Wawona Settings Reference
 
-> All settings available in Wawona for macOS, iOS, and Android.
+> Settings for macOS, iOS family, Android, and Linux. Public subset for
+> wawona.io: this file. Do not scrape App Review notes onto the site.
 
 ---
 
@@ -37,8 +38,8 @@ SwiftUI does **not** implement global settings on macOS, iOS, or watchOS. On wat
 
 | Setting | Key | Type | Default | Platforms | Description |
 |---------|-----|------|---------|------------|-------------|
-| **Vulkan Driver** | `vulkanDriver` / `VulkanDriver` | Dropdown | `system` (Android), `moltenvk` (macOS/iOS) | All | Vulkan implementation. Android runtime-only policy: None, System, or SwiftShader for offscreen iland clients; host ANativeWindow WSI remains on the system loader. macOS/iOS: None, MoltenVK; macOS also offers KosmicKrisp |
-| **OpenGL Driver** | `openglDriver` / `OpenGLDriver` | Dropdown | `system` (Android), `angle` (macOS/iOS) | All | OpenGL/GLES implementation. Android: None, ANGLE, System. Apple GPU targets: None, ANGLE |
+| **Vulkan Driver** | `vulkanDriver` / `VulkanDriver` | Dropdown | KosmicKrisp on Apple Silicon + macOS 26+; else MoltenVK on Apple; `system` on Android | GPU targets | Android: None, System, or SwiftShader. No Turnip, no `/dev/kgsl`. Apple: None, MoltenVK, KosmicKrisp. watchOS GPU is blocked (no Metal). |
+| **OpenGL Driver** | `openglDriver` / `OpenGLDriver` | Dropdown | `system` (Android), `angle` (macOS/iOS) | GPU targets | Android: None, ANGLE, System. Apple GPU targets: None, ANGLE. No MoltenGL. |
 | **DmaBuf Support** | `dmabufEnabled` / `DmabufEnabled` | Switch | On | All | Zero-copy texture sharing between clients |
 
 ---
@@ -70,8 +71,11 @@ SwiftUI does **not** implement global settings on macOS, iOS, or watchOS. On wat
 
 | Setting | Key | Type | Default | Platforms | Description |
 |---------|-----|------|---------|------------|-------------|
+| **Display Backend** | `CompositorBackend` | Popup | `auto` | All | Nested compositor backend: `auto`, `wayland`, or `drm`. Resolved by `WWNResolveCompositorBackend` onto `NIRI_BACKEND` / `weston --backend=`. Do not pin nested-only. |
+| **Text Assist** | `enableTextAssist` | Switch | Off | iOS, Android | Host text assist / autocorrect via the compositor text-input path. iOS still reads this key. |
+| **Dictation** | `enableDictation` | Switch | Off | Android | Android dictation toggle (paired with Text Assist). |
 | **Color Operations** | `colorOperations` / `ColorOperations` | Switch | On (Android), Off (macOS/iOS) | All | Color profiles, HDR requests |
-| **Nested Compositors** | `nestedCompositorsSupport` / `NestedCompositorsSupport` | Switch | On | All | Support nested Wayland compositors |
+| **Nested Compositors** | `nestedCompositorsSupport` / `NestedCompositorsSupport` | Switch | On | All | Nested Weston and Niri. Both ship on every product target. |
 | **Multiple Clients** | `multipleClients` / `MultipleClients` | Switch | On (macOS), Off (iOS/Android) | All | Allow multiple Wayland clients simultaneously |
 | **Shake to Exit Machine** | `wawona.pref.shakeToCloseEnabled` | Switch | On | iOS, Android, watchOS | When enabled, shake shows a confirmation before closing the active machine session |
 | **Long-press Menu to Exit Machine** | `wawona.pref.shakeToCloseEnabled` (same key) | Switch | On | tvOS | Siri Remote has no shake API; hold Menu/Back (~1s) confirms session exit. Short Menu sends Escape to the Wayland client |
@@ -166,7 +170,7 @@ Mode B loads bundled `libwayland-mac.dylib` only from
 |---------|-------|-----|---------|
 | Force SSD | Off | Off | On |
 | Multiple Clients | On | Off | Off |
-| Vulkan Driver | moltenvk | moltenvk | system |
+| Vulkan Driver | KosmicKrisp (Apple Silicon + macOS 26+), else moltenvk | moltenvk | system |
 | OpenGL Driver | angle | angle | system |
 
 ---

@@ -7,13 +7,26 @@ Wawona uses **Nix Flakes** for all builds. For the full build pipeline (crate2ni
 ```bash
 # macOS app (build + launch)
 nix run .#wawona
+nix run .#wawona-macos
 
-# iOS Simulator app
+# Store-shaped macOS vs SIP Desktop Replacement host
+nix build .#wawona-macos
+nix build .#wawona-macos-desktop-host
+
+# Apple family simulators
 nix run .#wawona-ios
+nix build .#wawona-watchos-app-sim
+nix build .#wawona-tvos-sim
+nix build .#wawona-visionos-sim
 
-# Android app
+# Android / Linux
 nix run .#wawona-android
+nix run .#wawona-linux
 ```
+
+`--rebuild` is not a Nix flag. Use `nix build --rebuild` only if you mean Nix's
+`--rebuild` (force rebuild of a derivation). For a clean tree, `nix build` the
+attribute again.
 
 ## Build Monitoring With `nom`
 
@@ -113,7 +126,9 @@ See [README](../README.md) for environment setup.
 
 ## Release beta (TestFlight + Play)
 
-Wawona v2.5 adds Fastlane automation. See [wwn-mcp/knowledge/wawona/fastlane.md](../../wwn-mcp/knowledge/wawona/fastlane.md).
+CalVer is `VERSION` (`YY.M.D`). Fastlane lives in this repo. Contributor CI:
+[`ci.md`](./ci.md). Secrets: [`maintainers/secrets.md`](./maintainers/secrets.md)
+(not for the public site).
 
 ```bash
 # Tier 0 — docs/maintainers/secrets.md (SecretSpec + pass; sops-nix unlocks GPG)

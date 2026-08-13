@@ -76,7 +76,7 @@
 | Aspect | Wawona |
 |--------|--------|
 | **Platforms** | macOS, iOS, Android — no other compositor targets all three |
-| **Remote** | Waypipe integration on all targets (libssh2 on iOS, Dropbear on Android, openssh on macOS) |
+| **Remote** | Waypipe integration on all targets (libssh2 on Apple mobile, OpenSSH portable on Android, OpenSSH on macOS) |
 | **Architecture** | Rust core + native frontends (Obj-C/Swift, Kotlin) — not a pure Rust UI stack |
 | **Buffer path** | IOSurface zero-copy on Apple platforms (modifier ID tunneling via linux-dmabuf) |
 | **Nested** | Designed for nested use (e.g., inside Xcode, Simulator, fullscreen) |

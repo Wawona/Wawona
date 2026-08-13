@@ -139,4 +139,4 @@ These must be **documented with errno and device logs** before claiming complian
 - [ ] Background / jetsam behavior when shell runs
 - [ ] Fallback plan if `grantpt` fails (pipe-TTY shim — still bundled-only)
 
-See [../ios-local-shell-spike.md](../ios-local-shell-spike.md).
+See [../legacy/ios-local-shell-spike.md](../legacy/ios-local-shell-spike.md).

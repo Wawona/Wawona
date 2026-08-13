@@ -20,7 +20,7 @@ iOS on-device shell, agent-device replays), see [`commands.md`](./commands.md).
 | Weston toytoolkit iOS | `.#weston-ios` | cairo/pango demo clients |
 | zsh iOS (planned) | `.#zsh-ios` | App Store–compliant bundled shell — [ios-local-shell](../ios-local-shell/README.md) |
 | wawona rootfs iOS (planned) | `.#wawona-rootfs-ios` | usr/bin/zsh + share for app bundle |
-| wawona-pty spike (planned) | `.#wawona-pty-spike-ios` | Phase 0 device PTY gate — [ios-local-shell-spike.md](../ios-local-shell-spike.md) |
+| wawona-pty spike (planned) | `.#wawona-pty-spike-ios` | Phase 0 device PTY gate — [ios-local-shell-spike.md](../legacy/ios-local-shell-spike.md) |
 | Weston compositor iOS | `.#weston-compositor-ios` | nested compositor archive (Wayland/Pixman default) |
 | Weston compositor iOS DRM | `.#weston-compositor-ios-drm` / `-sim` | iland DRM + GL renderer (CI validation) |
 | Weston GL clients iOS | `.#weston-ios-gl` / `.#weston-ios-gl-sim` | `enableGlClients=true` |
@@ -103,7 +103,7 @@ Run on each simulator/emulator or device. Mark pass/fail with date + build attr.
 
 ### iOS / iPadOS — local shell (Phase 2+, device required)
 
-- [ ] Phase 0 spike report complete — [ios-local-shell-spike.md](../ios-local-shell-spike.md)
+- [ ] Phase 0 spike report complete — [ios-local-shell-spike.md](../legacy/ios-local-shell-spike.md)
 - [ ] `echo hello` in bundled zsh via weston-terminal
 - [ ] `.zsh_history` in Application Support
 - [ ] Session stop reaps shell — no fd leak

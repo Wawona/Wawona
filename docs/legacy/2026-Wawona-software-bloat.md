@@ -1,3 +1,5 @@
+> **Superseded.** Point-in-time audit. Do not copy to wawona.io.
+
 # Wawona Software Bloat Audit (2026)
 
 ## Scope

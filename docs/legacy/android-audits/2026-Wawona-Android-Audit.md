@@ -1,3 +1,5 @@
+> **Superseded.** Historical Android audit. Live facts: [`../../2026-SOURCE-OF-TRUTH.md`](../../2026-SOURCE-OF-TRUTH.md) and [`../../android/STATUS.md`](../../android/STATUS.md). Do not copy to wawona.io.
+
 # Wawona Android Implementation Audit
 
 **Date:** 2026-02-24  

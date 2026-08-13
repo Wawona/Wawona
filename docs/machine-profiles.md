@@ -1,5 +1,7 @@
 # Machine Profile Schema (v1)
 
+> **Public subset** for wawona.io.
+
 Wawona stores machine profiles in a JSON array under `wawona.machineProfiles.v1`
 with the active profile tracked in `wawona.activeMachineId.v1`.
 

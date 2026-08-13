@@ -1,5 +1,8 @@
 # Wawona CI — what runs, where, and why
 
+> **Public subset** (no secret procedures). Secrets stay in
+> [`maintainers/secrets.md`](./maintainers/secrets.md).
+
 Branch policy lives in [`.cursor/rules/wawona-branch-workflow.mdc`](../.cursor/rules/wawona-branch-workflow.mdc).
 Green-light gate *layers* (L0–L4) live in [`2026-greenlight-gates.md`](./2026-greenlight-gates.md).
 Binary cache: [`flakehub-cache.md`](./flakehub-cache.md).

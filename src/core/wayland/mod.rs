@@ -11,6 +11,7 @@ pub mod xdg;
 pub mod wlr;
 pub mod plasma;
 pub mod ext;
+pub mod catalog;
 
 impl smithay::wayland::buffer::BufferHandler for crate::core::state::CompositorState {
     fn buffer_destroyed(

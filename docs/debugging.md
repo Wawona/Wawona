@@ -1,7 +1,14 @@
-# Attaching a Debugger
+# Debugging
+
+Launching Wawona, starting a machine, and capturing UI evidence is
+**agent-device** on every platform, including macOS. Do not use `osascript`,
+`screencapture`, or `open -n …/Wawona.app` as the test path. See
+`.cursor/rules/wawona-test-control.mdc` and `wawona-agent-device.mdc`.
+
+LLDB is opt-in for crashes and freezes.
 
 All flake apps launch **without** a debugger by default. Pass `--debug` to
-run under LLDB (or attach) so you can catch freezes and crashes.
+run under LLDB (or attach).
 
 ## Quick Reference
 

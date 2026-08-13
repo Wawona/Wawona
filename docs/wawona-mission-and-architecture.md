@@ -1,5 +1,7 @@
 # Wawona: mission and architecture
 
+> **Public subset** for wawona.io.
+
 Canonical statement of what Wawona is for. When a design decision is ambiguous,
 this document decides it. Per-target detail lives in the rules it links to; this
 is the intent those rules serve.

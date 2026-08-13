@@ -1,3 +1,5 @@
+> **Superseded.** Historical. Live Android facts: [`../../2026-SOURCE-OF-TRUTH.md`](../../2026-SOURCE-OF-TRUTH.md). Do not copy to wawona.io.
+
 # Android `__noChroot` Audit
 
 Date: 2026-04-04

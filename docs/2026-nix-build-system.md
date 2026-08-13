@@ -39,14 +39,28 @@ The flake defines all inputs, overlays, and packages.
 
 ### Inputs
 
-| Input           | Purpose                                              |
-|-----------------|------------------------------------------------------|
-| `nixpkgs`       | Base package set (unstable channel)                  |
-| `rust-overlay`  | Provides `rust-bin.stable.latest.default` with iOS/Android targets |
-| `crate2nix`     | Generates per-crate Nix derivations from `Cargo.lock` |
-| `nix-xcodeenvtests` | Reference Apple host-Xcode wrapper model used by `wwn-toolchain` |
-| `wwn-toolchain` | Cross-compile toolchains, Apple SDK wiring, Android SDK config, library substrate |
-| `wwn-weston`, `wwn-iland`, … | Patched application ports + platform-specific ldflags generators |
+Current flake inputs (see `flake.nix`; do not invent extra `wwn-*` edges):
+
+| Input | Layer / role |
+|-------|----------------|
+| `nixpkgs` | Base package set (unstable) |
+| `rust-overlay` | `rust-bin` with Apple/Android targets |
+| `crate2nix` | Per-crate Nix from `Cargo.lock` |
+| `microvm` | VM machine type (`wwn-vms`) |
+| `nix-appimage` | Linux AppImage packaging |
+| `wwn-toolchain` | L0 substrate (cairo, pango, wayland, openssl, …) |
+| `wwn-iland` | L1 graphics (ANGLE, SwiftShader, MoltenVK, KosmicKrisp) |
+| `wwn-kmscube` | L2 GLES/KMS client |
+| `wwn-weston` | L3 nested compositor |
+| `wwn-niri` | L3′ nested compositor |
+| `wwn-zsh`, `wwn-coreutils`, `wwn-foot`, `wwn-neovim`, `wwn-fastfetch`, `wwn-phoon-rs` | Bundled on-device clients |
+| `wwn-ssh` | OpenSSH (macOS), libssh2 (Apple mobile), OpenSSH portable (Android) |
+| `wwn-waypipe` | Remote Wayland |
+| `wwn-anowaW` | Android Desktop / LockScreen bridge |
+| `wwn-vms`, `wwn-containers` | VM and container machine types |
+
+`wwn-apt` is **not** a Wawona flake input. Do not document StoreKit `apt install`
+as shipping. Canonical DAG: [`wwn-repo-dag.md`](./wwn-repo-dag.md).
 
 ### Rust toolchain overlay
 

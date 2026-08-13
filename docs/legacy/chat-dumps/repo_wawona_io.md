@@ -1,3 +1,5 @@
+> **Superseded.** Jailbreak/Procursus chat dump. Not product documentation. Do not copy to wawona.io. Never mix with `wwn-apt`.
+
 I can run x11, fluxbox wm, pasteboard, launchd, neovim, and other packages on my iPhone using Dopamine2 roothide jailbreak.
 There is a repo from roothide which supports many procurses-roothide packages, many include super bizzare packages patched to run on iOS. Where are they? Where is fluxbox for iOS? where is x11 for iOS? Where is pasteboard for iOS? Where is launchd for iOS? 
 What you're seeing is one of the more interesting parts of the modern iOS jailbreak ecosystem.

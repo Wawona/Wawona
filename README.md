@@ -3,7 +3,7 @@
 [![Gate: packages (Linux/Android)](https://github.com/Wawona/Wawona/actions/workflows/nix.yml/badge.svg?branch=development&event=push&job=build-linux)](https://github.com/Wawona/Wawona/actions/workflows/nix.yml)
 [![Gate: packages (macOS/iOS)](https://github.com/Wawona/Wawona/actions/workflows/nix.yml/badge.svg?branch=development&event=push&job=build-macos-x86_64)](https://github.com/Wawona/Wawona/actions/workflows/nix.yml)
 
-**Wawona** is a native Wayland Compositor for macOS, iOS, and Android.
+**Wawona** is a native Wayland compositor for macOS, iOS, iPadOS, tvOS, watchOS, visionOS, Android, and Linux.
 <div align="center">
   <img src="gallery/wawona_nested_plasma.png" alt="Wawona - Wayland Compositor Preview 1" width="800"/>
   <details>
@@ -13,13 +13,13 @@
   </details>
 </div>
 
-> **Project Vision:** Read about long-term objectives in [Project Goals](docs/goals.md) and the themed [Roadmap](docs/roadmap.md).
+> **Mission:** [wawona-mission-and-architecture.md](docs/wawona-mission-and-architecture.md). Facts: [2026-SOURCE-OF-TRUTH.md](docs/2026-SOURCE-OF-TRUTH.md). Roadmap: [roadmap.md](docs/roadmap.md).
 
 ### What can you do with Wawona?
 
 Wawona brings the Linux desktop world to devices that never had it. In plain terms:
 
-- **Run Linux graphical apps on your Mac, iPhone, iPad, and Android** — Wawona is a real Wayland compositor, so Wayland apps and desktops draw directly into a native window on your device.
+- **Run Linux graphical apps on Mac, iPhone, iPad, Apple TV, Apple Watch, visionOS, Android, and Linux** — Wawona is a real Wayland compositor, so Wayland apps and desktops draw into a native window on the device.
 - **Connect to a remote Linux machine and use its apps as if they were local** — point Wawona at a Linux box over SSH and its windows appear on your screen, forwarded efficiently with Waypipe.
 - **Nest full Linux desktops** — run desktops and compositors like KDE Plasma, XFCE, COSMIC, sway, and niri inside Wawona (see the previews above).
 - **Use a real terminal on iOS and iPadOS** — a genuine bundled `zsh` with common tools, running on-device and App Store–compliant (no jailbreak, no remote server required).

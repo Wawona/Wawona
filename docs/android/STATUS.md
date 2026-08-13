@@ -68,7 +68,7 @@ Studio fallback: `WAWONA_STUDIO_FALLBACK=1` in CMake → stub renderer/core for 
 | Settings | Compose bottom sheet | SwiftUI navigation |
 | Modifier accessory bar | M3-themed | iOS keyboard bar |
 
-See `docs/2026-Wawona-Android-Audit.md` for compositor-depth parity.
+Historical audit (do not copy to the site): `docs/legacy/android-audits/2026-Wawona-Android-Audit.md`.
 
 ## Manual smoke
 

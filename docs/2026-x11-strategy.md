@@ -18,7 +18,7 @@ Wayland surfaces back to Wawona. Everything X11-specific stays on the remote
 Linux box; the Apple/Android client only ever speaks Wayland.
 
 - Enabled by the `waypipeXwls` preference (`WWNWaypipeRunner` appends `--xwls`).
-- Works on every platform that supports waypipe (incl. watchOS remote-only).
+- Works on every platform that supports waypipe (watchOS included: native compositor plus remote).
 - Fully App Store compliant — no local X server, no JIT.
 
 ### 2. Nested-Weston XWayland (non-store macOS only)

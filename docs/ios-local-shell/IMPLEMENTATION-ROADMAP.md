@@ -34,7 +34,7 @@ gantt
 
 ## Phase 0 — PTY + zsh spawn spike (GATE)
 
-**Owner deliverable:** [../ios-local-shell-spike.md](../ios-local-shell-spike.md) filled with device results.
+**Owner deliverable:** [../legacy/ios-local-shell-spike.md](../legacy/ios-local-shell-spike.md) filled with device results.
 
 | Task | Path / output |
 |------|----------------|

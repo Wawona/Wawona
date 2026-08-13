@@ -1,5 +1,8 @@
 # iland Mode A / Mode B and Desktop Replacement
 
+> **Public subset** for wawona.io. Desktop / LockScreen / anowaW are macOS +
+> Android only. Never iOS family.
+
 Live grades: [`iland-graphics-progress.md`](iland-graphics-progress.md).
 CI bundle matrix: [`testing/graphics-ci-matrix.md`](testing/graphics-ci-matrix.md).
 

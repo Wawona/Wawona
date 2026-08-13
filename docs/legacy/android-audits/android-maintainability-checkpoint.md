@@ -1,3 +1,5 @@
+> **Superseded.** Historical checkpoint. Do not copy to wawona.io.
+
 # Android Module Maintainability Checkpoint
 
 This checkpoint keeps Android Nix modules from drifting into unreviewable

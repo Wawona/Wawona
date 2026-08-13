@@ -1,3 +1,5 @@
+> **Superseded.** Spike template. Live hub: [`../ios-local-shell/README.md`](../ios-local-shell/README.md). Do not copy to wawona.io.
+
 # Phase 0 Device Spike Report — PTY + Bundled ZSH on iOS
 
 **Status:** Nix packages green on host (`wawona-pty-ios`, `zsh-ios`, `wawona-rootfs-ios`, `weston-ios`, `wawona-pty-spike-ios`). **Physical device PTY/zsh tests still required** before Phase 2 production sign-off.
