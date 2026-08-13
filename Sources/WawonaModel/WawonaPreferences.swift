@@ -302,8 +302,11 @@ public final class WawonaPreferences: ObservableObject {
         let normalizedRenderer = profile.runtimeOverrides.renderer?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
         let normalizedVulkanDriver = profile.runtimeOverrides.vulkanDriver?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
         let normalizedOpenGLDriver = profile.runtimeOverrides.openGLDriver?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
+        // Empty/nil machine override → global default (then normalize legacy labels).
+        let rawMachineInput = profile.runtimeOverrides.inputProfile?
+            .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
         let normalizedInputProfile = Self.normalizedTouchInputType(
-            profile.runtimeOverrides.inputProfile?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+            rawMachineInput.isEmpty ? defaultInputProfile : rawMachineInput
         )
         let normalizedWaylandDisplay = profile.runtimeOverrides.waylandDisplay?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
         let normalizedWaypipePassword = profile.runtimeOverrides.waypipeSSHPassword ?? ""
@@ -358,7 +361,7 @@ public final class WawonaPreferences: ObservableObject {
             remoteCommand: normalizedCommand.isEmpty ? "weston-simple-shm" : normalizedCommand,
             waypipeEnabled: resolvedWaypipeEnabled,
             bundledAppID: normalizedBundledApp.isEmpty ? defaultBundledAppID : normalizedBundledApp,
-            inputProfile: normalizedInputProfile.isEmpty ? defaultInputProfile : normalizedInputProfile,
+            inputProfile: normalizedInputProfile,
             logLevel: normalizedLogLevel.isEmpty ? logLevel : normalizedLogLevel,
             shakeToCloseEnabled: profile.runtimeOverrides.shakeToCloseEnabled ?? shakeToCloseEnabled,
             swipeBackToCloseEnabled: profile.runtimeOverrides.swipeBackToCloseEnabled ?? swipeBackToCloseEnabled

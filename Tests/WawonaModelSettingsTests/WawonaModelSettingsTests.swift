@@ -9,7 +9,7 @@ func machineOverridesGlobalSettings() {
     preferences.sshHost = "global.example"
     preferences.sshUser = "global-user"
     preferences.sshPort = 2222
-    preferences.defaultInputProfile = "global-input"
+    preferences.defaultInputProfile = "Touchpad"
     preferences.defaultWaypipeEnabled = true
 
     let machine = MachineProfile(
@@ -20,7 +20,7 @@ func machineOverridesGlobalSettings() {
         sshPort: 2022,
         runtimeOverrides: MachineRuntimeOverrides(
             renderer: "vulkan",
-            inputProfile: "machine-input",
+            inputProfile: "Multi-Touch",
             waypipeEnabled: false
         )
     )
@@ -30,7 +30,7 @@ func machineOverridesGlobalSettings() {
     #expect(resolved.sshHost == "machine.example")
     #expect(resolved.sshUser == "machine-user")
     #expect(resolved.sshPort == 2022)
-    #expect(resolved.inputProfile == "machine-input")
+    #expect(resolved.inputProfile == "Multi-Touch")
     #expect(resolved.waypipeEnabled == false)
 }
 
@@ -42,6 +42,7 @@ func globalFallbackUsedWhenMachineValuesUnset() {
     preferences.sshHost = "global.example"
     preferences.sshUser = "global-user"
     preferences.sshPort = 2200
+    // Legacy "direct" normalizes to Multi-Touch; empty machine override uses global.
     preferences.defaultInputProfile = "direct"
     preferences.defaultWaypipeEnabled = true
 
@@ -51,7 +52,7 @@ func globalFallbackUsedWhenMachineValuesUnset() {
     #expect(resolved.sshHost == "global.example")
     #expect(resolved.sshUser == "global-user")
     #expect(resolved.sshPort == 2200)
-    #expect(resolved.inputProfile == "direct")
+    #expect(resolved.inputProfile == "Multi-Touch")
     #expect(resolved.waypipeEnabled == true)
 }
 
