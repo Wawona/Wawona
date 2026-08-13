@@ -25,4 +25,7 @@ jobs:
           name: Wawona/Wawona
           rolling: true
           visibility: public
-          include-output-paths: true
+          # Inspecting every output on ubuntu-latest throws (Android SDK /
+          # Darwin-only attrs). Registry publish does not need NAR paths;
+          # FlakeHub Cache already stores those from build jobs.
+          include-output-paths: false
