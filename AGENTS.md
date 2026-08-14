@@ -169,5 +169,10 @@ no-op even when `press`/`click` succeed. Prefer `press` / `gesture`; do not
   See `wawona-anowaw`, `docs/anowaw.md`.
 - **VM / containers** — planned on macOS / iOS / iPadOS / Android / Linux;
   forbidden on tvOS / watchOS / visionOS. See `docs/vms-containers.md`.
+- **Binary filenames** — GitHub Release
+  `Wawona-{calver}-{platform}-{arch}.{ext}`; store uploads add `-{build}` before
+  the extension (TestFlight IPA / Play AAB). product-build may keep short names
+  until a ship boundary. See `docs/ci.md`, `docs/agent-rules/wawona-release-assets.md`,
+  rule `wawona-release-assets`.
 - Mode B **iland** dylib presence: assert with
   `.github/scripts/verify-iland-mode-b-bundle.sh`.

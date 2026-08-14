@@ -726,6 +726,8 @@
           # the host's $WAYLAND_DISPLAY socket, so a single artifact serves both
           # X11 and Wayland hosts. Built reproducibly via the Determinate Linux
           # builder for x86_64 and aarch64.
+          # Product-build short name (arch only). Ship: GitHub assets renames to
+          # Wawona-{calver}-Linux-{arch}.AppImage in release.yml (aarch64→arm64).
           wawona-appimage = nix-appimage.lib.${system}.mkAppImage {
             program = "${self.packages.${system}.wawona-linux-ui-bin}/bin/wawona-linux-ui";
             name = "Wawona-${pkgs.lib.head (pkgs.lib.splitString "-" system)}.AppImage";

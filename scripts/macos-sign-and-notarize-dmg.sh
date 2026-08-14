@@ -18,7 +18,7 @@
 #   ./scripts/macos-sign-and-notarize-dmg.sh \
 #     --app dmg-staging/Wawona.app \
 #     --pkg dmg-staging/WawonaAgent.pkg \
-#     --dmg Wawona-26.8.9.dmg \
+#     --dmg Wawona-26.8.9-macOS-arm64.dmg \
 #     --staging dmg-staging
 #
 # Env:
@@ -61,7 +61,7 @@ if [[ -z "$VERSION" ]]; then
   VERSION="$(cat "$ROOT/VERSION" 2>/dev/null || echo 0.0.0)"
 fi
 if [[ -z "$DMG" ]]; then
-  DMG="$ROOT/Wawona-${VERSION}.dmg"
+  DMG="$ROOT/Wawona-${VERSION}-macOS-arm64.dmg"
 fi
 if [[ -z "$STAGING" ]]; then
   STAGING="$(dirname "$APP")"

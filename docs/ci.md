@@ -45,6 +45,21 @@ Workflow display names use a role prefix (`Gate` / `Build` / `Watch` / `Ship`). 
 | **Ship: beta AppImages** (`ship-beta-appimage.yml`) | — | after a green master **Gate: products** (`workflow_run`) | Re-publishes that run's same-SHA `product-appimage-*` as 30-day `wawona-beta-appimage-*` via cross-run `download-artifact` — **no rebuild, no fallback**. Deletes the old master-push double AppImage build (Gate: products + Ship: beta). Keyed on the Gate run's `head_sha` so it never shares release-beta's concurrency group |
 | **Ship: GitHub assets** (`release.yml`) | — | tags `v*` (+ `workflow_dispatch`) | GitHub Release: DMG/APK/AppImage from product-build (`macos-app` / `android-apk` / `appimage` only; tip_key `ship-assets-<tag>`); IPA via Fastlane `ios github_ipa` (match+gym, same as Ship: beta). macOS DMG is **Developer ID signed + notarized** |
 
+### Binary filenames (three channels)
+
+Same token order everywhere: **app → calver → platform → arch → [build] → ext**.
+Public developer doc: [wawona.io/docs/prebuilt-naming/](https://wawona.io/docs/prebuilt-naming/). Agent rule: [`docs/agent-rules/wawona-release-assets.md`](./agent-rules/wawona-release-assets.md).
+
+| Channel | Pattern | Example |
+|---------|---------|---------|
+| **GitHub Release** (`v*` tag) | `Wawona-{calver}-{platform}-{arch}.{ext}` | `Wawona-26.8.12-macOS-arm64.dmg`, `…-iOS-arm64.ipa`, `…-Android-arm64.apk`, `…-Linux-x86_64.AppImage`, `…-Linux-arm64.AppImage` |
+| **Store upload** (TestFlight / Play internal) | `Wawona-{calver}-{platform}-{arch}-{build}.{ext}` | `Wawona-26.8.12-iOS-arm64-142.ipa`, `…-tvOS-…`, `…-visionOS-…`, `…-Android-arm64-142.aab` |
+| **product-build / Gate** | Short unversioned until a ship boundary | `Wawona.apk`, `Wawona.app`, `Wawona-x86_64.AppImage` / `Wawona-aarch64.AppImage` |
+
+- **No unversioned GitHub aliases** (`Wawona.apk`, `Wawona-macOS-arm64.dmg`, bare `Wawona-x86_64.AppImage` on the Release). Rename at the ship boundary.
+- Linux filename maps `aarch64` → `arm64`. Store Apple IPAs use platform tokens `iOS` \| `tvOS` \| `visionOS` (not scheme-first `Wawona-iOS-…`).
+- Historical release assets keep old names until the next `v*` / next beta upload.
+
 **macOS DMG layout:** the DMG ships **both** `Wawona.app` (drag → `/Applications`) **and** `WawonaAgent.pkg`. The pkg is a hybrid installer built from the same staged app ([`scripts/macos-launch-agent-pkg.sh`](../scripts/macos-launch-agent-pkg.sh)): its payload installs `/Applications/Wawona.app` and its `postinstall` loads the compositor + menubar LaunchAgents and publishes `WAYLAND_DISPLAY` / `XDG_RUNTIME_DIR`. Default installs for the console user; `sudo WAWONA_INSTALL_USERS=a,b installer -pkg …` targets more accounts. `release.yml` hard-fails if either `Wawona.app` or `WawonaAgent.pkg` is missing before packaging.
 
 **macOS notarization (Gatekeeper):** `release-macos` uses Environment `release-beta` secrets (`DEVELOPER_ID_*_P12_BASE64`, `MATCH_PASSWORD`, `APP_STORE_CONNECT_*`) and [`scripts/macos-sign-and-notarize-dmg.sh`](../scripts/macos-sign-and-notarize-dmg.sh): deep `codesign` with hardened runtime + [`Wawona-macOS-DeveloperID.entitlements`](../src/resources/app-bundle/Wawona-macOS-DeveloperID.entitlements), `productsign` the agent pkg, `hdiutil` UDZO DMG, `notarytool submit --wait`, `stapler staple`. Without this, downloaded apps show “damaged and can’t be opened” (quarantine + ad-hoc/nix signature). Re-ship an existing tag via Actions → **Ship: GitHub assets** → `workflow_dispatch` (`tag=vYY.M.D`, optional `build_ref=development` when the notarize script is not yet on the tagged commit).

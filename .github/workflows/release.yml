@@ -146,18 +146,14 @@ jobs:
             --app dmg-staging/Wawona.app \
             --pkg dmg-staging/WawonaAgent.pkg \
             --staging dmg-staging \
-            --dmg "Wawona-${WAWONA_VERSION}.dmg" \
+            --dmg "Wawona-${WAWONA_VERSION}-macOS-arm64.dmg" \
             --version "$WAWONA_VERSION"
-          # Stable latest-download alias used by wawona.io download cards.
-          cp -f "Wawona-${WAWONA_VERSION}.dmg" Wawona-macOS-arm64.dmg
 
       - name: Upload DMG
         uses: actions/upload-artifact@v7
         with:
           name: macos-dmg
-          path: |
-            Wawona-*.dmg
-            Wawona-macOS-arm64.dmg
+          path: Wawona-*-macOS-arm64.dmg
 
   release-ios:
     name: "iOS IPA (GitHub Release asset)"
@@ -211,7 +207,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ios-ipa
-          path: dist/Wawona-*-iOS.ipa
+          path: dist/Wawona-*-iOS-arm64.ipa
 
   release-android:
     needs: product-android
@@ -235,7 +231,7 @@ jobs:
             [[ -n "$found" ]] || { echo "APK missing"; exit 1; }
             cp -L "$found" dist/Wawona.apk
           fi
-          cp dist/Wawona.apk "Wawona-${VERSION}.apk"
+          cp dist/Wawona.apk "Wawona-${VERSION}-Android-arm64.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v7
@@ -266,10 +262,23 @@ jobs:
 
       - name: Stage for release
         run: |
+          VERSION=$(cat VERSION)
           mkdir -p release-stage
-          find dist -name '*.AppImage' -type f -exec cp -v {} release-stage/ \;
+          found=0
+          while IFS= read -r -d '' f; do
+            base=$(basename "$f")
+            arch=
+            case "$base" in
+              *aarch64*|*arm64*) arch=arm64 ;;
+              *x86_64*) arch=x86_64 ;;
+            esac
+            [[ -n "$arch" ]] || { echo "error: cannot infer arch from $base"; exit 1; }
+            dest="release-stage/Wawona-${VERSION}-Linux-${arch}.AppImage"
+            cp -v "$f" "$dest"
+            found=1
+          done < <(find dist -name '*.AppImage' -type f -print0)
+          [[ "$found" -eq 1 ]] || { echo "error: no AppImage in dist/"; exit 1; }
           ls -la release-stage/
-          test "$(ls release-stage/*.AppImage | wc -l)" -ge 1
 
       - name: Upload AppImage
         uses: actions/upload-artifact@v7
