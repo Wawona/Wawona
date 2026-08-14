@@ -1,35 +1,72 @@
-# wwn-iland Mode A / Mode B + Desktop Replacement
+# wwn-iland Mode A / Mode B + Desktop / LockScreen Replacement
 
-Tracked mirror of Cursor rule `wawona-iland-mode-b-desktop` (alwaysApply).
-Prefer [`../iland-mode-a-b-desktop.md`](../iland-mode-a-b-desktop.md) for full
-anchors; this file is the short agent checklist.
+Authority for **when** Wawona uses App Store–safe in-window iland (Mode A)
+versus the SIP-gated host Desktop/LockScreen `.dylib` (Mode B on macOS).
 
-## Two modes (do not conflate)
+**anowaW is a different product** (host-app → Wayland bridge). Do not document
+anowaW here. See `wawona-anowaw`.
+
+Desktop / LockScreen status: **⏳ planned / coming soon** (in development on
+macOS and Android; iOS path only via `repo.wawona.io` — website docs only).
+
+## Two iland modes (do not conflate with anowaW Mode A/B)
 
 | | Mode A (default) | Mode B (desktop-host only) |
 |---|---|---|
 | Artifact | `libiland_userland.a` | `libwayland-mac.dylib` |
-| Present | `iland_drm_set_present_callback` → Metal | Mach IPC → `framebufferd` |
-| Load | Static link | `DYLD_INSERT_LIBRARIES` + Dobby |
-| SIP / root | Not required | SIP Disabled or PartiallyDisabled + root |
+| Present | `iland_drm_set_present_callback` → `WWNIlandPresenter` / CAMetalLayer | Mach IPC → `framebufferd` (SkyLight path) |
+| Load | Static link | `DYLD_INSERT_LIBRARIES` + Dobby (CoreBedtime model) |
+| SIP / root | Not required | SIP **Disabled** or **PartiallyDisabled** (`Debugging Restrictions: disabled`) + root for constructor |
 | App Store | Yes | **No** |
-| Platforms | macOS, iOS/iPadOS/visionOS, Android; tvOS/watchOS stubs | **macOS only** |
+| Platforms | macOS, iOS/iPadOS/visionOS, Android; tvOS/watchOS stubs | **macOS only** (Desktop/LockScreen host tweak) |
 
-## Runtime (macOS)
+## What Desktop / LockScreen is
 
-1. `WWNSipStatus` via `csrutil status` (playground partial = Debugging Restrictions disabled).
-2. SIP blocked → Mode A; clear `DesktopReplacementEnabled`.
-3. SIP allows + Desktop on + Desktop machine connect → `WWNDesktopReplacementController` Mode B.
-4. Else Mode A.
+Replace the **host** desktop environment and lock screen with a Wawona machine
+picker (nested compositor session). Machine profile type: **native ports
+only**. Not Linux. Not App Store iOS family.
 
-## Shipping
+| Host | Mechanism | Root / SIP |
+|---|---|---|
+| **macOS** | Partial SIP (system debugging) + bundled `.dylib` in `wawona-macos-desktop-host` | Required for Mode B engage |
+| **Android** | Default Home App + LockScreen APIs | **No root**; **no fallback tier** |
+| **iOS** | Jailbreak tweak from **`repo.wawona.io`** (Sileo) | Outside App Store only |
+| App Store iOS / iPadOS / tvOS / watchOS / visionOS | — | **❌ forbidden** in-app; **never mention jailbreak** in store binaries |
 
-- Dylib **only** in `.#wawona-macos-desktop-host` → `Contents/Library/Wawona/iland/`.
-- `.#wawona-macos` + all non-macOS → dylib **absent**.
-- Verify: `.github/scripts/verify-iland-mode-b-bundle.sh`.
-- Cargo `iland-baremetal` only with `profile-desktop-host` / `profile-full-dev`.
+## Runtime decision (macOS)
 
-## Desktop surface
+1. Detect SIP via `WWNSipStatus` (`csrutil status` text parse — same as
+   playground `checkSipStatus`). Partial = `Debugging Restrictions: disabled`.
+2. If SIP does **not** allow → Mode A only; ignore / clear
+   `DesktopReplacementEnabled`.
+3. If SIP allows **and** Settings → Desktop → Enable Desktop Replacement is on
+   **and** connecting the Desktop machine → Mode B via
+   `WWNDesktopReplacementController` (privileged insert of bundled dylib).
+4. Otherwise → Mode A.
 
-macOS + Android only. Android: no SIP; anowaW rootless vs Shizuku/root power.
-Never Mode B dylib on Android or iOS family.
+Never invent CSR_* syscalls; stay on `csrutil status` string matching.
+
+## Shipping rules (hard)
+
+- Ship `libwayland-mac.dylib` **only** in `.#wawona-macos-desktop-host`
+  (`Contents/Library/Wawona/iland/`). Built from
+  `wwn-iland` `registryFragment.iland-baremetal` /
+  `dependencies/libs/iland/macos-baremetal.nix`.
+- Default `.#wawona-macos` (store-safe / product-build / TestFlight-shaped) and
+  **all** iOS/iPadOS/tvOS/watchOS/visionOS/Android artifacts: **dylib absent**.
+- Assert with `Wawona/.github/scripts/verify-iland-mode-b-bundle.sh`.
+- Cargo: `iland-baremetal` only with `profile-desktop-host` or
+  `profile-full-dev` (see `Wawona/src/lib.rs` compile_errors). Never on mobile.
+- Do **not** ship or describe Desktop/LockScreen as ready until the planned
+  work lands; gates stay ⏳ / in-app Apple-mobile ❌.
+
+## Where to edit
+
+- Mode A recipes / shims: `wwn-iland` (`macos.nix`, `ios.nix`, `android.nix`,
+  `upstream/shims/`).
+- Mode B dylib build: `wwn-iland/.../macos-baremetal.nix`.
+- SIP + prefs UI: `WWNSipStatus.*`, `WWNPreferences.m` Desktop section.
+- Engage/disengage: `WWNDesktopReplacementController.*`,
+  `WWNMachineSessionBridge.m`.
+- Canonical prose: `Wawona/docs/iland-mode-a-b-desktop.md`.
+- anowaW: `wawona-anowaw`, `Wawona/docs/anowaw.md`.

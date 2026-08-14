@@ -104,24 +104,30 @@ public enum PlatformCapabilities: Sendable {
 
     public static var allowsGpuStack: Bool { gpuStackGate.isAvailable }
 
-    /// Policy: Mode B / desktop + lockscreen replacement is macOS only.
+    /// Desktop + LockScreen host replacement. Coming soon on macOS (Android is
+    /// gated in Compose). App Store Apple-mobile builds keep this forbidden and
+    /// must never mention alternate distribution paths in UI or strings.
     public static var desktopReplacementGate: CapabilityGate {
         #if os(macOS)
-        return .available
+        return .planned(flag: "WWN_DESKTOP_REPLACEMENT")
         #else
-        return .forbidden(reason: "Desktop/LockScreen replacement is macOS + Android only")
+        return .forbidden(reason: "Desktop/LockScreen replacement is not offered in App Store Apple-mobile builds")
         #endif
     }
 
     public static var allowsDesktopReplacement: Bool { desktopReplacementGate.isAvailable }
 
-    public static var allowsAnowaW: Bool {
-        #if os(macOS)
-        return true
+    /// anowaW app bridge (host apps → Wayland). Not Desktop/LockScreen.
+    /// Planned on macOS and iOS; Android is gated in Compose.
+    public static var anowaWGate: CapabilityGate {
+        #if os(macOS) || os(iOS)
+        return .planned(flag: "WWN_ANOWAW")
         #else
-        return false
+        return .forbidden(reason: "anowaW is macOS, iOS, and Android only")
         #endif
     }
+
+    public static var allowsAnowaW: Bool { anowaWGate.isAvailable }
 
     /// Client-side decorations (CSD) only render correctly on macOS Wawona,
     /// which draws host chrome around a client-decorated surface. Every other

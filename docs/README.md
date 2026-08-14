@@ -18,7 +18,8 @@ onto the site. Everything else stays in GitHub.
 | [settings.md](settings.md) | Preference keys and Machines overrides |
 | [usage.md](usage.md) | Nested Weston/Niri, bundled clients |
 | [machine-profiles.md](machine-profiles.md) | Machine kinds: native, ssh_waypipe, ssh_terminal, VM, container |
-| [iland-mode-a-b-desktop.md](iland-mode-a-b-desktop.md) | Mode A vs SIP Mode B; Android anowaW |
+| [iland-mode-a-b-desktop.md](iland-mode-a-b-desktop.md) | Mode A vs SIP Mode B Desktop/LockScreen |
+| [anowaw.md](anowaw.md) | anowaW app bridge (not Desktop) |
 | [iland-graphics-stack.md](iland-graphics-stack.md) | GPU/SHM, no Turnip/KGSL |
 | [2026-waypipe.md](2026-waypipe.md) | SSH: OpenSSH / libssh2 / OpenSSH portable |
 | [ios-local-shell/README.md](ios-local-shell/README.md) | Bundled zsh (not StoreKit apt) |

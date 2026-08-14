@@ -133,21 +133,23 @@ Apple mobile terminal/Settings keygen uses **libssh2 CLI** (`libwwn-ssh-cli.a`).
 
 ---
 
-## Desktop Replacement (macOS + Android only)
+## Desktop Replacement (macOS + Android planned; App Store iOS forbidden)
 
-Never shown on iOS / iPadOS / tvOS / watchOS / visionOS. Canonical behavior:
-[`iland-mode-a-b-desktop.md`](./iland-mode-a-b-desktop.md).
+**Coming soon.** Never ship Desktop/LockScreen UI on App Store Apple-mobile
+targets, and never mention jailbreak in those binaries. Canonical behavior:
+[`iland-mode-a-b-desktop.md`](./iland-mode-a-b-desktop.md). anowaW is separate:
+[`anowaw.md`](./anowaw.md).
 
 ### macOS (`NSUserDefaults`)
 
 | Setting | Key | Type | Default | Description |
 |---------|-----|------|---------|-------------|
-| SIP status (info) | (runtime `WWNSipStatus`) | Info | — | `csrutil status` classify; Mode B needs Disabled or PartiallyDisabled |
+| SIP status (info) | (runtime `WWNSipStatus`) | Info | — | `csrutil status` classify; Desktop Mode B needs Disabled or PartiallyDisabled |
 | Enable Desktop Replacement | `DesktopReplacementEnabled` | Switch | Off | Mode B when SIP allows; refused/cleared if SIP blocks or Mode B dylib missing |
-| Desktop Machine | `DesktopReplacementMachineId` | Popup | — | Nested Weston native machine only |
-| App Bridge (anowaW) | `AnowaWEnabled` | Switch | Off | ScreenCaptureKit + Accessibility into nested Weston |
-| Enable Lockscreen Replacement | `LockscreenReplacementEnabled` | Switch | Off | Greeter before Desktop |
-| Lockscreen Machine | `LockscreenReplacementMachineId` | Popup | — | gtkgreet / gtklock / similar |
+| Desktop Machine | `DesktopReplacementMachineId` | Popup | — | Native-port machine profiles only |
+| Enable Lockscreen Replacement | `LockscreenReplacementEnabled` | Switch | Off | Greeter / machine picker before Desktop |
+| Lockscreen Machine | `LockscreenReplacementMachineId` | Popup | — | Native-port greeter machine |
+| App Bridge (anowaW) | `AnowaWEnabled` | Switch | Off | **Not** Desktop — see [`anowaw.md`](./anowaw.md) |
 
 Mode B loads bundled `libwayland-mac.dylib` only from
 `wawona-macos-desktop-host` builds. Store-safe `wawona-macos` stays Mode A.
@@ -156,11 +158,11 @@ Mode B loads bundled `libwayland-mac.dylib` only from
 
 | Setting | Key | Description |
 |---------|-----|-------------|
-| Desktop enabled | `wawona.desktop.enabled` | HOME / launcher role |
-| Desktop machine | `wawona.desktop.machineId` | Nested Weston native only |
-| App Bridge | `wawona.anowaW.enabled` | Mirror apps into nested desktop |
-| Power mode | `wawona.anowaW.powerMode` | Shizuku/root vs rootless baseline (no SIP) |
-| Lockscreen | `wawona.lockscreen.*` | Greeter machine before desktop |
+| Desktop enabled | `wawona.desktop.enabled` | Default Home App role (no root) |
+| Desktop machine | `wawona.desktop.machineId` | Native-port profiles only |
+| Lockscreen | `wawona.lockscreen.*` | Platform LockScreen APIs (no root) |
+| App Bridge | `wawona.anowaW.enabled` | anowaW — separate from Desktop/LockScreen |
+| anowaW Mode B | `wawona.anowaW.powerMode` | Privileged paths outside Play requirements |
 
 ---
 

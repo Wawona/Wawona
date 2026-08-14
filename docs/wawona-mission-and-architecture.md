@@ -66,16 +66,29 @@ Detail: `wawona-iland-mode-b-desktop`, `docs/iland-mode-a-b-desktop.md`.
 
 ## Desktop and lockscreen replacement
 
-On **macOS**, Wawona can replace the system compositor outright: a userspace
-`.dylib` runtime tweak standing in for WindowServer / SkyLight / LoginWindow,
-driven by iland's DRM/KMS/GBM. That is **Mode B** — SIP-gated, never shipped in
-store-safe artifacts.
+**Coming soon.** Desktop and LockScreen make Wawona the **host** desktop
+environment and greeter (machine picker; **native-port** profiles only).
 
-On **Android**, the equivalent is **anowaW**: rootless (MediaProjection) or power
-(Shizuku/root). There is no SIP and never a Mode B dylib.
+- **macOS:** partial SIP (system debugging) + `.dylib` (**iland Mode B**) in
+  `wawona-macos-desktop-host` — still in development.
+- **Android:** Default Home App + LockScreen APIs — **no root**, no fallback
+  tier — still in development.
+- **iOS:** only as a jailbreak tweak from **`repo.wawona.io`** (website docs).
+  App Store iOS builds keep this **forbidden** and must **never mention
+  jailbreak**.
+- **Not** Linux. **Not** App Store iPadOS / tvOS / watchOS / visionOS.
 
-Desktop / LockScreen / anowaW are **macOS and Android only**. Not iOS, iPadOS,
-tvOS, watchOS, or visionOS.
+Detail: `wawona-iland-mode-b-desktop`, `docs/iland-mode-a-b-desktop.md`.
+
+## anowaW (app bridge — separate from Desktop/LockScreen)
+
+**Coming soon.** anowaW bridges **macOS / Android / iOS** host apps onto Wayland
+surfaces (zero-copy surface bridge). It is **not** Desktop/LockScreen and **not**
+MediaProjection-as-desktop. Mode A ships in store/Play-shaped builds; Mode B is
+privileged (macOS partial SIP, Android root paths, iOS via `repo.wawona.io`) and
+**forbidden** in App Store / Play artifacts.
+
+Detail: `wawona-anowaw`, `docs/anowaw.md`.
 
 Where Wawona is not replacing the desktop, it integrates with it: clients appear
 as ordinary host windows under the proprietary host compositor.

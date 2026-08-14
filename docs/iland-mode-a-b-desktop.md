@@ -1,15 +1,19 @@
-# iland Mode A / Mode B and Desktop Replacement
+# iland Mode A / Mode B and Desktop / LockScreen Replacement
 
-> **Public subset** for wawona.io. Desktop / LockScreen / anowaW are macOS +
-> Android only. Never iOS family.
+> **Public subset** for wawona.io. Desktop / LockScreen are **macOS + Android**
+> (planned), plus an **iOS jailbreak tweak** documented only on the website /
+> `repo.wawona.io`. **Not** Linux. **Not** App Store iOS family.
+>
+> **anowaW is separate** — see [`anowaw.md`](anowaw.md). Do not document anowaW
+> as Desktop or LockScreen.
 
 Live grades: [`iland-graphics-progress.md`](iland-graphics-progress.md).
 CI bundle matrix: [`testing/graphics-ci-matrix.md`](testing/graphics-ci-matrix.md).
 
 Canonical description of how Wawona uses **wwn-iland** for graphics present and
-macOS Desktop Replacement. When this conflicts with older docs or comments,
-**this file wins** (also mirrored in `.cursor/rules/wawona-iland-mode-b-desktop.mdc`
-and `AGENTS.md`).
+macOS Desktop/LockScreen host replacement. When this conflicts with older docs
+or comments, **this file wins** (also mirrored in
+`.cursor/rules/wawona-iland-mode-b-desktop.mdc` and `AGENTS.md`).
 
 Upstream inspiration: [CoreBedtime/iland](https://github.com/CoreBedtime/iland).
 Wawona packaging: [wwn-iland](https://github.com/Wawona/wwn-iland).
@@ -17,31 +21,56 @@ Stack architecture and toolkit contracts:
 [`iland-graphics-stack.md`](iland-graphics-stack.md). Repository ownership:
 [`wwn-repo-dag.md`](wwn-repo-dag.md).
 
-## Summary
+## Status
+
+**Coming soon / in development.** Desktop and LockScreen replacement are not
+ready to treat as shipping. Product gates stay **planned** on macOS and Android;
+App Store Apple-mobile builds keep Desktop/LockScreen **forbidden** and must
+**never mention jailbreak** in UI or strings.
+
+## What Desktop / LockScreen is
+
+Make Wawona the **host desktop environment** and **lock-screen / greeter** with
+a Wawona **machine picker**. Machine profile type for these roles: **native
+ports only**.
+
+| Host | Mechanism | Privilege |
+|---|---|---|
+| **macOS** | Partial SIP (system debugging / Debugging Restrictions disabled) + `.dylib` tweak in `wawona-macos-desktop-host` | Required for Mode B |
+| **Android** | Default Home App + LockScreen APIs | **No root**; **no fallback tier** |
+| **iOS** | Jailbreak tweak from **`repo.wawona.io`** (Sileo source) | Outside App Store only; website docs only |
+| Linux / App Store iOS family | — | **Forbidden** |
+
+## Summary (iland present modes)
 
 - **Mode A** is the default, App Store–safe path: static `libiland_userland.a`,
   in-window DRM/KMS/EGL/GBM over IOSurface + ANGLE, present via
   `iland_drm_set_present_callback` into Wawona’s Metal layer.
-- **Mode B** is optional, **macOS-only**, **not** App Store safe: ship
-  `libwayland-mac.dylib`, load with `DYLD_INSERT_LIBRARIES` + Dobby (same model
-  as CoreBedtime), replace SkyLight/WindowServer via `framebufferd`. Requires
-  SIP debugging restrictions off (or SIP fully disabled) and root.
-- **Android** has no SIP. Desktop Replacement uses the HOME/launcher role;
-  anowaW is rootless (MediaProjection) vs power (Shizuku/root).
+- **Mode B** is optional, **macOS-only** for **Desktop/LockScreen host
+  replacement**, **not** App Store safe: ship `libwayland-mac.dylib`, load with
+  `DYLD_INSERT_LIBRARIES` + Dobby (same model as CoreBedtime), replace
+  SkyLight/WindowServer / lock path via `framebufferd`. Requires SIP debugging
+  restrictions off (or SIP fully disabled) and root.
+- **Android Desktop/LockScreen** uses platform Home + LockScreen APIs — not the
+  macOS dylib, and not anowaW.
+- **anowaW** (app bridge) has its own Mode A/B — see [`anowaw.md`](anowaw.md).
 
 ## Decision tree
 
 ```text
-platform?
-  iOS / iPadOS / visionOS     → Mode A only
-  tvOS / watchOS              → Mode A stub (no ANGLE / IOKit)
-  Android                     → anowaW power? → Shizuku/root : rootless baseline
-  macOS
-    SIP allows Mode B?        (Disabled | PartiallyDisabled)
-      no  → Mode A (ignore Desktop toggle; clear if stale)
-      yes → DesktopReplacementEnabled?
-            no  → Mode A
-            yes → Mode B (DYLD_INSERT bundled dylib + DRM weston)
+feature?
+  anowaW                      → see anowaw.md (not this file)
+  Desktop / LockScreen
+    Linux                     → forbidden
+    App Store iOS family      → forbidden in-app (no jailbreak mentions)
+    iOS (website / repo only) → repo.wawona.io jailbreak tweak (planned)
+    Android                   → Default Home + LockScreen (planned; no root)
+    macOS
+      SIP allows Mode B?      (Disabled | PartiallyDisabled)
+        no  → Mode A (ignore Desktop toggle; clear if stale)
+        yes → DesktopReplacementEnabled?
+              no  → Mode A
+              yes → Mode B (DYLD_INSERT bundled dylib + DRM weston)
 ```
 
 SIP detection: `WWNSipStatus` → `csrutil status` text parse (playground
@@ -79,33 +108,35 @@ Prefs (macOS `NSUserDefaults`):
 - `DesktopReplacementEnabled`
 - `DesktopReplacementMachineId`
 - `LockscreenReplacementEnabled` / `LockscreenReplacementMachineId`
-- `AnowaWEnabled`
+- `AnowaWEnabled` (anowaW — separate feature; see [`anowaw.md`](anowaw.md))
 
-## Android (no SIP)
+## Android Desktop / LockScreen (no SIP, no root)
 
-| Tier | Pref / condition | Behavior |
-|------|------------------|----------|
-| Rootless / baseline | Power off, or Shizuku/root unavailable | Own-app VD + consented MediaProjection; waypipe-rs mirror without privileged inject |
-| Power | `wawona.anowaW.powerMode` + `AnowawPowerController` available | Trusted VD, any app, privileged input + waypipe-rs |
+| Surface | Behavior |
+|---------|----------|
+| Desktop | Default Home App role |
+| LockScreen | Platform LockScreen replacement APIs |
+| Privilege | No root required; no MediaProjection “fallback tier” as the Desktop story |
 
-Auto-fallback power → baseline is required when privilege is missing. See
-`DesktopReplacement.kt`, `AnowawSession.kt`, Settings Desktop / App Bridge copy.
+anowaW settings (`wawona.anowaW.*`) are **not** Desktop/LockScreen. See
+[`anowaw.md`](anowaw.md) and Settings Desktop / App Bridge copy when those ship.
 
 ## Store / distribution compliance (per target)
 
 macOS is **third-party distribution** (Developer ID / notarized), **not** Mac
 App Store — never gated on Mac App Store review rules (see
 `wawona-macos-no-appstore.mdc`). Everything that ships to a store must be
-**Mode A–shaped end-to-end**.
+**Mode A–shaped end-to-end** for graphics, and must not ship Desktop Mode B or
+anowaW Mode B.
 
 | Target | Distribution | Compliance bar for graphics / Desktop |
 |--------|--------------|----------------------------------------|
-| **iOS** | App Store | Mode A only; static `libiland_userland`; in-app KMS/DRM; no `DYLD_INSERT`, no private SkyLight/IOKit abuse, no Mode B dylib; SSH = libssh2 only |
-| **iPadOS** | App Store | Same + multi-window (1 host window per Wayland client) |
-| **visionOS** | App Store | Same Mode A / macOS-product GLES+Vulkan parity via store-safe stack (MVK/ANGLE); no Mode B; multi-window required |
+| **iOS** | App Store | Mode A only; no Desktop/LockScreen UI; **no jailbreak mentions**; no Mode B dylib; SSH = libssh2 only |
+| **iPadOS** | App Store | Same + multi-window; no Desktop/LockScreen |
+| **visionOS** | App Store | Same Mode A / macOS-product GLES+Vulkan parity; no Mode B; multi-window required |
 | **tvOS** | App Store | Mode A **software only** — no ANGLE/MVK/KK/Vulkan ICD, no IOKit, no GPU DRM clients |
 | **watchOS** | App Store | Same software policy as tvOS |
-| **Android** | Google Play | Mode A: in-app KMS/DRM + consented MediaProjection / own VD; Home Desktop **without root**; optional power/root is sideload/opt-in, never Play-required |
+| **Android** | Google Play | Mode A graphics; Home Desktop **without root** when it ships; anowaW Mode B never Play-required |
 | **macOS** | **3rd-party** (not MAS) | Mode A default (SIP OK). Mode B desktop-host OK under SIP partial\|off; never contaminate iOS/Android store artifacts |
 
 ### Store-compliance checklist (assert per store build)
@@ -113,7 +144,7 @@ App Store — never gated on Mac App Store review rules (see
 1. **No Mode B artifacts** in App Store IPA / Play AAB/APK (no
    `libwayland-mac.dylib`, no inject, no `framebufferd`).
 2. **No SIP disablement / root** required for any store-listed feature
-   (including kmscube, waypipe, Android Home Desktop).
+   (including kmscube, waypipe, Android Home Desktop when shipped).
 3. **Private API / entitlement firewall:** Mode A present = public
    Metal/UIKit/AppKit/Surface + userland DRM shims only.
 4. **tvOS/watchOS:** software Mode A only — never "fix" compliance by shipping
@@ -124,6 +155,7 @@ App Store — never gated on Mac App Store review rules (see
    cannot link them; `verify-iland-mode-b-bundle.sh` is the evidence.
 7. **macOS 3rd-party:** may ship desktop-host flavor separately; never reuse
    its packaging for iOS/Android store builds.
+8. **No jailbreak language** in App Store iOS binaries or metadata.
 
 Leak vectors to watch (from graphics-stack epic R7): manual packaging copying
 the dylib; sharing iOS GPU post-build phases onto tv/watch; adding IOKit
@@ -162,11 +194,11 @@ format/size) are tracked in [`iland-graphics-progress.md`](iland-graphics-progre
 ## Agent / Cursor rules
 
 - Workspace: `.cursor/rules/wawona-iland-mode-b-desktop.mdc` (alwaysApply)
+- anowaW: `.cursor/rules/wawona-anowaw.mdc`
 - Wawona repo: `Wawona/.cursor/rules/wawona-iland-mode-b-desktop.mdc`
 - Repo DAG: `.cursor/rules/wawona-repo-dag.mdc` (+ Wawona repo mirror);
   canonical `docs/wwn-repo-dag.md`
-- Platform matrix: `.cursor/rules/wawona-platform-targets.mdc` (Desktop /
-  LockScreen / anowaW = macOS + Android only)
+- Platform matrix: `.cursor/rules/wawona-platform-targets.mdc`
 - tvOS/watchOS GL stubs: `.cursor/rules/wwn-iland-apple-fallback.mdc`
 - Agent entry: `Wawona/AGENTS.md`, `wwn-iland/AGENTS.md`
 - Graphics-stack progress + capability matrix:

@@ -47,12 +47,14 @@ and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream synta
   - **Mode A (default, App Store–safe):** static `libiland_userland.a`, in-window
     present via `iland_drm_set_present_callback` → `WWNIlandPresenter`. Used on
     macOS/iOS/iPadOS/visionOS/Android (tvOS/watchOS stubs). No SIP, no dylib inject.
-  - **Mode B (optional, macOS desktop-host only):** ship `libwayland-mac.dylib`,
-    load with `DYLD_INSERT_LIBRARIES` + Dobby when SIP allows
-    (`WWNSipStatus`: Disabled or PartiallyDisabled) **and** Settings → Desktop →
-    Enable Desktop Replacement is on. Package `.#wawona-macos-desktop-host` only;
-    never in `.#wawona-macos` / iOS / Android. Canonical doc:
+  - **Mode B (optional, macOS desktop-host only, planned):** ship
+    `libwayland-mac.dylib`, load with `DYLD_INSERT_LIBRARIES` + Dobby when SIP
+    allows (`WWNSipStatus`: Disabled or PartiallyDisabled) **and** Settings →
+    Desktop → Enable Desktop Replacement is on. Package
+    `.#wawona-macos-desktop-host` only; never in `.#wawona-macos` / iOS /
+    Android. Desktop/LockScreen are **coming soon**. Canonical doc:
     `docs/iland-mode-a-b-desktop.md`; Cursor rule `wawona-iland-mode-b-desktop`.
+    anowaW is separate (`docs/anowaw.md`, `wawona-anowaw`).
   - Query `project=macos-internals` for Mach-O/dyld/Mach/XNU/launchd details.
 - **Rust backend builds via crate2nix** (per-crate Nix derivations, `Cargo.nix`)
   for isolated/incremental rebuilds — not a monolithic `buildRustPackage`. Query
@@ -159,7 +161,11 @@ no-op even when `press`/`click` succeed. Prefer `press` / `gesture`; do not
   workspace rule `wawona-repo-dag`.
 - Builds are Nix-based; see `docs/compilation.md` and `docs/2026-nix-build-system.md`.
 - Don't commit secrets; `WWN_MCP_TOKEN` is provided via the environment.
-- **Desktop / LockScreen / anowaW / SIP** — macOS + Android only (see
-  `.cursor/rules/wawona-platform-targets.mdc`). Never wire onto iOS family.
-- Mode B dylib presence: assert with
+- **Desktop / LockScreen** — macOS + Android **planned**; iOS only via
+  `repo.wawona.io` (website). Forbidden in App Store Apple-mobile apps (never
+  mention jailbreak there). See `wawona-platform-targets`,
+  `docs/iland-mode-a-b-desktop.md`.
+- **anowaW** — separate app bridge (macOS / Android / iOS); not Desktop.
+  See `wawona-anowaw`, `docs/anowaw.md`.
+- Mode B **iland** dylib presence: assert with
   `.github/scripts/verify-iland-mode-b-bundle.sh`.
