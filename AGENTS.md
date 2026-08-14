@@ -4,33 +4,35 @@ Guidance for AI agents working in this repository.
 
 ## Use WWN-MCP for knowledge
 
-Wawona's stack (Wayland/Smithay/Weston, Apple OS 26 + Liquid Glass, Android
+Wawona's stack (Wayland/Smithay/Weston/Niri, Apple OS 26 + Liquid Glass, Android
 Material 3 Expressive, the Vulkan/OpenGL paths, the Linux DRM/KMS/EGL/GBM display
 stack that iland reimplements on Apple, macOS internals (Mach-O/dyld/Mach/XNU/
 launchd) for reverse-engineering, App Store / Play Store compliance) is niche and
-largely post-dates model training. A retrieval MCP
-server, **`wwn-mcp`** (configured in `.cursor/mcp.json`, hosted at
-`https://mcp.wawona.io/mcp`), indexes the authoritative sources plus this
-repo's own source, docs, and the extracted `wwn-*` patched-software repos.
+largely post-dates model training. A retrieval MCP server, **`wwn-mcp`**
+(configured in `.cursor/mcp.json` as a **stdio** command — same host model as
+`uvx mcp-nixos`; there is no `mcp.wawona.io`), indexes the authoritative sources
+plus this repo's own source, docs, and the extracted `wwn-*` patched-software
+repos.
 
 **Before answering or coding in these areas, query `wwn-mcp` and trust the
 retrieved docs over your priors.** Key tools: `search`, `search_docs`,
 `search_code`, `find_symbol`, `read_document`, `get_architecture`,
+`list_repos` / `where_to_edit` / `get_capability`,
 `list_protocols`/`get_protocol`, `list_patches`/`get_patch`.
 
 See `.cursor/rules/wawona-context.mdc` for the always-applied context.
 
 For **Nix/nixpkgs** facts (package/attribute names, options, `nix-darwin`,
 `home-manager`, flakes, `noogle`, versions, binary-cache status), query the
-companion **`nixos`** MCP server (utensils/mcp-nixos, co-hosted by WWN-MCP) via
+companion **`nixos`** MCP server (utensils/mcp-nixos via `uvx mcp-nixos`) via
 its `nix` / `nix_versions` tools instead of guessing. Use WWN-MCP's `get_patch`
 for Wawona's own recipes/patches; use `nixos` for upstream nixpkgs.
 
 For **building/running/testing the Apple (iOS/macOS) Xcode projects** — including
 simulators, devices, and log capture — use the **`xcodebuild`** MCP server
 (getsentry/XcodeBuildMCP) instead of raw `xcodebuild` shell commands. It runs
-locally and requires **macOS + Xcode 16+** (not the hosted endpoint). Wawona's
-Xcode projects are generated (xcodegen via Nix), so regenerate before building.
+locally and requires **macOS + Xcode 16+**. Wawona's Xcode projects are
+generated (xcodegen via Nix), so regenerate before building.
 
 For **CI / prebuilt distribution** (Wawona v2.5+ Fastlane beta lanes), read
 `wwn-mcp/knowledge/wawona/fastlane.md` and use `scripts/sync-github-secrets.sh`
@@ -160,7 +162,7 @@ no-op even when `press`/`click` succeed. Prefer `press` / `gesture`; do not
   never make Wawona an input of any `wwn-*`. Canonical: `docs/wwn-repo-dag.md`;
   workspace rule `wawona-repo-dag`.
 - Builds are Nix-based; see `docs/compilation.md` and `docs/2026-nix-build-system.md`.
-- Don't commit secrets; `WWN_MCP_TOKEN` is provided via the environment.
+- Don't commit secrets.
 - **Desktop / LockScreen** — macOS + Android **planned**; iOS/iPadOS only via
   `repo.wawona.io` (website). Forbidden in App Store Apple-mobile apps (never
   mention jailbreak there). See `wawona-platform-targets`,
