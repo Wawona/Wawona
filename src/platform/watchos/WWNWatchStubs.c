@@ -260,3 +260,7 @@ void wwn_ios_pump_host_compositor(void) {}
  * wwn_ios_refresh_bundle_env that applies share-tree + rootfs shell env. */
 __attribute__((weak))
 void wwn_ios_refresh_bundle_env(void) {}
+
+/* Weak fallback; real definition is in libwawona-pty.a. */
+__attribute__((weak))
+void wwn_pty_ios_allow_new_shell_session(void) {}

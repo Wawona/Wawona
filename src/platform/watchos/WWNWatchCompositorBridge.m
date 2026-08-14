@@ -34,6 +34,8 @@ extern int wwn_foot_is_compat_shim(void) __attribute__((weak));
 // Weak so the bridge can nil-check before calling.
 extern int waypipe_main(int argc, char **argv) __attribute__((weak));
 
+// wawona-pty: clear one-shot shell latch after Stop (weak for incomplete links).
+void wwn_pty_ios_allow_new_shell_session(void) __attribute__((weak));
 // ── Rust compositor C-API (optional – satisfied by stubs when not linked) ─────
 
 typedef void *WawonaCompositorHandle;
@@ -407,6 +409,12 @@ static void miniServerFrameCallback(const uint8_t *pixels,
 
     if (!image) return;
 
+    static BOOL loggedFirstFrame = NO;
+    if (!loggedFirstFrame) {
+        loggedFirstFrame = YES;
+        NSLog(@"[WatchCompositor] First frame %ux%u stride=%u", width, height, stride);
+    }
+
     dispatch_async(dispatch_get_main_queue(), ^{
         CGImageRef old = self->_latestFrame;
         self->_latestFrame = image;
@@ -554,13 +562,31 @@ static void miniServerFrameCallback(const uint8_t *pixels,
 }
 
 - (void)stopClient {
-    if (!_clientRunning || !_clientThreadValid) return;
-    wwn_weston_compositor_shutdown_requested = 1;
-    _clientRunning = NO;
-    _clientThreadValid = NO;
-    pthread_cancel(_clientThread);
-    pthread_join(_clientThread, NULL);
-    NSLog(@"[WatchCompositor] Client stopped");
+    if (_clientRunning && _clientThreadValid) {
+        wwn_weston_compositor_shutdown_requested = 1;
+        _clientRunning = NO;
+        _clientThreadValid = NO;
+        pthread_cancel(_clientThread);
+        pthread_join(_clientThread, NULL);
+        NSLog(@"[WatchCompositor] Client stopped");
+    }
+
+    // Drop the last SHM frame so Start of another client does not paint the
+    // previous weston-terminal pixels while waiting for the first commit.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (self->_latestFrame) {
+            CGImageRelease(self->_latestFrame);
+            self->_latestFrame = NULL;
+        }
+        [[NSNotificationCenter defaultCenter]
+            postNotificationName:WWNWatchCompositorFrameReadyNotification
+                          object:self];
+    });
+
+    // Allow Stop → Start without relaunching the whole watch app.
+    if (wwn_pty_ios_allow_new_shell_session) {
+        wwn_pty_ios_allow_new_shell_session();
+    }
 }
 
 // MARK: - Keyboard input (WatchKit text entry → PTY)

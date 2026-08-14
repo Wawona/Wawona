@@ -1,15 +1,20 @@
 #if os(watchOS)
+import WatchKit
 import WawonaModel
 
 /// watchOS machine connect: native → local compositor + bundled client; remote → waypipe only.
 enum WatchMachineSessionBridge {
     static func connect(profile: MachineProfile) -> Bool {
         let bridge = WWNWatchCompositorBridge.shared()
+        applyScreenOutputSize(bridge)
         if !bridge.isRunning {
             guard bridge.start(withSocketName: "wayland-0") else {
                 return false
             }
         }
+
+        // Always clear prior client frame + in-process shell latch before Start.
+        bridge.stopClient()
 
         switch profile.type {
         case .native:
@@ -54,6 +59,17 @@ enum WatchMachineSessionBridge {
             bridge.stopClient()
             bridge.stopWaypipe()
         }
+    }
+
+    /// Mini server advertises this as wl_output.mode and xdg_toplevel configure.
+    /// Default 184×224 is a leftover point-size guess; use the real pixel size.
+    private static func applyScreenOutputSize(_ bridge: WWNWatchCompositorBridge) {
+        let device = WKInterfaceDevice.current()
+        let scale = max(device.screenScale, 1)
+        let width = UInt32(max(1, (device.screenBounds.width * scale).rounded()))
+        let height = UInt32(max(1, (device.screenBounds.height * scale).rounded()))
+        bridge.outputWidth = width
+        bridge.outputHeight = height
     }
 
     private static func resolvedNativeClientId(for profile: MachineProfile) -> String {

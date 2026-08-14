@@ -1,5 +1,6 @@
 #if os(watchOS)
 import SwiftUI
+import UIKit
 import WawonaModel
 
 struct CompositorActiveView: View {
@@ -9,7 +10,8 @@ struct CompositorActiveView: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject private var preferences = WawonaPreferences.shared
     @State private var showStopConfirmation = false
-    @State private var inputText = ""
+    @State private var draftText = ""
+    @FocusState private var keyboardFocused: Bool
 
     private var requiresExitConfirmation: Bool {
         let resolved = preferences.resolvedSettings(for: profile)
@@ -17,23 +19,60 @@ struct CompositorActiveView: View {
     }
 
     var body: some View {
-        VStack(spacing: 10) {
-            Text(profile.name).font(.headline)
-            Text("Session Active").font(.caption)
-            SessionGlanceView(session: session)
-            keyboardInputRow
-            Button(role: .destructive) {
-                if requiresExitConfirmation {
-                    showStopConfirmation = true
-                } else {
-                    disconnectActiveSession()
+        ZStack(alignment: .bottomTrailing) {
+            WatchCompositorSurfaceView()
+                .ignoresSafeArea()
+
+            // Hidden field: focusing it opens the native watch text-entry UI
+            // immediately (scribble / QuickType / dictation) — no on-screen
+            // "Type…" chrome. Submit/Send injects into the Wayland client.
+            TextField("", text: $draftText)
+                .focused($keyboardFocused)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+                .submitLabel(.send)
+                .frame(width: 1, height: 1)
+                .opacity(0.01)
+                .accessibilityHidden(true)
+                .onSubmit { commitDraftToWayland() }
+                .onChange(of: keyboardFocused) { _, focused in
+                    if !focused {
+                        commitDraftToWayland()
+                    }
                 }
+
+            Button {
+                draftText = ""
+                keyboardFocused = true
             } label: {
-                Label("Stop", systemImage: "stop.fill")
+                Image(systemName: "keyboard")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 40, height: 40)
+                    .background(.ultraThinMaterial, in: Circle())
             }
-            .buttonStyle(.borderedProminent)
-            .accessibilityIdentifier("wwn.watch.stop")
-            .accessibilityLabel("Stop")
+            .buttonStyle(.plain)
+            .padding(.trailing, 6)
+            .padding(.bottom, 6)
+            .accessibilityIdentifier("wwn.watch.keyboard")
+            .accessibilityLabel("Keyboard")
+        }
+        .navigationTitle(profile.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    requestClose()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 16, weight: .semibold))
+                }
+                .accessibilityIdentifier(
+                    profile.type == .native ? "wwn.watch.stop" : "wwn.watch.disconnect"
+                )
+                .accessibilityLabel(profile.type == .native ? "Stop" : "Disconnect")
+            }
         }
         .confirmationDialog(
             "Close current Wayland app?",
@@ -49,57 +88,60 @@ struct CompositorActiveView: View {
         }
     }
 
-    // WatchKit text entry → PTY. The TextField invokes the system text-input
-    // controller (scribble / dictation / QuickType); the committed string is
-    // fed to the focused Wayland client (weston-terminal → zsh) as synthetic
-    // US-layout key events. "⏎" sends a bare Return so shell commands execute.
-    @ViewBuilder private var keyboardInputRow: some View {
-        VStack(spacing: 6) {
-            TextField("Type…", text: $inputText)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled(true)
-                .submitLabel(.send)
-                .onSubmit { submitLine() }
-                .accessibilityIdentifier("wwn.watch.terminalInput")
-                .accessibilityLabel("Terminal Input")
-            HStack(spacing: 8) {
-                Button {
-                    sendCurrentText()
-                } label: {
-                    Label("Send", systemImage: "arrow.up.circle.fill")
-                        .labelStyle(.iconOnly)
-                }
-                .accessibilityIdentifier("wwn.watch.terminalSend")
-                .accessibilityLabel("Send Text")
-                Button {
-                    WWNWatchCompositorBridge.shared().sendText("\n")
-                } label: {
-                    Label("Return", systemImage: "return")
-                        .labelStyle(.iconOnly)
-                }
-                .accessibilityIdentifier("wwn.watch.terminalReturn")
-                .accessibilityLabel("Return")
-            }
-            .buttonStyle(.bordered)
+    private func requestClose() {
+        if requiresExitConfirmation {
+            showStopConfirmation = true
+        } else {
+            disconnectActiveSession()
         }
     }
 
-    private func sendCurrentText() {
-        guard !inputText.isEmpty else { return }
-        WWNWatchCompositorBridge.shared().sendText(inputText)
-        inputText = ""
-    }
-
-    private func submitLine() {
-        // Send the typed text followed by Return so the command runs.
-        WWNWatchCompositorBridge.shared().sendText(inputText + "\n")
-        inputText = ""
+    /// Native text-entry Send / dismiss → inject into the focused Wayland
+    /// surface (same contract as iOS/Android soft keyboard commit).
+    private func commitDraftToWayland() {
+        let text = draftText
+        guard !text.isEmpty else { return }
+        draftText = ""
+        // Append Return so shell commands execute (weston-terminal → zsh).
+        WWNWatchCompositorBridge.shared().sendText(text.hasSuffix("\n") ? text : text + "\n")
     }
 
     private func disconnectActiveSession() {
+        keyboardFocused = false
         WatchMachineSessionBridge.disconnect(profile: profile)
         sessions.disconnect(sessionId: session.id)
         dismiss()
+    }
+}
+
+/// Paints the mini compositor's latest SHM commit. Frames arrive on
+/// `WWNWatchCompositorFrameReadyNotification`; without this view the client
+/// runs (PTY, configure, redraw) and nothing appears on the watch.
+struct WatchCompositorSurfaceView: View {
+    @State private var frameID = 0
+
+    var body: some View {
+        Group {
+            if let image = WWNWatchCompositorBridge.shared().latestFrame {
+                Image(uiImage: UIImage(cgImage: image))
+                    .resizable()
+                    .scaledToFit()
+                    .id(frameID)
+            } else {
+                Text("Waiting for surface…")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black)
+        .accessibilityIdentifier("wwn.watch.compositorSurface")
+        .accessibilityLabel("Wayland Surface")
+        .onReceive(NotificationCenter.default.publisher(
+            for: Notification.Name("WWNWatchCompositorFrameReadyNotification")
+        )) { _ in
+            frameID &+= 1
+        }
     }
 }
 #endif

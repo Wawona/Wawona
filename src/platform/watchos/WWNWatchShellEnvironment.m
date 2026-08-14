@@ -272,11 +272,11 @@
     setenv("XCURSOR_THEME", "Adwaita", 1);
   }
 
-  // fontconfig: synthesize a fonts.conf pointing at the bundled DejaVu fonts +
-  // a writable cache dir, or Cairo/Pango render nothing on the terminal.
+  // fontconfig: always rewrite fonts.conf for the live bundle UUID (same as
+  // iOS WWNPlatformCallbacks). A stale FONTCONFIG_FILE from a previous install
+  // makes Pango title glyphs tofu while WAWONA_MONO_FONT still paints the grid.
   NSString *fontDir = [self bundledSharePath:@"fonts"];
-  if (fontDir.length > 0 && [fm fileExistsAtPath:fontDir] &&
-      !getenv("FONTCONFIG_FILE")) {
+  if (fontDir.length > 0 && [fm fileExistsAtPath:fontDir]) {
     const char *xdg = getenv("XDG_RUNTIME_DIR");
     NSString *base = (xdg && xdg[0]) ? @(xdg) : NSTemporaryDirectory();
     NSString *cacheDir =
@@ -299,7 +299,19 @@
                          @"  <alias><family>sans-serif</family>"
                          @"<prefer><family>DejaVu Sans</family></prefer>"
                          @"</alias>\n"
-                         @"  <config></config>\n"
+                         @"  <alias><family>sans</family>"
+                         @"<prefer><family>DejaVu Sans</family></prefer>"
+                         @"</alias>\n"
+                         @"  <alias><family>Sans</family>"
+                         @"<prefer><family>DejaVu Sans</family></prefer>"
+                         @"</alias>\n"
+                         @"  <match target=\"pattern\">\n"
+                         @"    <test name=\"family\"><string>sans-serif</string></test>\n"
+                         @"    <edit name=\"family\" mode=\"prepend\" binding=\"strong\">\n"
+                         @"      <string>DejaVu Sans</string>\n"
+                         @"    </edit>\n"
+                         @"  </match>\n"
+                         @"  <config><rescan><int>30</int></rescan></config>\n"
                          @"</fontconfig>\n",
                          fontDir, cacheDir];
     if ([conf writeToFile:confPath
@@ -313,11 +325,18 @@
       if ([fm fileExistsAtPath:monoFont]) {
         setenv("WAWONA_MONO_FONT", monoFont.UTF8String, 1);
       }
+      NSString *sansFont =
+          [fontDir stringByAppendingPathComponent:@"truetype/DejaVuSans.ttf"];
+      if ([fm fileExistsAtPath:sansFont]) {
+        setenv("WAWONA_SANS_FONT", sansFont.UTF8String, 1);
+      }
     }
   }
-  NSLog(@"WWNWatchShell: bundle share env; XDG_DATA_DIRS=%s FONTCONFIG_FILE=%s",
+  NSLog(@"WWNWatchShell: bundle share env; XDG_DATA_DIRS=%s FONTCONFIG_FILE=%s "
+        @"WAWONA_SANS_FONT=%s",
         getenv("XDG_DATA_DIRS") ?: "(unset)",
-        getenv("FONTCONFIG_FILE") ?: "(unset)");
+        getenv("FONTCONFIG_FILE") ?: "(unset)",
+        getenv("WAWONA_SANS_FONT") ?: "(unset)");
 }
 
 @end
