@@ -25,6 +25,12 @@ Machine `type` values:
 - `virtual_machine`
 - `container`
 
+## VM / container status
+
+`virtual_machine` and `container` are **planned** on macOS, iOS, iPadOS,
+Android, and Linux. They are **forbidden** on tvOS, watchOS, and visionOS.
+See [`vms-containers.md`](vms-containers.md).
+
 ## Deprecated / removed fields
 
 - `vmSubtype`, `containerSubtype` — **removed**. The VM engine and container

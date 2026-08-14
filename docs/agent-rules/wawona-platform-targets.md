@@ -22,12 +22,12 @@ fallback) instead of removing it from the product surface.
 |---|---|---|---|---|---|---|---|
 | Native machines | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Remote (SSH/waypipe) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| VM / containers | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| VM / containers | ⏳ planned | ⏳ planned | ⏳ planned | ❌ | ⏳ planned | ❌ | ❌ |
 | Multi-window (1 window per Wayland client) | ✅ | ✅ (if OS allows) | ✅ **required** | ✅ **required** | ⚠️ single primary | ❌ | ❌ |
 | Nested compositors + bundled clients | ✅ | ✅ | ✅ | ✅ **macOS parity** | ✅ | ⚠️ limited | ⚠️ limited |
 | Vulkan / OpenGL / ANGLE bundle | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ planned | ⛔ blocked |
-| Desktop + LockScreen replacement | ⏳ planned | ⏳ planned | ❌ | ❌ | ❌ App Store | ❌ | ❌ |
-| anowaW app bridge | ⏳ planned | ⏳ planned | ❌ | ❌ | ⏳ planned | ❌ | ❌ |
+| Desktop + LockScreen replacement | ⏳ planned | ⏳ planned | ❌ App Store | ❌ | ❌ App Store | ❌ | ❌ |
+| anowaW app bridge | ⏳ planned | ⏳ planned | ⏳ planned | ❌ | ⏳ planned | ❌ | ❌ |
 
 ### Legend — the four gate states
 
@@ -45,22 +45,38 @@ Mirrored in code by `CapabilityGate` in
 `Wawona/Sources/WawonaModel/PlatformCapabilities.swift`. A gate change belongs
 in both places.
 
-**Desktop / LockScreen vs anowaW (do not conflate):**
+**Linux** (not in the Apple/Android columns): native + remote ✅; VM/containers
+⏳ planned; Desktop/LockScreen ❌; anowaW ❌.
 
-- **Desktop + LockScreen replacement** — make Wawona the host DE and greeter
-  (machine picker; **native-port** machine profiles only). Targets: **macOS**,
-  **Android**, and **iOS only via `repo.wawona.io` jailbreak tweak** (website
-  docs). **Not** Linux. **Not** App Store iOS / iPadOS / tvOS / watchOS /
-  visionOS. Status: **coming soon** (⏳). In the **App Store iOS app**, the
-  gate stays **❌ forbidden** and UI/copy must **never mention jailbreak**.
-- **anowaW** — separate **app bridge** (host UIKit/AppKit/Android apps →
-  Wayland clients). **Not** Desktop/LockScreen and **not** MediaProjection-as-
-  desktop. See `wawona-anowaw`.
+**iOS and iPadOS are the same** for Desktop/LockScreen and anowaW (store Mode A
+vs `repo.wawona.io` Mode B / jailbreak Desktop). Do not special-case iPadOS as
+forbidden while iPhone is planned for those features.
+
+**Desktop / LockScreen vs anowaW vs local shell vs VMs (do not conflate):**
+
+- **Desktop + LockScreen** — host DE / greeter. macOS + Android ⏳; **iOS and
+  iPadOS** jailbreak path via `repo.wawona.io` (website only); App Store builds
+  ❌ and must never mention jailbreak. Not Linux. Not tvOS/watchOS/visionOS.
+- **anowaW** — host-app → Wayland bridge on **macOS + Android + iOS + iPadOS**.
+  See `wawona-anowaw`.
+- **On-device shell** — bundled **zsh** + Weston terminal (native port path).
+  Not a VM and not a container. Separate from `virtual_machine` / `container`
+  machine kinds.
+- **VM / containers** — Machines GUI kinds `virtual_machine` / `container`,
+  configured per-machine. ⏳ on **macOS, iOS, iPadOS, Android, Linux**. ❌ on
+  **tvOS, watchOS, visionOS**. Engines (planned):
+  - **iOS / iPadOS:** UTM-SE interpreter in store-shaped builds; JIT-enabled UTM
+    on jailbreak; sideload builds should be easy to run under **TrollStore** with
+    JIT enabled. App Store copy must not pitch jailbreak/TrollStore.
+  - **macOS:** Apple Containerization (`Containerization.framework`) + VMs via
+    `Virtualization.framework`, bundled into Wawona.
+  - **Android / Linux:** containers and VMs through Wawona machine profiles
+    (engines TBD in `wwn-vms` / `wwn-containers`).
 
 ## Hard rules
 
 0. **All Apple platforms** — keep every Apple target green and in scope.
-   Temporary CI skips need an explicit fix follow-up; never “solve” breakage by
+   Temporary CI skips need an explicit follow-up; never “solve” breakage by
    permanently excluding macOS/iOS/iPadOS/tvOS/watchOS/visionOS.
 1. **watchOS / tvOS machines** — native + remote only. VM/container machine
    types, engines, and UI are **❌ forbidden** on these targets: that is policy,
@@ -94,14 +110,15 @@ in both places.
 2. **visionOS / iPadOS** — multi-window is mandatory: one host window/scene per
    Wayland client, same model as macOS. Android should match when the OS can
    host multiple app windows.
-3. **visionOS = macOS product parity** for bundled software, nested
-   compositors/clients, Vulkan/OpenGL, VMs, containers, and Machines UX
-   (including Add New Machine). Do not leave visionOS on a reduced iOS-phone
-   feature set.
+3. **visionOS ≈ macOS product parity** for bundled software, nested
+   compositors/clients, Vulkan/OpenGL, and Machines UX (including Add New
+   Machine) — **except VM/container machine kinds**, which are **❌ forbidden**
+   on visionOS (same class as tvOS/watchOS). Do not leave visionOS on a reduced
+   iOS-phone feature set for everything else.
 4. **Desktop / LockScreen replacement** — **macOS + Android** (⏳ planned),
-   plus **iOS jailbreak tweak** documented only on the website /
-   `repo.wawona.io` (Sileo). **Forbidden** on Linux and on App Store iOS family
-   (iPadOS, tvOS, watchOS, visionOS, store iOS app). Machine profiles for
+   plus **iOS and iPadOS** jailbreak tweaks documented only on the website /
+   `repo.wawona.io` (Sileo). **Forbidden** on Linux and on App Store builds of
+   iOS/iPadOS (and all of tvOS/watchOS/visionOS). Machine profiles for
    Desktop/LockScreen: **native ports only**. macOS engage path: partial SIP
    (system debugging) + `.dylib`. Android: Default Home App + LockScreen APIs —
    **no root required, no fallback tier required**. Never wire Desktop/LockScreen
@@ -121,25 +138,28 @@ in both places.
    (`libssh-inprocess.a`) on those targets. **macOS** uses regular OpenSSH;
    **Android** uses OpenSSH portable (`libssh_bin.so` / keygen / scp).
    Remote/waypipe on Apple mobile goes through libssh2.
-8. **anowaW** — separate app bridge on **macOS + Android + iOS** (⏳). Mode A
-   in store/Play; Mode B only outside store (macOS partial SIP; Android root
-   paths; iOS via `repo.wawona.io`). **Not** Desktop/LockScreen. **Not**
-   MediaProjection-as-desktop. Full rule: `wawona-anowaw`.
-9. **Host window manager** — macOS = AppKit zoom/fullscreen/miniaturize.
-   iOS/iPadOS/tvOS/visionOS/Android = **fill-primary**: maximize and
-   fullscreen both configure to the host surface bounds and sync xdg
-   state (no floating restore geometry). Minimize parks the session to
-   Machines without terminating the client; **Focus** reveals the
-   compositor again. watchOS stubs ignore WM requests. See
-   `PlatformCapabilities.hostWindowManagerPolicy` and
-   `docs/wslg-weston-desktop-map.md`.
-10. **Weston + Niri bundles** — both real compositors must compile natively and
-   ship inside every macOS/iOS/iPadOS/tvOS/watchOS/visionOS and Android Wawona
-   app. Fake entry points and compatibility stubs do not count. tvOS/watchOS
-   must use their allowed non-GL fallback and must not gain forbidden GPU
-   bundles. Fix each target's recipe/link/package/runtime path; never exclude
-   either compositor to make the matrix green.
-11. **Runtime-only graphics** — iland DRM/KMS/GBM is userland emulation.
+8. **anowaW** — separate app bridge on **macOS + Android + iOS + iPadOS** (⏳).
+   Mode A in store/Play; Mode B only outside store (macOS partial SIP; Android
+   root paths; iOS/iPadOS via `repo.wawona.io`). **Not** Desktop/LockScreen.
+   **Not** MediaProjection-as-desktop. Full rule: `wawona-anowaw`.
+9. **VM / containers** — ⏳ planned for macOS, iOS, iPadOS, Android, Linux via
+   Machines profiles. ❌ on tvOS, watchOS, visionOS. Do not document as shipping
+   until gates flip. Local shell is not a substitute for a VM.
+10. **Host window manager** — macOS = AppKit zoom/fullscreen/miniaturize.
+    iOS/iPadOS/tvOS/visionOS/Android = **fill-primary**: maximize and
+    fullscreen both configure to the host surface bounds and sync xdg
+    state (no floating restore geometry). Minimize parks the session to
+    Machines without terminating the client; **Focus** reveals the
+    compositor again. watchOS stubs ignore WM requests. See
+    `PlatformCapabilities.hostWindowManagerPolicy` and
+    `docs/wslg-weston-desktop-map.md`.
+11. **Weston + Niri bundles** — both real compositors must compile natively and
+    ship inside every macOS/iOS/iPadOS/tvOS/watchOS/visionOS and Android Wawona
+    app. Fake entry points and compatibility stubs do not count. tvOS/watchOS
+    must use their allowed non-GL fallback and must not gain forbidden GPU
+    bundles. Fix each target's recipe/link/package/runtime path; never exclude
+    either compositor to make the matrix green.
+12. **Runtime-only graphics** — iland DRM/KMS/GBM is userland emulation.
     Wawona code must never open real `/dev/dri` or `/dev/kgsl` nodes, forward
     real DRM/KMS/KGSL ioctls, ship kernel code, or require kernel patches.
     Mode B `baremetal` is a legacy package name, not kernel access. Android

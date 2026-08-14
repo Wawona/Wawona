@@ -28,8 +28,8 @@ Desktop / LockScreen docs: [`iland-mode-a-b-desktop.md`](iland-mode-a-b-desktop.
 |---|---|
 | macOS | planned (Mode A + Mode B) |
 | Android | planned (Mode A + Mode B) |
-| iOS | planned (Mode A in store app; Mode B via `repo.wawona.io` only) |
-| iPadOS / tvOS / watchOS / visionOS / Linux | forbidden |
+| iOS / iPadOS | planned (Mode A in store app; Mode B via `repo.wawona.io` only) |
+| tvOS / watchOS / visionOS / Linux | forbidden |
 
 ## Mode A vs Mode B
 
@@ -38,16 +38,16 @@ Desktop / LockScreen docs: [`iland-mode-a-b-desktop.md`](iland-mode-a-b-desktop.
 | Store / Play | Ships in App Store / Play builds | **Forbidden** in store IPA / Play AAB |
 | macOS | Store-safe / notarized methods as available | Bundled on 3rd-party macOS; needs partial SIP (system debugging), same bar as Desktop `.dylib` |
 | Android | Play-approved bridge methods | Privileged / root paths outside Play requirements |
-| iOS | Mode A only inside the App Store Wawona app | Jailbreak tweak from **`repo.wawona.io`** (add as Sileo source): UIKit apps as Wayland clients under nested Wawona |
+| iOS / iPadOS | Mode A only inside the App Store Wawona app | Jailbreak tweak from **`repo.wawona.io`** (add as Sileo source): UIKit apps as Wayland clients under nested Wawona |
 
 **App Store / TestFlight UI and strings must never mention jailbreak.** Website
 and `repo.wawona.io` may describe Mode B.
 
-## iOS Mode B sketch (`repo.wawona.io`)
+## iOS / iPadOS Mode B sketch (`repo.wawona.io`)
 
 A jailbreak tweak that presents UIKit apps as Wayland clients on a nested
-Wayland compositor hosted by Wawona on iOS, so iOS apps can tile beside other
-Wayland clients inside native ports such as niri. Distributed only from
+Wayland compositor hosted by Wawona on iOS/iPadOS, so host apps can tile beside
+other Wayland clients inside native ports such as niri. Distributed only from
 `repo.wawona.io`, never from the App Store IPA.
 
 ## Agent rules

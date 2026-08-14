@@ -161,11 +161,13 @@ no-op even when `press`/`click` succeed. Prefer `press` / `gesture`; do not
   workspace rule `wawona-repo-dag`.
 - Builds are Nix-based; see `docs/compilation.md` and `docs/2026-nix-build-system.md`.
 - Don't commit secrets; `WWN_MCP_TOKEN` is provided via the environment.
-- **Desktop / LockScreen** — macOS + Android **planned**; iOS only via
+- **Desktop / LockScreen** — macOS + Android **planned**; iOS/iPadOS only via
   `repo.wawona.io` (website). Forbidden in App Store Apple-mobile apps (never
   mention jailbreak there). See `wawona-platform-targets`,
   `docs/iland-mode-a-b-desktop.md`.
-- **anowaW** — separate app bridge (macOS / Android / iOS); not Desktop.
+- **anowaW** — separate app bridge (macOS / Android / iOS / iPadOS); not Desktop.
   See `wawona-anowaw`, `docs/anowaw.md`.
+- **VM / containers** — planned on macOS / iOS / iPadOS / Android / Linux;
+  forbidden on tvOS / watchOS / visionOS. See `docs/vms-containers.md`.
 - Mode B **iland** dylib presence: assert with
   `.github/scripts/verify-iland-mode-b-bundle.sh`.

@@ -1,11 +1,12 @@
 # iland Mode A / Mode B and Desktop / LockScreen Replacement
 
 > **Public subset** for wawona.io. Desktop / LockScreen are **macOS + Android**
-> (planned), plus an **iOS jailbreak tweak** documented only on the website /
-> `repo.wawona.io`. **Not** Linux. **Not** App Store iOS family.
+> (planned), plus **iOS / iPadOS jailbreak tweaks** documented only on the website /
+> `repo.wawona.io`. **Not** Linux. **Not** App Store Apple-mobile builds.
 >
-> **anowaW is separate** — see [`anowaw.md`](anowaw.md). Do not document anowaW
-> as Desktop or LockScreen.
+> **anowaW is separate** — see [`anowaw.md`](anowaw.md). Do not document anowaw
+> as Desktop or LockScreen. **VMs/containers** are separate — see
+> [`vms-containers.md`](vms-containers.md).
 
 Live grades: [`iland-graphics-progress.md`](iland-graphics-progress.md).
 CI bundle matrix: [`testing/graphics-ci-matrix.md`](testing/graphics-ci-matrix.md).
@@ -38,8 +39,8 @@ ports only**.
 |---|---|---|
 | **macOS** | Partial SIP (system debugging / Debugging Restrictions disabled) + `.dylib` tweak in `wawona-macos-desktop-host` | Required for Mode B |
 | **Android** | Default Home App + LockScreen APIs | **No root**; **no fallback tier** |
-| **iOS** | Jailbreak tweak from **`repo.wawona.io`** (Sileo source) | Outside App Store only; website docs only |
-| Linux / App Store iOS family | — | **Forbidden** |
+| **iOS / iPadOS** | Jailbreak tweak from **`repo.wawona.io`** (Sileo source) | Outside App Store only; website docs only |
+| Linux / App Store Apple-mobile / tvOS / watchOS / visionOS | — | **Forbidden** in store binaries (never mention jailbreak there) |
 
 ## Summary (iland present modes)
 
@@ -63,7 +64,7 @@ feature?
   Desktop / LockScreen
     Linux                     → forbidden
     App Store iOS family      → forbidden in-app (no jailbreak mentions)
-    iOS (website / repo only) → repo.wawona.io jailbreak tweak (planned)
+    iOS / iPadOS (website / repo only) → repo.wawona.io jailbreak tweak (planned)
     Android                   → Default Home + LockScreen (planned; no root)
     macOS
       SIP allows Mode B?      (Disabled | PartiallyDisabled)
@@ -132,7 +133,7 @@ anowaW Mode B.
 | Target | Distribution | Compliance bar for graphics / Desktop |
 |--------|--------------|----------------------------------------|
 | **iOS** | App Store | Mode A only; no Desktop/LockScreen UI; **no jailbreak mentions**; no Mode B dylib; SSH = libssh2 only |
-| **iPadOS** | App Store | Same + multi-window; no Desktop/LockScreen |
+| **iPadOS** | App Store | Same as iOS for Desktop/anowaW store policy + multi-window required |
 | **visionOS** | App Store | Same Mode A / macOS-product GLES+Vulkan parity; no Mode B; multi-window required |
 | **tvOS** | App Store | Mode A **software only** — no ANGLE/MVK/KK/Vulkan ICD, no IOKit, no GPU DRM clients |
 | **watchOS** | App Store | Same software policy as tvOS |

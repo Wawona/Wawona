@@ -30,7 +30,7 @@ only**. Not Linux. Not App Store iOS family.
 |---|---|---|
 | **macOS** | Partial SIP (system debugging) + bundled `.dylib` in `wawona-macos-desktop-host` | Required for Mode B engage |
 | **Android** | Default Home App + LockScreen APIs | **No root**; **no fallback tier** |
-| **iOS** | Jailbreak tweak from **`repo.wawona.io`** (Sileo) | Outside App Store only |
+| iOS / iPadOS | Jailbreak tweak from **`repo.wawona.io`** (Sileo) | Outside App Store only |
 | App Store iOS / iPadOS / tvOS / watchOS / visionOS | — | **❌ forbidden** in-app; **never mention jailbreak** in store binaries |
 
 ## Runtime decision (macOS)

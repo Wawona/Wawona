@@ -38,14 +38,17 @@ whichever of these fits the platform:
 1. **Native** — the client (or a nested compositor) is cross-compiled to the
    host ABI and runs on the machine itself. Apple mobile runs these in-process as
    static libraries; macOS uses its unrestricted native process model; Android
-   uses native artifacts.
-2. **Container** — a Linux container on hosts that allow it (macOS, and possibly
-   Android).
-3. **VM or remote machine** — over patched `waypipe-rs`, including on-device
-   JIT-less VMs whose only job is hosting Wayland compositors.
+   uses native artifacts. The **on-device shell** (bundled zsh) is this path.
+2. **Container** — planned Machine kind on macOS, iOS, iPadOS, Android, and
+   Linux (`wwn-containers` / Containerization.framework on macOS). Forbidden on
+   tvOS, watchOS, visionOS.
+3. **VM or remote machine** — planned in-GUI VMs on the same platform set as
+   containers (`wwn-vms`; UTM-SE on iOS/iPadOS; Virtualization.framework on
+   macOS), plus remote guests over patched `waypipe-rs`.
 
 Every Machines feature must be classified as native / remote / VM / container and
-refused on targets that forbid that class. See `wawona-platform-targets`.
+refused on targets that forbid that class. See `wawona-platform-targets` and
+`docs/vms-containers.md`.
 
 ## Userland DRM/KMS/GBM (wwn-iland)
 
@@ -73,20 +76,20 @@ environment and greeter (machine picker; **native-port** profiles only).
   `wawona-macos-desktop-host` — still in development.
 - **Android:** Default Home App + LockScreen APIs — **no root**, no fallback
   tier — still in development.
-- **iOS:** only as a jailbreak tweak from **`repo.wawona.io`** (website docs).
-  App Store iOS builds keep this **forbidden** and must **never mention
-  jailbreak**.
-- **Not** Linux. **Not** App Store iPadOS / tvOS / watchOS / visionOS.
+- **iOS / iPadOS:** only as a jailbreak tweak from **`repo.wawona.io`**
+  (website docs). App Store builds keep this **forbidden** and must **never
+  mention jailbreak**. iPhone and iPad share the same policy.
+- **Not** Linux. **Not** App Store tvOS / watchOS / visionOS.
 
 Detail: `wawona-iland-mode-b-desktop`, `docs/iland-mode-a-b-desktop.md`.
 
 ## anowaW (app bridge — separate from Desktop/LockScreen)
 
-**Coming soon.** anowaW bridges **macOS / Android / iOS** host apps onto Wayland
-surfaces (zero-copy surface bridge). It is **not** Desktop/LockScreen and **not**
-MediaProjection-as-desktop. Mode A ships in store/Play-shaped builds; Mode B is
-privileged (macOS partial SIP, Android root paths, iOS via `repo.wawona.io`) and
-**forbidden** in App Store / Play artifacts.
+**Coming soon.** anowaW bridges **macOS / Android / iOS / iPadOS** host apps
+onto Wayland surfaces (zero-copy surface bridge). It is **not** Desktop/LockScreen
+and **not** MediaProjection-as-desktop. Mode A ships in store/Play-shaped builds;
+Mode B is privileged (macOS partial SIP, Android root paths, iOS/iPadOS via
+`repo.wawona.io`) and **forbidden** in App Store / Play artifacts.
 
 Detail: `wawona-anowaw`, `docs/anowaw.md`.
 
@@ -204,7 +207,10 @@ in different states despite usually being lumped together:
   `CAMetalLayer` `API_UNAVAILABLE(watchos)`. ANGLE and MoltenVK both bottom out
   in Metal, so there is no floor. We want it; Apple offers nothing to build it
   on. SHM/CPU is the current ceiling, not a preference.
-- **VM/containers on tvOS and watchOS — forbidden.** Policy, not a gap.
+- **VM/containers on tvOS, watchOS, and visionOS — forbidden.** Policy, not a
+  gap. On macOS, iOS, iPadOS, Android, and Linux they are **planned** (UTM-SE /
+  Virtualization / Containerization / `wwn-vms` — see `docs/vms-containers.md`).
+  The on-device shell is separate.
 
 Two obligations follow. Never downgrade a `planned` gate into a permanent
 exclusion to make CI green. Never upgrade a `blocked` gate by reaching for

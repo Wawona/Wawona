@@ -32,7 +32,7 @@ change, update **here first**, then the specialized docs linked below.
 | macOS | AppKit (+ SwiftUI settings) | Mode A: CAMetalLayer / `WWNIlandPresenter`; Mode B (optional): `libwayland-mac.dylib` + `framebufferd` | native, nested Weston/Niri, waypipe/SSH | yes | Mode A default (store-safe). Mode B = SIP-gated Desktop Replacement in `wawona-macos-desktop-host` only — see [`iland-mode-a-b-desktop.md`](./iland-mode-a-b-desktop.md) |
 | iOS / iPadOS | UIKit | CAMetalLayer | native, nested Weston/Niri, waypipe/SSH (libssh2) | bundled zsh PTY | App Store compliant. `wwn-apt` StoreKit modules are not a Wawona flake input yet |
 | tvOS | UIKit | CAMetalLayer / GPU ⏳ planned | native, nested Weston/Niri, waypipe | constrained zsh | Focus-engine driven; no pointer by default. GPU is unfinished work (`WWN_TVOS_GPU`), not forbidden |
-| visionOS | UIKit | CAMetalLayer | native, nested Weston/Niri, waypipe | bundled zsh PTY | macOS product parity for bundled clients, VMs, Machines |
+| visionOS | UIKit | CAMetalLayer | native, nested Weston/Niri, waypipe | bundled zsh PTY | macOS product parity for bundled clients / Machines UX; **VM/container kinds forbidden** |
 | watchOS | WatchKit | SHM/CPU (`wwn-iland-apple-fallback`); GPU ⛔ blocked | native + remote (waypipe) | constrained zsh (no coreutils) | GPU: no public Metal. Compositor is not remote-only. See [WATCHOS-SCOPE](./ios-local-shell/WATCHOS-SCOPE.md) |
 | Android | Jetpack Compose (Material You 3) | ANativeWindow / dedicated render thread | native, nested Weston/Niri, waypipe (OpenSSH portable via `wwn-ssh`) | via container | Render off JNI thread. Direct Turnip/KGSL forbidden |
 | Linux (host) | GTK4 + libadwaita | Cairo/GTK | client to host compositor; nested | yes | Reference target |

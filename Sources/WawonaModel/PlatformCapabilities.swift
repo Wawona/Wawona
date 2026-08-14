@@ -49,23 +49,24 @@ public enum PlatformCapabilities: Sendable {
         return value == "1" || value.lowercased() == "true"
     }
 
-    /// Policy: tvOS and watchOS are native + remote only. Not a TODO.
+    /// Policy: VM machine kinds — planned on macOS / iOS / iPadOS; forbidden on
+    /// tvOS / watchOS / visionOS. Android is gated in Compose the same way.
     public static var virtualMachineGate: CapabilityGate {
-        #if os(tvOS) || os(watchOS)
-        return .forbidden(reason: "tvOS/watchOS are native + remote only")
+        #if os(tvOS) || os(watchOS) || os(visionOS)
+        return .forbidden(reason: "VM machine kinds are not offered on tvOS/watchOS/visionOS")
         #else
-        return .available
+        return .planned(flag: "WWN_VMS")
         #endif
     }
 
     public static var allowsVirtualMachine: Bool { virtualMachineGate.isAvailable }
 
-    /// Policy: same as VMs — no container machine types on tvOS/watchOS.
+    /// Same platform set as VMs — planned, not shipping yet.
     public static var containerGate: CapabilityGate {
-        #if os(tvOS) || os(watchOS)
-        return .forbidden(reason: "tvOS/watchOS are native + remote only")
+        #if os(tvOS) || os(watchOS) || os(visionOS)
+        return .forbidden(reason: "Container machine kinds are not offered on tvOS/watchOS/visionOS")
         #else
-        return .available
+        return .planned(flag: "WWN_CONTAINERS")
         #endif
     }
 

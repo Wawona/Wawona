@@ -20,8 +20,8 @@ surface so host apps tile beside other Wayland clients.
 |---|---|
 | macOS | ⏳ planned (Mode A + Mode B) |
 | Android | ⏳ planned (Mode A + Mode B) |
-| iOS | ⏳ planned (Mode A in store app; Mode B via `repo.wawona.io` only) |
-| iPadOS / tvOS / watchOS / visionOS / Linux | ❌ forbidden |
+| iOS / iPadOS | ⏳ planned (Mode A in store app; Mode B via `repo.wawona.io` only) |
+| tvOS / watchOS / visionOS / Linux | ❌ forbidden |
 
 ## Mode A vs Mode B (anowaW — do not confuse with iland Mode A/B)
 
@@ -31,7 +31,7 @@ surface so host apps tile beside other Wayland clients.
 | Store / Play | **Ships** in store builds | **Forbidden** in App Store IPA and Play AAB/APK |
 | macOS | Store-safe / notarized path as available | Bundled on 3rd-party macOS; needs **partial SIP** (system debugging / Debugging Restrictions disabled), same bar as Desktop `.dylib` |
 | Android | Play-approved bridge (not “Desktop = MediaProjection”) | Root / privileged paths when offered outside Play requirements |
-| iOS | Mode A only inside the App Store Wawona app | Jailbreak tweak from **`repo.wawona.io`** (Sileo source): UIKit apps as Wayland clients under nested Wawona / niri |
+| iOS / iPadOS | Mode A only inside the App Store Wawona app | Jailbreak tweak from **`repo.wawona.io`** (Sileo source): UIKit apps as Wayland clients under nested Wawona / niri |
 
 **App Store / TestFlight copy and in-app UI must never mention jailbreak.**
 Website docs and `repo.wawona.io` may describe Mode B.
@@ -43,8 +43,8 @@ Website docs and `repo.wawona.io` may describe Mode B.
 2. Never ship anowaW Mode B artifacts or copy in App Store / Play products.
 3. macOS may bundle Mode B (3rd-party); engage only when system debugging /
    partial SIP allows it.
-4. iOS Mode B lives only as a tweak distributed from `repo.wawona.io`, not
-   inside the App Store IPA.
+4. iOS / iPadOS Mode B lives only as a tweak distributed from `repo.wawona.io`,
+   not inside the App Store IPA. Treat iPhone and iPad the same for anowaW.
 5. Gate in `PlatformCapabilities` / Android prefs as **planned** until ready;
    keep store iOS Desktop/LockScreen **forbidden** in-app.
 

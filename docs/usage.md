@@ -14,7 +14,10 @@ See [`machine-profiles.md`](./machine-profiles.md).
 Weston and Niri both ship on every product target. Display backend is
 `CompositorBackend`: `auto` | `wayland` | `drm`.
 
-VM and container kinds are **forbidden** on tvOS and watchOS.
+VM and container Machine kinds are **planned** on macOS, iOS, iPadOS, Android,
+and Linux — **forbidden** on tvOS, watchOS, and visionOS. See
+[`vms-containers.md`](./vms-containers.md). The on-device shell is bundled zsh
+on a native machine, not a guest.
 
 ---
 
@@ -26,17 +29,26 @@ nix run .#wawona-linux
 
 Uses GTK4 with Wayland or X11 GDK fallback. Runtime includes weston, weston-terminal, foot, fastfetch, neovim, zsh, kmscube, and waypipe on PATH.
 
-## Virtual machines (v2.5)
+## Guest Machines (planned)
 
-| Platform | How |
-|----------|-----|
-| macOS | Machines → Virtual Machine profile opens UTM/UTM SE |
-| iOS | `nix run .#wawona-ios` (Simulator) |
-| Android | `nix run .#wawona-android` (emulator) |
-| Linux | `nix run .#wawona-linux-vm` (QEMU NixOS) |
+In-app `virtual_machine` / `container` profiles (coming soon):
+
+| Platform | Planned engine |
+|----------|----------------|
+| macOS | `Virtualization.framework` + Containerization |
+| iOS / iPadOS | UTM-SE (store-shaped); JIT UTM / TrollStore for sideload & jailbreak |
+| Android | `wwn-vms` / `wwn-containers` |
+| Linux | `wwn-vms` / `wwn-containers` |
+
+## Dev / CI hosts (not the Machines VM kind)
+
+| Host | How |
+|------|-----|
+| iOS Simulator | `nix run .#wawona-ios` |
+| Android emulator | `nix run .#wawona-android` |
+| Linux QEMU NixOS | `nix run .#wawona-linux-vm` |
 
 ---
-
 ## Native Weston on macOS (No Linux)
 
 Wawona includes a **native port of Weston** for macOS. No Linux, no VM — Weston runs as a nested compositor client inside Wawona.
