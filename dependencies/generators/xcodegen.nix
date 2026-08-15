@@ -1618,6 +1618,7 @@ ICDJSON
           { sdk = "AVFoundation.framework"; }
           { sdk = "Security.framework"; }
           { sdk = "Network.framework"; }
+          { sdk = "WatchConnectivity.framework"; }
           { sdk = "StoreKit.framework"; }
           { sdk = "GameController.framework"; }
           { sdk = "CarPlay.framework"; }
@@ -1804,6 +1805,7 @@ ICDJSON
           { sdk = "AVFoundation.framework"; }
           { sdk = "Security.framework"; }
           { sdk = "Network.framework"; }
+          { sdk = "WatchConnectivity.framework"; }
           { sdk = "StoreKit.framework"; }
           { sdk = "GameController.framework"; }
           { sdk = "CarPlay.framework"; }
@@ -3027,6 +3029,7 @@ ICDJSON
           { target = "WawonaUIContracts"; embed = false; link = false; codeSign = true; }
           { sdk = "SwiftUI.framework"; }
           { sdk = "WatchKit.framework"; }
+          { sdk = "WatchConnectivity.framework"; }
           { sdk = "Foundation.framework"; }
           { sdk = "CoreGraphics.framework"; }
           { sdk = "Security.framework"; }

@@ -12,6 +12,9 @@ public struct WawonaWatchRootView: View {
         NavigationStack {
             MachineStatusView(profileStore: profileStore, sessions: sessions)
         }
+        .onAppear {
+            WatchCompanionController.shared.activate()
+        }
     }
 }
 #endif

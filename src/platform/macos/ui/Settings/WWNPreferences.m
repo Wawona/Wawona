@@ -41,6 +41,9 @@
 #if TARGET_OS_IPHONE
 #import "../../platform/ios/WWNIOSVersions.h"
 #import "../../platform/macos/WWNRootfsProvider.h"
+#if !TARGET_OS_TV && !TARGET_OS_WATCH
+#import "../../platform/ios/WWNWatchCompanionBridge.h"
+#endif
 #if !TARGET_OS_TV
 #import "../../platform/macos/WWNRootfsICloudSync.h"
 #endif
@@ -159,6 +162,7 @@
 // Which import a presented UIDocumentPicker is servicing (both the GPG/OpenSSH
 // key import and the shell-home file import share this VC as delegate).
 @property(nonatomic, assign) BOOL documentPickerImportsSSHKey;
+@property(nonatomic, assign) BOOL documentPickerSendsToAppleWatch;
 #if !TARGET_OS_TV
 - (void)importPickedFileToShellHome:(NSArray<NSURL *> *)urls;
 #endif
@@ -195,6 +199,8 @@
 #endif
 #if TARGET_OS_IPHONE && !TARGET_OS_TV
 - (void)importFileToShellHome;
+- (void)sendDocumentToAppleWatch;
+- (void)sendPickedFileToAppleWatch:(NSArray<NSURL *> *)urls;
 #endif
 #if (TARGET_OS_IPHONE || TARGET_OS_OSX) && !TARGET_OS_TV
 - (void)handleLocalShellICloudSyncToggle:(BOOL)enabled;
@@ -737,6 +743,42 @@ static UIImage *WWNAboutLogo(void) {
     localShell.items = localItems;
     [sects addObject:localShell];
   }
+
+#if TARGET_OS_IOS && !TARGET_OS_MACCATALYST && !TARGET_OS_TV && !TARGET_OS_WATCH && !TARGET_OS_VISION
+  // APPLE WATCH companion documents (WatchConnectivity — #151)
+  {
+    [[WWNWatchCompanionBridge sharedBridge] activate];
+    WWNPreferencesSection *appleWatch = [[WWNPreferencesSection alloc] init];
+    appleWatch.title = @"Apple Watch";
+    appleWatch.accessibilityIdentifier = @"wwn.settings.appleWatch";
+    appleWatch.icon = @"applewatch";
+    appleWatch.iconColor = [UIColor systemPinkColor];
+
+    WWNSettingItem *sendBtn =
+        ITEM(@"Send Document to Watch", @"WatchCompanionSend", WSettingButton, nil,
+             @"Copy a file (including .wasm) into the paired Watch Documents "
+             @"inbox via WatchConnectivity. Does not require an app update. "
+             @"Watch WASM runtime may still be off for size.");
+    sendBtn.actionBlock = ^{
+      [weakSelf sendDocumentToAppleWatch];
+    };
+    appleWatch.items = @[
+      ITEM(@"Companion Status", nil, WSettingInfo,
+           [[WWNWatchCompanionBridge sharedBridge] statusSummary],
+           @"Paired Watch / Wawona Watch app / reachability."),
+      ITEM(@"Last Transfer", nil, WSettingInfo,
+           [[WWNWatchCompanionBridge sharedBridge] lastTransferSummary],
+           @"Most recent send attempt from this iPhone."),
+      sendBtn,
+      ITEM(@"On the Watch", nil, WSettingInfo,
+           @"Files land in Documents/Wawona/inbox. Open Files on iPhone → "
+           @"On My iPhone → Wawona for local copies; Watch receives via "
+           @"WatchConnectivity (not iCloud Drive).",
+           @"Landing path and sync model."),
+    ];
+    [sects addObject:appleWatch];
+  }
+#endif
 
   // ADVANCED
   WWNPreferencesSection *advanced = [[WWNPreferencesSection alloc] init];
@@ -2676,6 +2718,11 @@ static UIImage *WWNAboutLogo(void) {
 - (void)documentPicker:(UIDocumentPickerViewController *)controller
     didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
   (void)controller;
+  if (self.documentPickerSendsToAppleWatch) {
+    self.documentPickerSendsToAppleWatch = NO;
+    [self sendPickedFileToAppleWatch:urls];
+    return;
+  }
   if (!self.documentPickerImportsSSHKey) {
     [self importPickedFileToShellHome:urls];
     return;
@@ -4745,12 +4792,68 @@ static UIImage *WWNAboutLogo(void) {
   picker.delegate = self;
   picker.allowsMultipleSelection = NO;
   self.documentPickerImportsSSHKey = NO;
+  self.documentPickerSendsToAppleWatch = NO;
   if (picker.popoverPresentationController) {
     picker.popoverPresentationController.sourceView = self.view;
     picker.popoverPresentationController.sourceRect = self.view.bounds;
   }
   [self presentViewController:picker animated:YES completion:nil];
 }
+
+#if TARGET_OS_IOS && !TARGET_OS_MACCATALYST && !TARGET_OS_TV && !TARGET_OS_WATCH && !TARGET_OS_VISION
+- (void)sendDocumentToAppleWatch {
+  UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc]
+      initForOpeningContentTypes:@[ UTTypeItem ]
+                          asCopy:YES];
+  picker.delegate = self;
+  picker.allowsMultipleSelection = NO;
+  self.documentPickerImportsSSHKey = NO;
+  self.documentPickerSendsToAppleWatch = YES;
+  if (picker.popoverPresentationController) {
+    picker.popoverPresentationController.sourceView = self.view;
+    picker.popoverPresentationController.sourceRect = self.view.bounds;
+  }
+  [self presentViewController:picker animated:YES completion:nil];
+}
+
+- (void)sendPickedFileToAppleWatch:(NSArray<NSURL *> *)urls {
+  NSURL *src = urls.firstObject;
+  if (!src) {
+    return;
+  }
+  BOOL accessed = [src startAccessingSecurityScopedResource];
+  NSString *err =
+      [[WWNWatchCompanionBridge sharedBridge] sendDocumentAtURL:src];
+  if (accessed) {
+    [src stopAccessingSecurityScopedResource];
+  }
+  if (err) {
+    UIAlertController *alert = [UIAlertController
+        alertControllerWithTitle:@"Send Failed"
+                         message:err
+                  preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK"
+                                              style:UIAlertActionStyleDefault
+                                            handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+  } else {
+    self.sections = [self buildSections];
+    [self.tableView reloadData];
+    UIAlertController *ok = [UIAlertController
+        alertControllerWithTitle:@"Queued for Watch"
+                         message:[NSString
+                                     stringWithFormat:
+                                         @"%@ will transfer when the Watch is "
+                                         @"available.",
+                                         src.lastPathComponent ?: @"File"]
+                  preferredStyle:UIAlertControllerStyleAlert];
+    [ok addAction:[UIAlertAction actionWithTitle:@"OK"
+                                           style:UIAlertActionStyleDefault
+                                         handler:nil]];
+    [self presentViewController:ok animated:YES completion:nil];
+  }
+}
+#endif
 
 - (void)importPickedFileToShellHome:(NSArray<NSURL *> *)urls {
   NSURL *src = urls.firstObject;

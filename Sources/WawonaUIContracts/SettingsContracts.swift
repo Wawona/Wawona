@@ -129,3 +129,240 @@ public struct ConnectionSettingsValidation: Sendable {
         Int(state.sshPortText) ?? 22
     }
 }
+
+// MARK: - Global Settings catalog (all shipped platforms)
+
+/// Host the Settings catalog is being rendered for. Mirrors product targets,
+/// not capability gates — use `visibleSections` / `visibleFields` to hide
+/// Desktop (macOS-only), GPU rows, or store-forbidden surfaces.
+public enum GlobalSettingsHost: String, Sendable, CaseIterable {
+    case macOS
+    case iOS
+    case tvOS
+    case watchOS
+    case visionOS
+    case android
+    case linux
+}
+
+public enum GlobalSettingsSectionID: String, Sendable, CaseIterable, Hashable {
+    case display
+    case input
+    case graphics
+    case connection
+    case localShell
+    /// iPhone/iPad send-side companion documents (WatchConnectivity). Not a watchOS catalog twin.
+    case appleWatch
+    case advanced
+    case desktop
+    case waypipe
+    case ssh
+    case about
+
+    public var title: String {
+        switch self {
+        case .display: return "Display"
+        case .input: return "Input"
+        case .graphics: return "Graphics"
+        case .connection: return "Connection"
+        case .localShell: return "Local Shell"
+        case .appleWatch: return "Apple Watch"
+        case .advanced: return "Advanced"
+        case .desktop: return "Desktop"
+        case .waypipe: return "Waypipe"
+        case .ssh: return "SSH"
+        case .about: return "About"
+        }
+    }
+
+    public var systemImage: String {
+        switch self {
+        case .display: return "display"
+        case .input: return "hand.tap"
+        case .graphics: return "cpu"
+        case .connection: return "network"
+        case .localShell: return "terminal"
+        case .appleWatch: return "applewatch"
+        case .advanced: return "gearshape.2"
+        case .desktop: return "macwindow.on.rectangle"
+        case .waypipe: return "arrow.triangle.2.circlepath"
+        case .ssh: return "lock.shield"
+        case .about: return "info.circle"
+        }
+    }
+}
+
+public enum GlobalSettingsFieldID: String, Sendable, CaseIterable {
+    case autoScale
+    case forceSSD
+    case respectSafeArea
+    case virtualCursor
+    case nestedCompositorCursor
+    case touchInputType
+    case resizeDisplayForVirtualKeyboard
+    case swapCmdWithAlt
+    case universalClipboard
+    case renderer
+    case vulkanDriver
+    case openGLDriver
+    case dmabufEnabled
+    case waylandDisplay
+    case defaultWaylandClient
+    case waypipeByDefault
+    case waypipeCompress
+    case waypipeVideo
+    case waypipeRemoteCommand
+    case waypipeDebug
+    case waypipeNoGpu
+    case waypipeXwayland
+    case waypipePassword
+    case sshHost
+    case sshUser
+    case sshPort
+    case sshAuthMethod
+    case sshPassword
+    case sshKeyType
+    case sshKeyPath
+    case sshKeyPassphrase
+    case sshGenerateKey
+    case colorOperations
+    case nestedCompositors
+    case compositorBackend
+    case multipleClients
+    case logLevel
+    case shakeToClose
+    case swipeBackToClose
+    case aboutVersion
+    case aboutPlatform
+    case aboutAuthor
+    case aboutSource
+    case aboutSponsors
+    case aboutPortfolio
+    case watchCompanionStatus
+    case watchSendDocument
+    case watchOpenDocumentsHint
+}
+
+/// Single catalog for global Wawona Settings. Watch, iOS, and macOS must
+/// render the same section/field IDs for a given host — never a second
+/// free-text "Input Profile" beside Touch Input Type.
+public struct GlobalSettingsCatalog: Sendable {
+    public static func visibleSections(for host: GlobalSettingsHost) -> [GlobalSettingsSectionID] {
+        switch host {
+        case .macOS:
+            return [
+                .display, .input, .graphics, .connection, .localShell,
+                .advanced, .desktop, .waypipe, .ssh, .about,
+            ]
+        case .iOS:
+            return [
+                .display, .input, .graphics, .connection, .localShell,
+                .appleWatch, .advanced, .waypipe, .ssh, .about,
+            ]
+        case .visionOS:
+            return [
+                .display, .input, .graphics, .connection, .localShell,
+                .advanced, .waypipe, .ssh, .about,
+            ]
+        case .android, .linux:
+            return [
+                .display, .input, .graphics, .connection,
+                .advanced, .waypipe, .ssh, .about,
+            ]
+        case .tvOS:
+            return [
+                .display, .input, .graphics, .connection,
+                .advanced, .waypipe, .ssh, .about,
+            ]
+        case .watchOS:
+            return [
+                .display, .input, .graphics, .connection,
+                .waypipe, .ssh, .advanced, .about,
+            ]
+        }
+    }
+
+    public static func visibleFields(
+        in section: GlobalSettingsSectionID,
+        for host: GlobalSettingsHost
+    ) -> [GlobalSettingsFieldID] {
+        switch section {
+        case .display:
+            var fields: [GlobalSettingsFieldID] = [.autoScale]
+            if host == .macOS {
+                fields.append(.forceSSD)
+            }
+            if host == .iOS {
+                fields.append(.respectSafeArea)
+            }
+            return fields
+        case .input:
+            var fields: [GlobalSettingsFieldID] = [
+                .virtualCursor,
+                .nestedCompositorCursor,
+            ]
+            if host != .tvOS {
+                fields.append(.touchInputType)
+            }
+            fields.append(contentsOf: [
+                .resizeDisplayForVirtualKeyboard,
+                .swapCmdWithAlt,
+                .universalClipboard,
+            ])
+            return fields
+        case .graphics:
+            var fields: [GlobalSettingsFieldID] = []
+            if host == .watchOS {
+                fields.append(.renderer)
+            }
+            fields.append(contentsOf: [.vulkanDriver, .openGLDriver, .dmabufEnabled])
+            return fields
+        case .connection:
+            return [.waylandDisplay, .defaultWaylandClient]
+        case .localShell:
+            return []
+        case .appleWatch:
+            return host == .iOS
+                ? [.watchCompanionStatus, .watchSendDocument, .watchOpenDocumentsHint]
+                : []
+        case .advanced:
+            var fields: [GlobalSettingsFieldID] = [
+                .colorOperations,
+                .nestedCompositors,
+                .compositorBackend,
+                .multipleClients,
+                .logLevel,
+            ]
+            if host != .tvOS {
+                fields.append(.shakeToClose)
+            }
+            if host == .iOS || host == .watchOS || host == .visionOS || host == .android {
+                fields.append(.swipeBackToClose)
+            }
+            return fields
+        case .desktop:
+            return host == .macOS ? [] : []
+        case .waypipe:
+            return [
+                .waypipeByDefault,
+                .waypipeXwayland,
+                .waypipePassword,
+                .waypipeCompress,
+                .waypipeVideo,
+                .waypipeRemoteCommand,
+                .waypipeDebug,
+                .waypipeNoGpu,
+            ]
+        case .ssh:
+            return [
+                .sshHost, .sshUser, .sshPort, .sshAuthMethod, .sshPassword,
+                .sshKeyType, .sshKeyPath, .sshKeyPassphrase, .sshGenerateKey,
+            ]
+        case .about:
+            return [
+                .aboutVersion, .aboutPlatform, .aboutAuthor,
+                .aboutSource, .aboutSponsors, .aboutPortfolio,
+            ]
+        }
+    }
+}

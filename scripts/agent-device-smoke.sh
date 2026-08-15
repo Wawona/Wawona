@@ -133,6 +133,19 @@ run_ios() {
     || agent-device wait 'text="Display"' 5000 "${ad_common[@]}" >/dev/null 2>&1 \
     || true
   agent-device screenshot "$ARTIFACTS/ios-settings-display.png" "${ad_common[@]}" || true
+  # Apple Watch companion section (#151) — iPhone Settings send-side.
+  if ! agent-device wait 'id="wwn.settings.appleWatch"' 12000 "${ad_common[@]}" >/dev/null 2>&1 \
+    && ! agent-device wait 'text="Apple Watch"' 5000 "${ad_common[@]}" >/dev/null 2>&1; then
+    echo "FAIL: wwn.settings.appleWatch not visible in Settings" >&2
+    agent-device screenshot "$ARTIFACTS/ios-settings-apple-watch-missing.png" "${ad_common[@]}" || true
+    agent-device snapshot -i --raw "${ad_common[@]}" || true
+    exit 1
+  fi
+  agent-device press 'id="wwn.settings.appleWatch"' "${ad_common[@]}" >/dev/null 2>&1 \
+    || agent-device press 'text="Apple Watch"' "${ad_common[@]}" >/dev/null 2>&1 \
+    || true
+  agent-device wait 800 "${ad_common[@]}" || true
+  agent-device screenshot "$ARTIFACTS/ios-settings-apple-watch.png" "${ad_common[@]}" || true
   agent-device press 'id="wwn.settings.done"' "${ad_common[@]}" >/dev/null 2>&1 \
     || agent-device press 'label="Done"' "${ad_common[@]}" >/dev/null 2>&1 \
     || true

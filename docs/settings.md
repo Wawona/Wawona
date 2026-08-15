@@ -18,10 +18,18 @@
 
 | Layer | UI | Entry points |
 |-------|-----|--------------|
-| **Global Wawona Settings** | ObjC + AppKit (macOS) / UIKit (iOS, iPadOS, tvOS, visionOS) / **WatchKit** (watchOS); Kotlin on Android | App menu **Settings…**, Settings tab (`ObjCSettingsHostView`), Machines window gear icon, watch gear → `WWNWatchSettings` storyboard |
-| **Machine profiles + overrides** | SwiftUI (`WWNMachineEditorView`, `MachineSettingsView`, watch `WatchMachineOverridesSheet`) | Machines window editor; swipe **Edit** on watch opens SwiftUI override sheet only |
+| **Global Wawona Settings** | ObjC + AppKit (macOS) / UIKit (iOS, iPadOS, tvOS, visionOS) / WatchKit + SwiftUI catalog (watchOS); Kotlin on Android | App menu **Settings…**, Settings tab (`ObjCSettingsHostView`), Machines window gear icon, watch gear → `WatchGlobalSettingsView` (same `GlobalSettingsCatalog` as WatchKit `WWNWatchSettings`) |
+| **Machine profiles + overrides** | SwiftUI (`MachineEditorView` via `MachineEditorValidation`, `MachineSettingsView`) | Add / swipe **Edit** = identity editor; **Machine Settings** = per-machine overrides |
 
-SwiftUI does **not** implement global settings on macOS, iOS, or watchOS. On watchOS, global prefs use WatchKit interface controllers backed by `WWNWatchSettingsBridge` (`wawona.pref.*`). Per-machine overrides remain SwiftUI (`MachineSettingsView` / `WatchMachineOverridesSheet`).
+Global Settings sections are declared in `WawonaUIContracts.GlobalSettingsCatalog`.
+iOS includes **Apple Watch** (companion document transfer via WatchConnectivity;
+send-side only — not a watchOS Settings twin). watchOS shows Display, Input,
+Graphics, Connection, Waypipe, SSH, Advanced, About — the same IDs as iOS, minus
+Desktop (forbidden), Local Shell, and Apple Watch. SwiftUI on watch is the
+in-process host (WatchKit present from `@main` is unreliable); both hosts must
+render that catalog and the same `wawona.pref.*` keys. Per-machine Add/Edit uses
+`MachineEditorValidation.visibleFields` (no Input Profile field — Touch Input
+Type lives in Machine Settings).
 
 ---
 
@@ -31,6 +39,23 @@ SwiftUI does **not** implement global settings on macOS, iOS, or watchOS. On wat
 | **Auto Scale** | `autoScale` / `AutoScale` / `autoRetinaScaling` | Switch | On | All | Match platform UI scaling (Retina, Android density) |
 | **Respect Safe Area** | `respectSafeArea` / `RespectSafeArea` | Switch | On | All | Avoid notches, Dynamic Island, display cutouts |
 | **Show macOS Cursor** | `RenderMacOSPointer` | Switch | Off | macOS only | Toggle visibility of the macOS system cursor |
+
+---
+
+## Apple Watch (iOS send-side)
+
+Companion documents for the paired Watch ([#151](https://github.com/Wawona/Wawona/issues/151)).
+Transport is **WatchConnectivity** (`WCSession.transferFile`). Not SFTP on the
+Watch; not iCloud Drive ubiquity on watchOS. AX id: `wwn.settings.appleWatch`.
+
+| Setting | Key / control | Type | Platforms | Description |
+|---------|---------------|------|-----------|-------------|
+| **Companion Status** | (info) | Info | iOS | Paired / Watch app installed / reachable |
+| **Last Transfer** | `wawona.pref.watchCompanionLast*` | Info | iOS | Last queued/failed send |
+| **Send Document to Watch** | document picker → `transferFile` | Button | iOS | Queue a file (including `.wasm`) into Watch `Documents/Wawona/inbox` |
+
+CloudKit catalog mirror is tracked as a follow-up ([#155](https://github.com/Wawona/Wawona/issues/155)).
+watchOS WASM runtime remains size-gated off ([#156](https://github.com/Wawona/Wawona/issues/156) / [#143](https://github.com/Wawona/Wawona/issues/143)).
 
 ---
 
@@ -48,7 +73,7 @@ SwiftUI does **not** implement global settings on macOS, iOS, or watchOS. On wat
 
 | Setting | Key | Type | Default | Platforms | Description |
 |---------|-----|------|---------|------------|-------------|
-| **Touch Input Type** | `TouchInputType` / runtime `inputProfile` | Dropdown | Multi-Touch | iOS (global + per-machine) | Multi-Touch (`wl_touch`) or Touchpad (virtual pointer). Per-machine override lives in Machine Settings → Input and Edit Machine; applied via `applyMachineToRuntimePrefs`. Prefer Multi-Touch for Weston panel / terminals / nested clients. |
+| **Touch Input Type** | `TouchInputType` / runtime `inputProfile` | Dropdown | Multi-Touch | iOS, iPadOS, visionOS, Android (global + per-machine); watchOS Multi-Touch only | Multi-Touch (`wl_touch`) or Touchpad (virtual pointer). watchOS is direct finger only — no virtual/trackpad cursor. Per-machine override lives in Machine Settings → Input only (not Add/Edit). Prefer Multi-Touch for Weston panel / terminals / nested clients. |
 | **Touchpad Mode** | `touchpadMode` | Switch | Off | Android | Same as Touchpad on iOS |
 | **Swap CMD with ALT** | `SwapCmdWithAlt` | Switch | On (macOS/iOS) | macOS, iOS | Swap Command and Alt keys |
 | **Universal Clipboard** | `universalClipboard` / `UniversalClipboard` | Switch | On | All | Sync clipboard with host platform |

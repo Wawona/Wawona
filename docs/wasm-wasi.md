@@ -19,6 +19,12 @@ linked into the reviewed app binary.
 macOS may use Cranelift ([`wawona-macos-no-appstore`](../.cursor/rules/wawona-macos-no-appstore.mdc)).
 watchOS keeps the runtime **off** (size), same as coreutils.
 
+iPhone Settings → **Apple Watch** can still **transfer** `.wasm` documents to
+the paired Watch via WatchConnectivity (`Documents/Wawona/inbox`). Transfer is
+not the same as running them — the Watch interpreter stays unlinked until the
+size gate lifts ([#151](https://github.com/Wawona/Wawona/issues/151),
+[#156](https://github.com/Wawona/Wawona/issues/156)).
+
 See [ios-local-shell/APP-STORE-COMPLIANCE.md](ios-local-shell/APP-STORE-COMPLIANCE.md).
 
 ## Shell

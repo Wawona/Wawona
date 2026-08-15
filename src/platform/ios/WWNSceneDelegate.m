@@ -2,6 +2,9 @@
 #import "../macos/ui/Settings/WWNPreferencesManager.h"
 #if TARGET_OS_IPHONE
 #import "../../platform/macos/WWNRootfsProvider.h"
+#if TARGET_OS_IOS && !TARGET_OS_MACCATALYST && !TARGET_OS_TV && !TARGET_OS_WATCH && !TARGET_OS_VISION
+#import "WWNWatchCompanionBridge.h"
+#endif
 #endif
 #import "../macos/WWNCompositorBridge.h"
 #import "../macos/ui/Settings/WWNPreferences.h"
@@ -1081,6 +1084,9 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
 
 - (void)sceneDidBecomeActive:(UIScene *)scene {
   WWNLog("SCENE", @"Scene became active");
+#if TARGET_OS_IOS && !TARGET_OS_MACCATALYST && !TARGET_OS_TV && !TARGET_OS_WATCH && !TARGET_OS_VISION
+  [[WWNWatchCompanionBridge sharedBridge] activate];
+#endif
   // Only re-show the machines UI if the compositor is visible but nothing is
   // actually rendering into it (neither waypipe nor any native client).
   BOOL compositorVisible = !self.compositorContainer.hidden;

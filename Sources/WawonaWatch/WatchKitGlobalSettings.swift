@@ -2,9 +2,11 @@
 import SwiftUI
 import WatchKit
 import WawonaModel
+import WawonaUIContracts
 
 /// Presents global Wawona Settings via WatchKit (preferred), with SwiftUI fallback
 /// when no WKInterfaceController host is available (pure SwiftUI `@main` lifecycle).
+/// Both hosts must render `GlobalSettingsCatalog` for `.watchOS`.
 enum WatchKitGlobalSettings {
     /// Posted when WatchKit presentation fails so SwiftUI can show a fallback sheet.
     static let fallbackPresentationNeeded = Notification.Name("WWNWatchSettingsFallbackNeeded")
@@ -26,44 +28,24 @@ enum WatchKitGlobalSettings {
     }
 }
 
-/// Global Wawona Settings for watchOS — section list → drill-in detail (macOS
-/// sidebar equivalent). Each section opens its own view; About is full-screen.
+/// Global Wawona Settings for watchOS — same section catalog as iOS/macOS
+/// (`GlobalSettingsCatalog`), minus Desktop (forbidden) and Local Shell.
 struct WatchGlobalSettingsView: View {
     @ObservedObject private var preferences = WawonaPreferences.shared
     @Environment(\.dismiss) private var dismiss
 
+    private let sections = GlobalSettingsCatalog.visibleSections(for: .watchOS)
+
     var body: some View {
         NavigationStack {
             List {
-                NavigationLink {
-                    WatchSettingsDisplaySection(preferences: preferences)
-                } label: {
-                    settingsRow(title: "Display", systemImage: "display")
-                }
-                NavigationLink {
-                    WatchSettingsGraphicsSection(preferences: preferences)
-                } label: {
-                    settingsRow(title: "Graphics", systemImage: "cpu")
-                }
-                NavigationLink {
-                    WatchSettingsConnectionSection(preferences: preferences)
-                } label: {
-                    settingsRow(title: "Connection", systemImage: "network")
-                }
-                NavigationLink {
-                    WatchSettingsSSHSection(preferences: preferences)
-                } label: {
-                    settingsRow(title: "SSH Defaults", systemImage: "lock.shield")
-                }
-                NavigationLink {
-                    WatchSettingsAdvancedSection(preferences: preferences)
-                } label: {
-                    settingsRow(title: "Advanced", systemImage: "gearshape.2")
-                }
-                NavigationLink {
-                    WatchSettingsAboutSection()
-                } label: {
-                    settingsRow(title: "About", systemImage: "info.circle")
+                ForEach(sections, id: \.self) { section in
+                    NavigationLink {
+                        WatchGlobalSettingsSectionHost(section: section, preferences: preferences)
+                    } label: {
+                        Label(section.title, systemImage: section.systemImage)
+                    }
+                    .accessibilityIdentifier("wwn.settings.\(section.rawValue)")
                 }
             }
             .navigationTitle("Wawona Settings")
@@ -80,11 +62,41 @@ struct WatchGlobalSettingsView: View {
             }
         }
     }
+}
 
-    @ViewBuilder
-    private func settingsRow(title: String, systemImage: String) -> some View {
-        Label(title, systemImage: systemImage)
+private struct WatchGlobalSettingsSectionHost: View {
+    let section: GlobalSettingsSectionID
+    @ObservedObject var preferences: WawonaPreferences
+
+    var body: some View {
+        Group {
+            switch section {
+            case .display:
+                WatchSettingsDisplaySection(preferences: preferences)
+            case .input:
+                WatchSettingsInputSection(preferences: preferences)
+            case .graphics:
+                WatchSettingsGraphicsSection(preferences: preferences)
+            case .connection:
+                WatchSettingsConnectionSection(preferences: preferences)
+            case .waypipe:
+                WatchSettingsWaypipeSection(preferences: preferences)
+            case .ssh:
+                WatchSettingsSSHSection(preferences: preferences)
+            case .advanced:
+                WatchSettingsAdvancedSection(preferences: preferences)
+            case .about:
+                WatchSettingsAboutSection()
+            case .localShell, .desktop, .appleWatch:
+                Text("Unavailable on watchOS")
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
+}
+
+private func watchShows(_ field: GlobalSettingsFieldID, in section: GlobalSettingsSectionID) -> Bool {
+    GlobalSettingsCatalog.visibleFields(in: section, for: .watchOS).contains(field)
 }
 
 // MARK: - Section detail views
@@ -94,14 +106,58 @@ private struct WatchSettingsDisplaySection: View {
 
     var body: some View {
         Form {
-            Toggle("Auto Scale", isOn: $preferences.autoScale)
-            // Force SSD is macOS-only (#120): watchOS always draws SSD.
-            if PlatformCapabilities.supportsClientSideDecorations {
+            if watchShows(.autoScale, in: .display) {
+                Toggle("Auto Scale", isOn: $preferences.autoScale)
+            }
+            if watchShows(.forceSSD, in: .display), PlatformCapabilities.supportsClientSideDecorations {
                 Toggle("Force SSD", isOn: $preferences.forceSSD)
             }
-            Toggle("Color Operations (HDR)", isOn: $preferences.colorOperations)
+            if watchShows(.respectSafeArea, in: .display) {
+                Text("Respect Safe Area is iPhone-only.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
-        .navigationTitle("Display")
+        .navigationTitle(GlobalSettingsSectionID.display.title)
+        .onDisappear { preferences.save() }
+    }
+}
+
+private struct WatchSettingsInputSection: View {
+    @ObservedObject var preferences: WawonaPreferences
+
+    var body: some View {
+        Form {
+            if watchShows(.virtualCursor, in: .input) {
+                Toggle("Show Virtual Cursor", isOn: $preferences.renderMacOSPointer)
+            }
+            if watchShows(.nestedCompositorCursor, in: .input) {
+                Picker("Nested Compositor Cursor", selection: $preferences.nestedCompositorCursor) {
+                    Text("Virtual Pointer").tag("virtual")
+                    Text("Host Cursor").tag("host")
+                }
+                .disabled(!preferences.renderMacOSPointer)
+            }
+            if watchShows(.touchInputType, in: .input) {
+                Picker("Touch Input Type", selection: $preferences.defaultInputProfile) {
+                    Text("Multi-Touch").tag("Multi-Touch")
+                    Text("Touchpad").tag("Touchpad")
+                }
+                Text("Multi-Touch is finger→wl_touch. Touchpad is the iOS virtual pointer (relative drag, tap=click). Crown scrolls in Touchpad mode.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            if watchShows(.resizeDisplayForVirtualKeyboard, in: .input) {
+                Toggle("Resize Display for Virtual Keyboard", isOn: $preferences.resizeDisplayForVirtualKeyboard)
+            }
+            if watchShows(.swapCmdWithAlt, in: .input) {
+                Toggle("Swap CMD with ALT", isOn: $preferences.swapCmdWithAlt)
+            }
+            if watchShows(.universalClipboard, in: .input) {
+                Toggle("Universal Clipboard", isOn: $preferences.universalClipboard)
+            }
+        }
+        .navigationTitle(GlobalSettingsSectionID.input.title)
         .onDisappear { preferences.save() }
     }
 }
@@ -111,15 +167,26 @@ private struct WatchSettingsGraphicsSection: View {
 
     var body: some View {
         Form {
-            Picker("Renderer", selection: $preferences.renderer) {
-                Text("metal").tag("metal")
-                Text("software").tag("software")
+            if watchShows(.renderer, in: .graphics) {
+                Picker("Renderer", selection: $preferences.renderer) {
+                    Text("metal").tag("metal")
+                    Text("software").tag("software")
+                }
             }
-            Text("watchOS has no Metal GPU stack — compositor presents via SHM/CPU. GPU clients (EGL cubes, kmscube, vkcube) stay unavailable.")
+            if watchShows(.vulkanDriver, in: .graphics) {
+                LabeledContent("Vulkan Driver", value: "None")
+            }
+            if watchShows(.openGLDriver, in: .graphics) {
+                LabeledContent("OpenGL Driver", value: "None")
+            }
+            if watchShows(.dmabufEnabled, in: .graphics) {
+                LabeledContent("Enable DMABUF", value: "Off")
+            }
+            Text("watchOS has no Metal GPU stack — compositor presents via SHM/CPU. GPU clients stay unavailable.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
-        .navigationTitle("Graphics")
+        .navigationTitle(GlobalSettingsSectionID.graphics.title)
         .onDisappear { preferences.save() }
     }
 }
@@ -129,26 +196,75 @@ private struct WatchSettingsConnectionSection: View {
 
     var body: some View {
         Form {
-            TextField("Wayland Display", text: $preferences.waylandDisplay)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-            TextField("Input Profile", text: $preferences.defaultInputProfile)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-            NavigationLink {
-                WatchBundledClientPickerView(selection: $preferences.defaultBundledAppID)
-            } label: {
-                HStack {
-                    Text("Default Wayland Client")
-                    Spacer()
-                    Text(ClientLauncher.displayName(for: preferences.defaultBundledAppID))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+            if watchShows(.waylandDisplay, in: .connection) {
+                TextField("Wayland Display", text: $preferences.waylandDisplay)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+            }
+            if watchShows(.defaultWaylandClient, in: .connection) {
+                NavigationLink {
+                    WatchBundledClientPickerView(selection: $preferences.defaultBundledAppID)
+                } label: {
+                    HStack {
+                        Text("Default Wayland Client")
+                        Spacer()
+                        Text(ClientLauncher.displayName(for: preferences.defaultBundledAppID))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
             }
-            Toggle("Waypipe by Default", isOn: $preferences.defaultWaypipeEnabled)
         }
-        .navigationTitle("Connection")
+        .navigationTitle(GlobalSettingsSectionID.connection.title)
+        .onDisappear { preferences.save() }
+    }
+}
+
+private struct WatchSettingsWaypipeSection: View {
+    @ObservedObject var preferences: WawonaPreferences
+
+    var body: some View {
+        Form {
+            if watchShows(.waypipeByDefault, in: .waypipe) {
+                Toggle("Waypipe by Default", isOn: $preferences.defaultWaypipeEnabled)
+            }
+            if watchShows(.waypipeXwayland, in: .waypipe) {
+                Toggle("XWayland", isOn: $preferences.xwaylandSupport)
+            }
+            if watchShows(.waypipePassword, in: .waypipe) {
+                SecureField("Waypipe Password", text: $preferences.waypipeSSHPassword)
+            }
+            if watchShows(.waypipeCompress, in: .waypipe) {
+                Picker("Compression", selection: $preferences.waypipeCompress) {
+                    Text("none").tag("none")
+                    Text("lz4").tag("lz4")
+                    Text("zstd").tag("zstd")
+                }
+            }
+            if watchShows(.waypipeVideo, in: .waypipe) {
+                Picker("Video Codec", selection: $preferences.waypipeVideo) {
+                    Text("none").tag("none")
+                    Text("h264").tag("h264")
+                    Text("vp9").tag("vp9")
+                    Text("av1").tag("av1")
+                }
+            }
+            if watchShows(.waypipeRemoteCommand, in: .waypipe) {
+                TextField("Remote Command", text: $preferences.waypipeRemoteCommand)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+            }
+            if watchShows(.waypipeDebug, in: .waypipe) {
+                Toggle("Debug Mode", isOn: $preferences.waypipeDebug)
+            }
+            if watchShows(.waypipeNoGpu, in: .waypipe) {
+                Toggle("Disable GPU", isOn: $preferences.waypipeNoGpu)
+            }
+            Text("Global defaults for all machines. Per-machine Waypipe settings override these values.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .navigationTitle(GlobalSettingsSectionID.waypipe.title)
         .onDisappear { preferences.save() }
     }
 }
@@ -159,55 +275,73 @@ private struct WatchSettingsSSHSection: View {
 
     var body: some View {
         Form {
-            TextField("Host", text: $preferences.sshHost)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-            TextField("User", text: $preferences.sshUser)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-            TextField("Port", text: Binding(
-                get: { String(preferences.sshPort) },
-                set: { preferences.sshPort = Int($0) ?? preferences.sshPort }
-            ))
-            Picker("Auth", selection: $preferences.sshAuthMethod) {
-                Text("Password").tag(0)
-                Text("Public Key").tag(1)
-            }
-            if preferences.sshAuthMethod == 0 {
-                SecureField("Password", text: $preferences.sshPassword)
-            } else {
-                Picker("Key Type", selection: $preferences.sshKeyType) {
-                    Text("ed25519").tag("ed25519")
-                    Text("ecdsa").tag("ecdsa")
-                    Text("rsa").tag("rsa")
-                }
-                TextField("Key Path", text: $preferences.sshKeyPath)
+            if watchShows(.sshHost, in: .ssh) {
+                TextField("Host", text: $preferences.sshHost)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-                SecureField("Key Passphrase", text: $preferences.sshKeyPassphrase)
-                Button("Generate Key") {
-                    do {
-                        let path = try WWNSSHKeygen.generateKeyType(
-                            preferences.sshKeyType,
-                            passphrase: preferences.sshKeyPassphrase
-                        )
-                        preferences.sshKeyPath = path
-                        preferences.sshAuthMethod = 1
-                        preferences.save()
-                        keygenMessage = "Created \(path)"
-                    } catch {
-                        keygenMessage = error.localizedDescription
+            }
+            if watchShows(.sshUser, in: .ssh) {
+                TextField("User", text: $preferences.sshUser)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+            }
+            if watchShows(.sshPort, in: .ssh) {
+                TextField("Port", text: Binding(
+                    get: { String(preferences.sshPort) },
+                    set: { preferences.sshPort = Int($0) ?? preferences.sshPort }
+                ))
+            }
+            if watchShows(.sshAuthMethod, in: .ssh) {
+                Picker("Auth", selection: $preferences.sshAuthMethod) {
+                    Text("Password").tag(0)
+                    Text("Public Key").tag(1)
+                }
+            }
+            if preferences.sshAuthMethod == 0 {
+                if watchShows(.sshPassword, in: .ssh) {
+                    SecureField("Password", text: $preferences.sshPassword)
+                }
+            } else {
+                if watchShows(.sshKeyType, in: .ssh) {
+                    Picker("Key Type", selection: $preferences.sshKeyType) {
+                        Text("ed25519").tag("ed25519")
+                        Text("ecdsa").tag("ecdsa")
+                        Text("rsa").tag("rsa")
                     }
                 }
-                Text("GPG: copy gpg --export-ssh-key into Documents/ssh and set Key Path.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                if watchShows(.sshKeyPath, in: .ssh) {
+                    TextField("Key Path", text: $preferences.sshKeyPath)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+                if watchShows(.sshKeyPassphrase, in: .ssh) {
+                    SecureField("Key Passphrase", text: $preferences.sshKeyPassphrase)
+                }
+                if watchShows(.sshGenerateKey, in: .ssh) {
+                    Button("Generate Key") {
+                        do {
+                            let path = try WWNSSHKeygen.generateKeyType(
+                                preferences.sshKeyType,
+                                passphrase: preferences.sshKeyPassphrase
+                            )
+                            preferences.sshKeyPath = path
+                            preferences.sshAuthMethod = 1
+                            preferences.save()
+                            keygenMessage = "Created \(path)"
+                        } catch {
+                            keygenMessage = error.localizedDescription
+                        }
+                    }
+                    Text("GPG: copy gpg --export-ssh-key into Documents/ssh and set Key Path.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
             if let keygenMessage {
                 Text(keygenMessage).font(.caption2)
             }
         }
-        .navigationTitle("SSH Defaults")
+        .navigationTitle(GlobalSettingsSectionID.ssh.title)
         .onDisappear { preferences.save() }
     }
 }
@@ -217,16 +351,38 @@ private struct WatchSettingsAdvancedSection: View {
 
     var body: some View {
         Form {
-            Picker("Log Level", selection: $preferences.logLevel) {
-                Text("Debug").tag("debug")
-                Text("Info").tag("info")
-                Text("Warn").tag("warn")
-                Text("Error").tag("error")
+            if watchShows(.colorOperations, in: .advanced) {
+                Toggle("Color Operations (HDR)", isOn: $preferences.colorOperations)
             }
-            Toggle("Shake to Close", isOn: $preferences.shakeToCloseEnabled)
-            Toggle("Swipe Back to Close", isOn: $preferences.swipeBackToCloseEnabled)
+            if watchShows(.nestedCompositors, in: .advanced) {
+                Toggle("Nested Compositors", isOn: $preferences.nestedCompositorsSupport)
+            }
+            if watchShows(.compositorBackend, in: .advanced) {
+                Picker("Display Backend", selection: $preferences.compositorBackend) {
+                    Text("Auto").tag("auto")
+                    Text("Wayland (nested)").tag("wayland")
+                    Text("DRM/KMS (wwn-iland)").tag("drm")
+                }
+            }
+            if watchShows(.multipleClients, in: .advanced) {
+                Toggle("Multiple Clients", isOn: $preferences.multipleClients)
+            }
+            if watchShows(.logLevel, in: .advanced) {
+                Picker("Log Level", selection: $preferences.logLevel) {
+                    Text("Debug").tag("debug")
+                    Text("Info").tag("info")
+                    Text("Warn").tag("warn")
+                    Text("Error").tag("error")
+                }
+            }
+            if watchShows(.shakeToClose, in: .advanced) {
+                Toggle("Shake to Close", isOn: $preferences.shakeToCloseEnabled)
+            }
+            if watchShows(.swipeBackToClose, in: .advanced) {
+                Toggle("Swipe Back to Close", isOn: $preferences.swipeBackToCloseEnabled)
+            }
         }
-        .navigationTitle("Advanced")
+        .navigationTitle(GlobalSettingsSectionID.advanced.title)
         .onDisappear { preferences.save() }
     }
 }
@@ -234,14 +390,26 @@ private struct WatchSettingsAdvancedSection: View {
 private struct WatchSettingsAboutSection: View {
     var body: some View {
         Form {
-            LabeledContent("Version", value: watchAboutVersion)
-            LabeledContent("Platform", value: "watchOS")
-            LabeledContent("Author", value: "Alex Spaulding")
-            Link("Source Code", destination: URL(string: "https://github.com/wawona/wawona")!)
-            Link("GitHub Sponsors", destination: URL(string: "https://github.com/sponsors/aspauldingcode")!)
-            Link("Portfolio", destination: URL(string: "https://aspauldingcode.com")!)
+            if watchShows(.aboutVersion, in: .about) {
+                LabeledContent("Version", value: watchAboutVersion)
+            }
+            if watchShows(.aboutPlatform, in: .about) {
+                LabeledContent("Platform", value: "watchOS")
+            }
+            if watchShows(.aboutAuthor, in: .about) {
+                LabeledContent("Author", value: "Alex Spaulding")
+            }
+            if watchShows(.aboutSource, in: .about) {
+                Link("Source Code", destination: URL(string: "https://github.com/wawona/wawona")!)
+            }
+            if watchShows(.aboutSponsors, in: .about) {
+                Link("GitHub Sponsors", destination: URL(string: "https://github.com/sponsors/aspauldingcode")!)
+            }
+            if watchShows(.aboutPortfolio, in: .about) {
+                Link("Portfolio", destination: URL(string: "https://aspauldingcode.com")!)
+            }
         }
-        .navigationTitle("About")
+        .navigationTitle(GlobalSettingsSectionID.about.title)
     }
 
     private var watchAboutVersion: String {
