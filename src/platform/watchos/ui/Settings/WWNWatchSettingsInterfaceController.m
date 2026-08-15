@@ -37,6 +37,7 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
         @"Connection",
         @"SSH Defaults",
         @"Advanced",
+        @"About",
     ];
     [self.sectionsTable setNumberOfRows:sections.count withRowType:@"SectionRow"];
     for (NSInteger i = 0; i < (NSInteger)sections.count; i++) {
@@ -55,6 +56,7 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
         @"Connection",
         @"SSH Defaults",
         @"Advanced",
+        @"About",
     ];
     if (rowIndex < 0 || rowIndex >= (NSInteger)sections.count) {
         return;
@@ -124,6 +126,20 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
             [self actionRow:@"Log Level" key:@"logLevel" value:bridge.logLevel],
             [self toggleRow:@"Shake to Close" key:@"shakeToCloseEnabled" value:bridge.shakeToCloseEnabled],
             [self toggleRow:@"Swipe Back to Close" key:@"swipeBackToCloseEnabled" value:bridge.swipeBackToCloseEnabled],
+        ];
+    }
+    if ([section isEqualToString:@"About"]) {
+        NSString *raw = [[NSBundle mainBundle]
+            objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+        NSString *version = (raw.length > 0) ? raw : @"0.0.0";
+        if (![version hasPrefix:@"v"]) {
+            version = [@"v" stringByAppendingString:version];
+        }
+        return @[
+            [self actionRow:@"Version" key:@"" value:version],
+            [self actionRow:@"Platform" key:@"" value:@"watchOS"],
+            [self actionRow:@"Author" key:@"" value:@"Alex Spaulding"],
+            [self actionRow:@"Source" key:@"" value:@"github.com/wawona/wawona"],
         ];
     }
     return @[];

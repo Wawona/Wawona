@@ -838,7 +838,7 @@ ICDJSON
 
   appsCatalogIosEmbedScript = pkgs.writeShellScript "embed-applications-catalog-ios.sh" ''
     case "''${PLATFORM_NAME:-}" in
-      iphoneos|iphonesimulator|appletvos|appletvsimulator|xros|xrsimulator)
+      iphoneos|iphonesimulator|appletvos|appletvsimulator|xros|xrsimulator|watchos|watchsimulator)
         ;;
       *)
         exit 0
@@ -2758,6 +2758,7 @@ ICDJSON
           fontEmbedPhase
           westonDataEmbedPhase
           watchosNiriDataEmbedPhase
+          appsCatalogEmbedPhase
           watchosRootfsEmbedPhase
           {
             # Copies watch-platform WawonaModel/UIContracts (Xcode Embed is

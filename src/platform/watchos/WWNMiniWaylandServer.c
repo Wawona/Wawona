@@ -511,6 +511,7 @@ static const struct xdg_toplevel_interface xdg_toplevel_impl = {
 typedef struct {
     struct wl_resource *resource;
     struct wl_resource *surface;   // the underlying wl_surface
+    struct WWNMiniWaylandServer *srv;
 } WWNXdgSurface;
 
 static void xdg_surf_destroy(struct wl_client *c, struct wl_resource *r)
@@ -520,18 +521,37 @@ static void xdg_surf_get_toplevel(struct wl_client *client,
                                     struct wl_resource *xdg_surf_res,
                                     uint32_t id)
 {
+    WWNXdgSurface *xs = wl_resource_get_user_data(xdg_surf_res);
+    struct WWNMiniWaylandServer *srv = xs ? xs->srv : NULL;
     struct wl_resource *tl = wl_resource_create(client, &xdg_toplevel_interface, 1, id);
     wl_resource_set_implementation(tl, &xdg_toplevel_impl, NULL, NULL);
 
-    // Send configure: width=0, height=0 → client picks its own size; no states.
+    // watchOS is fill-primary: send the output size + maximized/activated so
+    // weston-terminal does not wait forever then fall back to 80×25 (570×360).
+    // width=0,height=0 means "client picks" and that is a desktop-sized surface.
     struct wl_array states;
     wl_array_init(&states);
-    xdg_toplevel_send_configure(tl, 0, 0, &states);
+    int32_t cfg_w = 0;
+    int32_t cfg_h = 0;
+    if (srv && srv->output_width > 0 && srv->output_height > 0) {
+        uint32_t *s = wl_array_add(&states, sizeof(uint32_t));
+        if (s) {
+            *s = XDG_TOPLEVEL_STATE_MAXIMIZED;
+        }
+        s = wl_array_add(&states, sizeof(uint32_t));
+        if (s) {
+            *s = XDG_TOPLEVEL_STATE_ACTIVATED;
+        }
+        cfg_w = (int32_t)srv->output_width;
+        cfg_h = (int32_t)srv->output_height;
+    }
+    xdg_toplevel_send_configure(tl, cfg_w, cfg_h, &states);
     wl_array_release(&states);
 
-    // Send xdg_surface.configure with a serial so client calls ack_configure.
     uint32_t serial = g_xdg_serial++;
     xdg_surface_send_configure(xdg_surf_res, serial);
+    fprintf(stderr, "[WatchCompositor] xdg_toplevel configure %dx%d serial=%u\n",
+            (int)cfg_w, (int)cfg_h, serial);
 }
 
 static void xdg_popup_destroy(struct wl_client *c, struct wl_resource *r)
@@ -636,6 +656,7 @@ static void xdg_wmbase_get_xdg_surface(struct wl_client *client,
 {
     WWNXdgSurface *xs = calloc(1, sizeof(WWNXdgSurface));
     xs->surface = surface_res;
+    xs->srv = wl_resource_get_user_data(wm_res);
     xs->resource = wl_resource_create(client, &xdg_surface_interface, 1, id);
     wl_resource_set_implementation(xs->resource, &xdg_surface_impl, xs, xdg_surf_resource_destroy);
 }
@@ -712,9 +733,12 @@ static void shell_get_shell_surface(struct wl_client *client,
                                       struct wl_resource *surface_res)
 {
     (void)surface_res;
+    struct WWNMiniWaylandServer *srv = wl_resource_get_user_data(shell_res);
     struct wl_resource *res = wl_resource_create(client, &wl_shell_surface_interface, 1, id);
     wl_resource_set_implementation(res, &shell_surface_impl, NULL, NULL);
-    wl_shell_surface_send_configure(res, 0, 0, 0);
+    int32_t cfg_w = (srv && srv->output_width > 0) ? (int32_t)srv->output_width : 0;
+    int32_t cfg_h = (srv && srv->output_height > 0) ? (int32_t)srv->output_height : 0;
+    wl_shell_surface_send_configure(res, 0, cfg_w, cfg_h);
 }
 
 static __attribute__((unused)) void shell_destroy(struct wl_client *c, struct wl_resource *r)

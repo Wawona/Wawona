@@ -26,16 +26,7 @@ enum WatchMachineSessionBridge {
         case .native:
             let clientId = resolvedNativeClientId(for: profile)
             logger.appendLine("[LAUNCH] Starting \(clientId) …")
-            switch clientId {
-            case "weston":
-                bridge.launchWeston()
-            case "weston-terminal":
-                bridge.launchWestonTerminal()
-            case "foot":
-                bridge.launchFoot()
-            default:
-                bridge.launchWestonSimpleSHM()
-            }
+            bridge.launchClient(withId: clientId)
             return true
         case .sshWaypipe, .sshTerminal:
             guard !profile.sshHost.isEmpty, !profile.sshUser.isEmpty else {
@@ -96,8 +87,8 @@ enum WatchMachineSessionBridge {
         if let launcher = profile.launchers.first?.name, !launcher.isEmpty {
             return launcher
         }
-        // watchOS is shm-only for nested clients (no GPU stack). Prefer
-        // weston-simple-shm over weston-terminal (compat shim / may refuse).
+        // Prefer an explicit launcher; fall back to SHM demo (always works on
+        // the watch mini server without GPU).
         return "weston-simple-shm"
     }
 }

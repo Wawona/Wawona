@@ -17,7 +17,7 @@ extern NSNotificationName const WWNWatchCompositorFrameReadyNotification;
 @interface WWNWatchCompositorBridge : NSObject
 
 /// Singleton accessor.
-+ (instancetype)sharedBridge;
++ (instancetype)sharedBridge NS_SWIFT_NAME(shared());
 
 // MARK: - Lifecycle
 
@@ -51,6 +51,13 @@ extern NSNotificationName const WWNWatchCompositorFrameReadyNotification;
 
 /// Launch foot terminal in-process.
 - (void)launchFoot;
+
+/// Launch niri nested compositor in-process.
+- (void)launchNiri;
+
+/// Launch any known bundled client id (weston-flower, weston-smoke, …).
+/// Unknown ids fall back to weston-simple-shm.
+- (void)launchClientWithId:(NSString *)clientId;
 
 /// Stop any running in-process client.
 - (void)stopClient;

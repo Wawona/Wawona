@@ -4,7 +4,7 @@ import WawonaModel
 
 @main
 struct WawonaWatch: App {
-    @WKExtensionDelegateAdaptor(WawonaWatchExtensionDelegate.self) private var extensionDelegate
+    @WKApplicationDelegateAdaptor(WawonaWatchAppDelegate.self) private var appDelegate
     @State private var didAutoConnect = false
 
     var body: some Scene {

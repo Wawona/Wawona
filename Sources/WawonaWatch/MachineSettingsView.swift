@@ -20,7 +20,7 @@ struct MachineSettingsView: View {
                     WatchKitGlobalSettings.registerHost()
                     showingGlobalSettings = true
                 }
-                Text("Global defaults (Display, Graphics, Connection, SSH, Advanced). Values below override them for this machine only.")
+                Text("Global defaults (Display, Graphics, Connection, SSH, Advanced, About). Values below override them for this machine only.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

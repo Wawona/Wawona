@@ -102,6 +102,11 @@ int wwn_foot_is_compat_shim(void) {
     return 1;
 }
 
+__attribute__((weak))
+int niri_main(void) {
+    return 127;
+}
+
 // ── Waypipe stub ─────────────────────────────────────────────────────────────
 // Overridden by libwaypipe.a when linked. The bridge nil-checks the weak
 // symbol before calling.
