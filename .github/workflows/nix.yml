@@ -174,6 +174,8 @@ jobs:
         run: python3 ./.github/scripts/verify-no-tar-wildcards.py
       - name: Verify iOS shell-tool wiring
         run: python3 ./.github/scripts/verify-ios-shell-tools.py
+      - name: Verify Wawona Runtime (wwn-wasm) wiring
+        run: python3 ./.github/scripts/verify-wawona-wasm.py
       - name: Verify Android shell-tool wiring
         run: python3 ./.github/scripts/verify-android-shell-tools.py
       - name: Verify SSH backends (Apple libssh2-cli / Android OpenSSH)
