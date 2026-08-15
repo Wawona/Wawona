@@ -12,6 +12,7 @@
   fastfetchAndroid ? null,
   coreutilsAndroid ? null,
   phoonAndroid ? null,
+  wasmAndroid ? null,
   neovimAndroid ? null,
   waypipeAndroid ? null,
   niriAndroid ? null,
@@ -64,6 +65,16 @@
       chmod +x "$JNI_LIB_DIR/libphoon_bin.so"
     else
       echo "WARNING: Missing Android phoon binary at ${phoonAndroid}/bin/phoon"
+    fi
+    ''}
+
+    ${lib.optionalString (wasmAndroid != null) ''
+    # wwn-wasm: WASI P1/P2 runner (Pulley). Android fork/execs libwasm_bin.so.
+    if [ -f "${wasmAndroid}/bin/wasm" ]; then
+      cp -L "${wasmAndroid}/bin/wasm" "$JNI_LIB_DIR/libwasm_bin.so"
+      chmod +x "$JNI_LIB_DIR/libwasm_bin.so"
+    else
+      echo "WARNING: Missing Android wasm binary at ${wasmAndroid}/bin/wasm"
     fi
     ''}
 

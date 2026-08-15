@@ -21,8 +21,9 @@ The local shell is **not** a mechanism to download or run arbitrary code from th
 | **zsh** | Statically linked into the app binary (`libwawona-zsh.a`) | **In-process** — runs on a pthread via `wawona_zsh_main()`; **no `fork`/`exec`/`posix_spawn`** |
 | **Core utilities (`ls`, `cat`, `cp`, …)** | Bundled Rust [uutils/coreutils](https://github.com/uutils/coreutils) (MIT), statically linked into the app binary | **In-process** — dispatched by argv[0] from zsh through `wawona_dispatch_inprocess` → `wawona_coreutils_main`; **no `fork`/`exec`** |
 | Remote SSH sessions | User-configured host | Network — optional; same as other SSH clients |
+| **WASM / WASI** | User-provided `.wasm` **document** (Files / File Sharing) | Interpreted by bundled Wasmtime **Pulley** (`wawona_wasm_run`); not Mach-O, not JIT, not Apple-signed |
 
-There is **no JIT**, **no x86 emulator**, and **no post-install download of native executables**.
+There is **no JIT**, **no x86 emulator**, and **no post-install download of native executables**. User `.wasm` is bytecode read by the reviewed interpreter (same class as JavaScript in JavaScriptCore).
 
 ### zsh execution model (iOS/iPadOS and the rest of the sandboxed Apple family)
 
@@ -75,6 +76,8 @@ Privacy Nutrition Label: include **User Content** if Apple questionnaire asks ab
 4. Confirm shell prompt appears; type `echo hello` → output `hello`.
 5. Type `pwd` → path inside app container / rootfs home.
 6. Type `ls /` and `cat ~/.zshrc` → output produced by the in-process bundled uutils utilities (still no child process).
+7. Type `help` → catalog of builtins, uutils, clients, and WASM.
+8. Optional: drop a `.wasm` via Files / File Sharing and run `wasm ./tool.wasm hello`.
 
 If local shell is behind a Settings toggle, enable **Enable local shell** first.
 
@@ -99,3 +102,4 @@ Reviewers may compare to **a-Shell** (bundled command binaries), **iSH** (bundle
 | 2026-06 | Initial local zsh documentation — pre-ship |
 | 2026-06 | zsh moved fully in-process (static `wawona_zsh_main` on a pthread); modules statically linked (`--disable-dynamic`), no `dlopen`; no `fork`/`exec`/`posix_spawn`; builtins-only, single session per launch |
 | 2026-06 | Bundled in-process uutils/coreutils (MIT Rust): `ls`/`cat`/`cp`/… dispatched from zsh's exec path before any fork, via `wawona_dispatch_inprocess` → `wawona_coreutils_main`; safe subset only; `catch_unwind` exit-safety; still no `fork`/`exec`. macOS/Android ship the same utilities as a normal multicall binary on `PATH`. |
+| 2026-08 | WASI P1/P2 interpreter (`wwn-wasm`, Pulley on Apple mobile). User `.wasm` is a document; no Cranelift native / `MAP_JIT` on iOS family. Milestone [Support WASI P1 P2 WASM!](https://github.com/Wawona/Wawona/milestone/2). |

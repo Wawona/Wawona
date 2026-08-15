@@ -24,7 +24,7 @@ L1  wwn-iland         complete graphics stack fragment (→ toolchain only)
 L2  wwn-kmscube       GL acceptance client (→ toolchain + iland)
 L3  wwn-weston        nested compositor (→ toolchain + iland + kmscube; ilandSrc=source only)
 L3′ wwn-waypipe, wwn-anowaW, wwn-vms, wwn-apt, wwn-ssh,
-    wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-foot, …  (→ toolchain; peers only downward)
+    wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-foot, wwn-wasm, …  (→ toolchain; peers only downward)
 L4  Wawona            merges all fragments; never an input of L0–L3
 ```
 
@@ -49,7 +49,7 @@ flowchart BT
 | **L1** | `wwn-iland` | Userland KMS/DRM/GBM/EGL/udev shims + Mode A present callback + Mode B baremetal; `iland`, `iland-baremetal`; **ANGLE and SwiftShader**; MoltenVK/KosmicKrisp packaging; `iland-cpu` CPU-present helpers; DriverSelector contract |
 | **L2** | `wwn-kmscube` | `kmscube`, `vkcube`, `opengl-cube`, GL acceptance clients |
 | **L3** | `wwn-weston` | Nested compositor + weston-simple-egl + toytoolkit clients |
-| **L3′** | `wwn-waypipe`, `wwn-anowaW`, `wwn-vms`, `wwn-apt`, `wwn-ssh`, `wwn-fastfetch`, `wwn-phoon-rs`, `wwn-neovim`, `wwn-foot`, … | Proxy / Android present / VM engine / package tooling / in-process shell-tool ports (`*_main` C ABI, force-loaded static libs) |
+| **L3′** | `wwn-waypipe`, `wwn-anowaW`, `wwn-vms`, `wwn-apt`, `wwn-ssh`, `wwn-fastfetch`, `wwn-phoon-rs`, `wwn-neovim`, `wwn-foot`, `wwn-wasm`, … | Proxy / Android present / VM engine / package tooling / in-process shell-tool ports (`*_main` C ABI, force-loaded static libs); `wwn-wasm` is the WASI P1/P2 interpreter |
 | **L4** | `Wawona` | App integration, Settings, presenters, SIP/Desktop, Android JNI, CI, docs, `flake.lock` hub |
 
 ## Hard rules
@@ -97,6 +97,7 @@ flowchart BT
 | **waypipe → iland flake + iland → waypipe** | Zero-copy "shared crate" both ways | waypipe → iland (or only Wawona wires both); iland exposes C ABI only |
 | **anowaW → weston flake** | Nested compositor as flake input | Runtime/product launch only; anowaW → toolchain (+ optional iland if GPU) |
 | **Wawona as input of any wwn-*** | App headers leaking into libs | Use `wawonaSrc` extraArgs sparingly; never flake input L4→L0 |
+| **wwn-wasm → iland / weston** | Wayland fd-bridge tempting a graphics flake edge | Host uses existing `XDG_RUNTIME_DIR` unix sockets; **toolchain only** |
 | **freetype↔harfbuzz↔cairo** | Classic meson cycles | Keep disabled edges in ios/android recipes |
 | **spirv-tools / ffmpeg in wrong layer** | If only graphics needs spirv, OK L1; if foot/ssh need it, keep L0 | Prefer L0 unless proven graphics-only |
 | **MVK/KK recipe needing full mesa + iland headers** | Mesa build pulls iland | KK/MVK builds are standalone ICDs; iland *links* them |

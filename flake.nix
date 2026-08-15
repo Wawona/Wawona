@@ -90,6 +90,12 @@
     wwn-neovim.url = "https://flakehub.com/f/Wawona/wwn-neovim/*";
     wwn-neovim.inputs.nixpkgs.follows = "nixpkgs";
     wwn-neovim.inputs.wwn-toolchain.follows = "wwn-toolchain";
+    # WASI P1/P2 interpreter (Pulley on Apple mobile). L3′ — toolchain only.
+    # Cited: docs/wwn-repo-dag.md. github: until FlakeHub rolling exists.
+    wwn-wasm.url = "github:Wawona/wwn-wasm";
+    wwn-wasm.inputs.nixpkgs.follows = "nixpkgs";
+    wwn-wasm.inputs.wwn-toolchain.follows = "wwn-toolchain";
+    wwn-wasm.inputs.rust-overlay.follows = "rust-overlay";
     # niri (scrollable-tiling compositor), Phase-29 port #1: runs nested as a
     # Wayland client of the Wawona compositor on every target.
     wwn-niri.url = "https://flakehub.com/f/Wawona/wwn-niri/*";
@@ -111,7 +117,7 @@
     wwn-containers.inputs.wwn-vms.follows = "wwn-vms";
   };
 
-  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-ssh, wwn-waypipe, wwn-anowaW, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-niri, wwn-vms, wwn-containers, ... }:
+  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-ssh, wwn-waypipe, wwn-anowaW, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-wasm, wwn-niri, wwn-vms, wwn-containers, ... }:
   let
     linuxSystems = [ "x86_64-linux" "aarch64-linux" ];
     # Nixpkgs 26.11 throws on x86_64-darwin eval; flakehub-push runs
@@ -239,6 +245,7 @@
       // wwn-fastfetch.registryFragment
       // wwn-phoon-rs.registryFragment
       // wwn-neovim.registryFragment
+      // wwn-wasm.registryFragment
       // wwn-niri.registryFragment
       // wwn-vms.registryFragment
       // wwn-containers.registryFragment;
@@ -773,6 +780,8 @@
           # Host-native phoon CLI for Linux (`nix run .#phoon`).
           phoon-linux = toolchains.buildForLinux "phoon" { };
           phoon = toolchains.buildForLinux "phoon" { };
+          wawona-wasm-linux = toolchains.buildForLinux "wawona-wasm" { };
+          wawona-wasm = toolchains.buildForLinux "wawona-wasm" { };
         }) // (pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin (let
           teamId = let value = builtins.getEnv "TEAM_ID"; in if value == "" then null else value;
           apple = import applePath {
@@ -838,6 +847,7 @@
             "opengl-cube" = toolchains.buildForMacOS "opengl-cube" { };
             weston = toolchains.buildForMacOS "weston" { };
             "weston-compositor" = toolchains.buildForMacOS "weston-compositor-drm" { };
+            "wawona-wasm" = toolchains.buildForMacOS "wawona-wasm" { };
           } // macosToytoolkitDeps;
           iosDeps = mobilePlatformDeps { buildFn = toolchains.buildForIOS; inherit toolchains; };
           iosSimDeps = mobilePlatformDeps { buildFn = toolchains.buildForIOS; inherit toolchains; simulator = true; };
@@ -1029,6 +1039,7 @@
             anowaw = toolchains.buildForMacOS "anowaw" { };
             fastfetch = pkgs.fastfetch;
             phoon = toolchains.buildForMacOS "phoon" { };
+            wawonaWasm = toolchains.buildForMacOS "wawona-wasm" { };
             neovim = null;
             zsh = pkgs.zsh;
             kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
@@ -1053,6 +1064,7 @@
             anowaw = toolchains.buildForMacOS "anowaw" { };
             fastfetch = pkgs.fastfetch;
             phoon = toolchains.buildForMacOS "phoon" { };
+            wawonaWasm = toolchains.buildForMacOS "wawona-wasm" { };
             neovim = null;
             zsh = pkgs.zsh;
             kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
@@ -1447,6 +1459,16 @@ EOF
           # Host-native alias: `nix run .#phoon` on Darwin → macOS CLI.
           # (Linux hosts get the same attr from the isLinuxHost block.)
           phoon = toolchains.buildForMacOS "phoon" { };
+          # wwn-wasm: WASI P1/P2 interpreter (Pulley on mobile; Cranelift on macOS).
+          # Cited: docs/wwn-repo-dag.md (L3′). Off on watchOS (size).
+          wawona-wasm-ios = toolchains.buildForIOS "wawona-wasm" { };
+          wawona-wasm-ios-sim = toolchains.buildForIOS "wawona-wasm" { simulator = true; };
+          wawona-wasm-tvos = toolchains.buildForTVOS "wawona-wasm" { };
+          wawona-wasm-tvos-sim = toolchains.buildForTVOS "wawona-wasm" { simulator = true; };
+          wawona-wasm-visionos = toolchains.buildForVisionOS "wawona-wasm" { };
+          wawona-wasm-visionos-sim = toolchains.buildForVisionOS "wawona-wasm" { simulator = true; };
+          wawona-wasm-macos = toolchains.buildForMacOS "wawona-wasm" { };
+          wawona-wasm = toolchains.buildForMacOS "wawona-wasm" { };
           "zsh-framework-ios" = toolchains.buildForIOS "zsh-framework" { };
           "zsh-framework-ios-sim" = toolchains.buildForIOS "zsh-framework" { simulator = true; };
           "wawona-rootfs-ios" = toolchains.buildForIOS "wawona-rootfs" { };
@@ -1481,6 +1503,7 @@ EOF
           foot-android = toolchainsAndroid.buildForAndroid "foot" { };
           fastfetch-android = toolchainsAndroid.buildForAndroid "fastfetch" { };
           phoon-android = toolchainsAndroid.buildForAndroid "phoon" { };
+          wawona-wasm-android = toolchainsAndroid.buildForAndroid "wawona-wasm" { };
           neovim-android = toolchainsAndroid.buildForAndroid "neovim" { };
           waypipe-android = toolchainsAndroid.buildForAndroid "waypipe" { };
           # anowaW app bridge: native lib (libanowaw.so) linked into the Android

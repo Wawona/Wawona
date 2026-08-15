@@ -114,6 +114,11 @@ let
         # triples), so it is bundled everywhere like niri — no GPU/framework deps.
         phoon = buildFn "phoon" { inherit simulator; };
       }
+    # wwn-wasm: WASI P1/P2 interpreter. Pulley on Apple mobile. Off on watchOS
+    # (size), same as coreutils. See docs/wasm-wasi.md and milestone #2.
+    // lib.optionalAttrs (variant == "mobile" || variant == "tv" || variant == "vision") {
+        "wawona-wasm" = buildFn "wawona-wasm" { inherit simulator; };
+      }
     // lib.optionalAttrs (variant == "mobile" || variant == "vision") {
         neovim = buildFn "neovim" { inherit simulator; };
         "neovim-rootfs" = buildFn "neovim-rootfs" { inherit simulator; };

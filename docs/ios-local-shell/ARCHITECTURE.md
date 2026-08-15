@@ -89,8 +89,11 @@ listed in `WAWONA_INPROC_CLIENTS` in the `.zshrc` template:
 | Command | Archive | Entry point | Notes |
 |---------|---------|-------------|-------|
 | `fastfetch` | `libfastfetch.a` | `fastfetch_main` | No fork; patched for Apple mobile |
+| `phoon` | `libphoon_rs.a` | `phoon_main` | ASCII moon phase (wwn-phoon-rs); type `phoon` or Start the Phoon machine |
 | `nvim` / `vi` / `vim` | `libwawona-neovim.a` | `wawona_nvim_main` | PUC Lua only; `:terminal` stubbed |
 | `waypipe` | `libwawona.a` (`waypipe-ssh`) | `waypipe_main` | libssh2 SSH in-process; no openssh binary |
+| `help` / `wawona` | `libwwn-pty.a` | `wwn_run_help` | Catalog of builtins, uutils, clients, WASM |
+| `wasm` / `*.wasm` | `libwawona_wasm.a` | `wawona_wasm_run` | WASI P1/P2 interpreter (Pulley on mobile); user documents |
 
 SSH from a shell: `export WAYPIPE_SSH_PASSWORD=…` then `waypipe ssh user@host -- …`.
 The Settings UI uses the same entry point with captured stdout/stderr.

@@ -29,6 +29,7 @@ let
       foot = buildModule.buildForMacOS "foot" { };
       fastfetch = buildModule.buildForMacOS "fastfetch" { };
       phoon = buildModule.buildForMacOS "phoon" { };
+      wawonaWasm = buildModule.buildForMacOS "wawona-wasm" { };
       rustBackend = rustBackendMacOS;
     } // depVersions);
 

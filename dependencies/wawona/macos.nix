@@ -19,6 +19,7 @@
   ilandBaremetal ? null,
   fastfetch ? null,
   phoon ? null,
+  wawonaWasm ? null,
   neovim ? null,
   zsh ? null,
   kmscube ? null,
@@ -1224,6 +1225,22 @@ GEN_HEADER
             fi
             '' else ''
             echo "Warning: phoon not provided, skipping phoon bundling"
+            ''}
+
+            # Bundle wasm CLI (wwn-wasm). macOS may fork/exec; Apple mobile uses
+            # the in-process C ABI instead.
+            ${if wawonaWasm != null then ''
+            if [ -f "${wawonaWasm}/bin/wasm" ]; then
+              cp "${wawonaWasm}/bin/wasm" $out/Applications/Wawona.app/Contents/Resources/bin/
+              cp "${wawonaWasm}/bin/wasm" $out/Applications/Wawona.app/Contents/MacOS/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/wasm
+              chmod +x $out/Applications/Wawona.app/Contents/MacOS/wasm
+              echo "DEBUG: Bundled wasm"
+            else
+              echo "Warning: wasm binary not found at ${wawonaWasm}/bin/wasm"
+            fi
+            '' else ''
+            echo "Warning: wawona-wasm not provided, skipping wasm bundling"
             ''}
 
             # Bundle neovim

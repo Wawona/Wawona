@@ -496,6 +496,7 @@
         "wwn-ssh": "wwn-ssh",
         "wwn-toolchain": "wwn-toolchain",
         "wwn-vms": "wwn-vms",
+        "wwn-wasm": "wwn-wasm",
         "wwn-waypipe": "wwn-waypipe",
         "wwn-weston": "wwn-weston",
         "wwn-zsh": "wwn-zsh"
@@ -1117,6 +1118,32 @@
       "original": {
         "type": "tarball",
         "url": "https://flakehub.com/f/Wawona/wwn-vms/%2A"
+      }
+    },
+    "wwn-wasm": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "rust-overlay": [
+          "rust-overlay"
+        ],
+        "wwn-toolchain": [
+          "wwn-toolchain"
+        ]
+      },
+      "locked": {
+        "lastModified": 1786828728,
+        "narHash": "sha256-HH/lKZ8VEyLDQhO2lOLoJsjLdqX2QaNFF2kjX+N7Ylo=",
+        "owner": "Wawona",
+        "repo": "wwn-wasm",
+        "rev": "45875a2efa558afd08c337ef47140b0b50aee7cf",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Wawona",
+        "repo": "wwn-wasm",
+        "type": "github"
       }
     },
     "wwn-waypipe": {
