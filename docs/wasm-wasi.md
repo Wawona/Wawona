@@ -34,10 +34,12 @@ wasm ./tool.wasm hello
 Drop files into the Wawona Documents folder (Files.app / iTunes File Sharing;
 `UIFileSharingEnabled` is already on).
 
-## Compile
+## Compile (no Nix)
+
+Use the language toolchain. Do not wrap these in Nix.
 
 ```bash
-# Rust WASI P1
+# Rust WASI P1 — https://rustup.rs
 rustup target add wasm32-wasip1
 cargo build --target wasm32-wasip1 --release
 
@@ -45,31 +47,42 @@ cargo build --target wasm32-wasip1 --release
 rustup target add wasm32-wasip2
 cargo build --target wasm32-wasip2 --release
 
-# Go
+# Go 1.21+ — https://go.dev/dl/
 GOOS=wasip1 GOARCH=wasm go build -o tool.wasm
 
-# TinyGo
+# TinyGo (optional)
 tinygo build -target=wasip1 -opt=z -o tool.wasm
 
-# Swift (swift.org wasm SDK, skip Foundation)
-swift build --swift-sdk swift-6.3.2-RELEASE_wasm -c release
+# Swift 6.2+ wasm SDK — https://swift.org/documentation/articles/wasm-getting-started.html
+# (examples/wayland-shm/swift/build.sh installs the wasip1 SDK if missing)
+swift build --swift-sdk 6.3-RELEASE-wasm32-unknown-wasip1 -c release
 
-# C (wasi-sdk)
+# C (wasi-sdk) / Zig
 clang --target=wasm32-wasi -o tool.wasm tool.c
-
-# Zig
 zig build-exe -target wasm32-wasi tool.zig
 ```
 
-Reference demos: `wwn-wasm/examples/` (`rust`, `go`, `swift`, `wasip2`, `wayland-shm`).
+**Wayland client** (same `wl_shm` + xdg rectangle in three languages):
+
+```bash
+git clone https://github.com/Wawona/wwn-wasm
+cd wwn-wasm/examples/wayland-shm
+./rust/build.sh    # or ./go/build.sh or ./swift/build.sh
+```
+
+Then `wasm ./wayland-shm-rust.wasm` on device. Native `weston-simple-shm` remains
+the supported port.
+
+Other demos: `examples/rust`, `go`, `swift`, `wasip2`.
 
 ## Host ABI (P1 extras)
 
 WASI P1 has no sockets. Import module `wawona_socket` (Rust may use `env`):
 
 - `wawona_socket_socket` / `connect_host` / `send` / `recv` / `close`
-- `wawona_wayland_connect` / `shm_create` / `shm_send` (SCM_RIGHTS into the
-  existing compositor — same `WAYLAND_DISPLAY`, not a custom draw API)
+- `wawona_wayland_connect` / `shm_create` / `shm_write` / `sendmsg`
+  (protocol bytes + optional `SCM_RIGHTS` into the existing compositor —
+  same `WAYLAND_DISPLAY`, not a custom draw API)
 
 Terminal: `wawona_terminal_set_raw` / `is_tty` (module `wawona_terminal`).
 
