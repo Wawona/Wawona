@@ -1,4 +1,5 @@
 #import "WWNWatchShellEnvironment.h"
+#import "WWNLog.h"
 
 #import <stdlib.h>
 #import <unistd.h>
@@ -129,7 +130,7 @@
               atomically:YES
                 encoding:NSUTF8StringEncoding
                    error:nil];
-  NSLog(@"WWNWatchShell: installed rootfs template v%@", bundleVer);
+  WWNLog("SHELL", @"installed rootfs template v%@", bundleVer);
 }
 
 + (void)ensureDotfilesFromBundle:(NSString *)bundleRoot home:(NSString *)home {
@@ -198,7 +199,7 @@
 
   [self applyBundleShareEnv];
 
-  NSLog(@"WWNWatchShell: in-process zsh; HOME=%@ WAWONA_ROOTFS=%@", home,
+  WWNLog("SHELL", @"in-process zsh; HOME=%@ WAWONA_ROOTFS=%@", home,
         active);
 }
 
@@ -332,7 +333,7 @@
       }
     }
   }
-  NSLog(@"WWNWatchShell: bundle share env; XDG_DATA_DIRS=%s FONTCONFIG_FILE=%s "
+  WWNLog("SHELL", @"bundle share env; XDG_DATA_DIRS=%s FONTCONFIG_FILE=%s "
         @"WAWONA_SANS_FONT=%s",
         getenv("XDG_DATA_DIRS") ?: "(unset)",
         getenv("FONTCONFIG_FILE") ?: "(unset)",

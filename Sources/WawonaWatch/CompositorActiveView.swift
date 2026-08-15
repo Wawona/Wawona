@@ -9,6 +9,7 @@ struct CompositorActiveView: View {
     let sessions: SessionOrchestrator
     @Environment(\.dismiss) var dismiss
     @ObservedObject private var preferences = WawonaPreferences.shared
+    @StateObject private var startupLog = WatchStartupLogModel()
     @State private var showStopConfirmation = false
     @State private var draftText = ""
     @FocusState private var keyboardFocused: Bool
@@ -18,10 +19,32 @@ struct CompositorActiveView: View {
         return resolved.shakeToCloseEnabled || resolved.swipeBackToCloseEnabled
     }
 
+    private var startupClientLabel: String {
+        let override = profile.runtimeOverrides.bundledAppID?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !override.isEmpty { return override }
+        if let launcher = profile.launchers.first?.name, !launcher.isEmpty {
+            return launcher
+        }
+        return profile.name
+    }
+
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            WatchCompositorSurfaceView()
+            WatchCompositorSurfaceView(onFirstFrame: {
+                startupLog.scheduleDismissAfterFirstFrame()
+            })
                 .ignoresSafeArea()
+
+            if startupLog.isPresented {
+                WatchStartupLogOverlay(
+                    model: startupLog,
+                    clientLabel: startupClientLabel
+                )
+                .ignoresSafeArea()
+                .transition(.opacity)
+                .zIndex(2)
+            }
 
             // Hidden field: focusing it opens the native watch text-entry UI
             // immediately (scribble / QuickType / dictation) — no on-screen
@@ -41,21 +64,23 @@ struct CompositorActiveView: View {
                     }
                 }
 
-            Button {
-                draftText = ""
-                keyboardFocused = true
-            } label: {
-                Image(systemName: "keyboard")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .frame(width: 40, height: 40)
-                    .background(.ultraThinMaterial, in: Circle())
+            if !startupLog.isPresented {
+                Button {
+                    draftText = ""
+                    keyboardFocused = true
+                } label: {
+                    Image(systemName: "keyboard")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 40, height: 40)
+                        .background(.ultraThinMaterial, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 6)
+                .padding(.bottom, 6)
+                .accessibilityIdentifier("wwn.watch.keyboard")
+                .accessibilityLabel("Keyboard")
             }
-            .buttonStyle(.plain)
-            .padding(.trailing, 6)
-            .padding(.bottom, 6)
-            .accessibilityIdentifier("wwn.watch.keyboard")
-            .accessibilityLabel("Keyboard")
         }
         .navigationTitle(profile.name)
         .navigationBarTitleDisplayMode(.inline)
@@ -85,6 +110,12 @@ struct CompositorActiveView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This will stop the current session and return to Machines.")
+        }
+        .onAppear {
+            startupLog.attach()
+        }
+        .onDisappear {
+            startupLog.dismiss()
         }
     }
 
@@ -118,7 +149,9 @@ struct CompositorActiveView: View {
 /// `WWNWatchCompositorFrameReadyNotification`; without this view the client
 /// runs (PTY, configure, redraw) and nothing appears on the watch.
 struct WatchCompositorSurfaceView: View {
+    var onFirstFrame: (() -> Void)? = nil
     @State private var frameID = 0
+    @State private var didNotifyFirstFrame = false
 
     var body: some View {
         Group {
@@ -127,7 +160,9 @@ struct WatchCompositorSurfaceView: View {
                     .resizable()
                     .scaledToFit()
                     .id(frameID)
-            } else {
+            } else if onFirstFrame == nil {
+                // Standalone use: keep the old placeholder. When a startup
+                // log overlay is active, skip this so logs aren't covered.
                 Text("Waiting for surface…")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -137,11 +172,23 @@ struct WatchCompositorSurfaceView: View {
         .background(Color.black)
         .accessibilityIdentifier("wwn.watch.compositorSurface")
         .accessibilityLabel("Wayland Surface")
+        .onAppear {
+            if WWNWatchCompositorBridge.shared().latestFrame != nil {
+                notifyFirstFrameIfNeeded()
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(
             for: Notification.Name("WWNWatchCompositorFrameReadyNotification")
         )) { _ in
             frameID &+= 1
+            notifyFirstFrameIfNeeded()
         }
+    }
+
+    private func notifyFirstFrameIfNeeded() {
+        guard !didNotifyFirstFrame else { return }
+        didNotifyFirstFrame = true
+        onFirstFrame?()
     }
 }
 #endif

@@ -2724,6 +2724,8 @@ ICDJSON
           # Shared SSH keygen / GPG-SSH import (libwwn-ssh-cli).
           { path = "src/platform/macos/ui/Helpers/WWNSSHKeygen.m"; type = "file"; }
           { path = "src/platform/macos/ui/Helpers/WWNSSHKeygen.h"; type = "file"; }
+          # Startup log sink (same as iOS/tvOS) — SwiftUI overlay on watch.
+        ] ++ iosUtilSources ++ [
           { path = "src/platform/watchos/ui/Settings/WWNWatchSettings.storyboard"; }
           { path = "src/resources/Assets.xcassets"; }
           # Required-reason API manifest (UserDefaults / boot time / file timestamps).
@@ -2758,6 +2760,9 @@ ICDJSON
           watchosNiriDataEmbedPhase
           watchosRootfsEmbedPhase
           {
+            # Copies watch-platform WawonaModel/UIContracts (Xcode Embed is
+            # off; ISSUE-017) and re-signs them with the app identity.
+            # Device installd rejects unsigned Frameworks/ (0xe800801c).
             name = "Fix Watch Embedded Frameworks";
             basedOnDependencyAnalysis = false;
             inputFiles = [ "$(SRCROOT)/scripts/watchos-fix-embedded-frameworks.sh" ];
@@ -2859,6 +2864,7 @@ ICDJSON
               "${strip (watchosDeps.libssh2 or null)}/include"
               "$(SRCROOT)/src/platform/watchos"
               "$(SRCROOT)/src/platform/macos/ui/Helpers"
+              "$(SRCROOT)/src/util"
             ] ++ (pixmanHeaderPaths watchosDeps);
             # WawonaModel/WawonaUIContracts are embed=false, link=false above
             # (see dependencies comment): Xcode unconditionally adds

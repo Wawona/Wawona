@@ -9,6 +9,7 @@
 #import "WWNWatchCompositorBridge.h"
 #import "WWNMiniWaylandServer.h"
 #import "WWNWatchShellEnvironment.h"
+#import "WWNLog.h"
 #import <CoreGraphics/CoreGraphics.h>
 #import <pthread.h>
 #import <signal.h>
@@ -102,11 +103,11 @@ typedef struct {
 
 static void *dispatchThreadFunc(void *ctx) {
     DispatchThreadArgs *args = (DispatchThreadArgs *)ctx;
-    NSLog(@"[WatchCompositor] Dispatch thread started");
+    WWNLog("WATCH", @"Dispatch thread started");
     while (*(args->running)) {
         wwn_wls_dispatch(args->srv, 16);
     }
-    NSLog(@"[WatchCompositor] Dispatch thread exiting");
+    WWNLog("WATCH", @"Dispatch thread exiting");
     free(args);
     return NULL;
 }
@@ -121,9 +122,9 @@ typedef struct {
 
 static void *compositorThreadFunc(void *ctx) {
     CompositorThreadArgs *args = (CompositorThreadArgs *)ctx;
-    NSLog(@"[WatchCompositor] weston_compositor_main starting");
+    WWNLog("WATCH", @"weston_compositor_main starting");
     int rc = weston_compositor_main(args->argc, args->argv);
-    NSLog(@"[WatchCompositor] weston_compositor_main exited with code %d", rc);
+    WWNLog("WATCH", @"weston_compositor_main exited with code %d", rc);
     free(args);
     return NULL;
 }
@@ -142,9 +143,9 @@ static void *clientThreadFunc(void *ctx) {
     int argc = args->argv ? args->argc : 1;
     char **argv = args->argv ? args->argv : fallback;
 
-    NSLog(@"[WatchCompositor] Client '%s' starting", args->name);
+    WWNLog("WATCH", @"Client '%s' starting", args->name);
     int rc = args->entry(argc, argv);
-    NSLog(@"[WatchCompositor] Client '%s' exited with code %d", args->name, rc);
+    WWNLog("WATCH", @"Client '%s' exited with code %d", args->name, rc);
 
     if (args->argv) {
         for (int i = 0; i < args->argc; i++)
@@ -233,7 +234,7 @@ static void miniServerFrameCallback(const uint8_t *pixels,
     }
 
     const char *name = socketName ? [socketName UTF8String] : "wayland-0";
-    NSLog(@"[WatchCompositor] Starting compositor — socket='%s' size=%ux%u XDG_RUNTIME_DIR='%s'",
+    WWNLog("WATCH", @"Starting compositor — socket='%s' size=%ux%u XDG_RUNTIME_DIR='%s'",
           name, _outputWidth, _outputHeight,
           getenv("XDG_RUNTIME_DIR") ?: "(unset)");
 
@@ -246,7 +247,7 @@ static void miniServerFrameCallback(const uint8_t *pixels,
     );
 
     if (_miniServer) {
-        NSLog(@"[WatchCompositor] Started mini Wayland server on socket '%s' (%u×%u) — XDG_RUNTIME_DIR='%s'",
+        WWNLog("WATCH", @"Started mini Wayland server on socket '%s' (%u×%u) — XDG_RUNTIME_DIR='%s'",
               name, _outputWidth, _outputHeight,
               getenv("XDG_RUNTIME_DIR") ?: "(unset)");
         _isRunning = YES;
@@ -260,14 +261,14 @@ static void miniServerFrameCallback(const uint8_t *pixels,
     // ── Path 2: Rust compositor backend (libwawona.a) ─────────────────────────
     _rustCompositor = wawona_compositor_create(name);
     if (_rustCompositor) {
-        NSLog(@"[WatchCompositor] Started Rust compositor on socket '%s'", name);
+        WWNLog("WATCH", @"Started Rust compositor on socket '%s'", name);
         _isRunning = YES;
         [self _startDispatchTimer];
         return YES;
     }
 
     // Neither mini server nor Rust backend started — something is wrong with the build.
-    NSLog(@"[WatchCompositor] ERROR: No compositor backend available. "
+    WWNLog("WATCH", @"ERROR: No compositor backend available. "
           "Ensure libwayland-server.a is linked: nix run .#xcodegen");
     return NO;
 }
@@ -313,7 +314,7 @@ static void miniServerFrameCallback(const uint8_t *pixels,
     } else {
         free(args);
         _dispatchRunning = NO;
-        NSLog(@"[WatchCompositor] Failed to create dispatch thread (rc=%d)", rc);
+        WWNLog("WATCH", @"Failed to create dispatch thread (rc=%d)", rc);
     }
 }
 
@@ -322,7 +323,7 @@ static void miniServerFrameCallback(const uint8_t *pixels,
     _dispatchRunning = NO;
     pthread_join(_dispatchThread, NULL);
     _dispatchThreadValid = NO;
-    NSLog(@"[WatchCompositor] Dispatch thread stopped");
+    WWNLog("WATCH", @"Dispatch thread stopped");
 }
 
 // MARK: - Dispatch timer (Rust compositor fallback)
@@ -412,7 +413,7 @@ static void miniServerFrameCallback(const uint8_t *pixels,
     static BOOL loggedFirstFrame = NO;
     if (!loggedFirstFrame) {
         loggedFirstFrame = YES;
-        NSLog(@"[WatchCompositor] First frame %ux%u stride=%u", width, height, stride);
+        WWNLog("WATCH", @"First frame %ux%u stride=%u", width, height, stride);
     }
 
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -435,7 +436,7 @@ static void miniServerFrameCallback(const uint8_t *pixels,
         return;
     }
     NSString *clientId = [NSString stringWithUTF8String:autoClient];
-    NSLog(@"[WatchCompositor] Auto-launching bundled client '%@' (WAWONA_WATCH_AUTO_CLIENT)",
+    WWNLog("WATCH", @"Auto-launching bundled client '%@' (WAWONA_WATCH_AUTO_CLIENT)",
           clientId);
     __weak typeof(self) weakSelf = self;
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -472,7 +473,7 @@ static void miniServerFrameCallback(const uint8_t *pixels,
     if (rc == 0) {
         _clientRunning = YES;
         _clientThreadValid = YES;
-        NSLog(@"[WatchCompositor] Launched client '%s'", name);
+        WWNLog("WATCH", @"Launched client '%s'", name);
     } else {
         if (argv) {
             for (int i = 0; i < argc; i++)
@@ -480,7 +481,7 @@ static void miniServerFrameCallback(const uint8_t *pixels,
             free(argv);
         }
         free(args);
-        NSLog(@"[WatchCompositor] Failed to launch client '%s' (pthread_create=%d)", name, rc);
+        WWNLog("WATCH", @"Failed to launch client '%s' (pthread_create=%d)", name, rc);
     }
 }
 
@@ -510,10 +511,10 @@ static void miniServerFrameCallback(const uint8_t *pixels,
     if (rc == 0) {
         _clientRunning = YES;
         _clientThreadValid = YES;
-        NSLog(@"[WatchCompositor] Launched nested Weston compositor (WAYLAND_DISPLAY=%s)", parent_display);
+        WWNLog("WATCH", @"Launched nested Weston compositor (WAYLAND_DISPLAY=%s)", parent_display);
     } else {
         free(args);
-        NSLog(@"[WatchCompositor] Failed to launch weston compositor (pthread_create=%d)", rc);
+        WWNLog("WATCH", @"Failed to launch weston compositor (pthread_create=%d)", rc);
     }
 }
 
@@ -568,7 +569,7 @@ static void miniServerFrameCallback(const uint8_t *pixels,
         _clientThreadValid = NO;
         pthread_cancel(_clientThread);
         pthread_join(_clientThread, NULL);
-        NSLog(@"[WatchCompositor] Client stopped");
+        WWNLog("WATCH", @"Client stopped");
     }
 
     // Drop the last SHM frame so Start of another client does not paint the
@@ -594,13 +595,13 @@ static void miniServerFrameCallback(const uint8_t *pixels,
 - (void)sendText:(NSString *)text {
     if (text.length == 0) return;
     if (!_miniServer) {
-        NSLog(@"[WatchCompositor] sendText ignored: mini server not running "
+        WWNLog("WATCH", @"sendText ignored: mini server not running "
               "(Rust backend keyboard path not yet wired)");
         return;
     }
     // wwn_wls_feed_text is thread-safe; it enqueues and the dispatch thread emits.
     wwn_wls_feed_text(_miniServer, text.UTF8String);
-    NSLog(@"[WatchCompositor] Injected %lu chars of keyboard input", (unsigned long)text.length);
+    WWNLog("WATCH", @"Injected %lu chars of keyboard input", (unsigned long)text.length);
 }
 
 - (void)sendKeyCode:(uint32_t)evdevKeycode pressed:(BOOL)pressed {
@@ -636,9 +637,9 @@ static void *waypipeThreadFunc(void *ctx) {
     pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
 
     pthread_cleanup_push(waypipeThreadCleanup, ctx);
-    NSLog(@"[WatchCompositor] waypipe_main starting (%d args)", args->argc);
+    WWNLog("WATCH", @"waypipe_main starting (%d args)", args->argc);
     int result = waypipe_main(args->argc, args->argv);
-    NSLog(@"[WatchCompositor] waypipe_main exited with code %d", result);
+    WWNLog("WATCH", @"waypipe_main exited with code %d", result);
     pthread_cleanup_pop(1);
     return NULL;
 }
@@ -650,12 +651,12 @@ static void *waypipeThreadFunc(void *ctx) {
                 remoteCommand:(NSString *)remoteCommand
 {
     if (!_isRunning) {
-        NSLog(@"[WatchCompositor] launchWaypipe ignored: compositor is not running.");
+        WWNLog("WATCH", @"launchWaypipe ignored: compositor is not running.");
         return;
     }
 
     if (!waypipe_main) {
-        NSLog(@"[WatchCompositor] waypipe_main not linked — waypipe unavailable. "
+        WWNLog("WATCH", @"waypipe_main not linked — waypipe unavailable. "
               "Run nix run .#xcodegen after building watchOS deps.");
         return;
     }
@@ -663,7 +664,7 @@ static void *waypipeThreadFunc(void *ctx) {
     NSString *trimmedHost = [host stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     NSString *trimmedUser = [user stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     if (trimmedHost.length == 0 || trimmedUser.length == 0) {
-        NSLog(@"[WatchCompositor] launchWaypipe requires non-empty host and user.");
+        WWNLog("WATCH", @"launchWaypipe requires non-empty host and user.");
         return;
     }
 
@@ -707,7 +708,7 @@ static void *waypipeThreadFunc(void *ctx) {
         cmd,
     ];
 
-    NSLog(@"[WatchCompositor] Launching waypipe: %@", [argsList componentsJoinedByString:@" "]);
+    WWNLog("WATCH", @"Launching waypipe: %@", [argsList componentsJoinedByString:@" "]);
 
     int argc = (int)argsList.count;
     char **argv = malloc(sizeof(char *) * (argc + 1));
@@ -725,12 +726,12 @@ static void *waypipeThreadFunc(void *ctx) {
     if (rc == 0) {
         _waypipeRunning = YES;
         _waypipeThreadValid = YES;
-        NSLog(@"[WatchCompositor] Waypipe thread started");
+        WWNLog("WATCH", @"Waypipe thread started");
     } else {
         for (int i = 0; i < argc; i++) free(argv[i]);
         free(argv);
         free(args);
-        NSLog(@"[WatchCompositor] Failed to create waypipe thread (rc=%d)", rc);
+        WWNLog("WATCH", @"Failed to create waypipe thread (rc=%d)", rc);
     }
 }
 
@@ -741,7 +742,7 @@ static void *waypipeThreadFunc(void *ctx) {
     pthread_join(_waypipeThread, NULL);
     _waypipeThreadValid = NO;
     unsetenv("WAYPIPE_SSH_PASSWORD");
-    NSLog(@"[WatchCompositor] Waypipe stopped");
+    WWNLog("WATCH", @"Waypipe stopped");
 }
 
 - (BOOL)isWaypipeRunning { return _waypipeRunning; }
@@ -765,7 +766,7 @@ static void *waypipeThreadFunc(void *ctx) {
     }
 
     if (isShim) {
-        NSLog(@"[WatchCompositor] Refusing to launch '%s': client is still compiled as weston-simple-shm compatibility shim.", name);
+        WWNLog("WATCH", @"Refusing to launch '%s': client is still compiled as weston-simple-shm compatibility shim.", name);
         return YES;
     }
     return NO;

@@ -5,10 +5,16 @@ import WawonaModel
 /// watchOS machine connect: native → local compositor + bundled client; remote → waypipe only.
 enum WatchMachineSessionBridge {
     static func connect(profile: MachineProfile) -> Bool {
+        let logger = WWNStartupLogger.shared()
+        // Capture before compositor/client start so early lines aren't missed
+        // (same contract as iOS showStartupLogForClient:).
+        logger.beginCapture()
+
         let bridge = WWNWatchCompositorBridge.shared()
         applyScreenOutputSize(bridge)
         if !bridge.isRunning {
             guard bridge.start(withSocketName: "wayland-0") else {
+                logger.endCapture()
                 return false
             }
         }
@@ -19,6 +25,7 @@ enum WatchMachineSessionBridge {
         switch profile.type {
         case .native:
             let clientId = resolvedNativeClientId(for: profile)
+            logger.appendLine("[LAUNCH] Starting \(clientId) …")
             switch clientId {
             case "weston":
                 bridge.launchWeston()
@@ -32,9 +39,11 @@ enum WatchMachineSessionBridge {
             return true
         case .sshWaypipe, .sshTerminal:
             guard !profile.sshHost.isEmpty, !profile.sshUser.isEmpty else {
+                logger.endCapture()
                 return false
             }
             let command = profile.remoteCommand.isEmpty ? "weston-simple-shm" : profile.remoteCommand
+            logger.appendLine("[LAUNCH] Starting waypipe → \(command) …")
             bridge.launchWaypipe(
                 withHost: profile.sshHost,
                 user: profile.sshUser,
@@ -42,13 +51,19 @@ enum WatchMachineSessionBridge {
                 password: profile.sshPassword,
                 remoteCommand: command
             )
-            return bridge.isWaypipeRunning
+            let ok = bridge.isWaypipeRunning
+            if !ok {
+                logger.endCapture()
+            }
+            return ok
         case .virtualMachine, .container:
+            logger.endCapture()
             return false
         }
     }
 
     static func disconnect(profile: MachineProfile) {
+        WWNStartupLogger.shared().endCapture()
         let bridge = WWNWatchCompositorBridge.shared()
         switch profile.type {
         case .native:

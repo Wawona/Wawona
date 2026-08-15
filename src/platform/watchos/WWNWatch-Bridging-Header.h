@@ -8,5 +8,6 @@
 #import "ui/Settings/WWNWatchSettingsBridge.h"
 #import "WWNWatchPreferencesCoordinator.h"
 #import "../macos/ui/Helpers/WWNSSHKeygen.h"
+#import "../../util/WWNStartupLogger.h"
 
 #endif /* WWNWatch_Bridging_Header_h */

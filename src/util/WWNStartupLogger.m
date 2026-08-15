@@ -11,7 +11,7 @@
 
 /*
  * wwn_startup_log_sink is declared extern in WWNLog.h and DEFINED here
- * for iOS/tvOS/visionOS.  For macOS the NULL definition lives in
+ * for iOS/tvOS/visionOS/watchOS.  For macOS the NULL definition lives in
  * WWNSettings.c (a platform-shared C file) under a !TARGET_OS_IPHONE guard
  * so that WWNLog() calls on macOS simply skip the in-process sink.
  */
