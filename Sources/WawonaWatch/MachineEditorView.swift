@@ -3,7 +3,7 @@ import SwiftUI
 import WawonaModel
 
 struct MachineEditorView: View {
-    let profileStore: MachineProfileStore
+    @ObservedObject var profileStore: MachineProfileStore
     let existingProfile: MachineProfile?
 
     @Environment(\.dismiss) var dismiss
@@ -21,7 +21,14 @@ struct MachineEditorView: View {
 
     private var isEditing: Bool { existingProfile != nil }
     private var isSSH: Bool { type == .sshWaypipe || type == .sshTerminal }
-    private var canSave: Bool { !name.trimmingCharacters(in: .whitespaces).isEmpty }
+    /// Name is optional — empty saves as "Unnamed Machine" (macOS/iOS parity).
+    /// SSH still needs host + user.
+    private var canSave: Bool {
+        guard isSSH else { return true }
+        let host = sshHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        let user = sshUser.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !host.isEmpty && !user.isEmpty
+    }
     private var selectableTypes: [MachineType] {
         PlatformCapabilities.availableMachineTypes
     }
@@ -48,7 +55,7 @@ struct MachineEditorView: View {
         NavigationStack {
             Form {
                 Section("Profile") {
-                    TextField("Name", text: $name)
+                    TextField("Unnamed Machine", text: $name)
                     Picker("Type", selection: $type) {
                         ForEach(selectableTypes, id: \.self) { t in
                             Label(t.userFacingName, systemImage: t.symbolName).tag(t)
@@ -117,14 +124,15 @@ struct MachineEditorView: View {
 
     private func save() {
         var profile = existingProfile ?? MachineProfile(name: "", type: type)
-        profile.name = name.trimmingCharacters(in: .whitespaces)
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        profile.name = trimmedName.isEmpty ? "Unnamed Machine" : trimmedName
         profile.type = type
-        profile.sshHost = sshHost.trimmingCharacters(in: .whitespaces)
-        profile.sshUser = sshUser.trimmingCharacters(in: .whitespaces)
-        profile.sshPort = Int(sshPort.trimmingCharacters(in: .whitespaces)) ?? 22
+        profile.sshHost = sshHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        profile.sshUser = sshUser.trimmingCharacters(in: .whitespacesAndNewlines)
+        profile.sshPort = Int(sshPort.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 22
         profile.sshPassword = sshPassword
-        profile.remoteCommand = remoteCommand.trimmingCharacters(in: .whitespaces)
-        profile.runtimeOverrides.inputProfile = inputProfile.trimmingCharacters(in: .whitespaces)
+        profile.remoteCommand = remoteCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+        profile.runtimeOverrides.inputProfile = inputProfile.trimmingCharacters(in: .whitespacesAndNewlines)
         profile.runtimeOverrides.waypipeEnabled = waypipeEnabled
         if type == .native {
             profile.runtimeOverrides.bundledAppID = selectedLauncherName

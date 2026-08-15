@@ -3,8 +3,8 @@ import SwiftUI
 import WawonaModel
 
 struct MachineStatusView: View {
-    let profileStore: MachineProfileStore
-    let sessions: SessionOrchestrator
+    @ObservedObject var profileStore: MachineProfileStore
+    @ObservedObject var sessions: SessionOrchestrator
 
     @State var showingAdd = false
     @State var editingProfile: MachineProfile?
@@ -124,7 +124,7 @@ struct MachineRowLabel: View {
                 .fill(status == .connected ? Color.green : Color.secondary.opacity(0.35))
                 .frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 1) {
-                Text(profile.name)
+                Text(profile.name.isEmpty ? "Unnamed Machine" : profile.name)
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
                 Text(clientLabel)

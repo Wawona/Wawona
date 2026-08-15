@@ -4,8 +4,8 @@ import WawonaModel
 
 struct QuickConnectView: View {
     let profile: MachineProfile
-    let profileStore: MachineProfileStore
-    let sessions: SessionOrchestrator
+    @ObservedObject var profileStore: MachineProfileStore
+    @ObservedObject var sessions: SessionOrchestrator
 
     @State var runningSession: MachineSession?
     @ObservedObject private var preferences = WawonaPreferences.shared
@@ -19,6 +19,10 @@ struct QuickConnectView: View {
     var activeSession: MachineSession? {
         sessions.sessions.first(where: { $0.machineId == profile.id })
     }
+
+    private var isNative: Bool { profile.type == .native }
+    private var startLabel: String { isNative ? "Start" : "Connect" }
+    private var stopLabel: String { isNative ? "Stop" : "Disconnect" }
 
     var body: some View {
         VStack(spacing: 12) {
@@ -42,11 +46,11 @@ struct QuickConnectView: View {
                         disconnectActiveSession(activeSession)
                     }
                 } label: {
-                    Label("Disconnect", systemImage: "stop.circle.fill")
+                    Label(stopLabel, systemImage: "stop.circle.fill")
                 }
                 .buttonStyle(.borderedProminent)
-                .accessibilityIdentifier("wwn.watch.disconnect")
-                .accessibilityLabel("Disconnect")
+                .accessibilityIdentifier(isNative ? "wwn.watch.stop" : "wwn.watch.disconnect")
+                .accessibilityLabel(stopLabel)
             } else {
                 Button {
                     profileStore.activeMachineId = profile.id
@@ -55,11 +59,11 @@ struct QuickConnectView: View {
                         runningSession = sessions.connect(machineId: profile.id)
                     }
                 } label: {
-                    Label("Connect", systemImage: "play.fill")
+                    Label(startLabel, systemImage: "play.fill")
                 }
                 .buttonStyle(.borderedProminent)
-                .accessibilityIdentifier("wwn.watch.connect")
-                .accessibilityLabel("Connect")
+                .accessibilityIdentifier(isNative ? "wwn.watch.start" : "wwn.watch.connect")
+                .accessibilityLabel(startLabel)
             }
         }
         .navigationDestination(item: $runningSession) { session in
