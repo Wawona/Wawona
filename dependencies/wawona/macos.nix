@@ -1233,8 +1233,8 @@ GEN_HEADER
             echo "Warning: phoon not provided, skipping phoon bundling"
             ''}
 
-            # Bundle wasm CLI (wwn-wasm). macOS may fork/exec; Apple mobile uses
-            # the in-process C ABI instead.
+            # Bundle wasm Runtime CLI + wpm (wwn-wasm). macOS may fork/exec;
+            # Apple mobile uses the in-process C ABI instead.
             ${if wawonaWasm != null then ''
             if [ -f "${wawonaWasm}/bin/wasm" ]; then
               cp "${wawonaWasm}/bin/wasm" $out/Applications/Wawona.app/Contents/Resources/bin/
@@ -1245,8 +1245,17 @@ GEN_HEADER
             else
               echo "Warning: wasm binary not found at ${wawonaWasm}/bin/wasm"
             fi
+            if [ -f "${wawonaWasm}/bin/wpm" ]; then
+              cp "${wawonaWasm}/bin/wpm" $out/Applications/Wawona.app/Contents/Resources/bin/
+              cp "${wawonaWasm}/bin/wpm" $out/Applications/Wawona.app/Contents/MacOS/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/wpm
+              chmod +x $out/Applications/Wawona.app/Contents/MacOS/wpm
+              echo "DEBUG: Bundled wpm"
+            else
+              echo "Warning: wpm binary not found at ${wawonaWasm}/bin/wpm"
+            fi
             '' else ''
-            echo "Warning: wawona-wasm not provided, skipping wasm bundling"
+            echo "Warning: wawona-wasm not provided, skipping wasm/wpm bundling"
             ''}
 
             # Bundle neovim
