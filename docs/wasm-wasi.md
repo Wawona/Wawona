@@ -33,6 +33,9 @@ Files.app / SCP / File Sharing     bundled Wasm package client (OCI preferred)
 Do not brand this as an “App Store” for iOS apps — it is a **runtime package
 registry**. Prefer OCI artifacts + a thin client over inventing a bespoke protocol.
 
+**Full implementation plan:** [`wasm-package-manager.md`](./wasm-package-manager.md)
+(registry on `repo.wawona.io/wasm`, jailbreak `.deb` stays a separate channel).
+
 ## App Store
 
 | Allowed | Forbidden |
