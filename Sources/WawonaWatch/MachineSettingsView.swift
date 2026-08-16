@@ -20,7 +20,7 @@ struct MachineSettingsView: View {
                     WatchKitGlobalSettings.registerHost()
                     showingGlobalSettings = true
                 }
-                Text("Global defaults (Display, Graphics, Connection, SSH, Advanced, About). Values below override them for this machine only.")
+                Text("Global defaults (Display, Input, Graphics, Waypipe, SSH). Values below override those settings for this machine only.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -50,13 +50,12 @@ struct MachineSettingsView: View {
 
             if let draft {
                 machineConfigurationSection(for: draft)
-                if draft.type == .sshWaypipe || draft.type == .sshTerminal {
-                    sshWaypipeSection()
-                }
+                sshWaypipeSection()
                 displaySection()
                 inputSection()
                 graphicsSection()
                 advancedSection()
+                environmentSection(for: draft)
                 resolvedPreviewSection(for: draft)
                 actionsSection()
             }
@@ -115,30 +114,8 @@ struct MachineSettingsView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
             TextField("Port", text: sshPortBinding)
-            Picker("Auth", selection: sshAuthMethodBinding) {
-                Text("Password").tag(0)
-                Text("Public Key").tag(1)
-            }
-            if (draft?.sshAuthMethod ?? 0) == 0 {
-                SecureField("Password", text: sshPasswordBinding)
-            } else {
-                TextField("Key Path", text: sshKeyPathBinding)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                SecureField("Key Passphrase", text: sshKeyPassphraseBinding)
-                Button("Generate ed25519 Key") {
-                    if let path = try? WWNSSHKeygen.generateKeyType(
-                        "ed25519",
-                        passphrase: draft?.sshKeyPassphrase ?? ""
-                    ) {
-                        updateDraft {
-                            $0.sshKeyPath = path
-                            $0.sshAuthMethod = 1
-                        }
-                    }
-                }
-            }
-            SecureField("Waypipe Password (optional)", text: waypipeSSHPasswordBinding)
+            SecureField("Password", text: sshPasswordBinding)
+            SecureField("Waypipe Password (optional override)", text: waypipeSSHPasswordBinding)
             TextField("Remote Command", text: remoteCommandBinding)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -175,6 +152,9 @@ struct MachineSettingsView: View {
                 Text("Multi-Touch").tag("Multi-Touch")
                 Text("Touchpad").tag("Touchpad")
             }
+            Text("Overrides global Settings → Input. Multi-Touch is finger→wl_touch; Touchpad is the iOS virtual pointer.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             Text("Global default: \(WawonaPreferences.normalizedTouchInputType(preferences.defaultInputProfile))")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -219,6 +199,23 @@ struct MachineSettingsView: View {
             }
             Toggle("Shake to Exit Machine", isOn: shakeToCloseBinding)
             Toggle("Swipe Back to Exit Machine", isOn: swipeBackToCloseBinding)
+        }
+    }
+
+    @ViewBuilder
+    private func environmentSection(for profile: MachineProfile) -> some View {
+        Section("Environment") {
+            let count = profile.runtimeOverrides.environment?.count ?? 0
+            Text(count == 0 ? "Inherit global" : "\(count) override(s)")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Button("Clear Machine Env Overrides") {
+                updateDraft { $0.runtimeOverrides.environment = nil }
+            }
+            .accessibilityIdentifier("wwn.settings.environment.machine.clear")
+            Text("Edit global Environment in Wawona Settings. Per-machine key edits use the same catalog on iPhone/iPad/macOS.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
         }
     }
 
@@ -332,27 +329,6 @@ struct MachineSettingsView: View {
         )
     }
 
-    private var sshAuthMethodBinding: Binding<Int> {
-        Binding(
-            get: { draft?.sshAuthMethod ?? 0 },
-            set: { value in updateDraft { $0.sshAuthMethod = value } }
-        )
-    }
-
-    private var sshKeyPathBinding: Binding<String> {
-        Binding(
-            get: { draft?.sshKeyPath ?? "" },
-            set: { value in updateDraft { $0.sshKeyPath = value } }
-        )
-    }
-
-    private var sshKeyPassphraseBinding: Binding<String> {
-        Binding(
-            get: { draft?.sshKeyPassphrase ?? "" },
-            set: { value in updateDraft { $0.sshKeyPassphrase = value } }
-        )
-    }
-
     private var remoteCommandBinding: Binding<String> {
         Binding(
             get: { draft?.remoteCommand ?? "" },
@@ -392,19 +368,6 @@ struct MachineSettingsView: View {
         )
     }
 
-    private var touchInputTypeBinding: Binding<String> {
-        Binding(
-            get: {
-                let raw = draft?.runtimeOverrides.inputProfile ?? preferences.defaultInputProfile
-                return WawonaPreferences.normalizedTouchInputType(raw)
-            },
-            set: { value in
-                let normalized = WawonaPreferences.normalizedTouchInputType(value)
-                updateDraft { $0.runtimeOverrides.inputProfile = normalized }
-            }
-        )
-    }
-
     private var rendererBinding: Binding<String> {
         Binding(
             get: { draft?.runtimeOverrides.renderer ?? preferences.renderer },
@@ -440,6 +403,26 @@ struct MachineSettingsView: View {
         )
     }
 
+    private var autoScaleBinding: Binding<Bool> {
+        Binding(
+            get: { draft?.runtimeOverrides.autoScale ?? preferences.autoScale },
+            set: { value in updateDraft { $0.runtimeOverrides.autoScale = value } }
+        )
+    }
+
+    private var touchInputTypeBinding: Binding<String> {
+        Binding(
+            get: {
+                let raw = draft?.runtimeOverrides.inputProfile ?? preferences.defaultInputProfile
+                return WawonaPreferences.normalizedTouchInputType(raw)
+            },
+            set: { value in
+                let normalized = WawonaPreferences.normalizedTouchInputType(value)
+                updateDraft { $0.runtimeOverrides.inputProfile = normalized }
+            }
+        )
+    }
+
     private var renderMacOSPointerBinding: Binding<Bool> {
         Binding(
             get: { draft?.runtimeOverrides.renderMacOSPointer ?? preferences.renderMacOSPointer },
@@ -460,13 +443,6 @@ struct MachineSettingsView: View {
                         (value == "host") ? "host" : "virtual"
                 }
             }
-        )
-    }
-
-    private var autoScaleBinding: Binding<Bool> {
-        Binding(
-            get: { draft?.runtimeOverrides.autoScale ?? preferences.autoScale },
-            set: { value in updateDraft { $0.runtimeOverrides.autoScale = value } }
         )
     }
 

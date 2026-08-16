@@ -3,6 +3,7 @@
 use gtk4 as gtk;
 use libadwaita as adw;
 use adw::prelude::*;
+use gtk::prelude::*;
 
 use crate::ffi::api::{build_info, version};
 use crate::linux::runtime;
@@ -44,6 +45,7 @@ pub fn show_settings(
         "Display",
         "Input",
         "Graphics",
+        "Env Vars",
         "Local Shell",
         "SSH and Waypipe",
         "Dependencies",
@@ -139,6 +141,46 @@ pub fn show_settings(
     add_row(&graphics_group, "HDR / Color Operations", &color_ops);
     graphics_page.add(&graphics_group);
     stack.add_named(&graphics_page, Some("Graphics"));
+
+    // Environment (#157 / #161)
+    let env_page = adw::PreferencesPage::new();
+    let env_group = adw::PreferencesGroup::new();
+    env_group.set_title("Environment Variables");
+    env_group.set_description(Some(
+        "Global KEY=value overrides applied to launched clients (machine overrides win). \
+         Lines starting with -NAME unset a variable. Same catalog as Apple/Android Settings → Environment.",
+    ));
+    let env_text = gtk::TextView::new();
+    env_text.set_monospace(true);
+    env_text.set_wrap_mode(gtk::WrapMode::WordChar);
+    env_text.set_vexpand(true);
+    env_text.set_hexpand(true);
+    {
+        let mut buf = String::new();
+        for (k, v) in &settings.environment_overrides {
+            buf.push_str(k);
+            buf.push('=');
+            buf.push_str(v);
+            buf.push('\n');
+        }
+        for name in &settings.environment_unsets {
+            buf.push('-');
+            buf.push_str(name);
+            buf.push('\n');
+        }
+        env_text.buffer().set_text(&buf);
+    }
+    let env_scroll = gtk::ScrolledWindow::new();
+    env_scroll.set_min_content_height(220);
+    env_scroll.set_child(Some(&env_text));
+    env_group.add(&env_scroll);
+    env_page.add(&env_group);
+    crate::linux::ui::a11y::set_wwn_a11y(
+        &env_page,
+        crate::linux::ui::a11y::id::SETTINGS_ENVIRONMENT,
+        Some("Env Vars"),
+    );
+    stack.add_named(&env_page, Some("Env Vars"));
 
     // Local Shell (host environment — mirrors WWNRootfsProvider host snapshot)
     let shell_page = adw::PreferencesPage::new();
@@ -404,6 +446,35 @@ pub fn show_settings(
             .active_id()
             .map(|s| s.to_string())
             .unwrap_or_else(|| "info".into());
+        {
+            let buffer = env_text.buffer();
+            let start = buffer.start_iter();
+            let end = buffer.end_iter();
+            let text = buffer.text(&start, &end, false);
+            let mut overrides = std::collections::BTreeMap::new();
+            let mut unsets = Vec::new();
+            for line in text.lines() {
+                let line = line.trim();
+                if line.is_empty() || line.starts_with('#') {
+                    continue;
+                }
+                if let Some(name) = line.strip_prefix('-') {
+                    let name = name.trim();
+                    if !name.is_empty() {
+                        unsets.push(name.to_string());
+                    }
+                    continue;
+                }
+                if let Some((k, v)) = line.split_once('=') {
+                    let k = k.trim();
+                    if !k.is_empty() {
+                        overrides.insert(k.to_string(), v.to_string());
+                    }
+                }
+            }
+            app.settings.environment_overrides = overrides;
+            app.settings.environment_unsets = unsets;
+        }
         app.persist_settings();
         wlog!("UI", "Settings saved");
         d.close();

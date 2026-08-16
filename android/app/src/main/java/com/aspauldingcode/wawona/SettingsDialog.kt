@@ -52,6 +52,7 @@ private enum class SettingsTab(val label: String, val icon: ImageVector, val tes
     INPUT("Input", Icons.Filled.Keyboard, WawonaTestTags.SETTINGS_INPUT),
     GRAPHICS("Graphics", Icons.Filled.GraphicEq, WawonaTestTags.SETTINGS_GRAPHICS),
     CONNECTION("Connection", Icons.Filled.Computer, WawonaTestTags.SETTINGS_CONNECTION),
+    ENVIRONMENT("Env Vars", Icons.Filled.List, WawonaTestTags.SETTINGS_ENVIRONMENT),
     LOCAL_SHELL("Local Shell", Icons.Filled.Folder, WawonaTestTags.SETTINGS_LOCAL_SHELL),
     DESKTOP("Desktop", Icons.Filled.DesktopMac, WawonaTestTags.SETTINGS_DESKTOP),
     ADVANCED("Advanced", Icons.Filled.Tune, WawonaTestTags.SETTINGS_ADVANCED),
@@ -67,6 +68,7 @@ private enum class SettingsTab(val label: String, val icon: ImageVector, val tes
             INPUT -> Color(0xFF34A853)
             GRAPHICS -> Color(0xFFEA4335)
             CONNECTION -> Color(0xFFFBBC04)
+            ENVIRONMENT -> Color(0xFF00BFA5)
             LOCAL_SHELL -> Color(0xFF188038)
             DESKTOP -> Color(0xFF00ACC1)
             ADVANCED -> Color(0xFF9AA0A6)
@@ -239,6 +241,7 @@ private fun SettingsSectionContent(
             SettingsTab.INPUT -> InputSection(prefs)
             SettingsTab.GRAPHICS -> GraphicsSection(prefs)
             SettingsTab.CONNECTION -> ConnectionSection(prefs, localIpAddress, context, SettingsTab.CONNECTION.accentColor)
+            SettingsTab.ENVIRONMENT -> EnvironmentSection(prefs, SettingsTab.ENVIRONMENT.accentColor)
             SettingsTab.LOCAL_SHELL -> LocalShellSection(context, SettingsTab.LOCAL_SHELL.accentColor)
             SettingsTab.DESKTOP -> {
                 DesktopSection(prefs, context, SettingsTab.DESKTOP.accentColor)
@@ -316,6 +319,127 @@ private fun GraphicsSection(prefs: SharedPreferences) {
     SettingsGroup(SettingsTab.GRAPHICS.accentColor) {
         SettingsSwitchItem(prefs, "dmabufEnabled", "DmaBuf Support",
             "Enable DMA buffer sharing between clients", Icons.Filled.Share, default = true, iconTint = SettingsTab.GRAPHICS.accentColor)
+    }
+}
+
+@Composable
+private fun EnvironmentSection(prefs: SharedPreferences, accent: Color) {
+    var map by remember {
+        mutableStateOf(EnvironmentOverrides.loadGlobal(prefs).toList().sortedBy { it.first })
+    }
+    var showEditor by remember { mutableStateOf(false) }
+    var editName by remember { mutableStateOf("") }
+    var editValue by remember { mutableStateOf("") }
+    var isNew by remember { mutableStateOf(false) }
+
+    fun persist(next: Map<String, EnvironmentOverrides.Entry>) {
+        EnvironmentOverrides.saveGlobal(prefs, next)
+        map = next.toList().sortedBy { it.first }
+        try {
+            WawonaNative.nativeApplyEnvironmentOverrides(
+                EnvironmentOverrides.jniPayload(prefs, null)
+            )
+        } catch (_: Throwable) {
+        }
+    }
+
+    SettingsSectionHeader("Env Vars", Icons.Filled.List, accent)
+    Text(
+        "Windows-style overrides for vars Wawona injects (TERM, WAYLAND_DISPLAY, VK_*, …). " +
+            "Machine Settings can override these. Applies on next Start.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(bottom = 8.dp).testTag(WawonaTestTags.SETTINGS_ENVIRONMENT),
+    )
+    SettingsGroup(accent) {
+        if (map.isEmpty()) {
+            Text(
+                "No global overrides (Wawona defaults).",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(12.dp),
+            )
+        } else {
+            map.forEach { (name, entry) ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(name, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            if (entry.action == "unset") "(unset)" else (entry.value ?: ""),
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    TextButton(onClick = {
+                        isNew = false
+                        editName = name
+                        editValue = entry.value ?: ""
+                        showEditor = true
+                    }) { Text("Edit") }
+                    TextButton(onClick = {
+                        val next = EnvironmentOverrides.loadGlobal(prefs)
+                        next.remove(name)
+                        persist(next)
+                    }) { Text("Reset") }
+                }
+            }
+        }
+    }
+    Row(modifier = Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(onClick = {
+            isNew = true
+            editName = ""
+            editValue = ""
+            showEditor = true
+        }) { Text("New") }
+        OutlinedButton(onClick = {
+            val next = EnvironmentOverrides.loadGlobal(prefs)
+            EnvironmentOverrides.resetManaged(next)
+            persist(next)
+        }) { Text("Reset Wawona-managed") }
+        OutlinedButton(onClick = { persist(emptyMap()) }) { Text("Reset All") }
+    }
+
+    if (showEditor) {
+        AlertDialog(
+            onDismissRequest = { showEditor = false },
+            title = { Text(if (isNew) "New Variable" else "Edit Variable") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = editName,
+                        onValueChange = { editName = it },
+                        label = { Text("Name") },
+                        enabled = isNew,
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = editValue,
+                        onValueChange = { editValue = it },
+                        label = { Text("Value") },
+                        singleLine = true,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val name = editName.trim()
+                    if (name.isNotEmpty()) {
+                        val next = EnvironmentOverrides.loadGlobal(prefs)
+                        next[name] = EnvironmentOverrides.Entry.set(editValue)
+                        persist(next)
+                    }
+                    showEditor = false
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditor = false }) { Text("Cancel") }
+            },
+        )
     }
 }
 

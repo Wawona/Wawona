@@ -1,6 +1,6 @@
 import SwiftUI
 
-#if os(iOS) || os(tvOS) || os(visionOS)
+#if !SWIFT_PACKAGE && (os(iOS) || os(tvOS) || os(visionOS))
 import UIKit
 
 struct ObjCSettingsHostView: UIViewControllerRepresentable {
@@ -12,7 +12,7 @@ struct ObjCSettingsHostView: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
 }
 
-#elseif os(macOS)
+#elseif !SWIFT_PACKAGE && os(macOS)
 import AppKit
 
 struct ObjCSettingsHostView: View {

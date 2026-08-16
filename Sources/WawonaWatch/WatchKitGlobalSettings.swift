@@ -79,6 +79,8 @@ private struct WatchGlobalSettingsSectionHost: View {
                 WatchSettingsGraphicsSection(preferences: preferences)
             case .connection:
                 WatchSettingsConnectionSection(preferences: preferences)
+            case .environment:
+                WatchEnvironmentVariablesSection(preferences: preferences)
             case .waypipe:
                 WatchSettingsWaypipeSection(preferences: preferences)
             case .ssh:
@@ -416,6 +418,53 @@ private struct WatchSettingsAboutSection: View {
         let raw = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
         let version = (raw?.isEmpty == false) ? raw! : "0.0.0"
         return version.hasPrefix("v") ? version : "v\(version)"
+    }
+}
+
+/// Compact Environment Variables list for watchOS (#157 / #159).
+private struct WatchEnvironmentVariablesSection: View {
+    @ObservedObject var preferences: WawonaPreferences
+    @State private var confirmReset = false
+
+    private var rows: [ResolvedEnvironmentEntry] {
+        preferences.resolvedEnvironment(for: nil).filter { !$0.isSecret }
+    }
+
+    var body: some View {
+        List {
+            ForEach(rows.prefix(40)) { row in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(row.name)
+                        .font(.caption.monospaced())
+                    Text(row.displayValue)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Text(row.source.rawValue)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .accessibilityIdentifier("wwn.settings.environment.row.\(row.name)")
+            }
+            Section {
+                Button("Reset Wawona-managed") {
+                    preferences.resetEnvironmentManaged()
+                }
+                .accessibilityIdentifier("wwn.settings.environment.resetManaged")
+                Button("Reset All", role: .destructive) {
+                    confirmReset = true
+                }
+                .accessibilityIdentifier("wwn.settings.environment.resetAll")
+            }
+        }
+        .navigationTitle(GlobalSettingsSectionID.environment.title)
+        .accessibilityIdentifier("wwn.settings.environment")
+        .confirmationDialog("Reset all overrides?", isPresented: $confirmReset) {
+            Button("Reset All", role: .destructive) {
+                preferences.resetEnvironmentAll()
+            }
+            Button("Cancel", role: .cancel) {}
+        }
     }
 }
 #endif

@@ -3,7 +3,7 @@ package com.aspauldingcode.wawona
 import android.content.SharedPreferences
 
 object WawonaSettings {
-    fun apply(prefs: SharedPreferences) {
+    fun apply(prefs: SharedPreferences, profile: MachineProfile? = null) {
         // Default off: weston-family clients draw CSD unless Force SSD is enabled.
         val forceServerSideDecorations =
             prefs.getBoolean("forceServerSideDecorations", false)
@@ -100,5 +100,12 @@ object WawonaSettings {
             openglDriver,
             compositorBackend
         )
+        try {
+            WawonaNative.nativeApplyEnvironmentOverrides(
+                EnvironmentOverrides.jniPayload(prefs, profile)
+            )
+        } catch (_: Throwable) {
+            // Older native libs without the symbol — ignore until rebuild.
+        }
     }
 }

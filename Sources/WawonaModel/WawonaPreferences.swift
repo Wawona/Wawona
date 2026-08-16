@@ -109,6 +109,7 @@ public struct ResolvedMachineSettings: Hashable, Sendable {
     public var logLevel: String
     public var shakeToCloseEnabled: Bool
     public var swipeBackToCloseEnabled: Bool
+    public var compositorBackend: String
 }
 
 @MainActor
@@ -168,11 +169,24 @@ public final class WawonaPreferences: ObservableObject {
     @Published public var defaultWaypipeEnabled: Bool = true
     /// When true, Waypipe is launched with `--xwls` (XWayland integration) for supported sessions.
     @Published public var xwaylandSupport: Bool = false
+    @Published public var compositorBackend: String = "auto"
+    @Published public var nestedCompositorsSupport: Bool = true
+    @Published public var multipleClients: Bool = false
+    @Published public var universalClipboard: Bool = true
+    @Published public var swapCmdWithAlt: Bool = true
+    @Published public var resizeDisplayForVirtualKeyboard: Bool = true
+    @Published public var waypipeCompress: String = "lz4"
+    @Published public var waypipeVideo: String = "none"
+    @Published public var waypipeRemoteCommand: String = ""
+    @Published public var waypipeDebug: Bool = false
+    @Published public var waypipeNoGpu: Bool = false
     @Published public var shakeToCloseEnabled: Bool = true
     @Published public var swipeBackToCloseEnabled: Bool = true
     @Published public var hasCompletedWelcome: Bool = false
     @Published public var globalClientLaunchers: [ClientLauncher] = ClientLauncher.presets
     @Published public var diagnostics: [SettingsDiagnosticEntry] = []
+    /// Global environment overrides (`wawona.pref.environment.v1`). Absence of a key = inherit catalog/session default.
+    @Published public var environmentOverrides: EnvironmentOverrideMap = [:]
 
     private let defaults = UserDefaults.standard
     private let keyPrefix = "wawona.pref."
@@ -220,7 +234,30 @@ public final class WawonaPreferences: ObservableObject {
         defaultInputProfile = Self.normalizedTouchInputType(loadedInput)
         defaultBundledAppID = defaults.string(forKey: keyPrefix + "defaultBundledAppID") ?? "weston-terminal"
         defaultWaypipeEnabled = defaults.object(forKey: keyPrefix + "defaultWaypipeEnabled") as? Bool ?? true
-        xwaylandSupport = defaults.object(forKey: keyPrefix + "xwaylandSupport") as? Bool ?? false
+        xwaylandSupport = defaults.object(forKey: keyPrefix + "xwaylandSupport") as? Bool
+            ?? defaults.object(forKey: "WaypipeXwls") as? Bool ?? false
+        compositorBackend = defaults.string(forKey: "CompositorBackend")
+            ?? defaults.string(forKey: keyPrefix + "compositorBackend") ?? "auto"
+        nestedCompositorsSupport = defaults.object(forKey: "NestedCompositorsSupport") as? Bool
+            ?? defaults.object(forKey: keyPrefix + "nestedCompositorsSupport") as? Bool ?? true
+        multipleClients = defaults.object(forKey: "MultipleClients") as? Bool
+            ?? defaults.object(forKey: keyPrefix + "multipleClients") as? Bool ?? false
+        universalClipboard = defaults.object(forKey: "UniversalClipboard") as? Bool
+            ?? defaults.object(forKey: keyPrefix + "universalClipboard") as? Bool ?? true
+        swapCmdWithAlt = defaults.object(forKey: "SwapCmdWithAlt") as? Bool
+            ?? defaults.object(forKey: keyPrefix + "swapCmdWithAlt") as? Bool ?? true
+        resizeDisplayForVirtualKeyboard = defaults.object(forKey: "resizeDisplayForVirtualKeyboard") as? Bool
+            ?? defaults.object(forKey: keyPrefix + "resizeDisplayForVirtualKeyboard") as? Bool ?? true
+        waypipeCompress = defaults.string(forKey: "WaypipeCompress")
+            ?? defaults.string(forKey: keyPrefix + "waypipeCompress") ?? "lz4"
+        waypipeVideo = defaults.string(forKey: "WaypipeVideo")
+            ?? defaults.string(forKey: keyPrefix + "waypipeVideo") ?? "none"
+        waypipeRemoteCommand = defaults.string(forKey: "WaypipeRemoteCommand")
+            ?? defaults.string(forKey: keyPrefix + "waypipeRemoteCommand") ?? ""
+        waypipeDebug = defaults.object(forKey: "WaypipeDebug") as? Bool
+            ?? defaults.object(forKey: keyPrefix + "waypipeDebug") as? Bool ?? false
+        waypipeNoGpu = defaults.object(forKey: "WaypipeNoGpu") as? Bool
+            ?? defaults.object(forKey: keyPrefix + "waypipeNoGpu") as? Bool ?? false
         shakeToCloseEnabled = defaults.object(forKey: keyPrefix + "shakeToCloseEnabled") as? Bool ?? true
         swipeBackToCloseEnabled = defaults.object(forKey: keyPrefix + "swipeBackToCloseEnabled") as? Bool ?? true
         hasCompletedWelcome = defaults.bool(forKey: keyPrefix + "hasCompletedWelcome")
@@ -233,6 +270,9 @@ public final class WawonaPreferences: ObservableObject {
            let decoded = try? JSONDecoder().decode([SettingsDiagnosticEntry].self, from: diagnosticsData) {
             diagnostics = decoded
         }
+        environmentOverrides = EnvironmentResolver.decodeMap(
+            from: defaults.data(forKey: EnvironmentCatalog.storageKey)
+        )
     }
 
     public func save() {
@@ -279,9 +319,33 @@ public final class WawonaPreferences: ObservableObject {
         defaults.set(waypipeSSHPassword, forKey: keyPrefix + "waypipeSSHPassword")
         defaults.set(logLevel, forKey: keyPrefix + "logLevel")
         defaults.set(defaultInputProfile, forKey: keyPrefix + "defaultInputProfile")
+        defaults.set(defaultInputProfile, forKey: "TouchInputType")
         defaults.set(defaultBundledAppID, forKey: keyPrefix + "defaultBundledAppID")
         defaults.set(defaultWaypipeEnabled, forKey: keyPrefix + "defaultWaypipeEnabled")
         defaults.set(xwaylandSupport, forKey: keyPrefix + "xwaylandSupport")
+        defaults.set(xwaylandSupport, forKey: "WaypipeXwls")
+        defaults.set(compositorBackend, forKey: "CompositorBackend")
+        defaults.set(compositorBackend, forKey: keyPrefix + "compositorBackend")
+        defaults.set(nestedCompositorsSupport, forKey: "NestedCompositorsSupport")
+        defaults.set(nestedCompositorsSupport, forKey: keyPrefix + "nestedCompositorsSupport")
+        defaults.set(multipleClients, forKey: "MultipleClients")
+        defaults.set(multipleClients, forKey: keyPrefix + "multipleClients")
+        defaults.set(universalClipboard, forKey: "UniversalClipboard")
+        defaults.set(universalClipboard, forKey: keyPrefix + "universalClipboard")
+        defaults.set(swapCmdWithAlt, forKey: "SwapCmdWithAlt")
+        defaults.set(swapCmdWithAlt, forKey: keyPrefix + "swapCmdWithAlt")
+        defaults.set(resizeDisplayForVirtualKeyboard, forKey: "resizeDisplayForVirtualKeyboard")
+        defaults.set(resizeDisplayForVirtualKeyboard, forKey: keyPrefix + "resizeDisplayForVirtualKeyboard")
+        defaults.set(waypipeCompress, forKey: "WaypipeCompress")
+        defaults.set(waypipeCompress, forKey: keyPrefix + "waypipeCompress")
+        defaults.set(waypipeVideo, forKey: "WaypipeVideo")
+        defaults.set(waypipeVideo, forKey: keyPrefix + "waypipeVideo")
+        defaults.set(waypipeRemoteCommand, forKey: "WaypipeRemoteCommand")
+        defaults.set(waypipeRemoteCommand, forKey: keyPrefix + "waypipeRemoteCommand")
+        defaults.set(waypipeDebug, forKey: "WaypipeDebug")
+        defaults.set(waypipeDebug, forKey: keyPrefix + "waypipeDebug")
+        defaults.set(waypipeNoGpu, forKey: "WaypipeNoGpu")
+        defaults.set(waypipeNoGpu, forKey: keyPrefix + "waypipeNoGpu")
         defaults.set(shakeToCloseEnabled, forKey: keyPrefix + "shakeToCloseEnabled")
         defaults.set(swipeBackToCloseEnabled, forKey: keyPrefix + "swipeBackToCloseEnabled")
         defaults.set(hasCompletedWelcome, forKey: keyPrefix + "hasCompletedWelcome")
@@ -290,6 +354,11 @@ public final class WawonaPreferences: ObservableObject {
         }
         if let diagnosticsData = try? JSONEncoder().encode(diagnostics) {
             defaults.set(diagnosticsData, forKey: keyPrefix + "diagnostics")
+        }
+        if let envData = EnvironmentResolver.encodeMap(environmentOverrides) {
+            defaults.set(envData, forKey: EnvironmentCatalog.storageKey)
+        } else {
+            defaults.removeObject(forKey: EnvironmentCatalog.storageKey)
         }
         NotificationCenter.default.post(name: .wawonaPreferencesDidSave, object: self)
     }
@@ -311,6 +380,8 @@ public final class WawonaPreferences: ObservableObject {
         let normalizedWaylandDisplay = profile.runtimeOverrides.waylandDisplay?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
         let normalizedWaypipePassword = profile.runtimeOverrides.waypipeSSHPassword ?? ""
         let normalizedLogLevel = profile.runtimeOverrides.logLevel?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
+        let normalizedCompositorBackend = profile.runtimeOverrides.compositorBackend?
+            .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
 
         let resolvedWaypipeEnabled: Bool = {
             if profile.type == .native {
@@ -364,8 +435,77 @@ public final class WawonaPreferences: ObservableObject {
             inputProfile: normalizedInputProfile,
             logLevel: normalizedLogLevel.isEmpty ? logLevel : normalizedLogLevel,
             shakeToCloseEnabled: profile.runtimeOverrides.shakeToCloseEnabled ?? shakeToCloseEnabled,
-            swipeBackToCloseEnabled: profile.runtimeOverrides.swipeBackToCloseEnabled ?? swipeBackToCloseEnabled
+            swipeBackToCloseEnabled: profile.runtimeOverrides.swipeBackToCloseEnabled ?? swipeBackToCloseEnabled,
+            compositorBackend: {
+                let allowed = Set(["auto", "wayland", "drm"])
+                if allowed.contains(normalizedCompositorBackend.lowercased()) {
+                    return normalizedCompositorBackend.lowercased()
+                }
+                return compositorBackend
+            }()
         )
+    }
+
+    /// Resolve environment rows for Settings UI / launch (machine > global > catalog/session).
+    /// Pass `machineOverrideMap` to preview a draft (e.g. machine editor) without upserting yet.
+    public func resolvedEnvironment(
+        for profile: MachineProfile?,
+        machineOverrideMap: EnvironmentOverrideMap? = nil,
+        session: EnvironmentSessionContext = EnvironmentSessionContext(),
+        stripBannedLocalShellKeys: Bool = false
+    ) -> [ResolvedEnvironmentEntry] {
+        var ctx = session
+        let resolved = profile.map { resolvedSettings(for: $0) }
+        ctx.waylandDisplay = resolved?.waylandDisplay ?? waylandDisplay
+        ctx.vulkanDriver = resolved?.vulkanDriver ?? vulkanDriver
+        ctx.openGLDriver = resolved?.openGLDriver ?? openGLDriver
+        let backend = resolved?.compositorBackend ?? compositorBackend
+        ctx.niriBackend = EnvironmentResolver.niriBackend(for: backend)
+        let level = resolved?.logLevel ?? logLevel
+        ctx.rustLog = EnvironmentResolver.rustLog(for: level)
+        ctx.disableVulkan = (ctx.vulkanDriver == "none")
+        ctx.disableEGL = (ctx.openGLDriver == "none")
+        if ctx.anglePlatform.isEmpty {
+            ctx.anglePlatform = "metal"
+        }
+
+        let machine =
+            machineOverrideMap
+            ?? profile?.runtimeOverrides.environment
+            ?? [:]
+
+        return EnvironmentResolver.resolve(
+            globalOverrides: environmentOverrides,
+            machineOverrides: machine,
+            session: ctx,
+            includeSecrets: false,
+            stripBannedLocalShellKeys: stripBannedLocalShellKeys
+        )
+    }
+
+    public func setEnvironmentOverride(name: String, override: EnvironmentOverride?) {
+        var next = environmentOverrides
+        if let override {
+            next[name] = override
+        } else {
+            EnvironmentResolver.resetOne(&next, name: name)
+        }
+        environmentOverrides = next
+        save()
+    }
+
+    public func resetEnvironmentManaged() {
+        var next = environmentOverrides
+        EnvironmentResolver.resetWawonaManaged(&next)
+        environmentOverrides = next
+        save()
+    }
+
+    public func resetEnvironmentAll() {
+        var next = environmentOverrides
+        EnvironmentResolver.resetAll(&next)
+        environmentOverrides = next
+        save()
     }
 
     public func recordDiagnostic(

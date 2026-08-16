@@ -33,9 +33,11 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
     [self setTitle:@"Wawona Settings"];
     NSArray<NSString *> *sections = @[
         @"Display",
+        @"Input",
         @"Graphics",
         @"Connection",
-        @"SSH Defaults",
+        @"Waypipe",
+        @"SSH",
         @"Advanced",
         @"About",
     ];
@@ -52,9 +54,11 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
     (void)table;
     NSArray<NSString *> *sections = @[
         @"Display",
+        @"Input",
         @"Graphics",
         @"Connection",
-        @"SSH Defaults",
+        @"Waypipe",
+        @"SSH",
         @"Advanced",
         @"About",
     ];
@@ -93,36 +97,69 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
 - (NSArray<WWNWatchSettingsRowModel *> *)buildRowsForSection:(NSString *)section {
     WWNWatchSettingsBridge *bridge = [self bridge];
     if ([section isEqualToString:@"Display"]) {
-        // Force SSD is macOS-only (#120): watchOS always draws server-side
-        // decorations (CSD only renders on macOS Wawona), so the row is omitted.
+        // Force SSD is macOS-only (#120). Color Operations lives in Advanced
+        // (same catalog as iOS/macOS).
         return @[
             [self toggleRow:@"Auto Scale" key:@"autoScale" value:bridge.autoScale],
-            [self toggleRow:@"Color Operations (HDR)" key:@"colorOperations" value:bridge.colorOperations],
+        ];
+    }
+    if ([section isEqualToString:@"Input"]) {
+        return @[
+            [self toggleRow:@"Show Virtual Cursor" key:@"renderMacOSPointer" value:bridge.renderMacOSPointer],
+            [self actionRow:@"Nested Compositor Cursor" key:@"nestedCompositorCursor" value:bridge.nestedCompositorCursor],
+            [self actionRow:@"Touch Input Type" key:@"defaultInputProfile" value:bridge.defaultInputProfile],
+            [self toggleRow:@"Resize Display for Virtual Keyboard" key:@"resizeDisplayForVirtualKeyboard" value:bridge.resizeDisplayForVirtualKeyboard],
+            [self toggleRow:@"Swap CMD with ALT" key:@"swapCmdWithAlt" value:bridge.swapCmdWithAlt],
+            [self toggleRow:@"Universal Clipboard" key:@"universalClipboard" value:bridge.universalClipboard],
         ];
     }
     if ([section isEqualToString:@"Graphics"]) {
         return @[
             [self actionRow:@"Renderer" key:@"renderer" value:bridge.renderer],
+            [self actionRow:@"Vulkan Driver" key:@"" value:@"none"],
+            [self actionRow:@"OpenGL Driver" key:@"" value:@"none"],
+            [self actionRow:@"Enable DMABUF" key:@"" value:@"Off"],
         ];
     }
     if ([section isEqualToString:@"Connection"]) {
         return @[
             [self actionRow:@"Wayland Display" key:@"waylandDisplay" value:bridge.waylandDisplay],
-            [self actionRow:@"Input Profile" key:@"defaultInputProfile" value:bridge.defaultInputProfile],
-            [self actionRow:@"Bundled App ID" key:@"defaultBundledAppID" value:bridge.defaultBundledAppID],
-            [self toggleRow:@"Waypipe by Default" key:@"defaultWaypipeEnabled" value:bridge.defaultWaypipeEnabled],
+            [self actionRow:@"Default Wayland Client" key:@"defaultBundledAppID" value:bridge.defaultBundledAppID],
         ];
     }
-    if ([section isEqualToString:@"SSH Defaults"]) {
+    if ([section isEqualToString:@"Waypipe"]) {
         return @[
+            [self toggleRow:@"Waypipe by Default" key:@"defaultWaypipeEnabled" value:bridge.defaultWaypipeEnabled],
+            [self toggleRow:@"XWayland" key:@"xwaylandSupport" value:bridge.xwaylandSupport],
+            [self actionRow:@"Compression" key:@"waypipeCompress" value:bridge.waypipeCompress],
+            [self actionRow:@"Video Codec" key:@"waypipeVideo" value:bridge.waypipeVideo],
+            [self actionRow:@"Remote Command" key:@"waypipeRemoteCommand" value:bridge.waypipeRemoteCommand],
+            [self toggleRow:@"Debug Mode" key:@"waypipeDebug" value:bridge.waypipeDebug],
+            [self toggleRow:@"Disable GPU" key:@"waypipeNoGpu" value:bridge.waypipeNoGpu],
+        ];
+    }
+    if ([section isEqualToString:@"SSH"] || [section isEqualToString:@"SSH Defaults"]) {
+        NSMutableArray<WWNWatchSettingsRowModel *> *sshRows = [NSMutableArray arrayWithArray:@[
             [self actionRow:@"Host" key:@"sshHost" value:bridge.sshHost],
             [self actionRow:@"User" key:@"sshUser" value:bridge.sshUser],
             [self actionRow:@"Port" key:@"sshPort" value:[NSString stringWithFormat:@"%ld", (long)bridge.sshPort]],
-            [self actionRow:@"Password" key:@"sshPassword" value:bridge.sshPassword.length > 0 ? @"••••••" : @""],
-        ];
+            [self actionRow:@"Auth" key:@"sshAuthMethod" value:bridge.sshAuthMethod == 1 ? @"Public Key" : @"Password"],
+        ]];
+        if (bridge.sshAuthMethod == 0) {
+            [sshRows addObject:[self actionRow:@"Password" key:@"sshPassword" value:bridge.sshPassword.length > 0 ? @"••••••" : @""]];
+        } else {
+            [sshRows addObject:[self actionRow:@"Key Type" key:@"sshKeyType" value:bridge.sshKeyType]];
+            [sshRows addObject:[self actionRow:@"Key Path" key:@"sshKeyPath" value:bridge.sshKeyPath]];
+            [sshRows addObject:[self actionRow:@"Key Passphrase" key:@"sshKeyPassphrase" value:bridge.sshKeyPassphrase.length > 0 ? @"••••••" : @""]];
+        }
+        return sshRows;
     }
     if ([section isEqualToString:@"Advanced"]) {
         return @[
+            [self toggleRow:@"Color Operations (HDR)" key:@"colorOperations" value:bridge.colorOperations],
+            [self toggleRow:@"Nested Compositors" key:@"nestedCompositorsSupport" value:bridge.nestedCompositorsSupport],
+            [self actionRow:@"Display Backend" key:@"compositorBackend" value:bridge.compositorBackend],
+            [self toggleRow:@"Multiple Clients" key:@"multipleClients" value:bridge.multipleClients],
             [self actionRow:@"Log Level" key:@"logLevel" value:bridge.logLevel],
             [self toggleRow:@"Shake to Close" key:@"shakeToCloseEnabled" value:bridge.shakeToCloseEnabled],
             [self toggleRow:@"Swipe Back to Close" key:@"swipeBackToCloseEnabled" value:bridge.swipeBackToCloseEnabled],
@@ -206,6 +243,55 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
                      currentValue:[self bridge].logLevel];
         return;
     }
+    if ([model.actionKey isEqualToString:@"defaultInputProfile"]) {
+        [self presentChoiceForKey:model.actionKey
+                            title:model.title
+                          options:@[ @"Multi-Touch", @"Touchpad" ]
+                     currentValue:[self bridge].defaultInputProfile];
+        return;
+    }
+    if ([model.actionKey isEqualToString:@"nestedCompositorCursor"]) {
+        [self presentChoiceForKey:model.actionKey
+                            title:model.title
+                          options:@[ @"virtual", @"host" ]
+                     currentValue:[self bridge].nestedCompositorCursor];
+        return;
+    }
+    if ([model.actionKey isEqualToString:@"compositorBackend"]) {
+        [self presentChoiceForKey:model.actionKey
+                            title:model.title
+                          options:@[ @"auto", @"wayland", @"drm" ]
+                     currentValue:[self bridge].compositorBackend];
+        return;
+    }
+    if ([model.actionKey isEqualToString:@"waypipeCompress"]) {
+        [self presentChoiceForKey:model.actionKey
+                            title:model.title
+                          options:@[ @"none", @"lz4", @"zstd" ]
+                     currentValue:[self bridge].waypipeCompress];
+        return;
+    }
+    if ([model.actionKey isEqualToString:@"waypipeVideo"]) {
+        [self presentChoiceForKey:model.actionKey
+                            title:model.title
+                          options:@[ @"none", @"h264", @"vp9", @"av1" ]
+                     currentValue:[self bridge].waypipeVideo];
+        return;
+    }
+    if ([model.actionKey isEqualToString:@"sshAuthMethod"]) {
+        [self presentChoiceForKey:model.actionKey
+                            title:model.title
+                          options:@[ @"Password", @"Public Key" ]
+                     currentValue:[self bridge].sshAuthMethod == 1 ? @"Public Key" : @"Password"];
+        return;
+    }
+    if ([model.actionKey isEqualToString:@"sshKeyType"]) {
+        [self presentChoiceForKey:model.actionKey
+                            title:model.title
+                          options:@[ @"ed25519", @"ecdsa", @"rsa" ]
+                     currentValue:[self bridge].sshKeyType];
+        return;
+    }
 
     NSString *initial = model.valueText ?: @"";
     if ([model.actionKey isEqualToString:@"sshPassword"]) {
@@ -261,6 +347,24 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
         bridge.colorOperations = on;
     } else if ([key isEqualToString:@"defaultWaypipeEnabled"]) {
         bridge.defaultWaypipeEnabled = on;
+    } else if ([key isEqualToString:@"renderMacOSPointer"]) {
+        bridge.renderMacOSPointer = on;
+    } else if ([key isEqualToString:@"resizeDisplayForVirtualKeyboard"]) {
+        bridge.resizeDisplayForVirtualKeyboard = on;
+    } else if ([key isEqualToString:@"swapCmdWithAlt"]) {
+        bridge.swapCmdWithAlt = on;
+    } else if ([key isEqualToString:@"universalClipboard"]) {
+        bridge.universalClipboard = on;
+    } else if ([key isEqualToString:@"nestedCompositorsSupport"]) {
+        bridge.nestedCompositorsSupport = on;
+    } else if ([key isEqualToString:@"multipleClients"]) {
+        bridge.multipleClients = on;
+    } else if ([key isEqualToString:@"xwaylandSupport"]) {
+        bridge.xwaylandSupport = on;
+    } else if ([key isEqualToString:@"waypipeDebug"]) {
+        bridge.waypipeDebug = on;
+    } else if ([key isEqualToString:@"waypipeNoGpu"]) {
+        bridge.waypipeNoGpu = on;
     } else if ([key isEqualToString:@"shakeToCloseEnabled"]) {
         bridge.shakeToCloseEnabled = on;
     } else if ([key isEqualToString:@"swipeBackToCloseEnabled"]) {
@@ -277,9 +381,19 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
     } else if ([key isEqualToString:@"waylandDisplay"]) {
         bridge.waylandDisplay = trimmed.length > 0 ? trimmed : @"wayland-0";
     } else if ([key isEqualToString:@"defaultInputProfile"]) {
-        bridge.defaultInputProfile = trimmed.length > 0 ? trimmed : @"direct";
+        bridge.defaultInputProfile = trimmed.length > 0 ? trimmed : @"Multi-Touch";
     } else if ([key isEqualToString:@"defaultBundledAppID"]) {
         bridge.defaultBundledAppID = trimmed.length > 0 ? trimmed : @"weston-terminal";
+    } else if ([key isEqualToString:@"nestedCompositorCursor"]) {
+        bridge.nestedCompositorCursor = [trimmed isEqualToString:@"host"] ? @"host" : @"virtual";
+    } else if ([key isEqualToString:@"compositorBackend"]) {
+        bridge.compositorBackend = trimmed.length > 0 ? trimmed : @"auto";
+    } else if ([key isEqualToString:@"waypipeCompress"]) {
+        bridge.waypipeCompress = trimmed.length > 0 ? trimmed : @"lz4";
+    } else if ([key isEqualToString:@"waypipeVideo"]) {
+        bridge.waypipeVideo = trimmed.length > 0 ? trimmed : @"none";
+    } else if ([key isEqualToString:@"waypipeRemoteCommand"]) {
+        bridge.waypipeRemoteCommand = trimmed;
     } else if ([key isEqualToString:@"sshHost"]) {
         bridge.sshHost = trimmed;
     } else if ([key isEqualToString:@"sshUser"]) {
@@ -288,6 +402,14 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
         bridge.sshPort = trimmed.integerValue > 0 ? trimmed.integerValue : 22;
     } else if ([key isEqualToString:@"sshPassword"]) {
         bridge.sshPassword = value ?: @"";
+    } else if ([key isEqualToString:@"sshAuthMethod"]) {
+        bridge.sshAuthMethod = [trimmed isEqualToString:@"Public Key"] ? 1 : 0;
+    } else if ([key isEqualToString:@"sshKeyType"]) {
+        bridge.sshKeyType = trimmed.length > 0 ? trimmed : @"ed25519";
+    } else if ([key isEqualToString:@"sshKeyPath"]) {
+        bridge.sshKeyPath = trimmed;
+    } else if ([key isEqualToString:@"sshKeyPassphrase"]) {
+        bridge.sshKeyPassphrase = value ?: @"";
     } else if ([key isEqualToString:@"logLevel"]) {
         bridge.logLevel = trimmed.length > 0 ? trimmed : @"info";
     }

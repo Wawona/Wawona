@@ -10,6 +10,7 @@ func nativeVisibilityIncludesLauncherOnly() {
     #expect(fields.contains(.launcher))
     #expect(!fields.contains(.sshHost))
     #expect(!fields.contains(.remoteCommand))
+    #expect(!fields.contains(.inputProfile))
 }
 
 @Test
@@ -45,11 +46,11 @@ func vmAndContainerExposeNoSubtypeField() {
     // are never user-editable, so VM/container editors expose no subtype field.
     let vmFields = MachineEditorValidation.visibleFields(
         for: MachineEditorState(name: "VM", typeRawValue: "virtual_machine"))
-    #expect(vmFields == [.name, .type, .inputProfile])
+    #expect(vmFields == [.name, .type])
 
     let containerFields = MachineEditorValidation.visibleFields(
         for: MachineEditorState(name: "Container", typeRawValue: "container"))
-    #expect(containerFields == [.name, .type, .inputProfile])
+    #expect(containerFields == [.name, .type])
 }
 
 @Test

@@ -78,6 +78,7 @@ public struct MachineSettingsView: View {
                 inputSection()
                 graphicsSection()
                 advancedSection()
+                environmentSection()
                 resolvedPreviewSection(for: draft)
                 actionsSection()
             }
@@ -230,11 +231,45 @@ public struct MachineSettingsView: View {
                 Text("Warn").tag("warn")
                 Text("Error").tag("error")
             }
+            Picker("Display Backend", selection: compositorBackendBinding) {
+                Text("Inherit global (\(preferences.compositorBackend))").tag("")
+                Text("Auto").tag("auto")
+                Text("Wayland (nested)").tag("wayland")
+                Text("DRM").tag("drm")
+            }
             #if os(tvOS)
             Toggle("Long-press Menu to Exit Machine", isOn: shakeToCloseBinding)
             #else
             Toggle("Shake to Exit Machine", isOn: shakeToCloseBinding)
             #endif
+            #if !os(tvOS)
+            Toggle("Swipe Back to Exit Machine", isOn: swipeBackToCloseBinding)
+            #endif
+        }
+    }
+
+    @ViewBuilder
+    private func environmentSection() -> some View {
+        Section("Environment Variables") {
+            if let draft {
+                NavigationLink {
+                    EnvironmentVariablesView(
+                        preferences: preferences,
+                        profileStore: profileStore,
+                        machineID: draft.id,
+                        perMachine: true
+                    )
+                } label: {
+                    HStack {
+                        Text("Environment Variables")
+                        Spacer()
+                        let count = draft.runtimeOverrides.environment?.count ?? 0
+                        Text(count == 0 ? "Inherit global" : "\(count) override(s)")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .accessibilityIdentifier("wwn.settings.environment.machine")
+            }
         }
     }
 
@@ -264,6 +299,7 @@ public struct MachineSettingsView: View {
             Text("Long-press Menu to Exit: \(resolved.shakeToCloseEnabled ? "Enabled" : "Disabled")")
             #else
             Text("Shake to Exit: \(resolved.shakeToCloseEnabled ? "Enabled" : "Disabled")")
+            Text("Swipe Back to Exit: \(resolved.swipeBackToCloseEnabled ? "Enabled" : "Disabled")")
             #endif
         }
     }
@@ -467,10 +503,32 @@ public struct MachineSettingsView: View {
         )
     }
 
+    private var compositorBackendBinding: Binding<String> {
+        Binding(
+            get: { draft?.runtimeOverrides.compositorBackend ?? "" },
+            set: { value in
+                updateDraft {
+                    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                    $0.runtimeOverrides.compositorBackend = trimmed.isEmpty ? nil : trimmed
+                }
+            }
+        )
+    }
+
     private var shakeToCloseBinding: Binding<Bool> {
         Binding(
             get: { draft?.runtimeOverrides.shakeToCloseEnabled ?? preferences.shakeToCloseEnabled },
             set: { value in updateDraft { $0.runtimeOverrides.shakeToCloseEnabled = value } }
+        )
+    }
+
+    private var swipeBackToCloseBinding: Binding<Bool> {
+        Binding(
+            get: {
+                draft?.runtimeOverrides.swipeBackToCloseEnabled
+                    ?? preferences.swipeBackToCloseEnabled
+            },
+            set: { value in updateDraft { $0.runtimeOverrides.swipeBackToCloseEnabled = value } }
         )
     }
 

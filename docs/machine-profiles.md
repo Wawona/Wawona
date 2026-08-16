@@ -16,6 +16,17 @@ Each profile uses this normalized shape:
 - `waypipeTitlePrefix`, `waypipeSecCtx`
 - `favorite`, `createdAtMs`, `updatedAtMs`
 - `launchers` (array of per-machine client launcher definitions)
+- `runtimeOverrides` (typed per-machine overrides; see below)
+
+### `runtimeOverrides` (typed)
+
+Optional fields; nil/empty inherits global Settings:
+
+- graphics: `renderer`, `vulkanDriver`, `openGLDriver`, `dmabufEnabled`, `colorOperations`
+- input / display: `inputProfile`, `forceSSD`, `renderMacOSPointer`, `nestedCompositorCursor`, `autoScale`, `waylandDisplay`
+- backend: `compositorBackend` (`auto` \| `wayland` \| `drm`)
+- session: `bundledAppID`, `waypipeEnabled`, `waypipeSSHPassword`, `logLevel`, `shakeToCloseEnabled`, `swipeBackToCloseEnabled`
+- **`environment`**: map of env overrides (`{ "TERM": { "action": "set", "value": "xterm" } }`) — see [#157](https://github.com/Wawona/Wawona/issues/157) / [`issues/environment-variables-gui.md`](issues/environment-variables-gui.md). Never stash env in `settingsOverrides` (Swift Codable drops unknown keys).
 
 Machine `type` values:
 

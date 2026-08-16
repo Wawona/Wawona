@@ -71,6 +71,7 @@ pub fn launch(profile: &LinuxMachineProfile, settings: &LinuxSettings, rt: &Runt
 
     cmd.env("XDG_RUNTIME_DIR", &rt.xdg_runtime_dir);
     cmd.env("WAYLAND_DISPLAY", &rt.wayland_display);
+    apply_environment_overrides(&mut cmd, settings);
     cmd.stdin(Stdio::null());
     cmd.stdout(Stdio::inherit());
     cmd.stderr(Stdio::inherit());
@@ -79,6 +80,19 @@ pub fn launch(profile: &LinuxMachineProfile, settings: &LinuxSettings, rt: &Runt
         .with_context(|| format!("failed to launch profile '{}'", profile.name))?;
     wlog!("LAUNCHER", "Spawned process pid={} for profile '{}'", child.id(), profile.name);
     Ok(child)
+}
+
+fn apply_environment_overrides(cmd: &mut Command, settings: &LinuxSettings) {
+    for name in &settings.environment_unsets {
+        cmd.env_remove(name);
+    }
+    for (name, value) in &settings.environment_overrides {
+        if value.is_empty() {
+            cmd.env_remove(name);
+        } else {
+            cmd.env(name, value);
+        }
+    }
 }
 
 fn canonical_target(profile: &MachineProfile) -> String {
@@ -160,6 +174,7 @@ pub fn launch_profile(
 
     cmd.env("XDG_RUNTIME_DIR", &rt.xdg_runtime_dir);
     cmd.env("WAYLAND_DISPLAY", &rt.wayland_display);
+    apply_environment_overrides(&mut cmd, settings);
     cmd.stdin(Stdio::null());
     cmd.stdout(Stdio::inherit());
     cmd.stderr(Stdio::inherit());

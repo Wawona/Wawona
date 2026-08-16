@@ -95,6 +95,8 @@ rec {
     "src/platform/macos/ui/Settings/WWNPreferences.h"
     "src/platform/macos/ui/Settings/WWNPreferencesManager.m"
     "src/platform/macos/ui/Settings/WWNPreferencesManager.h"
+    "src/platform/macos/ui/Settings/WWNEnvironmentOverrides.m"
+    "src/platform/macos/ui/Settings/WWNEnvironmentOverrides.h"
     # WWNSipStatus — macOS-only (Desktop Replacement SIP helper; see macos.nix).
     "src/platform/macos/ui/About/WWNAboutPanel.m"
     "src/platform/macos/ui/About/WWNAboutPanel.h"

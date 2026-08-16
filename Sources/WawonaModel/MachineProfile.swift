@@ -85,6 +85,10 @@ public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
     public var logLevel: String?
     public var shakeToCloseEnabled: Bool?
     public var swipeBackToCloseEnabled: Bool?
+    /// Per-machine Display Backend override (`auto` | `wayland` | `drm`).
+    public var compositorBackend: String?
+    /// Explicit env overrides (#157). Never stash in settingsOverrides — Codable drops unknown keys.
+    public var environment: EnvironmentOverrideMap?
 
     public init(
         renderer: String? = nil,
@@ -103,7 +107,9 @@ public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
         waypipeSSHPassword: String? = nil,
         logLevel: String? = nil,
         shakeToCloseEnabled: Bool? = nil,
-        swipeBackToCloseEnabled: Bool? = nil
+        swipeBackToCloseEnabled: Bool? = nil,
+        compositorBackend: String? = nil,
+        environment: EnvironmentOverrideMap? = nil
     ) {
         self.renderer = renderer
         self.vulkanDriver = vulkanDriver
@@ -122,6 +128,8 @@ public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
         self.logLevel = logLevel
         self.shakeToCloseEnabled = shakeToCloseEnabled
         self.swipeBackToCloseEnabled = swipeBackToCloseEnabled
+        self.compositorBackend = compositorBackend
+        self.environment = environment
     }
 }
 

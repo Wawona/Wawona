@@ -64,6 +64,9 @@ object WawonaNative {
         compositorBackend: String
     )
 
+    /** Apply environment override JSON: `{ "set": {...}, "unset": [...] }` (#157). */
+    external fun nativeApplyEnvironmentOverrides(json: String)
+
     external fun nativeSetCore(corePtr: Long)
 
     external fun nativeCommitText(text: String)

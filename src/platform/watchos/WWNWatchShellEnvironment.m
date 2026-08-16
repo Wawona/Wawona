@@ -4,6 +4,11 @@
 #import <stdlib.h>
 #import <unistd.h>
 
+@interface WWNWatchShellEnvironment (BundleFonts)
++ (NSString *)firstExistingFont:(NSArray<NSString *> *)relPaths
+                          under:(NSString *)fontDir;
+@end
+
 @implementation WWNWatchShellEnvironment
 
 + (NSString *)bundleRootfsPath {
@@ -38,16 +43,27 @@
                      isDirectory:YES] path];
 }
 
++ (NSString *)canonicalFilesystemPath:(NSString *)path {
+  if (path.length == 0) {
+    return path;
+  }
+  NSString *resolved = [path stringByResolvingSymlinksInPath];
+  return resolved.length > 0 ? resolved : path;
+}
+
 + (NSString *)activeHomePath {
   NSURL *docs = [[NSFileManager defaultManager]
       URLsForDirectory:NSDocumentDirectory
              inDomains:NSUserDomainMask]
                      .firstObject;
+  NSString *home;
   if (!docs) {
-    return [NSHomeDirectory() stringByAppendingPathComponent:@"Wawona/home"];
+    home = [NSHomeDirectory() stringByAppendingPathComponent:@"Wawona/home"];
+  } else {
+    home = [[docs URLByAppendingPathComponent:@"Wawona/home" isDirectory:YES]
+        path];
   }
-  return [[docs URLByAppendingPathComponent:@"Wawona/home" isDirectory:YES]
-      path];
+  return [self canonicalFilesystemPath:home];
 }
 
 + (BOOL)copyTreeFrom:(NSString *)src to:(NSString *)dst {
@@ -165,7 +181,7 @@
 
   NSString *bundleRoot = [self bundleRootfsPath];
   NSString *home = [self activeHomePath];
-  NSString *active = [self activeRootfsPath];
+  NSString *active = [self canonicalFilesystemPath:[self activeRootfsPath]];
 
   if (bundleRoot.length > 0) {
     [self ensureRootfsInstalledFromBundle:bundleRoot];
@@ -321,23 +337,51 @@
                     error:NULL]) {
       setenv("FONTCONFIG_FILE", confPath.UTF8String, 1);
       setenv("FONTCONFIG_PATH", base.UTF8String, 1);
-      NSString *monoFont = [fontDir
-          stringByAppendingPathComponent:@"truetype/DejaVuSansMono.ttf"];
-      if ([fm fileExistsAtPath:monoFont]) {
+      NSString *monoFont =
+          [self firstExistingFont:@[ @"truetype/DejaVuSansMono.ttf",
+                                     @"truetype/dejavu/DejaVuSansMono.ttf" ]
+                          under:fontDir];
+      if (monoFont.length > 0) {
         setenv("WAWONA_MONO_FONT", monoFont.UTF8String, 1);
       }
       NSString *sansFont =
-          [fontDir stringByAppendingPathComponent:@"truetype/DejaVuSans.ttf"];
-      if ([fm fileExistsAtPath:sansFont]) {
+          [self firstExistingFont:@[ @"truetype/DejaVuSans.ttf",
+                                     @"truetype/dejavu/DejaVuSans.ttf" ]
+                          under:fontDir];
+      if (sansFont.length > 0) {
         setenv("WAWONA_SANS_FONT", sansFont.UTF8String, 1);
       }
     }
   }
   WWNLog("SHELL", @"bundle share env; XDG_DATA_DIRS=%s FONTCONFIG_FILE=%s "
-        @"WAWONA_SANS_FONT=%s",
+        @"WAWONA_MONO_FONT=%s WAWONA_SANS_FONT=%s",
         getenv("XDG_DATA_DIRS") ?: "(unset)",
         getenv("FONTCONFIG_FILE") ?: "(unset)",
+        getenv("WAWONA_MONO_FONT") ?: "(unset)",
         getenv("WAWONA_SANS_FONT") ?: "(unset)");
+}
+
++ (NSString *)firstExistingFont:(NSArray<NSString *> *)relPaths
+                          under:(NSString *)fontDir {
+  NSFileManager *fm = [NSFileManager defaultManager];
+  for (NSString *rel in relPaths) {
+    NSString *path = [fontDir stringByAppendingPathComponent:rel];
+    if ([fm fileExistsAtPath:path]) {
+      return path;
+    }
+  }
+  NSString *leaf = relPaths.firstObject.lastPathComponent;
+  if (leaf.length == 0) {
+    return @"";
+  }
+  NSDirectoryEnumerator *en = [fm enumeratorAtPath:fontDir];
+  NSString *rel;
+  while ((rel = [en nextObject])) {
+    if ([rel.lastPathComponent isEqualToString:leaf]) {
+      return [fontDir stringByAppendingPathComponent:rel];
+    }
+  }
+  return @"";
 }
 
 @end

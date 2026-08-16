@@ -1,5 +1,6 @@
 #import "WWNMachineProfileStore.h"
 #import "../Settings/WWNPreferencesManager.h"
+#import "../Settings/WWNEnvironmentOverrides.h"
 #import "../../WWNCompositorBridge.h"
 
 NSString *const kWWNMachineTypeSSHWaypipe = @"ssh_waypipe";
@@ -826,6 +827,16 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
           : [[WWNPreferencesManager sharedManager] forceServerSideDecorations];
   [[WWNCompositorBridge sharedBridge]
       setForceSSDForClientLaunch:machineForceSSD];
+
+  // Environment overrides (#157): machine > global, after prefs/graphics apply.
+  {
+    NSDictionary *machineEnv = nil;
+    id env = swiftRuntime[@"environment"];
+    if ([env isKindOfClass:[NSDictionary class]]) {
+      machineEnv = env;
+    }
+    WWNEnvironmentOverridesApply(machineEnv);
+  }
 }
 
 + (void)applyActiveMachineToRuntimePrefs {

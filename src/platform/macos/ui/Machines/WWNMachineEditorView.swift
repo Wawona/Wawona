@@ -1,4 +1,5 @@
 import SwiftUI
+import WawonaModel
 
 struct WWNMachineEditorView: View {
   let title: String
@@ -59,6 +60,8 @@ struct WWNMachineEditorView: View {
   #if os(macOS)
   @State private var alwaysOnTop: Bool
   #endif
+  @State private var environmentOverrides: EnvironmentOverrideMap
+  @State private var showEnvironmentEditor = false
 
   init(
     title: String,
@@ -130,6 +133,9 @@ struct WWNMachineEditorView: View {
     #if os(macOS)
     _alwaysOnTop = State(initialValue: (runtimeOverrides["alwaysOnTop"] as? Bool) ?? false)
     #endif
+    _environmentOverrides = State(
+      initialValue: Self.decodeEnvironmentOverrides(runtimeOverrides["environment"])
+    )
 
     let initialNativeClientId: String
     if let stored = runtimeOverrides["bundledAppID"] as? String, !stored.isEmpty {
@@ -332,6 +338,8 @@ struct WWNMachineEditorView: View {
 
           displayInputGraphicsSection
 
+          environmentVariablesSection
+
           sectionCard("Session Exit", subtitle: "Per-machine overrides for closing an active session.") {
             Toggle("Shake to Exit Machine", isOn: $shakeToCloseEnabled)
             Toggle("Swipe Back to Exit Machine", isOn: $swipeBackToCloseEnabled)
@@ -358,10 +366,67 @@ struct WWNMachineEditorView: View {
           Button("Save", action: save)
         }
       }
+      .sheet(isPresented: $showEnvironmentEditor) {
+        NavigationStack {
+          EnvironmentVariablesView(
+            preferences: WawonaPreferences.shared,
+            perMachine: true,
+            draftMachineOverrides: $environmentOverrides
+          )
+          .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+              Button("Done") { showEnvironmentEditor = false }
+            }
+          }
+        }
+        #if os(macOS)
+        .frame(minWidth: 520, minHeight: 560)
+        #endif
+      }
     }
     #if os(macOS)
     .frame(minWidth: 640, idealWidth: 760, maxWidth: 920, minHeight: 560, idealHeight: 760)
     #endif
+  }
+
+  private var environmentVariablesSection: some View {
+    sectionCard(
+      "Environment Variables",
+      subtitle: "Per-machine overrides for variables Wawona injects. Inherited (dimmed) rows use global Settings → Environment Variables until you override them."
+    ) {
+      Button {
+        showEnvironmentEditor = true
+      } label: {
+        HStack {
+          Text("Edit Environment Variables…")
+          Spacer()
+          Text(environmentOverrides.isEmpty ? "Inherit global" : "\(environmentOverrides.count) override(s)")
+            .foregroundStyle(.secondary)
+        }
+      }
+      .buttonStyle(.plain)
+      .accessibilityIdentifier("wwn.settings.environment.machine")
+
+      if !environmentOverrides.isEmpty {
+        ForEach(environmentOverrides.keys.sorted(), id: \.self) { name in
+          HStack {
+            Text(name)
+              .font(.body.monospaced())
+            Spacer()
+            if let override = environmentOverrides[name] {
+              Text(override.action == .unset ? "(unset)" : (override.value ?? ""))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            }
+          }
+          .font(.caption)
+        }
+        Button("Clear machine overrides") {
+          environmentOverrides = [:]
+        }
+        .foregroundStyle(.red)
+      }
+    }
   }
 
   private var displayInputGraphicsSection: some View {
@@ -1028,12 +1093,40 @@ struct WWNMachineEditorView: View {
     }
     #endif
     runtimeOverrides["legacySettingsOverrides"] = overrides
+    if environmentOverrides.isEmpty {
+      runtimeOverrides.removeValue(forKey: "environment")
+    } else if let encoded = Self.encodeEnvironmentOverrides(environmentOverrides) {
+      runtimeOverrides["environment"] = encoded
+    }
 
     profile.settingsOverrides = overrides
     profile.runtimeOverrides = runtimeOverrides
 
     onSave(profile)
     dismiss()
+  }
+
+  private static func decodeEnvironmentOverrides(_ raw: Any?) -> EnvironmentOverrideMap {
+    guard let raw else { return [:] }
+    if let map = raw as? EnvironmentOverrideMap {
+      return map
+    }
+    guard JSONSerialization.isValidJSONObject(raw),
+          let data = try? JSONSerialization.data(withJSONObject: raw),
+          let decoded = try? JSONDecoder().decode(EnvironmentOverrideMap.self, from: data)
+    else {
+      return [:]
+    }
+    return decoded
+  }
+
+  private static func encodeEnvironmentOverrides(_ map: EnvironmentOverrideMap) -> [String: Any]? {
+    guard let data = try? JSONEncoder().encode(map),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else {
+      return nil
+    }
+    return obj
   }
 }
 

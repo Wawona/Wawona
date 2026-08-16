@@ -197,10 +197,10 @@ public struct MachineEditorValidation: Sendable {
                 MachineEditorFieldID.waypipeEnabled,
             ])
         }
+        // Input profile (Touch Input Type) lives in Machine Settings, not Add/Edit.
         // Virtual-machine and container backends are selected automatically per
         // build target (see wwn-vms / wwn-containers capability lanes); they
         // expose no user-editable subtype field (Residual E).
-        fields.append(MachineEditorFieldID.inputProfile)
         return fields
     }
 

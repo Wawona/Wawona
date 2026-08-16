@@ -82,13 +82,29 @@ watchOS WASM runtime remains size-gated off ([#156](https://github.com/Wawona/Wa
 
 ## Connection (macOS / iOS)
 
+Networking only. Wayland socket / shell environment variables live under
+**Environment Variables** (not duplicated here).
+
 | Setting | Key | Type | Description |
 |---------|-----|------|-------------|
-| **XDG_RUNTIME_DIR** | (read-only) | Info | Runtime directory for Wayland socket |
-| **WAYLAND_DISPLAY** | `WaylandDisplay` | Info | Socket name (e.g. wayland-0) |
-| **Socket Path** | (read-only) | Info | Full path to Wayland socket |
-| **Shell Setup** | (read-only) | Info | Copy-paste `export` commands for terminal |
 | **TCP Port** | `TCPListenerPort` | Number | Port for TCP listener (default 6000) |
+
+---
+
+## Environment Variables
+
+Windows-style environment variable manager ([#157](https://github.com/Wawona/Wawona/issues/157)). **Single Settings section** inventories every var Wawona injects, with Edit / New / per-row Reset / Reset Wawona-managed / Reset all. Per-machine overrides are under **Edit Machine → Environment Variables**. First-class Settings (Vulkan, Display Backend, SSH) stay; the table is the override surface.
+
+| Setting | Key | Type | Platforms | Description |
+|---------|-----|------|-----------|-------------|
+| **Environment Variables** | `wawona.pref.environment.v1` (global); `runtimeOverrides.environment` (per-machine) | Table | All | Name / value / source / Reset. Actions: New, Edit, Unset, Reset this, Reset Wawona-managed, Reset all |
+| **Display Backend (per-machine)** | `runtimeOverrides.compositorBackend` | Popup | All | `auto` \| `wayland` \| `drm`; inherits global `CompositorBackend` when unset |
+
+Precedence: **machine overrides > global overrides > first-class setting mapping > catalog default**. Catalog: `contracts/environment-catalog.yaml`. Secrets (`SSHPASS`, `WAYPIPE_SSH_PASSWORD`) are never shown. Apple-mobile spawn strips `DYLD_*` / `LD_*` even if user extras set them.
+
+a11y: `wwn.settings.environment.*`
+
+Local issue doc: [`docs/issues/environment-variables-gui.md`](issues/environment-variables-gui.md).
 
 ---
 

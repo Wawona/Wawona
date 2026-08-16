@@ -38,7 +38,8 @@ let package = Package(
         .target(
             name: "WawonaWatch",
             dependencies: [
-                "WawonaModel"
+                "WawonaModel",
+                "WawonaUIContracts"
             ]
         ),
         .testTarget(

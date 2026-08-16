@@ -66,6 +66,7 @@ import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.CenterFocusStrong
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -107,6 +108,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -887,6 +889,15 @@ private fun MachineEditorSheet(
             )
         )
     }
+    var machineEnvironment by remember {
+        mutableStateOf(
+            if (initial != null) EnvironmentOverrides.loadMachine(initial) else mutableMapOf()
+        )
+    }
+    var showMachineEnvEditor by remember { mutableStateOf(false) }
+    var machineEnvEditName by remember { mutableStateOf("") }
+    var machineEnvEditValue by remember { mutableStateOf("") }
+    var machineEnvIsNew by remember { mutableStateOf(false) }
 
     fun performSave() {
         val trimmedName = name.trim().ifEmpty { "Unnamed Machine" }
@@ -933,6 +944,8 @@ private fun MachineEditorSheet(
         writeBoolOverride(settingsOverrides, "colorOperations", colorOperations, prefs.getBoolean("colorSyncSupport", false))
         writeBoolOverride(settingsOverrides, "shakeToCloseEnabled", shakeToCloseOverride, prefs.getBoolean("wawona.pref.shakeToCloseEnabled", true))
         writeBoolOverride(settingsOverrides, "swipeBackToCloseEnabled", swipeBackOverride, prefs.getBoolean("wawona.pref.swipeBackToCloseEnabled", true))
+        val withEnv = EnvironmentOverrides.withMachineEnv(base, machineEnvironment)
+        val runtimeOverrides = JSONObject(withEnv.runtimeOverrides.toString())
         onSave(
             base.copy(
                 name = trimmedName,
@@ -947,6 +960,7 @@ private fun MachineEditorSheet(
                 nativeLauncher = nativeLauncher,
                 remoteCommand = remoteCommand.trim(),
                 settingsOverrides = settingsOverrides,
+                runtimeOverrides = runtimeOverrides,
                 vmSettings = base.vmSettings.copy(
                     vmIdentifier = vmIdentifier.trim(),
                     vsockPort = vmVsockPort.trim(),
@@ -1218,6 +1232,94 @@ private fun MachineEditorSheet(
                         HorizontalDivider()
                         ToggleRow("Shake to Exit Machine", shakeToCloseOverride) { shakeToCloseOverride = it }
                         ToggleRow("Swipe Back to Exit Machine", swipeBackOverride) { swipeBackOverride = it }
+                        HorizontalDivider()
+                        Text(
+                            "Env Vars (this machine)",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            if (machineEnvironment.isEmpty())
+                                "Inherit global (Settings → Env Vars). Add overrides for this machine only."
+                            else
+                                "${machineEnvironment.size} machine override(s). Machine wins over global.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        machineEnvironment.toList().sortedBy { it.first }.forEach { (envName, entry) ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(envName, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+                                    Text(
+                                        if (entry.action == "unset") "(unset)" else (entry.value ?: ""),
+                                        fontFamily = FontFamily.Monospace,
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
+                                TextButton(onClick = {
+                                    machineEnvIsNew = false
+                                    machineEnvEditName = envName
+                                    machineEnvEditValue = entry.value ?: ""
+                                    showMachineEnvEditor = true
+                                }) { Text("Edit") }
+                                TextButton(onClick = {
+                                    machineEnvironment = machineEnvironment.toMutableMap().also { it.remove(envName) }
+                                }) { Text("Reset") }
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = {
+                                machineEnvIsNew = true
+                                machineEnvEditName = ""
+                                machineEnvEditValue = ""
+                                showMachineEnvEditor = true
+                            }) { Text("New") }
+                            if (machineEnvironment.isNotEmpty()) {
+                                TextButton(onClick = { machineEnvironment = mutableMapOf() }) {
+                                    Text("Clear all")
+                                }
+                            }
+                        }
+                        if (showMachineEnvEditor) {
+                            AlertDialog(
+                                onDismissRequest = { showMachineEnvEditor = false },
+                                title = { Text(if (machineEnvIsNew) "New Variable" else "Edit Variable") },
+                                text = {
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        OutlinedTextField(
+                                            value = machineEnvEditName,
+                                            onValueChange = { machineEnvEditName = it },
+                                            label = { Text("Name") },
+                                            enabled = machineEnvIsNew,
+                                            singleLine = true,
+                                        )
+                                        OutlinedTextField(
+                                            value = machineEnvEditValue,
+                                            onValueChange = { machineEnvEditValue = it },
+                                            label = { Text("Value") },
+                                            singleLine = true,
+                                        )
+                                    }
+                                },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        val n = machineEnvEditName.trim()
+                                        if (n.isNotEmpty()) {
+                                            machineEnvironment = machineEnvironment.toMutableMap().also {
+                                                it[n] = EnvironmentOverrides.Entry.set(machineEnvEditValue)
+                                            }
+                                        }
+                                        showMachineEnvEditor = false
+                                    }) { Text("Save") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showMachineEnvEditor = false }) { Text("Cancel") }
+                                },
+                            )
+                        }
                     }
 
                     if (type == MachineType.VM) {

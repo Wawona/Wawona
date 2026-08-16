@@ -150,6 +150,7 @@ public enum GlobalSettingsSectionID: String, Sendable, CaseIterable, Hashable {
     case input
     case graphics
     case connection
+    case environment
     case localShell
     /// iPhone/iPad send-side companion documents (WatchConnectivity). Not a watchOS catalog twin.
     case appleWatch
@@ -165,6 +166,7 @@ public enum GlobalSettingsSectionID: String, Sendable, CaseIterable, Hashable {
         case .input: return "Input"
         case .graphics: return "Graphics"
         case .connection: return "Connection"
+        case .environment: return "Env Vars"
         case .localShell: return "Local Shell"
         case .appleWatch: return "Apple Watch"
         case .advanced: return "Advanced"
@@ -181,6 +183,7 @@ public enum GlobalSettingsSectionID: String, Sendable, CaseIterable, Hashable {
         case .input: return "hand.tap"
         case .graphics: return "cpu"
         case .connection: return "network"
+        case .environment: return "list.bullet.rectangle"
         case .localShell: return "terminal"
         case .appleWatch: return "applewatch"
         case .advanced: return "gearshape.2"
@@ -208,6 +211,7 @@ public enum GlobalSettingsFieldID: String, Sendable, CaseIterable {
     case dmabufEnabled
     case waylandDisplay
     case defaultWaylandClient
+    case environmentTable
     case waypipeByDefault
     case waypipeCompress
     case waypipeVideo
@@ -251,32 +255,32 @@ public struct GlobalSettingsCatalog: Sendable {
         switch host {
         case .macOS:
             return [
-                .display, .input, .graphics, .connection, .localShell,
+                .display, .input, .graphics, .connection, .environment, .localShell,
                 .advanced, .desktop, .waypipe, .ssh, .about,
             ]
         case .iOS:
             return [
-                .display, .input, .graphics, .connection, .localShell,
+                .display, .input, .graphics, .connection, .environment, .localShell,
                 .appleWatch, .advanced, .waypipe, .ssh, .about,
             ]
         case .visionOS:
             return [
-                .display, .input, .graphics, .connection, .localShell,
+                .display, .input, .graphics, .connection, .environment, .localShell,
                 .advanced, .waypipe, .ssh, .about,
             ]
         case .android, .linux:
             return [
-                .display, .input, .graphics, .connection,
+                .display, .input, .graphics, .connection, .environment,
                 .advanced, .waypipe, .ssh, .about,
             ]
         case .tvOS:
             return [
-                .display, .input, .graphics, .connection,
+                .display, .input, .graphics, .connection, .environment,
                 .advanced, .waypipe, .ssh, .about,
             ]
         case .watchOS:
             return [
-                .display, .input, .graphics, .connection,
+                .display, .input, .graphics, .connection, .environment,
                 .waypipe, .ssh, .advanced, .about,
             ]
         }
@@ -319,6 +323,8 @@ public struct GlobalSettingsCatalog: Sendable {
             return fields
         case .connection:
             return [.waylandDisplay, .defaultWaylandClient]
+        case .environment:
+            return [.environmentTable]
         case .localShell:
             return []
         case .appleWatch:

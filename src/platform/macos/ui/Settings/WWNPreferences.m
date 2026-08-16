@@ -136,6 +136,9 @@
     : NSViewController <NSTableViewDataSource, NSTableViewDelegate>
 @property(nonatomic, strong) WWNPreferencesSection *section;
 @property(nonatomic, strong) NSTableView *tableView;
+@property(nonatomic, strong) NSScrollView *scrollView;
+@property(nonatomic, strong) NSView *environmentHostView;
+- (void)reloadForCurrentSection;
 @end
 #endif
 
@@ -585,7 +588,8 @@ static UIImage *WWNAboutLogo(void) {
   ];
   [sects addObject:graphics];
 
-  // CONNECTION
+  // CONNECTION — networking only. Wayland socket / XDG / TERM live in
+  // Environment Variables (#157), not duplicated here.
   WWNPreferencesSection *connection = [[WWNPreferencesSection alloc] init];
   connection.title = @"Connection";
   connection.accessibilityIdentifier = @"wwn.settings.connection";
@@ -596,38 +600,39 @@ static UIImage *WWNAboutLogo(void) {
   connection.iconColor = [NSColor systemOrangeColor];
 #endif
 
-  // Build dynamic environment variable values
-  NSString *socketDir = [self getSocketPath];
-  NSDictionary *runtimeState = [self runtimeStateSnapshot];
-  NSString *socketName = runtimeState[@"waylandDisplay"];
-  if (![socketName isKindOfClass:[NSString class]] || socketName.length == 0) {
-    socketName = [[WWNCompositorBridge sharedBridge] socketName];
-  }
-  if (!socketName || socketName.length == 0)
-    socketName = @"wayland-0";
-  NSString *socketFullPath =
-      [socketDir stringByAppendingPathComponent:socketName];
-
-  NSString *envSnippet = [NSString
-      stringWithFormat:
-          @"export XDG_RUNTIME_DIR=\"%@\"\nexport WAYLAND_DISPLAY=\"%@\"",
-          socketDir, socketName];
-
   connection.items = @[
-    ITEM(@"XDG_RUNTIME_DIR", @"XDGRuntimeDir", WSettingInfo, socketDir,
-         @"Runtime directory where the Wayland socket lives. "
-         @"Set this in your shell to connect clients."),
-    ITEM(@"WAYLAND_DISPLAY", @"WaylandDisplay", WSettingInfo, socketName,
-         @"Socket name clients connect to (e.g. wayland-0)."),
-    ITEM(@"Socket Path", @"WaylandSocketPath", WSettingInfo, socketFullPath,
-         @"Full path to the Wayland socket."),
-    ITEM(@"Shell Setup", @"WaylandShellSetup", WSettingInfo, envSnippet,
-         @"Copy and paste into your terminal to connect "
-         @"Wayland clients to Wawona."),
     ITEM(@"TCP Port", @"TCPListenerPort", WSettingInfo, @6000,
-         @"Port for TCP listener.")
+         @"Port for TCP listener. Wayland socket variables "
+         @"(XDG_RUNTIME_DIR, WAYLAND_DISPLAY, …) are under "
+         @"Environment Variables."),
   ];
   [sects addObject:connection];
+
+  // ENVIRONMENT VARIABLES (#157) — single inventory + edit/reset surface.
+  {
+    WWNPreferencesSection *environment = [[WWNPreferencesSection alloc] init];
+    environment.title = @"Environment Variables";
+    environment.accessibilityIdentifier = @"wwn.settings.environment";
+    environment.icon = @"list.bullet.rectangle";
+#if TARGET_OS_IPHONE
+    environment.iconColor = [UIColor systemTealColor];
+#else
+    environment.iconColor = [NSColor systemTealColor];
+#endif
+    // Detail pane embeds the full SwiftUI table (see showSection / selectSection).
+    // Keep a fallback button for hosts that cannot embed yet.
+    WWNSettingItem *manageBtn =
+        ITEM(@"Open Environment Variables…", @"EnvironmentManage", WSettingButton,
+             nil,
+             @"View every variable Wawona injects. Edit, add, or Reset each "
+             @"row to its catalog default. Per-machine overrides live in "
+             @"Edit Machine → Environment Variables.");
+    manageBtn.actionBlock = ^{
+      [weakSelf openEnvironmentVariablesManager];
+    };
+    environment.items = @[ manageBtn ];
+    [sects addObject:environment];
+  }
 
   // LOCAL SHELL (WWN-ROOTFS — all platforms via WWNRootfsProvider)
   if ([WWNRootfsProvider capabilities] & WWNRootfsCapabilitySettings) {
@@ -3699,6 +3704,10 @@ static UIImage *WWNAboutLogo(void) {
     if ([section.title caseInsensitiveCompare:title] == NSOrderedSame) {
       self.activeSection = section;
       self.title = section.title;
+      if ([section.title isEqualToString:@"Environment Variables"]) {
+        // Show the full inventory inline instead of a button-only stub.
+        [self openEnvironmentVariablesManager];
+      }
       if (self.isViewLoaded) {
         [self.tableView reloadData];
       }
@@ -4559,7 +4568,7 @@ static UIImage *WWNAboutLogo(void) {
 
 - (void)showSection:(NSInteger)idx {
   self.content.section = self.sections[idx];
-  [self.content.tableView reloadData];
+  [self.content reloadForCurrentSection];
 }
 
 - (void)selectSectionWithTitle:(NSString *)title {
@@ -4922,6 +4931,35 @@ static UIImage *WWNAboutLogo(void) {
     [pb clearContents];
     [pb setString:rootfs[@"home"] ?: @"" forType:NSPasteboardTypeString];
   }
+}
+
+- (void)openEnvironmentVariablesManager {
+  // SwiftUI Environment Variables GUI (#157) — WWNEnvironmentSettingsPresenter in WawonaUI.
+  Class presenter = NSClassFromString(@"WWNEnvironmentSettingsPresenter");
+  if (presenter && [presenter respondsToSelector:@selector(presentFromHost:)]) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+    [presenter performSelector:@selector(presentFromHost:) withObject:self];
+#pragma clang diagnostic pop
+    return;
+  }
+#if TARGET_OS_IPHONE
+  UIAlertController *alert = [UIAlertController
+      alertControllerWithTitle:@"Environment Variables"
+                       message:@"Open Machine Settings → Environment, or rebuild "
+                               @"with WawonaUI linked."
+                preferredStyle:UIAlertControllerStyleAlert];
+  [alert addAction:[UIAlertAction actionWithTitle:@"OK"
+                                            style:UIAlertActionStyleDefault
+                                          handler:nil]];
+  [self presentViewController:alert animated:YES completion:nil];
+#else
+  NSAlert *alert = [[NSAlert alloc] init];
+  alert.messageText = @"Environment Variables";
+  alert.informativeText =
+      @"Open Machine Settings → Environment, or rebuild with WawonaUI linked.";
+  [alert runModal];
+#endif
 }
 
 - (void)openLocalShellInFinder {
@@ -5590,6 +5628,7 @@ static UIImage *WWNAboutLogo(void) {
   NSScrollView *sv = [[NSScrollView alloc] initWithFrame:v.bounds];
   sv.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
   sv.drawsBackground = NO; // Fix Unified Background
+  self.scrollView = sv;
 
   self.tableView = [[NSTableView alloc] initWithFrame:sv.bounds];
   self.tableView.dataSource = self;
@@ -5611,6 +5650,49 @@ static UIImage *WWNAboutLogo(void) {
   sv.documentView = self.tableView;
   sv.hasHorizontalScroller = NO; // No horizontal scroll - content should fit
   [v addSubview:sv];
+}
+
+- (void)reloadForCurrentSection {
+  BOOL isEnvironment =
+      [self.section.title isEqualToString:@"Environment Variables"];
+  if (isEnvironment) {
+    [self embedEnvironmentVariablesIfNeeded];
+    self.scrollView.hidden = YES;
+    self.environmentHostView.hidden = NO;
+    return;
+  }
+  if (self.environmentHostView) {
+    self.environmentHostView.hidden = YES;
+  }
+  self.scrollView.hidden = NO;
+  [self.tableView reloadData];
+}
+
+- (void)embedEnvironmentVariablesIfNeeded {
+  if (self.environmentHostView) {
+    self.environmentHostView.hidden = NO;
+    return;
+  }
+  Class presenter = NSClassFromString(@"WWNEnvironmentSettingsPresenter");
+  if (!presenter || ![presenter respondsToSelector:@selector(macOSHostingView)]) {
+    self.scrollView.hidden = NO;
+    [self.tableView reloadData];
+    return;
+  }
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+  NSView *host = [presenter performSelector:@selector(macOSHostingView)];
+#pragma clang diagnostic pop
+  if (![host isKindOfClass:[NSView class]]) {
+    self.scrollView.hidden = NO;
+    [self.tableView reloadData];
+    return;
+  }
+  host.frame = self.view.bounds;
+  host.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  [self.view addSubview:host];
+  self.environmentHostView = host;
+  self.scrollView.hidden = YES;
 }
 
 // Use custom row view for separators

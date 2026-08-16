@@ -54,17 +54,12 @@ enum WatchMachineSessionBridge {
     }
 
     static func disconnect(profile: MachineProfile) {
+        _ = profile
         WWNStartupLogger.shared().endCapture()
-        let bridge = WWNWatchCompositorBridge.shared()
-        switch profile.type {
-        case .native:
-            bridge.stopClient()
-        case .sshWaypipe, .sshTerminal:
-            bridge.stopWaypipe()
-        default:
-            bridge.stopClient()
-            bridge.stopWaypipe()
-        }
+        // Full compositor teardown. stopClient() alone leaves the mini
+        // server with a pthread_cancel'd Wayland connection; the next
+        // Start reconnects to a half-dead display and stays black.
+        WWNWatchCompositorBridge.shared().stop()
     }
 
     /// Mini server advertises this as wl_output.mode and xdg_toplevel configure.

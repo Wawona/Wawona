@@ -1,6 +1,7 @@
 #import "WWNMachineSessionBridge.h"
 #import "../Settings/WWNWaypipeRunner.h"
 #import "../Settings/WWNPreferencesManager.h"
+#import "../Settings/WWNEnvironmentOverrides.h"
 #import "WWNVirtualMachineRunner.h"
 #import "WWNContainerRunner.h"
 #import "WWNPlatformCapabilities.h"
@@ -115,6 +116,18 @@
   [WWNMachineProfileStore applyMachineToRuntimePrefs:profile];
   [WWNMachineProfileStore setActiveMachineId:profile.machineId];
   WWNSettings_ApplyGraphicsDriverSelection();
+  // Re-apply env overrides after graphics setenv so user values win (#157).
+  {
+    NSDictionary *machineEnv = nil;
+    id runtime = profile.runtimeOverrides;
+    if ([runtime isKindOfClass:[NSDictionary class]]) {
+      id env = runtime[@"environment"];
+      if ([env isKindOfClass:[NSDictionary class]]) {
+        machineEnv = env;
+      }
+    }
+    WWNEnvironmentOverridesApply(machineEnv);
+  }
 
   if ([self profileUsesNativeCompositorClient:profile]) {
     NSString *clientId = [self nativeClientIdForProfile:profile];
