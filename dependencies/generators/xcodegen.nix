@@ -168,6 +168,13 @@ let
     inherit lib deps;
     forceLoadWeston = true;
   };
+  # macOS: compositor-macos keeps helpers/protocols in libweston-compositor-13.a;
+  # only need cairo/pango -L/-l from toytoolkit, not -lweston-13.
+  westonToytoolkitLdflagsMacos = deps: import westonToytoolkitLdflagsNix {
+    inherit lib deps;
+    forceLoadWeston = true;
+    linkWestonLib = false;
+  };
   # ios.nix already compiles weston-simple-shm into libweston-13.a; skip the
   # standalone libweston_simple_shm.a or the linker sees duplicate symbols.
   westonToytoolkitLdflagsAppleMobile = deps: import westonToytoolkitLdflagsNix {
@@ -2211,20 +2218,16 @@ ICDJSON
               fi
 
               # Freedesktop catalog for fuzzel Mod+D (issue #78).
-              # Mirror under both Contents/Resources/share (primary for Xcode)
-              # and the app-root share/ sibling (nix macos.nix layout) so
-              # WWNWawonaShareRoot's applications/ preference always hits.
+              # macOS .app may only have Contents/ at the bundle root —
+              # app-root share/ makes codesign fail with "unsealed contents".
+              # WWNWawonaShareRoot already prefers Contents/Resources/share
+              # when it contains applications/.
               APPS_CATALOG="${applicationsCatalog}"
               if [ -d "$APPS_CATALOG/share/applications" ]; then
                 mkdir -p "$RES_DEST/share/applications" "$RES_DEST/share/icons"
                 cp -R "$APPS_CATALOG/share/applications/." "$RES_DEST/share/applications/"
                 cp -R "$APPS_CATALOG/share/icons/hicolor" "$RES_DEST/share/icons/"
                 chmod -R u+w "$RES_DEST/share/applications" "$RES_DEST/share/icons/hicolor"
-                APP_SHARE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME/share"
-                mkdir -p "$APP_SHARE/applications" "$APP_SHARE/icons"
-                cp -R "$APPS_CATALOG/share/applications/." "$APP_SHARE/applications/"
-                cp -R "$APPS_CATALOG/share/icons/hicolor" "$APP_SHARE/icons/"
-                chmod -R u+w "$APP_SHARE/applications" "$APP_SHARE/icons/hicolor"
                 echo "Bundled fuzzel applications catalog"
               fi
 
@@ -2404,18 +2407,20 @@ ICDJSON
               "-L${strip (macosDeps.libwayland or null)}/lib"
               "-L${strip (macosDeps.xkbcommon or null)}/lib"
               "-L${strip (macosDeps.pixman or null)}/lib"
+              "-L${strip (macosDeps.epoll-shim or null)}/lib"
               "-L${pkgs.openssl.out}/lib"
               "-lxkbcommon"
               "-lwayland-client"
               # -lwayland-server is provided by westonCompositorLdflags below;
               # listing it here too triggers "ignoring duplicate libraries".
               "-lpixman-1"
+              "-lepoll-shim"
               "-lssl"
               "-lcrypto"
               "-lz"
               derivedRustLib
             ] ++ (ilandGlLdflags { deps = macosDeps; simulator = false; })
-              ++ (westonToytoolkitLdflags macosDeps)
+              ++ (westonToytoolkitLdflagsMacos macosDeps)
               ++ (westonCompositorLdflags macosDeps)
               ++ (wasmLdflags macosDeps)
               ++ finalCxxLdflags;

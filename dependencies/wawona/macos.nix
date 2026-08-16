@@ -57,6 +57,12 @@ let
     inherit lib deps;
     forceLoadWeston = true;
   };
+  # Self-contained compositor-macos embeds helpers; skip -lweston-13.
+  westonToytoolkitLdflagsMacos = deps: import westonToytoolkitLdflagsNix {
+    inherit lib deps;
+    forceLoadWeston = true;
+    linkWestonLib = false;
+  };
   westonCompositorLdflags = deps: import westonCompositorLdflagsNix {
     inherit lib deps;
   };
@@ -82,7 +88,7 @@ let
   appleGlWestonLinkFlags =
     ilandGlLdflags { deps = effectiveNativeDeps; simulator = false; }
     ++ lib.optionals (effectiveNativeDeps ? "weston-compositor" && effectiveNativeDeps."weston-compositor" != null) (
-      (westonToytoolkitLdflags effectiveNativeDeps)
+      (westonToytoolkitLdflagsMacos effectiveNativeDeps)
       ++ (westonCompositorLdflags effectiveNativeDeps)
     );
   

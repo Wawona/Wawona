@@ -833,6 +833,7 @@
             libwayland = toolchains.buildForMacOS "libwayland" { };
             xkbcommon = toolchains.buildForMacOS "xkbcommon" { };
             pixman = toolchains.buildForMacOS "pixman" { };
+            "epoll-shim" = toolchains.buildForMacOS "epoll-shim" { };
             waypipe = toolchains.buildForMacOS "waypipe" { };
             sshpass = toolchains.buildForMacOS "sshpass" { };
             # wwn-ssh macOS backend: regular OpenSSH (ssh, ssh-keygen, scp, ...)
