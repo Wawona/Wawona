@@ -12,13 +12,21 @@ cross-compile for Apple/Android (no JIT, no `fork+exec` of external binaries, no
 `dlopen` of arbitrary code, sandbox-safe paths). Do **not** make one for
 pure-Nix packaging of already-portable software.
 
+Prefer **WASI / Wasm packages** for long-tail tools that do not need a native
+port: compile to `wasm32-wasip1` / `wasm32-wasip2`, ship as documents or registry
+artifacts for **Wawona Runtime** (`wwn-wasm`). See [`wasm-wasi.md`](./wasm-wasi.md).
+
 ## Existing repos (examples)
 
 - `wwn-toolchain` — shared cross toolchains (Apple + Android NDK), the hub.
 - `wwn-weston` — umbrella for Weston compositor + Weston clients on Apple/Android.
 - `wwn-waypipe` — waypipe with libssh2 (Apple mobile) / OpenSSH portable (Android) transports.
 - `wwn-fastfetch`, `wwn-neofetch`, `wwn-zsh` — App Store-compliant CLI ports.
-- `wwn-apt` — StoreKit-backed package manager for optional modules.
+- `wwn-wasm` — Wawona Runtime (WASI P1/P2). Optional software distribution path.
+- `wwn-containers` / `wwn-vms` — OCI containers and VMs (Machines kinds), distinct
+  from Wasm packages.
+
+**Removed:** `wwn-apt` (StoreKit / ODR “apt” module catalog). Do not revive it.
 
 ## Naming (authoritative)
 
@@ -41,7 +49,7 @@ Each `wwn-*` repo provides:
 3. `patches/` — upstream patches, one anchored file per concern, verifiable by a
    `verify-*-patches.py` anchor script (pattern used by `wwn-weston`).
 4. `README.md` — port plan: upstream version, compliance deltas, delivery mode
-   (native/nested/waypipe), current status.
+   (native/nested/waypipe/wasm), current status.
 
 ## Planned ports
 
@@ -49,8 +57,8 @@ Each `wwn-*` repo provides:
 `wwn-cosmic` (VM/UTM engine: vendored in `wwn-vms`, not a separate repo).
 Full ports are downstream; repos start as
 flake + `registryFragment` skeleton + port-plan README
-(tracked by `p29-wwn-ports-scaffold`). Their StoreKit catalog entries already
-exist in `wwn-apt` with `status: planned`.
+(tracked by `p29-wwn-ports-scaffold`). Delivery is **native bundle** and/or
+**Wasm package** — never StoreKit ODR via `apt`.
 
 ### Toolkit smoke (companion)
 
@@ -59,9 +67,9 @@ exist in `wwn-apt` with `status: planned`.
   ANGLE). Tracking: [#107](https://github.com/Wawona/Wawona/issues/107),
   plan mirror [`issues/sdl2-gfx-demo-port.md`](./issues/sdl2-gfx-demo-port.md).
   Complements `wwn-kmscube` (GLES/iland path).
-- `wwn-gtk` — GTK4 Wayland + `gtk4-demo` / `gtk4_demo_main` across the board
-  (Cairo/`wl_shm` first on tvOS/watchOS; GL only where `allowGpu`). Delivered
-  as a **`wwn-apt` optional module** (not core-bundled). Tracking:
+- `wwn-gtk` — GTK4 Wayland + `gtk4_demo` / `gtk4_demo_main` across the board
+  (Cairo/`wl_shm` first on tvOS/watchOS; GL only where `allowGpu`). Prefer
+  **core-bundled or Wasm** when size/compliance allow — not ODR. Tracking:
   [#109](https://github.com/Wawona/Wawona/issues/109), plan mirror
   [`issues/gtk4-demo-port.md`](./issues/gtk4-demo-port.md). Shared foundation
   for `wwn-gtkgreet` / `wwn-gtklock` / `wwn-gnome`.

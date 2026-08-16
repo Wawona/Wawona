@@ -62,6 +62,10 @@ public enum PlatformCapabilities: Sendable {
     public static var allowsVirtualMachine: Bool { virtualMachineGate.isAvailable }
 
     /// Same platform set as VMs — planned, not shipping yet.
+    ///
+    /// iOS / iPadOS: OCI image pull is userspace (`wwn-oci`); execution is
+    /// container-in-VM via jitless UTM-SE–class interpreter (`wwn-vms`), not
+    /// Apple Containerization.framework and not Wasm Runtime packages.
     public static var containerGate: CapabilityGate {
         #if os(tvOS) || os(watchOS) || os(visionOS)
         return .forbidden(reason: "Container machine kinds are not offered on tvOS/watchOS/visionOS")

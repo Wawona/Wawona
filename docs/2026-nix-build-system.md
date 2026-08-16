@@ -59,7 +59,8 @@ Current flake inputs (see `flake.nix`; do not invent extra `wwn-*` edges):
 | `wwn-anowaW` | Android Desktop / LockScreen bridge |
 | `wwn-vms`, `wwn-containers` | VM and container machine types |
 
-`wwn-apt` is **not** a Wawona flake input. Do not document StoreKit `apt install`
+`wwn-apt` was **removed**. Do not document StoreKit `apt install` as a delivery
+path; use Wawona Runtime Wasm packages ([`wasm-wasi.md`](./wasm-wasi.md)).
 as shipping. Canonical DAG: [`wwn-repo-dag.md`](./wwn-repo-dag.md).
 
 ### Rust toolchain overlay

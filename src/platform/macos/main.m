@@ -25,7 +25,6 @@
 #import "../../util/WWNLog.h"
 
 // Settings (for Vulkan driver configuration)
-#import "./ui/Modules/WWNModuleManager.h"
 #import "./ui/Settings/WWNPreferencesManager.h"
 #import "./ui/Settings/WWNWaypipeRunner.h"
 #import "./ui/Machines/WWNMachineProfileStore.h"
@@ -122,9 +121,6 @@ extern void wawona_window_info_free(CWindowInfo *info);
 
   // 4. Hardware input: gamepads, GCMouse, GCKeyboard presence.
   [[WWNGameControllerManager sharedManager] start];
-
-  // 5. wwn-apt module manager: catalog + installed.json + apt IPC socket.
-  [[WWNModuleManager sharedManager] start];
 
   WWNLog("MAIN", @"WWN iOS initialization complete (waiting for Scene "
                  @"connection)");
@@ -538,8 +534,6 @@ static void setup_signal_sources(void) {
   if (g_service_host_mode) {
     return;
   }
-  // wwn-apt module manager: catalog + installed.json + apt IPC socket.
-  [[WWNModuleManager sharedManager] start];
   WWNPreferencesManager *prefs = [WWNPreferencesManager sharedManager];
 
   if (g_cli_backend.length > 0) {

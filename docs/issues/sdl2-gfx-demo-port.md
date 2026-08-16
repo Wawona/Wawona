@@ -76,7 +76,7 @@ zsh / Machines launcher
 - [ ] Confirm upstream demo entry (`test/testgfx.c` or equivalent in SDL2_gfx 1.0.4)
 - [ ] Pin SDL2 + SDL2_gfx versions; document Wayland video + software renderer configure flags
 - [ ] Map App Store constraints via wwn-mcp compliance knowledge
-- [ ] Decide catalog class: **core bundled smoke** vs `wwn-apt` optional (default proposal: core bundled if size allows)
+- [ ] Decide catalog class: **core bundled smoke** vs Wasm package (default proposal: core bundled if size allows)
 - [ ] Keep [#107](https://github.com/Wawona/Wawona/issues/107) and this file in sync
 
 ### Phase 1 — Scaffold `wwn-sdl2`
@@ -124,7 +124,7 @@ zsh / Machines launcher
 | Risk | Mitigation |
 |------|------------|
 | SDL2 pulls UIKit/AppKit video by default on Apple | Configure/patch Wayland-only |
-| Archive size | Measure; demote to `wwn-apt` ODR if needed |
+| Archive size | Measure; demote to Wasm Runtime package if needed |
 | `exit()` kills host on mobile | In-process exit shim (kmscube/fastfetch pattern) |
 | Accidental ANGLE on tvOS/watchOS | CI link-flag assert + deps gating |
 | Audio/joystick subsystems | Disable until needed (#46 is separate) |

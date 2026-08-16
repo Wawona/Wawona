@@ -45,7 +45,8 @@ onto the site. Everything else stays in GitHub.
 | [ios-local-shell/ARCHITECTURE.md](ios-local-shell/ARCHITECTURE.md) | Process model |
 | [ios-local-shell/APP-STORE-COMPLIANCE.md](ios-local-shell/APP-STORE-COMPLIANCE.md) | Guideline mapping |
 
-`wwn-apt` is not a Wawona flake input. Do not document Debian/`apt install` as shipping.
+`wwn-apt` was removed. Optional long-tail software is **Wawona Runtime** Wasm
+packages ([`wasm-wasi.md`](./wasm-wasi.md)), not StoreKit/`apt` Mach-O modules.
 
 ---
 

@@ -4,7 +4,7 @@
 
 - Open — tracking issue [#109](https://github.com/Wawona/Wawona/issues/109)
 - Class: toolkit-smoke companion (Tier 6 on [#77](https://github.com/Wawona/Wawona/issues/77))
-- Delivery: **`wwn-apt` optional module** (`planned` → `approved`)
+- Delivery: **core-bundled or Wasm package** (`planned` → ship)
 - Repo (to scaffold): [`wwn-gtk`](https://github.com/Wawona/wwn-gtk)
 
 Keep this file synchronized with the GitHub issue body when phases or
@@ -31,7 +31,7 @@ and GNOME — complementary to the SDL2 toolkit smoke in
 |------|----------------|
 | Toolkit smoke for GTK family | Exercises GDK Wayland path used by greeters, GNOME clients, XFCE |
 | Shared foundation | #75 / #101 / #102 must not each re-vendor GTK4 |
-| Matrix rehearsal | Same in-process `*_main` + apt-module pattern as foot/neovim; sibling to #107 |
+| Matrix rehearsal | Same in-process `*_main` pattern as foot/neovim; sibling to #107 |
 | Constrained Apple targets | Cairo/`wl_shm` path keeps tvOS/watchOS in scope without ANGLE |
 
 ## Delivery model
@@ -39,7 +39,7 @@ and GNOME — complementary to the SDL2 toolkit smoke in
 | Platform | Artifact | Launch | Renderer |
 |----------|----------|--------|----------|
 | **macOS** | `bin/gtk4-demo` (+ archive optional) | NSTask from Resources **or** in-process | Wayland; GL demos OK |
-| **iOS / iPadOS / visionOS** | `libgtk4_demo.a` + `gtk4_demo_main` | in-process after apt install | Cairo/SHM first; GL behind `allowGpu` |
+| **iOS / iPadOS / visionOS** | `libgtk4_demo.a` + `gtk4_demo_main` | in-process after install / launch | Cairo/SHM first; GL behind `allowGpu` |
 | **tvOS / watchOS** | same archive | in-process | **Cairo/SHM only** — never ANGLE/MoltenVK/IOKit |
 | **Android** | `libgtk4_demo_bin.so` / `libgtk4_demo.so` | exec or in-process | SHM first; GLES optional |
 | **Linux** | nixpkgs / host `gtk4-demo` | CI / compat-matrix baseline | reference |
@@ -55,7 +55,7 @@ and GNOME — complementary to the SDL2 toolkit smoke in
 ## Architecture
 
 ```
-zsh / Machines (after apt install gtk4-demo)
+zsh / Machines (after install / launch gtk4-demo)
   → wawona_dispatch_inprocess("gtk4-demo")   # Apple mobile
   → gtk4_demo_main(argc, argv)
        → GTK4 (GDK Wayland)
@@ -80,14 +80,14 @@ zsh / Machines (after apt install gtk4-demo)
 - [ ] Pin GTK4 version from nixpkgs; document Wayland-only configure flags
 - [ ] Map demo entry (`demos/gtk-demo` → `gtk4_demo_main`)
 - [ ] Inventory missing leaf libs (gdk-pixbuf, graphene, epoxy, …)
-- [ ] Catalog class locked: **`wwn-apt` optional** (not core-bundled)
+- [ ] Delivery locked: core-bundled or Wasm (no StoreKit ODR)
 - [ ] Keep [#109](https://github.com/Wawona/Wawona/issues/109) and this file in sync
 
 ### Phase 1 — Scaffold `wwn-gtk`
 
 - [ ] New repo: `flake.nix`, `registryFragment.{gtk4,gtk4-demo}`, per-platform stubs
 - [ ] README port plan + license notes
-- [ ] `wwn-apt/catalog/modules/gtk4-demo.yaml` with `status: planned`
+- [ ] Port plan README + registryFragment (`status: planned`)
 - [ ] Update catalog allowlists / validate scripts
 
 ### Phase 2 — Toolchain leaf libs + GTK4 cross
@@ -110,7 +110,7 @@ zsh / Machines (after apt install gtk4-demo)
 - [ ] Flake input `wwn-gtk` + merge `registryFragment`
 - [ ] Gate in `mobile-platform-deps.nix` / `xcodegen.nix` only when module linked
 - [ ] Dispatch: `"gtk4-demo" → gtk4_demo_main`; inject `GDK_BACKEND=wayland`
-- [ ] Machines/Android: after `apt install` — **not** permanent core `kBundledClients`
+- [ ] Machines/Android: after install — **not** permanent core `kBundledClients`
 
 ### Phase 5 — Smoke & capability lane
 
@@ -118,10 +118,10 @@ zsh / Machines (after apt install gtk4-demo)
 - [ ] agent-device iOS smoke once UI entry exists
 - [ ] Rows in `docs/testing/everywhere-matrix.md` + compat-matrix script
 
-### Phase 6 — CI, docs, apt flip, lock
+### Phase 6 — CI, docs, ship
 
 - [ ] `verify-gtk-*-patches.py` + sample `nix build` CI
-- [ ] Flip `wwn-apt` `planned` → `approved`
+- [ ] Ship as bundle or Wasm package when green
 - [ ] Update porting-convention (sibling to #107), toolkit-de-compat, universal-client-strategy, wwn-repos-catalog
 - [ ] Bump `flake.lock`; wwn-mcp reindex; note on #75
 

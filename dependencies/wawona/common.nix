@@ -91,9 +91,6 @@ rec {
     # Machine session thumbnails (referenced by WWNCompositorBridge.m + view model).
     "src/platform/macos/ui/Machines/WWNMachineThumbnailStore.m"
     "src/platform/macos/ui/Machines/WWNMachineThumbnailStore.h"
-    # Module manager (referenced by main.m; defines WWNModuleStore(+Bridge) inline).
-    "src/platform/macos/ui/Modules/WWNModuleManager.m"
-    "src/platform/macos/ui/Modules/WWNModuleManager.h"
     "src/platform/macos/ui/Settings/WWNPreferences.m"
     "src/platform/macos/ui/Settings/WWNPreferences.h"
     "src/platform/macos/ui/Settings/WWNPreferencesManager.m"

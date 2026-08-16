@@ -90,6 +90,6 @@ Operational runbook: [`flakehub-cache.md`](./flakehub-cache.md).
 
 ## Sizing rules of thumb
 
-- Keep the base app to core bundled clients only; ship everything else via
-  `wwn-apt` (ODR/StoreKit) or waypipe. Smaller base → faster review + install.
+- Keep the base app to core bundled clients only; ship long-tail via
+  Wawona Runtime Wasm packages or waypipe. Smaller base → faster review + install.
 - Prefer `--no-link --print-out-paths` in CI scripts to avoid gcroot churn.

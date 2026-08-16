@@ -3,9 +3,35 @@
 Milestone: [Support WASI P1 P2 WASM!](https://github.com/Wawona/Wawona/milestone/2)
 
 Wawona runs **native in-process ports** first (zsh, uutils, weston-terminal, foot, …).
-WASM is the long-tail escape hatch: compile a tool to WASI, drop the `.wasm` on
-the device, run it. Apple does **not** sign the module. The interpreter is
-linked into the reviewed app binary.
+**Wawona Runtime** (`wwn-wasm`) is the long-tail path: compile to WASI, install or
+drop a `.wasm`, run it inside the reviewed interpreter. Apple does **not** sign
+the module. There is **no** StoreKit/`apt` Mach-O module catalog (`wwn-apt` was
+removed).
+
+Wasm packages are **not** OCI Linux containers (`wwn-containers`) and **not**
+VMs (`wwn-vms`). Same app process, sandboxed Runtime only.
+
+## Delivery (two ingest paths)
+
+```text
+Files.app / SCP / File Sharing     bundled Wasm package client (OCI preferred)
+        │                                      │
+        └──────────────┬───────────────────────┘
+                       ▼
+              local package / Documents store
+                       ▼
+                 Wawona Runtime (WASI P1/P2)
+                       ▼
+              host WIT (FS, sockets, Wayland, …)
+```
+
+| Path | Who |
+|---|---|
+| Drop `foo.wasm` under Wawona Documents | Developers / power users (rootshell-style) |
+| Package client install/search | Everyday users; registry packages as Runtime **data** |
+
+Do not brand this as an “App Store” for iOS apps — it is a **runtime package
+registry**. Prefer OCI artifacts + a thin client over inventing a bespoke protocol.
 
 ## App Store
 
@@ -15,6 +41,7 @@ linked into the reviewed app binary.
 | Pulley **interpreter** on iOS / iPadOS / tvOS / visionOS | Cranelift native / `MAP_JIT` on Apple mobile |
 | Sandbox FS preopen (HOME / Documents) | `..` escape, `dlopen` of `.wasm` |
 | POSIX sockets + host Wayland fd-bridge | Shipping WASM as the only way to run a port we already have natively |
+| Registry packages as Wasm **data** for the Runtime | Creating a storefront for other iOS apps |
 
 macOS may use Cranelift ([`wawona-macos-no-appstore`](../.cursor/rules/wawona-macos-no-appstore.mdc)).
 watchOS keeps the runtime **off** (size), same as coreutils.

@@ -23,7 +23,7 @@ L0  wwn-toolchain     builders + substrate libs (NO wwn-* flake inputs)
 L1  wwn-iland         complete graphics stack fragment (→ toolchain only)
 L2  wwn-kmscube       GL acceptance client (→ toolchain + iland)
 L3  wwn-weston        nested compositor (→ toolchain + iland + kmscube; ilandSrc=source only)
-L3′ wwn-waypipe, wwn-anowaW, wwn-vms, wwn-apt, wwn-ssh,
+L3′ wwn-waypipe, wwn-anowaW, wwn-vms, wwn-containers, wwn-ssh,
     wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-foot, wwn-wasm, …  (→ toolchain; peers only downward)
 L4  Wawona            merges all fragments; never an input of L0–L3
 ```
@@ -49,7 +49,7 @@ flowchart BT
 | **L1** | `wwn-iland` | Userland KMS/DRM/GBM/EGL/udev shims + Mode A present callback + Mode B baremetal; `iland`, `iland-baremetal`; **ANGLE and SwiftShader**; MoltenVK/KosmicKrisp packaging; `iland-cpu` CPU-present helpers; DriverSelector contract |
 | **L2** | `wwn-kmscube` | `kmscube`, `vkcube`, `opengl-cube`, GL acceptance clients |
 | **L3** | `wwn-weston` | Nested compositor + weston-simple-egl + toytoolkit clients |
-| **L3′** | `wwn-waypipe`, `wwn-anowaW`, `wwn-vms`, `wwn-apt`, `wwn-ssh`, `wwn-fastfetch`, `wwn-phoon-rs`, `wwn-neovim`, `wwn-foot`, `wwn-wasm`, … | Proxy / Android present / VM engine / package tooling / in-process shell-tool ports (`*_main` C ABI, force-loaded static libs); `wwn-wasm` is the WASI P1/P2 interpreter |
+| **L3′** | `wwn-waypipe`, `wwn-anowaW`, `wwn-vms`, `wwn-containers`, `wwn-ssh`, `wwn-fastfetch`, `wwn-phoon-rs`, `wwn-neovim`, `wwn-foot`, `wwn-wasm`, … | Proxy / Android present / VM engine / OCI containers / in-process shell-tool ports (`*_main` C ABI, force-loaded static libs); `wwn-wasm` is the WASI P1/P2 **Wawona Runtime** (optional software = Wasm packages, not StoreKit ODR) |
 | **L4** | `Wawona` | App integration, Settings, presenters, SIP/Desktop, Android JNI, CI, docs, `flake.lock` hub |
 
 ## Hard rules

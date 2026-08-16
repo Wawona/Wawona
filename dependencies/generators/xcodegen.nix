@@ -1467,7 +1467,6 @@ ICDJSON
             excludes = commonExcludes ++ [ "WWNSipStatus.m" "WWNSipStatus.h" ];
           }
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
-          { path = "src/platform/macos/ui/Modules"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
           # Required-reason API manifest (UserDefaults / boot time / file timestamps).
           # Missing this makes ASC accept the IPA then discard the build (never listed).
@@ -1660,7 +1659,6 @@ ICDJSON
             excludes = commonExcludes ++ [ "WWNSipStatus.m" "WWNSipStatus.h" ];
           }
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
-          { path = "src/platform/macos/ui/Modules"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
           # Required-reason API manifest (UserDefaults / boot time / file timestamps).
           # Missing this makes ASC accept the IPA then discard the build (never listed).
@@ -1852,7 +1850,6 @@ ICDJSON
             excludes = commonExcludes ++ [ "WWNSipStatus.m" "WWNSipStatus.h" ];
           }
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
-          { path = "src/platform/macos/ui/Modules"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
           # Required-reason API manifest (UserDefaults / boot time / file timestamps).
           # Missing this makes ASC accept the IPA then discard the build (never listed).
@@ -2496,7 +2493,6 @@ ICDJSON
             ];
           }
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
-          { path = "src/platform/macos/ui/Modules"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
           # Required-reason API manifest (UserDefaults / boot time / file timestamps).
           # Missing this makes ASC accept the IPA then discard the build (never listed).

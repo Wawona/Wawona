@@ -26,7 +26,7 @@ without bundling Vulkan/OpenGL/ANGLE (platform rule).
 - [`wwn-qmlscene`](https://github.com/Wawona/wwn-qmlscene) — `qmlscene` / demo
   entry (`qmlscene_main`), consumes `wwn-qt6`
 
-**Catalog class:** `wwn-apt` **optional** (`status: planned` → `approved` when
+**Delivery:** prefer core-bundled or **Wawona Runtime** Wasm (`planned` → ship when
 green). Qt closure is too large for core-bundled weston-toy tier.
 
 **Env contract:** `QT_QPA_PLATFORM=wayland` (see
@@ -91,7 +91,7 @@ zsh / Machines launcher
 - [ ] Confirm upstream qmlscene entry in `qtdeclarative` (version pin)
 - [ ] Pin Qt6 set (`qtbase` + `qtwayland` + `qtdeclarative`); document software RHI flags
 - [ ] Map App Store constraints (no JIT, no dlopen of downloaded plugins, static archive on Apple mobile)
-- [ ] Confirm catalog class: **`wwn-apt` optional** (not core-bundled)
+- [ ] Confirm delivery: core-bundled vs Wasm package (not StoreKit ODR)
 - [ ] Keep [#108](https://github.com/Wawona/Wawona/issues/108) and this file in sync
 
 ### Phase 1 — Scaffold `wwn-qt6`
@@ -123,7 +123,7 @@ zsh / Machines launcher
 - [ ] `wawona-dispatch.c`: `qmlscene` → `qmlscene_main`
 - [ ] RootFS / Machines launcher; `QT_QPA_PLATFORM=wayland` (+ software RHI env)
 - [ ] `xcodegen.nix` / `mobile-platform-deps.nix` / Android gradlegen
-- [ ] `wwn-apt` catalog row `planned` → `approved` when green
+- [ ] Mark port green / ship as bundle or Wasm package when green
 
 ### Phase 5 — Smoke & capability lane
 
@@ -158,7 +158,7 @@ zsh / Machines launcher
 - [ ] tvOS/watchOS builds do not link ANGLE/MoltenVK/Vulkan ICDs
 - [ ] Dispatch + Machines/zsh + apt launch documented and smoke-tested
 - [ ] Docs + CI green for sample outputs
-- [ ] `wwn-apt` entry `planned` → `approved` when green
+- [ ] Ship as bundle or Wasm package when green
 
 ## Related
 
