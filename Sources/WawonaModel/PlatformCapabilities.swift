@@ -139,17 +139,28 @@ public enum PlatformCapabilities: Sendable {
 
     public static var allowsDesktopReplacement: Bool { desktopReplacementGate.isAvailable }
 
-    /// anowaW app bridge (host apps → Wayland). Not Desktop/LockScreen.
-    /// Planned on macOS and iOS; Android is gated in Compose.
-    public static var anowaWGate: CapabilityGate {
-        #if os(macOS) || os(iOS)
-        return .planned(flag: "WWN_ANOWAW")
+    /// Wawona Swinging Bridge (formerly anowaW): host apps → Wayland over
+    /// waypipe / nested compositor. Not Desktop/LockScreen.
+    /// macOS + Android: Mode A+B planned. iOS/iPadOS: Mode B only (forbidden
+    /// in store IPA). See docs/swinging-bridge.md.
+    public static var swingingBridgeGate: CapabilityGate {
+        #if os(macOS)
+        return .planned(flag: "WWN_SWINGING_BRIDGE")
+        #elseif os(iOS)
+        // Store IPA: no Swinging Bridge. Mode B is jailbreak / Sileo only.
+        return .forbidden(reason: "Wawona Swinging Bridge on iOS/iPadOS is Mode B (jailbreak) only")
         #else
-        return .forbidden(reason: "anowaW is macOS, iOS, and Android only")
+        return .forbidden(reason: "Wawona Swinging Bridge is macOS and Android (Mode A); iOS Mode B only outside store")
         #endif
     }
 
-    public static var allowsAnowaW: Bool { anowaWGate.isAvailable }
+    public static var allowsSwingingBridge: Bool { swingingBridgeGate.isAvailable }
+
+    /// - Warning: Deprecated name for ``allowsSwingingBridge``.
+    public static var allowsAnowaW: Bool { allowsSwingingBridge }
+
+    /// - Warning: Deprecated name for ``swingingBridgeGate``.
+    public static var anowaWGate: CapabilityGate { swingingBridgeGate }
 
     /// Client-side decorations (CSD) only render correctly on macOS Wawona,
     /// which draws host chrome around a client-decorated surface. Every other

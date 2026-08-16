@@ -63,7 +63,7 @@ not a git branch name: a tip that never hits this workflow will not appear as
 `*`.
 
 `flakehub-push` also runs `nix flake show --all-systems`. Nixpkgs 26.11 throws
-on `x86_64-darwin`; Wawona / anowaW / phoon-rs omit Intel Darwin from
+on `x86_64-darwin`; Wawona / Wawona Swinging Bridge / phoon-rs omit Intel Darwin from
 `packages`/`apps` on **current** `development`. Frozen CalVer tags still list
 Intel Darwin, so the CalVer step sets `my-flake-is-too-big` (skip
 `--all-systems` / inspect). Rolling publishes keep the full show. Wawona’s

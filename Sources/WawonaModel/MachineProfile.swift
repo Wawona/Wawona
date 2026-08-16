@@ -230,7 +230,7 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
-// MARK: - App Bridge (anowaW) eligibility
+// MARK: - Wawona Swinging Bridge eligibility
 
 extension MachineProfile {
     /// The effective client id this native machine launches, resolved from the
@@ -250,9 +250,9 @@ extension MachineProfile {
     /// Wayland compositor** rather than a plain Weston demo client
     /// (`weston-terminal`, `weston-simple-shm`, `foot`, toytoolkit).
     ///
-    /// For anowaW v1 this is intentionally restricted to **weston nested**
+    /// For Swinging Bridge v1 this is intentionally restricted to **weston nested**
     /// (`weston` running `--backend=wayland`); other nesting hosts are out of
-    /// scope (see wwn-anowaW README "Scope").
+    /// scope (see Wawona-Swinging-Bridge README "Scope").
     public var isNestedCompositorClient: Bool {
         guard type == .native else { return false }
         let cid = resolvedNativeClientId
@@ -265,7 +265,7 @@ extension MachineProfile {
             || cid.contains("weston-backend=wayland")
     }
 
-    /// The App Bridge (anowaW) desktop machine may be selected **only** when it
+    /// The Wawona Swinging Bridge desktop machine may be selected **only** when it
     /// is a local-only, nested-Weston native machine. Mirrors the Kotlin
     /// `MachineProfile.isAppBridgeEligible` and the ObjC
     /// `profileEligibleForAppBridge:`.

@@ -943,9 +943,9 @@ static UIImage *WWNAboutLogo(void) {
                          @"Configuration, then select it here.")];
     }
 
-    // ── App Bridge (anowaW) ──────────────────────────────────────────────
+    // ── Wawona Swinging Bridge ──────────────────────────────────────────────
     [desktopItems
-        addObject:ITEM(@"App Bridge (anowaW)", @"AnowaWEnabled", WSettingSwitch,
+        addObject:ITEM(@"Wawona Swinging Bridge", @"SwingingBridgeEnabled", WSettingSwitch,
                        @NO,
                        @"Render native macOS apps as windows inside the nested "
                        @"Wayland desktop. Uses ScreenCaptureKit per-window "

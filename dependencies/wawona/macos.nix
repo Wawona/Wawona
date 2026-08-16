@@ -9,9 +9,9 @@
   foot ? null,
   niri ? null,
   fuzzel ? null,
-  # anowaW app-bridge static lib (libanowaw.a + anowaw_mac_shim.o) + headers,
+  # Swinging Bridge app-bridge static lib (libanowaw.a + anowaw_mac_shim.o) + headers,
   # from `toolchains.buildForMacOS "anowaw"`. When null the compositor still
-  # builds; WWNAnowaWController falls back to its no-op stub (see common.nix).
+  # builds; WWNSwingingBridgeController falls back to its no-op stub (see common.nix).
   anowaw ? null,
   # Mode B dylib (libwayland-mac.dylib) from `buildForMacOS "iland-baremetal"`.
   # When non-null, copy into Contents/Library/Wawona/iland/ for Desktop
@@ -173,9 +173,9 @@ let
     "src/platform/macos/WWNRootfsProvider.h"
     "src/platform/macos/WWNRootfsICloudSync.m"
     "src/platform/macos/WWNRootfsICloudSync.h"
-    # Desktop Replacement / anowaW — macOS + Android only (matrix).
-    "src/platform/macos/ui/Machines/WWNAnowaWController.m"
-    "src/platform/macos/ui/Machines/WWNAnowaWController.h"
+    # Desktop Replacement / Swinging Bridge — macOS + Android only (matrix).
+    "src/platform/macos/ui/Machines/WWNSwingingBridgeController.m"
+    "src/platform/macos/ui/Machines/WWNSwingingBridgeController.h"
     "src/platform/macos/ui/Machines/WWNDesktopReplacementController.m"
     "src/platform/macos/ui/Machines/WWNDesktopReplacementController.h"
     "src/platform/macos/ui/Settings/WWNSipStatus.m"
@@ -815,10 +815,10 @@ GEN_HEADER
       # PHASE 3: Link everything together
       echo "🔗 Phase 3: Linking final binary..."
 
-      # anowaW app-bridge: static core lib + ScreenCaptureKit/CGEvent shim object.
-      # The shim (.o) is best-effort in wwn-anowaW (needs the macOS SDK frameworks
+      # Swinging Bridge app-bridge: static core lib + ScreenCaptureKit/CGEvent shim object.
+      # The shim (.o) is best-effort in Wawona-Swinging-Bridge (needs the macOS SDK frameworks
       # at dep-build time), so only add it when present. libanowaw.a is safe to
-      # pass unconditionally — if WWNAnowaWController compiled as a stub (header
+      # pass unconditionally — if WWNSwingingBridgeController compiled as a stub (header
       # not vendored) its symbols simply go unreferenced.
       ANOWAW_LINK=""
       ${lib.optionalString (anowaw != null) ''

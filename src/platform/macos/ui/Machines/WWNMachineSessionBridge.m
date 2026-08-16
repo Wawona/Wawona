@@ -6,7 +6,7 @@
 #import "WWNPlatformCapabilities.h"
 #import "../../WWNSettings.h"
 #if TARGET_OS_OSX
-#import "WWNAnowaWController.h"
+#import "WWNSwingingBridgeController.h"
 #import "WWNDesktopReplacementController.h"
 #endif
 
@@ -164,8 +164,8 @@
         }
         return NO;
       }
-      if (WWNPlatformAllowsAnowaW()) {
-        [[WWNAnowaWController sharedController] attachForProfile:profile];
+      if (WWNPlatformAllowsSwingingBridge()) {
+        [[WWNSwingingBridgeController sharedController] attachForProfile:profile];
       }
       return YES;
     }
@@ -173,9 +173,9 @@
     [[WWNWaypipeRunner sharedRunner] launchBundledClientWithId:clientId
                                                      machineId:profile.machineId];
 #if TARGET_OS_OSX
-    // App Bridge (anowaW): macOS-only (platform-targets matrix).
-    if (WWNPlatformAllowsAnowaW() && [clientId isEqualToString:@"weston"]) {
-      [[WWNAnowaWController sharedController] attachForProfile:profile];
+    // Wawona Swinging Bridge: macOS-only (platform-targets matrix).
+    if (WWNPlatformAllowsSwingingBridge() && [clientId isEqualToString:@"weston"]) {
+      [[WWNSwingingBridgeController sharedController] attachForProfile:profile];
     }
 #endif
     return YES;
@@ -262,8 +262,8 @@
     if ([desktop isDesktopMachine:profile]) {
       [desktop disengage];
     }
-    if (WWNPlatformAllowsAnowaW() && [clientId isEqualToString:@"weston"]) {
-      [[WWNAnowaWController sharedController] detach];
+    if (WWNPlatformAllowsSwingingBridge() && [clientId isEqualToString:@"weston"]) {
+      [[WWNSwingingBridgeController sharedController] detach];
     }
 #endif
     // Stop only this machine's instance — other copies of the same client

@@ -483,7 +483,6 @@
         "nix-xcodeenvtests": "nix-xcodeenvtests",
         "nixpkgs": "nixpkgs_2",
         "rust-overlay": "rust-overlay",
-        "wwn-anowaW": "wwn-anowaW",
         "wwn-containers": "wwn-containers",
         "wwn-coreutils": "wwn-coreutils",
         "wwn-fastfetch": "wwn-fastfetch",
@@ -494,6 +493,7 @@
         "wwn-niri": "wwn-niri",
         "wwn-phoon-rs": "wwn-phoon-rs",
         "wwn-ssh": "wwn-ssh",
+        "wwn-swinging-bridge": "wwn-swinging-bridge",
         "wwn-toolchain": "wwn-toolchain",
         "wwn-vms": "wwn-vms",
         "wwn-wasm": "wwn-wasm",
@@ -772,31 +772,6 @@
         "type": "github"
       }
     },
-    "wwn-anowaW": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ],
-        "rust-overlay": [
-          "rust-overlay"
-        ],
-        "wwn-toolchain": [
-          "wwn-toolchain"
-        ]
-      },
-      "locked": {
-        "lastModified": 1786606598,
-        "narHash": "sha256-sjMN4Xc0b34uKgz4934Rm991gS5rjNrc2KVw6pUNi0U=",
-        "rev": "950338e9b38a3a9f668dbbe6ad64d744f97dbccd",
-        "revCount": 10,
-        "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-anowaW/0.1.10%2Brev-950338e9b38a3a9f668dbbe6ad64d744f97dbccd/019ffa0d-d0c4-7703-aeaf-8bf12c02cc7c/source.tar.gz"
-      },
-      "original": {
-        "type": "tarball",
-        "url": "https://flakehub.com/f/Wawona/wwn-anowaW/%2A"
-      }
-    },
     "wwn-containers": {
       "inputs": {
         "nixpkgs": [
@@ -1067,6 +1042,32 @@
       "original": {
         "type": "tarball",
         "url": "https://flakehub.com/f/Wawona/wwn-ssh/%2A"
+      }
+    },
+    "wwn-swinging-bridge": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "rust-overlay": [
+          "rust-overlay"
+        ],
+        "wwn-toolchain": [
+          "wwn-toolchain"
+        ]
+      },
+      "locked": {
+        "lastModified": 1786849235,
+        "narHash": "sha256-vMIiAV2eVhygRzXTKUSX/6b9MMYNUoBUf6jOdOND3OA=",
+        "owner": "Wawona",
+        "repo": "Wawona-Swinging-Bridge",
+        "rev": "a0ebbb0ad469ce6ec82b8a8a848d12ca319a3370",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Wawona",
+        "repo": "Wawona-Swinging-Bridge",
+        "type": "github"
       }
     },
     "wwn-toolchain": {

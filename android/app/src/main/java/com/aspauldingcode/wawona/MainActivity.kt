@@ -873,7 +873,7 @@ fun WawonaApp(
             }
             sessionOrchestrator.markConnected(targetSession)
             sessionOrchestrator.setActiveSession(targetSession)
-            /* App Bridge (anowaW): once the nested-Weston desktop machine is up,
+            /* Wawona Swinging Bridge: once the nested-Weston desktop machine is up,
              * attach the bridge so Android apps can be embedded as Wayland
              * windows. Only fires for an eligible desktop machine with the
              * feature enabled; no-op otherwise. */

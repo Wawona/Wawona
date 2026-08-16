@@ -69,10 +69,10 @@
     wwn-waypipe.inputs.nixpkgs.follows = "nixpkgs";
     wwn-waypipe.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-waypipe.inputs.wwn-ssh.follows = "wwn-ssh";
-    wwn-anowaW.url = "https://flakehub.com/f/Wawona/wwn-anowaW/*";
-    wwn-anowaW.inputs.nixpkgs.follows = "nixpkgs";
-    wwn-anowaW.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    wwn-anowaW.inputs.rust-overlay.follows = "rust-overlay";
+    wwn-swinging-bridge.url = "github:Wawona/Wawona-Swinging-Bridge";
+    wwn-swinging-bridge.inputs.nixpkgs.follows = "nixpkgs";
+    wwn-swinging-bridge.inputs.wwn-toolchain.follows = "wwn-toolchain";
+    wwn-swinging-bridge.inputs.rust-overlay.follows = "rust-overlay";
     wwn-coreutils.url = "https://flakehub.com/f/Wawona/wwn-coreutils/*";
     wwn-coreutils.inputs.nixpkgs.follows = "nixpkgs";
     wwn-coreutils.inputs.wwn-toolchain.follows = "wwn-toolchain";
@@ -117,7 +117,7 @@
     wwn-containers.inputs.wwn-vms.follows = "wwn-vms";
   };
 
-  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-ssh, wwn-waypipe, wwn-anowaW, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-wasm, wwn-niri, wwn-vms, wwn-containers, ... }:
+  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-ssh, wwn-waypipe, wwn-swinging-bridge, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-wasm, wwn-niri, wwn-vms, wwn-containers, ... }:
   let
     linuxSystems = [ "x86_64-linux" "aarch64-linux" ];
     # Nixpkgs 26.11 throws on x86_64-darwin eval; flakehub-push runs
@@ -240,7 +240,7 @@
       // wwn-weston.registryFragment
       // wwn-zsh.registryFragment
       // wwn-waypipe.registryFragment
-      // wwn-anowaW.registryFragment
+      // wwn-swinging-bridge.registryFragment
       // wwn-foot.registryFragment
       // wwn-fastfetch.registryFragment
       // wwn-phoon-rs.registryFragment

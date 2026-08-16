@@ -527,8 +527,8 @@ private fun DesktopSection(prefs: SharedPreferences, context: Context, accent: C
             }
         }
 
-        // ── App Bridge (anowaW) ──────────────────────────────────────────────
-        SettingsSectionHeader("App Bridge (anowaW)", Icons.Filled.Apps, accent)
+        // ── Wawona Swinging Bridge ──────────────────────────────────────────────
+        SettingsSectionHeader("Wawona Swinging Bridge", Icons.Filled.Apps, accent)
 
         Surface(
             Modifier.fillMaxWidth().padding(vertical = 4.dp),

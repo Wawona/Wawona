@@ -4678,10 +4678,10 @@ static void *weston_thread_func(void *arg) {
     chdir(xdg_dir);
   }
   wwn_weston_compositor_shutdown_requested = 0;
-  /* Deterministic nested socket name so the anowaW app bridge can attach
+  /* Deterministic nested socket name so the Swinging Bridge app bridge can attach
    * reliably (WAYLAND_DISPLAY=wayland-0 is Wawona's root Smithay socket; the
    * nested compositor exposes "wawona-nested"). Keep in sync with
-   * AnowawSession.NESTED_SOCKET (Kotlin) and kWWNAnowaWNestedSocket (macOS). */
+   * AnowawSession.NESTED_SOCKET (legacy Kotlin name) (Kotlin) and kWWNSwingingBridgeNestedSocket (macOS). */
   const char *backend = WWNSettings_ResolveCompositorBackend();
   const int use_drm = (backend && strcmp(backend, "drm") == 0);
 #ifdef WAWONA_ILAND_GL

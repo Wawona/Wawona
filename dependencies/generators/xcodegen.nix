@@ -1459,7 +1459,7 @@ ICDJSON
           {
             path = "src/platform/macos/ui/Machines";
             excludes = commonExcludes ++ [
-              "WWNAnowaWController.m" "WWNAnowaWController.h"
+              "WWNSwingingBridgeController.m" "WWNSwingingBridgeController.h"
               "WWNDesktopReplacementController.m" "WWNDesktopReplacementController.h"
             ];
           }
@@ -1651,7 +1651,7 @@ ICDJSON
           {
             path = "src/platform/macos/ui/Machines";
             excludes = commonExcludes ++ [
-              "WWNAnowaWController.m" "WWNAnowaWController.h"
+              "WWNSwingingBridgeController.m" "WWNSwingingBridgeController.h"
               "WWNDesktopReplacementController.m" "WWNDesktopReplacementController.h"
             ];
           }
@@ -1842,7 +1842,7 @@ ICDJSON
           {
             path = "src/platform/macos/ui/Machines";
             excludes = commonExcludes ++ [
-              "WWNAnowaWController.m" "WWNAnowaWController.h"
+              "WWNSwingingBridgeController.m" "WWNSwingingBridgeController.h"
               "WWNDesktopReplacementController.m" "WWNDesktopReplacementController.h"
             ];
           }
@@ -2480,8 +2480,8 @@ ICDJSON
           {
             path = "src/platform/macos/ui/Machines";
             excludes = commonExcludes ++ [
-              "WWNAnowaWController.m"
-              "WWNAnowaWController.h"
+              "WWNSwingingBridgeController.m"
+              "WWNSwingingBridgeController.h"
               "WWNDesktopReplacementController.m"
               "WWNDesktopReplacementController.h"
             ];

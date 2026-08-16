@@ -162,8 +162,8 @@ Apple mobile terminal/Settings keygen uses **libssh2 CLI** (`libwwn-ssh-cli.a`).
 
 **Coming soon.** Never ship Desktop/LockScreen UI on App Store Apple-mobile
 targets, and never mention jailbreak in those binaries. Canonical behavior:
-[`iland-mode-a-b-desktop.md`](./iland-mode-a-b-desktop.md). anowaW is separate:
-[`anowaw.md`](./anowaw.md).
+[`iland-mode-a-b-desktop.md`](./iland-mode-a-b-desktop.md). Wawona Swinging Bridge is separate:
+[`swinging-bridge.md`](./swinging-bridge.md).
 
 ### macOS (`NSUserDefaults`)
 
@@ -174,7 +174,7 @@ targets, and never mention jailbreak in those binaries. Canonical behavior:
 | Desktop Machine | `DesktopReplacementMachineId` | Popup | — | Native-port machine profiles only |
 | Enable Lockscreen Replacement | `LockscreenReplacementEnabled` | Switch | Off | Greeter / machine picker before Desktop |
 | Lockscreen Machine | `LockscreenReplacementMachineId` | Popup | — | Native-port greeter machine |
-| App Bridge (anowaW) | `AnowaWEnabled` | Switch | Off | **Not** Desktop — see [`anowaw.md`](./anowaw.md) |
+| Wawona Swinging Bridge | `AnowaWEnabled` | Switch | Off | **Not** Desktop — see [`swinging-bridge.md`](./swinging-bridge.md) |
 
 Mode B loads bundled `libwayland-mac.dylib` only from
 `wawona-macos-desktop-host` builds. Store-safe `wawona-macos` stays Mode A.
@@ -186,8 +186,8 @@ Mode B loads bundled `libwayland-mac.dylib` only from
 | Desktop enabled | `wawona.desktop.enabled` | Default Home App role (no root) |
 | Desktop machine | `wawona.desktop.machineId` | Native-port profiles only |
 | Lockscreen | `wawona.lockscreen.*` | Platform LockScreen APIs (no root) |
-| App Bridge | `wawona.anowaW.enabled` | anowaW — separate from Desktop/LockScreen |
-| anowaW Mode B | `wawona.anowaW.powerMode` | Privileged paths outside Play requirements |
+| App Bridge | `wawona.swingingBridge.enabled` | Wawona Swinging Bridge — separate from Desktop/LockScreen |
+| Wawona Swinging Bridge Mode B | `wawona.swingingBridge.powerMode` | Privileged paths outside Play requirements |
 
 ---
 

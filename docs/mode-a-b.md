@@ -1,6 +1,6 @@
 # Wawona Mode A vs Mode B (product-wide)
 
-Canonical split for **every** privileged feature: graphics Desktop, anowaW,
+Canonical split for **every** privileged feature: graphics Desktop, Wawona Swinging Bridge,
 shell, VMs, containers, and package management. Prefer this over older prose
 that treated “Mode B” as macOS-iland-only.
 
@@ -11,7 +11,7 @@ that treated “Mode B” as macOS-iland-only.
 | **In store IPA/AAB** | Only Mode A | **Never** — no Mode B engines, no jailbreak strings, no JIT |
 
 Related: [`iland-mode-a-b-desktop.md`](./iland-mode-a-b-desktop.md) (macOS iland
-Desktop dylib), [`anowaw.md`](./anowaw.md), [`vms-containers.md`](./vms-containers.md),
+Desktop dylib), [`swinging-bridge.md`](./swinging-bridge.md), [`vms-containers.md`](./vms-containers.md),
 [`wasm-package-manager.md`](./wasm-package-manager.md),
 [`repo.wawona.io`](https://github.com/Wawona/repo.wawona.io).
 
@@ -69,7 +69,7 @@ On jailbreak, Wawona may use the host like NewTerm + UTM JIT + tweak stack:
 | **VMs** | **JIT-enabled** UTM / QEMU |
 | **Containers** | **JIT-enabled** container-in-VM (same JIT engine) |
 | Wasm Runtime packages | Still available (`/wasm/`); plus host APT for native tweaks |
-| anowaW Mode B | UIKit→Wayland bridge tweak path |
+| Wawona Swinging Bridge Mode B | UIKit→Wayland bridge tweak path |
 
 ### Mode B IPA on `repo.wawona.io` (critical)
 
@@ -95,7 +95,7 @@ switch into this IPA’s JIT backends.
 ### Android Mode B (summary)
 
 - Play = Mode A (no root required for Home/Desktop Mode A story).
-- Mode B = root/privileged bridges (anowaW Mode B, optional faster VM paths).
+- Mode B = root/privileged bridges (Wawona Swinging Bridge Mode B, optional faster VM paths).
 - Never ship Mode B-only code in Play AAB.
 
 ---
@@ -171,5 +171,5 @@ APT ecosystem.
 4. **iOS Mode B VMs/containers = JIT UTM-class**; packaged via Sileo Mode B IPA.
 5. **Wasm packages are Mode A–safe** and remain available under Mode B; they do
    not replace jailbreak APT.
-6. **Do not conflate** iland Mode B (macOS dylib), anowaW Mode B, and iOS Mode B
+6. **Do not conflate** iland Mode B (macOS dylib), Wawona Swinging Bridge Mode B, and iOS Mode B
    IPA — related privilege class, different artifacts.

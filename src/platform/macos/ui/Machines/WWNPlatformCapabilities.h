@@ -32,12 +32,17 @@ static inline bool WWNPlatformAllowsGpuStack(void) {
 #endif
 }
 
-static inline bool WWNPlatformAllowsAnowaW(void) {
+static inline bool WWNPlatformAllowsSwingingBridge(void) {
 #if TARGET_OS_OSX
   return true;
 #else
   return false;
 #endif
+}
+
+/// Deprecated name for ``WWNPlatformAllowsSwingingBridge``.
+static inline bool WWNPlatformAllowsAnowaW(void) {
+  return WWNPlatformAllowsSwingingBridge();
 }
 
 /// Desktop / LockScreen / Mode B iland — macOS (+ Android separately). Never

@@ -92,6 +92,7 @@ NSString *const kWWNPrefsDesktopReplacementEnabled =
     @"DesktopReplacementEnabled";
 NSString *const kWWNPrefsDesktopReplacementMachineId =
     @"DesktopReplacementMachineId";
+NSString *const kWWNPrefsSwingingBridgeEnabled = @"SwingingBridgeEnabled";
 NSString *const kWWNPrefsAnowaWEnabled = @"AnowaWEnabled";
 NSString *const kWWNPrefsLockscreenReplacementEnabled =
     @"LockscreenReplacementEnabled";
@@ -344,6 +345,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
     kWWNPrefsDesktopReplacementEnabled : @NO,
     kWWNPrefsLockscreenReplacementEnabled : @NO,
     kWWNPrefsDesktopReplacementMachineId : @"",
+    kWWNPrefsSwingingBridgeEnabled : @NO,
     kWWNPrefsAnowaWEnabled : @NO,
     // Waypipe
     kWWNPrefsWaypipeDisplay : @"wayland-0",

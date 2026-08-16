@@ -27,7 +27,7 @@ fallback) instead of removing it from the product surface.
 | Nested compositors + bundled clients | ✅ | ✅ | ✅ | ✅ **macOS parity** | ✅ | ⚠️ limited | ⚠️ limited |
 | Vulkan / OpenGL / ANGLE bundle | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ planned | ⛔ blocked |
 | Desktop + LockScreen replacement | ⏳ planned | ⏳ planned | ❌ App Store | ❌ | ❌ App Store | ❌ | ❌ |
-| anowaW app bridge | ⏳ planned | ⏳ planned | ⏳ planned | ❌ | ⏳ planned | ❌ | ❌ |
+| Wawona Swinging Bridge | ⏳ Mode A+B | ⏳ Mode A+B | ❌ App Store (Mode B only) | ❌ | ❌ App Store (Mode B only) | ❌ | ❌ |
 
 ### Legend — the four gate states
 
@@ -46,19 +46,19 @@ Mirrored in code by `CapabilityGate` in
 in both places.
 
 **Linux** (not in the Apple/Android columns): native + remote ✅; VM/containers
-⏳ planned; Desktop/LockScreen ❌; anowaW ❌.
+⏳ planned; Desktop/LockScreen ❌; Wawona Swinging Bridge ❌.
 
-**iOS and iPadOS are the same** for Desktop/LockScreen and anowaW (store Mode A
+**iOS and iPadOS are the same** for Desktop/LockScreen and Wawona Swinging Bridge (store Mode A
 vs `repo.wawona.io` Mode B / jailbreak Desktop). Do not special-case iPadOS as
 forbidden while iPhone is planned for those features.
 
-**Desktop / LockScreen vs anowaW vs local shell vs VMs (do not conflate):**
+**Desktop / LockScreen vs Wawona Swinging Bridge vs local shell vs VMs (do not conflate):**
 
 - **Desktop + LockScreen** — host DE / greeter. macOS + Android ⏳; **iOS and
   iPadOS** jailbreak path via `repo.wawona.io` (website only); App Store builds
   ❌ and must never mention jailbreak. Not Linux. Not tvOS/watchOS/visionOS.
-- **anowaW** — host-app → Wayland bridge on **macOS + Android + iOS + iPadOS**.
-  See `wawona-anowaw`.
+- **Wawona Swinging Bridge** — macOS/Android (and iOS Mode B) apps → Wayland
+  (+ waypipe to Linux). See `wawona-swinging-bridge`. Not Desktop/LockScreen.
 - **On-device shell** — bundled **zsh** + Weston terminal (native port path).
   Not a VM and not a container. Separate from `virtual_machine` / `container`
   machine kinds.
@@ -138,17 +138,19 @@ forbidden while iPhone is planned for those features.
    Replacement (`WWNSipStatus` + Settings Desktop). Never ship in store-safe
    `wawona-macos`, iOS family, or Android. Default present path is Mode A
    (`libiland_userland.a`). See `wawona-iland-mode-b-desktop` and
-   `Wawona/docs/iland-mode-a-b-desktop.md`. This dylib is **not** anowaW.
+   `Wawona/docs/iland-mode-a-b-desktop.md`. This dylib is **not** Wawona Swinging Bridge.
 7. **SSH backend** — Apple mobile (iOS / iPadOS / tvOS / watchOS / visionOS)
    uses **libssh2 in-process only** (including `libwwn-ssh-cli` /
    `ssh_main` over libssh2). Never link or ship OpenSSH
    (`libssh-inprocess.a`) on those targets. **macOS** uses regular OpenSSH;
    **Android** uses OpenSSH portable (`libssh_bin.so` / keygen / scp).
    Remote/waypipe on Apple mobile goes through libssh2.
-8. **anowaW** — separate app bridge on **macOS + Android + iOS + iPadOS** (⏳).
-   Mode A in store/Play; Mode B only outside store (macOS partial SIP; Android
-   root paths; iOS/iPadOS via `repo.wawona.io`). **Not** Desktop/LockScreen.
-   **Not** MediaProjection-as-desktop. Full rule: `wawona-anowaw`.
+8. **Wawona Swinging Bridge** (formerly anowaW) — Cocoa/Android/(future UIKit)
+   apps as Wayland clients, including **waypipe-rs** to a Linux compositor.
+   **macOS + Android:** ⏳ Mode A + Mode B. **iOS/iPadOS:** Mode B only
+   (`repo.wawona.io` / jailbreak) — **forbidden** in the App Store IPA.
+   **Not** Desktop/LockScreen. **Not** MediaProjection-as-desktop.
+   Full rule: `wawona-swinging-bridge`.
 9. **VM / containers** — ⏳ planned for macOS, iOS, iPadOS, Android, Linux via
    Machines profiles. ❌ on tvOS, watchOS, visionOS. Do not document as shipping
    until gates flip. Local shell is not a substitute for a VM.

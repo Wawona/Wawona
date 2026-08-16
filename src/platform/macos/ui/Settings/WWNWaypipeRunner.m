@@ -2558,8 +2558,8 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     int argc_weston = 0;
     argv_weston[argc_weston++] = "weston";
     argv_weston[argc_weston++] = (char *)backend;
-    /* Deterministic nested socket so the anowaW app bridge can attach. Keep in
-     * sync with +preferredNestedSocketName and AnowawSession.NESTED_SOCKET. */
+    /* Deterministic nested socket so the Swinging Bridge app bridge can attach. Keep in
+     * sync with +preferredNestedSocketName and AnowawSession.NESTED_SOCKET (legacy Kotlin name). */
     static char nested_socket_arg[48];
     NSString *nestedSocket = [WWNPreferencesManager preferredNestedSocketName];
     snprintf(nested_socket_arg, sizeof(nested_socket_arg), "--socket=%s",
@@ -2758,8 +2758,8 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   NSMutableArray<NSString *> *args = [NSMutableArray arrayWithObjects:
       [westonBackend isEqualToString:@"drm"] ? @"--backend=drm"
                                              : @"--backend=wayland",
-      // Deterministic nested socket so the anowaW app bridge can attach. Keep
-      // in sync with +preferredNestedSocketName and AnowawSession.NESTED_SOCKET.
+      // Deterministic nested socket so the Swinging Bridge app bridge can attach. Keep
+      // in sync with +preferredNestedSocketName and AnowawSession.NESTED_SOCKET (legacy Kotlin name).
       [NSString stringWithFormat:@"--socket=%@",
                                  [WWNPreferencesManager preferredNestedSocketName]],
       @"--shell=desktop-shell.so",
@@ -2870,7 +2870,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     char *argv_weston[] = {
         (char *)"weston",
         (char *)"--backend=drm",
-        /* Deterministic nested socket so the anowaW app bridge can attach
+        /* Deterministic nested socket so the Swinging Bridge app bridge can attach
          * regardless of backend. */
         (char *)"--socket=wawona-nested",
         (char *)"--shell=desktop-shell.so",

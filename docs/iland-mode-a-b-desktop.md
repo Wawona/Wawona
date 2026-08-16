@@ -4,8 +4,8 @@
 > (planned), plus **iOS / iPadOS jailbreak tweaks** documented only on the website /
 > `repo.wawona.io`. **Not** Linux. **Not** App Store Apple-mobile builds.
 >
-> **anowaW is separate** — see [`anowaw.md`](anowaw.md). Do not document anowaw
-> as Desktop or LockScreen. **VMs/containers** are separate — see
+> **Wawona Swinging Bridge is separate** — see [`swinging-bridge.md`](swinging-bridge.md). Do not document
+> Swinging Bridge as Desktop or LockScreen. **VMs/containers** are separate — see
 > [`vms-containers.md`](vms-containers.md).
 
 Live grades: [`iland-graphics-progress.md`](iland-graphics-progress.md).
@@ -53,14 +53,14 @@ ports only**.
   SkyLight/WindowServer / lock path via `framebufferd`. Requires SIP debugging
   restrictions off (or SIP fully disabled) and root.
 - **Android Desktop/LockScreen** uses platform Home + LockScreen APIs — not the
-  macOS dylib, and not anowaW.
-- **anowaW** (app bridge) has its own Mode A/B — see [`anowaw.md`](anowaw.md).
+  macOS dylib, and not Wawona Swinging Bridge.
+- **Wawona Swinging Bridge** (app bridge) has its own Mode A/B — see [`swinging-bridge.md`](swinging-bridge.md).
 
 ## Decision tree
 
 ```text
 feature?
-  anowaW                      → see anowaw.md (not this file)
+  Wawona Swinging Bridge                      → see swinging-bridge.md (not this file)
   Desktop / LockScreen
     Linux                     → forbidden
     App Store iOS family      → forbidden in-app (no jailbreak mentions)
@@ -109,7 +109,7 @@ Prefs (macOS `NSUserDefaults`):
 - `DesktopReplacementEnabled`
 - `DesktopReplacementMachineId`
 - `LockscreenReplacementEnabled` / `LockscreenReplacementMachineId`
-- `AnowaWEnabled` (anowaW — separate feature; see [`anowaw.md`](anowaw.md))
+- `SwingingBridgeEnabled` (Wawona Swinging Bridge — separate feature; see [`swinging-bridge.md`](swinging-bridge.md))
 
 ## Android Desktop / LockScreen (no SIP, no root)
 
@@ -119,8 +119,8 @@ Prefs (macOS `NSUserDefaults`):
 | LockScreen | Platform LockScreen replacement APIs |
 | Privilege | No root required; no MediaProjection “fallback tier” as the Desktop story |
 
-anowaW settings (`wawona.anowaW.*`) are **not** Desktop/LockScreen. See
-[`anowaw.md`](anowaw.md) and Settings Desktop / App Bridge copy when those ship.
+Wawona Swinging Bridge settings (`wawona.swingingBridge.*`) are **not** Desktop/LockScreen. See
+[`swinging-bridge.md`](swinging-bridge.md) and Settings Desktop / App Bridge copy when those ship.
 
 ## Store / distribution compliance (per target)
 
@@ -128,16 +128,16 @@ macOS is **third-party distribution** (Developer ID / notarized), **not** Mac
 App Store — never gated on Mac App Store review rules (see
 `wawona-macos-no-appstore.mdc`). Everything that ships to a store must be
 **Mode A–shaped end-to-end** for graphics, and must not ship Desktop Mode B or
-anowaW Mode B.
+Wawona Swinging Bridge Mode B.
 
 | Target | Distribution | Compliance bar for graphics / Desktop |
 |--------|--------------|----------------------------------------|
 | **iOS** | App Store | Mode A only; no Desktop/LockScreen UI; **no jailbreak mentions**; no Mode B dylib; SSH = libssh2 only |
-| **iPadOS** | App Store | Same as iOS for Desktop/anowaW store policy + multi-window required |
+| **iPadOS** | App Store | Same as iOS for Desktop/Wawona Swinging Bridge store policy + multi-window required |
 | **visionOS** | App Store | Same Mode A / macOS-product GLES+Vulkan parity; no Mode B; multi-window required |
 | **tvOS** | App Store | Mode A **software only** — no ANGLE/MVK/KK/Vulkan ICD, no IOKit, no GPU DRM clients |
 | **watchOS** | App Store | Same software policy as tvOS |
-| **Android** | Google Play | Mode A graphics; Home Desktop **without root** when it ships; anowaW Mode B never Play-required |
+| **Android** | Google Play | Mode A graphics; Home Desktop **without root** when it ships; Wawona Swinging Bridge Mode B never Play-required |
 | **macOS** | **3rd-party** (not MAS) | Mode A default (SIP OK). Mode B desktop-host OK under SIP partial\|off; never contaminate iOS/Android store artifacts |
 
 ### Store-compliance checklist (assert per store build)
@@ -195,7 +195,7 @@ format/size) are tracked in [`iland-graphics-progress.md`](iland-graphics-progre
 ## Agent / Cursor rules
 
 - Workspace: `.cursor/rules/wawona-iland-mode-b-desktop.mdc` (alwaysApply)
-- anowaW: `.cursor/rules/wawona-anowaw.mdc`
+- Wawona Swinging Bridge: `.cursor/rules/wawona-swinging-bridge.mdc`
 - Wawona repo: `Wawona/.cursor/rules/wawona-iland-mode-b-desktop.mdc`
 - Repo DAG: `.cursor/rules/wawona-repo-dag.mdc` (+ Wawona repo mirror);
   canonical `docs/wwn-repo-dag.md`

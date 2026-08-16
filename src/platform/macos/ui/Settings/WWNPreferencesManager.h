@@ -92,11 +92,13 @@ extern NSString *const kWWNPrefsDesktopReplacementEnabled;
 extern NSString *const kWWNPrefsDesktopReplacementMachineId;
 extern NSString *const kWWNPrefsLockscreenReplacementEnabled;
 extern NSString *const kWWNPrefsLockscreenReplacementMachineId;
-// App Bridge (anowaW): render native macOS (Cocoa/AppKit) apps as Wayland
-// clients inside the nested-Weston desktop. Layered on Desktop Replacement and
-// reusing its single, local-only, nested-Weston machine selection. macOS uses
-// Developer ID distribution (Screen Recording + Accessibility permissions);
+// Wawona Swinging Bridge (formerly anowaW): render native macOS (Cocoa/AppKit)
+// apps as Wayland clients inside the nested-Weston desktop / over waypipe.
+// Layered on Desktop Replacement eligibility (local-only nested-Weston).
+// macOS uses Developer ID distribution (Screen Recording + Accessibility);
 // never a Mac App Store path for the embedding capability.
+extern NSString *const kWWNPrefsSwingingBridgeEnabled;
+/// Deprecated preference key name; still read for migration.
 extern NSString *const kWWNPrefsAnowaWEnabled;
 @interface WWNPreferencesManager : NSObject
 

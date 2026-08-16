@@ -8,7 +8,7 @@ the same non-negotiable gates.
 | Rule | Topic |
 |------|--------|
 | [wawona-iland-mode-b-desktop.md](./wawona-iland-mode-b-desktop.md) | Mode A vs Mode B, SIP Desktop/LockScreen, dylib shipping |
-| [wawona-anowaw.md](./wawona-anowaw.md) | anowaW app bridge Mode A/B (not Desktop) |
+| [wawona-swinging-bridge.md](./wawona-swinging-bridge.md) | Wawona Swinging Bridge Mode A/B (not Desktop) |
 | [wawona-release-assets.md](./wawona-release-assets.md) | GitHub + store binary filenames (CalVer / platform / arch) |
 | Canonical prose | [`../iland-mode-a-b-desktop.md`](../iland-mode-a-b-desktop.md) |
 | Entry AGENTS | [`../../AGENTS.md`](../../AGENTS.md) |

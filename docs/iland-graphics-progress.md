@@ -1148,7 +1148,7 @@ before Mode B engage / WaypipeRunner launch, that re-`setenv`s ICD/ANGLE. Swift
 
 Actual flake-input edges match L0→L4 with **no inversions**: toolchain (none),
 iland (→toolchain), kmscube (→toolchain,iland), weston (→toolchain,iland,kmscube;
-`ilandSrc` source-injection only), waypipe/anowaW/vms (→toolchain; no iland
+`ilandSrc` source-injection only), waypipe/swinging-bridge/vms (→toolchain; no iland
 input), Wawona (→ all). Registry merge is `baseRegistry // fragment` (iland
 `flake.nix:96`, kmscube `74`, weston `83`, Wawona `222-240`). **Lock skew** (not
 a cycle): weston pins toolchain `7e00ad…` vs iland/kmscube `b0bc81…`; re-lock in
@@ -1226,7 +1226,7 @@ existing `wawona-ios` bundle — clean on all three hard checks and with no
 warnings — and the daemon branch was confirmed to fire on a seeded fixture.
 
 **Android Home Desktop = rootless Mode A** (HOME role + nested weston,
-`DesktopReplacement.kt:14-24`); anowaW baseline = MediaProjection/own VD
+`DesktopReplacement.kt:14-24`); swinging-bridge baseline = MediaProjection/own VD
 (`AnowawSession.kt:24-28`); power tier (Shizuku/root) only for arbitrary-app
 embed, auto-falls back (`:64-76`). No SIP, no dylib on Android.
 

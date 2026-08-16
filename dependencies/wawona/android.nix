@@ -73,7 +73,7 @@ let
     inherit pkgs lib;
     wawonaSrc = wawonaSrc;
   };
-  # anowaW app bridge: libanowaw.so + staged Kotlin/JNI shims (share/anowaw).
+  # Swinging Bridge app bridge: libanowaw.so + staged Kotlin/JNI shims (share/anowaw).
   anowawAndroid = buildModule.buildForAndroid "anowaw" { };
   mobileToytoolkitDeps = import ./mobile-toytoolkit-deps.nix {
     buildFn = buildModule.buildForAndroid;
@@ -505,7 +505,7 @@ EOF
       # android-bundled-clients.nix.
       ${bundledClients.preBuildFragment}
 
-      # anowaW app bridge: stage the Kotlin shims into the app sourceSet and the
+      # Swinging Bridge app bridge: stage the Kotlin shims into the app sourceSet and the
       # JNI glue next to android_jni.c so CMake picks it up. libanowaw.so is
       # bundled into jniLibs by the androidDeps .so copy loop above.
       if [ -d "${anowawAndroid}/share/anowaw/kotlin" ]; then

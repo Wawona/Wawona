@@ -3,13 +3,13 @@
 Authority for **when** Wawona uses App Store–safe in-window iland (Mode A)
 versus the SIP-gated host Desktop/LockScreen `.dylib` (Mode B on macOS).
 
-**anowaW is a different product** (host-app → Wayland bridge). Do not document
-anowaW here. See `wawona-anowaw`.
+**Wawona Swinging Bridge is a different product** (host-app → Wayland bridge). Do not document
+Wawona Swinging Bridge here. See `wawona-swinging-bridge`.
 
 Desktop / LockScreen status: **⏳ planned / coming soon** (in development on
 macOS and Android; iOS path only via `repo.wawona.io` — website docs only).
 
-## Two iland modes (do not conflate with anowaW Mode A/B)
+## Two iland modes (do not conflate with Wawona Swinging Bridge Mode A/B)
 
 | | Mode A (default) | Mode B (desktop-host only) |
 |---|---|---|
@@ -69,4 +69,4 @@ Never invent CSR_* syscalls; stay on `csrutil status` string matching.
 - Engage/disengage: `WWNDesktopReplacementController.*`,
   `WWNMachineSessionBridge.m`.
 - Canonical prose: `Wawona/docs/iland-mode-a-b-desktop.md`.
-- anowaW: `wawona-anowaw`, `Wawona/docs/anowaw.md`.
+- Wawona Swinging Bridge: `wawona-swinging-bridge`, `Wawona/docs/swinging-bridge.md`.

@@ -23,7 +23,7 @@ L0  wwn-toolchain     builders + substrate libs (NO wwn-* flake inputs)
 L1  wwn-iland         complete graphics stack fragment (→ toolchain only)
 L2  wwn-kmscube       GL acceptance client (→ toolchain + iland)
 L3  wwn-weston        nested compositor (→ toolchain + iland + kmscube; ilandSrc=source only)
-L3′ wwn-waypipe, wwn-anowaW, wwn-vms, wwn-containers, wwn-ssh,
+L3′ wwn-waypipe, Wawona-Swinging-Bridge, wwn-vms, wwn-containers, wwn-ssh,
     wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-foot, wwn-wasm, …  (→ toolchain; peers only downward)
 L4  Wawona            merges all fragments; never an input of L0–L3
 ```
@@ -34,7 +34,7 @@ flowchart BT
   il[L1 wwn-iland: iland, ANGLE, ICDs]
   km[L2 wwn-kmscube]
   we[L3 wwn-weston]
-  wp[L3' waypipe / anowaW / vms]
+  wp[L3' waypipe / Wawona Swinging Bridge / vms]
   wa[L4 Wawona]
   tc --> il --> km --> we --> wa
   tc --> wp --> wa
@@ -49,7 +49,7 @@ flowchart BT
 | **L1** | `wwn-iland` | Userland KMS/DRM/GBM/EGL/udev shims + Mode A present callback + Mode B baremetal; `iland`, `iland-baremetal`; **ANGLE and SwiftShader**; MoltenVK/KosmicKrisp packaging; `iland-cpu` CPU-present helpers; DriverSelector contract |
 | **L2** | `wwn-kmscube` | `kmscube`, `vkcube`, `opengl-cube`, GL acceptance clients |
 | **L3** | `wwn-weston` | Nested compositor + weston-simple-egl + toytoolkit clients |
-| **L3′** | `wwn-waypipe`, `wwn-anowaW`, `wwn-vms`, `wwn-containers`, `wwn-ssh`, `wwn-fastfetch`, `wwn-phoon-rs`, `wwn-neovim`, `wwn-foot`, `wwn-wasm`, … | Proxy / Android present / VM engine / OCI containers / in-process shell-tool ports (`*_main` C ABI, force-loaded static libs); `wwn-wasm` is the WASI P1/P2 **Wawona Runtime** (optional software = Wasm packages, not StoreKit ODR) |
+| **L3′** | `wwn-waypipe`, `Wawona-Swinging-Bridge`, `wwn-vms`, `wwn-containers`, `wwn-ssh`, `wwn-fastfetch`, `wwn-phoon-rs`, `wwn-neovim`, `wwn-foot`, `wwn-wasm`, … | Proxy / Android present / VM engine / OCI containers / in-process shell-tool ports (`*_main` C ABI, force-loaded static libs); `wwn-wasm` is the WASI P1/P2 **Wawona Runtime** (optional software = Wasm packages, not StoreKit ODR) |
 | **L4** | `Wawona` | App integration, Settings, presenters, SIP/Desktop, Android JNI, CI, docs, `flake.lock` hub |
 
 ## Hard rules
@@ -72,7 +72,7 @@ flowchart BT
 
 - Flake-input edges are **already acyclic** L0→L4 — no inversions (verified:
   toolchain has no wwn-* inputs; iland → toolchain only; weston → toolchain +
-  iland + kmscube; waypipe/anowaW/vms → toolchain; Wawona → all).
+  iland + kmscube; waypipe/swinging-bridge/vms → toolchain; Wawona → all).
 - Org-internal URLs are FlakeHub rolling
   (`https://flakehub.com/f/Wawona/<repo>/*`); `follows` still enforce the DAG.
   See [`flakehub-registry.md`](./flakehub-registry.md).
@@ -95,7 +95,7 @@ flowchart BT
 | **toolchain baseRegistry absorbs iland/weston** | "Simplify" by vendoring fragments into toolchain | Forbidden; breaks every consumer DAG |
 | **kmscube → weston** | Shared demo code pulled upward | Duplicate minimal stubs or keep demos in weston |
 | **waypipe → iland flake + iland → waypipe** | Zero-copy "shared crate" both ways | waypipe → iland (or only Wawona wires both); iland exposes C ABI only |
-| **anowaW → weston flake** | Nested compositor as flake input | Runtime/product launch only; anowaW → toolchain (+ optional iland if GPU) |
+| **Wawona Swinging Bridge → weston flake** | Nested compositor as flake input | Runtime/product launch only; Wawona Swinging Bridge → toolchain (+ optional iland if GPU) |
 | **Wawona as input of any wwn-*** | App headers leaking into libs | Use `wawonaSrc` extraArgs sparingly; never flake input L4→L0 |
 | **wwn-wasm → iland / weston** | Wayland fd-bridge tempting a graphics flake edge | Host uses existing `XDG_RUNTIME_DIR` unix sockets; **toolchain only** |
 | **freetype↔harfbuzz↔cairo** | Classic meson cycles | Keep disabled edges in ios/android recipes |
@@ -114,7 +114,7 @@ iland.
 ## Land order (multi-repo)
 
 Push L1 before L4 lock: `wwn-iland` → (`wwn-toolchain`/`wwn-waypipe`/`wwn-weston`/
-`wwn-kmscube`/`wwn-anowaW` as touched) → bump `Wawona` `flake.lock`. **Never open
+`wwn-kmscube`/`Wawona-Swinging-Bridge` as touched) → bump `Wawona` `flake.lock`. **Never open
 PRs that invert layers.** Any `flake.nix`/`registry.nix` change must update or
 cite this doc in the same phase iteration.
 
@@ -126,7 +126,7 @@ Wawona repo DAG (acyclic, never invert):
   L1 wwn-iland — complete graphics stack (iland, ANGLE, SwiftShader, MoltenVK, KosmicKrisp). Depends on toolchain ONLY.
   L2 wwn-kmscube — toolchain + iland.
   L3 wwn-weston — toolchain + iland + kmscube; ilandSrc is source injection only.
-  L3′ waypipe / anowaW / vms / apt — toolchain; merge iland only if GPU needed; no weston flake edge from anowaW.
+  L3′ waypipe / Wawona Swinging Bridge / vms / apt — toolchain; merge iland only if GPU needed; no weston flake edge from Wawona Swinging Bridge.
   L4 Wawona — merges fragments; never an input of L0–L3.
 
 FORBIDDEN: pixman/cairo/pango moved into iland; angle left owned by toolchain after graphics move;

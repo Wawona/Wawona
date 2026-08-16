@@ -31,10 +31,10 @@ if Mode B/JIT/jailbreak engage is linked into Mode A.
 1. Design `wwn-vms`, `wwn-containers`, and Wawona Machines with **A and B** in
    mind from day one (shared OCI/profiles; divergent engines behind flavor).
 2. **Never** ship Mode B to App Store / Play (no “hidden toggle”).
-3. Do not conflate: iland macOS Desktop dylib ≠ iOS Mode B IPA ≠ anowaW Mode B.
+3. Do not conflate: iland macOS Desktop dylib ≠ iOS Mode B IPA ≠ Wawona Swinging Bridge Mode B.
 4. Wasm package manager is Mode A–safe; jailbreak `.deb` is Mode B–only channel.
 5. tvOS / watchOS / visionOS: no VM/container machine kinds.
 
-See also: `wawona-iland-mode-b-desktop`, `wawona-anowaw`, `wawona-platform-targets`,
+See also: `wawona-iland-mode-b-desktop`, `wawona-swinging-bridge`, `wawona-platform-targets`,
 `docs/vms-mode-a-b.md`, `docs/containers-mode-a-b.md`,
 `docs/wasm-package-manager.md`.

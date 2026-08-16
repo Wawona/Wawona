@@ -7,7 +7,7 @@
 Wawona will let users add **VM** and **container** machine profiles in the
 Machines GUI. This is **not** the on-device [bundled shell](ios-local-shell/README.md),
 **not** [Wawona Runtime / Wasm packages](wasm-wasi.md), and **not**
-Desktop/LockScreen or anowaW.
+Desktop/LockScreen or Wawona Swinging Bridge.
 
 ## Mode A vs Mode B (iOS / iPadOS)
 

@@ -56,7 +56,7 @@ Current flake inputs (see `flake.nix`; do not invent extra `wwn-*` edges):
 | `wwn-zsh`, `wwn-coreutils`, `wwn-foot`, `wwn-neovim`, `wwn-fastfetch`, `wwn-phoon-rs` | Bundled on-device clients |
 | `wwn-ssh` | OpenSSH (macOS), libssh2 (Apple mobile), OpenSSH portable (Android) |
 | `wwn-waypipe` | Remote Wayland |
-| `wwn-anowaW` | Android Desktop / LockScreen bridge |
+| `wwn-Wawona Swinging Bridge` | Android Desktop / LockScreen bridge |
 | `wwn-vms`, `wwn-containers` | VM and container machine types |
 
 `wwn-apt` was **removed**. Do not document StoreKit `apt install` as a delivery

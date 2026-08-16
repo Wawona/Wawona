@@ -23,7 +23,7 @@ onto the site. Everything else stays in GitHub.
 | [vms-mode-a-b.md](vms-mode-a-b.md) / [containers-mode-a-b.md](containers-mode-a-b.md) | Engine plans for `wwn-vms` / `wwn-containers` |
 | [wasm-package-manager.md](wasm-package-manager.md) | Runtime Wasm packages (`/wasm/` + Mode B APT split) |
 | [iland-mode-a-b-desktop.md](iland-mode-a-b-desktop.md) | macOS iland Desktop dylib (one Mode B surface) |
-| [anowaw.md](anowaw.md) | anowaW app bridge (not Desktop) |
+| [swinging-bridge.md](swinging-bridge.md) | Wawona Swinging Bridge (not Desktop) |
 | [iland-graphics-stack.md](iland-graphics-stack.md) | GPU/SHM, no Turnip/KGSL |
 | [2026-waypipe.md](2026-waypipe.md) | SSH: OpenSSH / libssh2 / OpenSSH portable |
 | [ios-local-shell/README.md](ios-local-shell/README.md) | Bundled zsh (not StoreKit apt) |

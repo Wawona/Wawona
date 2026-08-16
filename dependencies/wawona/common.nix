@@ -75,7 +75,7 @@ rec {
     # Header-only platform gates used by WWNMachineSessionBridge.m (must be in
     # the staged source list — nix copies only explicitly listed paths).
     "src/platform/macos/ui/Machines/WWNPlatformCapabilities.h"
-    # anowaW App Bridge — macOS-only (added in macos.nix sources, not shared).
+    # Swinging Bridge App Bridge — macOS-only (added in macos.nix sources, not shared).
     # VM/container runners + jitless QEMU engine (shared macOS/iOS; each file
     # carries TARGET_OS_OSX branches). Referenced by WWNMachineSessionBridge.m.
     "src/platform/macos/ui/Machines/WWNVirtualMachineRunner.m"

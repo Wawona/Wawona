@@ -83,15 +83,15 @@ environment and greeter (machine picker; **native-port** profiles only).
 
 Detail: `wawona-iland-mode-b-desktop`, `docs/iland-mode-a-b-desktop.md`.
 
-## anowaW (app bridge — separate from Desktop/LockScreen)
+## Wawona Swinging Bridge (app bridge — separate from Desktop/LockScreen)
 
-**Coming soon.** anowaW bridges **macOS / Android / iOS / iPadOS** host apps
+**Coming soon.** Wawona Swinging Bridge bridges **macOS / Android / iOS / iPadOS** host apps
 onto Wayland surfaces (zero-copy surface bridge). It is **not** Desktop/LockScreen
 and **not** MediaProjection-as-desktop. Mode A ships in store/Play-shaped builds;
 Mode B is privileged (macOS partial SIP, Android root paths, iOS/iPadOS via
 `repo.wawona.io`) and **forbidden** in App Store / Play artifacts.
 
-Detail: `wawona-anowaw`, `docs/anowaw.md`.
+Detail: `wawona-swinging-bridge`, `docs/swinging-bridge.md`.
 
 Where Wawona is not replacing the desktop, it integrates with it: clients appear
 as ordinary host windows under the proprietary host compositor.
@@ -138,11 +138,14 @@ itself over waypipe. Full rule: `wawona-port-fidelity`.
 
 ## The GUI is the product
 
-Users will not set environment variables, and must never have to. Wawona provides
-the complete GUI to create and configure **per-machine profiles** — how software
-launches, which drivers and backends it uses, how it connects — with full control
-and **without ever touching a terminal**. A feature that only works by exporting a
-variable or editing a config file by hand is unfinished.
+Users will not set environment variables in a terminal, and must never have to.
+Wawona provides the complete GUI to create and configure **per-machine profiles**
+— how software launches, which drivers and backends it uses, how it connects —
+with full control and **without ever touching a terminal**. Settings →
+**Environment** inventories the variables Wawona injects and lets power users
+override or reset them (global + per-machine); that GUI is the supported path,
+not `export` in a shell. A feature that only works by exporting a variable or
+editing a config file by hand is unfinished.
 
 ### Where upstream offers a choice, so do we
 

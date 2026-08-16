@@ -56,7 +56,7 @@ and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream synta
     `.#wawona-macos-desktop-host` only; never in `.#wawona-macos` / iOS /
     Android. Desktop/LockScreen are **coming soon**. Canonical doc:
     `docs/iland-mode-a-b-desktop.md`; Cursor rule `wawona-iland-mode-b-desktop`.
-    anowaW is separate (`docs/anowaw.md`, `wawona-anowaw`).
+    Wawona Swinging Bridge is separate (`docs/swinging-bridge.md`, `wawona-swinging-bridge`).
   - Query `project=macos-internals` for Mach-O/dyld/Mach/XNU/launchd details.
 - **Rust backend builds via crate2nix** (per-crate Nix derivations, `Cargo.nix`)
   for isolated/incremental rebuilds — not a monolithic `buildRustPackage`. Query
@@ -156,7 +156,7 @@ no-op even when `press`/`click` succeed. Prefer `press` / `gesture`; do not
 - **Repo DAG (acyclic L0–L4; never invert):** `wwn-toolchain` (L0 substrate:
   cairo/pango/pixman/libwayland/…) → `wwn-iland` (L1 complete graphics stack:
   iland + ANGLE/ICDs after P2) → `wwn-kmscube` (L2) → `wwn-weston` (L3) →
-  Wawona (L4). `wwn-waypipe`/`wwn-anowaW`/`wwn-vms` are L3′ (→ toolchain). Never
+  Wawona (L4). `wwn-waypipe`/`Wawona-Swinging-Bridge` / flake `wwn-swinging-bridge`/`wwn-vms` are L3′ (→ toolchain). Never
   add a `wwn-*` flake input to `wwn-toolchain`, never put graphics keys in its
   `baseRegistry`, never make `wwn-iland` depend on weston/kmscube/waypipe, and
   never make Wawona an input of any `wwn-*`. Canonical: `docs/wwn-repo-dag.md`;
@@ -167,8 +167,8 @@ no-op even when `press`/`click` succeed. Prefer `press` / `gesture`; do not
   `repo.wawona.io` (website). Forbidden in App Store Apple-mobile apps (never
   mention jailbreak there). See `wawona-platform-targets`,
   `docs/iland-mode-a-b-desktop.md`.
-- **anowaW** — separate app bridge (macOS / Android / iOS / iPadOS); not Desktop.
-  See `wawona-anowaw`, `docs/anowaw.md`.
+- **Wawona Swinging Bridge** — macOS/Android Mode A+B planned; iOS/iPadOS Mode B
+  only (forbidden in store IPA). See `wawona-swinging-bridge`, `docs/swinging-bridge.md`.
 - **VM / containers** — planned on macOS / iOS / iPadOS / Android / Linux;
   forbidden on tvOS / watchOS / visionOS. See `docs/vms-containers.md`.
 - **Binary filenames** — GitHub Release
