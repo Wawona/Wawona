@@ -11,7 +11,7 @@ Desktop/LockScreen or anowaW.
 
 | Platform | Gate | Planned engine |
 |---|---|---|
-| macOS | planned | `Virtualization.framework` (VMs) + Apple Containerization (`Containerization.framework`) |
+| macOS | planned | `Virtualization.framework` (VMs) + Apple Containerization (`Containerization.framework`). The Apple `container` CLI is **macOS-only** — see `wwn-containers` `.#apple-container` (swiftpm2nix). |
 | iOS / iPadOS | planned | **UTM-SE** interpreter (store-shaped). Jailbreak: JIT-enabled UTM. Sideload: make **TrollStore** JIT launch easy. |
 | Android | planned | Containers and VMs via Wawona machine profiles (`wwn-vms` / `wwn-containers`) |
 | Linux | planned | Containers and VMs via Wawona machine profiles |

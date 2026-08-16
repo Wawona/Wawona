@@ -102,6 +102,7 @@ flowchart BT
 | **spirv-tools / ffmpeg in wrong layer** | If only graphics needs spirv, OK L1; if foot/ssh need it, keep L0 | Prefer L0 unless proven graphics-only |
 | **MVK/KK recipe needing full mesa + iland headers** | Mesa build pulls iland | KK/MVK builds are standalone ICDs; iland *links* them |
 | **Direct Turnip/KGSL** | App-owned ICD opens a kernel device | Excluded by runtime-only policy; use system Vulkan or SwiftShader |
+| **apple-container in L0** | Toolchain absorbs Apple `container` / Containerization | **macOS-only, L3′ `wwn-containers`**; `baseRegistry` throws |
 
 ## Who must merge `wwn-iland` after the P2 move
 

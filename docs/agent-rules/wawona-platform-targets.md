@@ -69,7 +69,9 @@ forbidden while iPhone is planned for those features.
     on jailbreak; sideload builds should be easy to run under **TrollStore** with
     JIT enabled. App Store copy must not pitch jailbreak/TrollStore.
   - **macOS:** Apple Containerization (`Containerization.framework`) + VMs via
-    `Virtualization.framework`, bundled into Wawona.
+    `Virtualization.framework`, bundled into Wawona. The Apple `container` CLI
+    and Containerization.framework are **macOS-only** (`appleContainerizationGate`);
+    never evaluate that engine on iOS/Android/Linux.
   - **Android / Linux:** containers and VMs through Wawona machine profiles
     (engines TBD in `wwn-vms` / `wwn-containers`).
 

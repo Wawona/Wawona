@@ -72,6 +72,22 @@ public enum PlatformCapabilities: Sendable {
 
     public static var allowsContainer: Bool { containerGate.isAvailable }
 
+    /// Apple Containerization.framework and the Apple `container` CLI.
+    ///
+    /// This is the macOS execution engine only (Virtualization.framework,
+    /// Apple silicon, macOS 15+ / 26 recommended). Other targets that allow
+    /// container *machine kinds* use container-in-VM (`wwn-vms`), never this
+    /// engine. Distinct from `containerGate`.
+    public static var appleContainerizationGate: CapabilityGate {
+        #if os(macOS)
+        return .planned(flag: "WWN_APPLE_CONTAINERIZATION")
+        #else
+        return .forbidden(reason: "Apple Containerization.framework and the Apple container CLI are macOS-only")
+        #endif
+    }
+
+    public static var allowsAppleContainerization: Bool { appleContainerizationGate.isAvailable }
+
     /// ANGLE / Vulkan / iland GL stack may be bundled and linked.
     ///
     /// tvOS and watchOS are not the same case, verified against the 26.5 SDKs:
