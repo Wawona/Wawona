@@ -2,7 +2,20 @@
 
 Status: **design** (not shipping). Replaces retired `wwn-apt` (StoreKit/ODR Mach-O).
 Related: [`wasm-wasi.md`](./wasm-wasi.md), [`vms-containers.md`](./vms-containers.md),
+[`mode-a-b.md`](./mode-a-b.md),
 [`repo.wawona.io`](https://github.com/Wawona/repo.wawona.io).
+
+## Mode A + Mode B
+
+| | Mode A (store / Play) | Mode B (jailbreak / SIP / root) |
+|---|---|---|
+| Wasm `wpm` + `/wasm/` | **Yes** — primary optional-software path | Yes (still works) |
+| Files.app `.wasm` | Yes | Yes |
+| Jailbreak APT / `.deb` | **Never** in app | Yes — Sileo + host tooling |
+| Mode B IPA extras | N/A | JIT VMs/containers + unsandboxed shell (separate from Wasm) |
+
+Package manager design is part of the product-wide Mode A/B plan — see
+[`mode-a-b.md`](./mode-a-b.md) § Package manager.
 
 ## Goal
 

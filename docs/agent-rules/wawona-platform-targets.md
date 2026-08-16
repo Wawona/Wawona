@@ -64,16 +64,21 @@ forbidden while iPhone is planned for those features.
   machine kinds.
 - **VM / containers** — Machines GUI kinds `virtual_machine` / `container`,
   configured per-machine. ⏳ on **macOS, iOS, iPadOS, Android, Linux**. ❌ on
-  **tvOS, watchOS, visionOS**. Engines (planned):
-  - **iOS / iPadOS:** UTM-SE interpreter in store-shaped builds; JIT-enabled UTM
-    on jailbreak; sideload builds should be easy to run under **TrollStore** with
-    JIT enabled. App Store copy must not pitch jailbreak/TrollStore.
+  **tvOS, watchOS, visionOS**. Design **Mode A and Mode B** together
+  (`wawona-mode-a-b`, `docs/mode-a-b.md`); never ship Mode B to App Store/Play.
+  Engines (planned):
+  - **iOS / iPadOS Mode A (store):** UTM-SE–class **jitless** interpreter
+    (`wwn-vms` TCTI); containers = OCI pull + container-in-VM on that engine.
+  - **iOS / iPadOS Mode B (Sileo Mode B IPA from `repo.wawona.io`):** JIT-enabled
+    UTM/QEMU for VMs **and** containers; unsandboxed shell + host APT. Auto-
+    package Mode B IPA on the repo — **absent** from store IPA.
+  - **Sideload / TrollStore:** website may document JIT; App Store copy must not.
   - **macOS:** Apple Containerization (`Containerization.framework`) + VMs via
     `Virtualization.framework`, bundled into Wawona. The Apple `container` CLI
     and Containerization.framework are **macOS-only** (`appleContainerizationGate`);
     never evaluate that engine on iOS/Android/Linux.
   - **Android / Linux:** containers and VMs through Wawona machine profiles
-    (engines TBD in `wwn-vms` / `wwn-containers`).
+    (engines TBD in `wwn-vms` / `wwn-containers`); Play = Mode A, root = Mode B.
 
 ## Hard rules
 

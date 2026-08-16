@@ -18,8 +18,11 @@ onto the site. Everything else stays in GitHub.
 | [settings.md](settings.md) | Preference keys and Machines overrides |
 | [usage.md](usage.md) | Nested Weston/Niri, bundled clients |
 | [machine-profiles.md](machine-profiles.md) | Machine kinds: native, ssh_waypipe, ssh_terminal, VM, container |
-| [vms-containers.md](vms-containers.md) | Planned VM/container Machines (UTM-SE, Virtualization, …) |
-| [iland-mode-a-b-desktop.md](iland-mode-a-b-desktop.md) | Mode A vs SIP Mode B Desktop/LockScreen |
+| [vms-containers.md](vms-containers.md) | Planned VM/container Machines (Mode A jitless / Mode B JIT) |
+| [mode-a-b.md](mode-a-b.md) | Product-wide Mode A (store) vs Mode B (jailbreak/SIP/root) |
+| [vms-mode-a-b.md](vms-mode-a-b.md) / [containers-mode-a-b.md](containers-mode-a-b.md) | Engine plans for `wwn-vms` / `wwn-containers` |
+| [wasm-package-manager.md](wasm-package-manager.md) | Runtime Wasm packages (`/wasm/` + Mode B APT split) |
+| [iland-mode-a-b-desktop.md](iland-mode-a-b-desktop.md) | macOS iland Desktop dylib (one Mode B surface) |
 | [anowaw.md](anowaw.md) | anowaW app bridge (not Desktop) |
 | [iland-graphics-stack.md](iland-graphics-stack.md) | GPU/SHM, no Turnip/KGSL |
 | [2026-waypipe.md](2026-waypipe.md) | SSH: OpenSSH / libssh2 / OpenSSH portable |
