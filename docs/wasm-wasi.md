@@ -2,14 +2,35 @@
 
 Milestone: [Support WASI P1 P2 WASM!](https://github.com/Wawona/Wawona/milestone/2)
 
-Wawona runs **native in-process ports** first (zsh, uutils, weston-terminal, foot, …).
-**Wawona Runtime** (`wwn-wasm`) is the long-tail path: compile to WASI, install or
-drop a `.wasm`, run it inside the reviewed interpreter. Apple does **not** sign
-the module. There is **no** StoreKit/`apt` Mach-O module catalog (`wwn-apt` was
-removed).
+## Tradeoff: not platform-native
+
+Wawona prefers **native in-process ports** when we can ship them (zsh, uutils,
+weston-terminal, foot, …). Those are real platform binaries inside the reviewed
+app.
+
+**Wasm is not platform-native.** That is a real tradeoff: no Mach-O/`dlopen`
+modules, no Alpine `apk` into a guest Linux userspace, and performance sits
+behind an interpreter (Pulley on Apple mobile). It is a bummer next to a true
+native port.
+
+What you get instead is a **portable Wawona Runtime** (`wwn-wasm`) that
+developers and users can target once and run across Wawona with **full App
+Store / Play compliance**:
+
+- Compile to **WASI P1 or P2** (`.wasm` bytecode as a document / package)
+- Install with **`wpm`** (Wawona Runtime’s dedicated package manager) or drop
+  into Files from the Mode A registry `repo.wawona.io/wasm`
+- The reviewed Runtime in the signed app interprets the module — Apple does
+  **not** sign the `.wasm`, and there is **no** unsigned Mach-O download path
+
+There is **no Mode B flavor of the Runtime**. Jailbreak `.deb` APT is a
+separate channel on `repo.wawona.io/jailbreak/`. There is **no** StoreKit/`apt`
+Mach-O module catalog (`wwn-apt` was removed).
 
 Wasm packages are **not** OCI Linux containers (`wwn-containers`) and **not**
 VMs (`wwn-vms`). Same app process, sandboxed Runtime only.
+
+Public subset: [wawona.io/docs/wasm](https://wawona.io/docs/wasm/).
 
 ## Delivery (two ingest paths)
 

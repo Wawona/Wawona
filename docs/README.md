@@ -21,7 +21,8 @@ onto the site. Everything else stays in GitHub.
 | [vms-containers.md](vms-containers.md) | Planned VM/container Machines (Mode A jitless / Mode B JIT) |
 | [mode-a-b.md](mode-a-b.md) | Product-wide Mode A (store) vs Mode B (jailbreak/SIP/root) |
 | [vms-mode-a-b.md](vms-mode-a-b.md) / [containers-mode-a-b.md](containers-mode-a-b.md) | Engine plans for `wwn-vms` / `wwn-containers` |
-| [wasm-package-manager.md](wasm-package-manager.md) | Runtime Wasm packages (`/wasm/` + Mode B APT split) |
+| [wasm-package-manager.md](wasm-package-manager.md) | Runtime Wasm packages (`wpm` / WASI; not platform-native, store-compliant) |
+| [wasm-wasi.md](wasm-wasi.md) | Wawona Runtime tradeoff + compile / shell guide |
 | [iland-mode-a-b-desktop.md](iland-mode-a-b-desktop.md) | macOS iland Desktop dylib (one Mode B surface) |
 | [swinging-bridge.md](swinging-bridge.md) | Wawona Swinging Bridge (not Desktop) |
 | [iland-graphics-stack.md](iland-graphics-stack.md) | GPU/SHM, no Turnip/KGSL |

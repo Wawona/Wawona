@@ -44,8 +44,11 @@ Canonical prose: `Wawona/docs/mode-a-b.md`, `swinging-bridge.md`, `iland-mode-a-
 
 ### Wawona Runtime packages (`wpm` / WASI) — Mode A forever
 
-- **Wawona Runtime is always App Store / Play compliant.** There is **no Mode B flavor of the Runtime**.
-- Packages are **bytecode data** (`.wasm`), not unsigned Mach-O/`dlopen`, not `.deb`.
+- **Wasm is not platform-native** (tradeoff vs a true Mach-O port). Payoff: one
+  **portable** Runtime + **`wpm`** with **full App Store / Play compliance**.
+- **Wawona Runtime is always App Store / Play compliant.** There is **no Mode B
+  flavor of the Runtime**.
+- Packages are **bytecode data** (`.wasm` / WASI P1/P2), not unsigned Mach-O/`dlopen`, not `.deb`.
 - Dual channel on `repo.wawona.io`:
   - `/wasm/` — Mode A (store binaries may use)
   - `/jailbreak/` — Mode B APT only (store binaries must **never** touch)

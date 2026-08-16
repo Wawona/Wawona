@@ -26,6 +26,13 @@ Give every Wawona target (App Store Apple mobile, Play Android, macOS, Linux) an
 reviewed **Wawona Runtime** (`wwn-wasm`) — not ELF/Mach-O, not Linux containers,
 not jailbreak `.deb`.
 
+**Wasm is not platform-native.** That is the cost of this path: no true Mach-O
+ports via the package manager, and execution goes through the Runtime
+interpreter. The payoff is a **portable** Runtime developers and users can
+target once, with **full App Store / Play compliance**, via WASI P1/P2 and
+Runtime’s dedicated package manager **`wpm`**. Native in-process ports remain
+first-class whenever we ship one. The Runtime itself has **no Mode B flavor**.
+
 ```text
 Developer builds foo.wasm (wasm32-wasip1 / wasip2)
         ↓
@@ -50,7 +57,7 @@ Wawona’s client installs **Wasm components into the Runtime store**; the
 | Debian `.deb` for App Store Wawona | Never |
 | OCI Linux container images / Docker Hub run | `wwn-containers` + Machines kind `container` |
 | Full VMs | `wwn-vms` |
-| Jailbreak Desktop / anowaW Mode B tweaks | Still **`.deb` / Sileo** on `repo.wawona.io` (separate channel) |
+| Jailbreak Desktop / Wawona Swinging Bridge Mode B tweaks | Still **`.deb` / Sileo** on `repo.wawona.io` (separate channel) |
 
 ## Dual-channel `repo.wawona.io` (hard firewall)
 
@@ -67,7 +74,7 @@ repo.wawona.io
 └── /jailbreak/     ← Mode B: Sileo / Procursus flat APT  (.deb tweaks)
     ├── Packages / Release
     ├── Desktop / LockScreen tweaks
-    └── anowaW Mode B, etc.
+    └── Wawona Swinging Bridge Mode B, etc.
 ```
 
 ### Firewall rules
@@ -284,7 +291,7 @@ DAG: package client stays L3′ → `wwn-toolchain` only; no weston/iland flake 
 ### Parallel track — Jailbreak channel (unchanged intent)
 
 - Keep Procursus/Sileo flat APT under `/jailbreak/` (or existing APT root).
-- Continue packaging Desktop / LockScreen / anowaW Mode B as **`.deb`**.
+- Continue packaging Desktop / LockScreen / Wawona Swinging Bridge Mode B as **`.deb`**.
 - Never merge into `/wasm/` index.
 - Website-only docs for Mode B; zero mention in store IPA.
 

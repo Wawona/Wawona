@@ -139,6 +139,10 @@ Implementation plans: [`vms-mode-a-b.md`](./vms-mode-a-b.md),
 
 From [`wasm-package-manager.md`](./wasm-package-manager.md):
 
+**Wasm is not platform-native** (tradeoff vs a Mach-O port). The payoff is a
+**portable Wawona Runtime** plus dedicated **`wpm`**, with **full App Store /
+Play compliance** via WASI P1/P2. The Runtime itself has **no Mode B flavor**.
+
 | Channel | Mode A | Mode B |
 |---------|--------|--------|
 | `repo.wawona.io/wasm/` | Default registry for `wpm` / Packages GUI | Same Wasm registry still works |
