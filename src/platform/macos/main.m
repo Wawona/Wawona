@@ -270,6 +270,7 @@ static void wwn_print_list_clients(void) {
       "kmscube",
       "neovim",
       "fastfetch",
+      "phoon",
       "fuzzel",
       NULL,
   };
@@ -1009,6 +1010,23 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
 
 @end
 
+/// Xcode / AppKit / Launch Services inject single-dash Cocoa keys (e.g.
+/// `-NSDocumentRevisionsDebugMode YES`). Those are not Wawona CLI flags.
+static BOOL wwn_is_cocoa_passthrough_arg(const char *arg) {
+  if (arg == NULL || arg[0] != '-') {
+    return NO;
+  }
+  // Double-dash is always our CLI surface.
+  if (arg[1] == '-') {
+    return NO;
+  }
+  if (strncmp(arg, "-NS", 3) == 0 || strncmp(arg, "-_NS", 4) == 0 ||
+      strncmp(arg, "-Apple", 6) == 0 || strncmp(arg, "-psn_", 5) == 0) {
+    return YES;
+  }
+  return NO;
+}
+
 int main(int argc, char *argv[]) {
   @autoreleasepool {
     // Overwrite argv[0] so macOS menu bar shows "Wawona" instead of the binary
@@ -1029,6 +1047,9 @@ int main(int argc, char *argv[]) {
     BOOL forceGui = NO;
     for (int i = 1; i < argc; i++) {
       const char *arg = argv[i];
+      if (wwn_is_cocoa_passthrough_arg(arg)) {
+        continue;
+      }
       if (strcmp(arg, "--help") == 0 || strcmp(arg, "-h") == 0) {
         wwn_print_cli_help();
         return 0;
@@ -1056,6 +1077,9 @@ int main(int argc, char *argv[]) {
     BOOL menuBarMode = NO;
     for (int i = 1; i < argc; i++) {
       const char *arg = argv[i];
+      if (wwn_is_cocoa_passthrough_arg(arg)) {
+        continue;
+      }
       if (strcmp(arg, "--compositor-host") == 0) {
         compositorHostMode = YES;
       } else if (strcmp(arg, "--menubar") == 0) {
