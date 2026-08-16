@@ -1057,11 +1057,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1786849235,
-        "narHash": "sha256-vMIiAV2eVhygRzXTKUSX/6b9MMYNUoBUf6jOdOND3OA=",
+        "lastModified": 1786919114,
+        "narHash": "sha256-Oe5DvOJ9S716nfau5dLW011ArMhRjq+uVPNofsDZzd4=",
         "owner": "Wawona",
         "repo": "Wawona-Swinging-Bridge",
-        "rev": "a0ebbb0ad469ce6ec82b8a8a848d12ca319a3370",
+        "rev": "24d6f8b32900ebf0437a7fca0a2b111ddc414252",
         "type": "github"
       },
       "original": {
