@@ -847,7 +847,7 @@ update_title(struct terminal *terminal)
 {
 	if (window_is_resizing(terminal->window)) {
 		char *p;
-		if (asprintf(&p, "%s — [%dx%d]", terminal->title, terminal->width, terminal->height) > 0) {
+		if (asprintf(&p, "%s. [%dx%d]", terminal->title, terminal->width, terminal->height) > 0) {
 			window_set_title(terminal->window, p);
 			free(p);
 		}

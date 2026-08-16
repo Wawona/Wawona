@@ -142,7 +142,7 @@ DRM open/resources and KMS modeset/page-flip are graded independently.
 | [`iland-mode-a-b-desktop.md`](iland-mode-a-b-desktop.md) | Privilege axis + packaging |
 | [`toolkit-soft-path.md`](toolkit-soft-path.md) | SDL/Qt/GTK readiness catalog |
 | [`testing/graphics-ci-matrix.md`](testing/graphics-ci-matrix.md) | CI + Agent-Device matrix |
-| [`wwn-repo-dag.md`](wwn-repo-dag.md) | L0–L4 ownership |
+| [`wwn-repo-dag.md`](wwn-repo-dag.md) | L0-L4 ownership |
 
 WWN-MCP indexes these paths under the Wawona project; prefer linking here over
 duplicating architecture prose in issue comments.

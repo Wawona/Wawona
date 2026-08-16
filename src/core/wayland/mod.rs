@@ -313,7 +313,7 @@ impl smithay::input::SeatHandler for crate::core::state::CompositorState {
 impl smithay::wayland::selection::SelectionHandler for crate::core::state::CompositorState {
     type SelectionUserData = ();
 
-    /// A client set the clipboard (or primary) selection — pull its text
+    /// A client set the clipboard (or primary) selection. Pull its text
     /// so the native platform layer can push it into NSPasteboard /
     /// UIPasteboard / ClipboardManager (see `ClipboardBridge`).
     ///
@@ -381,7 +381,7 @@ impl smithay::wayland::selection::SelectionHandler for crate::core::state::Compo
 
     /// A client requested to read the compositor-owned selection (i.e. the
     /// native pasteboard content most recently pushed via
-    /// `WWNCoreSetClipboardText`) — write it into the client-provided fd.
+    /// `WWNCoreSetClipboardText`). Write it into the client-provided fd.
     fn send_selection(
         &mut self,
         ty: smithay::wayland::selection::SelectionTarget,

@@ -37,7 +37,7 @@ object WawonaSettings {
         // Use Metal 4 - removed, always false
         val useMetal4ForNested = false
         
-        // Multiple Clients — match iOS/macOS default (shared Rust core supports it).
+        // Multiple Clients. Match iOS/macOS default (shared Rust core supports it).
         val multipleClients = prefs.getBoolean("multipleClients", true)
         
         // Waypipe RS Support - always enabled, always true
@@ -105,7 +105,7 @@ object WawonaSettings {
                 EnvironmentOverrides.jniPayload(prefs, profile)
             )
         } catch (_: Throwable) {
-            // Older native libs without the symbol — ignore until rebuild.
+            // Older native libs without the symbol. Ignore until rebuild.
         }
     }
 }

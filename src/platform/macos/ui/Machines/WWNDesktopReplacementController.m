@@ -1,5 +1,5 @@
 //
-// WWNDesktopReplacementController.m — see header.
+// WWNDesktopReplacementController.m. See header.
 //
 #import "WWNDesktopReplacementController.h"
 
@@ -46,7 +46,7 @@
     return NO;
   }
   [defs setBool:NO forKey:kWWNPrefsDesktopReplacementEnabled];
-  NSLog(@"[DesktopReplacement] cleared DesktopReplacementEnabled — SIP status "
+  NSLog(@"[DesktopReplacement] cleared DesktopReplacementEnabled. SIP status "
         @"%@ no longer permits Mode B",
         [WWNSipStatus describe:sip]);
   return YES;

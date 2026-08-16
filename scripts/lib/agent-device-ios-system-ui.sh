@@ -1,7 +1,7 @@
 # iOS system-UI helpers for agent-device sessions.
 #
 # Allow Paste (SpringBoard / CoreSimulatorBridge) cannot be exercised under
-# XCUITest — dismiss it with host Simulator CGEvent + screenshot locate.
+# XCUITest. Dismiss it with host Simulator CGEvent + screenshot locate.
 #
 # Keyboard input and the swipe-typing tutorial Continue use normal agent-device
 # commands (`type` / `fill` / `press label="Continue"`). Do not host-tap the
@@ -121,7 +121,7 @@ guard let img = NSImage(contentsOfFile: shotPath),
 let w = rep.pixelsWide, h = rep.pixelsHigh
 struct P { var x: Int; var y: Int }
 var blues: [P] = [], grays: [P] = []
-// Centered alert only — exclude Machines Start/FAB (right/lower chrome).
+// Centered alert only. Exclude Machines Start/FAB (right/lower chrome).
 let y0 = h * 38 / 100, y1 = h * 62 / 100
 let x0 = w * 22 / 100, x1 = w * 78 / 100
 for y in stride(from: y0, through: y1, by: 3) {

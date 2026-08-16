@@ -24,11 +24,11 @@ use std::collections::HashMap;
 pub enum ContentType {
     /// No content type hint
     None,
-    /// Photo content — optimize for quality
+    /// Photo content. Optimize for quality
     Photo,
-    /// Video content — optimize for smooth playback
+    /// Video content. Optimize for smooth playback
     Video,
-    /// Game content — optimize for low latency
+    /// Game content. Optimize for low latency
     Game,
 }
 
@@ -98,7 +98,7 @@ impl Dispatch<WpContentTypeManagerV1, ()> for CompositorState {
 }
 
 // ============================================================================
-// wp_content_type_v1 — uses surface_id (u32) as user data
+// wp_content_type_v1. Uses surface_id (u32) as user data
 // ============================================================================
 
 impl Dispatch<WpContentTypeV1, u32> for CompositorState {

@@ -247,14 +247,14 @@ class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     override fun onDestroy() {
         if (isFinishing && !SessionActivityRegistry.hasActiveSessions()) {
-            WLog.d("ACTIVITY", "onDestroy — shutting down idle compositor core")
+            WLog.d("ACTIVITY", "onDestroy. Shutting down idle compositor core")
             try {
                 WawonaNative.nativeShutdown()
             } catch (e: Exception) {
                 WLog.e("ACTIVITY", "Error in nativeShutdown: ${e.message}")
             }
         } else {
-            WLog.d("ACTIVITY", "onDestroy — preserving process compositor for host tasks")
+            WLog.d("ACTIVITY", "onDestroy. Preserving process compositor for host tasks")
         }
         super.onDestroy()
     }
@@ -360,7 +360,7 @@ fun WawonaApp(
         val launched = when (clientId) {
             "weston-simple-shm" -> WawonaNative.nativeRunWestonSimpleSHM()
             "weston" -> {
-                // Nested Weston keeps a shared socket — reuse if already up.
+                // Nested Weston keeps a shared socket. Reuse if already up.
                 if (WawonaNative.nativeIsWestonRunning()) true
                 else WawonaNative.nativeRunWeston()
             }
@@ -1093,7 +1093,7 @@ fun WawonaApp(
         }
         while (true) {
             clientTabs = buildList {
-                // #84: tabs map 1:1 to live Wayland clients only — never the
+                // #84: tabs map 1:1 to live Wayland clients only. Never the
                 // host "Shell"/Machines chrome. The Machines home is reached via
                 // the host back/Focus affordance, not a tab segment.
                 try {
@@ -1166,7 +1166,7 @@ fun WawonaApp(
                 lastWanted = wanted
                 val mode = keyboardUiModeLatest.value
                 if (mode.isPip() || mode == KeyboardUiMode.HIDDEN_EXTERNAL) {
-                    // User parked keyboard — don't yank it open/closed.
+                    // User parked keyboard. Don't yank it open/closed.
                 } else if (wanted && mode != KeyboardUiMode.EXPANDED) {
                     keyboardUiMode = KeyboardUiMode.EXPANDED
                     surfaceViewRef?.restartInputForContentType()
@@ -1179,7 +1179,7 @@ fun WawonaApp(
     }
 
     // IME visibility only maintains Expanded when already Expanded (user/text_entry_wanted).
-    // Never promote ACCESSORY_ONLY → EXPANDED from imeVisible — that forced Gboard open for
+    // Never promote ACCESSORY_ONLY → EXPANDED from imeVisible. That forced Gboard open for
     // demos like weston-simple-shm that only need the accessory bar.
     LaunchedEffect(imeBottom, keyboardUiMode, inSessionUi, hardwareKeyboardActive) {
         if (!inSessionUi || hardwareKeyboardActive) return@LaunchedEffect
@@ -1497,7 +1497,7 @@ fun WawonaApp(
 }
 
 /**
- * Startup log overlay — shown between "Run" and the first compositor frame.
+ * Startup log overlay. Shown between "Run" and the first compositor frame.
  *
  * Displays a native scrollable text view (LazyColumn of log lines) with a
  * frosted-glass card.  The user can long-press to select and copy text.
@@ -1562,7 +1562,7 @@ private fun StartupLogOverlay(
 
             HorizontalDivider(color = Color(0x33FFFFFF), thickness = 0.5.dp)
 
-            /* Log lines — selectable for copy */
+            /* Log lines. Selectable for copy */
             SelectionContainer {
                 LazyColumn(
                     state = listState,

@@ -13,11 +13,11 @@
 #   correctly-tagged objects from the start (no binary patching needed).
 #
 #   Each crate is lazily built TWICE:
-#     HOST build  — native compilation; supplies rlibs for build-script linking
-#     CROSS build — crate compiled for iOS/Android via the cross stdenv
+#     HOST build . Native compilation; supplies rlibs for build-script linking
+#     CROSS build. Crate compiled for iOS/Android via the cross stdenv
 #   Build deps are swapped to their HOST versions (.hostLib). Proc-macro
 #   crates are built entirely for host. The host build of each crate is
-#   lazy — Nix only evaluates it when .hostLib is actually referenced.
+#   lazy. Nix only evaluates it when .hostLib is actually referenced.
 #
 { pkgs
 , lib
@@ -885,7 +885,7 @@ if hostGraphOnly then
     dontUnpack = true;
     dontBuild = true;
 
-    # Do not force rootBuild here — host crate derivations are built lazily
+    # Do not force rootBuild here. Host crate derivations are built lazily
     # when cross backends resolve findHostBuild during linking.
     installPhase = "mkdir -p $out; touch $out/marker";
 
@@ -918,7 +918,7 @@ else
 
     ${lib.optionalString isMacOS ''
       # Swift bindings are produced from the built library's embedded UniFFI
-      # metadata (proc-macro / setup_scaffolding! mode — there is no UDL to
+      # metadata (proc-macro / setup_scaffolding! mode. There is no UDL to
       # point at anymore). Best-effort: only runs when a uniffi-bindgen binary
       # is available in the crate output.
       mkdir -p $out/uniffi/swift
@@ -933,7 +933,7 @@ else
   '';
 
   meta = {
-    description = "Wawona Rust backend (${platform}${lib.optionalString (isAppleCross && simulator) " simulator"}) — built with crate2nix per-crate caching";
+    description = "Wawona Rust backend (${platform}${lib.optionalString (isAppleCross && simulator) " simulator"}). Built with crate2nix per-crate caching";
     platforms = if isMacOS then lib.platforms.darwin
                 else if isAppleCross then lib.platforms.darwin
                 else lib.platforms.all;

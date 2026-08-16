@@ -1,4 +1,4 @@
-//! XDG Activation — dispatch owned by Smithay `delegate_xdg_activation!`.
+//! XDG Activation. Dispatch owned by Smithay `delegate_xdg_activation!`.
 
 use std::collections::HashMap;
 

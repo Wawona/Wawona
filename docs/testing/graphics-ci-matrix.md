@@ -1,4 +1,4 @@
-# Graphics CI matrix — Mode A store vs Mode B privileged
+# Graphics CI matrix. Mode A store vs Mode B privileged
 
 Companion to epic [#122](https://github.com/Wawona/Wawona/issues/122) and
 [`iland-graphics-progress.md`](../iland-graphics-progress.md). Bundle policy is

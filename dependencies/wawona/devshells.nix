@@ -48,7 +48,7 @@ builtins.listToAttrs (map (system: let
       export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
       export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
     else
-      echo "WARNING: Xcode not found — set DEVELOPER_DIR or install Xcode before fastlane/match" >&2
+      echo "WARNING: Xcode not found. Set DEVELOPER_DIR or install Xcode before fastlane/match" >&2
     fi
   '';
 

@@ -20,7 +20,7 @@ esac
 APP_FW="${TARGET_BUILD_DIR}/${FULL_PRODUCT_NAME}/Frameworks"
 
 # WawonaModel/WawonaUIContracts are embed=false, link=false dependencies (see
-# xcodegen.nix dependencies comment) — Xcode's own Embed Frameworks phase
+# xcodegen.nix dependencies comment). Xcode's own Embed Frameworks phase
 # never runs for them, so this script is the *only* thing that creates
 # Frameworks/ and copies them in; do not early-exit just because it is
 # missing.

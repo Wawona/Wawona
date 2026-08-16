@@ -144,7 +144,7 @@ fn test_find_surface_at_scales_weston_style_buffer_without_set_buffer_scale() {
 fn test_find_surface_at_declared_buffer_scale_is_identity() {
     // Retina 2x with a properly declared wl_surface.set_buffer_scale: the
     // surface's logical size equals the presented view size, and wl_pointer
-    // coordinates are surface-local *logical* — never buffer pixels — so the
+    // coordinates are surface-local *logical*. Never buffer pixels. So the
     // view -> surface mapping must be identity.
     let mut state = CompositorState::new(None);
 

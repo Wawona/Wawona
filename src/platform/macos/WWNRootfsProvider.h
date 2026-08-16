@@ -20,16 +20,16 @@ typedef NS_OPTIONS(NSUInteger, WWNRootfsCapabilities) {
 };
 
 /// Snapshot keys (NSString values unless noted):
-///   mode              — @"bundled" | @"host"
-///   filesRoot         — user-visible files root (may equal home on desktop)
-///   home              — shell $HOME
-///   systemRoot        — WAWONA_ROOTFS or host note
+///   mode. @"bundled" | @"host"
+///   filesRoot. User-visible files root (may equal home on desktop)
+///   home. Shell $HOME
+///   systemRoot. WAWONA_ROOTFS or host note
 ///   bundleTemplateVersion
 ///   appliedTemplateVersion
-///   filesHint         — one-line browse instruction for this platform
-///   platformLabel     — short OS name for settings copy
-///   iCloudSync        — @"On" | @"Off"
-///   iCloudStatus      — human-readable sync state
+///   filesHint. One-line browse instruction for this platform
+///   platformLabel. Short OS name for settings copy
+///   iCloudSync. @"On" | @"Off"
+///   iCloudStatus. Human-readable sync state
 @interface WWNRootfsProvider : NSObject
 
 + (WWNRootfsCapabilities)capabilities;

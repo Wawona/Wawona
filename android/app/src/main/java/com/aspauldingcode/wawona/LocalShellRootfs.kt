@@ -33,7 +33,7 @@ data class LocalShellSnapshot(
         get() = if (mode == "host") {
             "host shell"
         } else {
-            val applied = appliedTemplateVersion.ifEmpty { "—" }
+            val applied = appliedTemplateVersion.ifEmpty { "-" }
             "bundle v$bundleTemplateVersion / installed v$applied"
         }
 }
@@ -60,7 +60,7 @@ object LocalShellRootfs {
         if (!readme.exists()) {
             readme.writeText(
                 """
-                Wawona Local Shell — Android
+                Wawona Local Shell. Android
 
                 home/     Shell HOME (${'$'}HOME). Edit dotfiles, add scripts.
                 Browse:  Android/data/<package>/files/wawona-rootfs/

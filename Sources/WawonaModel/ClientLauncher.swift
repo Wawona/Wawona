@@ -7,7 +7,7 @@ public struct ClientLauncher: Codable, Identifiable, Hashable, Sendable {
     public var arguments: [String]
     public var autoLaunch: Bool
     public var displayName: String
-    /// ANGLE / Vulkan / iland GLES demos — omitted from availablePresets when
+    /// ANGLE / Vulkan / iland GLES demos. Omitted from availablePresets when
     /// `PlatformCapabilities.allowsGpuStack` is false (watchOS blocked).
     public var requiresGpuStack: Bool
 
@@ -75,7 +75,7 @@ public extension ClientLauncher {
     ]
 
     /// Clients runnable on this platform (GPU demos dropped when the stack is
-    /// blocked/forbidden — e.g. watchOS has no Metal).
+    /// blocked/forbidden. E.g. watchOS has no Metal).
     static var availablePresets: [ClientLauncher] {
         allPresets.filter { launcher in
             if launcher.requiresGpuStack {

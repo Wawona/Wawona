@@ -58,7 +58,7 @@
     wwn-zsh.inputs.nixpkgs.follows = "nixpkgs";
     wwn-zsh.inputs.wwn-toolchain.follows = "wwn-toolchain";
     # SSH stack split out of wwn-toolchain: chooses the App-Store/Play
-    # compliant backend per platform (libssh2 CLI on Apple mobile — never
+    # compliant backend per platform (libssh2 CLI on Apple mobile. Never
     # OpenSSH; OpenSSH portable on Android; regular OpenSSH on macOS/Linux)
     # + sshpass.
     wwn-ssh.url = "https://flakehub.com/f/Wawona/wwn-ssh/*";
@@ -90,7 +90,7 @@
     wwn-neovim.url = "https://flakehub.com/f/Wawona/wwn-neovim/*";
     wwn-neovim.inputs.nixpkgs.follows = "nixpkgs";
     wwn-neovim.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    # WASI P1/P2 interpreter (Pulley on Apple mobile). L3′ — toolchain only.
+    # WASI P1/P2 interpreter (Pulley on Apple mobile). L3′. Toolchain only.
     # Cited: docs/wwn-repo-dag.md. github: until FlakeHub rolling exists.
     wwn-wasm.url = "github:Wawona/wwn-wasm";
     wwn-wasm.inputs.nixpkgs.follows = "nixpkgs";
@@ -291,7 +291,7 @@
       owner = "mstoeckl"; repo = "waypipe"; rev = "v0.11.0";
       sha256 = "sha256-Tbd/yY90yb2+/ODYVL3SudHaJCGJKatZ9FuGM2uAX+8=";
     };
-    # uutils coreutils umbrella crate — vendored for in-process ls/cat/cp/...
+    # uutils coreutils umbrella crate. Vendored for in-process ls/cat/cp/...
     # on the App-Store-compliant build (no fork/exec). See scripts/ensure-coreutils.sh.
     coreutils-src = bootstrapPkgs.fetchFromGitHub {
       owner = "uutils"; repo = "coreutils"; rev = "0.0.30";
@@ -302,7 +302,7 @@
       let
         isLinuxHost = builtins.elem system linuxSystems;
 
-        # Clean package set for Android — only the rust-overlay is included
+        # Clean package set for Android. Only the rust-overlay is included
         # to provide pkgs.rust-bin for waypipe/android.nix. The second and third
         # host overlays are excluded to prevent cargo → libsecret → gjs → 
         # spidermonkey → cbindgen recursive evaluation chains.
@@ -661,7 +661,7 @@
         } // pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin {
           # ANGLE companion: iland userland graphics core (GBM/EGL/DRM over IOSurface).
           iland = toolchains.buildForMacOS "iland" { };
-          # GL smoke test (kmscube) over iland+ANGLE — nested inside Wawona
+          # GL smoke test (kmscube) over iland+ANGLE. Nested inside Wawona
           # via the Mode A present-redirect. macOS only.
           kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
           "iland-gl-clients" = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
@@ -669,7 +669,7 @@
         };
 
         packages = commonPackages
-          # WLCS conformance runner (ci-l2-wlcs) — Linux-only, skeleton
+          # WLCS conformance runner (ci-l2-wlcs). Linux-only, skeleton
           # integration; runtime battery is a CI lane. Guarded so darwin eval is
           # unaffected.
           // (pkgs.lib.optionalAttrs (isLinuxHost && builtins.pathExists ./dependencies/tests/wlcs.nix) {
@@ -1022,7 +1022,7 @@
           };
           xcodegenMacosOutputs = mkXcodegen { platformFilter = [ "macos" ]; };
           xcodegenAppleOutputs = mkXcodegen { platformFilter = [ "ios" "ipados" "macos" ]; };
-          # Full Apple matrix minus visionOS — used when vision deps fail to
+          # Full Apple matrix minus visionOS. Used when vision deps fail to
           # configure (e.g. lz4 -mvisionos-simulator-version-min clang gap).
           xcodegenNoVisionOutputs = mkXcodegen {
             platformFilter = [ "ios" "ipados" "macos" "tvos" "watchos" ];
@@ -1049,7 +1049,7 @@
             # pulling iOS/device backend graphs.
             rustBackend = backend-macos;
             xcodeProject = xcodegenMacosOutputs.project;
-            # Store-safe / default: Mode A only — no Mode B dylib.
+            # Store-safe / default: Mode A only. No Mode B dylib.
             ilandBaremetal = null;
           };
           # Desktop-host macOS: ships Mode B libwayland-mac.dylib for SIP-gated
@@ -1362,7 +1362,7 @@ EOF
           foot = (import ./dependencies/wawona/shell-wrappers.nix).footWrapper pkgs (toolchains.buildForMacOS "foot" {}) wawona-macos;
           waypipe-ios = toolchains.buildForIOS "waypipe" { };
           waypipe-ios-sim = toolchains.buildForIOS "waypipe" { simulator = true; };
-          # anowaW app bridge — macOS (+ Android) only (platform-targets matrix).
+          # anowaW app bridge. MacOS (+ Android) only (platform-targets matrix).
           anowaw-macos = toolchains.buildForMacOS "anowaw" { };
           # weston toytoolkit (cairo/pango) cross-compile stack for Apple mobile,
           # exposed individually for incremental build verification.
@@ -1446,7 +1446,7 @@ EOF
           # Bundled on EVERY Apple target like foot/niri: rust-overlay stable
           # ships std for the tier-3 tvOS/watchOS/visionOS triples, so phoon
           # builds natively for each (iOS attrs reused for iPadOS/visionOS in
-          # prebuild, matching foot). Pure Rust — no GPU/framework deps.
+          # prebuild, matching foot). Pure Rust. No GPU/framework deps.
           phoon-ios = toolchains.buildForIOS "phoon" { };
           phoon-ios-sim = toolchains.buildForIOS "phoon" { simulator = true; };
           phoon-ios-device = toolchains.buildForIOS "phoon" { simulator = false; };
@@ -1554,7 +1554,7 @@ EOF
                 # vfkit creates the overlay disk + restful socket in CWD; anchor
                 # them in a stable per-user state dir. The guest vsock lands on the
                 # host-side unix socket (vsockSocketPath in microvm-guest.nix),
-                # which the bridge listens on — default /tmp/wawona-guest-vsock.sock.
+                # which the bridge listens on. Default /tmp/wawona-guest-vsock.sock.
                 STATEDIR="''${XDG_STATE_HOME:-$HOME/.local/state}/wawona-microvm"
                 mkdir -p "$STATEDIR"
                 cd "$STATEDIR"
@@ -1562,7 +1562,7 @@ EOF
                 echo "[wawona-microvm] guest vsock -> host unix socket: /tmp/wawona-guest-vsock.sock (the bridge listens here)" >&2
                 # microvm.nix's vfkit runner attaches the guest console via
                 # `--device virtio-serial,stdio`, which fails with "operation not
-                # supported on socket" whenever stdio is not a real TTY — exactly
+                # supported on socket" whenever stdio is not a real TTY. Exactly
                 # the case when Wawona launches this via NSTask (no controlling
                 # terminal). Allocate a pty with Python's pty.spawn (works even
                 # with no parent TTY) so the stdio console has a terminal.
@@ -1588,7 +1588,7 @@ EOF
                 WAYPIPE_SOCKET="''${WAYPIPE_SOCKET:-/tmp/waypipe-wawona.sock}"
 
                 if [ ! -d "$WAWONA_RUNTIME" ]; then
-                  echo "wawona-vm-bridge: runtime dir $WAWONA_RUNTIME not found — is Wawona running?" >&2
+                  echo "wawona-vm-bridge: runtime dir $WAWONA_RUNTIME not found. Is Wawona running?" >&2
                   echo "  set WAWONA_RUNTIME=/path/to/wawona/xdg-runtime and retry." >&2
                   exit 1
                 fi

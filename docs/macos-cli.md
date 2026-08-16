@@ -20,7 +20,7 @@ Machines / Settings GUI.
 
 | Flag | Effect |
 |------|--------|
-| `--headless`, `--no-gui` | Compositor only — no Machines / Settings window |
+| `--headless`, `--no-gui` | Compositor only. No Machines / Settings window |
 | `--gui` | Force Machines UI (overrides implied headless) |
 | `--client <id>` | Launch a bundled client (implies `--headless` unless `--gui`) |
 | `--machine <id>` | Connect a saved Machines profile (implies `--headless` unless `--gui`) |
@@ -28,9 +28,9 @@ Machines / Settings GUI.
 
 `--backend` is the same choice as **Settings → Advanced → Display Backend**:
 
-- **wayland** — nest Weston / Niri as a Wayland client of Wawona
-- **drm** — drive **wwn-iland** userspace DRM/KMS/GBM (needs OpenGL driver ≠ none)
-- **auto** — nested wayland (safe default)
+- **wayland**. Nest Weston / Niri as a Wayland client of Wawona
+- **drm**. Drive **wwn-iland** userspace DRM/KMS/GBM (needs OpenGL driver ≠ none)
+- **auto**. Nested wayland (safe default)
 
 ## Examples
 
@@ -44,7 +44,7 @@ Wawona --headless --backend wayland --client niri
 # Niri on wwn-iland userspace DRM/KMS
 Wawona --headless --backend drm --client niri
 
-# Weston nested (Wayland) — preferred until in-process weston_main +
+# Weston nested (Wayland). Preferred until in-process weston_main +
 # drm-backend.so are packaged for macOS DRM
 Wawona --headless --backend wayland --client weston
 
@@ -58,4 +58,4 @@ export WAYLAND_DISPLAY=wayland-0
 ```
 
 Default (no flags) still opens the Machines control panel after the compositor
-starts — that remains the product path for non-CLI users.
+starts. That remains the product path for non-CLI users.

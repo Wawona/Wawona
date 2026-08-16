@@ -1,4 +1,4 @@
-# Bundled userland prefix for iOS/iPadOS local shell (App Store–compliant).
+# Bundled userland prefix for iOS/iPadOS local shell (App Store-compliant).
 {
   lib,
   pkgs,
@@ -15,7 +15,7 @@ let
   # so re-point fpath at the bundled function tree. Modules are statically
   # linked (configure --disable-dynamic), so module_path is unused.
   zshenvTemplate = pkgs.writeText "zshenv.template" ''
-    # Wawona iOS .zshenv — sourced for every shell. Safe to edit.
+    # Wawona iOS .zshenv. Sourced for every shell. Safe to edit.
     : ''${WAWONA_BUNDLE_ROOTFS:=''${WAWONA_ROOTFS:-''${HOME:h}}}
     : ''${WAWONA_ROOTFS:=$WAWONA_BUNDLE_ROOTFS}
     # Stubs live in the bundled rootfs, not iOS /usr/bin. Command lookup and
@@ -46,7 +46,7 @@ let
   # Interactive configuration. Real zsh + ZLE drive the line editor; this no
   # longer contains a read/eval loop. Fully user-editable in writable HOME.
   zshrcTemplate = pkgs.writeText "zshrc.template" ''
-    # Wawona iOS .zshrc — interactive shell configuration. Safe to edit.
+    # Wawona iOS .zshrc. Interactive shell configuration. Safe to edit.
 
     export HISTFILE="$HOME/.zsh_history"
     export HISTSIZE=2000
@@ -88,7 +88,7 @@ let
     wawona() { command wawona "$@"; }
 
     # Optional software on Apple mobile is WASI `.wasm` for Wawona Runtime
-    # (Files.app drop-in or the bundled Wasm package client) — not Debian apt /
+    # (Files.app drop-in or the bundled Wasm package client). Not Debian apt /
     # StoreKit ODR Mach-O modules. See docs/wasm-wasi.md.
 
     # Bundled in-process utilities (uutils coreutils) that the zsh exec hook
@@ -138,9 +138,9 @@ let
 
   # Login shells source this last. Keep it short and user-editable.
   zloginTemplate = pkgs.writeText "zlogin.template" ''
-    # Wawona iOS .zlogin — runs once for login shells. Safe to edit.
-    print -P "%F{green}Wawona%f zsh ''${ZSH_VERSION} — in-process, App Store compliant."
-    print -P "%F{blue}Bundled:%f type %F{cyan}help%f — uutils, clients, WASM. ls /usr/bin lists names (in-process, no fork/exec)."
+    # Wawona iOS .zlogin. Runs once for login shells. Safe to edit.
+    print -P "%F{green}Wawona%f zsh ''${ZSH_VERSION}. In-process, App Store compliant."
+    print -P "%F{blue}Bundled:%f type %F{cyan}help%f. Uutils, clients, WASM. ls /usr/bin lists names (in-process, no fork/exec)."
     # Machines client id "phoon" (and allowlisted TTY tools) set WAWONA_AUTO_CMD
     # before launching weston-terminal. Run once, then drop the env so a later
     # plain terminal Start does not replay it.
@@ -193,7 +193,7 @@ EOF
       cp -R "$zsh/share/zsh" $out/rootfs/usr/share/
     fi
     cat > $out/rootfs/README.txt <<'EOF'
-Bundled Wawona userland templates — do not modify files inside the app bundle.
+Bundled Wawona userland templates. Do not modify files inside the app bundle.
 zsh is linked into the app binary; this tree holds templates, share files, and
 writable HOME data under Application Support after first launch.
 EOF

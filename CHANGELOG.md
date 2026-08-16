@@ -60,7 +60,7 @@ as history.
   emulator's software Vulkan, plus an empty-blocking-stdin fix so the demo
   doesn't self-exit. `weston-editor` works: the compositor now advertises
   `zwp_text_input_manager_v1` alongside v3. New rule
-  `wawona-never-skip-bundled-clients` — fix the client/platform beneath a
+  `wawona-never-skip-bundled-clients`. Fix the client/platform beneath a
   failing bundled client, never gate it out. (#113, #122, #140)
 - **fastfetch on tvOS + watchOS.** Wired the recipe, flake attrs, link flags,
   prebuild privatization, and stub so `fastfetch` builds/links into the tvOS
@@ -102,10 +102,10 @@ as history.
   through 120 `FAILED` with a Swift Support error, while the tvOS/visionOS
   ipas of the same commits were always `COMPLETE`. That killed both prior
   theories (SwiftSupport content, builds 89-110; watch-triggered legacy
-  validation, build 119-120): build 120 shipped a *perfect* legacy layout —
+  validation, build 119-120): build 120 shipped a *perfect* legacy layout -
   `SwiftSupport/{iphoneos,watchos}` with exact set-parity, Frameworks
   mirrors, byte-identical Apple-signed copies, all verified in the uploaded
-  artifact — and ASC still answered `90429`, listing dylibs that were
+  artifact. And ASC still answered `90429`, listing dylibs that were
   physically present. The one constant, present only in the iOS ipa: ANGLE's
   loose `Frameworks/libEGL.dylib` + `libGLESv2.dylib` flat convenience
   copies (tvOS never bundles ANGLE; visionOS's embed glob never matched).
@@ -117,12 +117,12 @@ as history.
   copies **simulator-only** (device ships `libEGL.framework`/
   `libGLESv2.framework` only), and `wwn-iland`'s EGL shim (input bumped to
   `d6cf97a`) probes the framework-wrapped binaries first. Canonical shape
-  for every Apple-mobile ipa, watch or not, is ABI-stable — no
+  for every Apple-mobile ipa, watch or not, is ABI-stable. No
   `SwiftSupport/`, no `Frameworks/libswift*`.
   `WAWONA_WATCH_LEGACY_SWIFT_SUPPORT=1` keeps the fully-validated legacy
   watch layout (built for build 120) as an escape hatch. New hard pre-upload
   gates on the final ipa's actual zip contents: `assert_no_loose_dylibs!`
-  (TN2435 — the real regression guard) plus canonical/legacy Swift Support
+  (TN2435. The real regression guard) plus canonical/legacy Swift Support
   shape checks; no ipa reaches App Store Connect without passing them.
 
 ## [26.8.9] - 2026-08-09
@@ -155,13 +155,13 @@ as history.
   requires it for on-device install. That embed location archived and
   exported fine locally, but broke `xcrun altool`/`upload_to_testflight`
   outright with `[altool.CBF038400] Cannot determine the 'platform' from the
-  info.plist.` — before the ipa ever reached App Store Connect. Reverted to
+  info.plist.`. Before the ipa ever reached App Store Connect. Reverted to
   XcodeGen's own default `Watch/` location, which every build 89-110
   successfully uploaded through `altool`; no real Apple rejection ever named
   the embed directory as a problem, only SwiftSupport content (fixed below).
   Build 119 uploaded clean (iOS/tvOS/visionOS) with both fixes combined.
 - **App Store Connect Swift Support rejections, root cause** (`ITMS-90426`/
-  `ITMS-90429`/`ITMS-90433`, builds 89-104) — every prior fix in `26.8.7`
+  `ITMS-90429`/`ITMS-90433`, builds 89-104). Every prior fix in `26.8.7`
   (re-signing, timestamps, bundle-level re-sign, full-zip-rebuild, parity
   assertion) was real but none were the actual bug. Diffing a downloaded
   debug-export ipa's own signatures/dependencies directly showed
@@ -169,7 +169,7 @@ as history.
   .dylib` reference in `otool -L` (the full ABI-stable overlay set every
   Swift binary links, mostly `weak`) as needing embedding, and fell back to
   dumping the entire toolchain `swift-5.0/<platform>` folder into
-  `SwiftSupport/` whenever nothing matched — manufacturing content no real
+  `SwiftSupport/` whenever nothing matched. Manufacturing content no real
   Xcode 26 export at Wawona's deployment target (iOS/tvOS 17.0+, watchOS
   10.0+) would ever produce. Now only a narrow, named whitelist of real
   back-deployment compatibility dylibs (Concurrency, Span, legacy
@@ -187,7 +187,7 @@ as history.
 ### Fixed
 
 - **App Store Connect Swift Support rejections** (`ITMS-90426`/`ITMS-90429`,
-  builds 93-95) — `embed_swift_runtime_into_archive!`'s `filter_map` leaked a
+  builds 93-95). `embed_swift_runtime_into_archive!`'s `filter_map` leaked a
   skipped dylib's `UI.important` return value as a fake "copied" entry,
   making counts look inflated versus the later, correct `Frameworks/` scan
   (e.g. reported 15 when only 10 real files existed). Fixed the count, added
@@ -201,9 +201,9 @@ as history.
 
 ### Added
 
-- **watchOS App Store path** — companion embedded in `Wawona-iOS` under
+- **watchOS App Store path**. Companion embedded in `Wawona-iOS` under
   `PlugIns/` (Xcode 26 has no bare-watch `app-store` export); see #136.
-- **Beta prebuilt distribution** — Fastlane TestFlight (iOS/iPad/tvOS/visionOS;
+- **Beta prebuilt distribution**. Fastlane TestFlight (iOS/iPad/tvOS/visionOS;
   watch via iOS IPA) + Play internal + Linux AppImage artifacts.
 
 ### Changed
@@ -221,16 +221,16 @@ Mistaken semver tag for the first CalVer beta ship. Use **26.8.6** / `v26.8.6`.
 
 ### Added
 
-- **Full dependency parity** — zsh, fastfetch, neovim, weston clients, and kmscube across macOS (bundled), Linux GTK UI, Android, and Apple mobile targets.
-- **macOS bundled CLI from nixpkgs** — zsh, neovim, and fastfetch ship as nixpkgs binaries in `Wawona.app`; weston clients and kmscube remain wwn-toolchain cross-builds.
-- **Fastlane beta automation** — `fastlane/` lanes for TestFlight (iOS, iPadOS, tvOS, watchOS, visionOS; excludes macOS) and Play internal track (Android).
-- **Release infrastructure** — `scripts/bootstrap-apple-signing.sh`, `scripts/sync-github-secrets.sh`, `.release-secrets.env.template`, GitHub Environment `release-beta`, workflow `.github/workflows/release-beta.yml`.
-- **Nix release outputs** — `wawona-{ipados,tvos,watchos,visionos}-ipa`, `wawona-android-aab`.
-- **VM launcher (macOS)** — Machine profiles with type Virtual Machine open UTM/UTM SE when installed.
-- **Linux 1:1 parity foundation** — canonical `wawona.machineProfiles.v1` machine-profile model in Rust (`src/linux/machine_profile.rs`) with the same five machine types, runtime overrides, and JSON keys as the Apple/Android front-ends; canonical JSON persistence with one-time migration from the legacy `linux-config-v1.json` (`src/linux/profile_store.rs`); the shared 19-entry bundled-client catalog (`src/linux/bundled_clients.rs`); and GTK-free adaptive view-model helpers (`src/linux/ui_model.rs`).
-- **Linux GTK compile gate** — `wawona-linux-ui` (+ tray and compositor-host helpers) now compiles ahead-of-time and reproducibly via Nix (`dependencies/wawona/linux-ui-prebuilt.nix`, `packages.<linux>.wawona-linux-ui-bin`) and in the `cargo-test-linux` CI job, so UI/model parity work can no longer silently break the Linux build.
-- **Linux AppImage prebuilt** — self-contained, glibc-portable AppImage of the GTK UI (`packages.<linux>.wawona-appimage`) for x86_64 and aarch64, built reproducibly on the Determinate Linux builder. A single artifact serves both X11 and Wayland hosts (the binary auto-selects the GDK backend from `$WAYLAND_DISPLAY` at startup). CI builds, smoke-tests, and uploads it as a workflow artifact.
-- **Linux parity CI gates** — `verify-linux-machines-parity.py`, `verify-linux-bundled-clients.py`, and `verify-linux-shell-tools.py` enforce that the Linux canonical model, bundled-client catalog, and shell-tool/runtime wiring stay in lockstep with the other platforms.
+- **Full dependency parity**. Zsh, fastfetch, neovim, weston clients, and kmscube across macOS (bundled), Linux GTK UI, Android, and Apple mobile targets.
+- **macOS bundled CLI from nixpkgs**. Zsh, neovim, and fastfetch ship as nixpkgs binaries in `Wawona.app`; weston clients and kmscube remain wwn-toolchain cross-builds.
+- **Fastlane beta automation**. `fastlane/` lanes for TestFlight (iOS, iPadOS, tvOS, watchOS, visionOS; excludes macOS) and Play internal track (Android).
+- **Release infrastructure**. `scripts/bootstrap-apple-signing.sh`, `scripts/sync-github-secrets.sh`, `.release-secrets.env.template`, GitHub Environment `release-beta`, workflow `.github/workflows/release-beta.yml`.
+- **Nix release outputs**. `wawona-{ipados,tvos,watchos,visionos}-ipa`, `wawona-android-aab`.
+- **VM launcher (macOS)**. Machine profiles with type Virtual Machine open UTM/UTM SE when installed.
+- **Linux 1:1 parity foundation**. Canonical `wawona.machineProfiles.v1` machine-profile model in Rust (`src/linux/machine_profile.rs`) with the same five machine types, runtime overrides, and JSON keys as the Apple/Android front-ends; canonical JSON persistence with one-time migration from the legacy `linux-config-v1.json` (`src/linux/profile_store.rs`); the shared 19-entry bundled-client catalog (`src/linux/bundled_clients.rs`); and GTK-free adaptive view-model helpers (`src/linux/ui_model.rs`).
+- **Linux GTK compile gate**. `wawona-linux-ui` (+ tray and compositor-host helpers) now compiles ahead-of-time and reproducibly via Nix (`dependencies/wawona/linux-ui-prebuilt.nix`, `packages.<linux>.wawona-linux-ui-bin`) and in the `cargo-test-linux` CI job, so UI/model parity work can no longer silently break the Linux build.
+- **Linux AppImage prebuilt**. Self-contained, glibc-portable AppImage of the GTK UI (`packages.<linux>.wawona-appimage`) for x86_64 and aarch64, built reproducibly on the Determinate Linux builder. A single artifact serves both X11 and Wayland hosts (the binary auto-selects the GDK backend from `$WAYLAND_DISPLAY` at startup). CI builds, smoke-tests, and uploads it as a workflow artifact.
+- **Linux parity CI gates**. `verify-linux-machines-parity.py`, `verify-linux-bundled-clients.py`, and `verify-linux-shell-tools.py` enforce that the Linux canonical model, bundled-client catalog, and shell-tool/runtime wiring stay in lockstep with the other platforms.
 
 ### Changed
 
@@ -246,42 +246,42 @@ Mistaken semver tag for the first CalVer beta ship. Use **26.8.6** / `v26.8.6`.
 
 ### Added
 
-- **Rust core migration completed** — Compositor logic fully moved from C to Rust. All Wayland protocol handling, surfaces, windows, input, IPC, and frame timing now live in the Rust core (`src/core/`). Platform frontends (Objective-C/Swift for macOS/iOS, Kotlin for Android) call Rust via UniFFI/C FFI; they provide rendering and windowing only. The previous C-based compositor implementation has been fully replaced.
-- **Initial iOS and Android support** — v0.2.2 finally brings Wawona to all three platforms: macOS, iOS, and Android. Mobile builds are now available via `nix run .#wawona-ios` and `nix run .#wawona-android`.
+- **Rust core migration completed**. Compositor logic fully moved from C to Rust. All Wayland protocol handling, surfaces, windows, input, IPC, and frame timing now live in the Rust core (`src/core/`). Platform frontends (Objective-C/Swift for macOS/iOS, Kotlin for Android) call Rust via UniFFI/C FFI; they provide rendering and windowing only. The previous C-based compositor implementation has been fully replaced.
+- **Initial iOS and Android support**. V0.2.2 finally brings Wawona to all three platforms: macOS, iOS, and Android. Mobile builds are now available via `nix run .#wawona-ios` and `nix run .#wawona-android`.
 - **Android**
-  - Modifier accessory bar (`ModifierAccessoryBar.kt`) with 1:1 parity to iOS — sticky Shift/Ctrl/Alt/⌘, two rows (ESC ` TAB / — HOME ↑ END PGUP; ⇧ CTRL ALT ⌘ ← ↓ → PGDN ⌨↓)
+  - Modifier accessory bar (`ModifierAccessoryBar.kt`) with 1:1 parity to iOS. Sticky Shift/Ctrl/Alt/⌘, two rows (ESC ` TAB /. HOME ↑ END PGUP; ⇧ CTRL ALT ⌘ ← ↓ → PGDN ⌨↓)
   - Native Weston and Weston Terminal toggles in Settings
   - Tabbed Settings dialog: Display, Graphics, Advanced, Input, Waypipe, SSH
   - Cairo shim (`cairo_shim.c`, `cairo_shim.h`) for Cairo-dependent clients
   - Android icon generator (`android-icon-assets.nix`) and contract (`android-icon-contract.md`)
 - **macOS / iOS**
-  - Force SSD (server-side decorations) setting — compositor sends `configure(server_side)`, host draws window chrome
+  - Force SSD (server-side decorations) setting. Compositor sends `configure(server_side)`, host draws window chrome
   - Weston Terminal and Native Weston launch toggles in Settings
   - Weston iOS build (`wwn-weston/dependencies/clients/weston/ios.nix`)
   - Weston Android build (`wwn-weston/dependencies/clients/weston/android.nix`)
 - **Graphics**
-  - `graphics-smoke` binary — Vulkan driver probe with JSON output
+  - `graphics-smoke` binary. Vulkan driver probe with JSON output
 - **Nix / Build**
-  - `app-programs.nix` — wawona-ios, weston-run wrappers
-  - `devshells.nix` — nix develop with XDG_RUNTIME_DIR / WAYLAND_DISPLAY
-  - `shell-wrappers.nix` — weston-run, foot, etc.
+  - `app-programs.nix`. Wawona-ios, weston-run wrappers
+  - `devshells.nix`. Nix develop with XDG_RUNTIME_DIR / WAYLAND_DISPLAY
+  - `shell-wrappers.nix`. Weston-run, foot, etc.
   - libssh2 streamlocal patch (`patch-streamlocal.sh`)
   - OpenSSH dbclient streamlocal patch (`patch-dbclient-streamlocal.sh`)
 - **Debugging**
-  - `--debug` flag for flake apps (`.#wawona-macos`, `.#wawona-ios`, `.#wawona-android`, `.#wawona-linux`, …) — **opt-in** LLDB for crash/freeze catch (`process interrupt`). Default `nix run` is plain (no debugger). macOS also supports `--debug-attach`. See `docs/debugging.md`.
+  - `--debug` flag for flake apps (`.#wawona-macos`, `.#wawona-ios`, `.#wawona-android`, `.#wawona-linux`, …). **opt-in** LLDB for crash/freeze catch (`process interrupt`). Default `nix run` is plain (no debugger). macOS also supports `--debug-attach`. See `docs/debugging.md`.
 - **Documentation**
-  - `docs/README.md` — Documentation index
-  - `docs/usage.md` — Weston (`nix run .#weston`, `.#weston-terminal`), Waypipe, native commands
-  - `docs/settings.md` — All Wawona Settings (Display, Graphics, Input, Waypipe, SSH) for macOS, iOS, Android
-  - `docs/compilation.md` — Quick build, project generators
-  - `docs/debugging.md` — Attach LLDB with `nix run .#wawona-{macos,ios,android} -- --debug`
-  - `docs/goals.md` — Project vision, technical objectives
-  - `docs/2026-Wawona-Android-Audit.md` — Android parity audit (~85%)
+  - `docs/README.md`. Documentation index
+  - `docs/usage.md`. Weston (`nix run .#weston`, `.#weston-terminal`), Waypipe, native commands
+  - `docs/settings.md`. All Wawona Settings (Display, Graphics, Input, Waypipe, SSH) for macOS, iOS, Android
+  - `docs/compilation.md`. Quick build, project generators
+  - `docs/debugging.md`. Attach LLDB with `nix run .#wawona-{macos,ios,android} -- --debug`
+  - `docs/goals.md`. Project vision, technical objectives
+  - `docs/2026-Wawona-Android-Audit.md`. Android parity audit (~85%)
 
 ### Changed
 
 - **Android**
-  - Vulkan clear color from black to CompositorBackground `0x0F1018` — eliminates flashing during waypipe transitions
+  - Vulkan clear color from black to CompositorBackground `0x0F1018`. Eliminates flashing during waypipe transitions
   - Refactored input handling (`input_android.c` / `input_android.h`)
   - Safe area updates with display cutout support
   - New `nativeResizeSurface` JNI path recreates the Vulkan swapchain without full teardown, eliminating blank screens during keyboard show/hide; `surfaceChanged` debounces resize by 200ms
@@ -311,22 +311,22 @@ Mistaken semver tag for the first CalVer beta ship. Use **26.8.6** / `v26.8.6`.
   - `flush_buffer_releases()` moved from `SurfaceCommitted` handler to `notify_frame_presented()`
   - `wp_presentation_feedback` presented events now sent in `notify_frame_presented`
 - **Documentation**
-  - `docs/2026-ARCHITECTURE-STRUCTURE.md` — Force SSD, Waypipe platform notes
-  - `docs/2026-LOGGING.md` — Logging format
-  - `docs/2026-waypipe.md` — Platform overview (macOS OpenSSH, iOS libssh2, Android Dropbear)
+  - `docs/2026-ARCHITECTURE-STRUCTURE.md`. Force SSD, Waypipe platform notes
+  - `docs/2026-LOGGING.md`. Logging format
+  - `docs/2026-waypipe.md`. Platform overview (macOS OpenSSH, iOS libssh2, Android Dropbear)
 
 ### Fixed
 
-- **Visual flashing on iOS and Android** — Surfaces flashing/disappearing on every keypress. Premature buffer release (old buffers released before frame rendered), iOS `_bufferCache` data race (concurrent read/write on `NSMutableDictionary`), and Android missing `FlushClients` after frame presentation
-- **iOS waypipe + libssh2 freeze on first frame** — SSH bridge thread data starvation from `libssh2` internal buffering not signaling `ppoll`
-- **`wp_presentation_feedback` events never sent** — `PresentationFeedback` objects were never marked committed, leaking indefinitely
-- **`wl_output` retroactive enter** — Surfaces attached before client binds `wl_output` now receive `wl_surface.enter` retroactively
-- **XdgOutput Persistence** — Fixed bug where `XdgOutput` resources were dropped prematurely by correctly storing them in the compositor state
-- **Stale Window Mitigation** — Prevented orphaned black windows on macOS by deferring visibility until the first buffer commit and using `(0,0)` configuration for Force SSD windows
-- **Multi-touch Input** — Fixed multi-touch event forwarding on iOS and Android; ensured `wl_seat` correctly advertises touch capabilities
-- **Android Shadow Cropping** — Fixed incorrect shadow rendering by aligning push constant layouts between C renderer and SPIR-V shaders (extended to 48 bytes)
-- **macOS Window Controls** — Fixed minimize-to-dock and resolved visual flashing during maximize/restore transitions
-- **Buffer Scaling** — Synchronized NSWindow content area precisely with logical dimensions of committed Wayland buffers to eliminate stretching
+- **Visual flashing on iOS and Android**. Surfaces flashing/disappearing on every keypress. Premature buffer release (old buffers released before frame rendered), iOS `_bufferCache` data race (concurrent read/write on `NSMutableDictionary`), and Android missing `FlushClients` after frame presentation
+- **iOS waypipe + libssh2 freeze on first frame**. SSH bridge thread data starvation from `libssh2` internal buffering not signaling `ppoll`
+- **`wp_presentation_feedback` events never sent**. `PresentationFeedback` objects were never marked committed, leaking indefinitely
+- **`wl_output` retroactive enter**. Surfaces attached before client binds `wl_output` now receive `wl_surface.enter` retroactively
+- **XdgOutput Persistence**. Fixed bug where `XdgOutput` resources were dropped prematurely by correctly storing them in the compositor state
+- **Stale Window Mitigation**. Prevented orphaned black windows on macOS by deferring visibility until the first buffer commit and using `(0,0)` configuration for Force SSD windows
+- **Multi-touch Input**. Fixed multi-touch event forwarding on iOS and Android; ensured `wl_seat` correctly advertises touch capabilities
+- **Android Shadow Cropping**. Fixed incorrect shadow rendering by aligning push constant layouts between C renderer and SPIR-V shaders (extended to 48 bytes)
+- **macOS Window Controls**. Fixed minimize-to-dock and resolved visual flashing during maximize/restore transitions
+- **Buffer Scaling**. Synchronized NSWindow content area precisely with logical dimensions of committed Wayland buffers to eliminate stretching
 - Inject XDG_RUNTIME_DIR and WAYLAND_DISPLAY into ProcessBuilder/NSTask for Weston endpoints
 - fcft build on macOS: include `xlocale.h`
 - Weston build on macOS; expose applications in Nix flake
@@ -345,17 +345,17 @@ Mistaken semver tag for the first CalVer beta ship. Use **26.8.6** / `v26.8.6`.
 
 ### Added
 
-- **Force SSD (Server-Side Decorations)** — Compositor can enforce native-style decorations regardless of client preference; force_ssd controls exposed in FFI
-- **Native popups** — `WawonaMacOSPopup` and `WawonaPopupHost`; Wayland popup handling moved from NSMenu to NSPopover for improved layout and clipping
-- **UI branding** — Text labels ('Ko-fi', 'GitHub Sponsors') on donation buttons; `WawonaImageLoader` for asset loading and caching; modern social and donation icons in gallery
-- **Documentation** — Liquid Glass design principles; macOS implementation details
+- **Force SSD (Server-Side Decorations)**. Compositor can enforce native-style decorations regardless of client preference; force_ssd controls exposed in FFI
+- **Native popups**. `WawonaMacOSPopup` and `WawonaPopupHost`; Wayland popup handling moved from NSMenu to NSPopover for improved layout and clipping
+- **UI branding**. Text labels ('Ko-fi', 'GitHub Sponsors') on donation buttons; `WawonaImageLoader` for asset loading and caching; modern social and donation icons in gallery
+- **Documentation**. Liquid Glass design principles; macOS implementation details
 
 ### Changed
 
-- **Popup handling** — Refactored to NSPopover; `WawonaCompositorBridge` updated for new popup architecture
-- **Waypipe** — Fixed path resolution for `XDG_RUNTIME_DIR` and `WAYLAND_DISPLAY` for stable remote app connections; enhanced SSH config handling
-- **Input** — Improved modifier key tracking for macOS clients
-- **Preferences** — Cleaned up `WawonaPreferences` and `WawonaWaypipeRunner` for reliability
+- **Popup handling**. Refactored to NSPopover; `WawonaCompositorBridge` updated for new popup architecture
+- **Waypipe**. Fixed path resolution for `XDG_RUNTIME_DIR` and `WAYLAND_DISPLAY` for stable remote app connections; enhanced SSH config handling
+- **Input**. Improved modifier key tracking for macOS clients
+- **Preferences**. Cleaned up `WawonaPreferences` and `WawonaWaypipeRunner` for reliability
 
 [0.2.2]: https://github.com/aspauldingcode/Wawona/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/aspauldingcode/Wawona/releases/tag/v0.2.1

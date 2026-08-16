@@ -1,13 +1,13 @@
 # wwn-iland Mode A / Mode B + Desktop / LockScreen Replacement
 
-Authority for **when** Wawona uses App Store–safe in-window iland (Mode A)
+Authority for **when** Wawona uses App Store-safe in-window iland (Mode A)
 versus the SIP-gated host Desktop/LockScreen `.dylib` (Mode B on macOS).
 
 **Wawona Swinging Bridge is a different product** (host-app → Wayland bridge). Do not document
 Wawona Swinging Bridge here. See `wawona-swinging-bridge`.
 
 Desktop / LockScreen status: **⏳ planned / coming soon** (in development on
-macOS and Android; iOS path only via `repo.wawona.io` — website docs only).
+macOS and Android; iOS path only via `repo.wawona.io`. Website docs only).
 
 ## Two iland modes (do not conflate with Wawona Swinging Bridge Mode A/B)
 
@@ -31,11 +31,11 @@ only**. Not Linux. Not App Store iOS family.
 | **macOS** | Partial SIP (system debugging) + bundled `.dylib` in `wawona-macos-desktop-host` | Required for Mode B engage |
 | **Android** | Default Home App + LockScreen APIs | **No root**; **no fallback tier** |
 | iOS / iPadOS | Jailbreak tweak from **`repo.wawona.io`** (Sileo) | Outside App Store only |
-| App Store iOS / iPadOS / tvOS / watchOS / visionOS | — | **❌ forbidden** in-app; **never mention jailbreak** in store binaries |
+| App Store iOS / iPadOS / tvOS / watchOS / visionOS | - | **❌ forbidden** in-app; **never mention jailbreak** in store binaries |
 
 ## Runtime decision (macOS)
 
-1. Detect SIP via `WWNSipStatus` (`csrutil status` text parse — same as
+1. Detect SIP via `WWNSipStatus` (`csrutil status` text parse. Same as
    playground `checkSipStatus`). Partial = `Debugging Restrictions: disabled`.
 2. If SIP does **not** allow → Mode A only; ignore / clear
    `DesktopReplacementEnabled`.

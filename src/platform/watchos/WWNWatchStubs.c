@@ -188,7 +188,7 @@ int weston_compositor_main(int argc, char **argv) {
 __attribute__((weak))
 volatile sig_atomic_t wwn_weston_compositor_shutdown_requested;
 
-/* Mini Wayland server — WWNMiniWaylandServer.c is excluded on arm64_32
+/* Mini Wayland server. WWNMiniWaylandServer.c is excluded on arm64_32
  * (needs libwayland-server). Weak stubs; arm64 uses the real .c. */
 typedef struct WWNMiniWaylandServer WWNMiniWaylandServer;
 typedef void (*WWNFrameCallback)(const uint8_t *, uint32_t, uint32_t, uint32_t, void *);
@@ -251,7 +251,7 @@ WWN_WATCH_CLIENT_STUB(constraints_main)
 #undef WWN_WATCH_CLIENT_STUB
 
 /* Weak fallback only. xcodegen -force_load's libwawona-zsh.a so the real
- * App Store–compliant in-process zsh wins at link time. */
+ * App Store-compliant in-process zsh wins at link time. */
 __attribute__((weak))
 int wawona_zsh_main(int argc, char **argv) {
     (void)argc; (void)argv;

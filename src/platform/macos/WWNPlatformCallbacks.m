@@ -187,7 +187,7 @@ static void WWNPrependBundledXdgDataDirs(NSString *shareRoot) {
       [shareRoot stringByAppendingPathComponent:@"applications"];
   if (![[NSFileManager defaultManager] fileExistsAtPath:appsDir]) {
     WWNLog("BUNDLE",
-           @"No applications catalog at %@ — fuzzel Mod+D list will be empty",
+           @"No applications catalog at %@. Fuzzel Mod+D list will be empty",
            appsDir);
     return;
   }

@@ -13,7 +13,7 @@ run under LLDB (or attach).
 ## Quick Reference
 
 ```bash
-# Default — no debugger
+# Default. No debugger
 nix run .#wawona-macos
 nix run .#wawona-ios
 nix run .#wawona-android
@@ -46,7 +46,7 @@ With `--debug`:
 
 1. Nix build must succeed
 2. Wrapper verifies `Wawona.app` + Mach-O binary exist
-3. **LLDB spawns the app** — backtraces on crash/halt
+3. **LLDB spawns the app**. Backtraces on crash/halt
 4. On hang/freeze: at the `(lldb)` prompt run `process interrupt`
    (same as Xcode Pause); stop-hooks print `thread backtrace all`
 

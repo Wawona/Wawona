@@ -108,7 +108,7 @@ APPLE_PDF_EXTRA = [
 
 PLAY_HOSTS = {"play.google.com", "developer.android.com"}
 
-# Policy center + Play Console “about” hub (bounded crawl; no support.google.com — unbounded cross-links).
+# Policy center + Play Console “about” hub (bounded crawl; no support.google.com. Unbounded cross-links).
 PLAY_SEEDS = [
     "https://play.google.com/about/developer-content-policy/",
     "https://developer.android.com/distribute/play-policies",

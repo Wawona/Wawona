@@ -1,4 +1,4 @@
-# Wawona — Universal Client Support & Bundling Strategy
+# Wawona. Universal Client Support & Bundling Strategy
 
 Goal: run "any" Wayland client without shipping a multi-gigabyte app or taking
 years to build every client for every platform. Strategy is **lazy, cached,
@@ -10,7 +10,7 @@ tiered**.
    smoke tests: `weston-simple-shm`, `weston-flower`, `weston-terminal` (mobile
    stub), `weston-smoke`, `weston-clickdot`. Statically linked; tiny.
    Planned toolkit companion: SDL2_gfx `testgfx` (software/`wl_shm`, full Apple
-   matrix including tvOS/watchOS) — [#107](https://github.com/Wawona/Wawona/issues/107).
+   matrix including tvOS/watchOS). [#107](https://github.com/Wawona/Wawona/issues/107).
    Larger native ports that ship in the binary (foot, neovim, …) stay **bundled
    or weak-linked `*_main`**, not StoreKit ODR.
 2. **Wasm packages (Wawona Runtime).** Long-tail CLI and Wayland clients compiled
@@ -23,12 +23,12 @@ tiered**.
    runs there and streams in. Zero client bundling cost; widest coverage.
 4. **Container / VM machines (separate).** OCI Linux images and full VMs are
    Machines kinds (`container` / `virtual_machine`) via `wwn-containers` /
-   `wwn-vms` — not the Wasm package path. See [`vms-containers.md`](./vms-containers.md).
+   `wwn-vms`. Not the Wasm package path. See [`vms-containers.md`](./vms-containers.md).
 
 ## Per-client caching
 
 - **Build cache:** each `wwn-*` port is its own flake; owner CI pushes to
-  **FlakeHub Cache** so a client rebuilds only when *its* source changes — not on
+  **FlakeHub Cache** so a client rebuilds only when *its* source changes. Not on
   every Wawona build. Shared cache: [`flakehub-cache.md`](./flakehub-cache.md)
   and [`2026-build-ci-optimization.md`](./2026-build-ci-optimization.md).
 - **Runtime Wasm store:** installed components live under the app sandbox

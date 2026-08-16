@@ -51,7 +51,7 @@ typedef void (^WaypipeOutputHandler)(NSString *output);
 - (void)stopFoot;
 
 /// Launch any bundled Wayland client by id (weston-flower, weston-smoke, …).
-/// Always starts a new instance — multiple copies of the same client are allowed.
+/// Always starts a new instance. Multiple copies of the same client are allowed.
 - (void)launchBundledClientWithId:(NSString *)clientId;
 
 /// Launch a bundled client and associate it with a Machines profile so Stop
@@ -71,7 +71,7 @@ typedef void (^WaypipeOutputHandler)(NSString *output);
 #if TARGET_OS_IPHONE
 /// Disconnect in-process clients and reset iOS native launch state.
 - (void)stopActiveIOSBundledClient;
-/// Most recently launched bundled client id (e.g. @"niri"). Not exclusive —
+/// Most recently launched bundled client id (e.g. @"niri"). Not exclusive -
 /// multiple in-process clients may run concurrently.
 @property(nonatomic, copy, readonly) NSString *activeIOSBundledClientId;
 #endif

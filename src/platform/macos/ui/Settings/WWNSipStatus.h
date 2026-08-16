@@ -7,7 +7,7 @@ NS_ASSUME_NONNULL_BEGIN
  * SkyLight/WindowServer replacement used by macOS Desktop Replacement.
  *
  * Mode B injects into system-signed processes (Dobby + AMFI bypass), which the
- * kernel only permits when debugging restrictions are lifted — i.e. SIP either
+ * kernel only permits when debugging restrictions are lifted. I.e. SIP either
  * fully disabled or partially disabled via `csrutil enable --without debug`.
  *
  * Detection mirrors the plugin-playground Configurator GUI (feat/sip-detection):

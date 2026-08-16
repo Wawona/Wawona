@@ -15,7 +15,7 @@ Weston and Niri both ship on every product target. Display backend is
 `CompositorBackend`: `auto` | `wayland` | `drm`.
 
 VM and container Machine kinds are **planned** on macOS, iOS, iPadOS, Android,
-and Linux — **forbidden** on tvOS, watchOS, and visionOS. See
+and Linux. **forbidden** on tvOS, watchOS, and visionOS. See
 [`vms-containers.md`](./vms-containers.md). The on-device shell is bundled zsh
 on a native machine, not a guest.
 
@@ -51,7 +51,7 @@ In-app `virtual_machine` / `container` profiles (coming soon):
 ---
 ## Native Weston on macOS (No Linux)
 
-Wawona includes a **native port of Weston** for macOS. No Linux, no VM — Weston runs as a nested compositor client inside Wawona.
+Wawona includes a **native port of Weston** for macOS. No Linux, no VM. Weston runs as a nested compositor client inside Wawona.
 
 ### Weston (Full Compositor)
 
@@ -67,7 +67,7 @@ Launches the full Weston compositor as a nested client. Weston runs natively on 
 nix run .#weston-terminal
 ```
 
-Launches Weston Terminal — a native Wayland terminal client. Connects to Wawona's Wayland display.
+Launches Weston Terminal. A native Wayland terminal client. Connects to Wawona's Wayland display.
 
 ### Other Weston Clients
 
@@ -149,9 +149,9 @@ When Wawona is running, clients connect via the Wayland socket.
 ### Get Socket Path
 
 In **Settings > Connection**, you'll see:
-- **XDG_RUNTIME_DIR** — e.g. `/tmp/wawona-$(id -u)`
-- **WAYLAND_DISPLAY** — e.g. `wayland-0`
-- **Shell Setup** — copy-paste snippet for your terminal
+- **XDG_RUNTIME_DIR**. E.g. `/tmp/wawona-$(id -u)`
+- **WAYLAND_DISPLAY**. E.g. `wayland-0`
+- **Shell Setup**. Copy-paste snippet for your terminal
 
 ### Run a Client
 

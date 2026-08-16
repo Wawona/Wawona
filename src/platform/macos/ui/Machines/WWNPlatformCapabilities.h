@@ -45,7 +45,7 @@ static inline bool WWNPlatformAllowsAnowaW(void) {
   return WWNPlatformAllowsSwingingBridge();
 }
 
-/// Desktop / LockScreen / Mode B iland — macOS (+ Android separately). Never
+/// Desktop / LockScreen / Mode B iland. MacOS (+ Android separately). Never
 /// iOS/iPadOS/tvOS/watchOS/visionOS.
 static inline bool WWNPlatformAllowsDesktopReplacement(void) {
 #if TARGET_OS_OSX
@@ -59,7 +59,7 @@ static inline bool WWNPlatformAllowsMultiWindowScenes(void) {
 #if TARGET_OS_VISION
   return true;
 #elif TARGET_OS_IOS && !TARGET_OS_MACCATALYST
-  /* iPad only — callers must still check UIUserInterfaceIdiomPad at runtime
+  /* iPad only. Callers must still check UIUserInterfaceIdiomPad at runtime
    * (see WWNEnablePerWindowHosting / PlatformCapabilities.allowsMultiWindowScenes). */
   return true;
 #elif TARGET_OS_OSX

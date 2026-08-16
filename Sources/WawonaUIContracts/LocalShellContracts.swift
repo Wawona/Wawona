@@ -49,8 +49,8 @@ public struct LocalShellSnapshot: Sendable, Hashable {
         home: String = "",
         localHome: String? = nil,
         systemRoot: String = "",
-        bundleTemplateVersion: String = "—",
-        appliedTemplateVersion: String = "—",
+        bundleTemplateVersion: String = "-",
+        appliedTemplateVersion: String = "-",
         filesHint: String = "",
         shellPath: String? = nil,
         iCloudSync: LocalShellICloudSyncState? = nil,
@@ -74,7 +74,7 @@ public struct LocalShellSnapshot: Sendable, Hashable {
         if mode == .host {
             return "host shell"
         }
-        let applied = appliedTemplateVersion.isEmpty ? "—" : appliedTemplateVersion
+        let applied = appliedTemplateVersion.isEmpty ? "-" : appliedTemplateVersion
         return "bundle v\(bundleTemplateVersion) / installed v\(applied)"
     }
 }

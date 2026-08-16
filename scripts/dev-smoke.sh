@@ -42,7 +42,7 @@ log() { printf '\033[1;36m[dev-smoke]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[dev-smoke]\033[0m %s\n' "$*" >&2; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
-# ── core: the cheapest possible signal — Rust unit + integration tests ────────
+# ── core: the cheapest possible signal. Rust unit + integration tests ────────
 run_cargo() {
   if have cargo; then
     ( cd "$ROOT" && cargo "$@" )
@@ -108,7 +108,7 @@ smoke_ios() {
   fi
 }
 
-# ── Android: emulator/device replay (heavy — run sparingly) ───────────────────
+# ── Android: emulator/device replay (heavy. Run sparingly) ───────────────────
 smoke_android() {
   if ! have agent-device; then
     warn "agent-device not on PATH; cannot run Android replay"

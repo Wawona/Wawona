@@ -1,13 +1,13 @@
 //
 //  WWNGameControllerManager.h
-//  Wawona — GameController framework input (gamepads, GCMouse, GCKeyboard).
+//  Wawona. GameController framework input (gamepads, GCMouse, GCKeyboard).
 //
 //  Maps connected game controllers and framework-level mice onto the
 //  compositor's virtual pointer:
 //    - GCMouse: relative deltas, left/right/middle buttons, scroll wheel.
 //    - Gamepad: left stick / dpad moves the cursor, A = left click,
 //      B = right click, right stick scrolls.
-//  GCKeyboard presence is tracked only — key events already arrive through
+//  GCKeyboard presence is tracked only. Key events already arrive through
 //  UIKit's pressesBegan/pressesEnded path and must not be double-injected.
 //
 

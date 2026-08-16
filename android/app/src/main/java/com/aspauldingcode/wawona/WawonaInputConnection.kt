@@ -21,7 +21,7 @@ import android.view.inputmethod.InputConnection
  *
  * Modifier integration: when ModifierState has active modifiers from the
  * accessory bar, commitText() converts mappable characters to key events
- * wrapped with modifier press/release — matching iOS insertText: behavior.
+ * wrapped with modifier press/release. Matching iOS insertText: behavior.
  * Sticky (one-shot) modifiers are cleared after the keypress.
  */
 class WawonaInputConnection(
@@ -59,7 +59,7 @@ class WawonaInputConnection(
      * back to text-input-v3.
      *
      * Modifier state is driven entirely by injecting the modifier key
-     * press/release — the Rust core's XKB state machine (update_key) handles
+     * press/release. The Rust core's XKB state machine (update_key) handles
      * the depressed/latched/locked mask automatically.  We intentionally do
      * NOT call nativeInjectModifiers here to avoid mixing update_mask with
      * update_key, which xkbcommon explicitly warns against.

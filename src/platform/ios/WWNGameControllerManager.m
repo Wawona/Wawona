@@ -1,6 +1,6 @@
 //
 //  WWNGameControllerManager.m
-//  Wawona — GameController framework input. See header.
+//  Wawona. GameController framework input. See header.
 //
 
 #import "WWNGameControllerManager.h"

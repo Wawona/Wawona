@@ -1,6 +1,6 @@
 //
 //  WWNCarPlaySceneDelegate.h
-//  Wawona — CarPlay template scene.
+//  Wawona. CarPlay template scene.
 //
 //  CarPlay only allows template-based UI for non-media apps, so Wawona's
 //  CarPlay presence is a status dashboard: connected machines, running

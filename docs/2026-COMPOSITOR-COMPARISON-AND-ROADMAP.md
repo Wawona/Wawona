@@ -1,4 +1,4 @@
-# Wawona vs. Inspiration Compositors — Comparison & Full Protocol Roadmap
+# Wawona vs. Inspiration Compositors. Comparison & Full Protocol Roadmap
 
 > **Purpose**: Compare Wawona’s Wayland implementation to Owl, Wayoa, Weston, Hyprland, Sway, Smithay, Mutter, KWin, and others. Identify gaps and outline a plan for full Wayland protocol support on **macOS and iOS** while keeping Wawona distinct.
 
@@ -75,18 +75,18 @@
 
 | Aspect | Wawona |
 |--------|--------|
-| **Platforms** | macOS, iOS, Android — no other compositor targets all three |
+| **Platforms** | macOS, iOS, Android. No other compositor targets all three |
 | **Remote** | Waypipe integration on all targets (libssh2 on Apple mobile, OpenSSH portable on Android, OpenSSH on macOS) |
-| **Architecture** | Rust core + native frontends (Obj-C/Swift, Kotlin) — not a pure Rust UI stack |
+| **Architecture** | Rust core + native frontends (Obj-C/Swift, Kotlin). Not a pure Rust UI stack |
 | **Buffer path** | IOSurface zero-copy on Apple platforms (modifier ID tunneling via linux-dmabuf) |
 | **Nested** | Designed for nested use (e.g., inside Xcode, Simulator, fullscreen) |
 | **xkbcommon** | Static linking, `MINIMAL_KEYMAP` fallback for App Store compliance on iOS |
 
 ---
 
-## 5. Protocol Gaps for macOS/iOS — Prioritized
+## 5. Protocol Gaps for macOS/iOS. Prioritized
 
-### Tier 1 — Critical for Common Clients
+### Tier 1. Critical for Common Clients
 
 | Protocol | Status | Blocker | Reference |
 |----------|--------|---------|-----------|
@@ -99,7 +99,7 @@
 
 - **Screencopy / image capture**: Render frame to offscreen Metal texture, read back via `getBytes`, copy into `wl_shm` buffer, send to client. Weston and Wayoa both support screencopy on non-Linux backends.
 
-### Tier 2 — Quality of Life (macOS Applicable)
+### Tier 2. Quality of Life (macOS Applicable)
 
 | Protocol | Status | Blocker | Notes |
 |----------|--------|---------|-------|
@@ -108,17 +108,17 @@
 | Output hot-plug | Missing | Platform callback for display connect/disconnect | `wl_output` global add/remove |
 | Multi-output | Partial | Platform multi-display enumeration | Output placement logic |
 
-### Tier 3 — Linux-Only (Out of Scope for Apple)
+### Tier 3. Linux-Only (Out of Scope for Apple)
 
 | Protocol | Notes |
 |----------|-------|
-| `zwlr_export_dmabuf_manager_v1` | GPU DMA-BUF export — Linux only |
-| `wp_linux_drm_syncobj_manager_v1` | DRM syncobj — Linux only |
-| `wp_drm_lease_device_v1` | DRM lease (VR) — Linux only |
-| `zwp_linux_explicit_synchronization_v1` | Sync fences — Linux GPU stack |
+| `zwlr_export_dmabuf_manager_v1` | GPU DMA-BUF export. Linux only |
+| `wp_linux_drm_syncobj_manager_v1` | DRM syncobj. Linux only |
+| `wp_drm_lease_device_v1` | DRM lease (VR). Linux only |
+| `zwp_linux_explicit_synchronization_v1` | Sync fences. Linux GPU stack |
 | `wl_fixes` | Some compositors use; optional |
 
-### Tier 4 — Low Priority / KDE-Specific
+### Tier 4. Low Priority / KDE-Specific
 
 | Protocol | Notes |
 |----------|-------|
@@ -132,7 +132,7 @@
 
 ## 6. Roadmap: Full Protocol Support on macOS/iOS
 
-### Phase A — Screencopy & Capture (High Impact)
+### Phase A. Screencopy & Capture (High Impact)
 
 1. **`zwlr_screencopy_manager_v1`**
    - Add `copy_frame()` path: render to offscreen Metal texture, read back via `getBytes`, create `wl_shm` buffer, fill with pixels.
@@ -143,21 +143,21 @@
    - Same pixel-readback path as screencopy.
    - Capture source from output or toplevel (render node → texture → readback).
 
-### Phase B — Gamma Control (macOS)
+### Phase B. Gamma Control (macOS)
 
 1. **`zwlr_gamma_control_manager_v1`**
    - Implement via `CGSetDisplayTransferByTable` / `CGGetDisplayTransferByTable`.
    - Handle multiple outputs; apply per-output gamma ramps.
    - Weston provides a reference for gamma control semantics.
 
-### Phase C — Color Management (Optional but Valuable)
+### Phase C. Color Management (Optional but Valuable)
 
 1. **`wp_color_management_v1`**
    - Integrate ColorSync: output ICC profiles → image descriptions.
    - Surface feedback for preferred image descriptions.
    - GNOME 48 Mutter and color-and-hdr docs as references.
 
-### Phase D — Output Hot-Plug & Multi-Output
+### Phase D. Output Hot-Plug & Multi-Output
 
 1. **Output hot-plug**
    - Platform callbacks: `displayConnected` / `displayDisconnected`.
@@ -168,7 +168,7 @@
    - Enumerate displays via `CGDisplayCount` / `CGGetActiveDisplayList`.
    - Logical output placement; map outputs to `wl_output` geometry.
 
-### Phase E — Polish & Minor Protocols
+### Phase E. Polish & Minor Protocols
 
 - DnD action negotiation (copy/move/ask) for `wl_data_device_manager`.
 - Subsurface input region clipping to parent in hit-testing.

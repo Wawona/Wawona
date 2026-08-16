@@ -212,7 +212,7 @@ int wwn_iland_presenter_android_take_hardware_buffer(
    * Sticky last frame: always report the latest buffer so the host keeps
    * painting between kmscube page flips (dirty-only used to flash clear color).
    * Only a dirty frame needs a fresh AHB acquire + GPU upload + flip ACK;
-   * otherwise the caller redraws the cached Vulkan texture (do not re-lock —
+   * otherwise the caller redraws the cached Vulkan texture (do not re-lock -
    * the client may already be rendering into this BO after the prior ACK).
    */
   const int is_new = g_frame_dirty;

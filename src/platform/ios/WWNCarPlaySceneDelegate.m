@@ -1,6 +1,6 @@
 //
 //  WWNCarPlaySceneDelegate.m
-//  Wawona — CarPlay template scene. See header.
+//  Wawona. CarPlay template scene. See header.
 //
 
 #import "WWNCarPlaySceneDelegate.h"

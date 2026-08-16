@@ -72,7 +72,7 @@ def main() -> int:
         if resolved != root_nixpkgs:
             errors.append(
                 f"input '{name}' resolves nixpkgs to '{resolved}', not the root "
-                f"'{root_nixpkgs}' — add `{name}.inputs.nixpkgs.follows = \"nixpkgs\"`"
+                f"'{root_nixpkgs}'. Add `{name}.inputs.nixpkgs.follows = \"nixpkgs\"`"
             )
 
     # 2. No unexpected consumer of a non-root nixpkgs node.
@@ -99,7 +99,7 @@ def main() -> int:
         return 1
 
     root_rev = nodes[root_nixpkgs].get("locked", {}).get("rev", "")[:12]
-    print(f"nixpkgs lineage check OK — single build lineage @{root_rev} "
+    print(f"nixpkgs lineage check OK. Single build lineage @{root_rev} "
           f"(tooling exceptions: {sorted(ALLOWED_NON_ROOT_CONSUMERS)})")
     return 0
 

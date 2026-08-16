@@ -24,7 +24,7 @@ import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.ui.graphics.vector.ImageVector
 
 /**
- * Canonical bundled client list — keep in sync with iOS kBundledClients in WWNMachinesViewModel.swift.
+ * Canonical bundled client list. Keep in sync with iOS kBundledClients in WWNMachinesViewModel.swift.
  */
 data class BundledClientOption(
     val id: String,
@@ -35,7 +35,7 @@ data class BundledClientOption(
 
 object BundledClients {
     val all: List<BundledClientOption> = listOf(
-        BundledClientOption("weston-terminal", "Weston Terminal", "Terminal emulator — uses host cursor", Icons.Filled.Terminal),
+        BundledClientOption("weston-terminal", "Weston Terminal", "Terminal emulator. Uses host cursor", Icons.Filled.Terminal),
         BundledClientOption("weston-simple-shm", "Weston Simple SHM", "Minimal shared-memory Wayland client", Icons.Filled.Dashboard),
         BundledClientOption("weston", "Weston", "Wayland reference compositor (nested compositor)", Icons.Filled.ViewModule),
         BundledClientOption("niri", "Niri", "Scrollable-tiling compositor (nested compositor)", Icons.Filled.ViewColumn),

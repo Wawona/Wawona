@@ -2,7 +2,7 @@
 
 ## Status
 
-- **Implemented on `development`** — tracking issue [#157](https://github.com/Wawona/Wawona/issues/157)
+- **Implemented on `development`**. Tracking issue [#157](https://github.com/Wawona/Wawona/issues/157)
 - Children:
   - [#158](https://github.com/Wawona/Wawona/issues/158) catalog + resolver + persistence ✅
   - [#159](https://github.com/Wawona/Wawona/issues/159) Apple Settings + Machine Settings UI ✅
@@ -18,7 +18,7 @@ Cursor plan: `env_vars_settings_gui_e79f70a7`.
 
 | Issue | Why it matters |
 |-------|----------------|
-| [#67](https://github.com/Wawona/Wawona/issues/67) | UI contracts — add `GlobalSettingsSectionID.environment` |
+| [#67](https://github.com/Wawona/Wawona/issues/67) | UI contracts. Add `GlobalSettingsSectionID.environment` |
 | [#89](https://github.com/Wawona/Wawona/issues/89) | Global + per-machine override pattern |
 | [#117](https://github.com/Wawona/Wawona/issues/117) | Settings ↔ Machines pref sync |
 | [#90](https://github.com/Wawona/Wawona/issues/90) | Linux Settings parity |
@@ -45,15 +45,15 @@ catalog default > host process env`
 ## Persistence
 
 - Global: `wawona.pref.environment.v1`
-- Per-machine: `runtimeOverrides.environment` (explicit Codable field — never
+- Per-machine: `runtimeOverrides.environment` (explicit Codable field. Never
   stash in `settingsOverrides`; Swift drops unknown keys)
 - Also add `runtimeOverrides.compositorBackend` so `NIRI_BACKEND` has a typed home
 - Shape: `{ "TERM": { "action": "set", "value": "xterm" }, "RUST_LOG": { "action": "unset" } }`
 
 ## Hazards
 
-1. Two override bags (Swift typed vs ObjC `settingsOverrides`) — env must be explicit.
-2. Process-wide `setenv` on Apple mobile — re-apply on every connect/focus.
+1. Two override bags (Swift typed vs ObjC `settingsOverrides`). Env must be explicit.
+2. Process-wide `setenv` on Apple mobile. Re-apply on every connect/focus.
 3. Wire resolver into existing apply path, not a third writer.
 4. Strip `DYLD_*` / `LD_*` on Apple-mobile local spawn even if user extras set them.
 5. Secrets (`SSHPASS`, `WAYPIPE_SSH_PASSWORD`) never shown as values.

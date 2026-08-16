@@ -28,7 +28,7 @@ blocked.
 
 ## URL form
 
-Hand-edit Wawona org edges only. Do **not** blind-run `fh convert` — it
+Hand-edit Wawona org edges only. Do **not** blind-run `fh convert`. It
 rewrites third-party inputs incorrectly (observed mangling of `rust-overlay`,
 `crate2nix`, `microvm`, `nix-xcodeenvtests`).
 
@@ -56,7 +56,7 @@ Each GitHub-hosted flake runs [`.github/workflows/flakehub-publish.yml`](../.git
   `ubuntu-latest` fails without the Android SDK / on Darwin-only attrs.
   NAR paths come from FlakeHub Cache build jobs, not from this workflow.
 - One tracked branch per repo (do not publish rolling from both `main` and
-  `development` — interleaved commit-count versions).
+  `development`. Interleaved commit-count versions).
 
 Rolling versions are `0.1.<commit-count>+rev-<sha>`. They track **publish CI**,
 not a git branch name: a tip that never hits this workflow will not appear as

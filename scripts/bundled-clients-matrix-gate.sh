@@ -82,7 +82,7 @@ bundle_for() {
 
 resolve_udid() {
   local name="$1"
-  # Already a UDID — do not awk-parse (Watch lines have (46mm) before the UDID,
+  # Already a UDID. Do not awk-parse (Watch lines have (46mm) before the UDID,
   # so index(UDID) + print $2 wrongly yields "46mm").
   if [[ "$name" =~ ^[0-9A-Fa-f-]{36}$ ]]; then
     printf '%s\n' "$name"
@@ -157,7 +157,7 @@ lldb_connect() {
   # rejects a bare `WWNMachineSessionBridge` receiver with "use of undeclared
   # identifier" (the class token is unknown at compile time). Resolve the class
   # at runtime with NSClassFromString and send the real selectors to the Class
-  # object — that compiles without headers and dumps `(BOOL) $N = YES`.
+  # object. That compiles without headers and dumps `(BOOL) $N = YES`.
   # iOS 26 sim: `-l objc++` + @autoreleasepool returns empty; plain `-l objc` works.
   cat >"$script" <<EOF
 process attach --pid $pid
@@ -194,7 +194,7 @@ EOF
 
 # --- agent-device Start (Apple simulators) -----------------------------------
 
-# Drive the Machines "Start" button via agent-device — the same model Android
+# Drive the Machines "Start" button via agent-device. The same model Android
 # and the leak-idle gate use. Replaces LLDB connectProfile, which the Release
 # ObjC expression parser rejects. Returns 0 iff Start was pressed.
 apple_start_client() {
@@ -283,7 +283,7 @@ echo -e "platform\tclient\tstatus\treason\thold_sec\tartifact_dir" >"$RESULTS_TS
 record() {
   local platform="$1" client="$2" status="$3" reason="$4" hold="$5" adir="$6"
   echo -e "${platform}\t${client}\t${status}\t${reason}\t${hold}\t${adir}" >>"$RESULTS_TSV"
-  log "RESULT ${platform}/${client}: ${status} — ${reason}"
+  log "RESULT ${platform}/${client}: ${status}. ${reason}"
 }
 
 # --- Apple cell --------------------------------------------------------------
@@ -335,7 +335,7 @@ run_apple_cell() {
   fi
   chmod -R u+w "$stage" 2>/dev/null || true
 
-  # Install first so the app container exists — `defaults write` via
+  # Install first so the app container exists. `defaults write` via
   # simctl spawn fails when the bundle has never been installed on that sim.
   xcrun simctl uninstall "$udid" "$bundle" >/dev/null 2>&1 || true
   if ! xcrun simctl install "$udid" "$stage" >"$cell/install.log" 2>&1; then
@@ -388,7 +388,7 @@ run_apple_cell() {
   elif [[ "${WAWONA_MATRIX_USE_AGENT_DEVICE:-0}" == "1" ]]; then
     # Opt-in path: drive the Machines "Start" button via agent-device. This needs
     # a built XCUITest runner (agent-device prepare ios-runner), which times out
-    # on cold CI — hence it is no longer the default. Kept for local UI runs.
+    # on cold CI. Hence it is no longer the default. Kept for local UI runs.
     if ! apple_start_client "$platform" "$sim" "$bundle" "$cell"; then
       stop_log_pid "$logpid"
       record "$platform" "$client" FAIL "agent-device Start not pressed (see start-fail-snapshot.txt)" "$hold" "$cell"
@@ -645,7 +645,7 @@ run_android_cell() {
       adb -s "$serial" logcat -d >"$cell/logcat.txt" 2>&1 || true
       # A crashed in-process client takes the host down with it. Release the
       # agent-device/uiautomator session and force-stop so the NEXT cell starts
-      # from a clean launch — otherwise a stuck UiAutomation ("already
+      # from a clean launch. Otherwise a stuck UiAutomation ("already
       # registered") cascades this one failure into every later client.
       agent-device close "${ad_common[@]}" >/dev/null 2>&1 || true
       adb -s "$serial" shell am force-stop "$ANDROID_PKG" >/dev/null 2>&1 || true
@@ -938,7 +938,7 @@ CLIENT_DESC="${WAWONA_MATRIX_CLIENTS:-}"
 if [[ -z "$CLIENT_DESC" ]]; then
   CLIENT_DESC="ALL ($(bundled_clients_all | wc -l | tr -d ' ') clients)"
 fi
-log "Watch: bundled clients gate — $STAMP"
+log "Watch: bundled clients gate. $STAMP"
 log "Output: $OUT_ROOT"
 log "Platforms: ${PLATFORMS[*]}"
 log "Clients: $CLIENT_DESC"

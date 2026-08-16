@@ -13,9 +13,9 @@ Desktop/LockScreen or Wawona Swinging Bridge.
 
 | | **Mode A** (App Store IPA) | **Mode B** (Sileo Mode B IPA) |
 |---|---|---|
-| Engine | UTM-SE–class **jitless** interpreter | UTM/QEMU **with JIT** |
+| Engine | UTM-SE-class **jitless** interpreter | UTM/QEMU **with JIT** |
 | Containers | OCI pull + container-in-VM on jitless VM | Same OCI pull + **JIT** container-in-VM |
-| Ship | Store / TestFlight only | `repo.wawona.io` auto-packages Mode B IPA — **never** in App Store |
+| Ship | Store / TestFlight only | `repo.wawona.io` auto-packages Mode B IPA. **never** in App Store |
 
 Design both in `wwn-vms` / `wwn-containers` / Wawona at all times. Mode B code
 must be compile-time absent from store artifacts.
@@ -23,7 +23,7 @@ must be compile-time absent from store artifacts.
 **Backends differ by OS:** macOS → Virtualization / Apple Containerization;
 iOS family → UTM-SE-class (A) or JIT UTM (B); Android → QEMU±KVM/proot. Do not
 share one engine across those hosts. **Note:** active work on macOS Apple
-Container in `wwn-containers` — leave that repo alone until it merges; VMs and
+Container in `wwn-containers`. Leave that repo alone until it merges; VMs and
 Wasm packages proceed independently.
 
 ## Platforms
@@ -41,13 +41,13 @@ Website and `repo.wawona.io` may.
 
 ## Machines kinds
 
-- `virtual_machine` — guest VM (`wwn-vms`)
-- `container` — OCI container (`wwn-containers`)
+- `virtual_machine`. Guest VM (`wwn-vms`)
+- `container`. OCI container (`wwn-containers`)
 
 ## Not Wasm
 
 Installing `.wasm` is [Runtime package management](wasm-package-manager.md)
-(Mode A–safe `/wasm/` channel). Do not conflate with OCI Linux images.
+(Mode A-safe `/wasm/` channel). Do not conflate with OCI Linux images.
 
 ## Agent rules
 

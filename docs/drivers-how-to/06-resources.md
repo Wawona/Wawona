@@ -4,7 +4,7 @@ Curated links for driver setup, Vulkan, MoltenVK, KosmicKrisp, and Android. Use 
 
 ## Vulkan API and cross-platform
 
-- [Vulkan Guide — Platforms (Khronos)](https://docs.vulkan.org/guide/latest/platforms.html)
+- [Vulkan Guide. Platforms (Khronos)](https://docs.vulkan.org/guide/latest/platforms.html)
 - [Vulkan Portability Initiative / Porting layers](https://www.vulkan.org/porting)
 
 ## Vulkan SDK and tools
@@ -15,23 +15,23 @@ Curated links for driver setup, Vulkan, MoltenVK, KosmicKrisp, and Android. Use 
 
 ## MoltenVK (Vulkan over Metal)
 
-- [MoltenVK — GitHub](https://github.com/KhronosGroup/MoltenVK) — source, build, user guide, demos
+- [MoltenVK. GitHub](https://github.com/KhronosGroup/MoltenVK). Source, build, user guide, demos
 
 ## KosmicKrisp (Mesa Vulkan-on-Metal)
 
-- [KosmicKrisp — Mesa 3D docs](https://docs.mesa3d.org/drivers/kosmickrisp.html)
+- [KosmicKrisp. Mesa 3D docs](https://docs.mesa3d.org/drivers/kosmickrisp.html)
 - [LunarG SDK 1.4.335.0 (KosmicKrisp notes)](https://www.lunarg.com/lunarg-releases-vulkan-sdk-1-4-335-0/)
 
 ## Android Vulkan
 
-- [Implement Vulkan — AOSP](https://source.android.com/docs/core/graphics/implement-vulkan)
-- [Vulkan for game graphics — Android Developers](https://developer.android.com/games/develop/vulkan/overview)
+- [Implement Vulkan. AOSP](https://source.android.com/docs/core/graphics/implement-vulkan)
+- [Vulkan for game graphics. Android Developers](https://developer.android.com/games/develop/vulkan/overview)
 
 ## Examples and frameworks
 
-- **Vulkan tutorials** — Khronos Vulkan Tutorial (search “Vulkan Tutorial Khronos”); also samples in the Vulkan SDK.
-- **MoltenVK** — Demos in the MoltenVK GitHub repo (Xcode projects for macOS/iOS).
-- **Cross-platform** — SDL2 (Vulkan surfaces), GLFW (Vulkan loader), bgfx / gfx-rs (multi-backend).
+- **Vulkan tutorials**. Khronos Vulkan Tutorial (search “Vulkan Tutorial Khronos”); also samples in the Vulkan SDK.
+- **MoltenVK**. Demos in the MoltenVK GitHub repo (Xcode projects for macOS/iOS).
+- **Cross-platform**. SDL2 (Vulkan surfaces), GLFW (Vulkan loader), bgfx / gfx-rs (multi-backend).
 
 ---
 

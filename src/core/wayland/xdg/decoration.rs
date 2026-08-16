@@ -43,7 +43,7 @@
 //! Wawona must answer (3) with `WindowMoveRequested` → host
 //! `performWindowDragWithEvent`, never `movableByWindowBackground` or
 //! mouseDown-initiated whole-surface drag. Clients that never call move
-//! (smoke, simple-shm) are not content-draggable on Linux either — Super+drag
+//! (smoke, simple-shm) are not content-draggable on Linux either. Super+drag
 //! / compositor bindings only.
 //!
 //! ## Policy
@@ -65,7 +65,7 @@ use std::collections::HashMap;
 
 pub fn is_weston_family_app_id(app_id: &str) -> bool {
     // The weston toy-toolkit (clients/window.c) doesn't app_id its clients
-    // as bare "weston"/"weston-*" — e.g. weston-terminal registers as
+    // as bare "weston"/"weston-*". E.g. weston-terminal registers as
     // "org.freedesktop.weston.wayland-terminal" (see clients/terminal.c
     // window_set_appid). Matching only the exact/prefix forms above missed
     // every real weston-family client, silently disabling CSD-crop fallback
@@ -75,12 +75,12 @@ pub fn is_weston_family_app_id(app_id: &str) -> bool {
     // Do NOT use this helper for host-lock/kiosk fill: auto-locking all
     // weston-family app_ids stretched fixed-size demos (flower/smoke
     // 200×200) into the output. Host-lock is fullscreen_shell / explicit
-    // only — see `state/host_lock.rs`.
+    // only. See `state/host_lock.rs`.
     app_id == "weston" || app_id.starts_with("weston-") || app_id.contains("weston")
 }
 
 /// Loose tolerance for “is this commit related to the last configure?” checks
-/// (CSD chrome / geometry insets). **Not** used to drive host window sizing —
+/// (CSD chrome / geometry insets). **Not** used to drive host window sizing -
 /// see [`committed_size_authorizes_host_sync`] (#111).
 pub const COMMIT_SIZE_TOLERANCE: i32 = 64;
 
@@ -121,7 +121,7 @@ pub fn committed_size_matches_expected(
 /// When the compositor has advertised a positive toplevel size (host live
 /// resize, etc.), only near-exact commits may move `window.width/height`.
 /// Loose [`COMMIT_SIZE_TOLERANCE`] matching is intentionally **not** used
-/// here — it caused nested niri/weston framebuffer ping-pong (#111).
+/// here. It caused nested niri/weston framebuffer ping-pong (#111).
 pub fn committed_size_authorizes_host_sync(
     committed_w: i32,
     committed_h: i32,

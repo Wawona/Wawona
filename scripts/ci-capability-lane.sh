@@ -122,7 +122,7 @@ if [[ -n "$NIRI_BIN" && -x "$NIRI_BIN" ]]; then
   fi
   kill "$NIRI_PID" 2>/dev/null || true
 else
-  log "NOTE: niri binary not available (set WAWONA_CAP_NIRI_BIN) — skipping the niri nested stage"
+  log "NOTE: niri binary not available (set WAWONA_CAP_NIRI_BIN). Skipping the niri nested stage"
 fi
 
 kill -0 "$HOST_PID" 2>/dev/null || { log "FAIL: parent compositor died"; exit 1; }

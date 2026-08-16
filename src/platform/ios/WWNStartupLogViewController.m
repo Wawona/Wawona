@@ -150,7 +150,7 @@ static CGFloat        const kMaxOverlayH   = 0.72;   /* fraction of screen heigh
     self.logLabel.text = @"";
     [card addSubview:self.logLabel];
 #else
-    /* Log text view — selectable, copyable, non-editable. */
+    /* Log text view. Selectable, copyable, non-editable. */
     self.textView = [[UITextView alloc] init];
     self.textView.translatesAutoresizingMaskIntoConstraints = NO;
 #if !TARGET_OS_TV

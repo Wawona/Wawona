@@ -804,7 +804,7 @@ pub enum SelectionSource {
 /// directly on `CompositorState`) because `SelectionHandler::new_selection`
 /// must read the client's offered selection data via a pipe fd, and that
 /// read can only complete *after* the compositor flushes/dispatches so the
-/// client actually receives the `wl_data_source.send` request — which
+/// client actually receives the `wl_data_source.send` request. Which
 /// cannot happen if we block synchronously inside the handler that's
 /// running on the same dispatch turn. The read is done on a background
 /// thread instead; giving it its own `Arc<RwLock<_>>` (cloned out of
@@ -935,7 +935,7 @@ impl SeatState {
     }
 
     // =========================================================================
-    // Broadcast methods — delegate to sub-state modules
+    // Broadcast methods. Delegate to sub-state modules
     // =========================================================================
 
     pub fn broadcast_pointer_motion(&mut self, time: u32, x: f64, y: f64, focused_client: Option<&wayland_server::Client>) {
@@ -1057,7 +1057,7 @@ impl Default for DecorationPolicy {
 // Domain Sub-State: XDG Shell
 // ============================================================================
 
-/// XDG shell protocol state — surfaces, toplevels, popups, positioners,
+/// XDG shell protocol state. Surfaces, toplevels, popups, positioners,
 /// activation tokens, foreign toplevel export/import, decorations, outputs.
 pub struct XdgState {
     /// Active xdg_wm_base resources (legacy ping bookkeeping; prefer `shell_clients`)
@@ -1113,7 +1113,7 @@ impl Default for XdgState {
 // Domain Sub-State: Extension Protocols
 // ============================================================================
 
-/// Extension protocol state — pointer constraints, relative pointers,
+/// Extension protocol state. Pointer constraints, relative pointers,
 /// viewporter, dmabuf, sync objects, presentation, idle inhibit, etc.
 pub struct ExtProtocolState {
     /// Relative pointer state
@@ -1177,7 +1177,7 @@ pub struct ExtProtocolState {
     pub workspace: crate::core::wayland::ext::workspace::WorkspaceState,
     /// Background effect (blur) state
     pub background_effect: crate::core::wayland::ext::background_effect::BackgroundEffectState,
-    /// Fullscreen shell state (always available — used as the primary shell on iOS)
+    /// Fullscreen shell state (always available. Used as the primary shell on iOS)
     pub fullscreen_shell: crate::core::wayland::ext::fullscreen_shell::FullscreenShellState,
     /// XWayland keyboard grab state
     #[cfg(feature = "desktop-protocols")]
@@ -1235,7 +1235,7 @@ impl Default for ExtProtocolState {
 // Domain Sub-State: wlroots Protocols
 // ============================================================================
 
-/// wlroots protocol state — layer shell, virtual pointers/keyboards,
+/// wlroots protocol state. Layer shell, virtual pointers/keyboards,
 /// data control (clipboard managers), output management.
 pub struct WlrState {
     /// All active layer surfaces, keyed by (ClientId, surface_id)
@@ -1304,7 +1304,7 @@ impl Default for WlrState {
 /// Gamma ramp for one channel (u16 values, protocol little-endian)
 pub type GammaRamp = Vec<u16>;
 
-/// Pending gamma apply — platform calls CGSetDisplayTransferByTable
+/// Pending gamma apply. Platform calls CGSetDisplayTransferByTable
 #[cfg_attr(
     not(any(target_os = "ios", target_os = "visionos", target_os = "watchos")),
     derive(uniffi::Record)
@@ -1416,7 +1416,7 @@ pub struct CompositorState {
     // Configuration
     // =========================================================================
     
-    /// Global decoration policy — the **default** for clients (machines) that
+    /// Global decoration policy. The **default** for clients (machines) that
     /// have no per-client override. Global Settings seed this; it must not
     /// retroactively rewrite live clients that carry an explicit override.
     pub decoration_policy: DecorationPolicy,
@@ -1774,7 +1774,7 @@ impl CompositorState {
                 // Windows hosted in their own independent OS window/scene
                 // (macOS NSWindow-per-toplevel, iPadOS/visionOS
                 // UIWindowScene-per-client) are never sized from the shared
-                // primary output — that would snap them to the *other*
+                // primary output. That would snap them to the *other*
                 // window's size whenever it resizes/rotates (#120). Their
                 // size is driven exclusively via resize_window /
                 // injectWindowResize from their own host geometry.
@@ -1842,7 +1842,7 @@ impl CompositorState {
 
     /// Mark whether a window is hosted in its own independent OS window/scene
     /// (macOS NSWindow-per-toplevel, or one `UIWindowScene` per Wayland client
-    /// on iPadOS/visionOS — `ipad-scene-parity` / `vision-shell-parity`,
+    /// on iPadOS/visionOS. `ipad-scene-parity` / `vision-shell-parity`,
     /// #120). Independent windows are excluded from the shared-output resize
     /// sweep in [`Self::set_output_size`]; their geometry is driven solely by
     /// `resize_window` calls scoped to their own host window/scene.
@@ -1877,7 +1877,7 @@ impl CompositorState {
     }
     
     /// Get decoration mode for new windows (global default; used where no
-    /// client is known — kept for tests / legacy callers).
+    /// client is known. Kept for tests / legacy callers).
     pub fn decoration_mode_for_new_window(&self) -> DecorationMode {
         Self::decoration_mode_for_policy(self.decoration_policy)
     }

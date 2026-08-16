@@ -73,9 +73,9 @@ rec {
     "src/platform/macos/ui/Machines/WWNMachineSessionBridge.m"
     "src/platform/macos/ui/Machines/WWNMachineSessionBridge.h"
     # Header-only platform gates used by WWNMachineSessionBridge.m (must be in
-    # the staged source list — nix copies only explicitly listed paths).
+    # the staged source list. Nix copies only explicitly listed paths).
     "src/platform/macos/ui/Machines/WWNPlatformCapabilities.h"
-    # Swinging Bridge App Bridge — macOS-only (added in macos.nix sources, not shared).
+    # Swinging Bridge App Bridge. MacOS-only (added in macos.nix sources, not shared).
     # VM/container runners + jitless QEMU engine (shared macOS/iOS; each file
     # carries TARGET_OS_OSX branches). Referenced by WWNMachineSessionBridge.m.
     "src/platform/macos/ui/Machines/WWNVirtualMachineRunner.m"
@@ -97,7 +97,7 @@ rec {
     "src/platform/macos/ui/Settings/WWNPreferencesManager.h"
     "src/platform/macos/ui/Settings/WWNEnvironmentOverrides.m"
     "src/platform/macos/ui/Settings/WWNEnvironmentOverrides.h"
-    # WWNSipStatus — macOS-only (Desktop Replacement SIP helper; see macos.nix).
+    # WWNSipStatus. MacOS-only (Desktop Replacement SIP helper; see macos.nix).
     "src/platform/macos/ui/About/WWNAboutPanel.m"
     "src/platform/macos/ui/About/WWNAboutPanel.h"
     "src/platform/macos/ui/Settings/WWNSettingsDefines.h"

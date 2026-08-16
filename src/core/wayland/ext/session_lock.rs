@@ -20,7 +20,7 @@ use crate::core::state::CompositorState;
 // Data Types
 // ============================================================================
 
-/// Lock surface data — tracks which output and surface this covers
+/// Lock surface data. Tracks which output and surface this covers
 #[derive(Debug, Clone)]
 pub struct SessionLockSurfaceData {
     pub output_id: u32,
@@ -146,7 +146,7 @@ impl Dispatch<ExtSessionLockV1, ()> for CompositorState {
 }
 
 // ============================================================================
-// ext_session_lock_surface_v1 — user data is output_id: u32
+// ext_session_lock_surface_v1. User data is output_id: u32
 // ============================================================================
 
 impl Dispatch<ExtSessionLockSurfaceV1, u32> for CompositorState {

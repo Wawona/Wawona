@@ -1,6 +1,6 @@
 //
 //  WWNIlandPresenter.h
-//  Wawona — iOS
+//  Wawona. IOS
 //
 //  Mode A in-window present consumer for nested iland GL clients
 //  (kmscube / weston-simple-egl built against iland + ANGLE).

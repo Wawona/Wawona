@@ -1,4 +1,4 @@
-# Toolkit soft path — stack readiness (not the ports)
+# Toolkit soft path. Stack readiness (not the ports)
 
 Wawona does **not** port SDL/Qt/GTK inside the graphics epic. Those stay
 follow-on repos (`wwn-sdl2` / `wwn-qt` / `wwn-gtk`). This document is the

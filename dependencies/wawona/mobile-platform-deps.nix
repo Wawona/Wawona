@@ -35,7 +35,7 @@ let
     ) {
       waypipe = buildFn "waypipe" { inherit simulator; };
     };
-  # tv/watch: shm/pixman only — no ANGLE/Vulkan (platform-targets matrix).
+  # tv/watch: shm/pixman only. No ANGLE/Vulkan (platform-targets matrix).
   allowGpu = variant == "mobile" || variant == "vision";
   base =
     {
@@ -66,7 +66,7 @@ let
       angle = buildFn "angle" { inherit simulator; };
       moltenvk = buildFn "moltenvk" { inherit simulator; };
     }
-    # SwiftShader CPU Vulkan ICD — iOS *Simulator* / CI only. On-device store
+    # SwiftShader CPU Vulkan ICD. IOS *Simulator* / CI only. On-device store
     # builds stay MoltenVK-only (App Store posture; verify-iland-graphics-bundle
     # forbids it there). The Simulator's Metal cannot bring up MoltenVK's pipeline
     # on headless CI (the app is killed with Metal domain 102), so vkcube needs a
@@ -111,7 +111,7 @@ let
         niri = buildFn "niri" { inherit simulator; };
         # phoon: pure-Rust in-process shell tool. Runs on the WHOLE Apple family
         # (rust-overlay stable ships std for the tier-3 tvOS/watchOS/visionOS
-        # triples), so it is bundled everywhere like niri — no GPU/framework deps.
+        # triples), so it is bundled everywhere like niri. No GPU/framework deps.
         phoon = buildFn "phoon" { inherit simulator; };
       }
     # wwn-wasm: WASI P1/P2 interpreter. Pulley on Apple mobile. Off on watchOS
@@ -123,13 +123,13 @@ let
         neovim = buildFn "neovim" { inherit simulator; };
         "neovim-rootfs" = buildFn "neovim-rootfs" { inherit simulator; };
         # wwn-niri fuzzel stack (Mod+D launcher spawned in-process).
-        # fuzzel uses fork/exec — not available on tvOS; keep off tv/watch.
+        # fuzzel uses fork/exec. Not available on tvOS; keep off tv/watch.
         fuzzel = buildFn "fuzzel" { inherit simulator; };
       }
     # fastfetch is an in-process (`fastfetch_main`) system-info tool with no
     # fork/exec and no GPU dependency, so it ships on the WHOLE Apple family.
     # wwn-fastfetch drops Metal/VideoToolbox on watchOS (CPU-only, no-Metal wall)
-    # via its per-platform framework list — Wawona stays framework-agnostic. #139
+    # via its per-platform framework list. Wawona stays framework-agnostic. #139
     // lib.optionalAttrs (
       variant == "mobile" || variant == "vision" || variant == "tv" || variant == "watch"
     ) {

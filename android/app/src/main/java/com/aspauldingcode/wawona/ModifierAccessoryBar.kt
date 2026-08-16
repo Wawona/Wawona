@@ -316,7 +316,7 @@ fun ModifierAccessoryBar(
                 (if (ModifierState.shiftActive) "~" else "`") to { sendAccessoryKey(LinuxKey.GRAVE) },
                 "TAB" to { sendAccessoryKey(LinuxKey.TAB) },
                 (if (ModifierState.shiftActive) "?" else "/") to { sendAccessoryKey(LinuxKey.SLASH) },
-                (if (ModifierState.shiftActive) "_" else "—") to { sendAccessoryKey(LinuxKey.MINUS) },
+                (if (ModifierState.shiftActive) "_" else "-") to { sendAccessoryKey(LinuxKey.MINUS) },
                 "↑" to { sendAccessoryKey(LinuxKey.UP) },
                 "HOME" to { sendAccessoryKey(LinuxKey.HOME) },
                 "PGUP" to { sendAccessoryKey(LinuxKey.PAGEUP) },

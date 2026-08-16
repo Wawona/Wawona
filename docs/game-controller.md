@@ -21,7 +21,7 @@ the iOS / tvOS / Mac Catalyst targets).
 | Gamepad right stick | scroll (`kStickScrollSpeed`) |
 | Gamepad D-pad | fine cursor nudge |
 | `GCMouse` move / buttons / scroll | relative pointer move, left/right/middle click, wheel |
-| `GCKeyboard` | presence tracked only — key events already flow through UIKit `pressesBegan`/`pressesEnded`, so they are **not** re-injected here (avoids double input) |
+| `GCKeyboard` | presence tracked only. Key events already flow through UIKit `pressesBegan`/`pressesEnded`, so they are **not** re-injected here (avoids double input) |
 
 Analog sticks use a `kStickDeadzone` and are sampled every frame because
 `valueChangedHandler` cannot express a stick held at constant deflection.

@@ -68,7 +68,7 @@ both), cutting ~50% of Nix work on each rebuild.
 nix build .#wawona-ios-backend .#wawona-ios-sim-backend
 mkdir -p .nix-gcroots && nix build --out-link .nix-gcroots/xcodegen .#xcodegen
 
-# UI-only iteration — no special env needed; prebuild auto-skips when inputs
+# UI-only iteration. No special env needed; prebuild auto-skips when inputs
 # are unchanged. For explicit skip (no Nix at all):
 export WAWONA_SKIP_NIX_PREBUILD=1
 
@@ -131,7 +131,7 @@ CalVer is `VERSION` (`YY.M.D`). Fastlane lives in this repo. Contributor CI:
 (not for the public site).
 
 ```bash
-# Tier 0 — docs/maintainers/secrets.md (SecretSpec + pass; sops-nix unlocks GPG)
+# Tier 0. Docs/maintainers/secrets.md (SecretSpec + pass; sops-nix unlocks GPG)
 ./scripts/setup-release-secrets.sh                      # verify pass + secretspec
 ./scripts/bootstrap-apple-signing.sh                    # one-time match → apple-signing repo
 ./scripts/sync-github-secrets.sh                        # pass → GitHub Environment release-beta

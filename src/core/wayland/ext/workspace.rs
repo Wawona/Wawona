@@ -77,7 +77,7 @@ impl Dispatch<ExtWorkspaceManagerV1, ()> for CompositorState {
             ext_workspace_manager_v1::Request::Commit => {
                 // Apply pending workspace changes
                 resource.done();
-                tracing::debug!("Workspace manager commit — done sent");
+                tracing::debug!("Workspace manager commit. Done sent");
             }
             ext_workspace_manager_v1::Request::Stop => {
                 tracing::debug!("Workspace manager stopped");

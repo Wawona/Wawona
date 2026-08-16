@@ -143,7 +143,7 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
 }
 
 #if TARGET_OS_TV
-/// Deliberate hold — tvOS analogue of iOS shake-to-exit. Short Menu is Escape.
+/// Deliberate hold. TvOS analogue of iOS shake-to-exit. Short Menu is Escape.
 static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
 
 - (void)_cancelTvMenuLongPressTimer {
@@ -228,7 +228,7 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
 // iPadOS / visionOS multi-window (#120): hosts a single Wayland client's view
 // in its own dedicated UIWindowScene (see -connectClientWindowScene:). This
 // window's geometry is independent of the primary Machines scene and of any
-// other client's window — report layout-driven size changes (Stage Manager
+// other client's window. Report layout-driven size changes (Stage Manager
 // drag, Split View, rotation, …) so the scene delegate can push a per-window
 // injectWindowResize instead of relying on the shared/global output size.
 @interface WWNClientSceneHostViewController : UIViewController
@@ -250,7 +250,7 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
 // when the client itself isn't actively re-laying-out content that would
 // otherwise trigger Auto Layout. viewWillTransitionToSize:… is the
 // OS-guaranteed callback for *every* scene bounds change and always carries
-// the final target size, so use it as a backstop — without it, a resize that
+// the final target size, so use it as a backstop. Without it, a resize that
 // doesn't otherwise dirty layout can silently never reach injectWindowResize:
 // and the client keeps rendering at its old size (#120).
 - (void)viewWillTransitionToSize:(CGSize)size
@@ -329,7 +329,7 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
       [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
   continueButton.accessibilityIdentifier = @"wwn.welcome.continue";
   continueButton.accessibilityLabel = @"Continue";
-  // Keep Continue as its own a11y node — XCTest otherwise collapses the modal
+  // Keep Continue as its own a11y node. XCTest otherwise collapses the modal
   // to a single "Welcome to Wawona" other (CI smoke cannot press by id).
   card.isAccessibilityElement = NO;
   titleLabel.isAccessibilityElement = YES;
@@ -408,9 +408,9 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
 @property(nonatomic, strong) NSArray<NSLayoutConstraint *> *safeAreaConstraints;
 /// Constraints that pin compositorContainer edge-to-edge (full screen).
 @property(nonatomic, strong) NSArray<NSLayoutConstraint *> *fullScreenConstraints;
-/// Last reported output size — used to skip redundant updates.
+/// Last reported output size. Used to skip redundant updates.
 @property(nonatomic, assign) CGSize lastOutputSize;
-/// Last reported output scale — used with size to skip redundant updates.
+/// Last reported output scale. Used with size to skip redundant updates.
 @property(nonatomic, assign) float lastOutputScale;
 /// Host IME overlap (points) reported by WWNCompositorView_ios.
 @property(nonatomic, assign) CGFloat hostKeyboardOverlap;
@@ -418,7 +418,7 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
 @property(nonatomic, assign) CGFloat hostKeyboardAccessoryHeight;
 /// Soft-keyboard geometry says hardware keyboard is active (no IME resize).
 @property(nonatomic, assign) BOOL hostHardwareKeyboardActive;
-/// Last applied Respect Safe Area value — used to skip redundant logs.
+/// Last applied Respect Safe Area value. Used to skip redundant logs.
 @property(nonatomic, assign) BOOL lastRespectSafeArea;
 @property(nonatomic, assign) BOOL hasAppliedSafeArea;
 @property(nonatomic, assign) BOOL showingMachinesUI;
@@ -471,12 +471,12 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
   WWNClientSceneHostViewController *hostController =
       [[WWNClientSceneHostViewController alloc] init];
 
-  // Wire the resize callback BEFORE the view is loaded/added to any window —
+  // Wire the resize callback BEFORE the view is loaded/added to any window -
   // loadView/viewDidLoad below and the rootViewController assignment can
   // trigger the first layout pass, and we don't want that first (correct)
   // size to be silently swallowed by a nil callback.
   //
-  // This window's size is driven exclusively by its own dedicated scene —
+  // This window's size is driven exclusively by its own dedicated scene -
   // never by the primary Machines scene's shared output (#120). Push a
   // per-window resize on every layout/transition change (Stage Manager
   // drag, Split View, rotation, …) instead of the shared
@@ -486,7 +486,7 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
   // mayInjectHostSize (hostLocked || followHostSize). clientView (the actual
   // WWNCompositorView_ios) is a flex-resizing subview of this controller's
   // view, so its own layoutSubviews already independently observes this same
-  // bounds change and applies the identical gate — without this check here
+  // bounds change and applies the identical gate. Without this check here
   // too, this callback unconditionally forced host authority on every
   // fixed-size demo client (weston-flower/smoke, simple-shm), stretching
   // their small negotiated buffer to fill the dedicated scene window instead
@@ -542,7 +542,7 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
                  options:(UISceneConnectionOptions *)connectionOptions {
 #if TARGET_OS_IPHONE
   // Install rootfs + XDG_* / HOME for every Apple-mobile scene (incl. tvOS).
-  // Files-app layout is phone/pad/vision only — TV has no Files browser.
+  // Files-app layout is phone/pad/vision only. TV has no Files browser.
   [WWNRootfsProvider applyShellEnvironment];
 #if !TARGET_OS_TV
   [WWNRootfsProvider prepareUserAccess];
@@ -556,7 +556,7 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
 #if !TARGET_OS_TV
   // iPadOS / visionOS multi-window (#120): a scene requested by
   // -handleWindowCreated for a specific Wayland client carries its window id in
-  // an NSUserActivity. Host ONLY that client's view in this scene — do not
+  // an NSUserActivity. Host ONLY that client's view in this scene. Do not
   // rebuild the Machines UI or touch the shared compositor container (that path
   // belongs to the primary scene below).
   uint64_t clientSceneWindowId = 0;
@@ -593,7 +593,7 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
   self.window = shakeWindow;
   self.window.backgroundColor = [UIColor blackColor];
 
-  // Root view controller — fills the full screen
+  // Root view controller. Fills the full screen
   WWNCompositorHostViewController *rootViewController =
       [[WWNCompositorHostViewController alloc] init];
   rootViewController.defersSystemGesturesForCompositor = NO;
@@ -628,7 +628,7 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
   rootViewController.view.backgroundColor = [UIColor blackColor];
   self.window.rootViewController = rootViewController;
 
-  // Compositor container — an intermediate view whose bounds
+  // Compositor container. An intermediate view whose bounds
   // determine the Wayland output size.  It is either pinned to the
   // safe area layout guide ("Respect Safe Area" ON) or to the full
   // screen edges (OFF).
@@ -768,7 +768,7 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
   }
   // Welcome sheet is modal and would block an automated auto-client start.
   [[WWNPreferencesManager sharedManager] setHasSeenWelcome:YES];
-  WWNLog("SCENE", @"WAWONA_AUTO_CLIENT=%@ — starting bundled client", autoClient);
+  WWNLog("SCENE", @"WAWONA_AUTO_CLIENT=%@. Starting bundled client", autoClient);
   // Give the compositor bridge the same head start Machines Start implies
   // (mirrors the 1.5s delay in macOS main.m).
   dispatch_after(
@@ -968,11 +968,11 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
 #pragma mark - UIWindowSceneDelegate
 
 // Called when the scene's coordinate space, interface orientation, or trait
-// collection changes — this is the primary rotation notification in the
+// collection changes. This is the primary rotation notification in the
 // UIScene lifecycle.  We must update the Wayland compositor output size so
 // that wl_output.mode events are sent and xdg_toplevel windows reconfigure.
 //
-// Deprecated in iOS 26 — migrate to registerForTraitChanges: when the
+// Deprecated in iOS 26. Migrate to registerForTraitChanges: when the
 // minimum deployment target is raised to iOS 17+.
 - (void)wwn_handleWindowSceneGeometryChange {
 #if !TARGET_OS_TV
@@ -1196,7 +1196,7 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
 }
 
 #if TARGET_OS_TV
-/// Linux KEY_ESC — matches compositor view / bridge injection.
+/// Linux KEY_ESC. Matches compositor view / bridge injection.
 static const uint32_t kWWNTvMenuEscapeKeycode = 1;
 
 - (void)handleTvMenuShortPressDuringSession {
@@ -1334,16 +1334,16 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
   NSString *clientId = notification.userInfo[@"clientId"];
   [self showStartupLogForClient:clientId];
   // iPadOS / visionOS multi-window (#120): this fires on the PRIMARY scene's
-  // delegate (the client's own scene doesn't exist yet — it's requested
+  // delegate (the client's own scene doesn't exist yet. It's requested
   // later, once the toplevel actually maps). When clients get their own
   // dedicated UIWindowScene, the primary Machines scene must stay exactly as
-  // it is — hiding its Machines UI and revealing its (now-unused, empty)
+  // it is. Hiding its Machines UI and revealing its (now-unused, empty)
   // compositorContainer leaves the user with a black, uninteractable window
   // and no way to launch another machine.
   //
   // Exception: forceRevealPrimary (iland/kmscube scene-activation fallback)
   // when the Metal host could not get a dedicated scene and landed on the
-  // primary container — Machines would otherwise cover it permanently.
+  // primary container. Machines would otherwise cover it permanently.
   BOOL forceReveal =
       [notification.userInfo[@"forceRevealPrimary"] boolValue];
   if (forceReveal || ![self clientsUseDedicatedScenes]) {
@@ -1356,7 +1356,7 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
 /// in their own dedicated `UIWindowScene` rather than the primary scene's
 /// shared compositor container. The primary (Machines) scene must never hide
 /// its SwiftUI configuration UI or reveal its compositor container for such
-/// clients — they render in a different OS window entirely.
+/// clients. They render in a different OS window entirely.
 - (BOOL)clientsUseDedicatedScenes {
   return [[WWNCompositorBridge sharedBridge] perWindowHostingEnabled];
 }
@@ -1376,7 +1376,7 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
 #elif TARGET_OS_TV
   return YES;
 #elif TARGET_OS_IPHONE
-  // Phone only — iPadOS uses one UIWindowScene per Wayland client.
+  // Phone only. IPadOS uses one UIWindowScene per Wayland client.
   return UIDevice.currentDevice.userInterfaceIdiom != UIUserInterfaceIdiomPad;
 #else
   return NO;
@@ -1421,7 +1421,7 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
 
   if (titles.count <= 1) {
     self.clientTabsControl.hidden = YES;
-    // Dropping back to a single client: make sure it is visible again — an
+    // Dropping back to a single client: make sure it is visible again. An
     // earlier tab switch may have hidden it while another tab was selected.
     if (ids.count == 1) {
       [bridge focusTabbedClientWindowId:ids[0].unsignedLongLongValue];
@@ -1529,7 +1529,7 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
     // scene's delegate, but the client is launching into its OWN dedicated
     // UIWindowScene which doesn't exist yet. Presenting the overlay here
     // would show it on top of the (uninvolved) Machines UI instead of the
-    // client's eventual window — capture logs without presenting.
+    // client's eventual window. Capture logs without presenting.
     (void)label;
     return;
   }
@@ -1641,7 +1641,7 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
     } else {
       [bridge setClientHostWindowsHidden:YES forMachineId:machineId];
     }
-    // Dedicated client scenes are separate UIWindowScenes — bring the primary
+    // Dedicated client scenes are separate UIWindowScenes. Bring the primary
     // Machines scene forward so minimize visibly parks to Machines (#120).
     [self.window makeKeyAndVisible];
     [self showMachinesUI];
@@ -1687,7 +1687,7 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
       [bridge setClientHostWindowsHidden:NO forMachineId:machineId ?: @""];
     }
     // iPadOS / visionOS multi-window (#120): dedicated-scene clients live in
-    // their own UIWindowScene, not the primary scene's shared container —
+    // their own UIWindowScene, not the primary scene's shared container -
     // the primary (Machines) scene must stay exactly as it is. Focusing such
     // a client is handled below via focusClientWindowsForMachineId:, which
     // brings its own window/scene forward.
@@ -1836,7 +1836,7 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
           // callback fires on the PRIMARY scene the instant the user taps
           // Start, well before any dedicated client UIWindowScene exists.
           // When clients get their own dedicated scene, the primary
-          // Machines scene must stay exactly as it is — unconditionally
+          // Machines scene must stay exactly as it is. Unconditionally
           // hiding its Machines UI and revealing its (now-unused, empty)
           // compositorContainer here is exactly what turned the primary
           // window black and uninteractable. See the matching guards in

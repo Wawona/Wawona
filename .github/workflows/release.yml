@@ -1,7 +1,7 @@
 name: "Ship: GitHub assets"
 
 # Tag push (v*) → GitHub Release with macOS DMG, Android APK, iOS IPA, and Linux
-# AppImages. Pure products: macos / android / appimage only (no apple-family —
+# AppImages. Pure products: macos / android / appimage only (no apple-family -
 # watchOS sim is not a Release asset and has flaked on -downloadPlatform iOS).
 # IPA is impure Fastlane match+gym (same signing path as Ship: beta).
 # Re-registered 2026-07-16 after Actions run-history purge left this workflow deleted.
@@ -181,7 +181,7 @@ jobs:
             trusted-users = runner root
       - uses: DeterminateSystems/flakehub-cache-action@v3
 
-      # Same match+gym path as Ship: beta — nix .#wawona-ios-ipa asserts cert
+      # Same match+gym path as Ship: beta. Nix .#wawona-ios-ipa asserts cert
       # files that we do not pass here; Fastlane owns App Store signing.
       - name: Build signed iPhone IPA (Fastlane)
         env:

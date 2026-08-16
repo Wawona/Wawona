@@ -1,6 +1,6 @@
 > **Superseded.** Spike template. Live hub: [`../ios-local-shell/README.md`](../ios-local-shell/README.md). Do not copy to wawona.io.
 
-# Phase 0 Device Spike Report — PTY + Bundled ZSH on iOS
+# Phase 0 Device Spike Report. PTY + Bundled ZSH on iOS
 
 **Status:** Nix packages green on host (`wawona-pty-ios`, `zsh-ios`, `wawona-rootfs-ios`, `weston-ios`, `wawona-pty-spike-ios`). **Physical device PTY/zsh tests still required** before Phase 2 production sign-off.
 
@@ -13,7 +13,7 @@
 
 ## Purpose
 
-Prove or disprove that Wawona can run **bundled native zsh** attached to a PTY inside the App Store sandbox on a **physical iPhone**. This gates the App Store–compliant local shell program documented in [ios-local-shell/](ios-local-shell/README.md).
+Prove or disprove that Wawona can run **bundled native zsh** attached to a PTY inside the App Store sandbox on a **physical iPhone**. This gates the App Store-compliant local shell program documented in [ios-local-shell/](ios-local-shell/README.md).
 
 ---
 
@@ -35,7 +35,7 @@ Prove or disprove that Wawona can run **bundled native zsh** attached to a PTY i
 
 ---
 
-## Test 1 — `posix_openpt`
+## Test 1. `posix_openpt`
 
 ```c
 master = posix_openpt(O_RDWR | O_NOCTTY);
@@ -50,7 +50,7 @@ master = posix_openpt(O_RDWR | O_NOCTTY);
 
 ---
 
-## Test 2 — `posix_spawn` zsh
+## Test 2. `posix_spawn` zsh
 
 | Step | Result | Notes |
 |------|--------|-------|
@@ -60,7 +60,7 @@ master = posix_openpt(O_RDWR | O_NOCTTY);
 
 ---
 
-## Test 3 — Interactive commands
+## Test 3. Interactive commands
 
 | Command | Expected | Result |
 |---------|----------|--------|
@@ -71,7 +71,7 @@ master = posix_openpt(O_RDWR | O_NOCTTY);
 
 ---
 
-## Test 4 — Winsize
+## Test 4. Winsize
 
 | Step | Result |
 |------|--------|
@@ -80,7 +80,7 @@ master = posix_openpt(O_RDWR | O_NOCTTY);
 
 ---
 
-## Test 5 — Resource / lifecycle
+## Test 5. Resource / lifecycle
 
 | Metric | Value |
 |--------|-------|
@@ -90,11 +90,11 @@ master = posix_openpt(O_RDWR | O_NOCTTY);
 | Background 30s → foreground | ⬜ ok / ⬜ jetsam |
 | `waitpid` after SIGHUP | ⬜ ok |
 
-Instruments trace attached: ⬜ yes / ⬜ no — file: _______________
+Instruments trace attached: ⬜ yes / ⬜ no. File: _______________
 
 ---
 
-## Test 6 — Path policy (compliance)
+## Test 6. Path policy (compliance)
 
 | Path passed to spawn | Expected | Result |
 |----------------------|----------|--------|
@@ -118,9 +118,9 @@ Instruments trace attached: ⬜ yes / ⬜ no — file: _______________
 
 ## Conclusion
 
-⬜ **GO** — proceed to Phase 2 with standard PTY  
-⬜ **GO with fallback** — document: _______________  
-⬜ **NO-GO** — local zsh blocked; remote-only until: _______________
+⬜ **GO**. Proceed to Phase 2 with standard PTY  
+⬜ **GO with fallback**. Document: _______________  
+⬜ **NO-GO**. Local zsh blocked; remote-only until: _______________
 
 **Signed:** _______________ **Date:** _______________
 

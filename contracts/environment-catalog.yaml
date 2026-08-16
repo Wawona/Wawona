@@ -3,11 +3,11 @@
 # Tracking: https://github.com/Wawona/Wawona/issues/157
 #
 # mutability:
-#   computed  — session-derived; override is Advanced
-#   managed   — owned by a first-class setting (ownedBy)
-#   defaulted — Wawona default; fully editable; Reset restores default
-#   user      — user extras only (not listed here; free-form)
-#   secret    — never show values in UI
+#   computed . Session-derived; override is Advanced
+#   managed. Owned by a first-class setting (ownedBy)
+#   defaulted. Wawona default; fully editable; Reset restores default
+#   user. User extras only (not listed here; free-form)
+#   secret. Never show values in UI
 
 version: 1
 
@@ -339,7 +339,7 @@ entries:
     resettable: true
     help: Auto-run command for weston-terminal (e.g. phoon).
 
-  # Secrets — owned by SSH Settings; never show values
+  # Secrets. Owned by SSH Settings; never show values
   - name: SSHPASS
     category: secrets
     mutability: secret

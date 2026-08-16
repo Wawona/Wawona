@@ -6,7 +6,7 @@ Token order is always **app → calver → platform → arch → [build] → ext
 |---------|---------|----------------|
 | **GitHub Release** (`Ship: GitHub assets`, tag `v*`) | `Wawona-{calver}-{platform}-{arch}.{ext}` | No |
 | **Store upload** (`Ship: beta` → TestFlight / Play) | `Wawona-{calver}-{platform}-{arch}-{build}.{ext}` | Yes |
-| **product-build / Gate** | Short unversioned (`Wawona.apk`, `Wawona.app`, `Wawona-{arch}.AppImage`) | N/A — rename only at ship boundaries |
+| **product-build / Gate** | Short unversioned (`Wawona.apk`, `Wawona.app`, `Wawona-{arch}.AppImage`) | N/A. Rename only at ship boundaries |
 
 Examples (`VERSION=26.8.12`, build `142`):
 

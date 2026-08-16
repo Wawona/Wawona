@@ -1,5 +1,5 @@
 //
-// WWNSwingingBridgeController.m — see header.
+// WWNSwingingBridgeController.m. See header.
 //
 #import "WWNSwingingBridgeController.h"
 

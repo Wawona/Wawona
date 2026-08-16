@@ -106,7 +106,7 @@ impl GlobalDispatch<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1, ()> for CompositorSta
 
         // Advertise the IOSurface-modifier convention (#86 / wwn-iland + waypipe).
         // High bit set = IOSurface id in low 63 bits. Do NOT advertise LINEAR
-        // (raw dmabuf) — that path is unsupported and caused client failures.
+        // (raw dmabuf). That path is unsupported and caused client failures.
         const DRM_FORMAT_ARGB8888: u32 = 0x34325241; // 'AR24'
         const DRM_FORMAT_XRGB8888: u32 = 0x34325258; // 'XR24'
         const IOSURFACE_MODIFIER: u64 = 0x8000_0000_0000_0000;

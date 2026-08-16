@@ -3,7 +3,7 @@
 //! A simple shell for fullscreen kiosk-mode applications.  `PresentSurface`
 //! maps a surface directly to an output at full coverage.
 //!
-//! On iOS there is no window-management chrome — the compositor view is a
+//! On iOS there is no window-management chrome. The compositor view is a
 //! single full-screen surface, so **all** Wayland clients are expected to
 //! use this protocol instead of xdg_shell.
 //!
@@ -242,7 +242,7 @@ impl Dispatch<ZwpFullscreenShellModeFeedbackV1, ()> for CompositorState {
         _dhandle: &DisplayHandle,
         _data_init: &mut DataInit<'_, Self>,
     ) {
-        // No client requests defined for mode feedback — all events are compositor→client
+        // No client requests defined for mode feedback. All events are compositor→client
     }
 }
 

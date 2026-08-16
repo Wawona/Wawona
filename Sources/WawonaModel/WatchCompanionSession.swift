@@ -91,9 +91,9 @@ public final class WatchCompanionController: @unchecked Sendable {
         } else if !installed {
             summary = "Wawona is not installed on the paired Watch."
         } else if reachable {
-            summary = "Watch reachable — transfers deliver immediately when possible."
+            summary = "Watch reachable. Transfers deliver immediately when possible."
         } else {
-            summary = "Watch paired; not reachable — transfers queue until the Watch wakes."
+            summary = "Watch paired; not reachable. Transfers queue until the Watch wakes."
         }
         return WatchCompanionStatus(
             supported: supported,
@@ -159,9 +159,9 @@ public final class WatchCompanionController: @unchecked Sendable {
             let formatter = DateFormatter()
             formatter.dateStyle = .short
             formatter.timeStyle = .short
-            return "\(name) — \(status) (\(formatter.string(from: date)))"
+            return "\(name). \(status) (\(formatter.string(from: date)))"
         }
-        return "\(name) — \(status)"
+        return "\(name). \(status)"
     }
 }
 

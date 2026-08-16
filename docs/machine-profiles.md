@@ -26,7 +26,7 @@ Optional fields; nil/empty inherits global Settings:
 - input / display: `inputProfile`, `forceSSD`, `renderMacOSPointer`, `nestedCompositorCursor`, `autoScale`, `waylandDisplay`
 - backend: `compositorBackend` (`auto` \| `wayland` \| `drm`)
 - session: `bundledAppID`, `waypipeEnabled`, `waypipeSSHPassword`, `logLevel`, `shakeToCloseEnabled`, `swipeBackToCloseEnabled`
-- **`environment`**: map of env overrides (`{ "TERM": { "action": "set", "value": "xterm" } }`) — see [#157](https://github.com/Wawona/Wawona/issues/157) / [`issues/environment-variables-gui.md`](issues/environment-variables-gui.md). Never stash env in `settingsOverrides` (Swift Codable drops unknown keys).
+- **`environment`**: map of env overrides (`{ "TERM": { "action": "set", "value": "xterm" } }`). See [#157](https://github.com/Wawona/Wawona/issues/157) / [`issues/environment-variables-gui.md`](issues/environment-variables-gui.md). Never stash env in `settingsOverrides` (Swift Codable drops unknown keys).
 
 Machine `type` values:
 
@@ -44,7 +44,7 @@ See [`vms-containers.md`](vms-containers.md).
 
 ## Deprecated / removed fields
 
-- `vmSubtype`, `containerSubtype` — **removed**. The VM engine and container
+- `vmSubtype`, `containerSubtype`. **removed**. The VM engine and container
   runtime are selected automatically per build target by the `wwn-vms` and
   `wwn-containers` capability lanes and are never user-configurable. These keys
   are ignored on load (readers tolerate them for backward compatibility) and are

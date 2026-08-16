@@ -14,12 +14,12 @@ This folder is a **practical, research-oriented guide** for setting up graphics 
 
 ## Documentation index
 
-1. **[Architecture overview](01-architecture.md)** — Vulkan, OpenGL, Metal, and translation layers (MoltenVK, KosmicKrisp).
-2. **[Platform strategy](02-platforms.md)** — Per-platform driver strategy and links.
-3. **[MoltenVK & KosmicKrisp](03-moltenvk-kosmickrisp.md)** — Setup and usage on Apple platforms.
-4. **[Android Vulkan](04-android-vulkan.md)** — Implementing Vulkan on Android for Wawona.
-5. **[Integration workflow](05-integration-workflow.md)** — Build setup, code snippets, and testing.
-6. **[Resources & links](06-resources.md)** — Official docs, SDKs, tutorials, and the fetch script.
+1. **[Architecture overview](01-architecture.md)**. Vulkan, OpenGL, Metal, and translation layers (MoltenVK, KosmicKrisp).
+2. **[Platform strategy](02-platforms.md)**. Per-platform driver strategy and links.
+3. **[MoltenVK & KosmicKrisp](03-moltenvk-kosmickrisp.md)**. Setup and usage on Apple platforms.
+4. **[Android Vulkan](04-android-vulkan.md)**. Implementing Vulkan on Android for Wawona.
+5. **[Integration workflow](05-integration-workflow.md)**. Build setup, code snippets, and testing.
+6. **[Resources & links](06-resources.md)**. Official docs, SDKs, tutorials, and the fetch script.
 
 ## Why this matters for Wawona
 

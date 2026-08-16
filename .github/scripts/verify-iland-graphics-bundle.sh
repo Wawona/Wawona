@@ -327,7 +327,7 @@ if [[ "$platform" == "macos" ]]; then
   # macOS ships the two hardware Vulkan ICDs (KosmicKrisp + MoltenVK) that back
   # vkcube's provider fallback chain (selected -> MoltenVK -> SwiftShader).
   # SwiftShader is the planned CPU last-resort ICD for headless/GPU-less CI VMs
-  # (macOS + iOS-Simulator only; never on-device — asserted above). It is bundled
+  # (macOS + iOS-Simulator only; never on-device. Asserted above). It is bundled
   # when the SwiftShader package is available for the target; treated as an
   # optional carrier here rather than a hard bundle requirement so the hardware
   # paths (which the product actually ships) gate independently.

@@ -2,9 +2,9 @@
 
 ## Graphics APIs
 
-- **Vulkan** — Modern, low-level graphics and compute API from Khronos. Better multi-threading and lower driver overhead than OpenGL. Used by many games and compositors.
-- **OpenGL / OpenGL ES** — Older, higher-level API; still used on mobile and legacy code. Android is moving toward Vulkan.
-- **Metal** — Apple’s proprietary GPU API. **Required** on iOS/macOS; Apple does not ship native Vulkan.
+- **Vulkan**. Modern, low-level graphics and compute API from Khronos. Better multi-threading and lower driver overhead than OpenGL. Used by many games and compositors.
+- **OpenGL / OpenGL ES**. Older, higher-level API; still used on mobile and legacy code. Android is moving toward Vulkan.
+- **Metal**. Apple’s proprietary GPU API. **Required** on iOS/macOS; Apple does not ship native Vulkan.
 
 ## Translation and portability layers
 

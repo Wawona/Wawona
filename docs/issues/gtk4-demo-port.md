@@ -2,7 +2,7 @@
 
 ## Status
 
-- Open — tracking issue [#109](https://github.com/Wawona/Wawona/issues/109)
+- Open. Tracking issue [#109](https://github.com/Wawona/Wawona/issues/109)
 - Class: toolkit-smoke companion (Tier 6 on [#77](https://github.com/Wawona/Wawona/issues/77))
 - Delivery: **core-bundled or Wasm package** (`planned` → ship)
 - Repo (to scaffold): [`wwn-gtk`](https://github.com/Wawona/wwn-gtk)
@@ -14,12 +14,12 @@ delivery decisions change.
 
 Port **GTK4** + **`gtk4-demo`** as a first-class Wawona Wayland client across
 the full platform matrix. Establishes the shared GTK4 foundation for greeters
-and GNOME — complementary to the SDL2 toolkit smoke in
+and GNOME. Complementary to the SDL2 toolkit smoke in
 [#107](https://github.com/Wawona/Wawona/issues/107).
 
 **Upstream pins (starting point):**
 
-- GTK4 — pin from nixpkgs `gtk4` in Phase 0
+- GTK4. Pin from nixpkgs `gtk4` in Phase 0
 - Demo entry: upstream `demos/gtk-demo` → `gtk4_demo_main`
 
 **Env contract:** `GDK_BACKEND=wayland` (see
@@ -40,16 +40,16 @@ and GNOME — complementary to the SDL2 toolkit smoke in
 |----------|----------|--------|----------|
 | **macOS** | `bin/gtk4-demo` (+ archive optional) | NSTask from Resources **or** in-process | Wayland; GL demos OK |
 | **iOS / iPadOS / visionOS** | `libgtk4_demo.a` + `gtk4_demo_main` | in-process after install / launch | Cairo/SHM first; GL behind `allowGpu` |
-| **tvOS / watchOS** | same archive | in-process | **Cairo/SHM only** — never ANGLE/MoltenVK/IOKit |
+| **tvOS / watchOS** | same archive | in-process | **Cairo/SHM only**. Never ANGLE/MoltenVK/IOKit |
 | **Android** | `libgtk4_demo_bin.so` / `libgtk4_demo.so` | exec or in-process | SHM first; GLES optional |
 | **Linux** | nixpkgs / host `gtk4-demo` | CI / compat-matrix baseline | reference |
 
 **Hard rules (from platform targets):**
 
-- Entire Apple family stays first-class — do not drop schemes to unblock another target.
+- Entire Apple family stays first-class. Do not drop schemes to unblock another target.
 - watchOS/tvOS: native + remote only; **no** VM/container; **no** bundled Vulkan/OpenGL/ANGLE/ICD.
 - visionOS = macOS product parity for this module once green.
-- Gate in `mobile-platform-deps.nix` / `xcodegen.nix` / Machines — not ad-hoc `#ifdef` sprawl.
+- Gate in `mobile-platform-deps.nix` / `xcodegen.nix` / Machines. Not ad-hoc `#ifdef` sprawl.
 - Optional-module link only (do **not** permanently force-load into base IPA).
 
 ## Architecture
@@ -66,8 +66,8 @@ zsh / Machines (after install / launch gtk4-demo)
 
 **Registry keys (proposed):**
 
-- `gtk4` — library closure (`wwn-gtk.registryFragment`)
-- `gtk4-demo` — demo client recipes
+- `gtk4`. Library closure (`wwn-gtk.registryFragment`)
+- `gtk4-demo`. Demo client recipes
 - Entry symbol: `gtk4_demo_main`
 
 **Consumers later (do not re-vendor GTK4):** `wwn-gtkgreet` (#101),
@@ -75,7 +75,7 @@ zsh / Machines (after install / launch gtk4-demo)
 
 ## Phases
 
-### Phase 0 — Research & pins
+### Phase 0. Research & pins
 
 - [ ] Pin GTK4 version from nixpkgs; document Wayland-only configure flags
 - [ ] Map demo entry (`demos/gtk-demo` → `gtk4_demo_main`)
@@ -83,21 +83,21 @@ zsh / Machines (after install / launch gtk4-demo)
 - [ ] Delivery locked: core-bundled or Wasm (no StoreKit ODR)
 - [ ] Keep [#109](https://github.com/Wawona/Wawona/issues/109) and this file in sync
 
-### Phase 1 — Scaffold `wwn-gtk`
+### Phase 1. Scaffold `wwn-gtk`
 
 - [ ] New repo: `flake.nix`, `registryFragment.{gtk4,gtk4-demo}`, per-platform stubs
 - [ ] README port plan + license notes
 - [ ] Port plan README + registryFragment (`status: planned`)
 - [ ] Update catalog allowlists / validate scripts
 
-### Phase 2 — Toolchain leaf libs + GTK4 cross
+### Phase 2. Toolchain leaf libs + GTK4 cross
 
 - [ ] Add missing shared leaf libs to `wwn-toolchain` only as needed; keep **GTK4 in `wwn-gtk`**
 - [ ] Build GTK4 **Wayland-only**; sandbox-safe GSettings/schemas/icons
 - [ ] Apple mobile compliance + patch-anchor CI
 - [ ] First green: macOS `gtk4-demo` binary
 
-### Phase 3 — `gtk4_demo_main` + matrix recipes
+### Phase 3. `gtk4_demo_main` + matrix recipes
 
 - [ ] `libgtk4_demo.a` + header with `gtk4_demo_main`
 - [ ] tvOS/watchOS: Cairo/SHM only; CI assert no ANGLE/MoltenVK/IOKit
@@ -105,20 +105,20 @@ zsh / Machines (after install / launch gtk4-demo)
 - [ ] Android NDK PIE/archive recipes
 - [ ] Flake outputs: `gtk4-demo-macos`, `gtk4-demo-ios`, …
 
-### Phase 4 — Wawona integration (optional-module path)
+### Phase 4. Wawona integration (optional-module path)
 
 - [ ] Flake input `wwn-gtk` + merge `registryFragment`
 - [ ] Gate in `mobile-platform-deps.nix` / `xcodegen.nix` only when module linked
 - [ ] Dispatch: `"gtk4-demo" → gtk4_demo_main`; inject `GDK_BACKEND=wayland`
-- [ ] Machines/Android: after install — **not** permanent core `kBundledClients`
+- [ ] Machines/Android: after install. **not** permanent core `kBundledClients`
 
-### Phase 5 — Smoke & capability lane
+### Phase 5. Smoke & capability lane
 
 - [ ] macOS / iOS / iPadOS / visionOS / tvOS / watchOS / Android smoke
 - [ ] agent-device iOS smoke once UI entry exists
 - [ ] Rows in `docs/testing/everywhere-matrix.md` + compat-matrix script
 
-### Phase 6 — CI, docs, ship
+### Phase 6. CI, docs, ship
 
 - [ ] `verify-gtk-*-patches.py` + sample `nix build` CI
 - [ ] Ship as bundle or Wasm package when green

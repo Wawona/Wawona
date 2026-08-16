@@ -166,7 +166,7 @@ impl Dispatch<ZwpPrimarySelectionDeviceV1, ()> for CompositorState {
                     }
                     tracing::debug!("Primary selection set from source {} with {} MIME types", source_id, mime_types.len());
                 } else {
-                    // Clear selection — send selection(None) to all devices
+                    // Clear selection. Send selection(None) to all devices
                     for device_info in state.ext.primary_selection.devices.values() {
                         if device_info.resource.is_alive() {
                             device_info.resource.selection(None);

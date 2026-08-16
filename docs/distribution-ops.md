@@ -4,7 +4,7 @@ Consolidated status for shipping Wawona to Apple beta/App Store channels. Most
 of this is already implemented; the residue is App Store Connect data entry and
 tester recruitment, which need a human with the developer account.
 
-## #23 — App Store-compliant variant
+## #23. App Store-compliant variant
 
 The store-compliant build is not a separate app; it is the existing app run
 under the `store-safe` **protocol profile**, which is enforced end-to-end:
@@ -21,7 +21,7 @@ under the `store-safe` **protocol profile**, which is enforced end-to-end:
 Status: **implemented and shippable**; gym-exported App Store IPAs are the
 store-bound artifacts uploaded by Fastlane.
 
-## #24 — TestFlight + Fastlane automation
+## #24. TestFlight + Fastlane automation
 
 Fully automated. **Nix** generates the Xcode project (`xcodegen`) and supplies
 Rust/native via the Xcode prebuild phase; **Fastlane** runs `match` + `build_app`
@@ -32,26 +32,26 @@ Rust/native via the Xcode prebuild phase; **Fastlane** runs `match` + `build_app
   TestFlight; `ios release` submits for App Store review.
 - Privacy manifest: [`src/resources/app-bundle/PrivacyInfo.xcprivacy`](../src/resources/app-bundle/PrivacyInfo.xcprivacy)
   (required-reason APIs). Without it, ASC can accept the IPA then never list
-  the build — pilot then hangs if a `changelog` is set.
+  the build. Pilot then hangs if a `changelog` is set.
 - Upload path: no `changelog` unless `BETA_TESTFLIGHT_GROUPS` is set; always
   set `wait_processing_timeout_duration` (default 2700s) so CI cannot poll forever.
   Preflight: `nm -u` rejects IPAs that still import private `___progname`.
 - [`.github/workflows/release-beta.yml`](../.github/workflows/release-beta.yml):
   push to `master` (or manual dispatch) runs `fastlane ios beta` on `macos-26`
   with secrets from the `release-beta` GitHub Environment.
-- Secrets (tier 0): [`maintainers/secrets.md`](./maintainers/secrets.md) —
+- Secrets (tier 0): [`maintainers/secrets.md`](./maintainers/secrets.md) -
   SecretSpec + private pass store (`aspauldingcode/.password-store`).
 
 Status: **done.** Runs on every green push to master once secrets are synced.
 
-## #27 — Beta program
+## #27. Beta program
 
 The pipeline supports external testers; the remaining work is
 account/relationship, not code:
 
 - [ ] Create the external tester group(s) in App Store Connect, then set
       `BETA_TESTFLIGHT_GROUPS` (comma-separated) so the `beta` lane distributes
-      and notifies automatically (currently off until groups exist —
+      and notifies automatically (currently off until groups exist -
       see `fastlane/README.md`).
 - [ ] Recruit testers and collect feedback (feedback email defaults to the
       value in the Fastfile; override with `BETA_FEEDBACK_EMAIL`).

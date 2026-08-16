@@ -28,7 +28,7 @@ enum WatchKitGlobalSettings {
     }
 }
 
-/// Global Wawona Settings for watchOS — same section catalog as iOS/macOS
+/// Global Wawona Settings for watchOS. Same section catalog as iOS/macOS
 /// (`GlobalSettingsCatalog`), minus Desktop (forbidden) and Local Shell.
 struct WatchGlobalSettingsView: View {
     @ObservedObject private var preferences = WawonaPreferences.shared
@@ -184,7 +184,7 @@ private struct WatchSettingsGraphicsSection: View {
             if watchShows(.dmabufEnabled, in: .graphics) {
                 LabeledContent("Enable DMABUF", value: "Off")
             }
-            Text("watchOS has no Metal GPU stack — compositor presents via SHM/CPU. GPU clients stay unavailable.")
+            Text("watchOS has no Metal GPU stack. Compositor presents via SHM/CPU. GPU clients stay unavailable.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }

@@ -176,13 +176,13 @@ impl Dispatch<zwlr_output_configuration_v1::ZwlrOutputConfigurationV1, ()> for C
                 tracing::debug!("zwlr_output_configuration_v1.disable_head");
             }
             zwlr_output_configuration_v1::Request::Apply => {
-                tracing::info!("zwlr_output_configuration_v1.apply — accepting configuration");
+                tracing::info!("zwlr_output_configuration_v1.apply. Accepting configuration");
                 // In a nested compositor, we accept the configuration and notify clients.
                 // Platform-level changes (resolution, etc.) are managed by the host compositor.
                 resource.succeeded();
             }
             zwlr_output_configuration_v1::Request::Test => {
-                tracing::info!("zwlr_output_configuration_v1.test — all configurations valid");
+                tracing::info!("zwlr_output_configuration_v1.test. All configurations valid");
                 resource.succeeded();
             }
             zwlr_output_configuration_v1::Request::Destroy => {

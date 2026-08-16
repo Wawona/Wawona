@@ -135,9 +135,9 @@ iOS App                        SSH                          Remote
 
 ### Key Files
 
-- `wwn-toolchain/dependencies/libs/libssh2/patch-streamlocal.sh` — adds streamlocal support to libssh2
-- `wwn-waypipe/dependencies/libs/waypipe/patch-waypipe-source.sh` — creates `transport_ssh2.rs`
-- `wwn-waypipe/dependencies/libs/waypipe/ios.nix` — iOS waypipe build
+- `wwn-toolchain/dependencies/libs/libssh2/patch-streamlocal.sh`. Adds streamlocal support to libssh2
+- `wwn-waypipe/dependencies/libs/waypipe/patch-waypipe-source.sh`. Creates `transport_ssh2.rs`
+- `wwn-waypipe/dependencies/libs/waypipe/ios.nix`. IOS waypipe build
 
 ### libssh2 Streamlocal Patch
 

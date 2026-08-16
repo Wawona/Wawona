@@ -494,7 +494,7 @@ extension WWNMachineProfile: Identifiable {
 
 #if os(tvOS)
 /// Compact, focusable machine row for the tvOS Machines list.
-/// Do not add a trailing chevron — `NavigationLink` already provides one.
+/// Do not add a trailing chevron. `NavigationLink` already provides one.
 struct WWNMachineTVRow: View {
   let profile: WWNMachineProfile
   let status: WWNMachineTransientStatus
@@ -572,7 +572,7 @@ struct WWNMachineTVRow: View {
   }
 }
 
-/// Detail actions for one machine — large focusable buttons for Siri Remote.
+/// Detail actions for one machine. Large focusable buttons for Siri Remote.
 struct WWNMachineTVDetailView: View {
   let profile: WWNMachineProfile
   let status: WWNMachineTransientStatus

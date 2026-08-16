@@ -30,7 +30,7 @@ onto the site. Everything else stays in GitHub.
 | [ios-local-shell/README.md](ios-local-shell/README.md) | Bundled zsh (not StoreKit apt) |
 | [compilation.md](compilation.md) | Flake product attributes |
 | [2026-nix-build-system.md](2026-nix-build-system.md) | Nix layers; flake inputs |
-| [wwn-repo-dag.md](wwn-repo-dag.md) | L0–L4 acyclic flake DAG |
+| [wwn-repo-dag.md](wwn-repo-dag.md) | L0-L4 acyclic flake DAG |
 | [flakehub-registry.md](flakehub-registry.md) | Rolling FlakeHub URLs |
 | [2026-wwn-porting-convention.md](2026-wwn-porting-convention.md) | Porting `wwn-*` |
 | [ci.md](ci.md) | `development` vs `master`; Gate vs Ship (no secrets) |

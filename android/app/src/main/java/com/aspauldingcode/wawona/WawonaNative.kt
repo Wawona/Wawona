@@ -6,7 +6,7 @@ object WawonaNative {
     init {
         try {
             // ANGLE SONAME is libEGL_angle.so / libGLESv2_angle.so. Load those
-            // only — never also load libEGL.so / libGLESv2.so as a second copy.
+            // only. Never also load libEGL.so / libGLESv2.so as a second copy.
             System.loadLibrary("EGL_angle")
             System.loadLibrary("GLESv2_angle")
             WLog.d("NATIVE", "Loading native library 'wawona'")

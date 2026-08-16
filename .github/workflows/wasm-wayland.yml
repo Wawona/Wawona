@@ -1,7 +1,7 @@
 name: "Gate: wasm-wayland"
 
 # Prove the locked Wawona Runtime (wwn-wasm) runs a real Wayland SHM client
-# against Weston headless — same connect / SCM_RIGHTS / xdg path used inside
+# against Weston headless. Same connect / SCM_RIGHTS / xdg path used inside
 # the app. Static wiring is also checked here and in Gate: packages.
 
 on:

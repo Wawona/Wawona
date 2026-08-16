@@ -4,7 +4,7 @@ import SwiftUI
 import WawonaModel
 import WawonaUIContracts
 
-/// Add / Edit Machine — same `MachineEditorValidation.visibleFields` catalog as iOS/macOS.
+/// Add / Edit Machine. Same `MachineEditorValidation.visibleFields` catalog as iOS/macOS.
 /// Input (Touch Input Type) is Machine Settings only; do not show it here.
 struct MachineEditorView: View {
     @ObservedObject var profileStore: MachineProfileStore

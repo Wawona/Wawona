@@ -40,8 +40,8 @@ Wawona Android is **functionally complete** for core compositor features. The sh
 | **Cursor** | Rendered via `renderer_android_draw_cursor` | CALayer cursor | NSCursor / Metal |
 
 **Gaps:**
-- Android has no Metal/Cocoa fallback (Vulkan-only) — acceptable; Vulkan is standard on Android.
-- Android uses `LOAD_OP_CLEAR` with black (0,0,0) — can cause visual flashing; should use CompositorBackground (0x0F1018).
+- Android has no Metal/Cocoa fallback (Vulkan-only). Acceptable; Vulkan is standard on Android.
+- Android uses `LOAD_OP_CLEAR` with black (0,0,0). Can cause visual flashing; should use CompositorBackground (0x0F1018).
 
 **Verdict:** ✅ Core rendering complete. ⚠️ Clear color mismatch causes flashing.
 
@@ -61,7 +61,7 @@ Wawona Android is **functionally complete** for core compositor features. The sh
 | **Modifiers** | Manual tracking (`g_modifiers_depressed`) | Same + **sticky modifier UI** | Same |
 
 **Gaps:**
-1. **Cursor in touchpad mode:** Android does not render the Wayland client cursor in touchpad mode. iOS draws it via `CALayer`. Android has `renderer_android_draw_cursor` and the render loop draws it when `scene->has_cursor` — so cursor *is* drawn. Need to verify touchpad mode triggers pointer enter so cursor position updates.
+1. **Cursor in touchpad mode:** Android does not render the Wayland client cursor in touchpad mode. iOS draws it via `CALayer`. Android has `renderer_android_draw_cursor` and the render loop draws it when `scene->has_cursor`. So cursor *is* drawn. Need to verify touchpad mode triggers pointer enter so cursor position updates.
 2. **Modifier accessory bar:** Android has no sticky modifier UI (Shift/Ctrl/Alt lock). iOS has a full accessory bar. Medium priority for power users.
 
 **Verdict:** ✅ Core input complete. ⚠️ Modifier accessory bar missing.
@@ -107,8 +107,8 @@ All platforms share the **same Rust core**, so protocol support is identical:
 | `vulkanDriver` | Android: swiftshader/system (runtime-only; no direct KGSL) | N/A | N/A |
 
 **Gaps:**
-- `multipleClients` disabled by default on Android — consider enabling for parity.
-- `enableTCPListener` hardcoded false — may be intentional for mobile.
+- `multipleClients` disabled by default on Android. Consider enabling for parity.
+- `enableTCPListener` hardcoded false. May be intentional for mobile.
 
 **Verdict:** ✅ Most settings present. ⚠️ `multipleClients` default differs.
 
@@ -118,7 +118,7 @@ All platforms share the **same Rust core**, so protocol support is identical:
 
 | Aspect | Android | iOS | macOS |
 |--------|---------|-----|-------|
-| **Integration** | `android_jni.c` — thread + `waypipe_main` | `WWNWaypipeRunner.m` (shared UI) | Same |
+| **Integration** | `android_jni.c`. Thread + `waypipe_main` | `WWNWaypipeRunner.m` (shared UI) | Same |
 | **SSH** | Dropbear (patched streamlocal) | libssh2 | System ssh / libssh2 |
 | **Socket** | `./waypipe` in XDG_RUNTIME_DIR | Same pattern | Same |
 | **Remote socket** | `/tmp/waypipe` | Configurable | Configurable |
@@ -149,7 +149,7 @@ All platforms share the **same Rust core**, so protocol support is identical:
 - [x] Waypipe + SSH integration
 - [x] Safe area and output sizing
 - [x] Cursor rendering (in render loop when `scene->has_cursor`)
-- [x] **Reduce visual flashing** — match clear color to CompositorBackground (implemented)
+- [x] **Reduce visual flashing**. Match clear color to CompositorBackground (implemented)
 
 ### Should Have
 - [ ] Modifier accessory bar (sticky Shift/Ctrl/Alt)

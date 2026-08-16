@@ -76,7 +76,7 @@ public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
     public var waypipeEnabled: Bool?
     public var forceSSD: Bool?
     public var renderMacOSPointer: Bool?
-    /// "virtual" or "host" — nested compositor cursor grab when virtual cursor is on.
+    /// "virtual" or "host". Nested compositor cursor grab when virtual cursor is on.
     public var nestedCompositorCursor: String?
     public var autoScale: Bool?
     public var waylandDisplay: String?
@@ -87,7 +87,7 @@ public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
     public var swipeBackToCloseEnabled: Bool?
     /// Per-machine Display Backend override (`auto` | `wayland` | `drm`).
     public var compositorBackend: String?
-    /// Explicit env overrides (#157). Never stash in settingsOverrides — Codable drops unknown keys.
+    /// Explicit env overrides (#157). Never stash in settingsOverrides. Codable drops unknown keys.
     public var environment: EnvironmentOverrideMap?
 
     public init(

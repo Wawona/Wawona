@@ -12,9 +12,9 @@
 //! - **Smithay**: configure serials + ack; compositor applies size from the
 //!   surface after commit, not by fighting the client mid-serial.
 //! - **WSLg / RAIL** (reference only): host chrome drives continuous geometry
-//!   during drag; settle uses the committed client size — never dual writers.
+//!   during drag; settle uses the committed client size. Never dual writers.
 //! - **waypipe**: remote lag means host must stay authoritative during drag
-//!   and only reconcile on match/refuse — same SM.
+//!   and only reconcile on match/refuse. Same SM.
 //!
 //! See `.cursor/rules/wawona-host-client-size-sync.mdc`.
 
@@ -140,7 +140,7 @@ impl SizeAuthority {
     /// configures (no in-flight serial on the xdg_surface).
     /// `current_w/h` are the core window dimensions before this commit.
     /// `interactive_resize` is true while `xdg_toplevel.state.resizing` is set
-    /// (host SSD live-drag or CSD resize grab) — lagging commits must not
+    /// (host SSD live-drag or CSD resize grab). Lagging commits must not
     /// refuse/yank the host until the settle configure clears Resizing.
     pub fn on_client_commit(
         self,
@@ -200,7 +200,7 @@ impl SizeAuthority {
                 }
                 if xdg_pending_serial != 0 || interactive_resize {
                     // Still waiting for ack of a newer configure, or still in
-                    // an interactive resize session — keep host authority; do
+                    // an interactive resize session. Keep host authority; do
                     // not apply lagging buffer / refuse until settle.
                     return ClientCommitDecision {
                         authority: SizeAuthority::Host {

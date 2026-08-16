@@ -18,7 +18,7 @@ use crate::core::state::CompositorState;
 // Data Types
 // ============================================================================
 
-/// State for an active toplevel drag — stored in the drag itself
+/// State for an active toplevel drag. Stored in the drag itself
 #[derive(Debug, Clone)]
 pub struct ToplevelDragAttachment {
     /// The toplevel resource ID being dragged
@@ -80,7 +80,7 @@ impl Dispatch<XdgToplevelDragManagerV1, ()> for CompositorState {
 }
 
 // ============================================================================
-// xdg_toplevel_drag_v1 — user data is source_id: u32
+// xdg_toplevel_drag_v1. User data is source_id: u32
 // ============================================================================
 
 impl Dispatch<XdgToplevelDragV1, u32> for CompositorState {

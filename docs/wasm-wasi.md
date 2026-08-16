@@ -20,7 +20,7 @@ Store / Play compliance**:
 - Compile to **WASI P1 or P2** (`.wasm` bytecode as a document / package)
 - Install with **`wpm`** (Wawona Runtime’s dedicated package manager) or drop
   into Files from the Mode A registry `repo.wawona.io/wasm`
-- The reviewed Runtime in the signed app interprets the module — Apple does
+- The reviewed Runtime in the signed app interprets the module. Apple does
   **not** sign the `.wasm`, and there is **no** unsigned Mach-O download path
 
 There is **no Mode B flavor of the Runtime**. Jailbreak `.deb` APT is a
@@ -51,7 +51,7 @@ Files.app / SCP / File Sharing     bundled Wasm package client (OCI preferred)
 | Drop `foo.wasm` under Wawona Documents | Developers / power users (rootshell-style) |
 | Package client install/search | Everyday users; registry packages as Runtime **data** |
 
-Do not brand this as an “App Store” for iOS apps — it is a **runtime package
+Do not brand this as an “App Store” for iOS apps. It is a **runtime package
 registry**. Prefer OCI artifacts + a thin client over inventing a bespoke protocol.
 
 **Full implementation plan:** [`wasm-package-manager.md`](./wasm-package-manager.md)
@@ -72,7 +72,7 @@ watchOS keeps the runtime **off** (size), same as coreutils.
 
 iPhone Settings → **Apple Watch** can still **transfer** `.wasm` documents to
 the paired Watch via WatchConnectivity (`Documents/Wawona/inbox`). Transfer is
-not the same as running them — the Watch interpreter stays unlinked until the
+not the same as running them. The Watch interpreter stays unlinked until the
 size gate lifts ([#151](https://github.com/Wawona/Wawona/issues/151),
 [#156](https://github.com/Wawona/Wawona/issues/156)).
 
@@ -96,7 +96,7 @@ Drop files into the Wawona Documents folder (Files.app / iTunes File Sharing;
 Use the language toolchain. Do not wrap these in Nix.
 
 ```bash
-# Rust WASI P1 — https://rustup.rs
+# Rust WASI P1. Https://rustup.rs
 rustup target add wasm32-wasip1
 cargo build --target wasm32-wasip1 --release
 
@@ -104,13 +104,13 @@ cargo build --target wasm32-wasip1 --release
 rustup target add wasm32-wasip2
 cargo build --target wasm32-wasip2 --release
 
-# Go 1.21+ — https://go.dev/dl/
+# Go 1.21+. Https://go.dev/dl/
 GOOS=wasip1 GOARCH=wasm go build -o tool.wasm
 
 # TinyGo (optional)
 tinygo build -target=wasip1 -opt=z -o tool.wasm
 
-# Swift 6.2+ wasm SDK — https://swift.org/documentation/articles/wasm-getting-started.html
+# Swift 6.2+ wasm SDK. Https://swift.org/documentation/articles/wasm-getting-started.html
 # (examples/wayland-shm/swift/build.sh installs the wasip1 SDK if missing)
 swift build --swift-sdk 6.3-RELEASE-wasm32-unknown-wasip1 -c release
 
@@ -138,7 +138,7 @@ WASI P1 has no sockets. Import module `wawona_socket` (Rust may use `env`):
 
 - `wawona_socket_socket` / `connect_host` / `send` / `recv` / `close`
 - `wawona_wayland_connect` / `shm_create` / `shm_write` / `sendmsg`
-  (protocol bytes + optional `SCM_RIGHTS` into the existing compositor —
+  (protocol bytes + optional `SCM_RIGHTS` into the existing compositor -
   same `WAYLAND_DISPLAY`, not a custom draw API)
 
 Terminal: `wawona_terminal_set_raw` / `is_tty` (module `wawona_terminal`).

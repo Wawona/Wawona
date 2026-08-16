@@ -3,7 +3,7 @@ package com.aspauldingcode.wawona
 import android.content.SharedPreferences
 
 /**
- * Lockscreen Replacement (macOS + Android only — never iOS family).
+ * Lockscreen Replacement (macOS + Android only. Never iOS family).
  *
  * Parallel to [DesktopReplacement]: user picks a local Native greeter/lock
  * machine (gtkgreet / gtklock / similar) that runs before the desktop session.

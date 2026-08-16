@@ -123,7 +123,7 @@
 
     ${lib.optionalString (fuzzelAndroid != null) ''
     # fuzzel (wwn-niri): niri Mod+D launcher. Same waypipe/jniLibs PIE pattern
-    # as niri — PATH symlink usr/bin/fuzzel → libfuzzel_bin.so (issue #78).
+    # as niri. PATH symlink usr/bin/fuzzel → libfuzzel_bin.so (issue #78).
     if [ -f "${fuzzelAndroid}/lib/libfuzzel_bin.so" ]; then
       cp -L "${fuzzelAndroid}/lib/libfuzzel_bin.so" "$JNI_LIB_DIR/libfuzzel_bin.so"
       chmod +x "$JNI_LIB_DIR/libfuzzel_bin.so"

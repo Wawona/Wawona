@@ -5,7 +5,7 @@ org-wide Nix binary cache. There is **no** self-hosted Attic/Cachix or
 `cache.wawona.io`.
 
 Companion: [`flakehub-registry.md`](./flakehub-registry.md) (versioned flake
-refs — **not** this cache), [`2026-build-ci-optimization.md`](./2026-build-ci-optimization.md),
+refs. **not** this cache), [`2026-build-ci-optimization.md`](./2026-build-ci-optimization.md),
 [`ci.md`](./ci.md) (branch × workflow + curated matrix).
 Upstream docs: [FlakeHub Cache](https://docs.determinate.systems/flakehub/cache).
 
@@ -51,8 +51,8 @@ Upstream docs: [FlakeHub Cache](https://docs.determinate.systems/flakehub/cache)
 |------|----------|
 | Org member, logged in | Pull FlakeHub Cache slices for flakes you can access |
 | Anonymous / no login | Cold rebuild (`cache.nixos.org` only) |
-| Fork PRs | No FlakeHub Cache auth — rebuild cold |
-| Laptop push | Not allowed — only trusted CI builders push |
+| Fork PRs | No FlakeHub Cache auth. Rebuild cold |
+| Laptop push | Not allowed. Only trusted CI builders push |
 
 ## CI fragment (every Nix-building job)
 
@@ -69,7 +69,7 @@ steps:
   - run: nix build …
 ```
 
-Do **not** use `DeterminateSystems/magic-nix-cache-action` for new work — it is
+Do **not** use `DeterminateSystems/magic-nix-cache-action` for new work. It is
 GHA-scoped only and superseded here by FlakeHub Cache.
 
 ## Measuring hit rate
@@ -95,7 +95,7 @@ FlakeHub does **not** reduce Nix **eval** / crate2nix IFD cost, and it does
 - `nixConfig` / CI `max-jobs` + `cores`
 
 L2 `build` jobs append a FlakeHub hit probe to the step summary (`nix path-info`
-+ `cache.flakehub.com`). Treat “likely” as a hint — same-job local builds can
++ `cache.flakehub.com`). Treat “likely” as a hint. Same-job local builds can
 false-positive.
 
 ## Issue #68
@@ -104,5 +104,5 @@ Tracking issue [#68](https://github.com/Wawona/Wawona/issues/68): FlakeHub Cache
 in; Magic Nix Cache retired; curated matrix landed
 ([`ci-package-matrix.json`](../.github/ci-package-matrix.json)); Xcode pin and
 simulator-SDK warm scripts are in. Remaining wins are FlakeHub hit rate, path
-filters, IFD hoist, and runner cores — **not** `apple-sdks.nix` / packaged
+filters, IFD hoist, and runner cores. **not** `apple-sdks.nix` / packaged
 Apple frameworks as a product sysroot.

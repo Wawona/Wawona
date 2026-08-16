@@ -37,7 +37,7 @@ struct BundledClient: Identifiable, Hashable {
   let prefsKey: String
   let icon: String
   let description: String
-  /// ANGLE / iland / Vulkan demos — hidden when PlatformCapabilities.allowsGpuStack is false.
+  /// ANGLE / iland / Vulkan demos. Hidden when PlatformCapabilities.allowsGpuStack is false.
   var requiresGpuStack: Bool = false
 }
 
@@ -57,7 +57,7 @@ let kAllBundledClients: [BundledClient] = [
     name: "Weston Terminal",
     prefsKey: "WestonTerminalEnabled",
     icon: "terminal",
-    description: "Terminal emulator — uses host cursor"
+    description: "Terminal emulator. Uses host cursor"
   ),
   BundledClient(
     id: "weston-simple-shm",
@@ -107,7 +107,7 @@ let kAllBundledClients: [BundledClient] = [
     name: "GBM ES2 Demo",
     prefsKey: "GbmEs2DemoEnabled",
     icon: "cube.fill",
-    description: "ds-hwang gbm_es2_demo — DRM/GBM/GLES2 over iland (KMS)",
+    description: "ds-hwang gbm_es2_demo. DRM/GBM/GLES2 over iland (KMS)",
     requiresGpuStack: true
   ),
   BundledClient(
@@ -316,7 +316,7 @@ final class WWNMachinesViewModel: ObservableObject {
 
     #if os(iOS) || os(tvOS) || os(visionOS)
     // Native Wayland clients may run concurrently. VM / waypipe / container
-    // backends still share a single in-process engine on mobile — stop those
+    // backends still share a single in-process engine on mobile. Stop those
     // before switching. Never tear down an unrelated native client.
     if profile.type != kWWNMachineTypeNative {
       for other in profiles where other.machineId != profile.machineId &&
@@ -326,7 +326,7 @@ final class WWNMachinesViewModel: ObservableObject {
     }
     #endif
     // Native clients (and macOS VM/container NSTasks) are tracked per
-    // machineId — connecting one must never tear down another.
+    // machineId. Connecting one must never tear down another.
 
     // VM (wwn-vms) and container (wwn-containers) profiles are driven through the
     // session bridge, which delegates to WWNVirtualMachineRunner /
@@ -591,7 +591,7 @@ final class WWNMachinesViewModel: ObservableObject {
       if let clientName = selectedClientName(for: profile) {
         return "Runs: \(clientName)"
       }
-      return "No client configured — edit to select one"
+      return "No client configured. Edit to select one"
     case kWWNMachineTypeSSHWaypipe:
       let command = profile.remoteCommand.isEmpty ? "weston-simple-shm" : profile.remoteCommand
       return "Waypipe command: \(command)"

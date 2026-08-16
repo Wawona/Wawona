@@ -111,7 +111,7 @@ class SessionActivity : Activity(), SurfaceHolder.Callback {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         scheduleResize()
-        // External keyboard attach/detach — re-evaluate soft OSK.
+        // External keyboard attach/detach. Re-evaluate soft OSK.
         lastTextEntryWanted = null
         syncSoftKeyboard()
     }

@@ -54,7 +54,7 @@ if [[ "$APPLE_ONLY" -eq 1 ]]; then
   done
 else
   secretspec check -P "$SECRETSPEC_PROFILE" || {
-    echo "secretspec check failed — see docs/maintainers/secrets.md" >&2
+    echo "secretspec check failed. See docs/maintainers/secrets.md" >&2
     exit 1
   }
 fi

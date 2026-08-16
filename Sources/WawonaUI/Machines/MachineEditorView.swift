@@ -104,7 +104,7 @@ struct MachineEditorView: View {
                     .pickerStyle(.menu)
                 }
 
-                // MARK: Native — local Wayland socket, no network
+                // MARK: Native. Local Wayland socket, no network
                 if isNative {
                     Section {
                         NavigationLink {
@@ -123,7 +123,7 @@ struct MachineEditorView: View {
                     }
                 }
 
-                // MARK: SSH — remote machine via network
+                // MARK: SSH. Remote machine via network
                 if isSSH {
                     Section("Remote Host") {
                         TextField("Host", text: $sshHost)

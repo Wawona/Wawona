@@ -3,7 +3,7 @@
  *
  * Fuzzel's .desktop Exec= lines are bare command names (weston-simple-shm,
  * weston-flower, …). Those clients live in shared libraries, not as
- * standalone PIEs — so selecting them from fuzzel previously did nothing
+ * standalone PIEs. So selecting them from fuzzel previously did nothing
  * useful (ENOENT / no window under niri).
  *
  * Packaged as libwawona_wl_bin.so and symlinked into

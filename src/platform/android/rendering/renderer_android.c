@@ -555,7 +555,7 @@ int renderer_android_cache_buffer(VkCommandBuffer cmd_buf, uint32_t surface_id,
     /* Last resort: free slot 0 (bounded cache; never grow past MAX). */
     free_cached_texture(dev, &s_renderer->cache[0]);
     slot = &s_renderer->cache[0];
-    LOGI("Buffer cache full — reclaimed slot 0");
+    LOGI("Buffer cache full. Reclaimed slot 0");
   }
 
   /* If reusing, destroy old image resources if size changed */
@@ -951,7 +951,7 @@ void renderer_android_draw_iland_overlay(VkCommandBuffer cmd_buf,
 
   if (pixels) {
     size_t tight = (size_t)width * height * 4;
-    /* surface_id 0 — overlay is not Wayland-surface-scoped */
+    /* surface_id 0. Overlay is not Wayland-surface-scoped */
     if (renderer_android_cache_buffer(cmd_buf, 0, WAWONA_ILAND_OVERLAY_BUFFER_ID,
                                       width, height, stride, 0, pixels,
                                       tight) != 0)

@@ -1,4 +1,4 @@
-//! Machine profile editor modal — 1:1 with the macOS `WWNMachineEditorView`
+//! Machine profile editor modal. 1:1 with the macOS `WWNMachineEditorView`
 //! (section order, titles, subtitles, labels, and button placement).
 
 use std::cell::RefCell;

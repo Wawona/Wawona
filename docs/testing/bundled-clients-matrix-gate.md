@@ -17,10 +17,10 @@ WAWONA_MATRIX_CLIENTS="niri,weston,weston-terminal" ./scripts/bundled-clients-ma
 
 Artifacts: `.agent-device/test-artifacts/bundled-clients-matrix/<stamp>/`
 
-- `SUMMARY.md` — PASS/FAIL/SKIP table
-- `summary.json` — machine-readable
-- `matrix.log` — full run log
-- `<platform>/<client>/` — prefs, install, lldb, console, screenshot
+- `SUMMARY.md`. PASS/FAIL/SKIP table
+- `summary.json`. Machine-readable
+- `matrix.log`. Full run log
+- `<platform>/<client>/`. Prefs, install, lldb, console, screenshot
 
 Failure line:
 

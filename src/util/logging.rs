@@ -7,7 +7,7 @@
 //! and is silent unless `WWN_FFI_DEBUG=1` is set in the environment.
 //!
 //! Logs write to a preserved stderr fd (see [`init_preserved_stderr`]). In-process
-//! zsh on iOS dup2()s the PTY onto fds 0–2 for the whole process; without this,
+//! zsh on iOS dup2()s the PTY onto fds 0-2 for the whole process; without this,
 //! compositor trace output would appear inside weston-terminal.
 
 use std::ffi::c_int;
@@ -49,7 +49,7 @@ pub fn write_log_line(module: &str, message: &str) {
     }
 }
 
-/// Per-tick / per-frame FFI trace logging — off unless `WWN_FFI_DEBUG=1`.
+/// Per-tick / per-frame FFI trace logging. Off unless `WWN_FFI_DEBUG=1`.
 pub fn hot_logs_enabled() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
     *ENABLED.get_or_init(|| {
@@ -67,7 +67,7 @@ macro_rules! wlog {
     }};
 }
 
-/// Hot-path logging — silent unless `WWN_FFI_DEBUG=1`.
+/// Hot-path logging. Silent unless `WWN_FFI_DEBUG=1`.
 #[macro_export]
 macro_rules! wlog_hot {
     ($module:expr, $($arg:tt)*) => {{
@@ -77,7 +77,7 @@ macro_rules! wlog_hot {
     }};
 }
 
-/// Per-frame trace logging — compiled out by default.
+/// Per-frame trace logging. Compiled out by default.
 /// Build with `--features verbose-logs` to enable.
 #[macro_export]
 macro_rules! wtrace {

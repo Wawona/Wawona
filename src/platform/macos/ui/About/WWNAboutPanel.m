@@ -11,7 +11,7 @@
 
 /// Load the About-header logo using the same cascading strategy as macOS:
 /// try the dark logo by exact filename, then pathForResource, then direct
-/// bundle path, then generic/light fallbacks.  No style switching — the
+/// bundle path, then generic/light fallbacks.  No style switching. The
 /// dark logo is used unconditionally, matching the macOS About panel.
 static UIImage *WWNAboutLogo(void) {
   NSBundle *bundle = [NSBundle mainBundle];
@@ -37,7 +37,7 @@ static UIImage *WWNAboutLogo(void) {
     if (img) return img;
   }
 
-  // 4. Direct bundle-path with the original @1x filename — bypasses iOS
+  // 4. Direct bundle-path with the original @1x filename. Bypasses iOS
   //    pathForResource:ofType: which treats @1x as a scale modifier and
   //    refuses to return it on 2x/3x devices.
   NSString *bundleRoot = [bundle bundlePath];

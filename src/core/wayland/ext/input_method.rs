@@ -1,10 +1,10 @@
 //! Input Method protocol implementation.
 //!
 //! This module provides:
-//! - `zwp_input_panel_v1` (always available) — allows IME to position popup
+//! - `zwp_input_panel_v1` (always available). Allows IME to position popup
 //!   surfaces near the text cursor.
 //! - `zwp_input_method_manager_v2` / `zwp_input_method_v2` (desktop-only,
-//!   behind `desktop-protocols` feature) — full IME engine integration for
+//!   behind `desktop-protocols` feature). Full IME engine integration for
 //!   external engines like IBus and Fcitx.
 
 use wayland_server::{
@@ -120,7 +120,7 @@ mod input_method_v2 {
     }
 
     impl InputMethodState {
-        /// Activate the input method — called when a text-input is enabled.
+        /// Activate the input method. Called when a text-input is enabled.
         pub fn activate(&mut self) {
             if let Some(ref res) = self.resource {
                 if res.is_alive() {
@@ -130,7 +130,7 @@ mod input_method_v2 {
             }
         }
 
-        /// Deactivate the input method — called when text-input is disabled.
+        /// Deactivate the input method. Called when text-input is disabled.
         pub fn deactivate(&mut self) {
             if let Some(ref res) = self.resource {
                 if res.is_alive() {
@@ -208,7 +208,7 @@ mod input_method_v2 {
                     let im_res = data_init.init(input_method, seat_id);
 
                     if state.ext.input_method.resource.is_some() {
-                        // Only one input method per seat — send unavailable.
+                        // Only one input method per seat. Send unavailable.
                         im_res.unavailable();
                         tracing::warn!(
                             "Rejected second input method binding for seat {}",
@@ -228,7 +228,7 @@ mod input_method_v2 {
     }
 
     // ------------------------------------------------------------------
-    // zwp_input_method_v2 — user data is seat_id: u32
+    // zwp_input_method_v2. User data is seat_id: u32
     // ------------------------------------------------------------------
 
     impl Dispatch<ZwpInputMethodV2, u32> for CompositorState {

@@ -103,7 +103,7 @@
 #if TARGET_OS_IPHONE
   // Native Wayland clients may run concurrently (multiple weston-terminal,
   // flower, …). VM / waypipe / container backends on mobile still share a
-  // single in-process engine — tear those down before switching.
+  // single in-process engine. Tear those down before switching.
   if (![self profileUsesNativeCompositorClient:profile]) {
     [self stopAllActiveTransports];
   }
@@ -279,7 +279,7 @@
       [[WWNSwingingBridgeController sharedController] detach];
     }
 #endif
-    // Stop only this machine's instance — other copies of the same client
+    // Stop only this machine's instance. Other copies of the same client
     // (and other machines) keep running.
     [runner stopBundledClientForMachineId:profile.machineId];
 #if TARGET_OS_IPHONE

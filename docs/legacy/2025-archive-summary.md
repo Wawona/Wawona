@@ -1253,7 +1253,7 @@ meson setup build \
 **✅ Configuration is identical!** The only issue is Clang library detection, which is a dependency/environment issue, not a configuration problem.
 
 ==> kosmickrisp.md <==
-Nice — I searched upstream Mesa and the KosmicKrisp announcements and pulled together a concrete, source-backed inventory of what you need to build **KosmicKrisp (KosmicKrisp = LunarG’s Vulkan→Metal Mesa driver)** on **macOS**, what the driver’s build-time library dependencies are, and what it needs at runtime.
+Nice. I searched upstream Mesa and the KosmicKrisp announcements and pulled together a concrete, source-backed inventory of what you need to build **KosmicKrisp (KosmicKrisp = LunarG’s Vulkan→Metal Mesa driver)** on **macOS**, what the driver’s build-time library dependencies are, and what it needs at runtime.
 
 I couldn’t find a single “one-line” manifest in the announcements, so I compiled the lists from the Mesa build docs/meson files and LunarG/Khronos/Phoronix announcements (links cited inline). Where something is optional or platform-specific I call that out and point to how to confirm it from upstream.
 
@@ -1270,15 +1270,15 @@ I couldn’t find a single “one-line” manifest in the announcements, so I co
 
 These are the *tools* (programs, build system components, SDKs) you need before configuring/building Mesa with `-Dvulkan-drivers=kosmickrisp`:
 
-1. **Xcode Command Line Tools / macOS SDK** — clang/clang++ toolchain and system headers (required to compile C/C++ and link against system frameworks like Metal). *(install via `xcode-select --install`)*. (Required). ([LunarG][1])
-2. **git** — to clone upstream Mesa. ([docs.mesa3d.org][3])
-3. **Python 3** (python3) and `pip` — Meson is a Python tool; Mesa build uses Python for codegen. ([mesonbuild.com][4])
+1. **Xcode Command Line Tools / macOS SDK**. Clang/clang++ toolchain and system headers (required to compile C/C++ and link against system frameworks like Metal). *(install via `xcode-select --install`)*. (Required). ([LunarG][1])
+2. **git**. To clone upstream Mesa. ([docs.mesa3d.org][3])
+3. **Python 3** (python3) and `pip`. Meson is a Python tool; Mesa build uses Python for codegen. ([mesonbuild.com][4])
 4. **meson** (recent version; install with `pip3 install --user meson` or via Homebrew). Mesa’s docs require Meson for the modern build. ([docs.mesa3d.org][2])
-5. **ninja** — Meson’s default backend. (`brew install ninja` or `pipx` package wrappers). ([mesonbuild.com][4])
-6. **pkg-config** — Meson + many deps use pkg-config. (`brew install pkg-config`). ([mesonbuild.com][4])
-7. **Mako Python module** (`pip3 install mako`) — Mesa templates depend on it. Mesa macOS notes explicitly mention Mako. ([docs.mesa3d.org][5])
-8. **Flex and Bison** — used for some generated parsers; Meson docs and Mesa note them as build requirements in some configurations. (`brew install flex bison`). ([docs.mesa3d.org][2])
-9. **(optional / conditional) LLVM toolchain** — some Mesa subcomponents (and optional shader compiler backends) use LLVM; Meson has `-Dllvm=enabled/disabled` options. Install via `brew install llvm` if you want the LLVM-based parts. (Optional but commonly required for full feature builds). ([gensoft.pasteur.fr][6])
+5. **ninja**. Meson’s default backend. (`brew install ninja` or `pipx` package wrappers). ([mesonbuild.com][4])
+6. **pkg-config**. Meson + many deps use pkg-config. (`brew install pkg-config`). ([mesonbuild.com][4])
+7. **Mako Python module** (`pip3 install mako`). Mesa templates depend on it. Mesa macOS notes explicitly mention Mako. ([docs.mesa3d.org][5])
+8. **Flex and Bison**. Used for some generated parsers; Meson docs and Mesa note them as build requirements in some configurations. (`brew install flex bison`). ([docs.mesa3d.org][2])
+9. **(optional / conditional) LLVM toolchain**. Some Mesa subcomponents (and optional shader compiler backends) use LLVM; Meson has `-Dllvm=enabled/disabled` options. Install via `brew install llvm` if you want the LLVM-based parts. (Optional but commonly required for full feature builds). ([gensoft.pasteur.fr][6])
 
 Practical Homebrew-ish install line (example):
 `xcode-select --install` then, roughly:
@@ -1289,25 +1289,25 @@ and `pip3 install --user mako meson` (meson usually via pip or brew). (I list th
 
 # B. **Build-time library / third-party dependencies used when building the *KosmicKrisp* driver inside Mesa**
 
-These are the libraries/dependencies Mesa expects to find when building **Vulkan drivers** and — specifically — what KosmicKrisp reuses from Mesa upstream. (Where upstream makes something required, I cite the Meson dependency usage in Mesa.)
+These are the libraries/dependencies Mesa expects to find when building **Vulkan drivers** and. Specifically. What KosmicKrisp reuses from Mesa upstream. (Where upstream makes something required, I cite the Meson dependency usage in Mesa.)
 
 **Required / strongly expected at build time** (driver will not configure if these are missing):
 
-1. **SPIRV-Tools** (`SPIRV-Tools`) — Mesa’s meson build checks for this and it is required for Vulkan driver builds (assembler/validator/optimizer for SPIR-V). Homebrew: `brew install spirv-tools`. ([GitHub][8])
-2. **SPIRV-Headers** — headers for SPIR-V. (Often a build dependency together with SPIRV-Tools). ([Linux From Scratch][9])
-3. **glslang** (glslangValidator) — used by many Vulkan stacks to compile GLSL to SPIR-V during tests/tooling; commonly pulled in for build/test flows. (Homebrew: `glslang` / `glslangValidator` packages). ([LunarXchange][10])
-4. **zlib, expat** — standard small libraries used by Mesa build system (zlib for compression, expat for XML parsing in some tools). (Common Mesa deps). ([Mesa Documentation][11])
-5. **Python modules used by Meson/Mesa** — `mako`, `packaging` (already noted above). ([docs.mesa3d.org][2])
+1. **SPIRV-Tools** (`SPIRV-Tools`). Mesa’s meson build checks for this and it is required for Vulkan driver builds (assembler/validator/optimizer for SPIR-V). Homebrew: `brew install spirv-tools`. ([GitHub][8])
+2. **SPIRV-Headers**. Headers for SPIR-V. (Often a build dependency together with SPIRV-Tools). ([Linux From Scratch][9])
+3. **glslang** (glslangValidator). Used by many Vulkan stacks to compile GLSL to SPIR-V during tests/tooling; commonly pulled in for build/test flows. (Homebrew: `glslang` / `glslangValidator` packages). ([LunarXchange][10])
+4. **zlib, expat**. Standard small libraries used by Mesa build system (zlib for compression, expat for XML parsing in some tools). (Common Mesa deps). ([Mesa Documentation][11])
+5. **Python modules used by Meson/Mesa**. `mako`, `packaging` (already noted above). ([docs.mesa3d.org][2])
 
 **Mesa / Vulkan-driver specific pieces that KosmicKrisp relies on (in-tree or as usual dependencies):**
 
-6. **Mesa’s NIR + in-tree shader toolchain** — KosmicKrisp intentionally leverages Mesa’s NIR IR and in-tree tools to remove the need for SPIRV-Cross. Upstream presentation explicitly mentions NIR and removing SPIRV-Cross. (This is why some SPIR-V→NIR tooling is required at build time). ([The Khronos Group][12])
-7. **(possible) SPIRV-LLVM-Translator / SPIRV-LLVM (optional)** — depends on your Meson options and whether LLVMPIR translation is used; many distributions include it for completeness. (Optional depending on build flags). ([Linux From Scratch][9])
+6. **Mesa’s NIR + in-tree shader toolchain**. KosmicKrisp intentionally leverages Mesa’s NIR IR and in-tree tools to remove the need for SPIRV-Cross. Upstream presentation explicitly mentions NIR and removing SPIRV-Cross. (This is why some SPIR-V→NIR tooling is required at build time). ([The Khronos Group][12])
+7. **(possible) SPIRV-LLVM-Translator / SPIRV-LLVM (optional)**. Depends on your Meson options and whether LLVMPIR translation is used; many distributions include it for completeness. (Optional depending on build flags). ([Linux From Scratch][9])
 
 **Optional / configuration-dependent deps you may see in `meson configure` for kosmickrisp:**
 
 8. **LLVM if you enable llvm backends** (see Meson options `-Dllvm=`). ([gensoft.pasteur.fr][6])
-9. **libdrm / libepoxy / X11 / Wayland** — *not required on macOS for the Metal-based path*, but Mesa’s meson options include them for other drivers; on macOS these are usually disabled. (You will see these listed by Meson if you try to build other plumbing). ([docs.mesa3d.org][13])
+9. **libdrm / libepoxy / X11 / Wayland**. *not required on macOS for the Metal-based path*, but Mesa’s meson options include them for other drivers; on macOS these are usually disabled. (You will see these listed by Meson if you try to build other plumbing). ([docs.mesa3d.org][13])
 
 **Where to confirm exact, current build-time deps for the version you’re using:** clone upstream Mesa and run Meson configure (Meson prints required/missing deps). Upstream source + meson.options / meson.build are authoritative. Example: `git clone https://gitlab.freedesktop.org/mesa/mesa.git && meson setup build -Dvulkan-drivers=kosmickrisp && meson configure build`. The Mesa docs explain this workflow. ([docs.mesa3d.org][3])
 
@@ -1317,17 +1317,17 @@ These are the libraries/dependencies Mesa expects to find when building **Vulkan
 
 These are the libraries/frameworks the driver needs at runtime (what the driver calls into on a running macOS system):
 
-1. **Apple Metal framework** — KosmicKrisp translates Vulkan calls to Metal; it *runs on top of Metal*, so the system **Metal.framework** is a hard runtime dependency. (LunarG explicitly states KosmicKrisp translates Vulkan to Apple Metal and targets macOS 13/15 baselines.) ([LunarG][1])
+1. **Apple Metal framework**. KosmicKrisp translates Vulkan calls to Metal; it *runs on top of Metal*, so the system **Metal.framework** is a hard runtime dependency. (LunarG explicitly states KosmicKrisp translates Vulkan to Apple Metal and targets macOS 13/15 baselines.) ([LunarG][1])
 
-2. **macOS system frameworks / runtime (CoreFoundation, CoreGraphics as typical)** — standard system frameworks used by drivers and Mesa plumbing. (Implicit; provided by macOS.) ([LunarG][1])
+2. **macOS system frameworks / runtime (CoreFoundation, CoreGraphics as typical)**. Standard system frameworks used by drivers and Mesa plumbing. (Implicit; provided by macOS.) ([LunarG][1])
 
-3. **IOSurface (and related frameworks) — likely/commonly used for texture/buffer sharing**
+3. **IOSurface (and related frameworks). Likely/commonly used for texture/buffer sharing**
 
-   * Rationale:* Metal textures can be backed by IOSurface for efficient sharing and zero-copy. Many cross-process/VM/guest→host buffer schemes on macOS use IOSurface. A Vulkan→Metal driver that needs shared buffers (for example when integrating with VMs or compositors) will commonly use IOSurface APIs at runtime. Apple docs show `makeTexture(descriptor: iosurface: plane:)` and IOSurface is the canonical system facility for sharing pixel buffers on macOS. If KosmicKrisp implements things like WSI/texture import or VM buffer exchange, IOSurface will be involved. (Labelled **likely** — check mesa WSI/metal backend code to see which exact APIs are used). ([Apple Developer][14])
+   * Rationale:* Metal textures can be backed by IOSurface for efficient sharing and zero-copy. Many cross-process/VM/guest→host buffer schemes on macOS use IOSurface. A Vulkan→Metal driver that needs shared buffers (for example when integrating with VMs or compositors) will commonly use IOSurface APIs at runtime. Apple docs show `makeTexture(descriptor: iosurface: plane:)` and IOSurface is the canonical system facility for sharing pixel buffers on macOS. If KosmicKrisp implements things like WSI/texture import or VM buffer exchange, IOSurface will be involved. (Labelled **likely**. Check mesa WSI/metal backend code to see which exact APIs are used). ([Apple Developer][14])
 
-4. **(Possibly) Video/CoreVideo/CoreMedia frameworks** — if the driver (or tests) interoperate with video/decoder pipelines, these frameworks may be used — but this is scenario dependent. (Optional.) ([Apple Developer][15])
+4. **(Possibly) Video/CoreVideo/CoreMedia frameworks**. If the driver (or tests) interoperate with video/decoder pipelines, these frameworks may be used. But this is scenario dependent. (Optional.) ([Apple Developer][15])
 
-5. **No external Vulkan loader binary required for Mesa driver itself** — the usual model is that Mesa builds a Vulkan ICD (driver) library that is enumerated by the Vulkan loader (on systems where a loader is used). On macOS the runtime arrangement depends on how you package: LunarG also ships a Vulkan SDK and loader pieces; LunarG’s Vulkan SDK packaging and their KosmicKrisp work are coordinated. In short: at runtime you need the loader/environment that will find the ICD built from Mesa — LunarG’s SDK handles that for app integration. ([LunarG][16])
+5. **No external Vulkan loader binary required for Mesa driver itself**. The usual model is that Mesa builds a Vulkan ICD (driver) library that is enumerated by the Vulkan loader (on systems where a loader is used). On macOS the runtime arrangement depends on how you package: LunarG also ships a Vulkan SDK and loader pieces; LunarG’s Vulkan SDK packaging and their KosmicKrisp work are coordinated. In short: at runtime you need the loader/environment that will find the ICD built from Mesa. LunarG’s SDK handles that for app integration. ([LunarG][16])
 
 ---
 
@@ -1376,9 +1376,9 @@ Meson prints missing/optional deps and the active options; that’s the single-s
 
 # F. **Caveats / recommended next steps**
 
-* **Exact dependencies change with Mesa commit / Meson options.** The authoritative source is the exact Mesa commit you intend to build — `meson configure` will show “found / missing” dependencies for that tree. I strongly recommend cloning the exact upstream Mesa commit and running `meson configure` to get the guaranteed inventory. (Meson prints the list and which ones are required vs optional). ([docs.mesa3d.org][2])
+* **Exact dependencies change with Mesa commit / Meson options.** The authoritative source is the exact Mesa commit you intend to build. `meson configure` will show “found / missing” dependencies for that tree. I strongly recommend cloning the exact upstream Mesa commit and running `meson configure` to get the guaranteed inventory. (Meson prints the list and which ones are required vs optional). ([docs.mesa3d.org][2])
 
-* **Runtime nuance:** KosmicKrisp is *a* Mesa Vulkan driver that targets Metal — that makes **Metal.framework** an inescapable runtime requirement. Other macOS kernel or compositor integration details (IOSurface, CVPixelBuffer, compositor glue) depend on which features WSI / VM / emulator integrations you need; inspect the *wsi/metal* and *vulkan/kosmic* code in the Mesa tree for exact runtime API usage. (I can fetch the exact files / code lines if you want me to extract them from the current upstream Mesa commit.) ([Freedesktop][19])
+* **Runtime nuance:** KosmicKrisp is *a* Mesa Vulkan driver that targets Metal. That makes **Metal.framework** an inescapable runtime requirement. Other macOS kernel or compositor integration details (IOSurface, CVPixelBuffer, compositor glue) depend on which features WSI / VM / emulator integrations you need; inspect the *wsi/metal* and *vulkan/kosmic* code in the Mesa tree for exact runtime API usage. (I can fetch the exact files / code lines if you want me to extract them from the current upstream Mesa commit.) ([Freedesktop][19])
 
 ---
 
@@ -1400,7 +1400,7 @@ Tell me which of A / B / C you want and I’ll fetch the exact upstream files an
 [8]: https://github.com/Igalia/mesa/blob/main/meson.build?utm_source=chatgpt.com "meson.build - Igalia/mesa"
 [9]: https://www.linuxfromscratch.org/blfs/view/svn/general/spirv-tools.html?utm_source=chatgpt.com "SPIRV-Tools-1.4.328.1"
 [10]: https://vulkan.lunarg.com/doc/view/latest/windows/spirv_toolchain.html?utm_source=chatgpt.com "SPIR-V Toolchain"
-[11]: https://mesa-docs.readthedocs.io/en/latest/install.html?utm_source=chatgpt.com "Compiling and Installing — Mesa 12.0 documentation"
+[11]: https://mesa-docs.readthedocs.io/en/latest/install.html?utm_source=chatgpt.com "Compiling and Installing. Mesa 12.0 documentation"
 [12]: https://www.khronos.org/developers/linkto/kosmickrisp-a-vulkan-to-metal-mesa-driver?utm_source=chatgpt.com "KosmicKrisp A Vulkan to Metal Mesa driver"
 [13]: https://docs.mesa3d.org/install.html?utm_source=chatgpt.com "Compiling and Installing - The Mesa 3D Graphics Library"
 [14]: https://developer.apple.com/documentation/metal/mtldevice/maketexture%28descriptor%3Aiosurface%3Aplane%3A%29?utm_source=chatgpt.com "makeTexture(descriptor:iosurface:plane:)"
@@ -1526,7 +1526,7 @@ All dependencies should compile for iOS, Android, macOS. The build system uses:
 - `CMakeLists.txt` - No longer needed once Nix build is verified
 
 ==> research-from-chatgpt-vulkan-android.md <==
-Nice — this is a great (and thorny) area. Below I did a focused deep-dive on Vulkan drivers on Android with an emphasis on what matters for building a Wayland compositor that needs Vulkan (and for integrating with waypipe-rs). I include: how Android’s Vulkan stack is structured, the types of drivers you’ll encounter, buffer sharing and WSI considerations (crucial for a compositor), practical strategies, and concrete next steps + checks you can run on devices/emulators. I cite upstream sources you can follow for details.
+Nice. This is a great (and thorny) area. Below I did a focused deep-dive on Vulkan drivers on Android with an emphasis on what matters for building a Wayland compositor that needs Vulkan (and for integrating with waypipe-rs). I include: how Android’s Vulkan stack is structured, the types of drivers you’ll encounter, buffer sharing and WSI considerations (crucial for a compositor), practical strategies, and concrete next steps + checks you can run on devices/emulators. I cite upstream sources you can follow for details.
 
 ---
 
@@ -1539,11 +1539,11 @@ Nice — this is a great (and thorny) area. Below I did a focused deep-dive on V
   * Open-source Mesa-based drivers: Freedreno/Turnip (Adreno), Panfrost/PanVK (Mali), others (where ported to Android builds). ([Mesa 3D Documentation][2])
 * For fallback/CPU rendering: Google’s SwiftShader is common (used by emulator and as a fallback driver). Useful for development/testing but slow. ([GitHub][3])
 * For compositor work you must handle *external buffer* interop (AHardwareBuffer / dma-buf) and the appropriate Vulkan extensions (VK_ANDROID_external_memory_* and the AHB import/export APIs). Android exposes Android-specific Vulkan extensions for this. ([Vulkan Documentation][4])
-* Wayland-specific surface support (VK_KHR_wayland_surface) exists in the Vulkan ecosystem and Android’s Vulkan metadata can list it — but presence and behavior depend on the platform/driver. You’ll probably need to map Wayland buffers to Android-native buffers (AHardwareBuffer) or implement a presentation path via VK_KHR_android_surface. ([Android Developers][5])
+* Wayland-specific surface support (VK_KHR_wayland_surface) exists in the Vulkan ecosystem and Android’s Vulkan metadata can list it. But presence and behavior depend on the platform/driver. You’ll probably need to map Wayland buffers to Android-native buffers (AHardwareBuffer) or implement a presentation path via VK_KHR_android_surface. ([Android Developers][5])
 
 ---
 
-# 1) Android Vulkan stack — architecture & how drivers are discovered
+# 1) Android Vulkan stack. Architecture & how drivers are discovered
 
 * Android uses a Vulkan *loader* that enumerates *ICDs* (installable client drivers) and layers; Google maintains the Android-specific loader behavior and Android AOSP has documentation for implementing Vulkan on Android (discovery, layers, platform differences). The loader/ICD model means an application calls through the loader which dispatches to the vendor ICD for that device. This is the same conceptual model as Linux/Windows. ([Android Go Source][6])
 * Practical consequence: whether Vulkan features you need are available depends on the *device’s ICD* and installed extensions. You must query extensions and features at runtime (vkEnumerateInstanceExtensionProperties, vkEnumerateDeviceExtensionProperties, vkGetPhysicalDeviceFeatures2, etc.). ([Vulkan Documentation][7])
@@ -1558,17 +1558,17 @@ A. **Vendor-provided GPU ICDs (closed-source/NPOTS):**
 
 B. **Open-source drivers (Mesa-family) on Android:**
 
-* **Freedreno / Turnip** — open Vulkan driver for Adreno (effort to upstream Turnip into Mesa). Works well on some Adreno chips and is actively developed; many projects use it on Linux, and there are ports to Android in some projects. ([YouTube][8])
-* **Panfrost / PanVK** — Mesa driver work for ARM Mali (PanVK = Vulkan part of Panfrost). Upstream status varies by Mali family & kernel support. ([Mesa 3D Documentation][2])
+* **Freedreno / Turnip**. Open Vulkan driver for Adreno (effort to upstream Turnip into Mesa). Works well on some Adreno chips and is actively developed; many projects use it on Linux, and there are ports to Android in some projects. ([YouTube][8])
+* **Panfrost / PanVK**. Mesa driver work for ARM Mali (PanVK = Vulkan part of Panfrost). Upstream status varies by Mali family & kernel support. ([Mesa 3D Documentation][2])
 * **Why this matters:** If you control the Android image (custom ROM, embedded device), you can deploy Mesa ICDs and get usable Vulkan on hardware that vendors didn’t fully support. On stock phones you usually get vendor blobs only.
 
 C. **Software implementations / fallbacks:**
 
-* **SwiftShader** — CPU-based Vulkan implementation from Google. Built into Android emulator and sometimes used as a system fallback for devices/VMs that lack a GPU driver. Useful for testing compositor code and headless mode but not for performance. ([GitHub][3])
+* **SwiftShader**. CPU-based Vulkan implementation from Google. Built into Android emulator and sometimes used as a system fallback for devices/VMs that lack a GPU driver. Useful for testing compositor code and headless mode but not for performance. ([GitHub][3])
 
 ---
 
-# 3) Buffer/IPC interop — the critical part for a compositor + waypipe
+# 3) Buffer/IPC interop. The critical part for a compositor + waypipe
 
 Your compositor needs to get client buffers into GPU memory and present them. On Android the usual primitives are:
 
@@ -1584,14 +1584,14 @@ Your compositor needs to get client buffers into GPU memory and present them. On
 
 Practical notes:
 
-* Importing an AHardwareBuffer into Vulkan can be *format-opaque* (driver-specific). You may find images usable only as sampled images, or restrictions on operations. Expect to handle per-device quirks. Community threads show errors when drivers reject certain imports — you must probe supported formats and fall back. ([Khronos Forums][9])
+* Importing an AHardwareBuffer into Vulkan can be *format-opaque* (driver-specific). You may find images usable only as sampled images, or restrictions on operations. Expect to handle per-device quirks. Community threads show errors when drivers reject certain imports. You must probe supported formats and fall back. ([Khronos Forums][9])
 
 ---
 
-# 4) For waypipe-rs (it uses Vulkan) — specific things to consider
+# 4) For waypipe-rs (it uses Vulkan). Specific things to consider
 
 * **Cross-host buffer passing:** waypipe sends frame data over the network. The most efficient approach is to send handles/FDs for zero-copy GPU buffer sharing (dmabuf/AHB) and import them on the receiving side into Vulkan. On Android, that implies mapping incoming buffers into `AHardwareBuffer` or importing dmabuf FDs into Vulkan via the Android external memory extensions. Expect per-device support variance. ([Vulkan Documentation][4])
-* **Fallback path:** when zero-copy import fails, fall back to CPU transfer (readback into CPU-visible staging buffer, packetize, send, reupload) — this is slower but more portable (SwiftShader on the receiver can be used to render). ([GitHub][3])
+* **Fallback path:** when zero-copy import fails, fall back to CPU transfer (readback into CPU-visible staging buffer, packetize, send, reupload). This is slower but more portable (SwiftShader on the receiver can be used to render). ([GitHub][3])
 * **Synchronization & queue families:** importing external memory may impose constraints on usage flags and queue families; check `VkImageFormatProperties2` and the external memory capabilities. Drivers may require specific flags to be set or disallow certain combinations. ([LunarXchange][10])
 
 ---
@@ -1610,7 +1610,7 @@ Practical notes:
 
 3. **Test importing AHardwareBuffer into Vulkan**:
 
-   * Create an AHardwareBuffer (or receive one), import with `VkImportAndroidHardwareBufferInfoANDROID`, and test supported operations (sampled, color attachment, blit). Log errors and query `VkImageFormatProperties2` for support. Community reports show devices may accept imports only for sampling or have restricted layouts — implement fallback paths. ([Vulkan Documentation][11])
+   * Create an AHardwareBuffer (or receive one), import with `VkImportAndroidHardwareBufferInfoANDROID`, and test supported operations (sampled, color attachment, blit). Log errors and query `VkImageFormatProperties2` for support. Community reports show devices may accept imports only for sampling or have restricted layouts. Implement fallback paths. ([Vulkan Documentation][11])
 
 4. **If you control the image (embedded device / custom Android build):** consider shipping Mesa drivers (Turnip/PanVK) as ICDs to get a more open driver stack and easier debugging. For consumer phones you usually must rely on vendor ICDs. ([Phoronix][12])
 
@@ -1642,7 +1642,7 @@ Practical notes:
 
 3. For development, use **SwiftShader** (emulator) to iterate on compositor code and waypipe integration before testing on hardware. ([GitHub][3])
 
-4. If you control the device image and seek greater portability/debuggability, consider packaging/test-booting a Mesa-based ICD (Turnip / PanVK) for your SoC — it makes debugging and upstreaming much easier. ([Phoronix][12])
+4. If you control the device image and seek greater portability/debuggability, consider packaging/test-booting a Mesa-based ICD (Turnip / PanVK) for your SoC. It makes debugging and upstreaming much easier. ([Phoronix][12])
 
 ---
 
@@ -1651,7 +1651,7 @@ Practical notes:
 * Android / AOSP Vulkan documentation (architecture + implement-vulkan guidance). ([Android Open Source Project][16])
 * Vulkan loader & architecture overview (loader/ICD on Android). ([Android Go Source][6])
 * Panfrost / PanVK docs (open-source Mali Vulkan). ([Mesa 3D Documentation][2])
-* SwiftShader (Google) — CPU Vulkan implementation. ([GitHub][3])
+* SwiftShader (Google). CPU Vulkan implementation. ([GitHub][3])
 * Vulkan refpages for Android AHB import/export (`VkImportAndroidHardwareBufferInfoANDROID` / `VK_ANDROID_external_memory_android_hardware_buffer`). ([Vulkan Documentation][11])
 
 ---
@@ -1665,7 +1665,7 @@ If you want, I can immediately:
 Which of those would help most next?
 
 [1]: https://source.android.com/docs/core/graphics/arch-vulkan?utm_source=chatgpt.com "Vulkan | Android Open Source Project"
-[2]: https://docs.mesa3d.org/drivers/panfrost.html?utm_source=chatgpt.com "Panfrost — The Mesa 3D Graphics Library latest documentation"
+[2]: https://docs.mesa3d.org/drivers/panfrost.html?utm_source=chatgpt.com "Panfrost. The Mesa 3D Graphics Library latest documentation"
 [3]: https://github.com/google/swiftshader?utm_source=chatgpt.com "google/swiftshader"
 [4]: https://docs.vulkan.org/refpages/latest/refpages/source/VK_ANDROID_external_memory_android_hardware_buffer.html?utm_source=chatgpt.com "VK_ANDROID_external_memory..."
 [5]: https://developer.android.com/agi/vulkan-extensions?utm_source=chatgpt.com "Supported Vulkan extensions | Android Developers"
@@ -1686,7 +1686,7 @@ Which of those would help most next?
 
 Wayland's core libraries can be built on macOS, but macOS lacks many Linux-specific interfaces. In practice Wayland's protocol library and tools compile on Darwin using shims. For example, MacPorts provides a Wayland port (v2023.01.28) that depends only on `epoll-shim`, `libffi`, and `libxml2` (plus build tools like clang, Meson, Ninja)[1]. The crucial missing piece on macOS is Linux's `epoll`: this is handled by using `epoll-shim`, a small library that implements epoll on top of BSD's `kqueue`. Epoll-shim has been "successfully used to port libinput, libevdev, Wayland and more software to FreeBSD"[2], and it supports macOS (tested on macOS 13.7.1)[3]. In short, a developer can compile Wayland on macOS today by installing epoll-shim and the other dependencies (Meson, Ninja, pkg-config, etc.)[1][2].
 
-However, building the Wayland protocol libraries is only half the story. Running a real Wayland compositor on macOS is more complex. macOS has no DRM/KMS or Linux input stack; instead it uses the Quartz Compositor and Cocoa for windowing and events. Any Mac compositor must hook into Cocoa (for OpenGL/Metal drawing and input events). In fact, the Owl project demonstrates this approach: Owl is a Wayland compositor written in Objective-C that uses Cocoa. It "makes it possible to run Wayland clients inside OS X's native Quartz graphics environment" – essentially acting like an XQuartz or XWayland for Wayland[4]. Owl (and similar forks) show that a macOS Wayland compositor must translate Wayland surfaces into native Quartz windows and convert macOS input (NSEvents) into Wayland events.
+However, building the Wayland protocol libraries is only half the story. Running a real Wayland compositor on macOS is more complex. macOS has no DRM/KMS or Linux input stack; instead it uses the Quartz Compositor and Cocoa for windowing and events. Any Mac compositor must hook into Cocoa (for OpenGL/Metal drawing and input events). In fact, the Owl project demonstrates this approach: Owl is a Wayland compositor written in Objective-C that uses Cocoa. It "makes it possible to run Wayland clients inside OS X's native Quartz graphics environment" - essentially acting like an XQuartz or XWayland for Wayland[4]. Owl (and similar forks) show that a macOS Wayland compositor must translate Wayland surfaces into native Quartz windows and convert macOS input (NSEvents) into Wayland events.
 
 In summary, Wayland on macOS requires:
 
@@ -1706,7 +1706,7 @@ Notably, Wayland was designed for Linux kernel features (DRM/KMS, udev, evdev). 
 
 iOS presents even greater challenges. iOS (iPhone/iPad OS) is not a general-purpose Unix environment and does not allow third-party display servers. There is no X or Wayland at all; apps must use UIKit/Metal/OpenGL ES to render to the screen. Unlike macOS, you cannot spawn a rootless compositor to take over the display. In addition, iOS's system libraries lack many Linux APIs (similar to Android's Bionic). For example, iOS has no `epoll`, no `timerfd`/`signalfd` (only kqueue, and even that is limited), and the app sandbox prevents opening arbitrary Unix sockets without special entitlement.
 
-In practical terms, running Wayland on iOS would mean writing a custom compositor within an iOS app (essentially a full-screen app that implements the Wayland server API), and using Core Animation/Metal to present client buffers. There is no public example of a Wayland port to iOS. The closest analogy is that macOS requires an Owl-like compositor; iOS would require an even more bespoke solution. Given the constraints, Wayland will not work on iOS out of the box – it would need a complete rewrite of input/output layers to use iOS APIs, and even then it may violate iOS's sandbox.
+In practical terms, running Wayland on iOS would mean writing a custom compositor within an iOS app (essentially a full-screen app that implements the Wayland server API), and using Core Animation/Metal to present client buffers. There is no public example of a Wayland port to iOS. The closest analogy is that macOS requires an Owl-like compositor; iOS would require an even more bespoke solution. Given the constraints, Wayland will not work on iOS out of the box - it would need a complete rewrite of input/output layers to use iOS APIs, and even then it may violate iOS's sandbox.
 
 (For context, a similar effort on Android had to remove Linux-specific calls: Paalanen's Weston port to Android "completely remove[d] signal handling and timers from libwayland, because signalfd and timerfd … do not exist in Bionic"[5]. Darwin's libc lacks those too, so the same modifications would be needed on iOS.)
 
@@ -1716,7 +1716,7 @@ Android is closer to Linux under the hood, but its graphics stack is very differ
 
 In practice, developers have ported Weston to Android. Paalanen's proof-of-concept showed Weston driving an Android phone's framebuffer by writing an Android-specific backend, but it required heavy hacks: removing unsupported syscalls, using Android's gralloc and wrapper-libEGL, and killing SurfaceFlinger to take over the display[9][10]. More recently, Faith Ekstrand explains that libhybris works by implementing Wayland's EGL (`eglBindWaylandDisplayWL`) using Android's fences and ANativeWindow. This approach has succeeded enough that "Jolla (among others) is shipping devices" running Wayland on Android hardware[11].
 
-However, fundamental mismatches remain. Android's EGL swap semantics conflict with Wayland's expectations. In Wayland, each `eglSwapBuffers()` must implicitly attach and commit a `wl_buffer` to the surface. But on Android, swapping an `ANativeWindow` can be delayed or even skipped (the driver may preserve the previous buffer), violating Wayland's assumption[12]. Ekstrand notes the "core collision" – "Android provides no real guarantees as to what a driver has to do inside of eglSwapBuffers", making the Wayland guarantee effectively impossible[12]. Libhybris hacks (like using sync fences) can mitigate this, but not without edge cases.
+However, fundamental mismatches remain. Android's EGL swap semantics conflict with Wayland's expectations. In Wayland, each `eglSwapBuffers()` must implicitly attach and commit a `wl_buffer` to the surface. But on Android, swapping an `ANativeWindow` can be delayed or even skipped (the driver may preserve the previous buffer), violating Wayland's assumption[12]. Ekstrand notes the "core collision" - "Android provides no real guarantees as to what a driver has to do inside of eglSwapBuffers", making the Wayland guarantee effectively impossible[12]. Libhybris hacks (like using sync fences) can mitigate this, but not without edge cases.
 
 So, on Android you can compile Wayland and even run Weston via libhybris, but expect many issues. You will need to integrate with Android's HAL: use `ANativeWindow` for drawing, use Android's event loop or rewrite Wayland's loop, handle power/button events via JNI, etc. In short, porting Wayland to Android involves gluing Wayland to Android's graphics/input (as done in custom Android kernels or Sailfish builds). It is not plug-and-play. Still, the Collabora/Android Weston port[9] and libhybris efforts show it is possible on some devices.
 
@@ -1779,7 +1779,7 @@ Waypipe is a Wayland proxy that forwards rendering from a remote client to a loc
 
 ## macOS and iOS: DMABUF & Video
 
-On macOS (and similarly iOS), the Linux DMABUF mechanism and libgbm (for buffer allocation) do not exist. In practice this means GPU mode is not directly supported. The common workaround is to disable GPU/DMABUF and fall back to shared-memory (wl_shm) rendering. The Waypipe manpage explicitly notes that you can turn off DMABUF support (or use --no-gpu) to avoid relying on Linux graphics libraries[5]. In fact, others have ported Waypipe to Linux-based phones by disabling DMABUF entirely – one SailfishOS packaging disables both DMABUF and VAAPI due to missing libraries[6]. By analogy, on macOS/iOS you would compile or invoke waypipe-rs without DMABUF; the Rust code will then send raw pixel diffs over the network instead of GPU buffers.
+On macOS (and similarly iOS), the Linux DMABUF mechanism and libgbm (for buffer allocation) do not exist. In practice this means GPU mode is not directly supported. The common workaround is to disable GPU/DMABUF and fall back to shared-memory (wl_shm) rendering. The Waypipe manpage explicitly notes that you can turn off DMABUF support (or use --no-gpu) to avoid relying on Linux graphics libraries[5]. In fact, others have ported Waypipe to Linux-based phones by disabling DMABUF entirely - one SailfishOS packaging disables both DMABUF and VAAPI due to missing libraries[6]. By analogy, on macOS/iOS you would compile or invoke waypipe-rs without DMABUF; the Rust code will then send raw pixel diffs over the network instead of GPU buffers.
 
 If GPU acceleration is still desired, the Rust code's Vulkan path could run on Apple hardware using MoltenVK (Vulkan-on-Metal). Waypipe-rs's DMABUF handling is implemented with Vulkan and Ash (a Rust Vulkan binding)[2], so in theory MoltenVK allows that code to run. However, the local compositor must accept the buffers. Since macOS does not support Linux DMABUF at all, one would still need to convert incoming images into something the compositor accepts (e.g. upload to a Metal texture or use wl_shm). In short, real DMABUF buffer sharing isn't natively possible on macOS/iOS, so most deployments simply use software mode (or video streaming) for remote apps.
 
@@ -1823,7 +1823,7 @@ https://mstoeckl.com/notes/code/waypipe_to_rust.html
 [4] GitHub - jiixyj/epoll-shim: small epoll implementation using kqueue; includes all features needed for libinput/libevdev  
 https://github.com/jiixyj/epoll-shim
 
-[5] waypipe(1) — waypipe — Debian unstable — Debian Manpages  
+[5] waypipe(1). Waypipe. Debian unstable. Debian Manpages  
 https://manpages.debian.org/unstable/waypipe/waypipe.1.en.html
 
 [6] Fun with remote Wayland: WayPipe - Applications - Sailfish OS Forum  
@@ -1839,7 +1839,7 @@ Waypipe is a proxy for Wayland clients (like SSH X forwarding for Wayland). The 
 
 ## macOS Support
 
-macOS does not natively support Linux's DRM or DMA-BUF APIs. To run Wayland clients on macOS you need a compatible compositor (e.g. the Owl compositor). Owl is an Objective-C/Cocoa Wayland compositor that lets you "run Wayland clients inside OS X's native Quartz graphics environment"[5]. To use it you must compile the Wayland libraries and an "epoll-shim" (on BSD/macOS you replace Linux epoll with kqueue) – the Owl GitHub org provides these macOS ports of libwayland, etc.[6]. Once built, Owl.app can display Wayland apps on macOS.
+macOS does not natively support Linux's DRM or DMA-BUF APIs. To run Wayland clients on macOS you need a compatible compositor (e.g. the Owl compositor). Owl is an Objective-C/Cocoa Wayland compositor that lets you "run Wayland clients inside OS X's native Quartz graphics environment"[5]. To use it you must compile the Wayland libraries and an "epoll-shim" (on BSD/macOS you replace Linux epoll with kqueue) - the Owl GitHub org provides these macOS ports of libwayland, etc.[6]. Once built, Owl.app can display Wayland apps on macOS.
 
 However, without Linux GPU APIs, the GPU path in Waypipe effectively falls back. In fact on similar systems (e.g. SailfishOS), packages disable Waypipe's DMA-BUF and VAAPI video support due to missing `libgbm`/`libvaapi`[7]. On macOS you likewise lack libgbm and the standard hw video path. One strategy is to use a Vulkan-on-Metal driver (such as LunarG's KosmicKrisp) on Apple Silicon[8]. KosmicKrisp provides Vulkan 1.3 on macOS/Metal, so the Waypipe Vulkan code can run (copying and encoding buffers via GPU). This allows the Rust code to process buffers much like on Linux (the DMABUF data itself is still copied into a Vulkan image on the Mac side). In effect, you can use "GPU acceleration" via Vulkan on Metal[8], even though there's no true DMA-FD sharing. If Vulkan isn't available, Waypipe-rs will use shared-memory copies (the `--no-gpu` path).
 
@@ -1863,7 +1863,7 @@ In summary, to use waypipe-rs from Linux onto macOS/iOS/Android, you need:
 - Vulkan (KosmicKrisp/MoltenVK) if you want GPU acceleration: this satisfies the Vulkan-based DMABUF/video code in waypipe[1][8]. Without it, use `--no-gpu`.
 - FFmpeg libraries (or OS video codecs) for the video feature. You can compile FFmpeg for each platform or embed a prebuilt kit. The Rust code will load `libavcodec` at runtime[4].
 - For macOS/iOS: expect that Waypipe's DMA-BUF and hardware video flags may default to off (as on Sailfish)[7], so you must handle buffers in software or via Vulkan.
-- For Android: treat it like a Linux desktop – install Vulkan (most devices have it) and FFmpeg via NDK. DMA-BUF behaves normally.
+- For Android: treat it like a Linux desktop - install Vulkan (most devices have it) and FFmpeg via NDK. DMA-BUF behaves normally.
 
 Rust's porting is straightforward as long as dependencies are met. The key is replacing Linux-specific bits (GBM, VAAPI) with equivalent paths on each OS. The cited examples show that Waypipe-rs's use of Vulkan/FFmpeg makes it fundamentally portable, relying on cross-platform GPU interfaces[1]. Just compile the C libraries and link against them. With those in place, Waypipe-rs can run Linux Wayland clients and display them on your macOS/iOS/Android compositor, even though the underlying buffer passing is different on each OS.
 

@@ -10,7 +10,7 @@ use super::types::{WindowId, PointerButton, PointerAxis, AxisSource, ButtonState
 /// Create a new WWNCore instance
 #[no_mangle]
 pub extern "C" fn WWNCoreNew() -> *mut WWNCore {
-    // Before in-process zsh dup2()s fds 0–2 onto the terminal PTY.
+    // Before in-process zsh dup2()s fds 0-2 onto the terminal PTY.
     crate::util::logging::init_preserved_stderr();
     // Must run before Smithay/xkbcommon init (compositor start). On iOS the
     // bundled share/X11/xkb tree is the only valid keymap root.
@@ -288,7 +288,7 @@ pub extern "C" fn WWNCoreEndInteractiveResize(
     }));
 }
 
-/// Host entered or left native fullscreen — sync xdg toplevel fullscreen state.
+/// Host entered or left native fullscreen. Sync xdg toplevel fullscreen state.
 #[no_mangle]
 pub extern "C" fn WWNCoreApplyHostWindowFullscreen(
     core: *mut WWNCore,
@@ -306,7 +306,7 @@ pub extern "C" fn WWNCoreApplyHostWindowFullscreen(
     }));
 }
 
-/// Host zoomed or unzoomed (macOS maximize) — sync xdg toplevel maximized state.
+/// Host zoomed or unzoomed (macOS maximize). Sync xdg toplevel maximized state.
 #[no_mangle]
 pub extern "C" fn WWNCoreApplyHostWindowMaximized(
     core: *mut WWNCore,
@@ -340,7 +340,7 @@ pub extern "C" fn WWNCoreRequestWindowClose(core: *mut WWNCore, window_id: u64) 
     }
 }
 
-/// Host dismissed a popup — send `xdg_popup.popup_done` to the client.
+/// Host dismissed a popup. Send `xdg_popup.popup_done` to the client.
 #[no_mangle]
 pub extern "C" fn WWNCoreNotifyPopupDismissed(core: *mut WWNCore, window_id: u64) -> bool {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -1500,7 +1500,7 @@ pub struct CRenderScene {
     pub nodes: *mut CRenderNode,
     pub count: usize,
     pub capacity: usize,
-    // Cursor state — populated when a Wayland client has set a cursor surface
+    // Cursor state. Populated when a Wayland client has set a cursor surface
     pub has_cursor: bool,
     pub cursor_x: f32,
     pub cursor_y: f32,
@@ -1609,7 +1609,7 @@ pub extern "C" fn WWNRenderSceneFree(scene: *mut CRenderScene) {
 // Screencopy API (zwlr_screencopy_manager_v1)
 // ----------------------------------------------------------------------------
 
-/// Screencopy request — platform writes ARGB8888 pixels to ptr, then calls WWNCoreScreencopyDone
+/// Screencopy request. Platform writes ARGB8888 pixels to ptr, then calls WWNCoreScreencopyDone
 #[repr(C)]
 pub struct CScreencopyRequest {
     pub capture_id: u64,
@@ -1783,7 +1783,7 @@ pub extern "C" fn WWNCoreImageCopyCaptureFailed(_core: *mut WWNCore, _capture_id
 // Gamma Control API (zwlr_gamma_control_manager_v1)
 // ----------------------------------------------------------------------------
 
-/// Gamma ramp apply — platform uses CGSetDisplayTransferByTable.
+/// Gamma ramp apply. Platform uses CGSetDisplayTransferByTable.
 /// Convert u16 (0-65535) to float (0-1) for CGGammaValue.
 #[repr(C)]
 pub struct CGammaApply {

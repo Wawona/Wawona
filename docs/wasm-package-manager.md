@@ -1,6 +1,6 @@
-# Wawona Runtime package manager — implementation plan
+# Wawona Runtime package manager. Implementation plan
 
-Status: **Phase 1 implemented in `wwn-wasm` (`crates/wpm`)** — local store +
+Status: **Phase 1 implemented in `wwn-wasm` (`crates/wpm`)**. Local store +
 CLI + Mode A registry client. Host `index.json` at `repo.wawona.io/wasm/v1`
 (packages list starts empty; publish demos next). Replaces retired `wwn-apt`.
 Related: [`wasm-wasi.md`](./wasm-wasi.md), [`vms-containers.md`](./vms-containers.md),
@@ -11,19 +11,19 @@ Related: [`wasm-wasi.md`](./wasm-wasi.md), [`vms-containers.md`](./vms-container
 
 | | Mode A (store / Play) | Mode B (jailbreak / SIP / root) |
 |---|---|---|
-| Wasm `wpm` + `/wasm/` | **Yes** — primary optional-software path | Yes (still works) |
+| Wasm `wpm` + `/wasm/` | **Yes**. Primary optional-software path | Yes (still works) |
 | Files.app `.wasm` | Yes | Yes |
-| Jailbreak APT / `.deb` | **Never** in app | Yes — Sileo + host tooling |
+| Jailbreak APT / `.deb` | **Never** in app | Yes. Sileo + host tooling |
 | Mode B IPA extras | N/A | JIT VMs/containers + unsandboxed shell (separate from Wasm) |
 
-Package manager design is part of the product-wide Mode A/B plan — see
+Package manager design is part of the product-wide Mode A/B plan. See
 [`mode-a-b.md`](./mode-a-b.md) § Package manager.
 
 ## Goal
 
 Give every Wawona target (App Store Apple mobile, Play Android, macOS, Linux) an
 **iSH-like package UX** for **WASI P1/P2 Wasm packages** that run inside the
-reviewed **Wawona Runtime** (`wwn-wasm`) — not ELF/Mach-O, not Linux containers,
+reviewed **Wawona Runtime** (`wwn-wasm`). Not ELF/Mach-O, not Linux containers,
 not jailbreak `.deb`.
 
 **Wasm is not platform-native.** That is the cost of this path: no true Mach-O
@@ -130,7 +130,7 @@ network = false
 
 ### Registry index (Phase 1 can be simple)
 
-`https://repo.wawona.io/wasm/v1/index.json` — package name → versions, digests,
+`https://repo.wawona.io/wasm/v1/index.json`. Package name → versions, digests,
 media types. Phase 2: full OCI Distribution API under
 `https://repo.wawona.io/wasm/v2/` so ORAS / `wwn-oci` clients work unchanged.
 
@@ -154,7 +154,7 @@ as `wayland-shm-demo` under `/wasm/examples/`.
             local package store (sandbox)
 ```
 
-### CLI (shell — iSH-like UX)
+### CLI (shell. ISH-like UX)
 
 In-process or force-loaded staticlib (Apple mobile: no `fork`/`exec` of a
 separate Mach-O installer binary beyond existing dispatch patterns).
@@ -170,7 +170,7 @@ wpm update / upgrade              # optional Phase 2
 ```
 
 Default registry: `https://repo.wawona.io/wasm/v1` (overridable in Settings /
-machine profile — **still Wasm-only URLs**; reject APT paths).
+machine profile. **still Wasm-only URLs**; reject APT paths).
 
 ### GUI
 
@@ -200,7 +200,7 @@ Android: app-private files dir + optional MediaStore/Documents for user drops.
 | macOS | Cranelift OK | Yes | same (+ optional extra registries) |
 | Linux | Yes | Yes | same |
 
-Jailbreak IPA / sideload builds **may** also enable Sileo for `/jailbreak/` —
+Jailbreak IPA / sideload builds **may** also enable Sileo for `/jailbreak/` -
 that code path must be **compile-time or capability-gated** and absent from
 store-shaped binaries (`PlatformCapabilities` + product flavors).
 
@@ -242,20 +242,20 @@ different stores, different Machines kinds.
 | Registry hosting + CI publish | **`repo.wawona.io`** (`/wasm/` + keep `/jailbreak/` APT) |
 | GUI Packages | `Wawona` |
 | Dispatch / shell PATH hooks | `wwn-zsh` / `wwn-toolchain` dispatch |
-| Docs (Mode A) | `Wawona/docs`, `wawona.io` — no jailbreak in store copy |
+| Docs (Mode A) | `Wawona/docs`, `wawona.io`. No jailbreak in store copy |
 | Jailbreak `.deb` packaging | `repo.wawona.io` docs (existing packaging.md) |
 
 DAG: package client stays L3′ → `wwn-toolchain` only; no weston/iland flake edge.
 
 ## Phased delivery
 
-### Phase 0 — Foundations (done / in progress)
+### Phase 0. Foundations (done / in progress)
 
 - Runtime linked; Files drop + `wasm ./file.wasm`.
 - `wwn-apt` removed.
 - Docs distinguish Runtime vs containers vs VMs.
 
-### Phase 1 — Local package store + sideload register — **done in wwn-wasm**
+### Phase 1. Local package store + sideload register. **done in wwn-wasm**
 
 - `wpm install ./foo.wasm` / `wpm list` / `wpm remove` / `wpm path` / `wpm show`
 - `installed.json` + blob store under `$WAWONA_WASM_STORE` or
@@ -263,32 +263,32 @@ DAG: package client stays L3′ → `wwn-toolchain` only; no weston/iland flake 
 - `wasm <package>` resolves installed names via Runtime
 - C ABI `wpm_main` + dispatch/`help` wiring (toolchain + `-u,_wpm_main`)
 
-### Phase 2 — Official registry on `repo.wawona.io/wasm` — **client done; catalog TBD**
+### Phase 2. Official registry on `repo.wawona.io/wasm`. **client done; catalog TBD**
 
 - Client: `wpm search` / `wpm install <name>` → `https://repo.wawona.io/wasm/v1`
 - Firewall refuses `/jailbreak/`, `.deb`, APT paths
 - Host: empty `index.json` scaffold; publish `wayland-shm-demo` next
 
-### Phase 3 — GUI + Android parity
+### Phase 3. GUI + Android parity
 
 - Packages UI on Apple + Android.
 - Same registry; Play compliance notes.
 - Per-machine vs global install policy (default: global Runtime store).
 
-### Phase 4 — OCI Distribution + signatures
+### Phase 4. OCI Distribution + signatures
 
 - ORAS / OCI artifact media types.
 - Optional cosign / minisign.
 - Share CAS helpers with `wwn-oci` (pull only; no container run).
 
-### Phase 5 — Richer ecosystem
+### Phase 5. Richer ecosystem
 
 - WIT worlds for Wayland GUI apps beyond shm demo.
 - Capability prompts in UI when a package requests network/Wayland.
 - Third-party Wasm registries (user-added; still Wasm-only URL allowlist).
 - watchOS Runtime if size gate lifts.
 
-### Parallel track — Jailbreak channel (unchanged intent)
+### Parallel track. Jailbreak channel (unchanged intent)
 
 - Keep Procursus/Sileo flat APT under `/jailbreak/` (or existing APT root).
 - Continue packaging Desktop / LockScreen / Wawona Swinging Bridge Mode B as **`.deb`**.
@@ -306,7 +306,7 @@ DAG: package client stays L3′ → `wwn-toolchain` only; no weston/iland flake 
 ## Success criteria
 
 1. App Store / Play build can `wpm install wayland-shm-demo` from
-   `repo.wawona.io/wasm` and show the rectangle client — **no** jailbreak strings
+   `repo.wawona.io/wasm` and show the rectangle client. **no** jailbreak strings
    in binary or UI.
 2. Files.app drop still works without the registry.
 3. Jailbroken device can still add Sileo source for `.deb` tweaks on the same
@@ -314,7 +314,7 @@ DAG: package client stays L3′ → `wwn-toolchain` only; no weston/iland flake 
 4. Android Play build uses the same `/wasm/` client path.
 5. `container pull` / Machines containers remain a separate product surface.
 
-## Open decisions (resolve in Phase 1–2)
+## Open decisions (resolve in Phase 1-2)
 
 1. CLI name: `wpm` vs `wawona pkg` vs `wasm-pkg`.
 2. Single default registry vs allowlist of extra Wasm registries in Settings.

@@ -795,8 +795,8 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 // Graphics Driver Selection
 //
 // ICD tiering (p9): KosmicKrisp is a native-Metal Vulkan driver that only
-// exists for Apple Silicon on macOS 26+ (Tahoe). Everywhere else — Intel Macs,
-// older macOS — MoltenVK is the only viable ICD. Pick KosmicKrisp as the
+// exists for Apple Silicon on macOS 26+ (Tahoe). Everywhere else. Intel Macs,
+// older macOS. MoltenVK is the only viable ICD. Pick KosmicKrisp as the
 // default when the hardware supports it so users get the faster path, and fall
 // back to MoltenVK otherwise. An explicit user choice always wins.
 + (NSString *)defaultVulkanDriverForHardware {
@@ -859,7 +859,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 
 - (NSString *)compositorBackend {
 #if TARGET_OS_TV || TARGET_OS_WATCH
-  // No iland GL stack on these targets (tvOS planned, watchOS blocked — see
+  // No iland GL stack on these targets (tvOS planned, watchOS blocked. See
   // wawona-platform-targets), so the DRM backend has nothing to present on.
   return @"wayland";
 #else

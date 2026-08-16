@@ -21,7 +21,7 @@ typedef struct WWNMiniWaylandServer WWNMiniWaylandServer;
 /// Frame-ready callback.  Invoked from the compositor dispatch thread each time
 /// a client commits a new SHM buffer.
 /// @param pixels   Pointer to the raw pixel data (ARGB8888).
-///                 Only valid for the duration of the callback — copy if needed.
+///                 Only valid for the duration of the callback. Copy if needed.
 /// @param width    Buffer width in pixels.
 /// @param height   Buffer height in pixels.
 /// @param stride   Row stride in bytes.

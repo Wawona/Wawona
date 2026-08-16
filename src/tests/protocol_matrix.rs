@@ -1,7 +1,7 @@
 //! Protocol-matrix integration test: binds a real client to the compositor
 //! and asserts the advertised registry globals match the active
 //! [`ProtocolProfile`] policy. This is the machine-verifier for advertisement
-//! honesty — a protocol must never be advertised unless the compositor can
+//! honesty. A protocol must never be advertised unless the compositor can
 //! actually service it for that profile.
 
 #![cfg(test)]
@@ -286,7 +286,7 @@ fn test_protocol_matrix_dmabuf_feedback_resolves() {
     struct FeedbackProbe {
         dmabuf: Option<(u32, u32)>, // (name, version)
         feedback_done: bool,
-        /// Bare `format` or non-IOSurface `modifier` (e.g. LINEAR) — unrenderable.
+        /// Bare `format` or non-IOSurface `modifier` (e.g. LINEAR). Unrenderable.
         unrenderable_formats_advertised: bool,
     }
 

@@ -48,7 +48,7 @@ impl Seat {
         let mut caps = Capability::empty();
         caps |= Capability::Pointer;
         caps |= Capability::Keyboard;
-        // Touch is always advertised — the platform injects touch events when supported
+        // Touch is always advertised. The platform injects touch events when supported
         caps |= Capability::Touch;
         caps.bits()
     }

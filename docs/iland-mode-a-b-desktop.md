@@ -4,8 +4,8 @@
 > (planned), plus **iOS / iPadOS jailbreak tweaks** documented only on the website /
 > `repo.wawona.io`. **Not** Linux. **Not** App Store Apple-mobile builds.
 >
-> **Wawona Swinging Bridge is separate** — see [`swinging-bridge.md`](swinging-bridge.md). Do not document
-> Swinging Bridge as Desktop or LockScreen. **VMs/containers** are separate — see
+> **Wawona Swinging Bridge is separate**. See [`swinging-bridge.md`](swinging-bridge.md). Do not document
+> Swinging Bridge as Desktop or LockScreen. **VMs/containers** are separate. See
 > [`vms-containers.md`](vms-containers.md).
 
 Live grades: [`iland-graphics-progress.md`](iland-graphics-progress.md).
@@ -40,11 +40,11 @@ ports only**.
 | **macOS** | Partial SIP (system debugging / Debugging Restrictions disabled) + `.dylib` tweak in `wawona-macos-desktop-host` | Required for Mode B |
 | **Android** | Default Home App + LockScreen APIs | **No root**; **no fallback tier** |
 | **iOS / iPadOS** | Jailbreak tweak from **`repo.wawona.io`** (Sileo source) | Outside App Store only; website docs only |
-| Linux / App Store Apple-mobile / tvOS / watchOS / visionOS | — | **Forbidden** in store binaries (never mention jailbreak there) |
+| Linux / App Store Apple-mobile / tvOS / watchOS / visionOS | - | **Forbidden** in store binaries (never mention jailbreak there) |
 
 ## Summary (iland present modes)
 
-- **Mode A** is the default, App Store–safe path: static `libiland_userland.a`,
+- **Mode A** is the default, App Store-safe path: static `libiland_userland.a`,
   in-window DRM/KMS/EGL/GBM over IOSurface + ANGLE, present via
   `iland_drm_set_present_callback` into Wawona’s Metal layer.
 - **Mode B** is optional, **macOS-only** for **Desktop/LockScreen host
@@ -52,9 +52,9 @@ ports only**.
   `DYLD_INSERT_LIBRARIES` + Dobby (same model as CoreBedtime), replace
   SkyLight/WindowServer / lock path via `framebufferd`. Requires SIP debugging
   restrictions off (or SIP fully disabled) and root.
-- **Android Desktop/LockScreen** uses platform Home + LockScreen APIs — not the
+- **Android Desktop/LockScreen** uses platform Home + LockScreen APIs. Not the
   macOS dylib, and not Wawona Swinging Bridge.
-- **Wawona Swinging Bridge** (app bridge) has its own Mode A/B — see [`swinging-bridge.md`](swinging-bridge.md).
+- **Wawona Swinging Bridge** (app bridge) has its own Mode A/B. See [`swinging-bridge.md`](swinging-bridge.md).
 
 ## Decision tree
 
@@ -109,7 +109,7 @@ Prefs (macOS `NSUserDefaults`):
 - `DesktopReplacementEnabled`
 - `DesktopReplacementMachineId`
 - `LockscreenReplacementEnabled` / `LockscreenReplacementMachineId`
-- `SwingingBridgeEnabled` (Wawona Swinging Bridge — separate feature; see [`swinging-bridge.md`](swinging-bridge.md))
+- `SwingingBridgeEnabled` (Wawona Swinging Bridge. Separate feature; see [`swinging-bridge.md`](swinging-bridge.md))
 
 ## Android Desktop / LockScreen (no SIP, no root)
 
@@ -125,9 +125,9 @@ Wawona Swinging Bridge settings (`wawona.swingingBridge.*`) are **not** Desktop/
 ## Store / distribution compliance (per target)
 
 macOS is **third-party distribution** (Developer ID / notarized), **not** Mac
-App Store — never gated on Mac App Store review rules (see
+App Store. Never gated on Mac App Store review rules (see
 `wawona-macos-no-appstore.mdc`). Everything that ships to a store must be
-**Mode A–shaped end-to-end** for graphics, and must not ship Desktop Mode B or
+**Mode A-shaped end-to-end** for graphics, and must not ship Desktop Mode B or
 Wawona Swinging Bridge Mode B.
 
 | Target | Distribution | Compliance bar for graphics / Desktop |
@@ -135,7 +135,7 @@ Wawona Swinging Bridge Mode B.
 | **iOS** | App Store | Mode A only; no Desktop/LockScreen UI; **no jailbreak mentions**; no Mode B dylib; SSH = libssh2 only |
 | **iPadOS** | App Store | Same as iOS for Desktop/Wawona Swinging Bridge store policy + multi-window required |
 | **visionOS** | App Store | Same Mode A / macOS-product GLES+Vulkan parity; no Mode B; multi-window required |
-| **tvOS** | App Store | Mode A **software only** — no ANGLE/MVK/KK/Vulkan ICD, no IOKit, no GPU DRM clients |
+| **tvOS** | App Store | Mode A **software only**. No ANGLE/MVK/KK/Vulkan ICD, no IOKit, no GPU DRM clients |
 | **watchOS** | App Store | Same software policy as tvOS |
 | **Android** | Google Play | Mode A graphics; Home Desktop **without root** when it ships; Wawona Swinging Bridge Mode B never Play-required |
 | **macOS** | **3rd-party** (not MAS) | Mode A default (SIP OK). Mode B desktop-host OK under SIP partial\|off; never contaminate iOS/Android store artifacts |
@@ -148,7 +148,7 @@ Wawona Swinging Bridge Mode B.
    (including kmscube, waypipe, Android Home Desktop when shipped).
 3. **Private API / entitlement firewall:** Mode A present = public
    Metal/UIKit/AppKit/Surface + userland DRM shims only.
-4. **tvOS/watchOS:** software Mode A only — never "fix" compliance by shipping
+4. **tvOS/watchOS:** software Mode A only. Never "fix" compliance by shipping
    GPU stacks.
 5. **visionOS/iPadOS:** store Mode A meets multi-window + product GLES/Vulkan
    expectations without Mode B.

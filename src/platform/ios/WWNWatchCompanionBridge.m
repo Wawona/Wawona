@@ -49,9 +49,9 @@ static NSString *const kWWNWatchLastTransferAtKey =
     return @"Wawona is not installed on the paired Watch.";
   }
   if (session.isReachable) {
-    return @"Watch reachable — transfers deliver immediately when possible.";
+    return @"Watch reachable. Transfers deliver immediately when possible.";
   }
-  return @"Watch paired; not reachable — transfers queue until the Watch wakes.";
+  return @"Watch paired; not reachable. Transfers queue until the Watch wakes.";
 }
 
 - (NSString *)lastTransferSummary {
@@ -68,10 +68,10 @@ static NSString *const kWWNWatchLastTransferAtKey =
     NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
     fmt.dateStyle = NSDateFormatterShortStyle;
     fmt.timeStyle = NSDateFormatterShortStyle;
-    return [NSString stringWithFormat:@"%@ — %@ (%@)", name, status,
+    return [NSString stringWithFormat:@"%@. %@ (%@)", name, status,
                                       [fmt stringFromDate:date]];
   }
-  return [NSString stringWithFormat:@"%@ — %@", name, status];
+  return [NSString stringWithFormat:@"%@. %@", name, status];
 }
 
 - (nullable NSString *)sendDocumentAtURL:(NSURL *)fileURL {

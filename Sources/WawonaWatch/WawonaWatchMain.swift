@@ -11,7 +11,7 @@ struct WawonaWatch: App {
         WindowGroup {
             WawonaWatchRootView()
                 .onAppear {
-                    // Defer past first frame — never block SwiftUI init / dyld settle.
+                    // Defer past first frame. Never block SwiftUI init / dyld settle.
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                         maybeAutoConnectNestedClient()
                     }

@@ -2,7 +2,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-/// User preference key — also used by settings UI (`WSettingSwitch`).
+/// User preference key. Also used by settings UI (`WSettingSwitch`).
 FOUNDATION_EXPORT NSString *const WWNRootfsICloudSyncPreferenceKey;
 
 /// Optional iCloud Drive sync for shell HOME (Apple platforms, user opt-in).

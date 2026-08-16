@@ -182,7 +182,7 @@ pub fn show_settings(
     );
     stack.add_named(&env_page, Some("Env Vars"));
 
-    // Local Shell (host environment — mirrors WWNRootfsProvider host snapshot)
+    // Local Shell (host environment. Mirrors WWNRootfsProvider host snapshot)
     let shell_page = adw::PreferencesPage::new();
     let shell_group = adw::PreferencesGroup::new();
     shell_group.set_title("Local Shell");
@@ -202,7 +202,7 @@ pub fn show_settings(
         ("XDG_CONFIG_HOME", xdg_config.as_str()),
         (
             "Browse Hint",
-            "Use your file manager or terminal — Wawona does not sandbox HOME on Linux.",
+            "Use your file manager or terminal. Wawona does not sandbox HOME on Linux.",
         ),
     ] {
         let row = adw::ActionRow::new();

@@ -2,7 +2,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-/// ObjC bridge to `wawona.pref.*` UserDefaults — same keys as Swift `WawonaPreferences`.
+/// ObjC bridge to `wawona.pref.*` UserDefaults. Same keys as Swift `WawonaPreferences`.
 /// Used by WatchKit settings interface controllers (not SwiftUI).
 /// Field set must match `GlobalSettingsCatalog` for watchOS.
 @interface WWNWatchSettingsBridge : NSObject

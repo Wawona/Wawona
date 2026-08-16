@@ -875,7 +875,7 @@ pub struct BufferRenderInfo {
     pub height: u32,
 }
 
-/// Cursor rendering info for the C API — position, hotspot, and buffer metadata.
+/// Cursor rendering info for the C API. Position, hotspot, and buffer metadata.
 #[derive(Debug, Clone, Default)]
 pub struct CursorRenderInfo {
     pub has_cursor: bool,
@@ -892,7 +892,7 @@ pub struct CursorRenderInfo {
     pub iosurface_id: u32,
 }
 
-/// Pending screencopy — platform writes ARGB8888 pixels to ptr, then calls screencopy_done
+/// Pending screencopy. Platform writes ARGB8888 pixels to ptr, then calls screencopy_done
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct ScreencopyRequest {
     pub capture_id: u64,

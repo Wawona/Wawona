@@ -68,7 +68,7 @@ extern NSString *const kWWNPrefsWaypipeVsock;
 extern NSString *const kWWNPrefsWaypipeXwls;
 extern NSString *const kWWNPrefsWaypipeTitlePrefix;
 extern NSString *const kWWNPrefsWaypipeSecCtx;
-// Machine settings — backed by the wwn-vms (VM engine) + wwn-containers (OCI)
+// Machine settings. Backed by the wwn-vms (VM engine) + wwn-containers (OCI)
 // dependencies. Capability-driven per target (see each dep's COMPLIANCE.md).
 extern NSString *const kWWNPrefsMachineVMProvider;
 extern NSString *const kWWNPrefsMachineVMVsockPort;
@@ -203,7 +203,7 @@ extern NSString *const kWWNPrefsAnowaWEnabled;
 // Display backend for bundled clients / nested compositors.
 // Stored as `auto` | `wayland` | `drm`; `auto` resolves per client (see
 // WWNResolveCompositorBackend in WWNWaypipeRunner.m). A client that supports
-// both must never hardcode one — niri and weston each have a real DRM backend,
+// both must never hardcode one. Niri and weston each have a real DRM backend,
 // which is the whole reason wwn-iland's userspace KMS exists.
 - (NSString *)compositorBackend;
 - (void)setCompositorBackend:(NSString *)backend;

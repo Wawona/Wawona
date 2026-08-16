@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# niri nested smoke (macOS) — Phase 29 capability assertion for wwn-niri.
+# niri nested smoke (macOS). Phase 29 capability assertion for wwn-niri.
 #
 # Boots the Wawona macOS compositor app, launches the bundled niri against it
 # (NIRI_BACKEND=nested → niri is a Wayland client of Wawona), and asserts:
@@ -81,7 +81,7 @@ APP_PID=$!
 # from its log rather than assuming our exported runtime dir was honored.
 DISPLAY_SOCK=""
 for _ in $(seq 1 "$WAIT_SECS"); do
-  DISPLAY_SOCK="$(sed -n 's/.*Compositor started — socket: //p' /tmp/wawona-niri-smoke-app.log | head -n1)"
+  DISPLAY_SOCK="$(sed -n 's/.*Compositor started. Socket: //p' /tmp/wawona-niri-smoke-app.log | head -n1)"
   [[ -n "$DISPLAY_SOCK" && -S "$DISPLAY_SOCK" ]] && break
   DISPLAY_SOCK=""
   kill -0 "$APP_PID" 2>/dev/null || { log "FAIL: Wawona app exited before socket"; tail -40 /tmp/wawona-niri-smoke-app.log; exit 1; }
@@ -185,7 +185,7 @@ print(f"[niri-smoke-macos] lit-pixel fraction: {frac:.3f}")
 sys.exit(0 if frac > 0.02 else 1)
 PY
 then
-  log "FAIL: captured frame is (near-)black — niri produced no visible output"
+  log "FAIL: captured frame is (near-)black. Niri produced no visible output"
   exit 1
 fi
 log "PASS: non-black frame captured ($SHOT_PNG)"

@@ -2,17 +2,17 @@
 
 ## Status
 
-- Open — tracking issue [#113](https://github.com/Wawona/Wawona/issues/113)
+- Open. Tracking issue [#113](https://github.com/Wawona/Wawona/issues/113)
 - `vkcube`: **done on Apple.** Full platform recipe set, `_vkcube_main` linked,
   runs on macOS against both ICDs under selection (`libMoltenVK.dylib` /
   `libvulkan_kosmickrisp.dylib`, each logged `(selected)`) and on the iOS
-  simulator. Android `swiftshader` selection is a known FUCKUP — see
+  simulator. Android `swiftshader` selection is a known FUCKUP. See
   `docs/iland-graphics-progress.md`.
 - `opengl-cube`: **was a duplicate of `kmscube`; now its own upstream.** Apple
   recipes existed only for Android before 2026-07-25, so Start on macOS failed
   with `Could not find executable opengl-cube in app bundle`. Recipes added,
   archive linked (`_opengl_cube_main`), and it rendered 300+ presents through
-  ANGLE — but as the *same* program as kmscube. Re-pointed at
+  ANGLE. But as the *same* program as kmscube. Re-pointed at
   c2d7fa/opengl-cube and rebuilt; **runtime proof of the ported renderer is
   still pending** (host build succeeded, render not yet observed).
 - Sources of truth for platform status stay `docs/iland-graphics-progress.md`
@@ -27,8 +27,8 @@ delivery decisions change. Cursor plan: `port_gl_vk_cubes_f44b72b6`.
 
 | Issue | Why it matters |
 |-------|----------------|
-| [#58](https://github.com/Wawona/Wawona/issues/58) | KMS Cube DRM/`/dev/dri/card0` — same virtual-DRM present path |
-| [#110](https://github.com/Wawona/Wawona/issues/110) | Nested launch umbrella; item 4 routes `kmscube` → iland Metal — **generalize for the two new ids** |
+| [#58](https://github.com/Wawona/Wawona/issues/58) | KMS Cube DRM/`/dev/dri/card0`. Same virtual-DRM present path |
+| [#110](https://github.com/Wawona/Wawona/issues/110) | Nested launch umbrella; item 4 routes `kmscube` → iland Metal. **generalize for the two new ids** |
 | [#112](https://github.com/Wawona/Wawona/issues/112) | Non-Weston Starts must log as `KMSCUBE` / `VKCUBE`, never `[WESTON]` |
 | [#107](https://github.com/Wawona/Wawona/issues/107) | Sibling demo-port pattern (software SHM complement; do not conflate) |
 | [#77](https://github.com/Wawona/Wawona/issues/77) | ROADMAP sequencing |
@@ -49,7 +49,7 @@ instance-create smoke stub.
 
 | Catalog id | Do not use | Use |
 |------------|------------|-----|
-| `kmscube` | — | **[embtom/kmscube](https://github.com/embtom/kmscube)**, vendored at `wwn-kmscube/upstream/` (`kmscube.c`, `esUtil.c`, `kmscube_compat.h`) |
+| `kmscube` | - | **[embtom/kmscube](https://github.com/embtom/kmscube)**, vendored at `wwn-kmscube/upstream/` (`kmscube.c`, `esUtil.c`, `kmscube_compat.h`) |
 | `opengl-cube` | `kmscube.c` under `-Dmain=opengl_cube_main` | **[c2d7fa/opengl-cube](https://github.com/c2d7fa/opengl-cube)** @ `daba3b8` (CC0), vendored under `wwn-kmscube/upstream/opengl-cube/` and ported off GLFW/GLEW onto iland KMS |
 | `vkcube` | LunarG Vulkan-Tools cube (not preferred here); current `upstream/vkcube.c` stub | **[krh/vkcube](https://github.com/krh/vkcube)** vendored under `wwn-kmscube/upstream/vkcube/` |
 
@@ -60,21 +60,21 @@ program. Two catalog entries for one demo is a product bug, so `opengl-cube` is
 now its own upstream. The three cubes are distinct **software**, not three
 labels on one renderer.
 
-**Present path — corrected 2026-07-25 (second correction).** The three cubes must
+**Present path. Corrected 2026-07-25 (second correction).** The three cubes must
 differ by **graphics path**, not only by renderer. Getting this wrong is what
 produced a duplicate client in the first place:
 
 | Client | Path | What it proves |
 |---|---|---|
-| KMS Cube | iland's **userspace KMS/DRM** — opens the virtual card, GBM buffers, `drmModePageFlip` | that DRM/KMS client semantics work with **no kernel and no Linux**; that is the entire point of wwn-iland |
-| OpenGL Cube | **Wawona's Wayland compositor + our EGL/OpenGL** — `wl_surface` + `wl_egl_window` + `eglSwapBuffers` | that a stock Wayland GL client works on our compositor |
+| KMS Cube | iland's **userspace KMS/DRM**. Opens the virtual card, GBM buffers, `drmModePageFlip` | that DRM/KMS client semantics work with **no kernel and no Linux**; that is the entire point of wwn-iland |
+| OpenGL Cube | **Wawona's Wayland compositor + our EGL/OpenGL**. `wl_surface` + `wl_egl_window` + `eglSwapBuffers` | that a stock Wayland GL client works on our compositor |
 | Vulkan Cube | Vulkan (KMS today, via the ICD under selection) | that Vulkan reaches the host GPU |
 
 So OpenGL Cube must **not** open `/dev/dri/card0`. It is an ordinary Wayland
 client. It still needs an **ES3** context with a **depth buffer** (upstream
 depth-tests), where kmscube needs neither.
 
-**Status of this correction — done.** The c2d7fa vendoring is correct and stays,
+**Status of this correction. Done.** The c2d7fa vendoring is correct and stays,
 and `upstream/opengl-cube/opengl_cube.c` is now a real Wayland client
 (`wl_display` / xdg-shell / `wl_egl_window`), no longer the iland KMS host copied
 from kmscube. Launch wiring followed: `opengl-cube` was removed from
@@ -83,7 +83,7 @@ launches it out-of-process as an ordinary bundled Wayland client and iOS launche
 it in-process through `WWNClientMainForId` like `weston-simple-shm`. The
 "duplicated DRM scaffolding" note in Phase 1a is moot: a Wayland client has none.
 
-**Resolved — Apple mobile can use Wayland-EGL.** The older claim that the iOS
+**Resolved. Apple mobile can use Wayland-EGL.** The older claim that the iOS
 family cannot use `wl_egl_window` / `EGL_PLATFORM_WAYLAND_KHR` was an artifact of
 iland having no Wayland winsys, not a platform limit: nothing in the path needs
 anything unavailable on iOS. iland now carries the winsys on
@@ -126,7 +126,7 @@ Never force-push `master`/`development`. Do not commit unless the human asks.
 ### Hard don'ts
 
 - Do **not** ship GLFW or GLEW. c2d7fa/opengl-cube *is* vendored, but ported off
-  them onto Wayland + `wl_egl_window` — neither library reaches a target.
+  them onto Wayland + `wl_egl_window`. Neither library reaches a target.
 - Do **not** give two catalog ids the same renderer under different entry-point
   names. If two clients look the same at runtime, one of them is wrong.
 - Do **not** route `opengl-cube` through the iland KMS presenter. That is what
@@ -137,7 +137,7 @@ Never force-push `master`/`development`. Do not commit unless the human asks.
 - Do **not** ship Mode B `libwayland-mac.dylib` for these clients.
 - Do **not** leave Android calling `opengl_cube_main` / `vkcube_main` without
   the same iland presenter setup kmscube uses.
-- Do **not** log Starts under `[WESTON]` (#112) — use `KMSCUBE` / `VKCUBE`.
+- Do **not** log Starts under `[WESTON]` (#112). Use `KMSCUBE` / `VKCUBE`.
 
 ### Mental model (copy this)
 
@@ -159,7 +159,7 @@ iland virtual DRM + present (Metal / Android overlay)
 
 ---
 
-## Phase 0 — Branch + inventory (read-only)
+## Phase 0. Branch + inventory (read-only)
 
 1. Confirm branches:
    ```bash
@@ -184,9 +184,9 @@ iland virtual DRM + present (Metal / Android overlay)
 
 ---
 
-## Phase 1 — Vendor vkcube + OpenGL Cube sources (`wwn-kmscube`)
+## Phase 1. Vendor vkcube + OpenGL Cube sources (`wwn-kmscube`)
 
-### 1a. OpenGL Cube sources — DONE (2026-07-25)
+### 1a. OpenGL Cube sources. DONE (2026-07-25)
 
 Vendored under `upstream/opengl-cube/`: `opengl_cube.c` (the port), `matrix.h`
 and `LICENSE` verbatim from upstream, `upstream-readme.md` for provenance.
@@ -249,7 +249,7 @@ OpenGL still uses shared `kmscube.c`.
 
 ---
 
-## Phase 2 — Nix recipes + registry (`wwn-kmscube`)
+## Phase 2. Nix recipes + registry (`wwn-kmscube`)
 
 ### 2a. OpenGL Cube recipes
 
@@ -261,11 +261,11 @@ Done 2026-07-25. All compile `opengl-cube/opengl_cube.c` (not `kmscube.c`), with
 | File | State |
 |------|-------|
 | `apple-mobile.nix` | present; `-Dmain=opengl_cube_main` → `libopengl_cube.a` + `opengl_cube.h` |
-| `macos.nix` | present; also `bin/opengl-cube`. Note the binary is linked as `opengl_cube_bin` and renamed on install — `-o opengl-cube` would collide with the `opengl-cube/` source dir |
+| `macos.nix` | present; also `bin/opengl-cube`. Note the binary is linked as `opengl_cube_bin` and renamed on install. `-o opengl-cube` would collide with the `opengl-cube/` source dir |
 | `android.nix` | rewritten off `kmscube.c`; force-includes `iland_drm_open_compat.h` directly (it no longer borrows kmscube's build) |
 | `ios.nix` `ipados.nix` `visionos.nix` | `args: import ./apple-mobile.nix args` |
 | `wearos.nix` | `args: import ./android.nix args` |
-| `tvos.nix` `watchos.nix` | **absent by design** — registry maps them to `null` rather than re-exporting `ios.nix` (as kmscube does), so a deps mistake cannot link ANGLE into a target that forbids it |
+| `tvos.nix` `watchos.nix` | **absent by design**. Registry maps them to `null` rather than re-exporting `ios.nix` (as kmscube does), so a deps mistake cannot link ANGLE into a target that forbids it |
 
 ### 2b. Vulkan Cube recipes
 
@@ -318,7 +318,7 @@ nm -gU result/lib/libvkcube.a | grep vkcube_main
 
 ---
 
-## Phase 3 — Link into the app (`wwn-iland` + `Wawona`)
+## Phase 3. Link into the app (`wwn-iland` + `Wawona`)
 
 ### 3a. Apple ldflags (`wwn-iland`)
 
@@ -329,7 +329,7 @@ Edit `dependencies/generators/iland-gl-ldflags.nix`:
   `-Wl,-u,_vkcube_main -lvkcube` (same **non**-`-force_load` pattern as
   kmscube beside static ANGLE).
 
-Android helper already has optional hooks — keep them; ensure symbols match
+Android helper already has optional hooks. Keep them; ensure symbols match
 (`opengl_cube_main`, `vkcube_main`).
 
 ### 3b. Apple deps (`Wawona`)
@@ -377,7 +377,7 @@ tv/watch still omit them.
 
 ---
 
-## Phase 4 — Launch path (Machines → presenter)
+## Phase 4. Launch path (Machines → presenter)
 
 ### 4a. Generalize Apple presenter
 
@@ -433,9 +433,9 @@ Change `opengl_cube_stub_main` / `vkcube_stub_main` to mirror
 
 Update descriptions so the three cubes are distinct:
 
-- KMS Cube — DRM/KMS smoke via iland + ANGLE
-- OpenGL Cube — GLES spinning cube (mesa kmscube) / distinct Machines id
-- Vulkan Cube — krh/vkcube KMS spinning cube via iland + Vulkan ICD
+- KMS Cube. DRM/KMS smoke via iland + ANGLE
+- OpenGL Cube. GLES spinning cube (mesa kmscube) / distinct Machines id
+- Vulkan Cube. Krh/vkcube KMS spinning cube via iland + Vulkan ICD
 
 Files: `WWNMachinesViewModel.swift`, `BundledClients.kt`, `bundled_clients.rs`.
 
@@ -445,7 +445,7 @@ product path).
 
 ---
 
-## Phase 5 — Verify on device
+## Phase 5. Verify on device
 
 ### 5a. Link proofs
 
@@ -496,7 +496,7 @@ lists `kmscube|opengl-cube|vkcube|weston-simple-egl` for tvOS/watchOS.
 - [ ] Android Start parity for the two new ids (`opengl_cube_stub_main` still
       bypasses the presenter helpers that `kmscube_stub_main` uses)
 - [ ] Machines Start shows **three visibly different** cubes on macOS + iOS + Android
-      — vkcube and the old duplicate opengl-cube confirmed on macOS; the ported
+. Vkcube and the old duplicate opengl-cube confirmed on macOS; the ported
       opengl-cube renderer is not yet observed
 - [x] Log modules distinct (#112): `KMSCUBE` / `OPENGL_CUBE` / `VKCUBE`, never `WESTON`
 - [ ] tvOS/watchOS gating re-proven after the deps change (those targets last

@@ -96,7 +96,7 @@ pub fn machine_configuration_summary(profile: &MachineProfile) -> String {
     match profile.machine_type {
         MachineType::Native => match native_client_label(profile) {
             Some(label) => format!("Runs: {}", label),
-            None => "No client configured — edit to select one".to_string(),
+            None => "No client configured. Edit to select one".to_string(),
         },
         MachineType::SshWaypipe => {
             let command = if profile.remote_command.is_empty() {

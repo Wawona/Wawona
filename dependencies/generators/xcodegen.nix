@@ -130,7 +130,7 @@ let
     "-Wl,-u,_wawona_dispatch_spawn_async"
   ];
   # Pin matches weston-compositor-apple-mobile (13.0.0). Do not use pkgs.weston on
-  # Darwin — it pulls pipewire and fails eval (valgrind marked broken in nixpkgs).
+  # Darwin. It pulls pipewire and fails eval (valgrind marked broken in nixpkgs).
   westonTerminalPng = pkgs.fetchurl {
     url = "https://gitlab.freedesktop.org/wayland/weston/-/raw/13.0.0/data/terminal.png";
     sha256 = "sha256-ZxUcCQYM4kTNof+V5q2VAgKkR51S+YFiAOjrzUGqU7o=";
@@ -229,7 +229,7 @@ let
   ++ lib.optional (deps.vkcube or null != null) "${strip deps.vkcube}/include"
   ++ lib.optional (deps."opengl-cube" or null != null) "${strip deps."opengl-cube"}/include";
   # foot: force-load the privatized $(DERIVED_FILE_DIR) copy (see xcode-prebuild.sh),
-  # not the raw store archive — its embedded protocol symbols must be localised so
+  # not the raw store archive. Its embedded protocol symbols must be localised so
   # they do not collide with weston / fuzzel at final link.
   footLdflags = deps:
     let
@@ -260,11 +260,11 @@ let
   # wwn-phoon-rs: pure-Rust static lib + phoon_main C ABI (in-process shell
   # tool), bundled on EVERY Apple target (whole family, incl. tvOS/watchOS).
   #
-  # LAZY archive link, NOT -force_load — exactly the waypipe treatment: niri is
+  # LAZY archive link, NOT -force_load. Exactly the waypipe treatment: niri is
   # -force_load'd on every target and libphoon_rs.a (like libniri.a) statically
   # embeds a full copy of Rust std/core/gimli. Force-loading BOTH pulls two std
   # copies and yields thousands of duplicate symbols (ld: 2134 duplicate symbols
-  # on watchOS — the real failure this replaces). Instead: put phoon on the link
+  # on watchOS. The real failure this replaces). Instead: put phoon on the link
   # line AFTER niri as a plain `-lphoon_rs`, and keep phoon_main alive with an
   # explicit `-Wl,-u,_phoon_main`. The linker then pulls only phoon's own objects
   # (phoon_main + its private code); std/core symbols are already defined by
@@ -272,7 +272,7 @@ let
   #
   # DO NOT privatize (no nmedit/ld -r): Rust name-mangles everything except the
   # phoon_main C entry, so there is nothing to collide with weston/foot. There
-  # must be NO weak phoon_main stub on any target — a weak definition would
+  # must be NO weak phoon_main stub on any target. A weak definition would
   # satisfy the -u and stop the real archive member from being pulled. phoon is
   # mandatory, so a null dep is the only legitimate opt-out.
   phoonLdflags = deps:
@@ -286,7 +286,7 @@ let
 
   # wwn-wasm: Pulley interpreter on Apple mobile. Lazy -l like phoon (Wasmtime
   # embeds Rust std). watchOS is size-gated off (no archive). Never -force_load.
-  # Do not gate on pathExists — that silently drops the archive before first build.
+  # Do not gate on pathExists. That silently drops the archive before first build.
   wasmLdflags = deps:
     let
       w = deps.wawona-wasm or null;
@@ -505,7 +505,7 @@ let
   };
 
   # Scheme pre-actions run before build settings resolve; use ${SRCROOT} (shell
-  # var), not $(SRCROOT) (command substitution — breaks with "SRCROOT: not found").
+  # var), not $(SRCROOT) (command substitution. Breaks with "SRCROOT: not found").
   stampPreActionScript = ''"''${SRCROOT}/scripts/xcode-stamp-build-number.sh"
 '';
 
@@ -743,7 +743,7 @@ PLIST
     SIGN_LIBS="$DEST/libEGL.framework/libEGL $DEST/libGLESv2.framework/libGLESv2"
     # Flat @executable_path/Frameworks/lib*.dylib copies are SIMULATOR-ONLY
     # dev conveniences. Loose .dylib files inside a device Frameworks/ are
-    # forbidden in App Store bundles (TN2435) — App Store Connect's Swift
+    # forbidden in App Store bundles (TN2435). App Store Connect's Swift
     # Support validator misreads any loose dylib as a pre-ABI-stability
     # Swift runtime dylib and rejects the ipa with rotating ITMS-90426/
     # 90429/90433 (every iOS upload from build 60 through 120 failed this
@@ -774,7 +774,7 @@ PLIST
     if angleSimDylib != null then angleEmbedScript "iphonesimulator" angleSimDylib
     else pkgs.writeShellScript "embed-angle-sim-dylibs-noop.sh" "exit 0";
   angleDeviceEmbedScript =
-    # No appletvos — tvOS must not ship ANGLE (platform-targets matrix).
+    # No appletvos. TvOS must not ship ANGLE (platform-targets matrix).
     if angleDeviceDylib != null then angleEmbedScript "iphoneos" angleDeviceDylib
     else pkgs.writeShellScript "embed-angle-device-dylibs-noop.sh" "exit 0";
 
@@ -790,10 +790,10 @@ PLIST
     basedOnDependencyAnalysis = false;
   };
 
-  # SwiftShader CPU Vulkan ICD — iOS Simulator ONLY. On the headless CI simulator
+  # SwiftShader CPU Vulkan ICD. IOS Simulator ONLY. On the headless CI simulator
   # MoltenVK's Metal pipeline bring-up kills the app (Metal domain 102), so vkcube
   # needs a pure-CPU Vulkan device to fall back to. Loaded at runtime by vkcube's
-  # dlopen dispatch (WWN_VULKAN_LIBRARY), so a flat Frameworks/*.dylib is fine — and
+  # dlopen dispatch (WWN_VULKAN_LIBRARY), so a flat Frameworks/*.dylib is fine. And
   # this only ever runs for *simulator (the same TN2435 loose-dylib rule that keeps
   # ANGLE flat copies off device also keeps SwiftShader off device; device store
   # builds must not contain it at all, enforced by verify-iland-graphics-bundle).
@@ -919,13 +919,13 @@ ICDJSON
   };
 
   # Single source of truth for the GPU-capable Apple-mobile targets
-  # (iOS, iPadOS, visionOS — the three that must ship niri/fuzzel data, the
+  # (iOS, iPadOS, visionOS. The three that must ship niri/fuzzel data, the
   # VM/container embeds, and bundled ANGLE per wawona-platform-targets).
   # ALWAYS call this from those three targets' postBuildScripts instead of
   # hand-listing phases per target: a hand-maintained per-target list is
   # exactly how Wawona-iPadOS silently drifted from Wawona-iOS and shipped
   # without libEGL/libGLESv2 (dyld "Library not loaded: @rpath/libEGL...").
-  # tvOS/watchOS intentionally do NOT call this — they must never get
+  # tvOS/watchOS intentionally do NOT call this. They must never get
   # ANGLE/Vulkan/OpenGL or VM/container embeds (native + remote only).
   mkAppleGpuPostBuildPhases = { rootfsEmbedPhase, neovimRootfsEmbedPhase }:
     [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase niriDataEmbedPhase appsCatalogEmbedPhase rootfsEmbedPhase neovimRootfsEmbedPhase ]
@@ -943,15 +943,15 @@ ICDJSON
   # #138 root cause: src/resources/app-bundle/Info.plist is shared verbatim
   # (GENERATE_INFOPLIST_FILE=NO) across iOS/iPadOS/tvOS/macOS/visionOS and
   # used to hardcode CFBundleSupportedPlatforms=[iPhoneOS] + LSRequiresIPhoneOS
-  # =true. `xcodebuild -exportArchive` reads CFBundleSupportedPlatforms — NOT
+  # =true. `xcodebuild -exportArchive` reads CFBundleSupportedPlatforms. NOT
   # DTPlatformName/DTSDKName, both of which are correctly appletvos in a tvOS
-  # .xcarchive — to decide the archive's "current platform". A tvOS archive
+  # .xcarchive. To decide the archive's "current platform". A tvOS archive
   # whose Info.plist still said iPhoneOS made exportArchive believe it was
   # exporting an iOS archive, so it rejected the (correctly tvOS) provisioning
   # profile: "has platform tvOS, which does not match the current platform
   # iOS". CFBundleSupportedPlatforms is now removed from the shared source
   # plist entirely (see Info.plist) so ProcessInfoPlistFile auto-injects the
-  # correct per-target value (iPhoneOS/AppleTVOS/MacOSX/XROS) instead — this
+  # correct per-target value (iPhoneOS/AppleTVOS/MacOSX/XROS) instead. This
   # also fixed a second, same-root-cause bug where Xcode's own
   # ValidateEmbeddedBinary misread an iOS-Simulator host as plain "iOS"
   # device because of the hardcoded value, and rejected the (correctly
@@ -1112,7 +1112,7 @@ ICDJSON
     # /nix/store is read-only (dr-xr-xr-x dirs, -r--r--r-- files) by design;
     # plain cp -R preserves that mode verbatim into the embedded copy. A
     # read-only *directory* in the app bundle then breaks anything that later
-    # needs to add/replace entries under it — notably the iOS Simulator's own
+    # needs to add/replace entries under it. Notably the iOS Simulator's own
     # install/copy machinery (MobileInstallation), which fails the whole
     # `simctl install` with a bare "Permission denied" deep inside this tree
     # (no relation to code signing). Make the embedded copy writable so it
@@ -1120,7 +1120,7 @@ ICDJSON
     chmod -R u+w "$DEST"
     # App Store Connect treats +x files under the app as unsigned code objects
     # (altool 90034 on zsh Functions/* when the watch companion embeds rootfs).
-    # Rootfs is resource data — strip execute bits after copy.
+    # Rootfs is resource data. Strip execute bits after copy.
     find "$DEST" -type f -exec chmod a-x {} + 2>/dev/null || true
     # Watch companion IPAs are scanned more aggressively: ASC flags share
     # scripts (Etc/*.pl, Functions, …) as unsigned code even without +x.
@@ -1312,7 +1312,7 @@ ICDJSON
 
   # visionOS rootfs/neovim-rootfs embed phases.
   visionosRootfsEmbedPhase = {
-    # Built via buildForVisionOS — do not embed the iOS rootfs tree as a
+    # Built via buildForVisionOS. Do not embed the iOS rootfs tree as a
     # fallback (same "one archive per platform" rule as OTHER_LDFLAGS).
     path = rootfsIosEmbedScript
       (visionosDeps."wawona-rootfs" or null)
@@ -1336,7 +1336,7 @@ ICDJSON
     basedOnDependencyAnalysis = false;
   };
 
-  # src/core is entirely Rust (0 C/ObjC files) — excluded entirely
+  # src/core is entirely Rust (0 C/ObjC files). Excluded entirely
   # src/stubs depend on system headers (wayland, vulkan) that are only
   # available from the Nix build environment, so they stay out of Xcode.
   # The Xcode build compiles only the platform ObjC layer and links libwawona.a
@@ -1505,7 +1505,7 @@ ICDJSON
             "ARCHS[sdk=iphonesimulator*]" = "arm64";
             "ONLY_ACTIVE_ARCH" = "YES";
             # App target only (never the WawonaModel/WawonaUIContracts framework
-            # targets — mixed settings there causes ASC ITMS-90429/90427: Xcode's
+            # targets. Mixed settings there causes ASC ITMS-90429/90427: Xcode's
             # real "Embed Frameworks" phase must run swift-stdlib-tool so the
             # exported IPA gets Frameworks/libswift*.dylib matching whatever
             # SwiftSupport/ the export step (or our toolchain fallback) produces.
@@ -1515,7 +1515,7 @@ ICDJSON
             "OTHER_CFLAGS[sdk=iphonesimulator*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
             "OTHER_SWIFT_FLAGS[sdk=iphonesimulator*]" = [ "$(inherited)" ] ++ ios26SwiftAutolinkOff;
             "LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]" = ios26SwiftLibSearchPaths;
-            # Do not add SubFrameworks (UIUtilities / SwiftUICore) — same as tvOS.
+            # Do not add SubFrameworks (UIUtilities / SwiftUICore). Same as tvOS.
             "OTHER_LDFLAGS[sdk=iphonesimulator*]" = [
               "$(inherited)"
             ] ++ ios26SwiftUiClientLdflags ++ [
@@ -1671,7 +1671,7 @@ ICDJSON
         preBuildScripts = [ stampBuildNumberPhase ipadosPreBuild ];
         # mkAppleGpuPostBuildPhases keeps this permanently in sync with
         # Wawona-iOS/Wawona-visionOS (niri data / fuzzel apps catalog / VM
-        # embeds / ANGLE) — see its definition for why this must never go
+        # embeds / ANGLE). See its definition for why this must never go
         # back to a hand-maintained per-target list.
         postBuildScripts = mkAppleGpuPostBuildPhases {
           rootfsEmbedPhase = ipadosRootfsEmbedPhase;
@@ -1708,7 +1708,7 @@ ICDJSON
             "OTHER_SWIFT_FLAGS[sdk=iphonesimulator*]" = [ "$(inherited)" ] ++ ios26SwiftAutolinkOff;
             "LIBRARY_SEARCH_PATHS[sdk=iphoneos*]" = ios26SwiftLibSearchPaths;
             "LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]" = ios26SwiftLibSearchPaths;
-            # Do not add SubFrameworks (UIUtilities / SwiftUICore) — same as tvOS.
+            # Do not add SubFrameworks (UIUtilities / SwiftUICore). Same as tvOS.
             "OTHER_LDFLAGS[sdk=iphoneos*]" = [
               "$(inherited)"
             ] ++ mobileGetprognameLdflags ++ ios26SwiftUiClientLdflags ++ [
@@ -2216,7 +2216,7 @@ ICDJSON
               fi
 
               # Freedesktop catalog for fuzzel Mod+D (issue #78).
-              # macOS .app may only have Contents/ at the bundle root —
+              # macOS .app may only have Contents/ at the bundle root -
               # app-root share/ makes codesign fail with "unsealed contents".
               # WWNWawonaShareRoot already prefers Contents/Resources/share
               # when it contains applications/.
@@ -2235,8 +2235,8 @@ ICDJSON
               # Contents/Frameworks and rewrite the load commands to @rpath.
               # Xcode links Rust/native code against /nix/store/.../*.dylib
               # (pixman, cairo, pango, glib, openssl, weston, ...). Those paths
-              # exist only on this build machine, so a copied/exported app — or
-              # one run after `nix` GC removes the store path — aborts at launch
+              # exist only on this build machine, so a copied/exported app. Or
+              # one run after `nix` GC removes the store path. Aborts at launch
               # with dyld "Library not loaded: .../libpixman-1.0.dylib". The
               # pure macos.nix build already does this; mirror it here.
               CONTENTS="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH"
@@ -2284,7 +2284,7 @@ ICDJSON
                 return 0
               }
 
-              # Idempotent rpath add — repeated script runs (incremental builds)
+              # Idempotent rpath add. Repeated script runs (incremental builds)
               # must not accumulate duplicate LC_RPATHs or the bundle bytes keep
               # changing under Xcode's cached CodeSign.
               add_rpath_once() {
@@ -2342,7 +2342,7 @@ ICDJSON
                 otool -l "$macho" 2>/dev/null | awk '/cmd LC_RPATH/{getline; getline; if ($1=="path") print $2}' > "$RPATH_LIST" || true
                 while IFS= read -r rpath; do
                   [ -n "$rpath" ] || continue
-                  # Keep every @-relative rpath (@executable_path/@loader_path) —
+                  # Keep every @-relative rpath (@executable_path/@loader_path) -
                   # the Debug build needs @executable_path to find the sibling
                   # Wawona.debug.dylib. Only strip absolute filesystem rpaths
                   # (e.g. /nix/store/...), which are what break portability.
@@ -2475,7 +2475,7 @@ ICDJSON
               "WWNLaunchAgentManager.m"
             ];
           }
-          # Real waypipe runner (not VisionStub) — visionOS macOS-parity remote.
+          # Real waypipe runner (not VisionStub). VisionOS macOS-parity remote.
           { path = "src/platform/ios"; excludes = commonExcludes ++ [ "WWNGetprognameStub.c" "WWNWaypipeRunnerVisionStub.m" ]; }
           {
             path = "src/platform/macos/ui/Machines";
@@ -2503,7 +2503,7 @@ ICDJSON
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
         ] ++ iosUtilSources;
         preBuildScripts = [ stampBuildNumberPhase visionosPreBuild ];
-        # mkAppleGpuPostBuildPhases — see Wawona-iOS/-iPadOS. This also fixes
+        # mkAppleGpuPostBuildPhases. See Wawona-iOS/-iPadOS. This also fixes
         # visionOS previously missing niri data / fuzzel apps catalog, which
         # macOS-parity (wawona-platform-targets) requires it to have.
         postBuildScripts = mkAppleGpuPostBuildPhases {
@@ -2542,7 +2542,7 @@ ICDJSON
               "$(inherited)"
             ];
             # Network stack is built via buildForVisionOS (zstd/lz4/mbedtls
-            # visionos.nix). Do not fall back to iosDeps here — mixing iOS and
+            # visionos.nix). Do not fall back to iosDeps here. Mixing iOS and
             # visionOS archives in one Ld pulls two copies of shared objects.
             "OTHER_LDFLAGS[sdk=xros*]" = [
               "$(inherited)"
@@ -2742,7 +2742,7 @@ ICDJSON
           # Shared SSH keygen / GPG-SSH import (libwwn-ssh-cli).
           { path = "src/platform/macos/ui/Helpers/WWNSSHKeygen.m"; type = "file"; }
           { path = "src/platform/macos/ui/Helpers/WWNSSHKeygen.h"; type = "file"; }
-          # Startup log sink (same as iOS/tvOS) — SwiftUI overlay on watch.
+          # Startup log sink (same as iOS/tvOS). SwiftUI overlay on watch.
         ] ++ iosUtilSources ++ [
           { path = "src/platform/watchos/ui/Settings/WWNWatchSettings.storyboard"; }
           { path = "src/resources/Assets.xcassets"; }
@@ -2841,7 +2841,7 @@ ICDJSON
             # WawonaModel.framework used by every platform in Nix's
             # build-app.nix (CONFIGURATION_BUILD_DIR=$out is forced globally),
             # so linking always fails: "building for watchOS-simulator, but
-            # linking in dylib ... built for iOS-simulator" — even though the
+            # linking in dylib ... built for iOS-simulator". Even though the
             # real WawonaWatch.app link (below) succeeds because
             # watchos-ensure-framework-modules.sh merges the watchos-simulator
             # swiftmodule slice into that same $out for the *compile* step.
@@ -2857,7 +2857,7 @@ ICDJSON
             CODE_SIGNING_REQUIRED = "YES";
             "CODE_SIGNING_ALLOWED[sdk=watchsimulator*]" = "NO";
             "CODE_SIGNING_REQUIRED[sdk=watchsimulator*]" = "NO";
-            # App target only (see Wawona-iOS) — required so ASC ITMS-90427
+            # App target only (see Wawona-iOS). Required so ASC ITMS-90427
             # ("expected dylibs missing from .../WawonaWatch.app") does not fire.
             ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = "YES";
             LD_RUNPATH_SEARCH_PATHS = [ "$(inherited)" "@executable_path/Frameworks" ];
@@ -2888,8 +2888,8 @@ ICDJSON
             # WawonaModel/WawonaUIContracts are embed=false, link=false above
             # (see dependencies comment): Xcode unconditionally adds
             # -F$(CONFIGURATION_BUILD_DIR) for every target's *own* build
-            # products dir regardless of dependency link/embed settings — in
-            # this nix build that is the shared, single-platform $out — so
+            # products dir regardless of dependency link/embed settings. In
+            # this nix build that is the shared, single-platform $out. So
             # `-framework WawonaModel` would still resolve through -F search
             # order to whichever platform happened to build there first.
             # Bypass -framework/-F search for these two entirely: link the
@@ -2899,7 +2899,7 @@ ICDJSON
             # LC_ID_DYLIB install name (@rpath/<fw>.framework/<fw>) is what
             # ends up in WawonaWatch's load commands, so at runtime it still
             # resolves against the embedded (watch-platform, via "Fix Watch
-            # Embedded Frameworks") copy in WawonaWatch.app/Frameworks — this
+            # Embedded Frameworks") copy in WawonaWatch.app/Frameworks. This
             # path is only ever consulted to satisfy the link step.
             OTHER_LDFLAGS = [
               "$(inherited)"
@@ -2979,7 +2979,7 @@ ICDJSON
               "-L${strip (watchosSimDeps.libssh2 or null)}/lib"
               "-L${strip (watchosSimDeps.mbedtls or iosSimDeps.mbedtls or null)}/lib"
               "-L${strip (watchosSimDeps.openssl or null)}/lib"
-              # weston toytoolkit needs xkb; watch deps often omit it — fall back to iOS.
+              # weston toytoolkit needs xkb; watch deps often omit it. Fall back to iOS.
               "-L${strip (watchosSimDeps.xkbcommon or iosSimDeps.xkbcommon or null)}/lib"
               "-lffi"
               "-lwayland-client"
@@ -3016,7 +3016,7 @@ ICDJSON
           # WawonaModel/WawonaUIContracts there first (iOS-simulator, in a
           # Wawona-iOS-embeds-Wawona-watchOS build) and keeps injecting that
           # -F ahead of anything this target's own FRAMEWORK_SEARCH_PATHS
-          # adds, however link/embed are set individually — so `ld` fails:
+          # adds, however link/embed are set individually. So `ld` fails:
           # "building for watchOS-simulator, but linking in dylib ... built
           # for iOS-simulator". Only turning off *both* stops Xcode adding
           # -F$out at all. Linking instead goes through the explicit
@@ -3220,31 +3220,31 @@ EOF
     # the "Embed Watch Content" copy phase, in order:
     #
     #  1. Legacy Watch/ (dstSubfolderSpec=16, dstPath="$(CONTENTS_FOLDER_PATH)/Watch")
-    #     — XcodeGen 2.44.1's own default (see
+    #. XcodeGen 2.44.1's own default (see
     #     https://github.com/yonaskolb/XcodeGen/issues/1613, filed against
     #     Xcode 26.4, unmerged fix in PR #1614, which claims Xcode 26 wants
     #     PlugIns/ instead). Builds 89-110 shipped this way: local archive,
     #     export, AND `xcrun altool`/`upload_to_testflight` upload all
     #     succeeded every time. ASC's *async* binary-processing pipeline
     #     rejected them, but purely over SwiftSupport/Frameworks content
-    #     (ITMS-90426/90429/90433) — never over embed location or directory
+    #     (ITMS-90426/90429/90433). Never over embed location or directory
     #     naming. That rotating rejection was a separate, since-fixed bug: see
     #     `embed_swift_runtime_into_archive!`/`inject_swift_support_from_archive!`
-    #     in fastlane/Fastfile (SWIFT_BACKDEPLOY_LIB_NAMES) — Wawona's
+    #     in fastlane/Fastfile (SWIFT_BACKDEPLOY_LIB_NAMES). Wawona's
     #     deployment targets need zero back-deployment dylibs, so the correct
     #     IPA has no SwiftSupport/ at all, which builds 89-104 did not ship.
     #  2. Numeric dstSubfolderSpec=13/dstPath="" (PlugIns/, commit c7e3304):
     #     archives and exports fine locally, but `xcrun altool`/
     #     `upload_to_testflight` then fails immediately and locally with
     #     "[altool.CBF038400] Cannot determine the 'platform' from the
-    #     info.plist. (19)" — before the ipa ever reaches ASC's servers.
+    #     info.plist. (19)". Before the ipa ever reaches ASC's servers.
     #     altool's platform detection does not expect a *different-platform*
     #     nested .app (WatchOS) under PlugIns/, which it treats as an
     #     extension-style dir sharing the host's own platform.
     #  3. String enum `dstSubfolder = PlugIns;` (some real Xcode-26-resaved
     #     projects in the wild use this, e.g. tuist/XcodeProj#1038): CocoaPods'
     #     `xcodeproj` gem (used by Fastlane's update_code_signing_settings)
-    #     warns but does NOT drop it on re-save — however `xcodebuild archive`
+    #     warns but does NOT drop it on re-save. However `xcodebuild archive`
     #     itself (Xcode 26.6 GM, this runner) does not understand it either,
     #     and fails outright ("Unknown Distribution Error", exportArchive exit
     #     70) before ever reaching ASC. Not usable on this toolchain.
@@ -3252,7 +3252,7 @@ EOF
     # Verdict: variant 1 (XcodeGen's own unmodified default) is the only one
     # that gets all the way through `xcrun altool` upload; no real rejection
     # from Apple has ever named the Watch/ directory or embed location as a
-    # problem. Leave XcodeGen's generated project.pbxproj untouched — no
+    # problem. Leave XcodeGen's generated project.pbxproj untouched. No
     # postGenCommand patch here. If a future Xcode really enforces PlugIns/
     # at *install* time (the XcodeGen issue's claim, not yet observed against
     # this app), that will show up as a distinct, differently-worded failure

@@ -30,7 +30,7 @@ jobs:
     name: "Linux AppImage beta (${{ matrix.system }})"
     # Only master push Gate runs that went green. Development pushes,
     # workflow_dispatch/workflow_call Gate invocations, and failed gates never
-    # ship a beta AppImage — same surface as the old release-beta jobs.
+    # ship a beta AppImage. Same surface as the old release-beta jobs.
     if: >-
       github.event.workflow_run.event == 'push'
       && github.event.workflow_run.head_branch == 'master'

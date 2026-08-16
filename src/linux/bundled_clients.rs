@@ -22,7 +22,7 @@ pub const BUNDLED_CLIENTS: &[BundledClient] = &[
     BundledClient {
         id: "weston-terminal",
         name: "Weston Terminal",
-        description: "Terminal emulator — uses host cursor",
+        description: "Terminal emulator. Uses host cursor",
         icon_name: "utilities-terminal-symbolic",
     },
     BundledClient {

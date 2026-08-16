@@ -423,7 +423,7 @@ EOF
 
       # ANGLE archives are named libEGL.so / libGLESv2.so but their ELF SONAMEs
       # are libEGL_angle.so / libGLESv2_angle.so (libwawona NEEDED). Stage only
-      # the SONAME filenames — shipping both names as separate files loads two
+      # the SONAME filenames. Shipping both names as separate files loads two
       # ANGLE images (eglMakeCurrent on one, gl* on the other → empty shader
       # compile failures). WawonaNative loads EGL_angle / GLESv2_angle.
       if [ -f "$JNI_LIB_DIR/libEGL.so" ]; then

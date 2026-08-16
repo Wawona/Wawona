@@ -67,7 +67,7 @@ object AnowawSession {
         if (wantPower && !powerMode) {
             Log.w(
                 TAG,
-                "power mode requested but unavailable — falling back to rootless baseline: ${
+                "power mode requested but unavailable. Falling back to rootless baseline: ${
                     power?.statusDescription()
                 }",
             )

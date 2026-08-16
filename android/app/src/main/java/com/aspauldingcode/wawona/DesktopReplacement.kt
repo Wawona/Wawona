@@ -21,7 +21,7 @@ import androidx.compose.runtime.mutableIntStateOf
  * SkyLight/WindowServer replacement. On Android the DRM/KMS present path
  * (wwn-iland `android/`) targets the launcher surface instead of an OS daemon,
  * which is why the desktop machine is constrained to a locally-ported native
- * client — never a VM, waypipe/network, or container machine.
+ * client. Never a VM, waypipe/network, or container machine.
  */
 object DesktopReplacement {
     /** Whether Wawona should act as a desktop/home replacement. */
@@ -32,7 +32,7 @@ object DesktopReplacement {
 
     /**
      * App Bridge (anowaW): render native Android apps as Wayland clients inside
-     * the nested desktop. Layered on top of Desktop Replacement — reuses
+     * the nested desktop. Layered on top of Desktop Replacement. Reuses
      * [KEY_MACHINE_ID] as the single, local-only, nested-Weston desktop.
      */
     const val KEY_APP_BRIDGE_ENABLED = "wawona.anowaW.enabled"
@@ -44,7 +44,7 @@ object DesktopReplacement {
      *
      * When off (rootless / stock Android): only Wawona's own activities can be
      * embedded and the full display can be mirrored via consented
-     * MediaProjection — still through waypipe-rs into the nested desktop, but
+     * MediaProjection. Still through waypipe-rs into the nested desktop, but
      * without privileged inject. Android has no SIP; this is the root vs
      * non-root split (see [AnowawSession]).
      */

@@ -168,7 +168,7 @@ struct MachineSettingsView: View {
                 Text("metal").tag("metal")
                 Text("software").tag("software")
             }
-            // watchOS has no GPU stack (ANGLE/Vulkan) — keep fields for profile
+            // watchOS has no GPU stack (ANGLE/Vulkan). Keep fields for profile
             // portability but mark them clearly.
             if PlatformCapabilities.allowsGpuStack {
                 TextField("Vulkan Driver", text: vulkanDriverBinding)
@@ -231,8 +231,8 @@ struct MachineSettingsView: View {
             Text("HDR: \(resolved.colorOperations ? "On" : "Off")")
             Text("Display: \(resolved.waylandDisplay)")
             Text("Input: \(resolved.inputProfile)")
-            Text("Host: \(resolved.sshHost.isEmpty ? "—" : resolved.sshHost)")
-            Text("User: \(resolved.sshUser.isEmpty ? "—" : resolved.sshUser)")
+            Text("Host: \(resolved.sshHost.isEmpty ? "-" : resolved.sshHost)")
+            Text("User: \(resolved.sshUser.isEmpty ? "-" : resolved.sshUser)")
             Text("Port: \(resolved.sshPort)")
             Text("Waypipe: \(resolved.waypipeEnabled ? "On" : "Off")")
             Text("Bundled App: \(resolved.bundledAppID.isEmpty ? "Off" : resolved.bundledAppID)")

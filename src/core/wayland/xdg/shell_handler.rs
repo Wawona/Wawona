@@ -255,7 +255,7 @@ impl XdgShellHandler for CompositorState {
             }
         }
 
-        // Always defer the initial configure to (0, 0) — per xdg-shell §xdg_toplevel,
+        // Always defer the initial configure to (0, 0). Per xdg-shell §xdg_toplevel,
         // a zero size means "the client should decide its own size." Sending a
         // real size here (e.g. the primary output's) forces well-behaved clients
         // to render at that size even when it doesn't match what they actually
@@ -263,7 +263,7 @@ impl XdgShellHandler for CompositorState {
         // host/client size mismatch that misaligns content inside the window on
         // every platform. The client's first commit is trusted unconditionally
         // (see `Window::has_committed_buffer`), so deferring here is safe and
-        // lets every window — on every platform — start edge-to-edge with its
+        // lets every window. On every platform. Start edge-to-edge with its
         // own content.
         let (configure_w, configure_h) = (0i32, 0i32);
 
@@ -532,7 +532,7 @@ impl XdgShellHandler for CompositorState {
             DecorationPolicy::ForceServer
         );
         // Weston-family needs an explicit host mode (CSD vs SSD). Force SSD must
-        // also re-assert ServerSide once app_id arrives — WindowCreated may have
+        // also re-assert ServerSide once app_id arrives. WindowCreated may have
         // raced before the preference was applied to Rust.
         let should_reassert_decoration = weston_family || force_server;
 
@@ -729,7 +729,7 @@ impl XdgShellHandler for CompositorState {
         // Restore the saved pre-maximize geometry only when it reflects a size
         // the client actually chose (i.e. it committed a buffer while floating).
         // Otherwise send 0x0 per xdg-shell: the client decides its own size.
-        // Falling back to the current window size here is always wrong — the
+        // Falling back to the current window size here is always wrong. The
         // current size IS the maximized size.
         let client_chose_size = window_id
             .and_then(|wid| self.get_window(wid))

@@ -1,6 +1,8 @@
-# AGENTS.md — Wawona
+# AGENTS.md: Wawona
 
 Guidance for AI agents working in this repository.
+
+**No em dashes** (U+2014) or word-joining en dashes in docs, UI, comments, or rules. Use a period, comma, colon, or parentheses. See `docs/agent-rules/wawona-no-em-dash.md` and `.cursor/rules/wawona-no-em-dash.mdc`.
 
 ## Use WWN-MCP for knowledge
 
@@ -9,7 +11,7 @@ Material 3 Expressive, the Vulkan/OpenGL paths, the Linux DRM/KMS/EGL/GBM displa
 stack that iland reimplements on Apple, macOS internals (Mach-O/dyld/Mach/XNU/
 launchd) for reverse-engineering, App Store / Play Store compliance) is niche and
 largely post-dates model training. A retrieval MCP server, **`wwn-mcp`**
-(configured in `.cursor/mcp.json` as a **stdio** command — same host model as
+(configured in `.cursor/mcp.json` as a **stdio** command. Same host model as
 `uvx mcp-nixos`; there is no `mcp.wawona.io`), indexes the authoritative sources
 plus this repo's own source, docs, and the extracted `wwn-*` patched-software
 repos.
@@ -33,8 +35,8 @@ companion **`nixos`** MCP server (utensils/mcp-nixos via `uvx mcp-nixos`) via
 its `nix` / `nix_versions` tools instead of guessing. Use WWN-MCP's `get_patch`
 for Wawona's own recipes/patches; use `nixos` for upstream nixpkgs.
 
-For **building/running/testing the Apple (iOS/macOS) Xcode projects** — including
-simulators, devices, and log capture — use the **`xcodebuild`** MCP server
+For **building/running/testing the Apple (iOS/macOS) Xcode projects**. Including
+simulators, devices, and log capture. Use the **`xcodebuild`** MCP server
 (getsentry/XcodeBuildMCP) instead of raw `xcodebuild` shell commands. It runs
 locally and requires **macOS + Xcode 16+**. Wawona's Xcode projects are
 generated (xcodegen via Nix), so regenerate before building.
@@ -50,8 +52,8 @@ and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream synta
   wrapped by ObjC (`WWNCompositorBridge.m`) / JNI (`android_jni.c`), polling
   model. Do NOT use `objc2`/`cocoa`/`jni`/`ndk` Rust crates or UniFFI callbacks.
 - **Smithay** `0.7`, `wayland_frontend` only.
-- **iland (wwn-iland) — two modes** (do not conflate):
-  - **Mode A (default, App Store–safe):** static `libiland_userland.a`, in-window
+- **iland (wwn-iland). Two modes** (do not conflate):
+  - **Mode A (default, App Store-safe):** static `libiland_userland.a`, in-window
     present via `iland_drm_set_present_callback` → `WWNIlandPresenter`. Used on
     macOS/iOS/iPadOS/visionOS/Android (tvOS/watchOS stubs). No SIP, no dylib inject.
   - **Mode B (optional, macOS desktop-host only, planned):** ship
@@ -64,7 +66,7 @@ and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream synta
     Wawona Swinging Bridge is separate (`docs/swinging-bridge.md`, `wawona-swinging-bridge`).
   - Query `project=macos-internals` for Mach-O/dyld/Mach/XNU/launchd details.
 - **Rust backend builds via crate2nix** (per-crate Nix derivations, `Cargo.nix`)
-  for isolated/incremental rebuilds — not a monolithic `buildRustPackage`. Query
+  for isolated/incremental rebuilds. Not a monolithic `buildRustPackage`. Query
   `project=crate2nix` for `tools.nix`/`defaultCrateOverrides`/strategy questions.
 - **Apple = OS 26 / Liquid Glass**; **Material 3 Expressive = Android 16+ only**.
 - **Patched software lives in `wwn-*` repos** (Wawona org): the cross-compile
@@ -109,17 +111,17 @@ and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream synta
   `.cursor/rules/wawona-macos-no-appstore.mdc`.
 - **ASC IPA Swift Support (ITMS-90426/90429/90433):** the proven trigger is
   loose (non-framework-wrapped) non-Swift `.dylib` files under any bundle's
-  `Frameworks/` — forbidden by TN2435; ASC's validator misreads them as
+  `Frameworks/`. Forbidden by TN2435; ASC's validator misreads them as
   pre-ABI Swift runtime dylibs and rejects the ipa with rotating Swift
   Support errors regardless of SwiftSupport content (builds 60-120). Ship
   such libs only as `.framework` bundles (ANGLE: `libEGL.framework`/
   `libGLESv2.framework`; flat copies are simulator-only). Canonical accepted
-  shape, watch or not: ABI-stable — no `SwiftSupport/`, no
+  shape, watch or not: ABI-stable. No `SwiftSupport/`, no
   `Frameworks/libswift*` (`WAWONA_WATCH_LEGACY_SWIFT_SUPPORT=1` is the legacy
   escape hatch). Export with `method: app-store-connect` (explicit
   ExportOptions.plist; do not let gym rewrite deprecated `app-store`). Never
   re-zip `Payload/` alone. Assert before upload (`assert_no_loose_dylibs!`,
-  `assert_ipa_has_swift_support!`). altool success ≠ ASC acceptance — poll
+  `assert_ipa_has_swift_support!`). altool success ≠ ASC acceptance. Poll
   the ASC `buildUploads` API. See
   `.cursor/rules/wawona-asc-swift-support.mdc` and `docs/ci.md`.
 - **Virtualization**: Wawona iOS will host on-device, JIT-less VMs inside Wawona
@@ -128,7 +130,7 @@ and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream synta
 
 ## Local before CI (do not burn the queue)
 
-Gate: packages / Gate: products often sit **queued 15–40+ minutes**. When a
+Gate: packages / Gate: products often sit **queued 15-40+ minutes**. When a
 change can fail at eval, configure, **link**, or package, prove it **locally
 first**, then push. Do not use CI to discover `ld: duplicate symbols`,
 missing patch anchors, meson version floors, or `Cargo.lock` skew.
@@ -137,7 +139,7 @@ missing patch anchors, meson version floors, or `Cargo.lock` skew.
   **affected app target** (e.g. `nix build .#wawona-watchos-app-sim`). Parse
   or attr eval is not enough.
 - Prefer lazy `-lfoo` + `-Wl,-u,_foo_main` after niri's `-force_load` when
-  another Rust `staticlib` embeds std (waypipe precedent) — never
+  another Rust `staticlib` embeds std (waypipe precedent). Never
   double-force-load std archives.
 - nixpkgs / `pkgs.*.src` / anchor patches → build the drifted package on the
   tip (`.#zsh-ios`, `.#fontconfig-android`, …).
@@ -150,7 +152,7 @@ Full rule: workspace `.cursor/rules/wawona-local-before-ci.mdc`.
 
 Drive app/UI with agent-device (`../.cursor/rules/wawona-agent-device.mdc`).
 Before tapping **Wayland client** content (Weston panel, nested compositors,
-terminals, cubes), set **Multi-Touch** — iOS `TouchInputType=Multi-Touch`,
+terminals, cubes), set **Multi-Touch**. IOS `TouchInputType=Multi-Touch`,
 Android Touchpad Mode **Off**. Touchpad / virtual-pointer left-clicks often
 no-op even when `press`/`click` succeed. Prefer `press` / `gesture`; do not
 `click --button …` on the compositor surface. Full rule:
@@ -158,7 +160,7 @@ no-op even when `press`/`click` succeed. Prefer `press` / `gesture`; do not
 
 ## Conventions
 
-- **Repo DAG (acyclic L0–L4; never invert):** `wwn-toolchain` (L0 substrate:
+- **Repo DAG (acyclic L0-L4; never invert):** `wwn-toolchain` (L0 substrate:
   cairo/pango/pixman/libwayland/…) → `wwn-iland` (L1 complete graphics stack:
   iland + ANGLE/ICDs after P2) → `wwn-kmscube` (L2) → `wwn-weston` (L3) →
   Wawona (L4). `wwn-waypipe`/`Wawona-Swinging-Bridge` / flake `wwn-swinging-bridge`/`wwn-vms` are L3′ (→ toolchain). Never
@@ -168,15 +170,15 @@ no-op even when `press`/`click` succeed. Prefer `press` / `gesture`; do not
   workspace rule `wawona-repo-dag`.
 - Builds are Nix-based; see `docs/compilation.md` and `docs/2026-nix-build-system.md`.
 - Don't commit secrets.
-- **Desktop / LockScreen** — macOS + Android **planned**; iOS/iPadOS only via
+- **Desktop / LockScreen**. MacOS + Android **planned**; iOS/iPadOS only via
   `repo.wawona.io` (website). Forbidden in App Store Apple-mobile apps (never
   mention jailbreak there). See `wawona-platform-targets`,
   `docs/iland-mode-a-b-desktop.md`.
-- **Wawona Swinging Bridge** — macOS/Android Mode A+B planned; iOS/iPadOS Mode B
+- **Wawona Swinging Bridge**. MacOS/Android Mode A+B planned; iOS/iPadOS Mode B
   only (forbidden in store IPA). See `wawona-swinging-bridge`, `docs/swinging-bridge.md`.
-- **VM / containers** — planned on macOS / iOS / iPadOS / Android / Linux;
+- **VM / containers**. Planned on macOS / iOS / iPadOS / Android / Linux;
   forbidden on tvOS / watchOS / visionOS. See `docs/vms-containers.md`.
-- **Binary filenames** — GitHub Release
+- **Binary filenames**. GitHub Release
   `Wawona-{calver}-{platform}-{arch}.{ext}`; store uploads add `-{build}` before
   the extension (TestFlight IPA / Play AAB). product-build may keep short names
   until a ship boundary. See `docs/ci.md`, `docs/agent-rules/wawona-release-assets.md`,
@@ -186,4 +188,4 @@ no-op even when `press`/`click` succeed. Prefer `press` / `gesture`; do not
 
 ## Product map (agents)
 
-See `docs/agent-rules/wawona-product-map.md` and `docs/agent-rules/wawona-product-integration.md` (Swinging Bridge, Desktop/LockScreen, VMs, containers, Wasm Runtime — do not conflate).
+See `docs/agent-rules/wawona-product-map.md` and `docs/agent-rules/wawona-product-integration.md` (Swinging Bridge, Desktop/LockScreen, VMs, containers, Wasm Runtime. Do not conflate).

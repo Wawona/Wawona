@@ -2,9 +2,9 @@
 // Wayland compositor bridge for watchOS.
 //
 // Compositor priority:
-//   1. WWNMiniWaylandServer (libwayland-server.a compiled via Nix) – pure C,
+//   1. WWNMiniWaylandServer (libwayland-server.a compiled via Nix) - pure C,
 //      no Rust required; works as soon as the Nix deps are linked.
-//   2. libwawona.a Rust backend – used when available (tier-3 Rust target).
+//   2. libwawona.a Rust backend - used when available (tier-3 Rust target).
 
 #import "WWNWatchCompositorBridge.h"
 #import "WWNMiniWaylandServer.h"
@@ -52,7 +52,7 @@ extern int waypipe_main(int argc, char **argv) __attribute__((weak));
 
 // wawona-pty: clear one-shot shell latch after Stop (weak for incomplete links).
 void wwn_pty_ios_allow_new_shell_session(void) __attribute__((weak));
-// ── Rust compositor C-API (optional – satisfied by stubs when not linked) ─────
+// ── Rust compositor C-API (optional - satisfied by stubs when not linked) ─────
 
 typedef void *WawonaCompositorHandle;
 
@@ -76,7 +76,7 @@ void                   wawona_compositor_destroy(WawonaCompositorHandle handle);
 WatchCBufferData      *wawona_compositor_pop_buffer(WawonaCompositorHandle handle);
 void                   wawona_buffer_free(WatchCBufferData *buf);
 
-// ── @interface extensions — MUST appear before any C code that messages the class ──
+// ── @interface extensions. MUST appear before any C code that messages the class ──
 
 NSNotificationName const WWNWatchCompositorFrameReadyNotification =
     @"WWNWatchCompositorFrameReadyNotification";
@@ -266,7 +266,7 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
     }
 
     const char *name = socketName ? [socketName UTF8String] : "wayland-0";
-    WWNLog("WATCH", @"Starting compositor — socket='%s' size=%ux%u XDG_RUNTIME_DIR='%s'",
+    WWNLog("WATCH", @"Starting compositor. Socket='%s' size=%ux%u XDG_RUNTIME_DIR='%s'",
           name, _outputWidth, _outputHeight,
           getenv("XDG_RUNTIME_DIR") ?: "(unset)");
 
@@ -279,16 +279,16 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
     );
 
     if (_miniServer) {
-        WWNLog("WATCH", @"Started mini Wayland server on socket '%s' (%u×%u) — XDG_RUNTIME_DIR='%s'",
+        WWNLog("WATCH", @"Started mini Wayland server on socket '%s' (%u×%u). XDG_RUNTIME_DIR='%s'",
               name, _outputWidth, _outputHeight,
               getenv("XDG_RUNTIME_DIR") ?: "(unset)");
         _isRunning = YES;
         [self _startDispatchThread];
         // Let the dispatch thread park on wl_display_run before the first client
-        // connects — otherwise Start can race and look like a blank surface until
+        // connects. Otherwise Start can race and look like a blank surface until
         // the next relaunch.
         usleep(80 * 1000);
-        // Do not auto-launch here — Swift `WatchMachineSessionBridge.connect`
+        // Do not auto-launch here. Swift `WatchMachineSessionBridge.connect`
         // (and WAWONA_WATCH_AUTO_CLIENT via WawonaWatchMain) owns client Start.
         // Dual auto-launch raced: connect → launch, then env block → stopClient.
         return YES;
@@ -303,7 +303,7 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
         return YES;
     }
 
-    // Neither mini server nor Rust backend started — something is wrong with the build.
+    // Neither mini server nor Rust backend started. Something is wrong with the build.
     WWNLog("WATCH", @"ERROR: No compositor backend available. "
           "Ensure libwayland-server.a is linked: nix run .#xcodegen");
     return NO;
@@ -654,7 +654,7 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
 
 - (void)launchNiri {
     if (!niri_main) {
-        WWNLog("WATCH", @"niri_main not linked — nested niri unavailable");
+        WWNLog("WATCH", @"niri_main not linked. Nested niri unavailable");
         return;
     }
     [self stopClient];
@@ -737,7 +737,7 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
                [cid isEqualToString:@"vkcube"] ||
                [cid isEqualToString:@"weston-simple-egl"]) {
         WWNLog("WATCH",
-               @"Refusing '%@': GPU client — watchOS has no Metal/ANGLE stack",
+               @"Refusing '%@': GPU client. WatchOS has no Metal/ANGLE stack",
                cid);
     } else {
         // Default / weston-simple-shm
@@ -750,7 +750,7 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
         wwn_weston_compositor_shutdown_requested = 1;
         _clientRunning = NO;
         _clientThreadValid = NO;
-        // pthread_timedjoin_np is unavailable on Apple — cancel + join.
+        // pthread_timedjoin_np is unavailable on Apple. Cancel + join.
         pthread_cancel(_clientThread);
         pthread_join(_clientThread, NULL);
         WWNLog("WATCH", @"Client stopped");
@@ -847,7 +847,7 @@ static void *waypipeThreadFunc(void *ctx) {
     }
 
     if (!waypipe_main) {
-        WWNLog("WATCH", @"waypipe_main not linked — waypipe unavailable. "
+        WWNLog("WATCH", @"waypipe_main not linked. Waypipe unavailable. "
               "Run nix run .#xcodegen after building watchOS deps.");
         return;
     }

@@ -17,7 +17,7 @@ Canonical prose: `Wawona/docs/mode-a-b.md`, `swinging-bridge.md`, `iland-mode-a-
 | | **Mode A** | **Mode B** |
 |---|---|---|
 | Who | App Store / TestFlight / Play / store-shaped | Jailbreak iOS/iPadOS; SIP partial/off macOS; root Android |
-| Ship | Store IPA/AAB; notarized macOS | `repo.wawona.io` Sileo `.deb` + **Mode B IPA**; desktop-host macOS — **never** in store |
+| Ship | Store IPA/AAB; notarized macOS | `repo.wawona.io` Sileo `.deb` + **Mode B IPA**; desktop-host macOS. **never** in store |
 | Copy | Never mention jailbreak / JIT pitch in store UI | Website + repo may document Mode B |
 
 **Always design A and B together** for VMs, containers, Desktop, Swinging Bridge. **Never** ship Mode B into App Store / Play artifacts.
@@ -27,7 +27,7 @@ Canonical prose: `Wawona/docs/mode-a-b.md`, `swinging-bridge.md`, `iland-mode-a-
 - Repo: `Wawona/Wawona-Swinging-Bridge` (flake `wwn-swinging-bridge`; legacy ABI/Nix `anowaw_*` OK temporarily).
 - Status: planned; **neither Mode A nor Mode B implemented**.
 - macOS + Android: Mode A + Mode B planned. **iOS/iPadOS: Mode B only** (forbidden in store IPA).
-- Helps Desktop later (e.g. Android home = Wawona, apps still Wayland surfaces in niri) — home path is still Desktop, not Swinging Bridge.
+- Helps Desktop later (e.g. Android home = Wawona, apps still Wayland surfaces in niri). Home path is still Desktop, not Swinging Bridge.
 
 ### Desktop / LockScreen
 
@@ -38,11 +38,11 @@ Canonical prose: `Wawona/docs/mode-a-b.md`, `swinging-bridge.md`, `iland-mode-a-
 ### VMs / containers
 
 - Platforms: planned on macOS, iOS, iPadOS, Android, Linux. **Forbidden** on tvOS, watchOS, visionOS.
-- iOS Mode A: UTM-SE–class **jitless**. iOS Mode B: JIT UTM via Mode B IPA.
+- iOS Mode A: UTM-SE-class **jitless**. iOS Mode B: JIT UTM via Mode B IPA.
 - Backends differ by OS (macOS Virtualization/Apple Container ≠ iOS UTM ≠ Android QEMU). Do not force one engine.
 - Not the same as on-device `wwn-zsh` shell or Wasm packages.
 
-### Wawona Runtime packages (`wpm` / WASI) — Mode A forever
+### Wawona Runtime packages (`wpm` / WASI). Mode A forever
 
 - **Wasm is not platform-native** (tradeoff vs a true Mach-O port). Payoff: one
   **portable** Runtime + **`wpm`** with **full App Store / Play compliance**.
@@ -50,8 +50,8 @@ Canonical prose: `Wawona/docs/mode-a-b.md`, `swinging-bridge.md`, `iland-mode-a-
   flavor of the Runtime**.
 - Packages are **bytecode data** (`.wasm` / WASI P1/P2), not unsigned Mach-O/`dlopen`, not `.deb`.
 - Dual channel on `repo.wawona.io`:
-  - `/wasm/` — Mode A (store binaries may use)
-  - `/jailbreak/` — Mode B APT only (store binaries must **never** touch)
+  - `/wasm/`. Mode A (store binaries may use)
+  - `/jailbreak/`. Mode B APT only (store binaries must **never** touch)
 - Do not put `.deb` and `.wasm` in one index. Do not auto-discover jailbreak from `wpm`.
 
 ## Hard rejects

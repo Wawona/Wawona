@@ -74,7 +74,7 @@
   }
   [view cacheDisplayInRect:bounds toBitmapImageRep:rep];
 
-  // Downscale before PNG encode — full-window @2x bitmaps were leaving large
+  // Downscale before PNG encode. Full-window @2x bitmaps were leaving large
   // ImageIO dirty regions after Stop (ISSUE-008). Card UI only needs ~320pt.
   const CGFloat kMaxEdge = 320.0;
   CGFloat scale =

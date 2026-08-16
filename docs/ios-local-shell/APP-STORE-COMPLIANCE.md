@@ -1,8 +1,8 @@
 # App Store Compliance Model: Bundled Native ZSH
 
-This document explains **why** Wawona's local shell is App Store–compliant, **how** it differs from rejected or risky patterns, and **which Apple guidelines** apply. It is written for engineers, product, and App Review.
+This document explains **why** Wawona's local shell is App Store-compliant, **how** it differs from rejected or risky patterns, and **which Apple guidelines** apply. It is written for engineers, product, and App Review.
 
-**Claim we are making:** Wawona ships a **fixed set of native ARM64 code** (in-process `wawona_zsh_main`, uutils, clients) inside the signed app. Apple mobile never `fork`/`exec`s user Mach-O. User-provided **WebAssembly** is a document interpreted by a **Pulley** engine linked at review time — not JIT, not unsigned native code. See [wasm-wasi.md](../wasm-wasi.md).
+**Claim we are making:** Wawona ships a **fixed set of native ARM64 code** (in-process `wawona_zsh_main`, uutils, clients) inside the signed app. Apple mobile never `fork`/`exec`s user Mach-O. User-provided **WebAssembly** is a document interpreted by a **Pulley** engine linked at review time. Not JIT, not unsigned native code. See [wasm-wasi.md](../wasm-wasi.md).
 
 ---
 
@@ -42,7 +42,7 @@ Rust profile: `profile-store-safe` on iOS release builds. Local shell feature fl
 
 | App | App Store | Local shell? | Mechanism | zsh? |
 |-----|-----------|--------------|-----------|------|
-| [a-Shell](https://github.com/holzschu/a-Shell) | Yes | Partial | [ios_system](https://github.com/holzschu/ios_system): commands as **signed dylibs**, `ios_execv` in-process | **No** — author lists shells as hard |
+| [a-Shell](https://github.com/holzschu/a-Shell) | Yes | Partial | [ios_system](https://github.com/holzschu/ios_system): commands as **signed dylibs**, `ios_execv` in-process | **No**. Author lists shells as hard |
 | [Blink Shell](https://github.com/blinksh/blink) | Yes | Utilities only | Local tools + **remote** Mosh/SSH TTY | Remote only |
 | [iSH](https://github.com/ish-app/ish) | Yes (historical friction) | Linux userland | x86 emulation + Alpine; full zsh **inside guest** | Yes, inside emulated Linux |
 | Prompt / Termius / Geistty | Yes | No | SSH passthrough | Remote only |
@@ -79,7 +79,7 @@ Rust profile: `profile-store-safe` on iOS release builds. Local shell feature fl
 | Downloading `curl \| sh` scripts that fetch Mach-O | Post-review native code |
 | `dlopen` of user-provided dylibs | Unsigned code execution |
 | Cranelift / `MAP_JIT` on Apple mobile | Native codegen of downloaded code |
-| Interpreting user `.wasm` with Pulley (signed-in-bundle engine) | **Allowed** — same class as JS in JavaScriptCore; see [wasm-wasi.md](../wasm-wasi.md) |
+| Interpreting user `.wasm` with Pulley (signed-in-bundle engine) | **Allowed**. Same class as JS in JavaScriptCore; see [wasm-wasi.md](../wasm-wasi.md) |
 | Spawning `/bin/sh` from host filesystem | Outside sandbox; not in bundle |
 | Spawning from `/tmp` or cache after extract | Effectively post-review if content is mutable |
 | Enabling compositor `fork()` for clients | Breaks mobile stub model; use client-side spawn only |
@@ -112,19 +112,19 @@ Optional Settings toggle: **Enable local shell** (default on for internal builds
 
 ## Enforcement architecture
 
-Compliance is not policy PDFs alone — it is **code enforcement**:
+Compliance is not policy PDFs alone. It is **code enforcement**:
 
-1. **`wwn_pty_spawn_shell()`** — rejects `shell_path` not under `WAWONA_ROOTFS` prefix (see [SECURITY-SPAWN-POLICY.md](SECURITY-SPAWN-POLICY.md))
-2. **Nix rootfs** — only known binaries installed into `wawona-rootfs`
-3. **No `exec*` from ObjC download handlers** — existing waypipe policy unchanged
-4. **Cargo feature gates** — `profile-store-safe` excludes desktop-only Wayland globals
-5. **CI** — `.#zsh-ios`, `.#weston-ios` build on merge
+1. **`wwn_pty_spawn_shell()`**. Rejects `shell_path` not under `WAWONA_ROOTFS` prefix (see [SECURITY-SPAWN-POLICY.md](SECURITY-SPAWN-POLICY.md))
+2. **Nix rootfs**. Only known binaries installed into `wawona-rootfs`
+3. **No `exec*` from ObjC download handlers**. Existing waypipe policy unchanged
+4. **Cargo feature gates**. `profile-store-safe` excludes desktop-only Wayland globals
+5. **CI**. `.#zsh-ios`, `.#weston-ios` build on merge
 
 ---
 
 ## Review narrative (short)
 
-> Wawona is a developer tool that runs a Wayland compositor on iOS. The terminal window uses the open-source Weston terminal emulator. The shell is **zsh**, statically linked and run **in-process** (`wawona_zsh_main` on a pthread) — there is no `fork`/`exec` of a zsh Mach-O. Optional user `.wasm` files are **documents** interpreted by a Pulley engine linked into the reviewed binary (no JIT, no unsigned native code). Remote administration via SSH is optional and uses the same approach as other App Store terminal apps.
+> Wawona is a developer tool that runs a Wayland compositor on iOS. The terminal window uses the open-source Weston terminal emulator. The shell is **zsh**, statically linked and run **in-process** (`wawona_zsh_main` on a pthread). There is no `fork`/`exec` of a zsh Mach-O. Optional user `.wasm` files are **documents** interpreted by a Pulley engine linked into the reviewed binary (no JIT, no unsigned native code). Remote administration via SSH is optional and uses the same approach as other App Store terminal apps.
 
 Full reviewer copy: [APP-REVIEW-NOTES.md](APP-REVIEW-NOTES.md).
 

@@ -818,7 +818,7 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   // settingsOverrides or runtimeOverrides, both collected into
   // transportSnapshot above) or, absent an override, the global default which
   // "seeds" new machines. The connecting client's first toplevel claims and
-  // pins this, so a later machine connecting — or a later global toggle —
+  // pins this, so a later machine connecting. Or a later global toggle -
   // never restyles it.
   id machineForceSSDValue = transportSnapshot[kWWNPrefsForceServerSideDecorations];
   BOOL machineForceSSD =

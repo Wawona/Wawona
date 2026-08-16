@@ -97,7 +97,7 @@ object EnvironmentOverrides {
         val out = mutableMapOf<String, String>()
         merged.forEach { (name, entry) ->
             when (entry.action) {
-                "unset" -> { /* skip — JNI will unset */ }
+                "unset" -> { /* skip. JNI will unset */ }
                 else -> out[name] = entry.value ?: ""
             }
         }

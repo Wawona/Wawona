@@ -304,7 +304,7 @@ impl KeyboardState {
 
     /// Clean up dead resources
     pub fn cleanup_resources(&mut self) {
-        // Note: keyboards are not aggressively cleaned — they are removed
+        // Note: keyboards are not aggressively cleaned. They are removed
         // when clients explicitly release them or disconnect.
     }
 }

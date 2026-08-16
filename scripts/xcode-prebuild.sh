@@ -19,10 +19,10 @@ export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
 export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 mkdir -p "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME"
 
-derived="${DERIVED_FILE_DIR:?DERIVED_FILE_DIR is unset — is this script running as an Xcode build phase?}"
+derived="${DERIVED_FILE_DIR:?DERIVED_FILE_DIR is unset. Is this script running as an Xcode build phase?}"
 mkdir -p "$derived"
 
-# Local getprogname/setprogname for Apple mobile — force-loaded before weston /
+# Local getprogname/setprogname for Apple mobile. Force-loaded before weston /
 # fontconfig so App Store Connect never sees libSystem's private ___progname.
 case "${PLATFORM_NAME:-}" in
   iphoneos|iphonesimulator|appletvos|appletvsimulator|xros|xrsimulator)
@@ -215,7 +215,7 @@ if [ "${#LINK_DEPS[@]}" -gt 0 ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# privatize_lib — merge a static archive into a single relocatable .o, strip
+# privatize_lib. Merge a static archive into a single relocatable .o, strip
 # all global symbols except the listed exports, and repackage as .a.
 # This prevents duplicate-symbol collisions when linking multiple UNIX
 # toolchains (zsh, neovim, openssh) into a single iOS binary.
@@ -292,7 +292,7 @@ case "$_sdk" in
 esac
 
 if [ "$_with_zsh" = "1" ]; then
-  # Must match the app SDK platform — iOS zsh cannot link into tvOS/watchOS/visionOS.
+  # Must match the app SDK platform. IOS zsh cannot link into tvOS/watchOS/visionOS.
   _zsh_attr="zsh-ios"
   case "${TARGET_NAME:-}" in
     Wawona-tvOS) _zsh_attr="zsh-tvos" ;;
@@ -315,7 +315,7 @@ if [ "$_with_zsh" = "1" ]; then
   fi
 
   # neovim: linked on iOS/iPadOS/visionOS only (size + fork/exec editor). Skip
-  # on tvOS/watchOS — mobile-platform-deps does not ship it there.
+  # on tvOS/watchOS. Mobile-platform-deps does not ship it there.
   case "${TARGET_NAME:-}" in
     Wawona-iOS|Wawona-iPadOS|Wawona-visionOS)
       _nvim_attr="neovim-ios-device"
@@ -359,7 +359,7 @@ if [ "$_with_zsh" = "1" ]; then
   # foot + fuzzel: Wayland client archives that each embed their own copy of the
   # generated protocol marshalling (xdg_toplevel_interface, …). Force-loaded raw,
   # those symbols collide with weston's (and each other's). Privatize like
-  # neovim/zsh — merge to one .o, keep only the *_main entry global — so the
+  # neovim/zsh. Merge to one .o, keep only the *_main entry global. So the
   # protocol symbols become local and weston's copies stay authoritative.
   # foot is linked on every Apple-mobile target; fuzzel on iOS/iPadOS/visionOS.
   _foot_dev_attr="foot-ios"; _foot_sim_attr="foot-ios-sim"

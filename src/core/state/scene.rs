@@ -124,7 +124,7 @@ impl CompositorState {
                     (width.max(1), height.max(1))
                 } else if width == 0 && height == 0 {
                     // Per xdg-shell, 0x0 means "the client decides its own
-                    // size" — pass it through (first-commit trust).
+                    // size". Pass it through (first-commit trust).
                     (0, 0)
                 } else {
                     let (clamped_w, clamped_h) =
@@ -199,7 +199,7 @@ impl CompositorState {
 
         // Smithay is the only serial namespace: every real toplevel is created
         // by smithay's XdgShellHandler::new_toplevel and always carries a
-        // ToplevelSurface. A missing one means teardown is racing — do not
+        // ToplevelSurface. A missing one means teardown is racing. Do not
         // fall back to a hand-rolled configure with a self-invented serial
         // (the old path double-tracked serials and desynced ack matching).
         crate::wlog!(
@@ -369,7 +369,7 @@ impl CompositorState {
                 // Only while the host is size-authoritative mid live-resize
                 // (#111) stretch the last buffer into the host size so nested
                 // niri does not flash before/after sizes. Never leave a giant
-                // host frame around a small demo client — that is a sync bug.
+                // host frame around a small demo client. That is a sync bug.
                 let mut render_width = window.width.max(0) as u32;
                 let mut render_height = window.height.max(0) as u32;
                 if !is_kiosk_window {
@@ -420,7 +420,7 @@ impl CompositorState {
                                 // Window size may already equal the physical
                                 // buffer (client/host raced before density
                                 // applied). Still present at output *logical*
-                                // size when the buffer matches output×scale —
+                                // size when the buffer matches output×scale -
                                 // otherwise Android draws a 1080 quad into a
                                 // 360 viewport and only a black corner shows
                                 // (weston-simple-egl flash-then-black).

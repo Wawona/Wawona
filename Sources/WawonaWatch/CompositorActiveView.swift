@@ -47,7 +47,7 @@ struct CompositorActiveView: View {
             }
 
             // Hidden field: focusing it opens the native watch text-entry UI
-            // immediately (scribble / QuickType / dictation) — no on-screen
+            // immediately (scribble / QuickType / dictation). No on-screen
             // "Type…" chrome. Submit/Send injects into the Wayland client.
             TextField("", text: $draftText)
                 .focused($keyboardFocused)

@@ -111,7 +111,7 @@ extern void wawona_window_info_free(CWindowInfo *info);
     compositorStarted = [compositor startWithSocketName:@"wayland-0"];
   }
   if (!compositorStarted) {
-    WWNLog("MAIN", @"Error: Failed to start Rust compositor — continuing so "
+    WWNLog("MAIN", @"Error: Failed to start Rust compositor. Continuing so "
                    @"Machines UI can still load");
   } else {
     setenv("WAYLAND_DISPLAY", [[compositor socketName] UTF8String], 1);
@@ -165,7 +165,7 @@ int main(int argc, char *argv[]) {
     setbuf(stdout, NULL);
     setbuf(stderr, NULL);
 
-    // Ignore SIGPIPE — broken pipes from waypipe/SSH connections must not
+    // Ignore SIGPIPE. Broken pipes from waypipe/SSH connections must not
     // terminate the app.  The underlying write() returns EPIPE instead.
     signal(SIGPIPE, SIG_IGN);
 
@@ -202,7 +202,7 @@ static NSString *g_cli_backend = nil;
 
 static void wwn_print_cli_help(void) {
   printf(
-      "Wawona — Wayland compositor for macOS (and Apple / Android targets)\n"
+      "Wawona. Wayland compositor for macOS (and Apple / Android targets)\n"
       "\n"
       "Usage:\n"
       "  Wawona [options]\n"
@@ -215,7 +215,7 @@ static void wwn_print_cli_help(void) {
       "\n"
       "GUI vs headless:\n"
       "  (default)               Start compositor + Machines control panel\n"
-      "  --headless, --no-gui    Compositor only — no Machines / Settings UI\n"
+      "  --headless, --no-gui    Compositor only. No Machines / Settings UI\n"
       "  --gui                   Force Machines UI (overrides --headless)\n"
       "\n"
       "Start software (after compositor is up):\n"
@@ -229,10 +229,10 @@ static void wwn_print_cli_help(void) {
       "\n"
       "Nested compositor display backend (weston / niri):\n"
       "  --backend <mode>        auto | wayland | drm\n"
-      "                            wayland — nest as a Wayland client of Wawona\n"
-      "                            drm     — wwn-iland userspace DRM/KMS/GBM\n"
+      "                            wayland. Nest as a Wayland client of Wawona\n"
+      "                            drm. Wwn-iland userspace DRM/KMS/GBM\n"
       "                                      (needs OpenGLDriver ≠ none)\n"
-      "                            auto    — nested wayland (safe default)\n"
+      "                            auto. Nested wayland (safe default)\n"
       "\n"
       "Service modes (LaunchAgents):\n"
       "  --compositor-host       Compositor service without Machines\n"
@@ -399,7 +399,7 @@ static BOOL wwn_is_compositor_socket_ready(void) {
     if (access(cachedSocketPath.fileSystemRepresentation, F_OK) == 0) {
       return cachedHealthy;
     }
-    // Socket vanished — fall through and re-read plist.
+    // Socket vanished. Fall through and re-read plist.
   }
 
   lastPlistRead = now;
@@ -575,7 +575,7 @@ static void setup_signal_sources(void) {
     [[WWNMachinesCoordinator sharedCoordinator] showMachinesWindowAndActivate:YES];
   } else {
     WWNLog("MAIN",
-           @"Headless CLI — compositor running; Machines UI suppressed "
+           @"Headless CLI. Compositor running; Machines UI suppressed "
            @"(WAYLAND_DISPLAY=wayland-0)");
     // Accessory: stay out of the Dock / Cmd-Tab unless the user opens UI later.
     [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
@@ -600,7 +600,7 @@ static void setup_signal_sources(void) {
       return;
     }
     if (autoClient.length > 0) {
-      WWNLog("MAIN", @"CLI --client=%@ — starting bundled client", autoClient);
+      WWNLog("MAIN", @"CLI --client=%@. Starting bundled client", autoClient);
       [[WWNWaypipeRunner sharedRunner] launchBundledClientWithId:autoClient];
     }
   };
@@ -924,7 +924,7 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
     [menu addItem:quitItem];
 
     _statusItem.menu = menu;
-    // Default runloop mode only — avoid polling during menu tracking / window
+    // Default runloop mode only. Avoid polling during menu tracking / window
     // drags (same class of jank as the old compositor CommonModes timer).
     _pollTimer = [NSTimer timerWithTimeInterval:2.0
                                          target:self

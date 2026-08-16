@@ -1,7 +1,7 @@
 name: "Watch: graphics nightly"
 
 # Deep / slow gates (graphics, protocol drift, Weston/XWayland capability).
-# Push path already runs Gate: products (products + GUI e2e) — do not re-call it here.
+# Push path already runs Gate: products (products + GUI e2e). Do not re-call it here.
 # docs/ci.md · FlakeHub Cache on every Nix job.
 
 on:

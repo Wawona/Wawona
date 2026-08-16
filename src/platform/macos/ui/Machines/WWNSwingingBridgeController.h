@@ -1,5 +1,5 @@
 //
-// WWNSwingingBridgeController.h — Wawona-side lifecycle owner for
+// WWNSwingingBridgeController.h. Wawona-side lifecycle owner for
 // Wawona Swinging Bridge (formerly anowaW) on macOS.
 //
 // Thin coordinator between Wawona's machine-session lifecycle and the

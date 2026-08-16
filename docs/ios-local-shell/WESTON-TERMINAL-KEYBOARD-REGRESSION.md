@@ -39,14 +39,14 @@ that does not fill the phone compositor.
                                 │
 ┌───────────────────────────────▼─────────────────────────────────────────┐
 │ B. iOS WindowCreated (first native toplevel):                          │
-│    SetWindowActivatedSilent only — NO injectWindowResize fill.         │
+│    SetWindowActivatedSilent only. NO injectWindowResize fill.         │
 │    Soft OSK / accessory FR deferred until first Wayland frame.         │
 │    (Goal: UIKit keyboard animation must not stall configure/ticks.)    │
 └───────────────────────────────┬─────────────────────────────────────────┘
                                 │
 ┌───────────────────────────────▼─────────────────────────────────────────┐
 │ C. weston-terminal iOS patch (historical):                             │
-│    Skipped terminal_resize(80,25) at create — “wait for configure”.    │
+│    Skipped terminal_resize(80,25) at create. “wait for configure”.    │
 └───────────────────────────────┬─────────────────────────────────────────┘
                                 ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -97,7 +97,7 @@ followHost heuristic.
 Healthy after fill + honor-host-configure (excerpt):
 
 ```
-[BRIDGE] First native toplevel window 1 — immediate activate + fill configure 402x778 (shell)
+[BRIDGE] First native toplevel window 1. Immediate activate + fill configure 402x778 (shell)
 [COMPOSITOR] send_toplevel_configure: … size=402x778 …
 weston-terminal: surface size 402x778 for grid CxR (host configure)
 weston-terminal: resize_handler 402x778 (configure received)
@@ -156,7 +156,7 @@ over the wait spam alone.
 
 1. **Never** inject output-sized configure on map for weston-flower / smoke /
    simple-shm (fixed or client-driven demo sizes).
-2. Soft OSK Expand stays tied to committed TI-v3 / terminal synthesis — not
+2. Soft OSK Expand stays tied to committed TI-v3 / terminal synthesis. Not
    mere window focus; do not `becomeFirstResponder` before first buffer.
 3. weston-terminal / foot on iOS/iPadOS should **fill** the compositor view;
    grid tracks host layout (`followHostSize` + fill configure / layout inject).

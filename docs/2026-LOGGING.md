@@ -8,7 +8,7 @@ All logging must follow this format uniformly:
 
 ## Format
 
-- **Date/timestamp** — `YYYY-MM-DD HH:MM:SS`
-- **Component** — inside `[brackets]` (e.g. `[BRIDGE]`, `[CORE]`, `[FFI]`)
-- **Message** — plain text
+- **Date/timestamp**. `YYYY-MM-DD HH:MM:SS`
+- **Component**. Inside `[brackets]` (e.g. `[BRIDGE]`, `[CORE]`, `[FFI]`)
+- **Message**. Plain text
 - **No emojis**

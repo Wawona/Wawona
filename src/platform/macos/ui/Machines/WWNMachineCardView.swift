@@ -66,7 +66,7 @@ struct WWNMachineCardView: View {
     .wwnA11yContainer(WWNA11y.machinesCard(profile.machineId), label: descriptor)
   }
 
-  /// What a person reads off this card — see `WWNA11y.machinesDescriptor`.
+  /// What a person reads off this card. See `WWNA11y.machinesDescriptor`.
   private var descriptor: String {
     WWNA11y.machinesDescriptor(name: profile.name, subtitle: subtitle)
   }

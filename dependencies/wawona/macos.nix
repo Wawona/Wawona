@@ -168,12 +168,12 @@ let
     "src/platform/macos/WWNPopupWindow.h"
     "src/platform/macos/WWNIlandPresenter.m"
     "src/platform/macos/WWNIlandPresenter.h"
-    # Rootfs / iCloud sync — referenced by WWNPreferences.m on all Apple targets.
+    # Rootfs / iCloud sync. Referenced by WWNPreferences.m on all Apple targets.
     "src/platform/macos/WWNRootfsProvider.m"
     "src/platform/macos/WWNRootfsProvider.h"
     "src/platform/macos/WWNRootfsICloudSync.m"
     "src/platform/macos/WWNRootfsICloudSync.h"
-    # Desktop Replacement / Swinging Bridge — macOS + Android only (matrix).
+    # Desktop Replacement / Swinging Bridge. MacOS + Android only (matrix).
     "src/platform/macos/ui/Machines/WWNSwingingBridgeController.m"
     "src/platform/macos/ui/Machines/WWNSwingingBridgeController.h"
     "src/platform/macos/ui/Machines/WWNDesktopReplacementController.m"
@@ -342,7 +342,7 @@ let
     mkdir -p "$out/Applications/Wawona.app/Contents/Resources"
   '';
 
-  # Mode B dylib — desktop-host / full-dev only (never store-safe).
+  # Mode B dylib. Desktop-host / full-dev only (never store-safe).
   bundleIlandBaremetalDylib = lib.optionalString (ilandBaremetal != null) ''
     bundle_iland_baremetal_dylib() {
       local app="$1"
@@ -622,7 +622,7 @@ in
       echo "📦 Phase 1: Compiling Swift sources..."
       SWIFT_OBJ=""
       SWIFT_SOURCES=(
-        # Shared View.wwnA11y(_:) — must stay unique with WWNAccessibilityIdentifiers.swift
+        # Shared View.wwnA11y(_:). Must stay unique with WWNAccessibilityIdentifiers.swift
         "Sources/WawonaUI/AccessibilityIdentifiers.swift"
         "src/platform/macos/ui/Machines/WWNAccessibilityIdentifiers.swift"
         "src/platform/macos/ui/Machines/WWNMachineCardView.swift"
@@ -818,7 +818,7 @@ GEN_HEADER
       # Swinging Bridge app-bridge: static core lib + ScreenCaptureKit/CGEvent shim object.
       # The shim (.o) is best-effort in Wawona-Swinging-Bridge (needs the macOS SDK frameworks
       # at dep-build time), so only add it when present. libanowaw.a is safe to
-      # pass unconditionally — if WWNSwingingBridgeController compiled as a stub (header
+      # pass unconditionally. If WWNSwingingBridgeController compiled as a stub (header
       # not vendored) its symbols simply go unreferenced.
       ANOWAW_LINK=""
       ${lib.optionalString (anowaw != null) ''
@@ -909,7 +909,7 @@ GEN_HEADER
               cp -R "xcodebuild-out/Wawona.app" "$out/Applications/Wawona.app"
               APP="$out/Applications/Wawona.app"
 
-              # Same runtime assets as the manual install path — Xcode's .app does
+              # Same runtime assets as the manual install path. Xcode's .app does
               # not embed weston share/fonts; postInstall verifies these exist.
               mkdir -p "$APP/Contents/Resources/bin" "$APP/Contents/MacOS"
               if [ -d "${weston}/bin" ]; then
@@ -1471,7 +1471,7 @@ PLIST_EOF
       # Codesign / Gatekeeper: only Contents/ may sit at the .app root. Install
       # phases still stage FHS lib/ + share/ beside Contents for convenience;
       # relocate before sealing so Developer ID notarization can succeed.
-      # Assets copied from the nix store are often mode 444 — chmod before rm.
+      # Assets copied from the nix store are often mode 444. Chmod before rm.
       for d in lib share; do
         if [ -d "$APP/$d" ]; then
           mkdir -p "$APP/Contents/Resources/$d"

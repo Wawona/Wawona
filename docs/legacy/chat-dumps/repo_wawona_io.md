@@ -56,7 +56,7 @@ libXext
 xbitmaps
 many others
 These are the same libraries Linux distributions package, rebuilt for Darwin/iOS.
-The actual X server is a different story—historically, running a full X server on iOS has required additional work because iOS doesn't expose a traditional framebuffer or desktop environment. Many setups instead display X applications through VNC or remote displays rather than directly on SpringBoard.
+The actual X server is a different story-historically, running a full X server on iOS has required additional work because iOS doesn't expose a traditional framebuffer or desktop environment. Many setups instead display X applications through VNC or remote displays rather than directly on SpringBoard.
 
 launchd
 This one's different.
@@ -156,7 +156,7 @@ ImageMagick
 Thousands of packages are available because once the foundational libraries (libc, libiconv, ncurses, OpenSSL, zlib, etc.) were ported, many higher-level Unix programs could be rebuilt with relatively little effort.
 How does Dopamine rootHide fit into this?
 Dopamine rootHide doesn't provide these packages itself. Instead, it provides a jailbreak environment that allows Procursus packages to run in a rootless-compatible way while coexisting with iOS's sealed system volume and modern security model. The package manager then installs Procursus-built .deb packages into the jailbreak's writable prefix.
-Since you're interested in Wawona Compositor and bringing more desktop-like software to iOS, you're looking at the same ecosystem that has already demonstrated it's possible to port large parts of a Unix desktop stack. Understanding how Procursus adapts packages—and where it has to patch around Darwin-specific behavior—is a good foundation for porting additional software such as Wayland compositors or graphics libraries.
+Since you're interested in Wawona Compositor and bringing more desktop-like software to iOS, you're looking at the same ecosystem that has already demonstrated it's possible to port large parts of a Unix desktop stack. Understanding how Procursus adapts packages-and where it has to patch around Darwin-specific behavior-is a good foundation for porting additional software such as Wayland compositors or graphics libraries.
 Nice! but where the hell are these packages and their patches and sources? I want them
 Yep. The nice thing about Procursus is that almost everything is open source. You can study exactly how they got packages like Fluxbox, X11, Python, GCC, etc. running on iOS.
 1. The Procursus build system (this is the gold mine)
@@ -288,7 +288,7 @@ pango.mk
 gtk3.mk
 fluxbox.mk
 and then compare them against their Linux counterparts.
-You'll quickly discover that 95% of the work isn't in the application itself—it's in the build system. Procursus has already solved a huge amount of the Darwin-specific cross-compilation, SDK, codesigning, packaging, and patch management. Reusing those techniques could save you a tremendous amount of effort when bringing additional desktop software to iOS.
+You'll quickly discover that 95% of the work isn't in the application itself-it's in the build system. Procursus has already solved a huge amount of the Darwin-specific cross-compilation, SDK, codesigning, packaging, and patch management. Reusing those techniques could save you a tremendous amount of effort when bringing additional desktop software to iOS.
 
 
 
@@ -452,7 +452,7 @@ What if I want to bundle for Apple AppStore compliance? What patches need to be 
 
 This is exactly the kind of question where it's useful to distinguish between **"runs on a jailbroken iPhone"** and **"passes App Store Review."** They are very different targets.
 
-The good news is that **Neovim is actually a surprisingly realistic candidate for App Store distribution.** There are already App Store apps that embed terminal editors or terminal emulators. The challenge isn't Neovim itself—it's how you integrate it.
+The good news is that **Neovim is actually a surprisingly realistic candidate for App Store distribution.** There are already App Store apps that embed terminal editors or terminal emulators. The challenge isn't Neovim itself-it's how you integrate it.
 
 ## What the Procursus patches are doing
 
@@ -470,7 +470,7 @@ LocaleRefGetPartString(...)
 
 to use a more portable implementation.
 
-This isn't an App Store issue—it's a build compatibility issue. CoreServices locale APIs aren't always available or desirable on iOS.
+This isn't an App Store issue-it's a build compatibility issue. CoreServices locale APIs aren't always available or desirable on iOS.
 
 ---
 
@@ -655,7 +655,7 @@ you'd point Neovim at the shell bundled with your app (or disable shell escapes 
 
 ## What *doesn't* need changing?
 
-Probably 95–99% of Neovim.
+Probably 95-99% of Neovim.
 
 That's one reason Neovim is such a good embedded component.
 
@@ -704,6 +704,6 @@ Neovim itself would remain almost entirely unchanged.
 
 ## The broader insight
 
-After reading through Procursus for a while, you'll notice a pattern: **the patches are usually about portability and cross-compilation, not about iOS UI or App Store policies.** The real work of making a Unix program "feel native" on iOS happens *outside* the program—in the launcher, filesystem layout, environment variables, process management, terminal emulator, and graphics integration.
+After reading through Procursus for a while, you'll notice a pattern: **the patches are usually about portability and cross-compilation, not about iOS UI or App Store policies.** The real work of making a Unix program "feel native" on iOS happens *outside* the program-in the launcher, filesystem layout, environment variables, process management, terminal emulator, and graphics integration.
 
 For Wawona, this is encouraging because it means you can often keep upstream software very close to its original source, making updates and long-term maintenance much easier.

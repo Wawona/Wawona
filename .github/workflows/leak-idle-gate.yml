@@ -4,7 +4,7 @@ name: "Watch: idle memory"
 # Identifies which product target fails. See docs/testing/leak-idle-gate.md.
 #
 # Not a promote blocker. On development/master product pushes, Gate: products
-# calls this with products_ready=true (reuse product-* artifacts — never
+# calls this with products_ready=true (reuse product-* artifacts. Never
 # re-call product-build on the Gate: products tip_key). Schedule / dispatch
 # build once under tip_key leak-idle-* so they cannot cancel Gate: products.
 
@@ -64,7 +64,7 @@ env:
 
 jobs:
   # Standalone schedule/dispatch only. Never share Gate: products's tip_key
-  # (product-build-development-ios-sim) — that cancelled this gate on every push.
+  # (product-build-development-ios-sim). That cancelled this gate on every push.
   product-ios:
     name: Product iOS sim
     if: ${{ !inputs.products_ready && ((inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'ios' || github.event_name == 'schedule') }}

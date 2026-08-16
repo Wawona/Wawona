@@ -512,7 +512,7 @@ private fun DesktopSection(prefs: SharedPreferences, context: Context, accent: C
             "Turn Wawona into an Android Launcher: one native machine becomes your " +
                 "Wayland desktop, and an app drawer lets you open both Android apps and " +
                 "the Wayland clients from Machine Configuration. Only a Native machine " +
-                "can be the desktop — VM, container, and network (waypipe/SSH) machines " +
+                "can be the desktop. VM, container, and network (waypipe/SSH) machines " +
                 "are not eligible.\n\n" +
                 "Unlike macOS Desktop Replacement, Android does not require SIP changes or " +
                 "Recovery-mode steps. Set Wawona as your Home app below.",
@@ -664,7 +664,7 @@ private fun DesktopSection(prefs: SharedPreferences, context: Context, accent: C
                     "desktop (waypipe-rs mirror). Requires a local nested Weston " +
                     "desktop machine.\n\n" +
                     "Rootless / baseline (Play-safe): own Wawona surfaces + consented " +
-                    "MediaProjection mirroring — no SIP, no root.\n\n" +
+                    "MediaProjection mirroring. No SIP, no root.\n\n" +
                     "Power Mode (Shizuku or root): embed any installed app with " +
                     "privileged input. Auto-falls back to rootless if Shizuku/root " +
                     "is unavailable. Not Play-compliant.",

@@ -147,7 +147,7 @@ impl CompositorState {
     /// Android, Linux). Platform layers pass *logical view-local* coordinates
     /// (Android JNI already divides raw pixels by density; macOS/GTK views are
     /// natively logical), so this transform must never apply a platform
-    /// density factor — it is idempotent w.r.t. platform pre-scaling.
+    /// density factor. It is idempotent w.r.t. platform pre-scaling.
     ///
     /// wl_pointer coordinates are surface-local *logical* coordinates per the
     /// core protocol: an explicit wl_surface.set_buffer_scale changes the
@@ -212,7 +212,7 @@ impl CompositorState {
     }
 
     /// Find the surface at the given absolute coordinates.
-    /// Phase E: Respects subsurface input region clipping — a point is only accepted
+    /// Phase E: Respects subsurface input region clipping. A point is only accepted
     /// if it lies within the surface's input_region (None = whole surface).
     pub fn find_surface_at(&mut self, x: f64, y: f64) -> Option<(u32, f64, f64)> {
         self.build_scene();

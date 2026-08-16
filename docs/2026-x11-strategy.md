@@ -1,4 +1,4 @@
-# Wawona — X11 Strategy
+# Wawona. X11 Strategy
 
 Authority for scope: [`2026-SOURCE-OF-TRUTH.md`](./2026-SOURCE-OF-TRUTH.md).
 
@@ -19,7 +19,7 @@ Linux box; the Apple/Android client only ever speaks Wayland.
 
 - Enabled by the `waypipeXwls` preference (`WWNWaypipeRunner` appends `--xwls`).
 - Works on every platform that supports waypipe (watchOS included: native compositor plus remote).
-- Fully App Store compliant — no local X server, no JIT.
+- Fully App Store compliant. No local X server, no JIT.
 
 ### 2. Nested-Weston XWayland (non-store macOS only)
 On developer/desktop macOS builds, the bundled nested Weston can launch its own
@@ -30,11 +30,11 @@ Weston presents as a single surface into Wawona. Not used on store builds.
 
 The compositor advertises the pieces XWayland needs to attach:
 
-- `xwayland_shell_v1` — XWayland surface association.
-- `zwp_xwayland_keyboard_grab_manager_v1` — X11 keyboard grabs.
+- `xwayland_shell_v1`. XWayland surface association.
+- `zwp_xwayland_keyboard_grab_manager_v1`. X11 keyboard grabs.
 
 (Both appear in [`protocol-status.md`](./protocol-status.md).) Wawona itself is
-the Wayland side; it does not implement the X11 wire protocol — XWayland does.
+the Wayland side; it does not implement the X11 wire protocol. XWayland does.
 
 ## Non-goals
 

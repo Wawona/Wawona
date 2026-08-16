@@ -1,5 +1,5 @@
 /*
- * anowaw.h — C ABI for the anowaW bridge (github.com/Wawona/wwn-anowaW).
+ * anowaw.h. C ABI for the anowaW bridge (github.com/Wawona/wwn-anowaW).
  *
  * anowaW renders a native macOS (Cocoa/AppKit) or Android app as a Wayland
  * client inside Wawona's nested-Weston desktop. This header is consumed by the

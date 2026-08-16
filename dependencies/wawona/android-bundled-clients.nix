@@ -194,7 +194,7 @@ in
       # Capture the APK entry list once. Do NOT use `unzip -l | grep -q`: grep -q
       # closes the pipe on first match, unzip then dies with SIGPIPE (exit 141),
       # and with `set -o pipefail` (active in this build) the pipeline reports
-      # non-zero — a false "missing" even though the lib is present. Use a
+      # non-zero. A false "missing" even though the lib is present. Use a
       # pipe-free glob match against the captured list instead.
       APK_ENTRIES="$(unzip -Z1 "$APK_VERIFY_PATH")"
       # Shell DT_NEEDED libs (waypipe → libzstd.so) + bundled clients (issue #80).

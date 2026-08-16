@@ -1,8 +1,8 @@
 # Eval-time (--impure) attrs for IPA builds signed via fastlane match.
 # Darwin daemon builders do not inherit client impureEnvVars, so bake host
 # *paths* into the build script at evaluation. Never bake cert/password
-# contents — only paths to mode-0600 temp files created by Fastlane.
-# Do NOT set HOME to the host here — nixbld cannot write /Users/runner;
+# contents. Only paths to mode-0600 temp files created by Fastlane.
+# Do NOT set HOME to the host here. Nixbld cannot write /Users/runner;
 # build-app.nix picks a writable HOME and stages profiles / imports P12.
 { lib }:
 old: {

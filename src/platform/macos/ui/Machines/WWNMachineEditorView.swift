@@ -285,7 +285,7 @@ struct WWNMachineEditorView: View {
           )
         }
       }
-      // Default tvOS Form chrome is glass over the Machines grid — unreadable at 10ft.
+      // Default tvOS Form chrome is glass over the Machines grid. Unreadable at 10ft.
       // Note: `.scrollContentBackground` is unavailable on tvOS; opaque background is enough.
       .background {
         Color(white: 0.07).ignoresSafeArea()

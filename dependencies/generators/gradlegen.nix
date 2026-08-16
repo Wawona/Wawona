@@ -418,7 +418,7 @@ let
     # etc.) to resolve the seat's keymap. Without this, smithay's
     # seat.add_keyboard() fails for both the primary and fallback XKB config,
     # the seat ends up with zero keyboard capability, and no key event ever
-    # reaches any Wayland client (weston-terminal included) — a silent,
+    # reaches any Wayland client (weston-terminal included). A silent,
     # total keyboard-input failure. Extracted into wawona-rootfs at runtime
     # by WawonaShellRootfs. Mirrors dependencies/wawona/android.nix.
     XKB_ASSET_DIR="$OUT/app/src/main/assets/xkb"

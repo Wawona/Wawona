@@ -1,5 +1,5 @@
 {
-  "description": "Curated Gate: packages package matrix. Product binaries (wawona-macos, wawona-appimage, wawona-ios, wawona-android) are owned by product-build.yml — see docs/ci.md.",
+  "description": "Curated Gate: packages package matrix. Product binaries (wawona-macos, wawona-appimage, wawona-ios, wawona-android) are owned by product-build.yml. See docs/ci.md.",
   "include": [
     {
       "system": "aarch64-darwin",

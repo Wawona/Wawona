@@ -1,4 +1,4 @@
-//! Machines home — 1:1 with macOS `WWNMachinesGridView`: summary strip,
+//! Machines home. 1:1 with macOS `WWNMachinesGridView`: summary strip,
 //! adaptive card grid, and card actions (Start / Stop / Focus / Edit / Delete).
 
 use std::cell::RefCell;

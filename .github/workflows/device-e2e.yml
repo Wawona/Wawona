@@ -5,7 +5,7 @@ name: "Build: GUI smoke"
 # Local reproduction:
 #   scripts/agent-device-smoke.sh [ios|android|fuzzel|android-fuzzel|ios-fuzzel]
 #
-# Fail-fast: iOS/Android GUI smoke and fuzzel lanes run once — no suite retries.
+# Fail-fast: iOS/Android GUI smoke and fuzzel lanes run once. No suite retries.
 #
 # products_ready=true: download product-* artifacts (no nix product builds).
 # products_ready=false: build in-job (workflow_dispatch / legacy callers).
@@ -190,7 +190,7 @@ jobs:
 
   # Build the APK only when Gate: products has NOT already produced
   # product-android-apk (products_ready). On the Gate path this job is skipped
-  # and android-emu-e2e consumes the same-run product-android-apk directly — no
+  # and android-emu-e2e consumes the same-run product-android-apk directly. No
   # intermediate wawona-apk re-upload hop.
   android-apk:
     name: "Android: Wawona.apk"
@@ -353,7 +353,7 @@ jobs:
           test -x "$APP/Contents/Resources/bin/niri" \
             || { echo "FAIL: niri missing/not executable in product-macos-app"; ls -la "$APP/Contents/Resources/bin" || true; exit 1; }
 
-      # Nested niri/fuzzel omitted from Gate: products — GHA macos runners often
+      # Nested niri/fuzzel omitted from Gate: products. GHA macos runners often
       # SIGTERM the job mid-GUI (exit 143) even with continue-on-error, which
       # still fails the reusable workflow. Catalog smoke above is the hard check.
       # Re-enable via Watch: graphics nightly / local scripts/niri-fuzzel-smoke-macos.sh.

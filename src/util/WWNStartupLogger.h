@@ -1,5 +1,5 @@
 /*
- * WWNStartupLogger — captures WWNLog output during the client-launch
+ * WWNStartupLogger. Captures WWNLog output during the client-launch
  * transition and forwards it to the native startup log view.
  *
  * Usage:

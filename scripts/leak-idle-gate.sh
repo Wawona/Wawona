@@ -2,7 +2,7 @@
 # Leak-idle CI gate: Start nested client → sample memory for HOLD_SEC → plateau check.
 #
 # Replaces ad-hoc agent-device + Instruments MCP dogfood with a runner-safe script.
-# Instruments MCP / xctrace Allocations are NOT used here (empty on iOS 26 sim —
+# Instruments MCP / xctrace Allocations are NOT used here (empty on iOS 26 sim -
 # see ISSUE-012). Gate is phys_footprint / dumpsys TOTAL PSS plateau, matching the
 # Leak+Idle campaign in .agent-device/test-artifacts/instruments/.
 #
@@ -134,7 +134,7 @@ run_ios() {
   xcrun simctl bootstatus "$IOS_DEVICE" -b || xcrun simctl boot "$IOS_DEVICE" || true
   xcrun simctl bootstatus "$IOS_DEVICE"
 
-  # Mirror agent-device-smoke.sh run_ios exactly — it passes in the same Gate:
+  # Mirror agent-device-smoke.sh run_ios exactly. It passes in the same Gate:
   # products run. The order matters: prepare system UI and install the app
   # BEFORE preparing the XCTest runner, then prepare → open --relaunch. The old
   # order here (prepare → agent-device install → open → ios_prepare_system_ui

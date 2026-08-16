@@ -17,7 +17,7 @@
  */
 void (*wwn_startup_log_sink)(const char *module, const char *msg) = NULL;
 
-/* Forward to the shared instance — C-callable, any thread. */
+/* Forward to the shared instance. C-callable, any thread. */
 static void wwn_startup_log_sink_impl(const char *module, const char *msg)
 {
     NSString *line = [NSString stringWithFormat:@"[%s] %s",

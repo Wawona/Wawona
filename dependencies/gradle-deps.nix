@@ -85,7 +85,7 @@ let
       # Always use Nix gradle: ./gradlew forceFetches the wrapper zip in sandbox.
       # Download all resolvable configuration artifacts without compiling app
       # sources (compileDebugKotlin needs anowaw bindings unavailable here).
-      # Metadata-only `:dependencies` is not enough — mitm lockfile would drop AARs.
+      # Metadata-only `:dependencies` is not enough. Mitm lockfile would drop AARs.
       # Match org.gradle.jvmargs + mitm trustStore so --no-daemon stays
       # in-process (no localhost single-use daemon in the Nix sandbox).
       GRADLE_OPTS="-Xms64m -Xmx6144m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
@@ -107,7 +107,7 @@ let
         rootProject.tasks.register("resolveAllArtifacts") {
           doLast {
             allprojects { project ->
-              // Snapshot first — resolving can mutate the configurations container.
+              // Snapshot first. Resolving can mutate the configurations container.
               def configs = project.configurations.findAll { it.canBeResolved }
               // Prefer app classpaths that pull AARs for assembleDebug.
               def preferred = configs.findAll { cfg ->

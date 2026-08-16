@@ -1,4 +1,4 @@
-# wwn-vms — Mode A / Mode B implementation plan
+# wwn-vms. Mode A / Mode B implementation plan
 
 Canonical product split: [Wawona `docs/mode-a-b.md`](https://github.com/Wawona/Wawona/blob/development/docs/mode-a-b.md).
 Mirror: keep this file in sync with `Wawona/docs/vms-mode-a-b.md`.
@@ -11,7 +11,7 @@ Mode A vs Mode B on the iOS family:
 | Platform | Mode A engine | Mode B / privileged |
 |----------|---------------|---------------------|
 | **macOS** | `Virtualization.framework` (not MAS) | Same + SIP desktop-host paths |
-| **iOS / iPadOS** | UTM-SE–class **jitless** QEMU-TCTI | **JIT** UTM in Sileo Mode B IPA |
+| **iOS / iPadOS** | UTM-SE-class **jitless** QEMU-TCTI | **JIT** UTM in Sileo Mode B IPA |
 | **Android** | QEMU TCG (± AVF/KVM when available) | Root/privileged paths as designed |
 | **Linux** | Host/QEMU profiles (TBD) | N/A |
 
@@ -19,7 +19,7 @@ Shared: Machines schema, guest artifacts, vsock + waypipe GUI, capability gates.
 **Do not** assume the iOS interpreter path on macOS/Android or vice versa.
 
 Containers are separate (`wwn-containers`): macOS Apple Containerization work is
-in flight elsewhere — Wawona integration waits on that merge; do not block VMs
+in flight elsewhere. Wawona integration waits on that merge; do not block VMs
 or Wasm packages on it.
 
 ## Shared substrate (both modes)
@@ -37,7 +37,7 @@ or Wasm packages on it.
 2. CI: assert **no** JIT entitlements, no `MAP_JIT`, no Hypervisor on iOS store
    schemes; symbol/string scan for jailbreak/JIT engage UI = fail.
 3. Performance: document TCTI ceiling; tune guest size (existing README levers).
-4. Optional ODR/downloadable UTM-SE payload (see Wawona #33) — still jitless data.
+4. Optional ODR/downloadable UTM-SE payload (see Wawona #33). Still jitless data.
 
 ## Mode B implementation
 

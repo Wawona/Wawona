@@ -130,7 +130,7 @@ impl PointerState {
     }
 
     /// Send frame event to focused client's pointer resources.
-    /// `wl_pointer.frame` is since version 5 — sending it to a v1–4 pointer
+    /// `wl_pointer.frame` is since version 5. Sending it to a v1-4 pointer
     /// (weston-simple-egl binds seat v1) aborts the client with
     /// "listener function for opcode 5 of wl_pointer is NULL".
     pub fn broadcast_frame(&self, focused_client: Option<&wayland_server::Client>) {

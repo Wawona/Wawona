@@ -54,12 +54,12 @@ iland and everything else falls through to the ICD.
 
 ## Phases
 
-1. **Swapchain from `wl_surface`** — `iland_wl_swapchain_create_for_surface(ws, surface, w, h)` so Vulkan does not need a fake `wl_egl_window`.
-2. **WSI shim archive** — `libiland_wayland_vulkan.a`: surface, swapchain, images, present; force-loaded only for Vulkan Wayland clients.
-3. **IOSurface → VkImage** — MoltenVK `VK_EXT_metal_objects` import; fail loud if the ICD cannot.
-4. **Re-host vkcube** — Wayland + xdg-shell + WSI; remove from `WWNIsIlandGpuCubeClientId` like opengl-cube.
-5. **Android AHB variant** — same WSI shape, different import extension.
-6. **Evidence** — Agent-Device / log proof; grade Wayland+Vulkan row PROPER on macOS.
+1. **Swapchain from `wl_surface`**. `iland_wl_swapchain_create_for_surface(ws, surface, w, h)` so Vulkan does not need a fake `wl_egl_window`.
+2. **WSI shim archive**. `libiland_wayland_vulkan.a`: surface, swapchain, images, present; force-loaded only for Vulkan Wayland clients.
+3. **IOSurface → VkImage**. MoltenVK `VK_EXT_metal_objects` import; fail loud if the ICD cannot.
+4. **Re-host vkcube**. Wayland + xdg-shell + WSI; remove from `WWNIsIlandGpuCubeClientId` like opengl-cube.
+5. **Android AHB variant**. Same WSI shape, different import extension.
+6. **Evidence**. Agent-Device / log proof; grade Wayland+Vulkan row PROPER on macOS.
 
 ## Hard don'ts
 

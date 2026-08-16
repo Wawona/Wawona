@@ -9,7 +9,7 @@
  * This is a SKELETON: it wires the ABI surface and delegates to the Wawona
  * compositor, but the in-process client-socket + window-manipulation hooks are
  * left as clearly-marked TODOs. Linux runtime (actually running the WLCS
- * battery) is deferred to CI — see dependencies/tests/wlcs.nix and the nightly
+ * battery) is deferred to CI. See dependencies/tests/wlcs.nix and the nightly
  * full-matrix workflow.
  *
  * ABI reference: https://github.com/MirServer/wlcs (include/wlcs/display_server.h)

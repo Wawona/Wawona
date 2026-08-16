@@ -174,7 +174,7 @@ impl XkbState {
 
     /// Process a key event through XKB. Returns keysym, UTF-8 text, and
     /// whether modifiers changed. The keycode should be the Linux evdev
-    /// scancode (without the +8 offset — we apply it here).
+    /// scancode (without the +8 offset. We apply it here).
     pub fn process_key(&mut self, keycode: u32, direction: xkb::KeyDirection) -> KeyResult {
         let xkb_keycode = xkb::Keycode::from(keycode + 8);
 
@@ -194,7 +194,7 @@ impl XkbState {
     }
 
     /// Update state from a key event (returns true if modifiers changed).
-    /// Legacy method — prefer `process_key()` for full keysym+UTF-8 support.
+    /// Legacy method. Prefer `process_key()` for full keysym+UTF-8 support.
     pub fn update_key(&mut self, keycode: u32, direction: xkb::KeyDirection) -> bool {
         self.state.update_key((keycode + 8).into(), direction) != 0
     }

@@ -119,14 +119,14 @@ def main() -> int:
     lines.append("## Failed Job Details")
     lines.append("")
     for r in rows:
-        lines.append(f"### {r['run_id']} — {r['title']}")
+        lines.append(f"### {r['run_id']}. {r['title']}")
         if not r["failed_jobs"]:
             lines.append("- No failed jobs.")
             lines.append("")
             continue
         for job_name, sig, err in r["failed_jobs"]:
             if err:
-                lines.append(f"- `{job_name}`: `{sig}` — `{err}`")
+                lines.append(f"- `{job_name}`: `{sig}`. `{err}`")
             else:
                 lines.append(f"- `{job_name}`: `{sig}`")
         lines.append("")

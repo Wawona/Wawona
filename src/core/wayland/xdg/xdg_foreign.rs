@@ -1,4 +1,4 @@
-//! XDG Foreign — dispatch owned by Smithay `delegate_xdg_foreign!`.
+//! XDG Foreign. Dispatch owned by Smithay `delegate_xdg_foreign!`.
 //!
 //! Legacy Wawona-side export/import tracking (unused after Smithay cutover).
 

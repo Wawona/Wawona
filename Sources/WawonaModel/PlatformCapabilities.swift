@@ -11,10 +11,10 @@ import UIKit
 /// so unfinished work read like policy and an SDK limitation read like a
 /// decision. Each case has a different correct response:
 ///
-/// - `planned`   — our work is unfinished. Finish it; never harden into removal.
-/// - `blocked`   — we want it, the platform offers no public API. Re-check on
+/// - `planned`. Our work is unfinished. Finish it; never harden into removal.
+/// - `blocked`. We want it, the platform offers no public API. Re-check on
 ///                 SDK updates. Never route around it with private API.
-/// - `forbidden` — product or store rule. Never "fix" it by turning it on.
+/// - `forbidden`. Product or store rule. Never "fix" it by turning it on.
 public enum CapabilityGate: Sendable, Equatable {
     case available
     /// Intended, not shipped yet. Opt in with `flag` once the slices are bundled.
@@ -49,7 +49,7 @@ public enum PlatformCapabilities: Sendable {
         return value == "1" || value.lowercased() == "true"
     }
 
-    /// Policy: VM machine kinds — planned on macOS / iOS / iPadOS; forbidden on
+    /// Policy: VM machine kinds. Planned on macOS / iOS / iPadOS; forbidden on
     /// tvOS / watchOS / visionOS. Android is gated in Compose the same way.
     public static var virtualMachineGate: CapabilityGate {
         #if os(tvOS) || os(watchOS) || os(visionOS)
@@ -61,11 +61,11 @@ public enum PlatformCapabilities: Sendable {
 
     public static var allowsVirtualMachine: Bool { virtualMachineGate.isAvailable }
 
-    /// Same platform set as VMs — planned, not shipping yet.
+    /// Same platform set as VMs. Planned, not shipping yet.
     ///
     /// iOS / iPadOS Mode A: OCI pull is userspace (`wwn-oci`); execution is
-    /// container-in-VM via jitless UTM-SE–class interpreter (`wwn-vms`).
-    /// Mode B (Sileo Mode B IPA only — never App Store): same OCI + JIT UTM.
+    /// container-in-VM via jitless UTM-SE-class interpreter (`wwn-vms`).
+    /// Mode B (Sileo Mode B IPA only. Never App Store): same OCI + JIT UTM.
     /// Not Wasm Runtime packages. See docs/mode-a-b.md.
     public static var containerGate: CapabilityGate {
         #if os(tvOS) || os(watchOS) || os(visionOS)
@@ -99,7 +99,7 @@ public enum PlatformCapabilities: Sendable {
     ///
     /// - **tvOS ships `Metal.framework` *and* `OpenGLES.framework`**, and
     ///   `CAMetalLayer` is available since tvOS 9. Both a Vulkan (MoltenVK) and
-    ///   a GLES path are legal public API, so this is a porting job — the final
+    ///   a GLES path are legal public API, so this is a porting job. The final
     ///   phase of the graphics plan, not a prohibition.
     /// - **watchOS ships no `Metal.framework` at all** (device or simulator),
     ///   no `OpenGLES.framework`, and `CAMetalLayer` is `API_UNAVAILABLE(watchos)`.
@@ -108,7 +108,7 @@ public enum PlatformCapabilities: Sendable {
     ///   private Metal would forfeit store compliance.
     ///
     /// Until slices are actually bundled the tvOS gate stays `planned` whatever
-    /// the environment says — a runtime flag cannot conjure a framework into the
+    /// the environment says. A runtime flag cannot conjure a framework into the
     /// bundle.
     public static var gpuStackGate: CapabilityGate {
         #if os(tvOS)

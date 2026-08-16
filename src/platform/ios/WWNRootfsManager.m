@@ -7,7 +7,7 @@
 #import <unistd.h>
 
 static NSString *const kWWNRootfsReadmeText =
-    @"Wawona Local Shell — user files for the in-process zsh terminal.\n"
+    @"Wawona Local Shell. User files for the in-process zsh terminal.\n"
     "\n"
     "home/          Shell HOME ($HOME). Edit .zshrc, add scripts, configs.\n"
     "               XDG dirs live under home/.config, home/.cache, etc.\n"

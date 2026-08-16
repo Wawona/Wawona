@@ -3,7 +3,7 @@ import Foundation
 import WawonaModel
 import WawonaUIContracts
 
-/// Watch-local copy of `WawonaUIContractAdapters` — WawonaWatch does not link WawonaUI.
+/// Watch-local copy of `WawonaUIContractAdapters`. WawonaWatch does not link WawonaUI.
 @MainActor
 enum WatchUIContractAdapters {
     static func machineEditorState(from profile: MachineProfile?) -> MachineEditorState {

@@ -133,7 +133,7 @@ public struct ConnectionSettingsValidation: Sendable {
 // MARK: - Global Settings catalog (all shipped platforms)
 
 /// Host the Settings catalog is being rendered for. Mirrors product targets,
-/// not capability gates — use `visibleSections` / `visibleFields` to hide
+/// not capability gates. Use `visibleSections` / `visibleFields` to hide
 /// Desktop (macOS-only), GPU rows, or store-forbidden surfaces.
 public enum GlobalSettingsHost: String, Sendable, CaseIterable {
     case macOS
@@ -248,7 +248,7 @@ public enum GlobalSettingsFieldID: String, Sendable, CaseIterable {
 }
 
 /// Single catalog for global Wawona Settings. Watch, iOS, and macOS must
-/// render the same section/field IDs for a given host — never a second
+/// render the same section/field IDs for a given host. Never a second
 /// free-text "Input Profile" beside Touch Input Type.
 public struct GlobalSettingsCatalog: Sendable {
     public static func visibleSections(for host: GlobalSettingsHost) -> [GlobalSettingsSectionID] {

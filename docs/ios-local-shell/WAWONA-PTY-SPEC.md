@@ -1,6 +1,6 @@
 # Wawona PTY Library Specification (`libwwn-pty`)
 
-**Status:** Draft — implementation starts Phase 0/2  
+**Status:** Draft. Implementation starts Phase 0/2  
 **Package path:** `wwn-toolchain/dependencies/libs/wawona-pty/`  
 **Headers:** `include/wwn_pty.h`
 
@@ -10,10 +10,10 @@ This library is the **only supported path** for spawning a local shell on Apple 
 
 ## Design goals
 
-1. **App Store compliance** — spawn only bundled rootfs binaries (see [SECURITY-SPAWN-POLICY.md](SECURITY-SPAWN-POLICY.md))
-2. **Single responsibility** — PTY lifecycle + I/O; no Wayland, no UI
-3. **Testable on device** — Phase 0 spike uses this API surface
-4. **macOS host tests** — same API where `forkpty` is available for parity tests
+1. **App Store compliance**. Spawn only bundled rootfs binaries (see [SECURITY-SPAWN-POLICY.md](SECURITY-SPAWN-POLICY.md))
+2. **Single responsibility**. PTY lifecycle + I/O; no Wayland, no UI
+3. **Testable on device**. Phase 0 spike uses this API surface
+4. **macOS host tests**. Same API where `forkpty` is available for parity tests
 
 ---
 
@@ -69,7 +69,7 @@ wwn_pty_session *wwn_pty_session_start(const char *shell_path,
                                        char *const envp[],
                                        const struct winsize *ws);
 
-/** Read from master (non-blocking optional — TBD in impl) */
+/** Read from master (non-blocking optional. TBD in impl) */
 ssize_t wwn_pty_read(int master_fd, void *buf, size_t len);
 
 /** Write to master */
@@ -110,7 +110,7 @@ void wwn_pty_session_destroy(wwn_pty_session *session);
 ### iOS-specific notes
 
 - Call `setsid` in child if required for job control (validate in spike)
-- If `grantpt` fails, implement **pipe-TTY fallback** documented in spike report — still bundled-only, but may not be full POSIX PTY
+- If `grantpt` fails, implement **pipe-TTY fallback** documented in spike report. Still bundled-only, but may not be full POSIX PTY
 
 ---
 
@@ -126,7 +126,7 @@ Weston terminal expects a master fd and child pid roughly like `forkpty`:
   pid_t pid = wwn_pty_spawn_shell(getenv("WAWONA_SHELL"), argv, slave, environ);
   /* terminal.c event loop reads/writes `master` */
 #else
-  /* forkpty path — macOS, Linux */
+  /* forkpty path. MacOS, Linux */
 #endif
 ```
 
@@ -143,7 +143,7 @@ Environment **`WAWONA_SHELL`** is set by `WWNWaypipeRunner` before client main r
 | `grantpt` failure | Spike-defined message; link to support doc |
 | Child exit non-zero | Terminal shows exit code; session may restart on user action |
 
-Log to Wawona log facility (`WWNLog` / `wlog!`) with tag `PTY` — never log full env (may contain tokens).
+Log to Wawona log facility (`WWNLog` / `wlog!`) with tag `PTY`. Never log full env (may contain tokens).
 
 ---
 
@@ -172,7 +172,7 @@ Log to Wawona log facility (`WWNLog` / `wlog!`) with tag `PTY` — never log ful
 ```nix
 # wwn-toolchain/dependencies/libs/wawona-pty/ios.nix (sketch)
 # outputs: $out/lib/libwwn-pty.a, $out/include/wwn_pty.h
-# propagatedBuildInputs: (minimal — libc only)
+# propagatedBuildInputs: (minimal. Libc only)
 ```
 
 Registered in `registry.nix` as `wawona-pty`. Linked from `wawona-ios-backend` and weston terminal client closure.

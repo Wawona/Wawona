@@ -1,9 +1,9 @@
 /*
- * WWNLog.h — Unified logging for Wawona
+ * WWNLog.h. Unified logging for Wawona
  *
  * Format: YYYY-MM-DD HH:MM:SS [MODULE] message
  *
- * Writes to a preserved stderr fd so in-process zsh (dup2 onto fds 0–2) does
+ * Writes to a preserved stderr fd so in-process zsh (dup2 onto fds 0-2) does
  * not route compositor logs into weston-terminal.
  *
  * Usage (ObjC):  WWNLog("BRIDGE", @"Output: %ux%u", w, h);
@@ -28,7 +28,7 @@
  * dismisses itself (first frame presented or user tap).
  *
  * Call sites must not rely on the sink being called in any particular order
- * relative to the dprintf write — it is an advisory, best-effort channel.
+ * relative to the dprintf write. It is an advisory, best-effort channel.
  *
  * The sink is called with the module tag and a pre-formatted UTF-8 string.
  * It must be safe to call from any thread.
@@ -58,7 +58,7 @@ static inline int WWNPreservedStderrFd(void)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
 
-/* ObjC variant — supports %@ via NSString formatting. */
+/* ObjC variant. Supports %@ via NSString formatting. */
 #define WWNLog(module, fmt, ...)                                               \
   do {                                                                         \
     time_t _wt = time(NULL);                                                   \
@@ -78,7 +78,7 @@ static inline int WWNPreservedStderrFd(void)
 
 #else
 
-/* Pure-C variant — standard printf format specifiers only. */
+/* Pure-C variant. Standard printf format specifiers only. */
 #define WWNLog(module, fmt, ...)                                               \
   do {                                                                         \
     time_t _wt = time(NULL);                                                   \

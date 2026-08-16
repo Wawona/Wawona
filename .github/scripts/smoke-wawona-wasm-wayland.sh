@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Gate: wasm-wayland — prove the locked Wawona Runtime can run a real
+# Gate: wasm-wayland. Prove the locked Wawona Runtime can run a real
 # wl_shm + xdg client against Weston (same compositor class Wawona nests).
 #
 # Steps:
@@ -48,7 +48,7 @@ git clone --filter=blob:none "https://github.com/${OWNER}/${REPO}.git" "$WORKDIR
 git -C "$WORKDIR" checkout --quiet "$REV"
 
 if [[ ! -x "$WORKDIR/.github/scripts/smoke-wayland-shm.sh" ]]; then
-  echo "error: locked wwn-wasm @$REV has no smoke-wayland-shm.sh — bump the flake input" >&2
+  echo "error: locked wwn-wasm @$REV has no smoke-wayland-shm.sh. Bump the flake input" >&2
   exit 1
 fi
 

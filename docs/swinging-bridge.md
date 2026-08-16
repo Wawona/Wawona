@@ -23,7 +23,7 @@ macOS AppKit / Android app  →  Swinging Bridge  →  waypipe-rs (wwn-waypipe)
 ```
 
 The Linux side sees a normal Wayland client: buffers, `xdg` geometry, seat
-pointer/keyboard/touch, resize and placement — fully protocol-aware, not a
+pointer/keyboard/touch, resize and placement. Fully protocol-aware, not a
 dumb video stream of the whole device.
 
 Local story (same bridge): attach to a **nested** compositor inside Wawona
@@ -38,7 +38,7 @@ Local story (same bridge): attach to a **nested** compositor inside Wawona
 
 Desktop replacement becomes *easier* once Swinging Bridge works (e.g. Android
 Default Home App = Wawona, while individual Android apps still appear as Wayland
-surfaces inside niri). That home/DE path is still Desktop/LockScreen — separate.
+surfaces inside niri). That home/DE path is still Desktop/LockScreen. Separate.
 
 ## Platforms
 
@@ -56,7 +56,7 @@ never ships inside App Store / Play artifacts.
 
 | | **Mode A** (store / Play compliant) | **Mode B** (privileged) |
 |---|---|---|
-| Intent | App Store / Play–approved capture/stream-style bridge | Full privileged surface bridge |
+| Intent | App Store / Play-approved capture/stream-style bridge | Full privileged surface bridge |
 | macOS | Store-safe / notarized methods (closer to streaming) | Partial SIP / system-debugging bar (same class as Desktop `.dylib`) |
 | Android | Play-approved path (stream-like) | Root / privileged paths outside Play |
 | iOS / iPadOS | **Not offered** in the store app | Jailbreak / Sileo Mode B IPA + tweaks from `repo.wawona.io` |

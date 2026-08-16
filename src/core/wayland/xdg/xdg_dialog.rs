@@ -1,1 +1,1 @@
-//! XDG Dialog — dispatch owned by Smithay `delegate_xdg_dialog!`.
+//! XDG Dialog. Dispatch owned by Smithay `delegate_xdg_dialog!`.

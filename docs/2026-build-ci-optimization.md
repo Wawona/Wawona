@@ -1,4 +1,4 @@
-# Wawona — Build & CI Optimization
+# Wawona. Build & CI Optimization
 
 How to keep build/CI time bounded across the Wawona monorepo and the `wwn-*`
 port repos. Companion to [`2026-greenlight-gates.md`](./2026-greenlight-gates.md)
@@ -44,13 +44,13 @@ Operational runbook: [`flakehub-cache.md`](./flakehub-cache.md).
   owns `wawona-ios` / `wawona-android` / `wawona-macos` / `wawona-appimage`.
   [`device-gate.yml`](../.github/workflows/device-gate.yml) runs product-build
   then GUI smoke with `products_ready`, and Watch: idle memory with `products_ready` (advisory;
-  `continue-on-error` — do not re-call product-build on the Gate: products tip_key).
+  `continue-on-error`. Do not re-call product-build on the Gate: products tip_key).
   Release packages DMG/APK/AppImage from
   those GHA artifacts; Ship: beta (stores) resolves AppImages by SHA when possible.
   Impure IPA/AAB stay publish-only. See [`ci.md`](./ci.md).
 - **Curated push/PR matrix.** `nix.yml` builds only
   [`.github/ci-package-matrix.json`](../.github/ci-package-matrix.json)
-  (backends / substrate — not full product apps).
+  (backends / substrate. Not full product apps).
 - **Branch parity.** `development` and `master` both run Gate: packages + Gate: products.
   Android Gradle/meson lives inside Gate: packages (path-filtered). Ship: beta / Ship: GitHub assets
   stay on `master` / tags. Nightly does not re-run Gate: products.
@@ -58,7 +58,7 @@ Operational runbook: [`flakehub-cache.md`](./flakehub-cache.md).
   frontend-syntax / cargo-macos on docs-only tips), and `android-gradle-gate` so
   non-native pushes stop burning macos-26 minutes. `workflow_dispatch` stays full.
 - **Host Xcode pin.** [`.github/scripts/select-xcode.sh`](../.github/scripts/select-xcode.sh)
-  pins `Xcode_26.6.0.app` (not newest). Bump deliberately — see [`ci.md`](./ci.md).
+  pins `Xcode_26.6.0.app` (not newest). Bump deliberately. See [`ci.md`](./ci.md).
   Do **not** chase `apple-sdks.nix` / FlakeHub Apple frameworks for product SDKs.
   nixpkgs `apple-sdk_15` (ANGLE Darwin) and `apple-sdk_26` (FFmpeg last-resort)
   are the only packaged-framework uses; they are macOS-lib recipes, not product
@@ -69,7 +69,7 @@ Operational runbook: [`flakehub-cache.md`](./flakehub-cache.md).
   and Gate: packages frontend-syntax all run it before `xcodebuild`.
 - **Inner vs outer loop.** Fast iteration is `nix develop` / backend static libs
   (FlakeHub-friendly). Outer `xcodegen` + `xcodebuild` / `.#wawona-ios` only when
-  app packaging inputs change — see [`compilation.md`](./compilation.md).
+  app packaging inputs change. See [`compilation.md`](./compilation.md).
 - **Product xcodebuild must not nested-compile Rust.** `nix build .#wawona-ios`
   passes `WAWONA_BACKEND_OUT*` so `xcode-prebuild.sh` copies `libwawona.a`.
   Simulator Swift is `ARCHS=arm64` only (no x86_64 slice). Sim Rust backends

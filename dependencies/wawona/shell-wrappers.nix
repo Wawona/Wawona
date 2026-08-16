@@ -15,7 +15,7 @@ let
       hangHint = ''
         echo "[LLDB] Debugger attached for the whole run (opt-in via --debug)."
         echo "[LLDB] Crash/halt → LLDB stops and prints 'thread backtrace all'."
-        echo "[LLDB] Freeze/hang?  process interrupt   (pause — backtraces print on stop)"
+        echo "[LLDB] Freeze/hang?  process interrupt   (pause. Backtraces print on stop)"
         echo "[LLDB] Resume: continue           Quit: quit"
       '';
     in {
@@ -97,7 +97,7 @@ let
     # Prefer compositor-exported runtime values when available.
     if [ -f "$runtime_env_file" ]; then
       # shellcheck source=/dev/null
-      . "$runtime_env_file" || true
+. "$runtime_env_file" || true
     fi
 
     export XDG_RUNTIME_DIR="''${XDG_RUNTIME_DIR:-$runtime_dir_default}"
@@ -114,7 +114,7 @@ let
       # Refresh from exported env (compositor may rewrite display/socket choice).
       if [ -f "$runtime_env_file" ]; then
         # shellcheck source=/dev/null
-        . "$runtime_env_file" || true
+. "$runtime_env_file" || true
         export XDG_RUNTIME_DIR="''${XDG_RUNTIME_DIR:-$runtime_dir_default}"
         export WAYLAND_DISPLAY="''${WAYLAND_DISPLAY:-wayland-0}"
         SOCKET_PATH="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
@@ -151,11 +151,11 @@ in rec {
       binaryReadyCheck = ''
         wawona_binary_ready() {
           if [ ! -d "$APP" ] || [ ! -x "$BIN" ]; then
-            echo "Error: Wawona.app or binary missing — build may have failed." >&2
+            echo "Error: Wawona.app or binary missing. Build may have failed." >&2
             return 1
           fi
           if ! file "$BIN" 2>/dev/null | grep -qE 'Mach-O.*executable'; then
-            echo "Error: $BIN is not a Mach-O executable — build may be broken." >&2
+            echo "Error: $BIN is not a Mach-O executable. Build may be broken." >&2
             return 1
           fi
           return 0

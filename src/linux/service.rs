@@ -158,7 +158,7 @@ pub fn start_tray_service() -> Result<()> {
 
 pub fn stop_tray_service() -> Result<()> {
     crate::wlog!(COMPOSITOR, "Request: stop tray service");
-    // Ignore "not loaded" — Quit/uninstall should still remove unit files.
+    // Ignore "not loaded". Quit/uninstall should still remove unit files.
     let _ = run_systemctl_user(["stop", "wawona-tray.service"]);
     Ok(())
 }

@@ -69,7 +69,7 @@ run_ios() {
   echo "== iOS: prepare XCTest runner (session=$sess) =="
   # Prepare + open must share one session/daemon. Stopping the prepare daemon
   # forces open to re-acquire the XCTest runner lease under a hard 90s RPC
-  # timeout — that is what flakes as "Daemon request timed out" on CI.
+  # timeout. That is what flakes as "Daemon request timed out" on CI.
   agent-device prepare ios-runner "${ad_common[@]}" \
     --timeout "${WAWONA_IOS_PREPARE_TIMEOUT_MS:-600000}"
 
@@ -88,7 +88,7 @@ run_ios() {
   agent-device screenshot "$ARTIFACTS/ios-first-screen.png" "${ad_common[@]}" || true
 
   # Single-pass Welcome dismiss (fail-fast: no suite retries).
-  # XCTest often collapses the modal to one "Welcome to Wawona" node — id=/label=
+  # XCTest often collapses the modal to one "Welcome to Wawona" node. Id=/label=
   # Continue miss. agent-device click uses logical points (iPhone 17 Pro: 402×874).
   ios_dismiss_welcome() {
     if agent-device is visible 'id="wwn.machines.root"' "${ad_common[@]}" >/dev/null 2>&1 \
@@ -133,7 +133,7 @@ run_ios() {
     || agent-device wait 'text="Display"' 5000 "${ad_common[@]}" >/dev/null 2>&1 \
     || true
   agent-device screenshot "$ARTIFACTS/ios-settings-display.png" "${ad_common[@]}" || true
-  # Apple Watch companion section (#151) — iPhone Settings send-side.
+  # Apple Watch companion section (#151). IPhone Settings send-side.
   if ! agent-device wait 'id="wwn.settings.appleWatch"' 12000 "${ad_common[@]}" >/dev/null 2>&1 \
     && ! agent-device wait 'text="Apple Watch"' 5000 "${ad_common[@]}" >/dev/null 2>&1; then
     echo "FAIL: wwn.settings.appleWatch not visible in Settings" >&2
@@ -239,7 +239,7 @@ run_android() {
     return 1
   }
   android_dismiss_welcome() {
-    # Single pass only — CI fail-fast; no smoke/control retries.
+    # Single pass only. CI fail-fast; no smoke/control retries.
     if android_uia_has_id "wwn.machines.root" || android_uia_has_text "Machine Configuration"; then
       return 0
     fi
@@ -310,7 +310,7 @@ run_android() {
   agent-device snapshot -i "${ad_common[@]}" || true
   agent-device screenshot "$ARTIFACTS/android-first-screen.png" "${ad_common[@]}" || true
   android_dismiss_welcome
-  # Hard Continue taps — uia/press often no-op on Compose welcome.
+  # Hard Continue taps. Uia/press often no-op on Compose welcome.
   android_tap_ref 540 1390 || true
   adb -s "$serial" shell input tap 540 1390 >/dev/null 2>&1 || true
   agent-device wait 2000 "${ad_common[@]}" || true
@@ -334,7 +334,7 @@ run_android() {
   agent-device wait 500 "${ad_common[@]}" || true
 
   android_dismiss_modals() {
-    # Single pass — Settings/Add sheets leave a scrim that eats Start taps.
+    # Single pass. Settings/Add sheets leave a scrim that eats Start taps.
     if android_uia_has_text "Cancel" \
       || android_uia_has_text "Wawona Settings" \
       || android_uia_has_text "Add Machine Profile" \
@@ -455,7 +455,7 @@ run_android_shell_ssh() {
 case "$LANE" in
   ios) run_ios ;;
   # CI: chain smoke then fuzzel in one job (shared sim boot / app install).
-  # Fuzzel still uses `agent-device replay`, which starts its own daemon — the
+  # Fuzzel still uses `agent-device replay`, which starts its own daemon. The
   # fuzzel wrapper prepare→stop→replay handoff is required (KEEP only avoids a
   # redundant kill between smoke close and fuzzel entry).
   ios-ci)

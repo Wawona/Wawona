@@ -588,7 +588,7 @@ static UIImage *WWNAboutLogo(void) {
   ];
   [sects addObject:graphics];
 
-  // CONNECTION — networking only. Wayland socket / XDG / TERM live in
+  // CONNECTION. Networking only. Wayland socket / XDG / TERM live in
   // Environment Variables (#157), not duplicated here.
   WWNPreferencesSection *connection = [[WWNPreferencesSection alloc] init];
   connection.title = @"Connection";
@@ -608,7 +608,7 @@ static UIImage *WWNAboutLogo(void) {
   ];
   [sects addObject:connection];
 
-  // ENVIRONMENT VARIABLES (#157) — single inventory + edit/reset surface.
+  // ENVIRONMENT VARIABLES (#157). Single inventory + edit/reset surface.
   {
     WWNPreferencesSection *environment = [[WWNPreferencesSection alloc] init];
     environment.title = @"Environment Variables";
@@ -634,7 +634,7 @@ static UIImage *WWNAboutLogo(void) {
     [sects addObject:environment];
   }
 
-  // LOCAL SHELL (WWN-ROOTFS — all platforms via WWNRootfsProvider)
+  // LOCAL SHELL (WWN-ROOTFS. All platforms via WWNRootfsProvider)
   if ([WWNRootfsProvider capabilities] & WWNRootfsCapabilitySettings) {
     [WWNRootfsProvider prepareUserAccess];
     NSDictionary *rootfs = [WWNRootfsProvider snapshot];
@@ -647,7 +647,7 @@ static UIImage *WWNAboutLogo(void) {
             : [NSString
                   stringWithFormat:@"bundle v%@ / installed v%@", bundleVersion,
                                    appliedVersion.length ? appliedVersion
-                                                         : @"—"];
+                                                         : @"-"];
 
     WWNPreferencesSection *localShell = [[WWNPreferencesSection alloc] init];
     localShell.title = @"Local Shell";
@@ -750,7 +750,7 @@ static UIImage *WWNAboutLogo(void) {
   }
 
 #if TARGET_OS_IOS && !TARGET_OS_MACCATALYST && !TARGET_OS_TV && !TARGET_OS_WATCH && !TARGET_OS_VISION
-  // APPLE WATCH companion documents (WatchConnectivity — #151)
+  // APPLE WATCH companion documents (WatchConnectivity. #151)
   {
     [[WWNWatchCompanionBridge sharedBridge] activate];
     WWNPreferencesSection *appleWatch = [[WWNPreferencesSection alloc] init];
@@ -876,7 +876,7 @@ static UIImage *WWNAboutLogo(void) {
     BOOL clearedForSip = [[WWNDesktopReplacementController sharedController]
         reconcilePrefsWithCurrentSip];
 
-    // System Integrity Protection status — Mode B requires SIP disabled or
+    // System Integrity Protection status. Mode B requires SIP disabled or
     // partially disabled (`csrutil enable --without debug`). Surface the current
     // state so the user knows whether desktop replacement can actually engage.
     WWNSipStatusType sipStatus = [WWNSipStatus current];
@@ -960,7 +960,7 @@ static UIImage *WWNAboutLogo(void) {
                        @"Requires the desktop machine above to be a nested "
                        @"Weston compositor.")];
 
-    // ── Lockscreen Replacement (#103) — macOS + Android only ─────────────
+    // ── Lockscreen Replacement (#103). MacOS + Android only ─────────────
     [desktopItems
         addObject:ITEM(@"Enable Lockscreen Replacement",
                        @"LockscreenReplacementEnabled", WSettingSwitch, @NO,
@@ -1239,7 +1239,7 @@ static UIImage *WWNAboutLogo(void) {
     [sshItems addObject:ITEM(@"Password", @"SSHPassword", WSettingPassword, @"",
                              @"SSH password.")];
   } else {
-    // Public Key authentication — Generate / Import + path (synced to Waypipe*)
+    // Public Key authentication. Generate / Import + path (synced to Waypipe*)
     WWNSettingItem *keyTypeItem =
         ITEM(@"Key Type", @"SSHKeyType", WSettingPopup, @"ed25519",
              @"Algorithm for Generate Key (ed25519, ecdsa, rsa).");
@@ -4934,7 +4934,7 @@ static UIImage *WWNAboutLogo(void) {
 }
 
 - (void)openEnvironmentVariablesManager {
-  // SwiftUI Environment Variables GUI (#157) — WWNEnvironmentSettingsPresenter in WawonaUI.
+  // SwiftUI Environment Variables GUI (#157). WWNEnvironmentSettingsPresenter in WawonaUI.
   Class presenter = NSClassFromString(@"WWNEnvironmentSettingsPresenter");
   if (presenter && [presenter respondsToSelector:@selector(presentFromHost:)]) {
 #pragma clang diagnostic push
@@ -4974,7 +4974,7 @@ static UIImage *WWNAboutLogo(void) {
 - (void)showDesktopReplacementSipHowTo {
   WWNSipStatusType sipStatus = [WWNSipStatus current];
   NSAlert *alert = [[NSAlert alloc] init];
-  alert.messageText = @"Desktop Replacement — SIP Requirements";
+  alert.messageText = @"Desktop Replacement. SIP Requirements";
   alert.informativeText = [WWNSipStatus desktopReplacementHowToMessage];
   if ([WWNSipStatus allowsDesktopReplacement:sipStatus]) {
     alert.alertStyle = NSAlertStyleInformational;
@@ -5614,7 +5614,7 @@ static UIImage *WWNAboutLogo(void) {
 }
 @end
 
-/* Private interface for WWNPreferencesContent — macOS only (see #if !TARGET_OS_IPHONE guard). */
+/* Private interface for WWNPreferencesContent. MacOS only (see #if !TARGET_OS_IPHONE guard). */
 @interface WWNPreferencesContent ()
 #if (TARGET_OS_IPHONE || TARGET_OS_OSX) && !TARGET_OS_TV
 - (void)handleLocalShellICloudSyncToggle:(BOOL)enabled;

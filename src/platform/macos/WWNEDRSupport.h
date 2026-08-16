@@ -1,6 +1,6 @@
 //
 //  WWNEDRSupport.h
-//  Wawona — shared HDR/EDR layer configuration (header-only).
+//  Wawona. Shared HDR/EDR layer configuration (header-only).
 //
 //  When the user enables "HDR / Color Operations" (ColorOperations pref),
 //  CAMetalLayer presentation paths switch to extended-dynamic-range output:

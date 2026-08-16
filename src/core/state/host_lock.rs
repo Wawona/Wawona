@@ -2,7 +2,7 @@
 //!
 //! A host-locked surface fills the primary output and ignores client-preferred
 //! floating sizes. That is appropriate for `fullscreen_shell` / explicit
-//! embedded kiosk hosts — **not** for ordinary xdg_toplevel clients.
+//! embedded kiosk hosts. **not** for ordinary xdg_toplevel clients.
 //!
 //! ## Wayland rule
 //!

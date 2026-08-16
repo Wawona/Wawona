@@ -1,6 +1,6 @@
 # Release secrets (tier 0 maintainers)
 
-Audience: **tier 0** — Wawona maintainers who ship TestFlight / Play / signed
+Audience: **tier 0**. Wawona maintainers who ship TestFlight / Play / signed
 releases (Alex Spaulding today; future core maintainers). Contributors do **not**
 need this document to build or test the public tree.
 
@@ -8,7 +8,7 @@ need this document to build or test the public tree.
 
 | Lives in **public** `Wawona/Wawona` | Lives only in **private** vaults |
 | ----------------------------------- | -------------------------------- |
-| [`secretspec.toml`](../../secretspec.toml) — secret **names** | GPG ciphertext in pass |
+| [`secretspec.toml`](../../secretspec.toml). Secret **names** | GPG ciphertext in pass |
 | Scripts (`release-env.sh`, `sync-github-secrets.sh`, `setup-release-secrets.sh`) | GPG private key + passphrase |
 | This doc (procedural) | Apple/Play plaintext values |
 | GitHub Environment secret *slots* on `release-beta` | Values synced into those slots |
@@ -46,11 +46,11 @@ Public Wawona                    Private aspauldingcode/.password-store
 └─────────────────────┘
 ```
 
-- **SecretSpec** — declares what the app needs; `secretspec run` injects env.
-- **pass** — encrypted store; team ACL via `.gpg-id` (no private-key sharing).
-- **sops-nix** (host / dendritic) — bootstraps GPG on maintainer machines only.
+- **SecretSpec**. Declares what the app needs; `secretspec run` injects env.
+- **pass**. Encrypted store; team ACL via `.gpg-id` (no private-key sharing).
+- **sops-nix** (host / dendritic). Bootstraps GPG on maintainer machines only.
   Do **not** put MATCH/Play/Developer ID ciphertext into public Wawona sops files.
-- **GitHub `release-beta`** — CI runtime; Actions use `SECRETSPEC_PROFILE=ci*` + `env`.
+- **GitHub `release-beta`**. CI runtime; Actions use `SECRETSPEC_PROFILE=ci*` + `env`.
 
 ## Profiles
 

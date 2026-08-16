@@ -180,7 +180,7 @@ typedef struct {
   uint8_t decoration_mode;
   uint8_t fullscreen_shell;
   uint8_t host_locked;
-  uint8_t edges;       /* xdg_toplevel resize_edge — must match c_api.rs layout */
+  uint8_t edges;       /* xdg_toplevel resize_edge. Must match c_api.rs layout */
   uint8_t size_kind;   /* 0=Frame, 1=Content, 2=Buffer */
   uint8_t size_cause;  /* 0=Unknown, 1=HostConfigure, 2=ClientCommit, 3=OutputModeChange */
   uint32_t configure_serial;
@@ -523,7 +523,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeImageCopyCaptureFailed(
 VkInstance g_instance = VK_NULL_HANDLE;
 VkPhysicalDevice g_physicalDevice = VK_NULL_HANDLE;
 VkSurfaceKHR g_surface = VK_NULL_HANDLE;
-/* GlobalRef to the Java Surface that owns g_window — used so a stale
+/* GlobalRef to the Java Surface that owns g_window. Used so a stale
  * SessionActivity surfaceDestroyed cannot tear down a newer host task. */
 static jobject g_surface_jobj = NULL;
 VkDevice g_device = VK_NULL_HANDLE;
@@ -630,7 +630,7 @@ static uint64_t resolve_pointer_window_id(double logical_x, double logical_y) {
   return g_pointer_window_id;
 }
 
-/* Pending client minimize — Kotlin polls and returns to Machines UI. */
+/* Pending client minimize. Kotlin polls and returns to Machines UI. */
 static volatile int g_minimize_requested = 0;
 static volatile uint64_t g_minimize_requested_window_id = 0;
 
@@ -753,7 +753,7 @@ static void android_inject_fill_primary(uint64_t window_id, int maximized,
 /*
  * Safe area insets arrive from Kotlin (WindowInsetsCompat) in raw physical
  * display pixels, but the compositor's scene graph (window positions, sizes,
- * content_rect crop math) operates entirely in the *logical* output space —
+ * content_rect crop math) operates entirely in the *logical* output space -
  * physical pixels divided by the auto-scale factor (see WWNCoreSetOutputSize
  * above). Pushing the raw physical inset straight into
  * WWNCoreSetSafeAreaInsets applies it as if it were already a logical-space
@@ -910,7 +910,7 @@ static void apply_output_scale(void) {
   WWNCoreSetOutputSize(g_core, lw, lh, (float)sf);
   LOGI("Auto-scale: physical=%ux%u density=%.2f scale=%d logical=%ux%u",
        g_output_width, g_output_height, g_display_density, sf, lw, lh);
-  /* Scale factor may have just changed (density/setting update) — re-push
+  /* Scale factor may have just changed (density/setting update). Re-push
    * safe area insets so they stay in sync with the new logical output. */
   push_safe_area_to_core();
   /* Stream host size only for windows that follow host (host_locked / fillers).
@@ -1916,7 +1916,7 @@ static void choreographer_frame_cb(long frameTimeNanos, void *data) {
   CRenderScene *scene = NULL;
 
   /* iland GL overlay (kmscube / nested Weston DRM) composites above empty
-   * compositor when active — tests userland KMS + GLES via ANGLE. */
+   * compositor when active. Tests userland KMS + GLES via ANGLE. */
 #ifdef WAWONA_ILAND_GL
   uint32_t iland_presented_fb_id = 0;
   if (wwn_iland_presenter_android_is_active()) {
@@ -2320,14 +2320,14 @@ JNIEXPORT void JNICALL Java_com_aspauldingcode_wawona_WawonaNative_nativeInit(
      * sizeof(sun_path) (108 on Android). The longest suffix we append is
      * waypipe's "/waypipe-client-<rand>.sock" (~28 bytes), so reserve a
      * budget and fall back to the short /data/local/tmp path (dev/emulator)
-     * if the app-private cache dir would overflow — better a diagnostic than
+     * if the app-private cache dir would overflow. Better a diagnostic than
      * a silent bind() EINVAL. */
     {
       const size_t sun_path_max = sizeof(((struct sockaddr_un *)0)->sun_path);
       const size_t suffix_budget = 32; /* "/waypipe-client-<rand>.sock" + NUL */
       if (strlen(runtime_dir) + suffix_budget > sun_path_max) {
         LOGE("XDG_RUNTIME_DIR too long for AF_UNIX sun_path (%zu + %zu > %zu): "
-             "%s — falling back to /data/local/tmp",
+             "%s. Falling back to /data/local/tmp",
              strlen(runtime_dir), suffix_budget, sun_path_max, runtime_dir);
         snprintf(runtime_dir, sizeof(runtime_dir),
                  "/data/local/tmp/wawona-runtime");
@@ -2440,7 +2440,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeSetSurface(JNIEnv *env,
   LOGI("nativeSetSurface called");
 
   /* Surface recreate (split-screen / SessionActivity) used to start a second
-   * render thread without joining the first — both shared one pipeline and
+   * render thread without joining the first. Both shared one pipeline and
    * the exiting thread destroyed it under the new thread (SIGSEGV in
    * draw_quads). Always stop + tear down presentation before rebuilding. */
   if (g_render_thread || g_running || g_swapchain || g_surface) {
@@ -2597,7 +2597,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeDestroySurface(JNIEnv *env,
   /* SessionActivity teardown races: an old host task's surfaceDestroyed can
    * land after a new SessionActivity already called nativeSetSurface. Only
    * tear down when the dying Surface is still the active Java Surface
-   * (issue #141 — blank/unresponsive window after first run). */
+   * (issue #141. Blank/unresponsive window after first run). */
   if (surface && g_surface_jobj &&
       !(*env)->IsSameObject(env, surface, g_surface_jobj)) {
     LOGI("Destroying surface: ignoring stale Surface (active host still live)");
@@ -2657,7 +2657,7 @@ void wwn_ios_pump_host_compositor(void) {
 }
 
 /**
- * Resize surface — recreate swapchain only, keep Vulkan instance/device/surface.
+ * Resize surface. Recreate swapchain only, keep Vulkan instance/device/surface.
  * Much faster than destroy+set; avoids blank screen during keyboard show/hide.
  */
 JNIEXPORT void JNICALL
@@ -2711,7 +2711,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeResizeSurface(JNIEnv *env,
 }
 
 /**
- * Lightweight output-size sync — updates the compositor output dimensions
+ * Lightweight output-size sync. Updates the compositor output dimensions
  * and reconfigures connected clients WITHOUT tearing down the render pipeline.
  * Use this when the view size may have drifted (e.g. after a new waypipe
  * client connects) but the Vulkan swapchain is still valid.
@@ -2755,7 +2755,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeSetDisplayDensity(
 }
 
 /**
- * Final shutdown — tears down the compositor core.
+ * Final shutdown. Tears down the compositor core.
  * Called from Activity.onDestroy(), NOT from surface lifecycle callbacks.
  */
 JNIEXPORT void JNICALL
@@ -2794,7 +2794,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeUpdateSafeArea(
 
   /* Android respects safe area by inset-padding the compositor view in Compose
    * (same model as iOS safeAreaLayoutGuide). The wl_output size already matches
-   * the inset container — do not also shrink via Rust safe_area_insets. */
+   * the inset container. Do not also shrink via Rust safe_area_insets. */
   g_safeAreaLeft = 0;
   g_safeAreaTop = 0;
   g_safeAreaRight = 0;
@@ -2950,7 +2950,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeApplyEnvironmentOverrides(
   LOGI("Applying environment overrides (%zu bytes)", strlen(utf));
 
   /* Minimal parse: walk "set" object and "unset" array without a full JSON lib.
-   * Payload is generated by EnvironmentOverrides.jniPayload — trusted shape. */
+   * Payload is generated by EnvironmentOverrides.jniPayload. Trusted shape. */
   const char *set_key = strstr(utf, "\"set\"");
   const char *unset_key = strstr(utf, "\"unset\"");
   if (set_key) {
@@ -3053,7 +3053,7 @@ static void *thread_func(void *arg) {
 }
 
 // ---------------------------------------------------------------------------
-// Text Input (IME / Emoji) — forward composed text to Wayland text-input-v3
+// Text Input (IME / Emoji). Forward composed text to Wayland text-input-v3
 // ---------------------------------------------------------------------------
 
 JNIEXPORT void JNICALL
@@ -3143,7 +3143,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeSetClipboardText(
 
 /* Pop the most recent text a Wayland client copied to the clipboard,
  * clearing it. Returns null if nothing new has been copied since the last
- * poll — the Kotlin side pushes the result into ClipboardManager. */
+ * poll. The Kotlin side pushes the result into ClipboardManager. */
 JNIEXPORT jstring JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativePollClipboardText(
     JNIEnv *env, jobject thiz) {
@@ -3313,7 +3313,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeKeyEvent(
 
   /* Let the Rust core's XKB state machine (update_key) handle modifier
    * tracking automatically.  We intentionally do NOT call
-   * WWNCoreInjectModifiers here — mixing update_mask with update_key
+   * WWNCoreInjectModifiers here. Mixing update_mask with update_key
    * corrupts XKB's internal key-tracking state and prevents modifier
    * releases from clearing correctly. */
   WWNCoreInjectKey(g_core, linux_keycode, (uint32_t)state,
@@ -3747,13 +3747,13 @@ static int wwn_android_native_lib_dir(char *out, size_t out_len) {
 
 /* PATH entries under usr/bin must resolve to something exec()-able. Android
  * Q+ (API 29+) denies execve() of files living in app-private storage
- * (files/cache — SELinux execute_no_trans / W^X), which is exactly where
+ * (files/cache. SELinux execute_no_trans / W^X), which is exactly where
  * wawona-rootfs/usr/bin lives, so a byte-for-byte copy there (the old
  * behavior, still used for e.g. weston asset trees) silently produces a
  * dead, "Permission denied" binary for fastfetch/waypipe/ssh/nvim/zsh.
  * The native lib dir (native_lib_dir, extracted from the APK's jniLibs with
  * extractNativeLibs=true) is always exec()-able by design, and exec()
- * permission checks follow the *resolved* target of a symlink — so a
+ * permission checks follow the *resolved* target of a symlink. So a
  * symlink here keeps the friendly PATH name while actually executing out of
  * the native lib dir, same as SHELL/g_ssh_bin_path already do directly. */
 static void wwn_android_install_shell_tool(const char *native_lib_dir,
@@ -3782,7 +3782,7 @@ static void wwn_android_install_shell_tool(const char *native_lib_dir,
     unlink(dst);
   } else if (lstat(dst, &st) == 0) {
     /* Stale non-exec'able regular-file copy from an older Wawona build
-     * (or a broken symlink) — replace it with a working symlink. */
+     * (or a broken symlink). Replace it with a working symlink. */
     unlink(dst);
   }
 
@@ -3877,7 +3877,7 @@ static void wwn_android_write_zsh_defaults(const char *home,
       "  print -P \"%F{green}Wawona%f zsh ${ZSH_VERSION} - bundled Android userland.\"\n"
       "  print -P \"%F{blue}Bundled:%f uutils coreutils, fastfetch, neovim, waypipe, ssh/ssh-keygen, niri, fuzzel.\"\n"
       "  print -P \"%F{yellow}Note:%f weston demos launch from Machines (not PATH) until multi-client tabs land.\"\n"
-      "  print -P \"%F{yellow}Note:%f ssh is OpenSSH portable (wwn-ssh) — try ssh -V / ssh-keygen -t ed25519.\"\n"
+      "  print -P \"%F{yellow}Note:%f ssh is OpenSSH portable (wwn-ssh). Try ssh -V / ssh-keygen -t ed25519.\"\n"
       "fi\n");
 
   wwn_android_write_generated_file(
@@ -3889,7 +3889,7 @@ static void wwn_android_write_zsh_defaults(const char *home,
       "  print -P \"%F{green}Wawona%f zsh ${ZSH_VERSION} - bundled Android userland.\"\n"
       "  print -P \"%F{blue}Bundled:%f uutils coreutils, fastfetch, neovim, waypipe, ssh/ssh-keygen, niri, fuzzel.\"\n"
       "  print -P \"%F{yellow}Note:%f weston demos launch from Machines (not PATH) until multi-client tabs land.\"\n"
-      "  print -P \"%F{yellow}Note:%f ssh is OpenSSH portable (wwn-ssh) — try ssh -V / ssh-keygen -t ed25519.\"\n"
+      "  print -P \"%F{yellow}Note:%f ssh is OpenSSH portable (wwn-ssh). Try ssh -V / ssh-keygen -t ed25519.\"\n"
       "fi\n");
 
   LOGI("Shell env: zsh defaults ensured in %s (rootfs: %s)", home, rootfs);
@@ -3910,7 +3910,7 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
     resolve_ssh_binary_paths(); /* native lib dir probe lives there today */
 
   if (g_zsh_bin_path[0]) {
-    /* Symlink (not copy — see wwn_android_install_shell_tool) into the
+    /* Symlink (not copy. See wwn_android_install_shell_tool) into the
      * rootfs for PATH discoverability ("zsh" typed at the prompt), but
      * SHELL must point at the APK-extracted native lib directly: on API
      * 29+ exec() of files in app-private storage is denied by SELinux
@@ -4055,7 +4055,7 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
 
       wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libfastfetch_bin.so",
                                      "fastfetch");
-      /* uutils multicall (safe subset): ls/mkdir/whoami/… — must precede
+      /* uutils multicall (safe subset): ls/mkdir/whoami/…. Must precede
        * /system/bin on PATH so we do not silently use toybox (issue: whoami). */
       {
         static const char *const cu_utils[] = {
@@ -4091,10 +4091,10 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
                                      "libsshpass_bin.so", "sshpass");
       wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libniri_bin.so",
                                      "niri");
-      /* fuzzel (wwn-niri): niri Mod+D launcher — same jniLibs PIE pattern. */
+      /* fuzzel (wwn-niri): niri Mod+D launcher. Same jniLibs PIE pattern. */
       wwn_android_install_shell_tool(native_lib_dir, usr_bin,
                                      "libfuzzel_bin.so", "fuzzel");
-      /* foot (wwn-foot): Wayland terminal — fork/exec libfoot_bin.so. */
+      /* foot (wwn-foot): Wayland terminal. Fork/exec libfoot_bin.so. */
       wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libfoot_bin.so",
                                      "foot");
       /* Nested-niri fuzzel catalog Exec=weston-* → multicall PIE that dlopens
@@ -4196,7 +4196,7 @@ static void resolve_ssh_binary_paths(void) {
 
     /*
      * On Android Q+ (API 29+), apps cannot execute binaries from app-private
-     * dirs (cache, files) due to W^X — exec fails with "Permission denied".
+     * dirs (cache, files) due to W^X. Exec fails with "Permission denied".
      * Use the native lib dir directly (/data/app/.../lib/arm64/): system-
      * extracted from APK, executable by design (extractNativeLibs=true).
      */
@@ -4331,7 +4331,7 @@ static void *waypipe_thread_func(void *arg) {
     // OpenSSH portable supports streamlocal-forward@openssh.com natively.
 
     if (!g_ssh_bin_path[0]) {
-      LOGE("SSH binary (libssh_bin.so) not found — cannot start waypipe SSH");
+      LOGE("SSH binary (libssh_bin.so) not found. Cannot start waypipe SSH");
       return NULL;
     }
 
@@ -4551,14 +4551,14 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeRunWaypipe(
 
   str = (*env)->GetStringUTFChars(env, sshHost, NULL);
   if (str) {
-    /* Support "host:port" syntax — parse port if present */
+    /* Support "host:port" syntax. Parse port if present */
     const char *colon = strrchr(str, ':');
     long parsed_port = 0;
     if (colon && colon != str) {
       char *end = NULL;
       parsed_port = strtol(colon + 1, &end, 10);
       if (end && *end == '\0' && parsed_port > 0 && parsed_port < 65536) {
-        /* Valid port — copy only the host part */
+        /* Valid port. Copy only the host part */
         size_t hostlen = (size_t)(colon - str);
         if (hostlen >= sizeof(g_waypipe_config.ssh_host))
           hostlen = sizeof(g_waypipe_config.ssh_host) - 1;
@@ -4984,7 +4984,7 @@ static int gbm_es2_demo_stub_main(int argc, const char **argv) {
 
 static int opengl_cube_stub_main(int argc, const char **argv) {
 #ifdef WAWONA_ILAND_GL
-  /* Wayland-EGL client — posts AHB dmabuf buffers to the compositor. Do not
+  /* Wayland-EGL client. Posts AHB dmabuf buffers to the compositor. Do not
    * start the KMS presenter (that path is kmscube-only). */
   if (!opengl_cube_main) {
     LOGE("opengl-cube unavailable (libopengl_cube.a not linked)");
@@ -5125,7 +5125,7 @@ static jboolean wwn_bundled_client_available(const char *client_id) {
   }
   if (strcmp(client_id, "weston") == 0) {
     // Nested weston runs through its dedicated launcher, but the UI lists it
-    // in the same bundled-client picker — report real availability here.
+    // in the same bundled-client picker. Report real availability here.
     if (!weston_compositor_main) {
       LOGE("weston unavailable in this build (weston_compositor_main not "
            "linked)");
@@ -5282,7 +5282,7 @@ static jboolean wwn_launch_niri_nested(void) {
   if (g_niri_pid_count < WWN_MAX_NATIVE_CLIENT_PIDS) {
     g_niri_pids[g_niri_pid_count++] = pid;
   } else {
-    LOGE("niri: pid table full — orphaning PID %d", (int)pid);
+    LOGE("niri: pid table full. Orphaning PID %d", (int)pid);
   }
   int instances = g_niri_pid_count;
   pthread_mutex_unlock(&g_niri_mu);
@@ -5306,7 +5306,7 @@ static void wwn_stop_niri(void) {
 
 /* Launch a nested-niri catalog client (libwawona_wl_bin.so multicall) against
  * niri's child Wayland socket. Must be fork/exec'd from the app process so
- * Berberis (arm64-on-x86) can translate it — adb shell exec fails to link. */
+ * Berberis (arm64-on-x86) can translate it. Adb shell exec fails to link. */
 static jboolean wwn_launch_nested_wl_client(const char *exec_name) {
   char native_lib_dir[512];
   char wl_bin[560];
@@ -5387,7 +5387,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeRunNestedWlClient(
   return ok;
 }
 
-/* foot (wwn-foot): Wayland terminal as PIE libfoot_bin.so — fork/exec like niri
+/* foot (wwn-foot): Wayland terminal as PIE libfoot_bin.so. Fork/exec like niri
  * so the terminal runs out-of-process with its own main(). */
 static pid_t g_foot_pids[WWN_MAX_NATIVE_CLIENT_PIDS];
 static int g_foot_pid_count = 0;
@@ -5418,9 +5418,9 @@ static int wwn_foot_running(void) {
 static jboolean wwn_launch_foot(void) {
   wwn_foot_reap();
   if (wwn_foot_compat_shim_value() != 0) {
-    /* Old APKs shipped a weston-simple-shm stub as "foot" — that paints a
+    /* Old APKs shipped a weston-simple-shm stub as "foot". That paints a
      * black/empty surface. Prefer the real in-process terminal instead. */
-    LOGI("foot compat shim detected — falling back to weston-terminal");
+    LOGI("foot compat shim detected. Falling back to weston-terminal");
     return Java_com_aspauldingcode_wawona_WawonaNative_nativeRunWestonTerminal(
         NULL, NULL);
   }
@@ -5443,7 +5443,7 @@ static jboolean wwn_launch_foot(void) {
     wwn_android_prepare_shell_environment(files_dir);
   setenv("TERM", "xterm-256color", 1);
 
-  /* Explicit foot.ini with DejaVu path — same pattern as macOS launchFoot.
+  /* Explicit foot.ini with DejaVu path. Same pattern as macOS launchFoot.
    * Relying on fontconfig "monospace" alone still yields a blank window when
    * fcft fails to resolve a face. */
   char ini_path[560];
@@ -5515,7 +5515,7 @@ static jboolean wwn_launch_foot(void) {
   if (g_foot_pid_count < WWN_MAX_NATIVE_CLIENT_PIDS) {
     g_foot_pids[g_foot_pid_count++] = pid;
   } else {
-    LOGE("foot: pid table full — orphaning PID %d", (int)pid);
+    LOGE("foot: pid table full. Orphaning PID %d", (int)pid);
   }
   int instances = g_foot_pid_count;
   pthread_mutex_unlock(&g_foot_mu);
@@ -5549,7 +5549,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeRunBundledClient(
     return JNI_FALSE;
 
   // Nested weston is not in the client-main table (it has its own thread and
-  // shutdown flag) — route it to its dedicated launcher instead of failing.
+  // shutdown flag). Route it to its dedicated launcher instead of failing.
   if (strcmp(id_utf, "weston") == 0) {
     (*env)->ReleaseStringUTFChars(env, clientId, id_utf);
     return Java_com_aspauldingcode_wawona_WawonaNative_nativeRunWeston(env,

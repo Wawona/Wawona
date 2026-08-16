@@ -134,7 +134,7 @@
   }
   metalLayer_.hidden = NO;
   metalLayer_.frame = self.bounds;
-  // Never tear down a presenter that already owns an in-process DRM client —
+  // Never tear down a presenter that already owns an in-process DRM client -
   // recreating it left the old kmscube/gbm thread alive and made the next
   // Start look like the previous client (title + frames).
   if (ilandPresenter_) {
@@ -158,7 +158,7 @@
       return YES;
     }
     WWNLog("CLIENT",
-           @"refusing %@ — in-process %@ still owns iland DRM (Stop that "
+           @"refusing %@. In-process %@ still owns iland DRM (Stop that "
            @"machine first)",
            clientId, running);
     return NO;
@@ -321,12 +321,12 @@
 }
 
 // wl_pointer.axis (scroll). NSEvent already applies the user's natural-
-// scrolling preference before we see it, so deltas are forwarded as-is —
+// scrolling preference before we see it, so deltas are forwarded as-is -
 // no manual inversion. Trackpads report continuous, already-pixel-scaled
 // deltas via scrollingDelta{X,Y} (hasPreciseScrollingDeltas); traditional
 // mouse wheels report whole "clicks" via delta{X,Y} (~1.0 per notch), which
 // we scale up to roughly match the pixel-ish magnitude wl_pointer.axis
-// expects — same 15x convention the Linux GTK UI uses for its scroll
+// expects. Same 15x convention the Linux GTK UI uses for its scroll
 // controller (see wawona-linux-ui.rs) so client-side scroll speed (e.g.
 // weston-terminal's AXIS_UNITS_PER_LINE) behaves consistently everywhere.
 - (void)scrollWheel:(NSEvent *)event {
@@ -681,7 +681,7 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
   selectedRange_ = NSMakeRange(textBuffer_.length, 0);
 
   // If the raw keycode was already injected by keyDown:, we don't need
-  // to send it again — the wl_keyboard path already delivered it.
+  // to send it again. The wl_keyboard path already delivered it.
   // We only fall through to text-input-v3 for text that CAN'T be
   // expressed as a keycode (emoji, accented chars from dead keys, CJK).
   if (handledByKeyEvent_) {
@@ -690,7 +690,7 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
 
   // Text that arrived without a matching keyDown (e.g. emoji picker,
   // dead-key resolved composition, clipboard, IME, autocorrect,
-  // dictation) — commit via text-input-v3.
+  // dictation). Commit via text-input-v3.
   WWNLog("INPUT", @"Committing composed text via text-input-v3: \"%@\"", str);
   [[WWNCompositorBridge sharedBridge] textInputCommitString:str];
 }
@@ -842,7 +842,7 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
     // ARC owns this window (held in WWNCompositorBridge._windows and by the
     // teardown block). NSWindow defaults releasedWhenClosed to YES, so -close
     // would hand AppKit an extra -autorelease and over-release the object when
-    // the run loop's autorelease pool drains — crashing in objc_release after a
+    // the run loop's autorelease pool drains. Crashing in objc_release after a
     // client (e.g. weston-terminal) tears down. Match WWNPopupWindow/prefs.
     self.releasedWhenClosed = NO;
     [self setDelegate:self];
@@ -1148,7 +1148,7 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
     self.wwnCloseDeferred = NO;
     [[WWNCompositorBridge sharedBridge]
         requestForceDestroyHostWindowForWindowId:self.wwnWindowId];
-    WWNLog("INPUT", @"windowShouldClose: second close — force-destroy host for "
+    WWNLog("INPUT", @"windowShouldClose: second close. Force-destroy host for "
                      @"window %llu",
            self.wwnWindowId);
     return NO;
@@ -1159,7 +1159,7 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
     // Once close has been requested, stop feeding additional AppKit callbacks
     // for this host window while the Wayland client unwinds.
     self.suppressCompositorCallbacks = YES;
-    WWNLog("INPUT", @"windowShouldClose: sent xdg_toplevel.close for window %llu — "
+    WWNLog("INPUT", @"windowShouldClose: sent xdg_toplevel.close for window %llu. "
                      @"deferring NSWindow close",
            self.wwnWindowId);
     self.wwnCloseDeferred = YES;
@@ -1182,7 +1182,7 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
                                             strongSelf.wwnCloseForceTimer = nil;
                                             WWNLog("INPUT",
                                                    @"windowShouldClose: grace "
-                                                   @"timeout — force-destroy "
+                                                   @"timeout. Force-destroy "
                                                    @"host for window %llu",
                                                    wid);
                                             [[WWNCompositorBridge sharedBridge]

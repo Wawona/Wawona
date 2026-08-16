@@ -62,7 +62,7 @@
       @"wwn-iland macOS Desktop Replacement (Mode B) replaces "
       @"SkyLight/WindowServer by injecting into system processes. That "
       @"requires System Integrity Protection (SIP) to permit debugging and "
-      @"library injection — not a normal App Store configuration.\n\n"
+      @"library injection. Not a normal App Store configuration.\n\n"
       @"Why SIP must change:\n"
       @"• Partially disabled SIP lifts debugging restrictions so Wawona can "
       @"reach initproc and set hardware breakpoints in other processes.\n"
@@ -74,13 +74,13 @@
       @"2. Open Terminal from Utilities.\n"
       @"3. Run: csrutil enable --without debug\n"
       @"   This keeps most filesystem and kext protections; only debugging "
-      @"restrictions are lifted — you do not need SIP fully off.\n"
+      @"restrictions are lifted. You do not need SIP fully off.\n"
       @"4. Reboot normally.\n"
       @"5. Verify: csrutil status should report "
       @"\"Debugging Restrictions: disabled\".\n\n"
       @"Android note: Wawona Desktop Replacement on Android does not change "
       @"SIP or system security. It uses the Android Launcher (HOME app) role "
-      @"instead — no Recovery-mode steps are required on Android.";
+      @"instead. No Recovery-mode steps are required on Android.";
 }
 
 @end

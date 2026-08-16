@@ -1,6 +1,6 @@
 pluginManagement {
     repositories {
-        // Explicit dl.google.com only — do not use google()/maven.google.com.
+        // Explicit dl.google.com only. Do not use google()/maven.google.com.
         // Offline MITM caches artifacts under dl.google.com; google() hits
         // maven.google.com first and 301-redirects, which the proxy cannot
         // follow in the Nix sandbox (SocketException → UnknownPluginException).

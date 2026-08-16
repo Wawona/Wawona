@@ -95,7 +95,7 @@ impl Dispatch<ZwpKeyboardShortcutsInhibitManagerV1, ()> for CompositorState {
                 // Register the inhibitor
                 state.ext.keyboard_shortcuts_inhibit.inhibitors.insert(surface_id, seat_id);
                 
-                // Send active event immediately — we always honor the inhibitor
+                // Send active event immediately. We always honor the inhibitor
                 inhibitor.active();
                 
                 tracing::debug!(

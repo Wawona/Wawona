@@ -1,4 +1,4 @@
-# wwn-containers — Mode A / Mode B implementation plan
+# wwn-containers. Mode A / Mode B implementation plan
 
 Canonical product split: [Wawona `docs/mode-a-b.md`](https://github.com/Wawona/Wawona/blob/development/docs/mode-a-b.md).
 Mirror: keep this file in sync with `Wawona/docs/containers-mode-a-b.md`.
@@ -19,7 +19,7 @@ root Mode B optional later.
 
 ## Shared substrate (both modes)
 
-- `wwn-oci`: pull / verify / CAS / unpack (Docker Hub, etc.) — **Mode A safe**
+- `wwn-oci`: pull / verify / CAS / unpack (Docker Hub, etc.). **Mode A safe**
 - `container` CLI surface (image mgmt everywhere execution is gated)
 - Machine profile `container` + Settings
 - In-guest runtime concept (crun/podman) living **inside** the VM engine of the

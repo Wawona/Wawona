@@ -21,8 +21,8 @@ static WAYLAND_DISPATCH_MUTEX: Mutex<()> = Mutex::new(());
 /// Poison-recovering lock acquisition.
 ///
 /// A panic inside an event handler (isolated by `catch_unwind`) poisons any
-/// lock held at the time. The data is still structurally valid — Wawona's
-/// state updates are individually small — so recovering the guard and moving
+/// lock held at the time. The data is still structurally valid. Wawona's
+/// state updates are individually small. So recovering the guard and moving
 /// on is strictly better than latching the whole compositor into a dead
 /// "faulted" state. Every lock site at this FFI boundary must go through
 /// these helpers instead of `.unwrap()`.
@@ -182,7 +182,7 @@ fn apply_geometry_offset(
     state.view_to_surface_coords(surface_id, view_w, view_h, x, y)
 }
 
-/// macOS/iOS inject pointer in the host content view — already window-local.
+/// macOS/iOS inject pointer in the host content view. Already window-local.
 fn platform_pointer_surface_local(
     state: &CompositorState,
     window_id: WindowId,
@@ -531,7 +531,7 @@ impl WawonaCore {
         // 2. Update cached state
         *self.force_ssd.write_recover() = enabled;
 
-        // Window ids belonging to clients that carry a per-machine override —
+        // Window ids belonging to clients that carry a per-machine override -
         // these must be left untouched by the global toggle below.
         let overridden_windows: std::collections::HashSet<u32> = state
             .xdg
@@ -659,14 +659,14 @@ impl WawonaCore {
 
     /// Mark whether `window_id` is hosted in its own independent OS
     /// window/scene (macOS NSWindow-per-toplevel, or one `UIWindowScene` per
-    /// Wayland client on iPadOS/visionOS — see `ipad-scene-parity` /
+    /// Wayland client on iPadOS/visionOS. See `ipad-scene-parity` /
     /// `vision-shell-parity`, #120).
     ///
     /// Independent windows are excluded from the shared-output resize sweep
     /// in `CompositorState::set_output_size`: without this, resizing the
     /// *primary* host window (Machines UI) would snap every fill-primary
-    /// (maximized) client — including ones now living in their own,
-    /// differently-sized scene — to the primary window's size, producing
+    /// (maximized) client. Including ones now living in their own,
+    /// differently-sized scene. To the primary window's size, producing
     /// visible resize glitches on the unrelated client window.
     pub fn set_window_host_scene_independent(&self, window_id: WindowId, independent: bool) {
         let wid = window_id.id as u32;
@@ -1753,7 +1753,7 @@ impl WawonaCore {
 
                         // Drop only during the configure handshake (pending serial or
                         // zero-sized toplevel). Post-stable mismatches are accepted
-                        // and scaled by the platform layer — required for fixed-size
+                        // and scaled by the platform layer. Required for fixed-size
                         // demos like weston-smoke (always 200×200, ignores resize).
                         let should_drop_size_mismatch = current_expected_size
                             .map(|(expected_w, expected_h)| {
@@ -2449,7 +2449,7 @@ fn smithay_send_pointer_frame(state: &CompositorState, client: &wayland_server::
     };
     let mut sent = 0;
     // Smithay's own seat path gates this; client_pointers() does not.
-    // Opcode 5 (`frame`) is since wl_pointer v5 — see broadcast_frame.
+    // Opcode 5 (`frame`) is since wl_pointer v5. See broadcast_frame.
     for ptr in pointer.client_pointers(client) {
         if ptr.version() >= 5 {
             ptr.frame();
@@ -2732,7 +2732,7 @@ impl WawonaCore {
                     surface_id.id, buf_id.id, callback_count > 0, callback_count, presented_count, release_count, pending_releases);
             } else {
                 crate::wtrace!(crate::util::logging::FFI,
-                    "FramePresented: surf={} buf={} — no client_id, buffer NOT released",
+                    "FramePresented: surf={} buf={}. No client_id, buffer NOT released",
                     surface_id.id, buf_id.id);
             }
         } else {
@@ -2882,7 +2882,7 @@ impl WawonaCore {
                     txn.requested_size.height
                 );
             } else {
-                // Configure not sent yet — still mark host authoritative so
+                // Configure not sent yet. Still mark host authoritative so
                 // lagging commits cannot yank size while we wait.
                 if let Some(window) = state.get_window(wid) {
                     let mut window = window.write_recover();
@@ -3126,7 +3126,7 @@ impl WawonaCore {
         self.flush_clients();
     }
 
-    /// Native host entered or left fullscreen — update xdg toplevel state.
+    /// Native host entered or left fullscreen. Update xdg toplevel state.
     pub fn apply_host_window_fullscreen(
         &self,
         window_id: WindowId,
@@ -3157,7 +3157,7 @@ impl WawonaCore {
         }
     }
 
-    /// Native host zoomed or unzoomed — update xdg toplevel maximized state.
+    /// Native host zoomed or unzoomed. Update xdg toplevel maximized state.
     pub fn apply_host_window_maximized(
         &self,
         window_id: WindowId,
@@ -3434,7 +3434,7 @@ impl WawonaCore {
         let mut state = self.state.write_recover();
         state.seat.cleanup_resources();
 
-        // Scroll is delivered at the virtual cursor — ensure focus and sync
+        // Scroll is delivered at the virtual cursor. Ensure focus and sync
         // motion first (same pattern as pointer buttons).
         ensure_pointer_focus(&mut state, window_id, &|| self.next_serial());
         dispatch_pointer_motion_at_seat(&mut state, timestamp_ms.saturating_sub(1), 0);
@@ -3703,7 +3703,7 @@ impl WawonaCore {
         
         // Process through XKB to update server-side modifier state and
         // pressed_keys.  This is essential for correct Shift/Ctrl/Alt/Super
-        // tracking — without it the server's cached modifier mask would
+        // tracking. Without it the server's cached modifier mask would
         // never update from key events alone, and capital letters (among
         // other shifted symbols) would not be recognised.
         let mods_changed = state.seat.keyboard.process_key(keycode, pressed)
@@ -4624,7 +4624,7 @@ impl WawonaCore {
         sent
     }
 
-    /// Host dismissed a popup (click-away, Escape, parent teardown) — tell the
+    /// Host dismissed a popup (click-away, Escape, parent teardown). Tell the
     /// client via `xdg_popup.popup_done` so it can destroy the popup cleanly.
     pub fn notify_popup_dismissed(&self, window_id: WindowId) -> bool {
         if !self.is_running() {
@@ -4880,7 +4880,7 @@ impl WawonaCore {
 }
 
 // ============================================================================
-// Image copy capture (ext-image-copy-capture-v1) — desktop-protocols only
+// Image copy capture (ext-image-copy-capture-v1). Desktop-protocols only
 // Exported only when feature enabled; c_api has stubs when disabled
 // ============================================================================
 #[cfg(feature = "desktop-protocols")]
@@ -4924,7 +4924,7 @@ impl WawonaCore {
 }
 
 // ============================================================================
-// Methods NOT exported via UniFFI (C API only — tuples / non-Record types)
+// Methods NOT exported via UniFFI (C API only. Tuples / non-Record types)
 // ============================================================================
 impl WawonaCore {
     /// True when a focused `zwp_text_input_v3` instance has committed `enable`.

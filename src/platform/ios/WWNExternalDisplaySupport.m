@@ -1,6 +1,6 @@
 //
 //  WWNExternalDisplaySupport.m
-//  Wawona — iOS AirPlay / external display mirroring. See header.
+//  Wawona. IOS AirPlay / external display mirroring. See header.
 //
 
 #import "WWNExternalDisplaySupport.h"

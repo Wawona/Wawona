@@ -26,7 +26,7 @@ FOUNDATION_EXPORT NSNotificationName const WWNClientMinimizeRequestedNotificatio
 FOUNDATION_EXPORT NSNotificationName const WWNClientFocusRequestedNotification;
 /// Posted on the main queue when Wayland toplevel host windows are created,
 /// destroyed, or retitled. Tab chrome (phone/tvOS/watchOS) refreshes from this.
-/// Tabs map 1:1 to Wayland client toplevels — never Shell / Machines chrome.
+/// Tabs map 1:1 to Wayland client toplevels. Never Shell / Machines chrome.
 FOUNDATION_EXPORT NSNotificationName const WWNHostWindowsDidChangeNotification;
 
 /// Window event types from Rust compositor
@@ -136,7 +136,7 @@ typedef struct {
 /// before calling injectWindowResize:, or fixed-size demo clients
 /// (weston-flower/smoke, simple-shm) get their small buffer force-stretched
 /// to the host window instead of staying centered at their own size. Returns
-/// NO for windows not yet tracked (fail closed — nothing to resize yet).
+/// NO for windows not yet tracked (fail closed. Nothing to resize yet).
 - (BOOL)shouldFollowHostSizeForWindowId:(uint64_t)windowId;
 
 /// Host changed native fullscreen or zoom (macOS) or fill-primary max/fs (mobile).
@@ -174,7 +174,7 @@ typedef struct {
 #if TARGET_OS_IPHONE
 /// Sorted toplevel ids suitable for in-window client tabs (excludes
 /// fullscreen_shell kiosk surfaces). Empty when per-window hosting is on
-/// (iPadOS/visionOS) — those platforms use one UIWindowScene per client.
+/// (iPadOS/visionOS). Those platforms use one UIWindowScene per client.
 - (NSArray<NSNumber *> *)tabbedClientWindowIds;
 
 /// Best-effort title for a host window (xdg title, else bundled client id).
@@ -355,7 +355,7 @@ extern NSString *const WWNClientWindowSceneWindowIdKey;
 
 /// Launch an iland KMS client (`kmscube` or `gbm-es2-demo`) in-process on the
 /// iland presentation view, compositing its DRM page-flips into the host layer.
-/// `clientId` selects the real entry point and host chrome title — never alias.
+/// `clientId` selects the real entry point and host chrome title. Never alias.
 - (BOOL)launchNestedIlandGpuClientOnPrimaryView:(NSString *)clientId;
 
 - (BOOL)launchNestedKmscubeOnPrimaryView;

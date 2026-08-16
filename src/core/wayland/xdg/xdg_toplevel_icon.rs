@@ -1,4 +1,4 @@
-//! XDG Toplevel Icon — dispatch owned by Smithay `delegate_xdg_toplevel_icon!`.
+//! XDG Toplevel Icon. Dispatch owned by Smithay `delegate_xdg_toplevel_icon!`.
 //!
 //! Legacy icon buffer tracking for window metadata (optional).
 

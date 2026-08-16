@@ -4,10 +4,10 @@ Integrate lower layers. Enforce the product map in UI, gates, packaging, and doc
 
 ## Gates (must stay aligned)
 
-- `PlatformCapabilities.swingingBridgeGate` — macOS planned; iOS store **forbidden**
-- Desktop/LockScreen — planned macOS/Android; forbidden App Store Apple-mobile
-- VM/container kinds — planned where allowed; **forbidden** tvOS/watchOS/visionOS
-- Wasm/`wpm` — Mode A path only inside store builds
+- `PlatformCapabilities.swingingBridgeGate`. MacOS planned; iOS store **forbidden**
+- Desktop/LockScreen. Planned macOS/Android; forbidden App Store Apple-mobile
+- VM/container kinds. Planned where allowed; **forbidden** tvOS/watchOS/visionOS
+- Wasm/`wpm`. Mode A path only inside store builds
 
 ## Shipping firewall
 

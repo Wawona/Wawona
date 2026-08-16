@@ -1,4 +1,4 @@
-# Canonical bundled native clients — keep in sync with
+# Canonical bundled native clients. Keep in sync with
 # Sources/Wawona: kBundledClients in WWNMachinesViewModel.swift
 #
 # Usage: source scripts/lib/bundled-clients-catalog.sh
@@ -64,7 +64,7 @@ bundled_client_prefs_key() {
 
 # Platform-targets matrix: tvOS/watchOS forbid Vulkan/OpenGL/ANGLE bundles.
 # Nested compositors (weston/niri) are allowed everywhere native machines are.
-# weston-simple-egl is Wayland-EGL and cannot run on Apple mobile iland/ANGLE —
+# weston-simple-egl is Wayland-EGL and cannot run on Apple mobile iland/ANGLE -
 # kmscube is the nested GL smoke client there.
 bundled_client_skip_reason() {
   local platform="$1" client="$2"
@@ -137,7 +137,7 @@ bundled_client_ok_patterns() {
       printf '%s\n' 'iland DRM present' 'started in-process gbm-es2-demo' 'iland Metal presenter'
       ;;
     weston-smoke)
-      # Require a real SHM buffer / frame — process-alive alone is not PASS.
+      # Require a real SHM buffer / frame. Process-alive alone is not PASS.
       printf '%s\n' \
         'Node present' \
         'RENDER' \

@@ -82,7 +82,7 @@ impl Dispatch<WpAlphaModifierV1, ()> for CompositorState {
 }
 
 // ============================================================================
-// wp_alpha_modifier_surface_v1 — user data is surface_id: u32
+// wp_alpha_modifier_surface_v1. User data is surface_id: u32
 // ============================================================================
 
 impl Dispatch<WpAlphaModifierSurfaceV1, u32> for CompositorState {

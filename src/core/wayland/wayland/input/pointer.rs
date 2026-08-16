@@ -1,7 +1,7 @@
 //! Legacy cursor tracking for Smithay seats.
 //!
 //! wl_pointer client requests are handled by `smithay::delegate_seat!`.
-//! Do not add a custom `Dispatch<WlPointer>` here — it breaks Smithay's
+//! Do not add a custom `Dispatch<WlPointer>` here. It breaks Smithay's
 //! pointer handle and prevents Weston from receiving motion/button events.
 
 use smithay::input::pointer::CursorImageStatus;

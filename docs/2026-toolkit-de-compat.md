@@ -1,4 +1,4 @@
-# Wawona — Toolkit & Desktop-Environment Compatibility
+# Wawona. Toolkit & Desktop-Environment Compatibility
 
 What GTK, Qt, and KDE/GNOME/wlroots-DE clients need from Wawona, and where we
 stand. Protocol presence is authoritative in
@@ -30,7 +30,7 @@ to those globals.
 | wlroots DEs (sway, niri, hyprland) | **nested** | run as their own compositor; layer-shell client of Wawona |
 | GNOME Shell / KDE Plasma | nested / VM | heavy; prefer nested Weston or NixOS VM delivery |
 
-## Running Qt/GTK apps — env contract
+## Running Qt/GTK apps. Env contract
 
 - GTK: `GDK_BACKEND=wayland`.
 - Qt: `QT_QPA_PLATFORM=wayland` (fallback `xcb` only via XWayland path).

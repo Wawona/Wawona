@@ -1,6 +1,6 @@
 //
 // WWNDesktopReplacementController.h
-// Wawona — macOS only
+// Wawona. MacOS only
 //
 // Engages wwn-iland Mode B (libwayland-mac.dylib via DYLD_INSERT_LIBRARIES +
 // Dobby) when SIP permits and Desktop Replacement is enabled in Settings.

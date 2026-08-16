@@ -39,7 +39,7 @@ pub struct Window {
 
     /// When true, this window is hosted in its own independent OS
     /// window/scene (macOS NSWindow-per-toplevel, or iPadOS/visionOS
-    /// `UIWindowScene`-per-client — see `ipad-scene-parity` /
+    /// `UIWindowScene`-per-client. See `ipad-scene-parity` /
     /// `vision-shell-parity`, #120). Its size is driven exclusively by that
     /// dedicated host geometry via `resize_window`/`injectWindowResize`.
     /// `CompositorState::set_output_size` MUST skip these windows in its
@@ -52,7 +52,7 @@ pub struct Window {
     /// Whether the client has committed at least one buffer for this toplevel.
     ///
     /// The compositor always defers the initial `xdg_toplevel` configure to
-    /// size (0, 0) — per the xdg-shell spec this tells the client "pick your
+    /// size (0, 0). Per the xdg-shell spec this tells the client "pick your
     /// own size." The client's *first* commit is therefore always its true
     /// preferred size and must be trusted unconditionally, regardless of
     /// what output/window size hint the host used before that commit
