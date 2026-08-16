@@ -5,15 +5,22 @@ Mirror: keep this file in sync with `Wawona/docs/vms-mode-a-b.md`.
 
 ## Goal
 
-One Machines kind `virtual_machine`, two iOS-family engines:
+One Machines kind `virtual_machine`, **different backends per platform**, plus
+Mode A vs Mode B on the iOS family:
 
-| Mode | Engine | Distribution |
-|------|--------|----------------|
-| **A** (App Store) | UTM-SE–class **jitless** QEMU-TCTI | Store IPA only |
-| **B** (jailbreak) | UTM / QEMU with **JIT** | Sileo **Mode B IPA** from `repo.wawona.io` |
+| Platform | Mode A engine | Mode B / privileged |
+|----------|---------------|---------------------|
+| **macOS** | `Virtualization.framework` (not MAS) | Same + SIP desktop-host paths |
+| **iOS / iPadOS** | UTM-SE–class **jitless** QEMU-TCTI | **JIT** UTM in Sileo Mode B IPA |
+| **Android** | QEMU TCG (± AVF/KVM when available) | Root/privileged paths as designed |
+| **Linux** | Host/QEMU profiles (TBD) | N/A |
 
-macOS / Android keep their engines (Virtualization / QEMU±KVM); still respect
-MAS (no VM) and Play vs root Mode B where applicable.
+Shared: Machines schema, guest artifacts, vsock + waypipe GUI, capability gates.
+**Do not** assume the iOS interpreter path on macOS/Android or vice versa.
+
+Containers are separate (`wwn-containers`): macOS Apple Containerization work is
+in flight elsewhere — Wawona integration waits on that merge; do not block VMs
+or Wasm packages on it.
 
 ## Shared substrate (both modes)
 

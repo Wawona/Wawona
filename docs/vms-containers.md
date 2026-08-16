@@ -20,6 +20,12 @@ Desktop/LockScreen or anowaW.
 Design both in `wwn-vms` / `wwn-containers` / Wawona at all times. Mode B code
 must be compile-time absent from store artifacts.
 
+**Backends differ by OS:** macOS → Virtualization / Apple Containerization;
+iOS family → UTM-SE-class (A) or JIT UTM (B); Android → QEMU±KVM/proot. Do not
+share one engine across those hosts. **Note:** active work on macOS Apple
+Container in `wwn-containers` — leave that repo alone until it merges; VMs and
+Wasm packages proceed independently.
+
 ## Platforms
 
 | Platform | Gate | Planned engine |

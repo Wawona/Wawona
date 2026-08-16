@@ -1,6 +1,8 @@
 # Wawona Runtime package manager — implementation plan
 
-Status: **design** (not shipping). Replaces retired `wwn-apt` (StoreKit/ODR Mach-O).
+Status: **Phase 1 implemented in `wwn-wasm` (`crates/wpm`)** — local store +
+CLI + Mode A registry client. Host `index.json` at `repo.wawona.io/wasm/v1`
+(packages list starts empty; publish demos next). Replaces retired `wwn-apt`.
 Related: [`wasm-wasi.md`](./wasm-wasi.md), [`vms-containers.md`](./vms-containers.md),
 [`mode-a-b.md`](./mode-a-b.md),
 [`repo.wawona.io`](https://github.com/Wawona/repo.wawona.io).
@@ -246,21 +248,19 @@ DAG: package client stays L3′ → `wwn-toolchain` only; no weston/iland flake 
 - `wwn-apt` removed.
 - Docs distinguish Runtime vs containers vs VMs.
 
-### Phase 1 — Local package store + sideload register
+### Phase 1 — Local package store + sideload register — **done in wwn-wasm**
 
-- `wpm install ./foo.wasm` / `wpm list` / `wpm remove`.
-- `installed.json` + blob store.
-- Shell `help` lists installed Runtime packages.
-- No network required.
+- `wpm install ./foo.wasm` / `wpm list` / `wpm remove` / `wpm path` / `wpm show`
+- `installed.json` + blob store under `$WAWONA_WASM_STORE` or
+  `~/Library/Application Support/Wawona/wasm-packages`
+- `wasm <package>` resolves installed names via Runtime
+- C ABI `wpm_main` + dispatch/`help` wiring (toolchain + `-u,_wpm_main`)
 
-### Phase 2 — Official registry on `repo.wawona.io/wasm`
+### Phase 2 — Official registry on `repo.wawona.io/wasm` — **client done; catalog TBD**
 
-- Publish `index.json` + blobs.
-- Host **wayland-shm-demo** (and 1–2 CLI demos).
-- `wpm search` / `wpm install <name>` against default registry.
-- HTTPS pinning / digest verify.
-- Update `repo.wawona.io` README: dual-channel firewall.
-- App Store Review Notes: “downloads Wasm modules for in-app WASI runtime.”
+- Client: `wpm search` / `wpm install <name>` → `https://repo.wawona.io/wasm/v1`
+- Firewall refuses `/jailbreak/`, `.deb`, APT paths
+- Host: empty `index.json` scaffold; publish `wayland-shm-demo` next
 
 ### Phase 3 — GUI + Android parity
 

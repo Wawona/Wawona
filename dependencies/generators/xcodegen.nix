@@ -294,6 +294,7 @@ let
       "-L${strip w}/lib"
       "-Wl,-u,_wawona_wasm_run"
       "-Wl,-u,_wawona_wasm_can_run"
+      "-Wl,-u,_wpm_main"
       "-lwawona_wasm"
     ];
   neovimLdflags = deps:
