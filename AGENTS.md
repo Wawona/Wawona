@@ -14,6 +14,11 @@ largely post-dates model training. A retrieval MCP server, **`wwn-mcp`**
 plus this repo's own source, docs, and the extracted `wwn-*` patched-software
 repos.
 
+**Human contributors using AI:** follow
+https://wawona.io/docs/contributor/wwn-mcp/ (install, host config, agent loop,
+companion MCPs). Keep this `AGENTS.md` and Cursor rules loaded; still query MCP
+for facts.
+
 **Before answering or coding in these areas, query `wwn-mcp` and trust the
 retrieved docs over your priors.** Key tools: `search`, `search_docs`,
 `search_code`, `find_symbol`, `read_document`, `get_architecture`,
