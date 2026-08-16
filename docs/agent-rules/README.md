@@ -9,6 +9,8 @@ the same non-negotiable gates.
 |------|--------|
 | [wawona-iland-mode-b-desktop.md](./wawona-iland-mode-b-desktop.md) | Mode A vs Mode B, SIP Desktop/LockScreen, dylib shipping |
 | [wawona-swinging-bridge.md](./wawona-swinging-bridge.md) | Wawona Swinging Bridge Mode A/B (not Desktop) |
+| [wawona-product-map.md](./wawona-product-map.md) | Swinging Bridge / Desktop / VMs / containers / Runtime packages |
+| [wawona-product-integration.md](./wawona-product-integration.md) | L4 gates + store firewall |
 | [wawona-release-assets.md](./wawona-release-assets.md) | GitHub + store binary filenames (CalVer / platform / arch) |
 | Canonical prose | [`../iland-mode-a-b-desktop.md`](../iland-mode-a-b-desktop.md) |
 | Entry AGENTS | [`../../AGENTS.md`](../../AGENTS.md) |

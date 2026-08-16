@@ -178,3 +178,7 @@ no-op even when `press`/`click` succeed. Prefer `press` / `gesture`; do not
   rule `wawona-release-assets`.
 - Mode B **iland** dylib presence: assert with
   `.github/scripts/verify-iland-mode-b-bundle.sh`.
+
+## Product map (agents)
+
+See `docs/agent-rules/wawona-product-map.md` and `docs/agent-rules/wawona-product-integration.md` (Swinging Bridge, Desktop/LockScreen, VMs, containers, Wasm Runtime — do not conflate).
