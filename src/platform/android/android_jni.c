@@ -5490,8 +5490,12 @@ static jboolean wwn_launch_foot(void) {
     setenv("LD_LIBRARY_PATH", native_lib_dir, 1);
     setenv("TERM", "xterm-256color", 1);
     setenv("COLORTERM", "truecolor", 1);
-    if (xdg_runtime && xdg_runtime[0])
-      chdir(xdg_runtime);
+    /* Start the shell in $HOME (not XDG_RUNTIME_DIR / "/"). */
+    {
+      const char *home = getenv("HOME");
+      if (home && home[0] && chdir(home) != 0)
+        LOGE("foot: chdir(HOME=%s) failed: %s", home, strerror(errno));
+    }
     const char *shell = getenv("SHELL");
     /* argv[0] must be realpath()-able for Berberis (arm64-on-x86 emu). */
     if (ini_path[0] && shell && shell[0]) {

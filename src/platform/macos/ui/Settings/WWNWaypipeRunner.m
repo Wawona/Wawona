@@ -3307,6 +3307,14 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   }
 
   task.environment = env;
+  // AppKit process cwd is often "/"; start the shell in HOME.
+  {
+    NSString *homeDir = env[@"HOME"];
+    if (homeDir.length == 0)
+      homeDir = NSHomeDirectory();
+    if (homeDir.length > 0)
+      task.currentDirectoryURL = [NSURL fileURLWithPath:homeDir];
+  }
   NSError *err;
   if ([task launchAndReturnError:&err]) {
     WWNLog("WESTON_TERM", @"Launched weston-terminal with PID %d (shell=%@)",
@@ -3528,6 +3536,14 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     iniPath, shellPath
   ];
   task.environment = env;
+  // AppKit process cwd is often "/"; start the shell in HOME.
+  {
+    NSString *homeDir = env[@"HOME"];
+    if (homeDir.length == 0)
+      homeDir = NSHomeDirectory();
+    if (homeDir.length > 0)
+      task.currentDirectoryURL = [NSURL fileURLWithPath:homeDir];
+  }
 
   NSError *err = nil;
   if ([task launchAndReturnError:&err]) {
