@@ -1371,6 +1371,7 @@ ICDJSON
     { path = "Sources/WawonaUI/Settings/EnvironmentVariablesView.swift"; type = "file"; }
     { path = "Sources/WawonaUI/Settings/WWNEnvironmentSettingsPresenter.swift"; type = "file"; }
     { path = "Sources/WawonaUI/View+WawonaTextField.swift"; type = "file"; }
+    { path = "Sources/WawonaUI/MachineRuntimeSettingsApplicator.swift"; type = "file"; }
   ];
 
   # Xcode “Update to recommended settings” for framework targets with Swift/ObjC clients.
