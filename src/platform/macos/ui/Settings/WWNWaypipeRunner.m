@@ -3154,7 +3154,24 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   NSMutableDictionary *env = [self wwnMutableHostWaylandEnvironment];
   NSString *shellPath = WWNPreferredHostShellPath();
   env[@"SHELL"] = shellPath;
-  task.arguments = @[ @"--shell", shellPath ];
+  // Prefer JetBrainsMono NL Nerd Font Mono (bundled). WAWONA_MONO_FONT is the
+  // cairo-ft direct path; --font covers family-name fallbacks.
+  WWNConfigureBundledRuntimeEnvIfNeeded();
+  const char *monoEnv = getenv("WAWONA_MONO_FONT");
+  if (monoEnv && monoEnv[0]) {
+    env[@"WAWONA_MONO_FONT"] = @(monoEnv);
+  }
+  const char *fcFile = getenv("FONTCONFIG_FILE");
+  if (fcFile && fcFile[0]) {
+    env[@"FONTCONFIG_FILE"] = @(fcFile);
+  }
+  const char *fcPath = getenv("FONTCONFIG_PATH");
+  if (fcPath && fcPath[0]) {
+    env[@"FONTCONFIG_PATH"] = @(fcPath);
+  }
+  task.arguments = @[
+    @"--shell", shellPath, @"--font", @"JetBrainsMonoNL Nerd Font Mono"
+  ];
 
   // Preserve original ZDOTDIR for the .zshenv/.zshrc wrappers
   if (env[@"ZDOTDIR"])
