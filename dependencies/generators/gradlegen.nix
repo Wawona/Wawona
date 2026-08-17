@@ -38,7 +38,7 @@ let
     else
       null;
 
-  # DejaVu (UI/CSD) + JetBrainsMono NL Nerd Font Mono (terminals / prompts).
+  # DejaVu (UI/CSD) + DejaVuSansM Nerd Font Mono (terminals / prompts).
   wawonaBundledFonts = pkgs.callPackage ../libs/fonts { };
 
   # Single openable Gradle tree at ./Wawona-gradle-project (parallel to ./Wawona.xcodeproj).
@@ -432,10 +432,10 @@ let
       echo "Bundled xkeyboard-config into $XKB_ASSET_DIR"
     fi
 
-    # DejaVu (UI/CSD) + JetBrainsMono NL Nerd Font Mono (terminals).
+    # DejaVu (UI/CSD) + DejaVuSansM Nerd Font Mono (terminals).
     # android_jni.c writes a fonts.conf pointing here at runtime.
     FONTS_ASSET_DIR="$OUT/app/src/main/assets/fonts/truetype"
-    if [ ! -f "$FONTS_ASSET_DIR/JetBrainsMonoNLNerdFontMono-Regular.ttf" ]; then
+    if [ ! -f "$FONTS_ASSET_DIR/DejaVuSansMNerdFontMono-Regular.ttf" ]; then
       rm -rf "$OUT/app/src/main/assets/fonts"
       mkdir -p "$FONTS_ASSET_DIR"
       cp -L ${wawonaBundledFonts}/share/fonts/truetype/*.ttf "$FONTS_ASSET_DIR/"

@@ -3154,7 +3154,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   NSMutableDictionary *env = [self wwnMutableHostWaylandEnvironment];
   NSString *shellPath = WWNPreferredHostShellPath();
   env[@"SHELL"] = shellPath;
-  // Prefer JetBrainsMono NL Nerd Font Mono (bundled). WAWONA_MONO_FONT is the
+  // Prefer DejaVuSansM Nerd Font Mono (bundled). WAWONA_MONO_FONT is the
   // cairo-ft direct path; --font covers family-name fallbacks.
   WWNConfigureBundledRuntimeEnvIfNeeded();
   const char *monoEnv = getenv("WAWONA_MONO_FONT");
@@ -3170,7 +3170,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     env[@"FONTCONFIG_PATH"] = @(fcPath);
   }
   task.arguments = @[
-    @"--shell", shellPath, @"--font", @"JetBrainsMonoNL Nerd Font Mono"
+    @"--shell", shellPath, @"--font", @"DejaVuSansM Nerd Font Mono"
   ];
 
   // Preserve original ZDOTDIR for the .zshenv/.zshrc wrappers
@@ -3262,7 +3262,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     NSFileManager *fm = [NSFileManager defaultManager];
     NSString *monoTtf =
         [fontDir stringByAppendingPathComponent:
-                     @"truetype/JetBrainsMonoNLNerdFontMono-Regular.ttf"];
+                     @"truetype/DejaVuSansMNerdFontMono-Regular.ttf"];
     if (![fm fileExistsAtPath:monoTtf]) {
       monoTtf = [fontDir
           stringByAppendingPathComponent:@"truetype/DejaVuSansMono.ttf"];
@@ -3333,7 +3333,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   NSFileManager *fm = [NSFileManager defaultManager];
   NSString *monoTtf =
       [fontDir stringByAppendingPathComponent:
-                   @"truetype/JetBrainsMonoNLNerdFontMono-Regular.ttf"];
+                   @"truetype/DejaVuSansMNerdFontMono-Regular.ttf"];
   if (![fm fileExistsAtPath:monoTtf]) {
     monoTtf =
         [fontDir stringByAppendingPathComponent:@"truetype/DejaVuSansMono.ttf"];

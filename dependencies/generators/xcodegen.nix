@@ -402,7 +402,7 @@ let
     find "$DEST" -type l -delete 2>/dev/null || true
     echo "Embedded xkeyboard-config into $DEST"
   '';
-  # DejaVu (UI/CSD) + JetBrainsMono NL Nerd Font Mono (terminals / prompts).
+  # DejaVu (UI/CSD) + DejaVuSansM Nerd Font Mono (terminals / prompts).
   # See dependencies/libs/fonts. Without any font, desktop-shell aborts during
   # init and the nested compositor shows only a solid clear color.
   wawonaBundledFonts = pkgs.callPackage ../libs/fonts { };
@@ -421,7 +421,7 @@ let
     # Nix store font paths are often symlinks; iOS installd rejects symlinks in .app
     # bundles (MIInstallerErrorDomain Code 70). -L dereferences to real files.
     cp -RL "${wawonaBundledFonts}/share/fonts/." "$DEST/"
-    echo "Embedded Wawona fonts (DejaVu + JetBrainsMono NL Nerd Font Mono) into $DEST"
+    echo "Embedded Wawona fonts (DejaVu + DejaVuSansM Nerd Font Mono) into $DEST"
   '';
   xcodeUtils = import applePath { inherit lib pkgs TEAM_ID; };
 
@@ -661,7 +661,7 @@ let
 
   fontEmbedOutputs = [
     "$(BUILT_PRODUCTS_DIR)/$(FULL_PRODUCT_NAME)/share/fonts/truetype/DejaVuSans.ttf"
-    "$(BUILT_PRODUCTS_DIR)/$(FULL_PRODUCT_NAME)/share/fonts/truetype/JetBrainsMonoNLNerdFontMono-Regular.ttf"
+    "$(BUILT_PRODUCTS_DIR)/$(FULL_PRODUCT_NAME)/share/fonts/truetype/DejaVuSansMNerdFontMono-Regular.ttf"
   ];
 
   fontEmbedPhase = {
@@ -2215,7 +2215,7 @@ ICDJSON
               mkdir -p "$RES_DEST/share/fonts"
               cp -RL "${wawonaBundledFonts}/share/fonts/." "$RES_DEST/share/fonts/"
               chmod -R u+w "$RES_DEST/share/fonts"
-              echo "Bundled Wawona fonts (DejaVu + JetBrainsMono NL Nerd Font Mono)"
+              echo "Bundled Wawona fonts (DejaVu + DejaVuSansM Nerd Font Mono)"
               CURSOR_SRC="${pkgs.adwaita-icon-theme}/share/icons/Adwaita/cursors"
               if [ -d "$CURSOR_SRC" ]; then
                 mkdir -p "$RES_DEST/share/icons/Adwaita"
