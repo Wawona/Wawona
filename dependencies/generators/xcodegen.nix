@@ -1361,6 +1361,18 @@ ICDJSON
     { path = "src/util/WWNStartupLogger.m"; type = "file"; }
   ];
 
+  # WWNMachineEditorView (src/platform/macos/ui/Machines) uses EnvironmentVariablesView.
+  # That type lives under Sources/WawonaUI, which macOS embeds as a whole tree but
+  # Apple-mobile app targets do not. Compile the minimal Settings UI pieces so
+  # iOS/iPadOS/tvOS/visionOS resolve the type (and ObjC can NSClassFromString the
+  # presenter). Do not add these to macOS (already covered by Sources/WawonaUI)
+  # or watchOS (no WWNMachineEditorView).
+  appleMobileEnvUISources = [
+    { path = "Sources/WawonaUI/Settings/EnvironmentVariablesView.swift"; type = "file"; }
+    { path = "Sources/WawonaUI/Settings/WWNEnvironmentSettingsPresenter.swift"; type = "file"; }
+    { path = "Sources/WawonaUI/View+WawonaTextField.swift"; type = "file"; }
+  ];
+
   # Xcode “Update to recommended settings” for framework targets with Swift/ObjC clients.
   moduleVerifierFrameworkSettings = {
     ENABLE_MODULE_VERIFIER = "YES";
@@ -1482,7 +1494,7 @@ ICDJSON
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
-        ] ++ iosUtilSources;
+        ] ++ iosUtilSources ++ appleMobileEnvUISources;
         preBuildScripts = [ stampBuildNumberPhase iosPreBuild ];
         postBuildScripts = iosPostBuildPhases;
 
@@ -1674,7 +1686,7 @@ ICDJSON
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
-        ] ++ iosUtilSources;
+        ] ++ iosUtilSources ++ appleMobileEnvUISources;
         preBuildScripts = [ stampBuildNumberPhase ipadosPreBuild ];
         # mkAppleGpuPostBuildPhases keeps this permanently in sync with
         # Wawona-iOS/Wawona-visionOS (niri data / fuzzel apps catalog / VM
@@ -1865,7 +1877,7 @@ ICDJSON
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
-        ] ++ iosUtilSources;
+        ] ++ iosUtilSources ++ appleMobileEnvUISources;
         preBuildScripts = [ stampBuildNumberPhase tvosPreBuild ];
         # No ANGLE embed / no VM guest on tvOS (platform-targets: no GL, no VM).
         # appsCatalogEmbedPhase is cheap and already gates on appletvos|appletvsimulator
@@ -2510,7 +2522,7 @@ ICDJSON
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
-        ] ++ iosUtilSources;
+        ] ++ iosUtilSources ++ appleMobileEnvUISources;
         preBuildScripts = [ stampBuildNumberPhase visionosPreBuild ];
         # mkAppleGpuPostBuildPhases. See Wawona-iOS/-iPadOS. This also fixes
         # visionOS previously missing niri data / fuzzel apps catalog, which
