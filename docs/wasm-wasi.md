@@ -49,7 +49,12 @@ Files.app / SCP / File Sharing     bundled Wasm package client (OCI preferred)
 | Path | Who |
 |---|---|
 | Drop `foo.wasm` under Wawona Documents | Developers / power users (rootshell-style) |
+| Machines → Native → **Wawona Runtime (.wasm)** | Per-machine profile: pick a filesystem `.wasm` and Start |
 | Package client install/search | Everyday users; registry packages as Runtime **data** |
+
+Per-machine field: `runtimeOverrides.wasmModulePath` (absolute or Documents
+path). Catalog id: `wawona-wasm`. Launch goes through the bundled Runtime
+(`wasm` CLI on macOS; in-process `wawona_wasm_run` on Apple mobile).
 
 Do not brand this as an “App Store” for iOS apps. It is a **runtime package
 registry**. Prefer OCI artifacts + a thin client over inventing a bespoke protocol.

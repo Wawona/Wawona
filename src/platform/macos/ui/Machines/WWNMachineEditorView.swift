@@ -1,5 +1,6 @@
 import SwiftUI
 import WawonaModel
+import UniformTypeIdentifiers
 
 struct WWNMachineEditorView: View {
   let title: String
@@ -23,6 +24,8 @@ struct WWNMachineEditorView: View {
 
   @State private var selectedClientId: String
   @State private var customCommand: String
+  @State private var wasmModulePath: String
+  @State private var showWasmFileImporter: Bool = false
   @State private var machineThumbnailEnabled: Bool
   @State private var waypipeDisplayNumber: String
   @State private var waypipeCompress: String
@@ -89,6 +92,8 @@ struct WWNMachineEditorView: View {
     let prefs = WWNPreferencesManager.shared()
     let initialCustomCommand = (overrides["NativeCustomCommand"] as? String) ?? ""
     _customCommand = State(initialValue: initialCustomCommand)
+    let initialWasmPath = (runtimeOverrides[kRuntimeWasmModulePathKey] as? String) ?? ""
+    _wasmModulePath = State(initialValue: initialWasmPath)
     _machineThumbnailEnabled = State(
       initialValue: (runtimeOverrides["machineThumbnailEnabledOverride"] as? Bool)
         ?? WWNPreferencesManager.shared().machineSessionThumbnailsEnabled()
@@ -219,8 +224,7 @@ struct WWNMachineEditorView: View {
           Section("Wayland Client") {
             NavigationLink {
               WWNNativeClientPickerView(
-                selectedClientId: $selectedClientId,
-                customCommand: $customCommand
+                selectedClientId: $selectedClientId
               )
             } label: {
               HStack {
@@ -230,6 +234,21 @@ struct WWNMachineEditorView: View {
                   .foregroundStyle(.secondary)
                   .lineLimit(1)
               }
+            }
+            #if !os(iOS)
+            if selectedClientId == kNativeClientCustomId {
+              TextField("Custom command", text: $customCommand)
+                .wwnDisableAutocapitalization()
+                .autocorrectionDisabled()
+              Text("e.g. /usr/bin/my-wayland-app")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            }
+            #endif
+            if selectedClientId == kNativeClientWasmId {
+              TextField("Wasm module path", text: $wasmModulePath)
+                .wwnDisableAutocapitalization()
+                .autocorrectionDisabled()
             }
           }
         }
@@ -544,6 +563,10 @@ struct WWNMachineEditorView: View {
     if selectedClientId == kNativeClientCustomId {
       return customCommand.isEmpty ? "Custom Command" : customCommand
     }
+    if selectedClientId == kNativeClientWasmId {
+      if wasmModulePath.isEmpty { return "Wawona Runtime (.wasm)" }
+      return (wasmModulePath as NSString).lastPathComponent
+    }
     return kBundledClients.first { $0.id == selectedClientId }?.name ?? selectedClientId
   }
 
@@ -554,8 +577,7 @@ struct WWNMachineEditorView: View {
     ) {
       NavigationLink {
         WWNNativeClientPickerView(
-          selectedClientId: $selectedClientId,
-          customCommand: $customCommand
+          selectedClientId: $selectedClientId
         )
       } label: {
         HStack {
@@ -567,6 +589,128 @@ struct WWNMachineEditorView: View {
             .lineLimit(1)
         }
       }
+
+      #if !os(iOS)
+      if selectedClientId == kNativeClientCustomId {
+        customCommandRows
+      }
+      #endif
+
+      if selectedClientId == kNativeClientWasmId {
+        wasmModulePickerRows
+      }
+    }
+  }
+
+  @ViewBuilder
+  private var customCommandRows: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text("Custom command")
+        .font(.subheadline.weight(.semibold))
+      TextField("e.g. /usr/bin/my-wayland-app", text: $customCommand)
+        .textFieldStyle(.roundedBorder)
+        .wwnDisableAutocapitalization()
+        .autocorrectionDisabled()
+        .font(.system(.body, design: .monospaced))
+      Text("Absolute path or argv0 of a Wayland client. Runs against this machine’s compositor socket.")
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+    }
+    .padding(.top, 4)
+  }
+
+  @ViewBuilder
+  private var wasmModulePickerRows: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text("Wasm module")
+        .font(.subheadline.weight(.semibold))
+      Text(
+        wasmModulePath.isEmpty
+          ? "No .wasm selected"
+          : wasmModulePath
+      )
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .lineLimit(3)
+      .textSelection(.enabled)
+
+      HStack(spacing: 10) {
+        #if os(tvOS)
+        TextField("Path to .wasm", text: $wasmModulePath)
+          .textFieldStyle(.roundedBorder)
+        #else
+        Button("Choose…") {
+          showWasmFileImporter = true
+        }
+        .buttonStyle(.bordered)
+        TextField("Path", text: $wasmModulePath)
+          .textFieldStyle(.roundedBorder)
+          .wwnDisableAutocapitalization()
+        #endif
+        if !wasmModulePath.isEmpty {
+          Button("Clear", role: .destructive) {
+            wasmModulePath = ""
+          }
+          .buttonStyle(.borderless)
+        }
+      }
+      Text("Drop or pick a Wayland WASI `.wasm` (e.g. wayland-shm-rust.wasm). Runs via the bundled Wawona Runtime.")
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+    }
+    .padding(.top, 4)
+    #if !os(tvOS)
+    .fileImporter(
+      isPresented: $showWasmFileImporter,
+      allowedContentTypes: [UTType(filenameExtension: "wasm") ?? .data],
+      allowsMultipleSelection: false
+    ) { result in
+      guard case .success(let urls) = result, let url = urls.first else { return }
+      let accessed = url.startAccessingSecurityScopedResource()
+      defer {
+        if accessed { url.stopAccessingSecurityScopedResource() }
+      }
+      // Prefer copying into Documents/Wawona so sandboxed relaunches keep the file.
+      if let stable = Self.importWasmModule(from: url) {
+        wasmModulePath = stable
+      } else {
+        wasmModulePath = url.path
+      }
+    }
+    #endif
+  }
+
+  /// Copy a picked `.wasm` into Application Support / Documents so the path survives.
+  private static func importWasmModule(from url: URL) -> String? {
+    let name = url.lastPathComponent
+    guard name.lowercased().hasSuffix(".wasm") else {
+      // Still allow non-suffixed picks if magic is checked at launch.
+      return copyWasmIntoWawonaDir(from: url, preferredName: name.hasSuffix(".wasm") ? name : name + ".wasm")
+    }
+    return copyWasmIntoWawonaDir(from: url, preferredName: name)
+  }
+
+  private static func copyWasmIntoWawonaDir(from url: URL, preferredName: String) -> String? {
+    let fm = FileManager.default
+    let base: URL
+    if let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first {
+      base = docs.appendingPathComponent("Wawona", isDirectory: true)
+    } else if let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+      base = appSupport.appendingPathComponent("Wawona", isDirectory: true)
+    } else {
+      return nil
+    }
+    let destDir = base.appendingPathComponent("wasm-modules", isDirectory: true)
+    do {
+      try fm.createDirectory(at: destDir, withIntermediateDirectories: true)
+      let dest = destDir.appendingPathComponent(preferredName)
+      if fm.fileExists(atPath: dest.path) {
+        try fm.removeItem(at: dest)
+      }
+      try fm.copyItem(at: url, to: dest)
+      return dest.path
+    } catch {
+      return nil
     }
   }
 
@@ -1064,6 +1208,12 @@ struct WWNMachineEditorView: View {
 
     runtimeOverrides["useBundledApp"] = (type == kWWNMachineTypeNative && !selectedClientId.isEmpty)
     runtimeOverrides["bundledAppID"] = selectedClientId
+    let trimmedWasm = wasmModulePath.trimmingCharacters(in: .whitespacesAndNewlines)
+    if selectedClientId == kNativeClientWasmId && !trimmedWasm.isEmpty {
+      runtimeOverrides[kRuntimeWasmModulePathKey] = trimmedWasm
+    } else {
+      runtimeOverrides.removeValue(forKey: kRuntimeWasmModulePathKey)
+    }
     runtimeOverrides["inputProfile"] = touchInputType
     runtimeOverrides["waypipeEnabled"] = (type == kWWNMachineTypeSSHWaypipe || type == kWWNMachineTypeSSHTerminal)
     if machineThumbnailEnabled != WWNPreferencesManager.shared().machineSessionThumbnailsEnabled() {
@@ -1133,7 +1283,6 @@ struct WWNMachineEditorView: View {
 private struct WWNNativeClientPickerView: View {
   @Environment(\.dismiss) private var dismiss
   @Binding var selectedClientId: String
-  @Binding var customCommand: String
 
   var body: some View {
     ScrollView {
@@ -1196,47 +1345,39 @@ private struct WWNNativeClientPickerView: View {
   @ViewBuilder
   private var customClientOption: some View {
     let isSelected = selectedClientId == kNativeClientCustomId
-    VStack(alignment: .leading, spacing: 8) {
-      Button {
-        selectedClientId = kNativeClientCustomId
-      } label: {
-        HStack(spacing: 12) {
-          Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-            .font(.title3)
-            .foregroundStyle(isSelected ? Color.accentColor : .secondary)
-            .frame(width: 28, alignment: .center)
-          Image(systemName: "terminal.fill")
-            .font(.title3)
-            .foregroundStyle(Color.accentColor)
-            .frame(width: 28, alignment: .center)
-          VStack(alignment: .leading, spacing: 2) {
-            Text("Custom Command")
-              .font(.subheadline.weight(.semibold))
-              .foregroundStyle(.primary)
-            Text("Run any Wayland-compatible executable")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          }
-          Spacer()
+    Button {
+      selectedClientId = kNativeClientCustomId
+      // Return to the machine editor so the Custom command field is visible.
+      dismiss()
+    } label: {
+      HStack(spacing: 12) {
+        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+          .font(.title3)
+          .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+          .frame(width: 28, alignment: .center)
+        Image(systemName: "terminal.fill")
+          .font(.title3)
+          .foregroundStyle(Color.accentColor)
+          .frame(width: 28, alignment: .center)
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Custom Command")
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.primary)
+          Text("Enter the executable on the machine editor")
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
-        .contentShape(Rectangle())
-        .padding(.vertical, 6)
-        .padding(.horizontal, 8)
-        .background(
-          RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .fill(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
-        )
+        Spacer()
       }
-      .buttonStyle(.plain)
-
-      if isSelected {
-        TextField("e.g. /usr/bin/my-wayland-app", text: $customCommand)
-          .textFieldStyle(.roundedBorder)
-          .wwnDisableAutocapitalization()
-          .autocorrectionDisabled()
-          .padding(.leading, 68)
-      }
+      .contentShape(Rectangle())
+      .padding(.vertical, 6)
+      .padding(.horizontal, 8)
+      .background(
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+          .fill(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
+      )
     }
+    .buttonStyle(.plain)
   }
 }
 

@@ -772,6 +772,9 @@ private fun MachineEditorSheet(
     var sshKeyPassphrase by remember { mutableStateOf(initial?.sshKeyPassphrase ?: "") }
     var sshAuthMethod by remember { mutableStateOf(initial?.sshAuthMethod ?: "password") }
     var nativeLauncher by remember { mutableStateOf(initial?.nativeLauncher ?: "weston-terminal") }
+    var wasmModulePath by remember {
+        mutableStateOf(initial?.runtimeOverrides?.optString("wasmModulePath", "") ?: "")
+    }
     var remoteCommand by remember { mutableStateOf(initial?.remoteCommand ?: "") }
     var vmIdentifier by remember { mutableStateOf(initial?.vmSettings?.vmIdentifier ?: "") }
     var vmVsockPort by remember { mutableStateOf(initial?.vmSettings?.vsockPort ?: "") }
@@ -946,6 +949,13 @@ private fun MachineEditorSheet(
         writeBoolOverride(settingsOverrides, "swipeBackToCloseEnabled", swipeBackOverride, prefs.getBoolean("wawona.pref.swipeBackToCloseEnabled", true))
         val withEnv = EnvironmentOverrides.withMachineEnv(base, machineEnvironment)
         val runtimeOverrides = JSONObject(withEnv.runtimeOverrides.toString())
+        val trimmedWasm = wasmModulePath.trim()
+        if (nativeLauncher == "wawona-wasm" && trimmedWasm.isNotEmpty()) {
+            runtimeOverrides.put("wasmModulePath", trimmedWasm)
+            runtimeOverrides.put("bundledAppID", "wawona-wasm")
+        } else {
+            runtimeOverrides.remove("wasmModulePath")
+        }
         onSave(
             base.copy(
                 name = trimmedName,
@@ -1078,10 +1088,29 @@ private fun MachineEditorSheet(
                             ) {
                                 Text("Bundled Client")
                                 Text(
-                                    BundledClients.labelFor(nativeLauncher),
+                                    if (nativeLauncher == "wawona-wasm" && wasmModulePath.isNotBlank()) {
+                                        wasmModulePath.substringAfterLast('/')
+                                    } else {
+                                        BundledClients.labelFor(nativeLauncher)
+                                    },
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            if (nativeLauncher == "wawona-wasm") {
+                                OutlinedTextField(
+                                    value = wasmModulePath,
+                                    onValueChange = { wasmModulePath = it },
+                                    label = { Text("Wasm module path") },
+                                    placeholder = { Text("/sdcard/…/wayland-shm-rust.wasm") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Text(
+                                    "Wayland WASI `.wasm` run by the bundled Wawona Runtime.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }

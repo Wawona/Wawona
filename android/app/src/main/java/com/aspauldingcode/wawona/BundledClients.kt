@@ -38,6 +38,7 @@ object BundledClients {
         BundledClientOption("weston-terminal", "Weston Terminal", "Terminal emulator. Uses host cursor", Icons.Filled.Terminal),
         BundledClientOption("foot", "Foot Terminal", "Lightweight Wayland terminal emulator", Icons.Filled.Terminal),
         BundledClientOption("weston-simple-shm", "Weston Simple SHM", "Minimal shared-memory Wayland client", Icons.Filled.Dashboard),
+        BundledClientOption("wawona-wasm", "Wawona Runtime (.wasm)", "Wayland WASI module from the filesystem (Wawona Runtime)", Icons.Filled.Apps),
         BundledClientOption("weston", "Weston", "Wayland reference compositor (nested compositor)", Icons.Filled.ViewModule),
         BundledClientOption("niri", "Niri", "Scrollable-tiling compositor (nested compositor)", Icons.Filled.ViewColumn),
         BundledClientOption("weston-flower", "Weston Flower", "Animated cairo demo (toytoolkit)", Icons.Filled.Eco),

@@ -52,8 +52,10 @@ public extension ClientLauncher {
         ClientLauncher(name: "weston-terminal", executablePath: "weston-terminal", displayName: "Weston Terminal"),
         ClientLauncher(name: "foot", executablePath: "foot", displayName: "Foot Terminal"),
         ClientLauncher(name: "weston-simple-shm", executablePath: "weston-simple-shm", displayName: "Weston Simple SHM"),
+        ClientLauncher(name: "wawona-wasm", executablePath: "wasm", displayName: "Wawona Runtime (.wasm)"),
         ClientLauncher(name: "weston", executablePath: "weston", displayName: "Weston"),
-        ClientLauncher(name: "niri", executablePath: "niri", displayName: "Niri"),        ClientLauncher(name: "weston-flower", executablePath: "weston-flower", displayName: "Weston Flower"),
+        ClientLauncher(name: "niri", executablePath: "niri", displayName: "Niri"),
+        ClientLauncher(name: "weston-flower", executablePath: "weston-flower", displayName: "Weston Flower"),
         ClientLauncher(name: "kmscube", executablePath: "kmscube", displayName: "KMS Cube", requiresGpuStack: true),
         ClientLauncher(name: "gbm-es2-demo", executablePath: "gbm-es2-demo", displayName: "GBM ES2 Demo", requiresGpuStack: true),
         ClientLauncher(name: "opengl-cube", executablePath: "opengl-cube", displayName: "OpenGL Cube", requiresGpuStack: true),
@@ -77,6 +79,13 @@ public extension ClientLauncher {
     /// blocked/forbidden. E.g. watchOS has no Metal).
     static var availablePresets: [ClientLauncher] {
         allPresets.filter { launcher in
+            if launcher.name == "wawona-wasm" {
+                #if os(watchOS)
+                return false
+                #else
+                return true
+                #endif
+            }
             if launcher.requiresGpuStack {
                 return PlatformCapabilities.allowsGpuStack
             }

@@ -124,10 +124,18 @@ public struct MachineSettingsView: View {
                     HStack {
                         Text("Wayland Client")
                         Spacer()
-                        Text(ClientLauncher.displayName(for: resolvedBundledAppID))
+                        Text(wasmClientSummary)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
+                }
+                if resolvedBundledAppID == "wawona-wasm" {
+                    TextField("Wasm module path", text: wasmModulePathBinding)
+                        .wawonaTextFieldNoAutocaps()
+                        .autocorrectionDisabled()
+                    Text("Wayland WASI `.wasm` run by the Wawona Runtime.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -390,10 +398,40 @@ public struct MachineSettingsView: View {
         return raw.isEmpty ? preferences.defaultBundledAppID : raw
     }
 
+    private var wasmClientSummary: String {
+        if resolvedBundledAppID == "wawona-wasm" {
+            let path = draft?.runtimeOverrides.wasmModulePath?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !path.isEmpty {
+                return (path as NSString).lastPathComponent
+            }
+        }
+        return ClientLauncher.displayName(for: resolvedBundledAppID)
+    }
+
+    private var wasmModulePathBinding: Binding<String> {
+        Binding(
+            get: { draft?.runtimeOverrides.wasmModulePath ?? "" },
+            set: { value in
+                updateDraft { profile in
+                    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                    profile.runtimeOverrides.wasmModulePath = trimmed.isEmpty ? nil : trimmed
+                }
+            }
+        )
+    }
+
     private var bundledAppIDSelectionBinding: Binding<String> {
         Binding(
             get: { resolvedBundledAppID },
-            set: { value in updateDraft { $0.runtimeOverrides.bundledAppID = value } }
+            set: { value in
+                updateDraft { profile in
+                    profile.runtimeOverrides.bundledAppID = value
+                    if value != "wawona-wasm" {
+                        profile.runtimeOverrides.wasmModulePath = nil
+                    }
+                }
+            }
         )
     }
 

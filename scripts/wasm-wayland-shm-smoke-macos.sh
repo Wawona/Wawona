@@ -4,7 +4,7 @@
 # 1. Build examples/wayland-shm/rust with rustup (no Nix).
 # 2. Start Wawona.app, wait for its Wayland socket.
 # 3. Run the guest via the Wawona Runtime (`wasm`).
-# 4. Capture the Wawona window and assert non-black (blue rectangle).
+# 4. Capture the Wawona window and assert non-black (interactive SHM UI).
 #
 # Usage:
 #   ./scripts/wasm-wayland-shm-smoke-macos.sh [/path/to/Wawona.app]
@@ -118,7 +118,7 @@ set +e
 GUEST_PID=$!
 # Guest stays mapped after commit; give Wawona frames to present.
 for _ in $(seq 1 30); do
-  if grep -q 'wayland-shm: 256x256 XRGB8888 committed' "$OUT" 2>/dev/null; then
+  if grep -qE 'wayland-shm: [0-9]+x[0-9]+ XRGB8888 committed' "$OUT" 2>/dev/null; then
     break
   fi
   if ! kill -0 "$GUEST_PID" 2>/dev/null; then
@@ -128,12 +128,12 @@ for _ in $(seq 1 30); do
 done
 set -e
 cat "$OUT"
-if ! grep -q 'wayland-shm: 256x256 XRGB8888 committed' "$OUT"; then
+if ! grep -qE 'wayland-shm: [0-9]+x[0-9]+ XRGB8888 committed' "$OUT"; then
   log "FAIL: guest did not commit SHM buffer"
   tail -80 /tmp/wawona-wasm-shm-app.log || true
   exit 1
 fi
-log "PASS: guest committed 256x256 XRGB8888"
+log "PASS: guest committed XRGB8888 SHM buffer"
 sleep 2
 
 SHOT_PNG="$ART_DIR/wasm-wayland-shm-macos.png"

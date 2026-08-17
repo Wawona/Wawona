@@ -18,6 +18,7 @@ import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.WindowInsetsController
 import android.widget.Toast
+import java.io.File
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.BackHandler
@@ -818,6 +819,43 @@ fun WawonaApp(
 
     fun launchNativeMachine(profile: MachineProfile): Boolean {
         val launcher = profile.nativeLauncher.ifBlank { "weston-terminal" }
+        if (launcher == "wawona-wasm") {
+            val path = profile.runtimeOverrides.optString("wasmModulePath", "").trim()
+            if (path.isEmpty() || !java.io.File(path).isFile) {
+                Toast.makeText(
+                    context,
+                    "Pick a Wayland .wasm path in Machine Settings first.",
+                    Toast.LENGTH_LONG
+                ).show()
+                return false
+            }
+            // Runtime CLI ships as a native binary beside the APK when packaged;
+            // fall back to a clear error until the Android Runtime package lands.
+            val wasmBin = listOf(
+                File(context.applicationInfo.nativeLibraryDir, "wasm"),
+                File(context.filesDir, "bin/wasm"),
+                File(context.applicationInfo.nativeLibraryDir, "libwasm.so")
+            ).firstOrNull { it.canExecute() || it.isFile }
+            if (wasmBin == null) {
+                Toast.makeText(
+                    context,
+                    "Wawona Runtime (wasm) is not bundled in this APK yet.",
+                    Toast.LENGTH_LONG
+                ).show()
+                return false
+            }
+            return try {
+                ProcessBuilder(wasmBin.absolutePath, path)
+                    .directory(File(path).parentFile)
+                    .redirectErrorStream(true)
+                    .start()
+                WLog.i("NATIVE", "Launched Runtime wasm $path")
+                true
+            } catch (e: Exception) {
+                Toast.makeText(context, "Runtime launch failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                false
+            }
+        }
         return launchNativeClient(launcher)
     }
 

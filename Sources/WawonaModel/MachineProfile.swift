@@ -87,6 +87,8 @@ public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
     public var swipeBackToCloseEnabled: Bool?
     /// Per-machine Display Backend override (`auto` | `wayland` | `drm`).
     public var compositorBackend: String?
+    /// Absolute or sandbox-relative path to a Wayland `.wasm` for `bundledAppID == wawona-wasm`.
+    public var wasmModulePath: String?
     /// Explicit env overrides (#157). Never stash in settingsOverrides. Codable drops unknown keys.
     public var environment: EnvironmentOverrideMap?
 
@@ -109,6 +111,7 @@ public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
         shakeToCloseEnabled: Bool? = nil,
         swipeBackToCloseEnabled: Bool? = nil,
         compositorBackend: String? = nil,
+        wasmModulePath: String? = nil,
         environment: EnvironmentOverrideMap? = nil
     ) {
         self.renderer = renderer
@@ -129,6 +132,7 @@ public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
         self.shakeToCloseEnabled = shakeToCloseEnabled
         self.swipeBackToCloseEnabled = swipeBackToCloseEnabled
         self.compositorBackend = compositorBackend
+        self.wasmModulePath = wasmModulePath
         self.environment = environment
     }
 }

@@ -74,6 +74,13 @@ let kAllBundledClients: [BundledClient] = [
     description: "Minimal shared-memory Wayland client"
   ),
   BundledClient(
+    id: "wawona-wasm",
+    name: "Wawona Runtime (.wasm)",
+    prefsKey: "WawonaWasmEnabled",
+    icon: "doc.badge.gearshape",
+    description: "Wayland WASI module from the filesystem (Wawona Runtime)"
+  ),
+  BundledClient(
     id: "weston",
     name: "Weston",
     prefsKey: "WestonEnabled",
@@ -221,6 +228,10 @@ let kAllBundledClients: [BundledClient] = [
 ]
 
 let kNativeClientCustomId = "custom"
+/// Per-machine Wayland client: Wawona Runtime interprets a `.wasm` document.
+let kNativeClientWasmId = "wawona-wasm"
+/// `runtimeOverrides` key for the selected module path (absolute or Documents-relative).
+let kRuntimeWasmModulePathKey = "wasmModulePath"
 
 /// Posted by `WWNWaypipeRunner` when a bundled native `NSTask` exits (quit, crash, or Stop).
 private let wwnNativeClientProcessDidTerminateNotification = Notification.Name(
@@ -581,6 +592,13 @@ final class WWNMachinesViewModel: ObservableObject {
     if clientId == kNativeClientCustomId {
       let cmd = (profile.settingsOverrides as [String: Any])["NativeCustomCommand"] as? String ?? ""
       return cmd.isEmpty ? "Custom command" : cmd
+    }
+    if clientId == kNativeClientWasmId {
+      let path = (profile.runtimeOverrides as [String: Any])[kRuntimeWasmModulePathKey] as? String ?? ""
+      if !path.isEmpty {
+        return (path as NSString).lastPathComponent
+      }
+      return "Wawona Runtime (.wasm)"
     }
     return kBundledClients.first { $0.id == clientId }?.name
   }

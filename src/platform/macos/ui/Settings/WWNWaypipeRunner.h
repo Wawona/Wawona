@@ -59,6 +59,13 @@ typedef void (^WaypipeOutputHandler)(NSString *output);
 - (void)launchBundledClientWithId:(NSString *)clientId
                         machineId:(nullable NSString *)machineId;
 
+/// Launch a Wayland `.wasm` via the bundled Wawona Runtime (`wasm` CLI /
+/// in-process `wawona_wasm_run`). Path comes from the machine profile
+/// `runtimeOverrides.wasmModulePath` when `machineId` is set, else from
+/// `wasmModulePath` argument.
+- (void)launchWasmModuleAtPath:(NSString *)wasmModulePath
+                     machineId:(nullable NSString *)machineId;
+
 /// Terminate only the native client instance bound to `machineId`.
 - (void)stopBundledClientForMachineId:(NSString *)machineId;
 

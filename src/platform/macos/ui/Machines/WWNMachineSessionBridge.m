@@ -183,6 +183,31 @@
       return YES;
     }
 #endif
+    if ([clientId isEqualToString:@"wawona-wasm"]) {
+      NSDictionary *runtime =
+          [profile.runtimeOverrides isKindOfClass:[NSDictionary class]]
+              ? profile.runtimeOverrides
+              : @{};
+      NSString *wasmPath =
+          [runtime[@"wasmModulePath"] isKindOfClass:[NSString class]]
+              ? runtime[@"wasmModulePath"]
+              : @"";
+      wasmPath = [wasmPath stringByExpandingTildeInPath];
+      if (wasmPath.length == 0 ||
+          ![[NSFileManager defaultManager] fileExistsAtPath:wasmPath]) {
+        if (error) {
+          *error = [NSError
+              errorWithDomain:@"WWNMachineSessionBridge"
+                         code:6
+                     userInfo:@{
+                       NSLocalizedDescriptionKey :
+                           @"Pick a Wayland .wasm module in Machine Settings "
+                           @"(Wawona Runtime) before starting."
+                     }];
+        }
+        return NO;
+      }
+    }
     [[WWNWaypipeRunner sharedRunner] launchBundledClientWithId:clientId
                                                      machineId:profile.machineId];
 #if TARGET_OS_OSX

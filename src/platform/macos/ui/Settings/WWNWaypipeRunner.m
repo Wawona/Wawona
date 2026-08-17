@@ -31,6 +31,13 @@ extern volatile sig_atomic_t wwn_weston_compositor_shutdown_requested;
 
 extern char **environ;
 
+/* Weak: Apple mobile / macOS link wwn-wasm; missing → skip Runtime clients. */
+extern int wawona_wasm_run(int argc, char **argv) __attribute__((weak_import));
+extern int wawona_wasm_can_run(const char *path) __attribute__((weak_import));
+
+static NSString *const kWWNClientIdWasm = @"wawona-wasm";
+static NSString *const kWWNRuntimeWasmModulePath = @"wasmModulePath";
+
 // Global for signal handler safety
 volatile pid_t g_active_waypipe_pgid = 0;
 
@@ -1679,6 +1686,12 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   if (clientId.length == 0)
     return;
 
+  if ([clientId isEqualToString:kWWNClientIdWasm]) {
+    NSString *wasmPath = [self wwnResolveWasmModulePathForMachineId:machineId];
+    [self launchWasmModuleAtPath:wasmPath machineId:machineId];
+    return;
+  }
+
 #if !TARGET_OS_IPHONE
   // Idempotent per machine: reconnecting the same profile must not spawn a
   // duplicate while that profile's instance is still alive. A *different*
@@ -1947,6 +1960,131 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   if (task) {
     [self _registerNativeTask:task clientId:clientId machineId:machineId];
   }
+#endif
+}
+
+- (NSString *)wwnResolveWasmModulePathForMachineId:(NSString *)machineId {
+  if (machineId.length == 0) {
+    return nil;
+  }
+#if __has_include("../Machines/WWNMachineProfileStore.h")
+  WWNMachineProfile *profile = [WWNMachineProfileStore profileById:machineId];
+  if (!profile) {
+    return nil;
+  }
+  NSDictionary *runtime =
+      [profile.runtimeOverrides isKindOfClass:[NSDictionary class]]
+          ? profile.runtimeOverrides
+          : @{};
+  id path = runtime[kWWNRuntimeWasmModulePath];
+  if ([path isKindOfClass:[NSString class]] && [(NSString *)path length] > 0) {
+    return [(NSString *)path stringByExpandingTildeInPath];
+  }
+  NSDictionary *settings =
+      [profile.settingsOverrides isKindOfClass:[NSDictionary class]]
+          ? profile.settingsOverrides
+          : @{};
+  id legacy = settings[@"WasmModulePath"];
+  if ([legacy isKindOfClass:[NSString class]] && [(NSString *)legacy length] > 0) {
+    return [(NSString *)legacy stringByExpandingTildeInPath];
+  }
+#endif
+  return nil;
+}
+
+- (void)launchWasmModuleAtPath:(NSString *)wasmModulePath
+                     machineId:(NSString *)machineId {
+  const char *logMod = "WASM";
+  NSString *path =
+      wasmModulePath.length > 0
+          ? [wasmModulePath stringByExpandingTildeInPath]
+          : [self wwnResolveWasmModulePathForMachineId:machineId];
+  if (path.length == 0) {
+    WWNLog(logMod,
+           @"No wasmModulePath on machine %@. Pick a .wasm in Machine Settings.",
+           machineId ?: @"(none)");
+    return;
+  }
+  if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
+    WWNLog(logMod, @"Wasm module missing at %@", path);
+    return;
+  }
+  if (wawona_wasm_can_run != NULL && !wawona_wasm_can_run(path.UTF8String)) {
+    WWNLog(logMod, @"Not a readable WASM module: %@", path);
+    return;
+  }
+
+#if !TARGET_OS_IPHONE
+  if (machineId.length > 0 && [self _recordForMachineId:machineId]) {
+    WWNLog(logMod, @"wasm already running for machine %@. Keeping existing instance",
+           machineId);
+    return;
+  }
+  if (machineId.length > 0) {
+    [WWNMachineProfileStore setActiveMachineId:machineId];
+  }
+  [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
+  [[WWNCompositorBridge sharedBridge]
+      prepareOutputSizeForNativeClientLaunchWithClientId:kWWNClientIdWasm];
+
+  NSString *wasmBin = [self findBinaryNamed:@"wasm"];
+  if (!wasmBin) {
+    WWNLog(logMod, @"Bundled Runtime `wasm` CLI missing from app bundle.");
+    return;
+  }
+  NSTask *task = [[NSTask alloc] init];
+  task.executableURL = [NSURL fileURLWithPath:wasmBin];
+  task.arguments = @[ path ];
+  NSMutableDictionary *env = [self wwnMutableHostWaylandEnvironment];
+  task.environment = env;
+  task.currentDirectoryURL = [NSURL fileURLWithPath:[path stringByDeletingLastPathComponent]];
+  [self _installNativeClientTerminationHandler:task kind:kWWNClientIdWasm];
+  @try {
+    [task launch];
+    [self _registerNativeTask:task clientId:kWWNClientIdWasm machineId:machineId];
+    WWNLog(logMod, @"Runtime launched %@ (pid %d) machine=%@", path, task.processIdentifier,
+           machineId ?: @"-");
+    [self wwnPumpHostCompositorAfterNativeClientLaunch];
+  } @catch (NSException *ex) {
+    WWNLog(logMod, @"Failed to launch Runtime: %@", ex);
+  }
+#else
+  if (machineId.length > 0) {
+    [self.iosRunningMachineIds addObject:machineId];
+  }
+  if (wawona_wasm_run == NULL) {
+    WWNLog(logMod, @"wawona_wasm_run not linked; cannot run %@", path);
+    if (machineId.length > 0) {
+      [self.iosRunningMachineIds removeObject:machineId];
+    }
+    return;
+  }
+  NSString *boundMachineId = [machineId copy];
+  NSString *boundPath = [path copy];
+  dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+    if (![self wwnBeginIOSNativeClientLaunch:kWWNClientIdWasm]) {
+      if (boundMachineId.length > 0) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+          [self.iosRunningMachineIds removeObject:boundMachineId];
+        });
+      }
+      return;
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [[WWNCompositorBridge sharedBridge]
+          prepareOutputSizeForNativeClientLaunchWithClientId:kWWNClientIdWasm];
+    });
+    char *argv[] = {(char *)"wasm", (char *)boundPath.UTF8String, NULL};
+    WWNLog(logMod, @"Launching in-process Runtime %@", boundPath);
+    int rc = wawona_wasm_run(2, argv);
+    WWNLog(logMod, @"Runtime exited code=%d for %@", rc, boundPath);
+    [self wwnEndIOSNativeClientLaunch];
+    if (boundMachineId.length > 0) {
+      dispatch_async(dispatch_get_main_queue(), ^{
+        [self.iosRunningMachineIds removeObject:boundMachineId];
+      });
+    }
+  });
 #endif
 }
 
