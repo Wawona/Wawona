@@ -38,9 +38,6 @@ let
     else
       null;
 
-  # DejaVu (UI/CSD) + JetBrainsMono NL Nerd Font Mono (terminals / prompts).
-  wawonaBundledFonts = pkgs.callPackage ../libs/fonts { };
-
   # Single openable Gradle tree at ./Wawona-gradle-project (parallel to ./Wawona.xcodeproj).
   projectPath = if wawonaAndroidProject != null then toString wawonaAndroidProject else "";
   projectIconStorePath =
@@ -432,15 +429,19 @@ let
       echo "Bundled xkeyboard-config into $XKB_ASSET_DIR"
     fi
 
-    # DejaVu (UI/CSD) + JetBrainsMono NL Nerd Font Mono (terminals).
-    # android_jni.c writes a fonts.conf pointing here at runtime.
+    # DejaVu fonts for the in-process weston toytoolkit clients (cairo/
+    # fontconfig text rendering). android_jni.c writes a fonts.conf pointing
+    # here at runtime.
     FONTS_ASSET_DIR="$OUT/app/src/main/assets/fonts/truetype"
-    if [ ! -f "$FONTS_ASSET_DIR/JetBrainsMonoNLNerdFontMono-Regular.ttf" ]; then
-      rm -rf "$OUT/app/src/main/assets/fonts"
+    if [ ! -f "$FONTS_ASSET_DIR/DejaVuSans.ttf" ]; then
       mkdir -p "$FONTS_ASSET_DIR"
-      cp -L ${wawonaBundledFonts}/share/fonts/truetype/*.ttf "$FONTS_ASSET_DIR/"
+      cp -L ${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSans.ttf \
+            ${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSans-Bold.ttf \
+            ${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSansMono.ttf \
+            ${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSansMono-Bold.ttf \
+            "$FONTS_ASSET_DIR/"
       chmod -R u+w "$OUT/app/src/main/assets/fonts"
-      echo "Bundled Wawona fonts into $FONTS_ASSET_DIR"
+      echo "Bundled DejaVu fonts into $FONTS_ASSET_DIR"
     fi
 
     # Weston toytoolkit PNGs (sign_close.png, sign_maximize.png,

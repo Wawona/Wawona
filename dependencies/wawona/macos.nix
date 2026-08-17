@@ -49,9 +49,6 @@ let
     inherit pkgs lib wawonaSrc;
   };
 
-  # DejaVu (UI/CSD) + JetBrainsMono NL Nerd Font Mono (terminals / prompts).
-  wawonaBundledFonts = pkgs.callPackage ../libs/fonts { };
-
   ilandGlLdflags = { deps, simulator ? false }: import ilandGlLdflagsNix {
     inherit lib deps simulator;
     forceLoad = true;
@@ -946,12 +943,12 @@ GEN_HEADER
                 mkdir -p "$APP/share/icons/Adwaita"
                 cp -r "$CURSOR_SRC" "$APP/share/icons/Adwaita/cursors"
               fi
-              WA_FONTS="${wawonaBundledFonts}"
-              rm -rf "$APP/share/fonts" "$APP/Contents/Resources/share/fonts"
-              mkdir -p "$APP/share/fonts" "$APP/Contents/Resources/share/fonts"
-              cp -RL "$WA_FONTS/share/fonts/." "$APP/share/fonts/"
-              cp -RL "$WA_FONTS/share/fonts/." "$APP/Contents/Resources/share/fonts/"
-              chmod -R u+w "$APP/share/fonts" "$APP/Contents/Resources/share/fonts"
+              if [ -d "${pkgs.dejavu_fonts}/share/fonts" ]; then
+                mkdir -p "$APP/share/fonts"
+                cp -RL "${pkgs.dejavu_fonts}/share/fonts/." "$APP/share/fonts/"
+                mkdir -p "$APP/Contents/Resources/share/fonts"
+                cp -RL "${pkgs.dejavu_fonts}/share/fonts/." "$APP/Contents/Resources/share/fonts/"
+              fi
 
               ${bundleMacOSAppDylibs}
               ${bundleIlandBaremetalDylib}
@@ -1128,15 +1125,16 @@ GEN_HEADER
               cp -r "$CURSOR_SRC" "$APP/share/icons/Adwaita/cursors"
               echo "DEBUG: Bundled Adwaita cursors"
             fi
-            WA_FONTS="${wawonaBundledFonts}"
-            rm -rf "$APP/share/fonts" "$APP/Contents/Resources/share/fonts"
-            mkdir -p "$APP/share/fonts" "$APP/Contents/Resources/share/fonts"
-            cp -RL "$WA_FONTS/share/fonts/." "$APP/share/fonts/"
-            # Mirror under Contents/Resources/share for Resource-relative
-            # lookups (foot/fcft + older ShareRoot layouts).
-            cp -RL "$WA_FONTS/share/fonts/." "$APP/Contents/Resources/share/fonts/"
-            chmod -R u+w "$APP/share/fonts" "$APP/Contents/Resources/share/fonts"
-            echo "DEBUG: Bundled Wawona fonts (DejaVu + JetBrainsMono NL Nerd Font Mono)"
+            if [ -d "${pkgs.dejavu_fonts}/share/fonts" ]; then
+              mkdir -p "$APP/share/fonts"
+              cp -RL "${pkgs.dejavu_fonts}/share/fonts/." "$APP/share/fonts/"
+              # Mirror under Contents/Resources/share for Resource-relative
+              # lookups (foot/fcft + older ShareRoot layouts).
+              mkdir -p "$APP/Contents/Resources/share/fonts"
+              cp -RL "${pkgs.dejavu_fonts}/share/fonts/." "$APP/Contents/Resources/share/fonts/"
+              chmod -R u+w "$APP/share/fonts" "$APP/Contents/Resources/share/fonts"
+              echo "DEBUG: Bundled DejaVu fonts"
+            fi
 
             # Bundle foot terminal
             ${if foot != null then ''
@@ -1516,8 +1514,7 @@ PLIST_EOF
       for req in \
         "$APP/Contents/Resources/share/weston/pattern.png" \
         "$APP/Contents/Resources/share/weston/terminal.png" \
-        "$APP/Contents/Resources/share/fonts/truetype/DejaVuSans.ttf" \
-        "$APP/Contents/Resources/share/fonts/truetype/JetBrainsMonoNLNerdFontMono-Regular.ttf"; do
+        "$APP/Contents/Resources/share/fonts/truetype/DejaVuSans.ttf"; do
         if [ ! -e "$req" ]; then
           echo "ERROR: required bundled asset missing: $req" >&2
           exit 1
