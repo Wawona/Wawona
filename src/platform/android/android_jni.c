@@ -4003,6 +4003,7 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
               "  <cachedir>%s</cachedir>\n"
               "  <alias>\n"
               "    <family>monospace</family>\n"
+              "    <prefer><family>JetBrainsMonoNL Nerd Font Mono</family></prefer>\n"
               "    <prefer><family>DejaVu Sans Mono</family></prefer>\n"
               "  </alias>\n"
               "  <alias>\n"
@@ -4018,8 +4019,12 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
 
       char mono_font[512];
       snprintf(mono_font, sizeof(mono_font),
-               "%s/truetype/DejaVuSansMono.ttf", font_dir);
+               "%s/truetype/JetBrainsMonoNLNerdFontMono-Regular.ttf", font_dir);
       struct stat mono_st;
+      if (stat(mono_font, &mono_st) != 0) {
+        snprintf(mono_font, sizeof(mono_font),
+                 "%s/truetype/DejaVuSansMono.ttf", font_dir);
+      }
       if (stat(mono_font, &mono_st) == 0)
         setenv("WAWONA_MONO_FONT", mono_font, 1);
       {
@@ -5443,9 +5448,9 @@ static jboolean wwn_launch_foot(void) {
     wwn_android_prepare_shell_environment(files_dir);
   setenv("TERM", "xterm-256color", 1);
 
-  /* Explicit foot.ini with DejaVu path. Same pattern as macOS launchFoot.
-   * Relying on fontconfig "monospace" alone still yields a blank window when
-   * fcft fails to resolve a face. */
+  /* Explicit foot.ini with Nerd Font mono path (WAWONA_MONO_FONT). Same
+   * pattern as macOS launchFoot. Relying on fontconfig "monospace" alone
+   * still yields a blank window when fcft fails to resolve a face. */
   char ini_path[560];
   const char *xdg_runtime = getenv("XDG_RUNTIME_DIR");
   if (xdg_runtime && xdg_runtime[0])

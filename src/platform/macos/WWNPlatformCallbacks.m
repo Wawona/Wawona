@@ -556,6 +556,7 @@ static void WWNConfigureBundledFontsIfNeeded(void) {
                        @"  <cachedir>%@</cachedir>\n"
                        @"  <alias>\n"
                        @"    <family>monospace</family>\n"
+                       @"    <prefer><family>JetBrainsMonoNL Nerd Font Mono</family></prefer>\n"
                        @"    <prefer><family>DejaVu Sans Mono</family></prefer>\n"
                        @"  </alias>\n"
                        @"  <alias>\n"
@@ -579,10 +580,18 @@ static void WWNConfigureBundledFontsIfNeeded(void) {
   WWNLog("BUNDLE", @"Configured FONTCONFIG_FILE: %s (fonts: %s)",
          confPath.UTF8String, fontDir.UTF8String);
 
-  NSString *monoFont =
-      [fontDir stringByAppendingPathComponent:@"truetype/DejaVuSansMono.ttf"];
-  if ([[NSFileManager defaultManager] fileExistsAtPath:monoFont]) {
-    setenv("WAWONA_MONO_FONT", monoFont.UTF8String, 1);
+  // Prefer JetBrainsMono NL Nerd Font Mono for terminals (icons / prompts).
+  // DejaVu Sans Mono remains bundled as a fallback for older layouts.
+  NSArray<NSString *> *monoCandidates = @[
+    @"truetype/JetBrainsMonoNLNerdFontMono-Regular.ttf",
+    @"truetype/DejaVuSansMono.ttf",
+  ];
+  for (NSString *rel in monoCandidates) {
+    NSString *monoFont = [fontDir stringByAppendingPathComponent:rel];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:monoFont]) {
+      setenv("WAWONA_MONO_FONT", monoFont.UTF8String, 1);
+      break;
+    }
   }
 }
 

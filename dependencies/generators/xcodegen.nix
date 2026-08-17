@@ -284,18 +284,24 @@ let
       "-lphoon_rs"
     ];
 
-  # wwn-wasm: Pulley interpreter on Apple mobile. Lazy -l like phoon (Wasmtime
-  # embeds Rust std). watchOS is size-gated off (no archive). Never -force_load.
-  # Do not gate on pathExists. That silently drops the archive before first build.
+  # wwn-wasm: Pulley/Cranelift Runtime. Lazy -l like phoon (Wasmtime embeds
+  # Rust std). watchOS is size-gated off (no archive). Never -force_load.
+  # Do not gate libwawona_wasm on pathExists (same niri pitfall). wpm_main lives
+  # in a separate libwpm.a that older flake tips omit; only force-link when the
+  # archive is present so Xcode Run is not blocked on a missing symbol.
   wasmLdflags = deps:
     let
       w = deps.wawona-wasm or null;
+      libwpm = if w == null then null else "${strip w}/lib/libwpm.a";
+      hasWpm = libwpm != null && builtins.pathExists libwpm;
     in if w == null then [] else [
       "-L${strip w}/lib"
       "-Wl,-u,_wawona_wasm_run"
       "-Wl,-u,_wawona_wasm_can_run"
-      "-Wl,-u,_wpm_main"
       "-lwawona_wasm"
+    ] ++ lib.optionals hasWpm [
+      "-Wl,-u,_wpm_main"
+      "-lwpm"
     ];
   neovimLdflags = deps:
     let libnvim = "${strip (deps.neovim or null)}/lib/libwawona-neovim.a";
@@ -396,10 +402,10 @@ let
     find "$DEST" -type l -delete 2>/dev/null || true
     echo "Embedded xkeyboard-config into $DEST"
   '';
-  # Bundle TrueType fonts so the in-process weston toytoolkit clients
-  # (weston-desktop-shell panel/clock, weston-terminal) have something for
-  # Cairo/Pango/fontconfig to match. Without any font, desktop-shell aborts
-  # during init and the nested compositor shows only a solid clear color.
+  # DejaVu (UI/CSD) + JetBrainsMono NL Nerd Font Mono (terminals / prompts).
+  # See dependencies/libs/fonts. Without any font, desktop-shell aborts during
+  # init and the nested compositor shows only a solid clear color.
+  wawonaBundledFonts = pkgs.callPackage ../libs/fonts { };
   fontIosEmbedScript = pkgs.writeShellScript "embed-fonts-ios.sh" ''
     case "''${PLATFORM_NAME:-}" in
       iphoneos|iphonesimulator|appletvos|appletvsimulator|xros|xrsimulator|watchos|watchsimulator)
@@ -410,12 +416,12 @@ let
     esac
     BUNDLE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
     DEST="$BUNDLE/share/fonts"
+    rm -rf "$DEST"
     mkdir -p "$DEST"
     # Nix store font paths are often symlinks; iOS installd rejects symlinks in .app
     # bundles (MIInstallerErrorDomain Code 70). -L dereferences to real files.
-    mkdir -p "$DEST"
-    cp -RL "${pkgs.dejavu_fonts}/share/fonts/." "$DEST/"
-    echo "Embedded DejaVu fonts into $DEST"
+    cp -RL "${wawonaBundledFonts}/share/fonts/." "$DEST/"
+    echo "Embedded Wawona fonts (DejaVu + JetBrainsMono NL Nerd Font Mono) into $DEST"
   '';
   xcodeUtils = import applePath { inherit lib pkgs TEAM_ID; };
 
@@ -655,6 +661,7 @@ let
 
   fontEmbedOutputs = [
     "$(BUILT_PRODUCTS_DIR)/$(FULL_PRODUCT_NAME)/share/fonts/truetype/DejaVuSans.ttf"
+    "$(BUILT_PRODUCTS_DIR)/$(FULL_PRODUCT_NAME)/share/fonts/truetype/JetBrainsMonoNLNerdFontMono-Regular.ttf"
   ];
 
   fontEmbedPhase = {
@@ -2204,9 +2211,11 @@ ICDJSON
                 echo "Bundled lib/libweston-13 backends"
               fi
               mkdir -p "$RES_DEST/share/fonts"
-              cp -RL "${pkgs.dejavu_fonts}/share/fonts/." "$RES_DEST/share/fonts/"
+              rm -rf "$RES_DEST/share/fonts"
+              mkdir -p "$RES_DEST/share/fonts"
+              cp -RL "${wawonaBundledFonts}/share/fonts/." "$RES_DEST/share/fonts/"
               chmod -R u+w "$RES_DEST/share/fonts"
-              echo "Bundled DejaVu fonts"
+              echo "Bundled Wawona fonts (DejaVu + JetBrainsMono NL Nerd Font Mono)"
               CURSOR_SRC="${pkgs.adwaita-icon-theme}/share/icons/Adwaita/cursors"
               if [ -d "$CURSOR_SRC" ]; then
                 mkdir -p "$RES_DEST/share/icons/Adwaita"
