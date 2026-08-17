@@ -578,14 +578,16 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
     if (!shell || !shell[0]) {
         shell = "/usr/bin/zsh";
     }
-    char **argv = calloc(4, sizeof(char *));
+    char **argv = calloc(6, sizeof(char *));
     argv[0] = strdup("weston-terminal");
     argv[1] = strdup("--shell");
     argv[2] = strdup(shell);
-    argv[3] = NULL;
+    argv[3] = strdup("--font");
+    argv[4] = strdup("DejaVuSansM Nerd Font Mono");
+    argv[5] = NULL;
     [self _launchClient:weston_terminal_main
                    name:"weston-terminal"
-                   argc:3
+                   argc:5
                    argv:argv];
 }
 
@@ -624,7 +626,7 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
     }
     NSString *fontSpec = [fm fileExistsAtPath:monoTtf]
                              ? [NSString stringWithFormat:@"%@:size=11", monoTtf]
-                             : @"monospace:size=11";
+                             : @"DejaVuSansM Nerd Font Mono:size=11";
     NSString *ini = [NSString
         stringWithFormat:@"[main]\n"
                           "term=xterm-256color\n"

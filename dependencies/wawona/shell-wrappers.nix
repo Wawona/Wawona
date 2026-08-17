@@ -238,21 +238,41 @@ in rec {
     export WAWONA_APP_BIN="${wawona}/Applications/Wawona.app/Contents/MacOS/Wawona"
     ${macosEnv}
 
+    # Prefer bundled DejaVuSansM Nerd Font Mono (never Menlo / generic monospace).
+    MONO_FONT="''${WAWONA_MONO_FONT:-}"
+    if [ -z "$MONO_FONT" ] || [ ! -f "$MONO_FONT" ]; then
+      APP_RES="$(cd "$(dirname "$WAWONA_APP_BIN")/../Resources" 2>/dev/null && pwd || true)"
+      for candidate in \
+        "$APP_RES/share/fonts/truetype/DejaVuSansMNerdFontMono-Regular.ttf" \
+        "$APP_RES/share/fonts/truetype/DejaVuSansMono.ttf"; do
+        if [ -n "$candidate" ] && [ -f "$candidate" ]; then
+          MONO_FONT="$candidate"
+          break
+        fi
+      done
+    fi
+    if [ -n "$MONO_FONT" ] && [ -f "$MONO_FONT" ]; then
+      FONT_SPEC="$MONO_FONT:size=12"
+    else
+      FONT_SPEC="DejaVuSansM Nerd Font Mono:size=12"
+    fi
+
     # Check if user has a config
     if [ ! -f "$HOME/.config/foot/foot.ini" ] && [ ! -f "''${XDG_CONFIG_HOME:-$HOME/.config}/foot/foot.ini" ]; then
-      echo "Info: No foot.ini found, using default macOS configuration (Menlo font)"
+      echo "Info: No foot.ini found, using bundled DejaVuSansM Nerd Font Mono"
       DEFAULT_CONFIG="''${XDG_RUNTIME_DIR}/foot-default.ini"
       cat > "$DEFAULT_CONFIG" <<EOF
 [main]
-font=monospace:size=12
+term=xterm-256color
+font=$FONT_SPEC
 dpi-aware=yes
 
 [tweak]
 font-monospace-warn=no
 EOF
-      exec "${foot}/bin/foot" -o tweak.font-monospace-warn=no -c "$DEFAULT_CONFIG" "$@"
+      exec "${foot}/bin/foot" -t xterm-256color -o tweak.font-monospace-warn=no -c "$DEFAULT_CONFIG" "$@"
     else
-      exec "${foot}/bin/foot" -o tweak.font-monospace-warn=no "$@"
+      exec "${foot}/bin/foot" -t xterm-256color -o tweak.font-monospace-warn=no "$@"
     fi
   '';
 

@@ -4001,11 +4001,24 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
               "  <dir>%s</dir>\n"
               "  <dir>/system/fonts</dir>\n"
               "  <cachedir>%s</cachedir>\n"
-              "  <alias>\n"
+              "  <alias binding=\"strong\">\n"
               "    <family>monospace</family>\n"
-              "    <prefer><family>DejaVuSansM Nerd Font Mono</family></prefer>\n"
-              "    <prefer><family>DejaVu Sans Mono</family></prefer>\n"
+              "    <prefer>\n"
+              "      <family>DejaVuSansM Nerd Font Mono</family>\n"
+              "      <family>DejaVu Sans Mono</family>\n"
+              "    </prefer>\n"
               "  </alias>\n"
+              "  <match target=\"pattern\">\n"
+              "    <test qual=\"any\" name=\"family\">\n"
+              "      <string>monospace</string>\n"
+              "    </test>\n"
+              "    <edit name=\"family\" mode=\"prepend\" binding=\"strong\">\n"
+              "      <string>DejaVuSansM Nerd Font Mono</string>\n"
+              "    </edit>\n"
+              "    <edit name=\"spacing\" mode=\"append\" binding=\"strong\">\n"
+              "      <const>mono</const>\n"
+              "    </edit>\n"
+              "  </match>\n"
               "  <alias>\n"
               "    <family>sans-serif</family>\n"
               "    <prefer><family>DejaVu Sans</family></prefer>\n"
@@ -4884,8 +4897,11 @@ static void *weston_terminal_thread_func(void *arg) {
   // No --maximized / size argv: window size is negotiated via xdg_toplevel
   // with Wawona (initial 0×0 configure → client preferred → host adopts /
   // host resize configures). Do not force client-side size workarounds.
-  char *argv[] = {"weston-terminal", NULL};
-  weston_terminal_main(1, argv);
+  // Explicit mono family; WAWONA_MONO_FONT (file path) still wins in the
+  // cairo-ft loader when set by shell env setup.
+  char *argv[] = {"weston-terminal", "--font", "DejaVuSansM Nerd Font Mono",
+                  NULL};
+  weston_terminal_main(3, argv);
   if (saved_cwd[0]) chdir(saved_cwd);
   atomic_fetch_sub(&g_weston_terminal_count, 1);
   return NULL;
@@ -5475,7 +5491,9 @@ static jboolean wwn_launch_foot(void) {
         fprintf(fp, "[main]\nterm=xterm-256color\nfont=%s:size=%d\ndpi-aware=yes\n\n", mono,
                 size_px);
       else
-        fprintf(fp, "[main]\nterm=xterm-256color\nfont=monospace:size=%d\ndpi-aware=yes\n\n",
+        fprintf(fp,
+                "[main]\nterm=xterm-256color\nfont=DejaVuSansM Nerd Font "
+                "Mono:size=%d\ndpi-aware=yes\n\n",
                 size_px);
       fputs("[tweak]\nfont-monospace-warn=no\n", fp);
       fclose(fp);

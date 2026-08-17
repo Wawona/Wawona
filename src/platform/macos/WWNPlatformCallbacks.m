@@ -548,6 +548,10 @@ static void WWNConfigureBundledFontsIfNeeded(void) {
    * FONTCONFIG_FILE from a previous install path makes FcInit fail and
    * weston-terminal draws with zero font metrics.
    */
+  /* Strong monospace binding so weston-terminal / foot never resolve
+   * "monospace" to a proportional face (DejaVu Sans) when the Nerd mono
+   * family is present. Terminals also set WAWONA_MONO_FONT to the TTF path.
+   */
   NSString *conf = [NSString
       stringWithFormat:@"<?xml version=\"1.0\"?>\n"
                        @"<!DOCTYPE fontconfig SYSTEM "
@@ -555,11 +559,24 @@ static void WWNConfigureBundledFontsIfNeeded(void) {
                        @"<fontconfig>\n"
                        @"  <dir>%@</dir>\n"
                        @"  <cachedir>%@</cachedir>\n"
-                       @"  <alias>\n"
+                       @"  <alias binding=\"strong\">\n"
                        @"    <family>monospace</family>\n"
-                       @"    <prefer><family>DejaVuSansM Nerd Font Mono</family></prefer>\n"
-                       @"    <prefer><family>DejaVu Sans Mono</family></prefer>\n"
+                       @"    <prefer>\n"
+                       @"      <family>DejaVuSansM Nerd Font Mono</family>\n"
+                       @"      <family>DejaVu Sans Mono</family>\n"
+                       @"    </prefer>\n"
                        @"  </alias>\n"
+                       @"  <match target=\"pattern\">\n"
+                       @"    <test qual=\"any\" name=\"family\">\n"
+                       @"      <string>monospace</string>\n"
+                       @"    </test>\n"
+                       @"    <edit name=\"family\" mode=\"prepend\" binding=\"strong\">\n"
+                       @"      <string>DejaVuSansM Nerd Font Mono</string>\n"
+                       @"    </edit>\n"
+                       @"    <edit name=\"spacing\" mode=\"append\" binding=\"strong\">\n"
+                       @"      <const>mono</const>\n"
+                       @"    </edit>\n"
+                       @"  </match>\n"
                        @"  <alias>\n"
                        @"    <family>sans-serif</family>\n"
                        @"    <prefer><family>DejaVu Sans</family></prefer>\n"
