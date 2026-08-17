@@ -3241,6 +3241,8 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 
     [WWNRootfsProvider applyShellEnvironment];
     WWNConfigureBundledRuntimeEnvIfNeeded();
+    setenv("TERM", "xterm-256color", 1);
+    setenv("COLORTERM", "truecolor", 1);
 
     char saved_cwd[512] = "";
     const char *home_dir = getenv("HOME");
@@ -3271,8 +3273,13 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
                              ? [NSString stringWithFormat:@"%@:size=14", monoTtf]
                              : @"monospace:size=14";
     NSString *ini = [NSString
-        stringWithFormat:@"[main]\nfont=%@\ndpi-aware=yes\n\n"
-                          "[tweak]\nfont-monospace-warn=no\n",
+        stringWithFormat:@"[main]\n"
+                          "term=xterm-256color\n"
+                          "font=%@\n"
+                          "dpi-aware=yes\n"
+                          "\n"
+                          "[tweak]\n"
+                          "font-monospace-warn=no\n",
                          fontSpec];
     [ini writeToFile:iniPath
           atomically:YES
@@ -3285,6 +3292,8 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     }
     char *argv_foot[] = {
         "foot",
+        "-t",
+        "xterm-256color",
         "-o",
         "tweak.font-monospace-warn=no",
         "-c",
@@ -3294,7 +3303,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     };
     WWNLog("FOOT", @"Launching in-process foot_main (shell=%s ini=%@)...",
            shell, iniPath);
-    int result = foot_main(6, argv_foot);
+    int result = foot_main(8, argv_foot);
     WWNLog("FOOT", @"foot_main exit code: %d", result);
 
     if (saved_cwd[0])
@@ -3356,6 +3365,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   NSString *ini = [NSString
       stringWithFormat:
           @"[main]\n"
+           "term=xterm-256color\n"
            "font=%@\n"
            "dpi-aware=yes\n"
            "\n"
@@ -3373,7 +3383,11 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   NSMutableDictionary *env = [self wwnMutableHostWaylandEnvironment];
   NSString *shellPath = WWNPreferredHostShellPath();
   env[@"SHELL"] = shellPath;
+  // Foot's default TERM is "foot". macOS has no foot terminfo in the sandbox
+  // (and often none on the host), so shells print "unknown terminal type" and
+  // erase/clear/completion redraw break. Force a terminfo that exists.
   env[@"TERM"] = @"xterm-256color";
+  env[@"COLORTERM"] = @"truecolor";
   if ([fm fileExistsAtPath:monoTtf]) {
     env[@"WAWONA_MONO_FONT"] = monoTtf;
   }
@@ -3388,9 +3402,10 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 
   NSTask *task = [[NSTask alloc] init];
   task.executableURL = [NSURL fileURLWithPath:path];
-  // -c config; -o suppress monospace warn; then login shell as command.
+  // -c config; -t TERM for child shell; -o suppress monospace warn; then shell.
   task.arguments = @[
-    @"-o", @"tweak.font-monospace-warn=no", @"-c", iniPath, shellPath
+    @"-t", @"xterm-256color", @"-o", @"tweak.font-monospace-warn=no", @"-c",
+    iniPath, shellPath
   ];
   task.environment = env;
 

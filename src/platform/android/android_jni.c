@@ -5472,10 +5472,10 @@ static jboolean wwn_launch_foot(void) {
     FILE *fp = fopen(ini_path, "w");
     if (fp) {
       if (mono && mono[0] && access(mono, R_OK) == 0)
-        fprintf(fp, "[main]\nfont=%s:size=%d\ndpi-aware=yes\n\n", mono,
+        fprintf(fp, "[main]\nterm=xterm-256color\nfont=%s:size=%d\ndpi-aware=yes\n\n", mono,
                 size_px);
       else
-        fprintf(fp, "[main]\nfont=monospace:size=%d\ndpi-aware=yes\n\n",
+        fprintf(fp, "[main]\nterm=xterm-256color\nfont=monospace:size=%d\ndpi-aware=yes\n\n",
                 size_px);
       fputs("[tweak]\nfont-monospace-warn=no\n", fp);
       fclose(fp);
@@ -5489,22 +5489,24 @@ static jboolean wwn_launch_foot(void) {
   if (pid == 0) {
     setenv("LD_LIBRARY_PATH", native_lib_dir, 1);
     setenv("TERM", "xterm-256color", 1);
+    setenv("COLORTERM", "truecolor", 1);
     if (xdg_runtime && xdg_runtime[0])
       chdir(xdg_runtime);
     const char *shell = getenv("SHELL");
     /* argv[0] must be realpath()-able for Berberis (arm64-on-x86 emu). */
     if (ini_path[0] && shell && shell[0]) {
-      const char *argv_foot[] = {foot_path, "-o",
+      const char *argv_foot[] = {foot_path, "-t", "xterm-256color", "-o",
                                  "tweak.font-monospace-warn=no", "-c",
                                  ini_path, shell, NULL};
       execv(foot_path, (char *const *)argv_foot);
     } else if (ini_path[0]) {
-      const char *argv_foot[] = {foot_path, "-o",
+      const char *argv_foot[] = {foot_path, "-t", "xterm-256color", "-o",
                                  "tweak.font-monospace-warn=no", "-c",
                                  ini_path, NULL};
       execv(foot_path, (char *const *)argv_foot);
     } else if (shell && shell[0]) {
-      const char *argv_foot[] = {foot_path, shell, NULL};
+      const char *argv_foot[] = {foot_path, "-t", "xterm-256color", shell,
+                                 NULL};
       execv(foot_path, (char *const *)argv_foot);
     } else {
       const char *argv_foot[] = {foot_path, NULL};

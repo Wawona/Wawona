@@ -626,8 +626,13 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
                              ? [NSString stringWithFormat:@"%@:size=11", monoTtf]
                              : @"monospace:size=11";
     NSString *ini = [NSString
-        stringWithFormat:@"[main]\nfont=%@\ndpi-aware=yes\n\n"
-                          "[tweak]\nfont-monospace-warn=no\n",
+        stringWithFormat:@"[main]\n"
+                          "term=xterm-256color\n"
+                          "font=%@\n"
+                          "dpi-aware=yes\n"
+                          "\n"
+                          "[tweak]\n"
+                          "font-monospace-warn=no\n",
                          fontSpec];
     [ini writeToFile:iniPath
           atomically:YES
@@ -638,15 +643,17 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
     if (!shell || !shell[0]) {
         shell = "/usr/bin/zsh";
     }
-    char **argv = calloc(7, sizeof(char *));
+    char **argv = calloc(9, sizeof(char *));
     argv[0] = strdup("foot");
-    argv[1] = strdup("-o");
-    argv[2] = strdup("tweak.font-monospace-warn=no");
-    argv[3] = strdup("-c");
-    argv[4] = strdup(iniPath.fileSystemRepresentation);
-    argv[5] = strdup(shell);
-    argv[6] = NULL;
-    [self _launchClient:foot_main name:"foot" argc:6 argv:argv];
+    argv[1] = strdup("-t");
+    argv[2] = strdup("xterm-256color");
+    argv[3] = strdup("-o");
+    argv[4] = strdup("tweak.font-monospace-warn=no");
+    argv[5] = strdup("-c");
+    argv[6] = strdup(iniPath.fileSystemRepresentation);
+    argv[7] = strdup(shell);
+    argv[8] = NULL;
+    [self _launchClient:foot_main name:"foot" argc:8 argv:argv];
 }
 
 - (void)_launchNamedDemo:(int (*)(int, char **))entry name:(const char *)name {
