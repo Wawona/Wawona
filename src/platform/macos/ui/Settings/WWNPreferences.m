@@ -180,6 +180,7 @@
 #endif
 - (NSArray<WWNPreferencesSection *> *)buildSections;
 - (void)runWaypipe;
+- (void)openEnvironmentVariablesManager;
 - (NSString *)localIPAddress;
 - (NSString *)getLibSSH2Version;
 - (NSString *)getSocketPath;
@@ -603,15 +604,15 @@ static UIImage *WWNAboutLogo(void) {
   connection.items = @[
     ITEM(@"TCP Port", @"TCPListenerPort", WSettingInfo, @6000,
          @"Port for TCP listener. Wayland socket variables "
-         @"(XDG_RUNTIME_DIR, WAYLAND_DISPLAY, …) are under "
-         @"Environment Variables."),
+         @"(XDG_RUNTIME_DIR, WAYLAND_DISPLAY, ...) are under "
+         @"Env Vars."),
   ];
   [sects addObject:connection];
 
-  // ENVIRONMENT VARIABLES (#157). Single inventory + edit/reset surface.
+  // ENV VARS (#157). Single inventory + edit/reset surface.
   {
     WWNPreferencesSection *environment = [[WWNPreferencesSection alloc] init];
-    environment.title = @"Environment Variables";
+    environment.title = @"Env Vars";
     environment.accessibilityIdentifier = @"wwn.settings.environment";
     environment.icon = @"list.bullet.rectangle";
 #if TARGET_OS_IPHONE
@@ -3704,7 +3705,7 @@ static UIImage *WWNAboutLogo(void) {
     if ([section.title caseInsensitiveCompare:title] == NSOrderedSame) {
       self.activeSection = section;
       self.title = section.title;
-      if ([section.title isEqualToString:@"Environment Variables"]) {
+      if ([section.title isEqualToString:@"Env Vars"]) {
         // Show the full inventory inline instead of a button-only stub.
         [self openEnvironmentVariablesManager];
       }
@@ -5652,13 +5653,26 @@ static UIImage *WWNAboutLogo(void) {
   [v addSubview:sv];
 }
 
+- (void)viewDidLayout {
+  [super viewDidLayout];
+  if (self.environmentHostView && !self.environmentHostView.hidden) {
+    self.environmentHostView.frame = self.view.bounds;
+  }
+}
+
 - (void)reloadForCurrentSection {
-  BOOL isEnvironment =
-      [self.section.title isEqualToString:@"Environment Variables"];
+  BOOL isEnvironment = [self.section.title isEqualToString:@"Env Vars"];
   if (isEnvironment) {
     [self embedEnvironmentVariablesIfNeeded];
-    self.scrollView.hidden = YES;
-    self.environmentHostView.hidden = NO;
+    if (self.environmentHostView != nil) {
+      self.scrollView.hidden = YES;
+      self.environmentHostView.hidden = NO;
+      self.environmentHostView.frame = self.view.bounds;
+    } else {
+      // Embed failed. Keep the fallback "Open Environment Variables…" button.
+      self.scrollView.hidden = NO;
+      [self.tableView reloadData];
+    }
     return;
   }
   if (self.environmentHostView) {
@@ -5670,13 +5684,13 @@ static UIImage *WWNAboutLogo(void) {
 
 - (void)embedEnvironmentVariablesIfNeeded {
   if (self.environmentHostView) {
+    self.environmentHostView.frame = self.view.bounds;
     self.environmentHostView.hidden = NO;
     return;
   }
   Class presenter = NSClassFromString(@"WWNEnvironmentSettingsPresenter");
   if (!presenter || ![presenter respondsToSelector:@selector(macOSHostingView)]) {
-    self.scrollView.hidden = NO;
-    [self.tableView reloadData];
+    NSLog(@"[WWNPreferences] Env Vars embed unavailable (presenter missing)");
     return;
   }
 #pragma clang diagnostic push
@@ -5684,15 +5698,14 @@ static UIImage *WWNAboutLogo(void) {
   NSView *host = [presenter performSelector:@selector(macOSHostingView)];
 #pragma clang diagnostic pop
   if (![host isKindOfClass:[NSView class]]) {
-    self.scrollView.hidden = NO;
-    [self.tableView reloadData];
+    NSLog(@"[WWNPreferences] Env Vars embed failed (hosting view nil)");
     return;
   }
   host.frame = self.view.bounds;
   host.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  host.translatesAutoresizingMaskIntoConstraints = YES;
   [self.view addSubview:host];
   self.environmentHostView = host;
-  self.scrollView.hidden = YES;
 }
 
 // Use custom row view for separators
