@@ -590,7 +590,9 @@
           local-runner = pkgs.callPackage ./scripts/local-runner.nix { };
           wawona-shell = pkgs.callPackage ./dependencies/clients/wawona-shell { };
           wawona-tools = pkgs.callPackage ./dependencies/clients/wawona-tools { };
-          
+          # DejaVu (UI/CSD) + DejaVuSansM Nerd Font Mono (terminals).
+          wawona-bundled-fonts = pkgs.callPackage ./dependencies/libs/fonts { };
+
           # Weston and Waypipe (Native on Linux, Cross-wrapped on Darwin)
           weston = if pkgs.stdenv.isDarwin then toolchains.buildForMacOS "weston" {} else pkgs.weston;
           weston-simple-shm =

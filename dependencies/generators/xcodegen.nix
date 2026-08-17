@@ -396,10 +396,10 @@ let
     find "$DEST" -type l -delete 2>/dev/null || true
     echo "Embedded xkeyboard-config into $DEST"
   '';
-  # Bundle TrueType fonts so the in-process weston toytoolkit clients
-  # (weston-desktop-shell panel/clock, weston-terminal) have something for
-  # Cairo/Pango/fontconfig to match. Without any font, desktop-shell aborts
-  # during init and the nested compositor shows only a solid clear color.
+  # DejaVu (UI/CSD) + DejaVuSansM Nerd Font Mono (terminals / prompts).
+  # See dependencies/libs/fonts. Without any font, desktop-shell aborts during
+  # init and the nested compositor shows only a solid clear color.
+  wawonaBundledFonts = pkgs.callPackage ../libs/fonts { };
   fontIosEmbedScript = pkgs.writeShellScript "embed-fonts-ios.sh" ''
     case "''${PLATFORM_NAME:-}" in
       iphoneos|iphonesimulator|appletvos|appletvsimulator|xros|xrsimulator|watchos|watchsimulator)
@@ -413,9 +413,8 @@ let
     mkdir -p "$DEST"
     # Nix store font paths are often symlinks; iOS installd rejects symlinks in .app
     # bundles (MIInstallerErrorDomain Code 70). -L dereferences to real files.
-    mkdir -p "$DEST"
-    cp -RL "${pkgs.dejavu_fonts}/share/fonts/." "$DEST/"
-    echo "Embedded DejaVu fonts into $DEST"
+    cp -RL "${wawonaBundledFonts}/share/fonts/." "$DEST/"
+    echo "Embedded Wawona fonts (DejaVu + DejaVuSansM Nerd Font Mono) into $DEST"
   '';
   xcodeUtils = import applePath { inherit lib pkgs TEAM_ID; };
 
@@ -655,6 +654,7 @@ let
 
   fontEmbedOutputs = [
     "$(BUILT_PRODUCTS_DIR)/$(FULL_PRODUCT_NAME)/share/fonts/truetype/DejaVuSans.ttf"
+    "$(BUILT_PRODUCTS_DIR)/$(FULL_PRODUCT_NAME)/share/fonts/truetype/DejaVuSansMNerdFontMono-Regular.ttf"
   ];
 
   fontEmbedPhase = {
@@ -2217,9 +2217,9 @@ ICDJSON
                 echo "Bundled lib/libweston-13 backends"
               fi
               mkdir -p "$RES_DEST/share/fonts"
-              cp -RL "${pkgs.dejavu_fonts}/share/fonts/." "$RES_DEST/share/fonts/"
+              cp -RL "${wawonaBundledFonts}/share/fonts/." "$RES_DEST/share/fonts/"
               chmod -R u+w "$RES_DEST/share/fonts"
-              echo "Bundled DejaVu fonts"
+              echo "Bundled Wawona fonts (DejaVu + DejaVuSansM Nerd Font Mono)"
               CURSOR_SRC="${pkgs.adwaita-icon-theme}/share/icons/Adwaita/cursors"
               if [ -d "$CURSOR_SRC" ]; then
                 mkdir -p "$RES_DEST/share/icons/Adwaita"

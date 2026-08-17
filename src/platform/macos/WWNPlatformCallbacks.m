@@ -4,6 +4,7 @@
 #import "WWNPlatformCallbacks.h"
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
 #import "WWNWindow.h"
+#import <CoreText/CoreText.h>
 #endif
 #import "../../util/WWNLog.h"
 
@@ -556,6 +557,7 @@ static void WWNConfigureBundledFontsIfNeeded(void) {
                        @"  <cachedir>%@</cachedir>\n"
                        @"  <alias>\n"
                        @"    <family>monospace</family>\n"
+                       @"    <prefer><family>DejaVuSansM Nerd Font Mono</family></prefer>\n"
                        @"    <prefer><family>DejaVu Sans Mono</family></prefer>\n"
                        @"  </alias>\n"
                        @"  <alias>\n"
@@ -579,11 +581,46 @@ static void WWNConfigureBundledFontsIfNeeded(void) {
   WWNLog("BUNDLE", @"Configured FONTCONFIG_FILE: %s (fonts: %s)",
          confPath.UTF8String, fontDir.UTF8String);
 
-  NSString *monoFont =
-      [fontDir stringByAppendingPathComponent:@"truetype/DejaVuSansMono.ttf"];
-  if ([[NSFileManager defaultManager] fileExistsAtPath:monoFont]) {
-    setenv("WAWONA_MONO_FONT", monoFont.UTF8String, 1);
+  // Prefer DejaVuSansM Nerd Font Mono for terminals (icons / prompts).
+  // DejaVu Sans Mono remains bundled as a fallback for older layouts.
+  NSArray<NSString *> *monoCandidates = @[
+    @"truetype/DejaVuSansMNerdFontMono-Regular.ttf",
+    @"truetype/DejaVuSansMono.ttf",
+  ];
+  for (NSString *rel in monoCandidates) {
+    NSString *monoFont = [fontDir stringByAppendingPathComponent:rel];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:monoFont]) {
+      setenv("WAWONA_MONO_FONT", monoFont.UTF8String, 1);
+      break;
+    }
   }
+
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+  // Cairo's quartz toy-font path ignores FONTCONFIG_FILE. Register every
+  // bundled face with Core Text so family-name lookups (and foot/fcft when
+  // it falls back) can resolve DejaVuSansM Nerd Font Mono.
+  NSString *ttfDir = [fontDir stringByAppendingPathComponent:@"truetype"];
+  NSArray<NSString *> *ttfs =
+      [[NSFileManager defaultManager] contentsOfDirectoryAtPath:ttfDir
+                                                          error:nil];
+  NSUInteger registered = 0;
+  for (NSString *name in ttfs) {
+    if (![[name lowercaseString] hasSuffix:@".ttf"] &&
+        ![[name lowercaseString] hasSuffix:@".otf"]) {
+      continue;
+    }
+    NSString *path = [ttfDir stringByAppendingPathComponent:name];
+    CFURLRef url = (__bridge CFURLRef)[NSURL fileURLWithPath:path];
+    if (url && CTFontManagerRegisterFontsForURL(
+                   url, kCTFontManagerScopeProcess, NULL)) {
+      registered++;
+    }
+  }
+  if (registered > 0) {
+    WWNLog("BUNDLE", @"Registered %lu bundled fonts with Core Text",
+           (unsigned long)registered);
+  }
+#endif
 }
 
 static void WWNConfigureBundledWestonDataIfNeeded(void) {

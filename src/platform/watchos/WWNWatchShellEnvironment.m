@@ -311,6 +311,7 @@
                          @"  <dir>%@</dir>\n"
                          @"  <cachedir>%@</cachedir>\n"
                          @"  <alias><family>monospace</family>"
+                         @"<prefer><family>DejaVuSansM Nerd Font Mono</family></prefer>"
                          @"<prefer><family>DejaVu Sans Mono</family></prefer>"
                          @"</alias>\n"
                          @"  <alias><family>sans-serif</family>"
@@ -338,8 +339,11 @@
       setenv("FONTCONFIG_FILE", confPath.UTF8String, 1);
       setenv("FONTCONFIG_PATH", base.UTF8String, 1);
       NSString *monoFont =
-          [self firstExistingFont:@[ @"truetype/DejaVuSansMono.ttf",
-                                     @"truetype/dejavu/DejaVuSansMono.ttf" ]
+          [self firstExistingFont:@[
+            @"truetype/DejaVuSansMNerdFontMono-Regular.ttf",
+            @"truetype/DejaVuSansMono.ttf",
+            @"truetype/dejavu/DejaVuSansMono.ttf"
+          ]
                           under:fontDir];
       if (monoFont.length > 0) {
         setenv("WAWONA_MONO_FONT", monoFont.UTF8String, 1);

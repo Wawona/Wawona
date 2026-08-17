@@ -3382,9 +3382,14 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     NSString *iniPath =
         [runtimeDir stringByAppendingPathComponent:@"wawona-foot.ini"];
     NSString *fontDir = WWNWawonaBundledSharePath(@"fonts");
-    NSString *monoTtf =
-        [fontDir stringByAppendingPathComponent:@"truetype/DejaVuSansMono.ttf"];
     NSFileManager *fm = [NSFileManager defaultManager];
+    NSString *monoTtf = [fontDir
+        stringByAppendingPathComponent:
+            @"truetype/DejaVuSansMNerdFontMono-Regular.ttf"];
+    if (![fm fileExistsAtPath:monoTtf]) {
+      monoTtf =
+          [fontDir stringByAppendingPathComponent:@"truetype/DejaVuSansMono.ttf"];
+    }
     NSString *fontSpec = [fm fileExistsAtPath:monoTtf]
                              ? [NSString stringWithFormat:@"%@:size=14", monoTtf]
                              : @"monospace:size=14";
@@ -3454,9 +3459,14 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   WWNConfigureBundledRuntimeEnvIfNeeded();
 
   NSString *fontDir = WWNWawonaBundledSharePath(@"fonts");
-  NSString *monoTtf =
-      [fontDir stringByAppendingPathComponent:@"truetype/DejaVuSansMono.ttf"];
   NSFileManager *fm = [NSFileManager defaultManager];
+  NSString *monoTtf = [fontDir
+      stringByAppendingPathComponent:
+          @"truetype/DejaVuSansMNerdFontMono-Regular.ttf"];
+  if (![fm fileExistsAtPath:monoTtf]) {
+    monoTtf =
+        [fontDir stringByAppendingPathComponent:@"truetype/DejaVuSansMono.ttf"];
+  }
   if (![fm fileExistsAtPath:monoTtf]) {
     WWNLog("FOOT", @"Missing bundled mono font at %@. Text will be blank",
            monoTtf);
