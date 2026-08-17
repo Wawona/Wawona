@@ -3201,7 +3201,6 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     self.westonTerminalRunning = YES;
 
     [WWNRootfsProvider applyShellEnvironment];
-    WWNConfigureBundledRuntimeEnvIfNeeded();
 
     // Ensure zsh starts in HOME so prompt shortening (%~) resolves to "~"
     // instead of showing the full sandbox absolute path.
@@ -3213,14 +3212,10 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     }
 
     const char *shell = getenv("WAWONA_SHELL");
-    // Explicit mono family (matches macOS --font). WAWONA_MONO_FONT still
-    // prefers the bundled TTF file path inside terminal_ios_load_font.
     char *argv_term[] = {
         "weston-terminal",
         "--shell",
         (char *)(shell && shell[0] ? shell : "/usr/bin/zsh"),
-        "--font",
-        "DejaVuSansM Nerd Font Mono",
         NULL,
     };
     WWNLog("WESTON_TERM",
@@ -3414,7 +3409,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     }
     NSString *fontSpec = [fm fileExistsAtPath:monoTtf]
                              ? [NSString stringWithFormat:@"%@:size=14", monoTtf]
-                             : @"DejaVuSansM Nerd Font Mono:size=14";
+                             : @"monospace:size=14";
     NSString *ini = [NSString
         stringWithFormat:@"[main]\n"
                           "term=xterm-256color\n"
@@ -3504,7 +3499,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       [runtimeDir stringByAppendingPathComponent:@"wawona-foot.ini"];
   NSString *fontSpec = [fm fileExistsAtPath:monoTtf]
                            ? [NSString stringWithFormat:@"%@:size=12", monoTtf]
-                           : @"DejaVuSansM Nerd Font Mono:size=12";
+                           : @"monospace:size=12";
   NSString *ini = [NSString
       stringWithFormat:
           @"[main]\n"
