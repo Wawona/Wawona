@@ -110,6 +110,17 @@ public struct ResolvedMachineSettings: Hashable, Sendable {
     public var shakeToCloseEnabled: Bool
     public var swipeBackToCloseEnabled: Bool
     public var compositorBackend: String
+    // Container (resolved machine > global; only meaningful when
+    // machineType == .container).
+    public var containerImageRef: String
+    public var containerCommand: String
+    public var containerMemory: String
+    public var containerShmSize: String
+    public var containerKernelPath: String
+    public var containerInitfsPath: String
+    public var containerVsockPort: Int
+    public var containerReadOnly: Bool
+    public var containerRemove: Bool
 }
 
 @MainActor
@@ -180,6 +191,16 @@ public final class WawonaPreferences: ObservableObject {
     @Published public var waypipeRemoteCommand: String = ""
     @Published public var waypipeDebug: Bool = false
     @Published public var waypipeNoGpu: Bool = false
+    // Container defaults (Settings → Containers). Plain keys so the ObjC
+    // settings window and the SwiftUI machine settings share one source of
+    // truth (same pattern as SSHAuthMethod). Empty values mean "CLI default".
+    @Published public var containerDefaultImage: String = "alpine:3.20"
+    @Published public var containerDefaultCommand: String = "/bin/sh"
+    @Published public var containerMemory: String = ""
+    @Published public var containerShmSize: String = ""
+    @Published public var containerKernelPath: String = ""
+    @Published public var containerInitfsPath: String = ""
+    @Published public var containerVsockPort: Int = 1024
     @Published public var shakeToCloseEnabled: Bool = true
     @Published public var swipeBackToCloseEnabled: Bool = true
     @Published public var hasCompletedWelcome: Bool = false
@@ -259,6 +280,13 @@ public final class WawonaPreferences: ObservableObject {
             ?? defaults.object(forKey: keyPrefix + "waypipeDebug") as? Bool ?? false
         waypipeNoGpu = defaults.object(forKey: "WaypipeNoGpu") as? Bool
             ?? defaults.object(forKey: keyPrefix + "waypipeNoGpu") as? Bool ?? false
+        containerDefaultImage = defaults.string(forKey: "ContainerDefaultImage") ?? "alpine:3.20"
+        containerDefaultCommand = defaults.string(forKey: "ContainerDefaultCommand") ?? "/bin/sh"
+        containerMemory = defaults.string(forKey: "ContainerMemory") ?? ""
+        containerShmSize = defaults.string(forKey: "ContainerShmSize") ?? ""
+        containerKernelPath = defaults.string(forKey: "ContainerKernelPath") ?? ""
+        containerInitfsPath = defaults.string(forKey: "ContainerInitfsPath") ?? ""
+        containerVsockPort = defaults.object(forKey: "ContainerVsockPort") as? Int ?? 1024
         shakeToCloseEnabled = defaults.object(forKey: keyPrefix + "shakeToCloseEnabled") as? Bool ?? true
         swipeBackToCloseEnabled = defaults.object(forKey: keyPrefix + "swipeBackToCloseEnabled") as? Bool ?? true
         hasCompletedWelcome = defaults.bool(forKey: keyPrefix + "hasCompletedWelcome")
@@ -348,6 +376,13 @@ public final class WawonaPreferences: ObservableObject {
         defaults.set(waypipeDebug, forKey: keyPrefix + "waypipeDebug")
         defaults.set(waypipeNoGpu, forKey: "WaypipeNoGpu")
         defaults.set(waypipeNoGpu, forKey: keyPrefix + "waypipeNoGpu")
+        defaults.set(containerDefaultImage, forKey: "ContainerDefaultImage")
+        defaults.set(containerDefaultCommand, forKey: "ContainerDefaultCommand")
+        defaults.set(containerMemory, forKey: "ContainerMemory")
+        defaults.set(containerShmSize, forKey: "ContainerShmSize")
+        defaults.set(containerKernelPath, forKey: "ContainerKernelPath")
+        defaults.set(containerInitfsPath, forKey: "ContainerInitfsPath")
+        defaults.set(containerVsockPort, forKey: "ContainerVsockPort")
         defaults.set(shakeToCloseEnabled, forKey: keyPrefix + "shakeToCloseEnabled")
         defaults.set(swipeBackToCloseEnabled, forKey: keyPrefix + "swipeBackToCloseEnabled")
         defaults.set(hasCompletedWelcome, forKey: keyPrefix + "hasCompletedWelcome")
@@ -384,6 +419,17 @@ public final class WawonaPreferences: ObservableObject {
         let normalizedLogLevel = profile.runtimeOverrides.logLevel?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
         let normalizedCompositorBackend = profile.runtimeOverrides.compositorBackend?
             .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
+
+        // Container settings: per-machine value wins, empty/nil inherits the
+        // global default. New container machines created with empty fields
+        // therefore run exactly the global Settings → Containers defaults.
+        let cs = profile.containerSettings
+        let normalizedContainerRef = cs?.containerRef?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
+        let normalizedContainerCommand = cs?.entryCommand?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
+        let normalizedContainerMemory = cs?.memory?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
+        let normalizedContainerShmSize = cs?.shmSize?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
+        let normalizedContainerKernel = cs?.kernelPath?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
+        let normalizedContainerInitfs = cs?.initfsPath?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
 
         let resolvedWaypipeEnabled: Bool = {
             if profile.type == .native {
@@ -444,7 +490,16 @@ public final class WawonaPreferences: ObservableObject {
                     return normalizedCompositorBackend.lowercased()
                 }
                 return compositorBackend
-            }()
+            }(),
+            containerImageRef: normalizedContainerRef.isEmpty ? containerDefaultImage : normalizedContainerRef,
+            containerCommand: normalizedContainerCommand.isEmpty ? containerDefaultCommand : normalizedContainerCommand,
+            containerMemory: normalizedContainerMemory.isEmpty ? containerMemory : normalizedContainerMemory,
+            containerShmSize: normalizedContainerShmSize.isEmpty ? containerShmSize : normalizedContainerShmSize,
+            containerKernelPath: normalizedContainerKernel.isEmpty ? containerKernelPath : normalizedContainerKernel,
+            containerInitfsPath: normalizedContainerInitfs.isEmpty ? containerInitfsPath : normalizedContainerInitfs,
+            containerVsockPort: cs?.vsockPort ?? containerVsockPort,
+            containerReadOnly: cs?.readOnly ?? false,
+            containerRemove: cs?.remove ?? true
         )
     }
 

@@ -1,11 +1,32 @@
 #import "WWNContainerRunner.h"
 
 #import "WWNVirtualMachineRunner.h"
+#import "../Settings/WWNPreferencesManager.h"
 
 #import <TargetConditionals.h>
 
 #if TARGET_OS_OSX
 #import <unistd.h>
+
+// Pull a string/bool out of a containerSettings dict (JSON passthrough),
+// tolerating absent keys and wrong types the way the rest of the store does.
+static NSString *WWNContainerString(NSDictionary *dict, NSString *key) {
+  id value = dict[key];
+  return [value isKindOfClass:[NSString class]] ? value : nil;
+}
+
+static BOOL WWNContainerBool(NSDictionary *dict, NSString *key) {
+  id value = dict[key];
+  return [value respondsToSelector:@selector(boolValue)] ? [value boolValue]
+                                                         : NO;
+}
+
+// Single-quote a value for the /bin/sh -lc command line.
+static NSString *WWNContainerShellQuote(NSString *value) {
+  NSString *escaped = [value stringByReplacingOccurrencesOfString:@"'"
+                                                       withString:@"'\"'\"'"];
+  return [NSString stringWithFormat:@"'%@'", escaped];
+}
 
 @interface WWNContainerRunner ()
 @property(nonatomic, strong)
@@ -31,10 +52,71 @@
 }
 
 - (NSString *)bootCommandForProfile:(WWNMachineProfile *)profile {
+  // Advanced escape hatch: a custom script always wins.
   NSString *script = profile.customScript ?: @"";
   script = [script stringByTrimmingCharactersInSet:
                        [NSCharacterSet whitespaceAndNewlineCharacterSet]];
-  return script.length > 0 ? script : nil;
+  if (script.length > 0) {
+    return script;
+  }
+
+  // Otherwise build `container run` from per-machine containerSettings, with
+  // every empty field inheriting the global Settings → Containers default.
+  WWNPreferencesManager *prefs = [WWNPreferencesManager sharedManager];
+  NSDictionary *cs = profile.containerSettings ?: @{};
+
+  NSString *ref = WWNContainerString(cs, @"containerRef");
+  if (ref.length == 0) {
+    ref = prefs.containerDefaultImage;
+  }
+  if (ref.length == 0) {
+    ref = @"alpine:3.20";
+  }
+  NSString *command = WWNContainerString(cs, @"entryCommand");
+  if (command.length == 0) {
+    command = prefs.containerDefaultCommand;
+  }
+  if (command.length == 0) {
+    command = @"/bin/sh";
+  }
+
+  NSMutableArray<NSString *> *parts =
+      [NSMutableArray arrayWithObject:@"container run --rm"];
+
+  // --memory: per-machine wins, else global; wwn-containerd takes MiB.
+  NSString *memory = WWNContainerString(cs, @"memory");
+  if (memory.length == 0) {
+    memory = prefs.containerMemory;
+  }
+  if (memory.length > 0) {
+    [parts addObject:[NSString stringWithFormat:@"--memory %@", memory]];
+  }
+
+  // Kernel / initfs: per-machine flags win, else global env (set in the
+  // environment below), else the CLI's own discovery.
+  NSString *kernel = WWNContainerString(cs, @"kernelPath");
+  if (kernel.length > 0) {
+    [parts addObject:[NSString
+                         stringWithFormat:@"--kernel %@",
+                                          WWNContainerShellQuote(kernel)]];
+  }
+  NSString *initfs = WWNContainerString(cs, @"initfsPath");
+  if (initfs.length > 0) {
+    [parts addObject:[NSString
+                         stringWithFormat:@"--initfs %@",
+                                          WWNContainerShellQuote(initfs)]];
+  }
+
+  if (WWNContainerBool(cs, @"readOnly")) {
+    [parts addObject:@"--read-only"];
+  }
+  if (WWNContainerBool(cs, @"initProcess")) {
+    [parts addObject:@"--init"];
+  }
+
+  [parts addObject:WWNContainerShellQuote(ref)];
+  [parts addObject:WWNContainerShellQuote(command)];
+  return [parts componentsJoinedByString:@" "];
 }
 
 - (BOOL)launchProfile:(WWNMachineProfile *)profile
@@ -51,8 +133,7 @@
 
   NSString *command = [self bootCommandForProfile:profile];
   if (!command) {
-    // Default macOS lane: `container` CLI (wwn-containers) with a tiny image.
-    command = @"container run --rm -it alpine:3.20 /bin/sh";
+    return NO;
   }
 
   [self stopProfileWithMachineId:profile.machineId];
@@ -69,6 +150,24 @@
   }
   // Tell the container backend this is the macOS (Apple Containerization) lane.
   env[@"WAWONA_CONTAINER_BACKEND"] = @"containerization";
+
+  // Global Settings → Containers env: image store, kernel, initfs. Per-machine
+  // kernel/initfs overrides are already in the command line (flags beat env).
+  WWNPreferencesManager *prefs = [WWNPreferencesManager sharedManager];
+  NSString *imageStore = [[NSUserDefaults standardUserDefaults]
+      stringForKey:kWWNPrefsMachineContainerImageStore];
+  if (imageStore.length > 0) {
+    env[@"WWN_OCI_ROOT"] =
+        [imageStore stringByExpandingTildeInPath];
+  }
+  if (prefs.containerKernelPath.length > 0) {
+    env[@"WAWONA_VM_KERNEL"] =
+        [prefs.containerKernelPath stringByExpandingTildeInPath];
+  }
+  if (prefs.containerInitfsPath.length > 0) {
+    env[@"WAWONA_VM_INITFS"] =
+        [prefs.containerInitfsPath stringByExpandingTildeInPath];
+  }
   task.environment = env;
 
   NSString *machineId = profile.machineId ?: @"";

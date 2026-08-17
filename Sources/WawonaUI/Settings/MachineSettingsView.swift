@@ -76,6 +76,9 @@ public struct MachineSettingsView: View {
             if let draft {
                 machineConfigurationSection(for: draft)
                 sshWaypipeSection()
+                if draft.type == .container {
+                    containerSection()
+                }
                 displaySection()
                 inputSection()
                 graphicsSection()
@@ -90,6 +93,35 @@ public struct MachineSettingsView: View {
         .onAppear {
             selectedID = machineID ?? profileStore.activeMachineId ?? profileStore.profiles.first?.id
             loadDraft()
+        }
+    }
+
+    @ViewBuilder
+    private func containerSection() -> some View {
+        Section {
+            TextField("Image", text: containerImageRefBinding)
+                .wawonaTextFieldNoAutocaps()
+                .autocorrectionDisabled()
+            TextField("Command", text: containerCommandBinding)
+                .wawonaTextFieldNoAutocaps()
+                .autocorrectionDisabled()
+            TextField("Memory (MiB)", text: containerMemoryBinding)
+                .wawonaTextFieldNoAutocaps()
+                .autocorrectionDisabled()
+            Toggle("Read-Only Rootfs", isOn: containerReadOnlyBinding)
+            Toggle("Init Process", isOn: containerInitProcessBinding)
+            TextField("Kernel Path", text: containerKernelPathBinding)
+                .wawonaTextFieldNoAutocaps()
+                .autocorrectionDisabled()
+            TextField("Initfs Path", text: containerInitfsPathBinding)
+                .wawonaTextFieldNoAutocaps()
+                .autocorrectionDisabled()
+        } header: {
+            Text("Container")
+        } footer: {
+            Text("Empty values inherit the global Settings → Containers defaults. "
+                 + "Global default image: \(preferences.containerDefaultImage); "
+                 + "command: \(preferences.containerDefaultCommand).")
         }
     }
 
@@ -319,6 +351,15 @@ public struct MachineSettingsView: View {
             Text("Waypipe: \(resolved.waypipeEnabled ? "Enabled" : "Disabled")")
             Text("Bundled App: \(resolved.bundledAppID.isEmpty ? "Off" : resolved.bundledAppID)")
             Text("Log Level: \(resolved.logLevel)")
+            if resolved.machineType == .container {
+                Text("Container Image: \(resolved.containerImageRef)")
+                Text("Container Command: \(resolved.containerCommand)")
+                Text("Container Memory: \(resolved.containerMemory.isEmpty ? "default" : resolved.containerMemory + " MiB")")
+                Text("Container Rootfs: \(resolved.containerReadOnly ? "Read-Only" : "Writable")")
+                Text("Container Remove: \(resolved.containerRemove ? "On exit" : "Keep")")
+                Text("Container Kernel: \(resolved.containerKernelPath.isEmpty ? "auto-discover" : resolved.containerKernelPath)")
+                Text("Container Initfs: \(resolved.containerInitfsPath.isEmpty ? "vminit:latest" : resolved.containerInitfsPath)")
+            }
             #if os(tvOS)
             Text("Long-press Menu to Exit: \(resolved.shakeToCloseEnabled ? "Enabled" : "Disabled")")
             #else
@@ -567,6 +608,79 @@ public struct MachineSettingsView: View {
                 }
             }
         )
+    }
+
+    // MARK: Container bindings (per-machine > global)
+
+    private var containerImageRefBinding: Binding<String> {
+        Binding(
+            get: { draft?.containerSettings?.containerRef ?? preferences.containerDefaultImage },
+            set: { value in
+                updateContainerSettings { $0.containerRef = value }
+            }
+        )
+    }
+
+    private var containerCommandBinding: Binding<String> {
+        Binding(
+            get: { draft?.containerSettings?.entryCommand ?? preferences.containerDefaultCommand },
+            set: { value in
+                updateContainerSettings { $0.entryCommand = value }
+            }
+        )
+    }
+
+    private var containerMemoryBinding: Binding<String> {
+        Binding(
+            get: { draft?.containerSettings?.memory ?? preferences.containerMemory },
+            set: { value in
+                updateContainerSettings { $0.memory = value }
+            }
+        )
+    }
+
+    private var containerReadOnlyBinding: Binding<Bool> {
+        Binding(
+            get: { draft?.containerSettings?.readOnly ?? false },
+            set: { value in
+                updateContainerSettings { $0.readOnly = value }
+            }
+        )
+    }
+
+    private var containerInitProcessBinding: Binding<Bool> {
+        Binding(
+            get: { draft?.containerSettings?.initProcess ?? false },
+            set: { value in
+                updateContainerSettings { $0.initProcess = value }
+            }
+        )
+    }
+
+    private var containerKernelPathBinding: Binding<String> {
+        Binding(
+            get: { draft?.containerSettings?.kernelPath ?? preferences.containerKernelPath },
+            set: { value in
+                updateContainerSettings { $0.kernelPath = value }
+            }
+        )
+    }
+
+    private var containerInitfsPathBinding: Binding<String> {
+        Binding(
+            get: { draft?.containerSettings?.initfsPath ?? preferences.containerInitfsPath },
+            set: { value in
+                updateContainerSettings { $0.initfsPath = value }
+            }
+        )
+    }
+
+    private func updateContainerSettings(_ mutate: (inout ContainerMachineSettings) -> Void) {
+        updateDraft { profile in
+            var cs = profile.containerSettings ?? ContainerMachineSettings()
+            mutate(&cs)
+            profile.containerSettings = cs
+        }
     }
 
     private var shakeToCloseBinding: Binding<Bool> {

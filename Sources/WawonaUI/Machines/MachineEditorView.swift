@@ -16,6 +16,8 @@ struct MachineEditorView: View {
     @State var sshKeyPath: String
     @State var sshKeyPassphrase: String
     @State var remoteCommand: String
+    @State var containerRef: String
+    @State var entryCommand: String
 
     let existingProfileId: String?
     /// Snapshot for fields this form does not edit (VM/container metadata, favorites, renderer, etc.).
@@ -43,6 +45,8 @@ struct MachineEditorView: View {
         _sshKeyPath = State(initialValue: state.sshKeyPath)
         _sshKeyPassphrase = State(initialValue: state.sshKeyPassphrase)
         _remoteCommand = State(initialValue: state.remoteCommand)
+        _containerRef = State(initialValue: state.containerRef)
+        _entryCommand = State(initialValue: state.entryCommand)
     }
 
     private var isNative: Bool { type == .native }
@@ -70,7 +74,9 @@ struct MachineEditorView: View {
             remoteCommand: remoteCommand,
             inputProfile: base.inputProfile,
             bundledAppID: isNative ? selectedLauncherName : base.bundledAppID,
-            waypipeEnabled: base.waypipeEnabled
+            waypipeEnabled: base.waypipeEnabled,
+            containerRef: containerRef,
+            entryCommand: entryCommand
         )
     }
 
@@ -132,7 +138,24 @@ struct MachineEditorView: View {
                     }
                 }
 
-                // MARK: SSH. Remote machine via network
+                // MARK: Container — OCI image run via wwn-containers
+                if type == .container {
+                    Section {
+                        TextField("Image", text: $containerRef, prompt: Text("e.g. alpine:3.20"))
+                            .wawonaTextFieldNoAutocaps()
+                            .autocorrectionDisabled()
+                        TextField("Command", text: $entryCommand, prompt: Text("e.g. /bin/sh"))
+                            .wawonaTextFieldNoAutocaps()
+                            .autocorrectionDisabled()
+                    } header: {
+                        Text("Container")
+                    } footer: {
+                        Text("Empty fields inherit the global Settings → Containers defaults. "
+                             + "Memory, mounts, ports and kernel paths are configured in Machine Settings.")
+                    }
+                }
+
+                // MARK: SSH — remote machine via network
                 if isSSH {
                     Section("Remote Host") {
                         TextField("Host", text: $sshHost)
@@ -200,6 +223,29 @@ struct MachineEditorView: View {
         if let baseline = editingBaseline {
             profile.favorite = baseline.favorite
             profile.runtimeOverrides.renderer = baseline.runtimeOverrides.renderer
+            // The editor form only carries image ref + command; preserve the
+            // advanced container fields (memory, mounts, ports, kernel paths)
+            // edited in Machine Settings.
+            if type == .container, let base = baseline.containerSettings {
+                let ref = containerRef.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+                let cmd = entryCommand.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+                profile.containerSettings = ContainerMachineSettings(
+                    runtime: base.runtime,
+                    containerRef: ref.isEmpty ? nil : ref,
+                    entryCommand: cmd.isEmpty ? nil : cmd,
+                    notes: base.notes,
+                    memory: base.memory,
+                    shmSize: base.shmSize,
+                    mounts: base.mounts,
+                    ports: base.ports,
+                    platform: base.platform,
+                    readOnly: base.readOnly,
+                    remove: base.remove,
+                    kernelPath: base.kernelPath,
+                    initfsPath: base.initfsPath,
+                    vsockPort: base.vsockPort
+                )
+            }
         }
         onSave(profile)
         dismiss()

@@ -11,10 +11,12 @@ NS_ASSUME_NONNULL_BEGIN
 //           crun/podman inside a wwn-vms guest, surfaced over vsock+waypipe.
 //   watchOS OCI image management only (no execution).
 //
-// On macOS the configured boot command (profile.customScript, e.g.
-// `nix run .#wwn-containerd -- run ...` or `wwn-oci pull ...`) is run as a
-// tracked subprocess. On mobile the container-in-VM guest is driven by the VM
-// runner; this class reports image-management-only where execution is disallowed.
+// On macOS the boot command is built from the profile's per-machine
+// `containerSettings` (image ref, command, memory, kernel/initfs, read-only,
+// init) with every empty field inheriting the global Settings → Containers
+// default; a profile `customScript` (advanced escape hatch) always wins. The
+// command runs as a tracked subprocess via the wwn-containers `container` CLI
+// (Apple Containerization, WAWONA_CONTAINER_BACKEND=containerization).
 @interface WWNContainerRunner : NSObject
 
 + (instancetype)sharedRunner;
