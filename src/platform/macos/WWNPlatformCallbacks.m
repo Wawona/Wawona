@@ -582,33 +582,15 @@ static void WWNConfigureBundledFontsIfNeeded(void) {
          confPath.UTF8String, fontDir.UTF8String);
 
   // Prefer DejaVuSansM Nerd Font Mono for terminals (icons / prompts).
-  // Also accept any leftover *NerdFontMono*Regular*.ttf (e.g. JetBrains from an
-  // older Debug bundle) so WAWONA_MONO_FONT is never an unpatched mono while
-  // fonts.conf asks for a Nerd family that is missing from disk.
-  NSMutableArray<NSString *> *monoCandidates = [NSMutableArray arrayWithObjects:
+  // DejaVu Sans Mono remains bundled as a fallback for older layouts.
+  NSArray<NSString *> *monoCandidates = @[
     @"truetype/DejaVuSansMNerdFontMono-Regular.ttf",
     @"truetype/DejaVuSansMono.ttf",
-    nil];
-  NSString *ttfDir = [fontDir stringByAppendingPathComponent:@"truetype"];
-  NSArray<NSString *> *ttfs =
-      [[NSFileManager defaultManager] contentsOfDirectoryAtPath:ttfDir
-                                                          error:nil];
-  for (NSString *name in ttfs) {
-    NSString *lower = name.lowercaseString;
-    if ([lower containsString:@"nerdfontmono"] &&
-        [lower containsString:@"regular"] &&
-        [lower hasSuffix:@".ttf"]) {
-      NSString *rel = [@"truetype" stringByAppendingPathComponent:name];
-      if (![monoCandidates containsObject:rel]) {
-        [monoCandidates insertObject:rel atIndex:0];
-      }
-    }
-  }
+  ];
   for (NSString *rel in monoCandidates) {
     NSString *monoFont = [fontDir stringByAppendingPathComponent:rel];
     if ([[NSFileManager defaultManager] fileExistsAtPath:monoFont]) {
       setenv("WAWONA_MONO_FONT", monoFont.UTF8String, 1);
-      WWNLog("BUNDLE", @"WAWONA_MONO_FONT=%s", monoFont.UTF8String);
       break;
     }
   }
@@ -617,6 +599,10 @@ static void WWNConfigureBundledFontsIfNeeded(void) {
   // Cairo's quartz toy-font path ignores FONTCONFIG_FILE. Register every
   // bundled face with Core Text so family-name lookups (and foot/fcft when
   // it falls back) can resolve DejaVuSansM Nerd Font Mono.
+  NSString *ttfDir = [fontDir stringByAppendingPathComponent:@"truetype"];
+  NSArray<NSString *> *ttfs =
+      [[NSFileManager defaultManager] contentsOfDirectoryAtPath:ttfDir
+                                                          error:nil];
   NSUInteger registered = 0;
   for (NSString *name in ttfs) {
     if (![[name lowercaseString] hasSuffix:@".ttf"] &&
