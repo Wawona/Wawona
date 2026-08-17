@@ -4,7 +4,6 @@
 #import "WWNPlatformCallbacks.h"
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
 #import "WWNWindow.h"
-#import <CoreText/CoreText.h>
 #endif
 #import "../../util/WWNLog.h"
 
@@ -594,33 +593,6 @@ static void WWNConfigureBundledFontsIfNeeded(void) {
       break;
     }
   }
-
-#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
-  // Cairo's quartz toy-font path ignores FONTCONFIG_FILE. Register every
-  // bundled face with Core Text so family-name lookups (and foot/fcft when
-  // it falls back) can resolve JetBrainsMono NL Nerd Font Mono.
-  NSString *ttfDir = [fontDir stringByAppendingPathComponent:@"truetype"];
-  NSArray<NSString *> *ttfs =
-      [[NSFileManager defaultManager] contentsOfDirectoryAtPath:ttfDir
-                                                          error:nil];
-  NSUInteger registered = 0;
-  for (NSString *name in ttfs) {
-    if (![[name lowercaseString] hasSuffix:@".ttf"] &&
-        ![[name lowercaseString] hasSuffix:@".otf"]) {
-      continue;
-    }
-    NSString *path = [ttfDir stringByAppendingPathComponent:name];
-    CFURLRef url = (__bridge CFURLRef)[NSURL fileURLWithPath:path];
-    if (url && CTFontManagerRegisterFontsForURL(
-                   url, kCTFontManagerScopeProcess, NULL)) {
-      registered++;
-    }
-  }
-  if (registered > 0) {
-    WWNLog("BUNDLE", @"Registered %lu bundled fonts with Core Text",
-           (unsigned long)registered);
-  }
-#endif
 }
 
 static void WWNConfigureBundledWestonDataIfNeeded(void) {

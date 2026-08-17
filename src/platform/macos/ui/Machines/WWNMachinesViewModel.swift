@@ -60,13 +60,6 @@ let kAllBundledClients: [BundledClient] = [
     description: "Terminal emulator. Uses host cursor"
   ),
   BundledClient(
-    id: "foot",
-    name: "Foot Terminal",
-    prefsKey: "FootEnabled",
-    icon: "terminal.fill",
-    description: "Lightweight Wayland terminal emulator"
-  ),
-  BundledClient(
     id: "weston-simple-shm",
     name: "Weston Simple SHM",
     prefsKey: "WestonSimpleSHMEnabled",
@@ -93,6 +86,13 @@ let kAllBundledClients: [BundledClient] = [
     prefsKey: "NiriEnabled",
     icon: "rectangle.split.3x1",
     description: "Scrollable-tiling compositor (nested compositor)"
+  ),
+  BundledClient(
+    id: "foot",
+    name: "Foot Terminal",
+    prefsKey: "FootEnabled",
+    icon: "character.cursor.ibeam",
+    description: "Lightweight Wayland terminal emulator"
   ),
   BundledClient(
     id: "weston-flower",
