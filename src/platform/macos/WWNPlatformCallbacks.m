@@ -587,7 +587,6 @@ static void WWNConfigureBundledFontsIfNeeded(void) {
   // fonts.conf asks for a Nerd family that is missing from disk.
   NSMutableArray<NSString *> *monoCandidates = [NSMutableArray arrayWithObjects:
     @"truetype/DejaVuSansMNerdFontMono-Regular.ttf",
-    @"truetype/DejaVuSansMono.ttf",
     nil];
   NSString *ttfDir = [fontDir stringByAppendingPathComponent:@"truetype"];
   NSArray<NSString *> *ttfs =
@@ -600,10 +599,11 @@ static void WWNConfigureBundledFontsIfNeeded(void) {
         [lower hasSuffix:@".ttf"]) {
       NSString *rel = [@"truetype" stringByAppendingPathComponent:name];
       if (![monoCandidates containsObject:rel]) {
-        [monoCandidates insertObject:rel atIndex:0];
+        [monoCandidates addObject:rel];
       }
     }
   }
+  [monoCandidates addObject:@"truetype/DejaVuSansMono.ttf"];
   for (NSString *rel in monoCandidates) {
     NSString *monoFont = [fontDir stringByAppendingPathComponent:rel];
     if ([[NSFileManager defaultManager] fileExistsAtPath:monoFont]) {
