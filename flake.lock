@@ -1191,11 +1191,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1786857463,
-        "narHash": "sha256-5D2f+Dn3oxKex3OhZgAg8VnbeTvHJwFot5jg8VHQpZE=",
+        "lastModified": 1786983718,
+        "narHash": "sha256-Prp03QxkBHLqz7GiJUcq2qmnkH7Ug/coC0FR+FsoLHc=",
         "owner": "Wawona",
         "repo": "wwn-weston",
-        "rev": "8b12e7d13efa5f70cff4ea526f6c4492c5dd1000",
+        "rev": "3e15c96bb6236eb765a3599bd7eca7e8efbd4c72",
         "type": "github"
       },
       "original": {
