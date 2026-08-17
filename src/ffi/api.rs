@@ -2443,6 +2443,46 @@ fn smithay_send_pointer_button(
     sent
 }
 
+/// Deliver `wl_pointer.axis` the same way as buttons: via `client_pointers()`,
+/// not smithay's grab focus. Motion/enter already bypass smithay's internal
+/// focus (`deliver_pointer_motion_to_clients`), so `pointer.axis()` would
+/// often target `None` and silently drop scroll (terminals never scroll).
+fn smithay_send_pointer_axis(
+    state: &CompositorState,
+    client: &wayland_server::Client,
+    time: u32,
+    axis: wayland_server::protocol::wl_pointer::Axis,
+    value: f64,
+    source: wayland_server::protocol::wl_pointer::AxisSource,
+    discrete: i32,
+) -> usize {
+    let Some(pointer) = smithay_pointer_handle(state) else {
+        return 0;
+    };
+    let mut sent = 0;
+    for ptr in pointer.client_pointers(client) {
+        if ptr.version() >= 5 {
+            let src = if ptr.version() < 6 {
+                match source {
+                    wayland_server::protocol::wl_pointer::AxisSource::WheelTilt => {
+                        wayland_server::protocol::wl_pointer::AxisSource::Wheel
+                    }
+                    other => other,
+                }
+            } else {
+                source
+            };
+            ptr.axis_source(src);
+            if discrete != 0 {
+                ptr.axis_discrete(axis, discrete);
+            }
+        }
+        ptr.axis(time, axis, value);
+        sent += 1;
+    }
+    sent
+}
+
 fn smithay_send_pointer_frame(state: &CompositorState, client: &wayland_server::Client) -> usize {
     let Some(pointer) = smithay_pointer_handle(state) else {
         return 0;
@@ -3424,7 +3464,7 @@ impl WawonaCore {
         window_id: WindowId,
         axis: PointerAxis,
         value: f64,
-        _discrete: i32,
+        discrete: i32,
         source: AxisSource,
         timestamp_ms: u32,
     ) {
@@ -3450,12 +3490,38 @@ impl WawonaCore {
             AxisSource::Continuous => wayland_server::protocol::wl_pointer::AxisSource::Continuous,
             AxisSource::WheelTilt => wayland_server::protocol::wl_pointer::AxisSource::WheelTilt,
         };
+
+        // Prefer explicit client_pointers delivery (matches inject_pointer_button).
+        // smithay pointer.axis() only reaches the grab's focused surface; our
+        // motion path does not update that focus, so axis would be dropped.
+        if let Some(client) = focused_client.as_ref() {
+            let sent = smithay_send_pointer_axis(
+                &state,
+                client,
+                timestamp_ms,
+                wl_axis,
+                value,
+                wl_source,
+                discrete,
+            );
+            if sent > 0 {
+                smithay_send_pointer_frame(&state, client);
+                return;
+            }
+        }
+
         if let Some(pointer) = state
             .smithay_runtime
             .seat
             .as_ref()
             .and_then(|seat| seat.get_pointer())
         {
+            // Last resort: sync smithay focus then use the grab path.
+            let _ = smithay_dispatch_pointer_motion(
+                &mut *state,
+                timestamp_ms.saturating_sub(1),
+                self.next_serial(),
+            );
             let smithay_axis = match axis {
                 PointerAxis::Vertical => smithay::backend::input::Axis::Vertical,
                 PointerAxis::Horizontal => smithay::backend::input::Axis::Horizontal,
@@ -3469,8 +3535,8 @@ impl WawonaCore {
             let mut frame = smithay::input::pointer::AxisFrame::new(timestamp_ms)
                 .source(smithay_source)
                 .value(smithay_axis, value);
-            if _discrete != 0 {
-                frame = frame.v120(smithay_axis, _discrete);
+            if discrete != 0 {
+                frame = frame.v120(smithay_axis, discrete);
             }
             pointer.axis(&mut *state, frame);
             pointer.frame(&mut *state);
