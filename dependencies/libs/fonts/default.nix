@@ -7,26 +7,25 @@
 
 # Shared font tree for every Wawona compositor target (macOS / iOS family /
 # Android / Linux AppImage hosts). Terminals (weston-terminal, foot) and zsh
-# prompts need a Nerd-patched mono; UI chrome keeps stock DejaVu Sans.
+# prompts need a patched Nerd Font; UI chrome keeps DejaVu Sans.
 #
-# Terminal mono is DejaVuSansM Nerd Font Mono: same face family we already
-# used (DejaVu Sans Mono), with Nerd glyphs patched in. Do not swap the
-# terminal to an unrelated family (e.g. JetBrains) just for icons.
+# Trimmed on purpose: full jetbrains-mono is ~59MB. We ship NL (no ligatures)
+# Nerd Font Mono Regular/Bold/Italic/BoldItalic (~10MB) plus the four DejaVu
+# faces already required for weston desktop-shell.
 #
 # Layout (stable paths for runtime probes):
-#   share/fonts/truetype/DejaVuSans{,-Bold}.ttf
-#   share/fonts/truetype/DejaVuSansMono{,-Bold}.ttf   (unpatched fallback)
-#   share/fonts/truetype/DejaVuSansMNerdFontMono-{Regular,Bold,Oblique,BoldOblique}.ttf
+#   share/fonts/truetype/DejaVuSans{,Mono}{,-Bold}.ttf
+#   share/fonts/truetype/JetBrainsMonoNLNerdFontMono-{Regular,Bold,Italic,BoldItalic}.ttf
 #
-# fontconfig family for mono: "DejaVuSansM Nerd Font Mono"
+# fontconfig family for mono: "JetBrainsMonoNL Nerd Font Mono"
 
 let
-  nerdSrc = "${nerd-fonts.dejavu-sans-mono}/share/fonts/truetype/NerdFonts/DejaVuSansM";
+  jbSrc = "${nerd-fonts.jetbrains-mono}/share/fonts/truetype/NerdFonts/JetBrainsMono";
   nerdFaces = [
-    "DejaVuSansMNerdFontMono-Regular.ttf"
-    "DejaVuSansMNerdFontMono-Bold.ttf"
-    "DejaVuSansMNerdFontMono-Oblique.ttf"
-    "DejaVuSansMNerdFontMono-BoldOblique.ttf"
+    "JetBrainsMonoNLNerdFontMono-Regular.ttf"
+    "JetBrainsMonoNLNerdFontMono-Bold.ttf"
+    "JetBrainsMonoNLNerdFontMono-Italic.ttf"
+    "JetBrainsMonoNLNerdFontMono-BoldItalic.ttf"
   ];
   dejavuFaces = [
     "DejaVuSans.ttf"
@@ -50,7 +49,7 @@ stdenvNoCC.mkDerivation {
       cp -L "${dejavu_fonts}/share/fonts/truetype/$f" "$out/share/fonts/truetype/"
     done
     for f in ${lib.concatStringsSep " " nerdFaces}; do
-      src="${nerdSrc}/$f"
+      src="${jbSrc}/$f"
       if [ ! -f "$src" ]; then
         echo "missing Nerd Font face: $src" >&2
         exit 1
@@ -62,17 +61,19 @@ stdenvNoCC.mkDerivation {
   '';
 
   passthru = {
-    monoFamily = "DejaVuSansM Nerd Font Mono";
+    monoFamily = "JetBrainsMonoNL Nerd Font Mono";
     sansFamily = "DejaVu Sans";
-    monoRegularRelative = "truetype/DejaVuSansMNerdFontMono-Regular.ttf";
-    monoRegularFile = "DejaVuSansMNerdFontMono-Regular.ttf";
+    monoRegularRelative = "truetype/JetBrainsMonoNLNerdFontMono-Regular.ttf";
+    monoRegularFile = "JetBrainsMonoNLNerdFontMono-Regular.ttf";
     inherit nerdFaces dejavuFaces;
   };
 
   meta = with lib; {
-    description = "DejaVu Sans + DejaVuSansM Nerd Font Mono for Wawona terminals";
+    description = "DejaVu + JetBrainsMono NL Nerd Font Mono for Wawona terminals";
     license = with licenses; [
+      # DejaVu
       bitstreamVera
+      # JetBrains Mono + Nerd Fonts patcher
       ofl
       mit
     ];

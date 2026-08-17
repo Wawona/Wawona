@@ -73,7 +73,7 @@ let
     inherit pkgs lib;
     wawonaSrc = wawonaSrc;
   };
-  # DejaVu (UI/CSD) + DejaVuSansM Nerd Font Mono (terminals / prompts).
+  # DejaVu (UI/CSD) + JetBrainsMono NL Nerd Font Mono (terminals / prompts).
   wawonaBundledFonts = pkgs.callPackage ../libs/fonts { };
   # Swinging Bridge app bridge: libanowaw.so + staged Kotlin/JNI shims (share/anowaw).
   anowawAndroid = buildModule.buildForAndroid "anowaw" { };
@@ -489,7 +489,7 @@ EOF
       cp -RL ${pkgs.xkeyboard_config}/share/X11/xkb/. app/src/main/assets/xkb/
       chmod -R u+w app/src/main/assets/xkb
 
-      # DejaVu (UI/CSD) + DejaVuSansM Nerd Font Mono (terminals).
+      # DejaVu (UI/CSD) + JetBrainsMono NL Nerd Font Mono (terminals).
       # iOS embeds the same tree under share/fonts; android_jni.c writes a
       # fonts.conf pointing here at runtime.
       mkdir -p app/src/main/assets/fonts/truetype

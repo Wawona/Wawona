@@ -599,7 +599,7 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
         chdir(home_dir);
     }
 
-    // Match iOS/macOS: write a tiny foot.ini with DejaVuSansM Nerd Font
+    // Match iOS/macOS: write a tiny foot.ini with JetBrainsMono NL Nerd Font
     // Mono so fcft does not resolve to a blank first frame on watch.
     NSString *runtimeDir = NSTemporaryDirectory();
     const char *xdg = getenv("XDG_RUNTIME_DIR");
@@ -617,7 +617,7 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
     NSFileManager *fm = [NSFileManager defaultManager];
     NSString *monoTtf = [fontDir
         stringByAppendingPathComponent:
-            @"truetype/DejaVuSansMNerdFontMono-Regular.ttf"];
+            @"truetype/JetBrainsMonoNLNerdFontMono-Regular.ttf"];
     if (![fm fileExistsAtPath:monoTtf]) {
       monoTtf = [fontDir
           stringByAppendingPathComponent:@"truetype/DejaVuSansMono.ttf"];

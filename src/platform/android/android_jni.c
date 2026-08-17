@@ -4003,7 +4003,7 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
               "  <cachedir>%s</cachedir>\n"
               "  <alias>\n"
               "    <family>monospace</family>\n"
-              "    <prefer><family>DejaVuSansM Nerd Font Mono</family></prefer>\n"
+              "    <prefer><family>JetBrainsMonoNL Nerd Font Mono</family></prefer>\n"
               "    <prefer><family>DejaVu Sans Mono</family></prefer>\n"
               "  </alias>\n"
               "  <alias>\n"
@@ -4019,7 +4019,7 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
 
       char mono_font[512];
       snprintf(mono_font, sizeof(mono_font),
-               "%s/truetype/DejaVuSansMNerdFontMono-Regular.ttf", font_dir);
+               "%s/truetype/JetBrainsMonoNLNerdFontMono-Regular.ttf", font_dir);
       struct stat mono_st;
       if (stat(mono_font, &mono_st) != 0) {
         snprintf(mono_font, sizeof(mono_font),

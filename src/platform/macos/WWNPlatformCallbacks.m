@@ -557,7 +557,7 @@ static void WWNConfigureBundledFontsIfNeeded(void) {
                        @"  <cachedir>%@</cachedir>\n"
                        @"  <alias>\n"
                        @"    <family>monospace</family>\n"
-                       @"    <prefer><family>DejaVuSansM Nerd Font Mono</family></prefer>\n"
+                       @"    <prefer><family>JetBrainsMonoNL Nerd Font Mono</family></prefer>\n"
                        @"    <prefer><family>DejaVu Sans Mono</family></prefer>\n"
                        @"  </alias>\n"
                        @"  <alias>\n"
@@ -581,10 +581,10 @@ static void WWNConfigureBundledFontsIfNeeded(void) {
   WWNLog("BUNDLE", @"Configured FONTCONFIG_FILE: %s (fonts: %s)",
          confPath.UTF8String, fontDir.UTF8String);
 
-  // Prefer DejaVuSansM Nerd Font Mono for terminals (icons / prompts).
+  // Prefer JetBrainsMono NL Nerd Font Mono for terminals (icons / prompts).
   // DejaVu Sans Mono remains bundled as a fallback for older layouts.
   NSArray<NSString *> *monoCandidates = @[
-    @"truetype/DejaVuSansMNerdFontMono-Regular.ttf",
+    @"truetype/JetBrainsMonoNLNerdFontMono-Regular.ttf",
     @"truetype/DejaVuSansMono.ttf",
   ];
   for (NSString *rel in monoCandidates) {
@@ -598,7 +598,7 @@ static void WWNConfigureBundledFontsIfNeeded(void) {
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
   // Cairo's quartz toy-font path ignores FONTCONFIG_FILE. Register every
   // bundled face with Core Text so family-name lookups (and foot/fcft when
-  // it falls back) can resolve DejaVuSansM Nerd Font Mono.
+  // it falls back) can resolve JetBrainsMono NL Nerd Font Mono.
   NSString *ttfDir = [fontDir stringByAppendingPathComponent:@"truetype"];
   NSArray<NSString *> *ttfs =
       [[NSFileManager defaultManager] contentsOfDirectoryAtPath:ttfDir

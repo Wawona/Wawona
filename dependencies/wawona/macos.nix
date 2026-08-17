@@ -49,7 +49,7 @@ let
     inherit pkgs lib wawonaSrc;
   };
 
-  # DejaVu (UI/CSD) + DejaVuSansM Nerd Font Mono (terminals / prompts).
+  # DejaVu (UI/CSD) + JetBrainsMono NL Nerd Font Mono (terminals / prompts).
   wawonaBundledFonts = pkgs.callPackage ../libs/fonts { };
 
   ilandGlLdflags = { deps, simulator ? false }: import ilandGlLdflagsNix {
@@ -1136,7 +1136,7 @@ GEN_HEADER
             # lookups (foot/fcft + older ShareRoot layouts).
             cp -RL "$WA_FONTS/share/fonts/." "$APP/Contents/Resources/share/fonts/"
             chmod -R u+w "$APP/share/fonts" "$APP/Contents/Resources/share/fonts"
-            echo "DEBUG: Bundled Wawona fonts (DejaVu + DejaVuSansM Nerd Font Mono)"
+            echo "DEBUG: Bundled Wawona fonts (DejaVu + JetBrainsMono NL Nerd Font Mono)"
 
             # Bundle foot terminal
             ${if foot != null then ''
@@ -1517,7 +1517,7 @@ PLIST_EOF
         "$APP/Contents/Resources/share/weston/pattern.png" \
         "$APP/Contents/Resources/share/weston/terminal.png" \
         "$APP/Contents/Resources/share/fonts/truetype/DejaVuSans.ttf" \
-        "$APP/Contents/Resources/share/fonts/truetype/DejaVuSansMNerdFontMono-Regular.ttf"; do
+        "$APP/Contents/Resources/share/fonts/truetype/JetBrainsMonoNLNerdFontMono-Regular.ttf"; do
         if [ ! -e "$req" ]; then
           echo "ERROR: required bundled asset missing: $req" >&2
           exit 1
