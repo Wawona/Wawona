@@ -16,6 +16,7 @@ typealias WWNPlatformImage = UIImage
 @objc enum WWNMachineTransientStatus: Int, CaseIterable {
   case disconnected
   case connecting
+  case preparing
   case connected
   case degraded
   case error
@@ -24,6 +25,7 @@ typealias WWNPlatformImage = UIImage
     switch self {
     case .disconnected: return "Disconnected"
     case .connecting: return "Connecting"
+    case .preparing: return "Compiling backend"
     case .connected: return "Connected"
     case .degraded: return "Degraded"
     case .error: return "Error"
@@ -236,6 +238,10 @@ let kRuntimeWasmModulePathKey = "wasmModulePath"
 /// Posted by `WWNWaypipeRunner` when a bundled native `NSTask` exits (quit, crash, or Stop).
 private let wwnNativeClientProcessDidTerminateNotification = Notification.Name(
   "WWNNativeClientProcessDidTerminateNotification")
+private let wwnContainerBackendDidBecomeReadyNotification = Notification.Name(
+  "WWNContainerBackendDidBecomeReadyNotification")
+private let wwnContainerBackendDidStopNotification = Notification.Name(
+  "WWNContainerBackendDidStopNotification")
 
 @MainActor
 final class WWNMachinesViewModel: ObservableObject {
@@ -248,6 +254,9 @@ final class WWNMachinesViewModel: ObservableObject {
   #endif
 
   private var nativeProcessTerminateObserver: NSObjectProtocol?
+  private var containerReadyObserver: NSObjectProtocol?
+  private var containerStopObserver: NSObjectProtocol?
+  private var pendingContainerConnectCallbacks: [String: () -> Void] = [:]
 
   init() {
     reload()
@@ -261,11 +270,35 @@ final class WWNMachinesViewModel: ObservableObject {
         self?.syncNativeConnectionStatusFromRunner()
       }
     }
+    containerReadyObserver = NotificationCenter.default.addObserver(
+      forName: wwnContainerBackendDidBecomeReadyNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] note in
+      Task { @MainActor [weak self] in
+        self?.handleContainerReady(note)
+      }
+    }
+    containerStopObserver = NotificationCenter.default.addObserver(
+      forName: wwnContainerBackendDidStopNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] note in
+      Task { @MainActor [weak self] in
+        self?.handleContainerStop(note)
+      }
+    }
   }
 
   deinit {
     if let nativeProcessTerminateObserver {
       NotificationCenter.default.removeObserver(nativeProcessTerminateObserver)
+    }
+    if let containerReadyObserver {
+      NotificationCenter.default.removeObserver(containerReadyObserver)
+    }
+    if let containerStopObserver {
+      NotificationCenter.default.removeObserver(containerStopObserver)
     }
   }
 
@@ -323,7 +356,9 @@ final class WWNMachinesViewModel: ObservableObject {
   }
 
   func connect(_ profile: WWNMachineProfile, onConnected: (() -> Void)? = nil) {
-    statusByMachineId[profile.machineId] = .connecting
+    let isContainer = profile.type == kWWNMachineTypeContainer
+    statusByMachineId[profile.machineId] =
+      isContainer ? .preparing : .connecting
 
     #if os(iOS) || os(tvOS) || os(visionOS)
     // Native Wayland clients may run concurrently. VM / waypipe / container
@@ -350,17 +385,46 @@ final class WWNMachinesViewModel: ObservableObject {
       return
     }
 
+    if isContainer {
+      pendingContainerConnectCallbacks[profile.machineId] = onConnected
+    }
+
     do {
-      // ObjC `+ (BOOL)connectProfile:error:` imports to Swift as the throwing
-      // method `connect(_:)` (error-peeling + trailing-noun drop).
       try WWNMachineSessionBridge.connect(profile)
     } catch {
       statusByMachineId[profile.machineId] = .error
+      pendingContainerConnectCallbacks.removeValue(forKey: profile.machineId)
+      return
+    }
+
+    if isContainer {
+      // Stay "Compiling backend" until WWNContainerRunner reports the VM is
+      // booted (WWNContainerBackendDidBecomeReadyNotification).
       return
     }
 
     statusByMachineId[profile.machineId] = .connected
     onConnected?()
+  }
+
+  private func handleContainerReady(_ note: Notification) {
+    guard let machineId = note.userInfo?["machineId"] as? String else { return }
+    guard status(for: machineId) == .preparing else { return }
+    statusByMachineId[machineId] = .connected
+    let callback = pendingContainerConnectCallbacks.removeValue(forKey: machineId)
+    callback?()
+  }
+
+  private func handleContainerStop(_ note: Notification) {
+    guard let machineId = note.userInfo?["machineId"] as? String else { return }
+    // If it never reached ready, the backend failed to boot (e.g. kernel or
+    // initfs compile error) rather than a clean stop.
+    let failedToBecomeReady = status(for: machineId) == .preparing
+    statusByMachineId[machineId] = failedToBecomeReady ? .error : .disconnected
+    pendingContainerConnectCallbacks.removeValue(forKey: machineId)
+    if WWNMachineProfileStore.activeMachineId() == machineId {
+      WWNMachineProfileStore.setActiveMachineId(nil)
+    }
   }
 
   func disconnect(_ profile: WWNMachineProfile) {

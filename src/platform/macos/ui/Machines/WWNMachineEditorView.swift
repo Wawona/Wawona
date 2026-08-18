@@ -21,6 +21,9 @@ struct WWNMachineEditorView: View {
   @State private var sshKeyPassphrase: String
   @State private var sshAuthMethod: Int
   @State private var remoteCommand: String
+  @State private var containerRef: String
+  @State private var entryCommand: String
+  @State private var showContainerHubSearch: Bool = false
 
   @State private var selectedClientId: String
   @State private var customCommand: String
@@ -86,6 +89,11 @@ struct WWNMachineEditorView: View {
     _sshKeyPassphrase = State(initialValue: initial?.sshKeyPassphrase ?? "")
     _sshAuthMethod = State(initialValue: initial?.sshAuthMethod ?? 0)
     _remoteCommand = State(initialValue: initial?.remoteCommand ?? "")
+    let containerSettings = initial?.containerSettings ?? [:]
+    _containerRef = State(
+      initialValue: (containerSettings["containerRef"] as? String) ?? "")
+    _entryCommand = State(
+      initialValue: (containerSettings["entryCommand"] as? String) ?? "")
 
     let runtimeOverrides: [String: Any] = initial?.runtimeOverrides ?? [:]
     let overrides: [String: Any] = initial?.settingsOverrides ?? [:]
@@ -919,21 +927,45 @@ struct WWNMachineEditorView: View {
   // MARK: - Container Section
 
   private var containerSection: some View {
-    sectionCard("Container", subtitle: "Container runtime is selected automatically for this platform.") {
+    let card = sectionCard("Container", subtitle: "Apple Containerization runs this image in a per-container VM.") {
       labeledField("Backend") {
         Text("containerization.framework")
           .foregroundStyle(.secondary)
       }
-      labeledField("Startup Command") {
-        TextField("weston-simple-shm", text: $remoteCommand)
+      labeledField("Image") {
+        HStack(spacing: 8) {
+          TextField("e.g. alpine:3.20 or python:3.12-slim", text: $containerRef)
+            .textFieldStyle(.roundedBorder)
+            .wwnDisableAutocapitalization()
+            .autocorrectionDisabled()
+          #if os(macOS)
+          Button {
+            showContainerHubSearch = true
+          } label: {
+            Label("Search Docker Hub", systemImage: "magnifyingglass")
+          }
+          #endif
+        }
+      }
+      labeledField("Command") {
+        TextField("e.g. /bin/sh", text: $entryCommand)
           .textFieldStyle(.roundedBorder)
           .wwnDisableAutocapitalization()
           .autocorrectionDisabled()
       }
-      Text("Container launch support is currently placeholder behavior until runtime integration is complete.")
+      Text("Empty fields inherit the global Settings > Containers defaults. Memory, mounts and ports are configured in Machine Settings.")
         .font(.footnote)
         .foregroundStyle(.secondary)
     }
+    #if os(macOS)
+    return card.sheet(isPresented: $showContainerHubSearch) {
+      WWNContainerHubSearchView { selected in
+        containerRef = selected
+      }
+    }
+    #else
+    return card
+    #endif
   }
 
   // MARK: - Helpers
@@ -1141,6 +1173,29 @@ struct WWNMachineEditorView: View {
     profile.waypipeSecCtx = waypipeSecCtx
     // vmSubtype / containerSubtype are no longer user-editable (Residual E):
     // the backend engine is fixed per build target. Leave profile defaults as-is.
+
+    // Container machines persist image ref + command in containerSettings
+    // (read by WWNContainerRunner). Advanced fields (memory, mounts, ports,
+    // kernel paths) are edited in Machine Settings and preserved untouched.
+    if type == kWWNMachineTypeContainer {
+      var containerSettings = profile.containerSettings
+      let ref = containerRef.trimmingCharacters(in: .whitespacesAndNewlines)
+      let cmd = entryCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+      if ref.isEmpty {
+        containerSettings.removeValue(forKey: "containerRef")
+      } else {
+        containerSettings["containerRef"] = ref
+      }
+      if cmd.isEmpty {
+        containerSettings.removeValue(forKey: "entryCommand")
+      } else {
+        containerSettings["entryCommand"] = cmd
+      }
+      if (containerSettings["runtime"] as? String)?.isEmpty ?? true {
+        containerSettings["runtime"] = "containerization"
+      }
+      profile.containerSettings = containerSettings
+    }
 
     var overrides: [String: Any] = profile.settingsOverrides
     var runtimeOverrides: [String: Any] = profile.runtimeOverrides

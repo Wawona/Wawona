@@ -1061,6 +1061,9 @@
             fastfetch = pkgs.fastfetch;
             phoon = toolchains.buildForMacOS "phoon" { };
             wawonaWasm = toolchains.buildForMacOS "wawona-wasm" { };
+            # wwn-containers `container` CLI (wwn-oci + wwn-containerd-run) for
+            # the Machines GUI + in-app terminal.
+            containerCli = wwn-containers.packages.${system}.container-cli;
             neovim = null;
             zsh = pkgs.zsh;
             kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };

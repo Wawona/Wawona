@@ -71,7 +71,8 @@ Captured from the pinned Apple `container` CLI 1.2.2 (`container run --help`).
 | `--publish`, `--publish-socket` | — | ports (schema) | — | ⏳ reserved (backend rejects) |
 | `--platform`/`--os`/`--arch` | — | platform (schema) | — | ⏳ reserved |
 | `--env` | — | (not yet) | — | ⏳ reserved |
-| `--cpus`, `--fs-size`, `--id` | — | (not yet) | CLI accepts; not surfaced in GUI | ✅ CLI-only |
+| `--cpus`, `--fs-size` | — | (not yet) | CLI accepts; not surfaced in GUI | ✅ CLI-only |
+| `--id` | — | (implicit) | `--id wawona-<machineId>` (unique per machine) | ✅ runner-emitted |
 | `--cap-add/drop`, `--dns*`, `--label`, `--network`, `--tmpfs`, `--entrypoint`, `--rosetta`, `--virtualization`, `--ssh`, `--init-image`, `--masked-path`, `--read-only-path`, `--cidfile`, `-d` | — | — | via profile `customScript` escape hatch | ⏳ advanced |
 
 > **Honesty rule**: a reserved field never silently becomes a no-op. The CLI
@@ -95,20 +96,47 @@ Captured from the pinned Apple `container` CLI 1.2.2 (`container run --help`).
 ## Generated command shape
 
 ```
-container run --rm [--memory <MiB>] [--kernel '<path>'] [--initfs '<path>']
+container run --rm --id wawona-<machineId> [--memory <MiB>] [--kernel '<path>'] [--initfs '<path>']
         [--read-only] [--init] '<ref>' '<command>'
 ```
-run via `/bin/sh -lc` with env `WAWONA_CONTAINER_BACKEND=containerization`,
-`WWN_OCI_ROOT`, `WAWONA_VM_KERNEL`, `WAWONA_VM_INITFS` as configured.
+
+The command runs inside Wawona's bundled terminal, not as a bare host
+subprocess: `WWNContainerRunner` launches `weston-terminal` with `SHELL`
+pointed at the bundled `wawona-container-shell` wrapper, which `exec`s the
+command above via `/bin/sh -lc` (`WAWONA_CONTAINER_CMD`). The container's
+stdin/stdout/ANSI flow through the terminal's PTY into the Wawona window, so
+both one-shot runs and interactive shells (`container run alpine /bin/sh`)
+work. Env: `WAWONA_CONTAINER_BACKEND=containerization`, `WWN_OCI_ROOT`,
+`WAWONA_VM_KERNEL`, `WAWONA_VM_INITFS` as configured.
+
+The backend reports progress to the runner via marker files in `/tmp`
+(`wawona-container-ready-<machineId>` when the VM is booted,
+`wawona-container-done-<machineId>` when the container process exits), which
+drive the card's Compiling backend → Connected → Disconnected transitions.
 
 ## Docker Hub discovery (GUI search)
 
-- `container search <query>` → `wwn-oci search` → Hub JSON API
+- The machine editor's Container section has a Search Docker Hub button
+  (macOS) that opens a search sheet. Results come from the bundled
+  `container` CLI (`Contents/Resources/bin/container`), falling back to the
+  user's PATH when the CLI is not bundled.
+- Level 1: `container search <query> --json`. Repos render `repo_name` +
+  `pullableRef`, stars, pulls, and the official badge. Single-component
+  names resolve to the official `library/` namespace (`python` →
+  `docker.io/library/python`).
+- Level 2: picking a repo runs `container tags <pullableRef> --json` and
+  lists tags (newest first) with architecture badges and compressed sizes.
+  Picking a tag fills the Image field with `<pullableRef>:<tag>`; a default
+  tag row fills the bare `pullableRef`.
+- The editor persists Image + Command to `containerSettings.containerRef` /
+  `entryCommand`. Empty values inherit the global Settings > Containers
+  defaults, same as the CLI.
+- The GUI decodes the CLI JSON verbatim (`ContainerHubModels.swift`) and
+  never re-implements registry or namespace rules.
+- CLI verbs: `container search <query>` → `wwn-oci search` → Hub JSON API
   (`hub.docker.com/v2/search/repositories/`), anonymous, paginated.
-- `container tags <repo>` → `wwn-oci tags` → `hub.docker.com/v2/repositories/<repo>/tags/`;
-  single-component names resolve to the official `library/` namespace.
-- Official hits resolve to pullable refs via the `library/` namespace
-  (`python` → `docker.io/library/python`).
+  `container tags <repo>` → `wwn-oci tags` →
+  `hub.docker.com/v2/repositories/<repo>/tags/`.
 
 ## Compliance notes
 
@@ -116,4 +144,4 @@ Inherits `wwn-containers/COMPLIANCE.md`: image management (incl. search/tags,
 metadata-only HTTPS GET) is universal; execution is macOS
 `Containerization.framework` only in this phase, direct/notarized channel
 (`com.apple.security.virtualization`). Lifecycle verbs the backend lacks fail
-cleanly (exit 3) — never fake execution.
+cleanly (exit 3). Never fake execution.

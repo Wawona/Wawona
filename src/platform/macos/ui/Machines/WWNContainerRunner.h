@@ -15,8 +15,12 @@ NS_ASSUME_NONNULL_BEGIN
 // `containerSettings` (image ref, command, memory, kernel/initfs, read-only,
 // init) with every empty field inheriting the global Settings → Containers
 // default; a profile `customScript` (advanced escape hatch) always wins. The
-// command runs as a tracked subprocess via the wwn-containers `container` CLI
-// (Apple Containerization, WAWONA_CONTAINER_BACKEND=containerization).
+// command runs inside Wawona's bundled terminal (weston-terminal): the
+// terminal spawns the bundled `wawona-container-shell` as its $SHELL, which
+// execs the `container` CLI (Apple Containerization,
+// WAWONA_CONTAINER_BACKEND=containerization). The backend writes ready/done
+// marker files (WAWONA_CONTAINER_READY_FILE / _DONE_FILE) that this runner
+// polls to drive the GUI status.
 @interface WWNContainerRunner : NSObject
 
 + (instancetype)sharedRunner;
