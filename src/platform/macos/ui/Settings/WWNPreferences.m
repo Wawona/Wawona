@@ -4149,18 +4149,13 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
     [[NSUserDefaults standardUserDefaults] setBool:YES forKey:kWWNPrefsDesktopReplacementEnabled];
     
     if (response == NSAlertFirstButtonReturn) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-      [[NSWorkspace sharedWorkspace] launchAppWithBundleIdentifier:@"com.apple.systemevents"
-                                                           options:0
-                                    additionalEventParamDescriptor:nil
-                                                  launchIdentifier:nil];
-#pragma clang diagnostic pop
-      NSTask *task = [[NSTask alloc] init];
-      [task setLaunchPath:@"/usr/bin/osascript"];
-      [task setArguments:@[ @"-e", @"tell application \"System Events\" to log out" ]];
       [[NSApplication sharedApplication] disableRelaunchOnLogin];
-      [task launch];
+      NSAppleEventDescriptor *event = [NSAppleEventDescriptor appleEventWithEventClass:kCoreEventClass
+                                                                               eventID:kAELogOut
+                                                                      targetDescriptor:nil
+                                                                              returnID:kAutoGenerateReturnID
+                                                                         transactionID:kAnyTransactionID];
+      [[NSAppleEventManager sharedAppleEventManager] dispatchRawAppleEvent:event withRawReply:nil handlerRefCon:nil];
     }
     return;
   }
@@ -5855,18 +5850,13 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
       [[NSUserDefaults standardUserDefaults] setBool:YES forKey:kWWNPrefsDesktopReplacementEnabled];
 
       if (response == NSAlertFirstButtonReturn) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-        [[NSWorkspace sharedWorkspace] launchAppWithBundleIdentifier:@"com.apple.systemevents"
-                                                             options:0
-                                      additionalEventParamDescriptor:nil
-                                                    launchIdentifier:nil];
-#pragma clang diagnostic pop
-        NSTask *task = [[NSTask alloc] init];
-        [task setLaunchPath:@"/usr/bin/osascript"];
-        [task setArguments:@[ @"-e", @"tell application \"System Events\" to log out" ]];
         [[NSApplication sharedApplication] disableRelaunchOnLogin];
-        [task launch];
+        NSAppleEventDescriptor *event = [NSAppleEventDescriptor appleEventWithEventClass:kCoreEventClass
+                                                                                 eventID:kAELogOut
+                                                                        targetDescriptor:nil
+                                                                                returnID:kAutoGenerateReturnID
+                                                                           transactionID:kAnyTransactionID];
+        [[NSAppleEventManager sharedAppleEventManager] dispatchRawAppleEvent:event withRawReply:nil handlerRefCon:nil];
       }
       return;
     }
