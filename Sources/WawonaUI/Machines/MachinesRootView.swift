@@ -138,6 +138,13 @@ struct MachinesRootView: View {
     }
 
     private func openPlatformSettings() {
+        showingEditor = false
+        editingProfile = nil
+        #if os(iOS)
+        if isGlassSearchPresented {
+            dismissGlassSearchBar(preserveQuery: true)
+        }
+        #endif
         PlatformGlobalSettings.open()
     }
 

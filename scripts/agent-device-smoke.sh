@@ -126,13 +126,15 @@ run_ios() {
   fi
   agent-device screenshot "$ARTIFACTS/ios-machines-root.png" "${ad_common[@]}" || true
 
-  # Stray host taps can leave Edit Machine open. A prior products smoke dump
-  # showed that sheet, not Settings, so Apple Watch never appeared.
+  # Stray host taps can leave Edit Machine open. Cancel on that sheet is
+  # often hittable:false, so swipe the grabber down as well.
   if agent-device is visible 'text="Edit Machine Profile"' "${ad_common[@]}" >/dev/null 2>&1 \
     || agent-device is visible 'label="Edit Machine Profile"' "${ad_common[@]}" >/dev/null 2>&1; then
     agent-device press 'label="Cancel"' "${ad_common[@]}" >/dev/null 2>&1 \
       || agent-device press 'text="Cancel"' "${ad_common[@]}" >/dev/null 2>&1 \
       || true
+    agent-device swipe 201 560 201 860 350 "${ad_common[@]}" >/dev/null 2>&1 || true
+    agent-device back "${ad_common[@]}" >/dev/null 2>&1 || true
     agent-device wait 'id="wwn.machines.root"' 8000 "${ad_common[@]}" >/dev/null 2>&1 || true
   fi
 
@@ -143,8 +145,8 @@ run_ios() {
     agent-device snapshot -i --raw "${ad_common[@]}" || true
     exit 1
   fi
-  if ! agent-device wait 'id="wwn.settings.display"' 15000 "${ad_common[@]}" >/dev/null 2>&1 \
-    && ! agent-device wait 'text="Display"' 5000 "${ad_common[@]}" >/dev/null 2>&1; then
+  if ! agent-device wait 'id="wwn.settings.root"' 15000 "${ad_common[@]}" >/dev/null 2>&1 \
+    && ! agent-device wait 'id="wwn.settings.display"' 5000 "${ad_common[@]}" >/dev/null 2>&1; then
     echo "FAIL: Settings Display section not visible" >&2
     agent-device screenshot "$ARTIFACTS/ios-settings-display-missing.png" "${ad_common[@]}" || true
     agent-device snapshot -i --raw "${ad_common[@]}" || true

@@ -83,8 +83,13 @@
 #if !TARGET_OS_TV
   self.navigationController.navigationBar.prefersLargeTitles = YES;
 #endif
-
-  // Add Done button to dismiss settings
+  self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
+      initWithBarButtonSystemItem:UIBarButtonSystemItemDone
+                           target:self
+                           action:@selector(dismissSettings)];
+  self.navigationItem.rightBarButtonItem.accessibilityIdentifier =
+      @"wwn.settings.done";
+  self.navigationItem.rightBarButtonItem.accessibilityLabel = @"Done";
 
   // Configure cell registration
   UICollectionViewCellRegistration *cellRegistration =
@@ -132,6 +137,10 @@
                 }];
 
   [self updateSnapshot];
+}
+
+- (void)dismissSettings {
+  [self.splitViewController dismissViewControllerAnimated:YES completion:nil];
 }
 
 - (void)updateSnapshot {

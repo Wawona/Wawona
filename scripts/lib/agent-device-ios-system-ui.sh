@@ -151,7 +151,9 @@ let below = grays.filter {
 }
 // Empirically ~11% of framebuffer height below Don't Allow center
 // (Allow Paste row under the blue button on iPhone 17 Pro @3x).
-let allow = center(below) ?? (blue.0, blue.1 + Int(Double(h) * 0.11))
+// No gray Allow Paste row under Don't Allow. Do not guess: a lone blue
+    // blob is often Machines Start, and clicking 11% below it opens Edit.
+    guard let allow = center(below) else { exit(0) }
 let parts = boundsArg.split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
 guard parts.count == 4 else { exit(3) }
 let wx = parts[0], wy = parts[1], ww = parts[2], wh = parts[3]

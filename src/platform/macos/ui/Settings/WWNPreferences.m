@@ -203,6 +203,7 @@
 #if TARGET_OS_IPHONE
 - (void)confirmResetShellDotfiles;
 - (void)confirmReinstallSystemTree;
+- (void)presentSettingsFromRoot:(UIViewController *)root;
 #endif
 #if TARGET_OS_IPHONE && !TARGET_OS_TV
 - (void)importFileToShellHome;
@@ -3631,10 +3632,33 @@ static UIImage *WWNAboutLogo(void) {
 
 #if TARGET_OS_IPHONE
 
+static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
+  if (!vc) {
+    return NO;
+  }
+  if ([vc isKindOfClass:[WWNSettingsSplitViewController class]]) {
+    return YES;
+  }
+  if ([vc isKindOfClass:[UINavigationController class]]) {
+    UINavigationController *nav = (UINavigationController *)vc;
+    UIViewController *root = nav.viewControllers.firstObject;
+    return [root isKindOfClass:[WWNPreferences class]] ||
+           [root isKindOfClass:[WWNSettingsSplitViewController class]];
+  }
+  return NO;
+}
+
+- (void)presentSettingsFromRoot:(UIViewController *)root {
+  WWNSettingsSplitViewController *splitVC =
+      [[WWNSettingsSplitViewController alloc] init];
+  splitVC.modalPresentationStyle = UIModalPresentationFormSheet;
+  [root presentViewController:splitVC animated:YES completion:nil];
+}
+
 - (void)showPreferences:(id)sender {
   (void)sender;
   [self loadViewIfNeeded];
-  UIViewController *presenter = nil;
+  UIViewController *root = nil;
   for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
     if (![scene isKindOfClass:[UIWindowScene class]]) {
       continue;
@@ -3645,34 +3669,35 @@ static UIImage *WWNAboutLogo(void) {
     }
     for (UIWindow *window in windowScene.windows) {
       if (window.isKeyWindow && window.rootViewController) {
-        presenter = window.rootViewController;
+        root = window.rootViewController;
         break;
       }
     }
-    if (presenter) {
+    if (root) {
       break;
     }
   }
-  if (!presenter) {
-    presenter = UIApplication.sharedApplication.delegate.window.rootViewController;
+  if (!root) {
+    root = UIApplication.sharedApplication.delegate.window.rootViewController;
   }
-  if (!presenter) {
+  if (!root) {
     return;
   }
-  while (presenter.presentedViewController) {
-    if ([presenter.presentedViewController isKindOfClass:[UINavigationController class]]) {
-      UINavigationController *nav = (UINavigationController *)presenter.presentedViewController;
-      if (nav.viewControllers.count > 0 &&
-          [nav.viewControllers.firstObject isKindOfClass:[WWNPreferences class]]) {
-        return;
-      }
-    }
-    presenter = presenter.presentedViewController;
+  // Present from the window root. Walking into Edit Machine (or any other
+  // sheet) buries Settings under that sheet, so Apple Watch never appears.
+  UIViewController *presented = root.presentedViewController;
+  if (WWNIsSettingsPresentation(presented)) {
+    return;
   }
-  WWNSettingsSplitViewController *splitVC =
-      [[WWNSettingsSplitViewController alloc] init];
-  splitVC.modalPresentationStyle = UIModalPresentationFormSheet;
-  [presenter presentViewController:splitVC animated:YES completion:nil];
+  if (presented) {
+    __weak typeof(self) weakSelf = self;
+    [root dismissViewControllerAnimated:NO
+                             completion:^{
+                               [weakSelf presentSettingsFromRoot:root];
+                             }];
+    return;
+  }
+  [self presentSettingsFromRoot:root];
 }
 
 - (void)selectSectionWithTitle:(NSString *)title {
