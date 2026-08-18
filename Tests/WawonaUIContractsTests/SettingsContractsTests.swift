@@ -48,7 +48,7 @@ func settingsNormalizationParsesPort() {
 func watchGlobalSettingsMatchShippedCatalog() {
     let sections = GlobalSettingsCatalog.visibleSections(for: .watchOS)
     #expect(sections == [
-        .display, .input, .graphics, .connection, .waypipe, .ssh, .advanced, .about,
+        .display, .input, .graphics, .connection, .environment, .waypipe, .ssh, .advanced, .about,
     ])
     #expect(!sections.contains(.desktop))
     #expect(GlobalSettingsCatalog.visibleFields(in: .display, for: .watchOS) == [.autoScale])

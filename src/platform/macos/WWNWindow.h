@@ -1,6 +1,7 @@
 #pragma once
 
 #import <Cocoa/Cocoa.h>
+#import <TargetConditionals.h>
 
 @interface WWNWindow : NSWindow <NSWindowDelegate>
 @property(nonatomic, assign) uint64_t wwnWindowId;
@@ -27,7 +28,12 @@
 - (void)cancelPendingHostCloseEscalation;
 @end
 
-@interface WWNView : NSView <NSTextInputClient, NSDraggingDestination>
+@interface WWNView : NSView <NSTextInputClient
+#if TARGET_OS_OSX
+    ,
+    NSDraggingDestination
+#endif
+>
 @property(nonatomic, assign) uint64_t overrideWindowId;
 @property(nonatomic, strong, readonly) CALayer *contentLayer;
 - (BOOL)prepareIlandMetalPresentation;

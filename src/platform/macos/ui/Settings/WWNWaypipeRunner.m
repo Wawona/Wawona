@@ -2561,10 +2561,12 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
           ? [NSString stringWithFormat:@"input-method=%@\n", keyboardClient]
           : @"";
 #endif
-#if TARGET_OS_IPHONE
+#if TARGET_OS_OSX
+  CGFloat fontSize = [NSFont systemFontSize];
+#elif TARGET_OS_IOS
   CGFloat fontSize = [UIFont systemFontSize];
 #else
-  CGFloat fontSize = [NSFont systemFontSize];
+  CGFloat fontSize = 17.0;
 #endif
   NSString *ini = [NSString
       stringWithFormat:@"[core]\n"
@@ -3407,10 +3409,12 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       monoTtf =
           [fontDir stringByAppendingPathComponent:@"truetype/DejaVuSansMono.ttf"];
     }
-#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+#if TARGET_OS_OSX
+    CGFloat fontSize = [NSFont systemFontSize];
+#elif TARGET_OS_IOS
     CGFloat fontSize = [UIFont systemFontSize];
 #else
-    CGFloat fontSize = [NSFont systemFontSize];
+    CGFloat fontSize = 17.0;
 #endif
     NSString *fontSpec = [fm fileExistsAtPath:monoTtf]
                              ? [NSString stringWithFormat:@"DejaVuSansM Nerd Font Mono:size=%.1f", fontSize]
@@ -3506,10 +3510,12 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   }
   NSString *iniPath =
       [runtimeDir stringByAppendingPathComponent:@"wawona-foot.ini"];
-#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+#if TARGET_OS_OSX
+  CGFloat fontSize = [NSFont systemFontSize];
+#elif TARGET_OS_IOS
   CGFloat fontSize = [UIFont systemFontSize];
 #else
-  CGFloat fontSize = [NSFont systemFontSize];
+  CGFloat fontSize = 17.0;
 #endif
   NSString *fontSpec = [fm fileExistsAtPath:monoTtf]
                            ? [NSString stringWithFormat:@"DejaVuSansM Nerd Font Mono:size=%.1f", fontSize]

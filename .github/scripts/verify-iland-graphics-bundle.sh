@@ -24,7 +24,9 @@ if [[ -z "$root" || ! -e "$root" ]]; then
 fi
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
-if [[ "$platform" == "macos-desktop" ]]; then
+if [[ "$platform" == "macos" || "$platform" == "macos-desktop" ]]; then
+  # 3rd-party macOS ships Mode B libwayland-mac.dylib. Apple-mobile / Android
+  # store-safe artifacts must not.
   "$script_dir/verify-iland-mode-b-bundle.sh" --mode present "$root"
 else
   "$script_dir/verify-iland-mode-b-bundle.sh" --mode absent "$root"

@@ -228,6 +228,9 @@ class SessionActivity : Activity(), SurfaceHolder.Callback {
 
     private fun hostToken(): Long = hostId
 
+    val toplevelWindowId: Long
+        get() = WawonaNative.nativeGetWindowForHost(hostId)
+
     companion object {
         private const val EXTRA_HOST_ID = "com.aspauldingcode.wawona.extra.HOST_ID"
         private const val EXTRA_TITLE = "com.aspauldingcode.wawona.extra.TITLE"

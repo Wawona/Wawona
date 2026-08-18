@@ -82,7 +82,9 @@ class WawonaSurfaceView(context: Context) : SurfaceView(context) {
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
 
         setOnDragListener { _, event ->
-            val winId = (context as? SessionActivity)?.toplevelWindowId ?: return@setOnDragListener false
+            val winId = (context as? SessionActivity)?.toplevelWindowId
+                ?.takeIf { it != 0L }
+                ?: return@setOnDragListener false
             when (event.action) {
                 android.view.DragEvent.ACTION_DRAG_ENTERED -> {
                     WawonaNative.injectDragEnter(winId, event.x.toDouble(), event.y.toDouble(), "text/uri-list")

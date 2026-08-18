@@ -105,11 +105,20 @@ public final class WWNEnvironmentSettingsPresenter: NSObject {
             return
         }
         let wrap = UINavigationController(rootViewController: hosting)
+        #if os(tvOS)
+        hosting.navigationItem.leftBarButtonItem = UIBarButtonItem(
+            title: "Done",
+            style: .plain,
+            target: hosting,
+            action: #selector(UIViewController.dismiss(animated:completion:))
+        )
+        #else
         hosting.navigationItem.leftBarButtonItem = UIBarButtonItem(
             barButtonSystemItem: .close,
             target: hosting,
             action: #selector(UIViewController.dismiss(animated:completion:))
         )
+        #endif
         var presenter = host
         if presenter == nil {
             presenter = UIApplication.shared.connectedScenes

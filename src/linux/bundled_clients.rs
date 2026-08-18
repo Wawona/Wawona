@@ -16,7 +16,7 @@ pub struct BundledClient {
     pub icon_name: &'static str,
 }
 
-/// The 22 canonical bundled clients, in the same order as the Apple/Android
+/// The 23 canonical bundled clients, in the same order as the Apple/Android
 /// catalogs.
 pub const BUNDLED_CLIENTS: &[BundledClient] = &[
     BundledClient {
@@ -30,6 +30,12 @@ pub const BUNDLED_CLIENTS: &[BundledClient] = &[
         name: "Weston Simple SHM",
         description: "Minimal shared-memory Wayland client",
         icon_name: "view-grid-symbolic",
+    },
+    BundledClient {
+        id: "wawona-wasm",
+        name: "Wawona Runtime (.wasm)",
+        description: "Wayland WASI module from the filesystem (Wawona Runtime)",
+        icon_name: "application-x-executable-symbolic",
     },
     BundledClient {
         id: "weston",
@@ -168,12 +174,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn catalog_has_twenty_two_unique_clients() {
-        assert_eq!(BUNDLED_CLIENTS.len(), 22);
+    fn catalog_has_twenty_three_unique_clients() {
+        assert_eq!(BUNDLED_CLIENTS.len(), 23);
         let mut ids: Vec<&str> = BUNDLED_CLIENTS.iter().map(|c| c.id).collect();
         ids.sort_unstable();
         ids.dedup();
-        assert_eq!(ids.len(), 22, "bundled client ids must be unique");
+        assert_eq!(ids.len(), 23, "bundled client ids must be unique");
     }
 
     #[test]

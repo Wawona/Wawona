@@ -13,10 +13,12 @@
 @property(nonatomic, strong) NSTimer *wwnCloseForceTimer;
 @end
 
+#if TARGET_OS_OSX
 extern void WWNCoreInjectDragEnter(void *core, uint64_t window_id, double x, double y, const char *mime_types);
 extern void WWNCoreInjectDragMotion(void *core, uint64_t window_id, double x, double y);
 extern void WWNCoreInjectDragDrop(void *core, uint64_t window_id, const char *data);
 extern void WWNCoreInjectDragLeave(void *core, uint64_t window_id);
+#endif
 
 //
 // WWNView Implementation (macOS)
@@ -47,7 +49,9 @@ extern void WWNCoreInjectDragLeave(void *core, uint64_t window_id);
     self.layerContentsRedrawPolicy = NSViewLayerContentsRedrawNever;
     self.layerContentsPlacement = NSViewLayerContentsPlacementTopLeft;
     self.layerContentsRedrawPolicy = NSViewLayerContentsRedrawNever;
+#if TARGET_OS_OSX
     [self registerForDraggedTypes:@[NSPasteboardTypeFileURL, NSPasteboardTypeString, NSPasteboardTypeURL, NSPasteboardTypeTIFF]];
+#endif
 
     contentLayer_ = [CALayer layer];
     contentLayer_.geometryFlipped = YES;
@@ -820,6 +824,7 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
   }
 }
 
+#if TARGET_OS_OSX
 // MARK: - NSDraggingDestination
 
 - (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {
@@ -971,6 +976,8 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
   
   return YES;
 }
+
+#endif
 
 @end
 

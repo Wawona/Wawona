@@ -632,7 +632,9 @@ struct WWNMachineEditorView: View {
       .font(.caption)
       .foregroundStyle(.secondary)
       .lineLimit(3)
+      #if !os(tvOS)
       .textSelection(.enabled)
+      #endif
 
       HStack(spacing: 10) {
         #if os(tvOS)

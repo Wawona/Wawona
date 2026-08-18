@@ -315,7 +315,7 @@ jobs:
           ls -la dist/macos-app/
           ls -la dist/macos-app/Wawona.app/Contents/Resources/bin/ | head -40
 
-      - name: Verify macOS Mode A and Mode B bundles
+      - name: Verify macOS Mode B bundles
         run: |
           ./.github/scripts/verify-iland-graphics-bundle.sh --platform macos dist/macos-app/Wawona.app
           mkdir -p dist/macos-desktop-host

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Verify Mode B libwayland-mac.dylib packaging rules:
-#   - wawona-macos (store-safe / default): dylib MUST be absent
-#   - wawona-macos-desktop-host: dylib MUST be present
-#   - iOS / Android app roots: dylib MUST be absent
+#   - wawona-macos and wawona-macos-desktop-host (3rd-party macOS): dylib MUST
+#     be present. macOS is not App Store constrained.
+#   - iOS / Android app roots: dylib MUST be absent (store-safe Mode A)
 #
 # Usage:
 #   verify-iland-mode-b-bundle.sh --mode absent  /path/to/Wawona.app

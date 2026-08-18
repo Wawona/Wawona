@@ -1279,6 +1279,8 @@ EOF
             echo "Wawona app bundle removed from /Applications if present."
           '';
           wawona-macos = wawona-macos;
+          # 3rd-party macOS ships Mode B. Same drv as default wawona-macos.
+          wawona-macos-desktop-host = wawona-macos;
 
           coreutils-multicall-macos = coreutils-multicall-macos;
           wawona-ios = wawona-ios-app-sim;
@@ -1304,6 +1306,7 @@ EOF
           wawona-ios-xcarchive = wawona-ios-xcarchive;
           wawona-ios-simulator = wawona-ios-simulator;
           wawona-macos-backend = backend-macos;
+          wawona-macos-backend-desktop-host = backend-macos;
 
           wawona-macos-xcode-env = backend-macos;
           wawona-ios-backend = backend-ios;
