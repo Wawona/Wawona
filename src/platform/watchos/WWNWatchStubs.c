@@ -269,3 +269,25 @@ void wwn_ios_refresh_bundle_env(void) {}
 /* Weak fallback; real definition is in libwawona-pty.a. */
 __attribute__((weak))
 void wwn_pty_ios_allow_new_shell_session(void) {}
+
+/* wwn-wasm is size-gated off watchOS, so there is no libwawona_wasm.a.
+ * libwwn-pty dispatch still references these when -u pulls dispatch.o.
+ * Darwin treats those externs as strong undefs. Weak stubs keep the
+ * companion linking. Do not add -Wl,-u for these on watch. */
+__attribute__((weak))
+int wawona_wasm_run(int argc, char **argv) {
+    (void)argc; (void)argv;
+    return 1;
+}
+
+__attribute__((weak))
+int wawona_wasm_can_run(const char *path) {
+    (void)path;
+    return 0;
+}
+
+__attribute__((weak))
+int wpm_main(int argc, char **argv) {
+    (void)argc; (void)argv;
+    return 1;
+}
