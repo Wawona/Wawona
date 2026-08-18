@@ -4163,6 +4163,7 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
                                                                       targetDescriptor:target
                                                                               returnID:kAutoGenerateReturnID
                                                                          transactionID:kAnyTransactionID];
+      [[NSApplication sharedApplication] disableRelaunchOnLogin];
       AESendMessage(event.aeDesc, NULL, kAENoReply, kAEDefaultTimeout);
     }
     return;
@@ -5872,6 +5873,7 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
                                                                         targetDescriptor:target
                                                                                 returnID:kAutoGenerateReturnID
                                                                            transactionID:kAnyTransactionID];
+        [[NSApplication sharedApplication] disableRelaunchOnLogin];
         AESendMessage(event.aeDesc, NULL, kAENoReply, kAEDefaultTimeout);
       }
       return;

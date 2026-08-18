@@ -1154,7 +1154,7 @@ int main(int argc, char *argv[]) {
       }
       [[NSProcessInfo processInfo] setProcessName:@"Wawona"];
       [NSApplication sharedApplication];
-      [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+      [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
       g_service_host_mode = YES;
       WWNMacAppDelegate *hostDelegate = [[WWNMacAppDelegate alloc] init];
       [NSApp setDelegate:hostDelegate];
