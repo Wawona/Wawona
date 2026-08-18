@@ -2561,6 +2561,11 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
           ? [NSString stringWithFormat:@"input-method=%@\n", keyboardClient]
           : @"";
 #endif
+#if TARGET_OS_IPHONE
+  CGFloat fontSize = [UIFont systemFontSize];
+#else
+  CGFloat fontSize = [NSFont systemFontSize];
+#endif
   NSString *ini = [NSString
       stringWithFormat:@"[core]\n"
                        @"use-pixman=%s\n"
@@ -2577,10 +2582,14 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
                        @"\n"
                        @"[launcher]\n"
                        @"icon=%@\n"
-                       @"path=weston-terminal\n",
+                       @"path=weston-terminal\n"
+                       @"\n"
+                       @"[terminal]\n"
+                       @"font=DejaVuSansM Nerd Font Mono\n"
+                       @"font-size=%.0f\n",
                        usePixman ? "true" : "false", shellClientLine,
                        keyboardLine, backgroundImageLine,
-                       hasTerminalIcon ? terminalIcon : @""];
+                       hasTerminalIcon ? terminalIcon : @"", fontSize];
   NSError *iniErr = nil;
   BOOL wrote = [ini writeToFile:@(configPath)
                      atomically:YES
@@ -3398,17 +3407,27 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       monoTtf =
           [fontDir stringByAppendingPathComponent:@"truetype/DejaVuSansMono.ttf"];
     }
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+    CGFloat fontSize = [UIFont systemFontSize];
+#else
+    CGFloat fontSize = [NSFont systemFontSize];
+#endif
     NSString *fontSpec = [fm fileExistsAtPath:monoTtf]
-                             ? [NSString stringWithFormat:@"%@:size=14", monoTtf]
-                             : @"monospace:size=14";
+                             ? [NSString stringWithFormat:@"DejaVuSansM Nerd Font Mono:size=%.1f", fontSize]
+                             : [NSString stringWithFormat:@"monospace:size=%.1f", fontSize];
     NSString *ini = [NSString
         stringWithFormat:@"[main]\n"
                           "term=xterm-256color\n"
                           "font=%@\n"
                           "dpi-aware=yes\n"
+                          "letter-spacing=0\n"
                           "\n"
                           "[tweak]\n"
-                          "font-monospace-warn=no\n",
+                          "font-monospace-warn=no\n"
+                          "\n"
+                          "[key-bindings]\n"
+                          "clipboard-copy=Super+c\n"
+                          "clipboard-paste=Super+v\n",
                          fontSpec];
     [ini writeToFile:iniPath
           atomically:YES
@@ -3487,18 +3506,28 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   }
   NSString *iniPath =
       [runtimeDir stringByAppendingPathComponent:@"wawona-foot.ini"];
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+  CGFloat fontSize = [UIFont systemFontSize];
+#else
+  CGFloat fontSize = [NSFont systemFontSize];
+#endif
   NSString *fontSpec = [fm fileExistsAtPath:monoTtf]
-                           ? [NSString stringWithFormat:@"%@:size=12", monoTtf]
-                           : @"monospace:size=12";
+                           ? [NSString stringWithFormat:@"DejaVuSansM Nerd Font Mono:size=%.1f", fontSize]
+                           : [NSString stringWithFormat:@"monospace:size=%.1f", fontSize];
   NSString *ini = [NSString
       stringWithFormat:
           @"[main]\n"
            "term=xterm-256color\n"
            "font=%@\n"
            "dpi-aware=yes\n"
+           "letter-spacing=0\n"
            "\n"
            "[tweak]\n"
-           "font-monospace-warn=no\n",
+           "font-monospace-warn=no\n"
+           "\n"
+           "[key-bindings]\n"
+           "clipboard-copy=Super+c\n"
+           "clipboard-paste=Super+v\n",
           fontSpec];
   NSError *iniErr = nil;
   if (![ini writeToFile:iniPath

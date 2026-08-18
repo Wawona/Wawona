@@ -617,21 +617,13 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
     @"labwc",
     @"cosmic-comp",
     @"cosmic_comp",
-    @" gnome-shell",
-    @"gnome-shell ",
-    @"/gnome-shell",
-    @" mutter",
-    @"/mutter",
-    @" kwin",
-    @"/kwin",
-    @" niri",
-    @"/niri",
-    @" river",
-    @"/river",
-    @" sway",
-    @"/sway",
-    @" tinywl",
-    @" wf-panel",
+    @"gnome-shell",
+    @"mutter",
+    @"kwin",
+    @"niri",
+    @"river",
+    @"tinywl",
+    @"wf-panel",
   ];
   for (NSString *hint in nestedHints) {
     if ([lower containsString:hint]) {
@@ -662,43 +654,7 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
 }
 
 + (BOOL)profileEligibleForAppBridge:(WWNMachineProfile *)profile {
-  // Local-only native machines only.
-  if (![profile.type isEqualToString:kWWNMachineTypeNative]) {
-    return NO;
-  }
-  NSDictionary *so =
-      [profile.settingsOverrides isKindOfClass:[NSDictionary class]]
-          ? profile.settingsOverrides
-          : @{};
-  NSString *cid = [so[@"NativeClientId"] isKindOfClass:[NSString class]]
-                      ? so[@"NativeClientId"]
-                      : @"";
-  NSString *cmd = [so[@"NativeCustomCommand"] isKindOfClass:[NSString class]]
-                      ? so[@"NativeCustomCommand"]
-                      : @"";
-
-  // Preset weston client: the nested compositor path.
-  if ([cid isEqualToString:@"weston"]) {
-    return YES;
-  }
-  // Custom command must be weston with a nested wayland backend, and must not be
-  // a demo/toolkit client.
-  if ([cid isEqualToString:@"custom"]) {
-    NSString *lower =
-        [[cmd stringByTrimmingCharactersInSet:
-                  [NSCharacterSet whitespaceAndNewlineCharacterSet]]
-            lowercaseString];
-    if ([lower containsString:@"weston-terminal"] ||
-        [lower containsString:@"weston-simple-shm"]) {
-      return NO;
-    }
-    if ([lower containsString:@"weston"] &&
-        ([lower containsString:@"--backend=wayland"] ||
-         [lower containsString:@"-b wayland"])) {
-      return YES;
-    }
-  }
-  return NO;
+  return [self profileIndicatesNestedCompositor:profile];
 }
 
 + (void)applyMachineToRuntimePrefs:(WWNMachineProfile *)profile {

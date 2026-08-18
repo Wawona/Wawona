@@ -162,15 +162,23 @@
     return NO;
   }
 
-  NSString *weston = WWNWawonaFindBundledExecutable(@"weston");
-  if (weston.length == 0) {
+  NSDictionary *so = [profile.settingsOverrides isKindOfClass:[NSDictionary class]]
+                         ? profile.settingsOverrides
+                         : @{};
+  NSString *clientId = [so[@"NativeClientId"] isKindOfClass:[NSString class]]
+                           ? so[@"NativeClientId"]
+                           : @"weston";
+  if (clientId.length == 0) clientId = @"weston";
+
+  NSString *executablePath = WWNWawonaFindBundledExecutable(clientId);
+  if (executablePath.length == 0) {
     if (error) {
       *error = [NSError
           errorWithDomain:@"WWNDesktopReplacement"
                      code:4
                  userInfo:@{
                    NSLocalizedDescriptionKey :
-                       @"Bundled weston executable not found."
+                       [NSString stringWithFormat:@"Bundled %@ executable not found.", clientId]
                  }];
     }
     return NO;
@@ -190,33 +198,57 @@
 
   NSString *socketName = [WWNPreferencesManager preferredNestedSocketName];
   NSString *configPath = [xdg stringByAppendingPathComponent:@"weston-modeb.ini"];
-  // Minimal DRM weston.ini; Mode B presents via framebufferd, not pixman.
-  NSString *ini = @"[core]\n"
-                   @"backend=drm-backend.so\n"
-                   @"shell=desktop-shell.so\n"
-                   @"\n"
-                   @"[shell]\n"
-                   @"locking=false\n";
-  [ini writeToFile:configPath
-        atomically:YES
-          encoding:NSUTF8StringEncoding
-             error:nil];
+  if ([clientId isEqualToString:@"weston"]) {
+    // Minimal DRM weston.ini; Mode B presents via framebufferd, not pixman.
+  #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+    CGFloat fontSize = [UIFont systemFontSize];
+  #else
+    CGFloat fontSize = [NSFont systemFontSize];
+  #endif
+    NSString *ini = [NSString
+        stringWithFormat:@"[core]\n"
+                          "backend=drm-backend.so\n"
+                          "shell=desktop-shell.so\n"
+                          "\n"
+                          "[shell]\n"
+                          "locking=false\n"
+                          "\n"
+                          "[terminal]\n"
+                          "font=DejaVuSansM Nerd Font Mono\n"
+                          "font-size=%.0f\n",
+                         fontSize];
+    [ini writeToFile:configPath
+          atomically:YES
+            encoding:NSUTF8StringEncoding
+               error:nil];
+  }
 
   // Privileged launch: Mode B constructor requires root (wayland_mac_load).
   // osascript shows the standard admin dialog; weston is backgrounded so the
   // AppleScript returns the PID immediately (CoreBedtime run-weston.sh model).
   NSString *logPath =
       [NSTemporaryDirectory() stringByAppendingPathComponent:@"wawona-modeb.log"];
-  NSString *shellCmd = [NSString
-      stringWithFormat:
-          @"export DYLD_INSERT_LIBRARIES=%@; "
-          @"export XDG_RUNTIME_DIR=%@; "
-          @"nohup %@ --backend=drm --continue-without-input "
-          @"--socket=%@ --shell=desktop-shell.so --config=%@ "
-          @">%@ 2>&1 & echo $!",
-          [self wwnShellQuote:dylib], [self wwnShellQuote:xdg],
-          [self wwnShellQuote:weston], [self wwnShellQuote:socketName],
-          [self wwnShellQuote:configPath], [self wwnShellQuote:logPath]];
+  NSString *shellCmd;
+  if ([clientId isEqualToString:@"niri"]) {
+    shellCmd = [NSString
+        stringWithFormat:
+            @"export DYLD_INSERT_LIBRARIES=%@; "
+            @"export XDG_RUNTIME_DIR=%@; "
+            @"nohup %@ >%@ 2>&1 & echo $!",
+            [self wwnShellQuote:dylib], [self wwnShellQuote:xdg],
+            [self wwnShellQuote:executablePath], [self wwnShellQuote:logPath]];
+  } else {
+    shellCmd = [NSString
+        stringWithFormat:
+            @"export DYLD_INSERT_LIBRARIES=%@; "
+            @"export XDG_RUNTIME_DIR=%@; "
+            @"nohup %@ --backend=drm --continue-without-input "
+            @"--socket=%@ --shell=desktop-shell.so --config=%@ "
+            @">%@ 2>&1 & echo $!",
+            [self wwnShellQuote:dylib], [self wwnShellQuote:xdg],
+            [self wwnShellQuote:executablePath], [self wwnShellQuote:socketName],
+            [self wwnShellQuote:configPath], [self wwnShellQuote:logPath]];
+  }
 
   NSString *osa =
       [NSString stringWithFormat:@"do shell script %@ with administrator "
@@ -238,8 +270,8 @@
                                             code:5
                                         userInfo:@{
                                           NSLocalizedDescriptionKey :
-                                              @"Failed to launch Mode B weston "
-                                              @"via administrator privileges."
+                                              [NSString stringWithFormat:@"Failed to launch Mode B %@ "
+                                              @"via administrator privileges.", clientId]
                                         }];
     }
     return NO;
@@ -270,9 +302,9 @@
 
   self.modeBPid = pid;
   self.modeBMachineId = [profile.machineId copy];
-  NSLog(@"[DesktopReplacement] Mode B engaged pid=%d dylib=%@ weston=%@ "
-        @"machine=%@ log=%@",
-        (int)pid, dylib, weston, profile.machineId, logPath);
+  NSLog(@"[DesktopReplacement] Mode B engaged pid=%d dylib=%@ executable=%@ "
+        @"machineId=%@ log=%@",
+        (int)pid, dylib, executablePath, profile.machineId, logPath);
   return YES;
 }
 

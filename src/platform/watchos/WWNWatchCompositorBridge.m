@@ -624,17 +624,23 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
       monoTtf = [fontDir
           stringByAppendingPathComponent:@"truetype/DejaVuSansMono.ttf"];
     }
+    CGFloat fontSize = [UIFont systemFontSize];
     NSString *fontSpec = [fm fileExistsAtPath:monoTtf]
-                             ? [NSString stringWithFormat:@"%@:size=11", monoTtf]
-                             : @"monospace:size=11";
+                             ? [NSString stringWithFormat:@"DejaVuSansM Nerd Font Mono:size=%.1f", fontSize]
+                             : [NSString stringWithFormat:@"monospace:size=%.1f", fontSize];
     NSString *ini = [NSString
         stringWithFormat:@"[main]\n"
                           "term=xterm-256color\n"
                           "font=%@\n"
                           "dpi-aware=yes\n"
+                          "letter-spacing=0\n"
                           "\n"
                           "[tweak]\n"
-                          "font-monospace-warn=no\n",
+                          "font-monospace-warn=no\n"
+                          "\n"
+                          "[key-bindings]\n"
+                          "clipboard-copy=Super+c\n"
+                          "clipboard-paste=Super+v\n",
                          fontSpec];
     [ini writeToFile:iniPath
           atomically:YES

@@ -822,6 +822,20 @@ pub struct ClipboardBridge {
     pub outgoing_to_client: Option<String>,
 }
 
+/// Bridges Drag and Drop (DnD) state from the host OS into Wayland.
+#[derive(Debug, Default)]
+pub struct DndBridge {
+    /// If an active drag from the host is hovering over a Wayland window, this
+    /// stores the data (e.g. file URIs as `text/uri-list`) dropped from the
+    /// host OS.
+    pub pending_drop_data: Option<String>,
+    /// The MIME types offered for the current drag session (e.g.
+    /// `["text/uri-list", "text/plain;charset=utf-8"]`).
+    pub active_mime_types: Vec<String>,
+    /// Whether a server-initiated DnD grab is currently active.
+    pub active: bool,
+}
+
 /// Collection of seat resources bound by clients.
 /// Delegates to sub-state modules: KeyboardState, PointerState, TouchState.
 #[derive(Debug)]
@@ -1453,6 +1467,8 @@ pub struct CompositorState {
     /// `core::wayland::mod` and `WWNCoreSetClipboardText` /
     /// `WWNCorePollClipboardText` in the FFI layer.
     pub clipboard_bridge: Arc<RwLock<ClipboardBridge>>,
+    /// Bridge for external drag and drop (host to Wayland).
+    pub dnd_bridge: Arc<RwLock<DndBridge>>,
     
     // =========================================================================
     // ID Generators
@@ -1563,6 +1579,7 @@ impl CompositorState {
             protocol_profile,
             smithay_runtime: SmithayRuntimeState::default(),
             clipboard_bridge: Arc::new(RwLock::new(ClipboardBridge::default())),
+            dnd_bridge: Arc::new(RwLock::new(DndBridge::default())),
             next_surface_id: 1,
             next_window_id: 1,
             serial: 0,

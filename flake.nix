@@ -883,13 +883,6 @@
             inherit crate2nix wawonaVersion toolchains nixpkgs;
             workspaceSrc = workspace-src-macos; platform = "macos"; nativeDeps = macosDeps;
             cargoNixDrv = sharedMacosCargoNix;
-          };
-          # Desktop-host Rust backend: enables iland-baremetal + profile-desktop-host
-          # Cargo gates (Mode B). Never used for store-safe / App Store builds.
-          backend-macos-desktop-host = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
-            inherit crate2nix wawonaVersion toolchains nixpkgs;
-            workspaceSrc = workspace-src-macos; platform = "macos"; nativeDeps = macosDeps;
-            cargoNixDrv = sharedMacosCargoNix;
             desktopHost = true;
           };
           backend-ios = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
@@ -1051,28 +1044,7 @@
             # pulling iOS/device backend graphs.
             rustBackend = backend-macos;
             xcodeProject = xcodegenMacosOutputs.project;
-            # Store-safe / default: Mode A only. No Mode B dylib.
-            ilandBaremetal = null;
-          };
-          # Desktop-host macOS: ships Mode B libwayland-mac.dylib for SIP-gated
-          # Desktop Replacement (Developer ID / full-dev; never App Store).
-          wawona-macos-desktop-host = pkgs.callPackage ./dependencies/wawona/macos.nix {
-            buildModule = toolchains; inherit wawonaSrc wawonaVersion;
-            waypipe = toolchains.buildForMacOS "waypipe" { }; weston = toolchains.buildForMacOS "weston" { };
-            moltenvk = toolchains.buildForMacOS "moltenvk" { };
-            kosmickrisp = toolchains.buildForMacOS "kosmickrisp" { };
-            foot = toolchains.buildForMacOS "foot" { };
-            niri = toolchains.buildForMacOS "niri" { };
-            fuzzel = toolchains.buildForMacOS "fuzzel" { };
-            anowaw = toolchains.buildForMacOS "anowaw" { };
-            fastfetch = pkgs.fastfetch;
-            phoon = toolchains.buildForMacOS "phoon" { };
-            wawonaWasm = toolchains.buildForMacOS "wawona-wasm" { };
-            neovim = null;
-            zsh = pkgs.zsh;
-            kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
-            rustBackend = backend-macos-desktop-host;
-            xcodeProject = xcodegenMacosOutputs.project;
+            # Mode B dylib enabled for all macOS builds (Wawona macOS is non-App Store).
             ilandBaremetal = toolchains.buildForMacOS "iland-baremetal" { };
           };
           wawona-ios-app-sim = pkgs.callPackage ./dependencies/wawona/ios.nix {
@@ -1307,7 +1279,7 @@ EOF
             echo "Wawona app bundle removed from /Applications if present."
           '';
           wawona-macos = wawona-macos;
-          wawona-macos-desktop-host = wawona-macos-desktop-host;
+
           coreutils-multicall-macos = coreutils-multicall-macos;
           wawona-ios = wawona-ios-app-sim;
           wawona-ipados = wawona-ipados-app-sim;
@@ -1332,7 +1304,7 @@ EOF
           wawona-ios-xcarchive = wawona-ios-xcarchive;
           wawona-ios-simulator = wawona-ios-simulator;
           wawona-macos-backend = backend-macos;
-          wawona-macos-backend-desktop-host = backend-macos-desktop-host;
+
           wawona-macos-xcode-env = backend-macos;
           wawona-ios-backend = backend-ios;
           wawona-ios-xcode-env = backend-ios;

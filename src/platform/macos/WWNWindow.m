@@ -13,6 +13,11 @@
 @property(nonatomic, strong) NSTimer *wwnCloseForceTimer;
 @end
 
+extern void WWNCoreInjectDragEnter(void *core, uint64_t window_id, double x, double y, const char *mime_types);
+extern void WWNCoreInjectDragMotion(void *core, uint64_t window_id, double x, double y);
+extern void WWNCoreInjectDragDrop(void *core, uint64_t window_id, const char *data);
+extern void WWNCoreInjectDragLeave(void *core, uint64_t window_id);
+
 //
 // WWNView Implementation (macOS)
 //
@@ -41,6 +46,8 @@
     // Prevent NSView from scaling or redrawing contents during resize
     self.layerContentsRedrawPolicy = NSViewLayerContentsRedrawNever;
     self.layerContentsPlacement = NSViewLayerContentsPlacementTopLeft;
+    self.layerContentsRedrawPolicy = NSViewLayerContentsRedrawNever;
+    [self registerForDraggedTypes:@[NSPasteboardTypeFileURL, NSPasteboardTypeString, NSPasteboardTypeURL, NSPasteboardTypeTIFF]];
 
     contentLayer_ = [CALayer layer];
     contentLayer_.geometryFlipped = YES;
@@ -341,7 +348,7 @@
     dy = event.deltaY * 15.0;
     source = 0; // wheel
   }
-  (void)source; // WWNCoreInjectPointerAxis doesn't take a source yet.
+  (void)source; 
 
   if (dx == 0.0 && dy == 0.0) {
     return;
@@ -811,6 +818,158 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
   } else {
     [self addCursorRect:self.bounds cursor:[NSCursor arrowCursor]];
   }
+}
+
+// MARK: - NSDraggingDestination
+
+- (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {
+  NSPoint loc = [self convertPoint:[sender draggingLocation] fromView:nil];
+  WWNWindow *win = (WWNWindow *)self.window;
+  if (win) {
+    // Build MIME types from the pasteboard content so the Wayland client
+    // receives an accurate offer and can decide whether to accept.
+    NSPasteboard *pboard = [sender draggingPasteboard];
+    NSMutableArray<NSString *> *mimes = [NSMutableArray array];
+
+    // File / URL types → text/uri-list (primary DnD transfer MIME type)
+    if ([pboard availableTypeFromArray:@[NSPasteboardTypeFileURL, NSPasteboardTypeURL]]) {
+      [mimes addObject:@"text/uri-list"];
+      [mimes addObject:@"text/plain;charset=utf-8"];
+      [mimes addObject:@"text/plain"];
+    }
+    // Plain text
+    if ([pboard availableTypeFromArray:@[NSPasteboardTypeString]]) {
+      if (![mimes containsObject:@"text/plain;charset=utf-8"]) {
+        [mimes addObject:@"text/plain;charset=utf-8"];
+      }
+      if (![mimes containsObject:@"text/plain"]) {
+        [mimes addObject:@"text/plain"];
+      }
+    }
+    // Image data (TIFF is macOS's native pasteboard image type)
+    if ([pboard availableTypeFromArray:@[NSPasteboardTypeTIFF, NSPasteboardTypePNG]]) {
+      [mimes addObject:@"image/png"];
+      // Also offer as URI since we'll write to a temp file
+      if (![mimes containsObject:@"text/uri-list"]) {
+        [mimes addObject:@"text/uri-list"];
+      }
+    }
+    // Fallback — always offer at least text/plain
+    if (mimes.count == 0) {
+      [mimes addObject:@"text/plain"];
+    }
+
+    NSString *mimeStr = [mimes componentsJoinedByString:@","];
+    [[WWNCompositorBridge sharedBridge] injectDragEnterForWindow:win.wwnWindowId x:loc.x y:loc.y mimeTypes:mimeStr];
+  }
+  return NSDragOperationCopy;
+}
+
+- (NSDragOperation)draggingUpdated:(id<NSDraggingInfo>)sender {
+  NSPoint loc = [self convertPoint:[sender draggingLocation] fromView:nil];
+  WWNWindow *win = (WWNWindow *)self.window;
+  if (win) {
+    [[WWNCompositorBridge sharedBridge] injectDragMotionForWindow:win.wwnWindowId x:loc.x y:loc.y];
+  }
+  return NSDragOperationCopy;
+}
+
+- (void)draggingExited:(id<NSDraggingInfo>)sender {
+  WWNWindow *win = (WWNWindow *)self.window;
+  if (win) {
+    [[WWNCompositorBridge sharedBridge] injectDragLeaveForWindow:win.wwnWindowId];
+  }
+}
+
+- (BOOL)performDragOperation:(id<NSDraggingInfo>)sender {
+  NSPasteboard *pboard = [sender draggingPasteboard];
+  NSArray *urls = [pboard readObjectsForClasses:@[[NSURL class]] options:nil];
+  NSMutableString *uriList = [NSMutableString string];
+  
+  if (urls.count > 0) {
+    for (NSURL *url in urls) {
+      // Use absoluteString which is already properly percent-encoded
+      NSURL *filePathUrl = [url filePathURL];
+      if (filePathUrl) {
+        [uriList appendFormat:@"%@\r\n", filePathUrl.absoluteString];
+      } else {
+        [uriList appendFormat:@"%@\r\n", url.absoluteString];
+      }
+    }
+  } else {
+    // Try to read a string
+    NSArray *strings = [pboard readObjectsForClasses:@[[NSString class]] options:nil];
+    if (strings.count > 0) {
+      [uriList appendString:strings.firstObject];
+    } else {
+      // Try to read an image — convert to PNG (universally understood by
+      // Wayland clients, unlike TIFF which is macOS-specific)
+      NSArray *images = [pboard readObjectsForClasses:@[[NSImage class]] options:nil];
+      if (images.count > 0) {
+        NSImage *image = images.firstObject;
+        NSBitmapImageRep *rep = nil;
+        for (NSImageRep *r in image.representations) {
+          if ([r isKindOfClass:[NSBitmapImageRep class]]) {
+            rep = (NSBitmapImageRep *)r;
+            break;
+          }
+        }
+        if (!rep) {
+          // Fallback: render the image into a bitmap
+          CGSize sz = image.size;
+          rep = [[NSBitmapImageRep alloc]
+              initWithBitmapDataPlanes:NULL
+                            pixelsWide:(NSInteger)sz.width
+                            pixelsHigh:(NSInteger)sz.height
+                         bitsPerSample:8
+                       samplesPerPixel:4
+                              hasAlpha:YES
+                              isPlanar:NO
+                        colorSpaceName:NSCalibratedRGBColorSpace
+                           bytesPerRow:0
+                          bitsPerPixel:0];
+          if (rep) {
+            [NSGraphicsContext saveGraphicsState];
+            NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep];
+            [NSGraphicsContext setCurrentContext:ctx];
+            [image drawAtPoint:NSZeroPoint fromRect:NSMakeRect(0, 0, sz.width, sz.height)
+                     operation:NSCompositingOperationCopy fraction:1.0];
+            [NSGraphicsContext restoreGraphicsState];
+          }
+        }
+        if (rep) {
+          NSData *pngData = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+          if (pngData) {
+            NSString *tmpPath = [NSTemporaryDirectory() stringByAppendingPathComponent:[[NSUUID UUID] UUIDString]];
+            tmpPath = [tmpPath stringByAppendingPathExtension:@"png"];
+            [pngData writeToFile:tmpPath atomically:YES];
+            NSURL *tmpUrl = [NSURL fileURLWithPath:tmpPath];
+            [uriList appendFormat:@"%@\r\n", tmpUrl.absoluteString];
+          }
+        }
+        if (uriList.length == 0) {
+          WWNWindow *win = (WWNWindow *)self.window;
+          if (win) {
+            [[WWNCompositorBridge sharedBridge] injectDragLeaveForWindow:win.wwnWindowId];
+          }
+          return NO;
+        }
+      } else {
+        WWNWindow *win = (WWNWindow *)self.window;
+        if (win) {
+          [[WWNCompositorBridge sharedBridge] injectDragLeaveForWindow:win.wwnWindowId];
+        }
+        return NO;
+      }
+    }
+  }
+  
+  WWNWindow *win = (WWNWindow *)self.window;
+  if (win) {
+    [[WWNCompositorBridge sharedBridge] injectDragDropForWindow:win.wwnWindowId data:uriList];
+  }
+  
+  return YES;
 }
 
 @end

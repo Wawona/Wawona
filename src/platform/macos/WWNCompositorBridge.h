@@ -125,6 +125,11 @@ typedef struct {
 
 - (void)injectKeyboardLeaveForWindow:(uint64_t)windowId;
 
+- (void)injectDragEnterForWindow:(uint64_t)windowId x:(double)x y:(double)y mimeTypes:(NSString *)mimeTypes;
+- (void)injectDragMotionForWindow:(uint64_t)windowId x:(double)x y:(double)y;
+- (void)injectDragDropForWindow:(uint64_t)windowId data:(NSString *)data;
+- (void)injectDragLeaveForWindow:(uint64_t)windowId;
+
 - (void)injectWindowResize:(uint64_t)windowId
                      width:(uint32_t)width
                     height:(uint32_t)height;

@@ -465,7 +465,7 @@ static uint32_t WWNBridgeFrameTimestampMs(void *core) {
   return (uint32_t)(CACurrentMediaTime() * 1000.0);
 }
 
-// Marks blocks running on _compositorQueue (reentrancy + pump routing).
+// Marks blocks running on _compositorThread (reentrancy + pump routing).
 static void *const kWWNCompositorQueueKey = (void *)&kWWNCompositorQueueKey;
 
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
@@ -523,6 +523,22 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
 }
 #endif
 
+@interface WWNCompositorThread : NSThread
+@property (nonatomic, strong) NSRunLoop *runLoop;
+@end
+
+@implementation WWNCompositorThread
+- (void)main {
+    @autoreleasepool {
+        self.runLoop = [NSRunLoop currentRunLoop];
+        [self.runLoop addPort:[NSMachPort port] forMode:NSDefaultRunLoopMode];
+        while (!self.isCancelled) {
+            [self.runLoop runMode:NSDefaultRunLoopMode beforeDate:[NSDate distantFuture]];
+        }
+    }
+}
+@end
+
 @implementation WWNCompositorBridge {
   void *_rustCore;
   NSTimer *_eventTimer;
@@ -538,11 +554,11 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   // Serial queue for all Rust FFI calls. Keeps heavy compositor work
   // (Wayland dispatch, buffer processing, scene graph building) off the
   // main thread so UIKit/AppKit stays responsive.
-  dispatch_queue_t _compositorQueue;
+  WWNCompositorThread *_compositorThread;
 
   // Guards against frame pile-up: when YES, a compositor tick is in
   // flight and the next CADisplayLink/NSTimer callback is skipped.
-  // Atomic because it is written on _compositorQueue and read on the
+  // Atomic because it is written on _compositorThread and read on the
   // main thread; without barriers, ARM64 weak ordering can cause the
   // main thread to read a stale YES and skip ticks indefinitely.
   atomic_bool _compositorBusy;
@@ -677,11 +693,10 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     // High-priority serial queue for all Rust compositor FFI work.
     // USER_INTERACTIVE QoS ensures low-latency event processing while
     // keeping the main thread free for UI.
-    dispatch_queue_attr_t attr = dispatch_queue_attr_make_with_qos_class(
-        DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INTERACTIVE, 0);
-    _compositorQueue = dispatch_queue_create("com.wawona.compositor", attr);
-    dispatch_queue_set_specific(_compositorQueue, kWWNCompositorQueueKey,
-                                kWWNCompositorQueueKey, NULL);
+    _compositorThread = [[WWNCompositorThread alloc] init];
+    [_compositorThread setName:@"com.wawona.compositor"];
+    [_compositorThread setQualityOfService:NSQualityOfServiceUserInteractive];
+    [_compositorThread start];
 
     WWNLog("BRIDGE", @"WWNCore created successfully via C API!");
     _windows = [NSMutableDictionary dictionary];
@@ -839,12 +854,12 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   WWNLog("BRIDGE", @"Starting compositor...");
 
   __block bool success = false;
-  if (_compositorQueue) {
+  if (_compositorThread) {
     // Ensure any pre-start configuration enqueued via _dispatchToRust
     // (e.g. setOutputWidth/setForceSSD from main.m) is applied before start.
-    dispatch_sync(_compositorQueue, ^{
+    [self _dispatchSyncToCompositor:^{
       success = WWNCoreStart(self->_rustCore, name);
-    });
+    }];
   } else {
     success = WWNCoreStart(_rustCore, name);
   }
@@ -945,10 +960,10 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   //    then stop the Rust compositor.  dispatch_sync is safe here because
   //    the in-flight tick only uses dispatch_async to bounce back to main
   //    (no deadlock. The async block will simply run after we return).
-  if (_rustCore && _compositorQueue) {
+  if (_rustCore && _compositorThread) {
     dispatch_semaphore_t stopSem = dispatch_semaphore_create(0);
     __block bool stopped = false;
-    dispatch_async(_compositorQueue, ^{
+    [self _dispatchAsyncToCompositor:^{
       if (self->_rustCore) {
         WWNCoreStop(self->_rustCore);
         self->_rustCore = NULL;
@@ -956,7 +971,7 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
         WWNLog("BRIDGE", @"Compositor stopped on compositor queue");
       }
       dispatch_semaphore_signal(stopSem);
-    });
+    }];
     dispatch_semaphore_wait(
         stopSem, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)));
     if (!stopped && _rustCore) {
@@ -1282,14 +1297,14 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
 
 /// Called from CADisplayLink (iOS) or NSTimer (macOS).  The callback fires
 /// on the main thread but we immediately dispatch the heavy Rust work to
-/// _compositorQueue, then bounce lightweight UI updates back to main.
+/// _compositorThread, then bounce lightweight UI updates back to main.
 - (void)_compositorTick {
   if (!_rustCore || atomic_load(&_compositorBusy)) {
     return;
   }
   atomic_store(&_compositorBusy, true);
 
-  dispatch_async(_compositorQueue, ^{
+  [self _dispatchAsyncToCompositor:^{
     // Guard: compositor may have been stopped between dispatch and execution
     if (!self->_rustCore) {
       atomic_store(&self->_compositorBusy, false);
@@ -1525,7 +1540,7 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
       // tick cannot mutate _bufferCache while we are still reading it.
       atomic_store(&self->_compositorBusy, false);
     });
-  });
+  }];
 }
 
 /// Runs on CADisplayLink (vsync-aligned frame callback). IOS and macOS 14+
@@ -2448,11 +2463,34 @@ extern void WWNCoreInject_touch_frame(void *core);
 /// All Rust FFI calls (input injection, configuration changes, etc.) go
 /// through here so they are serialized with the compositor tick and never
 /// contend for Rust-internal locks on the main thread.
+- (void)_runBlock:(dispatch_block_t)block {
+  block();
+}
+
 - (void)_dispatchToRust:(dispatch_block_t)block {
-  if (_compositorQueue) {
-    dispatch_async(_compositorQueue, block);
+  [self _dispatchAsyncToCompositor:block];
+}
+
+- (void)_dispatchAsyncToCompositor:(dispatch_block_t)block {
+  if (_compositorThread) {
+    if ([NSThread currentThread] == _compositorThread) {
+      block();
+    } else {
+      [self performSelector:@selector(_runBlock:) onThread:_compositorThread withObject:[block copy] waitUntilDone:NO];
+    }
   } else {
-    // Fallback: queue not yet created (should not happen in practice)
+    block();
+  }
+}
+
+- (void)_dispatchSyncToCompositor:(dispatch_block_t)block {
+  if (_compositorThread) {
+    if ([NSThread currentThread] == _compositorThread) {
+      block();
+    } else {
+      [self performSelector:@selector(_runBlock:) onThread:_compositorThread withObject:[block copy] waitUntilDone:YES];
+    }
+  } else {
     block();
   }
 }
@@ -2943,13 +2981,13 @@ extern void WWNCoreInject_touch_frame(void *core);
 }
 
 - (BOOL)requestHostCloseForWindowId:(uint64_t)windowId {
-  if (!_rustCore || !_compositorQueue) {
+  if (!_rustCore || !_compositorThread) {
     return NO;
   }
   __block BOOL found = NO;
-  dispatch_sync(_compositorQueue, ^{
+  [self _dispatchSyncToCompositor:^{
     found = WWNCoreRequestWindowClose(self->_rustCore, windowId);
-  });
+  }];
   return found;
 }
 
@@ -3101,13 +3139,13 @@ extern void WWNCoreInject_touch_frame(void *core);
 #endif
 
 - (BOOL)requestForceDestroyHostWindowForWindowId:(uint64_t)windowId {
-  if (!_rustCore || !_compositorQueue) {
+  if (!_rustCore || !_compositorThread) {
     return NO;
   }
   __block BOOL ok = NO;
-  dispatch_sync(_compositorQueue, ^{
+  [self _dispatchSyncToCompositor:^{
     ok = WWNCoreForceDestroyHostWindow(self->_rustCore, windowId);
-  });
+  }];
   if (ok) {
     dispatch_async(dispatch_get_main_queue(), ^{
       [self pollAndHandleWindowEvents];
@@ -5028,8 +5066,8 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
     pump();
     return;
   }
-  if (_compositorQueue) {
-    dispatch_sync(_compositorQueue, pump);
+  if (_compositorThread) {
+    [self _dispatchSyncToCompositor:pump];
   } else {
     pump();
   }
@@ -5129,15 +5167,15 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
 
 /// Stop rendering into live compositor views before native clients exit.
 - (void)tearDownActiveIOSCompositorViews {
-  if (_rustCore && _compositorQueue) {
-    dispatch_sync(_compositorQueue, ^{
+  if (_rustCore && _compositorThread) {
+    [self _dispatchSyncToCompositor:^{
       uint32_t disconnected = WWNCoreDisconnectAllClients(self->_rustCore);
       if (disconnected > 0) {
         WWNLog("BRIDGE", @"Disconnected %u in-process Wayland client(s)",
                disconnected);
       }
       WWNCoreFlushClients(self->_rustCore);
-    });
+    }];
   }
 
   for (NSNumber *key in [_windows copy]) {
@@ -5608,14 +5646,14 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
                                                 ? @" (shell)"
                                                 : @""]
                : @" (client-preferred size)");
-    if (_compositorQueue) {
-      dispatch_sync(_compositorQueue, ^{
+    if (_compositorThread) {
+      [self _dispatchSyncToCompositor:^{
         WWNCoreSetWindowActivatedSilent(self->_rustCore, windowId, true);
         if (injectFillConfigure) {
           WWNCoreInjectWindowResize(self->_rustCore, windowId, w, h);
         }
         WWNCoreFlushClients(self->_rustCore);
-      });
+      }];
     } else {
       WWNCoreSetWindowActivatedSilent(_rustCore, windowId, true);
       if (injectFillConfigure) {
@@ -5640,10 +5678,10 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
         !event->host_locked && [bundledClient isEqualToString:@"niri"];
     if (needsCompositorKeyboard) {
       [self injectKeyboardEnterForWindow:windowId keys:@[]];
-      if (_compositorQueue) {
-        dispatch_sync(_compositorQueue, ^{
+      if (_compositorThread) {
+        [self _dispatchSyncToCompositor:^{
           WWNCoreFlushClients(self->_rustCore);
-        });
+        }];
       } else {
         WWNCoreFlushClients(_rustCore);
       }

@@ -169,7 +169,7 @@
     WWNDesktopReplacementController *desktop =
         [WWNDesktopReplacementController sharedController];
     if ([desktop shouldEngageModeB] && [desktop isDesktopMachine:profile] &&
-        [clientId isEqualToString:@"weston"]) {
+        ([clientId isEqualToString:@"weston"] || [clientId isEqualToString:@"niri"])) {
       NSError *modeBError = nil;
       if (![desktop engageForProfile:profile error:&modeBError]) {
         if (error) {

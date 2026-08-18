@@ -2818,11 +2818,202 @@ impl WawonaCore {
     // Window Management
     // =========================================================================
 
-    /// Resize a window.
+    /// Start a compositor-initiated (server) DnD grab.
     ///
-    /// For xdg toplevels: sends **per-client** `wl_output` / `xdg_output` geometry (so nested
-    /// compositors see the drawable size), then `xdg_toplevel.configure` for that surface only.
-    /// Fullscreen-shell surfaces still use a global output mode update (see branch below).
+    /// Called when the host OS reports a drag entered the Wayland window.
+    /// Sets up Smithay's `ServerDnDGrab`, which intercepts pointer events
+    /// and sends `wl_data_device.enter/motion/leave/drop` to the focused
+    /// Wayland client.
+    pub fn inject_drag_enter(&self, window_id: WindowId, x: f64, y: f64, mime_types: String) {
+        if let Ok(mut state) = self.state.write() {
+            // Store the offered MIME types so `ServerDndGrabHandler::send` can
+            // serve the right content when the client calls `wl_data_offer.receive`.
+            if let Ok(mut bridge) = state.dnd_bridge.write() {
+                bridge.active_mime_types = mime_types.split(',').map(|s| s.trim().to_string()).collect();
+                bridge.active = true;
+                bridge.pending_drop_data = None;
+                tracing::debug!(
+                    "DnD enter: window={}, pos=({}, {}), mimes={:?}",
+                    window_id.id, x, y, bridge.active_mime_types
+                );
+            }
+
+            let dh = if let Some(ref d) = state.smithay_runtime.display_handle {
+                d.clone()
+            } else {
+                return;
+            };
+            if let Some(ref seat) = state.smithay_runtime.seat.clone() {
+                let focus = state.get_window(window_id.id.try_into().unwrap())
+                    .and_then(|w| state.get_surface(w.read().unwrap().surface_id))
+                    .and_then(|s| s.read().unwrap().resource.clone());
+
+                if let Some(surface) = focus {
+                    use smithay::input::pointer::GrabStartData as PointerGrabStartData;
+                    use smithay::wayland::selection::data_device::{start_dnd, SourceMetadata};
+                    use wayland_server::protocol::wl_data_device_manager::DndAction;
+
+                    let parsed_mimes: Vec<String> = mime_types
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+
+                    let metadata = SourceMetadata {
+                        mime_types: parsed_mimes,
+                        dnd_action: DndAction::Copy,
+                    };
+
+                    let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                    let time_ms = {
+                        use std::time::{SystemTime, UNIX_EPOCH};
+                        SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .map(|d| d.as_millis() as u32)
+                            .unwrap_or(0)
+                    };
+                    let (sx, sy) = platform_pointer_surface_local(&state, window_id, x, y);
+
+                    let start_data = PointerGrabStartData {
+                        // The coordinate system is relative to (0.0, 0.0) for this window's surface
+                        focus: Some((surface, (0.0, 0.0).into())),
+                        button: 0x110, // BTN_LEFT — matches the button the grab tracks
+                        location: (sx, sy).into(),
+                    };
+
+                    start_dnd(
+                        &dh,
+                        seat,
+                        &mut *state,
+                        serial,
+                        Some(start_data),
+                        None,
+                        metadata,
+                    );
+                } else {
+                    tracing::warn!("DnD enter: no surface found for window {}", window_id.id);
+                }
+            }
+        }
+        // Flush so the client receives the enter event + data offer immediately,
+        // giving it a chance to call set_actions before the drop arrives.
+        self.flush_clients();
+    }
+
+    /// Forward pointer motion during an active host DnD drag.
+    ///
+    /// The active `ServerDnDGrab` intercepts this and sends
+    /// `wl_data_device.motion` to the client.
+    pub fn inject_drag_motion(&self, window_id: WindowId, x: f64, y: f64) {
+        let mut state = self.state.write_recover();
+        
+        let focus = state.get_window(window_id.id.try_into().unwrap())
+            .and_then(|w| state.get_surface(w.read().unwrap().surface_id))
+            .and_then(|s| s.read().unwrap().resource.clone());
+
+        let seat = state.smithay_runtime.seat.clone().unwrap();
+        let pointer = seat.get_pointer().unwrap();
+
+        let time_ms = {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_millis() as u32)
+                .unwrap_or(0)
+        };
+        let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+
+        let (sx, sy) = platform_pointer_surface_local(&state, window_id, x, y);
+
+        let event = smithay::input::pointer::MotionEvent {
+            location: (sx, sy).into(),
+            serial,
+            time: time_ms,
+        };
+
+        if let Some(surface) = focus {
+            pointer.motion(&mut *state, Some((surface, (0.0, 0.0).into())), &event);
+        } else {
+            pointer.motion(&mut *state, None, &event);
+        }
+        drop(state);
+        self.flush_clients();
+    }
+
+    /// Complete the host DnD drop.
+    ///
+    /// Stores the drop data (URI list, text, etc.) in `DndBridge` so that
+    /// `ServerDndGrabHandler::send` can write it into the client's fd when
+    /// the client calls `wl_data_offer.receive`.  Then releases the virtual
+    /// button to trigger Smithay's `ServerDnDGrab::unset` → `drop()`.
+    pub fn inject_drag_drop(&self, _window_id: WindowId, data: String) {
+        tracing::debug!("DnD drop: data len={}", data.len());
+        let mut state = self.state.write_recover();
+        if let Ok(mut bridge) = state.dnd_bridge.write() {
+            bridge.pending_drop_data = Some(data);
+        }
+        if let Some(seat) = state.smithay_runtime.seat.clone() {
+            if let Some(pointer) = seat.get_pointer() {
+                let time_ms = {
+                    use std::time::{SystemTime, UNIX_EPOCH};
+                    SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .map(|d| d.as_millis() as u32)
+                        .unwrap_or(0)
+                };
+                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                let event = smithay::input::pointer::ButtonEvent {
+                    button: 0x110, // BTN_LEFT — must match start_data.button
+                    state: smithay::backend::input::ButtonState::Released,
+                    serial,
+                    time: time_ms,
+                };
+                pointer.button(&mut *state, &event);
+            }
+        }
+        drop(state);
+        self.flush_clients();
+    }
+
+    /// Cancel/leave a host DnD drag without dropping.
+    pub fn inject_drag_leave(&self, _window_id: WindowId) {
+        let mut state = self.state.write_recover();
+        if let Ok(mut bridge) = state.dnd_bridge.write() {
+            bridge.active = false;
+        }
+
+        let seat = state.smithay_runtime.seat.clone().unwrap();
+        let pointer = seat.get_pointer().unwrap();
+        let time_ms = {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_millis() as u32)
+                .unwrap_or(0)
+        };
+        let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+
+        // Send a motion event with no focus to make the grab send a leave event to the client
+        let motion_event = smithay::input::pointer::MotionEvent {
+            location: (0.0, 0.0).into(),
+            serial,
+            time: time_ms,
+        };
+        pointer.motion(&mut *state, None, &motion_event);
+
+        // Then release the button to unset the grab
+        let rel_event = smithay::input::pointer::ButtonEvent {
+            button: 0x110,
+            state: smithay::backend::input::ButtonState::Released,
+            serial: smithay::utils::SERIAL_COUNTER.next_serial(),
+            time: time_ms,
+        };
+        pointer.button(&mut *state, &rel_event);
+
+        drop(state);
+        self.flush_clients();
+    }
+
     pub fn resize_window(&self, window_id: WindowId, width: u32, height: u32) {
         if !self.is_running() {
             return;

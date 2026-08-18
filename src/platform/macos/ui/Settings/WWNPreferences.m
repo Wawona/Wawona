@@ -3,9 +3,12 @@
 #import "../Machines/WWNMachineProfileStore.h"
 #if TARGET_OS_OSX
 #import "WWNSipStatus.h"
+#import "../../WWNLaunchAgentManager.h"
 #import "../Machines/WWNDesktopReplacementController.h"
 #endif
-#import "../../platform/macos/WWNCompositorBridge.h"
+#import "../../WWNCompositorBridge.h"
+#import "../../WWNRootfsProvider.h"
+#import "../Helpers/WWNSSHKeygen.h"
 #import "../../../../util/WWNLog.h"
 #import "../../WWNPlatformCallbacks.h"
 #import "../Helpers/WWNImageLoader.h"
@@ -418,7 +421,7 @@ static UIImage *WWNAboutLogo(void) {
   self.tableView.tableHeaderView =
       [[UIView alloc] initWithFrame:CGRectMake(0, 0, 1.0, 1.0)];
 
-  __weak typeof(self) weakSelf = self;
+  __block typeof(self) weakSelf = self;
   [self registerForTraitChanges:@[ UITraitUserInterfaceStyle.class ]
                     withHandler:^(
                         id<UITraitEnvironment> _Nonnull traitEnvironment,
@@ -451,7 +454,7 @@ static UIImage *WWNAboutLogo(void) {
 
 - (NSArray<WWNPreferencesSection *> *)buildSections {
   NSMutableArray *sects = [NSMutableArray array];
-  __weak typeof(self) weakSelf = self;
+  __block typeof(self) weakSelf = self;
 
   // DISPLAY
   WWNPreferencesSection *display = [[WWNPreferencesSection alloc] init];
@@ -912,17 +915,17 @@ static UIImage *WWNAboutLogo(void) {
                        @"Run Wawona as the macOS desktop by replacing "
                        @"SkyLight/WindowServer via wwn-iland Mode B. Requires "
                        @"SIP partially disabled (not App Store). Pick one "
-                       @"nested-Weston machine below.")];
+                       @"nested-compositor machine below.")];
 
     // Machine picker, populated from the machine profile store. Only local
-    // nested-Weston native machines qualify (App Bridge shares this selection),
+    // nested-compositor native machines qualify (App Bridge shares this selection),
     // so plain Weston demo clients / VM / container / SSH machines are excluded.
     NSArray<WWNMachineProfile *> *allProfiles =
         [WWNMachineProfileStore loadProfiles];
     NSMutableArray<NSString *> *nativeNames = [NSMutableArray array];
     NSMutableArray<NSString *> *nativeIds = [NSMutableArray array];
     for (WWNMachineProfile *p in allProfiles) {
-      if ([WWNMachineProfileStore profileEligibleForAppBridge:p]) {
+      if ([p.type isEqualToString:kWWNMachineTypeNative]) {
         NSString *label = p.name.length ? p.name : @"Unnamed Machine";
         [nativeNames addObject:label];
         [nativeIds addObject:p.machineId ?: @""];
@@ -930,13 +933,11 @@ static UIImage *WWNAboutLogo(void) {
     }
     if (nativeIds.count > 0) {
       WWNSettingItem *machineItem =
-          ITEM(@"Desktop Machine (nested Weston only)",
+          ITEM(@"Desktop Machine",
                @"DesktopReplacementMachineId", WSettingPopup,
                nativeIds.firstObject,
-               @"The local Native machine whose nested Weston compositor "
-               @"becomes the desktop. Plain Weston clients (weston-terminal, "
-               @"simple-shm, foot) and remote/VM/container machines are not "
-               @"eligible.");
+               @"The local Native machine to use as the desktop replacement "
+               @"(currently allows any native machine for testing).");
       machineItem.options = nativeNames;
       machineItem.optionValues = nativeIds;
       [desktopItems addObject:machineItem];
@@ -944,9 +945,7 @@ static UIImage *WWNAboutLogo(void) {
       [desktopItems
           addObject:ITEM(@"Desktop Machine", nil, WSettingInfo, @"None",
                          @"No eligible machine found. Create a Native machine "
-                         @"running the nested Weston compositor "
-                         @"(weston --backend=wayland) in Machine "
-                         @"Configuration, then select it here.")];
+                         @"in Machine Configuration, then select it here.")];
     }
 
     // ── Wawona Swinging Bridge ──────────────────────────────────────────────
@@ -957,15 +956,14 @@ static UIImage *WWNAboutLogo(void) {
                        @"Wayland desktop. Uses ScreenCaptureKit per-window "
                        @"capture plus CGEvent/Accessibility input injection, so "
                        @"it needs Screen Recording and Accessibility "
-                       @"permissions (Developer ID, not the Mac App Store). "
-                       @"Requires the desktop machine above to be a nested "
-                       @"Weston compositor.")];
+                       @"permissions. Requires the desktop machine above to be "
+                       @"a nested Weston or Niri compositor.")];
 
     // ── Lockscreen Replacement (#103). MacOS + Android only ─────────────
     [desktopItems
         addObject:ITEM(@"Enable Lockscreen Replacement",
                        @"LockscreenReplacementEnabled", WSettingSwitch, @NO,
-                       @"Run a local greeter/lock machine (gtkgreet, gtklock, …) "
+                       @"Run a local greeter/lock machine (gtkgreet, gtklock, sddm, …) "
                        @"before the Desktop Replacement session. Never available "
                        @"on iOS/iPadOS/tvOS/watchOS/visionOS.")];
     NSMutableArray<NSString *> *lockNames = [NSMutableArray array];
@@ -973,28 +971,8 @@ static UIImage *WWNAboutLogo(void) {
     for (WWNMachineProfile *p in allProfiles) {
       if (![p.type isEqualToString:kWWNMachineTypeNative])
         continue;
-      NSDictionary *so =
-          [p.settingsOverrides isKindOfClass:[NSDictionary class]]
-              ? p.settingsOverrides
-              : @{};
-      NSString *cid = [so[@"NativeClientId"] isKindOfClass:[NSString class]]
-                          ? so[@"NativeClientId"]
-                          : @"";
-      NSString *cmd = [so[@"NativeCustomCommand"] isKindOfClass:[NSString class]]
-                          ? so[@"NativeCustomCommand"]
-                          : @"";
-      NSString *script =
-          [p.customScript isKindOfClass:[NSString class]] ? p.customScript : @"";
-      NSString *launcher =
-          [[NSString stringWithFormat:@"%@ %@ %@", cid, cmd, script]
-              lowercaseString];
-      BOOL greeter = [launcher containsString:@"gtkgreet"] ||
-                     [launcher containsString:@"gtklock"] ||
-                     [launcher containsString:@"greetd"] ||
-                     [launcher containsString:@"wlgreet"] ||
-                     [launcher containsString:@"lock"];
-      if (!greeter)
-        continue;
+      
+      // Temporarily allow any native machine for testing lockscreen replacement
       [lockNames addObject:p.name.length ? p.name : @"Unnamed Lock"];
       [lockIds addObject:p.machineId ?: @""];
     }
@@ -1010,7 +988,7 @@ static UIImage *WWNAboutLogo(void) {
     } else {
       [desktopItems
           addObject:ITEM(@"Lockscreen Machine", nil, WSettingInfo, @"None",
-                         @"Create a Native machine with gtkgreet/gtklock (or "
+                         @"Create a Native machine with gtkgreet/gtklock/sddm (or "
                          @"similar) in Machine Configuration to enable "
                          @"Lockscreen Replacement.")];
     }
@@ -1800,7 +1778,7 @@ static UIImage *WWNAboutLogo(void) {
 
 #if TARGET_OS_IPHONE
   {
-    __weak typeof(self) weakSelf = self;
+    __block typeof(self) weakSelf = self;
 
     void (^showStatusAlert)(void) = ^{
       UIAlertController *statusAlert = [UIAlertController
@@ -4129,23 +4107,28 @@ static UIImage *WWNAboutLogo(void) {
       [self showDesktopReplacementSipHowTo];
       return;
     }
-    NSString *dylib = [[WWNDesktopReplacementController sharedController]
-        bundledDylibPath];
-    if (dylib.length == 0) {
+    NSAlert *confirm = [[NSAlert alloc] init];
+    confirm.messageText = @"Enable Desktop Replacement?";
+    confirm.informativeText = @"You must log out of macOS for Wawona Desktop Replacement to take effect. Would you like to log out now?";
+    [confirm addButtonWithTitle:@"Log Out Now"];
+    [confirm addButtonWithTitle:@"Later"];
+    [confirm addButtonWithTitle:@"Cancel"];
+    
+    NSModalResponse response = [confirm runModal];
+    if (response == NSAlertThirdButtonReturn) {
       s.on = NO;
-      [[NSUserDefaults standardUserDefaults]
-          setBool:NO
-           forKey:kWWNPrefsDesktopReplacementEnabled];
-      NSAlert *alert = [[NSAlert alloc] init];
-      alert.messageText = @"Mode B dylib not in this build";
-      alert.informativeText =
-          @"Desktop Replacement requires libwayland-mac.dylib from the "
-          @"desktop-host package (nix build .#wawona-macos-desktop-host). "
-          @"Store-safe builds stay on Mode A in-window present.";
-      alert.alertStyle = NSAlertStyleWarning;
-      [alert runModal];
       return;
     }
+    
+    // Desktop replacement requires Wawona to launch at login to inject Mode B
+    [[WWNLaunchAgentManager sharedManager] enableAppLaunchAtLogin];
+    [[NSUserDefaults standardUserDefaults] setBool:YES forKey:kWWNPrefsDesktopReplacementEnabled];
+    
+    if (response == NSAlertFirstButtonReturn) {
+      NSAppleScript *as = [[NSAppleScript alloc] initWithSource:@"tell application \"System Events\" to log out"];
+      [as executeAndReturnError:nil];
+    }
+    return;
   }
 #endif
   [[NSUserDefaults standardUserDefaults] setBool:s.on forKey:item.key];
@@ -5805,6 +5788,43 @@ static UIImage *WWNAboutLogo(void) {
 #if (TARGET_OS_IPHONE || TARGET_OS_OSX) && !TARGET_OS_TV
     if ([item.key isEqualToString:WWNRootfsICloudSyncPreferenceKey]) {
       [self handleLocalShellICloudSyncToggle:[(NSNumber *)val boolValue]];
+      return;
+    }
+#endif
+
+#if TARGET_OS_OSX
+    if ([item.key isEqualToString:kWWNPrefsDesktopReplacementEnabled] && [(NSNumber *)val boolValue]) {
+      WWNSipStatusType sipStatus = [WWNSipStatus current];
+      if (![WWNSipStatus allowsDesktopReplacement:sipStatus]) {
+        [(NSSwitch *)sender setState:NSControlStateValueOff];
+        [[NSUserDefaults standardUserDefaults] setBool:NO forKey:kWWNPrefsDesktopReplacementEnabled];
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+        [[WWNPreferences sharedPreferences] performSelector:NSSelectorFromString(@"showDesktopReplacementSipHowTo")];
+#pragma clang diagnostic pop
+        return;
+      }
+      NSAlert *confirm = [[NSAlert alloc] init];
+      confirm.messageText = @"Enable Desktop Replacement?";
+      confirm.informativeText = @"This will take over your Mac's screen with the Wawona Wayland compositor upon login.\n\nYou must log out and log back in to activate the replacement environment.";
+      [confirm addButtonWithTitle:@"Log Out Now"];
+      [confirm addButtonWithTitle:@"Later"];
+      [confirm addButtonWithTitle:@"Cancel"];
+
+      NSModalResponse response = [confirm runModal];
+      if (response == NSAlertThirdButtonReturn) {
+        [(NSSwitch *)sender setState:NSControlStateValueOff];
+        return;
+      }
+
+      // Desktop replacement requires Wawona to launch at login to inject Mode B
+      [[WWNLaunchAgentManager sharedManager] enableAppLaunchAtLogin];
+      [[NSUserDefaults standardUserDefaults] setBool:YES forKey:kWWNPrefsDesktopReplacementEnabled];
+
+      if (response == NSAlertFirstButtonReturn) {
+        NSAppleScript *as = [[NSAppleScript alloc] initWithSource:@"tell application \"System Events\" to log out"];
+        [as executeAndReturnError:nil];
+      }
       return;
     }
 #endif

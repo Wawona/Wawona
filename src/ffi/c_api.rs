@@ -1873,3 +1873,68 @@ pub extern "C" fn WWNCorePopPendingGammaRestore(core: *mut WWNCore) -> u32 {
         }
     }
 }
+
+/// Inject drag enter
+#[no_mangle]
+pub extern "C" fn WWNCoreInjectDragEnter(
+    core: *mut WWNCore,
+    window_id: u64,
+    x: f64,
+    y: f64,
+    mime_types: *const c_char,
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() { return; }
+        let core = unsafe { &*core };
+        let mimes = if mime_types.is_null() {
+            String::new()
+        } else {
+            unsafe { CStr::from_ptr(mime_types) }.to_string_lossy().into_owned()
+        };
+        core.inject_drag_enter(WindowId { id: window_id }, x, y, mimes);
+    }));
+}
+
+/// Inject drag motion
+#[no_mangle]
+pub extern "C" fn WWNCoreInjectDragMotion(
+    core: *mut WWNCore,
+    window_id: u64,
+    x: f64,
+    y: f64,
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() { return; }
+        let core = unsafe { &*core };
+        core.inject_drag_motion(WindowId { id: window_id }, x, y);
+    }));
+}
+
+/// Inject drag drop
+#[no_mangle]
+pub extern "C" fn WWNCoreInjectDragDrop(
+    core: *mut WWNCore,
+    window_id: u64,
+    data: *const c_char,
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() { return; }
+        let core = unsafe { &*core };
+        let drop_data = if data.is_null() {
+            String::new()
+        } else {
+            unsafe { CStr::from_ptr(data) }.to_string_lossy().into_owned()
+        };
+        core.inject_drag_drop(WindowId { id: window_id }, drop_data);
+    }));
+}
+
+/// Inject drag leave
+#[no_mangle]
+pub extern "C" fn WWNCoreInjectDragLeave(core: *mut WWNCore, window_id: u64) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() { return; }
+        let core = unsafe { &*core };
+        core.inject_drag_leave(WindowId { id: window_id });
+    }));
+}

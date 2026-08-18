@@ -91,6 +91,12 @@ object WawonaNative {
     external fun nativePointerButton(buttonCode: Int, state: Int, timestampMs: Int)
     external fun nativePointerEnter(x: Double, y: Double, timestampMs: Int)
     external fun nativePointerLeave(timestampMs: Int)
+    
+    external fun injectDragEnter(windowId: Long, x: Double, y: Double, mimeTypes: String)
+    external fun injectDragMotion(windowId: Long, x: Double, y: Double)
+    external fun injectDragDrop(windowId: Long, data: String)
+    external fun injectDragLeave(windowId: Long)
+
     external fun nativeKeyboardFocus(hasFocus: Boolean)
     /** Ask focused toplevel to close (`xdg_toplevel.close`). */
     external fun nativeRequestActiveWindowClose(): Boolean

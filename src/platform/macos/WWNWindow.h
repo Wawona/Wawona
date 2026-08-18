@@ -27,7 +27,7 @@
 - (void)cancelPendingHostCloseEscalation;
 @end
 
-@interface WWNView : NSView <NSTextInputClient>
+@interface WWNView : NSView <NSTextInputClient, NSDraggingDestination>
 @property(nonatomic, assign) uint64_t overrideWindowId;
 @property(nonatomic, strong, readonly) CALayer *contentLayer;
 - (BOOL)prepareIlandMetalPresentation;

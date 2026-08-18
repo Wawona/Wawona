@@ -384,20 +384,23 @@ impl CompositorState {
                         let committed_height = surface.current.height.max(0) as u32;
                         let win_w = window.width.max(0) as u32;
                         let win_h = window.height.max(0) as u32;
+                        let surface_scale = surface.current.scale.max(1) as u32;
+                        let committed_width_logical = committed_width / surface_scale;
+                        let committed_height_logical = committed_height / surface_scale;
                         let host_ahead = window.size_authority.is_host()
                             && win_w > 0
                             && win_h > 0
-                            && committed_width > 0
-                            && committed_height > 0
-                            && (committed_width != win_w || committed_height != win_h);
+                            && committed_width_logical > 0
+                            && committed_height_logical > 0
+                            && (committed_width_logical != win_w || committed_height_logical != win_h);
                         if host_ahead {
                             render_width = win_w;
                             render_height = win_h;
-                        } else if committed_width > 0 && committed_height > 0 {
-                            render_width = committed_width;
-                            render_height = committed_height;
+                        } else if committed_width_logical > 0 && committed_height_logical > 0 {
+                            render_width = committed_width_logical;
+                            render_height = committed_height_logical;
                         }
-                        node.scale = (surface.current.scale.max(1)) as f32;
+                        node.scale = surface_scale as f32;
                         // Weston-style HiDPI: the client committed a buffer at
                         // output-scale x window-size without calling
                         // wl_surface.set_buffer_scale. Present it at logical
@@ -456,6 +459,13 @@ impl CompositorState {
                     let xdg_geometry = geom_by_surface.get(&window.surface_id).copied();
                     let window_policy =
                         window.decoration_policy.unwrap_or(self.decoration_policy);
+                    let scale = node.scale;
+                    let scaled_xdg_geometry = xdg_geometry.map(|(x, y, w, h)| {
+                        ((x as f32 * scale).round() as i32, 
+                         (y as f32 * scale).round() as i32, 
+                         (w as f32 * scale).round() as i32, 
+                         (h as f32 * scale).round() as i32)
+                    });
                     if let Some((inter_x1, inter_y1, inter_w, inter_h)) =
                         crate::core::wayland::xdg::decoration::resolve_window_content_geometry(
                             window_policy,
@@ -463,7 +473,7 @@ impl CompositorState {
                             window.decoration_mode,
                             surf.current.width,
                             surf.current.height,
-                            xdg_geometry,
+                            scaled_xdg_geometry,
                         )
                     {
                         let buf_w = surf.current.width as f32;

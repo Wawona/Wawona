@@ -80,6 +80,39 @@ class WawonaSurfaceView(context: Context) : SurfaceView(context) {
         contentDescription =
             "Wayland application surface. Touch interacts directly with the application."
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
+
+        setOnDragListener { _, event ->
+            val winId = (context as? SessionActivity)?.toplevelWindowId ?: return@setOnDragListener false
+            when (event.action) {
+                android.view.DragEvent.ACTION_DRAG_ENTERED -> {
+                    WawonaNative.injectDragEnter(winId, event.x.toDouble(), event.y.toDouble(), "text/uri-list")
+                    true
+                }
+                android.view.DragEvent.ACTION_DRAG_LOCATION -> {
+                    WawonaNative.injectDragMotion(winId, event.x.toDouble(), event.y.toDouble())
+                    true
+                }
+                android.view.DragEvent.ACTION_DROP -> {
+                    val clipData = event.clipData
+                    val sb = StringBuilder()
+                    if (clipData != null) {
+                        for (i in 0 until clipData.itemCount) {
+                            val uri = clipData.getItemAt(i).uri
+                            if (uri != null) {
+                                sb.append(uri.toString()).append("\r\n")
+                            }
+                        }
+                    }
+                    WawonaNative.injectDragDrop(winId, sb.toString())
+                    true
+                }
+                android.view.DragEvent.ACTION_DRAG_EXITED -> {
+                    WawonaNative.injectDragLeave(winId)
+                    true
+                }
+                else -> true
+            }
+        }
         prefs.registerOnSharedPreferenceChangeListener(prefListener)
     }
 

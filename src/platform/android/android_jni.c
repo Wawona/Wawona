@@ -110,6 +110,11 @@ static void schedule_next_frame(void *ctx) {
 #endif
 }
 
+extern void WWNCoreInjectDragEnter(void *core, uint64_t window_id, double x, double y, const char *mime_types);
+extern void WWNCoreInjectDragMotion(void *core, uint64_t window_id, double x, double y);
+extern void WWNCoreInjectDragDrop(void *core, uint64_t window_id, const char *data);
+extern void WWNCoreInjectDragLeave(void *core, uint64_t window_id);
+
 // ============================================================================
 // Forward declarations for Rust backend FFI (from c_api.rs / libwawona.a)
 // ============================================================================
@@ -4257,6 +4262,51 @@ typedef struct {
 
 static WaypipeConfig g_waypipe_config;
 
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_injectDragEnter(
+    JNIEnv *env, jclass clazz, jlong window_id, jdouble x, jdouble y, jstring mime_types) {
+  if (!g_core_ptr)
+    return;
+  const char *mime_str = NULL;
+  if (mime_types != NULL) {
+    mime_str = (*env)->GetStringUTFChars(env, mime_types, NULL);
+  }
+  WWNCoreInjectDragEnter(g_core_ptr, window_id, x, y, mime_str ? mime_str : "text/uri-list");
+  if (mime_str != NULL) {
+    (*env)->ReleaseStringUTFChars(env, mime_types, mime_str);
+  }
+}
+
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_injectDragMotion(
+    JNIEnv *env, jclass clazz, jlong window_id, jdouble x, jdouble y) {
+  if (!g_core_ptr)
+    return;
+  WWNCoreInjectDragMotion(g_core_ptr, window_id, x, y);
+}
+
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_injectDragDrop(
+    JNIEnv *env, jclass clazz, jlong window_id, jstring data) {
+  if (!g_core_ptr)
+    return;
+  const char *data_str = NULL;
+  if (data != NULL) {
+    data_str = (*env)->GetStringUTFChars(env, data, NULL);
+  }
+  WWNCoreInjectDragDrop(g_core_ptr, window_id, data_str ? data_str : "");
+  if (data_str != NULL) {
+    (*env)->ReleaseStringUTFChars(env, data, data_str);
+  }
+}
+
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_injectDragLeave(
+    JNIEnv *env, jclass clazz, jlong window_id) {
+  if (!g_core_ptr)
+    return;
+  WWNCoreInjectDragLeave(g_core_ptr, window_id);
+}
 
 static void *waypipe_thread_func(void *arg) {
   (void)arg;
@@ -5472,12 +5522,12 @@ static jboolean wwn_launch_foot(void) {
     FILE *fp = fopen(ini_path, "w");
     if (fp) {
       if (mono && mono[0] && access(mono, R_OK) == 0)
-        fprintf(fp, "[main]\nterm=xterm-256color\nfont=%s:size=%d\ndpi-aware=yes\n\n", mono,
+        fprintf(fp, "[main]\nterm=xterm-256color\nfont=DejaVuSansM Nerd Font Mono:size=%d\ndpi-aware=yes\nletter-spacing=0\n\n",
                 size_px);
       else
-        fprintf(fp, "[main]\nterm=xterm-256color\nfont=monospace:size=%d\ndpi-aware=yes\n\n",
+        fprintf(fp, "[main]\nterm=xterm-256color\nfont=monospace:size=%d\ndpi-aware=yes\nletter-spacing=0\n\n",
                 size_px);
-      fputs("[tweak]\nfont-monospace-warn=no\n", fp);
+      fputs("[tweak]\nfont-monospace-warn=no\n\n[key-bindings]\nclipboard-copy=Super+c\nclipboard-paste=Super+v\n", fp);
       fclose(fp);
     } else {
       LOGE("foot: failed to write %s: %s", ini_path, strerror(errno));
