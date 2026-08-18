@@ -624,7 +624,7 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
       monoTtf = [fontDir
           stringByAppendingPathComponent:@"truetype/DejaVuSansMono.ttf"];
     }
-    CGFloat fontSize = [UIFont systemFontSize];
+    CGFloat fontSize = 17.0;
     NSString *fontSpec = [fm fileExistsAtPath:monoTtf]
                              ? [NSString stringWithFormat:@"DejaVuSansM Nerd Font Mono:size=%.1f", fontSize]
                              : [NSString stringWithFormat:@"monospace:size=%.1f", fontSize];

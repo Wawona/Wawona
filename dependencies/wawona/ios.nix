@@ -95,7 +95,10 @@ in
     [
       ''-project Wawona.xcodeproj''
       ''-jobs ''${WAWONA_XCODEBUILD_JOBS:-$(sysctl -n hw.ncpu 2>/dev/null || echo 4)}''
-      ''-destination "generic/platform=${destinationPlatform}${lib.optionalString simulator ",arch=arm64"}"''
+      # generic + arch=arm64 does not match Xcode's placeholder
+      # "Any iOS Simulator Device" when no named runtime is visible in the
+      # builder. ARCHS=arm64 below still pins the slice.
+      ''-destination "generic/platform=${destinationPlatform}"''
     ]
     ++ lib.optionals (!releaseBuild) [
       ''CODE_SIGNING_ALLOWED=NO''
