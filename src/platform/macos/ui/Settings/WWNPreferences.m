@@ -199,6 +199,8 @@
 #endif
 #if TARGET_OS_OSX
 - (void)showDesktopReplacementSipHowTo;
+- (BOOL)applyDesktopReplacementEnabled:(BOOL)enabled
+                                revert:(void (^_Nullable)(void))revert;
 #endif
 #if TARGET_OS_IPHONE
 - (void)confirmResetShellDotfiles;
@@ -913,10 +915,11 @@ static UIImage *WWNAboutLogo(void) {
     [desktopItems
         addObject:ITEM(@"Enable Desktop Replacement",
                        @"DesktopReplacementEnabled", WSettingSwitch, @NO,
-                       @"Run Wawona as the macOS desktop by replacing "
+                       @"Take over this Mac's screen now by replacing "
                        @"SkyLight/WindowServer via wwn-iland Mode B. Requires "
                        @"SIP partially disabled (not App Store). Pick one "
-                       @"nested-compositor machine below.")];
+                       @"native weston or niri machine below. Logout does not "
+                       @"activate this.")];
 
     // Machine picker, populated from the machine profile store. Only local
     // nested-compositor native machines qualify (App Bridge shares this selection),
@@ -4122,38 +4125,11 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
   }
 #endif
 #if TARGET_OS_OSX
-  if ([item.key isEqualToString:kWWNPrefsDesktopReplacementEnabled] && s.on) {
-    WWNSipStatusType sipStatus = [WWNSipStatus current];
-    if (![WWNSipStatus allowsDesktopReplacement:sipStatus]) {
-      s.on = NO;
-      [[NSUserDefaults standardUserDefaults]
-          setBool:NO
-           forKey:kWWNPrefsDesktopReplacementEnabled];
-      [self showDesktopReplacementSipHowTo];
-      return;
-    }
-    NSAlert *confirm = [[NSAlert alloc] init];
-    confirm.messageText = @"Enable Desktop Replacement?";
-    confirm.informativeText = @"You must log out of macOS for Wawona Desktop Replacement to take effect. Would you like to log out now?";
-    [confirm addButtonWithTitle:@"Log Out Now"];
-    [confirm addButtonWithTitle:@"Later"];
-    [confirm addButtonWithTitle:@"Cancel"];
-    
-    NSModalResponse response = [confirm runModal];
-    if (response == NSAlertThirdButtonReturn) {
-      s.on = NO;
-      return;
-    }
-    
-    // Desktop replacement no longer requires Wawona UI to launch at login
-    [[NSUserDefaults standardUserDefaults] setBool:YES forKey:kWWNPrefsDesktopReplacementEnabled];
-    
-    if (response == NSAlertFirstButtonReturn) {
-      [[NSApplication sharedApplication] disableRelaunchOnLogin];
-      NSString *scriptText = @"tell application \"System Events\" to log out";
-      NSAppleScript *script = [[NSAppleScript alloc] initWithSource:scriptText];
-      [script executeAndReturnError:nil];
-    }
+  if ([item.key isEqualToString:kWWNPrefsDesktopReplacementEnabled]) {
+    [self applyDesktopReplacementEnabled:s.on
+                                  revert:^{
+                                    s.on = NO;
+                                  }];
     return;
   }
 #endif
@@ -4979,6 +4955,79 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
     alert.informativeText = [WWNRootfsProvider snapshot][@"home"];
     [alert runModal];
   }
+}
+
+- (BOOL)applyDesktopReplacementEnabled:(BOOL)enabled
+                                revert:(void (^)(void))revert {
+  if (!enabled) {
+    [[NSUserDefaults standardUserDefaults]
+        setBool:NO
+         forKey:kWWNPrefsDesktopReplacementEnabled];
+    [[WWNDesktopReplacementController sharedController] disengage];
+    return YES;
+  }
+
+  WWNSipStatusType sipStatus = [WWNSipStatus current];
+  if (![WWNSipStatus allowsDesktopReplacement:sipStatus]) {
+    if (revert) {
+      revert();
+    }
+    [[NSUserDefaults standardUserDefaults]
+        setBool:NO
+         forKey:kWWNPrefsDesktopReplacementEnabled];
+    [self showDesktopReplacementSipHowTo];
+    return NO;
+  }
+
+  NSAlert *confirm = [[NSAlert alloc] init];
+  confirm.messageText = @"Enable Desktop Replacement?";
+  confirm.informativeText =
+      @"Wawona will take over this Mac's screen now by unloading Apple's "
+      @"WindowServer and launching the selected machine with the Mode B "
+      @"dylib (libwayland-mac.dylib). Finder, Dock, and this window will go "
+      @"away.\n\n"
+      @"Logging out does not activate Desktop Replacement. loginwindow would "
+      @"start Aqua again. A LaunchDaemon keeps the session across reboot "
+      @"until you turn this off.\n\n"
+      @"If the session fails, restore macOS with:\n"
+      @"sudo launchctl load -w "
+      @"/System/Library/LaunchDaemons/com.apple.WindowServer.plist";
+  [confirm addButtonWithTitle:@"Take Over Screen"];
+  [confirm addButtonWithTitle:@"Cancel"];
+
+  if ([confirm runModal] != NSAlertFirstButtonReturn) {
+    if (revert) {
+      revert();
+    }
+    return NO;
+  }
+
+  [[NSUserDefaults standardUserDefaults]
+      setBool:YES
+       forKey:kWWNPrefsDesktopReplacementEnabled];
+
+  NSError *err = nil;
+  if (![[WWNDesktopReplacementController sharedController]
+          engageSelectedDesktopMachine:&err]) {
+    [[NSUserDefaults standardUserDefaults]
+        setBool:NO
+         forKey:kWWNPrefsDesktopReplacementEnabled];
+    if (revert) {
+      revert();
+    }
+    NSAlert *fail = [[NSAlert alloc] init];
+    fail.alertStyle = NSAlertStyleCritical;
+    fail.messageText = @"Desktop Replacement failed";
+    fail.informativeText =
+        err.localizedDescription.length
+            ? err.localizedDescription
+            : @"Mode B did not start. Check SIP, the desktop-host build "
+              @"(libwayland-mac.dylib), and /tmp/wawona-modeb.log.";
+    [fail addButtonWithTitle:@"OK"];
+    [fail runModal];
+    return NO;
+  }
+  return YES;
 }
 
 - (void)showDesktopReplacementSipHowTo {
@@ -5819,39 +5868,14 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
 #endif
 
 #if TARGET_OS_OSX
-    if ([item.key isEqualToString:kWWNPrefsDesktopReplacementEnabled] && [(NSNumber *)val boolValue]) {
-      WWNSipStatusType sipStatus = [WWNSipStatus current];
-      if (![WWNSipStatus allowsDesktopReplacement:sipStatus]) {
-        [(NSSwitch *)sender setState:NSControlStateValueOff];
-        [[NSUserDefaults standardUserDefaults] setBool:NO forKey:kWWNPrefsDesktopReplacementEnabled];
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-        [[WWNPreferences sharedPreferences] performSelector:NSSelectorFromString(@"showDesktopReplacementSipHowTo")];
-#pragma clang diagnostic pop
-        return;
-      }
-      NSAlert *confirm = [[NSAlert alloc] init];
-      confirm.messageText = @"Enable Desktop Replacement?";
-      confirm.informativeText = @"This will take over your Mac's screen with the Wawona Wayland compositor upon login.\n\nYou must log out and log back in to activate the replacement environment.";
-      [confirm addButtonWithTitle:@"Log Out Now"];
-      [confirm addButtonWithTitle:@"Later"];
-      [confirm addButtonWithTitle:@"Cancel"];
-
-      NSModalResponse response = [confirm runModal];
-      if (response == NSAlertThirdButtonReturn) {
-        [(NSSwitch *)sender setState:NSControlStateValueOff];
-        return;
-      }
-
-      // Desktop replacement no longer requires Wawona UI to launch at login
-      [[NSUserDefaults standardUserDefaults] setBool:YES forKey:kWWNPrefsDesktopReplacementEnabled];
-
-      if (response == NSAlertFirstButtonReturn) {
-        [[NSApplication sharedApplication] disableRelaunchOnLogin];
-        NSString *scriptText = @"tell application \"System Events\" to log out";
-        NSAppleScript *script = [[NSAppleScript alloc] initWithSource:scriptText];
-        [script executeAndReturnError:nil];
-      }
+    if ([item.key isEqualToString:kWWNPrefsDesktopReplacementEnabled]) {
+      BOOL on = [(NSNumber *)val boolValue];
+      [[WWNPreferences sharedPreferences]
+          applyDesktopReplacementEnabled:on
+                                  revert:^{
+                                    [(NSSwitch *)sender
+                                        setState:NSControlStateValueOff];
+                                  }];
       return;
     }
 #endif

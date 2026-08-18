@@ -30,13 +30,24 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable NSString *)bundledDylibPath;
 
 /**
- * Launch the Desktop machine's nested Weston with Mode B insert (privileged).
- * Returns YES if the Mode B session was started (or already running).
+ * Launch the Desktop machine's nested compositor with Mode B insert
+ * (privileged). Unloads Apple's WindowServer and starts a KeepAlive
+ * LaunchDaemon. Returns YES if the Mode B session was started (or already
+ * running). This is a live takeover, not a logout/login handoff.
  */
 - (BOOL)engageForProfile:(WWNMachineProfile *)profile
                    error:(NSError *_Nullable *_Nullable)error;
 
-/** Stop the Mode B weston task if we own it. */
+/**
+ * Engage the machine stored in DesktopReplacementMachineId. Settings uses
+ * this after the user turns the toggle on.
+ */
+- (BOOL)engageSelectedDesktopMachine:(NSError *_Nullable *_Nullable)error;
+
+/**
+ * Stop the Mode B compositor, boot out the LaunchDaemon, and reload Apple's
+ * WindowServer.
+ */
 - (void)disengage;
 
 /** Clear DesktopReplacementEnabled when SIP no longer allows Mode B. */
