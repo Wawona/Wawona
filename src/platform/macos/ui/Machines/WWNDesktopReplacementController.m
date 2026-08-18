@@ -9,6 +9,7 @@
 #import "../Settings/WWNSipStatus.h"
 #import "../Settings/WWNWaypipeRunner.h"
 #import "../../WWNPlatformCallbacks.h"
+#import <Security/Security.h>
 
 #include <signal.h>
 #include <sys/types.h>
@@ -234,7 +235,7 @@
         stringWithFormat:
             @"export DYLD_INSERT_LIBRARIES=%@; "
             @"export XDG_RUNTIME_DIR=%@; "
-            @"nohup %@ >%@ 2>&1 & echo $!",
+            @"%@ >%@ 2>&1 & echo $!",
             [self wwnShellQuote:dylib], [self wwnShellQuote:xdg],
             [self wwnShellQuote:executablePath], [self wwnShellQuote:logPath]];
   } else {
@@ -242,7 +243,7 @@
         stringWithFormat:
             @"export DYLD_INSERT_LIBRARIES=%@; "
             @"export XDG_RUNTIME_DIR=%@; "
-            @"nohup %@ --backend=drm --continue-without-input "
+            @"%@ --backend=drm --continue-without-input "
             @"--socket=%@ --shell=desktop-shell.so --config=%@ "
             @">%@ 2>&1 & echo $!",
             [self wwnShellQuote:dylib], [self wwnShellQuote:xdg],
@@ -250,41 +251,69 @@
             [self wwnShellQuote:configPath], [self wwnShellQuote:logPath]];
   }
 
-  NSString *osa =
-      [NSString stringWithFormat:@"do shell script %@ with administrator "
-                                 @"privileges",
-                                 [self wwnAppleScriptQuote:shellCmd]];
-
-  NSTask *task = [[NSTask alloc] init];
-  task.executableURL = [NSURL fileURLWithPath:@"/usr/bin/osascript"];
-  task.arguments = @[ @"-e", osa ];
-  NSPipe *outPipe = [NSPipe pipe];
-  task.standardOutput = outPipe;
-  task.standardError = [NSPipe pipe];
-
-  NSError *launchErr = nil;
-  if (![task launchAndReturnError:&launchErr]) {
+  AuthorizationRef authRef;
+  OSStatus status = AuthorizationCreate(NULL, kAuthorizationEmptyEnvironment, kAuthorizationFlagDefaults, &authRef);
+  if (status != errAuthorizationSuccess) {
     if (error) {
-      *error = launchErr ?: [NSError
-                                 errorWithDomain:@"WWNDesktopReplacement"
-                                            code:5
-                                        userInfo:@{
-                                          NSLocalizedDescriptionKey :
-                                              [NSString stringWithFormat:@"Failed to launch Mode B %@ "
-                                              @"via administrator privileges.", clientId]
-                                        }];
+      *error = [NSError errorWithDomain:@"WWNDesktopReplacement"
+                                   code:5
+                               userInfo:@{ NSLocalizedDescriptionKey : @"Authorization creation failed." }];
     }
     return NO;
   }
-  [task waitUntilExit];
-  NSData *outData = [[outPipe fileHandleForReading] readDataToEndOfFile];
-  NSString *outStr =
-      [[NSString alloc] initWithData:outData encoding:NSUTF8StringEncoding];
-  outStr = [outStr
+
+  AuthorizationItem right = {kAuthorizationRightExecute, 0, NULL, 0};
+  AuthorizationRights rights = {1, &right};
+  AuthorizationFlags flags = kAuthorizationFlagDefaults | kAuthorizationFlagInteractionAllowed | kAuthorizationFlagPreAuthorize | kAuthorizationFlagExtendRights;
+  status = AuthorizationCopyRights(authRef, &rights, NULL, flags, NULL);
+  if (status != errAuthorizationSuccess) {
+    AuthorizationFree(authRef, kAuthorizationFlagDefaults);
+    if (error) {
+      *error = [NSError errorWithDomain:@"WWNDesktopReplacement"
+                                   code:5
+                               userInfo:@{ NSLocalizedDescriptionKey : @"User cancelled administrator authorization." }];
+    }
+    return NO;
+  }
+
+  char *args[] = {"-c", (char *)shellCmd.UTF8String, NULL};
+  FILE *pipe = NULL;
+  
+  // Disable deprecation warnings for this specific block as we are explicitly choosing this approach
+  // over an XPC helper for simplicity in this experimental developer tool.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+  status = AuthorizationExecuteWithPrivileges(authRef, "/bin/sh", kAuthorizationFlagDefaults, args, &pipe);
+#pragma clang diagnostic pop
+
+  if (status != errAuthorizationSuccess) {
+    AuthorizationFree(authRef, kAuthorizationFlagDefaults);
+    if (error) {
+      *error = [NSError
+          errorWithDomain:@"WWNDesktopReplacement"
+                     code:5
+                 userInfo:@{
+                   NSLocalizedDescriptionKey :
+                       [NSString stringWithFormat:@"Failed to launch Mode B %@ "
+                       @"via administrator privileges (status=%d).", clientId, (int)status]
+                 }];
+    }
+    return NO;
+  }
+
+  char buf[128] = {0};
+  if (pipe) {
+      fgets(buf, sizeof(buf), pipe);
+      fclose(pipe);
+  }
+  AuthorizationFree(authRef, kAuthorizationFlagDefaults);
+
+  NSString *outStr = [NSString stringWithUTF8String:buf];
+  NSString *trimmedOut = [outStr
       stringByTrimmingCharactersInSet:[NSCharacterSet
                                           whitespaceAndNewlineCharacterSet]];
-  pid_t pid = (pid_t)[outStr integerValue];
-  if (task.terminationStatus != 0 || pid <= 0) {
+  pid_t pid = (pid_t)[trimmedOut integerValue];
+  if (pid <= 0) {
     if (error) {
       *error = [NSError
           errorWithDomain:@"WWNDesktopReplacement"
@@ -292,9 +321,9 @@
                  userInfo:@{
                    NSLocalizedDescriptionKey : [NSString
                        stringWithFormat:
-                           @"Mode B privileged launch failed (status=%d "
-                           @"output=%@). Check SIP and admin approval.",
-                           task.terminationStatus, outStr ?: @""]
+                           @"Mode B privileged launch failed to return valid PID "
+                           @"(output=%@). Check SIP and admin approval.",
+                           trimmedOut ?: @""]
                  }];
     }
     return NO;

@@ -4150,8 +4150,20 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
     [[NSUserDefaults standardUserDefaults] setBool:YES forKey:kWWNPrefsDesktopReplacementEnabled];
     
     if (response == NSAlertFirstButtonReturn) {
-      NSAppleScript *as = [[NSAppleScript alloc] initWithSource:@"tell application \"System Events\" to log out"];
-      [as executeAndReturnError:nil];
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+      [[NSWorkspace sharedWorkspace] launchAppWithBundleIdentifier:@"com.apple.systemevents"
+                                                           options:0
+                                    additionalEventParamDescriptor:nil
+                                                  launchIdentifier:nil];
+#pragma clang diagnostic pop
+      NSAppleEventDescriptor *target = [NSAppleEventDescriptor descriptorWithBundleIdentifier:@"com.apple.systemevents"];
+      NSAppleEventDescriptor *event = [NSAppleEventDescriptor appleEventWithEventClass:kCoreEventClass
+                                                                               eventID:kAELogOut
+                                                                      targetDescriptor:target
+                                                                              returnID:kAutoGenerateReturnID
+                                                                         transactionID:kAnyTransactionID];
+      AESendMessage(event.aeDesc, NULL, kAENoReply, kAEDefaultTimeout);
     }
     return;
   }
@@ -5847,8 +5859,20 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
       [[NSUserDefaults standardUserDefaults] setBool:YES forKey:kWWNPrefsDesktopReplacementEnabled];
 
       if (response == NSAlertFirstButtonReturn) {
-        NSAppleScript *as = [[NSAppleScript alloc] initWithSource:@"tell application \"System Events\" to log out"];
-        [as executeAndReturnError:nil];
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        [[NSWorkspace sharedWorkspace] launchAppWithBundleIdentifier:@"com.apple.systemevents"
+                                                             options:0
+                                      additionalEventParamDescriptor:nil
+                                                    launchIdentifier:nil];
+#pragma clang diagnostic pop
+        NSAppleEventDescriptor *target = [NSAppleEventDescriptor descriptorWithBundleIdentifier:@"com.apple.systemevents"];
+        NSAppleEventDescriptor *event = [NSAppleEventDescriptor appleEventWithEventClass:kCoreEventClass
+                                                                                 eventID:kAELogOut
+                                                                        targetDescriptor:target
+                                                                                returnID:kAutoGenerateReturnID
+                                                                           transactionID:kAnyTransactionID];
+        AESendMessage(event.aeDesc, NULL, kAENoReply, kAEDefaultTimeout);
       }
       return;
     }
