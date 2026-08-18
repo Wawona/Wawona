@@ -422,19 +422,7 @@ static BOOL wwn_is_compositor_socket_ready(void) {
 }
 
 static void activate_existing_instance(void) {
-  NSString *bundleID = [[NSBundle mainBundle] bundleIdentifier];
-  if (!bundleID || bundleID.length == 0) {
-    bundleID = @"com.aspauldingcode.Wawona";
-  }
-  pid_t currentPID = [[NSProcessInfo processInfo] processIdentifier];
-  NSArray<NSRunningApplication *> *runningApps =
-      [NSRunningApplication runningApplicationsWithBundleIdentifier:bundleID];
-  for (NSRunningApplication *app in runningApps) {
-    if (app.processIdentifier != currentPID && !app.terminated) {
-      [app activateWithOptions:NSApplicationActivateAllWindows];
-      break;
-    }
-  }
+  [[NSDistributedNotificationCenter defaultCenter] postNotificationName:@"WWNReopenUINotification" object:nil userInfo:nil deliverImmediately:YES];
 }
 
 static BOOL acquire_single_instance_lock(void) {
@@ -530,10 +518,24 @@ static void setup_signal_sources(void) {
 
 @implementation WWNMacAppDelegate
 
+- (void)handleReopenNotification:(NSNotification *)notif {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+    [NSApp activateIgnoringOtherApps:YES];
+    [[WWNMachinesCoordinator sharedCoordinator] showMachinesWindowAndActivate:YES];
+  });
+}
+
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
   if (g_service_host_mode) {
     return;
   }
+  
+  [[NSDistributedNotificationCenter defaultCenter] addObserver:self
+                                                    selector:@selector(handleReopenNotification:)
+                                                        name:@"WWNReopenUINotification"
+                                                      object:nil];
+                                                      
   WWNPreferencesManager *prefs = [WWNPreferencesManager sharedManager];
 
   if (g_cli_backend.length > 0) {
@@ -622,12 +624,32 @@ static void setup_signal_sources(void) {
 - (BOOL)applicationShouldHandleReopen:(NSApplication *)sender hasVisibleWindows:(BOOL)flag {
   if (g_service_host_mode) {
     // The user clicked Wawona in Launchpad, but macOS sent the reopen event to the headless compositor host!
-    // We launch the UI app explicitly as a new instance.
-    NSString *bundlePath = WWNWawonaAppBundleRootForUI();
-    NSTask *task = [[NSTask alloc] init];
-    [task setLaunchPath:@"/usr/bin/open"];
-    [task setArguments:@[ @"-n", @"-a", bundlePath ]];
-    [task launch];
+    
+    // Check if the UI app is already running by probing its instance lock
+    NSString *lockDir = [NSString stringWithFormat:@"/tmp/wawona-%d", getuid()];
+    NSString *lockPath = [lockDir stringByAppendingPathComponent:@"instance.lock"];
+    int fd = open([lockPath fileSystemRepresentation], O_CREAT | O_RDWR, 0600);
+    BOOL uiIsRunning = NO;
+    if (fd >= 0) {
+      if (flock(fd, LOCK_EX | LOCK_NB) != 0) {
+        uiIsRunning = YES;
+      } else {
+        flock(fd, LOCK_UN);
+      }
+      close(fd);
+    }
+    
+    if (uiIsRunning) {
+      // The UI app is running. Broadcast to it to show its window and activate.
+      [[NSDistributedNotificationCenter defaultCenter] postNotificationName:@"WWNReopenUINotification" object:nil userInfo:nil deliverImmediately:YES];
+    } else {
+      // The UI app is not running. Launch it explicitly as a new instance.
+      NSString *bundlePath = WWNWawonaAppBundleRootForUI();
+      NSTask *task = [[NSTask alloc] init];
+      [task setLaunchPath:@"/usr/bin/open"];
+      [task setArguments:@[ @"-n", @"-a", bundlePath ]];
+      [task launch];
+    }
     return NO;
   }
   
