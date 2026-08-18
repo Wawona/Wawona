@@ -4265,13 +4265,13 @@ static WaypipeConfig g_waypipe_config;
 JNIEXPORT void JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_injectDragEnter(
     JNIEnv *env, jclass clazz, jlong window_id, jdouble x, jdouble y, jstring mime_types) {
-  if (!g_core_ptr)
+  if (!g_core)
     return;
   const char *mime_str = NULL;
   if (mime_types != NULL) {
     mime_str = (*env)->GetStringUTFChars(env, mime_types, NULL);
   }
-  WWNCoreInjectDragEnter(g_core_ptr, window_id, x, y, mime_str ? mime_str : "text/uri-list");
+  WWNCoreInjectDragEnter(g_core, window_id, x, y, mime_str ? mime_str : "text/uri-list");
   if (mime_str != NULL) {
     (*env)->ReleaseStringUTFChars(env, mime_types, mime_str);
   }
@@ -4280,21 +4280,21 @@ Java_com_aspauldingcode_wawona_WawonaNative_injectDragEnter(
 JNIEXPORT void JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_injectDragMotion(
     JNIEnv *env, jclass clazz, jlong window_id, jdouble x, jdouble y) {
-  if (!g_core_ptr)
+  if (!g_core)
     return;
-  WWNCoreInjectDragMotion(g_core_ptr, window_id, x, y);
+  WWNCoreInjectDragMotion(g_core, window_id, x, y);
 }
 
 JNIEXPORT void JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_injectDragDrop(
     JNIEnv *env, jclass clazz, jlong window_id, jstring data) {
-  if (!g_core_ptr)
+  if (!g_core)
     return;
   const char *data_str = NULL;
   if (data != NULL) {
     data_str = (*env)->GetStringUTFChars(env, data, NULL);
   }
-  WWNCoreInjectDragDrop(g_core_ptr, window_id, data_str ? data_str : "");
+  WWNCoreInjectDragDrop(g_core, window_id, data_str ? data_str : "");
   if (data_str != NULL) {
     (*env)->ReleaseStringUTFChars(env, data, data_str);
   }
@@ -4303,9 +4303,9 @@ Java_com_aspauldingcode_wawona_WawonaNative_injectDragDrop(
 JNIEXPORT void JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_injectDragLeave(
     JNIEnv *env, jclass clazz, jlong window_id) {
-  if (!g_core_ptr)
+  if (!g_core)
     return;
-  WWNCoreInjectDragLeave(g_core_ptr, window_id);
+  WWNCoreInjectDragLeave(g_core, window_id);
 }
 
 static void *waypipe_thread_func(void *arg) {
