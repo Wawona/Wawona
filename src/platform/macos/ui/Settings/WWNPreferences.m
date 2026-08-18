@@ -4150,12 +4150,13 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
     
     if (response == NSAlertFirstButtonReturn) {
       [[NSApplication sharedApplication] disableRelaunchOnLogin];
+      NSAppleEventDescriptor *target = [NSAppleEventDescriptor descriptorWithBundleIdentifier:@"com.apple.loginwindow"];
       NSAppleEventDescriptor *event = [NSAppleEventDescriptor appleEventWithEventClass:kCoreEventClass
                                                                                eventID:kAELogOut
-                                                                      targetDescriptor:nil
+                                                                      targetDescriptor:target
                                                                               returnID:kAutoGenerateReturnID
                                                                          transactionID:kAnyTransactionID];
-      [[NSAppleEventManager sharedAppleEventManager] dispatchRawAppleEvent:event withRawReply:nil handlerRefCon:nil];
+      AESendMessage(event.aeDesc, NULL, kAENoReply, kAEDefaultTimeout);
     }
     return;
   }
@@ -5851,12 +5852,13 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
 
       if (response == NSAlertFirstButtonReturn) {
         [[NSApplication sharedApplication] disableRelaunchOnLogin];
+        NSAppleEventDescriptor *target = [NSAppleEventDescriptor descriptorWithBundleIdentifier:@"com.apple.loginwindow"];
         NSAppleEventDescriptor *event = [NSAppleEventDescriptor appleEventWithEventClass:kCoreEventClass
                                                                                  eventID:kAELogOut
-                                                                        targetDescriptor:nil
+                                                                        targetDescriptor:target
                                                                                 returnID:kAutoGenerateReturnID
                                                                            transactionID:kAnyTransactionID];
-        [[NSAppleEventManager sharedAppleEventManager] dispatchRawAppleEvent:event withRawReply:nil handlerRefCon:nil];
+        AESendMessage(event.aeDesc, NULL, kAENoReply, kAEDefaultTimeout);
       }
       return;
     }
