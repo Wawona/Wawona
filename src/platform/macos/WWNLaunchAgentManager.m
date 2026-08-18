@@ -95,7 +95,7 @@ static NSString *const kWWNAppLaunchAgentLabel =
   uid_t uid = getuid();
   return @{
     @"Label" : kWWNAppLaunchAgentLabel,
-    @"ProgramArguments" : @[ [self openToolPath], @"-a", bundlePath ],
+    @"ProgramArguments" : @[ [self openToolPath], @"-n", @"-a", bundlePath ],
     @"RunAtLoad" : @YES,
     @"KeepAlive" : @NO,
     @"StandardOutPath" : [NSString stringWithFormat:@"/tmp/wawona-applaunch-%u.log", uid],

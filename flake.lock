@@ -880,12 +880,12 @@
         ]
       },
       "locked": {
-        "lastModified": 1786606319,
-        "narHash": "sha256-w/o7I/5w/ipAPcAzcrP6HQ2IFoJkhxQYsva9p7glvXk=",
-        "rev": "b65fb5e1acdaf9fc784180b9fb7c737ced958f04",
-        "revCount": 66,
+        "lastModified": 1787080085,
+        "narHash": "sha256-4kYy4+zMa4rDCM7n+9OdX5SDoiAeQAfINirZKrRgDBo=",
+        "rev": "8e595540d7781d8e421f104d9add09fc8e09c85f",
+        "revCount": 68,
         "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-iland/0.1.66%2Brev-b65fb5e1acdaf9fc784180b9fb7c737ced958f04/019ffa09-d33d-7d01-8376-dcf2b817efd3/source.tar.gz"
+        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-iland/0.1.68%2Brev-8e595540d7781d8e421f104d9add09fc8e09c85f/01a0164f-08a2-7c31-bd59-1bd4c756fb06/source.tar.gz"
       },
       "original": {
         "type": "tarball",
