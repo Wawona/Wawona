@@ -126,16 +126,44 @@ run_ios() {
   fi
   agent-device screenshot "$ARTIFACTS/ios-machines-root.png" "${ad_common[@]}" || true
 
-  agent-device press 'id="wwn.machines.settings"' "${ad_common[@]}" >/dev/null 2>&1 \
-    || agent-device press 'label="Settings"' "${ad_common[@]}" >/dev/null 2>&1 \
-    || true
-  agent-device wait 'id="wwn.settings.display"' 15000 "${ad_common[@]}" >/dev/null 2>&1 \
-    || agent-device wait 'text="Display"' 5000 "${ad_common[@]}" >/dev/null 2>&1 \
-    || true
+  # Stray host taps can leave Edit Machine open. A prior products smoke dump
+  # showed that sheet, not Settings, so Apple Watch never appeared.
+  if agent-device is visible 'text="Edit Machine Profile"' "${ad_common[@]}" >/dev/null 2>&1 \
+    || agent-device is visible 'label="Edit Machine Profile"' "${ad_common[@]}" >/dev/null 2>&1; then
+    agent-device press 'label="Cancel"' "${ad_common[@]}" >/dev/null 2>&1 \
+      || agent-device press 'text="Cancel"' "${ad_common[@]}" >/dev/null 2>&1 \
+      || true
+    agent-device wait 'id="wwn.machines.root"' 8000 "${ad_common[@]}" >/dev/null 2>&1 || true
+  fi
+
+  if ! agent-device press 'id="wwn.machines.settings"' "${ad_common[@]}" >/dev/null 2>&1 \
+    && ! agent-device press 'label="Settings"' "${ad_common[@]}" >/dev/null 2>&1; then
+    echo "FAIL: Settings control not found" >&2
+    agent-device screenshot "$ARTIFACTS/ios-settings-open-fail.png" "${ad_common[@]}" || true
+    agent-device snapshot -i --raw "${ad_common[@]}" || true
+    exit 1
+  fi
+  if ! agent-device wait 'id="wwn.settings.display"' 15000 "${ad_common[@]}" >/dev/null 2>&1 \
+    && ! agent-device wait 'text="Display"' 5000 "${ad_common[@]}" >/dev/null 2>&1; then
+    echo "FAIL: Settings Display section not visible" >&2
+    agent-device screenshot "$ARTIFACTS/ios-settings-display-missing.png" "${ad_common[@]}" || true
+    agent-device snapshot -i --raw "${ad_common[@]}" || true
+    exit 1
+  fi
   agent-device screenshot "$ARTIFACTS/ios-settings-display.png" "${ad_common[@]}" || true
-  # Apple Watch companion section (#151). IPhone Settings send-side.
-  if ! agent-device wait 'id="wwn.settings.appleWatch"' 12000 "${ad_common[@]}" >/dev/null 2>&1 \
-    && ! agent-device wait 'text="Apple Watch"' 5000 "${ad_common[@]}" >/dev/null 2>&1; then
+  # Apple Watch companion section (#151). iPhone Settings send-side. Below
+  # Environment + Local Shell, so swipe the list if it is off-screen.
+  found_apple_watch=0
+  for _ in 1 2 3 4 5; do
+    if agent-device is visible 'id="wwn.settings.appleWatch"' "${ad_common[@]}" >/dev/null 2>&1 \
+      || agent-device is visible 'text="Apple Watch"' "${ad_common[@]}" >/dev/null 2>&1; then
+      found_apple_watch=1
+      break
+    fi
+    agent-device swipe 200 720 200 280 400 "${ad_common[@]}" >/dev/null 2>&1 || true
+    agent-device wait 400 "${ad_common[@]}" || true
+  done
+  if [ "$found_apple_watch" -ne 1 ]; then
     echo "FAIL: wwn.settings.appleWatch not visible in Settings" >&2
     agent-device screenshot "$ARTIFACTS/ios-settings-apple-watch-missing.png" "${ad_common[@]}" || true
     agent-device snapshot -i --raw "${ad_common[@]}" || true
