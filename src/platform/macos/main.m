@@ -547,6 +547,8 @@ static void setup_signal_sources(void) {
   if (autoClient.length == 0) {
     const char *autoClientEnv = getenv("WAWONA_AUTO_CLIENT");
     if (autoClientEnv && autoClientEnv[0])
+      autoClient = [NSString stringWithUTF8String:autoClientEnv];
+  }
   if ((autoClient.length > 0 || g_cli_machine.length > 0 || g_cli_headless) &&
       ![prefs hasSeenWelcome]) {
     // Welcome sheet is modal and would block headless / auto-client start.
