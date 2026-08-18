@@ -42,7 +42,7 @@
     wwn-toolchain.url = "https://flakehub.com/f/Wawona/wwn-toolchain/*";
     wwn-toolchain.inputs.nixpkgs.follows = "nixpkgs";
     wwn-toolchain.inputs.rust-overlay.follows = "rust-overlay";
-    wwn-iland.url = "https://flakehub.com/f/Wawona/wwn-iland/*";
+    wwn-iland.url = "github:Wawona/wwn-iland/development";
     wwn-iland.inputs.nixpkgs.follows = "nixpkgs";
     wwn-iland.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-kmscube.url = "https://flakehub.com/f/Wawona/wwn-kmscube/*";

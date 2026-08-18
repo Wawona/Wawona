@@ -880,16 +880,18 @@
         ]
       },
       "locked": {
-        "lastModified": 1787080085,
-        "narHash": "sha256-4kYy4+zMa4rDCM7n+9OdX5SDoiAeQAfINirZKrRgDBo=",
-        "rev": "8e595540d7781d8e421f104d9add09fc8e09c85f",
-        "revCount": 68,
-        "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-iland/0.1.68%2Brev-8e595540d7781d8e421f104d9add09fc8e09c85f/01a0164f-08a2-7c31-bd59-1bd4c756fb06/source.tar.gz"
+        "lastModified": 1787088156,
+        "narHash": "sha256-F+gsdSmN0PlnH2DhM6lHEc54CgrvuYqe6coFQwr4sqI=",
+        "owner": "Wawona",
+        "repo": "wwn-iland",
+        "rev": "2d19abb653d0e5c297c740bb1ef218e7734f479d",
+        "type": "github"
       },
       "original": {
-        "type": "tarball",
-        "url": "https://flakehub.com/f/Wawona/wwn-iland/%2A"
+        "owner": "Wawona",
+        "ref": "development",
+        "repo": "wwn-iland",
+        "type": "github"
       }
     },
     "wwn-iland_2": {
