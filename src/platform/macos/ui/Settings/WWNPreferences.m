@@ -4157,9 +4157,11 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
                                     additionalEventParamDescriptor:nil
                                                   launchIdentifier:nil];
 #pragma clang diagnostic pop
-      NSAppleScript *script = [[NSAppleScript alloc] initWithSource:@"tell application \"System Events\" to log out"];
+      NSTask *task = [[NSTask alloc] init];
+      [task setLaunchPath:@"/usr/bin/osascript"];
+      [task setArguments:@[ @"-e", @"tell application \"System Events\" to log out" ]];
       [[NSApplication sharedApplication] disableRelaunchOnLogin];
-      [script executeAndReturnError:nil];
+      [task launch];
     }
     return;
   }
@@ -5862,9 +5864,11 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
                                       additionalEventParamDescriptor:nil
                                                     launchIdentifier:nil];
 #pragma clang diagnostic pop
-        NSAppleScript *script = [[NSAppleScript alloc] initWithSource:@"tell application \"System Events\" to log out"];
+        NSTask *task = [[NSTask alloc] init];
+        [task setLaunchPath:@"/usr/bin/osascript"];
+        [task setArguments:@[ @"-e", @"tell application \"System Events\" to log out" ]];
         [[NSApplication sharedApplication] disableRelaunchOnLogin];
-        [script executeAndReturnError:nil];
+        [task launch];
       }
       return;
     }

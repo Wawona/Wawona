@@ -549,6 +549,24 @@ static void setup_signal_sources(void) {
     if (autoClientEnv && autoClientEnv[0])
       autoClient = [NSString stringWithUTF8String:autoClientEnv];
   }
+  if ([[NSUserDefaults standardUserDefaults] boolForKey:kWWNPrefsDesktopReplacementEnabled]) {
+    NSString *desktopMachineId = [[NSUserDefaults standardUserDefaults] stringForKey:kWWNPrefsDesktopReplacementMachineId];
+    if (desktopMachineId.length > 0) {
+      WWNLog("MAIN", @"Desktop Replacement enabled. Auto-starting machine %@ in headless mode.", desktopMachineId);
+      [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        WWNMachineProfile *profile = [WWNMachineProfileStore profileById:desktopMachineId];
+        if (profile) {
+          NSError *err = nil;
+          if (![WWNMachineSessionBridge connectProfile:profile error:&err]) {
+            WWNLog("MAIN", @"Failed to auto-start desktop replacement: %@", err);
+          }
+        }
+      });
+      return;
+    }
+  }
+
   if ((autoClient.length > 0 || g_cli_machine.length > 0 || g_cli_headless) &&
       ![prefs hasSeenWelcome]) {
     // Welcome sheet is modal and would block headless / auto-client start.
@@ -617,6 +635,25 @@ static void setup_signal_sources(void) {
   WWNLog("MAIN",
          @"macOS application will terminate - shutting down gracefully");
   cleanup_on_exit();
+}
+
+- (BOOL)applicationShouldHandleReopen:(NSApplication *)sender hasVisibleWindows:(BOOL)flag {
+  if (g_service_host_mode) {
+    // The user clicked Wawona in Launchpad, but macOS sent the reopen event to the headless compositor host!
+    // We launch the UI app explicitly as a new instance.
+    NSString *bundlePath = WWNWawonaAppBundleRootForUI();
+    NSTask *task = [[NSTask alloc] init];
+    [task setLaunchPath:@"/usr/bin/open"];
+    [task setArguments:@[ @"-n", @"-a", bundlePath ]];
+    [task launch];
+    return NO;
+  }
+  
+  [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+  if (!flag) {
+    [[WWNMachinesCoordinator sharedCoordinator] showMachinesWindowAndActivate:YES];
+  }
+  return YES;
 }
 
 - (NSApplicationTerminateReply)applicationShouldTerminate:
