@@ -4150,13 +4150,9 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
     
     if (response == NSAlertFirstButtonReturn) {
       [[NSApplication sharedApplication] disableRelaunchOnLogin];
-      NSAppleEventDescriptor *target = [NSAppleEventDescriptor descriptorWithBundleIdentifier:@"com.apple.loginwindow"];
-      NSAppleEventDescriptor *event = [NSAppleEventDescriptor appleEventWithEventClass:kCoreEventClass
-                                                                               eventID:kAELogOut
-                                                                      targetDescriptor:target
-                                                                              returnID:kAutoGenerateReturnID
-                                                                         transactionID:kAnyTransactionID];
-      AESendMessage(event.aeDesc, NULL, kAENoReply, kAEDefaultTimeout);
+      NSString *scriptText = @"tell application \"System Events\" to log out";
+      NSAppleScript *script = [[NSAppleScript alloc] initWithSource:scriptText];
+      [script executeAndReturnError:nil];
     }
     return;
   }
@@ -5852,13 +5848,9 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
 
       if (response == NSAlertFirstButtonReturn) {
         [[NSApplication sharedApplication] disableRelaunchOnLogin];
-        NSAppleEventDescriptor *target = [NSAppleEventDescriptor descriptorWithBundleIdentifier:@"com.apple.loginwindow"];
-        NSAppleEventDescriptor *event = [NSAppleEventDescriptor appleEventWithEventClass:kCoreEventClass
-                                                                                 eventID:kAELogOut
-                                                                        targetDescriptor:target
-                                                                                returnID:kAutoGenerateReturnID
-                                                                           transactionID:kAnyTransactionID];
-        AESendMessage(event.aeDesc, NULL, kAENoReply, kAEDefaultTimeout);
+        NSString *scriptText = @"tell application \"System Events\" to log out";
+        NSAppleScript *script = [[NSAppleScript alloc] initWithSource:scriptText];
+        [script executeAndReturnError:nil];
       }
       return;
     }
