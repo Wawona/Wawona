@@ -547,26 +547,6 @@ static void setup_signal_sources(void) {
   if (autoClient.length == 0) {
     const char *autoClientEnv = getenv("WAWONA_AUTO_CLIENT");
     if (autoClientEnv && autoClientEnv[0])
-      autoClient = [NSString stringWithUTF8String:autoClientEnv];
-  }
-  if ([[NSUserDefaults standardUserDefaults] boolForKey:kWWNPrefsDesktopReplacementEnabled]) {
-    NSString *desktopMachineId = [[NSUserDefaults standardUserDefaults] stringForKey:kWWNPrefsDesktopReplacementMachineId];
-    if (desktopMachineId.length > 0) {
-      WWNLog("MAIN", @"Desktop Replacement enabled. Auto-starting machine %@ in headless mode.", desktopMachineId);
-      [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
-      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        WWNMachineProfile *profile = [WWNMachineProfileStore profileById:desktopMachineId];
-        if (profile) {
-          NSError *err = nil;
-          if (![WWNMachineSessionBridge connectProfile:profile error:&err]) {
-            WWNLog("MAIN", @"Failed to auto-start desktop replacement: %@", err);
-          }
-        }
-      });
-      return;
-    }
-  }
-
   if ((autoClient.length > 0 || g_cli_machine.length > 0 || g_cli_headless) &&
       ![prefs hasSeenWelcome]) {
     // Welcome sheet is modal and would block headless / auto-client start.
@@ -1234,6 +1214,24 @@ int main(int argc, char *argv[]) {
       signal(SIGABRT, crash_handler);
       signal(SIGBUS, crash_handler);
       signal(SIGILL, crash_handler);
+      WWNLog("MAIN", @"Rust Compositor running!");
+      
+      if ([[NSUserDefaults standardUserDefaults] boolForKey:kWWNPrefsDesktopReplacementEnabled]) {
+        NSString *desktopMachineId = [[NSUserDefaults standardUserDefaults] stringForKey:kWWNPrefsDesktopReplacementMachineId];
+        if (desktopMachineId.length > 0) {
+          WWNLog("MAIN", @"Compositor daemon: Desktop Replacement enabled. Auto-starting machine %@.", desktopMachineId);
+          dispatch_async(dispatch_get_main_queue(), ^{
+            WWNMachineProfile *profile = [WWNMachineProfileStore profileById:desktopMachineId];
+            if (profile) {
+              NSError *err = nil;
+              if (![WWNMachineSessionBridge connectProfile:profile error:&err]) {
+                WWNLog("MAIN", @"Failed to auto-start desktop replacement: %@", err);
+              }
+            }
+          });
+        }
+      }
+
       [NSApp activateIgnoringOtherApps:YES];
       [NSApp run];
       [bridge stop];

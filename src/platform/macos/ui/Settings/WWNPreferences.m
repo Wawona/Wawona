@@ -4145,8 +4145,7 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
       return;
     }
     
-    // Desktop replacement requires Wawona to launch at login to inject Mode B
-    [[WWNLaunchAgentManager sharedManager] enableAppLaunchAtLogin];
+    // Desktop replacement no longer requires Wawona UI to launch at login
     [[NSUserDefaults standardUserDefaults] setBool:YES forKey:kWWNPrefsDesktopReplacementEnabled];
     
     if (response == NSAlertFirstButtonReturn) {
@@ -5852,8 +5851,7 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
         return;
       }
 
-      // Desktop replacement requires Wawona to launch at login to inject Mode B
-      [[WWNLaunchAgentManager sharedManager] enableAppLaunchAtLogin];
+      // Desktop replacement no longer requires Wawona UI to launch at login
       [[NSUserDefaults standardUserDefaults] setBool:YES forKey:kWWNPrefsDesktopReplacementEnabled];
 
       if (response == NSAlertFirstButtonReturn) {
