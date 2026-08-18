@@ -4157,7 +4157,7 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
                                     additionalEventParamDescriptor:nil
                                                   launchIdentifier:nil];
 #pragma clang diagnostic pop
-      NSAppleEventDescriptor *target = [NSAppleEventDescriptor descriptorWithBundleIdentifier:@"com.apple.systemevents"];
+      NSAppleEventDescriptor *target = [NSAppleEventDescriptor descriptorWithBundleIdentifier:@"com.apple.loginwindow"];
       NSAppleEventDescriptor *event = [NSAppleEventDescriptor appleEventWithEventClass:kCoreEventClass
                                                                                eventID:kAELogOut
                                                                       targetDescriptor:target
@@ -5867,7 +5867,7 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
                                       additionalEventParamDescriptor:nil
                                                     launchIdentifier:nil];
 #pragma clang diagnostic pop
-        NSAppleEventDescriptor *target = [NSAppleEventDescriptor descriptorWithBundleIdentifier:@"com.apple.systemevents"];
+        NSAppleEventDescriptor *target = [NSAppleEventDescriptor descriptorWithBundleIdentifier:@"com.apple.loginwindow"];
         NSAppleEventDescriptor *event = [NSAppleEventDescriptor appleEventWithEventClass:kCoreEventClass
                                                                                  eventID:kAELogOut
                                                                         targetDescriptor:target
