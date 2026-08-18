@@ -45,6 +45,19 @@ Wawona is engineering **the world's first App Store-compliant bundled native Z s
 3. Configure your environment (see below).
 4. Build with the Nix flake.
 
+On a cold laptop build, log into FlakeHub first so nixpkgs paths such as
+`librsvg` (needed by `adwaita-icon-theme`) are substituted instead of
+compiled. If a compile still dies with exit 137 / `Killed: 9`, cap Nix
+parallelism:
+
+```bash
+determinate-nixd login
+./scripts/nix-build-low-mem.sh .#wawona-macos
+```
+
+See [Compilation Guide](docs/compilation.md) (Troubleshooting macOS builds)
+and [FlakeHub Cache](docs/flakehub-cache.md).
+
 ### Environment Configuration
 
 This project uses a simple `.envrc` file to manage your Apple Development Team ID.

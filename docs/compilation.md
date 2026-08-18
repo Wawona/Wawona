@@ -9,6 +9,9 @@ Wawona uses **Nix Flakes** for all builds. For the full build pipeline (crate2ni
 nix run .#wawona
 nix run .#wawona-macos
 
+# Low-RAM / OOM (exit 137 on librsvg). See Troubleshooting below.
+./scripts/nix-build-low-mem.sh .#wawona-macos
+
 # Store-shaped macOS vs SIP Desktop Replacement host
 nix build .#wawona-macos
 nix build .#wawona-macos-desktop-host
@@ -123,6 +126,42 @@ nix run .#gradlegen     # Generate ./Wawona-gradle-project for Android Studio
 - `.envrc` with `TEAM_ID` for iOS signing
 
 See [README](../README.md) for environment setup.
+
+## Troubleshooting macOS builds
+
+A cold `nix build .#wawona-macos` can fail in **nixpkgs** `librsvg` (build
+dep of `pkgs.adwaita-icon-theme`, which supplies Weston cursor assets) with
+`Killed: 9` and **exit 137**. That is the OOM killer, not a Wawona recipe
+bug. Wawona keeps `pkgs.adwaita-icon-theme`.
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `librsvg` / `adwaita-icon-theme` / exit 137 | OOM during nixpkgs compile | FlakeHub login, then low-memory build |
+| Full cold compile on a laptop | Not logged into FlakeHub | `determinate-nixd login` |
+| Still OOM after login | Parallel jobs exceed RAM | `./scripts/nix-build-low-mem.sh .#wawona-macos` |
+
+Recommended order for new contributors:
+
+```bash
+determinate-nixd login
+determinate-nixd status   # Logged in: true
+./scripts/nix-build-low-mem.sh .#wawona-macos
+```
+
+Manual equivalent (the helper defaults to these flags):
+
+```bash
+nix build .#wawona-macos --option max-jobs 1 --option cores 2 -L
+```
+
+If `librsvg` alone keeps failing, build it first with one core:
+
+```bash
+nix build 'nixpkgs#librsvg' --option max-jobs 1 --option cores 1 -L
+```
+
+Do not lower flake-wide `max-jobs` / `cores` in `flake.nix`. Those stay
+`auto` / `0` for CI. Cache details: [`flakehub-cache.md`](flakehub-cache.md).
 
 ## Release beta (TestFlight + Play)
 

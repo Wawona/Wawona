@@ -54,6 +54,14 @@ Upstream docs: [FlakeHub Cache](https://docs.determinate.systems/flakehub/cache)
 | Fork PRs | No FlakeHub Cache auth. Rebuild cold |
 | Laptop push | Not allowed. Only trusted CI builders push |
 
+Gate: products already uploads `wawona-macos` and its nixpkgs deps
+(`adwaita-icon-theme`, `librsvg`) for org members who are logged in. Skip
+`determinate-nixd login` and a laptop compiles those from source. On 8 GB
+machines that often OOMs in `librsvg` (exit 137 / `Killed: 9` during
+gdk-pixbuf-loader install). Keep `pkgs.adwaita-icon-theme`; substitute from
+cache, or build with [`scripts/nix-build-low-mem.sh`](../scripts/nix-build-low-mem.sh).
+Troubleshooting: [`compilation.md`](compilation.md#troubleshooting-macos-builds).
+
 ## CI fragment (every Nix-building job)
 
 ```yaml
