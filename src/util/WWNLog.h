@@ -35,6 +35,14 @@
  */
 extern void (*wwn_startup_log_sink)(const char *module, const char *msg);
 
+/*
+ * Headless CLI (`--mode-b-*`, etc.) sets this so WWNLog does not dump
+ * compositor bring-up onto the caller's terminal. Operator output uses
+ * stdout / WWNModeBCliLog instead.
+ */
+extern int wwn_log_quiet;
+static inline void WWNLogSetQuiet(int quiet) { wwn_log_quiet = quiet; }
+
 static int g_wwn_preserved_stderr_fd = -1;
 static pthread_once_t g_wwn_preserved_stderr_once = PTHREAD_ONCE_INIT;
 
@@ -65,11 +73,13 @@ static inline int WWNPreservedStderrFd(void)
     struct tm _wtm;                                                            \
     localtime_r(&_wt, &_wtm);                                                  \
     NSString *_wmsg = [NSString stringWithFormat:fmt, ##__VA_ARGS__];          \
-    dprintf(WWNPreservedStderrFd(),                                            \
-            "%04d-%02d-%02d %02d:%02d:%02d [%s] %s\n",                         \
-            _wtm.tm_year + 1900, _wtm.tm_mon + 1, _wtm.tm_mday, _wtm.tm_hour,  \
-            _wtm.tm_min, _wtm.tm_sec, module, [_wmsg UTF8String]);             \
-    if (wwn_startup_log_sink) {                                                \
+    if (!wwn_log_quiet) {                                                      \
+      dprintf(WWNPreservedStderrFd(),                                          \
+              "%04d-%02d-%02d %02d:%02d:%02d [%s] %s\n",                       \
+              _wtm.tm_year + 1900, _wtm.tm_mon + 1, _wtm.tm_mday, _wtm.tm_hour,\
+              _wtm.tm_min, _wtm.tm_sec, module, [_wmsg UTF8String]);           \
+    }                                                                          \
+    if (!wwn_log_quiet && wwn_startup_log_sink) {                              \
       wwn_startup_log_sink(module, [_wmsg UTF8String]);                        \
     }                                                                          \
   } while (0)
@@ -84,11 +94,13 @@ static inline int WWNPreservedStderrFd(void)
     time_t _wt = time(NULL);                                                   \
     struct tm _wtm;                                                            \
     localtime_r(&_wt, &_wtm);                                                  \
-    dprintf(WWNPreservedStderrFd(),                                            \
-            "%04d-%02d-%02d %02d:%02d:%02d [%s] " fmt "\n",                    \
-            _wtm.tm_year + 1900, _wtm.tm_mon + 1, _wtm.tm_mday, _wtm.tm_hour,  \
-            _wtm.tm_min, _wtm.tm_sec, module, ##__VA_ARGS__);                  \
-    if (wwn_startup_log_sink) {                                                \
+    if (!wwn_log_quiet) {                                                      \
+      dprintf(WWNPreservedStderrFd(),                                          \
+              "%04d-%02d-%02d %02d:%02d:%02d [%s] " fmt "\n",                  \
+              _wtm.tm_year + 1900, _wtm.tm_mon + 1, _wtm.tm_mday, _wtm.tm_hour,\
+              _wtm.tm_min, _wtm.tm_sec, module, ##__VA_ARGS__);                \
+    }                                                                          \
+    if (!wwn_log_quiet && wwn_startup_log_sink) {                              \
       char _wbuf[1024];                                                        \
       snprintf(_wbuf, sizeof(_wbuf), fmt, ##__VA_ARGS__);                      \
       wwn_startup_log_sink(module, _wbuf);                                     \

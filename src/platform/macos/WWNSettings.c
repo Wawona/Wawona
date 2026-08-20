@@ -9,6 +9,7 @@
  */
 #if !TARGET_OS_IPHONE
 void (*wwn_startup_log_sink)(const char *module, const char *msg) = NULL;
+int wwn_log_quiet = 0;
 #endif
 
 #ifndef __APPLE__

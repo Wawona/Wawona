@@ -16,6 +16,7 @@
  * so that WWNLog() calls on macOS simply skip the in-process sink.
  */
 void (*wwn_startup_log_sink)(const char *module, const char *msg) = NULL;
+int wwn_log_quiet = 0;
 
 /* Forward to the shared instance. C-callable, any thread. */
 static void wwn_startup_log_sink_impl(const char *module, const char *msg)
