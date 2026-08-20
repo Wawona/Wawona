@@ -58,11 +58,14 @@ and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream synta
     macOS/iOS/iPadOS/visionOS/Android (tvOS/watchOS stubs). No SIP, no dylib inject.
   - **Mode B (optional, macOS desktop-host only, planned):** ship
     `libwayland-mac.dylib`, load with `DYLD_INSERT_LIBRARIES` + Dobby when SIP
-    allows (`WWNSipStatus`: Disabled or PartiallyDisabled) **and** Settings →
+    allows (`WWNSipStatus`: SIP fully disabled via `csrutil disable`) **and** Settings →
     Desktop → Enable Desktop Replacement is on. Package
     `.#wawona-macos-desktop-host` only; never in `.#wawona-macos` / iOS /
     Android. Desktop/LockScreen are **coming soon**. Canonical doc:
     `docs/iland-mode-a-b-desktop.md`; Cursor rule `wawona-iland-mode-b-desktop`.
+    **macOS 26:** never Take Over or LLDB-attach `watchdogd` (SIGTRAP panic).
+    See `docs/agent-rules/wawona-mode-b-watchdog-safety.md` and Cursor rule
+    `wawona-mode-b-watchdog-safety`.
     Wawona Swinging Bridge is separate (`docs/swinging-bridge.md`, `wawona-swinging-bridge`).
   - Query `project=macos-internals` for Mach-O/dyld/Mach/XNU/launchd details.
 - **Rust backend builds via crate2nix** (per-crate Nix derivations, `Cargo.nix`)

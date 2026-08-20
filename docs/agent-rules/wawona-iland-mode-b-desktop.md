@@ -76,6 +76,8 @@ Never invent CSR_* syscalls; stay on `csrutil status` string matching.
   `upstream/shims/`).
 - Mode B dylib build: `wwn-iland/.../macos-baremetal.nix`.
 - Mode B Watchdog tools: `wwn-iowatchdog` (L3′ flake; not in-tree C).
+- **macOS 26 watchdog safety:** `wawona-mode-b-watchdog-safety` (never Take
+  Over / never LLDB MCP on `watchdogd`).
 - SIP + prefs UI: `WWNSipStatus.*`, `WWNPreferences.m` Desktop section.
 - Engage/disengage: `WWNDesktopReplacementController.*`,
   `WWNMachineSessionBridge.m`. `nix run .#install` restages helper/dylib
