@@ -132,12 +132,17 @@ compositor the Desktop Machine names.
    compositor). Demo clients (`kmscube`, `weston-terminal`, `foot`) are not
    eligible.
 2. `nix run .#install` (and `Wawona --mode-b-stage`) restages
-   `libwayland-mac.dylib` and a root-owned helper
+   `libwayland-mac.dylib`, `wwn-iowatchdog`, and a root-owned helper
    (`/Library/Application Support/Wawona/run-modeb.sh`) and installs
-   `/etc/sudoers.d/wawona-modeb` (`NOPASSWD` for that helper only). One
-   admin authorization. It does **not** take over the screen and does
-   **not** install a login LaunchAgent. Take Over Screen Now is the
-   only activate step. Logout and the next Aqua login return normal macOS.
+   `/etc/sudoers.d/wawona-modeb` (`NOPASSWD` for that helper and
+   `wwn-iowatchdog` only). One admin authorization. Before the stage
+   IOWatchdog disable/enable probe, it `launchctl enable` + `bootstrap`s
+   `com.apple.watchdogd` if a prior Take Over left the job disabled
+   (never `kickstart -k`). Soft-skips the probe if the daemon still will
+   not start so restage can finish. It does **not** take over the screen
+   and does **not** install a login LaunchAgent. Take Over Screen Now is
+   the only activate step. Logout and the next Aqua login return normal
+   macOS.
 3. Take Over disables kernel IOWatchdog (`wwn-iowatchdog disable`, IOKit
    type 1 / method 3 = DisableUserspaceMonitoring on 25F80), then
    `launchctl disable` + `bootout` of `com.apple.watchdogd`, then
