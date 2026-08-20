@@ -145,25 +145,16 @@ compositor the Desktop Machine names.
    over the screen and does **not** install a login LaunchAgent. Take
    Over Screen Now is the only activate step. Logout and the next Aqua
    login return normal macOS.
-3. Take Over disables kernel IOWatchdog (`wwn-iowatchdog disable`, IOKit
-   type 1 / method 3 = DisableUserspaceMonitoring on 25F80), then
-   `launchctl disable` + `bootout` of `com.apple.watchdogd`, then
-   unloads WindowServer, then injects. Abort and restore Aqua if
-   IOWatchdog disable fails. Unloading watchdogd without that disable
-   panics immediately (`watchdogd[pid] exited`, 2026-08-19).
-   `launchctl kickstart -k` on watchdogd is the same panic (`ws-guard`
-   23:12). `ws-guard` may restore WindowServer only. Probe
-   (`--mode-b-probe`) may inject while both jobs stay up. Insert
-   `DYLD_INSERT_LIBRARIES` on the niri/weston exec only. Never `export`
-   it. Marker: `WWN_MODEB_WD=iowatchdog-then-unload`.
-   On macOS 26, `watchdogd` already holds exclusive `IOWatchdogUserClient`,
-   so `IOServiceOpen` fails. An earlier `lldb` attach fallback exited
-   `watchdogd` with SIGTRAP and paniced the machine (install / open /
-   restore, 2026-08-20). That fallback is **removed**: disable/enable fail
-   closed, Take Over aborts and leaves Aqua. Restore only calls enable when
-   `/tmp/libwayland-support/iowatchdog-userspace-disabled` exists (written
-   after a successful disable). Engage prep skips `--restore-aqua` while
-   WindowServer is already running.
+3. Take Over is **blocked** on macOS 26 until IOWatchdog disable has a
+   non-lldb path (`WWN_MODEB_WD=blocked-no-iowatchdog`). The earlier
+   `lldb` attach fallback exited `watchdogd` with SIGTRAP and paniced
+   install / open / restore (2026-08-20, repeatedly). `--mode-b-probe`
+   may still inject while WindowServer and watchdogd stay up. `nix run
+   .#install` skips Mode B restage by default (`WAWONA_MODEB_STAGE=1` to
+   force a blocked helper). Never unload `watchdogd` or WindowServer for
+   Take Over until that block lifts. `ws-guard` may restore WindowServer
+   only. Never `export DYLD_INSERT_LIBRARIES`. Insert on the niri/weston
+   exec only.
 4. After logout, Aqua's login screen starts WindowServer. The next login
    does not re-run Mode B. Use Settings → Desktop → Take Over Screen Now
    again. Older builds that wrote

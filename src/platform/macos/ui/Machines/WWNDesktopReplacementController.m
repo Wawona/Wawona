@@ -415,7 +415,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"unset DYLD_INSERT_LIBRARIES DYLD_LIBRARY_PATH "
                        @"DYLD_FRAMEWORK_PATH DYLD_FALLBACK_LIBRARY_PATH\n"];
   [script appendString:@"# WWN_MODEB_INSERT=compositor-only\n"];
-  [script appendString:@"# WWN_MODEB_WD=iowatchdog-then-unload\n"];
+  [script appendString:@"# WWN_MODEB_WD=blocked-no-iowatchdog\n"];
   [script appendFormat:@"# WWN_WAWONA_STORE=%@\n",
                        [[NSBundle mainBundle] bundlePath] ?: @""];
   [script appendFormat:@"# WWN_COMPOSITOR=%@\n", executablePath ?: @""];
@@ -732,45 +732,30 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"  exit 0\n"];
   [script appendString:@"fi\n"];
   /*
-   * macOS 26: unloading watchdogd without IOWatchdog disable panics
-   * immediately. Leaving WindowServer missing while watchdogd runs panics
-   * at ~120s. Take Over: disable IOWatchdog, then unload watchdogd, then
-   * WindowServer, then inject. Probe (KEEP_WS) injects with Aqua up.
-   * Never kickstart -k watchdogd.
+   * macOS 26: unloading watchdogd without a working IOWatchdog disable
+   * panics immediately. The lldb attach fallback exited watchdogd with
+   * SIGTRAP and paniced install/open/restore (2026-08-20, repeatedly).
+   * Until a non-lldb IOKit path exists, Take Over refuses and leaves Aqua.
+   * KEEP_WS probe may still inject with WindowServer + watchdogd up.
    */
   [script appendString:@"wwn_log \"WWN_MODEB_GATE=pidfile-not-pgrep\"\n"];
-  [script appendString:@"wwn_log \"WWN_MODEB_WD=iowatchdog-then-unload\"\n"];
+  [script appendString:@"wwn_log \"WWN_MODEB_WD=blocked-no-iowatchdog\"\n"];
   [script appendString:@"rm -f /tmp/libwayland-support/modeb-framebufferd.ready\n"];
   [script appendString:@"install_ws_guard\n"];
   [script appendString:@"if [ -f /tmp/wawona-modeb-keep-ws ]; then\n"];
   [script appendString:@"  wwn_log \"KEEP_WS=1; leaving WindowServer and "
                        @"watchdogd running\"\n"];
   [script appendString:@"else\n"];
-  [script appendString:@"  if [ ! -x \"$WWN_IOWATCHDOG\" ]; then\n"];
-  [script appendString:@"    write_reason \"Mode B refused Take Over: "
-                       @"wwn-iowatchdog is missing. Re-run nix run .#install. "
-                       @"Apple's WindowServer was left running.\"\n"];
-  [script appendString:@"    rmdir /tmp/libwayland-support/modeb.lock "
+  [script appendString:@"  write_reason \"Mode B Take Over is blocked on macOS "
+                       @"26: IOWatchdog disable has no safe path yet "
+                       @"(lldb attach paniced watchdogd with SIGTRAP). "
+                       @"Apple's WindowServer was left running. Use "
+                       @"--mode-b-probe to inject while Aqua stays up.\"\n"];
+  [script appendString:@"  rmdir /tmp/libwayland-support/modeb.lock "
                        @"2>/dev/null || true\n"];
-  [script appendString:@"    rm -rf /tmp/libwayland-support/modeb.lock "
+  [script appendString:@"  rm -rf /tmp/libwayland-support/modeb.lock "
                        @"2>/dev/null || true\n"];
-  [script appendString:@"    exit 0\n"];
-  [script appendString:@"  fi\n"];
-  [script appendString:@"  if ! \"$WWN_IOWATCHDOG\" disable >>\"$LOG\" 2>&1; then\n"];
-  [script appendString:@"    write_reason \"Mode B refused Take Over: "
-                       @"IOWatchdog disable failed. Unloading watchdogd "
-                       @"without that panics on macOS 26. Apple's "
-                       @"WindowServer was left running.\"\n"];
-  [script appendString:@"    restore_aqua\n"];
-  [script appendString:@"    exit 0\n"];
-  [script appendString:@"  fi\n"];
-  [script appendString:@"  wwn_log \"IOWatchdog userspace monitoring disabled\"\n"];
-  [script appendString:@"  mkdir -p /tmp/libwayland-support\n"];
-  [script appendString:@"  : > /tmp/libwayland-support/iowatchdog-userspace-disabled\n"];
-  [script appendString:@"  chmod 644 /tmp/libwayland-support/iowatchdog-userspace-disabled "
-                       @"2>/dev/null || true\n"];
-  [script appendString:@"  stop_watchdogd_after_iowatchdog\n"];
-  [script appendString:@"  stop_window_server\n"];
+  [script appendString:@"  exit 0\n"];
   [script appendString:@"fi\n"];
   [script appendString:@"set +e\n"];
   [script appendString:@"DYLD_INSERT_LIBRARIES=\"$WWN_MODEB_DYLIB\" "];
@@ -1271,14 +1256,14 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
         [existingHelper containsString:executablePath] &&
         [existingHelper containsString:@"WWN_MODEB_GATE=pidfile-not-pgrep"] &&
         [existingHelper containsString:@"WWN_MODEB_LOCK=helper-argv-only"] &&
-        [existingHelper containsString:@"WWN_MODEB_WD=iowatchdog-then-unload"] &&
-        [existingHelper containsString:@"stop_watchdogd_after_iowatchdog"] &&
+        [existingHelper containsString:@"WWN_MODEB_WD=blocked-no-iowatchdog"] &&
         [existingHelper containsString:@"stale modeb.lock"] &&
         [existingHelper containsString:@"# WWN_WAWONA_STORE="] &&
         [existingHelper containsString:bundlePath] &&
         ![existingHelper containsString:@"reap WindowServer"] &&
         ![existingHelper containsString:@"WWN_MODEB_WD=launchctl-unload"] &&
-        ![existingHelper containsString:@"WWN_MODEB_WD=hands-off"] &&
+        ![existingHelper containsString:@"WWN_MODEB_WD=iowatchdog-then-unload"] &&
+        ![existingHelper containsString:@"stop_watchdogd_after_iowatchdog"] &&
         ![existingHelper
             containsString:@"kickstart -k system/com.apple.watchdogd"] &&
         ![existingHelper containsString:@"Mode B helper DISABLED"];

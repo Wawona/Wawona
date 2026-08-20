@@ -14,6 +14,12 @@ as history.
 
 ### Fixed
 
+- **Mode B Take Over blocked on macOS 26.** After repeated
+  `watchdogd exited` SIGTRAP panics (lldb attach and related paths,
+  2026-08-20), Take Over refuses before touching IOWatchdog or unloading
+  `watchdogd` (`WWN_MODEB_WD=blocked-no-iowatchdog`). `--mode-b-probe`
+  may still inject while Aqua stays up. `nix run .#install` skips Mode B
+  restage by default (`WAWONA_MODEB_STAGE=1` to force a blocked helper).
 - **Mode B drops the lldb IOWatchdog fallback.** Attaching `lldb` to live
   `watchdogd` exited it with SIGTRAP (namespace 2 subcode 0x5) and paniced
   during install, app open, and restore (2026-08-20, three times).
