@@ -12,12 +12,16 @@ as history.
 
 ### Changed
 
+- **Classic Take Over stopped on 25F80 (Phase 1.4).** Boot-arg /
+  soft-inject campaign did not unlock a proven
+  `DisableUserspaceMonitoring` path. Take Over remains
+  `WWN_MODEB_WD=blocked-no-iowatchdog`. Wall:
+  `wwn-iowatchdog/docs/macos26-iowatchdog-wall.md`.
 - **`wwn-iowatchdog` 0.2 + macOS 26 wall.** Bundles arm64e
   `libwwn_watchdogd_hook.dylib` beside the CLI. `status` can locate the live
   `IOWatchdogUserClient` port; `disable`/`enable`/`inject` stay fail closed
-  on 25F80 (`thread_set_state` SIGKILLs the caller; IOKit extract and GOT
-  patch fail). Take Over remains blocked. Wall doc:
-  `wwn-iowatchdog/docs/macos26-iowatchdog-wall.md`.
+  on 25F80 (`thread_set_state` is panic-class; IOKit extract fails;
+  IOConnect GOT hijack not proven). Take Over remains blocked.
 
 ### Fixed
 

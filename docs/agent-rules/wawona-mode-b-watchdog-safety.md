@@ -18,10 +18,11 @@ Watchdog tools repo: `github.com/Wawona/wwn-iowatchdog`
 
 | Action | Why |
 |--------|-----|
-| Settings / CLI **Take Over Screen** | Unloads `watchdogd` / WindowServer; blocked (`WWN_MODEB_WD=blocked-no-iowatchdog`) until a proven disable ACK exists |
+| Settings / CLI **Take Over Screen** | Unloads `watchdogd` / WindowServer; blocked (`WWN_MODEB_WD=blocked-no-iowatchdog`). **25F80 Classic stopped at Phase 1.4** (no disable ACK) |
 | `launchctl` unload / `kickstart -k` on `com.apple.watchdogd` | Instant panic when monitoring is armed |
 | Attach **lldb**, debugserver, or Cursor **lldb MCP** (`lldb_mcp.py`) to `watchdogd` | Attach exits the daemon with SIGTRAP |
-| `thread_set_state` / soft-inject into `watchdogd` that uses set_state | Caller is SIGKILL'd on 25F80; not a safe disable path |
+| `thread_set_state` / soft-inject into `watchdogd` that uses set_state | Caller SIGKILL (137); also panic-class risk. Stopped after 2026-08-20 Phase 1 crash (`docs/macos26-iowatchdog-wall.md`) |
+| Ad-hoc GOT write / inject / boot-arg probe loops on the daily driver | Same wall; Classic Take Over stays blocked on 25F80 |
 | Blind `wwn-iowatchdog disable\|enable` during stage / install / healthy Aqua | No working disable yet; old lldb path paniced |
 | Install `ws-guard` on the blocked Take Over refuse path | Not needed when Aqua stays up |
 | Default `nix run .#install` Mode B restage | Opt-in only: `WAWONA_MODEB_STAGE=1` |

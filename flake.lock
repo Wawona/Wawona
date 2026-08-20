@@ -930,11 +930,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1787264513,
-        "narHash": "sha256-z6HllCu6+wtyYLIxVlS7tQL6ib2WDH/dRrp9UcSkqr8=",
+        "lastModified": 1787266859,
+        "narHash": "sha256-VpE+Z28A0kCRRNjtHYwTZW79YMUvTHIn+8MJUQd0Df8=",
         "owner": "Wawona",
         "repo": "wwn-iowatchdog",
-        "rev": "06b5be9a79a5702b50cff51861bd4b8932c34c0c",
+        "rev": "293aaecc1614259722fbd3194911d5e0b63090d6",
         "type": "github"
       },
       "original": {

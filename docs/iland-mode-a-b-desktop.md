@@ -146,8 +146,11 @@ compositor the Desktop Machine names.
    over the screen and does **not** install a login LaunchAgent. Take
    Over Screen Now is the only activate step. Logout and the next Aqua
    login return normal macOS.
-3. Take Over is **blocked** on macOS 26 until IOWatchdog disable has a
-   non-lldb path (`WWN_MODEB_WD=blocked-no-iowatchdog`). The earlier
+3. Take Over is **blocked** on macOS 26 / 25F80 (`WWN_MODEB_WD=blocked-no-iowatchdog`).
+   Classic enablement stopped at Phase 1.4: boot-arg pass
+   (`amfi_get_out_of_my_way=1`) did not yield a proven
+   `DisableUserspaceMonitoring` ACK (see
+   `wwn-iowatchdog/docs/macos26-iowatchdog-wall.md`). The earlier
    `lldb` attach fallback exited `watchdogd` with SIGTRAP and paniced
    install / open / restore (2026-08-20, repeatedly). `--mode-b-probe`
    may still inject while WindowServer and watchdogd stay up. `nix run
