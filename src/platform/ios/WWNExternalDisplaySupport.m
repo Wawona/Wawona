@@ -177,6 +177,8 @@ BOOL WWNExternalDisplayIsConnected(void) { return gExternalDisplayConnected; }
 
   gExternalDisplayConnected = YES;
   [WWNCompositorBridge sharedBridge].externalMirrorView = mirror;
+  // TODO: set self.window to external display window, use external display bounds
+  // Or discard these changes if WWNCompositorBridge changes makes this redundant
   WWNLog("EXTDISPLAY", @"External display connected: %.0fx%.0f",
          self.window.bounds.size.width, self.window.bounds.size.height);
   [[NSNotificationCenter defaultCenter]
