@@ -757,10 +757,17 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"wwn_log \"WWN_MODEB_GATE=pidfile-not-pgrep\"\n"];
   [script appendString:@"wwn_log \"WWN_MODEB_WD=blocked-no-iowatchdog\"\n"];
   [script appendString:@"rm -f /tmp/libwayland-support/modeb-framebufferd.ready\n"];
-  [script appendString:@"install_ws_guard\n"];
+  /*
+   * Do NOT install ws-guard on the blocked path. The guard's RunAtLoad /
+   * StartInterval kickstarts WindowServer when framebufferd is absent.
+   * Take Over never reaches injection here; installing the guard during the
+   * refuse path was unnecessary and ran privileged launchctl against Aqua
+   * right before the 2026-08-20 post-alert SIGTRAP panic on watchdogd.
+   */
   [script appendString:@"if [ -f /tmp/wawona-modeb-keep-ws ]; then\n"];
   [script appendString:@"  wwn_log \"KEEP_WS=1; leaving WindowServer and "
                        @"watchdogd running\"\n"];
+  [script appendString:@"  install_ws_guard\n"];
   [script appendString:@"else\n"];
   [script appendString:@"  write_reason \"Mode B Take Over is blocked on macOS "
                        @"26: IOWatchdog disable has no safe path yet "

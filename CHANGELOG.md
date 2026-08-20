@@ -17,6 +17,10 @@ as history.
   instead of running the helper and reporting "did not keep a compositor
   PID". Reason files written as root are chown'd to the Aqua uid (sticky
   `/tmp`), and `consumeSessionFailureReason` falls back to read-if-unmovable.
+- **Blocked Take Over path must not install ws-guard.** Helper used to
+  `install_ws_guard` before refusing (2026-08-20 post-alert
+  `watchdogd` SIGTRAP panic). Guard installs only on KEEP_WS probe inject.
+  `wwn-iowatchdog` defaults to no IOKit/`lsmp` open.
 
 ### Changed
 
