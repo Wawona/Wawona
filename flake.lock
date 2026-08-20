@@ -349,11 +349,11 @@
         "spectrum": "spectrum"
       },
       "locked": {
-        "lastModified": 1785843289,
-        "narHash": "sha256-H/0YgQ+3BtNbdeSVuqjU7ElneBzPPuIKcuWOi0ZUktQ=",
+        "lastModified": 1786300091,
+        "narHash": "sha256-4UFJOVGpaYtHW5yasSv80MaJxTBYdk2zyf3jhKtt0wA=",
         "owner": "microvm-nix",
         "repo": "microvm.nix",
-        "rev": "e615e23267bf10d483fb44f759d4e61c354cc0f4",
+        "rev": "71beea0076cd46dafcee97a5a2e7d00cbba5bd2f",
         "type": "github"
       },
       "original": {
@@ -434,11 +434,11 @@
     },
     "nixpkgs_2": {
       "locked": {
-        "lastModified": 1785975029,
-        "narHash": "sha256-X44cn5rzytELc3NNoQsh0aLkjWA/QzPfc6HPQmsG3sU=",
+        "lastModified": 1787172299,
+        "narHash": "sha256-PShzS87awOlE5XWkxUGBd/58/F+AtE2ZMgFffKj4r8s=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "70ce234312134a463ba7728e94da2486a1d237ac",
+        "rev": "07e1d92cdc0ed416cfa11ff3ca40d17e61cfba7a",
         "type": "github"
       },
       "original": {
@@ -510,11 +510,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1786247265,
-        "narHash": "sha256-cVTcTqAhzSNMOVddtBhFpuv+Vx6/SgrhgZWJiI61H24=",
+        "lastModified": 1787246814,
+        "narHash": "sha256-pEd4/iPY3Zm/EhhHmeB1QnIWXJSLx7gJzD/05mm2MCo=",
         "owner": "oxalica",
         "repo": "rust-overlay",
-        "rev": "6df7076ea0f5697e3242719a4c71211f00411cf5",
+        "rev": "c84e121aaede7ef8c7bd9fb5154ccc1599e07816",
         "type": "github"
       },
       "original": {
@@ -789,12 +789,12 @@
         ]
       },
       "locked": {
-        "lastModified": 1786606424,
-        "narHash": "sha256-kXJLmqz9WswgNBbyIcIMv4K4/7ZOw8liN551VAQwfjk=",
-        "rev": "b8e161c3e6f2db211e1a358fb32393bba26e38a2",
-        "revCount": 18,
+        "lastModified": 1786849240,
+        "narHash": "sha256-1KSenTtOalJFixPAXQ13yiri/XOVVe1eiGjYGqKAAY4=",
+        "rev": "23fe45117a9aa062acb2c94728630443a4d7c817",
+        "revCount": 20,
         "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-containers/0.1.18%2Brev-b8e161c3e6f2db211e1a358fb32393bba26e38a2/019ffa0b-5795-79f1-847c-445df91872f9/source.tar.gz"
+        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-containers/0.1.20%2Brev-23fe45117a9aa062acb2c94728630443a4d7c817/01a00885-31c8-7862-b540-5567bd953f50/source.tar.gz"
       },
       "original": {
         "type": "tarball",
@@ -812,12 +812,12 @@
         ]
       },
       "locked": {
-        "lastModified": 1786606267,
-        "narHash": "sha256-ONFOdqqiKqkDya67Ja5hRClfEAESZtAOwu7yB8hrSf0=",
-        "rev": "982892b8be8438840eb679d5a54f78c0a1110652",
-        "revCount": 9,
+        "lastModified": 1786849256,
+        "narHash": "sha256-q6NOkEiRCLhtd7eEtlKPhBpTu+A+2gmRIvGoiHbStnk=",
+        "rev": "0fdd89cb8df884d225d720b33872b1a51b6ea54c",
+        "revCount": 10,
         "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-coreutils/0.1.9%2Brev-982892b8be8438840eb679d5a54f78c0a1110652/019ffa08-dfac-7db1-b2a1-846a3dcba81f/source.tar.gz"
+        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-coreutils/0.1.10%2Brev-0fdd89cb8df884d225d720b33872b1a51b6ea54c/01a00885-2f8a-76d0-9c51-35a84cb85df2/source.tar.gz"
       },
       "original": {
         "type": "tarball",
@@ -835,12 +835,12 @@
         ]
       },
       "locked": {
-        "lastModified": 1786606283,
-        "narHash": "sha256-mXCIUPD90xqLZjyBySrQQCNALhHsIVo+8WdCxqLVNuA=",
-        "rev": "9049953151deb4fce5cc288a51ff00fb76f066ca",
-        "revCount": 16,
+        "lastModified": 1786849258,
+        "narHash": "sha256-rF7Q7TUMSLcYA11qWy9ty87035ehE0/gZTX+gR/Fyi4=",
+        "rev": "e38efc20f2622587b1ee5b44fc6585cf0c7d6a81",
+        "revCount": 17,
         "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-fastfetch/0.1.16%2Brev-9049953151deb4fce5cc288a51ff00fb76f066ca/019ffa09-6538-7a12-b3d6-72f6372af744/source.tar.gz"
+        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-fastfetch/0.1.17%2Brev-e38efc20f2622587b1ee5b44fc6585cf0c7d6a81/01a00885-3910-7e40-937c-2370cb9cec5c/source.tar.gz"
       },
       "original": {
         "type": "tarball",
@@ -858,12 +858,12 @@
         ]
       },
       "locked": {
-        "lastModified": 1786606275,
-        "narHash": "sha256-oLvpOTqK0Xl612KPSAz8QH1vZLLipdrZ4jYp4EVbxiM=",
-        "rev": "338a5080b9f9a365ccb43a6587fdea07309f925d",
-        "revCount": 15,
+        "lastModified": 1786984429,
+        "narHash": "sha256-KhBeY5DTm+UdIse7o+nCCQ/4oygGHjhTkSnhhIzsYMo=",
+        "rev": "05697c5d244f19436ced534e0f0e7d53665dd2c0",
+        "revCount": 17,
         "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-foot/0.1.15%2Brev-338a5080b9f9a365ccb43a6587fdea07309f925d/019ffa08-ee15-77c2-b679-4e8cb4eaa28d/source.tar.gz"
+        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-foot/0.1.17%2Brev-05697c5d244f19436ced534e0f0e7d53665dd2c0/01a01093-41ad-7861-8593-9673371a304d/source.tar.gz"
       },
       "original": {
         "type": "tarball",
@@ -958,12 +958,12 @@
         ]
       },
       "locked": {
-        "lastModified": 1786606419,
-        "narHash": "sha256-krvlMSpGsJyp0Rn+LNJRtzU8dYQE2Sw0rR794B9AhxY=",
-        "rev": "edf5417ebf77b9d19b809fa3d2baf8d8348141c5",
-        "revCount": 34,
+        "lastModified": 1786849264,
+        "narHash": "sha256-bWFxA3XI577o5BtgkrEO3l9KQ90yzvDmnYJ6WHYrJSU=",
+        "rev": "3b5e58e95b434bf1d561b01f00a5cff8f949ac8d",
+        "revCount": 35,
         "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-kmscube/0.1.34%2Brev-edf5417ebf77b9d19b809fa3d2baf8d8348141c5/019ffa0b-3c29-7020-93ea-ef21da66b2b8/source.tar.gz"
+        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-kmscube/0.1.35%2Brev-3b5e58e95b434bf1d561b01f00a5cff8f949ac8d/01a00884-c93b-75b0-bc81-88a7a9aa98d3/source.tar.gz"
       },
       "original": {
         "type": "tarball",
@@ -981,12 +981,12 @@
         ]
       },
       "locked": {
-        "lastModified": 1786606273,
-        "narHash": "sha256-GrOjdDDmaVfMJEZaoXBEMRPjIFuT8HgX0+9czUcy0es=",
-        "rev": "9e90e18a559092de6867519f728b42ce0ead3d30",
-        "revCount": 10,
+        "lastModified": 1786849268,
+        "narHash": "sha256-PfJI4k5XuqXfsIUn5P87RzIGoDZEUQCYRBjWlrsG0es=",
+        "rev": "86522c0c06858cbe7c50f04fc0aec859c237dada",
+        "revCount": 11,
         "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-neovim/0.1.10%2Brev-9e90e18a559092de6867519f728b42ce0ead3d30/019ffa09-04b4-7a60-a293-a4254ce7871e/source.tar.gz"
+        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-neovim/0.1.11%2Brev-86522c0c06858cbe7c50f04fc0aec859c237dada/01a00885-502d-79b2-a878-a08aa2064338/source.tar.gz"
       },
       "original": {
         "type": "tarball",
@@ -1006,12 +1006,12 @@
         ]
       },
       "locked": {
-        "lastModified": 1786606271,
-        "narHash": "sha256-IDzdSZL47hqklRhg/7zAaLIPeYvV82xzIEA8FUu5kXQ=",
-        "rev": "94f1ace6118afb014f9e6c321a5cedb5febe892a",
-        "revCount": 18,
+        "lastModified": 1786914600,
+        "narHash": "sha256-Fbs5eof2NBJk02GIacTT5yuO3vtRM/8BzTLBQEruHkI=",
+        "rev": "b94172f05781cc492e7ada47303178a19c27665c",
+        "revCount": 20,
         "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-niri/0.1.18%2Brev-94f1ace6118afb014f9e6c321a5cedb5febe892a/019ffa08-f8b0-7851-83fa-497abebb42d3/source.tar.gz"
+        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-niri/0.1.20%2Brev-b94172f05781cc492e7ada47303178a19c27665c/01a00c69-ffa4-78f0-9c81-e305fa6d7ba9/source.tar.gz"
       },
       "original": {
         "type": "tarball",
@@ -1031,12 +1031,12 @@
         ]
       },
       "locked": {
-        "lastModified": 1786606601,
-        "narHash": "sha256-iYAUeSazeEyRUQWcwv5m19Iy4c08l0LeNQd+NJSO9cw=",
-        "rev": "022183fc78cbcf793fe4a989c07874c250c03706",
-        "revCount": 7,
+        "lastModified": 1786849272,
+        "narHash": "sha256-6va4IIfrAo2mUYrimLq0F7KFmkX50INVVVnSWhynyWM=",
+        "rev": "ad1ebae97085bf171c98a948f6fe62e79e739a74",
+        "revCount": 8,
         "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-phoon-rs/0.1.7%2Brev-022183fc78cbcf793fe4a989c07874c250c03706/019ffa0d-df1d-7c80-8dd8-eeb35f5a4049/source.tar.gz"
+        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-phoon-rs/0.1.8%2Brev-ad1ebae97085bf171c98a948f6fe62e79e739a74/01a00885-67fa-7391-a27d-9c4a806693cc/source.tar.gz"
       },
       "original": {
         "type": "tarball",
@@ -1056,12 +1056,12 @@
         ]
       },
       "locked": {
-        "lastModified": 1786606277,
-        "narHash": "sha256-FV7Jwl3ODSPAyBjhGFLZX1xr0LStpfpyNkBiPORvh50=",
-        "rev": "75b982cf982b2164fc53893c73db57f382f3dca1",
-        "revCount": 14,
+        "lastModified": 1786849273,
+        "narHash": "sha256-SiY693xY9v3RFGfMwleHCu8mZrcpJ+0dltFtUr/Lzm4=",
+        "rev": "d0d3a41062261631d1cd19d081c5c478a7636cb5",
+        "revCount": 15,
         "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-ssh/0.1.14%2Brev-75b982cf982b2164fc53893c73db57f382f3dca1/019ffa09-0754-7e22-a3e1-a82a2d01d45d/source.tar.gz"
+        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-ssh/0.1.15%2Brev-d0d3a41062261631d1cd19d081c5c478a7636cb5/01a00885-9004-7803-857e-b6f3445f9d2a/source.tar.gz"
       },
       "original": {
         "type": "tarball",
@@ -1133,12 +1133,12 @@
         ]
       },
       "locked": {
-        "lastModified": 1786606281,
-        "narHash": "sha256-n2ibpdZS1e+DWnpl1doHNi7qSuIDsCo2L3Csnh0X4uM=",
-        "rev": "ee4449b7087cd69504894e0d7f3340da5e87900b",
-        "revCount": 30,
+        "lastModified": 1786849277,
+        "narHash": "sha256-4M9+oDLJn3Zuyga666SF4ivTqMxf837hlQ0js35ZgRU=",
+        "rev": "95f5dca747c5524ef85408fe32df4ac8201f3483",
+        "revCount": 31,
         "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-vms/0.1.30%2Brev-ee4449b7087cd69504894e0d7f3340da5e87900b/019ffa09-3470-7c61-9f30-ca4d38898c2a/source.tar.gz"
+        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-vms/0.1.31%2Brev-95f5dca747c5524ef85408fe32df4ac8201f3483/01a00885-8173-7171-8569-bd8628e317e1/source.tar.gz"
       },
       "original": {
         "type": "tarball",
@@ -1186,12 +1186,12 @@
         ]
       },
       "locked": {
-        "lastModified": 1786606421,
-        "narHash": "sha256-eL6FnrCN5wOtk54aDM8mu91dCWwHcvrpxl7ZR5S6DSs=",
-        "rev": "a0881db1f6dca294ed9db8f5b195e6771b585048",
-        "revCount": 19,
+        "lastModified": 1786919453,
+        "narHash": "sha256-VW+sLioLQObLS7kZkybSj+yttQ+4Wdmoki1UzN1gdp8=",
+        "rev": "b39f3ac07a9a8f1f620c57d612943ceebb27a5fe",
+        "revCount": 23,
         "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-waypipe/0.1.19%2Brev-a0881db1f6dca294ed9db8f5b195e6771b585048/019ffa0b-38ff-76b1-a6a3-eb3ec3c1ea3a/source.tar.gz"
+        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-waypipe/0.1.23%2Brev-b39f3ac07a9a8f1f620c57d612943ceebb27a5fe/01a00cb4-5c6c-7483-82b5-28e23e82d72a/source.tar.gz"
       },
       "original": {
         "type": "tarball",
@@ -1215,12 +1215,12 @@
         ]
       },
       "locked": {
-        "lastModified": 1786991439,
-        "narHash": "sha256-2EjcKcXbhRJUn55ifkux3nlPADFs0TlYhht6KdmE8sU=",
-        "owner": "Wawona",
-        "repo": "wwn-weston",
-        "rev": "69d1bc2a39ce2d0c81977fd450bb1f75adf9aa68",
-        "type": "github"
+        "lastModified": 1786989776,
+        "narHash": "sha256-vTT0KSIB6b0M04r2noDPlvD+Fwi9AYsh0J0I1V88b9E=",
+        "rev": "1bbd00ef5f2166cfee75e8e2f4a8d37fa9427b56",
+        "revCount": 59,
+        "type": "tarball",
+        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-weston/0.1.59%2Brev-1bbd00ef5f2166cfee75e8e2f4a8d37fa9427b56/01a010e4-b163-7ca3-a47e-ef11e86af997/source.tar.gz"
       },
       "original": {
         "type": "tarball",
@@ -1238,12 +1238,12 @@
         ]
       },
       "locked": {
-        "lastModified": 1786606264,
-        "narHash": "sha256-KT4iwZXUsPTqRQFOL3pgLFUmGiQ3xqtLXar32oStY24=",
-        "rev": "47870085d48ee865a43f4dab0e1b9379ec8ff9b3",
-        "revCount": 21,
+        "lastModified": 1786849283,
+        "narHash": "sha256-hq9/vMp8dmJ1VJ21HRhTZbOcdCg5qJgFttqhhgwTw+g=",
+        "rev": "95c454ac77683a2ad86dbe0e399be42e235fadcb",
+        "revCount": 23,
         "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-zsh/0.1.21%2Brev-47870085d48ee865a43f4dab0e1b9379ec8ff9b3/019ffa08-e28e-7dd2-ba11-0040ba1289db/source.tar.gz"
+        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-zsh/0.1.23%2Brev-95c454ac77683a2ad86dbe0e399be42e235fadcb/01a00886-1602-7aa3-919b-11601271da4e/source.tar.gz"
       },
       "original": {
         "type": "tarball",
