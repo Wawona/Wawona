@@ -49,14 +49,14 @@ static NSString *const kWWNModeBKeepWsPath = @"/tmp/wawona-modeb-keep-ws";
 static NSString *const kWWNModeBFbReadyPath =
     @"/tmp/libwayland-support/modeb-framebufferd.ready";
 
-/** Take Over (unload WS/watchdogd) is blocked until wwn-iowatchdog has a
- *  non-lldb IOServiceOpen path. Probe (KEEP_WS) may still inject. */
+/** Take Over (unload WS/watchdogd) is blocked until a proven non-lldb
+ *  IOWatchdog disable exists. See wwn-iowatchdog docs/macos26-iowatchdog-wall.md. */
 static NSString *WWNModeBTakeOverBlockedMessage(void) {
   return @"Desktop Take Over is blocked on macOS 26. IOWatchdog disable has "
-         @"no safe path yet (lldb attach paniced watchdogd with SIGTRAP). "
-         @"Apple's WindowServer was left running. Use Wawona --mode-b-probe "
-         @"to inject while Aqua stays up, or wait for a non-lldb path in "
-         @"wwn-iowatchdog.";
+         @"no safe path yet: thread_set_state on watchdogd SIGKILLs the "
+         @"caller, IOKit port extract fails, and lldb attach panics. "
+         @"WindowServer was left running. Use Wawona --mode-b-probe to "
+         @"inject while Aqua stays up.";
 }
 
 /*

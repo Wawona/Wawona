@@ -374,6 +374,17 @@ let
         codesign --force --sign - --timestamp=none "$iow_bin" 2>/dev/null || true
       fi
       echo "Bundled Mode B IOWatchdog tool: $iow_bin"
+      # arm64e hook for a future soft-inject path (not used on 25F80 Take Over).
+      local iow_hook_src="${iowatchdog}/lib/libwwn_watchdogd_hook.dylib"
+      local iow_hook_dst="$app/Contents/Library/Wawona/libwwn_watchdogd_hook.dylib"
+      if [ -f "$iow_hook_src" ]; then
+        cp -L "$iow_hook_src" "$iow_hook_dst"
+        chmod 755 "$iow_hook_dst"
+        if command -v codesign >/dev/null 2>&1; then
+          codesign --force --sign - --timestamp=none "$iow_hook_dst" 2>/dev/null || true
+        fi
+        echo "Bundled Mode B watchdogd hook (arm64e): $iow_hook_dst"
+      fi
       '' else ''
       echo "ERROR: ilandBaremetal set but iowatchdog flake package is null" >&2
       exit 1

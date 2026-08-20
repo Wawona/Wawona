@@ -10,6 +10,15 @@ as history.
 
 ## [Unreleased]
 
+### Changed
+
+- **`wwn-iowatchdog` 0.2 + macOS 26 wall.** Bundles arm64e
+  `libwwn_watchdogd_hook.dylib` beside the CLI. `status` can locate the live
+  `IOWatchdogUserClient` port; `disable`/`enable`/`inject` stay fail closed
+  on 25F80 (`thread_set_state` SIGKILLs the caller; IOKit extract and GOT
+  patch fail). Take Over remains blocked. Wall doc:
+  `wwn-iowatchdog/docs/macos26-iowatchdog-wall.md`.
+
 ### Fixed
 
 - **Desktop Take Over Settings alert.** Take Over is blocked on macOS 26
