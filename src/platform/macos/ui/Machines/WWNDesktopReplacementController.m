@@ -956,9 +956,11 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
           @"cp %@ %@\n"
           @"chown root:wheel %@ %@ %@\n"
           @"chmod 755 %@ %@ %@\n"
-          @"# Prior Take Over may leave com.apple.watchdogd disabled. Bring it "
-          @"back before the probe (same enable+bootstrap as restore_watchdogd; "
-          @"never kickstart -k).\n"
+          @"# Prior Take Over may leave com.apple.watchdogd disabled. Re-enable "
+          @"the launchd job only (never kickstart -k, never attach lldb, never "
+          @"call wwn-iowatchdog disable/enable here). Install stage probe via "
+          @"lldb paniced 2026-08-20: watchdogd exited SIGTRAP (namespace 2 "
+          @"subcode 0x5) while kernel IOWatchdog was still armed.\n"
           @"log watchdogd-ensure\n"
           @"/bin/launchctl enable system/com.apple.watchdogd "
           @">/dev/null 2>&1 || true\n"
@@ -968,24 +970,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
           @"/bin/launchctl bootstrap system "
           @"/System/Library/LaunchDaemons/com.apple.watchdogd.plist "
           @">/dev/null 2>&1 || true\n"
-          @"wdi=0\n"
-          @"while [ \"$wdi\" -lt 20 ]; do\n"
-          @"  if /usr/bin/pgrep -x watchdogd >/dev/null 2>&1; then break; fi\n"
-          @"  sleep 0.25\n"
-          @"  wdi=$((wdi + 1))\n"
-          @"done\n"
-          @"# Phase 0/4 probe: disable then enable IOWatchdog; never unload "
-          @"watchdogd here. Soft-skip if daemon still missing so install can "
-          @"finish; Take Over will fail closed later.\n"
-          @"if /usr/bin/pgrep -x watchdogd >/dev/null 2>&1; then\n"
-          @"  log iowatchdog-probe\n"
-          @"  %@ status >>\"$STAGELOG\" 2>&1 || true\n"
-          @"  %@ disable >>\"$STAGELOG\" 2>&1\n"
-          @"  %@ enable >>\"$STAGELOG\" 2>&1 || true\n"
-          @"  log iowatchdog-probe-ok\n"
-          @"else\n"
-          @"  log iowatchdog-probe-skip-no-watchdogd\n"
-          @"fi\n"
+          @"log watchdogd-ensure-done\n"
           @"/usr/sbin/visudo -cf %@ >/dev/null\n"
           @"/usr/bin/install -m 440 -o root -g wheel %@ %@\n"
           @"/usr/sbin/visudo -cf /etc/sudoers >/dev/null\n"
@@ -1038,9 +1023,6 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
           [self wwnShellQuote:helperPath], [self wwnShellQuote:installedDylib],
           [self wwnShellQuote:iowPath],
           [self wwnShellQuote:helperPath], [self wwnShellQuote:installedDylib],
-          [self wwnShellQuote:iowPath],
-          [self wwnShellQuote:iowPath],
-          [self wwnShellQuote:iowPath],
           [self wwnShellQuote:iowPath],
           [self wwnShellQuote:tmpSudoers],
           [self wwnShellQuote:tmpSudoers],

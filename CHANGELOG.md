@@ -14,13 +14,14 @@ as history.
 
 ### Fixed
 
-- **Mode B stage restores `watchdogd` before the IOWatchdog probe.** A prior
-  Take Over can leave `com.apple.watchdogd` disabled (`launchctl
-  print-disabled`). Stage then failed `wwn-iowatchdog disable` under
-  `set -e` with `watchdogd pid: 0`, so `nix run .#install` refused to
-  restage. Stage now enable+bootstrap watchdogd first (never
-  `kickstart -k`) and soft-skips the probe if the daemon still will not
-  start.
+- **Mode B stage never probes IOWatchdog with lldb.** Install used to run
+  `wwn-iowatchdog disable` then `enable` during `--mode-b-stage`. On
+  macOS 26 that attaches `lldb` to live `watchdogd`; a bad attach exited
+  the daemon with SIGTRAP (paniclog namespace 2 subcode 0x5) while kernel
+  IOWatchdog was still armed (`watchdogd[pid] exited`, 2026-08-20 during
+  `nix run .#install`). Stage now only restages files / sudoers and may
+  `launchctl enable`+`bootstrap` a disabled watchdogd job (never
+  `kickstart -k`). Disable belongs only on Take Over.
 - **Mode B Take Over disables kernel IOWatchdog first.** Unloading
   `watchdogd` without that panics immediately (`watchdogd[pid] exited`,
   PanicOnConsecutiveCrash, 2026-08-19). Sequence: `wwn-iowatchdog disable`

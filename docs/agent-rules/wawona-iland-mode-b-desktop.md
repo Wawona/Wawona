@@ -78,6 +78,7 @@ Never invent CSR_* syscalls; stay on `csrutil status` string matching.
 - SIP + prefs UI: `WWNSipStatus.*`, `WWNPreferences.m` Desktop section.
 - Engage/disengage: `WWNDesktopReplacementController.*`,
   `WWNMachineSessionBridge.m`. `nix run .#install` restages helper/dylib
-  via `Wawona --mode-b-stage` (no take-over).
+  via `Wawona --mode-b-stage` (no take-over; never `wwn-iowatchdog`
+  disable/enable or lldb on `watchdogd` during stage).
 - Canonical prose: `Wawona/docs/iland-mode-a-b-desktop.md`.
 - Wawona Swinging Bridge: `wawona-swinging-bridge`, `Wawona/docs/swinging-bridge.md`.

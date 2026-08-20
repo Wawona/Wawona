@@ -135,14 +135,16 @@ compositor the Desktop Machine names.
    `libwayland-mac.dylib`, `wwn-iowatchdog`, and a root-owned helper
    (`/Library/Application Support/Wawona/run-modeb.sh`) and installs
    `/etc/sudoers.d/wawona-modeb` (`NOPASSWD` for that helper and
-   `wwn-iowatchdog` only). One admin authorization. Before the stage
-   IOWatchdog disable/enable probe, it `launchctl enable` + `bootstrap`s
-   `com.apple.watchdogd` if a prior Take Over left the job disabled
-   (never `kickstart -k`). Soft-skips the probe if the daemon still will
-   not start so restage can finish. It does **not** take over the screen
-   and does **not** install a login LaunchAgent. Take Over Screen Now is
-   the only activate step. Logout and the next Aqua login return normal
-   macOS.
+   `wwn-iowatchdog` only). One admin authorization. If a prior Take Over
+   left `com.apple.watchdogd` disabled, stage only `launchctl enable` +
+   `bootstrap`s it (never `kickstart -k`). Stage must **never** run
+   `wwn-iowatchdog disable` / `enable` or attach `lldb` to `watchdogd`:
+   that probe paniced on 2026-08-20 (`watchdogd` exited SIGTRAP /
+   namespace 2 subcode 0x5 while kernel IOWatchdog was still armed).
+   IOWatchdog disable belongs only on Take Over. Stage does **not** take
+   over the screen and does **not** install a login LaunchAgent. Take
+   Over Screen Now is the only activate step. Logout and the next Aqua
+   login return normal macOS.
 3. Take Over disables kernel IOWatchdog (`wwn-iowatchdog disable`, IOKit
    type 1 / method 3 = DisableUserspaceMonitoring on 25F80), then
    `launchctl disable` + `bootout` of `com.apple.watchdogd`, then
