@@ -14,6 +14,19 @@ as history.
 
 ### Fixed
 
+- **Mode B drops the lldb IOWatchdog fallback.** Attaching `lldb` to live
+  `watchdogd` exited it with SIGTRAP (namespace 2 subcode 0x5) and paniced
+  during install, app open, and restore (2026-08-20, three times).
+  `wwn-iowatchdog disable|enable` now fail closed unless a direct
+  `IOServiceOpen` type=1 user client works. Take Over aborts and leaves
+  Aqua. Do not unload `watchdogd` until a non-lldb path exists.
+- **Mode B never blind-`enable`s IOWatchdog via lldb.** `--restore-aqua`,
+  engage prep, and uninstall used to always run `wwn-iowatchdog enable`,
+  which attaches `lldb` to a live healthy `watchdogd`. That exited the
+  daemon with SIGTRAP (namespace 2 subcode 0x5) and paniced on app open /
+  engage (2026-08-20). Kernel re-enable runs only when Take Over left
+  `/tmp/libwayland-support/iowatchdog-userspace-disabled`. Engage skips
+  `--restore-aqua` while WindowServer is already up.
 - **Mode B stage never probes IOWatchdog with lldb.** Install used to run
   `wwn-iowatchdog disable` then `enable` during `--mode-b-stage`. On
   macOS 26 that attaches `lldb` to live `watchdogd`; a bad attach exited

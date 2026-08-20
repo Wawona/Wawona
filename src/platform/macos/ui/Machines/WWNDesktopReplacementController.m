@@ -251,19 +251,17 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   NSString *helperEscaped =
       [[self modeBHelperPath] stringByReplacingOccurrencesOfString:@" "
                                                        withString:@"\\ "];
-  NSString *iowEscaped =
-      [[self modeBIowatchdogPath] stringByReplacingOccurrencesOfString:@" "
-                                                            withString:@"\\ "];
   return [NSString stringWithFormat:
                        @"# Wawona Desktop Replacement Mode B\n"
                        @"# Installed by Settings. Do not edit by hand.\n"
                        @"Defaults:%@ !requiretty\n"
                        @"%@ ALL=(root) NOPASSWD: %@, %@ --restore-aqua, "
-                       @"%@ --kill-compositor, %@ --uninstall, "
-                       @"%@, %@ status, %@ disable, %@ enable\n",
+                       @"%@ --kill-compositor, %@ --uninstall\n"
+                       @"# wwn-iowatchdog is NOT NOPASSWD. Take Over runs it\n"
+                       @"# from the root helper only. Never grant passwordless\n"
+                       @"# disable/enable (lldb attach paniced 2026-08-20).\n",
                        user, user, helperEscaped, helperEscaped,
-                       helperEscaped, helperEscaped, iowEscaped, iowEscaped,
-                       iowEscaped, iowEscaped];
+                       helperEscaped, helperEscaped];
 }
 
 - (BOOL)ensureDesktopMachineSelected:(NSError *_Nullable *_Nullable)error {
@@ -512,16 +510,23 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"  wwn_log \"ws-guard installed (WindowServer only; never touch watchdogd)\"\n"
                        @"}\n"
                        @"restore_watchdogd() {\n"
-                       @"  # Reverse of Take Over: enable launchd job first so\n"
-                       @"  # wwn-iowatchdog enable can bootstrap+catch spawn,\n"
-                       @"  # then re-enable kernel monitoring. Never kickstart -k.\n"
+                       @"  # Reverse of Take Over. Never attach lldb / call\n"
+                       @"  # wwn-iowatchdog enable unless Take Over left the\n"
+                       @"  # disabled marker. Blind enable paniced 2026-08-20\n"
+                       @"  # (watchdogd exited SIGTRAP while kernel monitor\n"
+                       @"  # still armed) on --restore-aqua and app open.\n"
                        @"  /bin/launchctl enable system/com.apple.watchdogd; "
                        @"wwn_log \"wd_enable_st=$?\"\n"
-                       @"  if [ -x \"$WWN_IOWATCHDOG\" ]; then\n"
-                       @"    \"$WWN_IOWATCHDOG\" enable >>\"$LOG\" 2>&1 || "
+                       @"  if [ -f /tmp/libwayland-support/iowatchdog-userspace-disabled ]; then\n"
+                       @"    if [ -x \"$WWN_IOWATCHDOG\" ]; then\n"
+                       @"      \"$WWN_IOWATCHDOG\" enable >>\"$LOG\" 2>&1 || "
                        @"wwn_log \"iowatchdog enable failed (reboot restores)\"\n"
+                       @"    else\n"
+                       @"      wwn_log \"WWN_IOWATCHDOG missing; skip kernel enable\"\n"
+                       @"    fi\n"
+                       @"    rm -f /tmp/libwayland-support/iowatchdog-userspace-disabled\n"
                        @"  else\n"
-                       @"    wwn_log \"WWN_IOWATCHDOG missing; skip kernel enable\"\n"
+                       @"    wwn_log \"skip wwn-iowatchdog enable (no disable marker)\"\n"
                        @"  fi\n"
                        @"  /bin/launchctl load -w \"$WD_PLIST\"; wwn_log \"wd_load_w_st=$?\"\n"
                        @"  /bin/launchctl bootstrap system \"$WD_PLIST\" "
@@ -760,6 +765,10 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"    exit 0\n"];
   [script appendString:@"  fi\n"];
   [script appendString:@"  wwn_log \"IOWatchdog userspace monitoring disabled\"\n"];
+  [script appendString:@"  mkdir -p /tmp/libwayland-support\n"];
+  [script appendString:@"  : > /tmp/libwayland-support/iowatchdog-userspace-disabled\n"];
+  [script appendString:@"  chmod 644 /tmp/libwayland-support/iowatchdog-userspace-disabled "
+                       @"2>/dev/null || true\n"];
   [script appendString:@"  stop_watchdogd_after_iowatchdog\n"];
   [script appendString:@"  stop_window_server\n"];
   [script appendString:@"fi\n"];
@@ -1381,7 +1390,9 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
           @"/bin/launchctl bootstrap system "
           @"/System/Library/LaunchDaemons/com.apple.WindowServer.plist "
           @">/dev/null 2>&1 || true\n"
-          @"if [ -x %@ ]; then %@ enable >/dev/null 2>&1 || true; fi\n"
+          @"# restore_aqua already re-enabled IOWatchdog if the disable\n"
+          @"# marker was set. Never lldb-attach here (blind enable panics).\n"
+          @"rm -f /tmp/libwayland-support/iowatchdog-userspace-disabled\n"
           @"/bin/launchctl enable system/com.apple.watchdogd "
           @">/dev/null 2>&1 || true\n"
           @"/bin/launchctl load -w "
@@ -1403,9 +1414,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
           [self wwnShellQuote:kWWNModeBKeepWsPath],
           [self wwnShellQuote:kWWNModeBFailReasonPath],
           [self wwnShellQuote:[kWWNModeBFailReasonPath
-                                  stringByAppendingString:@".showing"]],
-          [self wwnShellQuote:[self modeBIowatchdogPath]],
-          [self wwnShellQuote:[self modeBIowatchdogPath]]];
+                                  stringByAppendingString:@".showing"]]];
 }
 
 - (void)removeUserLoginAgent {
@@ -1576,8 +1585,17 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   }
 
   NSString *lockPath = @"/tmp/libwayland-support/modeb.lock";
-  WWNModeBCliLog(@"reset leftover helper (--restore-aqua, then --drop-lock)");
-  (void)[self runSudoNHelper:@[ @"--restore-aqua" ]];
+  /*
+   * Only --restore-aqua when WindowServer is already gone. Calling it while
+   * Aqua is healthy used to run wwn-iowatchdog enable (lldb) against a live
+   * watchdogd and paniced on open/engage (2026-08-20).
+   */
+  if (![self isAppleWindowServerRunning]) {
+    WWNModeBCliLog(@"WindowServer down; --restore-aqua then --drop-lock");
+    (void)[self runSudoNHelper:@[ @"--restore-aqua" ]];
+  } else {
+    WWNModeBCliLog(@"WindowServer up; skip --restore-aqua before engage");
+  }
   (void)[self runSudoNHelper:@[ @"--drop-lock" ]];
   for (int j = 0; j < 25; j++) {
     if (![[NSFileManager defaultManager] fileExistsAtPath:lockPath]) {
@@ -1589,8 +1607,10 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     usleep(200000);
   }
   if ([[NSFileManager defaultManager] fileExistsAtPath:lockPath]) {
-    WWNModeBCliLog(@"lock still present after drop-lock; trying restore-aqua again");
-    (void)[self runSudoNHelper:@[ @"--restore-aqua" ]];
+    WWNModeBCliLog(@"lock still present after drop-lock");
+    if (![self isAppleWindowServerRunning]) {
+      (void)[self runSudoNHelper:@[ @"--restore-aqua" ]];
+    }
     (void)[self runSudoNHelper:@[ @"--drop-lock" ]];
     usleep(400000);
   }

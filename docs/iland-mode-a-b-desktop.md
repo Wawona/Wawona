@@ -157,12 +157,13 @@ compositor the Desktop Machine names.
    `DYLD_INSERT_LIBRARIES` on the niri/weston exec only. Never `export`
    it. Marker: `WWN_MODEB_WD=iowatchdog-then-unload`.
    On macOS 26, `watchdogd` already holds exclusive `IOWatchdogUserClient`,
-   so `IOServiceOpen` fails; `wwn-iowatchdog` falls back to a short Xcode
-   `lldb` one-shot that rewrites the next `IOConnectCallScalarMethod`
-   selector in `watchdogd` (disable=3, enable=4). Restore runs
-   `launchctl enable` first, then `wwn-iowatchdog enable` (bootstrap+catch
-   spawn if the daemon is down). Reboot restores if enable fails. Needs
-   SIP fully off and `xcrun --find lldb`.
+   so `IOServiceOpen` fails. An earlier `lldb` attach fallback exited
+   `watchdogd` with SIGTRAP and paniced the machine (install / open /
+   restore, 2026-08-20). That fallback is **removed**: disable/enable fail
+   closed, Take Over aborts and leaves Aqua. Restore only calls enable when
+   `/tmp/libwayland-support/iowatchdog-userspace-disabled` exists (written
+   after a successful disable). Engage prep skips `--restore-aqua` while
+   WindowServer is already running.
 4. After logout, Aqua's login screen starts WindowServer. The next login
    does not re-run Mode B. Use Settings → Desktop → Take Over Screen Now
    again. Older builds that wrote
