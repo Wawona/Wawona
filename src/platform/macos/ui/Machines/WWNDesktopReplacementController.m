@@ -49,6 +49,16 @@ static NSString *const kWWNModeBKeepWsPath = @"/tmp/wawona-modeb-keep-ws";
 static NSString *const kWWNModeBFbReadyPath =
     @"/tmp/libwayland-support/modeb-framebufferd.ready";
 
+/** Take Over (unload WS/watchdogd) is blocked until wwn-iowatchdog has a
+ *  non-lldb IOServiceOpen path. Probe (KEEP_WS) may still inject. */
+static NSString *WWNModeBTakeOverBlockedMessage(void) {
+  return @"Desktop Take Over is blocked on macOS 26. IOWatchdog disable has "
+         @"no safe path yet (lldb attach paniced watchdogd with SIGTRAP). "
+         @"Apple's WindowServer was left running. Use Wawona --mode-b-probe "
+         @"to inject while Aqua stays up, or wait for a non-lldb path in "
+         @"wwn-iowatchdog.";
+}
+
 /*
  * The Mode B compositor is root. kill(pid, 0) from the Aqua user returns
  * EPERM when that process exists. Only ESRCH means it is gone.
@@ -627,6 +637,12 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"write_reason() {\n"
                        @"  printf '%s\\n' \"$1\" > \"$REASON\"\n"
                        @"  chmod 644 \"$REASON\" 2>/dev/null || true\n"
+                       @"  # Sticky /tmp: only the owner can rename/unlink.\n"
+                       @"  # Chown to the Aqua user so Wawona can consume it.\n"
+                       @"  if [ -n \"${WWN_MODEB_UID-}\" ]; then\n"
+                       @"    chown \"$WWN_MODEB_UID\" \"$REASON\" "
+                       @"2>/dev/null || true\n"
+                       @"  fi\n"
                        @"  wwn_log \"$1\"\n"
                        @"}\n"
                        @"claim_modeb_lock() {\n"
@@ -1164,6 +1180,23 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                    NSLocalizedDescriptionKey :
                        @"Desktop Replacement Mode B is not enabled or SIP "
                        @"is not fully disabled (need csrutil disable)."
+                 }];
+    }
+    return NO;
+  }
+  /*
+   * Full Take Over unloads watchdogd after IOWatchdog disable. That disable
+   * has no safe path on macOS 26 yet. Refuse before staging/sudo so Settings
+   * shows a clear message instead of "no compositor PID". Probe sets
+   * /tmp/wawona-modeb-keep-ws and may still inject with Aqua up.
+   */
+  if (![[NSFileManager defaultManager] fileExistsAtPath:kWWNModeBKeepWsPath]) {
+    if (error) {
+      *error = [NSError
+          errorWithDomain:@"WWNDesktopReplacement"
+                     code:10
+                 userInfo:@{
+                   NSLocalizedDescriptionKey : WWNModeBTakeOverBlockedMessage()
                  }];
     }
     return NO;
@@ -1723,13 +1756,19 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   NSString *dst = [src stringByAppendingString:@".showing"];
   NSFileManager *fm = [NSFileManager defaultManager];
   [fm removeItemAtPath:dst error:nil];
-  if (![fm moveItemAtPath:src toPath:dst error:nil]) {
-    return nil;
+  NSString *text = nil;
+  if ([fm moveItemAtPath:src toPath:dst error:nil]) {
+    text = [NSString stringWithContentsOfFile:dst
+                                     encoding:NSUTF8StringEncoding
+                                        error:nil];
+    [fm removeItemAtPath:dst error:nil];
+  } else {
+    /* Root-owned reason on sticky /tmp cannot be renamed by Aqua. Read it. */
+    text = [NSString stringWithContentsOfFile:src
+                                     encoding:NSUTF8StringEncoding
+                                        error:nil];
+    [fm removeItemAtPath:src error:nil];
   }
-  NSString *text = [NSString stringWithContentsOfFile:dst
-                                             encoding:NSUTF8StringEncoding
-                                                error:nil];
-  [fm removeItemAtPath:dst error:nil];
   NSString *trimmed = [text
       stringByTrimmingCharactersInSet:[NSCharacterSet
                                           whitespaceAndNewlineCharacterSet]];

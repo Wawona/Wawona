@@ -5047,63 +5047,25 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
   }
 
   NSAlert *confirm = [[NSAlert alloc] init];
-  confirm.messageText = @"Enable Desktop Replacement?";
+  confirm.alertStyle = NSAlertStyleInformational;
+  confirm.messageText = @"Desktop Take Over unavailable";
   confirm.informativeText =
-      @"Wawona will take over this Mac's screen now. It disables the kernel "
-      @"IOWatchdog, unloads Apple's watchdogd, then WindowServer, and "
-      @"launches the selected machine with the Mode B dylib "
-      @"(libwayland-mac.dylib). Finder, Dock, and this window will go away.\n\n"
-      @"If IOWatchdog disable fails, Take Over aborts and leaves Aqua "
-      @"running. Unloading watchdogd without that disable panics on this "
-      @"macOS.\n\n"
-      @"SIP must be fully disabled (csrutil disable in Recovery). "
-      @"csrutil enable --without debug is not enough.\n\n"
-      @"This takes over now. It asks for an administrator password once and "
-      @"installs a root helper, wwn-iowatchdog, and a sudoers rule. It does "
-      @"not install a login LaunchAgent. Mode B injects "
-      @"libwayland-mac.dylib into niri or weston, never into WindowServer. "
-      @"If framebufferd does not stay up, Wawona restores WindowServer and "
-      @"watchdogd. After logout you get normal macOS; use Take Over Screen "
-      @"Now again.\n\n"
-      @"Turn this off in Settings for a full teardown: restore Apple's "
-      @"WindowServer and watchdogd, kill the root compositor, and remove "
-      @"sudoers, helper, dylib, wwn-iowatchdog, and ws-guard.";
-  [confirm addButtonWithTitle:@"Take Over Screen"];
-  [confirm addButtonWithTitle:@"Cancel"];
-
-  if ([confirm runModal] != NSAlertFirstButtonReturn) {
-    if (revert) {
-      revert();
-    }
-    return NO;
+      @"Desktop Take Over is blocked on macOS 26. IOWatchdog disable has "
+      @"no safe path yet (lldb attach paniced watchdogd with SIGTRAP). "
+      @"Wawona will not unload WindowServer or watchdogd.\n\n"
+      @"To inject while Aqua stays up: Wawona --mode-b-probe "
+      @"(after WAWONA_MODEB_STAGE=1 nix run .#install).\n\n"
+      @"The Desktop Replacement switch will stay off. SIP must still be "
+      @"fully disabled when Take Over returns (csrutil disable in Recovery).";
+  [confirm addButtonWithTitle:@"OK"];
+  [confirm runModal];
+  if (revert) {
+    revert();
   }
-
   [[NSUserDefaults standardUserDefaults]
-      setBool:YES
+      setBool:NO
        forKey:kWWNPrefsDesktopReplacementEnabled];
-
-  NSError *err = nil;
-  if (![[WWNDesktopReplacementController sharedController]
-          engageSelectedDesktopMachine:&err]) {
-    [[NSUserDefaults standardUserDefaults]
-        setBool:NO
-         forKey:kWWNPrefsDesktopReplacementEnabled];
-    if (revert) {
-      revert();
-    }
-    NSAlert *fail = [[NSAlert alloc] init];
-    fail.alertStyle = NSAlertStyleCritical;
-    fail.messageText = @"Desktop Replacement failed";
-    fail.informativeText =
-        err.localizedDescription.length
-            ? err.localizedDescription
-            : @"Mode B did not start. Wawona restored Apple's WindowServer. "
-              @"See /tmp/wawona-modeb.log.";
-    [fail addButtonWithTitle:@"OK"];
-    [fail runModal];
-    return NO;
-  }
-  return YES;
+  return NO;
 }
 
 - (void)showDesktopReplacementSipHowTo {

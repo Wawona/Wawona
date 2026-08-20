@@ -10,6 +10,14 @@ as history.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Desktop Take Over Settings alert.** Take Over is blocked on macOS 26
+  (`WWN_MODEB_WD=blocked-no-iowatchdog`). Settings now says so up front
+  instead of running the helper and reporting "did not keep a compositor
+  PID". Reason files written as root are chown'd to the Aqua uid (sticky
+  `/tmp`), and `consumeSessionFailureReason` falls back to read-if-unmovable.
+
 ### Changed
 
 - **`wwn-iowatchdog` is its own L3′ repo.** macOS Watchdog tools live in
