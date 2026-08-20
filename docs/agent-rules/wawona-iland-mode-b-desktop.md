@@ -75,6 +75,7 @@ Never invent CSR_* syscalls; stay on `csrutil status` string matching.
 - Mode A recipes / shims: `wwn-iland` (`macos.nix`, `ios.nix`, `android.nix`,
   `upstream/shims/`).
 - Mode B dylib build: `wwn-iland/.../macos-baremetal.nix`.
+- Mode B Watchdog tools: `wwn-iowatchdog` (L3′ flake; not in-tree C).
 - SIP + prefs UI: `WWNSipStatus.*`, `WWNPreferences.m` Desktop section.
 - Engage/disengage: `WWNDesktopReplacementController.*`,
   `WWNMachineSessionBridge.m`. `nix run .#install` restages helper/dylib

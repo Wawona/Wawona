@@ -93,6 +93,7 @@ is classified as partial and **refused**. Do not use CSR_* APIs.
 |------------------|------|--------|
 | `wwn-iland` `iland` (`macos.nix`, `ios.nix`, …) | A | `libiland_userland.a` |
 | `wwn-iland` `iland-baremetal` (`macos-baremetal.nix`) | B | `libwayland-mac.dylib` + embedded daemons |
+| `wwn-iowatchdog` (L3′, flake input) | B | macOS Watchdog CLIs; bundled as `Contents/Library/Wawona/wwn-iowatchdog` |
 | `.#wawona-macos` | A only | Product / store-safe shaped; **must not** contain Mode B dylib |
 | `.#wawona-macos-desktop-host` | A + B dylib | Developer ID / desktop-host; dylib at `Contents/Library/Wawona/iland/libwayland-mac.dylib` |
 | iOS / Android apps | A only | Never ship Mode B dylib |

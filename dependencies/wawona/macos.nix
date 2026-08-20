@@ -17,6 +17,9 @@
   # When non-null, copy into Contents/Library/Wawona/iland/ for Desktop
   # Replacement. Store-safe / App Store builds MUST pass null.
   ilandBaremetal ? null,
+  # Mode B IOWatchdog CLI from flake input wwn-iowatchdog (L3'). When non-null
+  # with ilandBaremetal, copy bin/wwn-iowatchdog into Contents/Library/Wawona/.
+  iowatchdog ? null,
   fastfetch ? null,
   phoon ? null,
   wawonaWasm ? null,
@@ -356,23 +359,25 @@ let
       fi
       echo "Bundled Mode B dylib: $dest/libwayland-mac.dylib"
 
-      # Kernel IOWatchdog disable/enable for Take Over (macOS only).
-      # Path is from the filtered flake src (nix store), not install cwd.
-      local iow_src="${wawonaSrc}/src/platform/macos/modeb/wwn-iowatchdog.c"
+      # Kernel IOWatchdog tool from L3' wwn-iowatchdog (not in-tree source).
       local iow_bin="$app/Contents/Library/Wawona/wwn-iowatchdog"
-      if [ ! -f "$iow_src" ]; then
-        echo "ERROR: missing $iow_src (Mode B IOWatchdog tool)" >&2
+      ${if iowatchdog != null then ''
+      local iow_src="${iowatchdog}/bin/wwn-iowatchdog"
+      if [ ! -x "$iow_src" ]; then
+        echo "ERROR: missing $iow_src (Mode B IOWatchdog tool from wwn-iowatchdog)" >&2
         exit 1
       fi
       mkdir -p "$app/Contents/Library/Wawona"
-      clang -O2 -Wall -Wextra \
-        -framework IOKit -framework CoreFoundation \
-        -o "$iow_bin" "$iow_src"
+      cp -L "$iow_src" "$iow_bin"
       chmod 755 "$iow_bin"
       if command -v codesign >/dev/null 2>&1; then
         codesign --force --sign - --timestamp=none "$iow_bin" 2>/dev/null || true
       fi
       echo "Bundled Mode B IOWatchdog tool: $iow_bin"
+      '' else ''
+      echo "ERROR: ilandBaremetal set but iowatchdog flake package is null" >&2
+      exit 1
+      ''}
     }
   '';
 

@@ -115,9 +115,13 @@
     wwn-containers.inputs.rust-overlay.follows = "rust-overlay";
     wwn-containers.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-containers.inputs.wwn-vms.follows = "wwn-vms";
+    # macOS Watchdog tools (IOWatchdog / watchdogd). L3'. Desktop Mode B only.
+    # Cited: docs/wwn-repo-dag.md. github: until FlakeHub rolling exists.
+    wwn-iowatchdog.url = "github:Wawona/wwn-iowatchdog/development";
+    wwn-iowatchdog.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-ssh, wwn-waypipe, wwn-swinging-bridge, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-wasm, wwn-niri, wwn-vms, wwn-containers, ... }:
+  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-ssh, wwn-waypipe, wwn-swinging-bridge, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-wasm, wwn-niri, wwn-vms, wwn-containers, wwn-iowatchdog, ... }:
   let
     linuxSystems = [ "x86_64-linux" "aarch64-linux" ];
     # Nixpkgs 26.11 throws on x86_64-darwin eval; flakehub-push runs
@@ -1046,6 +1050,8 @@
             xcodeProject = xcodegenMacosOutputs.project;
             # Mode B dylib enabled for all macOS builds (Wawona macOS is non-App Store).
             ilandBaremetal = toolchains.buildForMacOS "iland-baremetal" { };
+            # L3' Watchdog tools (github.com/Wawona/wwn-iowatchdog).
+            iowatchdog = wwn-iowatchdog.packages.${system}.wwn-iowatchdog;
           };
           wawona-ios-app-sim = pkgs.callPackage ./dependencies/wawona/ios.nix {
             inherit wawonaSrc wawonaVersion teamId;

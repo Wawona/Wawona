@@ -1340,8 +1340,9 @@ ICDJSON
   # src/stubs depend on system headers (wayland, vulkan) that are only
   # available from the Nix build environment, so they stay out of Xcode.
   # The Xcode build compiles only the platform ObjC layer and links libwawona.a
-  # modeb/wwn-iowatchdog.c is a standalone privileged tool (built in
-  # macos.nix installPhase). Never link its main() into any app target.
+  # modeb/ is documentation only; wwn-iowatchdog ships from flake input
+  # wwn-iowatchdog (bundled in macos.nix). Never link a Watchdog main() into
+  # any app target.
   commonExcludes = ["**/*.rs" "**/*.toml" "**/*.md" "**/Cargo.lock" "**/.DS_Store" "**/renderer_android.*" "**/WWNSettings.c" "**/Skip/**" "modeb/**"];
   # Mobile targets ship src/platform/ios/WWNIlandPresenter.*; omit macOS copies.
   mobileMacPlatformExcludes = commonExcludes ++ [

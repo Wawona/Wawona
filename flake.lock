@@ -488,6 +488,7 @@
         "wwn-fastfetch": "wwn-fastfetch",
         "wwn-foot": "wwn-foot",
         "wwn-iland": "wwn-iland",
+        "wwn-iowatchdog": "wwn-iowatchdog",
         "wwn-kmscube": "wwn-kmscube",
         "wwn-neovim": "wwn-neovim",
         "wwn-niri": "wwn-niri",
@@ -920,6 +921,27 @@
       "original": {
         "type": "tarball",
         "url": "https://flakehub.com/f/Wawona/wwn-iland/%2A"
+      }
+    },
+    "wwn-iowatchdog": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1787251971,
+        "narHash": "sha256-p5FySMfObNLK5PI2uSxwYbuM1fjcOK7nf/Oh+lonaog=",
+        "owner": "Wawona",
+        "repo": "wwn-iowatchdog",
+        "rev": "3acfbabc3f121ef06f0033c82a8f39579891ca8a",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Wawona",
+        "ref": "development",
+        "repo": "wwn-iowatchdog",
+        "type": "github"
       }
     },
     "wwn-kmscube": {

@@ -10,6 +10,14 @@ as history.
 
 ## [Unreleased]
 
+### Changed
+
+- **`wwn-iowatchdog` is its own L3′ repo.** macOS Watchdog tools live in
+  [`Wawona/wwn-iowatchdog`](https://github.com/Wawona/wwn-iowatchdog).
+  Wawona bundles `${iowatchdog}/bin/wwn-iowatchdog` from the flake input
+  instead of compiling in-tree `modeb/wwn-iowatchdog.c`. Cited:
+  `docs/wwn-repo-dag.md`.
+
 ## [26.8.19] - 2026-08-19
 
 ### Fixed
