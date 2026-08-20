@@ -1340,7 +1340,9 @@ ICDJSON
   # src/stubs depend on system headers (wayland, vulkan) that are only
   # available from the Nix build environment, so they stay out of Xcode.
   # The Xcode build compiles only the platform ObjC layer and links libwawona.a
-  commonExcludes = ["**/*.rs" "**/*.toml" "**/*.md" "**/Cargo.lock" "**/.DS_Store" "**/renderer_android.*" "**/WWNSettings.c" "**/Skip/**"];
+  # modeb/wwn-iowatchdog.c is a standalone privileged tool (built in
+  # macos.nix installPhase). Never link its main() into any app target.
+  commonExcludes = ["**/*.rs" "**/*.toml" "**/*.md" "**/Cargo.lock" "**/.DS_Store" "**/renderer_android.*" "**/WWNSettings.c" "**/Skip/**" "modeb/**"];
   # Mobile targets ship src/platform/ios/WWNIlandPresenter.*; omit macOS copies.
   mobileMacPlatformExcludes = commonExcludes ++ [
     "WWNIlandPresenter.m"
@@ -2039,6 +2041,7 @@ ICDJSON
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
           { path = "src/resources/macos"; type = "folder"; }
+          { path = "src/resources/macos/Wawona-menubar-silhouette.png"; type = "file"; }
         ];
         preBuildScripts = [ stampBuildNumberPhase macosPreBuild ];
         postBuildScripts = [

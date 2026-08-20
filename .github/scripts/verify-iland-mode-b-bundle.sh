@@ -31,6 +31,7 @@ if [[ -z "$root" || ! -e "$root" ]]; then
 fi
 
 dylib_rel="Contents/Library/Wawona/iland/libwayland-mac.dylib"
+iow_rel="Contents/Library/Wawona/wwn-iowatchdog"
 found="$(find "$root" \( -name 'libwayland-mac.dylib' -o -name 'libwwn-iland.dylib' \) 2>/dev/null || true)"
 
 if [[ "$mode" == "present" ]]; then
@@ -38,15 +39,20 @@ if [[ "$mode" == "present" ]]; then
     echo "FAIL: expected Mode B dylib at $root/$dylib_rel" >&2
     exit 1
   fi
+  if [[ ! -x "$root/$iow_rel" ]]; then
+    echo "FAIL: expected Mode B wwn-iowatchdog at $root/$iow_rel" >&2
+    exit 1
+  fi
   if ! file "$root/$dylib_rel" | grep -q 'Mach-O'; then
     echo "FAIL: $root/$dylib_rel is not a Mach-O dylib" >&2
     exit 1
   fi
-  echo "OK: Mode B dylib present ($root/$dylib_rel)"
+  echo "OK: Mode B dylib + wwn-iowatchdog present ($root/$dylib_rel, $root/$iow_rel)"
 else
-  if [[ -n "$found" ]]; then
-    echo "FAIL: Mode B dylib must be absent from store-safe / non-macOS artifact:" >&2
+  if [[ -n "$found" ]] || [[ -e "$root/$iow_rel" ]]; then
+    echo "FAIL: Mode B dylib/wwn-iowatchdog must be absent from store-safe / non-macOS artifact:" >&2
     echo "$found" >&2
+    [[ -e "$root/$iow_rel" ]] && echo "$root/$iow_rel" >&2
     exit 1
   fi
   echo "OK: Mode B dylib absent under $root"

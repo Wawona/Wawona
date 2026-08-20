@@ -185,9 +185,9 @@ targets, and never mention jailbreak in those binaries. Canonical behavior:
 
 | Setting | Key | Type | Default | Description |
 |---------|-----|------|---------|-------------|
-| SIP status (info) | (runtime `WWNSipStatus`) | Info | - | `csrutil status` classify; Desktop Mode B needs Disabled or PartiallyDisabled |
-| Enable Desktop Replacement | `DesktopReplacementEnabled` | Switch | Off | Mode B when SIP allows; refused/cleared if SIP blocks or Mode B dylib missing |
-| Desktop Machine | `DesktopReplacementMachineId` | Popup | - | Native-port machine profiles only |
+| SIP status (info) | (runtime `WWNSipStatus`) | Info | - | Value is **Fully Disabled** only when `csrutil disable` took. Partial (`enable --without debug`) shows Partially Disabled and Mode B is refused |
+| Enable Desktop Replacement | `DesktopReplacementEnabled` | Switch | Off | Mode B when SIP allows; refused/cleared if SIP blocks or Mode B dylib missing. First enable installs sudoers NOPASSWD for the root helper and `wwn-iowatchdog`. Take Over Screen Now disables IOWatchdog, then unloads watchdogd and WindowServer. Login does not unload WindowServer. |
+| Desktop Machine | `DesktopReplacementMachineId` | Popup | - | Nested compositor native profiles only (weston, niri, custom compositor) |
 | Enable Lockscreen Replacement | `LockscreenReplacementEnabled` | Switch | Off | Greeter / machine picker before Desktop |
 | Lockscreen Machine | `LockscreenReplacementMachineId` | Popup | - | Native-port greeter machine |
 | Wawona Swinging Bridge | `AnowaWEnabled` | Switch | Off | **Not** Desktop. See [`swinging-bridge.md`](./swinging-bridge.md) |

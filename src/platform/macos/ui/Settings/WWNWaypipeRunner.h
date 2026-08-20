@@ -1,5 +1,8 @@
 #import "WWNPreferencesManager.h"
 #import <Foundation/Foundation.h>
+#import <TargetConditionals.h>
+
+@class WWNMachineProfile;
 
 typedef void (^WaypipeOutputHandler)(NSString *output);
 
@@ -89,6 +92,21 @@ typedef void (^WaypipeOutputHandler)(NSString *output);
 /// YES while any bundled native client or in-process iOS launch is active.
 - (BOOL)isAnyNativeClientRunning;
 
+#if TARGET_OS_OSX
+/**
+ * Argv and environment to run a nested compositor as the Mode B display
+ * server (wwn-iland framebufferd). Forces that client's own DRM/KMS backend,
+ * clears WAYLAND_DISPLAY so it does not nest inside Wawona, and leaves
+ * compositor-specific flags to that client (weston --backend=drm, niri
+ * NIRI_BACKEND=tty, custom command exec as-is). Does not start the process.
+ */
+- (BOOL)baremetalCompositorLaunchSpecForProfile:(WWNMachineProfile *)profile
+                                     executable:(NSString *_Nullable *_Nonnull)outPath
+                                      arguments:(NSArray<NSString *> *_Nullable *_Nonnull)outArgs
+                                    environment:(NSDictionary<NSString *, NSString *> *_Nullable *_Nonnull)outEnv
+                                          error:(NSError *_Nullable *_Nullable)error;
+#endif
+
 @end
 
 /// Resolves the display backend a bundled compositor should run against:
@@ -107,3 +125,4 @@ FOUNDATION_EXPORT void WWNSetCompositorBackendCLIOverride(
 
 /// Current CLI `--backend` override, or nil if unset.
 FOUNDATION_EXPORT NSString *_Nullable WWNCompositorBackendCLIOverride(void);
+

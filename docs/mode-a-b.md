@@ -6,7 +6,7 @@ that treated “Mode B” as macOS-iland-only.
 
 | | **Mode A** | **Mode B** |
 |---|---|---|
-| **Who** | App Store / TestFlight / Play / store-shaped macOS | Jailbreak (iOS/iPadOS), SIP-disabled/partial macOS, rooted/privileged Android |
+| **Who** | App Store / TestFlight / Play / store-shaped macOS | Jailbreak (iOS/iPadOS), SIP fully disabled for macOS Desktop/LockScreen (`csrutil disable`), rooted/privileged Android |
 | **Distribution** | Apple / Google store binaries; notarized `.#wawona-macos` | `repo.wawona.io` (Sileo `.deb` + **Mode B IPA**), desktop-host macOS flavor, sideload/TrollStore where documented on the **website only** |
 | **In store IPA/AAB** | Only Mode A | **Never**. No Mode B engines, no jailbreak strings, no JIT |
 
@@ -54,7 +54,7 @@ Mode B is **privileged host** access. Platforms:
 | Host | Mode B trigger |
 |------|----------------|
 | **iOS / iPadOS** | Jailbreak + packages from `repo.wawona.io` (Sileo) |
-| **macOS** | SIP Disabled or PartiallyDisabled (Debugging Restrictions) + desktop-host / privileged paths |
+| **macOS** | Desktop/LockScreen (iland Mode B): SIP fully disabled (`csrutil disable`) + `wawona-macos-desktop-host`. Other privileged Mode B paths (Swinging Bridge) are separate. |
 | **Android** | Root / privileged paths outside Play requirements |
 
 ### iOS / iPadOS Mode B (full)

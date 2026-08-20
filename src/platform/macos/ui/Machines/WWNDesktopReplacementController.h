@@ -30,10 +30,26 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable NSString *)bundledDylibPath;
 
 /**
+ * Bundle dylib present, a nested compositor Desktop Machine is selected
+ * (created if needed), and a Mode B launch spec can be built. Does not
+ * require DesktopReplacementEnabled to already be on. Settings calls this
+ * before the take-over confirmation.
+ */
+- (nullable NSError *)injectionPreflightError;
+
+/**
+ * Keep DesktopReplacementMachineId pointing at a nested compositor. Reuses
+ * an existing weston/niri/custom profile, or creates "Weston Desktop".
+ */
+- (BOOL)ensureDesktopMachineSelected:(NSError *_Nullable *_Nullable)error;
+
+/**
  * Launch the Desktop machine's nested compositor with Mode B insert
- * (privileged). Unloads Apple's WindowServer and starts a KeepAlive
- * LaunchDaemon. Returns YES if the Mode B session was started (or already
- * running). This is a live takeover, not a logout/login handoff.
+ * (privileged). Installs a root-owned helper and a tight sudoers NOPASSWD
+ * rule. Does not install a login LaunchAgent. Take Over Screen Now is the
+ * only activate step. Logout and the next Aqua login return normal macOS.
+ * Injects into the nested compositor (niri or weston), not into
+ * WindowServer. WindowServer is unloaded only after framebufferd is live.
  */
 - (BOOL)engageForProfile:(WWNMachineProfile *)profile
                    error:(NSError *_Nullable *_Nullable)error;
@@ -45,13 +61,38 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)engageSelectedDesktopMachine:(NSError *_Nullable *_Nullable)error;
 
 /**
- * Stop the Mode B compositor, boot out the LaunchDaemon, and reload Apple's
- * WindowServer.
+ * Full Mode B teardown. Restores Apple's WindowServer, kills the root
+ * compositor and framebufferd/inputd, and removes the login LaunchAgent,
+ * sudoers drop-in, helper, installed dylib, and ws-guard. Settings Disable
+ * must call this. Returns NO if privileged uninstall did not finish.
  */
-- (void)disengage;
+- (BOOL)disengage;
+
+/**
+ * After Aqua login: never unload WindowServer. Boots out any leftover
+ * Mode B login LaunchAgent from older builds. Take Over Screen Now is
+ * the only activate path.
+ */
+- (void)resumeAfterAquaLogin;
+
+/**
+ * If the Mode B compositor died and restored Aqua, show why and clear
+ * DesktopReplacementEnabled so login does not immediately take over again.
+ */
+- (void)presentPendingSessionFailureAlert;
 
 /** Clear DesktopReplacementEnabled when SIP no longer allows Mode B. */
 - (BOOL)reconcilePrefsWithCurrentSip;
+
+/**
+ * Headless CLI. No Machines UI, no instance lock, no alerts.
+ * Logs to stdout and /tmp/wawona-modeb-cli.log. Returns a process exit code.
+ */
+- (int)cliStatus;
+- (int)cliEngageKeepWindowServer:(BOOL)keepWindowServer;
+- (int)cliDisengage;
+/** Restage helper + dylib for this build. Does not take over the screen. */
+- (int)cliStage;
 
 @end
 

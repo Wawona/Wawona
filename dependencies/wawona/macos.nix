@@ -323,21 +323,14 @@ let
       fi
     done
 
-    # Menubar icon must use the dedicated monochrome silhouette asset.
-    if [ -f "''$ICON_BUNDLE/Assets/wayland.png" ]; then
-      cp "''$ICON_BUNDLE/Assets/wayland.png" "''$RESOURCES/Wawona-menubar-silhouette.png"
-      echo "Installed Wawona-menubar-silhouette.png from Wawona.icon/Assets/wayland.png"
+    # Dedicated menubar glyph: Wayland W silhouette, no yellow disc / app-icon chrome.
+    SILHOUETTE_SRC="src/resources/macos/Wawona-menubar-silhouette.png"
+    if [ -f "''$SILHOUETTE_SRC" ]; then
+      cp "''$SILHOUETTE_SRC" "''$RESOURCES/Wawona-menubar-silhouette.png"
+      echo "Installed Wawona-menubar-silhouette.png"
     else
-      # Fallback only if the dedicated silhouette is missing.
-      for candidate in "Wawona-iOS-Dark-1024x1024@1x.png" \
-                       "Assets.xcassets/AppIcon.appiconset/AppIcon-Light-1024.png" \
-                       "Wawona-iOS-Light-1024x1024@1x.png"; do
-        if [ -f "''$ICON_ROOT/''$candidate" ]; then
-          cp "''$ICON_ROOT/''$candidate" "''$RESOURCES/Wawona-menubar-silhouette.png"
-          echo "Installed Wawona-menubar-silhouette.png from fallback source"
-          break
-        fi
-      done
+      echo "Error: missing ''$SILHOUETTE_SRC" >&2
+      exit 1
     fi
   '';
 
@@ -345,7 +338,7 @@ let
     mkdir -p "$out/Applications/Wawona.app/Contents/Resources"
   '';
 
-  # Mode B dylib. Desktop-host / full-dev only (never store-safe).
+  # Mode B dylib + wwn-iowatchdog. Desktop-host / full-dev only (never store-safe).
   bundleIlandBaremetalDylib = lib.optionalString (ilandBaremetal != null) ''
     bundle_iland_baremetal_dylib() {
       local app="$1"
@@ -362,6 +355,24 @@ let
         codesign --force --sign - --timestamp=none "$dest/libwayland-mac.dylib" 2>/dev/null || true
       fi
       echo "Bundled Mode B dylib: $dest/libwayland-mac.dylib"
+
+      # Kernel IOWatchdog disable/enable for Take Over (macOS only).
+      # Path is from the filtered flake src (nix store), not install cwd.
+      local iow_src="${wawonaSrc}/src/platform/macos/modeb/wwn-iowatchdog.c"
+      local iow_bin="$app/Contents/Library/Wawona/wwn-iowatchdog"
+      if [ ! -f "$iow_src" ]; then
+        echo "ERROR: missing $iow_src (Mode B IOWatchdog tool)" >&2
+        exit 1
+      fi
+      mkdir -p "$app/Contents/Library/Wawona"
+      clang -O2 -Wall -Wextra \
+        -framework IOKit -framework CoreFoundation \
+        -o "$iow_bin" "$iow_src"
+      chmod 755 "$iow_bin"
+      if command -v codesign >/dev/null 2>&1; then
+        codesign --force --sign - --timestamp=none "$iow_bin" 2>/dev/null || true
+      fi
+      echo "Bundled Mode B IOWatchdog tool: $iow_bin"
     }
   '';
 
@@ -599,17 +610,19 @@ in
           CODE_SIGNING_REQUIRED=NO \
           ONLY_ACTIVE_ARCH=YES \
           build; then
-          XCODE_APP="./_xcode_project/DerivedData/Build/Products/Release/Wawona.app"
-          if [ -d "$XCODE_APP" ]; then
+          BUILT_APP="./_xcode_project/DerivedData/Build/Products/Release/Wawona.app"
+          if [ -d "$BUILT_APP" ]; then
             mkdir -p xcodebuild-out
-            cp -R "$XCODE_APP" "xcodebuild-out/Wawona.app"
+            cp -R "$BUILT_APP" "xcodebuild-out/Wawona.app"
             touch .use_xcodebuild_app
             echo "✅ Xcode project build produced Wawona.app"
           else
-            echo "⚠️  Xcode project build completed but Wawona.app was not found; continuing with manual fallback."
+            echo "❌ Xcode project build completed but Wawona.app was not found."
+            exit 1
           fi
         else
-          echo "⚠️  Xcode project build failed; continuing with manual fallback."
+          echo "❌ Xcode project build failed."
+          exit 1
         fi
       fi
 
@@ -1529,7 +1542,11 @@ PLIST_EOF
         echo "ERROR: desktop-host build missing Mode B dylib" >&2
         exit 1
       fi
-      echo "Verified Mode B libwayland-mac.dylib present (desktop-host)"
+      if [ ! -x "$APP/Contents/Library/Wawona/wwn-iowatchdog" ]; then
+        echo "ERROR: desktop-host build missing wwn-iowatchdog" >&2
+        exit 1
+      fi
+      echo "Verified Mode B libwayland-mac.dylib + wwn-iowatchdog present (desktop-host)"
       '' else ''
       if [ -f "$APP/Contents/Library/Wawona/iland/libwayland-mac.dylib" ]; then
         echo "ERROR: store-safe/default macOS build must not ship Mode B dylib" >&2

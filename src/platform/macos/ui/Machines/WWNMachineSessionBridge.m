@@ -168,8 +168,20 @@
     // DYLD_INSERT libwayland-mac.dylib (not Mode A in-window present).
     WWNDesktopReplacementController *desktop =
         [WWNDesktopReplacementController sharedController];
-    if ([desktop shouldEngageModeB] && [desktop isDesktopMachine:profile] &&
-        ([clientId isEqualToString:@"weston"] || [clientId isEqualToString:@"niri"])) {
+    if ([desktop shouldEngageModeB] && [desktop isDesktopMachine:profile]) {
+      if (![WWNMachineProfileStore profileIndicatesNestedCompositor:profile]) {
+        if (error) {
+          *error = [NSError
+              errorWithDomain:@"WWNMachineSessionBridge"
+                         code:3
+                     userInfo:@{
+                       NSLocalizedDescriptionKey :
+                           @"Desktop Replacement needs a nested compositor "
+                           @"(weston, niri, or a custom compositor)."
+                     }];
+        }
+        return NO;
+      }
       NSError *modeBError = nil;
       if (![desktop engageForProfile:profile error:&modeBError]) {
         if (error) {

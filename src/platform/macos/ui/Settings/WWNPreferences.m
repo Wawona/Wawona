@@ -867,7 +867,7 @@ static UIImage *WWNAboutLogo(void) {
   // Mirrors the Android Launcher desktop-replacement flow: the user picks a
   // single Native machine to become the Wayland desktop. On macOS this
   // corresponds to iland Mode B replacing SkyLight/WindowServer (requires SIP
-  // disabled + root; never an App Store path). Non-native machines (VM,
+  // fully disabled via csrutil disable + root; never an App Store path). Non-native machines (VM,
   // container, waypipe/SSH) are intentionally not selectable.
   {
     WWNPreferencesSection *desktop = [[WWNPreferencesSection alloc] init];
@@ -883,24 +883,31 @@ static UIImage *WWNAboutLogo(void) {
     BOOL clearedForSip = [[WWNDesktopReplacementController sharedController]
         reconcilePrefsWithCurrentSip];
 
-    // System Integrity Protection status. Mode B requires SIP disabled or
-    // partially disabled (`csrutil enable --without debug`). Surface the current
+    // System Integrity Protection status. Mode B requires SIP fully disabled
+    // (`csrutil disable`). Partial SIP is not enough. Surface the current
     // state so the user knows whether desktop replacement can actually engage.
     WWNSipStatusType sipStatus = [WWNSipStatus current];
     BOOL sipAllowsDesktop = [WWNSipStatus allowsDesktopReplacement:sipStatus];
     if (clearedForSip) {
       sipAllowsDesktop = NO;
     }
+    NSString *sipLabel = [WWNSipStatus describe:sipStatus];
+    NSString *sipDetail;
+    if (sipAllowsDesktop) {
+      sipDetail = @"Status is Fully Disabled. wwn-iland Mode B "
+                  @"(library injection and WindowServer unload) can engage.";
+    } else if (sipStatus == WWNSipStatusPartiallyDisabled) {
+      sipDetail = @"Status is not Fully Disabled. Debugging Restrictions "
+                  @"off is not enough. Run csrutil disable in Recovery.";
+    } else {
+      sipDetail = @"SIP is blocking wwn-iland Mode B. Fully disable SIP "
+                  @"with csrutil disable in Recovery before enabling "
+                  @"desktop replacement (see SIP Requirements & How-To "
+                  @"below).";
+    }
     [desktopItems
         addObject:ITEM(@"System Integrity Protection", nil, WSettingInfo,
-                       [WWNSipStatus describe:sipStatus],
-                       sipAllowsDesktop
-                           ? @"SIP permits wwn-iland Mode B (debugging and "
-                             @"library injection). Desktop replacement can "
-                             @"engage."
-                           : @"SIP is blocking wwn-iland Mode B. Partially "
-                             @"disable SIP before enabling desktop replacement "
-                             @"(see SIP Requirements & How-To below).")];
+                       sipLabel, sipDetail)];
 
     WWNSettingItem *sipHowToBtn =
         ITEM(@"SIP Requirements & How-To", @"DesktopReplacementSipHowTo",
@@ -917,9 +924,32 @@ static UIImage *WWNAboutLogo(void) {
                        @"DesktopReplacementEnabled", WSettingSwitch, @NO,
                        @"Take over this Mac's screen now by replacing "
                        @"SkyLight/WindowServer via wwn-iland Mode B. Requires "
-                       @"SIP partially disabled (not App Store). Pick one "
-                       @"native weston or niri machine below. Logout does not "
-                       @"activate this.")];
+                       @"SIP fully disabled (csrutil disable in Recovery, "
+                       @"not App Store). Disables kernel IOWatchdog, then "
+                       @"unloads watchdogd and WindowServer. Pick a nested "
+                       @"compositor machine below (weston, niri, or custom). "
+                       @"Use Take Over Screen Now to activate. Logging out is "
+                       @"not the activate step and does not inject into "
+                       @"WindowServer. The next login is normal macOS (no "
+                       @"login LaunchAgent). Turning this off fully uninstalls Mode "
+                       @"B (helper, sudoers, login agent, dylib, ws-guard) and "
+                       @"restores Apple's WindowServer.")];
+
+#if TARGET_OS_OSX
+    WWNSettingItem *takeOverNow =
+        ITEM(@"Take Over Screen Now", @"DesktopReplacementTakeOver",
+             WSettingButton, nil,
+             @"Disables kernel IOWatchdog, unloads watchdogd then "
+             @"WindowServer, injects Mode B into niri/weston, waits on "
+             @"framebufferd.pid. Aborts and restores Aqua if IOWatchdog "
+             @"disable fails. Does not install a login LaunchAgent. "
+             @"Needed after install when the switch is already on. "
+             @"Logging out is not this button.");
+    takeOverNow.actionBlock = ^{
+      [weakSelf applyDesktopReplacementEnabled:YES revert:nil];
+    };
+    [desktopItems addObject:takeOverNow];
+#endif
 
     // Machine picker, populated from the machine profile store. Only local
     // nested-compositor native machines qualify (App Bridge shares this selection),
@@ -929,19 +959,21 @@ static UIImage *WWNAboutLogo(void) {
     NSMutableArray<NSString *> *nativeNames = [NSMutableArray array];
     NSMutableArray<NSString *> *nativeIds = [NSMutableArray array];
     for (WWNMachineProfile *p in allProfiles) {
-      if ([p.type isEqualToString:kWWNMachineTypeNative]) {
-        NSString *label = p.name.length ? p.name : @"Unnamed Machine";
-        [nativeNames addObject:label];
-        [nativeIds addObject:p.machineId ?: @""];
+      if (![WWNMachineProfileStore profileIndicatesNestedCompositor:p]) {
+        continue;
       }
+      NSString *label = p.name.length ? p.name : @"Unnamed Machine";
+      [nativeNames addObject:label];
+      [nativeIds addObject:p.machineId ?: @""];
     }
     if (nativeIds.count > 0) {
       WWNSettingItem *machineItem =
           ITEM(@"Desktop Machine",
                @"DesktopReplacementMachineId", WSettingPopup,
                nativeIds.firstObject,
-               @"The local Native machine to use as the desktop replacement "
-               @"(currently allows any native machine for testing).");
+               @"The local nested compositor to run as the host desktop "
+               @"(weston, niri, or a custom compositor). Demo clients such "
+               @"as kmscube are not listed.");
       machineItem.options = nativeNames;
       machineItem.optionValues = nativeIds;
       [desktopItems addObject:machineItem];
@@ -949,7 +981,8 @@ static UIImage *WWNAboutLogo(void) {
       [desktopItems
           addObject:ITEM(@"Desktop Machine", nil, WSettingInfo, @"None",
                          @"No eligible machine found. Create a Native machine "
-                         @"in Machine Configuration, then select it here.")];
+                         @"whose client is a nested compositor (weston, niri, "
+                         @"or custom), then select it here.")];
     }
 
     // ── Wawona Swinging Bridge ──────────────────────────────────────────────
@@ -961,7 +994,7 @@ static UIImage *WWNAboutLogo(void) {
                        @"capture plus CGEvent/Accessibility input injection, so "
                        @"it needs Screen Recording and Accessibility "
                        @"permissions. Requires the desktop machine above to be "
-                       @"a nested Weston or Niri compositor.")];
+                       @"a nested compositor.")];
 
     // ── Lockscreen Replacement (#103). MacOS + Android only ─────────────
     [desktopItems
@@ -4960,10 +4993,26 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
 - (BOOL)applyDesktopReplacementEnabled:(BOOL)enabled
                                 revert:(void (^)(void))revert {
   if (!enabled) {
+    if (![[WWNDesktopReplacementController sharedController] disengage]) {
+      if (revert) {
+        revert();
+      }
+      NSAlert *fail = [[NSAlert alloc] init];
+      fail.alertStyle = NSAlertStyleCritical;
+      fail.messageText = @"Desktop Replacement did not fully uninstall";
+      fail.informativeText =
+          @"Wawona could not finish Mode B teardown (admin authorization "
+          @"was cancelled or the privileged uninstall failed). The switch "
+          @"stays on. Approve the admin prompt to restore Apple's "
+          @"WindowServer and delete the helper, sudoers rule, login agent, "
+          @"dylib, and ws-guard.";
+      [fail addButtonWithTitle:@"OK"];
+      [fail runModal];
+      return NO;
+    }
     [[NSUserDefaults standardUserDefaults]
         setBool:NO
          forKey:kWWNPrefsDesktopReplacementEnabled];
-    [[WWNDesktopReplacementController sharedController] disengage];
     return YES;
   }
 
@@ -4979,19 +5028,46 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
     return NO;
   }
 
+  NSError *preflight =
+      [[WWNDesktopReplacementController sharedController] injectionPreflightError];
+  if (preflight) {
+    if (revert) {
+      revert();
+    }
+    [[NSUserDefaults standardUserDefaults]
+        setBool:NO
+         forKey:kWWNPrefsDesktopReplacementEnabled];
+    NSAlert *fail = [[NSAlert alloc] init];
+    fail.alertStyle = NSAlertStyleCritical;
+    fail.messageText = @"Desktop Replacement is not ready";
+    fail.informativeText = preflight.localizedDescription;
+    [fail addButtonWithTitle:@"OK"];
+    [fail runModal];
+    return NO;
+  }
+
   NSAlert *confirm = [[NSAlert alloc] init];
   confirm.messageText = @"Enable Desktop Replacement?";
   confirm.informativeText =
-      @"Wawona will take over this Mac's screen now by unloading Apple's "
-      @"WindowServer and launching the selected machine with the Mode B "
-      @"dylib (libwayland-mac.dylib). Finder, Dock, and this window will go "
-      @"away.\n\n"
-      @"Logging out does not activate Desktop Replacement. loginwindow would "
-      @"start Aqua again. A LaunchDaemon keeps the session across reboot "
-      @"until you turn this off.\n\n"
-      @"If the session fails, restore macOS with:\n"
-      @"sudo launchctl load -w "
-      @"/System/Library/LaunchDaemons/com.apple.WindowServer.plist";
+      @"Wawona will take over this Mac's screen now. It disables the kernel "
+      @"IOWatchdog, unloads Apple's watchdogd, then WindowServer, and "
+      @"launches the selected machine with the Mode B dylib "
+      @"(libwayland-mac.dylib). Finder, Dock, and this window will go away.\n\n"
+      @"If IOWatchdog disable fails, Take Over aborts and leaves Aqua "
+      @"running. Unloading watchdogd without that disable panics on this "
+      @"macOS.\n\n"
+      @"SIP must be fully disabled (csrutil disable in Recovery). "
+      @"csrutil enable --without debug is not enough.\n\n"
+      @"This takes over now. It asks for an administrator password once and "
+      @"installs a root helper, wwn-iowatchdog, and a sudoers rule. It does "
+      @"not install a login LaunchAgent. Mode B injects "
+      @"libwayland-mac.dylib into niri or weston, never into WindowServer. "
+      @"If framebufferd does not stay up, Wawona restores WindowServer and "
+      @"watchdogd. After logout you get normal macOS; use Take Over Screen "
+      @"Now again.\n\n"
+      @"Turn this off in Settings for a full teardown: restore Apple's "
+      @"WindowServer and watchdogd, kill the root compositor, and remove "
+      @"sudoers, helper, dylib, wwn-iowatchdog, and ws-guard.";
   [confirm addButtonWithTitle:@"Take Over Screen"];
   [confirm addButtonWithTitle:@"Cancel"];
 
@@ -5021,8 +5097,8 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
     fail.informativeText =
         err.localizedDescription.length
             ? err.localizedDescription
-            : @"Mode B did not start. Check SIP, the desktop-host build "
-              @"(libwayland-mac.dylib), and /tmp/wawona-modeb.log.";
+            : @"Mode B did not start. Wawona restored Apple's WindowServer. "
+              @"See /tmp/wawona-modeb.log.";
     [fail addButtonWithTitle:@"OK"];
     [fail runModal];
     return NO;
@@ -5046,8 +5122,7 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
   if (response == NSAlertSecondButtonReturn) {
     NSPasteboard *pb = [NSPasteboard generalPasteboard];
     [pb clearContents];
-    [pb setString:@"csrutil enable --without debug"
-            forType:NSPasteboardTypeString];
+    [pb setString:@"csrutil disable" forType:NSPasteboardTypeString];
   }
 }
 #endif

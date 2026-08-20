@@ -1173,8 +1173,10 @@
             launch_agents_dir="$HOME/Library/LaunchAgents"
             compositor_label="com.aspauldingcode.wawona.compositorhost"
             menubar_label="com.aspauldingcode.wawona.menubar"
+            applaunch_label="com.aspauldingcode.wawona.applaunch"
             runtime_dir="/tmp/wawona-$uid"
             exec_path="${wawona-macos}/Applications/Wawona.app/Contents/MacOS/Wawona"
+            dylib_path="${wawona-macos}/Applications/Wawona.app/Contents/Library/Wawona/iland/libwayland-mac.dylib"
 
             mkdir -p "$launch_agents_dir"
             mkdir -p "$runtime_dir"
@@ -1223,39 +1225,180 @@
 EOF
             }
 
+            wait_unloaded() {
+              target="$1"
+              i=0
+              while [ $i -lt 20 ]; do
+                if ! launchctl print "$target" >/dev/null 2>&1; then
+                  return 0
+                fi
+                sleep 0.25
+                i=$((i + 1))
+              done
+              return 1
+            }
+
+            kill_matching_wawona() {
+              # TERM leftover MacOS/Wawona processes so a stale flock lock
+              # cannot make the new compositor-host exit as "already running".
+              ps -axo pid=,args= | while read -r pid args; do
+                case "$args" in
+                  *"/Contents/MacOS/Wawona"*)
+                    kill -TERM "$pid" >/dev/null 2>&1 || true
+                    ;;
+                esac
+              done
+              sleep 0.4
+              ps -axo pid=,args= | while read -r pid args; do
+                case "$args" in
+                  *"/Contents/MacOS/Wawona"*)
+                    kill -KILL "$pid" >/dev/null 2>&1 || true
+                    ;;
+                esac
+              done
+            }
+
             ensure_loaded() {
               label="$1"
               plist_path="$launch_agents_dir/$label.plist"
               target="$domain/$label"
-              if launchctl print "$target" >/dev/null 2>&1; then
-                launchctl kickstart -k "$target" >/dev/null 2>&1 || true
-              else
-                launchctl bootstrap "$domain" "$plist_path"
-                launchctl kickstart -k "$target" >/dev/null 2>&1 || true
-              fi
+              # kickstart on an already-loaded job keeps the old ProgramArguments
+              # path. Boot out and wait until launchd actually drops the job.
+              launchctl bootout "$target" >/dev/null 2>&1 || true
+              launchctl remove "$label" >/dev/null 2>&1 || true
+              wait_unloaded "$target" || true
+              i=0
+              while [ $i -lt 10 ]; do
+                # After bootout, launchd often returns EIO (5) for a few
+                # hundred ms. Swallow stderr until a retry succeeds.
+                if launchctl bootstrap "$domain" "$plist_path" >/dev/null 2>&1; then
+                  launchctl kickstart -k "$target" >/dev/null 2>&1 || true
+                  return 0
+                fi
+                sleep 0.5
+                i=$((i + 1))
+              done
+              echo "Error: launchctl bootstrap failed for $target" >&2
+              launchctl bootstrap "$domain" "$plist_path"
+            }
+
+            verify_running() {
+              label="$1"
+              target="$domain/$label"
+              i=0
+              while [ $i -lt 20 ]; do
+                prog="$(launchctl print "$target" 2>/dev/null | sed -n 's/^[[:space:]]*program = //p' | head -1)"
+                pid="$(launchctl print "$target" 2>/dev/null | awk '/^[[:space:]]*pid = / { print $3; exit }')"
+                if [ "$prog" = "$exec_path" ] && [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+                  echo "  $label pid=$pid"
+                  return 0
+                fi
+                sleep 0.25
+                i=$((i + 1))
+              done
+              echo "Error: $label is not running this build" >&2
+              echo "  want: $exec_path" >&2
+              echo "  launchd program: $prog" >&2
+              echo "  launchd pid: $pid" >&2
+              exit 1
             }
 
             if [ ! -x "$exec_path" ]; then
               echo "Error: Wawona executable not found at $exec_path" >&2
               exit 1
             fi
+            if [ ! -f "$dylib_path" ]; then
+              echo "Error: Mode B dylib missing at $dylib_path" >&2
+              echo "macOS Desktop Replacement needs libwayland-mac.dylib." >&2
+              exit 1
+            fi
+
+            helper_path="/Library/Application Support/Wawona/run-modeb.sh"
+            echo "Restaging Desktop Replacement helper and dylib for this build."
+            echo "Administrator authorization is required once."
+            if ! "$exec_path" --mode-b-stage; then
+              echo "Error: failed to restage Desktop Replacement helper for this nix store." >&2
+              echo "  $exec_path --mode-b-stage" >&2
+              echo "  want helper pointing at ${wawona-macos}" >&2
+              exit 1
+            fi
+            if [ ! -f "$helper_path" ] || ! grep -Fq "${wawona-macos}" "$helper_path" \
+              || ! grep -Fq "WWN_MODEB_INSERT=compositor-only" "$helper_path" \
+              || ! grep -Fq "WWN_MODEB_LOCK=helper-argv-only" "$helper_path" \
+              || ! grep -Fq "WWN_MODEB_WD=iowatchdog-then-unload" "$helper_path" \
+              || ! grep -Fq "stop_watchdogd_after_iowatchdog" "$helper_path" \
+              || [ ! -x "/Library/Application Support/Wawona/wwn-iowatchdog" ]; then
+              echo "Error: Desktop Replacement helper does not point at this nix store." >&2
+              echo "  helper: $helper_path" >&2
+              echo "  want: ${wawona-macos}" >&2
+              echo "  and: WWN_MODEB_INSERT=compositor-only helper-argv-only WWN_MODEB_WD=iowatchdog-then-unload + wwn-iowatchdog" >&2
+              exit 1
+            fi
+            echo "Mode B helper restaged: $helper_path"
+
+            # Stop both jobs first so compositor-host cannot respawn the
+            # menubar from an old bundle while we rewrite plists.
+            # Drop leftover applaunch: it `open -a`s a GC'd store path
+            # (2026-08-19 login after panic launched Documents/ahaha 0.2.2).
+            launchctl bootout "$domain/$compositor_label" >/dev/null 2>&1 || true
+            launchctl bootout "$domain/$menubar_label" >/dev/null 2>&1 || true
+            launchctl bootout "$domain/$applaunch_label" >/dev/null 2>&1 || true
+            launchctl remove "$applaunch_label" >/dev/null 2>&1 || true
+            rm -f "$launch_agents_dir/$applaunch_label.plist"
+            wait_unloaded "$domain/$compositor_label" || true
+            wait_unloaded "$domain/$menubar_label" || true
+            kill_matching_wawona
+            rm -f "$runtime_dir/compositor-host.lock" "$runtime_dir/menubar.lock" "$runtime_dir/instance.lock"
 
             write_agent "$compositor_label" "--compositor-host" "wawona-compositor"
             write_agent "$menubar_label" "--menubar" "wawona-menubar"
             ensure_loaded "$compositor_label"
             ensure_loaded "$menubar_label"
-            echo "Wawona launch agents installed and running:"
-            echo "  - $compositor_label"
-            echo "  - $menubar_label"
+            echo "Wawona launch agents installed and running this build:"
+            echo "  $exec_path"
+            verify_running "$compositor_label"
+            verify_running "$menubar_label"
+            echo "Mode B dylib: $dylib_path"
+            file "$dylib_path" || true
           '';
-          uninstall = pkgs.writeShellScriptBin "uninstall" ''
+          uninstall = let
+            privileged = pkgs.writeShellScript "wawona-uninstall-privileged" ''
+              set +e
+              HELPER="/Library/Application Support/Wawona/run-modeb.sh"
+              if [ -x "$HELPER" ]; then
+                "$HELPER" --restore-aqua >/dev/null 2>&1
+              fi
+              /bin/launchctl bootout system/com.aspauldingcode.wawona.modeb >/dev/null 2>&1
+              /bin/launchctl bootout system/com.aspauldingcode.wawona.ws-guard >/dev/null 2>&1
+              /usr/bin/pkill -u 0 -x niri >/dev/null 2>&1
+              /usr/bin/pkill -u 0 -x weston >/dev/null 2>&1
+              /usr/bin/pkill -u 0 -x framebufferd >/dev/null 2>&1
+              /usr/bin/pkill -u 0 -x inputd >/dev/null 2>&1
+              /bin/rm -rf /Applications/Wawona.app
+              /bin/rm -rf "/Library/Application Support/Wawona"
+              /bin/rm -f /etc/sudoers.d/wawona-modeb
+              /bin/rm -f /Library/LaunchDaemons/com.aspauldingcode.wawona.modeb.plist
+              /bin/rm -f /Library/LaunchDaemons/com.aspauldingcode.wawona.ws-guard.plist
+              /bin/rm -f /tmp/libwayland-support/modeb-compositor.pid
+              /bin/rm -rf /tmp/libwayland-support/modeb.lock
+              /bin/launchctl enable system/com.apple.WindowServer >/dev/null 2>&1
+              /bin/launchctl load -w /System/Library/LaunchDaemons/com.apple.WindowServer.plist >/dev/null 2>&1
+              if ! /usr/bin/pgrep -x WindowServer >/dev/null 2>&1; then
+                /bin/launchctl kickstart -k system/com.apple.WindowServer >/dev/null 2>&1
+              fi
+              exit 0
+            '';
+          in pkgs.writeShellScriptBin "uninstall" ''
             set -eu
             uid="$(id -u)"
             domain="gui/$uid"
             launch_agents_dir="$HOME/Library/LaunchAgents"
             compositor_label="com.aspauldingcode.wawona.compositorhost"
             menubar_label="com.aspauldingcode.wawona.menubar"
+            applaunch_label="com.aspauldingcode.wawona.applaunch"
+            modeb_login_label="com.aspauldingcode.wawona.modeb-login"
             app_path="/Applications/Wawona.app"
+            modeb_helper="/Library/Application Support/Wawona/run-modeb.sh"
 
             unload_agent() {
               label="$1"
@@ -1266,17 +1409,65 @@ EOF
               rm -f "$plist_path"
             }
 
+            kill_wawona_app() {
+              ps -axo pid=,args= | while read -r pid args; do
+                case "$args" in
+                  *"/Contents/MacOS/Wawona"*)
+                    kill -TERM "$pid" >/dev/null 2>&1 || true
+                    ;;
+                esac
+              done
+              sleep 0.3
+              ps -axo pid=,args= | while read -r pid args; do
+                case "$args" in
+                  *"/Contents/MacOS/Wawona"*)
+                    kill -KILL "$pid" >/dev/null 2>&1 || true
+                    ;;
+                esac
+              done
+            }
+
             unload_agent "$compositor_label"
             unload_agent "$menubar_label"
+            unload_agent "$applaunch_label"
+            unload_agent "$modeb_login_label"
+            kill_wawona_app
 
-            if [ -d "$app_path" ]; then
-              rm -rf "$app_path"
+            if [ -x "$modeb_helper" ]; then
+              /usr/bin/sudo -n "$modeb_helper" --restore-aqua >/dev/null 2>&1 || true
+            fi
+
+            need_admin=0
+            if [ -e "$app_path" ]; then
+              if /bin/rm -rf "$app_path" 2>/dev/null; then
+                echo "Removed $app_path"
+              else
+                need_admin=1
+              fi
+            fi
+            if [ -e "/Library/Application Support/Wawona" ] || \
+               [ -e /etc/sudoers.d/wawona-modeb ] || \
+               [ -e /Library/LaunchDaemons/com.aspauldingcode.wawona.ws-guard.plist ]; then
+              need_admin=1
+            fi
+            if [ "$need_admin" -eq 1 ]; then
+              echo "Requesting administrator privileges to finish uninstall..."
+              if ! /usr/bin/osascript -e "do shell script \"${privileged}\" with administrator privileges"; then
+                echo "Error: administrator authorization is required to remove a root-owned Wawona.app (pkg or sudo copy) and Mode B files." >&2
+                exit 1
+              fi
+            fi
+
+            if [ -e "$app_path" ]; then
+              echo "Error: $app_path is still present." >&2
+              exit 1
             fi
 
             echo "Wawona launch agents removed:"
             echo "  - $compositor_label"
             echo "  - $menubar_label"
-            echo "Wawona app bundle removed from /Applications if present."
+            echo "  - $applaunch_label"
+            echo "Wawona.app and Mode B install files removed."
           '';
           wawona-macos = wawona-macos;
           # 3rd-party macOS ships Mode B. Same drv as default wawona-macos.

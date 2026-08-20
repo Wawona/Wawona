@@ -37,7 +37,7 @@ ports only**.
 
 | Host | Mechanism | Privilege |
 |---|---|---|
-| **macOS** | Partial SIP (system debugging / Debugging Restrictions disabled) + `.dylib` tweak in `wawona-macos-desktop-host` | Required for Mode B |
+| **macOS** | SIP fully disabled (`csrutil disable`) + `.dylib` tweak in `wawona-macos-desktop-host` | Required for Mode B |
 | **Android** | Default Home App + LockScreen APIs | **No root**; **no fallback tier** |
 | **iOS / iPadOS** | Jailbreak tweak from **`repo.wawona.io`** (Sileo source) | Outside App Store only; website docs only |
 | Linux / App Store Apple-mobile / tvOS / watchOS / visionOS | - | **Forbidden** in store binaries (never mention jailbreak there) |
@@ -50,8 +50,9 @@ ports only**.
 - **Mode B** is optional, **macOS-only** for **Desktop/LockScreen host
   replacement**, **not** App Store safe: ship `libwayland-mac.dylib`, load with
   `DYLD_INSERT_LIBRARIES` + Dobby (same model as CoreBedtime), replace
-  SkyLight/WindowServer / lock path via `framebufferd`. Requires SIP debugging
-  restrictions off (or SIP fully disabled) and root.
+  SkyLight/WindowServer / lock path via `framebufferd`. Requires SIP fully
+  disabled (`csrutil disable` in Recovery) and root. `csrutil enable --without
+  debug` is not enough.
 - **Android Desktop/LockScreen** uses platform Home + LockScreen APIs. Not the
   macOS dylib, and not Wawona Swinging Bridge.
 - **Wawona Swinging Bridge** (app bridge) has its own Mode A/B. See [`swinging-bridge.md`](swinging-bridge.md).
@@ -67,17 +68,24 @@ feature?
     iOS / iPadOS (website / repo only) → repo.wawona.io jailbreak tweak (planned)
     Android                   → Default Home + LockScreen (planned; no root)
     macOS
-      SIP allows Mode B?      (Disabled | PartiallyDisabled)
+      SIP fully disabled?     (`csrutil status`: disabled)
         no  → Mode A (ignore Desktop toggle; clear if stale)
         yes → DesktopReplacementEnabled?
               no  → Mode A
-              yes → Mode B (DYLD_INSERT bundled dylib + DRM weston)
+              yes → Mode B: disable kernel IOWatchdog, unload watchdogd,
+                    unload WindowServer, DYLD_INSERT bundled dylib into
+                    niri/weston (framebufferd). Abort if IOWatchdog
+                    disable fails. Compositor argv comes from
+                    WWNWaypipeRunner (weston --backend=drm, niri
+                    NIRI_BACKEND=tty, custom command as written).
 ```
 
 SIP detection: `WWNSipStatus` → `csrutil status` text parse (playground
-`checkSipStatus` port). Partial disable = line
-`Debugging Restrictions: disabled` (typical after
-`csrutil enable --without debug`). Do not use CSR_* APIs.
+`checkSipStatus` port). Mode B is allowed only when the **first line** is
+`System Integrity Protection status: disabled` (optional period). Settings
+shows that state as **Fully Disabled**. Custom Configuration /
+`Debugging Restrictions: disabled` after `csrutil enable --without debug`
+is classified as partial and **refused**. Do not use CSR_* APIs.
 
 ## Artifacts and packages
 
@@ -100,6 +108,7 @@ not enable `iland-baremetal`.
 | SIP classify | `src/platform/macos/ui/Settings/WWNSipStatus.{h,m}` |
 | Desktop prefs UI + hard enforce | `WWNPreferences.m` (Desktop section), keys in `WWNPreferencesManager` |
 | Mode B engage / disengage | `WWNDesktopReplacementController.{h,m}` |
+| Mode B compositor argv/env | `WWNWaypipeRunner` `baremetalCompositorLaunchSpecForProfile:` |
 | Connect / lockscreen handoff | `WWNMachineSessionBridge.m` |
 | Mode A present | `WWNIlandPresenter.m` + `iland_present.h` |
 | Bundle verify | `.github/scripts/verify-iland-mode-b-bundle.sh` |
@@ -107,9 +116,71 @@ not enable `iland-baremetal`.
 Prefs (macOS `NSUserDefaults`):
 
 - `DesktopReplacementEnabled`
-- `DesktopReplacementMachineId`
+- `DesktopReplacementMachineId` (nested compositor native profile only)
 - `LockscreenReplacementEnabled` / `LockscreenReplacementMachineId`
 - `SwingingBridgeEnabled` (Wawona Swinging Bridge. Separate feature; see [`swinging-bridge.md`](swinging-bridge.md))
+
+## Mode B launch (macOS)
+
+CoreBedtime's host takeover is the model: unload Apple's WindowServer, inject
+`libwayland-mac.dylib` into a **root** compositor process, let the dylib start
+`framebufferd` / `inputd` / `amfiexceptiond`. Wawona does not copy
+`run-weston.sh` or `WESTON_MODULE_MAP`. The display server is whichever nested
+compositor the Desktop Machine names.
+
+1. Settings stores `DesktopReplacementMachineId` (weston, niri, or custom
+   compositor). Demo clients (`kmscube`, `weston-terminal`, `foot`) are not
+   eligible.
+2. `nix run .#install` (and `Wawona --mode-b-stage`) restages
+   `libwayland-mac.dylib` and a root-owned helper
+   (`/Library/Application Support/Wawona/run-modeb.sh`) and installs
+   `/etc/sudoers.d/wawona-modeb` (`NOPASSWD` for that helper only). One
+   admin authorization. It does **not** take over the screen and does
+   **not** install a login LaunchAgent. Take Over Screen Now is the
+   only activate step. Logout and the next Aqua login return normal macOS.
+3. Take Over disables kernel IOWatchdog (`wwn-iowatchdog disable`, IOKit
+   type 1 / method 3 = DisableUserspaceMonitoring on 25F80), then
+   `launchctl disable` + `bootout` of `com.apple.watchdogd`, then
+   unloads WindowServer, then injects. Abort and restore Aqua if
+   IOWatchdog disable fails. Unloading watchdogd without that disable
+   panics immediately (`watchdogd[pid] exited`, 2026-08-19).
+   `launchctl kickstart -k` on watchdogd is the same panic (`ws-guard`
+   23:12). `ws-guard` may restore WindowServer only. Probe
+   (`--mode-b-probe`) may inject while both jobs stay up. Insert
+   `DYLD_INSERT_LIBRARIES` on the niri/weston exec only. Never `export`
+   it. Marker: `WWN_MODEB_WD=iowatchdog-then-unload`.
+   On macOS 26, `watchdogd` already holds exclusive `IOWatchdogUserClient`,
+   so `IOServiceOpen` fails; `wwn-iowatchdog` falls back to a short Xcode
+   `lldb` one-shot that rewrites the next `IOConnectCallScalarMethod`
+   selector in `watchdogd` (disable=3, enable=4). Restore runs
+   `launchctl enable` first, then `wwn-iowatchdog enable` (bootstrap+catch
+   spawn if the daemon is down). Reboot restores if enable fails. Needs
+   SIP fully off and `xcrun --find lldb`.
+4. After logout, Aqua's login screen starts WindowServer. The next login
+   does not re-run Mode B. Use Settings → Desktop → Take Over Screen Now
+   again. Older builds that wrote
+   `com.aspauldingcode.wawona.modeb-login` caused a login WindowServer
+   crash loop (helper kills WS, Aqua dies, launchd sends TERM,
+   restore_aqua, agent fires again). The menubar boots that agent out if
+   a leftover plist is present. A leftover KeepAlive system daemon can
+   keep niri running in the background without owning the screen.
+5. `WWNWaypipeRunner` `baremetalCompositorLaunchSpecForProfile:` supplies argv
+   and env: no `WAYLAND_DISPLAY` (this process *is* the display server),
+   `XDG_RUNTIME_DIR=/tmp/wawona-$uid`, weston `--backend=drm
+   --continue-without-input` plus the bundled `weston.ini`, niri
+   `NIRI_BACKEND=tty`, custom commands tokenized and exec'd as written.
+6. Disable is a full teardown: restore Apple's WindowServer (enable +
+   load; `kickstart -k` only if WindowServer is not already running), kill
+   root niri/weston and framebufferd/inputd, and remove the login
+   LaunchAgent, sudoers drop-in, helper, installed `libwayland-mac.dylib`,
+   and `ws-guard` LaunchDaemon. Settings keeps the switch on if the
+   privileged uninstall is cancelled.
+7. If the nested compositor exits unexpectedly, or framebufferd never
+   starts, the helper leaves or restores Apple's WindowServer, writes
+   `/tmp/wawona-modeb-failed.reason`, and exits 0. Aqua stays usable.
+   The Enable switch is turned off. Take Over Screen Now retries. Log:
+   `/tmp/wawona-modeb.log`. See
+   [`incident-reports/2026-08-19-windowserver-login.md`](incident-reports/2026-08-19-windowserver-login.md).
 
 ## Android Desktop / LockScreen (no SIP, no root)
 

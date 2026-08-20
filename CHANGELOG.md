@@ -10,6 +10,77 @@ as history.
 
 ## [Unreleased]
 
+## [26.8.19] - 2026-08-19
+
+### Fixed
+
+- **Mode B Take Over disables kernel IOWatchdog first.** Unloading
+  `watchdogd` without that panics immediately (`watchdogd[pid] exited`,
+  PanicOnConsecutiveCrash, 2026-08-19). Sequence: `wwn-iowatchdog disable`
+  (IOKit type 1 / method 3), then disable+bootout watchdogd, then
+  WindowServer, then compositor-only `DYLD_INSERT_LIBRARIES`. Abort and
+  restore Aqua if IOWatchdog disable fails. `ws-guard` restores
+  WindowServer only (never `kickstart -k` watchdogd; that paniced at
+  23:12). Probe may inject while Aqua stays up.
+- **`nix run .#install` drops stale `applaunch` LaunchAgents.** After the
+  panic reboot, `com.aspauldingcode.wawona.applaunch` still `open -a`'d a
+  garbage-collected nix store. Login Services then launched
+  `Documents/ahaha/Wawona.app` 0.2.2, which dyld-aborted on a missing
+  `libpixman-1.0.dylib`. Install and uninstall now boot out that agent.
+- **Mode B `nix run .#install` no longer kills its own restage.** The
+  helper used to `kill -KILL` every process whose command line mentioned
+  `run-modeb.sh`, including the privileged installer `/bin/sh -c`. Stage
+  then reported `install did not finish (output=)`. Cleanup now matches
+  only helper argv, and stage no longer runs the old helper or `pkill -f`.
+- **Mode B helper no longer `export`s `DYLD_INSERT_LIBRARIES`.** That env
+  was inherited by Apple `arm64e` tools (`date`, `mkdir`, `launchctl`),
+  dyld refused the `arm64` dylib (`have arm64, need arm64e`), and Take
+  Over never kept a compositor PID. Insert is only on the niri/weston
+  exec line.
+- **macOS `nix run .#uninstall` on a root-owned `/Applications/Wawona.app`.**
+  User-level `rm -rf` failed after a pkg or sudo copy. Uninstall now prompts
+  once for administrator privileges, removes the app bundle, and tears down
+  Mode B helper / sudoers / dylib / ws-guard.
+- **Xcode `Wawona-macOS` compile after Mode B uninstall wiring.** Closing
+  `appendString:` for `--uninstall` was missing `]`, so the project build
+  failed and the Swift fallback reported `no such module 'WawonaModel'`.
+  Xcode failure is now fatal instead of that fallback.
+- **Mode B Take Over no longer dies on a stale `modeb.lock`.** Leftover helpers
+  ignore TERM until framebufferd is live, so steal used to fail with
+  "lock could not be claimed" and leave the lock behind. The helper now
+  SIGKILLs leftovers, retries mkdir, and drops the lock on failure.
+
+### Changed
+
+- **macOS `--mode-b-*` CLI no longer starts the Aqua compositor.** Staging
+  the helper was creating WWNCore and dumping `[BUNDLE]` / `[FFI]` / `[NIRI]`
+  logs into `nix run .#install`. That was this process, not dylib injection.
+- **macOS menu bar uses the Wayland W silhouette, not the app icon.** Template
+  glyph with no yellow disc. Launch at Login is a mini `NSSwitch`.
+- **`nix run .#install` restages the Mode B helper for this store.** It runs
+  `Wawona --mode-b-stage` (administrator once): copies helper + dylib,
+  refreshes sudoers, clears a stale `modeb.lock`, and fails if the helper
+  still points at a previous nix store. No Take Over reminder. Does not
+  unload WindowServer.
+- **Desktop Replacement disable is a full teardown.** Restore Apple's
+  WindowServer, kill root niri/weston and framebufferd/inputd, and remove
+  leftover login agent, sudoers drop-in, helper, installed dylib, and
+  ws-guard. Cancelling the admin prompt leaves the switch on.
+- **Take Over Screen Now does not install a login LaunchAgent.** Logout
+  returns normal macOS. Take Over disables IOWatchdog first, then unloads
+  watchdogd and WindowServer. Unloading watchdogd without IOWatchdog
+  disable panics immediately.
+- **Take Over `sudo -n` must invoke the helper path, not `bash -c`.**
+  Recovery sudoers only allows `run-modeb.sh`. Wrapping in `nohup` via
+  bash returned status 1 and the alert showed a stale 11:25 log.
+- **macOS Desktop Replacement Mode B requires SIP fully disabled.**
+  `csrutil enable --without debug` is not enough (`launchctl bootout` of
+  WindowServer returns 150). Recovery: `csrutil disable`. Settings shows
+  **Fully Disabled** only in that state and refuses PartiallyDisabled.
+- **Stale `modeb.lock` no longer blocks Take Over.** A leftover lock from a
+  failed helper used to log `modeb helper already running` and exit without
+  a compositor. The helper now steals the lock when no compositor PID is live.
+
 ## [26.8.12] - 2026-08-12
 
 ### Fixed
