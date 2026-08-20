@@ -1318,7 +1318,7 @@ EOF
             # non-lldb path (SIGTRAP panics 2026-08-20). Default: do not
             # restage privileged helper/dylib/iowatchdog. Set
             # WAWONA_MODEB_STAGE=1 to force a blocked helper for probe work.
-            if [ "${WAWONA_MODEB_STAGE:-0}" = 1 ]; then
+            if [ "''${WAWONA_MODEB_STAGE:-0}" = 1 ]; then
               echo "Restaging Desktop Replacement helper (Take Over blocked)."
               echo "Administrator authorization is required once."
               if ! "$exec_path" --mode-b-stage; then
