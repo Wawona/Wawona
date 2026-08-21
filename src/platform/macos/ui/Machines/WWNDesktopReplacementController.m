@@ -284,31 +284,17 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   if ([fm fileExistsAtPath:kWWNModeBIowDisabledMarkerPath]) {
     return YES;
   }
-  /* Stale sock inode can exist after Path B died; require a live reply. */
-  int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-  if (fd < 0) {
+  /*
+   * Path B sock is root-only (srw-------). User-run Wawona cannot connect;
+   * Classic then falsely refused after KEEP_WS disengage deleted the marker
+   * (2026-08-20). Query via passwordless helper --ack-status (never grant
+   * NOPASSWD on wwn-iowatchdog disable/enable).
+   */
+  if (![self sudoersAllowsHelper] ||
+      ![fm isExecutableFileAtPath:[self modeBHelperPath]]) {
     return NO;
   }
-  struct sockaddr_un addr;
-  memset(&addr, 0, sizeof(addr));
-  addr.sun_family = AF_UNIX;
-  strncpy(addr.sun_path, kWWNModeBPathBSockPath.fileSystemRepresentation,
-          sizeof(addr.sun_path) - 1);
-  if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-    close(fd);
-    return NO;
-  }
-  const char *req = "status\n";
-  (void)send(fd, req, strlen(req), 0);
-  char buf[256];
-  ssize_t n = recv(fd, buf, sizeof(buf) - 1, 0);
-  close(fd);
-  if (n <= 0) {
-    return NO;
-  }
-  buf[n] = '\0';
-  /* Hook reports done=1 after sticky DisableUserspaceMonitoring succeeds. */
-  return strstr(buf, "done=1") != NULL;
+  return [self runSudoNHelper:@[ @"--ack-status" ]] == 0;
 }
 
 - (BOOL)iowatchdogStickyAckPresent {
@@ -394,12 +380,12 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"# Installed by Settings. Do not edit by hand.\n"
                        @"Defaults:%@ !requiretty\n"
                        @"%@ ALL=(root) NOPASSWD: %@, %@ --restore-aqua, "
-                       @"%@ --kill-compositor, %@ --uninstall\n"
+                       @"%@ --kill-compositor, %@ --uninstall, %@ --ack-status\n"
                        @"# wwn-iowatchdog is NOT NOPASSWD. Take Over runs it\n"
                        @"# from the root helper only. Never grant passwordless\n"
                        @"# disable/enable (lldb attach paniced 2026-08-20).\n",
                        user, user, helperEscaped, helperEscaped,
-                       helperEscaped, helperEscaped];
+                       helperEscaped, helperEscaped, helperEscaped];
 }
 
 - (BOOL)ensureDesktopMachineSelected:(NSError *_Nullable *_Nullable)error {
@@ -779,6 +765,31 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"  restore_aqua\n"
                        @"  exit 0\n"
                        @"fi\n"
+                       @"if [ \"${1-}\" = \"--ack-status\" ]; then\n"
+                       @"  # Live Disable for Classic gate (root can read sock).\n"
+                       @"  if [ -f /tmp/libwayland-support/"
+                       @"iowatchdog-userspace-disabled ]; then\n"
+                       @"    wwn_log \"ack-status live=1 marker=yes\"\n"
+                       @"    exit 0\n"
+                       @"  fi\n"
+                       @"  SOCK=/var/run/wwn-iowatchdog.sock\n"
+                       @"  if [ -S \"$SOCK\" ]; then\n"
+                       @"    reply=$(/usr/bin/python3 -c "
+                       @"\"import socket;s=socket.socket(socket.AF_UNIX);"
+                       @"s.settimeout(1.0);s.connect('$SOCK');"
+                       @"s.send(b'status\\\\n');"
+                       @"print(s.recv(256).decode(), end='')\" "
+                       @"2>/dev/null || true)\n"
+                       @"    case \"$reply\" in\n"
+                       @"      *done=1*)\n"
+                       @"        wwn_log \"ack-status live=1 sock=done=1\"\n"
+                       @"        exit 0\n"
+                       @"        ;;\n"
+                       @"    esac\n"
+                       @"  fi\n"
+                       @"  wwn_log \"ack-status live=0\"\n"
+                       @"  exit 1\n"
+                       @"fi\n"
                        @"if [ \"${1-}\" = \"--drop-lock\" ]; then\n"
                        @"  stop_other_helpers\n"
                        @"  rm -rf /tmp/libwayland-support/modeb.lock\n"
@@ -916,8 +927,12 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"if [ -f /tmp/wawona-modeb-keep-ws ]; then\n"];
   [script appendString:@"  wwn_log \"KEEP_WS=1; leaving WindowServer and "
                        @"watchdogd running\"\n"];
+  /* framebufferd skips CoreDisplay panel claim when this is set (Aqua stays
+   * interactive). Classic must not export it. */
+  [script appendString:@"  export WWN_MODEB_KEEP_WS=1\n"];
   [script appendString:@"  install_ws_guard\n"];
   [script appendString:@"else\n"];
+  [script appendString:@"  unset WWN_MODEB_KEEP_WS\n"];
   [script appendString:@"  if [ ! -f \"$CLAIM_OK\" ] || "
                        @"! grep -q 'sticky=1' \"$CLAIM_OK\" 2>/dev/null || "
                        @"! grep -q 'path=b' \"$CLAIM_OK\" 2>/dev/null; then\n"];
@@ -1706,7 +1721,13 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
           @"# restore_aqua only re-enables Apple watchdogd when Classic\n"
           @"# left wawona-unloaded-watchdogd. Blind enable while Path B is\n"
           @"# live paniced 2026-08-20 KEEP_WS failure (SIGTRAP ns2/0x5).\n"
-          @"rm -f /tmp/libwayland-support/iowatchdog-userspace-disabled\n"
+          @"# Keep Path B Disable marker while sticky claim-ok / pathb plist\n"
+          @"# is armed (user CLI live-Disable gate; 2026-08-20 blank-screen\n"
+          @"# session lost marker and Classic refused).\n"
+          @"if [ ! -f /var/db/wwn-iowatchdog/claim-ok ] && "
+          @"[ ! -f /Library/LaunchDaemons/com.aspauldingcode.wwn-iowatchdog-pathb.plist ]; then\n"
+          @"  rm -f /tmp/libwayland-support/iowatchdog-userspace-disabled\n"
+          @"fi\n"
           @"if [ -f /tmp/libwayland-support/wawona-unloaded-watchdogd ] && "
           @"[ ! -f /var/db/wwn-iowatchdog/claim-ok ] && "
           @"[ ! -f /Library/LaunchDaemons/com.aspauldingcode.wwn-iowatchdog-pathb.plist ]; then\n"
