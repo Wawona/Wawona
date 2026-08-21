@@ -991,9 +991,14 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"2>/dev/null || true\n"];
   [script appendString:@"    exit 0\n"];
   [script appendString:@"  fi\n"];
-  [script appendString:@"  stop_watchdogd_after_iowatchdog\n"];
+  /* Defer unload until weston Output + framebufferd CoreDisplay are up.
+   * Unloading WS first left a blank panel with no recovery path except
+   * force reboot (2026-08-21 Classic). Prove present while Aqua can still
+   * be restored, then unload. */
+  [script appendString:@"  wwn_log \"Classic: start compositor before unload "
+                       @"(prove Output+CoreDisplay first)\"\n"];
   [script appendString:@"  install_ws_guard\n"];
-  [script appendString:@"  stop_window_server\n"];
+  [script appendString:@"  WWN_MODEB_CLASSIC_PENDING_UNLOAD=1\n"];
   [script appendString:@"fi\n"];
   [script appendString:@"set +e\n"];
   /* gl-renderer needs GLES in the flat namespace; Mode B owns EGL. Insert
@@ -1108,6 +1113,11 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"    exit 0\n"];
   [script appendString:@"  fi\n"];
   [script appendString:@"  wwn_log \"Classic Output+CoreDisplay ok\"\n"];
+  [script appendString:@"  if [ \"${WWN_MODEB_CLASSIC_PENDING_UNLOAD:-0}\" = 1 ]; then\n"];
+  [script appendString:@"    wwn_log \"Classic: unloading watchdogd then WindowServer\"\n"];
+  [script appendString:@"    stop_watchdogd_after_iowatchdog\n"];
+  [script appendString:@"    stop_window_server\n"];
+  [script appendString:@"  fi\n"];
   [script appendString:@"  touch /tmp/libwayland-support/modeb-framebufferd.ready\n"];
   [script appendString:@"  chmod 644 /tmp/libwayland-support/modeb-framebufferd.ready "
                        @"2>/dev/null || true\n"];
