@@ -99,11 +99,10 @@ Until then Phase 3 stays **HOLD** after the 2026-08-20 panics.
 See `docs/incident-reports/2026-08-20-stale-claim-ok-takeover/` and
 `docs/incident-reports/2026-08-20-keepws-restore-watchdogd/`.
 
-## Open build gap (blocks Classic weston)
+## macOS shared DRM (unblocked)
 
-macOS packaged `weston` still uses `-Dbackend-drm=false`
-(`wwn-weston/dependencies/clients/weston/macos.nix`). Desktop-host therefore
-ships only `headless-backend` + `wayland-backend` under `libweston-13/`.
-Mode B needs shared `drm-backend.so` (fork/exec + `DYLD_INSERT`). Enable DRM
-as a shared module with iland (do not only use the static
-`weston-compositor-drm` archive).
+`wwn-weston` `weston.macos` is `macos-drm-shared.nix` (tip `24aa81c` and later).
+It ships shared `drm-backend.so` + `gl-renderer.so` (+ wayland/headless) with
+DRM/EGL resolved at Mode B runtime via `dynamic_lookup` (no Mode A/B LC_LOAD).
+Restage desktop-host after bumping Wawona `flake.lock` `wwn-weston`, then
+`--mode-b-machine weston && --mode-b-stage` before Path B / Classic.

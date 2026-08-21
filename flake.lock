@@ -1215,12 +1215,12 @@
         ]
       },
       "locked": {
-        "lastModified": 1786989776,
-        "narHash": "sha256-vTT0KSIB6b0M04r2noDPlvD+Fwi9AYsh0J0I1V88b9E=",
-        "rev": "1bbd00ef5f2166cfee75e8e2f4a8d37fa9427b56",
-        "revCount": 59,
-        "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-weston/0.1.59%2Brev-1bbd00ef5f2166cfee75e8e2f4a8d37fa9427b56/01a010e4-b163-7ca3-a47e-ef11e86af997/source.tar.gz"
+        "lastModified": 1787285685,
+        "narHash": "sha256-DZBtBij1K9/iVMfXPOAK6UX9szgcixKCvQIrR6qjYAY=",
+        "owner": "Wawona",
+        "repo": "wwn-weston",
+        "rev": "24aa81cfc5f087aaaf34a9e7afc5d8a1a6941143",
+        "type": "github"
       },
       "original": {
         "type": "tarball",
