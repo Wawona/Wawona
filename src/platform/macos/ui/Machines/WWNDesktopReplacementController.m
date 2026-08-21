@@ -1211,14 +1211,14 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"framebufferd CoreDisplay / CAWindowServer ready\"\n"];
   [script appendString:@"  disp_pre=0\n"];
   [script appendString:@"  di=0\n"];
-  [script appendString:@"  while [ \"$di\" -lt 80 ]; do\n"];
+  /* DispDrvInit + CAWindowServer can take 30-45s on 25F80. */
+  [script appendString:@"  while [ \"$di\" -lt 200 ]; do\n"];
   [script appendString:@"    cp \"$LOG\" \"$PERSIST_LOG\" 2>/dev/null || true\n"];
   /* Never grep bare 'display=yes': helper wwn_log used to contain that
    * substring and falsely passed this gate (2026-08-21 Mode B TTY: client
-   * started before framebufferd DispDrvInit; fb died; lockscreen restore). */
-  [script appendString:@"    if grep -q '\\[framebufferd\\] CoreDisplay "
-                       @"initialised' \"$LOG\" 2>/dev/null; then "
-                       @"disp_pre=1; fi\n"];
+   * started before framebufferd DispDrvInit; fb died; lockscreen restore).
+   * Require the CAWindowServer ready line specifically (CoreDisplay alone
+   * is not enough; printf buffering used to hide that line). */
   [script appendString:@"    if grep -q '\\[framebufferd\\] CAWindowServer ready, "
                        @"display=yes' \"$LOG\" 2>/dev/null; then "
                        @"disp_pre=1; break; fi\n"];
@@ -1349,6 +1349,8 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"  /bin/launchctl bootstrap system "
                        @"/Library/LaunchDaemons/com.wayland-mac.modeb-client.plist "
                        @">>\"$LOG\" 2>&1\n"];
+  [script appendString:@"  boot_st=$?\n"];
+  [script appendString:@"  wwn_log \"modeb-client bootstrap_st=$boot_st\"\n"];
   [script appendString:@"  pid=$(/bin/launchctl print "
                        @"system/com.wayland-mac.modeb-client 2>/dev/null | "
                        @"/usr/bin/awk '/[[:space:]]pid = /{print $3; exit}')\n"];
@@ -1358,9 +1360,24 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"system/com.wayland-mac.modeb-client 2>/dev/null | "
                        @"/usr/bin/awk '/[[:space:]]pid = /{print $3; exit}')\n"];
   [script appendString:@"  fi\n"];
+  /* 2026-08-21: bootstrap 141 Reentrancy avoided under Classic (ws-guard /
+   * concurrent launchd). Fall back to direct root spawn with DYLD_INSERT so
+   * Mode B TTY/kmscube still start; Mach look_up may need parent walk. */
   [script appendString:@"  if [ -z \"$pid\" ]; then\n"];
-  [script appendString:@"    write_reason \"Mode B failed to launch client via "
-                       @"launchd. Restored Aqua. See $PERSIST_LOG.\"\n"];
+  [script appendString:@"    wwn_log \"launchd client missing after bootstrap; "
+                       @"falling back to direct spawn\"\n"];
+  [script appendString:@"    DYLD_INSERT_LIBRARIES=\"$WWN_MODEB_INSERT\" "
+                       @"\"${WWN_MODEB_CLIENT_ARGV[@]}\" >>\"$LOG\" 2>&1 &\n"];
+  [script appendString:@"    pid=$!\n"];
+  [script appendString:@"    sleep 0.3\n"];
+  [script appendString:@"    if ! kill -0 \"$pid\" 2>/dev/null; then\n"];
+  [script appendString:@"      pid=\"\"\n"];
+  [script appendString:@"    fi\n"];
+  [script appendString:@"  fi\n"];
+  [script appendString:@"  if [ -z \"$pid\" ]; then\n"];
+  [script appendString:@"    write_reason \"Mode B failed to launch client "
+                       @"(launchd + direct spawn). Restored Aqua. See "
+                       @"$PERSIST_LOG.\"\n"];
   [script appendString:@"    restore_aqua\n"];
   [script appendString:@"    exit 0\n"];
   [script appendString:@"  fi\n"];
