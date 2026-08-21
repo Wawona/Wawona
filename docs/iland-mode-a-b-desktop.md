@@ -134,6 +134,11 @@ CoreBedtime's host takeover is the model: unload Apple's WindowServer, inject
 `run-weston.sh` or `WESTON_MODULE_MAP`. The display server is whichever nested
 compositor the Desktop Machine names.
 
+Private CoreDisplay / SkyLight / `CAWindowServer` SPI used by `framebufferd`
+(prototypes, ObjC encodings, 25F80 disasm, safe-call rules) lives in the L1
+repo: [`wwn-iland/docs/mode-b/baremetal-display-spi-25F80.md`](../../wwn-iland/docs/mode-b/baremetal-display-spi-25F80.md)
+(sibling checkout). Re-verify on each macOS point release.
+
 1. Settings stores `DesktopReplacementMachineId` (weston, niri, or custom
    compositor). Demo clients (`kmscube`, `weston-terminal`, `foot`) are not
    eligible.
