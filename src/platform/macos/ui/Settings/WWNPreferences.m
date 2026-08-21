@@ -1001,16 +1001,17 @@ static UIImage *WWNAboutLogo(void) {
     [desktopItems
         addObject:ITEM(@"Enable Lockscreen Replacement",
                        @"LockscreenReplacementEnabled", WSettingSwitch, @NO,
-                       @"Run a local greeter/lock machine (gtkgreet, gtklock, sddm, …) "
-                       @"before the Desktop Replacement session. Never available "
-                       @"on iOS/iPadOS/tvOS/watchOS/visionOS.")];
+                       @"Planned greeter/lock machine (gtkgreet, gtklock, …) "
+                       @"before Desktop Replacement. Enable after Classic "
+                       @"Desktop Take Over is green on this Mac. Never "
+                       @"available on iOS/iPadOS/tvOS/watchOS/visionOS.")];
     NSMutableArray<NSString *> *lockNames = [NSMutableArray array];
     NSMutableArray<NSString *> *lockIds = [NSMutableArray array];
     for (WWNMachineProfile *p in allProfiles) {
       if (![p.type isEqualToString:kWWNMachineTypeNative])
         continue;
-      
-      // Temporarily allow any native machine for testing lockscreen replacement
+      if (![WWNMachineProfileStore profileIndicatesNestedCompositor:p])
+        continue;
       [lockNames addObject:p.name.length ? p.name : @"Unnamed Lock"];
       [lockIds addObject:p.machineId ?: @""];
     }
@@ -1018,17 +1019,17 @@ static UIImage *WWNAboutLogo(void) {
       WWNSettingItem *lockMachine = ITEM(
           @"Lockscreen Machine (greeter)", @"LockscreenReplacementMachineId",
           WSettingPopup, lockIds.firstObject,
-          @"Local Native greeter/lock machine. Unlock handoff resumes the "
-          @"Desktop Replacement machine when Desktop is enabled.");
+          @"Nested compositor greeter/lock profile. Unlock handoff to the "
+          @"Desktop Replacement machine is planned after Classic Take Over "
+          @"proof.");
       lockMachine.options = lockNames;
       lockMachine.optionValues = lockIds;
       [desktopItems addObject:lockMachine];
     } else {
       [desktopItems
           addObject:ITEM(@"Lockscreen Machine", nil, WSettingInfo, @"None",
-                         @"Create a Native machine with gtkgreet/gtklock/sddm (or "
-                         @"similar) in Machine Configuration to enable "
-                         @"Lockscreen Replacement.")];
+                         @"Create a nested compositor Native machine for the "
+                         @"greeter after Classic Desktop Take Over is proven.")];
     }
 
     desktop.items = desktopItems;

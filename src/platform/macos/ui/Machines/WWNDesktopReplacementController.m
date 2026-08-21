@@ -272,29 +272,29 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   if (body.length == 0) {
     return NO;
   }
-  BOOL sticky = [body containsString:@"sticky=1"];
-  BOOL pathOk = [body containsString:@"path=b"] ||
-                [body containsString:@"path=a"];
-  return sticky && pathOk;
+  /* Product Classic Take Over: Path B only (Path A stays lab / AMFI). */
+  return [body containsString:@"sticky=1"] && [body containsString:@"path=b"];
 }
 
 - (NSString *)iowatchdogStickyAckStatusSummary {
   NSFileManager *fm = [NSFileManager defaultManager];
-  if ([self iowatchdogStickyAckPresent]) {
-    NSString *body =
-        [NSString stringWithContentsOfFile:kWWNModeBClaimOkPath
-                                  encoding:NSUTF8StringEncoding
-                                     error:nil];
+  NSString *body =
+      [NSString stringWithContentsOfFile:kWWNModeBClaimOkPath
+                                encoding:NSUTF8StringEncoding
+                                   error:nil];
+  if (body.length > 0) {
     NSString *trim =
         [body stringByTrimmingCharactersInSet:
                   [NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    if ([trim containsString:@"path=b"]) {
+    if ([trim containsString:@"sticky=1"] &&
+        [trim containsString:@"path=b"]) {
       return @"OK (Path B sticky). Take Over may unload watchdogd.";
     }
     if ([trim containsString:@"path=a"]) {
-      return @"OK (Path A sticky). Take Over may unload watchdogd.";
+      return @"Path A ACK only (lab). Product Take Over needs Path B "
+             @"sticky claim-ok.";
     }
-    return [NSString stringWithFormat:@"OK (%@)", trim];
+    return [NSString stringWithFormat:@"Unexpected claim-ok: %@", trim];
   }
   if ([fm fileExistsAtPath:kWWNModeBClaimPendingPath]) {
     return @"Pending: Path A/B armed; reboot, then re-check claim-ok.";
@@ -841,9 +841,10 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"  install_ws_guard\n"];
   [script appendString:@"else\n"];
   [script appendString:@"  if [ ! -f \"$CLAIM_OK\" ] || "
-                       @"! grep -q 'sticky=1' \"$CLAIM_OK\" 2>/dev/null; then\n"];
+                       @"! grep -q 'sticky=1' \"$CLAIM_OK\" 2>/dev/null || "
+                       @"! grep -q 'path=b' \"$CLAIM_OK\" 2>/dev/null; then\n"];
   [script appendString:@"    write_reason \"Mode B Take Over refused: missing "
-                       @"sticky IOWatchdog ACK at $CLAIM_OK. Arm Path B "
+                       @"Path B sticky IOWatchdog ACK at $CLAIM_OK. Arm Path B "
                        @"(claim-install --path-b), reboot, then retry. "
                        @"Apple's WindowServer was left running.\"\n"];
   [script appendString:@"    rmdir /tmp/libwayland-support/modeb.lock "
@@ -1083,32 +1084,11 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
           @"chown %@ %@\n"
           @"/bin/launchctl bootout system/%@ >/dev/null 2>&1 || true\n"
           @"rm -f %@\n"
-          @"guard=/Library/LaunchDaemons/com.aspauldingcode.wawona.ws-guard.plist\n"
-          @"cat > \"$guard\" <<'PLIST'\n"
-          @"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-          @"<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" "
-          @"\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
-          @"<plist version=\"1.0\"><dict>\n"
-          @"<key>Label</key><string>com.aspauldingcode.wawona.ws-guard</string>\n"
-          @"<key>RunAtLoad</key><true/>\n"
-          @"<key>StartInterval</key><integer>10</integer>\n"
-          @"<key>ThrottleInterval</key><integer>5</integer>\n"
-          @"<key>KeepAlive</key><false/>\n"
-          @"<key>ProgramArguments</key><array>\n"
-          @"<string>/bin/bash</string><string>-c</string>\n"
-          @"<string>fpid=$(cat /tmp/libwayland-support/framebufferd.pid 2>/dev/null || true); "
-          @"if [ -n \"$fpid\" ] && kill -0 \"$fpid\" 2>/dev/null; then exit 0; fi; "
-          @"/bin/launchctl enable system/com.apple.WindowServer; "
-          @"/bin/launchctl load -w /System/Library/LaunchDaemons/com.apple.WindowServer.plist; "
-          @"/bin/launchctl bootstrap system /System/Library/LaunchDaemons/com.apple.WindowServer.plist; "
-          @"wspid=$(/bin/launchctl print system/com.apple.WindowServer 2>/dev/null | awk '/[[:space:]]pid =/{print $3; exit}'); "
-          @"if [ -z \"$wspid\" ]; then /bin/launchctl kickstart -k system/com.apple.WindowServer; fi</string>\n"
-          @"</array></dict></plist>\n"
-          @"PLIST\n"
-          @"chown root:wheel \"$guard\" 2>/dev/null || true\n"
-          @"chmod 644 \"$guard\" 2>/dev/null || true\n"
-          @"/bin/launchctl bootout system/com.aspauldingcode.wawona.ws-guard >/dev/null 2>&1 || true\n"
-          @"/bin/launchctl bootstrap system \"$guard\" >/dev/null 2>&1 || true\n"
+          @"# Stage must NOT install ws-guard. Guard is installed only on "
+          @"Classic Take Over / KEEP_WS engage (see run-modeb.sh).\n"
+          @"/bin/launchctl bootout system/com.aspauldingcode.wawona.ws-guard "
+          @">/dev/null 2>&1 || true\n"
+          @"rm -f /Library/LaunchDaemons/com.aspauldingcode.wawona.ws-guard.plist\n"
           @"log copied-ok\n"
           @"echo WWN_MODEB_INSTALLED=1\n"
           @"log done\n"

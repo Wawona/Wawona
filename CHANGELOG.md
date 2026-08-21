@@ -12,28 +12,21 @@ as history.
 
 ### Changed
 
-- **Classic Take Over stopped on 25F80 (Phase 1.4).** Boot-arg /
-  soft-inject campaign did not unlock a proven
-  `DisableUserspaceMonitoring` path. Take Over remains
-  `WWN_MODEB_WD=blocked-no-iowatchdog`. Wall:
-  `wwn-iowatchdog/docs/macos26-iowatchdog-wall.md`.
-- **`wwn-iowatchdog` 0.2 + macOS 26 wall.** Bundles arm64e
-  `libwwn_watchdogd_hook.dylib` beside the CLI. `status` can locate the live
-  `IOWatchdogUserClient` port; `disable`/`enable`/`inject` stay fail closed
-  on 25F80 (`thread_set_state` is panic-class; IOKit extract fails;
-  IOConnect GOT hijack not proven). Take Over remains blocked.
+- **Classic Take Over consumes Path B sticky `claim-ok`.** Helper marker is
+  `WWN_MODEB_WD=iowatchdog-then-unload`. Settings shows IOWatchdog ACK status
+  and refuses Classic Take Over until `/var/db/wwn-iowatchdog/claim-ok` has
+  `path=b` and `sticky=1`. KEEP_WS `--mode-b-probe` still injects without
+  unload. Desktop-host ships `wwn-iowatchdog-claim-install` + Path B hook.
+  Stage no longer installs `ws-guard` (engage/KEEP_WS only). Operator proof:
+  `docs/desktop-replacement-classic-proof.md`. Soft-inject / lldb stay
+  forbidden. Wall: `wwn-iowatchdog/docs/macos26-iowatchdog-wall.md`.
 
 ### Fixed
 
-- **Desktop Take Over Settings alert.** Take Over is blocked on macOS 26
-  (`WWN_MODEB_WD=blocked-no-iowatchdog`). Settings now says so up front
-  instead of running the helper and reporting "did not keep a compositor
-  PID". Reason files written as root are chown'd to the Aqua uid (sticky
-  `/tmp`), and `consumeSessionFailureReason` falls back to read-if-unmovable.
-- **Blocked Take Over path must not install ws-guard.** Helper used to
-  `install_ws_guard` before refusing (2026-08-20 post-alert
-  `watchdogd` SIGTRAP panic). Guard installs only on KEEP_WS probe inject.
-  `wwn-iowatchdog` defaults to no IOKit/`lsmp` open.
+- **Desktop Take Over Settings.** Confirms engage when ACK present; points at
+  Path B arm when missing (no longer a permanent “unavailable” dead end).
+- **Blocked Take Over path must not install ws-guard at stage.** Guard
+  installs only on Classic / KEEP_WS engage.
 
 ### Changed
 

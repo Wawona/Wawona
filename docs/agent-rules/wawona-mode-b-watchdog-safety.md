@@ -15,14 +15,16 @@ Watchdog tools repo: `github.com/Wawona/wwn-iowatchdog`
 ([`docs/path-a-path-b.md`](https://github.com/Wawona/wwn-iowatchdog/blob/development/docs/path-a-path-b.md)
 operator guide; [`docs/macos26-iowatchdog-wall.md`](https://github.com/Wawona/wwn-iowatchdog/blob/development/docs/macos26-iowatchdog-wall.md)
 investigation wall). Path B reboot sticky disable is **proven** on 25F80;
-Take Over product gate consumes Path B `claim-ok` (`WWN_MODEB_WD=iowatchdog-then-unload`).
-Without sticky ACK, Classic Take Over refuses; KEEP_WS `--mode-b-probe` remains available.
+Take Over product gate consumes Path B `claim-ok` only (`path=b sticky=1`,
+`WWN_MODEB_WD=iowatchdog-then-unload`). Path A ACK stays lab. Without Path B
+ACK, Classic Take Over refuses; KEEP_WS `--mode-b-probe` remains available.
+Operator Classic E2E: `docs/desktop-replacement-classic-proof.md`.
 
 ## Never
 
 | Action | Why |
 |--------|-----|
-| Settings / CLI **Take Over Screen** without sticky `claim-ok` | Unloads `watchdogd` / WindowServer only after Path B/A ACK; refuse otherwise |
+| Settings / CLI **Take Over Screen** without Path B sticky `claim-ok` | Unloads `watchdogd` / WindowServer only after `path=b sticky=1`; refuse otherwise |
 | `launchctl` unload / `kickstart -k` on `com.apple.watchdogd` | Instant panic when monitoring is armed |
 | Attach **lldb**, debugserver, or Cursor **lldb MCP** (`lldb_mcp.py`) to `watchdogd` | Attach exits the daemon with SIGTRAP |
 | `thread_set_state` / soft-inject into `watchdogd` that uses set_state | Caller SIGKILL (137); also panic-class risk. Stopped after 2026-08-20 Phase 1 crash (`docs/macos26-iowatchdog-wall.md`) |
@@ -41,13 +43,15 @@ ACK comes from Path B (`claim-ok` / sock) or Path A claim. Soft-inject
 
 ## Required agent behavior
 
-1. Prefer **Mode A** in-window iland. Leave Aqua and `watchdogd` running.
+1. Prefer **Mode A** in-window iland when Path B ACK is missing. Leave Aqua
+   and `watchdogd` running.
 2. Before any Mode B / IOWatchdog work: `pkill -f lldb_mcp.py` and confirm
    `pgrep -l watchdogd`.
-3. Settings UX: Take Over is **unavailable**. Do not stage a helper just to
-   show a failure alert.
+3. Settings UX: Take Over is available only when Path B `claim-ok` is present;
+   otherwise show arm steps. Do not stage a helper just to show a failure alert.
 4. Probe-only path (Aqua stays up): `WAWONA_MODEB_STAGE=1 nix run .#install`,
-   then `Wawona --mode-b-probe` (KEEP_WS). Still never unload `watchdogd`.
+   then `Wawona --mode-b-probe` (KEEP_WS). Still never unload `watchdogd`
+   without Path B ACK.
 
 ## Quick check
 

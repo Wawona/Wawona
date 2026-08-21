@@ -24,10 +24,15 @@ Stack architecture and toolkit contracts:
 
 ## Status
 
-**Coming soon / in development.** Desktop and LockScreen replacement are not
-ready to treat as shipping. Product gates stay **planned** on macOS and Android;
-App Store Apple-mobile builds keep Desktop/LockScreen **forbidden** and must
-**never mention jailbreak** in UI or strings.
+**Desktop Classic Take Over: product wired; Classic E2E proof pending reboot.**
+Settings → Desktop engages Mode B only with Path B sticky
+`/var/db/wwn-iowatchdog/claim-ok` (`path=b sticky=1`), then
+`iowatchdog-then-unload`. Operator checklist:
+[`desktop-replacement-classic-proof.md`](desktop-replacement-classic-proof.md).
+LockScreen greeter handoff stays planned until that proof is green. Product
+gates stay **planned** on macOS and Android until Phase E PASS; App Store
+Apple-mobile builds keep Desktop/LockScreen **forbidden** and must **never
+mention jailbreak** in UI or strings.
 
 ## What Desktop / LockScreen is
 
