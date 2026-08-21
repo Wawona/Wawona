@@ -715,12 +715,15 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"  wwn_log \"watchdogd unloaded after IOWatchdog ACK\"\n"
                        @"}\n"
                        @"stop_window_server() {\n"
+                       @"  # NEVER `launchctl disable` or `unload -w` on\n"
+                       @"  # WindowServer. Those stick across reboot. If\n"
+                       @"  # restore_aqua does not run (crash/force power),\n"
+                       @"  # next login has no WS → userspace watchdog\n"
+                       @"  # timeout panic at 120s (2026-08-21 kmscube:\n"
+                       @"  # WindowServer appears to not exist in launchd).\n"
+                       @"  # Session-only: bootout + TERM the live pid.\n"
                        @"  /bin/launchctl bootout system/com.apple.WindowServer; "
                        @"wwn_log \"ws_bootout_st=$?\"\n"
-                       @"  /bin/launchctl disable system/com.apple.WindowServer; "
-                       @"wwn_log \"ws_disable_st=$?\"\n"
-                       @"  /bin/launchctl unload -w \"$WS_PLIST\"; "
-                       @"wwn_log \"ws_unload_w_st=$?\"\n"
                        @"  /bin/launchctl kill SIGTERM system/com.apple.WindowServer "
                        @">/dev/null 2>&1 || true\n"
                        @"  ws_i=0\n"
@@ -1058,6 +1061,17 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"  sleep 0.25\n"];
   [script appendString:@"done\n"];
   [script appendString:@"ls -la /tmp/libwayland-support >>\"$LOG\" 2>&1 || true\n"];
+  /* 2026-08-21: bootstrap_register failure left WS down with no present. */
+  [script appendString:@"if grep -q '\\[framebufferd\\] bootstrap_register' "
+                       @"\"$LOG\" 2>/dev/null && "
+                       @"! grep -q '\\[framebufferd\\] listening' \"$LOG\" "
+                       @"2>/dev/null; then\n"];
+  [script appendString:@"  write_reason \"Mode B framebufferd bootstrap_register "
+                       @"failed (no Mach present). Restored Aqua immediately. "
+                       @"See $PERSIST_LOG.\"\n"];
+  [script appendString:@"  restore_aqua\n"];
+  [script appendString:@"  exit 0\n"];
+  [script appendString:@"fi\n"];
   [script appendString:@"if [ \"$fb_live\" != 1 ]; then\n"];
   [script appendString:@"  write_reason \"Mode B did not start framebufferd. "
                        @"Apple's WindowServer was restored. See "
