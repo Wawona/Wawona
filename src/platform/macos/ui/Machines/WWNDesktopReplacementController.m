@@ -1118,6 +1118,82 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
           kWWNModeBLaunchdLabel,
           [self wwnShellQuote:[self modeBPlistPath]]];
 
+  /*
+   * Prefer passwordless sudo when available (dev machines / CI). Avoid hanging
+   * on AuthorizationExecuteWithPrivileges GUI when `sudo -n` works.
+   */
+  {
+    NSTask *sudoProbe = [[NSTask alloc] init];
+    sudoProbe.executableURL = [NSURL fileURLWithPath:@"/usr/bin/sudo"];
+    sudoProbe.arguments = @[ @"-n", @"true" ];
+    sudoProbe.standardOutput = [NSPipe pipe];
+    sudoProbe.standardError = [NSPipe pipe];
+    NSError *probeErr = nil;
+    BOOL probed = [sudoProbe launchAndReturnError:&probeErr];
+    if (probed) {
+      [sudoProbe waitUntilExit];
+    }
+    if (probed && sudoProbe.terminationStatus == 0) {
+      NSTask *sudoInstall = [[NSTask alloc] init];
+      sudoInstall.executableURL = [NSURL fileURLWithPath:@"/usr/bin/sudo"];
+      sudoInstall.arguments = @[ @"-n", @"/bin/sh", @"-c", shellCmd ];
+      NSPipe *outPipe = [NSPipe pipe];
+      NSPipe *errPipe = [NSPipe pipe];
+      sudoInstall.standardOutput = outPipe;
+      sudoInstall.standardError = errPipe;
+      NSError *launchErr = nil;
+      if (![sudoInstall launchAndReturnError:&launchErr]) {
+        if (error) {
+          *error = launchErr ?: [NSError
+                                    errorWithDomain:@"WWNDesktopReplacement"
+                                               code:5
+                                           userInfo:@{
+                                             NSLocalizedDescriptionKey :
+                                                 @"sudo -n stage launch failed."
+                                           }];
+        }
+        return NO;
+      }
+      [sudoInstall waitUntilExit];
+      NSData *outData = [[outPipe fileHandleForReading] readDataToEndOfFile];
+      NSData *errData = [[errPipe fileHandleForReading] readDataToEndOfFile];
+      NSMutableString *outStr = [NSMutableString string];
+      if (outData.length) {
+        [outStr appendString:[[NSString alloc] initWithData:outData
+                                                   encoding:NSUTF8StringEncoding]
+                                 ?: @""];
+      }
+      if (errData.length) {
+        [outStr appendString:[[NSString alloc] initWithData:errData
+                                                   encoding:NSUTF8StringEncoding]
+                                 ?: @""];
+      }
+      BOOL ok = [outStr containsString:@"WWN_MODEB_INSTALLED=1"] ||
+                sudoInstall.terminationStatus == 0;
+      if (!ok) {
+        NSString *stageLog = [NSString
+            stringWithContentsOfFile:@"/tmp/wawona-modeb-stage.log"
+                            encoding:NSUTF8StringEncoding
+                               error:nil];
+        if (error) {
+          *error = [NSError
+              errorWithDomain:@"WWNDesktopReplacement"
+                         code:5
+                     userInfo:@{
+                       NSLocalizedDescriptionKey : [NSString
+                           stringWithFormat:
+                               @"sudo -n Mode B stage failed (status=%d). "
+                               @"output=%@ stage-log=%@",
+                               (int)sudoInstall.terminationStatus, outStr,
+                               stageLog ?: @"(empty)"]
+                     }];
+        }
+        return NO;
+      }
+      return YES;
+    }
+  }
+
   AuthorizationRef authRef;
   OSStatus status = AuthorizationCreate(NULL, kAuthorizationEmptyEnvironment,
                                         kAuthorizationFlagDefaults, &authRef);
