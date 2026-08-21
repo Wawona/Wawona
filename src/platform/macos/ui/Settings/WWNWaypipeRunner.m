@@ -2632,11 +2632,14 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     executable = [self findBinaryNamed:@"niri"];
   } else if ([clientId isEqualToString:@"weston"]) {
     executable = [self findBinaryNamed:@"weston"];
-    NSString *modDir = env[@"WESTON_MODULE_DIR"];
-    if (modDir.length == 0 ||
+    NSString *backendDir = env[@"WESTON_BACKEND_DIR"];
+    if (backendDir.length == 0) {
+      backendDir = env[@"WESTON_MODULE_DIR"];
+    }
+    if (backendDir.length == 0 ||
         ![[NSFileManager defaultManager]
-            fileExistsAtPath:[modDir stringByAppendingPathComponent:
-                                         @"drm-backend.so"]]) {
+            fileExistsAtPath:[backendDir stringByAppendingPathComponent:
+                                           @"drm-backend.so"]]) {
       if (error) {
         *error = [NSError
             errorWithDomain:@"WWNWaypipeRunner"
@@ -2644,8 +2647,9 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
                    userInfo:@{
                      NSLocalizedDescriptionKey :
                          @"Desktop weston needs drm-backend.so under "
-                         @"WESTON_MODULE_DIR. Reinstall the desktop-host "
-                         @"build so weston modules are bundled."
+                         @"WESTON_BACKEND_DIR (libweston-N). Rebuild "
+                         @"macOS weston with -Dbackend-drm=true and "
+                         @"reinstall desktop-host."
                    }];
       }
       return NO;
