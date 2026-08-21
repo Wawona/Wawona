@@ -580,9 +580,9 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendFormat:@"WD_PLIST=%@\n", qWdPlist];
   [script appendString:@""
                        @"wwn_log() {\n"
-                       @"  line=$(printf '%s %s\\n' \"$(date '+%Y-%m-%d %H:%M:%S')\" \"$*\")\n"
-                       @"  printf '%s' \"$line\" >> \"$LOG\"\n"
-                       @"  printf '%s' \"$line\" >> \"$PERSIST_LOG\" 2>/dev/null || true\n"
+                       @"  line=$(printf '%s %s' \"$(date '+%Y-%m-%d %H:%M:%S')\" \"$*\")\n"
+                       @"  printf '%s\\n' \"$line\" >> \"$LOG\"\n"
+                       @"  printf '%s\\n' \"$line\" >> \"$PERSIST_LOG\" 2>/dev/null || true\n"
                        @"}\n"
                        @"mkdir -p \"/Library/Application Support/Wawona\" "
                        @"2>/dev/null || true\n"
@@ -901,6 +901,8 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"  exit 0\n"
                        @"}\n"
                        @"trap '' TERM INT HUP\n"
+                       @": > \"$LOG\"\n"
+                       @"chmod 666 \"$LOG\" 2>/dev/null || true\n"
                        @"wwn_log \"modeb helper start uid=$(id -u) args=$*\"\n"];
   [script appendString:@"unset WAYLAND_DISPLAY WAYLAND_SOCKET DISPLAY\n"];
 
@@ -1206,14 +1208,19 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"  chmod 644 /tmp/libwayland-support/modeb-display-go "
                        @"2>/dev/null || true\n"];
   [script appendString:@"  wwn_log \"modeb-display-go touched; waiting for "
-                       @"CoreDisplay / display=yes\"\n"];
+                       @"framebufferd CoreDisplay / CAWindowServer ready\"\n"];
   [script appendString:@"  disp_pre=0\n"];
   [script appendString:@"  di=0\n"];
   [script appendString:@"  while [ \"$di\" -lt 80 ]; do\n"];
   [script appendString:@"    cp \"$LOG\" \"$PERSIST_LOG\" 2>/dev/null || true\n"];
-  [script appendString:@"    if grep -q 'CoreDisplay initialised' \"$LOG\" "
-                       @"2>/dev/null; then disp_pre=1; fi\n"];
-  [script appendString:@"    if grep -q \"display=yes\" \"$LOG\" 2>/dev/null; then "
+  /* Never grep bare 'display=yes': helper wwn_log used to contain that
+   * substring and falsely passed this gate (2026-08-21 Mode B TTY: client
+   * started before framebufferd DispDrvInit; fb died; lockscreen restore). */
+  [script appendString:@"    if grep -q '\\[framebufferd\\] CoreDisplay "
+                       @"initialised' \"$LOG\" 2>/dev/null; then "
+                       @"disp_pre=1; fi\n"];
+  [script appendString:@"    if grep -q '\\[framebufferd\\] CAWindowServer ready, "
+                       @"display=yes' \"$LOG\" 2>/dev/null; then "
                        @"disp_pre=1; break; fi\n"];
   [script appendString:@"    if grep -q \"FAIL: no CAWindowServerDisplay\" "
                        @"\"$LOG\" 2>/dev/null || "
@@ -1238,8 +1245,8 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"  done\n"];
   [script appendString:@"  if [ \"$disp_pre\" != 1 ]; then\n"];
   [script appendString:@"    write_reason \"Mode B timed out waiting for "
-                       @"framebufferd display=yes after WS unload. Restored "
-                       @"Aqua. See $PERSIST_LOG.\"\n"];
+                       @"framebufferd CAWindowServer ready after WS unload. "
+                       @"Restored Aqua. See $PERSIST_LOG.\"\n"];
   [script appendString:@"    restore_aqua\n"];
   [script appendString:@"    exit 0\n"];
   [script appendString:@"  fi\n"];
@@ -1417,9 +1424,11 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"  oi=0\n"];
   [script appendString:@"  while [ \"$oi\" -lt 80 ]; do\n"];
   [script appendString:@"    cp \"$LOG\" \"$PERSIST_LOG\" 2>/dev/null || true\n"];
-  [script appendString:@"    if grep -q 'CoreDisplay initialised' \"$LOG\" "
-                       @"2>/dev/null; then disp_ok=1; fi\n"];
-  [script appendString:@"    if grep -q \"display=yes\" \"$LOG\" 2>/dev/null; then "
+  [script appendString:@"    if grep -q '\\[framebufferd\\] CoreDisplay "
+                       @"initialised' \"$LOG\" 2>/dev/null; then "
+                       @"disp_ok=1; fi\n"];
+  [script appendString:@"    if grep -q '\\[framebufferd\\] CAWindowServer ready, "
+                       @"display=yes' \"$LOG\" 2>/dev/null; then "
                        @"disp_ok=1; fi\n"];
   [script appendString:@"    if grep -q \"FAIL: no CAWindowServerDisplay\" "
                        @"\"$LOG\" 2>/dev/null; then\n"];
@@ -1460,7 +1469,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"    exit 0\n"];
   [script appendString:@"  fi\n"];
   [script appendString:@"  wwn_log \"Classic CoreDisplay+present ok "
-                       @"(kmscube=$WWN_MODEB_PROOF_KMSCUBE)\"\n"];
+                       @"(proof=$WWN_MODEB_PROOF_KMSCUBE)\"\n"];
   [script appendString:@"  touch /tmp/libwayland-support/modeb-framebufferd.ready\n"];
   [script appendString:@"  chmod 644 /tmp/libwayland-support/modeb-framebufferd.ready "
                        @"2>/dev/null || true\n"];
