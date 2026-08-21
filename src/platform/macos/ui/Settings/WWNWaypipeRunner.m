@@ -2588,8 +2588,10 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     return NO;
   }
 
+  BOOL modebTty = [clientId isEqualToString:@"modeb-tty"] ||
+                  [clientId isEqualToString:@"modeb-ttyd"];
   BOOL kmscubeProof = [clientId isEqualToString:@"kmscube"];
-  if (!kmscubeProof &&
+  if (!modebTty && !kmscubeProof &&
       ![WWNMachineProfileStore profileIndicatesNestedCompositor:profile]) {
     if (error) {
       *error = [NSError
@@ -2598,8 +2600,8 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
                  userInfo:@{
                    NSLocalizedDescriptionKey :
                        @"Desktop Replacement needs a nested compositor "
-                       @"(weston, niri, or a custom compositor), or kmscube "
-                       @"for DRM own-display proof."
+                       @"(weston, niri, or custom), modeb-tty (multi-VT), "
+                       @"or kmscube for DRM own-display proof."
                  }];
     }
     return NO;
@@ -2634,7 +2636,17 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
   NSString *executable = nil;
   NSArray<NSString *> *args = @[];
 
-  if (kmscubeProof) {
+  if (modebTty) {
+    executable = [self findBinaryNamed:@"modeb-ttyd"];
+    if (executable.length == 0) {
+      executable = [self findBinaryNamed:@"modeb-tty"];
+    }
+    NSString *kms = [self findBinaryNamed:@"kmscube"];
+    if (kms.length > 0) {
+      env[@"WWN_MODEB_KMSCUBE"] = kms;
+    }
+    args = @[];
+  } else if (kmscubeProof) {
     executable = [self findBinaryNamed:@"kmscube"];
     args = @[];
   } else if ([clientId isEqualToString:@"niri"]) {

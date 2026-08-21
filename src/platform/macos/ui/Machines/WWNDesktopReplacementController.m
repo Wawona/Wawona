@@ -400,8 +400,23 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                            : nil;
   if (selected) {
     NSString *cid = [self nativeClientIdForProfile:selected];
-    if ([cid isEqualToString:@"kmscube"] ||
+    if ([cid isEqualToString:@"modeb-tty"] ||
+        [cid isEqualToString:@"modeb-ttyd"] ||
+        [cid isEqualToString:@"kmscube"] ||
         [WWNMachineProfileStore profileIndicatesNestedCompositor:selected]) {
+      return YES;
+    }
+  }
+
+  for (WWNMachineProfile *profile in [WWNMachineProfileStore loadProfiles]) {
+    NSString *cid = [self nativeClientIdForProfile:profile];
+    if (([cid isEqualToString:@"modeb-tty"] ||
+         [cid isEqualToString:@"modeb-ttyd"]) &&
+        profile.machineId.length > 0) {
+      [defs setObject:profile.machineId
+               forKey:kWWNPrefsDesktopReplacementMachineId];
+      NSLog(@"[DesktopReplacement] selected Mode B TTY machine %@",
+            profile.machineId);
       return YES;
     }
   }
@@ -428,7 +443,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     }
   }
 
-  WWNMachineProfile *created = [self createKmscubeProofMachine];
+  WWNMachineProfile *created = [self createModeBTtyMachine];
   if (!created || created.machineId.length == 0) {
     if (error) {
       *error = [NSError
@@ -436,14 +451,14 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                      code:9
                  userInfo:@{
                    NSLocalizedDescriptionKey :
-                       @"Could not create a KMS Cube Mode B Proof machine."
+                       @"Could not create a Mode B TTY machine."
                  }];
     }
     return NO;
   }
   [defs setObject:created.machineId
            forKey:kWWNPrefsDesktopReplacementMachineId];
-  NSLog(@"[DesktopReplacement] created KMS Cube Mode B Proof machine %@",
+  NSLog(@"[DesktopReplacement] created Mode B TTY machine %@",
         created.machineId);
   return YES;
 }
@@ -592,14 +607,16 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"  done\n"
                        @"  for p in $(pgrep -u 0 -x niri 2>/dev/null; "
                        @"pgrep -u 0 -x weston 2>/dev/null; "
-                       @"pgrep -u 0 -x kmscube 2>/dev/null); do\n"
+                       @"pgrep -u 0 -x kmscube 2>/dev/null; "
+                       @"pgrep -u 0 -x modeb-ttyd 2>/dev/null); do\n"
                        @"    wwn_log \"kill leftover Mode B client pid=$p\"\n"
                        @"    kill -TERM \"$p\" 2>/dev/null || true\n"
                        @"  done\n"
                        @"  sleep 0.2\n"
                        @"  for p in $(pgrep -u 0 -x niri 2>/dev/null; "
                        @"pgrep -u 0 -x weston 2>/dev/null; "
-                       @"pgrep -u 0 -x kmscube 2>/dev/null); do\n"
+                       @"pgrep -u 0 -x kmscube 2>/dev/null; "
+                       @"pgrep -u 0 -x modeb-ttyd 2>/dev/null); do\n"
                        @"    kill -KILL \"$p\" 2>/dev/null || true\n"
                        @"  done\n"
                        @"}\n"
@@ -1262,9 +1279,12 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     }
   }
   {
-    BOOL proofKmscube =
-        [[executablePath lastPathComponent] isEqualToString:@"kmscube"];
-    [script appendFormat:@"WWN_MODEB_PROOF_KMSCUBE=%d\n", proofKmscube ? 1 : 0];
+    NSString *base = [executablePath lastPathComponent];
+    BOOL skipWestonOut =
+        [base isEqualToString:@"kmscube"] ||
+        [base isEqualToString:@"modeb-ttyd"] ||
+        [base isEqualToString:@"modeb-tty"];
+    [script appendFormat:@"WWN_MODEB_PROOF_KMSCUBE=%d\n", skipWestonOut ? 1 : 0];
   }
   [script appendString:@"WWN_MODEB_CLIENT_ARGV=("];
   [script appendFormat:@"%@ ", [self wwnShellQuote:executablePath]];
@@ -1469,12 +1489,24 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"(launchd; not a shell child)\"\n"];
   [script appendString:@"  status=0\n"];
   [script appendString:@"  while kill -0 \"$pid\" 2>/dev/null; do\n"];
+  [script appendString:@"    if [ -f /tmp/libwayland-support/modeb-restore-aqua ]; then\n"];
+  [script appendString:@"      wwn_log \"modeb-restore-aqua stamp; restoring Aqua\"\n"];
+  [script appendString:@"      rm -f /tmp/libwayland-support/modeb-restore-aqua\n"];
+  [script appendString:@"      restore_aqua\n"];
+  [script appendString:@"      exit 0\n"];
+  [script appendString:@"    fi\n"];
   [script appendString:@"    cp \"$LOG\" \"$PERSIST_LOG\" 2>/dev/null || true\n"];
   [script appendString:@"    sleep 1\n"];
   [script appendString:@"  done\n"];
   [script appendString:@"  wait \"$pid\" 2>/dev/null\n"];
   [script appendString:@"  status=$?\n"];
   [script appendString:@"  if [ \"$status\" -eq 127 ]; then status=0; fi\n"];
+  [script appendString:@"  if [ -f /tmp/libwayland-support/modeb-restore-aqua ]; then\n"];
+  [script appendString:@"    wwn_log \"modeb-restore-aqua after client exit; restoring Aqua\"\n"];
+  [script appendString:@"    rm -f /tmp/libwayland-support/modeb-restore-aqua\n"];
+  [script appendString:@"    restore_aqua\n"];
+  [script appendString:@"    exit 0\n"];
+  [script appendString:@"  fi\n"];
   [script appendString:@"  wwn_log \"Classic Mode B client pid=$pid exited "
                        @"status=$status\"\n"];
   [script appendString:@"fi\n"];
@@ -2115,6 +2147,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
           @"/usr/bin/pkill -u 0 -x niri >/dev/null 2>&1 || true\n"
           @"/usr/bin/pkill -u 0 -x weston >/dev/null 2>&1 || true\n"
           @"/usr/bin/pkill -u 0 -x kmscube >/dev/null 2>&1 || true\n"
+          @"/usr/bin/pkill -u 0 -x modeb-ttyd >/dev/null 2>&1 || true\n"
           @"/usr/bin/pkill -u 0 -x framebufferd >/dev/null 2>&1 || true\n"
           @"/usr/bin/pkill -u 0 -x inputd >/dev/null 2>&1 || true\n"
           @"rm -f %@ %@ %@ %@ %@ %@ %@ %@ %@ %@ %@\n"
@@ -2634,6 +2667,19 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   return created.machineId.length > 0 ? created : nil;
 }
 
+- (WWNMachineProfile *)createModeBTtyMachine {
+  WWNMachineProfile *created = [WWNMachineProfile defaultProfile];
+  created.name = @"Mode B TTY";
+  NSMutableDictionary *so =
+      [created.settingsOverrides mutableCopy] ?: [NSMutableDictionary dictionary];
+  so[@"NativeClientId"] = @"modeb-tty";
+  so[@"WestonEnabled"] = @NO;
+  so[@"EnableLauncher"] = @NO;
+  created.settingsOverrides = so;
+  [WWNMachineProfileStore upsertProfile:created];
+  return created.machineId.length > 0 ? created : nil;
+}
+
 - (WWNMachineProfile *)kmscubeProfileMatchingIdOrName:(NSString *)idOrName {
   if (idOrName.length == 0) {
     return nil;
@@ -2665,6 +2711,26 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   }
 
   WWNMachineProfile *profile = [self nestedProfileMatchingIdOrName:idOrName];
+  if (!profile &&
+      ([idOrName.lowercaseString isEqualToString:@"modeb-tty"] ||
+       [idOrName.lowercaseString isEqualToString:@"modeb-ttyd"])) {
+    for (WWNMachineProfile *p in [WWNMachineProfileStore loadProfiles]) {
+      NSString *cid = [self nativeClientIdForProfile:p];
+      if ([cid isEqualToString:@"modeb-tty"] ||
+          [cid isEqualToString:@"modeb-ttyd"]) {
+        profile = p;
+        break;
+      }
+    }
+    if (!profile) {
+      profile = [self createModeBTtyMachine];
+      if (!profile) {
+        WWNModeBCliLog(@"RESULT failed to create Mode B TTY machine");
+        return 1;
+      }
+      WWNModeBCliLog(@"created Mode B TTY machine %@", profile.machineId);
+    }
+  }
   if (!profile &&
       [idOrName.lowercaseString isEqualToString:@"kmscube"]) {
     profile = [self kmscubeProfileMatchingIdOrName:@"kmscube"];
@@ -2705,9 +2771,11 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     WWNMachineProfile *any = [WWNMachineProfileStore profileById:idOrName];
     if (any &&
         ![WWNMachineProfileStore profileIndicatesNestedCompositor:any] &&
-        ![[self nativeClientIdForProfile:any] isEqualToString:@"kmscube"]) {
+        ![[self nativeClientIdForProfile:any] isEqualToString:@"kmscube"] &&
+        ![[self nativeClientIdForProfile:any] isEqualToString:@"modeb-tty"] &&
+        ![[self nativeClientIdForProfile:any] isEqualToString:@"modeb-ttyd"]) {
       WWNModeBCliLog(@"RESULT refused: %@ is not a nested compositor "
-                     @"(need weston/niri/custom compositor, or kmscube proof)",
+                     @"(need weston/niri/custom, modeb-tty, or kmscube)",
                      idOrName);
       return 2;
     }
@@ -2811,13 +2879,12 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     [[NSFileManager defaultManager] removeItemAtPath:kWWNModeBKeepWsPath
                                                error:nil];
     /*
-     * Classic own-display proof uses kmscube (DRM/KMS) until weston panel
-     * present is visually proven. KEEP_WS probe still uses the Desktop
-     * compositor machine.
+     * Classic own-display: Mode B TTY (multi-VT). KEEP_WS probe still uses
+     * the Desktop compositor machine.
      */
-    int sel = [self cliSelectDesktopMachine:@"kmscube"];
+    int sel = [self cliSelectDesktopMachine:@"modeb-tty"];
     if (sel != 0) {
-      WWNModeBCliLog(@"failed to select kmscube proof machine");
+      WWNModeBCliLog(@"failed to select modeb-tty machine");
       return sel;
     }
   }
@@ -2891,10 +2958,10 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
 
 - (int)cliStage {
   WWNModeBCliLog(@"mode-b-stage");
-  /* Stage the Classic proof client (kmscube) so helper argv matches engage. */
-  int sel = [self cliSelectDesktopMachine:@"kmscube"];
+  /* Stage Mode B TTY so helper argv matches Classic engage. */
+  int sel = [self cliSelectDesktopMachine:@"modeb-tty"];
   if (sel != 0) {
-    WWNModeBCliLog(@"stage failed: could not select kmscube proof machine");
+    WWNModeBCliLog(@"stage failed: could not select modeb-tty machine");
     return sel;
   }
   NSError *err = nil;

@@ -6,6 +6,17 @@ versus the SIP-gated host Desktop/LockScreen `.dylib` (Mode B on macOS).
 **Wawona Swinging Bridge is a different product** (host-app → Wayland bridge). Do not document
 Wawona Swinging Bridge here. See `wawona-swinging-bridge`.
 
+## WindowServer options (Classic / KEEP_WS / Path C)
+
+Not IOWatchdog Path A/B. Full table:
+`Wawona/docs/mode-b-windowserver-options.md`.
+
+| Option | WindowServer | Status |
+|---|---|---|
+| Classic | Booted out; Mode B owns panel | Implemented (kmscube proof) |
+| KEEP_WS | Left up; Aqua stays | Implemented (probe) |
+| Path C | Parked/suspended; Cocoa still has WS for Swinging Bridge | **Planned** after multi-TTY |
+
 Desktop / LockScreen status: **⏳ planned / coming soon** (in development on
 macOS and Android; iOS path only via `repo.wawona.io`. Website docs only).
 

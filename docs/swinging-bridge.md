@@ -40,6 +40,16 @@ Desktop replacement becomes *easier* once Swinging Bridge works (e.g. Android
 Default Home App = Wawona, while individual Android apps still appear as Wayland
 surfaces inside niri). That home/DE path is still Desktop/LockScreen. Separate.
 
+### macOS Desktop + Bridge: Path C (planned)
+
+Classic Desktop **boots out** WindowServer. Cocoa apps then have no
+AppKit/SkyLight host unless heavily patched. **Path C** (planned) parks
+WindowServer in the background while Mode B owns the panel, so Swinging
+Bridge can keep talking to Cocoa without a full SkyLight rewrite. Canonical
+table: [`mode-b-windowserver-options.md`](mode-b-windowserver-options.md).
+Implement Path C only after Mode B multi-TTY. Never conflate Path C with
+IOWatchdog Path A/B.
+
 ## Platforms
 
 | Platform | Gate | Notes |

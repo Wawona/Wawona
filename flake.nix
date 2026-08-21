@@ -1004,6 +1004,10 @@
               macosZsh = if want "macos" then pkgs.zsh else null;
               macosKmscube =
                 if want "macos" then pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; } else null;
+              macosModebTty =
+                if want "macos" then pkgs.callPackage ./src/platform/macos/modeb/tty/default.nix {
+                  buildModule = toolchains;
+                } else null;
               macosOpenglCube =
                 if want "macos" then toolchains.buildForMacOS "opengl-cube" { } else null;
               macosVkcube =
@@ -1043,6 +1047,9 @@
             neovim = null;
             zsh = pkgs.zsh;
             kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
+            modebTty = pkgs.callPackage ./src/platform/macos/modeb/tty/default.nix {
+              buildModule = toolchains;
+            };
             # macOS-only xcodegen project (platformFilter = ["macos"]) so product
             # builds use the same Wawona-macOS scheme as local xcodebuild, without
             # pulling iOS/device backend graphs.

@@ -969,14 +969,21 @@ static UIImage *WWNAboutLogo(void) {
                           ? so[@"NativeClientId"]
                           : @"";
       BOOL kmscubeProof = [cid isEqualToString:@"kmscube"];
-      if (!kmscubeProof &&
+      BOOL modebTty = [cid isEqualToString:@"modeb-tty"] ||
+                      [cid isEqualToString:@"modeb-ttyd"];
+      if (!kmscubeProof && !modebTty &&
           ![WWNMachineProfileStore profileIndicatesNestedCompositor:p]) {
         continue;
       }
       NSString *label = p.name.length ? p.name : @"Unnamed Machine";
-      if (kmscubeProof &&
-          [label rangeOfString:@"kmscube" options:NSCaseInsensitiveSearch]
+      if (modebTty &&
+          [label rangeOfString:@"TTY" options:NSCaseInsensitiveSearch]
                   .location == NSNotFound) {
+        label = [label stringByAppendingString:@" (Mode B TTY)"];
+      } else if (kmscubeProof &&
+                 [label rangeOfString:@"kmscube"
+                              options:NSCaseInsensitiveSearch]
+                         .location == NSNotFound) {
         label = [label stringByAppendingString:@" (kmscube proof)"];
       }
       [nativeNames addObject:label];
@@ -987,9 +994,10 @@ static UIImage *WWNAboutLogo(void) {
           ITEM(@"Desktop Machine",
                @"DesktopReplacementMachineId", WSettingPopup,
                nativeIds.firstObject,
-               @"Host desktop inject target. Prefer KMS Cube Mode B Proof "
-               @"until weston DRM panel present is visually proven. Nested "
-               @"compositors (weston, niri, custom) remain supported.");
+               @"Host desktop inject target. Prefer Mode B TTY (Ctrl+Alt+Fn "
+               @"VTs; Ctrl+Alt+Backspace restores Aqua). kmscube remains VT7 "
+               @"graphics and a selectable proof machine. Nested compositors "
+               @"(weston, niri, custom) remain supported.");
       machineItem.options = nativeNames;
       machineItem.optionValues = nativeIds;
       [desktopItems addObject:machineItem];

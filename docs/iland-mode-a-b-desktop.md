@@ -24,15 +24,20 @@ Stack architecture and toolkit contracts:
 
 ## Status
 
-**Desktop Classic Take Over: product wired; Classic E2E proof pending reboot.**
-Settings → Desktop engages Mode B only with Path B sticky
-`/var/db/wwn-iowatchdog/claim-ok` (`path=b sticky=1`), then
-`iowatchdog-then-unload`. Operator checklist:
+**Desktop Classic Take Over: own-display proven (kmscube).** Multi-TTY and
+Path C (parked WindowServer) are next. Settings → Desktop engages Mode B
+Classic only with Path B sticky `/var/db/wwn-iowatchdog/claim-ok`
+(`path=b sticky=1`), then `iowatchdog-then-unload`. Operator checklist:
 [`desktop-replacement-classic-proof.md`](desktop-replacement-classic-proof.md).
-LockScreen greeter handoff stays planned until that proof is green. Product
-gates stay **planned** on macOS and Android until Phase E PASS; App Store
-Apple-mobile builds keep Desktop/LockScreen **forbidden** and must **never
-mention jailbreak** in UI or strings.
+
+**Three WindowServer options** (Classic / KEEP_WS / Path C): see
+[`mode-b-windowserver-options.md`](mode-b-windowserver-options.md). Do not
+confuse those with IOWatchdog Path A / Path B.
+
+LockScreen greeter handoff stays planned until Classic multi-TTY + restore
+chords are green. Product gates stay **planned** on macOS and Android until
+Phase E PASS; App Store Apple-mobile builds keep Desktop/LockScreen
+**forbidden** and must **never mention jailbreak** in UI or strings.
 
 ## What Desktop / LockScreen is
 
@@ -125,6 +130,18 @@ Prefs (macOS `NSUserDefaults`):
 - `DesktopReplacementMachineId` (nested compositor native profile only)
 - `LockscreenReplacementEnabled` / `LockscreenReplacementMachineId`
 - `SwingingBridgeEnabled` (Wawona Swinging Bridge. Separate feature; see [`swinging-bridge.md`](swinging-bridge.md))
+
+## Mode B multi-TTY (userspace)
+
+Classic own-display can run **`modeb-ttyd`** (Desktop Machine `modeb-tty`):
+
+- Six PTY + `/bin/zsh` text VTs on DRM dumb buffers → `framebufferd`
+- Ctrl+Alt+F1–F6 switch text VTs (via `inputd` → `/tmp/libwayland-support/modeb-vt`)
+- Ctrl+Alt+F7 starts kmscube (graphics VT)
+- Ctrl+Alt+Backspace restores Aqua (`modeb-restore-aqua` stamp)
+
+This is userspace only (no kernel tty). See also
+[`mode-b-windowserver-options.md`](mode-b-windowserver-options.md).
 
 ## Mode B launch (macOS)
 

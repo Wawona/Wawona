@@ -32,6 +32,7 @@
   macosNeovim ? null,
   macosZsh ? null,
   macosKmscube ? null,
+  macosModebTty ? null,
   macosOpenglCube ? null,
   macosVkcube ? null,
   macosWestonSimpleEgl ? null,
@@ -2059,6 +2060,7 @@ ICDJSON
               NEOVIM_BIN="${strip macosNeovim}/bin"
               ZSH_BIN="${strip macosZsh}/bin"
               KMSCUBE_BIN="${strip macosKmscube}/bin"
+              MODEB_TTY_BIN="${strip macosModebTty}/bin"
               OPENGL_CUBE_BIN="${strip macosOpenglCube}/bin"
               VKCUBE_BIN="${strip macosVkcube}/bin"
               WESTON_SIMPLE_EGL_BIN="${strip macosWestonSimpleEgl}/bin"
@@ -2142,6 +2144,15 @@ ICDJSON
               bundle_bin "$NEOVIM_BIN/nvim" "vim"
               bundle_bin "$ZSH_BIN/zsh" "zsh"
               require_bin "$KMSCUBE_BIN/kmscube" "kmscube"
+              # Mode B multi-VT console (Classic own-display). Soft-require so
+              # older product graphs without modebTty still link.
+              if [ -f "$MODEB_TTY_BIN/modeb-ttyd" ]; then
+                require_bin "$MODEB_TTY_BIN/modeb-ttyd" "modeb-ttyd"
+                install -m 755 "$MODEB_TTY_BIN/modeb-ttyd" "$MACOS_DEST/modeb-ttyd"
+                sign_bin "$MACOS_DEST/modeb-ttyd"
+                ln -sf modeb-ttyd "$BIN_DEST/modeb-tty"
+                ln -sf modeb-ttyd "$MACOS_DEST/modeb-tty"
+              fi
               # Wayland clients: Machines Start launches these as NSTasks against
               # the compositor socket. Archives (opengl_cube_main / vkcube_main)
               # remain linked for the iOS-family in-process path.

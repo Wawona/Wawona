@@ -26,6 +26,7 @@
   neovim ? null,
   zsh ? null,
   kmscube ? null,
+  modebTty ? null,
   waylandVersion ? "unknown",
   xkbcommonVersion ? "unknown",
   lz4Version ? "unknown",
@@ -1350,6 +1351,20 @@ GEN_HEADER
               chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/kmscube
               chmod +x $out/Applications/Wawona.app/Contents/MacOS/kmscube
               echo "DEBUG: Bundled kmscube"
+            fi
+            '' else ''
+            ''}
+
+            ${if modebTty != null then ''
+            if [ -f "${modebTty}/bin/modeb-ttyd" ]; then
+              cp "${modebTty}/bin/modeb-ttyd" $out/Applications/Wawona.app/Contents/Resources/bin/
+              cp "${modebTty}/bin/modeb-ttyd" $out/Applications/Wawona.app/Contents/MacOS/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/modeb-ttyd
+              chmod +x $out/Applications/Wawona.app/Contents/MacOS/modeb-ttyd
+              # CLI alias used by Desktop Machine NativeClientId=modeb-tty
+              ln -sf modeb-ttyd $out/Applications/Wawona.app/Contents/Resources/bin/modeb-tty
+              ln -sf modeb-ttyd $out/Applications/Wawona.app/Contents/MacOS/modeb-tty
+              echo "DEBUG: Bundled modeb-ttyd"
             fi
             '' else ''
             ''}
