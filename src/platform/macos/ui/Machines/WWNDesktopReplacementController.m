@@ -20,7 +20,10 @@
 #include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
+#include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/un.h>
 #include <unistd.h>
 
 #if TARGET_OS_OSX
@@ -41,6 +44,10 @@ static NSString *const kWWNModeBClaimOkPath =
     @"/var/db/wwn-iowatchdog/claim-ok";
 static NSString *const kWWNModeBClaimPendingPath =
     @"/var/db/wwn-iowatchdog/claim-pending";
+static NSString *const kWWNModeBIowDisabledMarkerPath =
+    @"/tmp/libwayland-support/iowatchdog-userspace-disabled";
+static NSString *const kWWNModeBPathBSockPath =
+    @"/var/run/wwn-iowatchdog.sock";
 static NSString *const kWWNModeBPidPath =
     @"/tmp/libwayland-support/modeb-compositor.pid";
 static NSString *const kWWNModeBInstalledDylibRel =
@@ -264,6 +271,38 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   return nil;
 }
 
+- (BOOL)iowatchdogLiveDisablePresent {
+  NSFileManager *fm = [NSFileManager defaultManager];
+  if ([fm fileExistsAtPath:kWWNModeBIowDisabledMarkerPath]) {
+    return YES;
+  }
+  /* Stale sock inode can exist after Path B died; require a live reply. */
+  int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+  if (fd < 0) {
+    return NO;
+  }
+  struct sockaddr_un addr;
+  memset(&addr, 0, sizeof(addr));
+  addr.sun_family = AF_UNIX;
+  strncpy(addr.sun_path, kWWNModeBPathBSockPath.fileSystemRepresentation,
+          sizeof(addr.sun_path) - 1);
+  if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
+    close(fd);
+    return NO;
+  }
+  const char *req = "status\n";
+  (void)send(fd, req, strlen(req), 0);
+  char buf[256];
+  ssize_t n = recv(fd, buf, sizeof(buf) - 1, 0);
+  close(fd);
+  if (n <= 0) {
+    return NO;
+  }
+  buf[n] = '\0';
+  /* Hook reports done=1 after sticky DisableUserspaceMonitoring succeeds. */
+  return strstr(buf, "done=1") != NULL;
+}
+
 - (BOOL)iowatchdogStickyAckPresent {
   NSString *body =
       [NSString stringWithContentsOfFile:kWWNModeBClaimOkPath
@@ -272,8 +311,13 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   if (body.length == 0) {
     return NO;
   }
-  /* Product Classic Take Over: Path B only (Path A stays lab / AMFI). */
-  return [body containsString:@"sticky=1"] && [body containsString:@"path=b"];
+  /* Product Classic Take Over: Path B claim-ok AND live Disable evidence.
+   * claim-ok alone is stale after stage re-enables plain Apple watchdogd
+   * (2026-08-20 evening SIGTRAP panic). */
+  if (![body containsString:@"sticky=1"] || ![body containsString:@"path=b"]) {
+    return NO;
+  }
+  return [self iowatchdogLiveDisablePresent];
 }
 
 - (NSString *)iowatchdogStickyAckStatusSummary {
@@ -282,22 +326,31 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
       [NSString stringWithContentsOfFile:kWWNModeBClaimOkPath
                                 encoding:NSUTF8StringEncoding
                                    error:nil];
+  BOOL live = [self iowatchdogLiveDisablePresent];
   if (body.length > 0) {
     NSString *trim =
         [body stringByTrimmingCharactersInSet:
                   [NSCharacterSet whitespaceAndNewlineCharacterSet]];
     if ([trim containsString:@"sticky=1"] &&
         [trim containsString:@"path=b"]) {
-      return @"OK (Path B sticky). Take Over may unload watchdogd.";
+      if (live) {
+        return @"OK (Path B sticky + live Disable). Take Over may unload.";
+      }
+      return @"Stale claim-ok (no live Disable marker/sock). Re-arm Path B "
+             @"and reboot; do not Take Over. Stage must not re-enable Apple "
+             @"watchdogd while Path B is armed.";
     }
     if ([trim containsString:@"path=a"]) {
       return @"Path A ACK only (lab). Product Take Over needs Path B "
-             @"sticky claim-ok.";
+             @"sticky claim-ok + live Disable.";
     }
     return [NSString stringWithFormat:@"Unexpected claim-ok: %@", trim];
   }
   if ([fm fileExistsAtPath:kWWNModeBClaimPendingPath]) {
-    return @"Pending: Path A/B armed; reboot, then re-check claim-ok.";
+    return @"Pending: Path A/B armed; reboot, then re-check claim-ok + live.";
+  }
+  if (live) {
+    return @"Live Disable present but claim-ok missing; re-arm Path B.";
   }
   return @"Missing: arm Path B with claim-install --path-b, then reboot.";
 }
@@ -855,12 +908,38 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"  fi\n"];
   [script appendString:@"  wwn_log \"claim-ok present: $(cat \"$CLAIM_OK\" "
                        @"2>/dev/null | tr '\\n' ' ')\"\n"];
-  [script appendString:@"  mkdir -p /tmp/libwayland-support\n"];
-  [script appendString:@"  echo path-b-takeover > "
-                       @"/tmp/libwayland-support/iowatchdog-userspace-disabled\n"];
-  [script appendString:@"  chmod 644 "
-                       @"/tmp/libwayland-support/iowatchdog-userspace-disabled "
+  /* Live Disable evidence required. Never invent the marker before unload
+   * (2026-08-20 evening: claim-ok stale + fabricated marker + unload →
+   * watchdogd SIGTRAP panic while kernel monitoring still armed). */
+  [script appendString:@"  LIVE_DIS=0\n"];
+  [script appendString:@"  MARKER=/tmp/libwayland-support/"
+                       @"iowatchdog-userspace-disabled\n"];
+  [script appendString:@"  SOCK=/var/run/wwn-iowatchdog.sock\n"];
+  [script appendString:@"  if [ -f \"$MARKER\" ]; then LIVE_DIS=1; "
+                       @"wwn_log \"live Disable marker present\"; fi\n"];
+  [script appendString:@"  if [ \"$LIVE_DIS\" = 0 ] && [ -S \"$SOCK\" ]; then\n"];
+  [script appendString:@"    SOCK_ST=$(/usr/bin/python3 -c "
+                       @"\"import socket;s=socket.socket(socket.AF_UNIX);"
+                       @"s.settimeout(1.0);s.connect('$SOCK');"
+                       @"s.send(b'status\\\\n');"
+                       @"print(s.recv(256).decode(), end='')\" "
+                       @"2>/dev/null || true)\n"];
+  [script appendString:@"    wwn_log \"pathb sock status: $SOCK_ST\"\n"];
+  [script appendString:@"    case \"$SOCK_ST\" in *done=1*) LIVE_DIS=1 ;; "
+                       @"esac\n"];
+  [script appendString:@"  fi\n"];
+  [script appendString:@"  if [ \"$LIVE_DIS\" != 1 ]; then\n"];
+  [script appendString:@"    write_reason \"Mode B Take Over refused: claim-ok "
+                       @"is present but live IOWatchdog Disable is not "
+                       @"(no marker, Path B sock not done=1). Re-arm Path B, "
+                       @"reboot, confirm marker/sock before Take Over. Do not "
+                       @"unload watchdogd. Apple's WindowServer left running.\"\n"];
+  [script appendString:@"    rmdir /tmp/libwayland-support/modeb.lock "
                        @"2>/dev/null || true\n"];
+  [script appendString:@"    rm -rf /tmp/libwayland-support/modeb.lock "
+                       @"2>/dev/null || true\n"];
+  [script appendString:@"    exit 0\n"];
+  [script appendString:@"  fi\n"];
   [script appendString:@"  stop_watchdogd_after_iowatchdog\n"];
   [script appendString:@"  install_ws_guard\n"];
   [script appendString:@"  stop_window_server\n"];
@@ -1064,15 +1143,28 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
           @"lldb paniced 2026-08-20: watchdogd exited SIGTRAP (namespace 2 "
           @"subcode 0x5) while kernel IOWatchdog was still armed.\n"
           @"log watchdogd-ensure\n"
-          @"/bin/launchctl enable system/com.apple.watchdogd "
+          @"# Never re-enable Apple watchdogd when Path B/A is armed or has\n"
+          @"# claim-ok. Stage used to bootstrap Apple here and raced Path B:\n"
+          @"# plain Apple watchdogd came up with monitoring armed while\n"
+          @"# claim-ok still said sticky=1. Classic Take Over then unloaded\n"
+          @"# and 25F80 paniced (watchdogd exited SIGTRAP ns2/0x5,\n"
+          @"# 2026-08-20 evening).\n"
+          @"if [ -f /var/db/wwn-iowatchdog/claim-ok ] || "
+          @"[ -f /var/db/wwn-iowatchdog/claim-pending ] || "
+          @"[ -f /Library/LaunchDaemons/com.aspauldingcode.wwn-iowatchdog-pathb.plist ] || "
+          @"[ -f /Library/LaunchDaemons/com.aspauldingcode.wwn-iowatchdog-claim.plist ]; then\n"
+          @"  log 'watchdogd-ensure SKIP (Path A/B arm or claim-ok present)'\n"
+          @"else\n"
+          @"  /bin/launchctl enable system/com.apple.watchdogd "
           @">/dev/null 2>&1 || true\n"
-          @"/bin/launchctl load -w "
+          @"  /bin/launchctl load -w "
           @"/System/Library/LaunchDaemons/com.apple.watchdogd.plist "
           @">/dev/null 2>&1 || true\n"
-          @"/bin/launchctl bootstrap system "
+          @"  /bin/launchctl bootstrap system "
           @"/System/Library/LaunchDaemons/com.apple.watchdogd.plist "
           @">/dev/null 2>&1 || true\n"
-          @"log watchdogd-ensure-done\n"
+          @"  log watchdogd-ensure-done\n"
+          @"fi\n"
           @"/usr/sbin/visudo -cf %@ >/dev/null\n"
           @"/usr/bin/install -m 440 -o root -g wheel %@ %@\n"
           @"/usr/sbin/visudo -cf /etc/sudoers >/dev/null\n"
@@ -1438,12 +1530,15 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
         [existingHelper containsString:@"WWN_MODEB_LOCK=helper-argv-only"] &&
         [existingHelper containsString:@"WWN_MODEB_WD=iowatchdog-then-unload"] &&
         [existingHelper containsString:@"stop_watchdogd_after_iowatchdog"] &&
+        [existingHelper containsString:@"LIVE_DIS"] &&
+        [existingHelper containsString:@"done=1"] &&
         [existingHelper containsString:@"stale modeb.lock"] &&
         [existingHelper containsString:@"# WWN_WAWONA_STORE="] &&
         [existingHelper containsString:bundlePath] &&
         ![existingHelper containsString:@"reap WindowServer"] &&
         ![existingHelper containsString:@"WWN_MODEB_WD=launchctl-unload"] &&
         ![existingHelper containsString:@"WWN_MODEB_WD=blocked-no-iowatchdog"] &&
+        ![existingHelper containsString:@"echo path-b-takeover"] &&
         ![existingHelper
             containsString:@"kickstart -k system/com.apple.watchdogd"] &&
         ![existingHelper containsString:@"Mode B helper DISABLED"];

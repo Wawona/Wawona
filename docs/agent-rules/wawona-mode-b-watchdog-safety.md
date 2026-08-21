@@ -15,16 +15,20 @@ Watchdog tools repo: `github.com/Wawona/wwn-iowatchdog`
 ([`docs/path-a-path-b.md`](https://github.com/Wawona/wwn-iowatchdog/blob/development/docs/path-a-path-b.md)
 operator guide; [`docs/macos26-iowatchdog-wall.md`](https://github.com/Wawona/wwn-iowatchdog/blob/development/docs/macos26-iowatchdog-wall.md)
 investigation wall). Path B reboot sticky disable is **proven** on 25F80;
-Take Over product gate consumes Path B `claim-ok` only (`path=b sticky=1`,
-`WWN_MODEB_WD=iowatchdog-then-unload`). Path A ACK stays lab. Without Path B
-ACK, Classic Take Over refuses; KEEP_WS `--mode-b-probe` remains available.
-Operator Classic E2E: `docs/desktop-replacement-classic-proof.md`.
+Classic Take Over needs Path B `claim-ok` **and** live Disable (marker or
+Path B sock `status` with `done=1`). `WWN_MODEB_WD=iowatchdog-then-unload`.
+claim-ok alone is **stale** after stage re-enables plain Apple `watchdogd`
+(2026-08-20 evening SIGTRAP panic). Path A ACK stays lab. KEEP_WS
+`--mode-b-probe` remains available. Operator Classic E2E:
+`docs/desktop-replacement-classic-proof.md`. Incident:
+`docs/incident-reports/2026-08-20-stale-claim-ok-takeover/`.
 
 ## Never
 
 | Action | Why |
 |--------|-----|
-| Settings / CLI **Take Over Screen** without Path B sticky `claim-ok` | Unloads `watchdogd` / WindowServer only after `path=b sticky=1`; refuse otherwise |
+| Settings / CLI **Take Over Screen** without Path B `claim-ok` **and** live Disable | Unloads only after `path=b sticky=1` plus marker or sock `done=1` |
+| Stage `watchdogd-ensure` while Path B/A armed or `claim-ok` present | Re-enables plain Apple `watchdogd` with monitoring armed; stale claim-ok then panics on unload |
 | `launchctl` unload / `kickstart -k` on `com.apple.watchdogd` | Instant panic when monitoring is armed |
 | Attach **lldb**, debugserver, or Cursor **lldb MCP** (`lldb_mcp.py`) to `watchdogd` | Attach exits the daemon with SIGTRAP |
 | `thread_set_state` / soft-inject into `watchdogd` that uses set_state | Caller SIGKILL (137); also panic-class risk. Stopped after 2026-08-20 Phase 1 crash (`docs/macos26-iowatchdog-wall.md`) |

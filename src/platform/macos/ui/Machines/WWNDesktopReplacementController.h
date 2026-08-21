@@ -30,13 +30,14 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable NSString *)bundledDylibPath;
 
 /**
- * Sticky IOWatchdog Disable ACK from wwn-iowatchdog Path A/B
- * (`/var/db/wwn-iowatchdog/claim-ok` with sticky=1). Required before Classic
- * Take Over may unload watchdogd / WindowServer.
+ * Classic Take Over gate: Path B `/var/db/wwn-iowatchdog/claim-ok`
+ * (`path=b sticky=1`) plus live Disable evidence (marker file or Path B sock
+ * `status` with `done=1`). claim-ok alone is stale after Apple watchdogd is
+ * re-enabled without the hook.
  */
 - (BOOL)iowatchdogStickyAckPresent;
 
-/** Short status for Settings: missing / pending / ok path=a|b. */
+/** Short status for Settings: missing / pending / stale / ok. */
 - (NSString *)iowatchdogStickyAckStatusSummary;
 
 /**

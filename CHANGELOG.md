@@ -10,15 +10,23 @@ as history.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Classic Take Over after 2026-08-20 evening SIGTRAP panic.** Stage no
+  longer re-enables Apple `watchdogd` while Path B/A is armed or `claim-ok`
+  is present. Classic requires live Disable (marker or Path B sock
+  `done=1`) in addition to Path B `claim-ok`; helper no longer invents the
+  disable marker before unload. Incident:
+  `docs/incident-reports/2026-08-20-stale-claim-ok-takeover/`.
+
 ### Changed
 
-- **Classic Take Over consumes Path B sticky `claim-ok`.** Helper marker is
-  `WWN_MODEB_WD=iowatchdog-then-unload`. Settings shows IOWatchdog ACK status
-  and refuses Classic Take Over until `/var/db/wwn-iowatchdog/claim-ok` has
-  `path=b` and `sticky=1`. KEEP_WS `--mode-b-probe` still injects without
-  unload. Desktop-host ships `wwn-iowatchdog-claim-install` + Path B hook.
-  Stage no longer installs `ws-guard` (engage/KEEP_WS only). Operator proof:
-  `docs/desktop-replacement-classic-proof.md`. Soft-inject / lldb stay
+- **Classic Take Over consumes Path B sticky `claim-ok` plus live Disable.**
+  Helper marker remains `WWN_MODEB_WD=iowatchdog-then-unload`. Settings shows
+  ACK status (including stale). KEEP_WS `--mode-b-probe` still injects
+  without unload. Desktop-host ships `wwn-iowatchdog-claim-install` + Path B
+  hook. Stage no longer installs `ws-guard` (engage/KEEP_WS only). Operator
+  proof: `docs/desktop-replacement-classic-proof.md`. Soft-inject / lldb stay
   forbidden. Wall: `wwn-iowatchdog/docs/macos26-iowatchdog-wall.md`.
 
 ### Fixed

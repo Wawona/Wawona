@@ -66,4 +66,6 @@ When 1–4 are green, update:
 - `docs/iland-mode-a-b-desktop.md` status off “coming soon”
 - This file: date + machine + calver tip
 
-Until then Phase 3 stays **product wired; Classic E2E proof pending**.
+Until then Phase 3 stays **HOLD** after the 2026-08-20 stale-claim-ok panic.
+Require live Disable (marker or sock `done=1`) in addition to claim-ok.
+See `docs/incident-reports/2026-08-20-stale-claim-ok-takeover/`.
