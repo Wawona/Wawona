@@ -769,8 +769,12 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"  /bin/launchctl bootout "
                        @"system/com.wayland-mac.inputd "
                        @">/dev/null 2>&1 || true\n"
+                       @"  /bin/launchctl bootout "
+                       @"system/com.wayland-mac.weston "
+                       @">/dev/null 2>&1 || true\n"
                        @"  rm -f /Library/LaunchDaemons/com.wayland-mac.framebufferd.plist "
                        @"/Library/LaunchDaemons/com.wayland-mac.inputd.plist "
+                       @"/Library/LaunchDaemons/com.wayland-mac.weston.plist "
                        @">/dev/null 2>&1 || true\n"
                        @"  /bin/launchctl bootout "
                        @"system/com.aspauldingcode.wawona.modeb "
@@ -1218,7 +1222,10 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"set +e\n"];
   /* gl-renderer needs GLES in the flat namespace; Mode B owns EGL. Insert
    * matching ANGLE libEGL+libGLESv2 after the dylib (same ANGLE build as
-   * the app Frameworks). Never put raw libEGL before Mode B. */
+   * the app Frameworks). Never put raw libEGL before Mode B.
+   * Classic: spawn weston via launchd so it is born on the system
+   * bootstrap (session subset look_up stays KERN_EXCEPTION_PROTECTED
+   * even after bootstrap_parent walk, 2026-08-21). KEEP_WS: shell spawn. */
   {
     NSString *fw =
         [[[NSBundle mainBundle] bundlePath]
@@ -1233,21 +1240,85 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                     [[NSFileManager defaultManager] fileExistsAtPath:glesPath];
     if (haveEgl && haveGles) {
       [script appendFormat:
-          @"DYLD_INSERT_LIBRARIES=\"$WWN_MODEB_DYLIB:%@:%@\" ", eglPath,
+          @"WWN_MODEB_INSERT=\"$WWN_MODEB_DYLIB:%@:%@\"\n", eglPath,
           glesPath];
     } else if (haveGles) {
-      [script appendFormat:@"DYLD_INSERT_LIBRARIES=\"$WWN_MODEB_DYLIB:%@\" ",
+      [script appendFormat:@"WWN_MODEB_INSERT=\"$WWN_MODEB_DYLIB:%@\"\n",
                            glesPath];
     } else {
-      [script appendString:@"DYLD_INSERT_LIBRARIES=\"$WWN_MODEB_DYLIB\" "];
+      [script appendString:@"WWN_MODEB_INSERT=\"$WWN_MODEB_DYLIB\"\n"];
     }
   }
+  [script appendString:@"WWN_MODEB_WESTON_ARGV=("];
   [script appendFormat:@"%@ ", [self wwnShellQuote:executablePath]];
   for (NSString *arg in arguments) {
     [script appendFormat:@"%@ ", [self wwnShellQuote:arg]];
   }
-  [script appendString:@">>\"$LOG\" 2>&1 &\n"];
-  [script appendString:@"pid=$!\n"];
+  [script appendString:@")\n"];
+  [script appendString:@"if [ -f /tmp/wawona-modeb-keep-ws ]; then\n"];
+  [script appendString:@"  DYLD_INSERT_LIBRARIES=\"$WWN_MODEB_INSERT\" "
+                       @"\"${WWN_MODEB_WESTON_ARGV[@]}\" >>\"$LOG\" 2>&1 &\n"];
+  [script appendString:@"  pid=$!\n"];
+  [script appendString:@"else\n"];
+  [script appendString:@"  wwn_log \"Classic: launch weston via launchd "
+                       @"(system bootstrap)\"\n"];
+  [script appendString:@"  /bin/launchctl bootout system/com.wayland-mac.weston "
+                       @">/dev/null 2>&1 || true\n"];
+  [script appendString:@"  WRAP=/tmp/libwayland-support/run-weston.sh\n"];
+  [script appendString:@"  EXPORTS=/tmp/libwayland-support/weston-exports.sh\n"];
+  [script appendString:@"  export -p > \"$EXPORTS\" 2>/dev/null || true\n"];
+  [script appendString:@"  {\n"];
+  [script appendString:@"    echo '#!/bin/bash'\n"];
+  [script appendString:@"    echo 'set -a'\n"];
+  [script appendString:@"    echo \". \\\"$EXPORTS\\\" 2>/dev/null || true\"\n"];
+  [script appendString:@"    echo 'set +a'\n"];
+  [script appendString:@"    echo \"export DYLD_INSERT_LIBRARIES=$(printf %q "
+                       @"\"$WWN_MODEB_INSERT\")\"\n"];
+  [script appendString:@"    echo -n 'exec'\n"];
+  [script appendString:@"    for a in \"${WWN_MODEB_WESTON_ARGV[@]}\"; do\n"];
+  [script appendString:@"      printf ' %q' \"$a\"\n"];
+  [script appendString:@"    done\n"];
+  [script appendString:@"    printf ' >>%q 2>&1\\n' \"$LOG\"\n"];
+  [script appendString:@"  } > \"$WRAP\"\n"];
+  [script appendString:@"  /bin/chmod 755 \"$WRAP\"\n"];
+  [script appendString:@"  /bin/cat > /Library/LaunchDaemons/com.wayland-mac.weston.plist "
+                       @"<<PLIST\n"];
+  [script appendString:@"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"];
+  [script appendString:@"<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" "
+                       @"\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"];
+  [script appendString:@"<plist version=\"1.0\"><dict>\n"];
+  [script appendString:@"  <key>Label</key><string>com.wayland-mac.weston</string>\n"];
+  [script appendString:@"  <key>ProgramArguments</key><array>\n"];
+  [script appendString:@"    <string>/tmp/libwayland-support/run-weston.sh</string>\n"];
+  [script appendString:@"  </array>\n"];
+  [script appendString:@"  <key>RunAtLoad</key><true/>\n"];
+  [script appendString:@"  <key>KeepAlive</key><false/>\n"];
+  [script appendString:@"  <key>UserName</key><string>root</string>\n"];
+  [script appendString:@"  <key>StandardOutPath</key><string>/tmp/wawona-modeb.log</string>\n"];
+  [script appendString:@"  <key>StandardErrorPath</key><string>/tmp/wawona-modeb.log</string>\n"];
+  [script appendString:@"</dict></plist>\n"];
+  [script appendString:@"PLIST\n"];
+  [script appendString:@"  /usr/bin/chmod 644 "
+                       @"/Library/LaunchDaemons/com.wayland-mac.weston.plist\n"];
+  [script appendString:@"  /bin/launchctl bootstrap system "
+                       @"/Library/LaunchDaemons/com.wayland-mac.weston.plist "
+                       @">>\"$LOG\" 2>&1\n"];
+  [script appendString:@"  pid=$(/bin/launchctl print "
+                       @"system/com.wayland-mac.weston 2>/dev/null | "
+                       @"/usr/bin/awk '/[[:space:]]pid = /{print $3; exit}')\n"];
+  [script appendString:@"  if [ -z \"$pid\" ]; then\n"];
+  [script appendString:@"    sleep 0.5\n"];
+  [script appendString:@"    pid=$(/bin/launchctl print "
+                       @"system/com.wayland-mac.weston 2>/dev/null | "
+                       @"/usr/bin/awk '/[[:space:]]pid = /{print $3; exit}')\n"];
+  [script appendString:@"  fi\n"];
+  [script appendString:@"  if [ -z \"$pid\" ]; then\n"];
+  [script appendString:@"    write_reason \"Mode B failed to launch weston via "
+                       @"launchd. Restored Aqua. See $PERSIST_LOG.\"\n"];
+  [script appendString:@"    restore_aqua\n"];
+  [script appendString:@"    exit 0\n"];
+  [script appendString:@"  fi\n"];
+  [script appendString:@"fi\n"];
   [script appendString:@"echo \"$pid\" > \"$PIDFILE\"\n"];
   [script appendString:@"chmod 644 \"$PIDFILE\" 2>/dev/null || true\n"];
   [script appendString:@"wwn_log \"compositor pid=$pid\"\n"];
