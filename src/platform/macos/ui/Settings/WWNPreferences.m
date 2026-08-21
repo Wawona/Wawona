@@ -922,29 +922,30 @@ static UIImage *WWNAboutLogo(void) {
     [desktopItems
         addObject:ITEM(@"Enable Desktop Replacement",
                        @"DesktopReplacementEnabled", WSettingSwitch, @NO,
-                       @"Take over this Mac's screen now by replacing "
-                       @"SkyLight/WindowServer via wwn-iland Mode B. Requires "
-                       @"SIP fully disabled (csrutil disable in Recovery, "
-                       @"not App Store). Disables kernel IOWatchdog, then "
+                       @"Take over this Mac's screen via wwn-iland Mode B. "
+                       @"Requires SIP fully disabled and a sticky Path B "
+                       @"(preferred) or Path A IOWatchdog ACK "
+                       @"(/var/db/wwn-iowatchdog/claim-ok). Then Take Over "
                        @"unloads watchdogd and WindowServer. Pick a nested "
-                       @"compositor machine below (weston, niri, or custom). "
-                       @"Use Take Over Screen Now to activate. Logging out is "
-                       @"not the activate step and does not inject into "
-                       @"WindowServer. The next login is normal macOS (no "
-                       @"login LaunchAgent). Turning this off fully uninstalls Mode "
-                       @"B (helper, sudoers, login agent, dylib, ws-guard) and "
-                       @"restores Apple's WindowServer.")];
+                       @"compositor below. Logout restores normal macOS.")];
 
 #if TARGET_OS_OSX
+    {
+      NSString *ack =
+          [[WWNDesktopReplacementController sharedController]
+              iowatchdogStickyAckStatusSummary];
+      [desktopItems
+          addObject:ITEM(@"IOWatchdog ACK", nil, WSettingInfo, ack,
+                         @"Path B sticky claim-ok required before Classic "
+                         @"Take Over. Arm with claim-install --path-b, then "
+                         @"reboot.")];
+    }
     WWNSettingItem *takeOverNow =
         ITEM(@"Take Over Screen Now", @"DesktopReplacementTakeOver",
              WSettingButton, nil,
-             @"Disables kernel IOWatchdog, unloads watchdogd then "
+             @"Requires sticky claim-ok. Unloads watchdogd then "
              @"WindowServer, injects Mode B into niri/weston, waits on "
-             @"framebufferd.pid. Aborts and restores Aqua if IOWatchdog "
-             @"disable fails. Does not install a login LaunchAgent. "
-             @"Needed after install when the switch is already on. "
-             @"Logging out is not this button.");
+             @"framebufferd.pid. Aborts and restores Aqua if ACK missing.");
     takeOverNow.actionBlock = ^{
       [weakSelf applyDesktopReplacementEnabled:YES revert:nil];
     };
@@ -5047,25 +5048,69 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
   }
 
   NSAlert *confirm = [[NSAlert alloc] init];
-  confirm.alertStyle = NSAlertStyleInformational;
-  confirm.messageText = @"Desktop Take Over unavailable";
-  confirm.informativeText =
-      @"Desktop Take Over is blocked on macOS 26. IOWatchdog disable has "
-      @"no safe path yet (lldb attach paniced watchdogd with SIGTRAP). "
-      @"Wawona will not unload WindowServer or watchdogd.\n\n"
-      @"To inject while Aqua stays up: Wawona --mode-b-probe "
-      @"(after WAWONA_MODEB_STAGE=1 nix run .#install).\n\n"
-      @"The Desktop Replacement switch will stay off. SIP must still be "
-      @"fully disabled when Take Over returns (csrutil disable in Recovery).";
-  [confirm addButtonWithTitle:@"OK"];
-  [confirm runModal];
-  if (revert) {
-    revert();
+  confirm.alertStyle = NSAlertStyleCritical;
+  WWNDesktopReplacementController *desk =
+      [WWNDesktopReplacementController sharedController];
+  if (![desk iowatchdogStickyAckPresent]) {
+    confirm.messageText = @"Desktop Take Over needs IOWatchdog ACK";
+    confirm.informativeText = [NSString
+        stringWithFormat:
+            @"%@\n\nClassic Take Over will not unload WindowServer until "
+            @"/var/db/wwn-iowatchdog/claim-ok shows sticky=1.\n\n"
+            @"KEEP_WS probe (Aqua stays up): Wawona --mode-b-probe",
+            [desk iowatchdogStickyAckStatusSummary]];
+    [confirm addButtonWithTitle:@"OK"];
+    [confirm runModal];
+    if (revert) {
+      revert();
+    }
+    [[NSUserDefaults standardUserDefaults]
+        setBool:NO
+         forKey:kWWNPrefsDesktopReplacementEnabled];
+    return NO;
   }
+
+  confirm.messageText = @"Take Over this Mac's screen now?";
+  confirm.informativeText = [NSString
+      stringWithFormat:
+          @"%@\n\nWawona will unload watchdogd (ACK already present), unload "
+          @"WindowServer, and start the Desktop compositor with Mode B "
+          @"insert. Logout restores normal macOS. This is not App Store "
+          @"safe and needs SIP fully disabled.",
+          [desk iowatchdogStickyAckStatusSummary]];
+  [confirm addButtonWithTitle:@"Take Over Screen Now"];
+  [confirm addButtonWithTitle:@"Cancel"];
+  if ([confirm runModal] != NSAlertFirstButtonReturn) {
+    if (revert) {
+      revert();
+    }
+    [[NSUserDefaults standardUserDefaults]
+        setBool:NO
+         forKey:kWWNPrefsDesktopReplacementEnabled];
+    return NO;
+  }
+
   [[NSUserDefaults standardUserDefaults]
-      setBool:NO
+      setBool:YES
        forKey:kWWNPrefsDesktopReplacementEnabled];
-  return NO;
+  NSError *engageError = nil;
+  if (![desk engageSelectedDesktopMachine:&engageError]) {
+    if (revert) {
+      revert();
+    }
+    [[NSUserDefaults standardUserDefaults]
+        setBool:NO
+         forKey:kWWNPrefsDesktopReplacementEnabled];
+    NSAlert *fail = [[NSAlert alloc] init];
+    fail.alertStyle = NSAlertStyleCritical;
+    fail.messageText = @"Desktop Take Over failed";
+    fail.informativeText =
+        engageError.localizedDescription ?: @"See /tmp/wawona-modeb.log.";
+    [fail addButtonWithTitle:@"OK"];
+    [fail runModal];
+    return NO;
+  }
+  return YES;
 }
 
 - (void)showDesktopReplacementSipHowTo {

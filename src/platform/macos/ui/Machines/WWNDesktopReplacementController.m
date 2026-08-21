@@ -35,6 +35,12 @@ static NSString *const kWWNModeBSupportDir =
     @"/Library/Application Support/Wawona";
 static NSString *const kWWNModeBHelperName = @"run-modeb.sh";
 static NSString *const kWWNModeBIowatchdogName = @"wwn-iowatchdog";
+static NSString *const kWWNModeBClaimInstallName =
+    @"wwn-iowatchdog-claim-install";
+static NSString *const kWWNModeBClaimOkPath =
+    @"/var/db/wwn-iowatchdog/claim-ok";
+static NSString *const kWWNModeBClaimPendingPath =
+    @"/var/db/wwn-iowatchdog/claim-pending";
 static NSString *const kWWNModeBPidPath =
     @"/tmp/libwayland-support/modeb-compositor.pid";
 static NSString *const kWWNModeBInstalledDylibRel =
@@ -49,14 +55,17 @@ static NSString *const kWWNModeBKeepWsPath = @"/tmp/wawona-modeb-keep-ws";
 static NSString *const kWWNModeBFbReadyPath =
     @"/tmp/libwayland-support/modeb-framebufferd.ready";
 
-/** Take Over (unload WS/watchdogd) is blocked until a proven non-lldb
- *  IOWatchdog disable exists. See wwn-iowatchdog docs/macos26-iowatchdog-wall.md. */
-static NSString *WWNModeBTakeOverBlockedMessage(void) {
-  return @"Desktop Take Over is blocked on macOS 26. IOWatchdog disable has "
-         @"no safe path yet: thread_set_state on watchdogd SIGKILLs the "
-         @"caller, IOKit port extract fails, and lldb attach panics. "
-         @"WindowServer was left running. Use Wawona --mode-b-probe to "
-         @"inject while Aqua stays up.";
+/** Classic Take Over needs Path B (preferred) or Path A sticky claim-ok. */
+static NSString *WWNModeBTakeOverNeedsAckMessage(void) {
+  return @"Desktop Take Over needs a sticky IOWatchdog Disable ACK first.\n\n"
+         @"Arm Path B (preferred, no AMFI), then reboot:\n"
+         @"  sudo \"/Library/Application Support/Wawona/"
+         @"wwn-iowatchdog-claim-install\" --path-b "
+         @"\"/path/to/Wawona.app/Contents/Library/Wawona\"\n"
+         @"  (or the nix package that ships claim-install + lib/hook)\n"
+         @"After reboot: cat /var/db/wwn-iowatchdog/claim-ok\n"
+         @"  and: sudo …/wwn-iowatchdog-claim-install --doctor\n\n"
+         @"KEEP_WS probe (Aqua stays up): Wawona --mode-b-probe";
 }
 
 /*
@@ -131,7 +140,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
 - (NSDictionary<NSString *, NSString *> *)modeBStrippedEnvironment;
 - (NSString *)modeBFileCleanupShell;
 - (BOOL)installModeBHelperAndDylibForProfile:(WWNMachineProfile *)profile
-                                       error:(NSError *_Nullable *_Nullable)error;
+                         error:(NSError *_Nullable *_Nullable)error;
 @end
 
 @implementation WWNDesktopReplacementController
@@ -235,6 +244,64 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   return nil;
 }
 
+- (NSString *)bundledClaimInstallPath {
+  NSBundle *bundle = [NSBundle mainBundle];
+  NSString *appRoot = bundle.bundlePath;
+  NSArray<NSString *> *candidates = @[
+    [appRoot stringByAppendingPathComponent:
+                 @"Contents/Library/Wawona/wwn-iowatchdog-claim-install"],
+    [WWNWawonaResourcesRoot()
+        stringByAppendingPathComponent:
+            @"../Library/Wawona/wwn-iowatchdog-claim-install"],
+  ];
+  NSFileManager *fm = [NSFileManager defaultManager];
+  for (NSString *path in candidates) {
+    NSString *resolved = path.stringByStandardizingPath;
+    if ([fm isExecutableFileAtPath:resolved]) {
+      return resolved;
+    }
+  }
+  return nil;
+}
+
+- (BOOL)iowatchdogStickyAckPresent {
+  NSString *body =
+      [NSString stringWithContentsOfFile:kWWNModeBClaimOkPath
+                                encoding:NSUTF8StringEncoding
+                                   error:nil];
+  if (body.length == 0) {
+    return NO;
+  }
+  BOOL sticky = [body containsString:@"sticky=1"];
+  BOOL pathOk = [body containsString:@"path=b"] ||
+                [body containsString:@"path=a"];
+  return sticky && pathOk;
+}
+
+- (NSString *)iowatchdogStickyAckStatusSummary {
+  NSFileManager *fm = [NSFileManager defaultManager];
+  if ([self iowatchdogStickyAckPresent]) {
+    NSString *body =
+        [NSString stringWithContentsOfFile:kWWNModeBClaimOkPath
+                                  encoding:NSUTF8StringEncoding
+                                     error:nil];
+    NSString *trim =
+        [body stringByTrimmingCharactersInSet:
+                  [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if ([trim containsString:@"path=b"]) {
+      return @"OK (Path B sticky). Take Over may unload watchdogd.";
+    }
+    if ([trim containsString:@"path=a"]) {
+      return @"OK (Path A sticky). Take Over may unload watchdogd.";
+    }
+    return [NSString stringWithFormat:@"OK (%@)", trim];
+  }
+  if ([fm fileExistsAtPath:kWWNModeBClaimPendingPath]) {
+    return @"Pending: Path A/B armed; reboot, then re-check claim-ok.";
+  }
+  return @"Missing: arm Path B with claim-install --path-b, then reboot.";
+}
+
 - (NSString *)modeBPlistPath {
   return [NSString stringWithFormat:@"/Library/LaunchDaemons/%@.plist",
                                     kWWNModeBLaunchdLabel];
@@ -329,10 +396,10 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
 - (NSError *)injectionPreflightError {
   if (!WWNPlatformAllowsDesktopReplacement()) {
     return [NSError
-        errorWithDomain:@"WWNDesktopReplacement"
+          errorWithDomain:@"WWNDesktopReplacement"
                    code:1
-               userInfo:@{
-                 NSLocalizedDescriptionKey :
+                 userInfo:@{
+                   NSLocalizedDescriptionKey :
                      @"Desktop Replacement Mode B is macOS-only."
                }];
   }
@@ -425,13 +492,15 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"unset DYLD_INSERT_LIBRARIES DYLD_LIBRARY_PATH "
                        @"DYLD_FRAMEWORK_PATH DYLD_FALLBACK_LIBRARY_PATH\n"];
   [script appendString:@"# WWN_MODEB_INSERT=compositor-only\n"];
-  [script appendString:@"# WWN_MODEB_WD=blocked-no-iowatchdog\n"];
+  [script appendString:@"# WWN_MODEB_WD=iowatchdog-then-unload\n"];
   [script appendFormat:@"# WWN_WAWONA_STORE=%@\n",
                        [[NSBundle mainBundle] bundlePath] ?: @""];
   [script appendFormat:@"# WWN_COMPOSITOR=%@\n", executablePath ?: @""];
   [script appendFormat:@"WWN_MODEB_UID=%u\n", (unsigned)getuid()];
   [script appendFormat:@"WWN_IOWATCHDOG=%@\n",
                        [self wwnShellQuote:[self modeBIowatchdogPath]]];
+  [script appendFormat:@"CLAIM_OK=%@\n",
+                       [self wwnShellQuote:kWWNModeBClaimOkPath]];
   [script appendFormat:@"REASON=%@\n", qReason];
   [script appendFormat:@"PIDFILE=%@\n", qPid];
   [script appendFormat:@"LOG=%@\n", qLog];
@@ -551,14 +620,24 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"  fi\n"
                        @"}\n"
                        @"stop_watchdogd_after_iowatchdog() {\n"
-                       @"  # ONLY after wwn-iowatchdog disable succeeded.\n"
+                       @"  # ONLY after sticky Disable ACK (claim-ok).\n"
+                       @"  # Path B may be the live watchdogd; boot it out too.\n"
+                       @"  /bin/launchctl bootout "
+                       @"system/com.aspauldingcode.wwn-iowatchdog-pathb "
+                       @">/dev/null 2>&1 || true\n"
+                       @"  /bin/launchctl bootout "
+                       @"system/com.aspauldingcode.wwn-iowatchdog-claim "
+                       @">/dev/null 2>&1 || true\n"
+                       @"  /bin/launchctl bootout "
+                       @"system/com.aspauldingcode.wwn-iowatchdog-restore "
+                       @">/dev/null 2>&1 || true\n"
                        @"  /bin/launchctl disable system/com.apple.watchdogd; "
                        @"wwn_log \"wd_disable_st=$?\"\n"
                        @"  /bin/launchctl bootout system/com.apple.watchdogd; "
                        @"wwn_log \"wd_bootout_st=$?\"\n"
                        @"  /bin/launchctl unload -w \"$WD_PLIST\" "
                        @">/dev/null 2>&1 || true\n"
-                       @"  wwn_log \"watchdogd unloaded after IOWatchdog disable\"\n"
+                       @"  wwn_log \"watchdogd unloaded after IOWatchdog ACK\"\n"
                        @"}\n"
                        @"stop_window_server() {\n"
                        @"  /bin/launchctl bootout system/com.apple.WindowServer; "
@@ -748,37 +827,42 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"  exit 0\n"];
   [script appendString:@"fi\n"];
   /*
-   * macOS 26: unloading watchdogd without a working IOWatchdog disable
-   * panics immediately. The lldb attach fallback exited watchdogd with
-   * SIGTRAP and paniced install/open/restore (2026-08-20, repeatedly).
-   * Until a non-lldb IOKit path exists, Take Over refuses and leaves Aqua.
-   * KEEP_WS probe may still inject with WindowServer + watchdogd up.
+   * Classic Take Over: require sticky claim-ok (Path B preferred), then
+   * unload watchdogd and WindowServer, then inject compositor.
+   * KEEP_WS probe skips unload and leaves Aqua up.
+   * Never lldb. Never kickstart -k watchdogd.
    */
   [script appendString:@"wwn_log \"WWN_MODEB_GATE=pidfile-not-pgrep\"\n"];
-  [script appendString:@"wwn_log \"WWN_MODEB_WD=blocked-no-iowatchdog\"\n"];
+  [script appendString:@"wwn_log \"WWN_MODEB_WD=iowatchdog-then-unload\"\n"];
   [script appendString:@"rm -f /tmp/libwayland-support/modeb-framebufferd.ready\n"];
-  /*
-   * Do NOT install ws-guard on the blocked path. The guard's RunAtLoad /
-   * StartInterval kickstarts WindowServer when framebufferd is absent.
-   * Take Over never reaches injection here; installing the guard during the
-   * refuse path was unnecessary and ran privileged launchctl against Aqua
-   * right before the 2026-08-20 post-alert SIGTRAP panic on watchdogd.
-   */
   [script appendString:@"if [ -f /tmp/wawona-modeb-keep-ws ]; then\n"];
   [script appendString:@"  wwn_log \"KEEP_WS=1; leaving WindowServer and "
                        @"watchdogd running\"\n"];
   [script appendString:@"  install_ws_guard\n"];
   [script appendString:@"else\n"];
-  [script appendString:@"  write_reason \"Mode B Take Over is blocked on macOS "
-                       @"26: IOWatchdog disable has no safe path yet "
-                       @"(lldb attach paniced watchdogd with SIGTRAP). "
-                       @"Apple's WindowServer was left running. Use "
-                       @"--mode-b-probe to inject while Aqua stays up.\"\n"];
-  [script appendString:@"  rmdir /tmp/libwayland-support/modeb.lock "
+  [script appendString:@"  if [ ! -f \"$CLAIM_OK\" ] || "
+                       @"! grep -q 'sticky=1' \"$CLAIM_OK\" 2>/dev/null; then\n"];
+  [script appendString:@"    write_reason \"Mode B Take Over refused: missing "
+                       @"sticky IOWatchdog ACK at $CLAIM_OK. Arm Path B "
+                       @"(claim-install --path-b), reboot, then retry. "
+                       @"Apple's WindowServer was left running.\"\n"];
+  [script appendString:@"    rmdir /tmp/libwayland-support/modeb.lock "
                        @"2>/dev/null || true\n"];
-  [script appendString:@"  rm -rf /tmp/libwayland-support/modeb.lock "
+  [script appendString:@"    rm -rf /tmp/libwayland-support/modeb.lock "
                        @"2>/dev/null || true\n"];
-  [script appendString:@"  exit 0\n"];
+  [script appendString:@"    exit 0\n"];
+  [script appendString:@"  fi\n"];
+  [script appendString:@"  wwn_log \"claim-ok present: $(cat \"$CLAIM_OK\" "
+                       @"2>/dev/null | tr '\\n' ' ')\"\n"];
+  [script appendString:@"  mkdir -p /tmp/libwayland-support\n"];
+  [script appendString:@"  echo path-b-takeover > "
+                       @"/tmp/libwayland-support/iowatchdog-userspace-disabled\n"];
+  [script appendString:@"  chmod 644 "
+                       @"/tmp/libwayland-support/iowatchdog-userspace-disabled "
+                       @"2>/dev/null || true\n"];
+  [script appendString:@"  stop_watchdogd_after_iowatchdog\n"];
+  [script appendString:@"  install_ws_guard\n"];
+  [script appendString:@"  stop_window_server\n"];
   [script appendString:@"fi\n"];
   [script appendString:@"set +e\n"];
   [script appendString:@"DYLD_INSERT_LIBRARIES=\"$WWN_MODEB_DYLIB\" "];
@@ -926,15 +1010,15 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   }
   NSString *sudoers = [self modeBSudoersBodyForUser:userName];
   if (![sudoers writeToFile:tmpSudoers
-                 atomically:YES
-                   encoding:NSUTF8StringEncoding
+          atomically:YES
+            encoding:NSUTF8StringEncoding
                       error:error]) {
     return NO;
   }
 
   NSString *loginAgentPath = [self modeBLoginAgentPath];
   NSString *shellCmd = [NSString
-      stringWithFormat:
+        stringWithFormat:
           @"set +e\n"
           @"STAGELOG=/tmp/wawona-modeb-stage.log\n"
           @": > \"$STAGELOG\"\n"
@@ -1061,7 +1145,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     if (error) {
       *error = [NSError
           errorWithDomain:@"WWNDesktopReplacement"
-                     code:5
+                                   code:5
                  userInfo:@{
                    NSLocalizedDescriptionKey : @"Authorization creation failed."
                  }];
@@ -1081,7 +1165,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     if (error) {
       *error = [NSError
           errorWithDomain:@"WWNDesktopReplacement"
-                     code:5
+                                   code:5
                  userInfo:@{
                    NSLocalizedDescriptionKey :
                        @"User cancelled administrator authorization."
@@ -1120,7 +1204,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     while (fgets(buf, sizeof(buf), pipe)) {
       [outStr appendFormat:@"%s", buf];
     }
-    fclose(pipe);
+      fclose(pipe);
   }
   AuthorizationFree(authRef, kAuthorizationFlagDefaults);
   BOOL ok = [outStr containsString:@"WWN_MODEB_INSTALLED=1"];
@@ -1130,8 +1214,8 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                                   encoding:NSUTF8StringEncoding
                                      error:nil];
     stageLog = [stageLog
-        stringByTrimmingCharactersInSet:[NSCharacterSet
-                                            whitespaceAndNewlineCharacterSet]];
+      stringByTrimmingCharactersInSet:[NSCharacterSet
+                                          whitespaceAndNewlineCharacterSet]];
     if (error) {
       *error = [NSError
           errorWithDomain:@"WWNDesktopReplacement"
@@ -1192,18 +1276,18 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     return NO;
   }
   /*
-   * Full Take Over unloads watchdogd after IOWatchdog disable. That disable
-   * has no safe path on macOS 26 yet. Refuse before staging/sudo so Settings
-   * shows a clear message instead of "no compositor PID". Probe sets
-   * /tmp/wawona-modeb-keep-ws and may still inject with Aqua up.
+   * Classic Take Over unloads watchdogd only after sticky claim-ok.
+   * KEEP_WS probe may inject with Aqua up without ACK.
    */
-  if (![[NSFileManager defaultManager] fileExistsAtPath:kWWNModeBKeepWsPath]) {
+  BOOL keepWs =
+      [[NSFileManager defaultManager] fileExistsAtPath:kWWNModeBKeepWsPath];
+  if (!keepWs && ![self iowatchdogStickyAckPresent]) {
     if (error) {
       *error = [NSError
           errorWithDomain:@"WWNDesktopReplacement"
                      code:10
                  userInfo:@{
-                   NSLocalizedDescriptionKey : WWNModeBTakeOverBlockedMessage()
+                   NSLocalizedDescriptionKey : WWNModeBTakeOverNeedsAckMessage()
                  }];
     }
     return NO;
@@ -1296,14 +1380,14 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
         [existingHelper containsString:executablePath] &&
         [existingHelper containsString:@"WWN_MODEB_GATE=pidfile-not-pgrep"] &&
         [existingHelper containsString:@"WWN_MODEB_LOCK=helper-argv-only"] &&
-        [existingHelper containsString:@"WWN_MODEB_WD=blocked-no-iowatchdog"] &&
+        [existingHelper containsString:@"WWN_MODEB_WD=iowatchdog-then-unload"] &&
+        [existingHelper containsString:@"stop_watchdogd_after_iowatchdog"] &&
         [existingHelper containsString:@"stale modeb.lock"] &&
         [existingHelper containsString:@"# WWN_WAWONA_STORE="] &&
         [existingHelper containsString:bundlePath] &&
         ![existingHelper containsString:@"reap WindowServer"] &&
         ![existingHelper containsString:@"WWN_MODEB_WD=launchctl-unload"] &&
-        ![existingHelper containsString:@"WWN_MODEB_WD=iowatchdog-then-unload"] &&
-        ![existingHelper containsString:@"stop_watchdogd_after_iowatchdog"] &&
+        ![existingHelper containsString:@"WWN_MODEB_WD=blocked-no-iowatchdog"] &&
         ![existingHelper
             containsString:@"kickstart -k system/com.apple.watchdogd"] &&
         ![existingHelper containsString:@"Mode B helper DISABLED"];

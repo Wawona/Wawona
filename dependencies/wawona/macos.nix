@@ -374,14 +374,34 @@ let
         codesign --force --sign - --timestamp=none "$iow_bin" 2>/dev/null || true
       fi
       echo "Bundled Mode B IOWatchdog tool: $iow_bin"
-      # arm64e hook for a future soft-inject path (not used on 25F80 Take Over).
+      # Path B arm + doctor (Classic Take Over requires sticky claim-ok).
+      for _iow_extra in wwn-iowatchdog-claim-install wwn-iowatchdog-claim; do
+        if [ -x "${iowatchdog}/bin/$_iow_extra" ]; then
+          cp -L "${iowatchdog}/bin/$_iow_extra" \
+            "$app/Contents/Library/Wawona/$_iow_extra"
+          chmod 755 "$app/Contents/Library/Wawona/$_iow_extra"
+          if command -v codesign >/dev/null 2>&1; then
+            codesign --force --sign - --timestamp=none \
+              "$app/Contents/Library/Wawona/$_iow_extra" 2>/dev/null || true
+          fi
+          echo "Bundled Mode B $_iow_extra"
+        fi
+      done
+      # arm64e Path B hook (claim-install --path-b).
       local iow_hook_src="${iowatchdog}/lib/libwwn_watchdogd_hook.dylib"
       local iow_hook_dst="$app/Contents/Library/Wawona/libwwn_watchdogd_hook.dylib"
       if [ -f "$iow_hook_src" ]; then
         cp -L "$iow_hook_src" "$iow_hook_dst"
         chmod 755 "$iow_hook_dst"
+        mkdir -p "$app/Contents/Library/Wawona/lib"
+        cp -L "$iow_hook_src" \
+          "$app/Contents/Library/Wawona/lib/libwwn_watchdogd_hook.dylib"
+        chmod 755 "$app/Contents/Library/Wawona/lib/libwwn_watchdogd_hook.dylib"
         if command -v codesign >/dev/null 2>&1; then
           codesign --force --sign - --timestamp=none "$iow_hook_dst" 2>/dev/null || true
+          codesign --force --sign - --timestamp=none \
+            "$app/Contents/Library/Wawona/lib/libwwn_watchdogd_hook.dylib" \
+            2>/dev/null || true
         fi
         echo "Bundled Mode B watchdogd hook (arm64e): $iow_hook_dst"
       fi
@@ -1562,7 +1582,15 @@ PLIST_EOF
         echo "ERROR: desktop-host build missing wwn-iowatchdog" >&2
         exit 1
       fi
-      echo "Verified Mode B libwayland-mac.dylib + wwn-iowatchdog present (desktop-host)"
+      if [ ! -x "$APP/Contents/Library/Wawona/wwn-iowatchdog-claim-install" ]; then
+        echo "ERROR: desktop-host build missing wwn-iowatchdog-claim-install" >&2
+        exit 1
+      fi
+      if [ ! -f "$APP/Contents/Library/Wawona/lib/libwwn_watchdogd_hook.dylib" ]; then
+        echo "ERROR: desktop-host build missing Path B hook under lib/" >&2
+        exit 1
+      fi
+      echo "Verified Mode B dylib + wwn-iowatchdog + claim-install + hook (desktop-host)"
       '' else ''
       if [ -f "$APP/Contents/Library/Wawona/iland/libwayland-mac.dylib" ]; then
         echo "ERROR: store-safe/default macOS build must not ship Mode B dylib" >&2

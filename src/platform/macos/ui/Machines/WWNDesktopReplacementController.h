@@ -30,6 +30,16 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable NSString *)bundledDylibPath;
 
 /**
+ * Sticky IOWatchdog Disable ACK from wwn-iowatchdog Path A/B
+ * (`/var/db/wwn-iowatchdog/claim-ok` with sticky=1). Required before Classic
+ * Take Over may unload watchdogd / WindowServer.
+ */
+- (BOOL)iowatchdogStickyAckPresent;
+
+/** Short status for Settings: missing / pending / ok path=a|b. */
+- (NSString *)iowatchdogStickyAckStatusSummary;
+
+/**
  * Bundle dylib present, a nested compositor Desktop Machine is selected
  * (created if needed), and a Mode B launch spec can be built. Does not
  * require DesktopReplacementEnabled to already be on. Settings calls this

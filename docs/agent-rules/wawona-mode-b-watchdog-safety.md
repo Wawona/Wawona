@@ -15,19 +15,20 @@ Watchdog tools repo: `github.com/Wawona/wwn-iowatchdog`
 ([`docs/path-a-path-b.md`](https://github.com/Wawona/wwn-iowatchdog/blob/development/docs/path-a-path-b.md)
 operator guide; [`docs/macos26-iowatchdog-wall.md`](https://github.com/Wawona/wwn-iowatchdog/blob/development/docs/macos26-iowatchdog-wall.md)
 investigation wall). Path B reboot sticky disable is **proven** on 25F80;
-Take Over product gate is still separate.
+Take Over product gate consumes Path B `claim-ok` (`WWN_MODEB_WD=iowatchdog-then-unload`).
+Without sticky ACK, Classic Take Over refuses; KEEP_WS `--mode-b-probe` remains available.
 
 ## Never
 
 | Action | Why |
 |--------|-----|
-| Settings / CLI **Take Over Screen** | Unloads `watchdogd` / WindowServer; product still `WWN_MODEB_WD=blocked-no-iowatchdog` until Take Over consumes Path B `claim-ok` (see `wwn-iowatchdog/docs/path-a-path-b.md`) |
+| Settings / CLI **Take Over Screen** without sticky `claim-ok` | Unloads `watchdogd` / WindowServer only after Path B/A ACK; refuse otherwise |
 | `launchctl` unload / `kickstart -k` on `com.apple.watchdogd` | Instant panic when monitoring is armed |
 | Attach **lldb**, debugserver, or Cursor **lldb MCP** (`lldb_mcp.py`) to `watchdogd` | Attach exits the daemon with SIGTRAP |
 | `thread_set_state` / soft-inject into `watchdogd` that uses set_state | Caller SIGKILL (137); also panic-class risk. Stopped after 2026-08-20 Phase 1 crash (`docs/macos26-iowatchdog-wall.md`) |
 | Ad-hoc GOT write / inject / boot-arg probe loops on the daily driver | Soft-inject wall; use Path B / Path A installers instead |
 | Blind `wwn-iowatchdog disable\|enable` via lldb during stage / install / healthy Aqua | Old lldb path paniced; use Path B sock or Path A claim only |
-| Install `ws-guard` on the blocked Take Over refuse path | Not needed when Aqua stays up |
+| Install `ws-guard` when Classic Take Over refuses (no ACK) | Not needed when Aqua stays up |
 | Default `nix run .#install` Mode B restage | Opt-in only: `WAWONA_MODEB_STAGE=1` |
 
 ## What `status` may do

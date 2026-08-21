@@ -32,6 +32,8 @@ fi
 
 dylib_rel="Contents/Library/Wawona/iland/libwayland-mac.dylib"
 iow_rel="Contents/Library/Wawona/wwn-iowatchdog"
+claim_rel="Contents/Library/Wawona/wwn-iowatchdog-claim-install"
+hook_rel="Contents/Library/Wawona/lib/libwwn_watchdogd_hook.dylib"
 found="$(find "$root" \( -name 'libwayland-mac.dylib' -o -name 'libwwn-iland.dylib' \) 2>/dev/null || true)"
 
 if [[ "$mode" == "present" ]]; then
@@ -43,16 +45,25 @@ if [[ "$mode" == "present" ]]; then
     echo "FAIL: expected Mode B wwn-iowatchdog at $root/$iow_rel" >&2
     exit 1
   fi
+  if [[ ! -x "$root/$claim_rel" ]]; then
+    echo "FAIL: expected Mode B claim-install at $root/$claim_rel" >&2
+    exit 1
+  fi
+  if [[ ! -f "$root/$hook_rel" ]]; then
+    echo "FAIL: expected Path B hook at $root/$hook_rel" >&2
+    exit 1
+  fi
   if ! file "$root/$dylib_rel" | grep -q 'Mach-O'; then
     echo "FAIL: $root/$dylib_rel is not a Mach-O dylib" >&2
     exit 1
   fi
-  echo "OK: Mode B dylib + wwn-iowatchdog present ($root/$dylib_rel, $root/$iow_rel)"
+  echo "OK: Mode B dylib + iowatchdog + claim-install + hook ($root)"
 else
-  if [[ -n "$found" ]] || [[ -e "$root/$iow_rel" ]]; then
+  if [[ -n "$found" ]] || [[ -e "$root/$iow_rel" ]] || [[ -e "$root/$claim_rel" ]]; then
     echo "FAIL: Mode B dylib/wwn-iowatchdog must be absent from store-safe / non-macOS artifact:" >&2
     echo "$found" >&2
     [[ -e "$root/$iow_rel" ]] && echo "$root/$iow_rel" >&2
+    [[ -e "$root/$claim_rel" ]] && echo "$root/$claim_rel" >&2
     exit 1
   fi
   echo "OK: Mode B dylib absent under $root"

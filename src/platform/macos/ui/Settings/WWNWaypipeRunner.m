@@ -2622,8 +2622,26 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
   if ([clientId isEqualToString:@"niri"]) {
     env[@"NIRI_BACKEND"] = @"tty";
     executable = [self findBinaryNamed:@"niri"];
-  } else if ([clientId isEqualToString:@"weston"]) {
+  if ([clientId isEqualToString:@"weston"]) {
     executable = [self findBinaryNamed:@"weston"];
+    NSString *modDir = env[@"WESTON_MODULE_DIR"];
+    if (modDir.length == 0 ||
+        ![[NSFileManager defaultManager]
+            fileExistsAtPath:[modDir stringByAppendingPathComponent:
+                                         @"drm-backend.so"]]) {
+      if (error) {
+        *error = [NSError
+            errorWithDomain:@"WWNWaypipeRunner"
+                       code:44
+                   userInfo:@{
+                     NSLocalizedDescriptionKey :
+                         @"Desktop weston needs drm-backend.so under "
+                         @"WESTON_MODULE_DIR. Reinstall the desktop-host "
+                         @"build so weston modules are bundled."
+                   }];
+      }
+      return NO;
+    }
     NSString *configPath = [xdg stringByAppendingPathComponent:@"weston.ini"];
     if (xdg.length > 0) {
       [self wwnWriteWestonIniAtPath:configPath.UTF8String usePixman:NO];

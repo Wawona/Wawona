@@ -1320,12 +1320,10 @@ EOF
             fi
 
             helper_path="/Library/Application Support/Wawona/run-modeb.sh"
-            # Mode B Take Over is blocked on macOS 26 until IOWatchdog has a
-            # non-lldb path (SIGTRAP panics 2026-08-20). Default: do not
-            # restage privileged helper/dylib/iowatchdog. Set
-            # WAWONA_MODEB_STAGE=1 to force a blocked helper for probe work.
+            # Classic Take Over needs sticky claim-ok (Path B). Default: do not
+            # restage privileged helper. Set WAWONA_MODEB_STAGE=1 to force.
             if [ "''${WAWONA_MODEB_STAGE:-0}" = 1 ]; then
-              echo "Restaging Desktop Replacement helper (Take Over blocked)."
+              echo "Restaging Desktop Replacement helper (iowatchdog-then-unload)."
               echo "Administrator authorization is required once."
               if ! "$exec_path" --mode-b-stage; then
                 echo "Error: failed to restage Desktop Replacement helper for this nix store." >&2
@@ -1336,16 +1334,16 @@ EOF
               if [ ! -f "$helper_path" ] || ! grep -Fq "${wawona-macos}" "$helper_path" \
                 || ! grep -Fq "WWN_MODEB_INSERT=compositor-only" "$helper_path" \
                 || ! grep -Fq "WWN_MODEB_LOCK=helper-argv-only" "$helper_path" \
-                || ! grep -Fq "WWN_MODEB_WD=blocked-no-iowatchdog" "$helper_path"; then
+                || ! grep -Fq "WWN_MODEB_WD=iowatchdog-then-unload" "$helper_path"; then
                 echo "Error: Desktop Replacement helper does not point at this nix store." >&2
                 echo "  helper: $helper_path" >&2
-                echo "  want: ${wawona-macos} + WWN_MODEB_WD=blocked-no-iowatchdog" >&2
+                echo "  want: ${wawona-macos} + WWN_MODEB_WD=iowatchdog-then-unload" >&2
                 exit 1
               fi
-              echo "Mode B helper restaged (Take Over blocked): $helper_path"
+              echo "Mode B helper restaged (iowatchdog-then-unload): $helper_path"
             else
-              echo "Skipping Mode B restage (Take Over blocked on macOS 26)."
-              echo "  Set WAWONA_MODEB_STAGE=1 to force a probe-only helper install."
+              echo "Skipping Mode B restage (set WAWONA_MODEB_STAGE=1 to force)."
+              echo "  Classic Take Over still needs Path B claim-ok after reboot."
               echo "  Mode B dylib still ships in the app: $dylib_path"
             fi
 
