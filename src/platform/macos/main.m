@@ -182,6 +182,7 @@ int main(int argc, char *argv[]) {
 
 #import "./ui/About/WWNAboutPanel.h"
 #import "./ui/Machines/WWNMachinesCoordinator.h"
+#import "./ui/Machines/WWNDesktopReplacementController.h"
 #import "./ui/Settings/WWNPreferences.h"
 #import "WWNLaunchAgentManager.h"
 
@@ -212,6 +213,11 @@ static void wwn_print_cli_help(void) {
       "  -v, --version           Print version and exit\n"
       "  --list-clients          List bundled client ids and exit\n"
       "  --list-machines         List saved Machines profiles and exit\n"
+      "  --mode-b-status         Desktop Replacement Mode B status and exit\n"
+      "  --mode-b-stage          Install helper + dylib for this build, no take-over\n"
+      "  --mode-b-engage         Take over the screen (passwordless helper)\n"
+      "  --mode-b-probe          Same wait as engage, keep WindowServer\n"
+      "  --mode-b-disengage      Full Mode B teardown and restore WindowServer\n"
       "\n"
       "GUI vs headless:\n"
       "  (default)               Start compositor + Machines control panel\n"
@@ -248,6 +254,13 @@ static void wwn_print_cli_help(void) {
       "\n"
       "  # Start a saved Machines profile from the shell\n"
       "  Wawona --machine my-niri-drm\n"
+      "\n"
+      "Desktop Replacement (macOS Mode B, no Machines UI):\n"
+      "  Wawona --mode-b-status\n"
+      "  Wawona --mode-b-probe\n"
+      "  Wawona --mode-b-engage\n"
+      "  Wawona --mode-b-disengage\n"
+      "  Logs: /tmp/wawona-modeb-cli.log and /tmp/wawona-modeb.log\n"
       "\n"
       "Socket: WAYLAND_DISPLAY=wayland-0 under /tmp/wawona-$UID/\n"
       "Prefs:  Settings → Advanced → Display Backend (same as --backend)\n");
@@ -1104,6 +1117,30 @@ int main(int argc, char *argv[]) {
       if (strcmp(arg, "--list-machines") == 0) {
         return wwn_print_list_machines();
       }
+      if (strcmp(arg, "--mode-b-status") == 0 ||
+          strcmp(arg, "--mode-b-stage") == 0 ||
+          strcmp(arg, "--mode-b-probe") == 0 ||
+          strcmp(arg, "--mode-b-engage") == 0 ||
+          strcmp(arg, "--mode-b-disengage") == 0) {
+        WWNLogSetQuiet(1);
+      }
+      if (strcmp(arg, "--mode-b-status") == 0) {
+        return [[WWNDesktopReplacementController sharedController] cliStatus];
+      }
+      if (strcmp(arg, "--mode-b-stage") == 0) {
+        return [[WWNDesktopReplacementController sharedController] cliStage];
+      }
+      if (strcmp(arg, "--mode-b-probe") == 0) {
+        return [[WWNDesktopReplacementController sharedController]
+            cliEngageKeepWindowServer:YES];
+      }
+      if (strcmp(arg, "--mode-b-engage") == 0) {
+        return [[WWNDesktopReplacementController sharedController]
+            cliEngageKeepWindowServer:NO];
+      }
+      if (strcmp(arg, "--mode-b-disengage") == 0) {
+        return [[WWNDesktopReplacementController sharedController] cliDisengage];
+      }
     }
 
     WWNConfigureBundledRuntimeEnvIfNeeded();
@@ -1155,7 +1192,12 @@ int main(int argc, char *argv[]) {
       } else if (strcmp(arg, "--help") == 0 || strcmp(arg, "-h") == 0 ||
                  strcmp(arg, "--version") == 0 || strcmp(arg, "-v") == 0 ||
                  strcmp(arg, "--list-clients") == 0 ||
-                 strcmp(arg, "--list-machines") == 0) {
+                 strcmp(arg, "--list-machines") == 0 ||
+                 strcmp(arg, "--mode-b-status") == 0 ||
+                 strcmp(arg, "--mode-b-stage") == 0 ||
+                 strcmp(arg, "--mode-b-probe") == 0 ||
+                 strcmp(arg, "--mode-b-engage") == 0 ||
+                 strcmp(arg, "--mode-b-disengage") == 0) {
         // Already handled above.
       } else if (arg[0] == '-') {
         fprintf(stderr, "Wawona: unknown option '%s' (try --help)\n", arg);
