@@ -1591,6 +1591,27 @@ PLIST_EOF
         exit 1
       fi
       echo "Verified Mode B dylib + wwn-iowatchdog + claim-install + hook (desktop-host)"
+      # Classic Mode B fork/exec needs shared DRM modules (macos-drm-shared.nix).
+      _drm_so=
+      for _cand in \
+        "$APP/Contents/Resources/lib/libweston-13/drm-backend.so" \
+        "$APP/Contents/Resources/lib/libweston-14/drm-backend.so" \
+        "$APP/Contents/MacOS/lib/libweston-13/drm-backend.so"; do
+        if [ -e "$_cand" ]; then _drm_so="$_cand"; break; fi
+      done
+      if [ -z "$_drm_so" ]; then
+        _drm_so=$(find "$APP/Contents" -name 'drm-backend.so' 2>/dev/null | head -1)
+      fi
+      if [ -z "$_drm_so" ] || [ ! -e "$_drm_so" ]; then
+        echo "ERROR: desktop-host missing libweston drm-backend.so (Mode B Classic)" >&2
+        find "$APP/Contents" -path '*libweston*' -name '*backend*' 2>/dev/null || true
+        exit 1
+      fi
+      if [ ! -e "$(dirname "$_drm_so")/gl-renderer.so" ]; then
+        echo "ERROR: desktop-host missing gl-renderer.so next to drm-backend.so" >&2
+        exit 1
+      fi
+      echo "Verified Mode B weston DRM modules: $_drm_so"
       '' else ''
       if [ -f "$APP/Contents/Library/Wawona/iland/libwayland-mac.dylib" ]; then
         echo "ERROR: store-safe/default macOS build must not ship Mode B dylib" >&2

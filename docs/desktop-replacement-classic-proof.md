@@ -104,5 +104,10 @@ See `docs/incident-reports/2026-08-20-stale-claim-ok-takeover/` and
 `wwn-weston` `weston.macos` is `macos-drm-shared.nix` (tip `24aa81c` and later).
 It ships shared `drm-backend.so` + `gl-renderer.so` (+ wayland/headless) with
 DRM/EGL resolved at Mode B runtime via `dynamic_lookup` (no Mode A/B LC_LOAD).
-Restage desktop-host after bumping Wawona `flake.lock` `wwn-weston`, then
-`--mode-b-machine weston && --mode-b-stage` before Path B / Classic.
+
+**Local proof (2026-08-20):** `nix build .#wawona-macos-desktop-host` asserts
+those modules; `Wawona --mode-b-machine weston && --mode-b-stage` exits 0 with
+helper `weston --backend=drm` and `skip restore_watchdogd`.
+
+Next: Path B arm → reboot → KEEP_WS probe → Classic ≥60s (Phase 3). Do not
+Path B until this stage stays green on the tip desktop-host.
