@@ -12,26 +12,31 @@ watchdogd[pid] exited -- exit reason Namespace 2 subcode 0x5
 Incident history: `docs/incident-reports/2026-08-19-windowserver-login/`.
 Product Mode A/B: `wawona-iland-mode-b-desktop`, `docs/iland-mode-a-b-desktop.md`.
 Watchdog tools repo: `github.com/Wawona/wwn-iowatchdog`
-(`docs/macos26-iowatchdog-wall.md`).
+([`docs/path-a-path-b.md`](https://github.com/Wawona/wwn-iowatchdog/blob/development/docs/path-a-path-b.md)
+operator guide; [`docs/macos26-iowatchdog-wall.md`](https://github.com/Wawona/wwn-iowatchdog/blob/development/docs/macos26-iowatchdog-wall.md)
+investigation wall). Path B reboot sticky disable is **proven** on 25F80;
+Take Over product gate is still separate.
 
 ## Never
 
 | Action | Why |
 |--------|-----|
-| Settings / CLI **Take Over Screen** | Unloads `watchdogd` / WindowServer; blocked (`WWN_MODEB_WD=blocked-no-iowatchdog`). **25F80 Classic stopped at Phase 1.4** (no disable ACK) |
+| Settings / CLI **Take Over Screen** | Unloads `watchdogd` / WindowServer; product still `WWN_MODEB_WD=blocked-no-iowatchdog` until Take Over consumes Path B `claim-ok` (see `wwn-iowatchdog/docs/path-a-path-b.md`) |
 | `launchctl` unload / `kickstart -k` on `com.apple.watchdogd` | Instant panic when monitoring is armed |
 | Attach **lldb**, debugserver, or Cursor **lldb MCP** (`lldb_mcp.py`) to `watchdogd` | Attach exits the daemon with SIGTRAP |
 | `thread_set_state` / soft-inject into `watchdogd` that uses set_state | Caller SIGKILL (137); also panic-class risk. Stopped after 2026-08-20 Phase 1 crash (`docs/macos26-iowatchdog-wall.md`) |
-| Ad-hoc GOT write / inject / boot-arg probe loops on the daily driver | Same wall; Classic Take Over stays blocked on 25F80 |
-| Blind `wwn-iowatchdog disable\|enable` during stage / install / healthy Aqua | No working disable yet; old lldb path paniced |
+| Ad-hoc GOT write / inject / boot-arg probe loops on the daily driver | Soft-inject wall; use Path B / Path A installers instead |
+| Blind `wwn-iowatchdog disable\|enable` via lldb during stage / install / healthy Aqua | Old lldb path paniced; use Path B sock or Path A claim only |
 | Install `ws-guard` on the blocked Take Over refuse path | Not needed when Aqua stays up |
 | Default `nix run .#install` Mode B restage | Opt-in only: `WAWONA_MODEB_STAGE=1` |
 
 ## What `status` may do
 
 `sudo wwn-iowatchdog status` may locate the live `IOWatchdogUserClient` port
-name via `task_for_pid` + `mach_port_kobject_description`. That does **not**
-mean disable works. `disable`/`enable`/`inject` stay fail closed on 25F80.
+name via `task_for_pid` + `mach_port_kobject_description`. Sticky Disable
+ACK comes from Path B (`claim-ok` / sock) or Path A claim. Soft-inject
+`disable`/`enable`/`inject` stay fail closed. Operator guide:
+`wwn-iowatchdog/docs/path-a-path-b.md`.
 
 ## Required agent behavior
 

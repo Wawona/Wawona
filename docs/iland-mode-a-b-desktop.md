@@ -146,19 +146,17 @@ compositor the Desktop Machine names.
    over the screen and does **not** install a login LaunchAgent. Take
    Over Screen Now is the only activate step. Logout and the next Aqua
    login return normal macOS.
-3. Take Over is **blocked** on macOS 26 / 25F80 (`WWN_MODEB_WD=blocked-no-iowatchdog`).
-   Classic enablement stopped at Phase 1.4: boot-arg pass
-   (`amfi_get_out_of_my_way=1`) did not yield a proven
-   `DisableUserspaceMonitoring` ACK (see
-   `wwn-iowatchdog/docs/macos26-iowatchdog-wall.md`). The earlier
-   `lldb` attach fallback exited `watchdogd` with SIGTRAP and paniced
-   install / open / restore (2026-08-20, repeatedly). `--mode-b-probe`
-   may still inject while WindowServer and watchdogd stay up. `nix run
-   .#install` skips Mode B restage by default (`WAWONA_MODEB_STAGE=1` to
-   force a blocked helper). Never unload `watchdogd` or WindowServer for
-   Take Over until that block lifts. `ws-guard` may restore WindowServer
-   only. Never `export DYLD_INSERT_LIBRARIES`. Insert on the niri/weston
-   exec only.
+3. Take Over product gate remains
+   `WWN_MODEB_WD=blocked-no-iowatchdog` until Settings consumes a proven
+   sticky Disable ACK. **Path B reboot sticky is proven** in
+   `wwn-iowatchdog` (`docs/path-a-path-b.md`; wall:
+   `docs/macos26-iowatchdog-wall.md`). Soft-inject / `lldb` stay forbidden
+   (2026-08-20 SIGTRAP panics). `--mode-b-probe` may still inject while
+   WindowServer and watchdogd stay up. `nix run .#install` skips Mode B
+   restage by default (`WAWONA_MODEB_STAGE=1` to force). Never unload
+   `watchdogd` or WindowServer for Take Over until the product gate
+   flips. `ws-guard` may restore WindowServer only. Never `export
+   DYLD_INSERT_LIBRARIES`. Insert on the niri/weston exec only.
 4. After logout, Aqua's login screen starts WindowServer. The next login
    does not re-run Mode B. Use Settings → Desktop → Take Over Screen Now
    again. Older builds that wrote
