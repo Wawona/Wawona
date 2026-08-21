@@ -60,6 +60,9 @@ static NSString *const kWWNModeBSudoersPath =
 static NSString *const kWWNModeBFailReasonPath =
     @"/tmp/wawona-modeb-failed.reason";
 static NSString *const kWWNModeBLogPath = @"/tmp/wawona-modeb.log";
+/* Survives force reboot so Classic blank failures leave evidence. */
+static NSString *const kWWNModeBPersistLogPath =
+    @"/Library/Application Support/Wawona/modeb.log";
 static NSString *const kWWNModeBCliLogPath = @"/tmp/wawona-modeb-cli.log";
 static NSString *const kWWNModeBKeepWsPath = @"/tmp/wawona-modeb-keep-ws";
 static NSString *const kWWNModeBFbReadyPath =
@@ -551,12 +554,20 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendFormat:@"REASON=%@\n", qReason];
   [script appendFormat:@"PIDFILE=%@\n", qPid];
   [script appendFormat:@"LOG=%@\n", qLog];
+  [script appendFormat:@"PERSIST_LOG=%@\n",
+                       [self wwnShellQuote:kWWNModeBPersistLogPath]];
   [script appendFormat:@"WS_PLIST=%@\n", qWsPlist];
   [script appendFormat:@"WD_PLIST=%@\n", qWdPlist];
   [script appendString:@""
                        @"wwn_log() {\n"
-                       @"  printf '%s %s\\n' \"$(date '+%Y-%m-%d %H:%M:%S')\" \"$*\" >> \"$LOG\"\n"
+                       @"  line=$(printf '%s %s\\n' \"$(date '+%Y-%m-%d %H:%M:%S')\" \"$*\")\n"
+                       @"  printf '%s' \"$line\" >> \"$LOG\"\n"
+                       @"  printf '%s' \"$line\" >> \"$PERSIST_LOG\" 2>/dev/null || true\n"
                        @"}\n"
+                       @"mkdir -p \"/Library/Application Support/Wawona\" "
+                       @"2>/dev/null || true\n"
+                       @"touch \"$PERSIST_LOG\" 2>/dev/null || true\n"
+                       @"chmod 666 \"$PERSIST_LOG\" 2>/dev/null || true\n"
                        @"kill_compositor() {\n"
                        @"  if [ -f \"$PIDFILE\" ]; then\n"
                        @"    cpid=$(cat \"$PIDFILE\" 2>/dev/null || true)\n"
@@ -1045,13 +1056,62 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"if [ \"$fb_live\" != 1 ]; then\n"];
   [script appendString:@"  write_reason \"Mode B did not start framebufferd. "
                        @"Apple's WindowServer was restored. See "
-                       @"/tmp/wawona-modeb.log.\"\n"];
+                       @"/tmp/wawona-modeb.log and $PERSIST_LOG.\"\n"];
   [script appendString:@"  restore_aqua\n"];
   [script appendString:@"  exit 0\n"];
   [script appendString:@"fi\n"];
-  [script appendString:@"touch /tmp/libwayland-support/modeb-framebufferd.ready\n"];
-  [script appendString:@"chmod 644 /tmp/libwayland-support/modeb-framebufferd.ready "
+  [script appendString:@"cp \"$LOG\" \"$PERSIST_LOG\" 2>/dev/null || true\n"];
+  /* KEEP_WS: ready as soon as Mach framebufferd is live (no panel).
+   * Classic: only after weston enables an Output, else blank forever. */
+  [script appendString:@"if [ -f /tmp/wawona-modeb-keep-ws ]; then\n"];
+  [script appendString:@"  touch /tmp/libwayland-support/modeb-framebufferd.ready\n"];
+  [script appendString:@"  chmod 644 /tmp/libwayland-support/modeb-framebufferd.ready "
                        @"2>/dev/null || true\n"];
+  [script appendString:@"else\n"];
+  [script appendString:@"  out_ok=0\n"];
+  [script appendString:@"  disp_ok=0\n"];
+  [script appendString:@"  oi=0\n"];
+  [script appendString:@"  while [ \"$oi\" -lt 60 ]; do\n"];
+  [script appendString:@"    cp \"$LOG\" \"$PERSIST_LOG\" 2>/dev/null || true\n"];
+  [script appendString:@"    if grep -q 'CoreDisplay initialised' \"$LOG\" "
+                       @"2>/dev/null; then disp_ok=1; fi\n"];
+  [script appendString:@"    if grep -q \"display=yes\" \"$LOG\" 2>/dev/null; then "
+                       @"disp_ok=1; fi\n"];
+  [script appendString:@"    if grep -q \"FAIL: no CAWindowServerDisplay\" "
+                       @"\"$LOG\" 2>/dev/null; then\n"];
+  [script appendString:@"      write_reason \"Mode B framebufferd has no "
+                       @"CAWindowServerDisplay (blank panel). Restored Aqua. "
+                       @"See $PERSIST_LOG.\"\n"];
+  [script appendString:@"      restore_aqua\n"];
+  [script appendString:@"      exit 0\n"];
+  [script appendString:@"    fi\n"];
+  [script appendString:@"    if grep -E -q \"Output '.*' enabled\" \"$LOG\" "
+                       @"2>/dev/null; then\n"];
+  [script appendString:@"      out_ok=1\n"];
+  [script appendString:@"    fi\n"];
+  [script appendString:@"    if [ \"$out_ok\" = 1 ] && [ \"$disp_ok\" = 1 ]; then\n"];
+  [script appendString:@"      break\n"];
+  [script appendString:@"    fi\n"];
+  [script appendString:@"    if ! kill -0 \"$pid\" 2>/dev/null; then\n"];
+  [script appendString:@"      wwn_log \"compositor died before Output enabled\"\n"];
+  [script appendString:@"      break\n"];
+  [script appendString:@"    fi\n"];
+  [script appendString:@"    oi=$((oi + 1))\n"];
+  [script appendString:@"    sleep 0.25\n"];
+  [script appendString:@"  done\n"];
+  [script appendString:@"  cp \"$LOG\" \"$PERSIST_LOG\" 2>/dev/null || true\n"];
+  [script appendString:@"  if [ \"$out_ok\" != 1 ] || [ \"$disp_ok\" != 1 ]; then\n"];
+  [script appendString:@"    write_reason \"Mode B Classic blank fail-closed "
+                       @"(out_ok=$out_ok disp_ok=$disp_ok within 15s). "
+                       @"Restored Aqua. See $PERSIST_LOG.\"\n"];
+  [script appendString:@"    restore_aqua\n"];
+  [script appendString:@"    exit 0\n"];
+  [script appendString:@"  fi\n"];
+  [script appendString:@"  wwn_log \"Classic Output+CoreDisplay ok\"\n"];
+  [script appendString:@"  touch /tmp/libwayland-support/modeb-framebufferd.ready\n"];
+  [script appendString:@"  chmod 644 /tmp/libwayland-support/modeb-framebufferd.ready "
+                       @"2>/dev/null || true\n"];
+  [script appendString:@"fi\n"];
   [script appendString:@"trap 'restore_aqua; exit 0' TERM INT HUP\n"];
   [script appendString:@"sleep 0.4\n"];
   [script appendString:@"if ! kill -0 \"$pid\" 2>/dev/null; then\n"];
