@@ -991,14 +991,14 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"2>/dev/null || true\n"];
   [script appendString:@"    exit 0\n"];
   [script appendString:@"  fi\n"];
-  /* Defer unload until weston Output + framebufferd CoreDisplay are up.
-   * Unloading WS first left a blank panel with no recovery path except
-   * force reboot (2026-08-21 Classic). Prove present while Aqua can still
-   * be restored, then unload. */
-  [script appendString:@"  wwn_log \"Classic: start compositor before unload "
-                       @"(prove Output+CoreDisplay first)\"\n"];
+  /* CoreBedtime install-weston.sh: unload WindowServer *before* injecting
+   * weston/framebufferd. DispDrvInit must run with Apple WS already gone
+   * or presentSurface never owns the panel (2026-08-21 WS-up hold). */
+  [script appendString:@"  wwn_log \"Classic: CoreBedtime order: unload "
+                       @"watchdogd+WindowServer, then compositor\"\n"];
+  [script appendString:@"  stop_watchdogd_after_iowatchdog\n"];
   [script appendString:@"  install_ws_guard\n"];
-  [script appendString:@"  WWN_MODEB_CLASSIC_PENDING_UNLOAD=1\n"];
+  [script appendString:@"  stop_window_server\n"];
   [script appendString:@"fi\n"];
   [script appendString:@"set +e\n"];
   /* gl-renderer needs GLES in the flat namespace; Mode B owns EGL. Insert
@@ -1075,8 +1075,9 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"else\n"];
   [script appendString:@"  out_ok=0\n"];
   [script appendString:@"  disp_ok=0\n"];
+  [script appendString:@"  present_ok=0\n"];
   [script appendString:@"  oi=0\n"];
-  [script appendString:@"  while [ \"$oi\" -lt 60 ]; do\n"];
+  [script appendString:@"  while [ \"$oi\" -lt 80 ]; do\n"];
   [script appendString:@"    cp \"$LOG\" \"$PERSIST_LOG\" 2>/dev/null || true\n"];
   [script appendString:@"    if grep -q 'CoreDisplay initialised' \"$LOG\" "
                        @"2>/dev/null; then disp_ok=1; fi\n"];
@@ -1094,30 +1095,30 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"2>/dev/null; then\n"];
   [script appendString:@"      out_ok=1\n"];
   [script appendString:@"    fi\n"];
-  [script appendString:@"    if [ \"$out_ok\" = 1 ] && [ \"$disp_ok\" = 1 ]; then\n"];
+  [script appendString:@"    if grep -q 'presentSurface n=' \"$LOG\" 2>/dev/null; then\n"];
+  [script appendString:@"      present_ok=1\n"];
+  [script appendString:@"    fi\n"];
+  [script appendString:@"    if [ \"$out_ok\" = 1 ] && [ \"$disp_ok\" = 1 ] && "
+                       @"[ \"$present_ok\" = 1 ]; then\n"];
   [script appendString:@"      break\n"];
   [script appendString:@"    fi\n"];
   [script appendString:@"    if ! kill -0 \"$pid\" 2>/dev/null; then\n"];
-  [script appendString:@"      wwn_log \"compositor died before Output enabled\"\n"];
+  [script appendString:@"      wwn_log \"compositor died before Output/present\"\n"];
   [script appendString:@"      break\n"];
   [script appendString:@"    fi\n"];
   [script appendString:@"    oi=$((oi + 1))\n"];
   [script appendString:@"    sleep 0.25\n"];
   [script appendString:@"  done\n"];
   [script appendString:@"  cp \"$LOG\" \"$PERSIST_LOG\" 2>/dev/null || true\n"];
-  [script appendString:@"  if [ \"$out_ok\" != 1 ] || [ \"$disp_ok\" != 1 ]; then\n"];
+  [script appendString:@"  if [ \"$out_ok\" != 1 ] || [ \"$disp_ok\" != 1 ] || "
+                       @"[ \"$present_ok\" != 1 ]; then\n"];
   [script appendString:@"    write_reason \"Mode B Classic blank fail-closed "
-                       @"(out_ok=$out_ok disp_ok=$disp_ok within 15s). "
-                       @"Restored Aqua. See $PERSIST_LOG.\"\n"];
+                       @"(out=$out_ok disp=$disp_ok present=$present_ok "
+                       @"within 20s). Restored Aqua. See $PERSIST_LOG.\"\n"];
   [script appendString:@"    restore_aqua\n"];
   [script appendString:@"    exit 0\n"];
   [script appendString:@"  fi\n"];
-  [script appendString:@"  wwn_log \"Classic Output+CoreDisplay ok\"\n"];
-  [script appendString:@"  if [ \"${WWN_MODEB_CLASSIC_PENDING_UNLOAD:-0}\" = 1 ]; then\n"];
-  [script appendString:@"    wwn_log \"Classic: unloading watchdogd then WindowServer\"\n"];
-  [script appendString:@"    stop_watchdogd_after_iowatchdog\n"];
-  [script appendString:@"    stop_window_server\n"];
-  [script appendString:@"  fi\n"];
+  [script appendString:@"  wwn_log \"Classic Output+CoreDisplay+present ok\"\n"];
   [script appendString:@"  touch /tmp/libwayland-support/modeb-framebufferd.ready\n"];
   [script appendString:@"  chmod 644 /tmp/libwayland-support/modeb-framebufferd.ready "
                        @"2>/dev/null || true\n"];
