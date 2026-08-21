@@ -937,7 +937,9 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
    */
   [script appendString:@"wwn_log \"WWN_MODEB_GATE=pidfile-not-pgrep\"\n"];
   [script appendString:@"wwn_log \"WWN_MODEB_WD=iowatchdog-then-unload\"\n"];
-  [script appendString:@"rm -f /tmp/libwayland-support/modeb-framebufferd.ready\n"];
+  [script appendString:@"rm -f /tmp/libwayland-support/modeb-framebufferd.ready "
+                       @"/tmp/libwayland-support/modeb-mach.ready "
+                       @"/tmp/libwayland-support/modeb-display-go\n"];
   [script appendString:@"if [ -f /tmp/wawona-modeb-keep-ws ]; then\n"];
   [script appendString:@"  wwn_log \"KEEP_WS=1; leaving WindowServer and "
                        @"watchdogd running\"\n"];
@@ -994,14 +996,161 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"2>/dev/null || true\n"];
   [script appendString:@"    exit 0\n"];
   [script appendString:@"  fi\n"];
-  /* CoreBedtime install-weston.sh: unload WindowServer *before* injecting
-   * weston/framebufferd. DispDrvInit must run with Apple WS already gone
-   * or presentSurface never owns the panel (2026-08-21 WS-up hold). */
-  [script appendString:@"  wwn_log \"Classic: CoreBedtime order: unload "
-                       @"watchdogd+WindowServer, then compositor\"\n"];
+  /*
+   * Classic order (25F80): register Mach *before* WS unload, then DispDrvInit
+   * *after* WS is gone.
+   *   - bootstrap_register fails after WS bootout (kr=124/141, 2026-08-21).
+   *   - DispDrvInit while Apple WS is still up never owns the panel
+   *     (SPI doc / 2026-08-21 WS-up hold).
+   * Helper extracts helpers from the dylib, spawns framebufferd with
+   * WWN_MODEB_DEFER_DISPLAY=1, unloads WD+WS, touches modeb-display-go,
+   * then injects the compositor (dylib reuses the live Mach name).
+   */
+  [script appendString:@"  wwn_log \"Classic: Mach-register before WS unload; "
+                       @"DispDrvInit after\"\n"];
+  [script appendString:@"  mkdir -p /tmp/libwayland-support\n"];
+  [script appendString:@"  rm -f /tmp/libwayland-support/modeb-mach.ready "
+                       @"/tmp/libwayland-support/modeb-display-go\n"];
+  [script appendString:@"  extract_dylib_section() {\n"];
+  [script appendString:@"    /usr/bin/python3 - \"$1\" \"$2\" \"$3\" <<'PY'\n"];
+  [script appendString:@"import struct,sys\n"];
+  [script appendString:@"dylib,sect,dest=sys.argv[1],sys.argv[2],sys.argv[3]\n"];
+  [script appendString:@"data=open(dylib,'rb').read()\n"];
+  [script appendString:@"magic=struct.unpack_from('<I',data,0)[0]\n"];
+  [script appendString:@"assert magic==0xfeedfacf, hex(magic)\n"];
+  [script appendString:@"ncmds=struct.unpack_from('<I',data,16)[0]\n"];
+  [script appendString:@"off=32; want=sect.encode(); found=None\n"];
+  [script appendString:@"for _ in range(ncmds):\n"];
+  [script appendString:@"  cmd,cmdsize=struct.unpack_from('<II',data,off)\n"];
+  [script appendString:@"  if cmd==0x19:\n"];
+  [script appendString:@"    nsects=struct.unpack_from('<I',data,off+64)[0]\n"];
+  [script appendString:@"    soff=off+72\n"];
+  [script appendString:@"    for i in range(nsects):\n"];
+  [script appendString:@"      sec=data[soff:soff+80]\n"];
+  [script appendString:@"      sname=sec[0:16].split(b'\\0',1)[0]\n"];
+  [script appendString:@"      seg=sec[16:32].split(b'\\0',1)[0]\n"];
+  [script appendString:@"      _a,size,offset=struct.unpack_from('<QQI',sec,32)\n"];
+  [script appendString:@"      if seg==b'__DATA_OBJ' and sname==want:\n"];
+  [script appendString:@"        found=(offset,size); break\n"];
+  [script appendString:@"      soff+=80\n"];
+  [script appendString:@"  if found: break\n"];
+  [script appendString:@"  off+=cmdsize\n"];
+  [script appendString:@"if not found:\n"];
+  [script appendString:@"  sys.stderr.write('section __DATA_OBJ,%s missing\\n'%sect); "
+                       @"sys.exit(1)\n"];
+  [script appendString:@"o,s=found; open(dest,'wb').write(data[o:o+s])\n"];
+  [script appendString:@"import os; os.chmod(dest,0o755)\n"];
+  [script appendString:@"PY\n"];
+  [script appendString:@"  }\n"];
+  [script appendString:@"  for h in amfiexceptiond framebufferd inputd; do\n"];
+  [script appendString:@"    if ! extract_dylib_section \"$WWN_MODEB_DYLIB\" \"$h\" "
+                       @"\"/tmp/libwayland-support/$h\"; then\n"];
+  [script appendString:@"      write_reason \"Mode B could not extract $h from "
+                       @"dylib. Apple's WindowServer left running.\"\n"];
+  [script appendString:@"      rmdir /tmp/libwayland-support/modeb.lock "
+                       @"2>/dev/null || true\n"];
+  [script appendString:@"      rm -rf /tmp/libwayland-support/modeb.lock "
+                       @"2>/dev/null || true\n"];
+  [script appendString:@"      exit 0\n"];
+  [script appendString:@"    fi\n"];
+  [script appendString:@"  done\n"];
+  [script appendString:@"  /tmp/libwayland-support/amfiexceptiond >>\"$LOG\" 2>&1 "
+                       @"|| true\n"];
+  [script appendString:@"  /usr/bin/pkill -u 0 -x inputd >/dev/null 2>&1 || true\n"];
+  [script appendString:@"  /usr/bin/pkill -u 0 -x framebufferd >/dev/null 2>&1 || true\n"];
+  [script appendString:@"  sleep 0.2\n"];
+  [script appendString:@"  unset WWN_MODEB_KEEP_WS\n"];
+  [script appendString:@"  export WWN_MODEB_DEFER_DISPLAY=1\n"];
+  [script appendString:@"  /tmp/libwayland-support/inputd >>\"$LOG\" 2>&1 &\n"];
+  [script appendString:@"  echo $! > /tmp/libwayland-support/inputd.pid\n"];
+  [script appendString:@"  /tmp/libwayland-support/framebufferd >>\"$LOG\" 2>&1 &\n"];
+  [script appendString:@"  echo $! > /tmp/libwayland-support/framebufferd.pid\n"];
+  [script appendString:@"  chmod 644 /tmp/libwayland-support/framebufferd.pid "
+                       @"/tmp/libwayland-support/inputd.pid 2>/dev/null || true\n"];
+  [script appendString:@"  mach_ok=0\n"];
+  [script appendString:@"  mi=0\n"];
+  [script appendString:@"  while [ \"$mi\" -lt 80 ]; do\n"];
+  [script appendString:@"    if [ -f /tmp/libwayland-support/modeb-mach.ready ] && "
+                       @"grep -q '\\[framebufferd\\] listening' \"$LOG\" "
+                       @"2>/dev/null; then\n"];
+  [script appendString:@"      mach_ok=1; break\n"];
+  [script appendString:@"    fi\n"];
+  [script appendString:@"    if grep -q '\\[framebufferd\\] bootstrap_register' "
+                       @"\"$LOG\" 2>/dev/null && "
+                       @"! grep -q '\\[framebufferd\\] listening' \"$LOG\" "
+                       @"2>/dev/null; then\n"];
+  [script appendString:@"      break\n"];
+  [script appendString:@"    fi\n"];
+  [script appendString:@"    fpid=$(cat /tmp/libwayland-support/framebufferd.pid "
+                       @"2>/dev/null || true)\n"];
+  [script appendString:@"    if [ -n \"$fpid\" ] && ! kill -0 \"$fpid\" 2>/dev/null; then\n"];
+  [script appendString:@"      wwn_log \"framebufferd exited before Mach ready\"\n"];
+  [script appendString:@"      break\n"];
+  [script appendString:@"    fi\n"];
+  [script appendString:@"    mi=$((mi + 1)); sleep 0.25\n"];
+  [script appendString:@"  done\n"];
+  [script appendString:@"  if [ \"$mach_ok\" != 1 ]; then\n"];
+  [script appendString:@"    write_reason \"Mode B framebufferd failed to register "
+                       @"Mach while WindowServer was still up. Left Aqua running. "
+                       @"See $PERSIST_LOG.\"\n"];
+  [script appendString:@"    /usr/bin/pkill -u 0 -x framebufferd >/dev/null 2>&1 || true\n"];
+  [script appendString:@"    /usr/bin/pkill -u 0 -x inputd >/dev/null 2>&1 || true\n"];
+  [script appendString:@"    unset WWN_MODEB_DEFER_DISPLAY\n"];
+  [script appendString:@"    rmdir /tmp/libwayland-support/modeb.lock "
+                       @"2>/dev/null || true\n"];
+  [script appendString:@"    rm -rf /tmp/libwayland-support/modeb.lock "
+                       @"2>/dev/null || true\n"];
+  [script appendString:@"    exit 0\n"];
+  [script appendString:@"  fi\n"];
+  [script appendString:@"  wwn_log \"framebufferd Mach registered "
+                       @"(modeb-mach.ready); unloading WD+WS\"\n"];
   [script appendString:@"  stop_watchdogd_after_iowatchdog\n"];
   [script appendString:@"  install_ws_guard\n"];
   [script appendString:@"  stop_window_server\n"];
+  [script appendString:@"  touch /tmp/libwayland-support/modeb-display-go\n"];
+  [script appendString:@"  chmod 644 /tmp/libwayland-support/modeb-display-go "
+                       @"2>/dev/null || true\n"];
+  [script appendString:@"  wwn_log \"modeb-display-go touched; waiting for "
+                       @"CoreDisplay / display=yes\"\n"];
+  [script appendString:@"  disp_pre=0\n"];
+  [script appendString:@"  di=0\n"];
+  [script appendString:@"  while [ \"$di\" -lt 80 ]; do\n"];
+  [script appendString:@"    cp \"$LOG\" \"$PERSIST_LOG\" 2>/dev/null || true\n"];
+  [script appendString:@"    if grep -q 'CoreDisplay initialised' \"$LOG\" "
+                       @"2>/dev/null; then disp_pre=1; fi\n"];
+  [script appendString:@"    if grep -q \"display=yes\" \"$LOG\" 2>/dev/null; then "
+                       @"disp_pre=1; break; fi\n"];
+  [script appendString:@"    if grep -q \"FAIL: no CAWindowServerDisplay\" "
+                       @"\"$LOG\" 2>/dev/null || "
+                       @"grep -q '\\[framebufferd\\] FAIL:' \"$LOG\" "
+                       @"2>/dev/null; then\n"];
+  [script appendString:@"      write_reason \"Mode B framebufferd display pipeline "
+                       @"failed after WS unload. Restored Aqua. See "
+                       @"$PERSIST_LOG.\"\n"];
+  [script appendString:@"      restore_aqua\n"];
+  [script appendString:@"      exit 0\n"];
+  [script appendString:@"    fi\n"];
+  [script appendString:@"    fpid=$(cat /tmp/libwayland-support/framebufferd.pid "
+                       @"2>/dev/null || true)\n"];
+  [script appendString:@"    if [ -n \"$fpid\" ] && ! kill -0 \"$fpid\" 2>/dev/null; then\n"];
+  [script appendString:@"      write_reason \"Mode B framebufferd died during "
+                       @"CoreDisplay bring-up. Restored Aqua. See "
+                       @"$PERSIST_LOG.\"\n"];
+  [script appendString:@"      restore_aqua\n"];
+  [script appendString:@"      exit 0\n"];
+  [script appendString:@"    fi\n"];
+  [script appendString:@"    di=$((di + 1)); sleep 0.25\n"];
+  [script appendString:@"  done\n"];
+  [script appendString:@"  if [ \"$disp_pre\" != 1 ]; then\n"];
+  [script appendString:@"    write_reason \"Mode B timed out waiting for "
+                       @"framebufferd display=yes after WS unload. Restored "
+                       @"Aqua. See $PERSIST_LOG.\"\n"];
+  [script appendString:@"    restore_aqua\n"];
+  [script appendString:@"    exit 0\n"];
+  [script appendString:@"  fi\n"];
+  [script appendString:@"  wwn_log \"framebufferd display pipeline ready; "
+                       @"starting compositor\"\n"];
+  [script appendString:@"  unset WWN_MODEB_DEFER_DISPLAY\n"];
   [script appendString:@"fi\n"];
   [script appendString:@"set +e\n"];
   /* gl-renderer needs GLES in the flat namespace; Mode B owns EGL. Insert
@@ -1792,6 +1941,8 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
           @"rm -rf /tmp/libwayland-support/modeb.lock >/dev/null 2>&1 || true\n"
           @"rm -f /tmp/libwayland-support/framebufferd "
           @"/tmp/libwayland-support/modeb-framebufferd.ready "
+          @"/tmp/libwayland-support/modeb-mach.ready "
+          @"/tmp/libwayland-support/modeb-display-go "
           @"/tmp/libwayland-support/inputd "
           @"/tmp/libwayland-support/amfiexceptiond "
           @"/tmp/libwayland-support/*.pid\n"
