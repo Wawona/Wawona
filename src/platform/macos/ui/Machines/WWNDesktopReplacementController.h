@@ -104,6 +104,13 @@ NS_ASSUME_NONNULL_BEGIN
 - (int)cliDisengage;
 /** Restage helper + dylib for this build. Does not take over the screen. */
 - (int)cliStage;
+/**
+ * Select Desktop Replacement machine by id, name, or client alias.
+ * Persists DesktopReplacementMachineId. Does not engage.
+ * Alias "weston" creates "Weston Desktop" (NativeClientId=weston) if needed.
+ * Non-nested profiles (weston-terminal, cubes) are refused.
+ */
+- (int)cliSelectDesktopMachine:(NSString *)idOrName;
 
 @end
 

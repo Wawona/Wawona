@@ -46,6 +46,9 @@ static NSString *const kWWNModeBClaimPendingPath =
     @"/var/db/wwn-iowatchdog/claim-pending";
 static NSString *const kWWNModeBIowDisabledMarkerPath =
     @"/tmp/libwayland-support/iowatchdog-userspace-disabled";
+/** Set only by Classic stop_watchdogd_after_iowatchdog. KEEP_WS never sets it. */
+static NSString *const kWWNModeBUnloadedWatchdogdPath =
+    @"/tmp/libwayland-support/wawona-unloaded-watchdogd";
 static NSString *const kWWNModeBPathBSockPath =
     @"/var/run/wwn-iowatchdog.sock";
 static NSString *const kWWNModeBPidPath =
@@ -228,7 +231,12 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
 }
 
 - (NSString *)modeBIowatchdogPath {
-  return [kWWNModeBSupportDir
+  /* CLI lives under bin/. Path B claim-install owns
+   * …/Wawona/wwn-iowatchdog/ as a directory (hook + libs). Staging the CLI
+   * at that same path made WWN_IOWATCHDOG a directory; restore then failed
+   * "is a directory" and still re-enabled Apple watchdogd (panic 2026-08-20
+   * KEEP_WS failure path). */
+  return [[kWWNModeBSupportDir stringByAppendingPathComponent:@"bin"]
       stringByAppendingPathComponent:kWWNModeBIowatchdogName];
 }
 
@@ -642,19 +650,31 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"  wwn_log \"ws-guard installed (WindowServer only; never touch watchdogd)\"\n"
                        @"}\n"
                        @"restore_watchdogd() {\n"
-                       @"  # Reverse of Take Over. Never attach lldb / call\n"
-                       @"  # wwn-iowatchdog enable unless Take Over left the\n"
-                       @"  # disabled marker. Blind enable paniced 2026-08-20\n"
-                       @"  # (watchdogd exited SIGTRAP while kernel monitor\n"
-                       @"  # still armed) on --restore-aqua and app open.\n"
+                       @"  # KEEP_WS never unloads watchdogd. Calling enable/\n"
+                       @"  # bootstrap Apple while Path B sticky Disable is\n"
+                       @"  # live paniced 2026-08-20 (watchdogd SIGTRAP ns2/\n"
+                       @"  # 0x5) after a failed probe. Only reverse Classic.\n"
+                       @"  if [ ! -f /tmp/libwayland-support/wawona-unloaded-watchdogd ]; then\n"
+                       @"    wwn_log \"skip restore_watchdogd (never unloaded; KEEP_WS-safe)\"\n"
+                       @"    return 0\n"
+                       @"  fi\n"
+                       @"  if [ -f /var/db/wwn-iowatchdog/claim-ok ] || "
+                       @"[ -f /Library/LaunchDaemons/com.aspauldingcode.wwn-iowatchdog-pathb.plist ] || "
+                       @"[ -f /Library/LaunchDaemons/com.aspauldingcode.wwn-iowatchdog-claim.plist ]; then\n"
+                       @"    wwn_log \"Path A/B sticky live: refuse Apple enable / "
+                       @"iowatchdog enable (run claim-install --heal)\"\n"
+                       @"    rm -f /tmp/libwayland-support/wawona-unloaded-watchdogd\n"
+                       @"    return 0\n"
+                       @"  fi\n"
                        @"  /bin/launchctl enable system/com.apple.watchdogd; "
                        @"wwn_log \"wd_enable_st=$?\"\n"
                        @"  if [ -f /tmp/libwayland-support/iowatchdog-userspace-disabled ]; then\n"
-                       @"    if [ -x \"$WWN_IOWATCHDOG\" ]; then\n"
+                       @"    if [ -x \"$WWN_IOWATCHDOG\" ] && [ ! -d \"$WWN_IOWATCHDOG\" ]; then\n"
                        @"      \"$WWN_IOWATCHDOG\" enable >>\"$LOG\" 2>&1 || "
                        @"wwn_log \"iowatchdog enable failed (reboot restores)\"\n"
                        @"    else\n"
-                       @"      wwn_log \"WWN_IOWATCHDOG missing; skip kernel enable\"\n"
+                       @"      wwn_log \"WWN_IOWATCHDOG missing or is a directory; "
+                       @"skip kernel enable\"\n"
                        @"    fi\n"
                        @"    rm -f /tmp/libwayland-support/iowatchdog-userspace-disabled\n"
                        @"  else\n"
@@ -663,6 +683,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"  /bin/launchctl load -w \"$WD_PLIST\"; wwn_log \"wd_load_w_st=$?\"\n"
                        @"  /bin/launchctl bootstrap system \"$WD_PLIST\" "
                        @">/dev/null 2>&1 || true\n"
+                       @"  rm -f /tmp/libwayland-support/wawona-unloaded-watchdogd\n"
                        @"  wdpid=$(/bin/launchctl print system/com.apple.watchdogd "
                        @"2>/dev/null | awk '/[[:space:]]pid =/{print $3; exit}')\n"
                        @"  if [ -n \"$wdpid\" ] && kill -0 \"$wdpid\" 2>/dev/null; then\n"
@@ -690,6 +711,10 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"wwn_log \"wd_bootout_st=$?\"\n"
                        @"  /bin/launchctl unload -w \"$WD_PLIST\" "
                        @">/dev/null 2>&1 || true\n"
+                       @"  mkdir -p /tmp/libwayland-support 2>/dev/null || true\n"
+                       @"  echo unloaded > /tmp/libwayland-support/wawona-unloaded-watchdogd\n"
+                       @"  chmod 666 /tmp/libwayland-support/wawona-unloaded-watchdogd "
+                       @"2>/dev/null || true\n"
                        @"  wwn_log \"watchdogd unloaded after IOWatchdog ACK\"\n"
                        @"}\n"
                        @"stop_window_server() {\n"
@@ -1187,7 +1212,8 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
           @"exit 0\n",
           [self wwnShellQuote:kWWNModeBPidPath],
           [self wwnShellQuote:kWWNModeBFailReasonPath],
-          [self wwnShellQuote:kWWNModeBSupportDir],
+          [self wwnShellQuote:[kWWNModeBSupportDir
+                                  stringByAppendingPathComponent:@"bin"]],
           [self wwnShellQuote:installedDylibDir],
           [self wwnShellQuote:tmpScript], [self wwnShellQuote:helperPath],
           [self wwnShellQuote:helperPath],
@@ -1532,6 +1558,8 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
         [existingHelper containsString:@"stop_watchdogd_after_iowatchdog"] &&
         [existingHelper containsString:@"LIVE_DIS"] &&
         [existingHelper containsString:@"done=1"] &&
+        [existingHelper containsString:@"skip restore_watchdogd"] &&
+        [existingHelper containsString:@"wawona-unloaded-watchdogd"] &&
         [existingHelper containsString:@"stale modeb.lock"] &&
         [existingHelper containsString:@"# WWN_WAWONA_STORE="] &&
         [existingHelper containsString:bundlePath] &&
@@ -1650,17 +1678,23 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
           @"/bin/launchctl bootstrap system "
           @"/System/Library/LaunchDaemons/com.apple.WindowServer.plist "
           @">/dev/null 2>&1 || true\n"
-          @"# restore_aqua already re-enabled IOWatchdog if the disable\n"
-          @"# marker was set. Never lldb-attach here (blind enable panics).\n"
+          @"# restore_aqua only re-enables Apple watchdogd when Classic\n"
+          @"# left wawona-unloaded-watchdogd. Blind enable while Path B is\n"
+          @"# live paniced 2026-08-20 KEEP_WS failure (SIGTRAP ns2/0x5).\n"
           @"rm -f /tmp/libwayland-support/iowatchdog-userspace-disabled\n"
-          @"/bin/launchctl enable system/com.apple.watchdogd "
+          @"if [ -f /tmp/libwayland-support/wawona-unloaded-watchdogd ] && "
+          @"[ ! -f /var/db/wwn-iowatchdog/claim-ok ] && "
+          @"[ ! -f /Library/LaunchDaemons/com.aspauldingcode.wwn-iowatchdog-pathb.plist ]; then\n"
+          @"  /bin/launchctl enable system/com.apple.watchdogd "
           @">/dev/null 2>&1 || true\n"
-          @"/bin/launchctl load -w "
+          @"  /bin/launchctl load -w "
           @"/System/Library/LaunchDaemons/com.apple.watchdogd.plist "
           @">/dev/null 2>&1 || true\n"
-          @"/bin/launchctl bootstrap system "
+          @"  /bin/launchctl bootstrap system "
           @"/System/Library/LaunchDaemons/com.apple.watchdogd.plist "
-          @">/dev/null 2>&1 || true\n",
+          @">/dev/null 2>&1 || true\n"
+          @"  rm -f /tmp/libwayland-support/wawona-unloaded-watchdogd\n"
+          @"fi\n",
           (unsigned)uid, kWWNModeBLoginAgentLabel, kWWNModeBLaunchdLabel,
           kWWNModeBWsGuardLabel,
           [self wwnShellQuote:[self modeBPlistPath]],
@@ -2092,6 +2126,111 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   return WWNProcessExists(pid) ? pid : 0;
 }
 
+- (NSString *)nativeClientIdForProfile:(WWNMachineProfile *)profile {
+  NSDictionary *so =
+      [profile.settingsOverrides isKindOfClass:[NSDictionary class]]
+          ? profile.settingsOverrides
+          : @{};
+  NSString *cid = [so[@"NativeClientId"] isKindOfClass:[NSString class]]
+                      ? so[@"NativeClientId"]
+                      : @"";
+  return cid ?: @"";
+}
+
+- (WWNMachineProfile *)nestedProfileMatchingIdOrName:(NSString *)idOrName {
+  if (idOrName.length == 0) {
+    return nil;
+  }
+  WWNMachineProfile *byId = [WWNMachineProfileStore profileById:idOrName];
+  if (byId &&
+      [WWNMachineProfileStore profileIndicatesNestedCompositor:byId]) {
+    return byId;
+  }
+  NSString *needle = idOrName.lowercaseString;
+  for (WWNMachineProfile *profile in [WWNMachineProfileStore loadProfiles]) {
+    if (![WWNMachineProfileStore profileIndicatesNestedCompositor:profile]) {
+      continue;
+    }
+    if ([profile.name.lowercaseString isEqualToString:needle] ||
+        [profile.machineId.lowercaseString isEqualToString:needle]) {
+      return profile;
+    }
+    NSString *cid = [self nativeClientIdForProfile:profile];
+    if ([cid.lowercaseString isEqualToString:needle]) {
+      return profile;
+    }
+  }
+  return nil;
+}
+
+- (WWNMachineProfile *)createWestonDesktopMachine {
+  WWNMachineProfile *created = [WWNMachineProfile defaultProfile];
+  created.name = @"Weston Desktop";
+  NSMutableDictionary *so =
+      [created.settingsOverrides mutableCopy] ?: [NSMutableDictionary dictionary];
+  so[@"NativeClientId"] = @"weston";
+  so[@"WestonEnabled"] = @YES;
+  so[@"WestonTerminalEnabled"] = @NO;
+  so[@"EnableLauncher"] = @YES;
+  created.settingsOverrides = so;
+  [WWNMachineProfileStore upsertProfile:created];
+  return created.machineId.length > 0 ? created : nil;
+}
+
+- (int)cliSelectDesktopMachine:(NSString *)idOrName {
+  WWNModeBCliLog(@"mode-b-machine %@", idOrName ?: @"(nil)");
+  if (idOrName.length == 0) {
+    WWNModeBCliLog(@"RESULT need id, name, or alias (weston)");
+    return 2;
+  }
+
+  WWNMachineProfile *profile = [self nestedProfileMatchingIdOrName:idOrName];
+  if (!profile &&
+      [idOrName.lowercaseString isEqualToString:@"weston"]) {
+    /* Prefer an existing weston nested machine before creating. */
+    for (WWNMachineProfile *p in [WWNMachineProfileStore loadProfiles]) {
+      if (![WWNMachineProfileStore profileIndicatesNestedCompositor:p]) {
+        continue;
+      }
+      if ([[self nativeClientIdForProfile:p]
+              isEqualToString:@"weston"]) {
+        profile = p;
+        break;
+      }
+    }
+    if (!profile) {
+      profile = [self createWestonDesktopMachine];
+      if (!profile) {
+        WWNModeBCliLog(@"RESULT failed to create Weston Desktop machine");
+        return 1;
+      }
+      WWNModeBCliLog(@"created Weston Desktop machine %@", profile.machineId);
+    }
+  }
+
+  if (!profile) {
+    WWNMachineProfile *any = [WWNMachineProfileStore profileById:idOrName];
+    if (any &&
+        ![WWNMachineProfileStore profileIndicatesNestedCompositor:any]) {
+      WWNModeBCliLog(@"RESULT refused: %@ is not a nested compositor "
+                     @"(need weston/niri/custom compositor, not demo clients)",
+                     idOrName);
+      return 2;
+    }
+    WWNModeBCliLog(@"RESULT no nested compositor machine matching %@",
+                   idOrName);
+    return 2;
+  }
+
+  [[NSUserDefaults standardUserDefaults]
+      setObject:profile.machineId
+         forKey:kWWNPrefsDesktopReplacementMachineId];
+  [[NSUserDefaults standardUserDefaults] synchronize];
+  WWNModeBCliLog(@"RESULT selected id=%@ name=%@ client=%@", profile.machineId,
+                 profile.name ?: @"", [self nativeClientIdForProfile:profile]);
+  return 0;
+}
+
 - (int)cliStatus {
   WWNSipStatusType sip = [WWNSipStatus current];
   NSUserDefaults *defs = [NSUserDefaults standardUserDefaults];
@@ -2107,13 +2246,34 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     kr = kill(rawPid, 0);
     kerrno = (kr == 0) ? 0 : errno;
   }
+  NSString *selectedId =
+      [defs stringForKey:kWWNPrefsDesktopReplacementMachineId];
+  WWNMachineProfile *selected =
+      selectedId.length > 0 ? [WWNMachineProfileStore profileById:selectedId]
+                            : nil;
   WWNModeBCliLog(@"mode-b-status");
   WWNModeBCliLog(@"  sip=%@ allows=%d", [WWNSipStatus describe:sip],
                  [WWNSipStatus allowsDesktopReplacement:sip] ? 1 : 0);
-  WWNModeBCliLog(@"  DesktopReplacementEnabled=%d machine=%@",
+  WWNModeBCliLog(@"  DesktopReplacementEnabled=%d machine=%@ name=%@ client=%@",
                  [defs boolForKey:kWWNPrefsDesktopReplacementEnabled] ? 1 : 0,
-                 [defs stringForKey:kWWNPrefsDesktopReplacementMachineId]
-                     ?: @"(none)");
+                 selectedId ?: @"(none)", selected.name ?: @"",
+                 selected ? [self nativeClientIdForProfile:selected] : @"");
+  WWNModeBCliLog(@"  eligible Desktop machines:");
+  BOOL anyEligible = NO;
+  for (WWNMachineProfile *p in [WWNMachineProfileStore loadProfiles]) {
+    if (![WWNMachineProfileStore profileIndicatesNestedCompositor:p]) {
+      continue;
+    }
+    anyEligible = YES;
+    BOOL isSel = selectedId.length > 0 &&
+                 [p.machineId isEqualToString:selectedId];
+    WWNModeBCliLog(@"    %@%@  name=%@  client=%@", isSel ? @"* " : @"  ",
+                   p.machineId ?: @"?", p.name ?: @"",
+                   [self nativeClientIdForProfile:p]);
+  }
+  if (!anyEligible) {
+    WWNModeBCliLog(@"    (none; Wawona --mode-b-machine weston)");
+  }
   WWNModeBCliLog(@"  bundledDylib=%@", [self bundledDylibPath] ?: @"(missing)");
   WWNModeBCliLog(@"  installedHelper=%@ executable=%d", [self modeBHelperPath],
                  [[NSFileManager defaultManager]
@@ -2377,6 +2537,10 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   return 2;
 }
 - (int)cliStage {
+  return 2;
+}
+- (int)cliSelectDesktopMachine:(NSString *)idOrName {
+  (void)idOrName;
   return 2;
 }
 @end

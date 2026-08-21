@@ -214,6 +214,9 @@ static void wwn_print_cli_help(void) {
       "  --list-clients          List bundled client ids and exit\n"
       "  --list-machines         List saved Machines profiles and exit\n"
       "  --mode-b-status         Desktop Replacement Mode B status and exit\n"
+      "  --mode-b-machine <id>   Select Desktop Take Over machine (id, name,\n"
+      "                          or weston). Creates Weston Desktop if needed.\n"
+      "                          Does not take over the screen\n"
       "  --mode-b-stage          Install helper + dylib for this build, no take-over\n"
       "  --mode-b-engage         Take over the screen (passwordless helper)\n"
       "  --mode-b-probe          Same wait as engage, keep WindowServer\n"
@@ -256,8 +259,10 @@ static void wwn_print_cli_help(void) {
       "  Wawona --machine my-niri-drm\n"
       "\n"
       "Desktop Replacement (macOS Mode B, no Machines UI):\n"
+      "  Wawona --mode-b-machine weston\n"
       "  Wawona --mode-b-status\n"
       "  Wawona --mode-b-probe\n"
+      "  Wawona --mode-b-probe --machine <id>\n"
       "  Wawona --mode-b-engage\n"
       "  Wawona --mode-b-disengage\n"
       "  Logs: /tmp/wawona-modeb-cli.log and /tmp/wawona-modeb.log\n"
@@ -1117,29 +1122,97 @@ int main(int argc, char *argv[]) {
       if (strcmp(arg, "--list-machines") == 0) {
         return wwn_print_list_machines();
       }
+      /*
+       * Mode B CLI: scan once for --mode-b-* and optional --machine /
+       * --mode-b-machine, then select Desktop machine before the action.
+       */
       if (strcmp(arg, "--mode-b-status") == 0 ||
           strcmp(arg, "--mode-b-stage") == 0 ||
           strcmp(arg, "--mode-b-probe") == 0 ||
           strcmp(arg, "--mode-b-engage") == 0 ||
-          strcmp(arg, "--mode-b-disengage") == 0) {
+          strcmp(arg, "--mode-b-disengage") == 0 ||
+          strcmp(arg, "--mode-b-machine") == 0 ||
+          strncmp(arg, "--mode-b-machine=", 17) == 0) {
         WWNLogSetQuiet(1);
-      }
-      if (strcmp(arg, "--mode-b-status") == 0) {
-        return [[WWNDesktopReplacementController sharedController] cliStatus];
-      }
-      if (strcmp(arg, "--mode-b-stage") == 0) {
-        return [[WWNDesktopReplacementController sharedController] cliStage];
-      }
-      if (strcmp(arg, "--mode-b-probe") == 0) {
-        return [[WWNDesktopReplacementController sharedController]
-            cliEngageKeepWindowServer:YES];
-      }
-      if (strcmp(arg, "--mode-b-engage") == 0) {
-        return [[WWNDesktopReplacementController sharedController]
-            cliEngageKeepWindowServer:NO];
-      }
-      if (strcmp(arg, "--mode-b-disengage") == 0) {
-        return [[WWNDesktopReplacementController sharedController] cliDisengage];
+        NSString *modeBSelect = nil;
+        const char *modeBAction = NULL;
+        for (int j = 1; j < argc; j++) {
+          const char *a = argv[j];
+          if (strcmp(a, "--mode-b-status") == 0) {
+            modeBAction = "status";
+          } else if (strcmp(a, "--mode-b-stage") == 0) {
+            modeBAction = "stage";
+          } else if (strcmp(a, "--mode-b-probe") == 0) {
+            modeBAction = "probe";
+          } else if (strcmp(a, "--mode-b-engage") == 0) {
+            modeBAction = "engage";
+          } else if (strcmp(a, "--mode-b-disengage") == 0) {
+            modeBAction = "disengage";
+          } else if (strcmp(a, "--mode-b-machine") == 0) {
+            if (j + 1 >= argc) {
+              fprintf(stderr,
+                      "Wawona: --mode-b-machine requires an id/name "
+                      "(or weston)\n");
+              return 2;
+            }
+            modeBSelect = [NSString stringWithUTF8String:argv[++j]];
+            if (!modeBAction) {
+              modeBAction = "select";
+            }
+          } else if (strncmp(a, "--mode-b-machine=", 17) == 0) {
+            modeBSelect = [NSString stringWithUTF8String:a + 17];
+            if (!modeBAction) {
+              modeBAction = "select";
+            }
+          } else if (strcmp(a, "--machine") == 0) {
+            if (j + 1 >= argc) {
+              fprintf(stderr,
+                      "Wawona: --machine requires an id "
+                      "(see --list-machines)\n");
+              return 2;
+            }
+            if (!modeBSelect) {
+              modeBSelect = [NSString stringWithUTF8String:argv[++j]];
+            } else {
+              ++j;
+            }
+          } else if (strncmp(a, "--machine=", 10) == 0) {
+            if (!modeBSelect) {
+              modeBSelect = [NSString stringWithUTF8String:a + 10];
+            }
+          }
+        }
+        WWNDesktopReplacementController *ctl =
+            [WWNDesktopReplacementController sharedController];
+        if (modeBSelect.length > 0) {
+          int sel = [ctl cliSelectDesktopMachine:modeBSelect];
+          if (sel != 0) {
+            return sel;
+          }
+          if (modeBAction && strcmp(modeBAction, "select") == 0) {
+            return 0;
+          }
+        } else if (modeBAction && strcmp(modeBAction, "select") == 0) {
+          fprintf(stderr,
+                  "Wawona: --mode-b-machine requires an id/name "
+                  "(or weston)\n");
+          return 2;
+        }
+        if (modeBAction && strcmp(modeBAction, "status") == 0) {
+          return [ctl cliStatus];
+        }
+        if (modeBAction && strcmp(modeBAction, "stage") == 0) {
+          return [ctl cliStage];
+        }
+        if (modeBAction && strcmp(modeBAction, "probe") == 0) {
+          return [ctl cliEngageKeepWindowServer:YES];
+        }
+        if (modeBAction && strcmp(modeBAction, "engage") == 0) {
+          return [ctl cliEngageKeepWindowServer:NO];
+        }
+        if (modeBAction && strcmp(modeBAction, "disengage") == 0) {
+          return [ctl cliDisengage];
+        }
       }
     }
 
@@ -1197,7 +1270,9 @@ int main(int argc, char *argv[]) {
                  strcmp(arg, "--mode-b-stage") == 0 ||
                  strcmp(arg, "--mode-b-probe") == 0 ||
                  strcmp(arg, "--mode-b-engage") == 0 ||
-                 strcmp(arg, "--mode-b-disengage") == 0) {
+                 strcmp(arg, "--mode-b-disengage") == 0 ||
+                 strcmp(arg, "--mode-b-machine") == 0 ||
+                 strncmp(arg, "--mode-b-machine=", 17) == 0) {
         // Already handled above.
       } else if (arg[0] == '-') {
         fprintf(stderr, "Wawona: unknown option '%s' (try --help)\n", arg);
