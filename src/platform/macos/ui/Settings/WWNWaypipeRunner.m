@@ -2568,21 +2568,11 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
   if (outEnv) {
     *outEnv = nil;
   }
-  if (![WWNMachineProfileStore profileIndicatesNestedCompositor:profile]) {
-    if (error) {
-      *error = [NSError
-          errorWithDomain:@"WWNWaypipeRunner"
-                     code:40
-                 userInfo:@{
-                   NSLocalizedDescriptionKey :
-                       @"Desktop Replacement needs a nested compositor "
-                       @"(weston, niri, or a custom compositor). Demo "
-                       @"clients are not a desktop."
-                 }];
-    }
-    return NO;
-  }
-
+  /*
+   * Mode B own-display inject target. Nested compositors (weston/niri/custom)
+   * are the Desktop product. kmscube is allowed as a temporary DRM/KMS proof
+   * client (same userspace KMS path; simpler than weston DRM panel).
+   */
   NSString *clientId =
       [WWNMachineSessionBridge nativeClientIdForProfile:profile];
   if (clientId.length == 0) {
@@ -2593,6 +2583,23 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
                  userInfo:@{
                    NSLocalizedDescriptionKey :
                        @"Desktop machine has no bundled compositor configured."
+                 }];
+    }
+    return NO;
+  }
+
+  BOOL kmscubeProof = [clientId isEqualToString:@"kmscube"];
+  if (!kmscubeProof &&
+      ![WWNMachineProfileStore profileIndicatesNestedCompositor:profile]) {
+    if (error) {
+      *error = [NSError
+          errorWithDomain:@"WWNWaypipeRunner"
+                     code:40
+                 userInfo:@{
+                   NSLocalizedDescriptionKey :
+                       @"Desktop Replacement needs a nested compositor "
+                       @"(weston, niri, or a custom compositor), or kmscube "
+                       @"for DRM own-display proof."
                  }];
     }
     return NO;
@@ -2627,7 +2634,10 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
   NSString *executable = nil;
   NSArray<NSString *> *args = @[];
 
-  if ([clientId isEqualToString:@"niri"]) {
+  if (kmscubeProof) {
+    executable = [self findBinaryNamed:@"kmscube"];
+    args = @[];
+  } else if ([clientId isEqualToString:@"niri"]) {
     env[@"NIRI_BACKEND"] = @"tty";
     executable = [self findBinaryNamed:@"niri"];
   } else if ([clientId isEqualToString:@"weston"]) {

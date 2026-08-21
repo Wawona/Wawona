@@ -926,8 +926,9 @@ static UIImage *WWNAboutLogo(void) {
                        @"Requires SIP fully disabled and a sticky Path B "
                        @"(preferred) or Path A IOWatchdog ACK "
                        @"(/var/db/wwn-iowatchdog/claim-ok). Then Take Over "
-                       @"unloads watchdogd and WindowServer. Pick a nested "
-                       @"compositor below. Logout restores normal macOS.")];
+                       @"unloads watchdogd and WindowServer. Pick a Desktop "
+                       @"Machine below (kmscube proof or nested compositor). "
+                       @"Logout restores normal macOS.")];
 
 #if TARGET_OS_OSX
     {
@@ -944,26 +945,40 @@ static UIImage *WWNAboutLogo(void) {
         ITEM(@"Take Over Screen Now", @"DesktopReplacementTakeOver",
              WSettingButton, nil,
              @"Requires sticky claim-ok. Unloads watchdogd then "
-             @"WindowServer, injects Mode B into niri/weston, waits on "
-             @"framebufferd.pid. Aborts and restores Aqua if ACK missing.");
+             @"WindowServer, injects Mode B into the Desktop Machine "
+             @"(kmscube proof or weston/niri), waits on framebufferd. "
+             @"Aborts and restores Aqua if ACK missing.");
     takeOverNow.actionBlock = ^{
       [weakSelf applyDesktopReplacementEnabled:YES revert:nil];
     };
     [desktopItems addObject:takeOverNow];
 #endif
 
-    // Machine picker, populated from the machine profile store. Only local
-    // nested-compositor native machines qualify (App Bridge shares this selection),
-    // so plain Weston demo clients / VM / container / SSH machines are excluded.
+    // Machine picker: nested compositors (weston/niri/custom) plus kmscube
+    // while Mode B own-display proof uses DRM/KMS instead of weston DRM.
     NSArray<WWNMachineProfile *> *allProfiles =
         [WWNMachineProfileStore loadProfiles];
     NSMutableArray<NSString *> *nativeNames = [NSMutableArray array];
     NSMutableArray<NSString *> *nativeIds = [NSMutableArray array];
     for (WWNMachineProfile *p in allProfiles) {
-      if (![WWNMachineProfileStore profileIndicatesNestedCompositor:p]) {
+      NSDictionary *so =
+          [p.settingsOverrides isKindOfClass:[NSDictionary class]]
+              ? p.settingsOverrides
+              : @{};
+      NSString *cid = [so[@"NativeClientId"] isKindOfClass:[NSString class]]
+                          ? so[@"NativeClientId"]
+                          : @"";
+      BOOL kmscubeProof = [cid isEqualToString:@"kmscube"];
+      if (!kmscubeProof &&
+          ![WWNMachineProfileStore profileIndicatesNestedCompositor:p]) {
         continue;
       }
       NSString *label = p.name.length ? p.name : @"Unnamed Machine";
+      if (kmscubeProof &&
+          [label rangeOfString:@"kmscube" options:NSCaseInsensitiveSearch]
+                  .location == NSNotFound) {
+        label = [label stringByAppendingString:@" (kmscube proof)"];
+      }
       [nativeNames addObject:label];
       [nativeIds addObject:p.machineId ?: @""];
     }
@@ -972,9 +987,9 @@ static UIImage *WWNAboutLogo(void) {
           ITEM(@"Desktop Machine",
                @"DesktopReplacementMachineId", WSettingPopup,
                nativeIds.firstObject,
-               @"The local nested compositor to run as the host desktop "
-               @"(weston, niri, or a custom compositor). Demo clients such "
-               @"as kmscube are not listed.");
+               @"Host desktop inject target. Prefer KMS Cube Mode B Proof "
+               @"until weston DRM panel present is visually proven. Nested "
+               @"compositors (weston, niri, custom) remain supported.");
       machineItem.options = nativeNames;
       machineItem.optionValues = nativeIds;
       [desktopItems addObject:machineItem];
@@ -982,8 +997,9 @@ static UIImage *WWNAboutLogo(void) {
       [desktopItems
           addObject:ITEM(@"Desktop Machine", nil, WSettingInfo, @"None",
                          @"No eligible machine found. Create a Native machine "
-                         @"whose client is a nested compositor (weston, niri, "
-                         @"or custom), then select it here.")];
+                         @"whose client is kmscube (proof) or a nested "
+                         @"compositor (weston, niri, or custom), then select "
+                         @"it here.")];
     }
 
     // ── Wawona Swinging Bridge ──────────────────────────────────────────────

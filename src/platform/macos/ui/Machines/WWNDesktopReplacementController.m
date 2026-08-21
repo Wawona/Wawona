@@ -398,9 +398,23 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   WWNMachineProfile *selected =
       desktopId.length > 0 ? [WWNMachineProfileStore profileById:desktopId]
                            : nil;
-  if (selected &&
-      [WWNMachineProfileStore profileIndicatesNestedCompositor:selected]) {
-    return YES;
+  if (selected) {
+    NSString *cid = [self nativeClientIdForProfile:selected];
+    if ([cid isEqualToString:@"kmscube"] ||
+        [WWNMachineProfileStore profileIndicatesNestedCompositor:selected]) {
+      return YES;
+    }
+  }
+
+  for (WWNMachineProfile *profile in [WWNMachineProfileStore loadProfiles]) {
+    NSString *cid = [self nativeClientIdForProfile:profile];
+    if ([cid isEqualToString:@"kmscube"] && profile.machineId.length > 0) {
+      [defs setObject:profile.machineId
+               forKey:kWWNPrefsDesktopReplacementMachineId];
+      NSLog(@"[DesktopReplacement] selected existing kmscube proof machine %@",
+            profile.machineId);
+      return YES;
+    }
   }
 
   for (WWNMachineProfile *profile in [WWNMachineProfileStore loadProfiles]) {
@@ -414,31 +428,22 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     }
   }
 
-  WWNMachineProfile *created = [WWNMachineProfile defaultProfile];
-  created.name = @"Weston Desktop";
-  NSMutableDictionary *so =
-      [created.settingsOverrides mutableCopy] ?: [NSMutableDictionary dictionary];
-  so[@"NativeClientId"] = @"weston";
-  so[@"WestonEnabled"] = @YES;
-  so[@"WestonTerminalEnabled"] = @NO;
-  so[@"EnableLauncher"] = @YES;
-  created.settingsOverrides = so;
-  [WWNMachineProfileStore upsertProfile:created];
-  if (created.machineId.length == 0) {
+  WWNMachineProfile *created = [self createKmscubeProofMachine];
+  if (!created || created.machineId.length == 0) {
     if (error) {
       *error = [NSError
           errorWithDomain:@"WWNDesktopReplacement"
                      code:9
                  userInfo:@{
                    NSLocalizedDescriptionKey :
-                       @"Could not create a Weston Desktop machine."
+                       @"Could not create a KMS Cube Mode B Proof machine."
                  }];
     }
     return NO;
   }
   [defs setObject:created.machineId
            forKey:kWWNPrefsDesktopReplacementMachineId];
-  NSLog(@"[DesktopReplacement] created Weston Desktop machine %@",
+  NSLog(@"[DesktopReplacement] created KMS Cube Mode B Proof machine %@",
         created.machineId);
   return YES;
 }
@@ -586,13 +591,15 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"    fi\n"
                        @"  done\n"
                        @"  for p in $(pgrep -u 0 -x niri 2>/dev/null; "
-                       @"pgrep -u 0 -x weston 2>/dev/null); do\n"
-                       @"    wwn_log \"kill leftover compositor pid=$p\"\n"
+                       @"pgrep -u 0 -x weston 2>/dev/null; "
+                       @"pgrep -u 0 -x kmscube 2>/dev/null); do\n"
+                       @"    wwn_log \"kill leftover Mode B client pid=$p\"\n"
                        @"    kill -TERM \"$p\" 2>/dev/null || true\n"
                        @"  done\n"
                        @"  sleep 0.2\n"
                        @"  for p in $(pgrep -u 0 -x niri 2>/dev/null; "
-                       @"pgrep -u 0 -x weston 2>/dev/null); do\n"
+                       @"pgrep -u 0 -x weston 2>/dev/null; "
+                       @"pgrep -u 0 -x kmscube 2>/dev/null); do\n"
                        @"    kill -KILL \"$p\" 2>/dev/null || true\n"
                        @"  done\n"
                        @"}\n"
@@ -772,9 +779,13 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"  /bin/launchctl bootout "
                        @"system/com.wayland-mac.weston "
                        @">/dev/null 2>&1 || true\n"
+                       @"  /bin/launchctl bootout "
+                       @"system/com.wayland-mac.modeb-client "
+                       @">/dev/null 2>&1 || true\n"
                        @"  rm -f /Library/LaunchDaemons/com.wayland-mac.framebufferd.plist "
                        @"/Library/LaunchDaemons/com.wayland-mac.inputd.plist "
                        @"/Library/LaunchDaemons/com.wayland-mac.weston.plist "
+                       @"/Library/LaunchDaemons/com.wayland-mac.modeb-client.plist "
                        @">/dev/null 2>&1 || true\n"
                        @"  /bin/launchctl bootout "
                        @"system/com.aspauldingcode.wawona.modeb "
@@ -1216,16 +1227,17 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"    exit 0\n"];
   [script appendString:@"  fi\n"];
   [script appendString:@"  wwn_log \"framebufferd display pipeline ready; "
-                       @"starting compositor\"\n"];
+                       @"starting Mode B client\"\n"];
   [script appendString:@"  unset WWN_MODEB_DEFER_DISPLAY\n"];
   [script appendString:@"fi\n"];
   [script appendString:@"set +e\n"];
   /* gl-renderer needs GLES in the flat namespace; Mode B owns EGL. Insert
    * matching ANGLE libEGL+libGLESv2 after the dylib (same ANGLE build as
    * the app Frameworks). Never put raw libEGL before Mode B.
-   * Classic: spawn weston via launchd so it is born on the system
+   * Classic: spawn client via launchd so it is born on the system
    * bootstrap (session subset look_up stays KERN_EXCEPTION_PROTECTED
-   * even after bootstrap_parent walk, 2026-08-21). KEEP_WS: shell spawn. */
+   * even after bootstrap_parent walk, 2026-08-21). KEEP_WS: shell spawn.
+   * Classic proof client is currently kmscube (DRM/KMS), not weston. */
   {
     NSString *fw =
         [[[NSBundle mainBundle] bundlePath]
@@ -1249,7 +1261,12 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
       [script appendString:@"WWN_MODEB_INSERT=\"$WWN_MODEB_DYLIB\"\n"];
     }
   }
-  [script appendString:@"WWN_MODEB_WESTON_ARGV=("];
+  {
+    BOOL proofKmscube =
+        [[executablePath lastPathComponent] isEqualToString:@"kmscube"];
+    [script appendFormat:@"WWN_MODEB_PROOF_KMSCUBE=%d\n", proofKmscube ? 1 : 0];
+  }
+  [script appendString:@"WWN_MODEB_CLIENT_ARGV=("];
   [script appendFormat:@"%@ ", [self wwnShellQuote:executablePath]];
   for (NSString *arg in arguments) {
     [script appendFormat:@"%@ ", [self wwnShellQuote:arg]];
@@ -1257,15 +1274,17 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@")\n"];
   [script appendString:@"if [ -f /tmp/wawona-modeb-keep-ws ]; then\n"];
   [script appendString:@"  DYLD_INSERT_LIBRARIES=\"$WWN_MODEB_INSERT\" "
-                       @"\"${WWN_MODEB_WESTON_ARGV[@]}\" >>\"$LOG\" 2>&1 &\n"];
+                       @"\"${WWN_MODEB_CLIENT_ARGV[@]}\" >>\"$LOG\" 2>&1 &\n"];
   [script appendString:@"  pid=$!\n"];
   [script appendString:@"else\n"];
-  [script appendString:@"  wwn_log \"Classic: launch weston via launchd "
-                       @"(system bootstrap)\"\n"];
+  [script appendString:@"  wwn_log \"Classic: launch Mode B client via launchd "
+                       @"(system bootstrap; proof=$WWN_MODEB_PROOF_KMSCUBE)\"\n"];
+  [script appendString:@"  /bin/launchctl bootout system/com.wayland-mac.modeb-client "
+                       @">/dev/null 2>&1 || true\n"];
   [script appendString:@"  /bin/launchctl bootout system/com.wayland-mac.weston "
                        @">/dev/null 2>&1 || true\n"];
-  [script appendString:@"  WRAP=/tmp/libwayland-support/run-weston.sh\n"];
-  [script appendString:@"  EXPORTS=/tmp/libwayland-support/weston-exports.sh\n"];
+  [script appendString:@"  WRAP=/tmp/libwayland-support/run-modeb-client.sh\n"];
+  [script appendString:@"  EXPORTS=/tmp/libwayland-support/modeb-client-exports.sh\n"];
   [script appendString:@"  export -p > \"$EXPORTS\" 2>/dev/null || true\n"];
   [script appendString:@"  {\n"];
   [script appendString:@"    echo '#!/bin/bash'\n"];
@@ -1275,21 +1294,21 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"    echo \"export DYLD_INSERT_LIBRARIES=$(printf %q "
                        @"\"$WWN_MODEB_INSERT\")\"\n"];
   [script appendString:@"    echo -n 'exec'\n"];
-  [script appendString:@"    for a in \"${WWN_MODEB_WESTON_ARGV[@]}\"; do\n"];
+  [script appendString:@"    for a in \"${WWN_MODEB_CLIENT_ARGV[@]}\"; do\n"];
   [script appendString:@"      printf ' %q' \"$a\"\n"];
   [script appendString:@"    done\n"];
   [script appendString:@"    printf ' >>%q 2>&1\\n' \"$LOG\"\n"];
   [script appendString:@"  } > \"$WRAP\"\n"];
   [script appendString:@"  /bin/chmod 755 \"$WRAP\"\n"];
-  [script appendString:@"  /bin/cat > /Library/LaunchDaemons/com.wayland-mac.weston.plist "
+  [script appendString:@"  /bin/cat > /Library/LaunchDaemons/com.wayland-mac.modeb-client.plist "
                        @"<<PLIST\n"];
   [script appendString:@"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"];
   [script appendString:@"<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" "
                        @"\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"];
   [script appendString:@"<plist version=\"1.0\"><dict>\n"];
-  [script appendString:@"  <key>Label</key><string>com.wayland-mac.weston</string>\n"];
+  [script appendString:@"  <key>Label</key><string>com.wayland-mac.modeb-client</string>\n"];
   [script appendString:@"  <key>ProgramArguments</key><array>\n"];
-  [script appendString:@"    <string>/tmp/libwayland-support/run-weston.sh</string>\n"];
+  [script appendString:@"    <string>/tmp/libwayland-support/run-modeb-client.sh</string>\n"];
   [script appendString:@"  </array>\n"];
   [script appendString:@"  <key>RunAtLoad</key><true/>\n"];
   [script appendString:@"  <key>KeepAlive</key><false/>\n"];
@@ -1299,21 +1318,21 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"</dict></plist>\n"];
   [script appendString:@"PLIST\n"];
   [script appendString:@"  /usr/bin/chmod 644 "
-                       @"/Library/LaunchDaemons/com.wayland-mac.weston.plist\n"];
+                       @"/Library/LaunchDaemons/com.wayland-mac.modeb-client.plist\n"];
   [script appendString:@"  /bin/launchctl bootstrap system "
-                       @"/Library/LaunchDaemons/com.wayland-mac.weston.plist "
+                       @"/Library/LaunchDaemons/com.wayland-mac.modeb-client.plist "
                        @">>\"$LOG\" 2>&1\n"];
   [script appendString:@"  pid=$(/bin/launchctl print "
-                       @"system/com.wayland-mac.weston 2>/dev/null | "
+                       @"system/com.wayland-mac.modeb-client 2>/dev/null | "
                        @"/usr/bin/awk '/[[:space:]]pid = /{print $3; exit}')\n"];
   [script appendString:@"  if [ -z \"$pid\" ]; then\n"];
   [script appendString:@"    sleep 0.5\n"];
   [script appendString:@"    pid=$(/bin/launchctl print "
-                       @"system/com.wayland-mac.weston 2>/dev/null | "
+                       @"system/com.wayland-mac.modeb-client 2>/dev/null | "
                        @"/usr/bin/awk '/[[:space:]]pid = /{print $3; exit}')\n"];
   [script appendString:@"  fi\n"];
   [script appendString:@"  if [ -z \"$pid\" ]; then\n"];
-  [script appendString:@"    write_reason \"Mode B failed to launch weston via "
+  [script appendString:@"    write_reason \"Mode B failed to launch client via "
                        @"launchd. Restored Aqua. See $PERSIST_LOG.\"\n"];
   [script appendString:@"    restore_aqua\n"];
   [script appendString:@"    exit 0\n"];
@@ -1321,7 +1340,8 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"fi\n"];
   [script appendString:@"echo \"$pid\" > \"$PIDFILE\"\n"];
   [script appendString:@"chmod 644 \"$PIDFILE\" 2>/dev/null || true\n"];
-  [script appendString:@"wwn_log \"compositor pid=$pid\"\n"];
+  [script appendString:@"wwn_log \"Mode B client pid=$pid "
+                       @"proof_kmscube=$WWN_MODEB_PROOF_KMSCUBE\"\n"];
   [script appendString:@"ps -p \"$pid\" -o pid,user,command >>\"$LOG\" 2>&1 || true\n"];
   [script appendString:@"fb_live=0\n"];
   [script appendString:@"fb_i=0\n"];
@@ -1364,7 +1384,8 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"fi\n"];
   [script appendString:@"cp \"$LOG\" \"$PERSIST_LOG\" 2>/dev/null || true\n"];
   /* KEEP_WS: ready as soon as Mach framebufferd is live (no panel).
-   * Classic: only after weston enables an Output, else blank forever. */
+   * Classic weston: Output enabled + present.
+   * Classic kmscube proof: display + present only (no weston Output line). */
   [script appendString:@"if [ -f /tmp/wawona-modeb-keep-ws ]; then\n"];
   [script appendString:@"  touch /tmp/libwayland-support/modeb-framebufferd.ready\n"];
   [script appendString:@"  chmod 644 /tmp/libwayland-support/modeb-framebufferd.ready "
@@ -1388,7 +1409,9 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"      restore_aqua\n"];
   [script appendString:@"      exit 0\n"];
   [script appendString:@"    fi\n"];
-  [script appendString:@"    if grep -E -q \"Output '.*' enabled\" \"$LOG\" "
+  [script appendString:@"    if [ \"$WWN_MODEB_PROOF_KMSCUBE\" = 1 ]; then\n"];
+  [script appendString:@"      out_ok=1\n"];
+  [script appendString:@"    elif grep -E -q \"Output '.*' enabled\" \"$LOG\" "
                        @"2>/dev/null; then\n"];
   [script appendString:@"      out_ok=1\n"];
   [script appendString:@"    fi\n"];
@@ -1400,7 +1423,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"      break\n"];
   [script appendString:@"    fi\n"];
   [script appendString:@"    if ! kill -0 \"$pid\" 2>/dev/null; then\n"];
-  [script appendString:@"      wwn_log \"compositor died before Output/present\"\n"];
+  [script appendString:@"      wwn_log \"Mode B client died before present\"\n"];
   [script appendString:@"      break\n"];
   [script appendString:@"    fi\n"];
   [script appendString:@"    oi=$((oi + 1))\n"];
@@ -1411,27 +1434,50 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"[ \"$present_ok\" != 1 ]; then\n"];
   [script appendString:@"    write_reason \"Mode B Classic blank fail-closed "
                        @"(out=$out_ok disp=$disp_ok present=$present_ok "
-                       @"within 20s). Restored Aqua. See $PERSIST_LOG.\"\n"];
+                       @"kmscube=$WWN_MODEB_PROOF_KMSCUBE within 20s). Restored "
+                       @"Aqua. See $PERSIST_LOG.\"\n"];
   [script appendString:@"    restore_aqua\n"];
   [script appendString:@"    exit 0\n"];
   [script appendString:@"  fi\n"];
-  [script appendString:@"  wwn_log \"Classic Output+CoreDisplay+present ok\"\n"];
+  [script appendString:@"  wwn_log \"Classic CoreDisplay+present ok "
+                       @"(kmscube=$WWN_MODEB_PROOF_KMSCUBE)\"\n"];
   [script appendString:@"  touch /tmp/libwayland-support/modeb-framebufferd.ready\n"];
   [script appendString:@"  chmod 644 /tmp/libwayland-support/modeb-framebufferd.ready "
                        @"2>/dev/null || true\n"];
   [script appendString:@"fi\n"];
   [script appendString:@"trap 'restore_aqua; exit 0' TERM INT HUP\n"];
   [script appendString:@"sleep 0.4\n"];
-  [script appendString:@"if ! kill -0 \"$pid\" 2>/dev/null; then\n"];
+  /*
+   * Classic kmscube/weston are born under launchd (system bootstrap). That
+   * pid is not a shell child, so `wait $pid` returns immediately and used to
+   * restore Aqua ~1s after the first present (2026-08-21 kmscube flash).
+   * Poll kill -0 instead; KEEP_WS shell-backgrounded clients still use wait.
+   */
+  [script appendString:@"if [ -f /tmp/wawona-modeb-keep-ws ]; then\n"];
+  [script appendString:@"  if ! kill -0 \"$pid\" 2>/dev/null; then\n"];
+  [script appendString:@"    wait \"$pid\"\n"];
+  [script appendString:@"    status=$?\n"];
+  [script appendString:@"    restore_aqua\n"];
+  [script appendString:@"    write_reason \"The nested compositor failed to start "
+                       @"(status $status). See /tmp/wawona-modeb.log.\"\n"];
+  [script appendString:@"    exit 0\n"];
+  [script appendString:@"  fi\n"];
   [script appendString:@"  wait \"$pid\"\n"];
   [script appendString:@"  status=$?\n"];
-  [script appendString:@"  restore_aqua\n"];
-  [script appendString:@"  write_reason \"The nested compositor failed to start "
-                       @"(status $status). See /tmp/wawona-modeb.log.\"\n"];
-  [script appendString:@"  exit 0\n"];
+  [script appendString:@"else\n"];
+  [script appendString:@"  wwn_log \"Classic hold: poll Mode B client pid=$pid "
+                       @"(launchd; not a shell child)\"\n"];
+  [script appendString:@"  status=0\n"];
+  [script appendString:@"  while kill -0 \"$pid\" 2>/dev/null; do\n"];
+  [script appendString:@"    cp \"$LOG\" \"$PERSIST_LOG\" 2>/dev/null || true\n"];
+  [script appendString:@"    sleep 1\n"];
+  [script appendString:@"  done\n"];
+  [script appendString:@"  wait \"$pid\" 2>/dev/null\n"];
+  [script appendString:@"  status=$?\n"];
+  [script appendString:@"  if [ \"$status\" -eq 127 ]; then status=0; fi\n"];
+  [script appendString:@"  wwn_log \"Classic Mode B client pid=$pid exited "
+                       @"status=$status\"\n"];
   [script appendString:@"fi\n"];
-  [script appendString:@"wait \"$pid\"\n"];
-  [script appendString:@"status=$?\n"];
   [script appendString:@"set -e\n"];
   /*
    * 0 / SIGTERM (143) / SIGHUP (129) / SIGINT (130): logout or disengage.
@@ -2068,6 +2114,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
           @"/bin/launchctl bootout system/%@ >/dev/null 2>&1 || true\n"
           @"/usr/bin/pkill -u 0 -x niri >/dev/null 2>&1 || true\n"
           @"/usr/bin/pkill -u 0 -x weston >/dev/null 2>&1 || true\n"
+          @"/usr/bin/pkill -u 0 -x kmscube >/dev/null 2>&1 || true\n"
           @"/usr/bin/pkill -u 0 -x framebufferd >/dev/null 2>&1 || true\n"
           @"/usr/bin/pkill -u 0 -x inputd >/dev/null 2>&1 || true\n"
           @"rm -f %@ %@ %@ %@ %@ %@ %@ %@ %@ %@ %@\n"
@@ -2574,14 +2621,63 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   return created.machineId.length > 0 ? created : nil;
 }
 
+- (WWNMachineProfile *)createKmscubeProofMachine {
+  WWNMachineProfile *created = [WWNMachineProfile defaultProfile];
+  created.name = @"KMS Cube Mode B Proof";
+  NSMutableDictionary *so =
+      [created.settingsOverrides mutableCopy] ?: [NSMutableDictionary dictionary];
+  so[@"NativeClientId"] = @"kmscube";
+  so[@"WestonEnabled"] = @NO;
+  so[@"EnableLauncher"] = @NO;
+  created.settingsOverrides = so;
+  [WWNMachineProfileStore upsertProfile:created];
+  return created.machineId.length > 0 ? created : nil;
+}
+
+- (WWNMachineProfile *)kmscubeProfileMatchingIdOrName:(NSString *)idOrName {
+  if (idOrName.length == 0) {
+    return nil;
+  }
+  WWNMachineProfile *byId = [WWNMachineProfileStore profileById:idOrName];
+  if (byId &&
+      [[self nativeClientIdForProfile:byId] isEqualToString:@"kmscube"]) {
+    return byId;
+  }
+  NSString *needle = idOrName.lowercaseString;
+  for (WWNMachineProfile *profile in [WWNMachineProfileStore loadProfiles]) {
+    if (![[self nativeClientIdForProfile:profile] isEqualToString:@"kmscube"]) {
+      continue;
+    }
+    if ([profile.name.lowercaseString isEqualToString:needle] ||
+        [profile.machineId.lowercaseString isEqualToString:needle] ||
+        [needle isEqualToString:@"kmscube"]) {
+      return profile;
+    }
+  }
+  return nil;
+}
+
 - (int)cliSelectDesktopMachine:(NSString *)idOrName {
   WWNModeBCliLog(@"mode-b-machine %@", idOrName ?: @"(nil)");
   if (idOrName.length == 0) {
-    WWNModeBCliLog(@"RESULT need id, name, or alias (weston)");
+    WWNModeBCliLog(@"RESULT need id, name, or alias (weston|kmscube)");
     return 2;
   }
 
   WWNMachineProfile *profile = [self nestedProfileMatchingIdOrName:idOrName];
+  if (!profile &&
+      [idOrName.lowercaseString isEqualToString:@"kmscube"]) {
+    profile = [self kmscubeProfileMatchingIdOrName:@"kmscube"];
+    if (!profile) {
+      profile = [self createKmscubeProofMachine];
+      if (!profile) {
+        WWNModeBCliLog(@"RESULT failed to create KMS Cube Mode B Proof machine");
+        return 1;
+      }
+      WWNModeBCliLog(@"created KMS Cube Mode B Proof machine %@",
+                     profile.machineId);
+    }
+  }
   if (!profile &&
       [idOrName.lowercaseString isEqualToString:@"weston"]) {
     /* Prefer an existing weston nested machine before creating. */
@@ -2608,9 +2704,10 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   if (!profile) {
     WWNMachineProfile *any = [WWNMachineProfileStore profileById:idOrName];
     if (any &&
-        ![WWNMachineProfileStore profileIndicatesNestedCompositor:any]) {
+        ![WWNMachineProfileStore profileIndicatesNestedCompositor:any] &&
+        ![[self nativeClientIdForProfile:any] isEqualToString:@"kmscube"]) {
       WWNModeBCliLog(@"RESULT refused: %@ is not a nested compositor "
-                     @"(need weston/niri/custom compositor, not demo clients)",
+                     @"(need weston/niri/custom compositor, or kmscube proof)",
                      idOrName);
       return 2;
     }
@@ -2713,6 +2810,16 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   } else {
     [[NSFileManager defaultManager] removeItemAtPath:kWWNModeBKeepWsPath
                                                error:nil];
+    /*
+     * Classic own-display proof uses kmscube (DRM/KMS) until weston panel
+     * present is visually proven. KEEP_WS probe still uses the Desktop
+     * compositor machine.
+     */
+    int sel = [self cliSelectDesktopMachine:@"kmscube"];
+    if (sel != 0) {
+      WWNModeBCliLog(@"failed to select kmscube proof machine");
+      return sel;
+    }
   }
 
   NSError *pre = [self injectionPreflightError];
@@ -2784,6 +2891,12 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
 
 - (int)cliStage {
   WWNModeBCliLog(@"mode-b-stage");
+  /* Stage the Classic proof client (kmscube) so helper argv matches engage. */
+  int sel = [self cliSelectDesktopMachine:@"kmscube"];
+  if (sel != 0) {
+    WWNModeBCliLog(@"stage failed: could not select kmscube proof machine");
+    return sel;
+  }
   NSError *err = nil;
   if (![self ensureDesktopMachineSelected:&err]) {
     WWNModeBCliLog(@"stage failed: %@", err.localizedDescription);
