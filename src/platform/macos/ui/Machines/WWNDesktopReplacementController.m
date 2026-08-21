@@ -970,7 +970,32 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"  stop_window_server\n"];
   [script appendString:@"fi\n"];
   [script appendString:@"set +e\n"];
-  [script appendString:@"DYLD_INSERT_LIBRARIES=\"$WWN_MODEB_DYLIB\" "];
+  /* gl-renderer needs GLES in the flat namespace; Mode B owns EGL. Insert
+   * matching ANGLE libEGL+libGLESv2 after the dylib (same ANGLE build as
+   * the app Frameworks). Never put raw libEGL before Mode B. */
+  {
+    NSString *fw =
+        [[[NSBundle mainBundle] bundlePath]
+            stringByAppendingPathComponent:@"Contents/Frameworks"];
+    NSString *eglPath =
+        [fw stringByAppendingPathComponent:@"libEGL.dylib"];
+    NSString *glesPath =
+        [fw stringByAppendingPathComponent:@"libGLESv2.dylib"];
+    BOOL haveEgl = eglPath.length > 0 &&
+                   [[NSFileManager defaultManager] fileExistsAtPath:eglPath];
+    BOOL haveGles = glesPath.length > 0 &&
+                    [[NSFileManager defaultManager] fileExistsAtPath:glesPath];
+    if (haveEgl && haveGles) {
+      [script appendFormat:
+          @"DYLD_INSERT_LIBRARIES=\"$WWN_MODEB_DYLIB:%@:%@\" ", eglPath,
+          glesPath];
+    } else if (haveGles) {
+      [script appendFormat:@"DYLD_INSERT_LIBRARIES=\"$WWN_MODEB_DYLIB:%@\" ",
+                           glesPath];
+    } else {
+      [script appendString:@"DYLD_INSERT_LIBRARIES=\"$WWN_MODEB_DYLIB\" "];
+    }
+  }
   [script appendFormat:@"%@ ", [self wwnShellQuote:executablePath]];
   for (NSString *arg in arguments) {
     [script appendFormat:@"%@ ", [self wwnShellQuote:arg]];
@@ -1927,6 +1952,10 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
    * `bash -c nohup ...` is a different command and returns status 1
    * (2026-08-19 11:56). `sudo -b` backgrounds the helper while staying
    * on the allowed argv.
+   *
+   * Do not waitUntilExit on sudo: the helper `wait`s the compositor, so
+   * KEEP_WS (and Classic) would block the engage CLI for the whole
+   * session (2026-08-20). Poll pidfile + framebufferd.ready instead.
    */
   WWNModeBCliLog(@"starting sudo -n -b helper "
                  @"(never unload WindowServer or watchdogd; probe injects "
@@ -1936,37 +1965,14 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   task.arguments = @[ @"-n", @"-b", helper ];
   task.environment = [self modeBStrippedEnvironment];
   task.standardInput = [NSFileHandle fileHandleWithNullDevice];
-  NSPipe *errPipe = [NSPipe pipe];
   task.standardOutput = [NSPipe pipe];
-  task.standardError = errPipe;
+  task.standardError = [NSPipe pipe];
   NSError *launchError = nil;
   if (![task launchAndReturnError:&launchError]) {
     WWNModeBCliLog(@"sudo -n -b helper launch failed: %@", launchError);
     return 0;
   }
-  [task waitUntilExit];
-  NSData *errData = [[errPipe fileHandleForReading] readDataToEndOfFile];
-  NSString *errText = [[NSString alloc] initWithData:errData
-                                            encoding:NSUTF8StringEncoding];
-  errText = [errText
-      stringByTrimmingCharactersInSet:[NSCharacterSet
-                                          whitespaceAndNewlineCharacterSet]];
-  if (task.terminationStatus != 0) {
-    WWNModeBCliLog(@"sudo -n -b helper start status=%d stderr=%@",
-                   task.terminationStatus,
-                   errText.length ? errText : @"(empty)");
-    NSString *reason = [NSString
-        stringWithFormat:
-            @"sudo could not start the Mode B helper (status %d). "
-            @"Sudoers must allow the helper path with no extra wrapper. %@",
-            task.terminationStatus,
-            errText.length ? errText : @""];
-    [reason writeToFile:kWWNModeBFailReasonPath
-             atomically:YES
-               encoding:NSUTF8StringEncoding
-                  error:nil];
-    return 0;
-  }
+  /* Detach: do not wait for sudo/helper. Poll below. */
 
   for (int n = 0; n < 400; n++) {
     NSString *reason = [NSString

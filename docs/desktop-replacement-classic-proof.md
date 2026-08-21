@@ -101,13 +101,20 @@ See `docs/incident-reports/2026-08-20-stale-claim-ok-takeover/` and
 
 ## macOS shared DRM (unblocked)
 
-`wwn-weston` `weston.macos` is `macos-drm-shared.nix` (tip `24aa81c` and later).
+`wwn-weston` `weston.macos` is `macos-drm-shared.nix` (tip `635f0db` and later).
 It ships shared `drm-backend.so` + `gl-renderer.so` (+ wayland/headless) with
 DRM/EGL resolved at Mode B runtime via `dynamic_lookup` (no Mode A/B LC_LOAD).
+Mode B libseat/udev stubs grant `session_active` so DRM output enable can run.
 
-**Local proof (2026-08-20):** `nix build .#wawona-macos-desktop-host` asserts
-those modules; `Wawona --mode-b-machine weston && --mode-b-stage` exits 0 with
-helper `weston --backend=drm` and `skip restore_watchdogd`.
+**Local proof (2026-08-20 / 25F80):**
 
-Next: Path B arm → reboot → KEEP_WS probe → Classic ≥60s (Phase 3). Do not
-Path B until this stage stays green on the tip desktop-host.
+- Path B sticky: `claim-ok` `ok path=b sticky=1`; `--doctor` `coverage_ok yes`
+- `wwn-iland` `0af7a0d`: `drmModePlane` + `DRM_MODE_PROP_*` match mesa/libdrm;
+  EGL QueryContext/Surface/ReleaseThread; platform_gbm client string
+- Manual + staged KEEP_WS: weston `--backend=drm` + ANGLE Metal, log shows
+  `Using GL renderer`, `Output 'DP-1' enabled`, `framebufferd` live; Aqua and
+  `watchdogd` stayed up; helper logged `skip restore_watchdogd` on prior fails
+- Engage CLI no longer `waitUntilExit`s sudo (helper `wait`s weston)
+
+Next: Classic Take Over ≥60s (Phase 3) then logout restore. Do not Take Over
+without live Disable ACK.
