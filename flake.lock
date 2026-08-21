@@ -881,11 +881,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1787290802,
-        "narHash": "sha256-6S1sOX16UA24fDRMVoJZwNyHkCFbhFPaBlnjhPk9jDE=",
+        "lastModified": 1787330150,
+        "narHash": "sha256-9Xl5jC6DEll9+4MJhQQIfoO+oo75F1xKZpbQ+uhtTEM=",
         "owner": "Wawona",
         "repo": "wwn-iland",
-        "rev": "1209328261c6727bb288dc7153d0b5a3fbbf61a2",
+        "rev": "84c36f5e77899e226c928ac4ac4e58a04e848326",
         "type": "github"
       },
       "original": {
