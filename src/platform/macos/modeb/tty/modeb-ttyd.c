@@ -42,7 +42,7 @@
 #define CELL_W MODEB_TTY_GLYPH_W
 #define CELL_H MODEB_TTY_GLYPH_H
 #define VT_FILE "/tmp/libwayland-support/modeb-vt"
-#define STATUS_HINT "VT%d/%d  C-A-Fn=switch  C-A-Backspace=Aqua"
+#define STATUS_HINT "VT%d/%d  C-Opt-Fn=switch  C-Opt-BS=Aqua"
 
 extern char **environ;
 
@@ -76,6 +76,9 @@ static int g_fb_w, g_fb_h;
 static mach_port_t g_input_recv = MACH_PORT_NULL;
 static int g_shift;
 static int g_caps;
+static int g_ctrl;
+static int g_alt;
+static int g_ansi_state; /* 0=normal 1=esc 2=csi 3=osc */
 
 static void on_signal(int sig) {
   (void)sig;
@@ -119,10 +122,16 @@ static int spawn_shell(vt_t *v) {
     dup2(s, 2);
     if (s > 2)
       close(s);
+    /* Dumb console: no ANSI theme, no user zshrc (avoids Powerlevel10k
+     * OSC/CSI spam rendered as '?' glyphs). */
     setenv("TERM", "linux", 1);
     setenv("WWN_MODEB_TTY", "1", 1);
-    execl("/bin/zsh", "zsh", "-l", (char *)NULL);
-    execl("/bin/bash", "bash", "-l", (char *)NULL);
+    setenv("PS1", "wawona-vt$ ", 1);
+    setenv("PROMPT", "wawona-vt$ ", 1);
+    unsetenv("ZDOTDIR");
+    unsetenv("PROMPT_COMMAND");
+    execl("/bin/zsh", "zsh", "-f", (char *)NULL);
+    execl("/bin/bash", "bash", "--norc", "--noprofile", (char *)NULL);
     _exit(127);
   }
   close(s);
@@ -133,7 +142,7 @@ static int spawn_shell(vt_t *v) {
   return 0;
 }
 
-static void vt_putc(vt_t *v, char c) {
+static void vt_putc_raw(vt_t *v, char c) {
   if (c == '\r') {
     v->cx = 0;
     v->dirty = 1;
@@ -151,7 +160,7 @@ static void vt_putc(vt_t *v, char c) {
     v->dirty = 1;
     return;
   }
-  if (c == '\b') {
+  if (c == '\b' || c == 0x7f) {
     if (v->cx > 0)
       v->cx--;
     v->dirty = 1;
@@ -160,23 +169,57 @@ static void vt_putc(vt_t *v, char c) {
   if (c == '\t') {
     int n = 8 - (v->cx % 8);
     while (n--)
-      vt_putc(v, ' ');
+      vt_putc_raw(v, ' ');
     return;
   }
-  if (c < 32 || c > 126)
-    c = '?';
+  if (c < 32 || (unsigned char)c > 126)
+    return; /* drop UTF-8 / controls; dumb ASCII console */
   v->cells[v->cy * v->cols + v->cx] = c;
   v->cx++;
   if (v->cx >= v->cols) {
     v->cx = 0;
-    vt_putc(v, '\n');
+    vt_putc_raw(v, '\n');
   }
   v->dirty = 1;
 }
 
+/* Strip CSI / OSC so fancy prompts do not paint as '?' soup. */
 static void vt_write_bytes(vt_t *v, const char *buf, size_t n) {
-  for (size_t i = 0; i < n; i++)
-    vt_putc(v, buf[i]);
+  for (size_t i = 0; i < n; i++) {
+    unsigned char c = (unsigned char)buf[i];
+    if (g_ansi_state == 0) {
+      if (c == 0x1b) {
+        g_ansi_state = 1;
+        continue;
+      }
+      vt_putc_raw(v, (char)c);
+      continue;
+    }
+    if (g_ansi_state == 1) {
+      if (c == '[') {
+        g_ansi_state = 2; /* CSI */
+        continue;
+      }
+      if (c == ']') {
+        g_ansi_state = 3; /* OSC */
+        continue;
+      }
+      g_ansi_state = 0; /* short ESC seq (ESC c, etc.): drop */
+      continue;
+    }
+    if (g_ansi_state == 2) {
+      if (c >= 0x40 && c <= 0x7e)
+        g_ansi_state = 0;
+      continue;
+    }
+    if (g_ansi_state == 3) {
+      if (c == 0x07 || c == 0x9c)
+        g_ansi_state = 0;
+      else if (c == 0x1b)
+        g_ansi_state = 1;
+      continue;
+    }
+  }
 }
 
 static void draw_glyph(int px, int py, char ch, uint32_t fg, uint32_t bg) {
@@ -308,35 +351,59 @@ static int setup_drm(void) {
   return 0;
 }
 
-static int input_subscribe(void) {
-  mach_port_t service = MACH_PORT_NULL;
+static int input_bootstrap_look_up(const char *name, mach_port_t *out) {
   mach_port_t bp = MACH_PORT_NULL;
   task_get_bootstrap_port(mach_task_self(), &bp);
-  kern_return_t kr =
-      bootstrap_look_up(bp, (char *)INPUT_IPC_SERVICE_NAME, &service);
+  kern_return_t kr = bootstrap_look_up(bp, (char *)name, out);
+  if (kr == KERN_SUCCESS)
+    return 0;
+  /* Classic: session subset can be exception-protected; walk parents
+   * (same as libinput shim). */
+  for (int depth = 0; depth < 8; depth++) {
+    mach_port_t parent = MACH_PORT_NULL;
+    kern_return_t pkr = bootstrap_parent(bp, &parent);
+    if (pkr != KERN_SUCCESS || parent == MACH_PORT_NULL || parent == bp)
+      break;
+    if (bp != bootstrap_port)
+      mach_port_deallocate(mach_task_self(), bp);
+    bp = parent;
+    kr = bootstrap_look_up(bp, (char *)name, out);
+    if (kr == KERN_SUCCESS) {
+      if (bp != bootstrap_port)
+        mach_port_deallocate(mach_task_self(), bp);
+      return 0;
+    }
+  }
+  if (bp != bootstrap_port)
+    mach_port_deallocate(mach_task_self(), bp);
+  fprintf(stderr, "[modeb-ttyd] inputd look_up %s: %s\n", name,
+          mach_error_string(kr));
+  return -1;
+}
+
+static int input_subscribe(void) {
+  mach_port_t service = MACH_PORT_NULL;
+  if (input_bootstrap_look_up(INPUT_IPC_SERVICE_NAME, &service) != 0)
+    return -1;
+  kern_return_t kr = mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE,
+                                        &g_input_recv);
   if (kr != KERN_SUCCESS) {
-    fprintf(stderr, "[modeb-ttyd] inputd look_up: %s\n", mach_error_string(kr));
+    fprintf(stderr, "[modeb-ttyd] mach_port_allocate: %s\n",
+            mach_error_string(kr));
     return -1;
   }
-  kr = mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE,
-                          &g_input_recv);
-  if (kr != KERN_SUCCESS)
-    return -1;
-  mach_port_t send = MACH_PORT_NULL;
-  mach_port_insert_right(mach_task_self(), g_input_recv, g_input_recv,
-                         MACH_MSG_TYPE_MAKE_SEND);
-  send = g_input_recv;
 
+  /* Match libinput: MAKE_SEND on the recv port in the descriptor. */
   input_ipc_subscribe_t sub = {0};
   sub.header.msgh_bits =
-      MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, 0) | MACH_MSGH_BITS_COMPLEX;
+      MACH_MSGH_BITS_COMPLEX | MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, 0);
   sub.header.msgh_remote_port = service;
   sub.header.msgh_local_port = MACH_PORT_NULL;
   sub.header.msgh_id = INPUT_IPC_SUBSCRIBE_ID;
   sub.header.msgh_size = sizeof(sub);
   sub.body.msgh_descriptor_count = 1;
-  sub.client_port.name = send;
-  sub.client_port.disposition = MACH_MSG_TYPE_COPY_SEND;
+  sub.client_port.name = g_input_recv;
+  sub.client_port.disposition = MACH_MSG_TYPE_MAKE_SEND;
   sub.client_port.type = MACH_MSG_PORT_DESCRIPTOR;
   kr = mach_msg(&sub.header, MACH_SEND_MSG, sizeof(sub), 0, MACH_PORT_NULL,
                 MACH_MSG_TIMEOUT_NONE, MACH_PORT_NULL);
@@ -399,8 +466,32 @@ static char key_to_ascii(int key, int shift) {
   return 0;
 }
 
+static void switch_vt(int vt);
+static void render_active_text(void);
+
+static void modeb_request_restore_local(void) {
+  int fd = open("/tmp/libwayland-support/modeb-restore-aqua",
+                O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  if (fd >= 0) {
+    const char *msg = "modeb-ttyd-chord\n";
+    (void)write(fd, msg, strlen(msg));
+    close(fd);
+  }
+  fprintf(stderr, "[modeb-ttyd] Ctrl+Option+Backspace -> restore Aqua\n");
+  g_run = 0;
+}
+
 static void handle_key(int key, int pressed) {
-  if (key == 42 || key == 54) { /* shifts */
+  /* Modifiers (evdev). Option = Alt on Mac. */
+  if (key == 29 || key == 97) { /* Ctrl */
+    g_ctrl = pressed ? 1 : 0;
+    return;
+  }
+  if (key == 56 || key == 100) { /* Alt / Option */
+    g_alt = pressed ? 1 : 0;
+    return;
+  }
+  if (key == 42 || key == 54) { /* Shift */
     g_shift = pressed ? 1 : 0;
     return;
   }
@@ -410,13 +501,47 @@ static void handle_key(int key, int pressed) {
   }
   if (!pressed)
     return;
+
+  fprintf(stderr, "[modeb-ttyd] key=%d ctrl=%d alt=%d shift=%d\n", key, g_ctrl,
+          g_alt, g_shift);
+
+  /* Local chord backup (inputd also writes modeb-vt when it sees these). */
+  if (g_ctrl && g_alt) {
+    if (key == 14) { /* Backspace */
+      modeb_request_restore_local();
+      return;
+    }
+    if (key >= 59 && key <= 65) { /* F1..F7 */
+      int vt = key - 59 + 1;
+      FILE *f = fopen(VT_FILE, "w");
+      if (f) {
+        fprintf(f, "%d\n", vt);
+        fclose(f);
+      }
+      switch_vt(vt);
+      return;
+    }
+  }
+
   if (g_active_vt < 1 || g_active_vt > VT_TEXT_COUNT)
     return;
   vt_t *v = &g_vt[g_active_vt - 1];
   if (v->master < 0)
     return;
+
+  if (g_ctrl && !g_alt) {
+    char c = key_to_ascii(key, 0);
+    if (c >= 'a' && c <= 'z') {
+      char ctrl = (char)(c - 'a' + 1);
+      (void)write(v->master, &ctrl, 1);
+    }
+    return;
+  }
+
   int shift = g_shift ^ g_caps;
   char c = key_to_ascii(key, shift);
+  if (key == 14)
+    c = 0x7f; /* DEL: what linux TERM expects more often than BS */
   if (c)
     (void)write(v->master, &c, 1);
 }
@@ -555,16 +680,22 @@ int main(int argc, char **argv) {
     }
   }
 
-  (void)input_subscribe();
+  if (input_subscribe() != 0) {
+    fprintf(stderr,
+            "[modeb-ttyd] FATAL: could not subscribe to inputd "
+            "(no keyboard). Ensure Mode B inputd is running.\n");
+    return 1;
+  }
   pthread_t thr;
-  if (g_input_recv != MACH_PORT_NULL)
-    pthread_create(&thr, NULL, input_thread, NULL);
+  pthread_create(&thr, NULL, input_thread, NULL);
 
-  /* Banner on VT1 */
+  /* Banner on VT1 (also drawn into cells; shell starts clean with -f). */
   {
     const char *msg =
         "\r\nWawona Mode B TTY (userspace VTs)\r\n"
-        "Ctrl+Alt+F1-F6 text | F7 kmscube | Ctrl+Alt+Backspace Aqua\r\n\r\n";
+        "Ctrl+Option+F1-F6 text | F7 kmscube | Ctrl+Option+Backspace Aqua\r\n"
+        "(On MacBook hold Fn for F-keys, or enable standard F-keys in "
+        "Keyboard settings)\r\n\r\n";
     vt_write_bytes(&g_vt[0], msg, strlen(msg));
   }
 
