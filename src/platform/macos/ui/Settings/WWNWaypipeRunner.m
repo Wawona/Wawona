@@ -225,6 +225,14 @@ static NSString *WWNPreferredHostShellPath(void) {
 - (void)_launchWestonTerminalWithMachineId:(NSString *)machineId;
 - (void)_launchWestonSimpleSHMWithMachineId:(NSString *)machineId;
 - (void)_launchFootWithMachineId:(NSString *)machineId;
+#if !TARGET_OS_IPHONE
+- (void)_installNativeClientTerminationHandler:(NSTask *)task
+                                          kind:(NSString *)kind;
+#endif
+#if TARGET_OS_IPHONE || (!TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR)
+- (BOOL)wwnWriteWestonIniAtPath:(const char *)configPath
+                      usePixman:(BOOL)usePixman;
+#endif
 @end
 
 @implementation WWNWaypipeRunner
@@ -2622,7 +2630,7 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
   if ([clientId isEqualToString:@"niri"]) {
     env[@"NIRI_BACKEND"] = @"tty";
     executable = [self findBinaryNamed:@"niri"];
-  if ([clientId isEqualToString:@"weston"]) {
+  } else if ([clientId isEqualToString:@"weston"]) {
     executable = [self findBinaryNamed:@"weston"];
     NSString *modDir = env[@"WESTON_MODULE_DIR"];
     if (modDir.length == 0 ||
