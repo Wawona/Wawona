@@ -98,3 +98,12 @@ When 0–5 are green, update:
 Until then Phase 3 stays **HOLD** after the 2026-08-20 panics.
 See `docs/incident-reports/2026-08-20-stale-claim-ok-takeover/` and
 `docs/incident-reports/2026-08-20-keepws-restore-watchdogd/`.
+
+## Open build gap (blocks Classic weston)
+
+macOS packaged `weston` still uses `-Dbackend-drm=false`
+(`wwn-weston/dependencies/clients/weston/macos.nix`). Desktop-host therefore
+ships only `headless-backend` + `wayland-backend` under `libweston-13/`.
+Mode B needs shared `drm-backend.so` (fork/exec + `DYLD_INSERT`). Enable DRM
+as a shared module with iland (do not only use the static
+`weston-compositor-drm` archive).
