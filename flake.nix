@@ -49,7 +49,9 @@
     wwn-kmscube.inputs.nixpkgs.follows = "nixpkgs";
     wwn-kmscube.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-kmscube.inputs.wwn-iland.follows = "wwn-iland";
-    wwn-weston.url = "https://flakehub.com/f/Wawona/wwn-weston/*";
+    # github/development until FlakeHub rolling has hostPlatform Darwin checks.
+    # Cited: docs/wwn-repo-dag.md.
+    wwn-weston.url = "github:Wawona/wwn-weston/development";
     wwn-weston.inputs.nixpkgs.follows = "nixpkgs";
     wwn-weston.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-weston.inputs.wwn-iland.follows = "wwn-iland";
@@ -110,7 +112,9 @@
     wwn-vms.inputs.rust-overlay.follows = "rust-overlay";
     wwn-vms.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-vms.inputs.microvm.follows = "microvm";
-    wwn-containers.url = "https://flakehub.com/f/Wawona/wwn-containers/*";
+    # github/development until FlakeHub rolling includes hostPlatform Darwin
+    # checks (eval warning). Same pin style as wwn-iland. docs/wwn-repo-dag.md.
+    wwn-containers.url = "github:Wawona/wwn-containers/development";
     wwn-containers.inputs.nixpkgs.follows = "nixpkgs";
     wwn-containers.inputs.rust-overlay.follows = "rust-overlay";
     wwn-containers.inputs.wwn-toolchain.follows = "wwn-toolchain";
@@ -610,23 +614,23 @@
           wawona-bundled-fonts = pkgs.callPackage ./dependencies/libs/fonts { };
 
           # Weston and Waypipe (Native on Linux, Cross-wrapped on Darwin)
-          weston = if pkgs.stdenv.isDarwin then toolchains.buildForMacOS "weston" {} else pkgs.weston;
+          weston = if pkgs.stdenv.hostPlatform.isDarwin then toolchains.buildForMacOS "weston" {} else pkgs.weston;
           weston-simple-shm =
-            if pkgs.stdenv.isDarwin
+            if pkgs.stdenv.hostPlatform.isDarwin
             then toolchains.buildForMacOS "weston-simple-shm" {}
             else pkgs.callPackage westonSimpleShmLinuxNix {};
-          foot = if pkgs.stdenv.isDarwin then toolchains.buildForMacOS "foot" {} else pkgs.foot;
-          fastfetch = if pkgs.stdenv.isDarwin then toolchains.buildForMacOS "fastfetch" { } else pkgs.fastfetch;
-          neovim = if pkgs.stdenv.isDarwin then toolchains.buildForMacOS "neovim" { } else pkgs.neovim;
-          waypipe = if pkgs.stdenv.isDarwin then toolchains.buildForMacOS "waypipe" { } else pkgs.waypipe;
+          foot = if pkgs.stdenv.hostPlatform.isDarwin then toolchains.buildForMacOS "foot" {} else pkgs.foot;
+          fastfetch = if pkgs.stdenv.hostPlatform.isDarwin then toolchains.buildForMacOS "fastfetch" { } else pkgs.fastfetch;
+          neovim = if pkgs.stdenv.hostPlatform.isDarwin then toolchains.buildForMacOS "neovim" { } else pkgs.neovim;
+          waypipe = if pkgs.stdenv.hostPlatform.isDarwin then toolchains.buildForMacOS "waypipe" { } else pkgs.waypipe;
 
           # ANGLE (OpenGL ES over Metal) + iland userland graphics core
           # (GBM/EGL/DRM over IOSurface) for nested GL clients (kmscube, es2gears,
           # weston-simple-egl). macOS-first; mobile cross builds are WIP.
-          angle = if pkgs.stdenv.isDarwin then toolchains.buildForMacOS "angle" { } else pkgs.angle;
+          angle = if pkgs.stdenv.hostPlatform.isDarwin then toolchains.buildForMacOS "angle" { } else pkgs.angle;
 
           # Wawona (Native on Linux, Cross-wrapped on Darwin)
-          wawona = if pkgs.stdenv.isDarwin 
+          wawona = if pkgs.stdenv.hostPlatform.isDarwin 
             then (import ./dependencies/wawona/shell-wrappers.nix).macosWrapper pkgs 
               (pkgs.callPackage ./dependencies/wawona/macos.nix {
                 buildModule = toolchains; inherit wawonaSrc wawonaVersion;
@@ -676,7 +680,7 @@
               waypipeSrc = waypipe-src;
               coreutilsSrc = coreutils-src;
             };
-        } // pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin {
+        } // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
           # ANGLE companion: iland userland graphics core (GBM/EGL/DRM over IOSurface).
           iland = toolchains.buildForMacOS "iland" { };
           # GL smoke test (kmscube) over iland+ANGLE. Nested inside Wawona
@@ -803,7 +807,7 @@
           phoon = toolchains.buildForLinux "phoon" { };
           wawona-wasm-linux = toolchains.buildForLinux "wawona-wasm" { };
           wawona-wasm = toolchains.buildForLinux "wawona-wasm" { };
-        }) // (pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin (let
+        }) // (pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin (let
           teamId = let value = builtins.getEnv "TEAM_ID"; in if value == "" then null else value;
           apple = import applePath {
             inherit (pkgs) lib pkgs;
@@ -958,7 +962,7 @@
               wwn-vms.packages.aarch64-linux.wawona-mobile-guest-artifacts or null
             else null;
           mobileVmEngine =
-            if pkgs.stdenv.isDarwin && (wwn-vms.packages.${system}.wwn-vms-mobile-engine-ios-tci or null) != null then
+            if pkgs.stdenv.hostPlatform.isDarwin && (wwn-vms.packages.${system}.wwn-vms-mobile-engine-ios-tci or null) != null then
               wwn-vms.packages.${system}.wwn-vms-mobile-engine-ios-tci
             else null;
           mkXcodegen = {
@@ -1834,7 +1838,7 @@ EOF
       }) // (pkgs.lib.optionalAttrs (hasAndroidCts && systemPackages ? vulkan-cts-android) {
         vulkan-cts-android = { type = "app"; program = "${systemPackages.vulkan-cts-android}/bin/vulkan-cts-android-run"; };
         gl-cts-android = { type = "app"; program = "${systemPackages.gl-cts-android}/bin/gl-cts-android-run"; };
-      }) // (pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+      }) // (pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
         default = { type = "app"; program = "${systemPackages.wawona-linux}/bin/wawona-linux-run"; };
         install = { type = "app"; program = "${systemPackages.install}/bin/install"; };
         wawona = { type = "app"; program = "${systemPackages.wawona}/bin/wawona-linux-run"; };
@@ -1843,7 +1847,7 @@ EOF
         wawona-linux-tray = { type = "app"; program = "${systemPackages.wawona-linux-tray}/bin/wawona-linux-tray-run"; };
         weston-simple-shm = { type = "app"; program = "${systemPackages.weston-simple-shm}/bin/weston-simple-shm"; };
         wawona-linux-vm = { type = "app"; program = "${systemPackages.wawona-linux-vm}/bin/wawona-linux-vm-run"; };
-      }) // (pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin (
+      }) // (pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin (
         # Parenthesize the // chain: function application binds tighter than //,
         # so without parens graphics-validate leaked onto linux flake check.
         {
@@ -1926,7 +1930,7 @@ EOF
         }).${system}.default;
       }
     );
-    checks = nixpkgs.lib.genAttrs systemsList (system: let pkgs = pkgsFor system; in pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin ({
+    checks = nixpkgs.lib.genAttrs systemsList (system: let pkgs = pkgsFor system; in pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin ({
       graphics-driver-policy = pkgs.runCommand "graphics-driver-policy" { } ''
         ${pkgs.clang}/bin/clang -U__APPLE__ -DTARGET_OS_IPHONE=0 \
           -I${./src/platform/macos} \

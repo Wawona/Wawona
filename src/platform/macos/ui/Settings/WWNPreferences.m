@@ -1012,7 +1012,7 @@ static UIImage *WWNAboutLogo(void) {
                          @"No eligible DRM/KMS machine. Create a Native "
                          @"machine whose client is weston, niri, custom, or "
                          @"kmscube (iland baremetal), then select it here. "
-                         @"VT switching is always wwn-igetty.");
+                         @"VT switching is always wwn-igetty.")];
     }
 
     // ── Wawona Swinging Bridge ──────────────────────────────────────────────

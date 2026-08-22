@@ -2791,7 +2791,7 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     env[@"WWN_IGETTY_GUI_VT"] = [NSString stringWithFormat:@"%ld", (long)guiVt];
     env[@"WWN_IGETTY_GUI_CMD"] = executable;
     if (args.count > 0) {
-      env[@"WWN_IGETTY_GUI_ARGS"] = [args componentsJoinedByString:@"\u001f"];
+      env[@"WWN_IGETTY_GUI_ARGS"] = [args componentsJoinedByString:@"\x1f"];
     }
   }
   NSString *igetty = [self findBinaryNamed:@"igetty"];

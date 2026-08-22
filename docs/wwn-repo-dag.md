@@ -76,6 +76,9 @@ flowchart BT
   iland + kmscube; waypipe/swinging-bridge/vms → toolchain; Wawona → all).
 - Org-internal URLs are FlakeHub rolling
   (`https://flakehub.com/f/Wawona/<repo>/*`); `follows` still enforce the DAG.
+  Exceptions already on `github:Wawona/<repo>/development`: `wwn-iland`,
+  `wwn-weston`, `wwn-containers` (until FlakeHub rolling has
+  `stdenv.hostPlatform.isDarwin`).
   See [`flakehub-registry.md`](./flakehub-registry.md).
 - `angle` and `swiftshader` recipes live in `wwn-iland/dependencies/libs/` and
   are exported by the L1 `registryFragment`. Their old L0 recipes are removed;
