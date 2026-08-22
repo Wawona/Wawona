@@ -160,6 +160,19 @@ Mode B loads bundled `libwayland-mac.dylib` only from
 
 ---
 
+## About (diagnostics)
+
+| Control | Type | Platforms | Description |
+|---------|------|-----------|-------------|
+| Version / Platform / Install | Info | Apple Settings | CalVer, host OS + version + uname machine, install channel (TestFlight, Sideload, App Store, Simulator, macOS) |
+| Copy Recent Logs | Button | Apple Settings | Copies a GitHub-ready report (version, host, install, active machine without secrets, last ~2000 log lines) |
+| Copy Active Machine Logs | Button | Apple Settings | Same header plus only lines tagged with the active machine id |
+| Report a Bug on GitHub | Button | Apple Settings | Opens `Wawona/Wawona` issue form `bug.yml`. Paste the copied report into Copied diagnostics |
+
+Sideloaded iOS IPAs have no TestFlight crash pipeline. These buttons are the supported way to file "Start did nothing" bugs. Full steps: [`reporting-bugs.md`](reporting-bugs.md).
+
+---
+
 ## Platform-Specific Defaults
 
 | Setting | macOS | iOS | Android |

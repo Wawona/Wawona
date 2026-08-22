@@ -150,3 +150,9 @@ nix run .#foot
 | **Android** | Via Settings > Advanced toggles | Dropbear SSH; Settings > Waypipe, SSH |
 
 On iOS and Android, **Enable Native Weston** and **Enable Weston Terminal** in Settings > Advanced start these on app launch.
+
+---
+
+## Report a bug
+
+If Start does nothing or a session looks wrong, copy logs from Settings and file a GitHub issue. Steps: [`reporting-bugs.md`](reporting-bugs.md).

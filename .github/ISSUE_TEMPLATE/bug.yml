@@ -1,0 +1,88 @@
+name: Bug report
+description: Something did nothing, crashed, or looked wrong. Include copied logs.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use **Settings → About → Copy Recent Logs** (or **Copy Active Machine Logs**)
+        in the Wawona app, then paste below. That report includes Wawona version,
+        host OS, install channel (TestFlight vs sideload IPA vs App Store), the
+        active machine (no passwords), and recent in-app logs.
+
+        Sideloaded iOS IPAs do not go through TestFlight crash reports. Copied
+        logs are how we see Start/Focus doing nothing.
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - iOS
+        - iPadOS
+        - macOS
+        - tvOS
+        - watchOS
+        - visionOS
+        - Android
+        - Linux
+        - Unsure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install_channel
+    attributes:
+      label: How you installed Wawona
+      options:
+        - TestFlight
+        - Sideload IPA (Xcode, AltStore, TrollStore, or similar)
+        - App Store
+        - Simulator
+        - nix / local build
+        - Play Store / sideload APK
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: wawona_version
+    attributes:
+      label: Wawona version
+      description: From Settings → About → Version, or the copied diagnostics header.
+      placeholder: "26.8.22"
+    validations:
+      required: true
+
+  - type: input
+    id: host_os
+    attributes:
+      label: Host OS and version
+      description: Example. iOS 26.5 (iPhone17,1). Copied diagnostics include this.
+      placeholder: "iOS 26.5 (iPhone17,1)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened
+      description: What you tapped (Start Weston, Focus, …) and what you saw. "Nothing happened" is a valid report.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      placeholder: Nested Weston desktop appeared on the host surface.
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Copied diagnostics
+      description: Paste the full text from Copy Recent Logs or Copy Active Machine Logs.
+      render: shell
+    validations:
+      required: true

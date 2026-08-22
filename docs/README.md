@@ -10,6 +10,7 @@
 |----------|-------------|
 | [usage.md](usage.md) | Weston, waypipe, native commands — run `nix run .#weston`, `.#weston-terminal`, remote apps |
 | [settings.md](settings.md) | All Wawona Settings (Display, Graphics, Input, Waypipe, SSH) for macOS, iOS, Android |
+| [reporting-bugs.md](reporting-bugs.md) | Copy logs from Settings and file a GitHub issue |
 | [2026-ARCHITECTURE-STRUCTURE.md](2026-ARCHITECTURE-STRUCTURE.md) | Project layout, FFI flow, Wayland protocol status, platform architecture |
 | [2026-nix-build-system.md](2026-nix-build-system.md) | Nix build pipeline, crate2nix, cross-compilation |
 | [2026-COMPOSITOR-COMPARISON-AND-ROADMAP.md](2026-COMPOSITOR-COMPARISON-AND-ROADMAP.md) | Wawona vs Weston/Hyprland/Wayoa; protocol gaps and roadmap |
