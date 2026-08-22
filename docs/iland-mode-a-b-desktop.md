@@ -127,23 +127,58 @@ not enable `iland-baremetal`.
 Prefs (macOS `NSUserDefaults`):
 
 - `DesktopReplacementEnabled`
-- `DesktopReplacementMachineId` (nested compositor native profile only)
+- `DesktopReplacementMachineId` (iland DRM/KMS native profile: weston, niri, kmscube, custom)
+- `DesktopReplacementGuiVt` (1-6, default 1). Assigned GUI VT for that machine. Not hardcoded forever.
 - `LockscreenReplacementEnabled` / `LockscreenReplacementMachineId`
 - `SwingingBridgeEnabled` (Wawona Swinging Bridge. Separate feature; see [`swinging-bridge.md`](swinging-bridge.md))
 
-## Mode B multi-TTY (userspace)
+## Mode B: iland dylib vs wwn-igetty
 
-Classic own-display can run **`modeb-ttyd`** (Desktop Machine `modeb-tty`):
+WindowServer replacement is **wwn-iland** `iland-baremetal` (`libwayland-mac.dylib`).
+What you boot into is **wwn-igetty** (Linux-shaped VTs + Doorman getty). Settings
+→ Desktop Replacement → Desktop Machine picks an iland DRM/KMS compositor
+(weston, niri, kmscube, custom). That session is **assigned a VT**
+(`DesktopReplacementGuiVt`, default 1, like a typical Linux display manager).
+It is not guaranteed to stay VT1. Remaining VTs are getty. Ctrl+Option+F1-F6
+switches. Ctrl+Option+Backspace restores Aqua.
 
-- Six PTY text VTs on DRM dumb buffers → `framebufferd`, with **`modeb-getty`**
-  (Doorman) for Linux getty/login parity: prompt → authenticate macOS user →
-  login shell as that uid. See [Doorman](https://github.com/Wawona/doorman).
-- Ctrl+Option+F1-F6 switch text VTs (via `inputd` → `/tmp/libwayland-support/modeb-vt`)
-- Ctrl+Option+F7 starts kmscube (graphics VT)
-- Ctrl+Option+Backspace restores Aqua (`modeb-restore-aqua` stamp)
+Do not put VT switching in iland or in L4 Wawona besides launching `igettyd`
+and passing `WWN_IGETTY_GUI_*`.
+
+Classic already runs `framebufferd` / `inputd`. After login on a text VT you
+can still start another DRM client:
+
+```text
+export DYLD_INSERT_LIBRARIES="$WWN_MODEB_INSERT"
+weston --backend=drm --shell=desktop-shell.so
+NIRI_BACKEND=tty niri
+```
+
+`PATH` includes `WWN_MODEB_BIN` (Wawona `Resources/bin`) so `weston` / `niri`
+resolve without typing store paths. `WESTON_BACKEND_DIR` and related env from
+the helper stay inherited. Send compositor stderr to a file if you are
+reporting a failure:
+
+```text
+weston --backend=drm --shell=desktop-shell.so 2>/tmp/modeb-weston.err
+```
+
+Ctrl+Option+F1 returns to the text VT if the compositor does not take over
+input. Ctrl+Option+Backspace still restores Aqua.
 
 This is userspace only (no kernel tty). See also
 [`mode-b-windowserver-options.md`](mode-b-windowserver-options.md).
+
+Before Classic Take Over:
+
+```text
+Wawona --mode-b-ready
+```
+
+Exit 0: `VERDICT takeover-now` (run `Wawona --mode-b-engage`). Exit 2: reboot
+first (Path B sock not `done=1`). Exit 3: blocked (SIP, helper, or no Path B
+arm). Until the new `Wawona` binary is staged, `scripts/wawona-modeb-cli.sh ready`
+is the same check against the installed helper.
 
 ## Mode B launch (macOS)
 

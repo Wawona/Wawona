@@ -522,6 +522,7 @@
         "wwn-coreutils": "wwn-coreutils",
         "wwn-fastfetch": "wwn-fastfetch",
         "wwn-foot": "wwn-foot",
+        "wwn-igetty": "wwn-igetty",
         "wwn-iland": "wwn-iland",
         "wwn-iowatchdog": "wwn-iowatchdog",
         "wwn-kmscube": "wwn-kmscube",
@@ -903,6 +904,39 @@
       "original": {
         "type": "tarball",
         "url": "https://flakehub.com/f/Wawona/wwn-foot/%2A"
+      }
+    },
+    "wwn-igetty": {
+      "inputs": {
+        "doorman": [
+          "doorman"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "rust-overlay": [
+          "rust-overlay"
+        ],
+        "wwn-iland": [
+          "wwn-iland"
+        ],
+        "wwn-toolchain": [
+          "wwn-toolchain"
+        ]
+      },
+      "locked": {
+        "lastModified": 1787420460,
+        "narHash": "sha256-XkwwE69+NLVtHoAZXGUeC4/FXEy/taQLSuZotAotrtk=",
+        "owner": "Wawona",
+        "repo": "wwn-igetty",
+        "rev": "017f4c520cc12486c0545bd6965027495a51d4eb",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Wawona",
+        "ref": "development",
+        "repo": "wwn-igetty",
+        "type": "github"
       }
     },
     "wwn-iland": {

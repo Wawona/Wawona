@@ -48,7 +48,12 @@ and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream synta
 
 ## Non-negotiable facts
 
-- **FFI**: production bridge is hand-written C `WWNCore*` (`src/ffi/c_api.rs`)
+- **Wawona-owned code is Rust.** New daemons, helpers, and product logic are
+  Rust. C/ObjC/JNI/UniFFI is glue for native UI and ABI only (dylib
+  constructors, `WWNCore*` trampolines). Do not write a new Wawona program in C.
+  Upstream ports stay in their upstream language. See
+  `.cursor/rules/wawona-rust-first.mdc` and `docs/agent-rules/wawona-rust-first.md`.
+- **FFI**: production compositor bridge is hand-written C `WWNCore*` (`src/ffi/c_api.rs`)
   wrapped by ObjC (`WWNCompositorBridge.m`) / JNI (`android_jni.c`), polling
   model. Do NOT use `objc2`/`cocoa`/`jni`/`ndk` Rust crates or UniFFI callbacks.
 - **Smithay** `0.7`, `wayland_frontend` only.

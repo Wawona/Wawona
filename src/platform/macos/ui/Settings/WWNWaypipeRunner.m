@@ -2645,6 +2645,20 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     if (kms.length > 0) {
       env[@"WWN_MODEB_KMSCUBE"] = kms;
     }
+    NSString *weston = [self findBinaryNamed:@"weston"];
+    if (weston.length > 0) {
+      env[@"WWN_MODEB_WESTON"] = weston;
+      env[@"WWN_MODEB_BIN"] = [weston stringByDeletingLastPathComponent];
+    } else {
+      NSString *niriBin = [self findBinaryNamed:@"niri"];
+      if (niriBin.length > 0) {
+        env[@"WWN_MODEB_BIN"] = [niriBin stringByDeletingLastPathComponent];
+      }
+    }
+    NSString *niri = [self findBinaryNamed:@"niri"];
+    if (niri.length > 0) {
+      env[@"WWN_MODEB_NIRI"] = niri;
+    }
     args = @[];
   } else if (kmscubeProof) {
     executable = [self findBinaryNamed:@"kmscube"];
@@ -2745,6 +2759,51 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     }
     return NO;
   }
+
+  /*
+   * WindowServer replacement is iland-baremetal. What we launch is always
+   * wwn-igetty. The selected Desktop Machine is the GUI session on an
+   * assigned VT (not hardcoded as VT1). Text VTs stay Doorman gettys.
+   */
+  NSString *igettyd = [self findBinaryNamed:@"igettyd"];
+  if (igettyd.length == 0) {
+    igettyd = [self findBinaryNamed:@"modeb-ttyd"];
+  }
+  if (igettyd.length == 0) {
+    if (error) {
+      *error = [NSError
+          errorWithDomain:@"WWNWaypipeRunner"
+                     code:45
+                 userInfo:@{
+                   NSLocalizedDescriptionKey :
+                       @"wwn-igetty (igettyd) is not bundled in this desktop-host."
+                 }];
+    }
+    return NO;
+  }
+  NSInteger guiVt =
+      [[NSUserDefaults standardUserDefaults] integerForKey:@"DesktopReplacementGuiVt"];
+  if (guiVt < 1 || guiVt > 6) {
+    guiVt = 1;
+  }
+  BOOL ttyOnly = modebTty;
+  if (!ttyOnly) {
+    env[@"WWN_IGETTY_GUI_VT"] = [NSString stringWithFormat:@"%ld", (long)guiVt];
+    env[@"WWN_IGETTY_GUI_CMD"] = executable;
+    if (args.count > 0) {
+      env[@"WWN_IGETTY_GUI_ARGS"] = [args componentsJoinedByString:@"\u001f"];
+    }
+  }
+  NSString *igetty = [self findBinaryNamed:@"igetty"];
+  if (igetty.length == 0) {
+    igetty = [self findBinaryNamed:@"modeb-getty"];
+  }
+  if (igetty.length > 0) {
+    env[@"WWN_IGETTY_GETTY"] = igetty;
+    env[@"WWN_MODEB_GETTY"] = igetty;
+  }
+  executable = igettyd;
+  args = @[];
 
   if (outPath) {
     *outPath = executable;

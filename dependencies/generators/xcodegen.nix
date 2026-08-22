@@ -2146,7 +2146,23 @@ ICDJSON
               require_bin "$KMSCUBE_BIN/kmscube" "kmscube"
               # Mode B multi-VT console (Classic own-display). Soft-require so
               # older product graphs without modebTty still link.
-              if [ -f "$MODEB_TTY_BIN/modeb-ttyd" ]; then
+              if [ -f "$MODEB_TTY_BIN/igettyd" ]; then
+                require_bin "$MODEB_TTY_BIN/igettyd" "igettyd"
+                install -m 755 "$MODEB_TTY_BIN/igettyd" "$MACOS_DEST/igettyd"
+                sign_bin "$MACOS_DEST/igettyd"
+                ln -sf igettyd "$BIN_DEST/modeb-ttyd"
+                ln -sf igettyd "$MACOS_DEST/modeb-ttyd"
+                ln -sf igettyd "$BIN_DEST/modeb-tty"
+                ln -sf igettyd "$MACOS_DEST/modeb-tty"
+                if [ -f "$MODEB_TTY_BIN/igetty" ]; then
+                  require_bin "$MODEB_TTY_BIN/igetty" "igetty"
+                  install -m 755 "$MODEB_TTY_BIN/igetty" "$MACOS_DEST/igetty"
+                  sign_bin "$MACOS_DEST/igetty"
+                  ln -sf ../MacOS/igetty "$BIN_DEST/igetty"
+                  ln -sf igetty "$MACOS_DEST/modeb-getty"
+                  ln -sf ../MacOS/igetty "$BIN_DEST/modeb-getty"
+                fi
+              elif [ -f "$MODEB_TTY_BIN/modeb-ttyd" ]; then
                 require_bin "$MODEB_TTY_BIN/modeb-ttyd" "modeb-ttyd"
                 install -m 755 "$MODEB_TTY_BIN/modeb-ttyd" "$MACOS_DEST/modeb-ttyd"
                 sign_bin "$MACOS_DEST/modeb-ttyd"

@@ -969,22 +969,16 @@ static UIImage *WWNAboutLogo(void) {
                           ? so[@"NativeClientId"]
                           : @"";
       BOOL kmscubeProof = [cid isEqualToString:@"kmscube"];
-      BOOL modebTty = [cid isEqualToString:@"modeb-tty"] ||
-                      [cid isEqualToString:@"modeb-ttyd"];
-      if (!kmscubeProof && !modebTty &&
+      if (!kmscubeProof &&
           ![WWNMachineProfileStore profileIndicatesNestedCompositor:p]) {
         continue;
       }
       NSString *label = p.name.length ? p.name : @"Unnamed Machine";
-      if (modebTty &&
-          [label rangeOfString:@"TTY" options:NSCaseInsensitiveSearch]
-                  .location == NSNotFound) {
-        label = [label stringByAppendingString:@" (Mode B TTY)"];
-      } else if (kmscubeProof &&
+      if (kmscubeProof &&
                  [label rangeOfString:@"kmscube"
                               options:NSCaseInsensitiveSearch]
                          .location == NSNotFound) {
-        label = [label stringByAppendingString:@" (kmscube proof)"];
+        label = [label stringByAppendingString:@" (DRM proof)"];
       }
       [nativeNames addObject:label];
       [nativeIds addObject:p.machineId ?: @""];
@@ -994,20 +988,30 @@ static UIImage *WWNAboutLogo(void) {
           ITEM(@"Desktop Machine",
                @"DesktopReplacementMachineId", WSettingPopup,
                nativeIds.firstObject,
-               @"Host desktop inject target. Prefer Mode B TTY (Ctrl+Alt+Fn "
-               @"VTs; Ctrl+Alt+Backspace restores Aqua). kmscube remains VT7 "
-               @"graphics and a selectable proof machine. Nested compositors "
-               @"(weston, niri, custom) remain supported.");
+               @"Host desktop DE on an assigned VT (usually VT1, like Linux "
+               @"GDM, but not guaranteed). wwn-igetty always runs: Ctrl+Option+"
+               @"F1-F6 switch VTs; remaining VTs are Doorman getty. The Mode B "
+               @"dylib stays iland-baremetal. Nested compositors (weston, niri) "
+               @"and kmscube must be iland DRM/KMS clients.");
       machineItem.options = nativeNames;
       machineItem.optionValues = nativeIds;
       [desktopItems addObject:machineItem];
+      WWNSettingItem *guiVtItem =
+          ITEM(@"GUI virtual terminal",
+               @"DesktopReplacementGuiVt", WSettingPopup, @"1",
+               @"Which VT runs the Desktop Machine (weston, niri, kmscube). "
+               @"Linux display managers often use VT1. This is an assignment, "
+               @"not a guarantee forever. Other VTs stay igetty/Doorman.");
+      guiVtItem.options = @[ @"VT1", @"VT2", @"VT3", @"VT4", @"VT5", @"VT6" ];
+      guiVtItem.optionValues = @[ @"1", @"2", @"3", @"4", @"5", @"6" ];
+      [desktopItems addObject:guiVtItem];
     } else {
       [desktopItems
           addObject:ITEM(@"Desktop Machine", nil, WSettingInfo, @"None",
-                         @"No eligible machine found. Create a Native machine "
-                         @"whose client is kmscube (proof) or a nested "
-                         @"compositor (weston, niri, or custom), then select "
-                         @"it here.")];
+                         @"No eligible DRM/KMS machine. Create a Native "
+                         @"machine whose client is weston, niri, custom, or "
+                         @"kmscube (iland baremetal), then select it here. "
+                         @"VT switching is always wwn-igetty.");
     }
 
     // ── Wawona Swinging Bridge ──────────────────────────────────────────────

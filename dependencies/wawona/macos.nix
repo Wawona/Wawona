@@ -1356,21 +1356,33 @@ GEN_HEADER
             ''}
 
             ${if modebTty != null then ''
-            if [ -f "${modebTty}/bin/modeb-ttyd" ]; then
-              cp "${modebTty}/bin/modeb-ttyd" $out/Applications/Wawona.app/Contents/Resources/bin/
-              cp "${modebTty}/bin/modeb-ttyd" $out/Applications/Wawona.app/Contents/MacOS/
+            IGETTY_BIN="${modebTty}/bin"
+            if [ -f "$IGETTY_BIN/igettyd" ]; then
+              cp "$IGETTY_BIN/igettyd" $out/Applications/Wawona.app/Contents/Resources/bin/
+              cp "$IGETTY_BIN/igettyd" $out/Applications/Wawona.app/Contents/MacOS/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/igettyd
+              chmod +x $out/Applications/Wawona.app/Contents/MacOS/igettyd
+              ln -sf igettyd $out/Applications/Wawona.app/Contents/Resources/bin/modeb-ttyd
+              ln -sf igettyd $out/Applications/Wawona.app/Contents/MacOS/modeb-ttyd
+              ln -sf igettyd $out/Applications/Wawona.app/Contents/Resources/bin/modeb-tty
+              ln -sf igettyd $out/Applications/Wawona.app/Contents/MacOS/modeb-tty
+              if [ -f "$IGETTY_BIN/igetty" ]; then
+                cp "$IGETTY_BIN/igetty" $out/Applications/Wawona.app/Contents/Resources/bin/
+                cp "$IGETTY_BIN/igetty" $out/Applications/Wawona.app/Contents/MacOS/
+                chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/igetty
+                chmod +x $out/Applications/Wawona.app/Contents/MacOS/igetty
+                ln -sf igetty $out/Applications/Wawona.app/Contents/Resources/bin/modeb-getty
+                ln -sf igetty $out/Applications/Wawona.app/Contents/MacOS/modeb-getty
+              fi
+              echo "DEBUG: Bundled wwn-igetty (igettyd + igetty)"
+            elif [ -f "$IGETTY_BIN/modeb-ttyd" ]; then
+              cp "$IGETTY_BIN/modeb-ttyd" $out/Applications/Wawona.app/Contents/Resources/bin/
+              cp "$IGETTY_BIN/modeb-ttyd" $out/Applications/Wawona.app/Contents/MacOS/
               chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/modeb-ttyd
               chmod +x $out/Applications/Wawona.app/Contents/MacOS/modeb-ttyd
-              # CLI alias used by Desktop Machine NativeClientId=modeb-tty
               ln -sf modeb-ttyd $out/Applications/Wawona.app/Contents/Resources/bin/modeb-tty
               ln -sf modeb-ttyd $out/Applications/Wawona.app/Contents/MacOS/modeb-tty
-              if [ -f "${modebTty}/bin/modeb-getty" ]; then
-                cp "${modebTty}/bin/modeb-getty" $out/Applications/Wawona.app/Contents/Resources/bin/
-                cp "${modebTty}/bin/modeb-getty" $out/Applications/Wawona.app/Contents/MacOS/
-                chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/modeb-getty
-                chmod +x $out/Applications/Wawona.app/Contents/MacOS/modeb-getty
-              fi
-              echo "DEBUG: Bundled modeb-ttyd + modeb-getty"
+              echo "DEBUG: Bundled legacy modeb-ttyd"
             fi
             '' else ''
             ''}
