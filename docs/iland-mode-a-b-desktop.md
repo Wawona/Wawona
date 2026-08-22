@@ -175,10 +175,11 @@ Before Classic Take Over:
 Wawona --mode-b-ready
 ```
 
-Exit 0: `VERDICT takeover-now` (run `Wawona --mode-b-engage`). Exit 2: reboot
-first (Path B sock not `done=1`). Exit 3: blocked (SIP, helper, or no Path B
-arm). Until the new `Wawona` binary is staged, `scripts/wawona-modeb-cli.sh ready`
-is the same check against the installed helper.
+Exit 0: `VERDICT takeover-now` plus `REASON` (run `Wawona --mode-b-engage`).
+Exit 2: reboot first. Engage and Settings Take Over open the native macOS
+Restart sheet (`kAERestart` / QA1134, 60-second countdown). Exit 3: blocked,
+with the exact SIP / helper / claim-ok / sock text in `REASON`. Settings shows
+the same report as **Classic readiness**.
 
 ## Mode B launch (macOS)
 

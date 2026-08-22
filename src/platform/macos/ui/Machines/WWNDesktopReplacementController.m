@@ -6,6 +6,7 @@
 #import "WWNMachineProfileStore.h"
 #if TARGET_OS_OSX
 #import <AppKit/AppKit.h>
+#import <ApplicationServices/ApplicationServices.h>
 #endif
 #import "WWNMachineSessionBridge.h"
 #import "WWNPlatformCapabilities.h"
@@ -156,6 +157,9 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
 - (NSString *)modeBFileCleanupShell;
 - (BOOL)installModeBHelperAndDylibForProfile:(WWNMachineProfile *)profile
                          error:(NSError *_Nullable *_Nullable)error;
+@end
+
+@implementation WWNModeBReadyReport
 @end
 
 @implementation WWNDesktopReplacementController
@@ -855,6 +859,22 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"  if [ \"$REBOOT\" = 1 ]; then V=reboot\n"
                        @"  elif [ \"$LIVE\" = 1 ]; then V=takeover-now\n"
                        @"  else V=blocked; fi\n"
+                       @"  if [ \"$V\" = takeover-now ]; then\n"
+                       @"    R=\"Path B IOWatchdog is live (sock done=1). "
+                       @"Classic Take Over may run now.\"\n"
+                       @"  elif [ \"$V\" = reboot ]; then\n"
+                       @"    R=\"Path B is armed (claim-ok path=b sticky=1) "
+                       @"but IOWatchdog is not Disabled yet (sock not done=1"
+                       @"). Reboot so the Path B LaunchDaemon can Disable "
+                       @"before Classic Take Over.\"\n"
+                       @"  elif [ -z \"$CLAIM\" ]; then\n"
+                       @"    R=\"No /var/db/wwn-iowatchdog/claim-ok. Arm Path "
+                       @"B (wwn-iowatchdog claim-install --path-b), then reboot.\"\n"
+                       @"  else\n"
+                       @"    R=\"Path B not live. claim-ok='$CLAIM' "
+                       @"pathb_plist=$PATHB_PLIST marker=$MARKER sock='$SOCK_ST'. "
+                       @"Arm Path B, reboot, confirm sock done=1 dkr=0x0.\"\n"
+                       @"  fi\n"
                        @"  echo \"claim_ok=$CLAIM\"\n"
                        @"  echo \"pathb_plist=$PATHB_PLIST\"\n"
                        @"  echo \"marker=$MARKER\"\n"
@@ -862,6 +882,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"  echo \"ack_live=$LIVE\"\n"
                        @"  echo \"need_reboot=$REBOOT\"\n"
                        @"  echo \"verdict=$V\"\n"
+                       @"  echo \"reason=$R\"\n"
                        @"  wwn_log \"ack-status live=$LIVE reboot=$REBOOT "
                        @"verdict=$V sock=$SOCK_ST\"\n"
                        @"  if [ \"$LIVE\" = 1 ]; then exit 0; fi\n"
@@ -3011,52 +3032,70 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   return 1;
 }
 
-- (int)cliReady {
-  WWNModeBCliLog(@"mode-b-ready");
-  WWNSipStatusType sip = [WWNSipStatus current];
-  BOOL sipOk = [WWNSipStatus allowsDesktopReplacement:sip];
-  WWNModeBCliLog(@"  sip=%@ allows=%d", [WWNSipStatus describe:sip],
-                 sipOk ? 1 : 0);
+- (WWNModeBReadyReport *)evaluateClassicReadiness {
+  WWNModeBReadyReport *r = [[WWNModeBReadyReport alloc] init];
+  r.verdict = WWNModeBVerdictBlocked;
+  r.token = @"blocked";
+  r.reason = @"Classic Take Over is blocked.";
+  r.nextStep = @"Fix the reason below, then Wawona --mode-b-ready.";
 
   pid_t pid = [self readLiveCompositorPid];
   BOOL wsUp = [self isAppleWindowServerRunning];
   if (pid > 0 && !wsUp) {
-    WWNModeBCliLog(@"  already_engaged pid=%d", (int)pid);
-    WWNModeBCliLog(@"VERDICT takeover-now");
-    WWNModeBCliLog(@"next: already on Classic (Ctrl+Option+Backspace restores "
-                   @"Aqua)");
-    return 0;
+    r.verdict = WWNModeBVerdictTakeoverNow;
+    r.token = @"takeover-now";
+    r.reason = [NSString
+        stringWithFormat:
+            @"Classic is already engaged (compositor pid %d, WindowServer down).",
+            (int)pid];
+    r.nextStep =
+        @"Already on Classic. Ctrl+Option+Backspace restores Aqua.";
+    return r;
+  }
+
+  WWNSipStatusType sip = [WWNSipStatus current];
+  if (![WWNSipStatus allowsDesktopReplacement:sip]) {
+    r.reason = [NSString
+        stringWithFormat:
+            @"SIP is not fully disabled (%@). Mode B Classic needs "
+            @"`csrutil disable` in Recovery (first line must read "
+            @"System Integrity Protection status: disabled). Partial SIP "
+            @"(Debugging Restrictions off) is refused.",
+            [WWNSipStatus describe:sip]];
+    r.nextStep = @"csrutil disable, reboot, then Wawona --mode-b-ready.";
+    return r;
   }
 
   BOOL helperOk = [[NSFileManager defaultManager]
       isExecutableFileAtPath:[self modeBHelperPath]];
   BOOL sudoOk = [self sudoersAllowsHelper];
-  WWNModeBCliLog(@"  helper=%d sudoers=%d", helperOk ? 1 : 0, sudoOk ? 1 : 0);
-  if (!sipOk) {
-    WWNModeBCliLog(@"VERDICT blocked");
-    WWNModeBCliLog(@"next: csrutil disable, reboot, then Wawona --mode-b-ready");
-    return 3;
-  }
   if (!helperOk || !sudoOk) {
-    WWNModeBCliLog(@"VERDICT blocked");
-    WWNModeBCliLog(@"next: Wawona --mode-b-stage (admin once), then "
-                   @"Wawona --mode-b-ready");
-    return 3;
+    r.reason = [NSString
+        stringWithFormat:
+            @"Mode B helper is not staged for passwordless Take Over "
+            @"(helper executable=%d, sudoers NOPASSWD=%d). Path=%@.",
+            helperOk ? 1 : 0, sudoOk ? 1 : 0, [self modeBHelperPath]];
+    r.nextStep = @"Wawona --mode-b-stage (administrator once), then "
+                 @"Wawona --mode-b-ready.";
+    return r;
+  }
+
+  NSError *pre = [self injectionPreflightError];
+  if (pre) {
+    r.reason = pre.localizedDescription;
+    r.nextStep = @"Pick an iland DRM/KMS Desktop Machine (weston, niri, "
+                 @"kmscube) under Settings → Desktop Replacement.";
+    return r;
   }
 
   NSString *ackOut = nil;
   int ack = [self runSudoNHelper:@[ @"--ack-status" ] stdoutText:&ackOut];
-  for (NSString *line in [ackOut componentsSeparatedByCharactersInSet:
-                                     [NSCharacterSet newlineCharacterSet]]) {
-    if (line.length == 0) {
-      continue;
-    }
-    WWNModeBCliLog(@"  %@", line);
-  }
-
   NSString *verdict = @"blocked";
   BOOL needReboot = NO;
   BOOL live = NO;
+  NSString *helperReason = nil;
+  NSString *sock = nil;
+  NSString *claim = nil;
   for (NSString *line in [ackOut componentsSeparatedByCharactersInSet:
                                      [NSCharacterSet newlineCharacterSet]]) {
     if ([line hasPrefix:@"verdict="]) {
@@ -3065,6 +3104,12 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
       needReboot = [[line substringFromIndex:12] isEqualToString:@"1"];
     } else if ([line hasPrefix:@"ack_live="]) {
       live = [[line substringFromIndex:9] isEqualToString:@"1"];
+    } else if ([line hasPrefix:@"reason="]) {
+      helperReason = [line substringFromIndex:7];
+    } else if ([line hasPrefix:@"sock="]) {
+      sock = [line substringFromIndex:5];
+    } else if ([line hasPrefix:@"claim_ok="]) {
+      claim = [line substringFromIndex:9];
     }
   }
   if (ackOut.length == 0) {
@@ -3072,44 +3117,159 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
       live = YES;
       verdict = @"takeover-now";
     } else {
-      NSString *claim =
+      NSString *fileClaim =
           [NSString stringWithContentsOfFile:kWWNModeBClaimOkPath
                                     encoding:NSUTF8StringEncoding
                                        error:nil];
-      if ([claim containsString:@"path=b"] &&
-          [claim containsString:@"sticky=1"]) {
+      if ([fileClaim containsString:@"path=b"] &&
+          [fileClaim containsString:@"sticky=1"]) {
         needReboot = YES;
         verdict = @"reboot";
+        helperReason =
+            @"Path B claim-ok is sticky but helper --ack-status returned no "
+            @"text. Reboot so Path B can Disable IOWatchdog (sock done=1).";
+      } else {
+        helperReason = [NSString
+            stringWithFormat:
+                @"Helper --ack-status failed (exit %d) with no output. "
+                @"claim-ok file=%@",
+                ack, fileClaim.length ? fileClaim : @"(missing)"];
       }
     }
   }
 
   if (live || [verdict isEqualToString:@"takeover-now"]) {
-    WWNModeBCliLog(@"VERDICT takeover-now");
-    WWNModeBCliLog(@"next: Wawona --mode-b-engage");
-    return 0;
+    r.verdict = WWNModeBVerdictTakeoverNow;
+    r.token = @"takeover-now";
+    r.reason = helperReason.length
+                   ? helperReason
+                   : @"Path B IOWatchdog is live. Classic Take Over may run now.";
+    r.nextStep = @"Wawona --mode-b-engage (or Settings → Take Over Screen Now).";
+    return r;
   }
   if (needReboot || [verdict isEqualToString:@"reboot"] || ack == 2) {
-    WWNModeBCliLog(@"VERDICT reboot");
-    WWNModeBCliLog(@"next: reboot, then Wawona --mode-b-ready "
-                   @"(Path B sock must be done=1 dkr=0x0). "
-                   @"Then Wawona --mode-b-engage");
-    return 2;
+    r.verdict = WWNModeBVerdictReboot;
+    r.token = @"reboot";
+    r.reason = helperReason.length
+                   ? helperReason
+                   : [NSString
+                         stringWithFormat:
+                             @"Path B is armed but not live yet. sock=%@ "
+                             @"claim-ok=%@",
+                             sock.length ? sock : @"(empty)",
+                             claim.length ? claim : @"(empty)"];
+    r.nextStep = @"Restart this Mac (native Restart sheet). After login, "
+                 @"Wawona --mode-b-ready must say takeover-now, then engage.";
+    return r;
   }
-  WWNModeBCliLog(@"VERDICT blocked");
-  WWNModeBCliLog(@"next: arm Path B (claim-install --path-b), reboot, "
-                 @"Wawona --mode-b-ready");
-  return 3;
+  r.verdict = WWNModeBVerdictBlocked;
+  r.token = @"blocked";
+  r.reason = helperReason.length
+                 ? helperReason
+                 : [NSString
+                       stringWithFormat:
+                           @"Classic Take Over is blocked. helper_exit=%d "
+                           @"verdict=%@ sock=%@ claim-ok=%@",
+                           ack, verdict, sock.length ? sock : @"(empty)",
+                           claim.length ? claim : @"(empty)"];
+  r.nextStep = @"Arm Path B (wwn-iowatchdog claim-install --path-b), reboot, "
+               @"then Wawona --mode-b-ready.";
+  return r;
+}
+
+- (BOOL)requestNativeMacOSRestart:(NSError *_Nullable *_Nullable)error {
+  /*
+   * TN QA1134: send kAERestart to the system process. loginwindow shows
+   * the standard Restart sheet (apps quit, 60-second countdown).
+   */
+  AEAddressDesc targetDesc;
+  static const ProcessSerialNumber kPSNOfSystemProcess = {0, kSystemProcess};
+  AppleEvent eventReply = {typeNull, NULL};
+  AppleEvent appleEventToSend = {typeNull, NULL};
+  OSStatus err = AECreateDesc(typeProcessSerialNumber, &kPSNOfSystemProcess,
+                              sizeof(kPSNOfSystemProcess), &targetDesc);
+  if (err != noErr) {
+    if (error) {
+      *error = [NSError
+          errorWithDomain:NSOSStatusErrorDomain
+                     code:err
+                 userInfo:@{
+                   NSLocalizedDescriptionKey :
+                       @"Could not address the system process for Restart "
+                       @"(Apple Event kAERestart / QA1134)."
+                 }];
+    }
+    return NO;
+  }
+  err = AECreateAppleEvent(kCoreEventClass, kAERestart, &targetDesc,
+                           kAutoGenerateReturnID, kAnyTransactionID,
+                           &appleEventToSend);
+  AEDisposeDesc(&targetDesc);
+  if (err != noErr) {
+    if (error) {
+      *error = [NSError
+          errorWithDomain:NSOSStatusErrorDomain
+                     code:err
+                 userInfo:@{
+                   NSLocalizedDescriptionKey :
+                       @"Could not create the Restart Apple Event (kAERestart)."
+                 }];
+    }
+    return NO;
+  }
+  err = AESendMessage(&appleEventToSend, &eventReply, kAENormalPriority,
+                      kAEDefaultTimeout);
+  AEDisposeDesc(&appleEventToSend);
+  if (err == noErr) {
+    AEDisposeDesc(&eventReply);
+    return YES;
+  }
+  if (error) {
+    *error = [NSError
+        errorWithDomain:NSOSStatusErrorDomain
+                   code:err
+               userInfo:@{
+                 NSLocalizedDescriptionKey : [NSString
+                     stringWithFormat:
+                         @"macOS Restart sheet failed (OSStatus %d). Aqua "
+                         @"must be running. Open  → Restart if this persists.",
+                         (int)err]
+               }];
+  }
+  return NO;
+}
+
+- (int)cliReady {
+  WWNModeBCliLog(@"mode-b-ready");
+  WWNModeBReadyReport *r = [self evaluateClassicReadiness];
+  WWNModeBCliLog(@"  sip=%@", [WWNSipStatus describe:[WWNSipStatus current]]);
+  WWNModeBCliLog(@"VERDICT %@", r.token);
+  WWNModeBCliLog(@"REASON %@", r.reason);
+  WWNModeBCliLog(@"next: %@", r.nextStep);
+  return (int)r.verdict;
 }
 
 - (int)cliEngageKeepWindowServer:(BOOL)keepWindowServer {
   WWNModeBCliLog(@"mode-b-engage keepWindowServer=%d",
                  keepWindowServer ? 1 : 0);
   if (!keepWindowServer) {
-    int ready = [self cliReady];
-    if (ready != 0) {
-      WWNModeBCliLog(@"engage aborted (not takeover-now)");
-      return ready;
+    WWNModeBReadyReport *ready = [self evaluateClassicReadiness];
+    WWNModeBCliLog(@"VERDICT %@", ready.token);
+    WWNModeBCliLog(@"REASON %@", ready.reason);
+    if (ready.verdict == WWNModeBVerdictReboot) {
+      WWNModeBCliLog(@"opening native macOS Restart sheet (kAERestart / QA1134)");
+      NSError *rst = nil;
+      if (![self requestNativeMacOSRestart:&rst]) {
+        WWNModeBCliLog(@"restart sheet failed: %@", rst.localizedDescription);
+        WWNModeBCliLog(@"next: %@", ready.nextStep);
+        return (int)ready.verdict;
+      }
+      return (int)ready.verdict;
+    }
+    if (ready.verdict != WWNModeBVerdictTakeoverNow) {
+      WWNModeBCliLog(@"engage aborted (blocked)");
+      WWNModeBCliLog(@"next: %@", ready.nextStep);
+      return (int)ready.verdict;
     }
   }
   if (keepWindowServer) {
@@ -3119,15 +3279,6 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   } else {
     [[NSFileManager defaultManager] removeItemAtPath:kWWNModeBKeepWsPath
                                                error:nil];
-    /*
-     * Classic own-display: Mode B TTY (multi-VT). KEEP_WS probe still uses
-     * the Desktop compositor machine.
-     */
-    int sel = [self cliSelectDesktopMachine:@"modeb-tty"];
-    if (sel != 0) {
-      WWNModeBCliLog(@"failed to select modeb-tty machine");
-      return sel;
-    }
   }
 
   NSError *pre = [self injectionPreflightError];
@@ -3277,6 +3428,9 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
 
 #else // !TARGET_OS_OSX
 
+@implementation WWNModeBReadyReport
+@end
+
 @implementation WWNDesktopReplacementController
 + (instancetype)sharedController {
   static WWNDesktopReplacementController *shared;
@@ -3349,6 +3503,25 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
 }
 - (int)cliReady {
   return 2;
+}
+- (WWNModeBReadyReport *)evaluateClassicReadiness {
+  WWNModeBReadyReport *r = [[WWNModeBReadyReport alloc] init];
+  r.verdict = WWNModeBVerdictBlocked;
+  r.token = @"blocked";
+  r.reason = @"Desktop Replacement Mode B is macOS-only.";
+  r.nextStep = @"";
+  return r;
+}
+- (BOOL)requestNativeMacOSRestart:(NSError *_Nullable *_Nullable)error {
+  if (error) {
+    *error = [NSError errorWithDomain:@"WWNDesktopReplacement"
+                                 code:100
+                             userInfo:@{
+                               NSLocalizedDescriptionKey :
+                                   @"Desktop Replacement Mode B is macOS-only."
+                             }];
+  }
+  return NO;
 }
 - (int)cliEngageKeepWindowServer:(BOOL)keepWindowServer {
   (void)keepWindowServer;

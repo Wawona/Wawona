@@ -214,11 +214,14 @@ static void wwn_print_cli_help(void) {
       "  --list-clients          List bundled client ids and exit\n"
       "  --list-machines         List saved Machines profiles and exit\n"
       "  --mode-b-status         Desktop Replacement Mode B status and exit\n"
+      "  --mode-b-ready          Classic gate: takeover-now, reboot, or blocked\n"
+      "                          (prints VERDICT and REASON)\n"
       "  --mode-b-machine <id>   Select Desktop Take Over machine (id, name,\n"
       "                          or weston). Creates Weston Desktop if needed.\n"
       "                          Does not take over the screen\n"
       "  --mode-b-stage          Install helper + dylib for this build, no take-over\n"
-      "  --mode-b-engage         Take over the screen (passwordless helper)\n"
+      "  --mode-b-engage         takeover-now: take over. reboot: native Restart\n"
+      "                          sheet. blocked: print exact reason\n"
       "  --mode-b-probe          Same wait as engage, keep WindowServer\n"
       "  --mode-b-disengage      Full Mode B teardown and restore WindowServer\n"
       "\n"
@@ -261,6 +264,7 @@ static void wwn_print_cli_help(void) {
       "Desktop Replacement (macOS Mode B, no Machines UI):\n"
       "  Wawona --mode-b-machine weston\n"
       "  Wawona --mode-b-status\n"
+      "  Wawona --mode-b-ready\n"
       "  Wawona --mode-b-probe\n"
       "  Wawona --mode-b-probe --machine <id>\n"
       "  Wawona --mode-b-engage\n"
@@ -1127,6 +1131,7 @@ int main(int argc, char *argv[]) {
        * --mode-b-machine, then select Desktop machine before the action.
        */
       if (strcmp(arg, "--mode-b-status") == 0 ||
+          strcmp(arg, "--mode-b-ready") == 0 ||
           strcmp(arg, "--mode-b-stage") == 0 ||
           strcmp(arg, "--mode-b-probe") == 0 ||
           strcmp(arg, "--mode-b-engage") == 0 ||
@@ -1140,6 +1145,8 @@ int main(int argc, char *argv[]) {
           const char *a = argv[j];
           if (strcmp(a, "--mode-b-status") == 0) {
             modeBAction = "status";
+          } else if (strcmp(a, "--mode-b-ready") == 0) {
+            modeBAction = "ready";
           } else if (strcmp(a, "--mode-b-stage") == 0) {
             modeBAction = "stage";
           } else if (strcmp(a, "--mode-b-probe") == 0) {
@@ -1200,6 +1207,9 @@ int main(int argc, char *argv[]) {
         }
         if (modeBAction && strcmp(modeBAction, "status") == 0) {
           return [ctl cliStatus];
+        }
+        if (modeBAction && strcmp(modeBAction, "ready") == 0) {
+          return [ctl cliReady];
         }
         if (modeBAction && strcmp(modeBAction, "stage") == 0) {
           return [ctl cliStage];
@@ -1267,6 +1277,7 @@ int main(int argc, char *argv[]) {
                  strcmp(arg, "--list-clients") == 0 ||
                  strcmp(arg, "--list-machines") == 0 ||
                  strcmp(arg, "--mode-b-status") == 0 ||
+                 strcmp(arg, "--mode-b-ready") == 0 ||
                  strcmp(arg, "--mode-b-stage") == 0 ||
                  strcmp(arg, "--mode-b-probe") == 0 ||
                  strcmp(arg, "--mode-b-engage") == 0 ||

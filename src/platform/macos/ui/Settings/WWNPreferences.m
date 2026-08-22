@@ -932,22 +932,23 @@ static UIImage *WWNAboutLogo(void) {
 
 #if TARGET_OS_OSX
     {
-      NSString *ack =
+      WWNModeBReadyReport *ready =
           [[WWNDesktopReplacementController sharedController]
-              iowatchdogStickyAckStatusSummary];
+              evaluateClassicReadiness];
+      NSString *label =
+          [NSString stringWithFormat:@"%@: %@",
+                                     ready.token, ready.reason];
       [desktopItems
-          addObject:ITEM(@"IOWatchdog ACK", nil, WSettingInfo, ack,
-                         @"Path B sticky claim-ok required before Classic "
-                         @"Take Over. Arm with claim-install --path-b, then "
-                         @"reboot.")];
+          addObject:ITEM(@"Classic readiness", nil, WSettingInfo, label,
+                         ready.nextStep.length ? ready.nextStep
+                                               : ready.reason)];
     }
     WWNSettingItem *takeOverNow =
         ITEM(@"Take Over Screen Now", @"DesktopReplacementTakeOver",
              WSettingButton, nil,
-             @"Requires sticky claim-ok. Unloads watchdogd then "
-             @"WindowServer, injects Mode B into the Desktop Machine "
-             @"(kmscube proof or weston/niri), waits on framebufferd. "
-             @"Aborts and restores Aqua if ACK missing.");
+             @"Uses the Classic readiness verdict. takeover-now engages "
+             @"immediately. reboot opens the native macOS Restart sheet "
+             @"(60-second countdown). blocked shows the exact reason.");
     takeOverNow.actionBlock = ^{
       [weakSelf applyDesktopReplacementEnabled:YES revert:nil];
     };
@@ -5080,16 +5081,51 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
   confirm.alertStyle = NSAlertStyleCritical;
   WWNDesktopReplacementController *desk =
       [WWNDesktopReplacementController sharedController];
-  if (![desk iowatchdogStickyAckPresent]) {
-    confirm.messageText = @"Desktop Take Over needs IOWatchdog ACK";
-    confirm.informativeText = [NSString
-        stringWithFormat:
-            @"%@\n\nClassic Take Over will not unload WindowServer until "
-            @"/var/db/wwn-iowatchdog/claim-ok shows sticky=1.\n\n"
-            @"KEEP_WS probe (Aqua stays up): Wawona --mode-b-probe",
-            [desk iowatchdogStickyAckStatusSummary]];
+  WWNModeBReadyReport *ready = [desk evaluateClassicReadiness];
+  if (ready.verdict == WWNModeBVerdictBlocked) {
+    confirm.messageText = @"Desktop Take Over is blocked";
+    confirm.informativeText =
+        [NSString stringWithFormat:@"%@\n\n%@", ready.reason, ready.nextStep];
     [confirm addButtonWithTitle:@"OK"];
     [confirm runModal];
+    if (revert) {
+      revert();
+    }
+    [[NSUserDefaults standardUserDefaults]
+        setBool:NO
+         forKey:kWWNPrefsDesktopReplacementEnabled];
+    return NO;
+  }
+  if (ready.verdict == WWNModeBVerdictReboot) {
+    confirm.messageText = @"Restart required before Take Over";
+    confirm.informativeText = [NSString
+        stringWithFormat:
+            @"%@\n\nWawona will open the native macOS Restart sheet "
+            @"(loginwindow kAERestart, 60-second countdown). After you log "
+            @"back in, Classic readiness must be takeover-now, then Take "
+            @"Over Screen Now.",
+            ready.reason];
+    [confirm addButtonWithTitle:@"Restart"];
+    [confirm addButtonWithTitle:@"Cancel"];
+    if ([confirm runModal] != NSAlertFirstButtonReturn) {
+      if (revert) {
+        revert();
+      }
+      [[NSUserDefaults standardUserDefaults]
+          setBool:NO
+           forKey:kWWNPrefsDesktopReplacementEnabled];
+      return NO;
+    }
+    NSError *rst = nil;
+    if (![desk requestNativeMacOSRestart:&rst]) {
+      NSAlert *fail = [[NSAlert alloc] init];
+      fail.alertStyle = NSAlertStyleCritical;
+      fail.messageText = @"Could not open Restart";
+      fail.informativeText = rst.localizedDescription
+                                 ?: @"Use the Apple menu → Restart.";
+      [fail addButtonWithTitle:@"OK"];
+      [fail runModal];
+    }
     if (revert) {
       revert();
     }

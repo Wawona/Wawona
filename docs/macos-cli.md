@@ -65,10 +65,11 @@ window. Logs to stdout plus `/tmp/wawona-modeb-cli.log` and
 
 | Flag | Effect |
 |------|--------|
-| `--mode-b-status` | SIP, helper, sudoers, compositor PID (EPERM-aware), WindowServer |
+| `--mode-b-status` | SIP, helper, sudoers, compositor PID (EPERM-aware), WindowServer, plus Classic `VERDICT` |
+| `--mode-b-ready` | Classic gate. Prints `VERDICT` and `REASON`. `takeover-now` (exit 0), `reboot` (exit 2), `blocked` (exit 3) |
 | `--mode-b-stage` | Install helper + dylib for this build. Does not take over the screen |
 | `--mode-b-probe` | Wait for a live root compositor without taking the screen |
-| `--mode-b-engage` | Enable Desktop Replacement and take over the screen |
+| `--mode-b-engage` | `takeover-now`: take over now. `reboot`: open the native macOS Restart sheet (`kAERestart` / QA1134, 60-second countdown). `blocked`: print the exact reason and exit 3 |
 | `--mode-b-disengage` | Full teardown: restore WindowServer, kill root compositor, remove helper / sudoers / login agent / dylib / ws-guard |
 
 `nix run .#install` always runs `--mode-b-stage`. That restages
@@ -90,10 +91,27 @@ must be fully disabled (`csrutil disable` in Recovery). Partial SIP
 
 ```bash
 Wawona --mode-b-status
+Wawona --mode-b-ready
 Wawona --mode-b-stage
 Wawona --mode-b-probe
 Wawona --mode-b-engage
 Wawona --mode-b-disengage
+```
+
+`--mode-b-ready` and Settings → Desktop Replacement → Classic readiness share
+one gate. Helper `--ack-status` prints `verdict=` and `reason=`. Path B sock
+`done=1` is takeover-now. `claim-ok` `path=b sticky=1` with sock not live is
+reboot (native Restart sheet, not a custom timer). Anything else is blocked
+with the exact SIP / helper / claim-ok / sock text.
+
+`--mode-b-engage` on reboot opens loginwindow Restart (`kAERestart`). On
+blocked it does not take over. On takeover-now it engages. Restage the helper
+(`Wawona --mode-b-stage`) so `--ack-status` includes `reason=`.
+
+Until this build of `Wawona` is installed, the same report is:
+
+```bash
+./scripts/wawona-modeb-cli.sh ready
 ```
 
 Default (no flags) still opens the Machines control panel after the compositor

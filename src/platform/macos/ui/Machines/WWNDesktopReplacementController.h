@@ -13,6 +13,20 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+typedef NS_ENUM(NSInteger, WWNModeBVerdict) {
+  WWNModeBVerdictTakeoverNow = 0,
+  WWNModeBVerdictReboot = 2,
+  WWNModeBVerdictBlocked = 3,
+};
+
+/** Shared Classic gate for CLI (`--mode-b-ready`) and Settings. */
+@interface WWNModeBReadyReport : NSObject
+@property(nonatomic, assign) WWNModeBVerdict verdict;
+@property(nonatomic, copy) NSString *token;
+@property(nonatomic, copy) NSString *reason;
+@property(nonatomic, copy) NSString *nextStep;
+@end
+
 @interface WWNDesktopReplacementController : NSObject
 
 + (instancetype)sharedController;
@@ -100,6 +114,16 @@ NS_ASSUME_NONNULL_BEGIN
  * Logs to stdout and /tmp/wawona-modeb-cli.log. Returns a process exit code.
  */
 - (int)cliStatus;
+/** Classic gate: takeover-now (0), reboot required (2), blocked (3). */
+- (int)cliReady;
+/** Same gate as CLI, with exact reason text for Settings / alerts. */
+- (WWNModeBReadyReport *)evaluateClassicReadiness;
+/**
+ * Ask loginwindow to restart via the Core Event `kAERestart` (TN QA1134).
+ * That is the native Restart sheet with the 60-second countdown, not a
+ * custom Wawona timer. Aqua must be up.
+ */
+- (BOOL)requestNativeMacOSRestart:(NSError *_Nullable *_Nullable)error;
 - (int)cliEngageKeepWindowServer:(BOOL)keepWindowServer;
 - (int)cliDisengage;
 /** Restage helper + dylib for this build. Does not take over the screen. */
