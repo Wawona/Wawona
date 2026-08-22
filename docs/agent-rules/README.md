@@ -13,6 +13,7 @@ the same non-negotiable gates.
 | [wawona-product-map.md](./wawona-product-map.md) | Swinging Bridge / Desktop / VMs / containers / Runtime packages |
 | [wawona-rust-first.md](./wawona-rust-first.md) | Wawona-owned code is Rust; C only as FFI/JNI/UI glue |
 | [wawona-release-assets.md](./wawona-release-assets.md) | GitHub + store binary filenames (CalVer / platform / arch) |
+| [wawona-github-funding.md](./wawona-github-funding.md) | GitHub Sponsors FUNDING.yml on every `github.com/Wawona` repo |
 | Canonical prose | [`../iland-mode-a-b-desktop.md`](../iland-mode-a-b-desktop.md) |
 | Entry AGENTS | [`../../AGENTS.md`](../../AGENTS.md) |
 

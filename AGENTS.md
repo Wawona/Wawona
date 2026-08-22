@@ -181,6 +181,10 @@ no-op even when `press`/`click` succeed. Prefer `press` / `gesture`; do not
   workspace rule `wawona-repo-dag`.
 - Builds are Nix-based; see `docs/compilation.md` and `docs/2026-nix-build-system.md`.
 - Don't commit secrets.
+- **GitHub Sponsors.** Every `github.com/Wawona/*` repo must ship the same
+  `.github/FUNDING.yml` as `Wawona/Wawona` (`github` / `ko_fi`:
+  `aspauldingcode`). Copy the file when creating a repo. See
+  `docs/agent-rules/wawona-github-funding.md` and rule `wawona-github-funding`.
 - **Desktop / LockScreen**. MacOS + Android **planned**; iOS/iPadOS only via
   `repo.wawona.io` (website). Forbidden in App Store Apple-mobile apps (never
   mention jailbreak there). See `wawona-platform-targets`,
