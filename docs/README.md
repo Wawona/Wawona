@@ -17,6 +17,7 @@ onto the site. Everything else stays in GitHub.
 | [protocol-status.md](protocol-status.md) | Generated advertised globals (never hand-count) |
 | [settings.md](settings.md) | Preference keys and Machines overrides |
 | [usage.md](usage.md) | Nested Weston/Niri, bundled clients |
+| [reporting-bugs.md](reporting-bugs.md) | How users copy logs and file GitHub issues |
 | [machine-profiles.md](machine-profiles.md) | Machine kinds: native, ssh_waypipe, ssh_terminal, VM, container |
 | [vms-containers.md](vms-containers.md) | Planned VM/container Machines (Mode A jitless / Mode B JIT) |
 | [mode-a-b.md](mode-a-b.md) | Product-wide Mode A (store) vs Mode B (jailbreak/SIP/root) |
