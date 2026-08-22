@@ -31,6 +31,9 @@ macOS and Android; iOS path only via `repo.wawona.io`. Website docs only).
 | App Store | Yes | **No** |
 | Platforms | macOS, iOS/iPadOS/visionOS, Android; tvOS/watchOS stubs | **macOS only** (Desktop/LockScreen host tweak) |
 
+**Hard:** macOS Mode A (SIP on, in-window present) must keep working. See
+`wawona-macos-mode-a`. Mode B never becomes the only macOS path.
+
 ## What Desktop / LockScreen is
 
 Replace the **host** desktop environment and lock screen with a Wawona machine

@@ -61,6 +61,9 @@ and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream synta
   - **Mode A (default, App Store-safe):** static `libiland_userland.a`, in-window
     present via `iland_drm_set_present_callback` → `WWNIlandPresenter`. Used on
     macOS/iOS/iPadOS/visionOS/Android (tvOS/watchOS stubs). No SIP, no dylib inject.
+    **macOS Mode A is mandatory:** SIP may stay enabled; DRM/KMS still renders
+    inside a Cocoa window. Mode B work must never break this. See
+    `wawona-macos-mode-a` and `docs/agent-rules/wawona-macos-mode-a.md`.
   - **Mode B (optional, macOS desktop-host only, planned):** ship
     `libwayland-mac.dylib`, load with `DYLD_INSERT_LIBRARIES` + Dobby when SIP
     allows (`WWNSipStatus`: SIP fully disabled via `csrutil disable`) **and** Settings →

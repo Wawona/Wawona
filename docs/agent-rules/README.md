@@ -7,7 +7,7 @@ the same non-negotiable gates.
 
 | Rule | Topic |
 |------|--------|
-| [wawona-iland-mode-b-desktop.md](./wawona-iland-mode-b-desktop.md) | Mode A vs Mode B, SIP Desktop/LockScreen, dylib shipping |
+| [wawona-macos-mode-a.md](./wawona-macos-mode-a.md) | macOS Mode A always works with SIP on (in-window iland DRM) |
 | [wawona-mode-b-watchdog-safety.md](./wawona-mode-b-watchdog-safety.md) | Never Take Over / LLDB-attach `watchdogd` (macOS 26 SIGTRAP panic) |
 | [wawona-swinging-bridge.md](./wawona-swinging-bridge.md) | Wawona Swinging Bridge Mode A/B (not Desktop) |
 | [wawona-product-map.md](./wawona-product-map.md) | Swinging Bridge / Desktop / VMs / containers / Runtime packages |
