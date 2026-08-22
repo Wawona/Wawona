@@ -150,6 +150,8 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
 - (BOOL)sudoersAllowsHelper;
 - (pid_t)readLiveCompositorPid;
 - (int)runSudoNHelper:(NSArray<NSString *> *)extraArgs;
+- (int)runSudoNHelper:(NSArray<NSString *> *)extraArgs
+           stdoutText:(NSString *_Nullable *_Nullable)stdoutText;
 - (NSDictionary<NSString *, NSString *> *)modeBStrippedEnvironment;
 - (NSString *)modeBFileCleanupShell;
 - (BOOL)installModeBHelperAndDylibForProfile:(WWNMachineProfile *)profile
@@ -400,22 +402,18 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                            : nil;
   if (selected) {
     NSString *cid = [self nativeClientIdForProfile:selected];
-    if ([cid isEqualToString:@"modeb-tty"] ||
-        [cid isEqualToString:@"modeb-ttyd"] ||
-        [cid isEqualToString:@"kmscube"] ||
+    if ([cid isEqualToString:@"kmscube"] ||
         [WWNMachineProfileStore profileIndicatesNestedCompositor:selected]) {
       return YES;
     }
   }
 
   for (WWNMachineProfile *profile in [WWNMachineProfileStore loadProfiles]) {
-    NSString *cid = [self nativeClientIdForProfile:profile];
-    if (([cid isEqualToString:@"modeb-tty"] ||
-         [cid isEqualToString:@"modeb-ttyd"]) &&
+    if ([WWNMachineProfileStore profileIndicatesNestedCompositor:profile] &&
         profile.machineId.length > 0) {
       [defs setObject:profile.machineId
                forKey:kWWNPrefsDesktopReplacementMachineId];
-      NSLog(@"[DesktopReplacement] selected Mode B TTY machine %@",
+      NSLog(@"[DesktopReplacement] selected compositor machine %@",
             profile.machineId);
       return YES;
     }
@@ -426,41 +424,24 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     if ([cid isEqualToString:@"kmscube"] && profile.machineId.length > 0) {
       [defs setObject:profile.machineId
                forKey:kWWNPrefsDesktopReplacementMachineId];
-      NSLog(@"[DesktopReplacement] selected existing kmscube proof machine %@",
+      NSLog(@"[DesktopReplacement] selected kmscube DRM machine %@",
             profile.machineId);
       return YES;
     }
   }
 
-  for (WWNMachineProfile *profile in [WWNMachineProfileStore loadProfiles]) {
-    if ([WWNMachineProfileStore profileIndicatesNestedCompositor:profile] &&
-        profile.machineId.length > 0) {
-      [defs setObject:profile.machineId
-               forKey:kWWNPrefsDesktopReplacementMachineId];
-      NSLog(@"[DesktopReplacement] selected existing compositor machine %@",
-            profile.machineId);
-      return YES;
-    }
-  }
-
-  WWNMachineProfile *created = [self createModeBTtyMachine];
-  if (!created || created.machineId.length == 0) {
-    if (error) {
-      *error = [NSError
-          errorWithDomain:@"WWNDesktopReplacement"
-                     code:9
+  if (error) {
+    *error = [NSError
+        errorWithDomain:@"WWNDesktopReplacement"
+                   code:9
                  userInfo:@{
                    NSLocalizedDescriptionKey :
-                       @"Could not create a Mode B TTY machine."
+                       @"Pick an iland DRM/KMS machine (weston, niri, or "
+                       @"kmscube) under Settings → Desktop Replacement. "
+                       @"wwn-igetty always provides VT switching."
                  }];
-    }
-    return NO;
   }
-  [defs setObject:created.machineId
-           forKey:kWWNPrefsDesktopReplacementMachineId];
-  NSLog(@"[DesktopReplacement] created Mode B TTY machine %@",
-        created.machineId);
-  return YES;
+  return NO;
 }
 
 - (NSError *)injectionPreflightError {
@@ -838,29 +819,53 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"  restore_aqua\n"
                        @"  exit 0\n"
                        @"fi\n"
-                       @"if [ \"${1-}\" = \"--ack-status\" ]; then\n"
-                       @"  # Live Disable for Classic gate (root can read sock).\n"
-                       @"  if [ -f /tmp/libwayland-support/"
-                       @"iowatchdog-userspace-disabled ]; then\n"
-                       @"    wwn_log \"ack-status live=1 marker=yes\"\n"
-                       @"    exit 0\n"
+                       @"if [ \"${1-}\" = \"--ack-status\" ] || "
+                       @"[ \"${1-}\" = \"--ready\" ]; then\n"
+                       @"  # Same LIVE_DIS as Classic: Path B sock done=1.\n"
+                       @"  # Marker alone is not live while pathb plist exists.\n"
+                       @"  CLAIM=$(cat \"$CLAIM_OK\" 2>/dev/null | tr '\\n' ' ')\n"
+                       @"  PATHB_PLIST=0\n"
+                       @"  if [ -f /Library/LaunchDaemons/"
+                       @"com.aspauldingcode.wwn-iowatchdog-pathb.plist ]; then\n"
+                       @"    PATHB_PLIST=1\n"
                        @"  fi\n"
+                       @"  MARKER=0\n"
+                       @"  if [ -f /tmp/libwayland-support/"
+                       @"iowatchdog-userspace-disabled ]; then MARKER=1; fi\n"
                        @"  SOCK=/var/run/wwn-iowatchdog.sock\n"
+                       @"  SOCK_ST=\n"
                        @"  if [ -S \"$SOCK\" ]; then\n"
-                       @"    reply=$(/usr/bin/python3 -c "
+                       @"    SOCK_ST=$(/usr/bin/python3 -c "
                        @"\"import socket;s=socket.socket(socket.AF_UNIX);"
                        @"s.settimeout(1.0);s.connect('$SOCK');"
                        @"s.send(b'status\\\\n');"
                        @"print(s.recv(256).decode(), end='')\" "
                        @"2>/dev/null || true)\n"
-                       @"    case \"$reply\" in\n"
-                       @"      *done=1*)\n"
-                       @"        wwn_log \"ack-status live=1 sock=done=1\"\n"
-                       @"        exit 0\n"
-                       @"        ;;\n"
-                       @"    esac\n"
                        @"  fi\n"
-                       @"  wwn_log \"ack-status live=0\"\n"
+                       @"  LIVE=0\n"
+                       @"  case \"$SOCK_ST\" in *done=1*) LIVE=1 ;; esac\n"
+                       @"  if [ \"$LIVE\" = 0 ] && [ \"$MARKER\" = 1 ] && "
+                       @"[ \"$PATHB_PLIST\" != 1 ]; then LIVE=1; fi\n"
+                       @"  REBOOT=0\n"
+                       @"  case \"$CLAIM\" in\n"
+                       @"    *path=b*sticky=1*|*sticky=1*path=b*)\n"
+                       @"      if [ \"$LIVE\" != 1 ]; then REBOOT=1; fi\n"
+                       @"      ;;\n"
+                       @"  esac\n"
+                       @"  if [ \"$REBOOT\" = 1 ]; then V=reboot\n"
+                       @"  elif [ \"$LIVE\" = 1 ]; then V=takeover-now\n"
+                       @"  else V=blocked; fi\n"
+                       @"  echo \"claim_ok=$CLAIM\"\n"
+                       @"  echo \"pathb_plist=$PATHB_PLIST\"\n"
+                       @"  echo \"marker=$MARKER\"\n"
+                       @"  echo \"sock=$SOCK_ST\"\n"
+                       @"  echo \"ack_live=$LIVE\"\n"
+                       @"  echo \"need_reboot=$REBOOT\"\n"
+                       @"  echo \"verdict=$V\"\n"
+                       @"  wwn_log \"ack-status live=$LIVE reboot=$REBOOT "
+                       @"verdict=$V sock=$SOCK_ST\"\n"
+                       @"  if [ \"$LIVE\" = 1 ]; then exit 0; fi\n"
+                       @"  if [ \"$REBOOT\" = 1 ]; then exit 2; fi\n"
                        @"  exit 1\n"
                        @"fi\n"
                        @"if [ \"${1-}\" = \"--drop-lock\" ]; then\n"
@@ -1111,8 +1116,10 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"PY\n"];
   [script appendString:@"  }\n"];
   [script appendString:@"  write_machservice_plist() {\n"];
-  [script appendString:@"    # $1=label $2=bin $3=mach service name\n"];
+  [script appendString:@"    # $1=label $2=bin $3=mach $4=hid|display (inputd vs framebufferd defer)\n"];
   [script appendString:@"    plist=/Library/LaunchDaemons/$1.plist\n"];
+  [script appendString:@"    defer_key=WWN_MODEB_DEFER_DISPLAY\n"];
+  [script appendString:@"    if [ \"$4\" = hid ]; then defer_key=WWN_MODEB_DEFER_HID; fi\n"];
   [script appendString:@"    /bin/cat > \"$plist\" <<PLIST\n"];
   [script appendString:@"<?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\"?>\n"];
   [script appendString:@"<!DOCTYPE plist PUBLIC \\\"-//Apple//DTD PLIST 1.0//EN\\\" "
@@ -1124,7 +1131,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"  </array>\n"];
   [script appendString:@"  <key>EnvironmentVariables</key><dict>\n"];
   [script appendString:@"    <key>WWN_MODEB_LAUNCHD</key><string>1</string>\n"];
-  [script appendString:@"    <key>WWN_MODEB_DEFER_DISPLAY</key><string>1</string>\n"];
+  [script appendString:@"    <key>$defer_key</key><string>1</string>\n"];
   [script appendString:@"  </dict>\n"];
   [script appendString:@"  <key>MachServices</key><dict>\n"];
   [script appendString:@"    <key>$3</key><true/>\n"];
@@ -1185,22 +1192,15 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @">/dev/null 2>&1 || true\n"];
   [script appendString:@"  /usr/bin/pkill -u 0 -x inputd >/dev/null 2>&1 || true\n"];
   [script appendString:@"  /usr/bin/pkill -u 0 -x framebufferd >/dev/null 2>&1 || true\n"];
-  [script appendString:@"  sleep 0.2\n"];
+  [script appendString:@"  sleep 0.5\n"];
   [script appendString:@"  unset WWN_MODEB_KEEP_WS\n"];
   [script appendString:@"  write_machservice_plist com.wayland-mac.inputd "
-                       @"/tmp/libwayland-support/inputd com.wayland-mac.inputd\n"];
+                       @"/tmp/libwayland-support/inputd com.wayland-mac.inputd hid\n"];
   [script appendString:@"  write_machservice_plist com.wayland-mac.framebufferd "
                        @"/tmp/libwayland-support/framebufferd "
-                       @"com.wayland-mac.framebufferd\n"];
-  /* inputd keeps WWN_MODEB_LAUNCHD (defers HID until modeb-display-go after
-   * WS unload). Drop DEFER_DISPLAY (framebufferd-only) and set DEFER_HID. */
-  [script appendString:@"  /usr/bin/plutil -remove EnvironmentVariables.WWN_MODEB_DEFER_DISPLAY "
-                       @"/Library/LaunchDaemons/com.wayland-mac.inputd.plist "
-                       @">/dev/null 2>&1 || true\n"];
-  [script appendString:@"  /usr/bin/plutil -replace EnvironmentVariables.WWN_MODEB_DEFER_HID "
-                       @"-string 1 "
-                       @"/Library/LaunchDaemons/com.wayland-mac.inputd.plist "
-                       @">/dev/null 2>&1 || true\n"];
+                       @"com.wayland-mac.framebufferd display\n"];
+  /* Do not plutil a live inputd plist: launchd SIGTERMs the job to reload,
+   * KeepAlive is false, HID path dies before WS unload. */
   [script appendString:@"  /bin/launchctl bootstrap system "
                        @"/Library/LaunchDaemons/com.wayland-mac.inputd.plist "
                        @">>\"$LOG\" 2>&1 || true\n"];
@@ -1257,6 +1257,9 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"(modeb-mach.ready); stop userspace watchdogd + unload WS\"\n"];
   [script appendString:@"  ipid=$(cat /tmp/libwayland-support/inputd.pid "
                        @"2>/dev/null || true)\n"];
+  [script appendString:@"  if [ -z \"$ipid\" ] || ! kill -0 \"$ipid\" 2>/dev/null; then\n"];
+  [script appendString:@"    ipid=$(pgrep -u 0 -x inputd | head -1)\n"];
+  [script appendString:@"  fi\n"];
   [script appendString:@"  if [ -z \"$ipid\" ] || ! kill -0 \"$ipid\" 2>/dev/null; then\n"];
   [script appendString:@"    write_reason \"Mode B inputd died before WindowServer "
                        @"unload (no keyboard path). Left Aqua running. See "
@@ -2696,6 +2699,12 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
 }
 
 - (int)runSudoNHelper:(NSArray<NSString *> *)extraArgs {
+  NSString *ignored = nil;
+  return [self runSudoNHelper:extraArgs stdoutText:&ignored];
+}
+
+- (int)runSudoNHelper:(NSArray<NSString *> *)extraArgs
+           stdoutText:(NSString *_Nullable *_Nullable)stdoutText {
   NSString *helper = [self modeBHelperPath];
   NSMutableArray<NSString *> *args =
       [NSMutableArray arrayWithObjects:@"-n", helper, nil];
@@ -2706,14 +2715,24 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   task.executableURL = [NSURL fileURLWithPath:@"/usr/bin/sudo"];
   task.arguments = args;
   task.environment = [self modeBStrippedEnvironment];
-  task.standardOutput = [NSPipe pipe];
+  NSPipe *out = [NSPipe pipe];
+  task.standardOutput = out;
   task.standardError = [NSPipe pipe];
   NSError *err = nil;
   if (![task launchAndReturnError:&err]) {
     WWNModeBCliLog(@"sudo -n helper launch failed: %@", err);
+    if (stdoutText) {
+      *stdoutText = @"";
+    }
     return 1;
   }
   [task waitUntilExit];
+  NSData *data = [out.fileHandleForReading readDataToEndOfFile];
+  NSString *text =
+      [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
+  if (stdoutText) {
+    *stdoutText = text;
+  }
   return task.terminationStatus;
 }
 
@@ -2983,6 +3002,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   } else {
     WWNModeBCliLog(@"  preflight: ok");
   }
+  (void)[self cliReady];
   if (pid > 0) {
     WWNModeBCliLog(@"RESULT live compositor pid=%d", (int)pid);
     return 0;
@@ -2991,9 +3011,107 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   return 1;
 }
 
+- (int)cliReady {
+  WWNModeBCliLog(@"mode-b-ready");
+  WWNSipStatusType sip = [WWNSipStatus current];
+  BOOL sipOk = [WWNSipStatus allowsDesktopReplacement:sip];
+  WWNModeBCliLog(@"  sip=%@ allows=%d", [WWNSipStatus describe:sip],
+                 sipOk ? 1 : 0);
+
+  pid_t pid = [self readLiveCompositorPid];
+  BOOL wsUp = [self isAppleWindowServerRunning];
+  if (pid > 0 && !wsUp) {
+    WWNModeBCliLog(@"  already_engaged pid=%d", (int)pid);
+    WWNModeBCliLog(@"VERDICT takeover-now");
+    WWNModeBCliLog(@"next: already on Classic (Ctrl+Option+Backspace restores "
+                   @"Aqua)");
+    return 0;
+  }
+
+  BOOL helperOk = [[NSFileManager defaultManager]
+      isExecutableFileAtPath:[self modeBHelperPath]];
+  BOOL sudoOk = [self sudoersAllowsHelper];
+  WWNModeBCliLog(@"  helper=%d sudoers=%d", helperOk ? 1 : 0, sudoOk ? 1 : 0);
+  if (!sipOk) {
+    WWNModeBCliLog(@"VERDICT blocked");
+    WWNModeBCliLog(@"next: csrutil disable, reboot, then Wawona --mode-b-ready");
+    return 3;
+  }
+  if (!helperOk || !sudoOk) {
+    WWNModeBCliLog(@"VERDICT blocked");
+    WWNModeBCliLog(@"next: Wawona --mode-b-stage (admin once), then "
+                   @"Wawona --mode-b-ready");
+    return 3;
+  }
+
+  NSString *ackOut = nil;
+  int ack = [self runSudoNHelper:@[ @"--ack-status" ] stdoutText:&ackOut];
+  for (NSString *line in [ackOut componentsSeparatedByCharactersInSet:
+                                     [NSCharacterSet newlineCharacterSet]]) {
+    if (line.length == 0) {
+      continue;
+    }
+    WWNModeBCliLog(@"  %@", line);
+  }
+
+  NSString *verdict = @"blocked";
+  BOOL needReboot = NO;
+  BOOL live = NO;
+  for (NSString *line in [ackOut componentsSeparatedByCharactersInSet:
+                                     [NSCharacterSet newlineCharacterSet]]) {
+    if ([line hasPrefix:@"verdict="]) {
+      verdict = [line substringFromIndex:8];
+    } else if ([line hasPrefix:@"need_reboot="]) {
+      needReboot = [[line substringFromIndex:12] isEqualToString:@"1"];
+    } else if ([line hasPrefix:@"ack_live="]) {
+      live = [[line substringFromIndex:9] isEqualToString:@"1"];
+    }
+  }
+  if (ackOut.length == 0) {
+    if (ack == 0) {
+      live = YES;
+      verdict = @"takeover-now";
+    } else {
+      NSString *claim =
+          [NSString stringWithContentsOfFile:kWWNModeBClaimOkPath
+                                    encoding:NSUTF8StringEncoding
+                                       error:nil];
+      if ([claim containsString:@"path=b"] &&
+          [claim containsString:@"sticky=1"]) {
+        needReboot = YES;
+        verdict = @"reboot";
+      }
+    }
+  }
+
+  if (live || [verdict isEqualToString:@"takeover-now"]) {
+    WWNModeBCliLog(@"VERDICT takeover-now");
+    WWNModeBCliLog(@"next: Wawona --mode-b-engage");
+    return 0;
+  }
+  if (needReboot || [verdict isEqualToString:@"reboot"] || ack == 2) {
+    WWNModeBCliLog(@"VERDICT reboot");
+    WWNModeBCliLog(@"next: reboot, then Wawona --mode-b-ready "
+                   @"(Path B sock must be done=1 dkr=0x0). "
+                   @"Then Wawona --mode-b-engage");
+    return 2;
+  }
+  WWNModeBCliLog(@"VERDICT blocked");
+  WWNModeBCliLog(@"next: arm Path B (claim-install --path-b), reboot, "
+                 @"Wawona --mode-b-ready");
+  return 3;
+}
+
 - (int)cliEngageKeepWindowServer:(BOOL)keepWindowServer {
   WWNModeBCliLog(@"mode-b-engage keepWindowServer=%d",
                  keepWindowServer ? 1 : 0);
+  if (!keepWindowServer) {
+    int ready = [self cliReady];
+    if (ready != 0) {
+      WWNModeBCliLog(@"engage aborted (not takeover-now)");
+      return ready;
+    }
+  }
   if (keepWindowServer) {
     [@"" writeToFile:kWWNModeBKeepWsPath atomically:YES
             encoding:NSUTF8StringEncoding
@@ -3227,6 +3345,9 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   return NO;
 }
 - (int)cliStatus {
+  return 2;
+}
+- (int)cliReady {
   return 2;
 }
 - (int)cliEngageKeepWindowServer:(BOOL)keepWindowServer {
