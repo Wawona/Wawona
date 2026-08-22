@@ -10,6 +10,8 @@ as history.
 
 ## [Unreleased]
 
+## [26.8.22] - 2026-08-22
+
 ### Fixed
 
 - **Classic Take Over after 2026-08-20 evening SIGTRAP panic.** Stage no
