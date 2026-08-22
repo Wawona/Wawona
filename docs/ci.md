@@ -34,7 +34,12 @@ Workflow display names use a role prefix (`Gate` / `Build` / `Watch` / `Ship`). 
 | **Gate: products** (`device-gate.yml`) | path filter push | path filter push | Fans out **Build: products** by product (`only:`); GUI smoke lanes start per-product (iOS does not wait on AppImages) |
 | **Build: products** (`product-build.yml`) | via Gate: products / Ship | via gate / Ship: beta (`only: appimage`) / Ship: GitHub assets | Sole pure producer: iOS sim `.app`, debug APK, macOS `.app`, AppImages (callable only) |
 | **Build: GUI smoke** (`device-e2e.yml`) | via Gate: products (`products_ready`) | via gate | Smoke + fuzzel (fuzzel skipped on `pull_request` only); callable only |
+<<<<<<< HEAD
 | **Watch: graphics nightly** (`nightly-full-matrix.yml`) | schedule / dispatch | — | Graphics + protocol drift + Weston/XWayland capability (does **not** re-run Gate: products) |
+=======
+| **Watch: graphics nightly** (`nightly-full-matrix.yml`) | schedule / dispatch | - | Graphics + protocol drift + Weston/XWayland capability (does **not** re-run Gate: products) |
+| **Watch: TestFlight feedback** (`testflight-feedback.yml`) | schedule / dispatch | schedule / dispatch | Poll ASC TestFlight screenshot/crash feedback → GitHub issues (PII stripped). `release-beta` secrets. Not a promote gate |
+>>>>>>> f2d7035 (feat: import TestFlight ASC feedback into GitHub issues)
 | **Watch: idle memory** (`leak-idle-gate.yml`) | via Gate: products (`products_ready`) + schedule + dispatch | via Gate: products | Start→60s footprint/PSS plateau on product iOS/Android/macOS; fails with `LEAK_GATE_FAIL targets=…` ([docs/testing/leak-idle-gate.md](./testing/leak-idle-gate.md)). Reuses Gate: products `product-*` artifacts (no duplicate product-build). **Not** a promote blocker (`continue-on-error` on idle-memory jobs inside the reusable workflow; invalid on `uses:` callers) |
 | **Watch: bundled clients** (`bundled-clients-matrix.yml`) | schedule + dispatch | — | Every `kBundledClients` id × runnable platforms; `MATRIX_FAIL cells=platform/client,…` ([docs/testing/bundled-clients-matrix-gate.md](./testing/bundled-clients-matrix-gate.md)). **Not** a promote blocker yet |
 | **Ship: beta (stores)** (`release-beta.yml`) | — | push + tags `v*` | Fastlane stores (match+gym). **Does not build AppImages** — see Ship: beta AppImages below |
