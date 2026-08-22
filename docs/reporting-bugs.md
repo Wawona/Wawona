@@ -52,8 +52,11 @@ feedback (or instead, if you prefer GitHub):
    diagnostics**.
 
 If you already sent TestFlight feedback, say so in the GitHub issue (date and
-a short quote is enough). We cannot see TestFlight comments from GitHub, and
-we cannot see GitHub from App Store Connect unless you link them.
+a short quote is enough). A scheduled importer (`Watch: TestFlight feedback`)
+opens a GitHub issue when App Store Connect receives screenshot or crash
+feedback. Tester email, UDID, IPs, and screenshot EXIF are stripped; sanitized
+screenshots are attached when GitHub accepts the upload. Copied in-app logs are
+still not in that payload. Paste them on the imported issue if you have them.
 
 TestFlight invites are posted on the [Wawona Discord](https://discord.gg/wHVSV52uw5).
 

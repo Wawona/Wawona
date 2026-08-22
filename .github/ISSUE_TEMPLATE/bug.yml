@@ -15,9 +15,9 @@ body:
         logs are how we see Start/Focus doing nothing.
 
         TestFlight testers: also send **Beta Feedback** from the TestFlight app
-        (crashes already go to App Store Connect). Still paste Copy Recent Logs
-        here. Set install channel to TestFlight. If you already sent TestFlight
-        feedback, say so in What happened.
+        (crashes already go to App Store Connect). A GitHub issue is opened from
+        that feedback automatically (identity stripped). Still paste Copy Recent
+        Logs here when you can. Set install channel to TestFlight.
 
   - type: dropdown
     id: platform
@@ -42,9 +42,9 @@ body:
       label: How you installed Wawona
       options:
         - TestFlight
-        - Sideload IPA (Xcode, AltStore, TrollStore, or similar)
+        - Sideload IPA (Xcode, AltStore, TrollStore, Sileo or similar)
         - App Store
-        - Simulator
+        - Simulator or Emulator
         - nix / local build
         - Play Store / sideload APK
         - Other

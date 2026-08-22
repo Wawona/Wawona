@@ -1,0 +1,66 @@
+name: "Watch: TestFlight feedback"
+
+# Poll App Store Connect for TestFlight screenshot/crash feedback and open
+# GitHub issues (PII stripped). Uses the same ASC key as Ship: beta.
+
+on:
+  schedule:
+    - cron: "12,42 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "List new submissions without opening issues"
+        type: boolean
+        default: false
+
+concurrency:
+  group: testflight-feedback
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+  actions: write
+
+jobs:
+  import:
+    name: Import ASC feedback
+    if: github.repository == 'Wawona/Wawona'
+    runs-on: ubuntu-latest
+    environment: release-beta
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install importer deps
+        run: python3 -m pip install --quiet "pyjwt[crypto]" pillow
+
+      - name: Self-test redaction
+        run: python3 .github/scripts/import-testflight-feedback.py --self-test
+
+      - name: Import TestFlight feedback
+        env:
+          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          extra=()
+          if [[ "${{ github.event.inputs.dry_run }}" == "true" ]]; then
+            extra+=(--dry-run)
+          fi
+          python3 .github/scripts/import-testflight-feedback.py "${extra[@]}"
+
+      - name: Upload sanitized inbox
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testflight-inbox
+          path: testflight-inbox/
+          if-no-files-found: ignore
+          retention-days: 30

@@ -114,6 +114,10 @@ pass show secretspec/wawona/release-apple/DEVELOPER_ID_APPLICATION_P12_BASE64 | 
 Notary auth reuses `ASC_*` → GitHub `APP_STORE_CONNECT_*`. Keep identities in
 the login Keychain for local signing; pass is the CI/vault copy.
 
+CI path: **Watch: TestFlight feedback** (`testflight-feedback.yml`) reuses the
+same `APP_STORE_CONNECT_*` secrets on Environment `release-beta` to poll
+screenshot and crash feedback and open GitHub issues. No extra keys.
+
 CI path: **Ship: GitHub assets** → `release-macos` →
 [`scripts/macos-sign-and-notarize-dmg.sh`](../../scripts/macos-sign-and-notarize-dmg.sh)
 (entitlements:
