@@ -14,6 +14,11 @@ body:
         Sideloaded iOS IPAs do not go through TestFlight crash reports. Copied
         logs are how we see Start/Focus doing nothing.
 
+        TestFlight testers: also send **Beta Feedback** from the TestFlight app
+        (crashes already go to App Store Connect). Still paste Copy Recent Logs
+        here. Set install channel to TestFlight. If you already sent TestFlight
+        feedback, say so in What happened.
+
   - type: dropdown
     id: platform
     attributes:

@@ -21,6 +21,42 @@ A useful report has all of these:
 Sideloaded iOS IPAs do not go through TestFlight crash mail. Copied logs are how
 we see those builds.
 
+## TestFlight (Apple beta)
+
+If **Install** in Settings → About says TestFlight, you have two channels. Use
+both when you can.
+
+### TestFlight feedback (App Store Connect)
+
+Crashes on a TestFlight build are sent to App Store Connect on their own. For
+anything that is not a crash (Start does nothing, a blank compositor, a wrong
+window):
+
+1. Reproduce the problem.
+2. Take a screenshot in Wawona, or open the **TestFlight** app, select Wawona,
+   and send **Beta Feedback**.
+3. Write what you tapped and what you saw. Attach the screenshot if TestFlight
+   offers it.
+
+That feedback is the beta-tester path Apple provides. It does not include
+Wawona's in-app log ring.
+
+### GitHub with copied logs (still do this)
+
+TestFlight mail does not replace copied diagnostics. After you send TestFlight
+feedback (or instead, if you prefer GitHub):
+
+1. **Settings → About → Copy Recent Logs** (or **Copy Active Machine Logs**).
+2. Open [the bug form](https://github.com/Wawona/Wawona/issues/new?template=bug.yml).
+3. Set install channel to **TestFlight**. Paste the clipboard into **Copied
+   diagnostics**.
+
+If you already sent TestFlight feedback, say so in the GitHub issue (date and
+a short quote is enough). We cannot see TestFlight comments from GitHub, and
+we cannot see GitHub from App Store Connect unless you link them.
+
+TestFlight invites are posted on the [Wawona Discord](https://discord.gg/wHVSV52uw5).
+
 Do not paste SSH passwords, key passphrases, or other secrets. The in-app copy
 already omits those fields.
 
