@@ -2152,6 +2152,12 @@ ICDJSON
                 sign_bin "$MACOS_DEST/modeb-ttyd"
                 ln -sf modeb-ttyd "$BIN_DEST/modeb-tty"
                 ln -sf modeb-ttyd "$MACOS_DEST/modeb-tty"
+                if [ -f "$MODEB_TTY_BIN/modeb-getty" ]; then
+                  require_bin "$MODEB_TTY_BIN/modeb-getty" "modeb-getty"
+                  install -m 755 "$MODEB_TTY_BIN/modeb-getty" "$MACOS_DEST/modeb-getty"
+                  sign_bin "$MACOS_DEST/modeb-getty"
+                  ln -sf ../MacOS/modeb-getty "$BIN_DEST/modeb-getty"
+                fi
               fi
               # Wayland clients: Machines Start launches these as NSTasks against
               # the compositor socket. Archives (opengl_cube_main / vkcube_main)

@@ -682,8 +682,18 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"  if [ -f /var/db/wwn-iowatchdog/claim-ok ] || "
                        @"[ -f /Library/LaunchDaemons/com.aspauldingcode.wwn-iowatchdog-pathb.plist ] || "
                        @"[ -f /Library/LaunchDaemons/com.aspauldingcode.wwn-iowatchdog-claim.plist ]; then\n"
-                       @"    wwn_log \"Path A/B sticky live: refuse Apple enable / "
-                       @"iowatchdog enable (run claim-install --heal)\"\n"
+                       @"    wwn_log \"Path A/B sticky: refuse Apple enable / "
+                       @"iowatchdog enable; re-bootstrap Path B only\"\n"
+                       @"    if [ -f /Library/LaunchDaemons/"
+                       @"com.aspauldingcode.wwn-iowatchdog-pathb.plist ]; then\n"
+                       @"      /bin/launchctl bootstrap system "
+                       @"/Library/LaunchDaemons/com.aspauldingcode.wwn-iowatchdog-pathb.plist "
+                       @">/dev/null 2>&1 || true\n"
+                       @"      /bin/launchctl kickstart "
+                       @"system/com.aspauldingcode.wwn-iowatchdog-pathb "
+                       @">/dev/null 2>&1 || true\n"
+                       @"      wwn_log \"Path B bootstrap after Classic\"\n"
+                       @"    fi\n"
                        @"    rm -f /tmp/libwayland-support/wawona-unloaded-watchdogd\n"
                        @"    return 0\n"
                        @"  fi\n"
@@ -715,8 +725,15 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"  fi\n"
                        @"}\n"
                        @"stop_watchdogd_after_iowatchdog() {\n"
-                       @"  # ONLY after sticky Disable ACK (claim-ok).\n"
-                       @"  # Path B may be the live watchdogd; boot it out too.\n"
+                       @"  # ONLY after sticky Disable ACK (claim-ok + sock done=1).\n"
+                       @"  # Kernel IOWatchdog Disable is sticky after done=1\n"
+                       @"  # (wwn-iowatchdog path-a-path-b.md): closing the client\n"
+                       @"  # does not Reenable. Classic MUST stop the userspace\n"
+                       @"  # watchdogd process: it still expects WindowServer\n"
+                       @"  # checkins. Leaving Path B hooked watchdogd up after\n"
+                       @"  # WS bootout → panic at 120s (2026-08-21 16:01):\n"
+                       @"  # 'no successful checkins from WindowServer',\n"
+                       @"  # 'WindowServer appears to not exist in launchd'.\n"
                        @"  /bin/launchctl bootout "
                        @"system/com.aspauldingcode.wwn-iowatchdog-pathb "
                        @">/dev/null 2>&1 || true\n"
@@ -726,17 +743,15 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"  /bin/launchctl bootout "
                        @"system/com.aspauldingcode.wwn-iowatchdog-restore "
                        @">/dev/null 2>&1 || true\n"
-                       @"  /bin/launchctl disable system/com.apple.watchdogd; "
-                       @"wwn_log \"wd_disable_st=$?\"\n"
-                       @"  /bin/launchctl bootout system/com.apple.watchdogd; "
-                       @"wwn_log \"wd_bootout_st=$?\"\n"
-                       @"  /bin/launchctl unload -w \"$WD_PLIST\" "
+                       @"  /bin/launchctl bootout system/com.apple.watchdogd "
                        @">/dev/null 2>&1 || true\n"
+                       @"  /usr/bin/pkill -x watchdogd >/dev/null 2>&1 || true\n"
                        @"  mkdir -p /tmp/libwayland-support 2>/dev/null || true\n"
                        @"  echo unloaded > /tmp/libwayland-support/wawona-unloaded-watchdogd\n"
                        @"  chmod 666 /tmp/libwayland-support/wawona-unloaded-watchdogd "
                        @"2>/dev/null || true\n"
-                       @"  wwn_log \"watchdogd unloaded after IOWatchdog ACK\"\n"
+                       @"  wwn_log \"userspace watchdogd stopped after IOWatchdog "
+                       @"Disable ACK (kernel Disable stays sticky; no Reenable)\"\n"
                        @"}\n"
                        @"stop_window_server() {\n"
                        @"  # NEVER `launchctl disable` or `unload -w` on\n"
@@ -785,6 +800,9 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"  if [ \"${WWN_RESTORING:-0}\" = 1 ]; then return 0; fi\n"
                        @"  WWN_RESTORING=1\n"
                        @"  trap - TERM INT HUP\n"
+                       @"  # WindowServer FIRST: userspace watchdogd panics at 120s\n"
+                       @"  # without checkins. Do not spend that budget on cleanup.\n"
+                       @"  restore_window_server\n"
                        @"  kill_compositor\n"
                        @"  stop_other_helpers\n"
                        @"  /bin/launchctl bootout "
@@ -807,11 +825,11 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"  /bin/launchctl bootout "
                        @"system/com.aspauldingcode.wawona.modeb "
                        @">/dev/null 2>&1 || true\n"
-                       @"  restore_window_server\n"
                        @"  restore_watchdogd\n"
                        @"  rmdir /tmp/libwayland-support/modeb.lock 2>/dev/null || true\n"
                        @"  rm -rf /tmp/libwayland-support/modeb.lock 2>/dev/null || true\n"
                        @"  wwn_log \"restore_aqua done\"\n"
+                       @"  cp \"$LOG\" \"$PERSIST_LOG\" 2>/dev/null || true\n"
                        @"}\n"
                        @"touch \"$LOG\" 2>/dev/null || true\n"
                        @"chmod 666 \"$LOG\" 2>/dev/null || true\n"
@@ -1009,14 +1027,14 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"2>/dev/null | tr '\\n' ' ')\"\n"];
   /* Live Disable evidence required. Never invent the marker before unload
    * (2026-08-20 evening: claim-ok stale + fabricated marker + unload →
-   * watchdogd SIGTRAP panic while kernel monitoring still armed). */
+   * watchdogd SIGTRAP panic while kernel monitoring still armed).
+   * Path B: require sock done=1 (marker alone is stale after pathb
+   * restart; 2026-08-21 Classic bootout left marker=yes done=0). */
   [script appendString:@"  LIVE_DIS=0\n"];
   [script appendString:@"  MARKER=/tmp/libwayland-support/"
                        @"iowatchdog-userspace-disabled\n"];
   [script appendString:@"  SOCK=/var/run/wwn-iowatchdog.sock\n"];
-  [script appendString:@"  if [ -f \"$MARKER\" ]; then LIVE_DIS=1; "
-                       @"wwn_log \"live Disable marker present\"; fi\n"];
-  [script appendString:@"  if [ \"$LIVE_DIS\" = 0 ] && [ -S \"$SOCK\" ]; then\n"];
+  [script appendString:@"  if [ -S \"$SOCK\" ]; then\n"];
   [script appendString:@"    SOCK_ST=$(/usr/bin/python3 -c "
                        @"\"import socket;s=socket.socket(socket.AF_UNIX);"
                        @"s.settimeout(1.0);s.connect('$SOCK');"
@@ -1024,15 +1042,22 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"print(s.recv(256).decode(), end='')\" "
                        @"2>/dev/null || true)\n"];
   [script appendString:@"    wwn_log \"pathb sock status: $SOCK_ST\"\n"];
-  [script appendString:@"    case \"$SOCK_ST\" in *done=1*) LIVE_DIS=1 ;; "
+  [script appendString:@"    case \"$SOCK_ST\" in *done=1*) LIVE_DIS=1; "
+                       @"wwn_log \"live Disable via Path B sock done=1\" ;; "
                        @"esac\n"];
+  [script appendString:@"  fi\n"];
+  [script appendString:@"  if [ \"$LIVE_DIS\" = 0 ] && [ -f \"$MARKER\" ] && "
+                       @"[ ! -f /Library/LaunchDaemons/"
+                       @"com.aspauldingcode.wwn-iowatchdog-pathb.plist ]; then\n"];
+  [script appendString:@"    LIVE_DIS=1; wwn_log \"live Disable marker present "
+                       @"(non-Path-B)\"\n"];
   [script appendString:@"  fi\n"];
   [script appendString:@"  if [ \"$LIVE_DIS\" != 1 ]; then\n"];
   [script appendString:@"    write_reason \"Mode B Take Over refused: claim-ok "
                        @"is present but live IOWatchdog Disable is not "
-                       @"(no marker, Path B sock not done=1). Re-arm Path B, "
-                       @"reboot, confirm marker/sock before Take Over. Do not "
-                       @"unload watchdogd. Apple's WindowServer left running.\"\n"];
+                       @"(Path B sock not done=1). Re-arm Path B, reboot, "
+                       @"confirm sock done=1 before Take Over. Do not unload "
+                       @"watchdogd. Apple's WindowServer left running.\"\n"];
   [script appendString:@"    rmdir /tmp/libwayland-support/modeb.lock "
                        @"2>/dev/null || true\n"];
   [script appendString:@"    rm -rf /tmp/libwayland-support/modeb.lock "
@@ -1127,6 +1152,31 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"    /usr/bin/codesign -s - --force "
                        @"\"/tmp/libwayland-support/$h\" >/dev/null 2>&1 || true\n"];
   [script appendString:@"  done\n"];
+  /* inputd needs IOHIDEventSystem entitlements. Bare --force ad-hoc strips
+   * the build-time entitlements from the embedded helper. Re-apply after
+   * extract. */
+  [script appendString:@"  /bin/cat > /tmp/libwayland-support/inputd.entitlements "
+                       @"<<'ENT'\n"];
+  [script appendString:@"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                       @"<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" "
+                       @"\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
+                       @"<plist version=\"1.0\"><dict>\n"
+                       @"<key>com.apple.hid.manager.user-access-device</key><true/>\n"
+                       @"<key>com.apple.hid.manager.user-access-keyboard</key><true/>\n"
+                       @"<key>com.apple.hid.manager.user-access-privileged</key><true/>\n"
+                       @"<key>com.apple.hid.multitouch.user-access</key><true/>\n"
+                       @"<key>com.apple.hid.system.user-access-service</key><true/>\n"
+                       @"<key>com.apple.hidpreferences.privileged</key><true/>\n"
+                       @"<key>com.apple.iohideventsystem.server</key><true/>\n"
+                       @"<key>com.apple.private.tcc.allow</key>\n"
+                       @"<array><string>kTCCServiceListenEvent</string>"
+                       @"<string>kTCCServicePostEvent</string></array>\n"
+                       @"</dict></plist>\n"];
+  [script appendString:@"ENT\n"];
+  [script appendString:@"  /usr/bin/codesign -s - --force --entitlements "
+                       @"/tmp/libwayland-support/inputd.entitlements "
+                       @"/tmp/libwayland-support/inputd >/dev/null 2>&1 || "
+                       @"wwn_log \"inputd entitlements codesign failed\"\n"];
   [script appendString:@"  /tmp/libwayland-support/amfiexceptiond >>\"$LOG\" 2>&1 "
                        @"|| true\n"];
   [script appendString:@"  /bin/launchctl bootout system/com.wayland-mac.framebufferd "
@@ -1142,9 +1192,13 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"  write_machservice_plist com.wayland-mac.framebufferd "
                        @"/tmp/libwayland-support/framebufferd "
                        @"com.wayland-mac.framebufferd\n"];
-  /* inputd must not wait on modeb-display-go; only framebufferd uses DEFER.
-   * Override inputd env: rewrite plist without DEFER for inputd. */
+  /* inputd keeps WWN_MODEB_LAUNCHD (defers HID until modeb-display-go after
+   * WS unload). Drop DEFER_DISPLAY (framebufferd-only) and set DEFER_HID. */
   [script appendString:@"  /usr/bin/plutil -remove EnvironmentVariables.WWN_MODEB_DEFER_DISPLAY "
+                       @"/Library/LaunchDaemons/com.wayland-mac.inputd.plist "
+                       @">/dev/null 2>&1 || true\n"];
+  [script appendString:@"  /usr/bin/plutil -replace EnvironmentVariables.WWN_MODEB_DEFER_HID "
+                       @"-string 1 "
                        @"/Library/LaunchDaemons/com.wayland-mac.inputd.plist "
                        @">/dev/null 2>&1 || true\n"];
   [script appendString:@"  /bin/launchctl bootstrap system "
@@ -1200,9 +1254,32 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"    exit 0\n"];
   [script appendString:@"  fi\n"];
   [script appendString:@"  wwn_log \"framebufferd MachServices ready "
-                       @"(modeb-mach.ready); unloading WD+WS\"\n"];
+                       @"(modeb-mach.ready); stop userspace watchdogd + unload WS\"\n"];
+  [script appendString:@"  ipid=$(cat /tmp/libwayland-support/inputd.pid "
+                       @"2>/dev/null || true)\n"];
+  [script appendString:@"  if [ -z \"$ipid\" ] || ! kill -0 \"$ipid\" 2>/dev/null; then\n"];
+  [script appendString:@"    write_reason \"Mode B inputd died before WindowServer "
+                       @"unload (no keyboard path). Left Aqua running. See "
+                       @"$PERSIST_LOG.\"\n"];
+  [script appendString:@"    /bin/launchctl bootout system/com.wayland-mac.framebufferd "
+                       @">/dev/null 2>&1 || true\n"];
+  [script appendString:@"    /bin/launchctl bootout system/com.wayland-mac.inputd "
+                       @">/dev/null 2>&1 || true\n"];
+  [script appendString:@"    /usr/bin/pkill -u 0 -x framebufferd >/dev/null 2>&1 || true\n"];
+  [script appendString:@"    /usr/bin/pkill -u 0 -x inputd >/dev/null 2>&1 || true\n"];
+  [script appendString:@"    rm -f /Library/LaunchDaemons/com.wayland-mac.framebufferd.plist "
+                       @"/Library/LaunchDaemons/com.wayland-mac.inputd.plist\n"];
+  [script appendString:@"    rmdir /tmp/libwayland-support/modeb.lock "
+                       @"2>/dev/null || true\n"];
+  [script appendString:@"    rm -rf /tmp/libwayland-support/modeb.lock "
+                       @"2>/dev/null || true\n"];
+  [script appendString:@"    exit 0\n"];
+  [script appendString:@"  fi\n"];
   [script appendString:@"  stop_watchdogd_after_iowatchdog\n"];
-  [script appendString:@"  install_ws_guard\n"];
+  /* Do NOT install_ws_guard before WS unload: RunAtLoad can race the
+   * stop_window_server loop (restore WS while helper is killing it),
+   * and a false-dead framebufferd.pid then kickstarts Aqua → login.
+   * Arm the guard only after CAWindowServer is proven ready. */
   [script appendString:@"  stop_window_server\n"];
   [script appendString:@"  touch /tmp/libwayland-support/modeb-display-go\n"];
   [script appendString:@"  chmod 644 /tmp/libwayland-support/modeb-display-go "
@@ -1250,8 +1327,28 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"    restore_aqua\n"];
   [script appendString:@"    exit 0\n"];
   [script appendString:@"  fi\n"];
+  [script appendString:@"  install_ws_guard\n"];
+  [script appendString:@"  wwn_log \"waiting for inputd IOHIDEventSystem capture "
+                       @"(keyboard required for escape chords)\"\n"];
+  [script appendString:@"  hid_ok=0\n"];
+  [script appendString:@"  hi=0\n"];
+  [script appendString:@"  while [ \"$hi\" -lt 80 ]; do\n"];
+  [script appendString:@"    cp \"$LOG\" \"$PERSIST_LOG\" 2>/dev/null || true\n"];
+  [script appendString:@"    if grep -q '\\[inputd\\] IOHIDEventSystem capture started' "
+                       @"\"$LOG\" 2>/dev/null; then hid_ok=1; break; fi\n"];
+  [script appendString:@"    if grep -q '\\[inputd\\] FAIL: IOHIDEventSystemCreate "
+                       @"exhausted' \"$LOG\" 2>/dev/null; then break; fi\n"];
+  [script appendString:@"    hi=$((hi + 1)); sleep 0.25\n"];
+  [script appendString:@"  done\n"];
+  [script appendString:@"  if [ \"$hid_ok\" != 1 ]; then\n"];
+  [script appendString:@"    write_reason \"Mode B inputd never started HID capture "
+                       @"(no keyboard / no Ctrl+Option escape). Restored Aqua. "
+                       @"See $PERSIST_LOG.\"\n"];
+  [script appendString:@"    restore_aqua\n"];
+  [script appendString:@"    exit 0\n"];
+  [script appendString:@"  fi\n"];
   [script appendString:@"  wwn_log \"framebufferd display pipeline ready; "
-                       @"starting Mode B client\"\n"];
+                       @"inputd HID capture ok; starting Mode B client\"\n"];
   [script appendString:@"  unset WWN_MODEB_DEFER_DISPLAY\n"];
   [script appendString:@"fi\n"];
   [script appendString:@"set +e\n"];

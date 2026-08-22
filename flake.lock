@@ -163,6 +163,24 @@
         "type": "github"
       }
     },
+    "doorman": {
+      "inputs": {
+        "nixpkgs": "nixpkgs_2"
+      },
+      "locked": {
+        "lastModified": 1784751971,
+        "narHash": "sha256-mDuUZvhvU7t6DYneGQoKukyWfQW/vksZdbpWUf6Zehk=",
+        "owner": "Wawona",
+        "repo": "doorman",
+        "rev": "2ad2046bf69431c5a883cbfa67543ad378128d30",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Wawona",
+        "repo": "doorman",
+        "type": "github"
+      }
+    },
     "flake-compat": {
       "locked": {
         "lastModified": 1733328505,
@@ -434,6 +452,22 @@
     },
     "nixpkgs_2": {
       "locked": {
+        "lastModified": 1731603435,
+        "narHash": "sha256-CqCX4JG7UiHvkrBTpYC3wcEurvbtTADLbo3Ns2CEoL8=",
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "rev": "8b27c1239e5c421a2bbc2c65d52e4a6fbf2ff296",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixos",
+        "ref": "24.11",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs_3": {
+      "locked": {
         "lastModified": 1787172299,
         "narHash": "sha256-PShzS87awOlE5XWkxUGBd/58/F+AtE2ZMgFffKj4r8s=",
         "owner": "NixOS",
@@ -478,10 +512,11 @@
       "inputs": {
         "android-nixpkgs": "android-nixpkgs",
         "crate2nix": "crate2nix",
+        "doorman": "doorman",
         "microvm": "microvm",
         "nix-appimage": "nix-appimage",
         "nix-xcodeenvtests": "nix-xcodeenvtests",
-        "nixpkgs": "nixpkgs_2",
+        "nixpkgs": "nixpkgs_3",
         "rust-overlay": "rust-overlay",
         "wwn-containers": "wwn-containers",
         "wwn-coreutils": "wwn-coreutils",
@@ -881,11 +916,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1787348451,
-        "narHash": "sha256-iKdKFPx7haGbS7Cy+QGbdIwfwvS5HXXP1xpbrsZ4fOQ=",
+        "lastModified": 1787359329,
+        "narHash": "sha256-1bpRNNdxYroqCQlmpNG2H7IV8rsrgpC4Bhf6v4M05gw=",
         "owner": "Wawona",
         "repo": "wwn-iland",
-        "rev": "e65199e4f60c73b81df37425ced850777a526bce",
+        "rev": "8f3a67a5c43c3de062d38cdb4c69da1885f45788",
         "type": "github"
       },
       "original": {

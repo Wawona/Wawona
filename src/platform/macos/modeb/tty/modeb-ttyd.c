@@ -1,21 +1,27 @@
 /*
- * modeb-ttyd: Mode B userspace multi-VT console (Classic own-display).
+ * modeb-ttyd: Mode B multi-VT console (Classic own-display).
  *
- * Linux-like VTs on framebufferd via DRM dumb buffers (no kernel tty):
- *   Ctrl+Alt+F1..F6  (inputd) -> text VT 1..6 (PTY + /bin/zsh)
- *   Ctrl+Alt+F7      (inputd) -> graphics VT (spawn kmscube)
- *   Ctrl+Alt+Backspace        -> restore Aqua (inputd stamp; helper)
+ * Linux-TTY-shaped: PTY + modeb-getty (Doorman login) per VT, libvterm for
+ * ECMA-48/SGR (colors, bold, reverse) like the Linux framebuffer console.
+ * Not a full xterm (no mouse / OSC chrome). Present via DRM dumb ->
+ * framebufferd.
  *
- * Built for DYLD_INSERT_LIBRARIES=libwayland-mac.dylib (Mode B).
+ *   Ctrl+Option+F1..F6  -> text VT 1..6
+ *   Ctrl+Option+F7      -> kmscube
+ *   Ctrl+Option+Backspace -> restore Aqua
+ *
+ * Auth: modeb-getty uses Doorman (github.com/Wawona/doorman) the way Linux
+ * uses getty+login / PAM. Typing goes to the PTY; after login the user
+ * shell owns the session.
  */
 #include <errno.h>
 #include <fcntl.h>
 #include <mach/mach.h>
+#include <mach/message.h>
 #include <bootstrap.h>
 #include <poll.h>
 #include <pthread.h>
 #include <signal.h>
-#include <spawn.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,15 +30,16 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <termios.h>
 #include <unistd.h>
 #include <util.h>
-
 #include <mach-o/dyld.h>
+
+#include <vterm.h>
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 #include "input_ipc.h"
-
 #include "modeb_tty_font.h"
 
 #define VT_TEXT_COUNT 6
@@ -42,26 +49,26 @@
 #define CELL_W MODEB_TTY_GLYPH_W
 #define CELL_H MODEB_TTY_GLYPH_H
 #define VT_FILE "/tmp/libwayland-support/modeb-vt"
-#define STATUS_HINT "VT%d/%d  C-Opt-Fn=switch  C-Opt-BS=Aqua"
+#define STATUS_HINT "VT%d/%d  C-Opt-Fn  C-Opt-BS=Aqua"
 
 extern char **environ;
 
 typedef struct {
   int master;
-  int slave;
   pid_t shell_pid;
-  char *cells; /* rows * cols chars */
+  VTerm *vt;
+  VTermScreen *screen;
   int cols;
   int rows;
-  int cx, cy;
   int dirty;
 } vt_t;
 
 static volatile sig_atomic_t g_run = 1;
-static int g_active_vt = 1; /* 1..7 */
+static int g_active_vt = 1;
 static vt_t g_vt[VT_TEXT_COUNT];
 static pid_t g_gfx_pid = -1;
 static char g_kmscube[1024];
+static char g_getty[1024];
 
 static int g_drm_fd = -1;
 static uint32_t g_crtc_id;
@@ -70,29 +77,101 @@ static drmModeModeInfo g_mode;
 static uint32_t g_fb_id;
 static uint32_t g_bo_handle;
 static uint32_t g_pitch;
-static uint32_t *g_fb; /* BGRA pixels */
+static uint32_t *g_fb;
 static int g_fb_w, g_fb_h;
 
 static mach_port_t g_input_recv = MACH_PORT_NULL;
-static int g_shift;
-static int g_caps;
-static int g_ctrl;
-static int g_alt;
-static int g_ansi_state; /* 0=normal 1=esc 2=csi 3=osc */
+static int g_shift, g_caps, g_ctrl, g_alt;
+static int g_cursor_on = 1;
+
+/* mach_msg receive always appends a trailer. sizeof(event) alone returns
+ * MACH_RCV_TOO_LARGE, so keys never reach the PTY. */
+#ifndef MODEB_IPC_TRAILER
+#define MODEB_IPC_TRAILER 256
+#endif
 
 static void on_signal(int sig) {
   (void)sig;
   g_run = 0;
 }
 
-static void clear_cells(vt_t *v) {
-  memset(v->cells, ' ', (size_t)v->cols * (size_t)v->rows);
-  v->cx = 0;
-  v->cy = 0;
-  v->dirty = 1;
+static void switch_vt(int vt);
+static void render_active_text(void);
+
+static int screen_damage(VTermRect rect, void *user) {
+  (void)rect;
+  ((vt_t *)user)->dirty = 1;
+  return 1;
 }
 
-static int spawn_shell(vt_t *v) {
+static int screen_moverect(VTermRect dest, VTermRect src, void *user) {
+  (void)dest;
+  (void)src;
+  ((vt_t *)user)->dirty = 1;
+  return 1;
+}
+
+static int screen_movecursor(VTermPos pos, VTermPos oldpos, int visible,
+                             void *user) {
+  (void)pos;
+  (void)oldpos;
+  (void)visible;
+  ((vt_t *)user)->dirty = 1;
+  return 1;
+}
+
+static int screen_settermprop(VTermProp prop, VTermValue *val, void *user) {
+  (void)prop;
+  (void)val;
+  (void)user;
+  return 1;
+}
+
+static int screen_bell(void *user) {
+  (void)user;
+  return 1;
+}
+
+static int screen_resize(int rows, int cols, void *user) {
+  (void)rows;
+  (void)cols;
+  (void)user;
+  return 0; /* refuse resize from host */
+}
+
+static int screen_sb_pushline(int cols, const VTermScreenCell *cells,
+                              void *user) {
+  (void)cols;
+  (void)cells;
+  (void)user;
+  return 1;
+}
+
+static int screen_sb_popline(int cols, VTermScreenCell *cells, void *user) {
+  (void)cols;
+  (void)cells;
+  (void)user;
+  return 0;
+}
+
+static int screen_sb_clear(void *user) {
+  (void)user;
+  return 1;
+}
+
+static const VTermScreenCallbacks g_screen_cbs = {
+    .damage = screen_damage,
+    .moverect = screen_moverect,
+    .movecursor = screen_movecursor,
+    .settermprop = screen_settermprop,
+    .bell = screen_bell,
+    .resize = screen_resize,
+    .sb_pushline = screen_sb_pushline,
+    .sb_popline = screen_sb_popline,
+    .sb_clear = screen_sb_clear,
+};
+
+static int spawn_getty(vt_t *v) {
   int m = -1, s = -1;
   if (openpty(&m, &s, NULL, NULL, NULL) < 0) {
     perror("openpty");
@@ -122,110 +201,70 @@ static int spawn_shell(vt_t *v) {
     dup2(s, 2);
     if (s > 2)
       close(s);
-    /* Dumb console: no ANSI theme, no user zshrc (avoids Powerlevel10k
-     * OSC/CSI spam rendered as '?' glyphs). */
+    /* Linux console TERM; colors via SGR (16/256 via libvterm). */
     setenv("TERM", "linux", 1);
+    setenv("COLORTERM", "truecolor", 1);
     setenv("WWN_MODEB_TTY", "1", 1);
-    setenv("PS1", "wawona-vt$ ", 1);
-    setenv("PROMPT", "wawona-vt$ ", 1);
-    unsetenv("ZDOTDIR");
-    unsetenv("PROMPT_COMMAND");
-    execl("/bin/zsh", "zsh", "-f", (char *)NULL);
-    execl("/bin/bash", "bash", "--norc", "--noprofile", (char *)NULL);
+    if (g_getty[0])
+      execl(g_getty, "modeb-getty", (char *)NULL);
+    /* Dev fallback: root shell without login (not the shipping path). */
+    execl("/bin/zsh", "zsh", "-l", (char *)NULL);
     _exit(127);
   }
   close(s);
   fcntl(m, F_SETFL, O_NONBLOCK);
   v->master = m;
-  v->slave = -1;
   v->shell_pid = pid;
   return 0;
 }
 
-static void vt_putc_raw(vt_t *v, char c) {
-  if (c == '\r') {
-    v->cx = 0;
-    v->dirty = 1;
-    return;
+static int vt_init(vt_t *v, int cols, int rows) {
+  memset(v, 0, sizeof(*v));
+  v->cols = cols;
+  v->rows = rows;
+  v->master = -1;
+  v->vt = vterm_new(rows, cols);
+  if (!v->vt)
+    return -1;
+  vterm_set_utf8(v->vt, 1);
+  v->screen = vterm_obtain_screen(v->vt);
+  vterm_screen_set_callbacks(v->screen, &g_screen_cbs, v);
+  vterm_screen_set_damage_merge(v->screen, VTERM_DAMAGE_SCREEN);
+  vterm_screen_enable_altscreen(v->screen, 1);
+  {
+    VTermColor fg, bg;
+    vterm_color_rgb(&fg, 0xe0, 0xe0, 0xe0);
+    vterm_color_rgb(&bg, 0x10, 0x10, 0x10);
+    vterm_screen_set_default_colors(v->screen, &fg, &bg);
   }
-  if (c == '\n') {
-    v->cx = 0;
-    v->cy++;
-    if (v->cy >= v->rows) {
-      memmove(v->cells, v->cells + v->cols,
-              (size_t)(v->rows - 1) * (size_t)v->cols);
-      memset(v->cells + (v->rows - 1) * v->cols, ' ', (size_t)v->cols);
-      v->cy = v->rows - 1;
-    }
-    v->dirty = 1;
-    return;
-  }
-  if (c == '\b' || c == 0x7f) {
-    if (v->cx > 0)
-      v->cx--;
-    v->dirty = 1;
-    return;
-  }
-  if (c == '\t') {
-    int n = 8 - (v->cx % 8);
-    while (n--)
-      vt_putc_raw(v, ' ');
-    return;
-  }
-  if (c < 32 || (unsigned char)c > 126)
-    return; /* drop UTF-8 / controls; dumb ASCII console */
-  v->cells[v->cy * v->cols + v->cx] = c;
-  v->cx++;
-  if (v->cx >= v->cols) {
-    v->cx = 0;
-    vt_putc_raw(v, '\n');
-  }
+  vterm_screen_reset(v->screen, 1);
   v->dirty = 1;
+  return spawn_getty(v);
 }
 
-/* Strip CSI / OSC so fancy prompts do not paint as '?' soup. */
-static void vt_write_bytes(vt_t *v, const char *buf, size_t n) {
-  for (size_t i = 0; i < n; i++) {
-    unsigned char c = (unsigned char)buf[i];
-    if (g_ansi_state == 0) {
-      if (c == 0x1b) {
-        g_ansi_state = 1;
-        continue;
-      }
-      vt_putc_raw(v, (char)c);
-      continue;
-    }
-    if (g_ansi_state == 1) {
-      if (c == '[') {
-        g_ansi_state = 2; /* CSI */
-        continue;
-      }
-      if (c == ']') {
-        g_ansi_state = 3; /* OSC */
-        continue;
-      }
-      g_ansi_state = 0; /* short ESC seq (ESC c, etc.): drop */
-      continue;
-    }
-    if (g_ansi_state == 2) {
-      if (c >= 0x40 && c <= 0x7e)
-        g_ansi_state = 0;
-      continue;
-    }
-    if (g_ansi_state == 3) {
-      if (c == 0x07 || c == 0x9c)
-        g_ansi_state = 0;
-      else if (c == 0x1b)
-        g_ansi_state = 1;
-      continue;
-    }
-  }
+static void vt_feed_pty(vt_t *v, const char *buf, size_t n) {
+  if (!v->vt || n == 0)
+    return;
+  vterm_input_write(v->vt, buf, n);
+  vterm_screen_flush_damage(v->screen);
 }
 
-static void draw_glyph(int px, int py, char ch, uint32_t fg, uint32_t bg) {
-  if (ch < 32 || ch > 126)
-    ch = '?';
-  const uint8_t *g = modeb_tty_font[ch - 32];
+static uint32_t color_to_bgra(VTermScreen *screen, VTermColor col) {
+  vterm_screen_convert_color_to_rgb(screen, &col);
+  uint8_t r = col.rgb.red;
+  uint8_t g = col.rgb.green;
+  uint8_t b = col.rgb.blue;
+  return 0xFF000000u | ((uint32_t)b << 16) | ((uint32_t)g << 8) | (uint32_t)r;
+}
+
+static void draw_glyph_colored(int px, int py, uint32_t cp, uint32_t fg,
+                               uint32_t bg) {
+  char ch = '?';
+  if (cp >= 32 && cp <= 126)
+    ch = (char)cp;
+  else if (cp == 0)
+    ch = ' ';
+  const uint8_t *g = modeb_tty_font[(unsigned char)ch - 32];
   for (int y = 0; y < CELL_H; y++) {
     uint8_t row = g[y];
     for (int x = 0; x < CELL_W; x++) {
@@ -242,26 +281,73 @@ static void render_active_text(void) {
   if (g_active_vt < 1 || g_active_vt > VT_TEXT_COUNT)
     return;
   vt_t *v = &g_vt[g_active_vt - 1];
-  const uint32_t bg = 0xFF101010;
-  const uint32_t fg = 0xFFE0E0E0;
-  const uint32_t st = 0xFF80C0FF;
-  for (int i = 0; i < g_fb_w * g_fb_h; i++)
-    g_fb[i] = bg;
+  if (!v->screen)
+    return;
 
-  for (int y = 0; y < v->rows; y++) {
-    for (int x = 0; x < v->cols; x++) {
-      char c = v->cells[y * v->cols + x];
-      draw_glyph(x * CELL_W, y * CELL_H, c, fg, bg);
+  const uint32_t status_fg = 0xFF80C0FF;
+  const uint32_t status_bg = 0xFF101010;
+
+  for (int row = 0; row < v->rows; row++) {
+    for (int col = 0; col < v->cols; col++) {
+      VTermPos pos = {.row = row, .col = col};
+      VTermScreenCell cell;
+      memset(&cell, 0, sizeof(cell));
+      vterm_screen_get_cell(v->screen, pos, &cell);
+      VTermColor fg = cell.fg;
+      VTermColor bg = cell.bg;
+      if (cell.attrs.reverse) {
+        VTermColor tmp = fg;
+        fg = bg;
+        bg = tmp;
+      }
+      uint32_t fgc = color_to_bgra(v->screen, fg);
+      uint32_t bgc = color_to_bgra(v->screen, bg);
+      if (cell.attrs.bold) {
+        /* brighten FG slightly */
+        uint8_t r = (uint8_t)(fgc & 0xff);
+        uint8_t g = (uint8_t)((fgc >> 8) & 0xff);
+        uint8_t b = (uint8_t)((fgc >> 16) & 0xff);
+        r = r > 200 ? 255 : (uint8_t)(r + 55);
+        g = g > 200 ? 255 : (uint8_t)(g + 55);
+        b = b > 200 ? 255 : (uint8_t)(b + 55);
+        fgc = 0xFF000000u | ((uint32_t)b << 16) | ((uint32_t)g << 8) | r;
+      }
+      uint32_t cp = cell.chars[0];
+      draw_glyph_colored(col * CELL_W, row * CELL_H, cp, fgc, bgc);
     }
   }
-  /* cursor */
-  draw_glyph(v->cx * CELL_W, v->cy * CELL_H, 0xDB, st, bg);
+
+  /* Linux-console block cursor at the vterm caret. */
+  if (g_cursor_on && v->vt) {
+    VTermState *st = vterm_obtain_state(v->vt);
+    VTermPos cur = {.row = 0, .col = 0};
+    if (st)
+      vterm_state_get_cursorpos(st, &cur);
+    if (cur.row >= 0 && cur.row < v->rows && cur.col >= 0 &&
+        cur.col < v->cols) {
+      int px = cur.col * CELL_W;
+      int py = cur.row * CELL_H;
+      uint32_t block = 0xFFE8E8E8u;
+      for (int y = 0; y < CELL_H; y++) {
+        int Y = py + y;
+        if (Y < 0 || Y >= g_fb_h)
+          continue;
+        for (int x = 0; x < CELL_W; x++) {
+          int X = px + x;
+          if (X < 0 || X >= g_fb_w)
+            continue;
+          g_fb[Y * (g_pitch / 4) + X] = block;
+        }
+      }
+    }
+  }
 
   char status[128];
   snprintf(status, sizeof(status), STATUS_HINT, g_active_vt, VT_TEXT_COUNT);
   int sy = g_fb_h - CELL_H - 2;
   for (int i = 0; status[i] && i < v->cols; i++)
-    draw_glyph(i * CELL_W, sy, status[i], st, bg);
+    draw_glyph_colored(i * CELL_W, sy, (unsigned char)status[i], status_fg,
+                       status_bg);
 
   v->dirty = 0;
   drmModePageFlip(g_drm_fd, g_crtc_id, g_fb_id, 0, NULL);
@@ -283,16 +369,16 @@ static int setup_drm(void) {
   drmModeConnectorPtr conn = NULL;
   for (int i = 0; i < res->count_connectors; i++) {
     conn = drmModeGetConnector(g_drm_fd, res->connectors[i]);
-    if (conn && conn->connection == 1 /* connected */ && conn->count_modes > 0)
+    if (conn && conn->connection == DRM_MODE_CONNECTED &&
+        conn->count_modes > 0)
       break;
     if (conn) {
       drmModeFreeConnector(conn);
       conn = NULL;
     }
   }
-  if (!conn) {
+  if (!conn)
     conn = drmModeGetConnector(g_drm_fd, res->connectors[0]);
-  }
   if (!conn || conn->count_modes < 1) {
     fprintf(stderr, "[modeb-ttyd] no modes\n");
     return -1;
@@ -357,8 +443,6 @@ static int input_bootstrap_look_up(const char *name, mach_port_t *out) {
   kern_return_t kr = bootstrap_look_up(bp, (char *)name, out);
   if (kr == KERN_SUCCESS)
     return 0;
-  /* Classic: session subset can be exception-protected; walk parents
-   * (same as libinput shim). */
   for (int depth = 0; depth < 8; depth++) {
     mach_port_t parent = MACH_PORT_NULL;
     kern_return_t pkr = bootstrap_parent(bp, &parent);
@@ -387,13 +471,9 @@ static int input_subscribe(void) {
     return -1;
   kern_return_t kr = mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE,
                                         &g_input_recv);
-  if (kr != KERN_SUCCESS) {
-    fprintf(stderr, "[modeb-ttyd] mach_port_allocate: %s\n",
-            mach_error_string(kr));
+  if (kr != KERN_SUCCESS)
     return -1;
-  }
 
-  /* Match libinput: MAKE_SEND on the recv port in the descriptor. */
   input_ipc_subscribe_t sub = {0};
   sub.header.msgh_bits =
       MACH_MSGH_BITS_COMPLEX | MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, 0);
@@ -415,7 +495,6 @@ static int input_subscribe(void) {
   return 0;
 }
 
-/* Minimal US keymap (evdev KEY_* -> ASCII). */
 static char key_to_ascii(int key, int shift) {
   if (key == 28)
     return '\n';
@@ -466,8 +545,13 @@ static char key_to_ascii(int key, int shift) {
   return 0;
 }
 
-static void switch_vt(int vt);
-static void render_active_text(void);
+static void clear_chord_modifiers(void) {
+  /* After Ctrl+Option chords, key-up can be lost while WS is down. Sticky
+   * Ctrl turns every letter into a control char (looks like "typing does
+   * nothing"). Clear both sides of the chord when we consume it. */
+  g_ctrl = 0;
+  g_alt = 0;
+}
 
 static void modeb_request_restore_local(void) {
   int fd = open("/tmp/libwayland-support/modeb-restore-aqua",
@@ -482,16 +566,15 @@ static void modeb_request_restore_local(void) {
 }
 
 static void handle_key(int key, int pressed) {
-  /* Modifiers (evdev). Option = Alt on Mac. */
-  if (key == 29 || key == 97) { /* Ctrl */
+  if (key == 29 || key == 97) {
     g_ctrl = pressed ? 1 : 0;
     return;
   }
-  if (key == 56 || key == 100) { /* Alt / Option */
+  if (key == 56 || key == 100) {
     g_alt = pressed ? 1 : 0;
     return;
   }
-  if (key == 42 || key == 54) { /* Shift */
+  if (key == 42 || key == 54) {
     g_shift = pressed ? 1 : 0;
     return;
   }
@@ -502,22 +585,22 @@ static void handle_key(int key, int pressed) {
   if (!pressed)
     return;
 
-  fprintf(stderr, "[modeb-ttyd] key=%d ctrl=%d alt=%d shift=%d\n", key, g_ctrl,
-          g_alt, g_shift);
+  fprintf(stderr, "[modeb-ttyd] key=%d ctrl=%d alt=%d\n", key, g_ctrl, g_alt);
 
-  /* Local chord backup (inputd also writes modeb-vt when it sees these). */
   if (g_ctrl && g_alt) {
-    if (key == 14) { /* Backspace */
+    if (key == 14) {
+      clear_chord_modifiers();
       modeb_request_restore_local();
       return;
     }
-    if (key >= 59 && key <= 65) { /* F1..F7 */
+    if (key >= 59 && key <= 65) {
       int vt = key - 59 + 1;
       FILE *f = fopen(VT_FILE, "w");
       if (f) {
         fprintf(f, "%d\n", vt);
         fclose(f);
       }
+      clear_chord_modifiers();
       switch_vt(vt);
       return;
     }
@@ -541,9 +624,13 @@ static void handle_key(int key, int pressed) {
   int shift = g_shift ^ g_caps;
   char c = key_to_ascii(key, shift);
   if (key == 14)
-    c = 0x7f; /* DEL: what linux TERM expects more often than BS */
-  if (c)
-    (void)write(v->master, &c, 1);
+    c = 0x7f;
+  if (c) {
+    ssize_t w = write(v->master, &c, 1);
+    if (w != 1)
+      fprintf(stderr, "[modeb-ttyd] PTY write key=%d c=%d failed\n", key,
+              (int)(unsigned char)c);
+  }
 }
 
 static void stop_graphics(void) {
@@ -558,14 +645,13 @@ static void stop_graphics(void) {
 static void start_graphics(void) {
   if (g_gfx_pid > 0)
     return;
-  const char *exe = g_kmscube[0] ? g_kmscube : NULL;
-  if (!exe) {
-    fprintf(stderr, "[modeb-ttyd] no kmscube path (WWN_MODEB_KMSCUBE)\n");
+  if (!g_kmscube[0]) {
+    fprintf(stderr, "[modeb-ttyd] no kmscube path\n");
     return;
   }
   pid_t pid = fork();
   if (pid == 0) {
-    execl(exe, "kmscube", (char *)NULL);
+    execl(g_kmscube, "kmscube", (char *)NULL);
     _exit(127);
   }
   if (pid > 0) {
@@ -600,6 +686,9 @@ static void poll_vt_file(void) {
   int vt = 0;
   if (fscanf(f, "%d", &vt) == 1 && vt != last) {
     last = vt;
+    /* inputd consumes the chord; key-up may never arrive here. */
+    g_ctrl = 0;
+    g_alt = 0;
     switch_vt(vt);
   }
   fclose(f);
@@ -608,40 +697,55 @@ static void poll_vt_file(void) {
 static void *input_thread(void *arg) {
   (void)arg;
   while (g_run) {
-    input_ipc_event_t msg;
-    memset(&msg, 0, sizeof(msg));
+    struct {
+      input_ipc_event_t ev;
+      uint8_t trailer[MODEB_IPC_TRAILER];
+    } buf;
+    memset(&buf, 0, sizeof(buf));
     kern_return_t kr =
-        mach_msg(&msg.header, MACH_RCV_MSG | MACH_RCV_TIMEOUT, 0, sizeof(msg),
-                 g_input_recv, 100, MACH_PORT_NULL);
+        mach_msg(&buf.ev.header, MACH_RCV_MSG | MACH_RCV_TIMEOUT, 0,
+                 sizeof(buf), g_input_recv, 100, MACH_PORT_NULL);
     if (kr == MACH_RCV_TIMED_OUT)
       continue;
-    if (kr != KERN_SUCCESS)
+    if (kr != KERN_SUCCESS) {
+      fprintf(stderr, "[modeb-ttyd] mach_msg recv: kr=0x%x %s\n",
+              (unsigned)kr, mach_error_string(kr));
       continue;
-    if (msg.event_type == INPUT_IPC_EVENT_KEYBOARD_KEY)
-      handle_key(msg.key, msg.key_state == 1);
+    }
+    if (buf.ev.event_type == INPUT_IPC_EVENT_KEYBOARD_KEY)
+      handle_key(buf.ev.key, buf.ev.key_state == 1);
   }
   return NULL;
 }
 
-static void find_kmscube(void) {
-  const char *env = getenv("WWN_MODEB_KMSCUBE");
-  if (env && env[0]) {
-    snprintf(g_kmscube, sizeof(g_kmscube), "%s", env);
+static void find_sidecar(char *out, size_t out_sz, const char *name,
+                         const char *env_key) {
+  out[0] = 0;
+  const char *env = getenv(env_key);
+  if (env && env[0] && access(env, X_OK) == 0) {
+    snprintf(out, out_sz, "%s", env);
     return;
   }
-  /* Prefer sibling of this binary under Resources/bin */
   char self[1024];
   uint32_t sz = sizeof(self);
   if (_NSGetExecutablePath(self, &sz) == 0) {
     char *slash = strrchr(self, '/');
     if (slash) {
       *slash = 0;
-      snprintf(g_kmscube, sizeof(g_kmscube), "%s/kmscube", self);
-      if (access(g_kmscube, X_OK) == 0)
+      snprintf(out, out_sz, "%s/%s", self, name);
+      if (access(out, X_OK) == 0)
         return;
     }
   }
-  g_kmscube[0] = 0;
+  out[0] = 0;
+}
+
+static void find_kmscube(void) {
+  find_sidecar(g_kmscube, sizeof(g_kmscube), "kmscube", "WWN_MODEB_KMSCUBE");
+}
+
+static void find_getty(void) {
+  find_sidecar(g_getty, sizeof(g_getty), "modeb-getty", "WWN_MODEB_GETTY");
 }
 
 int main(int argc, char **argv) {
@@ -650,15 +754,20 @@ int main(int argc, char **argv) {
   signal(SIGTERM, on_signal);
   signal(SIGINT, on_signal);
   signal(SIGHUP, on_signal);
-  signal(SIGCHLD, SIG_IGN);
+  signal(SIGCHLD, SIG_DFL);
   mkdir("/tmp/libwayland-support", 0755);
   find_kmscube();
+  find_getty();
+  if (!g_getty[0])
+    fprintf(stderr, "[modeb-ttyd] WARN: modeb-getty missing; fallback zsh -l\n");
+  else
+    fprintf(stderr, "[modeb-ttyd] getty=%s\n", g_getty);
 
   if (setup_drm() != 0)
     return 1;
 
   int cols = g_fb_w / CELL_W;
-  int rows = (g_fb_h / CELL_H) - 1; /* leave status row */
+  int rows = (g_fb_h / CELL_H) - 1;
   if (cols > COLS_MAX)
     cols = COLS_MAX;
   if (rows > ROWS_MAX)
@@ -669,42 +778,45 @@ int main(int argc, char **argv) {
     rows = 10;
 
   for (int i = 0; i < VT_TEXT_COUNT; i++) {
-    g_vt[i].cols = cols;
-    g_vt[i].rows = rows;
-    g_vt[i].cells = calloc((size_t)cols * (size_t)rows, 1);
-    g_vt[i].master = -1;
-    clear_cells(&g_vt[i]);
-    if (spawn_shell(&g_vt[i]) != 0) {
-      fprintf(stderr, "[modeb-ttyd] shell VT%d failed\n", i + 1);
+    if (vt_init(&g_vt[i], cols, rows) != 0) {
+      fprintf(stderr, "[modeb-ttyd] VT%d init failed\n", i + 1);
       return 1;
     }
   }
 
   if (input_subscribe() != 0) {
-    fprintf(stderr,
-            "[modeb-ttyd] FATAL: could not subscribe to inputd "
-            "(no keyboard). Ensure Mode B inputd is running.\n");
+    fprintf(stderr, "[modeb-ttyd] FATAL: no inputd subscribe\n");
     return 1;
   }
   pthread_t thr;
   pthread_create(&thr, NULL, input_thread, NULL);
 
-  /* Banner on VT1 (also drawn into cells; shell starts clean with -f). */
   {
-    const char *msg =
-        "\r\nWawona Mode B TTY (userspace VTs)\r\n"
-        "Ctrl+Option+F1-F6 text | F7 kmscube | Ctrl+Option+Backspace Aqua\r\n"
-        "(On MacBook hold Fn for F-keys, or enable standard F-keys in "
-        "Keyboard settings)\r\n\r\n";
-    vt_write_bytes(&g_vt[0], msg, strlen(msg));
+    const char *banner =
+        "\r\nWawona Mode B TTY (libvterm + Doorman login)\r\n"
+        "Ctrl+Option+F1-F6 | F7 kmscube | Ctrl+Option+Backspace Aqua\r\n"
+        "(MacBook: hold Fn for F-keys if needed)\r\n\r\n";
+    vt_feed_pty(&g_vt[0], banner, strlen(banner));
   }
 
   g_active_vt = 1;
   render_active_text();
-  fprintf(stderr, "[modeb-ttyd] ready on VT1 (%dx%d cells)\n", cols, rows);
+  fprintf(stderr, "[modeb-ttyd] ready on VT1 (%dx%d) libvterm\n", cols, rows);
 
   while (g_run) {
     poll_vt_file();
+
+    {
+      struct timespec ts;
+      clock_gettime(CLOCK_MONOTONIC, &ts);
+      int phase = (int)((ts.tv_sec * 1000 + ts.tv_nsec / 1000000) / 530);
+      int on = (phase & 1) ? 1 : 0;
+      if (on != g_cursor_on) {
+        g_cursor_on = on;
+        if (g_active_vt >= 1 && g_active_vt <= VT_TEXT_COUNT)
+          g_vt[g_active_vt - 1].dirty = 1;
+      }
+    }
 
     struct pollfd pfd[VT_TEXT_COUNT];
     for (int i = 0; i < VT_TEXT_COUNT; i++) {
@@ -720,7 +832,29 @@ int main(int argc, char **argv) {
         char buf[4096];
         ssize_t n = read(g_vt[i].master, buf, sizeof(buf));
         if (n > 0)
-          vt_write_bytes(&g_vt[i], buf, (size_t)n);
+          vt_feed_pty(&g_vt[i], buf, (size_t)n);
+      }
+    }
+
+    /* Respawn getty/login after shell logout (Linux getty restart). */
+    for (int i = 0; i < VT_TEXT_COUNT; i++) {
+      if (g_vt[i].shell_pid <= 0)
+        continue;
+      int st = 0;
+      pid_t r = waitpid(g_vt[i].shell_pid, &st, WNOHANG);
+      if (r == g_vt[i].shell_pid) {
+        fprintf(stderr, "[modeb-ttyd] VT%d session ended; respawn getty\n",
+                i + 1);
+        if (g_vt[i].master >= 0) {
+          close(g_vt[i].master);
+          g_vt[i].master = -1;
+        }
+        g_vt[i].shell_pid = -1;
+        if (g_vt[i].vt) {
+          vterm_screen_reset(g_vt[i].screen, 1);
+          g_vt[i].dirty = 1;
+        }
+        (void)spawn_getty(&g_vt[i]);
       }
     }
 
@@ -745,7 +879,8 @@ int main(int argc, char **argv) {
       kill(g_vt[i].shell_pid, SIGHUP);
     if (g_vt[i].master >= 0)
       close(g_vt[i].master);
-    free(g_vt[i].cells);
+    if (g_vt[i].vt)
+      vterm_free(g_vt[i].vt);
   }
   fprintf(stderr, "[modeb-ttyd] exit\n");
   return 0;

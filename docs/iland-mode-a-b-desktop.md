@@ -135,10 +135,12 @@ Prefs (macOS `NSUserDefaults`):
 
 Classic own-display can run **`modeb-ttyd`** (Desktop Machine `modeb-tty`):
 
-- Six PTY + `/bin/zsh` text VTs on DRM dumb buffers → `framebufferd`
-- Ctrl+Alt+F1–F6 switch text VTs (via `inputd` → `/tmp/libwayland-support/modeb-vt`)
-- Ctrl+Alt+F7 starts kmscube (graphics VT)
-- Ctrl+Alt+Backspace restores Aqua (`modeb-restore-aqua` stamp)
+- Six PTY text VTs on DRM dumb buffers → `framebufferd`, with **`modeb-getty`**
+  (Doorman) for Linux getty/login parity: prompt → authenticate macOS user →
+  login shell as that uid. See [Doorman](https://github.com/Wawona/doorman).
+- Ctrl+Option+F1-F6 switch text VTs (via `inputd` → `/tmp/libwayland-support/modeb-vt`)
+- Ctrl+Option+F7 starts kmscube (graphics VT)
+- Ctrl+Option+Backspace restores Aqua (`modeb-restore-aqua` stamp)
 
 This is userspace only (no kernel tty). See also
 [`mode-b-windowserver-options.md`](mode-b-windowserver-options.md).

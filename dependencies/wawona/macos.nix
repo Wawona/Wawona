@@ -1364,7 +1364,13 @@ GEN_HEADER
               # CLI alias used by Desktop Machine NativeClientId=modeb-tty
               ln -sf modeb-ttyd $out/Applications/Wawona.app/Contents/Resources/bin/modeb-tty
               ln -sf modeb-ttyd $out/Applications/Wawona.app/Contents/MacOS/modeb-tty
-              echo "DEBUG: Bundled modeb-ttyd"
+              if [ -f "${modebTty}/bin/modeb-getty" ]; then
+                cp "${modebTty}/bin/modeb-getty" $out/Applications/Wawona.app/Contents/Resources/bin/
+                cp "${modebTty}/bin/modeb-getty" $out/Applications/Wawona.app/Contents/MacOS/
+                chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/modeb-getty
+                chmod +x $out/Applications/Wawona.app/Contents/MacOS/modeb-getty
+              fi
+              echo "DEBUG: Bundled modeb-ttyd + modeb-getty"
             fi
             '' else ''
             ''}

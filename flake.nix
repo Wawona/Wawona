@@ -119,9 +119,13 @@
     # Cited: docs/wwn-repo-dag.md. github: until FlakeHub rolling exists.
     wwn-iowatchdog.url = "github:Wawona/wwn-iowatchdog/development";
     wwn-iowatchdog.inputs.nixpkgs.follows = "nixpkgs";
+    # Mode B console login (Linux getty/login parity). L3' peer, macOS-only.
+    # Own nixpkgs + system SDK; do not follow Wawona nixpkgs.
+    # Cited: docs/wwn-repo-dag.md.
+    doorman.url = "github:Wawona/doorman";
   };
 
-  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-ssh, wwn-waypipe, wwn-swinging-bridge, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-wasm, wwn-niri, wwn-vms, wwn-containers, wwn-iowatchdog, ... }:
+  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-ssh, wwn-waypipe, wwn-swinging-bridge, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-wasm, wwn-niri, wwn-vms, wwn-containers, wwn-iowatchdog, doorman, ... }:
   let
     linuxSystems = [ "x86_64-linux" "aarch64-linux" ];
     # Nixpkgs 26.11 throws on x86_64-darwin eval; flakehub-push runs
@@ -672,6 +676,11 @@
           kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
           "iland-gl-clients" = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
           "gbm-es2-demo" = toolchains.buildForMacOS "gbm-es2-demo" { };
+          # Mode B multi-VT console + Doorman getty (Linux login parity).
+          modeb-tty = pkgs.callPackage ./src/platform/macos/modeb/tty/default.nix {
+            buildModule = toolchains;
+            doorman = doorman.packages.${system}.doorman;
+          };
         };
 
         packages = commonPackages
@@ -1007,6 +1016,7 @@
               macosModebTty =
                 if want "macos" then pkgs.callPackage ./src/platform/macos/modeb/tty/default.nix {
                   buildModule = toolchains;
+                  doorman = doorman.packages.${system}.doorman;
                 } else null;
               macosOpenglCube =
                 if want "macos" then toolchains.buildForMacOS "opengl-cube" { } else null;
@@ -1049,6 +1059,7 @@
             kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
             modebTty = pkgs.callPackage ./src/platform/macos/modeb/tty/default.nix {
               buildModule = toolchains;
+              doorman = doorman.packages.${system}.doorman;
             };
             # macOS-only xcodegen project (platformFilter = ["macos"]) so product
             # builds use the same Wawona-macOS scheme as local xcodebuild, without
