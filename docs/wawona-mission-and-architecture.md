@@ -72,8 +72,9 @@ Detail: `wawona-iland-mode-b-desktop`, `docs/iland-mode-a-b-desktop.md`.
 **Coming soon.** Desktop and LockScreen make Wawona the **host** desktop
 environment and greeter (machine picker; **native-port** profiles only).
 
-- **macOS:** partial SIP (system debugging) + `.dylib` (**iland Mode B**) in
-  `wawona-macos-desktop-host`. Still in development.
+- **macOS:** SIP **fully disabled** (`csrutil disable` in Recovery) + `.dylib`
+  (**iland Mode B**) in `wawona-macos-desktop-host`. Partial SIP
+  (`csrutil enable --without debug`) is refused. Still in development.
 - **Android:** Default Home App + LockScreen APIs. **no root**, no fallback
   tier. Still in development.
 - **iOS / iPadOS:** only as a jailbreak tweak from **`repo.wawona.io`**
@@ -88,7 +89,8 @@ Detail: `wawona-iland-mode-b-desktop`, `docs/iland-mode-a-b-desktop.md`.
 **Coming soon.** Wawona Swinging Bridge bridges **macOS / Android / iOS / iPadOS** host apps
 onto Wayland surfaces (zero-copy surface bridge). It is **not** Desktop/LockScreen
 and **not** MediaProjection-as-desktop. Mode A ships in store/Play-shaped builds;
-Mode B is privileged (macOS partial SIP, Android root paths, iOS/iPadOS via
+Mode B is privileged (macOS Desktop Mode B needs SIP fully disabled;
+Android root paths; iOS/iPadOS via
 `repo.wawona.io`) and **forbidden** in App Store / Play artifacts.
 
 Detail: `wawona-swinging-bridge`, `docs/swinging-bridge.md`.

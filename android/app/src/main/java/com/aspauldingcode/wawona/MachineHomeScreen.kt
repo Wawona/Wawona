@@ -1257,7 +1257,7 @@ private fun MachineEditorSheet(
                             }
                         )
                         ToggleRow("Enable DMABUF", dmabufEnabled) { dmabufEnabled = it }
-                        ToggleRow("HDR / Color Operations", colorOperations) { colorOperations = it }
+                        ToggleRow("Enable HDR", colorOperations) { colorOperations = it }
                         HorizontalDivider()
                         ToggleRow("Shake to Exit Machine", shakeToCloseOverride) { shakeToCloseOverride = it }
                         ToggleRow("Swipe Back to Exit Machine", swipeBackOverride) { swipeBackOverride = it }

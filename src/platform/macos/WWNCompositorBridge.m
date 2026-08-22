@@ -4751,12 +4751,33 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
 }
 
 - (BOOL)prepareIlandMetalPresentationOnPrimaryView {
-  // Weston DRM prep has no Machines cube client id; keep a neutral host title.
-  WWNView *view = [self ensureIlandPresentationViewForClientId:nil];
+  return [self prepareIlandMetalPresentationOnPrimaryViewForClientId:@"weston"];
+}
+
+- (BOOL)prepareIlandMetalPresentationOnPrimaryViewForClientId:(NSString *)clientId {
+  WWNView *view = [self ensureIlandPresentationViewForClientId:clientId];
   if (!view) {
     return NO;
   }
   return [view prepareIlandMetalPresentation];
+}
+
+- (void)stopIlandGpuClientOnPrimaryView {
+  for (NSNumber *key in _windows) {
+    id w = _windows[key];
+    if ([w isKindOfClass:[WWNWindow class]]) {
+      WWNView *view = (WWNView *)[(WWNWindow *)w contentView];
+      if ([view isKindOfClass:[WWNView class]]) {
+        [view stopIlandMetalPresentation];
+      }
+    }
+  }
+  if (_ilandHostWindow) {
+    WWNView *view = (WWNView *)_ilandHostWindow.contentView;
+    if ([view isKindOfClass:[WWNView class]]) {
+      [view stopIlandMetalPresentation];
+    }
+  }
 }
 #endif
 
@@ -5206,6 +5227,13 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
 /// Wayland toplevel view. Those tear down CAMetalLayer on the first SHM/
 /// Wayland frame and leave kmscube blank.
 - (WWNCompositorView_ios *)ensureIlandPresentationView {
+  if (![NSThread isMainThread]) {
+    __block WWNCompositorView_ios *view = nil;
+    dispatch_sync(dispatch_get_main_queue(), ^{
+      view = [self ensureIlandPresentationView];
+    });
+    return view;
+  }
   if (_ilandHostView) {
     return _ilandHostView;
   }
@@ -5408,6 +5436,14 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
     return NO;
   }
   return [view prepareIlandMetalPresentation];
+}
+
+- (BOOL)prepareIlandMetalPresentationOnPrimaryViewForClientId:(NSString *)clientId {
+  (void)clientId;
+  return [self prepareIlandMetalPresentationOnPrimaryView];
+}
+
+- (void)stopIlandGpuClientOnPrimaryView {
 }
 
 - (void)handleWindowHostLocked:(CWindowEvent *)event {

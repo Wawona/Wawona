@@ -126,8 +126,9 @@ forbidden while iPhone is planned for those features.
    plus **iOS and iPadOS** jailbreak tweaks documented only on the website /
    `repo.wawona.io` (Sileo). **Forbidden** on Linux and on App Store builds of
    iOS/iPadOS (and all of tvOS/watchOS/visionOS). Machine profiles for
-   Desktop/LockScreen: **native ports only**. macOS engage path: partial SIP
-   (system debugging) + `.dylib`. Android: Default Home App + LockScreen APIs -
+   Desktop/LockScreen: **native ports only**. macOS engage path: SIP **fully
+   disabled** (`csrutil disable`) + `.dylib`. Partial SIP
+   (`csrutil enable --without debug`) is refused. Android: Default Home App + LockScreen APIs.
    **no root required, no fallback tier required**. Never wire Desktop/LockScreen
    UI into App Store Apple-mobile builds; never mention jailbreak in those
    binaries.
@@ -135,7 +136,8 @@ forbidden while iPhone is planned for those features.
    need a non-IOKit, non-GL fallback path. See `wwn-iland-apple-fallback`.
 6. **iland Mode B dylib**. `libwayland-mac.dylib` is **macOS desktop-host
    only** (`wawona-macos-desktop-host`). SIP-gated Desktop/LockScreen
-   Replacement (`WWNSipStatus` + Settings Desktop). Never ship in store-safe
+   Replacement (`WWNSipStatus` + Settings Desktop). Engage only when SIP is
+   **fully disabled**. Never ship in store-safe
    `wawona-macos`, iOS family, or Android. Default present path is Mode A
    (`libiland_userland.a`). See `wawona-iland-mode-b-desktop` and
    `Wawona/docs/iland-mode-a-b-desktop.md`. This dylib is **not** Wawona Swinging Bridge.

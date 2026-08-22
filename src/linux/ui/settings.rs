@@ -96,11 +96,11 @@ pub fn show_settings(
     let display_page = adw::PreferencesPage::new();
     let display_group = adw::PreferencesGroup::new();
     display_group.set_title("Display");
-    let auto_scale = gtk::Switch::new();
-    auto_scale.set_active(settings.auto_scale);
     let wayland_display = gtk::Entry::new();
     wayland_display.set_text(&settings.wayland_display);
-    add_row(&display_group, "Auto Scale", &auto_scale);
+    let color_ops = gtk::Switch::new();
+    color_ops.set_active(settings.color_operations);
+    add_row(&display_group, "Enable HDR", &color_ops);
     add_row(&display_group, "Wayland Display", &wayland_display);
     display_page.add(&display_group);
     crate::linux::ui::a11y::set_wwn_a11y(
@@ -132,13 +132,7 @@ pub fn show_settings(
         renderer.append(Some(r), r);
     }
     renderer.set_active_id(Some(&settings.renderer));
-    let force_ssd = gtk::Switch::new();
-    force_ssd.set_active(settings.force_ssd);
-    let color_ops = gtk::Switch::new();
-    color_ops.set_active(settings.color_operations);
     add_row(&graphics_group, "Renderer", &renderer);
-    add_row(&graphics_group, "Force Server-Side Decorations", &force_ssd);
-    add_row(&graphics_group, "HDR / Color Operations", &color_ops);
     graphics_page.add(&graphics_group);
     stack.add_named(&graphics_page, Some("Graphics"));
 
@@ -187,29 +181,17 @@ pub fn show_settings(
     let shell_group = adw::PreferencesGroup::new();
     shell_group.set_title("Local Shell");
     shell_group.set_description(Some(
-        "Host shell paths for nested sessions and bundled CLI tools. Linux uses your login environment, not a sandbox rootfs.",
+        "Linux uses your login environment, not a sandbox rootfs. Reset System Tree and bundled HOME import do not apply.",
     ));
     let home = std::env::var("HOME").unwrap_or_else(|_| "(unset)".into());
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".into());
-    let xdg_runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "(unset)".into());
-    let xdg_config = std::env::var("XDG_CONFIG_HOME")
-        .unwrap_or_else(|_| format!("{home}/.config"));
-    for (title, subtitle) in [
-        ("Platform", "Linux (host shell)"),
-        ("Shell HOME", home.as_str()),
-        ("Login Shell", shell.as_str()),
-        ("XDG_RUNTIME_DIR", xdg_runtime.as_str()),
-        ("XDG_CONFIG_HOME", xdg_config.as_str()),
-        (
-            "Browse Hint",
-            "Use your file manager or terminal. Wawona does not sandbox HOME on Linux.",
-        ),
-    ] {
-        let row = adw::ActionRow::new();
-        row.set_title(title);
-        row.set_subtitle(subtitle);
-        shell_group.add(&row);
+    let open_home = gtk::Button::with_label("Open HOME");
+    {
+        let home_path = home.clone();
+        open_home.connect_clicked(move |_| {
+            let _ = std::process::Command::new("xdg-open").arg(&home_path).spawn();
+        });
     }
+    add_row(&shell_group, "Open HOME", &open_home);
     shell_page.add(&shell_group);
     stack.add_named(&shell_page, Some("Local Shell"));
 
@@ -252,21 +234,23 @@ pub fn show_settings(
     let deps_group = adw::PreferencesGroup::new();
     deps_group.set_title("Bundled Dependencies");
     deps_group.set_description(Some(
-        "Runtime tools shipped with the Linux app (weston clients, foot, kmscube, zsh, fastfetch, neovim, waypipe).",
+        "Packages linked into this Linux UI build. Not another platform's list.",
     ));
-    for dep in [
-        "Weston + demo clients",
-        "Foot terminal",
-        "kmscube (ANGLE/Vulkan)",
-        "waypipe",
-        "OpenSSH",
-        "zsh",
-        "fastfetch",
-        "neovim",
-    ] {
-        let row = adw::ActionRow::new();
-        row.set_title(dep);
-        deps_group.add(&row);
+    let deps_json = include_str!("settings_dependencies.json");
+    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(deps_json) {
+        if let Some(packages) = parsed.get("packages").and_then(|p| p.as_array()) {
+            for pkg in packages {
+                let name = pkg.get("name").and_then(|v| v.as_str()).unwrap_or("Package");
+                let version = pkg.get("version").and_then(|v| v.as_str()).unwrap_or("");
+                let role = pkg.get("role").and_then(|v| v.as_str()).unwrap_or("");
+                let row = adw::ActionRow::new();
+                row.set_title(name);
+                row.set_title_lines(2);
+                row.set_subtitle(&format!("{version}. {role}"));
+                row.set_subtitle_lines(3);
+                deps_group.add(&row);
+            }
+        }
     }
     deps_page.add(&deps_group);
     stack.add_named(&deps_page, Some("Dependencies"));
@@ -425,14 +409,14 @@ pub fn show_settings(
     done_btn.connect_clicked(move |_| {
         let mut app = st.borrow_mut();
         app.settings.wayland_display = wayland_display.text().to_string();
-        app.settings.auto_scale = auto_scale.is_active();
+        app.settings.auto_scale = true;
         app.settings.input_profile = input_profile.text().to_string();
         app.settings.key_repeat = key_repeat.value() as u32;
         app.settings.renderer = renderer
             .active_id()
             .map(|s| s.to_string())
             .unwrap_or_else(|| "vulkan".into());
-        app.settings.force_ssd = force_ssd.is_active();
+        app.settings.force_ssd = true;
         app.settings.color_operations = color_ops.is_active();
         app.settings.ssh_host = ssh_host.text().to_string();
         app.settings.ssh_user = ssh_user.text().to_string();
@@ -484,6 +468,8 @@ pub fn show_settings(
 fn add_row(group: &adw::PreferencesGroup, title: &str, widget: &impl IsA<gtk::Widget>) {
     let row = adw::ActionRow::new();
     row.set_title(title);
+    row.set_title_lines(2);
+    row.set_subtitle_lines(3);
     row.add_suffix(widget);
     row.set_activatable(false);
     group.add(&row);

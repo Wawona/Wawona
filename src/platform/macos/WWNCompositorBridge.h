@@ -366,6 +366,10 @@ extern NSString *const WWNClientWindowSceneWindowIdKey;
 - (BOOL)launchNestedKmscubeOnPrimaryView;
 /// Prepare iland Metal presentation on the primary compositor view (Weston DRM/GL).
 - (BOOL)prepareIlandMetalPresentationOnPrimaryView;
+/// Same, with a host-chrome title (e.g. weston). Never brand Weston as kmscube.
+- (BOOL)prepareIlandMetalPresentationOnPrimaryViewForClientId:(nullable NSString *)clientId;
+/// Hide the iland Metal overlay and restore Wayland content (nested Weston).
+- (void)stopIlandGpuClientOnPrimaryView;
 
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
 @property(nonatomic, weak) UIView *containerView;

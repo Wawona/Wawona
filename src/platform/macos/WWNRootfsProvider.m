@@ -59,7 +59,8 @@ static NSDictionary<NSString *, NSString *> *WWNRootfsHostSnapshot(void) {
          WWNRootfsCapabilityReinstallSystemTree |
          WWNRootfsCapabilityBrowseUserFiles | WWNRootfsCapabilityImportFile;
 #elif TARGET_OS_OSX
-  caps = WWNRootfsCapabilitySettings | WWNRootfsCapabilityBrowseUserFiles;
+  caps = WWNRootfsCapabilitySettings | WWNRootfsCapabilityBrowseUserFiles |
+         WWNRootfsCapabilityImportFile;
 #endif
 #if (TARGET_OS_IPHONE || TARGET_OS_OSX) && !TARGET_OS_TV
   if ([WWNRootfsICloudSync isSupported]) {

@@ -48,10 +48,12 @@ func settingsNormalizationParsesPort() {
 func watchGlobalSettingsMatchShippedCatalog() {
     let sections = GlobalSettingsCatalog.visibleSections(for: .watchOS)
     #expect(sections == [
-        .display, .input, .graphics, .connection, .environment, .waypipe, .ssh, .advanced, .about,
+        .display, .input, .graphics, .connection, .environment,
+        .machines, .iCloudSync, .waypipe, .ssh, .advanced, .about,
+        .dependencies,
     ])
     #expect(!sections.contains(.desktop))
-    #expect(GlobalSettingsCatalog.visibleFields(in: .display, for: .watchOS) == [.autoScale])
+    #expect(GlobalSettingsCatalog.visibleFields(in: .display, for: .watchOS) == [.colorOperations])
     #expect(!GlobalSettingsCatalog.visibleFields(in: .display, for: .watchOS).contains(.forceSSD))
     let input = GlobalSettingsCatalog.visibleFields(in: .input, for: .watchOS)
     #expect(input.contains(.touchInputType))
@@ -70,8 +72,20 @@ func iosGlobalSettingsIncludeInputAndWaypipe() {
     #expect(sections.contains(.input))
     #expect(sections.contains(.waypipe))
     #expect(sections.contains(.appleWatch))
+    #expect(sections.contains(.machines))
+    #expect(sections.contains(.iCloudSync))
+    #expect(sections.contains(.dependencies))
     #expect(!sections.contains(.desktop))
     #expect(GlobalSettingsCatalog.visibleFields(in: .display, for: .iOS).contains(.respectSafeArea))
+    #expect(GlobalSettingsCatalog.visibleFields(in: .display, for: .iOS).contains(.colorOperations))
+    #expect(!GlobalSettingsCatalog.visibleFields(in: .display, for: .iOS).contains(.forceSSD))
+    #expect(GlobalSettingsCatalog.visibleFields(in: .graphics, for: .iOS) == [
+        .vulkanDriver, .openGLDriver,
+    ])
+    #expect(GlobalSettingsCatalog.visibleFields(in: .machines, for: .iOS).contains(.shakeToClose))
+    #expect(GlobalSettingsCatalog.visibleFields(in: .advanced, for: .iOS) == [
+        .nestedCompositors, .compositorBackend, .multipleClients, .logLevel,
+    ])
     let watchFields = GlobalSettingsCatalog.visibleFields(in: .appleWatch, for: .iOS)
     #expect(watchFields == [.watchCompanionStatus, .watchSendDocument, .watchOpenDocumentsHint])
 }

@@ -2969,7 +2969,15 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
   }
   self.westonRunning = YES;
 
-  dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+  const char *backendCopy = backend;
+  BOOL pixmanCopy = usePixman;
+  BOOL ilandCopy = prepareIland;
+
+  // UIKit (iland Metal host addSubview / CAMetalLayer) must run on the main
+  // thread. 0.2.4 aborted in the Simulator when this ran on utility-qos:
+  // ensureIlandPresentationView -> _addSubview from a background queue.
+  dispatch_block_t startWorker = ^{
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
     CFAbsoluteTime launchStart = CFAbsoluteTimeGetCurrent();
     WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
     [WWNRootfsProvider applyShellEnvironment];
@@ -2980,30 +2988,12 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     // on the iOS Simulator instead of falling through to a Vulkan device it
     // cannot create. Settings may have changed since app startup.
     WWNSettings_ApplyGraphicsDriverSelection();
-    if (![self wwnBeginIOSNativeClientLaunch:@"weston"]) {
-      self.westonRunning = NO;
-      return;
-    }
     WWNLog("WESTON", @"prepareOutputSize: %.0fms",
            (CFAbsoluteTimeGetCurrent() - launchStart) * 1000.0);
 
-    if (prepareIland) {
-      if (![bridge prepareIlandMetalPresentationOnPrimaryView]) {
-        WWNLog("WESTON",
-               @"Failed to prepare iland Metal presentation for Weston DRM. "
-               @"falling back to nested --backend=wayland --use-pixman");
-        self.westonRunning = NO;
-        [self wwnEndIOSNativeClientLaunch];
-        // Recurse onto the nested Wayland path so Start still paints a
-        // Weston desktop instead of leaving a Connected card with no surface.
-        dispatch_async(dispatch_get_main_queue(), ^{
-          [self wwnLaunchWestonCompositorWithBackend:"--backend=wayland"
-                                           usePixman:YES
-                                        prepareIland:NO];
-        });
-        return;
-      }
-    }
+    BOOL prepareIland = ilandCopy;
+    const char *backend = backendCopy;
+    BOOL usePixman = pixmanCopy;
 
     if (!prepareIland) {
       const char *parent_display = getenv("WAYLAND_DISPLAY");
@@ -3125,7 +3115,40 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
 
     self.westonRunning = NO;
     [self wwnEndIOSNativeClientLaunch];
-  });
+    });
+  };
+
+  dispatch_block_t prep = ^{
+    WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+    [WWNRootfsProvider applyShellEnvironment];
+    WWNSettings_ApplyGraphicsDriverSelection();
+    if (![self wwnBeginIOSNativeClientLaunch:@"weston"]) {
+      self.westonRunning = NO;
+      return;
+    }
+    if (ilandCopy) {
+      if (![bridge prepareIlandMetalPresentationOnPrimaryView]) {
+        WWNLog("WESTON",
+               @"Failed to prepare iland Metal presentation for Weston DRM. "
+               @"falling back to nested --backend=wayland --use-pixman");
+        self.westonRunning = NO;
+        [self wwnEndIOSNativeClientLaunch];
+        dispatch_async(dispatch_get_main_queue(), ^{
+          [self wwnLaunchWestonCompositorWithBackend:"--backend=wayland"
+                                           usePixman:YES
+                                        prepareIland:NO];
+        });
+        return;
+      }
+    }
+    startWorker();
+  };
+
+  if ([NSThread isMainThread]) {
+    prep();
+  } else {
+    dispatch_async(dispatch_get_main_queue(), prep);
+  }
 }
 #endif
 
@@ -3154,32 +3177,18 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
 
 - (void)launchWestonMacOSAsNestedClient {
   if (self.westonTask.isRunning || self.westonRunning) {
+    WWNLog("WESTON", @"Start skipped: Weston already running");
     return;
   }
 
-  // Prefer CompositorBackend / CLI --backend over the legacy
-  // NestedWestonBackend key. Taking the DRM in-process path when the user
-  // asked for wayland hung headless CLI: westonRunning was set before the
-  // branch, so launchWestonMacOSDrmInProcess returned as a silent no-op.
+  // Honour CompositorBackend / CLI --backend only. NestedWestonBackend is the
+  // iOS picker (wayland-pixman vs iland-drm-gl). On macOS it defaults to
+  // iland-drm-gl and is hidden, so treating auto as DRM launched the iland
+  // Metal overlay (kmscube present path) for every Weston Start.
   NSString *resolvedBackend = WWNResolveCompositorBackend(nil);
-  NSString *prefsBackend =
-      [[WWNPreferencesManager sharedManager] compositorBackend];
-  NSString *legacyNested =
-      [[WWNPreferencesManager sharedManager] nestedWestonBackend];
-  BOOL wantDrm = NO;
-  if ([resolvedBackend isEqualToString:@"drm"]) {
-    wantDrm = YES;
-  } else if (WWNCompositorBackendCLIOverride() != nil ||
-             [prefsBackend isEqualToString:@"wayland"] ||
-             [prefsBackend isEqualToString:@"drm"]) {
-    // Explicit CLI or Settings choice. Never fall through to legacy.
-    wantDrm = [resolvedBackend isEqualToString:@"drm"];
-  } else {
-    // auto: NestedWestonBackend still selects weston's present path.
-    wantDrm = [legacyNested isEqualToString:@"iland-drm-gl"];
-  }
+  BOOL wantDrm = [resolvedBackend isEqualToString:@"drm"];
   if (wantDrm) {
-    WWNLog("WESTON", @"backend=drm. In-process iland DRM path");
+    WWNLog("WESTON", @"backend=drm. In-process weston on iland DRM");
     [self launchWestonMacOSDrmInProcess];
     return;
   }
@@ -3187,8 +3196,8 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
   [self launchWestonMacOSNestedSubprocess];
 }
 
-/// Out-of-process nested Weston (`NSTask`). Used for `--backend=wayland` and as
-/// the fallback when in-process `weston_main` is unavailable for DRM.
+/// Out-of-process nested Weston (`NSTask`, `--backend=wayland`). DRM Weston
+/// stays in-process via weston_compositor_main. Never also start kmscube.
 - (void)launchWestonMacOSNestedSubprocess {
   if (self.westonTask.isRunning) {
     return;
@@ -3200,6 +3209,9 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
   if (self.westonRunning) {
     return;
   }
+
+  WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+  [bridge stopIlandGpuClientOnPrimaryView];
 
   WWNConfigureBundledRuntimeEnvIfNeeded();
   NSString *envError = [self wwnValidateNestedWestonEnv];
@@ -3224,54 +3236,38 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
   }
 
   [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
-  WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
 
   uint32_t outW = 1024;
   uint32_t outH = 768;
   float outScale = 1.0f;
   [bridge latestOutputWidth:&outW height:&outH scale:&outScale];
-  unsigned hostScale = (unsigned)lrintf(outScale >= 1.0f ? outScale : 1.0f);
-  if (hostScale < 1u) {
-    hostScale = 1u;
-  }
 
   self.westonRunning = YES;
-
-  // Pixman only for nested Wayland; DRM needs GL against iland.
-  NSString *westonBackend = WWNResolveCompositorBackend(nil);
-  BOOL usePixman = ![westonBackend isEqualToString:@"drm"];
 
   const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
   char configPath[512] = "";
   if (xdg_dir && xdg_dir[0]) {
     snprintf(configPath, sizeof(configPath), "%s/weston.ini", xdg_dir);
-    [self wwnWriteWestonIniAtPath:configPath usePixman:usePixman];
+    [self wwnWriteWestonIniAtPath:configPath usePixman:YES];
   }
 
-  char scaleEnv[32];
-  snprintf(scaleEnv, sizeof(scaleEnv), "%u", hostScale);
-  setenv("WAWONA_OUTPUT_SCALE", scaleEnv, 1);
-
-  // Backend is configurable, not assumed: weston can drive iland's userspace
-  // DRM/KMS instead of nesting. No --width/--height either way. Nested Weston
-  // sizes via xdg negotiation with Wawona.
+  // Nested weston is an ordinary Wayland client of Wawona. Size and HiDPI
+  // belong to the parent: xdg_toplevel configure is the NSWindow content
+  // size in points, and Wawona already advertises wl_output scale. Copying
+  // backingScaleFactor into --scale made Weston's desktop 2x the window
+  // (huge cursor, panel clipped off the top). macOS weston is the unpatched
+  // nested binary, not the iOS apple-mobile staticlib that reads
+  // WAWONA_OUTPUT_SCALE. Keep --scale=1; do not mutate the parent env.
   NSMutableArray<NSString *> *args = [NSMutableArray arrayWithObjects:
-      [westonBackend isEqualToString:@"drm"] ? @"--backend=drm"
-                                             : @"--backend=wayland",
-      // Deterministic nested socket so the Swinging Bridge app bridge can attach. Keep
-      // in sync with +preferredNestedSocketName and AnowawSession.NESTED_SOCKET (legacy Kotlin name).
+      @"--backend=wayland",
       [NSString stringWithFormat:@"--socket=%@",
                                  [WWNPreferencesManager preferredNestedSocketName]],
       @"--shell=desktop-shell.so",
-      [NSString stringWithFormat:@"--scale=%u", hostScale],
+      @"--scale=1",
+      @"--use-pixman",
       nil];
-  (void)outW;
-  (void)outH;
   if (configPath[0]) {
     [args addObject:[NSString stringWithFormat:@"--config=%s", configPath]];
-  }
-  if (usePixman) {
-    [args addObject:@"--use-pixman"];
   }
 
   NSTask *task = [[NSTask alloc] init];
@@ -3279,9 +3275,12 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
   task.arguments = args;
 
   NSMutableDictionary *env = [self wwnMutableHostWaylandEnvironment];
+  env[@"WAWONA_OUTPUT_SCALE"] = @"1";
   task.environment = env;
 
-  WWNLog("WESTON", @"Launch argv: weston %@", [args componentsJoinedByString:@" "]);
+  WWNLog("WESTON",
+         @"Launch argv: weston %@ (host output %ux%u @ %.1fx; nested scale=1)",
+         [args componentsJoinedByString:@" "], outW, outH, outScale);
 
   NSError *err = nil;
   if ([task launchAndReturnError:&err]) {
@@ -3301,20 +3300,17 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     return;
   }
   WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
-  if (![bridge prepareIlandMetalPresentationOnPrimaryView]) {
+  if (![bridge prepareIlandMetalPresentationOnPrimaryViewForClientId:@"weston"]) {
     WWNLog("WESTON",
            @"Failed to prepare iland Metal presentation. Falling back to "
-           @"nested weston subprocess");
+           @"nested weston (Wayland), not kmscube");
     [self launchWestonMacOSNestedSubprocess];
     return;
   }
-  typedef int (*WWNWestonMainFn)(int, char **);
-  WWNWestonMainFn westonFn =
-      (WWNWestonMainFn)(void *)dlsym(RTLD_DEFAULT, "weston_main");
-  if (westonFn == NULL) {
+  if (weston_compositor_main == NULL) {
     WWNLog("WESTON",
-           @"weston_main not linked. Iland Metal ready (kmscube); "
-           @"falling back to nested weston subprocess (--backend=drm)");
+           @"weston_compositor_main not linked. Nested weston (Wayland) only. "
+           @"Not launching kmscube");
     [self launchWestonMacOSNestedSubprocess];
     return;
   }
@@ -3354,8 +3350,6 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     self.westonRunning = NO;
     return;
   }
-  // No --width/--height: DRM/iland output size follows host view via
-  // runtime wl_output updates, not launch argv.
   (void)outW;
   (void)outH;
   snprintf(launchArgs->scale, sizeof(launchArgs->scale), "--scale=%u", hostScale);
@@ -3363,15 +3357,11 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     strncpy(launchArgs->config, configArg, sizeof(launchArgs->config) - 1);
   }
 
-  WWNWestonMainFn westonFnForBlock = westonFn;
-
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
     WWNWestonDrmLaunchArgs *args = launchArgs;
     char *argv_weston[] = {
         (char *)"weston",
         (char *)"--backend=drm",
-        /* Deterministic nested socket so the Swinging Bridge app bridge can attach
-         * regardless of backend. */
         (char *)"--socket=wawona-nested",
         (char *)"--shell=desktop-shell.so",
         args->scale,
@@ -3379,12 +3369,13 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
         NULL,
     };
     int argc_weston = args->config[0] ? 6 : 5;
-    WWNLog("WESTON", @"Starting in-process nested Weston (iland DRM) on macOS");
-    int rc = westonFnForBlock(argc_weston, argv_weston);
-    WWNLog("WESTON", @"In-process nested Weston (DRM) exited rc=%d", rc);
+    WWNLog("WESTON", @"Starting in-process weston_compositor_main (iland DRM)");
+    int rc = weston_compositor_main(argc_weston, argv_weston);
+    WWNLog("WESTON", @"In-process weston (DRM) exited rc=%d", rc);
     free(args);
     dispatch_async(dispatch_get_main_queue(), ^{
       self.westonRunning = NO;
+      [[WWNCompositorBridge sharedBridge] stopIlandGpuClientOnPrimaryView];
     });
   });
 
@@ -3395,22 +3386,19 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
 - (void)launchWeston {
   // Nested Weston keeps a single preferred nested socket; treat as singleton.
   if (self.westonRunning) {
+    WWNLog("WESTON", @"Start skipped: Weston already running");
     return;
   }
 #if TARGET_OS_IPHONE
-  // Legacy weston-specific key wins when explicitly set; otherwise fall back to
-  // the general per-client backend choice so weston and niri behave the same.
-  NSString *backend =
-      [[WWNPreferencesManager sharedManager] nestedWestonBackend];
-  // wayland-pixman / wayland-* → nested Wayland client of the host compositor
-  // (the path that paints a Weston desktop on iOS Simulator).
-  BOOL wantDrm = [backend isEqualToString:@"iland-drm-gl"] ||
-                 [backend isEqualToString:@"drm"] ||
-                 [WWNResolveCompositorBackend(nil) isEqualToString:@"drm"];
+  // Honour CompositorBackend only. NestedWestonBackend defaults to
+  // iland-drm-gl on iOS devices and launched --backend=drm with no mapped
+  // host surface (Start does nothing). Nested pixman is the iOS-family path.
+  BOOL wantDrm = [WWNResolveCompositorBackend(nil) isEqualToString:@"drm"];
   if (wantDrm) {
     [self launchWestonDrm];
     return;
   }
+  WWNLog("WESTON", @"nested weston compositor (wayland-pixman) on iOS family");
   [self wwnLaunchWestonCompositorWithBackend:"--backend=wayland"
                                    usePixman:YES
                                 prepareIland:NO];
@@ -3532,6 +3520,7 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
   }
   self.westonMachineId = nil;
   self.westonRunning = NO;
+  [[WWNCompositorBridge sharedBridge] stopIlandGpuClientOnPrimaryView];
 #endif
 }
 

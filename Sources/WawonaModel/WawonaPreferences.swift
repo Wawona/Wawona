@@ -137,7 +137,7 @@ public final class WawonaPreferences: ObservableObject {
     /// "virtual" or "host"
     @Published public var nestedCompositorCursor: String = "virtual"
     @Published public var autoScale: Bool = true
-    @Published public var colorOperations: Bool = false
+    @Published public var colorOperations: Bool = true
     @Published public var waylandDisplay: String = "wayland-0"
     @Published public var sshHost: String = ""
     @Published public var sshUser: String = ""
@@ -171,7 +171,7 @@ public final class WawonaPreferences: ObservableObject {
     @Published public var xwaylandSupport: Bool = false
     @Published public var compositorBackend: String = "auto"
     @Published public var nestedCompositorsSupport: Bool = true
-    @Published public var multipleClients: Bool = false
+    @Published public var multipleClients: Bool = true
     @Published public var universalClipboard: Bool = true
     @Published public var swapCmdWithAlt: Bool = true
     @Published public var resizeDisplayForVirtualKeyboard: Bool = true
@@ -209,7 +209,8 @@ public final class WawonaPreferences: ObservableObject {
         nestedCompositorCursor =
             (nestedCursor == "host" || nestedCursor == "virtual") ? nestedCursor : "virtual"
         autoScale = defaults.object(forKey: keyPrefix + "autoScale") as? Bool ?? true
-        colorOperations = defaults.object(forKey: keyPrefix + "colorOperations") as? Bool ?? false
+        colorOperations = defaults.object(forKey: "ColorOperations") as? Bool
+            ?? defaults.object(forKey: keyPrefix + "colorOperations") as? Bool ?? true
         waylandDisplay = defaults.string(forKey: keyPrefix + "waylandDisplay") ?? "wayland-0"
         sshHost = defaults.string(forKey: keyPrefix + "sshHost") ?? ""
         sshUser = defaults.string(forKey: keyPrefix + "sshUser") ?? ""
@@ -241,7 +242,7 @@ public final class WawonaPreferences: ObservableObject {
         nestedCompositorsSupport = defaults.object(forKey: "NestedCompositorsSupport") as? Bool
             ?? defaults.object(forKey: keyPrefix + "nestedCompositorsSupport") as? Bool ?? true
         multipleClients = defaults.object(forKey: "MultipleClients") as? Bool
-            ?? defaults.object(forKey: keyPrefix + "multipleClients") as? Bool ?? false
+            ?? defaults.object(forKey: keyPrefix + "multipleClients") as? Bool ?? true
         universalClipboard = defaults.object(forKey: "UniversalClipboard") as? Bool
             ?? defaults.object(forKey: keyPrefix + "universalClipboard") as? Bool ?? true
         swapCmdWithAlt = defaults.object(forKey: "SwapCmdWithAlt") as? Bool
@@ -298,6 +299,7 @@ public final class WawonaPreferences: ObservableObject {
             forKey: "NestedCompositorCursor"
         )
         defaults.set(autoScale, forKey: keyPrefix + "autoScale")
+        defaults.set(colorOperations, forKey: "ColorOperations")
         defaults.set(colorOperations, forKey: keyPrefix + "colorOperations")
         defaults.set(waylandDisplay, forKey: keyPrefix + "waylandDisplay")
         defaults.set(sshHost, forKey: keyPrefix + "sshHost")

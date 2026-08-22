@@ -93,9 +93,13 @@ static NSString *const kWWNAppLaunchAgentLabel =
     bundlePath = @"/Applications/Wawona.app";
   }
   uid_t uid = getuid();
+  // Open the exact bundle path. `open -a` looks up by name and can pick a
+  // stale copy (Documents/ahaha 0.2.2 dyld-aborts on a vanished pixman
+  // dylib). Install boots this agent out; keep the same path rule if it
+  // is ever rewritten from Settings.
   return @{
     @"Label" : kWWNAppLaunchAgentLabel,
-    @"ProgramArguments" : @[ [self openToolPath], @"-a", bundlePath ],
+    @"ProgramArguments" : @[ [self openToolPath], bundlePath ],
     @"RunAtLoad" : @YES,
     @"KeepAlive" : @NO,
     @"StandardOutPath" : [NSString stringWithFormat:@"/tmp/wawona-applaunch-%u.log", uid],

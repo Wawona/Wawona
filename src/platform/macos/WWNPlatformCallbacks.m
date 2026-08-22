@@ -277,6 +277,15 @@ NSString *WWNWawonaAppBundleRoot(void) {
 }
 
 NSString *WWNWawonaAppBundleRootForUI(void) {
+  // LaunchAgents may run the nix-store binary. Dock / `open -a Wawona` must
+  // still open the installed GUI, not a GC'd store copy or a stale
+  // Documents/ahaha 0.2.2.
+  NSString *applications = @"/Applications/Wawona.app";
+  NSString *exec =
+      [applications stringByAppendingPathComponent:@"Contents/MacOS/Wawona"];
+  if ([[NSFileManager defaultManager] isExecutableFileAtPath:exec]) {
+    return applications;
+  }
   return WWNWawonaAppBundleRoot();
 }
 

@@ -14,15 +14,31 @@ as history.
 
 ### Fixed
 
-- **Classic Take Over after 2026-08-20 evening SIGTRAP panic.** Stage no
-  longer re-enables Apple `watchdogd` while Path B/A is armed or `claim-ok`
-  is present. Classic requires live Disable (marker or Path B sock
-  `done=1`) in addition to Path B `claim-ok`; helper no longer invents the
-  disable marker before unload. Incident:
-  `docs/incident-reports/2026-08-20-stale-claim-ok-takeover/`.
+- **iOS Settings Env Vars crash.** Tapping Env Vars / Open Environment
+  Variables sent `openEnvironmentVariablesManager` which was compiled only
+  for macOS (`unrecognized selector`). The method is now shared; iOS presents
+  the SwiftUI inventory via `WWNEnvironmentSettingsPresenter`.
+- **iOS Settings Env Vars inventory.** iPhone/iPad Env Vars showed a stub
+  button instead of the macOS catalog table. Selecting Env Vars now shows
+  the same `EnvironmentVariablesView` (every non-secret catalog row, filter,
+  Edit / New / Reset) as the Settings detail pane.
+- **macOS nested Weston HiDPI.** Nested `--backend=wayland` was launched
+  with `--scale=` copied from the host `backingScaleFactor` (2 on Retina).
+  That doubled Weston's desktop inside a window Wawona already scaled, so
+  the cursor was huge and the top panel sat outside the NSWindow. Nested
+  Weston now uses `--scale=1` and follows xdg_toplevel configure (content
+  size + live resize). iOS in-process DRM still uses hostScale.
 
 ### Changed
 
+- **Settings catalog.** Enable HDR lives in Display (on by default). Multiple
+  Wayland clients default on (including iOS). Shake / swipe / tvOS Menu moved
+  to a Machines Settings section. iCloud Sync is its own Apple section. Local
+  Shell is three buttons (Reset Shell Dotfiles, Reset System Tree, Import File
+  to Home). Force SSD is macOS-only (default off). Auto Scale, DMABUF, and
+  Nested Weston Backend pickers are removed from Settings (behavior stays).
+  Dependencies list this product's linked packages from
+  `SettingsDependencies.json`. Settings rows wrap instead of overflowing.
 - **Classic Take Over consumes Path B sticky `claim-ok` plus live Disable.**
   Helper marker remains `WWN_MODEB_WD=iowatchdog-then-unload`. Settings shows
   ACK status (including stale). KEEP_WS `--mode-b-probe` still injects
@@ -87,9 +103,13 @@ as history.
   23:12). Probe may inject while Aqua stays up.
 - **`nix run .#install` drops stale `applaunch` LaunchAgents.** After the
   panic reboot, `com.aspauldingcode.wawona.applaunch` still `open -a`'d a
-  garbage-collected nix store. Login Services then launched
+  garbage-collected nix store. Launch Services then launched
   `Documents/ahaha/Wawona.app` 0.2.2, which dyld-aborted on a missing
   `libpixman-1.0.dylib`. Install and uninstall now boot out that agent.
+  Install also copies the store app to `/Applications/Wawona.app`,
+  unregisters other macOS `Wawona.app` copies from Launch Services, and
+  registers that path. The Settings login-item plist now `open`s the
+  exact bundle path instead of `open -a`.
 - **Mode B `nix run .#install` no longer kills its own restage.** The
   helper used to `kill -KILL` every process whose command line mentioned
   `run-modeb.sh`, including the privileged installer `/bin/sh -c`. Stage

@@ -259,6 +259,18 @@ private fun SettingsSectionContent(
 
 @Composable
 private fun MachineStubsSection(prefs: SharedPreferences, accent: Color) {
+    SettingsSectionHeader("Machines", Icons.Filled.Storage, accent)
+    SettingsGroup(accent) {
+        SettingsSwitchItem(prefs, "wawona.pref.shakeToCloseEnabled", "Shake to Exit Machine",
+            "When enabled, shaking the device asks before closing the active machine session.",
+            Icons.Filled.Vibration, default = true, iconTint = accent)
+        SettingsSwitchItem(prefs, "wawona.pref.swipeBackToCloseEnabled", "Swipe Back to Exit Machine",
+            "When enabled, the system back gesture asks before closing the active machine session.",
+            Icons.Filled.ArrowBack, default = true, iconTint = accent)
+    }
+
+    Spacer(Modifier.height(12.dp))
+
     SettingsSectionHeader("Virtual Machines", Icons.Filled.Storage, accent)
     SettingsTextInputItem(
         prefs, "machineVmProvider", "VM Provider",
@@ -294,11 +306,9 @@ private fun MachineStubsSection(prefs: SharedPreferences, accent: Color) {
 private fun DisplaySection(prefs: SharedPreferences) {
     SettingsSectionHeader("Display", Icons.Filled.DesktopWindows, SettingsTab.DISPLAY.accentColor)
     SettingsGroup(SettingsTab.DISPLAY.accentColor) {
-        SettingsSwitchItem(prefs, "forceServerSideDecorations", "Force Server-Side Decorations",
-            "When off, Wayland clients (e.g. weston-terminal) draw their own window frames. When on, the compositor owns decorations.",
-            Icons.Filled.BorderOuter, default = false, iconTint = SettingsTab.DISPLAY.accentColor)
-        SettingsSwitchItem(prefs, "autoScale", "Auto Scale",
-            "Detect and match Android UI scaling", Icons.Filled.AspectRatio, default = true, iconTint = SettingsTab.DISPLAY.accentColor)
+        SettingsSwitchItem(prefs, "colorOperations", "Enable HDR",
+            "Color profiles and HDR present path", Icons.Filled.Palette, default = true,
+            iconTint = SettingsTab.DISPLAY.accentColor)
         SettingsSwitchItem(prefs, "respectSafeArea", "Respect Safe Area",
             "Avoid system UI and notches", Icons.Filled.Security, default = true, iconTint = SettingsTab.DISPLAY.accentColor)
     }
@@ -314,11 +324,6 @@ private fun GraphicsSection(prefs: SharedPreferences) {
         SettingsDropdownItem(prefs, "openglDriver", "OpenGL Driver",
             "Select OpenGL/GLES implementation. None disables OpenGL.", Icons.Filled.GraphicEq, "ANGLE",
             listOf("None", "ANGLE", "System"), iconTint = SettingsTab.GRAPHICS.accentColor)
-    }
-    SettingsSectionHeader("Features", Icons.Filled.Tune, SettingsTab.GRAPHICS.accentColor)
-    SettingsGroup(SettingsTab.GRAPHICS.accentColor) {
-        SettingsSwitchItem(prefs, "dmabufEnabled", "DmaBuf Support",
-            "Enable DMA buffer sharing between clients", Icons.Filled.Share, default = true, iconTint = SettingsTab.GRAPHICS.accentColor)
     }
 }
 
@@ -447,15 +452,6 @@ private fun EnvironmentSection(prefs: SharedPreferences, accent: Color) {
 private fun AdvancedSection(prefs: SharedPreferences) {
     SettingsSectionHeader("Advanced", Icons.Filled.Tune, SettingsTab.ADVANCED.accentColor)
     SettingsGroup(SettingsTab.ADVANCED.accentColor) {
-        SettingsSwitchItem(prefs, "wawona.pref.shakeToCloseEnabled", "Shake to Exit Machine",
-            "When enabled, shaking the device asks before closing the active machine session.",
-            Icons.Filled.Vibration, default = true, iconTint = SettingsTab.ADVANCED.accentColor)
-        SettingsSwitchItem(prefs, "wawona.pref.swipeBackToCloseEnabled", "Swipe Back to Exit Machine",
-            "When enabled, the system back gesture asks before closing the active machine session.",
-            Icons.Filled.ArrowBack, default = true, iconTint = SettingsTab.ADVANCED.accentColor)
-        SettingsSwitchItem(prefs, "colorOperations", "Color Operations",
-            "Enable color profiles, HDR requests, etc.", Icons.Filled.Palette, default = true,
-            iconTint = SettingsTab.ADVANCED.accentColor)
         SettingsSwitchItem(prefs, "nestedCompositorsSupport", "Nested Compositors",
             "Support nested Wayland compositors", Icons.Filled.Layers, default = true,
             iconTint = SettingsTab.ADVANCED.accentColor)
@@ -475,7 +471,7 @@ private fun AdvancedSection(prefs: SharedPreferences) {
             ),
         )
         SettingsSwitchItem(prefs, "multipleClients", "Multiple Clients",
-            "Allow multiple Wayland clients", Icons.Filled.Group, default = false,
+            "Allow multiple Wayland clients", Icons.Filled.Group, default = true,
             iconTint = SettingsTab.ADVANCED.accentColor)
         SettingsSwitchItem(prefs, "westonSimpleSHMEnabled", "Enable Weston Simple SHM",
             "Start weston-simple-shm on launch", Icons.Filled.PlayArrow, default = false,
@@ -976,8 +972,6 @@ private fun ConnectionSection(prefs: SharedPreferences, localIp: String?, contex
 
 @Composable
 private fun LocalShellSection(context: Context, accent: Color) {
-    val snap = remember { LocalShellRootfs.snapshot(context) }
-    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     var statusMessage by remember { mutableStateOf<String?>(null) }
 
     val importLauncher = rememberLauncherForActivityResult(
@@ -996,26 +990,13 @@ private fun LocalShellSection(context: Context, accent: Color) {
     }
 
     SettingsSectionHeader("Local Shell", Icons.Filled.Folder, accent)
-    SettingsInfoRow("Platform", snap.platformLabel, "Android bundled rootfs", Icons.Filled.PhoneAndroid)
-    SettingsInfoRow("Browse", snap.filesHint, "Path in Files or file manager", Icons.Filled.FolderOpen)
-    SettingsInfoRow("Shell HOME", snap.home, "\$HOME for in-process / nested shell", Icons.Filled.Home)
-    SettingsInfoRow("System Root", snap.systemRoot, "WAWONA_ROOTFS", Icons.Filled.Storage)
-    SettingsInfoRow("Template", snap.templateStatus, "Bundled vs installed version", Icons.Filled.Info)
 
     SettingsGroup(accent) {
-        OutlinedButton(
-            onClick = {
-                clipboard.setPrimaryClip(ClipData.newPlainText("HOME", snap.home))
-                Toast.makeText(context, "Copied HOME path", Toast.LENGTH_SHORT).show()
-            },
-            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-        ) { Text("Copy HOME Path") }
-
         if (LocalShellCapability.ImportFile in LocalShellRootfs.capabilities()) {
             OutlinedButton(
                 onClick = { importLauncher.launch(arrayOf("*/*")) },
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-            ) { Text("Import File to Home") }
+            ) { Text("Import File to Home", maxLines = 2) }
         }
 
         if (LocalShellCapability.ResetDotfiles in LocalShellRootfs.capabilities()) {
@@ -1030,7 +1011,7 @@ private fun LocalShellSection(context: Context, accent: Color) {
                         }
                 },
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-            ) { Text("Reset Shell Dotfiles") }
+            ) { Text("Reset Shell Dotfiles", maxLines = 2) }
         }
 
         if (LocalShellCapability.ReinstallSystemTree in LocalShellRootfs.capabilities()) {
@@ -1038,14 +1019,14 @@ private fun LocalShellSection(context: Context, accent: Color) {
                 onClick = {
                     LocalShellRootfs.reinstallSystemTree(context)
                         .onSuccess {
-                            Toast.makeText(context, "System tree reinstalled", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "System tree reset", Toast.LENGTH_SHORT).show()
                         }
                         .onFailure { e ->
                             Toast.makeText(context, "Failed: ${e.message}", Toast.LENGTH_LONG).show()
                         }
                 },
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-            ) { Text("Reinstall System Tree") }
+            ) { Text("Reset System Tree", maxLines = 2) }
         }
     }
 
@@ -1453,15 +1434,30 @@ private fun AboutSection(context: Context) {
 
 @Composable
 private fun DependenciesSection() {
-    AboutDependencyRow("Waypipe", "v0.10.6", "Remote Wayland display proxy")
-    AboutDependencyRow("libwayland", "v1.23", "Wayland protocol library")
-    AboutDependencyRow("xkbcommon", "v1.7.0", "Keyboard handling library")
-    AboutDependencyRow("LZ4", "v1.9", "Fast compression algorithm")
-    AboutDependencyRow("Zstd", "v1.5", "Zstandard compression")
-    AboutDependencyRow("libffi", "v3.4", "Foreign function interface")
-    AboutDependencyRow("SwiftShader", "v2024", "Vulkan software renderer")
-    AboutDependencyRow("OpenSSH", "v9.8p1", "SSH client for Android (wwn-ssh portable)")
-    AboutDependencyRow("OpenSSL", "v3.4", "Cryptography library")
+    val context = LocalContext.current
+    val packages = remember {
+        runCatching {
+            val json = context.assets.open("SettingsDependencies.json")
+                .bufferedReader().use { it.readText() }
+            val arr = org.json.JSONObject(json).getJSONArray("packages")
+            (0 until arr.length()).map { i ->
+                val o = arr.getJSONObject(i)
+                Triple(o.optString("name"), o.optString("version"), o.optString("role"))
+            }
+        }.getOrDefault(emptyList())
+    }
+    if (packages.isEmpty()) {
+        SettingsInfoRow(
+            title = "Dependencies",
+            value = "unavailable",
+            description = "SettingsDependencies.json missing from this Android build.",
+            icon = Icons.Filled.Inventory2
+        )
+    } else {
+        packages.forEach { (name, version, role) ->
+            AboutDependencyRow(name, version, role)
+        }
+    }
 }
 
 @Composable
@@ -1491,12 +1487,15 @@ private fun SettingsInfoRow(title: String, value: String, description: String, i
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                    color = MaterialTheme.colorScheme.onSurface)
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2)
                 Text(description, style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text(displayVersion, style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                color = MaterialTheme.colorScheme.primary)
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.widthIn(max = 96.dp),
+                maxLines = 2)
         }
     }
 }
@@ -1738,7 +1737,8 @@ fun SettingsSwitchItem(
                 Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.6f))
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.6f),
+                        maxLines = 2)
                     Spacer(Modifier.height(4.dp))
                     Text(description, style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.6f))
@@ -1926,7 +1926,8 @@ fun SettingsDropdownItem(
                 Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.6f))
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.6f),
+                        maxLines = 2)
                     Spacer(Modifier.height(4.dp))
                     Text(description, style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.6f))

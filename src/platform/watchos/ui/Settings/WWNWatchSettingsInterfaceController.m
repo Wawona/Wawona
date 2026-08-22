@@ -38,8 +38,11 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
         @"Connection",
         @"Waypipe",
         @"SSH",
+        @"Machines",
+        @"iCloud Sync",
         @"Advanced",
         @"About",
+        @"Dependencies",
     ];
     [self.sectionsTable setNumberOfRows:sections.count withRowType:@"SectionRow"];
     for (NSInteger i = 0; i < (NSInteger)sections.count; i++) {
@@ -59,8 +62,11 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
         @"Connection",
         @"Waypipe",
         @"SSH",
+        @"Machines",
+        @"iCloud Sync",
         @"Advanced",
         @"About",
+        @"Dependencies",
     ];
     if (rowIndex < 0 || rowIndex >= (NSInteger)sections.count) {
         return;
@@ -97,10 +103,8 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
 - (NSArray<WWNWatchSettingsRowModel *> *)buildRowsForSection:(NSString *)section {
     WWNWatchSettingsBridge *bridge = [self bridge];
     if ([section isEqualToString:@"Display"]) {
-        // Force SSD is macOS-only (#120). Color Operations lives in Advanced
-        // (same catalog as iOS/macOS).
         return @[
-            [self toggleRow:@"Auto Scale" key:@"autoScale" value:bridge.autoScale],
+            [self toggleRow:@"Enable HDR" key:@"colorOperations" value:bridge.colorOperations],
         ];
     }
     if ([section isEqualToString:@"Input"]) {
@@ -118,7 +122,6 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
             [self actionRow:@"Renderer" key:@"renderer" value:bridge.renderer],
             [self actionRow:@"Vulkan Driver" key:@"" value:@"none"],
             [self actionRow:@"OpenGL Driver" key:@"" value:@"none"],
-            [self actionRow:@"Enable DMABUF" key:@"" value:@"Off"],
         ];
     }
     if ([section isEqualToString:@"Connection"]) {
@@ -154,16 +157,46 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
         }
         return sshRows;
     }
+    if ([section isEqualToString:@"Machines"]) {
+        return @[
+            [self toggleRow:@"Shake to Exit Machine" key:@"shakeToCloseEnabled" value:bridge.shakeToCloseEnabled],
+            [self toggleRow:@"Swipe Back to Exit Machine" key:@"swipeBackToCloseEnabled" value:bridge.swipeBackToCloseEnabled],
+        ];
+    }
+    if ([section isEqualToString:@"iCloud Sync"]) {
+        return @[
+            [self actionRow:@"iCloud Status" key:@"" value:@"Not available on watchOS"],
+        ];
+    }
     if ([section isEqualToString:@"Advanced"]) {
         return @[
-            [self toggleRow:@"Color Operations (HDR)" key:@"colorOperations" value:bridge.colorOperations],
             [self toggleRow:@"Nested Compositors" key:@"nestedCompositorsSupport" value:bridge.nestedCompositorsSupport],
             [self actionRow:@"Display Backend" key:@"compositorBackend" value:bridge.compositorBackend],
             [self toggleRow:@"Multiple Clients" key:@"multipleClients" value:bridge.multipleClients],
             [self actionRow:@"Log Level" key:@"logLevel" value:bridge.logLevel],
-            [self toggleRow:@"Shake to Close" key:@"shakeToCloseEnabled" value:bridge.shakeToCloseEnabled],
-            [self toggleRow:@"Swipe Back to Close" key:@"swipeBackToCloseEnabled" value:bridge.swipeBackToCloseEnabled],
         ];
+    }
+    if ([section isEqualToString:@"Dependencies"]) {
+        NSString *path = [[NSBundle mainBundle] pathForResource:@"SettingsDependencies"
+                                                        ofType:@"json"];
+        NSData *data = path.length ? [NSData dataWithContentsOfFile:path] : nil;
+        id json = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+        NSArray *packages = [json isKindOfClass:[NSDictionary class]] ? json[@"packages"] : nil;
+        NSMutableArray *rows = [NSMutableArray array];
+        if ([packages isKindOfClass:[NSArray class]]) {
+            for (NSDictionary *pkg in packages) {
+                if (![pkg isKindOfClass:[NSDictionary class]]) {
+                    continue;
+                }
+                NSString *name = pkg[@"name"] ?: @"Package";
+                NSString *version = pkg[@"version"] ?: @"";
+                [rows addObject:[self actionRow:name key:@"" value:version]];
+            }
+        }
+        if (rows.count == 0) {
+            [rows addObject:[self actionRow:@"Dependencies" key:@"" value:@"unavailable"]];
+        }
+        return rows;
     }
     if ([section isEqualToString:@"About"]) {
         NSString *raw = [[NSBundle mainBundle]

@@ -198,7 +198,7 @@ pub fn show_editor(
     add_row(&dig_group, "Vulkan Driver", &vulkan_driver);
     add_row(&dig_group, "OpenGL Driver", &opengl_driver);
     add_row(&dig_group, "Enable DMABUF", &dmabuf);
-    add_row(&dig_group, "HDR / Color Operations", &color_ops);
+    add_row(&dig_group, "Enable HDR", &color_ops);
 
     // MARK: Session Exit
     let session_exit_group = adw::PreferencesGroup::new();

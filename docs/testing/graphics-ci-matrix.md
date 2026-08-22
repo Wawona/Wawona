@@ -26,7 +26,7 @@ from [`product-build.yml`](../../.github/workflows/product-build.yml).
 | OpenGL / GLES | kmscube + opengl-cube / weston-simple-egl on macOS (PROPER); Apple-mobile + Android WIRED pending device runs | desktop-host engage path; never claimed on store artifacts |
 | Vulkan | macOS MVK + KK (PROPER); iOS MVK WIRED; Android system WIRED / SwiftShader client ICD WIRED | same ICD under desktop-host |
 | DRM open/resources | stock kmscube virtual card (macOS PROPER) | Dobby `open`/`ioctl` hooks on desktop-host |
-| KMS flip/present | host `iland_drm_complete_page_flip` (macOS PROPER) | framebufferd ACK worker (WIRED; SIP partial runtime owed) |
+| KMS flip/present | host `iland_drm_complete_page_flip` (macOS PROPER) | framebufferd ACK worker (WIRED; SIP fully disabled runtime owed) |
 
 ## Agent-Device usage
 

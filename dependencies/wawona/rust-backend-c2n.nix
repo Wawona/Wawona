@@ -574,7 +574,7 @@ let
 
     # ── wawona (root crate) ────────────────────────────────────────
     wawona = attrs: {
-      preConfigure = (attrs.preConfigure or "") + lib.optionalString pkgs.stdenv.isDarwin ''
+      preConfigure = (attrs.preConfigure or "") + lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
         export MACOSX_DEPLOYMENT_TARGET="${macosDeploymentTarget}"
       '';
       # Product-sim CI can set release=false to skip thin LTO / O3 on the root crate.
@@ -693,7 +693,7 @@ let
       buildInputs = (attrs.buildInputs or []) ++
         lib.optional (nativeDeps ? libssh2) nativeDeps.libssh2 ++
         lib.optional (nativeDeps ? openssl) nativeDeps.openssl ++
-        lib.optional pkgs.stdenv.isDarwin pkgs.libiconv;
+        lib.optional pkgs.stdenv.hostPlatform.isDarwin pkgs.libiconv;
       nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [ pkgs.pkg-config ];
     } // lib.optionalAttrs (nativeDeps ? libssh2) {
       PKG_CONFIG_PATH = lib.concatStringsSep ":" [
@@ -711,7 +711,7 @@ let
       buildInputs = (attrs.buildInputs or []) ++
         lib.optional (nativeDeps ? libssh2) nativeDeps.libssh2 ++
         [ zlibDep opensslDep ] ++
-        lib.optional pkgs.stdenv.isDarwin pkgs.libiconv;
+        lib.optional pkgs.stdenv.hostPlatform.isDarwin pkgs.libiconv;
       nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [ pkgs.pkg-config ];
       preConfigure = (attrs.preConfigure or "") + lib.optionalString (isIOS || isTVOS || isVisionOS) ''
         export C_INCLUDE_PATH="${lib.optionalString (nativeDeps ? zlib) "${nativeDeps.zlib}/include"}:${lib.optionalString (nativeDeps ? openssl) "${nativeDeps.openssl}/include"}:$C_INCLUDE_PATH"
@@ -789,8 +789,8 @@ let
     # ── waypipe (needs libiconv on macOS) ───────────────────────────
     waypipe = attrs: {
       buildInputs = (attrs.buildInputs or []) ++
-        lib.optionals pkgs.stdenv.isDarwin [ pkgs.libiconv ];
-      preConfigure = (attrs.preConfigure or "") + lib.optionalString pkgs.stdenv.isDarwin ''
+        lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.libiconv ];
+      preConfigure = (attrs.preConfigure or "") + lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
         export MACOSX_DEPLOYMENT_TARGET="${macosDeploymentTarget}"
       '';
     } // lib.optionalAttrs isTVOS {

@@ -226,7 +226,7 @@ public struct MachineSettingsView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
-            Toggle("HDR / Color Operations", isOn: colorOperationsBinding)
+            Toggle("Enable HDR", isOn: colorOperationsBinding)
         }
     }
 

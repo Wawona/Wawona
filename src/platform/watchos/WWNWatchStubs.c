@@ -157,6 +157,30 @@ int wawona_coreutils_main(int argc, char **argv) {
     (void)argc; (void)argv;
     return 1;
 }
+
+/* WWNLog.h always calls the Rust log ring. arm64_32 does not link
+ * libwawona.a (Nix watch archives are arm64-only). */
+__attribute__((weak))
+void wwn_log_ring_append(const char *module, const char *msg) {
+    (void)module;
+    (void)msg;
+}
+
+__attribute__((weak))
+void wwn_log_ring_set_machine(const char *machine_id) {
+    (void)machine_id;
+}
+
+__attribute__((weak))
+char *wwn_log_ring_dump(const char *machine_id_or_null) {
+    (void)machine_id_or_null;
+    return NULL;
+}
+
+__attribute__((weak))
+void WWNStringFree(char *s) {
+    (void)s;
+}
 #endif
 
 /* ssh_main / ssh_keygen_main / scp_main: real impls from libwwn-ssh-cli on

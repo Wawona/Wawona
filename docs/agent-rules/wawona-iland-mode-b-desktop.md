@@ -94,8 +94,10 @@ Never invent CSR_* syscalls; stay on `csrutil status` string matching.
   Over / never LLDB MCP on `watchdogd`).
 - SIP + prefs UI: `WWNSipStatus.*`, `WWNPreferences.m` Desktop section.
 - Engage/disengage: `WWNDesktopReplacementController.*`,
-  `WWNMachineSessionBridge.m`. `nix run .#install` restages helper/dylib
-  via `Wawona --mode-b-stage` (no take-over; never `wwn-iowatchdog`
+  `WWNMachineSessionBridge.m`. Default `nix run .#install` skips Mode B
+  restage. `WAWONA_MODEB_STAGE=1 nix run .#install` (or `Wawona --mode-b-stage`)
+  copies helper + dylib for this store (no take-over; never `wwn-iowatchdog`
   disable/enable or lldb on `watchdogd` during stage).
+  Site: https://wawona.io/docs/desktop/ (restage helper and dylib).
 - Canonical prose: `Wawona/docs/iland-mode-a-b-desktop.md`.
 - Wawona Swinging Bridge: `wawona-swinging-bridge`, `Wawona/docs/swinging-bridge.md`.

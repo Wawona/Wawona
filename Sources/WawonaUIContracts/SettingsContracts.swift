@@ -152,6 +152,10 @@ public enum GlobalSettingsSectionID: String, Sendable, CaseIterable, Hashable {
     case connection
     case environment
     case localShell
+    /// Global machine-session gestures (shake / swipe / tvOS Menu). Not the Machines window.
+    case machines
+    /// Apple iCloud Drive sync for shell HOME. Omit on Android and Linux.
+    case iCloudSync
     /// iPhone/iPad send-side companion documents (WatchConnectivity). Not a watchOS catalog twin.
     case appleWatch
     case advanced
@@ -159,6 +163,7 @@ public enum GlobalSettingsSectionID: String, Sendable, CaseIterable, Hashable {
     case waypipe
     case ssh
     case about
+    case dependencies
 
     public var title: String {
         switch self {
@@ -168,12 +173,15 @@ public enum GlobalSettingsSectionID: String, Sendable, CaseIterable, Hashable {
         case .connection: return "Connection"
         case .environment: return "Env Vars"
         case .localShell: return "Local Shell"
+        case .machines: return "Machines"
+        case .iCloudSync: return "iCloud Sync"
         case .appleWatch: return "Apple Watch"
         case .advanced: return "Advanced"
         case .desktop: return "Desktop"
         case .waypipe: return "Waypipe"
         case .ssh: return "SSH"
         case .about: return "About"
+        case .dependencies: return "Dependencies"
         }
     }
 
@@ -185,20 +193,23 @@ public enum GlobalSettingsSectionID: String, Sendable, CaseIterable, Hashable {
         case .connection: return "network"
         case .environment: return "list.bullet.rectangle"
         case .localShell: return "terminal"
+        case .machines: return "desktopcomputer"
+        case .iCloudSync: return "icloud"
         case .appleWatch: return "applewatch"
         case .advanced: return "gearshape.2"
         case .desktop: return "macwindow.on.rectangle"
         case .waypipe: return "arrow.triangle.2.circlepath"
         case .ssh: return "lock.shield"
         case .about: return "info.circle"
+        case .dependencies: return "shippingbox"
         }
     }
 }
 
 public enum GlobalSettingsFieldID: String, Sendable, CaseIterable {
-    case autoScale
     case forceSSD
     case respectSafeArea
+    case colorOperations
     case virtualCursor
     case nestedCompositorCursor
     case touchInputType
@@ -208,10 +219,14 @@ public enum GlobalSettingsFieldID: String, Sendable, CaseIterable {
     case renderer
     case vulkanDriver
     case openGLDriver
-    case dmabufEnabled
     case waylandDisplay
     case defaultWaylandClient
     case environmentTable
+    case resetShellDotfiles
+    case resetSystemTree
+    case importFileToHome
+    case iCloudSyncEnabled
+    case iCloudSyncStatus
     case waypipeByDefault
     case waypipeCompress
     case waypipeVideo
@@ -229,7 +244,6 @@ public enum GlobalSettingsFieldID: String, Sendable, CaseIterable {
     case sshKeyPath
     case sshKeyPassphrase
     case sshGenerateKey
-    case colorOperations
     case nestedCompositors
     case compositorBackend
     case multipleClients
@@ -245,6 +259,7 @@ public enum GlobalSettingsFieldID: String, Sendable, CaseIterable {
     case watchCompanionStatus
     case watchSendDocument
     case watchOpenDocumentsHint
+    case dependenciesInventory
 }
 
 /// Single catalog for global Wawona Settings. Watch, iOS, and macOS must
@@ -256,32 +271,42 @@ public struct GlobalSettingsCatalog: Sendable {
         case .macOS:
             return [
                 .display, .input, .graphics, .connection, .environment, .localShell,
-                .advanced, .desktop, .waypipe, .ssh, .about,
+                .machines, .iCloudSync, .advanced, .desktop, .waypipe, .ssh, .about,
+                .dependencies,
             ]
         case .iOS:
             return [
                 .display, .input, .graphics, .connection, .environment, .localShell,
-                .appleWatch, .advanced, .waypipe, .ssh, .about,
+                .machines, .iCloudSync, .appleWatch, .advanced, .waypipe, .ssh, .about,
+                .dependencies,
             ]
         case .visionOS:
             return [
                 .display, .input, .graphics, .connection, .environment, .localShell,
-                .advanced, .waypipe, .ssh, .about,
+                .machines, .iCloudSync, .advanced, .waypipe, .ssh, .about,
+                .dependencies,
             ]
-        case .android, .linux:
+        case .android:
             return [
-                .display, .input, .graphics, .connection, .environment,
-                .advanced, .waypipe, .ssh, .about,
+                .display, .input, .graphics, .connection, .environment, .localShell,
+                .machines, .advanced, .waypipe, .ssh, .about, .dependencies,
+            ]
+        case .linux:
+            return [
+                .display, .input, .graphics, .connection, .environment, .localShell,
+                .machines, .advanced, .waypipe, .ssh, .about, .dependencies,
             ]
         case .tvOS:
             return [
                 .display, .input, .graphics, .connection, .environment,
-                .advanced, .waypipe, .ssh, .about,
+                .machines, .iCloudSync, .advanced, .waypipe, .ssh, .about,
+                .dependencies,
             ]
         case .watchOS:
             return [
                 .display, .input, .graphics, .connection, .environment,
-                .waypipe, .ssh, .advanced, .about,
+                .machines, .iCloudSync, .waypipe, .ssh, .advanced, .about,
+                .dependencies,
             ]
         }
     }
@@ -292,7 +317,7 @@ public struct GlobalSettingsCatalog: Sendable {
     ) -> [GlobalSettingsFieldID] {
         switch section {
         case .display:
-            var fields: [GlobalSettingsFieldID] = [.autoScale]
+            var fields: [GlobalSettingsFieldID] = [.colorOperations]
             if host == .macOS {
                 fields.append(.forceSSD)
             }
@@ -319,33 +344,47 @@ public struct GlobalSettingsCatalog: Sendable {
             if host == .watchOS {
                 fields.append(.renderer)
             }
-            fields.append(contentsOf: [.vulkanDriver, .openGLDriver, .dmabufEnabled])
+            fields.append(contentsOf: [.vulkanDriver, .openGLDriver])
             return fields
         case .connection:
             return [.waylandDisplay, .defaultWaylandClient]
         case .environment:
             return [.environmentTable]
         case .localShell:
-            return []
+            if host == .tvOS || host == .watchOS {
+                return []
+            }
+            var fields: [GlobalSettingsFieldID] = [.resetShellDotfiles, .resetSystemTree]
+            if host != .linux {
+                fields.append(.importFileToHome)
+            }
+            return fields
+        case .machines:
+            var fields: [GlobalSettingsFieldID] = [.shakeToClose]
+            if host == .iOS || host == .watchOS || host == .visionOS || host == .android {
+                fields.append(.swipeBackToClose)
+            }
+            return fields
+        case .iCloudSync:
+            switch host {
+            case .macOS, .iOS, .visionOS:
+                return [.iCloudSyncEnabled, .iCloudSyncStatus]
+            case .tvOS, .watchOS:
+                return [.iCloudSyncStatus]
+            case .android, .linux:
+                return []
+            }
         case .appleWatch:
             return host == .iOS
                 ? [.watchCompanionStatus, .watchSendDocument, .watchOpenDocumentsHint]
                 : []
         case .advanced:
-            var fields: [GlobalSettingsFieldID] = [
-                .colorOperations,
+            return [
                 .nestedCompositors,
                 .compositorBackend,
                 .multipleClients,
                 .logLevel,
             ]
-            if host != .tvOS {
-                fields.append(.shakeToClose)
-            }
-            if host == .iOS || host == .watchOS || host == .visionOS || host == .android {
-                fields.append(.swipeBackToClose)
-            }
-            return fields
         case .desktop:
             return host == .macOS ? [] : []
         case .waypipe:
@@ -369,6 +408,8 @@ public struct GlobalSettingsCatalog: Sendable {
                 .aboutVersion, .aboutPlatform, .aboutAuthor,
                 .aboutSource, .aboutSponsors, .aboutPortfolio,
             ]
+        case .dependencies:
+            return [.dependenciesInventory]
         }
     }
 }

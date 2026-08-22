@@ -69,8 +69,7 @@ private struct WatchGlobalSettingsSectionHost: View {
     @ObservedObject var preferences: WawonaPreferences
 
     var body: some View {
-        Group {
-            switch section {
+        switch section {
             case .display:
                 WatchSettingsDisplaySection(preferences: preferences)
             case .input:
@@ -85,14 +84,19 @@ private struct WatchGlobalSettingsSectionHost: View {
                 WatchSettingsWaypipeSection(preferences: preferences)
             case .ssh:
                 WatchSettingsSSHSection(preferences: preferences)
+            case .machines:
+                WatchSettingsMachinesSection(preferences: preferences)
+            case .iCloudSync:
+                WatchSettingsICloudSection()
             case .advanced:
                 WatchSettingsAdvancedSection(preferences: preferences)
             case .about:
                 WatchSettingsAboutSection()
+            case .dependencies:
+                WatchSettingsDependenciesSection()
             case .localShell, .desktop, .appleWatch:
                 Text("Unavailable on watchOS")
                     .foregroundStyle(.secondary)
-            }
         }
     }
 }
@@ -108,16 +112,19 @@ private struct WatchSettingsDisplaySection: View {
 
     var body: some View {
         Form {
-            if watchShows(.autoScale, in: .display) {
-                Toggle("Auto Scale", isOn: $preferences.autoScale)
+            if watchShows(.colorOperations, in: .display) {
+                Toggle("Enable HDR", isOn: $preferences.colorOperations)
+                    .lineLimit(2)
             }
             if watchShows(.forceSSD, in: .display), PlatformCapabilities.supportsClientSideDecorations {
                 Toggle("Force SSD", isOn: $preferences.forceSSD)
+                    .lineLimit(2)
             }
             if watchShows(.respectSafeArea, in: .display) {
                 Text("Respect Safe Area is iPhone-only.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                    .lineLimit(nil)
             }
         }
         .navigationTitle(GlobalSettingsSectionID.display.title)
@@ -181,12 +188,10 @@ private struct WatchSettingsGraphicsSection: View {
             if watchShows(.openGLDriver, in: .graphics) {
                 LabeledContent("OpenGL Driver", value: "None")
             }
-            if watchShows(.dmabufEnabled, in: .graphics) {
-                LabeledContent("Enable DMABUF", value: "Off")
-            }
             Text("watchOS has no Metal GPU stack. Compositor presents via SHM/CPU. GPU clients stay unavailable.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+                .lineLimit(nil)
         }
         .navigationTitle(GlobalSettingsSectionID.graphics.title)
         .onDisappear { preferences.save() }
@@ -348,16 +353,86 @@ private struct WatchSettingsSSHSection: View {
     }
 }
 
+private struct WatchSettingsMachinesSection: View {
+    @ObservedObject var preferences: WawonaPreferences
+
+    var body: some View {
+        Form {
+            if watchShows(.shakeToClose, in: .machines) {
+                Toggle("Shake to Exit Machine", isOn: $preferences.shakeToCloseEnabled)
+                    .lineLimit(2)
+            }
+            if watchShows(.swipeBackToClose, in: .machines) {
+                Toggle("Swipe Back to Exit Machine", isOn: $preferences.swipeBackToCloseEnabled)
+                    .lineLimit(2)
+            }
+        }
+        .navigationTitle(GlobalSettingsSectionID.machines.title)
+        .onDisappear { preferences.save() }
+    }
+}
+
+private struct WatchSettingsICloudSection: View {
+    var body: some View {
+        Form {
+            LabeledContent("iCloud Status", value: "Not available on watchOS")
+            Text("iCloud Drive Documents for shell HOME ships on iPhone, iPad, Mac, and Vision Pro.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(nil)
+        }
+        .navigationTitle(GlobalSettingsSectionID.iCloudSync.title)
+    }
+}
+
+private struct WatchSettingsDependenciesSection: View {
+    private var packages: [(String, String, String)] {
+        guard let url = Bundle.main.url(forResource: "SettingsDependencies", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let list = root["packages"] as? [[String: Any]]
+        else {
+            return []
+        }
+        return list.compactMap { pkg in
+            guard let name = pkg["name"] as? String else { return nil }
+            return (name, pkg["version"] as? String ?? "", pkg["role"] as? String ?? "")
+        }
+    }
+
+    var body: some View {
+        Form {
+            if packages.isEmpty {
+                Text("SettingsDependencies.json missing from this watchOS build.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(nil)
+            } else {
+                ForEach(packages, id: \.0) { name, version, role in
+                    VStack(alignment: .leading, spacing: 2) {
+                        LabeledContent(name, value: version)
+                        if !role.isEmpty {
+                            Text(role)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(nil)
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle(GlobalSettingsSectionID.dependencies.title)
+    }
+}
+
 private struct WatchSettingsAdvancedSection: View {
     @ObservedObject var preferences: WawonaPreferences
 
     var body: some View {
         Form {
-            if watchShows(.colorOperations, in: .advanced) {
-                Toggle("Color Operations (HDR)", isOn: $preferences.colorOperations)
-            }
             if watchShows(.nestedCompositors, in: .advanced) {
                 Toggle("Nested Compositors", isOn: $preferences.nestedCompositorsSupport)
+                    .lineLimit(2)
             }
             if watchShows(.compositorBackend, in: .advanced) {
                 Picker("Display Backend", selection: $preferences.compositorBackend) {
@@ -368,6 +443,7 @@ private struct WatchSettingsAdvancedSection: View {
             }
             if watchShows(.multipleClients, in: .advanced) {
                 Toggle("Multiple Clients", isOn: $preferences.multipleClients)
+                    .lineLimit(2)
             }
             if watchShows(.logLevel, in: .advanced) {
                 Picker("Log Level", selection: $preferences.logLevel) {
@@ -376,12 +452,6 @@ private struct WatchSettingsAdvancedSection: View {
                     Text("Warn").tag("warn")
                     Text("Error").tag("error")
                 }
-            }
-            if watchShows(.shakeToClose, in: .advanced) {
-                Toggle("Shake to Close", isOn: $preferences.shakeToCloseEnabled)
-            }
-            if watchShows(.swipeBackToClose, in: .advanced) {
-                Toggle("Swipe Back to Close", isOn: $preferences.swipeBackToCloseEnabled)
             }
         }
         .navigationTitle(GlobalSettingsSectionID.advanced.title)

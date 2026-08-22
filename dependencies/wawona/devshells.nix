@@ -15,12 +15,12 @@ let
 in
 builtins.listToAttrs (map (system: let
   pkgs = pkgsFor system;
-  toolchains = if pkgs.stdenv.isDarwin then import pkgs.toolchainsDir {
+  toolchains = if pkgs.stdenv.hostPlatform.isDarwin then import pkgs.toolchainsDir {
     inherit (pkgs) lib pkgs stdenv buildPackages;
     pkgsAndroid = null;
     pkgsIos = null;
   } else null;
-  xcodeUtils = if pkgs.stdenv.isDarwin then import pkgs.applePath { inherit (pkgs) lib pkgs; } else null;
+  xcodeUtils = if pkgs.stdenv.hostPlatform.isDarwin then import pkgs.applePath { inherit (pkgs) lib pkgs; } else null;
 
   releaseShellHook = ''
     export SECRETSPEC_FILE="''${SECRETSPEC_FILE:-$PWD/secretspec.toml}"
@@ -31,7 +31,7 @@ builtins.listToAttrs (map (system: let
 
   # Fastlane match and xcodebuild need DEVELOPER_DIR and xcodebuild on PATH inside
   # nix develop. CI exports these via select-xcode.sh; local dev uses find-xcode.
-  darwinXcodeShellHook = pkgs.lib.optionalString pkgs.stdenv.isDarwin ''
+  darwinXcodeShellHook = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
     XCODE_APP=""
     if [ -n "''${DEVELOPER_DIR:-}" ]; then
       XCODE_APP="''${DEVELOPER_DIR%/Contents/Developer}"
@@ -105,7 +105,7 @@ builtins.listToAttrs (map (system: let
       pkgs.wayland-protocols
       pkgs.openssl
       pkgs.nix-output-monitor
-    ] ++ releasePackages pkgs ++ (if pkgs.stdenv.isDarwin then [
+    ] ++ releasePackages pkgs ++ (if pkgs.stdenv.hostPlatform.isDarwin then [
       (toolchains.buildForMacOS "libwayland" { })
       xcodeUtils.ensureIosSimSDK
       xcodeUtils.findXcodeScript
@@ -146,10 +146,10 @@ builtins.listToAttrs (map (system: let
   releaseShell = pkgs.mkShell {
     preferLocalBuild = true;
     inputsFrom = [
-      (if pkgs.stdenv.isDarwin then darwinShell else linuxShell)
+      (if pkgs.stdenv.hostPlatform.isDarwin then darwinShell else linuxShell)
     ];
     shellHook = ''
-      ${if pkgs.stdenv.isDarwin then darwinXcodeShellHook else ""}
+      ${if pkgs.stdenv.hostPlatform.isDarwin then darwinXcodeShellHook else ""}
       ${releaseShellHook}
     '';
   };
@@ -163,10 +163,10 @@ builtins.listToAttrs (map (system: let
   linuxUiCheckShell = pkgs.mkShell {
     preferLocalBuild = true;
     inputsFrom = [
-      (if pkgs.stdenv.isDarwin then darwinShell else linuxShell)
+      (if pkgs.stdenv.hostPlatform.isDarwin then darwinShell else linuxShell)
     ];
     nativeBuildInputs = [ pkgs.pkg-config ];
-    buildInputs = pkgs.lib.optionals pkgs.stdenv.isDarwin [
+    buildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
       pkgs.gtk4
       pkgs.libadwaita
       pkgs.glib
@@ -183,7 +183,7 @@ builtins.listToAttrs (map (system: let
 in {
   name = system;
   value = {
-    default = if pkgs.stdenv.isDarwin then darwinShell else linuxShell;
+    default = if pkgs.stdenv.hostPlatform.isDarwin then darwinShell else linuxShell;
     release = releaseShell;
     linux-ui-check = linuxUiCheckShell;
   };

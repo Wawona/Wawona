@@ -72,13 +72,14 @@ window. Logs to stdout plus `/tmp/wawona-modeb-cli.log` and
 | `--mode-b-engage` | `takeover-now`: take over now. `reboot`: open the native macOS Restart sheet (`kAERestart` / QA1134, 60-second countdown). `blocked`: print the exact reason and exit 3 |
 | `--mode-b-disengage` | Full teardown: restore WindowServer, kill root compositor, remove helper / sudoers / login agent / dylib / ws-guard |
 
-`nix run .#install` always runs `--mode-b-stage`. That restages
-`/Library/Application Support/Wawona/run-modeb.sh`, copies this build's
-`libwayland-mac.dylib`, refreshes sudoers, and clears a stale `modeb.lock`.
+`nix run .#install` **skips** Mode B restage by default. Set `WAWONA_MODEB_STAGE=1` to restage
+`/Library/Application Support/Wawona/run-modeb.sh`, copy this build's
+`libwayland-mac.dylib`, refresh sudoers, and clear a stale `modeb.lock`.
 It prompts for administrator authorization once and fails if the helper
 still points at a previous nix store or still `export`s
 `DYLD_INSERT_LIBRARIES` (insert is compositor-only). It does not unload
-WindowServer.
+WindowServer. It does not Take Over. Public notes:
+https://wawona.io/docs/desktop/ (restage helper and dylib).
 
 `--mode-b-engage` uses the already-installed `sudo -n` helper when present, so
 it does not block on an administrator dialog after a successful install.

@@ -442,6 +442,12 @@ let
     "WAWONA_WAYPIPE_VERSION=\\\"${depVersions.waypipe}\\\""
   ];
 
+  settingsDepsResource = target: {
+    path = "src/resources/settings-deps/${target}/SettingsDependencies.json";
+    type = "file";
+    buildPhase = "resources";
+  };
+
   # Target-scoped pre-build: only realize the Rust backend(s) for the active Xcode
   # target, with input/output paths so Xcode skips the script on incremental builds.
   libwawonaOutputPaths = { withZsh ? false, withGetprogname ? false, withFoot ? false, withFuzzel ? false }:
@@ -1489,6 +1495,7 @@ ICDJSON
           # Required-reason API manifest (UserDefaults / boot time / file timestamps).
           # Missing this makes ASC accept the IPA then discard the build (never listed).
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
+          (settingsDepsResource "ios")
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
@@ -1681,6 +1688,7 @@ ICDJSON
           # Required-reason API manifest (UserDefaults / boot time / file timestamps).
           # Missing this makes ASC accept the IPA then discard the build (never listed).
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
+          (settingsDepsResource "ipados")
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
@@ -1872,6 +1880,7 @@ ICDJSON
           # Required-reason API manifest (UserDefaults / boot time / file timestamps).
           # Missing this makes ASC accept the IPA then discard the build (never listed).
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
+          (settingsDepsResource "tvos")
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
@@ -2039,6 +2048,7 @@ ICDJSON
           # Required-reason API manifest (UserDefaults / boot time / file timestamps).
           # Missing this makes ASC accept the IPA then discard the build (never listed).
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
+          (settingsDepsResource "macos")
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
@@ -2548,6 +2558,7 @@ ICDJSON
           # Required-reason API manifest (UserDefaults / boot time / file timestamps).
           # Missing this makes ASC accept the IPA then discard the build (never listed).
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
+          (settingsDepsResource "visionos")
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
@@ -2799,6 +2810,7 @@ ICDJSON
           # Required-reason API manifest (UserDefaults / boot time / file timestamps).
           # Missing this makes ASC accept the IPA then discard the build (never listed).
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
+          (settingsDepsResource "watchos")
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
         ];

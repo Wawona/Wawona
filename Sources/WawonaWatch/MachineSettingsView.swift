@@ -178,12 +178,12 @@ struct MachineSettingsView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                 Toggle("Enable DMABUF", isOn: dmabufEnabledBinding)
-                Toggle("HDR / Color Operations", isOn: colorOperationsBinding)
+                Toggle("Enable HDR", isOn: colorOperationsBinding)
             } else {
                 Text("GPU stack not available on watchOS (native + remote only).")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                Toggle("HDR / Color Operations", isOn: colorOperationsBinding)
+                Toggle("Enable HDR", isOn: colorOperationsBinding)
             }
         }
     }

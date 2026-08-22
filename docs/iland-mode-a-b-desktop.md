@@ -274,7 +274,7 @@ Wawona Swinging Bridge Mode B.
 | **tvOS** | App Store | Mode A **software only**. No ANGLE/MVK/KK/Vulkan ICD, no IOKit, no GPU DRM clients |
 | **watchOS** | App Store | Same software policy as tvOS |
 | **Android** | Google Play | Mode A graphics; Home Desktop **without root** when it ships; Wawona Swinging Bridge Mode B never Play-required |
-| **macOS** | **3rd-party** (not MAS) | Mode A default (SIP OK). Mode B desktop-host OK under SIP partial\|off; never contaminate iOS/Android store artifacts |
+| **macOS** | **3rd-party** (not MAS) | Mode A default (SIP may stay on). Mode B desktop-host only with SIP **fully disabled** (`csrutil disable`). Partial SIP is refused. Never contaminate iOS/Android store artifacts |
 
 ### Store-compliance checklist (assert per store build)
 

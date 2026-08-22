@@ -16,7 +16,7 @@ Canonical prose: `Wawona/docs/mode-a-b.md`, `swinging-bridge.md`, `iland-mode-a-
 
 | | **Mode A** | **Mode B** |
 |---|---|---|
-| Who | App Store / TestFlight / Play / store-shaped | Jailbreak iOS/iPadOS; SIP partial/off macOS; root Android |
+| Who | App Store / TestFlight / Play / store-shaped | Jailbreak iOS/iPadOS; SIP **fully disabled** (`csrutil disable`) for macOS Desktop/LockScreen; root Android |
 | Ship | Store IPA/AAB; notarized macOS | `repo.wawona.io` Sileo `.deb` + **Mode B IPA**; desktop-host macOS. **never** in store |
 | Copy | Never mention jailbreak / JIT pitch in store UI | Website + repo may document Mode B |
 
@@ -31,7 +31,7 @@ Canonical prose: `Wawona/docs/mode-a-b.md`, `swinging-bridge.md`, `iland-mode-a-
 
 ### Desktop / LockScreen
 
-- macOS: Mode A present path = iland userspace; Mode B = SIP-gated `libwayland-mac.dylib` in `.#wawona-macos-desktop-host` only.
+- macOS: Mode A present path = iland userspace; Mode B = SIP **fully disabled** (`csrutil disable`) + `libwayland-mac.dylib` in `.#wawona-macos-desktop-host` only. Partial SIP (`csrutil enable --without debug`) is refused.
 - Android: Default Home + LockScreen APIs (planned); no root required for baseline.
 - App Store Apple-mobile: **forbidden** in-app; never jailbreak strings in store IPA.
 

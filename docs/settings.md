@@ -23,22 +23,24 @@
 
 Global Settings sections are declared in `WawonaUIContracts.GlobalSettingsCatalog`.
 iOS includes **Apple Watch** (companion document transfer via WatchConnectivity;
-send-side only. Not a watchOS Settings twin). watchOS shows Display, Input,
-Graphics, Connection, Waypipe, SSH, Advanced, About. The same IDs as iOS, minus
-Desktop (forbidden), Local Shell, and Apple Watch. SwiftUI on watch is the
-in-process host (WatchKit present from `@main` is unreliable); both hosts must
-render that catalog and the same `wawona.pref.*` keys. Per-machine Add/Edit uses
-`MachineEditorValidation.visibleFields` (no Input Profile field. Touch Input
-Type lives in Machine Settings).
+send-side only. Not a watchOS Settings twin). Catalog sections include Display
+(Enable HDR), Machines (shake / swipe / tvOS Menu), iCloud Sync (Apple), Local
+Shell (three buttons), Dependencies (this product's linked packages only), plus
+the existing Input / Graphics / Env Vars / Advanced / Waypipe / SSH / About
+pages. watchOS omits Desktop (forbidden), Local Shell, and Apple Watch. SwiftUI
+on watch is the in-process host (WatchKit present from `@main` is unreliable);
+both hosts must render that catalog and the same `wawona.pref.*` keys.
 
 ---
 
 | Setting | Key | Type | Default | Platforms | Description |
 |---------|-----|------|---------|------------|-------------|
-| **Force Server-Side Decorations** | `forceServerSideDecorations` / `ForceServerSideDecorations` | Switch | On (Android), Off (macOS/iOS) | All | Compositor-drawn window borders; clients do not draw their own titlebar |
-| **Auto Scale** | `autoScale` / `AutoScale` / `autoRetinaScaling` | Switch | On | All | Match platform UI scaling (Retina, Android density) |
-| **Respect Safe Area** | `respectSafeArea` / `RespectSafeArea` | Switch | On | All | Avoid notches, Dynamic Island, display cutouts |
+| **Enable HDR** | `colorOperations` / `ColorOperations` | Switch | On | All | Color profiles and HDR (EDR) present path |
+| **Force Server-Side Decorations** | `forceServerSideDecorations` / `ForceServerSideDecorations` | Switch | Off | macOS only | When off, weston-family clients draw CSD. Other hosts always use SSD (no Settings row) |
+| **Respect Safe Area** | `respectSafeArea` / `RespectSafeArea` | Switch | On | iPhone / iPad | Avoid notches, Dynamic Island, display cutouts |
 | **Show macOS Cursor** | `RenderMacOSPointer` | Switch | Off | macOS only | Toggle visibility of the macOS system cursor |
+
+Auto Scale (`AutoScale`) and DMABUF (`DmabufEnabled`) stay on internally. They have no Settings row. Nested Weston Backend (`NestedWestonBackend`) is not a Settings picker; Display Backend (`CompositorBackend`) is the launch path.
 
 ---
 
@@ -65,7 +67,6 @@ watchOS WASM runtime remains size-gated off ([#156](https://github.com/Wawona/Wa
 |---------|-----|------|---------|------------|-------------|
 | **Vulkan Driver** | `vulkanDriver` / `VulkanDriver` | Dropdown | KosmicKrisp on Apple Silicon + macOS 26+; else MoltenVK on Apple; `system` on Android | GPU targets | Android: None, System, or SwiftShader. No Turnip, no `/dev/kgsl`. Apple: None, MoltenVK, KosmicKrisp. watchOS GPU is blocked (no Metal). |
 | **OpenGL Driver** | `openglDriver` / `OpenGLDriver` | Dropdown | `system` (Android), `angle` (macOS/iOS) | GPU targets | Android: None, ANGLE, System. Apple GPU targets: None, ANGLE. No MoltenGL. |
-| **DmaBuf Support** | `dmabufEnabled` / `DmabufEnabled` | Switch | On | All | Zero-copy texture sharing between clients |
 
 ---
 
@@ -108,6 +109,34 @@ Local issue doc: [`docs/issues/environment-variables-gui.md`](issues/environment
 
 ---
 
+## Machines (global Settings, not the Machines window)
+
+AX id: `wwn.settings.machines`.
+
+| Setting | Key | Type | Default | Platforms | Description |
+|---------|-----|------|---------|------------|-------------|
+| **Shake to Exit Machine** | `wawona.pref.shakeToCloseEnabled` | Switch | On | iOS, Android, watchOS, visionOS | Shake confirms closing the active machine session |
+| **Long-press Menu to Exit Machine** | `wawona.pref.shakeToCloseEnabled` (same key) | Switch | On | tvOS | Hold Menu/Back (~1s) confirms session exit. Short Menu sends Escape |
+| **Swipe Back to Exit Machine** | `wawona.pref.swipeBackToCloseEnabled` | Switch | On | iOS, Android, watchOS, visionOS | Edge swipe back asks before closing |
+
+---
+
+## iCloud Sync (Apple)
+
+AX id: `wwn.settings.icloudSync`. Omit on Android and Linux. Key:
+`wawona.pref.localShellICloudSyncEnabled` (`WWNRootfsICloudSync`). Toggle on
+macOS, iOS, iPadOS, visionOS. tvOS / watchOS show status only (no fake toggle).
+
+---
+
+## Local Shell
+
+Three actions only: **Reset Shell Dotfiles**, **Reset System Tree**, **Import
+File to Home**. Platform / HOME / template info rows and Finder help are not
+Settings fields. Hidden on tvOS / watchOS when those capabilities are absent.
+
+---
+
 ## Advanced
 
 | Setting | Key | Type | Default | Platforms | Description |
@@ -115,14 +144,9 @@ Local issue doc: [`docs/issues/environment-variables-gui.md`](issues/environment
 | **Display Backend** | `CompositorBackend` | Popup | `auto` | All | Nested compositor backend: `auto`, `wayland`, or `drm`. Resolved by `WWNResolveCompositorBackend` onto `NIRI_BACKEND` / `weston --backend=`. Do not pin nested-only. |
 | **Text Assist** | `enableTextAssist` | Switch | Off | iOS, Android | Host text assist / autocorrect via the compositor text-input path. iOS still reads this key. |
 | **Dictation** | `enableDictation` | Switch | Off | Android | Android dictation toggle (paired with Text Assist). |
-| **Color Operations** | `colorOperations` / `ColorOperations` | Switch | On (Android), Off (macOS/iOS) | All | Color profiles, HDR requests |
 | **Nested Compositors** | `nestedCompositorsSupport` / `NestedCompositorsSupport` | Switch | On | All | Nested Weston and Niri. Both ship on every product target. |
-| **Multiple Clients** | `multipleClients` / `MultipleClients` | Switch | On (macOS), Off (iOS/Android) | All | Allow multiple Wayland clients simultaneously |
-| **Shake to Exit Machine** | `wawona.pref.shakeToCloseEnabled` | Switch | On | iOS, Android, watchOS | When enabled, shake shows a confirmation before closing the active machine session |
-| **Long-press Menu to Exit Machine** | `wawona.pref.shakeToCloseEnabled` (same key) | Switch | On | tvOS | Siri Remote has no shake API; hold Menu/Back (~1s) confirms session exit. Short Menu sends Escape to the Wayland client |
-| **Swipe Back to Exit Machine** | `wawona.pref.swipeBackToCloseEnabled` | Switch | On | iOS, Android, watchOS | When enabled, edge swipe back asks before closing the active session (not used on tvOS) |
-| **Per-machine shake override** | `runtimeOverrides.shakeToCloseEnabled` | Optional bool | inherit global | All | Machine editor / override sheet |
-| **Per-machine swipe-back override** | `runtimeOverrides.swipeBackToCloseEnabled` | Optional bool | inherit global | All | Machine editor / override sheet |
+| **Multiple Clients** | `multipleClients` / `MultipleClients` | Switch | On | All | Allow multiple Wayland clients simultaneously |
+| **Log Level** | `wawona.pref.logLevel` | Popup | info | All | Minimum log severity for the in-app log ring |
 
 ---
 
@@ -207,6 +231,15 @@ Mode B loads bundled `libwayland-mac.dylib` only from
 
 ---
 
+## Dependencies
+
+AX id: `wwn.settings.dependencies`. Built from
+[`dependencies/wawona/settings-deps.nix`](../dependencies/wawona/settings-deps.nix)
+and shipped as `SettingsDependencies.json` for **this** product only. Never copy
+another platform's list. Rule: [`agent-rules/wawona-settings-dependencies.md`](agent-rules/wawona-settings-dependencies.md).
+
+---
+
 ## About (diagnostics)
 
 | Control | Type | Platforms | Description |
@@ -224,8 +257,9 @@ Sideloaded iOS IPAs have no TestFlight crash pipeline. TestFlight testers should
 
 | Setting | macOS | iOS | Android |
 |---------|-------|-----|---------|
-| Force SSD | Off | Off | On |
-| Multiple Clients | On | Off | Off |
+| Force SSD | Off (toggle) | Always SSD (no row) | Always SSD (no row) |
+| Multiple Clients | On | On | On |
+| Enable HDR | On | On | On |
 | Vulkan Driver | KosmicKrisp (Apple Silicon + macOS 26+), else moltenvk | moltenvk | system |
 | OpenGL Driver | angle | angle | system |
 

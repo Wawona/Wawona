@@ -540,7 +540,7 @@ struct WWNMachineEditorView: View {
           : "Wayland runs the client nested inside Wawona. DRM/KMS runs it against wwn-iland's userspace display stack, as it would on bare metal.")
       }
       Toggle("Enable DMABUF", isOn: $dmabufEnabled)
-      Toggle("HDR / Color Operations", isOn: $colorOperations)
+      Toggle("Enable HDR", isOn: $colorOperations)
     }
   }
 

@@ -162,6 +162,17 @@ extern void WWNCoreInjectDragLeave(void *core, uint64_t window_id);
   return ilandPresenter_ != nil;
 }
 
+- (void)stopIlandMetalPresentation {
+  if (ilandPresenter_) {
+    [ilandPresenter_ invalidate];
+    ilandPresenter_ = nil;
+  }
+  if (metalLayer_) {
+    metalLayer_.hidden = YES;
+  }
+  contentLayer_.hidden = NO;
+}
+
 - (BOOL)launchNestedIlandGpuClient:(NSString *)clientId {
   NSString *running = [ilandPresenter_ runningClientId];
   if (running.length > 0) {

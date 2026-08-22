@@ -76,49 +76,43 @@ public final class WWNEnvironmentSettingsPresenter: NSObject {
     #endif
 
     #if os(iOS) || os(tvOS) || os(visionOS)
-    /// View controller hosting the full Environment Variables table.
+    private static var retainedInventory: WWNEnvironmentInventoryHostingController?
+
+    /// View controller hosting the full Environment Variables table (same catalog as macOS).
     @objc(iOSHostingController)
     public static func iOSHostingController() -> UIViewController {
         if Thread.isMainThread {
-            return makeIOSHostingController()
+            return inventoryController()
         }
-        return DispatchQueue.main.sync { makeIOSHostingController() }
+        return DispatchQueue.main.sync { inventoryController() }
     }
 
-    private static func makeIOSHostingController() -> UIViewController {
-        let root = NavigationStack {
-            EnvironmentVariablesView(
-                preferences: WawonaPreferences.shared,
-                perMachine: false
-            )
+    private static func inventoryController() -> WWNEnvironmentInventoryHostingController {
+        if let existing = retainedInventory {
+            return existing
         }
-        let hosting = UIHostingController(rootView: root)
-        hosting.title = "Environment Variables"
-        hosting.view.accessibilityIdentifier = "wwn.settings.environment"
+        let hosting = WWNEnvironmentInventoryHostingController()
+        retainedInventory = hosting
         return hosting
     }
 
     private static func presentIOS(from host: UIViewController?) {
-        let hosting = makeIOSHostingController()
+        let hosting = inventoryController()
+        // Match macOS: Env Vars is the Settings detail pane, not a one-row stub
+        // and not a nested NavigationStack sheet (that hid the catalog).
+        if let split = host?.splitViewController {
+            split.showDetailViewController(hosting, sender: host)
+            return
+        }
         if let nav = host as? UINavigationController {
             nav.pushViewController(hosting, animated: true)
             return
         }
+        if let nav = host?.navigationController {
+            nav.pushViewController(hosting, animated: true)
+            return
+        }
         let wrap = UINavigationController(rootViewController: hosting)
-        #if os(tvOS)
-        hosting.navigationItem.leftBarButtonItem = UIBarButtonItem(
-            title: "Done",
-            style: .plain,
-            target: hosting,
-            action: #selector(UIViewController.dismiss(animated:completion:))
-        )
-        #else
-        hosting.navigationItem.leftBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .close,
-            target: hosting,
-            action: #selector(UIViewController.dismiss(animated:completion:))
-        )
-        #endif
         var presenter = host
         if presenter == nil {
             presenter = UIApplication.shared.connectedScenes
@@ -134,3 +128,47 @@ public final class WWNEnvironmentSettingsPresenter: NSObject {
     }
     #endif
 }
+
+#if os(iOS) || os(tvOS) || os(visionOS)
+/// Full catalog table for iOS Settings → Env Vars. Same `EnvironmentVariablesView` as macOS.
+private final class WWNEnvironmentInventoryHostingController:
+    UIHostingController<EnvironmentVariablesView>
+{
+    convenience init() {
+        WawonaPreferences.shared.load()
+        self.init(
+            rootView: EnvironmentVariablesView(
+                preferences: WawonaPreferences.shared,
+                perMachine: false
+            )
+        )
+        title = "Environment Variables"
+        navigationItem.largeTitleDisplayMode = .never
+        view.accessibilityIdentifier = "wwn.settings.environment"
+        #if os(tvOS)
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            title: "Done",
+            style: .plain,
+            target: self,
+            action: #selector(dismissSettingsRoot)
+        )
+        #else
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            barButtonSystemItem: .done,
+            target: self,
+            action: #selector(dismissSettingsRoot)
+        )
+        #endif
+        navigationItem.rightBarButtonItem?.accessibilityIdentifier = "wwn.settings.done"
+        navigationItem.rightBarButtonItem?.accessibilityLabel = "Done"
+    }
+
+    @objc private func dismissSettingsRoot() {
+        if let split = splitViewController {
+            split.dismiss(animated: true)
+        } else {
+            dismiss(animated: true)
+        }
+    }
+}
+#endif

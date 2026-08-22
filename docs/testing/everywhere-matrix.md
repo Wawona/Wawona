@@ -79,8 +79,7 @@ Run on each simulator/emulator or device. Mark pass/fail with date + build attr.
 - [ ] Launch `weston-terminal`. **Phase 1:** real cairo `terminal.c`; **today:** SHM stub (`mobile-weston-terminal.c`); **Phase 2:** bundled zsh PTY. See [ios-local-shell](../ios-local-shell/README.md)
 - [ ] Keyboard: evdev `KEY_A` → client receives correct keysym (protocol test: `test_keyboard_key_a_keysym`)
 - [ ] Launch nested compositor (`weston` / Settings). Child `wayland-N` socket; demo client through nested Weston
-- [ ] Nested Weston (default): Settings → **Wayland (Pixman)**. Panel + dark background visible within ~2s; no `terminal.png` / cursor errors in log
-- [ ] Nested Weston (optional): Settings → **iland DRM (GL)**. Metal overlay via `WWNIlandPresenter`; log shows GL renderer (not Pixman)
+- [ ] Nested Weston: Settings → Advanced → **Display Backend** (`auto` / `wayland` / `drm`). Nested Wayland should show panel + desktop inside the host window. DRM uses `WWNIlandPresenter`
 - [ ] kmscube smoke (Settings). IOSurface/Metal overlay updates before enabling DRM Weston
 - [ ] waypipe session (where SSH + libssh2 available)
 

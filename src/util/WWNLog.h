@@ -36,6 +36,21 @@
 extern void (*wwn_startup_log_sink)(const char *module, const char *msg);
 
 /*
+ * In-process ring for Settings → About → Copy logs. Implemented in
+ * src/util/logging.rs. Caller frees dump strings with WWNStringFree.
+ */
+#ifdef __cplusplus
+extern "C" {
+#endif
+void wwn_log_ring_append(const char *module, const char *msg);
+void wwn_log_ring_set_machine(const char *machine_id);
+char *wwn_log_ring_dump(const char *machine_id_or_null);
+void WWNStringFree(char *s);
+#ifdef __cplusplus
+}
+#endif
+
+/*
  * Headless CLI (`--mode-b-*`, etc.) sets this so WWNLog does not dump
  * compositor bring-up onto the caller's terminal. Operator output uses
  * stdout / WWNModeBCliLog instead.
@@ -82,6 +97,9 @@ static inline int WWNPreservedStderrFd(void)
     if (!wwn_log_quiet && wwn_startup_log_sink) {                              \
       wwn_startup_log_sink(module, [_wmsg UTF8String]);                        \
     }                                                                          \
+    if (wwn_log_ring_append) {                                                 \
+      wwn_log_ring_append(module, [_wmsg UTF8String]);                         \
+    }                                                                          \
   } while (0)
 
 #pragma clang diagnostic pop
@@ -100,10 +118,13 @@ static inline int WWNPreservedStderrFd(void)
               _wtm.tm_year + 1900, _wtm.tm_mon + 1, _wtm.tm_mday, _wtm.tm_hour,\
               _wtm.tm_min, _wtm.tm_sec, module, ##__VA_ARGS__);                \
     }                                                                          \
+    char _wbuf[1024];                                                          \
+    snprintf(_wbuf, sizeof(_wbuf), fmt, ##__VA_ARGS__);                        \
     if (!wwn_log_quiet && wwn_startup_log_sink) {                              \
-      char _wbuf[1024];                                                        \
-      snprintf(_wbuf, sizeof(_wbuf), fmt, ##__VA_ARGS__);                      \
       wwn_startup_log_sink(module, _wbuf);                                     \
+    }                                                                          \
+    if (wwn_log_ring_append) {                                                 \
+      wwn_log_ring_append(module, _wbuf);                                      \
     }                                                                          \
   } while (0)
 

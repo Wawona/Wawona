@@ -194,7 +194,20 @@ static int g_instance_lock_fd = -1;
 static int g_host_lock_fd = -1;
 static int g_menubar_lock_fd = -1;
 static BOOL g_show_about_on_launch = NO;
+static BOOL g_show_settings_on_launch = NO;
 static BOOL g_service_host_mode = NO;
+
+// Compositor-host is an agent: same Mach-O as the Machines UI, so Cocoa will
+// otherwise put a second Wawona icon in the Dock when it creates client
+// windows or is activated.
+void WWNKeepServiceHostOutOfDock(void) {
+  if (!g_service_host_mode) {
+    return;
+  }
+  if ([NSApp activationPolicy] != NSApplicationActivationPolicyAccessory) {
+    [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+  }
+}
 /* CLI: run compositor without opening Machines / Settings. */
 static BOOL g_cli_headless = NO;
 static NSString *g_cli_client = nil;
@@ -250,6 +263,7 @@ static void wwn_print_cli_help(void) {
       "  --compositor-host       Compositor service without Machines\n"
       "  --menubar               Menu-bar agent\n"
       "  --show-about            Show About instead of Machines\n"
+      "  --show-settings         Show Settings instead of Machines\n"
       "\n"
       "Examples:\n"
       "  # Nested Weston (Wayland backend) without the Machines GUI\n"
@@ -443,8 +457,22 @@ static BOOL wwn_is_compositor_socket_ready(void) {
   return access(cachedSocketPath.fileSystemRepresentation, F_OK) == 0;
 }
 
+static NSString *WWNReopenPanelName(void) {
+  if (g_show_settings_on_launch) {
+    return @"settings";
+  }
+  if (g_show_about_on_launch) {
+    return @"about";
+  }
+  return @"machines";
+}
+
 static void activate_existing_instance(void) {
-  [[NSDistributedNotificationCenter defaultCenter] postNotificationName:@"WWNReopenUINotification" object:nil userInfo:nil deliverImmediately:YES];
+  [[NSDistributedNotificationCenter defaultCenter]
+      postNotificationName:@"WWNReopenUINotification"
+                    object:nil
+                  userInfo:@{@"panel" : WWNReopenPanelName()}
+        deliverImmediately:YES];
 }
 
 static BOOL acquire_single_instance_lock(void) {
@@ -541,15 +569,27 @@ static void setup_signal_sources(void) {
 @implementation WWNMacAppDelegate
 
 - (void)handleReopenNotification:(NSNotification *)notif {
+  NSString *panel = nil;
+  id raw = notif.userInfo[@"panel"];
+  if ([raw isKindOfClass:[NSString class]]) {
+    panel = raw;
+  }
   dispatch_async(dispatch_get_main_queue(), ^{
     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
     [NSApp activateIgnoringOtherApps:YES];
-    [[WWNMachinesCoordinator sharedCoordinator] showMachinesWindowAndActivate:YES];
+    if ([panel isEqualToString:@"settings"]) {
+      [[WWNPreferences sharedPreferences] showPreferences:NSApp];
+    } else if ([panel isEqualToString:@"about"]) {
+      [[WWNAboutPanel sharedAboutPanel] showAboutPanel:NSApp];
+    } else {
+      [[WWNMachinesCoordinator sharedCoordinator] showMachinesWindowAndActivate:YES];
+    }
   });
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
   if (g_service_host_mode) {
+    WWNKeepServiceHostOutOfDock();
     return;
   }
   
@@ -595,6 +635,8 @@ static void setup_signal_sources(void) {
   }
   if (g_show_about_on_launch) {
     [[WWNAboutPanel sharedAboutPanel] showAboutPanel:NSApp];
+  } else if (g_show_settings_on_launch) {
+    [[WWNPreferences sharedPreferences] showPreferences:NSApp];
   } else if (!g_cli_headless) {
     [[WWNMachinesCoordinator sharedCoordinator] showMachinesWindowAndActivate:YES];
   } else {
@@ -669,7 +711,9 @@ static void setup_signal_sources(void) {
       NSString *bundlePath = WWNWawonaAppBundleRootForUI();
       NSTask *task = [[NSTask alloc] init];
       [task setLaunchPath:@"/usr/bin/open"];
-      [task setArguments:@[ @"-n", @"-a", bundlePath ]];
+      // Exact path. `open -a` looks up by name and can pick a stale copy
+      // (Documents/ahaha 0.2.2 dyld-aborts on a vanished pixman dylib).
+      [task setArguments:@[ @"-n", bundlePath ]];
       [task launch];
     }
     return NO;
@@ -867,6 +911,7 @@ static void wwn_install_host_main_menu(id target) {
 @interface WWNMenuBarController : NSObject
 @property(nonatomic, strong) NSStatusItem *statusItem;
 @property(nonatomic, strong) NSMenuItem *statusLineItem;
+@property(nonatomic, strong) NSSwitch *loginAtLoginSwitch;
 @property(nonatomic, strong) NSTimer *pollTimer;
 @end
 
@@ -939,13 +984,13 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
     NSMenuItem *restartItem =
         [[NSMenuItem alloc] initWithTitle:@"Restart Compositor"
                                    action:@selector(restartCompositor:)
-                            keyEquivalent:@"r"];
+                            keyEquivalent:@""];
     restartItem.target = self;
     [menu addItem:restartItem];
 
     NSMenuItem *stopItem = [[NSMenuItem alloc] initWithTitle:@"Stop Compositor"
                                                        action:@selector(stopCompositor:)
-                                                keyEquivalent:@"s"];
+                                                keyEquivalent:@""];
     stopItem.target = self;
     [menu addItem:stopItem];
 
@@ -956,20 +1001,51 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
     [menu addItem:startItem];
     [menu addItem:[NSMenuItem separatorItem]];
 
-    NSMenuItem *toggleLogin =
-        [[NSMenuItem alloc] initWithTitle:@"Toggle Launch Wawona.app at Login"
-                                   action:@selector(toggleAppLaunchAtLogin:)
-                            keyEquivalent:@"l"];
-    toggleLogin.target = self;
+    NSMenuItem *toggleLogin = [[NSMenuItem alloc] initWithTitle:@""
+                                                         action:nil
+                                                  keyEquivalent:@""];
+    NSView *loginRow = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 236, 28)];
+    NSTextField *loginLabel = [NSTextField labelWithString:@"Launch at Login"];
+    loginLabel.font = [NSFont menuFontOfSize:[NSFont smallSystemFontSize]];
+    loginLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [loginRow addSubview:loginLabel];
+
+    NSSwitch *loginSwitch = [[NSSwitch alloc] initWithFrame:NSZeroRect];
+    loginSwitch.controlSize = NSControlSizeMini;
+    loginSwitch.target = self;
+    loginSwitch.action = @selector(toggleAppLaunchAtLogin:);
+    loginSwitch.translatesAutoresizingMaskIntoConstraints = NO;
+    [loginRow addSubview:loginSwitch];
+    _loginAtLoginSwitch = loginSwitch;
+
+    [NSLayoutConstraint activateConstraints:@[
+      [loginLabel.leadingAnchor constraintEqualToAnchor:loginRow.leadingAnchor
+                                               constant:14],
+      [loginLabel.centerYAnchor constraintEqualToAnchor:loginRow.centerYAnchor],
+      [loginSwitch.trailingAnchor constraintEqualToAnchor:loginRow.trailingAnchor
+                                                 constant:-14],
+      [loginSwitch.centerYAnchor constraintEqualToAnchor:loginRow.centerYAnchor],
+      [loginLabel.trailingAnchor
+          constraintLessThanOrEqualToAnchor:loginSwitch.leadingAnchor
+                                   constant:-8],
+    ]];
+    toggleLogin.view = loginRow;
     [menu addItem:toggleLogin];
     [menu addItem:[NSMenuItem separatorItem]];
 
-    NSMenuItem *openApp =
-        [[NSMenuItem alloc] initWithTitle:@"Open Wawona"
+    NSMenuItem *openMachines =
+        [[NSMenuItem alloc] initWithTitle:@"Open Wawona Machine Configuration"
                                    action:@selector(openWawonaApp:)
-                            keyEquivalent:@"o"];
-    openApp.target = self;
-    [menu addItem:openApp];
+                            keyEquivalent:@""];
+    openMachines.target = self;
+    [menu addItem:openMachines];
+
+    NSMenuItem *openSettings =
+        [[NSMenuItem alloc] initWithTitle:@"Open Wawona Settings"
+                                   action:@selector(openWawonaSettings:)
+                            keyEquivalent:@""];
+    openSettings.target = self;
+    [menu addItem:openSettings];
 
     NSMenuItem *aboutItem =
         [[NSMenuItem alloc] initWithTitle:@"About Wawona"
@@ -982,7 +1058,7 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
     NSMenuItem *quitItem =
         [[NSMenuItem alloc] initWithTitle:@"Quit Wawona"
                                    action:@selector(quitMenuBar:)
-                            keyEquivalent:@"q"];
+                            keyEquivalent:@""];
     quitItem.target = self;
     [menu addItem:quitItem];
 
@@ -1008,6 +1084,9 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
   if (![self.statusLineItem.title isEqualToString:title]) {
     self.statusLineItem.title = title;
   }
+  BOOL loginOn = [[WWNLaunchAgentManager sharedManager] isAppLaunchAgentLoaded];
+  self.loginAtLoginSwitch.state =
+      loginOn ? NSControlStateValueOn : NSControlStateValueOff;
 }
 
 - (void)restartCompositor:(id)sender {
@@ -1031,30 +1110,51 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
 - (void)toggleAppLaunchAtLogin:(id)sender {
   (void)sender;
   WWNLaunchAgentManager *manager = [WWNLaunchAgentManager sharedManager];
-  if ([manager isAppLaunchAgentLoaded]) {
-    [manager disableAppLaunchAtLogin];
-  } else {
+  BOOL wantOn = (self.loginAtLoginSwitch.state == NSControlStateValueOn);
+  if (wantOn) {
     [manager enableAppLaunchAtLogin];
+  } else {
+    [manager disableAppLaunchAtLogin];
   }
+  [self refreshStatus:nil];
+}
+
+- (void)wwn_openWawonaUIWithArguments:(NSArray<NSString *> *)arguments {
+  NSString *panel = @"machines";
+  if ([arguments containsObject:@"--show-settings"]) {
+    panel = @"settings";
+  } else if ([arguments containsObject:@"--show-about"]) {
+    panel = @"about";
+  }
+  [[NSDistributedNotificationCenter defaultCenter]
+      postNotificationName:@"WWNReopenUINotification"
+                    object:nil
+                  userInfo:@{@"panel" : panel}
+        deliverImmediately:YES];
+
+  NSString *bundlePath = WWNWawonaAppBundleRootForUI();
+  NSWorkspaceOpenConfiguration *config = [NSWorkspaceOpenConfiguration configuration];
+  if (arguments.count > 0) {
+    config.arguments = arguments;
+  }
+  [NSWorkspace.sharedWorkspace openApplicationAtURL:[NSURL fileURLWithPath:bundlePath]
+                                      configuration:config
+                                  completionHandler:nil];
 }
 
 - (void)openWawonaApp:(id)sender {
   (void)sender;
-  NSString *bundlePath = WWNWawonaAppBundleRootForUI();
-  NSWorkspaceOpenConfiguration *config = [NSWorkspaceOpenConfiguration configuration];
-  [NSWorkspace.sharedWorkspace openApplicationAtURL:[NSURL fileURLWithPath:bundlePath]
-                                      configuration:config
-                                  completionHandler:nil];
+  [self wwn_openWawonaUIWithArguments:@[]];
+}
+
+- (void)openWawonaSettings:(id)sender {
+  (void)sender;
+  [self wwn_openWawonaUIWithArguments:@[ @"--show-settings" ]];
 }
 
 - (void)openWawonaAbout:(id)sender {
   (void)sender;
-  NSString *bundlePath = WWNWawonaAppBundleRootForUI();
-  NSWorkspaceOpenConfiguration *config = [NSWorkspaceOpenConfiguration configuration];
-  config.arguments = @[ @"--show-about" ];
-  [NSWorkspace.sharedWorkspace openApplicationAtURL:[NSURL fileURLWithPath:bundlePath]
-                                      configuration:config
-                                  completionHandler:nil];
+  [self wwn_openWawonaUIWithArguments:@[ @"--show-about" ]];
 }
 
 - (void)quitMenuBar:(id)sender {
@@ -1241,6 +1341,8 @@ int main(int argc, char *argv[]) {
         menuBarMode = YES;
       } else if (strcmp(arg, "--show-about") == 0) {
         g_show_about_on_launch = YES;
+      } else if (strcmp(arg, "--show-settings") == 0) {
+        g_show_settings_on_launch = YES;
       } else if (strcmp(arg, "--headless") == 0 ||
                  strcmp(arg, "--no-gui") == 0) {
         g_cli_headless = YES;
@@ -1321,10 +1423,17 @@ int main(int argc, char *argv[]) {
         WWNLog("MAIN", @"Compositor host already running; exiting host mode.");
         return 0;
       }
-      [[NSProcessInfo processInfo] setProcessName:@"Wawona"];
+      [[NSProcessInfo processInfo] setProcessName:@"WawonaCompositor"];
       [NSApplication sharedApplication];
-      [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
       g_service_host_mode = YES;
+      [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+      [[NSNotificationCenter defaultCenter]
+          addObserverForName:NSWindowDidBecomeKeyNotification
+                      object:nil
+                       queue:[NSOperationQueue mainQueue]
+                  usingBlock:^(__unused NSNotification *note) {
+                    WWNKeepServiceHostOutOfDock();
+                  }];
       WWNMacAppDelegate *hostDelegate = [[WWNMacAppDelegate alloc] init];
       [NSApp setDelegate:hostDelegate];
       wwn_install_host_main_menu(hostDelegate);
@@ -1384,7 +1493,7 @@ int main(int argc, char *argv[]) {
         }
       }
 
-      [NSApp activateIgnoringOtherApps:YES];
+      WWNKeepServiceHostOutOfDock();
       [NSApp run];
       [bridge stop];
       release_mode_lock(&g_host_lock_fd);

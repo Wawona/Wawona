@@ -322,24 +322,14 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
     kWWNPrefsWaylandSocketDir : defaultSocketDir,
     kWWNPrefsWaylandDisplayNumber : @0,
     // Advanced
-    kWWNPrefsColorOperations : @NO,
+    kWWNPrefsColorOperations : @YES,
     kWWNPrefsNestedCompositorsSupport : @YES,
-#if TARGET_OS_TV || TARGET_OS_WATCH || TARGET_OS_SIMULATOR
-    // Simulator: nested Wayland+pixman is the proven present path today.
-    // iland DRM/GBM still works for kmscube; nested weston DRM does not yet
-    // paint a host surface on sim (Start → Connected with a blank compositor).
-    // TV/watch have no GL/DRM product path.
-    kWWNPrefsNestedWestonBackend : @"wayland-pixman",
-#else
-    // GPU-capable Apple devices default to iland DRM/GBM + ANGLE/Metal.
-    // Pixman is an explicit fallback, not the product default.
+#if TARGET_OS_OSX
     kWWNPrefsNestedWestonBackend : @"iland-drm-gl",
-#endif
-#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
-    kWWNPrefsMultipleClients : @NO,
 #else
-    kWWNPrefsMultipleClients : @YES,
+    kWWNPrefsNestedWestonBackend : @"wayland-pixman",
 #endif
+    kWWNPrefsMultipleClients : @YES,
     kWWNPrefsMachineSessionThumbnailsEnabled : @YES,
     // Desktop Replacement (macOS Mode B; off by default, SIP-gated)
     kWWNPrefsDesktopReplacementEnabled : @NO,
@@ -586,17 +576,24 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
   NSString *value = [[NSUserDefaults standardUserDefaults]
       stringForKey:kWWNPrefsNestedWestonBackend];
   if (value.length == 0) {
-#if TARGET_OS_TV || TARGET_OS_WATCH || TARGET_OS_SIMULATOR
-    return @"wayland-pixman";
-#else
+#if TARGET_OS_OSX
     return @"iland-drm-gl";
+#else
+    return @"wayland-pixman";
 #endif
   }
+#if !TARGET_OS_OSX
+  // Stored iland-drm-gl (old iOS-device default) must not keep launching
+  // blank DRM Weston. Honour drm only via Display Backend = drm.
+  if ([value isEqualToString:@"iland-drm-gl"] ||
+      [value isEqualToString:@"drm"]) {
+    NSString *cb = [self compositorBackend];
+    if (![cb isEqualToString:@"drm"]) {
+      return @"wayland-pixman";
+    }
+  }
+#endif
 #if TARGET_OS_SIMULATOR
-  // Interim: nested weston --backend=drm does not paint a host surface on the
-  // iOS Simulator (Machines shows Connected/ACTIVE, Focus shows nothing).
-  // Force the nested Wayland+pixman path until iland DRM present is fixed.
-  // Device builds keep an explicit iland-drm-gl choice.
   if ([value isEqualToString:@"iland-drm-gl"] ||
       [value isEqualToString:@"drm"]) {
     return @"wayland-pixman";
@@ -606,10 +603,10 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 }
 
 - (void)setNestedWestonBackend:(NSString *)backend {
-#if TARGET_OS_TV || TARGET_OS_WATCH || TARGET_OS_SIMULATOR
-  NSString *defaultBackend = @"wayland-pixman";
-#else
+#if TARGET_OS_OSX
   NSString *defaultBackend = @"iland-drm-gl";
+#else
+  NSString *defaultBackend = @"wayland-pixman";
 #endif
   NSString *value =
       (backend.length > 0) ? backend : defaultBackend;

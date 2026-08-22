@@ -1203,8 +1203,10 @@
             menubar_label="com.aspauldingcode.wawona.menubar"
             applaunch_label="com.aspauldingcode.wawona.applaunch"
             runtime_dir="/tmp/wawona-$uid"
-            exec_path="${wawona-macos}/Applications/Wawona.app/Contents/MacOS/Wawona"
-            dylib_path="${wawona-macos}/Applications/Wawona.app/Contents/Library/Wawona/iland/libwayland-mac.dylib"
+            store_app="${wawona-macos}/Applications/Wawona.app"
+            app_dst="/Applications/Wawona.app"
+            exec_path="$app_dst/Contents/MacOS/Wawona"
+            dylib_path="$app_dst/Contents/Library/Wawona/iland/libwayland-mac.dylib"
 
             mkdir -p "$launch_agents_dir"
             mkdir -p "$runtime_dir"
@@ -1331,14 +1333,47 @@ EOF
               exit 1
             }
 
-            if [ ! -x "$exec_path" ]; then
-              echo "Error: Wawona executable not found at $exec_path" >&2
+            if [ ! -x "$store_app/Contents/MacOS/Wawona" ]; then
+              echo "Error: Wawona executable not found at $store_app" >&2
               exit 1
             fi
-            if [ ! -f "$dylib_path" ]; then
-              echo "Error: Mode B dylib missing at $dylib_path" >&2
+            if [ ! -f "$store_app/Contents/Library/Wawona/iland/libwayland-mac.dylib" ]; then
+              echo "Error: Mode B dylib missing at $store_app" >&2
               echo "macOS Desktop Replacement needs libwayland-mac.dylib." >&2
               exit 1
+            fi
+            echo "Installing Wawona.app to $app_dst"
+            rm -rf "$app_dst"
+            /usr/bin/ditto "$store_app" "$app_dst"
+            chmod -R u+w "$app_dst" || true
+            if [ ! -x "$exec_path" ]; then
+              echo "Error: Wawona executable missing after copy to $app_dst" >&2
+              exit 1
+            fi
+
+            # Launch Services must not resolve `open -a Wawona` to a stale
+            # copy. Documents/ahaha 0.2.2 still linked pixman to a vanished
+            # /Volumes or GC'd nix store (2026-08-19 and 2026-08-22 crashes).
+            lsregister="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+            if [ -x "$lsregister" ]; then
+              /usr/bin/mdfind 'kMDItemCFBundleIdentifier == "com.aspauldingcode.Wawona"' 2>/dev/null | while IFS= read -r p; do
+                [ -n "$p" ] || continue
+                case "$p" in
+                  "$app_dst") continue ;;
+                esac
+                if [ -x "$p/Contents/MacOS/Wawona" ]; then
+                  echo "Unregistering stale Launch Services copy: $p"
+                  "$lsregister" -u "$p" >/dev/null 2>&1 || true
+                fi
+              done
+              # mdfind usually skips /nix/store. Drop those registrations so
+              # LS does not prefer a path GC can delete.
+              for store_copy in /nix/store/*-wawona-macos/Applications/Wawona.app; do
+                [ -x "$store_copy/Contents/MacOS/Wawona" ] || continue
+                echo "Unregistering nix-store Launch Services copy: $store_copy"
+                "$lsregister" -u "$store_copy" >/dev/null 2>&1 || true
+              done
+              "$lsregister" -f "$app_dst" >/dev/null 2>&1 || true
             fi
 
             helper_path="/Library/Application Support/Wawona/run-modeb.sh"

@@ -2,6 +2,7 @@
 #import "../Settings/WWNPreferencesManager.h"
 #import "../Settings/WWNEnvironmentOverrides.h"
 #import "../../WWNCompositorBridge.h"
+#import "../../../../util/WWNLog.h"
 
 NSString *const kWWNMachineTypeSSHWaypipe = @"ssh_waypipe";
 NSString *const kWWNMachineTypeSSHTerminal = @"ssh_terminal";
@@ -797,6 +798,9 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
 
 + (void)applyActiveMachineToRuntimePrefs {
   NSString *activeId = [self activeMachineId];
+  if (wwn_log_ring_set_machine) {
+    wwn_log_ring_set_machine(activeId.length > 0 ? activeId.UTF8String : "");
+  }
   if (activeId.length == 0) {
     return;
   }

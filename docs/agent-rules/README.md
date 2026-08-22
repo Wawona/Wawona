@@ -12,7 +12,7 @@ the same non-negotiable gates.
 | [wawona-swinging-bridge.md](./wawona-swinging-bridge.md) | Wawona Swinging Bridge Mode A/B (not Desktop) |
 | [wawona-product-map.md](./wawona-product-map.md) | Swinging Bridge / Desktop / VMs / containers / Runtime packages |
 | [wawona-rust-first.md](./wawona-rust-first.md) | Wawona-owned code is Rust; C only as FFI/JNI/UI glue |
-| [wawona-release-assets.md](./wawona-release-assets.md) | GitHub + store binary filenames (CalVer / platform / arch) |
+| [wawona-settings-dependencies.md](./wawona-settings-dependencies.md) | Settings Dependencies list only this product's linked packages |
 | [wawona-github-funding.md](./wawona-github-funding.md) | GitHub Sponsors FUNDING.yml on every `github.com/Wawona` repo |
 | Canonical prose | [`../iland-mode-a-b-desktop.md`](../iland-mode-a-b-desktop.md) |
 | Entry AGENTS | [`../../AGENTS.md`](../../AGENTS.md) |
