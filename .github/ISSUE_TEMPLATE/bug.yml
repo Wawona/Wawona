@@ -41,12 +41,13 @@ body:
     attributes:
       label: How you installed Wawona
       options:
-        - TestFlight
+        - TestFlight (Beta)
+        - Play Store (Beta)
+        - App Store (Release)
+        - Play Store (Release)
         - Sideload IPA (Xcode, AltStore, TrollStore, Sileo or similar)
-        - App Store
-        - Simulator or Emulator
-        - nix / local build
-        - Play Store / sideload APK
+        - Sideload APK
+        - nix / local build (not a prebuilt installation)
         - Other
     validations:
       required: true
