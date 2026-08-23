@@ -1210,14 +1210,8 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
 #if TARGET_OS_TV
   // UIPasteboard is unavailable on tvOS; skip native clipboard bridge.
   return;
-#elif TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
-  UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
-#else
-  NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
 #endif
 #if !TARGET_OS_TV
-  NSInteger changeCount = pasteboard.changeCount;
-
   // A client (e.g. weston-terminal) copied text. Push it to the native
   // pasteboard.
   char *clientText = WWNCorePollClipboardText(_rustCore);
@@ -1226,8 +1220,10 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     WWNStringFree(clientText);
     if (text) {
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+      UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
       pasteboard.string = text;
 #else
+      NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
       [pasteboard clearContents];
       [pasteboard setString:text forType:NSPasteboardTypeString];
 #endif
@@ -1236,6 +1232,22 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
       return;
     }
   }
+
+#if TARGET_OS_SIMULATOR
+  // Reading UIPasteboard (even changeCount) pops
+  // "Wawona would like to paste from CoreSimulatorBridge" and blocks the
+  // main runloop. Nested EGL init (ANGLE Metal) then sits in eglInitialize
+  // until that alert is dismissed. Skip inbound host paste in the simulator.
+  _pasteboardChangeCountInitialized = YES;
+  return;
+#endif
+
+#if TARGET_OS_IPHONE
+  UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
+#else
+  NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+#endif
+  NSInteger changeCount = pasteboard.changeCount;
 
   // Native copy (another app, or the user pasting into a text field outside
   // Wawona). Push it into the compositor so clients can paste it.
