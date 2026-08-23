@@ -125,6 +125,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
 @interface WWNDesktopReplacementController ()
 @property (nonatomic, assign) pid_t modeBPid;
 @property (nonatomic, copy, nullable) NSString *modeBMachineId;
+@property (nonatomic, strong, nullable) WWNModeBMenuBarStatus *menuBarDesktopCache;
 - (BOOL)terminateModeBProcess:(pid_t)pid
                          error:(NSError *_Nullable *_Nullable)error;
 - (NSString *)modeBHelperPath;
@@ -160,6 +161,9 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
 @end
 
 @implementation WWNModeBReadyReport
+@end
+
+@implementation WWNModeBMenuBarStatus
 @end
 
 @implementation WWNDesktopReplacementController
@@ -1207,7 +1211,14 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"/tmp/libwayland-support/inputd.entitlements "
                        @"/tmp/libwayland-support/inputd >/dev/null 2>&1 || "
                        @"wwn_log \"inputd entitlements codesign failed\"\n"];
-  [script appendString:@"  /tmp/libwayland-support/amfiexceptiond >>\"$LOG\" 2>&1 "
+  /* amfid is on-demand and idle-jetsams on macOS 26. Wake it, then cap the
+   * hook so Classic cannot hang before framebufferd / igettyd. Never
+   * kickstart watchdogd here. */
+  [script appendString:@"  /bin/launchctl kickstart -p "
+                       @"system/com.apple.MobileFileIntegrity >>\"$LOG\" 2>&1 "
+                       @"|| true\n"];
+  [script appendString:@"  /usr/bin/perl -e 'alarm 8; exec @ARGV' "
+                       @"/tmp/libwayland-support/amfiexceptiond >>\"$LOG\" 2>&1 "
                        @"|| true\n"];
   [script appendString:@"  /bin/launchctl bootout system/com.wayland-mac.framebufferd "
                        @">/dev/null 2>&1 || true\n"];
@@ -3179,6 +3190,79 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   return r;
 }
 
+- (BOOL)isModeBCompositorLive {
+  return [self readLiveCompositorPid] > 0;
+}
+
+- (BOOL)isClassicTakeoverLive {
+  return [self isModeBCompositorLive] && ![self isAppleWindowServerRunning];
+}
+
+- (WWNModeBMenuBarStatus *)menuBarDesktopStatusRefreshingGate:(BOOL)refreshGate {
+  WWNModeBMenuBarStatus *s = [[WWNModeBMenuBarStatus alloc] init];
+  s.state = @"blocked";
+  s.tooltip = @"Classic Take Over is blocked.";
+
+  pid_t pid = [self readLiveCompositorPid];
+  if (pid > 0) {
+    BOOL classic = ![self isAppleWindowServerRunning];
+    s.state = @"takeover";
+    s.canRestore = YES;
+    s.tooltip = classic
+                    ? [NSString stringWithFormat:
+                                    @"Classic is engaged (compositor pid %d, "
+                                    @"WindowServer down).",
+                                    (int)pid]
+                    : [NSString stringWithFormat:
+                                    @"Mode B compositor is live (pid %d). "
+                                    @"WindowServer is still up (KEEP_WS / probe).",
+                                    (int)pid];
+    self.menuBarDesktopCache = s;
+    return s;
+  }
+
+  if (!refreshGate && self.menuBarDesktopCache &&
+      ![self.menuBarDesktopCache.state isEqualToString:@"takeover"]) {
+    return self.menuBarDesktopCache;
+  }
+
+  if (![self bundledDylibPath]) {
+    s.state = @"blocked";
+    s.tooltip = @"This build does not ship libwayland-mac.dylib. Desktop "
+                @"Replacement is desktop-host only.";
+    self.menuBarDesktopCache = s;
+    return s;
+  }
+
+  if (!refreshGate) {
+    s.state = @"blocked";
+    s.tooltip = @"Open the menu to refresh Classic readiness.";
+    return s;
+  }
+
+  WWNModeBReadyReport *r = [self evaluateClassicReadiness];
+  if (r.verdict == WWNModeBVerdictTakeoverNow) {
+    s.state = @"ready";
+    s.canTakeOver = YES;
+  } else if (r.verdict == WWNModeBVerdictReboot) {
+    s.state = @"reboot";
+    s.canRestartMac = YES;
+  } else {
+    s.state = @"blocked";
+  }
+  NSMutableString *tip =
+      [NSMutableString stringWithString:r.reason.length ? r.reason : @""];
+  if (r.nextStep.length > 0) {
+    if (tip.length > 0) {
+      [tip appendString:@"\n"];
+    }
+    [tip appendString:r.nextStep];
+  }
+  s.tooltip = tip;
+  self.menuBarDesktopCache = s;
+  return s;
+}
+
 - (BOOL)requestNativeMacOSRestart:(NSError *_Nullable *_Nullable)error {
   /*
    * TN QA1134: send kAERestart to the system process. loginwindow shows
@@ -3433,6 +3517,9 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
 @implementation WWNModeBReadyReport
 @end
 
+@implementation WWNModeBMenuBarStatus
+@end
+
 @implementation WWNDesktopReplacementController
 + (instancetype)sharedController {
   static WWNDesktopReplacementController *shared;
@@ -3513,6 +3600,19 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   r.reason = @"Desktop Replacement Mode B is macOS-only.";
   r.nextStep = @"";
   return r;
+}
+- (BOOL)isModeBCompositorLive {
+  return NO;
+}
+- (BOOL)isClassicTakeoverLive {
+  return NO;
+}
+- (WWNModeBMenuBarStatus *)menuBarDesktopStatusRefreshingGate:(BOOL)refreshGate {
+  (void)refreshGate;
+  WWNModeBMenuBarStatus *s = [[WWNModeBMenuBarStatus alloc] init];
+  s.state = @"blocked";
+  s.tooltip = @"Desktop Replacement Mode B is macOS-only.";
+  return s;
 }
 - (BOOL)requestNativeMacOSRestart:(NSError *_Nullable *_Nullable)error {
   if (error) {
