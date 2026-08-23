@@ -1397,7 +1397,7 @@ static UIImage *WWNAboutLogo(void) {
 
   WWNSettingItem *reportBug = ITEM(
       @"Report a Bug on GitHub", @"ReportGitHubIssue", WSettingButton, nil,
-      @"Opens the Wawona issue form. Copy logs first, then paste them");
+      @"Opens the Wawona bug form with this platform, version, and recent logs");
   reportBug.actionBlock = ^{
     [[WWNPreferences sharedPreferences] wwnOpenGitHubBugReport];
   };
@@ -1886,7 +1886,7 @@ static UIImage *WWNAboutLogo(void) {
     [out appendString:@"(log ring unavailable)"];
   }
   [out appendString:@"\n```\n"];
-  [out appendString:@"\nPaste this into a GitHub issue: "
+  [out appendString:@"\nGitHub bug form: "
                     @"https://github.com/Wawona/Wawona/issues/new?template=bug.yml\n"];
   return out;
 }
@@ -1904,8 +1904,49 @@ static UIImage *WWNAboutLogo(void) {
   }
   [self presentSafeAlertWithTitle:@"Copied"
                           message:
-                              @"Paste into a GitHub Wawona issue. Use Report a "
-                              @"Bug on GitHub for the form."];
+                              @"Paste into Copied diagnostics if the GitHub "
+                              @"form did not fill that field."];
+#else
+  NSPasteboard *pb = [NSPasteboard generalPasteboard];
+  [pb clearContents];
+  [pb setString:text forType:NSPasteboardTypeString];
+#endif
+}
+
+- (NSString *)wwnBugReportPlatform {
+#if TARGET_OS_VISION
+  return @"visionOS";
+#elif TARGET_OS_TV
+  return @"tvOS";
+#elif TARGET_OS_WATCH
+  return @"watchOS";
+#elif TARGET_OS_IOS
+  return ([UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPad)
+             ? @"iPadOS"
+             : @"iOS";
+#elif TARGET_OS_OSX
+  return @"macOS";
+#else
+  return @"Unsure";
+#endif
+}
+
+- (NSString *)wwnBugReportVersion {
+  NSString *v = [self getWWNVersion];
+  if ([v hasPrefix:@"v"] && v.length > 1) {
+    return [v substringFromIndex:1];
+  }
+  return v ?: @"unknown";
+}
+
+- (void)wwnCopyDiagnosticReportToPasteboard:(NSString *)text {
+#if TARGET_OS_TV || TARGET_OS_WATCH
+  (void)text;
+#elif TARGET_OS_IPHONE
+  if ([UIApplication sharedApplication].applicationState ==
+      UIApplicationStateActive) {
+    [UIPasteboard generalPasteboard].string = text;
+  }
 #else
   NSPasteboard *pb = [NSPasteboard generalPasteboard];
   [pb clearContents];
@@ -1914,9 +1955,39 @@ static UIImage *WWNAboutLogo(void) {
 }
 
 - (void)wwnOpenGitHubBugReport {
-  NSURL *url = [NSURL
-      URLWithString:
-          @"https://github.com/Wawona/Wawona/issues/new?template=bug.yml"];
+  NSString *mid = [WWNMachineProfileStore activeMachineId];
+  BOOL machineOnly = mid.length > 0;
+  NSString *report = [self wwnDiagnosticReportMachineOnly:machineOnly];
+  [self wwnCopyDiagnosticReportToPasteboard:report];
+
+  NSString *platform = [self wwnBugReportPlatform];
+  NSString *channel = [self wwnInstallChannel];
+  NSString *version = [self wwnBugReportVersion];
+  NSString *host = [self wwnHostOsSummary];
+  char *raw = wwn_github_bug_report_url
+                  ? wwn_github_bug_report_url(platform.UTF8String,
+                                              channel.UTF8String,
+                                              version.UTF8String,
+                                              host.UTF8String,
+                                              report.UTF8String)
+                  : NULL;
+  NSString *urlString = nil;
+  if (raw) {
+    urlString = [NSString stringWithUTF8String:raw];
+    if (WWNStringFree) {
+      WWNStringFree(raw);
+    }
+  }
+  if (urlString.length == 0) {
+    urlString =
+        @"https://github.com/Wawona/Wawona/issues/new?template=bug.yml";
+  }
+  NSURL *url = [NSURL URLWithString:urlString];
+  if (!url) {
+    url = [NSURL
+        URLWithString:
+            @"https://github.com/Wawona/Wawona/issues/new?template=bug.yml"];
+  }
   if (!url) {
     return;
   }
@@ -1924,6 +1995,12 @@ static UIImage *WWNAboutLogo(void) {
   [[UIApplication sharedApplication] openURL:url
                                      options:@{}
                            completionHandler:nil];
+#if !TARGET_OS_TV && !TARGET_OS_WATCH
+  [self presentSafeAlertWithTitle:@"Bug report"
+                          message:
+                              @"Copied recent logs and opened the Wawona GitHub "
+                              @"bug form with this platform filled."];
+#endif
 #else
   [[NSWorkspace sharedWorkspace] openURL:url];
 #endif

@@ -468,6 +468,23 @@ private struct WatchSettingsAboutSection: View {
             if watchShows(.aboutPlatform, in: .about) {
                 LabeledContent("Platform", value: "watchOS")
             }
+            Button("Report a Bug on GitHub") {
+                let raw = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+                var ver = (raw?.isEmpty == false) ? raw! : "0.0.0"
+                if ver.hasPrefix("v") { ver.removeFirst() }
+                var comps = URLComponents(string: "https://github.com/Wawona/Wawona/issues/new")
+                comps?.queryItems = [
+                    URLQueryItem(name: "template", value: "bug.yml"),
+                    URLQueryItem(name: "platform", value: "watchOS"),
+                    URLQueryItem(name: "install_channel", value: "Other"),
+                    URLQueryItem(name: "wawona_version", value: ver),
+                    URLQueryItem(name: "host_os", value: "watchOS"),
+                ]
+                if let url = comps?.url {
+                    WKExtension.shared().openSystemURL(url)
+                }
+            }
+            .accessibilityIdentifier("wwn.settings.reportBug")
             if watchShows(.aboutAuthor, in: .about) {
                 LabeledContent("Author", value: "Alex Spaulding")
             }

@@ -193,4 +193,13 @@ object WawonaNative {
         keyPath: String,
         authMethod: Int
     ): String
+
+    external fun nativeLogRingDump(machineId: String?): String
+    external fun nativeGithubBugReportUrl(
+        platform: String,
+        installChannel: String,
+        version: String,
+        hostOs: String,
+        logs: String
+    ): String
 }

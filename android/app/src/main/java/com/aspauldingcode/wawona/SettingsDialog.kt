@@ -32,11 +32,13 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.net.Uri
+import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -1385,6 +1387,41 @@ private fun AboutSection(context: Context) {
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(8.dp))
+        val hostOs = remember {
+            "Android ${Build.VERSION.RELEASE} (${Build.MODEL})"
+        }
+        val installChannel = remember { androidInstallChannel(context) }
+        val versionBare = remember {
+            if (version.startsWith("v")) version.drop(1) else version
+        }
+        OutlinedButton(
+            onClick = {
+                copyWawonaBugDiagnostics(
+                    context,
+                    version,
+                    hostOs,
+                    installChannel,
+                    machineOnly = false,
+                )
+            },
+            modifier = Modifier.fillMaxWidth().testTag("wwn.settings.copyRecentLogs"),
+            shape = RoundedCornerShape(12.dp)
+        ) { Text("Copy Recent Logs") }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = {
+                openWawonaGithubBugReport(
+                    context,
+                    uriHandler,
+                    versionBare,
+                    hostOs,
+                    installChannel,
+                )
+            },
+            modifier = Modifier.fillMaxWidth().testTag("wwn.settings.reportBug"),
+            shape = RoundedCornerShape(12.dp)
+        ) { Text("Report a Bug on GitHub") }
+        Spacer(Modifier.height(8.dp))
         Text("A Wayland Compositor for macOS, iOS & Android",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -2086,4 +2123,111 @@ private fun androidGenerateSshKey(context: Context, prefs: SharedPreferences): S
     val pub = File(keyFile.absolutePath + ".pub")
     val pubText = if (pub.exists()) pub.readText().trim() else ""
     return "OK: Generated ${keyFile.absolutePath}\n$pubText"
+}
+
+private fun androidInstallChannel(context: Context): String {
+    return try {
+        val pm = context.packageManager
+        val installer = if (Build.VERSION.SDK_INT >= 30) {
+            pm.getInstallSourceInfo(context.packageName).installingPackageName
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getInstallerPackageName(context.packageName)
+        }
+        when (installer) {
+            "com.android.vending", "com.google.android.feedback" ->
+                "Play Store (Beta)"
+            null, "", "com.google.android.packageinstaller",
+            "com.android.packageinstaller" -> "Sideload APK"
+            else -> "Other"
+        }
+    } catch (_: Exception) {
+        "Other"
+    }
+}
+
+private fun wawonaBugDiagnostics(
+    version: String,
+    hostOs: String,
+    installChannel: String,
+    machineOnly: Boolean,
+): String {
+    val dump = try {
+        WawonaNative.nativeLogRingDump(null)
+    } catch (_: UnsatisfiedLinkError) {
+        "(log ring unavailable)"
+    } catch (_: Exception) {
+        "(log ring unavailable)"
+    }
+    val logs = if (dump.isBlank()) "(no recent Wawona logs)" else dump
+    val machine = if (machineOnly) {
+        "(machine filter requested; Android uses the process log ring)"
+    } else {
+        "(process log ring)"
+    }
+    return buildString {
+        append("### Wawona diagnostics\n")
+        append("Wawona: $version\n")
+        append("Host: $hostOs\n")
+        append("Install: $installChannel\n")
+        append("\n### Active machine\n")
+        append(machine)
+        append("\n\n### Logs\n```\n")
+        append(logs)
+        append("\n```\n")
+    }
+}
+
+private fun copyWawonaBugDiagnostics(
+    context: Context,
+    version: String,
+    hostOs: String,
+    installChannel: String,
+    machineOnly: Boolean,
+) {
+    val text = wawonaBugDiagnostics(version, hostOs, installChannel, machineOnly)
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText("Wawona diagnostics", text))
+    Toast.makeText(context, "Copied recent logs", Toast.LENGTH_SHORT).show()
+}
+
+private fun openWawonaGithubBugReport(
+    context: Context,
+    uriHandler: UriHandler,
+    versionBare: String,
+    hostOs: String,
+    installChannel: String,
+) {
+    val report = wawonaBugDiagnostics(
+        if (versionBare.startsWith("v")) versionBare else "v$versionBare",
+        hostOs,
+        installChannel,
+        machineOnly = false,
+    )
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText("Wawona diagnostics", report))
+    val url = try {
+        WawonaNative.nativeGithubBugReportUrl(
+            "Android",
+            installChannel,
+            versionBare,
+            hostOs,
+            report,
+        )
+    } catch (_: UnsatisfiedLinkError) {
+        "https://github.com/Wawona/Wawona/issues/new?template=bug.yml&platform=Android"
+    } catch (_: Exception) {
+        "https://github.com/Wawona/Wawona/issues/new?template=bug.yml&platform=Android"
+    }
+    try {
+        uriHandler.openUri(url)
+        Toast.makeText(
+            context,
+            "Copied logs and opened the GitHub bug form",
+            Toast.LENGTH_SHORT,
+        ).show()
+    } catch (_: Exception) {
+        Toast.makeText(context, "Copied logs. Open GitHub to paste them.", Toast.LENGTH_LONG)
+            .show()
+    }
 }

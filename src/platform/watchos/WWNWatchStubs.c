@@ -178,6 +178,19 @@ char *wwn_log_ring_dump(const char *machine_id_or_null) {
 }
 
 __attribute__((weak))
+char *wwn_github_bug_report_url(const char *platform,
+                                const char *install_channel,
+                                const char *wawona_version,
+                                const char *host_os, const char *logs) {
+    (void)platform;
+    (void)install_channel;
+    (void)wawona_version;
+    (void)host_os;
+    (void)logs;
+    return NULL;
+}
+
+__attribute__((weak))
 void WWNStringFree(char *s) {
     (void)s;
 }

@@ -251,6 +251,11 @@ extern void WWNCoreInjectPointerAxis(void *core, uint64_t window_id,
 extern void WWNCoreSetClipboardText(void *core, const char *text);
 extern char *WWNCorePollClipboardText(void *core);
 extern void WWNStringFree(char *s);
+extern char *wwn_log_ring_dump(const char *machine_id_or_null);
+extern char *wwn_github_bug_report_url(const char *platform,
+                                       const char *install_channel,
+                                       const char *wawona_version,
+                                       const char *host_os, const char *logs);
 extern uint64_t WWNCoreWindowIdAtPoint(void *core, double x, double y);
 extern void WWNCoreInjectKeyboardEnter(void *core, uint64_t window_id,
                                        const uint32_t *keys, size_t count,
@@ -6076,6 +6081,76 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeIsMobileVmRunning(
 }
 
 // ---------------------------------------------------------------------------
+
+static const char *wwn_jni_cstr(JNIEnv *env, jstring value, const char **owned) {
+  *owned = NULL;
+  if (!value) {
+    return "";
+  }
+  const char *utf = (*env)->GetStringUTFChars(env, value, NULL);
+  if (!utf) {
+    return "";
+  }
+  *owned = utf;
+  return utf;
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeLogRingDump(JNIEnv *env,
+                                                              jobject thiz,
+                                                              jstring machineId) {
+  (void)thiz;
+  const char *owned = NULL;
+  const char *filter = wwn_jni_cstr(env, machineId, &owned);
+  const char *arg = (machineId && owned) ? filter : NULL;
+  char *dump = wwn_log_ring_dump(arg);
+  if (owned) {
+    (*env)->ReleaseStringUTFChars(env, machineId, owned);
+  }
+  if (!dump) {
+    return (*env)->NewStringUTF(env, "");
+  }
+  jstring out = (*env)->NewStringUTF(env, dump);
+  WWNStringFree(dump);
+  return out;
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeGithubBugReportUrl(
+    JNIEnv *env, jobject thiz, jstring platform, jstring installChannel,
+    jstring version, jstring hostOs, jstring logs) {
+  (void)thiz;
+  const char *p_own = NULL, *c_own = NULL, *v_own = NULL, *h_own = NULL,
+             *l_own = NULL;
+  const char *p = wwn_jni_cstr(env, platform, &p_own);
+  const char *c = wwn_jni_cstr(env, installChannel, &c_own);
+  const char *v = wwn_jni_cstr(env, version, &v_own);
+  const char *h = wwn_jni_cstr(env, hostOs, &h_own);
+  const char *l = wwn_jni_cstr(env, logs, &l_own);
+  char *url = wwn_github_bug_report_url(p, c, v, h, l);
+  if (p_own) {
+    (*env)->ReleaseStringUTFChars(env, platform, p_own);
+  }
+  if (c_own) {
+    (*env)->ReleaseStringUTFChars(env, installChannel, c_own);
+  }
+  if (v_own) {
+    (*env)->ReleaseStringUTFChars(env, version, v_own);
+  }
+  if (h_own) {
+    (*env)->ReleaseStringUTFChars(env, hostOs, h_own);
+  }
+  if (l_own) {
+    (*env)->ReleaseStringUTFChars(env, logs, l_own);
+  }
+  const char *fallback =
+      "https://github.com/Wawona/Wawona/issues/new?template=bug.yml";
+  jstring out = (*env)->NewStringUTF(env, url ? url : fallback);
+  if (url) {
+    WWNStringFree(url);
+  }
+  return out;
+}
 
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
   // Redirect stdout/stderr to logcat

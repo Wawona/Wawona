@@ -31,6 +31,9 @@ as history.
 
 ### Changed
 
+- **Report a Bug on GitHub** copies recent logs and opens the `bug.yml`
+  issue form with platform, install channel, version, and host OS filled
+  (Apple, Android, Linux, watchOS).
 - **Settings catalog.** Enable HDR lives in Display (on by default). Multiple
   Wayland clients default on (including iOS). Shake / swipe / tvOS Menu moved
   to a Machines Settings section. iCloud Sync is its own Apple section. Local

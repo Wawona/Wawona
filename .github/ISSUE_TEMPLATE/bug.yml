@@ -6,10 +6,14 @@ body:
   - type: markdown
     attributes:
       value: |
-        Use **Settings → About → Copy Recent Logs** (or **Copy Active Machine Logs**)
-        in the Wawona app, then paste below. That report includes Wawona version,
-        host OS, install channel (TestFlight vs sideload IPA vs App Store), the
-        active machine (no passwords), and recent in-app logs.
+        Prefer **Settings → About → Report a Bug on GitHub**. That opens this
+        form with platform, install channel, version, host OS, and recent logs
+        already filled, and copies the full diagnostics to the clipboard.
+
+        Or use **Copy Recent Logs** / **Copy Active Machine Logs** and paste
+        below. The report includes Wawona version, host OS, install channel
+        (TestFlight vs sideload IPA vs App Store), the active machine (no
+        passwords), and recent in-app logs.
 
         Sideloaded iOS IPAs do not go through TestFlight crash reports. Copied
         logs are how we see Start/Focus doing nothing.
@@ -17,38 +21,23 @@ body:
         TestFlight testers: also send **Beta Feedback** from the TestFlight app
         (crashes already go to App Store Connect). A GitHub issue is opened from
         that feedback automatically (identity stripped). Still paste Copy Recent
-        Logs here when you can. Set install channel to TestFlight.
+        Logs here when you can. Set install channel to TestFlight (Beta).
 
-  - type: dropdown
+  - type: input
     id: platform
     attributes:
       label: Platform
-      options:
-        - iOS
-        - iPadOS
-        - macOS
-        - tvOS
-        - watchOS
-        - visionOS
-        - Android
-        - Linux
-        - Unsure
+      description: Wawona fills this from the app. Use iOS, iPadOS, macOS, tvOS, watchOS, visionOS, Android, Linux, or Unsure.
+      placeholder: "iOS"
     validations:
       required: true
 
-  - type: dropdown
+  - type: input
     id: install_channel
     attributes:
       label: How you installed Wawona
-      options:
-        - TestFlight (Beta)
-        - Play Store (Beta)
-        - App Store (Release)
-        - Play Store (Release)
-        - Sideload IPA (Xcode, AltStore, TrollStore, Sileo or similar)
-        - Sideload APK
-        - nix / local build (not a prebuilt installation)
-        - Other
+      description: Wawona fills this from the app. Use TestFlight (Beta), Play Store (Beta), App Store (Release), Play Store (Release), Sideload IPA (Xcode, AltStore, TrollStore, Sileo or similar), Sideload APK, Simulator, nix / local build (not a prebuilt installation), or Other.
+      placeholder: "TestFlight (Beta)"
     validations:
       required: true
 

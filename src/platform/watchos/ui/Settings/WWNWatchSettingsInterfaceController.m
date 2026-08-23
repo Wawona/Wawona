@@ -208,6 +208,9 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
         return @[
             [self actionRow:@"Version" key:@"" value:version],
             [self actionRow:@"Platform" key:@"" value:@"watchOS"],
+            [self actionRow:@"Report a Bug on GitHub"
+                        key:@"ReportGitHubIssue"
+                      value:@""],
             [self actionRow:@"Author" key:@"" value:@"Alex Spaulding"],
             [self actionRow:@"Source" key:@"" value:@"github.com/wawona/wawona"],
         ];
@@ -323,6 +326,30 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
                             title:model.title
                           options:@[ @"ed25519", @"ecdsa", @"rsa" ]
                      currentValue:[self bridge].sshKeyType];
+        return;
+    }
+    if ([model.actionKey isEqualToString:@"ReportGitHubIssue"]) {
+        NSString *ver = [[NSBundle mainBundle]
+            objectForInfoDictionaryKey:@"CFBundleShortVersionString"] ?: @"0.0.0";
+        if ([ver hasPrefix:@"v"] && ver.length > 1) {
+            ver = [ver substringFromIndex:1];
+        }
+        NSMutableCharacterSet *ok = [[NSCharacterSet URLQueryAllowedCharacterSet] mutableCopy];
+        [ok removeCharactersInString:@"&=?+"];
+        NSString *encVer =
+            [ver stringByAddingPercentEncodingWithAllowedCharacters:ok] ?: ver;
+        NSString *encHost =
+            [@"watchOS" stringByAddingPercentEncodingWithAllowedCharacters:ok] ?: @"watchOS";
+        NSString *urlString = [NSString
+            stringWithFormat:
+                @"https://github.com/Wawona/Wawona/issues/new?template=bug.yml"
+                @"&platform=watchOS&install_channel=Other&wawona_version=%@"
+                @"&host_os=%@",
+                encVer, encHost];
+        NSURL *url = [NSURL URLWithString:urlString];
+        if (url) {
+            [[WKExtension sharedExtension] openSystemURL:url];
+        }
         return;
     }
 

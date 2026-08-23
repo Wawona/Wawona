@@ -357,10 +357,35 @@ pub fn show_settings(
     ver_row.set_title("Version");
     ver_row.set_subtitle(&format!("{} ({})", version(), build_info()));
     about_group.add(&ver_row);
+    let platform_row = adw::ActionRow::new();
+    platform_row.set_title("Platform");
+    platform_row.set_subtitle("Linux");
+    about_group.add(&platform_row);
     let desc_row = adw::ActionRow::new();
     desc_row.set_title("Description");
     desc_row.set_subtitle("Multi-platform compositor control plane.");
     about_group.add(&desc_row);
+    let copy_logs = gtk::Button::with_label("Copy Recent Logs");
+    crate::linux::ui::a11y::set_wwn_a11y(
+        &copy_logs,
+        crate::linux::ui::a11y::id::SETTINGS_COPY_LOGS,
+        Some("Copy Recent Logs"),
+    );
+    let report_bug = gtk::Button::with_label("Report a Bug on GitHub");
+    report_bug.add_css_class("suggested-action");
+    crate::linux::ui::a11y::set_wwn_a11y(
+        &report_bug,
+        crate::linux::ui::a11y::id::SETTINGS_REPORT_BUG,
+        Some("Report a Bug on GitHub"),
+    );
+    add_row(&about_group, "Diagnostics", &copy_logs);
+    add_row(&about_group, "GitHub", &report_bug);
+    copy_logs.connect_clicked(|_| {
+        linux_copy_bug_diagnostics();
+    });
+    report_bug.connect_clicked(|_| {
+        linux_open_github_bug_report();
+    });
     about_page.add(&about_group);
     stack.add_named(&about_page, Some("About"));
 
@@ -463,6 +488,58 @@ pub fn show_settings(
         wlog!("UI", "Settings saved");
         d.close();
     });
+}
+
+fn linux_host_os() -> String {
+    let pretty = std::fs::read_to_string("/etc/os-release")
+        .ok()
+        .and_then(|s| {
+            s.lines().find_map(|line| {
+                line.strip_prefix("PRETTY_NAME=")
+                    .map(|v| v.trim_matches('"').to_string())
+            })
+        })
+        .unwrap_or_else(|| "Linux".to_string());
+    format!("{pretty} ({})", std::env::consts::ARCH)
+}
+
+fn linux_install_channel() -> &'static str {
+    if std::env::var_os("APPIMAGE").is_some() {
+        "Other"
+    } else {
+        "nix / local build (not a prebuilt installation)"
+    }
+}
+
+fn linux_bug_diagnostics() -> String {
+    let ver = version();
+    format!(
+        "### Wawona diagnostics\nWawona: v{ver}\nHost: {}\nInstall: {}\n\n### Logs\n```\n{}\n```\n",
+        linux_host_os(),
+        linux_install_channel(),
+        crate::util::logging::dump_ring(None),
+    )
+}
+
+fn linux_copy_bug_diagnostics() {
+    let report = linux_bug_diagnostics();
+    if let Some(display) = gtk::gdk::Display::default() {
+        display.clipboard().set_text(&report);
+    }
+}
+
+fn linux_open_github_bug_report() {
+    let report = linux_bug_diagnostics();
+    linux_copy_bug_diagnostics();
+    let ver = version();
+    let url = crate::util::bug_report::github_bug_form_url(
+        "Linux",
+        linux_install_channel(),
+        &ver,
+        &linux_host_os(),
+        &report,
+    );
+    let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
 }
 
 fn add_row(group: &adw::PreferencesGroup, title: &str, widget: &impl IsA<gtk::Widget>) {

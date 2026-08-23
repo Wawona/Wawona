@@ -245,9 +245,9 @@ another platform's list. Rule: [`agent-rules/wawona-settings-dependencies.md`](a
 | Control | Type | Platforms | Description |
 |---------|------|-----------|-------------|
 | Version / Platform / Install | Info | Apple Settings | CalVer, host OS + version + uname machine, install channel (TestFlight, Sideload, App Store, Simulator, macOS) |
-| Copy Recent Logs | Button | Apple Settings | Copies a GitHub-ready report (version, host, install, active machine without secrets, last ~2000 log lines) |
+| Copy Recent Logs | Button | Apple, Android, Linux | Copies a GitHub-ready report (version, host, install, active machine without secrets, last ~2000 log lines) |
 | Copy Active Machine Logs | Button | Apple Settings | Same header plus only lines tagged with the active machine id |
-| Report a Bug on GitHub | Button | Apple Settings | Opens `Wawona/Wawona` issue form `bug.yml`. Paste the copied report into Copied diagnostics |
+| Report a Bug on GitHub | Button | Apple, Android, Linux, watchOS | Opens `Wawona/Wawona` issue form `bug.yml` with platform, install channel, version, host OS, and recent logs filled. Also copies the full report to the clipboard (except tvOS/watchOS) |
 
 Sideloaded iOS IPAs have no TestFlight crash pipeline. TestFlight testers should send **Beta Feedback** from the TestFlight app *and* paste copied logs on GitHub. Full steps: [`reporting-bugs.md`](reporting-bugs.md).
 

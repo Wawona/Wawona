@@ -45,6 +45,10 @@ extern "C" {
 void wwn_log_ring_append(const char *module, const char *msg);
 void wwn_log_ring_set_machine(const char *machine_id);
 char *wwn_log_ring_dump(const char *machine_id_or_null);
+char *wwn_github_bug_report_url(const char *platform,
+                                const char *install_channel,
+                                const char *wawona_version,
+                                const char *host_os, const char *logs);
 void WWNStringFree(char *s);
 #ifdef __cplusplus
 }

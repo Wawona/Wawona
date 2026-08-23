@@ -21,6 +21,8 @@ pub mod id {
     pub const SETTINGS_DONE: &str = "wwn.settings.done";
     pub const SETTINGS_DISPLAY: &str = "wwn.settings.display";
     pub const SETTINGS_ENVIRONMENT: &str = "wwn.settings.environment";
+    pub const SETTINGS_COPY_LOGS: &str = "wwn.settings.copyRecentLogs";
+    pub const SETTINGS_REPORT_BUG: &str = "wwn.settings.reportBug";
 
     pub const COMPOSITOR_SURFACE: &str = "wwn.compositor.surface";
 }
