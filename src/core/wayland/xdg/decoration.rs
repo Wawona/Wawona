@@ -79,6 +79,19 @@ pub fn is_weston_family_app_id(app_id: &str) -> bool {
     app_id == "weston" || app_id.starts_with("weston-") || app_id.contains("weston")
 }
 
+/// Nested compositor process (weston/niri), not weston-terminal or toys.
+pub fn is_nested_compositor_app_id(app_id: &str) -> bool {
+    let id = app_id.trim();
+    if id.is_empty() {
+        return false;
+    }
+    let lower = id.to_ascii_lowercase();
+    lower == "weston"
+        || lower == "org.freedesktop.weston"
+        || lower == "niri"
+        || lower.starts_with("niri.")
+}
+
 /// Loose tolerance for “is this commit related to the last configure?” checks
 /// (CSD chrome / geometry insets). **Not** used to drive host window sizing -
 /// see [`committed_size_authorizes_host_sync`] (#111).
@@ -396,6 +409,20 @@ mod tests {
             None,
         );
         assert_eq!(geom, None);
+    }
+
+    #[test]
+    fn nested_compositor_app_id_excludes_toys() {
+        assert!(is_nested_compositor_app_id("weston"));
+        assert!(is_nested_compositor_app_id("org.freedesktop.weston"));
+        assert!(is_nested_compositor_app_id("niri"));
+        assert!(is_nested_compositor_app_id("niri.desktop"));
+        assert!(!is_nested_compositor_app_id(
+            "org.freedesktop.weston.wayland-terminal"
+        ));
+        assert!(!is_nested_compositor_app_id("weston-terminal"));
+        assert!(!is_nested_compositor_app_id("weston-flower"));
+        assert!(!is_nested_compositor_app_id(""));
     }
 
     #[test]

@@ -2230,6 +2230,16 @@ ICDJSON
               # Resources/lib/weston, Resources/lib/libweston-13). Mirrors macos.nix.
               WESTON_STORE="${strip macosWeston}"
               RES_DEST="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources"
+              if [ -d "$WESTON_STORE/libexec" ]; then
+                for helper in "$WESTON_STORE/libexec"/weston-*; do
+                  [ -f "$helper" ] || continue
+                  hbase="$(basename "$helper")"
+                  bundle_bin "$helper" "$hbase"
+                  install -m 755 "$helper" "$MACOS_DEST/$hbase"
+                  sign_bin "$MACOS_DEST/$hbase"
+                  echo "Bundled weston helper $hbase"
+                done
+              fi
               if [ -d "$WESTON_STORE/share/weston" ]; then
                 mkdir -p "$RES_DEST/share/weston"
                 cp -R "$WESTON_STORE/share/weston/." "$RES_DEST/share/weston/"
@@ -2282,6 +2292,10 @@ ICDJSON
                 mkdir -p "$RES_DEST/share/icons/Adwaita"
                 cp -RL "$CURSOR_SRC" "$RES_DEST/share/icons/Adwaita/cursors"
                 chmod -R u+w "$RES_DEST/share/icons/Adwaita/cursors"
+                [ -e "$RES_DEST/share/icons/Adwaita/cursors/dnd-copy" ] \
+                  || ln -sf copy "$RES_DEST/share/icons/Adwaita/cursors/dnd-copy"
+                [ -e "$RES_DEST/share/icons/Adwaita/cursors/dnd-none" ] \
+                  || ln -sf default "$RES_DEST/share/icons/Adwaita/cursors/dnd-none"
                 echo "Bundled Adwaita cursors"
               fi
 

@@ -1602,15 +1602,18 @@ int main(int argc, char *argv[]) {
                                                       error:nil];
 
       WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
-      // wl_output mirrors the real display; per-window geometry overrides
-      // handle nested-compositor host windows.
+      // Nested weston copies parent wl_output.mode at bind time. Advertising
+      // physical pixels (logical * backingScale) made the first mode 3360x2100
+      // on a 1680x1050 Retina display, then every xdg_toplevel configure in
+      // points failed ("Mode switch failed"). compositor-host exists for CLI
+      // nested compositors; advertise points at scale 1. Per-window HiDPI
+      // still applies to regular clients after app_id lands.
       NSScreen *hostScreen = [NSScreen mainScreen];
       NSSize hostScreenSize = hostScreen ? hostScreen.frame.size
                                          : NSMakeSize(1024, 768);
-      CGFloat hostScale = hostScreen ? hostScreen.backingScaleFactor : 1.0;
       [bridge setOutputWidth:(uint32_t)hostScreenSize.width
                       height:(uint32_t)hostScreenSize.height
-                       scale:(float)hostScale];
+                       scale:1.0f];
       [bridge setForceSSD:WWNSettings_GetForceServerSideDecorations()];
       if (![bridge startWithSocketName:@"wayland-0"]) {
         wwn_write_runtime_state(NO, @"wayland-0", nil, @"compositor-host",

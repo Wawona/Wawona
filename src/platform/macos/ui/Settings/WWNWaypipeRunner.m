@@ -2298,12 +2298,36 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       [name isEqualToString:@"kmscube"] ||
       [name isEqualToString:@"gbm-es2-demo"] ||
       [name isEqualToString:@"niri"] ||
-      [name isEqualToString:@"weston"];
+      [name isEqualToString:@"weston"] ||
+      [name isEqualToString:@"weston-desktop-shell"] ||
+      [name isEqualToString:@"weston-keyboard"];
   NSString *frameworksDir = [[[NSBundle mainBundle] bundlePath]
       stringByAppendingPathComponent:@"Contents/Frameworks"];
   if (needsFrameworks &&
       [[NSFileManager defaultManager] fileExistsAtPath:frameworksDir]) {
     env[@"DYLD_LIBRARY_PATH"] = frameworksDir;
+    // gl-renderer.so is built with -undefined dynamic_lookup (Mode B DRM).
+    // Load ANGLE so _eglBindAPI resolves. Do not override a Mode B insert.
+    if (!env[@"DYLD_INSERT_LIBRARIES"] &&
+        ([name isEqualToString:@"weston"] ||
+         [name isEqualToString:@"weston-desktop-shell"] ||
+         [name isEqualToString:@"weston-keyboard"])) {
+      NSFileManager *fm = [NSFileManager defaultManager];
+      NSString *egl =
+          [frameworksDir stringByAppendingPathComponent:@"libEGL.dylib"];
+      NSString *gles =
+          [frameworksDir stringByAppendingPathComponent:@"libGLESv2.dylib"];
+      NSMutableArray<NSString *> *insert = [NSMutableArray array];
+      if ([fm fileExistsAtPath:egl]) {
+        [insert addObject:egl];
+      }
+      if ([fm fileExistsAtPath:gles]) {
+        [insert addObject:gles];
+      }
+      if (insert.count > 0) {
+        env[@"DYLD_INSERT_LIBRARIES"] = [insert componentsJoinedByString:@":"];
+      }
+    }
   }
   if ([name isEqualToString:@"vkcube"] ||
       [name isEqualToString:@"vkcube-kms"]) {
@@ -3104,6 +3128,7 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     /* Panel launchers connect via this named socket (not the host
      * WAYLAND_DISPLAY). Kept in sync with wwn_launch_panel_client. */
     setenv("WAWONA_NESTED_WAYLAND_DISPLAY", nestedSocket.UTF8String, 1);
+    setenv("WAWONA_NESTED_WAYLAND", "1", 1);
     argv_weston[argc_weston++] = "--shell=desktop-shell.so";
     argv_weston[argc_weston++] = scaleArg;
     if (!prepareIland) {
@@ -3322,6 +3347,8 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
 
   NSMutableDictionary *env = [self wwnMutableHostWaylandEnvironment];
   env[@"WAWONA_OUTPUT_SCALE"] = @"1";
+  env[@"WAWONA_NESTED_WAYLAND"] = @"1";
+  [self wwnApplyBundledClientEnvironment:env forClientId:@"weston"];
   task.environment = env;
 
   WWNLog("WESTON",
@@ -3375,6 +3402,7 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
   char scaleEnv[32];
   snprintf(scaleEnv, sizeof(scaleEnv), "%u", hostScale);
   setenv("WAWONA_OUTPUT_SCALE", scaleEnv, 1);
+  setenv("WAWONA_NESTED_WAYLAND", "1", 1);
 
   const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
   char configPath[512] = "";

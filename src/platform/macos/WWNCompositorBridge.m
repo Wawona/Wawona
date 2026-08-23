@@ -3990,13 +3990,11 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
       uint64_t wid = event->window_id;
       uint32_t ow = (uint32_t)MAX(1, lround(contentSize.width));
       uint32_t oh = (uint32_t)MAX(1, lround(contentSize.height));
-      // Per-window wl_output must carry the real backing scale so clients
-      // render HiDPI buffers (crisp fonts) instead of 1x CALayer upscales.
-      float s = _latestOutputScale > 0 ? _latestOutputScale
-                                       : (float)window.backingScaleFactor;
-      if (s < 1.0f) {
-        s = 1.0f;
-      }
+      // Nested compositors size from wl_output.mode and xdg in points.
+      // Advertising backingScale here created a 2x framebuffer and made
+      // later configures fail mode-switch. Direct clients still see the
+      // global HiDPI output.
+      float s = 1.0f;
       [self _dispatchToRust:^{
         WWNCoreSetOutputGeometryForWindow(self->_rustCore, wid, ow, oh, s);
       }];

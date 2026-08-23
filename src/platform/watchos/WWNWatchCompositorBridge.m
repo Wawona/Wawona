@@ -139,6 +139,7 @@ typedef struct {
 static void *compositorThreadFunc(void *ctx) {
     CompositorThreadArgs *args = (CompositorThreadArgs *)ctx;
     WWNLog("WATCH", @"weston_compositor_main starting");
+    setenv("WAWONA_NESTED_WAYLAND", "1", 1);
     int rc = weston_compositor_main(args->argc, args->argv);
     WWNLog("WATCH", @"weston_compositor_main exited with code %d", rc);
     if (args->argv) {

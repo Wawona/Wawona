@@ -258,6 +258,29 @@ fn is_weston_family_app_id(app_id: &str) -> bool {
         || app_id.contains("weston")
 }
 
+/// Nested compositor process, not weston-terminal / flower / toys.
+fn is_nested_compositor_app_id(app_id: &str) -> bool {
+    let id = app_id.trim();
+    if id.is_empty() {
+        return false;
+    }
+    let lower = id.to_ascii_lowercase();
+    lower == "weston"
+        || lower == "org.freedesktop.weston"
+        || lower == "niri"
+        || lower.starts_with("niri.")
+}
+
+fn nested_compositor_output_scale(app_id: &str, global_scale: f32) -> f32 {
+    if is_nested_compositor_app_id(app_id) {
+        1.0
+    } else if global_scale < 1.0 {
+        1.0
+    } else {
+        global_scale
+    }
+}
+
 fn buffer_size_mismatch_px(
     buf_w: u32,
     buf_h: u32,
@@ -3071,9 +3094,19 @@ impl WawonaCore {
             // framebuffer from output mode; updating only on txn-settle made
             // mode lag/lead the host and flash before/after sizes mid-drag.
             // set_output_geometry_for_window is per-client and deduped.
+            // Nested weston/niri follow xdg in points at scale 1. Direct
+            // clients keep the global HiDPI scale.
             let scale = {
-                let cur = self.output_size.read_recover();
-                cur.2
+                let global = {
+                    let cur = self.output_size.read_recover();
+                    cur.2
+                };
+                let state = self.state.read_recover();
+                let app_id = state
+                    .get_window(wid)
+                    .map(|w| w.read_recover().app_id.clone())
+                    .unwrap_or_default();
+                nested_compositor_output_scale(&app_id, global)
             };
             self.set_output_geometry_for_window(window_id, width, height, scale);
 
@@ -3309,10 +3342,15 @@ impl WawonaCore {
             if let Some(tl) = state.xdg.toplevels.get_mut(&tid) {
                 tl.interactive_resize = false;
             }
-            let scale = {
+            let app_id = state
+                .get_window(wid)
+                .map(|w| w.read_recover().app_id.clone())
+                .unwrap_or_default();
+            let global = {
                 let cur = self.output_size.read_recover();
                 cur.2
             };
+            let scale = nested_compositor_output_scale(&app_id, global);
             // Keep per-window output geometry in lockstep with the settle
             // configure (nested compositors size from output mode).
             drop(state);

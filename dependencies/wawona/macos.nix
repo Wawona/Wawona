@@ -995,6 +995,25 @@ GEN_HEADER
               if [ -d "$CURSOR_SRC" ]; then
                 mkdir -p "$APP/share/icons/Adwaita"
                 cp -r "$CURSOR_SRC" "$APP/share/icons/Adwaita/cursors"
+                # Weston looks for dnd-copy / dnd-none; Adwaita 50 only ships dnd-move.
+                [ -e "$APP/share/icons/Adwaita/cursors/dnd-copy" ] \
+                  || ln -sf copy "$APP/share/icons/Adwaita/cursors/dnd-copy"
+                [ -e "$APP/share/icons/Adwaita/cursors/dnd-none" ] \
+                  || ln -sf default "$APP/share/icons/Adwaita/cursors/dnd-none"
+              fi
+              # Weston shell helpers (weston-desktop-shell / weston-keyboard /
+              # weston-simple-im). Same loop as the manual install path below.
+              # desktop-shell.so spawns these from a baked nix-store libexec
+              # path that does not exist at runtime.
+              if [ -d "${weston}/libexec" ]; then
+                for helper in "${weston}/libexec"/weston-*; do
+                  [ -f "$helper" ] || continue
+                  hbase="$(basename "$helper")"
+                  cp "$helper" "$APP/Contents/Resources/bin/"
+                  cp "$helper" "$APP/Contents/MacOS/"
+                  chmod +x "$APP/Contents/Resources/bin/$hbase" "$APP/Contents/MacOS/$hbase"
+                  echo "Bundled weston helper $hbase (xcodebuild)"
+                done
               fi
               WA_FONTS="${wawonaBundledFonts}"
               rm -rf "$APP/share/fonts" "$APP/Contents/Resources/share/fonts"
@@ -1176,6 +1195,10 @@ GEN_HEADER
             if [ -d "$CURSOR_SRC" ]; then
               mkdir -p "$APP/share/icons/Adwaita"
               cp -r "$CURSOR_SRC" "$APP/share/icons/Adwaita/cursors"
+              [ -e "$APP/share/icons/Adwaita/cursors/dnd-copy" ] \
+                || ln -sf copy "$APP/share/icons/Adwaita/cursors/dnd-copy"
+              [ -e "$APP/share/icons/Adwaita/cursors/dnd-none" ] \
+                || ln -sf default "$APP/share/icons/Adwaita/cursors/dnd-none"
               echo "DEBUG: Bundled Adwaita cursors"
             fi
             WA_FONTS="${wawonaBundledFonts}"

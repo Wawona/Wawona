@@ -226,9 +226,11 @@ fi
 
 if [ "\$NAME" = weston ]; then
   export WAWONA_OUTPUT_SCALE="\${WAWONA_OUTPUT_SCALE:-1}"
+  export WAWONA_NESTED_WAYLAND="\${WAWONA_NESTED_WAYLAND:-1}"
   if [ -z "\${WESTON_CONFIG_FILE:-}" ] && [ -n "\${XDG_RUNTIME_DIR:-}" ]; then
     _wawona_ini="\$XDG_RUNTIME_DIR/weston.ini"
     _wawona_shell=""
+    _wawona_kbd=""
     for _wawona_c in \\
       "\$APP/Contents/Resources/bin/weston-desktop-shell" \\
       "\$APP/Contents/MacOS/weston-desktop-shell" \\
@@ -239,15 +241,44 @@ if [ "\$NAME" = weston ]; then
         break
       fi
     done
+    for _wawona_c in \\
+      "\$APP/Contents/Resources/bin/weston-keyboard" \\
+      "\$APP/Contents/MacOS/weston-keyboard"
+    do
+      if [ -x "\$_wawona_c" ]; then
+        _wawona_kbd="\$_wawona_c"
+        break
+      fi
+    done
     {
       printf '%s\n' "[core]" "use-pixman=true" "" "[shell]"
       if [ -n "\$_wawona_shell" ]; then
         printf 'client=%s\n' "\$_wawona_shell"
       fi
+      if [ -n "\$_wawona_kbd" ]; then
+        printf 'input-method=%s\n' "\$_wawona_kbd"
+      fi
       printf '%s\n' "background-color=0xff1a1a2e" "panel-position=top"
     } > "\$_wawona_ini"
     export WESTON_CONFIG_FILE="\$_wawona_ini"
-    unset _wawona_ini _wawona_shell _wawona_c
+    unset _wawona_ini _wawona_shell _wawona_kbd _wawona_c
+  fi
+  # gl-renderer.so uses -undefined dynamic_lookup. Load ANGLE into this
+  # weston process only. Never export DYLD_INSERT for Apple /bin/* (arm64e).
+  if [ -z "\${DYLD_INSERT_LIBRARIES:-}" ] && [ -d "\$APP/Contents/Frameworks" ]; then
+    _wawona_egl="\$APP/Contents/Frameworks/libEGL.dylib"
+    _wawona_gles="\$APP/Contents/Frameworks/libGLESv2.dylib"
+    _wawona_insert=""
+    if [ -f "\$_wawona_egl" ]; then
+      _wawona_insert="\$_wawona_egl"
+    fi
+    if [ -f "\$_wawona_gles" ]; then
+      _wawona_insert="\${_wawona_insert:+\$_wawona_insert:}\$_wawona_gles"
+    fi
+    if [ -n "\$_wawona_insert" ]; then
+      export DYLD_INSERT_LIBRARIES="\$_wawona_insert"
+    fi
+    unset _wawona_egl _wawona_gles _wawona_insert
   fi
 fi
 EOF
