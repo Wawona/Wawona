@@ -428,6 +428,11 @@ static UIImage *WWNAboutLogo(void) {
       [[UIView alloc] initWithFrame:CGRectMake(0, 0, 1.0, 1.0)];
   self.tableView.rowHeight = UITableViewAutomaticDimension;
   self.tableView.estimatedRowHeight = 72.0;
+  // Nav bar already names the page. Do not also use a large title that
+  // restates the same section string above the grouped rows.
+  self.navigationItem.largeTitleDisplayMode =
+      UINavigationItemLargeTitleDisplayModeNever;
+  self.tableView.sectionHeaderTopPadding = 0;
 
   __block typeof(self) weakSelf = self;
   [self registerForTraitChanges:@[ UITraitUserInterfaceStyle.class ]
@@ -4055,8 +4060,10 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
 
 - (NSString *)tableView:(UITableView *)tv
     titleForHeaderInSection:(NSInteger)sec {
+  // One section per detail page. The nav bar already uses section.title
+  // (Display, About, …). Repeating it here doubles the title on iOS.
   if (self.activeSection) {
-    return self.activeSection.title;
+    return nil;
   }
   return self.sections[sec].title;
 }

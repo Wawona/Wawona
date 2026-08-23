@@ -10,6 +10,12 @@ as history.
 
 ## [Unreleased]
 
+### Fixed
+
+- **iOS Settings duplicate section titles.** Detail pages used the section
+  name in the nav bar and again as a table header. Header is omitted; the
+  nav bar is the only title.
+
 ### Changed
 
 - **Settings → About.** Author subtext is Alex Spaulding and that row opens
