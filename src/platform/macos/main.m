@@ -936,6 +936,11 @@ static void wwn_install_host_main_menu(id target) {
 @property(nonatomic, strong) NSButton *restartButton;
 @property(nonatomic, strong) NSSwitch *loginAtLoginSwitch;
 @property(nonatomic, strong) NSView *compositorRow;
+@property(nonatomic, strong) NSView *desktopRow;
+@property(nonatomic, strong) NSTextField *desktopStatusLabel;
+@property(nonatomic, strong) NSButton *desktopTakeOverButton;
+@property(nonatomic, strong) NSButton *desktopRestoreButton;
+@property(nonatomic, strong) NSButton *desktopRestartButton;
 @property(nonatomic, strong) NSView *loginRow;
 @property(nonatomic, strong) NSTimer *pollTimer;
 @property(nonatomic, strong) NSTimer *restartPollTimer;
@@ -947,7 +952,8 @@ static NSFont *WWNMenuBarItemFont(void) {
   return [NSFont menuFontOfSize:[NSFont systemFontSize]];
 }
 
-static NSAttributedString *WWNMenuBarStatusAttributed(NSString *state,
+static NSAttributedString *WWNMenuBarStatusAttributed(NSString *prefix,
+                                                      NSString *state,
                                                       NSColor *stateColor) {
   NSFont *font = WWNMenuBarItemFont();
   NSDictionary *prefixAttrs = @{
@@ -959,7 +965,7 @@ static NSAttributedString *WWNMenuBarStatusAttributed(NSString *state,
     NSForegroundColorAttributeName : stateColor
   };
   NSMutableAttributedString *text = [[NSMutableAttributedString alloc]
-      initWithString:@"Compositor: "
+      initWithString:[prefix stringByAppendingString:@": "]
           attributes:prefixAttrs];
   [text appendAttributedString:[[NSAttributedString alloc]
                                    initWithString:state
@@ -1052,7 +1058,8 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
     NSTextField *statusLabel = [NSTextField labelWithString:@""];
     statusLabel.font = WWNMenuBarItemFont();
     statusLabel.attributedStringValue =
-        WWNMenuBarStatusAttributed(@"stopped", [NSColor systemRedColor]);
+        WWNMenuBarStatusAttributed(@"Compositor", @"stopped",
+                                   [NSColor systemRedColor]);
     statusLabel.frame = NSMakeRect(14, 6, 150, 20);
     statusLabel.autoresizingMask =
         NSViewWidthSizable | NSViewMinYMargin | NSViewMaxYMargin;
@@ -1078,6 +1085,41 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
                                                      keyEquivalent:@""];
     compositorItem.view = compositorRow;
     [menu addItem:compositorItem];
+    [menu addItem:[NSMenuItem separatorItem]];
+
+    NSView *desktopRow = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 268, 32)];
+    desktopRow.autoresizesSubviews = YES;
+    NSTextField *desktopStatus = [NSTextField labelWithString:@""];
+    desktopStatus.font = WWNMenuBarItemFont();
+    desktopStatus.attributedStringValue = WWNMenuBarStatusAttributed(
+        @"Desktop", @"blocked", [NSColor systemRedColor]);
+    desktopStatus.frame = NSMakeRect(14, 6, 150, 20);
+    desktopStatus.autoresizingMask =
+        NSViewWidthSizable | NSViewMinYMargin | NSViewMaxYMargin;
+    [desktopRow addSubview:desktopStatus];
+    _desktopStatusLabel = desktopStatus;
+
+    NSButton *desktopRestartBtn = WWNMenuBarSymbolButton(
+        @"arrow.clockwise", @"Restart Mac (Path B reboot)", self,
+        @selector(restartMacForDesktop:));
+    NSButton *desktopRestoreBtn = WWNMenuBarSymbolButton(
+        @"stop.fill", @"Restore Aqua", self, @selector(restoreDesktop:));
+    NSButton *desktopTakeOverBtn = WWNMenuBarSymbolButton(
+        @"play.fill", @"Take Over Screen Now", self,
+        @selector(takeOverDesktop:));
+    [desktopRow addSubview:desktopRestartBtn];
+    [desktopRow addSubview:desktopRestoreBtn];
+    [desktopRow addSubview:desktopTakeOverBtn];
+    _desktopRestartButton = desktopRestartBtn;
+    _desktopRestoreButton = desktopRestoreBtn;
+    _desktopTakeOverButton = desktopTakeOverBtn;
+    _desktopRow = desktopRow;
+
+    NSMenuItem *desktopItem = [[NSMenuItem alloc] initWithTitle:@""
+                                                         action:nil
+                                                  keyEquivalent:@""];
+    desktopItem.view = desktopRow;
+    [menu addItem:desktopItem];
     [menu addItem:[NSMenuItem separatorItem]];
 
     NSView *loginRow = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 268, 28)];
@@ -1183,6 +1225,23 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
     status.size.width = MAX(80.0, x - kBtn - 8.0 - 14.0);
     self.statusLabel.frame = status;
   }
+  if (self.desktopRow) {
+    NSRect frame = self.desktopRow.frame;
+    frame.size.width = width;
+    self.desktopRow.frame = frame;
+    CGFloat x = width - kTrailing;
+    self.desktopTakeOverButton.frame =
+        NSMakeRect(x - kBtn, 5, kBtn, kBtn);
+    x -= (kBtn + kGap);
+    self.desktopRestoreButton.frame =
+        NSMakeRect(x - kBtn, 5, kBtn, kBtn);
+    x -= (kBtn + kGap);
+    self.desktopRestartButton.frame =
+        NSMakeRect(x - kBtn, 5, kBtn, kBtn);
+    NSRect deskStatus = self.desktopStatusLabel.frame;
+    deskStatus.size.width = MAX(80.0, x - kBtn - 8.0 - 14.0);
+    self.desktopStatusLabel.frame = deskStatus;
+  }
   if (self.loginRow && self.loginAtLoginSwitch) {
     NSRect frame = self.loginRow.frame;
     frame.size.width = width;
@@ -1238,7 +1297,7 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
     color = [NSColor systemGreenColor];
   }
   self.statusLabel.attributedStringValue =
-      WWNMenuBarStatusAttributed(state, color);
+      WWNMenuBarStatusAttributed(@"Compositor", state, color);
   self.statusLabel.toolTip =
       [NSString stringWithFormat:@"Compositor: %@", state];
 
@@ -1249,6 +1308,27 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
   BOOL loginOn = [[WWNLaunchAgentManager sharedManager] isAppLaunchAgentLoaded];
   self.loginAtLoginSwitch.state =
       loginOn ? NSControlStateValueOn : NSControlStateValueOff;
+
+  BOOL refreshDesktopGate = ![sender isKindOfClass:[NSTimer class]];
+  WWNModeBMenuBarStatus *desk =
+      [[WWNDesktopReplacementController sharedController]
+          menuBarDesktopStatusRefreshingGate:refreshDesktopGate];
+  NSColor *deskColor = [NSColor systemRedColor];
+  if ([desk.state isEqualToString:@"ready"] ||
+      [desk.state isEqualToString:@"takeover"]) {
+    deskColor = [NSColor systemGreenColor];
+  } else if ([desk.state isEqualToString:@"reboot"]) {
+    deskColor = [NSColor systemPurpleColor];
+  }
+  self.desktopStatusLabel.attributedStringValue =
+      WWNMenuBarStatusAttributed(@"Desktop", desk.state, deskColor);
+  self.desktopStatusLabel.toolTip =
+      desk.tooltip.length
+          ? desk.tooltip
+          : [NSString stringWithFormat:@"Desktop: %@", desk.state];
+  self.desktopTakeOverButton.enabled = desk.canTakeOver;
+  self.desktopRestoreButton.enabled = desk.canRestore;
+  self.desktopRestartButton.enabled = desk.canRestartMac;
 }
 
 - (void)restartCompositor:(id)sender {
@@ -1270,6 +1350,124 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
   [self endRestarting];
   [[WWNLaunchAgentManager sharedManager] startCompositorAgent];
   [self refreshStatus:nil];
+}
+
+- (void)takeOverDesktop:(id)sender {
+  (void)sender;
+  WWNDesktopReplacementController *desk =
+      [WWNDesktopReplacementController sharedController];
+  WWNModeBReadyReport *ready = [desk evaluateClassicReadiness];
+  if (ready.verdict == WWNModeBVerdictBlocked) {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.alertStyle = NSAlertStyleCritical;
+    alert.messageText = @"Desktop Take Over is blocked";
+    alert.informativeText =
+        [NSString stringWithFormat:@"%@\n\n%@", ready.reason, ready.nextStep];
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+    [self refreshStatus:self.statusItem.menu];
+    return;
+  }
+  if (ready.verdict == WWNModeBVerdictReboot) {
+    [self restartMacForDesktop:sender];
+    return;
+  }
+
+  NSAlert *confirm = [[NSAlert alloc] init];
+  confirm.alertStyle = NSAlertStyleCritical;
+  confirm.messageText = @"Take Over this Mac's screen now?";
+  confirm.informativeText = [NSString
+      stringWithFormat:
+          @"%@\n\nWawona will unload watchdogd (ACK already present), unload "
+          @"WindowServer, and start the Desktop compositor with Mode B "
+          @"insert. Logout restores normal macOS.",
+          [desk iowatchdogStickyAckStatusSummary]];
+  [confirm addButtonWithTitle:@"Take Over Screen Now"];
+  [confirm addButtonWithTitle:@"Cancel"];
+  if ([confirm runModal] != NSAlertFirstButtonReturn) {
+    return;
+  }
+
+  [[NSUserDefaults standardUserDefaults]
+      setBool:YES
+       forKey:kWWNPrefsDesktopReplacementEnabled];
+  NSError *engageError = nil;
+  if (![desk engageSelectedDesktopMachine:&engageError]) {
+    [[NSUserDefaults standardUserDefaults]
+        setBool:NO
+         forKey:kWWNPrefsDesktopReplacementEnabled];
+    NSAlert *fail = [[NSAlert alloc] init];
+    fail.alertStyle = NSAlertStyleCritical;
+    fail.messageText = @"Desktop Take Over failed";
+    fail.informativeText =
+        engageError.localizedDescription ?: @"See /tmp/wawona-modeb.log.";
+    [fail addButtonWithTitle:@"OK"];
+    [fail runModal];
+  }
+  [self refreshStatus:self.statusItem.menu];
+}
+
+- (void)restoreDesktop:(id)sender {
+  (void)sender;
+  NSAlert *confirm = [[NSAlert alloc] init];
+  confirm.alertStyle = NSAlertStyleWarning;
+  confirm.messageText = @"Restore Aqua?";
+  confirm.informativeText =
+      @"Ends Desktop Replacement, restores WindowServer, and re-enables "
+      @"Apple watchdogd after IOWatchdog.";
+  [confirm addButtonWithTitle:@"Restore Aqua"];
+  [confirm addButtonWithTitle:@"Cancel"];
+  if ([confirm runModal] != NSAlertFirstButtonReturn) {
+    return;
+  }
+  if (![[WWNDesktopReplacementController sharedController] disengage]) {
+    NSAlert *fail = [[NSAlert alloc] init];
+    fail.alertStyle = NSAlertStyleCritical;
+    fail.messageText = @"Desktop Replacement did not fully uninstall";
+    fail.informativeText =
+        @"Wawona could not finish Mode B teardown. Approve the admin "
+        @"prompt to restore Apple's WindowServer.";
+    [fail addButtonWithTitle:@"OK"];
+    [fail runModal];
+    [self refreshStatus:self.statusItem.menu];
+    return;
+  }
+  [[NSUserDefaults standardUserDefaults]
+      setBool:NO
+       forKey:kWWNPrefsDesktopReplacementEnabled];
+  [self refreshStatus:self.statusItem.menu];
+}
+
+- (void)restartMacForDesktop:(id)sender {
+  (void)sender;
+  WWNDesktopReplacementController *desk =
+      [WWNDesktopReplacementController sharedController];
+  WWNModeBReadyReport *ready = [desk evaluateClassicReadiness];
+  NSAlert *confirm = [[NSAlert alloc] init];
+  confirm.alertStyle = NSAlertStyleWarning;
+  confirm.messageText = @"Restart required before Take Over";
+  confirm.informativeText = [NSString
+      stringWithFormat:
+          @"%@\n\nWawona will open the native macOS Restart sheet "
+          @"(loginwindow kAERestart, 60-second countdown). After you log "
+          @"back in, Classic readiness must be ready, then Take Over.",
+          ready.reason];
+  [confirm addButtonWithTitle:@"Restart"];
+  [confirm addButtonWithTitle:@"Cancel"];
+  if ([confirm runModal] != NSAlertFirstButtonReturn) {
+    return;
+  }
+  NSError *rst = nil;
+  if (![desk requestNativeMacOSRestart:&rst]) {
+    NSAlert *fail = [[NSAlert alloc] init];
+    fail.alertStyle = NSAlertStyleCritical;
+    fail.messageText = @"Could not open Restart";
+    fail.informativeText =
+        rst.localizedDescription ?: @"Use the Apple menu, then Restart.";
+    [fail addButtonWithTitle:@"OK"];
+    [fail runModal];
+  }
+  [self refreshStatus:self.statusItem.menu];
 }
 
 - (void)toggleAppLaunchAtLogin:(id)sender {
