@@ -1199,6 +1199,8 @@
             app = wawona-ios-app-sim;
             bundleId = "com.aspauldingcode.Wawona";
           };
+          cliBinsScript = pkgs.writeShellScript "wawona-macos-cli-bins"
+            (builtins.readFile ./scripts/macos-register-cli-bins.sh);
         in {
           install = pkgs.writeShellScriptBin "install" ''
             set -eu
@@ -1437,6 +1439,9 @@ EOF
             verify_running "$menubar_label"
             echo "Mode B dylib: $dylib_path"
             file "$dylib_path" || true
+
+            echo "Registering bundled software on PATH..."
+            "${cliBinsScript}" register "$app_dst"
           '';
           uninstall = let
             privileged = pkgs.writeShellScript "wawona-uninstall-privileged" ''
@@ -1509,6 +1514,7 @@ EOF
             unload_agent "$applaunch_label"
             unload_agent "$modeb_login_label"
             kill_wawona_app
+            "${cliBinsScript}" unregister || true
 
             if [ -x "$modeb_helper" ]; then
               /usr/bin/sudo -n "$modeb_helper" --restore-aqua >/dev/null 2>&1 || true

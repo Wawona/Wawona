@@ -7,6 +7,37 @@ Machines / Settings GUI.
 /Applications/Wawona.app/Contents/MacOS/Wawona --help
 ```
 
+## Bundled software on PATH
+
+`nix run .#install` copies Wawona.app to `/Applications` and also drops
+wrappers in `~/.local/bin` (and `/usr/local/bin` when that directory is
+writable) for every bundled CLI that does not shadow Apple `/bin` or
+`/usr/bin`:
+
+```bash
+weston-terminal
+niri
+foot
+kmscube
+waypipe
+wawona --help
+```
+
+Wrappers point at the installed app, kick the compositor LaunchAgent if the
+Wayland socket is missing, and set `WESTON_*` / `FONTCONFIG_FILE` /
+`DYLD_LIBRARY_PATH`. They are not nix-store paths, so they survive GC.
+
+Apple names (`ssh`, `zsh`, `vi`, `login`, …) stay in
+`/Applications/Wawona.app/Contents/Resources/bin/` so host OpenSSH and zsh
+are not replaced. `nix run .#uninstall` removes the wrappers and the PATH
+snippet from `~/.zprofile`.
+
+Open a new shell after install, or:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
 ## Informational (no GUI, no instance lock)
 
 | Flag | Effect |
