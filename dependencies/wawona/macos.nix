@@ -529,6 +529,34 @@ let
     }
   '';
 
+  # Public libEGL.dylib is iland's Wayland-EGL shim. ANGLE is always staged as
+  # libEGL_angle.dylib so the shim's load_angle() does not recurse.
+  bundleIlandEglShim = ''
+    bundle_iland_egl_shim() {
+      local app="$1"
+      local fw="$app/Contents/Frameworks"
+      local shim="${effectiveNativeDeps.iland}/lib/libEGL.dylib"
+      local angle_egl="${effectiveNativeDeps.angle}/lib/libEGL.dylib"
+      mkdir -p "$fw"
+      if [ -f "$angle_egl" ]; then
+        cp -L "$angle_egl" "$fw/libEGL_angle.dylib"
+        chmod 755 "$fw/libEGL_angle.dylib"
+        install_name_tool -id "@rpath/libEGL_angle.dylib" "$fw/libEGL_angle.dylib" 2>/dev/null || true
+        echo "Bundled ANGLE as libEGL_angle.dylib"
+      else
+        echo "WARNING: ANGLE libEGL.dylib missing at $angle_egl"
+      fi
+      if [ -f "$shim" ]; then
+        cp -L "$shim" "$fw/libEGL.dylib"
+        chmod 755 "$fw/libEGL.dylib"
+        install_name_tool -id "@rpath/libEGL.dylib" "$fw/libEGL.dylib" 2>/dev/null || true
+        echo "Bundled iland Wayland-EGL shim as libEGL.dylib"
+      else
+        echo "WARNING: iland libEGL.dylib shim missing at $shim"
+      fi
+    }
+  '';
+
 in
   pkgs.stdenv.mkDerivation rec {
     name = "wawona-macos";
@@ -1582,8 +1610,11 @@ PLIST_EOF
             ${installMacOSIcons}
 
             ${bundleMacOSAppDylibs}
+            ${bundleIlandEglShim}
             ${bundleIlandBaremetalDylib}
             echo "Bundling portable dylibs into Wawona.app..."
+            bundle_macos_app_dylibs "$out/Applications/Wawona.app"
+            bundle_iland_egl_shim "$out/Applications/Wawona.app"
             bundle_macos_app_dylibs "$out/Applications/Wawona.app"
             ${lib.optionalString (ilandBaremetal != null) ''bundle_iland_baremetal_dylib "$out/Applications/Wawona.app"''}
             if command -v codesign >/dev/null 2>&1; then

@@ -1562,9 +1562,8 @@ static void wwnConfigureNiriNestedEnv(void) {
   if ([[NSFileManager defaultManager] fileExistsAtPath:kdl]) {
     setenv("NIRI_CONFIG", kdl.UTF8String, 1);
   }
-  // smithay dlopen's libEGL.dylib at runtime. ANGLE ships in the app
-  // Frameworks directory; without this path eglInitialize fails and niri panics
-  // during nested-backend init. Mirrors macOS NSTask env and niri-smoke-macos.sh.
+  // smithay resolves EGL from in-process iland (Library::this). ANGLE is
+  // dlopened as libEGL_angle.dylib from Frameworks.
   NSString *frameworksDir = [[[NSBundle mainBundle] bundlePath]
       stringByAppendingPathComponent:@"Frameworks"];
   if ([[NSFileManager defaultManager] fileExistsAtPath:frameworksDir]) {
@@ -2307,7 +2306,8 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       [[NSFileManager defaultManager] fileExistsAtPath:frameworksDir]) {
     env[@"DYLD_LIBRARY_PATH"] = frameworksDir;
     // gl-renderer.so is built with -undefined dynamic_lookup (Mode B DRM).
-    // Load ANGLE so _eglBindAPI resolves. Do not override a Mode B insert.
+    // Load the iland EGL shim so nested weston gets Wayland-EGL. Do not
+    // override a Mode B insert. ANGLE is libEGL_angle.dylib inside the shim.
     if (!env[@"DYLD_INSERT_LIBRARIES"] &&
         ([name isEqualToString:@"weston"] ||
          [name isEqualToString:@"weston-desktop-shell"] ||
@@ -3319,7 +3319,7 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
   char configPath[512] = "";
   if (xdg_dir && xdg_dir[0]) {
     snprintf(configPath, sizeof(configPath), "%s/weston.ini", xdg_dir);
-    [self wwnWriteWestonIniAtPath:configPath usePixman:YES];
+    [self wwnWriteWestonIniAtPath:configPath usePixman:NO];
   }
 
   // Nested weston is an ordinary Wayland client of Wawona. Size and HiDPI
@@ -3335,7 +3335,6 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
                                  [WWNPreferencesManager preferredNestedSocketName]],
       @"--shell=desktop-shell.so",
       @"--scale=1",
-      @"--use-pixman",
       nil];
   if (configPath[0]) {
     [args addObject:[NSString stringWithFormat:@"--config=%s", configPath]];
@@ -3466,15 +3465,16 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
 #if TARGET_OS_IPHONE
   // Honour CompositorBackend only. NestedWestonBackend defaults to
   // iland-drm-gl on iOS devices and launched --backend=drm with no mapped
-  // host surface (Start does nothing). Nested pixman is the iOS-family path.
+  // host surface (Start does nothing). Nested Wayland-EGL is the iOS-family
+  // nested path (iland in-process).
   BOOL wantDrm = [WWNResolveCompositorBackend(nil) isEqualToString:@"drm"];
   if (wantDrm) {
     [self launchWestonDrm];
     return;
   }
-  WWNLog("WESTON", @"nested weston compositor (wayland-pixman) on iOS family");
+  WWNLog("WESTON", @"nested weston compositor (wayland-gl) on iOS family");
   [self wwnLaunchWestonCompositorWithBackend:"--backend=wayland"
-                                   usePixman:YES
+                                   usePixman:NO
                                 prepareIland:NO];
 #else
   [self launchWestonMacOSAsNestedClient];

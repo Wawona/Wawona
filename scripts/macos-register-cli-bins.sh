@@ -251,7 +251,7 @@ if [ "\$NAME" = weston ]; then
       fi
     done
     {
-      printf '%s\n' "[core]" "use-pixman=true" "" "[shell]"
+      printf '%s\n' "[core]" "use-pixman=false" "" "[shell]"
       if [ -n "\$_wawona_shell" ]; then
         printf 'client=%s\n' "\$_wawona_shell"
       fi
@@ -263,8 +263,10 @@ if [ "\$NAME" = weston ]; then
     export WESTON_CONFIG_FILE="\$_wawona_ini"
     unset _wawona_ini _wawona_shell _wawona_kbd _wawona_c
   fi
-  # gl-renderer.so uses -undefined dynamic_lookup. Load ANGLE into this
-  # weston process only. Never export DYLD_INSERT for Apple /bin/* (arm64e).
+  # gl-renderer.so uses -undefined dynamic_lookup. Load the iland EGL shim
+  # (Frameworks/libEGL.dylib) so nested weston gets Wayland-EGL + dmabuf.
+  # ANGLE is libEGL_angle.dylib, opened by the shim. Never export DYLD_INSERT
+  # for Apple /bin/* (arm64e).
   if [ -z "\${DYLD_INSERT_LIBRARIES:-}" ] && [ -d "\$APP/Contents/Frameworks" ]; then
     _wawona_egl="\$APP/Contents/Frameworks/libEGL.dylib"
     _wawona_gles="\$APP/Contents/Frameworks/libGLESv2.dylib"
@@ -309,7 +311,7 @@ if [ "\$WAWONA_CLI_NAME" = weston ]; then
     esac
   done
   if [ "\$_wawona_has_backend" -eq 0 ]; then
-    set -- --backend=wayland --shell=desktop-shell.so --use-pixman "\$@"
+    set -- --backend=wayland --shell=desktop-shell.so "\$@"
   fi
   if [ "\$_wawona_has_scale" -eq 0 ]; then
     set -- --scale=1 "\$@"

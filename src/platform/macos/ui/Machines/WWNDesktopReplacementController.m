@@ -1459,8 +1459,8 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"fi\n"];
   [script appendString:@"set +e\n"];
   /* gl-renderer needs GLES in the flat namespace; Mode B owns EGL. Insert
-   * matching ANGLE libEGL+libGLESv2 after the dylib (same ANGLE build as
-   * the app Frameworks). Never put raw libEGL before Mode B.
+   * matching ANGLE libEGL_angle (or legacy libEGL) + libGLESv2 after the
+   * dylib. Never put the iland libEGL shim before Mode B.
    * Classic: spawn client via launchd so it is born on the system
    * bootstrap (session subset look_up stays KERN_EXCEPTION_PROTECTED
    * even after bootstrap_parent walk, 2026-08-21). KEEP_WS: shell spawn.
@@ -1469,21 +1469,33 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     NSString *fw =
         [[[NSBundle mainBundle] bundlePath]
             stringByAppendingPathComponent:@"Contents/Frameworks"];
+    NSString *eglAnglePath =
+        [fw stringByAppendingPathComponent:@"libEGL_angle.dylib"];
     NSString *eglPath =
         [fw stringByAppendingPathComponent:@"libEGL.dylib"];
     NSString *glesPath =
         [fw stringByAppendingPathComponent:@"libGLESv2.dylib"];
-    BOOL haveEgl = eglPath.length > 0 &&
-                   [[NSFileManager defaultManager] fileExistsAtPath:eglPath];
+    NSString *eglForModeB = nil;
+    if (eglAnglePath.length > 0 &&
+        [[NSFileManager defaultManager] fileExistsAtPath:eglAnglePath]) {
+      eglForModeB = eglAnglePath;
+    } else if (eglPath.length > 0 &&
+               [[NSFileManager defaultManager] fileExistsAtPath:eglPath]) {
+      eglForModeB = eglPath;
+    }
+    BOOL haveEgl = eglForModeB.length > 0;
     BOOL haveGles = glesPath.length > 0 &&
                     [[NSFileManager defaultManager] fileExistsAtPath:glesPath];
     if (haveEgl && haveGles) {
       [script appendFormat:
-          @"WWN_MODEB_INSERT=\"$WWN_MODEB_DYLIB:%@:%@\"\n", eglPath,
+          @"WWN_MODEB_INSERT=\"$WWN_MODEB_DYLIB:%@:%@\"\n", eglForModeB,
           glesPath];
     } else if (haveGles) {
       [script appendFormat:@"WWN_MODEB_INSERT=\"$WWN_MODEB_DYLIB:%@\"\n",
                            glesPath];
+    } else if (haveEgl) {
+      [script appendFormat:@"WWN_MODEB_INSERT=\"$WWN_MODEB_DYLIB:%@\"\n",
+                           eglForModeB];
     } else {
       [script appendString:@"WWN_MODEB_INSERT=\"$WWN_MODEB_DYLIB\"\n"];
     }
