@@ -19,6 +19,14 @@ export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
 export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 mkdir -p "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME"
 
+# Relocating HOME hides ~/.config/nix/nix.conf. Nested `nix build` then
+# fails with "experimental Nix feature 'nix-command' is disabled" unless
+# flakes live in /etc/nix/nix.conf. Keep nix-command + flakes on for this
+# process; extra-experimental-features is additive if they are already on.
+_wwn_nix_features="nix-command flakes"
+export NIX_CONFIG="${NIX_CONFIG:+${NIX_CONFIG}
+}experimental-features = ${_wwn_nix_features}"
+
 derived="${DERIVED_FILE_DIR:?DERIVED_FILE_DIR is unset. Is this script running as an Xcode build phase?}"
 mkdir -p "$derived"
 
@@ -144,7 +152,10 @@ else
   _active_backend="${BACKENDS[0]}"
 fi
 
-_nix_flags=(--impure)
+_nix_flags=(
+  --impure
+  --extra-experimental-features "${_wwn_nix_features}"
+)
 if [ -n "${WAWONA_NIX_FLAGS:-}" ]; then
   # shellcheck disable=SC2206
   _nix_flags+=(${WAWONA_NIX_FLAGS})
