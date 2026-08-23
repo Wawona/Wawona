@@ -37,6 +37,27 @@ typedef NS_ENUM(NSInteger, WWNModeBVerdict) {
 @end
 
 /**
+ * Watchdog coverage for Settings → Desktop. Friend-facing; no CLI recipes.
+ * `needsHeal` means Restore Apple coverage, never Take Over.
+ */
+@interface WWNModeBCoverageReport : NSObject
+@property(nonatomic, copy) NSString *statusLabel;
+@property(nonatomic, copy) NSString *userSummary;
+@property(nonatomic, copy) NSString *detailText;
+@property(nonatomic, copy) NSString *pathBLabel;
+@property(nonatomic, copy) NSString *safetyLabel;
+@property(nonatomic, assign) BOOL coverageOk;
+@property(nonatomic, assign) BOOL needsHeal;
+@property(nonatomic, assign) BOOL needsReboot;
+@property(nonatomic, assign) BOOL canPrepare;
+@property(nonatomic, assign) BOOL pathBInstalled;
+@property(nonatomic, assign) BOOL pathBLive;
+@property(nonatomic, assign) BOOL dualPath;
+@property(nonatomic, copy, nullable) NSString *watchdogdPid;
+@property(nonatomic, copy, nullable) NSString *doctorText;
+@end
+
+/**
  * Menubar Desktop row. `state` is ready / takeover / reboot / blocked,
  * colored like Compositor: running / restarting / stopped.
  */
@@ -170,6 +191,24 @@ typedef NS_ENUM(NSInteger, WWNModeBVerdict) {
  * then the native Restart sheet. Never Take Over.
  */
 - (void)presentDesktopReplacementPrepareFlow;
+/**
+ * Local + helper coverage for Settings rows. Does not prompt for
+ * administrator. Does not Take Over.
+ */
+- (WWNModeBCoverageReport *)evaluateWatchdogCoverage;
+/**
+ * Runs bundled `claim-install --doctor` with administrator authorization.
+ * Updates the cached report used by Settings. Never Take Over.
+ */
+- (nullable WWNModeBCoverageReport *)runWatchdogDoctor:
+    (NSError *_Nullable *_Nullable)error;
+/**
+ * Runs bundled `claim-install --heal`. Restores Apple watchdog coverage.
+ * Never unloads watchdogd for Classic. Never Take Over.
+ */
+- (BOOL)healWatchdogCoverage:(NSError *_Nullable *_Nullable)error;
+- (void)presentWatchdogCoverageCheck;
+- (void)presentWatchdogHealFlow;
 /** CLI: same work as Prepare this Mac. Exit codes match `--mode-b-ready`. */
 - (int)cliPrepare;
 - (int)cliEngageKeepWindowServer:(BOOL)keepWindowServer;

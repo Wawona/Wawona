@@ -16,6 +16,10 @@ as history.
   prompt, then opens the native Restart sheet. Take Over stays blocked until
   Path B is live. Setup never unloads `watchdogd` and never takes over the
   screen. CLI: `Wawona --mode-b-prepare`.
+- **macOS Desktop watchdog coverage in Settings.** Desktop shows coverage,
+  safety ACK, and Path B status. **Check watchdog coverage** runs doctor.
+  **Restore Apple coverage** runs heal. Prepare refuses and offers Restore
+  when coverage is stale, dual, or missing. Friends do not need the CLI.
 
 ## [26.8.23] - 2026-08-23
 

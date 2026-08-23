@@ -162,12 +162,22 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                             error:(NSError *_Nullable *_Nullable)error;
 - (BOOL)armPathBClaimInstall:(NSError *_Nullable *_Nullable)error;
 - (void)presentRestartAfterPrepareWithMessage:(NSString *)message;
+@property(nonatomic, strong, nullable) WWNModeBCoverageReport *lastCoverageReport;
+- (WWNModeBCoverageReport *)coverageReportFromLocalState;
+- (void)finishCoverageReport:(WWNModeBCoverageReport *)r;
+- (BOOL)runClaimInstallFlag:(NSString *)flag
+              successMarker:(NSString *)marker
+                 stdoutText:(NSString *_Nullable *_Nullable)stdoutText
+                      error:(NSError *_Nullable *_Nullable)error;
 @end
 
 @implementation WWNModeBReadyReport
 @end
 
 @implementation WWNModeBMenuBarStatus
+@end
+
+@implementation WWNModeBCoverageReport
 @end
 
 @implementation WWNDesktopReplacementController
@@ -3611,6 +3621,385 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   return YES;
 }
 
+- (BOOL)runClaimInstallFlag:(NSString *)flag
+              successMarker:(NSString *)marker
+                 stdoutText:(NSString *_Nullable *_Nullable)stdoutText
+                      error:(NSError *_Nullable *_Nullable)error {
+  NSString *exe = [self bundledClaimInstallPath];
+  if (exe.length == 0) {
+    if (error) {
+      *error = [NSError
+          errorWithDomain:@"WWNDesktopReplacement"
+                     code:3
+                 userInfo:@{
+                   NSLocalizedDescriptionKey :
+                       @"This Wawona is Mode A only. Install the Desktop "
+                       @"Replacement build first."
+                 }];
+    }
+    return NO;
+  }
+  NSString *shellCmd = [NSString
+      stringWithFormat:@"%@ %@ 2>&1", [self wwnShellQuote:exe], flag];
+  return [self runPrivilegedShellCommand:shellCmd
+                           successMarker:marker
+                              stdoutText:stdoutText
+                                   error:error];
+}
+
+- (nullable NSString *)watchdogdPidString {
+  NSTask *task = [[NSTask alloc] init];
+  task.executableURL = [NSURL fileURLWithPath:@"/usr/bin/pgrep"];
+  task.arguments = @[ @"-x", @"watchdogd" ];
+  NSPipe *outPipe = [NSPipe pipe];
+  task.standardOutput = outPipe;
+  task.standardError = [NSPipe pipe];
+  NSError *err = nil;
+  if (![task launchAndReturnError:&err]) {
+    return nil;
+  }
+  [task waitUntilExit];
+  NSData *data = [[outPipe fileHandleForReading] readDataToEndOfFile];
+  NSString *text = [[NSString alloc] initWithData:data
+                                         encoding:NSUTF8StringEncoding];
+  NSString *trim =
+      [text stringByTrimmingCharactersInSet:
+                [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  if (task.terminationStatus != 0 || trim.length == 0) {
+    return nil;
+  }
+  NSString *first = [[trim componentsSeparatedByCharactersInSet:
+                               [NSCharacterSet newlineCharacterSet]] firstObject];
+  return first.length ? first : nil;
+}
+
+- (void)finishCoverageReport:(WWNModeBCoverageReport *)r {
+  NSMutableArray<NSString *> *lines = [NSMutableArray array];
+  [lines addObject:[NSString stringWithFormat:@"Watchdog process: %@",
+                                              r.watchdogdPid.length
+                                                  ? [NSString stringWithFormat:
+                                                                  @"running (pid %@)",
+                                                                  r.watchdogdPid]
+                                                  : @"missing"]];
+  [lines addObject:[NSString stringWithFormat:@"Path B: %@", r.pathBLabel]];
+  [lines addObject:[NSString stringWithFormat:@"Safety ACK: %@", r.safetyLabel]];
+  if (r.dualPath) {
+    [lines addObject:@"Two watchdog setups are installed at once."];
+  }
+  r.detailText = [lines componentsJoinedByString:@"\n"];
+
+  if (r.needsHeal) {
+    r.statusLabel = r.watchdogdPid.length ? @"Needs restore" : @"Missing watchdog";
+    r.userSummary =
+        @"Apple watchdog coverage is not healthy. Use Restore Apple coverage. "
+        @"Do not Take Over, and do not Prepare this Mac until coverage is OK.";
+    r.canPrepare = NO;
+    return;
+  }
+  if (r.needsReboot) {
+    r.statusLabel = @"Restart required";
+    r.userSummary =
+        @"Path B is armed. Restart this Mac so the watchdog safety layer can "
+        @"finish. After you log in, use Take Over Screen Now.";
+    r.canPrepare = NO;
+    return;
+  }
+  if (r.pathBLive && r.coverageOk) {
+    r.statusLabel = @"Safety live";
+    r.userSummary =
+        @"Watchdog safety is live. Use Take Over Screen Now when you want "
+        @"Desktop Replacement.";
+    r.canPrepare = NO;
+    return;
+  }
+  r.statusLabel = r.coverageOk ? @"Apple covering" : @"Check to confirm";
+  r.userSummary =
+      @"Apple's watchdog is covering this Mac. Use Prepare this Mac when you "
+      @"want Desktop Replacement. That does not take over the screen.";
+  r.canPrepare = YES;
+}
+
+- (WWNModeBCoverageReport *)coverageReportFromLocalState {
+  WWNModeBCoverageReport *r = [[WWNModeBCoverageReport alloc] init];
+  NSFileManager *fm = [NSFileManager defaultManager];
+  BOOL pathB = [fm fileExistsAtPath:@"/Library/LaunchDaemons/"
+                                    @"com.aspauldingcode.wwn-iowatchdog-pathb.plist"];
+  BOOL pathA = [fm fileExistsAtPath:@"/Library/LaunchDaemons/"
+                                    @"com.aspauldingcode.wwn-iowatchdog-claim.plist"];
+  BOOL pending = [fm fileExistsAtPath:kWWNModeBClaimPendingPath];
+  NSString *claim =
+      [NSString stringWithContentsOfFile:kWWNModeBClaimOkPath
+                                encoding:NSUTF8StringEncoding
+                                   error:nil];
+  BOOL claimB = [claim containsString:@"path=b"] &&
+                [claim containsString:@"sticky=1"];
+  BOOL live = [self iowatchdogLiveDisablePresent];
+  NSString *pid = [self watchdogdPidString];
+
+  r.pathBInstalled = pathB;
+  r.pathBLive = live && pathB;
+  r.dualPath = pathA && pathB;
+  r.watchdogdPid = pid;
+  r.coverageOk = pid.length > 0;
+  r.safetyLabel = [self iowatchdogStickyAckStatusSummary];
+  if (pathB && live) {
+    r.pathBLabel = @"Live";
+  } else if (pending) {
+    r.pathBLabel = @"Armed (restart)";
+  } else if (pathB && claimB && !live) {
+    r.pathBLabel = @"Stale";
+  } else if (pathB) {
+    r.pathBLabel = @"Installed, not live";
+  } else {
+    r.pathBLabel = @"Not installed";
+  }
+
+  if (r.dualPath) {
+    r.needsHeal = YES;
+  } else if (pid.length == 0) {
+    r.needsHeal = YES;
+  } else if (claimB && !pathB && !pending && !live) {
+    r.needsHeal = YES;
+  } else if (claimB && pathB && !live && !pending) {
+    r.needsHeal = YES;
+  } else if (pending || (pathB && !live && !claimB)) {
+    r.needsReboot = YES;
+  }
+
+  [self finishCoverageReport:r];
+  return r;
+}
+
+- (void)applyDoctorText:(NSString *)text
+               toReport:(WWNModeBCoverageReport *)r {
+  r.doctorText = text;
+  NSString *cov = nil;
+  NSString *pathB = nil;
+  NSString *pathA = nil;
+  NSString *dual = nil;
+  NSString *claim = nil;
+  NSString *pending = nil;
+  NSString *sock = nil;
+  NSString *pid = nil;
+  NSString *succ = nil;
+  NSString *disabled = nil;
+  for (NSString *line in [text componentsSeparatedByCharactersInSet:
+                                   [NSCharacterSet newlineCharacterSet]]) {
+    NSString *trim =
+        [line stringByTrimmingCharactersInSet:
+                  [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if ([trim hasPrefix:@"coverage_ok:"]) {
+      cov = [trim substringFromIndex:13];
+    } else if ([trim hasPrefix:@"path_b_plist:"]) {
+      pathB = [trim substringFromIndex:13];
+    } else if ([trim hasPrefix:@"path_a_plist:"]) {
+      pathA = [trim substringFromIndex:13];
+    } else if ([trim hasPrefix:@"dual_path:"]) {
+      dual = [trim substringFromIndex:10];
+    } else if ([trim hasPrefix:@"claim-ok:"]) {
+      claim = [trim substringFromIndex:9];
+    } else if ([trim hasPrefix:@"claim-pending:"]) {
+      pending = [trim substringFromIndex:14];
+    } else if ([trim hasPrefix:@"pathb_sock:"]) {
+      sock = [trim substringFromIndex:11];
+    } else if ([trim hasPrefix:@"/usr/libexec/watchdogd pid:"]) {
+      pid = [trim substringFromIndex:27];
+    } else if ([trim hasPrefix:@"reboot_successor_ok:"]) {
+      succ = [trim substringFromIndex:20];
+    } else if ([trim hasPrefix:@"apple_watchdogd_disabled_map:"]) {
+      disabled = [trim substringFromIndex:29];
+    }
+  }
+  cov = [cov stringByTrimmingCharactersInSet:
+                 [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  pathB = [pathB stringByTrimmingCharactersInSet:
+                     [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  pathA = [pathA stringByTrimmingCharactersInSet:
+                     [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  dual = [dual stringByTrimmingCharactersInSet:
+                   [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  claim = [claim stringByTrimmingCharactersInSet:
+                     [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  pending = [pending stringByTrimmingCharactersInSet:
+                         [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  sock = [sock stringByTrimmingCharactersInSet:
+                   [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  pid = [pid stringByTrimmingCharactersInSet:
+                 [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  succ = [succ stringByTrimmingCharactersInSet:
+                   [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  disabled = [disabled stringByTrimmingCharactersInSet:
+                           [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+
+  BOOL covOk = [cov hasPrefix:@"yes"];
+  BOOL pathBYes = [pathB hasPrefix:@"yes"];
+  BOOL pathAYes = [pathA hasPrefix:@"yes"];
+  BOOL dualYes = [dual.lowercaseString hasPrefix:@"yes"];
+  BOOL pendingYes = [pending hasPrefix:@"yes"];
+  BOOL sockLive = [sock containsString:@"live"] &&
+                  ![sock.lowercaseString containsString:@"stale"];
+  BOOL claimB = [claim containsString:@"path=b"];
+  BOOL pidNone = pid.length == 0 || [pid containsString:@"none"];
+  BOOL staleDoctor = [text containsString:@"FAIL stale Path B"];
+  BOOL uncovered = [text containsString:@"FAIL uncovered"];
+
+  r.coverageOk = covOk;
+  r.pathBInstalled = pathBYes;
+  r.pathBLive = sockLive || (pathBYes && [self iowatchdogLiveDisablePresent]);
+  r.dualPath = dualYes || (pathAYes && pathBYes);
+  if (!pidNone) {
+    r.watchdogdPid = pid;
+  }
+  r.needsHeal = NO;
+  r.needsReboot = NO;
+  if (dualYes || staleDoctor || uncovered || !covOk || pidNone) {
+    r.needsHeal = YES;
+  } else if (pendingYes || (pathBYes && !sockLive && !claimB)) {
+    r.needsReboot = YES;
+    r.needsHeal = NO;
+  } else if (claimB && pathBYes && !sockLive &&
+             ![disabled hasPrefix:@"yes"]) {
+    r.needsHeal = YES;
+  }
+  if (succ.length && [succ.uppercaseString hasPrefix:@"NO"] && pathBYes) {
+    r.needsHeal = YES;
+    r.needsReboot = NO;
+  }
+  [self finishCoverageReport:r];
+}
+
+- (WWNModeBCoverageReport *)evaluateWatchdogCoverage {
+  if (self.lastCoverageReport.doctorText.length > 0) {
+    return self.lastCoverageReport;
+  }
+  WWNModeBCoverageReport *r = [self coverageReportFromLocalState];
+  self.lastCoverageReport = r;
+  return r;
+}
+
+- (WWNModeBCoverageReport *)runWatchdogDoctor:
+    (NSError *_Nullable *_Nullable)error {
+  NSString *out = nil;
+  if (![self runClaimInstallFlag:@"--doctor"
+                   successMarker:@"wwn-iowatchdog doctor"
+                      stdoutText:&out
+                           error:error]) {
+    return nil;
+  }
+  WWNModeBCoverageReport *r = [self coverageReportFromLocalState];
+  [self applyDoctorText:out ?: @"" toReport:r];
+  self.lastCoverageReport = r;
+  WWNModeBCliLog(@"watchdog doctor: %@", r.statusLabel);
+  return r;
+}
+
+- (BOOL)healWatchdogCoverage:(NSError *_Nullable *_Nullable)error {
+  NSString *out = nil;
+  if (![self runClaimInstallFlag:@"--heal"
+                   successMarker:@"wwn-safety: heal OK"
+                      stdoutText:&out
+                           error:error]) {
+    return NO;
+  }
+  WWNModeBCliLog(@"watchdog heal: %@", out.length ? out : @"(empty)");
+  self.lastCoverageReport = nil;
+  (void)[self evaluateWatchdogCoverage];
+  return YES;
+}
+
+- (void)presentWatchdogCoverageCheck {
+  void (^show)(void) = ^{
+    [NSApp activateIgnoringOtherApps:YES];
+    NSError *err = nil;
+    WWNModeBCoverageReport *r = [self runWatchdogDoctor:&err];
+    if (!r) {
+      NSAlert *fail = [[NSAlert alloc] init];
+      fail.alertStyle = NSAlertStyleCritical;
+      fail.messageText = @"Could not check watchdog coverage";
+      fail.informativeText = err.localizedDescription
+                                 ?: @"Approve the administrator prompt and try "
+                                    @"again.";
+      [fail addButtonWithTitle:@"OK"];
+      [fail runModal];
+      return;
+    }
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Watchdog coverage";
+    alert.informativeText =
+        [NSString stringWithFormat:@"%@\n\n%@", r.userSummary, r.detailText];
+    if (r.needsHeal) {
+      alert.alertStyle = NSAlertStyleWarning;
+      [alert addButtonWithTitle:@"Restore Apple coverage"];
+      [alert addButtonWithTitle:@"OK"];
+      if ([alert runModal] == NSAlertFirstButtonReturn) {
+        [self presentWatchdogHealFlow];
+      }
+      return;
+    }
+    if (r.needsReboot) {
+      alert.alertStyle = NSAlertStyleInformational;
+      [alert addButtonWithTitle:@"Restart"];
+      [alert addButtonWithTitle:@"OK"];
+      if ([alert runModal] == NSAlertFirstButtonReturn) {
+        [self presentRestartAfterPrepareWithMessage:r.userSummary];
+      }
+      return;
+    }
+    alert.alertStyle = NSAlertStyleInformational;
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+  };
+  if ([NSThread isMainThread]) {
+    show();
+  } else {
+    dispatch_sync(dispatch_get_main_queue(), show);
+  }
+}
+
+- (void)presentWatchdogHealFlow {
+  void (^show)(void) = ^{
+    [NSApp activateIgnoringOtherApps:YES];
+    NSAlert *confirm = [[NSAlert alloc] init];
+    confirm.alertStyle = NSAlertStyleWarning;
+    confirm.messageText = @"Restore Apple watchdog coverage?";
+    confirm.informativeText =
+        @"This removes Path A and Path B setup and brings Apple's watchdog "
+        @"back. Use it after a watchdog crash, or when coverage is stale.\n\n"
+        @"It does not take over the screen. It does not unload Apple's "
+        @"watchdog to start Classic. Stay on in-window Wawona until coverage "
+        @"says Apple covering.";
+    [confirm addButtonWithTitle:@"Restore Apple coverage"];
+    [confirm addButtonWithTitle:@"Cancel"];
+    if ([confirm runModal] != NSAlertFirstButtonReturn) {
+      return;
+    }
+    NSError *err = nil;
+    if (![self healWatchdogCoverage:&err]) {
+      NSAlert *fail = [[NSAlert alloc] init];
+      fail.alertStyle = NSAlertStyleCritical;
+      fail.messageText = @"Could not restore Apple coverage";
+      fail.informativeText = err.localizedDescription
+                                 ?: @"See /tmp/wawona-modeb-cli.log.";
+      [fail addButtonWithTitle:@"OK"];
+      [fail runModal];
+      return;
+    }
+    self.lastCoverageReport = nil;
+    WWNModeBCoverageReport *r = [self evaluateWatchdogCoverage];
+    NSAlert *ok = [[NSAlert alloc] init];
+    ok.alertStyle = NSAlertStyleInformational;
+    ok.messageText = @"Apple coverage restored";
+    ok.informativeText = r.userSummary;
+    [ok addButtonWithTitle:@"OK"];
+    [ok runModal];
+  };
+  if ([NSThread isMainThread]) {
+    show();
+  } else {
+    dispatch_sync(dispatch_get_main_queue(), show);
+  }
+}
+
 - (BOOL)armPathBClaimInstall:(NSError *_Nullable *_Nullable)error {
   NSString *exe = [self bundledClaimInstallPath];
   if (exe.length == 0) {
@@ -3656,6 +4045,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     return NO;
   }
   WWNModeBCliLog(@"path-b arm output: %@", out.length ? out : @"(empty)");
+  self.lastCoverageReport = nil;
   return YES;
 }
 
@@ -3686,6 +4076,23 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                    NSLocalizedDescriptionKey :
                        @"System Integrity Protection must be fully disabled "
                        @"in Recovery first. Open SIP Requirements & How-To."
+                 }];
+    }
+    return NO;
+  }
+
+  self.lastCoverageReport = nil;
+  WWNModeBCoverageReport *cov = [self evaluateWatchdogCoverage];
+  if (cov.needsHeal) {
+    if (error) {
+      *error = [NSError
+          errorWithDomain:@"WWNDesktopReplacement"
+                     code:7
+                 userInfo:@{
+                   NSLocalizedDescriptionKey :
+                       @"Watchdog coverage is not healthy. Use Restore Apple "
+                       @"coverage first. Do not Take Over until coverage "
+                       @"says Apple covering."
                  }];
     }
     return NO;
@@ -3787,6 +4194,21 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
         NSPasteboard *pb = [NSPasteboard generalPasteboard];
         [pb clearContents];
         [pb setString:@"csrutil disable" forType:NSPasteboardTypeString];
+      }
+      return;
+    }
+
+    self.lastCoverageReport = nil;
+    WWNModeBCoverageReport *cov = [self evaluateWatchdogCoverage];
+    if (cov.needsHeal) {
+      NSAlert *alert = [[NSAlert alloc] init];
+      alert.alertStyle = NSAlertStyleWarning;
+      alert.messageText = @"Restore Apple coverage first";
+      alert.informativeText = cov.userSummary;
+      [alert addButtonWithTitle:@"Restore Apple coverage"];
+      [alert addButtonWithTitle:@"Cancel"];
+      if ([alert runModal] == NSAlertFirstButtonReturn) {
+        [self presentWatchdogHealFlow];
       }
       return;
     }
@@ -4084,6 +4506,9 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
 @implementation WWNModeBMenuBarStatus
 @end
 
+@implementation WWNModeBCoverageReport
+@end
+
 @implementation WWNDesktopReplacementController
 + (instancetype)sharedController {
   static WWNDesktopReplacementController *shared;
@@ -4203,6 +4628,42 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   return NO;
 }
 - (void)presentDesktopReplacementPrepareFlow {
+}
+- (WWNModeBCoverageReport *)evaluateWatchdogCoverage {
+  WWNModeBCoverageReport *r = [[WWNModeBCoverageReport alloc] init];
+  r.statusLabel = @"Unavailable";
+  r.userSummary = @"Desktop Replacement Mode B is macOS-only.";
+  r.detailText = r.userSummary;
+  r.pathBLabel = @"Unavailable";
+  r.safetyLabel = @"Unavailable";
+  return r;
+}
+- (WWNModeBCoverageReport *)runWatchdogDoctor:
+    (NSError *_Nullable *_Nullable)error {
+  if (error) {
+    *error = [NSError errorWithDomain:@"WWNDesktopReplacement"
+                                 code:100
+                             userInfo:@{
+                               NSLocalizedDescriptionKey :
+                                   @"Desktop Replacement Mode B is macOS-only."
+                             }];
+  }
+  return nil;
+}
+- (BOOL)healWatchdogCoverage:(NSError *_Nullable *_Nullable)error {
+  if (error) {
+    *error = [NSError errorWithDomain:@"WWNDesktopReplacement"
+                                 code:100
+                             userInfo:@{
+                               NSLocalizedDescriptionKey :
+                                   @"Desktop Replacement Mode B is macOS-only."
+                             }];
+  }
+  return NO;
+}
+- (void)presentWatchdogCoverageCheck {
+}
+- (void)presentWatchdogHealFlow {
 }
 - (int)cliPrepare {
   return 2;

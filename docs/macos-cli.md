@@ -146,10 +146,11 @@ one gate. Helper `--ack-status` prints `verdict=` and `reason=`. Path B sock
 reboot (native Restart sheet, not a custom timer). Path B pending / pathb
 plist without live Disable is also reboot. Anything else is blocked.
 
-Friends use **Prepare this Mac** (Settings or menubar Desktop play when
-blocked). That stages the helper and runs bundled
-`wwn-iowatchdog-claim-install --path-b`, then Restart. It never Take Over.
-`--mode-b-prepare` is the same work from the CLI.
+Friends use Settings → Desktop: **Check watchdog coverage**,
+**Restore Apple coverage**, and **Prepare this Mac**. That stages the helper
+and runs bundled `wwn-iowatchdog-claim-install --path-b` or `--heal`, then
+Restart when needed. It never Take Over. `--mode-b-prepare` is the same
+arm work from the CLI.
 
 `--mode-b-engage` on reboot opens loginwindow Restart (`kAERestart`). On
 blocked it does not take over. On takeover-now it engages.

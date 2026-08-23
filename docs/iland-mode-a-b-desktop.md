@@ -169,9 +169,13 @@ input. Ctrl+Option+Backspace still restores Aqua.
 This is userspace only (no kernel tty). See also
 [`mode-b-windowserver-options.md`](mode-b-windowserver-options.md).
 
-Before Classic Take Over, Settings → Desktop → **Prepare this Mac** (or
+Before Classic Take Over, Settings → Desktop shows watchdog coverage, safety
+ACK, and Path B status. **Check watchdog coverage** runs doctor.
+**Restore Apple coverage** runs heal. **Prepare this Mac** (or
 `Wawona --mode-b-prepare`) stages the helper if needed and arms Path B,
-then opens the native Restart sheet. That does not take over the screen.
+then opens the native Restart sheet. Prepare refuses when coverage is
+stale or missing and offers Restore instead. That does not take over the
+screen.
 
 ```text
 Wawona --mode-b-ready

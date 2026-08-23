@@ -326,6 +326,9 @@ static void WWNSettingsPopupStoreIndex(WWNSettingItem *item, NSInteger index) {
 #if TARGET_OS_OSX
 - (void)showDesktopReplacementSipHowTo;
 - (void)showDesktopReplacementPrepare;
+- (void)showDesktopReplacementCoverageCheck;
+- (void)showDesktopReplacementHeal;
+- (void)reloadDesktopSection;
 - (BOOL)applyDesktopReplacementEnabled:(BOOL)enabled
                                 revert:(void (^_Nullable)(void))revert;
 #endif
@@ -1214,6 +1217,49 @@ static UIImage *WWNAboutLogo(void) {
     };
     [desktopItems addObject:sipHowToBtn];
 
+#if TARGET_OS_OSX
+    {
+      WWNDesktopReplacementController *desk =
+          [WWNDesktopReplacementController sharedController];
+      WWNModeBCoverageReport *cov = [desk evaluateWatchdogCoverage];
+      [desktopItems
+          addObject:ITEM(@"Watchdog coverage", nil, WSettingInfo,
+                         cov.statusLabel,
+                         cov.userSummary.length ? cov.userSummary
+                                                : cov.detailText)];
+      [desktopItems
+          addObject:ITEM(@"Watchdog safety", nil, WSettingInfo,
+                         cov.safetyLabel.length ? cov.safetyLabel : @"Unknown",
+                         @"Sticky Disable ACK plus live coverage. Stale means "
+                         @"Restore Apple coverage, not Take Over.")];
+      [desktopItems
+          addObject:ITEM(@"Path B", nil, WSettingInfo, cov.pathBLabel,
+                         @"The watchdog safety layer for Desktop Replacement. "
+                         @"Live is required before Take Over. Stale means "
+                         @"Restore Apple coverage first.")];
+    }
+    WWNSettingItem *checkCovBtn =
+        ITEM(@"Check watchdog coverage", @"DesktopReplacementCoverageCheck",
+             WSettingButton, nil,
+             @"Runs a full coverage check (administrator once). Shows whether "
+             @"Apple's watchdog is covering this Mac, whether Path B is live "
+             @"or stale, and what to do next.");
+    checkCovBtn.actionBlock = ^{
+      [weakSelf showDesktopReplacementCoverageCheck];
+    };
+    [desktopItems addObject:checkCovBtn];
+    WWNSettingItem *healBtn =
+        ITEM(@"Restore Apple coverage", @"DesktopReplacementHeal",
+             WSettingButton, nil,
+             @"Removes Path A and Path B setup and brings Apple's watchdog "
+             @"back. Use after a watchdog crash, or when coverage is stale. "
+             @"Does not take over the screen.");
+    healBtn.actionBlock = ^{
+      [weakSelf showDesktopReplacementHeal];
+    };
+    [desktopItems addObject:healBtn];
+#endif
+
     WWNSettingItem *prepareBtn =
         ITEM(@"Prepare this Mac", @"DesktopReplacementPrepare", WSettingButton,
              nil,
@@ -1230,11 +1276,12 @@ static UIImage *WWNAboutLogo(void) {
         addObject:ITEM(@"Enable Desktop Replacement",
                        @"DesktopReplacementEnabled", WSettingSwitch, @NO,
                        @"Take over this Mac's screen via wwn-iland Mode B. "
-                       @"Requires SIP fully disabled. Use Prepare this Mac "
-                       @"first (watchdog safety layer + restart). Then Take "
-                       @"Over unloads watchdogd and WindowServer. Pick a "
-                       @"Desktop Machine below. Logout restores normal "
-                       @"macOS.")];
+                       @"Requires SIP fully disabled. Check watchdog coverage "
+                       @"and Restore Apple coverage if that row is not OK. "
+                       @"Use Prepare this Mac first (watchdog safety layer + "
+                       @"restart). Then Take Over unloads watchdogd and "
+                       @"WindowServer. Pick a Desktop Machine below. Logout "
+                       @"restores normal macOS.")];
 
 #if TARGET_OS_OSX
     {
@@ -5656,16 +5703,32 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
     if (ready.needsSipHowTo) {
       [self showDesktopReplacementSipHowTo];
     } else {
-      confirm.messageText = @"Desktop Take Over is not ready yet";
-      confirm.informativeText = ready.userSummary.length
-                                    ? ready.userSummary
-                                    : ready.reason;
-      [confirm addButtonWithTitle:@"Prepare this Mac"];
-      [confirm addButtonWithTitle:@"Cancel"];
-      if ([confirm runModal] == NSAlertFirstButtonReturn) {
-        [desk presentDesktopReplacementPrepareFlow];
+      WWNModeBCoverageReport *cov = [desk evaluateWatchdogCoverage];
+      if (cov.needsHeal) {
+        confirm.messageText = @"Watchdog coverage is not healthy";
+        confirm.informativeText = cov.userSummary;
+        [confirm addButtonWithTitle:@"Restore Apple coverage"];
+        [confirm addButtonWithTitle:@"Check coverage"];
+        [confirm addButtonWithTitle:@"Cancel"];
+        NSModalResponse resp = [confirm runModal];
+        if (resp == NSAlertFirstButtonReturn) {
+          [desk presentWatchdogHealFlow];
+        } else if (resp == NSAlertSecondButtonReturn) {
+          [desk presentWatchdogCoverageCheck];
+        }
+      } else {
+        confirm.messageText = @"Desktop Take Over is not ready yet";
+        confirm.informativeText = ready.userSummary.length
+                                      ? ready.userSummary
+                                      : ready.reason;
+        [confirm addButtonWithTitle:@"Prepare this Mac"];
+        [confirm addButtonWithTitle:@"Cancel"];
+        if ([confirm runModal] == NSAlertFirstButtonReturn) {
+          [desk presentDesktopReplacementPrepareFlow];
+        }
       }
     }
+    [self reloadDesktopSection];
     if (revert) {
       revert();
     }
@@ -5778,6 +5841,29 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
 - (void)showDesktopReplacementPrepare {
   [[WWNDesktopReplacementController sharedController]
       presentDesktopReplacementPrepareFlow];
+  [self reloadDesktopSection];
+}
+
+- (void)showDesktopReplacementCoverageCheck {
+  [[WWNDesktopReplacementController sharedController]
+      presentWatchdogCoverageCheck];
+  [self reloadDesktopSection];
+}
+
+- (void)showDesktopReplacementHeal {
+  [[WWNDesktopReplacementController sharedController] presentWatchdogHealFlow];
+  [self reloadDesktopSection];
+}
+
+- (void)reloadDesktopSection {
+  self.sections = [self buildSections];
+  for (WWNPreferencesSection *s in self.sections) {
+    if ([s.title isEqualToString:@"Desktop"]) {
+      self.content.section = s;
+      break;
+    }
+  }
+  [self.content reloadForCurrentSection];
 }
 #endif
 
