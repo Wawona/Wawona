@@ -23,9 +23,15 @@
         [[WWNSettingsSidebarViewController alloc]
             initWithPreferences:preferences];
 
-    [self setViewController:sidebar
+    UINavigationController *sidebarNav =
+        [[UINavigationController alloc] initWithRootViewController:sidebar];
+    UINavigationController *detailNav =
+        [[UINavigationController alloc] initWithRootViewController:preferences];
+    sidebar.detailNavigationController = detailNav;
+    preferences.settingsColumnNavigationController = detailNav;
+    [self setViewController:sidebarNav
                   forColumn:UISplitViewControllerColumnPrimary];
-    [self setViewController:preferences
+    [self setViewController:detailNav
                   forColumn:UISplitViewControllerColumnSecondary];
   }
   return self;

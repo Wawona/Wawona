@@ -1,5 +1,8 @@
 //! Settings dialog with section parity to Android `SettingsDialog`.
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use gtk4 as gtk;
 use libadwaita as adw;
 use adw::prelude::*;
@@ -29,6 +32,10 @@ pub fn show_settings(
         Some("Done"),
     );
     header.pack_end(&done_btn);
+    let back_btn = gtk::Button::from_icon_name("go-previous-symbolic");
+    back_btn.set_tooltip_text(Some("Back"));
+    back_btn.set_visible(false);
+    header.pack_start(&back_btn);
 
     let sidebar = gtk::ListBox::new();
     sidebar.set_selection_mode(gtk::SelectionMode::Single);
@@ -49,7 +56,6 @@ pub fn show_settings(
         "Local Shell",
         "SSH and Waypipe",
         "Dependencies",
-        "VM and Container",
         "Advanced",
         "Launch Agent",
         "Diagnostics",
@@ -75,6 +81,77 @@ pub fn show_settings(
 
     let cfg = state.borrow();
     let settings = &cfg.settings;
+    let renderer_value = Rc::new(RefCell::new(settings.renderer.clone()));
+    let log_level_value = Rc::new(RefCell::new(settings.log_level.clone()));
+
+    let detail_stack = gtk::Stack::new();
+    detail_stack.set_hexpand(true);
+    detail_stack.set_vexpand(true);
+    let choice_title = gtk::Label::new(None);
+    choice_title.add_css_class("title-2");
+    choice_title.set_xalign(0.0);
+    choice_title.set_margin_start(16);
+    choice_title.set_margin_end(16);
+    choice_title.set_margin_top(16);
+    choice_title.set_margin_bottom(8);
+    let choice_list = gtk::ListBox::new();
+    choice_list.set_selection_mode(gtk::SelectionMode::None);
+    choice_list.add_css_class("boxed-list");
+    choice_list.set_margin_start(16);
+    choice_list.set_margin_end(16);
+    choice_list.set_margin_bottom(16);
+    let choice_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    choice_box.append(&choice_title);
+    let choice_scroll = gtk::ScrolledWindow::new();
+    choice_scroll.set_hscrollbar_policy(gtk::PolicyType::Never);
+    choice_scroll.set_vexpand(true);
+    choice_scroll.set_child(Some(&choice_list));
+    choice_box.append(&choice_scroll);
+    detail_stack.add_named(&choice_box, Some("choice"));
+
+    let open_choice: Rc<dyn Fn(String, Vec<String>, Rc<RefCell<String>>, gtk::Label)> = {
+        let detail_stack = detail_stack.clone();
+        let choice_list = choice_list.clone();
+        let choice_title = choice_title.clone();
+        let back_btn = back_btn.clone();
+        Rc::new(move |title, choices, selected, value_label| {
+            while let Some(row) = choice_list.row_at_index(0) {
+                row.unparent();
+            }
+            choice_title.set_text(&title);
+            let current = selected.borrow().clone();
+            for choice in choices {
+                let row = adw::ActionRow::new();
+                row.set_title(&choice);
+                row.set_activatable(true);
+                if choice == current {
+                    row.add_suffix(&gtk::Image::from_icon_name("object-select-symbolic"));
+                }
+                let selected_c = selected.clone();
+                let label_c = value_label.clone();
+                let choice_c = choice.clone();
+                let detail_stack_c = detail_stack.clone();
+                let back_c = back_btn.clone();
+                row.connect_activated(move |_| {
+                    *selected_c.borrow_mut() = choice_c.clone();
+                    label_c.set_text(&choice_c);
+                    detail_stack_c.set_visible_child_name("section");
+                    back_c.set_visible(false);
+                });
+                choice_list.append(&row);
+            }
+            detail_stack.set_visible_child_name("choice");
+            back_btn.set_visible(true);
+        })
+    };
+    {
+        let detail_stack = detail_stack.clone();
+        let back_btn = back_btn.clone();
+        back_btn.connect_clicked(move |btn| {
+            detail_stack.set_visible_child_name("section");
+            btn.set_visible(false);
+        });
+    }
 
     // Machines (global defaults for new profiles)
     let machines_page = adw::PreferencesPage::new();
@@ -83,13 +160,30 @@ pub fn show_settings(
     machines_group.set_description(Some(
         "Defaults applied when creating new machine profiles. Per-machine overrides live in the editor.",
     ));
-    let default_renderer = gtk::ComboBoxText::new();
-    for r in ["vulkan", "software"] {
-        default_renderer.append(Some(r), r);
-    }
-    default_renderer.set_active_id(Some(&settings.renderer));
-    add_row(&machines_group, "Default Renderer", &default_renderer);
+    add_choice_row(
+        &machines_group,
+        "Default Renderer",
+        &["vulkan", "software"],
+        renderer_value.clone(),
+        open_choice.clone(),
+    );
     machines_page.add(&machines_group);
+    let vm_group = adw::PreferencesGroup::new();
+    vm_group.set_title("Virtual Machines");
+    add_info_row(
+        &vm_group,
+        "UTM SE integration",
+        "VM launch is a stub. Future support will come from Wawona's UTM SE fork.",
+    );
+    let container_group = adw::PreferencesGroup::new();
+    container_group.set_title("Containers");
+    add_info_row(
+        &container_group,
+        "Container runtime",
+        "Container launch is a stub (integration pending).",
+    );
+    machines_page.add(&vm_group);
+    machines_page.add(&container_group);
     stack.add_named(&machines_page, Some("Machines"));
 
     // Display
@@ -127,12 +221,13 @@ pub fn show_settings(
     let graphics_page = adw::PreferencesPage::new();
     let graphics_group = adw::PreferencesGroup::new();
     graphics_group.set_title("Graphics");
-    let renderer = gtk::ComboBoxText::new();
-    for r in ["vulkan", "software"] {
-        renderer.append(Some(r), r);
-    }
-    renderer.set_active_id(Some(&settings.renderer));
-    add_row(&graphics_group, "Renderer", &renderer);
+    add_choice_row(
+        &graphics_group,
+        "Renderer",
+        &["vulkan", "software"],
+        renderer_value.clone(),
+        open_choice.clone(),
+    );
     graphics_page.add(&graphics_group);
     stack.add_named(&graphics_page, Some("Graphics"));
 
@@ -243,46 +338,28 @@ pub fn show_settings(
                 let name = pkg.get("name").and_then(|v| v.as_str()).unwrap_or("Package");
                 let version = pkg.get("version").and_then(|v| v.as_str()).unwrap_or("");
                 let role = pkg.get("role").and_then(|v| v.as_str()).unwrap_or("");
-                let row = adw::ActionRow::new();
-                row.set_title(name);
-                row.set_title_lines(2);
-                row.set_subtitle(&format!("{version}. {role}"));
-                row.set_subtitle_lines(3);
-                deps_group.add(&row);
+                add_info_row(
+                    &deps_group,
+                    name,
+                    &format!("{version}. {role}").trim_end_matches(". ").to_string(),
+                );
             }
         }
     }
     deps_page.add(&deps_group);
     stack.add_named(&deps_page, Some("Dependencies"));
 
-    // VM and Container
-    let vm_page = adw::PreferencesPage::new();
-    let vm_group = adw::PreferencesGroup::new();
-    vm_group.set_title("Virtual Machines");
-    let vm_info = adw::ActionRow::new();
-    vm_info.set_title("UTM SE integration");
-    vm_info.set_subtitle("VM launch is a stub. Future support will come from Wawona's UTM SE fork.");
-    vm_group.add(&vm_info);
-    let container_group = adw::PreferencesGroup::new();
-    container_group.set_title("Containers");
-    let container_info = adw::ActionRow::new();
-    container_info.set_title("Container runtime");
-    container_info.set_subtitle("Container launch is a stub (integration pending).");
-    container_group.add(&container_info);
-    vm_page.add(&vm_group);
-    vm_page.add(&container_group);
-    stack.add_named(&vm_page, Some("VM and Container"));
-
     // Advanced
     let advanced_page = adw::PreferencesPage::new();
     let advanced_group = adw::PreferencesGroup::new();
     advanced_group.set_title("Advanced");
-    let log_level = gtk::ComboBoxText::new();
-    for l in ["debug", "info", "warn", "error"] {
-        log_level.append(Some(l), l);
-    }
-    log_level.set_active_id(Some(&settings.log_level));
-    add_row(&advanced_group, "Log Level", &log_level);
+    add_choice_row(
+        &advanced_group,
+        "Log Level",
+        &["debug", "info", "warn", "error"],
+        log_level_value.clone(),
+        open_choice.clone(),
+    );
     advanced_page.add(&advanced_group);
     stack.add_named(&advanced_page, Some("Advanced"));
 
@@ -336,16 +413,17 @@ pub fn show_settings(
     let diag_page = adw::PreferencesPage::new();
     let diag_group = adw::PreferencesGroup::new();
     diag_group.set_title("Runtime Diagnostics");
-    let state_row = adw::ActionRow::new();
-    state_row.set_title("Runtime State");
-    state_row.set_subtitle(&match runtime::read_runtime_state() {
-        Ok(rt) => format!(
-            "healthy={} display={} socket={}",
-            rt.healthy, rt.wayland_display, rt.socket_path
-        ),
-        Err(_) => "No runtime state available".to_string(),
-    });
-    diag_group.add(&state_row);
+    add_info_row(
+        &diag_group,
+        "Runtime State",
+        &match runtime::read_runtime_state() {
+            Ok(rt) => format!(
+                "healthy={} display={} socket={}",
+                rt.healthy, rt.wayland_display, rt.socket_path
+            ),
+            Err(_) => "No runtime state available".to_string(),
+        },
+    );
     diag_page.add(&diag_group);
     stack.add_named(&diag_page, Some("Diagnostics"));
 
@@ -353,18 +431,17 @@ pub fn show_settings(
     let about_page = adw::PreferencesPage::new();
     let about_group = adw::PreferencesGroup::new();
     about_group.set_title("Wawona");
-    let ver_row = adw::ActionRow::new();
-    ver_row.set_title("Version");
-    ver_row.set_subtitle(&format!("{} ({})", version(), build_info()));
-    about_group.add(&ver_row);
-    let platform_row = adw::ActionRow::new();
-    platform_row.set_title("Platform");
-    platform_row.set_subtitle("Linux");
-    about_group.add(&platform_row);
-    let desc_row = adw::ActionRow::new();
-    desc_row.set_title("Description");
-    desc_row.set_subtitle("Multi-platform compositor control plane.");
-    about_group.add(&desc_row);
+    add_info_row(
+        &about_group,
+        "Version",
+        &format!("{} ({})", version(), build_info()),
+    );
+    add_info_row(&about_group, "Platform", "Linux");
+    add_info_row(
+        &about_group,
+        "Description",
+        "Multi-platform compositor control plane.",
+    );
     let copy_logs = gtk::Button::with_label("Copy Recent Logs");
     crate::linux::ui::a11y::set_wwn_a11y(
         &copy_logs,
@@ -378,18 +455,12 @@ pub fn show_settings(
         crate::linux::ui::a11y::id::SETTINGS_REPORT_BUG,
         Some("Report a Bug on GitHub"),
     );
-    add_link_row(
-        &about_group,
-        "Wawona.io",
-        "https://wawona.io",
-        "https://wawona.io",
-    );
+    add_link_row(&about_group, "Wawona.io", "https://wawona.io");
     add_row(&about_group, "Diagnostics", &copy_logs);
     add_row(&about_group, "GitHub", &report_bug);
     add_link_row(
         &about_group,
         "Author",
-        "Alex Spaulding",
         "https://aspauldingcode.com",
     );
     copy_logs.connect_clicked(|_| {
@@ -405,7 +476,11 @@ pub fn show_settings(
 
     {
         let stack = stack.clone();
+        let detail_stack = detail_stack.clone();
+        let back_btn = back_btn.clone();
         sidebar.connect_row_selected(move |_, row| {
+            detail_stack.set_visible_child_name("section");
+            back_btn.set_visible(false);
             if let Some(row) = row {
                 let idx = row.index() as usize;
                 if idx < sections.len() {
@@ -428,12 +503,14 @@ pub fn show_settings(
     sidebar_scroll.set_hscrollbar_policy(gtk::PolicyType::Never);
     sidebar_scroll.set_child(Some(&sidebar));
 
-    let detail_scroll = gtk::ScrolledWindow::new();
-    detail_scroll.set_hscrollbar_policy(gtk::PolicyType::Never);
-    detail_scroll.set_child(Some(&stack));
+    let section_scroll = gtk::ScrolledWindow::new();
+    section_scroll.set_hscrollbar_policy(gtk::PolicyType::Never);
+    section_scroll.set_child(Some(&stack));
+    detail_stack.add_named(&section_scroll, Some("section"));
+    detail_stack.set_visible_child_name("section");
 
     split.set_start_child(Some(&sidebar_scroll));
-    split.set_end_child(Some(&detail_scroll));
+    split.set_end_child(Some(&detail_stack));
 
     let body = gtk::Box::new(gtk::Orientation::Vertical, 0);
     body.append(&header);
@@ -449,10 +526,7 @@ pub fn show_settings(
         app.settings.auto_scale = true;
         app.settings.input_profile = input_profile.text().to_string();
         app.settings.key_repeat = key_repeat.value() as u32;
-        app.settings.renderer = renderer
-            .active_id()
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "vulkan".into());
+        app.settings.renderer = renderer_value.borrow().clone();
         app.settings.force_ssd = true;
         app.settings.color_operations = color_ops.is_active();
         app.settings.ssh_host = ssh_host.text().to_string();
@@ -463,10 +537,7 @@ pub fn show_settings(
         app.settings.waypipe_video = wp_video.text().to_string();
         app.settings.waypipe_debug = wp_debug.is_active();
         app.settings.waypipe_enabled = wp_enabled.is_active();
-        app.settings.log_level = log_level
-            .active_id()
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "info".into());
+        app.settings.log_level = log_level_value.borrow().clone();
         {
             let buffer = env_text.buffer();
             let start = buffer.start_iter();
@@ -558,12 +629,20 @@ fn linux_open_url(url: &str) {
     let _ = std::process::Command::new("xdg-open").arg(url).spawn();
 }
 
-fn add_link_row(group: &adw::PreferencesGroup, title: &str, subtitle: &str, url: &str) {
+fn settings_one_line(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn add_link_row(group: &adw::PreferencesGroup, title: &str, url: &str) {
     let row = adw::ActionRow::new();
     row.set_title(title);
-    row.set_subtitle(subtitle);
-    row.set_title_lines(2);
-    row.set_subtitle_lines(3);
+    row.set_title_lines(1);
+    let label = url
+        .trim()
+        .trim_start_matches("https://")
+        .trim_start_matches("http://");
+    row.set_subtitle(&settings_one_line(label));
+    row.set_subtitle_lines(1);
     row.set_activatable(true);
     let open_url = url.to_string();
     row.connect_activated(move |_| {
@@ -572,11 +651,66 @@ fn add_link_row(group: &adw::PreferencesGroup, title: &str, subtitle: &str, url:
     group.add(&row);
 }
 
+fn add_info_row(group: &adw::PreferencesGroup, title: &str, detail: &str) {
+    let row = adw::ActionRow::new();
+    row.set_title(title);
+    row.set_title_lines(1);
+    row.set_subtitle(&settings_one_line(detail));
+    // 0 disables ellipsis; the real value wraps in the row.
+    row.set_subtitle_lines(0);
+    row.set_activatable(true);
+    let title_owned = title.to_string();
+    let detail = detail.to_string();
+    row.connect_activated(move |row| {
+        let parent = row.root().and_downcast::<gtk::Window>();
+        let dlg = gtk::MessageDialog::new(
+            parent.as_ref(),
+            gtk::DialogFlags::MODAL,
+            gtk::MessageType::Info,
+            gtk::ButtonsType::Ok,
+            &detail,
+        );
+        dlg.set_title(Some(&title_owned));
+        dlg.connect_response(|d, _| d.close());
+        dlg.present();
+    });
+    group.add(&row);
+}
+
+fn add_choice_row(
+    group: &adw::PreferencesGroup,
+    title: &str,
+    choices: &[&str],
+    selected: Rc<RefCell<String>>,
+    open_choice: Rc<dyn Fn(String, Vec<String>, Rc<RefCell<String>>, gtk::Label)>,
+) {
+    let row = adw::ActionRow::new();
+    row.set_title(title);
+    row.set_title_lines(1);
+    row.set_activatable(true);
+    let value = gtk::Label::new(Some(selected.borrow().as_str()));
+    value.add_css_class("dim-label");
+    row.add_suffix(&value);
+    row.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
+    let title_owned = title.to_string();
+    let choices_owned: Vec<String> = choices.iter().map(|choice| (*choice).to_string()).collect();
+    let selected_c = selected.clone();
+    let value_c = value.clone();
+    row.connect_activated(move |_| {
+        open_choice(
+            title_owned.clone(),
+            choices_owned.clone(),
+            selected_c.clone(),
+            value_c.clone(),
+        );
+    });
+    group.add(&row);
+}
+
 fn add_row(group: &adw::PreferencesGroup, title: &str, widget: &impl IsA<gtk::Widget>) {
     let row = adw::ActionRow::new();
     row.set_title(title);
-    row.set_title_lines(2);
-    row.set_subtitle_lines(3);
+    row.set_title_lines(1);
     row.add_suffix(widget);
     row.set_activatable(false);
     group.add(&row);

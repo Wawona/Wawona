@@ -114,6 +114,10 @@ static NSString *const kWWNPrefPrefix = @"wawona.pref.";
     _logLevel = [_defaults stringForKey:[self prefKey:@"logLevel"]] ?: @"info";
     _shakeToCloseEnabled = [self boolForPref:@"shakeToCloseEnabled" objcKey:nil fallback:YES];
     _swipeBackToCloseEnabled = [self boolForPref:@"swipeBackToCloseEnabled" objcKey:nil fallback:YES];
+    _machineSessionThumbnailsEnabled =
+        [self boolForPref:@"machineSessionThumbnailsEnabled"
+                  objcKey:@"MachineSessionThumbnailsEnabled"
+                 fallback:YES];
 }
 
 - (void)synchronize {
@@ -163,6 +167,8 @@ static NSString *const kWWNPrefPrefix = @"wawona.pref.";
     [_defaults setObject:_logLevel ?: @"info" forKey:[self prefKey:@"logLevel"]];
     [_defaults setBool:_shakeToCloseEnabled forKey:[self prefKey:@"shakeToCloseEnabled"]];
     [_defaults setBool:_swipeBackToCloseEnabled forKey:[self prefKey:@"swipeBackToCloseEnabled"]];
+    [_defaults setBool:_machineSessionThumbnailsEnabled forKey:[self prefKey:@"machineSessionThumbnailsEnabled"]];
+    [_defaults setBool:_machineSessionThumbnailsEnabled forKey:@"MachineSessionThumbnailsEnabled"];
     [_defaults synchronize];
 
     [[NSNotificationCenter defaultCenter]

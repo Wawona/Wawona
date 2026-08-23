@@ -45,6 +45,7 @@ struct MachineSettingsView: View {
                             Text(profile.name).tag(profile.id)
                         }
                     }
+                    .pickerStyle(.navigationLink)
                 }
             }
 
@@ -147,11 +148,13 @@ struct MachineSettingsView: View {
                 Text("Virtual Pointer").tag("virtual")
                 Text("Host Cursor").tag("host")
             }
+            .pickerStyle(.navigationLink)
             .disabled(!(draft?.runtimeOverrides.renderMacOSPointer ?? preferences.renderMacOSPointer))
             Picker("Touch Input Type", selection: touchInputTypeBinding) {
                 Text("Multi-Touch").tag("Multi-Touch")
                 Text("Touchpad").tag("Touchpad")
             }
+            .pickerStyle(.navigationLink)
             Text("Overrides global Settings → Input. Multi-Touch is finger→wl_touch; Touchpad is the iOS virtual pointer.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -168,6 +171,7 @@ struct MachineSettingsView: View {
                 Text("metal").tag("metal")
                 Text("software").tag("software")
             }
+            .pickerStyle(.navigationLink)
             // watchOS has no GPU stack (ANGLE/Vulkan). Keep fields for profile
             // portability but mark them clearly.
             if PlatformCapabilities.allowsGpuStack {
@@ -197,6 +201,7 @@ struct MachineSettingsView: View {
                 Text("Warn").tag("warn")
                 Text("Error").tag("error")
             }
+            .pickerStyle(.navigationLink)
             Toggle("Shake to Exit Machine", isOn: shakeToCloseBinding)
             Toggle("Swipe Back to Exit Machine", isOn: swipeBackToCloseBinding)
         }

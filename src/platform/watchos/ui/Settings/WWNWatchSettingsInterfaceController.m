@@ -3,10 +3,28 @@
 #import "WWNWatchCompositorBridge.h"
 
 static NSString *const kWWNWatchSettingsSectionKey = @"section";
+static NSString *const kWWNWatchSettingsPickerKey = @"picker";
+static NSString *const kWWNWatchSettingsPickerOptionsKey = @"options";
+static NSString *const kWWNWatchSettingsPickerValueKey = @"current";
+static NSString *const kWWNWatchSettingsPickerStoreKey = @"storeKey";
+
+static NSString *WWNWatchOneLine(NSString *text) {
+    if (text.length == 0) {
+        return @"";
+    }
+    NSString *flat =
+        [[text componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]]
+            componentsJoinedByString:@" "];
+    while ([flat containsString:@"  "]) {
+        flat = [flat stringByReplacingOccurrencesOfString:@"  " withString:@" "];
+    }
+    return [flat stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+}
 
 typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
     WWNWatchSettingsRowKindToggle,
     WWNWatchSettingsRowKindAction,
+    WWNWatchSettingsRowKindInfo,
 };
 
 @interface WWNWatchSettingsRowModel : NSObject
@@ -14,6 +32,7 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
 @property (nonatomic, assign) WWNWatchSettingsRowKind kind;
 @property (nonatomic, copy, nullable) NSString *actionKey;
 @property (nonatomic, copy, nullable) NSString *valueText;
+@property (nonatomic, copy, nullable) NSString *detailText;
 @property (nonatomic, assign) BOOL boolValue;
 @end
 
@@ -83,6 +102,8 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
 @property (weak, nonatomic) IBOutlet WKInterfaceTable *settingsTable;
 @property (nonatomic, copy) NSString *sectionTitle;
 @property (nonatomic, copy) NSArray<WWNWatchSettingsRowModel *> *rows;
+@property (nonatomic, assign) BOOL isPicker;
+@property (nonatomic, copy) NSString *pickerStoreKey;
 @end
 
 @implementation WWNWatchSettingsDetailInterfaceController
@@ -94,10 +115,42 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
 - (void)awakeWithContext:(id)context {
     [super awakeWithContext:context];
     [[self bridge] reloadFromDefaults];
-    self.sectionTitle = [(NSDictionary *)context objectForKey:kWWNWatchSettingsSectionKey] ?: @"Settings";
+    NSDictionary *ctx = [context isKindOfClass:[NSDictionary class]] ? context : @{};
+    if ([ctx[kWWNWatchSettingsPickerKey] boolValue]) {
+        self.isPicker = YES;
+        self.pickerStoreKey = ctx[kWWNWatchSettingsPickerStoreKey] ?: @"";
+        self.sectionTitle = ctx[kWWNWatchSettingsSectionKey] ?: @"Settings";
+        [self setTitle:self.sectionTitle];
+        NSArray *options = ctx[kWWNWatchSettingsPickerOptionsKey];
+        if (![options isKindOfClass:[NSArray class]]) {
+            options = @[];
+        }
+        NSString *current = ctx[kWWNWatchSettingsPickerValueKey] ?: @"";
+        NSMutableArray *rows = [NSMutableArray array];
+        for (NSString *option in options) {
+            if (![option isKindOfClass:[NSString class]]) {
+                continue;
+            }
+            NSString *mark = [option isEqualToString:current] ? @"✓" : @"";
+            [rows addObject:[self actionRow:option key:self.pickerStoreKey value:mark]];
+        }
+        self.rows = rows;
+        [self reloadTable];
+        return;
+    }
+    self.sectionTitle = ctx[kWWNWatchSettingsSectionKey] ?: @"Settings";
     [self setTitle:self.sectionTitle];
     self.rows = [self buildRowsForSection:self.sectionTitle];
     [self reloadTable];
+}
+
+- (void)willActivate {
+    [super willActivate];
+    if (!self.isPicker && self.sectionTitle.length > 0) {
+        [[self bridge] reloadFromDefaults];
+        self.rows = [self buildRowsForSection:self.sectionTitle];
+        [self reloadTable];
+    }
 }
 
 - (NSArray<WWNWatchSettingsRowModel *> *)buildRowsForSection:(NSString *)section {
@@ -161,11 +214,13 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
         return @[
             [self toggleRow:@"Shake to Exit Machine" key:@"shakeToCloseEnabled" value:bridge.shakeToCloseEnabled],
             [self toggleRow:@"Swipe Back to Exit Machine" key:@"swipeBackToCloseEnabled" value:bridge.swipeBackToCloseEnabled],
+            [self toggleRow:@"Session Thumbnails" key:@"machineSessionThumbnailsEnabled" value:bridge.machineSessionThumbnailsEnabled],
         ];
     }
     if ([section isEqualToString:@"iCloud Sync"]) {
         return @[
-            [self actionRow:@"iCloud Status" key:@"" value:@"Not available on watchOS"],
+            [self infoRow:@"iCloud Status"
+                   detail:@"Not available on watchOS. iCloud Drive Documents for shell HOME ships on iPhone, iPad, Mac, and Vision Pro."],
         ];
     }
     if ([section isEqualToString:@"Advanced"]) {
@@ -190,7 +245,16 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
                 }
                 NSString *name = pkg[@"name"] ?: @"Package";
                 NSString *version = pkg[@"version"] ?: @"";
-                [rows addObject:[self actionRow:name key:@"" value:version]];
+                NSString *role = pkg[@"role"] ?: @"";
+                NSMutableArray *parts = [NSMutableArray array];
+                if (version.length > 0) {
+                    [parts addObject:version];
+                }
+                if (role.length > 0) {
+                    [parts addObject:role];
+                }
+                [rows addObject:[self infoRow:name
+                                       detail:[parts componentsJoinedByString:@"\n\n"]]];
             }
         }
         if (rows.count == 0) {
@@ -206,18 +270,18 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
             version = [@"v" stringByAppendingString:version];
         }
         return @[
-            [self actionRow:@"Version" key:@"" value:version],
-            [self actionRow:@"Platform" key:@"" value:@"watchOS"],
+            [self infoRow:@"Version" detail:version],
+            [self infoRow:@"Platform" detail:@"watchOS"],
             [self actionRow:@"Wawona.io"
                         key:@"OpenWawonaWebsite"
-                      value:@"https://wawona.io"],
+                      value:@"wawona.io"],
             [self actionRow:@"Report a Bug on GitHub"
                         key:@"ReportGitHubIssue"
-                      value:@""],
+                      value:@"GitHub"],
             [self actionRow:@"Author"
                         key:@"OpenAuthorPortfolio"
-                      value:@"Alex Spaulding"],
-            [self actionRow:@"Source" key:@"" value:@"github.com/Wawona/Wawona"],
+                      value:@"aspauldingcode.com"],
+            [self infoRow:@"Source" detail:@"github.com/Wawona/Wawona"],
         ];
     }
     return @[];
@@ -230,6 +294,16 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
     row.actionKey = key;
     row.boolValue = value;
     row.valueText = value ? @"On" : @"Off";
+    return row;
+}
+
+- (WWNWatchSettingsRowModel *)infoRow:(NSString *)title detail:(NSString *)detail {
+    WWNWatchSettingsRowModel *row = [[WWNWatchSettingsRowModel alloc] init];
+    row.title = title;
+    row.kind = WWNWatchSettingsRowKindInfo;
+    row.actionKey = @"";
+    row.valueText = WWNWatchOneLine(detail);
+    row.detailText = detail ?: @"";
     return row;
 }
 
@@ -259,11 +333,27 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
         return;
     }
     WWNWatchSettingsRowModel *model = self.rows[(NSUInteger)rowIndex];
+    if (self.isPicker) {
+        [self applyTextValue:model.title forKey:self.pickerStoreKey];
+        [self popController];
+        return;
+    }
     if (model.kind == WWNWatchSettingsRowKindToggle) {
         model.boolValue = !model.boolValue;
         [self applyToggleValue:model.boolValue forKey:model.actionKey];
         self.rows = [self buildRowsForSection:self.sectionTitle];
         [self reloadTable];
+        return;
+    }
+    if (model.kind == WWNWatchSettingsRowKindInfo) {
+        WKAlertAction *ok = [WKAlertAction actionWithTitle:@"OK"
+                                                     style:WKAlertActionStyleDefault
+                                                   handler:^{
+                                                   }];
+        [self presentAlertControllerWithTitle:model.title
+                                      message:model.detailText
+                               preferredStyle:WKAlertControllerStyleAlert
+                                      actions:@[ ok ]];
         return;
     }
     if (model.actionKey.length == 0) {
@@ -394,26 +484,14 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
                        title:(NSString *)title
                      options:(NSArray<NSString *> *)options
                 currentValue:(NSString *)currentValue {
-    NSMutableArray<WKAlertAction *> *actions = [NSMutableArray arrayWithCapacity:options.count];
-    __weak typeof(self) weakSelf = self;
-    for (NSString *option in options) {
-        WKAlertAction *action = [WKAlertAction actionWithTitle:option
-                                                         style:WKAlertActionStyleDefault
-                                                       handler:^{
-            __strong typeof(weakSelf) strongSelf = weakSelf;
-            if (!strongSelf) {
-                return;
-            }
-            [strongSelf applyTextValue:option forKey:key];
-            strongSelf.rows = [strongSelf buildRowsForSection:strongSelf.sectionTitle];
-            [strongSelf reloadTable];
-        }];
-        [actions addObject:action];
-    }
-    [self presentAlertControllerWithTitle:title
-                                  message:currentValue
-                           preferredStyle:WKAlertControllerStyleActionSheet
-                                  actions:actions];
+    [self pushControllerWithName:@"SettingsDetail"
+                         context:@{
+                             kWWNWatchSettingsPickerKey : @YES,
+                             kWWNWatchSettingsSectionKey : title ?: @"",
+                             kWWNWatchSettingsPickerStoreKey : key ?: @"",
+                             kWWNWatchSettingsPickerOptionsKey : options ?: @[],
+                             kWWNWatchSettingsPickerValueKey : currentValue ?: @"",
+                         }];
 }
 
 - (void)applyToggleValue:(BOOL)on forKey:(NSString *)key {
@@ -448,6 +526,8 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
         bridge.shakeToCloseEnabled = on;
     } else if ([key isEqualToString:@"swipeBackToCloseEnabled"]) {
         bridge.swipeBackToCloseEnabled = on;
+    } else if ([key isEqualToString:@"machineSessionThumbnailsEnabled"]) {
+        bridge.machineSessionThumbnailsEnabled = on;
     }
     [bridge synchronize];
 }

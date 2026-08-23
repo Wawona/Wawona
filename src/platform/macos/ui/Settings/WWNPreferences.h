@@ -12,6 +12,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, strong, readonly)
     NSArray<WWNPreferencesSection *> *sections;
 @property(nonatomic, strong) WWNPreferencesSection *activeSection;
+/// Secondary-column nav for Settings. Env Vars may replace this table as the
+/// visible root; keep the column nav so we can swap back.
+@property(nonatomic, weak, nullable)
+    UINavigationController *settingsColumnNavigationController;
 #else
 @class WWNPreferencesSection;
 @interface WWNPreferences : NSWindowController

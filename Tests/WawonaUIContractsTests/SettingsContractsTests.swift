@@ -83,6 +83,10 @@ func iosGlobalSettingsIncludeInputAndWaypipe() {
         .vulkanDriver, .openGLDriver,
     ])
     #expect(GlobalSettingsCatalog.visibleFields(in: .machines, for: .iOS).contains(.shakeToClose))
+    #expect(GlobalSettingsCatalog.visibleFields(in: .machines, for: .iOS).contains(.sessionThumbnails))
+    #expect(GlobalSettingsCatalog.visibleFields(in: .machines, for: .iOS).contains(.vmEngine))
+    #expect(!GlobalSettingsCatalog.visibleFields(in: .machines, for: .watchOS).contains(.vmEngine))
+    #expect(GlobalSettingsCatalog.visibleFields(in: .machines, for: .watchOS).contains(.sessionThumbnails))
     #expect(GlobalSettingsCatalog.visibleFields(in: .advanced, for: .iOS) == [
         .nestedCompositors, .compositorBackend, .multipleClients, .logLevel,
     ])

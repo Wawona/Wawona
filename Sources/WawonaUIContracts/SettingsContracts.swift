@@ -250,6 +250,12 @@ public enum GlobalSettingsFieldID: String, Sendable, CaseIterable {
     case logLevel
     case shakeToClose
     case swipeBackToClose
+    case sessionThumbnails
+    case vmEngine
+    case vmVsockPort
+    case containerRuntime
+    case containerImageStore
+    case machinesStatus
     case aboutVersion
     case aboutPlatform
     case aboutAuthor
@@ -363,6 +369,16 @@ public struct GlobalSettingsCatalog: Sendable {
             var fields: [GlobalSettingsFieldID] = [.shakeToClose]
             if host == .iOS || host == .watchOS || host == .visionOS || host == .android {
                 fields.append(.swipeBackToClose)
+            }
+            fields.append(.sessionThumbnails)
+            switch host {
+            case .macOS, .iOS, .android, .linux:
+                fields.append(contentsOf: [
+                    .vmEngine, .vmVsockPort, .containerRuntime, .containerImageStore,
+                    .machinesStatus,
+                ])
+            case .tvOS, .watchOS, .visionOS:
+                break
             }
             return fields
         case .iCloudSync:

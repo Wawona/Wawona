@@ -10,6 +10,11 @@ as history.
 
 ## [Unreleased]
 
+- **macOS menubar Desktop.** The applet has a Desktop row next to
+  Compositor: green `ready` / `takeover`, purple `reboot`, red `blocked`.
+  Play is Take Over Screen Now, Stop restores Aqua, clockwise opens the
+  native Restart sheet when Path B needs a reboot. Same Classic gate as
+  Settings.
 - **iOS nested niri.** Start was sending configure(0,0) (client-preferred),
   which niri ignores, so it never attached a buffer and `niri_main` exited 1.
   Nested compositors (niri, weston) now fill the host surface like

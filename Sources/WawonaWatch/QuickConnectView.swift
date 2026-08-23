@@ -46,9 +46,15 @@ struct QuickConnectView: View {
                         disconnectActiveSession(activeSession)
                     }
                 } label: {
-                    Label(stopLabel, systemImage: "stop.circle.fill")
+                    HStack(spacing: 6) {
+                        Image(systemName: "stop.circle.fill")
+                        Text(stopLabel)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
                 }
                 .buttonStyle(.borderedProminent)
+                .frame(maxWidth: .infinity)
                 .accessibilityIdentifier(isNative ? "wwn.watch.stop" : "wwn.watch.disconnect")
                 .accessibilityLabel(stopLabel)
             } else {
@@ -59,9 +65,15 @@ struct QuickConnectView: View {
                         runningSession = sessions.connect(machineId: profile.id)
                     }
                 } label: {
-                    Label(startLabel, systemImage: "play.fill")
+                    HStack(spacing: 6) {
+                        Image(systemName: "play.fill")
+                        Text(startLabel)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
                 }
                 .buttonStyle(.borderedProminent)
+                .frame(maxWidth: .infinity)
                 .accessibilityIdentifier(isNative ? "wwn.watch.start" : "wwn.watch.connect")
                 .accessibilityLabel(startLabel)
             }

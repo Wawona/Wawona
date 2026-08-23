@@ -205,36 +205,26 @@
   WWNPreferencesSection *section =
       [self.dataSource itemIdentifierForIndexPath:indexPath];
 
-  // Set the active section on the detail view controller
   self.preferencesDetailViewController.activeSection = section;
   self.preferencesDetailViewController.title = section.title;
 
-  // Env Vars is the full SwiftUI inventory (same catalog as macOS Settings),
-  // not the one-row "Open Environment Variables…" stub.
-  if ([section.title isEqualToString:@"Env Vars"]) {
-    [self.preferencesDetailViewController openEnvironmentVariablesManager];
-    return;
-  }
-
-  // Refresh the detail view
-  [self.preferencesDetailViewController.tableView reloadData];
-
-  // On iPhone (compact width), we need to push the detail view
-  // On iPad (regular width), the split view shows both, so we just update the
-  // detail
+  // Always show the secondary nav. After Env Vars swaps in the inventory,
+  // Preferences is no longer in that nav, so falling back to it would show
+  // the stub table again.
+  UIViewController *detail = self.detailNavigationController
+      ?: self.preferencesDetailViewController.navigationController
+      ?: self.preferencesDetailViewController;
   if (self.splitViewController.isCollapsed) {
-    [self.splitViewController
-        showDetailViewController:self.preferencesDetailViewController
-                          sender:nil];
-  } else {
-    // Ensure detail is shown (might be needed if we were in a different state)
-    if (self.preferencesDetailViewController.parentViewController != self &&
-        self.preferencesDetailViewController.parentViewController !=
-            self.splitViewController) {
-      [self.splitViewController
-          showDetailViewController:self.preferencesDetailViewController
-                            sender:nil];
-    }
+    [self.splitViewController showDetailViewController:detail sender:nil];
+  } else if (self.preferencesDetailViewController.parentViewController !=
+                 self &&
+             self.preferencesDetailViewController.parentViewController !=
+                 self.splitViewController &&
+             self.detailNavigationController.parentViewController !=
+                 self.splitViewController &&
+             self.preferencesDetailViewController.navigationController
+                     .parentViewController != self.splitViewController) {
+    [self.splitViewController showDetailViewController:detail sender:nil];
   }
 }
 

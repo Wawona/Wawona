@@ -35,6 +35,7 @@ rec {
     "Sources/WawonaUI/Machines/MachinesRootView.swift"
     "Sources/WawonaUI/Machines/MachinesGridView.swift"
     "Sources/WawonaUI/Machines/MachineCardView.swift"
+    "Sources/WawonaUI/Machines/MachineActionBar.swift"
     "Sources/WawonaUI/Machines/MachineEditorView.swift"
     "Sources/WawonaUI/Machines/BundledClientPickerView.swift"
     "Sources/WawonaUI/Machines/MachineFuzzySearch.swift"

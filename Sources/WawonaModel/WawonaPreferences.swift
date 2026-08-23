@@ -182,6 +182,7 @@ public final class WawonaPreferences: ObservableObject {
     @Published public var waypipeNoGpu: Bool = false
     @Published public var shakeToCloseEnabled: Bool = true
     @Published public var swipeBackToCloseEnabled: Bool = true
+    @Published public var machineSessionThumbnailsEnabled: Bool = true
     @Published public var hasCompletedWelcome: Bool = false
     @Published public var globalClientLaunchers: [ClientLauncher] = ClientLauncher.presets
     @Published public var diagnostics: [SettingsDiagnosticEntry] = []
@@ -261,6 +262,10 @@ public final class WawonaPreferences: ObservableObject {
             ?? defaults.object(forKey: keyPrefix + "waypipeNoGpu") as? Bool ?? false
         shakeToCloseEnabled = defaults.object(forKey: keyPrefix + "shakeToCloseEnabled") as? Bool ?? true
         swipeBackToCloseEnabled = defaults.object(forKey: keyPrefix + "swipeBackToCloseEnabled") as? Bool ?? true
+        machineSessionThumbnailsEnabled =
+            defaults.object(forKey: "MachineSessionThumbnailsEnabled") as? Bool
+            ?? defaults.object(forKey: keyPrefix + "machineSessionThumbnailsEnabled") as? Bool
+            ?? true
         hasCompletedWelcome = defaults.bool(forKey: keyPrefix + "hasCompletedWelcome")
 
         if let launchersData = defaults.data(forKey: keyPrefix + "globalClientLaunchers"),
@@ -350,6 +355,8 @@ public final class WawonaPreferences: ObservableObject {
         defaults.set(waypipeNoGpu, forKey: keyPrefix + "waypipeNoGpu")
         defaults.set(shakeToCloseEnabled, forKey: keyPrefix + "shakeToCloseEnabled")
         defaults.set(swipeBackToCloseEnabled, forKey: keyPrefix + "swipeBackToCloseEnabled")
+        defaults.set(machineSessionThumbnailsEnabled, forKey: "MachineSessionThumbnailsEnabled")
+        defaults.set(machineSessionThumbnailsEnabled, forKey: keyPrefix + "machineSessionThumbnailsEnabled")
         defaults.set(hasCompletedWelcome, forKey: keyPrefix + "hasCompletedWelcome")
         if let data = try? JSONEncoder().encode(globalClientLaunchers) {
             defaults.set(data, forKey: keyPrefix + "globalClientLaunchers")

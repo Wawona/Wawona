@@ -35,6 +35,7 @@ struct MachineStatusView: View {
                                 editingProfile = profile
                             } label: {
                                 Label("Edit", systemImage: "pencil")
+                                .lineLimit(1)
                             }
                             .tint(.blue)
                         }
@@ -43,6 +44,7 @@ struct MachineStatusView: View {
                                 profileStore.delete(id: profile.id)
                             } label: {
                                 Label("Delete", systemImage: "trash")
+                                .lineLimit(1)
                             }
                         }
                     }
