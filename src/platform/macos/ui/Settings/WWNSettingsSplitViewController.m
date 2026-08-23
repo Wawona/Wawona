@@ -38,6 +38,18 @@
 
 #pragma mark - UISplitViewControllerDelegate
 
+- (WWNSettingsSidebarViewController *)wwn_sidebarController {
+  UIViewController *primary =
+      [self viewControllerForColumn:UISplitViewControllerColumnPrimary];
+  if ([primary isKindOfClass:[UINavigationController class]]) {
+    primary = ((UINavigationController *)primary).viewControllers.firstObject;
+  }
+  if ([primary isKindOfClass:[WWNSettingsSidebarViewController class]]) {
+    return (WWNSettingsSidebarViewController *)primary;
+  }
+  return nil;
+}
+
 - (BOOL)splitViewController:(UISplitViewController *)splitViewController
     collapseSecondaryViewController:(UIViewController *)secondaryViewController
           ontoPrimaryViewController:(UIViewController *)primaryViewController {
@@ -45,6 +57,16 @@
   // primary view controller This allows the primary (sidebar) to be the initial
   // view on iPhone
   return YES;
+}
+
+- (void)splitViewControllerDidExpand:(UISplitViewController *)svc {
+  (void)svc;
+  [[self wwn_sidebarController] wwn_syncDismissButtonWithSplitView];
+}
+
+- (void)splitViewControllerDidCollapse:(UISplitViewController *)svc {
+  (void)svc;
+  [[self wwn_sidebarController] wwn_syncDismissButtonWithSplitView];
 }
 
 @end

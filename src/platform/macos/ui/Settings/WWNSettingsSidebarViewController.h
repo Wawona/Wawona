@@ -12,6 +12,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, weak) WWNPreferences *preferencesDetailViewController;
 
 - (instancetype)initWithPreferences:(WWNPreferences *)preferences;
+- (void)wwn_syncDismissButtonWithSplitView;
 
 @end
 

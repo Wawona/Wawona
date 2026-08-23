@@ -35,7 +35,6 @@
   }
   return self;
 }
-// ... (viewDidLoad stays same) ...
 
 - (void)viewDidAppear:(BOOL)animated {
   [super viewDidAppear:animated];
@@ -83,13 +82,7 @@
 #if !TARGET_OS_TV
   self.navigationController.navigationBar.prefersLargeTitles = YES;
 #endif
-  self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
-      initWithBarButtonSystemItem:UIBarButtonSystemItemDone
-                           target:self
-                           action:@selector(dismissSettings)];
-  self.navigationItem.rightBarButtonItem.accessibilityIdentifier =
-      @"wwn.settings.done";
-  self.navigationItem.rightBarButtonItem.accessibilityLabel = @"Done";
+  [self wwn_syncDismissButtonWithSplitView];
 
   // Configure cell registration
   UICollectionViewCellRegistration *cellRegistration =
@@ -141,6 +134,59 @@
 
 - (void)dismissSettings {
   [self.splitViewController dismissViewControllerAnimated:YES completion:nil];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+  [super viewWillAppear:animated];
+  [self wwn_syncDismissButtonWithSplitView];
+}
+
+- (void)viewWillTransitionToSize:(CGSize)size
+       withTransitionCoordinator:
+           (id<UIViewControllerTransitionCoordinator>)coordinator {
+  [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
+  [coordinator
+      animateAlongsideTransition:^(
+          id<UIViewControllerTransitionCoordinatorContext> context) {
+        (void)context;
+        [self wwn_syncDismissButtonWithSplitView];
+      }
+      completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+        (void)context;
+        [self wwn_syncDismissButtonWithSplitView];
+      }];
+}
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+  [super traitCollectionDidChange:previousTraitCollection];
+  [self wwn_syncDismissButtonWithSplitView];
+}
+
+// Expanded split (iPhone landscape / iPad): the system already shows the
+// sidebar toggle. Done lives on the detail column (blue checkmark). Showing
+// another Done on this nav bar duplicates it next to the toggle.
+- (void)wwn_syncDismissButtonWithSplitView {
+#if TARGET_OS_TV
+  if (self.navigationItem.rightBarButtonItem) {
+    return;
+  }
+#else
+  UISplitViewController *split = self.splitViewController;
+  if (split && !split.collapsed) {
+    self.navigationItem.rightBarButtonItem = nil;
+    return;
+  }
+  if (self.navigationItem.rightBarButtonItem) {
+    return;
+  }
+#endif
+  UIBarButtonItem *done = [[UIBarButtonItem alloc]
+      initWithBarButtonSystemItem:UIBarButtonSystemItemDone
+                           target:self
+                           action:@selector(dismissSettings)];
+  done.accessibilityIdentifier = @"wwn.settings.done";
+  done.accessibilityLabel = @"Done";
+  self.navigationItem.rightBarButtonItem = done;
 }
 
 - (void)updateSnapshot {
