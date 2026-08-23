@@ -165,8 +165,9 @@ On a machine that still OOMs:
 ./scripts/nix-build-low-mem.sh .#wawona-macos
 ```
 
-Do not lower flake-wide `max-jobs` / `cores` in `flake.nix`. Those stay
-`auto` / `0` for CI. Cache details: [`flakehub-cache.md`](flakehub-cache.md).
+CI sets `max-jobs` / `cores` in the Nix installer extra-conf, not in flake
+`nixConfig` (that setting is untrusted on laptops). Cache details:
+[`flakehub-cache.md`](flakehub-cache.md).
 
 ## Release beta (TestFlight + Play)
 

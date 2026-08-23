@@ -100,7 +100,8 @@ FlakeHub does **not** reduce Nix **eval** / crate2nix IFD cost, and it does
 - Warm host simulator SDKs before Apple `xcodebuild` ([`warm-ios-simulator-sdk.sh`](../.github/scripts/warm-ios-simulator-sdk.sh) on ios-sim, apple-family, and frontend-syntax)
 - Path-filter Darwin Gate: packages cells on docs-only tips
 - Hoist `generatedCargoNix` per `workspace-src-*` (ios / macos / watchos)
-- `nixConfig` / CI `max-jobs` + `cores`
+- CI installer `extra-conf` `max-jobs` + `cores` (not flake `nixConfig`; that
+  setting is untrusted on laptops and prints a warning on every `nix run`)
 
 L2 `build` jobs append a FlakeHub hit probe to the step summary (`nix path-info`
 + `cache.flakehub.com`). Treat “likely” as a hint. Same-job local builds can

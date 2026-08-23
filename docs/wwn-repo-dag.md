@@ -78,7 +78,8 @@ flowchart BT
   (`https://flakehub.com/f/Wawona/<repo>/*`); `follows` still enforce the DAG.
   Exceptions already on `github:Wawona/<repo>/development`: `wwn-iland`,
   `wwn-weston`, `wwn-containers` (until FlakeHub rolling has
-  `stdenv.hostPlatform.isDarwin`).
+  `stdenv.hostPlatform.isDarwin`); `wwn-toolchain` (until FlakeHub rolling
+  includes pip-free Meson Python envs, `c3855db`).
   See [`flakehub-registry.md`](./flakehub-registry.md).
 - `angle` and `swiftshader` recipes live in `wwn-iland/dependencies/libs/` and
   are exported by the L1 `registryFragment`. Their old L0 recipes are removed;

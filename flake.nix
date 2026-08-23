@@ -1,11 +1,10 @@
 {
   description = "Wawona Compositor";
 
-  # Runner defaults for compile-heavy attrs. CI may reinforce via installer extra-conf.
-  nixConfig = {
-    max-jobs = "auto";
-    cores = 0;
-  };
+  # Do not put `cores` / `max-jobs` in nixConfig. Those are restricted
+  # settings, so every `nix run` prints "ignoring untrusted flake
+  # configuration" unless the user passes `--accept-flake-config`. CI
+  # sets them via the Nix installer extra-conf instead.
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -39,7 +38,9 @@
     # and the patched application ports (wwn-*) as flake inputs. nixpkgs and
     # wwn-toolchain are pinned uniformly so zsh's pkgs.zsh.src and weston's
     # source hashes resolve against one nixpkgs.
-    wwn-toolchain.url = "https://flakehub.com/f/Wawona/wwn-toolchain/*";
+    # github/development until FlakeHub rolling includes pip-free Meson
+    # Python envs (c3855db). Cited: docs/wwn-repo-dag.md.
+    wwn-toolchain.url = "github:Wawona/wwn-toolchain/development";
     wwn-toolchain.inputs.nixpkgs.follows = "nixpkgs";
     wwn-toolchain.inputs.rust-overlay.follows = "rust-overlay";
     wwn-iland.url = "github:Wawona/wwn-iland/development";

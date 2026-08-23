@@ -77,8 +77,9 @@ Operational runbook: [`flakehub-cache.md`](./flakehub-cache.md).
   SDK warm / apple-sdks.nix are not.
 - **crate2nix IFD hoist.** One `generatedCargoNix` per `workspace-src-*`
   (ios / macos / watchos); backends that share a workspace pass `cargoNixDrv`.
-- **Runner cores.** Flake `nixConfig.max-jobs/cores` + CI installer `extra-conf`
-  (`max-jobs = auto`, `cores = 0`) for compile-heavy attrs.
+- **Runner cores.** CI installer `extra-conf` (`max-jobs = auto`, `cores = 0`)
+  for compile-heavy attrs. Do not put those in flake `nixConfig` (untrusted
+  on laptops; every `nix run` warns).
 - **Fast PR gate vs nightly.**
   - *Push gate* (`nix.yml` + device-gate): curated builds + path-filtered Android
     Gradle/meson + GUI smoke/fuzzel.
