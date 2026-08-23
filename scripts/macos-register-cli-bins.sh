@@ -219,23 +219,36 @@ EOF
 
 wawona_cli_ensure_path() {
   for rc in "${HOME}/.zprofile" "${HOME}/.zshrc" "${HOME}/.bash_profile"; do
-    if [ -f "$rc" ] && grep -Fq "$PATH_BEGIN" "$rc"; then
+    if [ -e "$rc" ] && grep -Fq "$PATH_BEGIN" "$rc" 2>/dev/null; then
+      continue
+    fi
+    if [ -e "$rc" ] && [ ! -w "$rc" ]; then
+      echo "Note: $rc is not writable (home-manager?). Add ~/.local/bin to PATH there." >&2
       continue
     fi
     if [ -f "$rc" ] || [ "$rc" = "${HOME}/.zprofile" ]; then
-      touch "$rc"
-      {
+      if [ ! -e "$rc" ]; then
+        if ! printf '' > "$rc" 2>/dev/null; then
+          echo "Note: could not create $rc" >&2
+          continue
+        fi
+      fi
+      if {
         printf '\n%s\n' "$PATH_BEGIN"
         printf '%s\n' 'export PATH="$HOME/.local/bin:$PATH"'
         printf '%s\n' "$PATH_END"
-      } >> "$rc"
+      } >> "$rc" 2>/dev/null; then
+        :
+      else
+        echo "Note: could not append PATH snippet to $rc" >&2
+      fi
     fi
   done
 }
 
 wawona_cli_strip_path() {
   for rc in "${HOME}/.zprofile" "${HOME}/.zshrc" "${HOME}/.bash_profile"; do
-    [ -f "$rc" ] || continue
+    [ -f "$rc" ] && [ -w "$rc" ] || continue
     grep -Fq "$PATH_BEGIN" "$rc" || continue
     tmp="${rc}.wawona-cli.tmp"
     awk -v begin="$PATH_BEGIN" -v end="$PATH_END" '
