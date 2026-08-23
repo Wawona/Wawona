@@ -325,6 +325,7 @@ static void WWNSettingsPopupStoreIndex(WWNSettingItem *item, NSInteger index) {
 #endif
 #if TARGET_OS_OSX
 - (void)showDesktopReplacementSipHowTo;
+- (void)showDesktopReplacementPrepare;
 - (BOOL)applyDesktopReplacementEnabled:(BOOL)enabled
                                 revert:(void (^_Nullable)(void))revert;
 #endif
@@ -1213,36 +1214,53 @@ static UIImage *WWNAboutLogo(void) {
     };
     [desktopItems addObject:sipHowToBtn];
 
+    WWNSettingItem *prepareBtn =
+        ITEM(@"Prepare this Mac", @"DesktopReplacementPrepare", WSettingButton,
+             nil,
+             @"Installs the Desktop helper and watchdog safety layer "
+             @"(administrator once), then asks you to restart. Does not take "
+             @"over the screen. After you log back in, use Take Over Screen "
+             @"Now.");
+    prepareBtn.actionBlock = ^{
+      [weakSelf showDesktopReplacementPrepare];
+    };
+    [desktopItems addObject:prepareBtn];
+
     [desktopItems
         addObject:ITEM(@"Enable Desktop Replacement",
                        @"DesktopReplacementEnabled", WSettingSwitch, @NO,
                        @"Take over this Mac's screen via wwn-iland Mode B. "
-                       @"Requires SIP fully disabled and a sticky Path B "
-                       @"(preferred) or Path A IOWatchdog ACK "
-                       @"(/var/db/wwn-iowatchdog/claim-ok). Then Take Over "
-                       @"unloads watchdogd and WindowServer. Pick a Desktop "
-                       @"Machine below (kmscube proof or nested compositor). "
-                       @"Logout restores normal macOS.")];
+                       @"Requires SIP fully disabled. Use Prepare this Mac "
+                       @"first (watchdog safety layer + restart). Then Take "
+                       @"Over unloads watchdogd and WindowServer. Pick a "
+                       @"Desktop Machine below. Logout restores normal "
+                       @"macOS.")];
 
 #if TARGET_OS_OSX
     {
       WWNModeBReadyReport *ready =
           [[WWNDesktopReplacementController sharedController]
               evaluateClassicReadiness];
-      NSString *label =
-          [NSString stringWithFormat:@"%@: %@",
-                                     ready.token, ready.reason];
+      NSString *label = @"Needs setup";
+      if (ready.verdict == WWNModeBVerdictTakeoverNow) {
+        label = @"Ready";
+      } else if (ready.verdict == WWNModeBVerdictReboot) {
+        label = @"Restart required";
+      } else if (ready.needsSipHowTo) {
+        label = @"SIP required";
+      }
       [desktopItems
           addObject:ITEM(@"Classic readiness", nil, WSettingInfo, label,
-                         ready.nextStep.length ? ready.nextStep
-                                               : ready.reason)];
+                         ready.userSummary.length ? ready.userSummary
+                                                  : ready.reason)];
     }
     WWNSettingItem *takeOverNow =
         ITEM(@"Take Over Screen Now", @"DesktopReplacementTakeOver",
              WSettingButton, nil,
-             @"Uses the Classic readiness verdict. takeover-now engages "
-             @"immediately. reboot opens the native macOS Restart sheet "
-             @"(60-second countdown). blocked shows the exact reason.");
+             @"If this Mac is ready, engages Desktop Replacement. If setup "
+             @"is missing, Prepare this Mac runs first. Restart opens the "
+             @"native macOS Restart sheet. Take Over never skips watchdog "
+             @"safety.");
     takeOverNow.actionBlock = ^{
       [weakSelf applyDesktopReplacementEnabled:YES revert:nil];
     };
@@ -5635,11 +5653,19 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
       [WWNDesktopReplacementController sharedController];
   WWNModeBReadyReport *ready = [desk evaluateClassicReadiness];
   if (ready.verdict == WWNModeBVerdictBlocked) {
-    confirm.messageText = @"Desktop Take Over is blocked";
-    confirm.informativeText =
-        [NSString stringWithFormat:@"%@\n\n%@", ready.reason, ready.nextStep];
-    [confirm addButtonWithTitle:@"OK"];
-    [confirm runModal];
+    if (ready.needsSipHowTo) {
+      [self showDesktopReplacementSipHowTo];
+    } else {
+      confirm.messageText = @"Desktop Take Over is not ready yet";
+      confirm.informativeText = ready.userSummary.length
+                                    ? ready.userSummary
+                                    : ready.reason;
+      [confirm addButtonWithTitle:@"Prepare this Mac"];
+      [confirm addButtonWithTitle:@"Cancel"];
+      if ([confirm runModal] == NSAlertFirstButtonReturn) {
+        [desk presentDesktopReplacementPrepareFlow];
+      }
+    }
     if (revert) {
       revert();
     }
@@ -5653,10 +5679,9 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
     confirm.informativeText = [NSString
         stringWithFormat:
             @"%@\n\nWawona will open the native macOS Restart sheet "
-            @"(loginwindow kAERestart, 60-second countdown). After you log "
-            @"back in, Classic readiness must be takeover-now, then Take "
-            @"Over Screen Now.",
-            ready.reason];
+            @"(60-second countdown). After you log back in, use Take Over "
+            @"Screen Now.",
+            ready.userSummary.length ? ready.userSummary : ready.reason];
     [confirm addButtonWithTitle:@"Restart"];
     [confirm addButtonWithTitle:@"Cancel"];
     if ([confirm runModal] != NSAlertFirstButtonReturn) {
@@ -5748,6 +5773,11 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
     [pb clearContents];
     [pb setString:@"csrutil disable" forType:NSPasteboardTypeString];
   }
+}
+
+- (void)showDesktopReplacementPrepare {
+  [[WWNDesktopReplacementController sharedController]
+      presentDesktopReplacementPrepareFlow];
 }
 #endif
 

@@ -46,7 +46,13 @@ Or one-shot: `Wawona --mode-b-probe --machine <id-or-name>`.
 
 ## 1. Arm Path B (preferred)
 
-From a desktop-host app or nix package that contains `bin/` + `lib/hook`:
+Product path: Settings → Desktop → **Prepare this Mac** (or
+`Wawona --mode-b-prepare`). That runs bundled `claim-install --path-b` with
+an administrator prompt, then the native Restart sheet. It does not Take
+Over.
+
+Operator path, from a desktop-host app or nix package that contains `bin/` +
+`lib/hook`:
 
 ```bash
 PKG=…/Contents/Library/Wawona   # or nix package root

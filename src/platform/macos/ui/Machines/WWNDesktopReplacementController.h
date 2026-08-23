@@ -25,6 +25,15 @@ typedef NS_ENUM(NSInteger, WWNModeBVerdict) {
 @property(nonatomic, copy) NSString *token;
 @property(nonatomic, copy) NSString *reason;
 @property(nonatomic, copy) NSString *nextStep;
+/** Friend-facing paragraph for Settings / alerts. No CLI recipes. */
+@property(nonatomic, copy) NSString *userSummary;
+/** Blocked only because SIP is not fully disabled. Show SIP How-To. */
+@property(nonatomic, assign) BOOL needsSipHowTo;
+/**
+ * Blocked, but Prepare this Mac can stage the helper and/or arm Path B.
+ * Never true when SIP blocks or this build omitted Mode B.
+ */
+@property(nonatomic, assign) BOOL canPrepareRequirements;
 @end
 
 /**
@@ -37,6 +46,8 @@ typedef NS_ENUM(NSInteger, WWNModeBVerdict) {
 @property(nonatomic, assign) BOOL canTakeOver;
 @property(nonatomic, assign) BOOL canRestore;
 @property(nonatomic, assign) BOOL canRestartMac;
+/** Play button runs Prepare this Mac (not Take Over). */
+@property(nonatomic, assign) BOOL canPrepare;
 @end
 
 @interface WWNDesktopReplacementController : NSObject
@@ -147,6 +158,20 @@ typedef NS_ENUM(NSInteger, WWNModeBVerdict) {
  * custom Wawona timer. Aqua must be up.
  */
 - (BOOL)requestNativeMacOSRestart:(NSError *_Nullable *_Nullable)error;
+/**
+ * Stage the Mode B helper if needed and arm Path B
+ * (`wwn-iowatchdog-claim-install --path-b`) with administrator
+ * authorization. Never unloads watchdogd. Never Take Over.
+ */
+- (BOOL)installDesktopReplacementRequirements:
+    (NSError *_Nullable *_Nullable)error;
+/**
+ * Friend-facing wizard: SIP How-To, then helper stage + Path B arm,
+ * then the native Restart sheet. Never Take Over.
+ */
+- (void)presentDesktopReplacementPrepareFlow;
+/** CLI: same work as Prepare this Mac. Exit codes match `--mode-b-ready`. */
+- (int)cliPrepare;
 - (int)cliEngageKeepWindowServer:(BOOL)keepWindowServer;
 - (int)cliDisengage;
 /** Restage helper + dylib for this build. Does not take over the screen. */

@@ -106,6 +106,7 @@ window. Logs to stdout plus `/tmp/wawona-modeb-cli.log` and
 |------|--------|
 | `--mode-b-status` | SIP, helper, sudoers, compositor PID (EPERM-aware), WindowServer, plus Classic `VERDICT` |
 | `--mode-b-ready` | Classic gate. Prints `VERDICT` and `REASON`. `takeover-now` (exit 0), `reboot` (exit 2), `blocked` (exit 3) |
+| `--mode-b-prepare` | Stage helper if needed and arm Path B. Does not take over. `reboot` opens the native Restart sheet |
 | `--mode-b-stage` | Install helper + dylib for this build. Does not take over the screen |
 | `--mode-b-probe` | Wait for a live root compositor without taking the screen |
 | `--mode-b-engage` | `takeover-now`: take over now. `reboot`: open the native macOS Restart sheet (`kAERestart` / QA1134, 60-second countdown). `blocked`: print the exact reason and exit 3 |
@@ -132,6 +133,7 @@ must be fully disabled (`csrutil disable` in Recovery). Partial SIP
 ```bash
 Wawona --mode-b-status
 Wawona --mode-b-ready
+Wawona --mode-b-prepare
 Wawona --mode-b-stage
 Wawona --mode-b-probe
 Wawona --mode-b-engage
@@ -141,12 +143,16 @@ Wawona --mode-b-disengage
 `--mode-b-ready` and Settings → Desktop Replacement → Classic readiness share
 one gate. Helper `--ack-status` prints `verdict=` and `reason=`. Path B sock
 `done=1` is takeover-now. `claim-ok` `path=b sticky=1` with sock not live is
-reboot (native Restart sheet, not a custom timer). Anything else is blocked
-with the exact SIP / helper / claim-ok / sock text.
+reboot (native Restart sheet, not a custom timer). Path B pending / pathb
+plist without live Disable is also reboot. Anything else is blocked.
+
+Friends use **Prepare this Mac** (Settings or menubar Desktop play when
+blocked). That stages the helper and runs bundled
+`wwn-iowatchdog-claim-install --path-b`, then Restart. It never Take Over.
+`--mode-b-prepare` is the same work from the CLI.
 
 `--mode-b-engage` on reboot opens loginwindow Restart (`kAERestart`). On
-blocked it does not take over. On takeover-now it engages. Restage the helper
-(`Wawona --mode-b-stage`) so `--ack-status` includes `reason=`.
+blocked it does not take over. On takeover-now it engages.
 
 Until this build of `Wawona` is installed, the same report is:
 

@@ -71,15 +71,12 @@ static NSString *const kWWNModeBFbReadyPath =
 
 /** Classic Take Over needs Path B (preferred) or Path A sticky claim-ok. */
 static NSString *WWNModeBTakeOverNeedsAckMessage(void) {
-  return @"Desktop Take Over needs a sticky IOWatchdog Disable ACK first.\n\n"
-         @"Arm Path B (preferred, no AMFI), then reboot:\n"
-         @"  sudo \"/Library/Application Support/Wawona/"
-         @"wwn-iowatchdog-claim-install\" --path-b "
-         @"\"/path/to/Wawona.app/Contents/Library/Wawona\"\n"
-         @"  (or the nix package that ships claim-install + lib/hook)\n"
-         @"After reboot: cat /var/db/wwn-iowatchdog/claim-ok\n"
-         @"  and: sudo …/wwn-iowatchdog-claim-install --doctor\n\n"
-         @"KEEP_WS probe (Aqua stays up): Wawona --mode-b-probe";
+  return @"Desktop Take Over needs the watchdog safety layer first.\n\n"
+         @"Use Prepare this Mac in Settings (or the menubar Desktop play "
+         @"button). Wawona installs Path B, then asks you to restart. After "
+         @"you log back in, use Take Over Screen Now.\n\n"
+         @"Prepare does not take over the screen. Take Over stays blocked "
+         @"until Path B is live.";
 }
 
 /*
@@ -158,6 +155,13 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
 - (NSString *)modeBFileCleanupShell;
 - (BOOL)installModeBHelperAndDylibForProfile:(WWNMachineProfile *)profile
                          error:(NSError *_Nullable *_Nullable)error;
+- (nullable NSString *)bundledClaimInstallPath;
+- (BOOL)runPrivilegedShellCommand:(NSString *)shellCmd
+                    successMarker:(NSString *)marker
+                       stdoutText:(NSString *_Nullable *_Nullable)stdoutText
+                            error:(NSError *_Nullable *_Nullable)error;
+- (BOOL)armPathBClaimInstall:(NSError *_Nullable *_Nullable)error;
+- (void)presentRestartAfterPrepareWithMessage:(NSString *)message;
 @end
 
 @implementation WWNModeBReadyReport
@@ -359,7 +363,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   if (live) {
     return @"Live Disable present but claim-ok missing; re-arm Path B.";
   }
-  return @"Missing: arm Path B with claim-install --path-b, then reboot.";
+  return @"Missing: use Prepare this Mac, then restart.";
 }
 
 - (NSString *)modeBPlistPath {
@@ -865,32 +869,38 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"  case \"$SOCK_ST\" in *done=1*) LIVE=1 ;; esac\n"
                        @"  if [ \"$LIVE\" = 0 ] && [ \"$MARKER\" = 1 ] && "
                        @"[ \"$PATHB_PLIST\" != 1 ]; then LIVE=1; fi\n"
+                       @"  PENDING=0\n"
+                       @"  if [ -f /var/db/wwn-iowatchdog/claim-pending ]; then "
+                       @"PENDING=1; fi\n"
                        @"  REBOOT=0\n"
                        @"  case \"$CLAIM\" in\n"
                        @"    *path=b*sticky=1*|*sticky=1*path=b*)\n"
                        @"      if [ \"$LIVE\" != 1 ]; then REBOOT=1; fi\n"
                        @"      ;;\n"
                        @"  esac\n"
+                       @"  if [ \"$LIVE\" != 1 ]; then\n"
+                       @"    if [ \"$PENDING\" = 1 ] || [ \"$PATHB_PLIST\" = 1 ]; "
+                       @"then REBOOT=1; fi\n"
+                       @"  fi\n"
                        @"  if [ \"$REBOOT\" = 1 ]; then V=reboot\n"
                        @"  elif [ \"$LIVE\" = 1 ]; then V=takeover-now\n"
                        @"  else V=blocked; fi\n"
                        @"  if [ \"$V\" = takeover-now ]; then\n"
-                       @"    R=\"Path B IOWatchdog is live (sock done=1). "
-                       @"Classic Take Over may run now.\"\n"
+                       @"    R=\"Watchdog safety is live. Use Take Over Screen "
+                       @"Now when you want Desktop Replacement.\"\n"
                        @"  elif [ \"$V\" = reboot ]; then\n"
-                       @"    R=\"Path B is armed (claim-ok path=b sticky=1) "
-                       @"but IOWatchdog is not Disabled yet (sock not done=1"
-                       @"). Reboot so the Path B LaunchDaemon can Disable "
-                       @"before Classic Take Over.\"\n"
+                       @"    R=\"Path B is armed. Restart this Mac so the "
+                       @"watchdog safety layer can finish. After you log in, "
+                       @"use Take Over Screen Now.\"\n"
                        @"  elif [ -z \"$CLAIM\" ]; then\n"
-                       @"    R=\"No /var/db/wwn-iowatchdog/claim-ok. Arm Path "
-                       @"B (wwn-iowatchdog claim-install --path-b), then reboot.\"\n"
+                       @"    R=\"Desktop Replacement still needs a one-time "
+                       @"setup, then a restart. Use Prepare this Mac.\"\n"
                        @"  else\n"
-                       @"    R=\"Path B not live. claim-ok='$CLAIM' "
-                       @"pathb_plist=$PATHB_PLIST marker=$MARKER sock='$SOCK_ST'. "
-                       @"Arm Path B, reboot, confirm sock done=1 dkr=0x0.\"\n"
+                       @"    R=\"Watchdog safety is not live yet. Use Prepare "
+                       @"this Mac, then restart.\"\n"
                        @"  fi\n"
                        @"  echo \"claim_ok=$CLAIM\"\n"
+                       @"  echo \"pending=$PENDING\"\n"
                        @"  echo \"pathb_plist=$PATHB_PLIST\"\n"
                        @"  echo \"marker=$MARKER\"\n"
                        @"  echo \"sock=$SOCK_ST\"\n"
@@ -3125,7 +3135,12 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   r.verdict = WWNModeBVerdictBlocked;
   r.token = @"blocked";
   r.reason = @"Classic Take Over is blocked.";
-  r.nextStep = @"Fix the reason below, then Wawona --mode-b-ready.";
+  r.nextStep = @"Use Prepare this Mac, then restart.";
+  r.userSummary = @"Desktop Replacement still needs a one-time setup on this "
+                  @"Mac, then a restart.";
+  BOOL haveModeB =
+      [self bundledDylibPath].length > 0 &&
+      [self bundledClaimInstallPath].length > 0;
 
   pid_t pid = [self readLiveCompositorPid];
   BOOL wsUp = [self isAppleWindowServerRunning];
@@ -3138,11 +3153,15 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
             (int)pid];
     r.nextStep =
         @"Already on Classic. Ctrl+Option+Backspace restores Aqua.";
+    r.userSummary =
+        @"Desktop Replacement is already running. "
+        @"Ctrl+Option+Backspace restores macOS.";
     return r;
   }
 
   WWNSipStatusType sip = [WWNSipStatus current];
   if (![WWNSipStatus allowsDesktopReplacement:sip]) {
+    r.needsSipHowTo = YES;
     r.reason = [NSString
         stringWithFormat:
             @"SIP is not fully disabled (%@). Mode B Classic needs "
@@ -3150,7 +3169,11 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
             @"System Integrity Protection status: disabled). Partial SIP "
             @"(Debugging Restrictions off) is refused.",
             [WWNSipStatus describe:sip]];
-    r.nextStep = @"csrutil disable, reboot, then Wawona --mode-b-ready.";
+    r.nextStep = @"Open SIP Requirements & How-To, fully disable SIP in "
+                 @"Recovery, then restart.";
+    r.userSummary =
+        @"System Integrity Protection must be fully disabled in Recovery "
+        @"before Desktop Replacement can run. Open SIP Requirements & How-To.";
     return r;
   }
 
@@ -3158,22 +3181,28 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
       isExecutableFileAtPath:[self modeBHelperPath]];
   BOOL sudoOk = [self sudoersAllowsHelper];
   if (!helperOk || !sudoOk) {
+    r.canPrepareRequirements = haveModeB;
     r.reason = [NSString
         stringWithFormat:
             @"Mode B helper is not staged for passwordless Take Over "
             @"(helper executable=%d, sudoers NOPASSWD=%d). Path=%@.",
             helperOk ? 1 : 0, sudoOk ? 1 : 0, [self modeBHelperPath]];
-    r.nextStep = @"Wawona --mode-b-stage (administrator once), then "
-                 @"Wawona --mode-b-ready.";
+    r.nextStep = @"Use Prepare this Mac (administrator once), then restart "
+                 @"if asked.";
+    r.userSummary =
+        @"Wawona still needs to install its Desktop helper on this Mac "
+        @"(one administrator approval). Use Prepare this Mac. That does "
+        @"not take over the screen.";
     return r;
   }
 
   NSError *pre = [self injectionPreflightError];
   if (pre) {
+    r.canPrepareRequirements = haveModeB;
     r.reason = pre.localizedDescription;
-    r.nextStep = @"Pick a Desktop Machine (weston, niri, kmscube, "
-                 @"gbm-es2-demo, vkcube) under Settings → Desktop Replacement. "
-                 @"Weston/niri stay nested in Mode A Machines Start.";
+    r.nextStep = @"Use Prepare this Mac. Wawona will pick a Desktop Machine "
+                 @"if needed.";
+    r.userSummary = pre.localizedDescription;
     return r;
   }
 
@@ -3227,13 +3256,28 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     }
   }
 
+  NSFileManager *fm = [NSFileManager defaultManager];
+  BOOL pending = [fm fileExistsAtPath:kWWNModeBClaimPendingPath];
+  BOOL pathbPlist = [fm
+      fileExistsAtPath:@"/Library/LaunchDaemons/"
+                       @"com.aspauldingcode.wwn-iowatchdog-pathb.plist"];
+  if (!live && (pending || pathbPlist)) {
+    needReboot = YES;
+    if (![verdict isEqualToString:@"takeover-now"]) {
+      verdict = @"reboot";
+    }
+  }
+
   if (live || [verdict isEqualToString:@"takeover-now"]) {
     r.verdict = WWNModeBVerdictTakeoverNow;
     r.token = @"takeover-now";
     r.reason = helperReason.length
                    ? helperReason
                    : @"Path B IOWatchdog is live. Classic Take Over may run now.";
-    r.nextStep = @"Wawona --mode-b-engage (or Settings → Take Over Screen Now).";
+    r.nextStep = @"Use Take Over Screen Now.";
+    r.userSummary =
+        @"Watchdog safety is in place. Use Take Over Screen Now when you "
+        @"want Desktop Replacement.";
     return r;
   }
   if (needReboot || [verdict isEqualToString:@"reboot"] || ack == 2) {
@@ -3247,12 +3291,16 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                              @"claim-ok=%@",
                              sock.length ? sock : @"(empty)",
                              claim.length ? claim : @"(empty)"];
-    r.nextStep = @"Restart this Mac (native Restart sheet). After login, "
-                 @"Wawona --mode-b-ready must say takeover-now, then engage.";
+    r.nextStep = @"Restart this Mac. After you log in, use Take Over Screen "
+                 @"Now.";
+    r.userSummary =
+        @"Setup is waiting on a restart. After you log back in, use Take "
+        @"Over Screen Now.";
     return r;
   }
   r.verdict = WWNModeBVerdictBlocked;
   r.token = @"blocked";
+  r.canPrepareRequirements = haveModeB;
   r.reason = helperReason.length
                  ? helperReason
                  : [NSString
@@ -3261,8 +3309,11 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                            @"verdict=%@ sock=%@ claim-ok=%@",
                            ack, verdict, sock.length ? sock : @"(empty)",
                            claim.length ? claim : @"(empty)"];
-  r.nextStep = @"Arm Path B (wwn-iowatchdog claim-install --path-b), reboot, "
-               @"then Wawona --mode-b-ready.";
+  r.nextStep = @"Use Prepare this Mac, then restart.";
+  r.userSummary =
+      @"Desktop Replacement needs a one-time setup on this Mac: install the "
+      @"watchdog safety layer, then restart. After you log back in, use "
+      @"Take Over Screen Now. Setup does not take over the screen.";
   return r;
 }
 
@@ -3325,16 +3376,11 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     s.canRestartMac = YES;
   } else {
     s.state = @"blocked";
+    s.canPrepare = r.canPrepareRequirements || r.needsSipHowTo;
   }
-  NSMutableString *tip =
-      [NSMutableString stringWithString:r.reason.length ? r.reason : @""];
-  if (r.nextStep.length > 0) {
-    if (tip.length > 0) {
-      [tip appendString:@"\n"];
-    }
-    [tip appendString:r.nextStep];
-  }
-  s.tooltip = tip;
+  s.tooltip = r.userSummary.length
+                  ? r.userSummary
+                  : (r.reason.length ? r.reason : @"Classic Take Over is blocked.");
   self.menuBarDesktopCache = s;
   return s;
 }
@@ -3399,6 +3445,448 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                }];
   }
   return NO;
+}
+
+- (BOOL)runPrivilegedShellCommand:(NSString *)shellCmd
+                    successMarker:(NSString *)marker
+                       stdoutText:(NSString *_Nullable *_Nullable)stdoutText
+                            error:(NSError *_Nullable *_Nullable)error {
+  NSMutableString *outStr = [NSMutableString string];
+  {
+    NSTask *sudoProbe = [[NSTask alloc] init];
+    sudoProbe.executableURL = [NSURL fileURLWithPath:@"/usr/bin/sudo"];
+    sudoProbe.arguments = @[ @"-n", @"true" ];
+    sudoProbe.standardOutput = [NSPipe pipe];
+    sudoProbe.standardError = [NSPipe pipe];
+    NSError *probeErr = nil;
+    BOOL probed = [sudoProbe launchAndReturnError:&probeErr];
+    if (probed) {
+      [sudoProbe waitUntilExit];
+    }
+    if (probed && sudoProbe.terminationStatus == 0) {
+      NSTask *task = [[NSTask alloc] init];
+      task.executableURL = [NSURL fileURLWithPath:@"/usr/bin/sudo"];
+      task.arguments = @[ @"-n", @"/bin/sh", @"-c", shellCmd ];
+      NSPipe *outPipe = [NSPipe pipe];
+      NSPipe *errPipe = [NSPipe pipe];
+      task.standardOutput = outPipe;
+      task.standardError = errPipe;
+      NSError *launchErr = nil;
+      if (![task launchAndReturnError:&launchErr]) {
+        if (error) {
+          *error = launchErr ?: [NSError
+                                    errorWithDomain:@"WWNDesktopReplacement"
+                                               code:5
+                                           userInfo:@{
+                                             NSLocalizedDescriptionKey :
+                                                 @"sudo -n launch failed."
+                                           }];
+        }
+        return NO;
+      }
+      [task waitUntilExit];
+      NSData *outData = [[outPipe fileHandleForReading] readDataToEndOfFile];
+      NSData *errData = [[errPipe fileHandleForReading] readDataToEndOfFile];
+      if (outData.length) {
+        [outStr appendString:[[NSString alloc] initWithData:outData
+                                                   encoding:NSUTF8StringEncoding]
+                                 ?: @""];
+      }
+      if (errData.length) {
+        [outStr appendString:[[NSString alloc] initWithData:errData
+                                                   encoding:NSUTF8StringEncoding]
+                                 ?: @""];
+      }
+      if (stdoutText) {
+        *stdoutText = [outStr copy];
+      }
+      BOOL ok = task.terminationStatus == 0;
+      if (!ok && marker.length > 0) {
+        ok = [outStr containsString:marker];
+      }
+      if (!ok) {
+        if (error) {
+          *error = [NSError
+              errorWithDomain:@"WWNDesktopReplacement"
+                         code:5
+                     userInfo:@{
+                       NSLocalizedDescriptionKey : [NSString
+                           stringWithFormat:
+                               @"Privileged command failed (status=%d). %@",
+                               (int)task.terminationStatus,
+                               outStr.length ? outStr : @"(no output)"]
+                     }];
+        }
+        return NO;
+      }
+      return YES;
+    }
+  }
+
+  AuthorizationRef authRef;
+  OSStatus status = AuthorizationCreate(NULL, kAuthorizationEmptyEnvironment,
+                                        kAuthorizationFlagDefaults, &authRef);
+  if (status != errAuthorizationSuccess) {
+    if (error) {
+      *error = [NSError
+          errorWithDomain:@"WWNDesktopReplacement"
+                     code:5
+                 userInfo:@{
+                   NSLocalizedDescriptionKey : @"Authorization creation failed."
+                 }];
+    }
+    return NO;
+  }
+
+  AuthorizationItem right = {kAuthorizationRightExecute, 0, NULL, 0};
+  AuthorizationRights rights = {1, &right};
+  AuthorizationFlags flags = kAuthorizationFlagDefaults |
+                             kAuthorizationFlagInteractionAllowed |
+                             kAuthorizationFlagPreAuthorize |
+                             kAuthorizationFlagExtendRights;
+  status = AuthorizationCopyRights(authRef, &rights, NULL, flags, NULL);
+  if (status != errAuthorizationSuccess) {
+    AuthorizationFree(authRef, kAuthorizationFlagDefaults);
+    if (error) {
+      *error = [NSError
+          errorWithDomain:@"WWNDesktopReplacement"
+                     code:5
+                 userInfo:@{
+                   NSLocalizedDescriptionKey :
+                       @"User cancelled administrator authorization."
+                 }];
+    }
+    return NO;
+  }
+
+  char *args[] = {"-c", (char *)shellCmd.UTF8String, NULL};
+  FILE *pipe = NULL;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+  status = AuthorizationExecuteWithPrivileges(
+      authRef, "/bin/sh", kAuthorizationFlagDefaults, args, &pipe);
+#pragma clang diagnostic pop
+  if (status != errAuthorizationSuccess) {
+    AuthorizationFree(authRef, kAuthorizationFlagDefaults);
+    if (error) {
+      *error = [NSError
+          errorWithDomain:@"WWNDesktopReplacement"
+                     code:5
+                 userInfo:@{
+                   NSLocalizedDescriptionKey : [NSString
+                       stringWithFormat:
+                           @"Failed to run administrator command (status=%d).",
+                           (int)status]
+                 }];
+    }
+    return NO;
+  }
+
+  if (pipe) {
+    char buf[256];
+    while (fgets(buf, sizeof(buf), pipe)) {
+      [outStr appendFormat:@"%s", buf];
+    }
+    fclose(pipe);
+  }
+  AuthorizationFree(authRef, kAuthorizationFlagDefaults);
+  if (stdoutText) {
+    *stdoutText = [outStr copy];
+  }
+  BOOL ok = marker.length == 0 || [outStr containsString:marker];
+  if (!ok) {
+    if (error) {
+      *error = [NSError
+          errorWithDomain:@"WWNDesktopReplacement"
+                     code:6
+                 userInfo:@{
+                   NSLocalizedDescriptionKey : [NSString
+                       stringWithFormat:
+                           @"Administrator command did not finish. %@",
+                           outStr.length ? outStr : @"(no output)"]
+                 }];
+    }
+    return NO;
+  }
+  return YES;
+}
+
+- (BOOL)armPathBClaimInstall:(NSError *_Nullable *_Nullable)error {
+  NSString *exe = [self bundledClaimInstallPath];
+  if (exe.length == 0) {
+    if (error) {
+      *error = [NSError
+          errorWithDomain:@"WWNDesktopReplacement"
+                     code:3
+                 userInfo:@{
+                   NSLocalizedDescriptionKey :
+                       @"This Wawona build does not ship "
+                       @"wwn-iowatchdog-claim-install. Install the Desktop "
+                       @"Replacement build, then try Prepare this Mac again."
+                 }];
+    }
+    return NO;
+  }
+  NSString *pkg = [exe stringByDeletingLastPathComponent];
+  NSString *hook =
+      [pkg stringByAppendingPathComponent:@"lib/libwwn_watchdogd_hook.dylib"];
+  if (![[NSFileManager defaultManager] fileExistsAtPath:hook]) {
+    if (error) {
+      *error = [NSError
+          errorWithDomain:@"WWNDesktopReplacement"
+                     code:3
+                 userInfo:@{
+                   NSLocalizedDescriptionKey : [NSString
+                       stringWithFormat:
+                           @"Path B hook is missing at %@. Reinstall the "
+                           @"Desktop Replacement build.",
+                           hook]
+                 }];
+    }
+    return NO;
+  }
+  NSString *shellCmd = [NSString
+      stringWithFormat:@"%@ --path-b %@ 2>&1", [self wwnShellQuote:exe],
+                       [self wwnShellQuote:pkg]];
+  NSString *out = nil;
+  if (![self runPrivilegedShellCommand:shellCmd
+                         successMarker:@"Path B sticky armed"
+                            stdoutText:&out
+                                 error:error]) {
+    return NO;
+  }
+  WWNModeBCliLog(@"path-b arm output: %@", out.length ? out : @"(empty)");
+  return YES;
+}
+
+- (BOOL)installDesktopReplacementRequirements:
+    (NSError *_Nullable *_Nullable)error {
+  if ([self bundledDylibPath].length == 0 ||
+      [self bundledClaimInstallPath].length == 0) {
+    if (error) {
+      *error = [NSError
+          errorWithDomain:@"WWNDesktopReplacement"
+                     code:3
+                 userInfo:@{
+                   NSLocalizedDescriptionKey :
+                       @"This Wawona is Mode A only. Install the Desktop "
+                       @"Replacement build, then use Prepare this Mac."
+                 }];
+    }
+    return NO;
+  }
+
+  WWNSipStatusType sip = [WWNSipStatus current];
+  if (![WWNSipStatus allowsDesktopReplacement:sip]) {
+    if (error) {
+      *error = [NSError
+          errorWithDomain:@"WWNDesktopReplacement"
+                     code:2
+                 userInfo:@{
+                   NSLocalizedDescriptionKey :
+                       @"System Integrity Protection must be fully disabled "
+                       @"in Recovery first. Open SIP Requirements & How-To."
+                 }];
+    }
+    return NO;
+  }
+
+  if (![self ensureDesktopMachineSelected:error]) {
+    int sel = [self cliSelectDesktopMachine:@"weston"];
+    if (sel != 0 || ![self ensureDesktopMachineSelected:error]) {
+      return NO;
+    }
+  }
+
+  BOOL helperOk = [[NSFileManager defaultManager]
+      isExecutableFileAtPath:[self modeBHelperPath]];
+  BOOL sudoOk = [self sudoersAllowsHelper];
+  if (!helperOk || !sudoOk) {
+    NSString *desktopId = [[NSUserDefaults standardUserDefaults]
+        stringForKey:kWWNPrefsDesktopReplacementMachineId];
+    WWNMachineProfile *profile =
+        [WWNMachineProfileStore profileById:desktopId];
+    if (!profile) {
+      if (error) {
+        *error = [NSError
+            errorWithDomain:@"WWNDesktopReplacement"
+                       code:9
+                   userInfo:@{
+                     NSLocalizedDescriptionKey :
+                         @"Could not select a Desktop Machine to stage the "
+                         @"helper."
+                   }];
+      }
+      return NO;
+    }
+    if (![self installModeBHelperAndDylibForProfile:profile error:error]) {
+      return NO;
+    }
+  }
+
+  WWNModeBReadyReport *ready = [self evaluateClassicReadiness];
+  if (ready.verdict == WWNModeBVerdictTakeoverNow ||
+      ready.verdict == WWNModeBVerdictReboot) {
+    return YES;
+  }
+
+  return [self armPathBClaimInstall:error];
+}
+
+- (void)presentRestartAfterPrepareWithMessage:(NSString *)message {
+  NSAlert *confirm = [[NSAlert alloc] init];
+  confirm.alertStyle = NSAlertStyleInformational;
+  confirm.messageText = @"Restart required";
+  confirm.informativeText = message.length
+                                ? message
+                                : @"Restart this Mac so the watchdog safety "
+                                  @"layer can finish. After you log in, use "
+                                  @"Take Over Screen Now.";
+  [confirm addButtonWithTitle:@"Restart"];
+  [confirm addButtonWithTitle:@"Later"];
+  if ([confirm runModal] != NSAlertFirstButtonReturn) {
+    return;
+  }
+  NSError *rst = nil;
+  if (![self requestNativeMacOSRestart:&rst]) {
+    NSAlert *fail = [[NSAlert alloc] init];
+    fail.alertStyle = NSAlertStyleCritical;
+    fail.messageText = @"Could not open Restart";
+    fail.informativeText = rst.localizedDescription
+                               ?: @"Use the Apple menu → Restart.";
+    [fail addButtonWithTitle:@"OK"];
+    [fail runModal];
+  }
+}
+
+- (void)presentDesktopReplacementPrepareFlow {
+  void (^show)(void) = ^{
+    [NSApp activateIgnoringOtherApps:YES];
+    if ([self bundledDylibPath].length == 0 ||
+        [self bundledClaimInstallPath].length == 0) {
+      NSAlert *alert = [[NSAlert alloc] init];
+      alert.alertStyle = NSAlertStyleWarning;
+      alert.messageText = @"Desktop Replacement is not in this Wawona";
+      alert.informativeText =
+          @"This copy is Mode A only (in-window). Install the Desktop "
+          @"Replacement build, then try Prepare this Mac again.";
+      [alert addButtonWithTitle:@"OK"];
+      [alert runModal];
+      return;
+    }
+
+    WWNSipStatusType sip = [WWNSipStatus current];
+    if (![WWNSipStatus allowsDesktopReplacement:sip]) {
+      NSAlert *alert = [[NSAlert alloc] init];
+      alert.alertStyle = NSAlertStyleWarning;
+      alert.messageText = @"Desktop Replacement. SIP Requirements";
+      alert.informativeText = [WWNSipStatus desktopReplacementHowToMessage];
+      [alert addButtonWithTitle:@"OK"];
+      [alert addButtonWithTitle:@"Copy csrutil Command"];
+      if ([alert runModal] == NSAlertSecondButtonReturn) {
+        NSPasteboard *pb = [NSPasteboard generalPasteboard];
+        [pb clearContents];
+        [pb setString:@"csrutil disable" forType:NSPasteboardTypeString];
+      }
+      return;
+    }
+
+    WWNModeBReadyReport *ready = [self evaluateClassicReadiness];
+    if (ready.verdict == WWNModeBVerdictTakeoverNow) {
+      NSAlert *alert = [[NSAlert alloc] init];
+      alert.alertStyle = NSAlertStyleInformational;
+      alert.messageText = @"This Mac is ready";
+      alert.informativeText =
+          @"Watchdog safety is in place. Use Take Over Screen Now when you "
+          @"want Desktop Replacement. Setup does not start Take Over by "
+          @"itself.";
+      [alert addButtonWithTitle:@"OK"];
+      [alert runModal];
+      return;
+    }
+    if (ready.verdict == WWNModeBVerdictReboot) {
+      [self presentRestartAfterPrepareWithMessage:ready.userSummary];
+      return;
+    }
+
+    NSAlert *confirm = [[NSAlert alloc] init];
+    confirm.alertStyle = NSAlertStyleInformational;
+    confirm.messageText = @"Prepare this Mac for Desktop Replacement?";
+    confirm.informativeText =
+        @"Wawona will install a watchdog safety layer (administrator "
+        @"password), then ask you to restart. After you log back in, open "
+        @"Wawona and use Take Over Screen Now.\n\n"
+        @"This does not take over the screen, and it does not unload Apple's "
+        @"watchdog. Restart is required before Take Over can run.";
+    [confirm addButtonWithTitle:@"Prepare this Mac"];
+    [confirm addButtonWithTitle:@"Cancel"];
+    if ([confirm runModal] != NSAlertFirstButtonReturn) {
+      return;
+    }
+
+    NSError *err = nil;
+    if (![self installDesktopReplacementRequirements:&err]) {
+      NSAlert *fail = [[NSAlert alloc] init];
+      fail.alertStyle = NSAlertStyleCritical;
+      fail.messageText = @"Could not prepare this Mac";
+      fail.informativeText = err.localizedDescription
+                                 ?: @"See /tmp/wawona-modeb-cli.log.";
+      [fail addButtonWithTitle:@"OK"];
+      [fail runModal];
+      return;
+    }
+
+    ready = [self evaluateClassicReadiness];
+    if (ready.verdict == WWNModeBVerdictTakeoverNow) {
+      NSAlert *ok = [[NSAlert alloc] init];
+      ok.alertStyle = NSAlertStyleInformational;
+      ok.messageText = @"This Mac is ready";
+      ok.informativeText =
+          @"Watchdog safety is in place. Use Take Over Screen Now when you "
+          @"want Desktop Replacement.";
+      [ok addButtonWithTitle:@"OK"];
+      [ok runModal];
+      return;
+    }
+    [self presentRestartAfterPrepareWithMessage:
+              @"Setup finished. Restart this Mac so the watchdog safety "
+              @"layer can finish. After you log in, use Take Over Screen "
+              @"Now."];
+  };
+  if ([NSThread isMainThread]) {
+    show();
+  } else {
+    dispatch_sync(dispatch_get_main_queue(), show);
+  }
+}
+
+- (int)cliPrepare {
+  WWNModeBCliLog(@"mode-b-prepare");
+  NSError *err = nil;
+  if (![self installDesktopReplacementRequirements:&err]) {
+    WWNModeBCliLog(@"prepare failed: %@", err.localizedDescription);
+    WWNModeBReadyReport *blocked = [self evaluateClassicReadiness];
+    WWNModeBCliLog(@"VERDICT %@", blocked.token);
+    WWNModeBCliLog(@"REASON %@",
+                   err.localizedDescription ?: blocked.reason);
+    WWNModeBCliLog(@"next: %@", blocked.nextStep);
+    return blocked.verdict == WWNModeBVerdictTakeoverNow
+               ? 1
+               : (int)blocked.verdict;
+  }
+  WWNModeBReadyReport *r = [self evaluateClassicReadiness];
+  WWNModeBCliLog(@"VERDICT %@", r.token);
+  WWNModeBCliLog(@"REASON %@", r.reason);
+  WWNModeBCliLog(@"next: %@", r.nextStep);
+  if (r.verdict == WWNModeBVerdictTakeoverNow) {
+    return 0;
+  }
+  WWNModeBCliLog(@"opening native macOS Restart sheet (kAERestart / QA1134)");
+  NSError *rst = nil;
+  if (![self requestNativeMacOSRestart:&rst]) {
+    WWNModeBCliLog(@"restart sheet failed: %@", rst.localizedDescription);
+  }
+  return (int)WWNModeBVerdictReboot;
 }
 
 - (int)cliReady {
@@ -3675,6 +4163,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   r.token = @"blocked";
   r.reason = @"Desktop Replacement Mode B is macOS-only.";
   r.nextStep = @"";
+  r.userSummary = r.reason;
   return r;
 }
 - (BOOL)isModeBCompositorLive {
@@ -3700,6 +4189,23 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                              }];
   }
   return NO;
+}
+- (BOOL)installDesktopReplacementRequirements:
+    (NSError *_Nullable *_Nullable)error {
+  if (error) {
+    *error = [NSError errorWithDomain:@"WWNDesktopReplacement"
+                                 code:100
+                             userInfo:@{
+                               NSLocalizedDescriptionKey :
+                                   @"Desktop Replacement Mode B is macOS-only."
+                             }];
+  }
+  return NO;
+}
+- (void)presentDesktopReplacementPrepareFlow {
+}
+- (int)cliPrepare {
+  return 2;
 }
 - (int)cliEngageKeepWindowServer:(BOOL)keepWindowServer {
   (void)keepWindowServer;

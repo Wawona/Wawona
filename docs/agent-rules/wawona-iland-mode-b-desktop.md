@@ -92,7 +92,8 @@ Never invent CSR_* syscalls; stay on `csrutil status` string matching.
 - Mode B Watchdog tools: `wwn-iowatchdog` (L3′ flake; not in-tree C).
 - **macOS 26 watchdog safety:** `wawona-mode-b-watchdog-safety` (never Take
   Over / never LLDB MCP on `watchdogd`).
-- SIP + prefs UI: `WWNSipStatus.*`, `WWNPreferences.m` Desktop section.
+- SIP + prefs UI: `WWNSipStatus.*`, `WWNPreferences.m` Desktop section
+  (**Prepare this Mac** stages helper + Path B; Take Over stays gated).
 - Engage/disengage: `WWNDesktopReplacementController.*`,
   `WWNMachineSessionBridge.m`. Default `nix run .#install` skips Mode B
   restage. `WAWONA_MODEB_STAGE=1 nix run .#install` (or `Wawona --mode-b-stage`)

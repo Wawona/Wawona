@@ -57,8 +57,10 @@ ACK comes from Path B (`claim-ok` / sock) or Path A claim. Soft-inject
    and `watchdogd` running.
 2. Before any Mode B / IOWatchdog work: `pkill -f lldb_mcp.py` and confirm
    `pgrep -l watchdogd`.
-3. Settings UX: Take Over is available only when Path B `claim-ok` is present;
-   otherwise show arm steps. Do not stage a helper just to show a failure alert.
+3. Settings UX: Take Over is available only when Path B `claim-ok` is present
+   **and** live Disable. Otherwise offer **Prepare this Mac** (stage helper if
+   needed, bundled `claim-install --path-b`, native Restart). Never Take Over
+   from Prepare. Never dump CLI paths as the only instruction.
 4. Probe-only path (Aqua stays up): `WAWONA_MODEB_STAGE=1 nix run .#install`,
    then `Wawona --mode-b-probe` (KEEP_WS). Still never unload `watchdogd`
    without Path B ACK.

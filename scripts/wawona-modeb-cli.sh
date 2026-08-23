@@ -232,7 +232,7 @@ cmd_ready() {
   fi
   log "VERDICT blocked"
   log "REASON ${reason:-Classic Take Over is blocked. See --ack-status above.}"
-  log "next: arm Path B (claim-install --path-b), reboot, then Wawona --mode-b-ready"
+  log "next: Wawona --mode-b-prepare (or Settings → Prepare this Mac)"
   return 3
 }
 

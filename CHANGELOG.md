@@ -10,6 +10,13 @@ as history.
 
 ## [Unreleased]
 
+- **macOS Desktop Replacement setup.** Settings and the menubar no longer
+  dump `claim-install --path-b` at friends. **Prepare this Mac** stages the
+  helper if needed, runs bundled Path B `claim-install` with an administrator
+  prompt, then opens the native Restart sheet. Take Over stays blocked until
+  Path B is live. Setup never unloads `watchdogd` and never takes over the
+  screen. CLI: `Wawona --mode-b-prepare`.
+
 ## [26.8.23] - 2026-08-23
 
 - **macOS menubar Desktop.** The applet has a Desktop row next to

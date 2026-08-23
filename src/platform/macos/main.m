@@ -222,6 +222,8 @@ static void wwn_print_cli_help(void) {
       "  --mode-b-status         Desktop Replacement Mode B status and exit\n"
       "  --mode-b-ready          Classic gate: takeover-now, reboot, or blocked\n"
       "                          (prints VERDICT and REASON)\n"
+      "  --mode-b-prepare        Stage helper + arm Path B (admin once).\n"
+      "                          Does not take over. Reboot opens Restart\n"
       "  --mode-b-machine <id>   Select Desktop Take Over machine (id, name,\n"
       "                          or weston). Creates Weston Desktop if needed.\n"
       "                          Does not take over the screen\n"
@@ -272,6 +274,7 @@ static void wwn_print_cli_help(void) {
       "  Wawona --mode-b-machine weston\n"
       "  Wawona --mode-b-status\n"
       "  Wawona --mode-b-ready\n"
+      "  Wawona --mode-b-prepare\n"
       "  Wawona --mode-b-probe\n"
       "  Wawona --mode-b-probe --machine <id>\n"
       "  Wawona --mode-b-engage\n"
@@ -1326,9 +1329,11 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
       desk.tooltip.length
           ? desk.tooltip
           : [NSString stringWithFormat:@"Desktop: %@", desk.state];
-  self.desktopTakeOverButton.enabled = desk.canTakeOver;
+  self.desktopTakeOverButton.enabled = desk.canTakeOver || desk.canPrepare;
   self.desktopRestoreButton.enabled = desk.canRestore;
   self.desktopRestartButton.enabled = desk.canRestartMac;
+  self.desktopTakeOverButton.toolTip =
+      desk.canPrepare ? @"Prepare this Mac" : @"Take Over Screen Now";
 }
 
 - (void)restartCompositor:(id)sender {
@@ -1358,13 +1363,7 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
       [WWNDesktopReplacementController sharedController];
   WWNModeBReadyReport *ready = [desk evaluateClassicReadiness];
   if (ready.verdict == WWNModeBVerdictBlocked) {
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.alertStyle = NSAlertStyleCritical;
-    alert.messageText = @"Desktop Take Over is blocked";
-    alert.informativeText =
-        [NSString stringWithFormat:@"%@\n\n%@", ready.reason, ready.nextStep];
-    [alert addButtonWithTitle:@"OK"];
-    [alert runModal];
+    [desk presentDesktopReplacementPrepareFlow];
     [self refreshStatus:self.statusItem.menu];
     return;
   }
@@ -1572,6 +1571,7 @@ int main(int argc, char *argv[]) {
        */
       if (strcmp(arg, "--mode-b-status") == 0 ||
           strcmp(arg, "--mode-b-ready") == 0 ||
+          strcmp(arg, "--mode-b-prepare") == 0 ||
           strcmp(arg, "--mode-b-stage") == 0 ||
           strcmp(arg, "--mode-b-probe") == 0 ||
           strcmp(arg, "--mode-b-engage") == 0 ||
@@ -1587,6 +1587,8 @@ int main(int argc, char *argv[]) {
             modeBAction = "status";
           } else if (strcmp(a, "--mode-b-ready") == 0) {
             modeBAction = "ready";
+          } else if (strcmp(a, "--mode-b-prepare") == 0) {
+            modeBAction = "prepare";
           } else if (strcmp(a, "--mode-b-stage") == 0) {
             modeBAction = "stage";
           } else if (strcmp(a, "--mode-b-probe") == 0) {
@@ -1650,6 +1652,9 @@ int main(int argc, char *argv[]) {
         }
         if (modeBAction && strcmp(modeBAction, "ready") == 0) {
           return [ctl cliReady];
+        }
+        if (modeBAction && strcmp(modeBAction, "prepare") == 0) {
+          return [ctl cliPrepare];
         }
         if (modeBAction && strcmp(modeBAction, "stage") == 0) {
           return [ctl cliStage];
@@ -1720,6 +1725,7 @@ int main(int argc, char *argv[]) {
                  strcmp(arg, "--list-machines") == 0 ||
                  strcmp(arg, "--mode-b-status") == 0 ||
                  strcmp(arg, "--mode-b-ready") == 0 ||
+                 strcmp(arg, "--mode-b-prepare") == 0 ||
                  strcmp(arg, "--mode-b-stage") == 0 ||
                  strcmp(arg, "--mode-b-probe") == 0 ||
                  strcmp(arg, "--mode-b-engage") == 0 ||

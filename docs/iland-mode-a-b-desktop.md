@@ -169,17 +169,19 @@ input. Ctrl+Option+Backspace still restores Aqua.
 This is userspace only (no kernel tty). See also
 [`mode-b-windowserver-options.md`](mode-b-windowserver-options.md).
 
-Before Classic Take Over:
+Before Classic Take Over, Settings → Desktop → **Prepare this Mac** (or
+`Wawona --mode-b-prepare`) stages the helper if needed and arms Path B,
+then opens the native Restart sheet. That does not take over the screen.
 
 ```text
 Wawona --mode-b-ready
 ```
 
-Exit 0: `VERDICT takeover-now` plus `REASON` (run `Wawona --mode-b-engage`).
-Exit 2: reboot first. Engage and Settings Take Over open the native macOS
-Restart sheet (`kAERestart` / QA1134, 60-second countdown). Exit 3: blocked,
-with the exact SIP / helper / claim-ok / sock text in `REASON`. Settings shows
-the same report as **Classic readiness**.
+Exit 0: `VERDICT takeover-now` plus `REASON` (run `Wawona --mode-b-engage`
+or Take Over Screen Now). Exit 2: reboot first. Engage and Settings Take
+Over open the native macOS Restart sheet (`kAERestart` / QA1134,
+60-second countdown). Exit 3: blocked. Settings shows a friend-facing
+summary and offers **Prepare this Mac** instead of CLI recipes.
 
 ## Mode B launch (macOS)
 
@@ -215,7 +217,8 @@ repo: [`wwn-iland/docs/mode-b/baremetal-display-spi-25F80.md`](../../wwn-iland/d
    `/var/db/wwn-iowatchdog/claim-ok` before unloading watchdogd /
    WindowServer (`WWN_MODEB_WD=iowatchdog-then-unload`). Soft-inject /
    `lldb` stay forbidden. Without `claim-ok`, Settings refuses Classic
-   Take Over and points at `claim-install --path-b` + reboot. KEEP_WS
+   Take Over and offers **Prepare this Mac** (bundled
+   `claim-install --path-b` + native Restart). KEEP_WS
    `--mode-b-probe` may still inject while WindowServer and watchdogd
    stay up. `nix run .#install` skips Mode B restage by default
    (`WAWONA_MODEB_STAGE=1` to force). Never `export
