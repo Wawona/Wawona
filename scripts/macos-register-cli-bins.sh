@@ -217,13 +217,110 @@ EOF
   chmod 755 "$dest"
 }
 
+wawona_cli_path_block() {
+  printf '\n%s\n' "$PATH_BEGIN"
+  printf '%s\n' '# nix-darwin /etc/zshenv sources this for every zsh, login or not.'
+  printf '%s\n' 'if [ -d "$HOME/.local/bin" ]; then'
+  printf '%s\n' '  PATH="$HOME/.local/bin:$PATH"'
+  printf '%s\n' '  export PATH'
+  printf '%s\n' 'fi'
+  printf '%s\n' "$PATH_END"
+}
+
+wawona_cli_merge_path_file() {
+  dest="$1"
+  if [ -e "$dest" ] && grep -Fq "$PATH_BEGIN" "$dest" 2>/dev/null; then
+    return 0
+  fi
+  wawona_cli_path_block >> "$dest"
+}
+
+wawona_cli_run_as_root() {
+  script="$1"
+  if [ "$(id -u)" -eq 0 ]; then
+    /bin/sh "$script"
+    return $?
+  fi
+  if sudo -n /bin/sh "$script" >/dev/null 2>&1; then
+    return 0
+  fi
+  if command -v osascript >/dev/null 2>&1; then
+    osascript -e "do shell script \"/bin/sh '$script'\" with administrator privileges" >/dev/null
+    return $?
+  fi
+  return 1
+}
+
+wawona_cli_ensure_system_path() {
+  dest=/etc/zshenv.local
+  if [ -f "$dest" ] && grep -Fq "$PATH_BEGIN" "$dest" 2>/dev/null; then
+    echo "PATH hook already present: $dest"
+    return 0
+  fi
+  mkdir -p "$CLI_DIR"
+  helper="${CLI_DIR}/install-zshenv-local.sh"
+  block="${CLI_DIR}/path-block.sh"
+  wawona_cli_path_block > "$block"
+  cat > "$helper" <<EOF
+#!/bin/sh
+set -eu
+dest=/etc/zshenv.local
+begin='$PATH_BEGIN'
+block='$block'
+if [ -f "\$dest" ] && /usr/bin/grep -Fq "\$begin" "\$dest"; then
+  exit 0
+fi
+/bin/cat "\$block" >> "\$dest"
+/bin/chmod 644 "\$dest"
+EOF
+  chmod 755 "$helper"
+  if wawona_cli_run_as_root "$helper"; then
+    echo "PATH hook installed for all zsh: $dest"
+    return 0
+  fi
+  echo "Note: could not write $dest (needs administrator once)." >&2
+  echo "  Cursor and nested zsh are not login shells, so ~/.zprofile is skipped." >&2
+  echo "  This shell: export PATH=\"\$HOME/.local/bin:\$PATH\"" >&2
+  echo "  Or add home.sessionPath = [ \"\$HOME/.local/bin\" ]; and rebuild." >&2
+  return 1
+}
+
+wawona_cli_strip_system_path() {
+  dest=/etc/zshenv.local
+  [ -f "$dest" ] || return 0
+  grep -Fq "$PATH_BEGIN" "$dest" 2>/dev/null || return 0
+  mkdir -p "$CLI_DIR"
+  helper="${CLI_DIR}/strip-zshenv-local.sh"
+  cat > "$helper" <<'EOF'
+#!/bin/sh
+set -eu
+dest=/etc/zshenv.local
+begin='# BEGIN Wawona CLI bins (nix run .#install)'
+end='# END Wawona CLI bins'
+[ -f "$dest" ] || exit 0
+tmp="${dest}.wawona-cli.tmp"
+awk -v begin="$begin" -v end="$end" '
+  $0 == begin { skip = 1; next }
+  $0 == end { skip = 0; next }
+  skip { next }
+  { print }
+' "$dest" > "$tmp"
+mv "$tmp" "$dest"
+if [ ! -s "$dest" ]; then
+  rm -f "$dest"
+fi
+EOF
+  chmod 755 "$helper"
+  wawona_cli_run_as_root "$helper" || true
+}
+
 wawona_cli_ensure_path() {
   for rc in "${HOME}/.zprofile" "${HOME}/.zshrc" "${HOME}/.bash_profile"; do
     if [ -e "$rc" ] && grep -Fq "$PATH_BEGIN" "$rc" 2>/dev/null; then
       continue
     fi
     if [ -e "$rc" ] && [ ! -w "$rc" ]; then
-      echo "Note: $rc is not writable (home-manager?). Add ~/.local/bin to PATH there." >&2
+      echo "Note: $rc is not writable (home-manager)." >&2
       continue
     fi
     if [ -f "$rc" ] || [ "$rc" = "${HOME}/.zprofile" ]; then
@@ -233,20 +330,18 @@ wawona_cli_ensure_path() {
           continue
         fi
       fi
-      if {
-        printf '\n%s\n' "$PATH_BEGIN"
-        printf '%s\n' 'export PATH="$HOME/.local/bin:$PATH"'
-        printf '%s\n' "$PATH_END"
-      } >> "$rc" 2>/dev/null; then
+      if wawona_cli_merge_path_file "$rc" 2>/dev/null; then
         :
       else
         echo "Note: could not append PATH snippet to $rc" >&2
       fi
     fi
   done
+  wawona_cli_ensure_system_path || true
 }
 
 wawona_cli_strip_path() {
+  wawona_cli_strip_system_path
   for rc in "${HOME}/.zprofile" "${HOME}/.zshrc" "${HOME}/.bash_profile"; do
     [ -f "$rc" ] && [ -w "$rc" ] || continue
     grep -Fq "$PATH_BEGIN" "$rc" || continue
@@ -267,7 +362,7 @@ wawona_cli_is_ours() {
   grep -Fq "$MARKER" "$path"
 }
 
-wawona_cli_unregister() {
+wawona_cli_clear_wrappers() {
   if [ -f "$MANIFEST" ]; then
     while IFS= read -r path; do
       [ -n "$path" ] || continue
@@ -286,8 +381,12 @@ wawona_cli_unregister() {
     done
   done
   rm -f "$MANIFEST"
-  rm -rf "$CLI_DIR"
+}
+
+wawona_cli_unregister() {
+  wawona_cli_clear_wrappers
   wawona_cli_strip_path
+  rm -rf "$CLI_DIR"
 }
 
 wawona_cli_register() {
@@ -296,7 +395,7 @@ wawona_cli_register() {
     echo "Error: Wawona.app missing at ${app:-"(unset)"}" >&2
     exit 1
   fi
-  wawona_cli_unregister
+  wawona_cli_clear_wrappers
   wawona_cli_write_env "$app"
   mkdir -p "$LOCAL_BIN" "$(dirname "$MANIFEST")"
   : > "$MANIFEST"
@@ -345,7 +444,7 @@ wawona_cli_register() {
   echo "Registered ${count} Wawona CLI tools in ${LOCAL_BIN}"
   echo "  examples: weston-terminal niri foot kmscube waypipe"
   echo "  skipped Apple-shadowing names (ssh, zsh, vi, ...): use the bundle bin/"
-  echo "This shell: export PATH=\"\$HOME/.local/bin:\$PATH\""
+  echo "Already-open shells: export PATH=\"\$HOME/.local/bin:\$PATH\""
 }
 
 usage() {

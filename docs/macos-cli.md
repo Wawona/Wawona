@@ -27,16 +27,24 @@ Wrappers point at the installed app, kick the compositor LaunchAgent if the
 Wayland socket is missing, and set `WESTON_*` / `FONTCONFIG_FILE` /
 `DYLD_LIBRARY_PATH`. They are not nix-store paths, so they survive GC.
 
-Apple names (`ssh`, `zsh`, `vi`, `login`, …) stay in
+Apple names (`ssh`, `zsh`, `vi`, `login`) stay in
 `/Applications/Wawona.app/Contents/Resources/bin/` so host OpenSSH and zsh
-are not replaced. `nix run .#uninstall` removes the wrappers and the PATH
-snippet from `~/.zprofile`.
+are not replaced. `nix run .#uninstall` removes the wrappers and PATH
+hooks.
 
-Open a new shell after install, or:
+PATH is prepended in `~/.zprofile` (login shells: Terminal.app) and, when
+administrator authorization is available, in `/etc/zshenv.local`. nix-darwin
+sources that file from `/etc/zshenv` for **every** zsh, including Cursor and
+a nested `zsh` (those are not login shells, so `.zprofile` never runs).
+home-manager `~/.zshrc` is a nix-store symlink and is left alone.
+
+A shell that was already open still needs:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 ```
+
+Or add `home.sessionPath = [ "$HOME/.local/bin" ];` and rebuild home-manager.
 
 ## Informational (no GUI, no instance lock)
 
