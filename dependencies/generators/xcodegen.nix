@@ -2327,6 +2327,28 @@ ICDJSON
               FW="$CONTENTS/Frameworks"
               mkdir -p "$FW"
 
+              # Host Wawona LC_LOADs @rpath/libEGL.dylib (iland shim
+              # install_name). Relocator skips @rpath and skips the main
+              # executable, so stage the shim + ANGLE here before the copy
+              # loop walks Frameworks/*.dylib for wayland-client deps.
+              ILAND_EGL="${strip (macosDeps.iland or null)}/lib/libEGL.dylib"
+              ANGLE_EGL="${strip (macosDeps.angle or null)}/lib/libEGL.dylib"
+              if [ ! -f "$ILAND_EGL" ]; then
+                echo "error: iland Wayland-EGL shim missing: $ILAND_EGL" >&2
+                exit 1
+              fi
+              if [ ! -f "$ANGLE_EGL" ]; then
+                echo "error: ANGLE libEGL.dylib missing: $ANGLE_EGL" >&2
+                exit 1
+              fi
+              cp -L "$ANGLE_EGL" "$FW/libEGL_angle.dylib"
+              chmod 755 "$FW/libEGL_angle.dylib"
+              install_name_tool -id "@rpath/libEGL_angle.dylib" "$FW/libEGL_angle.dylib" 2>/dev/null || true
+              cp -L "$ILAND_EGL" "$FW/libEGL.dylib"
+              chmod 755 "$FW/libEGL.dylib"
+              install_name_tool -id "@rpath/libEGL.dylib" "$FW/libEGL.dylib" 2>/dev/null || true
+              echo "Bundled iland libEGL.dylib (shim) + libEGL_angle.dylib (ANGLE)"
+
               # NOTE: Xcode run-script phases execute under /bin/sh, which lacks
               # process substitution (< <(...)) and needs plain temp-file reads.
               RELOC_TMP="$(mktemp -d)"

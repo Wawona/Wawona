@@ -544,7 +544,8 @@ let
         install_name_tool -id "@rpath/libEGL_angle.dylib" "$fw/libEGL_angle.dylib" 2>/dev/null || true
         echo "Bundled ANGLE as libEGL_angle.dylib"
       else
-        echo "WARNING: ANGLE libEGL.dylib missing at $angle_egl"
+        echo "ERROR: ANGLE libEGL.dylib missing at $angle_egl" >&2
+        exit 1
       fi
       if [ -f "$shim" ]; then
         cp -L "$shim" "$fw/libEGL.dylib"
@@ -552,7 +553,8 @@ let
         install_name_tool -id "@rpath/libEGL.dylib" "$fw/libEGL.dylib" 2>/dev/null || true
         echo "Bundled iland Wayland-EGL shim as libEGL.dylib"
       else
-        echo "WARNING: iland libEGL.dylib shim missing at $shim"
+        echo "ERROR: iland libEGL.dylib shim missing at $shim" >&2
+        exit 1
       fi
     }
   '';
@@ -1054,8 +1056,10 @@ GEN_HEADER
               chmod -R u+w "$APP/share/fonts" "$APP/Contents/Resources/share/fonts"
 
               ${bundleMacOSAppDylibs}
+              ${bundleIlandEglShim}
               ${bundleIlandBaremetalDylib}
               echo "Bundling portable dylibs for Xcode-built Wawona.app..."
+              bundle_iland_egl_shim "$APP"
               bundle_macos_app_dylibs "$APP"
               ${lib.optionalString (ilandBaremetal != null) ''bundle_iland_baremetal_dylib "$APP"''}
 
