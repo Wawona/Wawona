@@ -2641,14 +2641,15 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
   NSString *executable = nil;
   NSArray<NSString *> *args = @[];
 
+  NSString *kms = [self findBinaryNamed:@"kmscube"];
+  if (kms.length > 0) {
+    env[@"WWN_MODEB_KMSCUBE"] = kms;
+  }
+
   if (modebTty) {
     executable = [self findBinaryNamed:@"modeb-ttyd"];
     if (executable.length == 0) {
       executable = [self findBinaryNamed:@"modeb-tty"];
-    }
-    NSString *kms = [self findBinaryNamed:@"kmscube"];
-    if (kms.length > 0) {
-      env[@"WWN_MODEB_KMSCUBE"] = kms;
     }
     NSString *weston = [self findBinaryNamed:@"weston"];
     if (weston.length > 0) {

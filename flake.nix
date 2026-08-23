@@ -98,12 +98,14 @@
     wwn-wasm.inputs.nixpkgs.follows = "nixpkgs";
     wwn-wasm.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-wasm.inputs.rust-overlay.follows = "rust-overlay";
-    # niri (scrollable-tiling compositor), Phase-29 port #1: runs nested as a
-    # Wayland client of the Wawona compositor on every target.
-    wwn-niri.url = "https://flakehub.com/f/Wawona/wwn-niri/*";
+    # niri: nested Mode A on every target; macOS Mode B DRM/KMS tty (iland).
+    # github/development until FlakeHub rolling includes the tty recipe.
+    # docs/wwn-repo-dag.md (L3' may merge iland for GPU).
+    wwn-niri.url = "github:Wawona/wwn-niri/development";
     wwn-niri.inputs.nixpkgs.follows = "nixpkgs";
     wwn-niri.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-niri.inputs.rust-overlay.follows = "rust-overlay";
+    wwn-niri.inputs.wwn-iland.follows = "wwn-iland";
     # VM + container substrate. wwn-containers depends on wwn-vms, so pin both to
     # Wawona's single nixpkgs/toolchain and make containers follow this same
     # wwn-vms.

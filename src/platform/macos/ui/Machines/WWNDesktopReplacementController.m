@@ -1423,6 +1423,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     NSString *base = [executablePath lastPathComponent];
     BOOL skipWestonOut =
         [base isEqualToString:@"kmscube"] ||
+        [base isEqualToString:@"igettyd"] ||
         [base isEqualToString:@"modeb-ttyd"] ||
         [base isEqualToString:@"modeb-tty"];
     [script appendFormat:@"WWN_MODEB_PROOF_KMSCUBE=%d\n", skipWestonOut ? 1 : 0];
@@ -1590,6 +1591,9 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"      exit 0\n"];
   [script appendString:@"    fi\n"];
   [script appendString:@"    if [ \"$WWN_MODEB_PROOF_KMSCUBE\" = 1 ]; then\n"];
+  [script appendString:@"      out_ok=1\n"];
+  [script appendString:@"    elif grep -q '\\[igettyd\\] ready' \"$LOG\" "
+                       @"2>/dev/null; then\n"];
   [script appendString:@"      out_ok=1\n"];
   [script appendString:@"    elif grep -E -q \"Output '.*' enabled\" \"$LOG\" "
                        @"2>/dev/null; then\n"];
