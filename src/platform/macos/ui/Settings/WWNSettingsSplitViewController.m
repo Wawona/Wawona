@@ -33,7 +33,17 @@
 
 - (void)viewDidLoad {
   [super viewDidLoad];
-  // Additional setup if needed
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+  [super viewWillAppear:animated];
+#if !TARGET_OS_TV
+  UISheetPresentationController *sheet = self.sheetPresentationController;
+  if (sheet) {
+    sheet.prefersGrabberVisible = YES;
+    sheet.prefersEdgeAttachedInCompactHeight = YES;
+  }
+#endif
 }
 
 #pragma mark - UISplitViewControllerDelegate

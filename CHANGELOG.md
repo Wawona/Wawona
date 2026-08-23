@@ -15,6 +15,8 @@ as history.
 - **iOS Settings duplicate section titles.** Detail pages used the section
   name in the nav bar and again as a table header. Header is omitted; the
   nav bar is the only title.
+- **iOS Settings sheet grabber.** The Settings card now shows the system
+  center drag indicator so it is clear the sheet can be swiped to dismiss.
 - **macOS menubar Settings.** Wawona Settings was activating the compositor
   host (same bundle) which reopened Machines. The applet now notifies or
   launches the UI process with `--show-settings`.
