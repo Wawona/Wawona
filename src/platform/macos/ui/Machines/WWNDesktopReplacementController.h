@@ -27,6 +27,18 @@ typedef NS_ENUM(NSInteger, WWNModeBVerdict) {
 @property(nonatomic, copy) NSString *nextStep;
 @end
 
+/**
+ * Menubar Desktop row. `state` is ready / takeover / reboot / blocked,
+ * colored like Compositor: running / restarting / stopped.
+ */
+@interface WWNModeBMenuBarStatus : NSObject
+@property(nonatomic, copy) NSString *state;
+@property(nonatomic, copy) NSString *tooltip;
+@property(nonatomic, assign) BOOL canTakeOver;
+@property(nonatomic, assign) BOOL canRestore;
+@property(nonatomic, assign) BOOL canRestartMac;
+@end
+
 @interface WWNDesktopReplacementController : NSObject
 
 + (instancetype)sharedController;
@@ -118,6 +130,16 @@ typedef NS_ENUM(NSInteger, WWNModeBVerdict) {
 - (int)cliReady;
 /** Same gate as CLI, with exact reason text for Settings / alerts. */
 - (WWNModeBReadyReport *)evaluateClassicReadiness;
+/** Live Mode B compositor pid (Classic Take Over or KEEP_WS probe). */
+- (BOOL)isModeBCompositorLive;
+/** Classic engaged: live pid and WindowServer down. */
+- (BOOL)isClassicTakeoverLive;
+/**
+ * Menubar Desktop row. `refreshGate=YES` when the menu opens (runs the
+ * Classic helper ACK check). The 2s poll passes NO and reuses the last
+ * gate, overlaying live takeover.
+ */
+- (WWNModeBMenuBarStatus *)menuBarDesktopStatusRefreshingGate:(BOOL)refreshGate;
 /**
  * Ask loginwindow to restart via the Core Event `kAERestart` (TN QA1134).
  * That is the native Restart sheet with the 60-second countdown, not a
