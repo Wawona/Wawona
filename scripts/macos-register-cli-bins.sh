@@ -116,7 +116,7 @@ export WAWONA_APP_BUNDLE_ROOT="\$APP"
 export WAWONA_APP_BIN="\$APP/Contents/MacOS/Wawona"
 
 share=""
-for d in "\$APP/share" "\$APP/Contents/Resources/share"; do
+for d in "\$APP/Contents/Resources/share" "\$APP/share"; do
   if [ -d "\$d" ]; then
     share="\$d"
     break
@@ -128,7 +128,7 @@ if [ -n "\$share" ]; then
 fi
 
 lib=""
-for d in "\$APP/lib" "\$APP/Contents/Resources/lib"; do
+for d in "\$APP/Contents/Resources/lib" "\$APP/lib"; do
   if [ -d "\$d" ]; then
     lib="\$d"
     break
@@ -138,20 +138,46 @@ if [ -n "\$lib" ]; then
   export WAWONA_LIB_ROOT="\$lib"
 fi
 
-if [ -d "\$APP/share/weston" ]; then
-  export WESTON_DATA_DIR="\$APP/share/weston"
-elif [ -d "\$APP/Contents/Resources/share/weston" ]; then
-  export WESTON_DATA_DIR="\$APP/Contents/Resources/share/weston"
+weston_data=""
+for d in "\$APP/Contents/Resources/share/weston" "\$APP/share/weston"; do
+  if [ -d "\$d" ]; then
+    weston_data="\$d"
+    break
+  fi
+done
+if [ -n "\$weston_data" ]; then
+  export WESTON_DATA_DIR="\$weston_data"
 fi
-if [ -d "\$APP/lib/weston" ]; then
-  export WESTON_MODULE_DIR="\$APP/lib/weston"
+weston_modules=""
+for d in "\$APP/Contents/Resources/lib/weston" "\$APP/lib/weston"; do
+  if [ -d "\$d" ]; then
+    weston_modules="\$d"
+    break
+  fi
+done
+if [ -n "\$weston_modules" ]; then
+  export WESTON_MODULE_DIR="\$weston_modules"
 fi
-if [ -d "\$APP/lib/libweston-13" ]; then
-  export WESTON_BACKEND_DIR="\$APP/lib/libweston-13"
+weston_backends=""
+for d in "\$APP/Contents/Resources/lib/libweston-13" "\$APP/lib/libweston-13"; do
+  if [ -d "\$d" ]; then
+    weston_backends="\$d"
+    break
+  fi
+done
+if [ -n "\$weston_backends" ]; then
+  export WESTON_BACKEND_DIR="\$weston_backends"
 fi
 
-if [ -d "\$APP/share/icons" ]; then
-  export XCURSOR_PATH="\$APP/share/icons"
+icons=""
+for d in "\$APP/Contents/Resources/share/icons" "\$APP/share/icons"; do
+  if [ -d "\$d" ]; then
+    icons="\$d"
+    break
+  fi
+done
+if [ -n "\$icons" ]; then
+  export XCURSOR_PATH="\$icons"
   export XCURSOR_THEME="Adwaita"
 fi
 
@@ -205,7 +231,8 @@ if [ "\$NAME" = weston ]; then
     _wawona_shell=""
     for _wawona_c in \\
       "\$APP/Contents/Resources/bin/weston-desktop-shell" \\
-      "\$APP/Contents/MacOS/weston-desktop-shell"
+      "\$APP/Contents/MacOS/weston-desktop-shell" \\
+      "\$APP/Contents/Resources/libexec/weston-desktop-shell"
     do
       if [ -x "\$_wawona_c" ]; then
         _wawona_shell="\$_wawona_c"
