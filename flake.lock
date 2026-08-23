@@ -927,11 +927,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1787425837,
-        "narHash": "sha256-NyxuDQiuJWnbMo1oWrHbdGAkwuUNomM1Wtu5fVpXxg8=",
+        "lastModified": 1787502560,
+        "narHash": "sha256-6CLcJ4+NtNtidj5cs4rQKd7ZlEwZdRx4peXMmku0KzU=",
         "owner": "Wawona",
         "repo": "wwn-igetty",
-        "rev": "436ade7518d486899885d990e7149687da8df8c2",
+        "rev": "172190bcfad0a0eb41dd38e4176bab720d255ac6",
         "type": "github"
       },
       "original": {
@@ -952,11 +952,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1787501141,
-        "narHash": "sha256-S/KNlUenJE8oKMRxWwBOHGJkBqKlTPL/eaD8QQdkUic=",
+        "lastModified": 1787502533,
+        "narHash": "sha256-QrYyQJIfPfvadV+NZ1p5XAVfju2QRfA6SFgbF2uOTyg=",
         "owner": "Wawona",
         "repo": "wwn-iland",
-        "rev": "87ad15a92812e31ac77411995d98a61f881242d5",
+        "rev": "b380c125fcedc8416b43f7f48c43cd536fbacab5",
         "type": "github"
       },
       "original": {
@@ -1072,21 +1072,26 @@
         "rust-overlay": [
           "rust-overlay"
         ],
+        "wwn-iland": [
+          "wwn-iland"
+        ],
         "wwn-toolchain": [
           "wwn-toolchain"
         ]
       },
       "locked": {
-        "lastModified": 1787458894,
-        "narHash": "sha256-0o4FiL/jc0Nodws370gBDBq5lW89gMSTVHY9rCEYhtU=",
-        "rev": "b17a502c464b94f5bf11c6113708c0959f470258",
-        "revCount": 26,
-        "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-niri/0.1.26%2Brev-b17a502c464b94f5bf11c6113708c0959f470258/01a02cda-d604-7022-8888-b3d17817f1dd/source.tar.gz"
+        "lastModified": 1787502533,
+        "narHash": "sha256-TxhiGz9/aJMuOYO073kSBIOpuN+i/GqPfOQXJn+rmZI=",
+        "owner": "Wawona",
+        "repo": "wwn-niri",
+        "rev": "47edcd497f965f5bc25111349671209bcf9c7494",
+        "type": "github"
       },
       "original": {
-        "type": "tarball",
-        "url": "https://flakehub.com/f/Wawona/wwn-niri/%2A"
+        "owner": "Wawona",
+        "ref": "development",
+        "repo": "wwn-niri",
+        "type": "github"
       }
     },
     "wwn-phoon-rs": {
