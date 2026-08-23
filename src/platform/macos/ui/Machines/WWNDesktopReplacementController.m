@@ -554,6 +554,10 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendFormat:@"# WWN_WAWONA_STORE=%@\n",
                        [[NSBundle mainBundle] bundlePath] ?: @""];
   [script appendFormat:@"# WWN_COMPOSITOR=%@\n", executablePath ?: @""];
+  [script appendFormat:@"# WWN_MODEB_GUI_CMD=%@\n",
+                       environment[@"WWN_IGETTY_GUI_CMD"] ?: @""];
+  [script appendFormat:@"# WWN_MODEB_GUI_VT=%@\n",
+                       environment[@"WWN_IGETTY_GUI_VT"] ?: @"0"];
   [script appendFormat:@"WWN_MODEB_UID=%u\n", (unsigned)getuid()];
   [script appendFormat:@"WWN_IOWATCHDOG=%@\n",
                        [self wwnShellQuote:[self modeBIowatchdogPath]]];
@@ -2286,6 +2290,15 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
         ![existingHelper
             containsString:@"kickstart -k system/com.apple.watchdogd"] &&
         ![existingHelper containsString:@"Mode B helper DISABLED"];
+    NSString *guiCmd = launchEnv[@"WWN_IGETTY_GUI_CMD"] ?: @"";
+    NSString *guiVt = launchEnv[@"WWN_IGETTY_GUI_VT"] ?: @"0";
+    NSString *guiStamp =
+        [NSString stringWithFormat:@"# WWN_MODEB_GUI_CMD=%@\n", guiCmd];
+    NSString *vtStamp =
+        [NSString stringWithFormat:@"# WWN_MODEB_GUI_VT=%@\n", guiVt];
+    helperMatchesLaunch = helperMatchesLaunch &&
+                          [existingHelper containsString:guiStamp] &&
+                          [existingHelper containsString:vtStamp];
     if (!helperMatchesLaunch) {
       WWNModeBCliLog(
           @"passwordless helper at %@ is stale/broken (missing dylib/exec or "
