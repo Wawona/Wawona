@@ -3939,6 +3939,9 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   if (!kiosk) {
     [window orderFrontRegardless];
   }
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+  WWNKeepServiceHostOutOfDock();
+#endif
 
   [_windows setObject:window forKey:@(event->window_id)];
   NSString *ownerMachineId = [WWNMachineProfileStore activeMachineId];
@@ -4732,6 +4735,9 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
   window.contentView = view;
   [window makeKeyAndOrderFront:nil];
   _ilandHostWindow = window;
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+  WWNKeepServiceHostOutOfDock();
+#endif
   WWNLog("BRIDGE",
          @"Created iland presentation host %ux%u for %@ ", w, h,
          clientId ?: @"(nil)");

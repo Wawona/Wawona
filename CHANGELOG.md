@@ -15,8 +15,19 @@ as history.
 - **iOS Settings duplicate section titles.** Detail pages used the section
   name in the nav bar and again as a table header. Header is omitted; the
   nav bar is the only title.
+- **macOS menubar Settings.** Wawona Settings was activating the compositor
+  host (same bundle) which reopened Machines. The applet now notifies or
+  launches the UI process with `--show-settings`.
+- **macOS two Dock icons.** Compositor-host stays accessory when client
+  windows appear. The menubar no longer `open`s the bundle (that spawned a
+  second tile).
 
 ### Changed
+
+- **macOS menubar applet.** Items are **Wawona Settings** and **Machine
+  Configuration** (no "Open"). Launch at Login uses menu-sized text with a
+  mini switch on the trailing edge. Compositor status shares a row with
+  start / stop / restart SF Symbol buttons.
 
 - **Settings → About.** Author subtext is Alex Spaulding and that row opens
   the portfolio (`https://aspauldingcode.com`). The separate Portfolio row

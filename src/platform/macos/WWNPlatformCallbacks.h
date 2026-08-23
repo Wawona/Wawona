@@ -22,6 +22,12 @@ FOUNDATION_EXPORT NSString *WWNWawonaBundledSharePath(NSString *relativePath);
 FOUNDATION_EXPORT NSString *_Nullable WWNWawonaBundledResourcePath(NSString *filename);
 FOUNDATION_EXPORT NSString *_Nullable WWNWawonaFindBundledExecutable(NSString *name);
 FOUNDATION_EXPORT void WWNConfigureBundledRuntimeEnvIfNeeded(void);
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+/// Compositor-host (`--compositor-host`) must stay an accessory process so
+/// the Machines UI is the only Wawona Dock tile.
+FOUNDATION_EXPORT void WWNSetServiceHostMode(BOOL enabled);
+FOUNDATION_EXPORT void WWNKeepServiceHostOutOfDock(void);
+#endif
 /// Point fuzzel at the bundled Freedesktop catalog (share/applications +
 /// hicolor) and ensure writable XDG_DATA_HOME / cache. Safe to call repeatedly.
 FOUNDATION_EXPORT void WWNEnsureFuzzelXdgEnv(void);

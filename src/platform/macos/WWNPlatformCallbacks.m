@@ -8,6 +8,26 @@
 #endif
 #import "../../util/WWNLog.h"
 
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+static BOOL gWWNServiceHostMode = NO;
+
+void WWNSetServiceHostMode(BOOL enabled) {
+  gWWNServiceHostMode = enabled;
+  if (enabled) {
+    WWNKeepServiceHostOutOfDock();
+  }
+}
+
+void WWNKeepServiceHostOutOfDock(void) {
+  if (!gWWNServiceHostMode || !NSApp) {
+    return;
+  }
+  if ([NSApp activationPolicy] != NSApplicationActivationPolicyAccessory) {
+    [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+  }
+}
+#endif
+
 @implementation WWNPlatformCallbacks
 
 + (instancetype)sharedCallbacks {
@@ -63,6 +83,7 @@
 
     [self.windowRegistry setObject:window forKey:@(windowId)];
     [window makeKeyAndOrderFront:nil];
+    WWNKeepServiceHostOutOfDock();
 
     WWNLog("PLATFORM", @"Created native window %llu: %@", windowId, title);
 #else
