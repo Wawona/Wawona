@@ -1021,8 +1021,11 @@ GEN_HEADER
               fi
               CURSOR_SRC="${pkgs.adwaita-icon-theme}/share/icons/Adwaita/cursors"
               if [ -d "$CURSOR_SRC" ]; then
-                mkdir -p "$APP/share/icons/Adwaita"
-                cp -r "$CURSOR_SRC" "$APP/share/icons/Adwaita/cursors"
+                # Copy into a mkdir'd dir then chmod: `cp -r` of a nix-store
+                # tree creates a 555 dest, and ln dnd-copy then Permission denied.
+                mkdir -p "$APP/share/icons/Adwaita/cursors"
+                cp -RL "$CURSOR_SRC/." "$APP/share/icons/Adwaita/cursors/"
+                chmod -R u+w "$APP/share/icons/Adwaita/cursors"
                 # Weston looks for dnd-copy / dnd-none; Adwaita 50 only ships dnd-move.
                 [ -e "$APP/share/icons/Adwaita/cursors/dnd-copy" ] \
                   || ln -sf copy "$APP/share/icons/Adwaita/cursors/dnd-copy"
@@ -1221,8 +1224,9 @@ GEN_HEADER
             fi
             CURSOR_SRC="${pkgs.adwaita-icon-theme}/share/icons/Adwaita/cursors"
             if [ -d "$CURSOR_SRC" ]; then
-              mkdir -p "$APP/share/icons/Adwaita"
-              cp -r "$CURSOR_SRC" "$APP/share/icons/Adwaita/cursors"
+              mkdir -p "$APP/share/icons/Adwaita/cursors"
+              cp -RL "$CURSOR_SRC/." "$APP/share/icons/Adwaita/cursors/"
+              chmod -R u+w "$APP/share/icons/Adwaita/cursors"
               [ -e "$APP/share/icons/Adwaita/cursors/dnd-copy" ] \
                 || ln -sf copy "$APP/share/icons/Adwaita/cursors/dnd-copy"
               [ -e "$APP/share/icons/Adwaita/cursors/dnd-none" ] \
