@@ -123,6 +123,113 @@
 #define WAWONA_SSHPASS_VERSION "Bundled"
 #endif
 
+/// Body for a Settings Info tap sheet: helper copy, then the stored value.
+static NSString *WWNSettingsOneLine(NSString *text) {
+  if (text.length == 0) {
+    return @"";
+  }
+  NSString *flat =
+      [[text componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]]
+          componentsJoinedByString:@" "];
+  while ([flat containsString:@"  "]) {
+    flat = [flat stringByReplacingOccurrencesOfString:@"  " withString:@" "];
+  }
+  return [flat stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+}
+
+static NSString *WWNSettingsInfoTrailingText(WWNSettingItem *item) {
+  id val = nil;
+  if (item.key.length > 0) {
+    val = [[NSUserDefaults standardUserDefaults] objectForKey:item.key];
+  }
+  if (!val) {
+    val = item.defaultValue;
+  }
+  NSString *text = WWNSettingsOneLine([val description] ?: @"");
+  if (text.length == 0) {
+    text = WWNSettingsOneLine(item.desc);
+  }
+  return text;
+}
+
+/// Short values sit in the trailing column. Longer copy wraps in the row so
+/// the cell never collapses to a lone ellipsis placeholder.
+static BOOL WWNSettingsInfoValueIsCompact(NSString *text) {
+  return text.length > 0 && text.length <= 32;
+}
+
+/// Body for a Settings Info tap sheet: helper copy, then the stored value.
+static NSString *WWNSettingsInfoDetailText(WWNSettingItem *item) {
+  id val = [[NSUserDefaults standardUserDefaults] objectForKey:item.key];
+  if (!val) {
+    val = item.defaultValue;
+  }
+  NSString *valueString = [val description] ?: @"";
+  NSMutableArray<NSString *> *parts = [NSMutableArray array];
+  if (item.desc.length > 0) {
+    [parts addObject:item.desc];
+  }
+  if (valueString.length > 0 && ![valueString isEqualToString:item.desc]) {
+    [parts addObject:valueString];
+  }
+  return [parts componentsJoinedByString:@"\n\n"];
+}
+
+static BOOL WWNSettingsPopupStoresIndex(NSString *key) {
+  return [key isEqualToString:@"SSHAuthMethod"] ||
+         [key isEqualToString:@"WaypipeSSHAuthMethod"];
+}
+
+static NSInteger WWNSettingsPopupSelectedIndex(WWNSettingItem *item) {
+  id val = [[NSUserDefaults standardUserDefaults] objectForKey:item.key];
+  if (!val) {
+    val = item.defaultValue;
+  }
+  if (WWNSettingsPopupStoresIndex(item.key)) {
+    NSInteger i = [val isKindOfClass:[NSNumber class]] ? [val integerValue] : 0;
+    if (i < 0 || i >= (NSInteger)item.options.count) {
+      return 0;
+    }
+    return i;
+  }
+  NSString *stored = [val description] ?: @"";
+  if (item.optionValues.count == item.options.count) {
+    for (NSInteger i = 0; i < (NSInteger)item.optionValues.count; i++) {
+      if ([item.optionValues[i] isEqualToString:stored]) {
+        return i;
+      }
+    }
+  }
+  for (NSInteger i = 0; i < (NSInteger)item.options.count; i++) {
+    if ([item.options[i] isEqualToString:stored]) {
+      return i;
+    }
+  }
+  return 0;
+}
+
+static NSString *WWNSettingsPopupDisplayTitle(WWNSettingItem *item) {
+  NSInteger i = WWNSettingsPopupSelectedIndex(item);
+  if (i >= 0 && i < (NSInteger)item.options.count) {
+    return item.options[i];
+  }
+  return @"";
+}
+
+static void WWNSettingsPopupStoreIndex(WWNSettingItem *item, NSInteger index) {
+  if (index < 0 || index >= (NSInteger)item.options.count) {
+    return;
+  }
+  if (WWNSettingsPopupStoresIndex(item.key)) {
+    [[NSUserDefaults standardUserDefaults] setInteger:index forKey:item.key];
+    return;
+  }
+  id value = (item.optionValues.count == item.options.count)
+                 ? item.optionValues[index]
+                 : item.options[index];
+  [[NSUserDefaults standardUserDefaults] setObject:value forKey:item.key];
+}
+
 // MARK: - Helper Class Interfaces
 
 #if !TARGET_OS_IPHONE
@@ -135,10 +242,18 @@
 @interface WWNPreferencesContent
     : NSViewController <NSTableViewDataSource, NSTableViewDelegate>
 @property(nonatomic, strong) WWNPreferencesSection *section;
+@property(nonatomic, strong, nullable) WWNSettingItem *pickingItem;
 @property(nonatomic, strong) NSTableView *tableView;
 @property(nonatomic, strong) NSScrollView *scrollView;
 @property(nonatomic, strong) NSView *environmentHostView;
+@property(nonatomic, strong) NSView *pickerHeader;
+@property(nonatomic, strong) NSTextField *pickerTitleLabel;
+@property(nonatomic, strong) NSLayoutConstraint *scrollTopToView;
+@property(nonatomic, strong) NSLayoutConstraint *scrollTopToHeader;
 - (void)reloadForCurrentSection;
+- (void)showOptionPickerForItem:(WWNSettingItem *)item;
+- (void)exitOptionPicker;
+- (void)applyPopupSelectionForItem:(WWNSettingItem *)item index:(NSInteger)index;
 @end
 #endif
 
@@ -180,12 +295,21 @@
 #endif
 - (NSArray<WWNPreferencesSection *> *)buildSections;
 - (void)runWaypipe;
+- (void)previewWaypipeCommand;
 - (NSString *)wwnHostOsSummary;
 - (NSString *)wwnInstallChannel;
 - (NSString *)wwnDiagnosticReportMachineOnly:(BOOL)machineOnly;
 - (void)wwnCopyDiagnosticReportMachineOnly:(BOOL)machineOnly;
 - (void)wwnOpenGitHubBugReport;
 - (void)openEnvironmentVariablesManager;
+#if TARGET_OS_IPHONE
+- (void)wwnApplyPopupSelectionForItem:(WWNSettingItem *)item
+                                index:(NSInteger)index;
+- (void)wwnPushOptionPickerForItem:(WWNSettingItem *)item;
+- (void)wwnSyncEnvironmentInventory;
+- (UINavigationController *)wwnDetailNavigationController;
+@property(nonatomic, strong) UIViewController *environmentHostController;
+#endif
 - (NSString *)localIPAddress;
 - (NSString *)getLibSSH2Version;
 - (NSString *)getSocketPath;
@@ -226,6 +350,72 @@
 - (void)tvSwitchButtonPressed:(UIButton *)button;
 #endif
 @end
+
+#if TARGET_OS_IPHONE
+@interface WWNSettingsOptionPickerController : UITableViewController
+@property(nonatomic, strong) WWNSettingItem *item;
+@property(nonatomic, copy) void (^onPick)(NSInteger index);
+@end
+
+@implementation WWNSettingsOptionPickerController
+- (instancetype)initWithItem:(WWNSettingItem *)item {
+#if TARGET_OS_TV
+  self = [super initWithStyle:UITableViewStyleGrouped];
+#else
+  self = [super initWithStyle:UITableViewStyleInsetGrouped];
+#endif
+  if (self) {
+    _item = item;
+    self.title = item.title;
+    self.tableView.accessibilityIdentifier =
+        item.accessibilityIdentifier.length
+            ? [NSString stringWithFormat:@"%@.choices", item.accessibilityIdentifier]
+            : @"wwn.settings.choices";
+  }
+  return self;
+}
+
+- (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)section {
+  (void)tv;
+  (void)section;
+  return (NSInteger)self.item.options.count;
+}
+
+- (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)section {
+  (void)tv;
+  (void)section;
+  return self.item.desc.length > 0 ? self.item.desc : nil;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tv
+         cellForRowAtIndexPath:(NSIndexPath *)ip {
+  static NSString *const kID = @"Choice";
+  UITableViewCell *cell = [tv dequeueReusableCellWithIdentifier:kID];
+  if (!cell) {
+    cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault
+                                  reuseIdentifier:kID];
+  }
+  cell.textLabel.text = self.item.options[ip.row];
+  cell.textLabel.numberOfLines = 1;
+  cell.textLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+  cell.detailTextLabel.text = nil;
+  BOOL selected = (ip.row == WWNSettingsPopupSelectedIndex(self.item));
+  cell.accessoryType = selected ? UITableViewCellAccessoryCheckmark
+                                : UITableViewCellAccessoryNone;
+  cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+  cell.accessibilityIdentifier = [NSString
+      stringWithFormat:@"wwn.settings.choice.%ld", (long)ip.row];
+  return cell;
+}
+
+- (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip {
+  [tv deselectRowAtIndexPath:ip animated:YES];
+  if (self.onPick) {
+    self.onPick(ip.row);
+  }
+}
+@end
+#endif
 
 // MARK: - Main Implementation
 
@@ -427,7 +617,7 @@ static UIImage *WWNAboutLogo(void) {
   self.tableView.tableHeaderView =
       [[UIView alloc] initWithFrame:CGRectMake(0, 0, 1.0, 1.0)];
   self.tableView.rowHeight = UITableViewAutomaticDimension;
-  self.tableView.estimatedRowHeight = 72.0;
+  self.tableView.estimatedRowHeight = 44.0;
   // Nav bar already names the page. Do not also use a large title that
   // restates the same section string above the grouped rows.
   self.navigationItem.largeTitleDisplayMode =
@@ -447,6 +637,11 @@ static UIImage *WWNAboutLogo(void) {
                     }];
 }
 
+- (void)viewDidAppear:(BOOL)animated {
+  [super viewDidAppear:animated];
+  [self wwnSyncEnvironmentInventory];
+}
+
 #endif
 
 #define ITEM(t, k, ty, def, d)                                                 \
@@ -455,13 +650,79 @@ static UIImage *WWNAboutLogo(void) {
 #if TARGET_OS_IPHONE
 - (void)setActiveSection:(WWNPreferencesSection *)activeSection {
   _activeSection = activeSection;
-  if (activeSection.accessibilityIdentifier.length > 0) {
+  if (activeSection.accessibilityIdentifier.length > 0 && self.isViewLoaded) {
     self.tableView.accessibilityIdentifier = activeSection.accessibilityIdentifier;
     self.tableView.accessibilityLabel = activeSection.title;
   }
-  if (self.isViewLoaded) {
+  [self wwnSyncEnvironmentInventory];
+  UINavigationController *nav = self.navigationController;
+  if (nav && [nav.viewControllers containsObject:self] &&
+      nav.topViewController != self &&
+      nav.topViewController != self.environmentHostController) {
+    [nav popToViewController:self animated:NO];
+  }
+  if (self.isViewLoaded && !self.tableView.hidden) {
     [self.tableView reloadData];
   }
+}
+
+- (UINavigationController *)wwnDetailNavigationController {
+  if (self.settingsColumnNavigationController) {
+    return self.settingsColumnNavigationController;
+  }
+  if (self.navigationController) {
+    return self.navigationController;
+  }
+  if (self.environmentHostController.navigationController) {
+    return self.environmentHostController.navigationController;
+  }
+  UISplitViewController *split = self.splitViewController
+      ?: self.environmentHostController.splitViewController;
+  UIViewController *secondary =
+      [split viewControllerForColumn:UISplitViewControllerColumnSecondary];
+  if ([secondary isKindOfClass:[UINavigationController class]]) {
+    return (UINavigationController *)secondary;
+  }
+  return nil;
+}
+
+- (void)wwnSyncEnvironmentInventory {
+  BOOL isEnv = [self.activeSection.title isEqualToString:@"Env Vars"];
+  UINavigationController *nav = [self wwnDetailNavigationController];
+  Class presenter = NSClassFromString(@"WWNEnvironmentSettingsPresenter");
+  UIViewController *host = nil;
+  if (isEnv && [presenter respondsToSelector:@selector(iOSHostingController)]) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+    host = [presenter performSelector:@selector(iOSHostingController)];
+#pragma clang diagnostic pop
+    if (![host isKindOfClass:[UIViewController class]]) {
+      host = nil;
+    }
+  }
+  if (isEnv && host) {
+    host.title = self.activeSection.title ?: @"Env Vars";
+    host.navigationItem.largeTitleDisplayMode =
+        UINavigationItemLargeTitleDisplayModeNever;
+    self.environmentHostController = host;
+    if (nav) {
+      if (nav.topViewController != host) {
+        [nav setViewControllers:@[ host ] animated:NO];
+      }
+      if (self.isViewLoaded) {
+        self.tableView.hidden = YES;
+      }
+    }
+    return;
+  }
+  if (self.isViewLoaded) {
+    self.tableView.hidden = NO;
+  }
+  if (nav && self.environmentHostController &&
+      [nav.viewControllers containsObject:self.environmentHostController]) {
+    [nav setViewControllers:@[ self ] animated:NO];
+  }
+  self.environmentHostController = nil;
 }
 #endif
 
@@ -702,7 +963,7 @@ static UIImage *WWNAboutLogo(void) {
     [sects addObject:localShell];
   }
 
-  // MACHINES (global session gestures. Not the Machines window.)
+  // MACHINES (session gestures plus VM/container prefs. Not the Machines window.)
   {
     WWNPreferencesSection *machines = [[WWNPreferencesSection alloc] init];
     machines.title = @"Machines";
@@ -741,6 +1002,47 @@ static UIImage *WWNAboutLogo(void) {
                        @"iPhone / iPad / Apple TV",
                        @"Shake, swipe-back, and Siri Remote Menu live on "
                        @"those hosts. macOS uses window close.")];
+#endif
+    [machineItems addObject:ITEM(
+        @"Session Thumbnails", @"MachineSessionThumbnailsEnabled",
+        WSettingSwitch, @YES,
+        @"Save the last frame from a machine session and show it on machine cards.")];
+#if !TARGET_OS_TV && !TARGET_OS_WATCH && !TARGET_OS_VISION
+    // VM engine and container runtime are fixed per build target by the
+    // wwn-vms / wwn-containers capability lanes; they are read-only here and
+    // never user-configurable (Residual E). Engine swaps belong in the Nix
+    // engines/bridges, not in user preferences. Forbidden on tvOS / watchOS /
+    // visionOS.
+    [machineItems addObject:ITEM(@"Virtual Machine Engine", nil, WSettingInfo,
+#if TARGET_OS_OSX
+                                 @"Virtualization.framework",
+#else
+                                 @"QEMU (TCTI)",
+#endif
+                                 @"Selected automatically for this platform by wwn-vms. macOS: "
+                                 @"Virtualization.framework. iOS: jitless QEMU-TCTI. "
+                                 @"Android: QEMU/AVF.")];
+    [machineItems addObject:ITEM(@"Virtual Machine VSock Port", @"MachineVMVsockPort",
+                                 WSettingNumber, @"1024",
+                                 @"vsock port the guest's waypipe server binds; bridged into Wawona.")];
+    [machineItems addObject:ITEM(@"Container Runtime", nil, WSettingInfo,
+#if TARGET_OS_OSX
+                                 @"containerization.framework",
+#else
+                                 @"container-in-VM",
+#endif
+                                 @"Selected automatically for this platform by wwn-containers. macOS: "
+                                 @"Apple Containerization framework. Mobile/Android: container-in-VM "
+                                 @"(crun in a wwn-vms guest).")];
+    [machineItems addObject:ITEM(@"Container Image Store", @"MachineContainerImageStore",
+                                 WSettingText, @"~/.local/share/wawona/oci",
+                                 @"Content-addressable OCI store (wwn-oci) for pulled images. Universal "
+                                 @"and App-Store-compliant on every target.")];
+    [machineItems addObject:ITEM(
+        @"Status", nil, WSettingInfo, @"Active",
+        @"VM + container backends are provided by the wwn-vms / wwn-containers "
+        @"dependencies. macOS runs them directly; other targets are "
+        @"capability-gated (see each dep's COMPLIANCE.md).")];
 #endif
     machines.items = machineItems;
     [sects addObject:machines];
@@ -1057,57 +1359,6 @@ static UIImage *WWNAboutLogo(void) {
     [sects addObject:desktop];
   }
 #endif
-
-  // MACHINES (stubs)
-  WWNPreferencesSection *machines = [[WWNPreferencesSection alloc] init];
-  machines.title = @"Machines";
-  machines.accessibilityIdentifier = @"wwn.settings.machines";
-  machines.icon = @"server.rack";
-#if TARGET_OS_IPHONE
-  machines.iconColor = [UIColor systemCyanColor];
-#else
-  machines.iconColor = [NSColor systemCyanColor];
-#endif
-  machines.items = @[
-    ITEM(@"Session Thumbnails", @"MachineSessionThumbnailsEnabled",
-         WSettingSwitch, @YES,
-         @"Save the last frame from a machine session and show it on machine cards."),
-    // VM engine and container runtime are fixed per build target by the
-    // wwn-vms / wwn-containers capability lanes; they are read-only here and
-    // never user-configurable (Residual E). Engine swaps belong in the Nix
-    // engines/bridges, not in user preferences.
-    ITEM(@"Virtual Machine Engine", nil, WSettingInfo,
-#if TARGET_OS_OSX
-         @"Virtualization.framework",
-#else
-         @"QEMU (TCTI)",
-#endif
-         @"Selected automatically for this platform by wwn-vms. macOS: "
-         @"Virtualization.framework. iOS/tvOS/visionOS: jitless QEMU-TCTI. "
-         @"Android: QEMU/AVF."),
-    ITEM(@"Virtual Machine VSock Port", @"MachineVMVsockPort",
-         WSettingNumber, @"1024",
-         @"vsock port the guest's waypipe server binds; bridged into Wawona."),
-    ITEM(@"Container Runtime", nil, WSettingInfo,
-#if TARGET_OS_OSX
-         @"containerization.framework",
-#else
-         @"container-in-VM",
-#endif
-         @"Selected automatically for this platform by wwn-containers. macOS: "
-         @"Apple Containerization framework. Mobile/Android: container-in-VM "
-         @"(crun in a wwn-vms guest). watchOS: image management only."),
-    ITEM(@"Container Image Store", @"MachineContainerImageStore", WSettingText,
-         @"~/.local/share/wawona/oci",
-         @"Content-addressable OCI store (wwn-oci) for pulled images. Universal "
-         @"and App-Store-compliant on every target."),
-    ITEM(
-        @"Status", nil, WSettingInfo, @"Active",
-        @"VM + container backends are provided by the wwn-vms / wwn-containers "
-        @"dependencies. macOS runs them directly; other targets are "
-        @"capability-gated (see each dep's COMPLIANCE.md).")
-  ];
-  [sects addObject:machines];
 
   // WAYPIPE
   WWNPreferencesSection *waypipe = [[WWNPreferencesSection alloc] init];
@@ -4025,13 +4276,6 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
     if ([section.title caseInsensitiveCompare:title] == NSOrderedSame) {
       self.activeSection = section;
       self.title = section.title;
-      if ([section.title isEqualToString:@"Env Vars"]) {
-        // Show the full inventory inline instead of a button-only stub.
-        [self openEnvironmentVariablesManager];
-      }
-      if (self.isViewLoaded) {
-        [self.tableView reloadData];
-      }
       break;
     }
   }
@@ -4051,6 +4295,55 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
 
 - (void)dismissSelf {
   [self dismissViewControllerAnimated:YES completion:nil];
+}
+
+- (void)wwnApplyPopupSelectionForItem:(WWNSettingItem *)item
+                                index:(NSInteger)index {
+  WWNSettingsPopupStoreIndex(item, index);
+  NSString *sectionTitle = self.activeSection.title;
+  if (WWNSettingsPopupStoresIndex(item.key) ||
+      [item.key isEqualToString:@"RenderMacOSPointer"]) {
+    self.sections = [self buildSections];
+    for (WWNPreferencesSection *section in self.sections) {
+      if ([section.title isEqualToString:sectionTitle]) {
+        self.activeSection = section;
+        break;
+      }
+    }
+  }
+  [self.tableView reloadData];
+}
+
+- (void)wwnPushOptionPickerForItem:(WWNSettingItem *)item {
+  WWNSettingsOptionPickerController *picker =
+      [[WWNSettingsOptionPickerController alloc] initWithItem:item];
+  __weak typeof(self) weakSelf = self;
+  picker.onPick = ^(NSInteger index) {
+    __strong typeof(weakSelf) strongSelf = weakSelf;
+    if (!strongSelf) {
+      return;
+    }
+    [strongSelf wwnApplyPopupSelectionForItem:item index:index];
+    [strongSelf.navigationController popViewControllerAnimated:YES];
+  };
+  picker.navigationItem.rightBarButtonItem = self.navigationItem.rightBarButtonItem;
+  UINavigationController *nav = self.navigationController;
+  if (nav) {
+    [nav pushViewController:picker animated:YES];
+    return;
+  }
+  UINavigationController *wrap =
+      [[UINavigationController alloc] initWithRootViewController:picker];
+  wrap.modalPresentationStyle = UIModalPresentationFormSheet;
+  [self presentViewController:wrap animated:YES completion:nil];
+  picker.onPick = ^(NSInteger index) {
+    __strong typeof(weakSelf) strongSelf = weakSelf;
+    if (!strongSelf) {
+      return;
+    }
+    [strongSelf wwnApplyPopupSelectionForItem:item index:index];
+    [strongSelf dismissViewControllerAnimated:YES completion:nil];
+  };
 }
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tv {
@@ -4086,19 +4379,26 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
     item = self.sections[ip.section].items[ip.row];
   }
 
-  BOOL usesSubtitleInfoCell =
-      (item.desc.length > 0 &&
-       (item.type == WSettingInfo || item.type == WSettingSwitch ||
-        item.type == WSettingButton));
-  NSString *cellIdentifier =
-      usesSubtitleInfoCell ? @"InfoSubtitleCell" : @"Cell";
-  UITableViewCell *cell = [tv dequeueReusableCellWithIdentifier:cellIdentifier];
+  // Two-column rows are title | On/Off, title | current value, or title |
+  // current choice plus a chevron. Info shows the real value (never a
+  // placeholder ellipsis). Short values stay trailing; longer copy wraps.
+  // iOS family only: multi-option rows use a disclosure list. macOS uses
+  // an NSPopUpButton switcher in the trailing column.
+  NSString *infoValue = nil;
+  BOOL infoCompact = NO;
+  if (item.type == WSettingInfo) {
+    infoValue = WWNSettingsInfoTrailingText(item);
+    infoCompact = WWNSettingsInfoValueIsCompact(infoValue);
+  }
+  NSString *cellID = @"Cell";
+  UITableViewCellStyle style = UITableViewCellStyleValue1;
+  if (item.type == WSettingInfo && !infoCompact) {
+    cellID = @"InfoWrapCell";
+    style = UITableViewCellStyleSubtitle;
+  }
+  UITableViewCell *cell = [tv dequeueReusableCellWithIdentifier:cellID];
   if (!cell) {
-    UITableViewCellStyle style = usesSubtitleInfoCell
-                                     ? UITableViewCellStyleSubtitle
-                                     : UITableViewCellStyleValue1;
-    cell = [[UITableViewCell alloc] initWithStyle:style
-                                  reuseIdentifier:cellIdentifier];
+    cell = [[UITableViewCell alloc] initWithStyle:style reuseIdentifier:cellID];
   }
 
   // Reset image to avoid phantom reuse
@@ -4114,18 +4414,22 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
   }
   cell.textLabel.textColor =
       [UIColor labelColor]; // Reset to default color (not blue)
-  cell.textLabel.numberOfLines = 2;
-  cell.textLabel.lineBreakMode = NSLineBreakByWordWrapping;
+  cell.textLabel.numberOfLines = 1;
+  cell.textLabel.lineBreakMode = NSLineBreakByTruncatingTail;
   cell.detailTextLabel.text = nil;
-  cell.detailTextLabel.numberOfLines = 0;
-  cell.detailTextLabel.lineBreakMode = NSLineBreakByWordWrapping;
+  cell.detailTextLabel.numberOfLines = 1;
+  cell.detailTextLabel.lineBreakMode = NSLineBreakByTruncatingTail;
   cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
-  if (item.desc.length > 0 &&
-      (item.type == WSettingSwitch || item.type == WSettingButton ||
-       item.type == WSettingPopup)) {
-    cell.detailTextLabel.text = item.desc;
-  }
+  [cell.textLabel setContentCompressionResistancePriority:UILayoutPriorityDefaultHigh
+                                                  forAxis:UILayoutConstraintAxisHorizontal];
+  [cell.textLabel setContentHuggingPriority:UILayoutPriorityDefaultLow
+                                    forAxis:UILayoutConstraintAxisHorizontal];
+  [cell.detailTextLabel setContentCompressionResistancePriority:UILayoutPriorityDefaultHigh
+                                                        forAxis:UILayoutConstraintAxisHorizontal];
+  [cell.detailTextLabel setContentHuggingPriority:UILayoutPriorityDefaultLow
+                                          forAxis:UILayoutConstraintAxisHorizontal];
   cell.accessoryView = nil;
+  cell.accessoryType = UITableViewCellAccessoryNone;
   cell.selectionStyle = UITableViewCellSelectionStyleNone;
 
   if (item.type == WSettingSwitch) {
@@ -4220,68 +4524,33 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
     cell.accessoryType = UITableViewCellAccessoryNone;
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
   } else if (item.type == WSettingPopup) {
-    id val = [[NSUserDefaults standardUserDefaults] objectForKey:item.key];
-    if (!val) {
-      val = item.defaultValue;
-    }
-
-    // Special handling for Auth Method: convert integer to string
-    if ([item.key isEqualToString:@"WaypipeSSHAuthMethod"] ||
-        [item.key isEqualToString:@"SSHAuthMethod"]) {
-      NSInteger methodIndex =
-          [val isKindOfClass:[NSNumber class]] ? [val integerValue] : 0;
-      if (methodIndex >= 0 && methodIndex < (NSInteger)item.options.count) {
-        cell.detailTextLabel.text = item.options[methodIndex];
-      } else {
-        cell.detailTextLabel.text = item.options[0]; // Default to "Password"
-      }
-    } else {
-      // If optionValues exists, find display text from options by matching
-      // stored value
-      if (item.optionValues && item.optionValues.count == item.options.count) {
-        NSString *stored = [val description];
-        for (NSInteger i = 0; i < (NSInteger)item.optionValues.count; i++) {
-          if ([item.optionValues[i] isEqualToString:stored]) {
-            cell.detailTextLabel.text = item.options[i];
-            goto popup_done;
-          }
-        }
-      }
-      cell.detailTextLabel.text = [val description];
-    }
-  popup_done:
-    cell.accessoryType = UITableViewCellAccessoryNone;
+    cell.detailTextLabel.text = WWNSettingsPopupDisplayTitle(item);
+    cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     if (item.interactive) {
       cell.selectionStyle = UITableViewCellSelectionStyleDefault;
     } else {
       cell.selectionStyle = UITableViewCellSelectionStyleNone;
       cell.textLabel.textColor = [UIColor secondaryLabelColor];
       cell.detailTextLabel.textColor = [UIColor tertiaryLabelColor];
+      cell.accessoryType = UITableViewCellAccessoryNone;
     }
   } else if (item.type == WSettingButton) {
     cell.textLabel.textColor = [UIColor systemBlueColor];
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
   } else if (item.type == WSettingInfo) {
-    id val = [[NSUserDefaults standardUserDefaults] objectForKey:item.key];
-    if (!val) {
-      val = item.defaultValue;
-    }
-    if (usesSubtitleInfoCell) {
-      NSString *valueString = [val description] ?: @"";
-      cell.detailTextLabel.text = item.desc;
-      cell.detailTextLabel.numberOfLines = 0;
-      cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
-      if (valueString.length > 0) {
-        UILabel *valueLabel = [[UILabel alloc] init];
-        valueLabel.font = [UIFont systemFontOfSize:15];
-        valueLabel.textColor = [UIColor secondaryLabelColor];
-        valueLabel.textAlignment = NSTextAlignmentRight;
-        valueLabel.text = valueString;
-        [valueLabel sizeToFit];
-        cell.accessoryView = valueLabel;
-      }
+    cell.detailTextLabel.text = infoValue;
+    if (infoCompact) {
+      cell.detailTextLabel.numberOfLines = 1;
+      cell.detailTextLabel.lineBreakMode = NSLineBreakByClipping;
+      [cell.detailTextLabel setContentCompressionResistancePriority:UILayoutPriorityRequired
+                                                            forAxis:UILayoutConstraintAxisHorizontal];
+      [cell.detailTextLabel setContentHuggingPriority:UILayoutPriorityRequired
+                                              forAxis:UILayoutConstraintAxisHorizontal];
+      [cell.textLabel setContentCompressionResistancePriority:UILayoutPriorityDefaultLow
+                                                      forAxis:UILayoutConstraintAxisHorizontal];
     } else {
-      cell.detailTextLabel.text = [val description];
+      cell.detailTextLabel.numberOfLines = 0;
+      cell.detailTextLabel.lineBreakMode = NSLineBreakByWordWrapping;
     }
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
     cell.accessoryType = UITableViewCellAccessoryNone;
@@ -4311,7 +4580,7 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
     }
   } else if (item.type == WSettingLink) {
     cell.textLabel.textColor = [UIColor systemBlueColor];
-    cell.detailTextLabel.text = item.desc;
+    cell.detailTextLabel.text = nil;
     cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
 
@@ -4686,18 +4955,16 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
     // Header cells are not tappable
     return;
   } else if (item.type == WSettingInfo) {
-    // For info items, show copy dialog
     id val = [[NSUserDefaults standardUserDefaults] objectForKey:item.key];
     if (!val) {
       val = item.defaultValue;
     }
-    NSString *valueString = [val description];
+    NSString *valueString = [val description] ?: @"";
+    NSString *message = WWNSettingsInfoDetailText(item);
 
     UIAlertController *alert = [UIAlertController
         alertControllerWithTitle:item.title
-                         message:[NSString stringWithFormat:@"%@\n\n%@",
-                                                            item.desc,
-                                                            valueString]
+                         message:message.length > 0 ? message : nil
                   preferredStyle:UIAlertControllerStyleAlert];
 
     UIAlertAction *okAction =
@@ -4722,98 +4989,7 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
 
     [self presentViewController:alert animated:YES completion:nil];
   } else if (item.type == WSettingPopup) {
-    // Present popup selection
-    UIAlertController *alert = [UIAlertController
-        alertControllerWithTitle:item.title
-                         message:item.desc
-                  preferredStyle:UIAlertControllerStyleActionSheet];
-
-    id currentValue =
-        [[NSUserDefaults standardUserDefaults] objectForKey:item.key];
-    if (!currentValue) {
-      currentValue = item.defaultValue;
-    }
-
-    // Special handling for Auth Method: convert integer to string for
-    // comparison
-    NSString *currentValueString = nil;
-    NSInteger currentIndex = -1;
-    if ([item.key isEqualToString:@"WaypipeSSHAuthMethod"] ||
-        [item.key isEqualToString:@"SSHAuthMethod"]) {
-      currentIndex = [currentValue isKindOfClass:[NSNumber class]]
-                         ? [currentValue integerValue]
-                         : 0;
-      if (currentIndex >= 0 && currentIndex < (NSInteger)item.options.count) {
-        currentValueString = item.options[currentIndex];
-      } else {
-        currentValueString = item.options[0]; // Default to "Password"
-        currentIndex = 0;
-      }
-    } else {
-      currentValueString = [currentValue description];
-    }
-
-    for (NSInteger i = 0; i < (NSInteger)item.options.count; i++) {
-      NSString *option = item.options[i];
-      NSString *valueToStore =
-          (item.optionValues && i < (NSInteger)item.optionValues.count)
-              ? item.optionValues[i]
-              : option;
-      NSString *valueToStoreCopy = valueToStore;
-      NSInteger optionIndex = i;
-      UIAlertAction *optionAction = [UIAlertAction
-          actionWithTitle:option
-                    style:UIAlertActionStyleDefault
-                  handler:^(UIAlertAction *alertAction) {
-                    // For Auth Method, store as integer index
-                    if ([item.key isEqualToString:@"WaypipeSSHAuthMethod"] ||
-                        [item.key isEqualToString:@"SSHAuthMethod"]) {
-                      [[NSUserDefaults standardUserDefaults]
-                          setInteger:optionIndex
-                              forKey:item.key];
-                      // Auth method changed - rebuild sections to show
-                      // appropriate nested options
-                      self.sections = [self buildSections];
-                      [tv reloadData];
-                    } else {
-                      [[NSUserDefaults standardUserDefaults]
-                          setObject:valueToStoreCopy
-                             forKey:item.key];
-                      // Reload the table view to show updated value
-                      [tv reloadRowsAtIndexPaths:@[ ip ]
-                                withRowAnimation:UITableViewRowAnimationNone];
-                    }
-                  }];
-
-      // Mark current selection with checkmark
-      if ([item.key isEqualToString:@"WaypipeSSHAuthMethod"] ||
-          [item.key isEqualToString:@"SSHAuthMethod"]) {
-        if (i == currentIndex) {
-          [optionAction setValue:@YES forKey:@"checked"];
-        }
-      } else {
-        if ([valueToStore isEqualToString:currentValueString]) {
-          [optionAction setValue:@YES forKey:@"checked"];
-        }
-      }
-
-      [alert addAction:optionAction];
-    }
-
-    UIAlertAction *cancelAction =
-        [UIAlertAction actionWithTitle:@"Cancel"
-                                 style:UIAlertActionStyleCancel
-                               handler:nil];
-    [alert addAction:cancelAction];
-
-    // For iPad, we need to set the popover presentation
-    if (alert.popoverPresentationController) {
-      UITableViewCell *cell = [tv cellForRowAtIndexPath:ip];
-      alert.popoverPresentationController.sourceView = cell;
-      alert.popoverPresentationController.sourceRect = cell.bounds;
-    }
-
-    [self presentViewController:alert animated:YES completion:nil];
+    [self wwnPushOptionPickerForItem:item];
   } else if (item.actionBlock) {
     item.actionBlock();
   }
@@ -5227,10 +5403,16 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
 #endif /* TARGET_OS_IPHONE */
 
 - (void)openEnvironmentVariablesManager {
-  // SwiftUI Environment Variables GUI (#157). Must exist on iOS too: Settings
-  // Env Vars rows call this from buildSections / selectSectionWithTitle.
-  // Leaving it under TARGET_OS_OSX crashed STARDUST with
-  // unrecognized selector (2026-08-22 16:11).
+#if TARGET_OS_IPHONE
+  // Inventory is the Env Vars detail page (setActiveSection). Do not present
+  // a second sheet that only contains "Open Environment Variables".
+  [self wwnSyncEnvironmentInventory];
+  if (self.environmentHostController) {
+    return;
+  }
+#endif
+  // SwiftUI Environment Variables GUI (#157). macOS Settings embeds the table
+  // in the detail pane; this window is the fallback if embed is unavailable.
   Class presenter = NSClassFromString(@"WWNEnvironmentSettingsPresenter");
   if (presenter && [presenter respondsToSelector:@selector(presentFromHost:)]) {
 #pragma clang diagnostic push
@@ -5721,11 +5903,15 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
 @property(nonatomic, strong)
     NSLayoutConstraint *leadingConstraint; // New: for layout
 @property(nonatomic, strong) NSLayoutConstraint *trailingConstraint;
+@property(nonatomic, strong) NSLayoutConstraint *titleBottomConstraint;
+@property(nonatomic, strong) NSLayoutConstraint *descBottomConstraint;
+@property(nonatomic, strong) NSLayoutConstraint *descHeightConstraint;
 @property(nonatomic, strong) WWNSettingItem *item;
 @property(nonatomic, assign) id delegate; // MRC: use assign for delegates
 - (void)configureWithItem:(WWNSettingItem *)item
                    target:(id)target
                    action:(SEL)action;
+- (void)configureAsChoice:(NSString *)title selected:(BOOL)selected;
 @end
 
 @implementation WWNPreferenceCell
@@ -5738,9 +5924,10 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
     _titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     _titleLabel.font = [NSFont systemFontOfSize:13];
     _titleLabel.textColor = [NSColor labelColor];
-    _titleLabel.maximumNumberOfLines = 2;
-    _titleLabel.lineBreakMode = NSLineBreakByWordWrapping;
-    _titleLabel.cell.wraps = YES;
+    _titleLabel.maximumNumberOfLines = 1;
+    _titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+    _titleLabel.cell.wraps = NO;
+    _titleLabel.cell.usesSingleLineMode = YES;
     _titleLabel.cell.truncatesLastVisibleLine = YES;
     [_titleLabel
         setContentCompressionResistancePriority:NSLayoutPriorityRequired
@@ -5759,10 +5946,11 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
     _descLabel.translatesAutoresizingMaskIntoConstraints = NO;
     _descLabel.font = [NSFont systemFontOfSize:11];
     _descLabel.textColor = [NSColor secondaryLabelColor];
-    _descLabel.maximumNumberOfLines = 0;
-    _descLabel.lineBreakMode = NSLineBreakByWordWrapping;
-    _descLabel.cell.wraps = YES;
-    _descLabel.cell.truncatesLastVisibleLine = NO;
+    _descLabel.maximumNumberOfLines = 2;
+    _descLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+    _descLabel.cell.wraps = NO;
+    _descLabel.cell.truncatesLastVisibleLine = YES;
+    _descLabel.hidden = YES;
     [_descLabel
         setContentCompressionResistancePriority:NSLayoutPriorityRequired
                                  forOrientation:
@@ -5805,10 +5993,13 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
     _buttonControl.hidden = YES;
     [self addSubview:_buttonControl];
 
-    _popupControl =
-        [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+    _popupControl = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
     _popupControl.translatesAutoresizingMaskIntoConstraints = NO;
     _popupControl.hidden = YES;
+    [_popupControl setContentHuggingPriority:NSLayoutPriorityRequired
+                              forOrientation:NSLayoutConstraintOrientationHorizontal];
+    [_popupControl setContentCompressionResistancePriority:NSLayoutPriorityRequired
+                                            forOrientation:NSLayoutConstraintOrientationHorizontal];
     [self addSubview:_popupControl];
 
     _iconView = [[NSImageView alloc] init];
@@ -5850,8 +6041,9 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
                                            constant:2],
       [_descLabel.trailingAnchor
           constraintEqualToAnchor:_titleLabel.trailingAnchor],
-      [_descLabel.bottomAnchor constraintEqualToAnchor:self.bottomAnchor
-                                              constant:-8],
+      (_titleBottomConstraint = [_titleLabel.bottomAnchor
+           constraintEqualToAnchor:self.bottomAnchor
+                          constant:-8]),
 
       // Switch control - right column
       [_switchControl.trailingAnchor constraintEqualToAnchor:self.trailingAnchor
@@ -5870,7 +6062,6 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
       [_buttonControl.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
       [_buttonControl.widthAnchor constraintGreaterThanOrEqualToConstant:80],
 
-      // Popup control - right column with fixed width
       [_popupControl.trailingAnchor constraintEqualToAnchor:self.trailingAnchor
                                                    constant:-20],
       [_popupControl.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
@@ -5891,6 +6082,13 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
       [_headerImageView.widthAnchor constraintEqualToConstant:48],
       [_headerImageView.heightAnchor constraintEqualToConstant:48],
     ]];
+    _descBottomConstraint = [_descLabel.bottomAnchor
+        constraintEqualToAnchor:self.bottomAnchor
+                       constant:-8];
+    _descBottomConstraint.active = NO;
+    _descHeightConstraint =
+        [_descLabel.heightAnchor constraintEqualToConstant:0];
+    _descHeightConstraint.active = YES;
   }
   return self;
 }
@@ -5901,26 +6099,42 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
   self.item = item;
   self.delegate = target; // Store controller as delegate
   self.titleLabel.stringValue = item.title ?: @"";
-  self.descLabel.stringValue = item.desc ?: @"";
+  self.titleLabel.font = [NSFont systemFontOfSize:13];
+  self.titleLabel.alignment = NSTextAlignmentLeft;
+  self.titleLabel.textColor = [NSColor labelColor];
+  self.titleLabel.maximumNumberOfLines = 1;
+  self.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+  self.titleLabel.cell.wraps = NO;
+  self.titleLabel.cell.usesSingleLineMode = YES;
+  self.titleLabel.cell.truncatesLastVisibleLine = YES;
+  self.trailingConstraint.constant = -(160 + 16 + 20);
+
+  self.descLabel.stringValue = @"";
+  self.descLabel.hidden = YES;
+  self.descLabel.maximumNumberOfLines = 1;
+  self.descLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+  self.descLabel.cell.wraps = NO;
+  self.descLabel.cell.truncatesLastVisibleLine = YES;
+  self.titleBottomConstraint.active = YES;
+  self.descBottomConstraint.active = NO;
+  self.descHeightConstraint.active = YES;
 
   // Reset Visibility
   self.switchControl.hidden = YES;
   self.textControl.hidden = YES;
   self.buttonControl.hidden = YES;
+  self.buttonControl.image = nil;
+  self.buttonControl.imagePosition = NSImageLeft;
+  self.buttonControl.bordered = YES;
+  self.buttonControl.bezelStyle = NSBezelStyleRounded;
+  self.buttonControl.enabled = YES;
   self.popupControl.hidden = YES;
+  [self.popupControl removeAllItems];
   self.headerImageView.hidden = YES;
   self.headerImageView.image = nil;
   self.iconView.image = nil; // Reset to avoid reuse flickering
 
-  // Reset text wrapping/truncation state on reuse.
-  self.descLabel.maximumNumberOfLines = 0;
-  self.descLabel.lineBreakMode = NSLineBreakByWordWrapping;
-  self.descLabel.cell.wraps = YES;
-  self.descLabel.cell.truncatesLastVisibleLine = NO;
-  self.titleLabel.maximumNumberOfLines = 2;
-  self.titleLabel.lineBreakMode = NSLineBreakByWordWrapping;
-  self.titleLabel.cell.wraps = YES;
-
+  // Title stays one line. Long copy is not a row column; tap Info for the sheet.
   self.textControl.maximumNumberOfLines = 1;
   self.textControl.cell.wraps = NO;
   self.textControl.cell.usesSingleLineMode = YES;
@@ -6030,90 +6244,62 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
   } else if (item.type == WSettingPopup) {
     self.popupControl.hidden = NO;
     [self.popupControl removeAllItems];
-    [self.popupControl addItemsWithTitles:item.options];
-
-    // Handle SSHAuthMethod specially - stored as integer index
-    if ([item.key isEqualToString:@"SSHAuthMethod"] ||
-        [item.key isEqualToString:@"WaypipeSSHAuthMethod"]) {
-      NSInteger methodIndex =
-          [[NSUserDefaults standardUserDefaults] integerForKey:item.key];
-      if (methodIndex >= 0 && methodIndex < (NSInteger)item.options.count) {
-        [self.popupControl selectItemAtIndex:methodIndex];
-      } else {
-        [self.popupControl selectItemAtIndex:0]; // Default to Password
-      }
-    } else {
-      NSString *val =
-          [[NSUserDefaults standardUserDefaults] stringForKey:item.key];
-      NSString *stored = val ? val : [item.defaultValue description];
-      if (item.optionValues && item.optionValues.count == item.options.count) {
-        for (NSInteger i = 0; i < (NSInteger)item.optionValues.count; i++) {
-          if ([item.optionValues[i] isEqualToString:stored]) {
-            [self.popupControl selectItemAtIndex:i];
-            goto popup_sel_done;
-          }
-        }
-      }
-      [self.popupControl selectItemWithTitle:stored];
+    if (item.options.count > 0) {
+      [self.popupControl addItemsWithTitles:item.options];
     }
-  popup_sel_done:
+    NSInteger selected = WWNSettingsPopupSelectedIndex(item);
+    if (selected >= 0 && selected < (NSInteger)item.options.count) {
+      [self.popupControl selectItemAtIndex:selected];
+    }
     self.popupControl.enabled = item.interactive;
     self.popupControl.target = target;
     self.popupControl.action = action;
     active = self.popupControl;
   } else if (item.type == WSettingInfo) {
-    // Info type: show read-only text with copy button
-    self.textControl.hidden = NO;
-    NSString *val =
-        [[NSUserDefaults standardUserDefaults] stringForKey:item.key];
-    self.textControl.stringValue =
-        val ? val : ([item.defaultValue description] ?: @"");
-    self.textControl.editable = NO;
-    self.textControl.selectable = YES;
-    self.textControl.bezeled = NO;
-    self.textControl.bordered = NO;
-    self.textControl.backgroundColor = [NSColor clearColor];
-    self.textControl.drawsBackground = NO;
-    BOOL isConnectionInfoField =
-        [item.key isEqualToString:@"XDGRuntimeDir"] ||
-        [item.key isEqualToString:@"WaylandDisplay"] ||
-        [item.key isEqualToString:@"WaylandSocketPath"] ||
-        [item.key isEqualToString:@"WaylandShellSetup"];
-    if (isConnectionInfoField) {
-      // Connection rows often contain long path/env snippets; render fully.
+    NSString *value = WWNSettingsInfoTrailingText(item);
+    self.buttonControl.image = nil;
+    self.buttonControl.bezelStyle = NSBezelStyleAccessoryBarAction;
+    self.buttonControl.bordered = NO;
+    self.buttonControl.target = target;
+    self.buttonControl.action = action;
+    if (WWNSettingsInfoValueIsCompact(value)) {
+      self.buttonControl.hidden = NO;
+      self.buttonControl.title = value;
+      [self.buttonControl.cell setWraps:NO];
+      self.buttonControl.lineBreakMode = NSLineBreakByClipping;
+      active = self.buttonControl;
+    } else {
+      self.buttonControl.hidden = YES;
+      self.buttonControl.title = @"";
+      self.trailingConstraint.constant = -20;
+      self.descLabel.hidden = NO;
+      self.descLabel.stringValue = value;
       self.descLabel.maximumNumberOfLines = 0;
       self.descLabel.lineBreakMode = NSLineBreakByWordWrapping;
       self.descLabel.cell.wraps = YES;
       self.descLabel.cell.truncatesLastVisibleLine = NO;
-
-      self.textControl.maximumNumberOfLines = 0;
-      self.textControl.cell.wraps = YES;
-      self.textControl.cell.usesSingleLineMode = NO;
-      self.textControl.cell.truncatesLastVisibleLine = NO;
-      self.textControl.lineBreakMode = NSLineBreakByWordWrapping;
-    } else if ([item.key isEqualToString:@"WaylandSocketDir"] ||
-               [item.key containsString:@"Dir"] ||
-               [item.key containsString:@"Path"]) {
-      // Finder-style truncation for non-Connection path info rows.
-      self.textControl.lineBreakMode = NSLineBreakByTruncatingMiddle;
-    } else {
-      self.textControl.lineBreakMode = NSLineBreakByTruncatingTail;
+      self.titleBottomConstraint.active = NO;
+      self.descBottomConstraint.active = YES;
+      self.descHeightConstraint.active = NO;
+      active = nil;
     }
-    active = self.textControl;
   } else if (item.type == WSettingLink) {
-    // Show a small icon and description for the link
     self.titleLabel.textColor = [NSColor linkColor];
-    self.buttonControl.hidden = NO;
-    self.buttonControl.title = item.desc ?: @"Open";
-    self.buttonControl.target = target;
-    self.buttonControl.action = action;
-    active = self.buttonControl;
+    self.buttonControl.hidden = YES;
+    active = nil;
   } else if (item.type == WSettingHeader) {
-    // Header type: icon on the left, title + subtitle to the right
     self.titleLabel.font = [NSFont boldSystemFontOfSize:16];
     self.titleLabel.alignment = NSTextAlignmentLeft;
+    self.titleLabel.maximumNumberOfLines = 2;
+    self.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+    self.descLabel.hidden = NO;
     self.descLabel.stringValue = item.desc ?: @"";
     self.descLabel.textColor = [NSColor secondaryLabelColor];
+    self.descLabel.maximumNumberOfLines = 2;
+    self.descLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+    self.titleBottomConstraint.active = NO;
+    self.descBottomConstraint.active = YES;
+    self.descHeightConstraint.active = NO;
 
     if (item.imageURL || item.imageName) {
       self.headerImageView.hidden = NO;
@@ -6191,6 +6377,48 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
     }
   }
 }
+
+- (void)configureAsChoice:(NSString *)title selected:(BOOL)selected {
+  self.item = nil;
+  self.titleLabel.stringValue = title ?: @"";
+  self.titleLabel.font = [NSFont systemFontOfSize:13];
+  self.titleLabel.alignment = NSTextAlignmentLeft;
+  self.titleLabel.textColor = [NSColor labelColor];
+  self.descLabel.hidden = YES;
+  self.descLabel.stringValue = @"";
+  self.switchControl.hidden = YES;
+  self.textControl.hidden = YES;
+  self.popupControl.hidden = YES;
+  self.headerImageView.hidden = YES;
+  self.iconView.hidden = YES;
+  self.buttonControl.hidden = !selected;
+  self.buttonControl.title = @"";
+  self.buttonControl.image =
+      selected ? [NSImage imageWithSystemSymbolName:@"checkmark"
+                           accessibilityDescription:@"Selected"]
+               : nil;
+  self.buttonControl.bordered = NO;
+  self.buttonControl.enabled = NO;
+  self.titleBottomConstraint.active = YES;
+  self.descBottomConstraint.active = NO;
+  self.descHeightConstraint.active = YES;
+  self.trailingConstraint.constant = selected ? -(40 + 20) : -20;
+}
+
+- (void)mouseDown:(NSEvent *)event {
+  if (self.item &&
+      (self.item.type == WSettingInfo || self.item.type == WSettingLink)) {
+    SEL actSel = NSSelectorFromString(@"act:");
+    if ([self.delegate respondsToSelector:actSel] && self.buttonControl) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+      [self.delegate performSelector:actSel withObject:self.buttonControl];
+#pragma clang diagnostic pop
+      return;
+    }
+  }
+  [super mouseDown:event];
+}
 @end
 
 @interface WWNSeparatorRowView : NSTableRowView
@@ -6216,6 +6444,24 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
 - (void)loadView {
   NSView *v = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 400, 400)];
   self.view = v;
+  NSView *header = [[NSView alloc] initWithFrame:NSMakeRect(0, 364, 400, 36)];
+  header.autoresizingMask = NSViewWidthSizable | NSViewMinYMargin;
+  header.hidden = YES;
+  NSButton *back = [NSButton buttonWithTitle:@"Back"
+                                      target:self
+                                      action:@selector(exitOptionPicker)];
+  back.bezelStyle = NSBezelStyleAccessoryBarAction;
+  back.frame = NSMakeRect(12, 4, 72, 28);
+  [header addSubview:back];
+  NSTextField *title = [NSTextField labelWithString:@""];
+  title.font = [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold];
+  title.frame = NSMakeRect(92, 8, 280, 20);
+  title.autoresizingMask = NSViewWidthSizable;
+  [header addSubview:title];
+  self.pickerHeader = header;
+  self.pickerTitleLabel = title;
+  [v addSubview:header];
+
   NSScrollView *sv = [[NSScrollView alloc] initWithFrame:v.bounds];
   sv.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
   sv.drawsBackground = NO; // Fix Unified Background
@@ -6232,7 +6478,8 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
       NSMakeSize(0, 0); // Tight packing for custom rows
   self.tableView.columnAutoresizingStyle =
       NSTableViewUniformColumnAutoresizingStyle;
-  self.tableView.usesAutomaticRowHeights = YES;
+  self.tableView.usesAutomaticRowHeights = NO;
+  self.tableView.selectionHighlightStyle = NSTableViewSelectionHighlightStyleNone;
 
   NSTableColumn *c = [[NSTableColumn alloc] initWithIdentifier:@"C"];
   c.width = sv.bounds.size.width;                 // Match scroll view width
@@ -6246,12 +6493,38 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
 
 - (void)viewDidLayout {
   [super viewDidLayout];
+  NSRect bounds = self.view.bounds;
+  CGFloat headerH = self.pickingItem ? 36.0 : 0.0;
+  self.pickerHeader.hidden = (headerH < 1.0);
+  if (headerH > 0) {
+    self.pickerHeader.frame =
+        NSMakeRect(0, bounds.size.height - headerH, bounds.size.width, headerH);
+  }
+  self.scrollView.frame =
+      NSMakeRect(0, 0, bounds.size.width, bounds.size.height - headerH);
   if (self.environmentHostView && !self.environmentHostView.hidden) {
     self.environmentHostView.frame = self.view.bounds;
   }
 }
 
+- (void)showOptionPickerForItem:(WWNSettingItem *)item {
+  self.pickingItem = item;
+  self.pickerTitleLabel.stringValue = item.title ?: @"";
+  [self.view setNeedsLayout:YES];
+  [self.view layoutSubtreeIfNeeded];
+  [self.tableView reloadData];
+}
+
+- (void)exitOptionPicker {
+  self.pickingItem = nil;
+  [self.view setNeedsLayout:YES];
+  [self.view layoutSubtreeIfNeeded];
+  [self.tableView reloadData];
+}
+
 - (void)reloadForCurrentSection {
+  self.pickingItem = nil;
+  [self.view setNeedsLayout:YES];
   BOOL isEnvironment = [self.section.title isEqualToString:@"Env Vars"];
   if (isEnvironment) {
     [self embedEnvironmentVariablesIfNeeded];
@@ -6312,6 +6585,9 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
 }
 
 - (NSInteger)numberOfRowsInTableView:(NSTableView *)tv {
+  if (self.pickingItem) {
+    return (NSInteger)self.pickingItem.options.count;
+  }
   return self.section.items.count;
 }
 
@@ -6322,6 +6598,11 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
   if (!cell) {
     cell = [[WWNPreferenceCell alloc] initWithFrame:NSMakeRect(0, 0, 400, 50)];
   }
+  if (self.pickingItem) {
+    BOOL selected = (row == WWNSettingsPopupSelectedIndex(self.pickingItem));
+    [cell configureAsChoice:self.pickingItem.options[row] selected:selected];
+    return cell;
+  }
   WWNSettingItem *item = self.section.items[row];
   [cell configureWithItem:item target:self action:@selector(act:)];
 
@@ -6331,21 +6612,70 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
     cell.switchControl.tag = row;
   if (!cell.textControl.hidden)
     cell.textControl.tag = row;
-  if (!cell.buttonControl.hidden)
-    cell.buttonControl.tag = row;
   if (!cell.popupControl.hidden)
     cell.popupControl.tag = row;
+  cell.buttonControl.tag = row;
 
   return cell;
 }
 
+- (BOOL)tableView:(NSTableView *)tv shouldSelectRow:(NSInteger)row {
+  if (self.pickingItem) {
+    [self pickOptionAtRow:row];
+  }
+  return NO;
+}
+
+- (void)applyPopupSelectionForItem:(WWNSettingItem *)item index:(NSInteger)index {
+  WWNSettingsPopupStoreIndex(item, index);
+  if (WWNSettingsPopupStoresIndex(item.key) ||
+      [item.key isEqualToString:@"RenderMacOSPointer"]) {
+    WWNPreferences *prefs = [WWNPreferences sharedPreferences];
+    NSString *sectionTitle = self.section.title;
+    prefs.sections = [prefs buildSections];
+    for (WWNPreferencesSection *section in prefs.sections) {
+      if ([section.title isEqualToString:sectionTitle]) {
+        self.section = section;
+        break;
+      }
+    }
+  }
+  if (item.key) {
+    [[NSNotificationCenter defaultCenter]
+        postNotificationName:@"WWNPreferencesChanged"
+                      object:nil];
+  }
+  [self.tableView reloadData];
+}
+
+- (void)pickOptionAtRow:(NSInteger)row {
+  WWNSettingItem *item = self.pickingItem;
+  if (!item) {
+    return;
+  }
+  [self applyPopupSelectionForItem:item index:row];
+  [self exitOptionPicker];
+}
+
 - (void)act:(id)sender {
+  if (self.pickingItem) {
+    return;
+  }
   NSInteger row = (NSInteger)[sender tag];
   if (row < 0 || row >= (NSInteger)self.section.items.count) {
     return;
   }
 
   WWNSettingItem *item = self.section.items[row];
+
+  if ([sender isKindOfClass:[NSPopUpButton class]]) {
+    if (!item.interactive) {
+      return;
+    }
+    NSInteger index = [(NSPopUpButton *)sender indexOfSelectedItem];
+    [self applyPopupSelectionForItem:item index:index];
+    return;
+  }
 
   // Handle password fields - show a dialog for password entry
   if (item.type == WSettingPassword) {
@@ -6361,13 +6691,18 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
   }
 
   if (item.type == WSettingInfo) {
-    // For Info type, copy to clipboard on click
-    NSString *val =
-        [[NSUserDefaults standardUserDefaults] stringForKey:item.key];
-    NSString *valueString = val ? val : [item.defaultValue description];
-    NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
-    [pasteboard clearContents];
-    [pasteboard setString:valueString forType:NSPasteboardTypeString];
+    NSString *valueString = WWNSettingsInfoDetailText(item);
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = item.title ?: @"";
+    alert.informativeText = valueString.length > 0 ? valueString : @"";
+    [alert addButtonWithTitle:@"OK"];
+    [alert addButtonWithTitle:@"Copy"];
+    NSModalResponse response = [alert runModal];
+    if (response == NSAlertSecondButtonReturn && valueString.length > 0) {
+      NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+      [pasteboard clearContents];
+      [pasteboard setString:valueString forType:NSPasteboardTypeString];
+    }
     return;
   }
 
@@ -6419,35 +6754,6 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
       [[NSUserDefaults standardUserDefaults] setObject:val forKey:item.key];
     }
     return; // Return early for text fields - they save on each change
-  } else if ([sender isKindOfClass:[NSPopUpButton class]]) {
-    if (!item.interactive) {
-      return;
-    }
-    // Handle SSHAuthMethod specially - store as integer index
-    if ([item.key isEqualToString:@"SSHAuthMethod"] ||
-        [item.key isEqualToString:@"WaypipeSSHAuthMethod"]) {
-      NSInteger selectedIndex = [(NSPopUpButton *)sender indexOfSelectedItem];
-      [[NSUserDefaults standardUserDefaults] setInteger:selectedIndex
-                                                 forKey:item.key];
-
-      // Auth method changed - rebuild sections to show appropriate nested
-      // options
-      WWNPreferences *prefs = [WWNPreferences sharedPreferences];
-      prefs.sections = [prefs buildSections];
-      [self.tableView reloadData];
-
-      [[NSNotificationCenter defaultCenter]
-          postNotificationName:@"WWNPreferencesChanged"
-                        object:nil];
-      return;
-    }
-    NSInteger idx = [(NSPopUpButton *)sender indexOfSelectedItem];
-    if (item.optionValues && idx >= 0 &&
-        idx < (NSInteger)item.optionValues.count) {
-      val = item.optionValues[idx];
-    } else {
-      val = [(NSPopUpButton *)sender titleOfSelectedItem];
-    }
   }
 
   if (val && item.key) {
@@ -6574,28 +6880,31 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
 }
 
 - (CGFloat)tableView:(NSTableView *)tv heightOfRow:(NSInteger)row {
+  if (self.pickingItem) {
+    return 44.0;
+  }
   if (row < (NSInteger)self.section.items.count) {
     WWNSettingItem *item = self.section.items[row];
     if (item.type == WSettingHeader) {
       return 68.0;
     }
-    CGFloat textWidth = MAX(160.0, tv.bounds.size.width - 220.0);
-    NSFont *titleFont = [NSFont systemFontOfSize:13];
-    NSFont *descFont = [NSFont systemFontOfSize:11];
-    CGFloat titleH = [item.title ?: @""
-                         boundingRectWithSize:NSMakeSize(textWidth, 36)
-                                      options:NSStringDrawingUsesLineFragmentOrigin
-                                   attributes:@{NSFontAttributeName : titleFont}]
-                         .size.height;
-    CGFloat descH = 0;
-    if (item.desc.length > 0) {
-      descH = [item.desc
-                   boundingRectWithSize:NSMakeSize(textWidth, 240)
-                                options:NSStringDrawingUsesLineFragmentOrigin
-                             attributes:@{NSFontAttributeName : descFont}]
-                   .size.height;
+    if (item.type == WSettingInfo) {
+      NSString *value = WWNSettingsInfoTrailingText(item);
+      if (!WWNSettingsInfoValueIsCompact(value)) {
+        CGFloat width = MAX(220.0, tv.bounds.size.width - 40.0);
+        NSSize size = [value
+            boundingRectWithSize:NSMakeSize(width, CGFLOAT_MAX)
+                         options:NSStringDrawingUsesLineFragmentOrigin |
+                                 NSStringDrawingUsesFontLeading
+                      attributes:@{
+                        NSFontAttributeName : [NSFont systemFontOfSize:11]
+                      }
+                         context:nil]
+                           .size;
+        return MIN(160.0, 8.0 + 18.0 + 2.0 + ceil(size.height) + 8.0);
+      }
     }
-    return MAX(50.0, 16.0 + titleH + 2.0 + descH);
+    return 44.0;
   }
   return 50.0;
 }

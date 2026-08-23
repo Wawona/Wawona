@@ -101,12 +101,20 @@ struct MachineEditorView: View {
                             Text(t.userFacingName).tag(t)
                         }
                     }
-                    .pickerStyle(.menu)
+                    .wwnMachineChoicePicker()
                 }
 
                 // MARK: Native. Local Wayland socket, no network
                 if isNative {
                     Section {
+                        #if os(macOS)
+                        Picker("Wayland Client", selection: $selectedLauncherName) {
+                            ForEach(ClientLauncher.presets) { launcher in
+                                Text(launcher.displayName).tag(launcher.name)
+                            }
+                        }
+                        .wwnMachineChoicePicker()
+                        #else
                         NavigationLink {
                             BundledClientPickerView(selection: $selectedLauncherName)
                         } label: {
@@ -118,6 +126,7 @@ struct MachineEditorView: View {
                                     .lineLimit(1)
                             }
                         }
+                        #endif
                     } footer: {
                         Text("Connects to the compositor via local Wayland socket. No network or SSH required.")
                     }
@@ -141,6 +150,7 @@ struct MachineEditorView: View {
                             Text("Password").tag(0)
                             Text("Public Key").tag(1)
                         }
+                        .wwnMachineChoicePicker()
                         TextField("Key Path", text: $sshKeyPath)
                             .wawonaTextFieldNoAutocaps()
                             .autocorrectionDisabled()
@@ -193,5 +203,16 @@ struct MachineEditorView: View {
         }
         onSave(profile)
         dismiss()
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func wwnMachineChoicePicker() -> some View {
+        #if os(macOS)
+        self.pickerStyle(.menu)
+        #else
+        self.pickerStyle(.navigationLink)
+        #endif
     }
 }

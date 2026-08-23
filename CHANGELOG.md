@@ -15,8 +15,23 @@ as history.
 - **iOS Settings duplicate section titles.** Detail pages used the section
   name in the nav bar and again as a table header. Header is omitted; the
   nav bar is the only title.
-- **iOS Settings sheet grabber.** The Settings card now shows the system
-  center drag indicator so it is clear the sheet can be swiped to dismiss.
+- **iOS Settings Apple Watch rows.** Companion Status and On the Watch
+  show the real status text. Short values stay on the trailing edge;
+  longer copy wraps in the row. Tap still opens the full copy.
+  Switches stay title | On/Off. The same layout is used on macOS,
+  Android, Linux, and watchOS Settings.
+- **Settings info rows.** Trailing `…` placeholders are gone. The row
+  shows the current value (short values on the trailing edge, longer
+  copy wraps). Tap still opens the full copy.
+- **Machines action buttons.** Start, Stop, Focus, Edit, and Delete stay on
+  one line. On a narrow card they wrap as whole buttons, not as stacked
+  letters. Same behavior on Apple, Android, and Linux.
+- **Settings multi-option rows.** iOS family (iPhone, iPad, Apple TV,
+  Vision Pro) keeps the chevron into a list page. macOS uses a Cocoa
+  `NSPopUpButton` switcher in the row, same as before. Android and Linux
+  dropdowns are unchanged.
+- **Settings → Machines.** Session gestures and the existing VM/container
+  prefs are one section. A second Machines row is gone.
 - **macOS menubar Settings.** Wawona Settings was activating the compositor
   host (same bundle) which reopened Machines. The applet now notifies or
   launches the UI process with `--show-settings`.

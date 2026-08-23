@@ -337,7 +337,7 @@ struct WWNMachineEditorView: View {
               Picker("", selection: $type) {
                 machineTypeOptions
               }
-              .pickerStyle(.menu)
+              .wwnPlatformPickerStyle()
               .labelsHidden()
             }
             Divider()
@@ -483,7 +483,7 @@ struct WWNMachineEditorView: View {
           Text("Host Cursor").tag("host")
           #endif
         }
-        .pickerStyle(.menu)
+        .wwnPlatformPickerStyle()
         .labelsHidden()
         .disabled(!renderMacOSPointer)
       }
@@ -497,7 +497,7 @@ struct WWNMachineEditorView: View {
           Text("Multi-Touch").tag("Multi-Touch")
           Text("Touchpad").tag("Touchpad")
         }
-        .pickerStyle(.menu)
+        .wwnPlatformPickerStyle()
         .labelsHidden()
       }
       Toggle("Swap CMD with ALT", isOn: $swapCmdWithAlt)
@@ -512,7 +512,7 @@ struct WWNMachineEditorView: View {
           Text("MoltenVK").tag("moltenvk")
 #endif
         }
-        .pickerStyle(.menu)
+        .wwnPlatformPickerStyle()
         .labelsHidden()
       }
       labeledField("OpenGL Driver") {
@@ -520,7 +520,7 @@ struct WWNMachineEditorView: View {
           Text("None").tag("none")
           Text("ANGLE").tag("angle")
         }
-        .pickerStyle(.menu)
+        .wwnPlatformPickerStyle()
         .labelsHidden()
       }
       // Nested compositors (niri, weston) support both. Running them nested
@@ -532,7 +532,7 @@ struct WWNMachineEditorView: View {
           Text("Wayland (nested)").tag("wayland")
           Text("DRM/KMS (wwn-iland)").tag("drm")
         }
-        .pickerStyle(.menu)
+        .wwnPlatformPickerStyle()
         .labelsHidden()
         .disabled(openGLDriver == "none")
         .help(openGLDriver == "none"
@@ -575,6 +575,15 @@ struct WWNMachineEditorView: View {
       "Wayland Client",
       subtitle: "Choose a bundled client to connect directly to the compositor via Wayland socket. No SSH or network required."
     ) {
+      #if os(macOS)
+      Picker("Bundled Client", selection: $selectedClientId) {
+        ForEach(kBundledClients) { client in
+          Text(client.name).tag(client.id)
+        }
+        Text("Custom Command").tag(kNativeClientCustomId)
+      }
+      .wwnPlatformPickerStyle()
+      #else
       NavigationLink {
         WWNNativeClientPickerView(
           selectedClientId: $selectedClientId
@@ -589,6 +598,7 @@ struct WWNMachineEditorView: View {
             .lineLimit(1)
         }
       }
+      #endif
 
       #if !os(iOS)
       if selectedClientId == kNativeClientCustomId {
@@ -753,7 +763,7 @@ struct WWNMachineEditorView: View {
           Text("Password").tag(0)
           Text("Public Key").tag(1)
         }
-        .pickerStyle(.menu)
+        .wwnPlatformPickerStyle()
         .labelsHidden()
       }
       if sshAuthMethod == 0 {
@@ -802,7 +812,7 @@ struct WWNMachineEditorView: View {
           Text("lz4").tag("lz4")
           Text("zstd").tag("zstd")
         }
-        .pickerStyle(.menu)
+        .wwnPlatformPickerStyle()
         .labelsHidden()
       }
       labeledField("Compression Level") {
@@ -824,7 +834,7 @@ struct WWNMachineEditorView: View {
           Text("vp9").tag("vp9")
           Text("av1").tag("av1")
         }
-        .pickerStyle(.menu)
+        .wwnPlatformPickerStyle()
         .labelsHidden()
       }
       labeledField("Video Encoding") {
@@ -834,7 +844,7 @@ struct WWNMachineEditorView: View {
           Text("hwenc").tag("hwenc")
           Text("swenc").tag("swenc")
         }
-        .pickerStyle(.menu)
+        .wwnPlatformPickerStyle()
         .labelsHidden()
       }
       labeledField("Video Decoding") {
@@ -844,7 +854,7 @@ struct WWNMachineEditorView: View {
           Text("hwdec").tag("hwdec")
           Text("swdec").tag("swdec")
         }
-        .pickerStyle(.menu)
+        .wwnPlatformPickerStyle()
         .labelsHidden()
       }
       labeledField("Bits Per Frame") {
@@ -1384,6 +1394,15 @@ private struct WWNNativeClientPickerView: View {
 }
 
 private extension View {
+  @ViewBuilder
+  func wwnPlatformPickerStyle() -> some View {
+    #if os(macOS)
+    self.pickerStyle(.menu)
+    #else
+    self.pickerStyle(.navigationLink)
+    #endif
+  }
+
   @ViewBuilder
   func wwnDisableAutocapitalization() -> some View {
     #if os(iOS)

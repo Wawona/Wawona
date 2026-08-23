@@ -31,6 +31,21 @@ pages. watchOS omits Desktop (forbidden), Local Shell, and Apple Watch. SwiftUI
 on watch is the in-process host (WatchKit present from `@main` is unreliable);
 both hosts must render that catalog and the same `wawona.pref.*` keys.
 
+### Settings row layout
+
+A Settings row is two columns. Never put a paragraph in both.
+
+- **Switch:** one-line title (truncate if needed) | On/Off. No helper copy in the row.
+- **Multi-option (iOS family):** one-line title | current value and a
+  disclosure chevron. Tap pushes a full list page (checkmark on the
+  selected row). iPhone, iPad, Apple TV, and Vision Pro.
+- **Multi-option (macOS):** one-line title | `NSPopUpButton` switcher in
+  the trailing column. Native Cocoa menu. No chevron and no second page.
+- **Info:** one-line title plus the current value. Short values sit on the
+  trailing edge. Longer copy wraps in the row. Never a placeholder
+  ellipsis. Tap opens a sheet with the full value and description.
+- Short text values (1024, Set) may sit in the trailing column on one line.
+
 ---
 
 | Setting | Key | Type | Default | Platforms | Description |
@@ -118,6 +133,13 @@ AX id: `wwn.settings.machines`.
 | **Shake to Exit Machine** | `wawona.pref.shakeToCloseEnabled` | Switch | On | iOS, Android, watchOS, visionOS | Shake confirms closing the active machine session |
 | **Long-press Menu to Exit Machine** | `wawona.pref.shakeToCloseEnabled` (same key) | Switch | On | tvOS | Hold Menu/Back (~1s) confirms session exit. Short Menu sends Escape |
 | **Swipe Back to Exit Machine** | `wawona.pref.swipeBackToCloseEnabled` | Switch | On | iOS, Android, watchOS, visionOS | Edge swipe back asks before closing |
+| **Session Thumbnails** | `MachineSessionThumbnailsEnabled` | Switch | On | All | Last session frame on machine cards |
+| **Virtual Machine Engine** | (read-only) | Info | platform | macOS, iOS, Android, Linux | Selected by `wwn-vms`. Hidden on tvOS / watchOS / visionOS |
+| **Virtual Machine VSock Port** | `MachineVMVsockPort` | Number | 1024 | macOS, iOS, Android, Linux | Guest waypipe vsock port |
+| **Container Runtime** | (read-only) | Info | platform | macOS, iOS, Android, Linux | Selected by `wwn-containers`. Hidden on tvOS / watchOS / visionOS |
+| **Container Image Store** | `MachineContainerImageStore` | Text | `~/.local/share/wawona/oci` | macOS, iOS, Android, Linux | OCI store for pulled images |
+
+One Settings section. Session gestures and VM/container prefs share `wwn.settings.machines`. Not a second sidebar row.
 
 ---
 

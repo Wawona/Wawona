@@ -54,6 +54,7 @@ public struct MachineSettingsView: View {
                                 Text(profile.name).tag(profile.id)
                             }
                         }
+                        .wwnDisclosurePicker()
                     }
                     #else
                     Picker("Profile", selection: Binding(
@@ -67,6 +68,7 @@ public struct MachineSettingsView: View {
                             Text(profile.name).tag(profile.id)
                         }
                     }
+                    .wwnDisclosurePicker()
                     #endif
                 }
             }
@@ -116,8 +118,17 @@ public struct MachineSettingsView: View {
                     Text(t.userFacingName).tag(t)
                 }
             }
+            .wwnDisclosurePicker()
 
             if profile.type == .native {
+                #if os(macOS)
+                Picker("Wayland Client", selection: bundledAppIDSelectionBinding) {
+                    ForEach(ClientLauncher.presets) { launcher in
+                        Text(launcher.displayName).tag(launcher.name)
+                    }
+                }
+                .wwnDisclosurePicker()
+                #else
                 NavigationLink {
                     BundledClientPickerView(selection: bundledAppIDSelectionBinding)
                 } label: {
@@ -129,6 +140,7 @@ public struct MachineSettingsView: View {
                             .lineLimit(1)
                     }
                 }
+                #endif
                 if resolvedBundledAppID == "wawona-wasm" {
                     TextField("Wasm module path", text: wasmModulePathBinding)
                         .wawonaTextFieldNoAutocaps()
@@ -188,6 +200,7 @@ public struct MachineSettingsView: View {
                 Text("Host Cursor").tag("host")
                 #endif
             }
+            .wwnDisclosurePicker()
             .disabled(!(draft?.runtimeOverrides.renderMacOSPointer ?? preferences.renderMacOSPointer))
             #if os(tvOS)
             Text("Touch Input Type: Touchpad (tvOS)")
@@ -197,6 +210,7 @@ public struct MachineSettingsView: View {
                 Text("Multi-Touch").tag("Multi-Touch")
                 Text("Touchpad").tag("Touchpad")
             }
+            .wwnDisclosurePicker()
             Text("Overrides global Settings → Input. Multi-Touch is required for many Wayland clients (Weston panel, terminals); Touchpad uses a virtual pointer.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -239,12 +253,14 @@ public struct MachineSettingsView: View {
                 Text("Warn").tag("warn")
                 Text("Error").tag("error")
             }
+            .wwnDisclosurePicker()
             Picker("Display Backend", selection: compositorBackendBinding) {
                 Text("Inherit global (\(preferences.compositorBackend))").tag("")
                 Text("Auto").tag("auto")
                 Text("Wayland (nested)").tag("wayland")
                 Text("DRM").tag("drm")
             }
+            .wwnDisclosurePicker()
             #if os(tvOS)
             Toggle("Long-press Menu to Exit Machine", isOn: shakeToCloseBinding)
             #else
@@ -575,5 +591,16 @@ public struct MachineSettingsView: View {
         var copy = draft!
         mutate(&copy)
         draft = copy
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func wwnDisclosurePicker() -> some View {
+        #if os(macOS)
+        self.pickerStyle(.menu)
+        #else
+        self.pickerStyle(.navigationLink)
+        #endif
     }
 }
