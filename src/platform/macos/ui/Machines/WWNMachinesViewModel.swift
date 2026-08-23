@@ -78,14 +78,14 @@ let kAllBundledClients: [BundledClient] = [
     name: "Weston",
     prefsKey: "WestonEnabled",
     icon: "rectangle.on.rectangle",
-    description: "Wayland reference compositor (nested compositor)"
+    description: "Wayland reference compositor. Nested Wayland or iland DRM/KMS (Display Backend). Mode B Take Over uses DRM."
   ),
   BundledClient(
     id: "niri",
     name: "Niri",
     prefsKey: "NiriEnabled",
     icon: "rectangle.split.3x1",
-    description: "Scrollable-tiling compositor (nested compositor)"
+    description: "Scrollable-tiling compositor. Nested Wayland or iland DRM/KMS (Display Backend). Mode B Take Over uses DRM."
   ),
   BundledClient(
     id: "foot",
@@ -130,7 +130,7 @@ let kAllBundledClients: [BundledClient] = [
     name: "Vulkan Cube",
     prefsKey: "VkcubeEnabled",
     icon: "cube",
-    description: "Vulkan API smoke test",
+    description: "Vulkan cube. Mode A: Wayland client. Mode B Take Over: vkcube-kms (iland DRM/KMS/GBM).",
     requiresGpuStack: true
   ),
   BundledClient(

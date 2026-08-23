@@ -83,6 +83,17 @@ extern NSString *const kWWNMachineTypeContainer;
     NS_SWIFT_NAME(profileIndicatesNested(nativeClientId:customCommand:));
 + (BOOL)profileIndicatesNestedCompositor:(WWNMachineProfile *)profile;
 
+/// Mode B Classic own-display: nested compositors (weston/niri/custom) plus
+/// DRM/KMS/GBM clients (kmscube, gbm-es2-demo, vkcube KMS) and modeb-tty.
+/// Weston and niri stay dual-backend. This does not pin them to DRM. Mode A
+/// Machines Start still nests them when Display Backend is Wayland. Mode B
+/// Take Over has no host Wayland, so those same binaries use `--backend=drm`
+/// / `NIRI_BACKEND=tty` on the assigned GUI VT.
++ (BOOL)nativeClientIdIndicatesModeBOwnDisplay:(NSString *)clientId
+                                 customCommand:(NSString *)customCommand
+    NS_SWIFT_NAME(profileIndicatesModeBOwnDisplay(nativeClientId:customCommand:));
++ (BOOL)profileIndicatesModeBOwnDisplay:(WWNMachineProfile *)profile;
+
 /// App Bridge (anowaW) eligibility: YES only when the profile is a local-only
 /// native machine whose client is the **nested Weston** compositor
 /// (`weston` running `--backend=wayland`), never a plain demo client. This is

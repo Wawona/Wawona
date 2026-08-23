@@ -1402,6 +1402,24 @@ GEN_HEADER
               chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/vkcube
               echo "DEBUG: Bundled vkcube (Wayland)"
             fi
+            if [ -f "${effectiveNativeDeps.vkcube}/bin/vkcube-kms" ]; then
+              cp "${effectiveNativeDeps.vkcube}/bin/vkcube-kms" $out/Applications/Wawona.app/Contents/Resources/bin/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/vkcube-kms
+              echo "DEBUG: Bundled vkcube-kms (iland KMS/GBM)"
+            fi
+            '' else ''
+            ''}
+
+            ${if effectiveNativeDeps."gbm-es2-demo" or null != null then ''
+            if [ -f "${effectiveNativeDeps."gbm-es2-demo"}/bin/gbm-es2-demo" ]; then
+              cp "${effectiveNativeDeps."gbm-es2-demo"}/bin/gbm-es2-demo" $out/Applications/Wawona.app/Contents/Resources/bin/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/gbm-es2-demo
+              echo "DEBUG: Bundled gbm-es2-demo"
+            elif [ -f "${effectiveNativeDeps."gbm-es2-demo"}/bin/gbm_es2_demo" ]; then
+              cp "${effectiveNativeDeps."gbm-es2-demo"}/bin/gbm_es2_demo" $out/Applications/Wawona.app/Contents/Resources/bin/gbm-es2-demo
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/gbm-es2-demo
+              echo "DEBUG: Bundled gbm-es2-demo (from gbm_es2_demo)"
+            fi
             '' else ''
             ''}
 

@@ -97,6 +97,7 @@ static BOOL WWNIsGpuFamilyClientId(NSString *clientId) {
   return WWNIsIlandGpuCubeClientId(clientId) ||
          [clientId isEqualToString:@"opengl-cube"] ||
          [clientId isEqualToString:@"vkcube"] ||
+         [clientId isEqualToString:@"vkcube-kms"] ||
          [clientId isEqualToString:@"weston-simple-egl"] ||
          [clientId isEqualToString:@"niri"];
 }
@@ -115,7 +116,8 @@ static NSString *WWNGpuClientRefusalReason(NSString *clientId) {
   }
   WWNGraphicsDriverSelection selection =
       WWNSettings_ResolveGraphicsDriverSelection();
-  if ([clientId isEqualToString:@"vkcube"]) {
+  if ([clientId isEqualToString:@"vkcube"] ||
+      [clientId isEqualToString:@"vkcube-kms"]) {
     return selection.vulkanEnabled
                ? nil
                : @"Settings → Graphics → Vulkan driver is None";
@@ -143,7 +145,8 @@ static const char *WWNBundledClientLogModule(NSString *clientId) {
   if ([clientId isEqualToString:@"opengl-cube"]) {
     return "OPENGL_CUBE";
   }
-  if ([clientId isEqualToString:@"vkcube"]) {
+  if ([clientId isEqualToString:@"vkcube"] ||
+      [clientId isEqualToString:@"vkcube-kms"]) {
     return "VKCUBE";
   }
   if ([clientId isEqualToString:@"niri"]) {
@@ -2289,9 +2292,11 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   }
   BOOL needsFrameworks =
       [name isEqualToString:@"vkcube"] ||
+      [name isEqualToString:@"vkcube-kms"] ||
       [name isEqualToString:@"opengl-cube"] ||
       [name isEqualToString:@"weston-simple-egl"] ||
       [name isEqualToString:@"kmscube"] ||
+      [name isEqualToString:@"gbm-es2-demo"] ||
       [name isEqualToString:@"niri"] ||
       [name isEqualToString:@"weston"];
   NSString *frameworksDir = [[[NSBundle mainBundle] bundlePath]
@@ -2300,7 +2305,8 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       [[NSFileManager defaultManager] fileExistsAtPath:frameworksDir]) {
     env[@"DYLD_LIBRARY_PATH"] = frameworksDir;
   }
-  if ([name isEqualToString:@"vkcube"]) {
+  if ([name isEqualToString:@"vkcube"] ||
+      [name isEqualToString:@"vkcube-kms"]) {
     const char *vkLib = getenv("WWN_VULKAN_LIBRARY");
     if (vkLib && vkLib[0])
       env[@"WWN_VULKAN_LIBRARY"] = @(vkLib);
@@ -2314,7 +2320,8 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   }
   if ([name isEqualToString:@"opengl-cube"] ||
       [name isEqualToString:@"weston-simple-egl"] ||
-      [name isEqualToString:@"kmscube"]) {
+      [name isEqualToString:@"kmscube"] ||
+      [name isEqualToString:@"gbm-es2-demo"]) {
     const char *anglePlat = getenv("ANGLE_DEFAULT_PLATFORM");
     if (anglePlat && anglePlat[0])
       env[@"ANGLE_DEFAULT_PLATFORM"] = @(anglePlat);
@@ -2574,9 +2581,13 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     *outEnv = nil;
   }
   /*
-   * Mode B own-display inject target. Nested compositors (weston/niri/custom)
-   * are the Desktop product. kmscube is allowed as a temporary DRM/KMS proof
-   * client (same userspace KMS path; simpler than weston DRM panel).
+   * Mode B own-display inject target. Weston and niri are dual-backend:
+   * Mode A Machines Start still nests them (Display Backend = Wayland) or
+   * runs them on iland DRM (Display Backend = DRM). Classic Take Over has
+   * no host Wayland display, so this spec uses each compositor's DRM
+   * backend. KMS-only clients (kmscube, gbm-es2-demo, vkcube-kms) scan out
+   * the same userspace KMS path. opengl-cube stays a Wayland client of the
+   * GUI compositor; it is not re-hosted onto KMS.
    */
   NSString *clientId =
       [WWNMachineSessionBridge nativeClientIdForProfile:profile];
@@ -2595,8 +2606,11 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
 
   BOOL modebTty = [clientId isEqualToString:@"modeb-tty"] ||
                   [clientId isEqualToString:@"modeb-ttyd"];
-  BOOL kmscubeProof = [clientId isEqualToString:@"kmscube"];
-  if (!modebTty && !kmscubeProof &&
+  BOOL kmsClient = [clientId isEqualToString:@"kmscube"] ||
+                   [clientId isEqualToString:@"gbm-es2-demo"] ||
+                   [clientId isEqualToString:@"vkcube"] ||
+                   [clientId isEqualToString:@"vkcube-kms"];
+  if (!modebTty && !kmsClient &&
       ![WWNMachineProfileStore profileIndicatesNestedCompositor:profile]) {
     if (error) {
       *error = [NSError
@@ -2604,9 +2618,10 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
                      code:40
                  userInfo:@{
                    NSLocalizedDescriptionKey :
-                       @"Desktop Replacement needs a nested compositor "
-                       @"(weston, niri, or custom), modeb-tty (multi-VT), "
-                       @"or kmscube for DRM own-display proof."
+                       @"Desktop Replacement own-display needs weston or niri "
+                       @"(DRM backend after Take Over; nested Wayland remains "
+                       @"the Mode A path), modeb-tty, or a KMS client "
+                       @"(kmscube, gbm-es2-demo, vkcube-kms)."
                  }];
     }
     return NO;
@@ -2645,6 +2660,21 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
   if (kms.length > 0) {
     env[@"WWN_MODEB_KMSCUBE"] = kms;
   }
+  NSString *gbmEs2 = [self findBinaryNamed:@"gbm-es2-demo"];
+  if (gbmEs2.length == 0) {
+    gbmEs2 = [self findBinaryNamed:@"gbm_es2_demo"];
+  }
+  if (gbmEs2.length > 0) {
+    env[@"WWN_MODEB_GBM_ES2"] = gbmEs2;
+  }
+  NSString *vkcubeKms = [self findBinaryNamed:@"vkcube-kms"];
+  if (vkcubeKms.length > 0) {
+    env[@"WWN_MODEB_VKCUBE"] = vkcubeKms;
+    env[@"WAWONA_VKCUBE_FRAMES"] = @"0";
+  }
+  [self wwnApplyBundledClientEnvironment:env forClientId:@"kmscube"];
+  [self wwnApplyBundledClientEnvironment:env forClientId:@"gbm-es2-demo"];
+  [self wwnApplyBundledClientEnvironment:env forClientId:@"vkcube-kms"];
 
   if (modebTty) {
     executable = [self findBinaryNamed:@"modeb-ttyd"];
@@ -2666,10 +2696,19 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
       env[@"WWN_MODEB_NIRI"] = niri;
     }
     args = @[];
-  } else if (kmscubeProof) {
-    executable = [self findBinaryNamed:@"kmscube"];
+  } else if ([clientId isEqualToString:@"kmscube"]) {
+    executable = kms;
+    args = @[];
+  } else if ([clientId isEqualToString:@"gbm-es2-demo"]) {
+    executable = gbmEs2;
+    args = @[];
+  } else if ([clientId isEqualToString:@"vkcube"] ||
+             [clientId isEqualToString:@"vkcube-kms"]) {
+    executable = vkcubeKms;
     args = @[];
   } else if ([clientId isEqualToString:@"niri"]) {
+    /* Mode B has no host Wayland. Mode A still uses NIRI_BACKEND=nested when
+     * Display Backend is Wayland. */
     env[@"NIRI_BACKEND"] = @"tty";
     executable = [self findBinaryNamed:@"niri"];
   } else if ([clientId isEqualToString:@"weston"]) {
@@ -2701,6 +2740,7 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
       [self wwnWriteWestonIniAtPath:configPath.UTF8String usePixman:NO];
     }
     NSMutableArray<NSString *> *westonArgs = [NSMutableArray arrayWithObjects:
+        /* Mode B own-display. Mode A nested still uses --backend=wayland. */
         @"--backend=drm",
         @"--continue-without-input",
         [NSString stringWithFormat:@"--socket=%@",

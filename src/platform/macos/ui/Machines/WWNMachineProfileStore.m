@@ -654,6 +654,38 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   return [self profileIndicatesNestedWithNativeClientId:cid customCommand:cmd];
 }
 
++ (BOOL)nativeClientIdIndicatesModeBOwnDisplay:(NSString *)clientId
+                                 customCommand:(NSString *)customCommand {
+  NSString *cid = [clientId isKindOfClass:[NSString class]] ? clientId : @"";
+  if ([cid isEqualToString:@"modeb-tty"] ||
+      [cid isEqualToString:@"modeb-ttyd"] ||
+      [cid isEqualToString:@"kmscube"] ||
+      [cid isEqualToString:@"gbm-es2-demo"] ||
+      [cid isEqualToString:@"vkcube"] ||
+      [cid isEqualToString:@"vkcube-kms"]) {
+    return YES;
+  }
+  return [self profileIndicatesNestedWithNativeClientId:cid
+                                          customCommand:customCommand];
+}
+
++ (BOOL)profileIndicatesModeBOwnDisplay:(WWNMachineProfile *)profile {
+  if (![profile.type isEqualToString:kWWNMachineTypeNative]) {
+    return NO;
+  }
+  NSDictionary *so =
+      [profile.settingsOverrides isKindOfClass:[NSDictionary class]]
+          ? profile.settingsOverrides
+          : @{};
+  NSString *cid = [so[@"NativeClientId"] isKindOfClass:[NSString class]]
+                      ? so[@"NativeClientId"]
+                      : @"";
+  NSString *cmd = [so[@"NativeCustomCommand"] isKindOfClass:[NSString class]]
+                      ? so[@"NativeCustomCommand"]
+                      : @"";
+  return [self nativeClientIdIndicatesModeBOwnDisplay:cid customCommand:cmd];
+}
+
 + (BOOL)profileEligibleForAppBridge:(WWNMachineProfile *)profile {
   return [self profileIndicatesNestedCompositor:profile];
 }

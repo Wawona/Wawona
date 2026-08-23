@@ -45,7 +45,9 @@
     wwn-iland.url = "github:Wawona/wwn-iland/development";
     wwn-iland.inputs.nixpkgs.follows = "nixpkgs";
     wwn-iland.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    wwn-kmscube.url = "https://flakehub.com/f/Wawona/wwn-kmscube/*";
+    # github/development until FlakeHub rolling includes vkcube-kms (L2).
+    # Cited: docs/wwn-repo-dag.md.
+    wwn-kmscube.url = "github:Wawona/wwn-kmscube/development";
     wwn-kmscube.inputs.nixpkgs.follows = "nixpkgs";
     wwn-kmscube.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-kmscube.inputs.wwn-iland.follows = "wwn-iland";
@@ -1031,6 +1033,8 @@
                 if want "macos" then toolchains.buildForMacOS "opengl-cube" { } else null;
               macosVkcube =
                 if want "macos" then toolchains.buildForMacOS "vkcube" { } else null;
+              macosGbmEs2Demo =
+                if want "macos" then toolchains.buildForMacOS "gbm-es2-demo" { } else null;
               macosWestonSimpleEgl =
                 if want "macos" then toolchains.buildForMacOS "weston-simple-egl" { } else null;
               macosNiri = if want "macos" then toolchains.buildForMacOS "niri" { } else null;

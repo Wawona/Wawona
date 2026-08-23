@@ -75,8 +75,9 @@ typedef NS_ENUM(NSInteger, WWNModeBVerdict) {
 - (nullable NSError *)injectionPreflightError;
 
 /**
- * Keep DesktopReplacementMachineId pointing at a nested compositor. Reuses
- * an existing weston/niri/custom profile, or creates "Weston Desktop".
+ * Keep DesktopReplacementMachineId pointing at an own-display machine
+ * (weston/niri/custom, modeb-tty, or a KMS client). Reuses an existing
+ * profile, or creates "Weston Desktop".
  */
 - (BOOL)ensureDesktopMachineSelected:(NSError *_Nullable *_Nullable)error;
 
@@ -153,8 +154,10 @@ typedef NS_ENUM(NSInteger, WWNModeBVerdict) {
 /**
  * Select Desktop Replacement machine by id, name, or client alias.
  * Persists DesktopReplacementMachineId. Does not engage.
- * Alias "weston" creates "Weston Desktop" (NativeClientId=weston) if needed.
- * Non-nested profiles (weston-terminal, cubes) are refused.
+ * Aliases: weston, niri, kmscube, gbm-es2-demo, vkcube, modeb-tty.
+ * Weston/niri aliases create nested compositor machines (Mode A still
+ * nests them). Take Over uses their DRM backend. Wayland-only clients
+ * such as opengl-cube are refused.
  */
 - (int)cliSelectDesktopMachine:(NSString *)idOrName;
 

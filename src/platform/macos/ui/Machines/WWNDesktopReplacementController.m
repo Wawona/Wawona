@@ -409,9 +409,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
       desktopId.length > 0 ? [WWNMachineProfileStore profileById:desktopId]
                            : nil;
   if (selected) {
-    NSString *cid = [self nativeClientIdForProfile:selected];
-    if ([cid isEqualToString:@"kmscube"] ||
-        [WWNMachineProfileStore profileIndicatesNestedCompositor:selected]) {
+    if ([WWNMachineProfileStore profileIndicatesModeBOwnDisplay:selected]) {
       return YES;
     }
   }
@@ -428,11 +426,11 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   }
 
   for (WWNMachineProfile *profile in [WWNMachineProfileStore loadProfiles]) {
-    NSString *cid = [self nativeClientIdForProfile:profile];
-    if ([cid isEqualToString:@"kmscube"] && profile.machineId.length > 0) {
+    if ([WWNMachineProfileStore profileIndicatesModeBOwnDisplay:profile] &&
+        profile.machineId.length > 0) {
       [defs setObject:profile.machineId
                forKey:kWWNPrefsDesktopReplacementMachineId];
-      NSLog(@"[DesktopReplacement] selected kmscube DRM machine %@",
+      NSLog(@"[DesktopReplacement] selected own-display machine %@",
             profile.machineId);
       return YES;
     }
@@ -444,8 +442,9 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                    code:9
                  userInfo:@{
                    NSLocalizedDescriptionKey :
-                       @"Pick an iland DRM/KMS machine (weston, niri, or "
-                       @"kmscube) under Settings → Desktop Replacement. "
+                       @"Pick a Desktop Machine (weston, niri, kmscube, "
+                       @"gbm-es2-demo, or vkcube) under Settings → Desktop "
+                       @"Replacement. Weston and niri stay nested in Mode A. "
                        @"wwn-igetty always provides VT switching."
                  }];
   }
@@ -597,6 +596,9 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"  for p in $(pgrep -u 0 -x niri 2>/dev/null; "
                        @"pgrep -u 0 -x weston 2>/dev/null; "
                        @"pgrep -u 0 -x kmscube 2>/dev/null; "
+                       @"pgrep -u 0 -x gbm-es2-demo 2>/dev/null; "
+                       @"pgrep -u 0 -x gbm_es2_demo 2>/dev/null; "
+                       @"pgrep -u 0 -x vkcube-kms 2>/dev/null; "
                        @"pgrep -u 0 -x igettyd 2>/dev/null; "
                        @"pgrep -u 0 -x modeb-ttyd 2>/dev/null); do\n"
                        @"    wwn_log \"kill leftover Mode B client pid=$p\"\n"
@@ -606,6 +608,9 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"  for p in $(pgrep -u 0 -x niri 2>/dev/null; "
                        @"pgrep -u 0 -x weston 2>/dev/null; "
                        @"pgrep -u 0 -x kmscube 2>/dev/null; "
+                       @"pgrep -u 0 -x gbm-es2-demo 2>/dev/null; "
+                       @"pgrep -u 0 -x gbm_es2_demo 2>/dev/null; "
+                       @"pgrep -u 0 -x vkcube-kms 2>/dev/null; "
                        @"pgrep -u 0 -x igettyd 2>/dev/null; "
                        @"pgrep -u 0 -x modeb-ttyd 2>/dev/null); do\n"
                        @"    kill -KILL \"$p\" 2>/dev/null || true\n"
@@ -2311,6 +2316,10 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
           @"/usr/bin/pkill -u 0 -x niri >/dev/null 2>&1 || true\n"
           @"/usr/bin/pkill -u 0 -x weston >/dev/null 2>&1 || true\n"
           @"/usr/bin/pkill -u 0 -x kmscube >/dev/null 2>&1 || true\n"
+          @"/usr/bin/pkill -u 0 -x gbm-es2-demo >/dev/null 2>&1 || true\n"
+          @"/usr/bin/pkill -u 0 -x gbm_es2_demo >/dev/null 2>&1 || true\n"
+          @"/usr/bin/pkill -u 0 -x vkcube-kms >/dev/null 2>&1 || true\n"
+          @"/usr/bin/pkill -u 0 -x igettyd >/dev/null 2>&1 || true\n"
           @"/usr/bin/pkill -u 0 -x modeb-ttyd >/dev/null 2>&1 || true\n"
           @"/usr/bin/pkill -u 0 -x framebufferd >/dev/null 2>&1 || true\n"
           @"/usr/bin/pkill -u 0 -x inputd >/dev/null 2>&1 || true\n"
@@ -2794,18 +2803,18 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   return cid ?: @"";
 }
 
-- (WWNMachineProfile *)nestedProfileMatchingIdOrName:(NSString *)idOrName {
+- (WWNMachineProfile *)ownDisplayProfileMatchingIdOrName:(NSString *)idOrName {
   if (idOrName.length == 0) {
     return nil;
   }
   WWNMachineProfile *byId = [WWNMachineProfileStore profileById:idOrName];
   if (byId &&
-      [WWNMachineProfileStore profileIndicatesNestedCompositor:byId]) {
+      [WWNMachineProfileStore profileIndicatesModeBOwnDisplay:byId]) {
     return byId;
   }
   NSString *needle = idOrName.lowercaseString;
   for (WWNMachineProfile *profile in [WWNMachineProfileStore loadProfiles]) {
-    if (![WWNMachineProfileStore profileIndicatesNestedCompositor:profile]) {
+    if (![WWNMachineProfileStore profileIndicatesModeBOwnDisplay:profile]) {
       continue;
     }
     if ([profile.name.lowercaseString isEqualToString:needle] ||
@@ -2820,63 +2829,65 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   return nil;
 }
 
-- (WWNMachineProfile *)createWestonDesktopMachine {
+- (WWNMachineProfile *)nestedProfileMatchingIdOrName:(NSString *)idOrName {
+  return [self ownDisplayProfileMatchingIdOrName:idOrName];
+}
+
+- (WWNMachineProfile *)createNativeDesktopMachineNamed:(NSString *)name
+                                              clientId:(NSString *)clientId
+                                         enableWeston:(BOOL)enableWeston {
   WWNMachineProfile *created = [WWNMachineProfile defaultProfile];
-  created.name = @"Weston Desktop";
+  created.name = name;
   NSMutableDictionary *so =
       [created.settingsOverrides mutableCopy] ?: [NSMutableDictionary dictionary];
-  so[@"NativeClientId"] = @"weston";
-  so[@"WestonEnabled"] = @YES;
+  so[@"NativeClientId"] = clientId;
+  so[@"WestonEnabled"] = @(enableWeston);
   so[@"WestonTerminalEnabled"] = @NO;
-  so[@"EnableLauncher"] = @YES;
+  so[@"EnableLauncher"] = @(enableWeston);
   created.settingsOverrides = so;
   [WWNMachineProfileStore upsertProfile:created];
   return created.machineId.length > 0 ? created : nil;
+}
+
+- (WWNMachineProfile *)createWestonDesktopMachine {
+  return [self createNativeDesktopMachineNamed:@"Weston Desktop"
+                                      clientId:@"weston"
+                                 enableWeston:YES];
+}
+
+- (WWNMachineProfile *)createNiriDesktopMachine {
+  return [self createNativeDesktopMachineNamed:@"Niri Desktop"
+                                      clientId:@"niri"
+                                 enableWeston:NO];
 }
 
 - (WWNMachineProfile *)createKmscubeProofMachine {
-  WWNMachineProfile *created = [WWNMachineProfile defaultProfile];
-  created.name = @"KMS Cube Mode B Proof";
-  NSMutableDictionary *so =
-      [created.settingsOverrides mutableCopy] ?: [NSMutableDictionary dictionary];
-  so[@"NativeClientId"] = @"kmscube";
-  so[@"WestonEnabled"] = @NO;
-  so[@"EnableLauncher"] = @NO;
-  created.settingsOverrides = so;
-  [WWNMachineProfileStore upsertProfile:created];
-  return created.machineId.length > 0 ? created : nil;
+  return [self createNativeDesktopMachineNamed:@"KMS Cube"
+                                      clientId:@"kmscube"
+                                 enableWeston:NO];
+}
+
+- (WWNMachineProfile *)createGbmEs2ProofMachine {
+  return [self createNativeDesktopMachineNamed:@"GBM ES2 Demo"
+                                      clientId:@"gbm-es2-demo"
+                                 enableWeston:NO];
+}
+
+- (WWNMachineProfile *)createVkcubeKmsProofMachine {
+  return [self createNativeDesktopMachineNamed:@"Vulkan Cube KMS"
+                                      clientId:@"vkcube"
+                                 enableWeston:NO];
 }
 
 - (WWNMachineProfile *)createModeBTtyMachine {
-  WWNMachineProfile *created = [WWNMachineProfile defaultProfile];
-  created.name = @"Mode B TTY";
-  NSMutableDictionary *so =
-      [created.settingsOverrides mutableCopy] ?: [NSMutableDictionary dictionary];
-  so[@"NativeClientId"] = @"modeb-tty";
-  so[@"WestonEnabled"] = @NO;
-  so[@"EnableLauncher"] = @NO;
-  created.settingsOverrides = so;
-  [WWNMachineProfileStore upsertProfile:created];
-  return created.machineId.length > 0 ? created : nil;
+  return [self createNativeDesktopMachineNamed:@"Mode B TTY"
+                                      clientId:@"modeb-tty"
+                                 enableWeston:NO];
 }
 
-- (WWNMachineProfile *)kmscubeProfileMatchingIdOrName:(NSString *)idOrName {
-  if (idOrName.length == 0) {
-    return nil;
-  }
-  WWNMachineProfile *byId = [WWNMachineProfileStore profileById:idOrName];
-  if (byId &&
-      [[self nativeClientIdForProfile:byId] isEqualToString:@"kmscube"]) {
-    return byId;
-  }
-  NSString *needle = idOrName.lowercaseString;
+- (WWNMachineProfile *)profileWithClientId:(NSString *)clientId {
   for (WWNMachineProfile *profile in [WWNMachineProfileStore loadProfiles]) {
-    if (![[self nativeClientIdForProfile:profile] isEqualToString:@"kmscube"]) {
-      continue;
-    }
-    if ([profile.name.lowercaseString isEqualToString:needle] ||
-        [profile.machineId.lowercaseString isEqualToString:needle] ||
-        [needle isEqualToString:@"kmscube"]) {
+    if ([[self nativeClientIdForProfile:profile] isEqualToString:clientId]) {
       return profile;
     }
   }
@@ -2886,81 +2897,55 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
 - (int)cliSelectDesktopMachine:(NSString *)idOrName {
   WWNModeBCliLog(@"mode-b-machine %@", idOrName ?: @"(nil)");
   if (idOrName.length == 0) {
-    WWNModeBCliLog(@"RESULT need id, name, or alias (weston|kmscube)");
+    WWNModeBCliLog(@"RESULT need id, name, or alias "
+                   @"(weston|niri|kmscube|gbm-es2-demo|vkcube|modeb-tty)");
     return 2;
   }
 
-  WWNMachineProfile *profile = [self nestedProfileMatchingIdOrName:idOrName];
-  if (!profile &&
-      ([idOrName.lowercaseString isEqualToString:@"modeb-tty"] ||
-       [idOrName.lowercaseString isEqualToString:@"modeb-ttyd"])) {
-    for (WWNMachineProfile *p in [WWNMachineProfileStore loadProfiles]) {
-      NSString *cid = [self nativeClientIdForProfile:p];
-      if ([cid isEqualToString:@"modeb-tty"] ||
-          [cid isEqualToString:@"modeb-ttyd"]) {
-        profile = p;
-        break;
-      }
+  WWNMachineProfile *profile = [self ownDisplayProfileMatchingIdOrName:idOrName];
+  NSString *alias = idOrName.lowercaseString;
+  if (!profile) {
+    if ([alias isEqualToString:@"modeb-tty"] ||
+        [alias isEqualToString:@"modeb-ttyd"]) {
+      profile = [self profileWithClientId:@"modeb-tty"]
+                    ?: [self profileWithClientId:@"modeb-ttyd"]
+                    ?: [self createModeBTtyMachine];
+    } else if ([alias isEqualToString:@"kmscube"]) {
+      profile = [self profileWithClientId:@"kmscube"]
+                    ?: [self createKmscubeProofMachine];
+    } else if ([alias isEqualToString:@"gbm-es2-demo"] ||
+               [alias isEqualToString:@"gbm_es2_demo"]) {
+      profile = [self profileWithClientId:@"gbm-es2-demo"]
+                    ?: [self createGbmEs2ProofMachine];
+    } else if ([alias isEqualToString:@"vkcube"] ||
+               [alias isEqualToString:@"vkcube-kms"]) {
+      profile = [self profileWithClientId:@"vkcube"]
+                    ?: [self profileWithClientId:@"vkcube-kms"]
+                    ?: [self createVkcubeKmsProofMachine];
+    } else if ([alias isEqualToString:@"niri"]) {
+      profile = [self profileWithClientId:@"niri"]
+                    ?: [self createNiriDesktopMachine];
+    } else if ([alias isEqualToString:@"weston"]) {
+      profile = [self profileWithClientId:@"weston"]
+                    ?: [self createWestonDesktopMachine];
     }
-    if (!profile) {
-      profile = [self createModeBTtyMachine];
-      if (!profile) {
-        WWNModeBCliLog(@"RESULT failed to create Mode B TTY machine");
-        return 1;
-      }
-      WWNModeBCliLog(@"created Mode B TTY machine %@", profile.machineId);
-    }
-  }
-  if (!profile &&
-      [idOrName.lowercaseString isEqualToString:@"kmscube"]) {
-    profile = [self kmscubeProfileMatchingIdOrName:@"kmscube"];
-    if (!profile) {
-      profile = [self createKmscubeProofMachine];
-      if (!profile) {
-        WWNModeBCliLog(@"RESULT failed to create KMS Cube Mode B Proof machine");
-        return 1;
-      }
-      WWNModeBCliLog(@"created KMS Cube Mode B Proof machine %@",
-                     profile.machineId);
-    }
-  }
-  if (!profile &&
-      [idOrName.lowercaseString isEqualToString:@"weston"]) {
-    /* Prefer an existing weston nested machine before creating. */
-    for (WWNMachineProfile *p in [WWNMachineProfileStore loadProfiles]) {
-      if (![WWNMachineProfileStore profileIndicatesNestedCompositor:p]) {
-        continue;
-      }
-      if ([[self nativeClientIdForProfile:p]
-              isEqualToString:@"weston"]) {
-        profile = p;
-        break;
-      }
-    }
-    if (!profile) {
-      profile = [self createWestonDesktopMachine];
-      if (!profile) {
-        WWNModeBCliLog(@"RESULT failed to create Weston Desktop machine");
-        return 1;
-      }
-      WWNModeBCliLog(@"created Weston Desktop machine %@", profile.machineId);
+    if (profile && ![self ownDisplayProfileMatchingIdOrName:profile.machineId]) {
+      WWNModeBCliLog(@"created own-display machine %@", profile.machineId);
     }
   }
 
   if (!profile) {
     WWNMachineProfile *any = [WWNMachineProfileStore profileById:idOrName];
     if (any &&
-        ![WWNMachineProfileStore profileIndicatesNestedCompositor:any] &&
-        ![[self nativeClientIdForProfile:any] isEqualToString:@"kmscube"] &&
-        ![[self nativeClientIdForProfile:any] isEqualToString:@"modeb-tty"] &&
-        ![[self nativeClientIdForProfile:any] isEqualToString:@"modeb-ttyd"]) {
-      WWNModeBCliLog(@"RESULT refused: %@ is not a nested compositor "
-                     @"(need weston/niri/custom, modeb-tty, or kmscube)",
+        ![WWNMachineProfileStore profileIndicatesModeBOwnDisplay:any]) {
+      WWNModeBCliLog(@"RESULT refused: %@ is not own-display "
+                     @"(need weston/niri/custom, modeb-tty, kmscube, "
+                     @"gbm-es2-demo, or vkcube-kms). opengl-cube is a "
+                     @"Wayland client of the GUI compositor.",
                      idOrName);
       return 2;
     }
-    WWNModeBCliLog(@"RESULT no nested compositor machine matching %@",
-                   idOrName);
+    WWNModeBCliLog(@"RESULT no own-display machine matching %@", idOrName);
     return 2;
   }
 
@@ -3100,8 +3085,9 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   NSError *pre = [self injectionPreflightError];
   if (pre) {
     r.reason = pre.localizedDescription;
-    r.nextStep = @"Pick an iland DRM/KMS Desktop Machine (weston, niri, "
-                 @"kmscube) under Settings → Desktop Replacement.";
+    r.nextStep = @"Pick a Desktop Machine (weston, niri, kmscube, "
+                 @"gbm-es2-demo, vkcube) under Settings → Desktop Replacement. "
+                 @"Weston/niri stay nested in Mode A Machines Start.";
     return r;
   }
 

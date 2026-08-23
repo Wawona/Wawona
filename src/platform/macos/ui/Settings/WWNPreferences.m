@@ -1249,13 +1249,16 @@ static UIImage *WWNAboutLogo(void) {
     [desktopItems addObject:takeOverNow];
 #endif
 
-    // Machine picker: nested compositors (weston/niri/custom) plus kmscube
-    // while Mode B own-display proof uses DRM/KMS instead of weston DRM.
+    // Machine picker: weston/niri/custom (dual-backend: nested Wayland in
+    // Mode A, DRM after Classic Take Over) plus KMS-only clients.
     NSArray<WWNMachineProfile *> *allProfiles =
         [WWNMachineProfileStore loadProfiles];
     NSMutableArray<NSString *> *nativeNames = [NSMutableArray array];
     NSMutableArray<NSString *> *nativeIds = [NSMutableArray array];
     for (WWNMachineProfile *p in allProfiles) {
+      if (![WWNMachineProfileStore profileIndicatesModeBOwnDisplay:p]) {
+        continue;
+      }
       NSDictionary *so =
           [p.settingsOverrides isKindOfClass:[NSDictionary class]]
               ? p.settingsOverrides
@@ -1263,17 +1266,19 @@ static UIImage *WWNAboutLogo(void) {
       NSString *cid = [so[@"NativeClientId"] isKindOfClass:[NSString class]]
                           ? so[@"NativeClientId"]
                           : @"";
-      BOOL kmscubeProof = [cid isEqualToString:@"kmscube"];
-      if (!kmscubeProof &&
-          ![WWNMachineProfileStore profileIndicatesNestedCompositor:p]) {
-        continue;
-      }
       NSString *label = p.name.length ? p.name : @"Unnamed Machine";
-      if (kmscubeProof &&
-                 [label rangeOfString:@"kmscube"
-                              options:NSCaseInsensitiveSearch]
-                         .location == NSNotFound) {
-        label = [label stringByAppendingString:@" (DRM proof)"];
+      BOOL kmsOnly = [cid isEqualToString:@"kmscube"] ||
+                     [cid isEqualToString:@"gbm-es2-demo"] ||
+                     [cid isEqualToString:@"vkcube"] ||
+                     [cid isEqualToString:@"vkcube-kms"];
+      if (kmsOnly &&
+          [label rangeOfString:@"KMS"
+                       options:NSCaseInsensitiveSearch]
+                  .location == NSNotFound &&
+          [label rangeOfString:@"DRM"
+                       options:NSCaseInsensitiveSearch]
+                  .location == NSNotFound) {
+        label = [label stringByAppendingString:@" (KMS)"];
       }
       [nativeNames addObject:label];
       [nativeIds addObject:p.machineId ?: @""];
@@ -1283,30 +1288,30 @@ static UIImage *WWNAboutLogo(void) {
           ITEM(@"Desktop Machine",
                @"DesktopReplacementMachineId", WSettingPopup,
                nativeIds.firstObject,
-               @"Host desktop DE on an assigned VT (usually VT1, like Linux "
-               @"GDM, but not guaranteed). wwn-igetty always runs: Ctrl+Option+"
-               @"F1-F6 switch VTs; remaining VTs are Doorman getty. The Mode B "
-               @"dylib stays iland-baremetal. Nested compositors (weston, niri) "
-               @"and kmscube must be iland DRM/KMS clients.");
+               @"Host desktop on an assigned VT after Classic Take Over. "
+               @"Weston and niri keep nested Wayland for Mode A Machines "
+               @"Start. Take Over has no host Wayland, so they use DRM/KMS/"
+               @"GBM. kmscube, GBM ES2, and vkcube-kms are KMS-only. "
+               @"wwn-igetty: Ctrl+Option+F1-F6 VTs; F7-F9 overlay KMS "
+               @"clients. The Mode B dylib stays iland-baremetal.");
       machineItem.options = nativeNames;
       machineItem.optionValues = nativeIds;
       [desktopItems addObject:machineItem];
       WWNSettingItem *guiVtItem =
           ITEM(@"GUI virtual terminal",
                @"DesktopReplacementGuiVt", WSettingPopup, @"1",
-               @"Which VT runs the Desktop Machine (weston, niri, kmscube). "
-               @"Linux display managers often use VT1. This is an assignment, "
-               @"not a guarantee forever. Other VTs stay igetty/Doorman.");
+               @"Which VT runs the Desktop Machine (weston, niri, or a KMS "
+               @"client). Other VTs stay igetty/Doorman.");
       guiVtItem.options = @[ @"VT1", @"VT2", @"VT3", @"VT4", @"VT5", @"VT6" ];
       guiVtItem.optionValues = @[ @"1", @"2", @"3", @"4", @"5", @"6" ];
       [desktopItems addObject:guiVtItem];
     } else {
       [desktopItems
           addObject:ITEM(@"Desktop Machine", nil, WSettingInfo, @"None",
-                         @"No eligible DRM/KMS machine. Create a Native "
-                         @"machine whose client is weston, niri, custom, or "
-                         @"kmscube (iland baremetal), then select it here. "
-                         @"VT switching is always wwn-igetty.")];
+                         @"No eligible own-display machine. Create a Native "
+                         @"machine whose client is weston, niri, custom, "
+                         @"kmscube, gbm-es2-demo, or vkcube, then select it "
+                         @"here. VT switching is always wwn-igetty.")];
     }
 
     // ── Wawona Swinging Bridge ──────────────────────────────────────────────

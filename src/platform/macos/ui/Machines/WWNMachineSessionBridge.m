@@ -169,15 +169,17 @@
     WWNDesktopReplacementController *desktop =
         [WWNDesktopReplacementController sharedController];
     if ([desktop shouldEngageModeB] && [desktop isDesktopMachine:profile]) {
-      if (![WWNMachineProfileStore profileIndicatesNestedCompositor:profile]) {
+      if (![WWNMachineProfileStore profileIndicatesModeBOwnDisplay:profile]) {
         if (error) {
           *error = [NSError
               errorWithDomain:@"WWNMachineSessionBridge"
                          code:3
                      userInfo:@{
                        NSLocalizedDescriptionKey :
-                           @"Desktop Replacement needs a nested compositor "
-                           @"(weston, niri, or a custom compositor)."
+                           @"Desktop Replacement own-display needs weston or "
+                           @"niri (DRM after Take Over; nested Wayland stays "
+                           @"Mode A), or a KMS client (kmscube, gbm-es2-demo, "
+                           @"vkcube-kms)."
                      }];
         }
         return NO;

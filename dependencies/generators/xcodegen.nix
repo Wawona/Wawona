@@ -35,6 +35,7 @@
   macosModebTty ? null,
   macosOpenglCube ? null,
   macosVkcube ? null,
+  macosGbmEs2Demo ? null,
   macosWestonSimpleEgl ? null,
   macosNiri ? null,
   macosFuzzel ? null,
@@ -2073,6 +2074,7 @@ ICDJSON
               MODEB_TTY_BIN="${strip macosModebTty}/bin"
               OPENGL_CUBE_BIN="${strip macosOpenglCube}/bin"
               VKCUBE_BIN="${strip macosVkcube}/bin"
+              GBM_ES2_BIN="${strip macosGbmEs2Demo}/bin"
               WESTON_SIMPLE_EGL_BIN="${strip macosWestonSimpleEgl}/bin"
               NIRI_BIN="${strip macosNiri}/bin"
               NIRI_CFG="${strip macosNiri}/share/niri/default-config.kdl"
@@ -2154,6 +2156,11 @@ ICDJSON
               bundle_bin "$NEOVIM_BIN/nvim" "vim"
               bundle_bin "$ZSH_BIN/zsh" "zsh"
               require_bin "$KMSCUBE_BIN/kmscube" "kmscube"
+              if [ -f "$GBM_ES2_BIN/gbm-es2-demo" ]; then
+                bundle_bin "$GBM_ES2_BIN/gbm-es2-demo" "gbm-es2-demo"
+              elif [ -f "$GBM_ES2_BIN/gbm_es2_demo" ]; then
+                bundle_bin "$GBM_ES2_BIN/gbm_es2_demo" "gbm-es2-demo"
+              fi
               # Mode B multi-VT console (Classic own-display). Soft-require so
               # older product graphs without modebTty still link.
               if [ -f "$MODEB_TTY_BIN/igettyd" ]; then
@@ -2192,6 +2199,9 @@ ICDJSON
                 bundle_bin "$OPENGL_CUBE_BIN/opengl-cube" "opengl-cube"
               fi
               require_bin "$VKCUBE_BIN/vkcube" "vkcube"
+              if [ -f "$VKCUBE_BIN/vkcube-kms" ]; then
+                bundle_bin "$VKCUBE_BIN/vkcube-kms" "vkcube-kms"
+              fi
               require_bin "$WESTON_SIMPLE_EGL_BIN/weston-simple-egl" "weston-simple-egl"
 
               # niri (wwn-niri): nested scrollable-tiling compositor. Ship the
