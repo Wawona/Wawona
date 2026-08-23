@@ -157,6 +157,42 @@ private struct MachineActionChip: View {
   }
 }
 
+/// One-line badge text that shrinks to the width it is given. Never wraps
+/// onto a second line and never shows an ellipsis.
+struct MachineFittingLabel: View {
+  let text: String
+  var font: Font
+  var alignment: TextAlignment = .center
+
+  var body: some View {
+    Text(text)
+      .font(font)
+      .lineLimit(1)
+      .minimumScaleFactor(0.35)
+      .allowsTightening(true)
+      .multilineTextAlignment(alignment)
+      .fixedSize(horizontal: false, vertical: true)
+      .frame(minWidth: 0)
+  }
+}
+
+/// Capsule chip for Local / Remote / Native / Container / Active on a machine
+/// card. Shares width with siblings and scales the label to stay inside the
+/// module.
+struct MachineStatusChip: View {
+  let text: String
+  var font: Font = .caption2.weight(.bold)
+
+  var body: some View {
+    MachineFittingLabel(text: text, font: font)
+      .padding(.horizontal, 8)
+      .padding(.vertical, 5)
+      .frame(minWidth: 0)
+      .background(Color.secondary.opacity(0.16), in: Capsule())
+      .layoutPriority(1)
+  }
+}
+
 /// Wraps child views onto additional rows. Each child keeps its intrinsic
 /// width, so a button title cannot be squeezed into multiple lines.
 struct MachineActionFlow: Layout {

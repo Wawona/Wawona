@@ -520,15 +520,18 @@ struct WWNMachineTVRow: View {
           .foregroundStyle(.secondary)
           .lineLimit(1)
         HStack(spacing: 14) {
-          metaChip(scopeLabel)
-          metaChip(typeLabel)
-          Text(status.title)
-            .font(.title3.weight(.bold))
-            .foregroundStyle(statusColor)
+          MachineStatusChip(text: scopeLabel, font: .title3.weight(.semibold))
+          MachineStatusChip(text: typeLabel, font: .title3.weight(.semibold))
+          MachineFittingLabel(
+            text: status.title,
+            font: .title3.weight(.bold),
+            alignment: .leading
+          )
+          .foregroundStyle(statusColor)
+          .frame(minWidth: 0)
+          .layoutPriority(1)
           if isActive {
-            Text("Active")
-              .font(.title3.weight(.bold))
-              .foregroundStyle(.yellow)
+            MachineStatusChip(text: "Active", font: .title3.weight(.semibold))
           }
         }
       }
@@ -561,14 +564,6 @@ struct WWNMachineTVRow: View {
     case .error: return .red
     case .disconnected: return .secondary
     }
-  }
-
-  private func metaChip(_ text: String) -> some View {
-    Text(text)
-      .font(.title3.weight(.semibold))
-      .padding(.horizontal, 14)
-      .padding(.vertical, 6)
-      .background(Color.secondary.opacity(0.22), in: Capsule())
   }
 }
 
@@ -614,72 +609,76 @@ struct WWNMachineTVDetailView: View {
         }
 
         VStack(spacing: 22) {
-          if isRunning {
-            Button {
-              onFocus()
-            } label: {
-              Label("Focus Session", systemImage: "scope")
-                .font(.title3.weight(.semibold))
-                .frame(maxWidth: .infinity, minHeight: 56)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .wwnA11y(WWNA11y.machinesFocus, label: "Focus Session")
-
-            Button(role: .destructive) {
-              onStop()
-            } label: {
-              Label("Stop Session", systemImage: "stop.fill")
-                .font(.title3.weight(.semibold))
-                .frame(maxWidth: .infinity, minHeight: 56)
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
-            .wwnA11y(WWNA11y.machinesStop, label: "Stop Session")
-          } else {
-            Button {
-              onConnect()
-            } label: {
-              Label("Start Machine", systemImage: "play.fill")
-                .font(.title3.weight(.semibold))
-                .frame(maxWidth: .infinity, minHeight: 56)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(!launchSupported)
-            .wwnA11y(WWNA11y.machinesStart, label: "Start Machine")
-          }
-
-          Button {
-            onEdit()
-          } label: {
-            Label("Edit Profile", systemImage: "slider.horizontal.3")
-              .font(.title3.weight(.semibold))
-              .frame(maxWidth: .infinity, minHeight: 56)
-          }
-          .buttonStyle(.bordered)
-          .controlSize(.large)
-          .wwnA11y(WWNA11y.machinesEdit, label: "Edit Profile")
-
-          Button(role: .destructive) {
-            onDelete()
-            dismiss()
-          } label: {
-            Label("Delete Profile", systemImage: "trash")
-              .font(.title3.weight(.semibold))
-              .frame(maxWidth: .infinity, minHeight: 56)
-          }
-          .buttonStyle(.bordered)
-          .controlSize(.large)
-          .disabled(isRunning)
-          .wwnA11y(WWNA11y.machinesDelete, label: "Delete Profile")
+          MachineActionBar(items: tvActionItems, layout: .stack)
+            .frame(maxWidth: 900)
         }
-        .frame(maxWidth: 900)
       }
       .padding(48)
       .frame(maxWidth: .infinity, alignment: .leading)
     }
     .navigationTitle("Machine")
+  }
+
+  private var tvActionItems: [MachineActionItem] {
+    var items: [MachineActionItem] = []
+    if isRunning {
+      items.append(
+        MachineActionItem(
+          title: "Focus",
+          systemImage: "scope",
+          prominent: true,
+          accessibilityID: WWNA11y.machinesFocus,
+          accessibilityLabel: "Focus Session",
+          action: onFocus
+        )
+      )
+      items.append(
+        MachineActionItem(
+          title: "Stop",
+          systemImage: "stop.fill",
+          role: .destructive,
+          accessibilityID: WWNA11y.machinesStop,
+          accessibilityLabel: "Stop Session",
+          action: onStop
+        )
+      )
+    } else {
+      items.append(
+        MachineActionItem(
+          title: "Start",
+          systemImage: "play.fill",
+          prominent: true,
+          enabled: launchSupported,
+          accessibilityID: WWNA11y.machinesStart,
+          accessibilityLabel: "Start Machine",
+          action: onConnect
+        )
+      )
+    }
+    items.append(
+      MachineActionItem(
+        title: "Edit",
+        systemImage: "slider.horizontal.3",
+        accessibilityID: WWNA11y.machinesEdit,
+        accessibilityLabel: "Edit Profile",
+        action: onEdit
+      )
+    )
+    items.append(
+      MachineActionItem(
+        title: "Delete",
+        systemImage: "trash",
+        role: .destructive,
+        enabled: !isRunning,
+        accessibilityID: WWNA11y.machinesDelete,
+        accessibilityLabel: "Delete Profile",
+        action: {
+          onDelete()
+          dismiss()
+        }
+      )
+    )
+    return items
   }
 
   private var statusColor: Color {

@@ -14,6 +14,7 @@ struct MachineCardView: View {
                 HStack {
                     Text(profile.name)
                         .font(.headline)
+                        .lineLimit(1)
                     Spacer()
                     StatusBadge(status: status)
                 }
@@ -21,6 +22,7 @@ struct MachineCardView: View {
                 Text(subtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
 
                 if !profile.launchers.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -36,14 +38,31 @@ struct MachineCardView: View {
                     }
                 }
 
-                HStack {
-                    Button("Connect", action: onConnect)
-                        .wwnA11y(WawonaA11y.machinesConnect, label: "Connect")
-                    Button("Edit", action: onEdit)
-                        .wwnA11y(WawonaA11y.machinesEdit, label: "Edit")
-                    Button("Delete", role: .destructive, action: onDelete)
-                        .wwnA11y(WawonaA11y.machinesDelete, label: "Delete")
-                }
+                MachineActionBar(items: [
+                    MachineActionItem(
+                        title: "Connect",
+                        systemImage: "play.fill",
+                        prominent: true,
+                        accessibilityID: WawonaA11y.machinesConnect,
+                        accessibilityLabel: "Connect",
+                        action: onConnect
+                    ),
+                    MachineActionItem(
+                        title: "Edit",
+                        systemImage: "slider.horizontal.3",
+                        accessibilityID: WawonaA11y.machinesEdit,
+                        accessibilityLabel: "Edit",
+                        action: onEdit
+                    ),
+                    MachineActionItem(
+                        title: "Delete",
+                        systemImage: "trash",
+                        role: .destructive,
+                        accessibilityID: WawonaA11y.machinesDelete,
+                        accessibilityLabel: "Delete",
+                        action: onDelete
+                    ),
+                ])
             }
         }
         .wwnA11y(WawonaA11y.machinesCard(profile.id), label: profile.name)

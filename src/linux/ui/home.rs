@@ -277,6 +277,9 @@ fn build_machine_card(
 
     // Status badge + scope/type/active chips.
     let badge_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    badge_row.add_css_class("machine-badge-row");
+    badge_row.set_hexpand(true);
+    badge_row.set_overflow(gtk::Overflow::Hidden);
     let status_text = if running { "Connected" } else { "Disconnected" };
     let status_icon = gtk::Image::from_icon_name(if running {
         "emblem-ok-symbolic"
@@ -285,6 +288,12 @@ fn build_machine_card(
     });
     let status = gtk::Label::new(Some(status_text));
     status.add_css_class("caption-heading");
+    status.set_single_line_mode(true);
+    status.set_wrap(false);
+    status.set_ellipsize(gtk::pango::EllipsizeMode::None);
+    status.set_hexpand(false);
+    status.set_xalign(0.0);
+    keep_label_fitted(&status);
     if running {
         status.add_css_class("success");
         status_icon.add_css_class("success");
@@ -298,6 +307,7 @@ fn build_machine_card(
     let chips = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     chips.set_halign(gtk::Align::End);
     chips.set_hexpand(true);
+    chips.set_homogeneous(true);
     chips.append(&chip(&machine_scope_label(profile.machine_type).to_uppercase()));
     chips.append(&chip(&profile.machine_type.user_facing_name().to_uppercase()));
     if is_active {
@@ -314,7 +324,17 @@ fn build_machine_card(
     summary.set_xalign(0.0);
 
     // Action row: Start (or Focus + Stop when running), Edit, Delete.
-    let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    // FlowBox wraps whole buttons. Labels stay one line (never wrap Start/Edit).
+    let actions = gtk::FlowBox::new();
+    actions.set_selection_mode(gtk::SelectionMode::None);
+    actions.set_homogeneous(false);
+    actions.set_min_children_per_line(1);
+    actions.set_max_children_per_line(8);
+    actions.set_column_spacing(8);
+    actions.set_row_spacing(8);
+    actions.set_hexpand(true);
+    actions.set_halign(gtk::Align::Fill);
+    actions.set_valign(gtk::Align::Start);
 
     let start_btn = button_with_icon_label("media-playback-start-symbolic", "Start");
     start_btn.add_css_class("suggested-action");
@@ -355,11 +375,11 @@ fn build_machine_card(
     stop_btn.set_visible(running);
     delete_btn.set_sensitive(!running);
 
-    actions.append(&start_btn);
-    actions.append(&focus_btn);
-    actions.append(&stop_btn);
-    actions.append(&edit_btn);
-    actions.append(&delete_btn);
+    actions.insert(&start_btn, -1);
+    actions.insert(&focus_btn, -1);
+    actions.insert(&stop_btn, -1);
+    actions.insert(&edit_btn, -1);
+    actions.insert(&delete_btn, -1);
 
     vbox.append(&banner);
     vbox.append(&badge_row);
@@ -379,9 +399,20 @@ fn build_machine_card(
 
 fn button_with_icon_label(icon: &str, label: &str) -> gtk::Button {
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    content.append(&gtk::Image::from_icon_name(icon));
-    content.append(&gtk::Label::new(Some(label)));
+    content.set_halign(gtk::Align::Center);
+    content.set_valign(gtk::Align::Center);
+    let image = gtk::Image::from_icon_name(icon);
+    image.set_pixel_size(16);
+    let text = gtk::Label::new(Some(label));
+    text.set_single_line_mode(true);
+    text.set_wrap(false);
+    text.set_ellipsize(gtk::pango::EllipsizeMode::None);
+    content.append(&image);
+    content.append(&text);
     let btn = gtk::Button::new();
+    btn.add_css_class("machine-action-button");
+    btn.set_hexpand(false);
+    btn.set_halign(gtk::Align::Start);
     btn.set_child(Some(&content));
     btn
 }
@@ -389,15 +420,62 @@ fn button_with_icon_label(icon: &str, label: &str) -> gtk::Button {
 fn chip(text: &str) -> gtk::Box {
     let pill = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     pill.add_css_class("machine-chip");
+    pill.set_hexpand(true);
+    pill.set_halign(gtk::Align::Fill);
     let lbl = gtk::Label::new(Some(text));
     lbl.add_css_class("caption-heading");
+    lbl.set_single_line_mode(true);
+    lbl.set_wrap(false);
+    lbl.set_ellipsize(gtk::pango::EllipsizeMode::None);
+    lbl.set_hexpand(true);
     lbl.set_margin_start(8);
     lbl.set_margin_end(8);
     lbl.set_margin_top(4);
     lbl.set_margin_bottom(4);
     lbl.set_xalign(0.5);
+    keep_label_fitted(&lbl);
     pill.append(&lbl);
     pill
+}
+
+fn keep_label_fitted(lbl: &gtk::Label) {
+    let last_width = std::rc::Rc::new(std::cell::Cell::new(0));
+    lbl.add_tick_callback(move |lbl, _| {
+        if !lbl.is_mapped() {
+            return gtk::glib::ControlFlow::Continue;
+        }
+        let w = lbl.width();
+        if w != last_width.get() {
+            last_width.set(w);
+            fit_label_to_allocation(lbl);
+        }
+        gtk::glib::ControlFlow::Continue
+    });
+}
+
+fn fit_label_to_allocation(lbl: &gtk::Label) {
+    let avail = lbl.width();
+    if avail <= 4 {
+        return;
+    }
+    let layout = lbl.layout();
+    layout.set_width(-1);
+    let (nat, _) = layout.pixel_size();
+    if nat <= 0 {
+        return;
+    }
+    let scale = if nat > avail {
+        (avail as f64 / nat as f64).clamp(0.35, 1.0)
+    } else {
+        1.0
+    };
+    if (scale - 1.0).abs() < f64::EPSILON {
+        lbl.set_attributes(None);
+        return;
+    }
+    let attrs = gtk::pango::AttrList::new();
+    attrs.insert(gtk::pango::AttrFloat::new_scale(scale));
+    lbl.set_attributes(Some(&attrs));
 }
 
 fn configure_flowbox_child(card: &impl IsA<gtk::Widget>) {
@@ -448,6 +526,24 @@ fn install_machine_card_styles() {
             .machine-chip {
               background-color: alpha(currentColor, 0.08);
               border-radius: 999px;
+              min-width: 0;
+            }
+
+            .machine-chip label,
+            .machine-badge-row label {
+              white-space: nowrap;
+            }
+
+            .machine-badge-row {
+              min-width: 0;
+            }
+
+            .machine-action-button {
+              padding: 4px 10px;
+            }
+
+            .machine-action-button label {
+              white-space: nowrap;
             }
             "#,
         );
