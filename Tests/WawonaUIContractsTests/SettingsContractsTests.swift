@@ -91,6 +91,17 @@ func iosGlobalSettingsIncludeInputAndWaypipe() {
 }
 
 @Test
+func aboutAlwaysIncludesWawonaIoAndAuthor() {
+    for host in GlobalSettingsHost.allCases {
+        let fields = GlobalSettingsCatalog.visibleFields(in: .about, for: host)
+        #expect(fields.contains(.aboutWebsite))
+        #expect(fields.contains(.aboutAuthor))
+        #expect(fields.contains(.aboutVersion))
+        #expect(fields.contains(.aboutPlatform))
+    }
+}
+
+@Test
 func watchGlobalSettingsOmitAppleWatchCompanionSection() {
     let sections = GlobalSettingsCatalog.visibleSections(for: .watchOS)
     #expect(!sections.contains(.appleWatch))

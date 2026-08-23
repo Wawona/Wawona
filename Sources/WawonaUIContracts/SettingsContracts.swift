@@ -253,9 +253,9 @@ public enum GlobalSettingsFieldID: String, Sendable, CaseIterable {
     case aboutVersion
     case aboutPlatform
     case aboutAuthor
+    case aboutWebsite
     case aboutSource
     case aboutSponsors
-    case aboutPortfolio
     case watchCompanionStatus
     case watchSendDocument
     case watchOpenDocumentsHint
@@ -405,8 +405,8 @@ public struct GlobalSettingsCatalog: Sendable {
             ]
         case .about:
             return [
-                .aboutVersion, .aboutPlatform, .aboutAuthor,
-                .aboutSource, .aboutSponsors, .aboutPortfolio,
+                .aboutVersion, .aboutPlatform, .aboutWebsite, .aboutAuthor,
+                .aboutSource, .aboutSponsors,
             ]
         case .dependencies:
             return [.dependenciesInventory]

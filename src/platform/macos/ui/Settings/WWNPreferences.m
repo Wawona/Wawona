@@ -1351,8 +1351,13 @@ static UIImage *WWNAboutLogo(void) {
   donateItem.iconURL = @"https://encrypted-tbn0.gstatic.com/images?q=tbn:"
                        @"ANd9GcRp_gdQoe-SxKGw3IvS-1G_JPsMY70HkqxAPg&s";
 
+  WWNSettingItem *wawonaIoItem =
+      ITEM(@"Wawona.io", nil, WSettingLink, nil, @"https://wawona.io");
+  wawonaIoItem.urlString = @"https://wawona.io";
+
   WWNSettingItem *authorItem =
-      ITEM(@"Author", nil, WSettingInfo, @"Alex Spaulding", nil);
+      ITEM(@"Author", nil, WSettingLink, nil, @"Alex Spaulding");
+  authorItem.urlString = @"https://aspauldingcode.com";
   authorItem.iconURL = @"https://github.com/aspauldingcode.png?size=160";
 
   WWNSettingItem *githubItem =
@@ -1370,11 +1375,6 @@ static UIImage *WWNAboutLogo(void) {
   linkedinItem.urlString = @"https://www.linkedin.com/in/aspauldingcode/";
   linkedinItem.iconURL = @"https://upload.wikimedia.org/wikipedia/commons/c/"
                          @"ca/LinkedIn_logo_initials.png";
-
-  WWNSettingItem *websiteItem =
-      ITEM(@"Portfolio", nil, WSettingLink, nil, @"Visit Website");
-  websiteItem.urlString = @"https://aspauldingcode.com";
-  websiteItem.iconURL = @"https://aspauldingcode.com/favicon.ico";
 
   WWNSettingItem *kofiItem =
       ITEM(@"Ko-fi", nil, WSettingLink, nil, @"Buy me a coffee ☕");
@@ -1406,9 +1406,8 @@ static UIImage *WWNAboutLogo(void) {
     headerItem, ITEM(@"Version", nil, WSettingInfo, [self getWWNVersion], nil),
     ITEM(@"Platform", nil, WSettingInfo, [self wwnHostOsSummary], nil),
     ITEM(@"Install", nil, WSettingInfo, [self wwnInstallChannel], nil),
-    copyRecentLogs, copyMachineLogs, reportBug,
-    authorItem, websiteItem, githubItem, xItem, linkedinItem, kofiItem,
-    donateItem, sourceItem
+    wawonaIoItem, copyRecentLogs, copyMachineLogs, reportBug, authorItem,
+    githubItem, xItem, linkedinItem, kofiItem, donateItem, sourceItem
   ];
   [sects addObject:about];
 

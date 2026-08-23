@@ -485,17 +485,19 @@ private struct WatchSettingsAboutSection: View {
                 }
             }
             .accessibilityIdentifier("wwn.settings.reportBug")
+            if watchShows(.aboutWebsite, in: .about) {
+                Link("https://wawona.io", destination: URL(string: "https://wawona.io")!)
+            }
             if watchShows(.aboutAuthor, in: .about) {
-                LabeledContent("Author", value: "Alex Spaulding")
+                Link(destination: URL(string: "https://aspauldingcode.com")!) {
+                    LabeledContent("Author", value: "Alex Spaulding")
+                }
             }
             if watchShows(.aboutSource, in: .about) {
-                Link("Source Code", destination: URL(string: "https://github.com/wawona/wawona")!)
+                Link("Source Code", destination: URL(string: "https://github.com/Wawona/Wawona")!)
             }
             if watchShows(.aboutSponsors, in: .about) {
                 Link("GitHub Sponsors", destination: URL(string: "https://github.com/sponsors/aspauldingcode")!)
-            }
-            if watchShows(.aboutPortfolio, in: .about) {
-                Link("Portfolio", destination: URL(string: "https://aspauldingcode.com")!)
             }
         }
         .navigationTitle(GlobalSettingsSectionID.about.title)

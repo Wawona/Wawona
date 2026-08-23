@@ -208,11 +208,16 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
         return @[
             [self actionRow:@"Version" key:@"" value:version],
             [self actionRow:@"Platform" key:@"" value:@"watchOS"],
+            [self actionRow:@"Wawona.io"
+                        key:@"OpenWawonaWebsite"
+                      value:@"https://wawona.io"],
             [self actionRow:@"Report a Bug on GitHub"
                         key:@"ReportGitHubIssue"
                       value:@""],
-            [self actionRow:@"Author" key:@"" value:@"Alex Spaulding"],
-            [self actionRow:@"Source" key:@"" value:@"github.com/wawona/wawona"],
+            [self actionRow:@"Author"
+                        key:@"OpenAuthorPortfolio"
+                      value:@"Alex Spaulding"],
+            [self actionRow:@"Source" key:@"" value:@"github.com/Wawona/Wawona"],
         ];
     }
     return @[];
@@ -326,6 +331,20 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
                             title:model.title
                           options:@[ @"ed25519", @"ecdsa", @"rsa" ]
                      currentValue:[self bridge].sshKeyType];
+        return;
+    }
+    if ([model.actionKey isEqualToString:@"OpenWawonaWebsite"]) {
+        NSURL *url = [NSURL URLWithString:@"https://wawona.io"];
+        if (url) {
+            [[WKExtension sharedExtension] openSystemURL:url];
+        }
+        return;
+    }
+    if ([model.actionKey isEqualToString:@"OpenAuthorPortfolio"]) {
+        NSURL *url = [NSURL URLWithString:@"https://aspauldingcode.com"];
+        if (url) {
+            [[WKExtension sharedExtension] openSystemURL:url];
+        }
         return;
     }
     if ([model.actionKey isEqualToString:@"ReportGitHubIssue"]) {

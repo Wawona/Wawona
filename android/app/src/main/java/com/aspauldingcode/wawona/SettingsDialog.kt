@@ -1387,6 +1387,12 @@ private fun AboutSection(context: Context) {
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = { uriHandler.openUri("https://wawona.io") },
+            modifier = Modifier.fillMaxWidth().testTag("wwn.settings.aboutWebsite"),
+            shape = RoundedCornerShape(12.dp)
+        ) { Text("https://wawona.io") }
+        Spacer(Modifier.height(8.dp))
         val hostOs = remember {
             "Android ${Build.VERSION.RELEASE} (${Build.MODEL})"
         }
@@ -1426,9 +1432,15 @@ private fun AboutSection(context: Context) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(24.dp))
-        Text("Alex Spaulding",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurface)
+        Text("Author",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(4.dp))
+        OutlinedButton(
+            onClick = { uriHandler.openUri("https://aspauldingcode.com") },
+            modifier = Modifier.fillMaxWidth().testTag("wwn.settings.aboutAuthor"),
+            shape = RoundedCornerShape(12.dp)
+        ) { Text("Alex Spaulding") }
         Spacer(Modifier.height(16.dp))
         OutlinedButton(
             onClick = { uriHandler.openUri("https://github.com/wawona/wawona") },

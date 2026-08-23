@@ -378,8 +378,20 @@ pub fn show_settings(
         crate::linux::ui::a11y::id::SETTINGS_REPORT_BUG,
         Some("Report a Bug on GitHub"),
     );
+    add_link_row(
+        &about_group,
+        "Wawona.io",
+        "https://wawona.io",
+        "https://wawona.io",
+    );
     add_row(&about_group, "Diagnostics", &copy_logs);
     add_row(&about_group, "GitHub", &report_bug);
+    add_link_row(
+        &about_group,
+        "Author",
+        "Alex Spaulding",
+        "https://aspauldingcode.com",
+    );
     copy_logs.connect_clicked(|_| {
         linux_copy_bug_diagnostics();
     });
@@ -540,6 +552,24 @@ fn linux_open_github_bug_report() {
         &report,
     );
     let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
+}
+
+fn linux_open_url(url: &str) {
+    let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+}
+
+fn add_link_row(group: &adw::PreferencesGroup, title: &str, subtitle: &str, url: &str) {
+    let row = adw::ActionRow::new();
+    row.set_title(title);
+    row.set_subtitle(subtitle);
+    row.set_title_lines(2);
+    row.set_subtitle_lines(3);
+    row.set_activatable(true);
+    let open_url = url.to_string();
+    row.connect_activated(move |_| {
+        linux_open_url(&open_url);
+    });
+    group.add(&row);
 }
 
 fn add_row(group: &adw::PreferencesGroup, title: &str, widget: &impl IsA<gtk::Widget>) {

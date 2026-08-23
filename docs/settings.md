@@ -248,6 +248,8 @@ another platform's list. Rule: [`agent-rules/wawona-settings-dependencies.md`](a
 | Copy Recent Logs | Button | Apple, Android, Linux | Copies a GitHub-ready report (version, host, install, active machine without secrets, last ~2000 log lines) |
 | Copy Active Machine Logs | Button | Apple Settings | Same header plus only lines tagged with the active machine id |
 | Report a Bug on GitHub | Button | Apple, Android, Linux, watchOS | Opens `Wawona/Wawona` issue form `bug.yml` with platform, install channel, version, host OS, and recent logs filled. Also copies the full report to the clipboard (except tvOS/watchOS) |
+| Wawona.io | Link | All About hosts | Always shown. Opens `https://wawona.io` |
+| Author | Link | All About hosts | Subtext is Alex Spaulding. Opens `https://aspauldingcode.com` (portfolio). There is no separate Portfolio row |
 
 Sideloaded iOS IPAs have no TestFlight crash pipeline. TestFlight testers should send **Beta Feedback** from the TestFlight app *and* paste copied logs on GitHub. Full steps: [`reporting-bugs.md`](reporting-bugs.md).
 

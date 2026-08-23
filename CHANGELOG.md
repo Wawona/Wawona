@@ -10,6 +10,12 @@ as history.
 
 ## [Unreleased]
 
+### Changed
+
+- **Settings → About.** Author subtext is Alex Spaulding and that row opens
+  the portfolio (`https://aspauldingcode.com`). The separate Portfolio row
+  is gone. Wawona.io (`https://wawona.io`) is always listed.
+
 ## [26.8.22] - 2026-08-22
 
 ### Fixed
