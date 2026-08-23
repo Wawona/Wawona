@@ -1436,6 +1436,13 @@ GEN_HEADER
                 ln -sf igetty $out/Applications/Wawona.app/Contents/Resources/bin/modeb-getty
                 ln -sf igetty $out/Applications/Wawona.app/Contents/MacOS/modeb-getty
               fi
+              if [ -d "${modebTty}/libexec/wwn-modeb-session" ]; then
+                mkdir -p $out/Applications/Wawona.app/Contents/Resources/libexec/wwn-modeb-session
+                cp ${modebTty}/libexec/wwn-modeb-session/* \
+                  $out/Applications/Wawona.app/Contents/Resources/libexec/wwn-modeb-session/
+                chmod +x $out/Applications/Wawona.app/Contents/Resources/libexec/wwn-modeb-session/*
+                echo "DEBUG: Bundled Mode B TTY niri/weston DRM wrappers"
+              fi
               echo "DEBUG: Bundled wwn-igetty (igettyd + igetty)"
             elif [ -f "$IGETTY_BIN/modeb-ttyd" ]; then
               cp "$IGETTY_BIN/modeb-ttyd" $out/Applications/Wawona.app/Contents/Resources/bin/

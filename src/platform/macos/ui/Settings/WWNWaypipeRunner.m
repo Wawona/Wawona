@@ -2549,6 +2549,7 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
   env[@"XDG_RUNTIME_DIR"] =
       [NSString stringWithFormat:@"/tmp/wawona-%d", getuid()];
   env[@"XDG_SESSION_TYPE"] = @"tty";
+  env[@"NIRI_BACKEND"] = @"tty";
   env[@"ANGLE_DEFAULT_PLATFORM"] = @"metal";
 
   NSString *frameworksDir = [[[NSBundle mainBundle] bundlePath]
@@ -2872,6 +2873,12 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     env[@"WWN_IGETTY_GETTY"] = igetty;
     env[@"WWN_MODEB_GETTY"] = igetty;
   }
+  NSString *sessionBin = [[[NSBundle mainBundle] resourcePath]
+      stringByAppendingPathComponent:@"libexec/wwn-modeb-session"];
+  if ([[NSFileManager defaultManager] fileExistsAtPath:sessionBin]) {
+    env[@"WWN_MODEB_SESSION_BIN"] = sessionBin;
+  }
+  env[@"NIRI_BACKEND"] = @"tty";
   executable = igettyd;
   args = @[];
 

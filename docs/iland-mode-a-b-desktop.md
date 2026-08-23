@@ -145,22 +145,25 @@ switches. Ctrl+Option+Backspace restores Aqua.
 Do not put VT switching in iland or in L4 Wawona besides launching `igettyd`
 and passing `WWN_IGETTY_GUI_*`.
 
-Classic already runs `framebufferd` / `inputd`. After login on a text VT you
-can still start another DRM client:
+Classic already runs `framebufferd` / `inputd`. After login on a text VT,
+`niri` and `weston` use iland DRM/KMS/GBM (same as the assigned GUI VT).
+Login env sets `NIRI_BACKEND=tty` and clears nested `WAYLAND_DISPLAY`.
+PATH wrappers restore `DYLD_INSERT_LIBRARIES` from `WWN_MODEB_INSERT` and
+exec the bundled compositor. You do not need to pass `--backend=drm` or
+`NIRI_BACKEND=tty` by hand.
 
 ```text
-export DYLD_INSERT_LIBRARIES="$WWN_MODEB_INSERT"
-weston --backend=drm --shell=desktop-shell.so
-NIRI_BACKEND=tty niri
+niri
+weston
 ```
 
-`PATH` includes `WWN_MODEB_BIN` (Wawona `Resources/bin`) so `weston` / `niri`
-resolve without typing store paths. `WESTON_BACKEND_DIR` and related env from
-the helper stay inherited. Send compositor stderr to a file if you are
-reporting a failure:
+`PATH` includes session wrappers first, then `WWN_MODEB_BIN` (Wawona
+`Resources/bin`). `WESTON_BACKEND_DIR` and related env from the helper stay
+inherited. Send compositor stderr to a file if you are reporting a failure:
 
 ```text
-weston --backend=drm --shell=desktop-shell.so 2>/tmp/modeb-weston.err
+weston 2>/tmp/modeb-weston.err
+niri 2>/tmp/modeb-niri.err
 ```
 
 Ctrl+Option+F1 returns to the text VT if the compositor does not take over

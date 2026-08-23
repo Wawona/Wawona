@@ -2181,6 +2181,17 @@ ICDJSON
                   ln -sf igetty "$MACOS_DEST/modeb-getty"
                   ln -sf ../MacOS/igetty "$BIN_DEST/modeb-getty"
                 fi
+                MODEB_SESSION="$MODEB_TTY_BIN/../libexec/wwn-modeb-session"
+                if [ -d "$MODEB_SESSION" ]; then
+                  mkdir -p "$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources/libexec/wwn-modeb-session"
+                  for w in niri weston; do
+                    if [ -f "$MODEB_SESSION/$w" ]; then
+                      install -m 755 "$MODEB_SESSION/$w" \
+                        "$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources/libexec/wwn-modeb-session/$w"
+                    fi
+                  done
+                  echo "Bundled Mode B TTY niri/weston DRM wrappers"
+                fi
               elif [ -f "$MODEB_TTY_BIN/modeb-ttyd" ]; then
                 require_bin "$MODEB_TTY_BIN/modeb-ttyd" "modeb-ttyd"
                 install -m 755 "$MODEB_TTY_BIN/modeb-ttyd" "$MACOS_DEST/modeb-ttyd"
