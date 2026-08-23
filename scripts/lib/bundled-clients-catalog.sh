@@ -64,8 +64,7 @@ bundled_client_prefs_key() {
 
 # Platform-targets matrix: tvOS/watchOS forbid Vulkan/OpenGL/ANGLE bundles.
 # Nested compositors (weston/niri) are allowed everywhere native machines are.
-# weston-simple-egl is Wayland-EGL and cannot run on Apple mobile iland/ANGLE -
-# kmscube is the nested GL smoke client there.
+# weston-simple-egl is a Wayland-EGL client (wl_egl_window + ANGLE). Not KMS.
 bundled_client_skip_reason() {
   local platform="$1" client="$2"
   case "$platform" in
@@ -73,14 +72,6 @@ bundled_client_skip_reason() {
       case "$client" in
         kmscube|gbm-es2-demo|opengl-cube|vkcube|weston-simple-egl)
           echo "platform-targets: no Vulkan/OpenGL/ANGLE on ${platform}"
-          return 0
-          ;;
-      esac
-      ;;
-    ios|ipados|visionos)
-      case "$client" in
-        weston-simple-egl)
-          echo "Wayland-EGL unsupported on Apple mobile (use kmscube)"
           return 0
           ;;
       esac

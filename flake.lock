@@ -952,11 +952,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1787514524,
-        "narHash": "sha256-vTMd3DrRQ7ShHVz5N25zIjG1n7JMw/45nL7VhDBpUA0=",
+        "lastModified": 1787515014,
+        "narHash": "sha256-bjzonboE22IVApwuGRPePG101J0oRTGNEKAYVHgO3HQ=",
         "owner": "Wawona",
         "repo": "wwn-iland",
-        "rev": "761be8148513695591736bac4a5a069347b8379e",
+        "rev": "939af19a5cfef4a73f31597dee7693940ede3111",
         "type": "github"
       },
       "original": {
@@ -1293,11 +1293,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1787512965,
-        "narHash": "sha256-YtdgIBJH8k1bgJnw9uszwDYKFMYWC8S5x2ykIiqsLbE=",
+        "lastModified": 1787515014,
+        "narHash": "sha256-xbKFACkRuCX8H1rdPt8cIGInoaEeE1C9jlRr5gbqYKA=",
         "owner": "Wawona",
         "repo": "wwn-weston",
-        "rev": "89182d08d7c02a6beaec875c7b67e617a4950a91",
+        "rev": "86236fd067b0f0e9729470ee445d86cf76911286",
         "type": "github"
       },
       "original": {

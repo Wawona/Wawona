@@ -2,10 +2,12 @@
 //  WWNIlandPresenter.h
 //  Wawona. IOS
 //
-//  Mode A in-window present consumer for nested iland GL clients
-//  (kmscube / weston-simple-egl built against iland + ANGLE).
+//  Mode A in-window present consumer for nested iland KMS/GBM GL clients
+//  (kmscube / gbm-es2-demo). weston-simple-egl is a Wayland-EGL client of the
+//  Wawona compositor (wl_egl_window + ANGLE GLES + linux-dmabuf). It does not
+//  use this presenter.
 //
-//  An iland GL client renders into IOSurface-backed GBM buffers; its DRM/KMS
+//  A KMS/GBM client renders into IOSurface-backed GBM buffers; its DRM/KMS
 //  page-flips are redirected (iland_drm_set_present_callback) to a callback in
 //  THIS process. WWNIlandPresenter imports the presented IOSurface into a Metal
 //  texture and composites it onto WWNCompositorView_ios's CAMetalLayer.
