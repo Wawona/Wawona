@@ -933,14 +933,16 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"2>/dev/null || true\n"
                        @"      return 0\n"
                        @"    fi\n"
-                       @"    fpid=$(cat \"$PIDFILE\" 2>/dev/null || true)\n"
-                       @"    if [ -n \"$fpid\" ] && kill -0 \"$fpid\" "
+                       @"    owner=$(cat /tmp/libwayland-support/modeb.lock/owner "
+                       @"2>/dev/null || true)\n"
+                       @"    if [ -n \"$owner\" ] && kill -0 \"$owner\" "
                        @"2>/dev/null; then\n"
                        @"      wwn_log \"modeb helper already running "
-                       @"compositor=$fpid\"\n"
+                       @"helper=$owner\"\n"
                        @"      exit 0\n"
                        @"    fi\n"
-                       @"    wwn_log \"stale modeb.lock; stealing try=$tries\"\n"
+                       @"    wwn_log \"stale modeb.lock; stealing try=$tries "
+                       @"owner=${owner:-none}\"\n"
                        @"    stop_other_helpers\n"
                        @"    rm -rf /tmp/libwayland-support/modeb.lock\n"
                        @"    mkdir -p /tmp/libwayland-support\n"
@@ -954,6 +956,43 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"2>&1 || true\n"
                        @"  rm -rf /tmp/libwayland-support/modeb.lock\n"
                        @"  exit 0\n"
+                       @"}\n"
+                       @"abort_classic_leave_aqua() {\n"
+                       @"  write_reason \"$1\"\n"
+                       @"  /bin/launchctl bootout system/com.wayland-mac.framebufferd "
+                       @">/dev/null 2>&1 || true\n"
+                       @"  /bin/launchctl bootout system/com.wayland-mac.inputd "
+                       @">/dev/null 2>&1 || true\n"
+                       @"  /usr/bin/pkill -u 0 -x framebufferd >/dev/null 2>&1 || true\n"
+                       @"  /usr/bin/pkill -u 0 -x inputd >/dev/null 2>&1 || true\n"
+                       @"  rm -f /Library/LaunchDaemons/com.wayland-mac.framebufferd.plist "
+                       @"/Library/LaunchDaemons/com.wayland-mac.inputd.plist\n"
+                       @"  rmdir /tmp/libwayland-support/modeb.lock "
+                       @"2>/dev/null || true\n"
+                       @"  rm -rf /tmp/libwayland-support/modeb.lock "
+                       @"2>/dev/null || true\n"
+                       @"  exit 0\n"
+                       @"}\n"
+                       @"wait_machservice_gone() {\n"
+                       @"  gi=0\n"
+                       @"  while [ \"$gi\" -lt 20 ]; do\n"
+                       @"    if ! /bin/launchctl print \"system/$1\" "
+                       @">/dev/null 2>&1; then return 0; fi\n"
+                       @"    gi=$((gi + 1)); sleep 0.15\n"
+                       @"  done\n"
+                       @"  wwn_log \"launchd job still loaded after bootout: $1\"\n"
+                       @"  return 1\n"
+                       @"}\n"
+                       @"live_root_pid() {\n"
+                       @"  p=$(cat \"$1\" 2>/dev/null || true)\n"
+                       @"  if [ -n \"$p\" ] && kill -0 \"$p\" 2>/dev/null; then\n"
+                       @"    printf '%s\\n' \"$p\"; return 0\n"
+                       @"  fi\n"
+                       @"  p=$(pgrep -u 0 -x \"$2\" 2>/dev/null | head -1)\n"
+                       @"  if [ -n \"$p\" ] && kill -0 \"$p\" 2>/dev/null; then\n"
+                       @"    printf '%s\\n' \"$p\"; return 0\n"
+                       @"  fi\n"
+                       @"  return 1\n"
                        @"}\n"
                        @"trap '' TERM INT HUP\n"
                        @": > \"$LOG\"\n"
@@ -1034,6 +1073,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
    * Never lldb. Never kickstart -k watchdogd.
    */
   [script appendString:@"wwn_log \"WWN_MODEB_GATE=pidfile-not-pgrep\"\n"];
+  [script appendString:@"wwn_log \"WWN_MODEB_GATE=live-fb-before-ws-unload\"\n"];
   [script appendString:@"wwn_log \"WWN_MODEB_WD=iowatchdog-then-unload\"\n"];
   [script appendString:@"rm -f /tmp/libwayland-support/modeb-framebufferd.ready "
                        @"/tmp/libwayland-support/modeb-mach.ready "
@@ -1231,7 +1271,24 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @">/dev/null 2>&1 || true\n"];
   [script appendString:@"  /usr/bin/pkill -u 0 -x inputd >/dev/null 2>&1 || true\n"];
   [script appendString:@"  /usr/bin/pkill -u 0 -x framebufferd >/dev/null 2>&1 || true\n"];
-  [script appendString:@"  sleep 0.5\n"];
+  [script appendString:@"  wait_machservice_gone com.wayland-mac.framebufferd || true\n"];
+  [script appendString:@"  wait_machservice_gone com.wayland-mac.inputd || true\n"];
+  /* Leftover framebufferd swallows SIGTERM while waiting for
+   * modeb-display-go. SIGKILL leftovers only here, before Classic
+   * bootstrap. Never watchdogd. */
+  [script appendString:@"  if pgrep -u 0 -x framebufferd >/dev/null 2>&1; then\n"];
+  [script appendString:@"    wwn_log \"leftover framebufferd after bootout; "
+                       @"SIGKILL before Classic bootstrap\"\n"];
+  [script appendString:@"    /usr/bin/pkill -KILL -u 0 -x framebufferd "
+                       @">/dev/null 2>&1 || true\n"];
+  [script appendString:@"  fi\n"];
+  [script appendString:@"  if pgrep -u 0 -x inputd >/dev/null 2>&1; then\n"];
+  [script appendString:@"    wwn_log \"leftover inputd after bootout; "
+                       @"SIGKILL before Classic bootstrap\"\n"];
+  [script appendString:@"    /usr/bin/pkill -KILL -u 0 -x inputd "
+                       @">/dev/null 2>&1 || true\n"];
+  [script appendString:@"  fi\n"];
+  [script appendString:@"  sleep 0.3\n"];
   [script appendString:@"  unset WWN_MODEB_KEEP_WS\n"];
   [script appendString:@"  write_machservice_plist com.wayland-mac.inputd "
                        @"/tmp/libwayland-support/inputd com.wayland-mac.inputd hid\n"];
@@ -1246,10 +1303,35 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"  /bin/launchctl bootstrap system "
                        @"/Library/LaunchDaemons/com.wayland-mac.framebufferd.plist "
                        @">>\"$LOG\" 2>&1\n"];
+  [script appendString:@"  fb_bs=$?\n"];
+  [script appendString:@"  if [ \"$fb_bs\" != 0 ]; then\n"];
+  [script appendString:@"    wwn_log \"framebufferd bootstrap st=$fb_bs; "
+                       @"retry after bootout (EIO=already loaded)\"\n"];
+  [script appendString:@"    /bin/launchctl bootout "
+                       @"system/com.wayland-mac.framebufferd "
+                       @">/dev/null 2>&1 || true\n"];
+  [script appendString:@"    wait_machservice_gone com.wayland-mac.framebufferd "
+                       @"|| true\n"];
+  [script appendString:@"    /usr/bin/pkill -KILL -u 0 -x framebufferd "
+                       @">/dev/null 2>&1 || true\n"];
+  [script appendString:@"    sleep 0.3\n"];
+  [script appendString:@"    write_machservice_plist com.wayland-mac.framebufferd "
+                       @"/tmp/libwayland-support/framebufferd "
+                       @"com.wayland-mac.framebufferd display\n"];
+  [script appendString:@"    /bin/launchctl bootstrap system "
+                       @"/Library/LaunchDaemons/com.wayland-mac.framebufferd.plist "
+                       @">>\"$LOG\" 2>&1\n"];
+  [script appendString:@"    fb_bs=$?\n"];
+  [script appendString:@"    wwn_log \"framebufferd bootstrap retry st=$fb_bs\"\n"];
+  [script appendString:@"  fi\n"];
   [script appendString:@"  mach_ok=0\n"];
   [script appendString:@"  mi=0\n"];
   [script appendString:@"  while [ \"$mi\" -lt 80 ]; do\n"];
-  [script appendString:@"    if [ -f /tmp/libwayland-support/modeb-mach.ready ] && "
+  [script appendString:@"    fpid=$(live_root_pid "
+                       @"/tmp/libwayland-support/framebufferd.pid framebufferd "
+                       @"|| true)\n"];
+  [script appendString:@"    if [ -n \"$fpid\" ] && "
+                       @"[ -f /tmp/libwayland-support/modeb-mach.ready ] && "
                        @"grep -q '\\[framebufferd\\] listening' \"$LOG\" "
                        @"2>/dev/null; then\n"];
   [script appendString:@"      mach_ok=1; break\n"];
@@ -1266,8 +1348,6 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"2>/dev/null; then\n"];
   [script appendString:@"      break\n"];
   [script appendString:@"    fi\n"];
-  [script appendString:@"    fpid=$(cat /tmp/libwayland-support/framebufferd.pid "
-                       @"2>/dev/null || true)\n"];
   [script appendString:@"    if [ -n \"$fpid\" ] && ! kill -0 \"$fpid\" 2>/dev/null; then\n"];
   [script appendString:@"      wwn_log \"framebufferd exited before Mach ready\"\n"];
   [script appendString:@"      break\n"];
@@ -1275,48 +1355,27 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"    mi=$((mi + 1)); sleep 0.25\n"];
   [script appendString:@"  done\n"];
   [script appendString:@"  if [ \"$mach_ok\" != 1 ]; then\n"];
-  [script appendString:@"    write_reason \"Mode B framebufferd failed to publish "
-                       @"MachServices while WindowServer was still up. Left Aqua "
-                       @"running. See $PERSIST_LOG.\"\n"];
-  [script appendString:@"    /bin/launchctl bootout system/com.wayland-mac.framebufferd "
-                       @">/dev/null 2>&1 || true\n"];
-  [script appendString:@"    /bin/launchctl bootout system/com.wayland-mac.inputd "
-                       @">/dev/null 2>&1 || true\n"];
-  [script appendString:@"    /usr/bin/pkill -u 0 -x framebufferd >/dev/null 2>&1 || true\n"];
-  [script appendString:@"    /usr/bin/pkill -u 0 -x inputd >/dev/null 2>&1 || true\n"];
-  [script appendString:@"    rm -f /Library/LaunchDaemons/com.wayland-mac.framebufferd.plist "
-                       @"/Library/LaunchDaemons/com.wayland-mac.inputd.plist\n"];
-  [script appendString:@"    rmdir /tmp/libwayland-support/modeb.lock "
-                       @"2>/dev/null || true\n"];
-  [script appendString:@"    rm -rf /tmp/libwayland-support/modeb.lock "
-                       @"2>/dev/null || true\n"];
-  [script appendString:@"    exit 0\n"];
+  [script appendString:@"    abort_classic_leave_aqua \"Mode B framebufferd failed "
+                       @"to publish MachServices while WindowServer was still up. "
+                       @"Left Aqua running. See $PERSIST_LOG.\"\n"];
+  [script appendString:@"  fi\n"];
+  [script appendString:@"  fpid=$(live_root_pid "
+                       @"/tmp/libwayland-support/framebufferd.pid framebufferd "
+                       @"|| true)\n"];
+  [script appendString:@"  if [ -z \"$fpid\" ]; then\n"];
+  [script appendString:@"    abort_classic_leave_aqua \"Mode B framebufferd was "
+                       @"not live before WindowServer unload (bootstrap st=$fb_bs). "
+                       @"Left Aqua running. See $PERSIST_LOG.\"\n"];
+  [script appendString:@"  fi\n"];
+  [script appendString:@"  ipid=$(live_root_pid "
+                       @"/tmp/libwayland-support/inputd.pid inputd || true)\n"];
+  [script appendString:@"  if [ -z \"$ipid\" ]; then\n"];
+  [script appendString:@"    abort_classic_leave_aqua \"Mode B inputd died before "
+                       @"WindowServer unload (no keyboard path). Left Aqua running. "
+                       @"See $PERSIST_LOG.\"\n"];
   [script appendString:@"  fi\n"];
   [script appendString:@"  wwn_log \"framebufferd MachServices ready "
-                       @"(modeb-mach.ready); stop userspace watchdogd + unload WS\"\n"];
-  [script appendString:@"  ipid=$(cat /tmp/libwayland-support/inputd.pid "
-                       @"2>/dev/null || true)\n"];
-  [script appendString:@"  if [ -z \"$ipid\" ] || ! kill -0 \"$ipid\" 2>/dev/null; then\n"];
-  [script appendString:@"    ipid=$(pgrep -u 0 -x inputd | head -1)\n"];
-  [script appendString:@"  fi\n"];
-  [script appendString:@"  if [ -z \"$ipid\" ] || ! kill -0 \"$ipid\" 2>/dev/null; then\n"];
-  [script appendString:@"    write_reason \"Mode B inputd died before WindowServer "
-                       @"unload (no keyboard path). Left Aqua running. See "
-                       @"$PERSIST_LOG.\"\n"];
-  [script appendString:@"    /bin/launchctl bootout system/com.wayland-mac.framebufferd "
-                       @">/dev/null 2>&1 || true\n"];
-  [script appendString:@"    /bin/launchctl bootout system/com.wayland-mac.inputd "
-                       @">/dev/null 2>&1 || true\n"];
-  [script appendString:@"    /usr/bin/pkill -u 0 -x framebufferd >/dev/null 2>&1 || true\n"];
-  [script appendString:@"    /usr/bin/pkill -u 0 -x inputd >/dev/null 2>&1 || true\n"];
-  [script appendString:@"    rm -f /Library/LaunchDaemons/com.wayland-mac.framebufferd.plist "
-                       @"/Library/LaunchDaemons/com.wayland-mac.inputd.plist\n"];
-  [script appendString:@"    rmdir /tmp/libwayland-support/modeb.lock "
-                       @"2>/dev/null || true\n"];
-  [script appendString:@"    rm -rf /tmp/libwayland-support/modeb.lock "
-                       @"2>/dev/null || true\n"];
-  [script appendString:@"    exit 0\n"];
-  [script appendString:@"  fi\n"];
+                       @"pid=$fpid inputd=$ipid; stop userspace watchdogd + unload WS\"\n"];
   [script appendString:@"  stop_watchdogd_after_iowatchdog\n"];
   /* Do NOT install_ws_guard before WS unload: RunAtLoad can race the
    * stop_window_server loop (restore WS while helper is killing it),
@@ -1351,9 +1410,10 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"      restore_aqua\n"];
   [script appendString:@"      exit 0\n"];
   [script appendString:@"    fi\n"];
-  [script appendString:@"    fpid=$(cat /tmp/libwayland-support/framebufferd.pid "
-                       @"2>/dev/null || true)\n"];
-  [script appendString:@"    if [ -n \"$fpid\" ] && ! kill -0 \"$fpid\" 2>/dev/null; then\n"];
+  [script appendString:@"    fpid=$(live_root_pid "
+                       @"/tmp/libwayland-support/framebufferd.pid framebufferd "
+                       @"|| true)\n"];
+  [script appendString:@"    if [ -z \"$fpid\" ]; then\n"];
   [script appendString:@"      write_reason \"Mode B framebufferd died during "
                        @"CoreDisplay bring-up. Restored Aqua. See "
                        @"$PERSIST_LOG.\"\n"];
@@ -2208,6 +2268,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
         [existingHelper containsString:installedDylib] &&
         [existingHelper containsString:executablePath] &&
         [existingHelper containsString:@"WWN_MODEB_GATE=pidfile-not-pgrep"] &&
+        [existingHelper containsString:@"WWN_MODEB_GATE=live-fb-before-ws-unload"] &&
         [existingHelper containsString:@"WWN_MODEB_LOCK=helper-argv-only"] &&
         [existingHelper containsString:@"WWN_MODEB_WD=iowatchdog-then-unload"] &&
         [existingHelper containsString:@"stop_watchdogd_after_iowatchdog"] &&
