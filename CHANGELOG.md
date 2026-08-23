@@ -10,9 +10,10 @@ as history.
 
 ## [Unreleased]
 
-### Fixed
-
-- **iOS Settings duplicate section titles.** Detail pages used the section
+- **iOS nested niri.** Start was sending configure(0,0) (client-preferred),
+  which niri ignores, so it never attached a buffer and `niri_main` exited 1.
+  Nested compositors (niri, weston) now fill the host surface like
+  weston-terminal. Niri stderr is copied into `[NIRI]` log lines.
   name in the nav bar and again as a table header. Header is omitted; the
   nav bar is the only title.
 - **iOS Settings Apple Watch rows.** Companion Status and On the Watch

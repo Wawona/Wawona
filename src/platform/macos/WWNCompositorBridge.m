@@ -139,6 +139,22 @@ static BOOL WWNIosBundledClientPrefersFixedSize(NSString *clientId) {
   return [fixedClients containsObject:clientId];
 }
 
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+/// Terminals and nested compositors fill the iOS-family host surface. Demos
+/// stay client-preferred (0x0 seed). niri ignores configure(0,0) and never
+/// attaches a buffer, then niri_main exits 1.
+static BOOL WWNIosBundledClientFillsHost(NSString *clientId) {
+  if (clientId.length == 0) {
+    return NO;
+  }
+  return [clientId isEqualToString:@"weston-terminal"] ||
+         [clientId isEqualToString:@"wayland-terminal"] ||
+         [clientId isEqualToString:@"foot"] ||
+         [clientId isEqualToString:@"niri"] ||
+         [clientId isEqualToString:@"weston"];
+}
+#endif
+
 static NSString *WWNIosResolveBundledClientIdForWindow(WWNCompositorBridge *bridge,
                                                        uint64_t windowId) {
   NSString *clientId =
@@ -5623,6 +5639,8 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
   // - host_locked / fullscreen_shell → fill container
   // - weston-terminal / foot (shell apps) → fill container on phone/tablet
   //   so the PTY grid matches the compositor view (not a floating 80×25)
+  // - nested compositors (niri, weston) → fill container. niri's nested
+  //   backend ignores configure(0,0) and never commits a buffer.
   // - demos (flower/smoke/simple-shm) → client-preferred via xdg 0×0 seed;
   //   never inject output size (keeps 200×200 fixed clients correct)
   BOOL firstNativeToplevel = (_windows.count == 1);
@@ -5644,10 +5662,7 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
       bundledClientForSize = (NSString *)settingsNative;
     }
   }
-  BOOL fillShellToHost =
-      [bundledClientForSize isEqualToString:@"weston-terminal"] ||
-      [bundledClientForSize isEqualToString:@"wayland-terminal"] ||
-      [bundledClientForSize isEqualToString:@"foot"];
+  BOOL fillShellToHost = WWNIosBundledClientFillsHost(bundledClientForSize);
   BOOL injectFillConfigure = event->host_locked || fillShellToHost;
   if (injectFillConfigure && [view isKindOfClass:[WWNCompositorView_ios class]]) {
     view.followHostSize = YES;
@@ -5732,12 +5747,11 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
       // remain available for niri / nested clients.
       if ([view isKindOfClass:[WWNCompositorView_ios class]]) {
         WWNCompositorView_ios *cv = (WWNCompositorView_ios *)view;
-        // Nested compositor: accessory-only FR for Mod hotkeys. Soft Expand
-        // still waits for first Wayland frame (applyHostKeyboard stashes it).
-        [cv applyHostKeyboardForTextInputEnabled:NO];
-        dispatch_async(dispatch_get_main_queue(), ^{
-          [cv activateKeyboard];
-        });
+      // Nested compositor: accessory-only until the first Wayland frame.
+      // Immediate activateKeyboard shrinks the host output (soft OSK) and
+      // stalls ticks the same way it did for weston-terminal. Fill configure
+      // must land first.
+      [cv applyHostKeyboardForTextInputEnabled:NO];
       }
     } else if ([view isKindOfClass:[WWNCompositorView_ios class]]) {
       // Terminal / demo toplevels: do NOT activateKeyboard here. Soft OSK or
@@ -5883,7 +5897,8 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
   BOOL titleLooksLikeShell =
       [titleLower containsString:@"weston terminal"] ||
       [titleLower containsString:@"wayland-terminal"] ||
-      [titleLower hasPrefix:@"foot"] || [titleLower containsString:@"foot "];
+      [titleLower hasPrefix:@"foot"] || [titleLower containsString:@"foot "] ||
+      [titleLower containsString:@"niri"];
   if (titleLooksLikeShell &&
       [clientView isKindOfClass:[WWNCompositorView_ios class]]) {
     WWNCompositorView_ios *cv = (WWNCompositorView_ios *)clientView;
@@ -5970,10 +5985,7 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
       else if ([sn isKindOfClass:[NSString class]])
         shellClient = (NSString *)sn;
     }
-    BOOL activeShell =
-        [shellClient isEqualToString:@"weston-terminal"] ||
-        [shellClient isEqualToString:@"wayland-terminal"] ||
-        [shellClient isEqualToString:@"foot"];
+    BOOL activeShell = WWNIosBundledClientFillsHost(shellClient);
     BOOL fixedSizeClient = WWNIosBundledClientPrefersFixedSize(shellClient);
     if (fixedSizeClient) {
       iosView.followHostSize = NO;

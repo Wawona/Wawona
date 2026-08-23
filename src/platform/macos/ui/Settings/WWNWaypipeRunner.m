@@ -59,6 +59,9 @@ extern int wwn_weston_terminal_is_compat_shim(void) __attribute__((weak));
 extern int wwn_foot_is_compat_shim(void) __attribute__((weak));
 extern int weston_compositor_main(int argc, char **argv) __attribute__((weak_import));
 extern int niri_main(void) __attribute__((weak_import));
+#if TARGET_OS_IPHONE
+static BOOL gWwnNiriMainConsumed = NO;
+#endif
 extern int weston_terminal_main(int argc, char **argv);
 #if TARGET_OS_IPHONE
 extern int flower_main(int argc, char **argv);
@@ -93,7 +96,8 @@ static BOOL WWNIsGpuFamilyClientId(NSString *clientId) {
   return WWNIsIlandGpuCubeClientId(clientId) ||
          [clientId isEqualToString:@"opengl-cube"] ||
          [clientId isEqualToString:@"vkcube"] ||
-         [clientId isEqualToString:@"weston-simple-egl"];
+         [clientId isEqualToString:@"weston-simple-egl"] ||
+         [clientId isEqualToString:@"niri"];
 }
 
 /// Why this GPU client cannot run here, or nil if it can. A GPU-capable
@@ -3419,7 +3423,40 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
 - (void)launchNiri {
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
     CFAbsoluteTime launchStart = CFAbsoluteTimeGetCurrent();
+    if (gWwnNiriMainConsumed) {
+      WWNLog("NIRI",
+             @"niri_main already ran in this process (not re-entrant). "
+             @"Relaunch Wawona before starting niri again");
+      dispatch_async(dispatch_get_main_queue(), ^{
+        [[NSNotificationCenter defaultCenter]
+            postNotificationName:@"WWNNativeClientLaunchFailedNotification"
+                          object:self
+                        userInfo:@{
+                          @"clientId" : @"niri",
+                          @"reason" : @"niri_main is not re-entrant. Relaunch Wawona.",
+                        }];
+      });
+      return;
+    }
     if (![self wwnBeginIOSNativeClientLaunch:@"niri"]) {
+      return;
+    }
+
+    [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
+    WWNSettings_ApplyGraphicsDriverSelection();
+    NSString *gpuRefusal = WWNGpuClientRefusalReason(@"niri");
+    if (gpuRefusal) {
+      WWNLog("NIRI", @"Refusing niri. %@", gpuRefusal);
+      [self wwnEndIOSNativeClientLaunch];
+      dispatch_async(dispatch_get_main_queue(), ^{
+        [[NSNotificationCenter defaultCenter]
+            postNotificationName:@"WWNNativeClientLaunchFailedNotification"
+                          object:self
+                        userInfo:@{
+                          @"clientId" : @"niri",
+                          @"reason" : gpuRefusal,
+                        }];
+      });
       return;
     }
 
@@ -3435,7 +3472,6 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     }
     setenv("WAYLAND_DISPLAY", parent_display, 1);
     wwnConfigureNiriNestedEnv();
-    // Surface niri panics/errors in Simulator Console (host reads stderr).
     if (!getenv("RUST_BACKTRACE") || !getenv("RUST_BACKTRACE")[0]) {
       setenv("RUST_BACKTRACE", "1", 0);
     }
@@ -3455,11 +3491,13 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
 
     WWNLog("NIRI",
            @"Launching in-process niri_main (nested) WAYLAND_DISPLAY=%s "
-           @"XDG_RUNTIME_DIR=%s NIRI_CONFIG=%s DYLD_LIBRARY_PATH=%s",
+           @"XDG_RUNTIME_DIR=%s NIRI_CONFIG=%s DYLD_LIBRARY_PATH=%s "
+           @"WWN_OPENGL_DRIVER=%s",
            getenv("WAYLAND_DISPLAY") ?: "(null)",
            getenv("XDG_RUNTIME_DIR") ?: "(null)",
            getenv("NIRI_CONFIG") ?: "(null)",
-           getenv("DYLD_LIBRARY_PATH") ?: "(null)");
+           getenv("DYLD_LIBRARY_PATH") ?: "(null)",
+           getenv("WWN_OPENGL_DRIVER") ?: "(null)");
     if (!niri_main) {
       WWNLog("NIRI",
              @"niri_main not linked in this build. Nested niri unavailable");
@@ -3479,7 +3517,76 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
       return;
     }
 
+    gWwnNiriMainConsumed = YES;
+
+    int savedOut = dup(STDOUT_FILENO);
+    int savedErr = dup(STDERR_FILENO);
+    int capPipe[2] = {-1, -1};
+    NSMutableArray<NSString *> *captured = [NSMutableArray array];
+    dispatch_semaphore_t capDone = NULL;
+    if (pipe(capPipe) == 0) {
+      dup2(capPipe[1], STDOUT_FILENO);
+      dup2(capPipe[1], STDERR_FILENO);
+      close(capPipe[1]);
+      int readFd = capPipe[0];
+      capDone = dispatch_semaphore_create(0);
+      dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        char buf[1024];
+        NSMutableData *line = [NSMutableData data];
+        ssize_t n;
+        while ((n = read(readFd, buf, sizeof(buf))) > 0) {
+          for (ssize_t i = 0; i < n; i++) {
+            if (buf[i] == '\n') {
+              if (line.length > 0) {
+                NSString *s = [[NSString alloc] initWithData:line
+                                                    encoding:NSUTF8StringEncoding];
+                if (s.length > 0) {
+                  @synchronized(captured) {
+                    [captured addObject:s];
+                  }
+                }
+                [line setLength:0];
+              }
+            } else {
+              [line appendBytes:&buf[i] length:1];
+            }
+          }
+        }
+        if (line.length > 0) {
+          NSString *s = [[NSString alloc] initWithData:line
+                                              encoding:NSUTF8StringEncoding];
+          if (s.length > 0) {
+            @synchronized(captured) {
+              [captured addObject:s];
+            }
+          }
+        }
+        close(readFd);
+        dispatch_semaphore_signal(capDone);
+      });
+    }
+
     int result = niri_main();
+    fflush(stdout);
+    fflush(stderr);
+    if (savedOut >= 0) {
+      dup2(savedOut, STDOUT_FILENO);
+      close(savedOut);
+    }
+    if (savedErr >= 0) {
+      dup2(savedErr, STDERR_FILENO);
+      close(savedErr);
+    }
+    if (capDone) {
+      dispatch_semaphore_wait(
+          capDone, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)));
+    }
+    @synchronized(captured) {
+      for (NSString *line in captured) {
+        WWNLog("NIRI", @"%@", line);
+      }
+    }
+
     WWNLog("NIRI", @"niri_main exit code: %d (total %.0fms)", result,
            (CFAbsoluteTimeGetCurrent() - launchStart) * 1000.0);
     if (saved_cwd[0]) {
@@ -3488,8 +3595,7 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     [self wwnEndIOSNativeClientLaunch];
     if (result != 0) {
       NSString *reason =
-          [NSString stringWithFormat:@"niri_main exited %d (see stderr for "
-                                     @"niri_main: fatal/panicked)",
+          [NSString stringWithFormat:@"niri_main exited %d (see [NIRI] lines)",
                                      result];
       dispatch_async(dispatch_get_main_queue(), ^{
         [[NSNotificationCenter defaultCenter]

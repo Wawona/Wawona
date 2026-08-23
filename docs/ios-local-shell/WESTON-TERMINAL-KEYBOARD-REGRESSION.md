@@ -158,8 +158,10 @@ over the wait spam alone.
    simple-shm (fixed or client-driven demo sizes).
 2. Soft OSK Expand stays tied to committed TI-v3 / terminal synthesis. Not
    mere window focus; do not `becomeFirstResponder` before first buffer.
-3. weston-terminal / foot on iOS/iPadOS should **fill** the compositor view;
-   grid tracks host layout (`followHostSize` + fill configure / layout inject).
+3. weston-terminal / foot **and nested compositors (niri, weston)** on
+   iOS/iPadOS should **fill** the compositor view; grid / output tracks host
+   layout (`followHostSize` + fill configure / layout inject). niri's nested
+   backend ignores `configure(0,0)` and will exit 1 without a host fill.
 4. PTY working ≠ GUI working; always check `Buffers popped` / `IOS present`.
 5. Do not let ClientCommit heuristics turn shell `followHostSize` back off.
 
