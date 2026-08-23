@@ -1,13 +1,16 @@
 {
   lib,
   stdenvNoCC,
-  dejavu_fonts,
+  fetchurl,
   nerd-fonts,
 }:
 
 # Shared font tree for every Wawona compositor target (macOS / iOS family /
 # Android / Linux AppImage hosts). Terminals (weston-terminal, foot) and zsh
 # prompts need a Nerd-patched mono; UI chrome keeps stock DejaVu Sans.
+#
+# Do not use pkgs.dejavu_fonts. That rebuilds TTF via fontforge, which pulls
+# libtiff docs → Sphinx → mypy pytest on a cache miss.
 #
 # Terminal mono is DejaVuSansM Nerd Font Mono: same face family we already
 # used (DejaVu Sans Mono), with Nerd glyphs patched in. Do not swap the
@@ -34,12 +37,17 @@ let
     "DejaVuSansMono.ttf"
     "DejaVuSansMono-Bold.ttf"
   ];
+  dejavuTtf = fetchurl {
+    url = "https://github.com/dejavu-fonts/dejavu-fonts/releases/download/version_2_37/dejavu-fonts-ttf-2.37.tar.bz2";
+    sha256 = "1mqpds24wfs5cmfhj57fsfs07mji2z8812i5c4pi5pbi738s977s";
+  };
 in
 stdenvNoCC.mkDerivation {
   pname = "wawona-bundled-fonts";
   version = "1.0.0";
 
-  dontUnpack = true;
+  src = dejavuTtf;
+
   dontConfigure = true;
   dontBuild = true;
 
@@ -47,7 +55,7 @@ stdenvNoCC.mkDerivation {
     runHook preInstall
     mkdir -p "$out/share/fonts/truetype"
     for f in ${lib.concatStringsSep " " dejavuFaces}; do
-      cp -L "${dejavu_fonts}/share/fonts/truetype/$f" "$out/share/fonts/truetype/"
+      cp -L "ttf/$f" "$out/share/fonts/truetype/"
     done
     for f in ${lib.concatStringsSep " " nerdFaces}; do
       src="${nerdSrc}/$f"

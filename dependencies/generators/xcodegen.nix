@@ -77,6 +77,8 @@ let
     else if gh != "" then gh
     else "1";
   derivedRustLib = "$(DERIVED_FILE_DIR)/libwawona.a";
+  # Cursor files only. Do not use pkgs.adwaita-icon-theme (librsvg + mypy).
+  adwaitaCursors = pkgs.callPackage ../wawona/adwaita-cursors.nix { };
 
   # Simulator slices on Apple Silicon CI: never compile x86_64. App targets
   # already set ARCHS[sdk=*simulator*]=arm64; shared frameworks did not, so
@@ -1022,7 +1024,7 @@ ICDJSON
         echo "warning: weston $NAME not found at $SRC" >&2
       fi
     done
-    CURSOR_SRC="${pkgs.adwaita-icon-theme}/share/icons/Adwaita/cursors"
+    CURSOR_SRC="${adwaitaCursors}/share/icons/Adwaita/cursors"
     if [ -d "$CURSOR_SRC" ]; then
       mkdir -p "$ICONS_DEST"
       cp -RL "$CURSOR_SRC/." "$ICONS_DEST/"
@@ -2287,7 +2289,7 @@ ICDJSON
               cp -RL "${wawonaBundledFonts}/share/fonts/." "$RES_DEST/share/fonts/"
               chmod -R u+w "$RES_DEST/share/fonts"
               echo "Bundled Wawona fonts (DejaVu + DejaVuSansM Nerd Font Mono)"
-              CURSOR_SRC="${pkgs.adwaita-icon-theme}/share/icons/Adwaita/cursors"
+              CURSOR_SRC="${adwaitaCursors}/share/icons/Adwaita/cursors"
               if [ -d "$CURSOR_SRC" ]; then
                 mkdir -p "$RES_DEST/share/icons/Adwaita"
                 cp -RL "$CURSOR_SRC" "$RES_DEST/share/icons/Adwaita/cursors"

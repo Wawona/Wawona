@@ -154,7 +154,50 @@
       let
         isDarwin = (system == "x86_64-darwin" || system == "aarch64-darwin");
         customOverlays =
-          [ (import rust-overlay) ]
+          [ (import rust-overlay)
+            (self: super: {
+              # charset-normalizer mypyc-compiles with mypy. mypy's pytest suite
+              # is ~45 minutes on a cold Darwin laptop. cargo-auditable's vendor
+              # helper (niri) and any requests stack would otherwise rebuild it.
+              pythonPackagesExtensions = (super.pythonPackagesExtensions or [ ]) ++ [
+                (pyfinal: pyprev: {
+                  charset-normalizer = pyprev.charset-normalizer.override { withMypyc = false; };
+                })
+              ];
+              # fontconfig (fuzzel) defaults to dejavu-fonts-minimal, which
+              # nixpkgs builds from SFD via fontforge → libtiff docs → Sphinx.
+              # Ship the upstream TTF tarball instead.
+              dejavu-fonts =
+                let
+                  src = super.fetchurl {
+                    url = "https://github.com/dejavu-fonts/dejavu-fonts/releases/download/version_2_37/dejavu-fonts-ttf-2.37.tar.bz2";
+                    sha256 = "1mqpds24wfs5cmfhj57fsfs07mji2z8812i5c4pi5pbi738s977s";
+                  };
+                  ttf = super.stdenvNoCC.mkDerivation {
+                    pname = "dejavu-fonts";
+                    version = "2.37";
+                    inherit src;
+                    dontConfigure = true;
+                    dontBuild = true;
+                    installPhase = ''
+                      runHook preInstall
+                      mkdir -p $out/share/fonts/truetype
+                      cp ttf/*.ttf $out/share/fonts/truetype/
+                      runHook postInstall
+                    '';
+                    meta = (super.dejavu-fonts.meta or { });
+                  };
+                in
+                ttf
+                // {
+                  minimal = ttf;
+                  full = ttf;
+                };
+              dejavu_fonts = self.dejavu-fonts;
+              dejavu-fonts-minimal = self.dejavu-fonts.minimal;
+              dejavu-fonts-full = self.dejavu-fonts.full;
+            })
+          ]
           ++ (if isDarwin then [
             (self: super: {
               rustToolchain = super.rust-bin.nightly.latest.default.override {
@@ -1021,7 +1064,9 @@
               watchosSimBackend = if wantWatch then backend-watchos-sim else null;
               macosWeston = if want "macos" then toolchains.buildForMacOS "weston" { } else null;
               macosFoot = if want "macos" then toolchains.buildForMacOS "foot" { } else null;
-              macosFastfetch = if want "macos" then pkgs.fastfetch else null;
+              # wwn-fastfetch, not pkgs.fastfetch. nixpkgs fastfetch enables
+              # ImageMagick, which pulls libtiff docs → Sphinx → mypy pytest.
+              macosFastfetch = if want "macos" then toolchains.buildForMacOS "fastfetch" { } else null;
               macosPhoon = if want "macos" then toolchains.buildForMacOS "phoon" { } else null;
               macosNeovim = null;
               macosZsh = if want "macos" then pkgs.zsh else null;
@@ -1064,7 +1109,8 @@
             fuzzel = toolchains.buildForMacOS "fuzzel" { };
             # anowaW app bridge (libanowaw.a + anowaw_mac_shim.o + headers).
             anowaw = toolchains.buildForMacOS "anowaw" { };
-            fastfetch = pkgs.fastfetch;
+            # wwn-fastfetch. nixpkgs fastfetch pulls ImageMagick → mypy pytest.
+            fastfetch = toolchains.buildForMacOS "fastfetch" { };
             phoon = toolchains.buildForMacOS "phoon" { };
             wawonaWasm = toolchains.buildForMacOS "wawona-wasm" { };
             neovim = null;

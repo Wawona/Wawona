@@ -45,10 +45,10 @@ Wawona is engineering **the world's first App Store-compliant bundled native Z s
 3. Configure your environment (see below).
 4. Build with the Nix flake.
 
-On a cold laptop build, log into FlakeHub first so nixpkgs paths such as
-`librsvg` (needed by `adwaita-icon-theme`) are substituted instead of
-compiled. If a compile still dies with exit 137 / `Killed: 9`, cap Nix
-parallelism:
+On a cold laptop build, log into FlakeHub so already-built `wwn-*` store
+paths substitute. Cursor assets no longer pull `librsvg` /
+`adwaita-icon-theme`. If a compile still dies with exit 137 / `Killed: 9`,
+cap Nix parallelism:
 
 ```bash
 determinate-nixd login

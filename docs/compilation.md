@@ -9,7 +9,7 @@ Wawona uses **Nix Flakes** for all builds. For the full build pipeline (crate2ni
 nix run .#wawona
 nix run .#wawona-macos
 
-# Low-RAM / OOM (exit 137 on librsvg). See Troubleshooting below.
+# Low-RAM / OOM. See Troubleshooting below.
 ./scripts/nix-build-low-mem.sh .#wawona-macos
 
 # Store-shaped macOS vs SIP Desktop Replacement host
@@ -139,35 +139,30 @@ See [README](../README.md) for environment setup.
 
 ## Troubleshooting macOS builds
 
-A cold `nix build .#wawona-macos` can fail in **nixpkgs** `librsvg` (build
-dep of `pkgs.adwaita-icon-theme`, which supplies Weston cursor assets) with
-`Killed: 9` and **exit 137**. That is the OOM killer, not a Wawona recipe
-bug. Wawona keeps `pkgs.adwaita-icon-theme`.
+Weston cursor assets come from `adwaita-cursors`: unpack GNOME's Xcursor
+files from the source tarball. `nix build .#wawona-macos` does **not**
+build nixpkgs `adwaita-icon-theme`, `librsvg`, Sphinx, or mypy.
+
+A remaining OOM on a tiny laptop is usually some other cold nixpkgs compile
+running too many jobs. Cap parallelism:
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `librsvg` / `adwaita-icon-theme` / exit 137 | OOM during nixpkgs compile | FlakeHub login, then low-memory build |
-| Full cold compile on a laptop | Not logged into FlakeHub | `determinate-nixd login` |
-| Still OOM after login | Parallel jobs exceed RAM | `./scripts/nix-build-low-mem.sh .#wawona-macos` |
+| Full cold compile on a laptop | Not logged into FlakeHub for `wwn-*` slices | `determinate-nixd login` |
+| Exit 137 / `Killed: 9` on a small machine | Too many parallel Nix jobs | `./scripts/nix-build-low-mem.sh .#wawona-macos` |
 
 Recommended order for new contributors:
 
 ```bash
 determinate-nixd login
 determinate-nixd status   # Logged in: true
+nix build .#wawona-macos
+```
+
+On a machine that still OOMs:
+
+```bash
 ./scripts/nix-build-low-mem.sh .#wawona-macos
-```
-
-Manual equivalent (the helper defaults to these flags):
-
-```bash
-nix build .#wawona-macos --option max-jobs 1 --option cores 2 -L
-```
-
-If `librsvg` alone keeps failing, build it first with one core:
-
-```bash
-nix build 'nixpkgs#librsvg' --option max-jobs 1 --option cores 1 -L
 ```
 
 Do not lower flake-wide `max-jobs` / `cores` in `flake.nix`. Those stay

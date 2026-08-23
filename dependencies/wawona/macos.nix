@@ -56,6 +56,9 @@ let
   # DejaVu (UI/CSD) + DejaVuSansM Nerd Font Mono (terminals / prompts).
   wawonaBundledFonts = pkgs.callPackage ../libs/fonts { };
 
+  # Cursor files only. Do not use pkgs.adwaita-icon-theme (librsvg + mypy).
+  adwaitaCursors = pkgs.callPackage ./adwaita-cursors.nix { };
+
   ilandGlLdflags = { deps, simulator ? false }: import ilandGlLdflagsNix {
     inherit lib deps simulator;
     forceLoad = true;
@@ -1021,7 +1024,7 @@ GEN_HEADER
                 mkdir -p "$APP/lib/libweston-13"
                 cp -r "${weston}/lib/libweston-13/"* "$APP/lib/libweston-13/"
               fi
-              CURSOR_SRC="${pkgs.adwaita-icon-theme}/share/icons/Adwaita/cursors"
+              CURSOR_SRC="${adwaitaCursors}/share/icons/Adwaita/cursors"
               if [ -d "$CURSOR_SRC" ]; then
                 # Copy into a mkdir'd dir then chmod: `cp -r` of a nix-store
                 # tree creates a 555 dest, and ln dnd-copy then Permission denied.
@@ -1226,7 +1229,7 @@ GEN_HEADER
               cp -r "${weston}/lib/libweston-13/"* "$APP/lib/libweston-13/"
               echo "DEBUG: Bundled lib/libweston-13 backends"
             fi
-            CURSOR_SRC="${pkgs.adwaita-icon-theme}/share/icons/Adwaita/cursors"
+            CURSOR_SRC="${adwaitaCursors}/share/icons/Adwaita/cursors"
             if [ -d "$CURSOR_SRC" ]; then
               mkdir -p "$APP/share/icons/Adwaita/cursors"
               cp -RL "$CURSOR_SRC/." "$APP/share/icons/Adwaita/cursors/"
