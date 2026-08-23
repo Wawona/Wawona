@@ -36,6 +36,7 @@ on:
       - "scripts/agent-device-fuzzel-smoke.sh"
       - "scripts/agent-device-set-niri-android.sh"
       - "scripts/agent-device-set-niri-ios.sh"
+      - "scripts/agent-device-set-client-ios.sh"
       - "scripts/niri-smoke-macos.sh"
       - "scripts/niri-fuzzel-smoke-macos.sh"
       - "scripts/applications-catalog-smoke.sh"

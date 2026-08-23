@@ -111,8 +111,15 @@ ios_host_dismiss_allow_paste() {
 
   # Locator lives in a .swift file. macOS /bin/bash 3.2 still tokenizes
   # apostrophes inside $(... <<'HEREDOC'), which broke sourcing this helper.
-  local locator screen_xy rc=0
-  locator="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/locate-allow-paste.swift"
+  local helper_dir locator screen_xy rc=0
+  if [[ -n "${BASH_SOURCE[0]:-}" ]]; then
+    helper_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  elif [[ -n "${ROOT:-}" && -d "$ROOT/scripts/lib" ]]; then
+    helper_dir="$ROOT/scripts/lib"
+  else
+    helper_dir="$(cd "$(dirname "$0")" && pwd)"
+  fi
+  locator="$helper_dir/locate-allow-paste.swift"
   screen_xy="$(/usr/bin/swift "$locator" "$shot" "$bounds")" || rc=$?
   rm -f "$shot"
   if [[ $rc -ne 0 ]]; then

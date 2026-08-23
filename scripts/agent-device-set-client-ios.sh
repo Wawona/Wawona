@@ -33,6 +33,10 @@ fi
 
 xcrun simctl terminate "$UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
 
+# Swift/ObjC load() prefers data(forKey:) over string. After the app has
+# saved profiles as NSData, `defaults write -string` is ignored. Drop the
+# data payload first so the string form hits the legacy loader.
+
 # Prefer watch bundle when UDID looks like a watch (caller may set WAWONA_IOS_BUNDLE).
 PAYLOAD="$(CLIENT="$CLIENT" PREFS_KEY="$PREFS_KEY" python3 - <<'PY'
 import json, os
@@ -56,9 +60,11 @@ print(json.dumps([{
 PY
 )"
 
+xcrun simctl spawn "$UDID" defaults delete "$BUNDLE_ID" "wawona.machineProfiles.v1" >/dev/null 2>&1 || true
 xcrun simctl spawn "$UDID" defaults write "$BUNDLE_ID" "wawona.machineProfiles.v1" -string "$PAYLOAD"
 xcrun simctl spawn "$UDID" defaults write "$BUNDLE_ID" "wawona.activeMachineId.v1" -string "e2e-${CLIENT}-default"
 xcrun simctl spawn "$UDID" defaults write "$BUNDLE_ID" "$PREFS_KEY" -bool YES
+xcrun simctl spawn "$UDID" defaults write "$BUNDLE_ID" "TouchInputType" -string "Multi-Touch"
 xcrun simctl spawn "$UDID" defaults write "$BUNDLE_ID" "hasSeenWelcome" -bool YES
 xcrun simctl spawn "$UDID" defaults write "$BUNDLE_ID" "wawona.pref.hasCompletedWelcome" -bool YES
 

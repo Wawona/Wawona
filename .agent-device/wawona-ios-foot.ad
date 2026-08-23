@@ -1,0 +1,24 @@
+# Foot terminal GUI e2e. iOS simulator.
+#
+# The live lane is scripts/agent-device-smoke.sh ios-foot (shell-driven so
+# a missing Welcome Continue is not a hard fail). This .ad is the same
+# Start → screenshot sequence for manual replay after:
+#   scripts/agent-device-set-client-ios.sh foot
+#
+# Coordinate taps target iPhone 17 Pro logical size (402x874). Foot
+# surfaces are accessibility-sparse; screenshots + console assertions in
+# the smoke wrapper are the source of truth.
+#
+# Wayland content needs Multi-Touch (set in the prefs helper).
+context platform=ios
+context session=wawona-ios-foot
+context device=iPhone 17 Pro
+
+open com.aspauldingcode.Wawona --relaunch
+wait 3000
+screenshot ./.agent-device/test-artifacts/ios-foot-e2e-01-home.png
+
+# Start Default Machine (Foot). Welcome is skipped via prefs in the wrapper.
+press id="wwn.machines.start"
+wait 8000
+screenshot ./.agent-device/test-artifacts/ios-foot-e2e-02-session.png

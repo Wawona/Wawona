@@ -5,6 +5,7 @@
 #
 # Usage:
 #   scripts/agent-device-smoke.sh ios       # iOS simulator lane
+#   scripts/agent-device-smoke.sh ios-foot  # Foot terminal in iOS simulator
 #   scripts/agent-device-smoke.sh android   # Android device/emulator lane
 #   scripts/agent-device-smoke.sh fuzzel    # nested niri + fuzzel (issue #78)
 #   scripts/agent-device-smoke.sh all       # ios + android + fuzzel (default)
@@ -409,6 +410,129 @@ run_fuzzel() {
   "$ROOT/scripts/agent-device-fuzzel-smoke.sh" "${WAWONA_FUZZEL_LANE:-fuzzel}"
 }
 
+run_ios_foot() {
+  # Foot terminal in-process on iOS Simulator. Prefs helper must delete the
+  # NSData profiles key first (string write otherwise loses to data(forKey:)).
+  # Drive Start from the shell (not strict .ad replay): Welcome is already
+  # skipped via prefs, and replay treats a missing Continue as a hard fail.
+  echo "== iOS Foot: Start Default Machine (bundledAppID=foot) =="
+  mkdir -p "$ARTIFACTS"
+  # shellcheck source=scripts/lib/agent-device-ios-system-ui.sh
+  source "$ROOT/scripts/lib/agent-device-ios-system-ui.sh"
+  ios_prepare_system_ui || true
+
+  if [[ -n "${WAWONA_IOS_APP:-}" ]]; then
+    echo "== iOS Foot: install $WAWONA_IOS_APP =="
+    STAGE="$(mktemp -d)/Wawona.app"
+    cp -R "$WAWONA_IOS_APP" "$STAGE"
+    chmod -R u+w "$STAGE"
+    xcrun simctl uninstall "$IOS_DEVICE" com.aspauldingcode.Wawona 2>/dev/null || true
+    xcrun simctl install "$IOS_DEVICE" "$STAGE"
+  fi
+
+  chmod +x "$ROOT/scripts/agent-device-set-client-ios.sh"
+  "$ROOT/scripts/agent-device-set-client-ios.sh" foot "${WAWONA_IOS_UDID:-$IOS_DEVICE}"
+
+  local sess=wawona-ios-foot
+  local ad_common=(--platform ios --device "$IOS_DEVICE" --session "$sess")
+  if [[ -n "${WAWONA_IOS_UDID:-}" ]]; then
+    ad_common+=(--udid "$WAWONA_IOS_UDID")
+  fi
+  stop_agent_device_daemons
+  echo "== iOS Foot: prepare XCTest runner (session=$sess) =="
+  agent-device prepare ios-runner "${ad_common[@]}" \
+    --timeout "${WAWONA_IOS_PREPARE_TIMEOUT_MS:-600000}"
+
+  local udid logpid=""
+  udid="$(ios_resolve_udid)"
+  if [[ -n "$udid" ]]; then
+    xcrun simctl spawn "$udid" log stream --level debug \
+      --predicate 'processImagePath CONTAINS "Wawona" OR eventMessage CONTAINS "foot" OR eventMessage CONTAINS "FOOT" OR eventMessage CONTAINS "Launching"' \
+      >"$ARTIFACTS/ios-foot-e2e-console.log" 2>&1 &
+    logpid=$!
+  fi
+
+  agent-device open com.aspauldingcode.Wawona --relaunch "${ad_common[@]}"
+  agent-device wait 2500 "${ad_common[@]}" || true
+  ios_dismiss_system_ui "${ad_common[@]}"
+  agent-device press 'label="Continue"' "${ad_common[@]}" >/dev/null 2>&1 || true
+  agent-device press 'text="Continue"' "${ad_common[@]}" >/dev/null 2>&1 || true
+  agent-device screenshot "$ARTIFACTS/ios-foot-e2e-01-home.png" "${ad_common[@]}" || true
+
+  if ! agent-device press 'id="wwn.machines.start"' "${ad_common[@]}" >/dev/null 2>&1 \
+    && ! agent-device press 'label="Start"' "${ad_common[@]}" >/dev/null 2>&1 \
+    && ! agent-device find Start press --first "${ad_common[@]}" >/dev/null 2>&1; then
+    echo "FAIL: Start control not found for Foot machine" >&2
+    agent-device screenshot "$ARTIFACTS/ios-foot-e2e-start-fail.png" "${ad_common[@]}" || true
+    agent-device snapshot -i --raw "${ad_common[@]}" || true
+    exit 1
+  fi
+  agent-device wait 2500 "${ad_common[@]}" || true
+  ios_dismiss_system_ui "${ad_common[@]}"
+  agent-device wait 8000 "${ad_common[@]}" || true
+  ios_dismiss_system_ui "${ad_common[@]}"
+  agent-device screenshot "$ARTIFACTS/ios-foot-e2e-02-session.png" "${ad_common[@]}" || true
+  agent-device close "${ad_common[@]}" || true
+
+  if [[ -n "$logpid" ]] && kill -0 "$logpid" 2>/dev/null; then
+    kill "$logpid" 2>/dev/null || true
+    wait "$logpid" 2>/dev/null || true
+  fi
+
+  local shot="$ARTIFACTS/ios-foot-e2e-02-session.png"
+  [[ -f "$shot" ]] || {
+    echo "FAIL: Foot session screenshot missing ($shot)" >&2
+    exit 1
+  }
+
+  local logf="$ARTIFACTS/ios-foot-e2e-console.log"
+  if [[ -f "$logf" ]]; then
+    if grep -Fqi 'Refusing foot launch' "$logf"; then
+      echo "FAIL: foot compatibility shim still linked" >&2
+      rg -i 'foot|FOOT|shim' "$logf" | head -40 || true
+      exit 1
+    fi
+    if grep -Fqi 'failed to set initial TIOCSWINSZ' "$logf" \
+      && ! grep -Fqi 'ignored on Apple mobile' "$logf"; then
+      echo "FAIL: foot died on TIOCSWINSZ (Apple-mobile PTY)" >&2
+      rg -i 'TIOCSWINSZ|foot_main' "$logf" | head -40 || true
+      exit 1
+    fi
+    if grep -Eqi 'Launching in-process foot|foot_main' "$logf"; then
+      echo "PASS: foot_main launch in simulator console"
+    else
+      echo "note: foot_main not in console log (os_log may not match); screenshot is the gate"
+    fi
+  fi
+
+  local bmp
+  bmp="$(mktemp /tmp/wawona-foot-frame.XXXXXX.bmp)"
+  sips -s format bmp "$shot" --out "$bmp" >/dev/null
+  python3 - "$bmp" <<'PY'
+import struct, sys
+with open(sys.argv[1], "rb") as f:
+    data = f.read()
+off = struct.unpack_from("<I", data, 10)[0]
+w, h = struct.unpack_from("<ii", data, 18)
+bpp = struct.unpack_from("<H", data, 28)[0] // 8
+row = (w * bpp + 3) & ~3
+lit = total = 0
+for y in range(0, abs(h), max(1, abs(h) // 64)):
+    base = off + y * row
+    for x in range(0, w, max(1, w // 64)):
+        b, g, r = data[base + x * bpp : base + x * bpp + 3]
+        total += 1
+        if max(r, g, b) > 24:
+            lit += 1
+frac = lit / max(1, total)
+print(f"[ios-foot] lit-pixel fraction: {frac:.3f}")
+sys.exit(0 if frac > 0.02 else 1)
+PY
+  rm -f "$bmp"
+  echo "== iOS Foot e2e PASSED =="
+  stop_agent_device_daemons
+}
+
 run_ios_shell_cli() {
   # Sparse Device-gate replay: libssh2 CLI in PTY (ssh -V / ssh-keygen).
   # Prefer headless wwn-ssh matrix for routine CI; this proves dispatch in-app.
@@ -500,6 +624,7 @@ case "$LANE" in
       stop_agent_device_daemons
     fi
     ;;
+  ios-foot) run_ios_foot ;;
   ios-shell-cli) run_ios_shell_cli ;;
   android) run_android ;;
   android-shell-ssh) run_android_shell_ssh ;;
@@ -513,7 +638,7 @@ case "$LANE" in
     run_fuzzel
     ;;
   *)
-    echo "usage: $0 [ios|ios-ci|ios-shell-cli|android|android-shell-ssh|fuzzel|android-fuzzel|ios-fuzzel|macos-fuzzel|all]" >&2
+    echo "usage: $0 [ios|ios-ci|ios-foot|ios-shell-cli|android|android-shell-ssh|fuzzel|android-fuzzel|ios-fuzzel|macos-fuzzel|all]" >&2
     exit 2
     ;;
 esac

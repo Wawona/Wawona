@@ -3,7 +3,7 @@ name: "Build: GUI smoke"
 # Deterministic GUI smoke tests on real simulator/emulator instances.
 # Prefer scheduling via device-gate.yml (product-build → this workflow).
 # Local reproduction:
-#   scripts/agent-device-smoke.sh [ios|android|fuzzel|android-fuzzel|ios-fuzzel]
+#   scripts/agent-device-smoke.sh [ios|ios-foot|android|fuzzel|android-fuzzel|ios-fuzzel]
 #
 # Fail-fast: iOS/Android GUI smoke and fuzzel lanes run once. No suite retries.
 #
@@ -179,6 +179,17 @@ jobs:
           SIM_NAME="${WAWONA_IOS_SIM:-iPhone 17 Pro}"
           xcrun simctl bootstatus "$SIM_NAME" -b || xcrun simctl boot "$SIM_NAME" || true
           ./scripts/agent-device-smoke.sh ios-fuzzel
+
+      - name: Foot terminal (iOS, advisory)
+        if: ${{ github.event_name != 'pull_request' }}
+        continue-on-error: true
+        env:
+          WAWONA_IOS_APP: result-ios/Wawona.app
+          WAWONA_IOS_PREPARE_TIMEOUT_MS: "600000"
+        run: |
+          SIM_NAME="${WAWONA_IOS_SIM:-iPhone 17 Pro}"
+          xcrun simctl bootstatus "$SIM_NAME" -b || xcrun simctl boot "$SIM_NAME" || true
+          ./scripts/agent-device-smoke.sh ios-foot
 
       - name: Upload iOS screenshots
         if: always()

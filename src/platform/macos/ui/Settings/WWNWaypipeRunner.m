@@ -20,6 +20,7 @@
 #import <sys/wait.h>
 #import <signal.h>
 #import <unistd.h>
+#import <getopt.h>
 #import <string.h>
 #import <math.h>
 #import <os/log.h>
@@ -3901,6 +3902,11 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     };
     WWNLog("FOOT", @"Launching in-process foot_main (shell=%s ini=%@)...",
            shell, iniPath);
+    /* foot uses getopt; reset so a prior host getopt does not skip -c. */
+    optind = 1;
+#if defined(__APPLE__)
+    optreset = 1;
+#endif
     int result = foot_main(8, argv_foot);
     WWNLog("FOOT", @"foot_main exit code: %d", result);
 
