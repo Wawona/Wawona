@@ -61,18 +61,28 @@ nix build .#wawona-android-backend
 
 ## Xcode Iteration
 
-The Xcode pre-build phase is **incremental**: it only runs when declared inputs
-(`Cargo.lock`, `flake.nix`, `Cargo.toml`, `xcode-prebuild.sh`) have changed.
-By default it builds only the **active SDK backend** (device or simulator, not
-both), cutting ~50% of Nix work on each rebuild.
+`xcodebuild` (including `nix run .#wawona-macos`) may print notes that Run
+Script phases will run during **every** build because "Based on dependency
+analysis" is unchecked. Those are notes, not errors.
+
+`dependencies/generators/xcodegen.nix` sets `basedOnDependencyAnalysis = false`
+for several phases on purpose. Xcode cannot skip them from declared inputs and
+outputs. The Nix closure, store copies, and Info.plist edits are not a graph
+Xcode can track. On `Wawona-macOS` that includes Stamp Build Number, Build
+Rust Backend via Nix (`scripts/xcode-prebuild.sh`), Bundle Executables, and
+Strip iOS-only keys from Info.plist (#138).
+
+The **script still runs** every time. Cheap when the store is warm: Nix
+cache, `WAWONA_BACKEND_OUT*` copy of a realized `libwawona.a`, or
+`WAWONA_SKIP_NIX_PREBUILD=1` for UI-only iteration. By default the prebuild
+builds only the **active SDK backend** (device or simulator, not both).
 
 ```bash
 # One-time warm (full iOS, both device and simulator backends)
 nix build .#wawona-ios-backend .#wawona-ios-sim-backend
 mkdir -p .nix-gcroots && nix build --out-link .nix-gcroots/xcodegen .#xcodegen
 
-# UI-only iteration. No special env needed; prebuild auto-skips when inputs
-# are unchanged. For explicit skip (no Nix at all):
+# UI-only iteration. Skip Nix entirely (script still runs, then exits):
 export WAWONA_SKIP_NIX_PREBUILD=1
 
 # Release builds that want both device+sim warm in one pass:
