@@ -2140,42 +2140,13 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   // can leave thin gutters at content-view edges.
   layer.frame = CGRectMake(localX, localY, node->width, node->height);
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
-  // #111: when the scene node tracks the host window and the client buffer
-  // still lags (nested niri/weston mid-drag), stretch into the node so the
-  // framebuffer does not jump between before/after sizes. Exact 1:1 uses the
-  // same Resize gravity once the buffer catches up.
-  float bufLogicalW =
-      node->scale > 0 ? (float)node->buffer_width / node->scale : node->width;
-  float bufLogicalH =
-      node->scale > 0 ? (float)node->buffer_height / node->scale : node->height;
-  BOOL bufferMatchesNode = node->buffer_width == 0 ||
-                           (fabsf(bufLogicalW - node->width) <= 1.0f &&
-                            fabsf(bufLogicalH - node->height) <= 1.0f);
-  CGFloat backingScale = 0.0;
-  id hostWin = _windows[winId] ?: _popups[winId];
-  if ([hostWin isKindOfClass:[NSWindow class]]) {
-    backingScale = ((NSWindow *)hostWin).backingScaleFactor;
-  } else if ([hostWin conformsToProtocol:@protocol(WWNPopupHost)] &&
-             [hostWin respondsToSelector:@selector(contentView)]) {
-    backingScale = ((NSView *)((id<WWNPopupHost>)hostWin).contentView)
-                       .window.backingScaleFactor;
-  }
-  if (backingScale < 1.0) {
-    backingScale = MAX(1.0, node->scale);
-  }
-  // #111 / xdg interactive resize: while SizeAuthority::Host, scene sizes the
-  // node to the host request and the buffer lags. Stretch into the node so
-  // chrome and content stay aligned mid-drag. When buffer matches (Client
-  // authority / settle), fill 1:1 at the window backing scale. Scene never
-  // leaves a giant node around a fixed client (flower) under Client authority,
-  // so mismatch implies host-ahead stretch, not a TopLeft letterbox.
-  if (bufferMatchesNode) {
-    layer.contentsGravity = kCAGravityResize;
-    layer.contentsScale = backingScale;
-  } else {
-    layer.contentsGravity = kCAGravityResize;
-    layer.contentsScale = MAX(1.0, node->scale);
-  }
+  // Buffer pixels / wl_surface buffer_scale = layer points. Do not use
+  // NSWindow backingScaleFactor: that showed 1x weston buffers at half
+  // size on Retina (left black, right empty, panel clipped). HiDPI is
+  // the client's buffer_scale. #111 still stretches a lagging buffer
+  // into the host node during live resize (Resize gravity).
+  layer.contentsGravity = kCAGravityResize;
+  layer.contentsScale = MAX(1.0, node->scale);
 #else
   layer.contentsScale = MAX(1.0, node->scale);
 #endif
@@ -4279,14 +4250,13 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   if (!cgImage)
     return;
 
-  CGFloat scale = NSScreen.mainScreen.backingScaleFactor;
-  if (scale < 1.0)
-    scale = 1.0;
-  NSSize size =
-      NSMakeSize(scene->cursor_width / scale, scene->cursor_height / scale);
+  // Cursor buffer is SHM pixels; hotspot is already surface-local (logical).
+  // Do not divide by backingScaleFactor: that halved weston's 1x cursor on
+  // Retina and shifted the hotspot.
+  NSSize size = NSMakeSize(scene->cursor_width, scene->cursor_height);
   NSImage *image = [[NSImage alloc] initWithCGImage:cgImage size:size];
-  NSPoint hotSpot = NSMakePoint(scene->cursor_hotspot_x / scale,
-                                scene->cursor_hotspot_y / scale);
+  NSPoint hotSpot = NSMakePoint(scene->cursor_hotspot_x,
+                                scene->cursor_hotspot_y);
   NSCursor *cursor = [[NSCursor alloc] initWithImage:image hotSpot:hotSpot];
   [cursor set];
 }

@@ -197,6 +197,32 @@ bin_dir="\$APP/Contents/Resources/bin"
 if [ -d "\$bin_dir" ]; then
   export PATH="\$bin_dir:\$PATH"
 fi
+
+if [ "\$NAME" = weston ]; then
+  export WAWONA_OUTPUT_SCALE="\${WAWONA_OUTPUT_SCALE:-1}"
+  if [ -z "\${WESTON_CONFIG_FILE:-}" ] && [ -n "\${XDG_RUNTIME_DIR:-}" ]; then
+    _wawona_ini="\$XDG_RUNTIME_DIR/weston.ini"
+    _wawona_shell=""
+    for _wawona_c in \\
+      "\$APP/Contents/Resources/bin/weston-desktop-shell" \\
+      "\$APP/Contents/MacOS/weston-desktop-shell"
+    do
+      if [ -x "\$_wawona_c" ]; then
+        _wawona_shell="\$_wawona_c"
+        break
+      fi
+    done
+    {
+      printf '%s\n' "[core]" "use-pixman=true" "" "[shell]"
+      if [ -n "\$_wawona_shell" ]; then
+        printf 'client=%s\n' "\$_wawona_shell"
+      fi
+      printf '%s\n' "background-color=0xff1a1a2e" "panel-position=top"
+    } > "\$_wawona_ini"
+    export WESTON_CONFIG_FILE="\$_wawona_ini"
+    unset _wawona_ini _wawona_shell _wawona_c
+  fi
+fi
 EOF
   chmod 644 "$ENV_SH"
 }
@@ -212,6 +238,26 @@ export WAWONA_CLI_APP="${app}"
 export WAWONA_CLI_NAME="${name}"
 # shellcheck source=/dev/null
 . "${ENV_SH}"
+# Nested weston is a Wayland client of Wawona. Parent already scaled the
+# NSWindow. --scale from wl_output (2 on Retina) doubles the desktop.
+if [ "\$WAWONA_CLI_NAME" = weston ]; then
+  export WAWONA_OUTPUT_SCALE="\${WAWONA_OUTPUT_SCALE:-1}"
+  _wawona_has_backend=0
+  _wawona_has_scale=0
+  for _wawona_arg in "\$@"; do
+    case "\$_wawona_arg" in
+      --backend|--backend=*|-B) _wawona_has_backend=1 ;;
+      --scale|--scale=*) _wawona_has_scale=1 ;;
+    esac
+  done
+  if [ "\$_wawona_has_backend" -eq 0 ]; then
+    set -- --backend=wayland --shell=desktop-shell.so --use-pixman "\$@"
+  fi
+  if [ "\$_wawona_has_scale" -eq 0 ]; then
+    set -- --scale=1 "\$@"
+  fi
+  unset _wawona_has_backend _wawona_has_scale _wawona_arg
+fi
 exec "\$WAWONA_CLI_BIN" "\$@"
 EOF
   chmod 755 "$dest"
