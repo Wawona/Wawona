@@ -1389,18 +1389,21 @@ EOF
               echo "Restaging Desktop Replacement helper (iowatchdog-then-unload)."
               echo "Administrator authorization is required once."
               if ! "$exec_path" --mode-b-stage; then
-                echo "Error: failed to restage Desktop Replacement helper for this nix store." >&2
+                echo "Error: failed to restage Desktop Replacement helper." >&2
                 echo "  $exec_path --mode-b-stage" >&2
-                echo "  want helper pointing at ${wawona-macos}" >&2
+                echo "  want helper pointing at $app_dst" >&2
                 exit 1
               fi
-              if [ ! -f "$helper_path" ] || ! grep -Fq "${wawona-macos}" "$helper_path" \
+              # Stage runs the copied app, so WWN_WAWONA_STORE is $app_dst,
+              # not the pre-ditto nix store path.
+              if [ ! -f "$helper_path" ] || ! grep -Fq "$app_dst" "$helper_path" \
                 || ! grep -Fq "WWN_MODEB_INSERT=compositor-only" "$helper_path" \
                 || ! grep -Fq "WWN_MODEB_LOCK=helper-argv-only" "$helper_path" \
-                || ! grep -Fq "WWN_MODEB_WD=iowatchdog-then-unload" "$helper_path"; then
-                echo "Error: Desktop Replacement helper does not point at this nix store." >&2
+                || ! grep -Fq "WWN_MODEB_WD=iowatchdog-then-unload" "$helper_path" \
+                || ! grep -Fq "WWN_MODEB_GATE=live-fb-before-ws-unload" "$helper_path"; then
+                echo "Error: Desktop Replacement helper does not match this install." >&2
                 echo "  helper: $helper_path" >&2
-                echo "  want: ${wawona-macos} + WWN_MODEB_WD=iowatchdog-then-unload" >&2
+                echo "  want: $app_dst + iowatchdog-then-unload + live-fb-before-ws-unload" >&2
                 exit 1
               fi
               echo "Mode B helper restaged (iowatchdog-then-unload): $helper_path"
