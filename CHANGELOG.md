@@ -10,6 +10,8 @@ as history.
 
 ## [Unreleased]
 
+## [26.8.23] - 2026-08-23
+
 - **macOS menubar Desktop.** The applet has a Desktop row next to
   Compositor: green `ready` / `takeover`, purple `reboot`, red `blocked`.
   Play is Take Over Screen Now, Stop restores Aqua, clockwise opens the
@@ -19,8 +21,8 @@ as history.
   which niri ignores, so it never attached a buffer and `niri_main` exited 1.
   Nested compositors (niri, weston) now fill the host surface like
   weston-terminal. Niri stderr is copied into `[NIRI]` log lines.
-  name in the nav bar and again as a table header. Header is omitted; the
-  nav bar is the only title.
+- **iOS Settings section titles.** The section name is only in the nav bar.
+  The table header is omitted.
 - **iOS Settings Apple Watch rows.** Companion Status and On the Watch
   show the real status text. Short values stay on the trailing edge;
   longer copy wraps in the row. Tap still opens the full copy.

@@ -79,7 +79,11 @@ flowchart BT
   Exceptions already on `github:Wawona/<repo>/development`: `wwn-iland`,
   `wwn-weston`, `wwn-containers` (until FlakeHub rolling has
   `stdenv.hostPlatform.isDarwin`); `wwn-toolchain` (until FlakeHub rolling
-  includes pip-free Meson Python envs, `c3855db`).
+  includes pip-free Meson Python envs, `c3855db`); `wwn-waypipe` (until
+  FlakeHub rolling includes the `--no-gpu` wrap interpolation, `f8ca65d`);
+  `wwn-wasm` (`github/.../development` until FlakeHub rolling includes the
+  wayland-shm example, `cd7a800`). `wwn-zsh` is `github:.../main` until
+  FlakeHub rolling includes the iOS HOME physicalize fix (`0e41745`).
   See [`flakehub-registry.md`](./flakehub-registry.md).
 - `angle` and `swiftshader` recipes live in `wwn-iland/dependencies/libs/` and
   are exported by the L1 `registryFragment`. Their old L0 recipes are removed;

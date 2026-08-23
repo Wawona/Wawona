@@ -46,7 +46,7 @@ body:
     attributes:
       label: Wawona version
       description: From Settings → About → Version, or the copied diagnostics header.
-      placeholder: "26.8.22"
+      placeholder: "26.8.23"
     validations:
       required: true
 

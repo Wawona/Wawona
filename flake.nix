@@ -59,7 +59,9 @@
     wwn-weston.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-weston.inputs.wwn-iland.follows = "wwn-iland";
     wwn-weston.inputs.wwn-kmscube.follows = "wwn-kmscube";
-    wwn-zsh.url = "https://flakehub.com/f/Wawona/wwn-zsh/*";
+    # github/main until FlakeHub rolling includes iOS HOME physicalize
+    # (0e41745). Cited: docs/wwn-repo-dag.md.
+    wwn-zsh.url = "github:Wawona/wwn-zsh/main";
     wwn-zsh.inputs.nixpkgs.follows = "nixpkgs";
     wwn-zsh.inputs.wwn-toolchain.follows = "wwn-toolchain";
     # SSH stack split out of wwn-toolchain: chooses the App-Store/Play
@@ -70,7 +72,9 @@
     wwn-ssh.inputs.nixpkgs.follows = "nixpkgs";
     wwn-ssh.inputs.rust-overlay.follows = "rust-overlay";
     wwn-ssh.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    wwn-waypipe.url = "https://flakehub.com/f/Wawona/wwn-waypipe/*";
+    # github/development until FlakeHub rolling includes the --no-gpu wrap
+    # interpolation (f8ca65d). Cited: docs/wwn-repo-dag.md.
+    wwn-waypipe.url = "github:Wawona/wwn-waypipe/development";
     wwn-waypipe.inputs.nixpkgs.follows = "nixpkgs";
     wwn-waypipe.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-waypipe.inputs.wwn-ssh.follows = "wwn-ssh";
@@ -96,8 +100,9 @@
     wwn-neovim.inputs.nixpkgs.follows = "nixpkgs";
     wwn-neovim.inputs.wwn-toolchain.follows = "wwn-toolchain";
     # WASI P1/P2 interpreter (Pulley on Apple mobile). L3′. Toolchain only.
-    # Cited: docs/wwn-repo-dag.md. github: until FlakeHub rolling exists.
-    wwn-wasm.url = "github:Wawona/wwn-wasm";
+    # Cited: docs/wwn-repo-dag.md. github/development until FlakeHub rolling
+    # includes the wayland-shm example (cd7a800).
+    wwn-wasm.url = "github:Wawona/wwn-wasm/development";
     wwn-wasm.inputs.nixpkgs.follows = "nixpkgs";
     wwn-wasm.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-wasm.inputs.rust-overlay.follows = "rust-overlay";
