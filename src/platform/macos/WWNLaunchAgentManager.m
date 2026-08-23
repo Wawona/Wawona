@@ -268,11 +268,9 @@ static NSString *const kWWNAppLaunchAgentLabel =
 }
 
 - (BOOL)restartCompositorAgent {
-  NSError *menuError = nil;
-  (void)[self ensureMenuBarAgent:&menuError];
-  BOOL compositor = [self kickstartLabel:kWWNCompositorAgentLabel];
-  BOOL menu = [self kickstartLabel:kWWNMenuBarAgentLabel];
-  return compositor && menu;
+  // Restart the compositor host only. Kickstarting the menubar agent here
+  // would kill the applet that is showing Restarting.
+  return [self kickstartLabel:kWWNCompositorAgentLabel];
 }
 
 - (BOOL)stopCompositorAgent {

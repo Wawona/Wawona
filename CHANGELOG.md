@@ -44,7 +44,8 @@ as history.
 - **macOS menubar applet.** Items are **Wawona Settings** and **Machine
   Configuration** (no "Open"). Launch at Login uses menu-sized text with a
   mini switch on the trailing edge. Compositor status shares a row with
-  start / stop / restart SF Symbol buttons.
+  start / stop / restart SF Symbol buttons. Status text is green
+  (running), purple (restarting), or red (stopped).
 
 - **Settings → About.** Author subtext is Alex Spaulding and that row opens
   the portfolio (`https://aspauldingcode.com`). The separate Portfolio row

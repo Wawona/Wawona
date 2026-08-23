@@ -938,10 +938,33 @@ static void wwn_install_host_main_menu(id target) {
 @property(nonatomic, strong) NSView *compositorRow;
 @property(nonatomic, strong) NSView *loginRow;
 @property(nonatomic, strong) NSTimer *pollTimer;
+@property(nonatomic, strong) NSTimer *restartPollTimer;
+@property(nonatomic, assign) BOOL compositorRestarting;
+@property(nonatomic, strong) NSDate *restartingStarted;
 @end
 
 static NSFont *WWNMenuBarItemFont(void) {
   return [NSFont menuFontOfSize:[NSFont systemFontSize]];
+}
+
+static NSAttributedString *WWNMenuBarStatusAttributed(NSString *state,
+                                                      NSColor *stateColor) {
+  NSFont *font = WWNMenuBarItemFont();
+  NSDictionary *prefixAttrs = @{
+    NSFontAttributeName : font,
+    NSForegroundColorAttributeName : [NSColor labelColor]
+  };
+  NSDictionary *stateAttrs = @{
+    NSFontAttributeName : font,
+    NSForegroundColorAttributeName : stateColor
+  };
+  NSMutableAttributedString *text = [[NSMutableAttributedString alloc]
+      initWithString:@"Compositor: "
+          attributes:prefixAttrs];
+  [text appendAttributedString:[[NSAttributedString alloc]
+                                   initWithString:state
+                                       attributes:stateAttrs]];
+  return text;
 }
 
 static NSButton *WWNMenuBarSymbolButton(NSString *symbol, NSString *label,
@@ -1026,8 +1049,10 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
 
     NSView *compositorRow = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 268, 32)];
     compositorRow.autoresizesSubviews = YES;
-    NSTextField *statusLabel = [NSTextField labelWithString:@"Compositor: unknown"];
+    NSTextField *statusLabel = [NSTextField labelWithString:@""];
     statusLabel.font = WWNMenuBarItemFont();
+    statusLabel.attributedStringValue =
+        WWNMenuBarStatusAttributed(@"stopped", [NSColor systemRedColor]);
     statusLabel.frame = NSMakeRect(14, 6, 150, 20);
     statusLabel.autoresizingMask =
         NSViewWidthSizable | NSViewMinYMargin | NSViewMaxYMargin;
@@ -1117,7 +1142,7 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
                                        selector:@selector(refreshStatus:)
                                        userInfo:nil
                                         repeats:YES];
-    [[NSRunLoop mainRunLoop] addTimer:_pollTimer forMode:NSDefaultRunLoopMode];
+    [[NSRunLoop mainRunLoop] addTimer:_pollTimer forMode:NSRunLoopCommonModes];
     [self refreshStatus:nil];
   }
   return self;
@@ -1170,17 +1195,57 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
   }
 }
 
+- (void)endRestarting {
+  self.compositorRestarting = NO;
+  self.restartingStarted = nil;
+  [self.restartPollTimer invalidate];
+  self.restartPollTimer = nil;
+}
+
+- (void)beginRestarting {
+  self.compositorRestarting = YES;
+  self.restartingStarted = [NSDate date];
+  [self.restartPollTimer invalidate];
+  self.restartPollTimer = [NSTimer timerWithTimeInterval:0.25
+                                                  target:self
+                                                selector:@selector(refreshStatus:)
+                                                userInfo:nil
+                                                 repeats:YES];
+  [[NSRunLoop mainRunLoop] addTimer:self.restartPollTimer
+                            forMode:NSRunLoopCommonModes];
+}
+
 - (void)refreshStatus:(id)sender {
   (void)sender;
   BOOL running = wwn_is_compositor_socket_ready();
-  NSString *title =
-      running ? @"Compositor: running" : @"Compositor: stopped";
-  if (![self.statusLabel.stringValue isEqualToString:title]) {
-    self.statusLabel.stringValue = title;
+  if (self.compositorRestarting) {
+    NSTimeInterval elapsed =
+        self.restartingStarted
+            ? [[NSDate date] timeIntervalSinceDate:self.restartingStarted]
+            : 0;
+    if (elapsed >= 15.0 || (running && elapsed >= 0.35)) {
+      [self endRestarting];
+    }
   }
-  self.startButton.enabled = !running;
-  self.stopButton.enabled = running;
-  self.restartButton.enabled = running;
+
+  NSString *state = @"stopped";
+  NSColor *color = [NSColor systemRedColor];
+  if (self.compositorRestarting) {
+    state = @"restarting";
+    color = [NSColor systemPurpleColor];
+  } else if (running) {
+    state = @"running";
+    color = [NSColor systemGreenColor];
+  }
+  self.statusLabel.attributedStringValue =
+      WWNMenuBarStatusAttributed(state, color);
+  self.statusLabel.toolTip =
+      [NSString stringWithFormat:@"Compositor: %@", state];
+
+  BOOL busy = self.compositorRestarting;
+  self.startButton.enabled = !running && !busy;
+  self.stopButton.enabled = running && !busy;
+  self.restartButton.enabled = running && !busy;
   BOOL loginOn = [[WWNLaunchAgentManager sharedManager] isAppLaunchAgentLoaded];
   self.loginAtLoginSwitch.state =
       loginOn ? NSControlStateValueOn : NSControlStateValueOff;
@@ -1188,18 +1253,21 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
 
 - (void)restartCompositor:(id)sender {
   (void)sender;
+  [self beginRestarting];
   [[WWNLaunchAgentManager sharedManager] restartCompositorAgent];
   [self refreshStatus:nil];
 }
 
 - (void)stopCompositor:(id)sender {
   (void)sender;
+  [self endRestarting];
   [[WWNLaunchAgentManager sharedManager] stopCompositorAgent];
   [self refreshStatus:nil];
 }
 
 - (void)startCompositor:(id)sender {
   (void)sender;
+  [self endRestarting];
   [[WWNLaunchAgentManager sharedManager] startCompositorAgent];
   [self refreshStatus:nil];
 }
