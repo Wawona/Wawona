@@ -3514,7 +3514,17 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
       if (!ok && marker.length > 0) {
         ok = [outStr containsString:marker];
       }
-      if (!ok) {
+      if (ok) {
+        return YES;
+      }
+      /*
+       * sudo -n true can succeed from a timestamp while this argv is
+       * not NOPASSWD (Prepare helper is, claim-install --heal is not).
+       * If the tool never ran, fall through to the admin prompt.
+       */
+      BOOL toolRan = [outStr containsString:@"wwn-safety"] ||
+                     [outStr containsString:@"wwn-iowatchdog"];
+      if (toolRan) {
         if (error) {
           *error = [NSError
               errorWithDomain:@"WWNDesktopReplacement"
@@ -3529,7 +3539,6 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
         }
         return NO;
       }
-      return YES;
     }
   }
 
@@ -3895,15 +3904,49 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
 
 - (BOOL)healWatchdogCoverage:(NSError *_Nullable *_Nullable)error {
   NSString *out = nil;
-  if (![self runClaimInstallFlag:@"--heal"
-                   successMarker:@"wwn-safety: heal OK"
-                      stdoutText:&out
-                           error:error]) {
+  BOOL healed = [self runClaimInstallFlag:@"--heal"
+                            successMarker:@"wwn-safety: heal OK"
+                               stdoutText:&out
+                                    error:error];
+  if (out.length) {
+    WWNModeBCliLog(@"watchdog heal: %@", out);
+  }
+  NSError *docErr = nil;
+  WWNModeBCoverageReport *r = [self runWatchdogDoctor:&docErr];
+  if (!healed) {
     return NO;
   }
-  WWNModeBCliLog(@"watchdog heal: %@", out.length ? out : @"(empty)");
-  self.lastCoverageReport = nil;
-  (void)[self evaluateWatchdogCoverage];
+  if (!r) {
+    if (error && !*error) {
+      *error = docErr ?: [NSError
+                             errorWithDomain:@"WWNDesktopReplacement"
+                                        code:7
+                                    userInfo:@{
+                                      NSLocalizedDescriptionKey :
+                                          @"Heal ran, but coverage could not "
+                                          @"be checked. Use Check watchdog "
+                                          @"coverage. Do not Take Over."
+                                    }];
+    }
+    return NO;
+  }
+  if (r.needsHeal) {
+    if (error) {
+      *error = [NSError
+          errorWithDomain:@"WWNDesktopReplacement"
+                     code:7
+                 userInfo:@{
+                   NSLocalizedDescriptionKey : [NSString
+                       stringWithFormat:
+                           @"Apple's watchdog job is enabled, but watchdogd "
+                           @"did not stay running. %@\n\nRestart this Mac, "
+                           @"then Check watchdog coverage. Do not Take Over "
+                           @"until coverage says Apple covering.",
+                           r.userSummary]
+                 }];
+    }
+    return NO;
+  }
   return YES;
 }
 
@@ -3984,8 +4027,8 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
       [fail runModal];
       return;
     }
-    self.lastCoverageReport = nil;
-    WWNModeBCoverageReport *r = [self evaluateWatchdogCoverage];
+    WWNModeBCoverageReport *r =
+        self.lastCoverageReport ?: [self evaluateWatchdogCoverage];
     NSAlert *ok = [[NSAlert alloc] init];
     ok.alertStyle = NSAlertStyleInformational;
     ok.messageText = @"Apple coverage restored";
