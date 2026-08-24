@@ -24,6 +24,7 @@ typedef struct {
   size_t size;
   size_t capacity;
   uint32_t iosurface_id;
+  uint8_t cpu_y_flip;
 } CBufferData;
 
 typedef struct {

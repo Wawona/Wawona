@@ -154,6 +154,7 @@ typedef struct {
   size_t size;
   size_t capacity;
   uint32_t iosurface_id;
+  uint8_t cpu_y_flip;
 } CBufferData;
 
 extern CBufferData *WWNCorePopPendingBuffer(void *core);
@@ -1899,10 +1900,23 @@ static void choreographer_frame_cb(long frameTimeNanos, void *data) {
           uint32_t stride = (uint32_t)ILandIOSurfaceGetBytesPerRow(surf);
           size_t nbytes = (size_t)stride * buf->height;
           if (base && stride > 0) {
+            const uint8_t *src = (const uint8_t *)base;
+            uint8_t *flipped = NULL;
+            if (buf->cpu_y_flip && buf->height > 1) {
+              flipped = (uint8_t *)malloc(nbytes);
+              if (flipped) {
+                uint32_t y;
+                for (y = 0; y < buf->height; y++) {
+                  memcpy(flipped + (size_t)y * stride,
+                         src + (size_t)(buf->height - 1 - y) * stride, stride);
+                }
+                src = flipped;
+              }
+            }
             renderer_android_cache_buffer(
                 ctx->cmdBuf, buf->surface_id, buf->buffer_id, buf->width,
-                buf->height, stride, buf->format, (const uint8_t *)base,
-                nbytes);
+                buf->height, stride, buf->format, src, nbytes);
+            free(flipped);
           } else {
             LOGI("AHB lookup id=%u: no mapped base (stride=%u)",
                  buf->iosurface_id, stride);

@@ -2697,6 +2697,22 @@ impl WawonaCore {
         popped
     }
 
+    /// Nested Weston gl-renderer Y-corrects for Wayland. Niri/ANGLE Metal
+    /// IOSurfaces are already top-down in the CPU mapping, so the same
+    /// identity CGImage bake inverts Weston. Flip only that compositor.
+    /// Match title as well: wayland-backend never sends set_app_id.
+    pub fn nested_weston_cpu_y_flip(&self, window_id: u64) -> bool {
+        let state = self.state.read_recover();
+        let (app_id, title) = state
+            .get_window(window_id as u32)
+            .map(|w| {
+                let w = w.read().unwrap();
+                (w.app_id.clone(), w.title.clone())
+            })
+            .unwrap_or_default();
+        crate::core::wayland::xdg::decoration::is_nested_weston_compositor(&app_id, &title)
+    }
+
     /// Pop pending gamma restore (platform restores original tables)
     pub fn pop_pending_gamma_restore(&self) -> Option<u32> {
         if !self.is_running() {

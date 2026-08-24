@@ -1701,11 +1701,13 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     IOSurfaceRef surf = IOSurfaceLookup(buffer->iosurface_id);
     if (surf) {
       BOOL bottomUp = WWNBufferIsBottomUp(surf);
-#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
-      // UIKit cannot assign IOSurface to CALayer.contents. Bake a CGImage.
-      // ANGLE/niri CPU mapping is already top-down, same as macOS. Using
-      // WWNBottomUp as a flip signal inverted nested niri on iOS. Nested
-      // Weston gl-renderer Y-corrects for Wayland; flip only that compositor.
+      // UIKit cannot assign IOSurface to CALayer.contents. AppKit can, but a
+      // CALayer Y-scale under geometryFlipped looks like inverted X+Y, so both
+      // families bake a CGImage. Niri/ANGLE Metal CPU mapping is already
+      // top-down; WWNBottomUp as a blanket flip inverted niri. Nested Weston
+      // gl-renderer leaves GL bottom-up rows. Flip only that compositor
+      // (cpu_y_flip, from title "Weston Compositor - wayland0"; wayland-backend
+      // never sends xdg app_id).
       BOOL westonFlip = buffer->cpu_y_flip != 0;
       (void)bottomUp;
       CGImageRef image = WWNCreateCGImageFromIOSurface(surf, westonFlip);
@@ -1715,8 +1717,10 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
         [_bottomUpBuffers removeObject:cacheKey];
         WWNPruneBufferCacheForSurface(_bufferCache, buffer->surface_id,
                                       cacheKey);
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
         _waylandPresentGeneration++;
         _presentGenerationBySurface[surfaceId] = @(_waylandPresentGeneration);
+#endif
         WWNLog("CACHE", @"Cached IOSurface→CGImage buf=%llu (westonFlip=%d)",
                buffer->buffer_id, (int)westonFlip);
       } else {
@@ -1724,27 +1728,6 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
                @"FAILED IOSurface→CGImage for buf=%llu iosurface=%u",
                buffer->buffer_id, buffer->iosurface_id);
       }
-#else
-      // AppKit IOSurface-as-contents is Y-flipped vs the CPU mapping (Metal
-      // origin). A CALayer Y-scale under geometryFlipped looks like inverted
-      // X+Y. Baking a flipped CGImage (2026-08-24 10:42) stayed inverted:
-      // the CPU bytes are already top-down. Identity CGImage matches wl_shm.
-      (void)bottomUp;
-      CGImageRef image = WWNCreateCGImageFromIOSurface(surf, NO);
-      CFRelease(surf);
-      if (image) {
-        _bufferCache[cacheKey] = (__bridge_transfer id)image;
-        [_bottomUpBuffers removeObject:cacheKey];
-        WWNPruneBufferCacheForSurface(_bufferCache, buffer->surface_id,
-                                      cacheKey);
-        WWNLog("CACHE", @"Cached IOSurface→CGImage buf=%llu (identity)",
-               buffer->buffer_id);
-      } else {
-        WWNLog("CACHE",
-               @"FAILED IOSurface→CGImage for buf=%llu iosurface=%u",
-               buffer->buffer_id, buffer->iosurface_id);
-      }
-#endif
     } else {
       WWNLog("CACHE", @"FAILED IOSurface lookup for buf=%llu iosurface=%u",
              buffer->buffer_id, buffer->iosurface_id);

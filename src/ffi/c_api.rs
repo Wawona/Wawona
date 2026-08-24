@@ -757,6 +757,8 @@ pub struct CBufferData {
     pub size: usize,           // Size of pixel data
     pub capacity: usize,       // Capacity of pixel data (for freeing)
     pub iosurface_id: u32,
+    /// 1 = bake IOSurface with a CPU Y-flip (nested Weston on Apple).
+    pub cpu_y_flip: u8,
 }
 
 /// Pop the next pending buffer update
@@ -772,6 +774,11 @@ pub extern "C" fn WWNCorePopPendingBuffer(core: *mut WWNCore) -> *mut CBufferDat
     let core = unsafe { &*core };
     
     if let Some(event) = core.pop_pending_buffer() {
+        let cpu_y_flip = if core.nested_weston_cpu_y_flip(event.window_id.id) {
+            1u8
+        } else {
+            0u8
+        };
         // Extract data based on buffer type
         match event.buffer.data {
             super::types::BufferData::Shm { pixels, width, height, stride, format } => {
@@ -800,6 +807,7 @@ pub extern "C" fn WWNCorePopPendingBuffer(core: *mut WWNCore) -> *mut CBufferDat
                     size,
                     capacity,
                     iosurface_id: 0,
+                    cpu_y_flip,
                 });
                 
                 return Box::into_raw(data);
@@ -817,6 +825,7 @@ pub extern "C" fn WWNCorePopPendingBuffer(core: *mut WWNCore) -> *mut CBufferDat
                     size: 0,
                     capacity: 0,
                     iosurface_id: id,
+                    cpu_y_flip,
                 });
                 return Box::into_raw(data);
             },
@@ -839,6 +848,7 @@ pub extern "C" fn WWNCorePopPendingBuffer(core: *mut WWNCore) -> *mut CBufferDat
                     size: 0,
                     capacity: 0,
                     iosurface_id: 0,
+                    cpu_y_flip,
                 });
                 return Box::into_raw(data);
             }
