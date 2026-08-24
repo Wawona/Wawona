@@ -32,7 +32,8 @@ macOS and Android; iOS path only via `repo.wawona.io`. Website docs only).
 | Platforms | macOS, iOS/iPadOS/visionOS, Android; tvOS/watchOS stubs | **macOS only** (Desktop/LockScreen host tweak) |
 
 **Hard:** macOS Mode A (SIP on, in-window present) must keep working. See
-`wawona-macos-mode-a`. Mode B never becomes the only macOS path.
+`wawona-macos-mode-a`. Mode B never becomes the only macOS path. Aqua vs
+Classic weston/niri backends: `wawona-compositor-backend`.
 
 ## What Desktop / LockScreen is
 

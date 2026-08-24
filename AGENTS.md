@@ -93,6 +93,13 @@ and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream synta
   either compositor. tvOS/watchOS use constrained non-GL fallbacks; this does
   not permit ANGLE/Vulkan, VMs, or containers on those targets. See
   workspace rule `wawona-bundled-compositors`.
+- **macOS weston/niri backends:** Aqua Machines Start nests them on Wawona
+  (`--backend=wayland`, `NIRI_BACKEND=nested`) or runs weston in-process on
+  wwn-iland when Display Backend is `drm`. Classic Take Over (WindowServer
+  down) always uses iland userspace DRM; nested Wayland is refused. Detect
+  Classic by WindowServer gone, never by leaked `WWN_MODEB_TTY`. Never
+  `sudo niri`. See `wawona-compositor-backend` and
+  `docs/agent-rules/wawona-compositor-backend.md`.
 - **Graphics stays runtime-only:** iland virtualizes DRM/KMS/GBM in userland.
   Never open real `/dev/dri` or `/dev/kgsl`, forward real DRM/KMS/KGSL ioctls,
   ship kernel code, or require kernel patches. Mode B `baremetal` remains
