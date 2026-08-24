@@ -509,10 +509,11 @@ typedef NS_ENUM(NSInteger, WWNKeyboardPipDockSide) {
 static const CGFloat kTapMovementThreshold = 12.0;
 // Duration less than this many seconds → short tap (left click at cursor)
 static const NSTimeInterval kTapDurationThreshold = 0.35;
-// Tap+hold drag: a radial indicator appears at this delay and fills until the
-// engage delay, at which point a sustained LMB-down (drag) engages.
-static const NSTimeInterval kDragArmShowDelay = 0.5;
-static const NSTimeInterval kDragEngageDelay = 1.0;
+// Tap+hold drag: radial appears after it is no longer a fast tap, then LMB
+// engages. Must be >= tap duration so a click is still a click; 1s was too
+// slow for nested weston/niri titlebar and resize grabs.
+static const NSTimeInterval kDragArmShowDelay = 0.22;
+static const NSTimeInterval kDragEngageDelay = 0.40;
 // Sensitivity multiplier for touchpad pointer movement
 static const CGFloat kTouchpadSensitivity = 1.5;
 // Scroll multiplier for two-finger drag (wl_fixed-ish units; weston-terminal
@@ -537,6 +538,9 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 - (void)_syncHostCursorOverlay;
 - (void)_hostCursorPrefsDidChange:(NSNotification *)note;
 - (BOOL)_hostVirtualCursorOverlayAllowed;
+- (void)_multitouch_setPrimaryPointerButtonPressed:(BOOL)pressed
+                                                at:(CGPoint)loc
+                                         timestamp:(uint32_t)timestampMs;
 @end
 
 #if !TARGET_OS_TV
@@ -611,6 +615,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   // Multi-Touch: mirror primary finger to wl_pointer for nested desktop-shell
   int32_t _primaryTouchId;
   BOOL _multitouchPointerEntered;
+  BOOL _multitouchPointerButtonDown;
   BOOL _touchpadPointerEntered;
   uint64_t _touchpadPointerWindowId;
   BOOL _waylandFrameOpaque;
@@ -3514,6 +3519,11 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   if (_currentInputMode == WWNTouchInputModeTouchpad) {
     [self _touchpad_touchesCancelled];
   } else {
+    if (_multitouchPointerButtonDown) {
+      [self _multitouch_setPrimaryPointerButtonPressed:NO
+                                                    at:_prevTouchPoint
+                                             timestamp:[self _timestampMs]];
+    }
     [[WWNCompositorBridge sharedBridge] injectTouchCancel];
   }
   _activeTouchCount = 0;
@@ -3526,8 +3536,14 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 // Direct 1:1 touch-to-surface mapping via Wayland wl_touch events.
 // Each finger is a separate touch point identified by its hash.
 //
-// Nested Weston desktop-shell only tracks wl_pointer for its cursor and
-// launcher; the primary finger is also mirrored to pointer at touch location.
+// Nested Weston/niri chrome (titlebar move, edge resize) and CSD clients
+// start those grabs from wl_pointer.button BTN_LEFT with a still-held
+// serial (xdg_toplevel.move/resize). Mirroring only motion, then clicking
+// on lift, cannot start a grab. One-finger axis synthesis also stole the
+// drag and turned it into a scroll.
+//
+// Primary finger: wl_touch + pointer enter/motion + BTN_LEFT held.
+// Two fingers: release LMB, wl_pointer.axis scroll, keep wl_touch.
 
 - (void)_multitouch_mirrorPointerAt:(CGPoint)loc
                           timestamp:(uint32_t)timestampMs
@@ -3554,6 +3570,32 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
                              timestamp:timestampMs];
 }
 
+- (void)_multitouch_setPrimaryPointerButtonPressed:(BOOL)pressed
+                                                at:(CGPoint)loc
+                                         timestamp:(uint32_t)timestampMs {
+  if (pressed == _multitouchPointerButtonDown) {
+    return;
+  }
+  if (self.wwnWindowId == 0) {
+    return;
+  }
+  uint64_t targetWindowId = self.wwnWindowId;
+  CGPoint sloc = [self _surfacePointForViewPoint:loc];
+  [self _resolveTargetWindowId:&targetWindowId
+                  surfacePoint:&sloc
+                  forViewPoint:loc];
+  if (pressed) {
+    [self _multitouch_mirrorPointerAt:loc
+                            timestamp:timestampMs
+                         enterIfNeeded:YES];
+  }
+  [[WWNCompositorBridge sharedBridge] injectPointerButtonForWindow:targetWindowId
+                                                            button:BTN_LEFT
+                                                           pressed:pressed
+                                                         timestamp:timestampMs];
+  _multitouchPointerButtonDown = pressed;
+}
+
 - (void)_multitouch_touchesBegan:(NSSet<UITouch *> *)touches
                        withEvent:(UIEvent *)event {
   uint32_t ts = (uint32_t)(event.timestamp * 1000);
@@ -3566,6 +3608,16 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
     _touchStartTime = event.timestamp;
     _touchTotalMovement = 0;
     _multitouchPointerEntered = NO;
+    _scrollActive = NO;
+    if (_multitouchPointerButtonDown) {
+      _multitouchPointerButtonDown = NO;
+    }
+  } else if (_activeTouchCount >= 2) {
+    [self _multitouch_setPrimaryPointerButtonPressed:NO
+                                                  at:_prevTouchPoint
+                                           timestamp:ts];
+    _scrollActive = YES;
+    _prevScrollCenter = [self _centroidOfTouches:event];
   }
 
   for (UITouch *touch in touches) {
@@ -3584,9 +3636,9 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
                                    y:sloc.y
                            timestamp:ts];
     if (touchId == _primaryTouchId) {
-      [self _multitouch_mirrorPointerAt:loc
-                              timestamp:ts
-                           enterIfNeeded:YES];
+      [self _multitouch_setPrimaryPointerButtonPressed:YES
+                                                    at:loc
+                                             timestamp:ts];
     }
   }
   [bridge injectTouchFrame];
@@ -3596,6 +3648,38 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
                        withEvent:(UIEvent *)event {
   uint32_t ts = (uint32_t)(event.timestamp * 1000);
   WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+
+  if (_activeTouchCount >= 2) {
+    if (_multitouchPointerButtonDown) {
+      [self _multitouch_setPrimaryPointerButtonPressed:NO
+                                                    at:_prevTouchPoint
+                                             timestamp:ts];
+    }
+    _scrollActive = YES;
+    CGPoint center = [self _centroidOfTouches:event];
+    CGFloat dx = (center.x - _prevScrollCenter.x) * kScrollSensitivity;
+    CGFloat dy = (center.y - _prevScrollCenter.y) * kScrollSensitivity;
+    _prevScrollCenter = center;
+    uint64_t axisWindowId = self.wwnWindowId;
+    CGPoint sloc = [self _surfacePointForViewPoint:center];
+    [self _resolveTargetWindowId:&axisWindowId
+                    surfacePoint:&sloc
+                    forViewPoint:center];
+    if (fabs(dy) > 0.5) {
+      [bridge injectPointerAxisForWindow:axisWindowId
+                                    axis:0
+                                   value:-dy
+                                discrete:0
+                               timestamp:ts];
+    }
+    if (fabs(dx) > 0.5) {
+      [bridge injectPointerAxisForWindow:axisWindowId
+                                    axis:1
+                                   value:-dx
+                                discrete:0
+                               timestamp:ts];
+    }
+  }
 
   for (UITouch *touch in touches) {
     CGPoint loc = [touch locationInView:self];
@@ -3610,40 +3694,12 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
                                      x:sloc.x
                                      y:sloc.y
                              timestamp:ts];
-    if (touchId == _primaryTouchId) {
-      // Movement tracking stays in view space (tap threshold is a screen-space
-      // distance); only the injected coordinates are surface-mapped.
+    if (touchId == _primaryTouchId && _activeTouchCount == 1) {
       CGFloat rawDx = loc.x - _prevTouchPoint.x;
       CGFloat rawDy = loc.y - _prevTouchPoint.y;
       _touchTotalMovement += fabs(rawDx) + fabs(rawDy);
       _prevTouchPoint = loc;
       [self _multitouch_mirrorPointerAt:loc timestamp:ts enterIfNeeded:NO];
-
-      // Bundled toytoolkit clients (weston-terminal, etc.) only understand
-      // wl_pointer.axis for scrolling, not wl_touch. Without this, a
-      // one-finger drag over such a client just sends touch events it
-      // ignores and nothing scrolls. Synthesize a scroll axis alongside the
-      // raw wl_touch forwarding above so direct-touch drags still scroll
-      // pointer-only clients. Gated to single-finger so it doesn't fight any
-      // future multi-finger gesture handling in this (non-touchpad) mode.
-      if (_activeTouchCount == 1) {
-        CGFloat sdx = rawDx * kScrollSensitivity;
-        CGFloat sdy = rawDy * kScrollSensitivity;
-        if (fabs(sdy) > 0.5) {
-          [bridge injectPointerAxisForWindow:targetWindowId
-                                        axis:0 // vertical
-                                       value:-sdy
-                                    discrete:0
-                                   timestamp:ts];
-        }
-        if (fabs(sdx) > 0.5) {
-          [bridge injectPointerAxisForWindow:targetWindowId
-                                        axis:1 // horizontal
-                                       value:-sdx
-                                    discrete:0
-                                   timestamp:ts];
-        }
-      }
     }
   }
   [bridge injectTouchFrame];
@@ -3653,30 +3709,15 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
                        withEvent:(UIEvent *)event {
   uint32_t ts = (uint32_t)(event.timestamp * 1000);
   WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
-  NSTimeInterval duration = event.timestamp - _touchStartTime;
-  BOOL isShortTap = (_touchTotalMovement < kTapMovementThreshold &&
-                     duration < kTapDurationThreshold);
 
   for (UITouch *touch in touches) {
     int32_t touchId = (int32_t)touch.hash;
     if (touchId == _primaryTouchId) {
       CGPoint loc = [touch locationInView:self];
       [self _multitouch_mirrorPointerAt:loc timestamp:ts enterIfNeeded:NO];
-      if (isShortTap && (NSInteger)touches.count <= 1 && _activeTouchCount <= 1) {
-        uint64_t targetWindowId = self.wwnWindowId;
-        CGPoint sloc = [self _surfacePointForViewPoint:loc];
-        [self _resolveTargetWindowId:&targetWindowId
-                        surfacePoint:&sloc
-                        forViewPoint:loc];
-        [bridge injectPointerButtonForWindow:targetWindowId
-                                      button:BTN_LEFT
-                                     pressed:YES
-                                   timestamp:ts];
-        [bridge injectPointerButtonForWindow:targetWindowId
-                                      button:BTN_LEFT
-                                     pressed:NO
-                                   timestamp:ts + 1];
-      }
+      [self _multitouch_setPrimaryPointerButtonPressed:NO
+                                                    at:loc
+                                             timestamp:ts];
     }
     [bridge injectTouchUpForWindow:self.wwnWindowId
                            touchId:touchId
@@ -3692,9 +3733,8 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 // Simulates a laptop trackpad:
 //   1 finger drag       → move pointer (relative)
 //   1 finger tap        → left click at virtual cursor (touch location ignored)
-//   1 finger tap+hold   → at 0.5s a radial indicator appears and fills; at 1.0s
-//                         a sustained LMB-down engages so the finger drags, and
-//                         lifting releases LMB
+//   1 finger tap+hold   → radial fills after a fast-tap window; LMB-down engages
+//                         so the finger can drag nested weston/niri chrome
 //   2 finger tap        → right click at virtual cursor
 //   2 finger drag       → scroll (vertical + horizontal)
 //
@@ -3787,7 +3827,8 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   } else if (_activeTouchCount == 1) {
     _prevTouchPoint = loc;
     _dragging = NO;
-    // Arm the tap-and-hold drag: show the radial at 0.5s, engage at 1.0s.
+    // Arm tap-and-hold drag: radial after kDragArmShowDelay, LMB at
+    // kDragEngageDelay (just past a short tap).
     NSInteger gen = ++_dragGeneration;
     __weak typeof(self) weakSelf = self;
     dispatch_after(

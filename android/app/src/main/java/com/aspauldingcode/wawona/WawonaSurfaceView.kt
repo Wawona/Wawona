@@ -20,15 +20,15 @@ private const val TAP_MOVEMENT_PX = 12f
 private const val TAP_DURATION_MS = 300L
 private const val TOUCHPAD_SENSITIVITY = 1.5f
 private const val SCROLL_SENSITIVITY = 12f
-private const val DRAG_ARM_SHOW_MS = 500L
-private const val DRAG_ENGAGE_MS = 1000L
+private const val DRAG_ARM_SHOW_MS = 220L
+private const val DRAG_ENGAGE_MS = 400L
 
 /**
  * A SurfaceView subclass that supports Android IME input (including emoji).
  *
  * Touchpad mode mirrors iOS: relative pointer with a persistent virtual
  * cursor, tap-to-click at the cursor, two-finger scroll/tap, and a
- * press-and-hold radial dial for click-drag.
+ * press-and-hold radial dial for click-drag (engages just after a short tap).
  */
 class WawonaSurfaceView(context: Context) : SurfaceView(context) {
 
@@ -39,7 +39,10 @@ class WawonaSurfaceView(context: Context) : SurfaceView(context) {
     private var lastSyncedLayoutW = 0
     private var lastSyncedLayoutH = 0
 
-    // Direct-touch scroll tracking
+    // Direct-touch: primary finger also holds BTN_LEFT so nested weston/niri
+    // can start xdg move/resize. One-finger motion used to be axis-only.
+    private var directPointerButtonDown = false
+    private var directPointerEntered = false
     private var directScrollLastX = 0f
     private var directScrollLastY = 0f
 
@@ -279,6 +282,24 @@ class WawonaSurfaceView(context: Context) : SurfaceView(context) {
 
     override fun onCheckIsTextEditor(): Boolean = true
 
+    private fun directSyncPointer(x: Float, y: Float, ts: Int) {
+        if (!directPointerEntered) {
+            WawonaNative.nativePointerEnter(x.toDouble(), y.toDouble(), ts)
+            directPointerEntered = true
+        } else {
+            WawonaNative.nativePointerMotion(x.toDouble(), y.toDouble(), ts)
+        }
+    }
+
+    private fun directSetPointerButton(pressed: Boolean, x: Float, y: Float, ts: Int) {
+        if (pressed == directPointerButtonDown) return
+        if (pressed) {
+            directSyncPointer(x, y, ts)
+        }
+        WawonaNative.nativePointerButton(BTN_LEFT, if (pressed) 1 else 0, ts)
+        directPointerButtonDown = pressed
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.actionMasked == MotionEvent.ACTION_DOWN && !hasFocus()) {
             requestFocus()
@@ -292,32 +313,59 @@ class WawonaSurfaceView(context: Context) : SurfaceView(context) {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 val idx = event.actionIndex
-                WawonaNative.nativeTouchDown(event.getPointerId(idx), event.getX(idx), event.getY(idx), ts)
+                val x = event.getX(idx)
+                val y = event.getY(idx)
+                directPointerEntered = false
+                WawonaNative.nativeTouchDown(event.getPointerId(idx), x, y, ts)
                 WawonaNative.nativeTouchFrame()
-                directScrollLastX = event.getX(idx)
-                directScrollLastY = event.getY(idx)
+                directSetPointerButton(true, x, y, ts)
+                directScrollLastX = x
+                directScrollLastY = y
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
                 val idx = event.actionIndex
                 WawonaNative.nativeTouchDown(event.getPointerId(idx), event.getX(idx), event.getY(idx), ts)
                 WawonaNative.nativeTouchFrame()
+                if (event.pointerCount >= 2) {
+                    directSetPointerButton(false, directScrollLastX, directScrollLastY, ts)
+                    directScrollLastX = (event.getX(0) + event.getX(1)) / 2f
+                    directScrollLastY = (event.getY(0) + event.getY(1)) / 2f
+                }
             }
             MotionEvent.ACTION_MOVE -> {
                 for (i in 0 until event.pointerCount) {
                     WawonaNative.nativeTouchMotion(event.getPointerId(i), event.getX(i), event.getY(i), ts)
                 }
                 WawonaNative.nativeTouchFrame()
-                if (event.pointerCount == 1) {
-                    val dx = event.getX(0) - directScrollLastX
-                    val dy = event.getY(0) - directScrollLastY
-                    directScrollLastX = event.getX(0)
-                    directScrollLastY = event.getY(0)
-                    if (dy != 0f) WawonaNative.nativePointerAxis(0, -dy, ts)
-                    if (dx != 0f) WawonaNative.nativePointerAxis(1, -dx, ts)
+                if (event.pointerCount >= 2) {
+                    if (directPointerButtonDown) {
+                        directSetPointerButton(false, directScrollLastX, directScrollLastY, ts)
+                    }
+                    val cx = (event.getX(0) + event.getX(1)) / 2f
+                    val cy = (event.getY(0) + event.getY(1)) / 2f
+                    val dx = cx - directScrollLastX
+                    val dy = cy - directScrollLastY
+                    directScrollLastX = cx
+                    directScrollLastY = cy
+                    if (kotlin.math.abs(dy) > 0.5f) {
+                        WawonaNative.nativePointerAxis(0, -dy, ts)
+                    }
+                    if (kotlin.math.abs(dx) > 0.5f) {
+                        WawonaNative.nativePointerAxis(1, -dx, ts)
+                    }
+                } else if (event.pointerCount == 1) {
+                    val x = event.getX(0)
+                    val y = event.getY(0)
+                    directScrollLastX = x
+                    directScrollLastY = y
+                    directSyncPointer(x, y, ts)
                 }
             }
             MotionEvent.ACTION_UP -> {
                 val idx = event.actionIndex
+                val x = event.getX(idx)
+                val y = event.getY(idx)
+                directSetPointerButton(false, x, y, ts)
                 WawonaNative.nativeTouchUp(event.getPointerId(idx), ts)
                 WawonaNative.nativeTouchFrame()
             }
@@ -326,7 +374,13 @@ class WawonaSurfaceView(context: Context) : SurfaceView(context) {
                 WawonaNative.nativeTouchUp(event.getPointerId(idx), ts)
                 WawonaNative.nativeTouchFrame()
             }
-            MotionEvent.ACTION_CANCEL -> WawonaNative.nativeTouchCancel()
+            MotionEvent.ACTION_CANCEL -> {
+                if (directPointerButtonDown) {
+                    directSetPointerButton(false, directScrollLastX, directScrollLastY, ts)
+                }
+                directPointerEntered = false
+                WawonaNative.nativeTouchCancel()
+            }
         }
         return true
     }
