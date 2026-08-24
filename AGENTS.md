@@ -93,6 +93,16 @@ and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream synta
   either compositor. tvOS/watchOS use constrained non-GL fallbacks; this does
   not permit ANGLE/Vulkan, VMs, or containers on those targets. See
   workspace rule `wawona-bundled-compositors`.
+- **In-process cairo:** Apple mobile and Android link `weston_compositor_main`
+  in one process with terminals and pango. Do not call
+  `cairo_debug_reset_static_data` / `cleanup_after_cairo` on nested weston
+  destroy (SIGABRT). Toytoolkit `window.c` skip is not enough. See
+  `docs/agent-rules/wawona-inprocess-cairo.md` and rule `wawona-inprocess-cairo`.
+- **Nested compositor cursor:** weston/niri draw `wl_pointer`. Hide the host
+  overlay on every target, including iOS Touchpad. Ignore Show Virtual Cursor
+  and `NestedCompositorCursor` for compositor machines. Classify with
+  `bundledAppID` then `NativeClientId`, not Swinging Bridge
+  `isNestedCompositorClient`. See `docs/agent-rules/wawona-nested-compositor-cursor.md`.
 - **macOS weston/niri backends:** Aqua Machines Start nests them on Wawona
   (`--backend=wayland`, `NIRI_BACKEND=nested`) or runs weston in-process on
   wwn-iland when Display Backend is `drm`. Classic Take Over (WindowServer
@@ -173,7 +183,9 @@ Before tapping **Wayland client** content (Weston panel, nested compositors,
 terminals, cubes), set **Multi-Touch**. IOS `TouchInputType=Multi-Touch`,
 Android Touchpad Mode **Off**. Touchpad / virtual-pointer left-clicks often
 no-op even when `press`/`click` succeed. Prefer `press` / `gesture`; do not
-`click --button …` on the compositor surface. Full rule:
+`click --button …` on the compositor surface. Nested niri/weston draw their
+own cursor: hide the host pointer even when Touchpad / Show Virtual Cursor
+is on (`wawona-nested-compositor-cursor`). Full rule:
 `../.cursor/rules/wawona-agent-device-multitouch.mdc`.
 
 ## Conventions

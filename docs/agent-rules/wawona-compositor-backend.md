@@ -111,8 +111,10 @@ weston, weston inside niri) is the in-process path.
 - CLI wrappers: `scripts/macos-register-cli-bins.sh`
 - Doorman session: `wwn-igetty` `libexec/wwn-modeb-session/`
 
-Cursor: nested and iland DRM compositors hide and grab the host pointer.
-They draw `wl_pointer` themselves. See `wawona-nested-compositor-cursor`.
+Cursor: nested and iland DRM compositors hide and grab the host pointer
+(iOS Touchpad overlay included). They draw `wl_pointer` themselves. See
+`wawona-nested-compositor-cursor`. Apple mobile / Android in-process weston
+must not reset cairo on destroy. See `wawona-inprocess-cairo`.
 
 Cursor rule: `wawona-compositor-backend`. Canonical prose:
 [`../iland-mode-a-b-desktop.md`](../iland-mode-a-b-desktop.md). See also

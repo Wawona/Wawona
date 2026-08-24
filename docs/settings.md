@@ -90,6 +90,8 @@ watchOS WASM runtime remains size-gated off ([#156](https://github.com/Wawona/Wa
 | Setting | Key | Type | Default | Platforms | Description |
 |---------|-----|------|---------|------------|-------------|
 | **Touch Input Type** | `TouchInputType` / runtime `inputProfile` | Dropdown | Multi-Touch | iOS, iPadOS, visionOS, Android (global + per-machine); watchOS Multi-Touch only | Multi-Touch (`wl_touch`) or Touchpad (virtual pointer). watchOS is direct finger only. No virtual/trackpad cursor. Per-machine override lives in Machine Settings → Input only (not Add/Edit). Prefer Multi-Touch for Weston panel / terminals / nested clients. |
+| **Show Virtual Cursor** | `RenderMacOSPointer` | Switch | Off | All except watchOS | Host overlay or real macOS pointer. **Non-compositor clients only.** Nested niri/weston and iland DRM compositors hide and grab the host pointer (including iOS Touchpad `_cursorLayer`) and draw `wl_pointer` themselves. The switch does not unhide that overlay. |
+| **Nested Compositor Cursor** | `NestedCompositorCursor` | Dropdown | virtual | Leftover | Must not put a Wawona pointer on a compositor. Ignore for niri/weston. See `wawona-nested-compositor-cursor`. |
 | **Touchpad Mode** | `touchpadMode` | Switch | Off | Android | Same as Touchpad on iOS |
 | **Swap CMD with ALT** | `SwapCmdWithAlt` | Switch | On (macOS/iOS) | macOS, iOS | Swap Command and Alt keys |
 | **Universal Clipboard** | `universalClipboard` / `UniversalClipboard` | Switch | On | All | Sync clipboard with host platform |
