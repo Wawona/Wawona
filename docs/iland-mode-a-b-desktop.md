@@ -152,9 +152,11 @@ Doorman login sets `ZDOTDIR` to session zsh files so macOS `path_helper`
 cannot put `~/.local/bin` ahead of the DRM wrappers. Typed `weston` /
 `niri` restore `DYLD_INSERT_LIBRARIES` from `WWN_MODEB_INSERT` (iland
 `libwayland-mac.dylib` intercepts `/dev/dri`) and exec the bundled
-binary. Host CLI wrappers (`~/.local/bin/weston`) also honor
-`WWN_MODEB_TTY`: they do not inject `--backend=wayland` and they do not
-kickstart compositor-host. You do not need to pass `--backend=drm` or
+binary. Host CLI wrappers (`~/.local/bin/weston`) detect Classic by
+Apple WindowServer being down, not by a leaked `WWN_MODEB_TTY`. While
+Aqua is up they nest (`--backend=wayland`, `NIRI_BACKEND=nested`) and
+may kickstart compositor-host. After Take Over they use iland DRM and
+do not nest. You do not need to pass `--backend=drm` or
 `NIRI_BACKEND=tty` by hand.
 
 ```text

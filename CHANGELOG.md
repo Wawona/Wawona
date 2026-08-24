@@ -10,6 +10,12 @@ as history.
 
 ## [Unreleased]
 
+- **macOS weston/niri Aqua vs Classic.** Machines Start in Aqua nests on
+  Wawona (`--backend=wayland`, `NIRI_BACKEND=nested`) or runs weston
+  in-process on wwn-iland when Display Backend is drm. Classic Take Over
+  (WindowServer down) always uses iland DRM; nested Wayland is refused.
+  Leaked `WWN_MODEB_TTY` no longer rewrites Aqua launches onto a TTY/DRM
+  path that then fails without insert.
 - **macOS Mode B TTY niri/weston.** Type them as the login user. Never sudo.
   `libwayland-mac.dylib` client-only insert installs iland open/ioctl hooks
   so `/dev/dri/...` is userspace DRM, not a real node. `sudo niri` strips

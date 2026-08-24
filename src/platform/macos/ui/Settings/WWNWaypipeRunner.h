@@ -111,11 +111,19 @@ typedef void (^WaypipeOutputHandler)(NSString *output);
 
 @end
 
+/// YES when there is no host compositor to nest inside: Classic Desktop
+/// Replacement has unloaded WindowServer. Nested Wayland cannot work there,
+/// so weston/niri must use wwn-iland DRM/KMS/GBM. Aqua (WindowServer up)
+/// is never this, even if `WWN_MODEB_TTY` leaked into the environment or
+/// Desktop Replacement is enabled but not engaged.
+FOUNDATION_EXPORT BOOL WWNHostSessionUsesOwnDisplayDRM(void);
+
 /// Resolves the display backend a bundled compositor should run against:
 /// @"wayland" to nest it inside Wawona, or @"drm" to run it against
 /// wwn-iland's userland KMS the way it would run on bare metal. Pass the
 /// machine's CompositorBackend override, or nil to take the CLI override /
-/// global setting. Falls back to @"wayland" when the choice is unavailable
+/// global setting. Classic / own-display always returns @"drm" (no host
+/// Wayland). In Aqua, falls back to @"wayland" when the choice is unavailable
 /// (notably OpenGLDriver=none, which leaves nothing behind iland to present
 /// with).
 FOUNDATION_EXPORT NSString *_Nonnull WWNResolveCompositorBackend(

@@ -83,15 +83,24 @@ if [ -z "\$WAWONA_CLI_BIN" ]; then
 fi
 
 MODEB=0
-if [ -n "\${WWN_MODEB_TTY:-}" ] && [ "\${WWN_MODEB_TTY}" != "0" ]; then
+# Classic Take Over: Apple WindowServer is gone. Nested Wayland cannot work.
+# Do not trust leaked WWN_MODEB_TTY while Aqua is up (that broke Machines
+# Start and CLI weston/niri after Mode B experiments).
+if ! /usr/bin/pgrep -x WindowServer >/dev/null 2>&1; then
   MODEB=1
 fi
 if [ "\$MODEB" -eq 1 ]; then
-  # Classic Take Over: iland DRM/KMS/GBM. Do not nest. Do not kickstart
-  # compositor-host. Insert on the compositor exec only (login user).
+  # Classic: iland DRM/KMS/GBM. Do not nest. Do not kickstart compositor-host.
+  # Insert on the compositor exec only (login user).
   unset WAYLAND_DISPLAY WAYLAND_SOCKET DISPLAY
   export NIRI_BACKEND=tty
   export WWN_MODEB_TTY=1
+else
+  unset WWN_MODEB_TTY WWN_MODEB_INSERT
+  case "\${NIRI_BACKEND:-}" in
+    tty) export NIRI_BACKEND=nested ;;
+    "") export NIRI_BACKEND=nested ;;
+  esac
 fi
 
 uid="\$(id -u)"
@@ -326,7 +335,7 @@ if [ "\$WAWONA_CLI_NAME" = weston ]; then
       --scale|--scale=*) _wawona_has_scale=1 ;;
     esac
   done
-  if [ -n "\${WWN_MODEB_TTY:-}" ] && [ "\${WWN_MODEB_TTY}" != "0" ]; then
+  if [ "\${MODEB:-0}" -eq 1 ]; then
     if [ "\$_wawona_has_backend" -eq 0 ]; then
       set -- --backend=drm --continue-without-input "\$@"
     fi

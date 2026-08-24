@@ -26,6 +26,8 @@
 #import <os/log.h>
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
 #import <pwd.h>
+#import <sys/types.h>
+#import <libproc.h>
 #endif
 
 extern volatile sig_atomic_t wwn_weston_compositor_shutdown_requested;
@@ -1504,7 +1506,110 @@ static NSString *WWNPreferredHostShellPath(void) {
 /// userspace KMS throws away the path iland exists to provide. `auto` keeps the
 /// nested default because it needs no GPU stack, but the user's choice. Global
 /// preference or per-machine override. Always wins where the platform allows.
+/// Classic Take Over (WindowServer gone) always resolves to drm: there is no
+/// host compositor to nest inside.
 static NSString *g_cliCompositorBackendOverride = nil;
+
+#if TARGET_OS_OSX
+static BOOL WWNAppleWindowServerIsRunning(void) {
+  /* Fail open to Aqua (nested) if process listing fails. Forcing DRM while
+   * WindowServer is up is what broke Machines Start after Mode B experiments. */
+  enum { kCap = 8192 };
+  pid_t pids[kCap];
+  int bytes = proc_listpids(PROC_ALL_PIDS, 0, pids, sizeof(pids));
+  if (bytes <= 0) {
+    return YES;
+  }
+  int n = bytes / (int)sizeof(pid_t);
+  char name[32];
+  for (int i = 0; i < n; i++) {
+    if (pids[i] <= 0) {
+      continue;
+    }
+    if (proc_name(pids[i], name, sizeof(name)) <= 0) {
+      continue;
+    }
+    if (strcmp(name, "WindowServer") == 0) {
+      return YES;
+    }
+  }
+  return NO;
+}
+#endif
+
+BOOL WWNHostSessionUsesOwnDisplayDRM(void) {
+#if TARGET_OS_OSX
+  return !WWNAppleWindowServerIsRunning();
+#else
+  return NO;
+#endif
+}
+
+static void WWNStripModeBInsertFromEnv(NSMutableDictionary<NSString *, NSString *> *env) {
+  NSString *insert = env[@"DYLD_INSERT_LIBRARIES"];
+  if (insert.length == 0) {
+    return;
+  }
+  NSMutableArray<NSString *> *keep = [NSMutableArray array];
+  for (NSString *part in [insert componentsSeparatedByString:@":"]) {
+    if (part.length == 0) {
+      continue;
+    }
+    if ([part.lastPathComponent isEqualToString:@"libwayland-mac.dylib"] ||
+        [part containsString:@"/libwayland-mac.dylib"]) {
+      continue;
+    }
+    [keep addObject:part];
+  }
+  if (keep.count == 0) {
+    [env removeObjectForKey:@"DYLD_INSERT_LIBRARIES"];
+  } else {
+    env[@"DYLD_INSERT_LIBRARIES"] = [keep componentsJoinedByString:@":"];
+  }
+}
+
+static void WWNStripModeBSessionKeysFromEnv(NSMutableDictionary<NSString *, NSString *> *env) {
+  if (!env) {
+    return;
+  }
+  [env removeObjectForKey:@"WWN_MODEB_TTY"];
+  [env removeObjectForKey:@"WWN_MODEB_INSERT"];
+  [env removeObjectForKey:@"WWN_MODEB_WESTON"];
+  [env removeObjectForKey:@"WWN_MODEB_NIRI"];
+  [env removeObjectForKey:@"WWN_MODEB_BIN"];
+  [env removeObjectForKey:@"WWN_MODEB_DYLIB"];
+  NSString *niriBackend = env[@"NIRI_BACKEND"];
+  if ([niriBackend isEqualToString:@"tty"]) {
+    [env removeObjectForKey:@"NIRI_BACKEND"];
+  }
+  WWNStripModeBInsertFromEnv(env);
+}
+
+static void WWNSanitizeModeACompositorProcessEnv(void) {
+  unsetenv("WWN_MODEB_TTY");
+  unsetenv("WWN_MODEB_INSERT");
+  const char *niri = getenv("NIRI_BACKEND");
+  if (niri && strcmp(niri, "tty") == 0) {
+    unsetenv("NIRI_BACKEND");
+  }
+}
+
+static BOOL WWNWaylandSocketIsLive(NSDictionary<NSString *, NSString *> *env) {
+  NSString *display = env[@"WAYLAND_DISPLAY"];
+  if (display.length == 0) {
+    return NO;
+  }
+  NSString *path = display;
+  if (![display hasPrefix:@"/"]) {
+    NSString *rt = env[@"XDG_RUNTIME_DIR"];
+    if (rt.length == 0) {
+      rt = @"/tmp";
+    }
+    path = [rt stringByAppendingPathComponent:display];
+  }
+  struct stat st;
+  return stat(path.UTF8String, &st) == 0 && S_ISSOCK(st.st_mode);
+}
 
 void WWNSetCompositorBackendCLIOverride(NSString *backend) {
   g_cliCompositorBackendOverride = backend.length > 0 ? [backend copy] : nil;
@@ -1515,6 +1620,12 @@ NSString *WWNCompositorBackendCLIOverride(void) {
 }
 
 NSString *WWNResolveCompositorBackend(NSString *overrideValue) {
+  if (WWNHostSessionUsesOwnDisplayDRM()) {
+    WWNLog("BACKEND",
+           @"own-display (WindowServer down): drm / wwn-iland, not nested");
+    return @"drm";
+  }
+
   NSString *choice = nil;
   if (overrideValue.length > 0) {
     choice = overrideValue;
@@ -1915,6 +2026,10 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   }
   [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
   WWNSettings_ApplyGraphicsDriverSelection();
+  WWNConfigureBundledRuntimeEnvIfNeeded();
+  if (!WWNHostSessionUsesOwnDisplayDRM()) {
+    WWNSanitizeModeACompositorProcessEnv();
+  }
   NSString *gpuRefusal = WWNGpuClientRefusalReason(clientId);
   if (gpuRefusal) {
     WWNLog(WWNBundledClientLogModule(clientId),
@@ -2271,6 +2386,12 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   if (libRoot && libRoot[0]) {
     env[@"WAWONA_LIB_ROOT"] = @(libRoot);
   }
+  /* Aqua Machines Start must not inherit Classic session leftovers.
+   * weston rewrites --backend=wayland to drm when WWN_MODEB_TTY is set,
+   * and niri force-selects the TTY backend. Both then fail without insert. */
+  if (!WWNHostSessionUsesOwnDisplayDRM()) {
+    WWNStripModeBSessionKeysFromEnv(env);
+  }
   return env;
 }
 
@@ -2355,10 +2476,26 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   }
   if ([name isEqualToString:@"niri"]) {
     NSString *backend = WWNResolveCompositorBackend(nil);
-    env[@"NIRI_BACKEND"] =
-        [backend isEqualToString:@"drm"] ? @"tty" : @"nested";
-    WWNLog("NIRI", @"backend=%@ (NIRI_BACKEND=%@)", backend,
-           env[@"NIRI_BACKEND"]);
+    BOOL ownDisplay = WWNHostSessionUsesOwnDisplayDRM();
+    if (ownDisplay) {
+      env[@"NIRI_BACKEND"] = @"tty";
+      env[@"WWN_MODEB_TTY"] = @"1";
+      [env removeObjectForKey:@"WAYLAND_DISPLAY"];
+      [env removeObjectForKey:@"WAYLAND_SOCKET"];
+    } else {
+      /* Aqua: nest on the Wawona socket. Display Backend=drm for niri as
+       * an NSTask cannot present into this process (no niri_main on macOS).
+       * Weston drm stays in-process iland. Classic uses tty + insert. */
+      WWNStripModeBSessionKeysFromEnv(env);
+      env[@"NIRI_BACKEND"] = @"nested";
+      if ([backend isEqualToString:@"drm"]) {
+        WWNLog("NIRI",
+               @"Aqua Display Backend=drm. niri nests on Wawona; iland DRM "
+               @"is Classic Take Over (insert) or weston in-window drm");
+      }
+    }
+    WWNLog("NIRI", @"backend=%@ ownDisplay=%d (NIRI_BACKEND=%@)", backend,
+           ownDisplay ? 1 : 0, env[@"NIRI_BACKEND"]);
     env[@"ANGLE_DEFAULT_PLATFORM"] = @"metal";
     NSString *shareRoot = env[@"WAWONA_SHARE_ROOT"];
     if (shareRoot.length == 0) {
@@ -2456,6 +2593,12 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       prepareOutputSizeForNativeClientLaunchWithClientId:name];
 #endif
   const char *logMod = WWNBundledClientLogModule(name);
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+  WWNConfigureBundledRuntimeEnvIfNeeded();
+  if (!WWNHostSessionUsesOwnDisplayDRM()) {
+    WWNSanitizeModeACompositorProcessEnv();
+  }
+#endif
   NSString *path = [self findBinaryNamed:name];
   if (!path) {
     WWNLog(logMod, @"Could not find executable %@ in app bundle.", name);
@@ -2467,6 +2610,18 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 
   NSMutableDictionary *env = [self wwnMutableHostWaylandEnvironment];
   [self wwnApplyBundledClientEnvironment:env forClientId:name];
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+  if (!WWNHostSessionUsesOwnDisplayDRM() &&
+      ([name isEqualToString:@"niri"] || [name isEqualToString:@"weston"])) {
+    [self wwnPumpHostCompositorAfterNativeClientLaunch];
+    if (!WWNWaylandSocketIsLive(env)) {
+      WWNLog(logMod,
+             @"Host Wayland socket not live yet (WAYLAND_DISPLAY=%@ "
+             @"XDG_RUNTIME_DIR=%@). Nested %@ may fail to connect",
+             env[@"WAYLAND_DISPLAY"], env[@"XDG_RUNTIME_DIR"], name);
+    }
+  }
+#endif
   // weston-image is the only weston demo that takes a required positional arg:
   // one or more image paths. With no argv it prints usage and exits (status 1),
   // which read as a broken client. Feed it a bundled image so it renders.
@@ -3292,6 +3447,9 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
   [bridge stopIlandGpuClientOnPrimaryView];
 
   WWNConfigureBundledRuntimeEnvIfNeeded();
+  if (!WWNHostSessionUsesOwnDisplayDRM()) {
+    WWNSanitizeModeACompositorProcessEnv();
+  }
   NSString *envError = [self wwnValidateNestedWestonEnv];
   if (envError) {
     WWNLog("WESTON", @"Refusing to launch nested weston: %@", envError);
@@ -3355,6 +3513,13 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
   env[@"WAWONA_OUTPUT_SCALE"] = @"1";
   env[@"WAWONA_NESTED_WAYLAND"] = @"1";
   [self wwnApplyBundledClientEnvironment:env forClientId:@"weston"];
+  [self wwnPumpHostCompositorAfterNativeClientLaunch];
+  if (!WWNWaylandSocketIsLive(env)) {
+    WWNLog("WESTON",
+           @"Host Wayland socket not live yet (WAYLAND_DISPLAY=%@ "
+           @"XDG_RUNTIME_DIR=%@). Nested weston may fail to connect",
+           env[@"WAYLAND_DISPLAY"], env[@"XDG_RUNTIME_DIR"]);
+  }
   task.environment = env;
 
   WWNLog("WESTON",
@@ -3396,6 +3561,9 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
   self.westonRunning = YES;
 
   [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
+  if (!WWNHostSessionUsesOwnDisplayDRM()) {
+    WWNSanitizeModeACompositorProcessEnv();
+  }
   uint32_t outW = 1024;
   uint32_t outH = 768;
   float outScale = 1.0f;
