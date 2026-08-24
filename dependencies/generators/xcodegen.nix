@@ -1377,17 +1377,18 @@ ICDJSON
     { path = "src/util/WWNStartupLogger.m"; type = "file"; }
   ];
 
-  # WWNMachineEditorView (src/platform/macos/ui/Machines) uses EnvironmentVariablesView.
-  # That type lives under Sources/WawonaUI, which macOS embeds as a whole tree but
-  # Apple-mobile app targets do not. Compile the minimal Settings UI pieces so
-  # iOS/iPadOS/tvOS/visionOS resolve the type (and ObjC can NSClassFromString the
-  # presenter). Do not add these to macOS (already covered by Sources/WawonaUI)
-  # or watchOS (no WWNMachineEditorView).
+  # Shared SwiftUI under Sources/WawonaUI. macOS embeds that tree; Apple-mobile
+  # app targets do not. Compile the pieces WWNMachineEditorView /
+  # WWNMachineCardView / WWNMachinesGridView need so iOS/iPadOS/tvOS/visionOS
+  # resolve the types (and ObjC can NSClassFromString the presenter). Do not add
+  # these to macOS (already covered by Sources/WawonaUI) or watchOS (no those
+  # Machines views).
   appleMobileEnvUISources = [
     { path = "Sources/WawonaUI/Settings/EnvironmentVariablesView.swift"; type = "file"; }
     { path = "Sources/WawonaUI/Settings/WWNEnvironmentSettingsPresenter.swift"; type = "file"; }
     { path = "Sources/WawonaUI/View+WawonaTextField.swift"; type = "file"; }
     { path = "Sources/WawonaUI/MachineRuntimeSettingsApplicator.swift"; type = "file"; }
+    { path = "Sources/WawonaUI/Machines/MachineActionBar.swift"; type = "file"; }
   ];
 
   # Xcode “Update to recommended settings” for framework targets with Swift/ObjC clients.
