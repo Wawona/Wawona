@@ -354,10 +354,11 @@ static BOOL WWNBufferIsBottomUp(IOSurfaceRef surf) {
   return bottomUp;
 }
 
-#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
-/// UIKit does not composite IOSurface-as-CALayer.contents the way AppKit does.
-/// Convert to a CGImage (with optional Y-flip for GL bottom-up) so the existing
-/// presentWaylandFrame: path can paint opengl-cube / weston-simple-egl.
+/// Bake an IOSurface into a CGImage. UIKit cannot composite IOSurface as
+/// CALayer.contents. AppKit can, but a Y-scale transform under
+/// geometryFlipped looks like inverted X+Y, and CPU-mapping the IOSurface
+/// does not change the GPU plane CALayer samples. A flipped CGImage is the
+/// same present path as wl_shm and is upright on both families.
 static CGImageRef WWNCreateCGImageFromIOSurface(IOSurfaceRef surf,
                                                 BOOL flipVertical) {
   if (!surf) {
@@ -436,7 +437,6 @@ static CGImageRef WWNCreateCGImageFromIOSurface(IOSurfaceRef surf,
   CGDataProviderRelease(provider);
   return image;
 }
-#endif
 
 /// Drop stale SHM/IOSurface cache entries for a surface, keeping only `keepKey`.
 /// Required on macOS too: without this, every frame accumulates in `_bufferCache`
@@ -1710,19 +1710,31 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
       }
 #else
       if (bottomUp) {
-        [_bottomUpBuffers addObject:cacheKey];
+        CGImageRef image = WWNCreateCGImageFromIOSurface(surf, YES);
+        CFRelease(surf);
+        if (image) {
+          _bufferCache[cacheKey] = (__bridge_transfer id)image;
+          [_bottomUpBuffers removeObject:cacheKey];
+          WWNPruneBufferCacheForSurface(_bufferCache, buffer->surface_id,
+                                        cacheKey);
+          WWNLog("CACHE", @"Cached IOSurface→CGImage buf=%llu (Y-flip)",
+                 buffer->buffer_id);
+        } else {
+          WWNLog("CACHE",
+                 @"FAILED IOSurface→CGImage for buf=%llu iosurface=%u",
+                 buffer->buffer_id, buffer->iosurface_id);
+        }
       } else {
         [_bottomUpBuffers removeObject:cacheKey];
+        _bufferCache[cacheKey] = (__bridge_transfer id)surf;
+        WWNPruneBufferCacheForSurface(_bufferCache, buffer->surface_id,
+                                      cacheKey);
+        if (_bottomUpBuffers.count > 64) {
+          [_bottomUpBuffers
+              intersectSet:[NSSet setWithArray:_bufferCache.allKeys]];
+        }
+        WWNLog("CACHE", @"Cached IOSurface buf=%llu", buffer->buffer_id);
       }
-      _bufferCache[cacheKey] = (__bridge_transfer id)surf;
-      WWNPruneBufferCacheForSurface(_bufferCache, buffer->surface_id, cacheKey);
-      // Keys outlive their cache entries otherwise. Only worth doing once the
-      // set has grown past a client's worth of swapchain slots.
-      if (_bottomUpBuffers.count > 64) {
-        [_bottomUpBuffers
-            intersectSet:[NSSet setWithArray:_bufferCache.allKeys]];
-      }
-      WWNLog("CACHE", @"Cached IOSurface buf=%llu", buffer->buffer_id);
 #endif
     } else {
       WWNLog("CACHE", @"FAILED IOSurface lookup for buf=%llu iosurface=%u",
@@ -2233,11 +2245,10 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     // buffer id is re-used with new SHM pixels (new CGImage, same key).
     layer.contents = nil;
     layer.contents = content;
-    // Surface layers are siblings under the host's contentLayer, never nested,
-    // so scaling this one by -1 in Y flips its own contents and nothing else.
-    layer.transform = [_bottomUpBuffers containsObject:cacheKey]
-                          ? CATransform3DMakeScale(1.0, -1.0, 1.0)
-                          : CATransform3DIdentity;
+    // Do not CATransform3DMakeScale(1,-1,1) under geometryFlipped: that looks
+    // like inverted X+Y. Bottom-up GLES IOSurfaces are baked into a flipped
+    // CGImage in cacheBuffer: instead.
+    layer.transform = CATransform3DIdentity;
   }
 
   [CATransaction commit];
