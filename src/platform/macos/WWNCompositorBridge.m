@@ -1709,31 +1709,24 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
                buffer->buffer_id, buffer->iosurface_id);
       }
 #else
-      if (bottomUp) {
-        CGImageRef image = WWNCreateCGImageFromIOSurface(surf, YES);
-        CFRelease(surf);
-        if (image) {
-          _bufferCache[cacheKey] = (__bridge_transfer id)image;
-          [_bottomUpBuffers removeObject:cacheKey];
-          WWNPruneBufferCacheForSurface(_bufferCache, buffer->surface_id,
-                                        cacheKey);
-          WWNLog("CACHE", @"Cached IOSurface→CGImage buf=%llu (Y-flip)",
-                 buffer->buffer_id);
-        } else {
-          WWNLog("CACHE",
-                 @"FAILED IOSurface→CGImage for buf=%llu iosurface=%u",
-                 buffer->buffer_id, buffer->iosurface_id);
-        }
-      } else {
+      // AppKit IOSurface-as-contents is Y-flipped vs the CPU mapping (Metal
+      // origin). A CALayer Y-scale under geometryFlipped looks like inverted
+      // X+Y. Baking a flipped CGImage (2026-08-24 10:42) stayed inverted:
+      // the CPU bytes are already top-down. Identity CGImage matches wl_shm.
+      (void)bottomUp;
+      CGImageRef image = WWNCreateCGImageFromIOSurface(surf, NO);
+      CFRelease(surf);
+      if (image) {
+        _bufferCache[cacheKey] = (__bridge_transfer id)image;
         [_bottomUpBuffers removeObject:cacheKey];
-        _bufferCache[cacheKey] = (__bridge_transfer id)surf;
         WWNPruneBufferCacheForSurface(_bufferCache, buffer->surface_id,
                                       cacheKey);
-        if (_bottomUpBuffers.count > 64) {
-          [_bottomUpBuffers
-              intersectSet:[NSSet setWithArray:_bufferCache.allKeys]];
-        }
-        WWNLog("CACHE", @"Cached IOSurface buf=%llu", buffer->buffer_id);
+        WWNLog("CACHE", @"Cached IOSurface→CGImage buf=%llu (identity)",
+               buffer->buffer_id);
+      } else {
+        WWNLog("CACHE",
+               @"FAILED IOSurface→CGImage for buf=%llu iosurface=%u",
+               buffer->buffer_id, buffer->iosurface_id);
       }
 #endif
     } else {
