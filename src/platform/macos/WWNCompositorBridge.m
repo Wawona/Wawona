@@ -1689,10 +1689,13 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     if (surf) {
       BOOL bottomUp = WWNBufferIsBottomUp(surf);
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
-      // AppKit can assign IOSurface to CALayer.contents; UIKit cannot. Bake a
-      // CGImage (Y-flipped when GL marked WWNBottomUp) so _updateIOSPresentation
-      // hits presentWaylandFrame: instead of the blank legacy layer path.
-      CGImageRef image = WWNCreateCGImageFromIOSurface(surf, bottomUp);
+      // UIKit cannot assign IOSurface to CALayer.contents. Bake a CGImage.
+      // ANGLE/niri CPU mapping is already top-down, same as macOS. Using
+      // WWNBottomUp as a flip signal inverted nested niri on iOS. Nested
+      // Weston gl-renderer Y-corrects for Wayland; flip only that compositor.
+      BOOL westonFlip = buffer->cpu_y_flip != 0;
+      (void)bottomUp;
+      CGImageRef image = WWNCreateCGImageFromIOSurface(surf, westonFlip);
       CFRelease(surf);
       if (image) {
         _bufferCache[cacheKey] = (__bridge_transfer id)image;
@@ -1701,8 +1704,8 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
                                       cacheKey);
         _waylandPresentGeneration++;
         _presentGenerationBySurface[surfaceId] = @(_waylandPresentGeneration);
-        WWNLog("CACHE", @"Cached IOSurface→CGImage buf=%llu bottomUp=%d",
-               buffer->buffer_id, (int)bottomUp);
+        WWNLog("CACHE", @"Cached IOSurface→CGImage buf=%llu (westonFlip=%d)",
+               buffer->buffer_id, (int)westonFlip);
       } else {
         WWNLog("CACHE",
                @"FAILED IOSurface→CGImage for buf=%llu iosurface=%u",
