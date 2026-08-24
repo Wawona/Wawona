@@ -1307,7 +1307,9 @@ static UIImage *WWNAboutLogo(void) {
                @"Start. Take Over has no host Wayland, so they use DRM/KMS/"
                @"GBM. kmscube, GBM ES2, and vkcube-kms are KMS-only. "
                @"wwn-igetty: Ctrl+Option+F1-F6 VTs; F7-F9 overlay KMS "
-               @"clients. The Mode B dylib stays iland-baremetal.");
+               @"clients (status hub: fps, kms/drm/gbm, GL/Vulkan backend). "
+               @"Ctrl+Option+Backspace or Fn+Ctrl+Option+Backspace restores "
+               @"Aqua. The Mode B dylib stays iland-baremetal.");
       machineItem.options = nativeNames;
       machineItem.optionValues = nativeIds;
       [desktopItems addObject:machineItem];

@@ -140,7 +140,13 @@ What you boot into is **wwn-igetty** (Linux-shaped VTs + Doorman getty). Setting
 (weston, niri, kmscube, custom). That session is **assigned a VT**
 (`DesktopReplacementGuiVt`, default 1, like a typical Linux display manager).
 It is not guaranteed to stay VT1. Remaining VTs are getty. Ctrl+Option+F1-F6
-switches. Ctrl+Option+Backspace restores Aqua.
+switches. Ctrl+Option+Backspace restores Aqua. Fn+Ctrl+Option+Backspace
+does the same on MacBook keyboards (Fn remaps Backspace to Delete).
+Arrow keys, Page Up, Page Down, Home, and End reach text VTs as CSI
+(MacBook: Fn+arrows is PgUp/PgDn/Home/End). Ctrl+Option+F7-F9 overlay
+kmscube, gbm-es2-demo, and vkcube-kms. Those clients, plus Wayland
+opengl-cube and vkcube, draw a corner status hub: fps, kms/drm/gbm,
+OpenGL vs Vulkan, and the live backend (ANGLE, MoltenVK, KosmicKrisp).
 
 Do not put VT switching in iland or in L4 Wawona besides launching `igettyd`
 and passing `WWN_IGETTY_GUI_*`.
@@ -174,7 +180,8 @@ niri 2>/tmp/modeb-niri.err
 ```
 
 Ctrl+Option+F1 returns to the text VT if the compositor does not take over
-input. Ctrl+Option+Backspace still restores Aqua.
+input. Ctrl+Option+Backspace still restores Aqua. Fn+Ctrl+Option+Backspace
+too.
 
 This is userspace only (no kernel tty). See also
 [`mode-b-windowserver-options.md`](mode-b-windowserver-options.md).
@@ -258,7 +265,8 @@ repo: [`wwn-iland/docs/mode-b/baremetal-display-spi-25F80.md`](../../wwn-iland/d
    LaunchAgent, sudoers drop-in, helper, installed `libwayland-mac.dylib`,
    and `ws-guard` LaunchDaemon. Settings keeps the switch on if the
    privileged uninstall is cancelled. **Replace now** session restore
-   (Ctrl+Option+Backspace, or the Mode B client exiting) restores
+   (Ctrl+Option+Backspace, Fn+Ctrl+Option+Backspace, or the Mode B client
+   exiting) restores
    WindowServer only. With Path B sticky it must not kickstart Path B or
    Apple-enable `watchdogd` (2026-08-23 kernel timeout). Kernel Disable
    stays sticky. See

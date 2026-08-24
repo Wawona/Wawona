@@ -3260,10 +3260,11 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
             @"Classic is already engaged (compositor pid %d, WindowServer down).",
             (int)pid];
     r.nextStep =
-        @"Already on Classic. Ctrl+Option+Backspace restores Aqua.";
+        @"Already on Classic. Ctrl+Option+Backspace restores Aqua. "
+         @"Fn+Ctrl+Option+Backspace too.";
     r.userSummary =
         @"Desktop Replacement is already running. "
-        @"Ctrl+Option+Backspace restores macOS.";
+        @"Ctrl+Option+Backspace restores macOS. Fn+Ctrl+Option+Backspace too.";
     return r;
   }
 
