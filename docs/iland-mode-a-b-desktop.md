@@ -148,8 +148,13 @@ and passing `WWN_IGETTY_GUI_*`.
 Classic already runs `framebufferd` / `inputd`. After login on a text VT,
 `niri` and `weston` use iland DRM/KMS/GBM (same as the assigned GUI VT).
 Login env sets `NIRI_BACKEND=tty` and clears nested `WAYLAND_DISPLAY`.
-PATH wrappers restore `DYLD_INSERT_LIBRARIES` from `WWN_MODEB_INSERT` and
-exec the bundled compositor. You do not need to pass `--backend=drm` or
+Doorman login sets `ZDOTDIR` to session zsh files so macOS `path_helper`
+cannot put `~/.local/bin` ahead of the DRM wrappers. Typed `weston` /
+`niri` restore `DYLD_INSERT_LIBRARIES` from `WWN_MODEB_INSERT` (iland
+`libwayland-mac.dylib` intercepts `/dev/dri`) and exec the bundled
+binary. Host CLI wrappers (`~/.local/bin/weston`) also honor
+`WWN_MODEB_TTY`: they do not inject `--backend=wayland` and they do not
+kickstart compositor-host. You do not need to pass `--backend=drm` or
 `NIRI_BACKEND=tty` by hand.
 
 ```text

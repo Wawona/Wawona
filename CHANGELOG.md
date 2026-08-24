@@ -10,6 +10,11 @@ as history.
 
 ## [Unreleased]
 
+- **macOS Mode B TTY weston/niri.** Login zsh was running the nested CLI
+  wrappers (`--backend=wayland`, no iland insert), so DRM compositors
+  failed (`no drm device found` / TTY backend ENOENT). Session PATH is
+  restored after `path_helper`. CLI wrappers honor `WWN_MODEB_TTY` and
+  restore `WWN_MODEB_INSERT` so iland userspace DRM is what they open.
 - **macOS Desktop Replacement login.** `--compositor-host` no longer
   Classic-engages when `DesktopReplacementEnabled` is leftover. Take Over
   stays Settings / menubar Take Over Screen Now after Check watchdog

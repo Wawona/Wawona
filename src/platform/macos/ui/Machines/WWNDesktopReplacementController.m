@@ -1516,16 +1516,16 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                     [[NSFileManager defaultManager] fileExistsAtPath:glesPath];
     if (haveEgl && haveGles) {
       [script appendFormat:
-          @"WWN_MODEB_INSERT=\"$WWN_MODEB_DYLIB:%@:%@\"\n", eglForModeB,
+          @"export WWN_MODEB_INSERT=\"$WWN_MODEB_DYLIB:%@:%@\"\n", eglForModeB,
           glesPath];
     } else if (haveGles) {
-      [script appendFormat:@"WWN_MODEB_INSERT=\"$WWN_MODEB_DYLIB:%@\"\n",
+      [script appendFormat:@"export WWN_MODEB_INSERT=\"$WWN_MODEB_DYLIB:%@\"\n",
                            glesPath];
     } else if (haveEgl) {
-      [script appendFormat:@"WWN_MODEB_INSERT=\"$WWN_MODEB_DYLIB:%@\"\n",
+      [script appendFormat:@"export WWN_MODEB_INSERT=\"$WWN_MODEB_DYLIB:%@\"\n",
                            eglForModeB];
     } else {
-      [script appendString:@"WWN_MODEB_INSERT=\"$WWN_MODEB_DYLIB\"\n"];
+      [script appendString:@"export WWN_MODEB_INSERT=\"$WWN_MODEB_DYLIB\"\n"];
     }
   }
   {

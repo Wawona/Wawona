@@ -82,19 +82,37 @@ if [ -z "\$WAWONA_CLI_BIN" ]; then
   exit 127
 fi
 
+MODEB=0
+if [ -n "\${WWN_MODEB_TTY:-}" ] && [ "\${WWN_MODEB_TTY}" != "0" ]; then
+  MODEB=1
+fi
+if [ "\$MODEB" -eq 1 ]; then
+  # Classic Take Over: iland DRM/KMS/GBM. Do not nest. Do not kickstart
+  # compositor-host. Restore Mode B insert for open("/dev/dri/...").
+  unset WAYLAND_DISPLAY WAYLAND_SOCKET DISPLAY
+  export NIRI_BACKEND=tty
+  export WWN_MODEB_TTY=1
+  if [ -n "\${WWN_MODEB_INSERT:-}" ]; then
+    export DYLD_INSERT_LIBRARIES="\$WWN_MODEB_INSERT"
+  fi
+fi
+
 uid="\$(id -u)"
 runtime_dir_default="/tmp/wawona-\$uid"
 runtime_env_file="\$runtime_dir_default/wawona-env.sh"
-if [ -f "\$runtime_env_file" ]; then
+if [ "\$MODEB" -eq 0 ] && [ -f "\$runtime_env_file" ]; then
   # shellcheck source=/dev/null
   . "\$runtime_env_file" || true
 fi
 export XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-\$runtime_dir_default}"
-export WAYLAND_DISPLAY="\${WAYLAND_DISPLAY:-wayland-0}"
+if [ "\$MODEB" -eq 0 ]; then
+  export WAYLAND_DISPLAY="\${WAYLAND_DISPLAY:-wayland-0}"
+fi
 if [ ! -d "\$XDG_RUNTIME_DIR" ]; then
   mkdir -p "\$XDG_RUNTIME_DIR"
   chmod 700 "\$XDG_RUNTIME_DIR"
 fi
+if [ "\$MODEB" -eq 0 ]; then
 SOCKET_PATH="\$XDG_RUNTIME_DIR/\$WAYLAND_DISPLAY"
 if [ ! -S "\$SOCKET_PATH" ] && command -v launchctl >/dev/null 2>&1; then
   launchctl kickstart -k "gui/\$uid/com.aspauldingcode.wawona.compositorhost" >/dev/null 2>&1 || true
@@ -110,6 +128,7 @@ if [ ! -S "\$SOCKET_PATH" ] && command -v launchctl >/dev/null 2>&1; then
     sleep 0.1
     i=\$((i + 1))
   done
+fi
 fi
 
 export WAWONA_APP_BUNDLE_ROOT="\$APP"
@@ -224,7 +243,7 @@ if [ -d "\$bin_dir" ]; then
   export PATH="\$bin_dir:\$PATH"
 fi
 
-if [ "\$NAME" = weston ]; then
+if [ "\$NAME" = weston ] && [ "\$MODEB" -eq 0 ]; then
   export WAWONA_OUTPUT_SCALE="\${WAWONA_OUTPUT_SCALE:-1}"
   export WAWONA_NESTED_WAYLAND="\${WAWONA_NESTED_WAYLAND:-1}"
   if [ -z "\${WESTON_CONFIG_FILE:-}" ] && [ -n "\${XDG_RUNTIME_DIR:-}" ]; then
@@ -310,11 +329,17 @@ if [ "\$WAWONA_CLI_NAME" = weston ]; then
       --scale|--scale=*) _wawona_has_scale=1 ;;
     esac
   done
-  if [ "\$_wawona_has_backend" -eq 0 ]; then
-    set -- --backend=wayland --shell=desktop-shell.so "\$@"
-  fi
-  if [ "\$_wawona_has_scale" -eq 0 ]; then
-    set -- --scale=1 "\$@"
+  if [ -n "\${WWN_MODEB_TTY:-}" ] && [ "\${WWN_MODEB_TTY}" != "0" ]; then
+    if [ "\$_wawona_has_backend" -eq 0 ]; then
+      set -- --backend=drm --continue-without-input "\$@"
+    fi
+  else
+    if [ "\$_wawona_has_backend" -eq 0 ]; then
+      set -- --backend=wayland --shell=desktop-shell.so "\$@"
+    fi
+    if [ "\$_wawona_has_scale" -eq 0 ]; then
+      set -- --scale=1 "\$@"
+    fi
   fi
   unset _wawona_has_backend _wawona_has_scale _wawona_arg
 fi

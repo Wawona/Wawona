@@ -2183,13 +2183,10 @@ ICDJSON
                 fi
                 MODEB_SESSION="$MODEB_TTY_BIN/../libexec/wwn-modeb-session"
                 if [ -d "$MODEB_SESSION" ]; then
-                  mkdir -p "$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources/libexec/wwn-modeb-session"
-                  for w in niri weston; do
-                    if [ -f "$MODEB_SESSION/$w" ]; then
-                      install -m 755 "$MODEB_SESSION/$w" \
-                        "$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources/libexec/wwn-modeb-session/$w"
-                    fi
-                  done
+                  DEST="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources/libexec/wwn-modeb-session"
+                  mkdir -p "$DEST"
+                  cp -R "$MODEB_SESSION/." "$DEST/"
+                  chmod +x "$DEST/niri" "$DEST/weston" 2>/dev/null || true
                   echo "Bundled Mode B TTY niri/weston DRM wrappers"
                 fi
               elif [ -f "$MODEB_TTY_BIN/modeb-ttyd" ]; then

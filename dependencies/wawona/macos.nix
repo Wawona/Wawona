@@ -1438,9 +1438,10 @@ GEN_HEADER
               fi
               if [ -d "${modebTty}/libexec/wwn-modeb-session" ]; then
                 mkdir -p $out/Applications/Wawona.app/Contents/Resources/libexec/wwn-modeb-session
-                cp ${modebTty}/libexec/wwn-modeb-session/* \
+                cp -R ${modebTty}/libexec/wwn-modeb-session/. \
                   $out/Applications/Wawona.app/Contents/Resources/libexec/wwn-modeb-session/
-                chmod +x $out/Applications/Wawona.app/Contents/Resources/libexec/wwn-modeb-session/*
+                chmod +x $out/Applications/Wawona.app/Contents/Resources/libexec/wwn-modeb-session/niri \
+                  $out/Applications/Wawona.app/Contents/Resources/libexec/wwn-modeb-session/weston
                 echo "DEBUG: Bundled Mode B TTY niri/weston DRM wrappers"
               fi
               echo "DEBUG: Bundled wwn-igetty (igettyd + igetty)"
