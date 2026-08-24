@@ -1370,6 +1370,8 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
       return;
     }
 
+    // TODO: maybe create a WWNCompositorView for each available screen here
+
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
     if (wwn_mobile_pending_roundtrips() > 0 ||
         wwn_mobile_active_clients() > 0) {
@@ -2020,6 +2022,7 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
              frame.size.height, CGImageGetWidth(cgImage),
              CGImageGetHeight(cgImage), presentToken);
     }
+
     [iosView presentWaylandFrame:cgImage
                            frame:frame
                      contentRect:contentRect

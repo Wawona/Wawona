@@ -547,6 +547,10 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   BOOL _keyboardActive;
   BOOL _keyboardEnterSent;
 
+  // UIScreen index targetting internal (0) or external (1...) displays
+  // This might become redundant 
+  static int uiScreenTarget = 0;
+
   // Sticky modifier state (active = one-shot, locked = persistent toggle)
   BOOL _modShiftActive;
   BOOL _modCtrlActive;
@@ -920,6 +924,10 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 
   if (!CGRectIsEmpty(frame)) {
     CGSize bounds = self.bounds.size;
+    if(WWNExternalDisplayIsConnected()) {
+      // TODO: Set the bounds to the external display dimensions 
+      // bounds = whatever WWNExternalDisplaySupport's self.window.bounds is...
+    }
 #if TARGET_OS_TV
     // 10-foot UI: host-owned surfaces go full-bleed. Client-constrained demos
     // (flower/smoke 200×200) stay at negotiated size and are centered. Same
@@ -1041,15 +1049,17 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   _lastPresentedWaylandImage = image;
   _lastContentsScale = contentsScale;
 
-  [CATransaction begin];
-  [CATransaction setDisableActions:YES];
-  _waylandFrameView.layer.opaque = _waylandFrameOpaque;
-  _waylandFrameView.layer.contentsGravity = gravity;
-  _waylandFrameView.layer.contentsScale = contentsScale;
-  _waylandFrameView.layer.contents = nil;
-  _waylandFrameView.layer.contents = (__bridge id)image;
-  _waylandFrameView.layer.contentsRect = normalizedContentRect;
-  [CATransaction commit];
+  if(!WWNExternalDisplayIsConnected()) {
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    _waylandFrameView.layer.opaque = _waylandFrameOpaque;
+    _waylandFrameView.layer.contentsGravity = gravity;
+    _waylandFrameView.layer.contentsScale = contentsScale;
+    _waylandFrameView.layer.contents = nil;
+    _waylandFrameView.layer.contents = (__bridge id)image;
+    _waylandFrameView.layer.contentsRect = normalizedContentRect;
+    [CATransaction commit];
+  }
 
   [self _mirrorFrameToExternalDisplay:image contentRect:normalizedContentRect];
 
