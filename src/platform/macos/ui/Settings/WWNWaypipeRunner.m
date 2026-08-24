@@ -3667,17 +3667,18 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
   }
 #if TARGET_OS_IPHONE
   // Honour CompositorBackend only. NestedWestonBackend defaults to
-  // iland-drm-gl on iOS devices and launched --backend=drm with no mapped
-  // host surface (Start does nothing). Nested Wayland-EGL is the iOS-family
-  // nested path (iland in-process).
+  // wayland-pixman on Apple mobile (iland-drm-gl is the macOS default).
+  // Nested GL (usePixman:NO) loads weston's gl-renderer via
+  // wwn_gl_renderer_module_init, which is a -1 stub on this archive, so
+  // weston_compositor_main exits immediately and Start looks like a no-op.
   BOOL wantDrm = [WWNResolveCompositorBackend(nil) isEqualToString:@"drm"];
   if (wantDrm) {
     [self launchWestonDrm];
     return;
   }
-  WWNLog("WESTON", @"nested weston compositor (wayland-gl) on iOS family");
+  WWNLog("WESTON", @"nested weston compositor (wayland-pixman) on iOS family");
   [self wwnLaunchWestonCompositorWithBackend:"--backend=wayland"
-                                   usePixman:NO
+                                   usePixman:YES
                                 prepareIland:NO];
 #else
   [self launchWestonMacOSAsNestedClient];
