@@ -1449,13 +1449,16 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
       stringWithFormat:
           @"%@\n\nWawona will open the native macOS Restart sheet "
           @"(loginwindow kAERestart, 60-second countdown). After you log "
-          @"back in, Classic readiness must be ready, then Take Over.",
+          @"back in, Check watchdog coverage first, then Take Over.",
           ready.reason];
   [confirm addButtonWithTitle:@"Restart"];
   [confirm addButtonWithTitle:@"Cancel"];
   if ([confirm runModal] != NSAlertFirstButtonReturn) {
     return;
   }
+  [[NSUserDefaults standardUserDefaults]
+      setBool:NO
+       forKey:kWWNPrefsDesktopReplacementEnabled];
   NSError *rst = nil;
   if (![desk requestNativeMacOSRestart:&rst]) {
     NSAlert *fail = [[NSAlert alloc] init];
@@ -1835,21 +1838,16 @@ int main(int argc, char *argv[]) {
       signal(SIGBUS, crash_handler);
       signal(SIGILL, crash_handler);
       WWNLog("MAIN", @"Rust Compositor running!");
-      
-      if ([[NSUserDefaults standardUserDefaults] boolForKey:kWWNPrefsDesktopReplacementEnabled]) {
-        NSString *desktopMachineId = [[NSUserDefaults standardUserDefaults] stringForKey:kWWNPrefsDesktopReplacementMachineId];
-        if (desktopMachineId.length > 0) {
-          WWNLog("MAIN", @"Compositor daemon: Desktop Replacement enabled. Auto-starting machine %@.", desktopMachineId);
-          dispatch_async(dispatch_get_main_queue(), ^{
-            WWNMachineProfile *profile = [WWNMachineProfileStore profileById:desktopMachineId];
-            if (profile) {
-              NSError *err = nil;
-              if (![WWNMachineSessionBridge connectProfile:profile error:&err]) {
-                WWNLog("MAIN", @"Failed to auto-start desktop replacement: %@", err);
-              }
-            }
-          });
-        }
+      // Take Over is per session (Settings / menubar Take Over Screen Now).
+      // compositor-host is a login KeepAlive agent for Mode A nested
+      // compositors. It must never Classic-engage, even if
+      // DesktopReplacementEnabled is leftover from a previous session.
+      if ([[NSUserDefaults standardUserDefaults]
+              boolForKey:kWWNPrefsDesktopReplacementEnabled]) {
+        WWNLog("MAIN",
+               @"Compositor daemon: Desktop Replacement is enabled. "
+               @"Not auto-starting. Use Take Over Screen Now after "
+               @"Check watchdog coverage.");
       }
 
       WWNKeepServiceHostOutOfDock();

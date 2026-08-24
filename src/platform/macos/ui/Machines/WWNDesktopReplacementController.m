@@ -163,6 +163,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
 - (BOOL)armPathBClaimInstall:(NSError *_Nullable *_Nullable)error;
 - (void)presentRestartAfterPrepareWithMessage:(NSString *)message;
 - (void)presentRestartAfterHealWithMessage:(NSString *)message;
+- (void)clearDesktopReplacementEnabledPref;
 @property(nonatomic, strong, nullable) WWNModeBCoverageReport *lastCoverageReport;
 - (WWNModeBCoverageReport *)coverageReportFromLocalState;
 - (void)finishCoverageReport:(WWNModeBCoverageReport *)r;
@@ -203,11 +204,17 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   if ([WWNSipStatus allowsDesktopReplacement:sip]) {
     return NO;
   }
-  [defs setBool:NO forKey:kWWNPrefsDesktopReplacementEnabled];
+  [self clearDesktopReplacementEnabledPref];
   NSLog(@"[DesktopReplacement] cleared DesktopReplacementEnabled. SIP status "
         @"%@ no longer permits Mode B",
         [WWNSipStatus describe:sip]);
   return YES;
+}
+
+- (void)clearDesktopReplacementEnabledPref {
+  NSUserDefaults *defs = [NSUserDefaults standardUserDefaults];
+  [defs setBool:NO forKey:kWWNPrefsDesktopReplacementEnabled];
+  [defs synchronize];
 }
 
 - (BOOL)shouldEngageModeB {
@@ -4239,14 +4246,16 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
 }
 
 - (void)presentRestartAfterPrepareWithMessage:(NSString *)message {
+  [self clearDesktopReplacementEnabledPref];
   NSAlert *confirm = [[NSAlert alloc] init];
   confirm.alertStyle = NSAlertStyleInformational;
   confirm.messageText = @"Restart required";
   confirm.informativeText = message.length
                                 ? message
                                 : @"Restart this Mac so the watchdog safety "
-                                  @"layer can finish. After you log in, use "
-                                  @"Take Over Screen Now.";
+                                  @"layer can finish. After you log in, "
+                                  @"Check watchdog coverage first, then Take "
+                                  @"Over Screen Now.";
   [confirm addButtonWithTitle:@"Restart"];
   [confirm addButtonWithTitle:@"Later"];
   if ([confirm runModal] != NSAlertFirstButtonReturn) {
@@ -4334,10 +4343,11 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     confirm.messageText = @"Prepare this Mac for Desktop Replacement?";
     confirm.informativeText =
         @"Wawona will install a watchdog safety layer (administrator "
-        @"password), then ask you to restart. After you log back in, open "
-        @"Wawona and use Take Over Screen Now.\n\n"
+        @"password), then ask you to restart. After you log back in, "
+        @"Check watchdog coverage first, then Take Over Screen Now.\n\n"
         @"This does not take over the screen, and it does not unload Apple's "
-        @"watchdog. Restart is required before Take Over can run.";
+        @"watchdog. Restart is required before Take Over can run. Login "
+        @"does not Take Over by itself.";
     [confirm addButtonWithTitle:@"Prepare this Mac"];
     [confirm addButtonWithTitle:@"Cancel"];
     if ([confirm runModal] != NSAlertFirstButtonReturn) {
@@ -4370,8 +4380,8 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     }
     [self presentRestartAfterPrepareWithMessage:
               @"Setup finished. Restart this Mac so the watchdog safety "
-              @"layer can finish. After you log in, use Take Over Screen "
-              @"Now."];
+              @"layer can finish. After you log in, Check watchdog "
+              @"coverage first, then Take Over Screen Now."];
   };
   if ([NSThread isMainThread]) {
     show();
@@ -4401,6 +4411,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   if (r.verdict == WWNModeBVerdictTakeoverNow) {
     return 0;
   }
+  [self clearDesktopReplacementEnabledPref];
   WWNModeBCliLog(@"opening native macOS Restart sheet (kAERestart / QA1134)");
   NSError *rst = nil;
   if (![self requestNativeMacOSRestart:&rst]) {
@@ -4427,6 +4438,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     WWNModeBCliLog(@"VERDICT %@", ready.token);
     WWNModeBCliLog(@"REASON %@", ready.reason);
     if (ready.verdict == WWNModeBVerdictReboot) {
+      [self clearDesktopReplacementEnabledPref];
       WWNModeBCliLog(@"opening native macOS Restart sheet (kAERestart / QA1134)");
       NSError *rst = nil;
       if (![self requestNativeMacOSRestart:&rst]) {

@@ -232,11 +232,13 @@ repo: [`wwn-iland/docs/mode-b/baremetal-display-spi-25F80.md`](../../wwn-iland/d
    DYLD_INSERT_LIBRARIES`. Insert on the niri/weston exec only.
    `ws-guard` may restore WindowServer only.
 4. After logout, Aqua's login screen starts WindowServer. The next login
-   does not re-run Mode B. Use Settings → Desktop → Take Over Screen Now
-   again. Older builds that wrote
-   `com.aspauldingcode.wawona.modeb-login` caused a login WindowServer
-   crash loop (helper kills WS, Aqua dies, launchd sends TERM,
-   restore_aqua, agent fires again). The menubar boots that agent out if
+   does not re-run Mode B. Use Settings → Desktop → **Check watchdog
+   coverage**, then **Take Over Screen Now**. `--compositor-host` (login
+   KeepAlive for Mode A nested compositors) must never Classic-engage,
+   even if `DesktopReplacementEnabled` is leftover. Older builds that
+   auto-started the Desktop machine from compositor-host, or that wrote
+   `com.aspauldingcode.wawona.modeb-login`, unloaded WindowServer at
+   login. The menubar boots the leftover `modeb-login` agent out if
    a leftover plist is present. A leftover KeepAlive system daemon can
    keep niri running in the background without owning the screen.
 5. `WWNWaypipeRunner` `baremetalCompositorLaunchSpecForProfile:` supplies argv

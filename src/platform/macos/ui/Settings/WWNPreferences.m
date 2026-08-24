@@ -1265,8 +1265,9 @@ static UIImage *WWNAboutLogo(void) {
              nil,
              @"Installs the Desktop helper and watchdog safety layer "
              @"(administrator once), then asks you to restart. Does not take "
-             @"over the screen. After you log back in, use Take Over Screen "
-             @"Now.");
+             @"over the screen. After you log back in, Check watchdog "
+             @"coverage first, then Take Over Screen Now. Login does not "
+             @"Take Over by itself.");
     prepareBtn.actionBlock = ^{
       [weakSelf showDesktopReplacementPrepare];
     };
@@ -1281,7 +1282,7 @@ static UIImage *WWNAboutLogo(void) {
                        @"Use Prepare this Mac first (watchdog safety layer + "
                        @"restart). Then Take Over unloads watchdogd and "
                        @"WindowServer. Pick a Desktop Machine below. Logout "
-                       @"restores normal macOS.")];
+                       @"restores normal macOS. Login does not Take Over.");
 
 #if TARGET_OS_OSX
     {
@@ -5742,8 +5743,8 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
     confirm.informativeText = [NSString
         stringWithFormat:
             @"%@\n\nWawona will open the native macOS Restart sheet "
-            @"(60-second countdown). After you log back in, use Take Over "
-            @"Screen Now.",
+            @"(60-second countdown). After you log back in, Check "
+            @"watchdog coverage first, then Take Over Screen Now.",
             ready.userSummary.length ? ready.userSummary : ready.reason];
     [confirm addButtonWithTitle:@"Restart"];
     [confirm addButtonWithTitle:@"Cancel"];

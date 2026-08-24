@@ -61,7 +61,8 @@ only**. Not Linux. Not App Store iOS family.
    **and** the user chooses Take Over Screen Now → Mode B via
    `WWNDesktopReplacementController` (privileged insert of bundled dylib).
    First enable installs sudoers NOPASSWD for the root helper. It does not
-   install a login LaunchAgent. Take Over is per session. Disable kernel
+   install a login LaunchAgent. Take Over is per session. `--compositor-host`
+   must never Classic-engage. Disable kernel
    IOWatchdog (`wwn-iowatchdog`) first, then unload watchdogd, then
    WindowServer. Abort if IOWatchdog disable fails. Never
    `launchctl kickstart -k` watchdogd. Probe may inject while Aqua stays

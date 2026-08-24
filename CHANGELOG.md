@@ -10,6 +10,11 @@ as history.
 
 ## [Unreleased]
 
+- **macOS Desktop Replacement login.** `--compositor-host` no longer
+  Classic-engages when `DesktopReplacementEnabled` is leftover. Take Over
+  stays Settings / menubar Take Over Screen Now after Check watchdog
+  coverage. Prepare and Restart clear the Enable switch so the next Aqua
+  login stays in-window.
 - **macOS Desktop Replacement setup.** Settings and the menubar no longer
   dump `claim-install --path-b` at friends. **Prepare this Mac** stages the
   helper if needed, runs bundled Path B `claim-install` with an administrator
