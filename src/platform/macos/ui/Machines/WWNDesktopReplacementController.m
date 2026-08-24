@@ -1609,6 +1609,11 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
       [script appendString:@"export WWN_MODEB_INSERT=\"$WWN_MODEB_DYLIB\"\n"];
     }
   }
+  [script appendString:@"mkdir -p /tmp/libwayland-support\n"];
+  [script appendString:@"printf '%s\\n' \"$WWN_MODEB_INSERT\" > "
+                       @"/tmp/libwayland-support/modeb-insert\n"];
+  [script appendString:@"chmod 644 /tmp/libwayland-support/modeb-insert "
+                       @"2>/dev/null || true\n"];
   {
     NSString *base = [executablePath lastPathComponent];
     BOOL skipWestonOut =
@@ -2402,6 +2407,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
         [existingHelper containsString:@"skip restore_watchdogd"] &&
         [existingHelper containsString:@"WWN_MODEB_WD=pathb-no-kickstart-after-classic"] &&
         [existingHelper containsString:@"--exec-compositor"] &&
+        [existingHelper containsString:@"modeb-insert"] &&
         [existingHelper containsString:@"wawona-unloaded-watchdogd"] &&
         ![existingHelper containsString:@"Path B bootstrap after Classic"] &&
         [existingHelper containsString:@"stale modeb.lock"] &&

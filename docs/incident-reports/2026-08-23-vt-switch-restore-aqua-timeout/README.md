@@ -22,9 +22,12 @@ Sleep/Wake timestamps were present in the paniclog.
 1. Path B was healthy (`claim-ok path=b sticky=1`). Operator used **Replace
    now** (Classic Take Over). Mode B client was `igettyd` (Doorman + VT
    switcher). GUI VT was 0 (no Desktop compositor on a graphics VT).
-2. Login on a text VT. Typed `niri`. `libwayland-mac.dylib` logged
-   `[wayland-mac] must run as root` and `abort()`d. Session env had exported
-   `DYLD_INSERT_LIBRARIES` into the user shell.
+2. Login on a text VT. Typed `niri`. `libwayland-mac.dylib` used to
+   `abort()` unless euid was 0 (`must run as root`). `sudo niri` then
+   started, but sudo stripped insert, so the TTY backend opened a real
+   missing `/dev/dri` node (`error opening the primary GPU DRM node`,
+   ENOENT). Product path: type `niri` as the login user. Insert iland
+   DRM hooks only. Never sudo. Never a real DRM node.
 3. Operator switched to tty02 (`[igettyd] switch VT 1 -> 2`). Ctrl+Option+F2
    is the VT chord. Ctrl+Option+Backspace is the Aqua restore chord. Aqua
    still came back (client exit and/or restore stamp).
@@ -52,10 +55,11 @@ kickstarted.
    job-down as live Disable.
 2. Helper fingerprint `WWN_MODEB_WD=pathb-no-kickstart-after-classic`. Stale
    helpers that still contain `Path B bootstrap after Classic` must restage.
-3. Typed `niri` / `weston` on a text VT: do not export insert unless euid 0.
-   Re-exec as root via `run-modeb.sh --exec-compositor` (sudo -n). That mode
-   inserts only on the compositor, refuses if WindowServer is up, and does
-   not restore Aqua or touch watchdogd.
+3. Typed `niri` / `weston` on a text VT: login user, never sudo. Wrappers
+   prefix `WWN_MODEB_INSERT` on that exec only. The dylib constructor
+   installs iland DRM hooks for any euid and does not spawn helpers unless
+   root (Classic). `sudo niri` strips insert and hits ENOENT on a real
+   `/dev/dri` path that must not exist.
 
 ## Do not
 

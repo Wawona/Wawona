@@ -10,11 +10,15 @@ as history.
 
 ## [Unreleased]
 
+- **macOS Mode B TTY niri/weston.** Type them as the login user. Never sudo.
+  `libwayland-mac.dylib` client-only insert installs iland open/ioctl hooks
+  so `/dev/dri/...` is userspace DRM, not a real node. `sudo niri` strips
+  insert and fails ENOENT. Do not Take Over until
+  `WAWONA_MODEB_STAGE=1 nix run .#install` restages the dylib and helper.
 - **macOS Desktop Replacement panic (2026-08-23).** Classic Aqua restore
   kickstarted Path B, which re-armed kernel IOWatchdog (8 checkins, then a
   92s timeout). Restore now leaves Path B down and the kernel Disable
-  sticky. Typed `niri`/`weston` on a text VT re-exec as root through the
-  helper. Do not Take Over until `WAWONA_MODEB_STAGE=1 nix run .#install`.
+  sticky. Do not Take Over until the helper is restaged.
 - **macOS Mode B TTY weston/niri.** Login zsh was running the nested CLI
   wrappers (`--backend=wayland`, no iland insert), so DRM compositors
   failed (`no drm device found` / TTY backend ENOENT). Session PATH is
