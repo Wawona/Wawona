@@ -1706,6 +1706,7 @@ static void wwnConfigureNiriNestedEnv(void) {
     }
   }
   wwnEnsureFuzzelXdgEnv();
+  setenv("XCURSOR_SIZE", "24", 1);
 }
 
 typedef int (*WWNClientMainFn)(int, char **);
@@ -2370,6 +2371,14 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   if (westonBackends && westonBackends[0]) {
     env[@"WESTON_BACKEND_DIR"] = @(westonBackends);
   }
+  const char *westonLibexec = getenv("WESTON_LIBEXEC_DIR");
+  if (westonLibexec && westonLibexec[0]) {
+    env[@"WESTON_LIBEXEC_DIR"] = @(westonLibexec);
+  }
+  const char *westonModuleMap = getenv("WESTON_MODULE_MAP");
+  if (westonModuleMap && westonModuleMap[0]) {
+    env[@"WESTON_MODULE_MAP"] = @(westonModuleMap);
+  }
   const char *fontConfig = getenv("FONTCONFIG_FILE");
   if (fontConfig && fontConfig[0]) {
     env[@"FONTCONFIG_FILE"] = @(fontConfig);
@@ -2385,6 +2394,10 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   const char *xcursorTheme = getenv("XCURSOR_THEME");
   if (xcursorTheme && xcursorTheme[0]) {
     env[@"XCURSOR_THEME"] = @(xcursorTheme);
+  }
+  const char *xcursorSize = getenv("XCURSOR_SIZE");
+  if (xcursorSize && xcursorSize[0]) {
+    env[@"XCURSOR_SIZE"] = @(xcursorSize);
   }
   const char *bundleRoot = getenv("WAWONA_APP_BUNDLE_ROOT");
   if (bundleRoot && bundleRoot[0]) {
@@ -2421,6 +2434,11 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
                              forClientId:(NSString *)name {
   if (!env || name.length == 0) {
     return;
+  }
+  if ([name isEqualToString:@"niri"] || [name isEqualToString:@"weston"]) {
+    // Nested compositors get wl_output / fractional scale 1. A 2x cursor
+    // theme in that 1x framebuffer is twice as large on HiDPI.
+    env[@"XCURSOR_SIZE"] = @"24";
   }
   BOOL needsFrameworks =
       [name isEqualToString:@"vkcube"] ||
@@ -2736,6 +2754,8 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     @"WESTON_DATA_DIR",
     @"WESTON_MODULE_DIR",
     @"WESTON_BACKEND_DIR",
+    @"WESTON_LIBEXEC_DIR",
+    @"WESTON_MODULE_MAP",
     @"FONTCONFIG_FILE",
     @"FONTCONFIG_PATH",
     @"XCURSOR_PATH",
@@ -3257,19 +3277,12 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
              @"will negotiate via xdg_toplevel");
     }
 
-    unsigned hostScale =
-        (unsigned)lrintf(outScale >= 1.0f ? outScale : 1.0f);
-    if (hostScale < 1u) {
-      hostScale = 1u;
-    }
-    char scaleEnv[32];
-    snprintf(scaleEnv, sizeof(scaleEnv), "%u", hostScale);
-    setenv("WAWONA_OUTPUT_SCALE", scaleEnv, 1);
-
-    // Do not pass --width/--height. Nested Weston is a Wayland client of
-    // Wawona; size is negotiated via xdg_toplevel / per-window wl_output.
+    // Nested weston is a Wayland client of Wawona. Parent owns HiDPI.
+    // --scale=backingScaleFactor loads a 2x cursor into a 1x framebuffer.
+    unsigned launchScale = 1u;
+    setenv("WAWONA_OUTPUT_SCALE", "1", 1);
+    setenv("XCURSOR_SIZE", "24", 1);
     char scaleArg[32];
-    unsigned launchScale = hostScale;
     snprintf(scaleArg, sizeof(scaleArg), "--scale=%u", launchScale);
 
     char saved_cwd[512] = "";
@@ -3591,6 +3604,7 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
   snprintf(scaleEnv, sizeof(scaleEnv), "%u", hostScale);
   setenv("WAWONA_OUTPUT_SCALE", scaleEnv, 1);
   setenv("WAWONA_NESTED_WAYLAND", "1", 1);
+  setenv("XCURSOR_SIZE", "24", 1);
 
   const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
   char configPath[512] = "";

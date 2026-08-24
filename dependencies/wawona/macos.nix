@@ -1036,6 +1036,16 @@ GEN_HEADER
                   || ln -sf copy "$APP/share/icons/Adwaita/cursors/dnd-copy"
                 [ -e "$APP/share/icons/Adwaita/cursors/dnd-none" ] \
                   || ln -sf default "$APP/share/icons/Adwaita/cursors/dnd-none"
+                if [ -f "${adwaitaCursors}/share/icons/Adwaita/index.theme" ]; then
+                  cp -L "${adwaitaCursors}/share/icons/Adwaita/index.theme" \
+                    "$APP/share/icons/Adwaita/index.theme"
+                fi
+                if [ -d "${adwaitaCursors}/share/icons/default" ]; then
+                  mkdir -p "$APP/share/icons/default"
+                  cp -RL "${adwaitaCursors}/share/icons/default/." \
+                    "$APP/share/icons/default/"
+                  chmod -R u+w "$APP/share/icons/default"
+                fi
               fi
               # Weston shell helpers (weston-desktop-shell / weston-keyboard /
               # weston-simple-im). Same loop as the manual install path below.
@@ -1238,6 +1248,16 @@ GEN_HEADER
                 || ln -sf copy "$APP/share/icons/Adwaita/cursors/dnd-copy"
               [ -e "$APP/share/icons/Adwaita/cursors/dnd-none" ] \
                 || ln -sf default "$APP/share/icons/Adwaita/cursors/dnd-none"
+              if [ -f "${adwaitaCursors}/share/icons/Adwaita/index.theme" ]; then
+                cp -L "${adwaitaCursors}/share/icons/Adwaita/index.theme" \
+                  "$APP/share/icons/Adwaita/index.theme"
+              fi
+              if [ -d "${adwaitaCursors}/share/icons/default" ]; then
+                mkdir -p "$APP/share/icons/default"
+                cp -RL "${adwaitaCursors}/share/icons/default/." \
+                  "$APP/share/icons/default/"
+                chmod -R u+w "$APP/share/icons/default"
+              fi
               echo "DEBUG: Bundled Adwaita cursors"
             fi
             WA_FONTS="${wawonaBundledFonts}"

@@ -60,6 +60,25 @@ stdenvNoCC.mkDerivation {
     ln -sfn copy dnd-copy
     ln -sfn default dnd-none
 
+    # X11 theme name "default". niri's stock xcursor-theme is "default", not
+    # "Adwaita". Linux distros ship /usr/share/icons/default -> Adwaita.
+    # index.theme Inherits plus a cursors symlink so loaders that skip
+    # Inherits still find default/cursors/<name>.
+    cat > "$out/share/icons/Adwaita/index.theme" <<EOF
+[Icon Theme]
+Name=Adwaita
+Comment=Adwaita cursors
+Inherits=hicolor
+EOF
+    mkdir -p "$out/share/icons/default"
+    cat > "$out/share/icons/default/index.theme" <<EOF
+[Icon Theme]
+Name=Default
+Comment=Default Cursor Theme
+Inherits=Adwaita
+EOF
+    ln -sfn ../Adwaita/cursors "$out/share/icons/default/cursors"
+
     runHook postInstall
   '';
 

@@ -1032,6 +1032,16 @@ ICDJSON
     else
       echo "warning: Adwaita cursors not found at $CURSOR_SRC" >&2
     fi
+    if [ -f "${adwaitaCursors}/share/icons/Adwaita/index.theme" ]; then
+      mkdir -p "$BUNDLE/share/icons/Adwaita"
+      cp -L "${adwaitaCursors}/share/icons/Adwaita/index.theme" \
+        "$BUNDLE/share/icons/Adwaita/index.theme"
+    fi
+    if [ -d "${adwaitaCursors}/share/icons/default" ]; then
+      mkdir -p "$BUNDLE/share/icons/default"
+      cp -RL "${adwaitaCursors}/share/icons/default/." \
+        "$BUNDLE/share/icons/default/"
+    fi
     chmod -R u+w "$WESTON_DEST" "$ICONS_DEST" 2>/dev/null || true
   '';
 
@@ -2306,6 +2316,16 @@ ICDJSON
                   || ln -sf copy "$RES_DEST/share/icons/Adwaita/cursors/dnd-copy"
                 [ -e "$RES_DEST/share/icons/Adwaita/cursors/dnd-none" ] \
                   || ln -sf default "$RES_DEST/share/icons/Adwaita/cursors/dnd-none"
+                if [ -f "${adwaitaCursors}/share/icons/Adwaita/index.theme" ]; then
+                  cp -L "${adwaitaCursors}/share/icons/Adwaita/index.theme" \
+                    "$RES_DEST/share/icons/Adwaita/index.theme"
+                fi
+                if [ -d "${adwaitaCursors}/share/icons/default" ]; then
+                  mkdir -p "$RES_DEST/share/icons/default"
+                  cp -RL "${adwaitaCursors}/share/icons/default/." \
+                    "$RES_DEST/share/icons/default/"
+                  chmod -R u+w "$RES_DEST/share/icons/default"
+                fi
                 echo "Bundled Adwaita cursors"
               fi
 

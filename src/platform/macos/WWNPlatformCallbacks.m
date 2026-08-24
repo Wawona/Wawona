@@ -673,13 +673,45 @@ static void WWNConfigureBundledWestonDataIfNeeded(void) {
     setenv("WESTON_BACKEND_DIR", westonBackends.UTF8String, 1);
   }
 
+  NSFileManager *fm = [NSFileManager defaultManager];
+  NSString *bundleRoot = [[NSBundle mainBundle] bundlePath];
+  NSArray<NSString *> *libexecCands = @[
+    [bundleRoot stringByAppendingPathComponent:@"Contents/Resources/bin"],
+    [bundleRoot stringByAppendingPathComponent:@"Contents/MacOS"],
+  ];
+  NSString *westonLibexec = nil;
+  for (NSString *dir in libexecCands) {
+    NSString *helper =
+        [dir stringByAppendingPathComponent:@"weston-desktop-shell"];
+    if ([fm isExecutableFileAtPath:helper]) {
+      westonLibexec = dir;
+      break;
+    }
+  }
+  if (westonLibexec.length > 0) {
+    setenv("WESTON_LIBEXEC_DIR", westonLibexec.UTF8String, 1);
+    NSMutableArray<NSString *> *map = [NSMutableArray array];
+    for (NSString *name in @[ @"weston-desktop-shell", @"weston-keyboard",
+                              @"weston-simple-im" ]) {
+      NSString *path = [westonLibexec stringByAppendingPathComponent:name];
+      if ([fm isExecutableFileAtPath:path]) {
+        [map addObject:[NSString stringWithFormat:@"%@=%@", name, path]];
+      }
+    }
+    if (map.count > 0) {
+      setenv("WESTON_MODULE_MAP",
+             [[map componentsJoinedByString:@";"] UTF8String], 1);
+    }
+  }
+
   NSString *cursorTheme =
       WWNWawonaBundledSharePath(@"icons/Adwaita/cursors");
   if ([[NSFileManager defaultManager] fileExistsAtPath:cursorTheme]) {
     NSString *iconsRoot = WWNWawonaBundledSharePath(@"icons");
     setenv("XCURSOR_PATH", iconsRoot.UTF8String, 1);
     setenv("XCURSOR_THEME", "Adwaita", 1);
-    WWNLog("BUNDLE", @"Configured XCURSOR_PATH: %s (theme=Adwaita)",
+    setenv("XCURSOR_SIZE", "24", 1);
+    WWNLog("BUNDLE", @"Configured XCURSOR_PATH: %s (theme=Adwaita size=24)",
            iconsRoot.UTF8String);
   }
 }

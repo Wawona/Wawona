@@ -194,6 +194,34 @@ if [ -n "\$weston_backends" ]; then
   export WESTON_BACKEND_DIR="\$weston_backends"
 fi
 
+# desktop-shell.so spawns weston-desktop-shell from baked LIBEXECDIR (a
+# nix-store path). WESTON_MODULE_MAP remaps helper names in current weston.
+# WESTON_LIBEXEC_DIR is the directory prefix (weston port + this env).
+_wawona_libexec=""
+for d in "\$APP/Contents/Resources/bin" "\$APP/Contents/MacOS"; do
+  if [ -x "\$d/weston-desktop-shell" ]; then
+    _wawona_libexec="\$d"
+    break
+  fi
+done
+if [ -n "\$_wawona_libexec" ]; then
+  export WESTON_LIBEXEC_DIR="\$_wawona_libexec"
+  _wawona_map=""
+  for _h in weston-desktop-shell weston-keyboard weston-simple-im; do
+    if [ -x "\$_wawona_libexec/\$_h" ]; then
+      if [ -n "\$_wawona_map" ]; then
+        _wawona_map="\$_wawona_map;"
+      fi
+      _wawona_map="\$_wawona_map\$_h=\$_wawona_libexec/\$_h"
+    fi
+  done
+  if [ -n "\$_wawona_map" ]; then
+    export WESTON_MODULE_MAP="\$_wawona_map"
+  fi
+  unset _wawona_map _h
+fi
+unset _wawona_libexec
+
 icons=""
 for d in "\$APP/Contents/Resources/share/icons" "\$APP/share/icons"; do
   if [ -d "\$d" ]; then
@@ -204,6 +232,7 @@ done
 if [ -n "\$icons" ]; then
   export XCURSOR_PATH="\$icons"
   export XCURSOR_THEME="Adwaita"
+  export XCURSOR_SIZE="\${XCURSOR_SIZE:-24}"
 fi
 
 fonts=""
@@ -308,6 +337,26 @@ if [ "\$NAME" = weston ] && [ "\$MODEB" -eq 0 ]; then
     unset _wawona_egl _wawona_gles _wawona_insert
   fi
 fi
+
+# CLI niri reads ~/Library/Application Support/niri/config.kdl. Only point
+# at the bundled KDL when the user has not created one. Do not overwrite.
+if [ "\$NAME" = niri ] && [ -z "\${NIRI_CONFIG:-}" ]; then
+  _niri_user="\${HOME}/Library/Application Support/niri/config.kdl"
+  _niri_bundled=""
+  for d in \\
+    "\$APP/Contents/Resources/share/niri/default-config.kdl" \\
+    "\$APP/share/niri/default-config.kdl"
+  do
+    if [ -f "\$d" ]; then
+      _niri_bundled="\$d"
+      break
+    fi
+  done
+  if [ ! -f "\$_niri_user" ] && [ -n "\$_niri_bundled" ]; then
+    export NIRI_CONFIG="\$_niri_bundled"
+  fi
+  unset _niri_user _niri_bundled d
+fi
 EOF
   chmod 644 "$ENV_SH"
 }
@@ -329,10 +378,14 @@ if [ "\$WAWONA_CLI_NAME" = weston ]; then
   export WAWONA_OUTPUT_SCALE="\${WAWONA_OUTPUT_SCALE:-1}"
   _wawona_has_backend=0
   _wawona_has_scale=0
+  _wawona_has_config=0
+  _wawona_has_socket=0
   for _wawona_arg in "\$@"; do
     case "\$_wawona_arg" in
       --backend|--backend=*|-B) _wawona_has_backend=1 ;;
       --scale|--scale=*) _wawona_has_scale=1 ;;
+      --config|--config=*|-c) _wawona_has_config=1 ;;
+      --socket|--socket=*) _wawona_has_socket=1 ;;
     esac
   done
   if [ "\${MODEB:-0}" -eq 1 ]; then
@@ -347,7 +400,20 @@ if [ "\$WAWONA_CLI_NAME" = weston ]; then
       set -- --scale=1 "\$@"
     fi
   fi
-  unset _wawona_has_backend _wawona_has_scale _wawona_arg
+  # WESTON_CONFIG_FILE is a basename for XDG search, not a path. Machines
+  # Start passes --config=. Without it, CLI weston ignores the written ini
+  # ("Starting with no config file") and execs baked nix-store libexec
+  # helpers.
+  if [ "\$_wawona_has_config" -eq 0 ] && [ -n "\${WESTON_CONFIG_FILE:-}" ] && [ -f "\$WESTON_CONFIG_FILE" ]; then
+    set -- --config="\$WESTON_CONFIG_FILE" "\$@"
+  fi
+  # Default listen socket is wayland-1 (parent is wayland-0). A leftover
+  # lockfile prints "unable to lock lockfile … wayland-1.lock". Unique name
+  # so CLI weston does not collide with Machines --socket=wawona-nested.
+  if [ "\$_wawona_has_socket" -eq 0 ] && [ "\${MODEB:-0}" -eq 0 ]; then
+    set -- --socket="weston-cli-\$\$" "\$@"
+  fi
+  unset _wawona_has_backend _wawona_has_scale _wawona_has_config _wawona_has_socket _wawona_arg
 fi
 if [ "\${MODEB:-0}" -eq 1 ]; then
   if [ -z "\${WWN_MODEB_INSERT:-}" ] && [ -r /tmp/libwayland-support/modeb-insert ]; then
