@@ -23,7 +23,12 @@ struct WWNMachineEditorView: View {
   @State private var remoteCommand: String
   @State private var containerRef: String
   @State private var entryCommand: String
+  @State private var desktopSession: Bool
+  @State private var imageArchivePath: String
   @State private var showContainerHubSearch: Bool = false
+  @State private var showContainerArchiveImporter: Bool = false
+  @State private var containerImporting: Bool = false
+  @State private var containerImportNote: String?
 
   @State private var selectedClientId: String
   @State private var customCommand: String
@@ -94,6 +99,10 @@ struct WWNMachineEditorView: View {
       initialValue: (containerSettings["containerRef"] as? String) ?? "")
     _entryCommand = State(
       initialValue: (containerSettings["entryCommand"] as? String) ?? "")
+    _desktopSession = State(
+      initialValue: (containerSettings["desktopSession"] as? Bool) ?? false)
+    _imageArchivePath = State(
+      initialValue: (containerSettings["imageArchivePath"] as? String) ?? "")
 
     let runtimeOverrides: [String: Any] = initial?.runtimeOverrides ?? [:]
     let overrides: [String: Any] = initial?.settingsOverrides ?? [:]
@@ -947,26 +956,106 @@ struct WWNMachineEditorView: View {
           #endif
         }
       }
+      #if os(macOS)
+      Button {
+        showContainerArchiveImporter = true
+      } label: {
+        Label("Import image archive…", systemImage: "square.and.arrow.down")
+      }
+      .disabled(containerImporting)
+      if containerImporting {
+        HStack(spacing: 6) {
+          ProgressView().controlSize(.small)
+          Text("Importing…").font(.caption).foregroundStyle(.secondary)
+        }
+      }
+      if let containerImportNote {
+        Text(containerImportNote)
+          .font(.caption)
+          .foregroundStyle(containerImportNote.hasPrefix("imported") ? .green : .red)
+      }
+      if !imageArchivePath.isEmpty {
+        HStack {
+          Image(systemName: "internaldrive").foregroundStyle(.secondary)
+          Text("Archive: \(displayContainerArchivePath)")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+          Spacer()
+          Button("Clear") {
+            imageArchivePath = ""
+            containerRef = ""
+            containerImportNote = nil
+          }
+          .buttonStyle(.borderless)
+          .controlSize(.small)
+        }
+      }
+      #endif
       labeledField("Command") {
         TextField("e.g. /bin/sh", text: $entryCommand)
           .textFieldStyle(.roundedBorder)
           .wwnDisableAutocapitalization()
           .autocorrectionDisabled()
       }
+      #if os(macOS)
+      Toggle("Desktop session", isOn: $desktopSession)
+      #endif
       Text("Empty fields inherit the global Settings > Containers defaults. Memory, mounts and ports are configured in Machine Settings.")
         .font(.footnote)
         .foregroundStyle(.secondary)
     }
     #if os(macOS)
-    return card.sheet(isPresented: $showContainerHubSearch) {
-      WWNContainerHubSearchView { selected in
-        containerRef = selected
+    return card
+      .sheet(isPresented: $showContainerHubSearch) {
+        WWNContainerHubSearchView { selected in
+          containerRef = selected
+        }
       }
-    }
+      .fileImporter(
+        isPresented: $showContainerArchiveImporter,
+        allowedContentTypes: [.item, .directory]
+      ) { result in
+        handleContainerArchiveImport(result)
+      }
     #else
     return card
     #endif
   }
+
+  private var displayContainerArchivePath: String {
+    (imageArchivePath as NSString).lastPathComponent
+  }
+
+  #if os(macOS)
+  private func handleContainerArchiveImport(_ result: Result<URL, Error>) {
+    switch result {
+    case .success(let url):
+      guard url.startAccessingSecurityScopedResource() else {
+        containerImportNote = "import failed: permission denied"
+        return
+      }
+      defer { url.stopAccessingSecurityScopedResource() }
+      let path = url.path
+      containerImporting = true
+      containerImportNote = nil
+      Task {
+        do {
+          let imported = try await ContainerImageManager.importFromDiskResolved(path) { _ in }
+          containerRef = imported.canonical
+          imageArchivePath = imported.ociLayout
+          containerImportNote = "imported \(imported.canonical)"
+        } catch {
+          containerImportNote = "import failed: \(error.localizedDescription)"
+        }
+        containerImporting = false
+      }
+    case .failure(let error):
+      containerImportNote = "import failed: \(error.localizedDescription)"
+    }
+  }
+  #endif
 
   // MARK: - Helpers
 
@@ -1190,6 +1279,17 @@ struct WWNMachineEditorView: View {
         containerSettings.removeValue(forKey: "entryCommand")
       } else {
         containerSettings["entryCommand"] = cmd
+      }
+      if desktopSession {
+        containerSettings["desktopSession"] = true
+      } else {
+        containerSettings.removeValue(forKey: "desktopSession")
+      }
+      let archive = imageArchivePath.trimmingCharacters(in: .whitespacesAndNewlines)
+      if archive.isEmpty {
+        containerSettings.removeValue(forKey: "imageArchivePath")
+      } else {
+        containerSettings["imageArchivePath"] = archive
       }
       if (containerSettings["runtime"] as? String)?.isEmpty ?? true {
         containerSettings["runtime"] = "containerization"
