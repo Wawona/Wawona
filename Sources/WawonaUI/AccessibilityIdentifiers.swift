@@ -9,6 +9,7 @@ enum WawonaA11y {
 
   static let machinesRoot = "wwn.machines.root"
   static let machinesSettings = "wwn.machines.settings"
+  static let machinesImages = "wwn.machines.images"
   static let machinesAdd = "wwn.machines.add"
   static let machinesStart = "wwn.machines.start"
   static let machinesConnect = "wwn.machines.connect"

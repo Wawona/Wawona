@@ -36,6 +36,7 @@ public enum MachineEditorFieldID: String, Sendable, CaseIterable {
     case waypipeEnabled
     case containerRef
     case entryCommand
+    case desktopSession
 }
 
 public struct MachineEditorFieldMetadata: Sendable, Hashable {
@@ -79,6 +80,12 @@ public struct MachineEditorState: Sendable, Hashable {
     /// Container entry command (machine type container). Empty = inherit the
     /// global default command.
     public var entryCommand: String
+    /// Desktop session toggle (machine type container): attach the container's
+    /// Wayland session to Wawona via the waypipe vsock bridge.
+    public var desktopSession: Bool
+    /// Local OCI layout directory to run from instead of a registry image
+    /// (`--image-archive`). Set by the editor's "Import image archive…" flow.
+    public var imageArchivePath: String
 
     public init(
         id: String? = nil,
@@ -97,7 +104,9 @@ public struct MachineEditorState: Sendable, Hashable {
         bundledAppID: String = "",
         waypipeEnabled: Bool = true,
         containerRef: String = "",
-        entryCommand: String = ""
+        entryCommand: String = "",
+        desktopSession: Bool = false,
+        imageArchivePath: String = ""
     ) {
         self.id = id
         self.name = name
@@ -116,6 +125,8 @@ public struct MachineEditorState: Sendable, Hashable {
         self.waypipeEnabled = waypipeEnabled
         self.containerRef = containerRef
         self.entryCommand = entryCommand
+        self.desktopSession = desktopSession
+        self.imageArchivePath = imageArchivePath
     }
 
     public var isNative: Bool { typeRawValue == "native" }
@@ -214,6 +225,7 @@ public struct MachineEditorValidation: Sendable {
             fields.append(contentsOf: [
                 MachineEditorFieldID.containerRef,
                 MachineEditorFieldID.entryCommand,
+                MachineEditorFieldID.desktopSession,
             ])
         }
         // Input profile (Touch Input Type) lives in Machine Settings, not Add/Edit.
@@ -257,6 +269,8 @@ public struct MachineEditorValidation: Sendable {
             return MachineEditorFieldMetadata(id: .containerRef, label: "Image", helperText: "OCI image reference (e.g. alpine:3.20). Empty inherits the global default image.")
         case .entryCommand:
             return MachineEditorFieldMetadata(id: .entryCommand, label: "Command", helperText: "Command to run in the container. Empty inherits the global default command.")
+        case .desktopSession:
+            return MachineEditorFieldMetadata(id: .desktopSession, label: "Desktop Session", helperText: "Attach the container's Wayland session to Wawona (windows appear via the waypipe vsock bridge).")
         }
     }
 

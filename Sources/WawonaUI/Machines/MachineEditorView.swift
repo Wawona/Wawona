@@ -1,6 +1,7 @@
 import SwiftUI
 import WawonaModel
 import WawonaUIContracts
+import UniformTypeIdentifiers
 
 struct MachineEditorView: View {
     @Environment(\.dismiss) var dismiss
@@ -18,6 +19,12 @@ struct MachineEditorView: View {
     @State var remoteCommand: String
     @State var containerRef: String
     @State var entryCommand: String
+    @State var desktopSession: Bool
+    @State var imageArchivePath: String
+    @State var showingImageBrowser = false
+    @State var showingArchiveImporter = false
+    @State var importingArchive = false
+    @State var importNote: String?
 
     let existingProfileId: String?
     /// Snapshot for fields this form does not edit (VM/container metadata, favorites, renderer, etc.).
@@ -47,6 +54,8 @@ struct MachineEditorView: View {
         _remoteCommand = State(initialValue: state.remoteCommand)
         _containerRef = State(initialValue: state.containerRef)
         _entryCommand = State(initialValue: state.entryCommand)
+        _desktopSession = State(initialValue: state.desktopSession)
+        _imageArchivePath = State(initialValue: state.imageArchivePath)
     }
 
     private var isNative: Bool { type == .native }
@@ -76,7 +85,9 @@ struct MachineEditorView: View {
             bundledAppID: isNative ? selectedLauncherName : base.bundledAppID,
             waypipeEnabled: base.waypipeEnabled,
             containerRef: containerRef,
-            entryCommand: entryCommand
+            entryCommand: entryCommand,
+            desktopSession: desktopSession,
+            imageArchivePath: imageArchivePath
         )
     }
 
@@ -144,14 +155,57 @@ struct MachineEditorView: View {
                         TextField("Image", text: $containerRef, prompt: Text("e.g. alpine:3.20"))
                             .wawonaTextFieldNoAutocaps()
                             .autocorrectionDisabled()
+                        Button {
+                            showingImageBrowser = true
+                        } label: {
+                            Label("Choose from library…", systemImage: "shippingbox")
+                        }
+                        Button {
+                            showingArchiveImporter = true
+                        } label: {
+                            Label("Import image archive…", systemImage: "square.and.arrow.down")
+                        }
+                        .disabled(importingArchive)
+
+                        if importingArchive {
+                            HStack(spacing: 6) {
+                                ProgressView().controlSize(.small)
+                                Text("Importing…").font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                        if let importNote {
+                            Text(importNote)
+                                .font(.caption)
+                                .foregroundStyle(importNote.hasPrefix("imported") ? .green : .red)
+                        }
+                        if !imageArchivePath.isEmpty {
+                            HStack {
+                                Image(systemName: "internaldrive")
+                                    .foregroundStyle(.secondary)
+                                Text("Archive: \(displayArchivePath)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Spacer()
+                                Button("Clear") { imageArchivePath = ""; containerRef = ""; importNote = nil }
+                                    .buttonStyle(.borderless)
+                                    .controlSize(.small)
+                            }
+                        }
                         TextField("Command", text: $entryCommand, prompt: Text("e.g. /bin/sh"))
                             .wawonaTextFieldNoAutocaps()
                             .autocorrectionDisabled()
+                        Toggle("Desktop session", isOn: $desktopSession)
                     } header: {
                         Text("Container")
                     } footer: {
                         Text("Empty fields inherit the global Settings → Containers defaults. "
                              + "Memory, mounts, ports and kernel paths are configured in Machine Settings.")
+                            + Text("\n")
+                            + Text("Desktop session attaches the container's Wayland session to Wawona via the waypipe vsock bridge — apps appear as windows (a nested desktop like GNOME/KDE shows as one window).")
+                            + Text("\n")
+                            + Text("Import image archive… adds a local image (docker-archive tar/tar.gz, OCI-archive, or OCI layout directory — format detected automatically) and runs the machine from it without a registry pull.")
                     }
                 }
 
@@ -208,6 +262,43 @@ struct MachineEditorView: View {
                         .disabled(hasValidationIssues)
                 }
             }
+            .sheet(isPresented: $showingImageBrowser) {
+                ContainerImagesView { ref in
+                    containerRef = ref
+                }
+            }
+            .fileImporter(
+                isPresented: $showingArchiveImporter,
+                allowedContentTypes: [.item, .directory]
+            ) { result in
+                handleArchiveImport(result)
+            }
+        }
+    }
+
+    private var displayArchivePath: String {
+        (imageArchivePath as NSString).lastPathComponent
+    }
+
+    private func handleArchiveImport(_ result: Result<URL, Error>) {
+        switch result {
+        case .failure(let error):
+            importNote = "Import failed: \(error.localizedDescription)"
+        case .success(let url):
+            let path = url.path
+            importingArchive = true
+            importNote = nil
+            Task {
+                do {
+                    let imported = try await ContainerImageManager.importFromDiskResolved(path) { _ in }
+                    containerRef = imported.canonical
+                    imageArchivePath = imported.ociLayout
+                    importNote = "imported \(imported.canonical)"
+                } catch {
+                    importNote = "Import failed: \(error.localizedDescription)"
+                }
+                importingArchive = false
+            }
         }
     }
 
@@ -243,7 +334,11 @@ struct MachineEditorView: View {
                     remove: base.remove,
                     kernelPath: base.kernelPath,
                     initfsPath: base.initfsPath,
-                    vsockPort: base.vsockPort
+                    vsockPort: base.vsockPort,
+                    desktopSession: desktopSession ? true : nil,
+                    imageArchivePath: imageArchivePath.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty
+                        ? nil
+                        : imageArchivePath.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
                 )
             }
         }

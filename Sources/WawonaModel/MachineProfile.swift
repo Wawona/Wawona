@@ -111,6 +111,15 @@ public struct ContainerMachineSettings: Codable, Hashable, Sendable {
     /// vsock port the guest waypipe server binds (maps to
     /// `--wayland-vsock-port` when the GUI session attaches).
     public var vsockPort: Int?
+    /// Desktop session: attach the container's Wayland session to Wawona via
+    /// the waypipe vsock bridge (a window per surface, or one window for a
+    /// nested compositor image). When false/nil the container runs
+    /// terminal-only.
+    public var desktopSession: Bool?
+    /// Local OCI layout directory to run from instead of pulling `containerRef`
+    /// from a registry (`--image-archive`). Emitted by `container import` next
+    /// to the unpacked rootfs.
+    public var imageArchivePath: String?
 
     public init(
         runtime: String? = nil,
@@ -127,7 +136,9 @@ public struct ContainerMachineSettings: Codable, Hashable, Sendable {
         remove: Bool? = nil,
         kernelPath: String? = nil,
         initfsPath: String? = nil,
-        vsockPort: Int? = nil
+        vsockPort: Int? = nil,
+        desktopSession: Bool? = nil,
+        imageArchivePath: String? = nil
     ) {
         self.runtime = runtime
         self.containerRef = containerRef
@@ -144,6 +155,8 @@ public struct ContainerMachineSettings: Codable, Hashable, Sendable {
         self.kernelPath = kernelPath
         self.initfsPath = initfsPath
         self.vsockPort = vsockPort
+        self.desktopSession = desktopSession
+        self.imageArchivePath = imageArchivePath
     }
 }
 

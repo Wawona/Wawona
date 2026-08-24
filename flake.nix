@@ -1062,6 +1062,11 @@
             # wwn-containers `container` CLI (wwn-oci + wwn-containerd-run) for
             # the Machines GUI + in-app terminal.
             containerCli = wwn-containers.packages.${system}.container-cli;
+            # Container Wayland bridge (desktop sessions): host waypipe with a
+            # working SplitFD (--socket-fds), and the guest aarch64-linux
+            # waypipe injected into the container VM.
+            containerWaypipeFds = wwn-containers.packages.${system}.waypipe-splitfd or null;
+            containerWaypipeGuestLinux = (pkgsFor "aarch64-linux").waypipe;
             neovim = null;
             zsh = pkgs.zsh;
             kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };

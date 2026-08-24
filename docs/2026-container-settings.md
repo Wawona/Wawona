@@ -49,7 +49,9 @@ absent keys are ignored by every platform.
 | `remove` | bool? | `--rm` (the macOS backend is one-shot, so the container is always removed; kept for CLI parity) |
 | `kernelPath` | string? | `--kernel` / `WAWONA_VM_KERNEL` |
 | `initfsPath` | string? | `--initfs` / `WAWONA_VM_INITFS` |
-| `vsockPort` | int? | guest waypipe port (reserved for the Wayland session-attach phase) |
+| `vsockPort` | int? | guest waypipe server port (`--wayland-vsock-port`; default 1024) |
+| `desktopSession` | bool? | attach the container's Wayland session to Wawona (windows via the waypipe vsock bridge) |
+| `imageArchivePath` | string? | local OCI layout dir to boot from (`--image-archive`); set by the editor's "Import image archive…" — no registry pull at run time |
 
 ## Apple `container` CLI ↔ GUI field mapping (1:1 where honored)
 
@@ -65,7 +67,9 @@ Captured from the pinned Apple `container` CLI 1.2.2 (`container run --help`).
 | `--kernel` | Kernel Path (`ContainerKernelPath`) | Kernel Path | `--kernel <path>` (per-machine) / `WAWONA_VM_KERNEL` (global) | ✅ |
 | `--initfs` (ours) | Initfs Path (`ContainerInitfsPath`) | Initfs Path | `--initfs <path>` / `WAWONA_VM_INITFS` | ✅ |
 | `--rm` | — | (implicit) | `--rm` (accepted no-op: one-shot backend) | ✅ |
-| `--wayland-vsock-port` (ours) | VSock Port (`ContainerVsockPort`) | vsockPort (schema) | reserved for session-attach phase | ⏳ |
+| `--wayland-vsock-port` (ours) | VSock Port (`ContainerVsockPort`) | vsockPort (schema) | `--wayland-vsock-port <n>` (desktop-session machines) | ✅ |
+| `--waypipe-guest-bin` (ours) | — | — | `--waypipe-guest-bin '<path>'` (bundled waypipe-guest; env `WAWONA_WAYPIPE_GUEST` fallback) | ✅ runner-emitted |
+| `--image-archive` (ours) | — | imageArchivePath (schema) | `--image-archive '<path>'` (local OCI layout dir from `container import`) | ✅ runner-emitted |
 | `--shm-size` | — | shmSize (schema) | — | ⏳ reserved (backend rejects) |
 | `--volume`, `--mount` | — | mounts (schema) | — | ⏳ reserved (backend rejects) |
 | `--publish`, `--publish-socket` | — | ports (schema) | — | ⏳ reserved (backend rejects) |
@@ -90,14 +94,16 @@ Captured from the pinned Apple `container` CLI 1.2.2 (`container run --help`).
 | `ContainerMemory` | `""` | `--memory` (empty = backend default 1024 MiB) |
 | `ContainerKernelPath` | `""` | `WAWONA_VM_KERNEL` (empty = newest kernel under `~/Library/Application Support/com.apple.container/kernels`) |
 | `ContainerInitfsPath` | `""` | `WAWONA_VM_INITFS` (empty = `vminit:latest` from the containerization image store) |
-| `ContainerVsockPort` | `1024` | reserved for session attach |
+| `ContainerVsockPort` | `1024` | `--wayland-vsock-port` for desktop-session machines |
 | `MachineContainerImageStore` | `~/.local/share/wawona/oci` | `WWN_OCI_ROOT` for the image-management CLI |
 
 ## Generated command shape
 
 ```
 container run --rm --id wawona-<machineId> [--memory <MiB>] [--kernel '<path>'] [--initfs '<path>']
-        [--read-only] [--init] '<ref>' '<command>'
+        [--read-only] [--init]
+        [--wayland-vsock-port <n> --waypipe-guest-bin '<path>']  # desktop session
+        '<ref>' '<command>'
 ```
 
 The command runs inside Wawona's bundled terminal, not as a bare host

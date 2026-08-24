@@ -24,6 +24,20 @@ static BOOL WWNContainerBool(NSDictionary *dict, NSString *key) {
                                                          : NO;
 }
 
+// Pull an int out of a containerSettings dict (JSON passthrough): NSNumber
+// directly, or an NSString holding digits. Absent/wrong types yield nil.
+static NSNumber *WWNContainerNumber(NSDictionary *dict, NSString *key) {
+  id value = dict[key];
+  if ([value isKindOfClass:[NSNumber class]]) {
+    return value;
+  }
+  if ([value isKindOfClass:[NSString class]]) {
+    NSInteger parsed = [(NSString *)value integerValue];
+    return @(parsed);
+  }
+  return nil;
+}
+
 // Single-quote a value for the /bin/sh -lc command line.
 static NSString *WWNContainerShellQuote(NSString *value) {
   NSString *escaped = [value stringByReplacingOccurrencesOfString:@"'"
@@ -128,6 +142,41 @@ static NSString *WWNContainerShellQuote(NSString *value) {
   }
   if (WWNContainerBool(cs, @"initProcess")) {
     [parts addObject:@"--init"];
+  }
+
+  // Desktop session: attach the container's Wayland session to Wawona via the
+  // waypipe vsock bridge (wwn-containerd injects the guest waypipe and wraps
+  // the command; the host side dials the port). The bundled aarch64-linux
+  // waypipe is passed explicitly so no system install is needed.
+  if (WWNContainerBool(cs, @"desktopSession")) {
+    NSInteger vsockPort = 0;
+    NSNumber *portNum = WWNContainerNumber(cs, @"vsockPort");
+    if (portNum != nil) {
+      vsockPort = portNum.integerValue;
+    }
+    if (vsockPort <= 0) {
+      vsockPort = [prefs.containerVsockPort integerValue];
+    }
+    if (vsockPort <= 0) {
+      vsockPort = 1024;
+    }
+    [parts addObject:[NSString stringWithFormat:@"--wayland-vsock-port %ld",
+                                                (long)vsockPort]];
+    NSString *guestWaypipe = WWNWawonaFindBundledExecutable(@"waypipe-guest");
+    if (guestWaypipe.length > 0) {
+      [parts addObject:[NSString
+                           stringWithFormat:@"--waypipe-guest-bin %@",
+                                            WWNContainerShellQuote(guestWaypipe)]];
+    }
+  }
+
+  // Local image from disk: run from the imported OCI layout directory instead
+  // of pulling the reference from a registry (wwn-containerd --image-archive).
+  NSString *archive = WWNContainerString(cs, @"imageArchivePath");
+  if (archive.length > 0) {
+    [parts addObject:[NSString
+                         stringWithFormat:@"--image-archive %@",
+                                          WWNContainerShellQuote(archive)]];
   }
 
   [parts addObject:WWNContainerShellQuote(ref)];
@@ -274,6 +323,23 @@ static NSString *WWNContainerShellQuote(NSString *value) {
   if (prefs.containerInitfsPath.length > 0) {
     env[@"WAWONA_VM_INITFS"] =
         [prefs.containerInitfsPath stringByExpandingTildeInPath];
+  }
+
+  // Desktop session: hand wwn-containerd the host-side waypipe with a working
+  // --socket-fds transport (wwn-waypipe's macos build parses the flag but
+  // cannot use it) and the guest-side aarch64-linux waypipe (also passed on
+  // the command line; the env is the fallback). Absent binaries stay unset:
+  // the backend reports the missing piece clearly.
+  NSDictionary *desktopCs = profile.containerSettings ?: @{};
+  if (WWNContainerBool(desktopCs, @"desktopSession")) {
+    NSString *hostWaypipe = WWNWawonaFindBundledExecutable(@"waypipe-fds");
+    if (hostWaypipe.length > 0) {
+      env[@"WWNP_WAYPIPE_BIN"] = hostWaypipe;
+    }
+    NSString *guestWaypipe = WWNWawonaFindBundledExecutable(@"waypipe-guest");
+    if (guestWaypipe.length > 0) {
+      env[@"WAWONA_WAYPIPE_GUEST"] = guestWaypipe;
+    }
   }
   task.environment = env;
 

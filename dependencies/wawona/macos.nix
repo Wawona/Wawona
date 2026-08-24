@@ -24,6 +24,12 @@
   phoon ? null,
   wawonaWasm ? null,
   containerCli ? null,
+  # Container Wayland bridge (desktop-session machines): host waypipe with a
+  # working --socket-fds (SplitFD) transport, and the guest aarch64-linux
+  # waypipe injected into the container VM. Null = desktop sessions unavailable
+  # (the backend reports the missing piece clearly).
+  containerWaypipeFds ? null,
+  containerWaypipeGuestLinux ? null,
   neovim ? null,
   zsh ? null,
   kmscube ? null,
@@ -996,6 +1002,32 @@ GEN_HEADER
               echo "Warning: container-cli not provided, skipping container bundling"
               ''}
 
+              # Container Wayland bridge (desktop sessions): host waypipe (SplitFD,
+              # signed Mach-O) and guest aarch64-linux waypipe (ELF data payload — the
+              # backend injects it into the Linux VM, so it must NOT be codesigned).
+              ${if containerWaypipeFds != null then ''
+              if [ -f "${containerWaypipeFds}/bin/waypipe" ]; then
+                cp "${containerWaypipeFds}/bin/waypipe" "$APP/Contents/Resources/bin/waypipe-fds"
+                chmod +x "$APP/Contents/Resources/bin/waypipe-fds"
+                echo "DEBUG: Bundled waypipe-fds"
+              else
+                echo "Warning: waypipe-fds binary not found at ${containerWaypipeFds}/bin/waypipe"
+              fi
+              '' else ''
+              echo "Warning: container waypipe-fds not provided, desktop sessions unavailable"
+              ''}
+              ${if containerWaypipeGuestLinux != null then ''
+              if [ -f "${containerWaypipeGuestLinux}/bin/waypipe" ]; then
+                cp "${containerWaypipeGuestLinux}/bin/waypipe" "$APP/Contents/Resources/bin/waypipe-guest"
+                chmod +x "$APP/Contents/Resources/bin/waypipe-guest"
+                echo "DEBUG: Bundled waypipe-guest (aarch64-linux)"
+              else
+                echo "Warning: waypipe-guest binary not found at ${containerWaypipeGuestLinux}/bin/waypipe"
+              fi
+              '' else ''
+              echo "Warning: container waypipe-guest not provided, desktop sessions unavailable"
+              ''}
+
               # Terminal SHELL for container machines: weston-terminal runs
               # $SHELL, and WWNContainerRunner points it here so the container
               # command (WAWONA_CONTAINER_CMD) runs inside the Wawona terminal.
@@ -1357,6 +1389,32 @@ SHELL_EOF
             fi
             '' else ''
             echo "Warning: container-cli not provided, skipping container bundling"
+            ''}
+
+            # Container Wayland bridge (desktop sessions): host waypipe
+            # (SplitFD, signed Mach-O) + guest aarch64-linux waypipe (ELF
+            # payload injected into the Linux VM — not codesigned).
+            ${if containerWaypipeFds != null then ''
+            if [ -f "${containerWaypipeFds}/bin/waypipe" ]; then
+              cp "${containerWaypipeFds}/bin/waypipe" $out/Applications/Wawona.app/Contents/Resources/bin/waypipe-fds
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/waypipe-fds
+              echo "DEBUG: Bundled waypipe-fds"
+            else
+              echo "Warning: waypipe-fds binary not found at ${containerWaypipeFds}/bin/waypipe"
+            fi
+            '' else ''
+            echo "Warning: container waypipe-fds not provided, desktop sessions unavailable"
+            ''}
+            ${if containerWaypipeGuestLinux != null then ''
+            if [ -f "${containerWaypipeGuestLinux}/bin/waypipe" ]; then
+              cp "${containerWaypipeGuestLinux}/bin/waypipe" $out/Applications/Wawona.app/Contents/Resources/bin/waypipe-guest
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/waypipe-guest
+              echo "DEBUG: Bundled waypipe-guest (aarch64-linux)"
+            else
+              echo "Warning: waypipe-guest binary not found at ${containerWaypipeGuestLinux}/bin/waypipe"
+            fi
+            '' else ''
+            echo "Warning: container waypipe-guest not provided, desktop sessions unavailable"
             ''}
 
             # Terminal SHELL for container machines: weston-terminal runs

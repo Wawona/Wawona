@@ -13,8 +13,12 @@ NS_ASSUME_NONNULL_BEGIN
 //
 // On macOS the boot command is built from the profile's per-machine
 // `containerSettings` (image ref, command, memory, kernel/initfs, read-only,
-// init) with every empty field inheriting the global Settings → Containers
-// default; a profile `customScript` (advanced escape hatch) always wins. The
+// init, desktop session) with every empty field inheriting the global
+// Settings → Containers default; a profile `customScript` (advanced escape
+// hatch) always wins. A "desktop session" machine adds
+// --wayland-vsock-port + --waypipe-guest-bin and sets WWNP_WAYPIPE_BIN, so
+// wwn-containerd injects the guest waypipe and bridges the container's
+// Wayland session into Wawona as windows. The
 // command runs inside Wawona's bundled terminal (weston-terminal): the
 // terminal spawns the bundled `wawona-container-shell` as its $SHELL, which
 // execs the `container` CLI (Apple Containerization,

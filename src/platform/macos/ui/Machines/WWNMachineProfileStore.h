@@ -38,7 +38,8 @@ extern NSString *const kWWNMachineTypeContainer;
 /// Container machine settings (nil/empty = inherit global Wawona settings).
 /// Keys mirror the cross-platform `containerSettings` JSON object:
 /// runtime, containerRef, entryCommand, notes, memory, shmSize, mounts, ports,
-/// platform, readOnly, remove, kernelPath, initfsPath, vsockPort.
+/// platform, readOnly, remove, kernelPath, initfsPath, vsockPort, desktopSession,
+/// imageArchivePath.
 @property(nonatomic, copy) NSDictionary<NSString *, id> *containerSettings;
 @property(nonatomic, assign) BOOL favorite;
 @property(nonatomic, assign) long long createdAtMs;
