@@ -51,18 +51,51 @@ install, the same remap niri already does. Stub windows make
 
 ## Classic (WindowServer down)
 
-No host Wayland. Always wwn-iland userspace DRM/KMS/GBM:
+No host Wayland for the **session** compositor. That one uses wwn-iland
+userspace DRM/KMS/GBM:
 
 - weston `--backend=drm`
 - niri `NIRI_BACKEND=tty` and `WWN_MODEB_TTY=1`
-- Prefix `DYLD_INSERT_LIBRARIES` from `WWN_MODEB_INSERT` on the compositor
-  exec only, as the **login user**
-- Do not nest. Do not kickstart compositor-host. Do not export insert in the
-  login shell (Apple `/bin/*` is arm64e)
+- Prefix `DYLD_INSERT_LIBRARIES` from `WWN_MODEB_INSERT` on the session
+  compositor exec only, as the **login user**
+- Do not nest the session compositor on Wawona. Do not kickstart
+  compositor-host. Do not export insert in the login shell (Apple `/bin/*`
+  is arm64e)
+
+Inner weston/niri started **inside** that session compositor (terminal,
+fuzzel, panel) are Wayland clients of its listen socket:
+
+- weston `--backend=wayland` with a unique `--socket`
+- niri `NIRI_BACKEND=nested`
+- Keep the caller's `WAYLAND_DISPLAY`. Do not set `WWN_MODEB_TTY`. Do not
+  insert the Mode B dylib.
+
+## Nested compositors inside nested compositors
+
+Required on every path (Aqua nested, Aqua iland DRM weston, Classic DRM):
+
+```text
+Wawona
+  weston (wayland or wwn-iland DRM)
+    weston --backend=wayland
+    niri NIRI_BACKEND=nested
+  niri (nested or Classic tty)
+    niri NIRI_BACKEND=nested
+    weston --backend=wayland
+```
+
+Same as Linux. The inner compositor speaks the same protocols as upstream
+nested weston/niri. Apple mobile in-process `weston_compositor_main` and
+`niri_main` are not re-entrant, so same-compositor doubling needs a second
+process (macOS) or fails closed with a log (iOS). Cross nesting (niri inside
+weston, weston inside niri) is the in-process path.
 
 ## Hard rejects
 
-- Nesting weston/niri after Classic Take Over
+- Nesting the **session** compositor on Wawona's host Wayland after Classic
+  Take Over (there is no host Wayland)
+- Forcing DRM/tty on an inner weston/niri that already has a live parent
+  `WAYLAND_DISPLAY`
 - Forcing DRM/tty on Aqua Machines Start because Desktop Replacement is
   enabled or `WWN_MODEB_TTY` leaked
 - `sudo niri` / `sudo weston` (sudo strips insert; libc `open("/dev/dri")`

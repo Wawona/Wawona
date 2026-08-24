@@ -83,24 +83,11 @@ if [ -z "\$WAWONA_CLI_BIN" ]; then
 fi
 
 MODEB=0
-# Classic Take Over: Apple WindowServer is gone. Nested Wayland cannot work.
-# Do not trust leaked WWN_MODEB_TTY while Aqua is up (that broke Machines
-# Start and CLI weston/niri after Mode B experiments).
+# Classic Take Over: Apple WindowServer is gone. The session compositor
+# uses iland DRM/KMS/GBM. Inner weston/niri still nest as Wayland clients
+# of that compositor. Do not trust leaked WWN_MODEB_TTY while Aqua is up.
 if ! /usr/bin/pgrep -x WindowServer >/dev/null 2>&1; then
   MODEB=1
-fi
-if [ "\$MODEB" -eq 1 ]; then
-  # Classic: iland DRM/KMS/GBM. Do not nest. Do not kickstart compositor-host.
-  # Insert on the compositor exec only (login user).
-  unset WAYLAND_DISPLAY WAYLAND_SOCKET DISPLAY
-  export NIRI_BACKEND=tty
-  export WWN_MODEB_TTY=1
-else
-  unset WWN_MODEB_TTY WWN_MODEB_INSERT
-  case "\${NIRI_BACKEND:-}" in
-    tty) export NIRI_BACKEND=nested ;;
-    "") export NIRI_BACKEND=nested ;;
-  esac
 fi
 
 uid="\$(id -u)"
@@ -115,20 +102,36 @@ _wawona_saved_display="\${WAYLAND_DISPLAY:-}"
 _wawona_saved_socket="\${WAYLAND_SOCKET:-}"
 _wawona_saved_runtime="\${XDG_RUNTIME_DIR:-}"
 _wawona_keep_caller=0
-if [ "\$MODEB" -eq 0 ]; then
-  if [ -n "\$_wawona_saved_socket" ]; then
+if [ -n "\$_wawona_saved_socket" ]; then
+  _wawona_keep_caller=1
+elif [ -n "\$_wawona_saved_display" ]; then
+  _rt="\${_wawona_saved_runtime:-\$runtime_dir_default}"
+  case "\$_wawona_saved_display" in
+    /*) _sock="\$_wawona_saved_display" ;;
+    *) _sock="\$_rt/\$_wawona_saved_display" ;;
+  esac
+  if [ -S "\$_sock" ]; then
     _wawona_keep_caller=1
-  elif [ -n "\$_wawona_saved_display" ]; then
-    _rt="\${_wawona_saved_runtime:-\$runtime_dir_default}"
-    case "\$_wawona_saved_display" in
-      /*) _sock="\$_wawona_saved_display" ;;
-      *) _sock="\$_rt/\$_wawona_saved_display" ;;
-    esac
-    if [ -S "\$_sock" ]; then
-      _wawona_keep_caller=1
-    fi
-    unset _rt _sock
   fi
+  unset _rt _sock
+fi
+if [ "\$_wawona_keep_caller" -eq 1 ]; then
+  # Already a client of weston, niri, or Wawona. Inner compositors nest.
+  export WAWONA_CLI_NESTED_PARENT=1
+  export NIRI_BACKEND=nested
+  unset WWN_MODEB_TTY WWN_MODEB_INSERT
+elif [ "\$MODEB" -eq 1 ]; then
+  unset WAWONA_CLI_NESTED_PARENT
+  unset WAYLAND_DISPLAY WAYLAND_SOCKET DISPLAY
+  export NIRI_BACKEND=tty
+  export WWN_MODEB_TTY=1
+else
+  unset WAWONA_CLI_NESTED_PARENT
+  unset WWN_MODEB_TTY WWN_MODEB_INSERT
+  case "\${NIRI_BACKEND:-}" in
+    tty) export NIRI_BACKEND=nested ;;
+    "") export NIRI_BACKEND=nested ;;
+  esac
 fi
 if [ "\$MODEB" -eq 0 ] && [ "\$_wawona_keep_caller" -eq 0 ] && [ -f "\$runtime_env_file" ]; then
   # shellcheck source=/dev/null
@@ -424,16 +427,16 @@ if [ "\$WAWONA_CLI_NAME" = weston ]; then
       --socket|--socket=*) _wawona_has_socket=1 ;;
     esac
   done
-  if [ "\${MODEB:-0}" -eq 1 ]; then
-    if [ "\$_wawona_has_backend" -eq 0 ]; then
-      set -- --backend=drm --continue-without-input "\$@"
-    fi
-  else
+  if [ "\${WAWONA_CLI_NESTED_PARENT:-0}" = 1 ] || [ "\${MODEB:-0}" -eq 0 ]; then
     if [ "\$_wawona_has_backend" -eq 0 ]; then
       set -- --backend=wayland --shell=desktop-shell.so "\$@"
     fi
     if [ "\$_wawona_has_scale" -eq 0 ]; then
       set -- --scale=1 "\$@"
+    fi
+  else
+    if [ "\$_wawona_has_backend" -eq 0 ]; then
+      set -- --backend=drm --continue-without-input "\$@"
     fi
   fi
   # WESTON_CONFIG_FILE is a basename for XDG search, not a path. Machines
@@ -445,13 +448,18 @@ if [ "\$WAWONA_CLI_NAME" = weston ]; then
   fi
   # Default listen socket is wayland-1 (parent is wayland-0). A leftover
   # lockfile prints "unable to lock lockfile … wayland-1.lock". Unique name
-  # so CLI weston does not collide with Machines --socket=wawona-nested.
-  if [ "\$_wawona_has_socket" -eq 0 ] && [ "\${MODEB:-0}" -eq 0 ]; then
+  # so CLI weston does not collide with Machines --socket=wawona-nested
+  # or with an outer weston/niri.
+  if [ "\$_wawona_has_socket" -eq 0 ] && {
+    [ "\${WAWONA_CLI_NESTED_PARENT:-0}" = 1 ] || [ "\${MODEB:-0}" -eq 0 ]
+  }; then
     set -- --socket="weston-cli-\$\$" "\$@"
   fi
   unset _wawona_has_backend _wawona_has_scale _wawona_has_config _wawona_has_socket _wawona_arg
 fi
-if [ "\${MODEB:-0}" -eq 1 ]; then
+if [ "\${MODEB:-0}" -eq 1 ] && [ "\${WAWONA_CLI_NESTED_PARENT:-0}" != 1 ] && {
+  [ "\$WAWONA_CLI_NAME" = weston ] || [ "\$WAWONA_CLI_NAME" = niri ]
+}; then
   if [ -z "\${WWN_MODEB_INSERT:-}" ] && [ -r /tmp/libwayland-support/modeb-insert ]; then
     WWN_MODEB_INSERT=\$(sed -n '1p' /tmp/libwayland-support/modeb-insert)
     export WWN_MODEB_INSERT
