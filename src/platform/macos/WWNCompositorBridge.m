@@ -108,16 +108,6 @@ extern void WWNCoreSetForceSSDForClientLaunch(void *core, bool enabled);
 extern void WWNCoreSetWindowHostSceneIndependent(void *core, uint64_t window_id,
                                                  bool independent);
 
-#if TARGET_OS_IPHONE
-NSString *const WWNClientWindowSceneActivityType =
-    @"com.aspauldingcode.Wawona.clientWindow";
-NSString *const WWNClientWindowSceneWindowIdKey = @"wwn.windowId";
-
-/// Synthetic host window id for iland DRM/KMS clients (kmscube) that have no
-/// Wayland toplevel. Used only to request a dedicated UIWindowScene on
-/// iPadOS / visionOS so the Metal plate is not buried under Machines UI.
-static const uint64_t kWWNIlandHostSceneWindowId = 0x574E4E494C414E44ULL; // "WNNILAND"
-
 /// Bundled weston demos with a fixed preferred square (flower/smoke 200x200,
 /// simple-shm/simple-egl 250x250). Must never receive host fill configures or
 /// stretch presentation. OWL keeps Client authority, same as weston-flower.
@@ -148,6 +138,16 @@ BOOL WWNWestonDemoPrefersFixedSquare(NSString *clientId, NSString *title) {
          [t containsString:@"flower"] || [t containsString:@"smoke"] ||
          [t containsString:@"clickdot"] || [t containsString:@"eventdemo"];
 }
+
+#if TARGET_OS_IPHONE
+NSString *const WWNClientWindowSceneActivityType =
+    @"com.aspauldingcode.Wawona.clientWindow";
+NSString *const WWNClientWindowSceneWindowIdKey = @"wwn.windowId";
+
+/// Synthetic host window id for iland DRM/KMS clients (kmscube) that have no
+/// Wayland toplevel. Used only to request a dedicated UIWindowScene on
+/// iPadOS / visionOS so the Metal plate is not buried under Machines UI.
+static const uint64_t kWWNIlandHostSceneWindowId = 0x574E4E494C414E44ULL; // "WNNILAND"
 
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
 static BOOL WWNIosBundledClientPrefersFixedSize(NSString *clientId) {
