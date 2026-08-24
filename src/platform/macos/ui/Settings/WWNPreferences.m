@@ -775,34 +775,41 @@ static UIImage *WWNAboutLogo(void) {
            @"Multi-Touch", @"Input method for touch interactions.");
   touchInputItem.options = @[ @"Multi-Touch", @"Touchpad" ];
 
-  BOOL showVirtualCursor =
-      [[NSUserDefaults standardUserDefaults] boolForKey:kWWNPrefsRenderMacOSPointer];
   WWNSettingItem *showVirtualCursorItem =
 #if TARGET_OS_IPHONE
       ITEM(@"Show Virtual Cursor", @"RenderMacOSPointer", WSettingSwitch, @NO,
-           @"Draws a host overlay pointer in touchpad mode.");
+           @"Host overlay in touchpad mode for non-compositor clients only. "
+           @"Nested niri/weston hide the overlay and draw their own cursor.");
 #else
       ITEM(@"Show Virtual Cursor", @"RenderMacOSPointer", WSettingSwitch, @NO,
-           @"Enables virtual cursor control (host overlay or real macOS cursor).");
+           @"Host overlay or real macOS cursor for non-compositor clients "
+           @"only. Nested niri/weston hide and grab the host pointer.");
 #endif
+#if !TARGET_OS_IPHONE
+  BOOL showVirtualCursor =
+      [[NSUserDefaults standardUserDefaults] boolForKey:kWWNPrefsRenderMacOSPointer];
   WWNSettingItem *nestedCursorItem = ITEM(
       @"Nested Compositor Cursor", kWWNPrefsNestedCompositorCursor,
       WSettingPopup, @"virtual",
-      @"When using nested compositors, grab the virtual pointer or the real "
-      @"macOS / host cursor. Requires Show Virtual Cursor.");
-  nestedCursorItem.options =
-#if TARGET_OS_IPHONE
-      @[ @"Virtual Pointer", @"Host Cursor" ];
-#else
-      @[ @"Virtual Pointer", @"macOS Cursor" ];
-#endif
+      @"Leftover. Nested and iland DRM compositors hide and grab the host "
+      @"pointer and draw their own cursor. Show Virtual Cursor is only for "
+      @"non-compositor clients.");
+  nestedCursorItem.options = @[ @"Virtual Pointer", @"macOS Cursor" ];
   nestedCursorItem.optionValues = @[ @"virtual", @"host" ];
   nestedCursorItem.interactive = showVirtualCursor;
+#endif
 
-  input.items = @[
-    showVirtualCursorItem,
-    nestedCursorItem,
-    touchInputItem,
+  input.items =
+#if TARGET_OS_IPHONE
+      @[
+        showVirtualCursorItem,
+        touchInputItem,
+#else
+      @[
+        showVirtualCursorItem,
+        nestedCursorItem,
+        touchInputItem,
+#endif
     ITEM(@"Resize Display for Virtual Keyboard",
          @"resizeDisplayForVirtualKeyboard", WSettingSwitch, @YES,
          @"host IME + Wawona extra keyboard."),

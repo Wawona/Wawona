@@ -277,6 +277,30 @@ extension MachineProfile {
             || cid.contains("weston-backend=wayland")
     }
 
+    /// Nested Wayland compositor that paints `wl_pointer` itself (weston, niri,
+    /// sway, labwc, …). Host and virtual cursor overlays must stay hidden.
+    /// Keep in sync with `WWNMachineProfileStore
+    /// profileIndicatesNestedWithNativeClientId:customCommand:`.
+    /// Not Swinging Bridge (`isNestedCompositorClient` is weston-only).
+    public var nestedCompositorDrawsOwnCursor: Bool {
+        guard type == .native else { return false }
+        let cid = resolvedNativeClientId
+        if cid == "weston" || cid.hasSuffix("/weston") { return true }
+        if cid == "niri" || cid.hasSuffix("/niri") { return true }
+        if cid != "custom" { return false }
+        let cmd = remoteCommand.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if cmd.isEmpty { return false }
+        if cmd.contains("weston-simple-shm") || cmd.contains("weston-terminal") { return false }
+        if cmd == "foot" || cmd.hasSuffix("/foot") || cmd.hasSuffix(" foot") { return false }
+        let nestedHints = [
+            "sway", "cage", "hyprland", "wayfire", "labwc",
+            "cosmic-comp", "cosmic_comp", "gnome-shell", "mutter", "kwin",
+            "niri", "river", "tinywl", "wf-panel",
+        ]
+        if nestedHints.contains(where: { cmd.contains($0) }) { return true }
+        return cmd.contains("weston")
+    }
+
     /// The Wawona Swinging Bridge desktop machine may be selected **only** when it
     /// is a local-only, nested-Weston native machine. Mirrors the Kotlin
     /// `MachineProfile.isAppBridgeEligible` and the ObjC

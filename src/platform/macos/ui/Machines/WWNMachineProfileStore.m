@@ -637,20 +637,51 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   return NO;
 }
 
++ (void)resolvedNativeIdentityForProfile:(WWNMachineProfile *)profile
+                                clientId:(NSString **)outCid
+                           customCommand:(NSString **)outCmd {
+  NSString *cid = @"";
+  NSString *cmd = @"";
+  if (profile) {
+    NSDictionary *ro =
+        [profile.runtimeOverrides isKindOfClass:[NSDictionary class]]
+            ? profile.runtimeOverrides
+            : @{};
+    NSDictionary *so =
+        [profile.settingsOverrides isKindOfClass:[NSDictionary class]]
+            ? profile.settingsOverrides
+            : @{};
+    id bundled = ro[@"bundledAppID"];
+    if ([bundled isKindOfClass:[NSString class]] &&
+        [(NSString *)bundled length] > 0) {
+      cid = (NSString *)bundled;
+    } else {
+      id native = so[@"NativeClientId"];
+      if ([native isKindOfClass:[NSString class]] &&
+          [(NSString *)native length] > 0) {
+        cid = (NSString *)native;
+      }
+    }
+    id custom = so[@"NativeCustomCommand"];
+    if ([custom isKindOfClass:[NSString class]]) {
+      cmd = (NSString *)custom;
+    }
+  }
+  if (outCid) {
+    *outCid = cid;
+  }
+  if (outCmd) {
+    *outCmd = cmd;
+  }
+}
+
 + (BOOL)profileIndicatesNestedCompositor:(WWNMachineProfile *)profile {
   if (![profile.type isEqualToString:kWWNMachineTypeNative]) {
     return NO;
   }
-  NSDictionary *so =
-      [profile.settingsOverrides isKindOfClass:[NSDictionary class]]
-          ? profile.settingsOverrides
-          : @{};
-  NSString *cid = [so[@"NativeClientId"] isKindOfClass:[NSString class]]
-                      ? so[@"NativeClientId"]
-                      : @"";
-  NSString *cmd = [so[@"NativeCustomCommand"] isKindOfClass:[NSString class]]
-                      ? so[@"NativeCustomCommand"]
-                      : @"";
+  NSString *cid = nil;
+  NSString *cmd = nil;
+  [self resolvedNativeIdentityForProfile:profile clientId:&cid customCommand:&cmd];
   return [self profileIndicatesNestedWithNativeClientId:cid customCommand:cmd];
 }
 
@@ -673,16 +704,9 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   if (![profile.type isEqualToString:kWWNMachineTypeNative]) {
     return NO;
   }
-  NSDictionary *so =
-      [profile.settingsOverrides isKindOfClass:[NSDictionary class]]
-          ? profile.settingsOverrides
-          : @{};
-  NSString *cid = [so[@"NativeClientId"] isKindOfClass:[NSString class]]
-                      ? so[@"NativeClientId"]
-                      : @"";
-  NSString *cmd = [so[@"NativeCustomCommand"] isKindOfClass:[NSString class]]
-                      ? so[@"NativeCustomCommand"]
-                      : @"";
+  NSString *cid = nil;
+  NSString *cmd = nil;
+  [self resolvedNativeIdentityForProfile:profile clientId:&cid customCommand:&cmd];
   return [self nativeClientIdIndicatesModeBOwnDisplay:cid customCommand:cmd];
 }
 
@@ -1030,44 +1054,42 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   return [self resolvedNestedCompositorCursorForProfile:profile];
 }
 
-+ (BOOL)resolvedShowHostCursorActive {
-  if (![self resolvedRenderMacOSPointerActive]) {
-    return NO;
-  }
++ (nullable WWNMachineProfile *)activeProfile {
   NSString *activeId = [self activeMachineId];
-  WWNMachineProfile *profile =
-      activeId.length > 0 ? [self profileById:activeId] : nil;
-  BOOL nested =
-      profile != nil && [self profileIndicatesNestedCompositor:profile];
-  if (!nested) {
-#if TARGET_OS_IPHONE
-    return NO;
-#else
-    return YES;
-#endif
+  if (activeId.length == 0) {
+    return nil;
   }
-  return [[self resolvedNestedCompositorCursorForProfile:profile]
-      isEqualToString:@"host"];
+  return [self profileById:activeId];
+}
+
++ (BOOL)resolvedShowHostCursorActive {
+  WWNMachineProfile *profile = [self activeProfile];
+  if (profile && [self profileIndicatesNestedCompositor:profile]) {
+    return NO;
+  }
+  if (![self resolvedRenderMacOSPointerForProfile:profile]) {
+    return NO;
+  }
+#if TARGET_OS_IPHONE
+  return NO;
+#else
+  return YES;
+#endif
 }
 
 + (BOOL)resolvedShowVirtualPointerActive {
-  if (![self resolvedRenderMacOSPointerActive]) {
+  WWNMachineProfile *profile = [self activeProfile];
+  if (profile && [self profileIndicatesNestedCompositor:profile]) {
     return NO;
   }
-  NSString *activeId = [self activeMachineId];
-  WWNMachineProfile *profile =
-      activeId.length > 0 ? [self profileById:activeId] : nil;
-  BOOL nested =
-      profile != nil && [self profileIndicatesNestedCompositor:profile];
-  if (!nested) {
+  if (![self resolvedRenderMacOSPointerForProfile:profile]) {
+    return NO;
+  }
 #if TARGET_OS_IPHONE
-    return YES;
+  return YES;
 #else
-    return NO;
+  return NO;
 #endif
-  }
-  return [[self resolvedNestedCompositorCursorForProfile:profile]
-      isEqualToString:@"virtual"];
 }
 
 + (BOOL)resolvedAlwaysOnTopForProfile:(WWNMachineProfile *)profile {

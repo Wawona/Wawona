@@ -473,25 +473,30 @@ struct WWNMachineEditorView: View {
       #if os(iOS) || os(tvOS)
       Toggle("Respect Safe Area", isOn: $respectSafeArea)
       #endif
-      Toggle("Show Virtual Cursor", isOn: $renderMacOSPointer)
-      labeledField("Nested Compositor Cursor") {
-        Picker("", selection: $nestedCompositorCursor) {
-          Text("Virtual Pointer").tag("virtual")
-          #if os(macOS)
-          Text("macOS Cursor").tag("host")
-          #else
-          Text("Host Cursor").tag("host")
-          #endif
+      if selectedClientDrawsOwnCursor {
+        Text("Nested compositor (weston, niri, or custom) draws its own cursor. The host virtual pointer stays hidden.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .padding(.leading, 24)
+      } else {
+        Toggle("Show Virtual Cursor", isOn: $renderMacOSPointer)
+        #if os(macOS)
+        labeledField("Nested Compositor Cursor") {
+          Picker("", selection: $nestedCompositorCursor) {
+            Text("Virtual Pointer").tag("virtual")
+            Text("macOS Cursor").tag("host")
+          }
+          .wwnPlatformPickerStyle()
+          .labelsHidden()
+          .disabled(!renderMacOSPointer)
         }
-        .wwnPlatformPickerStyle()
-        .labelsHidden()
-        .disabled(!renderMacOSPointer)
+        #endif
+        Text("Nested and iland DRM compositors hide and grab the host pointer. They draw their own cursor. Show Virtual Cursor is only for non-compositor clients.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .opacity(renderMacOSPointer ? 1 : 0.45)
+          .padding(.leading, 24)
       }
-      Text("When nested compositors run, grab the virtual pointer or the real host cursor. Requires Show Virtual Cursor.")
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .opacity(renderMacOSPointer ? 1 : 0.45)
-        .padding(.leading, 24)
       labeledField("Touch Input Type") {
         Picker("", selection: $touchInputType) {
           Text("Multi-Touch").tag("Multi-Touch")
@@ -1097,6 +1102,14 @@ struct WWNMachineEditorView: View {
       RoundedRectangle(cornerRadius: 14, style: .continuous)
         .fill(Color.secondary.opacity(0.08))
     )
+  }
+
+  private var selectedClientDrawsOwnCursor: Bool {
+    type == kWWNMachineTypeNative &&
+      WWNMachineProfileStore.profileIndicatesNested(
+        nativeClientId: selectedClientId,
+        customCommand: customCommand
+      )
   }
 
   @ViewBuilder

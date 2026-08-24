@@ -191,17 +191,24 @@ public struct MachineSettingsView: View {
     @ViewBuilder
     private func inputSection() -> some View {
         Section("Input") {
-            Toggle("Show Virtual Cursor", isOn: renderMacOSPointerBinding)
-            Picker("Nested Compositor Cursor", selection: nestedCompositorCursorBinding) {
-                Text("Virtual Pointer").tag("virtual")
+            if draft?.nestedCompositorDrawsOwnCursor == true {
+                Text("Nested compositor (weston, niri, or custom) draws its own cursor. The host virtual pointer stays hidden in Multi-Touch and Touchpad. Show Virtual Cursor applies only to non-compositor clients.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else {
+                Toggle("Show Virtual Cursor", isOn: renderMacOSPointerBinding)
                 #if os(macOS)
-                Text("macOS Cursor").tag("host")
-                #else
-                Text("Host Cursor").tag("host")
+                Picker("Nested Compositor Cursor", selection: nestedCompositorCursorBinding) {
+                    Text("Virtual Pointer").tag("virtual")
+                    Text("macOS Cursor").tag("host")
+                }
+                .wwnDisclosurePicker()
+                .disabled(!(draft?.runtimeOverrides.renderMacOSPointer ?? preferences.renderMacOSPointer))
                 #endif
+                Text("Nested and iland DRM compositors hide and grab the host pointer. They draw their own cursor. Show Virtual Cursor is only for non-compositor clients.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
-            .wwnDisclosurePicker()
-            .disabled(!(draft?.runtimeOverrides.renderMacOSPointer ?? preferences.renderMacOSPointer))
             #if os(tvOS)
             Text("Touch Input Type: Touchpad (tvOS)")
                 .foregroundStyle(.secondary)
@@ -306,8 +313,11 @@ public struct MachineSettingsView: View {
             Text("OpenGL Driver: \(resolved.openGLDriver)")
             Text("DMABUF: \(resolved.dmabufEnabled ? "Enabled" : "Disabled")")
             Text("Force SSD: \(resolved.forceSSD ? "Enabled" : "Disabled")")
-            Text("Show Virtual Cursor: \(resolved.renderMacOSPointer ? "Enabled" : "Disabled")")
-            Text("Nested Compositor Cursor: \(resolved.nestedCompositorCursor)")
+            if profile.nestedCompositorDrawsOwnCursor {
+                Text("Host cursor overlay: Hidden (nested compositor draws its own)")
+            } else {
+                Text("Show Virtual Cursor: \(resolved.renderMacOSPointer ? "Enabled" : "Disabled")")
+            }
             Text("Auto Scale: \(resolved.autoScale ? "Enabled" : "Disabled")")
             Text("HDR: \(resolved.colorOperations ? "Enabled" : "Disabled")")
             Text("Display: \(resolved.waylandDisplay)")

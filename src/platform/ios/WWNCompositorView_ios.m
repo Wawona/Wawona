@@ -532,6 +532,13 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   WWNTouchInputModeTouchpad = 1,
 };
 
+@interface WWNCompositorView_ios ()
+- (void)_hideHostCursorOverlay;
+- (void)_syncHostCursorOverlay;
+- (void)_hostCursorPrefsDidChange:(NSNotification *)note;
+- (BOOL)_hostVirtualCursorOverlayAllowed;
+@end
+
 #if !TARGET_OS_TV
 @interface WWNCompositorView_ios () <UIPointerInteractionDelegate>
 @end
@@ -715,6 +722,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     _cursorLayer.zPosition = 10000; // always on top
     _cursorLayer.hidden = YES;
     [self.layer addSublayer:_cursorLayer];
+    [self _syncHostCursorOverlay];
 
     _ilandPresenter = nil;
     _lastPresentToken = 0;
@@ -771,6 +779,12 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
       [self addGestureRecognizer:hover];
     }
 #endif
+
+    [[NSNotificationCenter defaultCenter]
+        addObserver:self
+           selector:@selector(_hostCursorPrefsDidChange:)
+               name:NSUserDefaultsDidChangeNotification
+             object:nil];
 
 #if !TARGET_OS_TV
     NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
@@ -2473,12 +2487,34 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   _cursorHotspotY = kTouchpadCursorHotspotY;
 }
 
-- (void)_ensureTouchpadCursorVisible {
-  if (_currentInputMode != WWNTouchInputModeTouchpad) {
-    return;
+- (void)_hideHostCursorOverlay {
+  _cursorLayer.contents = nil;
+  _cursorLayer.hidden = YES;
+  [self _broadcastCursorStateToExternalDisplay];
+}
+
+- (BOOL)_hostVirtualCursorOverlayAllowed {
+  return [WWNMachineProfileStore resolvedShowVirtualPointerActive];
+}
+
+- (void)_syncHostCursorOverlay {
+  WWNTouchInputMode mode =
+      (_activeTouchCount > 0) ? _currentInputMode : [self _readInputMode];
+  if (mode != WWNTouchInputModeTouchpad ||
+      ![self _hostVirtualCursorOverlayAllowed]) {
+    [self _hideHostCursorOverlay];
   }
-  if (![WWNMachineProfileStore resolvedShowVirtualPointerActive]) {
-    _cursorLayer.hidden = YES;
+}
+
+- (void)_hostCursorPrefsDidChange:(NSNotification *)note {
+  (void)note;
+  [self _syncHostCursorOverlay];
+}
+
+- (void)_ensureTouchpadCursorVisible {
+  if (_currentInputMode != WWNTouchInputModeTouchpad ||
+      ![self _hostVirtualCursorOverlayAllowed]) {
+    [self _hideHostCursorOverlay];
     return;
   }
   if (!_cursorLayer.contents) {
@@ -4537,9 +4573,8 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
                    height:(uint32_t)height
                  hotspotX:(float)hotspotX
                  hotspotY:(float)hotspotY {
-  if (![WWNMachineProfileStore resolvedShowVirtualPointerActive]) {
-    _cursorLayer.contents = nil;
-    _cursorLayer.hidden = YES;
+  if (![self _hostVirtualCursorOverlayAllowed]) {
+    [self _hideHostCursorOverlay];
     return;
   }
 

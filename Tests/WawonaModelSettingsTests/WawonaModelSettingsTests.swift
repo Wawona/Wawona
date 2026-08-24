@@ -186,3 +186,27 @@ func compositorBackendMachineOverride() {
     let resolved = preferences.resolvedSettings(for: machine)
     #expect(resolved.compositorBackend == "drm")
 }
+
+@Test
+func nestedCompositorDrawsOwnCursorForWestonAndNiri() {
+    let weston = MachineProfile(
+        name: "Weston",
+        type: .native,
+        runtimeOverrides: MachineRuntimeOverrides(bundledAppID: "weston")
+    )
+    let niri = MachineProfile(
+        name: "Niri",
+        type: .native,
+        runtimeOverrides: MachineRuntimeOverrides(bundledAppID: "niri")
+    )
+    let terminal = MachineProfile(
+        name: "Term",
+        type: .native,
+        runtimeOverrides: MachineRuntimeOverrides(bundledAppID: "weston-terminal")
+    )
+    #expect(weston.nestedCompositorDrawsOwnCursor)
+    #expect(niri.nestedCompositorDrawsOwnCursor)
+    #expect(!terminal.nestedCompositorDrawsOwnCursor)
+    #expect(weston.isNestedCompositorClient)
+    #expect(!niri.isNestedCompositorClient)
+}

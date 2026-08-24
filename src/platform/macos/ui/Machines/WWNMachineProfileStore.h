@@ -64,14 +64,17 @@ extern NSString *const kWWNMachineTypeContainer;
 + (BOOL)resolvedRenderMacOSPointerForProfile:
     (nullable WWNMachineProfile *)profile;
 + (BOOL)resolvedRenderMacOSPointerActive;
-/// @"virtual" or @"host". Which cursor nested compositors grab when virtual
-/// cursor is enabled. Falls back to global NestedCompositorCursor.
+/// Leftover @"virtual" / @"host" pref. Nested weston/niri ignore this and
+/// always hide the host overlay. Non-compositor clients do not use it.
 + (NSString *)resolvedNestedCompositorCursorForProfile:
     (nullable WWNMachineProfile *)profile;
 + (NSString *)resolvedNestedCompositorCursorActive;
 /// Effective host (macOS NSCursor) visibility for the active machine.
+/// Nested compositors (weston, niri, …) always return NO. They draw wl_pointer.
 + (BOOL)resolvedShowHostCursorActive;
 /// Effective virtual pointer overlay visibility for the active machine.
+/// Nested compositors always return NO, including iOS-family Touchpad mode
+/// and Show Virtual Cursor on. Non-compositor clients follow that toggle.
 + (BOOL)resolvedShowVirtualPointerActive;
 /// macOS-only per-machine window override: keep this machine's window above
 /// all other windows, even when unfocused. Defaults to NO. There is no
