@@ -145,7 +145,7 @@ does the same on MacBook keyboards (Fn remaps Backspace to Delete).
 Arrow keys, Page Up, Page Down, Home, and End reach text VTs as CSI
 (MacBook: Fn+arrows is PgUp/PgDn/Home/End). Ctrl+Option+F7-F9 overlay
 kmscube, gbm-es2-demo, and vkcube-kms. Those clients, plus Wayland
-opengl-cube and vkcube, draw a corner status hub: fps, kms/drm/gbm,
+opengl-cube and vkcube, draw a corner status hub: client name, fps, kms/drm/gbm,
 OpenGL vs Vulkan, and the live backend (ANGLE, MoltenVK, KosmicKrisp).
 
 Do not put VT switching in iland or in L4 Wawona besides launching `igettyd`
