@@ -28,8 +28,11 @@ sudo "$(nix build --no-link --print-out-paths \
 # SIP fully disabled (Settings → Desktop shows Fully Disabled)
 csrutil status | head -1
 
-# Staged helper must refuse restore_watchdogd unless Classic unloaded
+# Staged helper must refuse restore_watchdogd unless Classic unloaded,
+# and must not kickstart Path B on Aqua restore (2026-08-23 timeout).
 grep -q 'skip restore_watchdogd' \
+  "/Library/Application Support/Wawona/run-modeb.sh"
+grep -q 'WWN_MODEB_WD=pathb-no-kickstart-after-classic' \
   "/Library/Application Support/Wawona/run-modeb.sh"
 ```
 
@@ -46,10 +49,10 @@ Or one-shot: `Wawona --mode-b-probe --machine <id-or-name>`.
 
 ## 1. Arm Path B (preferred)
 
-Product path: Settings → Desktop → **Prepare this Mac** (or
-`Wawona --mode-b-prepare`). That runs bundled `claim-install --path-b` with
-an administrator prompt, then the native Restart sheet. It does not Take
-Over.
+Product path: Settings → Desktop → **Enable Desktop Replacement** (or
+`Wawona --mode-b-prepare`). That checks coverage, heals if needed, runs
+bundled `claim-install --path-b` with an administrator prompt, then the
+native Restart sheet. It does not Take Over.
 
 Operator path, from a desktop-host app or nix package that contains `bin/` +
 `lib/hook`:
@@ -82,9 +85,9 @@ sudo …/wwn-iowatchdog-claim-install --doctor
 
 ## 4. Classic Take Over
 
-1. Settings → Desktop → IOWatchdog ACK shows Path B sticky (+ live Disable).
+1. Settings → Desktop → Enable is on and Status is Ready.
 2. Desktop machine = weston (CLI or Settings).
-3. **Take Over Screen Now** → screen owned ≥60s, no panic.
+3. **Replace now** → screen owned ≥60s, no panic.
 4. Logout → Aqua + WindowServer + coverage; `--doctor` green.
 
 ## 5. Refuse path

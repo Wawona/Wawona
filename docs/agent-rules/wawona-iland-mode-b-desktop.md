@@ -58,14 +58,15 @@ only**. Not Linux. Not App Store iOS family.
 2. If SIP is **not** fully disabled → Mode A only; ignore / clear
    `DesktopReplacementEnabled`.
 3. If SIP allows **and** Settings → Desktop → Enable Desktop Replacement is on
-   **and** the user chooses Take Over Screen Now → Mode B via
+   **and** the user chooses Replace now → Mode B via
    `WWNDesktopReplacementController` (privileged insert of bundled dylib).
    First enable installs sudoers NOPASSWD for the root helper. It does not
    install a login LaunchAgent. Take Over is per session. `--compositor-host`
    must never Classic-engage. Disable kernel
    IOWatchdog (`wwn-iowatchdog`) first, then unload watchdogd, then
    WindowServer. Abort if IOWatchdog disable fails. Never
-   `launchctl kickstart -k` watchdogd. Probe may inject while Aqua stays
+   `launchctl kickstart -k` watchdogd. After Classic, `restore_watchdogd`
+   must not kickstart Path B (2026-08-23 timeout). Probe may inject while Aqua stays
    up. Prefix `DYLD_INSERT_LIBRARIES` on the niri/weston exec only.
 4. Otherwise → Mode A.
 
@@ -94,7 +95,7 @@ Never invent CSR_* syscalls; stay on `csrutil status` string matching.
 - **macOS 26 watchdog safety:** `wawona-mode-b-watchdog-safety` (never Take
   Over / never LLDB MCP on `watchdogd`).
 - SIP + prefs UI: `WWNSipStatus.*`, `WWNPreferences.m` Desktop section
-  (**Prepare this Mac** stages helper + Path B; Take Over stays gated).
+  (**Enable Desktop Replacement** runs doctor / heal / Path B; Replace now stays gated).
 - Engage/disengage: `WWNDesktopReplacementController.*`,
   `WWNMachineSessionBridge.m`. Default `nix run .#install` skips Mode B
   restage. `WAWONA_MODEB_STAGE=1 nix run .#install` (or `Wawona --mode-b-stage`)

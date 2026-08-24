@@ -71,11 +71,12 @@ static NSString *const kWWNModeBFbReadyPath =
 
 /** Classic Take Over needs Path B (preferred) or Path A sticky claim-ok. */
 static NSString *WWNModeBTakeOverNeedsAckMessage(void) {
-  return @"Desktop Take Over needs the watchdog safety layer first.\n\n"
-         @"Use Prepare this Mac in Settings (or the menubar Desktop play "
-         @"button). Wawona installs Path B, then asks you to restart. After "
-         @"you log back in, use Take Over Screen Now.\n\n"
-         @"Prepare does not take over the screen. Take Over stays blocked "
+  return @"Desktop Replacement needs the watchdog safety layer first.\n\n"
+         @"Turn on Enable Desktop Replacement. Wawona checks coverage, "
+         @"restores Apple coverage if it is unhealthy, installs Path B, "
+         @"and asks you to restart. After you log back in, use Replace "
+         @"now.\n\n"
+         @"Enable does not take over the screen. Replace now stays blocked "
          @"until Path B is live.";
 }
 
@@ -381,7 +382,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   if (live) {
     return @"Live Disable present but claim-ok missing; re-arm Path B.";
   }
-  return @"Missing: use Prepare this Mac, then restart.";
+  return @"Missing: turn on Enable Desktop Replacement, then restart.";
 }
 
 - (NSString *)modeBPlistPath {
@@ -402,7 +403,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
 
 - (NSString *)modeBSudoersBodyForUser:(NSString *)user {
   /*
-   * NOPASSWD for one root-owned helper so Take Over Screen Now can
+   * NOPASSWD for one root-owned helper so Replace now can
    * `sudo -n` without a second password prompt. Do not wire a login
    * LaunchAgent to this rule. Pin the helper path and wwn-iowatchdog.
    * Spaces in Application Support must be escaped.
@@ -415,12 +416,14 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"# Installed by Settings. Do not edit by hand.\n"
                        @"Defaults:%@ !requiretty\n"
                        @"%@ ALL=(root) NOPASSWD: %@, %@ --restore-aqua, "
-                       @"%@ --kill-compositor, %@ --uninstall, %@ --ack-status\n"
+                       @"%@ --kill-compositor, %@ --exec-compositor, "
+                       @"%@ --uninstall, %@ --ack-status\n"
                        @"# wwn-iowatchdog is NOT NOPASSWD. Take Over runs it\n"
                        @"# from the root helper only. Never grant passwordless\n"
                        @"# disable/enable (lldb attach paniced 2026-08-20).\n",
                        user, user, helperEscaped, helperEscaped,
-                       helperEscaped, helperEscaped, helperEscaped];
+                       helperEscaped, helperEscaped, helperEscaped,
+                       helperEscaped];
 }
 
 - (BOOL)ensureDesktopMachineSelected:(NSError *_Nullable *_Nullable)error {
@@ -573,6 +576,8 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"DYLD_FRAMEWORK_PATH DYLD_FALLBACK_LIBRARY_PATH\n"];
   [script appendString:@"# WWN_MODEB_INSERT=compositor-only\n"];
   [script appendString:@"# WWN_MODEB_WD=iowatchdog-then-unload\n"];
+  [script appendString:@"# WWN_MODEB_WD=pathb-no-kickstart-after-classic\n"];
+  [script appendString:@"# WWN_MODEB_EXEC=compositor\n"];
   [script appendFormat:@"# WWN_WAWONA_STORE=%@\n",
                        [[NSBundle mainBundle] bundlePath] ?: @""];
   [script appendFormat:@"# WWN_COMPOSITOR=%@\n", executablePath ?: @""];
@@ -592,6 +597,41 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        [self wwnShellQuote:kWWNModeBPersistLogPath]];
   [script appendFormat:@"WS_PLIST=%@\n", qWsPlist];
   [script appendFormat:@"WD_PLIST=%@\n", qWdPlist];
+  [script appendFormat:@"WWN_MODEB_DYLIB=%@\n", [self wwnShellQuote:dylib]];
+  {
+    NSString *fw =
+        [[[NSBundle mainBundle] bundlePath]
+            stringByAppendingPathComponent:@"Contents/Frameworks"];
+    NSString *eglAnglePath =
+        [fw stringByAppendingPathComponent:@"libEGL_angle.dylib"];
+    NSString *eglPath =
+        [fw stringByAppendingPathComponent:@"libEGL.dylib"];
+    NSString *glesPath =
+        [fw stringByAppendingPathComponent:@"libGLESv2.dylib"];
+    NSString *eglForModeB = nil;
+    if (eglAnglePath.length > 0 &&
+        [[NSFileManager defaultManager] fileExistsAtPath:eglAnglePath]) {
+      eglForModeB = eglAnglePath;
+    } else if (eglPath.length > 0 &&
+               [[NSFileManager defaultManager] fileExistsAtPath:eglPath]) {
+      eglForModeB = eglPath;
+    }
+    BOOL haveEgl = eglForModeB.length > 0;
+    BOOL haveGles = glesPath.length > 0 &&
+                    [[NSFileManager defaultManager] fileExistsAtPath:glesPath];
+    if (haveEgl && haveGles) {
+      [script appendFormat:@"WWN_MODEB_INSERT=\"$WWN_MODEB_DYLIB:%@:%@\"\n",
+                           eglForModeB, glesPath];
+    } else if (haveGles) {
+      [script appendFormat:@"WWN_MODEB_INSERT=\"$WWN_MODEB_DYLIB:%@\"\n",
+                           glesPath];
+    } else if (haveEgl) {
+      [script appendFormat:@"WWN_MODEB_INSERT=\"$WWN_MODEB_DYLIB:%@\"\n",
+                           eglForModeB];
+    } else {
+      [script appendString:@"WWN_MODEB_INSERT=\"$WWN_MODEB_DYLIB\"\n"];
+    }
+  }
   [script appendString:@""
                        @"wwn_log() {\n"
                        @"  line=$(printf '%s %s' \"$(date '+%Y-%m-%d %H:%M:%S')\" \"$*\")\n"
@@ -704,18 +744,10 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"  if [ -f /var/db/wwn-iowatchdog/claim-ok ] || "
                        @"[ -f /Library/LaunchDaemons/com.aspauldingcode.wwn-iowatchdog-pathb.plist ] || "
                        @"[ -f /Library/LaunchDaemons/com.aspauldingcode.wwn-iowatchdog-claim.plist ]; then\n"
-                       @"    wwn_log \"Path A/B sticky: refuse Apple enable / "
-                       @"iowatchdog enable; re-bootstrap Path B only\"\n"
-                       @"    if [ -f /Library/LaunchDaemons/"
-                       @"com.aspauldingcode.wwn-iowatchdog-pathb.plist ]; then\n"
-                       @"      /bin/launchctl bootstrap system "
-                       @"/Library/LaunchDaemons/com.aspauldingcode.wwn-iowatchdog-pathb.plist "
-                       @">/dev/null 2>&1 || true\n"
-                       @"      /bin/launchctl kickstart "
-                       @"system/com.aspauldingcode.wwn-iowatchdog-pathb "
-                       @">/dev/null 2>&1 || true\n"
-                       @"      wwn_log \"Path B bootstrap after Classic\"\n"
-                       @"    fi\n"
+                       @"    wwn_log \"Path A/B sticky: refuse Apple enable, "
+                       @"iowatchdog enable, and Path B kickstart after Classic "
+                       @"(2026-08-23: kickstart re-armed kernel monitoring, "
+                       @"8 checkins then 92s timeout)\"\n"
                        @"    rm -f /tmp/libwayland-support/wawona-unloaded-watchdogd\n"
                        @"    return 0\n"
                        @"  fi\n"
@@ -860,10 +892,49 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"  restore_aqua\n"
                        @"  exit 0\n"
                        @"fi\n"
+                       @"if [ \"${1-}\" = \"--exec-compositor\" ]; then\n"
+                       @"  shift\n"
+                       @"  if [ \"${1-}\" = \"--\" ]; then shift; fi\n"
+                       @"  if [ $# -lt 1 ]; then\n"
+                       @"    echo \"usage: run-modeb.sh --exec-compositor -- "
+                       @"<niri|weston|...>\" >&2\n"
+                       @"    exit 2\n"
+                       @"  fi\n"
+                       @"  wspid=$(/bin/launchctl print "
+                       @"system/com.apple.WindowServer 2>/dev/null | "
+                       @"awk '/[[:space:]]pid =/{print $3; exit}')\n"
+                       @"  if [ -n \"$wspid\" ]; then\n"
+                       @"    wwn_log \"exec-compositor refused: WindowServer "
+                       @"pid=$wspid\"\n"
+                       @"    echo \"Classic compositor exec refused: "
+                       @"WindowServer is up. Use Replace now first.\" >&2\n"
+                       @"    exit 1\n"
+                       @"  fi\n"
+                       @"  base=$(basename \"$1\")\n"
+                       @"  case \"$base\" in\n"
+                       @"    niri|weston|kmscube|gbm-es2-demo|gbm_es2_demo|"
+                       @"vkcube-kms) ;;\n"
+                       @"    *)\n"
+                       @"      wwn_log \"exec-compositor refused binary=$base\"\n"
+                       @"      echo \"exec-compositor: refused $base\" >&2\n"
+                       @"      exit 1\n"
+                       @"      ;;\n"
+                       @"  esac\n"
+                       @"  if [ -z \"$WWN_MODEB_INSERT\" ]; then\n"
+                       @"    echo \"exec-compositor: WWN_MODEB_INSERT unset\" >&2\n"
+                       @"    exit 1\n"
+                       @"  fi\n"
+                       @"  unset WAYLAND_DISPLAY WAYLAND_SOCKET DISPLAY\n"
+                       @"  export WWN_MODEB_TTY=1 NIRI_BACKEND=tty\n"
+                       @"  export DYLD_INSERT_LIBRARIES=\"$WWN_MODEB_INSERT\"\n"
+                       @"  wwn_log \"exec-compositor: $*\"\n"
+                       @"  exec \"$@\"\n"
+                       @"fi\n"
                        @"if [ \"${1-}\" = \"--ack-status\" ] || "
                        @"[ \"${1-}\" = \"--ready\" ]; then\n"
-                       @"  # Same LIVE_DIS as Classic: Path B sock done=1.\n"
-                       @"  # Marker alone is not live while pathb plist exists.\n"
+                       @"  # Same LIVE_DIS as Classic: Path B sock done=1, or\n"
+                       @"  # Classic leftover marker while the Path B job is\n"
+                       @"  # not running (kernel Disable stays sticky).\n"
                        @"  CLAIM=$(cat \"$CLAIM_OK\" 2>/dev/null | tr '\\n' ' ')\n"
                        @"  PATHB_PLIST=0\n"
                        @"  if [ -f /Library/LaunchDaemons/"
@@ -885,8 +956,12 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"  fi\n"
                        @"  LIVE=0\n"
                        @"  case \"$SOCK_ST\" in *done=1*) LIVE=1 ;; esac\n"
-                       @"  if [ \"$LIVE\" = 0 ] && [ \"$MARKER\" = 1 ] && "
-                       @"[ \"$PATHB_PLIST\" != 1 ]; then LIVE=1; fi\n"
+                       @"  if [ \"$LIVE\" = 0 ] && [ \"$MARKER\" = 1 ]; then\n"
+                       @"    PATHB_PID=$(/bin/launchctl print "
+                       @"system/com.aspauldingcode.wwn-iowatchdog-pathb "
+                       @"2>/dev/null | awk '/[[:space:]]pid =/{print $3; exit}')\n"
+                       @"    if [ -z \"$PATHB_PID\" ]; then LIVE=1; fi\n"
+                       @"  fi\n"
                        @"  PENDING=0\n"
                        @"  if [ -f /var/db/wwn-iowatchdog/claim-pending ]; then "
                        @"PENDING=1; fi\n"
@@ -904,18 +979,19 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"  elif [ \"$LIVE\" = 1 ]; then V=takeover-now\n"
                        @"  else V=blocked; fi\n"
                        @"  if [ \"$V\" = takeover-now ]; then\n"
-                       @"    R=\"Watchdog safety is live. Use Take Over Screen "
-                       @"Now when you want Desktop Replacement.\"\n"
+                       @"    R=\"Watchdog safety is live. Use Replace now "
+                       @"when you want Desktop Replacement.\"\n"
                        @"  elif [ \"$V\" = reboot ]; then\n"
                        @"    R=\"Path B is armed. Restart this Mac so the "
                        @"watchdog safety layer can finish. After you log in, "
-                       @"use Take Over Screen Now.\"\n"
+                       @"use Replace now.\"\n"
                        @"  elif [ -z \"$CLAIM\" ]; then\n"
                        @"    R=\"Desktop Replacement still needs a one-time "
-                       @"setup, then a restart. Use Prepare this Mac.\"\n"
+                       @"setup, then a restart. Turn on Enable Desktop "
+                       @"Replacement.\"\n"
                        @"  else\n"
-                       @"    R=\"Watchdog safety is not live yet. Use Prepare "
-                       @"this Mac, then restart.\"\n"
+                       @"    R=\"Watchdog safety is not live yet. Turn on "
+                       @"Enable Desktop Replacement, then restart.\"\n"
                        @"  fi\n"
                        @"  echo \"claim_ok=$CLAIM\"\n"
                        @"  echo \"pending=$PENDING\"\n"
@@ -1137,8 +1213,9 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   /* Live Disable evidence required. Never invent the marker before unload
    * (2026-08-20 evening: claim-ok stale + fabricated marker + unload →
    * watchdogd SIGTRAP panic while kernel monitoring still armed).
-   * Path B: require sock done=1 (marker alone is stale after pathb
-   * restart; 2026-08-21 Classic bootout left marker=yes done=0). */
+   * Path B: sock done=1 is live. Marker is live only when the Path B
+   * job has no pid (Classic leftover sticky Disable). Marker is stale
+   * if Path B is running without done=1 (2026-08-21 restart). */
   [script appendString:@"  LIVE_DIS=0\n"];
   [script appendString:@"  MARKER=/tmp/libwayland-support/"
                        @"iowatchdog-userspace-disabled\n"];
@@ -1155,11 +1232,15 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"wwn_log \"live Disable via Path B sock done=1\" ;; "
                        @"esac\n"];
   [script appendString:@"  fi\n"];
-  [script appendString:@"  if [ \"$LIVE_DIS\" = 0 ] && [ -f \"$MARKER\" ] && "
-                       @"[ ! -f /Library/LaunchDaemons/"
-                       @"com.aspauldingcode.wwn-iowatchdog-pathb.plist ]; then\n"];
-  [script appendString:@"    LIVE_DIS=1; wwn_log \"live Disable marker present "
-                       @"(non-Path-B)\"\n"];
+  [script appendString:@"  if [ \"$LIVE_DIS\" = 0 ] && [ -f \"$MARKER\" ]; then\n"];
+  [script appendString:@"    PATHB_PID=$(/bin/launchctl print "
+                       @"system/com.aspauldingcode.wwn-iowatchdog-pathb "
+                       @"2>/dev/null | awk '/[[:space:]]pid =/{print $3; exit}')\n"];
+  [script appendString:@"    if [ -z \"$PATHB_PID\" ]; then\n"];
+  [script appendString:@"      LIVE_DIS=1; wwn_log \"live Disable marker "
+                       @"present (Path B job not running; kernel Disable "
+                       @"sticky after Classic)\"\n"];
+  [script appendString:@"    fi\n"];
   [script appendString:@"  fi\n"];
   [script appendString:@"  if [ \"$LIVE_DIS\" != 1 ]; then\n"];
   [script appendString:@"    write_reason \"Mode B Take Over refused: claim-ok "
@@ -2319,7 +2400,10 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
         [existingHelper containsString:@"LIVE_DIS"] &&
         [existingHelper containsString:@"done=1"] &&
         [existingHelper containsString:@"skip restore_watchdogd"] &&
+        [existingHelper containsString:@"WWN_MODEB_WD=pathb-no-kickstart-after-classic"] &&
+        [existingHelper containsString:@"--exec-compositor"] &&
         [existingHelper containsString:@"wawona-unloaded-watchdogd"] &&
+        ![existingHelper containsString:@"Path B bootstrap after Classic"] &&
         [existingHelper containsString:@"stale modeb.lock"] &&
         [existingHelper containsString:@"# WWN_WAWONA_STORE="] &&
         [existingHelper containsString:bundlePath] &&
@@ -2646,7 +2730,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     return;
   }
   NSLog(@"[DesktopReplacement] enabled, but login does not take over the "
-        @"screen. Open Settings → Desktop → Take Over Screen Now.");
+        @"screen. Open Settings → Desktop → Replace now.");
 }
 
 - (BOOL)modeBFramebufferdReady {
@@ -3153,7 +3237,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   r.verdict = WWNModeBVerdictBlocked;
   r.token = @"blocked";
   r.reason = @"Classic Take Over is blocked.";
-  r.nextStep = @"Use Prepare this Mac, then restart.";
+  r.nextStep = @"Turn on Enable Desktop Replacement, then restart.";
   r.userSummary = @"Desktop Replacement still needs a one-time setup on this "
                   @"Mac, then a restart.";
   BOOL haveModeB =
@@ -3205,12 +3289,12 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
             @"Mode B helper is not staged for passwordless Take Over "
             @"(helper executable=%d, sudoers NOPASSWD=%d). Path=%@.",
             helperOk ? 1 : 0, sudoOk ? 1 : 0, [self modeBHelperPath]];
-    r.nextStep = @"Use Prepare this Mac (administrator once), then restart "
-                 @"if asked.";
+    r.nextStep = @"Turn on Enable Desktop Replacement (administrator once), "
+                 @"then restart if asked.";
     r.userSummary =
         @"Wawona still needs to install its Desktop helper on this Mac "
-        @"(one administrator approval). Use Prepare this Mac. That does "
-        @"not take over the screen.";
+        @"(one administrator approval). Turn on Enable Desktop Replacement. "
+        @"That does not take over the screen.";
     return r;
   }
 
@@ -3218,8 +3302,8 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   if (pre) {
     r.canPrepareRequirements = haveModeB;
     r.reason = pre.localizedDescription;
-    r.nextStep = @"Use Prepare this Mac. Wawona will pick a Desktop Machine "
-                 @"if needed.";
+    r.nextStep = @"Turn on Enable Desktop Replacement. Wawona will pick a "
+                 @"Desktop Machine if needed.";
     r.userSummary = pre.localizedDescription;
     return r;
   }
@@ -3292,9 +3376,9 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     r.reason = helperReason.length
                    ? helperReason
                    : @"Path B IOWatchdog is live. Classic Take Over may run now.";
-    r.nextStep = @"Use Take Over Screen Now.";
+    r.nextStep = @"Use Replace now.";
     r.userSummary =
-        @"Watchdog safety is in place. Use Take Over Screen Now when you "
+        @"Watchdog safety is in place. Use Replace now when you "
         @"want Desktop Replacement.";
     return r;
   }
@@ -3309,11 +3393,10 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                              @"claim-ok=%@",
                              sock.length ? sock : @"(empty)",
                              claim.length ? claim : @"(empty)"];
-    r.nextStep = @"Restart this Mac. After you log in, use Take Over Screen "
-                 @"Now.";
+    r.nextStep = @"Restart this Mac. After you log in, use Replace now.";
     r.userSummary =
-        @"Setup is waiting on a restart. After you log back in, use Take "
-        @"Over Screen Now.";
+        @"Setup is waiting on a restart. After you log back in, use "
+        @"Replace now.";
     return r;
   }
   r.verdict = WWNModeBVerdictBlocked;
@@ -3327,11 +3410,12 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                            @"verdict=%@ sock=%@ claim-ok=%@",
                            ack, verdict, sock.length ? sock : @"(empty)",
                            claim.length ? claim : @"(empty)"];
-  r.nextStep = @"Use Prepare this Mac, then restart.";
+  r.nextStep = @"Turn on Enable Desktop Replacement, then restart.";
   r.userSummary =
-      @"Desktop Replacement needs a one-time setup on this Mac: install the "
-      @"watchdog safety layer, then restart. After you log back in, use "
-      @"Take Over Screen Now. Setup does not take over the screen.";
+      @"Desktop Replacement needs a one-time setup on this Mac: Wawona "
+      @"checks watchdog coverage, restores it if unhealthy, installs the "
+      @"safety layer, then asks you to restart. After you log back in, use "
+      @"Replace now. Enable does not take over the screen.";
   return r;
 }
 
@@ -3708,8 +3792,9 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   if (r.needsHeal) {
     r.statusLabel = r.watchdogdPid.length ? @"Needs restore" : @"Missing watchdog";
     r.userSummary =
-        @"Apple watchdog coverage is not healthy. Use Restore Apple coverage. "
-        @"Do not Take Over, and do not Prepare this Mac until coverage is OK.";
+        @"Apple watchdog coverage is not healthy. Enable Desktop Replacement "
+        @"restores Apple coverage, then arms Path B. Do not Replace now "
+        @"until that finishes.";
     r.canPrepare = NO;
     return;
   }
@@ -3718,30 +3803,30 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
       r.statusLabel = @"Restart required";
       r.userSummary =
           @"Apple's watchdog job is on, but watchdogd is not running this "
-          @"session. Restart this Mac. After you log in, Check watchdog "
-          @"coverage. Do not Take Over until it says Apple covering.";
+          @"session. Restart this Mac. After you log in, use Replace now. "
+          @"Do not Replace now until watchdogd is covering.";
       r.canPrepare = NO;
       return;
     }
     r.statusLabel = @"Restart required";
     r.userSummary =
         @"Path B is armed. Restart this Mac so the watchdog safety layer can "
-        @"finish. After you log in, use Take Over Screen Now.";
+        @"finish. After you log in, use Replace now.";
     r.canPrepare = NO;
     return;
   }
   if (r.pathBLive && r.coverageOk) {
     r.statusLabel = @"Safety live";
     r.userSummary =
-        @"Watchdog safety is live. Use Take Over Screen Now when you want "
+        @"Watchdog safety is live. Use Replace now when you want "
         @"Desktop Replacement.";
     r.canPrepare = NO;
     return;
   }
   r.statusLabel = r.coverageOk ? @"Apple covering" : @"Check to confirm";
   r.userSummary =
-      @"Apple's watchdog is covering this Mac. Use Prepare this Mac when you "
-      @"want Desktop Replacement. That does not take over the screen.";
+      @"Apple's watchdog is covering this Mac. Turn on Enable Desktop "
+      @"Replacement to arm Path B. That does not take over the screen.";
   r.canPrepare = YES;
 }
 
@@ -3953,8 +4038,9 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                                     userInfo:@{
                                       NSLocalizedDescriptionKey :
                                           @"Heal ran, but coverage could not "
-                                          @"be checked. Use Check watchdog "
-                                          @"coverage. Do not Take Over."
+                                          @"be checked. Turn Enable Desktop "
+                                          @"Replacement on again. Do not "
+                                          @"Replace now yet."
                                     }];
     }
     return NO;
@@ -3969,8 +4055,8 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        stringWithFormat:
                            @"Apple's watchdog job is enabled, but watchdogd "
                            @"did not stay running. %@\n\nRestart this Mac, "
-                           @"then Check watchdog coverage. Do not Take Over "
-                           @"until coverage says Apple covering.",
+                           @"then turn on Enable Desktop Replacement again. "
+                           @"Do not Replace now until watchdogd is covering.",
                            r.userSummary]
                  }];
     }
@@ -4088,7 +4174,8 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                    NSLocalizedDescriptionKey :
                        @"This Wawona build does not ship "
                        @"wwn-iowatchdog-claim-install. Install the Desktop "
-                       @"Replacement build, then try Prepare this Mac again."
+                       @"Replacement build, then turn on Enable Desktop "
+                       @"Replacement again."
                  }];
     }
     return NO;
@@ -4126,6 +4213,53 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   return YES;
 }
 
+- (BOOL)ensureWatchdogSafetyReady:(NSError *_Nullable *_Nullable)error {
+  WWNModeBReadyReport *ready = [self evaluateClassicReadiness];
+  if (ready.verdict == WWNModeBVerdictTakeoverNow ||
+      ready.verdict == WWNModeBVerdictReboot) {
+    return YES;
+  }
+
+  self.lastCoverageReport = nil;
+  WWNModeBCoverageReport *cov = [self evaluateWatchdogCoverage];
+  if (!cov.needsHeal && ready.verdict == WWNModeBVerdictBlocked) {
+    NSError *docErr = nil;
+    WWNModeBCoverageReport *doc = [self runWatchdogDoctor:&docErr];
+    if (doc) {
+      cov = doc;
+    }
+  }
+  if (cov.needsHeal) {
+    if (![self healWatchdogCoverage:error]) {
+      return NO;
+    }
+    cov = self.lastCoverageReport ?: [self evaluateWatchdogCoverage];
+    if (cov.needsHeal && cov.rebootForAppleJob) {
+      return YES;
+    }
+    if (cov.needsHeal) {
+      if (error && !*error) {
+        *error = [NSError
+            errorWithDomain:@"WWNDesktopReplacement"
+                       code:7
+                   userInfo:@{
+                     NSLocalizedDescriptionKey : cov.userSummary.length
+                         ? cov.userSummary
+                         : @"Watchdog coverage is still not healthy after "
+                           @"restore. Restart this Mac, then try Enable "
+                           @"Desktop Replacement again."
+                   }];
+      }
+      return NO;
+    }
+  }
+
+  if (![self installDesktopReplacementRequirements:error]) {
+    return NO;
+  }
+  return YES;
+}
+
 - (BOOL)installDesktopReplacementRequirements:
     (NSError *_Nullable *_Nullable)error {
   if ([self bundledDylibPath].length == 0 ||
@@ -4137,7 +4271,8 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                  userInfo:@{
                    NSLocalizedDescriptionKey :
                        @"This Wawona is Mode A only. Install the Desktop "
-                       @"Replacement build, then use Prepare this Mac."
+                       @"Replacement build, then turn on Enable Desktop "
+                       @"Replacement."
                  }];
     }
     return NO;
@@ -4167,9 +4302,9 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                      code:7
                  userInfo:@{
                    NSLocalizedDescriptionKey :
-                       @"Watchdog coverage is not healthy. Use Restore Apple "
-                       @"coverage first. Do not Take Over until coverage "
-                       @"says Apple covering."
+                       @"Watchdog coverage is not healthy. Enable Desktop "
+                       @"Replacement restores it automatically. Do not "
+                       @"Replace now until coverage is healthy."
                  }];
     }
     return NO;
@@ -4225,9 +4360,9 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                                 ? message
                                 : @"Apple's watchdog job is on, but watchdogd "
                                   @"is not running this session. Restart this "
-                                  @"Mac. After you log in, Check watchdog "
-                                  @"coverage. Do not Take Over until it says "
-                                  @"Apple covering.";
+                                  @"Mac. After you log in, use Replace now. "
+                                  @"Do not Replace now until watchdogd is "
+                                  @"covering.";
   [confirm addButtonWithTitle:@"Restart"];
   [confirm addButtonWithTitle:@"Later"];
   if ([confirm runModal] != NSAlertFirstButtonReturn) {
@@ -4246,16 +4381,15 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
 }
 
 - (void)presentRestartAfterPrepareWithMessage:(NSString *)message {
-  [self clearDesktopReplacementEnabledPref];
   NSAlert *confirm = [[NSAlert alloc] init];
   confirm.alertStyle = NSAlertStyleInformational;
   confirm.messageText = @"Restart required";
   confirm.informativeText = message.length
                                 ? message
                                 : @"Restart this Mac so the watchdog safety "
-                                  @"layer can finish. After you log in, "
-                                  @"Check watchdog coverage first, then Take "
-                                  @"Over Screen Now.";
+                                  @"layer can finish. After you log in, use "
+                                  @"Replace now. Login does not take over "
+                                  @"the screen.";
   [confirm addButtonWithTitle:@"Restart"];
   [confirm addButtonWithTitle:@"Later"];
   if ([confirm runModal] != NSAlertFirstButtonReturn) {
@@ -4267,7 +4401,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     fail.alertStyle = NSAlertStyleCritical;
     fail.messageText = @"Could not open Restart";
     fail.informativeText = rst.localizedDescription
-                               ?: @"Use the Apple menu → Restart.";
+                               ?: @"Use the Apple menu -> Restart.";
     [fail addButtonWithTitle:@"OK"];
     [fail runModal];
   }
@@ -4276,19 +4410,34 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
 - (void)presentDesktopReplacementPrepareFlow {
   void (^show)(void) = ^{
     [NSApp activateIgnoringOtherApps:YES];
-    if ([self bundledDylibPath].length == 0 ||
-        [self bundledClaimInstallPath].length == 0) {
-      NSAlert *alert = [[NSAlert alloc] init];
-      alert.alertStyle = NSAlertStyleWarning;
-      alert.messageText = @"Desktop Replacement is not in this Wawona";
-      alert.informativeText =
-          @"This copy is Mode A only (in-window). Install the Desktop "
-          @"Replacement build, then try Prepare this Mac again.";
-      [alert addButtonWithTitle:@"OK"];
-      [alert runModal];
+    NSError *err = nil;
+    if (![self ensureWatchdogSafetyReady:&err]) {
+      if (err) {
+        NSAlert *fail = [[NSAlert alloc] init];
+        fail.alertStyle = NSAlertStyleCritical;
+        fail.messageText = @"Could not enable Desktop Replacement";
+        fail.informativeText = err.localizedDescription
+                                   ?: @"See /tmp/wawona-modeb-cli.log.";
+        [fail addButtonWithTitle:@"OK"];
+        [fail runModal];
+      }
       return;
     }
+    WWNModeBReadyReport *ready = [self evaluateClassicReadiness];
+    if (ready.verdict == WWNModeBVerdictReboot) {
+      [self presentRestartAfterPrepareWithMessage:ready.userSummary];
+    }
+  };
+  if ([NSThread isMainThread]) {
+    show();
+  } else {
+    dispatch_sync(dispatch_get_main_queue(), show);
+  }
+}
 
+- (void)presentReplaceNowFlow {
+  void (^show)(void) = ^{
+    [NSApp activateIgnoringOtherApps:YES];
     WWNSipStatusType sip = [WWNSipStatus current];
     if (![WWNSipStatus allowsDesktopReplacement:sip]) {
       NSAlert *alert = [[NSAlert alloc] init];
@@ -4305,83 +4454,76 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
       return;
     }
 
-    self.lastCoverageReport = nil;
-    WWNModeBCoverageReport *cov = [self evaluateWatchdogCoverage];
-    if (cov.needsHeal) {
-      NSAlert *alert = [[NSAlert alloc] init];
-      alert.alertStyle = NSAlertStyleWarning;
-      alert.messageText = @"Restore Apple coverage first";
-      alert.informativeText = cov.userSummary;
-      [alert addButtonWithTitle:@"Restore Apple coverage"];
-      [alert addButtonWithTitle:@"Cancel"];
-      if ([alert runModal] == NSAlertFirstButtonReturn) {
-        [self presentWatchdogHealFlow];
-      }
-      return;
-    }
-
-    WWNModeBReadyReport *ready = [self evaluateClassicReadiness];
-    if (ready.verdict == WWNModeBVerdictTakeoverNow) {
-      NSAlert *alert = [[NSAlert alloc] init];
-      alert.alertStyle = NSAlertStyleInformational;
-      alert.messageText = @"This Mac is ready";
-      alert.informativeText =
-          @"Watchdog safety is in place. Use Take Over Screen Now when you "
-          @"want Desktop Replacement. Setup does not start Take Over by "
-          @"itself.";
-      [alert addButtonWithTitle:@"OK"];
-      [alert runModal];
-      return;
-    }
-    if (ready.verdict == WWNModeBVerdictReboot) {
-      [self presentRestartAfterPrepareWithMessage:ready.userSummary];
-      return;
-    }
-
-    NSAlert *confirm = [[NSAlert alloc] init];
-    confirm.alertStyle = NSAlertStyleInformational;
-    confirm.messageText = @"Prepare this Mac for Desktop Replacement?";
-    confirm.informativeText =
-        @"Wawona will install a watchdog safety layer (administrator "
-        @"password), then ask you to restart. After you log back in, "
-        @"Check watchdog coverage first, then Take Over Screen Now.\n\n"
-        @"This does not take over the screen, and it does not unload Apple's "
-        @"watchdog. Restart is required before Take Over can run. Login "
-        @"does not Take Over by itself.";
-    [confirm addButtonWithTitle:@"Prepare this Mac"];
-    [confirm addButtonWithTitle:@"Cancel"];
-    if ([confirm runModal] != NSAlertFirstButtonReturn) {
-      return;
-    }
-
-    NSError *err = nil;
-    if (![self installDesktopReplacementRequirements:&err]) {
+    NSError *pre = [self injectionPreflightError];
+    if (pre) {
       NSAlert *fail = [[NSAlert alloc] init];
       fail.alertStyle = NSAlertStyleCritical;
-      fail.messageText = @"Could not prepare this Mac";
-      fail.informativeText = err.localizedDescription
+      fail.messageText = @"Desktop Replacement is not ready";
+      fail.informativeText = pre.localizedDescription;
+      [fail addButtonWithTitle:@"OK"];
+      [fail runModal];
+      return;
+    }
+
+    NSError *setupErr = nil;
+    if (![self ensureWatchdogSafetyReady:&setupErr]) {
+      NSAlert *fail = [[NSAlert alloc] init];
+      fail.alertStyle = NSAlertStyleCritical;
+      fail.messageText = @"Could not prepare Desktop Replacement";
+      fail.informativeText = setupErr.localizedDescription
                                  ?: @"See /tmp/wawona-modeb-cli.log.";
       [fail addButtonWithTitle:@"OK"];
       [fail runModal];
       return;
     }
 
-    ready = [self evaluateClassicReadiness];
-    if (ready.verdict == WWNModeBVerdictTakeoverNow) {
-      NSAlert *ok = [[NSAlert alloc] init];
-      ok.alertStyle = NSAlertStyleInformational;
-      ok.messageText = @"This Mac is ready";
-      ok.informativeText =
-          @"Watchdog safety is in place. Use Take Over Screen Now when you "
-          @"want Desktop Replacement.";
-      [ok addButtonWithTitle:@"OK"];
-      [ok runModal];
+    WWNModeBReadyReport *ready = [self evaluateClassicReadiness];
+    if (ready.verdict == WWNModeBVerdictReboot) {
+      [[NSUserDefaults standardUserDefaults]
+          setBool:YES
+           forKey:kWWNPrefsDesktopReplacementEnabled];
+      [self presentRestartAfterPrepareWithMessage:ready.userSummary];
       return;
     }
-    [self presentRestartAfterPrepareWithMessage:
-              @"Setup finished. Restart this Mac so the watchdog safety "
-              @"layer can finish. After you log in, Check watchdog "
-              @"coverage first, then Take Over Screen Now."];
+    if (ready.verdict != WWNModeBVerdictTakeoverNow) {
+      NSAlert *fail = [[NSAlert alloc] init];
+      fail.alertStyle = NSAlertStyleCritical;
+      fail.messageText = @"Desktop Replacement is not ready";
+      fail.informativeText = ready.userSummary.length ? ready.userSummary
+                                                      : ready.reason;
+      [fail addButtonWithTitle:@"OK"];
+      [fail runModal];
+      return;
+    }
+
+    NSAlert *confirm = [[NSAlert alloc] init];
+    confirm.alertStyle = NSAlertStyleCritical;
+    confirm.messageText = @"Replace this Mac's screen now?";
+    confirm.informativeText = [NSString
+        stringWithFormat:
+            @"%@\n\nWawona will unload watchdogd (ACK already present), "
+            @"unload WindowServer, and start the Desktop compositor. Logout "
+            @"restores normal macOS.",
+            [self iowatchdogStickyAckStatusSummary]];
+    [confirm addButtonWithTitle:@"Replace now"];
+    [confirm addButtonWithTitle:@"Cancel"];
+    if ([confirm runModal] != NSAlertFirstButtonReturn) {
+      return;
+    }
+
+    [[NSUserDefaults standardUserDefaults]
+        setBool:YES
+         forKey:kWWNPrefsDesktopReplacementEnabled];
+    NSError *engageError = nil;
+    if (![self engageSelectedDesktopMachine:&engageError]) {
+      NSAlert *fail = [[NSAlert alloc] init];
+      fail.alertStyle = NSAlertStyleCritical;
+      fail.messageText = @"Replace now failed";
+      fail.informativeText =
+          engageError.localizedDescription ?: @"See /tmp/wawona-modeb.log.";
+      [fail addButtonWithTitle:@"OK"];
+      [fail runModal];
+    }
   };
   if ([NSThread isMainThread]) {
     show();
@@ -4390,10 +4532,59 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   }
 }
 
+- (void)presentReadyTakeOverOffer {
+  void (^show)(void) = ^{
+    [NSApp activateIgnoringOtherApps:YES];
+    if ([self isClassicTakeoverLive]) {
+      return;
+    }
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.alertStyle = NSAlertStyleInformational;
+    alert.messageText = @"This Mac is ready";
+    alert.informativeText = [NSString
+        stringWithFormat:
+            @"Watchdog safety is in place. Setup does not start Take Over "
+            @"by itself.\n\n%@\n\nTake Over unloads watchdogd and "
+            @"WindowServer and starts the Desktop compositor. Logout "
+            @"restores normal macOS. Cancel leaves Enable on.",
+            [self iowatchdogStickyAckStatusSummary]];
+    [alert addButtonWithTitle:@"Take Over Now"];
+    [alert addButtonWithTitle:@"Cancel"];
+    if ([alert runModal] != NSAlertFirstButtonReturn) {
+      return;
+    }
+    NSError *engageError = nil;
+    if (![self engageSelectedDesktopMachine:&engageError]) {
+      NSAlert *fail = [[NSAlert alloc] init];
+      fail.alertStyle = NSAlertStyleCritical;
+      fail.messageText = @"Take Over failed";
+      fail.informativeText =
+          engageError.localizedDescription ?: @"See /tmp/wawona-modeb.log.";
+      [fail addButtonWithTitle:@"OK"];
+      [fail runModal];
+    }
+  };
+  if ([NSThread isMainThread]) {
+    show();
+  } else {
+    dispatch_sync(dispatch_get_main_queue(), show);
+  }
+}
+
+- (BOOL)endClassicSession {
+  [self restoreAquaIfNeeded];
+  if ([self isAppleWindowServerRunning]) {
+    self.modeBPid = 0;
+    self.modeBMachineId = nil;
+    return YES;
+  }
+  return [self disengage];
+}
+
 - (int)cliPrepare {
   WWNModeBCliLog(@"mode-b-prepare");
   NSError *err = nil;
-  if (![self installDesktopReplacementRequirements:&err]) {
+  if (![self ensureWatchdogSafetyReady:&err]) {
     WWNModeBCliLog(@"prepare failed: %@", err.localizedDescription);
     WWNModeBReadyReport *blocked = [self evaluateClassicReadiness];
     WWNModeBCliLog(@"VERDICT %@", blocked.token);
@@ -4411,7 +4602,6 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   if (r.verdict == WWNModeBVerdictTakeoverNow) {
     return 0;
   }
-  [self clearDesktopReplacementEnabledPref];
   WWNModeBCliLog(@"opening native macOS Restart sheet (kAERestart / QA1134)");
   NSError *rst = nil;
   if (![self requestNativeMacOSRestart:&rst]) {
@@ -4438,7 +4628,6 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     WWNModeBCliLog(@"VERDICT %@", ready.token);
     WWNModeBCliLog(@"REASON %@", ready.reason);
     if (ready.verdict == WWNModeBVerdictReboot) {
-      [self clearDesktopReplacementEnabledPref];
       WWNModeBCliLog(@"opening native macOS Restart sheet (kAERestart / QA1134)");
       NSError *rst = nil;
       if (![self requestNativeMacOSRestart:&rst]) {
@@ -4594,7 +4783,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     alert.informativeText = [NSString
         stringWithFormat:@"%@\n\nThe Enable Desktop Replacement switch was "
                          @"turned off so the next login will not take over "
-                         @"the screen again. Use Take Over Screen Now to retry.",
+                         @"the screen again. Use Replace now to retry.",
                          reason];
     [alert addButtonWithTitle:@"OK"];
     [alert runModal];
@@ -4737,7 +4926,28 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   }
   return NO;
 }
+- (BOOL)ensureWatchdogSafetyReady:(NSError *_Nullable *_Nullable)error {
+  if (error) {
+    *error = [NSError errorWithDomain:@"WWNDesktopReplacement"
+                                 code:100
+                             userInfo:@{
+                               NSLocalizedDescriptionKey :
+                                   @"Desktop Replacement Mode B is macOS-only."
+                             }];
+  }
+  return NO;
+}
+- (void)presentRestartAfterPrepareWithMessage:(NSString *)message {
+  (void)message;
+}
 - (void)presentDesktopReplacementPrepareFlow {
+}
+- (void)presentReplaceNowFlow {
+}
+- (void)presentReadyTakeOverOffer {
+}
+- (BOOL)endClassicSession {
+  return NO;
 }
 - (WWNModeBCoverageReport *)evaluateWatchdogCoverage {
   WWNModeBCoverageReport *r = [[WWNModeBCoverageReport alloc] init];

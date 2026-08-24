@@ -927,11 +927,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1787543358,
-        "narHash": "sha256-2tnrhisKiSSSyxAdLCPMtvVpQheWvpYgaadQiQQa3k8=",
+        "lastModified": 1787552505,
+        "narHash": "sha256-iYpUVDaWRnjX1WHN0ULWorLy5YJ9KGasXoM7nqCDAmA=",
         "owner": "Wawona",
         "repo": "wwn-igetty",
-        "rev": "16916ad567ae1ed121a94da0545b38d05a8d1790",
+        "rev": "e7cc5c42bea34946cd286fd617951b6b4dd7f01f",
         "type": "github"
       },
       "original": {

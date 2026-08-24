@@ -10,32 +10,26 @@ as history.
 
 ## [Unreleased]
 
+- **macOS Desktop Replacement panic (2026-08-23).** Classic Aqua restore
+  kickstarted Path B, which re-armed kernel IOWatchdog (8 checkins, then a
+  92s timeout). Restore now leaves Path B down and the kernel Disable
+  sticky. Typed `niri`/`weston` on a text VT re-exec as root through the
+  helper. Do not Take Over until `WAWONA_MODEB_STAGE=1 nix run .#install`.
 - **macOS Mode B TTY weston/niri.** Login zsh was running the nested CLI
   wrappers (`--backend=wayland`, no iland insert), so DRM compositors
   failed (`no drm device found` / TTY backend ENOENT). Session PATH is
   restored after `path_helper`. CLI wrappers honor `WWN_MODEB_TTY` and
   restore `WWN_MODEB_INSERT` so iland userspace DRM is what they open.
-- **macOS Desktop Replacement login.** `--compositor-host` no longer
-  Classic-engages when `DesktopReplacementEnabled` is leftover. Take Over
-  stays Settings / menubar Take Over Screen Now after Check watchdog
-  coverage. Prepare and Restart clear the Enable switch so the next Aqua
-  login stays in-window.
-- **macOS Desktop Replacement setup.** Settings and the menubar no longer
-  dump `claim-install --path-b` at friends. **Prepare this Mac** stages the
-  helper if needed, runs bundled Path B `claim-install` with an administrator
-  prompt, then opens the native Restart sheet. Take Over stays blocked until
-  Path B is live. Setup never unloads `watchdogd` and never takes over the
-  screen. CLI: `Wawona --mode-b-prepare`.
-- **macOS Desktop watchdog coverage in Settings.** Desktop shows coverage,
-  safety ACK, and Path B status. **Check watchdog coverage** runs doctor.
-  **Restore Apple coverage** runs heal. Prepare refuses and offers Restore
-  when coverage is stale, dual, or missing. Friends do not need the CLI.
+- **macOS Desktop Replacement.** Settings **Enable Desktop Replacement**
+  runs watchdog check, heal, and Path B arm. **Replace now** (Settings and
+  the menubar) is the only screen takeover. Login and `--compositor-host`
+  never Classic-engage. Watchdog Check / Prepare / Restore rows are gone.
 
 ## [26.8.23] - 2026-08-23
 
 - **macOS menubar Desktop.** The applet has a Desktop row next to
   Compositor: green `ready` / `takeover`, purple `reboot`, red `blocked`.
-  Play is Take Over Screen Now, Stop restores Aqua, clockwise opens the
+  Play is Replace now, Stop restores Aqua, clockwise opens the
   native Restart sheet when Path B needs a reboot. Same Classic gate as
   Settings.
 - **iOS nested niri.** Start was sending configure(0,0) (client-preferred),

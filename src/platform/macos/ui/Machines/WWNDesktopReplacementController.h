@@ -30,7 +30,7 @@ typedef NS_ENUM(NSInteger, WWNModeBVerdict) {
 /** Blocked only because SIP is not fully disabled. Show SIP How-To. */
 @property(nonatomic, assign) BOOL needsSipHowTo;
 /**
- * Blocked, but Prepare this Mac can stage the helper and/or arm Path B.
+ * Blocked, but Enable Desktop Replacement can stage the helper and/or arm Path B.
  * Never true when SIP blocks or this build omitted Mode B.
  */
 @property(nonatomic, assign) BOOL canPrepareRequirements;
@@ -38,7 +38,8 @@ typedef NS_ENUM(NSInteger, WWNModeBVerdict) {
 
 /**
  * Watchdog coverage for Settings → Desktop. Friend-facing; no CLI recipes.
- * `needsHeal` means Restore Apple coverage, never Take Over.
+ * `needsHeal` means Enable / Replace now must restore Apple coverage first.
+ * Never Classic-engage until coverage is healthy.
  */
 @interface WWNModeBCoverageReport : NSObject
 @property(nonatomic, copy) NSString *statusLabel;
@@ -69,7 +70,7 @@ typedef NS_ENUM(NSInteger, WWNModeBVerdict) {
 @property(nonatomic, assign) BOOL canTakeOver;
 @property(nonatomic, assign) BOOL canRestore;
 @property(nonatomic, assign) BOOL canRestartMac;
-/** Play button runs Prepare this Mac (not Take Over). */
+/** Play button runs Replace now. Blocked still enables play so setup can run. */
 @property(nonatomic, assign) BOOL canPrepare;
 @end
 
@@ -118,7 +119,7 @@ typedef NS_ENUM(NSInteger, WWNModeBVerdict) {
 /**
  * Launch the Desktop machine's nested compositor with Mode B insert
  * (privileged). Installs a root-owned helper and a tight sudoers NOPASSWD
- * rule. Does not install a login LaunchAgent. Take Over Screen Now is the
+ * rule. Does not install a login LaunchAgent. Replace now is the
  * only activate step. Logout and the next Aqua login return normal macOS.
  * Injects into the nested compositor (niri or weston), not into
  * WindowServer. WindowServer is unloaded only after framebufferd is live.
@@ -127,8 +128,8 @@ typedef NS_ENUM(NSInteger, WWNModeBVerdict) {
                    error:(NSError *_Nullable *_Nullable)error;
 
 /**
- * Engage the machine stored in DesktopReplacementMachineId. Settings uses
- * this after the user turns the toggle on.
+ * Engage the machine stored in DesktopReplacementMachineId. Settings and
+ * the menubar call this from Replace now only. Enable never engages.
  */
 - (BOOL)engageSelectedDesktopMachine:(NSError *_Nullable *_Nullable)error;
 
@@ -142,7 +143,7 @@ typedef NS_ENUM(NSInteger, WWNModeBVerdict) {
 
 /**
  * After Aqua login: never unload WindowServer. Boots out any leftover
- * Mode B login LaunchAgent from older builds. Take Over Screen Now is
+ * Mode B login LaunchAgent from older builds. Replace now is
  * the only activate path.
  */
 - (void)resumeAfterAquaLogin;
@@ -189,13 +190,41 @@ typedef NS_ENUM(NSInteger, WWNModeBVerdict) {
 - (BOOL)installDesktopReplacementRequirements:
     (NSError *_Nullable *_Nullable)error;
 /**
- * Friend-facing wizard: SIP How-To, then helper stage + Path B arm,
- * then the native Restart sheet. Never Take Over.
+ * Check watchdog coverage, heal if stale or dual-path, then stage helper
+ * + Path B if Classic is not ready. Never unloads watchdogd. Never Take
+ * Over. Enable and Replace now both call this.
+ */
+- (BOOL)ensureWatchdogSafetyReady:(NSError *_Nullable *_Nullable)error;
+/**
+ * Native Restart sheet after Path B arm or Apple-job heal. Does not
+ * clear DesktopReplacementEnabled and does not Take Over.
+ */
+- (void)presentRestartAfterPrepareWithMessage:(NSString *)message;
+/**
+ * Friend-facing CLI/setup helper. Same as ensureWatchdogSafetyReady plus
+ * Restart if needed. Never Take Over.
  */
 - (void)presentDesktopReplacementPrepareFlow;
 /**
- * Local + helper coverage for Settings rows. Does not prompt for
- * administrator. Does not Take Over.
+ * Confirm and Classic-engage if this Mac is ready. If setup is missing,
+ * runs watchdog check / heal / Path B arm (never unloads watchdogd) and
+ * may open Restart. Shared by Settings and the menubar Replace now control.
+ */
+- (void)presentReplaceNowFlow;
+/**
+ * Enable finished setup and Classic is ready (no restart). Offer Take
+ * Over Now or Cancel. Cancel leaves Enable on. Never auto-engages.
+ */
+- (void)presentReadyTakeOverOffer;
+/**
+ * End a live Classic / KEEP_WS session and restore Aqua. Leaves Path B
+ * and the helper installed. Heal runs automatically from Enable / Replace
+ * now when coverage is unhealthy.
+ */
+- (BOOL)endClassicSession;
+/**
+ * Local coverage snapshot. Does not prompt for administrator. Does not
+ * Take Over.
  */
 - (WWNModeBCoverageReport *)evaluateWatchdogCoverage;
 /**
@@ -211,7 +240,7 @@ typedef NS_ENUM(NSInteger, WWNModeBVerdict) {
 - (BOOL)healWatchdogCoverage:(NSError *_Nullable *_Nullable)error;
 - (void)presentWatchdogCoverageCheck;
 - (void)presentWatchdogHealFlow;
-/** CLI: same work as Prepare this Mac. Exit codes match `--mode-b-ready`. */
+/** CLI: same work as Enable Desktop Replacement setup. Exit codes match `--mode-b-ready`. */
 - (int)cliPrepare;
 - (int)cliEngageKeepWindowServer:(BOOL)keepWindowServer;
 - (int)cliDisengage;

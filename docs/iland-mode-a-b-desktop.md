@@ -177,23 +177,22 @@ input. Ctrl+Option+Backspace still restores Aqua.
 This is userspace only (no kernel tty). See also
 [`mode-b-windowserver-options.md`](mode-b-windowserver-options.md).
 
-Before Classic Take Over, Settings → Desktop shows watchdog coverage, safety
-ACK, and Path B status. **Check watchdog coverage** runs doctor.
-**Restore Apple coverage** runs heal. **Prepare this Mac** (or
-`Wawona --mode-b-prepare`) stages the helper if needed and arms Path B,
-then opens the native Restart sheet. Prepare refuses when coverage is
-stale or missing and offers Restore instead. That does not take over the
-screen.
+Before Classic Take Over, Settings → Desktop is **Enable Desktop Replacement**
+plus **Replace now**. Enable checks watchdog coverage, restores Apple coverage
+when it is stale or dual-path, stages the helper, and arms Path B, then opens
+the native Restart sheet if needed. Enable never takes over the screen.
+**Replace now** (Settings and the menubar) is the only activate step. CLI:
+`Wawona --mode-b-prepare` is the same setup as Enable.
 
 ```text
 Wawona --mode-b-ready
 ```
 
 Exit 0: `VERDICT takeover-now` plus `REASON` (run `Wawona --mode-b-engage`
-or Take Over Screen Now). Exit 2: reboot first. Engage and Settings Take
-Over open the native macOS Restart sheet (`kAERestart` / QA1134,
-60-second countdown). Exit 3: blocked. Settings shows a friend-facing
-summary and offers **Prepare this Mac** instead of CLI recipes.
+or Replace now). Exit 2: reboot first. Engage and Settings Replace
+now open the native macOS Restart sheet (`kAERestart` / QA1134,
+60-second countdown). Exit 3: blocked. Settings Enable Desktop
+Replacement runs doctor, heal, and Path B arm instead of CLI recipes.
 
 ## Mode B launch (macOS)
 
@@ -222,23 +221,23 @@ repo: [`wwn-iland/docs/mode-b/baremetal-display-spi-25F80.md`](../../wwn-iland/d
    that probe paniced on 2026-08-20 (`watchdogd` exited SIGTRAP /
    namespace 2 subcode 0x5 while kernel IOWatchdog was still armed).
    IOWatchdog disable belongs only on Take Over. Stage does **not** take
-   over the screen and does **not** install a login LaunchAgent. Take
-   Over Screen Now is the only activate step. Logout and the next Aqua
+   over the screen and does **not** install a login LaunchAgent. Replace
+   now is the only activate step. Logout and the next Aqua
    login return normal macOS.
 3. Take Over consumes sticky Path B (preferred) or Path A
    `/var/db/wwn-iowatchdog/claim-ok` before unloading watchdogd /
    WindowServer (`WWN_MODEB_WD=iowatchdog-then-unload`). Soft-inject /
    `lldb` stay forbidden. Without `claim-ok`, Settings refuses Classic
-   Take Over and offers **Prepare this Mac** (bundled
-   `claim-install --path-b` + native Restart). KEEP_WS
+   and Enable / Replace now runs bundled `claim-install` doctor, heal if
+   needed, then `--path-b` plus native Restart. KEEP_WS
    `--mode-b-probe` may still inject while WindowServer and watchdogd
    stay up. `nix run .#install` skips Mode B restage by default
    (`WAWONA_MODEB_STAGE=1` to force). Never `export
    DYLD_INSERT_LIBRARIES`. Insert on the niri/weston exec only.
    `ws-guard` may restore WindowServer only.
 4. After logout, Aqua's login screen starts WindowServer. The next login
-   does not re-run Mode B. Use Settings → Desktop → **Check watchdog
-   coverage**, then **Take Over Screen Now**. `--compositor-host` (login
+   does not re-run Mode B. Use Settings → Desktop → **Replace now**.
+   `--compositor-host` (login
    KeepAlive for Mode A nested compositors) must never Classic-engage,
    even if `DesktopReplacementEnabled` is leftover. Older builds that
    auto-started the Desktop machine from compositor-host, or that wrote
@@ -256,11 +255,16 @@ repo: [`wwn-iland/docs/mode-b/baremetal-display-spi-25F80.md`](../../wwn-iland/d
    root niri/weston and framebufferd/inputd, and remove the login
    LaunchAgent, sudoers drop-in, helper, installed `libwayland-mac.dylib`,
    and `ws-guard` LaunchDaemon. Settings keeps the switch on if the
-   privileged uninstall is cancelled.
+   privileged uninstall is cancelled. **Replace now** session restore
+   (Ctrl+Option+Backspace, or the Mode B client exiting) restores
+   WindowServer only. With Path B sticky it must not kickstart Path B or
+   Apple-enable `watchdogd` (2026-08-23 kernel timeout). Kernel Disable
+   stays sticky. See
+   [`incident-reports/2026-08-23-vt-switch-restore-aqua-timeout/`](incident-reports/2026-08-23-vt-switch-restore-aqua-timeout/).
 7. If the nested compositor exits unexpectedly, or framebufferd never
    starts, the helper leaves or restores Apple's WindowServer, writes
    `/tmp/wawona-modeb-failed.reason`, and exits 0. Aqua stays usable.
-   The Enable switch is turned off. Take Over Screen Now retries. Log:
+   The Enable switch is turned off. Replace now retries. Log:
    `/tmp/wawona-modeb.log`. See
    [`incident-reports/2026-08-19-windowserver-login.md`](incident-reports/2026-08-19-windowserver-login.md).
 

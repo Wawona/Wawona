@@ -1108,7 +1108,7 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
     NSButton *desktopRestoreBtn = WWNMenuBarSymbolButton(
         @"stop.fill", @"Restore Aqua", self, @selector(restoreDesktop:));
     NSButton *desktopTakeOverBtn = WWNMenuBarSymbolButton(
-        @"play.fill", @"Take Over Screen Now", self,
+        @"play.fill", @"Replace now", self,
         @selector(takeOverDesktop:));
     [desktopRow addSubview:desktopRestartBtn];
     [desktopRow addSubview:desktopRestoreBtn];
@@ -1332,8 +1332,7 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
   self.desktopTakeOverButton.enabled = desk.canTakeOver || desk.canPrepare;
   self.desktopRestoreButton.enabled = desk.canRestore;
   self.desktopRestartButton.enabled = desk.canRestartMac;
-  self.desktopTakeOverButton.toolTip =
-      desk.canPrepare ? @"Prepare this Mac" : @"Take Over Screen Now";
+  self.desktopTakeOverButton.toolTip = @"Replace now";
 }
 
 - (void)restartCompositor:(id)sender {
@@ -1359,50 +1358,7 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
 
 - (void)takeOverDesktop:(id)sender {
   (void)sender;
-  WWNDesktopReplacementController *desk =
-      [WWNDesktopReplacementController sharedController];
-  WWNModeBReadyReport *ready = [desk evaluateClassicReadiness];
-  if (ready.verdict == WWNModeBVerdictBlocked) {
-    [desk presentDesktopReplacementPrepareFlow];
-    [self refreshStatus:self.statusItem.menu];
-    return;
-  }
-  if (ready.verdict == WWNModeBVerdictReboot) {
-    [self restartMacForDesktop:sender];
-    return;
-  }
-
-  NSAlert *confirm = [[NSAlert alloc] init];
-  confirm.alertStyle = NSAlertStyleCritical;
-  confirm.messageText = @"Take Over this Mac's screen now?";
-  confirm.informativeText = [NSString
-      stringWithFormat:
-          @"%@\n\nWawona will unload watchdogd (ACK already present), unload "
-          @"WindowServer, and start the Desktop compositor with Mode B "
-          @"insert. Logout restores normal macOS.",
-          [desk iowatchdogStickyAckStatusSummary]];
-  [confirm addButtonWithTitle:@"Take Over Screen Now"];
-  [confirm addButtonWithTitle:@"Cancel"];
-  if ([confirm runModal] != NSAlertFirstButtonReturn) {
-    return;
-  }
-
-  [[NSUserDefaults standardUserDefaults]
-      setBool:YES
-       forKey:kWWNPrefsDesktopReplacementEnabled];
-  NSError *engageError = nil;
-  if (![desk engageSelectedDesktopMachine:&engageError]) {
-    [[NSUserDefaults standardUserDefaults]
-        setBool:NO
-         forKey:kWWNPrefsDesktopReplacementEnabled];
-    NSAlert *fail = [[NSAlert alloc] init];
-    fail.alertStyle = NSAlertStyleCritical;
-    fail.messageText = @"Desktop Take Over failed";
-    fail.informativeText =
-        engageError.localizedDescription ?: @"See /tmp/wawona-modeb.log.";
-    [fail addButtonWithTitle:@"OK"];
-    [fail runModal];
-  }
+  [[WWNDesktopReplacementController sharedController] presentReplaceNowFlow];
   [self refreshStatus:self.statusItem.menu];
 }
 
@@ -1412,28 +1368,25 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
   confirm.alertStyle = NSAlertStyleWarning;
   confirm.messageText = @"Restore Aqua?";
   confirm.informativeText =
-      @"Ends Desktop Replacement, restores WindowServer, and re-enables "
-      @"Apple watchdogd after IOWatchdog.";
+      @"Ends this Desktop Replacement session and restores WindowServer. "
+      @"Path B stays installed. Enable Desktop Replacement stays on.";
   [confirm addButtonWithTitle:@"Restore Aqua"];
   [confirm addButtonWithTitle:@"Cancel"];
   if ([confirm runModal] != NSAlertFirstButtonReturn) {
     return;
   }
-  if (![[WWNDesktopReplacementController sharedController] disengage]) {
+  if (![[WWNDesktopReplacementController sharedController] endClassicSession]) {
     NSAlert *fail = [[NSAlert alloc] init];
     fail.alertStyle = NSAlertStyleCritical;
-    fail.messageText = @"Desktop Replacement did not fully uninstall";
+    fail.messageText = @"Could not restore Aqua";
     fail.informativeText =
-        @"Wawona could not finish Mode B teardown. Approve the admin "
-        @"prompt to restore Apple's WindowServer.";
+        @"Approve the administrator prompt so Wawona can restore "
+        @"WindowServer.";
     [fail addButtonWithTitle:@"OK"];
     [fail runModal];
     [self refreshStatus:self.statusItem.menu];
     return;
   }
-  [[NSUserDefaults standardUserDefaults]
-      setBool:NO
-       forKey:kWWNPrefsDesktopReplacementEnabled];
   [self refreshStatus:self.statusItem.menu];
 }
 
@@ -1449,16 +1402,13 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
       stringWithFormat:
           @"%@\n\nWawona will open the native macOS Restart sheet "
           @"(loginwindow kAERestart, 60-second countdown). After you log "
-          @"back in, Check watchdog coverage first, then Take Over.",
+          @"back in, use Replace now. Login does not take over.",
           ready.reason];
   [confirm addButtonWithTitle:@"Restart"];
   [confirm addButtonWithTitle:@"Cancel"];
   if ([confirm runModal] != NSAlertFirstButtonReturn) {
     return;
   }
-  [[NSUserDefaults standardUserDefaults]
-      setBool:NO
-       forKey:kWWNPrefsDesktopReplacementEnabled];
   NSError *rst = nil;
   if (![desk requestNativeMacOSRestart:&rst]) {
     NSAlert *fail = [[NSAlert alloc] init];
@@ -1838,7 +1788,7 @@ int main(int argc, char *argv[]) {
       signal(SIGBUS, crash_handler);
       signal(SIGILL, crash_handler);
       WWNLog("MAIN", @"Rust Compositor running!");
-      // Take Over is per session (Settings / menubar Take Over Screen Now).
+      // Take Over is per session (Settings / menubar Replace now).
       // compositor-host is a login KeepAlive agent for Mode A nested
       // compositors. It must never Classic-engage, even if
       // DesktopReplacementEnabled is leftover from a previous session.
@@ -1846,8 +1796,7 @@ int main(int argc, char *argv[]) {
               boolForKey:kWWNPrefsDesktopReplacementEnabled]) {
         WWNLog("MAIN",
                @"Compositor daemon: Desktop Replacement is enabled. "
-               @"Not auto-starting. Use Take Over Screen Now after "
-               @"Check watchdog coverage.");
+               @"Not auto-starting. Use Replace now.");
       }
 
       WWNKeepServiceHostOutOfDock();

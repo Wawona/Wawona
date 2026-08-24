@@ -88,11 +88,11 @@ if [ -n "\${WWN_MODEB_TTY:-}" ] && [ "\${WWN_MODEB_TTY}" != "0" ]; then
 fi
 if [ "\$MODEB" -eq 1 ]; then
   # Classic Take Over: iland DRM/KMS/GBM. Do not nest. Do not kickstart
-  # compositor-host. Restore Mode B insert for open("/dev/dri/...").
+  # compositor-host. Insert only as root on the compositor exec.
   unset WAYLAND_DISPLAY WAYLAND_SOCKET DISPLAY
   export NIRI_BACKEND=tty
   export WWN_MODEB_TTY=1
-  if [ -n "\${WWN_MODEB_INSERT:-}" ]; then
+  if [ "\$(id -u)" -eq 0 ] && [ -n "\${WWN_MODEB_INSERT:-}" ]; then
     export DYLD_INSERT_LIBRARIES="\$WWN_MODEB_INSERT"
   fi
 fi
@@ -342,6 +342,14 @@ if [ "\$WAWONA_CLI_NAME" = weston ]; then
     fi
   fi
   unset _wawona_has_backend _wawona_has_scale _wawona_arg
+fi
+if [ "\${MODEB:-0}" -eq 1 ] && [ "\$(id -u)" -ne 0 ]; then
+  helper="/Library/Application Support/Wawona/run-modeb.sh"
+  if [ -x "\$helper" ]; then
+    exec /usr/bin/sudo -n "\$helper" --exec-compositor -- "\$WAWONA_CLI_BIN" "\$@"
+  fi
+  echo "wawona: Classic \$NAME needs root insert via \$helper" >&2
+  exit 1
 fi
 exec "\$WAWONA_CLI_BIN" "\$@"
 EOF

@@ -163,40 +163,8 @@
       }
       return NO;
     }
-#if TARGET_OS_OSX
-    // Mode B Desktop Replacement: SIP + Desktop prefs + desktop machine →
-    // DYLD_INSERT libwayland-mac.dylib (not Mode A in-window present).
-    WWNDesktopReplacementController *desktop =
-        [WWNDesktopReplacementController sharedController];
-    if ([desktop shouldEngageModeB] && [desktop isDesktopMachine:profile]) {
-      if (![WWNMachineProfileStore profileIndicatesModeBOwnDisplay:profile]) {
-        if (error) {
-          *error = [NSError
-              errorWithDomain:@"WWNMachineSessionBridge"
-                         code:3
-                     userInfo:@{
-                       NSLocalizedDescriptionKey :
-                           @"Desktop Replacement own-display needs weston or "
-                           @"niri (DRM after Take Over; nested Wayland stays "
-                           @"Mode A), or a KMS client (kmscube, gbm-es2-demo, "
-                           @"vkcube-kms)."
-                     }];
-        }
-        return NO;
-      }
-      NSError *modeBError = nil;
-      if (![desktop engageForProfile:profile error:&modeBError]) {
-        if (error) {
-          *error = modeBError;
-        }
-        return NO;
-      }
-      if (WWNPlatformAllowsSwingingBridge()) {
-        [[WWNSwingingBridgeController sharedController] attachForProfile:profile];
-      }
-      return YES;
-    }
-#endif
+    // Classic Take Over is Settings / menubar Replace now only. Starting
+    // the Desktop machine from Machines stays Mode A in-window.
     if ([clientId isEqualToString:@"wawona-wasm"]) {
       NSDictionary *runtime =
           [profile.runtimeOverrides isKindOfClass:[NSDictionary class]]

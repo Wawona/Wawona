@@ -140,17 +140,16 @@ Wawona --mode-b-engage
 Wawona --mode-b-disengage
 ```
 
-`--mode-b-ready` and Settings → Desktop Replacement → Classic readiness share
+`--mode-b-ready` and Settings → Desktop → Status share
 one gate. Helper `--ack-status` prints `verdict=` and `reason=`. Path B sock
 `done=1` is takeover-now. `claim-ok` `path=b sticky=1` with sock not live is
 reboot (native Restart sheet, not a custom timer). Path B pending / pathb
 plist without live Disable is also reboot. Anything else is blocked.
 
-Friends use Settings → Desktop: **Check watchdog coverage**,
-**Restore Apple coverage**, and **Prepare this Mac**. That stages the helper
-and runs bundled `wwn-iowatchdog-claim-install --path-b` or `--heal`, then
-Restart when needed. It never Take Over. `--mode-b-prepare` is the same
-arm work from the CLI.
+Friends use Settings → Desktop: **Enable Desktop Replacement** then
+**Replace now**. Enable checks coverage, heals if needed, stages the helper,
+and runs bundled `wwn-iowatchdog-claim-install --path-b`, then Restart when
+needed. It never Take Over. `--mode-b-prepare` is the same setup from the CLI.
 
 `--mode-b-engage` on reboot opens loginwindow Restart (`kAERestart`). On
 blocked it does not take over. On takeover-now it engages.

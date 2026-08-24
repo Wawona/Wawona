@@ -25,7 +25,8 @@ claim-ok alone is **stale** after stage re-enables plain Apple `watchdogd`
 paniced). Operator Classic E2E:
 `docs/desktop-replacement-classic-proof.md`. Incidents:
 `docs/incident-reports/2026-08-20-stale-claim-ok-takeover/`,
-`docs/incident-reports/2026-08-20-keepws-restore-watchdogd/`.
+`docs/incident-reports/2026-08-20-keepws-restore-watchdogd/`,
+`docs/incident-reports/2026-08-23-vt-switch-restore-aqua-timeout/`.
 
 ## Never
 
@@ -34,6 +35,7 @@ paniced). Operator Classic E2E:
 | Settings / CLI **Take Over Screen** without Path B `claim-ok` **and** live Disable | Unloads only after `path=b sticky=1` plus marker or sock `done=1` |
 | Stage `watchdogd-ensure` while Path B/A armed or `claim-ok` present | Re-enables plain Apple `watchdogd` with monitoring armed; stale claim-ok then panics on unload |
 | KEEP_WS / probe **failure** calling `restore_watchdogd` / Apple enable while Path B sticky | Never unloaded; enable races Path B → SIGTRAP (2026-08-20) |
+| Path B `bootstrap` / `kickstart` from `restore_watchdogd` after Classic | Re-arms kernel monitoring; 8 checkins then 92s timeout (2026-08-23) |
 | `launchctl` unload / `kickstart -k` on `com.apple.watchdogd` | Instant panic when monitoring is armed |
 | Attach **lldb**, debugserver, or Cursor **lldb MCP** (`lldb_mcp.py`) to `watchdogd` | Attach exits the daemon with SIGTRAP |
 | `thread_set_state` / soft-inject into `watchdogd` that uses set_state | Caller SIGKILL (137); also panic-class risk. Stopped after 2026-08-20 Phase 1 crash (`docs/macos26-iowatchdog-wall.md`) |
@@ -57,11 +59,10 @@ ACK comes from Path B (`claim-ok` / sock) or Path A claim. Soft-inject
    and `watchdogd` running.
 2. Before any Mode B / IOWatchdog work: `pkill -f lldb_mcp.py` and confirm
    `pgrep -l watchdogd`.
-3. Settings UX: Take Over is available only when Path B `claim-ok` is present
-   **and** live Disable. Otherwise offer **Prepare this Mac**. Coverage,
-   doctor, and heal live in Settings → Desktop (**Check watchdog coverage**,
-   **Restore Apple coverage**). Never Take Over from Prepare or Restore.
-   Never dump CLI paths as the only instruction.
+3. Settings UX: **Enable Desktop Replacement** runs doctor, heal, and Path B
+   arm. **Replace now** (Settings and menubar) is the only Classic activate.
+   Replace now stays blocked until Path B `claim-ok` **and** live Disable.
+   Never Take Over from Enable. Never dump CLI paths as the only instruction.
 4. Probe-only path (Aqua stays up): `WAWONA_MODEB_STAGE=1 nix run .#install`,
    then `Wawona --mode-b-probe` (KEEP_WS). Still never unload `watchdogd`
    without Path B ACK.

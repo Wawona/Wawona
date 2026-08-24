@@ -62,7 +62,7 @@ static NSString *const kWWNAppLaunchAgentLabel =
   uid_t uid = getuid();
   // Login KeepAlive for Mode A nested compositors only. --compositor-host
   // must never Classic-engage (unload WindowServer). Take Over is
-  // Settings / menubar Take Over Screen Now, per session.
+  // Settings / menubar Replace now, per session.
   return @{
     @"Label" : kWWNCompositorAgentLabel,
     @"ProgramArguments" : @[ execPath, @"--compositor-host" ],
