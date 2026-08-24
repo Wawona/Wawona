@@ -39,6 +39,11 @@ macOS weston **rewrites** `--backend=wayland` to drm when `WWN_MODEB_TTY` is
 set. macOS niri **force-selects** the TTY backend when that var is set. Both
 then fail in Aqua (no insert, no real `/dev/dri`).
 
+Nested weston GL must allocate `wl_egl_window` from iland (`libEGL.dylib`),
+not the libwayland vendor stub. `wayland-backend` remaps that LC_LOAD at
+install, the same remap niri already does. Stub windows make
+`eglCreateWindowSurface` SIGBUS inside GBM.
+
 ## Classic (WindowServer down)
 
 No host Wayland. Always wwn-iland userspace DRM/KMS/GBM:
