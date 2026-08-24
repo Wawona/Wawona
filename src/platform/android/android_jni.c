@@ -789,8 +789,10 @@ static void push_safe_area_to_core(void) {
 }
 
 /* OWL host↔client size: track which windows may receive host fill configures.
- * Fixed demos (weston-flower/smoke 200×200, simple-shm preferred) must not be
- * streamed to logical output size on every density/output tick. */
+ * Fixed demos (weston-flower/smoke 200x200, simple-shm/simple-egl preferred
+ * square) must not be streamed to logical output size on every density/output
+ * tick. */
+static char g_bundled_client_id[64] = "";
 #define ANDROID_OWL_MAX_WINDOWS 64
 typedef struct {
   uint64_t window_id;
@@ -844,6 +846,17 @@ static void android_owl_on_created(const CWindowEvent *evt) {
        (unsigned long long)evt->window_id, w->host_locked, w->follow_host);
 }
 
+static int android_bundled_prefers_fixed_square(void) {
+  if (!g_bundled_client_id || !g_bundled_client_id[0])
+    return 0;
+  return strcmp(g_bundled_client_id, "weston-simple-shm") == 0 ||
+         strcmp(g_bundled_client_id, "weston-simple-egl") == 0 ||
+         strcmp(g_bundled_client_id, "weston-flower") == 0 ||
+         strcmp(g_bundled_client_id, "weston-smoke") == 0 ||
+         strcmp(g_bundled_client_id, "weston-clickdot") == 0 ||
+         strcmp(g_bundled_client_id, "weston-eventdemo") == 0;
+}
+
 static void android_owl_on_size_changed(const CWindowEvent *evt) {
   if (!evt || evt->window_id == 0 || evt->width == 0 || evt->height == 0)
     return;
@@ -853,6 +866,12 @@ static void android_owl_on_size_changed(const CWindowEvent *evt) {
   AndroidOwlWindow *w = android_owl_find(evt->window_id, 1);
   if (!w)
     return;
+  if (android_bundled_prefers_fixed_square()) {
+    w->follow_host = 0;
+    LOGI("OWL ClientCommit window=%llu %ux%u follow_host=0 (fixed-square demo)",
+         (unsigned long long)evt->window_id, evt->width, evt->height);
+    return;
+  }
   if (w->host_locked) {
     w->follow_host = 1;
     return;
@@ -4116,11 +4135,11 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
        * the real client and inherits niri's WAYLAND_DISPLAY (issue #78). */
       {
         static const char *const wl_execs[] = {
-            "weston-simple-shm", "weston-flower",   "weston-clickdot",
-            "weston-smoke",      "weston-eventdemo", "weston-resizor",
-            "weston-cliptest",   "weston-transformed", "weston-stacking",
-            "weston-dnd",        "weston-image",    "weston-scaler",
-            "weston-editor",     "weston-constraints",
+            "weston-simple-shm", "weston-simple-egl", "weston-flower",
+            "weston-clickdot", "weston-smoke", "weston-eventdemo",
+            "weston-resizor", "weston-cliptest", "weston-transformed",
+            "weston-stacking", "weston-dnd", "weston-image", "weston-scaler",
+            "weston-editor", "weston-constraints",
         };
         size_t wi;
         for (wi = 0; wi < sizeof(wl_execs) / sizeof(wl_execs[0]); wi++) {
@@ -5202,7 +5221,6 @@ static jboolean wwn_bundled_client_available(const char *client_id) {
 }
 
 static _Atomic int g_bundled_client_count = 0;
-static char g_bundled_client_id[64] = "";
 static pthread_mutex_t g_bundled_client_mu = PTHREAD_MUTEX_INITIALIZER;
 
 typedef struct {

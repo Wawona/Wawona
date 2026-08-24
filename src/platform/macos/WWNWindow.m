@@ -1102,6 +1102,10 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
     return;
   }
 
+  if (WWNWestonDemoPrefersFixedSquare(nil, self.title)) {
+    return;
+  }
+
   // Match Rust/AppKit round-trip sizing to the actual frame<->content mapping.
   NSSize size = [self contentRectForFrameRect:self.frame].size;
   uint32_t width = (uint32_t)MAX(1, lround(size.width));

@@ -29,6 +29,11 @@ FOUNDATION_EXPORT NSNotificationName const WWNClientFocusRequestedNotification;
 /// Tabs map 1:1 to Wayland client toplevels. Never Shell / Machines chrome.
 FOUNDATION_EXPORT NSNotificationName const WWNHostWindowsDidChangeNotification;
 
+/// Weston demos that keep a preferred square (flower/smoke 200x200, simple-shm
+/// and simple-egl 250x250). Host must not inject fill-to-output configures.
+FOUNDATION_EXPORT BOOL WWNWestonDemoPrefersFixedSquare(NSString *_Nullable clientId,
+                                                       NSString *_Nullable title);
+
 /// Window event types from Rust compositor
 typedef NS_ENUM(NSInteger, WWNWindowEventType) {
   WWNWindowEventTypeCreated,
@@ -52,6 +57,7 @@ typedef struct {
   size_t size;
   size_t capacity;
   uint32_t iosurface_id;
+  uint8_t cpu_y_flip;
 } CBufferData;
 
 /// Bridge between Objective-C and Rust compositor

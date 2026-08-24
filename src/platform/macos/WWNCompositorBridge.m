@@ -118,28 +118,41 @@ NSString *const WWNClientWindowSceneWindowIdKey = @"wwn.windowId";
 /// iPadOS / visionOS so the Metal plate is not buried under Machines UI.
 static const uint64_t kWWNIlandHostSceneWindowId = 0x574E4E494C414E44ULL; // "WNNILAND"
 
-/// Bundled weston demos with a fixed preferred size (200×200 or simple-shm
-/// preferred). Must never receive host fill configures or stretch presentation
-/// when the iPadOS UIWindowScene resizes. OWL keeps Client authority.
-static BOOL WWNIosBundledClientPrefersFixedSize(NSString *clientId) {
-  if (clientId.length == 0) {
+/// Bundled weston demos with a fixed preferred square (flower/smoke 200x200,
+/// simple-shm/simple-egl 250x250). Must never receive host fill configures or
+/// stretch presentation. OWL keeps Client authority, same as weston-flower.
+BOOL WWNWestonDemoPrefersFixedSquare(NSString *clientId, NSString *title) {
+  NSString *idLower = clientId.lowercaseString;
+  if (idLower.length > 0) {
+    static NSSet<NSString *> *fixedClients;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+      fixedClients = [NSSet setWithArray:@[
+        @"weston-smoke",
+        @"weston-flower",
+        @"weston-simple-shm",
+        @"weston-simple-egl",
+        @"weston-clickdot",
+        @"weston-eventdemo",
+      ]];
+    });
+    if ([fixedClients containsObject:idLower]) {
+      return YES;
+    }
+  }
+  NSString *t = title.lowercaseString;
+  if (t.length == 0) {
     return NO;
   }
-  static NSSet<NSString *> *fixedClients;
-  static dispatch_once_t once;
-  dispatch_once(&once, ^{
-    fixedClients = [NSSet setWithArray:@[
-      @"weston-smoke",
-      @"weston-flower",
-      @"weston-simple-shm",
-      @"weston-clickdot",
-      @"weston-eventdemo",
-    ]];
-  });
-  return [fixedClients containsObject:clientId];
+  return [t containsString:@"simple-shm"] || [t containsString:@"simple-egl"] ||
+         [t containsString:@"flower"] || [t containsString:@"smoke"] ||
+         [t containsString:@"clickdot"] || [t containsString:@"eventdemo"];
 }
 
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+static BOOL WWNIosBundledClientPrefersFixedSize(NSString *clientId) {
+  return WWNWestonDemoPrefersFixedSquare(clientId, nil);
+}
 /// Terminals and nested compositors fill the iOS-family host surface. Demos
 /// stay client-preferred (0x0 seed). niri ignores configure(0,0) and never
 /// attaches a buffer, then niri_main exits 1.
@@ -2833,12 +2846,16 @@ extern void WWNCoreInject_touch_frame(void *core);
 
 - (BOOL)shouldFollowHostSizeForWindowId:(uint64_t)windowId {
 #if TARGET_OS_IPHONE
+  id view = _windows[@(windowId)];
+  NSString *title = nil;
+  if ([view isKindOfClass:[WWNCompositorView_ios class]]) {
+    title = ((WWNCompositorView_ios *)view).accessibilityLabel;
+  }
   NSString *clientId =
       WWNIosResolveBundledClientIdForWindow(self, windowId);
-  if (WWNIosBundledClientPrefersFixedSize(clientId)) {
+  if (WWNWestonDemoPrefersFixedSquare(clientId, title)) {
     return NO;
   }
-  id view = _windows[@(windowId)];
   if ([view isKindOfClass:[WWNCompositorView_ios class]]) {
     WWNCompositorView_ios *iosView = (WWNCompositorView_ios *)view;
     return iosView.hostLocked || iosView.followHostSize;
@@ -2868,6 +2885,30 @@ extern void WWNCoreInject_touch_frame(void *core);
            @"Skipping injectWindowResize window=%llu (miniaturized/in-progress)",
            windowId);
     return;
+  }
+  if (hostWindow &&
+      WWNWestonDemoPrefersFixedSquare(nil, hostWindow.title)) {
+    WWNLog("BRIDGE",
+           @"Skipping injectWindowResize window=%llu (fixed-square weston demo)",
+           windowId);
+    return;
+  }
+#endif
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+  {
+    id iosHost = _windows[key];
+    NSString *iosTitle = nil;
+    if ([iosHost isKindOfClass:[WWNCompositorView_ios class]]) {
+      iosTitle = ((WWNCompositorView_ios *)iosHost).accessibilityLabel;
+    }
+    NSString *iosClient =
+        WWNIosResolveBundledClientIdForWindow(self, windowId);
+    if (WWNWestonDemoPrefersFixedSquare(iosClient, iosTitle)) {
+      WWNLog("BRIDGE",
+             @"Skipping injectWindowResize window=%llu (fixed-square weston demo)",
+             windowId);
+      return;
+    }
   }
 #endif
   CGSize dims = CGSizeMake(width, height);
@@ -3909,6 +3950,9 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
                         ? [NSString stringWithUTF8String:event->title]
                         : @"";
   [window setTitle:title];
+  if (WWNWestonDemoPrefersFixedSquare(nil, title)) {
+    window.styleMask = window.styleMask & ~NSWindowStyleMaskResizable;
+  }
 
   // Create content view in window-local coordinates.
   // `contentRect` includes screen-space origin; using it directly as an NSView
@@ -4411,6 +4455,9 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
     [window setTitle:newTitle];
     WWNLog("BRIDGE", @"Updated title for window %llu to '%@'", event->window_id,
            newTitle);
+    if (WWNWestonDemoPrefersFixedSquare(nil, newTitle)) {
+      window.styleMask = window.styleMask & ~NSWindowStyleMaskResizable;
+    }
     if (newTitle.length > 0) {
       [[NSProcessInfo processInfo] setProcessName:newTitle];
     }
@@ -4906,10 +4953,14 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
 
 - (void)_iosSetFollowHostSizeForFillPrimaryWindowId:(uint64_t)windowId {
   NSString *clientId = WWNIosResolveBundledClientIdForWindow(self, windowId);
-  if (WWNIosBundledClientPrefersFixedSize(clientId)) {
+  id view = _windows[@(windowId)];
+  NSString *title = nil;
+  if ([view isKindOfClass:[WWNCompositorView_ios class]]) {
+    title = ((WWNCompositorView_ios *)view).accessibilityLabel;
+  }
+  if (WWNWestonDemoPrefersFixedSquare(clientId, title)) {
     return;
   }
-  id view = _windows[@(windowId)];
   if ([view isKindOfClass:[WWNCompositorView_ios class]]) {
     ((WWNCompositorView_ios *)view).followHostSize = YES;
   }
@@ -5650,7 +5701,19 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
     }
   }
   BOOL fillShellToHost = WWNIosBundledClientFillsHost(bundledClientForSize);
-  BOOL injectFillConfigure = event->host_locked || fillShellToHost;
+  // Only the machine's primary shell/compositor window fills the host. Extra
+  // toplevels from in-process zsh (weston-simple-shm / simple-egl / flower)
+  // keep the preferred square, like weston-flower.
+  NSUInteger windowsForMachine = 0;
+  if (iosOwnerMachineId.length > 0) {
+    for (NSNumber *wid in _windowOwnerMachineIdByWindowId) {
+      if ([_windowOwnerMachineIdByWindowId[wid] isEqualToString:iosOwnerMachineId]) {
+        windowsForMachine++;
+      }
+    }
+  }
+  BOOL primaryFillShell = fillShellToHost && (windowsForMachine <= 1);
+  BOOL injectFillConfigure = event->host_locked || primaryFillShell;
   if (injectFillConfigure && [view isKindOfClass:[WWNCompositorView_ios class]]) {
     view.followHostSize = YES;
     // Treat fill shells as host-owned for presentation/placement even when
@@ -5880,13 +5943,24 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
 
   // Late shell detection: if map-time fill missed (empty bundled id), adopt
   // followHost when the xdg title identifies weston-terminal / foot.
+  // Inverse: weston-flower / simple-shm / simple-egl keep a preferred square.
   NSString *titleLower = newTitle.lowercaseString;
+  BOOL titleLooksLikeDemo = WWNWestonDemoPrefersFixedSquare(nil, newTitle);
   BOOL titleLooksLikeShell =
       [titleLower containsString:@"weston terminal"] ||
       [titleLower containsString:@"wayland-terminal"] ||
       [titleLower hasPrefix:@"foot"] || [titleLower containsString:@"foot "] ||
       [titleLower containsString:@"niri"];
-  if (titleLooksLikeShell &&
+  if (titleLooksLikeDemo &&
+      [clientView isKindOfClass:[WWNCompositorView_ios class]]) {
+    WWNCompositorView_ios *cv = (WWNCompositorView_ios *)clientView;
+    cv.followHostSize = NO;
+    cv.hostLocked = NO;
+    [_hostLockedWindowIds removeObject:@(event->window_id)];
+    WWNLog("BRIDGE",
+           @"iOS demo title '%@' → client-preferred square (no host fill)",
+           newTitle);
+  } else if (titleLooksLikeShell &&
       [clientView isKindOfClass:[WWNCompositorView_ios class]]) {
     WWNCompositorView_ios *cv = (WWNCompositorView_ios *)clientView;
     if (!cv.followHostSize && !cv.hostLocked && self.containerView) {
@@ -5973,15 +6047,19 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
         shellClient = (NSString *)sn;
     }
     BOOL activeShell = WWNIosBundledClientFillsHost(shellClient);
-    BOOL fixedSizeClient = WWNIosBundledClientPrefersFixedSize(shellClient);
+    BOOL fixedSizeClient =
+        WWNWestonDemoPrefersFixedSquare(shellClient, iosView.accessibilityLabel);
     if (fixedSizeClient) {
       iosView.followHostSize = NO;
-    } else if (hostLocked || activeShell || iosView.followHostSize) {
+    } else if (hostLocked || iosView.followHostSize) {
       // Shells / host-locked always follow the compositor container. Do not
       // drop followHost when the first commit is still a floating cell-snap
-      // (e.g. 80×25). That cleared full-bleed and re-centered gutters.
+      // (e.g. 80x25). That cleared full-bleed and re-centered gutters.
+      // Do not use the machine-level shell id here: zsh-launched
+      // weston-simple-shm / simple-egl inside a terminal machine must keep
+      // their preferred square (flower/smoke refuse host fill the same way).
       iosView.followHostSize = YES;
-      if (activeShell && hostBounds.size.width > 0 &&
+      if (activeShell && iosView.followHostSize && hostBounds.size.width > 0 &&
           hostBounds.size.height > 0 &&
           (fabs((CGFloat)event->width - hostBounds.size.width) > 1.0 ||
            fabs((CGFloat)event->height - hostBounds.size.height) > 1.0)) {
