@@ -1512,8 +1512,14 @@ static NSString *g_cliCompositorBackendOverride = nil;
 
 #if TARGET_OS_OSX
 static BOOL WWNAppleWindowServerIsRunning(void) {
-  /* Fail open to Aqua (nested) if process listing fails. Forcing DRM while
-   * WindowServer is up is what broke Machines Start after Mode B experiments. */
+  /* Classic is WindowServer gone. Aqua Machines Start has NSScreen.
+   * proc_name("WindowServer") often fails under hardened runtime; treating
+   * that miss as Classic forced NIRI_BACKEND=tty and in-process weston DRM
+   * while the user still had a Wawona window (2026-08-24 v26.8.23). */
+  if ([NSScreen screens].count > 0) {
+    return YES;
+  }
+
   enum { kCap = 8192 };
   pid_t pids[kCap];
   int bytes = proc_listpids(PROC_ALL_PIDS, 0, pids, sizeof(pids));
@@ -1522,6 +1528,7 @@ static BOOL WWNAppleWindowServerIsRunning(void) {
   }
   int n = bytes / (int)sizeof(pid_t);
   char name[32];
+  int named = 0;
   for (int i = 0; i < n; i++) {
     if (pids[i] <= 0) {
       continue;
@@ -1529,9 +1536,14 @@ static BOOL WWNAppleWindowServerIsRunning(void) {
     if (proc_name(pids[i], name, sizeof(name)) <= 0) {
       continue;
     }
+    named++;
     if (strcmp(name, "WindowServer") == 0) {
       return YES;
     }
+  }
+  /* Censored listing: do not conclude Classic. */
+  if (named < 16) {
+    return YES;
   }
   return NO;
 }
@@ -3500,6 +3512,8 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
                                  [WWNPreferencesManager preferredNestedSocketName]],
       @"--shell=desktop-shell.so",
       @"--scale=1",
+      [NSString stringWithFormat:@"--width=%u", outW > 0 ? outW : 1024u],
+      [NSString stringWithFormat:@"--height=%u", outH > 0 ? outH : 768u],
       nil];
   if (configPath[0]) {
     [args addObject:[NSString stringWithFormat:@"--config=%s", configPath]];

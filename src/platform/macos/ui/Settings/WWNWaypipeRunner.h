@@ -113,9 +113,9 @@ typedef void (^WaypipeOutputHandler)(NSString *output);
 
 /// YES when there is no host compositor to nest inside: Classic Desktop
 /// Replacement has unloaded WindowServer. Nested Wayland cannot work there,
-/// so weston/niri must use wwn-iland DRM/KMS/GBM. Aqua (WindowServer up)
-/// is never this, even if `WWN_MODEB_TTY` leaked into the environment or
-/// Desktop Replacement is enabled but not engaged.
+/// so weston/niri must use wwn-iland DRM/KMS/GBM. Aqua is NSScreen or a
+/// visible WindowServer process, never a censored `proc_name` miss, leaked
+/// `WWN_MODEB_TTY`, or Desktop Replacement enabled but not engaged.
 FOUNDATION_EXPORT BOOL WWNHostSessionUsesOwnDisplayDRM(void);
 
 /// Resolves the display backend a bundled compositor should run against:

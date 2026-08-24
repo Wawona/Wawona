@@ -10,8 +10,10 @@ clients are bundled compositors.
 ## Detection
 
 Classic / own-display (no host compositor): **Apple WindowServer is not
-running**. `WWNHostSessionUsesOwnDisplayDRM()`. CLI wrappers: `pgrep -x
-WindowServer`.
+running**. `WWNHostSessionUsesOwnDisplayDRM()`: NSScreen first (Machines
+Start is AppKit), then a positive `proc_name` match for `WindowServer`.
+A censored process list (hardened runtime often cannot name WindowServer)
+is Aqua, not Classic. CLI wrappers: `pgrep -x WindowServer`.
 
 Never treat these as Classic while Aqua is up:
 
