@@ -49,6 +49,8 @@ typedef NS_ENUM(NSInteger, WWNModeBVerdict) {
 @property(nonatomic, assign) BOOL coverageOk;
 @property(nonatomic, assign) BOOL needsHeal;
 @property(nonatomic, assign) BOOL needsReboot;
+/** Apple job is enabled; this session has no live watchdogd. Restart, do not Restore again. */
+@property(nonatomic, assign) BOOL rebootForAppleJob;
 @property(nonatomic, assign) BOOL canPrepare;
 @property(nonatomic, assign) BOOL pathBInstalled;
 @property(nonatomic, assign) BOOL pathBLive;

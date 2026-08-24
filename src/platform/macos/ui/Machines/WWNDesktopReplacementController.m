@@ -162,6 +162,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                             error:(NSError *_Nullable *_Nullable)error;
 - (BOOL)armPathBClaimInstall:(NSError *_Nullable *_Nullable)error;
 - (void)presentRestartAfterPrepareWithMessage:(NSString *)message;
+- (void)presentRestartAfterHealWithMessage:(NSString *)message;
 @property(nonatomic, strong, nullable) WWNModeBCoverageReport *lastCoverageReport;
 - (WWNModeBCoverageReport *)coverageReportFromLocalState;
 - (void)finishCoverageReport:(WWNModeBCoverageReport *)r;
@@ -3706,6 +3707,15 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     return;
   }
   if (r.needsReboot) {
+    if (r.rebootForAppleJob) {
+      r.statusLabel = @"Restart required";
+      r.userSummary =
+          @"Apple's watchdog job is on, but watchdogd is not running this "
+          @"session. Restart this Mac. After you log in, Check watchdog "
+          @"coverage. Do not Take Over until it says Apple covering.";
+      r.canPrepare = NO;
+      return;
+    }
     r.statusLabel = @"Restart required";
     r.userSummary =
         @"Path B is armed. Restart this Mac so the watchdog safety layer can "
@@ -3792,6 +3802,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   NSString *pid = nil;
   NSString *succ = nil;
   NSString *disabled = nil;
+  NSString *rebootNow = nil;
   for (NSString *line in [text componentsSeparatedByCharactersInSet:
                                    [NSCharacterSet newlineCharacterSet]]) {
     NSString *trim =
@@ -3817,6 +3828,8 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
       succ = [trim substringFromIndex:20];
     } else if ([trim hasPrefix:@"apple_watchdogd_disabled_map:"]) {
       disabled = [trim substringFromIndex:29];
+    } else if ([trim hasPrefix:@"reboot_now:"]) {
+      rebootNow = [trim substringFromIndex:11];
     }
   }
   cov = [cov stringByTrimmingCharactersInSet:
@@ -3839,6 +3852,8 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                    [NSCharacterSet whitespaceAndNewlineCharacterSet]];
   disabled = [disabled stringByTrimmingCharactersInSet:
                            [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  rebootNow = [rebootNow stringByTrimmingCharactersInSet:
+                             [NSCharacterSet whitespaceAndNewlineCharacterSet]];
 
   BOOL covOk = [cov hasPrefix:@"yes"];
   BOOL pathBYes = [pathB hasPrefix:@"yes"];
@@ -3851,6 +3866,8 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   BOOL pidNone = pid.length == 0 || [pid containsString:@"none"];
   BOOL staleDoctor = [text containsString:@"FAIL stale Path B"];
   BOOL uncovered = [text containsString:@"FAIL uncovered"];
+  BOOL rebootRequired = [rebootNow hasPrefix:@"yes"] ||
+                        [text containsString:@"FAIL reboot required"];
 
   r.coverageOk = covOk;
   r.pathBInstalled = pathBYes;
@@ -3861,7 +3878,12 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   }
   r.needsHeal = NO;
   r.needsReboot = NO;
-  if (dualYes || staleDoctor || uncovered || !covOk || pidNone) {
+  r.rebootForAppleJob = NO;
+  if (rebootRequired && !dualYes && !staleDoctor) {
+    r.needsReboot = YES;
+    r.rebootForAppleJob = YES;
+    r.needsHeal = NO;
+  } else if (dualYes || staleDoctor || uncovered || !covOk || pidNone) {
     r.needsHeal = YES;
   } else if (pendingYes || (pathBYes && !sockLive && !claimB)) {
     r.needsReboot = YES;
@@ -4018,6 +4040,11 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     }
     NSError *err = nil;
     if (![self healWatchdogCoverage:&err]) {
+      if (self.lastCoverageReport.needsReboot) {
+        [self presentRestartAfterHealWithMessage:self.lastCoverageReport
+                                                     .userSummary];
+        return;
+      }
       NSAlert *fail = [[NSAlert alloc] init];
       fail.alertStyle = NSAlertStyleCritical;
       fail.messageText = @"Could not restore Apple coverage";
@@ -4181,6 +4208,34 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   }
 
   return [self armPathBClaimInstall:error];
+}
+
+- (void)presentRestartAfterHealWithMessage:(NSString *)message {
+  NSAlert *confirm = [[NSAlert alloc] init];
+  confirm.alertStyle = NSAlertStyleInformational;
+  confirm.messageText = @"Restart required";
+  confirm.informativeText = message.length
+                                ? message
+                                : @"Apple's watchdog job is on, but watchdogd "
+                                  @"is not running this session. Restart this "
+                                  @"Mac. After you log in, Check watchdog "
+                                  @"coverage. Do not Take Over until it says "
+                                  @"Apple covering.";
+  [confirm addButtonWithTitle:@"Restart"];
+  [confirm addButtonWithTitle:@"Later"];
+  if ([confirm runModal] != NSAlertFirstButtonReturn) {
+    return;
+  }
+  NSError *rst = nil;
+  if (![self requestNativeMacOSRestart:&rst]) {
+    NSAlert *fail = [[NSAlert alloc] init];
+    fail.alertStyle = NSAlertStyleCritical;
+    fail.messageText = @"Could not open Restart";
+    fail.informativeText = rst.localizedDescription
+                               ?: @"Use the Apple menu -> Restart.";
+    [fail addButtonWithTitle:@"OK"];
+    [fail runModal];
+  }
 }
 
 - (void)presentRestartAfterPrepareWithMessage:(NSString *)message {
