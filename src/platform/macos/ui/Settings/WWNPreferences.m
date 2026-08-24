@@ -1282,7 +1282,7 @@ static UIImage *WWNAboutLogo(void) {
                        @"Use Prepare this Mac first (watchdog safety layer + "
                        @"restart). Then Take Over unloads watchdogd and "
                        @"WindowServer. Pick a Desktop Machine below. Logout "
-                       @"restores normal macOS. Login does not Take Over.");
+                       @"restores normal macOS. Login does not Take Over.")];
 
 #if TARGET_OS_OSX
     {
