@@ -106,7 +106,31 @@ fi
 uid="\$(id -u)"
 runtime_dir_default="/tmp/wawona-\$uid"
 runtime_env_file="\$runtime_dir_default/wawona-env.sh"
-if [ "\$MODEB" -eq 0 ] && [ -f "\$runtime_env_file" ]; then
+# Nested niri/weston inherit WAYLAND_DISPLAY. zsh inside foot prepends
+# ~/.local/bin, so weston-terminal is this wrapper. Sourcing wawona-env.sh
+# used to steal the client onto the host socket (new macOS window). Fuzzel
+# execs Resources/bin directly and stays nested. Keep a live caller socket.
+# macOS Terminal.app has none, so it still attaches to Wawona.
+_wawona_saved_display="\${WAYLAND_DISPLAY:-}"
+_wawona_saved_socket="\${WAYLAND_SOCKET:-}"
+_wawona_saved_runtime="\${XDG_RUNTIME_DIR:-}"
+_wawona_keep_caller=0
+if [ "\$MODEB" -eq 0 ]; then
+  if [ -n "\$_wawona_saved_socket" ]; then
+    _wawona_keep_caller=1
+  elif [ -n "\$_wawona_saved_display" ]; then
+    _rt="\${_wawona_saved_runtime:-\$runtime_dir_default}"
+    case "\$_wawona_saved_display" in
+      /*) _sock="\$_wawona_saved_display" ;;
+      *) _sock="\$_rt/\$_wawona_saved_display" ;;
+    esac
+    if [ -S "\$_sock" ]; then
+      _wawona_keep_caller=1
+    fi
+    unset _rt _sock
+  fi
+fi
+if [ "\$MODEB" -eq 0 ] && [ "\$_wawona_keep_caller" -eq 0 ] && [ -f "\$runtime_env_file" ]; then
   # shellcheck source=/dev/null
   . "\$runtime_env_file" || true
 fi
@@ -118,7 +142,7 @@ if [ ! -d "\$XDG_RUNTIME_DIR" ]; then
   mkdir -p "\$XDG_RUNTIME_DIR"
   chmod 700 "\$XDG_RUNTIME_DIR"
 fi
-if [ "\$MODEB" -eq 0 ]; then
+if [ "\$MODEB" -eq 0 ] && [ "\$_wawona_keep_caller" -eq 0 ]; then
 SOCKET_PATH="\$XDG_RUNTIME_DIR/\$WAYLAND_DISPLAY"
 if [ ! -S "\$SOCKET_PATH" ] && command -v launchctl >/dev/null 2>&1; then
   launchctl kickstart -k "gui/\$uid/com.aspauldingcode.wawona.compositorhost" >/dev/null 2>&1 || true
@@ -136,6 +160,18 @@ if [ ! -S "\$SOCKET_PATH" ] && command -v launchctl >/dev/null 2>&1; then
   done
 fi
 fi
+if [ "\$_wawona_keep_caller" -eq 1 ]; then
+  if [ -n "\$_wawona_saved_runtime" ]; then
+    export XDG_RUNTIME_DIR="\$_wawona_saved_runtime"
+  fi
+  if [ -n "\$_wawona_saved_display" ]; then
+    export WAYLAND_DISPLAY="\$_wawona_saved_display"
+  fi
+  if [ -n "\$_wawona_saved_socket" ]; then
+    export WAYLAND_SOCKET="\$_wawona_saved_socket"
+  fi
+fi
+unset _wawona_saved_display _wawona_saved_socket _wawona_saved_runtime _wawona_keep_caller
 
 export WAWONA_APP_BUNDLE_ROOT="\$APP"
 export WAWONA_APP_BIN="\$APP/Contents/MacOS/Wawona"

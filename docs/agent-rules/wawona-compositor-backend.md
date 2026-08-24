@@ -39,6 +39,11 @@ macOS weston **rewrites** `--backend=wayland` to drm when `WWN_MODEB_TTY` is
 set. macOS niri **force-selects** the TTY backend when that var is set. Both
 then fail in Aqua (no insert, no real `/dev/dri`).
 
+CLI wrappers (`~/.local/bin/weston-terminal` and the rest) must keep a live
+caller `WAYLAND_DISPLAY`. Nested niri/weston (fuzzel, foot, zsh) inherit that
+socket; stealing it via `wawona-env.sh` opens a new macOS window. macOS
+Terminal.app has no nested socket, so those wrappers still attach to Wawona.
+
 Nested weston GL must allocate `wl_egl_window` from iland (`libEGL.dylib`),
 not the libwayland vendor stub. `wayland-backend` remaps that LC_LOAD at
 install, the same remap niri already does. Stub windows make
@@ -72,6 +77,9 @@ No host Wayland. Always wwn-iland userspace DRM/KMS/GBM:
   in `src/platform/macos/ui/Settings/WWNWaypipeRunner.m`
 - CLI wrappers: `scripts/macos-register-cli-bins.sh`
 - Doorman session: `wwn-igetty` `libexec/wwn-modeb-session/`
+
+Cursor: nested and iland DRM compositors hide and grab the host pointer.
+They draw `wl_pointer` themselves. See `wawona-nested-compositor-cursor`.
 
 Cursor rule: `wawona-compositor-backend`. Canonical prose:
 [`../iland-mode-a-b-desktop.md`](../iland-mode-a-b-desktop.md). See also
