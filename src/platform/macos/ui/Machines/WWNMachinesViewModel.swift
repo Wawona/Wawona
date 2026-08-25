@@ -41,16 +41,11 @@ struct BundledClient: Identifiable, Hashable {
   var requiresGpuStack: Bool = false
 }
 
-/// Bundled clients visible on this platform (GLES demos omitted on tvOS Phase 1;
-/// all GPU omitted on watchOS).
+/// Bundled clients visible on this platform (GPU demos omitted on watchOS).
 var kBundledClients: [BundledClient] {
   kAllBundledClients.filter { client in
     if client.requiresGpuStack {
-      #if os(tvOS)
-      return PlatformCapabilities.allowsGpuStack && client.id == "vkcube"
-      #else
       return PlatformCapabilities.allowsGpuStack
-      #endif
     }
     return true
   }

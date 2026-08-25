@@ -180,10 +180,17 @@
     return;
   }
 #endif
-  UIBarButtonItem *done = [[UIBarButtonItem alloc]
-      initWithBarButtonSystemItem:UIBarButtonSystemItemDone
-                           target:self
-                           action:@selector(dismissSettings)];
+  UIBarButtonItem *done =
+#if TARGET_OS_TV
+      [[UIBarButtonItem alloc] initWithTitle:@"Done"
+                                       style:UIBarButtonItemStylePlain
+                                      target:self
+                                      action:@selector(dismissSettings)];
+#else
+      [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone
+                                                    target:self
+                                                    action:@selector(dismissSettings)];
+#endif
   done.accessibilityIdentifier = @"wwn.settings.done";
   done.accessibilityLabel = @"Done";
   self.navigationItem.rightBarButtonItem = done;

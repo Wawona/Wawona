@@ -298,7 +298,12 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 
   [defaults registerDefaults:@{
     // Display
-    kWWNPrefsForceServerSideDecorations : @NO,
+    kWWNPrefsForceServerSideDecorations :
+#if TARGET_OS_TV
+        @YES,
+#else
+        @NO,
+#endif
     kWWNPrefsAutoScale : @YES,
     kWWNPrefsRespectSafeArea : @YES,
     kWWNPrefsResizeDisplayForVirtualKeyboard : @YES,
@@ -316,7 +321,18 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
     kWWNPrefsEnableVulkanDrivers : @YES,
     kWWNPrefsEnableDmabuf : @YES,
     kWWNPrefsVulkanDriver : [WWNPreferencesManager defaultVulkanDriverForHardware],
-    kWWNPrefsOpenGLDriver : @"angle",
+    kWWNPrefsOpenGLDriver :
+#if TARGET_OS_WATCH
+        @"none",
+#elif TARGET_OS_TV
+#if defined(WWN_TVOS_GPU_BUNDLED) && WWN_TVOS_GPU_BUNDLED
+        @"angle",
+#else
+        @"none",
+#endif
+#else
+        @"angle",
+#endif
     kWWNPrefsCompositorBackend : @"auto",
     // Connection
     kWWNPrefsTCPListenerPort : @6000,
@@ -517,8 +533,12 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 
 // Window Decorations
 - (BOOL)forceServerSideDecorations {
+#if TARGET_OS_TV
+  return YES;
+#else
   return [[NSUserDefaults standardUserDefaults]
       boolForKey:kWWNPrefsForceServerSideDecorations];
+#endif
 }
 
 - (void)setForceServerSideDecorations:(BOOL)enabled {
@@ -853,9 +873,16 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 }
 
 - (NSString *)openglDriver {
-#if TARGET_OS_TV || TARGET_OS_WATCH
-  // tvOS GLES/ANGLE is Phase 2. Vulkan-only until Chromium GN lands.
+#if TARGET_OS_WATCH
   return @"none";
+#elif TARGET_OS_TV
+#if defined(WWN_TVOS_GPU_BUNDLED) && WWN_TVOS_GPU_BUNDLED
+  NSString *driver =
+      [[NSUserDefaults standardUserDefaults] stringForKey:kWWNPrefsOpenGLDriver];
+  return [@[ @"none", @"angle" ] containsObject:driver] ? driver : @"angle";
+#else
+  return @"none";
+#endif
 #else
   NSString *driver =
       [[NSUserDefaults standardUserDefaults] stringForKey:kWWNPrefsOpenGLDriver];
@@ -869,9 +896,8 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 }
 
 - (NSString *)compositorBackend {
-#if TARGET_OS_TV || TARGET_OS_WATCH
-  // No iland GL stack on these targets (tvOS planned, watchOS blocked. See
-  // wawona-platform-targets), so the DRM backend has nothing to present on.
+#if TARGET_OS_WATCH
+  // watchOS GPU is blocked (no Metal). Nested Wayland only.
   return @"wayland";
 #else
   NSString *backend = [[NSUserDefaults standardUserDefaults]

@@ -69,10 +69,19 @@
 - (BOOL)splitViewController:(UISplitViewController *)splitViewController
     collapseSecondaryViewController:(UIViewController *)secondaryViewController
           ontoPrimaryViewController:(UIViewController *)primaryViewController {
+#if TARGET_OS_TV
+  (void)splitViewController;
+  (void)secondaryViewController;
+  (void)primaryViewController;
+  // Keep sidebar + detail both on screen. Collapsing produces an iPhone
+  // list in the corner of a 1920px display.
+  return NO;
+#else
   // Return YES to prevent collapsing the secondary view controller onto the
   // primary view controller This allows the primary (sidebar) to be the initial
   // view on iPhone
   return YES;
+#endif
 }
 
 - (void)splitViewControllerDidExpand:(UISplitViewController *)svc {

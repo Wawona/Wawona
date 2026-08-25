@@ -32,7 +32,13 @@
 #include <string.h> // For strdup
 
 static BOOL WWNForceSSDEnabled(void) {
+#if TARGET_OS_TV
+  // Fill-primary: Wayland CSD cannot stand alone on the TV. macOS keeps the
+  // Settings toggle. iPhone still follows the pref (hostLocked fill is enough).
+  return YES;
+#else
   return [[WWNPreferencesManager sharedManager] forceServerSideDecorations];
+#endif
 }
 
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
@@ -5696,6 +5702,16 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
     }
   }
   BOOL primaryFillShell = fillShellToHost && (windowsForMachine <= 1);
+#if TARGET_OS_TV
+  // Fill-primary on the TV: the first toplevel fills even when NativeClientId
+  // races empty. That left default weston-terminal floating at cell-snap 80x25
+  // with the rest of the 1920x1080 surface black.
+  if (!WWNIosBundledClientPrefersFixedSize(bundledClientForSize) &&
+      windowsForMachine <= 1 && firstNativeToplevel) {
+    fillShellToHost = YES;
+    primaryFillShell = YES;
+  }
+#endif
   BOOL injectFillConfigure = event->host_locked || primaryFillShell;
   if (injectFillConfigure && [view isKindOfClass:[WWNCompositorView_ios class]]) {
     view.followHostSize = YES;

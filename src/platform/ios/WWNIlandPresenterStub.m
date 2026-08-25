@@ -1,5 +1,5 @@
 // watchOS: no Metal, so no iland GPU presenter (platform-targets matrix).
-// tvOS compiles the real WWNIlandPresenter.m (Vulkan/MoltenVK Phase 1).
+// tvOS compiles the real WWNIlandPresenter.m (ANGLE GLES + MoltenVK).
 // Keep this stub so watchOS WWNCompositorView_ios links; methods are no-ops.
 
 #import "WWNIlandPresenter.h"

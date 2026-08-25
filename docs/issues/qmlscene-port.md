@@ -48,14 +48,15 @@ green). Qt closure is too large for core-bundled weston-toy tier.
 |----------|----------|--------|----------|
 | **macOS** | `bin/qmlscene` + archive | fork/exec from Resources **or** in-process | software (default); GPU RHI optional later |
 | **iOS / iPadOS / visionOS** | `libqmlscene.a` + `qmlscene_main` | in-process via `wawona-dispatch` / Machines | software RHI required first |
-| **tvOS / watchOS** | `libqmlscene.a` + `qmlscene_main` | in-process / remote as allowed | **software only**. Never link ANGLE/MoltenVK/IOKit GL stack |
+| **tvOS** | `libqmlscene.a` + `qmlscene_main` | in-process / remote as allowed | software RHI first; GPU later via bundled ANGLE/MoltenVK. Never IOKit |
+| **watchOS** | `libqmlscene.a` + `qmlscene_main` | in-process / remote as allowed | **software only**. No Metal, so no ANGLE/MoltenVK |
 | **Android** | PIE and/or archive | exec from `nativeLibraryDir` or in-process | software first; GLES optional |
 | **Linux** | nixpkgs / host reference binary | baseline | host Qt6 |
 
 **Hard rules (from platform targets):**
 
 - Entire Apple family stays first-class. Do not drop schemes to unblock another target.
-- watchOS/tvOS: native + remote only; **no** VM/container; **no** bundled Vulkan/OpenGL/ANGLE/ICD.
+- watchOS/tvOS: native + remote only; **no** VM/container. watchOS: **no** GPU. tvOS: ANGLE + MoltenVK like iOS.
 - visionOS = macOS product parity for nested/bundled clients (including this demo once green).
 - Gate in `mobile-platform-deps.nix` / `xcodegen.nix` / Machines profile kinds. Not ad-hoc `#ifdef` sprawl.
 
@@ -114,7 +115,7 @@ zsh / Machines launcher
 ### Phase 3. Per-platform recipes
 
 - [ ] macOS / iOS / iPadOS / visionOS / tvOS / watchOS / Android / Linux
-- [ ] tvOS/watchOS: assert no ANGLE/MoltenVK/IOKit GL on the link line
+- [ ] watchOS: assert no ANGLE/MoltenVK/IOKit GL. tvOS: ANGLE + MoltenVK like iOS; never IOKit
 - [ ] Flake outputs: `qmlscene-ios`, `qmlscene-macos`, `qmlscene-android`, …
 
 ### Phase 4. Wawona integration
@@ -147,7 +148,7 @@ zsh / Machines launcher
 | QML JIT / MAP_JIT on Apple | Force interpret-only; CI assert |
 | Massive archive size | apt ODR/optional. Never core-bundled by default |
 | Plugin/`dlopen` model vs store | Static modules / bundled imports only on mobile |
-| Accidental ANGLE on tvOS/watchOS | CI link-flag assert + deps gating |
+| Accidental ANGLE on watchOS | CI link-flag assert + deps gating |
 | Overlap with #74 | `wwn-qt6` shared; kde stays Plasma/KWin |
 | `exit()` kills host on mobile | In-process exit shim (kmscube/fastfetch pattern) |
 
@@ -155,7 +156,7 @@ zsh / Machines launcher
 
 - [ ] `wwn-qt6` + `wwn-qmlscene` are source of truth
 - [ ] `qmlscene` / `qmlscene_main` runs on macOS, iOS, iPadOS, tvOS, watchOS, visionOS, Android (software RHI)
-- [ ] tvOS/watchOS builds do not link ANGLE/MoltenVK/Vulkan ICDs
+- [ ] watchOS builds do not link ANGLE/MoltenVK/Vulkan ICDs
 - [ ] Dispatch + Machines/zsh + apt launch documented and smoke-tested
 - [ ] Docs + CI green for sample outputs
 - [ ] Ship as bundle or Wasm package when green

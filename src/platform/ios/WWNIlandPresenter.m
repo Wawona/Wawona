@@ -45,11 +45,9 @@ static uint32_t WWNIlandRefreshMillihz(void) {
 }
 
 extern int vkcube_main(int argc, char *argv[]) __attribute__((weak_import));
-#if !TARGET_OS_TV
 extern int kmscube_main(int argc, char *argv[]) __attribute__((weak_import));
 extern int gbm_es2_demo_main(int argc, char *argv[]) __attribute__((weak_import));
 extern int opengl_cube_main(int argc, char *argv[]) __attribute__((weak_import));
-#endif
 /* iland drm_linux.c. Write end of the page-flip event pipe (fd 42 read end). */
 extern int g_drm_event_pipe_write;
 #ifndef DRM_VIRTUAL_FD
@@ -470,14 +468,9 @@ static const wwn_cube_client_t *wwn_cube_client_for_id(NSString *clientId) {
 }
 
 static wwn_cube_entry_t wwn_cube_entry_for_id(NSString *clientId) {
-#if TARGET_OS_TV
-    (void)clientId;
-    return NULL;
-#else
     if ([clientId isEqualToString:@"kmscube"]) return kmscube_main;
     if ([clientId isEqualToString:@"gbm-es2-demo"]) return gbm_es2_demo_main;
     return NULL;
-#endif
 }
 
 static void *wwn_cube_thread(void *arg) {

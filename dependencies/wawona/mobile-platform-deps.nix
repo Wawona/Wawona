@@ -35,9 +35,11 @@ let
     ) {
       waypipe = buildFn "waypipe" { inherit simulator; };
     };
-  # tv: Vulkan/MoltenVK (Phase 1). watch: SHM/CPU only. iOS/vision: full GLES+VK.
-  allowGpu = variant == "mobile" || variant == "vision";
-  allowVulkan = allowGpu || variant == "tv";
+  # tv: GLES (ANGLE) + Vulkan (MoltenVK). watch: SHM/CPU only. iOS/vision: full GLES+VK.
+  # SwiftShader stays iOS/vision simulator only (no tvOS recipe).
+  allowGpu = variant == "mobile" || variant == "vision" || variant == "tv";
+  allowVulkan = allowGpu;
+  allowSwiftShaderSim = (variant == "mobile" || variant == "vision") && simulator;
   base =
     {
       xkbcommon = buildFn "xkbcommon" { inherit simulator; };
@@ -74,18 +76,18 @@ let
     # forbids it there). The Simulator's Metal cannot bring up MoltenVK's pipeline
     # on headless CI (the app is killed with Metal domain 102), so vkcube needs a
     # pure-CPU device to fall back to.
-    // lib.optionalAttrs (allowGpu && simulator) {
+    // lib.optionalAttrs allowSwiftShaderSim {
       swiftshader = buildFn "swiftshader" { inherit simulator; };
     }
     // lib.optionalAttrs allowGpu {
       kmscube = buildFn "kmscube" { inherit simulator; };
       "iland-gl-clients" = buildFn "kmscube" { inherit simulator; };
       "gbm-es2-demo" = buildFn "gbm-es2-demo" { inherit simulator; };
-      # GLES cube. No tvOS recipe until ANGLE (Phase 2).
+      # GLES cube over Wayland-EGL (iland + ANGLE). tvOS uses the same recipe.
       "opengl-cube" = buildFn "opengl-cube" { inherit simulator; };
     }
     // lib.optionalAttrs allowVulkan {
-      # Vulkan cube over Wayland IOSurface dmabuf + MoltenVK. tvOS Phase 1.
+      # Vulkan cube over Wayland IOSurface dmabuf + MoltenVK.
       vkcube = buildFn "vkcube" { inherit simulator; };
     }
     // lib.optionalAttrs

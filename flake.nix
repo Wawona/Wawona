@@ -54,7 +54,7 @@
     wwn-kmscube.inputs.wwn-iland.follows = "wwn-iland";
     # github/development until FlakeHub rolling has hostPlatform Darwin checks.
     # Cited: docs/wwn-repo-dag.md.
-    wwn-weston.url = "github:Wawona/wwn-weston/development";
+    wwn-weston.url = "github:Wawona/wwn-weston/tvos-gpu";
     wwn-weston.inputs.nixpkgs.follows = "nixpkgs";
     wwn-weston.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-weston.inputs.wwn-iland.follows = "wwn-iland";

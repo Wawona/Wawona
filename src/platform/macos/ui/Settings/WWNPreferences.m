@@ -552,10 +552,18 @@ static UIImage *WWNAboutLogo(void) {
     if (self.sections.count > 0) {
       self.activeSection = self.sections[0];
     }
+#if TARGET_OS_TV
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
+        initWithTitle:@"Done"
+                style:UIBarButtonItemStylePlain
+               target:self
+               action:@selector(dismissSelf)];
+#else
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
         initWithBarButtonSystemItem:UIBarButtonSystemItemDone
                              target:self
                              action:@selector(dismissSelf)];
+#endif
     self.navigationItem.rightBarButtonItem.accessibilityIdentifier =
         @"wwn.settings.done";
     self.navigationItem.rightBarButtonItem.accessibilityLabel = @"Done";
@@ -841,7 +849,7 @@ static UIImage *WWNAboutLogo(void) {
 #elif TARGET_OS_TV
 #if defined(WWN_TVOS_GPU_BUNDLED) && WWN_TVOS_GPU_BUNDLED
       ITEM(@"Vulkan Driver", @"VulkanDriver", WSettingPopup, @"moltenvk",
-           @"MoltenVK is the tvOS Vulkan ICD (Phase 1). OpenGL ES comes later.");
+           @"MoltenVK is the tvOS Vulkan ICD (Vulkan to Metal).");
 #else
       ITEM(@"Vulkan Driver", @"VulkanDriver", WSettingPopup, @"none",
            @"Vulkan is unavailable on this platform.");
@@ -871,16 +879,32 @@ static UIImage *WWNAboutLogo(void) {
 #endif
 
   WWNSettingItem *openGLDriverItem =
-#if TARGET_OS_TV || TARGET_OS_WATCH
+#if TARGET_OS_WATCH
       ITEM(@"OpenGL Driver", @"OpenGLDriver", WSettingPopup, @"none",
            @"OpenGL ES is unavailable on this platform.");
+#elif TARGET_OS_TV
+#if defined(WWN_TVOS_GPU_BUNDLED) && WWN_TVOS_GPU_BUNDLED
+      ITEM(@"OpenGL Driver", @"OpenGLDriver", WSettingPopup, @"angle",
+           @"ANGLE is the tvOS OpenGL ES driver (GLES to Metal).");
+#else
+      ITEM(@"OpenGL Driver", @"OpenGLDriver", WSettingPopup, @"none",
+           @"OpenGL ES is unavailable on this platform.");
+#endif
 #else
       ITEM(@"OpenGL Driver", @"OpenGLDriver", WSettingPopup, @"angle",
            @"Select the OpenGL ES implementation used by newly launched machine sessions.");
 #endif
-#if TARGET_OS_TV || TARGET_OS_WATCH
+#if TARGET_OS_WATCH
   openGLDriverItem.options = @[ @"None" ];
   openGLDriverItem.optionValues = @[ @"none" ];
+#elif TARGET_OS_TV
+#if defined(WWN_TVOS_GPU_BUNDLED) && WWN_TVOS_GPU_BUNDLED
+  openGLDriverItem.options = @[ @"None", @"ANGLE" ];
+  openGLDriverItem.optionValues = @[ @"none", @"angle" ];
+#else
+  openGLDriverItem.options = @[ @"None" ];
+  openGLDriverItem.optionValues = @[ @"none" ];
+#endif
 #elif TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
   openGLDriverItem.options = @[ @"None", @"ANGLE" ];
   openGLDriverItem.optionValues = @[ @"none", @"angle" ];
@@ -4251,8 +4275,15 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
 - (void)presentSettingsFromRoot:(UIViewController *)root {
   WWNSettingsSplitViewController *splitVC =
       [[WWNSettingsSplitViewController alloc] init];
+#if TARGET_OS_TV
+  // FormSheet on tvOS is a phone-sized card in the corner. Full screen plus
+  // a wide sidebar is the 10-foot layout.
+  splitVC.modalPresentationStyle = UIModalPresentationFullScreen;
+  splitVC.preferredPrimaryColumnWidthFraction = 0.35;
+  splitVC.minimumPrimaryColumnWidth = 400;
+  splitVC.maximumPrimaryColumnWidth = 640;
+#else
   splitVC.modalPresentationStyle = UIModalPresentationFormSheet;
-#if !TARGET_OS_TV
   UISheetPresentationController *sheet = splitVC.sheetPresentationController;
   if (sheet) {
     // Capsule at the top of the card. Swipe down on it (or the sheet) to
@@ -4375,7 +4406,12 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
   }
   UINavigationController *wrap =
       [[UINavigationController alloc] initWithRootViewController:picker];
-  wrap.modalPresentationStyle = UIModalPresentationFormSheet;
+  wrap.modalPresentationStyle =
+#if TARGET_OS_TV
+      UIModalPresentationFullScreen;
+#else
+      UIModalPresentationFormSheet;
+#endif
   [self presentViewController:wrap animated:YES completion:nil];
   picker.onPick = ^(NSInteger index) {
     __strong typeof(weakSelf) strongSelf = weakSelf;

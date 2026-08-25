@@ -13,7 +13,7 @@ from [`product-build.yml`](../../.github/workflows/product-build.yml).
 | iOS sim / device IPA shape | `ios` | **absent** (hard fail on Dobby / private frameworks / Mode B daemons) | ANGLE + MoltenVK (static markers) |
 | iPadOS | `ipados` | absent | same |
 | visionOS | `visionos` | absent | same |
-| tvOS | `tvos` | absent | **none** (no ANGLE/MVK/IOKit link) |
+| tvOS | `tvos` | absent | ANGLE + MoltenVK (`WWN_TVOS_GPU=1`; product-build exports this) |
 | watchOS | `watchos` | absent | **none** |
 | Android Play APK | `android` | **absent** (+ no Turnip/KGSL; requires ANGLE + SwiftShader `.so` + ICD JSON) | ANGLE + SwiftShader |
 | macOS 3rd-party | `macos` | **absent** | MoltenVK + KosmicKrisp dylibs |

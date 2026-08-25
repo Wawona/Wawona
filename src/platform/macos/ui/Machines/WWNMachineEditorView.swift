@@ -258,7 +258,17 @@ struct WWNMachineEditorView: View {
             TextField("Host", text: $sshHost)
             TextField("User", text: $sshUser)
             TextField("Port", text: $sshPort)
-            SecureField("Password", text: $sshPassword)
+            Picker("Auth", selection: $sshAuthMethod) {
+              Text("Password").tag(0)
+              Text("Public Key").tag(1)
+            }
+            .pickerStyle(.navigationLink)
+            if sshAuthMethod == 0 {
+              SecureField("Password", text: $sshPassword)
+            } else {
+              TextField("Key Path", text: $sshKeyPath)
+              SecureField("Key Passphrase", text: $sshKeyPassphrase)
+            }
             TextField("Remote Command", text: $remoteCommand)
           }
 
@@ -284,12 +294,60 @@ struct WWNMachineEditorView: View {
         Section {
           Toggle("Auto Scale", isOn: $autoScale)
           Toggle("Respect Safe Area", isOn: $respectSafeArea)
-          Toggle("Universal Clipboard", isOn: $universalClipboard)
+          Picker("Display Backend", selection: $compositorBackend) {
+            Text("Auto").tag("auto")
+            Text("Wayland (nested)").tag("wayland")
+            Text("DRM/KMS (wwn-iland)").tag("drm")
+          }
+          .pickerStyle(.navigationLink)
           Button("Open Wawona Settings…") {
             WWNPreferences.shared().show(nil)
           }
         } header: {
           Text("Display")
+        } footer: {
+          Text("Nested weston/niri use Wayland. DRM is userspace iland, not a real /dev/dri node.")
+        }
+
+        Section {
+          Picker("Vulkan Driver", selection: $vulkanDriver) {
+            Text("None").tag("none")
+            if PlatformCapabilities.allowsGpuStack {
+              Text("MoltenVK").tag("moltenvk")
+            }
+          }
+          .pickerStyle(.navigationLink)
+          Picker("OpenGL Driver", selection: $openGLDriver) {
+            Text("None").tag("none")
+            if PlatformCapabilities.allowsGlesStack {
+              Text("ANGLE").tag("angle")
+            }
+          }
+          .pickerStyle(.navigationLink)
+          Toggle("Enable DMABUF", isOn: $dmabufEnabled)
+          Toggle("Enable HDR", isOn: $colorOperations)
+        } header: {
+          Text("Graphics")
+        } footer: {
+          Text("MoltenVK is Vulkan to Metal. ANGLE is OpenGL ES to Metal. Same drivers as iOS.")
+        }
+
+        Section("Environment Variables") {
+          Button {
+            showEnvironmentEditor = true
+          } label: {
+            HStack {
+              Text("Edit Environment Variables…")
+              Spacer()
+              Text(
+                environmentOverrides.isEmpty
+                  ? "Inherit global"
+                  : "\(environmentOverrides.count) override(s)"
+              )
+              .foregroundStyle(.secondary)
+            }
+          }
+          .accessibilityIdentifier("wwn.settings.environment.machine")
         }
 
         Section {
@@ -317,6 +375,21 @@ struct WWNMachineEditorView: View {
         ToolbarItem(placement: .confirmationAction) {
           Button("Save", action: save)
         }
+      }
+      .fullScreenCover(isPresented: $showEnvironmentEditor) {
+        NavigationStack {
+          EnvironmentVariablesView(
+            preferences: WawonaPreferences.shared,
+            perMachine: true,
+            draftMachineOverrides: $environmentOverrides
+          )
+          .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+              Button("Done") { showEnvironmentEditor = false }
+            }
+          }
+        }
+        .presentationBackground(Color(white: 0.07))
       }
     }
     .preferredColorScheme(.dark)
@@ -1182,13 +1255,15 @@ struct WWNMachineEditorView: View {
     overrides["NestedCompositorCursor"] =
       (nestedCompositorCursor == "host") ? "host" : "virtual"
     #if os(tvOS)
-    // Desktop window chrome is unusable on the 10-foot UI; never persist SSD/GPU stack.
-    overrides["ForceServerSideDecorations"] = false
-    overrides["VulkanDriver"] = "none"
-    overrides["OpenGLDriver"] = "none"
-    overrides["DmabufEnabled"] = false
-    overrides["ColorOperations"] = false
-    overrides["TouchInputType"] = "Touchpad"
+    // Fill-primary: Wayland CSD cannot stand alone on tvOS, so SSD stays on.
+    // Persist the graphics/input the editor actually shows. Do not force
+    // Vulkan off; that made every GPU client refuse after Save.
+    overrides["ForceServerSideDecorations"] = true
+    overrides["TouchInputType"] = touchInputType
+    overrides["VulkanDriver"] = vulkanDriver
+    overrides["OpenGLDriver"] = openGLDriver
+    overrides["DmabufEnabled"] = dmabufEnabled
+    overrides["ColorOperations"] = colorOperations
     #else
     overrides["ForceServerSideDecorations"] = forceServerSideDecorations
     overrides["TouchInputType"] = touchInputType

@@ -68,6 +68,21 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
 
 @end
 
+#if TARGET_OS_TV
+static WWNCompositorView_ios *WWNFindCompositorSurface(UIView *root) {
+  if ([root isKindOfClass:[WWNCompositorView_ios class]]) {
+    return (WWNCompositorView_ios *)root;
+  }
+  for (UIView *child in root.subviews) {
+    WWNCompositorView_ios *found = WWNFindCompositorSurface(child);
+    if (found != nil) {
+      return found;
+    }
+  }
+  return nil;
+}
+#endif
+
 @implementation WWNCompositorHostViewController {
 #if TARGET_OS_TV
   NSTimer *_tvMenuLongPressTimer;
@@ -215,6 +230,16 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
     return;
   }
   [super pressesCancelled:presses withEvent:event];
+}
+
+- (NSArray<id<UIFocusEnvironment>> *)preferredFocusEnvironments {
+  if (self.interceptsMenuForSessionExit) {
+    WWNCompositorView_ios *surface = WWNFindCompositorSurface(self.view);
+    if (surface != nil) {
+      return @[ surface ];
+    }
+  }
+  return [super preferredFocusEnvironments];
 }
 
 - (void)dealloc {
@@ -368,7 +393,13 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
                                                     constant:24.0],
     [self.view.trailingAnchor constraintGreaterThanOrEqualToAnchor:card.trailingAnchor
                                                            constant:24.0],
-    [card.widthAnchor constraintEqualToConstant:340.0],
+    [card.widthAnchor constraintEqualToConstant:
+#if TARGET_OS_TV
+                          720.0
+#else
+                          340.0
+#endif
+    ],
 
     [stack.topAnchor constraintEqualToAnchor:card.topAnchor constant:28.0],
     [stack.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:22.0],
@@ -1715,6 +1746,8 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
         (WWNCompositorHostViewController *)self.window.rootViewController;
     host.interceptsMenuForSessionExit = YES;
     [host becomeFirstResponder];
+    [host setNeedsFocusUpdate];
+    [host updateFocusIfNeeded];
   }
 #elif TARGET_OS_VISION
   if ([self.window.rootViewController isKindOfClass:[WWNCompositorHostViewController class]]) {

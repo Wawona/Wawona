@@ -1017,6 +1017,14 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   if (displayScale <= 0.0) {
     displayScale = 1.0;
   }
+  CGRect contentsRect = normalizedContentRect;
+#if TARGET_OS_TV
+  // Host-owned fill: never wrap a sub-rect of the SHM (tiling looks like
+  // mirrored copies of the terminal around the TV).
+  if (hostOwnsPresent) {
+    contentsRect = CGRectMake(0.0, 0.0, 1.0, 1.0);
+  }
+#endif
   NSString *gravity = kCAGravityResize;
   if (!hostOwnsPresent) {
     // Fixed / client-authoritative surfaces: 1:1 buffer pixels in the
@@ -1067,10 +1075,10 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   _waylandFrameView.layer.contentsScale = contentsScale;
   _waylandFrameView.layer.contents = nil;
   _waylandFrameView.layer.contents = (__bridge id)image;
-  _waylandFrameView.layer.contentsRect = normalizedContentRect;
+  _waylandFrameView.layer.contentsRect = contentsRect;
   [CATransaction commit];
 
-  [self _mirrorFrameToExternalDisplay:image contentRect:normalizedContentRect];
+  [self _mirrorFrameToExternalDisplay:image contentRect:contentsRect];
 
   /* Notify the startup log overlay that the first real frame has arrived.
    * Also arm host keyboard (accessory / soft OSK). Deferred until now so
@@ -2471,6 +2479,22 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 - (BOOL)canBecomeFirstResponder {
   return YES;
 }
+
+#if TARGET_OS_TV
+- (BOOL)canBecomeFocused {
+  return YES;
+}
+
+- (UIFocusEffect *)focusEffect {
+  // Default tvOS focus lifts the view and draws mirrored copies. That is
+  // chrome for buttons, not a Wayland surface.
+  return nil;
+}
+
+- (NSArray<id<UIFocusEnvironment>> *)preferredFocusEnvironments {
+  return @[ self ];
+}
+#endif
 
 - (BOOL)_readTextAssistEnabled {
   // Match Android default (off): nested Weston and terminals expect wl_keyboard.
@@ -4438,6 +4462,82 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   return NO;
 }
 
+#if TARGET_OS_TV
+static uint32_t tvosPressTypeToLinuxKeycode(UIPressType type) {
+  switch (type) {
+  case UIPressTypeSelect:
+    return KEY_ENTER;
+  case UIPressTypeUpArrow:
+    return KEY_UP;
+  case UIPressTypeDownArrow:
+    return KEY_DOWN;
+  case UIPressTypeLeftArrow:
+    return KEY_LEFT;
+  case UIPressTypeRightArrow:
+    return KEY_RIGHT;
+  case UIPressTypePlayPause:
+    return KEY_SPACE;
+  default:
+    return KEY_RESERVED;
+  }
+}
+
+- (BOOL)_tvosInjectRemotePresses:(NSSet<UIPress *> *)presses pressed:(BOOL)pressed {
+  WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+  uint32_t ts = [self _timestampMs];
+  BOOL handled = NO;
+  for (UIPress *press in presses) {
+    uint32_t kc = tvosPressTypeToLinuxKeycode(press.type);
+    if (kc == KEY_RESERVED) {
+      continue;
+    }
+    handled = YES;
+    if (pressed && wwn_ios_terminal_is_active() != 0 && !isModifierKeycode(kc)) {
+      const char *seq = NULL;
+      size_t len = 0;
+      char enter = '\n';
+      char space = ' ';
+      switch (press.type) {
+      case UIPressTypeSelect:
+        seq = &enter;
+        len = 1;
+        break;
+      case UIPressTypePlayPause:
+        seq = &space;
+        len = 1;
+        break;
+      case UIPressTypeUpArrow:
+        seq = "\x1b[A";
+        len = 3;
+        break;
+      case UIPressTypeDownArrow:
+        seq = "\x1b[B";
+        len = 3;
+        break;
+      case UIPressTypeRightArrow:
+        seq = "\x1b[C";
+        len = 3;
+        break;
+      case UIPressTypeLeftArrow:
+        seq = "\x1b[D";
+        len = 3;
+        break;
+      default:
+        break;
+      }
+      if (seq && len > 0) {
+        (void)wwn_ios_terminal_inject(seq, len);
+      }
+    }
+    if (pressed) {
+      [self _sendKeyboardEnterIfNeeded];
+    }
+    [bridge injectKeyWithKeycode:kc pressed:pressed timestamp:ts];
+  }
+  return handled;
+}
+#endif
+
 - (void)pressesBegan:(NSSet<UIPress *> *)presses
            withEvent:(UIPressesEvent *)event {
 #if TARGET_OS_TV
@@ -4447,6 +4547,9 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
       [super pressesBegan:presses withEvent:event];
       return;
     }
+  }
+  if ([self _tvosInjectRemotePresses:presses pressed:YES]) {
+    return;
   }
 #endif
   if (@available(iOS 13.4, *)) {
@@ -4512,6 +4615,9 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
       [super pressesEnded:presses withEvent:event];
       return;
     }
+  }
+  if ([self _tvosInjectRemotePresses:presses pressed:NO]) {
+    return;
   }
 #endif
   if (@available(iOS 13.4, *)) {

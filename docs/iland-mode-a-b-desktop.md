@@ -302,8 +302,8 @@ Wawona Swinging Bridge Mode B.
 | **iOS** | App Store | Mode A only; no Desktop/LockScreen UI; **no jailbreak mentions**; no Mode B dylib; SSH = libssh2 only |
 | **iPadOS** | App Store | Same as iOS for Desktop/Wawona Swinging Bridge store policy + multi-window required |
 | **visionOS** | App Store | Same Mode A / macOS-product GLES+Vulkan parity; no Mode B; multi-window required |
-| **tvOS** | App Store | Mode A **software only**. No ANGLE/MVK/KK/Vulkan ICD, no IOKit, no GPU DRM clients |
-| **watchOS** | App Store | Same software policy as tvOS |
+| **tvOS** | App Store | Mode A GLES (ANGLE to Metal) + Vulkan (MoltenVK to Metal). No IOKit, no Mode B, no KosmicKrisp |
+| **watchOS** | App Store | Software/SHM only. No Metal in the SDK, so no ANGLE/MVK |
 | **Android** | Google Play | Mode A graphics; Home Desktop **without root** when it ships; Wawona Swinging Bridge Mode B never Play-required |
 | **macOS** | **3rd-party** (not MAS) | Mode A default (SIP may stay on). Mode B desktop-host only with SIP **fully disabled** (`csrutil disable`). Partial SIP is refused. Never contaminate iOS/Android store artifacts |
 
@@ -315,8 +315,9 @@ Wawona Swinging Bridge Mode B.
    (including kmscube, waypipe, Android Home Desktop when shipped).
 3. **Private API / entitlement firewall:** Mode A present = public
    Metal/UIKit/AppKit/Surface + userland DRM shims only.
-4. **tvOS/watchOS:** software Mode A only. Never "fix" compliance by shipping
-   GPU stacks.
+4. **watchOS:** software Mode A only. Never "fix" the missing Metal SDK with
+   private API or SpriteKit. **tvOS:** Mode A ANGLE + MoltenVK is required;
+   never IOKit or Mode B.
 5. **visionOS/iPadOS:** store Mode A meets multi-window + product GLES/Vulkan
    expectations without Mode B.
 6. **Shared Nix/xcodegen:** gate Mode B + desktop-host dylibs so store schemes

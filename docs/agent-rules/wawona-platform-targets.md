@@ -24,8 +24,8 @@ fallback) instead of removing it from the product surface.
 | Remote (SSH/waypipe) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | VM / containers | ⏳ planned | ⏳ planned | ⏳ planned | ❌ | ⏳ planned | ❌ | ❌ |
 | Multi-window (1 window per Wayland client) | ✅ | ✅ (if OS allows) | ✅ **required** | ✅ **required** | ⚠️ single primary | ❌ | ❌ |
-| Nested compositors + bundled clients | ✅ | ✅ | ✅ | ✅ **macOS parity** | ✅ | ⚠️ limited | ⚠️ limited |
-| Vulkan / OpenGL / ANGLE bundle | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ planned | ⛔ blocked |
+| Nested compositors + bundled clients | ✅ | ✅ | ✅ | ✅ **macOS parity** | ✅ | ✅ | ⚠️ limited |
+| Vulkan / OpenGL / ANGLE bundle | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⛔ blocked |
 | Desktop + LockScreen replacement | ⏳ planned | ⏳ planned | ❌ App Store | ❌ | ❌ App Store | ❌ | ❌ |
 | Wawona Swinging Bridge | ⏳ Mode A+B | ⏳ Mode A+B | ❌ App Store (Mode B only) | ❌ | ❌ App Store (Mode B only) | ❌ | ❌ |
 
@@ -89,18 +89,15 @@ forbidden while iPhone is planned for those features.
    types, engines, and UI are **❌ forbidden** on these targets: that is policy,
    not a gap. GPU is a *separate* question, and the two platforms differ -
    verified against the 26.5 SDKs, re-verify rather than trusting memory:
-   - **tvOS GPU is ⏳ planned.** `AppleTVOS26.5.sdk` ships `Metal.framework`,
+   - **tvOS GPU is bundled.** `AppleTVOS26.5.sdk` ships `Metal.framework`,
      `MetalKit`, `MetalFX`, MPS/MPSGraph, **and** `OpenGLES.framework`, and
-     `CAMetalLayer` is available since tvOS 9. So Wayland GL **and** Vulkan
-     **and** iland DRM/KMS/GBM are all legal public-API work on tvOS. The only
-     reason they are off is that we have not done them. This is the **last**
-     phase of the graphics stack, after every other target is PROPER. Gate:
-     `WWN_TVOS_GPU=1` in `verify-iland-graphics-bundle.sh`. Vulkan is the short
-     path (MoltenVK supports tvOS 14.5+); GLES is the long one (ANGLE has no
-     maintained Chromium GN tvOS target. Same wall as visionOS. Though tvOS's
-     own `OpenGLES.framework` may serve instead). The Vulkan **loader** does not
+     `CAMetalLayer` is available since tvOS 9. ANGLE (OpenGL ES to Metal,
+     `target_platform=tvos`) and MoltenVK (Vulkan to Metal) link when
+     `WWN_TVOS_GPU_BUNDLED`. Gate: `WWN_TVOS_GPU=1` in
+     `verify-iland-graphics-bundle.sh` requires both. The Vulkan **loader** does not
      work on tvOS: dispatch straight into the ICD, as `WWN_VULKAN_LIBRARY`
-     already does. Never drop tvOS from the graphics roadmap.
+     already does. Rendered-frame PROPER is still pending. Never drop tvOS
+     from the graphics roadmap.
    - **watchOS GPU is ⛔ blocked, not forbidden and not deferred.** `WatchOS26.5.sdk`
      ships **no `Metal.framework` at all** (device *or* simulator), no
      `OpenGLES.framework`, and `CAMetalLayer` is annotated
@@ -180,8 +177,8 @@ forbidden while iPhone is planned for those features.
 
 - Gate in `mobile-platform-deps.nix` variants, `xcodegen.nix` `OTHER_LDFLAGS`,
   Machines profile kinds, and platform UI. Not ad-hoc `#ifdef` sprawl.
-- tvOS/watchOS link flags must not pull `-framework IOKit`, ANGLE, MoltenVK,
-  or Vulkan ICDs. Until the deferred tvOS GPU phase, which flips only tvOS and
-  only behind `WWN_TVOS_GPU=1`. watchOS keeps this checkpoint permanently.
+- tvOS/watchOS link flags must not pull `-framework IOKit`. watchOS must
+  not pull ANGLE, MoltenVK, or Vulkan ICDs (no Metal). tvOS links ANGLE and
+  MoltenVK when `WWN_TVOS_GPU=1`.
 - When adding a Machines feature: classify it (native / remote / VM /
   container) and refuse it on targets that forbid that class.

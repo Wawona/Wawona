@@ -11,6 +11,9 @@ struct WWNMachinesGridView: View {
   @State private var editingProfile: WWNMachineProfile?
   @State private var isCreating = false
   @State private var searchQuery = ""
+  #if os(tvOS)
+  @FocusState private var focusedMachineId: String?
+  #endif
 
   var body: some View {
     Group {
@@ -61,17 +64,13 @@ struct WWNMachinesGridView: View {
     NavigationStack {
       ScrollView {
         VStack(alignment: .leading, spacing: 28) {
-          Text("Machines")
-            .font(.title2.weight(.bold))
-            .foregroundStyle(.secondary)
-
           if visibleProfiles.isEmpty {
             ContentUnavailableView(
               "No Machines",
               systemImage: "tv",
               description: Text("Add a Local or Remote machine profile, then Start it with the Siri Remote.")
             )
-            .frame(maxWidth: .infinity, minHeight: 220)
+            .frame(maxWidth: .infinity, minHeight: 420)
           } else {
             LazyVStack(spacing: 22) {
               ForEach(visibleProfiles, id: \.machineId) { profile in
@@ -112,9 +111,10 @@ struct WWNMachinesGridView: View {
                   .padding(28)
                 }
                 .buttonStyle(.card)
+                .focused($focusedMachineId, equals: profile.machineId)
               }
             }
-            .frame(maxWidth: 1100, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
           }
 
           Text("\(model.profiles.count) profiles · \(model.connectedCount) connected · \(model.launchableCount) ready")
@@ -144,9 +144,15 @@ struct WWNMachinesGridView: View {
           }
         }
         .padding(48)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
       }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
       .navigationTitle("Machines")
+      .onAppear {
+        if focusedMachineId == nil {
+          focusedMachineId = visibleProfiles.first?.machineId
+        }
+      }
       .fullScreenCover(isPresented: $isCreating) {
         WWNMachineEditorView(
           title: "Add Machine Profile",
@@ -164,6 +170,7 @@ struct WWNMachinesGridView: View {
         .presentationBackground(Color(white: 0.07))
       }
     }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
     .preferredColorScheme(.dark)
   }
   #endif
@@ -585,38 +592,48 @@ struct WWNMachineTVDetailView: View {
   let onFocus: () -> Void
 
   @Environment(\.dismiss) private var dismiss
+  @FocusState private var focusedActionId: String?
 
   var body: some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: 36) {
-        VStack(alignment: .leading, spacing: 14) {
+      VStack(alignment: .leading, spacing: 40) {
+        VStack(alignment: .leading, spacing: 16) {
           Text(profile.name.isEmpty ? "Unnamed Machine" : profile.name)
             .font(.largeTitle.weight(.bold))
           Text(subtitle)
-            .font(.title2)
+            .font(.title)
             .foregroundStyle(.secondary)
           Text(summary)
-            .font(.title3)
+            .font(.title2)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
-          HStack(spacing: 24) {
+          HStack(spacing: 28) {
             Label(scopeLabel, systemImage: "circle.grid.2x2")
             Label(typeLabel, systemImage: "tag")
             Label(status.title, systemImage: "circle.fill")
               .foregroundStyle(statusColor)
           }
-          .font(.title3.weight(.semibold))
+          .font(.title2.weight(.semibold))
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
 
-        VStack(spacing: 22) {
-          MachineActionBar(items: tvActionItems, layout: .stack)
-            .frame(maxWidth: 900)
+        VStack(alignment: .leading, spacing: 22) {
+          ForEach(tvActionItems) { item in
+            MachineActionBar(items: [item], layout: .stack)
+              .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
+              .focused($focusedActionId, equals: item.accessibilityID)
+          }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
       }
-      .padding(48)
-      .frame(maxWidth: .infinity, alignment: .leading)
+      .padding(64)
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
     .navigationTitle("Machine")
+    .onAppear {
+      focusedActionId = tvActionItems.first?.accessibilityID
+    }
   }
 
   private var tvActionItems: [MachineActionItem] {
@@ -712,6 +729,7 @@ final class WWNMachinesHostingBridge: NSObject {
     #if os(tvOS)
     let hosting = WWNMachinesTVHostingController(rootView: root)
     hosting.view.backgroundColor = .black
+    hosting.sizingOptions = []
     #else
     let hosting = UIHostingController(rootView: root)
     hosting.view.backgroundColor = UIColor.systemBackground
@@ -721,19 +739,35 @@ final class WWNMachinesHostingBridge: NSObject {
 }
 
 #if os(tvOS)
-/// Prefers the first focusable control in the Machines list after welcome dismiss.
+/// Fills the TV window. SwiftUI owns focus via FocusState on the machine cards.
 private final class WWNMachinesTVHostingController<Content: View>: UIHostingController<Content> {
-  override var preferredFocusEnvironments: [any UIFocusEnvironment] {
-    if let first = view.subviews.first(where: { $0.canBecomeFocused }) {
-      return [first]
-    }
-    return super.preferredFocusEnvironments
+  override func viewDidLoad() {
+    super.viewDidLoad()
+    view.backgroundColor = .black
+  }
+
+  override func viewDidLayoutSubviews() {
+    super.viewDidLayoutSubviews()
+    hideStrayPageControls(in: view.window ?? view)
   }
 
   override func viewDidAppear(_ animated: Bool) {
     super.viewDidAppear(animated)
+    hideStrayPageControls(in: view.window ?? view)
     setNeedsFocusUpdate()
     updateFocusIfNeeded()
+  }
+
+  /// NavigationStack on tvOS injects a UIPageControl labelled "0 pages".
+  private func hideStrayPageControls(in root: UIView) {
+    for sub in root.subviews {
+      if let pages = sub as? UIPageControl {
+        pages.isHidden = true
+        pages.alpha = 0
+        pages.isUserInteractionEnabled = false
+      }
+      hideStrayPageControls(in: sub)
+    }
   }
 }
 #endif

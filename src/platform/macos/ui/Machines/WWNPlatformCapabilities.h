@@ -91,6 +91,14 @@ static inline bool WWNPlatformAllowsClientTabs(void) {
 #endif
 }
 
+static inline bool WWNPlatformAllowsGlesStack(void) {
+#if TARGET_OS_WATCH
+  return false;
+#else
+  return WWNPlatformAllowsGpuStack();
+#endif
+}
+
 #ifdef __cplusplus
 }
 #endif

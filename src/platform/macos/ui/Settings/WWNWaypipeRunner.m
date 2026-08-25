@@ -114,7 +114,7 @@ static NSString *WWNGpuClientRefusalReason(NSString *clientId) {
     return nil;
   }
   if (!WWNPlatformAllowsGpuStack()) {
-    return @"platform has no GPU stack (tvOS/watchOS)";
+    return @"platform has no GPU stack (watchOS has no Metal)";
   }
   WWNGraphicsDriverSelection selection =
       WWNSettings_ResolveGraphicsDriverSelection();

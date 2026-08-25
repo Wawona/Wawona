@@ -86,8 +86,9 @@ flowchart BT
   FlakeHub rolling includes the iOS HOME physicalize fix (`0e41745`).
   See [`flakehub-registry.md`](./flakehub-registry.md).
 - `angle` and `swiftshader` recipes live in `wwn-iland/dependencies/libs/` and
-  are exported by the L1 `registryFragment`. Their old L0 recipes are removed;
-  consumers must merge L1 before requesting either key.
+  are exported by the L1 `registryFragment`. `angle.tvos` uses the same
+  `ios.nix` source GN as visionOS (`target_platform=tvos`). Their old L0
+  recipes are removed; consumers must merge L1 before requesting either key.
 - `moltenvk` = `pkgs.moltenvk` (nixpkgs, wired in Wawona); `kosmickrisp` has no
   recipe. Both become L1-owned/wired in P2.
 - `pixman` correctly L0 (cairo depends on it). **Do not move to iland**. Would

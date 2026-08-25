@@ -786,7 +786,8 @@ PLIST
     if angleSimDylib != null then angleEmbedScript "iphonesimulator" angleSimDylib
     else pkgs.writeShellScript "embed-angle-sim-dylibs-noop.sh" "exit 0";
   angleDeviceEmbedScript =
-    # No appletvos. TvOS must not ship ANGLE (platform-targets matrix).
+    # Static ANGLE archives (source GN on tvOS/visionOS, XCSoar dylibs on
+    # iOS). appletvos must not embed libEGL.dylib; xcodegen links libEGL.a.
     if angleDeviceDylib != null then angleEmbedScript "iphoneos" angleDeviceDylib
     else pkgs.writeShellScript "embed-angle-device-dylibs-noop.sh" "exit 0";
 

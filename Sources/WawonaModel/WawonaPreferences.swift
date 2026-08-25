@@ -138,8 +138,14 @@ public final class WawonaPreferences: ObservableObject {
     @Published public var renderer: String = "metal"
     @Published public var vulkanDriver: String = WawonaPreferences.defaultVulkanDriver
     @Published public var openGLDriver: String = {
-        #if os(tvOS) || os(watchOS)
+        #if os(watchOS)
         return "none"
+        #elseif os(tvOS)
+        #if WWN_TVOS_GPU_BUNDLED
+        return "angle"
+        #else
+        return "none"
+        #endif
         #else
         return "angle"
         #endif

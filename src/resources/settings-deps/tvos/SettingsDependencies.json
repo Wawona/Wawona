@@ -46,9 +46,14 @@
       "role": "epoll compatibility layer"
     },
     {
+      "name": "ANGLE",
+      "version": "chromium",
+      "role": "OpenGL ES on Metal"
+    },
+    {
       "name": "MoltenVK",
       "version": "1.3",
-      "role": "Vulkan on Metal (tvOS GPU Phase 1)"
+      "role": "Vulkan on Metal"
     },
     {
       "name": "iland",

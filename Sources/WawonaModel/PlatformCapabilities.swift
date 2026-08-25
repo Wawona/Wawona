@@ -107,9 +107,8 @@ public enum PlatformCapabilities: Sendable {
     ///   SceneKit/SpriteKit are present but are not a shader backdoor, and
     ///   private Metal would forfeit store compliance.
     ///
-    /// tvOS: `.available` only when this target was linked with MoltenVK
-    /// (`WWN_TVOS_GPU_BUNDLED`). GLES/ANGLE is a later phase; see
-    /// `allowsGlesStack`.
+    /// tvOS: `.available` when this target was linked with MoltenVK and
+    /// ANGLE (`WWN_TVOS_GPU_BUNDLED`). watchOS stays blocked (no Metal).
     public static var gpuStackGate: CapabilityGate {
         #if os(tvOS)
         #if WWN_TVOS_GPU_BUNDLED
@@ -127,9 +126,9 @@ public enum PlatformCapabilities: Sendable {
     public static var allowsGpuStack: Bool { gpuStackGate.isAvailable }
 
     /// ANGLE / GLES clients (kmscube, opengl-cube, weston-simple-egl).
-    /// tvOS Phase 1 is Vulkan-only; Chromium ANGLE has no tvOS GN target yet.
+    /// tvOS ships ANGLE when `WWN_TVOS_GPU_BUNDLED`. watchOS has no Metal.
     public static var allowsGlesStack: Bool {
-        #if os(tvOS) || os(watchOS)
+        #if os(watchOS)
         return false
         #else
         return allowsGpuStack

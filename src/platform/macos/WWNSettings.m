@@ -109,7 +109,7 @@ WWNGraphicsDriverSelection WWNSettings_ResolveGraphicsDriverSelection(void) {
 #elif TARGET_OS_TV
 #if defined(WWN_TVOS_GPU_BUNDLED) && WWN_TVOS_GPU_BUNDLED
   vulkan = "moltenvk";
-  openGL = "none";
+  openGL = "angle";
 #else
   vulkan = "none";
   openGL = "none";
