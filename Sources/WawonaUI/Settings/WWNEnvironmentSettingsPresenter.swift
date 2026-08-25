@@ -143,7 +143,9 @@ private final class WWNEnvironmentInventoryHostingController:
             )
         )
         title = "Environment Variables"
+        #if !os(tvOS)
         navigationItem.largeTitleDisplayMode = .never
+        #endif
         view.accessibilityIdentifier = "wwn.settings.environment"
         #if os(tvOS)
         navigationItem.rightBarButtonItem = UIBarButtonItem(
