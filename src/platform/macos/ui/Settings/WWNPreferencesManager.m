@@ -1,6 +1,10 @@
 #import "WWNPreferencesManager.h"
 #import "../Machines/WWNPlatformCapabilities.h"
+#import "../Machines/WWNMachineProfileStore.h"
 #import <sys/sysctl.h>
+
+static NSString *const kWWNTvosOpenGLDriverMigrated =
+    @"wawona.tvosOpenGLDriverMigrated.v1";
 
 // Preferences keys
 NSString *const kWWNPrefsUniversalClipboard = @"UniversalClipboard";
@@ -322,17 +326,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
     kWWNPrefsEnableDmabuf : @YES,
     kWWNPrefsVulkanDriver : [WWNPreferencesManager defaultVulkanDriverForHardware],
     kWWNPrefsOpenGLDriver :
-#if TARGET_OS_WATCH
-        @"none",
-#elif TARGET_OS_TV
-#if defined(WWN_TVOS_GPU_BUNDLED) && WWN_TVOS_GPU_BUNDLED
-        @"angle",
-#else
-        @"none",
-#endif
-#else
-        @"angle",
-#endif
+        [WWNPreferencesManager defaultOpenGLDriverForHardware],
     kWWNPrefsCompositorBackend : @"auto",
     // Connection
     kWWNPrefsTCPListenerPort : @6000,
@@ -446,6 +440,24 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
       [defaults setObject:@"none" forKey:kWWNPrefsVulkanDriver];
     }
   }
+
+  // tvOS GPU Phase 1 shipped MoltenVK with OpenGLDriver=none. registerDefaults
+  // does not overwrite an existing key, so GLES / KMS cubes stayed refused.
+  // One-shot: leftover none (or a missing key) becomes ANGLE. After this,
+  // Settings → Graphics None remains a real efficiency mode.
+#if TARGET_OS_TV
+#if defined(WWN_TVOS_GPU_BUNDLED) && WWN_TVOS_GPU_BUNDLED
+  if (![defaults boolForKey:kWWNTvosOpenGLDriverMigrated]) {
+    NSString *gl = [defaults stringForKey:kWWNPrefsOpenGLDriver];
+    if (gl.length == 0 || [gl isEqualToString:@"none"]) {
+      [defaults setObject:@"angle" forKey:kWWNPrefsOpenGLDriver];
+    }
+    [WWNMachineProfileStore migrateTvosGpuOpenGLDriverSnapshotsIfNeeded];
+    [defaults setBool:YES forKey:kWWNTvosOpenGLDriverMigrated];
+    [defaults synchronize];
+  }
+#endif
+#endif
 }
 
 - (void)resetToDefaults {
@@ -839,6 +851,16 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
   return @"moltenvk";
 }
 
++ (NSString *)defaultOpenGLDriverForHardware {
+#if TARGET_OS_WATCH
+  return @"none";
+#elif TARGET_OS_TV
+  return WWNPlatformAllowsGlesStack() ? @"angle" : @"none";
+#else
+  return @"angle";
+#endif
+}
+
 - (NSString *)vulkanDriver {
 #if TARGET_OS_WATCH
   return @"none";
@@ -876,17 +898,20 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 #if TARGET_OS_WATCH
   return @"none";
 #elif TARGET_OS_TV
-#if defined(WWN_TVOS_GPU_BUNDLED) && WWN_TVOS_GPU_BUNDLED
+  if (!WWNPlatformAllowsGlesStack()) {
+    return @"none";
+  }
   NSString *driver =
       [[NSUserDefaults standardUserDefaults] stringForKey:kWWNPrefsOpenGLDriver];
-  return [@[ @"none", @"angle" ] containsObject:driver] ? driver : @"angle";
-#else
-  return @"none";
-#endif
+  return [@[ @"none", @"angle" ] containsObject:driver]
+             ? driver
+             : [WWNPreferencesManager defaultOpenGLDriverForHardware];
 #else
   NSString *driver =
       [[NSUserDefaults standardUserDefaults] stringForKey:kWWNPrefsOpenGLDriver];
-  return [@[ @"none", @"angle" ] containsObject:driver] ? driver : @"angle";
+  return [@[ @"none", @"angle" ] containsObject:driver]
+             ? driver
+             : [WWNPreferencesManager defaultOpenGLDriverForHardware];
 #endif
 }
 

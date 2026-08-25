@@ -269,7 +269,7 @@ public struct MachineSettingsView: View {
             }
             .wwnDisclosurePicker()
             #if os(tvOS)
-            Toggle("Long-press Menu to Exit Machine", isOn: shakeToCloseBinding)
+            Toggle("Menu / Shake to Exit Machine", isOn: shakeToCloseBinding)
             #else
             Toggle("Shake to Exit Machine", isOn: shakeToCloseBinding)
             #endif
@@ -330,7 +330,7 @@ public struct MachineSettingsView: View {
             Text("Bundled App: \(resolved.bundledAppID.isEmpty ? "Off" : resolved.bundledAppID)")
             Text("Log Level: \(resolved.logLevel)")
             #if os(tvOS)
-            Text("Long-press Menu to Exit: \(resolved.shakeToCloseEnabled ? "Enabled" : "Disabled")")
+            Text("Menu / Shake to Exit: \(resolved.shakeToCloseEnabled ? "Enabled" : "Disabled")")
             #else
             Text("Shake to Exit: \(resolved.shakeToCloseEnabled ? "Enabled" : "Disabled")")
             Text("Swipe Back to Exit: \(resolved.swipeBackToCloseEnabled ? "Enabled" : "Disabled")")

@@ -3,6 +3,7 @@
 #import "../Settings/WWNEnvironmentOverrides.h"
 #import "../../WWNCompositorBridge.h"
 #import "../../../../util/WWNLog.h"
+#import <TargetConditionals.h>
 
 NSString *const kWWNMachineTypeSSHWaypipe = @"ssh_waypipe";
 NSString *const kWWNMachineTypeSSHTerminal = @"ssh_terminal";
@@ -714,7 +715,87 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   return [self profileIndicatesNestedCompositor:profile];
 }
 
++ (void)migrateTvosGpuOpenGLDriverSnapshotsIfNeeded {
+#if TARGET_OS_TV
+#if defined(WWN_TVOS_GPU_BUNDLED) && WWN_TVOS_GPU_BUNDLED
+  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  NSData *raw = [defaults dataForKey:kWWNMachineProfilesJSON];
+  if (raw.length == 0) {
+    NSString *legacy = [defaults stringForKey:kWWNMachineProfilesJSON];
+    if (legacy.length > 0) {
+      raw = [legacy dataUsingEncoding:NSUTF8StringEncoding];
+    }
+  }
+  if (raw.length == 0) {
+    return;
+  }
+
+  NSArray<WWNMachineProfile *> *profiles = [self parseProfilesData:raw];
+  if (profiles.count == 0) {
+    return;
+  }
+
+  BOOL changed = NO;
+  NSMutableArray<WWNMachineProfile *> *updated =
+      [NSMutableArray arrayWithCapacity:profiles.count];
+  for (WWNMachineProfile *profile in profiles) {
+    BOOL profileChanged = NO;
+    NSMutableDictionary *settings =
+        [profile.settingsOverrides isKindOfClass:[NSDictionary class]]
+            ? [profile.settingsOverrides mutableCopy]
+            : [NSMutableDictionary dictionary];
+    if ([settings[kWWNPrefsOpenGLDriver] isKindOfClass:[NSString class]] &&
+        [settings[kWWNPrefsOpenGLDriver] isEqualToString:@"none"]) {
+      settings[kWWNPrefsOpenGLDriver] = @"angle";
+      profileChanged = YES;
+    }
+
+    NSMutableDictionary *runtime =
+        [profile.runtimeOverrides isKindOfClass:[NSDictionary class]]
+            ? [profile.runtimeOverrides mutableCopy]
+            : [NSMutableDictionary dictionary];
+    if ([runtime[@"openGLDriver"] isKindOfClass:[NSString class]] &&
+        [runtime[@"openGLDriver"] isEqualToString:@"none"]) {
+      runtime[@"openGLDriver"] = @"angle";
+      profileChanged = YES;
+    }
+    id legacy = runtime[@"legacySettingsOverrides"];
+    if ([legacy isKindOfClass:[NSDictionary class]]) {
+      NSMutableDictionary *legacySettings = [legacy mutableCopy];
+      if ([legacySettings[kWWNPrefsOpenGLDriver] isKindOfClass:[NSString class]] &&
+          [legacySettings[kWWNPrefsOpenGLDriver] isEqualToString:@"none"]) {
+        legacySettings[kWWNPrefsOpenGLDriver] = @"angle";
+        runtime[@"legacySettingsOverrides"] = legacySettings;
+        profileChanged = YES;
+      }
+    }
+
+    if (profileChanged) {
+      profile.settingsOverrides = settings;
+      profile.runtimeOverrides = runtime;
+      changed = YES;
+    }
+    [updated addObject:profile];
+  }
+
+  if (changed) {
+    [self saveProfiles:updated];
+  }
+#endif
+#endif
+}
+
 + (void)applyMachineToRuntimePrefs:(WWNMachineProfile *)profile {
+  // tvOS GPU one-shot rewrites leftover OpenGLDriver=none in the profiles JSON
+  // during prefs init. Reload so this apply cannot clobber ANGLE with a stale
+  // in-memory snapshot taken before that rewrite.
+  (void)[WWNPreferencesManager sharedManager];
+  if (profile.machineId.length > 0) {
+    WWNMachineProfile *fresh = [self profileById:profile.machineId];
+    if (fresh) {
+      profile = fresh;
+    }
+  }
   [self ensureObserverRegistered];
   NSDictionary<NSString *, id> *resolved = [self resolvedRuntimeSettingsForProfile:profile];
   WWNPreferencesManager *prefs = [WWNPreferencesManager sharedManager];
@@ -1082,6 +1163,11 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   if (profile && [self profileIndicatesNestedCompositor:profile]) {
     return NO;
   }
+#if TARGET_OS_TV
+  // Siri Remote clickpad is the pointing device. Always show the host
+  // cursor on non-compositor clients so Select can hit Wayland pixels.
+  return YES;
+#else
   if (![self resolvedRenderMacOSPointerForProfile:profile]) {
     return NO;
   }
@@ -1089,6 +1175,7 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   return YES;
 #else
   return NO;
+#endif
 #endif
 }
 

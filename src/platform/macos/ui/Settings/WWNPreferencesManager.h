@@ -197,6 +197,9 @@ extern NSString *const kWWNPrefsAnowaWEnabled;
 // Capability-tiered default ICD: KosmicKrisp on Apple Silicon + macOS 26+,
 // MoltenVK otherwise. Used when the user has not made an explicit choice.
 + (NSString *)defaultVulkanDriverForHardware;
+// ANGLE on Apple GPU targets (including tvOS when WWN_TVOS_GPU_BUNDLED).
+// None on watchOS and on tvOS builds without the GPU bundle.
++ (NSString *)defaultOpenGLDriverForHardware;
 - (NSString *)openglDriver;
 - (void)setOpenGLDriver:(NSString *)driver;
 

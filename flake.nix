@@ -1710,6 +1710,7 @@ EOF
           iland-gl-clients-ios-device = toolchains.buildForIOS "kmscube" { simulator = false; };
           weston-ios-gl = toolchains.buildForIOS "weston" { enableGlClients = true; };
           weston-ios-gl-sim = toolchains.buildForIOS "weston" { simulator = true; enableGlClients = true; };
+          weston-tvos-sim = toolchains.buildForTVOS "weston" { simulator = true; enableGlClients = true; };
           "wawona-pty-ios" = toolchains.buildForIOS "wawona-pty" { };
           "wawona-pty-ios-sim" = toolchains.buildForIOS "wawona-pty" { simulator = true; };
           # Platform-matched PTY for Apple family (same ios.nix recipe; SDK from apple-mobile).

@@ -1650,10 +1650,9 @@ NSString *WWNResolveCompositorBackend(NSString *overrideValue) {
   if ([choice isEqualToString:@"drm"]) {
     // The DRM backend presents through iland; without the GL stack there is
     // nothing behind it, so fall back rather than launch a client that hangs.
-    NSString *gl = [[WWNPreferencesManager sharedManager] openglDriver];
-    if ([gl isEqualToString:@"none"]) {
+    if (!WWNSettings_ResolveGraphicsDriverSelection().openGLEnabled) {
       WWNLog("BACKEND",
-             @"drm backend requested but OpenGLDriver=none; using wayland");
+             @"drm backend requested but OpenGL driver is None; using wayland");
       return @"wayland";
     }
     return @"drm";
@@ -3151,12 +3150,16 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
   // so the shell UI actually comes up. Same idea for the on-screen keyboard.
   //
   // macOS only: this spawns separate helper executables via desktop-shell.so.
-  // Apple mobile has no fork/exec and runs weston fully in-process, so
-  // findBinaryNamed: is not compiled there. Leave client=/input-method= unset
-  // and let weston use its in-process defaults.
+  // Apple mobile has no fork/exec. desktop-shell.so still launches
+  // weston-desktop-shell in-process (pthread + WAYLAND_SOCKET). Point
+  // [shell] client= at the basename wwn_lookup_client_main knows so it
+  // does not try the baked nix-store libexec path.
   NSString *shellClientLine = @"";
   NSString *keyboardLine = @"";
-#if !TARGET_OS_IPHONE
+#if TARGET_OS_IPHONE
+  shellClientLine = @"client=weston-desktop-shell\n";
+  keyboardLine = @"input-method=weston-keyboard\n";
+#else
   NSString *shellClient = [self findBinaryNamed:@"weston-desktop-shell"];
   shellClientLine =
       (shellClient.length > 0 && [fm isExecutableFileAtPath:shellClient])
@@ -3398,6 +3401,10 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
         });
         return;
       }
+    } else {
+      // Nested pixman/SHM. Drop a leftover kmscube Metal plate so Weston
+      // frames are not covered (iOS stopIlandGpuClient was previously empty).
+      [bridge stopIlandGpuClientOnPrimaryView];
     }
     startWorker();
   };

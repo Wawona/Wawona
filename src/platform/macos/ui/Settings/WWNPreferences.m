@@ -349,11 +349,32 @@ static void WWNSettingsPopupStoreIndex(WWNSettingItem *item, NSInteger index) {
 - (void)toggleMacOSPasswordVisibility:(NSButton *)sender;
 #endif
 #if TARGET_OS_TV
-- (void)tvSwitchButtonPressed:(UIButton *)button;
+- (void)tvSwitchChanged:(UISegmentedControl *)seg;
+- (void)wwnCommitSwitchItem:(WWNSettingItem *)item on:(BOOL)on;
 #endif
 @end
 
 #if TARGET_OS_IPHONE
+#if TARGET_OS_TV
+// Focused tvOS cells paint a light platter. labelColor stays white unless we
+// swap to dark text for the focused state (UIListContentConfiguration does
+// this automatically; classic textLabel does not).
+static void WWNTvInstallFocusTextHandler(UITableViewCell *cell) {
+  UIColor *titleRest = cell.textLabel.textColor ?: [UIColor labelColor];
+  UIColor *detailRest =
+      cell.detailTextLabel.textColor ?: [UIColor secondaryLabelColor];
+  cell.configurationUpdateHandler = ^(UITableViewCell *updated,
+                                      UICellConfigurationState *state) {
+    BOOL focused = state.isFocused;
+    updated.textLabel.textColor = focused ? [UIColor blackColor] : titleRest;
+    if (updated.detailTextLabel) {
+      updated.detailTextLabel.textColor =
+          focused ? [UIColor colorWithWhite:0.2 alpha:1] : detailRest;
+    }
+  };
+}
+#endif
+
 @interface WWNSettingsOptionPickerController : UITableViewController
 @property(nonatomic, strong) WWNSettingItem *item;
 @property(nonatomic, copy) void (^onPick)(NSInteger index);
@@ -375,6 +396,29 @@ static void WWNSettingsPopupStoreIndex(WWNSettingItem *item, NSInteger index) {
             : @"wwn.settings.choices";
   }
   return self;
+}
+
+- (void)viewDidLoad {
+  [super viewDidLoad];
+#if TARGET_OS_TV
+  self.view.clipsToBounds = NO;
+  self.tableView.clipsToBounds = NO;
+  self.navigationItem.leftBarButtonItem =
+      [[UIBarButtonItem alloc] initWithTitle:@"Cancel"
+                                       style:UIBarButtonItemStylePlain
+                                      target:self
+                                      action:@selector(wwnCancelPicker)];
+  self.navigationItem.leftBarButtonItem.accessibilityLabel = @"Cancel";
+#endif
+}
+
+- (void)wwnCancelPicker {
+  if (self.presentingViewController &&
+      self.navigationController.viewControllers.firstObject == self) {
+    [self dismissViewControllerAnimated:YES completion:nil];
+    return;
+  }
+  [self.navigationController popViewControllerAnimated:YES];
 }
 
 - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)section {
@@ -407,6 +451,10 @@ static void WWNSettingsPopupStoreIndex(WWNSettingItem *item, NSInteger index) {
   cell.selectionStyle = UITableViewCellSelectionStyleDefault;
   cell.accessibilityIdentifier = [NSString
       stringWithFormat:@"wwn.settings.choice.%ld", (long)ip.row];
+#if TARGET_OS_TV
+  cell.textLabel.textColor = [UIColor labelColor];
+  WWNTvInstallFocusTextHandler(cell);
+#endif
   return cell;
 }
 
@@ -630,7 +678,10 @@ static UIImage *WWNAboutLogo(void) {
   self.tableView.estimatedRowHeight = 44.0;
   // Nav bar already names the page. Do not also use a large title that
   // restates the same section string above the grouped rows.
-#if !TARGET_OS_TV
+#if TARGET_OS_TV
+  self.tableView.clipsToBounds = NO;
+  self.view.clipsToBounds = NO;
+#else
   self.navigationItem.largeTitleDisplayMode =
       UINavigationItemLargeTitleDisplayModeNever;
 #endif
@@ -1030,12 +1081,16 @@ static UIImage *WWNAboutLogo(void) {
     NSMutableArray *machineItems = [NSMutableArray array];
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
 #if TARGET_OS_TV
-    [machineItems addObject:ITEM(@"Long-press Menu to Exit Machine",
+    [machineItems addObject:ITEM(@"Menu / Shake to Exit Machine",
                                  @"wawona.pref.shakeToCloseEnabled",
                                  WSettingSwitch, @YES,
-                                 @"Hold Menu/Back on the Siri Remote (~1s) to "
-                                 @"confirm closing the active machine session. "
-                                 @"Short Menu sends Escape to the client.")];
+                                 @"Menu/Back confirms closing the session. "
+                                 @"Shake works on the original black "
+                                 @"1st-generation Siri Remote (motion). "
+                                 @"Silver 2nd/3rd-gen remotes and the iPhone "
+                                 @"Apple TV Remote have no gyro. Play/Pause "
+                                 @"opens the keyboard. Swipe the clickpad, "
+                                 @"then Select.")];
 #else
     [machineItems addObject:ITEM(@"Shake to Exit Machine",
                                  @"wawona.pref.shakeToCloseEnabled",
@@ -1101,8 +1156,9 @@ static UIImage *WWNAboutLogo(void) {
     [sects addObject:machines];
   }
 
-#if TARGET_OS_OSX || TARGET_OS_IPHONE
-  // iCLOUD SYNC (Apple family. Own section, not Local Shell.)
+#if TARGET_OS_OSX || TARGET_OS_IOS || TARGET_OS_VISION
+  // iCLOUD SYNC (Apple family with iCloud Drive. Own section, not Local Shell.)
+  // tvOS and watchOS have no iCloud Drive (Apple QA1935); omit the section.
   {
     WWNPreferencesSection *icloud = [[WWNPreferencesSection alloc] init];
     icloud.title = @"iCloud Sync";
@@ -4398,7 +4454,6 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
     [strongSelf wwnApplyPopupSelectionForItem:item index:index];
     [strongSelf.navigationController popViewControllerAnimated:YES];
   };
-  picker.navigationItem.rightBarButtonItem = self.navigationItem.rightBarButtonItem;
   UINavigationController *nav = self.navigationController;
   if (nav) {
     [nav pushViewController:picker animated:YES];
@@ -4511,26 +4566,48 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
 
   if (item.type == WSettingSwitch) {
 #if TARGET_OS_TV
-    BOOL swOn = YES;
     BOOL swEnabled = item.interactive;
+    BOOL swOn = YES;
     if ([item.key isEqualToString:@"WaypipeOneshot"]) {
       swOn = YES;
       swEnabled = NO;
       cell.textLabel.textColor = [UIColor secondaryLabelColor];
-      cell.selectionStyle = UITableViewCellSelectionStyleDefault;
-    } else if ([item.key isEqualToString:@"ForceServerSideDecorations"]) {
-      swOn = [[NSUserDefaults standardUserDefaults] boolForKey:item.key];
     } else {
-      swOn = [[NSUserDefaults standardUserDefaults] boolForKey:item.key];
+      id stored = [[NSUserDefaults standardUserDefaults] objectForKey:item.key];
+      swOn = stored ? [stored boolValue] : [item.defaultValue boolValue];
+      if (!item.interactive) {
+        cell.textLabel.textColor = [UIColor secondaryLabelColor];
+      }
     }
-    UIButton *toggleBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    [toggleBtn setTitle:(swOn ? @"On" : @"Off") forState:UIControlStateNormal];
-    toggleBtn.enabled = swEnabled;
-    toggleBtn.tag = (ip.section * 1000) + ip.row;
-    [toggleBtn addTarget:self
-                  action:@selector(tvSwitchButtonPressed:)
-        forControlEvents:UIControlEventPrimaryActionTriggered];
-    cell.accessoryView = toggleBtn;
+    // UISwitch is unavailable on tvOS. A zero-size UIButton accessory is
+    // invisible. Off | On is the 10-foot binary control.
+    UISegmentedControl *seg =
+        [[UISegmentedControl alloc] initWithItems:@[ @"Off", @"On" ]];
+    seg.selectedSegmentIndex = swOn ? 1 : 0;
+    seg.enabled = swEnabled;
+    seg.tag = (ip.section * 1000) + ip.row;
+    [seg addTarget:self
+                  action:@selector(tvSwitchChanged:)
+        forControlEvents:UIControlEventValueChanged];
+    [seg sizeToFit];
+    CGRect segFrame = seg.frame;
+    if (segFrame.size.width < 220) {
+      segFrame.size.width = 220;
+    }
+    if (segFrame.size.height < 46) {
+      segFrame.size.height = 46;
+    }
+    seg.frame = segFrame;
+    seg.accessibilityLabel = item.title;
+    seg.accessibilityValue = swOn ? @"On" : @"Off";
+    cell.accessoryView = seg;
+    cell.detailTextLabel.text = nil;
+    if ([item.key isEqualToString:@"WaypipeOneshot"]) {
+      cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+    } else {
+      cell.selectionStyle = swEnabled ? UITableViewCellSelectionStyleDefault
+                                      : UITableViewCellSelectionStyleNone;
+    }
 #else
     UISwitch *sw = [[UISwitch alloc] initWithFrame:CGRectZero];
 #if TARGET_OS_IPHONE
@@ -4560,7 +4637,6 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
                   action:@selector(swChg:)
         forControlEvents:UIControlEventValueChanged];
 
-    // No info buttons for switches - removed per user request
     cell.accessoryView = sw;
 #endif
   } else if (item.type == WSettingText || item.type == WSettingNumber) {
@@ -4779,6 +4855,9 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
 
     return headerCell;
   }
+#if TARGET_OS_TV
+  WWNTvInstallFocusTextHandler(cell);
+#endif
   return cell;
 }
 
@@ -4823,20 +4902,35 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
 #endif
 
 #if TARGET_OS_TV
-- (void)tvSwitchButtonPressed:(UIButton *)button {
-  if (!button.enabled) {
+- (WWNSettingItem *)wwnItemForEncodedTag:(NSInteger)tag {
+  if (self.activeSection) {
+    return self.activeSection.items[tag % 1000];
+  }
+  return self.sections[tag / 1000].items[tag % 1000];
+}
+
+- (void)wwnCommitSwitchItem:(WWNSettingItem *)item on:(BOOL)on {
+  [[NSUserDefaults standardUserDefaults] setBool:on forKey:item.key];
+  if ([item.key isEqualToString:kWWNPrefsRenderMacOSPointer]) {
+    self.sections = [self buildSections];
+    if (self.activeSection) {
+      for (WWNPreferencesSection *sect in self.sections) {
+        if ([sect.title isEqualToString:self.activeSection.title]) {
+          self.activeSection = sect;
+          break;
+        }
+      }
+    }
+    [self.tableView reloadData];
+  }
+}
+
+- (void)tvSwitchChanged:(UISegmentedControl *)seg {
+  if (!seg.enabled) {
     return;
   }
-  WWNSettingItem *item;
-  if (self.activeSection) {
-    item = self.activeSection.items[button.tag % 1000];
-  } else {
-    item = self.sections[button.tag / 1000].items[button.tag % 1000];
-  }
-  BOOL cur = [[NSUserDefaults standardUserDefaults] boolForKey:item.key];
-  BOOL next = !cur;
-  [[NSUserDefaults standardUserDefaults] setBool:next forKey:item.key];
-  [button setTitle:(next ? @"On" : @"Off") forState:UIControlStateNormal];
+  WWNSettingItem *item = [self wwnItemForEncodedTag:seg.tag];
+  [self wwnCommitSwitchItem:item on:(seg.selectedSegmentIndex == 1)];
 }
 #endif
 
@@ -4895,9 +4989,23 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
   }
 #endif
 
-  // For switch items with help buttons, show help when row is tapped
-  // Info buttons removed from waypipe switches per user request
-  // No action needed for switches - they're handled by swChg:
+#if TARGET_OS_TV
+  if (item.type == WSettingSwitch) {
+    UITableViewCell *rowCell = [tv cellForRowAtIndexPath:ip];
+    if ([rowCell.accessoryView isKindOfClass:[UISegmentedControl class]] &&
+        rowCell.accessoryView.isFocused) {
+      return;
+    }
+    id stored = [[NSUserDefaults standardUserDefaults] objectForKey:item.key];
+    BOOL cur = stored ? [stored boolValue] : [item.defaultValue boolValue];
+    [self wwnCommitSwitchItem:item on:!cur];
+    if (![item.key isEqualToString:kWWNPrefsRenderMacOSPointer]) {
+      [self.tableView reloadRowsAtIndexPaths:@[ ip ]
+                           withRowAnimation:UITableViewRowAnimationNone];
+    }
+    return;
+  }
+#endif
 
   if (item.type == WSettingText || item.type == WSettingNumber) {
     // Present text entry view controller

@@ -14,6 +14,7 @@
 #import "WWNCompositorBridge.h"
 #import "WWNStartupLogViewController.h"
 #import "WWNCompositorView_ios.h"
+#import "WWNGameControllerManager.h"
 #import "../../util/WWNLog.h"
 #import "../../util/WWNStartupLogger.h"
 #import <math.h>
@@ -35,13 +36,16 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
 /// visionOS Escape / legacy short-Menu session-exit hook.
 @property(nonatomic, copy, nullable) dispatch_block_t onMenuOrEscapeDuringSession;
 #if TARGET_OS_TV
-/// Short Menu/Back: send Escape into the Wayland client (in-app Back).
+/// Short Menu/Back: confirm leaving the session (easy exit from any client).
 @property(nonatomic, copy, nullable) dispatch_block_t onTvMenuShortPressDuringSession;
-/// Long-press Menu/Back: tvOS replacement for shake-to-exit (confirm leave session).
+/// Long-press Menu/Back and remote shake: confirm leave (same as iOS shake).
 @property(nonatomic, copy, nullable) dispatch_block_t onTvMenuLongPressDuringSession;
-/// When NO (Machines UI), Menu is left to the system focus/back stack.
+/// When NO (Machines UI, keyboard, or exit alert), Menu is left to UIKit.
 @property(nonatomic, assign) BOOL interceptsMenuForSessionExit;
 - (void)cancelTvMenuLongPress;
+- (void)wwn_tvMenuBegan;
+- (void)wwn_tvMenuEnded;
+- (void)wwn_tvMenuCancelled;
 #endif
 @end
 
@@ -57,13 +61,11 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
 
 - (void)motionEnded:(UIEventSubtype)motion withEvent:(UIEvent *)event {
   [super motionEnded:motion withEvent:event];
-#if !TARGET_OS_TV
-  // tvOS does not deliver UIEventSubtypeMotionShake for the Siri Remote.
-  // Session exit on TV uses long-press Menu instead (see host VC).
+  // UIEvent shake is an iPhone/iPad device gesture. tvOS remotes do not
+  // get a system shake event. 1st-gen Siri Remote shake is GCMotion.
   if (motion == UIEventSubtypeMotionShake && self.onShake) {
     self.onShake();
   }
-#endif
 }
 
 @end
@@ -158,7 +160,7 @@ static WWNCompositorView_ios *WWNFindCompositorSurface(UIView *root) {
 }
 
 #if TARGET_OS_TV
-/// Deliberate hold. TvOS analogue of iOS shake-to-exit. Short Menu is Escape.
+/// Deliberate hold. Also used for 1st-gen remote shake. Short Menu confirms exit.
 static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
 
 - (void)_cancelTvMenuLongPressTimer {
@@ -189,22 +191,44 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
   return NO;
 }
 
+- (void)wwn_tvMenuBegan {
+  if (!self.interceptsMenuForSessionExit) {
+    return;
+  }
+  _tvMenuLongPressFired = NO;
+  [self _cancelTvMenuLongPressTimer];
+  __weak typeof(self) weakSelf = self;
+  _tvMenuLongPressTimer =
+      [NSTimer timerWithTimeInterval:kWWNTvMenuLongPressDuration
+                              repeats:NO
+                                block:^(__unused NSTimer *t) {
+                                  __strong typeof(weakSelf) strongSelf = weakSelf;
+                                  [strongSelf _tvMenuLongPressFired:t];
+                                }];
+  [[NSRunLoop mainRunLoop] addTimer:_tvMenuLongPressTimer
+                            forMode:NSRunLoopCommonModes];
+}
+
+- (void)wwn_tvMenuEnded {
+  if (!self.interceptsMenuForSessionExit) {
+    return;
+  }
+  BOOL fired = _tvMenuLongPressFired;
+  [self _cancelTvMenuLongPressTimer];
+  _tvMenuLongPressFired = NO;
+  if (!fired && self.onTvMenuShortPressDuringSession) {
+    self.onTvMenuShortPressDuringSession();
+  }
+}
+
+- (void)wwn_tvMenuCancelled {
+  [self _cancelTvMenuLongPressTimer];
+  _tvMenuLongPressFired = NO;
+}
+
 - (void)pressesBegan:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
   if (self.interceptsMenuForSessionExit && [self _setContainsMenuPress:presses]) {
-    _tvMenuLongPressFired = NO;
-    [self _cancelTvMenuLongPressTimer];
-    __weak typeof(self) weakSelf = self;
-    // CommonModes so the hold timer still fires while UIPress tracking runs.
-    _tvMenuLongPressTimer =
-        [NSTimer timerWithTimeInterval:kWWNTvMenuLongPressDuration
-                               repeats:NO
-                                 block:^(__unused NSTimer *t) {
-                                   __strong typeof(weakSelf) strongSelf = weakSelf;
-                                   [strongSelf _tvMenuLongPressFired:t];
-                                 }];
-    [[NSRunLoop mainRunLoop] addTimer:_tvMenuLongPressTimer
-                              forMode:NSRunLoopCommonModes];
-    // Consume Menu so short release is Escape-to-client, not system app-exit.
+    [self wwn_tvMenuBegan];
     return;
   }
   [super pressesBegan:presses withEvent:event];
@@ -212,12 +236,7 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
 
 - (void)pressesEnded:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
   if (self.interceptsMenuForSessionExit && [self _setContainsMenuPress:presses]) {
-    BOOL fired = _tvMenuLongPressFired;
-    [self _cancelTvMenuLongPressTimer];
-    _tvMenuLongPressFired = NO;
-    if (!fired && self.onTvMenuShortPressDuringSession) {
-      self.onTvMenuShortPressDuringSession();
-    }
+    [self wwn_tvMenuEnded];
     return;
   }
   [super pressesEnded:presses withEvent:event];
@@ -225,8 +244,7 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
 
 - (void)pressesCancelled:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
   if (self.interceptsMenuForSessionExit && [self _setContainsMenuPress:presses]) {
-    [self _cancelTvMenuLongPressTimer];
-    _tvMenuLongPressFired = NO;
+    [self wwn_tvMenuCancelled];
     return;
   }
   [super pressesCancelled:presses withEvent:event];
@@ -612,7 +630,6 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
   WWNShakeAwareWindow *shakeWindow =
       [[WWNShakeAwareWindow alloc] initWithWindowScene:windowScene];
   __weak typeof(self) weakSelf = self;
-#if !TARGET_OS_TV
   shakeWindow.onShake = ^{
     __strong typeof(weakSelf) strongSelf = weakSelf;
     if (!strongSelf) {
@@ -620,7 +637,6 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
     }
     [strongSelf handleShakeGesture];
   };
-#endif
   self.window = shakeWindow;
   self.window.backgroundColor = [UIColor blackColor];
 
@@ -629,8 +645,8 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
       [[WWNCompositorHostViewController alloc] init];
   rootViewController.defersSystemGesturesForCompositor = NO;
 #if TARGET_OS_TV
-  // Siri Remote has no shake API. Long-press Menu = shake-to-exit;
-  // short Menu = Escape (client Back) so nested apps stay usable.
+  // Menu always confirms leaving the session. Nested clients can Send Escape
+  // from the alert. Long-press Menu and remote shake use the same confirm.
   rootViewController.onTvMenuShortPressDuringSession = ^{
     __strong typeof(weakSelf) strongSelf = weakSelf;
     if (!strongSelf) {
@@ -645,6 +661,31 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
     }
     [strongSelf handleShakeGesture];
   };
+  NSNotificationCenter *tvNc = [NSNotificationCenter defaultCenter];
+  [tvNc addObserver:self
+           selector:@selector(_tvRemoteMenuBegan:)
+               name:WWNTvRemoteMenuBeganNotification
+             object:nil];
+  [tvNc addObserver:self
+           selector:@selector(_tvRemoteMenuEnded:)
+               name:WWNTvRemoteMenuEndedNotification
+             object:nil];
+  [tvNc addObserver:self
+           selector:@selector(_tvRemoteMenuCancelled:)
+               name:WWNTvRemoteMenuCancelledNotification
+             object:nil];
+  [tvNc addObserver:self
+           selector:@selector(_tvRemoteShake:)
+               name:WWNTvRemoteShakeNotification
+             object:nil];
+  [tvNc addObserver:self
+           selector:@selector(_tvRequestSessionExit:)
+               name:WWNTvRequestSessionExitNotification
+             object:nil];
+  [tvNc addObserver:self
+           selector:@selector(_tvKeyboardFocusDidChange:)
+               name:WWNTvKeyboardFocusDidChangeNotification
+             object:nil];
 #elif TARGET_OS_VISION
   rootViewController.onMenuOrEscapeDuringSession = ^{
     __strong typeof(weakSelf) strongSelf = weakSelf;
@@ -1216,6 +1257,77 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
   return [WWNMachineProfileStore resolvedSwipeBackToCloseForProfile:[self activeMachineProfile]];
 }
 
+#if TARGET_OS_TV
+/// Linux KEY_ESC. Matches compositor view / bridge injection.
+static const uint32_t kWWNTvMenuEscapeKeycode = 1;
+
+- (WWNCompositorHostViewController *)_tvHost {
+  if ([self.window.rootViewController
+          isKindOfClass:[WWNCompositorHostViewController class]]) {
+    return (WWNCompositorHostViewController *)self.window.rootViewController;
+  }
+  return nil;
+}
+
+- (void)_tvosSyncMenuIntercept {
+  WWNCompositorHostViewController *host = [self _tvHost];
+  if (!host) {
+    return;
+  }
+  WWNCompositorView_ios *surface = WWNFindCompositorSurface(host.view);
+  BOOL keyboardUp = surface.isFirstResponder;
+  BOOL on = !self.showingMachinesUI && [self isAnyClientSessionRunning] &&
+            !self.sessionExitPromptVisible && !keyboardUp;
+  host.interceptsMenuForSessionExit = on;
+  if (!on) {
+    [host cancelTvMenuLongPress];
+  }
+}
+
+- (void)_tvRemoteMenuBegan:(NSNotification *)note {
+  (void)note;
+  [[self _tvHost] wwn_tvMenuBegan];
+}
+
+- (void)_tvRemoteMenuEnded:(NSNotification *)note {
+  (void)note;
+  [[self _tvHost] wwn_tvMenuEnded];
+}
+
+- (void)_tvRemoteMenuCancelled:(NSNotification *)note {
+  (void)note;
+  [[self _tvHost] wwn_tvMenuCancelled];
+}
+
+- (void)_tvRemoteShake:(NSNotification *)note {
+  (void)note;
+  [self handleShakeGesture];
+}
+
+- (void)_tvRequestSessionExit:(NSNotification *)note {
+  (void)note;
+  if (self.showingMachinesUI || ![self isAnyClientSessionRunning]) {
+    return;
+  }
+  [self presentSessionExitConfirmationForTrigger:WWNSessionExitTriggerMenuOrEscape];
+}
+
+- (void)_tvKeyboardFocusDidChange:(NSNotification *)note {
+  (void)note;
+  [self _tvosSyncMenuIntercept];
+}
+
+- (void)injectTvMenuEscapeToClient {
+  if (self.showingMachinesUI || ![self isAnyClientSessionRunning]) {
+    return;
+  }
+  WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+  uint32_t ts = (uint32_t)(CACurrentMediaTime() * 1000.0);
+  [bridge injectKeyWithKeycode:kWWNTvMenuEscapeKeycode pressed:YES timestamp:ts];
+  [bridge injectKeyWithKeycode:kWWNTvMenuEscapeKeycode pressed:NO timestamp:ts + 1];
+}
+#endif
+
 - (void)handleShakeGesture {
   if (self.showingMachinesUI || ![self isAnyClientSessionRunning]) {
     return;
@@ -1227,9 +1339,6 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
 }
 
 #if TARGET_OS_TV
-/// Linux KEY_ESC. Matches compositor view / bridge injection.
-static const uint32_t kWWNTvMenuEscapeKeycode = 1;
-
 - (void)handleTvMenuShortPressDuringSession {
   if (self.showingMachinesUI || ![self isAnyClientSessionRunning]) {
     return;
@@ -1237,10 +1346,7 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
   if (self.sessionExitPromptVisible) {
     return;
   }
-  WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
-  uint32_t ts = (uint32_t)(CACurrentMediaTime() * 1000.0);
-  [bridge injectKeyWithKeycode:kWWNTvMenuEscapeKeycode pressed:YES timestamp:ts];
-  [bridge injectKeyWithKeycode:kWWNTvMenuEscapeKeycode pressed:NO timestamp:ts + 1];
+  [self presentSessionExitConfirmationForTrigger:WWNSessionExitTriggerMenuOrEscape];
 }
 #endif
 
@@ -1276,9 +1382,18 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
   }
 
   self.sessionExitPromptVisible = YES;
+#if TARGET_OS_TV
+  [self _tvosSyncMenuIntercept];
+#endif
   UIAlertController *alert = [UIAlertController
       alertControllerWithTitle:@"Close current Wayland app?"
-                       message:@"This will stop the current session and return to Machines."
+                       message:
+#if TARGET_OS_TV
+                           @"Stop the session and return to Machines. "
+                           @"Send Escape if a nested compositor needs Back."
+#else
+                           @"This will stop the current session and return to Machines."
+#endif
                 preferredStyle:UIAlertControllerStyleAlert];
 
   __weak typeof(self) weakSelf = self;
@@ -1291,7 +1406,25 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
                                    return;
                                  }
                                  strongSelf.sessionExitPromptVisible = NO;
+#if TARGET_OS_TV
+                                 [strongSelf _tvosSyncMenuIntercept];
+#endif
                                }]];
+
+#if TARGET_OS_TV
+  [alert addAction:[UIAlertAction
+                       actionWithTitle:@"Send Escape"
+                                 style:UIAlertActionStyleDefault
+                               handler:^(__unused UIAlertAction *action) {
+                                 __strong typeof(weakSelf) strongSelf = weakSelf;
+                                 if (!strongSelf) {
+                                   return;
+                                 }
+                                 strongSelf.sessionExitPromptVisible = NO;
+                                 [strongSelf injectTvMenuEscapeToClient];
+                                 [strongSelf _tvosSyncMenuIntercept];
+                               }]];
+#endif
 
   [alert addAction:[UIAlertAction
                        actionWithTitle:@"Close"
@@ -1740,15 +1873,10 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
   [self setCompositorGestureDeferralEnabled:YES];
   self.showingMachinesUI = NO;
 #if TARGET_OS_TV
-  if ([self.window.rootViewController
-          isKindOfClass:[WWNCompositorHostViewController class]]) {
-    WWNCompositorHostViewController *host =
-        (WWNCompositorHostViewController *)self.window.rootViewController;
-    host.interceptsMenuForSessionExit = YES;
-    [host becomeFirstResponder];
-    [host setNeedsFocusUpdate];
-    [host updateFocusIfNeeded];
-  }
+  [self _tvosSyncMenuIntercept];
+  WWNCompositorHostViewController *host = [self _tvHost];
+  [host setNeedsFocusUpdate];
+  [host updateFocusIfNeeded];
 #elif TARGET_OS_VISION
   if ([self.window.rootViewController isKindOfClass:[WWNCompositorHostViewController class]]) {
     [self.window.rootViewController becomeFirstResponder];
@@ -1815,13 +1943,7 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
   [self applyRespectSafeAreaPreference];
 #endif
 #if TARGET_OS_TV
-  if ([self.window.rootViewController
-          isKindOfClass:[WWNCompositorHostViewController class]]) {
-    WWNCompositorHostViewController *host =
-        (WWNCompositorHostViewController *)self.window.rootViewController;
-    host.interceptsMenuForSessionExit = NO;
-    [host cancelTvMenuLongPress];
-  }
+  [self _tvosSyncMenuIntercept];
 #endif
 
   if (self.machinesViewController) {

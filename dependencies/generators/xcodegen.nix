@@ -1902,7 +1902,8 @@ ICDJSON
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
         ] ++ iosUtilSources ++ appleMobileEnvUISources;
         preBuildScripts = [ stampBuildNumberPhase tvosPreBuild ];
-        # No ANGLE embed / no VM guest on tvOS (platform-targets: no GL, no VM).
+        # ANGLE is statically linked (libEGL.a / libGLESv2.a), not embedded as
+        # dylibs. tvOS GPU is Mode A GLES+Vulkan. VM/container machines stay forbidden.
         # appsCatalogEmbedPhase is cheap and already gates on appletvos|appletvsimulator
         # so nested niri/fuzzel can resolve .desktop entries from the share tree.
         postBuildScripts = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase tvosNiriDataEmbedPhase appsCatalogEmbedPhase tvosRootfsEmbedPhase tvosNeovimRootfsEmbedPhase simInstallWritableBundlePhase stripIOSOnlyInfoPlistKeysPhase ];

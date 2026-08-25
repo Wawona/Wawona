@@ -135,9 +135,7 @@ public final class WawonaPreferences: ObservableObject {
         #endif
     }
 
-    @Published public var renderer: String = "metal"
-    @Published public var vulkanDriver: String = WawonaPreferences.defaultVulkanDriver
-    @Published public var openGLDriver: String = {
+    private static var defaultOpenGLDriver: String {
         #if os(watchOS)
         return "none"
         #elseif os(tvOS)
@@ -149,7 +147,11 @@ public final class WawonaPreferences: ObservableObject {
         #else
         return "angle"
         #endif
-    }()
+    }
+
+    @Published public var renderer: String = "metal"
+    @Published public var vulkanDriver: String = WawonaPreferences.defaultVulkanDriver
+    @Published public var openGLDriver: String = WawonaPreferences.defaultOpenGLDriver
     @Published public var forceSSD: Bool = false
     @Published public var renderMacOSPointer: Bool = false
     /// "virtual" or "host"
@@ -217,7 +219,25 @@ public final class WawonaPreferences: ObservableObject {
     public func load() {
         renderer = defaults.string(forKey: keyPrefix + "renderer") ?? "metal"
         vulkanDriver = defaults.string(forKey: "VulkanDriver") ?? WawonaPreferences.defaultVulkanDriver
-        openGLDriver = defaults.string(forKey: "OpenGLDriver") ?? "angle"
+        let storedOpenGL = defaults.string(forKey: "OpenGLDriver")
+        #if os(tvOS)
+        #if WWN_TVOS_GPU_BUNDLED
+        // ObjC owns the one-shot persist. Until that flag is set, leftover
+        // Phase 1 `none` is ANGLE so Swift save() cannot write none first.
+        let migrated = defaults.bool(forKey: "wawona.tvosOpenGLDriverMigrated.v1")
+        if storedOpenGL == "none" && !migrated {
+            openGLDriver = WawonaPreferences.defaultOpenGLDriver
+            defaults.set(openGLDriver, forKey: "OpenGLDriver")
+            defaults.synchronize()
+        } else {
+            openGLDriver = storedOpenGL ?? WawonaPreferences.defaultOpenGLDriver
+        }
+        #else
+        openGLDriver = storedOpenGL ?? "none"
+        #endif
+        #else
+        openGLDriver = storedOpenGL ?? WawonaPreferences.defaultOpenGLDriver
+        #endif
         if defaults.object(forKey: "ForceServerSideDecorations") != nil {
             forceSSD = defaults.bool(forKey: "ForceServerSideDecorations")
         } else {

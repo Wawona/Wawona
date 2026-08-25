@@ -44,6 +44,9 @@ struct BundledClient: Identifiable, Hashable {
 /// Bundled clients visible on this platform (GPU demos omitted on watchOS).
 var kBundledClients: [BundledClient] {
   kAllBundledClients.filter { client in
+    if PlatformCapabilities.glesClientIds.contains(client.id) {
+      return PlatformCapabilities.openGLDriverEnabled
+    }
     if client.requiresGpuStack {
       return PlatformCapabilities.allowsGpuStack
     }
@@ -286,6 +289,10 @@ final class WWNMachinesViewModel: ObservableObject {
   }
 
   func reload() {
+    // Swift persist leftover OpenGLDriver=none → ANGLE, then ObjC profile JSON
+    // rewrite. Machines UI on tvOS never created WawonaPreferences otherwise.
+    _ = WawonaPreferences.shared
+    _ = WWNPreferencesManager.shared()
     profiles = WWNMachineProfileStore.loadProfiles()
     for profile in profiles {
       if statusByMachineId[profile.machineId] == nil {

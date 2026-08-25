@@ -208,7 +208,7 @@ struct WWNMachineEditorView: View {
     NavigationStack {
       Form {
         Section {
-          TextField("Display Name", text: $name)
+          WWNTvFormTextField("Display Name", text: $name, prompt: "Enter a name")
           Picker("Type", selection: $type) {
             machineTypeOptions
           }
@@ -237,39 +237,35 @@ struct WWNMachineEditorView: View {
             }
             #if !os(iOS)
             if selectedClientId == kNativeClientCustomId {
-              TextField("Custom command", text: $customCommand)
-                .wwnDisableAutocapitalization()
-                .autocorrectionDisabled()
+              WWNTvFormTextField("Custom command", text: $customCommand, prompt: "/usr/bin/my-wayland-app")
               Text("e.g. /usr/bin/my-wayland-app")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             }
             #endif
             if selectedClientId == kNativeClientWasmId {
-              TextField("Wasm module path", text: $wasmModulePath)
-                .wwnDisableAutocapitalization()
-                .autocorrectionDisabled()
+              WWNTvFormTextField("Wasm module path", text: $wasmModulePath)
             }
           }
         }
 
         if isRemote {
           Section("Remote SSH") {
-            TextField("Host", text: $sshHost)
-            TextField("User", text: $sshUser)
-            TextField("Port", text: $sshPort)
+            WWNTvFormTextField("Host", text: $sshHost)
+            WWNTvFormTextField("User", text: $sshUser)
+            WWNTvFormTextField("Port", text: $sshPort)
             Picker("Auth", selection: $sshAuthMethod) {
               Text("Password").tag(0)
               Text("Public Key").tag(1)
             }
             .pickerStyle(.navigationLink)
             if sshAuthMethod == 0 {
-              SecureField("Password", text: $sshPassword)
+              WWNTvFormTextField("Password", text: $sshPassword, secure: true)
             } else {
-              TextField("Key Path", text: $sshKeyPath)
-              SecureField("Key Passphrase", text: $sshKeyPassphrase)
+              WWNTvFormTextField("Key Path", text: $sshKeyPath)
+              WWNTvFormTextField("Key Passphrase", text: $sshKeyPassphrase, secure: true)
             }
-            TextField("Remote Command", text: $remoteCommand)
+            WWNTvFormTextField("Remote Command", text: $remoteCommand)
           }
 
           Section("Waypipe") {
@@ -351,14 +347,18 @@ struct WWNMachineEditorView: View {
         }
 
         Section {
-          Toggle("Long-press Menu to Exit Machine", isOn: $shakeToCloseEnabled)
+          Toggle("Menu / Shake to Exit Machine", isOn: $shakeToCloseEnabled)
         } header: {
           Text("Session Exit")
         } footer: {
           Text(
-            "Siri Remote has no shake API. Short Menu/Back sends Escape to the "
-              + "Wayland client. Long-press Menu (~1s) confirms leaving the session "
-              + "when this is enabled (same preference key as Shake to Exit on iPhone)."
+            "Menu/Back on the Siri Remote (or Simulator remote) confirms leaving "
+              + "the session. Shake the original black 1st-generation Siri Remote "
+              + "(GCMotion) does the same when this is on. Silver 2nd/3rd-gen remotes "
+              + "and the iPhone Apple TV Remote have no motion. Play/Pause toggles "
+              + "the keyboard. Swipe the clickpad to move the pointer, then click "
+              + "Select. The TV/Home button leaves Wawona for the Apple TV Home "
+              + "screen and is not an in-app Back."
           )
         }
       }
@@ -1383,6 +1383,11 @@ struct WWNMachineEditorView: View {
 private struct WWNNativeClientPickerView: View {
   @Environment(\.dismiss) private var dismiss
   @Binding var selectedClientId: String
+  @State private var draftId: String = ""
+
+  private var shownId: String {
+    draftId.isEmpty ? selectedClientId : draftId
+  }
 
   var body: some View {
     ScrollView {
@@ -1397,20 +1402,43 @@ private struct WWNNativeClientPickerView: View {
       .padding(16)
     }
     .navigationTitle("Wayland Client")
+    .onAppear {
+      if draftId.isEmpty {
+        draftId = selectedClientId
+      }
+    }
     #if os(tvOS)
+    .toolbar {
+      ToolbarItem(placement: .cancellationAction) {
+        Button("Cancel") { dismiss() }
+      }
+      ToolbarItem(placement: .confirmationAction) {
+        Button("Done") {
+          selectedClientId = shownId
+          dismiss()
+        }
+      }
+    }
     .background {
       Color(white: 0.07).ignoresSafeArea()
     }
     #endif
   }
 
+  private func choose(_ id: String) {
+    #if os(tvOS)
+    draftId = id
+    #else
+    selectedClientId = id
+    dismiss()
+    #endif
+  }
+
   @ViewBuilder
   private func clientOption(_ client: BundledClient) -> some View {
-    let isSelected = selectedClientId == client.id
+    let isSelected = shownId == client.id
     Button {
-      selectedClientId = client.id
-      // Match Android/iOS: choosing a bundled client pops the picker immediately.
-      dismiss()
+      choose(client.id)
     } label: {
       HStack(spacing: 12) {
         Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
@@ -1444,11 +1472,9 @@ private struct WWNNativeClientPickerView: View {
 
   @ViewBuilder
   private var customClientOption: some View {
-    let isSelected = selectedClientId == kNativeClientCustomId
+    let isSelected = shownId == kNativeClientCustomId
     Button {
-      selectedClientId = kNativeClientCustomId
-      // Return to the machine editor so the Custom command field is visible.
-      dismiss()
+      choose(kNativeClientCustomId)
     } label: {
       HStack(spacing: 12) {
         Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
@@ -1505,5 +1531,58 @@ private extension View {
 extension TextFieldStyle where Self == PlainTextFieldStyle {
   /// tvOS does not ship RoundedBorderTextFieldStyle; map calls to plain style.
   static var roundedBorder: PlainTextFieldStyle { .plain }
+}
+
+/// One Form row, matching Picker/Toggle. A bare `TextField` in a tvOS Form
+/// draws its own capsule inside the row's capsule (a double button).
+/// Selecting the row opens the system keyboard in an alert instead.
+private struct WWNTvFormTextField: View {
+  let title: String
+  @Binding var text: String
+  var prompt: String = ""
+  var secure: Bool = false
+
+  @State private var showEditor = false
+  @State private var draft = ""
+
+  init(_ title: String, text: Binding<String>, prompt: String = "", secure: Bool = false) {
+    self.title = title
+    self._text = text
+    self.prompt = prompt
+    self.secure = secure
+  }
+
+  var body: some View {
+    Button {
+      draft = text
+      showEditor = true
+    } label: {
+      LabeledContent(title) {
+        Text(displayValue)
+          .foregroundStyle(text.isEmpty ? .secondary : .primary)
+          .multilineTextAlignment(.trailing)
+      }
+    }
+    .buttonStyle(.plain)
+    .alert(title, isPresented: $showEditor) {
+      if secure {
+        SecureField(prompt.isEmpty ? title : prompt, text: $draft)
+      } else {
+        TextField(prompt.isEmpty ? title : prompt, text: $draft)
+      }
+      Button("OK") { text = draft }
+      Button("Cancel", role: .cancel) {}
+    }
+  }
+
+  private var displayValue: String {
+    if text.isEmpty {
+      return prompt.isEmpty ? "Required" : prompt
+    }
+    if secure {
+      return String(repeating: "•", count: min(text.count, 8))
+    }
+    return text
+  }
 }
 #endif

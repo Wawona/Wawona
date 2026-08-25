@@ -24,10 +24,11 @@
 Global Settings sections are declared in `WawonaUIContracts.GlobalSettingsCatalog`.
 iOS includes **Apple Watch** (companion document transfer via WatchConnectivity;
 send-side only. Not a watchOS Settings twin). Catalog sections include Display
-(Enable HDR), Machines (shake / swipe / tvOS Menu), iCloud Sync (Apple), Local
-Shell (three buttons), Dependencies (this product's linked packages only), plus
-the existing Input / Graphics / Env Vars / Advanced / Waypipe / SSH / About
-pages. watchOS omits Desktop (forbidden), Local Shell, and Apple Watch. SwiftUI
+(Enable HDR), Machines (shake / swipe / tvOS Menu), iCloud Sync (Apple; omit on
+tvOS, iCloud Drive is unavailable), Local Shell (three buttons), Dependencies
+(this product's linked packages only), plus the existing Input / Graphics /
+Env Vars / Advanced / Waypipe / SSH / About pages. watchOS omits Desktop
+(forbidden), Local Shell, and Apple Watch. SwiftUI
 on watch is the in-process host (WatchKit present from `@main` is unreliable);
 both hosts must render that catalog and the same `wawona.pref.*` keys.
 
@@ -81,7 +82,7 @@ watchOS WASM runtime remains size-gated off ([#156](https://github.com/Wawona/Wa
 | Setting | Key | Type | Default | Platforms | Description |
 |---------|-----|------|---------|------------|-------------|
 | **Vulkan Driver** | `vulkanDriver` / `VulkanDriver` | Dropdown | KosmicKrisp on Apple Silicon + macOS 26+; else MoltenVK on Apple; `system` on Android | GPU targets | Android: None, System, or SwiftShader. No Turnip, no `/dev/kgsl`. Apple: None, MoltenVK, KosmicKrisp. watchOS GPU is blocked (no Metal). |
-| **OpenGL Driver** | `openglDriver` / `OpenGLDriver` | Dropdown | `system` (Android), `angle` (macOS/iOS) | GPU targets | Android: None, ANGLE, System. Apple GPU targets: None, ANGLE. No MoltenGL. |
+| **OpenGL Driver** | `openglDriver` / `OpenGLDriver` | Dropdown | `system` (Android), `angle` (macOS/iOS/tvOS GPU) | GPU targets | Android: None, ANGLE, System. Apple GPU targets: None, ANGLE. No MoltenGL. tvOS GPU defaults to ANGLE (Phase 1 leftover `none` migrates once). watchOS: None. |
 
 ---
 
@@ -133,7 +134,7 @@ AX id: `wwn.settings.machines`.
 | Setting | Key | Type | Default | Platforms | Description |
 |---------|-----|------|---------|------------|-------------|
 | **Shake to Exit Machine** | `wawona.pref.shakeToCloseEnabled` | Switch | On | iOS, Android, watchOS, visionOS | Shake confirms closing the active machine session |
-| **Long-press Menu to Exit Machine** | `wawona.pref.shakeToCloseEnabled` (same key) | Switch | On | tvOS | Hold Menu/Back (~1s) confirms session exit. Short Menu sends Escape |
+| **Menu / Shake to Exit Machine** | `wawona.pref.shakeToCloseEnabled` (same key) | Switch | On | tvOS | Menu/Back confirms session exit. Shake on the 1st-gen Siri Remote only (`GCMotion`). Play/Pause toggles keyboard. Clickpad moves the pointer |
 | **Swipe Back to Exit Machine** | `wawona.pref.swipeBackToCloseEnabled` | Switch | On | iOS, Android, watchOS, visionOS | Edge swipe back asks before closing |
 | **Session Thumbnails** | `MachineSessionThumbnailsEnabled` | Switch | On | All | Last session frame on machine cards |
 | **Virtual Machine Engine** | (read-only) | Info | platform | macOS, iOS, Android, Linux | Selected by `wwn-vms`. Hidden on tvOS / watchOS / visionOS |
@@ -147,9 +148,13 @@ One Settings section. Session gestures and VM/container prefs share `wwn.setting
 
 ## iCloud Sync (Apple)
 
-AX id: `wwn.settings.icloudSync`. Omit on Android and Linux. Key:
+AX id: `wwn.settings.icloudSync`. Omit on Android, Linux, and tvOS. Key:
 `wawona.pref.localShellICloudSyncEnabled` (`WWNRootfsICloudSync`). Toggle on
-macOS, iOS, iPadOS, visionOS. tvOS / watchOS show status only (no fake toggle).
+macOS, iOS, iPadOS, visionOS. Apple [QA1935](https://developer.apple.com/library/archive/qa/qa1935/_index.html):
+iCloud Drive is unavailable on tvOS and watchOS (`ubiquityIdentityToken` is
+always nil). Wawona iCloud Sync is Drive ubiquity for shell HOME, not CloudKit
+or iCloud KVS, so the section is omitted on tvOS rather than shown as
+unsupported. watchOS may keep a status page that says Drive is unavailable.
 
 ---
 
@@ -281,13 +286,13 @@ Sideloaded iOS IPAs have no TestFlight crash pipeline. TestFlight testers should
 
 ## Platform-Specific Defaults
 
-| Setting | macOS | iOS | Android |
-|---------|-------|-----|---------|
-| Force SSD | Off (toggle) | Always SSD (no row) | Always SSD (no row) |
-| Multiple Clients | On | On | On |
-| Enable HDR | On | On | On |
-| Vulkan Driver | KosmicKrisp (Apple Silicon + macOS 26+), else moltenvk | moltenvk | system |
-| OpenGL Driver | angle | angle | system |
+| Setting | macOS | iOS | tvOS | Android |
+|---------|-------|-----|------|---------|
+| Force SSD | Off (toggle) | Always SSD (no row) | Always SSD (no row) | Always SSD (no row) |
+| Multiple Clients | On | On | On | On |
+| Enable HDR | On | On | On | On |
+| Vulkan Driver | KosmicKrisp (Apple Silicon + macOS 26+), else moltenvk | moltenvk | moltenvk (GPU bundle) | system |
+| OpenGL Driver | angle | angle | angle (GPU bundle) | system |
 
 ---
 

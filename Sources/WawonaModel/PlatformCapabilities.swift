@@ -135,6 +135,20 @@ public enum PlatformCapabilities: Sendable {
         #endif
     }
 
+    /// Machines / launcher ids that need a live OpenGL ES driver (ANGLE).
+    public static let glesClientIds: Set<String> = [
+        "kmscube",
+        "gbm-es2-demo",
+        "opengl-cube",
+        "weston-simple-egl",
+    ]
+
+    /// Settings → Graphics OpenGL driver is a real GLES implementation, not None.
+    public static var openGLDriverEnabled: Bool {
+        guard allowsGlesStack else { return false }
+        return UserDefaults.standard.string(forKey: "OpenGLDriver") != "none"
+    }
+
     /// Desktop + LockScreen host replacement. Coming soon on macOS (Android is
     /// gated in Compose). App Store Apple-mobile builds keep this forbidden and
     /// must never mention alternate distribution paths in UI or strings.

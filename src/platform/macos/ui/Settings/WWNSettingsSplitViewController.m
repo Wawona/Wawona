@@ -39,6 +39,21 @@
 
 - (void)viewDidLoad {
   [super viewDidLoad];
+#if TARGET_OS_TV
+  self.view.clipsToBounds = NO;
+  UIViewController *primary =
+      [self viewControllerForColumn:UISplitViewControllerColumnPrimary];
+  primary.view.clipsToBounds = NO;
+  if ([primary isKindOfClass:[UINavigationController class]]) {
+    ((UINavigationController *)primary).view.clipsToBounds = NO;
+  }
+  UIViewController *secondary =
+      [self viewControllerForColumn:UISplitViewControllerColumnSecondary];
+  secondary.view.clipsToBounds = NO;
+  if ([secondary isKindOfClass:[UINavigationController class]]) {
+    ((UINavigationController *)secondary).view.clipsToBounds = NO;
+  }
+#endif
 }
 
 - (void)viewWillAppear:(BOOL)animated {

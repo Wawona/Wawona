@@ -154,7 +154,8 @@ public enum GlobalSettingsSectionID: String, Sendable, CaseIterable, Hashable {
     case localShell
     /// Global machine-session gestures (shake / swipe / tvOS Menu). Not the Machines window.
     case machines
-    /// Apple iCloud Drive sync for shell HOME. Omit on Android and Linux.
+    /// Apple iCloud Drive sync for shell HOME. Omit on Android, Linux, and tvOS
+    /// (iCloud Drive is unavailable on tvOS; Apple QA1935). watchOS shows status only.
     case iCloudSync
     /// iPhone/iPad send-side companion documents (WatchConnectivity). Not a watchOS catalog twin.
     case appleWatch
@@ -305,7 +306,7 @@ public struct GlobalSettingsCatalog: Sendable {
         case .tvOS:
             return [
                 .display, .input, .graphics, .connection, .environment,
-                .machines, .iCloudSync, .advanced, .waypipe, .ssh, .about,
+                .machines, .advanced, .waypipe, .ssh, .about,
                 .dependencies,
             ]
         case .watchOS:
@@ -385,9 +386,9 @@ public struct GlobalSettingsCatalog: Sendable {
             switch host {
             case .macOS, .iOS, .visionOS:
                 return [.iCloudSyncEnabled, .iCloudSyncStatus]
-            case .tvOS, .watchOS:
+            case .watchOS:
                 return [.iCloudSyncStatus]
-            case .android, .linux:
+            case .tvOS, .android, .linux:
                 return []
             }
         case .appleWatch:

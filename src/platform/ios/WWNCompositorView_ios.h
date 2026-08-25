@@ -10,6 +10,11 @@ NS_ASSUME_NONNULL_BEGIN
 /// hardwareKeyboard (NSNumber BOOL).
 FOUNDATION_EXPORT NSNotificationName const WWNHostKeyboardGeometryDidChangeNotification;
 
+/// tvOS Mac-keyboard Esc / Simulator Menu-as-Escape: confirm leaving the session.
+FOUNDATION_EXPORT NSNotificationName const WWNTvRequestSessionExitNotification;
+/// tvOS software keyboard first-responder changed (Menu must reach the OSK).
+FOUNDATION_EXPORT NSNotificationName const WWNTvKeyboardFocusDidChangeNotification;
+
 /**
  * WWNCompositorView_ios
  *
@@ -88,6 +93,9 @@ FOUNDATION_EXPORT NSNotificationName const WWNHostKeyboardGeometryDidChangeNotif
 
 /// Prepare Metal + iland present callback for nested Weston (DRM/GL overlay).
 - (BOOL)prepareIlandMetalPresentation;
+
+/// Tear down iland Metal so nested pixman/SHM Weston can present.
+- (void)stopIlandMetalPresentation;
 
 /// When YES, Wayland SHM/IOSurface clients are visible and the Metal layer is
 /// hidden so CAMetalLayer compositing cannot cover nested client surfaces.

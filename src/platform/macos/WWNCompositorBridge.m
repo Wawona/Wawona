@@ -5493,6 +5493,29 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
 }
 
 - (void)stopIlandGpuClientOnPrimaryView {
+  if (![NSThread isMainThread]) {
+    dispatch_sync(dispatch_get_main_queue(), ^{
+      [self stopIlandGpuClientOnPrimaryView];
+    });
+    return;
+  }
+  void (^stopView)(id) = ^(id candidate) {
+    if ([candidate isKindOfClass:[WWNCompositorView_ios class]]) {
+      [(WWNCompositorView_ios *)candidate stopIlandMetalPresentation];
+    }
+  };
+  if (_ilandHostView) {
+    stopView(_ilandHostView);
+    if (_ilandHostView != self.containerView &&
+        [_ilandHostView.accessibilityIdentifier
+            isEqualToString:@"wwn.compositor.iland-host"]) {
+      [_ilandHostView removeFromSuperview];
+    }
+    _ilandHostView = nil;
+  }
+  for (NSNumber *key in _windows) {
+    stopView(_windows[key]);
+  }
 }
 
 - (void)handleWindowHostLocked:(CWindowEvent *)event {

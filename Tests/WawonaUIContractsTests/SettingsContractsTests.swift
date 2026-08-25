@@ -119,3 +119,11 @@ func visionOSOmitsAppleWatchCompanionSection() {
     #expect(!sections.contains(.appleWatch))
     #expect(sections.contains(.localShell))
 }
+
+@Test
+func tvOSOmitsICloudDriveSection() {
+    let sections = GlobalSettingsCatalog.visibleSections(for: .tvOS)
+    #expect(!sections.contains(.iCloudSync))
+    #expect(!sections.contains(.localShell))
+    #expect(GlobalSettingsCatalog.visibleFields(in: .iCloudSync, for: .tvOS).isEmpty)
+}

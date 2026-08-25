@@ -104,6 +104,10 @@ extern NSString *const kWWNMachineTypeContainer;
 /// sway/niri/etc.) because anowaW v1 supports weston nested only.
 + (BOOL)profileEligibleForAppBridge:(WWNMachineProfile *)profile;
 
+/// One-shot tvOS GPU upgrade: leftover Phase 1 `OpenGLDriver=none` snapshots
+/// become ANGLE. Reads UserDefaults JSON directly (no preferences singleton).
++ (void)migrateTvosGpuOpenGLDriverSnapshotsIfNeeded;
+
 @end
 
 NS_ASSUME_NONNULL_END

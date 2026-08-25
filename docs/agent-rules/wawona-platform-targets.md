@@ -28,6 +28,7 @@ fallback) instead of removing it from the product surface.
 | Vulkan / OpenGL / ANGLE bundle | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⛔ blocked |
 | Desktop + LockScreen replacement | ⏳ planned | ⏳ planned | ❌ App Store | ❌ | ❌ App Store | ❌ | ❌ |
 | Wawona Swinging Bridge | ⏳ Mode A+B | ⏳ Mode A+B | ❌ App Store (Mode B only) | ❌ | ❌ App Store (Mode B only) | ❌ | ❌ |
+| iCloud Drive (shell HOME) | ✅ | ❌ | ✅ | ✅ | ✅ | ⛔ blocked | ⛔ blocked |
 
 ### Legend. The four gate states
 
@@ -172,6 +173,13 @@ forbidden while iPhone is planned for those features.
     real DRM/KMS/KGSL ioctls, ship kernel code, or require kernel patches.
     Mode B `baremetal` is a legacy package name, not kernel access. Android
     direct Turnip/KGSL is forbidden; use system Vulkan/Metal or SwiftShader.
+13. **iCloud Drive (shell HOME)**. Settings → iCloud Sync is ubiquity Documents
+    for the on-device shell HOME (`WWNRootfsICloudSync`), not CloudKit or iCloud
+    KVS. Apple QA1935: iCloud Drive is unavailable on tvOS and watchOS
+    (`ubiquityIdentityToken` is always nil). That is **⛔ blocked**, not a
+    Settings stub. Omit the iCloud section on tvOS. watchOS may show a status
+    page that says Drive is unavailable. Do not add a fake toggle. CloudKit/KVS
+    exist on tvOS; they are not this section. Re-check on SDK bumps.
 
 ## Implementation checkpoints
 

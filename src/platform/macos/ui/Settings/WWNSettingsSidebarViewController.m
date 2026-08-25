@@ -17,9 +17,11 @@
 
 - (instancetype)initWithPreferences:(WWNPreferences *)preferences {
 #if TARGET_OS_TV
+  // InsetGrouped keeps the focus platter inside the column. Plain cells sit
+  // flush against the split divider and clip the white hover on the right.
   UICollectionLayoutListConfiguration *config =
       [[UICollectionLayoutListConfiguration alloc]
-          initWithAppearance:UICollectionLayoutListAppearancePlain];
+          initWithAppearance:UICollectionLayoutListAppearanceInsetGrouped];
 #else
   UICollectionLayoutListConfiguration *config =
       [[UICollectionLayoutListConfiguration alloc]
@@ -79,7 +81,15 @@
   self.title = @"Settings";
   self.view.accessibilityIdentifier = @"wwn.settings.root";
   self.view.accessibilityLabel = @"Settings";
-#if !TARGET_OS_TV
+#if TARGET_OS_TV
+  // tvOS focus rings draw larger than the cell. Parent clipsToBounds would
+  // cut the platter at the split divider (a common UIKit issue).
+  self.view.clipsToBounds = NO;
+  self.collectionView.clipsToBounds = NO;
+  self.collectionView.layer.masksToBounds = NO;
+  self.collectionView.contentInset = UIEdgeInsetsMake(8, 12, 24, 28);
+  self.collectionView.remembersLastFocusedIndexPath = YES;
+#else
   self.navigationController.navigationBar.prefersLargeTitles = YES;
 #endif
   [self wwn_syncDismissButtonWithSplitView];
@@ -91,17 +101,7 @@
                configurationHandler:^(UICollectionViewListCell *cell,
                                       NSIndexPath *indexPath,
                                       WWNPreferencesSection *section) {
-                 UIListContentConfiguration *content =
-                     [cell defaultContentConfiguration];
-                 content.text = section.title;
-                 content.image = [UIImage systemImageNamed:section.icon];
-
-                 // Use the section color for the icon
-                 if (section.iconColor) {
-                   content.imageProperties.tintColor = section.iconColor;
-                 }
-
-                 cell.contentConfiguration = content;
+                 (void)indexPath;
                  cell.accessories =
                      @[ [[UICellAccessoryDisclosureIndicator alloc] init] ];
                  cell.accessibilityLabel = section.title;
@@ -113,6 +113,42 @@
                                                      stringByReplacingOccurrencesOfString:
                                                          @" "
                                                                              withString:@"."]];
+#if TARGET_OS_TV
+                 cell.configurationUpdateHandler =
+                     ^(UICollectionViewListCell *updatedCell,
+                       UICellConfigurationState *state) {
+                       UIListContentConfiguration *content =
+                           [updatedCell defaultContentConfiguration];
+                       content.text = section.title;
+                       content.image = [UIImage systemImageNamed:section.icon];
+                       if (state.isFocused) {
+                         // Focused tvOS platter is light. labelColor stays
+                         // white and the title vanishes without this swap.
+                         content.textProperties.color = [UIColor blackColor];
+                         content.imageProperties.tintColor = [UIColor darkGrayColor];
+                       } else if (section.iconColor) {
+                         content.textProperties.color = [UIColor labelColor];
+                         content.imageProperties.tintColor = section.iconColor;
+                       } else {
+                         content.textProperties.color = [UIColor labelColor];
+                       }
+                       updatedCell.contentConfiguration = content;
+                       UIBackgroundConfiguration *bg =
+                           [UIBackgroundConfiguration listGroupedCellConfiguration];
+                       bg.backgroundInsets =
+                           NSDirectionalEdgeInsetsMake(4, 8, 4, 12);
+                       updatedCell.backgroundConfiguration = bg;
+                     };
+#else
+                 UIListContentConfiguration *content =
+                     [cell defaultContentConfiguration];
+                 content.text = section.title;
+                 content.image = [UIImage systemImageNamed:section.icon];
+                 if (section.iconColor) {
+                   content.imageProperties.tintColor = section.iconColor;
+                 }
+                 cell.contentConfiguration = content;
+#endif
                }];
 
   // Configure data source
@@ -165,11 +201,12 @@
 // Expanded split (iPhone landscape / iPad): the system already shows the
 // sidebar toggle. Done lives on the detail column (blue checkmark). Showing
 // another Done on this nav bar duplicates it next to the toggle.
+// tvOS is always two columns: never put Done in the sidebar.
 - (void)wwn_syncDismissButtonWithSplitView {
 #if TARGET_OS_TV
-  if (self.navigationItem.rightBarButtonItem) {
-    return;
-  }
+  self.navigationItem.rightBarButtonItem = nil;
+  self.navigationItem.leftBarButtonItem = nil;
+  return;
 #else
   UISplitViewController *split = self.splitViewController;
   if (split && !split.collapsed) {
@@ -179,21 +216,14 @@
   if (self.navigationItem.rightBarButtonItem) {
     return;
   }
-#endif
   UIBarButtonItem *done =
-#if TARGET_OS_TV
-      [[UIBarButtonItem alloc] initWithTitle:@"Done"
-                                       style:UIBarButtonItemStylePlain
-                                      target:self
-                                      action:@selector(dismissSettings)];
-#else
       [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone
                                                     target:self
                                                     action:@selector(dismissSettings)];
-#endif
   done.accessibilityIdentifier = @"wwn.settings.done";
   done.accessibilityLabel = @"Done";
   self.navigationItem.rightBarButtonItem = done;
+#endif
 }
 
 - (void)updateSnapshot {
