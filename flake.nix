@@ -43,18 +43,18 @@
     wwn-toolchain.url = "github:Wawona/wwn-toolchain/development";
     wwn-toolchain.inputs.nixpkgs.follows = "nixpkgs";
     wwn-toolchain.inputs.rust-overlay.follows = "rust-overlay";
-    wwn-iland.url = "github:Wawona/wwn-iland/tvos-gpu";
+    wwn-iland.url = "github:Wawona/wwn-iland/development";
     wwn-iland.inputs.nixpkgs.follows = "nixpkgs";
     wwn-iland.inputs.wwn-toolchain.follows = "wwn-toolchain";
     # github/development until FlakeHub rolling includes vkcube-kms (L2).
     # Cited: docs/wwn-repo-dag.md.
-    wwn-kmscube.url = "github:Wawona/wwn-kmscube/tvos-gpu";
+    wwn-kmscube.url = "github:Wawona/wwn-kmscube/development";
     wwn-kmscube.inputs.nixpkgs.follows = "nixpkgs";
     wwn-kmscube.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-kmscube.inputs.wwn-iland.follows = "wwn-iland";
     # github/development until FlakeHub rolling has hostPlatform Darwin checks.
     # Cited: docs/wwn-repo-dag.md.
-    wwn-weston.url = "github:Wawona/wwn-weston/tvos-gpu";
+    wwn-weston.url = "github:Wawona/wwn-weston/development";
     wwn-weston.inputs.nixpkgs.follows = "nixpkgs";
     wwn-weston.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-weston.inputs.wwn-iland.follows = "wwn-iland";

@@ -961,7 +961,7 @@
       },
       "original": {
         "owner": "Wawona",
-        "ref": "tvos-gpu",
+        "ref": "development",
         "repo": "wwn-iland",
         "type": "github"
       }
@@ -1029,16 +1029,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1787667319,
-        "narHash": "sha256-OxAgKRhAhyW6tkFbyQf8gWFzYctyy9ubTrd908PuJY0=",
+        "lastModified": 1787681767,
+        "narHash": "sha256-nUBFo080EAlWnyCT4mWNsYQe2X/ZY5XyajlwaH6buas=",
         "owner": "Wawona",
         "repo": "wwn-kmscube",
-        "rev": "96e9eb49484ac855c138f814e7bb754d79b18346",
+        "rev": "480ab2a5726390d7c740c8bdf5bfa7c3411664f6",
         "type": "github"
       },
       "original": {
         "owner": "Wawona",
-        "ref": "tvos-gpu",
+        "ref": "development",
         "repo": "wwn-kmscube",
         "type": "github"
       }
@@ -1298,16 +1298,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1787667319,
-        "narHash": "sha256-MLC6yarr71tqfa3s/TyCLpcnUXpeH64jGNLOIZTFvSw=",
+        "lastModified": 1787681767,
+        "narHash": "sha256-Ecq+Hl18dWyMNnfH9v5tY1bD94vfYhqBuEwyLQ/Rkh0=",
         "owner": "Wawona",
         "repo": "wwn-weston",
-        "rev": "bf814993ee6cd4170a073bde036fa01898a6d6f4",
+        "rev": "2728f164491e440fca71fee7e6b92f9cb8e781ad",
         "type": "github"
       },
       "original": {
         "owner": "Wawona",
-        "ref": "tvos-gpu",
+        "ref": "development",
         "repo": "wwn-weston",
         "type": "github"
       }
