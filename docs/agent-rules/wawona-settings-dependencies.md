@@ -24,7 +24,7 @@ Linux `include_str!`).
    `android/app/src/main/assets/SettingsDependencies.json`, or
    `src/linux/ui/settings_dependencies.json`.
 3. Keep roles honest: Apple mobile SSH is libssh2; macOS/Android/Linux SSH
-   is OpenSSH. watchOS/tvOS GPU stacks stay off the list until the gate
-   flips.
+   is OpenSSH. watchOS GPU stays off the list. tvOS lists MoltenVK when
+   Phase 1 is linked; ANGLE stays off until Phase 2.
 
 Tracked Cursor mirror: `.cursor/rules/wawona-settings-dependencies.mdc`.

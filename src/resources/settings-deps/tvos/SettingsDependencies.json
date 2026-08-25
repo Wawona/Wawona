@@ -46,9 +46,14 @@
       "role": "epoll compatibility layer"
     },
     {
+      "name": "MoltenVK",
+      "version": "1.3",
+      "role": "Vulkan on Metal (tvOS GPU Phase 1)"
+    },
+    {
       "name": "iland",
-      "version": "cpu",
-      "role": "Userspace present (tvOS GPU planned)"
+      "version": "userland",
+      "role": "Userspace DRM/KMS/GBM (Mode A)"
     },
     {
       "name": "Weston",

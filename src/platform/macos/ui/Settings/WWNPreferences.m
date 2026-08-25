@@ -831,9 +831,17 @@ static UIImage *WWNAboutLogo(void) {
   graphics.iconColor = [NSColor systemRedColor];
 #endif
   WWNSettingItem *vulkanDriverItem =
-#if TARGET_OS_TV || TARGET_OS_WATCH
+#if TARGET_OS_WATCH
       ITEM(@"Vulkan Driver", @"VulkanDriver", WSettingPopup, @"none",
            @"Vulkan is unavailable on this platform.");
+#elif TARGET_OS_TV
+#if defined(WWN_TVOS_GPU_BUNDLED) && WWN_TVOS_GPU_BUNDLED
+      ITEM(@"Vulkan Driver", @"VulkanDriver", WSettingPopup, @"moltenvk",
+           @"MoltenVK is the tvOS Vulkan ICD (Phase 1). OpenGL ES comes later.");
+#else
+      ITEM(@"Vulkan Driver", @"VulkanDriver", WSettingPopup, @"none",
+           @"Vulkan is unavailable on this platform.");
+#endif
 #else
       ITEM(@"Vulkan Driver", @"VulkanDriver", WSettingPopup, @"moltenvk",
            @"Select the Vulkan ICD used by newly launched machine sessions.");
@@ -842,9 +850,17 @@ static UIImage *WWNAboutLogo(void) {
   vulkanDriverItem.options = @[ @"None", @"MoltenVK", @"KosmicKrisp", @"SwiftShader" ];
   vulkanDriverItem.optionValues =
       @[ @"none", @"moltenvk", @"kosmickrisp", @"swiftshader" ];
-#elif TARGET_OS_TV || TARGET_OS_WATCH
+#elif TARGET_OS_WATCH
   vulkanDriverItem.options = @[ @"None" ];
   vulkanDriverItem.optionValues = @[ @"none" ];
+#elif TARGET_OS_TV
+#if defined(WWN_TVOS_GPU_BUNDLED) && WWN_TVOS_GPU_BUNDLED
+  vulkanDriverItem.options = @[ @"None", @"MoltenVK" ];
+  vulkanDriverItem.optionValues = @[ @"none", @"moltenvk" ];
+#else
+  vulkanDriverItem.options = @[ @"None" ];
+  vulkanDriverItem.optionValues = @[ @"none" ];
+#endif
 #else
   vulkanDriverItem.options = @[ @"None", @"MoltenVK" ];
   vulkanDriverItem.optionValues = @[ @"none", @"moltenvk" ];

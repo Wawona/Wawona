@@ -1,4 +1,5 @@
 #import "WWNPreferencesManager.h"
+#import "../Machines/WWNPlatformCapabilities.h"
 #import <sys/sysctl.h>
 
 // Preferences keys
@@ -797,8 +798,10 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 // default when the hardware supports it so users get the faster path, and fall
 // back to MoltenVK otherwise. An explicit user choice always wins.
 + (NSString *)defaultVulkanDriverForHardware {
-#if TARGET_OS_TV || TARGET_OS_WATCH
+#if TARGET_OS_WATCH
   return @"none";
+#elif TARGET_OS_TV
+  return WWNPlatformAllowsGpuStack() ? @"moltenvk" : @"none";
 #elif TARGET_OS_OSX
   int isARM64 = 0;
   size_t sz = sizeof(isARM64);
@@ -817,8 +820,18 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 }
 
 - (NSString *)vulkanDriver {
-#if TARGET_OS_TV || TARGET_OS_WATCH
+#if TARGET_OS_WATCH
   return @"none";
+#elif TARGET_OS_TV
+  if (!WWNPlatformAllowsGpuStack()) {
+    return @"none";
+  }
+  NSString *driver =
+      [[NSUserDefaults standardUserDefaults] stringForKey:kWWNPrefsVulkanDriver];
+  NSSet *allowed = [NSSet setWithArray:@[ @"none", @"moltenvk" ]];
+  return [allowed containsObject:driver]
+             ? driver
+             : [WWNPreferencesManager defaultVulkanDriverForHardware];
 #else
   NSString *driver =
       [[NSUserDefaults standardUserDefaults] stringForKey:kWWNPrefsVulkanDriver];
@@ -841,6 +854,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 
 - (NSString *)openglDriver {
 #if TARGET_OS_TV || TARGET_OS_WATCH
+  // tvOS GLES/ANGLE is Phase 2. Vulkan-only until Chromium GN lands.
   return @"none";
 #else
   NSString *driver =

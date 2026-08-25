@@ -87,7 +87,13 @@ public extension ClientLauncher {
                 #endif
             }
             if launcher.requiresGpuStack {
+                #if os(tvOS)
+                // Phase 1: Vulkan cube only. GLES clients wait for ANGLE.
+                return PlatformCapabilities.allowsGpuStack &&
+                    launcher.name == "vkcube"
+                #else
                 return PlatformCapabilities.allowsGpuStack
+                #endif
             }
             return true
         }

@@ -117,8 +117,14 @@ public final class WawonaPreferences: ObservableObject {
     public static let shared = WawonaPreferences()
 
     private static var defaultVulkanDriver: String {
-        #if os(tvOS) || os(watchOS)
+        #if os(watchOS)
         return "none"
+        #elseif os(tvOS)
+        #if WWN_TVOS_GPU_BUNDLED
+        return "moltenvk"
+        #else
+        return "none"
+        #endif
         #elseif os(macOS) && arch(arm64)
         if #available(macOS 26.0, *) {
             return "kosmickrisp"
@@ -131,7 +137,13 @@ public final class WawonaPreferences: ObservableObject {
 
     @Published public var renderer: String = "metal"
     @Published public var vulkanDriver: String = WawonaPreferences.defaultVulkanDriver
-    @Published public var openGLDriver: String = "angle"
+    @Published public var openGLDriver: String = {
+        #if os(tvOS) || os(watchOS)
+        return "none"
+        #else
+        return "angle"
+        #endif
+    }()
     @Published public var forceSSD: Bool = false
     @Published public var renderMacOSPointer: Bool = false
     /// "virtual" or "host"
@@ -410,7 +422,7 @@ public final class WawonaPreferences: ObservableObject {
             vulkanDriver: PlatformCapabilities.allowsGpuStack
                 ? (normalizedVulkanDriver.isEmpty ? vulkanDriver : normalizedVulkanDriver)
                 : "none",
-            openGLDriver: PlatformCapabilities.allowsGpuStack
+            openGLDriver: PlatformCapabilities.allowsGlesStack
                 ? (normalizedOpenGLDriver.isEmpty ? openGLDriver : normalizedOpenGLDriver)
                 : "none",
             dmabufEnabled: PlatformCapabilities.allowsGpuStack

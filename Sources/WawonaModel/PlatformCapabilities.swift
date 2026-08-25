@@ -107,9 +107,9 @@ public enum PlatformCapabilities: Sendable {
     ///   SceneKit/SpriteKit are present but are not a shader backdoor, and
     ///   private Metal would forfeit store compliance.
     ///
-    /// Until slices are actually bundled the tvOS gate stays `planned` whatever
-    /// the environment says. A runtime flag cannot conjure a framework into the
-    /// bundle.
+    /// tvOS: `.available` only when this target was linked with MoltenVK
+    /// (`WWN_TVOS_GPU_BUNDLED`). GLES/ANGLE is a later phase; see
+    /// `allowsGlesStack`.
     public static var gpuStackGate: CapabilityGate {
         #if os(tvOS)
         #if WWN_TVOS_GPU_BUNDLED
@@ -125,6 +125,16 @@ public enum PlatformCapabilities: Sendable {
     }
 
     public static var allowsGpuStack: Bool { gpuStackGate.isAvailable }
+
+    /// ANGLE / GLES clients (kmscube, opengl-cube, weston-simple-egl).
+    /// tvOS Phase 1 is Vulkan-only; Chromium ANGLE has no tvOS GN target yet.
+    public static var allowsGlesStack: Bool {
+        #if os(tvOS) || os(watchOS)
+        return false
+        #else
+        return allowsGpuStack
+        #endif
+    }
 
     /// Desktop + LockScreen host replacement. Coming soon on macOS (Android is
     /// gated in Compose). App Store Apple-mobile builds keep this forbidden and
