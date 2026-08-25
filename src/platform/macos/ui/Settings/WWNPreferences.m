@@ -622,8 +622,10 @@ static UIImage *WWNAboutLogo(void) {
   self.tableView.estimatedRowHeight = 44.0;
   // Nav bar already names the page. Do not also use a large title that
   // restates the same section string above the grouped rows.
+#if !TARGET_OS_TV
   self.navigationItem.largeTitleDisplayMode =
       UINavigationItemLargeTitleDisplayModeNever;
+#endif
   self.tableView.sectionHeaderTopPadding = 0;
 
   __block typeof(self) weakSelf = self;
@@ -704,8 +706,10 @@ static UIImage *WWNAboutLogo(void) {
   }
   if (isEnv && host) {
     host.title = self.activeSection.title ?: @"Env Vars";
+#if !TARGET_OS_TV
     host.navigationItem.largeTitleDisplayMode =
         UINavigationItemLargeTitleDisplayModeNever;
+#endif
     self.environmentHostController = host;
     if (nav) {
       if (nav.topViewController != host) {
