@@ -25,6 +25,10 @@ NS_ASSUME_NONNULL_BEGIN
 
 + (instancetype)sharedPreferences NS_SWIFT_NAME(shared());
 - (void)showPreferences:(nullable id)sender NS_SWIFT_NAME(show(_:));
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+/// Embed sidebar + catalog in `hostView` (in-app window or NSPreferencePane).
+- (void)installMacSettingsInterfaceInView:(NSView *)hostView;
+#endif
 - (void)selectSectionWithTitle:(NSString *)title;
 - (void)openEnvironmentVariablesManager;
 - (void)openMachinesConfiguration:(id)sender;

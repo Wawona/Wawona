@@ -2,6 +2,10 @@ import SwiftUI
 import WawonaModel
 import UniformTypeIdentifiers
 
+private enum WWNMachineEditorRoute: Hashable {
+  case bundledClient
+}
+
 struct WWNMachineEditorView: View {
   let title: String
   let initial: WWNMachineProfile?
@@ -65,6 +69,7 @@ struct WWNMachineEditorView: View {
   #endif
   @State private var environmentOverrides: EnvironmentOverrideMap
   @State private var showEnvironmentEditor = false
+  @State private var editorPath = NavigationPath()
 
   init(
     title: String,
@@ -398,7 +403,7 @@ struct WWNMachineEditorView: View {
   #endif
 
   private var desktopMobileEditorBody: some View {
-    NavigationStack {
+    NavigationStack(path: $editorPath) {
       ScrollView {
         VStack(alignment: .leading, spacing: 16) {
           sectionCard("Connection Profile", subtitle: "Name and type for this machine profile.") {
@@ -449,15 +454,36 @@ struct WWNMachineEditorView: View {
         .frame(maxWidth: 880, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .center)
       }
+      #if os(macOS)
+      .wwnMachineConfigScrollEdgeEffect()
+      #endif
       .navigationTitle(title)
       .toolbar {
-        ToolbarItem(placement: .cancellationAction) {
-          Button("Cancel") { dismiss() }
-        }
-        ToolbarItem(placement: .confirmationAction) {
-          Button("Save", action: save)
+        if editorPath.isEmpty {
+          ToolbarItem(placement: .cancellationAction) {
+            Button("Cancel") { dismiss() }
+          }
+          ToolbarItem(placement: .confirmationAction) {
+            Button("Save", action: save)
+          }
         }
       }
+      .navigationDestination(for: WWNMachineEditorRoute.self) { route in
+        switch route {
+        case .bundledClient:
+          WWNNativeClientPickerView(
+            selectedClientId: $selectedClientId,
+            onPicked: popEditorRoute
+          )
+          #if os(macOS)
+          .wwnMachineConfigScrollEdgeEffect()
+          .wwnMachineConfigUnifiedToolbar()
+          #endif
+        }
+      }
+      #if os(macOS)
+      .wwnMachineConfigUnifiedToolbar()
+      #endif
       .sheet(isPresented: $showEnvironmentEditor) {
         NavigationStack {
           EnvironmentVariablesView(
@@ -648,34 +674,45 @@ struct WWNMachineEditorView: View {
     return kBundledClients.first { $0.id == selectedClientId }?.name ?? selectedClientId
   }
 
+  private var bundledClientRowIcon: String? {
+    if selectedClientId == kNativeClientCustomId {
+      return "terminal.fill"
+    }
+    return kBundledClients.first { $0.id == selectedClientId }?.icon
+  }
+
+  private func popEditorRoute() {
+    if !editorPath.isEmpty {
+      editorPath.removeLast()
+    }
+  }
+
   private var nativeClientSection: some View {
     sectionCard(
       "Wayland Client",
       subtitle: "Choose a bundled client to connect directly to the compositor via Wayland socket. No SSH or network required."
     ) {
-      #if os(macOS)
-      Picker("Bundled Client", selection: $selectedClientId) {
-        ForEach(kBundledClients) { client in
-          Text(client.name).tag(client.id)
-        }
-        Text("Custom Command").tag(kNativeClientCustomId)
-      }
-      .wwnPlatformPickerStyle()
-      #else
-      NavigationLink {
-        WWNNativeClientPickerView(
-          selectedClientId: $selectedClientId
-        )
-      } label: {
+      NavigationLink(value: WWNMachineEditorRoute.bundledClient) {
         HStack {
           Text("Bundled Client")
             .foregroundStyle(.primary)
           Spacer()
+          if let icon = bundledClientRowIcon {
+            Image(systemName: icon)
+              .foregroundStyle(.secondary)
+          }
           Text(nativeClientSummary)
             .foregroundStyle(.secondary)
             .lineLimit(1)
+          #if os(macOS)
+          Image(systemName: "chevron.right")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.tertiary)
+          #endif
         }
       }
+      #if os(macOS)
+      .buttonStyle(.plain)
       #endif
 
       #if !os(iOS)
@@ -1175,6 +1212,9 @@ struct WWNMachineEditorView: View {
       RoundedRectangle(cornerRadius: 14, style: .continuous)
         .fill(Color.secondary.opacity(0.08))
     )
+    #if os(macOS)
+    .wwnMachineConfigScrollTransition()
+    #endif
   }
 
   private var selectedClientDrawsOwnCursor: Bool {
@@ -1380,9 +1420,53 @@ struct WWNMachineEditorView: View {
   }
 }
 
+#if os(macOS)
+private extension View {
+  /// Soft fade where editor cards meet the unified titlebar.
+  @ViewBuilder
+  func wwnMachineConfigScrollEdgeEffect() -> some View {
+    if #available(macOS 26.0, *) {
+      self.scrollEdgeEffectStyle(.soft, for: .top)
+    } else {
+      self
+    }
+  }
+
+  /// Frosted material so scrolling content blurs under Cancel / Save.
+  @ViewBuilder
+  func wwnMachineConfigUnifiedToolbar() -> some View {
+    if #available(macOS 26.0, *) {
+      self
+        .toolbarBackground(.regularMaterial, for: .windowToolbar)
+        .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
+        .toolbarTitleDisplayMode(.inline)
+    } else {
+      self
+    }
+  }
+
+  /// Cards fade and blur as they enter or leave the visible scroll region.
+  func wwnMachineConfigScrollTransition() -> some View {
+    scrollTransition(
+      topLeading: .interactive,
+      bottomTrailing: .interactive,
+      axis: .vertical
+    ) { effect, phase in
+      // Stronger fade under the titlebar (negative) than at the bottom edge.
+      let t = phase.value < 0 ? abs(phase.value) : abs(phase.value) * 0.45
+      effect
+        .opacity(1 - 0.65 * t)
+        .blur(radius: 12 * t)
+        .scaleEffect(1 - 0.03 * t)
+    }
+  }
+}
+#endif
+
 private struct WWNNativeClientPickerView: View {
   @Environment(\.dismiss) private var dismiss
   @Binding var selectedClientId: String
+  var onPicked: (() -> Void)? = nil
   @State private var draftId: String = ""
 
   private var shownId: String {
@@ -1430,7 +1514,11 @@ private struct WWNNativeClientPickerView: View {
     draftId = id
     #else
     selectedClientId = id
-    dismiss()
+    if let onPicked {
+      onPicked()
+    } else {
+      dismiss()
+    }
     #endif
   }
 
@@ -1468,6 +1556,9 @@ private struct WWNNativeClientPickerView: View {
       )
     }
     .buttonStyle(.plain)
+    #if os(macOS)
+    .wwnMachineConfigScrollTransition()
+    #endif
   }
 
   @ViewBuilder
@@ -1504,6 +1595,9 @@ private struct WWNNativeClientPickerView: View {
       )
     }
     .buttonStyle(.plain)
+    #if os(macOS)
+    .wwnMachineConfigScrollTransition()
+    #endif
   }
 }
 

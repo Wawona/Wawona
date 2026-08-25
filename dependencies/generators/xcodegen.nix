@@ -549,7 +549,15 @@ let
     "Wawona-visionOS"
   ];
 
-  schemesConfig = lib.genAttrs appSchemeNames mkAppScheme;
+  schemesConfig = (lib.genAttrs appSchemeNames mkAppScheme) // {
+    Wawona-PrefPane = {
+      build = {
+        targets = {
+          Wawona-PrefPane = "all";
+        };
+      };
+    };
+  };
 
   # Shared helper for iOS-family application targets (iOS, iPadOS, tvOS).
   mkAppleMobileTarget =
@@ -1366,7 +1374,7 @@ ICDJSON
   # modeb/ is documentation only; wwn-iowatchdog ships from flake input
   # wwn-iowatchdog (bundled in macos.nix). Never link a Watchdog main() into
   # any app target.
-  commonExcludes = ["**/*.rs" "**/*.toml" "**/*.md" "**/Cargo.lock" "**/.DS_Store" "**/renderer_android.*" "**/WWNSettings.c" "**/Skip/**" "modeb/**"];
+  commonExcludes = ["**/*.rs" "**/*.toml" "**/*.md" "**/Cargo.lock" "**/.DS_Store" "**/renderer_android.*" "**/WWNSettings.c" "**/Skip/**" "modeb/**" "**/PrefPane/**"];
   # Mobile targets ship src/platform/ios/WWNIlandPresenter.*; omit macOS copies.
   mobileMacPlatformExcludes = commonExcludes ++ [
     "WWNIlandPresenter.m"
@@ -1513,6 +1521,7 @@ ICDJSON
           # Missing this makes ASC accept the IPA then discard the build (never listed).
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
           (settingsDepsResource "ios")
+          { path = "src/resources/Settings.bundle"; type = "folder"; buildPhase = "resources"; }
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
@@ -1706,6 +1715,7 @@ ICDJSON
           # Missing this makes ASC accept the IPA then discard the build (never listed).
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
           (settingsDepsResource "ipados")
+          { path = "src/resources/Settings.bundle"; type = "folder"; buildPhase = "resources"; }
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
@@ -2053,6 +2063,70 @@ ICDJSON
           { sdk = "GameController.framework"; }
         ];
       };
+      Wawona-PrefPane = {
+        type = "bundle";
+        platform = "macOS";
+        sources = [
+          { path = "src/platform/macos/ui/Settings/PrefPane/WWNPreferencePane.m"; type = "file"; }
+          { path = "src/platform/macos/ui/Settings/PrefPane/WWNPreferencePane.h"; type = "file"; }
+          { path = "src/platform/macos/ui/Settings/PrefPane/WWNPrefPaneHandoff.m"; type = "file"; }
+          { path = "src/platform/macos/ui/Settings/PrefPane/WWNPrefPaneHandoff.h"; type = "file"; }
+          { path = "src/platform/macos/ui/Settings/PrefPane/WWNPrefPaneStubs.m"; type = "file"; }
+          # Keep Info.plist in the project group without copying it into Resources.
+          { path = "src/platform/macos/ui/Settings/PrefPane/Info.plist"; type = "file"; buildPhase = "none"; }
+          { path = "src/platform/macos/ui/Settings/WWNPreferences.m"; type = "file"; }
+          { path = "src/platform/macos/ui/Settings/WWNPreferences.h"; type = "file"; }
+          { path = "src/platform/macos/ui/Settings/WWNPreferencesManager.m"; type = "file"; }
+          { path = "src/platform/macos/ui/Settings/WWNPreferencesManager.h"; type = "file"; }
+          { path = "src/platform/macos/ui/Settings/WWNSettingsModel.m"; type = "file"; }
+          { path = "src/platform/macos/ui/Settings/WWNSettingsModel.h"; type = "file"; }
+          { path = "src/platform/macos/ui/Settings/WWNSettingsDefines.h"; type = "file"; }
+          { path = "src/platform/macos/ui/Settings/WWNSipStatus.m"; type = "file"; }
+          { path = "src/platform/macos/ui/Settings/WWNSipStatus.h"; type = "file"; }
+          { path = "src/platform/macos/ui/Helpers/WWNImageLoader.m"; type = "file"; }
+          { path = "src/platform/macos/ui/Helpers/WWNImageLoader.h"; type = "file"; }
+          { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; buildPhase = "resources"; }
+        ];
+        settings = {
+          base = {
+            INFOPLIST_FILE = "src/platform/macos/ui/Settings/PrefPane/Info.plist";
+            GENERATE_INFOPLIST_FILE = "NO";
+            PRODUCT_NAME = "Wawona";
+            PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.Wawona.prefPane";
+            WRAPPER_EXTENSION = "prefPane";
+            MACH_O_TYPE = "mh_bundle";
+            SUPPORTED_PLATFORMS = "macosx";
+            SWIFT_OBJC_BRIDGING_HEADER = "";
+            SWIFT_INSTALL_OBJC_HEADER = "NO";
+            CLANG_ENABLE_MODULES = "YES";
+            CODE_SIGNING_ALLOWED = "NO";
+            CODE_SIGNING_REQUIRED = "NO";
+            CODE_SIGN_STYLE = "Automatic";
+            COMBINE_HIDPI_IMAGES = "YES";
+            HEADER_SEARCH_PATHS = [
+              "$(inherited)"
+              "$(SRCROOT)/src"
+              "$(SRCROOT)/src/util"
+              "$(SRCROOT)/src/platform/macos"
+              "$(SRCROOT)/src/platform/macos/ui"
+              "$(SRCROOT)/src/platform/macos/ui/Machines"
+              "$(SRCROOT)/src/platform/macos/ui/Helpers"
+              "$(SRCROOT)/src/platform/macos/ui/Settings"
+            ];
+            GCC_PREPROCESSOR_DEFINITIONS = [
+              "$(inherited)"
+              "WWN_PREFPANE=1"
+            ] ++ versionDefs;
+          };
+        };
+        dependencies = [
+          { sdk = "Cocoa.framework"; }
+          { sdk = "PreferencePanes.framework"; }
+          { sdk = "Foundation.framework"; }
+          { sdk = "Network.framework"; }
+          { sdk = "Security.framework"; }
+        ];
+      };
       Wawona-macOS = {
         type = "application";
         platform = "macOS";
@@ -2079,6 +2153,23 @@ ICDJSON
         ];
         preBuildScripts = [ stampBuildNumberPhase macosPreBuild ];
         postBuildScripts = [
+          {
+            name = "Bundle Preference Pane";
+            basedOnDependencyAnalysis = false;
+            script = ''
+              PREF_SRC="$BUILT_PRODUCTS_DIR/Wawona.prefPane"
+              PREF_DST="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources/PreferencePanes/Wawona.prefPane"
+              if [ -d "$PREF_SRC" ]; then
+                mkdir -p "$(dirname "$PREF_DST")"
+                rm -rf "$PREF_DST"
+                ditto "$PREF_SRC" "$PREF_DST"
+                echo "Bundled Wawona.prefPane"
+              else
+                echo "error: Wawona.prefPane missing at $PREF_SRC" >&2
+                exit 1
+              fi
+            '';
+          }
           {
             name = "Bundle Executables";
             basedOnDependencyAnalysis = false;
@@ -2584,6 +2675,7 @@ ICDJSON
           };
         };
         dependencies = [
+          { target = "Wawona-PrefPane"; embed = false; }
           { target = "WawonaModel"; embed = true; codeSign = true; }
           { target = "WawonaUIContracts"; embed = true; codeSign = true; }
           { sdk = "Cocoa.framework"; }
@@ -3199,6 +3291,7 @@ ICDJSON
     Wawona-watchOS = "watchos";
     Wawona-visionOS = "visionos";
     Wawona-macOS = "macos";
+    Wawona-PrefPane = "macos";
   };
 
   sharedXcodeTargets = [ "WawonaModel" "WawonaUIContracts" ];

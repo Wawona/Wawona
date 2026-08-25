@@ -1411,6 +1411,21 @@ EOF
               exit 1
             fi
 
+            pane_src="$app_dst/Contents/Resources/PreferencePanes/Wawona.prefPane"
+            if [ ! -d "$pane_src" ]; then
+              echo "Error: Wawona.prefPane missing in $app_dst" >&2
+              exit 1
+            fi
+            mkdir -p "$HOME/Library/PreferencePanes"
+            rm -rf "$HOME/Library/PreferencePanes/Wawona.prefPane"
+            /usr/bin/ditto "$pane_src" "$HOME/Library/PreferencePanes/Wawona.prefPane"
+            echo "Installed System Settings pane: $HOME/Library/PreferencePanes/Wawona.prefPane"
+            if [ -w /Library/PreferencePanes ] || [ "$(id -u)" -eq 0 ]; then
+              rm -rf /Library/PreferencePanes/Wawona.prefPane
+              /usr/bin/ditto "$pane_src" /Library/PreferencePanes/Wawona.prefPane
+              echo "Installed system-wide pane: /Library/PreferencePanes/Wawona.prefPane"
+            fi
+
             # Launch Services must not resolve `open -a Wawona` to a stale
             # copy. Documents/ahaha 0.2.2 still linked pixman to a vanished
             # /Volumes or GC'd nix store (2026-08-19 and 2026-08-22 crashes).
@@ -1509,6 +1524,7 @@ EOF
               /usr/bin/pkill -u 0 -x framebufferd >/dev/null 2>&1
               /usr/bin/pkill -u 0 -x inputd >/dev/null 2>&1
               /bin/rm -rf /Applications/Wawona.app
+              /bin/rm -rf /Library/PreferencePanes/Wawona.prefPane
               /bin/rm -rf "/Library/Application Support/Wawona"
               /bin/rm -f /etc/sudoers.d/wawona-modeb
               /bin/rm -f /Library/LaunchDaemons/com.aspauldingcode.wawona.modeb.plist
@@ -1567,6 +1583,7 @@ EOF
             unload_agent "$modeb_login_label"
             kill_wawona_app
             "${cliBinsScript}" unregister || true
+            rm -rf "$HOME/Library/PreferencePanes/Wawona.prefPane"
 
             if [ -x "$modeb_helper" ]; then
               /usr/bin/sudo -n "$modeb_helper" --restore-aqua >/dev/null 2>&1 || true

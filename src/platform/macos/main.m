@@ -195,6 +195,7 @@ static int g_host_lock_fd = -1;
 static int g_menubar_lock_fd = -1;
 static BOOL g_show_about_on_launch = NO;
 static BOOL g_show_settings_on_launch = NO;
+static NSString *g_show_settings_section = nil;
 static BOOL g_service_host_mode = NO;
 
 // Compositor-host is an agent: same Mach-O as the Machines UI, so Cocoa will
@@ -259,6 +260,7 @@ static void wwn_print_cli_help(void) {
       "  --menubar               Menu-bar agent\n"
       "  --show-about            Show About instead of Machines\n"
       "  --show-settings         Show Settings instead of Machines\n"
+      "  --settings-section=Name Open Settings to that sidebar section\n"
       "\n"
       "Examples:\n"
       "  # Nested Weston (Wayland backend) without the Machines GUI\n"
@@ -684,6 +686,10 @@ static void setup_signal_sources(void) {
     [[WWNAboutPanel sharedAboutPanel] showAboutPanel:NSApp];
   } else if (g_show_settings_on_launch) {
     [[WWNPreferences sharedPreferences] showPreferences:NSApp];
+    if (g_show_settings_section.length > 0) {
+      [[WWNPreferences sharedPreferences]
+          selectSectionWithTitle:g_show_settings_section];
+    }
   } else if (!g_cli_headless) {
     [[WWNMachinesCoordinator sharedCoordinator] showMachinesWindowAndActivate:YES];
   } else {
@@ -1641,6 +1647,9 @@ int main(int argc, char *argv[]) {
         g_show_about_on_launch = YES;
       } else if (strcmp(arg, "--show-settings") == 0) {
         g_show_settings_on_launch = YES;
+      } else if (strncmp(arg, "--settings-section=", 19) == 0) {
+        g_show_settings_on_launch = YES;
+        g_show_settings_section = [NSString stringWithUTF8String:arg + 19];
       } else if (strcmp(arg, "--headless") == 0 ||
                  strcmp(arg, "--no-gui") == 0) {
         g_cli_headless = YES;

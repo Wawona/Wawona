@@ -18,7 +18,7 @@
 
 | Layer | UI | Entry points |
 |-------|-----|--------------|
-| **Global Wawona Settings** | ObjC + AppKit (macOS) / UIKit (iOS, iPadOS, tvOS, visionOS) / WatchKit + SwiftUI catalog (watchOS); Kotlin on Android | App menu **Settings…**, Settings tab (`ObjCSettingsHostView`), Machines window gear icon, watch gear → `WatchGlobalSettingsView` (same `GlobalSettingsCatalog` as WatchKit `WWNWatchSettings`) |
+| **Global Wawona Settings** | ObjC + AppKit (macOS) / UIKit (iOS, iPadOS, tvOS, visionOS) / WatchKit + SwiftUI catalog (watchOS); Kotlin on Android | App menu **Settings…**, Settings tab (`ObjCSettingsHostView`), Machines window gear icon, watch gear → `WatchGlobalSettingsView` (same `GlobalSettingsCatalog` as WatchKit `WWNWatchSettings`). **macOS System Settings:** Wawona pane (Wawona icon; under Other on macOS 13+). Installed by `nix run .#install` and the GitHub DMG `WawonaAgent.pkg`. **iOS Settings:** Settings → Apps → Wawona → Wawona Settings (`Settings.bundle`; toggles share `NSUserDefaults` with the app. Buttons such as Copy logs stay in-app.) |
 | **Machine profiles + overrides** | SwiftUI (`MachineEditorView` via `MachineEditorValidation`, `MachineSettingsView`) | Add / swipe **Edit** = identity editor; **Machine Settings** = per-machine overrides |
 
 Global Settings sections are declared in `WawonaUIContracts.GlobalSettingsCatalog`.
@@ -277,8 +277,14 @@ another platform's list. Rule: [`agent-rules/wawona-settings-dependencies.md`](a
 | Copy Recent Logs | Button | Apple, Android, Linux | Copies a GitHub-ready report (version, host, install, active machine without secrets, last ~2000 log lines) |
 | Copy Active Machine Logs | Button | Apple Settings | Same header plus only lines tagged with the active machine id |
 | Report a Bug on GitHub | Button | Apple, Android, Linux, watchOS | Opens `Wawona/Wawona` issue form `bug.yml` with platform, install channel, version, host OS, and recent logs filled. Also copies the full report to the clipboard (except tvOS/watchOS) |
-| Wawona.io | Link | All About hosts | Always shown. Opens `https://wawona.io` |
-| Author | Link | All About hosts | Subtext is Alex Spaulding. Opens `https://aspauldingcode.com` (portfolio). There is no separate Portfolio row |
+| Wawona.io | Link | All About hosts | Subtext is documentation and downloads. Button: Visit. Opens `https://wawona.io` |
+| Author | Link | All About hosts | Subtext is Alex Spaulding. Button: Visit Portfolio. Opens `https://aspauldingcode.com`. There is no separate Portfolio row |
+| GitHub | Link | All About hosts | Subtext `github.com/aspauldingcode`. Button: View Profile |
+| X | Link | All About hosts | Subtext `@aspauldingcode`. Button: Follow. Icon is a 24px rounded square like the other About logos |
+| LinkedIn | Link | All About hosts | Subtext `linkedin.com/in/aspauldingcode`. Button: Connect |
+| Ko-fi | Link | All About hosts | Subtext Buy me a coffee. Button: Support |
+| GitHub Sponsors | Link | All About hosts | Button: Sponsor |
+| Source Code | Link | All About hosts | Subtext `github.com/Wawona/Wawona`. Button: View on GitHub |
 
 Sideloaded iOS IPAs have no TestFlight crash pipeline. TestFlight testers should send **Beta Feedback** from the TestFlight app *and* paste copied logs on GitHub. Full steps: [`reporting-bugs.md`](reporting-bugs.md).
 

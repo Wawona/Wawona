@@ -108,6 +108,20 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
   return [WWNPreferencesManager preferredSharedRuntimeDir];
 }
 
+NSUserDefaults *WWNSharedUserDefaults(void) {
+#ifdef WWN_PREFPANE
+  static NSUserDefaults *suite;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    suite = [[NSUserDefaults alloc]
+        initWithSuiteName:@"com.aspauldingcode.Wawona"];
+  });
+  return suite;
+#else
+  return [NSUserDefaults standardUserDefaults];
+#endif
+}
+
 @implementation WWNPreferencesManager
 
 + (NSString *)preferredSharedRuntimeDir {
@@ -200,7 +214,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 }
 
 - (void)syncFromCanonicalWawonaPreferences {
-  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  NSUserDefaults *defaults = WWNSharedUserDefaults();
   NSString *prefix = @"wawona.pref.";
 
   id forceSSD = [defaults objectForKey:[prefix stringByAppendingString:@"forceSSD"]];
@@ -292,7 +306,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 }
 
 - (void)setDefaultsIfNeeded {
-  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  NSUserDefaults *defaults = WWNSharedUserDefaults();
 
   // Register all defaults in one canonical place.
   // These values are returned by NSUserDefaults when no explicit value is set.
@@ -461,7 +475,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 }
 
 - (void)resetToDefaults {
-  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  NSUserDefaults *defaults = WWNSharedUserDefaults();
   // Display
   [defaults removeObjectForKey:kWWNPrefsForceServerSideDecorations];
   [defaults removeObjectForKey:kWWNPrefsAutoScale];
@@ -534,12 +548,12 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 
 // Universal Clipboard
 - (BOOL)universalClipboardEnabled {
-  return [[NSUserDefaults standardUserDefaults]
+  return [WWNSharedUserDefaults()
       boolForKey:kWWNPrefsUniversalClipboard];
 }
 
 - (void)setUniversalClipboardEnabled:(BOOL)enabled {
-  [[NSUserDefaults standardUserDefaults] setBool:enabled
+  [WWNSharedUserDefaults() setBool:enabled
                                           forKey:kWWNPrefsUniversalClipboard];
 }
 
@@ -548,7 +562,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 #if TARGET_OS_TV
   return YES;
 #else
-  return [[NSUserDefaults standardUserDefaults]
+  return [WWNSharedUserDefaults()
       boolForKey:kWWNPrefsForceServerSideDecorations];
 #endif
 }
@@ -557,12 +571,12 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
   if ([self forceServerSideDecorations] == enabled) {
     return;
   }
-  [[NSUserDefaults standardUserDefaults]
+  [WWNSharedUserDefaults()
       setBool:enabled
        forKey:kWWNPrefsForceServerSideDecorations];
   // Keep the Swift mirror key in sync so MachineSettings / WawonaPreferences
   // and the ObjC compositor path never disagree.
-  [[NSUserDefaults standardUserDefaults] setBool:enabled
+  [WWNSharedUserDefaults() setBool:enabled
                                           forKey:@"wawona.pref.forceSSD"];
 
   // Post notification for hot-reload (bridge + any UI observers).
@@ -573,40 +587,40 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 
 // Display
 - (BOOL)autoRetinaScalingEnabled {
-  return [[NSUserDefaults standardUserDefaults]
+  return [WWNSharedUserDefaults()
       boolForKey:kWWNPrefsAutoRetinaScaling];
 }
 
 - (void)setAutoRetinaScalingEnabled:(BOOL)enabled {
-  [[NSUserDefaults standardUserDefaults] setBool:enabled
+  [WWNSharedUserDefaults() setBool:enabled
                                           forKey:kWWNPrefsAutoRetinaScaling];
 }
 
 // Color Management
 - (BOOL)colorSyncSupportEnabled {
-  return [[NSUserDefaults standardUserDefaults]
+  return [WWNSharedUserDefaults()
       boolForKey:kWWNPrefsColorSyncSupport];
 }
 
 - (void)setColorSyncSupportEnabled:(BOOL)enabled {
-  [[NSUserDefaults standardUserDefaults] setBool:enabled
+  [WWNSharedUserDefaults() setBool:enabled
                                           forKey:kWWNPrefsColorSyncSupport];
 }
 
 // Nested Compositors
 - (BOOL)nestedCompositorsSupportEnabled {
-  return [[NSUserDefaults standardUserDefaults]
+  return [WWNSharedUserDefaults()
       boolForKey:kWWNPrefsNestedCompositorsSupport];
 }
 
 - (void)setNestedCompositorsSupportEnabled:(BOOL)enabled {
-  [[NSUserDefaults standardUserDefaults]
+  [WWNSharedUserDefaults()
       setBool:enabled
        forKey:kWWNPrefsNestedCompositorsSupport];
 }
 
 - (NSString *)nestedWestonBackend {
-  NSString *value = [[NSUserDefaults standardUserDefaults]
+  NSString *value = [WWNSharedUserDefaults()
       stringForKey:kWWNPrefsNestedWestonBackend];
   if (value.length == 0) {
 #if TARGET_OS_OSX
@@ -643,33 +657,33 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 #endif
   NSString *value =
       (backend.length > 0) ? backend : defaultBackend;
-  [[NSUserDefaults standardUserDefaults] setObject:value
+  [WWNSharedUserDefaults() setObject:value
                                             forKey:kWWNPrefsNestedWestonBackend];
 }
 
 - (BOOL)useMetal4ForNested {
-  return [[NSUserDefaults standardUserDefaults]
+  return [WWNSharedUserDefaults()
       boolForKey:kWWNPrefsUseMetal4ForNested];
 }
 
 - (void)setUseMetal4ForNested:(BOOL)enabled {
-  [[NSUserDefaults standardUserDefaults] setBool:enabled
+  [WWNSharedUserDefaults() setBool:enabled
                                           forKey:kWWNPrefsUseMetal4ForNested];
 }
 
 // Input
 - (BOOL)renderMacOSPointer {
-  return [[NSUserDefaults standardUserDefaults]
+  return [WWNSharedUserDefaults()
       boolForKey:kWWNPrefsRenderMacOSPointer];
 }
 
 - (void)setRenderMacOSPointer:(BOOL)enabled {
-  [[NSUserDefaults standardUserDefaults] setBool:enabled
+  [WWNSharedUserDefaults() setBool:enabled
                                           forKey:kWWNPrefsRenderMacOSPointer];
 }
 
 - (NSString *)nestedCompositorCursor {
-  NSString *mode = [[NSUserDefaults standardUserDefaults]
+  NSString *mode = [WWNSharedUserDefaults()
       stringForKey:kWWNPrefsNestedCompositorCursor];
   if ([mode isEqualToString:@"host"] || [mode isEqualToString:@"virtual"]) {
     return mode;
@@ -680,71 +694,71 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 - (void)setNestedCompositorCursor:(NSString *)mode {
   NSString *normalized =
       [mode isEqualToString:@"host"] ? @"host" : @"virtual";
-  [[NSUserDefaults standardUserDefaults] setObject:normalized
+  [WWNSharedUserDefaults() setObject:normalized
                                             forKey:kWWNPrefsNestedCompositorCursor];
 }
 
 - (BOOL)swapCmdAsCtrl {
   return
-      [[NSUserDefaults standardUserDefaults] boolForKey:kWWNPrefsSwapCmdAsCtrl];
+      [WWNSharedUserDefaults() boolForKey:kWWNPrefsSwapCmdAsCtrl];
 }
 
 - (void)setSwapCmdAsCtrl:(BOOL)enabled {
-  [[NSUserDefaults standardUserDefaults] setBool:enabled
+  [WWNSharedUserDefaults() setBool:enabled
                                           forKey:kWWNPrefsSwapCmdAsCtrl];
 }
 
 // Client Management
 - (BOOL)multipleClientsEnabled {
-  return [[NSUserDefaults standardUserDefaults]
+  return [WWNSharedUserDefaults()
       boolForKey:kWWNPrefsMultipleClients];
 }
 
 - (void)setMultipleClientsEnabled:(BOOL)enabled {
-  [[NSUserDefaults standardUserDefaults] setBool:enabled
+  [WWNSharedUserDefaults() setBool:enabled
                                           forKey:kWWNPrefsMultipleClients];
 }
 
 // Waypipe
 - (BOOL)machineSessionThumbnailsEnabled {
-  return [[NSUserDefaults standardUserDefaults]
+  return [WWNSharedUserDefaults()
       boolForKey:kWWNPrefsMachineSessionThumbnailsEnabled];
 }
 
 - (void)setMachineSessionThumbnailsEnabled:(BOOL)enabled {
-  [[NSUserDefaults standardUserDefaults]
+  [WWNSharedUserDefaults()
       setBool:enabled
        forKey:kWWNPrefsMachineSessionThumbnailsEnabled];
 }
 
 - (BOOL)waypipeRSSupportEnabled {
-  return [[NSUserDefaults standardUserDefaults]
+  return [WWNSharedUserDefaults()
       boolForKey:kWWNPrefsWaypipeRSSupport];
 }
 
 - (void)setWaypipeRSSupportEnabled:(BOOL)enabled {
-  [[NSUserDefaults standardUserDefaults] setBool:enabled
+  [WWNSharedUserDefaults() setBool:enabled
                                           forKey:kWWNPrefsWaypipeRSSupport];
 }
 
 // Network / Remote Access
 - (BOOL)enableTCPListener {
-  return [[NSUserDefaults standardUserDefaults]
+  return [WWNSharedUserDefaults()
       boolForKey:kWWNPrefsEnableTCPListener];
 }
 
 - (void)setEnableTCPListener:(BOOL)enabled {
-  [[NSUserDefaults standardUserDefaults] setBool:enabled
+  [WWNSharedUserDefaults() setBool:enabled
                                           forKey:kWWNPrefsEnableTCPListener];
 }
 
 - (NSInteger)tcpListenerPort {
-  return [[NSUserDefaults standardUserDefaults]
+  return [WWNSharedUserDefaults()
       integerForKey:kWWNPrefsTCPListenerPort];
 }
 
 - (void)setTCPListenerPort:(NSInteger)port {
-  [[NSUserDefaults standardUserDefaults] setInteger:port
+  [WWNSharedUserDefaults() setInteger:port
                                              forKey:kWWNPrefsTCPListenerPort];
 }
 
@@ -753,10 +767,10 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
   NSString *preferred = WWNPreferredSharedRuntimeDir();
   if (preferred.length > 0) {
-    NSString *stored = [[NSUserDefaults standardUserDefaults]
+    NSString *stored = [WWNSharedUserDefaults()
         stringForKey:kWWNPrefsWaylandSocketDir];
     if (![stored isEqualToString:preferred]) {
-      [[NSUserDefaults standardUserDefaults]
+      [WWNSharedUserDefaults()
           setObject:preferred
              forKey:kWWNPrefsWaylandSocketDir];
     }
@@ -764,7 +778,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
   }
 #endif
 
-  NSString *dir = [[NSUserDefaults standardUserDefaults]
+  NSString *dir = [WWNSharedUserDefaults()
       stringForKey:kWWNPrefsWaylandSocketDir];
   if (!dir) {
     const char *envDir = getenv("XDG_RUNTIME_DIR");
@@ -783,17 +797,17 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 }
 
 - (void)setWaylandSocketDir:(NSString *)dir {
-  [[NSUserDefaults standardUserDefaults] setObject:dir
+  [WWNSharedUserDefaults() setObject:dir
                                             forKey:kWWNPrefsWaylandSocketDir];
 }
 
 - (NSInteger)waylandDisplayNumber {
-  return [[NSUserDefaults standardUserDefaults]
+  return [WWNSharedUserDefaults()
       integerForKey:kWWNPrefsWaylandDisplayNumber];
 }
 
 - (void)setWaylandDisplayNumber:(NSInteger)number {
-  [[NSUserDefaults standardUserDefaults]
+  [WWNSharedUserDefaults()
       setInteger:number
           forKey:kWWNPrefsWaylandDisplayNumber];
 }
@@ -806,7 +820,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 }
 
 - (void)setVulkanDriversEnabled:(BOOL)enabled {
-  [[NSUserDefaults standardUserDefaults] setBool:enabled
+  [WWNSharedUserDefaults() setBool:enabled
                                           forKey:kWWNPrefsEnableVulkanDrivers];
   [self setVulkanDriver:enabled ? @"moltenvk" : @"none"];
 }
@@ -814,11 +828,11 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 // Dmabuf Support
 - (BOOL)dmabufEnabled {
   return
-      [[NSUserDefaults standardUserDefaults] boolForKey:kWWNPrefsEnableDmabuf];
+      [WWNSharedUserDefaults() boolForKey:kWWNPrefsEnableDmabuf];
 }
 
 - (void)setDmabufEnabled:(BOOL)enabled {
-  [[NSUserDefaults standardUserDefaults] setBool:enabled
+  [WWNSharedUserDefaults() setBool:enabled
                                           forKey:kWWNPrefsEnableDmabuf];
 }
 
@@ -869,14 +883,14 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
     return @"none";
   }
   NSString *driver =
-      [[NSUserDefaults standardUserDefaults] stringForKey:kWWNPrefsVulkanDriver];
+      [WWNSharedUserDefaults() stringForKey:kWWNPrefsVulkanDriver];
   NSSet *allowed = [NSSet setWithArray:@[ @"none", @"moltenvk" ]];
   return [allowed containsObject:driver]
              ? driver
              : [WWNPreferencesManager defaultVulkanDriverForHardware];
 #else
   NSString *driver =
-      [[NSUserDefaults standardUserDefaults] stringForKey:kWWNPrefsVulkanDriver];
+      [WWNSharedUserDefaults() stringForKey:kWWNPrefsVulkanDriver];
 #if TARGET_OS_OSX
   NSSet *allowed =
       [NSSet setWithArray:@[ @"none", @"moltenvk", @"kosmickrisp", @"swiftshader" ]];
@@ -890,7 +904,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 }
 
 - (void)setVulkanDriver:(NSString *)driver {
-  [[NSUserDefaults standardUserDefaults] setObject:driver
+  [WWNSharedUserDefaults() setObject:driver
                                             forKey:kWWNPrefsVulkanDriver];
 }
 
@@ -902,13 +916,13 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
     return @"none";
   }
   NSString *driver =
-      [[NSUserDefaults standardUserDefaults] stringForKey:kWWNPrefsOpenGLDriver];
+      [WWNSharedUserDefaults() stringForKey:kWWNPrefsOpenGLDriver];
   return [@[ @"none", @"angle" ] containsObject:driver]
              ? driver
              : [WWNPreferencesManager defaultOpenGLDriverForHardware];
 #else
   NSString *driver =
-      [[NSUserDefaults standardUserDefaults] stringForKey:kWWNPrefsOpenGLDriver];
+      [WWNSharedUserDefaults() stringForKey:kWWNPrefsOpenGLDriver];
   return [@[ @"none", @"angle" ] containsObject:driver]
              ? driver
              : [WWNPreferencesManager defaultOpenGLDriverForHardware];
@@ -916,7 +930,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 }
 
 - (void)setOpenGLDriver:(NSString *)driver {
-  [[NSUserDefaults standardUserDefaults] setObject:driver
+  [WWNSharedUserDefaults() setObject:driver
                                             forKey:kWWNPrefsOpenGLDriver];
 }
 
@@ -925,7 +939,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
   // watchOS GPU is blocked (no Metal). Nested Wayland only.
   return @"wayland";
 #else
-  NSString *backend = [[NSUserDefaults standardUserDefaults]
+  NSString *backend = [WWNSharedUserDefaults()
       stringForKey:kWWNPrefsCompositorBackend];
   return [@[ @"auto", @"wayland", @"drm" ] containsObject:backend] ? backend
                                                                    : @"auto";
@@ -933,7 +947,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 }
 
 - (void)setCompositorBackend:(NSString *)backend {
-  [[NSUserDefaults standardUserDefaults]
+  [WWNSharedUserDefaults()
       setObject:backend
          forKey:kWWNPrefsCompositorBackend];
 }
@@ -941,7 +955,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 // New unified display methods
 - (BOOL)autoScale {
   // Check new key first, fallback to legacy key for migration
-  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  NSUserDefaults *defaults = WWNSharedUserDefaults();
   if ([defaults objectForKey:kWWNPrefsAutoScale]) {
     return [defaults boolForKey:kWWNPrefsAutoScale];
   }
@@ -955,12 +969,12 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 }
 
 - (void)setAutoScale:(BOOL)enabled {
-  [[NSUserDefaults standardUserDefaults] setBool:enabled
+  [WWNSharedUserDefaults() setBool:enabled
                                           forKey:kWWNPrefsAutoScale];
 }
 
 - (BOOL)externalDisplayTouchpad {
-  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  NSUserDefaults *defaults = WWNSharedUserDefaults();
   if ([defaults objectForKey:kWWNPrefsExternalDisplayTouchpad]) {
     return [defaults boolForKey:kWWNPrefsExternalDisplayTouchpad];
   }
@@ -968,46 +982,46 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 }
 
 - (void)setExternalDisplayTouchpad:(BOOL)enabled {
-  [[NSUserDefaults standardUserDefaults]
+  [WWNSharedUserDefaults()
       setBool:enabled
        forKey:kWWNPrefsExternalDisplayTouchpad];
 }
 
 - (BOOL)respectSafeArea {
-  return [[NSUserDefaults standardUserDefaults]
+  return [WWNSharedUserDefaults()
       boolForKey:kWWNPrefsRespectSafeArea];
 }
 
 - (void)setRespectSafeArea:(BOOL)enabled {
-  [[NSUserDefaults standardUserDefaults] setBool:enabled
+  [WWNSharedUserDefaults() setBool:enabled
                                           forKey:kWWNPrefsRespectSafeArea];
 }
 
 - (BOOL)resizeDisplayForVirtualKeyboard {
-  return [[NSUserDefaults standardUserDefaults]
+  return [WWNSharedUserDefaults()
       boolForKey:kWWNPrefsResizeDisplayForVirtualKeyboard];
 }
 
 - (void)setResizeDisplayForVirtualKeyboard:(BOOL)enabled {
-  [[NSUserDefaults standardUserDefaults]
+  [WWNSharedUserDefaults()
       setBool:enabled
        forKey:kWWNPrefsResizeDisplayForVirtualKeyboard];
 }
 
 - (BOOL)hasSeenWelcome {
-  return [[NSUserDefaults standardUserDefaults]
+  return [WWNSharedUserDefaults()
       boolForKey:kWWNPrefsHasSeenWelcome];
 }
 
 - (void)setHasSeenWelcome:(BOOL)seen {
-  [[NSUserDefaults standardUserDefaults] setBool:seen
+  [WWNSharedUserDefaults() setBool:seen
                                           forKey:kWWNPrefsHasSeenWelcome];
 }
 
 // New unified color management method
 - (BOOL)colorOperations {
   // Check new key first, fallback to legacy key for migration
-  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  NSUserDefaults *defaults = WWNSharedUserDefaults();
   if ([defaults objectForKey:kWWNPrefsColorOperations]) {
     return [defaults boolForKey:kWWNPrefsColorOperations];
   }
@@ -1021,14 +1035,14 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 }
 
 - (void)setColorOperations:(BOOL)enabled {
-  [[NSUserDefaults standardUserDefaults] setBool:enabled
+  [WWNSharedUserDefaults() setBool:enabled
                                           forKey:kWWNPrefsColorOperations];
 }
 
 // New unified input method
 - (BOOL)swapCmdWithAlt {
   // Check new key first, fallback to legacy key for migration
-  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  NSUserDefaults *defaults = WWNSharedUserDefaults();
   if ([defaults objectForKey:kWWNPrefsSwapCmdWithAlt]) {
     return [defaults boolForKey:kWWNPrefsSwapCmdWithAlt];
   }
@@ -1042,22 +1056,22 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 }
 
 - (void)setSwapCmdWithAlt:(BOOL)enabled {
-  [[NSUserDefaults standardUserDefaults] setBool:enabled
+  [WWNSharedUserDefaults() setBool:enabled
                                           forKey:kWWNPrefsSwapCmdWithAlt];
 }
 
 - (NSString *)touchInputType {
-  NSString *value = [[NSUserDefaults standardUserDefaults]
+  NSString *value = [WWNSharedUserDefaults()
       stringForKey:kWWNPrefsTouchInputType];
   return value ? value : @"Multi-Touch";
 }
 
 - (void)setTouchInputType:(NSString *)type {
   if (type) {
-    [[NSUserDefaults standardUserDefaults] setObject:type
+    [WWNSharedUserDefaults() setObject:type
                                               forKey:kWWNPrefsTouchInputType];
   } else {
-    [[NSUserDefaults standardUserDefaults]
+    [WWNSharedUserDefaults()
         removeObjectForKey:kWWNPrefsTouchInputType];
   }
 }
@@ -1065,11 +1079,11 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 // Waypipe Configuration Methods
 - (NSString *)waypipeDisplay {
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
-  NSString *value = [[NSUserDefaults standardUserDefaults]
+  NSString *value = [WWNSharedUserDefaults()
       stringForKey:kWWNPrefsWaypipeDisplay];
   if ([value isEqualToString:@"w0"] || [value isEqualToString:@"w-0"]) {
     value = @"wayland-0";
-    [[NSUserDefaults standardUserDefaults] setObject:value
+    [WWNSharedUserDefaults() setObject:value
                                               forKey:kWWNPrefsWaypipeDisplay];
   }
   return value.length > 0 ? value : @"wayland-0";
@@ -1085,10 +1099,10 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
     display = @"wayland-0";
   }
   if (display.length > 0) {
-    [[NSUserDefaults standardUserDefaults] setObject:display
+    [WWNSharedUserDefaults() setObject:display
                                               forKey:kWWNPrefsWaypipeDisplay];
   } else {
-    [[NSUserDefaults standardUserDefaults]
+    [WWNSharedUserDefaults()
         removeObjectForKey:kWWNPrefsWaypipeDisplay];
   }
 #else
@@ -1114,17 +1128,17 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
       display = @"wayland-0";
     }
     NSString *preferred = [runtimeDir stringByAppendingPathComponent:display];
-    NSString *stored = [[NSUserDefaults standardUserDefaults]
+    NSString *stored = [WWNSharedUserDefaults()
         stringForKey:kWWNPrefsWaypipeSocket];
     if (![stored isEqualToString:preferred]) {
-      [[NSUserDefaults standardUserDefaults] setObject:preferred
+      [WWNSharedUserDefaults() setObject:preferred
                                                 forKey:kWWNPrefsWaypipeSocket];
     }
     return preferred;
   }
 #endif
 
-  NSString *value = [[NSUserDefaults standardUserDefaults]
+  NSString *value = [WWNSharedUserDefaults()
       stringForKey:kWWNPrefsWaypipeSocket];
   if (!value) {
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
@@ -1139,23 +1153,23 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 }
 
 - (void)setWaypipeSocket:(NSString *)socket {
-  [[NSUserDefaults standardUserDefaults] setObject:socket
+  [WWNSharedUserDefaults() setObject:socket
                                             forKey:kWWNPrefsWaypipeSocket];
 }
 
 - (NSString *)waypipeCompress {
-  NSString *value = [[NSUserDefaults standardUserDefaults]
+  NSString *value = [WWNSharedUserDefaults()
       stringForKey:kWWNPrefsWaypipeCompress];
   return value ? value : @"lz4";
 }
 
 - (void)setWaypipeCompress:(NSString *)compress {
-  [[NSUserDefaults standardUserDefaults] setObject:compress
+  [WWNSharedUserDefaults() setObject:compress
                                             forKey:kWWNPrefsWaypipeCompress];
 }
 
 - (NSString *)waypipeCompressLevel {
-  id value = [[NSUserDefaults standardUserDefaults]
+  id value = [WWNSharedUserDefaults()
       objectForKey:kWWNPrefsWaypipeCompressLevel];
   if ([value isKindOfClass:[NSString class]]) {
     return value;
@@ -1167,13 +1181,13 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 }
 
 - (void)setWaypipeCompressLevel:(NSString *)level {
-  [[NSUserDefaults standardUserDefaults]
+  [WWNSharedUserDefaults()
       setObject:level
          forKey:kWWNPrefsWaypipeCompressLevel];
 }
 
 - (NSString *)waypipeThreads {
-  id value = [[NSUserDefaults standardUserDefaults]
+  id value = [WWNSharedUserDefaults()
       objectForKey:kWWNPrefsWaypipeThreads];
   if ([value isKindOfClass:[NSString class]]) {
     return value;
@@ -1185,47 +1199,47 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 }
 
 - (void)setWaypipeThreads:(NSString *)threads {
-  [[NSUserDefaults standardUserDefaults] setObject:threads
+  [WWNSharedUserDefaults() setObject:threads
                                             forKey:kWWNPrefsWaypipeThreads];
 }
 
 - (NSString *)waypipeVideo {
-  NSString *value = [[NSUserDefaults standardUserDefaults]
+  NSString *value = [WWNSharedUserDefaults()
       stringForKey:kWWNPrefsWaypipeVideo];
   return value ? value : @"none";
 }
 
 - (void)setWaypipeVideo:(NSString *)video {
-  [[NSUserDefaults standardUserDefaults] setObject:video
+  [WWNSharedUserDefaults() setObject:video
                                             forKey:kWWNPrefsWaypipeVideo];
 }
 
 - (NSString *)waypipeVideoEncoding {
-  NSString *value = [[NSUserDefaults standardUserDefaults]
+  NSString *value = [WWNSharedUserDefaults()
       stringForKey:kWWNPrefsWaypipeVideoEncoding];
   return value ? value : @"hw";
 }
 
 - (void)setWaypipeVideoEncoding:(NSString *)encoding {
-  [[NSUserDefaults standardUserDefaults]
+  [WWNSharedUserDefaults()
       setObject:encoding
          forKey:kWWNPrefsWaypipeVideoEncoding];
 }
 
 - (NSString *)waypipeVideoDecoding {
-  NSString *value = [[NSUserDefaults standardUserDefaults]
+  NSString *value = [WWNSharedUserDefaults()
       stringForKey:kWWNPrefsWaypipeVideoDecoding];
   return value ? value : @"hw";
 }
 
 - (void)setWaypipeVideoDecoding:(NSString *)decoding {
-  [[NSUserDefaults standardUserDefaults]
+  [WWNSharedUserDefaults()
       setObject:decoding
          forKey:kWWNPrefsWaypipeVideoDecoding];
 }
 
 - (NSString *)waypipeVideoBpf {
-  id value = [[NSUserDefaults standardUserDefaults]
+  id value = [WWNSharedUserDefaults()
       objectForKey:kWWNPrefsWaypipeVideoBpf];
   if ([value isKindOfClass:[NSString class]]) {
     return value;
@@ -1240,7 +1254,7 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 }
 
 - (void)setWaypipeVideoBpf:(NSString *)bpf {
-  [[NSUserDefaults standardUserDefaults] setObject:bpf
+  [WWNSharedUserDefaults() setObject:bpf
                                             forKey:kWWNPrefsWaypipeVideoBpf];
 }
 
@@ -1250,141 +1264,141 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 }
 
 - (void)setWaypipeSSHEnabled:(BOOL)enabled {
-  [[NSUserDefaults standardUserDefaults] setBool:enabled
+  [WWNSharedUserDefaults() setBool:enabled
                                           forKey:kWWNPrefsWaypipeSSHEnabled];
 }
 
 - (NSString *)waypipeSSHHost {
-  NSString *value = [[NSUserDefaults standardUserDefaults]
+  NSString *value = [WWNSharedUserDefaults()
       stringForKey:kWWNPrefsWaypipeSSHHost];
   return value ? value : @"";
 }
 
 - (void)setWaypipeSSHHost:(NSString *)host {
-  [[NSUserDefaults standardUserDefaults] setObject:host
+  [WWNSharedUserDefaults() setObject:host
                                             forKey:kWWNPrefsWaypipeSSHHost];
 }
 
 - (NSString *)waypipeSSHUser {
-  NSString *value = [[NSUserDefaults standardUserDefaults]
+  NSString *value = [WWNSharedUserDefaults()
       stringForKey:kWWNPrefsWaypipeSSHUser];
   return value ? value : @"";
 }
 
 - (void)setWaypipeSSHUser:(NSString *)user {
-  [[NSUserDefaults standardUserDefaults] setObject:user
+  [WWNSharedUserDefaults() setObject:user
                                             forKey:kWWNPrefsWaypipeSSHUser];
 }
 
 - (NSString *)waypipeSSHBinary {
-  NSString *value = [[NSUserDefaults standardUserDefaults]
+  NSString *value = [WWNSharedUserDefaults()
       stringForKey:kWWNPrefsWaypipeSSHBinary];
   return value ? value : @"ssh";
 }
 
 - (void)setWaypipeSSHBinary:(NSString *)binary {
-  [[NSUserDefaults standardUserDefaults] setObject:binary
+  [WWNSharedUserDefaults() setObject:binary
                                             forKey:kWWNPrefsWaypipeSSHBinary];
 }
 
 - (NSInteger)waypipeSSHAuthMethod {
-  NSInteger method = [[NSUserDefaults standardUserDefaults]
+  NSInteger method = [WWNSharedUserDefaults()
       integerForKey:kWWNPrefsWaypipeSSHAuthMethod];
   return method; // 0 = password (default), 1 = public key
 }
 
 - (void)setWaypipeSSHAuthMethod:(NSInteger)method {
-  [[NSUserDefaults standardUserDefaults]
+  [WWNSharedUserDefaults()
       setInteger:method
           forKey:kWWNPrefsWaypipeSSHAuthMethod];
 }
 
 - (NSString *)waypipeSSHKeyPath {
-  return [[NSUserDefaults standardUserDefaults]
+  return [WWNSharedUserDefaults()
              stringForKey:kWWNPrefsWaypipeSSHKeyPath]
              ?: @"";
 }
 
 - (void)setWaypipeSSHKeyPath:(NSString *)keyPath {
-  [[NSUserDefaults standardUserDefaults] setObject:keyPath
+  [WWNSharedUserDefaults() setObject:keyPath
                                             forKey:kWWNPrefsWaypipeSSHKeyPath];
 }
 
 - (NSString *)waypipeSSHKeyPassphrase {
-  return [[NSUserDefaults standardUserDefaults]
+  return [WWNSharedUserDefaults()
              stringForKey:kWWNPrefsWaypipeSSHKeyPassphrase]
              ?: @"";
 }
 
 - (void)setWaypipeSSHKeyPassphrase:(NSString *)passphrase {
   if (passphrase && passphrase.length > 0) {
-    [[NSUserDefaults standardUserDefaults]
+    [WWNSharedUserDefaults()
         setObject:passphrase
            forKey:kWWNPrefsWaypipeSSHKeyPassphrase];
   } else {
-    [[NSUserDefaults standardUserDefaults]
+    [WWNSharedUserDefaults()
         removeObjectForKey:kWWNPrefsWaypipeSSHKeyPassphrase];
   }
 }
 
 - (NSString *)waypipeSSHPassword {
-  return [[NSUserDefaults standardUserDefaults]
+  return [WWNSharedUserDefaults()
              stringForKey:kWWNPrefsWaypipeSSHPassword]
              ?: @"";
 }
 
 - (void)setWaypipeSSHPassword:(NSString *)password {
   if (password && password.length > 0) {
-    [[NSUserDefaults standardUserDefaults]
+    [WWNSharedUserDefaults()
         setObject:password
            forKey:kWWNPrefsWaypipeSSHPassword];
   } else {
-    [[NSUserDefaults standardUserDefaults]
+    [WWNSharedUserDefaults()
         removeObjectForKey:kWWNPrefsWaypipeSSHPassword];
   }
 }
 
 - (NSString *)waypipeRemoteCommand {
-  NSString *value = [[NSUserDefaults standardUserDefaults]
+  NSString *value = [WWNSharedUserDefaults()
       stringForKey:kWWNPrefsWaypipeRemoteCommand];
   return value ? value : @"";
 }
 
 - (void)setWaypipeRemoteCommand:(NSString *)command {
-  [[NSUserDefaults standardUserDefaults]
+  [WWNSharedUserDefaults()
       setObject:command
          forKey:kWWNPrefsWaypipeRemoteCommand];
 }
 
 - (NSString *)waypipeCustomScript {
-  NSString *value = [[NSUserDefaults standardUserDefaults]
+  NSString *value = [WWNSharedUserDefaults()
       stringForKey:kWWNPrefsWaypipeCustomScript];
   return value ? value : @"";
 }
 
 - (void)setWaypipeCustomScript:(NSString *)script {
-  [[NSUserDefaults standardUserDefaults]
+  [WWNSharedUserDefaults()
       setObject:script
          forKey:kWWNPrefsWaypipeCustomScript];
 }
 
 - (BOOL)waypipeDebug {
   return
-      [[NSUserDefaults standardUserDefaults] boolForKey:kWWNPrefsWaypipeDebug];
+      [WWNSharedUserDefaults() boolForKey:kWWNPrefsWaypipeDebug];
 }
 
 - (void)setWaypipeDebug:(BOOL)enabled {
-  [[NSUserDefaults standardUserDefaults] setBool:enabled
+  [WWNSharedUserDefaults() setBool:enabled
                                           forKey:kWWNPrefsWaypipeDebug];
 }
 
 - (BOOL)waypipeNoGpu {
   return
-      [[NSUserDefaults standardUserDefaults] boolForKey:kWWNPrefsWaypipeNoGpu];
+      [WWNSharedUserDefaults() boolForKey:kWWNPrefsWaypipeNoGpu];
 }
 
 - (void)setWaypipeNoGpu:(BOOL)enabled {
-  [[NSUserDefaults standardUserDefaults] setBool:enabled
+  [WWNSharedUserDefaults() setBool:enabled
                                           forKey:kWWNPrefsWaypipeNoGpu];
 }
 
@@ -1393,14 +1407,14 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
   // iOS App Store: SSH uses in-process libssh2 only; oneshot is always on.
   return YES;
 #else
-  return [[NSUserDefaults standardUserDefaults]
+  return [WWNSharedUserDefaults()
       boolForKey:kWWNPrefsWaypipeOneshot];
 #endif
 }
 
 - (void)setWaypipeOneshot:(BOOL)enabled {
 #if !TARGET_OS_IPHONE
-  [[NSUserDefaults standardUserDefaults] setBool:enabled
+  [WWNSharedUserDefaults() setBool:enabled
                                           forKey:kWWNPrefsWaypipeOneshot];
 #endif
   // On iOS the getter always returns YES; no-op setter keeps UI from persisting
@@ -1408,107 +1422,107 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 }
 
 - (BOOL)waypipeUnlinkSocket {
-  return [[NSUserDefaults standardUserDefaults]
+  return [WWNSharedUserDefaults()
       boolForKey:kWWNPrefsWaypipeUnlinkSocket];
 }
 
 - (void)setWaypipeUnlinkSocket:(BOOL)enabled {
-  [[NSUserDefaults standardUserDefaults] setBool:enabled
+  [WWNSharedUserDefaults() setBool:enabled
                                           forKey:kWWNPrefsWaypipeUnlinkSocket];
 }
 
 - (BOOL)waypipeLoginShell {
-  return [[NSUserDefaults standardUserDefaults]
+  return [WWNSharedUserDefaults()
       boolForKey:kWWNPrefsWaypipeLoginShell];
 }
 
 - (void)setWaypipeLoginShell:(BOOL)enabled {
-  [[NSUserDefaults standardUserDefaults] setBool:enabled
+  [WWNSharedUserDefaults() setBool:enabled
                                           forKey:kWWNPrefsWaypipeLoginShell];
 }
 
 - (BOOL)waypipeVsock {
   return
-      [[NSUserDefaults standardUserDefaults] boolForKey:kWWNPrefsWaypipeVsock];
+      [WWNSharedUserDefaults() boolForKey:kWWNPrefsWaypipeVsock];
 }
 
 - (void)setWaypipeVsock:(BOOL)enabled {
-  [[NSUserDefaults standardUserDefaults] setBool:enabled
+  [WWNSharedUserDefaults() setBool:enabled
                                           forKey:kWWNPrefsWaypipeVsock];
 }
 
 - (BOOL)waypipeXwls {
   return
-      [[NSUserDefaults standardUserDefaults] boolForKey:kWWNPrefsWaypipeXwls];
+      [WWNSharedUserDefaults() boolForKey:kWWNPrefsWaypipeXwls];
 }
 
 - (void)setWaypipeXwls:(BOOL)enabled {
-  [[NSUserDefaults standardUserDefaults] setBool:enabled
+  [WWNSharedUserDefaults() setBool:enabled
                                           forKey:kWWNPrefsWaypipeXwls];
 }
 
 - (NSString *)waypipeTitlePrefix {
-  NSString *value = [[NSUserDefaults standardUserDefaults]
+  NSString *value = [WWNSharedUserDefaults()
       stringForKey:kWWNPrefsWaypipeTitlePrefix];
   return value ? value : @"";
 }
 
 - (void)setWaypipeTitlePrefix:(NSString *)prefix {
-  [[NSUserDefaults standardUserDefaults] setObject:prefix
+  [WWNSharedUserDefaults() setObject:prefix
                                             forKey:kWWNPrefsWaypipeTitlePrefix];
 }
 
 - (NSString *)waypipeSecCtx {
-  NSString *value = [[NSUserDefaults standardUserDefaults]
+  NSString *value = [WWNSharedUserDefaults()
       stringForKey:kWWNPrefsWaypipeSecCtx];
   return value ? value : @"";
 }
 
 - (void)setWaypipeSecCtx:(NSString *)secCtx {
-  [[NSUserDefaults standardUserDefaults] setObject:secCtx
+  [WWNSharedUserDefaults() setObject:secCtx
                                             forKey:kWWNPrefsWaypipeSecCtx];
 }
 
 - (BOOL)waypipeUseSSHConfig {
   // Default to YES if not set (use SSH config from OpenSSH section by default)
-  if (![[NSUserDefaults standardUserDefaults]
+  if (![WWNSharedUserDefaults()
           objectForKey:kWWNPrefsWaypipeUseSSHConfig]) {
     return YES;
   }
-  return [[NSUserDefaults standardUserDefaults]
+  return [WWNSharedUserDefaults()
       boolForKey:kWWNPrefsWaypipeUseSSHConfig];
 }
 
 - (void)setWaypipeUseSSHConfig:(BOOL)enabled {
-  [[NSUserDefaults standardUserDefaults] setBool:enabled
+  [WWNSharedUserDefaults() setBool:enabled
                                           forKey:kWWNPrefsWaypipeUseSSHConfig];
 }
 
 // SSH Configuration (separate from Waypipe)
 - (NSString *)sshHost {
   NSString *value =
-      [[NSUserDefaults standardUserDefaults] stringForKey:kWWNPrefsSSHHost];
+      [WWNSharedUserDefaults() stringForKey:kWWNPrefsSSHHost];
   return value ? value : @"";
 }
 
 - (void)setSshHost:(NSString *)host {
-  [[NSUserDefaults standardUserDefaults] setObject:host
+  [WWNSharedUserDefaults() setObject:host
                                             forKey:kWWNPrefsSSHHost];
 }
 
 - (NSString *)sshUser {
   NSString *value =
-      [[NSUserDefaults standardUserDefaults] stringForKey:kWWNPrefsSSHUser];
+      [WWNSharedUserDefaults() stringForKey:kWWNPrefsSSHUser];
   return value ? value : @"";
 }
 
 - (void)setSshUser:(NSString *)user {
-  [[NSUserDefaults standardUserDefaults] setObject:user
+  [WWNSharedUserDefaults() setObject:user
                                             forKey:kWWNPrefsSSHUser];
 }
 
 - (NSInteger)sshPort {
-  NSInteger port = [[NSUserDefaults standardUserDefaults] integerForKey:kWWNPrefsSSHPort];
+  NSInteger port = [WWNSharedUserDefaults() integerForKey:kWWNPrefsSSHPort];
   if (port <= 0) {
     return 22;
   }
@@ -1520,39 +1534,39 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
   if (clamped < 1 || clamped > 65535) {
     clamped = 22;
   }
-  [[NSUserDefaults standardUserDefaults] setInteger:clamped
+  [WWNSharedUserDefaults() setInteger:clamped
                                              forKey:kWWNPrefsSSHPort];
   // Keep waypipe port string in sync for Android/JNI host:port paths.
-  [[NSUserDefaults standardUserDefaults]
+  [WWNSharedUserDefaults()
       setObject:[NSString stringWithFormat:@"%ld", (long)clamped]
          forKey:@"WaypipeSSHPort"];
 }
 
 - (NSInteger)sshAuthMethod {
-  return [[NSUserDefaults standardUserDefaults]
+  return [WWNSharedUserDefaults()
       integerForKey:kWWNPrefsSSHAuthMethod];
 }
 
 - (void)setSshAuthMethod:(NSInteger)method {
-  [[NSUserDefaults standardUserDefaults] setInteger:method
+  [WWNSharedUserDefaults() setInteger:method
                                              forKey:kWWNPrefsSSHAuthMethod];
   // Keep WaypipeSSH* namespace in sync (Settings + Machines runtime).
-  [[NSUserDefaults standardUserDefaults]
+  [WWNSharedUserDefaults()
       setInteger:method
           forKey:kWWNPrefsWaypipeSSHAuthMethod];
 }
 
 // Helper methods for preference storage
 - (NSString *)getSecureValueForKey:(NSString *)key {
-  NSString *value = [[NSUserDefaults standardUserDefaults] stringForKey:key];
+  NSString *value = [WWNSharedUserDefaults() stringForKey:key];
   return value ?: @"";
 }
 
 - (void)setSecureValue:(NSString *)value forKey:(NSString *)key {
   if (value && value.length > 0) {
-    [[NSUserDefaults standardUserDefaults] setObject:value forKey:key];
+    [WWNSharedUserDefaults() setObject:value forKey:key];
   } else {
-    [[NSUserDefaults standardUserDefaults] removeObjectForKey:key];
+    [WWNSharedUserDefaults() removeObjectForKey:key];
   }
 }
 
@@ -1566,14 +1580,14 @@ static NSString *WWNPreferredSharedRuntimeDir(void) {
 
 - (NSString *)sshKeyPath {
   NSString *value =
-      [[NSUserDefaults standardUserDefaults] stringForKey:kWWNPrefsSSHKeyPath];
+      [WWNSharedUserDefaults() stringForKey:kWWNPrefsSSHKeyPath];
   return value ? value : @"";
 }
 
 - (void)setSshKeyPath:(NSString *)keyPath {
-  [[NSUserDefaults standardUserDefaults] setObject:keyPath
+  [WWNSharedUserDefaults() setObject:keyPath
                                             forKey:kWWNPrefsSSHKeyPath];
-  [[NSUserDefaults standardUserDefaults]
+  [WWNSharedUserDefaults()
       setObject:keyPath ?: @""
          forKey:kWWNPrefsWaypipeSSHKeyPath];
 }

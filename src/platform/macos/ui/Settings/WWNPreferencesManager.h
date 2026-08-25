@@ -100,6 +100,10 @@ extern NSString *const kWWNPrefsLockscreenReplacementMachineId;
 extern NSString *const kWWNPrefsSwingingBridgeEnabled;
 /// Deprecated preference key name; still read for migration.
 extern NSString *const kWWNPrefsAnowaWEnabled;
+/// App domain `com.aspauldingcode.Wawona`. The System Settings pane must not
+/// use `standardUserDefaults` (that is System Settings' own domain).
+FOUNDATION_EXPORT NSUserDefaults *WWNSharedUserDefaults(void);
+
 @interface WWNPreferencesManager : NSObject
 
 + (instancetype)sharedManager;
