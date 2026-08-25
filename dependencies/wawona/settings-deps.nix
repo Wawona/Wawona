@@ -78,7 +78,7 @@ rec {
       { name = "Waypipe"; version = versions.waypipe; role = "Remote Wayland display proxy"; }
       { name = "libssh2"; version = versions.libssh2; role = "In-process SSH (Apple mobile)"; }
       { name = "epoll-shim"; version = "0.0.20240608"; role = "epoll compatibility layer"; }
-      { name = "iland"; version = "cpu"; role = "Userspace present (tvOS GPU planned)"; }
+      { name = "iland"; version = "userland"; role = "Userspace DRM/KMS/GBM + MoltenVK (tvOS GPU Phase 1)"; }
       { name = "Weston"; version = versions.weston; role = "Bundled nested compositor"; }
       { name = "Niri"; version = versions.niri; role = "Bundled nested compositor"; }
       { name = "zsh"; version = versions.zsh; role = "In-process local shell"; }

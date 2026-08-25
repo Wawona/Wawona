@@ -113,7 +113,7 @@ public enum PlatformCapabilities: Sendable {
     public static var gpuStackGate: CapabilityGate {
         #if os(tvOS)
         #if WWN_TVOS_GPU_BUNDLED
-        return isFlagEnabled("WWN_TVOS_GPU") ? .available : .planned(flag: "WWN_TVOS_GPU")
+        return .available
         #else
         return .planned(flag: "WWN_TVOS_GPU")
         #endif

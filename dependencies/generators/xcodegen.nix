@@ -223,15 +223,17 @@ let
     "${strip deps.pixman}/include"
     "${strip deps.pixman}/include/pixman-1"
   ];
-  ilandGlHeaderPaths = deps: [
-    "${strip (deps.iland or null)}/include"
-    "${strip (deps.iland or null)}/include/EGL"
-    "${strip (deps.iland or null)}/include/GLES2"
-    "${strip (deps.angle or null)}/include"
-    "${strip (deps.kmscube or deps."iland-gl-clients" or null)}/include"
-  ]
-  ++ lib.optional (deps.vkcube or null != null) "${strip deps.vkcube}/include"
-  ++ lib.optional (deps."opengl-cube" or null != null) "${strip deps."opengl-cube"}/include";
+  ilandGlHeaderPaths = deps:
+    lib.optionals (deps.iland or null != null) [
+      "${strip deps.iland}/include"
+      "${strip deps.iland}/include/EGL"
+      "${strip deps.iland}/include/GLES2"
+    ]
+    ++ lib.optional (deps.angle or null != null) "${strip deps.angle}/include"
+    ++ lib.optional ((deps.kmscube or deps."iland-gl-clients" or null) != null)
+      "${strip (deps.kmscube or deps."iland-gl-clients")}/include"
+    ++ lib.optional (deps.vkcube or null != null) "${strip deps.vkcube}/include"
+    ++ lib.optional (deps."opengl-cube" or null != null) "${strip deps."opengl-cube"}/include";
   # foot: force-load the privatized $(DERIVED_FILE_DIR) copy (see xcode-prebuild.sh),
   # not the raw store archive. Its embedded protocol symbols must be localised so
   # they do not collide with weston / fuzzel at final link.
@@ -1871,12 +1873,11 @@ ICDJSON
               "ui/**"
             ];
           }
-          # Real WWNIlandPresenter.m pulls ANGLE/iland; use the tv/watch stub.
-          # Optional C stubs cover dispatch symbols Darwin will not leave undefined.
+          # Real WWNIlandPresenter.m: Vulkan/MoltenVK present. Stub is watchOS-only.
           { path = "src/platform/ios"; excludes = commonExcludes ++ [
             "WWNWaypipeRunnerVisionStub.m"
             "WWNGetprognameStub.c"
-            "WWNIlandPresenter.m"
+            "WWNIlandPresenterStub.m"
           ]; }
           {
             path = "src/platform/macos/ui/Machines";
@@ -1968,6 +1969,7 @@ ICDJSON
             ] ++ westonToytoolkitLdflagsAppleMobile tvosDeps ++ westonCompositorLdflagsAppleMobile tvosDeps ++ niriLdflags tvosDeps ++ footLdflags tvosDeps ++ fastfetchLdflags tvosDeps ++ phoonLdflags tvosDeps ++ wasmLdflags tvosDeps
             ++ sshCliLdflags tvosDeps
              ++ appleMobileResolvLdflags
+            ++ (ilandGlLdflags { deps = tvosDeps; simulator = false; }) ++ moltenvkLdflags tvosDeps
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" derivedRustLib ] ++ finalCxxLdflagsNoIokit;
             "OTHER_LDFLAGS[sdk=appletvsimulator*]" = [
               "$(inherited)"
@@ -2001,27 +2003,31 @@ ICDJSON
             ] ++ westonToytoolkitLdflagsAppleMobile tvosSimDeps ++ westonCompositorLdflagsAppleMobile tvosSimDeps ++ niriLdflags tvosSimDeps ++ footLdflags tvosSimDeps ++ fastfetchLdflags tvosSimDeps ++ phoonLdflags tvosSimDeps ++ wasmLdflags tvosSimDeps
             ++ sshCliLdflags tvosSimDeps
              ++ appleMobileResolvLdflags
+            ++ (ilandGlLdflags { deps = tvosSimDeps; simulator = true; }) ++ moltenvkLdflags tvosSimDeps
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" derivedRustLib ] ++ finalCxxLdflagsNoIokit;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"
               "TARGET_OS_TV=1"
+              "WWN_TVOS_GPU_BUNDLED=1"
               "PRODUCT_BUNDLE_IDENTIFIER=\\\"com.aspauldingcode.Wawona\\\""
             ] ++ versionDefs;
+            "SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=appletvos*]" = [ "$(inherited)" "WWN_TVOS_GPU_BUNDLED" ];
+            "SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=appletvsimulator*]" = [ "$(inherited)" "WWN_TVOS_GPU_BUNDLED" ];
             "HEADER_SEARCH_PATHS[sdk=appletvos*]" = [
               "$(inherited)"
               "${strip (tvosDeps.libwayland or null)}/include"
               "${strip (tvosDeps.libwayland or null)}/include/wayland"
               "${strip (tvosDeps.xkbcommon or null)}/include"
               "${strip (tvosDeps.libssh2 or null)}/include"
-            ] ++ (pixmanHeaderPaths tvosDeps);
+            ] ++ (pixmanHeaderPaths tvosDeps) ++ (ilandGlHeaderPaths tvosDeps);
             "HEADER_SEARCH_PATHS[sdk=appletvsimulator*]" = [
               "$(inherited)"
               "${strip (tvosSimDeps.libwayland or null)}/include"
               "${strip (tvosSimDeps.libwayland or null)}/include/wayland"
               "${strip (tvosSimDeps.xkbcommon or null)}/include"
               "${strip (tvosSimDeps.libssh2 or null)}/include"
-            ] ++ (pixmanHeaderPaths tvosSimDeps);
+            ] ++ (pixmanHeaderPaths tvosSimDeps) ++ (ilandGlHeaderPaths tvosSimDeps);
           };
         };
         dependencies = [
@@ -2824,6 +2830,8 @@ ICDJSON
             DEFINES_MODULE = "YES";
             SKIP_INSTALL = "YES";
             BUILD_LIBRARY_FOR_DISTRIBUTION = "NO";
+            "SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=appletvos*]" = [ "$(inherited)" "WWN_TVOS_GPU_BUNDLED" ];
+            "SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=appletvsimulator*]" = [ "$(inherited)" "WWN_TVOS_GPU_BUNDLED" ];
             # Never on framework targets (ASC ITMS-90429/90427): only the app
             # target's "Embed Frameworks" phase should run swift-stdlib-tool.
             ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = "NO";

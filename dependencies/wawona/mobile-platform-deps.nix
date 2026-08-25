@@ -35,8 +35,9 @@ let
     ) {
       waypipe = buildFn "waypipe" { inherit simulator; };
     };
-  # tv/watch: shm/pixman only. No ANGLE/Vulkan (platform-targets matrix).
+  # tv: Vulkan/MoltenVK (Phase 1). watch: SHM/CPU only. iOS/vision: full GLES+VK.
   allowGpu = variant == "mobile" || variant == "vision";
+  allowVulkan = allowGpu || variant == "tv";
   base =
     {
       xkbcommon = buildFn "xkbcommon" { inherit simulator; };
@@ -61,10 +62,12 @@ let
     // lib.optionalAttrs (
       variant == "mobile" || variant == "tv" || variant == "watch" || variant == "vision"
     ) networkStack
-    // lib.optionalAttrs allowGpu {
+    // lib.optionalAttrs allowVulkan {
       iland = buildFn "iland" { inherit simulator; };
-      angle = buildFn "angle" { inherit simulator; };
       moltenvk = buildFn "moltenvk" { inherit simulator; };
+    }
+    // lib.optionalAttrs allowGpu {
+      angle = buildFn "angle" { inherit simulator; };
     }
     # SwiftShader CPU Vulkan ICD. IOS *Simulator* / CI only. On-device store
     # builds stay MoltenVK-only (App Store posture; verify-iland-graphics-bundle
@@ -78,13 +81,12 @@ let
       kmscube = buildFn "kmscube" { inherit simulator; };
       "iland-gl-clients" = buildFn "kmscube" { inherit simulator; };
       "gbm-es2-demo" = buildFn "gbm-es2-demo" { inherit simulator; };
-      # Vulkan acceptance client (krh/vkcube) over the same iland virtual DRM,
-      # presenting through MoltenVK. GPU variants only; wwn-kmscube has no
-      # tv/watch recipe for it by design.
-      vkcube = buildFn "vkcube" { inherit simulator; };
-      # Same mesa/kmscube sources as `kmscube` under opengl_cube_main, so Machines
-      # can present the GLES cube as its own id. No tv/watch recipe by design.
+      # GLES cube. No tvOS recipe until ANGLE (Phase 2).
       "opengl-cube" = buildFn "opengl-cube" { inherit simulator; };
+    }
+    // lib.optionalAttrs allowVulkan {
+      # Vulkan cube over Wayland IOSurface dmabuf + MoltenVK. tvOS Phase 1.
+      vkcube = buildFn "vkcube" { inherit simulator; };
     }
     // lib.optionalAttrs
       (variant == "mobile" || variant == "tv" || variant == "watch" || variant == "vision")

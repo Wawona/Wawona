@@ -175,6 +175,9 @@ jobs:
           APP="$(find -L "result-${{ matrix.target }}" -type d -name '*.app' -print -quit)"
           test -n "$APP"
           ditto "$APP" "$OUT_DIR/Wawona.app"
+          if [ "${{ matrix.target }}" = "tvos" ]; then
+            export WWN_TVOS_GPU=1
+          fi
           ./.github/scripts/verify-iland-graphics-bundle.sh \
             --platform "${{ matrix.target }}" "$OUT_DIR/Wawona.app"
           printf '{"attr":"%s","sha":"%s","artifact":"product-%s-sim"}\n' \

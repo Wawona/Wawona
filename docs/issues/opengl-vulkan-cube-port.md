@@ -133,7 +133,9 @@ Never force-push `master`/`development`. Do not commit unless the human asks.
   made it indistinguishable from KMS Cube (and, when both paths raced, made
   Start sometimes show kmscube). It is a Wayland client on every target that
   has a GPU stack.
-- Do **not** add ANGLE/Vulkan/MoltenVK to tvOS/watchOS deps or schemes.
+- Do **not** add ANGLE/Vulkan/MoltenVK to watchOS deps or schemes.
+- Do **not** add ANGLE to tvOS until `final-tvos-gpu` Phase 2. MoltenVK on tvOS
+  is Phase 1 (`WWN_TVOS_GPU=1`).
 - Do **not** ship Mode B `libwayland-mac.dylib` for these clients.
 - Do **not** leave Android calling `opengl_cube_main` / `vkcube_main` without
   the same iland presenter setup kmscube uses.
