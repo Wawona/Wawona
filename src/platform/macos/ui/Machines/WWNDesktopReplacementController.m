@@ -2583,7 +2583,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   self.modeBMachineId = [profile.machineId copy];
   NSLog(@"[DesktopReplacement] Mode B engaged pid=%d dylib=%@ executable=%@ "
         @"machineId=%@ log=/tmp/wawona-modeb.log",
-        (int)pid, installedDylib, executablePath, profile.machineId);
+        (int)pid, [self installedDylibPath], executablePath, profile.machineId);
   return YES;
 }
 
