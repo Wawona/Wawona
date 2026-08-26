@@ -70,6 +70,8 @@ public enum PlatformCapabilities: Sendable {
     public static var containerGate: CapabilityGate {
         #if os(tvOS) || os(watchOS) || os(visionOS)
         return .forbidden(reason: "Container machine kinds are not offered on tvOS/watchOS/visionOS")
+        #elseif os(macOS)
+        return .available
         #else
         return .planned(flag: "WWN_CONTAINERS")
         #endif
@@ -85,7 +87,7 @@ public enum PlatformCapabilities: Sendable {
     /// engine. Distinct from `containerGate`.
     public static var appleContainerizationGate: CapabilityGate {
         #if os(macOS)
-        return .planned(flag: "WWN_APPLE_CONTAINERIZATION")
+        return .available
         #else
         return .forbidden(reason: "Apple Containerization.framework and the Apple container CLI are macOS-only")
         #endif

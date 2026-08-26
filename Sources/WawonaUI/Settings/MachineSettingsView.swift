@@ -77,11 +77,11 @@ public struct MachineSettingsView: View {
 
             if let draft {
                 machineConfigurationSection(for: draft)
-                sshWaypipeSection()
-                if draft.type == .container {
-                    containerSection()
                 if draft.type.isSSH {
                     sshWaypipeSection()
+                }
+                if draft.type == .container {
+                    containerSection()
                 }
                 displaySection()
                 inputSection()
