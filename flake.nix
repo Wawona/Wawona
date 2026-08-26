@@ -122,7 +122,9 @@
     wwn-vms.inputs.rust-overlay.follows = "rust-overlay";
     wwn-vms.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-vms.inputs.microvm.follows = "microvm";
-    wwn-containers.url = "github:insomnia-creator/wwn-containers/container";
+    # github/development until FlakeHub rolling includes hostPlatform Darwin
+    # checks (eval warning). Same pin style as wwn-iland. docs/wwn-repo-dag.md.
+    wwn-containers.url = "github:Wawona/wwn-containers/development";
     wwn-containers.inputs.nixpkgs.follows = "nixpkgs";
     wwn-containers.inputs.rust-overlay.follows = "rust-overlay";
     wwn-containers.inputs.wwn-toolchain.follows = "wwn-toolchain";
