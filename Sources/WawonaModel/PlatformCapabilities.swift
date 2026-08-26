@@ -104,11 +104,13 @@ public enum PlatformCapabilities: Sendable {
     /// - **watchOS ships no `Metal.framework` at all** (device or simulator),
     ///   no `OpenGLES.framework`, and `CAMetalLayer` is `API_UNAVAILABLE(watchos)`.
     ///   ANGLE and MoltenVK both terminate in Metal, so neither has a floor.
-    ///   SceneKit/SpriteKit are present but are not a shader backdoor, and
-    ///   private Metal would forfeit store compliance.
+    ///   Do not use SpriteKit/SceneKit as a shader backdoor, and private Metal
+    ///   would forfeit store compliance.
     ///
     /// tvOS: `.available` when this target was linked with MoltenVK and
-    /// ANGLE (`WWN_TVOS_GPU_BUNDLED`). watchOS stays blocked (no Metal).
+    /// ANGLE (`WWN_TVOS_GPU_BUNDLED`). watchOS GL/VK stays blocked (no Metal).
+    /// Watch *present* of SHM frames is a separate gate
+    /// (`watchPresentAcceleratorGate`): SpriteKit blit, not GLES/Vulkan.
     public static var gpuStackGate: CapabilityGate {
         #if os(tvOS)
         #if WWN_TVOS_GPU_BUNDLED
@@ -124,6 +126,37 @@ public enum PlatformCapabilities: Sendable {
     }
 
     public static var allowsGpuStack: Bool { gpuStackGate.isAvailable }
+
+    /// SpriteKit (default) GPU composite of Wayland SHM frames on watchOS.
+    /// Not GLES, not Vulkan, not `CAMetalLayer`. `WWN_WATCH_SK_PRESENT=0`
+    /// forces the CPU `Image` path for A/B. Research weak-link Metal is
+    /// `WWN_WATCHOS_METAL` and never ships in the store Watch IPA.
+    public static var watchPresentAcceleratorGate: CapabilityGate {
+        #if os(watchOS)
+        return .available
+        #else
+        return .forbidden(reason: "SpriteKit compositor present is watchOS-only")
+        #endif
+    }
+
+    public static var allowsWatchPresentAccelerator: Bool {
+        watchPresentAcceleratorGate.isAvailable
+    }
+
+    /// Runtime switch for the Watch SpriteKit presenter. Default on when the
+    /// gate is available. `WWN_WATCH_SK_PRESENT=0` keeps SwiftUI Image blit.
+    public static var watchPresentAcceleratorEnabled: Bool {
+        #if os(watchOS)
+        if let value = ProcessInfo.processInfo.environment["WWN_WATCH_SK_PRESENT"] {
+            if value == "0" || value.lowercased() == "false" {
+                return false
+            }
+        }
+        return allowsWatchPresentAccelerator
+        #else
+        return false
+        #endif
+    }
 
     /// ANGLE / GLES clients (kmscube, opengl-cube, weston-simple-egl).
     /// tvOS ships ANGLE when `WWN_TVOS_GPU_BUNDLED`. watchOS has no Metal.

@@ -14,6 +14,8 @@ enum WatchMachineSessionBridge {
         applyScreenOutputSize(bridge)
         if !bridge.isRunning {
             guard bridge.start(withSocketName: "wayland-0") else {
+                logger.appendLine("[LAUNCH] Compositor start failed")
+                NSLog("WATCH: compositor start failed (mini server and Rust backend both unavailable)")
                 logger.endCapture()
                 return false
             }

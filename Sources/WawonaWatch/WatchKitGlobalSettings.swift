@@ -216,8 +216,12 @@ private struct WatchSettingsGraphicsSection: View {
                 WatchInfoRow(title: "OpenGL Driver", detail: "None")
             }
             WatchInfoRow(
-                title: "GPU",
-                detail: "watchOS has no Metal GPU stack. Compositor presents via SHM/CPU. GPU clients stay unavailable."
+                title: "Present",
+                detail: "SpriteKit GPU blit of SHM frames. Vulkan and OpenGL stay blocked until the SDK ships public Metal."
+            )
+            WatchInfoRow(
+                title: "GPU stack",
+                detail: "No Metal.framework in the watchOS SDK. ANGLE and MoltenVK are not bundled."
             )
         }
         .navigationTitle(GlobalSettingsSectionID.graphics.title)

@@ -26,6 +26,7 @@ fallback) instead of removing it from the product surface.
 | Multi-window (1 window per Wayland client) | ✅ | ✅ (if OS allows) | ✅ **required** | ✅ **required** | ⚠️ single primary | ❌ | ❌ |
 | Nested compositors + bundled clients | ✅ | ✅ | ✅ | ✅ **macOS parity** | ✅ | ✅ | ⚠️ limited |
 | Vulkan / OpenGL / ANGLE bundle | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⛔ blocked |
+| Watch SpriteKit present | n/a | n/a | n/a | n/a | n/a | n/a | ✅ |
 | Desktop + LockScreen replacement | ⏳ planned | ⏳ planned | ❌ App Store | ❌ | ❌ App Store | ❌ | ❌ |
 | Wawona Swinging Bridge | ⏳ Mode A+B | ⏳ Mode A+B | ❌ App Store (Mode B only) | ❌ | ❌ App Store (Mode B only) | ❌ | ❌ |
 | iCloud Drive (shell HOME) | ✅ | ❌ | ✅ | ✅ | ✅ | ⛔ blocked | ⛔ blocked |
@@ -99,19 +100,19 @@ forbidden while iPhone is planned for those features.
      work on tvOS: dispatch straight into the ICD, as `WWN_VULKAN_LIBRARY`
      already does. Rendered-frame PROPER is still pending. Never drop tvOS
      from the graphics roadmap.
-   - **watchOS GPU is ⛔ blocked, not forbidden and not deferred.** `WatchOS26.5.sdk`
+   - **watchOS GL/VK is ⛔ blocked, not forbidden and not deferred.** `WatchOS26.5.sdk`
      ships **no `Metal.framework` at all** (device *or* simulator), no
      `OpenGLES.framework`, and `CAMetalLayer` is annotated
-     `API_UNAVAILABLE(watchos)`. Only `QuartzCore`, `SceneKit`, and `SpriteKit`
-     are present. ANGLE and MoltenVK both terminate in Metal, so neither has a
-     floor to stand on, and iland has no present target. We *want* this; Apple
-     currently offers nothing to build it from. Re-check on each SDK bump by
-     listing `$(xcrun --sdk watchos --show-sdk-path)/System/Library/Frameworks`.
-     Do **not** "fix" it with private Metal or by abusing SpriteKit/SceneKit as a
-     shader backdoor. That forfeits store compliance, which is the whole point
-     of Mode A. Until then watchOS stays on the SHM/CPU present path
-     (`wwn-iland-apple-fallback`) and the verifier enforces GPU absence
-     unconditionally.
+     `API_UNAVAILABLE(watchos)`. ANGLE and MoltenVK both terminate in Metal, so
+     neither has a floor. Re-check on each SDK bump by listing
+     `$(xcrun --sdk watchos --show-sdk-path)/System/Library/Frameworks`.
+     Do **not** "fix" GL/VK with private Metal or by abusing SpriteKit/SceneKit
+     as a shader backdoor.
+   - **watchOS present accelerator is ✅ available.** SpriteKit `SKTexture` blit
+     of Wayland SHM frames (`watchPresentAcceleratorGate`). Clients stay
+     software; the *output* is GPU-composited. Not GLES/Vulkan. Verifier
+     requires SpriteKit and forbids Metal/ANGLE/MoltenVK in the store Watch
+     IPA. `WWN_WATCHOS_METAL=1` is research only and never ships to stores.
 2. **visionOS / iPadOS**. Multi-window is mandatory: one host window/scene per
    Wayland client, same model as macOS. Android should match when the OS can
    host multiple app windows.

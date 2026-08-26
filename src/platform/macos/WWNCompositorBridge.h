@@ -30,7 +30,8 @@ FOUNDATION_EXPORT NSNotificationName const WWNClientFocusRequestedNotification;
 FOUNDATION_EXPORT NSNotificationName const WWNHostWindowsDidChangeNotification;
 
 /// Weston demos that keep a preferred square (flower/smoke 200x200, simple-shm
-/// and simple-egl 250x250). Host must not inject fill-to-output configures.
+/// and simple-egl 250x250). Matches catalog ids, xdg app_ids, and titles
+/// (`Weston Simple EGL`). Host must not inject fill-to-output configures.
 FOUNDATION_EXPORT BOOL WWNWestonDemoPrefersFixedSquare(NSString *_Nullable clientId,
                                                        NSString *_Nullable title);
 

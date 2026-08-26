@@ -27,7 +27,9 @@ public struct MachineSettingsView: View {
                     Button("Open Wawona Settings…") {
                         PlatformGlobalSettings.open()
                     }
-                    Text("Global defaults (Display, Input, Graphics, Waypipe, SSH). Values below override those settings for this machine only.")
+                    Text(draft?.type.isSSH == true
+                         ? "Global defaults (Display, Input, Graphics, Waypipe, SSH). Values below override those settings for this machine only."
+                         : "Global defaults (Display, Input, Graphics). Values below override those settings for this machine only.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -75,7 +77,9 @@ public struct MachineSettingsView: View {
 
             if let draft {
                 machineConfigurationSection(for: draft)
-                sshWaypipeSection()
+                if draft.type.isSSH {
+                    sshWaypipeSection()
+                }
                 displaySection()
                 inputSection()
                 graphicsSection()
@@ -184,7 +188,6 @@ public struct MachineSettingsView: View {
                 .autocorrectionDisabled()
 
             Toggle("Enable Waypipe", isOn: waypipeEnabledBinding)
-                .disabled(draft?.type == .native)
         }
     }
 
@@ -322,11 +325,13 @@ public struct MachineSettingsView: View {
             Text("HDR: \(resolved.colorOperations ? "Enabled" : "Disabled")")
             Text("Display: \(resolved.waylandDisplay)")
             Text("Touch Input: \(WawonaPreferences.normalizedTouchInputType(resolved.inputProfile))")
-            Text("Host: \(resolved.sshHost)")
-            Text("User: \(resolved.sshUser)")
-            Text("Port: \(resolved.sshPort)")
-            Text("Waypipe Password: \(resolved.waypipeSSHPassword.isEmpty ? "Inherit global" : "Per-machine override")")
-            Text("Waypipe: \(resolved.waypipeEnabled ? "Enabled" : "Disabled")")
+            if profile.type.isSSH {
+                Text("Host: \(resolved.sshHost)")
+                Text("User: \(resolved.sshUser)")
+                Text("Port: \(resolved.sshPort)")
+                Text("Waypipe Password: \(resolved.waypipeSSHPassword.isEmpty ? "Inherit global" : "Per-machine override")")
+                Text("Waypipe: \(resolved.waypipeEnabled ? "Enabled" : "Disabled")")
+            }
             Text("Bundled App: \(resolved.bundledAppID.isEmpty ? "Off" : resolved.bundledAppID)")
             Text("Log Level: \(resolved.logLevel)")
             #if os(tvOS)

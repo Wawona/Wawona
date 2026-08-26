@@ -48,7 +48,7 @@
     {
       "name": "iland",
       "version": "cpu",
-      "role": "SHM/CPU present (watchOS GPU blocked)"
+      "role": "SHM clients; SpriteKit present (GL/VK blocked)"
     },
     {
       "name": "Weston",

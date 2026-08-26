@@ -107,6 +107,15 @@ int niri_main(void) {
     return 127;
 }
 
+/* GLES clients (weston-simple-egl) are not on the Watch store path. Dispatch
+ * still references simple_egl_main; fail closed. Do not link ANGLE. */
+__attribute__((weak))
+int simple_egl_main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+    return 127;
+}
+
 // ── Waypipe stub ─────────────────────────────────────────────────────────────
 // Overridden by libwaypipe.a when linked. The bridge nil-checks the weak
 // symbol before calling.
@@ -245,6 +254,18 @@ __attribute__((weak))
 int wwn_wls_dispatch(WWNMiniWaylandServer *srv, int timeout_ms) {
     (void)srv; (void)timeout_ms;
     return 0;
+}
+
+__attribute__((weak))
+int wwn_wls_attach_inprocess_client(WWNMiniWaylandServer *srv) {
+    (void)srv;
+    return -1;
+}
+
+__attribute__((weak))
+void wwn_wls_set_fill_host(WWNMiniWaylandServer *srv, int fill_host) {
+    (void)srv;
+    (void)fill_host;
 }
 
 __attribute__((weak))

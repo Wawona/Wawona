@@ -895,20 +895,23 @@ straight into the MoltenVK ICD via `WWN_VULKAN_LIBRARY` (LunarG's Vulkan
 Chromium GN assert only). Both drivers are required when `WWN_TVOS_GPU=1`.
 Rendered-frame PROPER is still pending.
 
-**watchOS has no floor.** The watchOS 26.5 SDK ships no `Metal.framework` at all
-- device or simulator. No `OpenGLES.framework`, and no Metal `.tbd` to link.
+**watchOS has no GL/VK floor.** The watchOS 26.5 SDK ships no `Metal.framework` at
+all, device or simulator. No `OpenGLES.framework`, and no Metal `.tbd` to link.
 `CAMetalLayer.h` is present (headers are shared across platforms) but the class is
 annotated `API_AVAILABLE(macos(10.11), ios(13.0), tvos(13.0))
-API_UNAVAILABLE(watchos)`. The only rendering frameworks are SpriteKit and
-SceneKit, which render internally and expose no device, drawable, or shader entry
-point. Since ANGLE and MoltenVK both terminate in Metal, neither has a backend;
-MoltenVK's own platform list is macOS/iOS/tvOS/visionOS, so watchOS is absent
-rather than merely untested. Enabling watchOS GPU therefore requires a public
-Metal-equivalent surface to appear first. It is not a porting task today, and
-must not be "solved" via private API or SpriteKit as a shader backdoor.
+API_UNAVAILABLE(watchos)`. ANGLE and MoltenVK both terminate in Metal; MoltenVK's
+own platform list is macOS/iOS/tvOS/visionOS.
+
+**watchOS present accelerator (2026-08-25, Track A):** compositor *output* is
+GPU-composited with SpriteKit (`WatchSpritePresentView`, `SKTexture` from SHM
+`CGImage`). Clients stay software. `watchPresentAcceleratorGate` is available.
+`gpuStackGate` stays blocked. Store IPA must not link Metal, ANGLE, or MoltenVK.
+`WWN_WATCHOS_METAL=1` is a research flag (never TestFlight / ASC Watch IPA).
+Vulkan/OpenGL Watch remain a follow-up until the SDK ships public Metal.
 
 Enforcement: `verify-iland-graphics-bundle.sh` requires both MoltenVK and ANGLE
-when `WWN_TVOS_GPU=1`. watchOS strictness (no GPU drivers) is unconditional.
+when `WWN_TVOS_GPU=1`. watchOS forbids those drivers unconditionally, requires
+SpriteKit, and fails if the Watch Mach-O links Metal unless `WWN_WATCHOS_METAL=1`.
 
 Repos touched: `Wawona` (verifier, this doc), workspace `wawona-platform-targets`
 rule (GPU row `❌` → `⏳`, hard rule 1 split per platform).

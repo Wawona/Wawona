@@ -3116,7 +3116,13 @@ ICDJSON
             "EXCLUDED_SOURCE_FILE_NAMES[arch=arm64_32]" = [
               "WWNMiniWaylandServer.c"
             ];
-            HEADER_SEARCH_PATHS = [
+            # Split by SDK like tvOS/visionOS. A single HEADER_SEARCH_PATHS
+            # used watchosDeps, which is empty in simulatorOnly / ios-sim
+            # xcodegen (device watch packages are skipped). The mini server
+            # then compiled as the stub (__has_include wayland-server.h false)
+            # while OTHER_LDFLAGS[sdk=watchsimulator*] still linked the real
+            # libwayland-server. Start failed: wwn_wls_create returned NULL.
+            "HEADER_SEARCH_PATHS[sdk=watchos*]" = [
               "$(inherited)"
               "${strip (watchosDeps.libffi or null)}/include"
               "${strip (watchosDeps.libwayland or null)}/include"
@@ -3126,6 +3132,16 @@ ICDJSON
               "$(SRCROOT)/src/platform/macos/ui/Helpers"
               "$(SRCROOT)/src/util"
             ] ++ (pixmanHeaderPaths watchosDeps);
+            "HEADER_SEARCH_PATHS[sdk=watchsimulator*]" = [
+              "$(inherited)"
+              "${strip (watchosSimDeps.libffi or null)}/include"
+              "${strip (watchosSimDeps.libwayland or null)}/include"
+              "${strip (watchosSimDeps.libwayland or null)}/include/wayland"
+              "${strip (watchosSimDeps.libssh2 or iosSimDeps.libssh2 or null)}/include"
+              "$(SRCROOT)/src/platform/watchos"
+              "$(SRCROOT)/src/platform/macos/ui/Helpers"
+              "$(SRCROOT)/src/util"
+            ] ++ (pixmanHeaderPaths watchosSimDeps);
             # WawonaModel/WawonaUIContracts are embed=false, link=false above
             # (see dependencies comment): Xcode unconditionally adds
             # -F$(CONFIGURATION_BUILD_DIR) for every target's *own* build
@@ -3276,6 +3292,7 @@ ICDJSON
           { sdk = "Foundation.framework"; }
           { sdk = "CoreGraphics.framework"; }
           { sdk = "Security.framework"; }
+          { sdk = "SpriteKit.framework"; }
         ];
       };
     };

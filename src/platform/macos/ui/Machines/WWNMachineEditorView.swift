@@ -1454,7 +1454,7 @@ private extension View {
     ) { effect, phase in
       // Stronger fade under the titlebar (negative) than at the bottom edge.
       let t = phase.value < 0 ? abs(phase.value) : abs(phase.value) * 0.45
-      effect
+      return effect
         .opacity(1 - 0.65 * t)
         .blur(radius: 12 * t)
         .scaleEffect(1 - 0.03 * t)

@@ -10,6 +10,7 @@ final class WatchStartupLogModel: NSObject, ObservableObject, WWNStartupLoggerDe
 
     private var didScheduleDismiss = false
     private var timeoutWorkItem: DispatchWorkItem?
+    private var frameObserver: NSObjectProtocol?
 
     func attach() {
         let logger = WWNStartupLogger.shared()
@@ -24,6 +25,24 @@ final class WatchStartupLogModel: NSObject, ObservableObject, WWNStartupLoggerDe
         timeoutWorkItem = timeout
         // Match iOS WWNStartupLogViewController auto-timeout.
         DispatchQueue.main.asyncAfter(deadline: .now() + 60, execute: timeout)
+
+        if frameObserver == nil {
+            frameObserver = NotificationCenter.default.addObserver(
+                forName: Notification.Name("WWNWatchCompositorFrameReadyNotification"),
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.scheduleDismissAfterFirstFrame()
+            }
+        }
+        let hasLoggedFrame = lines.contains { $0.contains("First frame") }
+        let hasImage = WWNWatchCompositorBridge.shared().latestFrame != nil
+        if hasLoggedFrame || hasImage {
+            // Frame already landed during connect(), before this cover appeared.
+            // Skip the overlay so SpriteKit present is visible immediately.
+            isPresented = false
+            return
+        }
     }
 
     func dismiss() {
@@ -31,6 +50,10 @@ final class WatchStartupLogModel: NSObject, ObservableObject, WWNStartupLoggerDe
         isPresented = false
         timeoutWorkItem?.cancel()
         timeoutWorkItem = nil
+        if let frameObserver {
+            NotificationCenter.default.removeObserver(frameObserver)
+            self.frameObserver = nil
+        }
         let logger = WWNStartupLogger.shared()
         if logger.delegate === self {
             logger.delegate = nil
@@ -42,13 +65,16 @@ final class WatchStartupLogModel: NSObject, ObservableObject, WWNStartupLoggerDe
     func scheduleDismissAfterFirstFrame() {
         guard isPresented, !didScheduleDismiss else { return }
         didScheduleDismiss = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
             self?.dismiss()
         }
     }
 
     func startupLogger(_ logger: Any, didAppendLine line: String) {
         lines.append(line)
+        if line.contains("First frame") {
+            scheduleDismissAfterFirstFrame()
+        }
     }
 }
 

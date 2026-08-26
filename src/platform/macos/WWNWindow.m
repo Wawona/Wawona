@@ -1102,7 +1102,7 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
     return;
   }
 
-  if (WWNWestonDemoPrefersFixedSquare(nil, self.title)) {
+  if (WWNWestonDemoPrefersFixedSquare(nil, self.title) || self.prefersFixedSquare) {
     return;
   }
 
@@ -1190,6 +1190,10 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
 
 - (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)frameSize {
   (void)sender;
+  if (self.prefersFixedSquare ||
+      WWNWestonDemoPrefersFixedSquare(nil, self.title)) {
+    return self.frame.size;
+  }
   if (self.processingResize || self.suppressCompositorCallbacks ||
       !self.isVisible || self.isMiniaturized ||
       self.wwnMiniaturizeInProgress || self.wwnFullscreenTransitionInProgress) {

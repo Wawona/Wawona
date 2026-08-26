@@ -46,6 +46,14 @@ extension MachineType {
         }
     }
 
+    /// Remote SSH session types. Native, VM, and container do not use SSH/Waypipe fields.
+    public var isSSH: Bool {
+        switch self {
+        case .sshWaypipe, .sshTerminal: return true
+        default: return false
+        }
+    }
+
     /// SF Symbol name for this machine type (shared across iOS and watchOS).
     public var symbolName: String {
         switch self {

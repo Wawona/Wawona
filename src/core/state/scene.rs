@@ -106,6 +106,11 @@ impl CompositorState {
             .and_then(|tl| tl.toplevel_surface.clone());
 
         if let Some(toplevel_surface) = smithay_surface {
+            let fallback_fs = self
+                .outputs
+                .get(self.primary_output)
+                .map(|o| (o.width.max(1), o.height.max(1)))
+                .unwrap_or((1024, 768));
             let (
                 final_w,
                 final_h,
@@ -121,7 +126,13 @@ impl CompositorState {
                 };
                 toplevel_data.deferred_configure_size = None;
                 let (final_w, final_h) = if toplevel_data.pending_fullscreen {
-                    (width.max(1), height.max(1))
+                    // Nested weston copies configure size into its output.
+                    // `max(1)` of a 0x0 fullscreen made a 1x1 mode (blank window).
+                    if width > 0 && height > 0 {
+                        (width, height)
+                    } else {
+                        fallback_fs
+                    }
                 } else if width == 0 && height == 0 {
                     // Per xdg-shell, 0x0 means "the client decides its own
                     // size". Pass it through (first-commit trust).

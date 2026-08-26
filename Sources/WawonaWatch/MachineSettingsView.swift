@@ -20,7 +20,9 @@ struct MachineSettingsView: View {
                     WatchKitGlobalSettings.registerHost()
                     showingGlobalSettings = true
                 }
-                Text("Global defaults (Display, Input, Graphics, Waypipe, SSH). Values below override those settings for this machine only.")
+                Text(draft?.type.isSSH == true
+                     ? "Global defaults (Display, Input, Graphics, Waypipe, SSH). Values below override those settings for this machine only."
+                     : "Global defaults (Display, Input, Graphics). Values below override those settings for this machine only.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -51,7 +53,9 @@ struct MachineSettingsView: View {
 
             if let draft {
                 machineConfigurationSection(for: draft)
-                sshWaypipeSection()
+                if draft.type.isSSH {
+                    sshWaypipeSection()
+                }
                 displaySection()
                 inputSection()
                 graphicsSection()
@@ -121,7 +125,6 @@ struct MachineSettingsView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
             Toggle("Enable Waypipe", isOn: waypipeEnabledBinding)
-                .disabled(draft?.type == .native)
         }
     }
 
@@ -236,10 +239,12 @@ struct MachineSettingsView: View {
             Text("HDR: \(resolved.colorOperations ? "On" : "Off")")
             Text("Display: \(resolved.waylandDisplay)")
             Text("Input: \(resolved.inputProfile)")
-            Text("Host: \(resolved.sshHost.isEmpty ? "-" : resolved.sshHost)")
-            Text("User: \(resolved.sshUser.isEmpty ? "-" : resolved.sshUser)")
-            Text("Port: \(resolved.sshPort)")
-            Text("Waypipe: \(resolved.waypipeEnabled ? "On" : "Off")")
+            if profile.type.isSSH {
+                Text("Host: \(resolved.sshHost.isEmpty ? "-" : resolved.sshHost)")
+                Text("User: \(resolved.sshUser.isEmpty ? "-" : resolved.sshUser)")
+                Text("Port: \(resolved.sshPort)")
+                Text("Waypipe: \(resolved.waypipeEnabled ? "On" : "Off")")
+            }
             Text("Bundled App: \(resolved.bundledAppID.isEmpty ? "Off" : resolved.bundledAppID)")
             Text("Log Level: \(resolved.logLevel)")
             Text("Shake to Exit: \(resolved.shakeToCloseEnabled ? "On" : "Off")")

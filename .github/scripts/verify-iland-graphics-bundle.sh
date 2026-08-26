@@ -230,10 +230,11 @@ if [[ "$platform" == "tvos" && "${WWN_TVOS_GPU:-0}" == "1" ]]; then
   echo "OK: tvos ANGLE found in $carrier (WWN_TVOS_GPU=1)"
 fi
 
-# watchOS has no such opt-in. Its exclusion is not policy: the watchOS 26.5 SDK
-# ships no Metal.framework (device or simulator) and CAMetalLayer is annotated
-# API_UNAVAILABLE(watchos), so ANGLE and MoltenVK have no backend to terminate
-# in. See docs/iland-graphics-progress.md for the SDK evidence.
+# watchOS has no GL/VK opt-in. The watchOS 26.5 SDK ships no Metal.framework
+# (device or simulator) and CAMetalLayer is API_UNAVAILABLE(watchos), so ANGLE
+# and MoltenVK have no backend. SpriteKit present (Track A) is separate and
+# asserted after this block. WWN_WATCHOS_METAL=1 is research-only weak-link
+# Metal and never a store IPA. See docs/iland-graphics-progress.md.
 if [[ ( "$platform" == "tvos" && "${WWN_TVOS_GPU:-0}" != "1" ) || "$platform" == "watchos" ]]; then
   for marker in 'MoltenVK version' 'SwiftShader'; do
     if carrier="$(bundle_has_marker "$marker")"; then
@@ -278,6 +279,37 @@ if [[ ( "$platform" == "tvos" && "${WWN_TVOS_GPU:-0}" != "1" ) || "$platform" ==
       fi
     done < <(find "$root" -type f -print)
   fi
+fi
+
+# watchOS present accelerator (Track A): SpriteKit is required. Metal in the
+# Watch product LC_LOAD is forbidden unless WWN_WATCHOS_METAL=1 (research only;
+# never TestFlight / ASC Watch IPA). GL/VK drivers stay forbidden above.
+if [[ "$platform" == "watchos" ]]; then
+  found_spritekit=0
+  if command -v otool >/dev/null 2>&1; then
+    while IFS= read -r binary; do
+      if file "$binary" 2>/dev/null | grep -q 'Mach-O'; then
+        linked="$(otool -L "$binary" 2>/dev/null || true)"
+        if grep -q 'SpriteKit.framework' <<<"$linked"; then
+          found_spritekit=1
+        fi
+        if grep -q 'Metal.framework' <<<"$linked"; then
+          if [[ "${WWN_WATCHOS_METAL:-0}" == "1" ]]; then
+            echo "INFO: watchos links Metal.framework under WWN_WATCHOS_METAL=1 (research; not store): $binary"
+          else
+            echo "FAIL: watchos Mach-O links Metal.framework (store Track A is SpriteKit only): $binary" >&2
+            echo "$linked" >&2
+            exit 1
+          fi
+        fi
+      fi
+    done < <(find "$root" -type f -print)
+  fi
+  if [[ "$found_spritekit" -eq 0 ]]; then
+    echo "FAIL: watchos bundle does not link SpriteKit.framework (present accelerator)" >&2
+    exit 1
+  fi
+  echo "OK: watchos present accelerator (SpriteKit linked, Metal absent unless WWN_WATCHOS_METAL=1)"
 fi
 
 if [[ "$platform" == "android" ]]; then

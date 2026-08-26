@@ -210,3 +210,29 @@ func nestedCompositorDrawsOwnCursorForWestonAndNiri() {
     #expect(weston.isNestedCompositorClient)
     #expect(!niri.isNestedCompositorClient)
 }
+
+@Test
+func watchPresentAcceleratorIsWatchOnlyAndGpuStackStaysBlocked() {
+    #if os(watchOS)
+    #expect(PlatformCapabilities.gpuStackGate.isBlocked)
+    #expect(PlatformCapabilities.watchPresentAcceleratorGate.isAvailable)
+    #expect(PlatformCapabilities.allowsWatchPresentAccelerator)
+    #else
+    #expect(!PlatformCapabilities.watchPresentAcceleratorGate.isAvailable)
+    switch PlatformCapabilities.watchPresentAcceleratorGate {
+    case .forbidden(reason: _):
+        break
+    default:
+        Issue.record("watchPresentAcceleratorGate must be forbidden off watchOS")
+    }
+    #endif
+}
+
+@Test
+func sshWaypipeSettingsAreRemoteTypesOnly() {
+    #expect(!MachineType.native.isSSH)
+    #expect(!MachineType.virtualMachine.isSSH)
+    #expect(!MachineType.container.isSSH)
+    #expect(MachineType.sshWaypipe.isSSH)
+    #expect(MachineType.sshTerminal.isSSH)
+}
