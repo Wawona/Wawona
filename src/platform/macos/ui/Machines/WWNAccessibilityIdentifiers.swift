@@ -16,6 +16,17 @@ enum WWNA11y {
   static let machinesEdit = "wwn.machines.edit"
   static let machinesDelete = "wwn.machines.delete"
 
+  static let machinesEditor = "wwn.machines.editor"
+  static let machinesEditorSave = "wwn.machines.editor.save"
+  static let machinesEditorCancel = "wwn.machines.editor.cancel"
+  static let machinesEditorName = "wwn.machines.editor.name"
+  static let machinesEditorType = "wwn.machines.editor.type"
+  static let machinesEditorContainerRef = "wwn.machines.editor.container.ref"
+  static let machinesEditorContainerCommand = "wwn.machines.editor.container.command"
+  static let machinesEditorContainerDesktop = "wwn.machines.editor.container.desktop"
+  static let machinesEditorContainerHub = "wwn.machines.editor.container.hub"
+  static let machinesContainerImages = "wwn.machines.container.images"
+
   static func machinesCard(_ machineId: String) -> String {
     "wwn.machines.card.\(machineId)"
   }

@@ -113,12 +113,14 @@ struct MachineEditorView: View {
                 // MARK: Identity + type in one compact section
                 Section("Profile") {
                     TextField("Name", text: $name)
+                        .wwnA11y(WawonaA11y.machinesEditorName, label: "Name")
                     Picker("Type", selection: $type) {
                         ForEach(PlatformCapabilities.availableMachineTypes, id: \.self) { t in
                             Text(t.userFacingName).tag(t)
                         }
                     }
                     .wwnMachineChoicePicker()
+                    .wwnA11y(WawonaA11y.machinesEditorType, label: "Type")
                 }
 
                 // MARK: Native. Local Wayland socket, no network
@@ -155,11 +157,13 @@ struct MachineEditorView: View {
                         TextField("Image", text: $containerRef, prompt: Text("e.g. alpine:3.20"))
                             .wawonaTextFieldNoAutocaps()
                             .autocorrectionDisabled()
+                            .wwnA11y(WawonaA11y.machinesEditorContainerRef, label: "Image")
                         Button {
                             showingImageBrowser = true
                         } label: {
                             Label("Choose from library…", systemImage: "shippingbox")
                         }
+                        .wwnA11y(WawonaA11y.machinesEditorContainerHub, label: "Choose from library")
                         Button {
                             showingArchiveImporter = true
                         } label: {
@@ -196,7 +200,9 @@ struct MachineEditorView: View {
                         TextField("Command", text: $entryCommand, prompt: Text("e.g. /bin/sh"))
                             .wawonaTextFieldNoAutocaps()
                             .autocorrectionDisabled()
+                            .wwnA11y(WawonaA11y.machinesEditorContainerCommand, label: "Command")
                         Toggle("Desktop session", isOn: $desktopSession)
+                            .wwnA11y(WawonaA11y.machinesEditorContainerDesktop, label: "Desktop session")
                     } header: {
                         Text("Container")
                     } footer: {
@@ -253,13 +259,16 @@ struct MachineEditorView: View {
                 }
             }
             .navigationTitle(editorNavigationTitle)
+            .wwnA11y(WawonaA11y.machinesEditor, label: editorNavigationTitle)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .wwnA11y(WawonaA11y.machinesEditorCancel, label: "Cancel")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save", action: save)
                         .disabled(hasValidationIssues)
+                        .wwnA11y(WawonaA11y.machinesEditorSave, label: "Save")
                 }
             }
             .sheet(isPresented: $showingImageBrowser) {

@@ -23,7 +23,9 @@
   fastfetch ? null,
   phoon ? null,
   wawonaWasm ? null,
+  # wwn-containers `container` CLI (wwn-oci + prebuilt wwn-containerd).
   containerCli ? null,
+  containerDaemon ? null,
   # Container Wayland bridge (desktop-session machines): host waypipe with a
   # working --socket-fds (SplitFD) transport, and the guest aarch64-linux
   # waypipe injected into the container VM. Null = desktop sessions unavailable
@@ -1031,6 +1033,15 @@ GEN_HEADER
               else
                 echo "Warning: container binary not found at ${containerCli}/bin/container"
               fi
+              ${if containerDaemon != null then ''
+              if [ -f "${containerDaemon}/bin/wwn-containerd" ]; then
+                cp "${containerDaemon}/bin/wwn-containerd" "$APP/Contents/Resources/bin/"
+                chmod +x "$APP/Contents/Resources/bin/wwn-containerd"
+                echo "DEBUG: Bundled prebuilt wwn-containerd"
+              else
+                echo "Warning: wwn-containerd binary not found at ${containerDaemon}/bin/wwn-containerd"
+              fi
+              '' else ""}
               '' else ''
               echo "Warning: container-cli not provided, skipping container bundling"
               ''}
@@ -1469,6 +1480,15 @@ SHELL_EOF
             else
               echo "Warning: container binary not found at ${containerCli}/bin/container"
             fi
+            ${if containerDaemon != null then ''
+            if [ -f "${containerDaemon}/bin/wwn-containerd" ]; then
+              cp "${containerDaemon}/bin/wwn-containerd" $out/Applications/Wawona.app/Contents/Resources/bin/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/wwn-containerd
+              echo "DEBUG: Bundled prebuilt wwn-containerd"
+            else
+              echo "Warning: wwn-containerd binary not found at ${containerDaemon}/bin/wwn-containerd"
+            fi
+            '' else ""}
             '' else ''
             echo "Warning: container-cli not provided, skipping container bundling"
             ''}

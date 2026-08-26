@@ -427,6 +427,7 @@ struct WWNMachineEditorView: View {
             labeledField("Display Name") {
               TextField("e.g. Studio Linux VM", text: $name)
                 .textFieldStyle(.roundedBorder)
+                .wwnA11y(WWNA11y.machinesEditorName, label: "Display Name")
             }
             labeledField("Type") {
               Picker("", selection: $type) {
@@ -434,6 +435,7 @@ struct WWNMachineEditorView: View {
               }
               .wwnPlatformPickerStyle()
               .labelsHidden()
+              .wwnA11y(WWNA11y.machinesEditorType, label: "Machine Type")
             }
             Divider()
             Toggle("Show Session Thumbnail On Card", isOn: $machineThumbnailEnabled)
@@ -442,6 +444,10 @@ struct WWNMachineEditorView: View {
 
           if type == kWWNMachineTypeNative {
             nativeClientSection
+          }
+
+          if type == kWWNMachineTypeContainer {
+            containerSection
           }
 
           if isRemote {
@@ -462,10 +468,6 @@ struct WWNMachineEditorView: View {
           if type == kWWNMachineTypeVirtualMachine {
             virtualMachineSection
           }
-
-          if type == kWWNMachineTypeContainer {
-            containerSection
-          }
         }
         .padding(16)
         .frame(maxWidth: 880, alignment: .leading)
@@ -475,13 +477,16 @@ struct WWNMachineEditorView: View {
       .wwnMachineConfigScrollEdgeEffect()
       #endif
       .navigationTitle(title)
+      .wwnA11y(WWNA11y.machinesEditor, label: title)
       .toolbar {
         if editorPath.isEmpty {
           ToolbarItem(placement: .cancellationAction) {
             Button("Cancel") { dismiss() }
+              .wwnA11y(WWNA11y.machinesEditorCancel, label: "Cancel")
           }
           ToolbarItem(placement: .confirmationAction) {
             Button("Save", action: save)
+              .wwnA11y(WWNA11y.machinesEditorSave, label: "Save")
           }
         }
       }
@@ -1062,12 +1067,14 @@ struct WWNMachineEditorView: View {
             .textFieldStyle(.roundedBorder)
             .wwnDisableAutocapitalization()
             .autocorrectionDisabled()
+            .wwnA11y(WWNA11y.machinesEditorContainerRef, label: "Container Image")
           #if os(macOS)
           Button {
             showContainerHubSearch = true
           } label: {
             Label("Search Docker Hub", systemImage: "magnifyingglass")
           }
+          .wwnA11y(WWNA11y.machinesEditorContainerHub, label: "Search Docker Hub")
           #endif
         }
       }
@@ -1113,9 +1120,11 @@ struct WWNMachineEditorView: View {
           .textFieldStyle(.roundedBorder)
           .wwnDisableAutocapitalization()
           .autocorrectionDisabled()
+          .wwnA11y(WWNA11y.machinesEditorContainerCommand, label: "Container Command")
       }
       #if os(macOS)
       Toggle("Desktop session", isOn: $desktopSession)
+        .wwnA11y(WWNA11y.machinesEditorContainerDesktop, label: "Desktop session")
       #endif
       Text("Empty fields inherit the global Settings > Containers defaults. Memory, mounts and ports are configured in Machine Settings.")
         .font(.footnote)

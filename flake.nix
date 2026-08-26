@@ -1119,9 +1119,10 @@
             fastfetch = toolchains.buildForMacOS "fastfetch" { };
             phoon = toolchains.buildForMacOS "phoon" { };
             wawonaWasm = toolchains.buildForMacOS "wawona-wasm" { };
-            # wwn-containers `container` CLI (wwn-oci + wwn-containerd-run) for
+            # wwn-containers `container` CLI + prebuilt wwn-containerd for
             # the Machines GUI + in-app terminal.
             containerCli = wwn-containers.packages.${system}.container-cli;
+            containerDaemon = wwn-containers.packages.${system}.wwn-containerd or null;
             # Container Wayland bridge (desktop sessions): host waypipe with a
             # working SplitFD (--socket-fds), and the guest aarch64-linux
             # waypipe injected into the container VM.
